@@ -126,6 +126,7 @@ Re-running derive for date D is idempotent: same numbers; only date D's derivati
 12. **Back up before editing an existing file.** Copy it via the shell to `_backups/<path>.<YYYYMMDD-HHMMSS>.bak` and verify the copy before any `Edit`/`Write`. New files are exempt. Hard rule from the user.
 13. **Per-screen / per-feature deep-dive docs live in `docs/`.** One file per topic (`docs/<topic>_logic.md`). `CLAUDE.md` carries only a one-line pointer in the Lookup index — never the full detail. To request one, say "document the X screen/logic" and Claude creates/updates `docs/X_logic.md` plus the index row.
 14. **Responses use a structured format.** Lead with a short **Summary** — ONLY what the user must act on or pay attention to. Problems Claude both caused and fixed itself (e.g. file-truncation-on-write and its splice recovery) must NOT appear in the Summary — move them to **Details** under a subheading, or omit them entirely. Then **Details**. Include a **Notes** section ONLY when there is a precise, actionable point to make — omit the section entirely when there is none; never pad it. End with **Questions** only if there are real questions. Keep every section to the minimum detail required — not verbose. Skip the scaffolding for trivial one-line answers. Hard rule from the user.
+15. **Manage code changes through git.** All code modifications must be committed to the repository with clear commit messages. This creates a complete audit trail and enables rollback if needed. Claude will create commits for code changes going forward.
 
 ---
 
