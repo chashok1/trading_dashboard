@@ -1,0 +1,620 @@
+[
+  {
+    "column_name": "company_name",
+    "source_table": "hist_y",
+    "source_expr": "y.company_name",
+    "excel_header": "Company Name"
+  },
+  {
+    "column_name": "standarddeviation",
+    "source_table": "hist_tw",
+    "source_expr": "tw.standard_dev",
+    "excel_header": "StandardDeviation"
+  },
+  {
+    "column_name": "a_trendvalue",
+    "source_table": "hist_td",
+    "source_expr": "td.a_trend_value",
+    "excel_header": "A_TrendValue"
+  },
+  {
+    "column_name": "a_tradevalue",
+    "source_table": "hist_td",
+    "source_expr": "td.a_trade_value",
+    "excel_header": "A_TradeValue"
+  },
+  {
+    "column_name": "a_bbhighlow",
+    "source_table": "hist_td",
+    "source_expr": "td.a_bb_high_low",
+    "excel_header": "A_BBHighLow"
+  },
+  {
+    "column_name": "a_bbhighlowdays",
+    "source_table": "hist_td",
+    "source_expr": "td.a_bb_high_low_days",
+    "excel_header": "A_BBHighLowDays"
+  },
+  {
+    "column_name": "a_bb_streak",
+    "source_table": "hist_td",
+    "source_expr": "td.a_bb_streak",
+    "excel_header": "A_BB_Streak"
+  },
+  {
+    "column_name": "a_3mnlow",
+    "source_table": "hist_tw",
+    "source_expr": "tw.a_3mn_low",
+    "excel_header": "A_3mnLow"
+  },
+  {
+    "column_name": "a_3mnhigh",
+    "source_table": "hist_tw",
+    "source_expr": "tw.a_3mn_high",
+    "excel_header": "A_3mnHigh"
+  },
+  {
+    "column_name": "a_3mnhighlow",
+    "source_table": "hist_tw",
+    "source_expr": "tw.a_3mn_high_low",
+    "excel_header": "A_3mnHighLow"
+  },
+  {
+    "column_name": "a_3wkhighlow",
+    "source_table": "hist_tw",
+    "source_expr": "tw.a_3wk_high_low",
+    "excel_header": "A_3wkHighLow"
+  },
+  {
+    "column_name": "a_perf2m",
+    "source_table": "hist_tw",
+    "source_expr": "tw.a_perf_2m",
+    "excel_header": "A_Perf2M"
+  },
+  {
+    "column_name": "a_perf2wk",
+    "source_table": "hist_tw",
+    "source_expr": "tw.a_perf_2wk",
+    "excel_header": "A_Perf2Wk"
+  },
+  {
+    "column_name": "a_perf3d",
+    "source_table": "hist_tw",
+    "source_expr": "tw.a_perf_3d",
+    "excel_header": "A_Perf3D"
+  },
+  {
+    "column_name": "c_52low",
+    "source_table": "hist_tw",
+    "source_expr": "tw.low_52",
+    "excel_header": "52Low"
+  },
+  {
+    "column_name": "c_52high",
+    "source_table": "hist_tw",
+    "source_expr": "tw.high_52",
+    "excel_header": "52High"
+  },
+  {
+    "column_name": "c_20_dma",
+    "source_table": "drv_tw",
+    "source_expr": "tw.sma_20_d",
+    "excel_header": "20 DMA"
+  },
+  {
+    "column_name": "c_50_dma",
+    "source_table": "drv_tw",
+    "source_expr": "tw.sma_50_d",
+    "excel_header": "50 DMA"
+  },
+  {
+    "column_name": "c_200_dma",
+    "source_table": "drv_tw",
+    "source_expr": "tw.sma_200_d",
+    "excel_header": "200 DMA"
+  },
+  {
+    "column_name": "a_macd_brr",
+    "source_table": "drv_tw",
+    "source_expr": "tw.a_macd_brr",
+    "excel_header": "A_MACD_BRR"
+  },
+  {
+    "column_name": "a_macdh_d_brr",
+    "source_table": "drv_tw",
+    "source_expr": "tw.a_macdh_d_brr",
+    "excel_header": "A_MACDH_D_BRR"
+  },
+  {
+    "column_name": "a_macdays_streak",
+    "source_table": "hist_tw",
+    "source_expr": "tw.a_macdays_streak",
+    "excel_header": "A_MACDays_Streak"
+  },
+  {
+    "column_name": "d_last",
+    "source_table": "hist_td",
+    "source_expr": "td.last_price",
+    "excel_header": "D_Last"
+  },
+  {
+    "column_name": "d_change",
+    "source_table": "hist_td",
+    "source_expr": "td.change_pct",
+    "excel_header": "D_%Change"
+  },
+  {
+    "column_name": "d_net_chng",
+    "source_table": "hist_td",
+    "source_expr": "td.net_chng",
+    "excel_header": "D_Net Chng"
+  },
+  {
+    "column_name": "d_open",
+    "source_table": "hist_td",
+    "source_expr": "td.open_price",
+    "excel_header": "D_Open"
+  },
+  {
+    "column_name": "d_high",
+    "source_table": "hist_td",
+    "source_expr": "td.high_price",
+    "excel_header": "D_High"
+  },
+  {
+    "column_name": "d_low",
+    "source_table": "hist_td",
+    "source_expr": "td.low_price",
+    "excel_header": "D_Low"
+  },
+  {
+    "column_name": "d_rsi",
+    "source_table": "drv_td",
+    "source_expr": "td.d_rsi",
+    "excel_header": "D_RSI"
+  },
+  {
+    "column_name": "d_iv",
+    "source_table": "drv_td",
+    "source_expr": "td.d_iv",
+    "excel_header": "D_IV"
+  },
+  {
+    "column_name": "d_hv",
+    "source_table": "drv_td",
+    "source_expr": "td.d_hv",
+    "excel_header": "D_HV"
+  },
+  {
+    "column_name": "hvpercentile",
+    "source_table": "drv_td",
+    "source_expr": "td.hv_percentile",
+    "excel_header": "HVPercentile"
+  },
+  {
+    "column_name": "ivpercentile",
+    "source_table": "drv_td",
+    "source_expr": "td.iv_percentile",
+    "excel_header": "IVPercentile"
+  },
+  {
+    "column_name": "l_last",
+    "source_table": "hist_tl",
+    "source_expr": "tl.last_price",
+    "excel_header": "L_Last"
+  },
+  {
+    "column_name": "l_net_chng",
+    "source_table": "hist_tl",
+    "source_expr": "tl.net_chng",
+    "excel_header": "L_Net Chng"
+  },
+  {
+    "column_name": "l_change",
+    "source_table": "hist_tl",
+    "source_expr": "tl.change_pct",
+    "excel_header": "L_%Change"
+  },
+  {
+    "column_name": "l_open",
+    "source_table": "hist_tl",
+    "source_expr": "tl.open_price",
+    "excel_header": "L_Open"
+  },
+  {
+    "column_name": "l_high",
+    "source_table": "hist_tl",
+    "source_expr": "tl.high_price",
+    "excel_header": "L_High"
+  },
+  {
+    "column_name": "l_low",
+    "source_table": "hist_tl",
+    "source_expr": "tl.low_price",
+    "excel_header": "L_Low"
+  },
+  {
+    "column_name": "l_rsi",
+    "source_table": "hist_tl",
+    "source_expr": "tl.rsi",
+    "excel_header": "L_RSI"
+  },
+  {
+    "column_name": "l_impvolatility",
+    "source_table": "drv_tl",
+    "source_expr": "tl.imp_volatility_clean",
+    "excel_header": "L_ImpVolatility"
+  },
+  {
+    "column_name": "y_last_price",
+    "source_table": "hist_y",
+    "source_expr": "y.last_price",
+    "excel_header": "Y_Last Price"
+  },
+  {
+    "column_name": "y_change",
+    "source_table": "hist_y",
+    "source_expr": "y.change_amt",
+    "excel_header": "Y_Change"
+  },
+  {
+    "column_name": "y_open",
+    "source_table": "hist_y",
+    "source_expr": "y.open_price",
+    "excel_header": "Y_Open"
+  },
+  {
+    "column_name": "y_high",
+    "source_table": "hist_y",
+    "source_expr": "y.high_price",
+    "excel_header": "Y_High"
+  },
+  {
+    "column_name": "y_low",
+    "source_table": "hist_y",
+    "source_expr": "y.low_price",
+    "excel_header": "Y_Low"
+  },
+  {
+    "column_name": "bb_bot_prev",
+    "source_table": "drv_td",
+    "source_expr": "td.bb_bot_prev",
+    "excel_header": "BB_Bot_Prev"
+  },
+  {
+    "column_name": "bb_top_prev",
+    "source_table": "drv_td",
+    "source_expr": "td.bb_top_prev",
+    "excel_header": "BB_Top_Prev"
+  },
+  {
+    "column_name": "rr_bottom",
+    "source_table": "hist_rr",
+    "source_expr": "rr.sell_trade",
+    "excel_header": "RR_Bottom"
+  },
+  {
+    "column_name": "rr_top",
+    "source_table": "hist_rr",
+    "source_expr": "rr.buy_trade",
+    "excel_header": "RR_Top"
+  },
+  {
+    "column_name": "etf_bottom",
+    "source_table": "hist_etf",
+    "source_expr": "etf.recent_price",
+    "excel_header": "ETF_Bottom"
+  },
+  {
+    "column_name": "etf_top",
+    "source_table": "hist_etf",
+    "source_expr": "etf.brr",
+    "excel_header": "ETF_Top"
+  },
+  {
+    "column_name": "bb_bot_15d",
+    "source_table": "drv_td",
+    "source_expr": "td.bb_bot_15d",
+    "excel_header": "BB_Bot_15d"
+  },
+  {
+    "column_name": "bb_bot_7d",
+    "source_table": "drv_td",
+    "source_expr": "td.bb_bot_7d",
+    "excel_header": "BB_Bot_7d"
+  },
+  {
+    "column_name": "bb_bot_3d",
+    "source_table": "drv_td",
+    "source_expr": "td.bb_bot_3d",
+    "excel_header": "BB_Bot_3d"
+  },
+  {
+    "column_name": "bb_top_15d",
+    "source_table": "drv_td",
+    "source_expr": "td.bb_top_15d",
+    "excel_header": "BB_Top_15d"
+  },
+  {
+    "column_name": "bb_top_7d",
+    "source_table": "drv_td",
+    "source_expr": "td.bb_top_7d",
+    "excel_header": "BB_Top_7d"
+  },
+  {
+    "column_name": "bb_top_3d",
+    "source_table": "drv_td",
+    "source_expr": "td.bb_top_3d",
+    "excel_header": "BB_Top_3d"
+  },
+  {
+    "column_name": "a_volumespike",
+    "source_table": "hist_tw",
+    "source_expr": "tw.a_volume_spike",
+    "excel_header": "A_VolumeSpike"
+  },
+  {
+    "column_name": "l_vlm",
+    "source_table": "drv_tl",
+    "source_expr": "tl.vlm_projected",
+    "excel_header": "L_Vlm"
+  },
+  {
+    "column_name": "w_vlm",
+    "source_table": "drv_tw",
+    "source_expr": "tw.w_volume",
+    "excel_header": "W_Vlm"
+  },
+  {
+    "column_name": "volumerateofchange",
+    "source_table": "hist_tw",
+    "source_expr": "tw.volume_rate_change",
+    "excel_header": "VolumeRateOfChange"
+  },
+  {
+    "column_name": "w_avg_vlm_10day",
+    "source_table": "drv_tw",
+    "source_expr": "tw.avg_vlm_10d_d",
+    "excel_header": "W_Avg Vlm (10day)"
+  },
+  {
+    "column_name": "w_avg_vlm_3m",
+    "source_table": "drv_tw",
+    "source_expr": "tw.avg_vlm_3m_d",
+    "excel_header": "W_Avg Vlm (3m)"
+  },
+  {
+    "column_name": "w_vlm_rulecode",
+    "source_table": "drv_tw",
+    "source_expr": "tw.w_vlm_rule_desc",
+    "excel_header": "W_Vlm_RuleCode"
+  },
+  {
+    "column_name": "beta",
+    "source_table": "hist_to",
+    "source_expr": "\"to\".beta",
+    "excel_header": "Beta"
+  },
+  {
+    "column_name": "market_cap",
+    "source_table": "hist_to",
+    "source_expr": "\"to\".market_cap_str",
+    "excel_header": "Market Cap"
+  },
+  {
+    "column_name": "long_term_debt_to_capital_current_ltm",
+    "source_table": "hist_to",
+    "source_expr": "\"to\".ltd_to_capital",
+    "excel_header": "Long-term Debt to Capital - Current (LTM)"
+  },
+  {
+    "column_name": "price_earnings_ratio_current",
+    "source_table": "hist_to",
+    "source_expr": "\"to\".pe_ratio",
+    "excel_header": "Price / Earnings Ratio - Current"
+  },
+  {
+    "column_name": "price_book_value_ratio_current",
+    "source_table": "hist_to",
+    "source_expr": "\"to\".pb_ratio",
+    "excel_header": "Price / Book Value Ratio - Current"
+  },
+  {
+    "column_name": "return_on_equity_roe_current_ltm",
+    "source_table": "hist_to",
+    "source_expr": "\"to\".roe",
+    "excel_header": "Return on Equity (ROE) - Current (LTM)"
+  },
+  {
+    "column_name": "eps",
+    "source_table": "hist_to",
+    "source_expr": "\"to\".eps",
+    "excel_header": "EPS"
+  },
+  {
+    "column_name": "div_yield_current",
+    "source_table": "hist_to",
+    "source_expr": "\"to\".div_yield",
+    "excel_header": "Div. Yield - Current"
+  },
+  {
+    "column_name": "sector",
+    "source_table": "hist_to",
+    "source_expr": "\"to\".sector",
+    "excel_header": "Sector"
+  },
+  {
+    "column_name": "free_cash_flow_per_share_current_ltm",
+    "source_table": "hist_to",
+    "source_expr": "\"to\".fcf_per_share",
+    "excel_header": "Free Cash Flow Per Share - Current (LTM)"
+  },
+  {
+    "column_name": "asset_class",
+    "source_table": "ref_sector",
+    "source_expr": "sctr.asset_class",
+    "excel_header": "Asset Class"
+  },
+  {
+    "column_name": "sctr_sector",
+    "source_table": "ref_sector",
+    "source_expr": "sctr.sector",
+    "excel_header": "Sctr!Sector"
+  },
+  {
+    "column_name": "sub_asset_class",
+    "source_table": "ref_sector",
+    "source_expr": "sctr.sub_asset_class",
+    "excel_header": "Sub Asset Class"
+  },
+  {
+    "column_name": "industry",
+    "source_table": "ref_sector",
+    "source_expr": "sctr.industry",
+    "excel_header": "Industry"
+  },
+  {
+    "column_name": "fcf",
+    "source_table": "drv_tw",
+    "source_expr": "tw.fcf",
+    "excel_header": "FCF"
+  },
+  {
+    "column_name": "earningsdays",
+    "source_table": "drv_tw",
+    "source_expr": "tw.earnings_days_d",
+    "excel_header": "EarningsDays"
+  },
+  {
+    "column_name": "short_ratio",
+    "source_table": "hist_y",
+    "source_expr": "y.short_ratio",
+    "excel_header": "Short Ratio"
+  },
+  {
+    "column_name": "float",
+    "source_table": "hist_y",
+    "source_expr": "y.float_str",
+    "excel_header": "Float"
+  },
+  {
+    "column_name": "shares_out",
+    "source_table": "hist_y",
+    "source_expr": "y.shares_out_str",
+    "excel_header": "Shares Out"
+  },
+  {
+    "column_name": "a_bb_bot_slope",
+    "source_table": "hist_td",
+    "source_expr": "td.a_bb_bot_slope",
+    "excel_header": "A_BB_Bot_Slope"
+  },
+  {
+    "column_name": "a_bb_top_slope",
+    "source_table": "hist_td",
+    "source_expr": "td.a_bb_top_slope",
+    "excel_header": "A_BB_Top_Slope"
+  },
+  {
+    "column_name": "ps_rk",
+    "source_table": "hist_psrk",
+    "source_expr": "psrk.rank",
+    "excel_header": "PS Rk"
+  },
+  {
+    "column_name": "psrk_chg",
+    "source_table": "hist_psrk",
+    "source_expr": "psrk.wk_ago",
+    "excel_header": "PSRk Chg"
+  },
+  {
+    "column_name": "etf",
+    "source_table": "hist_etfchg",
+    "source_expr": "etfchg.outlook",
+    "excel_header": "ETF"
+  },
+  {
+    "column_name": "ii",
+    "source_table": "hist_ii",
+    "source_expr": "ii.outlook",
+    "excel_header": "II"
+  },
+  {
+    "column_name": "ii_chg",
+    "source_table": "hist_iichg",
+    "source_expr": "iichg.outlook",
+    "excel_header": "II Chg"
+  },
+  {
+    "column_name": "call",
+    "source_table": "hist_call",
+    "source_expr": "call.outlook",
+    "excel_header": "CAll"
+  },
+  {
+    "column_name": "call_modifier",
+    "source_table": "hist_call",
+    "source_expr": "call.outlook_modifier",
+    "excel_header": "CAll Modifier"
+  },
+  {
+    "column_name": "rr",
+    "source_table": "hist_rr",
+    "source_expr": "rr.outlook",
+    "excel_header": "RR"
+  },
+  {
+    "column_name": "ps_date",
+    "source_table": "hist_psrk",
+    "source_expr": "psrk.date_added",
+    "excel_header": "PS Date"
+  },
+  {
+    "column_name": "etf_date",
+    "source_table": "hist_etfchg",
+    "source_expr": "etfchg.event_date",
+    "excel_header": "ETF Date"
+  },
+  {
+    "column_name": "ii_date",
+    "source_table": "hist_iichg",
+    "source_expr": "iichg.event_date",
+    "excel_header": "II Date"
+  },
+  {
+    "column_name": "call_date",
+    "source_table": "hist_call",
+    "source_expr": "call.snapshot_date",
+    "excel_header": "CAll Date"
+  },
+  {
+    "column_name": "etf_entry",
+    "source_table": "hist_etfchg",
+    "source_expr": "etfchg.action",
+    "excel_header": "ETF Entry"
+  },
+  {
+    "column_name": "ii_entry",
+    "source_table": "hist_iichg",
+    "source_expr": "iichg.action",
+    "excel_header": "II Entry"
+  },
+  {
+    "column_name": "etf_cont",
+    "source_table": "hist_etfchg",
+    "source_expr": "etfchg.action",
+    "excel_header": "ETF Cont"
+  },
+  {
+    "column_name": "fidelity",
+    "source_table": "hist_f",
+    "source_expr": "f.current_value",
+    "excel_header": "Fidelity"
+  },
+  {
+    "column_name": "cs",
+    "source_table": "hist_cs",
+    "source_expr": "cs.market_value",
+    "excel_header": "CS"
+  }
+]

@@ -1,0 +1,367 @@
+/* Trading Dashboard - frontend logic.
+   4-panel layout: Quads banner + Ticker grid + Econ Indicators + Earnings/Calendar. */
+
+const SECTIONS = ['', 'Volatility', 'Index', 'Sector', 'Commodity', 'Stock', 'Treasury', 'FX'];
+
+const state = {
+  date: null,
+  section: '',
+  search: '',
+  rows: [],
+};
+
+// ---------- helpers ----------
+
+const $ = (id) => document.getElementById(id);
+
+function fmtNum(v, digits = 2) {
+  if (v === null || v === undefined || v === '') return '';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '';
+  return n.toLocaleString(undefined, {
+    minimumFractionDigits: digits, maximumFractionDigits: digits,
+  });
+}
+
+function fmtInt(v) {
+  if (v === null || v === undefined || v === '') return '';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '';
+  return Math.round(n).toLocaleString();
+}
+
+function fmtPct(v, digits = 2) {
+  if (v === null || v === undefined || v === '') return '';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '';
+  return n.toFixed(digits) + '%';
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  // tolerate both 'YYYY-MM-DD' and ISO datetime
+  const s = String(d).slice(0, 10);
+  return s;
+}
+
+function signClass(v) {
+  if (v === null || v === undefined || v === '') return '';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '';
+  if (n > 0) return 'pos';
+  if (n < 0) return 'neg';
+  return '';
+}
+
+// Normalize an outlook value (BULLISH / BEARISH / NEUTRAL / 0 / Bullish / etc.)
+// Returns { cls, label } where cls is the CSS class suffix and label is what to display.
+function normOutlook(v) {
+  if (v === null || v === undefined || v === '') return { cls: '', label: '' };
+  const raw = String(v).trim();
+  const upper = raw.toUpperCase();
+  // Map common alternate forms
+  if (upper === '0' || upper === 'N' || upper === 'NEUTRAL' || upper === 'NEU') {
+    return { cls: 'NEUTRAL', label: 'NEUTRAL' };
+  }
+  if (upper.startsWith('BULL') || upper === '+' || upper === 'POS' || upper === 'POSITIVE' || upper === 'UP') {
+    return { cls: 'BULLISH', label: 'BULLISH' };
+  }
+  if (upper.startsWith('BEAR') || upper === '-' || upper === 'NEG' || upper === 'NEGATIVE' || upper === 'DN' || upper === 'DOWN') {
+    return { cls: 'BEARISH', label: 'BEARISH' };
+  }
+  // Unknown — fall through with whatever we got, stripped to alnum for safe class name
+  return { cls: upper.replace(/[^A-Z0-9]/g, ''), label: raw };
+}
+
+function outlookCell(td, value) {
+  const { cls, label } = normOutlook(value);
+  td.className = 'text';
+  td.innerHTML = label ? `<span class="signal-${cls}">${label}</span>` : '';
+}
+
+async function fetchJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url} → ${r.status}`);
+  return r.json();
+}
+
+// ---------- date picker ----------
+
+async function loadDates() {
+  const dates = await fetchJson('/api/dates');
+  const sel = $('datePicker');
+  sel.innerHTML = '';
+  for (const d of dates) {
+    const opt = document.createElement('option');
+    opt.value = d; opt.textContent = d;
+    sel.appendChild(opt);
+  }
+  state.date = dates[0] || null;
+  if (state.date) sel.value = state.date;
+  $('footDate').textContent = state.date || '—';
+}
+
+// ---------- section chips ----------
+
+function renderSectionChips() {
+  const wrap = $('sectionChips');
+  wrap.innerHTML = '';
+  for (const sec of SECTIONS) {
+    const btn = document.createElement('button');
+    btn.className = 'chip' + (state.section === sec ? ' active' : '');
+    btn.dataset.section = sec;
+    btn.textContent = sec || 'All';
+    btn.onclick = () => {
+      state.section = sec;
+      renderSectionChips();
+      renderTickerGrid();
+    };
+    wrap.appendChild(btn);
+  }
+}
+
+// ---------- ticker grid (Dash K-Z) ----------
+
+async function loadTickers() {
+  if (!state.date) return;
+  try {
+    state.rows = await fetchJson(`/api/dash?date=${encodeURIComponent(state.date)}`);
+  } catch (e) {
+    console.error('Failed to load /api/dash:', e);
+    state.rows = [];
+  }
+  renderTickerGrid();
+}
+
+function rowMatches(r) {
+  if (state.section && r.section !== state.section) return false;
+  if (state.search) {
+    const needle = state.search.toLowerCase();
+    const sym = (r.symbol || '').toLowerCase();
+    const desc = (r.description || '').toLowerCase();
+    if (!sym.includes(needle) && !desc.includes(needle)) return false;
+  }
+  return true;
+}
+
+function renderTickerGrid() {
+  const tbody = $('tickerBody');
+  tbody.innerHTML = '';
+
+  // Group by section, render section header rows
+  const filtered = state.rows.filter(rowMatches);
+  let lastSection = null;
+  let count = 0;
+
+  for (const r of filtered) {
+    if (r.section !== lastSection) {
+      const headRow = document.createElement('tr');
+      headRow.className = 'section-row';
+      const td = document.createElement('td');
+      td.colSpan = 15;
+      td.textContent = r.section || '(unspecified)';
+      headRow.appendChild(td);
+      tbody.appendChild(headRow);
+      lastSection = r.section;
+    }
+
+    const tr = document.createElement('tr');
+
+    // Description (column K)
+    const tdDesc = document.createElement('td');
+    tdDesc.className = 'text';
+    tdDesc.textContent = r.description || '';
+    tr.appendChild(tdDesc);
+
+    // % Chg — derived from (last - trade) / trade if not provided directly
+    const pctChg = (r.last_price != null && r.a_trade_value != null && r.a_trade_value !== 0)
+      ? ((Number(r.last_price) - Number(r.a_trade_value)) / Number(r.a_trade_value)) * 100
+      : null;
+    const tdPct = document.createElement('td');
+    tdPct.className = 'num ' + signClass(pctChg);
+    tdPct.textContent = pctChg != null ? fmtPct(pctChg, 2) : '';
+    tr.appendChild(tdPct);
+
+    // Symbol (M)
+    const tdSym = document.createElement('td');
+    tdSym.innerHTML = r.symbol
+      ? `<a href="/trace?sym=${encodeURIComponent(r.symbol)}" style="color:var(--accent,#1d4ed8);text-decoration:none;">${r.symbol}</a>`
+      : '';
+    tr.appendChild(tdSym);
+
+    // TOS (N) — same as symbol unless we have a separate field
+    const tdTos = document.createElement('td');
+    tdTos.textContent = r.symbol || '';
+    tr.appendChild(tdTos);
+
+    // HE OL (O) and TrTn OL (P) — pulled from rr_outlook / call_outlook
+    const tdHeOl = document.createElement('td');
+    outlookCell(tdHeOl, r.rr_outlook);
+    tr.appendChild(tdHeOl);
+
+    const tdTrTn = document.createElement('td');
+    outlookCell(tdTrTn, r.call_outlook);
+    tr.appendChild(tdTrTn);
+
+    // MQ (Q), QQ (R) — not in /api/dash today; placeholder for now
+    const tdMq = document.createElement('td');
+    tdMq.textContent = r.mq || '';
+    tr.appendChild(tdMq);
+
+    const tdQq = document.createElement('td');
+    tdQq.textContent = r.qq || '';
+    tr.appendChild(tdQq);
+
+    // Last (S)
+    const tdLast = document.createElement('td');
+    tdLast.className = 'num';
+    tdLast.textContent = fmtNum(r.last_price);
+    tr.appendChild(tdLast);
+
+    // Trend (T)
+    const tdTrend = document.createElement('td');
+    tdTrend.className = 'num';
+    tdTrend.textContent = fmtNum(r.a_trend_value);
+    tr.appendChild(tdTrend);
+
+    // Trade (U)
+    const tdTrade = document.createElement('td');
+    tdTrade.className = 'num';
+    tdTrade.textContent = fmtNum(r.a_trade_value);
+    tr.appendChild(tdTrade);
+
+    // % BRR (V)
+    const tdBrr = document.createElement('td');
+    tdBrr.className = 'num';
+    tdBrr.textContent = r.pct_brr != null ? fmtNum(r.pct_brr, 1) : '';
+    tr.appendChild(tdBrr);
+
+    // Low (X) and High (Y) — threshold_low / threshold_high
+    const tdLow = document.createElement('td');
+    tdLow.className = 'num';
+    tdLow.textContent = fmtNum(r.threshold_low);
+    tr.appendChild(tdLow);
+
+    const tdHigh = document.createElement('td');
+    tdHigh.className = 'num';
+    tdHigh.textContent = fmtNum(r.threshold_high);
+    tr.appendChild(tdHigh);
+
+    // Z (zone_signal: Y/N/W)
+    const tdZ = document.createElement('td');
+    const z = r.zone_signal || '';
+    tdZ.className = 'text';
+    tdZ.innerHTML = z ? `<span class="signal-${z}">${z}</span>` : '';
+    tr.appendChild(tdZ);
+
+    tbody.appendChild(tr);
+    count++;
+  }
+
+  $('tickerCount').textContent = `${count} row${count === 1 ? '' : 's'}`;
+}
+
+// ---------- economic indicators ----------
+
+async function loadEconIndicators() {
+  const tbody = $('econBody');
+  const empty = $('econEmpty');
+  tbody.innerHTML = '';
+  try {
+    const url = state.date
+      ? `/api/dashboard/econ-indicators?date=${encodeURIComponent(state.date)}&limit=20`
+      : '/api/dashboard/econ-indicators?limit=20';
+    const rows = await fetchJson(url);
+    if (!rows || rows.length === 0) {
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      const sig = normOutlook(r.signal);
+      tr.innerHTML = `
+        <td class="text">${r.indicator || ''}</td>
+        <td>${fmtDate(r.indicator_date)}</td>
+        <td class="num">${r.days != null ? r.days : ''}</td>
+        <td class="text">${sig.label ? `<span class="signal-${sig.cls}">${sig.label}</span>` : ''}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+  } catch (e) {
+    console.error('Failed to load econ indicators:', e);
+    empty.hidden = false;
+    empty.textContent = 'Failed to load.';
+  }
+}
+
+// ---------- earnings / calendar events ----------
+
+async function loadEarnings() {
+  const tbody = $('earningsBody');
+  const empty = $('earningsEmpty');
+  tbody.innerHTML = '';
+  try {
+    const url = state.date
+      ? `/api/dashboard/earnings?date=${encodeURIComponent(state.date)}&days_ahead=60&limit=50`
+      : '/api/dashboard/earnings?days_ahead=60&limit=50';
+    const rows = await fetchJson(url);
+    if (!rows || rows.length === 0) {
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      const days = r.days_until != null ? `${r.days_until}d` : '';
+      tr.innerHTML = `
+        <td class="text">${r.category || ''}</td>
+        <td>${fmtDate(r.event_date)}</td>
+        <td class="num">${days}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+  } catch (e) {
+    console.error('Failed to load earnings:', e);
+    empty.hidden = false;
+    empty.textContent = 'Failed to load.';
+  }
+}
+
+// ---------- quads banner ----------
+
+function paintQuad(elValue, elPeriod, payload) {
+  if (!payload) {
+    elValue.textContent = '—';
+    elValue.className = 'value';
+    elPeriod.textContent = 'no active period';
+    return;
+  }
+  const q = payload.quad || '—';
+  elValue.textContent = q;
+  // pick a color class from quad text (Quad 1..4)
+  let cls = 'value';
+  if (/1/.test(q)) cls += ' quad-q1';
+  else if (/2/.test(q)) cls += ' quad-q2';
+  else if (/3/.test(q)) cls += ' quad-q3';
+  else if (/4/.test(q)) cls += ' quad-q4';
+  elValue.className = cls;
+  const label = payload.label || '';
+  const range = (payload.start_date && payload.end_date)
+    ? `${fmtDate(payload.start_date)} → ${fmtDate(payload.end_date)}`
+    : (payload.start_date ? `from ${fmtDate(payload.start_date)}` : '');
+  elPeriod.textContent = label ? `${label}  ·  ${range}` : range;
+}
+
+async function loadQuads() {
+  try {
+    const url = state.date
+      ? `/api/dashboard/quads?date=${encodeURIComponent(state.date)}`
+      : '/api/dashboard/quads';
+    const data = await fetchJson(url);
+    paintQuad($('quadMonthlyValue'), $('quadMonthlyPeriod'), data.monthly);
+    paintQuad($('quadQuarterlyValue'), $('quadQuarterlyPeriod'), data.quarterly);
+  } catch (e) {
+    console.error('Failed to load quads:', e);
+  }
+}

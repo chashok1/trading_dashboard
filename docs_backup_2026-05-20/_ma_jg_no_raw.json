@@ -1,0 +1,680 @@
+[
+  {
+    "col_idx": 267,
+    "letter": "JG",
+    "header": "MACDH Direction",
+    "formula": "=IF(CK2=0,-1,SIGN(CK2))"
+  },
+  {
+    "col_idx": 268,
+    "letter": "JH",
+    "header": "MACD Direction",
+    "formula": "=IF(CI2=0,-1,SIGN(CI2))"
+  },
+  {
+    "col_idx": 269,
+    "letter": "JI",
+    "header": "BB Direction",
+    "formula": "=AN2"
+  },
+  {
+    "col_idx": 270,
+    "letter": "JJ",
+    "header": "BB Threshold",
+    "formula": "=IF(AX2=1,AW2,0)"
+  },
+  {
+    "col_idx": 271,
+    "letter": "JK",
+    "header": "BBThresh CO Days",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79645c30>"
+  },
+  {
+    "col_idx": 272,
+    "letter": "JL",
+    "header": "BBThresh_CO_Days2",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79645c90>"
+  },
+  {
+    "col_idx": 273,
+    "letter": "JM",
+    "header": "Trade Cross Over",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79645cf0>"
+  },
+  {
+    "col_idx": 274,
+    "letter": "JN",
+    "header": "Trade-Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79645d50>"
+  },
+  {
+    "col_idx": 275,
+    "letter": "JO",
+    "header": "!Trade Rule",
+    "formula": "=(-1)*JN2"
+  },
+  {
+    "col_idx": 276,
+    "letter": "JP",
+    "header": "Trend Cross Over",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79645e70>"
+  },
+  {
+    "col_idx": 277,
+    "letter": "JQ",
+    "header": "Trend-Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79645ed0>"
+  },
+  {
+    "col_idx": 278,
+    "letter": "JR",
+    "header": "!Trend Rule",
+    "formula": "=(-1)*JQ2"
+  },
+  {
+    "col_idx": 279,
+    "letter": "JS",
+    "header": "Trend Trade Dep Rule",
+    "formula": "=IF(AE2<=AF2,JQ2,JN2)"
+  },
+  {
+    "col_idx": 280,
+    "letter": "JT",
+    "header": "TrTn Relation",
+    "formula": "=IF(AE2<=AF2,1,-1)"
+  },
+  {
+    "col_idx": 281,
+    "letter": "JU",
+    "header": "!TrTn Relation",
+    "formula": "=(-1)*JT2"
+  },
+  {
+    "col_idx": 282,
+    "letter": "JV",
+    "header": "Trade Trend SD Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646230>"
+  },
+  {
+    "col_idx": 283,
+    "letter": "JW",
+    "header": "BRR% Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646290>"
+  },
+  {
+    "col_idx": 284,
+    "letter": "JX",
+    "header": "BRR% LRR",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796462f0>"
+  },
+  {
+    "col_idx": 285,
+    "letter": "JY",
+    "header": "BRR% R2",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646350>"
+  },
+  {
+    "col_idx": 286,
+    "letter": "JZ",
+    "header": "BRR% LRR2",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796463b0>"
+  },
+  {
+    "col_idx": 287,
+    "letter": "KA",
+    "header": "BRR% TRR",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646410>"
+  },
+  {
+    "col_idx": 288,
+    "letter": "KB",
+    "header": "BRR% Puts",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646470>"
+  },
+  {
+    "col_idx": 289,
+    "letter": "KC",
+    "header": "BRR% TRR Puts",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796464d0>"
+  },
+  {
+    "col_idx": 290,
+    "letter": "KD",
+    "header": "BRR% Dir",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646530>"
+  },
+  {
+    "col_idx": 291,
+    "letter": "KE",
+    "header": "High TRR",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646590>"
+  },
+  {
+    "col_idx": 292,
+    "letter": "KF",
+    "header": "Low LRR",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796465f0>"
+  },
+  {
+    "col_idx": 293,
+    "letter": "KG",
+    "header": "Trend below TRR",
+    "formula": "=IF(EQ2<0,-1,0)"
+  },
+  {
+    "col_idx": 294,
+    "letter": "KH",
+    "header": "LRR above Trade",
+    "formula": "=IF(ER2>0,1,0)"
+  },
+  {
+    "col_idx": 295,
+    "letter": "KI",
+    "header": "TRR_Idx",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796467d0>"
+  },
+  {
+    "col_idx": 296,
+    "letter": "KJ",
+    "header": "MRR_Idx",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646830>"
+  },
+  {
+    "col_idx": 297,
+    "letter": "KK",
+    "header": "LRR_Idx",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646890>"
+  },
+  {
+    "col_idx": 298,
+    "letter": "KL",
+    "header": "HVAbsolute",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796468f0>"
+  },
+  {
+    "col_idx": 299,
+    "letter": "KM",
+    "header": "IVAbsolute",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646950>"
+  },
+  {
+    "col_idx": 300,
+    "letter": "KN",
+    "header": "IVPercentile",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796469b0>"
+  },
+  {
+    "col_idx": 301,
+    "letter": "KO",
+    "header": "IVPercentile Puts",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646a10>"
+  },
+  {
+    "col_idx": 302,
+    "letter": "KP",
+    "header": "HVPercentile",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646a70>"
+  },
+  {
+    "col_idx": 303,
+    "letter": "KQ",
+    "header": "HVPercentile Puts",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646ad0>"
+  },
+  {
+    "col_idx": 304,
+    "letter": "KR",
+    "header": "IVHV",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646b30>"
+  },
+  {
+    "col_idx": 305,
+    "letter": "KS",
+    "header": "IVHV Puts",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646b90>"
+  },
+  {
+    "col_idx": 306,
+    "letter": "KT",
+    "header": "IVRule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646bf0>"
+  },
+  {
+    "col_idx": 307,
+    "letter": "KU",
+    "header": "RSI Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646c50>"
+  },
+  {
+    "col_idx": 308,
+    "letter": "KV",
+    "header": "RSI Top",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646cb0>"
+  },
+  {
+    "col_idx": 309,
+    "letter": "KW",
+    "header": "RSI Puts",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646d10>"
+  },
+  {
+    "col_idx": 310,
+    "letter": "KX",
+    "header": "3m-Low-Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646d70>"
+  },
+  {
+    "col_idx": 311,
+    "letter": "KY",
+    "header": "3m-Low-Days Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646dd0>"
+  },
+  {
+    "col_idx": 312,
+    "letter": "KZ",
+    "header": "3mn-High-Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646e30>"
+  },
+  {
+    "col_idx": 313,
+    "letter": "LA",
+    "header": "3mn-High-Days Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646e90>"
+  },
+  {
+    "col_idx": 314,
+    "letter": "LB",
+    "header": "3m-Long",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646ef0>"
+  },
+  {
+    "col_idx": 315,
+    "letter": "LC",
+    "header": "Perf3mn SD Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646f50>"
+  },
+  {
+    "col_idx": 316,
+    "letter": "LD",
+    "header": "Perf2M SD Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79646fb0>"
+  },
+  {
+    "col_idx": 317,
+    "letter": "LE",
+    "header": "Perf3WK SD Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647010>"
+  },
+  {
+    "col_idx": 318,
+    "letter": "LF",
+    "header": "Perf2WK SD Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647070>"
+  },
+  {
+    "col_idx": 319,
+    "letter": "LG",
+    "header": "Perf3D SD Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796470d0>"
+  },
+  {
+    "col_idx": 320,
+    "letter": "LH",
+    "header": "Perf1D SD Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647130>"
+  },
+  {
+    "col_idx": 321,
+    "letter": "LI",
+    "header": "!Perf1D_sd",
+    "formula": "=(-1)*LH2"
+  },
+  {
+    "col_idx": 322,
+    "letter": "LJ",
+    "header": "Perf3D_sd_1off",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647250>"
+  },
+  {
+    "col_idx": 323,
+    "letter": "LK",
+    "header": "Perf SD Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796472b0>"
+  },
+  {
+    "col_idx": 324,
+    "letter": "LL",
+    "header": "!Perf SD Rule",
+    "formula": "=(-1)*LK2"
+  },
+  {
+    "col_idx": 325,
+    "letter": "LM",
+    "header": "!Perf3D Rule",
+    "formula": "=(-1)*LG2"
+  },
+  {
+    "col_idx": 326,
+    "letter": "LN",
+    "header": "BBHighLow_SD Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647490>"
+  },
+  {
+    "col_idx": 327,
+    "letter": "LO",
+    "header": "BBHighLow Days Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796474f0>"
+  },
+  {
+    "col_idx": 328,
+    "letter": "LP",
+    "header": "BBStreak Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647550>"
+  },
+  {
+    "col_idx": 329,
+    "letter": "LQ",
+    "header": "BBStreakRule1",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796475b0>"
+  },
+  {
+    "col_idx": 330,
+    "letter": "LR",
+    "header": "BBStreak Rule2",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647610>"
+  },
+  {
+    "col_idx": 331,
+    "letter": "LS",
+    "header": "BBStreak Days Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647670>"
+  },
+  {
+    "col_idx": 332,
+    "letter": "LT",
+    "header": "BBStreak Days Rule2",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796476d0>"
+  },
+  {
+    "col_idx": 333,
+    "letter": "LU",
+    "header": "BBStreak Days Rule3",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647730>"
+  },
+  {
+    "col_idx": 334,
+    "letter": "LV",
+    "header": "BBStreak Days Rule4",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647790>"
+  },
+  {
+    "col_idx": 335,
+    "letter": "LW",
+    "header": "BB Bull Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796477f0>"
+  },
+  {
+    "col_idx": 336,
+    "letter": "LX",
+    "header": "BB Bull Puts",
+    "formula": "=(-1)*LW2"
+  },
+  {
+    "col_idx": 337,
+    "letter": "LY",
+    "header": "BBHighDays",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647910>"
+  },
+  {
+    "col_idx": 338,
+    "letter": "LZ",
+    "header": "BBLowDays",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647970>"
+  },
+  {
+    "col_idx": 339,
+    "letter": "MA",
+    "header": "MACD Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796479d0>"
+  },
+  {
+    "col_idx": 340,
+    "letter": "MB",
+    "header": "MACDH Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647a30>"
+  },
+  {
+    "col_idx": 341,
+    "letter": "MC",
+    "header": "MACD and H Rule",
+    "formula": "=INT((MA2+MB2)/2)"
+  },
+  {
+    "col_idx": 342,
+    "letter": "MD",
+    "header": "MACD_BRR Puts",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647b50>"
+  },
+  {
+    "col_idx": 343,
+    "letter": "ME",
+    "header": "MACDH_BRR Puts",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647bb0>"
+  },
+  {
+    "col_idx": 344,
+    "letter": "MF",
+    "header": "MACD and H Rule Puts",
+    "formula": "=INT((MD2+ME2)/2)"
+  },
+  {
+    "col_idx": 345,
+    "letter": "MG",
+    "header": "MACDH Days",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647cd0>"
+  },
+  {
+    "col_idx": 346,
+    "letter": "MH",
+    "header": "MACDH Days2",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647d30>"
+  },
+  {
+    "col_idx": 347,
+    "letter": "MI",
+    "header": "Overbought",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647d90>"
+  },
+  {
+    "col_idx": 348,
+    "letter": "MJ",
+    "header": "!Overbought",
+    "formula": "=(-1)*MI2"
+  },
+  {
+    "col_idx": 349,
+    "letter": "MK",
+    "header": "3mn Outlook",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647eb0>"
+  },
+  {
+    "col_idx": 350,
+    "letter": "ML",
+    "header": "3mn Outlook Days",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647f10>"
+  },
+  {
+    "col_idx": 351,
+    "letter": "MM",
+    "header": "3wk Outlook",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647f70>"
+  },
+  {
+    "col_idx": 352,
+    "letter": "MN",
+    "header": "3wk Outlook Days",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79647fd0>"
+  },
+  {
+    "col_idx": 353,
+    "letter": "MO",
+    "header": "!3wk ol",
+    "formula": "=(-1)*MM2"
+  },
+  {
+    "col_idx": 354,
+    "letter": "MP",
+    "header": "!3wk ol days",
+    "formula": "=(-1)*MN2"
+  },
+  {
+    "col_idx": 355,
+    "letter": "MQ",
+    "header": "BULL",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796681f0>"
+  },
+  {
+    "col_idx": 356,
+    "letter": "MR",
+    "header": "!BULL",
+    "formula": "=(-1)*MQ2"
+  },
+  {
+    "col_idx": 357,
+    "letter": "MS",
+    "header": "PerfOrBull",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79668310>"
+  },
+  {
+    "col_idx": 358,
+    "letter": "MT",
+    "header": "!PerfOrBull",
+    "formula": "=(-1)*MS2"
+  },
+  {
+    "col_idx": 359,
+    "letter": "MU",
+    "header": "50-DMA-Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79668430>"
+  },
+  {
+    "col_idx": 360,
+    "letter": "MV",
+    "header": "50-DMA-Crossover",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79668490>"
+  },
+  {
+    "col_idx": 361,
+    "letter": "MW",
+    "header": "200-DMA-Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796684f0>"
+  },
+  {
+    "col_idx": 362,
+    "letter": "MX",
+    "header": "200-DMA-Crossover",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79668550>"
+  },
+  {
+    "col_idx": 363,
+    "letter": "MY",
+    "header": "52-Wk Low Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796685b0>"
+  },
+  {
+    "col_idx": 364,
+    "letter": "MZ",
+    "header": "52-Wk High Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79668610>"
+  },
+  {
+    "col_idx": 365,
+    "letter": "NA",
+    "header": "BRRTrade",
+    "formula": "=IF(ABS(DX2-AF2)<=AC2*0.5,1,0)"
+  },
+  {
+    "col_idx": 366,
+    "letter": "NB",
+    "header": "TRRTrade",
+    "formula": "=IF(ABS(DY2-AF2)<=AC2*0.5,-1,0)"
+  },
+  {
+    "col_idx": 367,
+    "letter": "NC",
+    "header": "Up Resistance",
+    "formula": "=IF(AND((EH2+0.05*AC2)>CG2,D2<CG2),-0.5,0)+IF(AND((EH2+0.05*AC2)>CH2,D2<CH2),-0.5,0)"
+  },
+  {
+    "col_idx": 368,
+    "letter": "ND",
+    "header": "Down Resistance",
+    "formula": "=IF(AND((EI2+0.05*AC2)<BA2,D2>BA2),1,0)+IF(AND((EI2+0.05*AC2)>CG2,D2>CG2),0.5,0)+IF(AND((EI2+0.05*AC2)<CH2,D2>CH2),0.5,0)"
+  },
+  {
+    "col_idx": 369,
+    "letter": "NE",
+    "header": "Earnings",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79668970>"
+  },
+  {
+    "col_idx": 370,
+    "letter": "NF",
+    "header": "VS Price",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae796689d0>"
+  },
+  {
+    "col_idx": 371,
+    "letter": "NG",
+    "header": "VS Volume Spike",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79668a30>"
+  },
+  {
+    "col_idx": 372,
+    "letter": "NH",
+    "header": "VS Volatility",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79668a90>"
+  },
+  {
+    "col_idx": 373,
+    "letter": "NI",
+    "header": "VS Days",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79668af0>"
+  },
+  {
+    "col_idx": 374,
+    "letter": "NJ",
+    "header": "VS LT Outlook Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79668b50>"
+  },
+  {
+    "col_idx": 375,
+    "letter": "NK",
+    "header": "Current Price SD Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79668bb0>"
+  },
+  {
+    "col_idx": 376,
+    "letter": "NL",
+    "header": "Current Volume Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79668c10>"
+  },
+  {
+    "col_idx": 377,
+    "letter": "NM",
+    "header": "Current Volatility Rule",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79668c70>"
+  },
+  {
+    "col_idx": 378,
+    "letter": "NN",
+    "header": "Short Term Oulook (If LT Bullish)",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79668cd0>"
+  },
+  {
+    "col_idx": 379,
+    "letter": "NO",
+    "header": "Short Term Oulook (If LT Bearish)",
+    "formula": "<openpyxl.worksheet.formula.ArrayFormula object at 0x7fae79668d30>"
+  }
+]

@@ -1,0 +1,98 @@
+<svg width="100%" viewBox="0 0 680 662" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Rules and Rule Groups authoring data flow</title>
+  <desc>Data flow showing the Rules and Rule Groups editor screens writing through the CRUD API into the ref_trig_* tables, with a dryrun preview branch that never writes, a gate where edits stay dormant until a re-derive, and the derive step that consumes the tables into drv_trig, drv_stks and drv_actionable.</desc>
+  <style>
+  svg{background:#ffffff;}
+  text{font-family:'Segoe UI',Arial,Helvetica,sans-serif;fill:#2C2C2A;}
+  .t{font-size:14px;}.ts{font-size:12px;}.th{font-size:14px;font-weight:600;}
+  .arr{stroke:#888888;stroke-width:1.5;fill:none;}
+  .c-gray rect{fill:#F1EFE8;stroke:#5F5E5A;}.c-gray text{fill:#2C2C2A;}
+  .c-blue rect{fill:#E6F1FB;stroke:#185FA5;}.c-blue text{fill:#042C53;}
+  .c-teal rect{fill:#E1F5EE;stroke:#0F6E56;}.c-teal text{fill:#04342C;}
+  .c-purple rect{fill:#EEEDFE;stroke:#534AB7;}.c-purple text{fill:#26215C;}
+  .c-coral rect{fill:#FAECE7;stroke:#993C1D;}.c-coral text{fill:#4A1B0C;}
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <g class="c-blue">
+    <rect x="70" y="30" width="230" height="56" rx="8" stroke-width="0.5"/>
+    <text class="th" x="185" y="51" text-anchor="middle" dominant-baseline="central">Rules screen (rules.js)</text>
+    <text class="ts" x="185" y="69" text-anchor="middle" dominant-baseline="central">atomic + composite editor</text>
+  </g>
+  <g class="c-blue">
+    <rect x="380" y="30" width="230" height="56" rx="8" stroke-width="0.5"/>
+    <text class="th" x="495" y="51" text-anchor="middle" dominant-baseline="central">Rule Groups screen</text>
+    <text class="ts" x="495" y="69" text-anchor="middle" dominant-baseline="central">group + member editor</text>
+  </g>
+
+  <line x1="185" y1="86" x2="340" y2="104" stroke="#888" stroke-width="0.5"/>
+  <line x1="495" y1="86" x2="340" y2="104" stroke="#888" stroke-width="0.5"/>
+  <line x1="340" y1="104" x2="340" y2="116" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="c-purple">
+    <rect x="120" y="118" width="440" height="56" rx="8" stroke-width="0.5"/>
+    <text class="th" x="340" y="139" text-anchor="middle" dominant-baseline="central">FastAPI · /api/rules/*</text>
+    <text class="ts" x="340" y="158" text-anchor="middle" dominant-baseline="central">atomic, composite, groups — full CRUD</text>
+  </g>
+
+  <line x1="340" y1="174" x2="340" y2="206" class="arr" marker-end="url(#arrow)"/>
+  <path d="M470 174 L470 192 L567 192 L567 206" fill="none" stroke="#888" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+
+  <g class="c-gray">
+    <rect x="40" y="210" width="440" height="140" rx="12" stroke-width="0.5"/>
+    <text class="th" x="260" y="230" text-anchor="middle" dominant-baseline="central">ref_trig_* tables</text>
+    <text class="ts" x="260" y="248" text-anchor="middle" dominant-baseline="central">authoritative rule defs · soft-delete via deprecated_at</text>
+  </g>
+  <g class="c-teal">
+    <rect x="54" y="264" width="200" height="32" rx="6" stroke-width="0.5"/>
+    <text class="ts" x="154" y="280" text-anchor="middle" dominant-baseline="central">ref_trig_atomic_rule</text>
+  </g>
+  <g class="c-teal">
+    <rect x="266" y="264" width="200" height="32" rx="6" stroke-width="0.5"/>
+    <text class="ts" x="366" y="280" text-anchor="middle" dominant-baseline="central">ref_trig_composite_mapping</text>
+  </g>
+  <g class="c-teal">
+    <rect x="54" y="304" width="200" height="32" rx="6" stroke-width="0.5"/>
+    <text class="ts" x="154" y="320" text-anchor="middle" dominant-baseline="central">ref_trig_rule_group</text>
+  </g>
+  <g class="c-teal">
+    <rect x="266" y="304" width="200" height="32" rx="6" stroke-width="0.5"/>
+    <text class="ts" x="366" y="320" text-anchor="middle" dominant-baseline="central">ref_trig_group_member</text>
+  </g>
+
+  <g class="c-gray">
+    <rect x="495" y="210" width="145" height="140" rx="8" stroke-width="0.5"/>
+    <text class="th" x="567" y="234" text-anchor="middle" dominant-baseline="central">dryrun / test</text>
+    <text class="ts" x="567" y="264" text-anchor="middle" dominant-baseline="central">runs on live data</text>
+    <text class="ts" x="567" y="286" text-anchor="middle" dominant-baseline="central">returns a preview</text>
+    <text class="ts" x="567" y="308" text-anchor="middle" dominant-baseline="central">no ref_* write</text>
+  </g>
+
+  <path d="M260 350 L260 368 L340 368 L340 384" fill="none" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="c-gray">
+    <rect x="120" y="386" width="440" height="56" rx="8" stroke-width="0.5"/>
+    <text class="th" x="340" y="407" text-anchor="middle" dominant-baseline="central">Edits stay dormant until a re-derive</text>
+    <text class="ts" x="340" y="426" text-anchor="middle" dominant-baseline="central">ETL cascade (TD_RUN_DERIVE=1) or rebuild_rules.py</text>
+  </g>
+
+  <line x1="340" y1="442" x2="340" y2="474" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="c-purple">
+    <rect x="60" y="476" width="560" height="72" rx="10" stroke-width="0.5"/>
+    <text class="th" x="340" y="498" text-anchor="middle" dominant-baseline="central">Re-derive consumes ref_trig_*</text>
+    <text class="ts" x="340" y="519" text-anchor="middle" dominant-baseline="central">derive_trig → drv_trig   ·   derive_stks → drv_stks</text>
+    <text class="ts" x="340" y="538" text-anchor="middle" dominant-baseline="central">rule_groups + derive_actionable → drv_actionable</text>
+  </g>
+
+  <line x1="340" y1="548" x2="340" y2="578" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="c-gray">
+    <rect x="100" y="580" width="480" height="44" rx="8" stroke-width="0.5"/>
+    <text class="t" x="340" y="602" text-anchor="middle" dominant-baseline="central">Surfaces on Cockpit, Actionable, Trace, Dashboard</text>
+  </g>
+</svg>

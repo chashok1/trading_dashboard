@@ -1,0 +1,1292 @@
+"""Rule Engine endpoints: atomic, composite, performance, groups, dryrun."""
+from __future__ import annotations
+
+import json
+from datetime import date, datetime
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy import text
+
+from etl.db import safe_ident, session_scope
+
+from api.models import (
+    AtomicRuleCreateRequest, AtomicRuleUpdateRequest,
+    CompositeRuleCreateRequest, CompositeRuleUpdateRequest,
+)
+from api._helpers import _resolve_date
+
+router = APIRouter()
+
+
+# -----------------------------------------------------------------------------
+# Rule Engine v2 — Read-only API
+# -----------------------------------------------------------------------------
+
+@router.get("/api/rules/atomic", response_model=list[dict])
+def list_atomic_rules(
+    category: Optional[str] = Query(None),
+    limit: int = Query(500, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+):
+    """List atomic rules with optional filtering."""
+    with session_scope() as s:
+        sql = """SELECT atomic_rule_id, rule_name, brkeout_from, brkeout_to,
+                        wt_below, wt_between, wt_above, ma_column_name,
+                        category, intent_text, scoring_mode, score_params, deprecated_at
+                 FROM ref_trig_atomic_rule WHERE deprecated_at IS NULL"""
+        params = {}
+        if category:
+            sql += " AND category = :cat"
+            params["cat"] = category
+        sql += " ORDER BY atomic_rule_id LIMIT :lim OFFSET :off"
+        params["lim"] = limit
+        params["off"] = offset
+
+        rows = s.execute(text(sql), params).mappings().all()
+        return [dict(r) for r in rows]
+
+
+@router.get("/api/rules/atomic/{rule_id}", response_model=dict)
+def get_atomic_rule(rule_id: str):
+    """Get a single atomic rule."""
+    with session_scope() as s:
+        row = s.execute(
+            text("""SELECT atomic_rule_id as rule_id, rule_name,
+                           brkeout_from, brkeout_to, wt_below, wt_between, wt_above,
+                           ma_column_name, category, intent_text, scoring_mode,
+                           score_params, deprecated_at
+                    FROM ref_trig_atomic_rule WHERE atomic_rule_id = :rid"""),
+            {"rid": rule_id}
+        ).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Rule {rule_id} not found")
+    return dict(row)
+
+
+@router.get("/api/rules/composite", response_model=list[dict])
+def list_composite_rules(
+    category: Optional[str] = Query(None),
+    limit: int = Query(500, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+):
+    """List composite rules (distinct rules only)."""
+    with session_scope() as s:
+        sql = "SELECT DISTINCT ON (composite_rule_code) composite_rule_code, category, intent_text, precondition_expr, deprecated_at FROM ref_trig_composite_mapping WHERE deprecated_at IS NULL"
+        params = {}
+        if category:
+            sql += " AND category = :cat"
+            params["cat"] = category
+        sql += " ORDER BY composite_rule_code LIMIT :lim OFFSET :off"
+        params["lim"] = limit
+        params["off"] = offset
+
+        rows = s.execute(text(sql), params).mappings().all()
+        return [dict(r) for r in rows]
+
+
+@router.get("/api/rules/composite/{rule_id}", response_model=dict)
+def get_composite_rule(rule_id: str):
+    """Get a single composite rule."""
+    with session_scope() as s:
+        row = s.execute(
+            text("""SELECT DISTINCT ON (composite_rule_code) composite_rule_code as rule_id,
+                           category, intent_text, precondition_expr, deprecated_at
+                    FROM ref_trig_composite_mapping WHERE composite_rule_code = :rid"""),
+            {"rid": rule_id}
+        ).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Rule {rule_id} not found")
+    return dict(row)
+
+
+@router.get("/api/rules/composite/{rule_id}/atomics", response_model=list[dict])
+def get_composite_rule_atomics(rule_id: str):
+    """Get the atomic rules that feed into a composite rule."""
+    with session_scope() as s:
+        rows = s.execute(
+            text("""SELECT a.atomic_rule_id, a.rule_name, a.category, a.scoring_mode,
+                           a.brkeout_from, a.brkeout_to, a.wt_below, a.wt_between, a.wt_above,
+                           m.weight_override
+                    FROM ref_trig_atomic_rule a
+                    JOIN ref_trig_composite_mapping m ON a.atomic_rule_id = m.atomic_rule_id
+                    WHERE m.composite_rule_code = :crc AND a.deprecated_at IS NULL
+                    ORDER BY a.atomic_rule_id"""),
+            {"crc": rule_id}
+        ).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.get("/api/rules/health", response_model=dict)
+def get_rules_engine_health():
+    """One-shot health check for the rules engine.
+
+    Surfaces the data-state diagnostics that would otherwise need 10 ad-hoc
+    SQL queries: did the workbook load? does drv_cat_atomic_input have rows
+    for the latest date? are any composites orphaned? when did the derive
+    last succeed? how does today's fire-count compare to the 30-day baseline?
+
+    Used by /rules-health page. Each block is independent — a failure in one
+    is captured in `warnings` and the rest still return.
+    """
+    out: dict = {"warnings": []}
+    with session_scope() as s:
+        # 1. Rules table loaded?
+        try:
+            atomic_total = s.execute(text(
+                "SELECT COUNT(*) FROM ref_trig_atomic_rule"
+            )).scalar() or 0
+            atomic_active = s.execute(text(
+                "SELECT COUNT(*) FROM ref_trig_atomic_rule WHERE deprecated_at IS NULL"
+            )).scalar() or 0
+            atomic_with_weights = s.execute(text("""
+                SELECT COUNT(*) FROM ref_trig_atomic_rule
+                WHERE deprecated_at IS NULL AND (
+                  brkeout_from IS NOT NULL OR brkeout_to IS NOT NULL OR
+                  wt_below IS NOT NULL OR wt_between IS NOT NULL OR wt_above IS NOT NULL
+                )
+            """)).scalar() or 0
+        except Exception as e:
+            atomic_total = atomic_active = atomic_with_weights = -1
+            out["warnings"].append(f"atomic rules: {e}")
+
+        # 2. Composite mappings loaded?
+        try:
+            comp_total = s.execute(text(
+                "SELECT COUNT(DISTINCT composite_rule_code) FROM ref_trig_composite_mapping"
+            )).scalar() or 0
+            comp_active = s.execute(text(
+                "SELECT COUNT(DISTINCT composite_rule_code) FROM ref_trig_composite_mapping "
+                "WHERE deprecated_at IS NULL"
+            )).scalar() or 0
+            comp_rows = s.execute(text(
+                "SELECT COUNT(*) FROM ref_trig_composite_mapping WHERE deprecated_at IS NULL"
+            )).scalar() or 0
+        except Exception as e:
+            comp_total = comp_active = comp_rows = -1
+            out["warnings"].append(f"composite mappings: {e}")
+
+        # 3. Orphaned composite members (atomic_rule_id no longer active)
+        try:
+            orphans = s.execute(text("""
+                SELECT m.composite_rule_code, COUNT(*) AS n_orphaned
+                FROM ref_trig_composite_mapping m
+                WHERE m.deprecated_at IS NULL
+                  AND m.member_kind = 'atomic'
+                  AND m.atomic_rule_id IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM ref_trig_atomic_rule a
+                    WHERE a.atomic_rule_id = m.atomic_rule_id
+                      AND a.deprecated_at IS NULL
+                  )
+                GROUP BY m.composite_rule_code
+                ORDER BY n_orphaned DESC LIMIT 20
+            """)).mappings().all()
+            out["orphaned_composites"] = [dict(r) for r in orphans]
+        except Exception as e:
+            out["orphaned_composites"] = []
+            out["warnings"].append(f"orphan check: {e}")
+
+        # 4. Latest snapshot date + drv_cat_atomic_input population
+        try:
+            latest_d = s.execute(text(
+                "SELECT MAX(as_of_date) FROM drv_stks"
+            )).scalar()
+            cat_rows = 0
+            ma_rows = 0
+            if latest_d:
+                try:
+                    cat_rows = s.execute(text(
+                        "SELECT COUNT(*) FROM drv_cat_atomic_input WHERE as_of_date = :d"
+                    ), {"d": latest_d}).scalar() or 0
+                except Exception:
+                    cat_rows = -1
+                try:
+                    ma_rows = s.execute(text(
+                        "SELECT COUNT(*) FROM drv_ma WHERE as_of_date = :d"
+                    ), {"d": latest_d}).scalar() or 0
+                except Exception:
+                    ma_rows = -1
+            out["latest_date"] = latest_d.isoformat() if latest_d else None
+            out["drv_ma_rows_latest"] = ma_rows
+            out["drv_cat_atomic_input_rows_latest"] = cat_rows
+        except Exception as e:
+            out["warnings"].append(f"date probe: {e}")
+
+        # 5. Last successful / failed derive runs
+        try:
+            recent = s.execute(text("""
+                SELECT target_table, status, as_of_date,
+                       rows_built, started_at, error_msg
+                FROM meta_derived_run
+                ORDER BY started_at DESC LIMIT 12
+            """)).mappings().all()
+            out["recent_derives"] = [dict(r) for r in recent]
+        except Exception as e:
+            out["recent_derives"] = []
+            out["warnings"].append(f"meta_derived_run: {e}")
+
+        # 6. Fire counts today vs 30d avg
+        try:
+            today_fires = s.execute(text("""
+                SELECT
+                  SUM(jsonb_array_length(COALESCE(triggered_atomic_ids,    '[]'::jsonb))) AS n_atomic,
+                  SUM(jsonb_array_length(COALESCE(triggered_composite_ids, '[]'::jsonb))) AS n_composite,
+                  COUNT(*) FILTER (WHERE composite_label = 'BULLISH')                     AS n_bull,
+                  COUNT(*) FILTER (WHERE composite_label = 'BEARISH')                     AS n_bear,
+                  COUNT(*)                                                                AS n_symbols
+                FROM drv_stks WHERE as_of_date = :d
+            """), {"d": out.get("latest_date")}).mappings().first() or {}
+            baseline = s.execute(text("""
+                WITH d AS (
+                  SELECT as_of_date,
+                         SUM(jsonb_array_length(COALESCE(triggered_atomic_ids,    '[]'::jsonb))) AS n_atomic,
+                         SUM(jsonb_array_length(COALESCE(triggered_composite_ids, '[]'::jsonb))) AS n_composite
+                  FROM drv_stks
+                  WHERE as_of_date >= CURRENT_DATE - INTERVAL '30 days'
+                  GROUP BY as_of_date
+                )
+                SELECT AVG(n_atomic) AS avg_atomic, AVG(n_composite) AS avg_composite,
+                       COUNT(*) AS n_dates
+                FROM d
+            """)).mappings().first() or {}
+            out["fire_counts"] = {
+                "today":    {k: int(v) if v is not None else 0 for k, v in dict(today_fires).items()},
+                "baseline": {k: float(v) if v is not None else 0 for k, v in dict(baseline).items()},
+            }
+        except Exception as e:
+            out["fire_counts"] = {}
+            out["warnings"].append(f"fire counts: {e}")
+
+        # 7. Column-resolution audit — how many atomic rules have a column?
+        try:
+            from etl.derive import _resolve_atomic_input_column
+            col_map = _resolve_atomic_input_column(s)
+            unresolved = s.execute(text("""
+                SELECT atomic_rule_id, rule_name
+                FROM ref_trig_atomic_rule
+                WHERE deprecated_at IS NULL
+                ORDER BY atomic_rule_id
+            """)).mappings().all()
+            unresolved_rules = [
+                {"atomic_rule_id": r["atomic_rule_id"], "rule_name": r["rule_name"]}
+                for r in unresolved
+                if r["atomic_rule_id"] not in col_map
+            ]
+            out["column_resolution"] = {
+                "resolved":   len(col_map),
+                "unresolved": len(unresolved_rules),
+                "unresolved_sample": unresolved_rules[:20],
+            }
+        except Exception as e:
+            out["column_resolution"] = {}
+            out["warnings"].append(f"column resolution: {e}")
+
+    # Top-level summary tiles
+    out["counts"] = {
+        "atomic_rules_total":          atomic_total,
+        "atomic_rules_active":         atomic_active,
+        "atomic_rules_with_weights":   atomic_with_weights,
+        "composites_total":            comp_total,
+        "composites_active":           comp_active,
+        "composite_mapping_rows":      comp_rows,
+    }
+
+    # Derive a single overall status
+    issues = []
+    if atomic_active <= 0:
+        issues.append("ref_trig_atomic_rule is empty — workbook Trig tab not loaded")
+    if comp_active <= 0:
+        issues.append("ref_trig_composite_mapping is empty — workbook Trig tab not loaded")
+    if out.get("drv_cat_atomic_input_rows_latest") == 0:
+        issues.append("drv_cat_atomic_input has zero rows for the latest snapshot — derive_all hasn't built it")
+    if out.get("drv_ma_rows_latest") == 0:
+        issues.append("drv_ma has zero rows for the latest snapshot — load a workbook")
+    if out.get("orphaned_composites"):
+        issues.append(f"{len(out['orphaned_composites'])} composites reference deprecated/missing atomic rules")
+    if out.get("column_resolution", {}).get("unresolved", 0) > 0:
+        issues.append(f"{out['column_resolution']['unresolved']} active atomic rules can't resolve to a column")
+
+    out["status"] = "healthy" if not issues else "degraded"
+    out["issues"] = issues
+    return out
+
+
+@router.get("/api/rules/performance", response_model=list[dict])
+def get_rule_performance(
+    sort_by: Optional[str] = Query("hit_rate"),
+    limit: int = Query(500, ge=1, le=5000),
+    window: int = Query(180, ge=1, le=3650,
+                        description="Rolling window in days (ignored if from/to set)"),
+    from_date: Optional[str] = Query(None, alias="from",
+                                     description="YYYY-MM-DD (overrides window)"),
+    to_date: Optional[str] = Query(None, alias="to",
+                                   description="YYYY-MM-DD (default today)"),
+    min_n: int = Query(0, ge=0, le=10000,
+                       description="Filter out rows where sample_size < this"),
+):
+    """Get rule performance metrics with configurable window and median.
+
+    Calls v_rule_performance_window(p_window_days, p_from, p_to). Backwards-
+    compatible with the original /api/rules/performance — defaults match the
+    old 180-day view, but now you can pass ?window=20&min_n=5, or
+    ?from=2026-01-01&to=2026-04-30 for an explicit window.
+
+    Response item shape adds: median_fwd_5d, median_fwd_20d, first_seen, last_seen.
+    """
+    valid_sorts = {"hit_rate", "sample_size", "rule_id", "avg_fwd_5d",
+                   "avg_fwd_20d", "median_fwd_5d", "median_fwd_20d"}
+    if sort_by not in valid_sorts:
+        sort_by = "hit_rate"
+    safe_ident(sort_by, valid_sorts)  # defensive — sort_by is allow-listed above
+
+    f_d = None
+    t_d = None
+    if from_date:
+        try:
+            f_d = datetime.strptime(from_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(400, "from must be YYYY-MM-DD")
+    if to_date:
+        try:
+            t_d = datetime.strptime(to_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(400, "to must be YYYY-MM-DD")
+
+    with session_scope() as s:
+        sql = (
+            f"SELECT * FROM v_rule_performance_window(:w, :fd, :td) "
+            f"WHERE sample_size >= :min_n "
+            f"ORDER BY {sort_by} DESC NULLS LAST LIMIT :lim"
+        )
+        rows = s.execute(text(sql),
+                         {"w": window, "fd": f_d, "td": t_d,
+                          "min_n": min_n, "lim": limit}).mappings().all()
+        return [dict(r) for r in rows]
+
+
+@router.post("/api/rules/atomic", response_model=dict, status_code=201)
+def create_atomic_rule(body: AtomicRuleCreateRequest):
+    """Create a new atomic rule."""
+    with session_scope() as s:
+        existing = s.execute(
+            text("SELECT 1 FROM ref_trig_atomic_rule WHERE atomic_rule_id = :rid"),
+            {"rid": body.rule_id}
+        ).first()
+        if existing:
+            raise HTTPException(status_code=409, detail=f"Rule {body.rule_id} already exists")
+        s.execute(text("""
+            INSERT INTO ref_trig_atomic_rule
+              (atomic_rule_id, rule_name, category, intent_text, ma_column_name,
+               scoring_mode, score_params, brkeout_from, brkeout_to,
+               wt_below, wt_between, wt_above)
+            VALUES
+              (:rid, :rname, :cat, :intent, :macol,
+               :mode, :params::jsonb, :bf, :bt,
+               :wb, :wbt, :wa)
+        """), {
+            "rid": body.rule_id, "rname": body.rule_name, "cat": body.category,
+            "intent": body.intent_text, "macol": body.ma_column_name,
+            "mode": body.scoring_mode,
+            "params": json.dumps(body.score_params) if body.score_params else None,
+            "bf": body.brkeout_from, "bt": body.brkeout_to,
+            "wb": body.wt_below, "wbt": body.wt_between, "wa": body.wt_above,
+        })
+        s.commit()
+    return {"ok": True, "rule_id": body.rule_id}
+
+
+@router.put("/api/rules/atomic/{rule_id}", response_model=dict)
+def update_atomic_rule(rule_id: str, body: AtomicRuleUpdateRequest):
+    """Update an existing atomic rule."""
+    with session_scope() as s:
+        updates = {k: v for k, v in body.model_dump().items() if v is not None}
+        if not updates:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+        updates["rule_id"] = rule_id
+        if "score_params" in updates and updates["score_params"] is not None:
+            updates["score_params"] = json.dumps(updates["score_params"])
+        result = s.execute(
+            text(f"UPDATE ref_trig_atomic_rule SET {set_clause} WHERE atomic_rule_id = :rule_id AND deprecated_at IS NULL"),
+            updates
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"Rule {rule_id} not found or deprecated")
+        s.commit()
+    return {"ok": True, "updated": result.rowcount}
+
+
+@router.post("/api/rules/atomic/{rule_id}/dryrun", response_model=dict)
+def atomic_rule_dryrun(rule_id: str, body: dict):
+    """Preview the impact of an atomic-rule edit BEFORE saving.
+
+    Body shape (all optional — fields not provided fall back to current values):
+      {
+        "brkeout_from": number|null, "brkeout_to": number|null,
+        "wt_below": number|null, "wt_between": number|null, "wt_above": number|null,
+        "scoring_mode": "jump|linear|sigmoid"|null,
+        "score_params": {}|null,
+        "sample_symbol": "AAPL",     # optional, defaults to AAPL
+        "as_of_date":    "YYYY-MM-DD" # optional, defaults to latest drv_ma date
+      }
+
+    Response shape:
+      {
+        "rule_id": str, "sample_symbol": str, "as_of_date": str,
+        "before": {"value": <num|null>, "weight": <num>, "fired": <bool>},
+        "after":  {"value": <num|null>, "weight": <num>, "fired": <bool>},
+        "affected_symbols_estimate": <int|null>,  # how many symbols changed fire-state on as_of_date
+        "note": str
+      }
+    """
+    from etl.derive import eval_atomic_rule
+
+    sym = (body.get("sample_symbol") or "AAPL").upper().strip()
+    as_of = body.get("as_of_date")
+
+    with session_scope() as s:
+        # Resolve current rule definition
+        current = s.execute(text("""
+            SELECT atomic_rule_id, rule_name, ma_column_name,
+                   brkeout_from, brkeout_to, wt_below, wt_between, wt_above,
+                   scoring_mode, score_params
+            FROM ref_trig_atomic_rule
+            WHERE atomic_rule_id = :rid AND deprecated_at IS NULL
+        """), {"rid": rule_id}).mappings().first()
+        if not current:
+            raise HTTPException(404, f"Rule {rule_id} not found or deprecated")
+
+        # Resolve sample date
+        if as_of:
+            try:
+                snap = datetime.strptime(as_of, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(400, "as_of_date must be YYYY-MM-DD")
+        else:
+            row = s.execute(text("SELECT MAX(as_of_date) AS d FROM drv_ma")).mappings().first()
+            snap = row["d"] if row and row["d"] else date.today()
+
+        # Resolve the value the rule reads from drv_ma / drv_cat_atomic_input
+        ma_dict = dict(s.execute(text(
+            "SELECT * FROM drv_ma WHERE as_of_date=:d AND symbol=:sym LIMIT 1"
+        ), {"d": snap, "sym": sym}).mappings().first() or {})
+        try:
+            ai_dict = dict(s.execute(text(
+                "SELECT * FROM drv_cat_atomic_input WHERE as_of_date=:d AND symbol=:sym LIMIT 1"
+            ), {"d": snap, "sym": sym}).mappings().first() or {})
+        except Exception:
+            ai_dict = {}
+
+        # Column resolution: prefer ref_ma_columns mapping by rule_name,
+        # fall back to ma_column_name parsing.
+        value = None
+        col_src = None
+        if current["rule_name"]:
+            try:
+                reg = s.execute(text("""
+                    SELECT excel_header, column_name, drv_cat_table
+                    FROM ref_ma_columns
+                    WHERE excel_header = :h
+                    ORDER BY CASE WHEN drv_cat_table='drv_cat_atomic_input' THEN 0 ELSE 1 END
+                    LIMIT 1
+                """), {"h": current["rule_name"]}).mappings().first()
+                if reg:
+                    col_src = (reg["drv_cat_table"], reg["column_name"])
+            except Exception:
+                pass
+        if not col_src and current["ma_column_name"] and "." in current["ma_column_name"]:
+            tbl, _, col = current["ma_column_name"].partition(".")
+            col_src = (tbl, col)
+        if col_src:
+            tbl, col = col_src
+            if tbl == "drv_cat_atomic_input":
+                value = ai_dict.get(col)
+            else:
+                value = ma_dict.get(col)
+
+        before_w = eval_atomic_rule(value, dict(current))
+        before = {"value": value, "weight": float(before_w), "fired": before_w != 0}
+
+        # Apply proposed overrides — anything not given falls back to current.
+        proposed = dict(current)
+        for k in ("brkeout_from", "brkeout_to",
+                  "wt_below", "wt_between", "wt_above",
+                  "scoring_mode", "score_params"):
+            if k in body and body[k] is not None:
+                proposed[k] = body[k]
+
+        after_w = eval_atomic_rule(value, proposed)
+        after = {"value": value, "weight": float(after_w), "fired": after_w != 0}
+
+        # Affected symbols estimate — count how many symbols would change fire-state
+        # on `snap` if we replaced this rule. Cheap upper bound: read the column for
+        # all drv_ma rows and re-score, count flips.
+        affected = None
+        if col_src:
+            try:
+                tbl, col = col_src
+                if tbl == "drv_ma":
+                    rows = s.execute(text(
+                        f'SELECT symbol, "{col}" AS v FROM drv_ma WHERE as_of_date = :d'
+                    ), {"d": snap}).mappings().all()
+                else:
+                    rows = s.execute(text(
+                        f'SELECT symbol, "{col}" AS v FROM {tbl} WHERE as_of_date = :d'
+                    ), {"d": snap}).mappings().all()
+                flips = 0
+                for r in rows:
+                    b = eval_atomic_rule(r["v"], dict(current))
+                    a = eval_atomic_rule(r["v"], proposed)
+                    if (b != 0) != (a != 0):
+                        flips += 1
+                affected = flips
+            except Exception:
+                affected = None
+
+        note_parts = []
+        for k in ("brkeout_from", "brkeout_to",
+                  "wt_below", "wt_between", "wt_above", "scoring_mode"):
+            if k in body and body[k] != current[k]:
+                note_parts.append(f"{k}: {current[k]} → {body[k]}")
+        note = "; ".join(note_parts) if note_parts else "no changes proposed"
+
+        return {
+            "rule_id": rule_id,
+            "sample_symbol": sym,
+            "as_of_date": snap.isoformat(),
+            "before": before,
+            "after": after,
+            "affected_symbols_estimate": affected,
+            "note": note,
+        }
+
+
+@router.delete("/api/rules/atomic/{rule_id}", response_model=dict)
+def deprecate_atomic_rule(rule_id: str):
+    """Soft-delete (deprecate) an atomic rule."""
+    with session_scope() as s:
+        result = s.execute(
+            text("UPDATE ref_trig_atomic_rule SET deprecated_at = now() WHERE atomic_rule_id = :rid AND deprecated_at IS NULL"),
+            {"rid": rule_id}
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"Rule {rule_id} not found or already deprecated")
+        s.commit()
+    return {"ok": True, "deprecated": rule_id}
+
+
+@router.post("/api/rules/composite", response_model=dict, status_code=201)
+def create_composite_rule(body: CompositeRuleCreateRequest):
+    """Create a new composite rule.
+
+    A composite is a set of (composite_rule_code, atomic_rule_id) mapping rows.
+    POST creates the *first* set; if the code already has any mapping rows
+    (including soft-deprecated), return 409 — use PUT /api/rules/composite/{id}
+    to update an existing one and PUT /{id}/members to replace its member list.
+    """
+    if not body.atomic_rule_ids:
+        raise HTTPException(status_code=400, detail="At least one atomic_rule_id required")
+    with session_scope() as s:
+        exists = s.execute(
+            text("SELECT 1 FROM ref_trig_composite_mapping WHERE composite_rule_code = :code LIMIT 1"),
+            {"code": body.rule_code}
+        ).first()
+        if exists:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Composite rule {body.rule_code} already exists — use PUT to update",
+            )
+        # Validate referenced atomic rules exist (and aren't deprecated)
+        existing_atomics = {
+            r[0] for r in s.execute(
+                text("SELECT atomic_rule_id FROM ref_trig_atomic_rule "
+                     "WHERE atomic_rule_id = ANY(:ids) AND deprecated_at IS NULL"),
+                {"ids": list(body.atomic_rule_ids)}
+            ).fetchall()
+        }
+        missing = [a for a in body.atomic_rule_ids if a not in existing_atomics]
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown or deprecated atomic_rule_id(s): {missing}",
+            )
+        for atom_id in body.atomic_rule_ids:
+            s.execute(text("""
+                INSERT INTO ref_trig_composite_mapping
+                  (composite_rule_code, atomic_rule_id, category, intent_text, precondition_expr)
+                VALUES (:code, :atom, :cat, :intent, :pre)
+            """), {
+                "code": body.rule_code, "atom": atom_id,
+                "cat": body.category, "intent": body.intent_text,
+                "pre": body.precondition_expr,
+            })
+        s.commit()
+    return {"ok": True, "rule_code": body.rule_code, "n_members": len(body.atomic_rule_ids)}
+
+
+@router.put("/api/rules/composite/{rule_id}", response_model=dict)
+def update_composite_rule(rule_id: str, body: CompositeRuleUpdateRequest):
+    """Update category/intent/precondition on all mapping rows for a composite rule."""
+    with session_scope() as s:
+        updates = {k: v for k, v in body.model_dump().items() if v is not None}
+        if not updates:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+        updates["rule_id"] = rule_id
+        result = s.execute(
+            text(f"UPDATE ref_trig_composite_mapping SET {set_clause} WHERE composite_rule_code = :rule_id AND deprecated_at IS NULL"),
+            updates
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"Composite rule {rule_id} not found or deprecated")
+        s.commit()
+    return {"ok": True, "updated": result.rowcount}
+
+
+@router.delete("/api/rules/composite/{rule_id}", response_model=dict)
+def deprecate_composite_rule(rule_id: str):
+    """Soft-delete (deprecate) all mapping rows for a composite rule."""
+    with session_scope() as s:
+        result = s.execute(
+            text("UPDATE ref_trig_composite_mapping SET deprecated_at = now() WHERE composite_rule_code = :rid AND deprecated_at IS NULL"),
+            {"rid": rule_id}
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"Composite rule {rule_id} not found or already deprecated")
+        s.commit()
+    return {"ok": True, "deprecated": rule_id}
+
+
+# -----------------------------------------------------------------------------
+# Composite editor — replace members + dry-run
+# -----------------------------------------------------------------------------
+
+@router.put("/api/rules/composite/{rule_id}/members", response_model=dict)
+def replace_composite_members(rule_id: str, body: dict):
+    """Replace the full member list for a composite (transactional).
+
+    Composite members come in three kinds:
+      - 'atomic'    — reference an existing atomic rule (default; legacy behavior)
+      - 'data'      — inline scoring rule against a drv_cat column
+      - 'composite' — nest another composite (parent ← child(score))
+
+    Body shape:
+      {
+        "members": [
+          # ATOMIC member:
+          {"kind": "atomic", "atomic_rule_id": int,
+           "weight_override": number|null},
+
+          # DATA member (no shared atomic rule definition):
+          {"kind": "data", "data_column": "drv_cat_atomic_input.bb_top",
+           "brkeout_from": 0, "brkeout_to": 5,
+           "wt_below": -1, "wt_between": 1, "wt_above": 2,
+           "scoring_mode": "jump", "score_params": {}|null,
+           "weight_override": number|null},
+
+          # COMPOSITE member (nest another composite):
+          {"kind": "composite", "nested_composite_code": "BM-Momentum-Up",
+           "weight_override": number|null}
+        ],
+        "category": str|null, "intent_text": str|null, "precondition_expr": str|null
+      }
+
+    The migration db/baseline.sql must be applied for the
+    'data' and 'composite' kinds to persist.  If those columns don't exist yet,
+    the endpoint falls back to writing only 'atomic' members and returns a
+    warning in the response.
+    """
+    members = body.get("members") or []
+    if not isinstance(members, list):
+        raise HTTPException(status_code=400, detail="members must be a list")
+
+    # Validate each member by kind
+    seen_atomic = set(); seen_nested = set(); seen_data = set()
+    for i, m in enumerate(members):
+        kind = (m.get("kind") or "atomic").lower()
+        if kind not in ("atomic", "data", "composite"):
+            raise HTTPException(status_code=400,
+                detail=f"member[{i}] kind must be atomic | data | composite")
+        if kind == "atomic":
+            atom_id = m.get("atomic_rule_id")
+            if atom_id is None:
+                raise HTTPException(status_code=400, detail=f"member[{i}] kind=atomic needs atomic_rule_id")
+            if atom_id in seen_atomic:
+                raise HTTPException(status_code=400, detail=f"duplicate atomic_rule_id {atom_id}")
+            seen_atomic.add(atom_id)
+        elif kind == "data":
+            col = m.get("data_column")
+            if not col:
+                raise HTTPException(status_code=400, detail=f"member[{i}] kind=data needs data_column")
+            if col in seen_data:
+                raise HTTPException(status_code=400, detail=f"duplicate data_column {col}")
+            seen_data.add(col)
+        elif kind == "composite":
+            nest = m.get("nested_composite_code")
+            if not nest:
+                raise HTTPException(status_code=400, detail=f"member[{i}] kind=composite needs nested_composite_code")
+            if nest == rule_id:
+                raise HTTPException(status_code=400, detail="composite cannot reference itself")
+            if nest in seen_nested:
+                raise HTTPException(status_code=400, detail=f"duplicate nested_composite_code {nest}")
+            seen_nested.add(nest)
+
+    category = body.get("category")
+    intent   = body.get("intent_text")
+    pre      = body.get("precondition_expr")
+
+    warnings = []
+
+    with session_scope() as s:
+        # Detect whether the migration is applied
+        mig_applied = bool(s.execute(text("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='ref_trig_composite_mapping' AND column_name='member_kind'
+        """)).first())
+
+        # Hard-delete current mappings; we want a clean replace
+        s.execute(text(
+            "DELETE FROM ref_trig_composite_mapping WHERE composite_rule_code = :rid"
+        ), {"rid": rule_id})
+
+        for i, m in enumerate(members):
+            kind = (m.get("kind") or "atomic").lower()
+            if not mig_applied and kind != "atomic":
+                warnings.append(
+                    f"member[{i}] kind={kind} skipped — apply db/baseline.sql"
+                )
+                continue
+            if mig_applied:
+                s.execute(text("""
+                    INSERT INTO ref_trig_composite_mapping
+                      (composite_rule_code, member_kind,
+                       atomic_rule_id, weight_override,
+                       data_column, data_brkeout_from, data_brkeout_to,
+                       data_wt_below, data_wt_between, data_wt_above,
+                       data_scoring_mode, data_score_params,
+                       nested_composite_code, member_multiplier,
+                       category, intent_text, precondition_expr)
+                    VALUES
+                      (:rid, :kind,
+                       :atom, :wo,
+                       :dc, :dlo, :dhi,
+                       :dwb, :dwbt, :dwa,
+                       :dmode, CAST(:dparams AS JSONB),
+                       :nest, :mult,
+                       :cat, :intent, :pre)
+                """), {
+                    "rid":    rule_id,
+                    "kind":   kind,
+                    "atom":   m.get("atomic_rule_id") if kind == "atomic" else None,
+                    "wo":     m.get("weight_override"),
+                    "dc":     m.get("data_column") if kind == "data" else None,
+                    "dlo":    m.get("brkeout_from") if kind == "data" else None,
+                    "dhi":    m.get("brkeout_to")   if kind == "data" else None,
+                    "dwb":    m.get("wt_below")     if kind == "data" else None,
+                    "dwbt":   m.get("wt_between")   if kind == "data" else None,
+                    "dwa":    m.get("wt_above")     if kind == "data" else None,
+                    "dmode":  (m.get("scoring_mode") or "jump") if kind == "data" else None,
+                    "dparams": json.dumps(m.get("score_params")) if (kind == "data" and m.get("score_params") is not None) else None,
+                    "nest":   m.get("nested_composite_code") if kind == "composite" else None,
+                    "mult":   m.get("member_multiplier"),
+                    "cat":    category,
+                    "intent": intent,
+                    "pre":    pre,
+                })
+            else:
+                # Pre-migration legacy schema — atomic only
+                s.execute(text("""
+                    INSERT INTO ref_trig_composite_mapping
+                      (composite_rule_code, atomic_rule_id, weight_override,
+                       category, intent_text, precondition_expr)
+                    VALUES (:rid, :atom, :wo, :cat, :intent, :pre)
+                """), {
+                    "rid":    rule_id,
+                    "atom":   m["atomic_rule_id"],
+                    "wo":     m.get("weight_override"),
+                    "cat":    category,
+                    "intent": intent,
+                    "pre":    pre,
+                })
+        s.commit()
+    return {
+        "ok": True,
+        "rule_code": rule_id,
+        "members_written": len(members) - len(warnings),
+        "schema_extended": mig_applied,
+        "warnings": warnings,
+    }
+
+
+@router.post("/api/rules/composite/{rule_id}/dryrun", response_model=dict)
+def composite_dryrun(rule_id: str, body: dict):
+    """Project the composite's score for a sample symbol BEFORE vs AFTER applying
+    proposed member edits — without persisting anything.
+
+    Body shape:
+      {
+        "members": [{"atomic_rule_id": int, "weight_override": number|null}, ...],
+        "precondition_expr": str|null,
+        "sample_symbol": "AAPL",     # optional, defaults to AAPL
+        "as_of_date":    "YYYY-MM-DD" # optional, defaults to latest
+      }
+
+    Response shape:
+      {
+        "sample_symbol": "AAPL",
+        "as_of_date":    "2026-05-07",
+        "before": {"score": <num|null>, "fired": <bool>, "n_atomic_hit": <int>},
+        "after":  {"score": <num|null>, "fired": <bool>, "n_atomic_hit": <int>,
+                   "precondition_passed": <bool>},
+        "affected_symbols_estimate": <int|null>,
+        "note": <str>
+      }
+    """
+    sym = (body.get("sample_symbol") or "AAPL").upper().strip()
+    as_of = body.get("as_of_date")
+    proposed_members = body.get("members") or []
+    proposed_pre     = body.get("precondition_expr") or None
+
+    # Lazy import to avoid heavyweight at module import time
+    from etl.derive import _eval_precondition, eval_atomic_rule
+
+    with session_scope() as s:
+        if as_of:
+            try:
+                snap = datetime.strptime(as_of, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="as_of_date must be YYYY-MM-DD")
+        else:
+            row = s.execute(text(
+                "SELECT MAX(as_of_date) AS d FROM drv_stks"
+            )).mappings().first()
+            snap = row["d"] if row and row["d"] else date.today()
+
+        # ---- BEFORE: read snapshot from drv_stks for the existing composite
+        before = {"score": None, "fired": False, "n_atomic_hit": 0}
+        stks_row = s.execute(text("""
+            SELECT triggered_composite_ids, triggered_atomic_ids
+            FROM drv_stks
+            WHERE as_of_date = :d AND symbol = :sym
+            LIMIT 1
+        """), {"d": snap, "sym": sym}).mappings().first()
+        if stks_row and stks_row["triggered_composite_ids"]:
+            for c in stks_row["triggered_composite_ids"]:
+                if c.get("rule_id") == rule_id:
+                    before["score"] = float(c.get("score") or 0)
+                    before["fired"] = before["score"] != 0
+                    break
+
+        # Existing member set, for "what changed" note
+        existing = s.execute(text("""
+            SELECT atomic_rule_id, weight_override
+            FROM ref_trig_composite_mapping
+            WHERE composite_rule_code = :rid AND deprecated_at IS NULL
+            ORDER BY atomic_rule_id
+        """), {"rid": rule_id}).mappings().all()
+        existing_ids = {r["atomic_rule_id"] for r in existing}
+
+        # ---- AFTER: re-evaluate the proposed composite for the sample symbol
+        # 1. fetch drv_ma + drv_cat_atomic_input for the sample symbol
+        try:
+            ma_dict = dict(s.execute(text(
+                "SELECT * FROM drv_ma WHERE as_of_date=:d AND symbol=:sym LIMIT 1"
+            ), {"d": snap, "sym": sym}).mappings().first() or {})
+        except Exception:
+            ma_dict = {}
+        try:
+            ai_dict = dict(s.execute(text(
+                "SELECT * FROM drv_cat_atomic_input WHERE as_of_date=:d AND symbol=:sym LIMIT 1"
+            ), {"d": snap, "sym": sym}).mappings().first() or {})
+        except Exception:
+            ai_dict = {}
+
+        # 2. Precondition check on the row
+        pre_passed = True
+        if proposed_pre:
+            pre_passed = bool(_eval_precondition(proposed_pre, ma_dict))
+
+        if not pre_passed:
+            after = {"score": None, "fired": False, "n_atomic_hit": 0,
+                     "precondition_passed": False,
+                     "by_kind": {"atomic": 0, "data": 0, "composite": 0}}
+        else:
+            # 3. Score each proposed member by its kind
+            #    'atomic'    — read column, eval rule
+            #    'data'      — inline rule defined right on the member
+            #    'composite' — pull score from drv_stks.triggered_composite_ids
+            atomic_members  = [m for m in proposed_members if (m.get("kind") or "atomic") == "atomic"]
+            data_members    = [m for m in proposed_members if m.get("kind") == "data"]
+            nested_members  = [m for m in proposed_members if m.get("kind") == "composite"]
+
+            atom_ids = [m["atomic_rule_id"] for m in atomic_members
+                        if m.get("atomic_rule_id") is not None]
+            atomics = []
+            if atom_ids:
+                atomics = s.execute(text("""
+                    SELECT atomic_rule_id, rule_name, ma_column_name,
+                           brkeout_from, brkeout_to,
+                           wt_below, wt_between, wt_above,
+                           scoring_mode, score_params
+                    FROM ref_trig_atomic_rule
+                    WHERE atomic_rule_id = ANY(:ids) AND deprecated_at IS NULL
+                """), {"ids": atom_ids}).mappings().all()
+
+            # Resolve column for each atomic via ref_ma_columns (same algo as derive)
+            rule_names = [a["rule_name"] for a in atomics if a.get("rule_name")]
+            col_lookup: dict = {}
+            if rule_names:
+                try:
+                    reg = s.execute(text("""
+                        SELECT excel_header, column_name, drv_cat_table
+                        FROM ref_ma_columns
+                        WHERE excel_header = ANY(:names)
+                        ORDER BY CASE WHEN drv_cat_table='drv_cat_atomic_input' THEN 0 ELSE 1 END
+                    """), {"names": rule_names}).mappings().all()
+                    for r in reg:
+                        col_lookup.setdefault(r["excel_header"],
+                                              (r["drv_cat_table"], r["column_name"]))
+                except Exception:
+                    pass
+            # Fallback to ma_column_name parsing
+            for a in atomics:
+                if a["rule_name"] not in col_lookup and a["ma_column_name"] and "." in a["ma_column_name"]:
+                    tbl, _, col = a["ma_column_name"].partition(".")
+                    col_lookup[a["rule_name"]] = (tbl, col)
+
+            override_map = {m["atomic_rule_id"]: m.get("weight_override")
+                            for m in atomic_members}
+
+            score = 0.0
+            n_hit = 0
+            by_kind = {"atomic": 0.0, "data": 0.0, "composite": 0.0}
+
+            # ---- atomic members ----
+            for a in atomics:
+                src = col_lookup.get(a["rule_name"])
+                value = None
+                if src:
+                    tbl, col = src
+                    if tbl == "drv_cat_atomic_input":
+                        value = ai_dict.get(col)
+                    else:
+                        value = ma_dict.get(col)
+                w = eval_atomic_rule(value, dict(a))
+                ovr = override_map.get(a["atomic_rule_id"])
+                if ovr is not None and w != 0:
+                    w = float(ovr)
+                if w != 0:
+                    n_hit += 1
+                score += w
+                by_kind["atomic"] += w
+
+            # ---- data members (inline scoring against a drv_cat column) ----
+            for dm in data_members:
+                col_path = dm.get("data_column") or ""
+                # Resolve "table.col" or bare col → drv_cat_atomic_input
+                if "." in col_path:
+                    tbl, _, col = col_path.partition(".")
+                else:
+                    tbl, col = "drv_cat_atomic_input", col_path
+                if tbl == "drv_ma":
+                    value = ma_dict.get(col)
+                elif tbl == "drv_cat_atomic_input":
+                    value = ai_dict.get(col)
+                else:
+                    # Read on demand for other drv_cat_* tables
+                    try:
+                        row = s.execute(text(
+                            f'SELECT "{col}" AS v FROM {tbl} '
+                            "WHERE as_of_date=:d AND symbol=:sym LIMIT 1"
+                        ), {"d": snap, "sym": sym}).mappings().first()
+                        value = row["v"] if row else None
+                    except Exception:
+                        value = None
+                inline_rule = {
+                    "brkeout_from":  dm.get("brkeout_from"),
+                    "brkeout_to":    dm.get("brkeout_to"),
+                    "wt_below":      dm.get("wt_below"),
+                    "wt_between":    dm.get("wt_between"),
+                    "wt_above":      dm.get("wt_above"),
+                    "scoring_mode":  dm.get("scoring_mode") or "jump",
+                    "score_params":  dm.get("score_params"),
+                }
+                w = eval_atomic_rule(value, inline_rule)
+                ovr = dm.get("weight_override")
+                if ovr is not None and w != 0:
+                    w = float(ovr)
+                if w != 0:
+                    n_hit += 1
+                score += w
+                by_kind["data"] += w
+
+            # ---- composite members (nested) ----
+            #   pull each child's score from drv_stks.triggered_composite_ids
+            #   for this (date, symbol). Single-level lookup — full recursion
+            #   with cycle detection happens in the derive layer (follow-up).
+            child_scores = {}
+            if stks_row and stks_row["triggered_composite_ids"]:
+                for c in stks_row["triggered_composite_ids"]:
+                    cid = c.get("rule_id")
+                    if cid:
+                        child_scores[cid] = float(c.get("score") or 0)
+            for nm in nested_members:
+                code = nm.get("nested_composite_code")
+                child_score = child_scores.get(code, 0.0)
+                mult = nm.get("weight_override")
+                contrib = float(mult) * child_score if mult is not None else child_score
+                if contrib != 0:
+                    n_hit += 1
+                score += contrib
+                by_kind["composite"] += contrib
+
+            after = {"score": float(score), "fired": score != 0,
+                     "n_atomic_hit": n_hit, "precondition_passed": True,
+                     "by_kind": {k: float(v) for k, v in by_kind.items()}}
+
+        # Diff note vs existing
+        existing_atom_ids = {r["atomic_rule_id"] for r in existing if r["atomic_rule_id"] is not None}
+        proposed_atom_ids = {m["atomic_rule_id"] for m in proposed_members
+                             if m.get("kind", "atomic") == "atomic" and m.get("atomic_rule_id") is not None}
+        added   = sorted(proposed_atom_ids - existing_atom_ids)
+        removed = sorted(existing_atom_ids - proposed_atom_ids)
+        n_data = sum(1 for m in proposed_members if m.get("kind") == "data")
+        n_nest = sum(1 for m in proposed_members if m.get("kind") == "composite")
+        note_parts = []
+        if added:   note_parts.append(f"+{len(added)} atomic")
+        if removed: note_parts.append(f"-{len(removed)} atomic")
+        if n_data:  note_parts.append(f"{n_data} data members")
+        if n_nest:  note_parts.append(f"{n_nest} nested composites")
+        if proposed_pre and proposed_pre.strip():
+            note_parts.append("precondition set")
+        note = ", ".join(note_parts) if note_parts else "no membership change"
+
+        # Affected-symbols estimate from drv_trig
+        try:
+            affected = s.execute(text("""
+                SELECT COUNT(DISTINCT symbol) AS n FROM drv_trig
+                WHERE composite_rule_code = :rid AND as_of_date = :d
+            """), {"rid": rule_id, "d": snap}).scalar()
+        except Exception:
+            affected = None
+
+        return {
+            "rule_code": rule_id,
+            "sample_symbol": sym,
+            "as_of_date": snap.isoformat(),
+            "before": before,
+            "after":  after,
+            "affected_symbols_estimate": int(affected) if affected is not None else None,
+            "added_atomic_ids":   added,
+            "removed_atomic_ids": removed,
+            "note": note,
+        }
+
+
+# =============================================================================
+# Rule Groups (hierarchical composition of composites and nested groups)
+# =============================================================================
+
+@router.get("/api/rules/groups", response_model=list[dict])
+def get_rule_groups():
+    """List all rule groups with their members."""
+    try:
+        from etl.rule_groups import get_all_rule_groups
+        with session_scope() as s:
+            groups = get_all_rule_groups(s)
+        return groups
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/rules/groups/{group_code}", response_model=dict)
+def get_rule_group_detail(group_code: str):
+    """Return one rule group with its full member list."""
+    try:
+        from etl.rule_groups import get_rule_group
+        with session_scope() as s:
+            grp = get_rule_group(s, group_code)
+        if not grp:
+            raise HTTPException(status_code=404, detail=f"Rule group {group_code!r} not found")
+        return grp
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -----------------------------------------------------------------------------
+# Rule-group create / update / delete / test
+# -----------------------------------------------------------------------------
+
+@router.post("/api/rules/groups", response_model=dict, status_code=201)
+def create_rule_group(payload: dict):
+    """Create a new rule group with members."""
+    code = (payload.get("rule_group_code") or "").strip()
+    if not code:
+        raise HTTPException(400, "rule_group_code required")
+    group_type = payload.get("group_type") or "action"
+    if group_type not in ("action", "logical"):
+        raise HTTPException(400, "group_type must be 'action' or 'logical'")
+    action_label = payload.get("action_label") or None
+    if group_type == "action" and not action_label:
+        raise HTTPException(400, "action_label required when group_type='action'")
+    if group_type == "logical" and action_label:
+        raise HTTPException(400, "action_label must be null when group_type='logical'")
+    members = payload.get("members") or []
+    if not members:
+        raise HTTPException(400, "at least one member required")
+
+    with session_scope() as s:
+        exists = s.execute(text(
+            "SELECT 1 FROM ref_trig_rule_group WHERE rule_group_code = :c"
+        ), {"c": code}).first()
+        if exists:
+            raise HTTPException(409, f"group {code!r} already exists")
+
+        s.execute(text("""
+            INSERT INTO ref_trig_rule_group
+              (rule_group_code, group_type, action_label, priority, category, intent_text)
+            VALUES (:code, :gt, :al, :pr, :cat, :it)
+        """), {
+            "code": code, "gt": group_type, "al": action_label,
+            "pr": payload.get("priority"), "cat": payload.get("category"),
+            "it": payload.get("intent_text"),
+        })
+        for i, m in enumerate(members, start=1):
+            s.execute(text("""
+                INSERT INTO ref_trig_group_member
+                  (rule_group_code, member_code, member_type, logic_operator, sequence)
+                VALUES (:c, :mc, :mt, :op, :seq)
+            """), {
+                "c": code, "mc": m["member_code"],
+                "mt": m.get("member_type", "composite"),
+                "op": m.get("logic_operator", "AND"),
+                "seq": i,
+            })
+        s.commit()
+    return {"ok": True, "rule_group_code": code, "n_members": len(members)}
+
+
+@router.put("/api/rules/groups/{group_code}", response_model=dict)
+def update_rule_group(group_code: str, payload: dict):
+    """Update a rule group's metadata + replace its members."""
+    with session_scope() as s:
+        exists = s.execute(text(
+            "SELECT 1 FROM ref_trig_rule_group WHERE rule_group_code = :c AND deprecated_at IS NULL"
+        ), {"c": group_code}).first()
+        if not exists:
+            raise HTTPException(404, f"group {group_code!r} not found")
+
+        group_type = payload.get("group_type") or "action"
+        action_label = payload.get("action_label") or None
+        if group_type == "action" and not action_label:
+            raise HTTPException(400, "action_label required when group_type='action'")
+        if group_type == "logical" and action_label:
+            raise HTTPException(400, "action_label must be null when group_type='logical'")
+
+        s.execute(text("""
+            UPDATE ref_trig_rule_group SET
+              group_type = :gt, action_label = :al, priority = :pr,
+              category = :cat, intent_text = :it
+            WHERE rule_group_code = :c
+        """), {
+            "c": group_code, "gt": group_type, "al": action_label,
+            "pr": payload.get("priority"), "cat": payload.get("category"),
+            "it": payload.get("intent_text"),
+        })
+        s.execute(text(
+            "DELETE FROM ref_trig_group_member WHERE rule_group_code = :c"
+        ), {"c": group_code})
+        members = payload.get("members") or []
+        for i, m in enumerate(members, start=1):
+            s.execute(text("""
+                INSERT INTO ref_trig_group_member
+                  (rule_group_code, member_code, member_type, logic_operator, sequence)
+                VALUES (:c, :mc, :mt, :op, :seq)
+            """), {
+                "c": group_code, "mc": m["member_code"],
+                "mt": m.get("member_type", "composite"),
+                "op": m.get("logic_operator", "AND"),
+                "seq": i,
+            })
+        s.commit()
+    return {"ok": True, "rule_group_code": group_code, "n_members": len(members)}
+
+
+@router.delete("/api/rules/groups/{group_code}", response_model=dict)
+def deprecate_rule_group(group_code: str):
+    """Soft-delete (deprecate) a rule group. Members stay for history."""
+    with session_scope() as s:
+        result = s.execute(text("""
+            UPDATE ref_trig_rule_group
+            SET deprecated_at = now()
+            WHERE rule_group_code = :c AND deprecated_at IS NULL
+            RETURNING rule_group_code
+        """), {"c": group_code}).first()
+        if not result:
+            raise HTTPException(404, f"group {group_code!r} not found or already deprecated")
+        s.commit()
+    return {"ok": True, "rule_group_code": group_code, "deprecated": True}
+
+
+@router.get("/api/rules/groups/{group_code}/test", response_model=dict)
+def test_rule_group(group_code: str, date: Optional[str] = Query(None)):
+    """
+    Evaluate a rule group against the snapshot for :date.
+    """
+    d = _resolve_date(date)
+    with session_scope() as s:
+        grp = s.execute(text("""
+            SELECT rule_group_code, group_type, action_label, priority
+            FROM ref_trig_rule_group
+            WHERE rule_group_code = :c AND deprecated_at IS NULL
+        """), {"c": group_code}).mappings().first()
+        if not grp:
+            raise HTTPException(404, f"group {group_code!r} not found")
+
+        members = s.execute(text("""
+            SELECT member_code, member_type, logic_operator, sequence
+            FROM ref_trig_group_member
+            WHERE rule_group_code = :c
+            ORDER BY sequence
+        """), {"c": group_code}).mappings().all()
+        if not members:
+            return {"triggered": False, "action": grp["action_label"],
+                    "priority": grp["priority"], "sample_triggered_count": 0,
+                    "sample_symbols": [], "_note": "group has no members"}
+
+        rows = s.execute(text("""
+            SELECT symbol, triggered_composite_ids
+            FROM drv_stks
+            WHERE as_of_date = :d
+        """), {"d": d}).mappings().all()
+
+        triggered_symbols = []
+        for r in rows:
+            fired_codes = set()
+            for t in (r["triggered_composite_ids"] or []):
+                code = t.get("rule_id") if isinstance(t, dict) else None
+                if code:
+                    fired_codes.add(code)
+            result = None
+            for m in members:
+                hit = m["member_code"] in fired_codes
+                op = m["logic_operator"]
+                if result is None:
+                    result = hit
+                elif op == "AND":
+                    result = result and hit
+                else:
+                    result = result or hit
+            if result:
+                triggered_symbols.append(r["symbol"])
+
+        return {
+            "triggered": len(triggered_symbols) > 0,
+            "action": grp["action_label"],
+            "priority": grp["priority"],
+            "sample_triggered_count": len(triggered_symbols),
+            "sample_symbols": triggered_symbols[:50],
+        }

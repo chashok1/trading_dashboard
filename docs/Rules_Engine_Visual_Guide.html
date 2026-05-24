@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rules Engine &amp; Data-Flow Visual Guide — Trading Dashboard</title>
+<style>
+  :root{
+    --paper:#F4F3EE; --card:#FBFAF6; --ink:#26251F; --ink-soft:#57564E;
+    --line:#9C9A90; --rule:#E2E0D6; --accent:#185FA5;
+    --blue-50:#E6F1FB; --blue-200:#85B7EB; --blue-400:#378ADD; --blue-600:#185FA5; --blue-800:#0C447C; --blue-900:#042C53;
+    --amber-50:#FAEEDA; --amber-200:#EF9F27; --amber-400:#BA7517; --amber-600:#854F0B; --amber-800:#633806; --amber-900:#412402;
+    --gray-50:#F1EFE8; --gray-200:#B4B2A9; --gray-400:#888780; --gray-600:#5F5E5A; --gray-700:#4D4C48; --gray-900:#2C2C2A;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --paper:#21201C; --card:#2A2925; --ink:#ECEAE0; --ink-soft:#A8A69B;
+      --line:#6E6C64; --rule:#3A3934; --accent:#85B7EB;
+      --blue-50:#0E2C49; --blue-200:#185FA5; --blue-400:#378ADD; --blue-600:#85B7EB; --blue-800:#B5D4F4; --blue-900:#E6F1FB;
+      --amber-50:#3A2406; --amber-200:#854F0B; --amber-400:#BA7517; --amber-600:#EF9F27; --amber-800:#FAC775; --amber-900:#FAEEDA;
+      --gray-50:#302F2A; --gray-200:#5F5E5A; --gray-400:#888780; --gray-600:#B4B2A9; --gray-700:#C8C6BC; --gray-900:#ECEAE0;
+    }
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.65; font-size:16px;
+  }
+  .wrap{max-width:880px; margin:0 auto; padding:48px 28px 80px;}
+  header{border-bottom:2px solid var(--rule); padding-bottom:22px; margin-bottom:34px;}
+  h1{font-size:27px; font-weight:600; margin:0 0 8px; letter-spacing:-0.01em;}
+  .sub{color:var(--ink-soft); font-size:14px; margin:0;}
+  h2{font-size:20px; font-weight:600; margin:46px 0 6px; letter-spacing:-0.01em;}
+  h2 .num{color:var(--accent); font-variant-numeric:tabular-nums;}
+  h3{font-size:16px; font-weight:600; margin:26px 0 4px;}
+  p{margin:12px 0;}
+  code{
+    font-family:"SF Mono",Menlo,Consolas,monospace; font-size:0.86em;
+    background:var(--gray-50); border:1px solid var(--rule);
+    border-radius:4px; padding:1px 5px;
+  }
+  .fig{
+    background:var(--card); border:1px solid var(--rule); border-radius:12px;
+    padding:18px 16px 8px; margin:22px 0;
+  }
+  .fig svg.diagram{width:100%; height:auto; display:block;}
+  .fig figcaption{
+    color:var(--ink-soft); font-size:13px; text-align:center;
+    padding:8px 10px 6px; border-top:1px solid var(--rule); margin-top:10px;
+  }
+  .callout{
+    background:var(--amber-50); border:1px solid var(--amber-400);
+    border-radius:10px; padding:14px 18px; margin:20px 0;
+    font-size:15px; color:var(--ink);
+  }
+  .callout strong{color:var(--amber-900);}
+  table{
+    width:100%; border-collapse:collapse; margin:18px 0; font-size:14px;
+  }
+  th,td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--rule); vertical-align:top;}
+  thead th{
+    font-size:12px; text-transform:uppercase; letter-spacing:0.04em;
+    color:var(--ink-soft); border-bottom:2px solid var(--line);
+  }
+  tbody tr:hover{background:var(--gray-50);}
+  td code{white-space:nowrap;}
+  .tag{
+    display:inline-block; font-size:11px; font-weight:600; letter-spacing:0.02em;
+    padding:2px 8px; border-radius:20px; white-space:nowrap;
+  }
+  .tag-decide{background:var(--blue-50); color:var(--blue-900); border:1px solid var(--blue-400);}
+  .tag-author{background:var(--amber-50); color:var(--amber-900); border:1px solid var(--amber-400);}
+  .tag-observe{background:var(--gray-50); color:var(--gray-900); border:1px solid var(--gray-400);}
+  .tag-ops{background:var(--gray-50); color:var(--gray-700); border:1px solid var(--rule);}
+  footer{margin-top:54px; padding-top:18px; border-top:1px solid var(--rule); color:var(--ink-soft); font-size:13px;}
+  /* ---- SVG diagram theming (mirrors the inline-widget class system) ---- */
+  .diagram text{font-family:-apple-system,"Segoe UI",Roboto,sans-serif;}
+  .diagram .th{font-size:14px; font-weight:600;}
+  .diagram .ts{font-size:11.5px; font-weight:400;}
+  .diagram .arr{stroke:var(--line); stroke-width:1.6; fill:none;}
+  .diagram .ts{fill:var(--ink-soft);}
+  .diagram .box rect{fill:var(--gray-50); stroke:var(--gray-400); stroke-width:1.2;}
+  .diagram .box .th{fill:var(--gray-900);}
+  .diagram .box .ts{fill:var(--gray-700);}
+  .diagram .c-blue rect{fill:var(--blue-50); stroke:var(--blue-400); stroke-width:1.2;}
+  .diagram .c-blue .th{fill:var(--blue-900);}
+  .diagram .c-blue .ts{fill:var(--blue-800);}
+  .diagram .c-amber rect{fill:var(--amber-50); stroke:var(--amber-600); stroke-width:1.2;}
+  .diagram .c-amber .th{fill:var(--amber-900);}
+  .diagram .c-amber .ts{fill:var(--amber-800);}
+  .diagram rect.c-blue{fill:var(--blue-200); stroke:var(--blue-600); stroke-width:1;}
+  .diagram rect.c-amber{fill:var(--amber-200); stroke:var(--amber-600); stroke-width:1;}
+  .diagram rect.box{fill:var(--gray-200); stroke:var(--gray-600); stroke-width:1;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Rules Engine &amp; Data-Flow Visual Guide</h1>
+  <p class="sub">Trading Dashboard &middot; generated 2026-05-21 &middot; companion to <code>docs/Screen_and_DataFlow_Reference.md</code></p>
+</header>
+
+<p>This guide answers three things: how the rules engine scores a signal, how data
+moves from an Excel feed to a recommended action, and what each screen is for. It
+is built from a read of <code>etl/derive.py</code>, <code>etl/derive_actionable.py</code>,
+<code>etl/position_rules.py</code>, <code>etl/rule_groups.py</code>,
+<code>etl/compute_outcomes.py</code>, and the API routers.</p>
+
+<h2><span class="num">1.</span> The rules engine &mdash; four layers</h2>
+
+<p>You author rules in three reference tables. The engine evaluates them once per
+symbol per day inside <code>etl/derive.py::_derive_stks_impl</code>, working bottom-up:
+atomic rules feed composite rules, composites feed rule groups, and the results land
+in <code>drv_stks</code> as JSONB. <code>derive_actionable</code> then resolves a single
+recommended action per symbol.</p>
+
+<figure class="fig">
+<svg class="diagram" viewBox="0 0 680 758" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>Rules engine evaluation logic</title>
+<desc>A vertical pipeline: indicator inputs feed atomic rules, which feed composite rules, which feed rule groups, producing drv_stks and the consolidated action in drv_actionable.</desc>
+<defs>
+<marker id="arrowA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6"/>
+</marker>
+</defs>
+<rect class="c-blue" x="150" y="29" width="13" height="13" rx="2"/>
+<text class="ts" x="170" y="36" dominant-baseline="central">Rules you author</text>
+<rect class="c-amber" x="322" y="29" width="13" height="13" rx="2"/>
+<text class="ts" x="342" y="36" dominant-baseline="central">Engine output</text>
+<rect class="box" x="476" y="29" width="13" height="13" rx="2"/>
+<text class="ts" x="496" y="36" dominant-baseline="central">Input data</text>
+<g class="box">
+<rect x="140" y="58" width="400" height="56" rx="10"/>
+<text class="th" x="340" y="82" text-anchor="middle" dominant-baseline="central">Indicator inputs</text>
+<text class="ts" x="340" y="102" text-anchor="middle" dominant-baseline="central">drv_cat_atomic_input + drv_ma &mdash; per symbol &amp; date</text>
+</g>
+<line class="arr" x1="340" y1="116" x2="340" y2="153" marker-end="url(#arrowA)"/>
+<g class="c-blue">
+<rect x="140" y="156" width="400" height="84" rx="10"/>
+<text class="th" x="340" y="181" text-anchor="middle" dominant-baseline="central">1 &middot; Atomic rules</text>
+<text class="ts" x="340" y="203" text-anchor="middle" dominant-baseline="central">ref_trig_atomic_rule &mdash; single-condition predicates</text>
+<text class="ts" x="340" y="222" text-anchor="middle" dominant-baseline="central">eval_atomic_rule &rarr; weight (jump / linear / sigmoid)</text>
+</g>
+<line class="arr" x1="340" y1="242" x2="340" y2="279" marker-end="url(#arrowA)"/>
+<g class="c-blue">
+<rect x="140" y="282" width="400" height="104" rx="10"/>
+<text class="th" x="340" y="307" text-anchor="middle" dominant-baseline="central">2 &middot; Composite rules</text>
+<text class="ts" x="340" y="329" text-anchor="middle" dominant-baseline="central">ref_trig_composite_mapping &mdash; sum of scored members</text>
+<text class="ts" x="340" y="348" text-anchor="middle" dominant-baseline="central">members: atomic &middot; data &middot; nested composite</text>
+<text class="ts" x="340" y="367" text-anchor="middle" dominant-baseline="central">precondition gate &middot; fires if any member contributes</text>
+</g>
+<line class="arr" x1="340" y1="388" x2="340" y2="425" marker-end="url(#arrowA)"/>
+<g class="c-blue">
+<rect x="140" y="428" width="400" height="84" rx="10"/>
+<text class="th" x="340" y="453" text-anchor="middle" dominant-baseline="central">3 &middot; Rule groups</text>
+<text class="ts" x="340" y="475" text-anchor="middle" dominant-baseline="central">ref_trig_rule_group + ref_trig_group_member</text>
+<text class="ts" x="340" y="494" text-anchor="middle" dominant-baseline="central">AND / OR over composites &rarr; action_label + priority</text>
+</g>
+<line class="arr" x1="340" y1="514" x2="340" y2="551" marker-end="url(#arrowA)"/>
+<g class="c-amber">
+<rect x="140" y="554" width="400" height="62" rx="10"/>
+<text class="th" x="340" y="578" text-anchor="middle" dominant-baseline="central">drv_stks &mdash; raw per-symbol engine output</text>
+<text class="ts" x="340" y="599" text-anchor="middle" dominant-baseline="central">triggered_atomic / composite / group _ids (JSONB)</text>
+</g>
+<line class="arr" x1="340" y1="618" x2="340" y2="655" marker-end="url(#arrowA)"/>
+<g class="c-amber">
+<rect x="140" y="658" width="400" height="84" rx="10"/>
+<text class="th" x="340" y="683" text-anchor="middle" dominant-baseline="central">drv_actionable &mdash; consolidated action</text>
+<text class="ts" x="340" y="705" text-anchor="middle" dominant-baseline="central">derive_actionable: most-aggressive action wins,</text>
+<text class="ts" x="340" y="724" text-anchor="middle" dominant-baseline="central">+ position-rule suppression + dollar sizing</text>
+</g>
+</svg>
+<figcaption>Figure 1 &mdash; how a per-symbol signal is scored, layer by layer.</figcaption>
+</figure>
+
+<h3>Atomic rules</h3>
+<p>An atomic rule (<code>ref_trig_atomic_rule</code>) is a single condition. It reads
+one indicator column, and <code>eval_atomic_rule()</code> turns the measured value into
+a weight. Each rule has a breakout band (<code>brkeout_from</code>/<code>brkeout_to</code>)
+and three weights (<code>wt_below</code>, <code>wt_between</code>, <code>wt_above</code>).
+The <code>scoring_mode</code> decides the shape: <em>jump</em> gives a hard step between
+the three weights, <em>linear</em> interpolates across the band, and <em>sigmoid</em>
+gives a smooth S-curve using <code>score_params</code> (<code>k</code>, <code>x0</code>).</p>
+
+<h3>Composite rules</h3>
+<p>A composite rule (<code>ref_trig_composite_mapping</code>) sums a list of members.
+A member is one of three kinds: an <em>atomic</em> member reuses an already-scored
+atomic; a <em>data</em> member is an inline atomic-style rule against any
+<code>drv_cat</code>/<code>drv_ma</code> column; a <em>composite</em> member is a nested
+composite. Nested composites are topologically sorted so children are scored before
+parents, and cycles are detected and broken. Each composite can carry a
+<code>precondition_expr</code> &mdash; a safe mini-expression such as
+<code>is_held and last_price &gt; 5</code> that, when false, skips the rule (it fails
+open on a parse error). A composite is considered <em>fired</em> when any member
+contributed a non-zero weight, not when the net score is non-zero &mdash; so a rule
+with offsetting +1 / &minus;1 members still counts as fired.</p>
+
+<h3>Rule groups</h3>
+<p>A rule group (<code>ref_trig_rule_group</code> + <code>ref_trig_group_member</code>)
+is boolean logic &mdash; AND / OR &mdash; over composites and nested groups. AND chains
+short-circuit; any OR member makes the group an any-true test. A group with
+<code>group_type='action'</code> carries an <code>action_label</code>
+(REMOVE / REDUCE / INCREASE / ADD / HOLD) and a numeric <code>priority</code> where
+lower wins; <code>group_type='logical'</code> groups exist only to be nested inside
+action groups.</p>
+
+<h3>From scores to a recommended action</h3>
+<p>The engine writes <code>drv_stks</code> with three JSONB columns &mdash;
+<code>triggered_atomic_ids</code>, <code>triggered_composite_ids</code>,
+<code>triggered_group_ids</code>. A parallel table, <code>drv_trig</code>, records a
+per-(symbol, composite) score and is what the Trace screen reads.
+<code>derive_actionable</code> is the resolver: it puts the rule-group actions into one
+pool with the per-source outlook actions, picks the most-aggressive action by
+<code>ACTION_RANK</code> (REMOVE&nbsp;4 &rarr; HOLD&nbsp;0), breaks ties by priority,
+resolves a sizing category through <code>ref_asset_allocation</code>, computes a
+suggested dollar target, and applies position-aware suppression &mdash; REMOVE on a
+position you don't hold, ADD on one already established, INCREASE at the ceiling,
+REDUCE at the floor. The suppressed action is preserved with a reason so you can still
+see what the engine wanted to do.</p>
+
+<h2><span class="num">2.</span> End-to-end data flow</h2>
+
+<p>Data moves in one direction with a feedback return. Seventeen Excel feeds load into
+17 raw <code>hist_*</code> tables, every load triggers the derive cascade, the rules
+engine and resolver produce actions, the screens read them, and logged decisions feed
+back to tune the rules.</p>
+
+<figure class="fig">
+<svg class="diagram" viewBox="0 0 680 716" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>End-to-end data flow</title>
+<desc>Excel feeds load into raw hist tables, the derive cascade builds derived tables, the rules engine and resolver produce actions, screens read them, and a feedback loop from logged user actions flows back to tune the rules.</desc>
+<defs>
+<marker id="arrowB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6"/>
+</marker>
+</defs>
+<rect class="c-blue" x="118" y="30" width="13" height="13" rx="2"/>
+<text class="ts" x="138" y="37" dominant-baseline="central">Derive / rules pipeline</text>
+<rect class="c-amber" x="318" y="30" width="13" height="13" rx="2"/>
+<text class="ts" x="338" y="37" dominant-baseline="central">Screens &amp; feedback</text>
+<rect class="box" x="492" y="30" width="13" height="13" rx="2"/>
+<text class="ts" x="512" y="37" dominant-baseline="central">Raw data</text>
+<g class="box">
+<rect x="130" y="66" width="420" height="66" rx="10"/>
+<text class="th" x="340" y="91" text-anchor="middle" dominant-baseline="central">17 Excel source feeds &rarr; ETL loader</text>
+<text class="ts" x="340" y="113" text-anchor="middle" dominant-baseline="central">scheduler watcher &middot; etl_load.py dispatches by file type</text>
+</g>
+<line class="arr" x1="340" y1="134" x2="340" y2="172" marker-end="url(#arrowB)"/>
+<g class="box">
+<rect x="130" y="174" width="420" height="54" rx="10"/>
+<text class="th" x="340" y="196" text-anchor="middle" dominant-baseline="central">hist_* &mdash; 17 raw history tables</text>
+<text class="ts" x="340" y="214" text-anchor="middle" dominant-baseline="central">append-only &middot; raw data is never overwritten</text>
+</g>
+<line class="arr" x1="340" y1="230" x2="340" y2="268" marker-end="url(#arrowB)"/>
+<g class="c-blue">
+<rect x="130" y="270" width="420" height="70" rx="10"/>
+<text class="th" x="340" y="296" text-anchor="middle" dominant-baseline="central">Derive cascade &mdash; derive_all(D)</text>
+<text class="ts" x="340" y="318" text-anchor="middle" dominant-baseline="central">idempotent &middot; drv_quote &rarr; drv_ma &rarr; drv_dash &rarr; &hellip;</text>
+</g>
+<line class="arr" x1="340" y1="342" x2="340" y2="380" marker-end="url(#arrowB)"/>
+<g class="c-blue">
+<rect x="130" y="382" width="420" height="92" rx="10"/>
+<text class="th" x="340" y="407" text-anchor="middle" dominant-baseline="central">Rules engine + resolver</text>
+<text class="ts" x="340" y="429" text-anchor="middle" dominant-baseline="central">drv_stks: atomic &rarr; composite &rarr; group   &middot;   drv_trig</text>
+<text class="ts" x="340" y="448" text-anchor="middle" dominant-baseline="central">drv_outlook_action &rarr; drv_actionable (final action)</text>
+</g>
+<line class="arr" x1="340" y1="476" x2="340" y2="514" marker-end="url(#arrowB)"/>
+<g class="c-amber">
+<rect x="130" y="516" width="420" height="66" rx="10"/>
+<text class="th" x="340" y="541" text-anchor="middle" dominant-baseline="central">Screens read the derived tables</text>
+<text class="ts" x="340" y="563" text-anchor="middle" dominant-baseline="central">Dashboard &middot; Cockpit &middot; Actionable &middot; Portfolio &middot; Trace</text>
+</g>
+<line class="arr" x1="340" y1="584" x2="340" y2="622" marker-end="url(#arrowB)"/>
+<g class="c-amber">
+<rect x="130" y="624" width="420" height="74" rx="10"/>
+<text class="th" x="340" y="649" text-anchor="middle" dominant-baseline="central">Feedback loop</text>
+<text class="ts" x="340" y="670" text-anchor="middle" dominant-baseline="central">user_action_log &rarr; compute_outcomes &rarr; drv_rule_outcome</text>
+<text class="ts" x="340" y="688" text-anchor="middle" dominant-baseline="central">&rarr; v_rule_performance &mdash; per-rule hit rate &amp; P&amp;L</text>
+</g>
+<path class="arr" d="M550 661 H618 V420 H554" fill="none" stroke-dasharray="5 4" marker-end="url(#arrowB)"/>
+<text class="ts" x="618" y="540" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 618 540)">measured outcomes tune the rules</text>
+</svg>
+<figcaption>Figure 2 &mdash; from an Excel feed to a recommended action, and the loop back.</figcaption>
+</figure>
+
+<p>Raw data is sacred: all <code>hist_*</code> inserts use <code>ON CONFLICT DO NOTHING</code>
+and nothing but <code>etl/cleanup.py</code> ever deletes. Every load runs
+<code>derive_all(D)</code> in-process, which rebuilds the derived tables in dependency
+order. The cascade is, in order: <code>drv_td</code>, <code>drv_tw</code>,
+<code>drv_sss</code>, <code>drv_cat_atomic_input</code> and the <code>drv_cat_*</code>
+tables, <code>drv_quote</code>, <code>drv_ma</code>, <code>drv_dash</code>,
+<code>drv_stks</code>, <code>drv_cs_realized_gain</code>, <code>drv_dash_summary</code>,
+<code>drv_outlook_action</code>, <code>drv_actionable</code>,
+<code>drv_missing_symbols</code>, <code>drv_trig</code>. Every step is idempotent &mdash;
+it deletes the rows for date <code>D</code> and re-inserts &mdash; so re-running is
+always safe, and a file landing on an old date forward-re-derives the later dates it
+invalidated.</p>
+
+<div class="callout">
+<strong>The most common gotcha.</strong> Editing a rule on the Rules screen only
+changes the <code>ref_trig_*</code> definition tables. Nothing on the dashboards changes
+until a re-derive runs &mdash; either the next ETL load or a manual
+<code>python -m etl.rebuild_rules</code>. Until then every other screen still reflects
+the old rules.
+</div>
+
+<h2><span class="num">3.</span> The screen workflow</h2>
+
+<p>The rules-engine screens form one cycle. You <em>author</em> rules, a <em>re-derive</em>
+publishes them, you <em>act</em> on the results, performance data lets you
+<em>measure</em>, and that sends you back to authoring. Trace sits in the middle as the
+inspector you can open from anywhere.</p>
+
+<figure class="fig">
+<svg class="diagram" viewBox="0 0 680 512" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>Rules engine screen workflow cycle</title>
+<desc>A four-stage cycle: authoring screens edit rule definitions, a re-derive step applies them, decision screens act on the results, the performance screen measures outcomes, and that feeds back to authoring. The Trace screen sits in the center as an inspector.</desc>
+<defs>
+<marker id="arrowC" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6"/>
+</marker>
+</defs>
+<rect class="c-blue" x="172" y="26" width="13" height="13" rx="2"/>
+<text class="ts" x="192" y="33" dominant-baseline="central">Screens you drive</text>
+<rect class="c-amber" x="350" y="26" width="13" height="13" rx="2"/>
+<text class="ts" x="370" y="33" dominant-baseline="central">Results</text>
+<rect class="box" x="448" y="26" width="13" height="13" rx="2"/>
+<text class="ts" x="468" y="33" dominant-baseline="central">Automated step</text>
+<line class="arr" x1="340" y1="250" x2="340" y2="150" stroke-dasharray="3 3"/>
+<line class="arr" x1="340" y1="336" x2="340" y2="398" stroke-dasharray="3 3"/>
+<line class="arr" x1="406" y1="290" x2="466" y2="276" stroke-dasharray="3 3"/>
+<line class="arr" x1="274" y1="290" x2="214" y2="276" stroke-dasharray="3 3"/>
+<path class="arr" d="M452 100 Q560 118 561 224" fill="none" marker-end="url(#arrowC)"/>
+<path class="arr" d="M561 322 Q561 432 456 444" fill="none" marker-end="url(#arrowC)"/>
+<path class="arr" d="M224 444 Q119 432 119 322" fill="none" marker-end="url(#arrowC)"/>
+<path class="arr" d="M119 224 Q119 116 224 102" fill="none" marker-end="url(#arrowC)"/>
+<text class="ts" x="606" y="158" text-anchor="middle" dominant-baseline="central">publish</text>
+<text class="ts" x="606" y="388" text-anchor="middle" dominant-baseline="central">fresh data</text>
+<text class="ts" x="74" y="388" text-anchor="middle" dominant-baseline="central">decisions</text>
+<text class="ts" x="74" y="158" text-anchor="middle" dominant-baseline="central">tune</text>
+<g class="c-blue">
+<rect x="230" y="56" width="220" height="92" rx="10"/>
+<text class="th" x="340" y="83" text-anchor="middle" dominant-baseline="central">Author</text>
+<text class="ts" x="340" y="106" text-anchor="middle" dominant-baseline="central">Rules &middot; Groups &middot; Composite Edit</text>
+<text class="ts" x="340" y="126" text-anchor="middle" dominant-baseline="central">edit ref_trig_* definitions</text>
+</g>
+<g class="box">
+<rect x="466" y="228" width="196" height="92" rx="10"/>
+<text class="th" x="564" y="255" text-anchor="middle" dominant-baseline="central">Re-derive</text>
+<text class="ts" x="564" y="278" text-anchor="middle" dominant-baseline="central">rebuild_rules.py or the</text>
+<text class="ts" x="564" y="298" text-anchor="middle" dominant-baseline="central">next ETL load cascade</text>
+</g>
+<g class="c-blue">
+<rect x="230" y="400" width="220" height="92" rx="10"/>
+<text class="th" x="340" y="427" text-anchor="middle" dominant-baseline="central">Act</text>
+<text class="ts" x="340" y="450" text-anchor="middle" dominant-baseline="central">Cockpit &middot; Actionable &mdash; see fires,</text>
+<text class="ts" x="340" y="470" text-anchor="middle" dominant-baseline="central">log DONE / SKIP / SNOOZE</text>
+</g>
+<g class="c-amber">
+<rect x="18" y="228" width="196" height="92" rx="10"/>
+<text class="th" x="116" y="255" text-anchor="middle" dominant-baseline="central">Measure</text>
+<text class="ts" x="116" y="278" text-anchor="middle" dominant-baseline="central">Rule Performance &mdash;</text>
+<text class="ts" x="116" y="298" text-anchor="middle" dominant-baseline="central">hit rate &amp; forward P&amp;L</text>
+</g>
+<g class="box">
+<rect x="274" y="250" width="132" height="86" rx="10"/>
+<text class="th" x="340" y="276" text-anchor="middle" dominant-baseline="central">Trace</text>
+<text class="ts" x="340" y="298" text-anchor="middle" dominant-baseline="central">inspect any</text>
+<text class="ts" x="340" y="316" text-anchor="middle" dominant-baseline="central">symbol + date</text>
+</g>
+</svg>
+<figcaption>Figure 3 &mdash; the author &rarr; derive &rarr; act &rarr; measure loop, with Trace as the inspector.</figcaption>
+</figure>
+
+<h2><span class="num">4.</span> Screen-by-screen reference</h2>
+
+<p>The app serves 16 screens. They fall into four roles: <span class="tag tag-decide">Decide</span>
+screens where you make calls, <span class="tag tag-author">Author</span> screens that
+write rule definitions, <span class="tag tag-observe">Observe</span> screens that read
+back what the engine did, and <span class="tag tag-ops">Ops</span> screens for the data
+pipeline itself.</p>
+
+<table>
+<thead>
+<tr><th>Route</th><th>Screen</th><th>Role</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>/</code></td><td>Dashboard</td><td><span class="tag tag-decide">Decide</span></td>
+  <td>Market-overview screen. Fans in seven feeds &mdash; ticker grid, index bar, outlook banner, briefing card, economic indicators, earnings, quad periods. Situational context, not symbol-level actions.</td>
+</tr>
+<tr>
+  <td><code>/cockpit</code></td><td>Cockpit</td><td><span class="tag tag-decide">Decide</span></td>
+  <td>Per-symbol drilldown over <code>drv_stks</code>. A filterable actions table; clicking a row shows the price chart plus the <em>raw</em> atomic and composite rules that fired. Records decisions to <code>/api/actions</code>.</td>
+</tr>
+<tr>
+  <td><code>/actionable</code></td><td>Actionable</td><td><span class="tag tag-decide">Decide</span></td>
+  <td>The consolidated work queue over <code>drv_actionable</code> &mdash; one resolved action per symbol after rule-groups and position-rule suppression. Chips by category, per-source breakdown, forensic decision logging.</td>
+</tr>
+<tr>
+  <td><code>/portfolio</code></td><td>Portfolio</td><td><span class="tag tag-decide">Decide</span></td>
+  <td>Held positions across Fidelity and Schwab, with a latest-prices toggle, Schwab-style Today's Gain, and FIFO realized P&amp;L.</td>
+</tr>
+<tr>
+  <td><code>/rules</code></td><td>Rules</td><td><span class="tag tag-author">Author</span></td>
+  <td>CRUD editor for atomic rules and composite rules, with dry-run preview against live data. Deletes are soft (<code>deprecated_at</code>).</td>
+</tr>
+<tr>
+  <td><code>/groups</code></td><td>Rule Groups</td><td><span class="tag tag-author">Author</span></td>
+  <td>CRUD editor for rule groups and their AND/OR members. A group's winning action drives <code>drv_actionable.consolidated_action</code>.</td>
+</tr>
+<tr>
+  <td><code>/composite-edit</code></td><td>Composite Editor</td><td><span class="tag tag-author">Author</span></td>
+  <td>Focused editor for a single composite &mdash; search and attach atomic or data members, set categories and intent text, dry-run the result.</td>
+</tr>
+<tr>
+  <td><code>/trace</code></td><td>Trace</td><td><span class="tag tag-observe">Observe</span></td>
+  <td>Per-symbol rule debugger. <code>/api/trace/{sym}?date=D</code> re-evaluates every atomic and composite for one symbol+date, showing each rule's fired flag, score, tested value, and didn't-fire reason.</td>
+</tr>
+<tr>
+  <td><code>/rule-performance</code></td><td>Rule Performance</td><td><span class="tag tag-observe">Observe</span></td>
+  <td>The feedback-loop output. <code>v_rule_performance_window</code> gives per-rule hit rate and average/median forward 5d/20d return over a configurable window.</td>
+</tr>
+<tr>
+  <td><code>/rules-health</code></td><td>Rules Health</td><td><span class="tag tag-observe">Observe</span></td>
+  <td>Rules-engine diagnostics: engine counts, latest snapshot, fire counts today vs. a 30-day baseline, atomic-rule column resolution, orphaned composites, recent derive runs.</td>
+</tr>
+<tr>
+  <td><code>/trig</code></td><td>Trig</td><td><span class="tag tag-observe">Observe</span></td>
+  <td>Raw viewer over <code>drv_trig</code> &mdash; the per-(date, symbol, composite) score and triggered flag.</td>
+</tr>
+<tr>
+  <td><code>/file-monitor</code></td><td>File Monitor</td><td><span class="tag tag-ops">Ops</span></td>
+  <td>ETL pipeline monitor &mdash; load schedule, ETL runs, derive runs, a live SSE feed, scheduler start/stop, plus Reprocess and Run Missing Derives.</td>
+</tr>
+<tr>
+  <td><code>/ref</code></td><td>Ref Tables</td><td><span class="tag tag-ops">Ops</span></td>
+  <td>Inline-edit maintenance for the reference (<code>ref_*</code>) lookup tables.</td>
+</tr>
+<tr>
+  <td><code>/explore</code></td><td>Explore</td><td><span class="tag tag-ops">Ops</span></td>
+  <td>Generic data explorer &mdash; browse the rows of any table for a chosen snapshot date.</td>
+</tr>
+<tr>
+  <td><code>/dbstats</code></td><td>DB Stats</td><td><span class="tag tag-ops">Ops</span></td>
+  <td>Database statistics &mdash; table row counts and a per-symbol comparison view.</td>
+</tr>
+<tr>
+  <td><code>/test-results</code></td><td>Test Results</td><td><span class="tag tag-ops">Ops</span></td>
+  <td>Dashboard rendering <code>docs/test_results.json</code> from the pytest <code>--json-report</code> run.</td>
+</tr>
+</tbody>
+</table>
+
+<h2><span class="num">5.</span> Where the logic lives</h2>
+
+<table>
+<thead>
+<tr><th>Concern</th><th>File</th></tr>
+</thead>
+<tbody>
+<tr><td>Atomic scoring (jump / linear / sigmoid)</td><td><code>etl/derive.py::eval_atomic_rule</code></td></tr>
+<tr><td>Composite + group evaluation per symbol</td><td><code>etl/derive.py::_derive_stks_impl</code></td></tr>
+<tr><td>Precondition expression parser</td><td><code>etl/derive.py::_eval_precondition</code></td></tr>
+<tr><td>Per-(symbol, composite) score table</td><td><code>etl/derive.py::_derive_trig_impl</code></td></tr>
+<tr><td>Recursive rule-group evaluation</td><td><code>etl/rule_groups.py::eval_rule_group</code></td></tr>
+<tr><td>Action resolver + suppression + sizing</td><td><code>etl/derive_actionable.py</code></td></tr>
+<tr><td>Position rule / category resolver</td><td><code>etl/position_rules.py</code></td></tr>
+<tr><td>Per-source outlook actions</td><td><code>etl/derive_outlook_action.py</code></td></tr>
+<tr><td>Feedback loop (hit rate, forward returns)</td><td><code>etl/compute_outcomes.py</code></td></tr>
+<tr><td>The derive cascade</td><td><code>etl/derive.py::derive_all</code></td></tr>
+<tr><td>One-command rules rebuild</td><td><code>etl/rebuild_rules.py</code></td></tr>
+<tr><td>Rules / Groups / Trace / Performance APIs</td><td><code>api/routers/rules.py</code>, <code>api/routers/trace.py</code></td></tr>
+</tbody>
+</table>
+
+<footer>
+Generated by Claude on 2026-05-21 from a read of the trading-dashboard source.
+For the column-level <code>hist_* &rarr; drv_*</code> lineage and the prose code
+walkthrough of the Actionable screen, see <code>docs/Screen_and_DataFlow_Reference.md</code>
+and <code>docs/drv_column_lineage_mapping.xlsx</code>.
+</footer>
+
+</div>
+</body>
+</html>

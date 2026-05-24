@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Monitor — Trading Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css">
+<style>
+  /* ── File Monitor: viewport-locked, no page scroll ──────────────── */
+  body { overflow: hidden; }
+
+  main {
+    height: calc(100vh - 60px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 16px;
+    gap: 10px;
+    box-sizing: border-box;
+    margin: 0;
+  }
+
+#fm-tables {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+  }
+
+  /* Left column: Schedule + Derive stacked */
+  .fm-col {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    gap: 10px;
+  }
+
+  .fm-section {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+  }
+
+  /* ETL Loads — wider right column */
+  .fm-section.fm-lg { flex: 0.8; }
+
+  .fm-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    margin-bottom: 5px;
+  }
+  .fm-section-header h2 {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-2);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  /* let flex drive height — override the global 70vh cap */
+  .fm-section .table-wrap {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+  }
+
+  #lastRefreshed { flex-shrink: 0; }
+
+  /* Live processing banner */
+  #liveBanner {
+    flex-shrink: 0;
+    display: none;
+    align-items: center;
+    gap: 14px;
+    padding: 7px 14px;
+    border-radius: 6px;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  .live-spinner {
+    display: inline-block;
+    animation: spin 0.8s linear infinite;
+    font-size: 14px;
+    color: #d97706;
+  }
+  .btn.spinning {
+    animation: spin 0.6s linear infinite;
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="dot"></span>
+    <h1>Trading Dashboard</h1>
+  </div>
+  <nav class="nav-menu">
+    <a href="/" class="nav-item">Dashboard</a>
+    <a href="/cockpit" class="nav-item">Cockpit</a>
+    <a href="/actionable" class="nav-item">Actionable</a>
+    <a href="/portfolio" class="nav-item">Portfolio</a>
+    <a href="/rules" class="nav-item">Rules</a>
+    <a href="/groups" class="nav-item">Rule Groups</a>
+    <a href="/rule-performance" class="nav-item">Performance</a>
+    <a href="/trace" class="nav-item">Trace</a>
+    <a href="/explore" class="nav-item">Explore</a>
+    <a href="/ref" class="nav-item">Ref Data</a>
+    <a href="/dbstats" class="nav-item">DB Stats</a>
+    <a href="/file-monitor" class="nav-item active">File Monitor</a>
+  </nav>
+  <div class="controls">
+    <span id="refreshCountdown" style="min-width: 150px;"></span>
+    <button id="refreshBtn" class="btn">Refresh</button>
+    <span id="health" class="badge badge-ok">●</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- Combined status bar: scheduler + KPIs + auto-start -->
+  <div id="schedulerBar" style="flex-shrink:0;display:flex;align-items:center;gap:12px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card-bg);font-size:12px;">
+
+    <!-- ETL Scheduler status (start manually via `python -m etl.scheduler`) -->
+    <span id="schedulerDot" style="width:10px;height:10px;border-radius:50%;background:var(--text-3);flex-shrink:0;"></span>
+    <span id="schedulerText" style="color:var(--text-2);">Checking scheduler…</span>
+    <span id="schedulerHint" style="color:var(--text-3); font-size:11px; font-style:italic;"></span>
+    <!-- Buttons removed: start via `python -m etl.scheduler` from a terminal.
+         Buttons hidden (display:none) so any JS that still references them won't fail. -->
+    <button id="startSchedulerBtn" style="display:none;"></button>
+    <button id="stopSchedulerBtn"  style="display:none;"></button>
+
+    <!-- KPI summary -->
+    <span style="color:var(--border);font-size:16px;line-height:1;">|</span>
+    <span style="color:var(--text-3);">Sched</span> <strong id="ki-scheduled" style="font-size:12px;">—</strong>
+    <span style="color:var(--text-3);">·</span>
+    <span style="color:var(--text-3);">Done</span> <strong id="ki-processed" style="font-size:12px;">—</strong>
+    <span style="color:var(--text-3);">·</span>
+    <span style="color:var(--text-3);">Running</span> <strong id="ki-running" style="font-size:12px;">—</strong>
+    <span style="color:var(--text-3);">·</span>
+    <span style="color:var(--text-3);">Errors</span> <strong id="ki-errors" style="font-size:12px;">—</strong>
+    <span style="color:var(--text-3);">·</span>
+    <span style="color:var(--text-3);">Derives</span> <strong id="ki-derives" style="font-size:12px;">—</strong>
+    <span style="color:var(--text-3);">·</span>
+    <span style="color:var(--text-3);font-size:11px;">last</span>
+    <select id="missingDerivesDays" title="Limit to dates within the last N days"
+            style="font-size:11px;padding:1px 4px;">
+        <option value="1">1</option>
+        <option value="3">3</option>
+        <option value="7" selected>7</option>
+        <option value="14">14</option>
+        <option value="30">30</option>
+        <option value="60">60</option>
+        <option value="90">90</option>
+    </select>
+    <span style="color:var(--text-3);font-size:11px;">days</span>
+    <button id="runMissingDerivesBtn" class="btn btn-sm" title="Find dates with hist_* data but no derive run, then run derive_all oldest→newest"
+            style="font-size:11px;padding:2px 8px;">Run Missing Derives</button>
+    <button id="forceRederiveBtn" class="btn btn-sm" title="Re-derive every already-derived date in the last N days (re-applies derive-code changes)"
+            style="font-size:11px;padding:2px 8px;">Force Re-derive</button>
+    <span id="missingDerivesStatus" style="color:var(--text-2);font-size:11px;"></span>
+    <button id="runStaleDerivesBtn" class="btn btn-sm" title="Find stale drv_actionable dates (newer source data loaded after they were derived) and re-derive them"
+            style="font-size:11px;padding:2px 8px;">Run Stale Derives</button>
+    <span id="staleDerivesStatus" style="color:var(--text-2);font-size:11px;"></span>
+    <span style="color:var(--text-3);">·</span>
+    <span style="color:var(--text-3);">Last</span> <strong id="ki-last" style="font-size:12px;">—</strong>
+
+    <!-- Auto-start: ETL Scheduler task -->
+    <span style="margin-left:auto;color:var(--border);font-size:16px;line-height:1;">|</span>
+    <span id="startupSchedDot" style="width:10px;height:10px;border-radius:50%;background:var(--text-3);flex-shrink:0;"></span>
+    <span id="startupSchedText" style="color:var(--text-2);">Scheduler auto-start…</span>
+    <button id="registerSchedBtn" class="btn btn-sm" style="display:none;">Register Scheduler</button>
+
+    <!-- Auto-start: Trading App task -->
+    <span style="color:var(--border);font-size:16px;line-height:1;">|</span>
+    <span id="startupAppDot" style="width:10px;height:10px;border-radius:50%;background:var(--text-3);flex-shrink:0;"></span>
+    <span id="startupAppText" style="color:var(--text-2);">App auto-start…</span>
+    <button id="registerAppBtn" class="btn btn-sm" style="display:none;">Register App</button>
+    <button id="unregisterBtn"  class="btn btn-sm" style="display:none;">Unregister Both</button>
+
+  </div>
+
+  <!-- Live processing banner — shown only when ETL is running -->
+  <div id="liveBanner">
+    <span class="live-spinner">⟳</span>
+    <span style="color:#92400e;font-weight:700;letter-spacing:0.04em;">PROCESSING</span>
+    <span style="color:var(--border);">|</span>
+    <div id="liveJobs" style="display:flex;flex-wrap:wrap;gap:16px;flex:1;"></div>
+  </div>
+
+  <!-- Three grids share the remaining vertical space -->
+  <div id="fm-tables">
+
+    <!-- Left column: Schedule (top) + Scheduler Output (bottom) -->
+    <div class="fm-col" style="flex: 1.5;">
+
+      <div class="fm-section" style="flex:1.5;">
+        <div class="fm-section-header">
+          <h2>Today's Schedule <span id="scheduleDate" style="font-weight:400;color:var(--text-3);text-transform:none;letter-spacing:0;font-size:11px;"></span></h2>
+        </div>
+        <div class="table-wrap">
+          <table id="scheduleTable">
+            <thead>
+              <tr>
+                <th>File Type</th>
+                <th>Target Tab</th>
+                <th>Week</th>
+                <th>Sched Time</th>
+                <th>Status</th>
+                <th>Last 5</th>
+                <th>File Date</th>
+                <th>Processed At</th>
+                <th>File</th>
+                <th class="num">Rows In</th>
+                <th style="width:30px;">Re</th>
+              </tr>
+            </thead>
+            <tbody id="scheduleBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Scheduler Output Grid -->
+      <div class="fm-section">
+        <div class="fm-section-header">
+          <h2>Scheduler Output</h2>
+          <div style="display:flex;gap:12px;align-items:center;margin-left:auto;">
+            <select id="schedulerLevelFilter" class="btn" style="padding:3px 8px;">
+              <option value="">All levels</option>
+              <option value="ERROR">Errors</option>
+              <option value="WARNING">Warnings</option>
+              <option value="INFO">Info</option>
+            </select>
+            <select id="schedulerFileFilter" class="btn" style="padding:3px 8px;">
+              <option value="">All files</option>
+            </select>
+            <span id="refreshCountdown" style="font-size:11px;color:var(--text-3);"></span>
+          </div>
+        </div>
+        <div class="table-wrap" style="flex:1;overflow-y:auto;">
+          <div id="schedulerOutputGrid" style="font-family:monospace;font-size:11px;color:var(--text-2);line-height:1.4;">
+            <div style="color:var(--text-3);padding:8px;">Loading scheduler output...</div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- .fm-col -->
+
+    <!-- Right column: Derive Pipeline (top) and ETL Loads (bottom) -->
+    <div class="fm-col">
+
+      <!-- Derive Pipeline Grid -->
+      <div class="fm-section">
+        <div class="fm-section-header">
+          <h2>Derive Pipeline — Today</h2>
+        </div>
+        <div class="table-wrap">
+          <table id="deriveTable">
+            <thead>
+              <tr>
+                <th>Run ID</th>
+                <th>Started</th>
+                <th>As-of Date</th>
+                <th>Target Table</th>
+                <th>Status</th>
+                <th class="num">Rows Built</th>
+                <th>Duration</th>
+              </tr>
+            </thead>
+            <tbody id="deriveBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Recent ETL Loads Grid -->
+      <div class="fm-section">
+        <div class="fm-section-header">
+          <h2>Recent ETL Loads</h2>
+          <div style="display:flex;gap:12px;align-items:center;margin-left:auto;">
+            <span id="lastRefreshed" style="font-size:11px;color:var(--text-3);"></span>
+            <select id="limitSelect" class="btn" style="padding:3px 8px;">
+              <option value="25">Last 25</option>
+              <option value="50" selected>Last 50</option>
+              <option value="100">Last 100</option>
+              <option value="250">Last 250</option>
+            </select>
+            <select id="fileTypeFilter" class="btn" style="padding:3px 8px;">
+              <option value="">All file types</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="etlTable">
+            <thead>
+              <tr>
+                <th>Run ID</th>
+                <th>Started</th>
+                <th>File Type</th>
+                <th>Target</th>
+                <th>File</th>
+                <th>Status</th>
+                <th class="num">Rows In</th>
+                <th class="num">Skip</th>
+                <th>Duration</th>
+              </tr>
+            </thead>
+            <tbody id="etlBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+</div>
+
+</main>
+
+<!-- File Logs popup (shown when a File cell in the schedule is clicked) -->
+<div id="fileLogsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:6px;width:min(900px,92vw);max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.25);">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);">
+      <h3 id="fileLogsTitle" style="margin:0;font-size:13px;">File logs</h3>
+      <button id="fileLogsClose" class="btn btn-sm" title="Close" style="font-size:11px;padding:2px 8px;">x</button>
+    </div>
+    <div id="fileLogsBody" style="overflow:auto;flex:1;font-family:monospace;font-size:11px;color:var(--text-2);line-height:1.4;padding:8px 12px;"></div>
+  </div>
+</div>
+
+<script src="/static/_common.js"></script>
+<script src="/static/file_monitor.js"></script>
+<script src="/static/health_banner.js"></script>
+</body>
+</html>

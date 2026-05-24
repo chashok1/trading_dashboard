@@ -1,0 +1,142 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rule Performance â€” Trading Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        .performance-header {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .performance-header select {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .perf-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .perf-table thead {
+            background: #fafaf8;
+            position: sticky;
+            top: 0;
+        }
+        .perf-table th {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+        }
+        .perf-table th:hover {
+            background: #f0f0ed;
+        }
+        .perf-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .perf-table tbody tr:hover {
+            background: #fafaf8;
+            cursor: pointer;
+        }
+        .hit-rate {
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-weight: 600;
+            text-align: center;
+            color: white;
+            min-width: 60px;
+        }
+        .hit-rate.high { background: #22c55e; }
+        .hit-rate.medium { background: #eab308; }
+        .hit-rate.low { background: #ef4444; }
+        .sort-indicator {
+            display: inline-block;
+            margin-left: 4px;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <div class="brand">
+            <span class="dot"></span>
+            <h1>Trading Dashboard</h1>
+        </div>
+        <nav class="nav-menu">
+            <a href="/" class="nav-item">Dashboard</a>
+            <a href="/cockpit" class="nav-item">Cockpit</a>
+            <a href="/actionable" class="nav-item">Actionable</a>
+            <a href="/portfolio" class="nav-item">Portfolio</a>
+            <a href="/rules" class="nav-item">Rules</a>
+      <a href="/groups" class="nav-item">Rule Groups</a>
+            <a href="/rule-performance" class="nav-item active">Performance</a>
+            <a href="/trace" class="nav-item">Trace</a>
+            <a href="/explore" class="nav-item">Explore</a>`n      <a href="/file-monitor" class="nav-item">File Monitor</a>`n      <a href="/ref" class="nav-item">Ref Data</a>
+            <a href="/dbstats" class="nav-item">DB Stats</a>
+        </nav>
+        <div class="controls">
+            <label for="datePicker">As of</label>
+            <select id="datePicker" aria-label="snapshot date"></select>
+            <button id="refreshBtn" class="btn">Refresh</button>
+            <span id="health" class="badge badge-ok" title="API health">●</span>
+        </div>
+    </header>
+
+    <main>
+        <div class="card">
+            <div class="performance-header">
+                <label>Sort by:</label>
+                <select id="sortSelect" onchange="changeSortBy(this.value)">
+                    <option value="hit_rate">Hit Rate</option>
+                    <option value="sample_size">Sample Size</option>
+                    <option value="rule_id">Rule ID</option>
+                    <option value="avg_fwd_5d">Avg 5D Return</option>
+                </select>
+            </div>
+
+            <div class="scrollable-table-container">
+                <table class="perf-table">
+                    <thead>
+                        <tr>
+                            <th onclick="sortBy('rule_id')">Rule ID <span class="sort-indicator"></span></th>
+                            <th onclick="sortBy('rule_kind')">Kind <span class="sort-indicator"></span></th>
+                            <th onclick="sortBy('sample_size')">Sample Size <span class="sort-indicator"></span></th>
+                            <th onclick="sortBy('hit_rate')">Hit Rate <span class="sort-indicator"></span></th>
+                            <th onclick="sortBy('false_positive_rate')">False Pos <span class="sort-indicator"></span></th>
+                            <th onclick="sortBy('avg_fwd_5d')">Avg 5D Return <span class="sort-indicator"></span></th>
+                            <th onclick="sortBy('avg_fwd_20d')">Avg 20D Return <span class="sort-indicator"></span></th>
+                            <th>Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="perfTableBody">
+                        <tr>
+                            <td colspan="8" style="text-align: center; padding: 20px; color: var(--text-3);">
+                                Loading performance data...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script src="/static/_common.js"></script>
+    <script src="/static/rule_performance.js"></script>
+    <script src="/static/health_banner.js"></script>
+  <script src="/static/warning_badge.js"></script>
+</body>
+</html>
+
+
+
+

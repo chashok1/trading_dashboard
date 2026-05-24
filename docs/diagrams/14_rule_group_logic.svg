@@ -1,0 +1,91 @@
+<svg width="100%" viewBox="0 0 680 880" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Rule group evaluation logic</title>
+  <desc>Vertical logic diagram of the rule-group evaluation pipeline: fired composite IDs from drv_stks feed eval_rule_group which resolves members under AND/OR logic; fired action groups become synthetic RULES: candidates that compete with outlook-source actions in derive_actionable to produce drv_actionable.</desc>
+  <style>
+  svg{background:#ffffff;}
+  text{font-family:'Segoe UI',Arial,Helvetica,sans-serif;fill:#57564E;}
+  .th{font-size:14px;font-weight:600;}
+  .ts{font-size:11.5px;}
+  .tsx{font-size:10.5px;}
+  .arr{stroke:#888780;stroke-width:1.6;fill:none;}
+  .box rect{fill:#F1EFE8;stroke:#888780;stroke-width:1.2;}
+  .box .th{fill:#2C2C2A;}.box .ts{fill:#4D4C48;}.box .tsx{fill:#4D4C48;}
+  .c-blue rect{fill:#E6F1FB;stroke:#378ADD;stroke-width:1.2;}
+  .c-blue .th{fill:#042C53;}.c-blue .ts{fill:#0C447C;}.c-blue .tsx{fill:#0C447C;}
+  .c-amber rect{fill:#FAEEDA;stroke:#854F0B;stroke-width:1.2;}
+  .c-amber .th{fill:#412402;}.c-amber .ts{fill:#633806;}
+  rect.s-blue{fill:#85B7EB;stroke:#185FA5;stroke-width:1;}
+  rect.s-amber{fill:#EF9F27;stroke:#854F0B;stroke-width:1;}
+  rect.s-gray{fill:#B4B2A9;stroke:#5F5E5A;stroke-width:1;}
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6"/>
+    </marker>
+  </defs>
+
+  <rect class="s-blue" x="150" y="24" width="13" height="13" rx="2"/>
+  <text class="ts" x="170" y="31" dominant-baseline="central">Logic step</text>
+  <rect class="s-amber" x="300" y="24" width="13" height="13" rx="2"/>
+  <text class="ts" x="320" y="31" dominant-baseline="central">Derived table</text>
+  <rect class="s-gray" x="470" y="24" width="13" height="13" rx="2"/>
+  <text class="ts" x="490" y="31" dominant-baseline="central">Input / config</text>
+
+  <!-- Box 1: drv_stks input -->
+  <g class="c-amber">
+    <rect x="40" y="52" width="600" height="68" rx="10"/>
+    <text class="th" x="340" y="76" text-anchor="middle" dominant-baseline="central">drv_stks — per-symbol rules-engine output</text>
+    <text class="ts" x="340" y="100" text-anchor="middle" dominant-baseline="central">triggered_composite_ids JSONB: [{rule_id: code, ...}, ...]  ·  one row per (symbol, date)</text>
+  </g>
+  <line class="arr" x1="340" y1="121" x2="340" y2="156" marker-end="url(#arrow)"/>
+
+  <!-- Box 2: Build composite_results -->
+  <g class="c-blue">
+    <rect x="40" y="158" width="600" height="68" rx="10"/>
+    <text class="th" x="340" y="182" text-anchor="middle" dominant-baseline="central">1 &#183; Build composite_results — derive_actionable.py</text>
+    <text class="ts" x="340" y="206" text-anchor="middle" dominant-baseline="central">for each symbol: extract rule_id strings → composite_results = {code: True}</text>
+  </g>
+  <line class="arr" x1="340" y1="227" x2="340" y2="262" marker-end="url(#arrow)"/>
+
+  <!-- Box 3: eval_rule_group -->
+  <g class="c-blue">
+    <rect x="40" y="264" width="600" height="202" rx="10"/>
+    <text class="th" x="340" y="288" text-anchor="middle" dominant-baseline="central">2 &#183; eval_rule_group — etl/rule_groups.py</text>
+    <text class="ts" x="340" y="312" text-anchor="middle" dominant-baseline="central">called once per non-deprecated action group per symbol</text>
+    <text class="tsx" x="340" y="338" text-anchor="middle" dominant-baseline="central">fetch ref_trig_rule_group row (skip deprecated_at IS NOT NULL)</text>
+    <text class="tsx" x="340" y="358" text-anchor="middle" dominant-baseline="central">fetch ref_trig_group_member rows ordered by sequence</text>
+    <text class="tsx" x="340" y="378" text-anchor="middle" dominant-baseline="central">member_type='composite' → composite_results.get(member_code, False)</text>
+    <text class="tsx" x="340" y="398" text-anchor="middle" dominant-baseline="central">member_type='group' → recurse (memoised in all_group_results cache)</text>
+    <text class="tsx" x="340" y="418" text-anchor="middle" dominant-baseline="central">AND short-circuit: first False AND member → return (False, None, None) immediately</text>
+    <text class="tsx" x="340" y="438" text-anchor="middle" dominant-baseline="central">final: any OR operator → any(results);  all AND → all(results, guaranteed True)</text>
+  </g>
+  <line class="arr" x1="340" y1="467" x2="340" y2="502" marker-end="url(#arrow)"/>
+
+  <!-- Box 4: action vs logical outcome -->
+  <g class="c-blue">
+    <rect x="40" y="504" width="600" height="98" rx="10"/>
+    <text class="th" x="340" y="528" text-anchor="middle" dominant-baseline="central">3 &#183; Group type determines output</text>
+    <text class="ts" x="340" y="552" text-anchor="middle" dominant-baseline="central">group_type='action':  fired → (True, action_label, priority)  →  becomes a candidate</text>
+    <text class="ts" x="340" y="572" text-anchor="middle" dominant-baseline="central">group_type='logical': fired → boolean only; consumed by parent group as a member</text>
+    <text class="ts" x="340" y="592" text-anchor="middle" dominant-baseline="central">action_label: SA · STM · SS · BM · HOLD  ·  priority: 1 (strongest) – 5 (weakest)</text>
+  </g>
+  <line class="arr" x1="340" y1="603" x2="340" y2="638" marker-end="url(#arrow)"/>
+
+  <!-- Box 5: synthetic RULES: candidate -->
+  <g class="c-blue">
+    <rect x="40" y="640" width="600" height="88" rx="10"/>
+    <text class="th" x="340" y="664" text-anchor="middle" dominant-baseline="central">4 &#183; Synthetic candidate — derive_actionable.py</text>
+    <text class="ts" x="340" y="688" text-anchor="middle" dominant-baseline="central">fired action group → source_code = 'RULES:&lt;group_code&gt;', _group_prio = priority</text>
+    <text class="ts" x="340" y="708" text-anchor="middle" dominant-baseline="central">merged with outlook-source candidates; sort: (&#8722;ACTION_RANK, priority ASC)</text>
+  </g>
+  <line class="arr" x1="340" y1="729" x2="340" y2="764" marker-end="url(#arrow)"/>
+
+  <!-- Box 6: drv_actionable output -->
+  <g class="c-amber">
+    <rect x="40" y="766" width="600" height="96" rx="10"/>
+    <text class="th" x="340" y="791" text-anchor="middle" dominant-baseline="central">drv_actionable — one row per symbol per date</text>
+    <text class="ts" x="340" y="815" text-anchor="middle" dominant-baseline="central">consolidated_action · winning_source (RULES:code or source) · winning_priority</text>
+    <text class="ts" x="340" y="835" text-anchor="middle" dominant-baseline="central">triggered_group_ids JSONB: [{rule_group_code, action, priority, category}, ...]</text>
+    <text class="ts" x="340" y="855" text-anchor="middle" dominant-baseline="central">suggested_target_dollar · suppressed_reason · source_actions JSONB</text>
+  </g>
+</svg>

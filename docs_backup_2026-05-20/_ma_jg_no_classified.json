@@ -1,0 +1,937 @@
+[
+  {
+    "letter": "JG",
+    "header": "MACDH Direction",
+    "formula": "=IF(CK2=0,-1,SIGN(CK2))",
+    "kind": "conditional",
+    "sheets": []
+  },
+  {
+    "letter": "JH",
+    "header": "MACD Direction",
+    "formula": "=IF(CI2=0,-1,SIGN(CI2))",
+    "kind": "conditional",
+    "sheets": []
+  },
+  {
+    "letter": "JI",
+    "header": "BB Direction",
+    "formula": "=AN2",
+    "kind": "other",
+    "sheets": []
+  },
+  {
+    "letter": "JJ",
+    "header": "BB Threshold",
+    "formula": "=IF(AX2=1,AW2,0)",
+    "kind": "conditional",
+    "sheets": []
+  },
+  {
+    "letter": "JK",
+    "header": "BBThresh CO Days",
+    "formula": "=_xlfn.IFS($AX2>=_xlfn.XLOOKUP(AX$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(AX$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AX2>=_xlfn.XLOOKUP(AX$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(AX$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AX2>=0, _xlfn.XLOOKUP(AX$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$AX2<(-1)*_xlfn.XLOOKUP(AX$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(AX$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AX2<(-1)*_xlfn.XLOOKUP(AX$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(AX$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AX2<0, (-1) * _xlfn.XLOOKUP(AX$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "JL",
+    "header": "BBThresh_CO_Days2",
+    "formula": "=_xlfn.IFS($AX2>=_xlfn.XLOOKUP(JL$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(JL$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AX2>=_xlfn.XLOOKUP(JL$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(JL$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AY2>=0, _xlfn.XLOOKUP(JL$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$AX2<(-1)*_xlfn.XLOOKUP(JL$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(JL$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AX2<(-1)*_xlfn.XLOOKUP(JL$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(JL$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AY2<0, (-1) * _xlfn.XLOOKUP(JL$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "JM",
+    "header": "Trade Cross Over",
+    "formula": "=_xlfn.IFS(AND(D2>AF2,AF2>MIN(EF2,J2)), 1, AND(MAX(EF2,I2)>AF2,AF2>D2), -1, TRUE,0)",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "JN",
+    "header": "Trade-Rule",
+    "formula": "=_xlfn.IFS($AH2>=_xlfn.XLOOKUP(AH$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(AH$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AH2>=_xlfn.XLOOKUP(AH$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(AH$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AH2>=0, _xlfn.XLOOKUP(AH$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$AH2<(-1)*_xlfn.XLOOKUP(AH$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(AH$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AH2<(-1)*_xlfn.XLOOKUP(AH$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(AH$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AH2<0, (-1) * _xlfn.XLOOKUP(AH$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "JO",
+    "header": "!Trade Rule",
+    "formula": "=(-1)*JN2",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "JP",
+    "header": "Trend Cross Over",
+    "formula": "=_xlfn.IFS(AND(D2>AE2,AE2>MIN(BZ2,EF2,J2)), 1, AND(MAX(BZ2,EF2,I2)>AE2,AE2>D2), -1, TRUE,0)",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "JQ",
+    "header": "Trend-Rule",
+    "formula": "=_xlfn.IFS($AG2>=_xlfn.XLOOKUP(AG$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(AG$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AG2>=_xlfn.XLOOKUP(AG$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(AG$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AG2>=0, _xlfn.XLOOKUP(AG$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$AG2<(-1)*_xlfn.XLOOKUP(AG$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(AG$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AG2<(-1)*_xlfn.XLOOKUP(AG$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(AG$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AG2<0, (-1) * _xlfn.XLOOKUP(AG$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "JR",
+    "header": "!Trend Rule",
+    "formula": "=(-1)*JQ2",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "JS",
+    "header": "Trend Trade Dep Rule",
+    "formula": "=IF(AE2<=AF2,JQ2,JN2)",
+    "kind": "conditional",
+    "sheets": []
+  },
+  {
+    "letter": "JT",
+    "header": "TrTn Relation",
+    "formula": "=IF(AE2<=AF2,1,-1)",
+    "kind": "conditional",
+    "sheets": []
+  },
+  {
+    "letter": "JU",
+    "header": "!TrTn Relation",
+    "formula": "=(-1)*JT2",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "JV",
+    "header": "Trade Trend SD Rule",
+    "formula": "=_xlfn.IFS($AI2>_xlfn.XLOOKUP(AI$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(AI$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AI2>_xlfn.XLOOKUP(AI$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(AI$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AI2>0, _xlfn.XLOOKUP(AI$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$AI2<(-1)*_xlfn.XLOOKUP(AI$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(AI$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AI2<(-1)*_xlfn.XLOOKUP(AI$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(AI$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AI2<0, (-1) * _xlfn.XLOOKUP(AI$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "JW",
+    "header": "BRR% Rule",
+    "formula": "=_xlfn.IFS($EE2<=_xlfn.XLOOKUP(JW$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(JW$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), $EE2<=_xlfn.XLOOKUP(JW$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(JW$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), EE2>=_xlfn.XLOOKUP(JW$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(JW$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"),TRUE,0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "JX",
+    "header": "BRR% LRR",
+    "formula": "=_xlfn.IFS($EE2<=_xlfn.XLOOKUP(JX$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(JX$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), $EE2<=_xlfn.XLOOKUP(JX$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(JX$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), EE2>=_xlfn.XLOOKUP(JX$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(JX$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"),TRUE,0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "JY",
+    "header": "BRR% R2",
+    "formula": "=_xlfn.IFS($EE2<=_xlfn.XLOOKUP(JY$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(JY$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), $EE2<=_xlfn.XLOOKUP(JY$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(JY$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), EE2>=_xlfn.XLOOKUP(JY$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(JY$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"),TRUE,0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "JZ",
+    "header": "BRR% LRR2",
+    "formula": "=_xlfn.IFS($EE2<=_xlfn.XLOOKUP(JZ$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(JZ$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), $EE2<=_xlfn.XLOOKUP(JZ$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(JZ$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), $EE2>=_xlfn.XLOOKUP(JZ$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(JZ$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"),TRUE,0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KA",
+    "header": "BRR% TRR",
+    "formula": "=_xlfn.IFS($EE2<=_xlfn.XLOOKUP(KA$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(KA$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), $EE2<=_xlfn.XLOOKUP(KA$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KA$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), EE2>=_xlfn.XLOOKUP(KA$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KA$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"),TRUE,0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KB",
+    "header": "BRR% Puts",
+    "formula": "=_xlfn.IFS($EE2<=_xlfn.XLOOKUP(KB$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"),  _xlfn.XLOOKUP(KB$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), $EE2<=_xlfn.XLOOKUP(KB$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KB$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), EE2>=_xlfn.XLOOKUP(KB$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"),  _xlfn.XLOOKUP(KB$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"),TRUE,0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KC",
+    "header": "BRR% TRR Puts",
+    "formula": "=_xlfn.IFS($EE2<=_xlfn.XLOOKUP(KC$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"),  _xlfn.XLOOKUP(KC$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), $EE2<=_xlfn.XLOOKUP(KC$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KC$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), EE2>=_xlfn.XLOOKUP(KC$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"),  _xlfn.XLOOKUP(KC$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"),TRUE,0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KD",
+    "header": "BRR% Dir",
+    "formula": "=_xlfn.IFS(AND(JI2=1,JG2=1), JW2, AND(JI2=-1,JG2=-1),KB2, LG2>0, JW2, LG2<0, KB2)",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "KE",
+    "header": "High TRR",
+    "formula": "=_xlfn.IFS($EO2>=_xlfn.XLOOKUP(KE$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KE$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $EO2>=_xlfn.XLOOKUP(KE$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(KE$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), TRUE, _xlfn.XLOOKUP(KE$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KF",
+    "header": "Low LRR",
+    "formula": "=_xlfn.IFS($EP2>=_xlfn.XLOOKUP(KF$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KF$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $EP2>=_xlfn.XLOOKUP(KF$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(KF$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), TRUE, _xlfn.XLOOKUP(KF$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KG",
+    "header": "Trend below TRR",
+    "formula": "=IF(EQ2<0,-1,0)",
+    "kind": "conditional",
+    "sheets": []
+  },
+  {
+    "letter": "KH",
+    "header": "LRR above Trade",
+    "formula": "=IF(ER2>0,1,0)",
+    "kind": "conditional",
+    "sheets": []
+  },
+  {
+    "letter": "KI",
+    "header": "TRR_Idx",
+    "formula": "=_xlfn.IFS($ES2>=_xlfn.XLOOKUP(KI$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KI$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $ES2>=_xlfn.XLOOKUP(KI$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(KI$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), TRUE, _xlfn.XLOOKUP(KI$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KJ",
+    "header": "MRR_Idx",
+    "formula": "=_xlfn.IFS($ET2>=_xlfn.XLOOKUP(KJ$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KJ$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $ET2>=_xlfn.XLOOKUP(KJ$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(KJ$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), TRUE, _xlfn.XLOOKUP(KJ$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KK",
+    "header": "LRR_Idx",
+    "formula": "=_xlfn.IFS($EU2>=_xlfn.XLOOKUP(KK$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KK$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $EU2>=_xlfn.XLOOKUP(KK$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(KK$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), TRUE, _xlfn.XLOOKUP(KK$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KL",
+    "header": "HVAbsolute",
+    "formula": "=_xlfn.IFS($CV2>=_xlfn.XLOOKUP(KL$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KL$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $CV2>=_xlfn.XLOOKUP(KL$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(KL$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), CV2>0, _xlfn.XLOOKUP(KL$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$CV2<(-1)*_xlfn.XLOOKUP(KL$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(KL$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $CV2<(-1)*_xlfn.XLOOKUP(KL$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(KL$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), CV2<0, (-1) * _xlfn.XLOOKUP(KL$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KM",
+    "header": "IVAbsolute",
+    "formula": "=_xlfn.IFS(DT2=0,0,$DT2>=_xlfn.XLOOKUP(KM$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KM$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $DT2>=_xlfn.XLOOKUP(KM$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(KM$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), DT2>0, _xlfn.XLOOKUP(KM$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$DT2<(-1)*_xlfn.XLOOKUP(KM$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(KM$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $DT2<(-1)*_xlfn.XLOOKUP(KM$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(KM$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), DT2<0, (-1) * _xlfn.XLOOKUP(KM$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KN",
+    "header": "IVPercentile",
+    "formula": "=_xlfn.IFS(OR(DT2=0,CX2=0),0,$CX2>=_xlfn.XLOOKUP(KN$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KN$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $CX2>=_xlfn.XLOOKUP(KN$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(KN$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), $CX2>=0, _xlfn.XLOOKUP(KN$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KO",
+    "header": "IVPercentile Puts",
+    "formula": "=_xlfn.IFS(OR(DT2=0,CX2=0),0,$CX2>_xlfn.XLOOKUP(KO$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KO$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $CX2>_xlfn.XLOOKUP(KO$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(KO$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), $CX2>0, _xlfn.XLOOKUP(KO$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KP",
+    "header": "HVPercentile",
+    "formula": "=_xlfn.IFS(OR(DT2=0),0,$CW2>=_xlfn.XLOOKUP(KP$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KP$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $CW2>=_xlfn.XLOOKUP(KP$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(KP$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), CW2>=0, _xlfn.XLOOKUP(KP$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KQ",
+    "header": "HVPercentile Puts",
+    "formula": "=_xlfn.IFS(OR(DT2=0),0,$CW2>_xlfn.XLOOKUP(KQ$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KQ$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $CW2>_xlfn.XLOOKUP(KQ$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(KQ$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), CW2>0, _xlfn.XLOOKUP(KQ$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KR",
+    "header": "IVHV",
+    "formula": "=_xlfn.IFS(DT2=0,0,$FR2>=_xlfn.XLOOKUP(KR$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KR$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $FR2>=_xlfn.XLOOKUP(KR$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(KR$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), FR2>0, _xlfn.XLOOKUP(KR$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$FR2<(-1)*_xlfn.XLOOKUP(KR$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(KR$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $FR2<(-1)*_xlfn.XLOOKUP(KR$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(KR$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), FR2<0, (-1) * _xlfn.XLOOKUP(KR$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE,0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KS",
+    "header": "IVHV Puts",
+    "formula": "=_xlfn.IFS(DT2=0,0,$FR2>=_xlfn.XLOOKUP(KS$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KS$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $FR2>=_xlfn.XLOOKUP(KS$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(KS$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), FR2>0, _xlfn.XLOOKUP(KS$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$FR2<(-1)*_xlfn.XLOOKUP(KS$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(KS$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $FR2<(-1)*_xlfn.XLOOKUP(KS$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(KS$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), FR2<0, (-1) * _xlfn.XLOOKUP(KS$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE,0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KT",
+    "header": "IVRule",
+    "formula": "=_xlfn.IFS(DT2=0,0,AND(KN2>=3,KP2>=3,KR2>=3),3,AND(KN2>=2,KP2>=2,KR2>=2),2,TRUE,1)",
+    "kind": "other",
+    "sheets": []
+  },
+  {
+    "letter": "KU",
+    "header": "RSI Rule",
+    "formula": "=_xlfn.IFS($DS2>=_xlfn.XLOOKUP(DS$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(DS$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $DS2>=_xlfn.XLOOKUP(DS$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(DS$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), DS2>0, _xlfn.XLOOKUP(DS$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$DS2<(-1)*_xlfn.XLOOKUP(DS$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(DS$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $DS2<(-1)*_xlfn.XLOOKUP(DS$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(DS$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), DS2<0, (-1) * _xlfn.XLOOKUP(DS$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KV",
+    "header": "RSI Top",
+    "formula": "=_xlfn.IFS($DS2>=_xlfn.XLOOKUP(KV$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KV$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $DS2>=_xlfn.XLOOKUP(KV$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(KV$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), DS2>0, _xlfn.XLOOKUP(KV$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$DS2<(-1)*_xlfn.XLOOKUP(KV$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(KV$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $DS2<(-1)*_xlfn.XLOOKUP(KV$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(KV$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), DS2<0, (-1) * _xlfn.XLOOKUP(KV$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KW",
+    "header": "RSI Puts",
+    "formula": "=_xlfn.IFS($DS2>_xlfn.XLOOKUP(KW$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(KW$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $DS2>_xlfn.XLOOKUP(KW$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(KW$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), DS2>0, _xlfn.XLOOKUP(KW$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$DS2<(-1)*_xlfn.XLOOKUP(KW$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(KW$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $DS2<(-1)*_xlfn.XLOOKUP(KW$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(KW$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), DS2<0, (-1) * _xlfn.XLOOKUP(KW$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KX",
+    "header": "3m-Low-Rule",
+    "formula": "=_xlfn.IFS($BB2>=_xlfn.XLOOKUP(BB$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(BB$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BB2>=_xlfn.XLOOKUP(BB$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(BB$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BB2>=0, _xlfn.XLOOKUP(BB$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$BB2<(-1)*_xlfn.XLOOKUP(BB$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(BB$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BB2<(-1)*_xlfn.XLOOKUP(BB$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(BB$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BB2<0, (-1) * _xlfn.XLOOKUP(BB$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KY",
+    "header": "3m-Low-Days Rule",
+    "formula": "=_xlfn.IFS($BC2>=_xlfn.XLOOKUP(BC$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(BC$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BC2>=_xlfn.XLOOKUP(BC$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(BC$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BC2>=0, _xlfn.XLOOKUP(BC$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$BC2<(-1)*_xlfn.XLOOKUP(BC$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(BC$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BC2<(-1)*_xlfn.XLOOKUP(BC$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(BC$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BC2<0, (-1) * _xlfn.XLOOKUP(BC$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "KZ",
+    "header": "3mn-High-Rule",
+    "formula": "=_xlfn.IFS($BE2>=_xlfn.XLOOKUP(BE$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(BE$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BE2>=_xlfn.XLOOKUP(BE$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(BE$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BE2>=0, _xlfn.XLOOKUP(BE$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$BE2<(-1)*_xlfn.XLOOKUP(BE$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(BE$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BE2<(-1)*_xlfn.XLOOKUP(BE$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(BE$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BE2<0, (-1) * _xlfn.XLOOKUP(BE$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LA",
+    "header": "3mn-High-Days Rule",
+    "formula": "=_xlfn.IFS($BF2>=_xlfn.XLOOKUP(BF$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(BF$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BF2>=_xlfn.XLOOKUP(BF$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(BF$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BF2>=0, _xlfn.XLOOKUP(BF$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$BF2<(-1)*_xlfn.XLOOKUP(BF$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(BF$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BF2<(-1)*_xlfn.XLOOKUP(BF$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(BF$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BF2<0, (-1) * _xlfn.XLOOKUP(BF$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LB",
+    "header": "3m-Long",
+    "formula": "=_xlfn.IFS(AND(KX2>=3,KY2>=2,KZ2>=-2,LA2>=3),3,AND(KZ2<=-3,LA2>=2,KX2<=2,KY2>=3),-3,TRUE,INT((KX2+KY2-1)/2))",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "LC",
+    "header": "Perf3mn SD Rule",
+    "formula": "=_xlfn.IFS($BQ2>=_xlfn.XLOOKUP(BQ$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(BQ$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BQ2>=_xlfn.XLOOKUP(BQ$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(BQ$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BQ2>=0, _xlfn.XLOOKUP(BQ$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$BQ2<(-1)*_xlfn.XLOOKUP(BQ$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(BQ$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BQ2<(-1)*_xlfn.XLOOKUP(BQ$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(BQ$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BQ2<0, (-1) * _xlfn.XLOOKUP(BQ$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LD",
+    "header": "Perf2M SD Rule",
+    "formula": "=_xlfn.IFS($BS2>=_xlfn.XLOOKUP(BS$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(BS$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BS2>=_xlfn.XLOOKUP(BS$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(BS$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BS2>=0, _xlfn.XLOOKUP(BS$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$BS2<(-1)*_xlfn.XLOOKUP(BS$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(BS$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BS2<(-1)*_xlfn.XLOOKUP(BS$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(BS$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BS2<0, (-1) * _xlfn.XLOOKUP(BS$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LE",
+    "header": "Perf3WK SD Rule",
+    "formula": "=_xlfn.IFS($BU2>=_xlfn.XLOOKUP(BU$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(BU$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BU2>=_xlfn.XLOOKUP(BU$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(BU$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BU2>=0, _xlfn.XLOOKUP(BU$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$BU2<(-1)*_xlfn.XLOOKUP(BU$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(BU$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BU2<(-1)*_xlfn.XLOOKUP(BU$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(BU$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BU2<0, (-1) * _xlfn.XLOOKUP(BU$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LF",
+    "header": "Perf2WK SD Rule",
+    "formula": "=_xlfn.IFS($BW2>=_xlfn.XLOOKUP(BW$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(BW$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BW2>=_xlfn.XLOOKUP(BW$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(BW$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BW2>=0, _xlfn.XLOOKUP(BW$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$BW2<(-1)*_xlfn.XLOOKUP(BW$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(BW$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BW2<(-1)*_xlfn.XLOOKUP(BW$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(BW$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BW2<0, (-1) * _xlfn.XLOOKUP(BW$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LG",
+    "header": "Perf3D SD Rule",
+    "formula": "=_xlfn.IFS($BY2>=_xlfn.XLOOKUP(BY$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(BY$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BY2>=_xlfn.XLOOKUP(BY$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(BY$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BY2>=0, _xlfn.XLOOKUP(BY$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$BY2<(-1)*_xlfn.XLOOKUP(BY$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(BY$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BY2<(-1)*_xlfn.XLOOKUP(BY$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(BY$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BY2<0, (-1) * _xlfn.XLOOKUP(BY$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LH",
+    "header": "Perf1D SD Rule",
+    "formula": "=_xlfn.IFS($CA2>=_xlfn.XLOOKUP(CA$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(CA$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $CA2>=_xlfn.XLOOKUP(CA$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(CA$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), CA2>=0, _xlfn.XLOOKUP(CA$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$CA2<(-1)*_xlfn.XLOOKUP(CA$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(CA$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $CA2<(-1)*_xlfn.XLOOKUP(CA$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(CA$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), CA2<0, (-1) * _xlfn.XLOOKUP(CA$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LI",
+    "header": "!Perf1D_sd",
+    "formula": "=(-1)*LH2",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "LJ",
+    "header": "Perf3D_sd_1off",
+    "formula": "=_xlfn.IFS(ABS($BY2)>=_xlfn.XLOOKUP(LJ$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(LJ$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"),ABS( $BY2)>=_xlfn.XLOOKUP(LJ$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(LJ$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), ABS(BY2)>=0, _xlfn.XLOOKUP(LJ$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LK",
+    "header": "Perf SD Rule",
+    "formula": "=_xlfn.IFS(AND(LC2>=3,LD2>=3,LE2>=3,LF2>=1,LJ2>=3),3,AND(LC2>=3,LD2>=3,LE2>=2,LF2>=1,LJ2>=3),2,AND(LC2>=1,LD2>=3,LE2>=3,LF2>=3,LJ2>=3),2,AND(LC2>=1,LD2>=3,LE2>=1,LF2>=1,LJ2>=1),2,AND(LC2<=-3,LD2<=-3,LE2<=-3,LF2<=-1,LJ2>=3),-3,AND(LC2<=-3,LD2<=-3,LE2<=-2,LF2<=-1,LJ2>=3),-2,AND(LC2<=-1,LD2<=-3,LE2<=-3,LF2<=-3,LJ2>=3),-2,TRUE,IF(LC2>=0,1,-1))",
+    "kind": "conditional",
+    "sheets": []
+  },
+  {
+    "letter": "LL",
+    "header": "!Perf SD Rule",
+    "formula": "=(-1)*LK2",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "LM",
+    "header": "!Perf3D Rule",
+    "formula": "=(-1)*LG2",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "LN",
+    "header": "BBHighLow_SD Rule",
+    "formula": "=_xlfn.IFS($AO2>_xlfn.XLOOKUP(AO$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(AO$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AO2>_xlfn.XLOOKUP(AO$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(AO$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AO2>0, _xlfn.XLOOKUP(AO$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$AO2<(-1)*_xlfn.XLOOKUP(AO$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(AO$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AO2<(-1)*_xlfn.XLOOKUP(AO$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(AO$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AO2<0, (-1) * _xlfn.XLOOKUP(AO$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LO",
+    "header": "BBHighLow Days Rule",
+    "formula": "=_xlfn.IFS($AM2>_xlfn.XLOOKUP(AM$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(AM$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AM2>_xlfn.XLOOKUP(AM$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(AM$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), $AM2>0, _xlfn.XLOOKUP(AM$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$AM2<(-1)*_xlfn.XLOOKUP(AM$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(AM$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AM2<(-1)*_xlfn.XLOOKUP(AM$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(AM$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), $AM2<0, (-1) * _xlfn.XLOOKUP(AM$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LP",
+    "header": "BBStreak Rule",
+    "formula": "=_xlfn.IFS($AY2>=_xlfn.XLOOKUP(AY$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(AY$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AY2>=_xlfn.XLOOKUP(AY$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(AY$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AY2>=0, _xlfn.XLOOKUP(AY$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), $AY2<=(-1)*_xlfn.XLOOKUP(AY$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(AY$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AY2<=(-1)*_xlfn.XLOOKUP(AY$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(AY$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AY2<=0, (-1) * _xlfn.XLOOKUP(AY$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LQ",
+    "header": "BBStreakRule1",
+    "formula": "=_xlfn.IFS($AY2>=_xlfn.XLOOKUP(LQ$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(LQ$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AY2>=_xlfn.XLOOKUP(LQ$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(LQ$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AY2>=0, _xlfn.XLOOKUP(LQ$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), $AY2<=(-1)*_xlfn.XLOOKUP(LQ$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(LQ$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AY2<=(-1)*_xlfn.XLOOKUP(LQ$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(LQ$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AY2<=0, (-1) * _xlfn.XLOOKUP(LQ$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LR",
+    "header": "BBStreak Rule2",
+    "formula": "=_xlfn.IFS($AY2>=_xlfn.XLOOKUP(LR$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(LR$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AY2>=_xlfn.XLOOKUP(LR$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(LR$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), $AY2>=0, _xlfn.XLOOKUP(LR$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$AY2<=(-1)*_xlfn.XLOOKUP(LR$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(LR$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AY2<=(-1)*_xlfn.XLOOKUP(LR$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(LR$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), $AY2<=0, (-1) * _xlfn.XLOOKUP(LR$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LS",
+    "header": "BBStreak Days Rule",
+    "formula": "=_xlfn.IFS($AZ2>=_xlfn.XLOOKUP(AZ$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(AZ$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AZ2>=_xlfn.XLOOKUP(AZ$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(AZ$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), $AZ2>=0, _xlfn.XLOOKUP(AZ$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$AZ2<=(-1)*_xlfn.XLOOKUP(AZ$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(AZ$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AZ2<=(-1)*_xlfn.XLOOKUP(AZ$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(AZ$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), $AZ2<=0, (-1) * _xlfn.XLOOKUP(AZ$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LT",
+    "header": "BBStreak Days Rule2",
+    "formula": "=_xlfn.IFS($AZ2>=_xlfn.XLOOKUP(LT$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(LT$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AZ2>=_xlfn.XLOOKUP(LT$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(LT$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), $AZ2>=0, _xlfn.XLOOKUP(LT$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$AZ2<=(-1)*_xlfn.XLOOKUP(LT$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(LT$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AZ2<=(-1)*_xlfn.XLOOKUP(LT$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(LT$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), $AZ2<=0, (-1) * _xlfn.XLOOKUP(LT$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LU",
+    "header": "BBStreak Days Rule3",
+    "formula": "=_xlfn.IFS($AZ2>=_xlfn.XLOOKUP(LU$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(LU$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AZ2>=_xlfn.XLOOKUP(LU$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(LU$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), $AZ2>=0, _xlfn.XLOOKUP(LU$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$AZ2<=(-1)*_xlfn.XLOOKUP(LU$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(LU$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AZ2<=(-1)*_xlfn.XLOOKUP(LU$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(LU$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), $AZ2<=0, (-1) * _xlfn.XLOOKUP(LU$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LV",
+    "header": "BBStreak Days Rule4",
+    "formula": "=_xlfn.IFS($AZ2>=_xlfn.XLOOKUP(LV$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(LV$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AZ2>=_xlfn.XLOOKUP(LV$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(LV$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), $AZ2>=0, _xlfn.XLOOKUP(LV$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$AZ2<=(-1)*_xlfn.XLOOKUP(LV$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(LV$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AZ2<=(-1)*_xlfn.XLOOKUP(LV$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(LV$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), $AZ2<=0, (-1) * _xlfn.XLOOKUP(LV$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LW",
+    "header": "BB Bull Rule",
+    "formula": "=_xlfn.IFS(AND(LP2>=3,LS2>=3),3,AND(LP2<=-3,LS2<=-3),-3,TRUE,LN2)",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "LX",
+    "header": "BB Bull Puts",
+    "formula": "=(-1)*LW2",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "LY",
+    "header": "BBHighDays",
+    "formula": "=_xlfn.IFS($AQ2>_xlfn.XLOOKUP(AQ$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(AQ$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AQ2>_xlfn.XLOOKUP(AQ$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(AQ$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AQ2>0, _xlfn.XLOOKUP(AQ$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$AQ2<(-1)*_xlfn.XLOOKUP(AQ$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(AQ$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AQ2<(-1)*_xlfn.XLOOKUP(AQ$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(AQ$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AQ2<0, (-1) * _xlfn.XLOOKUP(AQ$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "LZ",
+    "header": "BBLowDays",
+    "formula": "=_xlfn.IFS($AR2>_xlfn.XLOOKUP(AR$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(AR$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AR2>_xlfn.XLOOKUP(AR$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(AR$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AR2>0, _xlfn.XLOOKUP(AR$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$AR2<(-1)*_xlfn.XLOOKUP(AR$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(AR$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $AR2<(-1)*_xlfn.XLOOKUP(AR$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(AR$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), AR2<0, (-1) * _xlfn.XLOOKUP(AR$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "MA",
+    "header": "MACD Rule",
+    "formula": "=_xlfn.IFS($CJ2>=_xlfn.XLOOKUP(CJ$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(CJ$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $CJ2>=_xlfn.XLOOKUP(CJ$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(CJ$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), CJ2>0, _xlfn.XLOOKUP(CJ$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "MB",
+    "header": "MACDH Rule",
+    "formula": "=_xlfn.IFS($CL2>=_xlfn.XLOOKUP(CL$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(CL$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $CL2>=_xlfn.XLOOKUP(CL$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(CL$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), CL2>0, _xlfn.XLOOKUP(CL$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "MC",
+    "header": "MACD and H Rule",
+    "formula": "=INT((MA2+MB2)/2)",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "MD",
+    "header": "MACD_BRR Puts",
+    "formula": "=_xlfn.IFS($CJ2>_xlfn.XLOOKUP(MD$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(MD$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $CJ2>_xlfn.XLOOKUP(MD$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(MD$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), CJ2>0, _xlfn.XLOOKUP(MD$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "ME",
+    "header": "MACDH_BRR Puts",
+    "formula": "=_xlfn.IFS($CL2>_xlfn.XLOOKUP(ME$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(ME$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $CL2>_xlfn.XLOOKUP(ME$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(ME$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), CL2>0, _xlfn.XLOOKUP(ME$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "MF",
+    "header": "MACD and H Rule Puts",
+    "formula": "=INT((MD2+ME2)/2)",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "MG",
+    "header": "MACDH Days",
+    "formula": "=_xlfn.IFS($CM2>_xlfn.XLOOKUP(MG$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(MG$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $CM2>_xlfn.XLOOKUP(MG$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(MG$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), CM2>0, _xlfn.XLOOKUP(MG$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$CM2<(-1)*_xlfn.XLOOKUP(MG$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(MG$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $CM2<(-1)*_xlfn.XLOOKUP(MG$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(MG$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), CM2<0, (-1) * _xlfn.XLOOKUP(MG$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "MH",
+    "header": "MACDH Days2",
+    "formula": "=_xlfn.IFS($CM2>_xlfn.XLOOKUP(MH$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(MH$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $CM2>_xlfn.XLOOKUP(MH$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(MH$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"),CM2> 0, _xlfn.XLOOKUP(MH$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$CM2<(-1)*_xlfn.XLOOKUP(MH$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(MH$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $CM2<(-1)*_xlfn.XLOOKUP(MH$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(MH$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"),CM2< 0, (-1) * _xlfn.XLOOKUP(MH$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "MI",
+    "header": "Overbought",
+    "formula": "=_xlfn.IFS(AND(KV2>=3,MA2>=3,MB2>=3),3,AND(KV2<=-3,MA2<=-3,MB2<=-3),-3,TRUE,0)",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "MJ",
+    "header": "!Overbought",
+    "formula": "=(-1)*MI2",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "MK",
+    "header": "3mn Outlook",
+    "formula": "=_xlfn.IFS($BJ2>=_xlfn.XLOOKUP(BJ$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(BJ$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BJ2>=_xlfn.XLOOKUP(BJ$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(BJ$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BJ2>=0, _xlfn.XLOOKUP(BJ$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$BJ2<(-1)*_xlfn.XLOOKUP(BJ$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(BJ$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BJ2<(-1)*_xlfn.XLOOKUP(BJ$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(BJ$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BJ2<0, (-1) * _xlfn.XLOOKUP(BJ$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "ML",
+    "header": "3mn Outlook Days",
+    "formula": "=_xlfn.IFS($BK2>=_xlfn.XLOOKUP(BK$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(BK$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BK2>=_xlfn.XLOOKUP(BK$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(BK$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BK2>=0, _xlfn.XLOOKUP(BK$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$BK2<(-1)*_xlfn.XLOOKUP(BK$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(BK$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BK2<(-1)*_xlfn.XLOOKUP(BK$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(BK$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BK2<0, (-1) * _xlfn.XLOOKUP(BK$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "MM",
+    "header": "3wk Outlook",
+    "formula": "=_xlfn.IFS($BN2>=_xlfn.XLOOKUP(BN$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(BN$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BN2>=_xlfn.XLOOKUP(BN$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(BN$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BN2>=0, _xlfn.XLOOKUP(BN$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$BN2<(-1)*_xlfn.XLOOKUP(BN$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(BN$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BN2<(-1)*_xlfn.XLOOKUP(BN$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(BN$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BN2<0, (-1) * _xlfn.XLOOKUP(BN$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "MN",
+    "header": "3wk Outlook Days",
+    "formula": "=_xlfn.IFS($BO2>=_xlfn.XLOOKUP(BO$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(BO$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BO2>=_xlfn.XLOOKUP(BO$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(BO$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BO2>=0, _xlfn.XLOOKUP(BO$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$BO2<(-1)*_xlfn.XLOOKUP(BO$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(BO$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $BO2<(-1)*_xlfn.XLOOKUP(BO$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1) * _xlfn.XLOOKUP(BO$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), BO2<0, (-1) * _xlfn.XLOOKUP(BO$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "MO",
+    "header": "!3wk ol",
+    "formula": "=(-1)*MM2",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "MP",
+    "header": "!3wk ol days",
+    "formula": "=(-1)*MN2",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "MQ",
+    "header": "BULL",
+    "formula": "=_xlfn.IFS(AND(JN2>=3,JQ2>=2,JV2>=2,LZ2>=3),3,AND(KH2>0,JV2>=2),3,AND(JN2>=2,JQ2>=2,JV2>=2,LZ2>=2),2,AND(JN2<=-3,JQ2<=-2,JV2<=-2,LY2>=3),-3,AND(JN2<=-2,JQ2<=-2,JV2<=-2,LY2>=2),-2,TRUE,0)",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "MR",
+    "header": "!BULL",
+    "formula": "=(-1)*MQ2",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "MS",
+    "header": "PerfOrBull",
+    "formula": "=_xlfn.IFS(OR(LK2>=3,MQ2>=3),3,OR(LK2<=-3,MQ2<=-3),-3, TRUE, INT((LK2+MQ2)/2))",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "MT",
+    "header": "!PerfOrBull",
+    "formula": "=(-1)*MS2",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "MU",
+    "header": "50-DMA-Rule",
+    "formula": "=_xlfn.IFS(D2>=$CG2+_xlfn.XLOOKUP(CG$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\")*AC2, _xlfn.XLOOKUP(CG$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), D2>=$CG2+_xlfn.XLOOKUP(CG$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\")*AC2, _xlfn.XLOOKUP(CG$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), D2>=CG2, _xlfn.XLOOKUP(CG$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\nD2<$CG2-_xlfn.XLOOKUP(CG$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\")*AC2, (-1) * _xlfn.XLOOKUP(CG$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), D2<$CG2-_xlfn.XLOOKUP(CG$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\")*AC2, (-1) * _xlfn.XLOOKUP(CG$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), D2<CG2, (-1) * _xlfn.XLOOKUP(CG$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "MV",
+    "header": "50-DMA-Crossover",
+    "formula": "=_xlfn.IFS(AND(D2>CG2,CG2>BZ2), 1, AND(BZ2>CG2,CG2>D2), -1, TRUE,0)",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "MW",
+    "header": "200-DMA-Rule",
+    "formula": "=_xlfn.IFS(D2>=$CH2+_xlfn.XLOOKUP(CH$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\")*AC2, _xlfn.XLOOKUP(CH$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), D2>=$CH2+_xlfn.XLOOKUP(CH$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\")*AC2, _xlfn.XLOOKUP(CH$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), D2>=CH2, _xlfn.XLOOKUP(CH$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\nD2<$CH2-_xlfn.XLOOKUP(CH$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\")*AC2, (-1) * _xlfn.XLOOKUP(CH$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), D2<$CH2-_xlfn.XLOOKUP(CH$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\")*AC2, (-1) * _xlfn.XLOOKUP(CH$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), D2<CH2, (-1) * _xlfn.XLOOKUP(CH$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "MX",
+    "header": "200-DMA-Crossover",
+    "formula": "=_xlfn.IFS(AND(D2>CH2,CH2>BZ2), 1, AND(BZ2>CH2,CH2>D2), -1, TRUE,0)",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "MY",
+    "header": "52-Wk Low Rule",
+    "formula": "=_xlfn.IFS(D2>=$CC2+_xlfn.XLOOKUP(CC$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\")*AC2, _xlfn.XLOOKUP(CC$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), D2>=$CC2+_xlfn.XLOOKUP(CC$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\")*AC2, _xlfn.XLOOKUP(CC$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), D2>=CC2, _xlfn.XLOOKUP(CC$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\nD2<$CC2-_xlfn.XLOOKUP(CC$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\")*AC2, (-1) * _xlfn.XLOOKUP(CC$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), D2<$CC2-_xlfn.XLOOKUP(CC$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\")*AC2, (-1) * _xlfn.XLOOKUP(CC$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), D2<CC2, (-1) * _xlfn.XLOOKUP(CC$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "MZ",
+    "header": "52-Wk High Rule",
+    "formula": "=_xlfn.IFS(D2>=$CD2+_xlfn.XLOOKUP(CD$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\")*AC2, _xlfn.XLOOKUP(CD$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), D2>=$CD2+_xlfn.XLOOKUP(CD$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\")*AC2, _xlfn.XLOOKUP(CD$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), D2>=CD2, _xlfn.XLOOKUP(CD$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\nD2<$CD2-_xlfn.XLOOKUP(CD$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\")*AC2, (-1) * _xlfn.XLOOKUP(CD$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), D2<$CD2-_xlfn.XLOOKUP(CD$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\")*AC2, (-1) * _xlfn.XLOOKUP(CD$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), D2<CD2, (-1) * _xlfn.XLOOKUP(CD$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "NA",
+    "header": "BRRTrade",
+    "formula": "=IF(ABS(DX2-AF2)<=AC2*0.5,1,0)",
+    "kind": "conditional",
+    "sheets": []
+  },
+  {
+    "letter": "NB",
+    "header": "TRRTrade",
+    "formula": "=IF(ABS(DY2-AF2)<=AC2*0.5,-1,0)",
+    "kind": "conditional",
+    "sheets": []
+  },
+  {
+    "letter": "NC",
+    "header": "Up Resistance",
+    "formula": "=IF(AND((EH2+0.05*AC2)>CG2,D2<CG2),-0.5,0)+IF(AND((EH2+0.05*AC2)>CH2,D2<CH2),-0.5,0)",
+    "kind": "conditional",
+    "sheets": []
+  },
+  {
+    "letter": "ND",
+    "header": "Down Resistance",
+    "formula": "=IF(AND((EI2+0.05*AC2)<BA2,D2>BA2),1,0)+IF(AND((EI2+0.05*AC2)>CG2,D2>CG2),0.5,0)+IF(AND((EI2+0.05*AC2)<CH2,D2>CH2),0.5,0)",
+    "kind": "conditional",
+    "sheets": []
+  },
+  {
+    "letter": "NE",
+    "header": "Earnings",
+    "formula": "=_xlfn.IFS($JB2>_xlfn.XLOOKUP(JB$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(JB$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $JB2>_xlfn.XLOOKUP(JB$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(JB$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), JB2>0, _xlfn.XLOOKUP(JB$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, _xlfn.XLOOKUP(JB$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"))",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "NF",
+    "header": "VS Price",
+    "formula": "=_xlfn.IFS(FK2=0,0,$FK2>_xlfn.XLOOKUP(FK$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(FK$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $FK2>_xlfn.XLOOKUP(FK$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(FK$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), FK2>0, _xlfn.XLOOKUP(FK$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$FK2<(-1)*_xlfn.XLOOKUP(FK$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(FK$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $FK2<(-1)*_xlfn.XLOOKUP(FK$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1)*_xlfn.XLOOKUP(FK$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), FK2<0, (-1)*_xlfn.XLOOKUP(FK$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "NG",
+    "header": "VS Volume Spike",
+    "formula": "=_xlfn.IFS(FI2=0,0,$FI2>_xlfn.XLOOKUP(FI$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(FI$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $FI2>_xlfn.XLOOKUP(FI$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(FI$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), FI2>0, _xlfn.XLOOKUP(FI$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$FI2<(-1)*_xlfn.XLOOKUP(FI$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(FI$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $FI2<(-1)*_xlfn.XLOOKUP(FI$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1)*_xlfn.XLOOKUP(FI$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), FI2<0, (-1)*_xlfn.XLOOKUP(FI$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "NH",
+    "header": "VS Volatility",
+    "formula": "=_xlfn.IFS(FL2=0,0,$FL2>_xlfn.XLOOKUP(FL$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(FL$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $FL2>_xlfn.XLOOKUP(FL$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(FL$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), FL2>0, _xlfn.XLOOKUP(FL$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$FL2<(-1)*_xlfn.XLOOKUP(FL$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(FL$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $FL2<(-1)*_xlfn.XLOOKUP(FL$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1)*_xlfn.XLOOKUP(FL$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), FL2<0, (-1)*_xlfn.XLOOKUP(FL$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "NI",
+    "header": "VS Days",
+    "formula": "=_xlfn.IFS(FM2=0,0,$FM2>_xlfn.XLOOKUP(FM$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(FM$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $FM2>_xlfn.XLOOKUP(FM$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(FM$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), FM2>0, _xlfn.XLOOKUP(FM$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$FM2<(-1)*_xlfn.XLOOKUP(FM$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(FM$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $FM2<(-1)*_xlfn.XLOOKUP(FM$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1)*_xlfn.XLOOKUP(FM$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), FM2<0, (-1)*_xlfn.XLOOKUP(FM$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "NJ",
+    "header": "VS LT Outlook Rule",
+    "formula": "=_xlfn.IFS(AND(NF2>2,NG2>0,NH2>2,NI2>2),3,AND(NF2>2,NG2>0,NH2<=2,NI2>=2),2,AND(NF2<-2,NG2>0,NH2>2,NI2>2),-3,AND(NF2<-2,NG2>0,NH2<=2,NI2>=2),-2,TRUE,0)",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "NK",
+    "header": "Current Price SD Rule",
+    "formula": "=_xlfn.IFS(OR(H2=0,AD2=0),0,(H2/$AD2)>_xlfn.XLOOKUP(NK$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(NK$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), (H2/$AD2)>_xlfn.XLOOKUP(NK$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(NK$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), (H2/$AD2)>0, _xlfn.XLOOKUP(NK$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n(H2/$AD2)<(-1)*_xlfn.XLOOKUP(NK$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(NK$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), (H2/$AD2)<(-1)*_xlfn.XLOOKUP(NK$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1)*_xlfn.XLOOKUP(NK$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), (H2/$AD2)<0, (-1)*_xlfn.XLOOKUP(NK$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "NL",
+    "header": "Current Volume Rule",
+    "formula": "=_xlfn.IFS(GB2=0,0,$GB2>_xlfn.XLOOKUP(NL$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(NL$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $GB2>_xlfn.XLOOKUP(NL$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(NL$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), GB2>0, _xlfn.XLOOKUP(NL$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$GB2<(-1/4)*_xlfn.XLOOKUP(NL$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(NL$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $GB2<(-1/4)*_xlfn.XLOOKUP(NL$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1)*_xlfn.XLOOKUP(NL$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), GB2<0, (-1)*_xlfn.XLOOKUP(NL$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "NM",
+    "header": "Current Volatility Rule",
+    "formula": "=_xlfn.IFS(DT2=0,0,$DT2>_xlfn.XLOOKUP(NM$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), _xlfn.XLOOKUP(NM$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $DT2>_xlfn.XLOOKUP(NM$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), _xlfn.XLOOKUP(NM$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), DT2>0, _xlfn.XLOOKUP(NM$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"),\n$DT2<(-1)*_xlfn.XLOOKUP(NM$1,Trig!$B$4:$B$144,Trig!$D$4:$D$144,\"\"), (-1)*_xlfn.XLOOKUP(NM$1,Trig!$B$4:$B$144,Trig!$G$4:$G$144,\"\"), $DT2<(-1)*_xlfn.XLOOKUP(NM$1,Trig!$B$4:$B$144,Trig!$C$4:$C$144,\"\"), (-1)*_xlfn.XLOOKUP(NM$1,Trig!$B$4:$B$144,Trig!$F$4:$F$144,\"\"), DT2<0, (-1)*_xlfn.XLOOKUP(NM$1,Trig!$B$4:$B$144,Trig!$E$4:$E$144,\"\"), TRUE, 0)",
+    "kind": "cross_sheet_lookup",
+    "sheets": [
+      "Trig"
+    ]
+  },
+  {
+    "letter": "NN",
+    "header": "Short Term Oulook (If LT Bullish)",
+    "formula": "=_xlfn.IFS(AND(NK2>2,NL2>2,NM2<2),3,AND(NK2>2,NL2>2),2,AND(NK2<-2,NL2>2,NM2<2),-3,AND(NK2<-2,NL2>2),-2,\nAND(NK2>2,NL2<-2,NM2<2),1,AND(NK2>2,NL2<-2),1,AND(NK2<-2,NL2<-2,NM2>2),2,AND(NK2<-2,NL2<-2),3,TRUE,0)",
+    "kind": "arithmetic",
+    "sheets": []
+  },
+  {
+    "letter": "NO",
+    "header": "Short Term Oulook (If LT Bearish)",
+    "formula": "=_xlfn.IFS(AND(NK2>2,NL2>2,NM2<2),3,AND(NK2>2,NL2>2),2,AND(NK2<-2,NL2>2,NM2<2),-3,AND(NK2<-2,NL2>2),-2,\nAND(NK2>2,NL2<-2,NM2<2),-3,AND(NK2>2,NL2<-2),-2,AND(NK2<-2,NL2<-2,NM2>2),-2,AND(NK2<-2,NL2<-2),-1,TRUE,0)",
+    "kind": "arithmetic",
+    "sheets": []
+  }
+]

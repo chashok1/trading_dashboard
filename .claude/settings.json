@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Write(db/*)",
+      "Write(etl/*)",
+      "Edit(db/*)",
+      "Edit(etl/*)",
+      "Read",
+      "PowerShell(python -m etl.*)",
+      "PowerShell(python -m db.*)",
+      "PowerShell(*)"
+    ]
+  }
+}

@@ -1,0 +1,74 @@
+<svg width="100%" viewBox="0 0 680 680" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Performance screen data flow and feedback loop</title>
+  <desc>Vertical data flow showing how user decisions on the Cockpit and Actionable screens are logged, scored nightly against forward price moves, aggregated per rule, and surfaced on the Performance screen, which then informs future rule edits.</desc>
+  <style>
+  svg{background:#ffffff;}
+  text{font-family:'Segoe UI',Arial,Helvetica,sans-serif;fill:#2C2C2A;}
+  .t{font-size:14px;}.ts{font-size:12px;}.th{font-size:14px;font-weight:600;}
+  .arr{stroke:#888888;stroke-width:1.5;fill:none;}
+  .c-gray rect{fill:#F1EFE8;stroke:#5F5E5A;}.c-gray text{fill:#2C2C2A;}
+  .c-blue rect{fill:#E6F1FB;stroke:#185FA5;}.c-blue text{fill:#042C53;}
+  .c-teal rect{fill:#E1F5EE;stroke:#0F6E56;}.c-teal text{fill:#04342C;}
+  .c-purple rect{fill:#EEEDFE;stroke:#534AB7;}.c-purple text{fill:#26215C;}
+  .c-coral rect{fill:#FAECE7;stroke:#993C1D;}.c-coral text{fill:#4A1B0C;}
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <g class="c-blue">
+    <rect x="170" y="30" width="340" height="52" rx="8" stroke-width="0.5"/>
+    <text class="th" x="340" y="50" text-anchor="middle" dominant-baseline="central">Cockpit / Actionable screens</text>
+    <text class="ts" x="340" y="67" text-anchor="middle" dominant-baseline="central">user records DONE / SKIPPED</text>
+  </g>
+  <line x1="340" y1="82" x2="340" y2="110" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="c-teal">
+    <rect x="170" y="112" width="340" height="52" rx="8" stroke-width="0.5"/>
+    <text class="th" x="340" y="132" text-anchor="middle" dominant-baseline="central">user_action_log</text>
+    <text class="ts" x="340" y="149" text-anchor="middle" dominant-baseline="central">decision + triggered_rules JSONB snapshot</text>
+  </g>
+  <line x1="340" y1="164" x2="340" y2="192" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="c-purple">
+    <rect x="170" y="194" width="340" height="52" rx="8" stroke-width="0.5"/>
+    <text class="th" x="340" y="214" text-anchor="middle" dominant-baseline="central">compute_outcomes.py</text>
+    <text class="ts" x="340" y="231" text-anchor="middle" dominant-baseline="central">nightly · joins logs vs forward price moves</text>
+  </g>
+  <line x1="340" y1="246" x2="340" y2="274" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="c-teal">
+    <rect x="170" y="276" width="340" height="52" rx="8" stroke-width="0.5"/>
+    <text class="th" x="340" y="296" text-anchor="middle" dominant-baseline="central">drv_rule_outcome</text>
+    <text class="ts" x="340" y="313" text-anchor="middle" dominant-baseline="central">per symbol/date: hit flag, fwd 5d/20d return</text>
+  </g>
+  <line x1="340" y1="328" x2="340" y2="356" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="c-teal">
+    <rect x="130" y="358" width="420" height="52" rx="8" stroke-width="0.5"/>
+    <text class="th" x="340" y="378" text-anchor="middle" dominant-baseline="central">v_rule_performance_window(w, from, to)</text>
+    <text class="ts" x="340" y="395" text-anchor="middle" dominant-baseline="central">aggregates per rule: hit rate, avg + median return</text>
+  </g>
+  <line x1="340" y1="410" x2="340" y2="438" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="c-purple">
+    <rect x="170" y="440" width="340" height="52" rx="8" stroke-width="0.5"/>
+    <text class="th" x="340" y="460" text-anchor="middle" dominant-baseline="central">GET /api/rules/performance</text>
+    <text class="ts" x="340" y="477" text-anchor="middle" dominant-baseline="central">window, from/to, min_n, sort params</text>
+  </g>
+  <line x1="340" y1="492" x2="340" y2="520" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="c-blue">
+    <rect x="170" y="522" width="340" height="52" rx="8" stroke-width="0.5"/>
+    <text class="th" x="340" y="542" text-anchor="middle" dominant-baseline="central">Performance screen</text>
+    <text class="ts" x="340" y="559" text-anchor="middle" dominant-baseline="central">sortable per-rule hit-rate table</text>
+  </g>
+  <line x1="340" y1="574" x2="340" y2="602" stroke="#888" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+
+  <g class="c-gray">
+    <rect x="130" y="604" width="420" height="44" rx="8" stroke-width="0.5"/>
+    <text class="ts" x="340" y="626" text-anchor="middle" dominant-baseline="central">Loop closes — findings drive edits back on the Rules screen</text>
+  </g>
+</svg>

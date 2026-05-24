@@ -1,0 +1,347 @@
+<svg viewBox="0 0 1280 920" xmlns="http://www.w3.org/2000/svg" role="img" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif">
+  <title>Trading Dashboard data flow — current state with row counts</title>
+  <desc>Five-layer data pipeline showing populated vs empty tables after the registry-cleanup pass. Green = populated, amber = empty waiting on source data reload, gray = empty waiting on engineering work for computed columns.</desc>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9ca3af"/>
+    </marker>
+    <marker id="arrowAccent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1d4ed8"/>
+    </marker>
+  </defs>
+
+  <style>
+    .layer-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; fill: #6b7280; }
+    .box-title   { font-size: 11px; font-weight: 700; fill: #1c1917; }
+    .box-sub     { font-size: 9px;  fill: #57534e; }
+    .box-rows    { font-size: 9px;  font-weight: 600; }
+    .layer-band  { fill: #f7f7f5; }
+    .arrow       { stroke: #9ca3af; stroke-width: 1.2; fill: none; }
+    .arrow-accent{ stroke: #1d4ed8; stroke-width: 1.5; fill: none; }
+    .script-tag  { font-size: 9px;  fill: #1d4ed8; font-style: italic; }
+    .legend-text { font-size: 10px; fill: #57534e; }
+  </style>
+
+  <!-- Layer band backgrounds -->
+  <rect x="0" y="20"  width="1280" height="100" class="layer-band"/>
+  <rect x="0" y="160" width="1280" height="100" class="layer-band"/>
+  <rect x="0" y="300" width="1280" height="100" class="layer-band"/>
+  <rect x="0" y="440" width="1280" height="100" class="layer-band"/>
+  <rect x="0" y="580" width="1280" height="240" class="layer-band"/>
+  <rect x="0" y="840" width="1280" height="60"  class="layer-band"/>
+
+  <!-- Layer labels -->
+  <text x="20" y="38"  class="layer-label">0 · Source workbook</text>
+  <text x="20" y="178" class="layer-label">1 · Raw history (hist_*)</text>
+  <text x="20" y="318" class="layer-label">2 · Per-row cleaned (drv_*)</text>
+  <text x="20" y="458" class="layer-label">3 · Per-(date,sym) (drv2_* — Phase 1 NEW)</text>
+  <text x="20" y="598" class="layer-label">4 · Concept tables (drv_cat_*) · 12 of 26 populated</text>
+  <text x="20" y="858" class="layer-label">5 · Wide aggregator + consumers (drv_ma, drv_dash, drv_stks, drv_trig)</text>
+
+  <!-- ====== Layer 0: Excel ====== -->
+  <rect x="540" y="50" width="200" height="55" rx="6" fill="#fef3c7" stroke="#b45309" stroke-width="1.5"/>
+  <text x="640" y="74" text-anchor="middle" class="box-title">Tickers .xlsx workbook</text>
+  <text x="640" y="92" text-anchor="middle" class="box-sub">tabs: TL TD TW Y call etf II ssH ...</text>
+  <text x="760" y="138" class="script-tag">tickers_initial_load.py · etl_load.py</text>
+
+  <!-- ====== Layer 1: hist_* ====== -->
+  <g>
+    <rect x="40"   y="180" width="100" height="60" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="90"   y="202" text-anchor="middle" class="box-title">hist_tl</text>
+    <text x="90"   y="218" text-anchor="middle" class="box-sub">intra-day</text>
+    <text x="90"   y="232" text-anchor="middle" class="box-rows" fill="#15803d">859 rows</text>
+
+    <rect x="160"  y="180" width="100" height="60" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="210"  y="202" text-anchor="middle" class="box-title">hist_td</text>
+    <text x="210"  y="232" text-anchor="middle" class="box-rows" fill="#15803d">859 rows</text>
+
+    <rect x="280"  y="180" width="100" height="60" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="330"  y="202" text-anchor="middle" class="box-title">hist_tw</text>
+    <text x="330"  y="232" text-anchor="middle" class="box-rows" fill="#15803d">859 rows</text>
+
+    <rect x="400"  y="180" width="100" height="60" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="450"  y="202" text-anchor="middle" class="box-title">hist_call</text>
+    <text x="450"  y="232" text-anchor="middle" class="box-rows" fill="#15803d">29 rows</text>
+
+    <rect x="520"  y="180" width="100" height="60" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="570"  y="202" text-anchor="middle" class="box-title">hist_y</text>
+    <text x="570"  y="232" text-anchor="middle" class="box-rows" fill="#15803d">populated</text>
+  </g>
+  <g>
+    <rect x="640"  y="180" width="100" height="60" rx="4" fill="#fef3c7" stroke="#b45309"/>
+    <text x="690"  y="202" text-anchor="middle" class="box-title">hist_etf</text>
+    <text x="690"  y="232" text-anchor="middle" class="box-rows" fill="#b45309">0 — reload</text>
+
+    <rect x="760"  y="180" width="100" height="60" rx="4" fill="#fef3c7" stroke="#b45309"/>
+    <text x="810"  y="202" text-anchor="middle" class="box-title">hist_ii</text>
+    <text x="810"  y="232" text-anchor="middle" class="box-rows" fill="#b45309">0 — reload</text>
+
+    <rect x="880"  y="180" width="100" height="60" rx="4" fill="#fef3c7" stroke="#b45309"/>
+    <text x="930"  y="202" text-anchor="middle" class="box-title">hist_ssh</text>
+    <text x="930"  y="232" text-anchor="middle" class="box-rows" fill="#b45309">0 — reload</text>
+
+    <rect x="1000" y="180" width="240" height="60" rx="4" fill="#fef3c7" stroke="#b45309"/>
+    <text x="1120" y="202" text-anchor="middle" class="box-title">hist_ps* · hist_etfchg · hist_iichg · hist_to · hist_rr</text>
+    <text x="1120" y="232" text-anchor="middle" class="box-rows" fill="#b45309">all empty — same DELETE+reload trick</text>
+  </g>
+  <path d="M 640,108 L 640,150 L 90,150 L 90,180" class="arrow" marker-end="url(#arrow)"/>
+  <path d="M 640,108 L 640,180" class="arrow" marker-end="url(#arrow)"/>
+  <path d="M 640,108 L 640,150 L 1120,150 L 1120,180" class="arrow" marker-end="url(#arrow)"/>
+
+  <!-- ====== Layer 2: drv_* ====== -->
+  <text x="950" y="278" class="script-tag">derive.py · derive_v2.py</text>
+  <g>
+    <rect x="40"   y="320" width="100" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="90"   y="342" text-anchor="middle" class="box-title">drv_tl</text>
+    <text x="90"   y="358" text-anchor="middle" class="box-rows" fill="#15803d">859</text>
+
+    <rect x="160"  y="320" width="100" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="210"  y="342" text-anchor="middle" class="box-title">drv_td</text>
+    <text x="210"  y="358" text-anchor="middle" class="box-rows" fill="#15803d">859</text>
+
+    <rect x="280"  y="320" width="100" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="330"  y="342" text-anchor="middle" class="box-title">drv_tw</text>
+    <text x="330"  y="358" text-anchor="middle" class="box-rows" fill="#15803d">859</text>
+
+    <rect x="400"  y="320" width="100" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="450"  y="342" text-anchor="middle" class="box-title">drv_call</text>
+    <text x="450"  y="358" text-anchor="middle" class="box-rows" fill="#15803d">29</text>
+
+    <rect x="520"  y="320" width="100" height="50" rx="4" fill="#fef3c7" stroke="#b45309"/>
+    <text x="570"  y="342" text-anchor="middle" class="box-title">drv_etf</text>
+    <text x="570"  y="358" text-anchor="middle" class="box-rows" fill="#b45309">0</text>
+
+    <rect x="640"  y="320" width="100" height="50" rx="4" fill="#fef3c7" stroke="#b45309"/>
+    <text x="690"  y="342" text-anchor="middle" class="box-title">drv_ii</text>
+    <text x="690"  y="358" text-anchor="middle" class="box-rows" fill="#b45309">0</text>
+
+    <rect x="760"  y="320" width="100" height="50" rx="4" fill="#fef3c7" stroke="#b45309"/>
+    <text x="810"  y="342" text-anchor="middle" class="box-title">drv_ssh</text>
+    <text x="810"  y="358" text-anchor="middle" class="box-rows" fill="#b45309">0</text>
+
+    <rect x="880"  y="320" width="100" height="50" rx="4" fill="#fef3c7" stroke="#b45309"/>
+    <text x="930"  y="342" text-anchor="middle" class="box-title">drv_ssl/sss</text>
+    <text x="930"  y="358" text-anchor="middle" class="box-rows" fill="#b45309">0</text>
+
+    <rect x="1000" y="320" width="100" height="50" rx="4" fill="#fef3c7" stroke="#b45309"/>
+    <text x="1050" y="342" text-anchor="middle" class="box-title">drv_ps</text>
+    <text x="1050" y="358" text-anchor="middle" class="box-rows" fill="#b45309">0</text>
+  </g>
+  <path d="M 90,240  L 90,320"  class="arrow" marker-end="url(#arrow)"/>
+  <path d="M 210,240 L 210,320" class="arrow" marker-end="url(#arrow)"/>
+  <path d="M 330,240 L 330,320" class="arrow" marker-end="url(#arrow)"/>
+  <path d="M 450,240 L 450,320" class="arrow" marker-end="url(#arrow)"/>
+  <path d="M 690,240 L 570,320" class="arrow" marker-end="url(#arrow)"/>
+  <path d="M 810,240 L 690,320" class="arrow" marker-end="url(#arrow)"/>
+  <path d="M 930,240 L 810,320" class="arrow" marker-end="url(#arrow)"/>
+
+  <!-- ====== Layer 3: drv2_* (NEW from Phase 1) ====== -->
+  <text x="950" y="418" class="script-tag">derive_drv2.py · NEW · 1 row per (date, symbol) per source</text>
+  <g>
+    <rect x="40"   y="460" width="100" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="90"   y="482" text-anchor="middle" class="box-title">drv2_tl</text>
+    <text x="90"   y="498" text-anchor="middle" class="box-rows" fill="#15803d">859</text>
+
+    <rect x="160"  y="460" width="100" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="210"  y="482" text-anchor="middle" class="box-title">drv2_td</text>
+    <text x="210"  y="498" text-anchor="middle" class="box-rows" fill="#15803d">859</text>
+
+    <rect x="280"  y="460" width="100" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="330"  y="482" text-anchor="middle" class="box-title">drv2_tw</text>
+    <text x="330"  y="498" text-anchor="middle" class="box-rows" fill="#15803d">859</text>
+
+    <rect x="400"  y="460" width="100" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="450"  y="482" text-anchor="middle" class="box-title">drv2_call</text>
+    <text x="450"  y="498" text-anchor="middle" class="box-rows" fill="#15803d">579</text>
+
+    <rect x="520"  y="460" width="100" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="570"  y="482" text-anchor="middle" class="box-title">drv2_etf</text>
+    <text x="570"  y="498" text-anchor="middle" class="box-rows" fill="#15803d">124</text>
+
+    <rect x="640"  y="460" width="100" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="690"  y="482" text-anchor="middle" class="box-title">drv2_ii</text>
+    <text x="690"  y="498" text-anchor="middle" class="box-rows" fill="#15803d">50</text>
+
+    <rect x="760"  y="460" width="100" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="810"  y="482" text-anchor="middle" class="box-title">drv2_ssh</text>
+    <text x="810"  y="498" text-anchor="middle" class="box-rows" fill="#15803d">359</text>
+
+    <rect x="880"  y="460" width="100" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="930"  y="482" text-anchor="middle" class="box-title">drv2_rr</text>
+    <text x="930"  y="498" text-anchor="middle" class="box-rows" fill="#15803d">50</text>
+
+    <rect x="1000" y="460" width="100" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="1050" y="482" text-anchor="middle" class="box-title">drv2_ps</text>
+    <text x="1050" y="498" text-anchor="middle" class="box-rows" fill="#15803d">28</text>
+
+    <rect x="1120" y="460" width="120" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="1180" y="482" text-anchor="middle" class="box-title">drv2_holdings</text>
+    <text x="1180" y="498" text-anchor="middle" class="box-rows" fill="#15803d">24</text>
+  </g>
+  <path d="M 90,370  L 90,460"  class="arrow" marker-end="url(#arrow)"/>
+  <path d="M 210,370 L 210,460" class="arrow" marker-end="url(#arrow)"/>
+  <path d="M 330,370 L 330,460" class="arrow" marker-end="url(#arrow)"/>
+  <path d="M 450,370 L 450,460" class="arrow" marker-end="url(#arrow)"/>
+  <path d="M 570,370 L 570,460" class="arrow"/>
+  <path d="M 690,370 L 690,460" class="arrow"/>
+  <path d="M 810,370 L 810,460" class="arrow"/>
+
+  <!-- ====== Layer 4: drv_cat_* ====== -->
+  <text x="20" y="558" class="script-tag">ma_codegen.build_dml() · ref_ma_columns.source_expr drives column-by-column SELECT</text>
+
+  <g>
+    <rect x="40"   y="600" width="115" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="98"   y="620" text-anchor="middle" class="box-title">drv_cat_identity</text>
+    <text x="98"   y="638" text-anchor="middle" class="box-rows" fill="#15803d">1,177</text>
+
+    <rect x="160"  y="600" width="115" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="218"  y="620" text-anchor="middle" class="box-title">drv_cat_price</text>
+    <text x="218"  y="638" text-anchor="middle" class="box-rows" fill="#15803d">1,177</text>
+
+    <rect x="280"  y="600" width="115" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="338"  y="620" text-anchor="middle" class="box-title">drv_cat_bollinger</text>
+    <text x="338"  y="638" text-anchor="middle" class="box-rows" fill="#15803d">1,177</text>
+
+    <rect x="400"  y="600" width="115" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="458"  y="620" text-anchor="middle" class="box-title">drv_cat_rsi</text>
+    <text x="458"  y="638" text-anchor="middle" class="box-rows" fill="#15803d">1,177</text>
+
+    <rect x="520"  y="600" width="115" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="578"  y="620" text-anchor="middle" class="box-title">drv_cat_macd</text>
+    <text x="578"  y="638" text-anchor="middle" class="box-rows" fill="#15803d">1,177</text>
+
+    <rect x="640"  y="600" width="115" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="698"  y="620" text-anchor="middle" class="box-title">drv_cat_volume</text>
+    <text x="698"  y="638" text-anchor="middle" class="box-rows" fill="#15803d">1,177</text>
+
+    <rect x="760"  y="600" width="115" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="818"  y="620" text-anchor="middle" class="box-title">drv_cat_moving_avg</text>
+    <text x="818"  y="638" text-anchor="middle" class="box-rows" fill="#15803d">1,177</text>
+
+    <rect x="880"  y="600" width="115" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="938"  y="620" text-anchor="middle" class="box-title">drv_cat_trend_trade</text>
+    <text x="938"  y="638" text-anchor="middle" class="box-rows" fill="#15803d">1,177</text>
+
+    <rect x="1000" y="600" width="115" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="1058" y="620" text-anchor="middle" class="box-title">drv_cat_perf_ext.</text>
+    <text x="1058" y="638" text-anchor="middle" class="box-rows" fill="#15803d">1,177</text>
+
+    <rect x="1120" y="600" width="120" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="1180" y="620" text-anchor="middle" class="box-title">drv_cat_idx_vol</text>
+    <text x="1180" y="638" text-anchor="middle" class="box-rows" fill="#15803d">1,177</text>
+
+    <rect x="40"   y="660" width="115" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="98"   y="680" text-anchor="middle" class="box-title">drv_cat_earnings</text>
+    <text x="98"   y="698" text-anchor="middle" class="box-rows" fill="#15803d">1,177</text>
+
+    <rect x="160"  y="660" width="115" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="218"  y="680" text-anchor="middle" class="box-title">drv_cat_ii</text>
+    <text x="218"  y="698" text-anchor="middle" class="box-rows" fill="#15803d">1,177</text>
+
+    <rect x="280"  y="660" width="115" height="50" rx="4" fill="#dcfce7" stroke="#15803d"/>
+    <text x="338"  y="680" text-anchor="middle" class="box-title">drv_cat_funda.</text>
+    <text x="338"  y="698" text-anchor="middle" class="box-rows" fill="#15803d">1,177</text>
+  </g>
+
+  <g>
+    <rect x="400" y="660" width="115" height="50" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="458" y="680" text-anchor="middle" class="box-title" fill="#6b7280">atomic_input</text>
+    <text x="458" y="698" text-anchor="middle" class="box-rows" fill="#6b7280">139 cols TODO</text>
+
+    <rect x="520" y="660" width="115" height="50" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="578" y="680" text-anchor="middle" class="box-title" fill="#6b7280">composite</text>
+    <text x="578" y="698" text-anchor="middle" class="box-rows" fill="#6b7280">132 cols TODO</text>
+
+    <rect x="640" y="660" width="115" height="50" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="698" y="680" text-anchor="middle" class="box-title" fill="#6b7280">action_decision</text>
+    <text x="698" y="698" text-anchor="middle" class="box-rows" fill="#6b7280">16 cols TODO</text>
+
+    <rect x="760" y="660" width="115" height="50" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="818" y="680" text-anchor="middle" class="box-title" fill="#6b7280">trig_summary</text>
+    <text x="818" y="698" text-anchor="middle" class="box-rows" fill="#6b7280">29 cols TODO</text>
+
+    <rect x="880" y="660" width="115" height="50" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="938" y="680" text-anchor="middle" class="box-title" fill="#6b7280">quad_outlook</text>
+    <text x="938" y="698" text-anchor="middle" class="box-rows" fill="#6b7280">41 cols TODO</text>
+
+    <rect x="1000" y="660" width="115" height="50" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="1058" y="680" text-anchor="middle" class="box-title" fill="#6b7280">risk_range</text>
+    <text x="1058" y="698" text-anchor="middle" class="box-rows" fill="#6b7280">19 cols TODO</text>
+
+    <rect x="1120" y="660" width="120" height="50" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="1180" y="680" text-anchor="middle" class="box-title" fill="#6b7280">holdings_$</text>
+    <text x="1180" y="698" text-anchor="middle" class="box-rows" fill="#6b7280">27 cols TODO</text>
+
+    <rect x="40"  y="720" width="115" height="50" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="98"  y="740" text-anchor="middle" class="box-title" fill="#6b7280">he_outlook</text>
+    <text x="98"  y="758" text-anchor="middle" class="box-rows" fill="#6b7280">6 cols TODO</text>
+
+    <rect x="160" y="720" width="115" height="50" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="218" y="740" text-anchor="middle" class="box-title" fill="#6b7280">sector_rollup</text>
+    <text x="218" y="758" text-anchor="middle" class="box-rows" fill="#6b7280">4 cols TODO</text>
+
+    <rect x="280" y="720" width="115" height="50" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="338" y="740" text-anchor="middle" class="box-title" fill="#6b7280">signal_strength</text>
+    <text x="338" y="758" text-anchor="middle" class="box-rows" fill="#6b7280">8 cols TODO</text>
+
+    <rect x="400" y="720" width="115" height="50" rx="4" fill="#f3f4f6" stroke="#9ca3af"/>
+    <text x="458" y="740" text-anchor="middle" class="box-title" fill="#6b7280">vol_regime</text>
+    <text x="458" y="758" text-anchor="middle" class="box-rows" fill="#6b7280">6 cols TODO</text>
+
+    <rect x="520" y="720" width="115" height="50" rx="4" fill="#fef3c7" stroke="#b45309"/>
+    <text x="578" y="740" text-anchor="middle" class="box-title">drv_cat_etf</text>
+    <text x="578" y="758" text-anchor="middle" class="box-rows" fill="#b45309">waits hist_etf</text>
+
+    <rect x="640" y="720" width="115" height="50" rx="4" fill="#fef3c7" stroke="#b45309"/>
+    <text x="698" y="740" text-anchor="middle" class="box-title">drv_cat_ps</text>
+    <text x="698" y="758" text-anchor="middle" class="box-rows" fill="#b45309">waits hist_ps*</text>
+  </g>
+
+  <path d="M 600,540 L 600,580 L 200,580 L 200,600" class="arrow"/>
+  <path d="M 620,540 L 620,580 L 600,580 L 600,600" class="arrow"/>
+  <path d="M 640,540 L 640,580 L 1000,580 L 1000,600" class="arrow"/>
+
+  <!-- ====== Layer 5: drv_ma + consumers ====== -->
+  <g>
+    <rect x="40" y="850" width="180" height="40" rx="4" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.5"/>
+    <text x="130" y="870" text-anchor="middle" class="box-title">drv_ma (wide)</text>
+    <text x="130" y="884" text-anchor="middle" class="box-rows" fill="#1d4ed8">1,166 rows</text>
+
+    <rect x="240" y="850" width="160" height="40" rx="4" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.5"/>
+    <text x="320" y="870" text-anchor="middle" class="box-title">drv_dash</text>
+    <text x="320" y="884" text-anchor="middle" class="box-rows" fill="#1d4ed8">1,166 rows</text>
+
+    <rect x="420" y="850" width="160" height="40" rx="4" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.5"/>
+    <text x="500" y="870" text-anchor="middle" class="box-title">drv_stks</text>
+    <text x="500" y="884" text-anchor="middle" class="box-rows" fill="#1d4ed8">1,166 rows</text>
+
+    <rect x="600" y="850" width="180" height="40" rx="4" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.5"/>
+    <text x="690" y="870" text-anchor="middle" class="box-title">drv_trig (rules engine)</text>
+    <text x="690" y="884" text-anchor="middle" class="box-rows" fill="#1d4ed8">73,458 fired</text>
+
+    <rect x="800" y="850" width="180" height="40" rx="4" fill="#ecfccb" stroke="#65a30d"/>
+    <text x="890" y="870" text-anchor="middle" class="box-title">drv2_ma_thin (view)</text>
+    <text x="890" y="884" text-anchor="middle" class="box-rows" fill="#65a30d">1,166 (live)</text>
+
+    <rect x="1000" y="850" width="240" height="40" rx="4" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.5"/>
+    <text x="1120" y="870" text-anchor="middle" class="box-title">API → dashboard / cockpit / trace</text>
+    <text x="1120" y="884" text-anchor="middle" class="box-rows" fill="#1d4ed8">all working</text>
+  </g>
+  <path d="M 130,850 L 130,820 L 130,790 L 200,790 L 200,710" class="arrow-accent" marker-end="url(#arrowAccent)"/>
+  <path d="M 130,850 L 130,820 L 1180,820 L 1180,710" class="arrow-accent" marker-end="url(#arrowAccent)"/>
+
+  <!-- Legend -->
+  <rect x="1080" y="20" width="180" height="135" fill="#ffffff" stroke="#e5e5e2" rx="4"/>
+  <text x="1090" y="38" class="layer-label" fill="#1c1917">Legend</text>
+  <rect x="1090" y="48" width="14" height="12" fill="#dcfce7" stroke="#15803d"/>
+  <text x="1110" y="58" class="legend-text">populated · OK</text>
+  <rect x="1090" y="68" width="14" height="12" fill="#fef3c7" stroke="#b45309"/>
+  <text x="1110" y="78" class="legend-text">empty · reload hist</text>
+  <rect x="1090" y="88" width="14" height="12" fill="#f3f4f6" stroke="#9ca3af"/>
+  <text x="1110" y="98" class="legend-text">empty · TODO</text>
+  <rect x="1090" y="108" width="14" height="12" fill="#dbeafe" stroke="#1d4ed8"/>
+  <text x="1110" y="118" class="legend-text">core consumer</text>
+  <rect x="1090" y="128" width="14" height="12" fill="#ecfccb" stroke="#65a30d"/>
+  <text x="1110" y="138" class="legend-text">VIEW (live)</text>
+</svg>

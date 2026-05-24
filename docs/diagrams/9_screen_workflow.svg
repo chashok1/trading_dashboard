@@ -1,0 +1,82 @@
+<svg width="100%" viewBox="0 0 680 512" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Rules engine screen workflow cycle</title>
+  <desc>A four-stage cycle: authoring screens edit rule definitions, a re-derive step applies them, decision screens act on the results, the performance screen measures outcomes, and that feeds back to authoring. The Trace screen sits in the center as an inspector available throughout.</desc>
+  <style>
+  svg{background:#ffffff;}
+  text{font-family:'Segoe UI',Arial,Helvetica,sans-serif;fill:#57564E;}
+  .th{font-size:14px;font-weight:600;}
+  .ts{font-size:11.5px;}
+  .arr{stroke:#888780;stroke-width:1.6;fill:none;}
+  .box rect{fill:#F1EFE8;stroke:#888780;stroke-width:1.2;}
+  .box .th{fill:#2C2C2A;}.box .ts{fill:#4D4C48;}
+  .c-blue rect{fill:#E6F1FB;stroke:#378ADD;stroke-width:1.2;}
+  .c-blue .th{fill:#042C53;}.c-blue .ts{fill:#0C447C;}
+  .c-amber rect{fill:#FAEEDA;stroke:#854F0B;stroke-width:1.2;}
+  .c-amber .th{fill:#412402;}.c-amber .ts{fill:#633806;}
+  rect.c-blue{fill:#85B7EB;stroke:#185FA5;stroke-width:1;}
+  rect.c-amber{fill:#EF9F27;stroke:#854F0B;stroke-width:1;}
+  rect.box{fill:#B4B2A9;stroke:#5F5E5A;stroke-width:1;}
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6"/>
+    </marker>
+  </defs>
+
+  <rect class="c-blue" x="172" y="26" width="13" height="13" rx="2"/>
+  <text class="ts" x="192" y="33" dominant-baseline="central">Screens you drive</text>
+  <rect class="c-amber" x="350" y="26" width="13" height="13" rx="2"/>
+  <text class="ts" x="370" y="33" dominant-baseline="central">Results</text>
+  <rect class="box" x="448" y="26" width="13" height="13" rx="2"/>
+  <text class="ts" x="468" y="33" dominant-baseline="central">Automated step</text>
+
+  <line class="arr" x1="340" y1="250" x2="340" y2="150" stroke-dasharray="3 3"/>
+  <line class="arr" x1="340" y1="336" x2="340" y2="398" stroke-dasharray="3 3"/>
+  <line class="arr" x1="406" y1="290" x2="466" y2="276" stroke-dasharray="3 3"/>
+  <line class="arr" x1="274" y1="290" x2="214" y2="276" stroke-dasharray="3 3"/>
+
+  <path class="arr" d="M452 100 Q560 118 561 224" fill="none" marker-end="url(#arrow)"/>
+  <path class="arr" d="M561 322 Q561 432 456 444" fill="none" marker-end="url(#arrow)"/>
+  <path class="arr" d="M224 444 Q119 432 119 322" fill="none" marker-end="url(#arrow)"/>
+  <path class="arr" d="M119 224 Q119 116 224 102" fill="none" marker-end="url(#arrow)"/>
+
+  <text class="ts" x="606" y="158" text-anchor="middle" dominant-baseline="central">publish</text>
+  <text class="ts" x="606" y="388" text-anchor="middle" dominant-baseline="central">fresh data</text>
+  <text class="ts" x="74" y="388" text-anchor="middle" dominant-baseline="central">decisions</text>
+  <text class="ts" x="74" y="158" text-anchor="middle" dominant-baseline="central">tune</text>
+
+  <g class="c-blue">
+    <rect x="230" y="56" width="220" height="92" rx="10"/>
+    <text class="th" x="340" y="83" text-anchor="middle" dominant-baseline="central">Author</text>
+    <text class="ts" x="340" y="106" text-anchor="middle" dominant-baseline="central">Rules &#183; Groups &#183; Composite Edit</text>
+    <text class="ts" x="340" y="126" text-anchor="middle" dominant-baseline="central">edit ref_trig_* definitions</text>
+  </g>
+
+  <g class="box">
+    <rect x="466" y="228" width="196" height="92" rx="10"/>
+    <text class="th" x="564" y="255" text-anchor="middle" dominant-baseline="central">Re-derive</text>
+    <text class="ts" x="564" y="278" text-anchor="middle" dominant-baseline="central">rebuild_rules.py or the</text>
+    <text class="ts" x="564" y="298" text-anchor="middle" dominant-baseline="central">next ETL load cascade</text>
+  </g>
+
+  <g class="c-blue">
+    <rect x="230" y="400" width="220" height="92" rx="10"/>
+    <text class="th" x="340" y="427" text-anchor="middle" dominant-baseline="central">Act</text>
+    <text class="ts" x="340" y="450" text-anchor="middle" dominant-baseline="central">Cockpit &#183; Actionable &#8212; see fires,</text>
+    <text class="ts" x="340" y="470" text-anchor="middle" dominant-baseline="central">log DONE / SKIP / SNOOZE</text>
+  </g>
+
+  <g class="c-amber">
+    <rect x="18" y="228" width="196" height="92" rx="10"/>
+    <text class="th" x="116" y="255" text-anchor="middle" dominant-baseline="central">Measure</text>
+    <text class="ts" x="116" y="278" text-anchor="middle" dominant-baseline="central">Rule Performance &#8212;</text>
+    <text class="ts" x="116" y="298" text-anchor="middle" dominant-baseline="central">hit rate &amp; forward P&amp;L</text>
+  </g>
+
+  <g class="box">
+    <rect x="274" y="250" width="132" height="86" rx="10"/>
+    <text class="th" x="340" y="276" text-anchor="middle" dominant-baseline="central">Trace</text>
+    <text class="ts" x="340" y="298" text-anchor="middle" dominant-baseline="central">inspect any</text>
+    <text class="ts" x="340" y="316" text-anchor="middle" dominant-baseline="central">symbol + date</text>
+  </g>
+</svg>

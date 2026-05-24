@@ -1,0 +1,860 @@
+Date,Time,Symbol,Beta,Market Cap,Long-term Debt to Capital - Current (LTM),Price / Earnings Ratio - Current,Price / Book Value Ratio - Current,Return on Equity (ROE) - Current (LTM),EPS,Div. Yield - Current,Sector,Free Cash Flow Per Share - Current (LTM)
+05/15/2026,1630,$COMP,1.212,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,$DJI,1,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,$DXY,<empty>,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,/6B[M26],.3089,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,/6C[M26],.2666,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,/6E[M26],.1322,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,/6J[M26],.041,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,/BTC[K26],.9922,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,/BZ[N26],.055,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,/CL[N26],1.29,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,/GC[M26],.1486,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,/HG[N26],.037,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,/NG[M26],.5784,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,/NKD[M26],.352,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,/SI[N26],.6496,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,AAAU,.1633,"2,761 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,AAL,1.338,"8,142 M",95.032,35.12,-1.7423,-4.7058,.31,<empty>,Industrials,$1.67
+05/15/2026,1630,AAPL,1.07,"4,409,585 M",38.914,30.161,34.269,141.47,8.26,.41801,Information Technology,$8.74
+05/15/2026,1630,ABBV,.3057,"371,716 M",97.394,107.14,-57.729,-141.4,2.04,3.099,Health Care,$11.29
+05/15/2026,1630,ABNB,1.204,"78,847 M",24.336,30.954,9.8398,32.325,4.05,<empty>,Consumer Discretionary,$7.52
+05/15/2026,1630,ABR,1.155,"1,114 M",41.78,19.339,.66321,<empty>,.4,13.878,Financials,$0.89
+05/15/2026,1630,ABT,.634,"147,131 M",34.208,28.758,3.4351,12.334,3.57,2.3766,Health Care,$4.24
+05/15/2026,1630,ACHC,.7614,"2,374 M",<empty>,-1.9105,1.0841,<empty>,-12.2,<empty>,Health Care,<empty>
+05/15/2026,1630,ACHR,2.845,"4,596 M",5.2562,-4.7412,1.8844,-48.047,-1.1,<empty>,Industrials,($0.90)
+05/15/2026,1630,ACI,.2531,"8,110 M",81.866,44.89,4.8697,<empty>,.4,3.352,Consumer Staples,<empty>
+05/15/2026,1630,ADBE,1.448,"100,080 M",31.614,15.299,9.3185,58.774,17.16,<empty>,Information Technology,$24.58
+05/15/2026,1630,ADYEY,2.345,"32,294 M",<empty>,40.91,8.2043,<empty>,.3948,<empty>,Financials,<empty>
+05/15/2026,1630,AFK,.7383,120 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,AFRM,3.499,"22,043 M",70.583,43.29,4.0553,11.487,1.1,<empty>,Financials,$2.37
+05/15/2026,1630,AGCO,1.116,"8,202 M",29.178,11.119,1.9526,17.531,10.37,1.0011,Industrials,$7.39
+05/15/2026,1630,AHR,.5657,"9,511 M",28.82,81.926,2.5728,3.4901,.59,2.1204,Real Estate,$1.81
+05/15/2026,1630,AIQUY,.7723,"115,475 M",<empty>,26.359,3.5333,<empty>,1.428,2.3088,Materials,<empty>
+05/15/2026,1630,AKAM,.5388,"21,936 M",51.024,38.838,3.4054,<empty>,2.96,<empty>,Information Technology,$5.29
+05/15/2026,1630,ALB,1.362,"21,273 M",15.746,-52.857,2.7792,-1.8204,-3.42,.90236,Materials,$3.47
+05/15/2026,1630,ALCO,.9927,298 M,<empty>,-16.659,3.0032,<empty>,-2.47,.48473,Consumer Staples,<empty>
+05/15/2026,1630,ALGN,1.779,"11,262 M",1.9557,28.802,2.9588,10.824,5.95,<empty>,Health Care,$8.11
+05/15/2026,1630,ALLY,1.105,"12,871 M",<empty>,9.5773,.90776,<empty>,4.12,3.0589,Financials,($0.36)
+05/15/2026,1630,ALNY,.3245,"38,315 M",<empty>,83.762,41.058,<empty>,3.98,<empty>,Health Care,$4.88
+05/15/2026,1630,AMAT,1.676,"346,506 M",17.31,39.223,13.85,39.692,10.63,.2206,Information Technology,$6.72
+05/15/2026,1630,AMBA,2.193,"3,554 M",1.8756,-35.978,4.6627,-13.123,-1.78,<empty>,Information Technology,$1.36
+05/15/2026,1630,AMD,2.3,"691,538 M",4.3858,67.357,5.1076,8.0625,3.05,<empty>,Information Technology,$5.27
+05/15/2026,1630,AMG,1.141,"7,763 M",42.04,11.205,2.3732,21.834,24.38,.01446,Financials,$37.82
+05/15/2026,1630,AMH,.8113,"11,038 M",40.371,22.713,1.4662,<empty>,1.23,4.4054,Real Estate,<empty>
+05/15/2026,1630,AMLP,.5033,"12,717 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,AMN,.3212,"1,110 M",<empty>,-21.859,.99462,<empty>,-.86,<empty>,Health Care,$18.27
+05/15/2026,1630,AMPH,.8887,744 M,<empty>,11.753,1.1307,<empty>,1.66,<empty>,Health Care,<empty>
+05/15/2026,1630,AMZN,1.446,"2,841,383 M",32.192,24.908,5.0683,24.285,8.36,<empty>,Consumer Discretionary,($0.23)
+05/15/2026,1630,AN,.7642,"6,162 M",49.172,10.644,2.9736,<empty>,18.44,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,AQWA,.9112,24 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,AR,.4325,"11,848 M",32.483,13.743,1.6308,12.837,3.09,<empty>,Energy,$3.08
+05/15/2026,1630,ARE,1.16,"7,837 M",33.533,-7.4065,.50365,-4.1438,-6.27,8.7893,Real Estate,$8.24
+05/15/2026,1630,ARGT,.9305,776 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,ARHS,2.327,814 M,<empty>,14.783,2.571,<empty>,.47,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,ARKK,1.978,"6,434 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,ARQQ,2.673,209 M,<empty>,-15.078,21.756,<empty>,-2.56,<empty>,Information Technology,($2.18)
+05/15/2026,1630,AS,1.126,"19,107 M",19.187,49.145,3.59,8.1334,.76,<empty>,Consumer Discretionary,$0.80
+05/15/2026,1630,ASBFF,.4235,"18,028 M",<empty>,<empty>,<empty>,<empty>,1.797,<empty>,Consumer Staples,<empty>
+05/15/2026,1630,ASO,1.026,"3,261 M",42.865,9.9296,1.6454,<empty>,5.54,.98164,Consumer Discretionary,$3.32
+05/15/2026,1630,ATRO,1.103,"2,817 M",68.993,56.662,15.48,<empty>,1.22,<empty>,Industrials,$0.68
+05/15/2026,1630,AVB,.8015,"25,157 M",37.521,20.258,1.9748,<empty>,8.07,4.3036,Real Estate,<empty>
+05/15/2026,1630,AVGO,1.418,"2,013,134 M",43.723,64.567,19.644,33.371,5.13,.74857,Information Technology,$6.12
+05/15/2026,1630,AVO,.5852,847 M,<empty>,28.743,1.6246,<empty>,.46,<empty>,Consumer Staples,<empty>
+05/15/2026,1630,AVTR,.9262,"5,203 M",40.184,-9.653,.94873,<empty>,-.81,<empty>,Health Care,<empty>
+05/15/2026,1630,AWI,1.179,"6,622 M",37.055,23.367,7.8648,<empty>,7.05,.804,Industrials,<empty>
+05/15/2026,1630,AXP,1.072,"213,896 M",62.2,18.882,6.0683,34.419,16.02,1.1274,Financials,$20.73
+05/15/2026,1630,AZO,.4,"54,722 M",125.97,26.997,-21.911,<empty>,142.7,<empty>,Consumer Discretionary,$95.97
+05/15/2026,1630,B,-.1051,"68,042 M",11.241,11.311,2.5041,25.176,3.62,1.4073,Materials,$2.99
+05/15/2026,1630,BA,1.206,"173,813 M",84.097,79.736,26.22,169.95,2.53,<empty>,Industrials,($1.82)
+05/15/2026,1630,BABA,.4727,"318,090 M",18.147,19.667,1.8945,9.2156,6.366,.83685,Consumer Discretionary,($3.11)
+05/15/2026,1630,BAC,1.196,"353,197 M",<empty>,12.112,1.2609,10.644,4.03,2.2564,Financials,$7.63
+05/15/2026,1630,BALL,1.056,"14,697 M",52.968,17.183,2.8095,16.786,3.44,1.3534,Materials,$2.21
+05/15/2026,1630,BBN,.6773,970 M,<empty>,<empty>,<empty>,<empty>,1.27,<empty>,,<empty>
+05/15/2026,1630,BBWI,1.43,"3,442 M",121.88,7.0097,-3.4206,<empty>,3.11,3.6697,Consumer Discretionary,<empty>
+05/15/2026,1630,BBY,1.241,"11,858 M",49.31,12.917,4.5926,37.041,5.04,5.8372,Consumer Discretionary,$5.96
+05/15/2026,1630,BCO,1.055,"4,273 M",85.285,24.13,16.296,53.04,4.28,.98427,Industrials,$13.03
+05/15/2026,1630,BDRY,.7236,42 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,BEAM,2.138,"2,873 M",16.678,-37.102,2.0342,-5.7685,-.49,<empty>,Health Care,<empty>
+05/15/2026,1630,BEPC,1.133,"6,624 M",57.568,-3.0048,-5.1773,-47.773,-25.06,3.8413,Utilities,($1.86)
+05/15/2026,1630,BIDU,.4537,"46,046 M",16.859,77.518,1.1906,1.9035,1.681,<empty>,Communication Services,($6.89)
+05/15/2026,1630,BIO,1.083,"6,624 M",11.441,44.664,1.0915,<empty>,6.01,<empty>,Health Care,$13.21
+05/15/2026,1630,BIP,1.046,"17,457 M",60.358,54.605,3.5808,<empty>,.66,4.8311,Utilities,($2.86)
+05/15/2026,1630,BIRK,1.066,"5,736 M",30.557,16.1,1.9705,12.504,2.2,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,BITO,1.727,"1,883 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,BJ,1.5,"12,304 M",48.557,21.105,5.453,<empty>,4.38,<empty>,Consumer Staples,$2.50
+05/15/2026,1630,BJRI,1.254,884 M,50.092,17.635,1.9833,11.922,1.99,<empty>,Consumer Discretionary,$3.71
+05/15/2026,1630,BK,1.056,"92,675 M",<empty>,14.717,2.0639,13.472,8.06,1.7365,Financials,$1.83
+05/15/2026,1630,BKNG,-1.289,"119,432 M",153.34,22.108,-15.058,-82.96,7.583,.9358,Consumer Discretionary,$11.24
+05/15/2026,1630,BKV,1.06,"3,119 M",30.48,8.7586,1.4073,<empty>,3.37,<empty>,Energy,<empty>
+05/15/2026,1630,BLDR,1.448,"7,573 M",55.466,31.246,2.2107,<empty>,2.62,<empty>,Industrials,$7.80
+05/15/2026,1630,BLK,1.468,"167,948 M",17.203,24.148,2.6358,11.899,39.73,2.221,Financials,$23.68
+05/15/2026,1630,BLMN,1.118,688 M,<empty>,21.564,1.1358,<empty>,.25,5.7034,Consumer Discretionary,<empty>
+05/15/2026,1630,BLOK,1,"1,271 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,BNDD,.4791,9.7 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,BNO,.0145,903 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,BOOT,1.663,"4,365 M",32.681,20.303,3.4385,18.441,7.35,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,BP,.1844,"114,201 M",42.118,39.526,2.2186,5.8419,1.236,4.1472,Energy,$0.74
+05/15/2026,1630,BRBR,.5446,"1,127 M",<empty>,12.539,-3.7584,-42.08,1.29,<empty>,Consumer Staples,<empty>
+05/15/2026,1630,BRCB,2.059,151 M,<empty>,799.31,4.9246,<empty>,.0177,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,BRKR,1.155,"6,527 M",39.519,-150.68,2.245,-.4317,-.24,.55371,Health Care,<empty>
+05/15/2026,1630,BROS,2.236,"6,998 M",53.694,79.911,9.2594,13.8,.64,<empty>,Consumer Discretionary,$0.72
+05/15/2026,1630,BTAL,-.6219,298 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,BTC,1.474,"4,192 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,BTC-USD,4.822,"-1,824 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,BTI,.3357,"140,795 M",38.104,12.071,1.9895,15.824,4.701,5.8149,Consumer Staples,$3.49
+05/15/2026,1630,BUD,.5682,"156,732 M",42.248,19.159,1.5426,<empty>,3.61,2.0935,Consumer Staples,$5.66
+05/15/2026,1630,BULL,2.727,"3,755 M",6.756,-6.3273,4.002,<empty>,-1.23,<empty>,Financials,$1.41
+05/15/2026,1630,BURL,1.422,"18,447 M",70.53,31.11,10.148,<empty>,9.51,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,BUXX,.0005,461 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,BXP,1.075,"9,329 M",60.266,26.08,1.5984,<empty>,1.99,5.9345,Real Estate,<empty>
+05/15/2026,1630,BYD,1.128,"5,879 M",51.477,3.5618,2.4246,<empty>,22.62,.90046,Consumer Discretionary,<empty>
+05/15/2026,1630,BYDDF,.192,"111,686 M",<empty>,<empty>,<empty>,<empty>,.2821,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,C,1.108,"210,502 M",<empty>,14.103,1.0106,7.649,8.09,2.081,Financials,($20.72)
+05/15/2026,1630,CACC,1.381,"5,730 M",<empty>,10.573,2.9151,28.118,40.12,<empty>,Financials,<empty>
+05/15/2026,1630,CAG,-.0215,"6,425 M",41.668,-186.26,1.0824,-.5111,-.1,7.5799,Consumer Staples,$1.76
+05/15/2026,1630,CAH,.513,"45,717 M",132.05,32.324,-17.535,<empty>,6.55,.96673,Health Care,$18.48
+05/15/2026,1630,CAKE,1.013,"2,956 M",73.15,16.044,5.9351,41.329,3.41,2.0274,Consumer Discretionary,<empty>
+05/15/2026,1630,CAMT,1.57,"7,846 M",41.681,152.73,10.228,7.5651,.97,0,Information Technology,$2.78
+05/15/2026,1630,CANE,-.0303,90 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,CARR,1.357,"53,714 M",41.09,37.53,3.4802,9.9074,1.53,1.6516,Industrials,$2.00
+05/15/2026,1630,CASY,.6379,"31,517 M",<empty>,34.82,5.8222,17.882,17.42,.36439,Consumer Staples,$17.98
+05/15/2026,1630,CAT,1.562,"409,148 M",49.642,35.278,17.488,51.331,20.08,.85255,Industrials,$16.91
+05/15/2026,1630,CAVA,1.881,"8,949 M",33.527,111.39,8.9591,8.6418,.54,<empty>,Consumer Discretionary,$0.23
+05/15/2026,1630,CBRL,1.27,686 M,61.293,-156.53,1.5809,<empty>,-.2,3.3201,Consumer Discretionary,($0.96)
+05/15/2026,1630,CCK,.6494,"10,737 M",59.304,15.939,3.7975,26.185,6.29,1.1272,Materials,$8.72
+05/15/2026,1630,CCL,2.314,"34,130 M",62.876,14.142,3.3533,27.853,2.27,.47544,Consumer Discretionary,<empty>
+05/15/2026,1630,CCRN,.4454,407 M,<empty>,-3.0667,.93881,<empty>,-3.05,<empty>,Health Care,<empty>
+05/15/2026,1630,CELH,.9713,"7,710 M",18.143,80.641,7.2775,8.1189,.43,<empty>,Consumer Staples,$0.96
+05/15/2026,1630,CF,.4559,"19,241 M",29.581,11.718,3.7336,27.3,11.1,1.5404,Materials,$10.23
+05/15/2026,1630,CFG,.996,"25,737 M",<empty>,14.203,1.0618,7.7393,4.22,2.9348,Financials,$5.50
+05/15/2026,1630,CFLT,.9658,"11,134 M",<empty>,-35.21,9.2116,<empty>,-.86,<empty>,Information Technology,$0.11
+05/15/2026,1630,CFRUY,1.255,"115,648 M",22.702,24.973,4.2963,18.13,.8176,1.9355,Consumer Discretionary,$7.78
+05/15/2026,1630,CG,1.892,"17,286 M",66.466,32.626,3.2225,<empty>,1.46,2.8932,Financials,<empty>
+05/15/2026,1630,CHD,.4832,"22,285 M",35.847,30.756,5.2811,16.779,3.04,1.2832,Consumer Staples,$4.44
+05/15/2026,1630,CHDN,.6964,"6,045 M",80.27,16.361,5.7125,<empty>,5.43,.48759,Consumer Discretionary,<empty>
+05/15/2026,1630,CHEF,2.155,"3,276 M",58.208,32.521,3.9845,13.812,1.83,<empty>,Consumer Staples,<empty>
+05/15/2026,1630,CHH,.6626,"4,865 M",93.884,13.935,34.063,<empty>,7.4,1.1111,Consumer Discretionary,<empty>
+05/15/2026,1630,CHPT,1.778,162 M,80.327,-.63656,6.8387,-277.38,-9.41,<empty>,Industrials,($2.86)
+05/15/2026,1630,CHRD,.4537,"8,354 M",15.606,-119.21,.99455,<empty>,-1.03,3.6573,Energy,<empty>
+05/15/2026,1630,CHTR,.7689,"17,258 M",81.439,5.8334,1.6204,27.505,36.96,<empty>,Communication Services,$30.73
+05/15/2026,1630,CHWY,1.49,"8,867 M",49.18,55.981,24.271,58.678,.52,<empty>,Consumer Discretionary,$1.36
+05/15/2026,1630,CI,.2766,"75,463 M",40.047,11.302,1.6722,16.269,23.59,2.283,Health Care,$28.94
+05/15/2026,1630,CLOX,.1085,284 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,CLOZ,.1305,658 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,CLX,.5697,"10,937 M",61.381,16.795,-187.03,<empty>,6.15,4.7863,Consumer Staples,$3.11
+05/15/2026,1630,CMCSA,.7251,"88,448 M",48.713,5.6022,1.1633,20.918,5.1,4.5977,Communication Services,$4.84
+05/15/2026,1630,CMG,1.004,"41,881 M",64.49,29.335,17.112,49.232,1.09,<empty>,Consumer Discretionary,$1.14
+05/15/2026,1630,CMI,1.227,"96,114 M",33.07,27.944,6.0109,21.994,19.25,1.4535,Industrials,$19.34
+05/15/2026,1630,CNA,.3405,"11,830 M",21.491,10.272,1.1442,<empty>,4.47,4.0505,Financials,<empty>
+05/15/2026,1630,CNC,.9491,"28,774 M",43.031,-2.5001,.75447,-26.044,-13.05,<empty>,Health Care,$14.45
+05/15/2026,1630,CNH,1.59,"12,933 M",77.514,7.5026,2.065,<empty>,.32,3.6265,,<empty>
+05/15/2026,1630,CNX,.6424,"5,106 M",31.768,5.3135,1.1827,<empty>,7.5,<empty>,Energy,<empty>
+05/15/2026,1630,COAL,.8534,67 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,COCO,.726,"4,480 M",3.5226,34.685,7.7688,26.32,1.38,<empty>,Consumer Staples,<empty>
+05/15/2026,1630,COF,1.046,"116,475 M",<empty>,42.481,1.0514,3.2593,3.91,1.5348,Financials,$45.02
+05/15/2026,1630,COIN,3.213,"51,488 M",28.579,60.984,3.4119,6.6859,2.72,<empty>,Financials,$6.68
+05/15/2026,1630,COM,.0007,275 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,COP,.186,"149,131 M",25.336,22.449,2.4917,11.284,5.9,2.4545,Energy,$4.72
+05/15/2026,1630,COPJ,1.23,166 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,COPX,1.074,"7,549 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,CORN,-.0862,276 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,COST,.9103,"465,369 M",20.199,52.961,14.083,29.651,19.23,.51056,Consumer Staples,$20.49
+05/15/2026,1630,CP,1.091,"75,520 M",30.505,24.398,2.1035,<empty>,3.216,.8331,Industrials,$1.62
+05/15/2026,1630,CPAY,.8414,"21,454 M",46.5,17.454,5.4825,<empty>,16.7,<empty>,Financials,$18.87
+05/15/2026,1630,CPER,.4829,738 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,CPNG,1.185,"28,936 M",33.959,-191.08,8.6896,-3.9865,-.1,<empty>,Consumer Discretionary,$0.16
+05/15/2026,1630,CPRI,1.475,"2,057 M",<empty>,-2.579,28.357,<empty>,-4.28,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,CPT,.8262,"10,166 M",40.137,27.15,2.5204,<empty>,3.58,4.3109,Real Estate,<empty>
+05/15/2026,1630,CRCL,2.883,"28,338 M",.3431,-1373.5,6.8942,-2.9755,-.23,<empty>,Information Technology,$2.10
+05/15/2026,1630,CRI,.864,"1,233 M",50.026,14.437,1.4252,10.204,2.49,2.7847,Consumer Discretionary,$3.58
+05/15/2026,1630,CRM,1.123,"141,941 M",16.77,27.217,3.3346,12.396,7.8,.78383,Information Technology,$15.16
+05/15/2026,1630,CRSP,1.504,"4,669 M",29.553,-7.7297,2.5268,-31.206,-6.17,<empty>,Health Care,($4.61)
+05/15/2026,1630,CRWD,1.05,"151,215 M",15.15,-679.08,25.254,-4.1369,-.65,<empty>,Information Technology,$4.95
+05/15/2026,1630,CSCO,.9453,"466,917 M",24.164,29.668,7.1994,25.229,3,1.8537,Information Technology,$2.98
+05/15/2026,1630,CSX,1.23,"84,843 M",56.707,25.175,5.618,23.684,1.63,1.2911,Industrials,$1.02
+05/15/2026,1630,CTA,-.2498,"1,704 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,CUBE,1.12,"8,685 M",50.96,25.63,3.1329,<empty>,1.43,5.7299,Real Estate,$2.67
+05/15/2026,1630,CURB,.5583,"2,913 M",23.903,86.088,1.437,<empty>,.3,2.5204,Real Estate,<empty>
+05/15/2026,1630,CVNA,1.96,"48,113 M",51.087,36.757,12.085,60.172,1.726,<empty>,Consumer Discretionary,$1.06
+05/15/2026,1630,CVS,.6157,"122,349 M",47.352,31.288,1.1804,3.7519,2.28,3.7037,Health Care,$5.82
+05/15/2026,1630,CVX,.5021,"380,594 M",16.865,35.99,2.227,6.6377,5.74,3.3398,Energy,$7.22
+05/15/2026,1630,CWH,2.136,421 M,<empty>,-4.5786,2.0183,<empty>,-1.49,5.4905,Consumer Discretionary,($1.68)
+05/15/2026,1630,CZR,1.836,"5,662 M",87.459,-11.184,1.5784,-10.716,-2.36,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,D,.6312,"54,289 M",53.021,18.262,1.93,9.7873,3.37,4.319,Utilities,($8.61)
+05/15/2026,1630,DAL,1.28,"46,141 M",39.196,9.7016,2.132,24.99,6.85,1.1282,Industrials,$6.03
+05/15/2026,1630,DAPP,3.385,522 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,DAR,1.117,"9,912 M",45.302,46.916,2.107,4.8787,1.38,<empty>,Consumer Staples,<empty>
+05/15/2026,1630,DASH,1.903,"69,366 M",23.576,71.569,6.4188,9.922,2.11,<empty>,Consumer Discretionary,$4.07
+05/15/2026,1630,DDOG,1.333,"74,033 M",23.584,309.47,10.533,3.9297,.39,<empty>,Information Technology,$2.74
+05/15/2026,1630,DDS,1.184,"8,413 M",<empty>,13.433,4.3553,<empty>,42.07,.1503,Consumer Discretionary,$48.36
+05/15/2026,1630,DE,.9573,"151,754 M",47.057,29.765,5.4227,19.566,17.73,1.2273,Industrials,$13.22
+05/15/2026,1630,DECK,1.094,"13,281 M",9.0135,14.785,5.6546,39.688,7.04,<empty>,Consumer Discretionary,$6.28
+05/15/2026,1630,DELL,1,"157,339 M",80.645,13.184,-30.208,-307.8,8.68,1.835,Information Technology,$12.67
+05/15/2026,1630,DEO,.542,"45,411 M",55.252,19.969,4.142,<empty>,4.328,3.8389,Consumer Staples,<empty>
+05/15/2026,1630,DG,.2996,"22,547 M",58.487,20.939,3.7108,18.992,6.85,1.6454,Consumer Staples,$10.87
+05/15/2026,1630,DGX,.6072,"20,657 M",40.493,21.655,2.9533,<empty>,9.05,1.6634,Health Care,$11.97
+05/15/2026,1630,DIN,.9671,378 M,<empty>,22.8,-1.1264,-6.4459,1.15,5.56,Consumer Discretionary,$2.62
+05/15/2026,1630,DIS,1.415,"178,374 M",23.65,14.768,1.4835,11.01,6.25,1.623,Communication Services,$3.98
+05/15/2026,1630,DK,.5574,"2,746 M",86.979,-55.17,52.555,<empty>,-.94,2.2632,Energy,<empty>
+05/15/2026,1630,DKL,.4681,"2,749 M",100.37,15.698,-132.15,439.37,3.17,9.0233,Energy,$1.89
+05/15/2026,1630,DKNG,1.5,"12,403 M",75.584,236.04,17.715,7.9357,.09,<empty>,Consumer Discretionary,$1.15
+05/15/2026,1630,DLTR,.5783,"17,444 M",56.014,19.796,6.2165,31.693,6.22,<empty>,Consumer Staples,$6.41
+05/15/2026,1630,DOC,1.019,"13,347 M",49.664,51.525,1.4596,2.7996,.32,7.4257,Real Estate,$1.77
+05/15/2026,1630,DOCU,1,"9,270 M",8.0124,35.5,5.4179,15.768,1.48,<empty>,Information Technology,$5.24
+05/15/2026,1630,DOV,1.203,"28,383 M",24.093,26.042,3.7477,14.998,8.02,.99544,Industrials,$8.33
+05/15/2026,1630,DOW,1,"27,929 M",50.552,-10.419,1.9686,-15.262,-4,4.2017,Materials,($0.53)
+05/15/2026,1630,DPZ,1.038,"10,055 M",413.25,21.491,-3.2017,-15.138,17.37,1.9312,Consumer Discretionary,$19.33
+05/15/2026,1630,DRI,.5781,"22,436 M",74.084,22.886,11.845,51.539,9.44,2.7155,Consumer Discretionary,$8.56
+05/15/2026,1630,DRLL,.4788,298 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,DRVN,.9799,"2,138 M",<empty>,-10.942,3.3368,<empty>,-1.25,<empty>,Consumer Discretionary,$0.19
+05/15/2026,1630,DT,.7353,"11,303 M",5.1062,68.481,4.1726,6.2175,.54,<empty>,Information Technology,$1.76
+05/15/2026,1630,DVN,.5287,"57,061 M",31.467,13.941,2.0255,15.178,3.59,1.9078,Energy,$3.88
+05/15/2026,1630,DXCM,1.34,"23,781 M",31.423,26.856,8.1959,35.624,2.33,<empty>,Health Care,$3.68
+05/15/2026,1630,EA,.6627,"50,311 M",20.782,58.083,7.5565,<empty>,3.51,.37279,Communication Services,$9.29
+05/15/2026,1630,EAT,1.254,"5,885 M",74.615,14.328,15.544,139.22,10.26,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,EBAY,1.399,"51,562 M",54.484,21.023,9.201,42.875,4.41,1.2964,Consumer Discretionary,$3.71
+05/15/2026,1630,ECH,.7607,981 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,ECPG,1.324,"1,750 M",79.461,5.4583,1.4568,<empty>,12.84,<empty>,Financials,<empty>
+05/15/2026,1630,EDEN,.8775,198 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EDU,.1751,"8,101 M",10.215,20.624,2.1086,10.842,2.7,2.1958,Consumer Discretionary,<empty>
+05/15/2026,1630,EDV,.7292,"3,740 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EEM,.7184,"28,813 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EFNL,.7756,54 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EFX,1.331,"18,857 M",40.593,31.686,4.7311,<empty>,5.68,1.144,Industrials,$9.32
+05/15/2026,1630,EGP,1.069,"10,792 M",26.926,33.641,2.7775,<empty>,5.5,3.2687,Real Estate,<empty>
+05/15/2026,1630,EIS,1.023,975 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EL,1.262,"29,045 M",63.169,-104.34,6.5029,-5.9486,-.7,1.9507,Consumer Staples,$3.55
+05/15/2026,1630,ELS,2.105,"11,852 M",64.38,31.299,6.8717,<empty>,2,3.3443,Real Estate,<empty>
+05/15/2026,1630,ELV,.6255,"85,275 M",40.546,12.448,1.4495,12.086,23.6,2.3399,Health Care,$29.01
+05/15/2026,1630,EMB,.3447,"13,979 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EMR,1.226,"74,521 M",23.589,30.324,3.6145,12.328,4.33,1.6524,Industrials,$5.55
+05/15/2026,1630,ENB,.5816,"120,780 M",57.884,25.561,2.8322,10.127,2.118,5.0391,Energy,$0.41
+05/15/2026,1630,ENPH,1.214,"6,971 M",35.202,37.064,4.5201,14.113,1.01,<empty>,Information Technology,$1.11
+05/15/2026,1630,ENR,.7547,"1,151 M",<empty>,5.8786,6.4915,<empty>,2.73,7.3082,Consumer Staples,$2.31
+05/15/2026,1630,ENVX,2.167,"1,333 M",67.521,-6.2301,4.4627,-71.313,-.81,<empty>,Industrials,($0.60)
+05/15/2026,1630,ENZL,.8902,70 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EOG,.3141,"74,706 M",20.156,14.25,2.5017,18.195,10.17,2.791,Energy,$7.36
+05/15/2026,1630,EPD,.4976,"84,875 M",50.629,14.029,2.7506,19.504,2.7,5.7875,Energy,$1.37
+05/15/2026,1630,EPHE,.5935,132 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EPOL,1.062,613 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EPR,1.057,"4,388 M",57.42,15.421,1.6503,11.69,3.24,7.1157,Real Estate,$5.71
+05/15/2026,1630,EPU,.7788,504 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EQR,.7738,"23,934 M",40.147,23.607,2.0802,<empty>,2.51,4.6999,Real Estate,<empty>
+05/15/2026,1630,EQRR,.9198,55 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EQT,.5991,"35,164 M",15.77,12.068,1.5847,13.402,5.27,1.0135,Energy,$6.55
+05/15/2026,1630,ESI,1.261,"10,314 M",41.999,55.607,3.0408,<empty>,.62,.93732,Materials,<empty>
+05/15/2026,1630,ESPO,1.009,250 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,ESS,.7322,"17,162 M",50.527,27.221,2.8632,<empty>,8.89,4.2562,Real Estate,<empty>
+05/15/2026,1630,ET,.5663,"69,339 M",58.538,16.123,2.1371,12.352,1.2,6.9171,Energy,$0.98
+05/15/2026,1630,ETH,2.354,"2,020 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,ETH-USD,3.949,"-2,242 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,ETHA,2.21,"6,947 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,ETHE,3.274,"1,811 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,ETSY,1.774,"5,511 M",125.15,20.154,-4.1715,-29.576,2.48,<empty>,Consumer Discretionary,$6.75
+05/15/2026,1630,EWA,.9923,"1,304 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWC,.8673,"5,411 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWD,1.095,301 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWG,.9607,"1,415 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWH,.3896,"1,032 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWI,.8838,640 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWJ,.6889,"21,119 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWJV,.4759,695 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWK,.6866,98 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWM,.4842,372 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWN,1.141,496 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWO,.8024,129 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWP,.6733,"1,727 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWQ,.8429,380 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWS,.5402,811 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWUS,1.035,41 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWW,.7821,"2,146 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWY,1.394,"22,465 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWZ,.6999,"10,572 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EWZS,.807,254 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,EXAS,1.418,"20,026 M",50.547,-92.153,8.0706,-8.6585,-1.1,<empty>,Health Care,$1.89
+05/15/2026,1630,EXP,1.369,"6,119 M",54.078,15.687,4.3664,<empty>,13.23,.48384,Materials,<empty>
+05/15/2026,1630,EXPD,1.054,"20,331 M",15.822,23.144,8.2779,<empty>,6.19,1.0752,Industrials,$6.83
+05/15/2026,1630,EXPE,1.256,"26,132 M",71.952,20.196,48.102,71.494,11.32,.72762,Consumer Discretionary,$33.16
+05/15/2026,1630,EXR,1.202,"28,922 M",41.77,29.446,2.0772,6.8299,4.45,4.9417,Real Estate,<empty>
+05/15/2026,1630,EYE,1.025,"1,398 M",<empty>,41.063,2.1135,<empty>,.57,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,EZA,.7866,721 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,F,1.712,"53,395 M",54.901,-7.5219,1.2278,-14.813,-1.55,5.1993,Consumer Discretionary,$2.40
+05/15/2026,1630,FAF,1.289,"6,839 M",20.999,9.2668,1.1213,12.796,6.5,3.6324,Financials,$8.00
+05/15/2026,1630,FANG,.4552,"57,264 M",23.257,203.73,1.5255,.474,.98,2.0982,Energy,($1.65)
+05/15/2026,1630,FAST,.7527,"49,664 M",7.089,41.062,13.352,33.842,1.13,1.9397,Industrials,$1.01
+05/15/2026,1630,FCFS,.5084,"9,931 M",<empty>,23.565,3.5861,16.274,7.98,.87234,Financials,<empty>
+05/15/2026,1630,FCG,.5366,804 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,FDX,1.346,"89,664 M",51.48,20.594,3.1034,15.869,18.73,1.4987,Industrials,$18.48
+05/15/2026,1630,FICO,1.215,"25,477 M",235.16,33.883,-11.833,-47.099,31.54,<empty>,Information Technology,$36.29
+05/15/2026,1630,FISV,.7792,"29,505 M",50.174,9.443,1.1351,12.191,5.9,<empty>,Financials,$7.64
+05/15/2026,1630,FIVE,.9517,"11,813 M",40.967,29.62,4.8256,17.925,6.47,<empty>,Consumer Discretionary,$7.47
+05/15/2026,1630,FLG,.9982,"5,514 M",<empty>,-61.508,.72062,<empty>,-.21,.30372,Financials,$0.44
+05/15/2026,1630,FLNG,.208,"1,738 M",<empty>,21.375,2.3018,<empty>,1.39,10.098,Energy,$2.04
+05/15/2026,1630,FLO,.4112,"1,521 M",47.437,27.204,1.7481,6.1781,.4,9.1057,Consumer Staples,$1.51
+05/15/2026,1630,FLUT,1.237,"16,013 M",54.946,-47.984,1.9616,-4.9622,-2.1,<empty>,Consumer Discretionary,$2.67
+05/15/2026,1630,FND,1.605,"4,701 M",36.967,28.594,2.3148,<empty>,1.84,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,FNF,.9841,"12,901 M",35.336,16.509,1.7199,10.47,2.81,4.3985,Financials,$20.19
+05/15/2026,1630,FORM,1.235,"9,843 M",2.0555,112.58,7.2101,6.7511,.87,<empty>,Information Technology,$0.47
+05/15/2026,1630,FOUR,1.409,"3,333 M",71.581,48.796,5.3535,9.9427,.87,<empty>,Financials,$5.00
+05/15/2026,1630,FOXA,.5377,"27,249 M",40.189,15.274,2.2403,15.2,3.8,.9589,Communication Services,<empty>
+05/15/2026,1630,FR,1.093,"8,064 M",47.537,22.393,2.7809,12.838,2.59,3.172,Real Estate,$3.48
+05/15/2026,1630,FROG,1.031,"8,013 M",1.1937,-89.114,6.1536,-7.144,-.53,<empty>,Information Technology,$1.28
+05/15/2026,1630,FRPT,1.737,"2,425 M",<empty>,16.14,2.2957,<empty>,3.81,<empty>,Consumer Staples,$0.96
+05/15/2026,1630,FRT,.9607,"9,776 M",55.087,18.413,2.9115,14.783,5.77,4.2275,Real Estate,$6.02
+05/15/2026,1630,FSLY,.5322,"2,661 M",26.885,-42.151,4.6503,-10.656,-.69,<empty>,Information Technology,$0.28
+05/15/2026,1630,FTNT,.9879,"89,955 M",36.431,31.684,60.607,132.39,2.58,<empty>,Information Technology,$3.24
+05/15/2026,1630,FTV,1.075,"17,901 M",27.728,32.951,2.8173,6.8137,1.67,.35663,Industrials,$2.98
+05/15/2026,1630,FTWO,.7961,77 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,FUTU,.3919,"18,876 M",.6813,15.927,4.4782,33.083,10.31,1.5835,Financials,$37.57
+05/15/2026,1630,FUTY,.637,"2,319 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,FWONK,.664,"22,439 M",37.148,35.433,2.7545,2.7296,2.131,<empty>,Communication Services,<empty>
+05/15/2026,1630,FWRG,1.058,692 M,<empty>,36.801,1.0123,<empty>,.28,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,FXA,.3858,106 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,FXB,.2801,96 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,FXC,.2214,75 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,FXE,.1769,413 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,FXF,.1991,488 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,FXI,.3012,"5,951 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,FXY,.2069,437 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,FYBR,.9018,"9,636 M",<empty>,-24.43,1.9898,<empty>,-1.53,<empty>,Communication Services,<empty>
+05/15/2026,1630,GAP,1.976,"7,690 M",52.879,13.136,2.7384,<empty>,2.13,2.3588,Consumer Discretionary,<empty>
+05/15/2026,1630,GD,.3341,"90,459 M",21.637,21.969,3.6145,17.974,15.89,1.7445,Industrials,$22.98
+05/15/2026,1630,GDAXI:DE,<empty>,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,GDX,.6419,"26,620 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,GDXJ,.8348,"8,627 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,GE,1.364,"293,731 M",47.796,35.23,16.396,45.428,8.12,.54622,Industrials,$7.07
+05/15/2026,1630,GEL,.7294,"1,970 M",85.572,-96.127,-6.3628,<empty>,-.19,2.8604,Energy,($0.05)
+05/15/2026,1630,GII,.6316,955 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,GIL,1.066,"10,461 M",52.994,34.757,2.958,10.563,1.69,1.7029,Consumer Discretionary,<empty>
+05/15/2026,1630,GIS,-.0386,"17,606 M",47.126,10.96,2.5488,23.591,4.09,5.446,Consumer Staples,$3.05
+05/15/2026,1630,GK,1.39,31 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,Industrials,<empty>
+05/15/2026,1630,GLASF,.6155,815 M,<empty>,-12.81,7.8508,<empty>,-.55,<empty>,Consumer Staples,<empty>
+05/15/2026,1630,GLBE,1.543,"4,685 M",1.993,46.773,5.6956,<empty>,.67,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,GLD,.1641,"151,935 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,GLIN,.7117,97 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,GM,1.297,"67,499 M",47.801,29.172,1.0725,4.0146,2.74,.84564,Consumer Discretionary,$15.77
+05/15/2026,1630,GME,1.759,"9,680 M",43.588,31.013,1.9663,8.0661,.77,<empty>,Consumer Discretionary,$1.33
+05/15/2026,1630,GO,.671,732 M,<empty>,-1.8559,.88493,<empty>,-3.89,<empty>,Consumer Staples,<empty>
+05/15/2026,1630,GOLF,.8434,"5,001 M",59.228,33.03,6.6331,<empty>,2.85,1.027,Consumer Discretionary,$1.48
+05/15/2026,1630,GOOG,1.081,"4,765,246 M",16.101,21.939,7.2775,38.885,13.11,.29211,Communication Services,$5.33
+05/15/2026,1630,GOOGL,1.082,"4,807,166 M",16.101,21.939,7.2775,38.885,13.11,.29211,Communication Services,$5.33
+05/15/2026,1630,GOOS,1.654,930 M,<empty>,63.696,2.339,<empty>,.1651,<empty>,Consumer Discretionary,$1.11
+05/15/2026,1630,GPI,.8409,"3,732 M",<empty>,12.75,1.3707,<empty>,26.42,.01512,Consumer Discretionary,<empty>
+05/15/2026,1630,GPN,.7527,"18,486 M",43.501,26.557,.77334,2.9346,-2.05,1.4859,Financials,$4.27
+05/15/2026,1630,GRID,1.262,"10,778 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,GRMN,.9383,"43,537 M",1.7667,25.687,4.789,19.899,8.96,1.8248,Consumer Discretionary,$7.54
+05/15/2026,1630,GRNY,1.292,"4,377 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,GS,1.264,"279,806 M",34.075,15.49,2.3746,14.548,54.75,1.8322,Financials,($135.91)
+05/15/2026,1630,GSG,.0726,"1,065 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,GTBIF,1.219,"1,533 M",21.135,12.244,.7617,<empty>,.51,<empty>,Health Care,$0.97
+05/15/2026,1630,GTLB,.8777,"3,995 M",.0438,-104.27,6.005,<empty>,-.34,<empty>,Information Technology,$1.33
+05/15/2026,1630,GTM,.9897,"1,138 M",<empty>,14.91,1.2015,8.1225,.4,<empty>,Communication Services,$1.19
+05/15/2026,1630,GVAL,.6412,441 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,GVIP,1.085,553 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,GVZ:CGI,-1.517,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,H,1.295,"15,893 M",48.469,-402.31,4.1935,<empty>,-.34,.41728,Consumer Discretionary,<empty>
+05/15/2026,1630,HACK,.8075,"2,200 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,HAL,.7652,"34,886 M",40.982,21.522,3.0201,14.627,1.81,1.744,Energy,$1.98
+05/15/2026,1630,HBB,1,247 M,<empty>,9.0848,1.3874,<empty>,2.08,2.533,Consumer Discretionary,<empty>
+05/15/2026,1630,HBDC,.0728,84 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,HCA,1.184,"93,838 M",88.149,16.279,-16.708,-457.49,29.03,.62125,Health Care,$34.38
+05/15/2026,1630,HD,.9819,"296,328 M",69.942,26.324,29.118,145.54,14.23,2.464,Consumer Discretionary,$12.74
+05/15/2026,1630,HELE,1.222,526 M,<empty>,-.45135,.51,<empty>,-39.08,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,HII,.2735,"12,852 M",36.284,24.685,2.9065,<empty>,15.39,1.4372,Industrials,$20.15
+05/15/2026,1630,HIMS,2.15,"5,798 M",71.376,-355.36,10.735,-2.6591,-.09,<empty>,Health Care,$0.27
+05/15/2026,1630,HLN,.1976,"39,723 M",31.039,20.259,2.0324,<empty>,.4982,1.8943,Health Care,<empty>
+05/15/2026,1630,HLT,1.057,"71,976 M",181.24,46.367,-11.758,<empty>,6.55,.19732,,$9.08
+05/15/2026,1630,HOOD,2.158,"69,465 M",.867,33.656,6.7018,21.461,2.06,<empty>,Financials,$3.33
+05/15/2026,1630,HPP,1.804,611 M,<empty>,-.59832,.12847,<empty>,-9.93,3.6232,Real Estate,<empty>
+05/15/2026,1630,HQY,.1734,"6,888 M",31.897,34.825,3.456,10.194,2.46,<empty>,Health Care,$4.74
+05/15/2026,1630,HSI:HK,<empty>,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,HSY,.0733,"37,928 M",47.604,39.787,9.158,23.234,5.37,2.6024,Consumer Staples,$9.12
+05/15/2026,1630,HTZ,2.091,"1,746 M",<empty>,-2.1394,-1.8478,<empty>,-2.05,<empty>,Industrials,($3.72)
+05/15/2026,1630,HUBS,1.256,"10,155 M",9.3649,129.78,6.3512,5.0112,1.9,<empty>,Information Technology,$11.56
+05/15/2026,1630,HUM,.6471,"36,633 M",37.42,18.528,1.1204,6.2799,9.37,2.0416,Health Care,$10.57
+05/15/2026,1630,HYG,.4036,"16,814 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,HYLS,.4014,"1,638 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,IAK,.5627,363 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,IBB,.7397,"7,816 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,IBIT,.7163,"64,625 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,IDX,.3846,27 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,IDXX,1.588,"41,713 M",14.976,41.333,28.613,72.915,13.59,<empty>,Health Care,$13.35
+05/15/2026,1630,IEF,.2638,"47,269 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,IFF,.989,"18,663 M",25.563,22.485,1.3112,6.0513,3.23,2.2054,Materials,$1.55
+05/15/2026,1630,IGLB,.6331,"2,596 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,IGSB,.1234,"22,002 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,IIGD,.1436,31 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,IJT,1.07,"7,212 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,ILMN,1.487,"21,566 M",37.644,21.328,6.6838,33.822,5.5,<empty>,Health Care,$6.35
+05/15/2026,1630,INDA,.4615,"6,702 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,INDY,.4599,562 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,INFL,.7139,"1,609 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,INMD,2.021,845 M,.7249,10.07,1.3116,<empty>,1.35,<empty>,Health Care,<empty>
+05/15/2026,1630,INTC,1.921,"546,678 M",25.307,-64.07,1.9448,-2.9109,-.6,0,Information Technology,($0.66)
+05/15/2026,1630,INVH,.8394,"16,592 M",49.197,26.165,1.6236,<empty>,.95,4.7485,Real Estate,<empty>
+05/15/2026,1630,IONQ,2.918,"19,391 M",.4238,31.291,2.1621,11.286,.39,<empty>,Information Technology,($1.35)
+05/15/2026,1630,IPO,1.33,142 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,IRM,1.219,"37,211 M",101.73,111.02,-25.008,<empty>,.92,3.2289,Real Estate,($2.64)
+05/15/2026,1630,IRT,.9984,"3,771 M",38.71,74.737,1.0324,<empty>,.2,4.5668,Real Estate,$0.59
+05/15/2026,1630,ITA,.7255,"13,362 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,ITB,1.3,"2,282 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,ITW,1.046,"71,258 M",53.345,24.162,23.192,96.848,10.77,2.4319,Industrials,$9.44
+05/15/2026,1630,IVOL,.0287,334 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,IWC,1.101,"1,374 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,IWF,.1426,"129,084 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,IWM,1.115,"77,409 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,IWN,1.031,"13,419 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,IWO,1.193,"14,146 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,J,.7202,"13,049 M",56.584,36.691,4.5186,<empty>,3.22,1.0485,Industrials,$4.07
+05/15/2026,1630,JACK,1.496,207 M,144.96,-2.0759,-.23664,<empty>,1.87,0,Consumer Discretionary,$0.57
+05/15/2026,1630,JBHT,1.285,"24,726 M",29.681,32.823,5.5593,<empty>,6.44,.8353,Industrials,$10.78
+05/15/2026,1630,JBLU,1.775,"1,704 M",76.49,-2.2712,.90847,<empty>,-1.93,<empty>,Industrials,($3.18)
+05/15/2026,1630,JBSAY,.1408,"32,030 M",<empty>,16.662,4.1911,<empty>,.8606,6.1101,Consumer Staples,<empty>
+05/15/2026,1630,JETS,1.167,726 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,JNJ,.265,"545,740 M",27.558,27.845,7.1276,26.416,8.63,2.1626,Health Care,$7.23
+05/15/2026,1630,JNK,.4181,"7,665 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,JOBY,2.489,"10,191 M",27.181,-7.5094,4.1375,-67.968,-1.14,<empty>,Industrials,($0.76)
+05/15/2026,1630,JOE,1.336,"3,650 M",41.359,32.491,4.7145,14.867,1.93,.95541,Real Estate,<empty>
+05/15/2026,1630,JOET,1.034,232 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,JPM,1.01,"797,985 M",<empty>,14.091,2.2913,16.465,20.89,2.0057,Financials,($39.16)
+05/15/2026,1630,JPXN,.552,133 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,JYNT,1.123,117 M,<empty>,102.42,7.841,<empty>,.22,<empty>,Health Care,<empty>
+05/15/2026,1630,K,.2238,"29,031 M",45.493,21.302,6.452,<empty>,3.66,2.9382,Consumer Staples,$1.73
+05/15/2026,1630,KBA,.369,195 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,KBWP,.4355,248 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,KCE,1.245,451 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,KDP,1,"39,361 M",37.97,19.527,1.418,6.3121,1.35,3.4941,Consumer Staples,$1.16
+05/15/2026,1630,KEMX,.8779,124 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,KHC,1,"27,178 M",30.425,-4.5311,.62351,-12.576,-4.86,7.2595,Consumer Staples,$3.33
+05/15/2026,1630,KLAC,1.468,"235,694 M",50.888,41.682,33.009,94.976,35.31,.51616,Information Technology,$30.49
+05/15/2026,1630,KMX,1.216,"5,237 M",72.691,25.707,1.0395,4.0767,1.68,<empty>,Consumer Discretionary,$8.44
+05/15/2026,1630,KNX,1.141,"11,222 M",21.103,274.94,1.3263,.4781,.21,1.2852,Industrials,$3.05
+05/15/2026,1630,KO,.3646,"347,727 M",49.492,24.126,9.8155,43.372,3.18,2.6851,Consumer Staples,$2.92
+05/15/2026,1630,KR,.4661,"40,705 M",72.564,40.812,6.5215,14.405,1.54,2.1798,Consumer Staples,$5.30
+05/15/2026,1630,KRE,.8441,"3,596 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,KSA,.3036,697 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,KSS,1.502,"1,321 M",60.414,7.3403,.48336,<empty>,2.38,2.8621,Consumer Discretionary,$9.00
+05/15/2026,1630,KVUE,.2295,"32,851 M",36.945,20.858,3.1709,15.701,.84,4.7232,Consumer Staples,$0.95
+05/15/2026,1630,KW,.914,"1,537 M",<empty>,95.2,2.071,<empty>,.12,4.4362,Real Estate,<empty>
+05/15/2026,1630,KWEB,.303,"6,842 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,LAMR,1.196,"14,769 M",76.042,23.366,13.253,55.202,5.42,4.9345,Real Estate,<empty>
+05/15/2026,1630,LCID,.839,"2,357 M",45.826,-.74152,-8.9544,-97.588,-13.14,<empty>,Consumer Discretionary,($14.63)
+05/15/2026,1630,LEVI,1.314,"8,069 M",45.32,16.313,3.8621,25.413,1.56,2.482,Consumer Discretionary,<empty>
+05/15/2026,1630,LFMD,1.8,209 M,<empty>,-7.8269,11.411,<empty>,.07,<empty>,Health Care,<empty>
+05/15/2026,1630,LFST,1.325,"2,921 M",21.046,109.03,1.6721,<empty>,.06,<empty>,Health Care,<empty>
+05/15/2026,1630,LH,.9136,"20,533 M",41.186,23.641,2.5157,11.047,11.29,1.0794,Health Care,$16.70
+05/15/2026,1630,LI,.54,"18,892 M",10.892,109.54,1.6529,1.5774,.1544,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,LII,1.216,"17,400 M",47.081,20.58,13.309,76.791,22.51,1.1204,Industrials,$18.86
+05/15/2026,1630,LIN,.7372,"233,999 M",<empty>,<empty>,<empty>,<empty>,15.08,<empty>,,<empty>
+05/15/2026,1630,LIT,1.027,"2,059 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,LLY,.4899,"896,129 M",52.797,32.673,26.342,107.46,28.15,.67734,Health Care,$11.81
+05/15/2026,1630,LMND,1.738,"3,945 M",27.895,-33.75,9.2915,<empty>,-1.85,<empty>,Financials,$0.26
+05/15/2026,1630,LMT,.0823,"118,973 M",72.834,29.866,18.914,67.64,20.65,2.1921,Industrials,$24.45
+05/15/2026,1630,LNG,.0521,"50,678 M",69.874,42.18,15.877,28.92,5.91,.76297,Energy,$10.16
+05/15/2026,1630,LOGI,1.077,"14,779 M",3.0693,18.854,5.8727,<empty>,4.8,1.3895,Information Technology,$6.65
+05/15/2026,1630,LOTMY,.7653,"7,102 M",<empty>,31.927,17.111,<empty>,.8936,1.7771,Consumer Discretionary,<empty>
+05/15/2026,1630,LOW,.8878,"122,329 M",119.49,22.537,-15.107,-55.11,11.85,1.7786,Consumer Discretionary,$13.69
+05/15/2026,1630,LQD,.4441,"29,381 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,LRCX,1.818,"356,063 M",26.052,39.931,24.977,66.762,5.29,.47774,Information Technology,$4.76
+05/15/2026,1630,LUV,1.146,"18,818 M",39.522,24.632,2.671,10.062,1.5,1.9164,Industrials,($0.73)
+05/15/2026,1630,LUXE,1.147,"1,042 M",<empty>,1.8137,.78343,<empty>,5.603,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,LVS,.8245,"33,901 M",80.252,19.898,29.817,90.455,2.71,2.0416,Consumer Discretionary,$3.30
+05/15/2026,1630,LW,.4568,"6,083 M",62.294,22.592,3.6717,17.355,2.13,3.0868,Consumer Staples,$4.54
+05/15/2026,1630,LYB,.4021,"24,228 M",51.521,-37.958,2.5899,-6.0088,-2.5,5.9583,Materials,$2.82
+05/15/2026,1630,LYFT,2,"4,924 M",27.17,1.8894,1.6814,<empty>,6.84,<empty>,Industrials,$2.77
+05/15/2026,1630,LYV,1.137,"39,298 M",73.085,-86.112,-252.53,14.927,-1.77,<empty>,Communication Services,$5.19
+05/15/2026,1630,M,2.45,"4,856 M",49.909,8.6293,1.0834,13.642,2.32,3.6464,Consumer Discretionary,$2.55
+05/15/2026,1630,MA,.7473,"436,667 M",67.02,28.905,65.955,232.08,17.28,.65244,Financials,$18.98
+05/15/2026,1630,MAC,2.09,"5,646 M",59.998,-26.218,2.0205,<empty>,-.72,3.5979,Real Estate,<empty>
+05/15/2026,1630,MAR,1.098,"93,127 M",121.65,34.252,-21.157,-71.185,9.55,.8194,Consumer Discretionary,<empty>
+05/15/2026,1630,MARA,4.867,"4,743 M",47.179,-1.4582,1.3925,-67.333,-5.45,<empty>,Information Technology,($3.68)
+05/15/2026,1630,MCD,.413,"196,377 M",101.08,25.617,-171.71,-366.16,12.13,2.336,Consumer Discretionary,$9.88
+05/15/2026,1630,MCHP,1.67,"50,786 M",46.077,293.9,5.4391,3.4047,.22,2.8169,Information Technology,$1.37
+05/15/2026,1630,MCK,.3309,"91,424 M",88.934,22.547,-47.81,-403.4,38.38,.36632,Health Care,$43.77
+05/15/2026,1630,MCO,1.349,"74,919 M",63.844,31.303,25.452,71.361,13.94,.88252,Financials,$15.41
+05/15/2026,1630,MCW,1.283,"2,335 M",<empty>,21.114,1.9494,<empty>,.33,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,MDB,1.65,"25,088 M",1.5617,-424.02,10.124,-2.4814,-.88,<empty>,Information Technology,$6.16
+05/15/2026,1630,MDLZ,.3982,"77,584 M",33.876,28.511,2.8734,10.161,2.02,3.4178,Consumer Staples,$2.00
+05/15/2026,1630,MELI,1.341,"78,419 M",33.393,45.654,12.039,31.258,37.89,<empty>,Consumer Discretionary,$234.59
+05/15/2026,1630,META,1.239,"1,559,176 M",25.527,20.813,5.9589,32.93,27.5,.36705,Communication Services,$19.13
+05/15/2026,1630,MGM,1.268,"9,459 M",89.93,53.225,3.8912,13.488,.73,<empty>,Consumer Discretionary,$5.81
+05/15/2026,1630,MGPI,.5016,390 M,29.698,-1.6491,.67605,<empty>,-11.15,2.6101,Consumer Staples,<empty>
+05/15/2026,1630,MICC,.6502,"10,200 M",81.773,28.454,13.338,<empty>,.5638,<empty>,Consumer Staples,$0.24
+05/15/2026,1630,MKOR,1.522,137 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,MLCO,.5648,"2,136 M",<empty>,9.7768,-1.8087,-20.482,.579,<empty>,Consumer Discretionary,$1.20
+05/15/2026,1630,MLM,1.113,"33,545 M",33.106,36.852,3.1295,<empty>,41.93,.55718,Materials,<empty>
+05/15/2026,1630,MNDY,1.218,"3,682 M",15.919,30.177,4.374,<empty>,2.29,<empty>,Information Technology,$6.00
+05/15/2026,1630,MNSO,-.049,"4,287 M",37.722,33.449,3.7635,<empty>,.9776,3.5527,Consumer Discretionary,<empty>
+05/15/2026,1630,MNST,.519,"85,175 M",.81,35.004,8.1196,26.654,2.07,<empty>,Consumer Staples,$2.10
+05/15/2026,1630,MO,.5455,"122,052 M",112.21,13.791,-34.332,-243.26,4.79,6.3646,Consumer Staples,$5.14
+05/15/2026,1630,MOH,.7351,"9,638 M",49.172,37.036,1.6989,<empty>,3.73,<empty>,Health Care,<empty>
+05/15/2026,1630,MOO,.3626,966 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,MOVE:GIF,-4.512,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,MP,1.903,"10,907 M",28.341,-117.74,4.3588,-4.1672,-.4,<empty>,Materials,($1.81)
+05/15/2026,1630,MPC,.5458,"74,453 M",54.899,15.898,4.2706,27.458,15.19,1.6013,Energy,$18.98
+05/15/2026,1630,MPLX,.4664,"55,577 M",60.469,12.371,4.0533,34.705,4.62,7.3349,Energy,$4.02
+05/15/2026,1630,MPNGY,.042,"64,090 M",<empty>,-23.663,3.7538,-14.434,-1.121,<empty>,Consumer Discretionary,($0.64)
+05/15/2026,1630,MRNA,1.075,"19,458 M",14.335,-6.2228,2.7224,-36.557,-8.14,<empty>,Health Care,($4.10)
+05/15/2026,1630,MRVL,2.199,"154,877 M",22.169,25.707,4.6734,19.254,3.07,.30411,Information Technology,$1.62
+05/15/2026,1630,MSFT,1.084,"3,134,205 M",19.821,22.047,6.6366,34.014,16.79,.96172,Information Technology,$9.81
+05/15/2026,1630,MSGS,.5883,"8,464 M",<empty>,-347.23,-26.192,<empty>,-.92,<empty>,Communication Services,<empty>
+05/15/2026,1630,MSM,.9883,"5,844 M",11.318,25.224,3.7869,<empty>,3.72,3.6871,Industrials,$3.86
+05/15/2026,1630,MSTR,3.328,"62,218 M",15.263,-2.9019,1.1779,-30.756,-36.99,<empty>,Information Technology,($2.32)
+05/15/2026,1630,MTCH,1.412,"8,258 M",94.526,11.751,-32.932,<empty>,2.62,2.5073,Communication Services,$4.28
+05/15/2026,1630,MTDR,.8302,"7,493 M",37.595,16.262,1.4051,10.084,3.88,2.1763,Energy,<empty>
+05/15/2026,1630,MTUM,1.061,"25,636 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,MU,1.875,"817,224 M",12.267,19.549,6.4692,39.823,21.19,.11912,Information Technology,$9.16
+05/15/2026,1630,MUR,.5783,"5,826 M",26.913,70.465,1.1597,<empty>,.59,3.2121,Energy,<empty>
+05/15/2026,1630,MUSA,.3189,"10,375 M",79.125,17.088,13.851,80.345,28.75,.46359,Consumer Discretionary,$29.30
+05/15/2026,1630,MZTI,.3886,"3,126 M",3.4386,21.651,3.6307,<empty>,6.39,2.8194,Consumer Staples,<empty>
+05/15/2026,1630,N225:JP,<empty>,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,NBIS,2.084,"55,842 M",56.624,35.932,3.6691,14.136,2.92,<empty>,Information Technology,($12.74)
+05/15/2026,1630,NBIX,.3616,"15,929 M",10.494,20.26,3.8895,22.5,6.5,<empty>,Health Care,<empty>
+05/15/2026,1630,NCLH,1.901,"7,125 M",80.338,15.543,3.5309,<empty>,1.24,<empty>,Consumer Discretionary,($2.10)
+05/15/2026,1630,NEE,.7257,"194,687 M",54.929,23.587,3.5074,10.325,3.94,2.5008,Utilities,($7.43)
+05/15/2026,1630,NEM,.4477,"116,427 M",13.33,14.07,3.3257,25.832,7.71,.94226,Materials,$8.43
+05/15/2026,1630,NET,1.603,"69,831 M",42.715,-832.94,47.76,-5.8755,-.25,<empty>,Information Technology,$0.80
+05/15/2026,1630,NFLX,1.668,"366,424 M",31.982,31.057,13.013,48.495,3.1,<empty>,Communication Services,$2.81
+05/15/2026,1630,NIKL,.9413,77 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,NKE,1.137,"62,020 M",38.333,40.994,6.5313,16.016,1.52,2.6053,Consumer Discretionary,$0.71
+05/15/2026,1630,NLR,.8218,"4,726 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,NNN,.8001,"8,318 M",48.738,20.459,1.8193,<empty>,2.05,5.6626,Real Estate,$3.46
+05/15/2026,1630,NOAH,.8128,682 M,<empty>,8.8315,.47595,<empty>,1.136,6.6443,Financials,<empty>
+05/15/2026,1630,NORW,.7237,156 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,NOW,.8286,"98,046 M",16.336,62.24,9.1937,16.07,1.68,<empty>,Information Technology,$4.46
+05/15/2026,1630,NSA,1.083,"3,167 M",62.368,50.351,5.1128,<empty>,.75,6.0413,Real Estate,$3.59
+05/15/2026,1630,NSC,1.282,"70,960 M",50.917,24.184,4.0786,17.615,11.87,1.8815,Industrials,$7.20
+05/15/2026,1630,NSP,.5829,"1,154 M",<empty>,-40.97,15.404,<empty>,-.68,8.8757,Industrials,$1.76
+05/15/2026,1630,NSSC,1.376,"1,294 M",<empty>,38.221,7.9159,<empty>,1.03,1.4471,Information Technology,$1.58
+05/15/2026,1630,NTLA,1.972,"1,910 M",8.7528,-3.6428,2.4868,-56.336,-3.52,<empty>,Health Care,($3.24)
+05/15/2026,1630,NTR,.6773,"34,350 M",24.994,15.318,1.4425,9.8128,4.91,2.8951,Materials,$4.56
+05/15/2026,1630,NUE,1.842,"51,702 M",23.177,17.092,1.8308,12.285,10.08,1.2873,Materials,$2.32
+05/15/2026,1630,NVDA,2.28,"5,457,369 M",5.9518,38.3,28.998,101.49,4.9,.02131,Information Technology,$3.44
+05/15/2026,1630,NVO,.7947,"198,326 M",34.103,8.4237,5.0515,71.402,4.203,5.0671,Health Care,$1.08
+05/15/2026,1630,NXPI,1.694,"73,595 M",47.717,18.33,4.4311,25.813,10.46,2.1163,Information Technology,$10.12
+05/15/2026,1630,NYT,.9863,"12,056 M",1.7509,35.932,6.7374,19.677,2.33,.91962,Communication Services,$3.33
+05/15/2026,1630,O,.7459,"56,994 M",39.589,50.136,1.4573,2.8312,1.22,5.2852,Real Estate,$4.45
+05/15/2026,1630,OC,1.318,"9,187 M",52.73,-22.105,2.3907,<empty>,-6.44,2.7352,Industrials,$10.00
+05/15/2026,1630,OIH,.8815,"2,489 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,OKE,.7745,"58,165 M",54.799,16.139,2.5472,15.903,5.61,4.6465,Energy,$3.56
+05/15/2026,1630,OKLO,2.462,"10,831 M",.0601,-59.395,3.2677,-8.8665,-.84,<empty>,Utilities,($0.99)
+05/15/2026,1630,OKTA,.7132,"14,513 M",.9664,64.414,2.1408,3.5064,1.31,<empty>,Information Technology,$4.91
+05/15/2026,1630,OLLI,.4882,"4,761 M",22.397,28.357,3.5692,<empty>,3.89,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,OMF,1.185,"6,183 M",86.897,7.9775,1.8315,<empty>,6.71,7.8145,Financials,<empty>
+05/15/2026,1630,ON,1.835,"43,978 M",30.418,44.003,3.3377,7.4939,1.36,<empty>,Information Technology,$2.92
+05/15/2026,1630,ONEW,1.523,176 M,<empty>,-1.2661,.58287,<empty>,-7.66,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,ONON,2.069,"12,420 M",19.756,36.334,5.0914,15.502,.9375,<empty>,Consumer Discretionary,$1.19
+05/15/2026,1630,ONTO,1.611,"13,519 M",.5315,95.387,4.7843,5.2526,2.15,<empty>,Information Technology,$4.85
+05/15/2026,1630,ORCL,1.529,"554,933 M",74.02,26.09,12.463,57.572,5.57,1.3755,Information Technology,($8.70)
+05/15/2026,1630,ORLY,.5481,"73,333 M",108.11,30.047,-72.001,-214.8,3.07,<empty>,Consumer Discretionary,$2.26
+05/15/2026,1630,OSCR,2.139,"7,031 M",22.437,-75.806,2.0599,<empty>,-.54,<empty>,Financials,<empty>
+05/15/2026,1630,OSK,1.282,"7,506 M",10.7,16.33,2.0602,<empty>,8.98,1.4265,Industrials,<empty>
+05/15/2026,1630,OTLY,1.111,316 M,<empty>,-2.0434,89.619,<empty>,-5,<empty>,Consumer Staples,<empty>
+05/15/2026,1630,OUT,1.476,"5,548 M",82.096,25.092,7.0504,<empty>,1.07,4.5283,Real Estate,<empty>
+05/15/2026,1630,OVX:CGI,-2.618,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,OXLC,.6526,973 M,<empty>,438.23,.8821,<empty>,.44,31.896,,<empty>
+05/15/2026,1630,OXM,.9861,586 M,<empty>,-19.771,1.0736,<empty>,-1.86,7.4898,Consumer Discretionary,<empty>
+05/15/2026,1630,OXY,.2094,"59,300 M",28.136,87.869,2.1024,4.0527,3.97,1.5077,Energy,$3.15
+05/15/2026,1630,PAG,.8766,"10,663 M",30.928,10.815,1.7358,<empty>,13.83,2.7421,Consumer Discretionary,$9.05
+05/15/2026,1630,PALL,.1618,787 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,PAM,.9058,"4,265 M",32.474,11.683,1.3545,<empty>,8.25,<empty>,Utilities,($0.46)
+05/15/2026,1630,PATH,.4912,"5,345 M",3.2784,24.212,3.2466,14.374,.52,<empty>,Information Technology,$0.65
+05/15/2026,1630,PBD,1.349,222 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,PBH,.3744,"2,215 M",<empty>,15.159,1.4859,<empty>,3.91,<empty>,Health Care,<empty>
+05/15/2026,1630,PBJ,.4986,91 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,PBR,.4349,"128,436 M",37.313,5.8308,1.4091,25.601,3.087,6.1458,Energy,$1.29
+05/15/2026,1630,PCAR,.9896,"58,060 M",42.942,24.574,3.0766,13.108,4.7,1.1429,Industrials,$5.89
+05/15/2026,1630,PD,.8025,519 M,59.698,5.6685,3.5369,<empty>,1.87,<empty>,Information Technology,$1.13
+05/15/2026,1630,PDD,1,"136,404 M",.6877,12.014,2.7303,26.928,9.433,<empty>,Consumer Discretionary,$10.82
+05/15/2026,1630,PEB,1.481,"1,594 M",<empty>,-15.885,.58557,<empty>,-.79,.31671,Real Estate,<empty>
+05/15/2026,1630,PECO,.4512,"4,949 M",49.106,40.849,2.0685,4.8962,.92,3.3955,Real Estate,<empty>
+05/15/2026,1630,PENN,1.415,"2,168 M",81.999,-2.1924,1.0446,<empty>,-6.58,<empty>,Consumer Discretionary,($0.47)
+05/15/2026,1630,PEP,.3825,"203,812 M",57.332,23.553,9.599,43.879,6.37,3.7923,Consumer Staples,$6.46
+05/15/2026,1630,PFE,.3102,"144,367 M",39.217,20.633,1.7103,8.3097,1.31,6.361,Health Care,$1.67
+05/15/2026,1630,PFF,.532,"13,797 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,PFG,.8743,"21,716 M",23.718,12.897,1.6508,13.386,6.97,3.4735,Financials,$16.45
+05/15/2026,1630,PFIG,.2233,112 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,PFIX,-.0309,221 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,PG,.3943,"329,660 M",25.995,21.124,6.258,31.112,6.84,2.9266,Consumer Staples,$6.43
+05/15/2026,1630,PGNY,.9934,"1,821 M",<empty>,22.218,3.0012,<empty>,.77,<empty>,Health Care,$2.18
+05/15/2026,1630,PGRO,1.165,113 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,PINK,.7247,254 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,PINS,.9141,"10,906 M",29.713,37.014,3.6909,8.8697,.48,<empty>,Communication Services,$1.82
+05/15/2026,1630,PJP,.4658,330 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,PK,1.354,"2,167 M",39.135,-9.6636,.68626,<empty>,-1.09,9.4967,Real Estate,$1.87
+05/15/2026,1630,PKB,1.284,430 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,PLAY,1.729,351 M,<empty>,-13.832,7.4034,<empty>,-1.4,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,PLD,1.359,"131,021 M",36.743,33.286,2.306,6.8444,3.98,3.1018,Real Estate,$5.53
+05/15/2026,1630,PLNT,1.053,"4,165 M",116.65,26.817,-12.204,<empty>,2.77,<empty>,Consumer Discretionary,$3.23
+05/15/2026,1630,PLTR,1.451,"321,216 M",2.4175,164.44,41.499,32.587,.89,<empty>,Information Technology,$1.13
+05/15/2026,1630,PM,.4315,"295,518 M",98.068,23.288,-27.771,-142.89,7.1,3.4837,Consumer Staples,$6.85
+05/15/2026,1630,PNC,.9071,"85,469 M",<empty>,12.091,1.4487,12.104,17.21,3.2198,Financials,$16.37
+05/15/2026,1630,PNDRY,1.634,"5,996 M",<empty>,6.8043,8.4377,<empty>,1.275,4.849,Consumer Discretionary,<empty>
+05/15/2026,1630,POET,.535,"2,439 M",.5396,-9.3088,4.547,-61.584,-.68,<empty>,Information Technology,($0.36)
+05/15/2026,1630,POOL,1.117,"6,390 M",53.932,18.526,6.5066,<empty>,10.88,2.4712,Consumer Discretionary,<empty>
+05/15/2026,1630,PPLT,.3761,"2,435 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,PR,.546,"17,449 M",24.084,24.783,1.5755,6.8565,.89,2.8612,Energy,$0.46
+05/15/2026,1630,PRAA,1.096,578 M,<empty>,-2.4245,.66594,<empty>,-7.15,<empty>,Financials,<empty>
+05/15/2026,1630,PRGO,.5008,"1,468 M",59.916,-.73776,.52669,-52.232,-13.11,12.172,Health Care,$0.81
+05/15/2026,1630,PRMB,.5094,"8,411 M",64.007,99.847,2.311,<empty>,.15,2.2305,Consumer Staples,$0.72
+05/15/2026,1630,PRVA,.9427,"2,892 M",.8475,121.32,3.4332,<empty>,.17,<empty>,Health Care,<empty>
+05/15/2026,1630,PSA,.9724,"51,342 M",46.802,27.983,9.7555,20.175,9.68,4.43,Real Estate,$18.46
+05/15/2026,1630,PSCE,.7764,125 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,PSCI,1.154,165 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,PSCU,.7496,17 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,PSP,1.27,250 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,PSX,.6959,"70,645 M",32.877,17.954,2.5604,14.547,10.12,2.6732,Energy,$0.29
+05/15/2026,1630,PTLO,1.608,288 M,<empty>,24.786,.79368,<empty>,.21,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,PVH,1.21,"3,661 M",43.325,119.92,.59607,<empty>,.52,.24054,Consumer Discretionary,<empty>
+05/15/2026,1630,PYPL,1.435,"39,174 M",31.312,8.4739,2.0148,25.12,5.33,.92859,Financials,$5.85
+05/15/2026,1630,PZZA,1.144,"1,143 M",<empty>,37.846,-2.3264,<empty>,.83,5.7935,Consumer Discretionary,$0.80
+05/15/2026,1630,QAT,.3834,82 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,QBTS,2.544,"7,538 M",3.8533,-13.39,4.7495,-55.27,-1.14,<empty>,Information Technology,($0.30)
+05/15/2026,1630,QCOM,1.45,"212,370 M",34.718,13.887,4.9347,36.083,9.3,2.8007,Information Technology,$11.61
+05/15/2026,1630,QMOM,1.052,449 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,QQQ,1.222,"468,815 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,QS,2.57,"4,927 M",5.1454,-8.9578,3.5366,-37.996,-.71,<empty>,Consumer Discretionary,($0.48)
+05/15/2026,1630,QSR,.5256,"26,315 M",73.41,23.789,6.8574,<empty>,2.83,3.3965,Consumer Discretionary,<empty>
+05/15/2026,1630,QTUM,1.307,"4,729 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,QUBT,2.518,"2,369 M",.2294,-31.982,.9671,-4.368,-.26,<empty>,Information Technology,($0.23)
+05/15/2026,1630,R,.9954,"8,934 M",<empty>,16.921,2.7713,16.925,12,1.7293,Industrials,$23.44
+05/15/2026,1630,RBLX,1.499,"30,680 M",74.261,-36.103,93.716,-311.93,-1.57,<empty>,Communication Services,$2.18
+05/15/2026,1630,RCL,1.772,"69,808 M",63.686,16.746,7.523,<empty>,16.39,1.5444,Consumer Discretionary,$5.05
+05/15/2026,1630,RDNT,1.414,"4,120 M",56.015,-295.71,4.0627,<empty>,-.17,<empty>,Health Care,<empty>
+05/15/2026,1630,REAL,2.568,"1,092 M",<empty>,-14.459,-3.0437,<empty>,-.63,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,REG,.8475,"13,926 M",40.098,25.917,2.0718,8.0034,2.91,3.8594,Real Estate,$4.42
+05/15/2026,1630,REGN,.3065,"73,204 M",5.8195,18.817,2.5059,14.548,40.96,.46335,Health Care,$36.48
+05/15/2026,1630,REXR,1.237,"7,841 M",26.861,34.708,.90731,<empty>,.94,5.2704,Real Estate,<empty>
+05/15/2026,1630,REZ,.8825,840 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,RGTI,3.142,"5,933 M",.7637,-16.416,7.9946,-57.092,-.89,<empty>,Information Technology,($0.25)
+05/15/2026,1630,RH,1.915,"2,328 M",94.612,31.51,61.746,<empty>,6.31,<empty>,Consumer Discretionary,$13.29
+05/15/2026,1630,RHP,1.186,"6,613 M",77.2,24.256,7.853,<empty>,3.8,5.0938,Real Estate,<empty>
+05/15/2026,1630,RIOT,3.731,"8,883 M",18.754,-.00642,1.9561,<empty>,-2.49,<empty>,Information Technology,($3.27)
+05/15/2026,1630,RIVN,1.744,"18,518 M",52.981,-5.195,4.3068,-65.691,-2.92,<empty>,Consumer Discretionary,($2.50)
+05/15/2026,1630,ROBO,1.394,"1,891 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,ROK,1.521,"49,933 M",37.353,37.27,11.338,<empty>,9.63,1.4991,Industrials,$11.92
+05/15/2026,1630,ROKU,1.97,"18,317 M",13.01,70.939,5.228,7.7545,1.35,<empty>,Communication Services,$3.65
+05/15/2026,1630,ROST,.8587,"68,537 M",34.955,28.54,9.8277,36.678,6.61,.85873,Consumer Discretionary,$6.85
+05/15/2026,1630,RRC,.5473,"10,005 M",16.478,11.954,2.3129,21.134,3.78,.81895,Energy,$3.42
+05/15/2026,1630,RRR,1.353,"3,007 M",92.634,17.063,21.628,<empty>,3.1,1.9115,Consumer Discretionary,<empty>
+05/15/2026,1630,RSI,1.633,"2,756 M",.9552,62.251,14.104,<empty>,.34,<empty>,Consumer Discretionary,$1.21
+05/15/2026,1630,RSP,.9263,"86,532 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,RSPG,.5401,610 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,RSPU,.6173,533 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,RTO,1.018,"15,867 M",39.203,52.731,2.7618,<empty>,.927,2.0539,Industrials,$0.28
+05/15/2026,1630,RUT,1.2,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,RVLV,1.67,"1,332 M",4.0173,25.224,3.0683,<empty>,.9,<empty>,Consumer Discretionary,$0.69
+05/15/2026,1630,RVX,-4.2,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,S,.7015,"5,757 M",.6271,-10.239,3.2858,-29.02,-1.37,<empty>,Information Technology,$0.16
+05/15/2026,1630,SBAC,.9942,"21,172 M",115.6,18.097,-3.8417,<empty>,9.5,2.6611,Real Estate,<empty>
+05/15/2026,1630,SBUX,1.017,"121,737 M",132.34,66.252,-11.686,-18.61,1.31,2.8453,Consumer Discretionary,$2.40
+05/15/2026,1630,SCJ,.5098,252 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SE,1.678,"54,040 M",11.695,32.603,3.9403,14.856,2.54,<empty>,Consumer Discretionary,$7.77
+05/15/2026,1630,SFD,.4178,"9,841 M",17.921,10.429,1.53,<empty>,2.57,3.9809,Consumer Staples,<empty>
+05/15/2026,1630,SFM,.6491,"8,042 M",53.587,14.908,5.1029,37.276,5.21,<empty>,Consumer Staples,<empty>
+05/15/2026,1630,SG,1.999,961 M,<empty>,33.188,1.1422,<empty>,.12,<empty>,Consumer Discretionary,($1.07)
+05/15/2026,1630,SHAK,1.607,"2,438 M",58.031,91.639,6.9581,<empty>,.98,<empty>,Consumer Discretionary,$0.40
+05/15/2026,1630,SHEL,.0811,"237,733 M",26.208,14.81,1.5405,10.697,6.42,3.1179,Energy,$3.57
+05/15/2026,1630,SHO,.9798,"1,891 M",<empty>,82.584,1.0311,<empty>,.11,3.9956,Real Estate,<empty>
+05/15/2026,1630,SHOC,1.816,233 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SHOO,1.134,"2,835 M",32.162,31.769,2.714,<empty>,1.06,2.4764,Consumer Discretionary,<empty>
+05/15/2026,1630,SHOP,2.613,"130,129 M",1.2854,116.85,12.343,11.311,1.02,<empty>,Information Technology,$1.63
+05/15/2026,1630,SHY,.0486,"24,823 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SHYG,.2877,"7,537 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SIL,.8244,"5,171 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SILJ,.8894,"3,937 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SITM,2.919,"20,433 M",.0462,-365.24,7.8657,<empty>,-.91,<empty>,Information Technology,$2.10
+05/15/2026,1630,SIVR,.4711,"5,299 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SJM,.2572,"10,722 M",54.77,-8.904,2.1368,-20.683,-11.79,4.177,Consumer Staples,$9.11
+05/15/2026,1630,SKYY,1.21,"2,647 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SLG,1.596,"3,019 M",50.499,-14.706,.7927,<empty>,-2.51,7.2469,Real Estate,<empty>
+05/15/2026,1630,SLV,.474,"36,874 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SLX,1.236,163 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SMCI,1.655,"18,668 M",41.989,11.937,1.8076,17.877,1.9,<empty>,Information Technology,($11.46)
+05/15/2026,1630,SMH,1.679,"62,166 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SMIN,.4547,623 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SMPL,.1733,"1,045 M",<empty>,-15.727,1.0361,<empty>,-1.13,<empty>,Consumer Staples,$1.48
+05/15/2026,1630,SN,1.379,"14,949 M",<empty>,<empty>,<empty>,<empty>,4.96,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,SNAP,.5,"9,164 M",65.564,-18.995,3.7459,<empty>,-.24,<empty>,Communication Services,$0.36
+05/15/2026,1630,SNDR,1.132,"5,593 M",11.351,47.16,1.5284,3.2586,.56,1.4606,Industrials,$1.48
+05/15/2026,1630,SNOW,1.064,"54,437 M",57.693,-48.839,34.444,-53.908,-3.95,<empty>,Information Technology,$3.31
+05/15/2026,1630,SOFI,2.161,"20,024 M",11.681,35.694,1.8821,6.5972,.45,<empty>,Financials,($5.31)
+05/15/2026,1630,SOLZ,1.801,110 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SOYB,.0589,70 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SPDN,-.9824,205 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SPG,1.354,"64,864 M",70.673,12.966,12.554,113.59,14.38,4.6373,Real Estate,$9.91
+05/15/2026,1630,SPGI,1.086,"119,332 M",22.112,26.928,4.0388,13.94,15.81,.90516,Financials,$18.38
+05/15/2026,1630,SPHD,.622,"3,193 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SPHR,1.694,"4,808 M",27.121,46.567,1.8662,<empty>,2.97,<empty>,Communication Services,<empty>
+05/15/2026,1630,SPLV,.5673,"6,987 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SPMO,1.084,"18,411 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SPOT,1,"89,844 M",4.8786,32.558,10.77,37.988,14.77,<empty>,Communication Services,$17.81
+05/15/2026,1630,SPX,1,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,SPY,1,"765,213 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,STKL,1.021,769 M,<empty>,28.538,2.5686,<empty>,.13,<empty>,Consumer Staples,<empty>
+05/15/2026,1630,STLD,1.452,"33,074 M",31.338,19.282,2.8369,<empty>,9.33,1.1278,Materials,$4.54
+05/15/2026,1630,STZ,.406,"24,512 M",52.197,16.427,3.3745,22.637,9.61,2.5846,Consumer Staples,$10.23
+05/15/2026,1630,SU,.3078,"80,633 M",21.757,17.54,2.3802,13.97,3.776,2.5432,Energy,$4.31
+05/15/2026,1630,SVV,.7612,"1,098 M",<empty>,53.033,2.6954,<empty>,.14,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,SWBI,.9778,683 M,<empty>,45.401,1.337,<empty>,.24,4.7619,Consumer Discretionary,<empty>
+05/15/2026,1630,SWKS,1.445,"10,307 M",9.3913,22.943,1.4397,6.1711,2.4,5.1277,Information Technology,$4.49
+05/15/2026,1630,SXT,.7815,"4,850 M",38.635,25.497,3.0026,<empty>,3.39,1.8973,Materials,<empty>
+05/15/2026,1630,SYF,1.325,"24,010 M",<empty>,7.017,1.5026,21.78,9.66,1.7642,Financials,$27.15
+05/15/2026,1630,SYY,.667,"34,702 M",79.454,22.698,17.029,81.895,3.6,2.6406,Consumer Staples,$3.79
+05/15/2026,1630,T,.1867,"166,969 M",52.705,9.6878,1.8413,18.37,3.04,3.8289,Communication Services,$2.44
+05/15/2026,1630,TAN,1.293,"1,877 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,TAP,.4329,"7,660 M",23.785,-3.9925,.80418,<empty>,-10.55,4.3892,Consumer Staples,<empty>
+05/15/2026,1630,TBIL,.0036,"7,084 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,TCEHY,.2459,"530,376 M",21.353,16.811,3.4108,20.515,3.452,1.1186,Communication Services,$3.19
+05/15/2026,1630,TCNNF,1.66,"1,396 M",<empty>,-14.005,.91489,<empty>,-.43,<empty>,Health Care,<empty>
+05/15/2026,1630,TEAM,.9386,"22,195 M",56.305,-82.689,19.866,-19.289,-.82,<empty>,Information Technology,$4.59
+05/15/2026,1630,TEVA,.8404,"39,928 M",56.895,22.492,4.2626,21.599,1.34,<empty>,Health Care,$1.02
+05/15/2026,1630,TFLO,-.0009,"6,522 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,TGS,.5632,"4,429 M",27.334,17.425,2.1323,<empty>,2.083,4.1065,Energy,<empty>
+05/15/2026,1630,TGT,.9934,"55,201 M",48.794,12.973,2.9546,24.034,8.13,4.2856,Consumer Staples,$6.24
+05/15/2026,1630,THC,1.323,"16,940 M",59.513,9.8601,3.3761,30.292,19.23,<empty>,Health Care,<empty>
+05/15/2026,1630,THD,.4446,259 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,TIGR,.4883,"1,100 M",<empty>,10.31,1.9642,<empty>,.93,<empty>,Financials,$7.42
+05/15/2026,1630,TIP,.2776,"14,966 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,TJX,.6183,"163,030 M",45.458,30.762,16.276,59.129,4.87,1.1348,Consumer Discretionary,$4.41
+05/15/2026,1630,TKO,.7846,"14,249 M",36.124,74.89,4.4776,<empty>,2.69,1.339,Communication Services,$21.29
+05/15/2026,1630,TKR,1.146,"7,956 M",38.172,22.858,2.1787,10.277,4.4,1.3921,Industrials,$5.50
+05/15/2026,1630,TLT,.5306,"41,822 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,TME,.736,"13,125 M",5.7714,11.256,1.3267,<empty>,.8217,2.6224,Communication Services,$0.84
+05/15/2026,1630,TMO,.8747,"162,897 M",42.081,26.019,3.3872,13.523,18.19,.37181,Health Care,$17.97
+05/15/2026,1630,TMUS,.3169,"200,446 M",64.455,22.321,4.0814,18.025,9.41,1.8759,Communication Services,$14.02
+05/15/2026,1630,TNET,1.003,"1,862 M",<empty>,10.886,20.245,<empty>,3.38,3.0607,Industrials,$5.85
+05/15/2026,1630,TNX:CGI,.0802,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,TOKE,.886,13 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,TOST,1.768,"13,369 M",.847,39.814,7.7265,22.495,.67,<empty>,Financials,$1.12
+05/15/2026,1630,TPB,.9556,"1,735 M",43.837,29.759,4.5956,<empty>,2.92,.35142,Consumer Staples,<empty>
+05/15/2026,1630,TPL,.6306,"26,567 M",1.0066,65.098,21.037,<empty>,7.29,.46359,Energy,<empty>
+05/15/2026,1630,TPR,1.454,"26,128 M",78.446,44.667,41.16,60.914,3.28,1.1164,Consumer Discretionary,$8.53
+05/15/2026,1630,TPYP,.6093,879 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,TRIP,.8788,"1,101 M",46.962,67.703,1.9877,<empty>,.11,<empty>,Communication Services,$1.54
+05/15/2026,1630,TRP,.7241,"71,090 M",58.785,25.696,3.5912,<empty>,2.29,3.9347,Energy,$2.54
+05/15/2026,1630,TRU,1.596,"12,775 M",51.518,19.228,2.8063,<empty>,3.61,.51308,Industrials,$3.59
+05/15/2026,1630,TSLA,1.721,"1,585,817 M",13.363,341.28,16.595,4.9007,1.09,<empty>,Consumer Discretionary,$2.17
+05/15/2026,1630,TSM,1.385,"2,097,121 M",12.377,23.912,7.7477,36.21,11.48,.96591,Information Technology,$1.26
+05/15/2026,1630,TSN,.4116,"23,167 M",30.216,50.514,1.2437,2.6189,1.27,3.1602,Consumer Staples,$3.45
+05/15/2026,1630,TT,1.215,"103,144 M",29.655,31.815,10.73,36.63,12.93,.92864,Industrials,$14.11
+05/15/2026,1630,TTD,1.152,"9,943 M",12.029,25.578,4.3558,16.735,.88,<empty>,Communication Services,$1.72
+05/15/2026,1630,TTE,.1981,"205,278 M",27.139,13.874,1.6282,12.512,6.74,4.396,Energy,$4.99
+05/15/2026,1630,TTWO,.9901,"44,894 M",40.814,-11.738,13.557,-86.217,-22.57,<empty>,Communication Services,$2.66
+05/15/2026,1630,TUA,-.0562,776 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,TUR,.3363,254 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,TWLO,1.377,"30,095 M",11.703,191.98,2.4586,<empty>,.66,<empty>,Information Technology,$5.89
+05/15/2026,1630,TXG,2.165,"2,691 M",7.8215,-118.23,3.3628,-2.9786,-.17,<empty>,Health Care,$0.97
+05/15/2026,1630,TXRH,.7621,"11,698 M",39.437,26.347,7.166,<empty>,6.27,1.6895,Consumer Discretionary,$5.36
+05/15/2026,1630,TXT,.919,"15,436 M",31.129,16.788,1.9131,12.254,5.23,.09086,Industrials,$4.85
+05/15/2026,1630,TYX:CGI,.0206,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,U,2.097,"11,856 M",31.18,-13.91,3.2175,-20.112,-1.57,<empty>,Information Technology,$1.08
+05/15/2026,1630,UA,1.644,"2,125 M",35.383,-5.0864,1.78,-29.997,-1.16,<empty>,Consumer Discretionary,($0.38)
+05/15/2026,1630,UAA,1.718,"2,181 M",<empty>,-5.0864,1.78,-29.997,-1.16,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,UAE,.4197,272 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,UAL,1.231,"30,136 M",59.705,8.2162,1.8825,25.727,11.18,<empty>,Industrials,$9.90
+05/15/2026,1630,UBER,2,"152,853 M",31.974,17.783,5.9181,35.31,4.03,<empty>,Industrials,$4.72
+05/15/2026,1630,UFO,1.252,865 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,UGA,.0886,147 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,UHAL,1.073,"9,246 M",45.515,76.848,1.2518,1.6731,.47,5109278,Industrials,($8.17)
+05/15/2026,1630,UHS,1.134,"10,209 M",33.752,7.4588,1.4514,<empty>,23.95,.447,Health Care,<empty>
+05/15/2026,1630,UL,.4407,"122,525 M",56.025,21.529,7.8253,30.955,5.074,3.5462,Consumer Staples,<empty>
+05/15/2026,1630,ULS,.6219,"19,955 M",26.56,49.829,13.074,<empty>,1.72,.6242,Industrials,$2.24
+05/15/2026,1630,ULTA,.895,"21,531 M",36.367,25.248,10.199,43.595,25.64,<empty>,Consumer Discretionary,$23.82
+05/15/2026,1630,UNG,.116,543 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,UNH,.5756,"357,673 M",38.988,20.424,2.5102,12.176,13.28,3.2669,Health Care,$21.68
+05/15/2026,1630,UNP,.9932,"160,635 M",59.704,19.962,7.4177,40.686,12.15,2.2587,Industrials,$9.61
+05/15/2026,1630,UPBD,1.908,999 M,<empty>,12.524,1.4715,<empty>,1.44,8.6427,Consumer Discretionary,<empty>
+05/15/2026,1630,UPS,1.056,"84,091 M",61.375,15.919,5.305,33.353,6.18,6.668,Industrials,$5.32
+05/15/2026,1630,UPST,2.354,"2,824 M",70.262,61.969,3.3484,7.0083,.41,<empty>,Financials,($2.97)
+05/15/2026,1630,URA,1.122,"7,017 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,URBN,1.164,"5,902 M",24.749,14.002,2.2574,<empty>,5.06,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,URI,1.724,"60,213 M",55.847,18.592,5.0962,28.237,39.13,1.0075,Industrials,$32.10
+05/15/2026,1630,URNJ,1.575,411 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,URNM,.9214,"2,173 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,USCI,.1459,390 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,USD/JPY,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,USFD,.8532,"18,142 M",52.029,30.477,4.6216,15.13,2.97,<empty>,Consumer Staples,$3.78
+05/15/2026,1630,USPH,1.187,956 M,<empty>,148.43,2.4344,<empty>,.5,2.4146,Health Care,<empty>
+05/15/2026,1630,UTI,1.237,"2,178 M",<empty>,47.467,5.8478,<empty>,.76,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,UTZ,.8391,623 M,<empty>,-73.728,.92357,<empty>,-.1,4.17,Consumer Staples,<empty>
+05/15/2026,1630,UUP,-.1892,353 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,V,.7662,"619,493 M",37.589,26.349,16.213,60.349,11.47,.86024,Financials,$11.05
+05/15/2026,1630,VET,.4068,"1,961 M",38.829,-5.7715,1.4308,<empty>,-3.805,2.7386,Energy,<empty>
+05/15/2026,1630,VFC,1.76,"6,526 M",66.543,32.296,4.0545,12.927,.56,1.946,Consumer Discretionary,$0.79
+05/15/2026,1630,VG,1.362,"35,352 M",74.869,17.507,5.4102,25.521,.9,.42513,Energy,<empty>
+05/15/2026,1630,VGK,.8612,"29,421 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,VHT,.627,"16,035 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,VIK,1.243,"37,343 M",81.558,27.379,30.713,<empty>,2.69,<empty>,Consumer Discretionary,$2.93
+05/15/2026,1630,VIR,1.698,"1,482 M",<empty>,-2.8535,1.7775,<empty>,-3.13,<empty>,Health Care,($3.19)
+05/15/2026,1630,VIX,-6,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,VKTX,.5368,"3,515 M",.0445,-7.8221,7.5136,-70.036,-4.15,<empty>,Health Care,($3.00)
+05/15/2026,1630,VLO,.5797,"74,453 M",27.235,17.971,3.0736,15.85,13.69,1.8577,Energy,$18.20
+05/15/2026,1630,VLTO,.7353,"20,834 M",36.951,22.685,7.1931,<empty>,3.88,.54539,Industrials,$4.20
+05/15/2026,1630,VMC,1.063,"34,752 M",35.812,32.217,4.1983,<empty>,8.4,.73081,Materials,<empty>
+05/15/2026,1630,VNM,.949,585 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,VNO,1.534,"5,752 M",55.778,7.019,1.011,12.604,3.65,2.8473,Real Estate,<empty>
+05/15/2026,1630,VRNS,.7878,"3,235 M",52.394,-18.968,5.4355,<empty>,-1.13,<empty>,Information Technology,$1.00
+05/15/2026,1630,VRT,2.084,"142,481 M",42.512,62.973,22.665,45.097,3.98,.05487,Industrials,$5.95
+05/15/2026,1630,VRTX,.2926,"110,900 M",9.3051,26.483,5.8617,24.197,16.85,<empty>,Health Care,$14.55
+05/15/2026,1630,VSCO,2.118,"3,650 M",67.812,28.244,5.0944,<empty>,1.93,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,VTR,.7669,"42,516 M",42.302,149.42,3.0288,2.1397,.55,2.3967,Real Estate,$2.89
+05/15/2026,1630,VVIX,-4.303,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,VVV,1.029,"4,131 M",83.865,44.959,12.161,<empty>,.73,0,Consumer Discretionary,<empty>
+05/15/2026,1630,VXD,-6.339,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,VXN:CGI,-4.995,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,VXX,-2.06,0,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,VZ,.2341,"193,621 M",54.271,12.222,2.029,17.198,4.1,5.508,Communication Services,$4.70
+05/15/2026,1630,W,-.103,"7,685 M",436.9,-31.81,-3.483,<empty>,-2.35,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,WBD,1.574,"67,643 M",46.806,-39.205,2.1132,-4.9594,-.7,<empty>,Communication Services,$0.93
+05/15/2026,1630,WCLD,1.057,238 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,WDAY,1.028,"31,213 M",31.748,67.811,5.831,8.2308,2.59,<empty>,Information Technology,$10.48
+05/15/2026,1630,WEAT,.0038,339 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,WELL,.8317,"150,882 M",26.159,96.673,3.1814,3.6646,2.01,1.4971,Real Estate,$4.34
+05/15/2026,1630,WEN,.3682,"1,528 M",94.685,8.7346,11.208,120.88,.77,8.2353,Consumer Discretionary,$1.17
+05/15/2026,1630,WEST,.9228,824 M,<empty>,-5.715,-20.493,<empty>,-.74,<empty>,Consumer Staples,<empty>
+05/15/2026,1630,WFC,.9366,"224,679 M",<empty>,12.292,1.4962,12.028,6.47,2.1982,Financials,$0.04
+05/15/2026,1630,WGMI,3.787,368 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,Communication Services,<empty>
+05/15/2026,1630,WGS,2.112,"1,210 M",<empty>,-23.885,7.497,<empty>,-2.66,<empty>,Health Care,<empty>
+05/15/2026,1630,WH,.649,"5,969 M",84.824,32.312,13.629,<empty>,2.52,2.0436,Consumer Discretionary,<empty>
+05/15/2026,1630,WING,1.714,"3,519 M",268.87,38.48,-5.2634,<empty>,4.05,.75748,Consumer Discretionary,$4.76
+05/15/2026,1630,WMS,1.311,"10,566 M",41.295,24.094,5.4873,<empty>,6.01,.48333,Industrials,$7.43
+05/15/2026,1630,WMT,.6419,"1,047,787 M",31.958,43.641,9.5308,21.847,2.73,.78899,Consumer Staples,$1.87
+05/15/2026,1630,WOOD,.7755,242 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,WRBY,2.077,"3,526 M",33.541,2065.1,6.8802,<empty>,.01,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,WW,2.216,107 M,59.992,.34194,.51717,<empty>,7.58,<empty>,Consumer Discretionary,<empty>
+05/15/2026,1630,WWW,1.666,"1,259 M",54.035,12.92,3.0095,29.239,1.23,2.5078,Consumer Discretionary,$1.62
+05/15/2026,1630,WY,.9155,"16,353 M",33.933,44.426,1.8662,4.1605,.56,3.4384,Real Estate,<empty>
+05/15/2026,1630,WYFI,4.412,934 M,<empty>,-10.745,1.3042,-13.312,-.9882,<empty>,Information Technology,($9.75)
+05/15/2026,1630,WYNN,.9706,"9,903 M",103.52,29.076,-49.011,-46.791,3.49,.98474,Consumer Discretionary,$6.72
+05/15/2026,1630,XBI,.8644,"8,227 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,XHR,1.175,"1,468 M",<empty>,21.204,1.1987,5.8643,.7,3.7761,Real Estate,$1.03
+05/15/2026,1630,XIACY,.6162,"99,878 M",<empty>,22.59,3.4373,18.25,1.115,<empty>,Information Technology,$0.12
+05/15/2026,1630,XLB,.947,"7,233 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,XLC,1.007,"25,184 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,XLE,.4744,"41,816 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,XLF,.8834,"49,978 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,XLG,1.059,"11,208 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,XLI,1.01,"30,154 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,XLK,1.297,"115,100 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,XLP,.5044,"14,920 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,XLRE,1.013,"7,760 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,XLU,.2431,"22,082 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,XLV,.5876,"37,590 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,XLY,1.215,"22,386 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,XOM,.1857,"654,570 M",10.734,28.568,2.7645,9.8729,5.94,2.3812,Energy,$4.41
+05/15/2026,1630,XOP,.6003,"3,500 M",<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,XPEV,1.012,"14,929 M",23.521,-118.49,4.4568,-3.6969,-.1715,<empty>,Consumer Discretionary,$0.74
+05/15/2026,1630,XRT,1.19,111 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,XTL,1.138,774 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,XYL,1.052,"25,699 M",10.587,29.724,2.6041,<empty>,4.02,1.364,Industrials,$3.81
+05/15/2026,1630,XYZ,2.775,"41,877 M",20.86,45.713,1.6497,3.7428,1.28,<empty>,Financials,$5.37
+05/15/2026,1630,YCS,-.3961,29 M,<empty>,<empty>,<empty>,<empty>,<empty>,<empty>,,<empty>
+05/15/2026,1630,YELP,.4692,"1,191 M",18.812,11.201,2.192,<empty>,2.18,<empty>,Communication Services,$4.56
+05/15/2026,1630,YPF,1.066,"17,133 M",39.563,-57.315,1.6958,<empty>,-1.04,<empty>,Energy,<empty>
+05/15/2026,1630,YUM,.5913,"41,335 M",194.56,25.068,-5.8921,-23.04,6.2,1.3957,Consumer Discretionary,$5.92
+05/15/2026,1630,YUMC,1,"15,976 M",21.974,18.779,3.1348,16.292,2.51,2.0705,Consumer Discretionary,$2.56
+05/15/2026,1630,ZG,2.027,"8,708 M",1.6539,170.41,2.1511,1.3315,.25,<empty>,Real Estate,$1.24
+05/15/2026,1630,ZM,1.5,"29,521 M",.3112,14.896,2.775,20.275,6.18,<empty>,Information Technology,$6.40
+05/15/2026,1630,ZS,1,"25,895 M",44.241,-465.55,14.625,-3.5563,-.43,<empty>,Information Technology,$5.55

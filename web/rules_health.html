@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rules Engine Health — Trading Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    main.rh-main { padding: 16px 24px 32px; max-width: 1280px; margin: 0 auto; }
+    .rh-status {
+      padding: 14px 18px; border-radius: 8px; font-size: 14px; margin-bottom: 16px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .rh-status.healthy  { background: #dcfce7; color: #14532d; border: 1px solid #86efac; }
+    .rh-status.degraded { background: #fee2e2; color: #7f1d1d; border: 1px solid #fca5a5; }
+    .rh-status .dot { width:12px; height:12px; border-radius:50%; }
+    .rh-status.healthy  .dot { background:#16a34a; }
+    .rh-status.degraded .dot { background:#dc2626; }
+    .rh-status ul { margin: 6px 0 0; padding-left: 22px; }
+    .rh-section { margin-bottom: 22px; }
+    .rh-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;
+                     color: #6b7280; margin: 0 0 8px; }
+    .rh-tiles { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+                gap: 10px; }
+    .rh-tile { background:#fff; border:1px solid #e5e7eb; border-radius:6px; padding:10px 12px; }
+    .rh-tile .label { font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:#6b7280; }
+    .rh-tile .value { font-size:22px; font-weight:700; color:#111827; margin-top:2px; }
+    .rh-tile .sub   { font-size:11px; color:#6b7280; margin-top:2px; }
+    .rh-tile.warn   { border-color:#fca5a5; background:#fef2f2; }
+    .rh-tile.ok     { border-color:#86efac; background:#f0fdf4; }
+    .rh-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .rh-table th, .rh-table td { padding:6px 10px; border-bottom:1px solid #e5e7eb; text-align:left; }
+    .rh-table th { background:#f9fafb; font-size:11px; text-transform:uppercase; color:#6b7280; }
+    .rh-table tr:hover { background:#f9fafb; }
+    .pill { display:inline-block; padding:1px 6px; border-radius:4px; font-size:10px;
+            font-weight:600; }
+    .pill-ok    { background:#dcfce7; color:#14532d; }
+    .pill-err   { background:#fee2e2; color:#7f1d1d; }
+    .pill-skip  { background:#fef3c7; color:#7c2d12; }
+    code { background:#f3f4f6; padding:1px 5px; border-radius:3px; font-size:11px; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span><h1>Trading Dashboard</h1></div>
+    <nav class="nav-menu">
+      <a href="/" class="nav-item">Dashboard</a>
+      <a href="/cockpit" class="nav-item">Cockpit</a>
+      <a href="/actionable" class="nav-item">Actionable</a>
+      <a href="/portfolio" class="nav-item">Portfolio</a>
+      <a href="/rules" class="nav-item">Rules</a>
+      <a href="/groups" class="nav-item">Rule Groups</a>
+      <a href="/rule-performance" class="nav-item">Performance</a>
+      <a href="/rules-health" class="nav-item active">Health</a>
+      <a href="/trace" class="nav-item">Trace</a>
+      <a href="/explore" class="nav-item">Explore</a>
+      <a href="/ref" class="nav-item">Ref Data</a>
+      <a href="/dbstats" class="nav-item">DB Stats</a>
+      <a href="/file-monitor" class="nav-item">File Monitor</a>
+    </nav>
+    <div class="controls">
+      <button id="rhRefresh" class="btn">Refresh</button>
+      <span id="health" class="badge badge-ok" title="API health">●</span>
+    </div>
+  </header>
+
+  <main class="rh-main">
+    <div id="rhStatus" class="rh-status healthy">
+      <span class="dot"></span><span id="rhStatusLabel">Loading…</span>
+    </div>
+
+    <section class="rh-section">
+      <h3>Engine counts</h3>
+      <div class="rh-tiles" id="rhCounts"></div>
+    </section>
+
+    <section class="rh-section">
+      <h3>Latest snapshot</h3>
+      <div class="rh-tiles" id="rhLatest"></div>
+    </section>
+
+    <section class="rh-section">
+      <h3>Fire counts — today vs. 30-day baseline</h3>
+      <div class="rh-tiles" id="rhFires"></div>
+    </section>
+
+    <section class="rh-section">
+      <h3>Column resolution (atomic rules → drv_ma / drv_cat_atomic_input)</h3>
+      <div id="rhColumns"></div>
+    </section>
+
+    <section class="rh-section">
+      <h3>Orphaned composites</h3>
+      <div id="rhOrphans"></div>
+    </section>
+
+    <section class="rh-section">
+      <h3>Recent derive runs</h3>
+      <div id="rhRecent"></div>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    async function load() {
+      let data;
+      try {
+        const r = await fetch('/api/rules/health');
+        data = await r.json();
+      } catch (e) {
+        $('rhStatusLabel').textContent = 'Failed to fetch /api/rules/health: ' + e.message;
+        $('rhStatus').classList.add('degraded');
+        $('rhStatus').classList.remove('healthy');
+        return;
+      }
+
+      // Status banner
+      const st = $('rhStatus');
+      st.classList.toggle('healthy', data.status === 'healthy');
+      st.classList.toggle('degraded', data.status !== 'healthy');
+      let label = data.status === 'healthy'
+        ? 'Rules engine is healthy — all checks pass.'
+        : `Rules engine is degraded (${(data.issues||[]).length} issue${data.issues.length===1?'':'s'}):`;
+      const issuesHtml = (data.issues||[]).map(i => `<li>${escapeHtml(i)}</li>`).join('');
+      $('rhStatusLabel').innerHTML = label + (issuesHtml ? `<ul>${issuesHtml}</ul>` : '');
+
+      // Counts tiles
+      const c = data.counts || {};
+      $('rhCounts').innerHTML = [
+        tile('Atomic rules (active / total)', `${c.atomic_rules_active}/${c.atomic_rules_total}`, c.atomic_rules_active > 0 ? 'ok' : 'warn'),
+        tile('With weights set',               c.atomic_rules_with_weights),
+        tile('Composites (active / total)',    `${c.composites_active}/${c.composites_total}`, c.composites_active > 0 ? 'ok' : 'warn'),
+        tile('Composite mapping rows',         c.composite_mapping_rows),
+      ].join('');
+
+      // Latest snapshot tiles
+      const ma = data.drv_ma_rows_latest, ai = data.drv_cat_atomic_input_rows_latest;
+      $('rhLatest').innerHTML = [
+        tile('Latest snapshot date', data.latest_date || '—'),
+        tile('drv_ma rows',                  ma,  ma  > 0 ? 'ok' : 'warn'),
+        tile('drv_cat_atomic_input rows',    ai,  ai  > 0 ? 'ok' : 'warn'),
+      ].join('');
+
+      // Fire counts
+      const f = data.fire_counts || {};
+      const ft = f.today || {}, fb = f.baseline || {};
+      $('rhFires').innerHTML = [
+        tile('Atomic fires today',    ft.n_atomic    || 0, null,
+             `30d avg: ${(fb.avg_atomic||0).toFixed(0)}`),
+        tile('Composite fires today', ft.n_composite || 0, null,
+             `30d avg: ${(fb.avg_composite||0).toFixed(0)}`),
+        tile('Symbols today',         ft.n_symbols   || 0),
+        tile('Bullish / Bearish',     `${ft.n_bull||0} / ${ft.n_bear||0}`),
+      ].join('');
+
+      // Column resolution
+      const cr = data.column_resolution || {};
+      let crHtml = `<div class="rh-tiles">
+        ${tile('Resolved',   cr.resolved,   cr.unresolved === 0 ? 'ok' : null)}
+        ${tile('Unresolved', cr.unresolved, cr.unresolved > 0 ? 'warn' : 'ok')}
+      </div>`;
+      if ((cr.unresolved_sample||[]).length) {
+        crHtml += `<table class="rh-table" style="margin-top:8px;">
+          <thead><tr><th>atomic_rule_id</th><th>rule_name</th></tr></thead>
+          <tbody>` +
+          cr.unresolved_sample.map(r => `<tr>
+            <td><code>${escapeHtml(r.atomic_rule_id)}</code></td>
+            <td>${escapeHtml(r.rule_name || '')}</td>
+          </tr>`).join('') +
+          `</tbody></table>`;
+      }
+      $('rhColumns').innerHTML = crHtml;
+
+      // Orphans
+      const orphs = data.orphaned_composites || [];
+      if (orphs.length === 0) {
+        $('rhOrphans').innerHTML = `<div style="font-size:12px;color:#666;">No orphaned composite members.</div>`;
+      } else {
+        $('rhOrphans').innerHTML = `<table class="rh-table">
+          <thead><tr><th>composite_rule_code</th><th class="num">orphaned members</th></tr></thead>
+          <tbody>` +
+          orphs.map(o => `<tr>
+            <td><code>${escapeHtml(o.composite_rule_code)}</code></td>
+            <td>${o.n_orphaned}</td>
+          </tr>`).join('') +
+          `</tbody></table>`;
+      }
+
+      // Recent derives
+      const rec = data.recent_derives || [];
+      if (rec.length === 0) {
+        $('rhRecent').innerHTML = `<div style="font-size:12px;color:#666;">No recent derive runs in meta_derived_run.</div>`;
+      } else {
+        $('rhRecent').innerHTML = `<table class="rh-table">
+          <thead><tr><th>started_at</th><th>target_table</th><th>as_of_date</th><th>status</th><th class="num">rows_built</th><th>error</th></tr></thead>
+          <tbody>` +
+          rec.map(r => `<tr>
+            <td>${escapeHtml((r.started_at||'').replace('T',' ').slice(0,19))}</td>
+            <td><code>${escapeHtml(r.target_table||'')}</code></td>
+            <td>${escapeHtml(r.as_of_date||'')}</td>
+            <td>${statusPill(r.status)}</td>
+            <td>${r.rows_built ?? ''}</td>
+            <td style="color:#7f1d1d;font-size:11px;">${escapeHtml((r.error_msg||'').slice(0,80))}</td>
+          </tr>`).join('') +
+          `</tbody></table>`;
+      }
+    }
+
+    function tile(label, value, cls, sub) {
+      return `<div class="rh-tile ${cls || ''}">
+        <div class="label">${escapeHtml(label)}</div>
+        <div class="value">${escapeHtml(String(value))}</div>
+        ${sub ? `<div class="sub">${escapeHtml(sub)}</div>` : ''}
+      </div>`;
+    }
+    function statusPill(s) {
+      const cls = s === 'success' ? 'pill-ok' : (s === 'error' ? 'pill-err' : 'pill-skip');
+      return `<span class="pill ${cls}">${escapeHtml(s||'?')}</span>`;
+    }
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[c]));
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      $('rhRefresh').addEventListener('click', load);
+      load();
+    });
+  </script>
+</body>
+</html>

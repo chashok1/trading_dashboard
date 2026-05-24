@@ -1,0 +1,40 @@
+digraph RulesLifecycle {
+  rankdir=LR;
+  graph [splines=true, nodesep=0.5, ranksep=0.6, fontname="Helvetica", label=<<B>Rules Engine — Lifecycle &amp; Feedback Loop</B>>, labelloc="t"];
+  node [fontname="Helvetica", fontsize=10, shape=box, style="filled,rounded"];
+  edge [fontname="Helvetica", fontsize=9];
+
+  AUTHOR [fillcolor="#fff7d6", color="#b45309", label="Trig tab in workbook\n(authoring source)"];
+  REFRESH[fillcolor="#bfdbfe", color="#1d4ed8", label="refresh_ref.py\nload_trig_rules"];
+  ATOMIC [shape=cylinder, fillcolor="#fef3c7", color="#92400e", label="ref_trig_atomic_rule\n(rule_name, brkeout_*, wt_*,\nma_column_name, scoring_mode,\nscore_params, category, intent_text,\ndeprecated_at)"];
+  COMP   [shape=cylinder, fillcolor="#fef3c7", color="#92400e", label="ref_trig_composite_mapping\n(composite_rule_code,\natomic_rule_id,\nweight_override,\nprecondition_expr,\nintent_text)"];
+  DERIVE [fillcolor="#dcfce7", color="#15803d", label="derive_stks +\nderive_trig\n(eval_atomic_rule\n+ aggregator)"];
+  DRVS   [shape=cylinder, fillcolor="#dcfce7", color="#15803d", label="drv_stks\n(triggered_atomic_ids,\ntriggered_composite_ids)"];
+  DRVT   [shape=cylinder, fillcolor="#dcfce7", color="#15803d", label="drv_trig\n(per composite per symbol\nscore, triggered, n_atomic_hit)"];
+  COCK   [fillcolor="#a7f3d0", color="#065f46", label="Action Cockpit\n(displays triggered rules)"];
+  USER   [fillcolor="#fff7d6", color="#b45309", label="User decision\n(ACTED / SKIP)"];
+  UAL    [shape=cylinder, fillcolor="#fde68a", color="#92400e", label="user_action_log\n(triggered_rules JSONB)"];
+  OUT    [fillcolor="#bbf7d0", color="#15803d", label="compute_outcomes.py\n(nightly)\nfwd_5d / fwd_20d /\nhit thresholds"];
+  RULOUT [shape=cylinder, fillcolor="#fde68a", color="#92400e", label="drv_rule_outcome\n(rule_id, hit, fwd_*)"];
+  PERF   [shape=note, fillcolor="#ede9fe", color="#6b21a8", label="v_rule_performance\n(180-day window)"];
+  RULES_UI[fillcolor="#a7f3d0", color="#065f46", label="Rules Manager\n+ Performance UI"];
+  DEPRECATE[fillcolor="#fecaca", color="#991b1b", label="UPDATE rules\nSET deprecated_at=now()\nor edit weights"];
+
+  AUTHOR -> REFRESH -> ATOMIC;
+  REFRESH -> COMP;
+  ATOMIC -> DERIVE [label="for each atomic rule"];
+  COMP   -> DERIVE [label="for each composite"];
+  DERIVE -> DRVS;
+  DERIVE -> DRVT [style=dashed, label="legacy bucket scoring\n(divergent from drv_stks)"];
+  DRVS   -> COCK [label="HTTP /api/stks\n+ /api/data/drv_trig"];
+  DRVT   -> COCK;
+  COCK   -> USER [label="render"];
+  USER   -> UAL  [label="POST /api/actions"];
+  UAL    -> OUT;
+  OUT    -> RULOUT;
+  RULOUT -> PERF;
+  PERF   -> RULES_UI;
+  RULES_UI -> DEPRECATE [label="user marks bad rule"];
+  DEPRECATE -> ATOMIC [label="(API endpoint\nNOT YET\nIMPLEMENTED)"];
+  DEPRECATE -> COMP [label="(API endpoint\nNOT YET\nIMPLEMENTED)"];
+}

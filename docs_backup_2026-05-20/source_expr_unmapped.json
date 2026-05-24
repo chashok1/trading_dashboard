@@ -1,0 +1,896 @@
+[
+  {
+    "column_name": "company_name",
+    "sheet": "Y",
+    "letter": "J",
+    "formula": "=_xlfn.XLOOKUP($R2&$C2,Y!$D2:$D57061,Y!$J2:$J57061,\"\")"
+  },
+  {
+    "column_name": "c_20_dma",
+    "sheet": "TW",
+    "letter": "H",
+    "formula": "=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$H:$H,\"\")"
+  },
+  {
+    "column_name": "c_50_dma",
+    "sheet": "TW",
+    "letter": "I",
+    "formula": "=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$I:$I,\"\")"
+  },
+  {
+    "column_name": "c_200_dma",
+    "sheet": "TW",
+    "letter": "J",
+    "formula": "=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$J:$J,\"\")"
+  },
+  {
+    "column_name": "a_macd_brr",
+    "sheet": "TW",
+    "letter": "V",
+    "formula": "=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$V:$V,\"\")"
+  },
+  {
+    "column_name": "a_macdh_d_brr",
+    "sheet": "TW",
+    "letter": "W",
+    "formula": "=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$W:$W,\"\")"
+  },
+  {
+    "column_name": "d_rsi",
+    "sheet": "TD",
+    "letter": "T",
+    "formula": "=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$T:$T,\"\")"
+  },
+  {
+    "column_name": "d_iv",
+    "sheet": "TD",
+    "letter": "AB",
+    "formula": "=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$AB:$AB,\"\")"
+  },
+  {
+    "column_name": "d_hv",
+    "sheet": "TD",
+    "letter": "X",
+    "formula": "=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$X:$X,\"\")"
+  },
+  {
+    "column_name": "hvpercentile",
+    "sheet": "TD",
+    "letter": "R",
+    "formula": "=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$R:$R,\"\")"
+  },
+  {
+    "column_name": "ivpercentile",
+    "sheet": "TD",
+    "letter": "Q",
+    "formula": "=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$Q:$Q,\"\")"
+  },
+  {
+    "column_name": "l_impvolatility",
+    "sheet": "TL",
+    "letter": "H",
+    "formula": "=_xlfn.XLOOKUP($O2&$B2,TL!$D:$D,TL!$H:$H,\"\")"
+  },
+  {
+    "column_name": "y_last_price",
+    "sheet": "Y",
+    "letter": "K",
+    "formula": "=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$K:$K,\"\")"
+  },
+  {
+    "column_name": "y_change",
+    "sheet": "Y",
+    "letter": "L",
+    "formula": "=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$L:$L,\"\")"
+  },
+  {
+    "column_name": "y_change",
+    "sheet": "Y",
+    "letter": "M",
+    "formula": "=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$M:$M,\"\")"
+  },
+  {
+    "column_name": "y_open",
+    "sheet": "Y",
+    "letter": "N",
+    "formula": "=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$N:$N,\"\")"
+  },
+  {
+    "column_name": "y_high",
+    "sheet": "Y",
+    "letter": "O",
+    "formula": "=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$O:$O,\"\")"
+  },
+  {
+    "column_name": "y_low",
+    "sheet": "Y",
+    "letter": "P",
+    "formula": "=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$P:$P,\"\")"
+  },
+  {
+    "column_name": "bb_bot_prev",
+    "sheet": "TD",
+    "letter": "L",
+    "formula": "=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$L:$L,\"\")"
+  },
+  {
+    "column_name": "bb_top_prev",
+    "sheet": "TD",
+    "letter": "P",
+    "formula": "=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$P:$P,\"\")"
+  },
+  {
+    "column_name": "rr_bottom",
+    "sheet": "RR",
+    "letter": "H",
+    "formula": "=_xlfn.XLOOKUP(B2,RR!F:F,RR!H:H,0)"
+  },
+  {
+    "column_name": "rr_top",
+    "sheet": "RR",
+    "letter": "I",
+    "formula": "=_xlfn.XLOOKUP(B2,RR!F:F,RR!I:I,0)"
+  },
+  {
+    "column_name": "etf_bottom",
+    "sheet": "etf",
+    "letter": "E",
+    "formula": "=_xlfn.XLOOKUP(U2&B2,etf!A:A,etf!E:E,\"\")"
+  },
+  {
+    "column_name": "etf_top",
+    "sheet": "etf",
+    "letter": "F",
+    "formula": "=_xlfn.XLOOKUP(U2&B2,etf!A:A,etf!F:F,\"\")"
+  },
+  {
+    "column_name": "bb_bot_15d",
+    "sheet": "TD",
+    "letter": "I",
+    "formula": "=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$I:$I,\"\")"
+  },
+  {
+    "column_name": "bb_bot_7d",
+    "sheet": "TD",
+    "letter": "J",
+    "formula": "=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$J:$J,\"\")"
+  },
+  {
+    "column_name": "bb_bot_3d",
+    "sheet": "TD",
+    "letter": "K",
+    "formula": "=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$K:$K,\"\")"
+  },
+  {
+    "column_name": "bb_top_15d",
+    "sheet": "TD",
+    "letter": "M",
+    "formula": "=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$M:$M,\"\")"
+  },
+  {
+    "column_name": "bb_top_7d",
+    "sheet": "TD",
+    "letter": "N",
+    "formula": "=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$N:$N,\"\")"
+  },
+  {
+    "column_name": "bb_top_3d",
+    "sheet": "TD",
+    "letter": "O",
+    "formula": "=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$O:$O,\"\")"
+  },
+  {
+    "column_name": "d_vlt_caution",
+    "sheet": "TD",
+    "letter": "AL",
+    "formula": "=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$AL:$AL,\"\")"
+  },
+  {
+    "column_name": "d_vlt_rulecode",
+    "sheet": "TD",
+    "letter": "AK",
+    "formula": "=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$AK:$AK,\"\")"
+  },
+  {
+    "column_name": "d_vlt_ruledesc",
+    "sheet": "Parm",
+    "letter": "BT",
+    "formula": "=_xlfn.XLOOKUP(FO2,Parm!$BS$14:$BS$23,Parm!$BT$14:$BT$23,\"\")"
+  },
+  {
+    "column_name": "d_vlt_ruleaction",
+    "sheet": "Parm",
+    "letter": "BU",
+    "formula": "=_xlfn.XLOOKUP(FO2,Parm!$BS$14:$BS$23,Parm!$BU$14:$BU$23,\"\")"
+  },
+  {
+    "column_name": "l_vlm",
+    "sheet": "TL",
+    "letter": "G",
+    "formula": "=_xlfn.XLOOKUP($O2&$B2,TL!$D:$D,TL!$G:$G,\"\")"
+  },
+  {
+    "column_name": "w_vlm",
+    "sheet": "TW",
+    "letter": "K",
+    "formula": "=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$K:$K,\"\")"
+  },
+  {
+    "column_name": "w_avg_vlm_10day",
+    "sheet": "TW",
+    "letter": "L",
+    "formula": "=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$L:$L,\"\")"
+  },
+  {
+    "column_name": "w_avg_vlm_3m",
+    "sheet": "TW",
+    "letter": "M",
+    "formula": "=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$M:$M,\"\")"
+  },
+  {
+    "column_name": "vlm_desc",
+    "sheet": "Parm",
+    "letter": "BQ",
+    "formula": "=_xlfn.XLOOKUP(GC2,Parm!$BP$2:$BP$7,Parm!$BQ$2:$BQ$7,\"Unknown\")"
+  },
+  {
+    "column_name": "w_vlm_rulecode",
+    "sheet": "TW",
+    "letter": "U",
+    "formula": "=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$U:$U,\"\")"
+  },
+  {
+    "column_name": "vlm_ruledesc",
+    "sheet": "Parm",
+    "letter": "BT",
+    "formula": "=_xlfn.XLOOKUP(GE2,Parm!$BS$2:$BS$11,Parm!$BT$2:$BT$11,\"\")"
+  },
+  {
+    "column_name": "vlm_action",
+    "sheet": "Parm",
+    "letter": "BU",
+    "formula": "=_xlfn.XLOOKUP(GE2,Parm!$BS$2:$BS$11,Parm!$BU$2:$BU$11,\"\")"
+  },
+  {
+    "column_name": "volatility_regime",
+    "sheet": "Parm",
+    "letter": "BQ",
+    "formula": "=_xlfn.XLOOKUP(GH2,Parm!$BP$28:$BP$32,Parm!$BQ$28:$BQ$32,\"\")"
+  },
+  {
+    "column_name": "price_zone",
+    "sheet": "Parm",
+    "letter": "BQ",
+    "formula": "=_xlfn.XLOOKUP(GJ2,Parm!$BP$8:$BP$15,Parm!$BQ$8:$BQ$15,\"\")"
+  },
+  {
+    "column_name": "trend_context",
+    "sheet": "Parm",
+    "letter": "BQ",
+    "formula": "=_xlfn.XLOOKUP(GL2,Parm!$BP$16:$BP$21,Parm!$BQ$16:$BQ$21,\"\")"
+  },
+  {
+    "column_name": "momentum",
+    "sheet": "Parm",
+    "letter": "BQ",
+    "formula": "=_xlfn.XLOOKUP(GN2,Parm!$BP$22:$BP$27,Parm!$BQ$22:$BQ$27,\"\")"
+  },
+  {
+    "column_name": "long_trend_descr",
+    "sheet": "Parm",
+    "letter": "BQ",
+    "formula": "=_xlfn.XLOOKUP(GQ2,Parm!$BP$33:$BP$38,Parm!$BQ$33:$BQ$38,\"\")"
+  },
+  {
+    "column_name": "st_signal_score",
+    "sheet": "Parm",
+    "letter": "CK",
+    "formula": "=_xlfn.XLOOKUP(GS2,Parm!$CI$2:$CI$15,Parm!$CK$2:$CK$15,\"\")"
+  },
+  {
+    "column_name": "st_signal_desc",
+    "sheet": "Parm",
+    "letter": "CJ",
+    "formula": "=_xlfn.XLOOKUP(GS2,Parm!$CI$2:$CI$15,Parm!$CJ$2:$CJ$15,\"\")"
+  },
+  {
+    "column_name": "final_signal",
+    "sheet": "Parm",
+    "letter": "CN",
+    "formula": "=_xlfn.XLOOKUP(GV2,Parm!$CM$2:$CM$13,Parm!$CN$2:$CN$13,\"\")"
+  },
+  {
+    "column_name": "beta",
+    "sheet": "TO",
+    "letter": "K",
+    "formula": "=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!K:K,\"\")"
+  },
+  {
+    "column_name": "market_cap",
+    "sheet": "TO",
+    "letter": "G",
+    "formula": "=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!G:G,\"\")"
+  },
+  {
+    "column_name": "long_term_debt_to_capital_current_ltm",
+    "sheet": "TO",
+    "letter": "M",
+    "formula": "=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!M:M,\"\")"
+  },
+  {
+    "column_name": "price_earnings_ratio_current",
+    "sheet": "TO",
+    "letter": "N",
+    "formula": "=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!N:N,\"\")"
+  },
+  {
+    "column_name": "price_book_value_ratio_current",
+    "sheet": "TO",
+    "letter": "O",
+    "formula": "=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!O:O,\"\")"
+  },
+  {
+    "column_name": "return_on_equity_roe_current_ltm",
+    "sheet": "TO",
+    "letter": "P",
+    "formula": "=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!P:P,\"\")"
+  },
+  {
+    "column_name": "eps",
+    "sheet": "TO",
+    "letter": "Q",
+    "formula": "=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!Q:Q,\"\")"
+  },
+  {
+    "column_name": "div_yield_current",
+    "sheet": "TO",
+    "letter": "R",
+    "formula": "=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!R:R,\"\")"
+  },
+  {
+    "column_name": "sector",
+    "sheet": "TO",
+    "letter": "S",
+    "formula": "=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!S:S,\"\")"
+  },
+  {
+    "column_name": "free_cash_flow_per_share_current_ltm",
+    "sheet": "TO",
+    "letter": "T",
+    "formula": "=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!T:T,\"\")"
+  },
+  {
+    "column_name": "asset_class",
+    "sheet": "Sctr",
+    "letter": "I",
+    "formula": "=_xlfn.XLOOKUP(C2,Sctr!A$2:A$1000,Sctr!I$2:I$1000,\"\")"
+  },
+  {
+    "column_name": "sctr_sector",
+    "sheet": "Sctr",
+    "letter": "K",
+    "formula": "=_xlfn.XLOOKUP(C2,Sctr!A$2:A$1000,Sctr!K$2:K$1000,\"\")"
+  },
+  {
+    "column_name": "sub_asset_class",
+    "sheet": "Sctr",
+    "letter": "J",
+    "formula": "=_xlfn.XLOOKUP(C2,Sctr!A:A,Sctr!J:J,\"\")"
+  },
+  {
+    "column_name": "industry",
+    "sheet": "Sctr",
+    "letter": "C",
+    "formula": "=_xlfn.XLOOKUP(C2,Sctr!A:A,Sctr!C:C,\"\")"
+  },
+  {
+    "column_name": "growth_m_ol",
+    "sheet": "HQuad",
+    "letter": "J",
+    "formula": "=_xlfn.XLOOKUP(HO2,HQuad!$B$24:$B$39,HQuad!$J$24:$J$39,\"\")"
+  },
+  {
+    "column_name": "scale_m_ol",
+    "sheet": "HQuad",
+    "letter": "J",
+    "formula": "=_xlfn.XLOOKUP(HP2,HQuad!$B$24:$B$39,HQuad!$J$24:$J$39,\"\")"
+  },
+  {
+    "column_name": "solvency_m_ol",
+    "sheet": "HQuad",
+    "letter": "J",
+    "formula": "=_xlfn.XLOOKUP(HQ2,HQuad!$B$24:$B$39,HQuad!$J$24:$J$39,\"\")"
+  },
+  {
+    "column_name": "value_m_ol",
+    "sheet": "HQuad",
+    "letter": "J",
+    "formula": "=_xlfn.XLOOKUP(HR2,HQuad!$B$24:$B$39,HQuad!$J$24:$J$39,\"\")"
+  },
+  {
+    "column_name": "quality_m_ol",
+    "sheet": "HQuad",
+    "letter": "J",
+    "formula": "=_xlfn.XLOOKUP(HS2,HQuad!$B$24:$B$39,HQuad!$J$24:$J$39,\"\")"
+  },
+  {
+    "column_name": "dividend_m_ol",
+    "sheet": "HQuad",
+    "letter": "J",
+    "formula": "=_xlfn.XLOOKUP(HT2,HQuad!$B$24:$B$39,HQuad!$J$24:$J$39,\"\")"
+  },
+  {
+    "column_name": "momentum_m_ol",
+    "sheet": "HQuad",
+    "letter": "J",
+    "formula": "=_xlfn.XLOOKUP(HV2,HQuad!$B$24:$B$39,HQuad!$J$24:$J$39,0)"
+  },
+  {
+    "column_name": "sensitivity_m_ol",
+    "sheet": "HQuad",
+    "letter": "J",
+    "formula": "=_xlfn.XLOOKUP(HW2,HQuad!$B$24:$B$39,HQuad!$J$24:$J$39,\"\")"
+  },
+  {
+    "column_name": "asset_class_m_ol",
+    "sheet": "HQuad",
+    "letter": "J",
+    "formula": "=_xlfn.XLOOKUP(HH2,HQuad!$B$2:$B$9,HQuad!$J$2:$J$9,\"\")"
+  },
+  {
+    "column_name": "equity_sector_m_ol",
+    "sheet": "HQuad",
+    "letter": "J",
+    "formula": "=IF(HH2=\"Equities\",_xlfn.XLOOKUP(HJ2,HQuad!$B$10:$B$23,HQuad!$J$10:$J$23,\"\"),IF2"
+  },
+  {
+    "column_name": "growth_q_ol",
+    "sheet": "HQuad",
+    "letter": "L",
+    "formula": "=_xlfn.XLOOKUP(HO2,HQuad!$B$24:$B$39,HQuad!$L$24:$L$39,\"\")"
+  },
+  {
+    "column_name": "scale_q_ol",
+    "sheet": "HQuad",
+    "letter": "L",
+    "formula": "=_xlfn.XLOOKUP(HP2,HQuad!$B$24:$B$39,HQuad!$L$24:$L$39,\"\")"
+  },
+  {
+    "column_name": "solvency_q_ol",
+    "sheet": "HQuad",
+    "letter": "L",
+    "formula": "=_xlfn.XLOOKUP(HQ2,HQuad!$B$24:$B$39,HQuad!$L$24:$L$39,\"\")"
+  },
+  {
+    "column_name": "value_q_ol",
+    "sheet": "HQuad",
+    "letter": "L",
+    "formula": "=_xlfn.XLOOKUP(HR2,HQuad!$B$24:$B$39,HQuad!$L$24:$L$39,\"\")"
+  },
+  {
+    "column_name": "quality_q_ol",
+    "sheet": "HQuad",
+    "letter": "L",
+    "formula": "=_xlfn.XLOOKUP(HS2,HQuad!$B$24:$B$39,HQuad!$L$24:$L$39,\"\")"
+  },
+  {
+    "column_name": "dividend_q_ol",
+    "sheet": "HQuad",
+    "letter": "L",
+    "formula": "=_xlfn.XLOOKUP(HT2,HQuad!$B$24:$B$39,HQuad!$L$24:$L$39,\"\")"
+  },
+  {
+    "column_name": "momentum_q_ol",
+    "sheet": "HQuad",
+    "letter": "L",
+    "formula": "=_xlfn.XLOOKUP(HV2,HQuad!$B$24:$B$39,HQuad!$L$24:$L$39,0)"
+  },
+  {
+    "column_name": "sensitivity_q_ol",
+    "sheet": "HQuad",
+    "letter": "L",
+    "formula": "=_xlfn.XLOOKUP(HW2,HQuad!$B$24:$B$39,HQuad!$L$24:$L$39,\"\")"
+  },
+  {
+    "column_name": "asset_class_q_ol",
+    "sheet": "HQuad",
+    "letter": "L",
+    "formula": "=_xlfn.XLOOKUP(HH2,HQuad!$B$2:$B$9,HQuad!$L$2:$L$9,\"\")"
+  },
+  {
+    "column_name": "equity_sector_q_ol",
+    "sheet": "HQuad",
+    "letter": "L",
+    "formula": "=IF(HH2=\"Equities\",_xlfn.XLOOKUP(HJ2,HQuad!$B$10:$B$23,HQuad!$L$10:$L$23,\"\"),IR2"
+  },
+  {
+    "column_name": "sp500_volatility",
+    "sheet": "Sctr",
+    "letter": "D",
+    "formula": "=IF(_xlfn.XLOOKUP(C2,Sctr!A:A,Sctr!D:D,\"\")=\"Y\",Dash!$S$2,0)"
+  },
+  {
+    "column_name": "nasdaq_volatility",
+    "sheet": "Sctr",
+    "letter": "E",
+    "formula": "=IF(_xlfn.XLOOKUP(C2,Sctr!A:A,Sctr!E:E,\"\")=\"Y\",Dash!$S$5,0)"
+  },
+  {
+    "column_name": "dow_volatility",
+    "sheet": "Sctr",
+    "letter": "F",
+    "formula": "=IF(_xlfn.XLOOKUP(C2,Sctr!A:A,Sctr!F:F,\"\")=\"Y\",Dash!$S$9,0)"
+  },
+  {
+    "column_name": "russell_volatility",
+    "sheet": "Sctr",
+    "letter": "G",
+    "formula": "=IF(_xlfn.XLOOKUP(C2,Sctr!A:A,Sctr!G:G,\"\")=\"Y\",Dash!$S$4,0)"
+  },
+  {
+    "column_name": "fcf",
+    "sheet": "TW",
+    "letter": "G",
+    "formula": "=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$G:$G,\"\")"
+  },
+  {
+    "column_name": "earningsdays",
+    "sheet": "TW",
+    "letter": "X",
+    "formula": "=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$X:$X,\"\")"
+  },
+  {
+    "column_name": "short_ratio",
+    "sheet": "Y",
+    "letter": "Q",
+    "formula": "=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$Q:$Q,\"\")"
+  },
+  {
+    "column_name": "float",
+    "sheet": "Y",
+    "letter": "R",
+    "formula": "=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$R:$R,\"\")"
+  },
+  {
+    "column_name": "shares_out",
+    "sheet": "Y",
+    "letter": "S",
+    "formula": "=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$S:$S,\"\")"
+  },
+  {
+    "column_name": "tn_td_rule_action",
+    "sheet": "Parm",
+    "letter": "BV",
+    "formula": "=_xlfn.XLOOKUP(QE2,Parm!$BS$26:$BS$31,Parm!$BV$26:$BV$31)"
+  },
+  {
+    "column_name": "tn_td_rule_desc",
+    "sheet": "Parm",
+    "letter": "BT",
+    "formula": "=_xlfn.XLOOKUP(QE2,Parm!$BS$26:$BS$31,Parm!$BT$26:$BT$31)"
+  },
+  {
+    "column_name": "bbrngstrkrule_action",
+    "sheet": "Parm",
+    "letter": "BV",
+    "formula": "=_xlfn.XLOOKUP(QJ2,Parm!$BS$51:$BS$59,Parm!$BV$51:$BV$59,\"\")"
+  },
+  {
+    "column_name": "bbrngstrkrule_desc",
+    "sheet": "Parm",
+    "letter": "BT",
+    "formula": "=_xlfn.XLOOKUP(QJ2,Parm!$BS$51:$BS$59,Parm!$BT$51:$BT$59,\"\")"
+  },
+  {
+    "column_name": "riskrng_longs_action",
+    "sheet": "Parm",
+    "letter": "BV",
+    "formula": "=IF(QJ2>=2,_xlfn.XLOOKUP(QM2,Parm!$BS$34:$BS$40,Parm!$BV$34:$BV$40,\"\"),IF(QJ2>=0"
+  },
+  {
+    "column_name": "rrdesc",
+    "sheet": "Parm",
+    "letter": "BT",
+    "formula": "=IF(QJ2>=2,_xlfn.XLOOKUP(QM2,Parm!$BS$34:$BS$40,Parm!$BT$34:$BT$40,\"\"),IF(QJ2>=0"
+  },
+  {
+    "column_name": "td_tn_bb_risk_range_rule_action",
+    "sheet": "Parm",
+    "letter": "AQ",
+    "formula": "=_xlfn.XLOOKUP(QR2,Parm!$AO$2:$AO$21,Parm!$AQ$2:$AQ$21,\"\")"
+  },
+  {
+    "column_name": "td_tn_bb_risk_range_rule_action_seq",
+    "sheet": "Parm",
+    "letter": "AR",
+    "formula": "=_xlfn.XLOOKUP(QR2,Parm!$AO$2:$AO$21,Parm!$AR$2:$AR$21,\"\")"
+  },
+  {
+    "column_name": "ps_rk",
+    "sheet": "ps",
+    "letter": "Z",
+    "formula": "=_xlfn.XLOOKUP(B2,ps!A:A,ps!Z:Z,\"\")"
+  },
+  {
+    "column_name": "psrk_chg",
+    "sheet": "ps",
+    "letter": "AA",
+    "formula": "=_xlfn.XLOOKUP(B2,ps!A:A,ps!AA:AA,\"\")"
+  },
+  {
+    "column_name": "etf",
+    "sheet": "etfchg",
+    "letter": "F",
+    "formula": "=_xlfn.XLOOKUP(B2,etfchg!C:C,etfchg!F:F,_xlfn.XLOOKUP(U2&B2,etf!A:A,etf!G:G,\"\"))"
+  },
+  {
+    "column_name": "ii",
+    "sheet": "II",
+    "letter": "E",
+    "formula": "=_xlfn.XLOOKUP(T2&B2,II!A:A,II!E:E,\"\")"
+  },
+  {
+    "column_name": "ii_chg",
+    "sheet": "IIchg",
+    "letter": "E",
+    "formula": "=_xlfn.XLOOKUP(B2,IIchg!C:C,IIchg!E:E,\"\")"
+  },
+  {
+    "column_name": "call",
+    "sheet": "call",
+    "letter": "I",
+    "formula": "=_xlfn.XLOOKUP(B2,call!H:H,call!I:I,\"\")"
+  },
+  {
+    "column_name": "call_modifier",
+    "sheet": "call",
+    "letter": "J",
+    "formula": "=_xlfn.XLOOKUP(B2,call!H:H,call!J:J,\"\")"
+  },
+  {
+    "column_name": "rr",
+    "sheet": "RR",
+    "letter": "J",
+    "formula": "=_xlfn.XLOOKUP(B2,RR!F:F,RR!J:J,\"\")"
+  },
+  {
+    "column_name": "sg_rk",
+    "sheet": "ssL",
+    "letter": "D",
+    "formula": "=_xlfn.XLOOKUP(B2,ssL!C:C,ssL!D:D,\"\")"
+  },
+  {
+    "column_name": "km",
+    "sheet": "ssL",
+    "letter": "E",
+    "formula": "=_xlfn.XLOOKUP(B2,ssL!C:C,ssL!E:E,\"\")"
+  },
+  {
+    "column_name": "sgrk_chg",
+    "sheet": "sss",
+    "letter": "Q",
+    "formula": "=_xlfn.XLOOKUP(B2,sss!B:B,sss!Q:Q,\"\")"
+  },
+  {
+    "column_name": "sg_strength",
+    "sheet": "ssL",
+    "letter": "F",
+    "formula": "=_xlfn.XLOOKUP(B2,ssL!C:C,ssL!F:F,\"\")"
+  },
+  {
+    "column_name": "sgs_chg",
+    "sheet": "sss",
+    "letter": "U",
+    "formula": "=_xlfn.XLOOKUP(B2,sss!B:B,sss!U:U,\"\")"
+  },
+  {
+    "column_name": "sss_entry",
+    "sheet": "sss",
+    "letter": "X",
+    "formula": "=_xlfn.XLOOKUP(B2,sss!V:V,sss!X:X,\"\")"
+  },
+  {
+    "column_name": "ps_date",
+    "sheet": "ps",
+    "letter": "AG",
+    "formula": "=_xlfn.XLOOKUP(B2,ps!AB:AB,ps!AG:AG,\"\")"
+  },
+  {
+    "column_name": "etf_date",
+    "sheet": "etfchg",
+    "letter": "E",
+    "formula": "=_xlfn.XLOOKUP(B2,etfchg!C:C,etfchg!E:E,_xlfn.XLOOKUP(B2,etf!I:I,etf!N:N,\"\"))"
+  },
+  {
+    "column_name": "ii_date",
+    "sheet": "II",
+    "letter": "L",
+    "formula": "=_xlfn.XLOOKUP(B2,II!G:G,II!L:L,\"\")"
+  },
+  {
+    "column_name": "call_date",
+    "sheet": "call",
+    "letter": "C",
+    "formula": "=_xlfn.XLOOKUP(B2,call!H:H,call!C:C,\"\")"
+  },
+  {
+    "column_name": "rr_date",
+    "sheet": "RR",
+    "letter": "D",
+    "formula": "=_xlfn.XLOOKUP(B2,RR!F:F,RR!D:D,\"\")"
+  },
+  {
+    "column_name": "ps_entry",
+    "sheet": "ps",
+    "letter": "AD",
+    "formula": "=_xlfn.XLOOKUP(B2,ps!AB:AB,ps!AD:AD,\"\")"
+  },
+  {
+    "column_name": "etf_entry",
+    "sheet": "etfchg",
+    "letter": "D",
+    "formula": "=_xlfn.XLOOKUP(B2,etfchg!C:C,etfchg!D:D,_xlfn.XLOOKUP(B2,etf!I:I,etf!K:K,\"\"))"
+  },
+  {
+    "column_name": "ii_entry",
+    "sheet": "II",
+    "letter": "I",
+    "formula": "=_xlfn.XLOOKUP(B2,II!G:G,II!I:I,\"\")"
+  },
+  {
+    "column_name": "call_entry",
+    "sheet": "call",
+    "letter": "L",
+    "formula": "=_xlfn.XLOOKUP(B2,call!H:H,call!L:L,\"\")"
+  },
+  {
+    "column_name": "rr_entry",
+    "sheet": "RR",
+    "letter": "O",
+    "formula": "=_xlfn.XLOOKUP(B2,RR!F:F,RR!O:O,\"\")"
+  },
+  {
+    "column_name": "sss_date",
+    "sheet": "sss",
+    "letter": "AA",
+    "formula": "=_xlfn.XLOOKUP(B2,sss!V:V,sss!AA:AA,\"\")"
+  },
+  {
+    "column_name": "ps_cont",
+    "sheet": "ps",
+    "letter": "AF",
+    "formula": "=_xlfn.XLOOKUP(B2,ps!AB:AB,ps!AF:AF,\"\")"
+  },
+  {
+    "column_name": "etf_cont",
+    "sheet": "etfchg",
+    "letter": "D",
+    "formula": "=_xlfn.XLOOKUP(B2,etfchg!C:C,etfchg!D:D,_xlfn.XLOOKUP(B2,etf!I:I,etf!M:M,\"\"))"
+  },
+  {
+    "column_name": "ii_cont",
+    "sheet": "II",
+    "letter": "K",
+    "formula": "=_xlfn.XLOOKUP(B2,II!G:G,II!K:K,\"\")"
+  },
+  {
+    "column_name": "call_cont",
+    "sheet": "call",
+    "letter": "N",
+    "formula": "=_xlfn.XLOOKUP(B2,call!H:H,call!N:N,\"\")"
+  },
+  {
+    "column_name": "rr_cont",
+    "sheet": "RR",
+    "letter": "Q",
+    "formula": "=_xlfn.XLOOKUP(B2,RR!F:F,RR!Q:Q,\"\")"
+  },
+  {
+    "column_name": "sss_cont",
+    "sheet": "sss",
+    "letter": "Z",
+    "formula": "=_xlfn.XLOOKUP(B2,sss!V:V,sss!Z:Z,\"\")"
+  },
+  {
+    "column_name": "action_type",
+    "sheet": "Parm",
+    "letter": "AS",
+    "formula": "=_xlfn.XLOOKUP(TU2,Parm!$AO$2:$AO$25,Parm!$AS$2:$AS$25,\"\")"
+  },
+  {
+    "column_name": "fidelity",
+    "sheet": "F",
+    "letter": "G",
+    "formula": "=_xlfn.XLOOKUP(W2&C2,F!A:A,F!G:G,0)"
+  },
+  {
+    "column_name": "cs",
+    "sheet": "CS",
+    "letter": "G",
+    "formula": "=_xlfn.XLOOKUP(X2&C2,CS!A:A,CS!G:G,0)"
+  },
+  {
+    "column_name": "my",
+    "sheet": "My",
+    "letter": "B",
+    "formula": "=_xlfn.XLOOKUP(C2,My!A:A,My!B:B,\"\")"
+  },
+  {
+    "column_name": "unit",
+    "sheet": "Parm",
+    "letter": "AK",
+    "formula": "=IF(UL2<>\"\",_xlfn.XLOOKUP(UL2,Parm!$AF$2:$AF$24,Parm!$AK$2:$AK$24,0),0)"
+  },
+  {
+    "column_name": "min",
+    "sheet": "Parm",
+    "letter": "AI",
+    "formula": "=IF(UL2<>\"\",_xlfn.XLOOKUP(UL2,Parm!$AF$2:$AF$24,Parm!$AI$2:$AI$24,0),0)"
+  },
+  {
+    "column_name": "max",
+    "sheet": "Parm",
+    "letter": "AJ",
+    "formula": "=IF(UL2<>\"\",_xlfn.XLOOKUP(UL2,Parm!$AF$2:$AF$24,Parm!$AJ$2:$AJ$24,0),0)"
+  },
+  {
+    "column_name": "final_action",
+    "sheet": "Parm",
+    "letter": "AQ",
+    "formula": "=_xlfn.XLOOKUP(TU2,Parm!$AO$1:$AO$25,Parm!$AQ$1:$AQ$25,IF(AND(TU2>=0,UQ2<0),\"SO\""
+  },
+  {
+    "column_name": "sector_ticker",
+    "sheet": "HQuad",
+    "letter": "C",
+    "formula": "=IF(OR(HH2<>\"Equities\",HJ2=\"\"),\"\",_xlfn.XLOOKUP(HJ2,HQuad!B:B,HQuad!C:C,\"\"))"
+  },
+  {
+    "column_name": "he_entry",
+    "sheet": "Parm",
+    "letter": "AQ",
+    "formula": "=IF(TA2=0,\"\",_xlfn.XLOOKUP(TA2,Parm!$AO$1:$AO$20,Parm!$AQ$1:$AQ$20,\"\"))"
+  },
+  {
+    "column_name": "he_cont",
+    "sheet": "Parm",
+    "letter": "AQ",
+    "formula": "=IF(TB2=0,\"\",_xlfn.XLOOKUP(TB2,Parm!$AO$1:$AO$20,Parm!$AQ$1:$AQ$20,\"\"))"
+  },
+  {
+    "column_name": "ss_entry",
+    "sheet": "Parm",
+    "letter": "AQ",
+    "formula": "=IF(TC2=0,\"\",_xlfn.XLOOKUP(TC2,Parm!$AO$1:$AO$20,Parm!$AQ$1:$AQ$20,\"\"))"
+  },
+  {
+    "column_name": "ss_cont",
+    "sheet": "Parm",
+    "letter": "AQ",
+    "formula": "=IF(TD2=0,\"\",_xlfn.XLOOKUP(TD2,Parm!$AO$1:$AO$20,Parm!$AQ$1:$AQ$20,\"\"))"
+  },
+  {
+    "column_name": "trig",
+    "sheet": "Parm",
+    "letter": "AQ",
+    "formula": "=IF(TE2=0,\"\",_xlfn.XLOOKUP(TE2,Parm!$AO$1:$AO$20,Parm!$AQ$1:$AQ$20,\"\"))"
+  },
+  {
+    "column_name": "entry",
+    "sheet": "Parm",
+    "letter": "AQ",
+    "formula": "=IF(TK2=0,\"\",_xlfn.XLOOKUP(TK2,Parm!$AO$1:$AO$20,Parm!$AQ$1:$AQ$20,\"\"))"
+  },
+  {
+    "column_name": "cont",
+    "sheet": "Parm",
+    "letter": "AQ",
+    "formula": "=IF(TT2=0,\"\",_xlfn.XLOOKUP(TT2,Parm!$AO$1:$AO$20,Parm!$AQ$1:$AQ$20,\"\"))"
+  },
+  {
+    "column_name": "overall",
+    "sheet": "Parm",
+    "letter": "AQ",
+    "formula": "=IF(TU2=0,\"\",_xlfn.XLOOKUP(TU2,Parm!$AO$1:$AO$20,Parm!$AQ$1:$AQ$20,\"\"))"
+  }
+]

@@ -1,0 +1,107 @@
+<svg width="100%" viewBox="0 0 680 1000" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Dashboard screen decision logic</title>
+  <desc>Vertical logic diagram of the Dashboard snapshot-date resolution path: user picks date D, GET /api/dash resolves it via _resolve_date and v_available_dates, calls v_dash(D) which reads drv_dash populated by derive_all — which joins drv_ma with COALESCE over drv_quote and hist_* snapshots for price/RSI — then the JSON response drives the six UI regions.</desc>
+  <style>
+  svg{background:#ffffff;}
+  text{font-family:'Segoe UI',Arial,Helvetica,sans-serif;fill:#57564E;}
+  .th{font-size:14px;font-weight:600;}
+  .ts{font-size:11.5px;}
+  .tsx{font-size:10.5px;}
+  .arr{stroke:#888780;stroke-width:1.6;fill:none;}
+  .box rect{fill:#F1EFE8;stroke:#888780;stroke-width:1.2;}
+  .box .th{fill:#2C2C2A;}.box .ts{fill:#4D4C48;}.box .tsx{fill:#4D4C48;}
+  .c-blue rect{fill:#E6F1FB;stroke:#378ADD;stroke-width:1.2;}
+  .c-blue .th{fill:#042C53;}.c-blue .ts{fill:#0C447C;}.c-blue .tsx{fill:#0C447C;}
+  .c-amber rect{fill:#FAEEDA;stroke:#854F0B;stroke-width:1.2;}
+  .c-amber .th{fill:#412402;}.c-amber .ts{fill:#633806;}
+  rect.s-blue{fill:#85B7EB;stroke:#185FA5;stroke-width:1;}
+  rect.s-amber{fill:#EF9F27;stroke:#854F0B;stroke-width:1;}
+  rect.s-gray{fill:#B4B2A9;stroke:#5F5E5A;stroke-width:1;}
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6"/>
+    </marker>
+  </defs>
+
+  <rect class="s-blue" x="150" y="24" width="13" height="13" rx="2"/>
+  <text class="ts" x="170" y="31" dominant-baseline="central">Logic step</text>
+  <rect class="s-amber" x="300" y="24" width="13" height="13" rx="2"/>
+  <text class="ts" x="320" y="31" dominant-baseline="central">Derived / DB table</text>
+  <rect class="s-gray" x="470" y="24" width="13" height="13" rx="2"/>
+  <text class="ts" x="490" y="31" dominant-baseline="central">Input / config</text>
+
+  <!-- Step 0: User picks date -->
+  <g class="box">
+    <rect x="40" y="52" width="600" height="64" rx="10"/>
+    <text class="th" x="340" y="76" text-anchor="middle" dominant-baseline="central">User picks date D — date picker in UI header</text>
+    <text class="ts" x="340" y="100" text-anchor="middle" dominant-baseline="central">GET /api/dates → SELECT MAX(as_of_date) FROM v_available_dates (default = latest)</text>
+  </g>
+  <line class="arr" x1="340" y1="117" x2="340" y2="148" marker-end="url(#arrow)"/>
+
+  <!-- Step 1: _resolve_date + /api/dash -->
+  <g class="c-blue">
+    <rect x="40" y="150" width="600" height="96" rx="10"/>
+    <text class="th" x="340" y="174" text-anchor="middle" dominant-baseline="central">1 · _resolve_date(D) → GET /api/dash?date=D</text>
+    <text class="ts" x="340" y="198" text-anchor="middle" dominant-baseline="central">None → MAX(as_of_date) FROM v_available_dates   ·   string → parse YYYY-MM-DD</text>
+    <text class="ts" x="340" y="220" text-anchor="middle" dominant-baseline="central">section filter optional: WHERE section = :sec</text>
+    <text class="tsx" x="340" y="238" text-anchor="middle" dominant-baseline="central">api/routers/dash.py · api/_helpers.py</text>
+  </g>
+  <line class="arr" x1="340" y1="247" x2="340" y2="278" marker-end="url(#arrow)"/>
+
+  <!-- Step 2: v_dash(D) -->
+  <g class="c-blue">
+    <rect x="40" y="280" width="600" height="76" rx="10"/>
+    <text class="th" x="340" y="304" text-anchor="middle" dominant-baseline="central">2 · SELECT * FROM v_dash(D)</text>
+    <text class="ts" x="340" y="326" text-anchor="middle" dominant-baseline="central">Thin wrapper: SELECT * FROM drv_dash WHERE as_of_date=D ORDER BY section, symbol</text>
+    <text class="tsx" x="340" y="346" text-anchor="middle" dominant-baseline="central">db/baseline.sql :: v_dash(p_as_of_date DATE)</text>
+  </g>
+  <line class="arr" x1="340" y1="357" x2="340" y2="388" marker-end="url(#arrow)"/>
+
+  <!-- Step 3: drv_dash -->
+  <g class="c-amber">
+    <rect x="40" y="390" width="600" height="76" rx="10"/>
+    <text class="th" x="340" y="414" text-anchor="middle" dominant-baseline="central">drv_dash — PK (as_of_date, section, symbol)</text>
+    <text class="ts" x="340" y="436" text-anchor="middle" dominant-baseline="central">section · symbol · description · last_price · a_trend_value · a_trade_value</text>
+    <text class="ts" x="340" y="456" text-anchor="middle" dominant-baseline="central">pct_brr · rr_brr · rr_outlook · call_outlook · threshold_low/high · zone_signal</text>
+  </g>
+  <line class="arr" x1="340" y1="467" x2="340" y2="498" marker-end="url(#arrow)"/>
+
+  <!-- Step 4: derive_all → _derive_dash_impl -->
+  <g class="c-blue">
+    <rect x="40" y="500" width="600" height="76" rx="10"/>
+    <text class="th" x="340" y="524" text-anchor="middle" dominant-baseline="central">3 · derive_all(D) → _derive_dash_impl</text>
+    <text class="ts" x="340" y="546" text-anchor="middle" dominant-baseline="central">idempotent: DELETE WHERE as_of_date=D then INSERT into drv_dash</text>
+    <text class="tsx" x="340" y="566" text-anchor="middle" dominant-baseline="central">etl/derive.py — runs after every ETL load for date D (and forward re-derive of later dates)</text>
+  </g>
+  <line class="arr" x1="340" y1="577" x2="340" y2="608" marker-end="url(#arrow)"/>
+
+  <!-- Step 5: drv_ma + price COALESCE -->
+  <g class="c-blue">
+    <rect x="40" y="610" width="600" height="118" rx="10"/>
+    <text class="th" x="340" y="634" text-anchor="middle" dominant-baseline="central">4 · drv_ma(D) — master aggregate — price COALESCE chain</text>
+    <text class="ts" x="340" y="658" text-anchor="middle" dominant-baseline="central">last_price = COALESCE(drv_quote.last_price, hist_tl.last_price)</text>
+    <text class="ts" x="340" y="679" text-anchor="middle" dominant-baseline="central">rsi = COALESCE(drv_quote.rsi, hist_tl.rsi)   ·   imp_volatility = COALESCE(drv_quote.imp_volatility, hist_tl.imp_volatility)</text>
+    <text class="ts" x="340" y="700" text-anchor="middle" dominant-baseline="central">drv_quote = latest-loaded-wins merge of hist_y / hist_tl / hist_td (priority: loaded_at DESC, sequence DESC)</text>
+    <text class="tsx" x="340" y="718" text-anchor="middle" dominant-baseline="central">hist_* rows with snapshot_date &lt;= D   ·   etl/derive.py :: _derive_ma_impl</text>
+  </g>
+  <line class="arr" x1="340" y1="729" x2="340" y2="760" marker-end="url(#arrow)"/>
+
+  <!-- Step 6: JSON response -->
+  <g class="c-amber">
+    <rect x="40" y="762" width="600" height="58" rx="10"/>
+    <text class="th" x="340" y="786" text-anchor="middle" dominant-baseline="central">JSON response — list[DashRow]</text>
+    <text class="ts" x="340" y="808" text-anchor="middle" dominant-baseline="central">one row per (section, symbol) — serialised by FastAPI / pydantic DashRow model</text>
+  </g>
+  <line class="arr" x1="340" y1="821" x2="340" y2="852" marker-end="url(#arrow)"/>
+
+  <!-- Step 7: UI rendering -->
+  <g class="box">
+    <rect x="40" y="854" width="600" height="128" rx="10"/>
+    <text class="th" x="340" y="878" text-anchor="middle" dominant-baseline="central">UI rendering — index.html + app.js</text>
+    <text class="ts" x="340" y="902" text-anchor="middle" dominant-baseline="central">Index bar: SPX/VIX · NDX/VXN · RUT/RVX · DJI/VXD  (% Chg computed client-side)</text>
+    <text class="ts" x="340" y="923" text-anchor="middle" dominant-baseline="central">Ticker grid: sections Index · Volatility · Treasury · Commodity · Sector · FX · Stock</text>
+    <text class="tsx" x="340" y="944" text-anchor="middle" dominant-baseline="central">Outlook banner ← /api/outlook/changes   ·   Briefing card ← /api/briefing</text>
+    <text class="tsx" x="340" y="964" text-anchor="middle" dominant-baseline="central">Quads ← /api/dashboard/quads   ·   Econ ← /api/dashboard/econ-indicators   ·   Events ← /api/dashboard/earnings</text>
+  </g>
+</svg>

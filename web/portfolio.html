@@ -1,0 +1,641 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portfolio — Trading Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    /* KPI strip */
+    .kpi-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .kpi-card {
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: var(--surface, #fafafa);
+      border: 1px solid var(--border, #e0e0e0);
+      position: relative;
+      min-width: 0;
+    }
+    .kpi-label {
+      font-size: 10px;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: var(--text-2, #666);
+      margin-bottom: 2px;
+    }
+    .kpi-value {
+      font-size: 15px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+    .kpi-sub {
+      font-size: 11px;
+      margin-top: 2px;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+    .gain-pos { color: #1c6c30; }
+    .gain-neg { color: #b21f1f; }
+    .gain-zero { color: var(--text-2, #666); }
+
+    .pf-filter-bar {
+      display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+      padding: 6px 12px;
+      background: var(--surface, #fafafa);
+      border: 1px solid var(--border, #e0e0e0);
+      border-radius: 6px;
+      margin-bottom: 6px;
+    }
+    .pf-filter-bar label { font-size: 12px; color: var(--text-2, #666); margin-right: 4px; }
+    .pf-filter-bar select, .pf-filter-bar input[type="search"] {
+      padding: 5px 9px; font-size: 12px;
+      border: 1px solid var(--border, #e0e0e0); border-radius: 4px; background: #fff;
+    }
+    .pf-filter-bar .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+
+    table.pf-grid { width: 100%; min-width: 100%; border-collapse: collapse; font-size: 11px; }
+    table.pf-grid th, table.pf-grid td {
+      padding: 6px 8px; border-bottom: 1px solid var(--border, #ececec);
+      text-align: left; vertical-align: middle;
+    }
+    table.pf-grid thead th {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+      color: var(--text-2, #666); background: var(--surface, #fafafa);
+      position: sticky; top: 0; z-index: 2;
+    }
+    table.pf-grid tbody tr:hover { background: var(--surface-hover, #f0f6ff); cursor: pointer; }
+    /* `.num` needs to be at least as specific as `table.pf-grid td` above,
+       otherwise the generic td text-align:left wins. Both selectors below
+       cover headers and cells in the Positions/Activity/Realized grids. */
+    .num,
+    table.pf-grid th.num,
+    table.pf-grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .sort-indicator {
+      display: inline-block;
+      width: 10px;
+      font-size: 10px;
+      margin-left: 2px;
+      opacity: 0.3;
+      transition: opacity 0.15s;
+    }
+
+    .gain-cell {
+      position: relative;
+    }
+    .gain-cell .pct-bar {
+      position: absolute; left: 0; top: 0; bottom: 0;
+      width: 0%; opacity: 0.18; pointer-events: none;
+    }
+    .gain-cell.pos .pct-bar { background: #1c6c30; }
+    .gain-cell.neg .pct-bar { background: #b21f1f; }
+    .gain-cell .val { position: relative; z-index: 1; }
+
+    .badge-action {
+      display: inline-block;
+      padding: 1px 7px;
+      border-radius: 9px;
+      font-size: 9px;
+      font-weight: 700;
+      color: #fff;
+      min-width: 50px; text-align: center;
+    }
+    .badge-action-REMOVE   { background: #d83a3a; }
+    .badge-action-REDUCE   { background: #e07c1a; }
+    .badge-action-INCREASE { background: #2f9e2f; }
+    .badge-action-ADD      { background: #1f7af2; }
+    .badge-action-HOLD     { background: #888; }
+
+    .badge-limit {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      color: #fff;
+      min-width: 64px; text-align: center;
+    }
+    .badge-limit-WITHIN     { background: #2f9e2f; }
+    .badge-limit-BELOW_MIN  { background: #e07c1a; }
+    .badge-limit-ABOVE_MAX  { background: #d83a3a; }
+    .badge-limit-AT_FLOOR   { background: #1f7af2; }
+    .badge-limit-NO_LIMIT   { background: #aaa; }
+
+    .kpi-chip {
+      padding: 6px 12px;
+      border-radius: 14px;
+      background: var(--surface, #f5f5f7);
+      border: 1px solid var(--border, #e0e0e0);
+      cursor: pointer;
+      font-size: 11px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      user-select: none;
+      margin-right: 8px;
+    }
+    .kpi-chip .ct { font-weight: 700; }
+    .kpi-chip.active { background: var(--accent, #0a84ff); color: #fff; border-color: var(--accent, #0a84ff); }
+    .kpi-chip.above-max { border-left: 4px solid #d83a3a; }
+    .kpi-chip.below-min { border-left: 4px solid #e07c1a; }
+    .kpi-chip.at-floor  { border-left: 4px solid #1f7af2; }
+
+    .pill { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 10px; background: #eef2f7; color: #334; margin-right: 3px; }
+    .pill-my { background: #fff3cd; color: #6b4d00; }
+    .pill-f  { background: #e6f0ff; color: #1a3a8b; }
+    .pill-cs { background: #fde9d2; color: #804500; }
+
+    /* Modal */
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none; z-index: 999; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 24px 0; }
+    .modal-backdrop.open { display: flex; }
+    .modal { display: block; position: static; inset: auto; background: #fff; border-radius: 8px; width: 98%; max-width: 1600px; box-shadow: 0 12px 40px rgba(0,0,0,0.25); padding: 22px 24px; }
+    .modal h2 { margin: 0 0 4px; font-size: 22px; font-weight: 700; }
+    .modal .sub { color: var(--text-2, #666); font-size: 12px; margin-bottom: 14px; }
+    .modal-close { float: right; cursor: pointer; font-size: 18px; border: none; background: transparent; }
+    .modal-section { margin-top: 16px; }
+    .modal-section h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-2, #666); margin: 0 0 6px; }
+
+    .mini-kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+    .mini-kpi { padding: 8px 10px; border-radius: 6px; background: #f7f9fb; border: 1px solid #ececec; }
+    .mini-kpi .lbl { font-size: 9px; text-transform: uppercase; color: var(--text-2, #666); letter-spacing: 0.5px; }
+    .mini-kpi .val { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+
+    table.modal-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    table.modal-table th, table.modal-table td { padding: 5px 7px; border-bottom: 1px solid #eee; text-align: left; }
+    .empty-mini { color: var(--text-2,#666); font-size: 11px; padding: 6px; }
+
+    #pfChart { max-height: 280px; }
+
+    .status-bar { padding: 8px 12px; margin-bottom: 8px; border-radius: 4px; font-size: 12px; display: none; }
+    .status-bar.success { background: #e6f4ea; color: #1c6c30; display: block; }
+    .status-bar.error   { background: #fbeaea; color: #8c1d1d; display: block; }
+    .status-bar.info    { background: #eef2f7; color: #334; display: block; }
+
+    .timeline { position: relative; padding-left: 18px; }
+    .timeline-item { position: relative; padding: 6px 0 6px 6px; font-size: 11px; border-left: 2px solid #e0e0e0; }
+    .timeline-item::before {
+      content: ''; position: absolute; left: -7px; top: 9px; width: 10px; height: 10px;
+      border-radius: 50%; background: #888;
+    }
+    .timeline-item.user::before { background: #1f7af2; }
+    .timeline-item.leg::before { background: #2f9e2f; }
+    .timeline-item.leg.close::before { background: #d83a3a; }
+    .timeline-when { font-weight: 600; }
+    .timeline-meta { color: var(--text-2,#666); }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>Trading Dashboard</h1>
+    </div>
+    <nav class="nav-menu">
+      <a href="/" class="nav-item">Dashboard</a>
+      <a href="/cockpit" class="nav-item">Cockpit</a>
+      <a href="/actionable" class="nav-item">Actionable</a>
+      <a href="/portfolio" class="nav-item active">Portfolio</a>
+      <a href="/rules" class="nav-item">Rules</a>
+      <a href="/groups" class="nav-item">Rule Groups</a>
+      <a href="/rule-performance" class="nav-item">Performance</a>
+      <a href="/trace" class="nav-item">Trace</a>
+      <a href="/explore" class="nav-item">Explore</a>
+      <a href="/ref" class="nav-item">Ref Data</a>
+      <a href="/dbstats" class="nav-item">DB Stats</a>
+      <a href="/file-monitor" class="nav-item">File Monitor</a>
+    </nav>
+    <div class="controls">
+      <label for="datePicker">As of</label>
+      <select id="datePicker" aria-label="snapshot date"></select>
+      <button id="refreshBtn" class="btn">Refresh</button>
+      <span id="health" class="badge badge-ok" title="API health">●</span>
+    </div>
+  </header>
+
+  <main style="padding-left:0; padding-right:0;">
+    <!-- Snapshot staleness banner — shows when any account's last snapshot
+         is older than today. hist_cs / hist_f arrive sporadically so we
+         surface staleness so the user knows "current value" may be stale. -->
+    <div id="snapshotStatusBanner" style="display:none; margin:6px 8px;
+         padding:6px 12px; background:#fff8e1; border:1px solid #f3d27a;
+         border-radius:6px; font-size:11px; line-height:1.6;"></div>
+
+    <!-- Tab bar: Positions / Activity / Realized -->
+    <div class="pf-tabs" style="display:flex; gap:0; margin:0 8px;
+         border-bottom: 2px solid var(--border, #e5e7eb);">
+      <button class="pf-tab-btn active" data-pf-tab="positions"
+              style="border:none;background:none;padding:8px 16px;font-size:12px;
+                     font-weight:600;color:#111827;cursor:pointer;
+                     border-bottom:2px solid #0a84ff;margin-bottom:-2px;">Positions</button>
+      <button class="pf-tab-btn" data-pf-tab="realized"
+              style="border:none;background:none;padding:8px 16px;font-size:12px;
+                     font-weight:500;color:#6b7280;cursor:pointer;
+                     border-bottom:2px solid transparent;margin-bottom:-2px;">Activity</button>
+      <div style="margin-left:auto;font-size:11px;color:#6b7280;align-self:center;padding-right:8px;"
+           id="pfTabHint">Snapshot positions (hist_cs / hist_f)</div>
+    </div>
+    <style>
+      .pf-tab-pane { display: none; }
+      .pf-tab-pane.active { display: block; }
+      .pf-tab-btn.active { color: #111827 !important; border-bottom-color: #0a84ff !important; }
+    </style>
+
+    <!-- ===== POSITIONS TAB ===== -->
+    <div class="pf-tab-pane active" id="pf-pane-positions">
+    <div class="card" style="border-radius:0; margin:0 8px;">
+      <div class="status-bar" id="statusBar"></div>
+
+      <!-- Filter bar (moved above KPI strip per user request) -->
+      <div class="pf-filter-bar" style="margin-top:2px;">
+        <select id="srcFilter" title="Source">
+          <option value="">All (F+CS)</option>
+          <option value="F">Fidelity (F)</option>
+          <option value="CS">Charles Schwab (CS)</option>
+        </select>
+        <select id="acctFilter" title="Account"><option value="">All</option></select>
+        <label class="toggle"><input type="checkbox" id="consolidated"> Consolidate</label>
+        <label class="toggle"><input type="checkbox" id="latestPrices"> Latest</label>
+        <input type="search" id="symSearch" placeholder="symbol / desc…" style="min-width:90px;" title="Search">
+        <select id="trendsPeriod" style="font-size:12px; padding:3px 8px;" title="Period">
+          <option value="30d" selected>30 days</option>
+          <option value="90d">90 days</option>
+          <option value="mtd">MTD</option>
+          <option value="180d">180 days</option>
+          <option value="ytd">YTD</option>
+          <option value="1y">1 year</option>
+          <option value="5y">5 years</option>
+        </select>
+        <span id="trendsRange" style="display:none;"></span>
+        <span style="color:var(--border,#ddd); font-size:16px; margin-left:auto;">|</span>
+        <div id="limitChips" style="display:contents;"></div>
+        <span style="margin-left:auto; font-size:11px; color:var(--text-2,#666);" id="rowCount"></span>
+        <span style="color:var(--border,#ddd); font-size:16px;">|</span>
+        <button id="exportCsvBtn" class="btn" title="Export current view to CSV"
+                style="font-size:11px; padding:3px 10px;">Export CSV</button>
+        <button id="acctToggle" class="btn" style="font-size:11px; padding:3px 10px;">▶ Acct</button>
+        <div style="font-size:11px; color:var(--text-2,#666);" id="snapshotLabel"></div>
+      </div>
+
+      <!-- KPI strip removed: all values now live inline in the chart headers below.
+           Hidden spans retained so renderKpiTiles() can safely target them. -->
+      <div id="kpiStrip" style="display:none;">
+        <span id="kpiCash"></span>
+        <span id="kpiTotal"></span>
+        <span id="kpiPos"></span>
+        <span id="kpiAccts"></span>
+        <span id="kpiToday"></span>
+        <span id="kpiTodayPct"></span>
+        <span id="kpiRealizedToday"></span>
+        <span id="kpiMV"></span>
+        <span id="kpiMVsub"></span>
+        <span id="kpiCost"></span>
+      </div>
+
+      <!-- Trends panel: 2 charts. Period selector lives in the filter bar above. -->
+      <div id="trendsPanel" style="margin: 4px 0 8px; padding: 8px 12px; border: 1px solid var(--border, #e0e0e0); border-radius: 6px; background: var(--surface, #fafafa);">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+
+          <!-- Account Value: Total / Cash / Market / Cost inline next to title.
+               The expand icon (⤢) is positioned absolute top-right so the
+               last header value (Cost) aligns with the chart's right Y-axis. -->
+          <div class="trend-card" data-trend-key="value" data-trend-title="Account Value" style="cursor:pointer; position:relative;" title="Click to expand">
+            <span style="position:absolute; top:2px; right:4px; color:var(--text-3,#aaa); font-size:11px; line-height:1;">⤢</span>
+            <div id="ovValueHeader" style="font-size:13px; color:var(--text-1,#222); margin-bottom:4px; display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
+              <span style="font-weight:700; white-space:nowrap; font-size:14px;">Account Value</span>
+              <span style="display:flex; gap:14px; color:var(--text-1,#222); margin-left:auto; font-variant-numeric: tabular-nums;">
+                <span><span style="color:var(--text-2,#666); font-size:11px;">Total </span><strong id="ovTotal" style="font-size:15px;">—</strong></span>
+                <span><span style="color:var(--text-2,#666); font-size:11px;">Cash </span><strong id="ovCash" style="font-size:15px;">—</strong></span>
+                <span><span style="color:var(--text-2,#666); font-size:11px;">Market </span><strong id="ovMarket" style="font-size:15px;">—</strong></span>
+                <span><span style="color:var(--text-2,#666); font-size:11px;">Cost </span><strong id="ovCost" style="font-size:15px;">—</strong></span>
+              </span>
+            </div>
+            <div style="height: 200px; position: relative;"><canvas id="chTrendValue" role="img" aria-label="Account value over time"></canvas></div>
+          </div>
+
+          <!-- Cumulative P&L (line) + Day Change (thin bars overlay): Today's Gain / Realized / Cum inline.
+               Expand icon (⤢) lives in the top-right corner so "Cum" lines up
+               with the right Y-axis tick labels in the chart below. -->
+          <div class="trend-card" data-trend-key="cum" data-trend-title="Cumulative P&amp;L" style="cursor:pointer; position:relative;" title="Click to expand">
+            <span style="position:absolute; top:2px; right:4px; color:var(--text-3,#aaa); font-size:11px; line-height:1;">⤢</span>
+            <div id="ovCumHeader" style="font-size:13px; color:var(--text-1,#222); margin-bottom:4px; display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
+              <span style="font-weight:700; white-space:nowrap; font-size:14px;">Cumulative P&amp;L</span>
+              <span style="display:flex; gap:14px; color:var(--text-1,#222); margin-left:auto; font-variant-numeric: tabular-nums;">
+                <span><span style="color:var(--text-2,#666); font-size:11px;">Today's Gain </span><strong id="ovTodayGain" style="font-size:15px;">—</strong></span>
+                <span><span style="color:var(--text-2,#666); font-size:11px;">Realized </span><strong id="ovRealized" style="font-size:15px;">—</strong></span>
+                <span><span style="color:var(--text-2,#666); font-size:11px;">Cum </span><strong id="ovCum" style="font-size:15px;">—</strong></span>
+              </span>
+            </div>
+            <div style="height: 200px; position: relative;"><canvas id="chTrendCum" role="img" aria-label="Cumulative P&amp;L line with day change thin bars overlay"></canvas></div>
+            <!-- legacy canvas retained as a hidden placeholder so any old code can still find chTrendDaily without erroring -->
+            <canvas id="chTrendDaily" style="display:none;"></canvas>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- By-account breakdown -->
+      <div id="kpiByAccount" style="margin: 4px 0 8px; display:none;">
+        <table style="width:100%; border-collapse:collapse; font-size:11px;">
+          <thead>
+            <tr style="background:#f7f9fb; color:var(--text-2,#666); text-transform:uppercase; font-size:10px; letter-spacing:.4px;">
+              <th style="padding:4px 8px; text-align:left;">Account</th>
+              <th style="padding:4px 8px; text-align:center; width:90px;">Trend</th>
+              <th style="padding:4px 8px; text-align:right;">TOT$</th>
+              <th style="padding:4px 8px; text-align:right;">CASH</th>
+              <th style="padding:4px 8px; text-align:right;">MKT$</th>
+              <th style="padding:4px 8px; text-align:right;">TODAY$</th>
+              <th style="padding:4px 8px; text-align:right;">TODAY%</th>
+              <th style="padding:4px 8px; text-align:right;">YTD$</th>
+              <th style="padding:4px 8px; text-align:right;">MTD$</th>
+              <th style="padding:4px 8px; text-align:right;">COST BASIS</th>
+              <th style="padding:4px 8px; text-align:right;">POSITIONS</th>
+            </tr>
+          </thead>
+          <tbody id="kpiByAccountBody"></tbody>
+        </table>
+      </div>
+
+      <div style="border: 1px solid var(--border, #ececec); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; height: calc(100vh - 310px);">
+        <div style="overflow-x: auto; overflow-y: auto; flex: 1;">
+          <table class="pf-grid" id="pfGrid">
+            <thead>
+              <tr>
+                <th data-sort-col="account" style="cursor:pointer;">Acct <span class="sort-indicator"></span></th>
+                <th data-sort-col="symbol" style="cursor:pointer;">Symbol <span class="sort-indicator"></span></th>
+                <th data-sort-col="description" style="cursor:pointer;">Description <span class="sort-indicator"></span></th>
+                <th class="num" data-sort-col="qty" style="cursor:pointer;">Qty <span class="sort-indicator"></span></th>
+                <th class="num" data-sort-col="avg_cost" style="cursor:pointer;">AVG$ <span class="sort-indicator"></span></th>
+                <th class="num" data-sort-col="last_price" style="cursor:pointer;">PRICE <span class="sort-indicator"></span></th>
+                <th class="num" data-sort-col="market_value" style="cursor:pointer;">MKT$ <span class="sort-indicator"></span></th>
+                <th class="num" data-sort-col="cost_basis" style="cursor:pointer;">Cost Basis <span class="sort-indicator"></span></th>
+                <th class="num" data-sort-col="today_gain_dollar" style="cursor:pointer;">TODAY$ <span class="sort-indicator"></span></th>
+                <th class="num" data-sort-col="today_gain_pct" style="cursor:pointer;">TODAY% <span class="sort-indicator"></span></th>
+                <th class="num" data-sort-col="total_gain_dollar" style="cursor:pointer;">TOT$ <span class="sort-indicator"></span></th>
+                <th class="num" data-sort-col="total_gain_pct" style="cursor:pointer;">TOT% <span class="sort-indicator"></span></th>
+                <th class="num" data-sort-col="pct_of_tp" style="cursor:pointer;">% of TP <span class="sort-indicator"></span></th>
+                <th data-sort-col="sector" style="cursor:pointer;">Sector <span class="sort-indicator"></span></th>
+                <th data-sort-col="consolidated_action" style="cursor:pointer;">Action <span class="sort-indicator"></span></th>
+                <th class="num" data-sort-col="limit_status" style="cursor:pointer;">Limit Min–Max <span class="sort-indicator"></span></th>
+              </tr>
+            </thead>
+            <tbody id="pfBody"></tbody>
+          </table>
+          <div id="emptyState" style="display:none; padding:40px; text-align:center; color:var(--text-2,#666);">No positions match these filters.</div>
+        </div>
+      </div>
+    </div>
+    </div><!-- /pf-pane-positions -->
+
+
+    <!-- ===== REALIZED TAB ===== -->
+    <div class="pf-tab-pane" id="pf-pane-realized">
+    <div class="card" style="border-radius:0; margin:0 8px;">
+      <div class="pf-filter-bar" style="margin-top:0;">
+        <span style="font-size:11px; color:var(--text-2,#666); margin-right:8px;">
+          FIFO-matched from transactions → <code>drv_realized_gain</code>
+        </span>
+        <label>Group by</label>
+        <select id="realGroupBy">
+          <option value="symbol" selected>Symbol</option>
+          <option value="account">Account</option>
+          <option value="none">Raw sell events</option>
+        </select>
+        <label>Source</label>
+        <select id="realSrcFilter">
+          <option value="">All (F+CS)</option>
+          <option value="F">Fidelity (F)</option>
+          <option value="CS">Charles Schwab (CS)</option>
+        </select>
+        <label>Account</label>
+        <select id="realAccountFilter" style="max-width:220px;">
+          <option value="">All accounts</option>
+        </select>
+        <label>Period</label>
+        <select id="realDatePreset">
+          <option value="today" selected>Today</option>
+          <option value="custom">Custom</option>
+          <option value="mtd">MTD</option>
+          <option value="ytd">YTD</option>
+          <option value="last30">30 days</option>
+          <option value="last90">90 days</option>
+          <option value="last180">180 days</option>
+          <option value="last365">1 year</option>
+          <option value="last1825">5 years</option>
+          <option value="all">All time</option>
+        </select>
+        <span id="realCustomDateWrap" style="display:none; gap:6px; align-items:center;">
+          <label>From</label>
+          <input type="date" id="realFromDate" style="font-size:12px; padding:4px 6px;">
+          <label>To</label>
+          <input type="date" id="realToDate" style="font-size:12px; padding:4px 6px;">
+        </span>
+        <label>Symbol</label>
+        <input type="search" id="realSymFilter" placeholder="AAPL …" style="width:90px;">
+        <span style="margin-left:auto;font-size:11px;color:var(--text-2,#666);" id="realRowCount"></span>
+      </div>
+      <!-- Rollup KPI strip (reflects current filters: source, account, symbol, date range) -->
+      <div class="kpi-strip" id="realizedKpiStrip">
+        <div class="kpi-card"><div class="kpi-label">Total Realized</div><div class="kpi-value" id="realKpiAll">—</div><div class="kpi-sub gain-zero" id="realKpiAllSub"></div></div>
+        <div class="kpi-card"><div class="kpi-label">YTD Realized</div><div class="kpi-value" id="realKpiYtd">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">MTD Realized</div><div class="kpi-value" id="realKpiMtd">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Long-term</div><div class="kpi-value" id="realKpiLT">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Short-term</div><div class="kpi-value" id="realKpiST">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Sell events</div><div class="kpi-value" id="realKpiN">—</div></div>
+      </div>
+      <div style="border: 1px solid var(--border,#ececec); border-radius:6px; overflow:auto; max-height: 40vh;">
+        <table class="pf-grid" id="realGrid">
+          <thead id="realThead"></thead>
+          <tbody id="realBody"></tbody>
+        </table>
+        <div id="realEmpty" style="display:none;padding:32px;text-align:center;color:#666;">No realized gains in this view.</div>
+      </div>
+
+      <!-- ===== Activity sub-section (uses Realized filters + own Kind filter) ===== -->
+      <div class="pf-filter-bar" style="margin-top:14px;">
+        <span style="font-size:11px; color:var(--text-2,#666); margin-right:8px;">
+          From <code>hist_cst</code> + <code>hist_ft</code>
+        </span>
+        <label>Kind</label>
+        <select id="actKindFilter">
+          <option value="">All kinds</option>
+          <option value="BUY">BUY</option>
+          <option value="SELL">SELL</option>
+          <option value="DIV">DIV</option>
+          <option value="INT">INT</option>
+          <option value="CASH">CASH</option>
+          <option value="OTHER">OTHER</option>
+        </select>
+        <span style="margin-left:auto;font-size:11px;color:var(--text-2,#666);" id="actRowCount"></span>
+      </div>
+      <div style="border: 1px solid var(--border,#ececec); border-radius: 6px; overflow:auto; max-height: 40vh;">
+        <table class="pf-grid" id="actGrid">
+          <thead>
+            <tr>
+              <th style="width:40px;">Src</th>
+              <th>Trade Date</th>
+              <th>Account</th>
+              <th>Symbol</th>
+              <th style="width:60px;">Kind</th>
+              <th>Action</th>
+              <th class="num">Qty</th>
+              <th class="num">Price</th>
+              <th class="num">Amount</th>
+              <th class="num">Fees</th>
+            </tr>
+          </thead>
+          <tbody id="actBody"></tbody>
+        </table>
+        <div id="actEmpty" style="display:none;padding:32px;text-align:center;color:#666;">No transactions in this window.</div>
+      </div>
+    </div>
+    </div><!-- /pf-pane-realized (now labeled "Activity") -->
+  </main>
+
+  <!-- Drilldown Modal -->
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal" id="modal">
+      <button class="modal-close" id="modalClose">&times;</button>
+      <div style="display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;">
+        <h2 id="modalTitle">Symbol</h2>
+        <button id="fullDetailBtn" onclick="$('modalBackdrop').classList.remove('open'); openPortfolioModal(document.getElementById('modalTitle').textContent)" style="font-size:11px; padding:3px 10px; border:1px solid #667eea; color:#667eea; background:white; border-radius:4px; cursor:pointer; white-space:nowrap;">Full Detail ↗</button>
+      </div>
+      <div id="modalName" style="font-size:15px; color:#333; font-weight:500; margin:2px 0 6px;"></div>
+      <div class="sub" id="modalSub"></div>
+
+      <div class="modal-section">
+        <h3>Position snapshot</h3>
+        <div class="mini-kpi-row" id="modalKpis"></div>
+      </div>
+
+      <div class="modal-section">
+        <h3>History (qty &amp; market value over time)</h3>
+        <canvas id="pfChart"></canvas>
+      </div>
+
+      
+
+      <div class="modal-section">
+        <h3>Decisions &amp; recommendations timeline</h3>
+        <div class="timeline" id="modalTimeline"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/_common.js"></script>
+  <script src="/static/portfolio.js"></script>
+  <script src="/static/portfolio-modal.js"></script>
+  <script src="/static/health_banner.js"></script>
+  <script src="/static/warning_badge.js"></script>
+
+  <!-- Rich Portfolio Detail Modal (z-index above existing drilldown) -->
+  <div class="modal-overlay" id="portfolioModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h2 id="modalSymbol">--</h2>
+          <p id="modalDescription">Loading...</p>
+        </div>
+        <button class="close-btn" onclick="closePortfolioModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="key-metrics">
+          <div class="metric-card" id="qtyCard"><div class="metric-label">Shares Owned</div><div class="metric-value" id="metricQty">0</div></div>
+          <div class="metric-card" id="valueCard"><div class="metric-label">Market Value</div><div class="metric-value" id="metricValue">$0</div></div>
+          <div class="metric-card" id="gainCard"><div class="metric-label">Total Gain/Loss</div><div class="metric-value" id="metricGain">$0</div></div>
+          <div class="metric-card" id="gainPctCard"><div class="metric-label">Gain %</div><div class="metric-value" id="metricGainPct">0%</div></div>
+        </div>
+        <div id="saleStatus"></div>
+        <div class="period-metrics">
+          <div class="metric-card"><div class="metric-label">YTD $</div><div class="metric-value" id="metricYtdDollar">$0</div></div>
+          <div class="metric-card"><div class="metric-label">YTD %</div><div class="metric-value" id="metricYtdPct">0%</div></div>
+          <div class="metric-card"><div class="metric-label">MTD $</div><div class="metric-value" id="metricMtdDollar">$0</div></div>
+          <div class="metric-card"><div class="metric-label">MTD %</div><div class="metric-value" id="metricMtdPct">0%</div></div>
+        </div>
+        <div class="chart-section">
+          <div class="chart-title">Performance History</div>
+          <div class="chart-container"><canvas id="performanceChart"></canvas></div>
+        </div>
+        <div class="tabs">
+          <button class="tab-btn active" onclick="switchTab('breakdown')">Account Breakdown</button>
+          <button class="tab-btn" onclick="switchTab('history')">Price History</button>
+        </div>
+        <div class="tab-content active" id="tab-breakdown">
+          <div class="account-breakdown" id="accountBreakdown"><p style="color:#6b7280;">Loading...</p></div>
+        </div>
+        <div class="tab-content" id="tab-history">
+          <table class="price-history">
+            <thead><tr><th>Date</th><th>Qty</th><th>Value</th><th>Daily Change</th><th>Total Gain</th></tr></thead>
+            <tbody id="priceHistory"><tr><td colspan="5" style="text-align:center;color:#6b7280;">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; }
+    .modal-overlay.active { display:flex; align-items:center; justify-content:center; animation:pdFadeIn 0.3s ease-in; }
+    @keyframes pdFadeIn { from{opacity:0} to{opacity:1} }
+    .modal-content { background:white; border-radius:12px; width:90%; max-width:1200px; max-height:90vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,0.3); animation:pdSlideUp 0.3s ease-out; }
+    @keyframes pdSlideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+    .modal-header { background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:white; padding:24px; border-radius:12px 12px 0 0; display:flex; justify-content:space-between; align-items:center; }
+    .modal-header h2 { margin:0; font-size:28px; font-weight:600; }
+    .modal-header p { margin:4px 0 0; opacity:0.9; font-size:14px; }
+    .close-btn { background:rgba(255,255,255,0.2); border:none; color:white; font-size:24px; cursor:pointer; padding:4px 8px; border-radius:4px; }
+    .close-btn:hover { background:rgba(255,255,255,0.3); }
+    .modal-body { padding:24px; }
+    .key-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:32px; }
+    .period-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:32px; }
+    .metric-card { background:#f8f9fa; border-left:4px solid #667eea; padding:16px; border-radius:8px; transition:transform 0.2s,box-shadow 0.2s; }
+    .metric-card:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,0.1); }
+    .metric-card.positive { border-left-color:#10b981; }
+    .metric-card.negative { border-left-color:#ef4444; }
+    .metric-label { font-size:12px; color:#6b7280; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
+    .metric-value { font-size:24px; font-weight:700; color:#1f2937; }
+    .metric-value.positive { color:#10b981; }
+    .metric-value.negative { color:#ef4444; }
+    .chart-section { margin:32px 0; background:#f8f9fa; padding:20px; border-radius:8px; }
+    .chart-title { font-size:16px; font-weight:600; margin-bottom:16px; color:#1f2937; }
+    .chart-container { position:relative; height:400px; }
+    .tabs { display:flex; gap:8px; margin-bottom:16px; border-bottom:2px solid #e5e7eb; }
+    .tab-btn { background:none; border:none; padding:12px 20px; cursor:pointer; font-size:14px; font-weight:500; color:#6b7280; border-bottom:3px solid transparent; transition:all 0.2s; margin-bottom:-2px; }
+    .tab-btn.active { color:#667eea; border-bottom-color:#667eea; }
+    .tab-content { display:none; }
+    .tab-content.active { display:block; }
+    .account-breakdown { display:grid; gap:12px; }
+    .account-row { display:flex; justify-content:space-between; align-items:center; padding:12px; background:white; border-radius:6px; border:1px solid #e5e7eb; }
+    .account-name { font-weight:500; color:#1f2937; }
+    .account-value { font-weight:600; color:#667eea; }
+    .price-history { width:100%; border-collapse:collapse; }
+    .price-history th { background:#f3f4f6; padding:12px; text-align:left; font-weight:600; font-size:12px; color:#6b7280; border-bottom:2px solid #e5e7eb; }
+    .price-history td { padding:12px; border-bottom:1px solid #e5e7eb; }
+    .price-history tr:hover { background:#f9fafb; }
+    .price-history .date { font-weight:500; color:#1f2937; }
+    .price-history .positive { color:#10b981; }
+    .price-history .negative { color:#ef4444; }
+  </style>
+
+  <!-- Shared modal for expanded trend / sparkline charts -->
+  <div id="trendModalBackdrop" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:2500; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:8px; width:90%; max-width:1200px; max-height:88vh; padding:20px 24px; box-shadow:0 8px 30px rgba(0,0,0,0.3); display:flex; flex-direction:column;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <div>
+          <h2 id="trendModalTitle" style="margin:0; font-size:18px; font-weight:700;">Chart</h2>
+          <div id="trendModalSub" style="font-size:11px; color:var(--text-2,#666); margin-top:2px;"></div>
+        </div>
+        <button id="trendModalClose" aria-label="close" style="background:transparent; border:none; font-size:22px; cursor:pointer; padding:4px 10px;">&times;</button>
+      </div>
+      <div style="flex:1; min-height:0; position:relative; height: calc(88vh - 100px);">
+        <canvas id="trendModalCanvas" role="img" aria-label="expanded trend chart"></canvas>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

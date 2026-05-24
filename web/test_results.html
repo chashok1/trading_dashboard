@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Results — Trading Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    main.tr-main { padding: 16px 24px 32px; max-width: 1400px; margin: 0 auto; }
+    .tr-status {
+      padding: 14px 18px; border-radius: 8px; font-size: 14px; margin-bottom: 16px;
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    }
+    .tr-status.pass  { background: #dcfce7; color: #14532d; border: 1px solid #86efac; }
+    .tr-status.fail  { background: #fee2e2; color: #7f1d1d; border: 1px solid #fca5a5; }
+    .tr-status .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .tr-status.pass .dot { background: #16a34a; }
+    .tr-status.fail .dot { background: #dc2626; }
+
+    .tr-tiles {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px; margin-bottom: 20px;
+    }
+    .tr-tile {
+      background: #fff; border: 1px solid #e5e7eb; border-radius: 6px;
+      padding: 10px 12px;
+    }
+    .tr-tile .label { font-size: 10px; text-transform: uppercase;
+                      letter-spacing: 0.05em; color: #6b7280; }
+    .tr-tile .value { font-size: 22px; font-weight: 700; color: #111827; margin-top: 2px; }
+    .tr-tile.pass { border-color: #86efac; background: #f0fdf4; }
+    .tr-tile.fail { border-color: #fca5a5; background: #fef2f2; }
+    .tr-tile.skip { border-color: #fbbf24; background: #fffbeb; }
+
+    .tr-toolbar {
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+      margin-bottom: 12px; padding: 10px 12px;
+      background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;
+    }
+    .tr-toolbar label { font-size: 11px; color: #6b7280; }
+    .tr-toolbar select, .tr-toolbar input {
+      padding: 5px 9px; font-size: 12px; border: 1px solid #e5e7eb;
+      border-radius: 4px; background: #fff;
+    }
+    .tr-toolbar input[type="search"] { width: 220px; }
+
+    table.tr-grid { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .tr-grid th, .tr-grid td {
+      padding: 6px 10px; border-bottom: 1px solid #e5e7eb;
+      text-align: left; vertical-align: top;
+    }
+    .tr-grid th {
+      background: #f9fafb; font-size: 11px; text-transform: uppercase;
+      color: #6b7280; position: sticky; top: 0; cursor: pointer;
+    }
+    .tr-grid tr:hover { background: #f9fafb; }
+    .tr-grid tr.fail-row { background: #fef2f2; }
+    .tr-grid tr.fail-row:hover { background: #fee2e2; }
+
+    .pill {
+      display: inline-block; padding: 1px 8px; border-radius: 10px;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
+    }
+    .pill-pass { background: #dcfce7; color: #14532d; }
+    .pill-fail { background: #fee2e2; color: #7f1d1d; }
+    .pill-skip { background: #fef3c7; color: #7c2d12; }
+    .pill-error { background: #fde68a; color: #7c2d12; }
+
+    .pill-area {
+      display: inline-block; padding: 1px 8px; border-radius: 4px;
+      font-size: 10px; font-weight: 600; background: #e0e7ff; color: #1e3a8a;
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    }
+
+    .test-name {
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+      font-size: 11px;
+    }
+    .test-name .cls { color: #6b7280; }
+    .test-name .fn  { color: #1f2937; font-weight: 500; }
+    .test-name .param { color: #4338ca; }
+
+    .duration { color: #6b7280; font-variant-numeric: tabular-nums; }
+    .err-msg  { color: #7f1d1d; font-family: ui-monospace, Consolas, monospace;
+                font-size: 11px; max-width: 600px; word-break: break-word; }
+
+    details summary { cursor: pointer; user-select: none; color: #6b7280;
+                      padding: 4px 0; font-size: 11px; }
+    details[open] summary { color: #1f2937; }
+
+    .area-summary {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 8px; margin-bottom: 16px;
+    }
+    .area-card {
+      padding: 8px 12px; background: white;
+      border: 1px solid #e5e7eb; border-radius: 6px;
+    }
+    .area-card .area-name {
+      font-weight: 600; font-size: 12px; color: #1f2937;
+      margin-bottom: 4px;
+    }
+    .area-card .area-counts {
+      font-size: 11px; color: #6b7280;
+      font-variant-numeric: tabular-nums;
+    }
+    .area-card.has-fails { border-color: #fca5a5; }
+
+    .empty-state {
+      padding: 60px; text-align: center; color: #6b7280;
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span><h1>Trading Dashboard</h1></div>
+    <nav class="nav-menu">
+      <a href="/" class="nav-item">Dashboard</a>
+      <a href="/cockpit" class="nav-item">Cockpit</a>
+      <a href="/actionable" class="nav-item">Actionable</a>
+      <a href="/portfolio" class="nav-item">Portfolio</a>
+      <a href="/rules" class="nav-item">Rules</a>
+      <a href="/groups" class="nav-item">Rule Groups</a>
+      <a href="/rule-performance" class="nav-item">Performance</a>
+      <a href="/rules-health" class="nav-item">Health</a>
+      <a href="/trace" class="nav-item">Trace</a>
+      <a href="/explore" class="nav-item">Explore</a>
+      <a href="/ref" class="nav-item">Ref Data</a>
+      <a href="/dbstats" class="nav-item">DB Stats</a>
+      <a href="/file-monitor" class="nav-item">File Monitor</a>
+      <a href="/test-results" class="nav-item active">Tests</a>
+    </nav>
+    <div class="controls">
+      <button id="trReload" class="btn">Reload</button>
+      <span id="health" class="badge badge-ok" title="API health">●</span>
+    </div>
+  </header>
+
+  <main class="tr-main">
+    <div id="trStatus" class="tr-status pass">
+      <span class="dot"></span><span id="trStatusLabel">Loading…</span>
+    </div>
+
+    <section class="tr-tiles" id="trTiles"></section>
+
+    <section>
+      <h3 style="font-size:12px;text-transform:uppercase;color:#6b7280;margin:0 0 8px;">
+        Scenario areas
+      </h3>
+      <div class="area-summary" id="trAreas"></div>
+    </section>
+
+    <section class="tr-toolbar">
+      <label>Show</label>
+      <select id="trFilterOutcome">
+        <option value="">All outcomes</option>
+        <option value="passed">Passed only</option>
+        <option value="failed">Failed only</option>
+        <option value="skipped">Skipped only</option>
+        <option value="error">Errors only</option>
+      </select>
+      <label>Area</label>
+      <select id="trFilterArea"><option value="">All areas</option></select>
+      <label>Search</label>
+      <input type="search" id="trSearch" placeholder="test name, parameter, error…">
+      <span style="margin-left:auto;font-size:11px;color:#6b7280;" id="trRowCount"></span>
+    </section>
+
+    <section style="border:1px solid #e5e7eb;border-radius:6px;overflow:auto;max-height:calc(100vh - 420px);">
+      <table class="tr-grid" id="trGrid">
+        <thead>
+          <tr>
+            <th data-sort="area" style="width:80px;">Area</th>
+            <th data-sort="nodeid">Test</th>
+            <th data-sort="outcome" style="width:80px;">Outcome</th>
+            <th data-sort="duration" style="width:80px;">Duration</th>
+            <th>Detail</th>
+          </tr>
+        </thead>
+        <tbody id="trBody"></tbody>
+      </table>
+      <div id="trEmpty" class="empty-state" hidden>No tests match the current filters.</div>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    // Map TestX_… class prefixes → human-readable area names.
+    const AREA_LABELS = {
+      A: "A — Cockpit & rules-API",
+      B: "B — Precondition / scorer / scheduler",
+      C: "C — Outlook change / groups / position",
+      D: "D — Briefing / notify / backtest / tests",
+      E: "E — Portfolio (CST/FT, FIFO)",
+      F: "F — Rules engine fixes",
+      G: "G — File-type rename",
+      H: "H — File integrity",
+      _: "_ — Other / legacy tests",
+    };
+
+    let STATE = { data: null, rows: [], sort: { col: "nodeid", dir: "asc" } };
+
+    async function load() {
+      let data;
+      try {
+        const r = await fetch("/api/test-results", { cache: "no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        data = await r.json();
+      } catch (e) {
+        $("trStatusLabel").textContent = `Failed to load /api/test-results: ${e.message}`;
+        $("trStatus").classList.add("fail");
+        $("trStatus").classList.remove("pass");
+        return;
+      }
+      STATE.data = data;
+      STATE.rows = (data.tests || []).map(decorate);
+      renderStatus();
+      renderTiles();
+      renderAreas();
+      populateAreaFilter();
+      renderRows();
+    }
+
+    // Add 'area', 'classname', 'fn_name', 'param', 'when_failed', 'err' to each test row.
+    function decorate(t) {
+      // nodeid example: tests/test_comprehensive.py::TestC_RuleGroupsInActionable::test_xxx[param]
+      const m = t.nodeid.match(/::(Test([A-Z])\w*)?::?(\w+)(\[.+\])?/) ||
+                t.nodeid.match(/::(\w+)(\[.+\])?$/);
+      let area = "_", cls = "", fn = t.nodeid, param = "";
+      // Try the typical "::ClassName::test_method[param]" form first
+      const parts = t.nodeid.split("::");
+      if (parts.length >= 3) {
+        cls = parts[1] || "";
+        const last = parts[parts.length - 1];
+        const bm = last.match(/^(.+?)(\[.+\])?$/);
+        if (bm) { fn = bm[1]; param = bm[2] || ""; }
+      } else if (parts.length === 2) {
+        const last = parts[1];
+        const bm = last.match(/^(.+?)(\[.+\])?$/);
+        if (bm) { fn = bm[1]; param = bm[2] || ""; }
+      }
+      // Area = the single letter after "Test" in the class name.
+      const am = (cls || "").match(/^Test([A-Z])/);
+      if (am) area = am[1];
+
+      // Determine final outcome — pytest reports per-phase, anything failed wins
+      const phases = ["setup", "call", "teardown"];
+      let when = "", err = "";
+      for (const p of phases) {
+        const ph = t[p] || {};
+        if (ph.outcome === "failed" || ph.outcome === "error") {
+          when = p;
+          err = (ph.longrepr || ph.crash?.message || "").slice(0, 800);
+          break;
+        }
+      }
+      const dur = phases.reduce((a, p) => a + ((t[p] || {}).duration || 0), 0);
+
+      return {
+        nodeid: t.nodeid,
+        area,
+        cls,
+        fn,
+        param,
+        outcome: t.outcome,
+        duration: dur,
+        when,
+        err,
+      };
+    }
+
+    function renderStatus() {
+      const s = STATE.data.summary || {};
+      const total = s.total || 0;
+      const failed = (s.failed || 0) + (s.error || 0);
+      const passed = s.passed || 0;
+      const skipped = s.skipped || 0;
+      const banner = $("trStatus");
+      const label = $("trStatusLabel");
+      if (failed === 0) {
+        banner.classList.add("pass"); banner.classList.remove("fail");
+        label.innerHTML =
+          `<strong>${passed}/${total} passed</strong>` +
+          (skipped ? ` · ${skipped} skipped` : "") +
+          ` · ${(STATE.data.duration || 0).toFixed(2)}s · ` +
+          new Date((STATE.data.created || 0) * 1000).toLocaleString();
+      } else {
+        banner.classList.add("fail"); banner.classList.remove("pass");
+        label.innerHTML =
+          `<strong>${failed} failed</strong> · ${passed} passed` +
+          (skipped ? ` · ${skipped} skipped` : "") +
+          ` · ${(STATE.data.duration || 0).toFixed(2)}s · ` +
+          new Date((STATE.data.created || 0) * 1000).toLocaleString();
+      }
+    }
+
+    function renderTiles() {
+      const s = STATE.data.summary || {};
+      const tiles = [
+        { label: "Total",      value: s.total      || 0, cls: "" },
+        { label: "Passed",     value: s.passed     || 0, cls: "pass" },
+        { label: "Failed",     value: s.failed     || 0, cls: (s.failed||0) ? "fail" : "" },
+        { label: "Errors",     value: s.error      || 0, cls: (s.error||0)  ? "fail" : "" },
+        { label: "Skipped",    value: s.skipped    || 0, cls: (s.skipped||0)? "skip" : "" },
+        { label: "Duration",   value: ((STATE.data.duration || 0).toFixed(2) + "s"), cls: "" },
+      ];
+      $("trTiles").innerHTML = tiles.map(t =>
+        `<div class="tr-tile ${t.cls}">
+          <div class="label">${escapeHtml(t.label)}</div>
+          <div class="value">${escapeHtml(String(t.value))}</div>
+        </div>`).join("");
+    }
+
+    function renderAreas() {
+      const buckets = {};
+      for (const r of STATE.rows) {
+        buckets[r.area] = buckets[r.area] || { total: 0, passed: 0, failed: 0, skipped: 0 };
+        const b = buckets[r.area];
+        b.total++;
+        if (r.outcome === "passed")  b.passed++;
+        else if (r.outcome === "skipped") b.skipped++;
+        else b.failed++;
+      }
+      const ordered = Object.keys(buckets).sort();
+      $("trAreas").innerHTML = ordered.map(a => {
+        const b = buckets[a];
+        const cls = b.failed ? "has-fails" : "";
+        return `<div class="area-card ${cls}">
+          <div class="area-name">${escapeHtml(AREA_LABELS[a] || a)}</div>
+          <div class="area-counts">
+            ${b.passed} pass${b.failed ? ` · <strong style="color:#7f1d1d">${b.failed} fail</strong>` : ""}
+            ${b.skipped ? ` · ${b.skipped} skip` : ""}
+            · ${b.total} total
+          </div>
+        </div>`;
+      }).join("");
+    }
+
+    function populateAreaFilter() {
+      const sel = $("trFilterArea");
+      const areas = [...new Set(STATE.rows.map(r => r.area))].sort();
+      sel.innerHTML = `<option value="">All areas</option>` +
+        areas.map(a => `<option value="${a}">${escapeHtml(AREA_LABELS[a] || a)}</option>`).join("");
+    }
+
+    function getFiltered() {
+      const oc = $("trFilterOutcome").value;
+      const ar = $("trFilterArea").value;
+      const q  = ($("trSearch").value || "").toLowerCase().trim();
+      let rows = STATE.rows;
+      if (oc) rows = rows.filter(r => r.outcome === oc);
+      if (ar) rows = rows.filter(r => r.area === ar);
+      if (q)  rows = rows.filter(r =>
+        r.nodeid.toLowerCase().includes(q) ||
+        (r.err || "").toLowerCase().includes(q));
+      const { col, dir } = STATE.sort;
+      rows = [...rows].sort((a, b) => {
+        const av = a[col], bv = b[col];
+        if (av < bv) return dir === "asc" ? -1 : 1;
+        if (av > bv) return dir === "asc" ? 1 : -1;
+        return 0;
+      });
+      return rows;
+    }
+
+    function renderRows() {
+      const rows = getFiltered();
+      $("trRowCount").textContent = `${rows.length} of ${STATE.rows.length} tests`;
+      const body = $("trBody");
+      const empty = $("trEmpty");
+      if (rows.length === 0) {
+        body.innerHTML = ""; empty.hidden = false; return;
+      }
+      empty.hidden = true;
+      body.innerHTML = rows.map(r => {
+        const failed = (r.outcome !== "passed" && r.outcome !== "skipped");
+        return `<tr class="${failed ? "fail-row" : ""}">
+          <td><span class="pill-area">${escapeHtml(r.area)}</span></td>
+          <td>
+            <div class="test-name">
+              <span class="cls">${escapeHtml(r.cls)}.</span><span class="fn">${escapeHtml(r.fn)}</span><span class="param">${escapeHtml(r.param)}</span>
+            </div>
+            <details><summary>${escapeHtml(r.nodeid)}</summary></details>
+          </td>
+          <td><span class="pill pill-${outcomeClass(r.outcome)}">${escapeHtml(r.outcome)}</span></td>
+          <td class="duration">${(r.duration*1000).toFixed(1)} ms</td>
+          <td>${r.err ? `<details><summary>${escapeHtml(r.when || "failed")}</summary><div class="err-msg">${escapeHtml(r.err)}</div></details>` : ""}</td>
+        </tr>`;
+      }).join("");
+    }
+
+    function outcomeClass(o) {
+      if (o === "passed")  return "pass";
+      if (o === "failed")  return "fail";
+      if (o === "error")   return "error";
+      if (o === "skipped") return "skip";
+      return "";
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      }[c]));
+    }
+
+    // ---- sortable column headers ----
+    document.addEventListener("DOMContentLoaded", () => {
+      document.querySelectorAll(".tr-grid th[data-sort]").forEach(th => {
+        th.addEventListener("click", () => {
+          const col = th.getAttribute("data-sort");
+          if (STATE.sort.col === col) {
+            STATE.sort.dir = STATE.sort.dir === "asc" ? "desc" : "asc";
+          } else {
+            STATE.sort.col = col; STATE.sort.dir = "asc";
+          }
+          renderRows();
+        });
+      });
+      $("trReload").addEventListener("click", load);
+      $("trFilterOutcome").addEventListener("change", renderRows);
+      $("trFilterArea").addEventListener("change", renderRows);
+      $("trSearch").addEventListener("input", renderRows);
+      load();
+    });
+  </script>
+</body>
+</html>

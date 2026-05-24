@@ -1,0 +1,94 @@
+digraph AAPL_Trace {
+  rankdir=TB;
+  graph [splines=true, nodesep=0.35, ranksep=0.5, fontname="Helvetica", label=<<B>AAPL — End-to-End Trace</B><BR/><FONT POINT-SIZE="10">snapshot_date = 2026-05-07 (initial-load and ongoing-load are identical from step 4 on)</FONT>>, labelloc="t"];
+  node [fontname="Helvetica", fontsize=10];
+  edge [fontname="Helvetica", fontsize=9, color="#374151"];
+
+  // Stage 1: ingest
+  subgraph cluster_ingest {
+    label="Stage 1 — Ingest";  style=filled; fillcolor="#fff7ed"; color="#9a3412";
+    YF [shape=box3d, fillcolor="#fed7aa", style=filled, label="Y 2026-05-07.xlsx\n(Yahoo daily)"];
+    TLF[shape=box3d, fillcolor="#fed7aa", style=filled, label="TL 2026-05-07.xlsx\n(TOS Latest)"];
+    TDF[shape=box3d, fillcolor="#fed7aa", style=filled, label="TD 2026-05-07.xlsx\n(TOS Daily)"];
+    RRF[shape=box3d, fillcolor="#fed7aa", style=filled, label="RR 2026-05-07.xlsx\n(Risk Range)"];
+    OTHERS[shape=box3d, fillcolor="#fed7aa", style=filled, label="TW, TO, II, ssH,\ncall, etf, F, CS\n(if dated/applicable)"];
+  }
+
+  // Stage 2: hist rows
+  subgraph cluster_hist {
+    label="Stage 2 — Raw history (hist_*)";  style=filled; fillcolor="#fdf2f8"; color="#9d174d";
+    HY  [shape=note, fillcolor="#fce7f3", style=filled, label="hist_y\n(2026-05-07,'AAPL',1)\nlast_price=$214.50"];
+    HTL [shape=note, fillcolor="#fce7f3", style=filled, label="hist_tl\nimp_volatility=0.27\nvolume=42M\nsequence=N"];
+    HTD [shape=note, fillcolor="#fce7f3", style=filled, label="hist_td\nbb_top=$220.4 bb_bot=$200.1\niv_pct=44 hv_pct=38 rsi=63"];
+    HRR [shape=note, fillcolor="#fce7f3", style=filled, label="hist_rr\noutlook=BULLISH\nbrr=+0.52 trade=$210 trend=$203"];
+    HII [shape=note, fillcolor="#fce7f3", style=filled, label="hist_ii\noutlook=BULLISH\nweight via ref_param"];
+  }
+
+  // Stage 3: drv per-row
+  subgraph cluster_drv1 {
+    label="Stage 3 — Per-row derives";  style=filled; fillcolor="#f0fdf4"; color="#15803d";
+    DTL [shape=note, fillcolor="#bbf7d0", style=filled, label="drv_tl\nvlm_projected=58M\nimp_volatility_clean=0.27"];
+    DTD [shape=note, fillcolor="#bbf7d0", style=filled, label="drv_td\nbb_top_15d, range_compression\nd_iv_to_hv=+6, d_vlt_caution=N"];
+    DTW [shape=note, fillcolor="#bbf7d0", style=filled, label="drv_tw (v2)\nsma_50=$212  sma_200=$197\nw_pct_change_wk=+1.3%"];
+    DCALL[shape=note, fillcolor="#bbf7d0", style=filled, label="drv_call\noutlook→weight=+3\nentry=BuyMore"];
+    DII [shape=note, fillcolor="#bbf7d0", style=filled, label="drv_ii (v2)\noutlook=BULLISH→weight=+3"];
+    DSSH[shape=note, fillcolor="#bbf7d0", style=filled, label="drv_ssh (v2)\nrank, signal, signal_sign"];
+  }
+
+  // Stage 4: drv_ma master row
+  DMA [shape=box, style="filled,rounded,bold", fillcolor="#bbf7d0", color="#15803d",
+       label=<<B>Stage 4 — drv_ma row</B><BR ALIGN="LEFT"/>(2026-05-07,'AAPL')<BR ALIGN="LEFT"/>last_price=214.50<BR ALIGN="LEFT"/>a_trade_value=210, a_trend_value=203<BR ALIGN="LEFT"/>pct_brr=(203-214.50)*100/(203-210)=164.3%<BR ALIGN="LEFT"/>rr_outlook=BULLISH, rr_brr=+0.52<BR ALIGN="LEFT"/>iv_percentile=44, rsi=63<BR ALIGN="LEFT"/>a_macd_brr=+, a_bb_streak=+3<BR ALIGN="LEFT"/>sma_50=212, sma_200=197<BR ALIGN="LEFT"/>>];
+
+  // Stage 5: rule eval
+  subgraph cluster_rules {
+    label="Stage 5 — Rule evaluation";  style=filled; fillcolor="#fef3c7"; color="#92400e";
+    R1 [shape=box, fillcolor="#fde68a", style=filled, label="atomic 'RSI Rule'\nvalue=63\nbrk=(40,70)\nmode=jump → wt_between=+1"];
+    R2 [shape=box, fillcolor="#fde68a", style=filled, label="atomic 'MACD Direction'\nvalue=a_macd_brr=+\nbrk=(0,0)\nmode=jump → wt_above=+2"];
+    R3 [shape=box, fillcolor="#fde68a", style=filled, label="atomic '200-DMA-Rule'\nvalue=sma_200=197\nbrk=(price-5%,price+5%)\nmode=jump → wt_above=+2"];
+    R4 [shape=box, fillcolor="#fde68a", style=filled, label="atomic 'BRR% Rule'\nvalue=164.3\nbrk=(0,100)\nmode=jump → wt_above=+1"];
+    R5 [shape=box, fillcolor="#fde68a", style=filled, label="atomic 'IVPercentile'\nvalue=44, brk=(30,70)\nmode=jump → wt_between=0"];
+    R6 [shape=box, fillcolor="#fde68a", style=filled, label="atomic 'BB Top'\nvalue=a_bb_streak=+3\nbrk=(0,5)\nmode=jump → wt_between=+1"];
+
+    C1 [shape=box, style="filled,rounded,bold", fillcolor="#fef9c3", color="#92400e",
+        label=<<B>composite '899-SA-Trend-Breaks'</B><BR ALIGN="LEFT"/>sums atomic contributions<BR ALIGN="LEFT"/>{RSI,MACD,200DMA,BRR%}<BR ALIGN="LEFT"/>score = 1+2+2+1 = +6 (BULLISH-tilt)<BR ALIGN="LEFT"/>not 'SA' fired (negative side)<BR ALIGN="LEFT"/>>];
+    C2 [shape=box, style="filled,rounded,bold", fillcolor="#fef9c3", color="#92400e",
+        label=<<B>composite 'BM-Momentum-Up'</B><BR ALIGN="LEFT"/>{MACD, BB Top, RSI}<BR ALIGN="LEFT"/>score = +4 → triggered=true<BR ALIGN="LEFT"/>>];
+  }
+
+  // Stage 6: drv_stks + drv_trig
+  subgraph cluster_out {
+    label="Stage 6 — Persisted outputs";  style=filled; fillcolor="#ecfeff"; color="#0e7490";
+    DSTKS [shape=note, fillcolor="#a5f3fc", style=filled,
+           label="drv_stks(2026-05-07,'AAPL')\ncomposite_outlook=+5.2 → BULLISH\ntriggered_atomic_ids=[\n  {rule_id:..,weight:+1,value:63},\n  {rule_id:..,weight:+2,value:'+'},\n  {rule_id:..,weight:+2,value:197},\n  {rule_id:..,weight:+1,value:164.3}\n]\ntriggered_composite_ids=[\n  {rule_id:'BM-Momentum-Up',score:+4},\n  ...\n]"];
+    DTRIG [shape=note, fillcolor="#a5f3fc", style=filled,
+           label="drv_trig (per composite)\nrows for AAPL on 2026-05-07:\n  BM-Momentum-Up score=+4 triggered=Y\n  899-SA-Trend-Breaks score=+6 triggered=Y\n  ... (~30 composites)\n(uses legacy _bucket_weight)"];
+    DDASH [shape=note, fillcolor="#a5f3fc", style=filled,
+           label="drv_dash(2026-05-07,'Stock','AAPL')\nthreshold_low/high/zone_signal=NULL"];
+  }
+
+  // Stage 7: UI / action
+  subgraph cluster_ui {
+    label="Stage 7 — User-facing flow";  style=filled; fillcolor="#fdf4ff"; color="#86198f";
+    DASHUI[shape=box, style="filled,rounded", fillcolor="#f5d0fe", label="GET /api/stks?date=2026-05-07\n→ row for AAPL with composite_label=BULLISH"];
+    COCKUI[shape=box, style="filled,rounded", fillcolor="#f5d0fe", label="Cockpit drawer:\nshows triggered_atomic + composite\nbuttons: 'Took Action' / 'Skip'"];
+    ACT   [shape=box, style="filled,rounded", fillcolor="#f5d0fe", label="POST /api/actions\n→ user_action_log row\n(action_code='ACTED',\n triggered_rules=str(...))"];
+    OUTC  [shape=box, style="filled,rounded", fillcolor="#f5d0fe", label="compute_outcomes (next night)\n→ drv_rule_outcome\nfwd_5d_pct, fwd_20d_pct, hit\n(NB: action_code='ACTED' → never a hit)"];
+  }
+
+  // Edges
+  YF -> HY; TLF -> HTL; TDF -> HTD; RRF -> HRR; OTHERS -> HII;
+  HTL -> DTL; HTD -> DTD; OTHERS -> DTW; OTHERS -> DCALL; OTHERS -> DII; OTHERS -> DSSH;
+  HY -> DMA [label="last_price"];
+  HRR -> DMA [label="rr_outlook,rr_brr,\na_trend/trade_value"];
+  DTL -> DMA; DTD -> DMA; DTW -> DMA; DCALL -> DMA; DII -> DMA; DSSH -> DMA;
+  DMA -> R1; DMA -> R2; DMA -> R3; DMA -> R4; DMA -> R5; DMA -> R6;
+  R1 -> C1; R2 -> C1; R3 -> C1; R4 -> C1;
+  R2 -> C2; R6 -> C2; R1 -> C2;
+  C1 -> DSTKS; C2 -> DSTKS;
+  R1 -> DTRIG [style=dashed]; R2 -> DTRIG [style=dashed];
+  DMA -> DDASH;
+  DSTKS -> DASHUI; DDASH -> DASHUI;
+  DASHUI -> COCKUI;
+  COCKUI -> ACT;
+  ACT -> OUTC;
+}

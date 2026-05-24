@@ -1,0 +1,244 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Database Stats â€” Trading Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        .stats-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .stats-header h2 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-1);
+        }
+        .status-bar {
+            padding: 12px;
+            background: #f9f9f7;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            color: var(--text-2);
+            display: none;
+        }
+        .status-bar.success {
+            background: #dcfce7;
+            color: var(--bull);
+            display: block;
+        }
+        .status-bar.error {
+            background: #fee2e2;
+            color: var(--bear);
+            display: block;
+        }
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .kpi {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 16px;
+        }
+        .kpi .lbl {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-2);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        .kpi .val {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-1);
+        }
+        .stats-table-container {
+            max-height: 75vh;
+            overflow-x: auto;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+        .stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .stats-table thead {
+            background: #fafaf8;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .stats-table thead th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-2);
+            border-bottom: 1px solid var(--border);
+        }
+        .stats-table thead th:hover {
+            background: #f1f1ee;
+        }
+        .stats-table tbody tr {
+            border-bottom: 1px solid #f5f5f3;
+        }
+        .stats-table tbody tr:hover {
+            background: #fafaf9;
+        }
+        .stats-table tbody td {
+            padding: 10px 12px;
+            word-break: break-word;
+        }
+        .stats-table td.num {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            color: var(--text-1);
+        }
+        .stats-table td.date {
+            color: var(--text-2);
+        }
+        .table-name {
+            font-weight: 600;
+            color: var(--text-1);
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .data-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        .data-indicator.has-data {
+            background: var(--bull);
+        }
+        .data-indicator.no-data {
+            background: var(--warn);
+        }
+        .data-indicator.no-date {
+            background: var(--text-3);
+        }
+    </style>
+</head>
+<body>
+<header class="topbar">
+    <div class="brand">
+        <span class="dot"></span>
+        <h1>Trading Dashboard</h1>
+    </div>
+    <nav class="nav-menu">
+        <a href="/" class="nav-item">Dashboard</a>
+        <a href="/cockpit" class="nav-item">Cockpit</a>
+        <a href="/actionable" class="nav-item">Actionable</a>
+        <a href="/portfolio" class="nav-item">Portfolio</a>
+        <a href="/rules" class="nav-item">Rules</a>
+      <a href="/groups" class="nav-item">Rule Groups</a>
+        <a href="/rule-performance" class="nav-item">Performance</a>
+        <a href="/trace" class="nav-item">Trace</a>
+        <a href="/explore" class="nav-item">Explore</a>`n      <a href="/file-monitor" class="nav-item">File Monitor</a>`n      <a href="/ref" class="nav-item">Ref Data</a>
+        <a href="/dbstats" class="nav-item active">DB Stats</a>
+    </nav>
+    <div class="controls">
+        <label for="datePicker">As of</label>
+        <select id="datePicker" aria-label="snapshot date"></select>
+        <button id="refreshBtn" class="btn">Refresh</button>
+        <span id="health" class="badge badge-ok" title="API health">●</span>
+    </div>
+</header>
+
+<main>
+    <div class="card">
+        <div class="stats-header">
+            <h2>Symbol Comparison (Latest Snapshots)</h2>
+        </div>
+        <p style="color: var(--text-2); font-size: 13px; margin-bottom: 16px;">
+            TL is the master symbol list. Core tables (TW, TO, TD, Y) should match using their latest dates. Missing symbols are in other sources and need to be exported.
+        </p>
+
+        <div class="kpi-row">
+            <div class="kpi">
+                <div class="lbl">Master (TL)</div>
+                <div class="val" id="tlCount">—</div>
+                <div style="font-size: 11px; color: var(--text-3); margin-top: 4px;" id="tlDate">—</div>
+            </div>
+        </div>
+
+        <h3 style="margin: 20px 0 12px 0; font-size: 15px;">Missing Symbols</h3>
+        <div id="missingSymbolsList" style="background: #f9f9f7; border: 1px solid var(--border); border-radius: 4px; padding: 12px;">
+            <p style="color: var(--text-3); font-size: 12px;">Loading...</p>
+        </div>
+        <button id="copyMissingBtn" style="margin-top: 12px; padding: 8px 16px; background: var(--accent); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600; display: none;">
+            Copy Missing Symbols
+        </button>
+    </div>
+
+    <div class="card">
+        <div class="stats-header">
+            <h2>Database Table Statistics</h2>
+        </div>
+
+        <div class="status-bar" id="statusBar"></div>
+
+        <div class="kpi-row">
+            <div class="kpi">
+                <div class="lbl">Total Tables</div>
+                <div class="val" id="totalTables">â€”</div>
+            </div>
+            <div class="kpi">
+                <div class="lbl">Total Rows</div>
+                <div class="val" id="totalRows">â€”</div>
+            </div>
+            <div class="kpi">
+                <div class="lbl">Tables w/ Data</div>
+                <div class="val" id="tablesWithData">â€”</div>
+            </div>
+        </div>
+
+        <div class="stats-table-container">
+            <table class="stats-table" id="statsTable">
+                <thead>
+                    <tr>
+                        <th>Table Name</th>
+                        <th>Category</th>
+                        <th style="text-align:right;">Rows on Date</th>
+                        <th style="text-align:right;">Total Rows</th>
+                        <th style="text-align:right;">Distinct Dates</th>
+                        <th>Earliest Date</th>
+                        <th>Latest Date</th>
+                    </tr>
+                </thead>
+                <tbody id="statsBody">
+                    <tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-3);">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</main>
+
+<script src="/static/_common.js"></script>
+<script src="/static/dbstats.js"></script>
+  <script src="/static/health_banner.js"></script>
+  <script src="/static/warning_badge.js"></script>
+</body>
+</html>
+
+
+
+

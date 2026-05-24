@@ -1,0 +1,78 @@
+<svg width="100%" viewBox="0 0 680 716" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>End-to-end data flow</title>
+  <desc>Excel source feeds load into raw hist tables, the derive cascade builds derived tables, the rules engine and resolver produce actions, screens read them, and a feedback loop from logged user actions flows back to tune the rules.</desc>
+  <style>
+  svg{background:#ffffff;}
+  text{font-family:'Segoe UI',Arial,Helvetica,sans-serif;fill:#57564E;}
+  .th{font-size:14px;font-weight:600;}
+  .ts{font-size:11.5px;}
+  .arr{stroke:#888780;stroke-width:1.6;fill:none;}
+  .box rect{fill:#F1EFE8;stroke:#888780;stroke-width:1.2;}
+  .box .th{fill:#2C2C2A;}.box .ts{fill:#4D4C48;}
+  .c-blue rect{fill:#E6F1FB;stroke:#378ADD;stroke-width:1.2;}
+  .c-blue .th{fill:#042C53;}.c-blue .ts{fill:#0C447C;}
+  .c-amber rect{fill:#FAEEDA;stroke:#854F0B;stroke-width:1.2;}
+  .c-amber .th{fill:#412402;}.c-amber .ts{fill:#633806;}
+  rect.c-blue{fill:#85B7EB;stroke:#185FA5;stroke-width:1;}
+  rect.c-amber{fill:#EF9F27;stroke:#854F0B;stroke-width:1;}
+  rect.box{fill:#B4B2A9;stroke:#5F5E5A;stroke-width:1;}
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6"/>
+    </marker>
+  </defs>
+
+  <rect class="c-blue" x="118" y="30" width="13" height="13" rx="2"/>
+  <text class="ts" x="138" y="37" dominant-baseline="central">Derive / rules pipeline</text>
+  <rect class="c-amber" x="318" y="30" width="13" height="13" rx="2"/>
+  <text class="ts" x="338" y="37" dominant-baseline="central">Screens &amp; feedback</text>
+  <rect class="box" x="492" y="30" width="13" height="13" rx="2"/>
+  <text class="ts" x="512" y="37" dominant-baseline="central">Raw data</text>
+
+  <g class="box">
+    <rect x="130" y="66" width="420" height="66" rx="10"/>
+    <text class="th" x="340" y="91" text-anchor="middle" dominant-baseline="central">17 Excel source feeds &#8594; ETL loader</text>
+    <text class="ts" x="340" y="113" text-anchor="middle" dominant-baseline="central">scheduler watcher &#183; etl_load.py dispatches by file type</text>
+  </g>
+  <line class="arr" x1="340" y1="134" x2="340" y2="172" marker-end="url(#arrow)"/>
+
+  <g class="box">
+    <rect x="130" y="174" width="420" height="54" rx="10"/>
+    <text class="th" x="340" y="196" text-anchor="middle" dominant-baseline="central">hist_* &#8212; 17 raw history tables</text>
+    <text class="ts" x="340" y="214" text-anchor="middle" dominant-baseline="central">append-only &#183; raw data is never overwritten</text>
+  </g>
+  <line class="arr" x1="340" y1="230" x2="340" y2="268" marker-end="url(#arrow)"/>
+
+  <g class="c-blue">
+    <rect x="130" y="270" width="420" height="70" rx="10"/>
+    <text class="th" x="340" y="296" text-anchor="middle" dominant-baseline="central">Derive cascade &#8212; derive_all(D)</text>
+    <text class="ts" x="340" y="318" text-anchor="middle" dominant-baseline="central">idempotent &#183; drv_quote &#8594; drv_ma &#8594; drv_dash &#8594; &#8230;</text>
+  </g>
+  <line class="arr" x1="340" y1="342" x2="340" y2="380" marker-end="url(#arrow)"/>
+
+  <g class="c-blue">
+    <rect x="130" y="382" width="420" height="92" rx="10"/>
+    <text class="th" x="340" y="407" text-anchor="middle" dominant-baseline="central">Rules engine + resolver</text>
+    <text class="ts" x="340" y="429" text-anchor="middle" dominant-baseline="central">drv_stks: atomic &#8594; composite &#8594; group   &#183;   drv_trig</text>
+    <text class="ts" x="340" y="448" text-anchor="middle" dominant-baseline="central">drv_outlook_action &#8594; drv_actionable (final action)</text>
+  </g>
+  <line class="arr" x1="340" y1="476" x2="340" y2="514" marker-end="url(#arrow)"/>
+
+  <g class="c-amber">
+    <rect x="130" y="516" width="420" height="66" rx="10"/>
+    <text class="th" x="340" y="541" text-anchor="middle" dominant-baseline="central">Screens read the derived tables</text>
+    <text class="ts" x="340" y="563" text-anchor="middle" dominant-baseline="central">Dashboard &#183; Cockpit &#183; Actionable &#183; Portfolio &#183; Trace</text>
+  </g>
+  <line class="arr" x1="340" y1="584" x2="340" y2="622" marker-end="url(#arrow)"/>
+
+  <g class="c-amber">
+    <rect x="130" y="624" width="420" height="74" rx="10"/>
+    <text class="th" x="340" y="649" text-anchor="middle" dominant-baseline="central">Feedback loop</text>
+    <text class="ts" x="340" y="670" text-anchor="middle" dominant-baseline="central">user_action_log &#8594; compute_outcomes &#8594; drv_rule_outcome</text>
+    <text class="ts" x="340" y="688" text-anchor="middle" dominant-baseline="central">&#8594; v_rule_performance &#8212; per-rule hit rate &amp; P&amp;L</text>
+  </g>
+
+  <path class="arr" d="M550 661 H618 V420 H554" fill="none" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+  <text class="ts" x="618" y="540" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 618 540)">measured outcomes tune the rules</text>
+</svg>

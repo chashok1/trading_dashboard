@@ -1,0 +1,79 @@
+<svg width="100%" viewBox="0 0 680 470" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Trace screen data flow</title>
+  <desc>Data flow for the Trace screen, showing how the trace API gathers precomputed scores, indicator values, rule definitions and live evaluators to assemble a per-rule trace for one symbol and date.</desc>
+  <style>
+  svg{background:#ffffff;}
+  text{font-family:'Segoe UI',Arial,Helvetica,sans-serif;fill:#2C2C2A;}
+  .t{font-size:14px;}.ts{font-size:12px;}.th{font-size:14px;font-weight:600;}
+  .arr{stroke:#888888;stroke-width:1.5;fill:none;}
+  .c-gray rect{fill:#F1EFE8;stroke:#5F5E5A;}.c-gray text{fill:#2C2C2A;}
+  .c-blue rect{fill:#E6F1FB;stroke:#185FA5;}.c-blue text{fill:#042C53;}
+  .c-teal rect{fill:#E1F5EE;stroke:#0F6E56;}.c-teal text{fill:#04342C;}
+  .c-purple rect{fill:#EEEDFE;stroke:#534AB7;}.c-purple text{fill:#26215C;}
+  .c-coral rect{fill:#FAECE7;stroke:#993C1D;}.c-coral text{fill:#4A1B0C;}
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <g class="c-blue">
+    <rect x="180" y="30" width="320" height="56" rx="8" stroke-width="0.5"/>
+    <text class="th" x="340" y="51" text-anchor="middle" dominant-baseline="central">Trace screen (trace.js)</text>
+    <text class="ts" x="340" y="69" text-anchor="middle" dominant-baseline="central">pick one symbol + snapshot date</text>
+  </g>
+
+  <line x1="340" y1="86" x2="340" y2="118" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="c-purple">
+    <rect x="160" y="120" width="360" height="56" rx="8" stroke-width="0.5"/>
+    <text class="th" x="340" y="141" text-anchor="middle" dominant-baseline="central">GET /api/trace/{sym}?date=D</text>
+    <text class="ts" x="340" y="159" text-anchor="middle" dominant-baseline="central">imports etl.derive, evaluates per rule</text>
+  </g>
+
+  <line x1="340" y1="176" x2="340" y2="194" stroke="#888" stroke-width="0.5"/>
+  <line x1="107" y1="194" x2="557" y2="194" stroke="#888" stroke-width="0.5"/>
+  <line x1="107" y1="194" x2="107" y2="208" class="arr" marker-end="url(#arrow)"/>
+  <line x1="257" y1="194" x2="257" y2="208" class="arr" marker-end="url(#arrow)"/>
+  <line x1="407" y1="194" x2="407" y2="208" class="arr" marker-end="url(#arrow)"/>
+  <line x1="557" y1="194" x2="557" y2="208" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="c-teal">
+    <rect x="40" y="210" width="135" height="92" rx="8" stroke-width="0.5"/>
+    <text class="th" x="107" y="233" text-anchor="middle" dominant-baseline="central">drv_stks</text>
+    <text class="ts" x="107" y="257" text-anchor="middle" dominant-baseline="central">precomputed</text>
+    <text class="ts" x="107" y="275" text-anchor="middle" dominant-baseline="central">triggered IDs</text>
+  </g>
+  <g class="c-teal">
+    <rect x="190" y="210" width="135" height="92" rx="8" stroke-width="0.5"/>
+    <text class="th" x="257" y="233" text-anchor="middle" dominant-baseline="central">drv_ma</text>
+    <text class="ts" x="257" y="257" text-anchor="middle" dominant-baseline="central">+ drv_cat_</text>
+    <text class="ts" x="257" y="275" text-anchor="middle" dominant-baseline="central">atomic_input</text>
+  </g>
+  <g class="c-teal">
+    <rect x="340" y="210" width="135" height="92" rx="8" stroke-width="0.5"/>
+    <text class="th" x="407" y="233" text-anchor="middle" dominant-baseline="central">ref_trig_*</text>
+    <text class="ts" x="407" y="257" text-anchor="middle" dominant-baseline="central">atomic +</text>
+    <text class="ts" x="407" y="275" text-anchor="middle" dominant-baseline="central">composite defs</text>
+  </g>
+  <g class="c-teal">
+    <rect x="490" y="210" width="135" height="92" rx="8" stroke-width="0.5"/>
+    <text class="th" x="557" y="233" text-anchor="middle" dominant-baseline="central">etl.derive</text>
+    <text class="ts" x="557" y="257" text-anchor="middle" dominant-baseline="central">eval functions</text>
+    <text class="ts" x="557" y="275" text-anchor="middle" dominant-baseline="central">live re-eval</text>
+  </g>
+
+  <line x1="107" y1="302" x2="340" y2="330" stroke="#888" stroke-width="0.5"/>
+  <line x1="257" y1="302" x2="340" y2="330" stroke="#888" stroke-width="0.5"/>
+  <line x1="407" y1="302" x2="340" y2="330" stroke="#888" stroke-width="0.5"/>
+  <line x1="557" y1="302" x2="340" y2="330" stroke="#888" stroke-width="0.5"/>
+  <line x1="340" y1="330" x2="340" y2="344" class="arr" marker-end="url(#arrow)"/>
+
+  <g class="c-blue">
+    <rect x="110" y="346" width="460" height="80" rx="10" stroke-width="0.5"/>
+    <text class="th" x="340" y="370" text-anchor="middle" dominant-baseline="central">Per-rule trace rendered on screen</text>
+    <text class="ts" x="340" y="392" text-anchor="middle" dominant-baseline="central">summary · composites[] · atomics[]</text>
+    <text class="ts" x="340" y="410" text-anchor="middle" dominant-baseline="central">fired flag · score · value · didn't-fire reason</text>
+  </g>
+</svg>

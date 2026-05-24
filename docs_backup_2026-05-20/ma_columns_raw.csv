@@ -1,0 +1,642 @@
+col_idx,col_letter,header,sample_value,formula
+1,A,Key,46141.6875ZM,=M2&B2
+2,B,Symbol,ZM,ZM
+3,C,Y Symbol,ZM,ZM
+4,D,Close,95.76,"=IF(S2=""Y"",F2,CN2)"
+5,E,Company Name,"Zoom Communications, Inc.","=_xlfn.XLOOKUP($R2&$C2,Y!$D2:$D57061,Y!$J2:$J57061,"""")"
+6,F,Last,95.76,=DM2
+7,G,Last Net Chng,4.62,=DN2
+8,H,Last %Change,0.0507,=DO2
+9,I,High,96.51,=DQ2
+10,J,Low,91.02,=DR2
+11,K,RR LRR,0,=EC2
+12,L,RR TRR,0,=ED2
+13,M,TOS Daily Export Date,2026-04-29 16:30:00,"=IF(B2="""","""",Dash!$AB$19)"
+14,N,TOS Weekly Export Date,2026-04-29 16:30:00,"=IF(B2="""","""",Dash!$AB$18)"
+15,O,TOS Latest Export Date,2026-04-29 16:30:00,"=IF(B2="""","""",Dash!$AB$21)"
+16,P,TOS Other Export Date,2026-04-27 16:30:00,"=IF(C2="""","""",Dash!$AB$20)"
+17,Q,Y Mkt Close Export,2026-04-29 16:30:00,"=IF(B2="""","""",Dash!$AB$22)"
+18,R,Y Latest Exp Date,2026-04-29 16:30:00,"=IF(B2="""","""",Dash!$AB$23)"
+19,S,Use Latest,Y,"=IF(B2="""","""",Dash!$AB$6)"
+20,T,II Date,00:00:00,"=_xlfn.MAXIFS(II!C393:C10392,II!C393:C10392,""<="" & M2)"
+21,U,ETF Date,2025-12-28 00:00:00,"=_xlfn.MAXIFS(etf!C2:C9205,etf!C2:C9205,""<="" & M2)"
+22,V,SSH Date,2026-04-28 00:00:00,"=_xlfn.MAXIFS(ssH!B2:B5535,ssH!B2:B5535,""<="" &M2)"
+23,W,FH Date,2026-04-14 00:00:00,"=_xlfn.MAXIFS(F!D2:D5542,F!D2:D5542,""<="" & Dash!$AB$15)"
+24,X,CS Date,2026-04-29 00:00:00,"=_xlfn.MAXIFS(CS!D2:D3247,CS!D2:D3247,""<="" & Dash!$AB$15)"
+25,Y,RR Date,2026-04-29 00:00:00,"=_xlfn.MAXIFS(RR!D2:D2586,RR!D2:D2586,""<="" &M2)"
+26,Z,Sort Symbol,854,854
+27,AA,StandardDeviation,4.32,"=_xlfn.XLOOKUP(N2&B2,TW!$D:$D,TW!$AF:$AF,"""")"
+28,AB,Median SD,4.32,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0db96800>
+29,AC,SDorMedian,4.32,"=MIN(AA2,AB2)"
+30,AD,SD%,0.045112781954887216,=(AC2/D2)
+31,AE,A_TrendValue,87.19,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$AY:$AY,"""")"
+32,AF,A_TradeValue,77.02,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$AZ:$AZ,"""")"
+33,AG,Trend_sd,1.9837962962962978,"=IF(D2=AE2,0.1,(D2-AE2)/AC2)"
+34,AH,Trade_sd,4.337962962962965,=(D2-AF2)/AC2
+35,AI,Trade_Trend_Sd,-2.354166666666667,=(AF2-AE2)/AC2
+36,AJ,A_BBHighLow,9651.01,"=_xlfn.XLOOKUP(M2&B2,TD!$D:$D,TD!$BD:$BD,"""")"
+37,AK,BBHighLow_A,9651,=TRUNC(AJ2)
+38,AL,BBHighLow,96.51,=AK2/100
+39,AM,BBHighLowDays,1,"=ABS(ROUND(100*(AJ2-AK2),0))"
+40,AN,BB_Direction1,-1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0db96e60>
+41,AO,BBHighLow_SD,-0.1736111111111111,=(D2-ABS(AL2))/ AC2
+42,AP,A_BBHighLowDays,6.14,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$BE:$BE,"""")"
+43,AQ,BBHighDays,6,=TRUNC(AP2)
+44,AR,BBLowDays,13.999999999999968,=ABS(100*(AP2-AQ2))
+45,AS,A_BB_Streak,8213.01,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$BC:$BC,"""")"
+46,AT,BB_Streak_1,8213,=TRUNC(AS2)
+47,AU,BB_Streak_2,213,=AT2-AY2*1000
+48,AV,BB_Streak_cur,2,=ABS(TRUNC(AU2/100))
+49,AW,BB_Threshold_Crossover,1,"=IF(AV2=1,-1,1)"
+50,AX,BBThresh_CO_Days,13,"=_xlfn.NUMBERVALUE(RIGHT(AU2,2))"
+51,AY,BB_Streak,8,=TRUNC(AT2/1000)
+52,AZ,BB_Streak_Days,1,"=ROUND((ABS(AS2)-ABS(AT2))*100,0)"
+53,BA,A_3mnLow,71.4,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$AY:$AY,"""")"
+54,BB,3mnLow_sd,5.638888888888888,=(D2-BA2)/AC2
+55,BC,3mnLowDays,40.00000000000057,"=IF(AND(BA2<1,BA2>-1),100*BA2,100*MOD(BA2,TRUNC(BA2)))"
+56,BD,A_3mnHigh,97.54,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$AX:$AX,"""")"
+57,BE,3mnHigh_sd,-0.41203703703703726,=(D2-BD2)/AC2
+58,BF,3mnHighDays,54.000000000000625,"=IF(BD2<1,0,100*MOD(BD2,TRUNC(BD2)))"
+59,BG,3mn_min_BRR%,93.19051262433052,"=IF(D2<BD2,(D2-BA2)*100/(BD2-BA2),0)"
+60,BH,A_3mnHighLow,-71.4,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$AZ:$AZ,"""")"
+61,BI,3mnHighLow,71.4,=ABS(BH2)
+62,BJ,3mn_stk_outlook_sd,5.638888888888888,=(D2-BI2)/AC2
+63,BK,3mnHighLowDays,40.00000000000057,"=-100*IFERROR(MOD(BH2,TRUNC(BH2)),0)"
+64,BL,A_3wkHighLow,-77.13,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$BA:$BA,"""")"
+65,BM,3wkHighLow,77.13,=ABS(BL2)
+66,BN,3w_stk_outlook_sd,4.312500000000002,=(D2-BM2)/AC2
+67,BO,3wkHighLowDays,12.999999999999545,"=IFERROR(-100*MOD(BL2,TRUNC(BL2)),0)"
+68,BP,Perf3M,9.829108842757204,=100*(D2-AE2)/AE2
+69,BQ,Perf3M_sd,1.9837962962962978,=(D2-AE2)/AC2
+70,BR,A_Perf2M,29.51,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$AU:$AU,"""")"
+71,BS,Perf2M_sd,6.541383333333335,=BR2/(AD2*100)
+72,BT,Perf3W,24.33134250843938,=100*(D2-AF2)/AF2
+73,BU,Perf3W_sd,4.337962962962965,=(D2-AF2)/AC2
+74,BV,A_Perf2Wk,7.56,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$AV:$AV,"""")"
+75,BW,Perf2Wk_sd,1.6758000000000002,=BV2/(AD2*100)
+76,BX,A_Perf3D,4.05,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$AW:$AW,"""")"
+77,BY,Perf3D_sd,0.89775,=BX2/($AD2*100)
+78,BZ,Perf3D_Value,92.03267659778953,=(100*D2)/(100+BX2)
+79,CA,Perf1D_sd,1.0694444444444444,=G2/AC2
+80,CB,Perf,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da80580>
+81,CC,52Low,69.15,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$AI:$AI,"""")"
+82,CD,52High,97.58,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$AH:$AH,"""")"
+83,CE,52-Wk High %,6.401688357368954,"=IF((CD2-CC2)=0,0, (CD2-D2)*100/(CD2-CC2))"
+84,CF,20 DMA,86.92,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$H:$H,"""")"
+85,CG,50 DMA,82.11,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$I:$I,"""")"
+86,CH,200 DMA,82.69,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$J:$J,"""")"
+87,CI,A_MACD_BRR,1,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$V:$V,"""")"
+88,CJ,MACD_BRR,1,=ABS(CI2)
+89,CK,A_MACDH_D_BRR,0.81,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$W:$W,"""")"
+90,CL,MACDH_BRR,0.81,=ABS(CK2)
+91,CM,A_MACDays_Streak,1,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$AM:$AM,"""")"
+92,CN,D_Last,95.76,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$AP:$AP,"""")"
+93,CO,D_%Change,0.0507,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$AR:$AR,"""")"
+94,CP,D_Net Chng,4.62,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$AQ:$AQ,"""")"
+95,CQ,D_Open,91.685,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$AS:$AS,"""")"
+96,CR,D_High,96.51,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$AT:$AT,"""")"
+97,CS,D_Low,91.02,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$AU:$AU,"""")"
+98,CT,D_RSI,69.17,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$T:$T,"""")"
+99,CU,D_IV,0.59,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$AB:$AB,"""")"
+100,CV,D_HV,0.46,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$X:$X,"""")"
+101,CW,HVPercentile,74.1,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$R:$R,"""")"
+102,CX,IVPercentile,96.4,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$Q:$Q,"""")"
+103,CY,L_Last,95.76,"=_xlfn.XLOOKUP($O2&$B2,TL!$D:$D,TL!$L:$L,"""")"
+104,CZ,L_Net Chng,4.62,"=_xlfn.XLOOKUP($O2&$B2,TL!$D:$D,TL!$M:$M,"""")"
+105,DA,L_%Change,0.0507,"=_xlfn.XLOOKUP($O2&$B2,TL!$D:$D,TL!$N:$N,"""")"
+106,DB,L_Open,91.685,"=_xlfn.XLOOKUP($O2&$B2,TL!$D:$D,TL!$O:$O,"""")"
+107,DC,L_High,96.51,"=_xlfn.XLOOKUP($O2&$B2,TL!$D:$D,TL!$P:$P,"""")"
+108,DD,L_Low,91.02,"=_xlfn.XLOOKUP($O2&$B2,TL!$D:$D,TL!$Q:$Q,"""")"
+109,DE,L_RSI,69.17,"=_xlfn.XLOOKUP($O2&$B2,TL!$D:$D,TL!$S:$S,"""")"
+110,DF,L_ImpVolatility,0.59,"=_xlfn.XLOOKUP($O2&$B2,TL!$D:$D,TL!$H:$H,"""")"
+111,DG,Y_Last Price,95.76,"=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$K:$K,"""")"
+112,DH,Y_Change,4.62,"=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$L:$L,"""")"
+113,DI,Y_Change(%),0.0507,"=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$M:$M,"""")"
+114,DJ,Y_Open,91.54,"=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$N:$N,"""")"
+115,DK,Y_High,96.51,"=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$O:$O,"""")"
+116,DL,Y_Low,91.02,"=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$P:$P,"""")"
+117,DM,Last,95.76,"=IF(Dash!$AB$24=""Y"",MA!DG2,MA!CY2)"
+118,DN,Net Chng,4.62,"=IF(Dash!$AB$24=""Y"",MA!DH2,MA!CZ2)"
+119,DO,%Change,0.0507,"=IF(Dash!$AB$24=""Y"",MA!DI2,MA!DA2)"
+120,DP,Open,91.685,"=IF(Dash!$AB$24=""Y"",MA!DJ2,MA!DB2)"
+121,DQ,High,96.51,"=IF(Dash!$AB$24=""Y"",MA!DK2,MA!DC2)"
+122,DR,Low,91.02,"=IF(Dash!$AB$24=""Y"",MA!DL2,MA!DD2)"
+123,DS,RSI,69.17,"=IF(Dash!$AB$24=""Y"",DE2,CT2)"
+124,DT,ImpVolatility,0.59,"=IF(Dash!$AB$24=""Y"",DF2,CU2)"
+125,DU,BB_Bot_Prev,0,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$L:$L,"""")"
+126,DV,BB_Top_Prev,0,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$P:$P,"""")"
+127,DW,BB BRR%,,"=IF(_xlfn.IFNA(DU2,"""")=0,"""",(D2-DU2)*100/(DV2-DU2))"
+128,DX,RR_Bottom,0,"=_xlfn.XLOOKUP(B2,RR!F:F,RR!H:H,0)"
+129,DY,RR_Top,0,"=_xlfn.XLOOKUP(B2,RR!F:F,RR!I:I,0)"
+130,DZ,RR BRR%,,"=IF(_xlfn.IFNA(DX2,"""")=0,"""",(D2-DX2)*100/(DY2-DX2))"
+131,EA,ETF_Bottom,,"=_xlfn.XLOOKUP(U2&B2,etf!A:A,etf!E:E,"""")"
+132,EB,ETF_Top,,"=_xlfn.XLOOKUP(U2&B2,etf!A:A,etf!F:F,"""")"
+133,EC,RR_Bottom,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da809a0>
+134,ED,RR_Top,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da80a00>
+135,EE,BRR%,,"=IF(_xlfn.IFNA(EC2,"""")=0,"""",(D2-EC2)*100/(ED2-EC2))"
+136,EF,Prev Close,95.76,=CN2
+137,EG,Open,91.685,=CQ2
+138,EH,High,96.51,=CR2
+139,EI,Low,91.02,=CS2
+140,EJ,Open,91.685,=DP2
+141,EK,High,96.51,=DQ2
+142,EL,Low,91.02,=DR2
+143,EM,Chg SD,1.0694444444444444,=CA2
+144,EN,Price Direction,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da81120>
+145,EO,High TRR,-22.34027777777778,"=(ED2-IF(EH2>EK2,EH2,EK2))/AC2"
+146,EP,Low LRR,21.069444444444443,"=(IF(EI2<EL2,EI2,EL2)-EC2)/AC2"
+147,EQ,Trnd TRR,-20.18287037037037,=(ED2-AE2)/AC2
+148,ER,Trd LRR,-17.828703703703702,=(EC2-AF2)/AC2
+149,ES,Sd TRR,22.34027777777778,=(DQ2-ED2)/AC2
+150,ET,Sd MRR,22.166666666666668,=(DM2-((ED2+EC2)/2))/AC2
+151,EU,Sd LRR,21.069444444444443,=(DR2-EC2)/AC2
+152,EV,BB_Bot_15d,0,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$I:$I,"""")"
+153,EW,BB_Bot_7d,0,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$J:$J,"""")"
+154,EX,BB_Bot_3d,0,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$K:$K,"""")"
+155,EY,BB_Bot_Slope,0,"=IF(AND(DU2>EW2,EW2>EV2,(DU2-EV2)>=AC2),1,IF(AND(DU2<EW2,EW2<EV2,(EV2-DU2)>=AC2),-1,0))"
+156,EZ,BB_Top_15d,0,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$M:$M,"""")"
+157,FA,BB_Top_7d,0,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$N:$N,"""")"
+158,FB,BB_Top_3d,0,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$O:$O,"""")"
+159,FC,BB_Tot_Slope,0,"=IF(AND(DV2>FA2,FA2>EZ2,(DV2-EZ2)>=AC2),1,IF(AND(DV2<FA2,FA2<EZ2,(EZ2-DV2)>=AC2),-1,0))"
+160,FD,BB_Slope,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da81840>
+161,FE,BB Bull,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da818a0>
+162,FF,A_VolumeSpike,-200443.44,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$AQ:$AQ,"""")"
+163,FG,VolumeSpike,200443.44,"=ABS(_xlfn.NUMBERVALUE(SUBSTITUTE(FF2,""NaN"",0)))"
+164,FH,VS Spike,0200443.44,"=RIGHT(""0000000000"" & FG2 & REPT(""0"",9-LEN(FG2)),10)"
+165,FI,VS Volume Spike,2,"=_xlfn.NUMBERVALUE(LEFT(FH2,2))"
+166,FJ,VS Price Change,4,"=_xlfn.NUMBERVALUE(MID(FH2,3,3))"
+167,FK,VS Price Change SD,-0.8866666666666668,"=SIGN(SUBSTITUTE(FF2,""NaN"",0)) * FJ2/(AD2*100)"
+168,FL,VS Volatility,43,"=_xlfn.NUMBERVALUE(MID(FH2,6,2))"
+169,FM,VS Days,44,"=_xlfn.NUMBERVALUE(RIGHT(FH2,2))"
+170,FN,D_Vlt_Caution,IVPXtrm,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$AL:$AL,"""")"
+171,FO,D_Vlt_RuleCode,,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$AK:$AK,"""")"
+172,FP,D_Vlt_RuleDesc,,"=_xlfn.XLOOKUP(FO2,Parm!$BS$14:$BS$23,Parm!$BT$14:$BT$23,"""")"
+173,FQ,D_Vlt_RuleAction,,"=_xlfn.XLOOKUP(FO2,Parm!$BS$14:$BS$23,Parm!$BU$14:$BU$23,"""")"
+174,FR,IVHV,128.26086956521738,"=IF(OR(DT2=0,CV2=0),0,DT2*100/CV2)"
+175,FS,L_Vlm,6815835,"=_xlfn.XLOOKUP($O2&$B2,TL!$D:$D,TL!$G:$G,"""")"
+176,FT,W_Vlm,6815835,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$K:$K,"""")"
+177,FU,Volume,6815835,"=IF(Dash!$AB$25=""Y"",FS2,FT2)"
+178,FV,VolumeRateOfChange,38.55,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$AT:$AT,"""")"
+179,FW,W_Avg Vlm (10day),4431087.34,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$L:$L,"""")"
+180,FX,Vlm 10  Factor,0.5381856589628857,"=IF(OR(FU2=0,FU2="""",FW2=0,FW2=""""),0,(FU2-FW2)/FW2)"
+181,FY,Vlm 10 day %,53.818565896288575,=100*FX2
+182,FZ,W_Avg Vlm (3m),4379189.87,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$M:$M,"""")"
+183,GA,Vlm 3 M Factor,0.5564145886188762,"=IF(OR(FU2=0,FU2="""",FZ2=0,FZ2=""""),0,(FU2-FZ2)/FZ2)"
+184,GB,Vlm 3m %,55.641458861887614,=GA2*100
+185,GC,Vlm Score,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da82200>
+186,GD,Vlm Desc,>avg+Accl,"=_xlfn.XLOOKUP(GC2,Parm!$BP$2:$BP$7,Parm!$BQ$2:$BQ$7,""Unknown"")"
+187,GE,W_Vlm_RuleCode,,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$U:$U,"""")"
+188,GF,Vlm_RuleDesc,,"=_xlfn.XLOOKUP(GE2,Parm!$BS$2:$BS$11,Parm!$BT$2:$BT$11,"""")"
+189,GG,Vlm_Action,,"=_xlfn.XLOOKUP(GE2,Parm!$BS$2:$BS$11,Parm!$BU$2:$BU$11,"""")"
+190,GH,Volatility regime,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da82260>
+191,GI,Volatility regime,Norm vlt,"=_xlfn.XLOOKUP(GH2,Parm!$BP$28:$BP$32,Parm!$BQ$28:$BQ$32,"""")"
+192,GJ,Price zone,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da822c0>
+193,GK,Price zone,Mild up day,"=_xlfn.XLOOKUP(GJ2,Parm!$BP$8:$BP$15,Parm!$BQ$8:$BQ$15,"""")"
+194,GL,Trend context,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da82320>
+195,GM,Trend context,PuBk in up tn,"=_xlfn.XLOOKUP(GL2,Parm!$BP$16:$BP$21,Parm!$BQ$16:$BQ$21,"""")"
+196,GN,Momentum,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da82380>
+197,GO,Momentum,Stbl vs yday,"=_xlfn.XLOOKUP(GN2,Parm!$BP$22:$BP$27,Parm!$BQ$22:$BQ$27,"""")"
+198,GP,Long Trend Total,10,=SIGN(BV2)*1+SIGN(BT2)*2+SIGN(BR2)*3+SIGN(BP2)*4
+199,GQ,Long Trend Score,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da824a0>
+200,GR,Long Trend Descr,Strng bull,"=_xlfn.XLOOKUP(GQ2,Parm!$BP$33:$BP$38,Parm!$BQ$33:$BQ$38,"""")"
+201,GS,ST Signal Scenario,14,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da82500>
+202,GT,ST_Signal Score,0,"=_xlfn.XLOOKUP(GS2,Parm!$CI$2:$CI$15,Parm!$CK$2:$CK$15,"""")"
+203,GU,ST_Signal Desc, ,"=_xlfn.XLOOKUP(GS2,Parm!$CI$2:$CI$15,Parm!$CJ$2:$CJ$15,"""")"
+204,GV,Final Signal Scenario,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da82560>
+205,GW,Final_Signal,0,"=_xlfn.XLOOKUP(GV2,Parm!$CM$2:$CM$13,Parm!$CN$2:$CN$13,"""")"
+206,GX,Beta,1.5,"=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!K:K,"""")"
+207,GY,Market Cap,26765000000,"=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!G:G,"""")"
+208,GZ,Long-term Debt to Capital - Current (LTM),0.3112,"=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!M:M,"""")"
+209,HA,Price / Earnings Ratio - Current,14.896,"=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!N:N,"""")"
+210,HB,Price / Book Value Ratio - Current,2.775,"=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!O:O,"""")"
+211,HC,Return on Equity (ROE) - Current (LTM),20.275,"=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!P:P,"""")"
+212,HD,EPS,6.18,"=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!Q:Q,"""")"
+213,HE,Div. Yield - Current,<empty>,"=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!R:R,"""")"
+214,HF,Sector,Information Technology,"=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!S:S,"""")"
+215,HG,Free Cash Flow Per Share - Current (LTM),6.4,"=_xlfn.XLOOKUP($P2&$B2,TO!$D:$D,TO!T:T,"""")"
+216,HH,Asset Class,Equities,"=_xlfn.XLOOKUP(C2,Sctr!A$2:A$1000,Sctr!I$2:I$1000,"""")"
+217,HI,Sctr!Sector,Information Technology,"=_xlfn.XLOOKUP(C2,Sctr!A$2:A$1000,Sctr!K$2:K$1000,"""")"
+218,HJ,Sector,Information Technology,"=IF(HF2=0,HI2,HF2)"
+219,HK,Sub Asset Class,Software/Tech,"=_xlfn.XLOOKUP(C2,Sctr!A:A,Sctr!J:J,"""")"
+220,HL,Industry,Software,"=_xlfn.XLOOKUP(C2,Sctr!A:A,Sctr!C:C,"""")"
+221,HM,Growth - Sector Based,Secular,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da82680>
+222,HN,Growth - Econ Based,Cyclical,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da826e0>
+223,HO,Growth,N/A,"=IF(HM2=HN2,HM2,""N/A"")"
+224,HP,Scale,Size,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da82800>
+225,HQ,Solvency,Low Leverage,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da82860>
+226,HR,Value?,Value,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da828c0>
+227,HS,Quality?,Quality,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da82920>
+228,HT,Dividend?,N/A,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da82980>
+229,HU,Momentum Score,4.282976825441305,=0.15*BQ2 + 0.2*BS2 + 0.2*BU2 + 0.2*BW2 + 0.15*BY2 + 5*((D2-CF2)/CF2) + 5*((D2-CG2)/CG2)
+230,HV,Momentum,Momentum,"=IF(HU2>2.2,""Momentum"",""N/A"")"
+231,HW,Sensitivity,High Beta,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da82b60>
+232,HX,Growth - M OL,0,"=_xlfn.XLOOKUP(HO2,HQuad!$B$24:$B$39,HQuad!$J$24:$J$39,"""")"
+233,HY,Scale - M OL,0,"=_xlfn.XLOOKUP(HP2,HQuad!$B$24:$B$39,HQuad!$J$24:$J$39,"""")"
+234,HZ,Solvency - M OL,0,"=_xlfn.XLOOKUP(HQ2,HQuad!$B$24:$B$39,HQuad!$J$24:$J$39,"""")"
+235,IA,Value? - M OL,-3,"=_xlfn.XLOOKUP(HR2,HQuad!$B$24:$B$39,HQuad!$J$24:$J$39,"""")"
+236,IB,Quality? - M OL,3,"=_xlfn.XLOOKUP(HS2,HQuad!$B$24:$B$39,HQuad!$J$24:$J$39,"""")"
+237,IC,Dividend? - M OL,0,"=_xlfn.XLOOKUP(HT2,HQuad!$B$24:$B$39,HQuad!$J$24:$J$39,"""")"
+238,ID,Momentum - M OL,3,"=_xlfn.XLOOKUP(HV2,HQuad!$B$24:$B$39,HQuad!$J$24:$J$39,0)"
+239,IE,Sensitivity - M OL,0,"=_xlfn.XLOOKUP(HW2,HQuad!$B$24:$B$39,HQuad!$J$24:$J$39,"""")"
+240,IF,Asset Class - M OL,0,"=_xlfn.XLOOKUP(HH2,HQuad!$B$2:$B$9,HQuad!$J$2:$J$9,"""")"
+241,IG,Equity Sector - M OL,3,"=IF(HH2=""Equities"",_xlfn.XLOOKUP(HJ2,HQuad!$B$10:$B$23,HQuad!$J$10:$J$23,""""),IF2)"
+242,IH,M+ves - Equity Style,2,"=COUNTIF(HX2:IE2,"">0"")"
+243,II,M-ves  - Equity Style,1,"=COUNTIF(HX2:IE2,""<0"")"
+244,IJ,Growth - Q OL,0,"=_xlfn.XLOOKUP(HO2,HQuad!$B$24:$B$39,HQuad!$L$24:$L$39,"""")"
+245,IK,Scale - Q OL,0,"=_xlfn.XLOOKUP(HP2,HQuad!$B$24:$B$39,HQuad!$L$24:$L$39,"""")"
+246,IL,Solvency - Q OL,0,"=_xlfn.XLOOKUP(HQ2,HQuad!$B$24:$B$39,HQuad!$L$24:$L$39,"""")"
+247,IM,Value? - Q OL,-3,"=_xlfn.XLOOKUP(HR2,HQuad!$B$24:$B$39,HQuad!$L$24:$L$39,"""")"
+248,IN,Quality? - Q OL,0,"=_xlfn.XLOOKUP(HS2,HQuad!$B$24:$B$39,HQuad!$L$24:$L$39,"""")"
+249,IO,Dividend? - Q OL,0,"=_xlfn.XLOOKUP(HT2,HQuad!$B$24:$B$39,HQuad!$L$24:$L$39,"""")"
+250,IP,Momentum - Q OL,3,"=_xlfn.XLOOKUP(HV2,HQuad!$B$24:$B$39,HQuad!$L$24:$L$39,0)"
+251,IQ,Sensitivity - Q OL,3,"=_xlfn.XLOOKUP(HW2,HQuad!$B$24:$B$39,HQuad!$L$24:$L$39,"""")"
+252,IR,Asset Class - Q OL,3,"=_xlfn.XLOOKUP(HH2,HQuad!$B$2:$B$9,HQuad!$L$2:$L$9,"""")"
+253,IS,Equity Sector - Q OL,3,"=IF(HH2=""Equities"",_xlfn.XLOOKUP(HJ2,HQuad!$B$10:$B$23,HQuad!$L$10:$L$23,""""),IR2)"
+254,IT,Q+ves - Equity Style,2,"=COUNTIF(IJ2:IQ2,"">0"")"
+255,IU,Q-ves  - Equity Style,1,"=COUNTIF(IJ2:IQ2,""<0"")"
+256,IV,SP500 Volatility,0,"=IF(_xlfn.XLOOKUP(C2,Sctr!A:A,Sctr!D:D,"""")=""Y"",Dash!$S$2,0)"
+257,IW,Nasdaq Volatility,,"=IF(_xlfn.XLOOKUP(C2,Sctr!A:A,Sctr!E:E,"""")=""Y"",Dash!$S$5,0)"
+258,IX,Dow Volatility,0,"=IF(_xlfn.XLOOKUP(C2,Sctr!A:A,Sctr!F:F,"""")=""Y"",Dash!$S$9,0)"
+259,IY,RusSell Volatility,0,"=IF(_xlfn.XLOOKUP(C2,Sctr!A:A,Sctr!G:G,"""")=""Y"",Dash!$S$4,0)"
+260,IZ,FCF,6.4,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$G:$G,"""")"
+261,JA,Ticker,ZM,=C2
+262,JB,EarningsDays,16,"=_xlfn.XLOOKUP($N2&$B2,TW!$D:$D,TW!$X:$X,"""")"
+263,JC,Short Ratio,1.7,"=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$Q:$Q,"""")"
+264,JD,Float,260.232M,"=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$R:$R,"""")"
+265,JE,Shares Out,265.97M,"=_xlfn.XLOOKUP($R2&$C2,Y!$D:$D,Y!$S:$S,"""")"
+266,JF,Begin,,
+267,JG,MACDH Direction,1,"=IF(CK2=0,-1,SIGN(CK2))"
+268,JH,MACD Direction,1,"=IF(CI2=0,-1,SIGN(CI2))"
+269,JI,BB Direction,-1,=AN2
+270,JJ,BB Threshold,0,"=IF(AX2=1,AW2,0)"
+271,JK,BBThresh CO Days,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83280>
+272,JL,BBThresh_CO_Days2,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da832e0>
+273,JM,Trade Cross Over,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83340>
+274,JN,Trade-Rule,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da833a0>
+275,JO,!Trade Rule,-2,=(-1)*JN2
+276,JP,Trend Cross Over,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da834c0>
+277,JQ,Trend-Rule,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83520>
+278,JR,!Trend Rule,-1,=(-1)*JQ2
+279,JS,Trend Trade Dep Rule,2,"=IF(AE2<=AF2,JQ2,JN2)"
+280,JT,TrTn Relation,-1,"=IF(AE2<=AF2,1,-1)"
+281,JU,!TrTn Relation,1,=(-1)*JT2
+282,JV,Trade Trend SD Rule,-1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83880>
+283,JW,BRR% Rule,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da838e0>
+284,JX,BRR% LRR,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83940>
+285,JY,BRR% R2,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da839a0>
+286,JZ,BRR% LRR2,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83a00>
+287,KA,BRR% TRR,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83a60>
+288,KB,BRR% Puts,-3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83ac0>
+289,KC,BRR% TRR Puts,-3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83b20>
+290,KD,BRR% Dir,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83b80>
+291,KE,High TRR,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83be0>
+292,KF,Low LRR,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83c40>
+293,KG,Trend below TRR,-1,"=IF(EQ2<0,-1,0)"
+294,KH,LRR above Trade,0,"=IF(ER2>0,1,0)"
+295,KI,TRR_Idx,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83e20>
+296,KJ,MRR_Idx,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83e80>
+297,KK,LRR_Idx,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83ee0>
+298,KL,HVAbsolute,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83f40>
+299,KM,IVAbsolute,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0da83fa0>
+300,KN,IVPercentile,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0040>
+301,KO,IVPercentile Puts,-3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab00a0>
+302,KP,HVPercentile,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0100>
+303,KQ,HVPercentile Puts,-2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0160>
+304,KR,IVHV,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab01c0>
+305,KS,IVHV Puts,-3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0220>
+306,KT,IVRule,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0280>
+307,KU,RSI Rule,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab02e0>
+308,KV,RSI Top,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0340>
+309,KW,RSI Puts,-2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab03a0>
+310,KX,3m-Low-Rule,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0400>
+311,KY,3m-Low-Days Rule,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0460>
+312,KZ,3mn-High-Rule,-3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab04c0>
+313,LA,3mn-High-Days Rule,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0520>
+314,LB,3m-Long,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0580>
+315,LC,Perf3mn SD Rule,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab05e0>
+316,LD,Perf2M SD Rule,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0640>
+317,LE,Perf3WK SD Rule,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab06a0>
+318,LF,Perf2WK SD Rule,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0700>
+319,LG,Perf3D SD Rule,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0760>
+320,LH,Perf1D SD Rule,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab07c0>
+321,LI,!Perf1D_sd,-2,=(-1)*LH2
+322,LJ,Perf3D_sd_1off,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab08e0>
+323,LK,Perf SD Rule,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0940>
+324,LL,!Perf SD Rule,-1,=(-1)*LK2
+325,LM,!Perf3D Rule,-2,=(-1)*LG2
+326,LN,BBHighLow_SD Rule,-1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0b20>
+327,LO,BBHighLow Days Rule,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0b80>
+328,LP,BBStreak Rule,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0be0>
+329,LQ,BBStreakRule1,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0c40>
+330,LR,BBStreak Rule2,-3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0ca0>
+331,LS,BBStreak Days Rule,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0d00>
+332,LT,BBStreak Days Rule2,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0d60>
+333,LU,BBStreak Days Rule3,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0dc0>
+334,LV,BBStreak Days Rule4,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0e20>
+335,LW,BB Bull Rule,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0e80>
+336,LX,BB Bull Puts,-3,=(-1)*LW2
+337,LY,BBHighDays,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab0fa0>
+338,LZ,BBLowDays,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1000>
+339,MA,MACD Rule,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1060>
+340,MB,MACDH Rule,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab10c0>
+341,MC,MACD and H Rule,2,=INT((MA2+MB2)/2)
+342,MD,MACD_BRR Puts,-3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab11e0>
+343,ME,MACDH_BRR Puts,-2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1240>
+344,MF,MACD and H Rule Puts,-3,=INT((MD2+ME2)/2)
+345,MG,MACDH Days,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1360>
+346,MH,MACDH Days2,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab13c0>
+347,MI,Overbought,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1420>
+348,MJ,!Overbought,0,=(-1)*MI2
+349,MK,3mn Outlook,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1540>
+350,ML,3mn Outlook Days,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab15a0>
+351,MM,3wk Outlook,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1600>
+352,MN,3wk Outlook Days,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1660>
+353,MO,!3wk ol,-3,=(-1)*MM2
+354,MP,!3wk ol days,-3,=(-1)*MN2
+355,MQ,BULL,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1840>
+356,MR,!BULL,0,=(-1)*MQ2
+357,MS,PerfOrBull,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1960>
+358,MT,!PerfOrBull,0,=(-1)*MS2
+359,MU,50-DMA-Rule,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1a80>
+360,MV,50-DMA-Crossover,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1ae0>
+361,MW,200-DMA-Rule,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1b40>
+362,MX,200-DMA-Crossover,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1ba0>
+363,MY,52-Wk Low Rule,3,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1c00>
+364,MZ,52-Wk High Rule,-1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1c60>
+365,NA,BRRTrade,0,"=IF(ABS(DX2-AF2)<=AC2*0.5,1,0)"
+366,NB,TRRTrade,0,"=IF(ABS(DY2-AF2)<=AC2*0.5,-1,0)"
+367,NC,Up Resistance,0,"=IF(AND((EH2+0.05*AC2)>CG2,D2<CG2),-0.5,0)+IF(AND((EH2+0.05*AC2)>CH2,D2<CH2),-0.5,0)"
+368,ND,Down Resistance,0.5,"=IF(AND((EI2+0.05*AC2)<BA2,D2>BA2),1,0)+IF(AND((EI2+0.05*AC2)>CG2,D2>CG2),0.5,0)+IF(AND((EI2+0.05*AC2)<CH2,D2>CH2),0.5,0)"
+369,NE,Earnings,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab1fc0>
+370,NF,VS Price,-1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2020>
+371,NG,VS Volume Spike,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2080>
+372,NH,VS Volatility,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab20e0>
+373,NI,VS Days,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2140>
+374,NJ,VS LT Outlook Rule,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab21a0>
+375,NK,Current Price SD Rule,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2200>
+376,NL,Current Volume Rule,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2260>
+377,NM,Current Volatility Rule,2,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab22c0>
+378,NN,Short Term Oulook (If LT Bullish),0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2320>
+379,NO,Short Term Oulook (If LT Bearish),0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2380>
+380,NP,End,,
+381,NQ,899-SA-Trend-Breaks,40,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab23e0>
+382,NR,898-SA-Streak-VeryBad,50,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2440>
+383,NS,897-SW-Vlm-Spike-Price-Dn,10,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab24a0>
+384,NT,896-SA-TRbelowTN-Trade-Breaks,30,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2500>
+385,NU,895-SA-!TN!TD!Bull-TRR-Rev,40,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2560>
+386,NV,894-SA-!Bull-TN-TRR,10,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab25c0>
+387,NW,893-SA-TRR-blw-TN,20,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2620>
+388,NX,889-STM-OverBought,30,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2680>
+389,NY,888-STM-!Bull-BBTh-Crossover-RSI-IVHV,30,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab26e0>
+390,NZ,887-STM-!Bull--BBTh-Crossover-RSI-IV,30,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2740>
+391,OA,859-SS-Bull-BBTh-Crossover-RSI-IVHV,40,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab27a0>
+392,OB,858-SS-Bull-BBTh-Crossover-RSI-IV,40,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2800>
+393,OC,857-SS-BBTh-Crossover-RSIOnly,20,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2860>
+394,OD,798-STM-!Bull-TRR-Rev,40,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab28c0>
+395,OE,796-SW-!Bull-BBTh-Crossover,20,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2920>
+396,OF,793-STM-!TD!Bull-TRR-Rev,30,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2980>
+397,OG,792-STM-Bull-TN-TD-TRR-RSI-IV,20,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab29e0>
+398,OH,791-STM-!Bull-HighAbvTRR,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2a40>
+399,OI,789-SS-!Bull-OverBought,20,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2aa0>
+400,OJ,788-SS-!Bull-TN-TD-TRR,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2b00>
+401,OK,787-SS-Bull-TRR-Rev,50,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2b60>
+402,OL,786-SS-Bull-OverBought,40,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2bc0>
+403,OM,785-SS-Trade-Breaks,50,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2c20>
+404,ON,784-SS-Streak-GoingBad,50,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2c80>
+405,OO,783-SW-Vol-Spke-Price-Dn-Past,10,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2ce0>
+406,OP,782-SS-3mnHigh,10,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2d40>
+407,OQ,781-SS-TRR-CloseToTrade,10,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2da0>
+408,OR,699-SW-Resistance,10,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2e00>
+409,OS,698-SS-Bull-HighAbvTRR,10,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2e60>
+410,OT,697-STM-Earnings-Date,10,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2ec0>
+411,OU,449-B-TN-TD-LRR-UP-MACD,31,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2f20>
+412,OV,448-BS-TN-TD-LRR,30,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2f80>
+413,OW,399-B-TN-TD-LRR-UP-MACD,31,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab2fe0>
+414,OX,398-B-TN-TD-LRR-UP-DAY,21,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3040>
+415,OY,397-B-TN-TD-LRR,31,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab30a0>
+416,OZ,396-BS-LRR-CloseToTrade,30,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3100>
+417,PA,395-BS-TN-TD-LRR,20,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3160>
+418,PB,394-BS-TN-LRR,30,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab31c0>
+419,PC,299-BS-BB-Streak-HiHi-TN-TD,11,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3220>
+420,PD,298-BS-BB-HL-HiHi-TN-TD,31,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3280>
+421,PE,279-BS-BB-Streak-HiHi,1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab32e0>
+422,PF,278-BS-BB-HL-HiHi,21,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3340>
+423,PG,277-BS-VS-LT,21,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab33a0>
+424,PH,269-BS-Bull,41,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3400>
+425,PI,268-BS-3M-HiHi,11,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3460>
+426,PJ,267-BS-Trade-CO,31,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab34c0>
+427,PK,199-BS-TN-LRR-MACD-UP-DAY,41,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3520>
+428,PL,198-BS-TN-LRR-UP-MACD,41,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3580>
+429,PM,197-BS-TN-LRR-UP-DAY,51,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab35e0>
+430,PN,196-BS-TN-LRR,31,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3640>
+431,PO,189-BR-BB-LoHi,61,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab36a0>
+432,PP,188-BR-TNabvTD-UP-MACD-DAY,31,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3700>
+433,PQ,187-BR-NoTN-NoTD-UP-MACD-DAY,51,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3760>
+434,PR,186-BR-Trend-CO,32,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab37c0>
+435,PS,99-BS-Min,31,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3820>
+436,PT,98-BW-TD-LRR-RSI,60,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3880>
+437,PU,97-BW-TD-RSI-IV,60,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab38e0>
+438,PV,96-BW-RSI-IVHV-Min,70,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3940>
+439,PW,95-BW-LowBelwLRR,30,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab39a0>
+440,PX,94-BW-UP-MACD,33,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3a00>
+441,PY,93-BW-LRRabvTD,20,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3a60>
+442,PZ,92-BS-RSI-MACD-Vlme-IVHV-IVBRR,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3ac0>
+443,QA,92-BS-RSI-MACD-Vlme-IVHV-IVBRR,10,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3b20>
+444,QB,92-BS-RSI-MACD-Vlme-IVHV-IVBRR,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3b80>
+445,QC,52-BS-BRR,10,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3be0>
+446,QD,51-BS-TRADE-TREND,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3c40>
+447,QE,Tn Td Rule,4,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3ca0>
+448,QF,Tn Td Rule Action,10,"=_xlfn.XLOOKUP(QE2,Parm!$BS$26:$BS$31,Parm!$BV$26:$BV$31)"
+449,QG,Tn Td Rule Desc,Bull,"=_xlfn.XLOOKUP(QE2,Parm!$BS$26:$BS$31,Parm!$BT$26:$BT$31)"
+450,QH,A_BB_Bot_Slope,6.8,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$BI:$BI,"""")"
+451,QI,A_BB_Top_Slope,9.2,"=_xlfn.XLOOKUP($M2&$B2,TD!$D:$D,TD!$BH:$BH,"""")"
+452,QJ,BBRngStrkRule,4,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3d00>
+453,QK,BBRngStrkRule Action,10,"=_xlfn.XLOOKUP(QJ2,Parm!$BS$51:$BS$59,Parm!$BV$51:$BV$59,"""")"
+454,QL,BBRngStrkRule Desc,Bull,"=_xlfn.XLOOKUP(QJ2,Parm!$BS$51:$BS$59,Parm!$BT$51:$BT$59,"""")"
+455,QM,BullRiskRng-Action,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3d60>
+456,QN,!BullRiskRng-Action,-1,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3dc0>
+457,QO,RiskRng Longs Action,,"=IF(QJ2>=2,_xlfn.XLOOKUP(QM2,Parm!$BS$34:$BS$40,Parm!$BV$34:$BV$40,""""),IF(QJ2>=0,_xlfn.XLOOKUP(QN2,Parm!$BS$43:$BS$48,Parm!$BV$43:$BV$48,""""),""""))"
+458,QP,RRBullBear,,"=IF(QQ2="""","""",IF(QJ2>=2,""B"",IF(QJ2>=0,""!B"","""")))"
+459,QQ,RRDesc,,"=IF(QJ2>=2,_xlfn.XLOOKUP(QM2,Parm!$BS$34:$BS$40,Parm!$BT$34:$BT$40,""""),IF(QJ2>=0,_xlfn.XLOOKUP(QN2,Parm!$BS$43:$BS$48,Parm!$BT$43:$BT$48,""""),""""))"
+460,QR,Td Tn BB Risk Range Rule Action,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3ee0>
+461,QS,Td Tn BB Risk Range Rule Action,,"=_xlfn.XLOOKUP(QR2,Parm!$AO$2:$AO$21,Parm!$AQ$2:$AQ$21,"""")"
+462,QT,Td Tn BB Risk Range Rule Action Seq,,"=_xlfn.XLOOKUP(QR2,Parm!$AO$2:$AO$21,Parm!$AR$2:$AR$21,"""")"
+463,QU,PS Rk,,"=_xlfn.XLOOKUP(B2,ps!A:A,ps!Z:Z,"""")"
+464,QV,PS Outlook,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dab3f40>
+465,QW,PSRk Chg,,"=_xlfn.XLOOKUP(B2,ps!A:A,ps!AA:AA,"""")"
+466,QX,ETF,,"=_xlfn.XLOOKUP(B2,etfchg!C:C,etfchg!F:F,_xlfn.XLOOKUP(U2&B2,etf!A:A,etf!G:G,""""))"
+467,QY,II,,"=_xlfn.XLOOKUP(T2&B2,II!A:A,II!E:E,"""")"
+468,QZ,II Chg,,"=_xlfn.XLOOKUP(B2,IIchg!C:C,IIchg!E:E,"""")"
+469,RA,II Final,,"=IF(QZ2<>"""",QZ2,QY2)"
+470,RB,CAll,,"=_xlfn.XLOOKUP(B2,call!H:H,call!I:I,"""")"
+471,RC,CAll Modifier,,"=_xlfn.XLOOKUP(B2,call!H:H,call!J:J,"""")"
+472,RD,RR,,"=_xlfn.XLOOKUP(B2,RR!F:F,RR!J:J,"""")"
+473,RE,Sg Rk,,"=_xlfn.XLOOKUP(B2,ssL!C:C,ssL!D:D,"""")"
+474,RF,KM,,"=_xlfn.XLOOKUP(B2,ssL!C:C,ssL!E:E,"""")"
+475,RG,SgRk Chg,,"=_xlfn.XLOOKUP(B2,sss!B:B,sss!Q:Q,"""")"
+476,RH,Sg Strength,,"=_xlfn.XLOOKUP(B2,ssL!C:C,ssL!F:F,"""")"
+477,RI,SgS Chg,,"=_xlfn.XLOOKUP(B2,sss!B:B,sss!U:U,"""")"
+478,RJ,Sig OL,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacc0a0>
+479,RK,Sig Rating,0,"=_xlfn.NUMBERVALUE(IF(AND(_xlfn.NUMBERVALUE(RA2)=0,_xlfn.NUMBERVALUE(RB2)=0,_xlfn.NUMBERVALUE(RD2)=0,_xlfn.NUMBERVALUE(QX2)=0,_xlfn.NUMBERVALUE(QU2)=0,_xlfn.NUMBERVALUE(RE2)=0),""0"",IF(OR(_xlfn.NUMBERVALUE(QU2)<0,_xlfn.NUMBERVALUE(RE2)<0,_xlfn.NUMBERVALUE(QX2)<0,_xlfn.NUMBERVALUE(RD2)<0,_xlfn.NUMBERVALUE(RB2)<0,_xlfn.NUMBERVALUE(RA2)<0),""1000000000000000000000"",IF(_xlfn.NUMBERVALUE(QU2)=0,""000000"",TEXT(50-INT(QW2),""000"")&TEXT(100-INT(QU2),""000""))&IF(_xlfn.NUMBERVALUE(QX2)=0,""000"",TEXT(QX2,""000""))&IF(_xlfn.NUMBERVALUE(RA2)=0,""000"",TEXT(RA2,""000""))&IF(_xlfn.NUMBERVALUE(RD2)=0,""000"",TEXT(RD2,""000""))&IF(_xlfn.NUMBERVALUE(RE2)=0,""000"",TEXT(RE2,""000""))&IF(_xlfn.NUMBERVALUE(RB2)=0,""000"",TEXT(RB2,""000"")))))"
+480,RL,HE Outlook,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacc1c0>
+481,RM,SSS Entry,,"=_xlfn.XLOOKUP(B2,sss!V:V,sss!X:X,"""")"
+482,RN,PS Date,,"=_xlfn.XLOOKUP(B2,ps!AB:AB,ps!AG:AG,"""")"
+483,RO,ETF Date,,"=_xlfn.XLOOKUP(B2,etfchg!C:C,etfchg!E:E,_xlfn.XLOOKUP(B2,etf!I:I,etf!N:N,""""))"
+484,RP,II Date,,"=_xlfn.XLOOKUP(B2,II!G:G,II!L:L,"""")"
+485,RQ,CAll Date,,"=_xlfn.XLOOKUP(B2,call!H:H,call!C:C,"""")"
+486,RR,RR Date,,"=_xlfn.XLOOKUP(B2,RR!F:F,RR!D:D,"""")"
+487,RS,PS Entry,,"=_xlfn.XLOOKUP(B2,ps!AB:AB,ps!AD:AD,"""")"
+488,RT,ETF Entry,,"=_xlfn.XLOOKUP(B2,etfchg!C:C,etfchg!D:D,_xlfn.XLOOKUP(B2,etf!I:I,etf!K:K,""""))"
+489,RU,II Entry,,"=_xlfn.XLOOKUP(B2,II!G:G,II!I:I,"""")"
+490,RV,CAll Entry,,"=_xlfn.XLOOKUP(B2,call!H:H,call!L:L,"""")"
+491,RW,RR Entry,,"=_xlfn.XLOOKUP(B2,RR!F:F,RR!O:O,"""")"
+492,RX,HE Entry,,"=_xlfn.SINGLE(_xlfn.IFNA(_xlfn.XLOOKUP(MAX(RN2:RR2), RN2:RR2, RS2:RW2),""""))"
+493,RY,SSS Date,,"=_xlfn.XLOOKUP(B2,sss!V:V,sss!AA:AA,"""")"
+494,RZ,SS Entry Only,,"=IF(RX2="""",RM2,"""")"
+495,SA,HE Entry,,"=IF(RZ2="""",RX2,IF(_xlfn.NUMBERVALUE(RX2)<>0,MIN(RX2,RZ2),RZ2))"
+496,SB,PS Cont,,"=_xlfn.XLOOKUP(B2,ps!AB:AB,ps!AF:AF,"""")"
+497,SC,ETF Cont,,"=_xlfn.XLOOKUP(B2,etfchg!C:C,etfchg!D:D,_xlfn.XLOOKUP(B2,etf!I:I,etf!M:M,""""))"
+498,SD,II Cont,,"=_xlfn.XLOOKUP(B2,II!G:G,II!K:K,"""")"
+499,SE,CAll Cont,,"=_xlfn.XLOOKUP(B2,call!H:H,call!N:N,"""")"
+500,SF,RR Cont,,"=_xlfn.XLOOKUP(B2,RR!F:F,RR!Q:Q,"""")"
+501,SG,HE Cont,,"=_xlfn.IFNA(_xlfn.XLOOKUP(MAX(RN2:RR2), RN2:RR2, SB2:SF2),"""")"
+502,SH,SS Entry Only,,"=IF(RX2="""","""",RM2)"
+503,SI,SSS Cont,,"=_xlfn.XLOOKUP(B2,sss!V:V,sss!Z:Z,"""")"
+504,SJ,Trig Matched Rule1,-9,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacc5e0>
+505,SK,Trig M Rule2,-8,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacc640>
+506,SL,Trig M Rule3,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacc6a0>
+507,SM,Trig M Rule4,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacc700>
+508,SN,Trig M Rule5,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacc760>
+509,SO,Trig M Rule6,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacc7c0>
+510,SP,Trig M Rule7,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacc820>
+511,SQ,Trig M Rule8,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacc880>
+512,SR,Trig M Rule9,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacc8e0>
+513,SS,Trig M Rule10,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacc940>
+514,ST,Trig M Rule11,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacc9a0>
+515,SU,Blanks,9,=COUNTBLANK(SJ2:ST2)
+516,SV,Negatives,2,"=IF(SU2=11,"""",COUNTIF(SJ2:ST2,""<0""))"
+517,SW,Positives,0,"=IF(SU2=11,"""",COUNTIF(SJ2:ST2,"">0""))"
+518,SX,Neg Rank,-9,"=IF(_xlfn.NUMBERVALUE(SV2)>0,MIN(SJ2:ST2),"""")"
+519,SY,Pos Rank,,"=IF(_xlfn.NUMBERVALUE(SW2)>0,MAX(SJ2:ST2),"""")"
+520,SZ,Trig Rule,-9,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0daccdc0>
+521,TA,HE Entry,,=SA2
+522,TB,HE Cont,,=SG2
+523,TC,SS Entry,,=SH2
+524,TD,SS Cont,,=SI2
+525,TE,Trig,-9,=SZ2
+526,TF,Blanks,4,=COUNTBLANK(TA2:TE2)
+527,TG,Negatives,1,"=IF(TF2=5,"""",COUNTIF(TA2:TE2,""<0""))"
+528,TH,Positives,0,"=IF(TF2=5,"""",COUNTIF(TA2:TE2,"">0""))"
+529,TI,Neg Rank,-9,"=IF(_xlfn.NUMBERVALUE(TG2)>0,MIN(TA2:TE2),"""")"
+530,TJ,Pos Rank,,"=IF(_xlfn.NUMBERVALUE(TH2)>0,MAX(TA2:TE2),"""")"
+531,TK,Entry,-9,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacd5a0>
+532,TL,HE Cont,,=SG2
+533,TM,SS Cont,,=SI2
+534,TN,Trig,-9,=SZ2
+535,TO,Blanks,2,=COUNTBLANK(TL2:TN2)
+536,TP,Negatives,1,"=IF(TO2=3,"""",COUNTIF(TL2:TN2,""<0""))"
+537,TQ,Positives,0,"=IF(TO2=3,"""",COUNTIF(TL2:TN2,"">0""))"
+538,TR,Neg Rank,-9,"=IF(_xlfn.NUMBERVALUE(TP2)>0,MIN(TL2:TN2),"""")"
+539,TS,Pos Rank,,"=IF(_xlfn.NUMBERVALUE(TQ2)>0,MAX(TL2:TN2),"""")"
+540,TT,Cont,-9,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacdc00>
+541,TU,OverAll,-9,"=IF(UI2=0,TK2,TT2)"
+542,TV,OverAll Group,,
+543,TW,Action Type,S,"=_xlfn.XLOOKUP(TU2,Parm!$AO$2:$AO$25,Parm!$AS$2:$AS$25,"""")"
+544,TX,^L1,99,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacdd20>
+545,TY,^L2,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dacdd80>
+546,TZ,^L3,791,"=IF(XG2="""",0,_xlfn.NUMBERVALUE(_xlfn.TEXTBEFORE(XG2, ""-"")))"
+547,UA,#Actionable,0,"=IF(AND(TX2<=0,TY2<3),1,0)"
+548,UB,Index,N,"=IF(OR(LEFT(C2,1)=""^"",ISNUMBER(FIND(""="", C2)),ISNUMBER(FIND(""-"", C2))),""Y"",""N"")"
+549,UC,Neg Outlook,,"=IF(_xlfn.NUMBERVALUE(RS2)<0,""P,"","""") & IF(_xlfn.NUMBERVALUE(RT2)<0,""E,"","""") & IF(_xlfn.NUMBERVALUE(RU2)<0,""I,"","""") & IF(_xlfn.NUMBERVALUE(RV2)<0,""C,"","""") & IF(_xlfn.NUMBERVALUE(RW2)<0,""R,"","""") & IF(_xlfn.NUMBERVALUE(RZ2)<0,""S,"","""") & IF(_xlfn.NUMBERVALUE(SB2)<0,""PC,"","""") & IF(_xlfn.NUMBERVALUE(SC2)<0,""EC,"","""") & IF(_xlfn.NUMBERVALUE(SD2)<0,""IC,"","""") & IF(_xlfn.NUMBERVALUE(SE2)<0,""CC,"","""") & IF(_xlfn.NUMBERVALUE(SI2)<0,""SC,"","""")"
+550,UD,Pos Outlook,,"=IF(_xlfn.NUMBERVALUE(RS2)>0,""P,"","""") & IF(_xlfn.NUMBERVALUE(RT2)>0,""E,"","""") & IF(_xlfn.NUMBERVALUE(RU2)>0,""I,"","""") & IF(_xlfn.NUMBERVALUE(RV2)>0,""C,"","""") & IF(_xlfn.NUMBERVALUE(RW2)>0,""R,"","""") & IF(_xlfn.NUMBERVALUE(RZ2)>0,""S,"","""") & IF(_xlfn.NUMBERVALUE(SB2)>0,""PC,"","""") & IF(_xlfn.NUMBERVALUE(SC2)>0,""EC,"","""") & IF(_xlfn.NUMBERVALUE(SD2)>0,""IC,"","""") & IF(_xlfn.NUMBERVALUE(SE2)>0,""CC,"","""") & IF(_xlfn.NUMBERVALUE(SI2)>0,""SC,"","""")"
+551,UE,Fidelity,0,"=_xlfn.XLOOKUP(W2&C2,F!A:A,F!G:G,0)"
+552,UF,CS,0,"=_xlfn.XLOOKUP(X2&C2,CS!A:A,CS!G:G,0)"
+553,UG,Stocks$,0,=SUM(UE2:UF2)
+554,UH,RH,,
+555,UI,Long$,0,"=IF(OR(UE2<>"""",UF2<>""""), UG2+IF(UH2>0,UH2,0), 0)"
+556,UJ,Short$,0,"=IF(UH2<0,ABS(UH2),0)"
+557,UK,My,,"=_xlfn.XLOOKUP(C2,My!A:A,My!B:B,"""")"
+558,UL,Amt Type,Other,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dace3e0>
+559,UM,Unit$,500,"=IF(UL2<>"""",_xlfn.XLOOKUP(UL2,Parm!$AF$2:$AF$24,Parm!$AK$2:$AK$24,0),0)"
+560,UN,Min$,500,"=IF(UL2<>"""",_xlfn.XLOOKUP(UL2,Parm!$AF$2:$AF$24,Parm!$AI$2:$AI$24,0),0)"
+561,UO,Max$,1000,"=IF(UL2<>"""",_xlfn.XLOOKUP(UL2,Parm!$AF$2:$AF$24,Parm!$AJ$2:$AJ$24,0),0)"
+562,UP,TnTdMax$,1000,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dace440>
+563,UQ,Remaining,1000,=UP2-_xlfn.NUMBERVALUE(UG2)
+564,UR,Final Action,STM,"=_xlfn.XLOOKUP(TU2,Parm!$AO$1:$AO$25,Parm!$AQ$1:$AQ$25,IF(AND(TU2>=0,UQ2<0),""SO"",""""))"
+565,US,Amount,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dace560>
+566,UT,Amount,,"=IF(OR(US2="""",AND(UG2>UM2,US2<UM2,US2<UN2,US2>0,US2<1000)),"""",US2)"
+567,UU,Final Action,,=QS2
+568,UV,Amount,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dace740>
+569,UW,Amount,,"=IF(OR(UV2="""",AND(UG2>UM2,UV2<UM2,UV2<UN2,UV2>0,UV2<1000)),"""",UV2)"
+570,UX,PVV Rule,,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dace860>
+571,UY,#Tickers to include,0,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0dace8c0>
+572,UZ,#Act,0,=UA2
+573,VA,#F1 Seq,0,"=IF(OR(AND(QR2<0,UG2=0),QT2=""""),0,QT2)"
+574,VB,#Fidelity,0,"=IF(UE2>0,1,0)"
+575,VC,#CS,0,"=IF(UF2>0,1,0)"
+576,VD,^Sell,99,=TX2
+577,VE,^Buy,0,=TY2
+578,VF,OA Group,0,=TV2
+579,VG,^L3,791,=TZ2
+580,VH,My,,=UK2
+581,VI,Fidelity,0,=UE2
+582,VJ,CS,0,=UF2
+583,VK,Remaining,1000,=UQ2
+584,VL,PVV Rule,,=UX2
+585,VM,Tn Stdv,1.9837962962962978,=AG2
+586,VN,Td Stdv,4.337962962962965,=AH2
+587,VO,Tn Td Stdv Diff,-2.354166666666667,=AI2
+588,VP,HE Outlook,,=RL2
+589,VQ,Tr Td Outlook,4,=QE2
+590,VR,BRR%,,=EE2
+591,VS,Sector Ticker,XLK,"=IF(OR(HH2<>""Equities"",HJ2=""""),"""",_xlfn.XLOOKUP(HJ2,HQuad!B:B,HQuad!C:C,""""))"
+592,VT,HE OL - Sector,,"=_xlfn.XLOOKUP(VS2,B:B,VP:VP,"""")"
+593,VU,Tn Td Rule,,"=_xlfn.XLOOKUP(VS2,B:B,VQ:VQ,"""")"
+594,VV,BRR% - Sector,,"=_xlfn.XLOOKUP(VS2,B:B,VR:VR,"""")"
+595,VW,Asset Class - M OL,0,=IF2
+596,VX,Equity Sector - M OL,3,=IG2
+597,VY,M+ves - Equity Style,2,=IH2
+598,VZ,M-ves  - Equity Style,1,=II2
+599,WA,Asset Class - Q OL,3,=IR2
+600,WB,Equity Sector - Q OL,3,=IS2
+601,WC,Q+ves - Equity Style,2,=IT2
+602,WD,Q-ves  - Equity Style,1,=IU2
+603,WE,ST_Signal Desc, ,=GU2
+604,WF,ST_Signal Action,0,=GW2
+605,WG,D_Vlt_Caution,IVPXtrm,=FN2
+606,WH,D_Vlt_RuleDesc,,=FO2
+607,WI,Vlm_RuleDesc,,=GF2
+608,WJ,Vlm_RuleAction,,=GG2
+609,WK,Vlm Desc,>avg+Accl,=GD2
+610,WL,Volatility regime,Norm vlt,=GI2
+611,WM,Tn Td Rule Desc,Bull,=QG2
+612,WN,BBRngStrkRule Desc,Bull,=QL2
+613,WO,RRBullBear,,=QP2
+614,WP,RRDesc,,=QQ2
+615,WQ,Opposite Outlook,,"=IF(WW2="""","""",IF(ISNUMBER(SEARCH(""Sell"",UR2)),IF(UD2="""","""",""+"" & UD2),IF(UC2="""","""",""-"" & UC2)))"
+616,WR,Outlook,,"=IF(WW2="""","""",IF(ISNUMBER(SEARCH(""Sell"",UR2)),IF(UC2="""","""",""-"" & UC2),IF(UD2="""","""",""+"" & UD2)))"
+617,WS,Portfolio,0,=UI2
+618,WT,Ticker,ZM,=B2
+619,WU,Td Tn BB Risk Range Rule Action,,=QS2
+620,WV,Amount,,=UW2
+621,WW,Final Action,STM,=UR2
+622,WX,Amount,,=UT2
+623,WY,HE Entry,,"=IF(TA2=0,"""",_xlfn.XLOOKUP(TA2,Parm!$AO$1:$AO$20,Parm!$AQ$1:$AQ$20,""""))"
+624,WZ,HE Cont,,"=IF(TB2=0,"""",_xlfn.XLOOKUP(TB2,Parm!$AO$1:$AO$20,Parm!$AQ$1:$AQ$20,""""))"
+625,XA,SS Entry,,"=IF(TC2=0,"""",_xlfn.XLOOKUP(TC2,Parm!$AO$1:$AO$20,Parm!$AQ$1:$AQ$20,""""))"
+626,XB,SS Cont,,"=IF(TD2=0,"""",_xlfn.XLOOKUP(TD2,Parm!$AO$1:$AO$20,Parm!$AQ$1:$AQ$20,""""))"
+627,XC,Trig,STM,"=IF(TE2=0,"""",_xlfn.XLOOKUP(TE2,Parm!$AO$1:$AO$20,Parm!$AQ$1:$AQ$20,""""))"
+628,XD,Entry,STM,"=IF(TK2=0,"""",_xlfn.XLOOKUP(TK2,Parm!$AO$1:$AO$20,Parm!$AQ$1:$AQ$20,""""))"
+629,XE,Cont,STM,"=IF(TT2=0,"""",_xlfn.XLOOKUP(TT2,Parm!$AO$1:$AO$20,Parm!$AQ$1:$AQ$20,""""))"
+630,XF,OverAll,STM,"=IF(TU2=0,"""",_xlfn.XLOOKUP(TU2,Parm!$AO$1:$AO$20,Parm!$AQ$1:$AQ$20,""""))"
+631,XG,Matched Rule1,791-STM-!Bull-HighAbvTRR,<openpyxl.worksheet.formula.ArrayFormula object at 0x73cc0daf8ca0>
+632,XH,M Rule2,788-SS-!Bull-TN-TD-TRR,=
+633,XI,M Rule3,,
+634,XJ,M Rule4,,
+635,XK,M Rule5,,
+636,XL,M Rule6,,
+637,XM,M Rule7,,
+638,XN,M Rule8,,
+639,XO,M Rule9,,
+640,XP,M Rule10,,
+641,XQ,M Rule11,,

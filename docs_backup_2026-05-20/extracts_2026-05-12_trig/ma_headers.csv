@@ -1,0 +1,642 @@
+col_idx_1based,ma_column_name
+1,Key
+2,Symbol
+3,Y Symbol
+4,Close
+5,Company Name
+6,Last
+7,Last Net Chng
+8,Last %Change
+9,High
+10,Low
+11,RR LRR
+12,RR TRR
+13,TOS Daily Export Date
+14,TOS Weekly Export Date
+15,TOS Latest Export Date
+16,TOS Other Export Date
+17,Y Mkt Close Export
+18,Y Latest Exp Date
+19,Use Latest
+20,II Date
+21,ETF Date
+22,SSH Date
+23,FH Date
+24,CS Date
+25,RR Date
+26,Sort Symbol
+27,StandardDeviation
+28,Median SD
+29,SDorMedian
+30,SD%
+31,A_TrendValue
+32,A_TradeValue
+33,Trend_sd
+34,Trade_sd
+35,Trade_Trend_Sd
+36,A_BBHighLow
+37,BBHighLow_A
+38,BBHighLow
+39,BBHighLowDays
+40,BB_Direction1
+41,BBHighLow_SD
+42,A_BBHighLowDays
+43,BBHighDays
+44,BBLowDays
+45,A_BB_Streak
+46,BB_Streak_1
+47,BB_Streak_2
+48,BB_Streak_cur
+49,BB_Threshold_Crossover
+50,BBThresh_CO_Days
+51,BB_Streak
+52,BB_Streak_Days
+53,A_3mnLow
+54,3mnLow_sd
+55,3mnLowDays
+56,A_3mnHigh
+57,3mnHigh_sd
+58,3mnHighDays
+59,3mn_min_BRR%
+60,A_3mnHighLow
+61,3mnHighLow
+62,3mn_stk_outlook_sd
+63,3mnHighLowDays
+64,A_3wkHighLow
+65,3wkHighLow
+66,3w_stk_outlook_sd
+67,3wkHighLowDays
+68,Perf3M
+69,Perf3M_sd
+70,A_Perf2M
+71,Perf2M_sd
+72,Perf3W
+73,Perf3W_sd
+74,A_Perf2Wk
+75,Perf2Wk_sd
+76,A_Perf3D
+77,Perf3D_sd
+78,Perf3D_Value
+79,Perf1D_sd
+80,Perf
+81,52Low
+82,52High
+83,52-Wk High %
+84,20 DMA
+85,50 DMA
+86,200 DMA
+87,A_MACD_BRR
+88,MACD_BRR
+89,A_MACDH_D_BRR
+90,MACDH_BRR
+91,A_MACDays_Streak
+92,D_Last
+93,D_%Change
+94,D_Net Chng
+95,D_Open
+96,D_High
+97,D_Low
+98,D_RSI
+99,D_IV
+100,D_HV
+101,HVPercentile
+102,IVPercentile
+103,L_Last
+104,L_Net Chng
+105,L_%Change
+106,L_Open
+107,L_High
+108,L_Low
+109,L_RSI
+110,L_ImpVolatility
+111,Y_Last Price
+112,Y_Change
+113,Y_Change(%)
+114,Y_Open
+115,Y_High
+116,Y_Low
+117,Last
+118,Net Chng
+119,%Change
+120,Open
+121,High
+122,Low
+123,RSI
+124,ImpVolatility
+125,BB_Bot_Prev
+126,BB_Top_Prev
+127,BB BRR%
+128,RR_Bottom
+129,RR_Top
+130,RR BRR%
+131,ETF_Bottom
+132,ETF_Top
+133,RR_Bottom
+134,RR_Top
+135,BRR%
+136,Prev Close
+137,Open
+138,High
+139,Low
+140,Open
+141,High
+142,Low
+143,Chg SD
+144,Price Direction
+145,High TRR
+146,Low LRR
+147,Trnd TRR
+148,Trd LRR
+149,Sd TRR
+150,Sd MRR
+151,Sd LRR
+152,BB_Bot_15d
+153,BB_Bot_7d
+154,BB_Bot_3d
+155,BB_Bot_Slope
+156,BB_Top_15d
+157,BB_Top_7d
+158,BB_Top_3d
+159,BB_Tot_Slope
+160,BB_Slope
+161,BB Bull
+162,A_VolumeSpike
+163,VolumeSpike
+164,VS Spike
+165,VS Volume Spike
+166,VS Price Change
+167,VS Price Change SD
+168,VS Volatility
+169,VS Days
+170,D_Vlt_Caution
+171,D_Vlt_RuleCode
+172,D_Vlt_RuleDesc
+173,D_Vlt_RuleAction
+174,IVHV
+175,L_Vlm
+176,W_Vlm
+177,Volume
+178,VolumeRateOfChange
+179,W_Avg Vlm (10day)
+180,Vlm 10  Factor
+181,Vlm 10 day %
+182,W_Avg Vlm (3m)
+183,Vlm 3 M Factor
+184,Vlm 3m %
+185,Vlm Score
+186,Vlm Desc
+187,W_Vlm_RuleCode
+188,Vlm_RuleDesc
+189,Vlm_Action
+190,Volatility regime
+191,Volatility regime
+192,Price zone
+193,Price zone
+194,Trend context
+195,Trend context
+196,Momentum
+197,Momentum
+198,Long Trend Total
+199,Long Trend Score
+200,Long Trend Descr
+201,ST Signal Scenario
+202,ST_Signal Score
+203,ST_Signal Desc
+204,Final Signal Scenario
+205,Final_Signal
+206,Beta
+207,Market Cap
+208,Long-term Debt to Capital - Current (LTM)
+209,Price / Earnings Ratio - Current
+210,Price / Book Value Ratio - Current
+211,Return on Equity (ROE) - Current (LTM)
+212,EPS
+213,Div. Yield - Current
+214,Sector
+215,Free Cash Flow Per Share - Current (LTM)
+216,Asset Class
+217,Sctr!Sector
+218,Sector
+219,Sub Asset Class
+220,Industry
+221,Growth - Sector Based
+222,Growth - Econ Based
+223,Growth
+224,Scale
+225,Solvency
+226,Value?
+227,Quality?
+228,Dividend?
+229,Momentum Score
+230,Momentum
+231,Sensitivity
+232,Growth - M OL
+233,Scale - M OL
+234,Solvency - M OL
+235,Value? - M OL
+236,Quality? - M OL
+237,Dividend? - M OL
+238,Momentum - M OL
+239,Sensitivity - M OL
+240,Asset Class - M OL
+241,Equity Sector - M OL
+242,M+ves - Equity Style
+243,M-ves  - Equity Style
+244,Growth - Q OL
+245,Scale - Q OL
+246,Solvency - Q OL
+247,Value? - Q OL
+248,Quality? - Q OL
+249,Dividend? - Q OL
+250,Momentum - Q OL
+251,Sensitivity - Q OL
+252,Asset Class - Q OL
+253,Equity Sector - Q OL
+254,Q+ves - Equity Style
+255,Q-ves  - Equity Style
+256,SP500 Volatility
+257,Nasdaq Volatility
+258,Dow Volatility
+259,RusSell Volatility
+260,FCF
+261,Ticker
+262,EarningsDays
+263,Short Ratio
+264,Float
+265,Shares Out
+266,Begin
+267,MACDH Direction
+268,MACD Direction
+269,BB Direction
+270,BB Threshold
+271,BBThresh CO Days
+272,BBThresh_CO_Days2
+273,Trade Cross Over
+274,Trade-Rule
+275,!Trade Rule
+276,Trend Cross Over
+277,Trend-Rule
+278,!Trend Rule
+279,Trend Trade Dep Rule
+280,TrTn Relation
+281,!TrTn Relation
+282,Trade Trend SD Rule
+283,BRR% Rule
+284,BRR% LRR
+285,BRR% R2
+286,BRR% LRR2
+287,BRR% TRR
+288,BRR% Puts
+289,BRR% TRR Puts
+290,BRR% Dir
+291,High TRR
+292,Low LRR
+293,Trend below TRR
+294,LRR above Trade
+295,TRR_Idx
+296,MRR_Idx
+297,LRR_Idx
+298,HVAbsolute
+299,IVAbsolute
+300,IVPercentile
+301,IVPercentile Puts
+302,HVPercentile
+303,HVPercentile Puts
+304,IVHV
+305,IVHV Puts
+306,IVRule
+307,RSI Rule
+308,RSI Top
+309,RSI Puts
+310,3m-Low-Rule
+311,3m-Low-Days Rule
+312,3mn-High-Rule
+313,3mn-High-Days Rule
+314,3m-Long
+315,Perf3mn SD Rule
+316,Perf2M SD Rule
+317,Perf3WK SD Rule
+318,Perf2WK SD Rule
+319,Perf3D SD Rule
+320,Perf1D SD Rule
+321,!Perf1D_sd
+322,Perf3D_sd_1off
+323,Perf SD Rule
+324,!Perf SD Rule
+325,!Perf3D Rule
+326,BBHighLow_SD Rule
+327,BBHighLow Days Rule
+328,BBStreak Rule
+329,BBStreakRule1
+330,BBStreak Rule2
+331,BBStreak Days Rule
+332,BBStreak Days Rule2
+333,BBStreak Days Rule3
+334,BBStreak Days Rule4
+335,BB Bull Rule
+336,BB Bull Puts
+337,BBHighDays
+338,BBLowDays
+339,MACD Rule
+340,MACDH Rule
+341,MACD and H Rule
+342,MACD_BRR Puts
+343,MACDH_BRR Puts
+344,MACD and H Rule Puts
+345,MACDH Days
+346,MACDH Days2
+347,Overbought
+348,!Overbought
+349,3mn Outlook
+350,3mn Outlook Days
+351,3wk Outlook
+352,3wk Outlook Days
+353,!3wk ol
+354,!3wk ol days
+355,BULL
+356,!BULL
+357,PerfOrBull
+358,!PerfOrBull
+359,50-DMA-Rule
+360,50-DMA-Crossover
+361,200-DMA-Rule
+362,200-DMA-Crossover
+363,52-Wk Low Rule
+364,52-Wk High Rule
+365,BRRTrade
+366,TRRTrade
+367,Up Resistance
+368,Down Resistance
+369,Earnings
+370,VS Price
+371,VS Volume Spike
+372,VS Volatility
+373,VS Days
+374,VS LT Outlook Rule
+375,Current Price SD Rule
+376,Current Volume Rule
+377,Current Volatility Rule
+378,Short Term Oulook (If LT Bullish)
+379,Short Term Oulook (If LT Bearish)
+380,End
+381,899-SA-Trend-Breaks
+382,898-SA-Streak-VeryBad
+383,897-SW-Vlm-Spike-Price-Dn
+384,896-SA-TRbelowTN-Trade-Breaks
+385,895-SA-!TN!TD!Bull-TRR-Rev
+386,894-SA-!Bull-TN-TRR
+387,893-SA-TRR-blw-TN
+388,889-STM-OverBought
+389,888-STM-!Bull-BBTh-Crossover-RSI-IVHV
+390,887-STM-!Bull--BBTh-Crossover-RSI-IV
+391,859-SS-Bull-BBTh-Crossover-RSI-IVHV
+392,858-SS-Bull-BBTh-Crossover-RSI-IV
+393,857-SS-BBTh-Crossover-RSIOnly
+394,798-STM-!Bull-TRR-Rev
+395,796-SW-!Bull-BBTh-Crossover
+396,793-STM-!TD!Bull-TRR-Rev
+397,792-STM-Bull-TN-TD-TRR-RSI-IV
+398,791-STM-!Bull-HighAbvTRR
+399,789-SS-!Bull-OverBought
+400,788-SS-!Bull-TN-TD-TRR
+401,787-SS-Bull-TRR-Rev
+402,786-SS-Bull-OverBought
+403,785-SS-Trade-Breaks
+404,784-SS-Streak-GoingBad
+405,783-SW-Vol-Spke-Price-Dn-Past
+406,782-SS-3mnHigh
+407,781-SS-TRR-CloseToTrade
+408,699-SW-Resistance
+409,698-SS-Bull-HighAbvTRR
+410,697-STM-Earnings-Date
+411,449-B-TN-TD-LRR-UP-MACD
+412,448-BS-TN-TD-LRR
+413,399-B-TN-TD-LRR-UP-MACD
+414,398-B-TN-TD-LRR-UP-DAY
+415,397-B-TN-TD-LRR
+416,396-BS-LRR-CloseToTrade
+417,395-BS-TN-TD-LRR
+418,394-BS-TN-LRR
+419,299-BS-BB-Streak-HiHi-TN-TD
+420,298-BS-BB-HL-HiHi-TN-TD
+421,279-BS-BB-Streak-HiHi
+422,278-BS-BB-HL-HiHi
+423,277-BS-VS-LT
+424,269-BS-Bull
+425,268-BS-3M-HiHi
+426,267-BS-Trade-CO
+427,199-BS-TN-LRR-MACD-UP-DAY
+428,198-BS-TN-LRR-UP-MACD
+429,197-BS-TN-LRR-UP-DAY
+430,196-BS-TN-LRR
+431,189-BR-BB-LoHi
+432,188-BR-TNabvTD-UP-MACD-DAY
+433,187-BR-NoTN-NoTD-UP-MACD-DAY
+434,186-BR-Trend-CO
+435,99-BS-Min
+436,98-BW-TD-LRR-RSI
+437,97-BW-TD-RSI-IV
+438,96-BW-RSI-IVHV-Min
+439,95-BW-LowBelwLRR
+440,94-BW-UP-MACD
+441,93-BW-LRRabvTD
+442,92-BS-RSI-MACD-Vlme-IVHV-IVBRR
+443,92-BS-RSI-MACD-Vlme-IVHV-IVBRR
+444,92-BS-RSI-MACD-Vlme-IVHV-IVBRR
+445,52-BS-BRR
+446,51-BS-TRADE-TREND
+447,Tn Td Rule
+448,Tn Td Rule Action
+449,Tn Td Rule Desc
+450,A_BB_Bot_Slope
+451,A_BB_Top_Slope
+452,BBRngStrkRule
+453,BBRngStrkRule Action
+454,BBRngStrkRule Desc
+455,BullRiskRng-Action
+456,!BullRiskRng-Action
+457,RiskRng Longs Action
+458,RRBullBear
+459,RRDesc
+460,Td Tn BB Risk Range Rule Action
+461,Td Tn BB Risk Range Rule Action
+462,Td Tn BB Risk Range Rule Action Seq
+463,PS Rk
+464,PS Outlook
+465,PSRk Chg
+466,ETF
+467,II
+468,II Chg
+469,II Final
+470,CAll
+471,CAll Modifier
+472,RR
+473,Sg Rk
+474,KM
+475,SgRk Chg
+476,Sg Strength
+477,SgS Chg
+478,Sig OL
+479,Sig Rating
+480,HE Outlook
+481,SSS Entry
+482,PS Date
+483,ETF Date
+484,II Date
+485,CAll Date
+486,RR Date
+487,PS Entry
+488,ETF Entry
+489,II Entry
+490,CAll Entry
+491,RR Entry
+492,HE Entry
+493,SSS Date
+494,SS Entry Only
+495,HE Entry
+496,PS Cont
+497,ETF Cont
+498,II Cont
+499,CAll Cont
+500,RR Cont
+501,HE Cont
+502,SS Entry Only
+503,SSS Cont
+504,Trig Matched Rule1
+505,Trig M Rule2
+506,Trig M Rule3
+507,Trig M Rule4
+508,Trig M Rule5
+509,Trig M Rule6
+510,Trig M Rule7
+511,Trig M Rule8
+512,Trig M Rule9
+513,Trig M Rule10
+514,Trig M Rule11
+515,Blanks
+516,Negatives
+517,Positives
+518,Neg Rank
+519,Pos Rank
+520,Trig Rule
+521,HE Entry
+522,HE Cont
+523,SS Entry
+524,SS Cont
+525,Trig
+526,Blanks
+527,Negatives
+528,Positives
+529,Neg Rank
+530,Pos Rank
+531,Entry
+532,HE Cont
+533,SS Cont
+534,Trig
+535,Blanks
+536,Negatives
+537,Positives
+538,Neg Rank
+539,Pos Rank
+540,Cont
+541,OverAll
+542,OverAll Group
+543,Action Type
+544,^L1
+545,^L2
+546,^L3
+547,#Actionable
+548,Index
+549,Neg Outlook
+550,Pos Outlook
+551,Fidelity
+552,CS
+553,Stocks$
+554,RH
+555,Long$
+556,Short$
+557,My
+558,Amt Type
+559,Unit$
+560,Min$
+561,Max$
+562,TnTdMax$
+563,Remaining
+564,Final Action
+565,Amount
+566,Amount
+567,Final Action
+568,Amount
+569,Amount
+570,PVV Rule
+571,#Tickers to include
+572,#Act
+573,#F1 Seq
+574,#Fidelity
+575,#CS
+576,^Sell
+577,^Buy
+578,OA Group
+579,^L3
+580,My
+581,Fidelity
+582,CS
+583,Remaining
+584,PVV Rule
+585,Tn Stdv
+586,Td Stdv
+587,Tn Td Stdv Diff
+588,HE Outlook
+589,Tr Td Outlook
+590,BRR%
+591,Sector Ticker
+592,HE OL - Sector
+593,Tn Td Rule
+594,BRR% - Sector
+595,Asset Class - M OL
+596,Equity Sector - M OL
+597,M+ves - Equity Style
+598,M-ves  - Equity Style
+599,Asset Class - Q OL
+600,Equity Sector - Q OL
+601,Q+ves - Equity Style
+602,Q-ves  - Equity Style
+603,ST_Signal Desc
+604,ST_Signal Action
+605,D_Vlt_Caution
+606,D_Vlt_RuleDesc
+607,Vlm_RuleDesc
+608,Vlm_RuleAction
+609,Vlm Desc
+610,Volatility regime
+611,Tn Td Rule Desc
+612,BBRngStrkRule Desc
+613,RRBullBear
+614,RRDesc
+615,Opposite Outlook
+616,Outlook
+617,Portfolio
+618,Ticker
+619,Td Tn BB Risk Range Rule Action
+620,Amount
+621,Final Action
+622,Amount
+623,HE Entry
+624,HE Cont
+625,SS Entry
+626,SS Cont
+627,Trig
+628,Entry
+629,Cont
+630,OverAll
+631,Matched Rule1
+632,M Rule2
+633,M Rule3
+634,M Rule4
+635,M Rule5
+636,M Rule6
+637,M Rule7
+638,M Rule8
+639,M Rule9
+640,M Rule10
+641,M Rule11
