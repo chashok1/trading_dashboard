@@ -304,6 +304,21 @@ def list_actionable_dates():
     return [r[0].isoformat() for r in rows]
 
 
+@router.get("/api/actionable/sources")
+def list_actionable_sources():
+    """source_code -> base_weight_method for active outlook sources. Lets the
+    Actionable screen pick the Metric-column sort direction per source (rank
+    sorts ascending, outlook weight descending, etc.)."""
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT source_code, base_weight_method
+            FROM ref_outlook_source
+            WHERE deprecated_at IS NULL
+            ORDER BY source_code
+        """)).fetchall()
+    return [{"source_code": r[0], "base_weight_method": r[1]} for r in rows]
+
+
 @router.get("/api/actionable")
 def get_actionable(
     date: Optional[str] = Query(None),

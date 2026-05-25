@@ -446,11 +446,13 @@
         <table class="act-grid" id="actGrid">
           <thead>
             <tr>
+              <th class="num sortable" data-key="_metric" data-type="num">Metric</th>
               <th class="sortable" data-key="symbol" data-type="str">Symbol</th>
-              <th class="num sortable" data-key="_amt" data-type="num">AMT$</th>
               <th class="sortable" data-key="consolidated_action" data-type="str">Action</th>
+              <th class="num sortable" data-key="_amt" data-type="num">AMT$</th>
               <th class="sortable" data-key="winning_source" data-type="str">Source</th>
               <th>Reason</th>
+              <th class="sortable" data-key="_snapshot" data-type="str">Snapshot</th>
               <th>Other Sources</th>
               <th class="sortable" data-key="sector" data-type="str">Sector</th>
               <th class="sortable" data-key="asset_class" data-type="str">Asset Class</th>
@@ -488,7 +490,7 @@
         <h3>Per-source actions</h3>
         <table class="modal-table" id="modalSources">
           <thead><tr>
-            <th>Source</th><th>Method</th><th class="num">Base wt</th>
+            <th>Source</th><th>Snapshot</th><th>Method</th><th class="num">Base wt</th>
             <th class="num">Prev wt</th><th class="num">Δ</th>
             <th>Analyst Rank</th>
             <th>Today</th><th>Was</th>

@@ -636,6 +636,15 @@ def _action_rank(curr, prev, held: bool) -> tuple[Optional[str], str]:
     return "ADD", f"on list at rank {curr}, not held"
 
 
+def _pct_str(x) -> str:
+    """Format a fraction as a signed percentage for reason text
+    (e.g. 0.053 -> '+5.3%'). pct_delta is stored as a fraction."""
+    try:
+        return f"{float(x) * 100:+g}%"
+    except (TypeError, ValueError):
+        return str(x)
+
+
 def _action_sss_pct_delta(curr_pct, prev_pct, held: bool,
                           present_now: bool, present_prev: bool
                           ) -> tuple[Optional[str], str]:
@@ -667,18 +676,18 @@ def _action_sss_pct_delta(curr_pct, prev_pct, held: bool,
     if cp is None:
         return None, "no pct_delta value"
     if cp < 0:
-        return "REMOVE", f"pct_delta {cp:+g} negative"
+        return "REMOVE", f"pct_delta {_pct_str(cp)} negative"
     try:
         pp = float(prev_pct) if prev_pct is not None else None
     except (TypeError, ValueError):
         pp = None
     if pp is None:
-        return "HOLD", f"pct_delta {cp:+g}, no prior to compare"
+        return "HOLD", f"pct_delta {_pct_str(cp)}, no prior to compare"
     if cp > pp:
-        return "INCREASE", f"pct_delta {pp:+g} -> {cp:+g} (rising)"
+        return "INCREASE", f"pct_delta {_pct_str(pp)} -> {_pct_str(cp)} (rising)"
     if cp < pp:
-        return "REDUCE", f"pct_delta {pp:+g} -> {cp:+g} (falling)"
-    return "HOLD", f"pct_delta steady at {cp:+g}"
+        return "REDUCE", f"pct_delta {_pct_str(pp)} -> {_pct_str(cp)} (falling)"
+    return "HOLD", f"pct_delta steady at {_pct_str(cp)}"
 
 
 def _call_window_states(session: Session, table: str, date_col: str,

@@ -111,8 +111,55 @@ still sees what the system would have recommended.
 
 ## Display (`web/actionable.js`)
 
-AMT$ always shows the delta: ADD / INCREASE = target − position,
-REMOVE / REDUCE = position − target, all clamped ≥ 0 (suppressed rows → 0).
+**AMT$** shows the delta for actionable rows: ADD / INCREASE = target −
+position, REMOVE / REDUCE = position − target, all clamped ≥ 0 (suppressed
+rows → 0). HOLD / no-action rows show the current held dollars, not a delta.
+
+**Metric column.** A generic, sortable column showing the *selected*
+source's decision metric — rank for PS, `pct_delta` for SSS, the outlook
+weight for RR / ETF / II / CALL. The value is read from the row's
+`source_actions[source]` entry and is blank when the Source filter is "All".
+`/api/actionable/sources` supplies each source's `base_weight_method` so the
+screen knows the metric's natural sort direction.
+
+**Snapshot column.** Shows the winning source's effective snapshot date —
+the date the underlying data record is for (`drv_outlook_action.as_of_date`,
+carried into `source_actions.snapshot_date` by `derive_actionable.py`). The
+per-source table and the comparison panel show the same date per source. All
+snapshot dates render as MM/DD (no year). Grid column order: Metric, Symbol,
+Action, AMT$, Source, Reason, Snapshot, Other Sources, then the sizing
+columns.
+
+**Per-source sort.** When a source is chosen in the Source filter:
+
+- *Way 1 (default):* sort by action severity (REMOVE → HOLD), then by the
+  Metric in its best-first direction — rank ascending (rank 1 tops each
+  action group); outlook weight / pct descending.
+- *Way 2:* clicking the Metric column header sorts purely by the Metric,
+  first click in the best-first direction (rank 1 at the very top for PS).
+
+Choosing a source clears any active column sort so Way 1 applies. The Source
+filter matches a row when the chosen source is its winning source **or**
+appears among its other sources; other-source pills are ordered by action
+severity.
+
+**Per-source inline comparison.** Each row of the drilldown's "Per-source
+actions" table expands on click to a current-vs-previous record comparison
+(`/api/actionable/comparison`). It is source-agnostic: every non-housekeeping
+column of the source table is introspected and shown for both records with a
+Δ column. A side whose `base_weight` / `prev_weight` is NULL (symbol not in
+that bundle) renders blank — no stale pre-drop record is resurrected. Only
+the classifier's decision-driving field(s) are highlighted — `pct_delta` for
+SSS, `rank` for PS, `outlook` (+ `outlook_modifier`) for the outlook
+sources — keyed off `base_weight_method`.
+
+**Percentages.** `pct_delta` (SSS) is stored as a fraction and shown as a
+percentage (× 100, `%` suffix) everywhere it surfaces — the Metric column,
+comparison panel, per-source table and hover popover format it client-side;
+the SSS action `reason` text (e.g. `pct_delta +5% -> +6.1% (rising)`) is
+percentage-formatted in `_action_sss_pct_delta` via `_pct_str`. The stored
+`hist_sss` value is never changed and the classifier keeps comparing the raw
+fraction.
 
 ## Re-derive
 

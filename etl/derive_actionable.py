@@ -195,7 +195,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         )
         SELECT doa.symbol, doa.source_code, doa.base_weight, doa.prev_weight, doa.prev_date,
                doa.weight_delta, doa.held_today, doa.action, doa.action_reason, doa.category,
-               doa.analyst_rank
+               doa.analyst_rank, doa.as_of_date
         FROM drv_outlook_action doa
         JOIN source_snapshot_dates ssd ON doa.source_code = ssd.source_code
         WHERE doa.as_of_date = ssd.effective_date
@@ -433,6 +433,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                 "weight_delta": float(a["weight_delta"]) if a["weight_delta"] is not None else None,
                 "reason":      a["action_reason"],
                 "analyst_rank": a.get("analyst_rank"),
+                "snapshot_date": a["as_of_date"].isoformat() if a["as_of_date"] else None,
             })
 
         stk = stks.get(sym, {})

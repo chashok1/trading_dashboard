@@ -19,6 +19,7 @@ const state = {
     standing: false,        // standing-verdict view (RR/ETF/II), not last-file changes
   },
   current: null,
+  sourceMethods: {},   // source_code -> base_weight_method (Metric-column sort)
 };
 
 const $ = (id) => document.getElementById(id);
@@ -46,6 +47,12 @@ function fmtDate(d) {
   if (!d) return '—';
   return d.toString().slice(0, 10);
 }
+// Short MM/DD date for snapshot columns (no year). '' for empty.
+function fmtMD(d) {
+  if (!d) return '';
+  const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? (m[2] + '/' + m[3]) : String(d);
+}
 function showStatus(msg, kind = 'info', timeout = 4000) {
   const el = $('statusBar');
   el.className = 'status-bar ' + kind;
@@ -70,6 +77,44 @@ async function loadDates() {
   state.date = dates[0] || null;
   if (state.date) sel.value = state.date;
   await loadActionable();
+}
+
+// ---- source metadata (base_weight_method per source, for Metric sort) ----
+async function loadSources() {
+  try {
+    const rows = await fetchJson('/api/actionable/sources');
+    state.sourceMethods = {};
+    for (const r of rows) state.sourceMethods[r.source_code] = r.base_weight_method;
+  } catch (_) { state.sourceMethods = {}; }
+}
+
+// Best-first Metric direction: rank ascending (rank 1 best), else descending.
+function _metricAscending(src) {
+  return (state.sourceMethods || {})[src] === 'rank';
+}
+
+// The selected source's driver metric for a row (rank for PS, weight for
+// outlook sources) - read from that source's source_actions entry.
+function _rowMetric(row, src) {
+  if (!src) return null;
+  const e = _sourcesOf(row).find(s => (s.source || s.source_code || '') === src);
+  if (!e || e.weight == null) return null;
+  const n = Number(e.weight);
+  return isFinite(n) ? n : null;
+}
+
+// SSS-style metrics (base_weight_method = rank_pct_delta) are percentages.
+function _isPctSource(src) {
+  return (state.sourceMethods || {})[src] === 'rank_pct_delta';
+}
+
+// Format a fraction as a percentage for display. pct_delta is stored as a
+// fraction (e.g. 0.053) - scaled x100 here for display only; the stored
+// value is never changed.
+function fmtPct(v) {
+  if (v === null || v === undefined || v === '') return '';
+  const n = Number(v);
+  return isFinite(n) ? (formatNum(n * 100) + '%') : '';
 }
 
 // ---- core load ----
@@ -330,7 +375,7 @@ function _renderSourcePop(el, sym, src, feed, loading) {
   } else if (src === 'PS' && f) {
     feedKv.push(['Rank', formatNum(f.rank)]);
   } else if (src === 'SSS' && f) {
-    feedKv.push(['Pct Delta', formatNum(f.pct_delta)],
+    feedKv.push(['Pct Delta', fmtPct(f.pct_delta)],
                 ['Analyst Rank', (f.anlst_best_idea_rank == null ? '' : f.anlst_best_idea_rank)]);
   }
   let html = '<div class="sp-title">' + escapeHtml(src) + '</div><table>';
@@ -410,18 +455,21 @@ function sortRows() {
   const { key, dir, type } = state.sort;
   if (!key) {
     // No explicit column sort. When the grid is filtered to one source,
-    // default-sort by that source's normalized weight delta (biggest moves
-    // first) — works for winning or "other" sources, any source type.
+    // Way 1: default-sort by (action severity, then that source's Metric in
+    // its best-first direction).
     const src = state.filters.source;
     if (src) {
+      const asc = _metricAscending(src);
       state.rows.sort((a, b) => {
-        const da = _sourceWeightDelta(a, src);
-        const db = _sourceWeightDelta(b, src);
-        const aE = isNaN(da), bE = isNaN(db);
+        const ar = ACTION_RANK[(a.consolidated_action || '').toUpperCase()] ?? -1;
+        const br = ACTION_RANK[(b.consolidated_action || '').toUpperCase()] ?? -1;
+        if (ar !== br) return br - ar;
+        const am = a._metric, bm = b._metric;
+        const aE = am == null, bE = bm == null;
         if (aE && bE) return 0;
         if (aE) return 1;
         if (bE) return -1;
-        return Math.abs(db) - Math.abs(da);
+        return asc ? (am - bm) : (bm - am);
       });
     }
     return;
@@ -468,7 +516,7 @@ function initSorting() {
         state.sort.dir = -state.sort.dir;
       } else {
         state.sort.key = key;
-        state.sort.dir = 1;
+        state.sort.dir = (key === '_metric' && !_metricAscending(state.filters.source)) ? -1 : 1;
         state.sort.type = th.dataset.type || 'str';
       }
       updateSortIndicators();
@@ -478,6 +526,12 @@ function initSorting() {
 }
 
 function renderGrid() {
+  // Compute each row's Metric and winning-source Snapshot before sorting.
+  const _mSrc = state.filters.source;
+  for (const r of state.rows) {
+    r._metric = _rowMetric(r, _mSrc);
+    r._snapshot = _winningSnapshot(r);
+  }
   sortRows();
   const tb = $('actBody');
   tb.innerHTML = '';
@@ -499,11 +553,13 @@ function renderGrid() {
 
     const reasonText = _winningReason(r);
     tr.innerHTML = `
+      <td class="num">${r._metric == null ? '' : (_isPctSource(_mSrc) ? fmtPct(r._metric) : formatNum(r._metric))}</td>
       <td style="padding:6px 4px; max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${typeof yahooLink === 'function' ? yahooLink(r.symbol) : ''}<strong>${r.symbol || ''}</strong></td>
-      <td class="num"><strong>${fmtUsd(r._amt)}</strong></td>
       <td style="padding:6px 4px;"><span class="badge-action badge-action-${action}">${action === 'NONE' ? '&mdash;' : action}</span></td>
+      <td class="num"><strong>${fmtUsd(r._amt)}</strong></td>
       <td class="src-cell" data-srcpop data-sym="${escapeHtml(r.symbol)}" data-src="${escapeHtml(r.winning_source || '')}" style="padding:6px 4px;">${r.winning_source || ''}</td>
       <td style="padding:6px 4px; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(reasonText)}">${escapeHtml(reasonText)}</td>
+      <td>${fmtMD(r._snapshot)}</td>
       <td style="padding:6px 4px;">${_renderOtherSources(r)}</td>
       <td>${r.sector || ''}</td>
       <td>${escapeHtml(_assetClass(r))}</td>
@@ -545,6 +601,7 @@ function exportCsv() {
     ['AMT$',          r => r._amt],
     ['Action',        r => r.consolidated_action || ''],
     ['Source',        r => r.winning_source || ''],
+    ['Metric',        r => r._metric],
     ['Reason',        r => _winningReason(r)],
     ['Other Sources', r => otherSourcesText(r)],
     ['Sector',        r => r.sector || ''],
@@ -618,6 +675,12 @@ function _winningSourceEntry(row) {
   return sa.find(s => (s.source || s.source_code || '') === want) || sa[0];
 }
 
+// Snapshot date of the winning source's underlying record (ISO string).
+function _winningSnapshot(row) {
+  const e = _winningSourceEntry(row);
+  return (e && e.snapshot_date) ? e.snapshot_date : null;
+}
+
 // Reason text for the winning/consolidated action only. Returns '' when the
 // winner is a rule group (no per-source entry) so the grid never shows a
 // misleading reason borrowed from a non-winning source.
@@ -680,16 +743,19 @@ async function openDrilldown(row) {
       tr.dataset.cmpsrc = srcCode;
       tr.className = 'cmp-src-row';
       const sa = (s.action || '').toUpperCase();
+      const _wfmt = (v) => (v == null || v === '') ? ''
+                    : (_isPctSource(srcCode) ? fmtPct(v) : v);
       const todayOl = _weightToOutlook(s.weight ?? s.base_weight);
       const prevOl  = _weightToOutlook(s.prev_weight);
       const todayMod = todayOl.modifier ? ` <span class="ol-mod">${todayOl.modifier}</span>` : '';
       const prevMod  = prevOl.modifier  ? ` <span class="ol-mod">${prevOl.modifier}</span>`  : '';
       tr.innerHTML = `
         <td><span class="cmp-caret">&#9656;</span><strong>${escapeHtml(srcCode)}</strong></td>
+        <td>${fmtMD(s.snapshot_date)}</td>
         <td>${escapeHtml(s.base_weight_method || s.method || '')}</td>
-        <td class="num">${s.base_weight ?? s.weight ?? ''}</td>
-        <td class="num">${s.prev_weight ?? ''}</td>
-        <td class="num">${s.weight_delta ?? ''}</td>
+        <td class="num">${_wfmt(s.base_weight ?? s.weight)}</td>
+        <td class="num">${_wfmt(s.prev_weight)}</td>
+        <td class="num">${_wfmt(s.weight_delta)}</td>
         <td>${escapeHtml(s.analyst_rank ?? '')}</td>
         <td><span class="${todayOl.cls}" style="font-weight:600;">${todayOl.label}</span>${todayMod}</td>
         <td><span class="${prevOl.cls}">${prevOl.label}</span>${prevMod}</td>
@@ -701,7 +767,7 @@ async function openDrilldown(row) {
       srcTbody.appendChild(tr);
     }
   } else {
-    srcTbody.innerHTML = '<tr><td colspan="11" style="color:var(--text-2,#666); padding:8px;">No per-source actions recorded.</td></tr>';
+    srcTbody.innerHTML = '<tr><td colspan="12" style="color:var(--text-2,#666); padding:8px;">No per-source actions recorded.</td></tr>';
   }
 
   // Rules fires — pills are clickable; clicking one opens the atomic-rule popover
@@ -779,7 +845,7 @@ function toggleCmpRow(tr, srcCode) {
   const exp = document.createElement('tr');
   exp.className = 'cmp-expand-row';
   const td = document.createElement('td');
-  td.colSpan = 11;
+  td.colSpan = 12;
   td.innerHTML = _comparisonPanelHtml(srcCode);
   exp.appendChild(td);
   tr.after(exp);
@@ -801,13 +867,19 @@ function _comparisonPanelHtml(srcCode) {
   for (const k of Object.keys(cf)) keys.push(k);
   for (const k of Object.keys(pf)) if (!keys.includes(k)) keys.push(k);
 
-  const cell = (v) => (v === null || v === undefined || v === '') ? '' : escapeHtml(String(v));
-  let body = '';
+  const fmtV = (k, v) => (v === null || v === undefined || v === '')
+    ? '' : (k === 'pct_delta' ? fmtPct(v) : escapeHtml(String(v)));
+  let body =
+    '<tr><td class="cmp-field">snapshot_date</td>' +
+    '<td class="cmp-val">' + (cur.dropped ? '' : fmtMD(cur.snapshot_date)) + '</td>' +
+    '<td class="cmp-val">' + (prv.dropped ? '' : fmtMD(prv.snapshot_date)) + '</td>' +
+    '<td class="cmp-val"><span class="cmp-delta-none">&mdash;</span></td></tr>';
   if (!keys.length) {
-    body = '<tr><td colspan="4" class="cmp-empty">No record columns returned.</td></tr>';
+    body += '<tr><td colspan="4" class="cmp-empty">No record columns returned.</td></tr>';
   }
   for (const k of keys) {
     const cv = cf[k], pv = pf[k];
+    const isPct = (k === 'pct_delta');
     const changed = String(cv ?? '') !== String(pv ?? '');
     let delta = '<span class="cmp-delta-none">&mdash;</span>';
     if (changed) {
@@ -817,21 +889,21 @@ function _comparisonPanelHtml(srcCode) {
         const d = cn - pn;
         const cls = d > 0 ? 'cmp-delta-up' : 'cmp-delta-down';
         const arrow = d > 0 ? '&#9650;' : '&#9660;';
-        delta = '<span class="' + cls + '">' + arrow + ' ' +
-                formatNum(Math.abs(d)) + '</span>';
+        const mag = isPct ? fmtPct(Math.abs(d)) : formatNum(Math.abs(d));
+        delta = '<span class="' + cls + '">' + arrow + ' ' + mag + '</span>';
       } else {
         delta = '<span class="cmp-delta-changed">changed</span>';
       }
     }
     body += '<tr class="' + (drivers.has(k) ? 'cmp-changed' : '') + '">' +
             '<td class="cmp-field">' + escapeHtml(k) + '</td>' +
-            '<td class="cmp-val">' + cell(cv) + '</td>' +
-            '<td class="cmp-val">' + cell(pv) + '</td>' +
+            '<td class="cmp-val">' + fmtV(k, cv) + '</td>' +
+            '<td class="cmp-val">' + fmtV(k, pv) + '</td>' +
             '<td class="cmp-val">' + delta + '</td></tr>';
   }
   const sideLabel = (rec, kind) => (rec && rec.dropped)
     ? ('not in ' + kind + ' bundle')
-    : (escapeHtml((rec && rec.snapshot_date) || '?') +
+    : ((fmtMD(rec && rec.snapshot_date) || '?') +
        ((rec && rec.weight != null) ? (' &middot; wt ' + formatNum(rec.weight)) : ''));
   const act = c.action ? '<span class="badge-action badge-action-' +
               escapeHtml((c.action || '').toUpperCase()) + '">' +
@@ -1039,6 +1111,7 @@ async function dismissUserAction() {
 
 // ---- wire up ----
 document.addEventListener('DOMContentLoaded', async () => {
+  await loadSources();
   await loadDates();
   checkFreshness();
 
@@ -1055,6 +1128,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   $('sourceFilter').addEventListener('change', (e) => {
     state.filters.source = e.target.value;
+    state.sort = { key: null, dir: 1, type: 'str' };
+    updateSortIndicators();
     applyClientFilter();
   });
   $('heldOnly').addEventListener('change', (e) => {
