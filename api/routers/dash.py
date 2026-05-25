@@ -575,6 +575,14 @@ def get_actionable_comparison(
     HK_COLS = {"loaded_at", "source_file", "source_run_id", "computed_at",
                "symbol", "ticker", "sequence", "account", "account_number"}
     col_cache: dict = {}
+    # Per-method decision-driving field(s): the column(s) the classifier
+    # actually evaluates. Only these are highlighted as "what drove the
+    # action" - other columns change every snapshot but are informational.
+    DRIVER_FIELDS = {
+        "outlook_modifier": ["outlook", "outlook_modifier"],
+        "rank":             ["rank"],
+        "rank_pct_delta":   ["pct_delta"],
+    }
 
     def _jsonable(v):
         if v is None or isinstance(v, (bool, int, float, str)):
@@ -606,6 +614,7 @@ def get_actionable_comparison(
         rows = s.execute(text("""
             WITH eff AS (
                 SELECT ros.source_code AS sc, ros.source_table AS tbl,
+                       ros.base_weight_method AS bwm,
                        CASE WHEN ros.source_code IN ('ETF','II','SSS','PS','RR')
                             THEN (SELECT MAX(as_of_date)
                                   FROM drv_outlook_action o
@@ -614,7 +623,7 @@ def get_actionable_comparison(
                             ELSE :d END AS ed
                 FROM ref_outlook_source ros
             )
-            SELECT doa.source_code, eff.tbl, doa.as_of_date, doa.prev_date,
+            SELECT doa.source_code, eff.tbl, eff.bwm, doa.as_of_date, doa.prev_date,
                    doa.base_weight, doa.prev_weight, doa.action
             FROM drv_outlook_action doa
             JOIN eff ON eff.sc = doa.source_code AND doa.as_of_date = eff.ed
@@ -660,7 +669,7 @@ def get_actionable_comparison(
                 "dropped": False,
             }
 
-        for src, tbl, cur_d, prev_d, base_w, prev_w, action in rows:
+        for src, tbl, bwm, cur_d, prev_d, base_w, prev_w, action in rows:
             cur_dropped = base_w is None
             prev_dropped = prev_w is None
             cur = None if cur_dropped else _hist_rec(tbl, cur_d)
@@ -669,6 +678,7 @@ def get_actionable_comparison(
                 "source": src,
                 "action": action,
                 "table": tbl,
+                "driver_fields": DRIVER_FIELDS.get((bwm or "").strip(), []),
                 "current": _side(cur, base_w, cur_d, cur_dropped),
                 "previous": _side(prv, prev_w, prev_d, prev_dropped),
             })

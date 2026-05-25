@@ -795,6 +795,8 @@ function _comparisonPanelHtml(srcCode) {
   }
   const cur = c.current || {}, prv = c.previous || {};
   const cf = cur.fields || {}, pf = prv.fields || {};
+  // Only the classifier's decision-driving field(s) get highlighted.
+  const drivers = new Set(c.driver_fields || []);
   const keys = [];
   for (const k of Object.keys(cf)) keys.push(k);
   for (const k of Object.keys(pf)) if (!keys.includes(k)) keys.push(k);
@@ -821,7 +823,7 @@ function _comparisonPanelHtml(srcCode) {
         delta = '<span class="cmp-delta-changed">changed</span>';
       }
     }
-    body += '<tr class="' + (changed ? 'cmp-changed' : '') + '">' +
+    body += '<tr class="' + (drivers.has(k) ? 'cmp-changed' : '') + '">' +
             '<td class="cmp-field">' + escapeHtml(k) + '</td>' +
             '<td class="cmp-val">' + cell(cv) + '</td>' +
             '<td class="cmp-val">' + cell(pv) + '</td>' +
@@ -844,7 +846,7 @@ function _comparisonPanelHtml(srcCode) {
       '<thead><tr><th>Field</th><th>Current</th><th>Previous</th><th>&Delta;</th></tr></thead>' +
       '<tbody>' + body + '</tbody>' +
     '</table>' +
-    '<div class="cmp-empty">Highlighted rows changed between the two records &mdash; what drove the action.</div>' +
+    '<div class="cmp-empty">Highlighted = the field(s) that drive ' + escapeHtml(srcCode) + '&#39;s action. Other rows may differ but are informational.</div>' +
   '</div>';
 }
 
