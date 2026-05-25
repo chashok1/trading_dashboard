@@ -16,6 +16,7 @@ const state = {
     other_filter: false,
     show_no_action: false,  // when false, blank-action rows are hidden
     show_zero_amt: false,   // when false, rows with $0 AMT$ are hidden
+    standing: false,        // standing-verdict view (RR/ETF/II), not last-file changes
   },
   current: null,
 };
@@ -76,10 +77,13 @@ async function loadActionable() {
   if (!state.date) return;
   // Always fetch all rows — action/category filters applied client-side so chip counts stay accurate
   const params = new URLSearchParams({ date: state.date });
-  if (state.filters.show_acted) params.append('show_acted', 'true');
-  if (state.filters.show_suppressed) params.append('show_suppressed', 'true');
+  const endpoint = state.filters.standing ? '/api/actionable/standing' : '/api/actionable';
+  if (!state.filters.standing) {
+    if (state.filters.show_acted) params.append('show_acted', 'true');
+    if (state.filters.show_suppressed) params.append('show_suppressed', 'true');
+  }
   try {
-    const rows = await fetchJson('/api/actionable?' + params.toString());
+    const rows = await fetchJson(endpoint + '?' + params.toString());
     state.allRows = Array.isArray(rows) ? rows : [];
     state.allRows.forEach(r => {
       const act = (r.consolidated_action || '').toUpperCase();
@@ -114,7 +118,7 @@ async function loadActionable() {
 // counts can reflect every other active filter.
 function matchesBaseFilters(r) {
   if (!state.filters.show_no_action && !r.consolidated_action) return false;
-  if (!state.filters.show_zero_amt && !r._amt) return false;
+  if (!state.filters.standing && !state.filters.show_zero_amt && !r._amt) return false;
   if (state.filters.source) {
     if (r.winning_source !== state.filters.source) return false;
   }
@@ -451,6 +455,7 @@ function renderGrid() {
       <td style="padding:6px 4px; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(reasonText)}">${escapeHtml(reasonText)}</td>
       <td style="padding:6px 4px;">${_renderOtherSources(r)}</td>
       <td>${r.sector || ''}</td>
+      <td>${escapeHtml(_assetClass(r))}</td>
       <td class="num">${fmtUsd(r.current_position_dollar)}</td>
       <td class="num">${fmtUsd(r.target_min_dollar)}</td>
       <td class="num">${fmtUsd(r.target_max_dollar)}</td>
@@ -492,6 +497,7 @@ function exportCsv() {
     ['Reason',        r => _winningReason(r)],
     ['Other Sources', r => otherSourcesText(r)],
     ['Sector',        r => r.sector || ''],
+    ['Asset Class',   r => _assetClass(r)],
     ['Pos $',         r => r.current_position_dollar],
     ['Min',           r => r.target_min_dollar],
     ['Max',           r => r.target_max_dollar],
@@ -575,6 +581,16 @@ function _winningReason(row) {
   return hit ? (hit.reason || hit.action_reason || '') : '';
 }
 
+// Asset class for the grid/CSV. drv_stks.asset_class is only populated for
+// TL-master stocks; ETF-feed / PS symbols (e.g. EQRR) carry the same value in
+// position_category. Fall back to it only for those sources.
+function _assetClass(r) {
+  if (r.asset_class) return r.asset_class;
+  const ws = (r.winning_source || '').toUpperCase();
+  if (ws === 'ETF' || ws === 'ETFCHG' || ws === 'PS') return r.position_category || '';
+  return '';
+}
+
 // ---- drilldown ----
 async function openDrilldown(row) {
   state.current = row;
@@ -608,6 +624,7 @@ async function openDrilldown(row) {
   if (Array.isArray(sourceList) && sourceList.length) {
     for (const s of sourceList) {
       const tr = document.createElement('tr');
+      tr.dataset.cmpsrc = s.source_code || s.source || '';
       const sa = (s.action || '').toUpperCase();
       const todayOl = _weightToOutlook(s.weight ?? s.base_weight);
       const prevOl  = _weightToOutlook(s.prev_weight);
@@ -625,11 +642,13 @@ async function openDrilldown(row) {
         <td>${s.held_today ? 'Y' : 'N'}</td>
         <td>${sa ? `<span class="badge-action badge-action-${sa}">${sa}</span>` : ''}</td>
         <td style="font-size:10px;">${escapeHtml(s.action_reason || s.reason || '')}</td>
+        <td class="cmp-curr" style="font-size:10px;"></td>
+        <td class="cmp-prev" style="font-size:10px;"></td>
       `;
       srcTbody.appendChild(tr);
     }
   } else {
-    srcTbody.innerHTML = '<tr><td colspan="11" style="color:var(--text-2,#666); padding:8px;">No per-source actions recorded.</td></tr>';
+    srcTbody.innerHTML = '<tr><td colspan="13" style="color:var(--text-2,#666); padding:8px;">No per-source actions recorded.</td></tr>';
   }
 
   // Rules fires — pills are clickable; clicking one opens the atomic-rule popover
@@ -666,40 +685,37 @@ async function openDrilldown(row) {
   $('userNotes').value = '';
   $('actionStatus').textContent = '';
 
-  await loadProvenance(row.symbol, row.as_of_date);
+  await loadComparison(row.symbol, row.as_of_date);
   await loadHistory(row.symbol);
 
   $('modalBackdrop').classList.add('open');
 }
 
-// ---- source-data provenance (modal "Source data" section) ----
-async function loadProvenance(symbol, asOf) {
-  const tb = $('modalProvenance').querySelector('tbody');
-  const empty = $('modalProvenanceEmpty');
-  tb.innerHTML = '';
+// ---- comparison: fill the per-source table's Curr/Prev record cells ----
+// The two source records each rule compared (current snapshot vs the prior
+// one), shown inline in the Per-source actions table.
+async function loadComparison(symbol, asOf) {
   let rows = [];
   try {
-    rows = await fetchJson('/api/actionable/provenance?symbol=' +
+    rows = await fetchJson('/api/actionable/comparison?symbol=' +
       encodeURIComponent(symbol) + '&date=' + encodeURIComponent(asOf || ''));
   } catch (_) { rows = []; }
-  if (!Array.isArray(rows) || !rows.length) {
-    empty.style.display = 'block';
-    return;
-  }
-  empty.style.display = 'none';
+  if (!Array.isArray(rows)) return;
+  const fmtRec = (rec) => {
+    if (!rec) return '';
+    const f = rec.fields || {};
+    const parts = Object.keys(f).map(k => k + '=' + (f[k] == null ? '' : f[k]));
+    const wt = (rec.weight == null) ? '' : ('wt ' + rec.weight);
+    return [rec.snapshot_date || '', parts.join(', '), wt].filter(Boolean).join(' · ');
+  };
   for (const r of rows) {
-    const tr = document.createElement('tr');
-    const act = (r.action || '').toUpperCase();
-    const loaded = String(r.loaded_at || '').replace('T', ' ').slice(0, 16);
-    tr.innerHTML = `
-      <td><strong>${escapeHtml(r.source || '')}</strong></td>
-      <td>${act ? `<span class="badge-action badge-action-${act}">${act}</span>` : ''}</td>
-      <td>${escapeHtml(r.table || '')}</td>
-      <td>${escapeHtml(r.snapshot_date || '')}</td>
-      <td style="font-size:10px; word-break:break-all;">${escapeHtml(r.source_file || '')}</td>
-      <td style="font-size:10px;">${escapeHtml(loaded)}</td>
-    `;
-    tb.appendChild(tr);
+    const tr = document.querySelector(
+      '#modalSources tbody tr[data-cmpsrc="' + (r.source || '') + '"]');
+    if (!tr) continue;
+    const cur = tr.querySelector('.cmp-curr');
+    const prv = tr.querySelector('.cmp-prev');
+    if (cur) cur.textContent = fmtRec(r.current);
+    if (prv) prv.textContent = fmtRec(r.previous);
   }
 }
 
@@ -938,8 +954,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.filters.show_suppressed = e.target.checked;
     loadActionable();
   });
+  $('standingView').addEventListener('change', (e) => {
+    state.filters.standing = e.target.checked;
+    loadActionable();
+  });
 
-  $('modalClose').addEventListener('click', () => $('modalBackdrop').classList.remove('open'));
+$('modalClose').addEventListener('click', () => $('modalBackdrop').classList.remove('open'));
   $('modalBackdrop').addEventListener('click', (e) => {
     if (e.target === $('modalBackdrop')) $('modalBackdrop').classList.remove('open');
   });
