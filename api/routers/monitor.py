@@ -36,6 +36,18 @@ def _last_n_occurrences(week_day: str, n: int = 5) -> list[date]:
     """Return the last N dates on which this week_day pattern was expected (excluding today)."""
     DOW_MAP = {'SUN': 6, 'MON': 0, 'TUE': 1, 'WED': 2, 'THU': 3, 'FRI': 4, 'SAT': 5}
     today = date.today()
+    if week_day == 'MTH':
+        # Monthly cadence: the first of each of the last N months before today.
+        results = []
+        y, m = today.year, today.month
+        while len(results) < n:
+            mf = date(y, m, 1)
+            if mf < today:
+                results.append(mf)
+            m -= 1
+            if m == 0:
+                m, y = 12, y - 1
+        return results
     results, check = [], today - timedelta(days=1)
     while len(results) < n:
         wd = check.weekday()  # 0=Mon … 6=Sun
@@ -219,6 +231,8 @@ def get_schedule():
                         -- ALL day: always today
                         WHEN r.week_day = 'ALL'
                              THEN CURRENT_DATE
+                        WHEN r.week_day = 'MTH'
+                             THEN date_trunc('month', CURRENT_DATE)::date
                         ELSE NULL
                     END AS window_date
                 FROM ref_load_files r
@@ -393,6 +407,10 @@ def get_schedule():
 
         def was_received(file_type: str, week_day: str, expected: date) -> bool:
             dates = processed_by_type.get(file_type, set())
+            if week_day == 'MTH':
+                # Monthly: received if any file landed in the expected month.
+                return any(d.year == expected.year and d.month == expected.month
+                           for d in dates)
             if week_day in ('WKDAY', 'ALL'):
                 # Daily — exact date only
                 return expected in dates

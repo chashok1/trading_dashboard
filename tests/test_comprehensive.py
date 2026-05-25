@@ -667,7 +667,7 @@ JS_FILES = [
     "web/app.js", "web/portfolio.js", "web/trace.js", "web/trig.js",
     "web/rules.js", "web/composite_edit.js", "web/actionable.js",
     "web/explore.js", "web/cockpit.js", "web/ref.js", "web/dbstats.js",
-    "web/_common.js", "web/health_banner.js", "web/file_monitor.js",
+    "web/_common.js", "web/rebuild_modal.js", "web/file_monitor.js",
 ]
 
 

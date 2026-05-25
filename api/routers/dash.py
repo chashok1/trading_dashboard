@@ -438,63 +438,6 @@ def get_actionable_source_data(
     return out
 
 
-@router.get("/api/actionable/provenance")
-def get_actionable_provenance(
-    symbol: str = Query(...),
-    date: Optional[str] = Query(None),
-):
-    """Per-source data provenance for the Actionable drilldown modal.
-    For each source that emitted an action for the symbol, returns the hist_*
-    table the row came from, the effective snapshot date the signal used, and
-    the source file + load timestamp of the underlying raw row."""
-    d = _resolve_date(date)
-    sym = symbol.strip().upper()
-    out: list = []
-    with session_scope() as s:
-        rows = s.execute(text("""
-            WITH eff AS (
-                SELECT ros.source_code AS sc, ros.source_table AS tbl,
-                       CASE WHEN ros.source_code IN ('ETF','II','SSS','PS')
-                            THEN (SELECT MAX(as_of_date)
-                                  FROM drv_outlook_action o
-                                  WHERE o.source_code = ros.source_code
-                                    AND o.as_of_date <= :d)
-                            ELSE :d END AS ed
-                FROM ref_outlook_source ros
-            )
-            SELECT doa.source_code, eff.tbl, doa.as_of_date, doa.action
-            FROM drv_outlook_action doa
-            JOIN eff ON eff.sc = doa.source_code
-                    AND doa.as_of_date = eff.ed
-            WHERE doa.symbol = :sym
-            ORDER BY doa.source_code
-        """), {"sym": sym, "d": d}).all()
-        for src_code, tbl, snap, action in rows:
-            rec = {
-                "source": src_code,
-                "table": tbl,
-                "snapshot_date": snap.isoformat() if snap else None,
-                "action": action,
-                "source_file": None,
-                "loaded_at": None,
-            }
-            if tbl:
-                key_col = "ticker" if tbl == "hist_ps" else "symbol"
-                try:
-                    hr = s.execute(text(f"""
-                        SELECT source_file, loaded_at FROM {tbl}
-                        WHERE {key_col} = :sym AND snapshot_date <= :sd
-                        ORDER BY snapshot_date DESC LIMIT 1
-                    """), {"sym": sym, "sd": snap}).first()
-                    if hr:
-                        rec["source_file"] = hr[0]
-                        rec["loaded_at"] = hr[1].isoformat() if hr[1] else None
-                except Exception:
-                    pass
-            out.append(rec)
-    return out
-
-
 @router.get("/api/actionable/freshness")
 def get_actionable_freshness(date: Optional[str] = Query(None)):
     """Report whether drv_actionable for a date is stale — i.e. newer
@@ -508,6 +451,228 @@ def get_actionable_freshness(date: Optional[str] = Query(None)):
         "stale": d in stale_dates,
         "stale_count": len(stale_dates),
     }
+
+
+@router.get("/api/actionable/standing")
+def get_actionable_standing(date: Optional[str] = Query(None)):
+    """Standing-verdict view for RR / ETF / II - a current-state ADD/HOLD/
+    REMOVE for every symbol in those sources' universes, fully sized via
+    ref_asset_allocation. Rows are shaped like /api/actionable rows so the
+    same grid renders them. Computed on demand."""
+    d = _resolve_date(date)
+    with session_scope() as s:
+        from etl.derive_outlook_action import compute_standing_verdicts
+        from etl.derive_actionable import _load_holdings_with_dollars
+        verdicts = compute_standing_verdicts(s, d)
+        asset_alloc = {}
+        for r in s.execute(text("""
+            SELECT category, min_dollar, max_dollar, units, maintain_min_position
+            FROM ref_asset_allocation
+        """)).fetchall():
+            asset_alloc[str(r[0] or "").strip().upper()] = {
+                "min":   float(r[1]) if r[1] is not None else None,
+                "max":   float(r[2]) if r[2] is not None else None,
+                "units": float(r[3]) if r[3] is not None else None,
+            }
+        src_cat = {}
+        for r in s.execute(text(
+            "SELECT source_code, position_category FROM ref_outlook_source"
+        )).fetchall():
+            src_cat[r[0]] = r[1]
+        etf_ac = {}
+        for r in s.execute(text("""
+            SELECT DISTINCT ON (symbol) symbol, asset_class
+            FROM hist_etf
+            WHERE asset_class IS NOT NULL AND asset_class <> ''
+              AND snapshot_date <= :d
+            ORDER BY symbol, snapshot_date DESC
+        """), {"d": d}).fetchall():
+            etf_ac[r[0]] = r[1]
+        meta = {}
+        for r in s.execute(text(
+            "SELECT symbol, description, sector, asset_class FROM drv_stks "
+            "WHERE as_of_date = :d"
+        ), {"d": d}).mappings():
+            meta[r["symbol"]] = dict(r)
+        holds = _load_holdings_with_dollars(s, d)
+
+    def _alloc(cat):
+        return asset_alloc.get(str(cat or "").strip().upper(), {}) if cat else {}
+
+    out = []
+    for v in verdicts:
+        sym, src, act = v["symbol"], v["source"], v["action"]
+        held_dollar = float(holds.get(sym, 0.0) or 0.0)
+        held = bool(v["held"])
+        category = None
+        if src == "ETF":
+            ac = etf_ac.get(sym)
+            if ac and str(ac).strip().upper() in asset_alloc:
+                category = ac
+        if category is None:
+            category = src_cat.get(src)
+        p = _alloc(category)
+        tmin, tmax, units = p.get("min"), p.get("max"), p.get("units")
+        suppressed = None
+        suggested = held_dollar
+        if act == "REMOVE":
+            suggested = 0.0
+            if not held:
+                suppressed = "NOT HELD - nothing to remove"
+        elif act == "ADD":
+            if held and tmin is not None and held_dollar >= tmin:
+                suppressed = "ALREADY ESTABLISHED - held at/above floor"
+                suggested = held_dollar
+            else:
+                suggested = tmin
+        m = meta.get(sym, {})
+        out.append({
+            "as_of_date": d.isoformat(),
+            "symbol": sym,
+            "description": m.get("description"),
+            "sector": m.get("sector"),
+            "asset_class": m.get("asset_class"),
+            "consolidated_action": act,
+            "winning_source": src,
+            "winning_priority": None,
+            "position_category": category,
+            "target_min_dollar": tmin,
+            "target_max_dollar": tmax,
+            "units_dollar": units,
+            "suggested_target_dollar": suggested,
+            "held_today": held,
+            "current_position_dollar": held_dollar,
+            "in_my_list": False,
+            "source_actions": [{
+                "source": src,
+                "action": act,
+                "weight": v["weight"],
+                "reason": f"{src} standing verdict",
+            }],
+            "rules_engine_fires": None,
+            "suppressed_reason": suppressed,
+        })
+    return out
+
+
+@router.get("/api/actionable/comparison")
+def get_actionable_comparison(
+    symbol: str = Query(...),
+    date: Optional[str] = Query(None),
+):
+    """The two source records a rule compared to produce each action: the
+    current snapshot record and the previous one it was measured against
+    (e.g. this week's PS record vs. last week's). Drives the drilldown
+    modal's per-source inline comparison.
+
+    Source-agnostic: the columns returned are introspected from each source
+    table via information_schema, so a new source added to ref_outlook_source
+    is compared in full with no code change. Housekeeping columns (audit
+    trail, keys) are excluded; every remaining column is returned for both
+    the current and previous record."""
+    d = _resolve_date(date)
+    sym = symbol.strip().upper()
+    HK_COLS = {"loaded_at", "source_file", "source_run_id", "computed_at",
+               "symbol", "ticker", "sequence", "account", "account_number"}
+    col_cache: dict = {}
+
+    def _jsonable(v):
+        if v is None or isinstance(v, (bool, int, float, str)):
+            return v
+        if hasattr(v, "isoformat"):
+            return v.isoformat()
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return str(v)
+
+    out = []
+    with session_scope() as s:
+
+        def _value_columns(tbl, dcol):
+            """Non-housekeeping value columns of tbl, in definition order."""
+            cols = col_cache.get(tbl)
+            if cols is None:
+                meta = s.execute(text("""
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_name = :t AND table_schema = 'public'
+                    ORDER BY ordinal_position
+                """), {"t": tbl}).fetchall()
+                cols = [r[0] for r in meta
+                        if r[0] not in HK_COLS and r[0] != dcol]
+                col_cache[tbl] = cols
+            return cols
+
+        rows = s.execute(text("""
+            WITH eff AS (
+                SELECT ros.source_code AS sc, ros.source_table AS tbl,
+                       CASE WHEN ros.source_code IN ('ETF','II','SSS','PS','RR')
+                            THEN (SELECT MAX(as_of_date)
+                                  FROM drv_outlook_action o
+                                  WHERE o.source_code = ros.source_code
+                                    AND o.as_of_date <= :d)
+                            ELSE :d END AS ed
+                FROM ref_outlook_source ros
+            )
+            SELECT doa.source_code, eff.tbl, doa.as_of_date, doa.prev_date,
+                   doa.base_weight, doa.prev_weight, doa.action
+            FROM drv_outlook_action doa
+            JOIN eff ON eff.sc = doa.source_code AND doa.as_of_date = eff.ed
+            WHERE doa.symbol = :sym
+            ORDER BY doa.source_code
+        """), {"sym": sym, "d": d}).all()
+
+        def _hist_rec(tbl, snap):
+            if tbl is None or snap is None:
+                return None
+            key = "ticker" if tbl == "hist_ps" else "symbol"
+            dcol = "event_date" if tbl in ("hist_etfchg", "hist_iichg") else "snapshot_date"
+            cols = _value_columns(tbl, dcol)
+            sel = ", ".join(cols + [dcol]) if cols else dcol
+            try:
+                r = s.execute(text(
+                    f"SELECT {sel} FROM {tbl} "
+                    f"WHERE {key} = :sym AND {dcol} <= :snap "
+                    f"ORDER BY {dcol} DESC LIMIT 1"
+                ), {"sym": sym, "snap": snap}).first()
+            except Exception:
+                return None
+            if r is None:
+                return None
+            fields = {c: _jsonable(r[i]) for i, c in enumerate(cols)}
+            actual = r[len(cols)]
+            return {"date": actual.isoformat() if actual else None,
+                    "fields": fields}
+
+        def _side(rec, weight, snap_d, dropped):
+            # `dropped` = the symbol had no effective state for this source at
+            # this end of the comparison (base_weight / prev_weight is NULL in
+            # drv_outlook_action - e.g. dropped from the current bundle). Show
+            # it blank rather than reaching back to a stale pre-drop record.
+            if dropped:
+                return {"snapshot_date": None, "weight": None,
+                        "fields": {}, "dropped": True}
+            return {
+                "snapshot_date": (rec["date"] if rec
+                                  else (snap_d.isoformat() if snap_d else None)),
+                "weight": float(weight) if weight is not None else None,
+                "fields": rec["fields"] if rec else {},
+                "dropped": False,
+            }
+
+        for src, tbl, cur_d, prev_d, base_w, prev_w, action in rows:
+            cur_dropped = base_w is None
+            prev_dropped = prev_w is None
+            cur = None if cur_dropped else _hist_rec(tbl, cur_d)
+            prv = None if prev_dropped else _hist_rec(tbl, prev_d)
+            out.append({
+                "source": src,
+                "action": action,
+                "table": tbl,
+                "current": _side(cur, base_w, cur_d, cur_dropped),
+                "previous": _side(prv, prev_w, prev_d, prev_dropped),
+            })
+    return out
 
 
 @router.post("/api/actionable/{symbol}/action", response_model=dict)

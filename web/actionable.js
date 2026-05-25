@@ -120,7 +120,7 @@ function matchesBaseFilters(r) {
   if (!state.filters.show_no_action && !r.consolidated_action) return false;
   if (!state.filters.standing && !state.filters.show_zero_amt && !r._amt) return false;
   if (state.filters.source) {
-    if (r.winning_source !== state.filters.source) return false;
+    if (!_rowHasSource(r, state.filters.source)) return false;
   }
   if (state.filters.held_only) {
     if (!r.held_today) return false;
@@ -218,6 +218,10 @@ function renderSourceFilter() {
   const have = new Set();
   for (const r of state.allRows) {
     if (r.winning_source) have.add(r.winning_source);
+    for (const s of _sourcesOf(r)) {
+      const c = s.source || s.source_code || '';
+      if (c) have.add(c);
+    }
   }
   // preserve current selection if still present
   const cur = state.filters.source;
@@ -243,6 +247,11 @@ function _renderOtherSources(r) {
   const others = sources.filter(s => (s.source || s.source_code || '') !== winning);
   
   if (others.length === 0) return '';
+
+  // Strongest action first — same severity order as the consolidation sort.
+  others.sort((a, b) =>
+    (ACTION_RANK[(b.action || '').toUpperCase()] || 0) -
+    (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
   
   const colors = {
     'REMOVE': '#d83a3a',
@@ -271,6 +280,31 @@ function _saFor(row, src) {
   if (typeof sa === 'string') { try { sa = JSON.parse(sa); } catch (_) { sa = []; } }
   if (!Array.isArray(sa)) return null;
   return sa.find(s => (s.source || s.source_code || '') === src) || null;
+}
+
+// Action severity rank — REMOVE strongest. Mirrors the consolidation sort.
+const ACTION_RANK = { REMOVE: 4, REDUCE: 3, INCREASE: 2, ADD: 1, HOLD: 0 };
+
+// Parsed source_actions array for a row (winning + every "other" source).
+function _sourcesOf(row) {
+  let sa = row && row.source_actions;
+  if (typeof sa === 'string') { try { sa = JSON.parse(sa); } catch (_) { sa = []; } }
+  return Array.isArray(sa) ? sa : [];
+}
+
+// True if `src` drove this row OR appears among its other sources.
+function _rowHasSource(row, src) {
+  if (!src) return true;
+  if ((row.winning_source || '') === src) return true;
+  return _sourcesOf(row).some(s => (s.source || s.source_code || '') === src);
+}
+
+// Normalized weight delta for `src` on this row — per-source default sort key.
+function _sourceWeightDelta(row, src) {
+  const e = _sourcesOf(row).find(s => (s.source || s.source_code || '') === src);
+  if (!e || e.weight_delta == null) return NaN;
+  const n = Number(e.weight_delta);
+  return isFinite(n) ? n : NaN;
 }
 
 function _renderSourcePop(el, sym, src, feed, loading) {
@@ -374,7 +408,24 @@ function initSourcePopover() {
 // ---- column sorting ----
 function sortRows() {
   const { key, dir, type } = state.sort;
-  if (!key) return;
+  if (!key) {
+    // No explicit column sort. When the grid is filtered to one source,
+    // default-sort by that source's normalized weight delta (biggest moves
+    // first) — works for winning or "other" sources, any source type.
+    const src = state.filters.source;
+    if (src) {
+      state.rows.sort((a, b) => {
+        const da = _sourceWeightDelta(a, src);
+        const db = _sourceWeightDelta(b, src);
+        const aE = isNaN(da), bE = isNaN(db);
+        if (aE && bE) return 0;
+        if (aE) return 1;
+        if (bE) return -1;
+        return Math.abs(db) - Math.abs(da);
+      });
+    }
+    return;
+  }
   const num = type === 'num';
   state.rows.sort((a, b) => {
     let va = a[key], vb = b[key];
@@ -603,7 +654,7 @@ async function openDrilldown(row) {
   kv.innerHTML = `
     <dt>Action</dt><dd><span class="badge-action badge-action-${action}">${action === 'NONE' ? '&mdash;' : action}</span></dd>
     <dt>Winning source</dt><dd>${row.winning_source || '—'} (priority ${row.winning_priority ?? '—'})</dd>
-    <dt>Asset class</dt><dd>${row.asset_class || '—'}</dd>
+    <dt>Asset class</dt><dd>${_assetClass(row) || '—'}</dd>
     <dt>Held today</dt><dd>${row.held_today ? 'Yes' : 'No'}</dd>
     <dt>Position $</dt><dd>${fmtUsd(row.current_position_dollar) || '—'}</dd>
     <dt>Target min / max</dt><dd>${fmtUsd(row.target_min_dollar)} / ${fmtUsd(row.target_max_dollar)}</dd>
@@ -614,7 +665,8 @@ async function openDrilldown(row) {
     <dt>Suppressed</dt><dd>${row.suppressed_reason || '—'}</dd>
   `;
 
-  // Per-source actions table
+  // Per-source actions table — each row expands inline to a full
+  // current-vs-previous record comparison (toggleCmpRow / loadComparison).
   const srcTbody = $('modalSources').querySelector('tbody');
   srcTbody.innerHTML = '';
   let sourceList = row.source_actions;
@@ -623,16 +675,18 @@ async function openDrilldown(row) {
   }
   if (Array.isArray(sourceList) && sourceList.length) {
     for (const s of sourceList) {
+      const srcCode = s.source_code || s.source || '';
       const tr = document.createElement('tr');
-      tr.dataset.cmpsrc = s.source_code || s.source || '';
+      tr.dataset.cmpsrc = srcCode;
+      tr.className = 'cmp-src-row';
       const sa = (s.action || '').toUpperCase();
       const todayOl = _weightToOutlook(s.weight ?? s.base_weight);
       const prevOl  = _weightToOutlook(s.prev_weight);
       const todayMod = todayOl.modifier ? ` <span class="ol-mod">${todayOl.modifier}</span>` : '';
       const prevMod  = prevOl.modifier  ? ` <span class="ol-mod">${prevOl.modifier}</span>`  : '';
       tr.innerHTML = `
-        <td><strong>${s.source_code || s.source || ''}</strong></td>
-        <td>${s.base_weight_method || s.method || ''}</td>
+        <td><span class="cmp-caret">&#9656;</span><strong>${escapeHtml(srcCode)}</strong></td>
+        <td>${escapeHtml(s.base_weight_method || s.method || '')}</td>
         <td class="num">${s.base_weight ?? s.weight ?? ''}</td>
         <td class="num">${s.prev_weight ?? ''}</td>
         <td class="num">${s.weight_delta ?? ''}</td>
@@ -642,13 +696,12 @@ async function openDrilldown(row) {
         <td>${s.held_today ? 'Y' : 'N'}</td>
         <td>${sa ? `<span class="badge-action badge-action-${sa}">${sa}</span>` : ''}</td>
         <td style="font-size:10px;">${escapeHtml(s.action_reason || s.reason || '')}</td>
-        <td class="cmp-curr" style="font-size:10px;"></td>
-        <td class="cmp-prev" style="font-size:10px;"></td>
       `;
+      tr.addEventListener('click', () => toggleCmpRow(tr, srcCode));
       srcTbody.appendChild(tr);
     }
   } else {
-    srcTbody.innerHTML = '<tr><td colspan="13" style="color:var(--text-2,#666); padding:8px;">No per-source actions recorded.</td></tr>';
+    srcTbody.innerHTML = '<tr><td colspan="11" style="color:var(--text-2,#666); padding:8px;">No per-source actions recorded.</td></tr>';
   }
 
   // Rules fires — pills are clickable; clicking one opens the atomic-rule popover
@@ -691,32 +744,108 @@ async function openDrilldown(row) {
   $('modalBackdrop').classList.add('open');
 }
 
-// ---- comparison: fill the per-source table's Curr/Prev record cells ----
-// The two source records each rule compared (current snapshot vs the prior
-// one), shown inline in the Per-source actions table.
+// ---- inline current-vs-previous record comparison ----
+// loadComparison fetches the two source records each rule compared (current
+// snapshot vs the prior one) and caches them by source code. Clicking a row in
+// the Per-source actions table expands an inline panel showing every column of
+// both records side by side. Source-agnostic: whatever columns the API returns
+// are rendered, so a new source needs no client change.
+const _cmpData = new Map();   // source code -> comparison row from the API
+
 async function loadComparison(symbol, asOf) {
+  _cmpData.clear();
   let rows = [];
   try {
     rows = await fetchJson('/api/actionable/comparison?symbol=' +
       encodeURIComponent(symbol) + '&date=' + encodeURIComponent(asOf || ''));
   } catch (_) { rows = []; }
-  if (!Array.isArray(rows)) return;
-  const fmtRec = (rec) => {
-    if (!rec) return '';
-    const f = rec.fields || {};
-    const parts = Object.keys(f).map(k => k + '=' + (f[k] == null ? '' : f[k]));
-    const wt = (rec.weight == null) ? '' : ('wt ' + rec.weight);
-    return [rec.snapshot_date || '', parts.join(', '), wt].filter(Boolean).join(' · ');
-  };
-  for (const r of rows) {
-    const tr = document.querySelector(
-      '#modalSources tbody tr[data-cmpsrc="' + (r.source || '') + '"]');
-    if (!tr) continue;
-    const cur = tr.querySelector('.cmp-curr');
-    const prv = tr.querySelector('.cmp-prev');
-    if (cur) cur.textContent = fmtRec(r.current);
-    if (prv) prv.textContent = fmtRec(r.previous);
+  if (Array.isArray(rows)) {
+    for (const r of rows) _cmpData.set(r.source || '', r);
   }
+}
+
+// Toggle the inline comparison panel under a per-source row. One open at a time.
+function toggleCmpRow(tr, srcCode) {
+  const next = tr.nextElementSibling;
+  if (next && next.classList.contains('cmp-expand-row')) {
+    next.remove();
+    tr.classList.remove('expanded');
+    return;
+  }
+  document.querySelectorAll('#modalSources tr.cmp-expand-row')
+          .forEach(el => el.remove());
+  document.querySelectorAll('#modalSources tr.cmp-src-row.expanded')
+          .forEach(el => el.classList.remove('expanded'));
+  const exp = document.createElement('tr');
+  exp.className = 'cmp-expand-row';
+  const td = document.createElement('td');
+  td.colSpan = 11;
+  td.innerHTML = _comparisonPanelHtml(srcCode);
+  exp.appendChild(td);
+  tr.after(exp);
+  tr.classList.add('expanded');
+}
+
+// Build the Field / Current / Previous / Delta table for one source.
+function _comparisonPanelHtml(srcCode) {
+  const c = _cmpData.get(srcCode);
+  if (!c) {
+    return '<div class="cmp-panel"><div class="cmp-empty">No comparison record available for ' +
+           escapeHtml(srcCode) + '.</div></div>';
+  }
+  const cur = c.current || {}, prv = c.previous || {};
+  const cf = cur.fields || {}, pf = prv.fields || {};
+  const keys = [];
+  for (const k of Object.keys(cf)) keys.push(k);
+  for (const k of Object.keys(pf)) if (!keys.includes(k)) keys.push(k);
+
+  const cell = (v) => (v === null || v === undefined || v === '') ? '' : escapeHtml(String(v));
+  let body = '';
+  if (!keys.length) {
+    body = '<tr><td colspan="4" class="cmp-empty">No record columns returned.</td></tr>';
+  }
+  for (const k of keys) {
+    const cv = cf[k], pv = pf[k];
+    const changed = String(cv ?? '') !== String(pv ?? '');
+    let delta = '<span class="cmp-delta-none">&mdash;</span>';
+    if (changed) {
+      const cn = Number(cv), pn = Number(pv);
+      if (cv != null && pv != null && cv !== '' && pv !== '' &&
+          isFinite(cn) && isFinite(pn)) {
+        const d = cn - pn;
+        const cls = d > 0 ? 'cmp-delta-up' : 'cmp-delta-down';
+        const arrow = d > 0 ? '&#9650;' : '&#9660;';
+        delta = '<span class="' + cls + '">' + arrow + ' ' +
+                formatNum(Math.abs(d)) + '</span>';
+      } else {
+        delta = '<span class="cmp-delta-changed">changed</span>';
+      }
+    }
+    body += '<tr class="' + (changed ? 'cmp-changed' : '') + '">' +
+            '<td class="cmp-field">' + escapeHtml(k) + '</td>' +
+            '<td class="cmp-val">' + cell(cv) + '</td>' +
+            '<td class="cmp-val">' + cell(pv) + '</td>' +
+            '<td class="cmp-val">' + delta + '</td></tr>';
+  }
+  const sideLabel = (rec, kind) => (rec && rec.dropped)
+    ? ('not in ' + kind + ' bundle')
+    : (escapeHtml((rec && rec.snapshot_date) || '?') +
+       ((rec && rec.weight != null) ? (' &middot; wt ' + formatNum(rec.weight)) : ''));
+  const act = c.action ? '<span class="badge-action badge-action-' +
+              escapeHtml((c.action || '').toUpperCase()) + '">' +
+              escapeHtml((c.action || '').toUpperCase()) + '</span> ' : '';
+  return '<div class="cmp-panel">' +
+    '<div class="cmp-panel-head">' +
+      '<span class="cmp-src">' + act + escapeHtml(srcCode) + ' &middot; record comparison</span>' +
+      '<span class="cmp-meta">current ' + sideLabel(cur, 'current') +
+      '  vs  previous ' + sideLabel(prv, 'previous') + '</span>' +
+    '</div>' +
+    '<table class="cmp-table">' +
+      '<thead><tr><th>Field</th><th>Current</th><th>Previous</th><th>&Delta;</th></tr></thead>' +
+      '<tbody>' + body + '</tbody>' +
+    '</table>' +
+    '<div class="cmp-empty">Highlighted rows changed between the two records &mdash; what drove the action.</div>' +
+  '</div>';
 }
 
 // ---- atomic-rule popover (composite drill-down) ----

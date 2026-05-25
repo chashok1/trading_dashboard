@@ -1,4 +1,4 @@
-﻿# Environment & secrets
+# Environment & secrets
 .env
 .env.local
 PG_PASSWORD
@@ -30,6 +30,7 @@ MANIFEST
 
 # Virtual environments
 venv/
+.venv/
 ENV/
 env/
 

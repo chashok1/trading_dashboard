@@ -229,6 +229,61 @@ def _find_week_period_snapshots(session: Session, table: str, date_col: str,
     return (row[0], row[1]) if row else (None, None)
 
 
+def _find_month_period_snapshots(session: Session, table: str, date_col: str,
+                                 as_of_date: date
+                                 ) -> tuple[Optional[date], Optional[date]]:
+    """Monthly-cadence period snapshots (used by II).
+
+    current  = latest snapshot on/before as_of_date.
+    previous = latest snapshot from before current's calendar month.
+    Either may be None. Multiple loads inside one month all fold into
+    'current'; 'previous' is genuinely the prior month's snapshot.
+    """
+    curr_row = session.execute(text(f"""
+        SELECT MAX({date_col}) FROM {table}
+         WHERE {date_col} <= '{as_of_date}'
+    """)).first()
+    curr_snap = curr_row[0] if curr_row and curr_row[0] else None
+    prev_snap = None
+    if curr_snap:
+        prev_row = session.execute(text(f"""
+            SELECT MAX({date_col}) FROM {table}
+             WHERE {date_col} < date_trunc('month', DATE '{curr_snap}')
+        """)).first()
+        prev_snap = prev_row[0] if prev_row and prev_row[0] else None
+    return curr_snap, prev_snap
+
+
+def _action_standing(base, prev) -> tuple[Optional[str], str]:
+    """Standing-list classifier (used by II, ETF, RR).
+
+    Presence on the current list with a positive weight is a buy verdict
+    every period, not just on first appearance. Held-vs-not is resolved
+    downstream by derive_actionable suppression.
+
+      base > 0                  -> ADD     (positive weight on the current list)
+      base < 0                  -> REMOVE  (negative weight on the current list)
+      base absent, prev present -> REMOVE  (dropped from the list)
+      otherwise                 -> silent
+    """
+    if base is not None:
+        try:
+            b = float(base)
+        except (TypeError, ValueError):
+            return None, "non-numeric weight - no action"
+        if b > 0:
+            return "ADD", f"on list, weight {b:+g}"
+        if b < 0:
+            return "REMOVE", f"on list, weight {b:+g}"
+        return None, "weight 0 - silent"
+    if prev is not None:
+        try:
+            return "REMOVE", f"dropped from list (was {float(prev):+g})"
+        except (TypeError, ValueError):
+            return "REMOVE", "dropped from list"
+    return None, "not on list"
+
+
 
 # =============================================================================
 # v2 effective-state helpers (2026-05-12)
@@ -749,13 +804,62 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
             session.execute(text("SAVEPOINT sp_source"))
             if method == "outlook_modifier":
                 # ── v2 routing (2026-05-12) ────────────────────────────────
-                # All outlook_modifier sources now use today-vs-yesterday
-                # effective-state comparison with _action_outlook_v2.
+                # ETF/RR -> standing-list classifier (_action_standing);
+                # II -> monthly standing branch above; CALL -> standing below.
                 #   ETF/II — UNION their *chg patch tables
                 #   CALL  — 30-day per-symbol window, aging-out silent
                 #   RR    — dense exact-match on as_of_date
                 yesterday = as_of_date - timedelta(days=1)
                 _ETF_II_CHG = {"ETF": "hist_etfchg", "II": "hist_iichg"}
+
+                if sc == "II":
+                    # II is a monthly standing list (2026-05-25). Presence
+                    # with a positive weight is a buy verdict every month,
+                    # not just on first appearance. Self-contained - emits
+                    # its own rows and skips the shared loop below.
+                    curr_snap, prev_snap = _find_month_period_snapshots(
+                        session, table, date_col, as_of_date
+                    )
+                    if curr_snap is None:
+                        log.warning("source II (%s) has no snapshot on/before "
+                                    "%s - skipping (no actions emitted)",
+                                    table, as_of_date)
+                        session.execute(text("RELEASE SAVEPOINT sp_source"))
+                        continue
+                    today_w = _state_etf_ii(session, table, "hist_iichg",
+                                            as_of_date, wt_map)
+                    prev_w  = _state_etf_ii(session, table, "hist_iichg",
+                                            prev_snap, wt_map) if prev_snap else {}
+                    ii_batch = []
+                    for isym in set(today_w) | set(prev_w):
+                        base = today_w.get(isym)
+                        prev = prev_w.get(isym)
+                        iact, ireason = _action_standing(base, prev)
+                        if iact is None:
+                            continue
+                        idelta = None
+                        if base is not None and prev is not None:
+                            try:
+                                idelta = float(base) - float(prev)
+                            except (TypeError, ValueError):
+                                idelta = None
+                        ii_batch.append({
+                            "d": curr_snap, "sym": isym, "sc": sc,
+                            "base": base, "prev": prev, "prev_d": prev_snap,
+                            "delta": idelta, "held": isym in holdings,
+                            "act": iact, "reason": ireason, "cat": category,
+                            "rid": run_id, "analyst_rank": None,
+                        })
+                    if ii_batch:
+                        session.execute(text(
+                            "DELETE FROM drv_outlook_action "
+                            "WHERE source_code = :sc AND as_of_date = :d"
+                        ), {"sc": sc, "d": curr_snap})
+                        for irow in ii_batch:
+                            session.execute(insert_sql, irow)
+                        total_rows += len(ii_batch)
+                    session.execute(text("RELEASE SAVEPOINT sp_source"))
+                    continue
 
                 if sc in _ETF_II_CHG:
                     # Periodic sources (ETF=SUN, II=MON) with intra-week
@@ -853,9 +957,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                     base = today_w.get(sym)
                     prev = prev_w.get(sym)
                     held = sym in holdings
-                    act, reason = _action_outlook_v2(
-                        base, prev, suppress_disappearance=suppress,
-                    )
+                    act, reason = _action_standing(base, prev)
                     if act is None:
                         # No-op — skip writing the row entirely. Keeps
                         # drv_outlook_action focused on real signals.
@@ -1042,3 +1144,83 @@ def derive_outlook_action(session: Session, as_of_date: date,
     """Public wrapper. Returns row count inserted into drv_outlook_action."""
     rid = int(parent_run_id) if parent_run_id is not None else 0
     return _derive_outlook_action_impl(session, as_of_date, rid)
+
+
+# ---------------------------------------------------------------------------
+# Standing verdict - per-symbol current-state recommendation (RR/ETF/II)
+# ---------------------------------------------------------------------------
+
+def compute_standing_verdicts(session: Session, as_of_date: date) -> list[dict]:
+    """Standing per-symbol verdict for RR / ETF / II - a verdict for *every*
+    symbol in each source's current universe, not just the movers.
+
+    Rule (current outlook weight + held status):
+        weight > 0,  not held -> ADD
+        weight > 0,  held     -> HOLD
+        weight <= 0, held     -> REMOVE
+        weight <= 0, not held -> (omitted)
+
+    Read-only, computed on demand. Returns a list of dicts:
+        {symbol, source, action, weight, held}
+    """
+    wt_map   = _load_outlook_weights(session)
+    holdings = _load_holdings(session, as_of_date)
+
+    def _verdict(weight, held):
+        try:
+            w = float(weight) if weight is not None else None
+        except (TypeError, ValueError):
+            w = None
+        if w is None:
+            return None
+        if w > 0:
+            return "HOLD" if held else "ADD"
+        return "REMOVE" if held else None
+
+    out: list[dict] = []
+
+    # RR - dense source (exact-match snapshot). loads_prior_day_data shifts
+    # the effective snapshot back one day, matching the change classifier.
+    try:
+        rr = session.execute(text(
+            "SELECT loads_prior_day_data FROM ref_outlook_source "
+            "WHERE source_code = 'RR'"
+        )).first()
+        loads_prior = bool(rr[0]) if rr else False
+        cmp_date = (as_of_date - timedelta(days=1)) if loads_prior else as_of_date
+        today_w = _state_dense(session, "hist_rr", "snapshot_date", cmp_date, wt_map)
+        for sym, w in today_w.items():
+            held = sym in holdings
+            act = _verdict(w, held)
+            if act:
+                out.append({"symbol": sym, "source": "RR",
+                            "action": act, "weight": w, "held": held})
+    except Exception as e:
+        log.warning("standing verdict: RR failed (%s)", e)
+
+    # ETF (weekly) / II (monthly) periodic sources.
+    for sc, table, chg, default_dow in (
+        ("ETF", "hist_etf", "hist_etfchg", 0),
+        ("II",  "hist_ii",  "hist_iichg",  1),
+    ):
+        try:
+            if sc == "II":
+                curr_snap, _ = _find_month_period_snapshots(
+                    session, table, "snapshot_date", as_of_date)
+            else:
+                anchor = _load_anchor_dow(session, table, default_dow)
+                curr_snap, _ = _find_week_period_snapshots(
+                    session, table, "snapshot_date", as_of_date, anchor)
+            if curr_snap is None:
+                continue
+            today_w = _state_etf_ii(session, table, chg, curr_snap, wt_map)
+            for sym, w in today_w.items():
+                held = sym in holdings
+                act = _verdict(w, held)
+                if act:
+                    out.append({"symbol": sym, "source": sc,
+                                "action": act, "weight": w, "held": held})
+        except Exception as e:
+            log.warning("standing verdict: %s failed (%s)", sc, e)
+
+    return out

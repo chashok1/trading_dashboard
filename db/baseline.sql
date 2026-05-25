@@ -925,6 +925,22 @@ CREATE INDEX IF NOT EXISTS ix_meta_scheduler_log_logged_at ON meta_scheduler_log
 ALTER TABLE IF EXISTS meta_scheduler_log
     ADD COLUMN IF NOT EXISTS file_name TEXT;
 
+-- -----------------------------------------------------
+-- meta_warning - per-screen UI warnings (notification bar)
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS meta_warning (
+    id          BIGSERIAL PRIMARY KEY,
+    screen      TEXT      NOT NULL,
+    as_of_date  DATE,
+    symbol      TEXT,
+    severity    TEXT      NOT NULL DEFAULT 'warning',
+    code        TEXT,
+    message     TEXT      NOT NULL,
+    created_at  TIMESTAMP NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_meta_warning_screen
+    ON meta_warning(screen, as_of_date);
+
 
 -- =====================================================
 -- 4. Derived tables (drv_*)

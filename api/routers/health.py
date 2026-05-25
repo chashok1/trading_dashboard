@@ -291,8 +291,11 @@ def get_derive_status():
 
         # ------------------------------------------------------------------
         # 3. source_missing: for dashboard dates older than 24 hours,
-        #    check if daily-expected sources (RR, CALL) are represented in drv_outlook_action.
-        #    Event-driven (ETFCHG, IICHG) and weekly sources (ETF, II, SSS, PS) are excluded.
+        #    check the daily-expected sources (RR, CALL) actually delivered raw
+        #    data into hist_rr / hist_call. (Checking drv_outlook_action instead
+        #    gave false positives: a quiet day with no emitted actions looked
+        #    identical to a missing file.)
+        #    Event-driven (ETFCHG, IICHG), weekly (ETF, SSS, PS) and monthly (II) are excluded.
         # ------------------------------------------------------------------
         try:
             recent_dates = [
@@ -307,9 +310,15 @@ def get_derive_status():
             daily_sources = ['RR', 'CALL']
             missing_items = []
             for d in recent_dates:
-                got = set(r[0] for r in s.execute(text(
-                    "SELECT DISTINCT source_code FROM drv_outlook_action WHERE as_of_date = :d"
-                ), {"d": d}).fetchall())
+                # A source is "present" when its raw feed delivered any row for
+                # the date, not when it emitted an action (a quiet day emits none).
+                got = set()
+                for _src, _tbl in (('RR', 'hist_rr'), ('CALL', 'hist_call')):
+                    hit = s.execute(text(
+                        f"SELECT 1 FROM {_tbl} WHERE snapshot_date = :d LIMIT 1"
+                    ), {"d": d}).first()
+                    if hit:
+                        got.add(_src)
                 miss = sorted(set(daily_sources) - got)
                 if miss:
                     date_str = d.isoformat() if hasattr(d, "isoformat") else str(d)
@@ -377,16 +386,20 @@ def get_derive_status():
 
 @router.get("/api/warnings")
 def get_warnings():
-    """Return a list of active warnings (system + data quality checks).
+    """The single warnings feed for the topbar badge (warning_badge.js).
 
-    Checks: recent ETL/derive failures, stale reference data.
+    Aggregates every warning source into one list of {id, level, title, items}:
+      - recent ETL failures      (meta_etl_run)
+      - recent derive failures   (meta_derived_run)
+      - the meta_warning table   (derive-discovered / per-screen warnings)
+      - the derive-status checks (stale ref, missing sources, scheduler idle)
     """
     warnings = []
     with session_scope() as s:
         # A) Recent ETL failures (last 24 hours)
         try:
             rows = s.execute(text("""
-                SELECT table_name, error_msg, started_at
+                SELECT table_name, error_msg
                 FROM meta_etl_run
                 WHERE status = 'error' AND started_at > NOW() - INTERVAL '24 hours'
                 ORDER BY started_at DESC LIMIT 10
@@ -404,7 +417,7 @@ def get_warnings():
         # B) Recent derive failures (last 24 hours)
         try:
             rows = s.execute(text("""
-                SELECT target_table, error_msg, started_at
+                SELECT target_table, error_msg
                 FROM meta_derived_run
                 WHERE status = 'error' AND started_at > NOW() - INTERVAL '24 hours'
                 ORDER BY started_at DESC LIMIT 10
@@ -419,34 +432,34 @@ def get_warnings():
         except Exception:
             pass
 
-        # C) Stale ref data â€” check if ref tables edited after last derive
+        # C) meta_warning table - derive-discovered / per-screen warnings
         try:
-            last_derive = s.execute(text("""
-                SELECT MAX(finished_at)
-                FROM meta_derived_run
-                WHERE target_table = 'drv_outlook_action' AND status = 'success'
-            """)).first()
-            last_derive_dt = last_derive[0] if last_derive and last_derive[0] else None
-
-            stale = []
-            for tbl, label in (
-                ("ref_param", "Outlook weights"),
-                ("ref_outlook_source", "Source priorities"),
-                ("ref_asset_allocation", "Asset allocation"),
-            ):
-                row = s.execute(text(f"SELECT MAX(loaded_at) FROM {tbl}")).first()
-                edit_dt = row[0] if row and row[0] else None
-                if edit_dt and last_derive_dt and edit_dt > last_derive_dt:
-                    stale.append({"label": label, "detail": ""})
-            if stale:
+            from etl.warnings import get_warnings as _meta_warnings
+            for w in _meta_warnings(s):
                 warnings.append({
-                    "id": "stale_ref",
-                    "level": "warning",
-                    "title": f"{len(stale)} ref table(s) not propagated",
-                    "items": stale
+                    "id": "mw-" + str(w["id"]),
+                    "level": "error" if w.get("severity") == "error" else "warning",
+                    "title": w.get("message") or w.get("code") or "Warning",
+                    "items": [],
                 })
         except Exception:
             pass
+
+    # D) Derive-status health checks (stale ref, missing sources, scheduler idle)
+    try:
+        ds = get_derive_status()
+        for c in ds.get("checks", []):
+            if c.get("ok"):
+                continue
+            warnings.append({
+                "id": c.get("id"),
+                "level": c.get("severity") or "warning",
+                "title": c.get("title") or c.get("id"),
+                "items": [{"label": (it.get("label") or it.get("date") or "")}
+                          for it in (c.get("items") or [])][:5],
+            })
+    except Exception:
+        pass
 
     return warnings
 

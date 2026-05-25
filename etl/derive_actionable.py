@@ -108,23 +108,47 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
 
     def _category_for(sym, win_src, fallback):
         """Resolve ref_asset_allocation lookup key.
-        PS     → hist_ps.asset_class (or fallback)
-        ETF    → hist_etf.asset_class  (or fallback)
+        PS     → hist_ps.asset_class (must map to a row, else fallback)
+        ETF    → hist_etf.asset_class (must map to a row, else fallback)
         ETFCHG → 1) 'ETFCHG' row if present
-                 2) hist_etf.asset_class for the symbol
+                 2) hist_etf.asset_class for the symbol (must map to a row)
                  3) 'ETF' row if present
                  4) fallback
-        else  → fallback (ref_outlook_source.position_category)"""
+        else  → fallback (ref_outlook_source.position_category)
+
+        A symbol's asset_class is used only when it actually maps to a
+        ref_asset_allocation row. A present-but-unmapped class falls through
+        to the fallback (and logs a warning) instead of silently sizing to $0."""
+        def _use_ac(ac):
+            # Return ac if it maps to an allocation row; else warn + None.
+            if not ac:
+                return None
+            if alloc_has(ac):
+                return ac
+            log.warning("derive_actionable: %s asset_class %r for %s has no "
+                        "ref_asset_allocation row; using fallback %r",
+                        win_src, ac, sym, fallback)
+            try:
+                from etl.warnings import add_warning
+                add_warning(session, "actionable",
+                            f"{sym}: {win_src} asset_class '{ac}' has no "
+                            f"ref_asset_allocation row — sized via fallback "
+                            f"'{fallback}'",
+                            as_of_date=as_of_date, symbol=sym,
+                            code="UNMAPPED_ASSET_CLASS")
+            except Exception:
+                log.exception("add_warning failed (continuing)")
+            return None
         if win_src == "PS":
-            ac = asset_class_ps.get(sym)
-            if ac: return ac
+            hit = _use_ac(asset_class_ps.get(sym))
+            if hit: return hit
         elif win_src == "ETF":
-            ac = asset_class_etf.get(sym)
-            if ac: return ac
+            hit = _use_ac(asset_class_etf.get(sym))
+            if hit: return hit
         elif win_src == "ETFCHG":
             if alloc_has("ETFCHG"): return "ETFCHG"
-            ac = asset_class_etf.get(sym)
-            if ac: return ac
+            hit = _use_ac(asset_class_etf.get(sym))
+            if hit: return hit
             if alloc_has("ETF"): return "ETF"
         return fallback
 
@@ -160,6 +184,10 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                        WHEN source_code = 'PS' THEN
                            (SELECT MAX(as_of_date) FROM drv_outlook_action doa4
                             WHERE doa4.source_code = 'PS'
+                              AND as_of_date <= :d)
+                       WHEN source_code = 'RR' THEN
+                           (SELECT MAX(as_of_date) FROM drv_outlook_action doa5
+                            WHERE doa5.source_code = 'RR'
                               AND as_of_date <= :d)
                        ELSE :d
                    END AS effective_date
@@ -210,6 +238,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
 
     # Wipe today
     session.execute(text("DELETE FROM drv_actionable WHERE as_of_date = :d"), {"d": as_of_date})
+    from etl.warnings import clear_screen_warnings
+    clear_screen_warnings(session, "actionable", as_of_date)
 
     insert_sql = text("""
         INSERT INTO drv_actionable

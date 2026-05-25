@@ -222,7 +222,7 @@
       border-bottom: 1px solid #eee;
       text-align: left;
     }
-    .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 12px; }
+    .kv { display: grid; grid-template-columns: repeat(4, max-content 1fr); gap: 6px 20px; font-size: 12px; }
     .kv dt { color: var(--text-2, #666); }
     .kv dd { margin: 0; font-weight: 500; }
 
@@ -323,6 +323,42 @@
       border: 1px solid var(--border, #ddd);
     }
     .btn-dismiss:hover { background: #e8e8ec; }
+
+    /* Inline current-vs-prev comparison (per-source row expand) */
+    #modalSources tbody tr.cmp-src-row { cursor: pointer; }
+    #modalSources tbody tr.cmp-src-row:hover { background: var(--surface-hover, #f0f6ff); }
+    #modalSources tbody tr.cmp-src-row.expanded { background: #eef2fb; }
+    .cmp-caret {
+      display: inline-block; width: 11px;
+      color: var(--text-2, #888); font-size: 9px;
+    }
+    tr.cmp-expand-row > td { padding: 0 !important; background: #f7f8fa; }
+    .cmp-panel { border-top: 2px solid #1f7af2; padding: 8px 10px 10px; }
+    .cmp-panel-head {
+      display: flex; align-items: baseline; gap: 10px;
+      flex-wrap: wrap; margin-bottom: 6px;
+    }
+    .cmp-panel-head .cmp-src { font-weight: 700; font-size: 12px; }
+    .cmp-panel-head .cmp-meta { font-size: 10px; color: var(--text-2, #777); }
+    table.cmp-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    table.cmp-table th, table.cmp-table td {
+      padding: 3px 8px; border-bottom: 1px solid #e8e8ee; text-align: left;
+    }
+    table.cmp-table th {
+      font-size: 9px; text-transform: uppercase; letter-spacing: 0.4px;
+      color: var(--text-2, #666);
+    }
+    table.cmp-table td.cmp-field {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace; color: #555;
+    }
+    table.cmp-table td.cmp-val { font-variant-numeric: tabular-nums; }
+    table.cmp-table tr.cmp-changed { background: #eaf1fb; }
+    table.cmp-table tr.cmp-changed td.cmp-field { color: #1f4f9c; font-weight: 600; }
+    .cmp-delta-up { color: #1c6c30; }
+    .cmp-delta-down { color: #b34700; }
+    .cmp-delta-changed { color: #8c1d1d; }
+    .cmp-delta-none { color: var(--text-2, #aaa); }
+    .cmp-empty { font-size: 10px; color: var(--text-2, #888); padding: 6px 2px; }
   </style>
 </head>
 <body>
@@ -391,6 +427,9 @@
         <label class="toggle">
           <input type="checkbox" id="showZeroAmt"> Show $0 AMT
         </label>
+        <label class="toggle">
+          <input type="checkbox" id="standingView"> Standing view
+        </label>
         <span style="margin-left:auto; font-size:11px; color:var(--text-2,#666);">
           Click any row for full source breakdown &amp; user action capture
         </span>
@@ -414,6 +453,7 @@
               <th>Reason</th>
               <th>Other Sources</th>
               <th class="sortable" data-key="sector" data-type="str">Sector</th>
+              <th class="sortable" data-key="asset_class" data-type="str">Asset Class</th>
               <th class="num sortable" data-key="current_position_dollar" data-type="num">Pos $</th>
               <th class="num sortable" data-key="target_min_dollar" data-type="num">Min</th>
               <th class="num sortable" data-key="target_max_dollar" data-type="num">Max</th>
@@ -456,18 +496,6 @@
           </tr></thead>
           <tbody></tbody>
         </table>
-      </div>
-
-      <div class="modal-section">
-        <h3>Source data</h3>
-        <table class="modal-table" id="modalProvenance">
-          <thead><tr>
-            <th>Source</th><th>Action</th><th>Table</th>
-            <th>Snapshot date</th><th>Source file</th><th>Loaded at</th>
-          </tr></thead>
-          <tbody></tbody>
-        </table>
-        <div id="modalProvenanceEmpty" style="display:none; color:var(--text-2,#666); font-size:11px; padding:6px;">No source data recorded.</div>
       </div>
 
       <div class="modal-section">
@@ -531,7 +559,7 @@
 
   <script src="/static/_common.js"></script>
   <script src="/static/actionable.js"></script>
-  <script src="/static/health_banner.js"></script>
+  <script src="/static/rebuild_modal.js"></script>
   <script src="/static/warning_badge.js"></script>
 </body>
 </html>

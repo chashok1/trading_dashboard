@@ -11,7 +11,7 @@
   'use strict';
 
   const POLL_MS = 5 * 60 * 1000;  // 5 minutes
-  const STATE = { sysWarnings: [], pageWarnings: [], expanded: false };
+  const STATE = { apiWarnings: [], pageWarnings: [], expanded: false };
 
   // ---- styles (injected once) ----------------------------------------------
   function injectStyles() {
@@ -155,9 +155,8 @@
     if (fixBtn) {
       fixBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        // Trigger health banner rebuild modal if it exists
-        const hbFixBtn = document.getElementById('hbFixBtn');
-        if (hbFixBtn) hbFixBtn.click();
+        // Open the rebuild modal (provided by rebuild_modal.js)
+        if (window.hbRebuildModal) window.hbRebuildModal.open();
         else alert('Rebuild tool not available');
       });
     }
@@ -174,7 +173,7 @@
 
   // ---- rendering --------------------------------------------------
   function render() {
-    const all = [...STATE.sysWarnings, ...STATE.pageWarnings];
+    const all = [...STATE.apiWarnings, ...STATE.pageWarnings];
     const unique = {};
     for (const w of all) {
       if (!unique[w.id]) unique[w.id] = w;
@@ -232,24 +231,21 @@
 
   // ---- polling --------------------------------------------------------
   async function poll() {
+    // Single source: /api/warnings aggregates ETL/derive failures, the
+    // meta_warning table, and the derive-status health checks.
     try {
-      const r = await fetch('/api/health/derive-status');
-      if (!r.ok) return;
-      const payload = await r.json();
-      // Convert health checks to warnings (only non-OK checks)
-      STATE.sysWarnings = (payload.checks || [])
-        .filter(c => !c.ok)
-        .map(c => ({
-          id: c.id,
-          level: c.severity || 'warning',
-          title: c.title || c.id,
-          items: (c.items || []).slice(0, 3).map(it => ({
-            label: typeof it === 'string' ? it : (it.label || it.date || JSON.stringify(it)),
-            detail: it.missing_sources ? `missing: ${it.missing_sources.join(', ')}` : (it.detail || '')
-          }))
+      const r = await fetch('/api/warnings');
+      if (r.ok) {
+        const ws = await r.json();
+        STATE.apiWarnings = (Array.isArray(ws) ? ws : []).map(w => ({
+          id: w.id,
+          level: w.level === 'error' ? 'error' : 'warning',
+          title: w.title || w.id || 'Warning',
+          items: w.items || [],
         }));
-      render();
+      }
     } catch (_) { /* silent */ }
+    render();
   }
 
   // ---- public API -----------------------------------------------------
