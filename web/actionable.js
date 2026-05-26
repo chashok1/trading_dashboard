@@ -416,9 +416,9 @@ const ACTION_RANK = { REMOVE: 4, REDUCE: 3, INCREASE: 2, ADD: 1, HOLD: 0 };
 // unchanged — only the badge text. When the held position exceeds the
 // category Max (REMOVE excepted), the badge overlays SELL→MAX on top of
 // whatever action fired, and the original label is shown in small letters
-// underneath ("was BUY +1U" etc.) so the source signal is still visible.
+// underneath ("was BUY SOME" etc.) so the source signal is still visible.
 const ACTION_LABEL = {
-  REMOVE: 'SELL ALL', REDUCE: 'SELL −1U', INCREASE: 'BUY +1U',
+  REMOVE: 'SELL ALL', REDUCE: 'SELL SOME', INCREASE: 'BUY SOME',
   ADD: 'BUY→MIN', HOLD: 'HOLD', NONE: '—',
   // Synthetic pseudo-action used by the SELL→MAX summary chip. Rows are
   // matched via _isOverMaxOverlay (pos > Max), not consolidated_action.

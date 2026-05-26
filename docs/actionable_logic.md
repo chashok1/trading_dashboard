@@ -117,16 +117,16 @@ still sees what the system would have recommended.
 ## Display (`web/actionable.js`)
 
 **Action labels.** The Action badge shows an instructional label, not the
-raw code: ADD → `BUY→MIN`, INCREASE → `BUY +1U`, REDUCE → `SELL −1U`,
+raw code: ADD → `BUY→MIN`, INCREASE → `BUY SOME`, REDUCE → `SELL SOME`,
 REMOVE → `SELL ALL`, HOLD → `HOLD`. When the held position exceeds the
 category Max (`current_position_dollar > target_max_dollar`, REMOVE
 excepted), the badge overlays `SELL→MAX` in REDUCE orange (so the sell
 intent reads at a glance) and the original label is shown underneath in
-small bold letters tinted with that action's own color ("was BUY +1U" in
+small bold letters tinted with that action's own color ("was BUY SOME" in
 INCREASE green, "was BUY→MIN" in ADD blue, etc.). The stored `consolidated_action`,
 `winning_source`, Reason, chip count, and sort severity are all unchanged
 — it's a pure display overlay, no derive change. Summary/filter chips use
-the same instructional labels (SELL ALL, SELL −1U, BUY +1U, BUY→MIN, HOLD,
+the same instructional labels (SELL ALL, SELL SOME, BUY SOME, BUY→MIN, HOLD,
 — for no-action; ALL stays "ALL"). A synthetic `SELL→MAX` chip counts and
 filters over-allocation rows (any row where the overlay fires); those rows
 are also counted in their underlying action chip.
