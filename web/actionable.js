@@ -591,12 +591,9 @@ function sortRows() {
       const aIsOverMax = _isOverMaxOverlay(a);
       const bIsOverMax = _isOverMaxOverlay(b);
 
-      let aRank = ACTION_RANK[aAction] ?? -1;
-      let bRank = ACTION_RANK[bAction] ?? -1;
-
-      // Adjust rank for SELL→MAX overlay: sits between REDUCE (3) and INCREASE (2)
-      if (aIsOverMax && aRank > 0) aRank += 0.5;
-      if (bIsOverMax && bRank > 0) bRank += 0.5;
+      // SELL→MAX overlay overrides the action rank: gets fixed rank 3.5
+      let aRank = aIsOverMax ? 3.5 : (ACTION_RANK[aAction] ?? -1);
+      let bRank = bIsOverMax ? 3.5 : (ACTION_RANK[bAction] ?? -1);
 
       if (aRank !== bRank) return bRank - aRank;
 
