@@ -642,7 +642,7 @@ function renderGrid() {
       <td>${escapeHtml(r.real_asset_class || '')}</td>
       <td class="num">${fmtUsd(r.last_price)}</td>
       <td class="num">${fmtUsd(r.net_chng)}</td>
-      <td class="num">${r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''}</td>
+      <td class="num ${r.pct_change != null ? (Number(r.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : ''}">${r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''}</td>
       <td>${fmtAsOf(r.derived_at)}</td>
       <td>${tags.join(' ')}</td>
     `;
@@ -797,7 +797,7 @@ async function openDrilldown(row) {
     <dt>Held today</dt><dd>${row.held_today ? 'Yes' : 'No'}</dd>
     <dt>Position $</dt><dd>${fmtUsd(row.current_position_dollar) || '—'}</dd>
     <dt>Price</dt><dd>${fmtUsd(row.last_price) || '—'}</dd>
-    <dt>Change</dt><dd>${fmtUsd(row.net_chng)} (${row.pct_change != null ? (Number(row.pct_change).toFixed(2) + '%') : ''})</dd>
+    <dt>Change</dt><dd>${fmtUsd(row.net_chng)} (<span class="${row.pct_change != null ? (Number(row.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : ''}">${row.pct_change != null ? (Number(row.pct_change).toFixed(2) + '%') : ''}</span>)</dd>
     <dt>As of</dt><dd>${fmtAsOf(row.derived_at) || '—'}</dd>
     <dt>AMT$</dt><dd><strong>${fmtUsd(row._amt) || '—'}</strong></dd>
     <dt>In My List</dt><dd>${row.in_my_list ? 'Yes' : 'No'}</dd>
