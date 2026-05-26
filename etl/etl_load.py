@@ -231,6 +231,7 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
             if not force and already_processed(s, str(p), file_mtime):
                 log.info("skipping %s (already processed; mtime unchanged)", p.name)
                 return {"status": "skipped", "file_type": "FT", "target_tab": "hist_ft"}
+            file_dt_str = parse_file_date_from_name(p.name)
             run_id = open_run(s, file_path=str(p), file_type='FT',
                               target_tab='hist_ft')
             try:
@@ -238,7 +239,7 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
                 close_run(s, run_id, rows_read=read, rows_inserted=ins, rows_skipped=skp)
                 mark_processed(s, file_path=str(p), file_mtime=file_mtime,
                                file_type='FT', target_tab='hist_ft',
-                               file_dt=None, run_id=run_id)
+                               file_dt=file_dt_str, run_id=run_id)
                 log.info("LOADED hist_ft: %d read, %d ins, %d skip",
                          read, ins, skp)
                 # Rebuild FIFO realized gains across BOTH sources after any
