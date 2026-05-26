@@ -366,14 +366,6 @@ def get_actionable(
             ORDER BY acted_at DESC LIMIT 1
         ) u ON TRUE
         WHERE {' AND '.join(where)}
-        ORDER BY
-          CASE a.consolidated_action
-            WHEN 'REMOVE'   THEN 4 WHEN 'REDUCE' THEN 3
-            WHEN 'INCREASE' THEN 2 WHEN 'ADD'    THEN 1
-            WHEN 'HOLD'     THEN 0 ELSE -1
-          END DESC,
-          a.winning_priority ASC NULLS LAST,
-          a.symbol
     """
     with session_scope() as s:
         rows = s.execute(text(sql), params).mappings().all()
