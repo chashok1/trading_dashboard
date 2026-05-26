@@ -351,7 +351,7 @@ def get_actionable(
     sql = f"""
         SELECT a.*,
                COALESCE(a.source_asset_class, m.asset_class) AS real_asset_class,
-               q.last_price, q.net_chng, q.pct_change, q.derived_at,
+               q.last_price, q.net_chng, q.pct_change, q.export_date, q.export_time,
                u.user_action AS last_user_action,
                u.snooze_until AS snooze_until
         FROM drv_actionable a

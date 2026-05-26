@@ -73,7 +73,11 @@
       "Bash(git add *)",
       "Bash(git commit -m 'Fix: use correct data-key for Real Asset Class column sorting *)",
       "Bash(git commit -m 'Fix percent change formatting: display 2 decimals, not multiply by 100 *)",
-      "Bash(git commit -m 'Add color coding to percent change column: green for +ve, red for -ve *)"
+      "Bash(git commit -m 'Add color coding to percent change column: green for +ve, red for -ve *)",
+      "Bash(curl -s http://127.0.0.1:8000/health)",
+      "Bash(curl -s \"http://127.0.0.1:8000/api/dash?date=2026-05-26&view=actionable\")",
+      "Bash(python3)",
+      "Bash(git commit -m 'Capture export_date/export_time in drv_quote for accurate '\\\\''As Of'\\\\'' display *)"
     ]
   }
 }

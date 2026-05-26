@@ -1083,9 +1083,24 @@ CREATE TABLE IF NOT EXISTS drv_quote (
     low_price       NUMERIC,
     rsi             NUMERIC,
     imp_volatility  NUMERIC,
+    export_date     DATE,
+    export_time     TEXT,
     derived_at      TIMESTAMP NOT NULL DEFAULT now(),
     PRIMARY KEY (as_of_date, symbol)
 );
+-- Add export_date and export_time columns if they don't exist (migration for existing tables)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_name='drv_quote' AND column_name='export_date') THEN
+    ALTER TABLE drv_quote ADD COLUMN export_date DATE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_name='drv_quote' AND column_name='export_time') THEN
+    ALTER TABLE drv_quote ADD COLUMN export_time TEXT;
+  END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS ix_drv_quote_symbol ON drv_quote(symbol);
 
 -- -----------------------------------------------------

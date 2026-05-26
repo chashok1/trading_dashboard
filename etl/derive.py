@@ -662,7 +662,7 @@ _QUOTE_FIELDS = (
 
 def _latest_per_symbol(session: Session, table: str, as_of_date: date,
                        column_map: dict) -> dict:
-    """Return {symbol: {drv_field: value, ..., 'loaded_at': ts}} for the latest
+    """Return {symbol: {drv_field: value, ..., 'loaded_at': ts, 'snapshot_date': d, 'export_date': d, 'export_time': t}} for the latest
     snapshot ≤ as_of_date in `table`. Per source PK is (snapshot_date, symbol,
     sequence); within the latest snapshot_date we order by loaded_at DESC,
     sequence DESC so the topmost row wins.
@@ -673,7 +673,7 @@ def _latest_per_symbol(session: Session, table: str, as_of_date: date,
     # Build SELECT list aliased to drv_quote field names so downstream code
     # can use a single shape. Columns the source doesn't have are selected as
     # NULL literals.
-    select_parts = ['symbol', 'loaded_at']
+    select_parts = ['symbol', 'snapshot_date', 'loaded_at', 'export_date', 'export_time']
     for drv_field, src_col in column_map.items():
         if src_col is None:
             select_parts.append(f'NULL::NUMERIC AS {drv_field}')
@@ -747,13 +747,17 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
         # Sort: latest loaded_at first.
         candidates.sort(key=lambda r: r['loaded_at'] or 0, reverse=True)
 
-        rec = {'as_of_date': as_of_date, 'symbol': sym}
+        rec = {'as_of_date': as_of_date, 'symbol': sym, 'export_date': None, 'export_time': None}
         for f in _QUOTE_FIELDS:
             val = None
             for cand in candidates:
                 v = cand.get(f)
                 if v is not None:
                     val = v
+                    # Capture export_date and export_time from the first non-null field's source
+                    if rec['export_date'] is None:
+                        rec['export_date'] = cand.get('export_date')
+                        rec['export_time'] = cand.get('export_time')
                     break
             rec[f] = val
         merged.append(rec)
@@ -769,11 +773,11 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
                     (as_of_date, symbol,
                      last_price, net_chng, pct_change,
                      open_price, high_price, low_price,
-                     rsi, imp_volatility)
+                     rsi, imp_volatility, export_date, export_time)
                 VALUES (:as_of_date, :symbol,
                         :last_price, :net_chng, :pct_change,
                         :open_price, :high_price, :low_price,
-                        :rsi, :imp_volatility)
+                        :rsi, :imp_volatility, :export_date, :export_time)
             """),
             merged,
         )
