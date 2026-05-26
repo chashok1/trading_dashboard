@@ -229,67 +229,12 @@ def _find_week_period_snapshots(session: Session, table: str, date_col: str,
     return (row[0], row[1]) if row else (None, None)
 
 
-def _find_month_period_snapshots(session: Session, table: str, date_col: str,
-                                 as_of_date: date
-                                 ) -> tuple[Optional[date], Optional[date]]:
-    """Monthly-cadence period snapshots (used by II).
-
-    current  = latest snapshot on/before as_of_date.
-    previous = latest snapshot from before current's calendar month.
-    Either may be None. Multiple loads inside one month all fold into
-    'current'; 'previous' is genuinely the prior month's snapshot.
-    """
-    curr_row = session.execute(text(f"""
-        SELECT MAX({date_col}) FROM {table}
-         WHERE {date_col} <= '{as_of_date}'
-    """)).first()
-    curr_snap = curr_row[0] if curr_row and curr_row[0] else None
-    prev_snap = None
-    if curr_snap:
-        prev_row = session.execute(text(f"""
-            SELECT MAX({date_col}) FROM {table}
-             WHERE {date_col} < date_trunc('month', DATE '{curr_snap}')
-        """)).first()
-        prev_snap = prev_row[0] if prev_row and prev_row[0] else None
-    return curr_snap, prev_snap
-
-
-def _action_standing(base, prev) -> tuple[Optional[str], str]:
-    """Standing-list classifier (used by II, ETF, RR).
-
-    Presence on the current list with a positive weight is a buy verdict
-    every period, not just on first appearance. Held-vs-not is resolved
-    downstream by derive_actionable suppression.
-
-      base > 0                  -> ADD     (positive weight on the current list)
-      base < 0                  -> REMOVE  (negative weight on the current list)
-      base absent, prev present -> REMOVE  (dropped from the list)
-      otherwise                 -> silent
-    """
-    if base is not None:
-        try:
-            b = float(base)
-        except (TypeError, ValueError):
-            return None, "non-numeric weight - no action"
-        if b > 0:
-            return "ADD", f"on list, weight {b:+g}"
-        if b < 0:
-            return "REMOVE", f"on list, weight {b:+g}"
-        return None, "weight 0 - silent"
-    if prev is not None:
-        try:
-            return "REMOVE", f"dropped from list (was {float(prev):+g})"
-        except (TypeError, ValueError):
-            return "REMOVE", "dropped from list"
-    return None, "not on list"
-
-
 
 # =============================================================================
 # v2 effective-state helpers (2026-05-12)
 # =============================================================================
 # Each returns {symbol: weight} at a single date. Callers fetch (today,
-# yesterday) and compare via _action_outlook_v2.
+# yesterday) and compare via _action_standing.
 
 def _normalize_change_str_sql(col_expr: str) -> str:
     """SQL CASE that maps etfchg/iichg change_str into hist_etf-style outlook tokens."""
@@ -557,58 +502,34 @@ def _action_outlook_modifier(base, prev, held: bool) -> tuple[Optional[str], str
     return None, "not held, no action"
 
 
-def _action_outlook_v2(base, prev, *, suppress_disappearance: bool = False):
-    """
-    Family-A action classifier (held-agnostic). Used by ETF, II, RR, CALL
-    after the 2026-05-12 v2 plumbing rework. The legacy
-    _action_outlook_modifier is kept untouched for backward compat tests
-    and any future caller that needs the held-branch semantics.
+def _action_standing(base, prev) -> tuple[Optional[str], str]:
+    """Standing-list classifier (used by II, ETF, RR).
 
-    Rule precedence (top to bottom; first match wins):
-      1. base is None, prev is not None:
-            - if suppress_disappearance: silent (CALL — aging out is silent)
-            - elif prev > 0:  REMOVE  (β: only when prior weight was positive)
-            - else:           silent  (β — short disappearance silent)
-      2. base = None, prev = None:  silent
-      3. prev = None, base != None:
-            - if base > 2:  ADD
-            - else:         silent
-      4. both present:
-            (prev > 0 AND base <= 0) OR (prev >= 0 AND base < 0)  → REMOVE
-            base > 0 AND base > prev                              → INCREASE
-            base > 0 AND base < prev                              → REDUCE
-            else                                                  → silent
+    Presence on the current list with a positive weight is a buy verdict
+    every period, not just on first appearance. Held-vs-not is resolved
+    downstream by derive_actionable suppression.
+
+      base > 0                  -> ADD     (positive weight on the current list)
+      base < 0                  -> REMOVE  (negative weight on the current list)
+      base absent, prev present -> REMOVE  (dropped from the list)
+      otherwise                 -> silent
     """
-    if base is None and prev is None:
-        return None, "no data in either window"
-    if base is None:
-        if suppress_disappearance:
-            return None, "absent in window (suppressed — aging out is silent)"
+    if base is not None:
         try:
-            if prev is not None and float(prev) > 0:
-                return "REMOVE", f"removed from snapshot (prev {float(prev):+g})"
+            b = float(base)
         except (TypeError, ValueError):
-            pass
-        return None, "absent (prev non-positive — silent per β)"
-    if prev is None:
+            return None, "non-numeric weight - no action"
+        if b > 0:
+            return "ADD", f"on list, weight {b:+g}"
+        if b < 0:
+            return "REMOVE", f"on list, weight {b:+g}"
+        return None, "weight 0 - silent"
+    if prev is not None:
         try:
-            if float(base) > 2:
-                return "ADD", f"new + base {float(base):+g} > 2"
-            return None, f"new + base {float(base):+g} ≤ 2 — no action"
+            return "REMOVE", f"dropped from list (was {float(prev):+g})"
         except (TypeError, ValueError):
-            return None, "new + non-numeric base — no action"
-    try:
-        b = float(base)
-        pv = float(prev)
-    except (TypeError, ValueError):
-        return None, "non-numeric base or prev — no action"
-    if (pv > 0 and b <= 0) or (pv >= 0 and b < 0):
-        return "REMOVE", f"weight {pv:+g} → {b:+g}"
-    if b > 0 and b > pv:
-        return "INCREASE", f"weight {pv:+g} → {b:+g}"
-    if b > 0 and b < pv:
-        return "REDUCE", f"weight {pv:+g} → {b:+g}"
-    return None, "no qualifying change"
+            return "REMOVE", "dropped from list"
+    return None, "not on list"
 
 
 def _action_rank(curr, prev, held: bool) -> tuple[Optional[str], str]:
@@ -634,15 +555,6 @@ def _action_rank(curr, prev, held: bool) -> tuple[Optional[str], str]:
     if delta < 0:
         return "INCREASE", f"rank improved {prev}->{curr}, not held"
     return "ADD", f"on list at rank {curr}, not held"
-
-
-def _pct_str(x) -> str:
-    """Format a fraction as a signed percentage for reason text
-    (e.g. 0.053 -> '+5.3%'). pct_delta is stored as a fraction."""
-    try:
-        return f"{float(x) * 100:+g}%"
-    except (TypeError, ValueError):
-        return str(x)
 
 
 def _action_sss_pct_delta(curr_pct, prev_pct, held: bool,
@@ -676,18 +588,18 @@ def _action_sss_pct_delta(curr_pct, prev_pct, held: bool,
     if cp is None:
         return None, "no pct_delta value"
     if cp < 0:
-        return "REMOVE", f"pct_delta {_pct_str(cp)} negative"
+        return "REMOVE", f"pct_delta {cp:+g} negative"
     try:
         pp = float(prev_pct) if prev_pct is not None else None
     except (TypeError, ValueError):
         pp = None
     if pp is None:
-        return "HOLD", f"pct_delta {_pct_str(cp)}, no prior to compare"
+        return "HOLD", f"pct_delta {cp:+g}, no prior to compare"
     if cp > pp:
-        return "INCREASE", f"pct_delta {_pct_str(pp)} -> {_pct_str(cp)} (rising)"
+        return "INCREASE", f"pct_delta {pp:+g} -> {cp:+g} (rising)"
     if cp < pp:
-        return "REDUCE", f"pct_delta {_pct_str(pp)} -> {_pct_str(cp)} (falling)"
-    return "HOLD", f"pct_delta steady at {_pct_str(cp)}"
+        return "REDUCE", f"pct_delta {pp:+g} -> {cp:+g} (falling)"
+    return "HOLD", f"pct_delta steady at {cp:+g}"
 
 
 def _call_window_states(session: Session, table: str, date_col: str,
@@ -793,10 +705,10 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
         INSERT INTO drv_outlook_action
           (as_of_date, symbol, source_code, base_weight, prev_weight, prev_date,
            weight_delta, held_today, action, action_reason, category,
-           analyst_rank, source_run_id)
+           analyst_rank, source_run_id, source_snapshot_date)
         VALUES
           (:d, :sym, :sc, :base, :prev, :prev_d, :delta, :held, :act, :reason, :cat,
-           :analyst_rank, :rid)
+           :analyst_rank, :rid, :source_snap)
     """)
 
     for s in sources:
@@ -813,62 +725,13 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
             session.execute(text("SAVEPOINT sp_source"))
             if method == "outlook_modifier":
                 # ── v2 routing (2026-05-12) ────────────────────────────────
-                # ETF/RR -> standing-list classifier (_action_standing);
-                # II -> monthly standing branch above; CALL -> standing below.
+                # ETF/II/RR -> standing-list classifier (_action_standing);
+                # CALL -> standing-recommendation model (_action_call_standing).
                 #   ETF/II — UNION their *chg patch tables
                 #   CALL  — 30-day per-symbol window, aging-out silent
                 #   RR    — dense exact-match on as_of_date
                 yesterday = as_of_date - timedelta(days=1)
                 _ETF_II_CHG = {"ETF": "hist_etfchg", "II": "hist_iichg"}
-
-                if sc == "II":
-                    # II is a monthly standing list (2026-05-25). Presence
-                    # with a positive weight is a buy verdict every month,
-                    # not just on first appearance. Self-contained - emits
-                    # its own rows and skips the shared loop below.
-                    curr_snap, prev_snap = _find_month_period_snapshots(
-                        session, table, date_col, as_of_date
-                    )
-                    if curr_snap is None:
-                        log.warning("source II (%s) has no snapshot on/before "
-                                    "%s - skipping (no actions emitted)",
-                                    table, as_of_date)
-                        session.execute(text("RELEASE SAVEPOINT sp_source"))
-                        continue
-                    today_w = _state_etf_ii(session, table, "hist_iichg",
-                                            as_of_date, wt_map)
-                    prev_w  = _state_etf_ii(session, table, "hist_iichg",
-                                            prev_snap, wt_map) if prev_snap else {}
-                    ii_batch = []
-                    for isym in set(today_w) | set(prev_w):
-                        base = today_w.get(isym)
-                        prev = prev_w.get(isym)
-                        iact, ireason = _action_standing(base, prev)
-                        if iact is None:
-                            continue
-                        idelta = None
-                        if base is not None and prev is not None:
-                            try:
-                                idelta = float(base) - float(prev)
-                            except (TypeError, ValueError):
-                                idelta = None
-                        ii_batch.append({
-                            "d": curr_snap, "sym": isym, "sc": sc,
-                            "base": base, "prev": prev, "prev_d": prev_snap,
-                            "delta": idelta, "held": isym in holdings,
-                            "act": iact, "reason": ireason, "cat": category,
-                            "rid": run_id, "analyst_rank": None,
-                        })
-                    if ii_batch:
-                        session.execute(text(
-                            "DELETE FROM drv_outlook_action "
-                            "WHERE source_code = :sc AND as_of_date = :d"
-                        ), {"sc": sc, "d": curr_snap})
-                        for irow in ii_batch:
-                            session.execute(insert_sql, irow)
-                        total_rows += len(ii_batch)
-                    session.execute(text("RELEASE SAVEPOINT sp_source"))
-                    continue
 
                 if sc in _ETF_II_CHG:
                     # Periodic sources (ETF=SUN, II=MON) with intra-week
@@ -902,12 +765,12 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                     # standing ADD/INCREASE until acted on; INCREASE/REDUCE
                     # surface only while a real weight change is still inside
                     # the 30-day window. Self-contained - emits its own rows
-                    # and skips the shared _action_outlook_v2 loop below.
+                    # and skips the shared _action_standing loop below.
                     lb = int(s.get("lookback_days") or 30)
                     states = _call_window_states(session, table, date_col,
                                                  as_of_date, wt_map, lb)
                     call_batch = []
-                    for csym, (cw, _cd, pdw, pdd) in states.items():
+                    for csym, (cw, cd, pdw, pdd) in states.items():
                         chld = csym in holdings
                         cact, creason = _action_call_standing(cw, pdw, chld)
                         if cact is None:
@@ -924,6 +787,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                             "delta": cdelta, "held": chld, "act": cact,
                             "reason": creason, "cat": category, "rid": run_id,
                             "analyst_rank": None,
+                            "source_snap": cd,
                         })
                     for crow in call_batch:
                         session.execute(insert_sql, crow)
@@ -960,6 +824,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                 # Process actions for outlook_modifier sources (ETF/II, CALL, RR)
                 # For periodic sources (ETF/II), use the period's snapshot date, not as_of_date
                 action_date = (curr_snap if sc in _ETF_II_CHG else as_of_date)
+                source_snap = curr_snap if sc in _ETF_II_CHG else comparison_date
                 all_syms = set(today_w) | set(prev_w)
                 batch = []
                 for sym in all_syms:
@@ -983,6 +848,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                         "delta": delta, "held": held, "act": act,
                         "reason": reason, "cat": category, "rid": run_id,
                         "analyst_rank": None,
+                        "source_snap": source_snap,
                     })
                 if batch:
                     # Periodic sources (ETF/II/PS/SSS) key rows on the period
@@ -1047,6 +913,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                         "delta": delta, "held": held, "act": act,
                         "reason": reason, "cat": category, "rid": run_id,
                         "analyst_rank": None,
+                        "source_snap": curr_snap,
                     })
                 if batch:
                     # Periodic sources (ETF/II/PS/SSS) key rows on the period
@@ -1121,6 +988,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                         "delta": delta, "held": held, "act": act,
                         "reason": reason, "cat": category, "rid": run_id,
                         "analyst_rank": curr_arank,
+                        "source_snap": curr_snap,
                     })
                 if batch:
                     # Periodic sources (ETF/II/PS/SSS) key rows on the period
@@ -1207,19 +1075,15 @@ def compute_standing_verdicts(session: Session, as_of_date: date) -> list[dict]:
     except Exception as e:
         log.warning("standing verdict: RR failed (%s)", e)
 
-    # ETF (weekly) / II (monthly) periodic sources.
+    # ETF / II - week-bucketed periodic sources.
     for sc, table, chg, default_dow in (
         ("ETF", "hist_etf", "hist_etfchg", 0),
         ("II",  "hist_ii",  "hist_iichg",  1),
     ):
         try:
-            if sc == "II":
-                curr_snap, _ = _find_month_period_snapshots(
-                    session, table, "snapshot_date", as_of_date)
-            else:
-                anchor = _load_anchor_dow(session, table, default_dow)
-                curr_snap, _ = _find_week_period_snapshots(
-                    session, table, "snapshot_date", as_of_date, anchor)
+            anchor = _load_anchor_dow(session, table, default_dow)
+            curr_snap, _ = _find_week_period_snapshots(
+                session, table, "snapshot_date", as_of_date, anchor)
             if curr_snap is None:
                 continue
             today_w = _state_etf_ii(session, table, chg, curr_snap, wt_map)

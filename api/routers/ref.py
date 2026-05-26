@@ -595,3 +595,100 @@ def get_data_table(
         total=total,
         filter_description=filter_description,
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Explore screen mutation endpoints — accept ANY discoverable data table.
+# Mirrors the /api/ref/* logic but with the wider Explore guard. CLAUDE.md
+# conventions #1/#2 ("never delete/overwrite raw data") are relaxed for this
+# ad-hoc admin path — Explore is a power-user tool, handle with care.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.post("/api/data/{table_name}", response_model=RefRowInsertResult)
+def insert_data_row(table_name: str, row_data: dict):
+    """Insert a single row into any Explore-eligible table."""
+    if table_name not in set(discover_data_tables()):
+        raise HTTPException(status_code=404, detail=f"Unknown data table: {table_name}")
+    try:
+        with session_scope() as s:
+            table = get_table(table_name)
+            row_data = _coerce_row_types(table, row_data)
+            stmt = table.insert().values(**row_data)
+            result = s.execute(stmt)
+            n_inserted = result.rowcount
+            s.commit()
+            if n_inserted == 0:
+                raise HTTPException(status_code=500, detail="Insert returned 0 rows affected")
+            return RefRowInsertResult(ok=True, inserted=n_inserted)
+    except IntegrityError as e:
+        if "duplicate key value" in str(e).lower() or "unique constraint" in str(e).lower():
+            raise HTTPException(status_code=409, detail="Row already exists (duplicate primary key)")
+        raise HTTPException(status_code=400, detail=f"Integrity error: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Insert failed: {str(e)}")
+
+
+@router.delete("/api/data/{table_name}")
+def delete_data_row(table_name: str, row_data: dict):
+    """Delete a single row from any Explore-eligible table by primary key."""
+    if table_name not in set(discover_data_tables()):
+        raise HTTPException(status_code=404, detail=f"Unknown data table: {table_name}")
+    try:
+        with session_scope() as s:
+            table = get_table(table_name)
+            pk_cols = [c.name for c in table.primary_key.columns]
+            if not pk_cols:
+                raise HTTPException(status_code=400, detail="Table has no primary key - cannot delete by PK")
+            pk_data = {col: row_data[col] for col in pk_cols if col in row_data}
+            if len(pk_data) != len(pk_cols):
+                missing = sorted(set(pk_cols) - set(pk_data))
+                raise HTTPException(status_code=400, detail=f"Missing PK columns: {missing}")
+            where_clause = " AND ".join(f"{col} = :{col}" for col in pk_cols)
+            sql = f"DELETE FROM {table_name} WHERE {where_clause}"
+            result = s.execute(text(sql), pk_data)
+            s.commit()
+            if result.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Row not found")
+            return {"ok": True, "deleted": result.rowcount}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")
+
+
+@router.patch("/api/data/{table_name}/row")
+def patch_data_row(table_name: str, request_data: dict):
+    """Update specific columns in a row of any Explore-eligible table.
+
+    Body: {"pk": {...pk_cols}, "updates": {...non_pk_cols}}
+    Uses pk_/upd_ prefixed bind params so a column name appearing in both
+    pk and updates can't collide.
+    """
+    if table_name not in set(discover_data_tables()):
+        raise HTTPException(status_code=404, detail=f"Unknown data table: {table_name}")
+    pk = request_data.get("pk", {})
+    updates = request_data.get("updates", {})
+    if not pk:
+        raise HTTPException(status_code=400, detail="Missing 'pk' in request")
+    if not updates:
+        raise HTTPException(status_code=400, detail="Missing 'updates' in request")
+    try:
+        with session_scope() as s:
+            table = get_table(table_name)
+            updates = _coerce_row_types(table, updates)
+            pk_cols = [c.name for c in table.primary_key.columns]
+            where_clause = " AND ".join(f"{col} = :pk_{col}" for col in pk_cols)
+            update_clause = ", ".join(f"{col} = :upd_{col}" for col in updates.keys())
+            sql = f"UPDATE {table_name} SET {update_clause} WHERE {where_clause}"
+            params = {f"pk_{k}": v for k, v in pk.items()}
+            params.update({f"upd_{k}": v for k, v in updates.items()})
+            result = s.execute(text(sql), params)
+            s.commit()
+            return {"ok": True, "updated": result.rowcount}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Update failed: {str(e)}")

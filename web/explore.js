@@ -16,6 +16,7 @@ const state = {
     sortDirection: 'asc',
     filterSymbol: '',
     filterDate: '',
+    checkedRows: new Set(),
 };
 
 const DOM = {
@@ -36,6 +37,9 @@ const DOM = {
     filterDate: document.getElementById('filterDate'),
     filterApplyBtn: document.getElementById('filterApplyBtn'),
     filterClearBtn: document.getElementById('filterClearBtn'),
+    insertRowBtn: document.getElementById('insertRowBtn'),
+    copyRowBtn: document.getElementById('copyRowBtn'),
+    deleteRowBtn: document.getElementById('deleteRowBtn'),
 };
 
 // Initialize
@@ -148,6 +152,26 @@ DOM.inlineNextBtn.addEventListener('click', async () => {
     }
 });
 
+if (DOM.insertRowBtn) {
+    DOM.insertRowBtn.addEventListener('click', () => {
+        if (!state.currentTable) return;
+        insertBlankRow();
+    });
+}
+if (DOM.copyRowBtn) {
+    DOM.copyRowBtn.addEventListener('click', () => {
+        if (state.checkedRows.size === 0) return;
+        const firstIdx = Math.min(...state.checkedRows);
+        copyAndInsertRow(firstIdx);
+    });
+}
+if (DOM.deleteRowBtn) {
+    DOM.deleteRowBtn.addEventListener('click', () => {
+        if (state.checkedRows.size === 0) return;
+        deleteSelectedRows();
+    });
+}
+
 async function fetchJSON(url, options = {}) {
     try {
         const resp = await fetch(url, {
@@ -246,6 +270,7 @@ async function loadTable(tableName) {
         state.columns = [];
         state.rows = [];
         state.total = 0;
+        state.checkedRows.clear();
         DOM.rowsDisplay.textContent = '';
         DOM.inlinePageInfo.textContent = '';
         DOM.headerRow.innerHTML = '';
@@ -283,6 +308,7 @@ async function loadTable(tableName) {
         state.columns = data.columns;
         state.rows = data.rows;
         state.total = data.total;
+        state.checkedRows.clear();
 
         // Show what filter the API applied to produce this set of records
         const fBar = document.getElementById('filterInfoBar');
@@ -304,7 +330,8 @@ async function loadTable(tableName) {
 }
 
 function renderTable() {
-    // Headers
+    // Headers: checkbox column + data columns
+    const checkboxHeader = '<th style="width: 32px; padding: 12px 6px;"><input type="checkbox" id="selectAll" title="Select all rows on this page"></th>';
     const headers = state.columns.map(col => {
         const classList = col.is_pk ? ' class="pk-col"' : '';
         const isSorted = state.sortColumn === col.name;
@@ -313,11 +340,12 @@ function renderTable() {
             : '';
         return `<th${classList} data-column="${col.name}">${col.name}${indicator}</th>`;
     }).join('');
-    DOM.headerRow.innerHTML = headers;
+    DOM.headerRow.innerHTML = checkboxHeader + headers;
 
-    // Add click handlers to headers
-    DOM.headerRow.querySelectorAll('th').forEach(th => {
-        th.addEventListener('click', async () => {
+    // Sort handlers on data column headers only
+    DOM.headerRow.querySelectorAll('th[data-column]').forEach(th => {
+        th.addEventListener('click', async (e) => {
+            if (e.target.tagName === 'INPUT') return;
             const column = th.getAttribute('data-column');
             if (state.sortColumn === column) {
                 state.sortDirection = state.sortDirection === 'asc' ? 'desc' : 'asc';
@@ -330,23 +358,71 @@ function renderTable() {
         });
     });
 
-    // Rows
-    const rows = state.rows.map(row => {
+    // selectAll checkbox listener (created fresh each render)
+    const selectAllEl = document.getElementById('selectAll');
+    if (selectAllEl) {
+        selectAllEl.addEventListener('change', (e) => {
+            state.checkedRows.clear();
+            if (e.target.checked) {
+                for (let i = 0; i < state.rows.length; i++) state.checkedRows.add(i);
+            }
+            updateCheckboxesUI();
+            updateButtonStates();
+        });
+    }
+
+    // Rows: checkbox + editable non-PK cells
+    const rows = state.rows.map((row, idx) => {
+        const checkbox = `<td style="padding: 10px 6px;"><input type="checkbox" data-row-idx="${idx}"></td>`;
         const cells = state.columns.map(col => {
             const value = row[col.name];
             const displayValue = value === null ? '(null)' : String(value);
             if (col.is_pk) {
                 return `<td class="pk-col">${escapeHtml(displayValue)}</td>`;
             }
-            // Style file paths/names in blue
-            if (isFilePathColumn(col.name)) {
-                return `<td class="file-link">${escapeHtml(displayValue)}</td>`;
-            }
-            return `<td>${highlightKeywords(displayValue)}</td>`;
+            const fileCls = isFilePathColumn(col.name) ? ' file-link' : '';
+            return `<td class="edit-cell${fileCls}" data-col="${col.name}" data-original="${escapeHtml(displayValue)}">${highlightKeywords(displayValue)}</td>`;
         }).join('');
-        return `<tr>${cells}</tr>`;
+        return `<tr>${checkbox}${cells}</tr>`;
     }).join('');
     DOM.tableBody.innerHTML = rows;
+
+    // Per-row checkbox listeners
+    DOM.tableBody.querySelectorAll('input[data-row-idx]').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+            const idx = parseInt(e.target.dataset.rowIdx);
+            if (e.target.checked) state.checkedRows.add(idx);
+            else state.checkedRows.delete(idx);
+            updateSelectAllCheckbox();
+            updateButtonStates();
+        });
+    });
+
+    // Inline editing on non-PK cells (same pattern as Ref Data screen)
+    DOM.tableBody.querySelectorAll('.edit-cell').forEach(cell => {
+        cell.addEventListener('click', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            const col = cell.dataset.col;
+            const original = cell.dataset.original;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = original === '(null)' ? '' : original;
+            input.style.width = '100%';
+            cell.innerHTML = '';
+            cell.appendChild(input);
+            input.focus();
+            input.select();
+            const save = async () => { await updateCell(col, input.value, cell); };
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') save();
+                else if (e.key === 'Escape') { cell.textContent = original; }
+            });
+            input.addEventListener('blur', save);
+        });
+    });
+
+    updateButtonStates();
+    updateSelectAllCheckbox();
 
     // Pagination (top inline, top full, and bottom)
     const maxPage = Math.ceil(state.total / state.pageSize);
@@ -355,7 +431,6 @@ function renderTable() {
     const pageText = `Showing ${startRow}–${endRow} of ${state.total}`;
     const currentPageNum = state.currentPage + 1;
 
-    // Update inline controls (always visible if data loaded)
     const inlinePagination = document.querySelector('.inline-pagination');
     if (state.total > 0) {
         DOM.rowsDisplay.textContent = pageText;
@@ -367,7 +442,6 @@ function renderTable() {
         if (inlinePagination) inlinePagination.classList.remove('visible');
     }
 
-    // Bottom pagination (only if more than one page)
     if (state.total > state.pageSize) {
         DOM.pagination.style.display = 'flex';
         DOM.pageInfo.textContent = pageText;
@@ -434,3 +508,187 @@ function highlightKeywords(text) {
         return match;
     });
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Row selection + mutation (Copy / Delete / Insert / inline edit).
+// Same patterns as web/ref.js, calls /api/data/{table} (Explore-eligible).
+// ─────────────────────────────────────────────────────────────────────────────
+
+function updateCheckboxesUI() {
+    DOM.tableBody.querySelectorAll('input[data-row-idx]').forEach(cb => {
+        const idx = parseInt(cb.dataset.rowIdx);
+        cb.checked = state.checkedRows.has(idx);
+    });
+    updateSelectAllCheckbox();
+}
+
+function updateSelectAllCheckbox() {
+    const sa = document.getElementById('selectAll');
+    if (!sa) return;
+    const allSelected = state.rows.length > 0 && state.checkedRows.size === state.rows.length;
+    const someSelected = state.checkedRows.size > 0 && state.checkedRows.size < state.rows.length;
+    sa.checked = allSelected;
+    sa.indeterminate = someSelected;
+}
+
+function updateButtonStates() {
+    if (DOM.copyRowBtn) DOM.copyRowBtn.disabled = state.checkedRows.size === 0;
+    if (DOM.deleteRowBtn) DOM.deleteRowBtn.disabled = state.checkedRows.size === 0;
+    if (DOM.insertRowBtn) DOM.insertRowBtn.disabled = !state.currentTable;
+}
+
+async function updateCell(colName, newValue, cellEl) {
+    if (!state.currentTable || !state.columns.length) return;
+    const tr = cellEl.parentNode;
+    const rowIdx = Array.from(DOM.tableBody.children).indexOf(tr);
+    if (rowIdx < 0 || rowIdx >= state.rows.length) return;
+    const row = state.rows[rowIdx];
+    const pk = {};
+    state.columns.forEach(col => { if (col.is_pk) pk[col.name] = row[col.name]; });
+    try {
+        const result = await fetchJSON(`/api/data/${state.currentTable}/row`, {
+            method: 'PATCH',
+            body: JSON.stringify({ pk, updates: { [colName]: newValue === '' ? null : newValue } }),
+        });
+        if (result.updated > 0) {
+            const shown = newValue === '' ? '(null)' : newValue;
+            cellEl.textContent = shown;
+            cellEl.dataset.original = shown;
+            row[colName] = newValue === '' ? null : newValue;
+            showStatus(`Updated ${colName}`, 'success');
+        } else {
+            cellEl.textContent = cellEl.dataset.original;
+            showStatus(`Update failed: no rows affected`, 'error');
+        }
+    } catch (e) {
+        cellEl.textContent = cellEl.dataset.original;
+        showStatus(`Update failed: ${e.message}`, 'error');
+    }
+}
+
+function insertBlankRow() {
+    if (!state.currentTable) return;
+    const blank = {};
+    state.columns.forEach(col => { blank[col.name] = ''; });
+    showInlineEditor(blank, true);
+}
+
+function copyAndInsertRow(rowIdx) {
+    if (rowIdx < 0 || rowIdx >= state.rows.length) return;
+    showInlineEditor({ ...state.rows[rowIdx] }, false, rowIdx);
+}
+
+function showInlineEditor(newRowData, atTop, sourceIdx) {
+    // Only one editor at a time
+    const existing = DOM.tableBody.querySelector('tr.new-row-editor');
+    if (existing) existing.remove();
+
+    const newTr = document.createElement('tr');
+    newTr.className = 'new-row-editor';
+    newTr.style.backgroundColor = '#fffacd';
+
+    // Save / Cancel buttons in the checkbox column
+    const btnCell = document.createElement('td');
+    btnCell.style.padding = '6px';
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save';
+    saveBtn.style.cssText = 'margin-right: 4px; background: #dcfce7; color: #16a34a; padding: 4px 8px; border: 1px solid #86efac; border-radius: 3px; cursor: pointer; font-size: 11px;';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = 'background: #fee2e2; color: #dc2626; padding: 4px 8px; border: 1px solid #fca5a5; border-radius: 3px; cursor: pointer; font-size: 11px;';
+    btnCell.appendChild(saveBtn);
+    btnCell.appendChild(cancelBtn);
+    newTr.appendChild(btnCell);
+
+    // Editable cells (PK fields included so user can set them for insert)
+    state.columns.forEach(col => {
+        const cell = document.createElement('td');
+        cell.style.padding = '6px';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = newRowData[col.name] ?? '';
+        input.placeholder = col.is_pk ? `${col.name} (PK)` : col.name;
+        input.style.cssText = 'width: 100%; padding: 4px; border: 1px solid var(--accent); border-radius: 3px; font-size: 12px;';
+        cell.appendChild(input);
+        newTr.appendChild(cell);
+        input.addEventListener('change', () => {
+            newRowData[col.name] = input.value === '' ? null : input.value;
+        });
+    });
+
+    if (atTop || sourceIdx === undefined) {
+        DOM.tableBody.insertBefore(newTr, DOM.tableBody.firstChild);
+    } else {
+        const tableRows = DOM.tableBody.querySelectorAll('tr');
+        const targetRow = tableRows[sourceIdx];
+        if (targetRow) targetRow.parentNode.insertBefore(newTr, targetRow.nextSibling);
+        else DOM.tableBody.insertBefore(newTr, DOM.tableBody.firstChild);
+    }
+
+    const firstInput = newTr.querySelector('input');
+    if (firstInput) { firstInput.focus(); firstInput.select(); }
+
+    cancelBtn.addEventListener('click', () => newTr.remove());
+
+    saveBtn.addEventListener('click', async () => {
+        // Pull latest values from the inputs (handles users who didn't blur)
+        const payload = {};
+        const inputs = newTr.querySelectorAll('td input[type="text"]');
+        state.columns.forEach((col, i) => {
+            const v = inputs[i] ? inputs[i].value : '';
+            payload[col.name] = v === '' ? null : v;
+        });
+        let valid = true;
+        state.columns.forEach(col => {
+            if (col.is_pk && (payload[col.name] === null || payload[col.name] === undefined)) {
+                showStatus(`Primary key field "${col.name}" cannot be empty`, 'error');
+                valid = false;
+            }
+        });
+        if (!valid) return;
+        saveBtn.disabled = true;
+        cancelBtn.disabled = true;
+        try {
+            await fetchJSON(`/api/data/${state.currentTable}`, {
+                method: 'POST',
+                body: JSON.stringify(payload),
+            });
+            newTr.remove();
+            showStatus('Row inserted successfully', 'success');
+            await loadTable(state.currentTable);
+        } catch (e) {
+            showStatus(`Insert failed: ${e.message}`, 'error');
+            saveBtn.disabled = false;
+            cancelBtn.disabled = false;
+        }
+    });
+}
+
+async function deleteSelectedRows() {
+    if (state.checkedRows.size === 0 || !state.currentTable) return;
+    const rowsToDelete = Array.from(state.checkedRows).map(idx => state.rows[idx]);
+    const count = rowsToDelete.length;
+    if (!confirm(`Delete ${count} row(s) from ${state.currentTable}? This cannot be undone.`)) return;
+    let successCount = 0, failureCount = 0;
+    for (const row of rowsToDelete) {
+        try {
+            const pk = {};
+            state.columns.forEach(col => { if (col.is_pk) pk[col.name] = row[col.name]; });
+            const resp = await fetch(`/api/data/${state.currentTable}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(pk),
+            });
+            if (resp.ok) successCount++; else failureCount++;
+        } catch (e) {
+            console.error('Delete failed:', e);
+            failureCount++;
+        }
+    }
+    state.checkedRows.clear();
+    await loadTable(state.currentTable);
+    if (failureCount === 0) showStatus(`Deleted ${successCount} row(s)`, 'success');
+    else showStatus(`Deleted ${successCount}, failed ${failureCount}`, 'error');
+}
+

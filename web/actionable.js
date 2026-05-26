@@ -16,7 +16,6 @@ const state = {
     other_filter: false,
     show_no_action: false,  // when false, blank-action rows are hidden
     show_zero_amt: false,   // when false, rows with $0 AMT$ are hidden
-    standing: false,        // standing-verdict view (RR/ETF/II), not last-file changes
   },
   current: null,
   sourceMethods: {},   // source_code -> base_weight_method (Metric-column sort)
@@ -122,17 +121,17 @@ async function loadActionable() {
   if (!state.date) return;
   // Always fetch all rows — action/category filters applied client-side so chip counts stay accurate
   const params = new URLSearchParams({ date: state.date });
-  const endpoint = state.filters.standing ? '/api/actionable/standing' : '/api/actionable';
-  if (!state.filters.standing) {
-    if (state.filters.show_acted) params.append('show_acted', 'true');
-    if (state.filters.show_suppressed) params.append('show_suppressed', 'true');
-  }
+  if (state.filters.show_acted) params.append('show_acted', 'true');
+  if (state.filters.show_suppressed) params.append('show_suppressed', 'true');
   try {
-    const rows = await fetchJson(endpoint + '?' + params.toString());
+    const rows = await fetchJson('/api/actionable?' + params.toString());
     state.allRows = Array.isArray(rows) ? rows : [];
     state.allRows.forEach(r => {
       const act = (r.consolidated_action || '').toUpperCase();
-      if (act === 'REMOVE') {
+      if (_isOverMaxOverlay(r)) {
+        // Over-allocation overlay — AMT$ = trim back to the category Max.
+        r._amt = Number(r.current_position_dollar) - Number(r.target_max_dollar);
+      } else if (act === 'REMOVE') {
         r._amt = r.current_position_dollar;
       } else if (act === 'ADD' && r.target_min_dollar != null) {
         // ADD: AMT$ is the top-up needed to reach Min. Already at/above Min → 0.
@@ -163,7 +162,7 @@ async function loadActionable() {
 // counts can reflect every other active filter.
 function matchesBaseFilters(r) {
   if (!state.filters.show_no_action && !r.consolidated_action) return false;
-  if (!state.filters.standing && !state.filters.show_zero_amt && !r._amt) return false;
+  if (!state.filters.show_zero_amt && !r._amt) return false;
   if (state.filters.source) {
     if (!_rowHasSource(r, state.filters.source)) return false;
   }
@@ -187,11 +186,19 @@ function matchesBaseFilters(r) {
 }
 
 function applyClientFilter() {
+  // A source picked in the dropdown can vanish from the dataset (e.g. when
+  // switching to a date where that source has no rows). Drop the stale
+  // filter so the grid doesn't silently show nothing while the dropdown has
+  // already reset itself to "All".
+  if (state.filters.source && !_availableSources().has(state.filters.source)) {
+    state.filters.source = '';
+  }
   // Rows passing every filter except the action chip (drives chip counts).
   state.baseRows = state.allRows.filter(matchesBaseFilters);
   // Apply the action chip on top for the grid itself.
   state.rows = state.baseRows.filter(r => {
     if (!state.filters.action) return true;
+    if (state.filters.action === 'OVER_MAX') return _isOverMaxOverlay(r);
     return (r.consolidated_action || 'NONE').toUpperCase() === state.filters.action;
   });
   renderSummary();
@@ -232,14 +239,18 @@ async function rederiveStale() {
 
 // ---- summary chips (act as quick action filters) ----
 function renderSummary() {
-  const counts = { REMOVE: 0, REDUCE: 0, INCREASE: 0, ADD: 0, HOLD: 0, NONE: 0 };
+  const counts = { REMOVE: 0, OVER_MAX: 0, REDUCE: 0, INCREASE: 0, ADD: 0, HOLD: 0, NONE: 0 };
   for (const r of state.baseRows) {
     const a = (r.consolidated_action || 'NONE').toUpperCase();
     if (counts[a] !== undefined) counts[a] += 1;
+    // OVER_MAX is a synthetic chip — rows tagged via the display overlay
+    // (pos > Max), independent of consolidated_action. A row counts in BOTH
+    // its underlying action chip AND OVER_MAX.
+    if (_isOverMaxOverlay(r)) counts.OVER_MAX += 1;
   }
   const wrap = $('summaryChips');
   wrap.innerHTML = '';
-  const order = ['REMOVE', 'REDUCE', 'INCREASE', 'ADD', 'HOLD', 'NONE'];
+  const order = ['REMOVE', 'OVER_MAX', 'REDUCE', 'INCREASE', 'ADD', 'HOLD', 'NONE'];
   const all = document.createElement('div');
   all.className = 'act-chip' + (state.filters.action === '' ? ' active' : '');
   all.innerHTML = `<span>ALL</span><span class="count">${state.baseRows.length}</span>`;
@@ -249,7 +260,7 @@ function renderSummary() {
     const chip = document.createElement('div');
     chip.className = 'act-chip act-chip-' + a.toLowerCase()
                    + (state.filters.action === a ? ' active' : '');
-    chip.innerHTML = `<span>${a === 'NONE' ? '&mdash;' : a}</span><span class="count">${counts[a] || 0}</span>`;
+    chip.innerHTML = `<span>${ACTION_LABEL[a] || a}</span><span class="count">${counts[a] || 0}</span>`;
     chip.onclick = () => {
       state.filters.action = (state.filters.action === a) ? '' : a;
       applyClientFilter();
@@ -258,8 +269,8 @@ function renderSummary() {
   }
 }
 
-function renderSourceFilter() {
-  const sel = $('sourceFilter');
+// Set of every source code present in the current dataset (winning + other).
+function _availableSources() {
   const have = new Set();
   for (const r of state.allRows) {
     if (r.winning_source) have.add(r.winning_source);
@@ -268,6 +279,12 @@ function renderSourceFilter() {
       if (c) have.add(c);
     }
   }
+  return have;
+}
+
+function renderSourceFilter() {
+  const sel = $('sourceFilter');
+  const have = _availableSources();
   // preserve current selection if still present
   const cur = state.filters.source;
   sel.innerHTML = '<option value="">All</option>';
@@ -329,6 +346,47 @@ function _saFor(row, src) {
 
 // Action severity rank — REMOVE strongest. Mirrors the consolidation sort.
 const ACTION_RANK = { REMOVE: 4, REDUCE: 3, INCREASE: 2, ADD: 1, HOLD: 0 };
+
+// Instructional labels for the consolidated Action badge. The raw
+// consolidated_action value, winning_source, color, chip and sort are all
+// unchanged — only the badge text. When the held position exceeds the
+// category Max (REMOVE excepted), the badge overlays SELL→MAX on top of
+// whatever action fired, and the original label is shown in small letters
+// underneath ("was BUY +1U" etc.) so the source signal is still visible.
+const ACTION_LABEL = {
+  REMOVE: 'SELL ALL', REDUCE: 'SELL −1U', INCREASE: 'BUY +1U',
+  ADD: 'BUY→MIN', HOLD: 'HOLD', NONE: '—',
+  // Synthetic pseudo-action used by the SELL→MAX summary chip. Rows are
+  // matched via _isOverMaxOverlay (pos > Max), not consolidated_action.
+  OVER_MAX: 'SELL→MAX',
+};
+// Action color palette — matches .badge-action-* in actionable.html. Used
+// to tint the "was X" overlay annotation in the original action's color.
+const ACTION_COLOR = {
+  REMOVE: '#d83a3a', REDUCE: '#e07c1a', INCREASE: '#2f9e2f',
+  ADD: '#1f7af2', HOLD: '#888', NONE: '#c4c4c4',
+};
+function actionLabel(row) {
+  if (_isOverMaxOverlay(row)) return 'SELL→MAX';
+  const a = ((row && row.consolidated_action) || 'NONE').toUpperCase();
+  return ACTION_LABEL[a] || a;
+}
+// Badge color class — REDUCE (orange) when the over-Max overlay fires so
+// the sell intent reads at a glance; otherwise mirrors consolidated_action.
+function _badgeAction(row) {
+  if (_isOverMaxOverlay(row)) return 'REDUCE';
+  return ((row && row.consolidated_action) || 'NONE').toUpperCase();
+}
+// True when the row's held position exceeds the category Max and the
+// SELL→MAX overlay applies (badge label + AMT$ + "was X" annotation).
+// REMOVE rows are excluded — sell-all is stronger than sell-to-max.
+function _isOverMaxOverlay(row) {
+  if (!row) return false;
+  if ((row.consolidated_action || '').toUpperCase() === 'REMOVE') return false;
+  const pos = Number(row.current_position_dollar);
+  const max = Number(row.target_max_dollar);
+  return isFinite(pos) && isFinite(max) && max > 0 && pos > max;
+}
 
 // Parsed source_actions array for a row (winning + every "other" source).
 function _sourcesOf(row) {
@@ -553,9 +611,11 @@ function renderGrid() {
 
     const reasonText = _winningReason(r);
     tr.innerHTML = `
+      <td style="padding:6px 2px; text-align:center;"><button type="button" class="btn-suppress" data-sym="${escapeHtml(r.symbol)}" data-suppressed="${r.last_user_action === 'SKIPPED' ? '1' : ''}">${r.last_user_action === 'SKIPPED' ? 'Un-snooze' : 'Snooze'}</button></td>
       <td class="num">${r._metric == null ? '' : (_isPctSource(_mSrc) ? fmtPct(r._metric) : formatNum(r._metric))}</td>
+      <td class="num">${fmtUsd(r.current_position_dollar)}</td>
       <td style="padding:6px 4px; max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${typeof yahooLink === 'function' ? yahooLink(r.symbol) : ''}<strong>${r.symbol || ''}</strong></td>
-      <td style="padding:6px 4px;"><span class="badge-action badge-action-${action}">${action === 'NONE' ? '&mdash;' : action}</span></td>
+      <td style="padding:6px 4px;"><span class="badge-action badge-action-${_badgeAction(r)}">${actionLabel(r)}</span>${_isOverMaxOverlay(r) ? `<div style="font-size:8px;line-height:1;font-weight:600;color:${ACTION_COLOR[action] || '#888'};margin-top:1px;">was ${ACTION_LABEL[action] || action}</div>` : ''}</td>
       <td class="num"><strong>${fmtUsd(r._amt)}</strong></td>
       <td class="src-cell" data-srcpop data-sym="${escapeHtml(r.symbol)}" data-src="${escapeHtml(r.winning_source || '')}" style="padding:6px 4px;">${r.winning_source || ''}</td>
       <td style="padding:6px 4px; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(reasonText)}">${escapeHtml(reasonText)}</td>
@@ -563,14 +623,13 @@ function renderGrid() {
       <td style="padding:6px 4px;">${_renderOtherSources(r)}</td>
       <td>${r.sector || ''}</td>
       <td>${escapeHtml(_assetClass(r))}</td>
-      <td class="num">${fmtUsd(r.current_position_dollar)}</td>
       <td class="num">${fmtUsd(r.target_min_dollar)}</td>
       <td class="num">${fmtUsd(r.target_max_dollar)}</td>
       <td class="num">${fmtUsd(r.units_dollar)}</td>
       <td>${r.winning_priority ?? ''}</td>
       <td>${tags.join(' ')}</td>
     `;
-    tr.onclick = () => openDrilldown(r);
+    tr.onclick = (e) => { if (e.target.closest('.btn-suppress')) return; openDrilldown(r); };
     tb.appendChild(tr);
   }
 }
@@ -715,7 +774,7 @@ async function openDrilldown(row) {
   const action = (row.consolidated_action || 'NONE').toUpperCase();
   const kv = $('modalKv');
   kv.innerHTML = `
-    <dt>Action</dt><dd><span class="badge-action badge-action-${action}">${action === 'NONE' ? '&mdash;' : action}</span></dd>
+    <dt>Action</dt><dd><span class="badge-action badge-action-${_badgeAction(row)}">${actionLabel(row)}</span>${_isOverMaxOverlay(row) ? ` <small style="color:${ACTION_COLOR[action] || '#888'};font-weight:600;font-size:9px;">was ${ACTION_LABEL[action] || action}</small>` : ''}</dd>
     <dt>Winning source</dt><dd>${row.winning_source || '—'} (priority ${row.winning_priority ?? '—'})</dd>
     <dt>Asset class</dt><dd>${_assetClass(row) || '—'}</dd>
     <dt>Held today</dt><dd>${row.held_today ? 'Yes' : 'No'}</dd>
@@ -751,11 +810,12 @@ async function openDrilldown(row) {
       const prevMod  = prevOl.modifier  ? ` <span class="ol-mod">${prevOl.modifier}</span>`  : '';
       tr.innerHTML = `
         <td><span class="cmp-caret">&#9656;</span><strong>${escapeHtml(srcCode)}</strong></td>
-        <td>${fmtMD(s.snapshot_date)}</td>
         <td>${escapeHtml(s.base_weight_method || s.method || '')}</td>
+        <td>${fmtMD(s.snapshot_date)}</td>
         <td class="num">${_wfmt(s.base_weight ?? s.weight)}</td>
         <td class="num">${_wfmt(s.prev_weight)}</td>
         <td class="num">${_wfmt(s.weight_delta)}</td>
+        <td>${fmtMD(s.prev_date)}</td>
         <td>${escapeHtml(s.analyst_rank ?? '')}</td>
         <td><span class="${todayOl.cls}" style="font-weight:600;">${todayOl.label}</span>${todayMod}</td>
         <td><span class="${prevOl.cls}">${prevOl.label}</span>${prevMod}</td>
@@ -767,7 +827,7 @@ async function openDrilldown(row) {
       srcTbody.appendChild(tr);
     }
   } else {
-    srcTbody.innerHTML = '<tr><td colspan="12" style="color:var(--text-2,#666); padding:8px;">No per-source actions recorded.</td></tr>';
+    srcTbody.innerHTML = '<tr><td colspan="13" style="color:var(--text-2,#666); padding:8px;">No per-source actions recorded.</td></tr>';
   }
 
   // Rules fires — pills are clickable; clicking one opens the atomic-rule popover
@@ -845,7 +905,7 @@ function toggleCmpRow(tr, srcCode) {
   const exp = document.createElement('tr');
   exp.className = 'cmp-expand-row';
   const td = document.createElement('td');
-  td.colSpan = 12;
+  td.colSpan = 13;
   td.innerHTML = _comparisonPanelHtml(srcCode);
   exp.appendChild(td);
   tr.after(exp);
@@ -1109,6 +1169,31 @@ async function dismissUserAction() {
   }
 }
 
+// ---- per-row snooze toggle ----
+// The row "Snooze" button logs a SKIPPED user action for (snapshot date,
+// symbol); "Un-snooze" clears it. Snoozed rows are hidden unless "Show
+// acted/snoozed" is on. The action is keyed to the snapshot date, so the next
+// data load (a new snapshot date) surfaces the row again.
+async function toggleSuppress(symbol, isSuppressed) {
+  if (!symbol || !state.date) return;
+  try {
+    if (isSuppressed) {
+      await fetchJson('/api/actionable/' + encodeURIComponent(symbol) +
+        '/action?date=' + encodeURIComponent(state.date), { method: 'DELETE' });
+    } else {
+      await fetchJson('/api/actionable/' + encodeURIComponent(symbol) + '/action', {
+        method: 'POST',
+        body: JSON.stringify({ as_of_date: state.date,
+                               user_action: 'SKIPPED',
+                               user_notes: 'suppressed' }),
+      });
+    }
+    await loadActionable();
+  } catch (e) {
+    showStatus('Snooze toggle failed: ' + e.message, 'error');
+  }
+}
+
 // ---- wire up ----
 document.addEventListener('DOMContentLoaded', async () => {
   await loadSources();
@@ -1125,6 +1210,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('exportCsvBtn').addEventListener('click', exportCsv);
   initSorting();
   initSourcePopover();
+  $('actBody').addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn-suppress');
+    if (!btn) return;
+    e.stopPropagation();
+    toggleSuppress(btn.dataset.sym, btn.dataset.suppressed === '1');
+  });
 
   $('sourceFilter').addEventListener('change', (e) => {
     state.filters.source = e.target.value;
@@ -1158,10 +1249,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   $('showSuppressed').addEventListener('change', (e) => {
     state.filters.show_suppressed = e.target.checked;
-    loadActionable();
-  });
-  $('standingView').addEventListener('change', (e) => {
-    state.filters.standing = e.target.checked;
     loadActionable();
   });
 

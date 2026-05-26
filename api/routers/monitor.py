@@ -32,28 +32,25 @@ _HEARTBEAT_STALE_SECS = 90
 router = APIRouter(tags=["monitor"])
 
 
-def _last_n_occurrences(week_day: str, n: int = 5) -> list[date]:
-    """Return the last N dates on which this week_day pattern was expected (excluding today)."""
+def _last_n_occurrences(week_day: str, n: int = 5,
+                        excluded_dates: Optional[set] = None) -> list[date]:
+    """Return the last N dates on which this week_day pattern was expected,
+    excluding today and any dates in excluded_dates (e.g. market holidays).
+    Returns [] for unknown week_day values (defensive — prevents hang on
+    misconfigured ref_load_files rows)."""
     DOW_MAP = {'SUN': 6, 'MON': 0, 'TUE': 1, 'WED': 2, 'THU': 3, 'FRI': 4, 'SAT': 5}
+    if week_day not in DOW_MAP and week_day not in ('WKDAY', 'ALL'):
+        return []
+    excluded = excluded_dates or set()
     today = date.today()
-    if week_day == 'MTH':
-        # Monthly cadence: the first of each of the last N months before today.
-        results = []
-        y, m = today.year, today.month
-        while len(results) < n:
-            mf = date(y, m, 1)
-            if mf < today:
-                results.append(mf)
-            m -= 1
-            if m == 0:
-                m, y = 12, y - 1
-        return results
     results, check = [], today - timedelta(days=1)
-    while len(results) < n:
-        wd = check.weekday()  # 0=Mon … 6=Sun
-        if (week_day == 'WKDAY' and wd < 5) or \
-           (week_day == 'ALL') or \
-           (week_day in DOW_MAP and wd == DOW_MAP[week_day]):
+    cutoff = today - timedelta(days=730)  # belt-and-suspenders against any future infinite loop
+    while len(results) < n and check >= cutoff:
+        wd = check.weekday()
+        if ((week_day == 'WKDAY' and wd < 5) or
+            (week_day == 'ALL') or
+            (week_day in DOW_MAP and wd == DOW_MAP[week_day])) \
+           and check not in excluded:
             results.append(check)
         check -= timedelta(days=1)
     return results
@@ -71,6 +68,7 @@ def get_summary():
                 SELECT COUNT(*) AS total
                 FROM ref_load_files r, today t
                 WHERE r.enabled = TRUE
+                  AND NOT EXISTS (SELECT 1 FROM ref_holiday h WHERE h.holiday_date = t.d)
                   AND (
                       r.week_day = 'MON'   AND EXTRACT(DOW FROM t.d) = 1 OR
                       r.week_day = 'WKDAY' AND EXTRACT(DOW FROM t.d) BETWEEN 1 AND 5 OR
@@ -153,6 +151,7 @@ def get_schedule():
                 SELECT DISTINCT r.file_type, r.week_day
                 FROM ref_load_files r, today t
                 WHERE r.enabled = TRUE
+                  AND NOT EXISTS (SELECT 1 FROM ref_holiday h WHERE h.holiday_date = t.d)
                   AND (
                       r.week_day = 'WKDAY' AND EXTRACT(DOW FROM t.d) BETWEEN 1 AND 5 OR
                       r.week_day = 'MON'   AND EXTRACT(DOW FROM t.d) = 1 OR
@@ -231,8 +230,6 @@ def get_schedule():
                         -- ALL day: always today
                         WHEN r.week_day = 'ALL'
                              THEN CURRENT_DATE
-                        WHEN r.week_day = 'MTH'
-                             THEN date_trunc('month', CURRENT_DATE)::date
                         ELSE NULL
                     END AS window_date
                 FROM ref_load_files r
@@ -407,10 +404,6 @@ def get_schedule():
 
         def was_received(file_type: str, week_day: str, expected: date) -> bool:
             dates = processed_by_type.get(file_type, set())
-            if week_day == 'MTH':
-                # Monthly: received if any file landed in the expected month.
-                return any(d.year == expected.year and d.month == expected.month
-                           for d in dates)
             if week_day in ('WKDAY', 'ALL'):
                 # Daily — exact date only
                 return expected in dates
@@ -418,8 +411,13 @@ def get_schedule():
                 # Weekly — any file_date within the 7-day window counts
                 return any((expected + timedelta(days=i)) in dates for i in range(7))
 
+        holidays = {r[0] for r in s.execute(text(
+            "SELECT holiday_date FROM ref_holiday"
+        )).fetchall()}
+
         for row in rows:
-            occurrences = _last_n_occurrences(row["week_day"], n=5)
+            occurrences = _last_n_occurrences(row["week_day"], n=5,
+                                              excluded_dates=holidays)
             row["history"] = [
                 {"date": d.isoformat(), "received": was_received(row["file_type"], row["week_day"], d)}
                 for d in occurrences

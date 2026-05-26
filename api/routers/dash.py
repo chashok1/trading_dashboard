@@ -340,7 +340,13 @@ def get_actionable(
     if my_list_only:
         where.append("a.in_my_list IS TRUE")
     if not show_suppressed:
-        where.append("a.suppressed_reason IS NULL")
+        # Over-Max rows must remain visible — the frontend overlays SELL→MAX
+        # on them. Only suppress rows that aren't over their category ceiling.
+        where.append(
+            "(a.suppressed_reason IS NULL OR "
+            " (a.held_today = TRUE AND a.target_max_dollar > 0 "
+            "  AND a.current_position_dollar > a.target_max_dollar))"
+        )
 
     sql = f"""
         SELECT a.*,
@@ -468,108 +474,6 @@ def get_actionable_freshness(date: Optional[str] = Query(None)):
     }
 
 
-@router.get("/api/actionable/standing")
-def get_actionable_standing(date: Optional[str] = Query(None)):
-    """Standing-verdict view for RR / ETF / II - a current-state ADD/HOLD/
-    REMOVE for every symbol in those sources' universes, fully sized via
-    ref_asset_allocation. Rows are shaped like /api/actionable rows so the
-    same grid renders them. Computed on demand."""
-    d = _resolve_date(date)
-    with session_scope() as s:
-        from etl.derive_outlook_action import compute_standing_verdicts
-        from etl.derive_actionable import _load_holdings_with_dollars
-        verdicts = compute_standing_verdicts(s, d)
-        asset_alloc = {}
-        for r in s.execute(text("""
-            SELECT category, min_dollar, max_dollar, units, maintain_min_position
-            FROM ref_asset_allocation
-        """)).fetchall():
-            asset_alloc[str(r[0] or "").strip().upper()] = {
-                "min":   float(r[1]) if r[1] is not None else None,
-                "max":   float(r[2]) if r[2] is not None else None,
-                "units": float(r[3]) if r[3] is not None else None,
-            }
-        src_cat = {}
-        for r in s.execute(text(
-            "SELECT source_code, position_category FROM ref_outlook_source"
-        )).fetchall():
-            src_cat[r[0]] = r[1]
-        etf_ac = {}
-        for r in s.execute(text("""
-            SELECT DISTINCT ON (symbol) symbol, asset_class
-            FROM hist_etf
-            WHERE asset_class IS NOT NULL AND asset_class <> ''
-              AND snapshot_date <= :d
-            ORDER BY symbol, snapshot_date DESC
-        """), {"d": d}).fetchall():
-            etf_ac[r[0]] = r[1]
-        meta = {}
-        for r in s.execute(text(
-            "SELECT symbol, description, sector, asset_class FROM drv_stks "
-            "WHERE as_of_date = :d"
-        ), {"d": d}).mappings():
-            meta[r["symbol"]] = dict(r)
-        holds = _load_holdings_with_dollars(s, d)
-
-    def _alloc(cat):
-        return asset_alloc.get(str(cat or "").strip().upper(), {}) if cat else {}
-
-    out = []
-    for v in verdicts:
-        sym, src, act = v["symbol"], v["source"], v["action"]
-        held_dollar = float(holds.get(sym, 0.0) or 0.0)
-        held = bool(v["held"])
-        category = None
-        if src == "ETF":
-            ac = etf_ac.get(sym)
-            if ac and str(ac).strip().upper() in asset_alloc:
-                category = ac
-        if category is None:
-            category = src_cat.get(src)
-        p = _alloc(category)
-        tmin, tmax, units = p.get("min"), p.get("max"), p.get("units")
-        suppressed = None
-        suggested = held_dollar
-        if act == "REMOVE":
-            suggested = 0.0
-            if not held:
-                suppressed = "NOT HELD - nothing to remove"
-        elif act == "ADD":
-            if held and tmin is not None and held_dollar >= tmin:
-                suppressed = "ALREADY ESTABLISHED - held at/above floor"
-                suggested = held_dollar
-            else:
-                suggested = tmin
-        m = meta.get(sym, {})
-        out.append({
-            "as_of_date": d.isoformat(),
-            "symbol": sym,
-            "description": m.get("description"),
-            "sector": m.get("sector"),
-            "asset_class": m.get("asset_class"),
-            "consolidated_action": act,
-            "winning_source": src,
-            "winning_priority": None,
-            "position_category": category,
-            "target_min_dollar": tmin,
-            "target_max_dollar": tmax,
-            "units_dollar": units,
-            "suggested_target_dollar": suggested,
-            "held_today": held,
-            "current_position_dollar": held_dollar,
-            "in_my_list": False,
-            "source_actions": [{
-                "source": src,
-                "action": act,
-                "weight": v["weight"],
-                "reason": f"{src} standing verdict",
-            }],
-            "rules_engine_fires": None,
-            "suppressed_reason": suppressed,
-        })
-    return out
-
-
 @router.get("/api/actionable/comparison")
 def get_actionable_comparison(
     symbol: str = Query(...),
@@ -638,7 +542,9 @@ def get_actionable_comparison(
                             ELSE :d END AS ed
                 FROM ref_outlook_source ros
             )
-            SELECT doa.source_code, eff.tbl, eff.bwm, doa.as_of_date, doa.prev_date,
+            SELECT doa.source_code, eff.tbl, eff.bwm,
+                   COALESCE(doa.source_snapshot_date, doa.as_of_date) AS cur_d,
+                   doa.prev_date,
                    doa.base_weight, doa.prev_weight, doa.action
             FROM drv_outlook_action doa
             JOIN eff ON eff.sc = doa.source_code AND doa.as_of_date = eff.ed
@@ -801,6 +707,24 @@ def post_actionable_action(symbol: str, payload: dict):
         }).first()
         s.commit()
     return {"ok": True, "log_id": ret[0] if ret else None}
+
+
+@router.delete("/api/actionable/{symbol}/action")
+def clear_actionable_action(symbol: str, date: str = Query(...)):
+    """Un-suppress: remove SKIPPED user_action_log rows for (date, symbol) so
+    the action reappears on the Actionable screen. Backs the grid's
+    Suppress/Un-suppress toggle."""
+    sym = symbol.upper().strip()
+    try:
+        as_of = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(400, "date must be YYYY-MM-DD")
+    with session_scope() as s:
+        res = s.execute(text("""
+            DELETE FROM user_action_log
+            WHERE as_of_date = :d AND symbol = :sym AND user_action = 'SKIPPED'
+        """), {"d": as_of, "sym": sym})
+    return {"cleared": res.rowcount or 0}
 
 
 @router.get("/api/actionable/history")

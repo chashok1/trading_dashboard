@@ -37,22 +37,26 @@ runs inside its own SAVEPOINT so one failure doesn't abort the rest.
 
 | Source | Method | Cadence / window | Classifier | Notes |
 |---|---|---|---|---|
-| RR | outlook_modifier | Dense — exact snapshot vs. prior snapshot | `_action_outlook_v2` | `loads_prior_day_data` shifts the compare date back 1 day |
-| ETF | outlook_modifier | Weekly bundle, SUN anchor + intra-week `etfchg` patches | `_action_outlook_v2` | NEUTRAL outlook = removed from list |
-| II | outlook_modifier | Weekly bundle, MON anchor + `iichg` patches | `_action_outlook_v2` | |
+| RR | outlook_modifier | Dense — exact snapshot vs. prior snapshot | `_action_standing` | `loads_prior_day_data` shifts the compare date back 1 day |
+| ETF | outlook_modifier | Weekly bundle, SUN anchor + intra-week `etfchg` patches | `_action_standing` | NEUTRAL outlook = removed from list |
+| II | outlook_modifier | Monthly bundle, latest snapshot ≤ D + intra-month `iichg` patches | `_action_standing` | NEUTRAL outlook = removed from list |
 | CALL | outlook_modifier | Standing model — 30-day sparse window | `_action_call_standing` | see below |
 | PS | rank | Weekly, FRI anchor; lower rank number = better | `_action_rank` | |
 | SSS | rank_pct_delta | Weekly, MON anchor; driven by `pct_delta` | `_action_sss_pct_delta` | INCREASE/REDUCE informational only |
 
 ### Classifier rules
 
-**`_action_outlook_v2`** (RR / ETF / II) — held-agnostic:
+**`_action_standing`** (RR / ETF / II) — held-agnostic standing-list
+classifier. Presence on the current list with a positive weight is a buy
+verdict every period, not just on first appearance; held-vs-not is resolved
+downstream by `derive_actionable` suppression:
 
-- new (no prior) & base > 2 → ADD; base ≤ 2 → silent
-- dropped (no current) & prev > 0 → REMOVE; prev ≤ 0 → silent
-- both present: (prev > 0 & base ≤ 0) or (prev ≥ 0 & base < 0) → REMOVE;
-  base > 0 & base > prev → INCREASE; base > 0 & base < prev → REDUCE;
-  else silent
+- base > 0 → ADD (positive weight on the current list)
+- base < 0 → REMOVE (negative weight on the current list)
+- base absent & prev present → REMOVE (dropped from the list)
+- base = 0, or absent in both snapshots → silent
+
+It never emits INCREASE / REDUCE / HOLD — only ADD, REMOVE, or silent.
 
 **`_action_call_standing`** (CALL) — standing-recommendation model:
 
@@ -71,7 +75,8 @@ runs inside its own SAVEPOINT so one failure doesn't abort the rest.
 - new → ADD; dropped → REMOVE if held, else silent
 - both present, held: rank improved → INCREASE; degraded → REDUCE;
   same → HOLD
-- both present, not held: rank improved → INCREASE; else ADD
+- both present, not held: rank improved → INCREASE; degraded → silent
+  (weakening — don't initiate); unchanged → ADD (standing recommendation)
 
 **`_action_sss_pct_delta`** (SSS) — driven by `pct_delta` (% Delta Since
 Initial); analyst rank is display-only:
@@ -111,9 +116,27 @@ still sees what the system would have recommended.
 
 ## Display (`web/actionable.js`)
 
+**Action labels.** The Action badge shows an instructional label, not the
+raw code: ADD → `BUY→MIN`, INCREASE → `BUY +1U`, REDUCE → `SELL −1U`,
+REMOVE → `SELL ALL`, HOLD → `HOLD`. When the held position exceeds the
+category Max (`current_position_dollar > target_max_dollar`, REMOVE
+excepted), the badge overlays `SELL→MAX` in REDUCE orange (so the sell
+intent reads at a glance) and the original label is shown underneath in
+small bold letters tinted with that action's own color ("was BUY +1U" in
+INCREASE green, "was BUY→MIN" in ADD blue, etc.). The stored `consolidated_action`,
+`winning_source`, Reason, chip count, and sort severity are all unchanged
+— it's a pure display overlay, no derive change. Summary/filter chips use
+the same instructional labels (SELL ALL, SELL −1U, BUY +1U, BUY→MIN, HOLD,
+— for no-action; ALL stays "ALL"). A synthetic `SELL→MAX` chip counts and
+filters over-allocation rows (any row where the overlay fires); those rows
+are also counted in their underlying action chip.
+
 **AMT$** shows the delta for actionable rows: ADD / INCREASE = target −
 position, REMOVE / REDUCE = position − target, all clamped ≥ 0 (suppressed
 rows → 0). HOLD / no-action rows show the current held dollars, not a delta.
+When the position exceeds the category Max (REMOVE excepted), AMT$
+overrides to `position − Max` — the trim back to the ceiling — paired with
+the `SELL→MAX` badge overlay.
 
 **Metric column.** A generic, sortable column showing the *selected*
 source's decision metric — rank for PS, `pct_delta` for SSS, the outlook
@@ -142,6 +165,15 @@ Choosing a source clears any active column sort so Way 1 applies. The Source
 filter matches a row when the chosen source is its winning source **or**
 appears among its other sources; other-source pills are ordered by action
 severity.
+
+**Snooze toggle.** The first grid column is a per-row Snooze button. It
+logs a `SKIPPED` user action for (snapshot date, symbol) via
+`POST /api/actionable/{symbol}/action`; snoozed rows are hidden unless
+"Show acted/snoozed" is on. The action is keyed to the snapshot date, so a
+snooze applies only to that date — the next data load creates a new
+snapshot date and the action shows again. When a snoozed row is visible
+the button reads "Un-snooze" and clears the `SKIPPED` row (`DELETE` on the
+same endpoint).
 
 **Per-source inline comparison.** Each row of the drilldown's "Per-source
 actions" table expands on click to a current-vs-previous record comparison

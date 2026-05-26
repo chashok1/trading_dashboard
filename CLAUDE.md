@@ -112,8 +112,8 @@ Re-running derive for date D is idempotent: same numbers; only date D's derivati
 
 ## Conventions (enforced)
 
-1. **Never delete raw data.** Only `etl/cleanup.py` deletes, driven by `meta_cleanup_policy`.
-2. **Never overwrite raw data.** All `hist_*` inserts use `ON CONFLICT DO NOTHING`.
+1. **Never delete raw data via ETL.** Only `etl/cleanup.py` deletes, driven by `meta_cleanup_policy`. (The Explore screen also exposes ad-hoc deletes on any table — admin path; use with care.)
+2. **Never overwrite raw data via ETL.** All `hist_*` inserts use `ON CONFLICT DO NOTHING`. (The Explore screen also permits ad-hoc cell edits and row inserts on any table.)
 3. **Derives are idempotent.** Each `derive_*` does `DELETE WHERE as_of_date=D` then INSERT.
 4. **Secrets only in `.env`.** `PG_PASSWORD` is the main one. `.env` is gitignored.
 5. **File and sheet name matching is case-insensitive everywhere.** Use `get_sheet_case_insensitive()` in `load_raw.py`; file-type matching in `etl_load.py` is also case-insensitive.

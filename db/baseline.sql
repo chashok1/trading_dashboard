@@ -1745,6 +1745,11 @@ CREATE TABLE IF NOT EXISTS drv_outlook_action (
 -- analyst_rank added 2026-05 (SSS Analyst Best Idea Rank, display-only)
 ALTER TABLE IF EXISTS drv_outlook_action
 ADD COLUMN IF NOT EXISTS analyst_rank TEXT;
+-- source_snapshot_date added 2026-05-26: actual hist_* row date for the
+-- per-source action. For periodic sources this equals as_of_date, but for
+-- CALL/RR/sparse it captures the real data load date (see derive_outlook_action.py).
+ALTER TABLE IF EXISTS drv_outlook_action
+ADD COLUMN IF NOT EXISTS source_snapshot_date DATE;
 CREATE INDEX IF NOT EXISTS ix_drv_outlook_action_date ON drv_outlook_action(as_of_date);
 CREATE INDEX IF NOT EXISTS ix_drv_outlook_action_sym  ON drv_outlook_action(symbol, as_of_date);
 
@@ -1822,6 +1827,15 @@ CREATE TABLE IF NOT EXISTS user_action_log (
     CONSTRAINT user_action_log_user_action_check
         CHECK (user_action IS NULL OR user_action IN ('DONE','SKIPPED','SNOOZED','OVERRIDDEN'))
 );
+
+-- action_code / triggered_rules were NOT NULL in migration 10's first
+-- definition of this table; the merged schema above makes both optional.
+-- Existing DBs created from 10 still carry the old constraints, which break
+-- the Actionable Suppress INSERT (it supplies neither column). DROP NOT NULL
+-- is a no-op on an already-nullable column, so this is safe to re-run.
+ALTER TABLE user_action_log ALTER COLUMN action_code     DROP NOT NULL;
+ALTER TABLE user_action_log ALTER COLUMN triggered_rules DROP NOT NULL;
+
 CREATE INDEX IF NOT EXISTS ix_user_action_log_symbol_date ON user_action_log(symbol, as_of_date);
 CREATE INDEX IF NOT EXISTS ix_user_action_log_date        ON user_action_log(as_of_date);
 CREATE INDEX IF NOT EXISTS ix_user_action_log_date_sym    ON user_action_log(as_of_date, symbol);

@@ -295,13 +295,14 @@ def get_derive_status():
         #    data into hist_rr / hist_call. (Checking drv_outlook_action instead
         #    gave false positives: a quiet day with no emitted actions looked
         #    identical to a missing file.)
-        #    Event-driven (ETFCHG, IICHG), weekly (ETF, SSS, PS) and monthly (II) are excluded.
+        #    Event-driven (ETFCHG, IICHG) and weekly sources (ETF, II, SSS, PS) are excluded.
         # ------------------------------------------------------------------
         try:
             recent_dates = [
                 r[0] for r in s.execute(text("""
                     SELECT DISTINCT as_of_date FROM drv_dash
                     WHERE as_of_date < CURRENT_DATE - INTERVAL '1 day'
+                      AND as_of_date NOT IN (SELECT holiday_date FROM ref_holiday)
                     ORDER BY as_of_date DESC LIMIT :n
                 """), {"n": _RECENT_DATE_WINDOW}).fetchall()
             ]

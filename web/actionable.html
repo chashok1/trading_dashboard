@@ -40,6 +40,7 @@
     .act-chip-add      { border-left: 4px solid #1f7af2; }
     .act-chip-hold     { border-left: 4px solid #888; }
     .act-chip-none     { border-left: 4px solid #c4c4c4; }
+    .act-chip-over_max { border-left: 4px solid #e07c1a; }
 
     .act-filter-bar {
       display: flex;
@@ -324,6 +325,24 @@
     }
     .btn-dismiss:hover { background: #e8e8ec; }
 
+    /* Per-row suppress toggle (first grid column) */
+    .btn-suppress {
+      font-size: 9px;
+      padding: 2px 6px;
+      border: 1px solid var(--border, #ddd);
+      border-radius: 4px;
+      background: #f4f4f7;
+      color: #555;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn-suppress:hover { background: #e8e8ec; }
+    .btn-suppress[data-suppressed="1"] {
+      background: #fbeaea;
+      color: #8c1d1d;
+      border-color: #e3b9b9;
+    }
+
     /* Inline current-vs-prev comparison (per-source row expand) */
     #modalSources tbody tr.cmp-src-row { cursor: pointer; }
     #modalSources tbody tr.cmp-src-row:hover { background: var(--surface-hover, #f0f6ff); }
@@ -413,10 +432,10 @@
           <input type="checkbox" id="showActed"> Show acted/snoozed
         </label>
         <label class="toggle">
-          <input type="checkbox" id="withSource"> Source
+          <input type="checkbox" id="withSource"> Has Source
         </label>
         <label class="toggle">
-          <input type="checkbox" id="withOther"> Other
+          <input type="checkbox" id="withOther"> Has Other Sources
         </label>
         <label class="toggle">
           <input type="checkbox" id="showNoAction"> Show no-action rows
@@ -426,9 +445,6 @@
         </label>
         <label class="toggle">
           <input type="checkbox" id="showZeroAmt"> Show $0 AMT
-        </label>
-        <label class="toggle">
-          <input type="checkbox" id="standingView"> Standing view
         </label>
         <span style="margin-left:auto; font-size:11px; color:var(--text-2,#666);">
           Click any row for full source breakdown &amp; user action capture
@@ -446,7 +462,9 @@
         <table class="act-grid" id="actGrid">
           <thead>
             <tr>
+              <th></th>
               <th class="num sortable" data-key="_metric" data-type="num">Metric</th>
+              <th class="num sortable" data-key="current_position_dollar" data-type="num">Pos $</th>
               <th class="sortable" data-key="symbol" data-type="str">Symbol</th>
               <th class="sortable" data-key="consolidated_action" data-type="str">Action</th>
               <th class="num sortable" data-key="_amt" data-type="num">AMT$</th>
@@ -456,7 +474,6 @@
               <th>Other Sources</th>
               <th class="sortable" data-key="sector" data-type="str">Sector</th>
               <th class="sortable" data-key="asset_class" data-type="str">Asset Class</th>
-              <th class="num sortable" data-key="current_position_dollar" data-type="num">Pos $</th>
               <th class="num sortable" data-key="target_min_dollar" data-type="num">Min</th>
               <th class="num sortable" data-key="target_max_dollar" data-type="num">Max</th>
               <th class="num sortable" data-key="units_dollar" data-type="num">Units</th>
@@ -490,8 +507,8 @@
         <h3>Per-source actions</h3>
         <table class="modal-table" id="modalSources">
           <thead><tr>
-            <th>Source</th><th>Snapshot</th><th>Method</th><th class="num">Base wt</th>
-            <th class="num">Prev wt</th><th class="num">Δ</th>
+            <th>Source</th><th>Method</th><th>Snapshot</th><th class="num">Base wt</th>
+            <th class="num">Prev wt</th><th class="num">Δ</th><th>Prev Snapshot</th>
             <th>Analyst Rank</th>
             <th>Today</th><th>Was</th>
             <th>Held</th><th>Action</th><th>Reason</th>
