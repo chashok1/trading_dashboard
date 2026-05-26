@@ -566,7 +566,7 @@ def _action_sss_pct_delta(curr_pct, prev_pct, held: bool,
     snapshot to the previous one:
       - dropped from the list  -> REMOVE if held, else no action
       - new on the list        -> ADD
-      - on the list both weeks -> pct_delta < 0  -> REMOVE
+      - on the list both weeks -> pct_delta < 0  -> REDUCE
                                   pct_delta >= 0 -> week-over-week:
                                         rose  -> INCREASE
                                         fell  -> REDUCE
@@ -588,7 +588,7 @@ def _action_sss_pct_delta(curr_pct, prev_pct, held: bool,
     if cp is None:
         return None, "no pct_delta value"
     if cp < 0:
-        return "REMOVE", f"pct_delta {cp:+g} negative"
+        return "REDUCE", f"pct_delta {cp:+g} negative"
     try:
         pp = float(prev_pct) if prev_pct is not None else None
     except (TypeError, ValueError):

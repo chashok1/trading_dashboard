@@ -82,7 +82,7 @@ It never emits INCREASE / REDUCE / HOLD — only ADD, REMOVE, or silent.
 Initial); analyst rank is display-only:
 
 - new → ADD; dropped → REMOVE if held, else silent
-- on the list both weeks: pct_delta < 0 → REMOVE; rising → INCREASE;
+- on the list both weeks: pct_delta < 0 → REDUCE; rising → INCREASE;
   falling → REDUCE; steady → HOLD
 - SSS INCREASE/REDUCE are demoted — they appear under Other Sources but
   never become the consolidated action.
