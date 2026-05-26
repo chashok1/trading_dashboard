@@ -581,24 +581,35 @@ function initSourcePopover() {
 function sortRows() {
   const { key, dir, type } = state.sort;
   if (!key) {
-    // No explicit column sort. When the grid is filtered to one source,
-    // Way 1: default-sort by (action severity, then that source's Metric in
-    // its best-first direction).
-    const src = state.filters.source;
-    if (src) {
-      const asc = _metricAscending(src);
-      state.rows.sort((a, b) => {
-        const ar = ACTION_RANK[(a.consolidated_action || '').toUpperCase()] ?? -1;
-        const br = ACTION_RANK[(b.consolidated_action || '').toUpperCase()] ?? -1;
-        if (ar !== br) return br - ar;
-        const am = a._metric, bm = b._metric;
-        const aE = am == null, bE = bm == null;
-        if (aE && bE) return 0;
-        if (aE) return 1;
-        if (bE) return -1;
-        return asc ? (am - bm) : (bm - am);
-      });
-    }
+    // No explicit column sort. Default sort: by primary source, then by action.
+    state.rows.sort((a, b) => {
+      // 1. Sort by winning_source (primary source)
+      const aSrc = (a.winning_source || '').toUpperCase();
+      const bSrc = (b.winning_source || '').toUpperCase();
+      if (aSrc !== bSrc) {
+        return aSrc < bSrc ? -1 : 1;
+      }
+      // 2. Within the same source, sort by action severity (REMOVE → HOLD)
+      // SELL→MAX overlay gets rank between REDUCE and INCREASE
+      const aAction = (a.consolidated_action || 'NONE').toUpperCase();
+      const bAction = (b.consolidated_action || 'NONE').toUpperCase();
+      const aIsOverMax = _isOverMaxOverlay(a);
+      const bIsOverMax = _isOverMaxOverlay(b);
+
+      let aRank = ACTION_RANK[aAction] ?? -1;
+      let bRank = ACTION_RANK[bAction] ?? -1;
+
+      // Adjust rank for SELL→MAX overlay: sits between REDUCE (3) and INCREASE (2)
+      if (aIsOverMax && aRank > 0) aRank += 0.5;
+      if (bIsOverMax && bRank > 0) bRank += 0.5;
+
+      if (aRank !== bRank) return bRank - aRank;
+
+      // 3. Same action within same source: sort by symbol
+      const aSym = (a.symbol || '').toUpperCase();
+      const bSym = (b.symbol || '').toUpperCase();
+      return aSym < bSym ? -1 : aSym > bSym ? 1 : 0;
+    });
     return;
   }
   const num = type === 'num';
