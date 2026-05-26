@@ -235,8 +235,20 @@ def get_schedule():
                     WHEN fp.file_date IS NOT NULL THEN 'done'
                     WHEN lp.file_date IS NOT NULL AND (ws.window_date IS NULL OR lp.file_date >= ws.window_date) THEN 'done'
                     WHEN r.optional = TRUE THEN 'optional'
-                    WHEN it.file_type IS NOT NULL AND r.file_time IS NOT NULL AND CURRENT_TIME < r.file_time THEN 'done'
-                    WHEN it.file_type IS NOT NULL AND r.file_time IS NOT NULL AND CURRENT_TIME >= r.file_time THEN 'overdue'
+                    WHEN it.file_type IS NOT NULL AND r.file_time IS NOT NULL AND CURRENT_TIME < r.file_time THEN 'pending'
+                    -- Only mark overdue if today is the scheduled day AND we're past the scheduled time
+                    WHEN it.file_type IS NOT NULL AND r.file_time IS NOT NULL AND CURRENT_TIME >= r.file_time
+                         AND (
+                             (r.week_day = 'WKDAY' AND EXTRACT(DOW FROM CURRENT_DATE) BETWEEN 1 AND 5) OR
+                             (r.week_day = 'MON' AND EXTRACT(DOW FROM CURRENT_DATE) = 1) OR
+                             (r.week_day = 'TUE' AND EXTRACT(DOW FROM CURRENT_DATE) = 2) OR
+                             (r.week_day = 'WED' AND EXTRACT(DOW FROM CURRENT_DATE) = 3) OR
+                             (r.week_day = 'THU' AND EXTRACT(DOW FROM CURRENT_DATE) = 4) OR
+                             (r.week_day = 'FRI' AND EXTRACT(DOW FROM CURRENT_DATE) = 5) OR
+                             (r.week_day = 'SAT' AND EXTRACT(DOW FROM CURRENT_DATE) = 6) OR
+                             (r.week_day = 'SUN' AND EXTRACT(DOW FROM CURRENT_DATE) = 0) OR
+                             (r.week_day = 'ALL')
+                         ) THEN 'overdue'
                     WHEN it.file_type IS NOT NULL THEN 'pending'
                     ELSE 'not today'
                 END,
