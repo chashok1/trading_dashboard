@@ -52,6 +52,23 @@ function fmtMD(d) {
   const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? (m[2] + '/' + m[3]) : String(d);
 }
+// Format derived_at timestamp: show M/DD if yesterday, HH:MM AM/PM if today.
+function fmtAsOf(ts) {
+  if (!ts) return '';
+  const dt = new Date(ts);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const tsDate = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const yestDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
+  if (tsDate.getTime() === yestDate.getTime()) {
+    return (yesterday.getMonth() + 1) + '/' + String(yesterday.getDate()).padStart(2, '0');
+  } else if (tsDate.getTime() === todayDate.getTime()) {
+    return dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  }
+  return fmtMD(ts);
+}
 function showStatus(msg, kind = 'info', timeout = 4000) {
   const el = $('statusBar');
   el.className = 'status-bar ' + kind;
@@ -622,11 +639,11 @@ function renderGrid() {
       <td>${fmtMD(r._snapshot)}</td>
       <td style="padding:6px 4px;">${_renderOtherSources(r)}</td>
       <td>${r.sector || ''}</td>
-      <td>${escapeHtml(_assetClass(r))}</td>
-      <td class="num">${fmtUsd(r.target_min_dollar)}</td>
-      <td class="num">${fmtUsd(r.target_max_dollar)}</td>
-      <td class="num">${fmtUsd(r.units_dollar)}</td>
-      <td>${r.winning_priority ?? ''}</td>
+      <td>${escapeHtml(r.real_asset_class || '')}</td>
+      <td class="num">${fmtUsd(r.last_price)}</td>
+      <td class="num">${fmtUsd(r.net_chng)}</td>
+      <td class="num">${fmtPct(r.pct_change)}</td>
+      <td>${fmtAsOf(r.derived_at)}</td>
       <td>${tags.join(' ')}</td>
     `;
     tr.onclick = (e) => { if (e.target.closest('.btn-suppress')) return; openDrilldown(r); };
@@ -664,12 +681,12 @@ function exportCsv() {
     ['Reason',        r => _winningReason(r)],
     ['Other Sources', r => otherSourcesText(r)],
     ['Sector',        r => r.sector || ''],
-    ['Asset Class',   r => _assetClass(r)],
+    ['Real Asset Class', r => r.real_asset_class || ''],
     ['Pos $',         r => r.current_position_dollar],
-    ['Min',           r => r.target_min_dollar],
-    ['Max',           r => r.target_max_dollar],
-    ['Units',         r => r.units_dollar],
-    ['Pri',           r => r.winning_priority],
+    ['Price',         r => r.last_price],
+    ['Change $',      r => r.net_chng],
+    ['Change %',      r => r.pct_change],
+    ['As Of',         r => fmtAsOf(r.derived_at)],
     ['Held',          r => r.held_today ? 'Y' : 'N'],
     ['In My List',    r => r.in_my_list ? 'Y' : 'N'],
     ['Suppressed',    r => r.suppressed_reason || ''],
@@ -775,13 +792,13 @@ async function openDrilldown(row) {
   const kv = $('modalKv');
   kv.innerHTML = `
     <dt>Action</dt><dd><span class="badge-action badge-action-${_badgeAction(row)}">${actionLabel(row)}</span>${_isOverMaxOverlay(row) ? ` <small style="color:${ACTION_COLOR[action] || '#888'};font-weight:600;font-size:9px;">was ${ACTION_LABEL[action] || action}</small>` : ''}</dd>
-    <dt>Winning source</dt><dd>${row.winning_source || '—'} (priority ${row.winning_priority ?? '—'})</dd>
-    <dt>Asset class</dt><dd>${_assetClass(row) || '—'}</dd>
+    <dt>Winning source</dt><dd>${row.winning_source || '—'}</dd>
+    <dt>Real asset class</dt><dd>${row.real_asset_class || '—'}</dd>
     <dt>Held today</dt><dd>${row.held_today ? 'Yes' : 'No'}</dd>
     <dt>Position $</dt><dd>${fmtUsd(row.current_position_dollar) || '—'}</dd>
-    <dt>Target min / max</dt><dd>${fmtUsd(row.target_min_dollar)} / ${fmtUsd(row.target_max_dollar)}</dd>
-    <dt>Units (per INCREASE)</dt><dd>${fmtUsd(row.units_dollar) || '—'}</dd>
-    <dt>Maintain min</dt><dd>${row.maintain_min ? 'Yes' : 'No'}</dd>
+    <dt>Price</dt><dd>${fmtUsd(row.last_price) || '—'}</dd>
+    <dt>Change</dt><dd>${fmtUsd(row.net_chng)} (${fmtPct(row.pct_change)})</dd>
+    <dt>As of</dt><dd>${fmtAsOf(row.derived_at) || '—'}</dd>
     <dt>AMT$</dt><dd><strong>${fmtUsd(row._amt) || '—'}</strong></dd>
     <dt>In My List</dt><dd>${row.in_my_list ? 'Yes' : 'No'}</dd>
     <dt>Suppressed</dt><dd>${row.suppressed_reason || '—'}</dd>

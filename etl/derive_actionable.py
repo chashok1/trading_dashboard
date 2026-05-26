@@ -245,7 +245,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         INSERT INTO drv_actionable
           (as_of_date, symbol, description, sector,
            consolidated_action, winning_source, winning_priority,
-           position_category, asset_class, target_min_dollar, target_max_dollar,
+           position_category, asset_class, source_asset_class, target_min_dollar, target_max_dollar,
            units_dollar, maintain_min, suggested_target_dollar,
            held_today, current_position_dollar, in_my_list,
            rules_engine_fires, source_actions, suppressed_reason,
@@ -254,7 +254,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         VALUES
           (:d, :sym, :desc, :sect,
            :ca, :ws, :wp,
-           :cat, :ac, :tmin, :tmax,
+           :cat, :ac, :sac, :tmin, :tmax,
            :unit, :mm, :stgt,
            :held, :curr, :iml,
            CAST(:fires AS JSONB), CAST(:srca AS JSONB), :supp,
@@ -436,6 +436,14 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                 "snapshot_date": (a["source_snapshot_date"] or a["as_of_date"]).isoformat() if (a["source_snapshot_date"] or a["as_of_date"]) else None,
             })
 
+        # Capture the actual source asset_class (from hist_ps, hist_etf, or drv_ma)
+        source_ac = None
+        if winning_source == "PS":
+            source_ac = asset_class_ps.get(sym)
+        elif winning_source in ("ETF", "ETFCHG"):
+            source_ac = asset_class_etf.get(sym)
+        # For other sources (RR, SSS, II, etc.), asset_class comes from drv_ma lookup
+
         stk = stks.get(sym, {})
         batch.append({
             "d":     as_of_date,
@@ -447,6 +455,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "wp":    winning_priority,
             "cat":   category,
             "ac":    category,
+            "sac":   source_ac,
             "tmin":  target_min,
             "tmax":  target_max,
             "unit":  units,

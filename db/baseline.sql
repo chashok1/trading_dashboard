@@ -1793,6 +1793,10 @@ ADD COLUMN IF NOT EXISTS triggered_group_ids JSONB;
 ALTER TABLE IF EXISTS drv_actionable
 ADD COLUMN IF NOT EXISTS asset_class TEXT;
 
+-- 2026-05-26: source_asset_class column (actual asset class from source, e.g., Equities, Gold, Growth).
+ALTER TABLE IF EXISTS drv_actionable
+ADD COLUMN IF NOT EXISTS source_asset_class TEXT;
+
 -- -----------------------------------------------------
 -- user_action_log - forensic snapshot of user decisions.
 -- (Collision between 10's first definition and 21's full one was patched
