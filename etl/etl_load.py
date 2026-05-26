@@ -223,9 +223,11 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
     # loader is purely additive — PK conflict skips re-runs.
     # Recognized filename patterns for Fidelity transactions (file_type FT):
     #   - Anything starting with "accounts_history"  (Fidelity's own export naming)
+    #   - Anything starting with "history_for_account" (newer Fidelity export naming)
     #   - Anything starting with "FT "               (user-renamed files in the FT folder)
     if p.suffix.lower() == '.csv' and (
         p.name.lower().startswith('accounts_history')
+        or p.name.lower().startswith('history_for_account')
         or p.name.lower().startswith('ft ')
         or p.name.lower().startswith('ft_')
     ):

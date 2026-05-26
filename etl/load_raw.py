@@ -1305,7 +1305,7 @@ def _f_action_kind(action_text: str) -> str:
 
 def load_f_transactions(session: Session, csv_path: str, source_file: str) -> tuple[int, int, int]:
     """
-    Fidelity Accounts_History.csv -> hist_ft.
+    Fidelity Accounts_History.csv or History_for_Account_*.csv -> hist_ft.
     Idempotent via PK conflict (account, trade_date, action, symbol, quantity, price).
 
     Expected CSV header (after the 2 empty preamble rows):
@@ -1313,10 +1313,19 @@ def load_f_transactions(session: Session, csv_path: str, source_file: str) -> tu
       Price ($), Quantity, Commission ($), Fees ($), Accrued Interest ($),
       Amount ($), Settlement Date
 
+    If Account/Account Number columns are missing, extracts account number from
+    filename pattern like "History_for_Account_249118149.csv".
+
     Returns (rows_read, rows_inserted, rows_skipped_as_duplicates).
     """
     import csv
     import re
+
+    # Extract account number from filename if present (e.g., History_for_Account_249118149.csv)
+    filename_account = None
+    acct_match = re.search(r'History_for_Account_(\d+)', source_file)
+    if acct_match:
+        filename_account = acct_match.group(1)
 
     def _parse_dollar(s) -> float | None:
         if s is None:
@@ -1372,8 +1381,8 @@ def load_f_transactions(session: Session, csv_path: str, source_file: str) -> tu
         # in the CSV.  to_text("") returns None, which would violate the
         # constraint — so we coerce empty symbols (only) back to "".
         records.append({
-            "account":          to_text(row.get("Account") or ""),
-            "account_number":   to_text(row.get("Account Number") or ""),
+            "account":          to_text(row.get("Account") or filename_account or ""),
+            "account_number":   to_text(row.get("Account Number") or filename_account or ""),
             "trade_date":       _parse_date_mdy(row.get("Run Date")),
             "settlement_date":  _parse_date_mdy(row.get("Settlement Date")),
             "action":           to_text(action_text),
