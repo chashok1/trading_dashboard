@@ -78,7 +78,10 @@
       "Bash(curl -s \"http://127.0.0.1:8000/api/dash?date=2026-05-26&view=actionable\")",
       "Bash(python3)",
       "Bash(git commit -m 'Capture export_date/export_time in drv_quote for accurate '\\\\''As Of'\\\\'' display *)",
-      "Bash(git commit -m 'Add loaded_at fallback for '\\\\''As Of'\\\\'' when export_date is missing *)"
+      "Bash(git commit -m 'Add loaded_at fallback for '\\\\''As Of'\\\\'' when export_date is missing *)",
+      "Bash(psql -U postgres -d trading -c \"\\\\d drv_quote\")",
+      "Bash(python *)",
+      "Bash(git commit *)"
     ]
   }
 }

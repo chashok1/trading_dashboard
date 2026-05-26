@@ -16,6 +16,7 @@ const state = {
     other_filter: false,
     show_no_action: false,  // when false, blank-action rows are hidden
     show_zero_amt: false,   // when false, rows with $0 AMT$ are hidden
+    symbol_search: '',   // symbol search text filter
   },
   current: null,
   sourceMethods: {},   // source_code -> base_weight_method (Metric-column sort)
@@ -245,6 +246,10 @@ function matchesBaseFilters(r) {
     const winning = (r.winning_source || '').toString();
     const others = sources.filter(s => (s.source || s.source_code || '') !== winning);
     if (others.length === 0) return false;
+  }
+  if (state.filters.symbol_search) {
+    const search = state.filters.symbol_search.toUpperCase();
+    if (!r.symbol || !r.symbol.toUpperCase().includes(search)) return false;
   }
   return true;
 }
@@ -1314,6 +1319,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('showSuppressed').addEventListener('change', (e) => {
     state.filters.show_suppressed = e.target.checked;
     loadActionable();
+  });
+  $('symbolSearch').addEventListener('input', (e) => {
+    state.filters.symbol_search = e.target.value;
+    applyClientFilter();
   });
 
 $('modalClose').addEventListener('click', () => $('modalBackdrop').classList.remove('open'));
