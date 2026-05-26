@@ -71,7 +71,8 @@
       "Bash(python -c ' *)",
       "Bash(curl -s \"http://127.0.0.1:8000/actionable\")",
       "Bash(git add *)",
-      "Bash(git commit -m 'Fix: use correct data-key for Real Asset Class column sorting *)"
+      "Bash(git commit -m 'Fix: use correct data-key for Real Asset Class column sorting *)",
+      "Bash(git commit -m 'Fix percent change formatting: display 2 decimals, not multiply by 100 *)"
     ]
   }
 }

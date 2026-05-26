@@ -642,7 +642,7 @@ function renderGrid() {
       <td>${escapeHtml(r.real_asset_class || '')}</td>
       <td class="num">${fmtUsd(r.last_price)}</td>
       <td class="num">${fmtUsd(r.net_chng)}</td>
-      <td class="num">${fmtPct(r.pct_change)}</td>
+      <td class="num">${r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''}</td>
       <td>${fmtAsOf(r.derived_at)}</td>
       <td>${tags.join(' ')}</td>
     `;
@@ -685,7 +685,7 @@ function exportCsv() {
     ['Pos $',         r => r.current_position_dollar],
     ['Price',         r => r.last_price],
     ['Change $',      r => r.net_chng],
-    ['Change %',      r => r.pct_change],
+    ['Change %',      r => r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''],
     ['As Of',         r => fmtAsOf(r.derived_at)],
     ['Held',          r => r.held_today ? 'Y' : 'N'],
     ['In My List',    r => r.in_my_list ? 'Y' : 'N'],
@@ -797,7 +797,7 @@ async function openDrilldown(row) {
     <dt>Held today</dt><dd>${row.held_today ? 'Yes' : 'No'}</dd>
     <dt>Position $</dt><dd>${fmtUsd(row.current_position_dollar) || '—'}</dd>
     <dt>Price</dt><dd>${fmtUsd(row.last_price) || '—'}</dd>
-    <dt>Change</dt><dd>${fmtUsd(row.net_chng)} (${fmtPct(row.pct_change)})</dd>
+    <dt>Change</dt><dd>${fmtUsd(row.net_chng)} (${row.pct_change != null ? (Number(row.pct_change).toFixed(2) + '%') : ''})</dd>
     <dt>As of</dt><dd>${fmtAsOf(row.derived_at) || '—'}</dd>
     <dt>AMT$</dt><dd><strong>${fmtUsd(row._amt) || '—'}</strong></dd>
     <dt>In My List</dt><dd>${row.in_my_list ? 'Yes' : 'No'}</dd>
