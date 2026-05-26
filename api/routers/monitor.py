@@ -145,24 +145,12 @@ def get_schedule():
         result = s.execute(text("""
             WITH today AS (SELECT CURRENT_DATE AS d),
             is_today AS (
-                -- DISTINCT (file_type, week_day) so multiple schedule slots
-                -- per file_type (different file_times) don't multiply the
-                -- join. The "is today" flag depends only on week_day.
+                -- Show all enabled file types (not gated by day of week).
+                -- If scheduled for FRI, you can still load it Mon-Thu.
+                -- The status (done/pending/overdue) reflects actual processing.
                 SELECT DISTINCT r.file_type, r.week_day
-                FROM ref_load_files r, today t
+                FROM ref_load_files r
                 WHERE r.enabled = TRUE
-                  AND NOT EXISTS (SELECT 1 FROM ref_holiday h WHERE h.holiday_date = t.d)
-                  AND (
-                      r.week_day = 'WKDAY' AND EXTRACT(DOW FROM t.d) BETWEEN 1 AND 5 OR
-                      r.week_day = 'MON'   AND EXTRACT(DOW FROM t.d) = 1 OR
-                      r.week_day = 'TUE'   AND EXTRACT(DOW FROM t.d) = 2 OR
-                      r.week_day = 'WED'   AND EXTRACT(DOW FROM t.d) = 3 OR
-                      r.week_day = 'THU'   AND EXTRACT(DOW FROM t.d) = 4 OR
-                      r.week_day = 'FRI'   AND EXTRACT(DOW FROM t.d) = 5 OR
-                      r.week_day = 'SAT'   AND EXTRACT(DOW FROM t.d) = 6 OR
-                      r.week_day = 'SUN'   AND EXTRACT(DOW FROM t.d) = 0 OR
-                      r.week_day = 'ALL'
-                  )
             ),
             running AS (
                 SELECT file_type FROM meta_etl_run WHERE status = 'running'
