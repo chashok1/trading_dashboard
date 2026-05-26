@@ -747,7 +747,7 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
         # Sort: latest loaded_at first.
         candidates.sort(key=lambda r: r['loaded_at'] or 0, reverse=True)
 
-        rec = {'as_of_date': as_of_date, 'symbol': sym, 'export_date': None, 'export_time': None}
+        rec = {'as_of_date': as_of_date, 'symbol': sym, 'export_date': None, 'export_time': None, 'loaded_at': None}
         for f in _QUOTE_FIELDS:
             val = None
             for cand in candidates:
@@ -758,6 +758,9 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
                     if rec['export_date'] is None:
                         rec['export_date'] = cand.get('export_date')
                         rec['export_time'] = cand.get('export_time')
+                    # Capture loaded_at from the latest candidate (highest loaded_at)
+                    if rec['loaded_at'] is None:
+                        rec['loaded_at'] = cand.get('loaded_at')
                     break
             rec[f] = val
         merged.append(rec)
@@ -773,11 +776,11 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
                     (as_of_date, symbol,
                      last_price, net_chng, pct_change,
                      open_price, high_price, low_price,
-                     rsi, imp_volatility, export_date, export_time)
+                     rsi, imp_volatility, export_date, export_time, loaded_at)
                 VALUES (:as_of_date, :symbol,
                         :last_price, :net_chng, :pct_change,
                         :open_price, :high_price, :low_price,
-                        :rsi, :imp_volatility, :export_date, :export_time)
+                        :rsi, :imp_volatility, :export_date, :export_time, :loaded_at)
             """),
             merged,
         )

@@ -1085,10 +1085,11 @@ CREATE TABLE IF NOT EXISTS drv_quote (
     imp_volatility  NUMERIC,
     export_date     DATE,
     export_time     TEXT,
+    loaded_at       TIMESTAMP,
     derived_at      TIMESTAMP NOT NULL DEFAULT now(),
     PRIMARY KEY (as_of_date, symbol)
 );
--- Add export_date and export_time columns if they don't exist (migration for existing tables)
+-- Add export_date, export_time, and loaded_at columns if they don't exist (migration for existing tables)
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns
@@ -1098,6 +1099,10 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                   WHERE table_name='drv_quote' AND column_name='export_time') THEN
     ALTER TABLE drv_quote ADD COLUMN export_time TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_name='drv_quote' AND column_name='loaded_at') THEN
+    ALTER TABLE drv_quote ADD COLUMN loaded_at TIMESTAMP;
   END IF;
 END $$;
 

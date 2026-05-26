@@ -70,43 +70,51 @@ function fmtAsOf(ts) {
   return fmtMD(ts);
 }
 
-function fmtAsOfExport(exportDate, exportTime) {
-  if (!exportDate) return '';
-  // Parse export_date as YYYY-MM-DD string
-  const parts = String(exportDate).split('-');
-  if (parts.length !== 3) return fmtMD(exportDate);
-  const expYear = parseInt(parts[0]);
-  const expMonth = parseInt(parts[1]);
-  const expDay = parseInt(parts[2]);
+function fmtAsOfExport(exportDate, exportTime, loadedAt) {
+  // Use export_date/time if available, otherwise fall back to loaded_at timestamp
+  if (exportDate) {
+    // Parse export_date as YYYY-MM-DD string
+    const parts = String(exportDate).split('-');
+    if (parts.length === 3) {
+      const expYear = parseInt(parts[0]);
+      const expMonth = parseInt(parts[1]);
+      const expDay = parseInt(parts[2]);
 
-  const today = new Date();
-  const todayYear = today.getFullYear();
-  const todayMonth = today.getMonth() + 1;
-  const todayDay = today.getDate();
+      const today = new Date();
+      const todayYear = today.getFullYear();
+      const todayMonth = today.getMonth() + 1;
+      const todayDay = today.getDate();
 
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yestYear = yesterday.getFullYear();
-  const yestMonth = yesterday.getMonth() + 1;
-  const yestDay = yesterday.getDate();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yestYear = yesterday.getFullYear();
+      const yestMonth = yesterday.getMonth() + 1;
+      const yestDay = yesterday.getDate();
 
-  // Compare dates
-  if (expYear === yestYear && expMonth === yestMonth && expDay === yestDay) {
-    return yestMonth + '/' + String(yestDay).padStart(2, '0');
-  } else if (expYear === todayYear && expMonth === todayMonth && expDay === todayDay) {
-    // Format time: convert HHMM to HH:MM AM/PM
-    if (exportTime) {
-      const timeStr = String(exportTime).replace(':', '').trim();
-      let hours = parseInt(timeStr.substring(0, timeStr.length - 2)) || 0;
-      let minutes = parseInt(timeStr.substring(timeStr.length - 2)) || 0;
-      const ampm = hours >= 12 ? 'PM' : 'AM';
-      if (hours > 12) hours -= 12;
-      if (hours === 0) hours = 12;
-      return hours + ':' + String(minutes).padStart(2, '0') + ' ' + ampm;
+      // Compare dates
+      if (expYear === yestYear && expMonth === yestMonth && expDay === yestDay) {
+        return yestMonth + '/' + String(yestDay).padStart(2, '0');
+      } else if (expYear === todayYear && expMonth === todayMonth && expDay === todayDay) {
+        // Format time: convert HHMM to HH:MM AM/PM
+        if (exportTime) {
+          const timeStr = String(exportTime).replace(':', '').trim();
+          let hours = parseInt(timeStr.substring(0, timeStr.length - 2)) || 0;
+          let minutes = parseInt(timeStr.substring(timeStr.length - 2)) || 0;
+          const ampm = hours >= 12 ? 'PM' : 'AM';
+          if (hours > 12) hours -= 12;
+          if (hours === 0) hours = 12;
+          return hours + ':' + String(minutes).padStart(2, '0') + ' ' + ampm;
+        }
+        return '';
+      }
+      return fmtMD(exportDate);
     }
-    return '';
   }
-  return fmtMD(exportDate);
+  // Fallback to loaded_at if export_date is missing
+  if (loadedAt) {
+    return fmtAsOf(loadedAt);
+  }
+  return '';
 }
 function showStatus(msg, kind = 'info', timeout = 4000) {
   const el = $('statusBar');
@@ -682,7 +690,7 @@ function renderGrid() {
       <td class="num">${fmtUsd(r.last_price)}</td>
       <td class="num">${fmtUsd(r.net_chng)}</td>
       <td class="num ${r.pct_change != null ? (Number(r.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : ''}">${r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''}</td>
-      <td>${fmtAsOfExport(r.export_date, r.export_time)}</td>
+      <td>${fmtAsOfExport(r.export_date, r.export_time, r.loaded_at)}</td>
       <td>${tags.join(' ')}</td>
     `;
     tr.onclick = (e) => { if (e.target.closest('.btn-suppress')) return; openDrilldown(r); };
@@ -725,7 +733,7 @@ function exportCsv() {
     ['Price',         r => r.last_price],
     ['Change $',      r => r.net_chng],
     ['Change %',      r => r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''],
-    ['As Of',         r => fmtAsOfExport(r.export_date, r.export_time)],
+    ['As Of',         r => fmtAsOfExport(r.export_date, r.export_time, r.loaded_at)],
     ['Held',          r => r.held_today ? 'Y' : 'N'],
     ['In My List',    r => r.in_my_list ? 'Y' : 'N'],
     ['Suppressed',    r => r.suppressed_reason || ''],
