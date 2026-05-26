@@ -1789,6 +1789,10 @@ CREATE INDEX IF NOT EXISTS ix_drv_actionable_mylist ON drv_actionable(in_my_list
 ALTER TABLE IF EXISTS drv_actionable
 ADD COLUMN IF NOT EXISTS triggered_group_ids JSONB;
 
+-- 2026-05-26: asset_class column (resolved category used for min/max/units lookup).
+ALTER TABLE IF EXISTS drv_actionable
+ADD COLUMN IF NOT EXISTS asset_class TEXT;
+
 -- -----------------------------------------------------
 -- user_action_log - forensic snapshot of user decisions.
 -- (Collision between 10's first definition and 21's full one was patched

@@ -245,7 +245,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         INSERT INTO drv_actionable
           (as_of_date, symbol, description, sector,
            consolidated_action, winning_source, winning_priority,
-           position_category, target_min_dollar, target_max_dollar,
+           position_category, asset_class, target_min_dollar, target_max_dollar,
            units_dollar, maintain_min, suggested_target_dollar,
            held_today, current_position_dollar, in_my_list,
            rules_engine_fires, source_actions, suppressed_reason,
@@ -254,7 +254,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         VALUES
           (:d, :sym, :desc, :sect,
            :ca, :ws, :wp,
-           :cat, :tmin, :tmax,
+           :cat, :ac, :tmin, :tmax,
            :unit, :mm, :stgt,
            :held, :curr, :iml,
            CAST(:fires AS JSONB), CAST(:srca AS JSONB), :supp,
@@ -446,6 +446,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "ws":    winning_source,
             "wp":    winning_priority,
             "cat":   category,
+            "ac":    category,
             "tmin":  target_min,
             "tmax":  target_max,
             "unit":  units,

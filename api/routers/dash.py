@@ -350,12 +350,9 @@ def get_actionable(
 
     sql = f"""
         SELECT a.*,
-               st.asset_class AS asset_class,
                u.user_action AS last_user_action,
                u.snooze_until AS snooze_until
         FROM drv_actionable a
-        LEFT JOIN drv_stks st
-               ON st.symbol = a.symbol AND st.as_of_date = a.as_of_date
         LEFT JOIN LATERAL (
             SELECT user_action, snooze_until
             FROM user_action_log
