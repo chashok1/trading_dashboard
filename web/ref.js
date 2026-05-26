@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             DOM.tableSelect.value = requested;
             await loadTable(requested);
         } else {
-            showStatus(`Table "${requested}" is not a ref_* table — open it in the Explore page instead.`, 'error');
+            showStatus(`Table "${requested}" is not a ref_* table — open it in the DB Data page instead.`, 'error');
         }
     }
 });

@@ -497,7 +497,7 @@ function renderSummary() {
 
 // Build a deep-link URL for opening a DB table in the appropriate maintenance
 // page. ref_* tables open in the Ref Data page; hist_*/drv_*/meta_* go to the
-// Explore page. Returns null when there's no sensible target.
+// DB Data page. Returns null when there's no sensible target.
 function tableLinkUrl(tableName, fileDate) {
     if (!tableName) return null;
     if (tableName.startsWith('ref_')) {
