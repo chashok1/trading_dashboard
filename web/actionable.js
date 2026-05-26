@@ -72,22 +72,31 @@ function fmtAsOf(ts) {
 
 function fmtAsOfExport(exportDate, exportTime) {
   if (!exportDate) return '';
-  // Parse export_date (YYYY-MM-DD or similar) and export_time (HHMM or HH:MM format)
-  const dateObj = new Date(exportDate);
+  // Parse export_date as YYYY-MM-DD string
+  const parts = String(exportDate).split('-');
+  if (parts.length !== 3) return fmtMD(exportDate);
+  const expYear = parseInt(parts[0]);
+  const expMonth = parseInt(parts[1]);
+  const expDay = parseInt(parts[2]);
+
   const today = new Date();
+  const todayYear = today.getFullYear();
+  const todayMonth = today.getMonth() + 1;
+  const todayDay = today.getDate();
+
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
+  const yestYear = yesterday.getFullYear();
+  const yestMonth = yesterday.getMonth() + 1;
+  const yestDay = yesterday.getDate();
 
-  const expDateOnly = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
-  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const yestDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
-
-  if (expDateOnly.getTime() === yestDate.getTime()) {
-    return (yesterday.getMonth() + 1) + '/' + String(yesterday.getDate()).padStart(2, '0');
-  } else if (expDateOnly.getTime() === todayDate.getTime()) {
-    // Format time: convert HHMM or HH:MM to HH:MM AM/PM
+  // Compare dates
+  if (expYear === yestYear && expMonth === yestMonth && expDay === yestDay) {
+    return yestMonth + '/' + String(yestDay).padStart(2, '0');
+  } else if (expYear === todayYear && expMonth === todayMonth && expDay === todayDay) {
+    // Format time: convert HHMM to HH:MM AM/PM
     if (exportTime) {
-      const timeStr = String(exportTime).replace(':', '');  // Remove colon if present
+      const timeStr = String(exportTime).replace(':', '').trim();
       let hours = parseInt(timeStr.substring(0, timeStr.length - 2)) || 0;
       let minutes = parseInt(timeStr.substring(timeStr.length - 2)) || 0;
       const ampm = hours >= 12 ? 'PM' : 'AM';
