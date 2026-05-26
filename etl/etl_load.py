@@ -163,6 +163,10 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
                 return {"status": "skipped", "file_type": "CST", "target_tab": "hist_cst"}
 
             file_dt_str = parse_file_date_from_name(p.name)
+            # If filename has no date, use file mtime
+            if not file_dt_str and file_mtime:
+                from datetime import datetime as dt_
+                file_dt_str = dt_.fromtimestamp(file_mtime).strftime('%Y-%m-%d')
             run_id = open_run(s, file_path=str(p), file_type='CST', target_tab='hist_cst')
             try:
                 read, ins, skp = load_cs_transactions(s, str(p), p.name)
@@ -232,6 +236,10 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
                 log.info("skipping %s (already processed; mtime unchanged)", p.name)
                 return {"status": "skipped", "file_type": "FT", "target_tab": "hist_ft"}
             file_dt_str = parse_file_date_from_name(p.name)
+            # If filename has no date (e.g., History_for_Account_*.csv), use file mtime
+            if not file_dt_str and file_mtime:
+                from datetime import datetime as dt_
+                file_dt_str = dt_.fromtimestamp(file_mtime).strftime('%Y-%m-%d')
             run_id = open_run(s, file_path=str(p), file_type='FT',
                               target_tab='hist_ft')
             try:
