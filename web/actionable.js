@@ -581,16 +581,11 @@ function initSourcePopover() {
 function sortRows() {
   const { key, dir, type } = state.sort;
   if (!key) {
-    // No explicit column sort. Default sort: by primary source, then by action.
+    // No explicit column sort. Default sort: by action (REMOVE/REDUCE/INCREASE/ADD/HOLD),
+    // then by primary source within each action.
     state.rows.sort((a, b) => {
-      // 1. Sort by winning_source (primary source)
-      const aSrc = (a.winning_source || '').toUpperCase();
-      const bSrc = (b.winning_source || '').toUpperCase();
-      if (aSrc !== bSrc) {
-        return aSrc < bSrc ? -1 : 1;
-      }
-      // 2. Within the same source, sort by action severity (REMOVE → HOLD)
-      // SELL→MAX overlay gets rank between REDUCE and INCREASE
+      // 1. Sort by action severity (REMOVE → HOLD)
+      // SELL→MAX overlay gets rank between REDUCE (3) and INCREASE (2)
       const aAction = (a.consolidated_action || 'NONE').toUpperCase();
       const bAction = (b.consolidated_action || 'NONE').toUpperCase();
       const aIsOverMax = _isOverMaxOverlay(a);
@@ -605,7 +600,14 @@ function sortRows() {
 
       if (aRank !== bRank) return bRank - aRank;
 
-      // 3. Same action within same source: sort by symbol
+      // 2. Within same action, sort by primary source
+      const aSrc = (a.winning_source || '').toUpperCase();
+      const bSrc = (b.winning_source || '').toUpperCase();
+      if (aSrc !== bSrc) {
+        return aSrc < bSrc ? -1 : 1;
+      }
+
+      // 3. Same action and source: sort by symbol
       const aSym = (a.symbol || '').toUpperCase();
       const bSym = (b.symbol || '').toUpperCase();
       return aSym < bSym ? -1 : aSym > bSym ? 1 : 0;
