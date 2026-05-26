@@ -162,13 +162,14 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
                 log.info("skipping %s (already processed; mtime unchanged)", p.name)
                 return {"status": "skipped", "file_type": "CST", "target_tab": "hist_cst"}
 
+            file_dt_str = parse_file_date_from_name(p.name)
             run_id = open_run(s, file_path=str(p), file_type='CST', target_tab='hist_cst')
             try:
                 read, ins, skp = load_cs_transactions(s, str(p), p.name)
                 close_run(s, run_id, rows_read=read, rows_inserted=ins, rows_skipped=skp)
                 mark_processed(s, file_path=str(p), file_mtime=file_mtime,
                                file_type='CST', target_tab='hist_cst',
-                               file_dt=None, run_id=run_id)
+                               file_dt=file_dt_str, run_id=run_id)
                 log.info("LOADED hist_cst: %d read, %d ins, %d skip", read, ins, skp)
 
                 # Derive realized gains for all dates in the loaded transactions.
