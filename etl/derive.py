@@ -2285,28 +2285,6 @@ def derive_all(session: Session, as_of_date: date,
     # registry path (ma_codegen + ref_ma_columns.source_expr) silently
     # produced all-NULL rows for ~100 columns — retired 2026-05-27.
 
-    # Retired cat tables (drv_cat_ma/dash/stks) — best-effort, swallow errors.
-    try:
-        for cat_table in ("drv_cat_ma", "drv_cat_dash", "drv_cat_stks"):
-            def _make_deriver(t=cat_table):
-                def _deriver(session, as_of_date, parent_run_id=None):
-                    return _derive_cat_table_impl(session, as_of_date, parent_run_id or 0, t)
-                return _deriver
-            try:
-                counts[cat_table] = _wrap(cat_table, _make_deriver(cat_table))(
-                    session, as_of_date, parent_run_id)
-            except Exception:
-                log.exception("%s failed (continuing)", cat_table)
-                counts[cat_table] = 0
-                try: session.rollback()
-                except Exception: pass
-    except Exception as e:
-        log.warning("retired drv_cat_* derives skipped: %s", e)
-        try:
-            session.rollback()
-        except Exception:
-            pass
-
     # ---- drv2_* layer RETIRED 2026-05-12 — archived 2026-05-12 (see _trash_2026-05-12/etl/_archived/) ----
 
     # drv_quote merges hist_y / hist_tl / hist_td quote fields by latest loaded_at
