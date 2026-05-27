@@ -1104,4 +1104,3 @@ def run_stale_derives():
             "healed": result.get("healed", []),
             "failed": result.get("failed", []),
             "stale": result.get("stale", [])}
-  
