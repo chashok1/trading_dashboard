@@ -160,15 +160,25 @@ exceeding PostgreSQL connection limits when multiple browser tabs are open.
 `ref_load_files` has a composite primary key `(file_type, week_day, file_time)`
 supporting multiple schedule slots per file_type (e.g. a file expected at both
 16:00 and 17:00). The schedule query in `/api/monitor/schedule` must not let a
-file processed for the 16:00 slot satisfy the 17:00 slot.
+file processed for the 16:00 slot satisfy the 17:00 slot, while still allowing
+the last slot of the day to claim a file that arrives overnight or early the
+next morning.
 
-The query resolves this with two `LEFT JOIN LATERAL` subqueries:
+The query resolves this with an `r_slots` CTE that augments `ref_load_files`
+with `next_file_time = LEAD(file_time) OVER (PARTITION BY file_type, week_day
+ORDER BY file_time)`. `next_file_time` is `NULL` for the last (or only) slot
+in each `(file_type, week_day)` group.
+
+Two `LEFT JOIN LATERAL` subqueries then use this:
 
 - **`fp` (today)**: selects the latest `meta_file_processed` row for today
-  with `processed_at::time >= r.file_time`. A file processed at 16:05 has
-  `processed_at::time = 16:05:00`, which satisfies `>= '16:00:00'` but not
-  `>= '17:00:00'`, so the 17:00 slot correctly reads no matching file.
-- **`lp` (any date)**: same time-of-day constraint applied to all historical
+  whose `processed_at::time` falls in `[r.file_time, r.next_file_time)`. When
+  `r.next_file_time IS NULL` (last/only slot), the time-of-day filter is
+  dropped entirely so a file processed at 01:57 AM still satisfies, say, a
+  16:35 slot. For multi-slot file_types like TOSL (16:00 + 17:00), the 16:05
+  file falls in `[16:00, 17:00)` and so satisfies the 16:00 slot but not the
+  17:00 slot.
+- **`lp` (any date)**: same range constraint applied to all historical
   `meta_file_processed` rows, used to determine if the most recent occurrence
   of a weekly/monthly file landed within its expected window.
 

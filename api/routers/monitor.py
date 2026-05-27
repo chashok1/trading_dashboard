@@ -144,6 +144,22 @@ def get_schedule():
     with session_scope() as s:
         result = s.execute(text("""
             WITH today AS (SELECT CURRENT_DATE AS d),
+            r_slots AS (
+                -- ref_load_files + next_file_time = the file_time of the next
+                -- slot in this (file_type, week_day) group, or NULL if this is
+                -- the last/only slot. Used by the per-slot LATERAL joins below
+                -- to apportion files across multi-slot file_types using the
+                -- range [file_time, next_file_time) — with the last slot
+                -- (next_file_time IS NULL) accepting any time-of-day, so a
+                -- file that arrives overnight (e.g. 01:57 AM the next morning)
+                -- still satisfies the slot.
+                SELECT r.*,
+                       LEAD(r.file_time) OVER (
+                           PARTITION BY r.file_type, r.week_day
+                           ORDER BY r.file_time
+                       ) AS next_file_time
+                FROM ref_load_files r
+            ),
             is_today AS (
                 -- Show all enabled file types (not gated by day of week).
                 -- If scheduled for FRI, you can still load it Mon-Thu.
@@ -257,41 +273,72 @@ def get_schedule():
                 COALESCE(r.optional, FALSE)                   AS optional,
                 COALESCE(r.rows_should_match, TRUE)          AS rows_should_match,
                 r.target_table
-            FROM ref_load_files r
+            FROM r_slots r
             -- Composite-key joins so multi-slot file_types stay 1:1 with r.
             LEFT JOIN is_today  it ON it.file_type = r.file_type
                                   AND it.week_day  = r.week_day
-            -- Per-slot fp: pick the latest file processed today whose
-            -- processed_at time-of-day is >= this slot's file_time. So the
-            -- 17:00 slot won't see the 16:05 file (which belongs to the
-            -- 16:00 slot) — it'll correctly read as pending/overdue.
+            -- Per-slot fp: pick the latest file processed today that belongs
+            -- in this slot's time range [file_time, next_file_time).
+            -- For the LAST/ONLY slot (next_file_time IS NULL) we drop the
+            -- time-of-day filter entirely so a file processed overnight or
+            -- early the next morning (e.g. 01:57 AM for a 16:35 slot) still
+            -- counts toward this slot. For multi-slot file_types the range
+            -- check still keeps the 16:05 file out of the 17:00 slot.
             LEFT JOIN LATERAL (
                 SELECT fp_inner.file_type, fp_inner.file_date,
                        fp_inner.processed_at, fp_inner.last_run_id,
                        fp_inner.file_path
                 FROM today_fp_all fp_inner
                 WHERE fp_inner.file_type = UPPER(r.file_type)
-                  AND (r.file_time IS NULL
-                       OR fp_inner.processed_at::time >= r.file_time)
+                  AND (
+                      r.file_time IS NULL
+                      OR r.next_file_time IS NULL
+                      OR (fp_inner.processed_at::time >= r.file_time
+                          AND fp_inner.processed_at::time < r.next_file_time)
+                  )
                 ORDER BY fp_inner.processed_at DESC
                 LIMIT 1
             ) fp ON TRUE
             LEFT JOIN window_start ws ON ws.file_type = r.file_type
                                      AND ws.week_day  = r.week_day
-            -- Per-slot lp (any date) with the same time-of-day constraint.
-            -- Without this, the 17:00 slot would inherit the 16:05 file's
-            -- date via lp.file_date and the status branch
-            --   WHEN lp.file_date IS NOT NULL AND lp.file_date >= ws.window_date THEN 'done'
-            -- would wrongly mark it done.
+            -- Per-slot lp (any date) with the same range constraint.
+            -- Prioritizes files >= window_date so the most recent in-window file is selected,
+            -- not just the most recently processed file. When multiple files exist in the window,
+            -- picks the one with the latest file_date, then latest processed_at as tiebreaker.
             LEFT JOIN LATERAL (
                 SELECT lp_inner.file_type, lp_inner.file_date,
                        lp_inner.processed_at, lp_inner.last_run_id,
                        lp_inner.file_path
                 FROM last_fp_all lp_inner
                 WHERE lp_inner.file_type = UPPER(r.file_type)
-                  AND (r.file_time IS NULL
-                       OR lp_inner.processed_at::time >= r.file_time)
-                ORDER BY lp_inner.processed_at DESC
+                  AND (
+                      r.file_time IS NULL
+                      OR r.next_file_time IS NULL
+                      OR (lp_inner.processed_at::time >= r.file_time
+                          AND lp_inner.processed_at::time < r.next_file_time)
+                  )
+                ORDER BY
+                    -- Prioritize files >= window_date over older files
+                    (lp_inner.file_date >= COALESCE(
+                        CASE
+                            WHEN r.week_day = 'SUN' THEN CURRENT_DATE - ((EXTRACT(DOW FROM CURRENT_DATE)::int - 0 + 7) % 7)
+                            WHEN r.week_day = 'MON' THEN CURRENT_DATE - ((EXTRACT(DOW FROM CURRENT_DATE)::int - 1 + 7) % 7)
+                            WHEN r.week_day = 'TUE' THEN CURRENT_DATE - ((EXTRACT(DOW FROM CURRENT_DATE)::int - 2 + 7) % 7)
+                            WHEN r.week_day = 'WED' THEN CURRENT_DATE - ((EXTRACT(DOW FROM CURRENT_DATE)::int - 3 + 7) % 7)
+                            WHEN r.week_day = 'THU' THEN CURRENT_DATE - ((EXTRACT(DOW FROM CURRENT_DATE)::int - 4 + 7) % 7)
+                            WHEN r.week_day = 'FRI' THEN CURRENT_DATE - ((EXTRACT(DOW FROM CURRENT_DATE)::int - 5 + 7) % 7)
+                            WHEN r.week_day = 'SAT' THEN CURRENT_DATE - ((EXTRACT(DOW FROM CURRENT_DATE)::int - 6 + 7) % 7)
+                            WHEN r.week_day = 'WKDAY' THEN CASE WHEN EXTRACT(DOW FROM CURRENT_DATE)::int NOT IN (0, 6)
+                                                                THEN CURRENT_DATE
+                                                                ELSE CURRENT_DATE - ((EXTRACT(DOW FROM CURRENT_DATE)::int - 5 + 7) % 7)
+                                                           END
+                            WHEN r.week_day = 'ALL' THEN CURRENT_DATE
+                            ELSE NULL
+                        END,
+                        '1900-01-01'::date
+                    )) DESC,
+                    lp_inner.file_date DESC,
+                    lp_inner.processed_at DESC
                 LIMIT 1
             ) lp ON TRUE
             LEFT JOIN last_etl  le ON le.file_type = UPPER(r.file_type)
@@ -1057,3 +1104,4 @@ def run_stale_derives():
             "healed": result.get("healed", []),
             "failed": result.get("failed", []),
             "stale": result.get("stale", [])}
+  

@@ -105,7 +105,7 @@ Re-running derive for date D is idempotent: same numbers; only date D's derivati
 ## File Monitor
 
 - Endpoints in `api/routers/monitor.py`: summary, schedule, etl-runs, derive-runs, live (SSE), scheduler control, startup (Windows task scheduler), reprocess, derive-missing + derive-missing/run.
-- `ref_load_files` has composite PK `(file_type, week_day, file_time)` allowing multi-slot schedules per file_type. Status logic uses LATERAL joins keyed by `processed_at::time >= r.file_time` so a file processed for the 16:00 slot doesn't satisfy the 17:00 slot.
+- `ref_load_files` has composite PK `(file_type, week_day, file_time)` allowing multi-slot schedules per file_type. Status logic uses an `r_slots` CTE with `LEAD(file_time)` and LATERAL joins matching files in `[file_time, next_file_time)` — last/only slot accepts any time-of-day so overnight loads still register.
 - "Run Missing Derives" accepts `last_n_days` (1, 3, 7, 14, 30, 60, 90); finds snapshot_dates with hist_* data but no successful `meta_derived_run` row, runs `derive_all` oldest→newest.
 
 ---
@@ -123,11 +123,10 @@ Re-running derive for date D is idempotent: same numbers; only date D's derivati
 9. **Top-level layout is settled** — extend, don't rearrange.
 10. **ETL loads commit per 1000-row batch**; progress prints `[Table] batch X/Y (pct%) cumulative: N inserted, M skipped`.
 11. **Plan first → ask permission** (unless the user explicitly says to do it). This is a hard rule from the user.
-12. **Back up before editing an existing file.** Copy it via the shell to `_backups/<path>.<YYYYMMDD-HHMMSS>.bak` and verify the copy before any `Edit`/`Write`. New files are exempt. Hard rule from the user.
-13. **Per-screen / per-feature deep-dive docs live in `docs/`.** One file per topic (`docs/<topic>_logic.md`). `CLAUDE.md` carries only a one-line pointer in the Lookup index — never the full detail. To request one, say "document the X screen/logic" and Claude creates/updates `docs/X_logic.md` plus the index row.
-14. **Responses use a structured format.** Lead with a short **Summary** — ONLY what the user must act on or pay attention to. Problems Claude both caused and fixed itself (e.g. file-truncation-on-write and its splice recovery) must NOT appear in the Summary — move them to **Details** under a subheading, or omit them entirely. Then **Details**. Include a **Notes** section ONLY when there is a precise, actionable point to make — omit the section entirely when there is none; never pad it. End with **Questions** only if there are real questions. Keep every section to the minimum detail required — not verbose. Skip the scaffolding for trivial one-line answers. Hard rule from the user.
-15. **Manage code changes through git.** All code modifications must be committed to the repository with clear commit messages. This creates a complete audit trail and enables rollback if needed. Claude will create commits for code changes going forward.
-16. **Push back on wasteful or unnecessary requests.** When a request is genuinely wasteful, redundant, or there is a materially better approach, say so instead of just complying — raise it as a subsection under **Notes** (e.g. a `### Worth reconsidering` subheading) stating the concern and the better option. Use this sparingly: only when it genuinely matters, never as routine commentary on ordinary requests. Hard rule from the user.
+12. **Per-screen / per-feature deep-dive docs live in `docs/`.** One file per topic (`docs/<topic>_logic.md`). `CLAUDE.md` carries only a one-line pointer in the Lookup index — never the full detail. To request one, say "document the X screen/logic" and Claude creates/updates `docs/X_logic.md` plus the index row.
+13. **Responses use a structured format.** Lead with a short **Summary** — ONLY what the user must act on or pay attention to. Problems Claude both caused and fixed itself (e.g. file-truncation-on-write and its splice recovery) must NOT appear in the Summary — move them to **Details** under a subheading, or omit them entirely. Then **Details**. Include a **Notes** section ONLY when there is a precise, actionable point to make — omit the section entirely when there is none; never pad it. End with **Questions** only if there are real questions. Keep every section to the minimum detail required — not verbose. Skip the scaffolding for trivial one-line answers. Hard rule from the user.
+14. **Manage code changes through git.** All code modifications must be committed to the repository with clear commit messages. This creates a complete audit trail and enables rollback if needed. Claude will create commits for code changes going forward.
+15. **Push back on wasteful or unnecessary requests.** When a request is genuinely wasteful, redundant, or there is a materially better approach, say so instead of just complying — raise it as a subsection under **Notes** (e.g. a `### Worth reconsidering` subheading) stating the concern and the better option. Use this sparingly: only when it genuinely matters, never as routine commentary on ordinary requests. Hard rule from the user.
 
 ---
 
@@ -229,3 +228,4 @@ If truncated, **don't re-`Edit`** — rewrite the tail via bash heredoc. Smaller
 | Rules engine logic | `docs/rules_logic.md` |
 | Rule groups logic | `docs/rule_groups_logic.md` |
 | Performance / feedback-loop logic | `docs/performance_logic.md` |
+                                                                                                                                                          
