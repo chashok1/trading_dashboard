@@ -82,7 +82,7 @@ med AS (
 ),
 dq AS (
     SELECT DISTINCT ON (symbol) symbol, last_price, net_chng, pct_change,
-           open, high, low
+           open_price, high_price, low_price
     FROM drv_quote WHERE as_of_date <= (SELECT d FROM p)
     ORDER BY symbol, as_of_date DESC
 ),
@@ -110,7 +110,7 @@ SELECT s.s AS symbol,
        med.median_sd,
        -- drv_quote
        dq.last_price, dq.net_chng, dq.pct_change,
-       dq.high AS high_today, dq.low AS low_today,
+       dq.high_price AS high_today, dq.low_price AS low_today,
        -- hist_rr
        rr.buy_trade, rr.sell_trade
 FROM syms s
