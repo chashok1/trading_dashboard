@@ -1330,14 +1330,11 @@ CREATE TABLE IF NOT EXISTS drv_cat_atomic_input (
     trade_cross_over                         NUMERIC,
     trade_rule                               NUMERIC,
     not_trade_rule                           NUMERIC,
-    "!trade_rule"                            NUMERIC,
     trend_cross_over                         NUMERIC,
     trend_rule                               NUMERIC,
-    "!trend_rule"                            NUMERIC,
     not_trend_rule                           NUMERIC,
     trend_trade_dep_rule                     NUMERIC,
     trtn_relation                            NUMERIC,
-    "!trtn_relation"                         NUMERIC,
     not_trtn_relation                        NUMERIC,
     trade_trend_sd_rule                      NUMERIC,
     brrpct_rule                              NUMERIC,
@@ -1384,12 +1381,9 @@ CREATE TABLE IF NOT EXISTS drv_cat_atomic_input (
     perf3d_sd_rule                           NUMERIC,
     perf1d_sd_rule                           NUMERIC,
     not_perf1d_sd                            NUMERIC,
-    "!perf1d_sd"                             NUMERIC,
     perf3d_sd_1off                           NUMERIC,
     perf_sd_rule                             NUMERIC,
-    "!perf_sd_rule"                          NUMERIC,
     not_perf_sd_rule                         NUMERIC,
-    "!perf3d_rule"                           NUMERIC,
     not_perf3d_rule                          NUMERIC,
     bbhighlow_sd_rule                        NUMERIC,
     bbhighlow_days_rule                      NUMERIC,
@@ -1413,7 +1407,6 @@ CREATE TABLE IF NOT EXISTS drv_cat_atomic_input (
     macdh_days                               NUMERIC,
     macdh_days2                              NUMERIC,
     overbought                               NUMERIC,
-    "!overbought"                            NUMERIC,
     not_overbought                           NUMERIC,
     c_3mn_outlook                            NUMERIC,
     "3mn_outlook"                            NUMERIC,
@@ -1423,16 +1416,12 @@ CREATE TABLE IF NOT EXISTS drv_cat_atomic_input (
     c_3wk_outlook                            NUMERIC,
     c_3wk_outlook_days                       NUMERIC,
     "3wk_outlook_days"                       NUMERIC,
-    "!3wk_ol"                                NUMERIC,
     not_3wk_ol                               NUMERIC,
-    "!3wk_ol_days"                           NUMERIC,
     not_3wk_ol_days                          NUMERIC,
     bull                                     NUMERIC,
     not_bull                                 NUMERIC,
-    "!bull"                                  NUMERIC,
     perforbull                               NUMERIC,
     not_perforbull                           NUMERIC,
-    "!perforbull"                            NUMERIC,
     "50_dma_rule"                            NUMERIC,
     c_50_dma_rule                            NUMERIC,
     "50_dma_crossover"                       NUMERIC,
@@ -2188,6 +2177,25 @@ INSERT INTO ref_data_filter_logic (table_name, filter_type, date_column, window_
     ('hist_ft',  'WINDOW_365_DAYS',     'trade_date',    365,  'Fidelity transaction history - rolling 1 year (extend as needed)'),
     ('drv_cs_realized_gain', 'EXACT_MATCH',         'as_of_date',    NULL, 'Realized P&L from Schwab sales')
 ON CONFLICT (table_name) DO NOTHING;
+
+
+-- -----------------------------------------------------
+-- 2026-05-27 cleanup: drop legacy "!..."-quoted duplicate columns in
+-- drv_cat_atomic_input.  Each had a not_X twin already declared above;
+-- the "!..." form was the original Excel header convention.  Idempotent.
+-- -----------------------------------------------------
+ALTER TABLE drv_cat_atomic_input
+    DROP COLUMN IF EXISTS "!trade_rule",
+    DROP COLUMN IF EXISTS "!trend_rule",
+    DROP COLUMN IF EXISTS "!trtn_relation",
+    DROP COLUMN IF EXISTS "!perf1d_sd",
+    DROP COLUMN IF EXISTS "!perf_sd_rule",
+    DROP COLUMN IF EXISTS "!perf3d_rule",
+    DROP COLUMN IF EXISTS "!overbought",
+    DROP COLUMN IF EXISTS "!3wk_ol",
+    DROP COLUMN IF EXISTS "!3wk_ol_days",
+    DROP COLUMN IF EXISTS "!bull",
+    DROP COLUMN IF EXISTS "!perforbull";
 
 -- =====================================================
 -- End of baseline.sql
