@@ -35,7 +35,7 @@ from etl.derive import derive_all
 from etl.excel_io import open_workbook
 from etl.load_raw import (
     close_run, file_hash, load_etf, load_etfchg, load_iichg, load_one_tab,
-    open_run, parse_file_date_from_name,
+    load_tw, open_run, parse_file_date_from_name,
 )
 from etl.mark_sales import mark_cs_sales, mark_f_sales
 from etl.mappings import HIST_MAPS
@@ -65,6 +65,7 @@ CUSTOM_HANDLERS = {
     "etf":    load_etf,
     "etfchg": load_etfchg,
     "iichg":  load_iichg,
+    "tw":     load_tw,  # Handles duplicate column headers (3x SimpleMovingAvg, 2x VolumeAvg)
     "ref_tickers": load_ref_tables,
     # 'miss' has no loader - it is a derived table only
 }

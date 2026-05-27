@@ -262,21 +262,21 @@ HIST_MAPS = {
         seq_source_col="Export Time",
         symbol_source_col="Symbol",
         columns=[
-            ("Export Date",                "export_date",     to_date),
-            ("Date",                       "export_date",     to_date),  # CSV alt
-            ("Export Time",                "export_time",     to_text),
-            ("Time",                       "export_time",     to_text),  # CSV alt
-            ("Symbol",                     "symbol",          to_text),
-            ("Beta",                       "beta",            to_numeric),
-            ("Market Cap",                 "market_cap_str",  to_text),
-            ("Long-term Debt to Capital",  "ltd_to_capital",  to_numeric),
-            ("Price / Earnings Ratio - ",  "pe_ratio",        to_numeric),
-            ("Price / Book Value Ratio  ", "pb_ratio",        to_numeric),
-            ("Return on Equity (ROE) - ",  "roe",             to_numeric),
-            ("EPS",                        "eps",             to_numeric),
-            ("Div. Yield - Current",       "div_yield",       to_numeric),
-            ("Sector",                     "sector",          to_text),
-            ("Free Cash Flow Per Share ",  "fcf_per_share",   to_numeric),
+            ("Export Date",                            "export_date",     to_date),
+            ("Date",                                   "export_date",     to_date),  # CSV alt
+            ("Export Time",                            "export_time",     to_text),
+            ("Time",                                   "export_time",     to_text),  # CSV alt
+            ("Symbol",                                 "symbol",          to_text),
+            ("Beta",                                   "beta",            to_numeric),
+            ("Market Cap",                             "market_cap_num",  to_numeric),
+            ("Long-term Debt to Capital - Current (LTM)", "ltd_to_capital", to_numeric),
+            ("Price / Earnings Ratio - Current",       "pe_ratio",        to_numeric),
+            ("Price / Book Value Ratio - Current",     "pb_ratio",        to_numeric),
+            ("Return on Equity (ROE) - Current (LTM)", "roe",             to_numeric),
+            ("EPS",                                    "eps",             to_numeric),
+            ("Div. Yield - Current",                   "div_yield",       to_numeric),
+            ("Sector",                                 "sector",          to_text),
+            ("Free Cash Flow Per Share - Current (LTM)", "fcf_per_share",  to_numeric),
         ],
     ),
 

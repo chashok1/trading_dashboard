@@ -773,6 +773,109 @@ def load_iichg(session: Session, wb: Workbook, source_file: str) -> tuple[int, i
     return rows_read, n_inserted, n_attempted - n_inserted
 
 
+def load_tw(session: Session, wb: Workbook, source_file: str) -> tuple[int, int, int]:
+    """
+    TW tab -> hist_tw with special handling for duplicate column headers.
+
+    The TW tab has 3 columns named "SimpleMovingAvg" and 2 named "VolumeAvg".
+    Maps to: sma_20/sma_50/sma_200 and volume_avg_10d/volume_avg_3m by column index.
+    """
+    mapping = {
+        "sheet": "TW",
+        "table": "hist_tw",
+        "columns": [
+            ("Export Date", "export_date", to_date),
+            ("Date", "export_date", to_date),
+            ("Export Time", "export_time", to_text),
+            ("Time", "export_time", to_text),
+            ("Symbol", "symbol", to_text),
+            ("Last", "last_price", to_numeric),
+            ("%Change", "change_pct", to_numeric),
+            ("Sector", "sector", to_text),
+            ("Beta", "beta", to_numeric),
+            ("StandardDeviation", "standard_dev", to_numeric),
+            ("Free Cash Flow Per Share", "fcf_per_share", to_numeric),
+            ("52High", "high_52", to_numeric),
+            ("52Low", "low_52", to_numeric),
+            ("SimpleMovingAvg", "sma_20", to_numeric),
+            ("A_MACDays_Streak", "a_macdays_streak", to_numeric),
+            ("A_MACD_BRR", "a_macd_brr", to_numeric),
+            ("A_MACDH_D_BRR", "a_macdh_d_brr", to_numeric),
+            ("Volume", "volume", to_bigint),
+            ("A_VolumeSpike", "a_volume_spike", to_numeric),
+            ("VolumeAvg", "volume_avg_10d", to_numeric),
+            ("VolumeRateOfChange", "volume_rate_change", to_numeric),
+            ("A_Perf2M", "a_perf_2m", to_numeric),
+            ("A_Perf2Wk", "a_perf_2wk", to_numeric),
+            ("A_Perf3D", "a_perf_3d", to_numeric),
+            ("A_3mnHigh", "a_3mn_high", to_numeric),
+            ("A_3mnLow", "a_3mn_low", to_numeric),
+            ("A_3mnHighLow", "a_3mn_high_low", to_numeric),
+            ("A_3wkHighLow", "a_3wk_high_low", to_numeric),
+            ("A_EarningsDays", "a_earnings_days", to_numeric),
+            ("Market Cap", "market_cap_str", to_text),
+        ],
+    }
+
+    sheet_name = get_sheet_case_insensitive(wb, "TW")
+    if sheet_name is None:
+        if len(wb.sheetnames) == 1:
+            sheet_name = wb.sheetnames[0]
+        else:
+            return 0, 0, 0
+
+    sheet = wb[sheet_name]
+    from etl.excel_io import iter_rows_as_dict, get_headers
+
+    # Find duplicate column indices
+    headers = get_headers(sheet)
+    sma_indices = [i for i, h in enumerate(headers) if h == "SimpleMovingAvg"]
+    vol_indices = [i for i, h in enumerate(headers) if h == "VolumeAvg"]
+
+    records: list[dict] = []
+    rows_read = 0
+
+    for row_data in iter_rows_as_dict(sheet, start_row=2):
+        rows_read += 1
+        rec, skip_reason = _row_to_record(row_data, mapping, source_file)
+        if rec is None:
+            continue
+
+        # Fetch duplicate columns by column index (0-based indices, Excel is 1-based)
+        row_num = rows_read + 1  # +1 for header row
+
+        # 2nd SimpleMovingAvg -> sma_50
+        if len(sma_indices) > 1:
+            v = sheet.cell(row=row_num, column=sma_indices[1] + 1).value
+            rec["sma_50"] = to_numeric(v) if v is not None else None
+        # 3rd SimpleMovingAvg -> sma_200
+        if len(sma_indices) > 2:
+            v = sheet.cell(row=row_num, column=sma_indices[2] + 1).value
+            rec["sma_200"] = to_numeric(v) if v is not None else None
+
+        # 2nd VolumeAvg -> volume_avg_3m
+        if len(vol_indices) > 1:
+            v = sheet.cell(row=row_num, column=vol_indices[1] + 1).value
+            rec["volume_avg_3m"] = to_numeric(v) if v is not None else None
+
+        records.append(rec)
+
+    print(f"\nhist_tw: started. tab rows - {rows_read}")
+
+    if not records:
+        print(f"  [TW->hist_tw] All rows skipped.")
+        return rows_read, 0, rows_read
+
+    def _progress(batch, total, ins, skp):
+        print(f"  [TW->hist_tw] batch {batch}/{total} ({int(100*batch/total)}%) cumulative: {ins} inserted, {skp} skipped")
+
+    n_attempted, n_inserted = insert_upsert(session, "hist_tw", records, progress_cb=_progress)
+    n_skipped = n_attempted - n_inserted
+
+    print(f"  [TW->hist_tw] DONE  read={rows_read}  inserted={n_inserted}  skipped={n_skipped}")
+    return rows_read, n_inserted, n_skipped
+
+
 # =============================================================================
 # Sector signal series loaders (sss, ssL)
 # =============================================================================
