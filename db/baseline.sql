@@ -2233,14 +2233,11 @@ ALTER TABLE drv_cat_atomic_input
     ADD COLUMN IF NOT EXISTS td_tn_bb_action_seq     NUMERIC;   -- QT  XLOOKUP(QR, Parm AO2:AO21 -> AR)
 
 -- -----------------------------------------------------
--- 2026-05-27 (v2): hist_td gains BB_Bot_Prev / BB_Top_Prev (TD!L / TD!P),
--- needed by EC/ED fallback in etl/derive_cat_atomic_input.py.  Idempotent.
--- -----------------------------------------------------
-ALTER TABLE hist_td
-    ADD COLUMN IF NOT EXISTS bb_bot_prev  NUMERIC,
-    ADD COLUMN IF NOT EXISTS bb_top_prev  NUMERIC;
+-- 2026-05-27 (v2): REMOVED — bb_bot_prev/bb_top_prev no longer loaded from hist_td.
+-- They're now computed in derive_cat_atomic_input from prior snapshot's a_bb_bottom/a_bb_top.
+-- The ALTER TABLE that added these columns to hist_td has been removed; they're only in
+-- drv_cat_atomic_input as derived output.
 
--- -----------------------------------------------------
 -- 2026-05-27 (v3): dashboard single-cell scalars seeded into ref_param
 -- under sheet='dash'.  Pattern lets future derivers read scalars by name
 -- via `SELECT value FROM ref_param WHERE sheet='dash' AND param_name=...`.

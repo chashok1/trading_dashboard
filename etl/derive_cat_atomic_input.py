@@ -60,6 +60,13 @@ td AS (
     FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
     ORDER BY symbol, snapshot_date DESC, sequence DESC
 ),
+td_prior AS (
+    -- Prior snapshot's a_bb_bottom and a_bb_top for DU/DV fallback in EC/ED
+    SELECT DISTINCT ON (symbol) symbol,
+           a_bb_bottom AS bb_bot_prev, a_bb_top AS bb_top_prev
+    FROM hist_td WHERE snapshot_date < (SELECT d FROM p)
+    ORDER BY symbol, snapshot_date DESC, sequence DESC
+),
 tw AS (
     SELECT DISTINCT ON (symbol) symbol,
            standard_dev, sma_20, sma_50, sma_200,
@@ -100,6 +107,8 @@ SELECT s.s AS symbol,
        td.a_iv_percentile, td.a_hv_percentile,
        td.a_bb_top_slope, td.a_bb_bot_slope,
        td.historical_vol, td.imp_volatility, td.rsi,
+       -- derived prior BB values (for EC/ED fallback)
+       td_prior.bb_bot_prev, td_prior.bb_top_prev,
        -- hist_tw
        tw.standard_dev, tw.sma_50, tw.sma_200,
        tw.a_macd_brr, tw.a_macdh_d_brr, tw.a_macdays_streak,
@@ -115,6 +124,7 @@ SELECT s.s AS symbol,
        rr.buy_trade, rr.sell_trade
 FROM syms s
 LEFT JOIN td  ON td.symbol  = s.s
+LEFT JOIN td_prior ON td_prior.symbol = s.s
 LEFT JOIN tw  ON tw.symbol  = s.s
 LEFT JOIN med ON med.symbol = s.s
 LEFT JOIN dq  ON dq.symbol  = s.s
