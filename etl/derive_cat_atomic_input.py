@@ -63,7 +63,7 @@ td AS (
 tw AS (
     SELECT DISTINCT ON (symbol) symbol,
            standard_dev, sma_20, sma_50, sma_200,
-           a_macd_brr1, a_macdh_d_brr1, a_macdays_streak,
+           a_macd_brr, a_macdh_d_brr, a_macdays_streak,
            a_3mn_high, a_3mn_low, a_3mn_high_low, a_3wk_high_low,
            a_perf_2m, a_perf_2wk, a_perf_3d,
            a_volume_spike, volume, volume_avg_3m, volume_rate_change,
@@ -102,7 +102,7 @@ SELECT s.s AS symbol,
        td.historical_vol, td.imp_volatility, td.rsi,
        -- hist_tw
        tw.standard_dev, tw.sma_50, tw.sma_200,
-       tw.a_macd_brr1, tw.a_macdh_d_brr1, tw.a_macdays_streak,
+       tw.a_macd_brr, tw.a_macdh_d_brr, tw.a_macdays_streak,
        tw.a_3mn_high, tw.a_3mn_low, tw.a_3mn_high_low, tw.a_3wk_high_low,
        tw.a_perf_2m, tw.a_perf_2wk, tw.a_perf_3d,
        tw.a_volume_spike, tw.volume, tw.volume_avg_3m, tw.volume_rate_change,
@@ -434,8 +434,8 @@ def compute_intermediates(row: dict) -> dict:
 COLUMN_SPECS_PASS1 = [
     # ---- JF block opener is just a marker ----
     # JG / JH — sign-with-zero-as-neg over CK / CI (MACDH/MACD direction)
-    ("macdh_direction",   "sign_zero_neg", "a_macdh_d_brr1", None, None),     # JG
-    ("macd_direction",    "sign_zero_neg", "a_macd_brr1",    None, None),     # JH
+    ("macdh_direction",   "sign_zero_neg", "a_macdh_d_brr", None, None),     # JG
+    ("macd_direction",    "sign_zero_neg", "a_macd_brr",    None, None),     # JH
     # JI — passthrough of AN (BB_Direction1).  AN now properly derived from
     # a_bb_high_low composite via compute_intermediates (per user spec
     # 2026-05-27 v3).  Returns +1 if BB bottom touched and price recovered,
@@ -548,15 +548,15 @@ COLUMN_SPECS_PASS1 = [
     ("bblowdays",           "trig_ifs", "AR", "BBLowDays",
         {"strict": True}),                                                      # LZ
     # MA MACD Rule -- input CJ = ABS(CI); ditto MB uses ABS(CK)
-    ("macd_rule",           "trig_ifs", "a_macd_brr1",  "MACD Rule",
+    ("macd_rule",           "trig_ifs", "a_macd_brr",  "MACD Rule",
         {"abs_input": True}),                                                   # MA
-    ("macdh_rule",          "trig_ifs", "a_macdh_d_brr1","MACDH Rule",
+    ("macdh_rule",          "trig_ifs", "a_macdh_d_brr","MACDH Rule",
         {"abs_input": True}),                                                   # MB
     # MC MACD and H Rule -> composite (INT((MA+MB)/2))
     # MD/ME use CJ/CL too (abs forms)
-    ("macd_brr_puts",       "trig_ifs", "a_macd_brr1",   "MACD_BRR Puts",
+    ("macd_brr_puts",       "trig_ifs", "a_macd_brr",   "MACD_BRR Puts",
         {"abs_input": True}),                                                   # MD
-    ("macdh_brr_puts",      "trig_ifs", "a_macdh_d_brr1","MACDH_BRR Puts",
+    ("macdh_brr_puts",      "trig_ifs", "a_macdh_d_brr","MACDH_BRR Puts",
         {"abs_input": True}),                                                   # ME
     # MF -> composite
     # MG/MH -- MACDH Days; strict > in Excel.

@@ -88,7 +88,12 @@
       "Bash(cd C:\\\\\\\\Ashok\\\\\\\\Invest\\\\\\\\Projects\\\\\\\\trading-dashboard)",
       "Bash(timeout 120 bash -c 'python -m uvicorn api.main:app --host 127.0.0.1 --port 8000 2>&1 | head -20')",
       "Bash(grep *)",
-      "Bash(curl -s \"http://127.0.0.1:8000/api/actionable?symbol=CAT\")"
+      "Bash(curl -s \"http://127.0.0.1:8000/api/actionable?symbol=CAT\")",
+      "Bash(git push *)",
+      "Bash(curl -s \"http://127.0.0.1:8000/api/ref\")",
+      "Bash(curl -s \"http://127.0.0.1:8000/api/trace?symbol=AAPL&date=2026-05-27\")",
+      "Bash(curl -s \"http://127.0.0.1:8000/api/dash\")",
+      "Bash(curl -X POST \"http://127.0.0.1:8000/api/monitor/derive-missing/run?last_n_days=7\")"
     ]
   }
 }

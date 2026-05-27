@@ -127,8 +127,8 @@ def _derive_tw_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
       S  W_Price_WkAgo    = lookup prior last_price from ~1 week ago
       T  W_%Change_Wk     = (R - S) * 100 / S
       U  W_Vlm_RuleDesc   = 10-rule IFS based on T,O,N,K,L,M,P,Q
-      V  A_MACD_BRR       = clean(a_macd_brr1)
-      W  A_MACDH_D_BRR    = clean(a_macdh_d_brr1)
+      V  A_MACD_BRR       = clean(a_macd_brr)
+      W  A_MACDH_D_BRR    = clean(a_macdh_d_brr)
       X  EarningsDays     = a_earnings_days, NaN -> -99
     """
     cur_rows = session.execute(text("""
@@ -143,7 +143,7 @@ def _derive_tw_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
         SELECT snapshot_date, symbol, sequence,
                last_price, change_pct, sma_20, sma_50, sma_200,
                volume, volume_avg_10d, volume_avg_3m, volume_rate_change,
-               a_macd_brr1, a_macdh_d_brr1, a_earnings_days, fcf_per_share
+               a_macd_brr, a_macdh_d_brr, a_earnings_days, fcf_per_share
         FROM hist_tw
         WHERE snapshot_date <= :d AND symbol = ANY(:syms)
         ORDER BY symbol, snapshot_date ASC, sequence ASC
@@ -201,8 +201,8 @@ def _derive_tw_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
             wk_pct_change, ratio, v_roc, w_vlm, avg10, avg3m, prior_ratio, change_pct
         )
 
-        macd_brr = _clean(cur.a_macd_brr1)
-        macdh_brr = _clean(cur.a_macdh_d_brr1)
+        macd_brr = _clean(cur.a_macd_brr)
+        macdh_brr = _clean(cur.a_macdh_d_brr)
         # X: EarningsDays NaN -> -99
         ed_raw = cur.a_earnings_days
         if ed_raw is None or (isinstance(ed_raw, float) and math.isnan(ed_raw)):

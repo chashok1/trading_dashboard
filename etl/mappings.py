@@ -236,8 +236,8 @@ HIST_MAPS = {
             ("52Low",                      "low_52",             to_numeric),
             ("SimpleMovingAvg",            "sma_20",             to_numeric),  # AJ
             ("A_MACDays_Streak",           "a_macdays_streak",   to_numeric),
-            ("A_MACD_BRR1",                "a_macd_brr1",        to_numeric),
-            ("A_MACDH_D_BRR1",             "a_macdh_d_brr1",     to_numeric),
+            ("A_MACD_BRR",                 "a_macd_brr",         to_numeric),
+            ("A_MACDH_D_BRR",              "a_macdh_d_brr",      to_numeric),
             ("Volume",                     "volume",             to_bigint),
             ("A_VolumeSpike",              "a_volume_spike",     to_numeric),
             ("VolumeAvg",                  "volume_avg_10d",     to_numeric),  # AR
