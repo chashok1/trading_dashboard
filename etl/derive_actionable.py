@@ -316,12 +316,18 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         # SSS INCREASE/REDUCE are informational only — they may appear under
         # Other Sources but never become the consolidated (main) action.
         # SSS ADD/REMOVE stay eligible.
+        # CALL is demoted to Other Sources if any other source has an action.
         outlook_candidates = [
             a for a in src_actions
             if a["action"] in ACTION_RANK
             and not (a["source_code"] == "SSS"
                      and a["action"] in ("INCREASE", "REDUCE"))
         ]
+        # If CALL is present and other sources exist, exclude CALL from winning
+        non_call_candidates = [a for a in outlook_candidates if a["source_code"] != "CALL"]
+        if non_call_candidates:
+            outlook_candidates = non_call_candidates
+
         candidates = list(outlook_candidates) + group_candidates
         winning_source = None
         winning_priority = None
