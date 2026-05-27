@@ -2213,6 +2213,25 @@ ALTER TABLE drv_cat_atomic_input
     ADD COLUMN IF NOT EXISTS not_bull_rr_action NUMERIC,   -- QN !BullRiskRng-Action
     ADD COLUMN IF NOT EXISTS td_tn_bb_rr_action NUMERIC;   -- QR Td Tn BB Risk Range Rule Action
 
+-- -----------------------------------------------------
+-- 2026-05-27 (v2): JF–NP / QE–QT columns populated by the new
+-- etl/derive_cat_atomic_input.py module.  See docs/drv_cat_atomic_input_logic.md.
+-- Adds QH/QI (raw hist_td slopes, exposed for trace) and the seven QE–QT tail
+-- Parm-lookup columns (action codes + descriptions + seq).  Idempotent.
+-- -----------------------------------------------------
+ALTER TABLE drv_cat_atomic_input
+    ADD COLUMN IF NOT EXISTS a_bb_bot_slope          NUMERIC,   -- QH (mirror of hist_td.a_bb_bot_slope)
+    ADD COLUMN IF NOT EXISTS a_bb_top_slope          NUMERIC,   -- QI (mirror of hist_td.a_bb_top_slope)
+    ADD COLUMN IF NOT EXISTS tn_td_rule_action       NUMERIC,   -- QF  XLOOKUP(QE, Parm BS26:BS31 -> BV)
+    ADD COLUMN IF NOT EXISTS tn_td_rule_desc         TEXT,      -- QG  XLOOKUP(QE, Parm BS26:BS31 -> BT)
+    ADD COLUMN IF NOT EXISTS bb_rng_strk_action      NUMERIC,   -- QK  XLOOKUP(QJ, Parm BS51:BS59 -> BV)
+    ADD COLUMN IF NOT EXISTS bb_rng_strk_desc        TEXT,      -- QL  XLOOKUP(QJ, Parm BS51:BS59 -> BT)
+    ADD COLUMN IF NOT EXISTS risk_rng_longs_action   NUMERIC,   -- QO  conditional XLOOKUP via QJ/QM/QN
+    ADD COLUMN IF NOT EXISTS rr_bull_bear            TEXT,      -- QP  'B' / '!B' label
+    ADD COLUMN IF NOT EXISTS rr_desc                 TEXT,      -- QQ  XLOOKUP description
+    ADD COLUMN IF NOT EXISTS td_tn_bb_action_desc    TEXT,      -- QS  XLOOKUP(QR, Parm AO2:AO21 -> AQ)
+    ADD COLUMN IF NOT EXISTS td_tn_bb_action_seq     NUMERIC;   -- QT  XLOOKUP(QR, Parm AO2:AO21 -> AR)
+
 -- =====================================================
 -- End of baseline.sql
 -- =====================================================

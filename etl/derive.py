@@ -2279,12 +2279,14 @@ def derive_all(session: Session, as_of_date: date,
     counts["drv_tw"]  = _safe("drv_tw",  derive_tw)
     counts["drv_sss"] = _safe("drv_sss", derive_sss)
 
-    # drv_cat_atomic_input + cat-specific tables (best-effort; failures are warned but don't crash)
+    # drv_cat_atomic_input is now computed by etl/derive_cat_atomic_input.py
+    # (Python deriver, see docs/drv_cat_atomic_input_logic.md).  It depends on
+    # drv_quote, so we run it AFTER drv_quote+drv_ma below.  The legacy
+    # registry path (ma_codegen + ref_ma_columns.source_expr) silently
+    # produced all-NULL rows for ~100 columns — retired 2026-05-27.
+
+    # Retired cat tables (drv_cat_ma/dash/stks) — best-effort, swallow errors.
     try:
-        from etl.derive_v2 import derive_cat_atomic_input
-        counts["drv_cat_atomic_input"] = _safe("drv_cat_atomic_input", derive_cat_atomic_input)
-        counts["trend_trade_rules"] = _safe(
-            "trend_trade_rules", _derive_trend_trade_rules_impl)
         for cat_table in ("drv_cat_ma", "drv_cat_dash", "drv_cat_stks"):
             def _make_deriver(t=cat_table):
                 def _deriver(session, as_of_date, parent_run_id=None):
@@ -2299,7 +2301,7 @@ def derive_all(session: Session, as_of_date: date,
                 try: session.rollback()
                 except Exception: pass
     except Exception as e:
-        log.warning("drv_cat_* derives skipped: %s", e)
+        log.warning("retired drv_cat_* derives skipped: %s", e)
         try:
             session.rollback()
         except Exception:
@@ -2310,6 +2312,23 @@ def derive_all(session: Session, as_of_date: date,
     # drv_quote merges hist_y / hist_tl / hist_td quote fields by latest loaded_at
     counts["drv_quote"]               = _safe("drv_quote",             derive_quote)
     counts["drv_ma"]                  = _safe("drv_ma",                derive_ma)
+    # drv_cat_atomic_input — Python deriver (JF..NP + QH/QI).
+    # Must run AFTER drv_quote (Step-1 SELECT pulls last_price from there).
+    def _drv_cat_atomic_input_runner(session, as_of_date, parent_run_id=None):
+        from etl.derive_cat_atomic_input import derive_cat_atomic_input
+        return derive_cat_atomic_input(session, as_of_date, parent_run_id)
+    counts["drv_cat_atomic_input"]    = _safe(
+        "drv_cat_atomic_input", _drv_cat_atomic_input_runner)
+    # MA-tab rule columns (QE/QJ/QM/QN/QR) — must run AFTER drv_cat_atomic_input
+    # (Pass-1 reads its perf1d_sd_rule / trade_rule / trend_rule / etc.).
+    counts["trend_trade_rules"]       = _safe("trend_trade_rules",     _derive_trend_trade_rules_impl)
+    # Parm-lookup Pass-3 (QF/QG/QK/QL/QO/QP/QQ/QS/QT) — runs AFTER
+    # trend_trade_rules has populated QE/QJ/QM/QN/QR.
+    def _drv_cat_atomic_input_pass3(session, as_of_date, parent_run_id=None):
+        from etl.derive_cat_atomic_input import run_parm_lookup_pass3
+        return run_parm_lookup_pass3(session, as_of_date)
+    counts["drv_cat_atomic_input_pass3"] = _safe(
+        "drv_cat_atomic_input_pass3", _drv_cat_atomic_input_pass3)
     counts["drv_dash"]                = _safe("drv_dash",              derive_dash)
     counts["drv_stks"]                = _safe("drv_stks",              derive_stks)
     counts["drv_cs_realized_gain"]    = _safe("drv_cs_realized_gain",  derive_cs_realized_gain)

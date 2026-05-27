@@ -223,9 +223,8 @@ If truncated, **don't re-`Edit`** — rewrite the tail via bash heredoc. Smaller
 | Section classifier | `etl/derive.py::_classify_section` + `web/app.js::classifySymbolSection` |
 | Cash detection rules | `api/routers/dash.py` (`F_IS_CASH`, `CS_IS_CASH_C` SQL fragments) |
 | Actionable / outlook-action logic | `docs/actionable_logic.md` |
+| Atomic-input column derivation (JF..NP + QE..QT) | `docs/drv_cat_atomic_input_logic.md` |
 | Dashboard / snapshot-date logic | `docs/dashboard_logic.md` |
 | File Monitor logic | `docs/file_monitor_logic.md` |
 | Rules engine logic | `docs/rules_logic.md` |
-| Rule groups logic | `docs/rule_groups_logic.md` |
-| Performance / feedback-loop logic | `docs/performance_logic.md` |
-                                                                                                                                                          
+| Rule groups logic | `docs/
