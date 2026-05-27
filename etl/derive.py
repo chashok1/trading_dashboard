@@ -2049,6 +2049,203 @@ def _populate_rr_tos_symbol(session: Session, as_of_date: date) -> int:
     return updated
 
 
+def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: int) -> int:
+    """Populate MA-tab rule columns QE, QJ, QM, QN, QR in drv_cat_atomic_input.
+
+    Two-pass UPDATE (idempotent):
+      Pass 1: QE (trade_trend_sd_rule), QJ (bb_rng_strk_rule),
+              QM (bull_rr_action), QN (not_bull_rr_action).
+              Inputs: drv_quote (Close), hist_td (a_trend_value,
+              a_trade_value, a_bb_top/bot_slope), hist_tw (standard_dev
+              for AA and as-of-date median AB), and drv_cat_atomic_input
+              itself (macdh_direction, trade_rule, trend_rule,
+              perf1d_sd_rule, lrr_idx, mrr_idx, trr_idx).
+      Pass 2: QR (td_tn_bb_rr_action) joins ref_param_lookup four times
+              (tn_td_rule, bb_range, bull_rr_rule, nbull_rr_rule) to
+              translate QE/QJ/QM/QN into action sequences, then evaluates
+              the QR conditional.
+
+    Requires derive_cat_atomic_input to have run first for the date
+    (the inputs in Pass 1 read its columns, and Pass 2 reads QE/QJ/QM/QN
+    that Pass 1 just wrote).
+    """
+    # Pass 1: QE, QJ, QM, QN
+    result = session.execute(text("""
+        WITH inputs AS (
+            SELECT
+                q.as_of_date,
+                q.symbol,
+                q.last_price                       AS close,
+                td.a_trend_value,
+                td.a_trade_value,
+                td.a_bb_top_slope,
+                td.a_bb_bot_slope,
+                tw.standard_dev                    AS sd,
+                med.median_sd,
+                a.macdh_direction,
+                a.trade_rule,
+                a.trend_rule,
+                a.perf1d_sd_rule,
+                a.trr_idx,
+                a.mrr_idx,
+                a.lrr_idx
+            FROM drv_quote q
+            LEFT JOIN hist_td td
+              ON td.snapshot_date = q.as_of_date AND td.symbol = q.symbol
+            LEFT JOIN hist_tw tw
+              ON tw.snapshot_date = q.as_of_date AND tw.symbol = q.symbol
+            LEFT JOIN LATERAL (
+                SELECT percentile_cont(0.5) WITHIN GROUP (
+                    ORDER BY standard_dev
+                ) AS median_sd
+                FROM hist_tw
+                WHERE symbol = q.symbol
+                  AND snapshot_date <= q.as_of_date
+                  AND standard_dev IS NOT NULL
+            ) med ON TRUE
+            LEFT JOIN drv_cat_atomic_input a
+              ON a.as_of_date = q.as_of_date AND a.symbol = q.symbol
+            WHERE q.as_of_date = :d
+        ),
+        computed AS (
+            SELECT
+                i.*,
+                LEAST(i.sd, i.median_sd) AS sd_or_median,
+                CASE WHEN i.close = i.a_trend_value THEN 0.1
+                     WHEN LEAST(i.sd, i.median_sd) IS NULL
+                          OR LEAST(i.sd, i.median_sd) = 0 THEN NULL
+                     ELSE (i.close - i.a_trend_value)
+                          / LEAST(i.sd, i.median_sd)
+                END AS trend_sd,
+                CASE WHEN LEAST(i.sd, i.median_sd) IS NULL
+                          OR LEAST(i.sd, i.median_sd) = 0 THEN NULL
+                     ELSE (i.close - i.a_trade_value)
+                          / LEAST(i.sd, i.median_sd)
+                END AS trade_sd,
+                CASE WHEN LEAST(i.sd, i.median_sd) IS NULL
+                          OR LEAST(i.sd, i.median_sd) = 0 THEN NULL
+                     ELSE (i.a_trade_value - i.a_trend_value)
+                          / LEAST(i.sd, i.median_sd)
+                END AS trade_trend_sd
+            FROM inputs i
+        )
+        UPDATE drv_cat_atomic_input dst
+        SET
+            trade_trend_sd_rule = CASE
+                WHEN c.trend_sd < 0 AND c.trade_sd < 0 THEN -2
+                WHEN c.trade_trend_sd < 0 AND c.trade_sd < 1 THEN -1
+                WHEN c.trend_sd > 0 AND c.trade_sd > 0
+                     AND (c.trade_trend_sd > 2
+                          OR GREATEST(c.trend_sd, c.trade_sd) > 4) THEN 4
+                WHEN c.trend_sd > 0 AND c.trade_sd > 0 THEN 3
+                WHEN c.trend_sd < 0 AND c.trade_sd > 0 THEN 2
+                ELSE 1
+            END,
+            bb_rng_strk_rule = CASE
+                WHEN c.a_bb_top_slope >= 3 AND c.a_bb_bot_slope >= 3 THEN 4
+                WHEN c.a_bb_top_slope <= -3 AND c.a_bb_bot_slope <= -3 THEN -4
+                WHEN c.a_bb_top_slope >= 2 AND c.a_bb_bot_slope >= 2 THEN 3
+                WHEN c.a_bb_top_slope <= -2 AND c.a_bb_bot_slope <= -2 THEN -3
+                WHEN c.a_bb_bot_slope >= 2 AND c.a_bb_top_slope <  2 THEN 1
+                WHEN c.a_bb_top_slope <= -3 AND c.a_bb_bot_slope > -2 THEN -1
+                WHEN c.a_bb_top_slope >= 3
+                     AND c.a_bb_top_slope > c.a_bb_bot_slope THEN 2
+                WHEN c.a_bb_bot_slope <= -2
+                     AND c.a_bb_bot_slope < c.a_bb_top_slope THEN -2
+                ELSE 0
+            END,
+            bull_rr_action = CASE
+                WHEN c.perf1d_sd_rule >  0 AND c.lrr_idx = 1
+                     AND c.mrr_idx = -1 AND c.macdh_direction > 0 THEN 6
+                WHEN c.perf1d_sd_rule = -1 AND c.mrr_idx = 1 THEN 5
+                WHEN c.perf1d_sd_rule >  0 AND c.lrr_idx = 0 THEN 4
+                WHEN c.perf1d_sd_rule >  0 AND c.lrr_idx = 1
+                     AND c.mrr_idx = -1 AND c.macdh_direction < 0 THEN 3
+                WHEN c.perf1d_sd_rule <  0 AND c.lrr_idx = 0
+                     AND c.trade_rule > 0 THEN 2
+                WHEN c.perf1d_sd_rule >= 0 AND c.mrr_idx = 0 THEN 1
+                WHEN c.perf1d_sd_rule <= -1 AND c.mrr_idx = -1
+                     AND c.lrr_idx = 1 THEN -1
+                ELSE NULL
+            END,
+            not_bull_rr_action = CASE
+                WHEN c.perf1d_sd_rule >  0 AND c.lrr_idx = 1
+                     AND c.mrr_idx <= 0 AND c.macdh_direction > 0 THEN 5
+                WHEN c.perf1d_sd_rule >  0 AND c.lrr_idx = 0 THEN 4
+                WHEN c.perf1d_sd_rule <  0 AND c.lrr_idx = 0
+                     AND c.trade_rule > 0 AND c.trend_rule > 0 THEN 3
+                WHEN c.perf1d_sd_rule >  0 AND c.lrr_idx = 1
+                     AND c.mrr_idx <= 0 AND c.macdh_direction < 0 THEN 2
+                WHEN c.trr_idx >= 0 THEN -1
+                ELSE NULL
+            END
+        FROM computed c
+        WHERE dst.as_of_date = c.as_of_date AND dst.symbol = c.symbol
+    """), {"d": as_of_date})
+
+    rows_pass1 = result.rowcount or 0
+
+    # Pass 2: QR = td_tn_bb_rr_action
+    # Excel: IFS(QF<0, QF, QF>0, IF(QK<0, QK, QO), TRUE, "")
+    #   QF = ref_param_lookup.seq @ ('tn_td_rule',    QE::text)
+    #   QK = ref_param_lookup.seq @ ('bb_range',      QJ::text)
+    #   QO = if QJ >= 2: ref_param_lookup.seq @ ('bull_rr_rule',  QM::text)
+    #        if QJ >= 0: ref_param_lookup.seq @ ('nbull_rr_rule', QN::text)
+    #        else: NULL
+    # ref_param_lookup.code is TEXT; QE/QJ/QM/QN are NUMERIC integer values,
+    # cast via ::INTEGER::TEXT so '4' matches the seed row code '4' (no decimal).
+    session.execute(text("""
+        WITH base AS (
+            SELECT
+                a.as_of_date,
+                a.symbol,
+                a.trade_trend_sd_rule AS qe,
+                a.bb_rng_strk_rule    AS qj,
+                a.bull_rr_action      AS qm_val,
+                a.not_bull_rr_action  AS qn_val
+            FROM drv_cat_atomic_input a
+            WHERE a.as_of_date = :d
+        ),
+        looked_up AS (
+            SELECT
+                b.as_of_date,
+                b.symbol,
+                b.qj,
+                l_qf.seq AS qf_seq,
+                l_qk.seq AS qk_seq,
+                CASE
+                    WHEN b.qj >= 2 THEN l_qm.seq
+                    WHEN b.qj >= 0 THEN l_qn.seq
+                    ELSE NULL
+                END AS qo_seq
+            FROM base b
+            LEFT JOIN ref_param_lookup l_qf
+              ON l_qf.table_name = 'tn_td_rule'
+             AND l_qf.code = (b.qe)::INTEGER::TEXT
+            LEFT JOIN ref_param_lookup l_qk
+              ON l_qk.table_name = 'bb_range'
+             AND l_qk.code = (b.qj)::INTEGER::TEXT
+            LEFT JOIN ref_param_lookup l_qm
+              ON l_qm.table_name = 'bull_rr_rule'
+             AND l_qm.code = (b.qm_val)::INTEGER::TEXT
+            LEFT JOIN ref_param_lookup l_qn
+              ON l_qn.table_name = 'nbull_rr_rule'
+             AND l_qn.code = (b.qn_val)::INTEGER::TEXT
+        )
+        UPDATE drv_cat_atomic_input dst
+        SET td_tn_bb_rr_action = CASE
+            WHEN l.qf_seq < 0 THEN l.qf_seq
+            WHEN l.qf_seq > 0 THEN
+                CASE WHEN l.qk_seq < 0 THEN l.qk_seq
+                     ELSE l.qo_seq END
+            ELSE NULL
+        END
+        FROM looked_up l
+        WHERE dst.as_of_date = l.as_of_date AND dst.symbol = l.symbol
+    """), {"d": as_of_date})
+
+    return rows_pass1
+
 def derive_all(session: Session, as_of_date: date,
                parent_run_id: Optional[int] = None) -> dict:
     """Run every derive_* in dependency order. Returns {table: rows_built}."""
@@ -2086,6 +2283,8 @@ def derive_all(session: Session, as_of_date: date,
     try:
         from etl.derive_v2 import derive_cat_atomic_input
         counts["drv_cat_atomic_input"] = _safe("drv_cat_atomic_input", derive_cat_atomic_input)
+        counts["trend_trade_rules"] = _safe(
+            "trend_trade_rules", _derive_trend_trade_rules_impl)
         for cat_table in ("drv_cat_ma", "drv_cat_dash", "drv_cat_stks"):
             def _make_deriver(t=cat_table):
                 def _deriver(session, as_of_date, parent_run_id=None):
