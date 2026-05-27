@@ -81,7 +81,14 @@
       "Bash(git commit -m 'Add loaded_at fallback for '\\\\''As Of'\\\\'' when export_date is missing *)",
       "Bash(psql -U postgres -d trading -c \"\\\\d drv_quote\")",
       "Bash(python *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(Get-ChildItem *)",
+      "Bash(python3 *)",
+      "Bash(curl -s http://127.0.0.1:8000/api/monitor/schedule)",
+      "Bash(cd C:\\\\\\\\Ashok\\\\\\\\Invest\\\\\\\\Projects\\\\\\\\trading-dashboard)",
+      "Bash(timeout 120 bash -c 'python -m uvicorn api.main:app --host 127.0.0.1 --port 8000 2>&1 | head -20')",
+      "Bash(grep *)",
+      "Bash(curl -s \"http://127.0.0.1:8000/api/actionable?symbol=CAT\")"
     ]
   }
 }

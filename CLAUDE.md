@@ -227,4 +227,5 @@ If truncated, **don't re-`Edit`** — rewrite the tail via bash heredoc. Smaller
 | Dashboard / snapshot-date logic | `docs/dashboard_logic.md` |
 | File Monitor logic | `docs/file_monitor_logic.md` |
 | Rules engine logic | `docs/rules_logic.md` |
-| Rule groups logic | `docs/
+| Rule groups logic | `docs/rule_groups_logic.md` |
+| Performance / feedback-loop logic | `docs/performance_logic.md` |

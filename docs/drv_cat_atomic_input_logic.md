@@ -182,4 +182,29 @@ Asymmetric scoring is also a known minor divergence: `NL Current Volume Rule` in
 
 ## Parity-check procedure
 
-The workbook `Tickers 2026-04-30.xls
+The workbook `Tickers 2026-04-30.xlsx` is the reference. To verify a row:
+
+```python
+from openpyxl import load_workbook
+wb = load_workbook('Tickers 2026-04-30.xlsx', data_only=True)
+ws = wb['MA']
+# For each symbol on row R, compare:
+#   wb.MA[R][JN] (excel)  vs  drv_cat_atomic_input.trade_rule (deriver)
+```
+
+A `scripts/parity_drv_cat_atomic_input.py` follow-up is planned in `tests/test_cat_parity.py`. Until then, the inline `_probe_api.py` style scripts at repo root are fine.
+
+Acceptable parity threshold: exact match on `jump`-mode rules; ±0.01 tolerance on `linear`/`sigmoid` to absorb float-precision drift.
+
+---
+
+## File map
+
+File | Role
+---|---
+`etl/derive_cat_atomic_input.py` | This deriver — COLUMN_SPECS + helpers + entrypoints.
+`etl/derive.py::_derive_trend_trade_rules_impl` | QE/QJ/QM/QN/QR (unchanged).
+`etl/derive.py::eval_atomic_rule` | Shared evaluator (jump/linear/sigmoid).
+`db/baseline.sql` (lines ~1318–1459, ~2204–2237) | Table DDL + idempotent ALTER block.
+`docs/ma_columns_v2.csv` | Per-MA-column lineage doc (header, source sheet, Excel formula).
+`docs/rules_logic.md` | Composite + group resolver (consumes this table).
