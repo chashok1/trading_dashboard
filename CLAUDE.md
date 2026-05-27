@@ -224,6 +224,8 @@ If truncated, **don't re-`Edit`** — rewrite the tail via bash heredoc. Smaller
 | Cash detection rules | `api/routers/dash.py` (`F_IS_CASH`, `CS_IS_CASH_C` SQL fragments) |
 | Actionable / outlook-action logic | `docs/actionable_logic.md` |
 | Atomic-input column derivation (JF..NP + QE..QT) | `docs/drv_cat_atomic_input_logic.md` |
+| Dashboard single-cell scalars (Dash!$X$Y) | `ref_param sheet='dash'`; helper `etl/derive_cat_atomic_input.py::get_dash_scalar`; seeds in `db/baseline.sql` 2026-05-27 v3 block |
+| TOS composite-field decoding (a_bb_streak, a_bb_high_low, a_volume_spike) | `etl/derive_cat_atomic_input.py::compute_intermediates` + `_decode_bb_streak` / `_decode_vs` / `_days_from_frac` |
 | Dashboard / snapshot-date logic | `docs/dashboard_logic.md` |
 | File Monitor logic | `docs/file_monitor_logic.md` |
 | Rules engine logic | `docs/rules_logic.md` |

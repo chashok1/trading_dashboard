@@ -169,7 +169,7 @@ HIST_MAPS = {
         ],
     ),
 
-    # TD tab -> hist_td (raw cols AM-BI only)
+    # TD tab -> hist_td (raw cols AM-BI plus BB_Bot_Prev/BB_Top_Prev from L/P)
     "TD": dict(
         sheet="TD",
         table="hist_td",
@@ -204,6 +204,10 @@ HIST_MAPS = {
             ("A_HVPercentile",       "a_hv_percentile",     to_numeric),
             ("A_BB_Top_Slope",       "a_bb_top_slope",      to_numeric),
             ("A_BB_Bot_Slope",       "a_bb_bot_slope",      to_numeric),
+            # Added 2026-05-27 (v2) — needed by EC/ED fallback in
+            # derive_cat_atomic_input (Excel MA cols DU/DV).
+            ("BB_Bot_Prev",          "bb_bot_prev",         to_numeric),
+            ("BB_Top_Prev",          "bb_top_prev",         to_numeric),
         ],
     ),
 

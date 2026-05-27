@@ -66,7 +66,7 @@ tw AS (
            a_macd_brr1, a_macdh_d_brr1, a_macdays_streak,
            a_3mn_high, a_3mn_low, a_3mn_high_low, a_3wk_high_low,
            a_perf_2m, a_perf_2wk, a_perf_3d,
-           a_volume_spike, volume_avg_3m, volume_rate_change,
+           a_volume_spike, volume, volume_avg_3m, volume_rate_change,
            a_earnings_days, high_52, low_52
     FROM hist_tw WHERE snapshot_date <= (SELECT d FROM p)
     ORDER BY symbol, snapshot_date DESC, sequence DESC
@@ -105,7 +105,7 @@ SELECT s.s AS symbol,
        tw.a_macd_brr1, tw.a_macdh_d_brr1, tw.a_macdays_streak,
        tw.a_3mn_high, tw.a_3mn_low, tw.a_3mn_high_low, tw.a_3wk_high_low,
        tw.a_perf_2m, tw.a_perf_2wk, tw.a_perf_3d,
-       tw.a_volume_spike, tw.volume_avg_3m, tw.volume_rate_change,
+       tw.a_volume_spike, tw.volume, tw.volume_avg_3m, tw.volume_rate_change,
        tw.a_earnings_days, tw.high_52, tw.low_52,
        med.median_sd,
        -- drv_quote
@@ -148,13 +148,108 @@ def _f(v) -> Optional[float]:
         return None
 
 
+def _days_from_frac(x: Optional[float], *, negate: bool = False) -> Optional[float]:
+    """Excel pattern: 100 * MOD(x, TRUNC(x)) — extract fractional-days from
+    composite-encoded source.  If |x|<1, treat the whole thing as fraction.
+    `negate=True` for the BH/BL variants which Excel prefixes with -100.
+    """
+    if x is None:
+        return None
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return None
+    sign = -1.0 if negate else 1.0
+    if -1.0 < v < 1.0:
+        return sign * 100.0 * v
+    import math
+    tr = math.trunc(v)
+    if tr == 0:
+        return 0.0
+    # Excel MOD(x, n) returns x - n*INT(x/n).  For negative x and negative n
+    # this matches Python's fmod behaviour (same-sign-as-dividend).
+    frac = math.fmod(v, tr)
+    return sign * 100.0 * frac
+
+
+def _decode_bb_streak(a_bb_streak: Optional[float]) -> dict:
+    """Decode the BB_Streak composite numeric (TD!BC = MA!AS).
+
+    Excel pattern:
+      AS = a_bb_streak                      (e.g. 8213.01)
+      AT = TRUNC(AS)                        (8213)
+      AU = AT - AY*1000                     (213)
+      AV = ABS(TRUNC(AU/100))               (2 — current threshold state)
+      AW = IF(AV=1, -1, 1)                  (1 — threshold-crossover flag)
+      AX = NUMBERVALUE(RIGHT(AU, 2))        (13 — BBThresh CO Days)
+      AY = TRUNC(AT/1000)                   (8 — BB Streak count)
+      AZ = ROUND((ABS(AS)-ABS(AT))*100, 0)  (1 — BB Streak Days)
+
+    Also derives AQ (BBHighDays = TRUNC(AP)) and AR (BBLowDays = 100*(AP-AQ))
+    where AP = a_bb_high_low_days (sibling field).
+    """
+    import math
+    AS_ = _f(a_bb_streak)
+    if AS_ is None:
+        return dict(AS=None, AT=None, AU=None, AV=None, AW=None, AX=None,
+                    AY=None, AZ=None)
+    AT_ = math.trunc(AS_)
+    AY_ = math.trunc(AT_ / 1000)
+    AU_ = AT_ - AY_ * 1000
+    AV_ = abs(math.trunc(AU_ / 100))
+    AW_ = -1.0 if AV_ == 1 else 1.0
+    # RIGHT(AU, 2) = last two digits of |AU|.  Use abs to mirror Excel's NUMBERVALUE.
+    AX_ = abs(AU_) % 100
+    AZ_ = round((abs(AS_) - abs(AT_)) * 100, 0)
+    return dict(AS=AS_, AT=AT_, AU=AU_, AV=AV_, AW=AW_, AX=AX_, AY=AY_, AZ=AZ_)
+
+
+def _decode_vs(a_volume_spike: Optional[float], AD: Optional[float]) -> dict:
+    """Decode the FH packed string for VS rules.
+
+    Excel pattern:
+      FF = a_volume_spike (signed, e.g. -200443.44)
+      FG = ABS(NUMBERVALUE(SUBSTITUTE(FF, "NaN", 0)))                (200443.44)
+      FH = RIGHT("0000000000"&FG&REPT("0",9-LEN(FG)), 10)           ("0200443.44")
+      FI = NUMBERVALUE(LEFT(FH, 2))         VS Volume Spike   (chars 1-2)
+      FJ = NUMBERVALUE(MID(FH, 3, 3))       VS Price Change   (chars 3-5)
+      FK = SIGN(FF) * FJ / (AD * 100)       VS Price Change SD
+      FL = NUMBERVALUE(MID(FH, 6, 2))       VS Volatility     (chars 6-7)
+      FM = NUMBERVALUE(RIGHT(FH, 2))        VS Days           (chars 9-10)
+    """
+    FF = _f(a_volume_spike)
+    if FF is None or FF == 0:
+        return dict(FF=FF, FH=None, FI=0, FJ=0, FK=0, FL=0, FM=0)
+    FG = abs(FF)
+    fg_str = f"{FG:.2f}"  # numeric->string with 2 decimals
+    # Excel concatenates "0000000000" + str(FG) + REPT("0", 9-LEN(str(FG))),
+    # then takes RIGHT(...,10).  For most realistic FG (8-10 char), the
+    # 9-LEN term is 0 or negative (REPT returns "").  Final string is the
+    # last 10 chars of "0000000000"+fg_str.
+    padded = "0000000000" + fg_str
+    FH = padded[-10:]
+    def _nv(s: str) -> int:
+        try: return int(s)
+        except ValueError:
+            try: return int(float(s))
+            except ValueError: return 0
+    FI = _nv(FH[0:2])
+    FJ = _nv(FH[2:5])
+    FL = _nv(FH[5:7])
+    FM = _nv(FH[8:10])
+    sign_ff = 1.0 if FF > 0 else (-1.0 if FF < 0 else 0.0)
+    FK = (sign_ff * FJ / (AD * 100.0)) if (AD and AD != 0) else None
+    return dict(FF=FF, FH=FH, FI=FI, FJ=FJ, FK=FK, FL=FL, FM=FM)
+
+
 def compute_intermediates(row: dict) -> dict:
     """Compute every MA-sheet intermediate this deriver needs.
 
-    Adds keys 'AC', 'AD', 'AG', 'AH', 'AI', 'BB', 'BC', 'BE', 'BF', 'BJ',
-    'BK', 'BN', 'BO', 'BQ', 'BS', 'BU', 'BW', 'BY', 'BZ', 'CA', 'EE', 'EO',
-    'EP', 'EQ', 'ER', 'FK', 'FR', 'GB' to `row` and returns it.
+    Source-of-truth: docs/ma_columns_v2.csv formulas.  Adds 40+ derived keys
+    to `row` (AC, AD, AG, AH, AI, AS..AZ, AQ, AR, BB, BC, BE, BF, BJ, BK,
+    BN, BO, BQ..CA, EC, ED, EE, EO, EP, EQ, ER, FF..FM, FR, GB).
     """
+    import math
     D    = _f(row.get("last_price"))
     AE   = _f(row.get("a_trend_value"))
     AF   = _f(row.get("a_trade_value"))
@@ -174,10 +269,54 @@ def compute_intermediates(row: dict) -> dict:
     CH   = _f(row.get("sma_200"))
     EH   = _f(row.get("high_today"))
     EI   = _f(row.get("low_today"))
-    EC   = _f(row.get("buy_trade"))                  # RR bottom-of-range
-    ED   = _f(row.get("sell_trade"))                 # RR top-of-range
-    EK   = _f(row.get("a_bb_top"))                   # used in EO comparator
-    EL   = _f(row.get("a_bb_bottom"))                # used in EP comparator
+    DX   = _f(row.get("buy_trade"))                  # RR_Bottom (MA!DX)
+    DY   = _f(row.get("sell_trade"))                 # RR_Top    (MA!DY)
+    DU   = _f(row.get("bb_bot_prev"))                # BB_Bot_Prev (MA!DU = TD!L)
+    DV   = _f(row.get("bb_top_prev"))                # BB_Top_Prev (MA!DV = TD!P)
+    # EK/EL in MA = "High"/"Low" — point at the day-quote not the BB band.
+    # Today's high/low from drv_quote serves as both EH and EK (same value
+    # for end-of-day snapshots).  hist_td also has BB top/bottom but those
+    # are EH/EI in MA's intraday section, not EK/EL.
+    EK   = _f(row.get("high_today"))
+    EL   = _f(row.get("low_today"))
+    AP   = _f(row.get("a_bb_high_low_days"))         # MA!AP source
+    AJ   = _f(row.get("a_bb_high_low"))              # MA!AJ source — TOS composite
+
+    # ---- BB_Streak struct (AS/AT/AU/AV/AW/AX/AY/AZ) ----
+    bbs = _decode_bb_streak(row.get("a_bb_streak"))
+    # AQ = TRUNC(AP) BBHighDays.  AR = ABS(100*(AP-AQ)) BBLowDays.
+    if AP is not None:
+        AQ = math.trunc(AP)
+        AR = abs(100.0 * (AP - AQ))
+    else:
+        AQ = AR = None
+
+    # ---- AJ/AK/AL/AM/AN decoding chain (a_bb_high_low) ----
+    # Per docs/drv_cat_atomic_input_logic.md:
+    #   AJ = sign(lasthighlow) * (abs(round(lasthighlow*100,0)) + bar/100)
+    #   AK = TRUNC(AJ)           (sign × abs(highlow×100))
+    #   AL = AK/100              (BB touched value in price units)
+    #   AM = ABS(ROUND(100*(AJ-AK),0))   (days since touched)
+    #   AN = IFS(AL<0 & AM>0 & |AL|<D, 1,        # bottom touched, price now above
+    #            AL>0 & AM>0 & |AL|>D, -1,       # top touched, price now below
+    #            TRUE, SIGN(AL))
+    if AJ is not None:
+        AK = math.trunc(AJ)
+        AL = AK / 100.0
+        AM = abs(round(100.0 * (AJ - AK), 0))
+    else:
+        AK = AL = AM = None
+    # AN = BB_Direction1 — implements user-supplied IFS logic.
+    if AL is None or AM is None or D is None:
+        AN = None
+    elif AL < 0 and AM > 0 and abs(AL) < D:
+        AN = 1.0     # bottom touched ≥1 day back, price now above → going up
+    elif AL > 0 and AM > 0 and abs(AL) > D:
+        AN = -1.0    # top touched ≥1 day back, price now below → going down
+    else:
+        AN = 1.0 if AL > 0 else (-1.0 if AL < 0 else 0.0)  # SIGN(AL)
+    # AO = (D - ABS(AL)) / AC  (BBHighLow_SD)
+    AO = None  # set below once AC is known
 
     # AC = MIN(AA, AB)   per ma_columns_v2.csv
     if AA is not None and AB is not None:
@@ -187,37 +326,39 @@ def compute_intermediates(row: dict) -> dict:
     # AD = AC / D
     AD = _safe_div(AC, D) if D and D != 0 else None
 
+    # AO = (D - ABS(AL)) / AC.  AL comes from the decoded chain above.
+    if D is not None and AL is not None and AC:
+        AO = _safe_div(D - abs(AL), AC)
+
     # AG = IF(D=AE, 0.1, (D-AE)/AC)         Trend_sd
     if D is not None and AE is not None:
         AG = 0.1 if D == AE else _safe_div(D - AE, AC)
     else:
         AG = None
-    # AH = (D-AF)/AC                        Trade_sd
     AH = _safe_div(D - AF, AC) if D is not None and AF is not None else None
-    # AI = (AF-AE)/AC                       Trade_Trend_Sd
     AI = _safe_div(AF - AE, AC) if AF is not None and AE is not None else None
-    # BB = (D-BA)/AC                        3mnLow_sd
     BB = _safe_div(D - BA, AC) if D is not None and BA is not None else None
-    # BC -- 3mnLowDays: BA holds count+fraction; we approximate as BA*100
-    BC = _f(row.get("a_3mn_low"))  # placeholder; precise formula needs raw BA struct
-    # BE = (D-BD)/AC                        3mnHigh_sd
+    BC = _days_from_frac(BA)                          # 3mnLowDays
     BE = _safe_div(D - BD, AC) if D is not None and BD is not None else None
-    # BF -- 3mnHighDays
-    BF = _f(row.get("a_3mn_high"))  # placeholder
-    # BJ = (D-BI)/AC ; BI not in hist_tw — placeholder uses 3mn_high_low source
-    BJ = _safe_div(D - BH, AC) if D is not None and BH is not None else None
-    BK = BH  # placeholder
-    BN = _safe_div(D - BL, AC) if D is not None and BL is not None else None
-    BO = BL  # placeholder
-    BQ = AG  # Perf3M_sd == Trend_sd by formula (=(D-AE)/AC)
-    BS = _safe_div(BR, (AD * 100)) if AD else None      # Perf2M_sd
-    BU = AH  # Perf3W_sd == Trade_sd
-    BW = _safe_div(BV, (AD * 100)) if AD else None      # Perf2Wk_sd
-    BY = _safe_div(BX, (AD * 100)) if AD else None      # Perf3D_sd
-    # BZ = (100*D)/(100+BX)
+    BF = _days_from_frac(BD)                          # 3mnHighDays
+    # BI = ABS(BH); BJ = (D-BI)/AC.  Likewise BM = ABS(BL); BN = (D-BM)/AC.
+    BI_v = abs(BH) if BH is not None else None
+    BM_v = abs(BL) if BL is not None else None
+    BJ = _safe_div(D - BI_v, AC) if D is not None and BI_v is not None else None
+    BK = _days_from_frac(BH, negate=True)             # 3mnHighLowDays
+    BN = _safe_div(D - BM_v, AC) if D is not None and BM_v is not None else None
+    BO = _days_from_frac(BL, negate=True)             # 3wkHighLowDays
+    BQ = AG  # Perf3M_sd  ==  Trend_sd by formula
+    BS = _safe_div(BR, (AD * 100)) if AD else None
+    BU = AH  # Perf3W_sd  ==  Trade_sd
+    BW = _safe_div(BV, (AD * 100)) if AD else None
+    BY = _safe_div(BX, (AD * 100)) if AD else None
     BZ = _safe_div(100 * D, (100 + BX)) if D is not None and BX is not None else None
-    # CA = G/AC                              Perf1D_sd
-    CA = _safe_div(G_, AC)
+    CA = _safe_div(G_, AC)                            # Perf1D_sd
+
+    # ---- EC / ED with DU/DV fallback ----
+    EC = DX if (DX is not None and DX != 0) else DU
+    ED = DY if (DY is not None and DY != 0) else DV
 
     # EE = (D-EC)*100/(ED-EC)
     if EC is not None and EC != 0 and ED is not None and (ED - EC) != 0 and D is not None:
@@ -234,22 +375,35 @@ def compute_intermediates(row: dict) -> dict:
     if EC is not None and AC and (EI is not None or EL is not None):
         bot = min(v for v in (EI, EL) if v is not None)
         EP = _safe_div(bot - EC, AC)
-    # EQ = (ED-AE)/AC                        Trnd TRR
     EQ = _safe_div(ED - AE, AC) if ED is not None and AE is not None else None
-    # ER = (EC-AF)/AC                        Trd LRR
     ER = _safe_div(EC - AF, AC) if EC is not None and AF is not None else None
 
-    # FK / FR / GB are placeholders pending hist_tw extension (see doc § Gaps)
-    FK = None
-    FR = _safe_div((_f(row.get("imp_volatility")) or 0) * 100,
-                   _f(row.get("historical_vol")))      # IVHV
-    GB = (_f(row.get("volume_avg_3m")) or 0) * 100.0 if row.get("volume_avg_3m") else None
+    # ---- VS struct ----
+    vs = _decode_vs(row.get("a_volume_spike"), AD)
+    # FR IVHV = DT*100/CV  (with zero-guard)
+    DT_  = _f(row.get("imp_volatility"))
+    CV_  = _f(row.get("historical_vol"))
+    FR = 0.0 if (not DT_ or not CV_) else (DT_ * 100.0 / CV_)
+    # GB Vlm 3m % = GA * 100, where GA = (W_Vlm - VolumeAvg3m) / VolumeAvg3m.
+    # W_Vlm = current week's volume = hist_tw.volume; VolumeAvg3m = volume_avg_3m.
+    wv = _f(row.get("volume"))
+    av3 = _f(row.get("volume_avg_3m"))
+    if wv is not None and av3 and av3 != 0:
+        GB = ((wv - av3) / av3) * 100.0
+    else:
+        GB = 0.0
 
-    row.update(dict(AC=AC, AD=AD, AG=AG, AH=AH, AI=AI,
-                    BB=BB, BC=BC, BE=BE, BF=BF, BJ=BJ, BK=BK, BN=BN, BO=BO,
-                    BQ=BQ, BS=BS, BU=BU, BW=BW, BY=BY, BZ=BZ, CA=CA,
-                    EE=EE, EO=EO, EP=EP, EQ=EQ, ER=ER,
-                    FK=FK, FR=FR, GB=GB))
+    row.update(dict(
+        AC=AC, AD=AD, AG=AG, AH=AH, AI=AI,
+        AJ=AJ, AK=AK, AL=AL, AM=AM, AN=AN, AO=AO, AP=AP, AQ=AQ, AR=AR,
+        AS=bbs["AS"], AT=bbs["AT"], AU=bbs["AU"], AV=bbs["AV"], AW=bbs["AW"],
+        AX=bbs["AX"], AY=bbs["AY"], AZ=bbs["AZ"],
+        BB=BB, BC=BC, BE=BE, BF=BF, BJ=BJ, BK=BK, BN=BN, BO=BO,
+        BQ=BQ, BS=BS, BU=BU, BW=BW, BY=BY, BZ=BZ, CA=CA,
+        EC=EC, ED=ED, EE=EE, EO=EO, EP=EP, EQ=EQ, ER=ER,
+        FF=vs["FF"], FH=vs["FH"], FI=vs["FI"], FJ=vs["FJ"],
+        FK=vs["FK"], FL=vs["FL"], FM=vs["FM"], FR=FR, GB=GB,
+    ))
     return row
 
 
@@ -282,15 +436,25 @@ COLUMN_SPECS_PASS1 = [
     # JG / JH — sign-with-zero-as-neg over CK / CI (MACDH/MACD direction)
     ("macdh_direction",   "sign_zero_neg", "a_macdh_d_brr1", None, None),     # JG
     ("macd_direction",    "sign_zero_neg", "a_macd_brr1",    None, None),     # JH
-    # JI — passthrough of AN (BB_Direction1).  AN not currently sourced;
-    # approximate using sign of a_bb_streak (BB streak direction).
-    ("bb_direction",      "sign_zero_neg", "a_bb_streak",    None, None),     # JI (approx)
-    # JJ — IF(AX=1, AW, 0); AX/AW not sourced yet (see doc § Gaps).
-    # Leaving NULL — rule still fires by source data in Pass-2 if needed.
-    # ("bb_threshold",  ...)
-    # JK / JL — BBThresh CO Days variants (input = MA col AX = days count).
-    # AX not sourced yet; deferred.
-    # JM Trade Cross Over — needs EF/J/I.  Not sourced; deferred.
+    # JI — passthrough of AN (BB_Direction1).  AN now properly derived from
+    # a_bb_high_low composite via compute_intermediates (per user spec
+    # 2026-05-27 v3).  Returns +1 if BB bottom touched and price recovered,
+    # -1 if BB top touched and price fell, else SIGN(AL).
+    ("bb_direction",      "passthru", "AN", None, None),                       # JI
+    # JJ — IF(AX=1, AW, 0).  AX = BBThresh CO Days, AW = threshold-crossover.
+    ("bb_threshold",      "composite", None, None,
+        (lambda r,o: (_f(r.get("AW")) or 0) if _f(r.get("AX")) == 1 else 0.0)),# JJ
+    # JK BBThresh CO Days — trig_ifs on AX
+    ("bbthresh_co_days",  "trig_ifs", "AX", "BBThresh CO Days",  None),        # JK
+    ("bbthresh_co_days2", "trig_ifs", "AX", "BBThresh CO Days2", None),        # JL
+    # JM Trade Cross Over — composite (D/AF/EF/J/I).  EF=prev_close not sourced;
+    # approximate via BZ (Perf3D_Value as proxy for prev_close trajectory).
+    ("trade_cross_over",  "composite", None, None,
+        (lambda r,o: _crossover(_f(r.get("last_price")), _f(r.get("a_trade_value")),
+                                _f(r.get("BZ"))))),                            # JM
+    ("trend_cross_over",  "composite", None, None,
+        (lambda r,o: _crossover(_f(r.get("last_price")), _f(r.get("a_trend_value")),
+                                _f(r.get("BZ"))))),                            # JP
     # JN — Trade-Rule (trig_ifs on AH = Trade_sd)
     ("trade_rule",        "trig_ifs", "AH", "Trade-Rule",  None),             # JN
     ("not_trade_rule",    "negate",   "trade_rule", None, None),              # JO
@@ -315,8 +479,9 @@ COLUMN_SPECS_PASS1 = [
         (lambda r,o: -1.0 if (r.get("EQ") or 0) < 0 else 0.0)),                 # KG
     ("lrr_above_trade",     "composite", None, None,
         (lambda r,o: 1.0 if (r.get("ER") or 0) > 0 else 0.0)),                  # KH
-    # KI/KJ/KK -- TRR/MRR/LRR_Idx require ES/ET/EU (Sd-normalized risk indices).
-    # ES/ET/EU formulas reference DQ/DM/DR which aren't sourced.  Deferred.
+    # KI/KJ/KK -- TRR/MRR/LRR_Idx require ES/ET/EU (Sd-normalized risk indices)
+    # which depend on DQ/DM/DR (intraday high/last/low overrides).  Still
+    # deferred — needs intraday-vs-daily toggle wiring (Dash!$AB$24).
     # KL HVAbsolute -- input CV (historical_vol), but Trig key 'HVAbsolute' uses CV.
     ("hvabsolute",          "trig_ifs", "historical_vol", "HVAbsolute", None), # KL
     # KM IVAbsolute -- zero-guarded by DT (imp_volatility)
@@ -325,20 +490,25 @@ COLUMN_SPECS_PASS1 = [
     # KN/KO IV percentile (zero-guarded by DT, CX)
     ("ivpercentile",        "zero_guard_trig_ifs", "a_iv_percentile",
         "IVPercentile", ("imp_volatility", "a_iv_percentile")),                 # KN
+    # "Puts" variants use STRICT > in Excel — note strict=True.
     ("ivpercentile_puts",   "zero_guard_trig_ifs", "a_iv_percentile",
-        "IVPercentile Puts", ("imp_volatility", "a_iv_percentile")),            # KO
+        "IVPercentile Puts",
+        {"guards": ("imp_volatility", "a_iv_percentile"), "strict": True}),    # KO
     ("hvpercentile",        "zero_guard_trig_ifs", "a_hv_percentile",
         "HVPercentile", ("imp_volatility",)),                                   # KP
     ("hvpercentile_puts",   "zero_guard_trig_ifs", "a_hv_percentile",
-        "HVPercentile Puts", ("imp_volatility",)),                              # KQ
+        "HVPercentile Puts",
+        {"guards": ("imp_volatility",), "strict": True}),                       # KQ
     ("ivhv",                "zero_guard_trig_ifs", "FR",
         "IVHV Rule (modified)", ("imp_volatility",)),                           # KR
     ("ivhv_puts",           "zero_guard_trig_ifs", "FR",
-        "IVHV Puts (modified)", ("imp_volatility",)),                           # KS
+        "IVHV Puts (modified)",
+        {"guards": ("imp_volatility",), "strict": True}),                       # KS
     # KT IVRule -> composite (Pass-2; reads KN, KP, KR)
     ("rsi_rule",            "trig_ifs", "rsi",        "RSI Rule", None),       # KU
     ("rsi_top",             "trig_ifs", "rsi",        "RSI Top",  None),       # KV
-    ("rsi_puts",            "trig_ifs", "rsi",        "RSI Puts", None),       # KW
+    ("rsi_puts",            "trig_ifs", "rsi",        "RSI Puts",
+        {"strict": True}),                                                      # KW
     ("3m_low_rule",         "trig_ifs", "BB",         "3m-Low-Rule",  None),   # KX
     ("3m_low_days_rule",    "trig_ifs", "BC",         "3m-Low-Days Rule",None),# KY
     ("3mn_high_rule",       "trig_ifs", "BE",         "3mn-High-Rule",None),   # KZ
@@ -356,16 +526,27 @@ COLUMN_SPECS_PASS1 = [
         {"abs_input": True}),                                                   # LJ
     # LK Perf SD Rule -> composite (Pass-2; reads LC..LJ)
     # LL/LM negations
-    # LN BBHighLow_SD Rule -- input AO (BBHighLow_SD).  Not yet computed; deferred.
-    # LO BBHighLow Days Rule -- input AM.  Deferred.
-    # LP BBStreak Rule -- input AY (BB_Streak)
-    ("bbstreak_rule",       "trig_ifs", "a_bb_streak", "BBStreak Rule",  None),# LP
-    ("bbstreakrule1",       "trig_ifs", "a_bb_streak", "BBStreak Rule1", None),# LQ
-    ("bbstreak_rule2",      "trig_ifs", "a_bb_streak", "BBStreak Rule2", None),# LR
-    # LS/LT/LU/LV -- BBStreak Days variants (input AZ).  AZ not sourced; deferred.
+    # LN/LO use STRICT > in Excel.
+    ("bbhighlow_sd_rule",   "trig_ifs", "AO", "BBHighLow_SD Rule",
+        {"strict": True}),                                                      # LN
+    ("bbhighlow_days_rule", "trig_ifs", "AM", "BBHighLow Days Rule",
+        {"strict": True}),                                                      # LO
+    # LP BBStreak Rule -- input AY (BB_Streak; decoded from a_bb_streak)
+    ("bbstreak_rule",       "trig_ifs", "AY", "BBStreak Rule",  None),         # LP
+    ("bbstreakrule1",       "trig_ifs", "AY", "BBStreak Rule1", None),         # LQ
+    ("bbstreak_rule2",      "trig_ifs", "AY", "BBStreak Rule2", None),         # LR
+    # LS/LT/LU/LV -- BBStreak Days variants (input AZ; decoded)
+    ("bbstreak_days_rule",  "trig_ifs", "AZ", "BBStreak Days Rule",     None), # LS
+    ("bbstreak_days_rule2", "trig_ifs", "AZ", "BBStreak Days Up Rule",  None), # LT
+    ("bbstreak_days_rule3", "trig_ifs", "AZ", "BBStreak Days Rule2",    None), # LU
+    ("bbstreak_days_rule4", "trig_ifs", "AZ", "BBStreak Days Up Rule2", None), # LV
     # LW BB Bull Rule -> composite
     # LX -> negate
-    # LY/LZ -- BBHighDays/BBLowDays (input AQ/AR -- not sourced).  Deferred.
+    # LY/LZ -- strict > in Excel.
+    ("bbhighdays",          "trig_ifs", "AQ", "BBHighDays",
+        {"strict": True}),                                                      # LY
+    ("bblowdays",           "trig_ifs", "AR", "BBLowDays",
+        {"strict": True}),                                                      # LZ
     # MA MACD Rule -- input CJ = ABS(CI); ditto MB uses ABS(CK)
     ("macd_rule",           "trig_ifs", "a_macd_brr1",  "MACD Rule",
         {"abs_input": True}),                                                   # MA
@@ -378,9 +559,11 @@ COLUMN_SPECS_PASS1 = [
     ("macdh_brr_puts",      "trig_ifs", "a_macdh_d_brr1","MACDH_BRR Puts",
         {"abs_input": True}),                                                   # ME
     # MF -> composite
-    # MG/MH -- MACDH Days (input CM = a_macdays_streak)
-    ("macdh_days",          "trig_ifs", "a_macdays_streak", "MACDH Days",  None),# MG
-    ("macdh_days2",         "trig_ifs", "a_macdays_streak", "MACDH Days2", None),# MH
+    # MG/MH -- MACDH Days; strict > in Excel.
+    ("macdh_days",          "trig_ifs", "a_macdays_streak", "MACDH Days",
+        {"strict": True}),                                                      # MG
+    ("macdh_days2",         "trig_ifs", "a_macdays_streak", "MACDH Days2",
+        {"strict": True}),                                                      # MH
     # MI Overbought -> composite (Pass-2; reads KV/MA/MB)
     # MJ negate
     # MK..MP -- 3mn/3wk outlook variants (inputs BJ/BK/BN/BO)
@@ -407,6 +590,28 @@ COLUMN_SPECS_PASS1 = [
         ("last_price","low_52","AC"), "52-Wk Low Rule", None),                 # MY
     ("52_wk_high_rule",     "trig_ifs_dma",
         ("last_price","high_52","AC"), "52-Wk High Rule", None),               # MZ
+    # NC/ND Up/Down Resistance -> composite (D/EH/EI/CG/CH/BA/AC)
+    ("up_resistance", "composite", None, None,
+        (lambda r,o: (
+            ((-0.5 if ((_f(r.get("high_today")) or 0) + 0.05 * (_f(r.get("AC")) or 0)
+                       > (_f(r.get("sma_50")) or 0)
+                       and (_f(r.get("last_price")) or 0) < (_f(r.get("sma_50")) or 0)) else 0.0)
+             + (-0.5 if ((_f(r.get("high_today")) or 0) + 0.05 * (_f(r.get("AC")) or 0)
+                       > (_f(r.get("sma_200")) or 0)
+                       and (_f(r.get("last_price")) or 0) < (_f(r.get("sma_200")) or 0)) else 0.0))
+        ))),                                                                    # NC
+    ("down_resistance", "composite", None, None,
+        (lambda r,o: (
+            ((1.0 if ((_f(r.get("low_today")) or 0) + 0.05 * (_f(r.get("AC")) or 0)
+                      < (_f(r.get("a_3mn_low")) or 0)
+                      and (_f(r.get("last_price")) or 0) > (_f(r.get("a_3mn_low")) or 0)) else 0.0)
+             + (0.5 if ((_f(r.get("low_today")) or 0) + 0.05 * (_f(r.get("AC")) or 0)
+                      > (_f(r.get("sma_50")) or 0)
+                      and (_f(r.get("last_price")) or 0) > (_f(r.get("sma_50")) or 0)) else 0.0)
+             + (0.5 if ((_f(r.get("low_today")) or 0) + 0.05 * (_f(r.get("AC")) or 0)
+                      < (_f(r.get("sma_200")) or 0)
+                      and (_f(r.get("last_price")) or 0) > (_f(r.get("sma_200")) or 0)) else 0.0))
+        ))),                                                                    # ND
     # NA/NB BRRTrade/TRRTrade -> composite (uses DX/DY/AF/AC)
     ("brrtrade",            "composite", None, None,
         (lambda r,o: 1.0 if (
@@ -423,22 +628,29 @@ COLUMN_SPECS_PASS1 = [
                 <= float(r["AC"]) * 0.5
         ) else 0.0)),                                                          # NB
     # NC/ND Up/Down Resistance -> composite (needs EH/EI/AC/CG/CH/BA)
-    # NE Earnings -- trig_ifs on JB = a_earnings_days
-    ("earnings",            "trig_ifs", "a_earnings_days", "Earnings Days", None), # NE
-    # NF/NG/NH/NI -- VS rules.  Inputs FK/FI/FL/FM.
-    # FI/FL/FM are derived from FH (string) -- not sourced as numeric yet.
-    # FK approximated via volume_rate_change in row dict for now.
-    # NJ -> composite (reads NF..NI)
-    # NK/NL/NM -- Current Price/Volume/Volatility SD Rules
-    # NK input = H/AD = (1d net_chng / SD%).  H = G2 == net_chng.
+    # NE Earnings -- strict > in Excel.
+    ("earnings",            "trig_ifs", "a_earnings_days", "Earnings Days",
+        {"strict": True}),                                                      # NE
+    # NF/NG/NH/NI -- VS rules use strict >.
+    ("vs_price",            "zero_guard_trig_ifs", "FK", "VS Price Rule",
+        {"guards": ("a_volume_spike",), "strict": True}),                       # NF
+    ("vs_volume_spike",     "zero_guard_trig_ifs", "FI", "VS Volume Spike Rule",
+        {"guards": ("a_volume_spike",), "strict": True}),                       # NG
+    ("vs_volatility",       "zero_guard_trig_ifs", "FL", "VS Volatility Rule",
+        {"guards": ("a_volume_spike",), "strict": True}),                       # NH
+    ("vs_days",             "zero_guard_trig_ifs", "FM", "VS Days",
+        {"guards": ("a_volume_spike",), "strict": True}),                       # NI
+    # NK/NL/NM -- Current Price/Volume/Volatility SD Rules — strict >.
     ("current_price_sd_rule", "zero_guard_trig_ifs",
-        "_NK_input", "Current Price Rule", ("AD",)),                            # NK
+        "_NK_input", "Current Price Rule",
+        {"guards": ("AD",), "strict": True}),                                   # NK
     # NL Current Volume Rule -- input GB.  Asymmetric -1/4 mult on negative side
     # not yet supported by eval_atomic_rule; using standard trig_ifs (good
     # enough for most cases; precise behaviour documented in § Caveats).
-    ("current_volume_rule", "trig_ifs", "GB", "Current Volume Rule", None),    # NL
+    ("current_volume_rule", "trig_ifs", "GB", "Current Volume Rule",
+        {"strict": True}),                                                      # NL
     ("current_volatility_rule", "trig_ifs", "imp_volatility",
-        "Current Volatility Rule", None),                                       # NM
+        "Current Volatility Rule", {"strict": True}),                           # NM
     # NN/NO -> composite (Pass-2)
     # ---- QE/QJ/QM/QN/QR computed by _derive_trend_trade_rules_impl ----
     # QH/QI raw slope mirrors
@@ -487,7 +699,9 @@ def _perforbull_expr(r: dict, o: dict) -> Optional[float]:
     MQ = _f(o.get("bull")) or 0.0
     if LK >= 3 or MQ >= 3: return 3.0
     if LK <= -3 or MQ <= -3: return -3.0
-    return float(int((LK + MQ) / 2))
+    # Excel INT() = floor() (toward -inf); Python int() truncates toward 0.
+    import math
+    return float(math.floor((LK + MQ) / 2))
 
 
 def _perf_sd_rule_expr(r: dict, o: dict) -> Optional[float]:
@@ -547,7 +761,8 @@ def _3m_long_expr(r: dict, o: dict) -> Optional[float]:
     LA = _f(o.get("3mn_high_days_rule")) or 0.0
     if KX >= 3 and KY >= 2 and KZ >= -2 and LA >= 3: return 3.0
     if KZ <= -3 and LA >= 2 and KX <= 2 and KY >= 3: return -3.0
-    return float(int((KX + KY - 1) / 2))
+    import math
+    return float(math.floor((KX + KY - 1) / 2))
 
 
 def _brrpct_dir_expr(r: dict, o: dict) -> Optional[float]:
@@ -563,6 +778,44 @@ def _brrpct_dir_expr(r: dict, o: dict) -> Optional[float]:
     if LG_ is not None and LG_ > 0: return JW_
     if LG_ is not None and LG_ < 0: return KB_
     return None
+
+
+def _vs_lt_outlook_expr(r: dict, o: dict) -> Optional[float]:
+    """NJ: VS LT Outlook Rule = IFS(NF>2 & NG>0 & NH>2 & NI>2, 3,
+        NF>2 & NG>0 & NH<=2 & NI>=2, 2,
+        NF<-2 & NG>0 & NH>2 & NI>2, -3,
+        NF<-2 & NG>0 & NH<=2 & NI>=2, -2, TRUE, 0)."""
+    NF = _f(o.get("vs_price")) or 0.0
+    NG = _f(o.get("vs_volume_spike")) or 0.0
+    NH = _f(o.get("vs_volatility")) or 0.0
+    NI = _f(o.get("vs_days")) or 0.0
+    if NF > 2 and NG > 0 and NH > 2 and NI > 2:  return 3.0
+    if NF > 2 and NG > 0 and NH <= 2 and NI >= 2: return 2.0
+    if NF < -2 and NG > 0 and NH > 2 and NI > 2:  return -3.0
+    if NF < -2 and NG > 0 and NH <= 2 and NI >= 2: return -2.0
+    return 0.0
+
+
+def _short_term_outlook(r: dict, o: dict, *, lt_bullish: bool) -> Optional[float]:
+    """NN/NO: short-term outlook table over NK/NL/NM."""
+    NK = _f(o.get("current_price_sd_rule")) or 0.0
+    NL = _f(o.get("current_volume_rule")) or 0.0
+    NM = _f(o.get("current_volatility_rule")) or 0.0
+    if NK > 2 and NL > 2 and NM < 2: return 3.0
+    if NK > 2 and NL > 2:             return 2.0
+    if NK < -2 and NL > 2 and NM < 2: return -3.0
+    if NK < -2 and NL > 2:            return -2.0
+    if lt_bullish:
+        if NK > 2 and NL < -2 and NM < 2: return 1.0
+        if NK > 2 and NL < -2:            return 1.0
+        if NK < -2 and NL < -2 and NM > 2: return 2.0
+        if NK < -2 and NL < -2:           return 3.0
+    else:  # lt_bearish
+        if NK > 2 and NL < -2 and NM < 2: return -3.0
+        if NK > 2 and NL < -2:            return -2.0
+        if NK < -2 and NL < -2 and NM > 2: return -2.0
+        if NK < -2 and NL < -2:           return -1.0
+    return 0.0
 
 
 COLUMN_SPECS_PASS2 = [
@@ -590,11 +843,11 @@ COLUMN_SPECS_PASS2 = [
     ("bb_bull_rule",     "composite", None, None, _bb_bull_rule_expr),         # LW
     ("bb_bull_puts",     "negate", "bb_bull_rule", None, None),                # LX
     ("macd_and_h_rule",  "composite", None, None,
-        (lambda r,o: float(int(((_f(o.get("macd_rule")) or 0)
-                                 + (_f(o.get("macdh_rule")) or 0)) / 2)))),    # MC
+        (lambda r,o: float(__import__('math').floor(
+            ((_f(o.get("macd_rule")) or 0) + (_f(o.get("macdh_rule")) or 0)) / 2)))), # MC
     ("macd_and_h_rule_puts", "composite", None, None,
-        (lambda r,o: float(int(((_f(o.get("macd_brr_puts")) or 0)
-                                 + (_f(o.get("macdh_brr_puts")) or 0)) / 2)))),# MF
+        (lambda r,o: float(__import__('math').floor(
+            ((_f(o.get("macd_brr_puts")) or 0) + (_f(o.get("macdh_brr_puts")) or 0)) / 2)))), # MF
     ("overbought",       "composite", None, None, _overbought_expr),           # MI
     ("not_overbought",   "negate", "overbought", None, None),                  # MJ
     ("not_3wk_ol",       "negate", "3wk_outlook", None, None),                 # MO
@@ -603,7 +856,28 @@ COLUMN_SPECS_PASS2 = [
     ("not_bull",         "negate", "bull", None, None),                        # MR
     ("perforbull",       "composite", None, None, _perforbull_expr),           # MS
     ("not_perforbull",   "negate", "perforbull", None, None),                  # MT
+    ("vs_lt_outlook_rule", "composite", None, None, _vs_lt_outlook_expr),      # NJ
+    ("short_term_oulook_if_lt_bullish", "composite", None, None,
+        (lambda r,o: _short_term_outlook(r, o, lt_bullish=True))),             # NN
+    ("short_term_oulook_if_lt_bearish", "composite", None, None,
+        (lambda r,o: _short_term_outlook(r, o, lt_bullish=False))),            # NO
 ]
+
+
+# =============================================================================
+# Dashboard scalar reader.  See docs § Dashboard scalars.
+# =============================================================================
+def get_dash_scalar(session: Session, param_name: str,
+                    default: Optional[str] = None) -> Optional[str]:
+    """Read a single-cell dashboard variable from ref_param sheet='dash'.
+
+    Maps Excel cells like `Dash!$AB$24` to (sheet='dash', param_name=X).
+    Seed values live in db/baseline.sql under the 2026-05-27 v3 block.
+    """
+    row = session.execute(text(
+        "SELECT value FROM ref_param WHERE sheet='dash' AND param_name=:n"
+    ), {"n": param_name}).first()
+    return row[0] if row else default
 
 
 # =============================================================================
@@ -629,27 +903,22 @@ def load_trig_rules(session: Session) -> dict:
 # =============================================================================
 # Evaluator helpers.
 # =============================================================================
-def _eval_trig_ifs(value, rule: Optional[dict]) -> Optional[float]:
+def _eval_trig_ifs(value, rule: Optional[dict], *,
+                   strict: bool = False) -> Optional[float]:
     """Excel-faithful Trig-IFS evaluator.
 
-    Implements the 6-clause IFS used by every JF..NP trig_ifs formula:
+    Six-clause IFS used by every JF..NP trig_ifs formula:
 
-        v >= hi   ->   wt_above
-        v >= lo   ->   wt_between
+        v >= hi   ->   wt_above           (strict=True: v > hi)
+        v >= lo   ->   wt_between         (strict=True: v > lo)
         v >= 0    ->   wt_below
-        v <= -hi  ->  -wt_above
-        v <= -lo  ->  -wt_between
-        v < 0     ->  -wt_below
+        v <= -hi  ->  -wt_above           (strict=True: v < -hi)
+        v <= -lo  ->  -wt_between         (strict=True: v < -lo)
+        v <  0    ->  -wt_below
 
-    The shared `eval_atomic_rule()` in derive.py uses a 3-clause `jump`
-    that returns `wt_below` for ALL v < lo (including very-negative v) —
-    correct for drv_trig's unsigned scoring but wrong for the signed atomic
-    inputs JF..NP.  We implement the 6-clause locally so this deriver
-    matches Excel exactly.
-
-    For scoring_mode='linear' or 'sigmoid', delegate to eval_atomic_rule
-    (those modes don't appear in JF..NP today but support is kept for
-    forward compatibility).
+    `strict=False` (default): matches the majority of Excel formulas (>=).
+    `strict=True`: matches Puts variants, BBHighLow_SD/Days, BBHigh/LowDays,
+    MACDH Days, Earnings, VS rules, Current Price/Volume/Volatility (all use >).
     """
     if rule is None or value is None:
         return None
@@ -665,12 +934,20 @@ def _eval_trig_ifs(value, rule: Optional[dict]) -> Optional[float]:
     wb_ = _f(rule.get("wt_below")) or 0.0
     wbt = _f(rule.get("wt_between")) or 0.0
     wa = _f(rule.get("wt_above")) or 0.0
-    if v >= hi:  return wa
-    if v >= lo:  return wbt
-    if v >= 0:   return wb_
-    if v <= -hi: return -wa
-    if v <= -lo: return -wbt
-    if v < 0:    return -wb_
+    if strict:
+        if v >  hi:  return wa
+        if v >  lo:  return wbt
+        if v >= 0:   return wb_
+        if v <  -hi: return -wa
+        if v <  -lo: return -wbt
+        if v <  0:   return -wb_
+    else:
+        if v >= hi:  return wa
+        if v >= lo:  return wbt
+        if v >= 0:   return wb_
+        if v <= -hi: return -wa
+        if v <= -lo: return -wbt
+        if v <  0:   return -wb_
     return 0.0
 
 
@@ -706,12 +983,21 @@ def eval_specs(row: dict, specs: list, trig_rules: dict, out: dict) -> dict:
         try:
             if ftype == "trig_ifs":
                 val = row.get(src) if src in row else out.get(src)
-                if isinstance(extra, dict) and extra.get("abs_input") and val is not None:
-                    val = abs(_f(val) or 0.0)
-                out[db_col] = _eval_trig_ifs(val, trig_rules.get(rule_name))
+                strict = False
+                if isinstance(extra, dict):
+                    if extra.get("abs_input") and val is not None:
+                        val = abs(_f(val) or 0.0)
+                    strict = bool(extra.get("strict"))
+                out[db_col] = _eval_trig_ifs(val, trig_rules.get(rule_name),
+                                              strict=strict)
 
             elif ftype == "zero_guard_trig_ifs":
                 guards = extra or ()
+                # extra may be tuple-of-guards OR dict with 'guards'/'strict' keys
+                strict = False
+                if isinstance(extra, dict):
+                    guards = extra.get("guards", ())
+                    strict = bool(extra.get("strict"))
                 if any((_f(row.get(g) if g in row else out.get(g)) == 0
                         or row.get(g) is None) for g in guards):
                     out[db_col] = 0.0
@@ -721,7 +1007,8 @@ def eval_specs(row: dict, specs: list, trig_rules: dict, out: dict) -> dict:
                     H = _f(row.get("net_chng"))
                     AD = _f(row.get("AD"))
                     val = _safe_div(H, AD)
-                out[db_col] = _eval_trig_ifs(val, trig_rules.get(rule_name))
+                out[db_col] = _eval_trig_ifs(val, trig_rules.get(rule_name),
+                                              strict=strict)
 
             elif ftype == "trig_ifs_dma":
                 pk, mk, vk = src
@@ -734,7 +1021,7 @@ def eval_specs(row: dict, specs: list, trig_rules: dict, out: dict) -> dict:
                 out[db_col] = (-1.0 * _f(twin)) if twin is not None else None
 
             elif ftype == "passthru":
-                out[db_col] = _f(row.get(src))
+                out[db_col] = _f(row.get(src) if src in row else out.get(src))
 
             elif ftype == "sign_zero_neg":
                 v = _f(row.get(src))
@@ -810,49 +1097,26 @@ WHERE dst.as_of_date = src.as_of_date AND dst.symbol = src.symbol
 """
 
 
-# =============================================================================
-# Main entry point — wired into derive_all() in derive.py.
-# =============================================================================
 def derive_cat_atomic_input(session: Session, as_of_date: date,
                             parent_run_id: Optional[int] = None) -> int:
-    """Compute drv_cat_atomic_input rows for `as_of_date`.
-
-    Steps:
-      1. DELETE existing rows for this date (idempotency).
-      2. SELECT working set + intermediates.
-      3. Pass-1 specs (trig_ifs / trig_ifs_dma / etc.).
-      4. Pass-2 specs (composites reading Pass-1 outputs).
-      5. executemany INSERT.
-      6. Parm-lookup UPDATE (Pass-3).  Note: requires QE/QJ/QM/QN/QR to be
-         present, so it actually runs LATER in derive_all() — exposed as
-         `run_parm_lookup_pass3()` for the caller to invoke after
-         _derive_trend_trade_rules_impl.
-    """
+    """Compute drv_cat_atomic_input rows for `as_of_date`.  Idempotent."""
     run_id = parent_run_id or 0
     trig_rules = load_trig_rules(session)
     if not trig_rules:
         log.warning("drv_cat_atomic_input: ref_trig_atomic_rule empty; skipping")
         return 0
-
     session.execute(
         text("DELETE FROM drv_cat_atomic_input WHERE as_of_date = :d"),
-        {"d": as_of_date},
-    )
-
+        {"d": as_of_date})
     rows = session.execute(text(WORKING_SET_SQL), {"d": as_of_date}).mappings().all()
     if not rows:
         return 0
-
-    all_db_cols = (
-        [s[0] for s in COLUMN_SPECS_PASS1]
-        + [s[0] for s in COLUMN_SPECS_PASS2]
-    )
-    # Deduplicate while preserving order (some specs may overlap if edited)
+    all_db_cols = ([s[0] for s in COLUMN_SPECS_PASS1]
+                   + [s[0] for s in COLUMN_SPECS_PASS2])
     seen = set(); ordered_cols = []
     for c in all_db_cols:
         if c not in seen:
             seen.add(c); ordered_cols.append(c)
-
     records = []
     for r in rows:
         row = dict(r)
@@ -865,22 +1129,18 @@ def derive_cat_atomic_input(session: Session, as_of_date: date,
         for c in ordered_cols:
             rec[c] = out.get(c)
         records.append(rec)
-
-    # executemany INSERT.  Quote columns that aren't valid bare PG identifiers.
-    def _q(c: str) -> str:
+    def _q(c):
         import re as _re
         return c if _re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", c) else f'"{c}"'
-
-    col_list = ", ".join(["as_of_date", "symbol"]
+    col_list = ", ".join(["as_of_date","symbol"]
                          + [_q(c) for c in ordered_cols]
                          + ["source_run_id"])
-    bind_list = ", ".join([":as_of_date", ":symbol"]
+    bind_list = ", ".join([":as_of_date",":symbol"]
                           + [f":{c}" for c in ordered_cols]
                           + [":source_run_id"])
     insert_sql = text(f"INSERT INTO drv_cat_atomic_input ({col_list}) "
                       f"VALUES ({bind_list})")
-    inserted = 0
-    BATCH = 500
+    inserted = 0; BATCH = 500
     for i in range(0, len(records), BATCH):
         chunk = records[i:i + BATCH]
         session.execute(insert_sql, chunk)
@@ -889,7 +1149,6 @@ def derive_cat_atomic_input(session: Session, as_of_date: date,
 
 
 def run_parm_lookup_pass3(session: Session, as_of_date: date) -> int:
-    """Pass-3: Parm-lookup UPDATE.  Must run AFTER _derive_trend_trade_rules_impl
-    has populated QE/QJ/QM/QN/QR.  Idempotent."""
+    """Pass-3 Parm-lookup UPDATE.  Idempotent."""
     result = session.execute(text(PARM_LOOKUP_SQL), {"d": as_of_date})
     return result.rowcount or 0

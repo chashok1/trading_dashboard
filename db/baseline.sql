@@ -2232,6 +2232,27 @@ ALTER TABLE drv_cat_atomic_input
     ADD COLUMN IF NOT EXISTS td_tn_bb_action_desc    TEXT,      -- QS  XLOOKUP(QR, Parm AO2:AO21 -> AQ)
     ADD COLUMN IF NOT EXISTS td_tn_bb_action_seq     NUMERIC;   -- QT  XLOOKUP(QR, Parm AO2:AO21 -> AR)
 
+-- -----------------------------------------------------
+-- 2026-05-27 (v2): hist_td gains BB_Bot_Prev / BB_Top_Prev (TD!L / TD!P),
+-- needed by EC/ED fallback in etl/derive_cat_atomic_input.py.  Idempotent.
+-- -----------------------------------------------------
+ALTER TABLE hist_td
+    ADD COLUMN IF NOT EXISTS bb_bot_prev  NUMERIC,
+    ADD COLUMN IF NOT EXISTS bb_top_prev  NUMERIC;
+
+-- -----------------------------------------------------
+-- 2026-05-27 (v3): dashboard single-cell scalars seeded into ref_param
+-- under sheet='dash'.  Pattern lets future derivers read scalars by name
+-- via `SELECT value FROM ref_param WHERE sheet='dash' AND param_name=...`.
+-- Covers Excel cells like Dash!$AB$24 (intraday-vs-daily toggle).
+-- See docs/drv_cat_atomic_input_logic.md § Dashboard scalars.
+-- Idempotent via ON CONFLICT DO NOTHING.
+-- -----------------------------------------------------
+INSERT INTO ref_param (sheet, param_name, value) VALUES
+    ('dash', 'intraday_toggle', 'Y')           -- Dash!$AB$24: 'Y' = use intraday DG/DK/DL,
+                                               -- 'N' = use daily CY/DC/DD.
+ON CONFLICT (sheet, param_name) DO NOTHING;
+
 -- =====================================================
 -- End of baseline.sql
 -- =====================================================
