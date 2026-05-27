@@ -502,7 +502,7 @@ def _action_outlook_modifier(base, prev, held: bool) -> tuple[Optional[str], str
     return None, "not held, no action"
 
 
-def _action_standing(base, prev) -> tuple[Optional[str], str]:
+def _action_standing(base, prev, held: bool = False) -> tuple[Optional[str], str]:
     """Standing-list classifier (used by II, ETF, RR).
 
     Presence on the current list with a positive weight is a buy verdict
@@ -511,7 +511,7 @@ def _action_standing(base, prev) -> tuple[Optional[str], str]:
 
       base > 0                  -> ADD     (positive weight on the current list)
       base < 0                  -> REMOVE  (negative weight on the current list)
-      base absent, prev present -> REMOVE  (dropped from the list)
+      base absent, prev present -> REDUCE if held, else silent (dropped from list)
       otherwise                 -> silent
     """
     if base is not None:
@@ -525,10 +525,13 @@ def _action_standing(base, prev) -> tuple[Optional[str], str]:
             return "REMOVE", f"on list, weight {b:+g}"
         return None, "weight 0 - silent"
     if prev is not None:
-        try:
-            return "REMOVE", f"dropped from list (was {float(prev):+g})"
-        except (TypeError, ValueError):
-            return "REMOVE", "dropped from list"
+        if held:
+            try:
+                return "REDUCE", f"dropped from list (was {float(prev):+g})"
+            except (TypeError, ValueError):
+                return "REDUCE", "dropped from list"
+        else:
+            return None, "dropped from list, not held"
     return None, "not on list"
 
 
@@ -831,7 +834,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                     base = today_w.get(sym)
                     prev = prev_w.get(sym)
                     held = sym in holdings
-                    act, reason = _action_standing(base, prev)
+                    act, reason = _action_standing(base, prev, held)
                     if act is None:
                         # No-op — skip writing the row entirely. Keeps
                         # drv_outlook_action focused on real signals.
