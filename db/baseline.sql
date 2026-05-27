@@ -1337,6 +1337,10 @@ CREATE TABLE IF NOT EXISTS drv_cat_atomic_input (
     trtn_relation                            NUMERIC,
     not_trtn_relation                        NUMERIC,
     trade_trend_sd_rule                      NUMERIC,
+    bb_rng_strk_rule                         NUMERIC,
+    bull_rr_action                           NUMERIC,
+    not_bull_rr_action                       NUMERIC,
+    td_tn_bb_rr_action                       NUMERIC,
     brrpct_rule                              NUMERIC,
     brrpct_lrr                               NUMERIC,
     brrpct_r2                                NUMERIC,
@@ -2197,8 +2201,19 @@ ALTER TABLE drv_cat_atomic_input
     DROP COLUMN IF EXISTS "!bull",
     DROP COLUMN IF EXISTS "!perforbull";
 
+-- -----------------------------------------------------
+-- 2026-05-27: targets for MA-tab rule columns QE, QJ, QM, QN, QR.
+-- (QE target trade_trend_sd_rule already exists above.)
+-- Populated by _derive_trend_trade_rules_impl in etl/derive.py.
+-- Idempotent.
+-- -----------------------------------------------------
+ALTER TABLE drv_cat_atomic_input
+    ADD COLUMN IF NOT EXISTS bb_rng_strk_rule   NUMERIC,   -- QJ BBRngStrkRule
+    ADD COLUMN IF NOT EXISTS bull_rr_action     NUMERIC,   -- QM BullRiskRng-Action
+    ADD COLUMN IF NOT EXISTS not_bull_rr_action NUMERIC,   -- QN !BullRiskRng-Action
+    ADD COLUMN IF NOT EXISTS td_tn_bb_rr_action NUMERIC;   -- QR Td Tn BB Risk Range Rule Action
+
 -- =====================================================
 -- End of baseline.sql
 -- =====================================================
-
 
