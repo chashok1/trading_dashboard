@@ -1041,6 +1041,25 @@ CREATE TABLE IF NOT EXISTS drv_tw (
 CREATE INDEX IF NOT EXISTS ix_drv_tw_symbol ON drv_tw(symbol, snapshot_date);
 
 -- -----------------------------------------------------
+-- drv_to - per-row derivations from TO (TOS Other - fundamentals)
+-- 2026-05-28: Computes market_cap_num from hist_to.market_cap_str
+-- Format: "71,783 M" → 71783000000 (value in dollars)
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS drv_to (
+    snapshot_date     DATE NOT NULL,
+    symbol            TEXT NOT NULL,
+    sequence          INTEGER NOT NULL DEFAULT 0,
+    market_cap_num    NUMERIC,
+    computed_at       TIMESTAMP NOT NULL DEFAULT now(),
+    source_run_id     BIGINT,
+    PRIMARY KEY (snapshot_date, symbol, sequence),
+    FOREIGN KEY (snapshot_date, symbol, sequence)
+        REFERENCES hist_to(snapshot_date, symbol, sequence)
+        ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_drv_to_symbol ON drv_to(symbol, snapshot_date);
+
+-- -----------------------------------------------------
 -- drv_sss - per-row derivations from SSS
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS drv_sss (

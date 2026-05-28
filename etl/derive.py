@@ -416,6 +416,50 @@ def _derive_td_impl(session: Session, as_of_date: date, run_id: int) -> int:
 derive_td = _wrap("drv_td", _derive_td_impl)
 
 
+def _derive_to_impl(session: Session, as_of_date: date, run_id: int) -> int:
+    """
+    drv_to: per-row derivations from hist_to (TOS Other - fundamentals).
+
+    Computes market_cap_num by parsing hist_to.market_cap_str.
+    Format: "71,783 M" → 71,783,000,000 (value in dollars).
+    """
+    sql = text("""
+    INSERT INTO drv_to (snapshot_date, symbol, sequence, market_cap_num, source_run_id)
+    SELECT
+        snapshot_date,
+        symbol,
+        COALESCE(sequence, 0),
+        CASE
+            WHEN market_cap_str IS NOT NULL
+                 AND market_cap_str ~ '^[0-9,]+\\s*[MBK]$'
+            THEN (
+                CAST(
+                    REGEXP_REPLACE(market_cap_str, '[^0-9.]', '', 'g')
+                    AS NUMERIC
+                ) * CASE WHEN market_cap_str ~ 'B$' THEN 1000000000
+                         WHEN market_cap_str ~ 'M$' THEN 1000000
+                         WHEN market_cap_str ~ 'K$' THEN 1000
+                         ELSE 1
+                    END
+            )
+            ELSE NULL
+        END,
+        :run
+    FROM hist_to
+    WHERE snapshot_date = :d
+    ON CONFLICT (snapshot_date, symbol, sequence) DO UPDATE SET
+        market_cap_num = EXCLUDED.market_cap_num,
+        source_run_id = EXCLUDED.source_run_id
+    """)
+
+    session.execute(text("DELETE FROM drv_to WHERE snapshot_date = :d"), {"d": as_of_date})
+    result = session.execute(sql, {"d": as_of_date, "run": run_id})
+    return result.rowcount or 0
+
+
+derive_to = _wrap("drv_to", _derive_to_impl)
+
+
 # =============================================================================
 # (b) Cross-table aggregates
 # =============================================================================
@@ -508,10 +552,13 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         ORDER BY h.symbol, h.snapshot_date DESC, h.sequence DESC
     ),
     too AS (
-        SELECT DISTINCT ON (symbol) symbol, beta, market_cap_num::text AS market_cap_str,
-               pe_ratio, eps, div_yield, sector
-        FROM hist_to WHERE snapshot_date <= (SELECT d FROM p)
-        ORDER BY symbol, snapshot_date DESC, sequence DESC
+        SELECT DISTINCT ON (h.symbol) h.symbol, h.beta,
+               COALESCE(dr.market_cap_num::text, h.market_cap_str) AS market_cap_str,
+               h.pe_ratio, h.eps, h.div_yield, h.sector
+        FROM hist_to h
+        LEFT JOIN drv_to dr USING (snapshot_date, symbol, sequence)
+        WHERE h.snapshot_date <= (SELECT d FROM p)
+        ORDER BY h.symbol, h.snapshot_date DESC, h.sequence DESC
     ),
     rr AS (
         SELECT DISTINCT ON (COALESCE(tos_symbol, symbol)) COALESCE(tos_symbol, symbol) AS symbol,
@@ -2277,6 +2324,7 @@ def derive_all(session: Session, as_of_date: date,
             return 0
 
     counts["drv_td"]  = _safe("drv_td",  derive_td)
+    counts["drv_to"]  = _safe("drv_to",  derive_to)
     counts["drv_tw"]  = _safe("drv_tw",  derive_tw)
     counts["drv_sss"] = _safe("drv_sss", derive_sss)
 
