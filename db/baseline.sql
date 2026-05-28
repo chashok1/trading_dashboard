@@ -524,6 +524,12 @@ ALTER TABLE IF EXISTS hist_tw DROP COLUMN IF EXISTS fcf_per_share;
 ALTER TABLE IF EXISTS hist_tw DROP COLUMN IF EXISTS market_cap_str;
 ALTER TABLE IF EXISTS hist_to DROP COLUMN IF EXISTS market_cap_num;
 
+-- 2026-05-28: Drop bb_bot_prev and bb_top_prev from hist_td.
+-- These columns were removed from schema (commit 2e176da) but still exist in DB as 100% NULL.
+-- They are now computed as intermediates (DU/DV) in derive_cat_atomic_input, not stored.
+ALTER TABLE IF EXISTS hist_td DROP COLUMN IF EXISTS bb_bot_prev;
+ALTER TABLE IF EXISTS hist_td DROP COLUMN IF EXISTS bb_top_prev;
+
 -- -----------------------------------------------------
 -- hist_to  <- TO tab (TOS Other - fundamentals)
 -- -----------------------------------------------------

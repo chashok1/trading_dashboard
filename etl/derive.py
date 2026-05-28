@@ -317,11 +317,9 @@ def _derive_td_impl(session: Session, as_of_date: date, run_id: int) -> int:
         bb_bot_15d  = _td_at_offset(history, "a_bb_bottom", 15)
         bb_bot_7d   = _td_at_offset(history, "a_bb_bottom", 7)
         bb_bot_3d   = _td_at_offset(history, "a_bb_bottom", 3)
-        bb_bot_prev = _td_at_offset(history, "a_bb_bottom", 1)
         bb_top_15d  = _td_at_offset(history, "a_bb_top", 15)
         bb_top_7d   = _td_at_offset(history, "a_bb_top", 7)
         bb_top_3d   = _td_at_offset(history, "a_bb_top", 3)
-        bb_top_prev = _td_at_offset(history, "a_bb_top", 1)
 
         # --- range compression (S) -------------------------------------------
         last10 = history[-10:]
@@ -380,11 +378,9 @@ def _derive_td_impl(session: Session, as_of_date: date, run_id: int) -> int:
             "bb_bot_15d":        bb_bot_15d,
             "bb_bot_7d":         bb_bot_7d,
             "bb_bot_3d":         bb_bot_3d,
-            "bb_bot_prev":       bb_bot_prev,
             "bb_top_15d":        bb_top_15d,
             "bb_top_7d":         bb_top_7d,
             "bb_top_3d":         bb_top_3d,
-            "bb_top_prev":       bb_top_prev,
             "iv_percentile":     iv_pctile,
             "hv_percentile":     hv_pctile,
             "range_compression": range_comp,
