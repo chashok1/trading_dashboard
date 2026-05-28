@@ -112,7 +112,7 @@ def _action_to_weight(action_name: Optional[str],
 def _derive_tw_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
     """
     Mirrors TW Excel formulas:
-      G  FCF              = NULL (moved to hist_to)
+      G  FCF              = clean(hist_to.fcf_per_share)
       H  20 DMA           = clean(sma_20)
       I  50 DMA           = clean(sma_50)
       J  200 DMA          = clean(sma_200)
@@ -140,13 +140,20 @@ def _derive_tw_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
 
     symbols = list({r["symbol"] for r in cur_rows})
     history = session.execute(text("""
-        SELECT snapshot_date, symbol, sequence,
-               last_price, change_pct, sma_20, sma_50, sma_200,
-               volume, volume_avg_10d, volume_avg_3m, volume_rate_change,
-               a_macd_brr, a_macdh_d_brr, a_earnings_days
-        FROM hist_tw
-        WHERE snapshot_date <= :d AND symbol = ANY(:syms)
-        ORDER BY symbol, snapshot_date ASC, sequence ASC
+        SELECT tw.snapshot_date, tw.symbol, tw.sequence,
+               tw.last_price, tw.change_pct, tw.sma_20, tw.sma_50, tw.sma_200,
+               tw.volume, tw.volume_avg_10d, tw.volume_avg_3m, tw.volume_rate_change,
+               tw.a_macd_brr, tw.a_macdh_d_brr, tw.a_earnings_days,
+               to_row.fcf_per_share
+        FROM hist_tw tw
+        LEFT JOIN (
+            SELECT DISTINCT ON (symbol) symbol, fcf_per_share
+            FROM hist_to
+            WHERE snapshot_date <= :d
+            ORDER BY symbol, snapshot_date DESC, sequence DESC
+        ) to_row ON tw.symbol = to_row.symbol
+        WHERE tw.snapshot_date <= :d AND tw.symbol = ANY(:syms)
+        ORDER BY tw.symbol, tw.snapshot_date ASC, tw.sequence ASC
     """), {"d": as_of_date, "syms": symbols}).fetchall()
 
     by_sym: dict[str, list] = {}
@@ -161,7 +168,7 @@ def _derive_tw_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
             continue
         cur = hist[-1]
 
-        fcf = None  # fcf_per_share moved to hist_to
+        fcf = _clean(cur.fcf_per_share)
         sma20 = _clean(cur.sma_20)
         sma50 = _clean(cur.sma_50)
         sma200 = _clean(cur.sma_200)
