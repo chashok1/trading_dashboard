@@ -522,6 +522,7 @@ ALTER TABLE IF EXISTS hist_tw DROP COLUMN IF EXISTS sector;
 ALTER TABLE IF EXISTS hist_tw DROP COLUMN IF EXISTS beta;
 ALTER TABLE IF EXISTS hist_tw DROP COLUMN IF EXISTS fcf_per_share;
 ALTER TABLE IF EXISTS hist_tw DROP COLUMN IF EXISTS market_cap_str;
+ALTER TABLE IF EXISTS hist_to DROP COLUMN IF EXISTS market_cap_num;
 
 -- -----------------------------------------------------
 -- hist_to  <- TO tab (TOS Other - fundamentals)
@@ -530,7 +531,6 @@ CREATE TABLE IF NOT EXISTS hist_to (
     snapshot_date    DATE NOT NULL,
     symbol           TEXT NOT NULL,
     sequence         INTEGER NOT NULL DEFAULT 0,
-    market_cap_num   NUMERIC,
     export_date      DATE,
     export_time      TEXT,
     beta             NUMERIC,
