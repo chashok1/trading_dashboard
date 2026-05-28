@@ -1135,6 +1135,9 @@ BEGIN
   END IF;
 END $$;
 
+-- Drop snapshot_date column if it exists (was added outside baseline.sql, not used)
+ALTER TABLE drv_quote DROP COLUMN IF EXISTS snapshot_date;
+
 CREATE INDEX IF NOT EXISTS ix_drv_quote_symbol ON drv_quote(symbol);
 
 -- -----------------------------------------------------
