@@ -783,6 +783,9 @@ def load_tw(session: Session, wb: Workbook, source_file: str) -> tuple[int, int,
     mapping = {
         "sheet": "TW",
         "table": "hist_tw",
+        "date_source_col": "Export Date",
+        "seq_source_col": "Export Time",
+        "symbol_source_col": "Symbol",
         "columns": [
             ("Export Date", "export_date", to_date),
             ("Date", "export_date", to_date),
