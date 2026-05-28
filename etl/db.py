@@ -233,18 +233,24 @@ def insert_upsert(session: Session, table_name: str,
         if update_cols:
             set_dict = {col: getattr(stmt.excluded, col) for col in update_cols}
             if has_export_time:
-                # Only update if export_time is different OR source_file is NULL (reprocessing case).
-                # This allows reprocessing to update source_file even when data hasn't changed.
+                # Check if source_file is in the columns being updated.
+                # If so, always update (remove WHERE clause) to allow reprocessing to refresh source_file.
+                # Otherwise, only update if export_time is different.
                 safe_table = safe_ident(table_name, {table.name})
-                where_clause = text(
-                    f"EXCLUDED.export_time IS DISTINCT FROM {safe_table}.export_time "
-                    f"OR {safe_table}.source_file IS NULL"
-                )
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=pk_list,
-                    set_=set_dict,
-                    where=where_clause,
-                )
+                if "source_file" in set_dict:
+                    # Always update when source_file is present (reprocessing case)
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=pk_list,
+                        set_=set_dict,
+                    )
+                else:
+                    # Conditionally update if export_time differs
+                    where_clause = text(f"EXCLUDED.export_time IS DISTINCT FROM {safe_table}.export_time")
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=pk_list,
+                        set_=set_dict,
+                        where=where_clause,
+                    )
             else:
                 # No export_time: always update
                 stmt = stmt.on_conflict_do_update(
