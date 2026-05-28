@@ -1954,6 +1954,95 @@ CREATE INDEX IF NOT EXISTS ix_drv_cat_atomic_input_tos_symbol ON drv_cat_atomic_
 CREATE INDEX IF NOT EXISTS ix_drv_actionable_tos_symbol ON drv_actionable(tos_symbol);
 
 -- =====================================================
+-- Migration: Drop symbol column from all drv_* tables (use tos_symbol only)
+-- =====================================================
+
+-- First, populate tos_symbol from symbol where it's NULL (for existing data)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_quote') THEN
+        UPDATE drv_quote SET tos_symbol = symbol WHERE tos_symbol IS NULL;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_ma') THEN
+        UPDATE drv_ma SET tos_symbol = symbol WHERE tos_symbol IS NULL;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_dash') THEN
+        UPDATE drv_dash SET tos_symbol = symbol WHERE tos_symbol IS NULL;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_stks') THEN
+        UPDATE drv_stks SET tos_symbol = symbol WHERE tos_symbol IS NULL;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_trig') THEN
+        UPDATE drv_trig SET tos_symbol = symbol WHERE tos_symbol IS NULL;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_cs_realized_gain') THEN
+        UPDATE drv_cs_realized_gain SET tos_symbol = symbol WHERE tos_symbol IS NULL;
+    END IF;
+END $$;
+
+-- Drop symbol column from all drv_* tables
+DO $$
+DECLARE
+    drv_tables TEXT[] := ARRAY['drv_ma', 'drv_dash', 'drv_stks', 'drv_dash_summary',
+                                'drv_trig', 'drv_rule_outcome', 'drv_actionable',
+                                'drv_cat_atomic_input', 'drv_realized_gain', 'drv_cs_realized_gain',
+                                'drv_td', 'drv_tw', 'drv_to', 'drv_sss', 'drv_outlook_action',
+                                'drv_quote', 'drv_missing_symbols'];
+    tbl TEXT;
+BEGIN
+    FOREACH tbl IN ARRAY drv_tables LOOP
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = tbl) THEN
+            IF EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_name = tbl AND column_name = 'symbol') THEN
+                EXECUTE 'ALTER TABLE ' || tbl || ' DROP COLUMN symbol';
+            END IF;
+        END IF;
+    END LOOP;
+END $$;
+
+-- Update PKs and indexes to use tos_symbol instead of symbol
+DO $$
+BEGIN
+    -- drv_quote: PK was (as_of_date, symbol), now (as_of_date, tos_symbol)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_quote') THEN
+        ALTER TABLE drv_quote DROP CONSTRAINT IF EXISTS drv_quote_pkey;
+        ALTER TABLE drv_quote ADD PRIMARY KEY (as_of_date, tos_symbol);
+        DROP INDEX IF EXISTS ix_drv_quote_symbol;
+    END IF;
+
+    -- drv_ma: PK was (as_of_date, symbol), now (as_of_date, tos_symbol)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_ma') THEN
+        ALTER TABLE drv_ma DROP CONSTRAINT IF EXISTS drv_ma_pkey;
+        ALTER TABLE drv_ma ADD PRIMARY KEY (as_of_date, tos_symbol);
+    END IF;
+
+    -- drv_dash: PK was (as_of_date, symbol), now (as_of_date, tos_symbol)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_dash') THEN
+        ALTER TABLE drv_dash DROP CONSTRAINT IF EXISTS drv_dash_pkey;
+        ALTER TABLE drv_dash ADD PRIMARY KEY (as_of_date, tos_symbol);
+    END IF;
+
+    -- drv_stks: PK was (as_of_date, symbol), now (as_of_date, tos_symbol)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_stks') THEN
+        ALTER TABLE drv_stks DROP CONSTRAINT IF EXISTS drv_stks_pkey;
+        ALTER TABLE drv_stks ADD PRIMARY KEY (as_of_date, tos_symbol);
+    END IF;
+
+    -- drv_trig: PK was (as_of_date, symbol, composite_rule_code), now (as_of_date, tos_symbol, composite_rule_code)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_trig') THEN
+        ALTER TABLE drv_trig DROP CONSTRAINT IF EXISTS drv_trig_pkey;
+        ALTER TABLE drv_trig ADD PRIMARY KEY (as_of_date, tos_symbol, composite_rule_code);
+    END IF;
+
+    -- drv_cs_realized_gain: PK was (as_of_date, account, symbol), now (as_of_date, account, tos_symbol)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_cs_realized_gain') THEN
+        ALTER TABLE drv_cs_realized_gain DROP CONSTRAINT IF EXISTS drv_cs_realized_gain_pkey;
+        ALTER TABLE drv_cs_realized_gain ADD PRIMARY KEY (as_of_date, account, tos_symbol);
+    END IF;
+
+END $$;
+
+-- =====================================================
 -- 9. Views and functions
 -- =====================================================
 
@@ -1963,7 +2052,7 @@ CREATE INDEX IF NOT EXISTS ix_drv_actionable_tos_symbol ON drv_actionable(tos_sy
 CREATE OR REPLACE FUNCTION v_dash(p_as_of_date DATE)
 RETURNS SETOF drv_dash LANGUAGE sql STABLE AS $$
     SELECT * FROM drv_dash WHERE as_of_date = p_as_of_date
-    ORDER BY section, symbol;
+    ORDER BY section, tos_symbol;
 $$;
 
 -- -----------------------------------------------------
@@ -1971,7 +2060,7 @@ $$;
 -- -----------------------------------------------------
 CREATE OR REPLACE FUNCTION v_stks(p_as_of_date DATE)
 RETURNS SETOF drv_stks LANGUAGE sql STABLE AS $$
-    SELECT * FROM drv_stks WHERE as_of_date = p_as_of_date ORDER BY symbol;
+    SELECT * FROM drv_stks WHERE as_of_date = p_as_of_date ORDER BY tos_symbol;
 $$;
 
 -- -----------------------------------------------------
@@ -1979,7 +2068,7 @@ $$;
 -- -----------------------------------------------------
 CREATE OR REPLACE FUNCTION v_ma(p_as_of_date DATE)
 RETURNS SETOF drv_ma LANGUAGE sql STABLE AS $$
-    SELECT * FROM drv_ma WHERE as_of_date = p_as_of_date ORDER BY symbol;
+    SELECT * FROM drv_ma WHERE as_of_date = p_as_of_date ORDER BY tos_symbol;
 $$;
 
 -- -----------------------------------------------------

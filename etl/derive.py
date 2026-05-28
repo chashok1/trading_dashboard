@@ -469,7 +469,7 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
     """
     sql = text("""
     INSERT INTO drv_ma (
-        as_of_date, symbol, tos_symbol, description, sector, asset_class, sub_asset_class, equity_sector,
+        as_of_date, tos_symbol, description, sector, asset_class, sub_asset_class, equity_sector,
         tl_date, last_price, rsi, imp_volatility, volume, vlm_projected,
         td_date, iv_percentile, hv_percentile, range_compression, d_iv_to_hv, d_vlt_caution,
         a_trend_value, a_trade_value, a_bb_top, a_bb_bottom, a_bb_streak,
@@ -622,7 +622,7 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         )
         GROUP BY tos_symbol
     )
-    SELECT (SELECT d FROM p) AS as_of_date, s.s AS symbol, s.s AS tos_symbol,
+    SELECT (SELECT d FROM p) AS as_of_date, s.s AS tos_symbol,
         rs.description,
         rs.equity_sector,
         rs.asset_class, rs.sub_asset_class, rs.equity_sector,
@@ -822,7 +822,7 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
                      last_price, net_chng, pct_change,
                      open_price, high_price, low_price,
                      rsi, imp_volatility, export_date, export_time, loaded_at)
-                VALUES (:as_of_date, :symbol,
+                VALUES (:as_of_date, :tos_symbol,
                         :last_price, :net_chng, :pct_change,
                         :open_price, :high_price, :low_price,
                         :rsi, :imp_volatility, :export_date, :export_time, :loaded_at)
@@ -884,7 +884,7 @@ def _derive_dash_impl(session: Session, as_of_date: date, run_id: int) -> int:
     th_high = _f("dash_threshold_high_pct",  10.0)
 
     rows = session.execute(text("""
-        SELECT symbol, tos_symbol, description, last_price,
+        SELECT tos_symbol, description, last_price,
                a_trend_value, a_trade_value, pct_brr,
                rr_outlook, rr_brr, call_outlook, sector, asset_class
         FROM drv_ma WHERE as_of_date = :d
@@ -908,8 +908,7 @@ def _derive_dash_impl(session: Session, as_of_date: date, run_id: int) -> int:
                 zone = None
         out.append({
             "as_of_date": as_of_date,
-            "section": _classify_section(r["symbol"] or ""),
-            "symbol": r["symbol"],
+            "section": _classify_section(r["tos_symbol"] or ""),
             "tos_symbol": r["tos_symbol"],
             "description": r["description"],
             "last_price": r["last_price"],
@@ -1492,7 +1491,6 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
 
         out.append({
             "as_of_date": as_of_date,
-            "symbol": r["symbol"],
             "tos_symbol": r["tos_symbol"],
             "description": r["description"],
             "sector": r["sector"],
@@ -1568,7 +1566,6 @@ def _derive_cs_realized_gain_impl(session: Session, as_of_date: date, run_id: in
         records.append({
             "as_of_date":         as_of_date,
             "account":            account,
-            "symbol":             symbol,
             "tos_symbol":         tos_symbol,
             "realized_gain":      realized,
             "shares_sold":        float(qty) if qty else None,
@@ -1580,10 +1577,9 @@ def _derive_cs_realized_gain_impl(session: Session, as_of_date: date, run_id: in
         session.execute(
             text("""
                 INSERT INTO drv_cs_realized_gain
-                    (as_of_date, account, symbol, tos_symbol, realized_gain, shares_sold, avg_cost_per_share, proceeds)
-                VALUES (:as_of_date, :account, :symbol, :tos_symbol, :realized_gain, :shares_sold, :avg_cost_per_share, :proceeds)
-                ON CONFLICT (as_of_date, account, symbol) DO UPDATE SET
-                    tos_symbol         = EXCLUDED.tos_symbol,
+                    (as_of_date, account, tos_symbol, realized_gain, shares_sold, avg_cost_per_share, proceeds)
+                VALUES (:as_of_date, :account, :tos_symbol, :realized_gain, :shares_sold, :avg_cost_per_share, :proceeds)
+                ON CONFLICT (as_of_date, account, tos_symbol) DO UPDATE SET
                     realized_gain      = EXCLUDED.realized_gain,
                     shares_sold        = EXCLUDED.shares_sold,
                     avg_cost_per_share = EXCLUDED.avg_cost_per_share,
@@ -1768,7 +1764,7 @@ def _derive_missing_symbols_impl(session: Session, as_of_date: date, run_id: int
     """), {"d": as_of_date}).mappings().all()
     out = [{
         "as_of_date":    as_of_date,
-        "symbol":        r["symbol"],
+        "tos_symbol":    r["symbol"],
         "found_in":      r["found_in"],
         "source_run_id": run_id,
     } for r in rows]
@@ -2027,7 +2023,6 @@ def _derive_trig_impl(session: Session, as_of_date: date, run_id: int) -> int:
                 score += w
             out_rows.append({
                 "as_of_date":          as_of_date,
-                "symbol":              ma["symbol"],
                 "tos_symbol":          ma["tos_symbol"],
                 "composite_rule_code": code,
                 "score":               float(score),
