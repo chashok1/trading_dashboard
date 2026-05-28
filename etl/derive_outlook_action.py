@@ -319,9 +319,11 @@ def _state_dense(session: Session, table: str, date_col: str,
     """Effective state at as_of_date for a dense source (exact-match on date)."""
     mod_col = _TABLE_MODIFIER_COL.get(table, None)
     mod_expr = f"COALESCE({mod_col}, '')" if mod_col else "''"
+    # hist_rr uses tos_symbol instead of symbol
+    sym_col = "tos_symbol" if table == "hist_rr" else "symbol"
     rows = session.execute(
         text(f"""
-            SELECT symbol, outlook, {mod_expr} AS modifier
+            SELECT {sym_col}, outlook, {mod_expr} AS modifier
               FROM {table}
              WHERE {date_col} = '{as_of_date}'
         """)).fetchall()

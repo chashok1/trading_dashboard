@@ -95,10 +95,10 @@ dq AS (
 ),
 rr AS (
     SELECT DISTINCT ON (COALESCE(tos_symbol, symbol))
-           COALESCE(tos_symbol, symbol) AS symbol,
+           tos_symbol AS symbol,
            buy_trade, sell_trade
     FROM hist_rr WHERE snapshot_date <= (SELECT d FROM p)
-    ORDER BY COALESCE(tos_symbol, symbol), snapshot_date DESC
+    ORDER BY tos_symbol, snapshot_date DESC
 )
 SELECT s.s AS symbol,
        -- hist_td (rule input bases)

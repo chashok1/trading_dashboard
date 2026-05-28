@@ -31,7 +31,7 @@ syms AS (
     UNION SELECT symbol FROM hist_td   WHERE snapshot_date <= (SELECT d FROM p)
     UNION SELECT symbol FROM hist_tw   WHERE snapshot_date <= (SELECT d FROM p)
     UNION SELECT symbol FROM hist_y    WHERE snapshot_date <= (SELECT d FROM p)
-    UNION SELECT symbol FROM hist_rr   WHERE snapshot_date <= (SELECT d FROM p)
+    UNION SELECT tos_symbol FROM hist_rr   WHERE snapshot_date <= (SELECT d FROM p)
     UNION SELECT symbol FROM hist_ii   WHERE snapshot_date <= (SELECT d FROM p)
     UNION SELECT symbol FROM hist_call WHERE snapshot_date <= (SELECT d FROM p)
     UNION SELECT symbol FROM hist_etf  WHERE snapshot_date <= (SELECT d FROM p)
@@ -60,7 +60,7 @@ JOIN_PATTERNS = {
     "hist_tl":  _hist_join("hist_tl",  "tl"),
     "hist_td":  _hist_join("hist_td",  "td"),
     "hist_tw":  _hist_join("hist_tw",  "tw"),
-    "hist_rr":  _hist_join("hist_rr",  "rr"),
+    "hist_rr":  _hist_join("hist_rr",  "rr", key="tos_symbol"),
     "hist_ii":  _hist_join("hist_ii",  "ii"),
     "hist_call":_hist_join("hist_call","hcall"),
     "hist_etf": _hist_join("hist_etf", "hetf"),

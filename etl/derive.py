@@ -489,7 +489,7 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         SELECT DISTINCT s FROM (
             SELECT ticker AS s FROM ref_sector
             UNION SELECT symbol FROM hist_tl WHERE snapshot_date <= (SELECT d FROM p)
-            UNION SELECT COALESCE(tos_symbol, symbol) FROM hist_rr WHERE snapshot_date <= (SELECT d FROM p)
+            UNION SELECT tos_symbol FROM hist_rr WHERE snapshot_date <= (SELECT d FROM p)
             UNION SELECT COALESCE(tos_symbol, symbol) FROM hist_y  WHERE snapshot_date <= (SELECT d FROM p)
             UNION SELECT symbol FROM hist_call WHERE snapshot_date <= (SELECT d FROM p)
             UNION SELECT symbol FROM hist_etf  WHERE snapshot_date <= (SELECT d FROM p)
@@ -557,11 +557,11 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         ORDER BY h.symbol, h.snapshot_date DESC, h.sequence DESC
     ),
     rr AS (
-        SELECT DISTINCT ON (COALESCE(tos_symbol, symbol)) COALESCE(tos_symbol, symbol) AS symbol,
+        SELECT DISTINCT ON (tos_symbol) tos_symbol AS symbol,
                snapshot_date AS rr_date,
                buy_trade, sell_trade, outlook
         FROM hist_rr WHERE snapshot_date <= (SELECT d FROM p)
-        ORDER BY COALESCE(tos_symbol, symbol), snapshot_date DESC
+        ORDER BY tos_symbol, snapshot_date DESC
     ),
     cl AS (
         SELECT DISTINCT ON (h.symbol) h.symbol,
@@ -1749,7 +1749,7 @@ def _derive_missing_symbols_impl(session: Session, as_of_date: date, run_id: int
         WITH ma AS (SELECT symbol FROM drv_ma WHERE as_of_date = :d),
         seen AS (
             SELECT symbol, 'tl'   AS src FROM hist_tl   WHERE snapshot_date = :d
-            UNION SELECT COALESCE(tos_symbol, symbol), 'rr'   FROM hist_rr   WHERE snapshot_date = :d
+            UNION SELECT tos_symbol, 'rr'   FROM hist_rr   WHERE snapshot_date = :d
             UNION SELECT symbol, 'call' FROM hist_call WHERE snapshot_date = :d
             UNION SELECT symbol, 'etf'  FROM hist_etf  WHERE snapshot_date = :d
             UNION SELECT symbol, 'ii'   FROM hist_ii   WHERE snapshot_date = :d
@@ -2076,21 +2076,12 @@ def _populate_y_tos_symbol(session: Session, as_of_date: date) -> int:
 
 
 def _populate_rr_tos_symbol(session: Session, as_of_date: date) -> int:
-    """Populate tos_symbol in hist_rr by mapping rr_name via RRT."""
-    rows = session.execute(text("""
-        SELECT DISTINCT symbol FROM hist_rr
-        WHERE snapshot_date = :d AND tos_symbol IS NULL
-    """), {"d": as_of_date}).fetchall()
+    """No-op: tos_symbol now populated directly from source file (Index column).
 
-    updated = 0
-    for (symbol,) in rows:
-        tos_sym = _get_tos_symbol(session, symbol, "rr_name")
-        session.execute(text("""
-            UPDATE hist_rr SET tos_symbol = :tos WHERE snapshot_date = :d AND symbol = :sym
-        """), {"tos": tos_sym, "d": as_of_date, "sym": symbol})
-        updated += 1
-
-    return updated
+    Kept for backwards compatibility but always returns 0 since the RR loader
+    now maps Index -> tos_symbol directly in etl/mappings.py.
+    """
+    return 0
 
 
 def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: int) -> int:

@@ -402,7 +402,7 @@ def get_actionable_source_data(
     with session_scope() as s:
         rr = s.execute(text("""
             SELECT buy_trade, sell_trade, snapshot_date FROM hist_rr
-            WHERE symbol = :sym AND snapshot_date <= :d
+            WHERE tos_symbol = :sym AND snapshot_date <= :d
             ORDER BY snapshot_date DESC LIMIT 1
         """), {"sym": sym, "d": d}).first()
         if rr:
