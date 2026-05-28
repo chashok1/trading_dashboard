@@ -289,7 +289,8 @@ HIST_MAPS = {
         symbol_source_col="Index",
         columns=[
             ("Index",          "symbol",         to_text),
-            ("RR Date",        "snapshot_date",  to_date),
+            ("Index",          "tos_symbol",     to_text),
+            ("RR Date",        "market_close",   to_date),
             ("Prev Close",     "last_price",     to_numeric),
             ("BUY TRADE",      "buy_trade",      to_numeric),
             ("SELL TRADE",     "sell_trade",     to_numeric),
