@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from etl.db import get_table, replace_for_date
 from etl.rule_groups import eval_rule_group
 from etl import ma_codegen
+from etl.warnings import clear_screen_warnings, add_warning
 
 # Shared meta_derived_run helpers + the _wrap decorator. Extracted to
 # etl/_derive_common.py so derive.py and derive_v2.py can both use them
@@ -2076,12 +2077,60 @@ def _populate_y_tos_symbol(session: Session, as_of_date: date) -> int:
 
 
 def _populate_rr_tos_symbol(session: Session, as_of_date: date) -> int:
-    """No-op: tos_symbol now populated directly from source file (Index column).
+    """Populate tos_symbol in hist_rr by mapping rr_name via RRT.
 
-    Kept for backwards compatibility but always returns 0 since the RR loader
-    now maps Index -> tos_symbol directly in etl/mappings.py.
+    Unlike other tables, RR does NOT fallback to original symbol if not found.
+    Instead, keeps tos_symbol NULL and creates a warning for manual intervention.
     """
-    return 0
+    # Clear previous warnings for this date
+    clear_screen_warnings(session, "data-quality", as_of_date)
+
+    # Find all distinct RR symbols with NULL tos_symbol
+    rows = session.execute(text("""
+        SELECT DISTINCT symbol FROM hist_rr
+        WHERE snapshot_date = :d AND tos_symbol IS NULL
+    """), {"d": as_of_date}).fetchall()
+
+    unmapped_count = 0
+    for (symbol,) in rows:
+        # Try to find the RR name in ref_rrt
+        row = session.execute(text("""
+            SELECT tos_ticker FROM ref_rrt WHERE rr_name = :sym LIMIT 1
+        """), {"sym": symbol}).first()
+
+        if row and row[0]:
+            # Found in ref_rrt - update tos_symbol
+            tos_sym = row[0]
+            session.execute(text("""
+                UPDATE hist_rr SET tos_symbol = :tos
+                WHERE snapshot_date = :d AND symbol = :sym
+            """), {"tos": tos_sym, "d": as_of_date, "sym": symbol})
+        else:
+            # NOT found in ref_rrt - keep tos_symbol NULL and create warning
+            unmapped_count += 1
+            add_warning(
+                session,
+                screen="data-quality",
+                message=f"RR symbol '{symbol}' not found in ref_rrt - tos_symbol is NULL",
+                as_of_date=as_of_date,
+                symbol=symbol,
+                severity="error",
+                code="rr_symbol_unmapped"
+            )
+
+    if unmapped_count > 0:
+        # Summary warning
+        add_warning(
+            session,
+            screen="data-quality",
+            message=f"RR: {unmapped_count} symbol(s) not found in ref_rrt mapping",
+            as_of_date=as_of_date,
+            severity="error",
+            code="rr_unmapped_count"
+        )
+        log.warning(f"hist_rr: {unmapped_count} symbols not mapped to tos_symbol")
+
+    return unmapped_count
 
 
 def _populate_tos_table_tos_symbol(session: Session, table: str, as_of_date: date) -> int:
