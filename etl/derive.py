@@ -705,7 +705,7 @@ _QUOTE_FIELDS = (
 
 
 def _latest_per_symbol(session: Session, table: str, as_of_date: date,
-                       column_map: dict) -> dict:
+                       column_map: dict, symbol_expr: str = 'symbol') -> dict:
     """Return {symbol: {drv_field: value, ..., 'loaded_at': ts, 'snapshot_date': d, 'export_date': d, 'export_time': t}} for the latest
     snapshot ≤ as_of_date in `table`. Per source PK is (snapshot_date, symbol,
     sequence); within the latest snapshot_date we order by loaded_at DESC,
@@ -713,11 +713,14 @@ def _latest_per_symbol(session: Session, table: str, as_of_date: date,
 
     `column_map` maps drv_quote field name -> source-table column name (or
     None if the source doesn't expose that field).
+
+    `symbol_expr` is the SQL expression for the symbol column (default 'symbol').
+    Use 'COALESCE(tos_symbol, symbol)' for hist_y to normalize to TOS symbol.
     """
     # Build SELECT list aliased to drv_quote field names so downstream code
     # can use a single shape. Columns the source doesn't have are selected as
     # NULL literals.
-    select_parts = ['symbol', 'snapshot_date', 'loaded_at', 'export_date', 'export_time']
+    select_parts = [f'{symbol_expr} AS symbol', 'snapshot_date', 'loaded_at', 'export_date', 'export_time']
     for drv_field, src_col in column_map.items():
         if src_col is None:
             select_parts.append(f'NULL::NUMERIC AS {drv_field}')
@@ -726,10 +729,10 @@ def _latest_per_symbol(session: Session, table: str, as_of_date: date,
     sel = ', '.join(select_parts)
 
     sql = text(f"""
-        SELECT DISTINCT ON (symbol) {sel}
+        SELECT DISTINCT ON ({symbol_expr}) {sel}
           FROM {table}
          WHERE snapshot_date <= :d
-         ORDER BY symbol, snapshot_date DESC, loaded_at DESC, sequence DESC
+         ORDER BY {symbol_expr}, snapshot_date DESC, loaded_at DESC, sequence DESC
     """)
     out = {}
     for r in session.execute(sql, {"d": as_of_date}).mappings():
@@ -772,7 +775,7 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
         'imp_volatility':  'imp_volatility',
     }
 
-    rows_y  = _latest_per_symbol(session, 'hist_y',  as_of_date, cmap_y)
+    rows_y  = _latest_per_symbol(session, 'hist_y',  as_of_date, cmap_y, symbol_expr='COALESCE(tos_symbol, symbol)')
     rows_tl = _latest_per_symbol(session, 'hist_tl', as_of_date, cmap_tl)
     rows_td = _latest_per_symbol(session, 'hist_td', as_of_date, cmap_td)
 
