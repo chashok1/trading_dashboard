@@ -212,14 +212,14 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     for sym in my_stocks:
         by_sym.setdefault(sym, [])
 
-    # Drv_stks (rules engine fires) keyed by symbol
+    # Drv_stks (rules engine fires) keyed by tos_symbol
     stks = {}
     for r in session.execute(text("""
-        SELECT symbol, description, sector, asset_class, triggered_composite_ids
+        SELECT tos_symbol, description, sector, asset_class, triggered_composite_ids
         FROM drv_stks
         WHERE as_of_date = :d
     """), {"d": as_of_date}).mappings().all():
-        stks[r["symbol"]] = dict(r)
+        stks[r["tos_symbol"]] = dict(r)
 
     # Load action-type rule groups so we can fold rule-engine signals into the
     # actionable mix alongside the outlook-source signals.  A group fires for
@@ -243,7 +243,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
 
     insert_sql = text("""
         INSERT INTO drv_actionable
-          (as_of_date, symbol, description, sector,
+          (as_of_date, tos_symbol, description, sector,
            consolidated_action, winning_source, winning_priority,
            position_category, asset_class, source_asset_class, target_min_dollar, target_max_dollar,
            units_dollar, maintain_min, suggested_target_dollar,
@@ -499,4 +499,4 @@ def derive_actionable(session: Session, as_of_date: date,
         return n
     except Exception as e:
         _close_drv_run(session, rid, rows_built=0, status="error", error_msg=str(e)[:500])
-        raise
+  

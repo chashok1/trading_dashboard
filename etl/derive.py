@@ -374,7 +374,7 @@ def _derive_td_impl(session: Session, as_of_date: date, run_id: int) -> int:
 
         out.append({
             "snapshot_date":     r["snapshot_date"],
-            "symbol":            sym,
+            "tos_symbol":        sym,
             "sequence":          r["sequence"],
             "bb_bot_15d":        bb_bot_15d,
             "bb_bot_7d":         bb_bot_7d,
@@ -421,10 +421,10 @@ def _derive_to_impl(session: Session, as_of_date: date, run_id: int) -> int:
     Format: "71,783 M" → 71,783,000,000 (value in dollars).
     """
     sql = text("""
-    INSERT INTO drv_to (snapshot_date, symbol, sequence, market_cap_num, source_run_id)
+    INSERT INTO drv_to (snapshot_date, tos_symbol, sequence, market_cap_num, source_run_id)
     SELECT
         snapshot_date,
-        symbol,
+        tos_symbol,
         COALESCE(sequence, 0),
         CASE
             WHEN market_cap_str IS NOT NULL
@@ -444,7 +444,7 @@ def _derive_to_impl(session: Session, as_of_date: date, run_id: int) -> int:
         :run
     FROM hist_to
     WHERE snapshot_date = :d
-    ON CONFLICT (snapshot_date, symbol, sequence) DO UPDATE SET
+    ON CONFLICT (snapshot_date, tos_symbol, sequence) DO UPDATE SET
         market_cap_num = EXCLUDED.market_cap_num,
         source_run_id = EXCLUDED.source_run_id
     """)

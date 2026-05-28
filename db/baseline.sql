@@ -2054,7 +2054,79 @@ BEGIN
         ALTER TABLE drv_cs_realized_gain ADD PRIMARY KEY (as_of_date, account, tos_symbol);
     END IF;
 
+    -- drv_td: PK was (snapshot_date, symbol, sequence), now (snapshot_date, tos_symbol, sequence)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_td') THEN
+        ALTER TABLE drv_td DROP CONSTRAINT IF EXISTS drv_td_pkey;
+        ALTER TABLE drv_td ADD PRIMARY KEY (snapshot_date, tos_symbol, sequence);
+    END IF;
+
+    -- drv_tw: PK was (snapshot_date, symbol, sequence), now (snapshot_date, tos_symbol, sequence)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_tw') THEN
+        ALTER TABLE drv_tw DROP CONSTRAINT IF EXISTS drv_tw_pkey;
+        ALTER TABLE drv_tw ADD PRIMARY KEY (snapshot_date, tos_symbol, sequence);
+    END IF;
+
+    -- drv_to: PK was (snapshot_date, symbol, sequence), now (snapshot_date, tos_symbol, sequence)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_to') THEN
+        ALTER TABLE drv_to DROP CONSTRAINT IF EXISTS drv_to_pkey;
+        ALTER TABLE drv_to ADD PRIMARY KEY (snapshot_date, tos_symbol, sequence);
+    END IF;
+
+    -- drv_sss: PK was (snapshot_date, symbol), now (snapshot_date, tos_symbol)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_sss') THEN
+        ALTER TABLE drv_sss DROP CONSTRAINT IF EXISTS drv_sss_pkey;
+        ALTER TABLE drv_sss ADD PRIMARY KEY (snapshot_date, tos_symbol);
+    END IF;
+
+    -- drv_actionable: PK was (as_of_date, symbol), now (as_of_date, tos_symbol)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_actionable') THEN
+        ALTER TABLE drv_actionable DROP CONSTRAINT IF EXISTS drv_actionable_pkey;
+        ALTER TABLE drv_actionable ADD PRIMARY KEY (as_of_date, tos_symbol);
+    END IF;
+
+    -- drv_outlook_action: PK was (as_of_date, symbol, source_code), now (as_of_date, tos_symbol, source_code)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_outlook_action') THEN
+        ALTER TABLE drv_outlook_action DROP CONSTRAINT IF EXISTS drv_outlook_action_pkey;
+        ALTER TABLE drv_outlook_action ADD PRIMARY KEY (as_of_date, tos_symbol, source_code);
+    END IF;
+
+    -- drv_realized_gain: PK was (source, account, symbol, sell_date, shares_sold), now uses tos_symbol
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_realized_gain') THEN
+        ALTER TABLE drv_realized_gain DROP CONSTRAINT IF EXISTS drv_realized_gain_pkey;
+        ALTER TABLE drv_realized_gain ADD PRIMARY KEY (source, account, tos_symbol, sell_date, shares_sold);
+    END IF;
+
+    -- drv_rule_outcome: PK was (rule_id, as_of_date, symbol), now (rule_id, as_of_date, tos_symbol)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_rule_outcome') THEN
+        ALTER TABLE drv_rule_outcome DROP CONSTRAINT IF EXISTS drv_rule_outcome_pkey;
+        ALTER TABLE drv_rule_outcome ADD PRIMARY KEY (rule_id, as_of_date, tos_symbol);
+    END IF;
+
+    -- drv_missing_symbols: PK was (as_of_date, symbol), now (as_of_date, tos_symbol)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_missing_symbols') THEN
+        ALTER TABLE drv_missing_symbols DROP CONSTRAINT IF EXISTS drv_missing_symbols_pkey;
+        ALTER TABLE drv_missing_symbols ADD PRIMARY KEY (as_of_date, tos_symbol);
+    END IF;
+
+    -- drv_cat_atomic_input: PK was (as_of_date, symbol), now (as_of_date, tos_symbol)
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'drv_cat_atomic_input') THEN
+        ALTER TABLE drv_cat_atomic_input DROP CONSTRAINT IF EXISTS drv_cat_atomic_input_pkey;
+        ALTER TABLE drv_cat_atomic_input ADD PRIMARY KEY (as_of_date, tos_symbol);
+    END IF;
+
 END $$;
+
+-- Recreate indexes on tos_symbol for all drv_* tables (originals on `symbol`
+-- were cascade-dropped by the DROP COLUMN above)
+CREATE INDEX IF NOT EXISTS ix_drv_realized_gain_tos_sym ON drv_realized_gain(tos_symbol, sell_date);
+CREATE INDEX IF NOT EXISTS ix_drv_td_tos_symbol         ON drv_td(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_drv_tw_tos_symbol         ON drv_tw(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_drv_to_tos_symbol         ON drv_to(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_drv_sss_tos_symbol        ON drv_sss(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_drv_quote_tos_symbol      ON drv_quote(tos_symbol);
+CREATE INDEX IF NOT EXISTS ix_drv_ma_tos_symbol         ON drv_ma(tos_symbol, as_of_date);
+CREATE INDEX IF NOT EXISTS ix_drv_trig_tos_symbol       ON drv_trig(tos_symbol, as_of_date);
+CREATE INDEX IF NOT EXISTS ix_drv_outlook_action_tos_sym ON drv_outlook_action(tos_symbol, as_of_date);
 
 -- =====================================================
 -- 9. Views and functions
@@ -2094,11 +2166,11 @@ RETURNS SETOF drv_dash_summary LANGUAGE sql STABLE AS $$
 $$;
 
 -- -----------------------------------------------------
--- v_symbol_history(p_symbol) - all snapshots for a single symbol from drv_ma
+-- v_symbol_history(p_symbol) - all snapshots for a single tos_symbol from drv_ma
 -- -----------------------------------------------------
 CREATE OR REPLACE FUNCTION v_symbol_history(p_symbol TEXT)
 RETURNS SETOF drv_ma LANGUAGE sql STABLE AS $$
-    SELECT * FROM drv_ma WHERE symbol = p_symbol ORDER BY as_of_date DESC;
+    SELECT * FROM drv_ma WHERE tos_symbol = p_symbol ORDER BY as_of_date DESC;
 $$;
 
 -- -----------------------------------------------------
@@ -2126,7 +2198,7 @@ CREATE OR REPLACE VIEW v_available_dates AS
 -- -----------------------------------------------------
 CREATE OR REPLACE FUNCTION v_outlook_changes(p_as_of_date DATE)
 RETURNS TABLE (
-    symbol            TEXT,
+    tos_symbol        TEXT,
     n_sources_changed INTEGER,
     sources           TEXT[],
     actions           TEXT[],
@@ -2172,7 +2244,7 @@ RETURNS TABLE (
         FROM drv_outlook_action
     ),
     ranked AS (
-        SELECT doa.symbol, doa.source_code, doa.action, doa.action_reason, doa.weight_delta, doa.held_today,
+        SELECT doa.tos_symbol, doa.source_code, doa.action, doa.action_reason, doa.weight_delta, doa.held_today,
                CASE doa.action
                    WHEN 'REMOVE'   THEN 1
                    WHEN 'REDUCE'   THEN 2
@@ -2187,10 +2259,10 @@ RETURNS TABLE (
           AND doa.action <> 'HOLD'
     ),
     dominant AS (
-        SELECT DISTINCT ON (symbol) symbol, action AS dominant_action
-        FROM ranked ORDER BY symbol, prio, source_code
+        SELECT DISTINCT ON (tos_symbol) tos_symbol, action AS dominant_action
+        FROM ranked ORDER BY tos_symbol, prio, source_code
     )
-    SELECT r.symbol,
+    SELECT r.tos_symbol,
            COUNT(*)::int                AS n_sources_changed,
            array_agg(r.source_code
                      ORDER BY r.prio, r.source_code) AS sources,
@@ -2202,9 +2274,9 @@ RETURNS TABLE (
            array_agg(r.action_reason
                      ORDER BY r.prio, r.source_code) AS reasons
     FROM ranked r
-    JOIN dominant d USING (symbol)
-    GROUP BY r.symbol, d.dominant_action
-    ORDER BY n_sources_changed DESC, r.symbol;
+    JOIN dominant d USING (tos_symbol)
+    GROUP BY r.tos_symbol, d.dominant_action
+    ORDER BY n_sources_changed DESC, r.tos_symbol;
 $$;
 
 -- -----------------------------------------------------
@@ -2407,72 +2479,3 @@ ALTER TABLE drv_cat_atomic_input
     ADD COLUMN IF NOT EXISTS bb_rng_strk_rule   NUMERIC,   -- QJ BBRngStrkRule
     ADD COLUMN IF NOT EXISTS bull_rr_action     NUMERIC,   -- QM BullRiskRng-Action
     ADD COLUMN IF NOT EXISTS not_bull_rr_action NUMERIC,   -- QN !BullRiskRng-Action
-    ADD COLUMN IF NOT EXISTS td_tn_bb_rr_action NUMERIC;   -- QR Td Tn BB Risk Range Rule Action
-
--- -----------------------------------------------------
--- 2026-05-27 (v2): JF–NP / QE–QT columns populated by the new
--- etl/derive_cat_atomic_input.py module.  See docs/drv_cat_atomic_input_logic.md.
--- Adds QH/QI (raw hist_td slopes, exposed for trace) and the seven QE–QT tail
--- Parm-lookup columns (action codes + descriptions + seq).  Idempotent.
--- -----------------------------------------------------
-ALTER TABLE drv_cat_atomic_input
-    ADD COLUMN IF NOT EXISTS a_bb_bot_slope          NUMERIC,   -- QH (mirror of hist_td.a_bb_bot_slope)
-    ADD COLUMN IF NOT EXISTS a_bb_top_slope          NUMERIC,   -- QI (mirror of hist_td.a_bb_top_slope)
-    ADD COLUMN IF NOT EXISTS tn_td_rule_action       NUMERIC,   -- QF  XLOOKUP(QE, Parm BS26:BS31 -> BV)
-    ADD COLUMN IF NOT EXISTS tn_td_rule_desc         TEXT,      -- QG  XLOOKUP(QE, Parm BS26:BS31 -> BT)
-    ADD COLUMN IF NOT EXISTS bb_rng_strk_action      NUMERIC,   -- QK  XLOOKUP(QJ, Parm BS51:BS59 -> BV)
-    ADD COLUMN IF NOT EXISTS bb_rng_strk_desc        TEXT,      -- QL  XLOOKUP(QJ, Parm BS51:BS59 -> BT)
-    ADD COLUMN IF NOT EXISTS risk_rng_longs_action   NUMERIC,   -- QO  conditional XLOOKUP via QJ/QM/QN
-    ADD COLUMN IF NOT EXISTS rr_bull_bear            TEXT,      -- QP  'B' / '!B' label
-    ADD COLUMN IF NOT EXISTS rr_desc                 TEXT,      -- QQ  XLOOKUP description
-    ADD COLUMN IF NOT EXISTS td_tn_bb_action_desc    TEXT,      -- QS  XLOOKUP(QR, Parm AO2:AO21 -> AQ)
-    ADD COLUMN IF NOT EXISTS td_tn_bb_action_seq     NUMERIC;   -- QT  XLOOKUP(QR, Parm AO2:AO21 -> AR)
-
--- -----------------------------------------------------
--- 2026-05-27 (v2): REMOVED — bb_bot_prev/bb_top_prev no longer loaded from hist_td.
--- They're now computed in derive_cat_atomic_input from prior snapshot's a_bb_bottom/a_bb_top.
--- The ALTER TABLE that added these columns to hist_td has been removed; they're only in
--- drv_cat_atomic_input as derived output.
-
--- 2026-05-28: Drop bb_bot_prev/bb_top_prev from drv_td (they're moved to drv_cat_atomic_input
--- via derive_cat_atomic_input computation). drv_td no longer needs to store them.
-ALTER TABLE IF EXISTS drv_td DROP COLUMN IF EXISTS bb_bot_prev;
-ALTER TABLE IF EXISTS drv_td DROP COLUMN IF EXISTS bb_top_prev;
-
--- 2026-05-27 (v3): dashboard single-cell scalars seeded into ref_param
--- under sheet='dash'.  Pattern lets future derivers read scalars by name
--- via `SELECT value FROM ref_param WHERE sheet='dash' AND param_name=...`.
--- Covers Excel cells like Dash!$AB$24 (intraday-vs-daily toggle).
--- See docs/drv_cat_atomic_input_logic.md § Dashboard scalars.
--- Idempotent via ON CONFLICT DO NOTHING.
--- -----------------------------------------------------
-INSERT INTO ref_param (sheet, param_name, value) VALUES
-    ('dash', 'intraday_toggle', 'Y')           -- Dash!$AB$24: 'Y' = use intraday DG/DK/DL,
-                                               -- 'N' = use daily CY/DC/DD.
-ON CONFLICT (sheet, param_name) DO NOTHING;
-
--- 2026-05-28: Add tos_symbol to all hist_* tables for symbol normalization
--- Maps each table's symbol to TOS/thinkOrSwim symbol via RRT (ref_rrt).
--- COALESCE(tos_symbol, symbol) used throughout derive layer for consistency.
--- =====================================================
-ALTER TABLE IF EXISTS hist_tl  ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
-ALTER TABLE IF EXISTS hist_td  ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
-ALTER TABLE IF EXISTS hist_tw  ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
-ALTER TABLE IF EXISTS hist_to  ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
-ALTER TABLE IF EXISTS hist_call ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
-ALTER TABLE IF EXISTS hist_etf ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
-ALTER TABLE IF EXISTS hist_ii  ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
-ALTER TABLE IF EXISTS hist_sss ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
-
-CREATE INDEX IF NOT EXISTS ix_hist_tl_tos_symbol ON hist_tl(tos_symbol, snapshot_date);
-CREATE INDEX IF NOT EXISTS ix_hist_tw_tos_symbol ON hist_tw(tos_symbol, snapshot_date);
-CREATE INDEX IF NOT EXISTS ix_hist_to_tos_symbol ON hist_to(tos_symbol, snapshot_date);
-CREATE INDEX IF NOT EXISTS ix_hist_call_tos_symbol ON hist_call(tos_symbol, snapshot_date);
-CREATE INDEX IF NOT EXISTS ix_hist_etf_tos_symbol ON hist_etf(tos_symbol, snapshot_date);
-CREATE INDEX IF NOT EXISTS ix_hist_ii_tos_symbol ON hist_ii(tos_symbol, snapshot_date);
-CREATE INDEX IF NOT EXISTS ix_hist_sss_tos_symbol ON hist_sss(tos_symbol, snapshot_date);
-
--- =====================================================
--- End of baseline.sql
--- =====================================================
-

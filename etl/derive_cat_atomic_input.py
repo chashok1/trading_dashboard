@@ -1102,7 +1102,7 @@ LEFT JOIN ref_param_lookup l_qn
 LEFT JOIN ref_param_lookup l_qr
   ON l_qr.table_name = 'td_tn_bb_rr_action'
  AND l_qr.code = (src.td_tn_bb_rr_action)::INTEGER::TEXT
-WHERE dst.as_of_date = src.as_of_date AND dst.symbol = src.symbol
+WHERE dst.as_of_date = src.as_of_date AND dst.tos_symbol = src.tos_symbol
   AND dst.as_of_date = :d
 """
 
@@ -1134,7 +1134,7 @@ def derive_cat_atomic_input(session: Session, as_of_date: date,
         out: dict = {}
         eval_specs(row, COLUMN_SPECS_PASS1, trig_rules, out)
         eval_specs(row, COLUMN_SPECS_PASS2, trig_rules, out)
-        rec = {"as_of_date": as_of_date, "symbol": row["symbol"],
+        rec = {"as_of_date": as_of_date, "tos_symbol": row["symbol"],
                "source_run_id": run_id}
         for c in ordered_cols:
             rec[c] = out.get(c)
@@ -1142,10 +1142,10 @@ def derive_cat_atomic_input(session: Session, as_of_date: date,
     def _q(c):
         import re as _re
         return c if _re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", c) else f'"{c}"'
-    col_list = ", ".join(["as_of_date","symbol"]
+    col_list = ", ".join(["as_of_date","tos_symbol"]
                          + [_q(c) for c in ordered_cols]
                          + ["source_run_id"])
-    bind_list = ", ".join([":as_of_date",":symbol"]
+    bind_list = ", ".join([":as_of_date",":tos_symbol"]
                           + [f":{c}" for c in ordered_cols]
                           + [":source_run_id"])
     insert_sql = text(f"INSERT INTO drv_cat_atomic_input ({col_list}) "
@@ -1161,4 +1161,4 @@ def derive_cat_atomic_input(session: Session, as_of_date: date,
 def run_parm_lookup_pass3(session: Session, as_of_date: date) -> int:
     """Pass-3 Parm-lookup UPDATE.  Idempotent."""
     result = session.execute(text(PARM_LOOKUP_SQL), {"d": as_of_date})
-    return result.rowcount or 0
+    return result.rowcou

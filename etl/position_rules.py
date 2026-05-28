@@ -61,7 +61,7 @@ def _winning_source(session: Session, symbol: str, as_of_date: date,
     # Prefer the answer drv_actionable already computed
     row = session.execute(text("""
         SELECT winning_source FROM drv_actionable
-        WHERE symbol = :s AND as_of_date = :d
+        WHERE tos_symbol = :s AND as_of_date = :d
     """), {"s": symbol, "d": as_of_date}).first()
     if row and row[0]:
         if cache is not None: cache[ck] = row[0]

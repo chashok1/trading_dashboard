@@ -132,7 +132,7 @@ def _derive_tw_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
       X  EarningsDays     = a_earnings_days, NaN -> -99
     """
     cur_rows = session.execute(text("""
-        SELECT snapshot_date, symbol, sequence
+        SELECT snapshot_date, tos_symbol AS symbol, sequence
         FROM hist_tw WHERE snapshot_date = :d
     """), {"d": as_of_date}).mappings().all()
     if not cur_rows:
@@ -140,20 +140,20 @@ def _derive_tw_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
 
     symbols = list({r["symbol"] for r in cur_rows})
     history = session.execute(text("""
-        SELECT tw.snapshot_date, tw.symbol, tw.sequence,
+        SELECT tw.snapshot_date, tw.tos_symbol AS symbol, tw.sequence,
                tw.last_price, tw.change_pct, tw.sma_20, tw.sma_50, tw.sma_200,
                tw.volume, tw.volume_avg_10d, tw.volume_avg_3m, tw.volume_rate_change,
                tw.a_macd_brr, tw.a_macdh_d_brr, tw.a_earnings_days,
                to_row.fcf_per_share
         FROM hist_tw tw
         LEFT JOIN (
-            SELECT DISTINCT ON (symbol) symbol, fcf_per_share
+            SELECT DISTINCT ON (tos_symbol) tos_symbol AS symbol, fcf_per_share
             FROM hist_to
             WHERE snapshot_date <= :d
-            ORDER BY symbol, snapshot_date DESC, sequence DESC
-        ) to_row ON tw.symbol = to_row.symbol
-        WHERE tw.snapshot_date <= :d AND tw.symbol = ANY(:syms)
-        ORDER BY tw.symbol, tw.snapshot_date ASC, tw.sequence ASC
+            ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
+        ) to_row ON tw.tos_symbol = to_row.symbol
+        WHERE tw.snapshot_date <= :d AND tw.tos_symbol = ANY(:syms)
+        ORDER BY tw.tos_symbol, tw.snapshot_date ASC, tw.sequence ASC
     """), {"d": as_of_date, "syms": symbols}).fetchall()
 
     by_sym: dict[str, list] = {}
@@ -224,7 +224,7 @@ def _derive_tw_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
         seq = r["sequence"]
         out.append({
             "snapshot_date":              snap,
-            "symbol":                     sym,
+            "tos_symbol":                 sym,
             "sequence":                   seq,
             "fcf":                        fcf,
             "sma_20_d":                   sma20,
@@ -314,7 +314,7 @@ def _derive_sss_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
       O,P,Q,R     = lookup symbol against TL/MA/Y/SSS
     """
     cur_rows = session.execute(text("""
-        SELECT snapshot_date, symbol, days_on, signal_date, prior_close,
+        SELECT snapshot_date, tos_symbol AS symbol, days_on, signal_date, prior_close,
                last_close, pct_delta, sector, analyst, anlst_best_idea_rank
         FROM hist_sss WHERE snapshot_date = :d
     """), {"d": as_of_date}).mappings().all()
@@ -326,33 +326,33 @@ def _derive_sss_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
         SELECT MAX(snapshot_date) FROM hist_sss WHERE snapshot_date <= :d
     """), {"d": as_of_date}).scalar()
 
-    # Latest date PER symbol
+    # Latest date PER symbol (keyed by tos_symbol — normalized)
     latest_per_sym = {
         row.symbol: row.max_d for row in session.execute(text("""
-            SELECT symbol, MAX(snapshot_date) AS max_d
-            FROM hist_sss WHERE snapshot_date <= :d GROUP BY symbol
+            SELECT tos_symbol AS symbol, MAX(snapshot_date) AS max_d
+            FROM hist_sss WHERE snapshot_date <= :d GROUP BY tos_symbol
         """), {"d": as_of_date})
     }
 
     # Was this symbol latest on PREVIOUS snapshot_date (for "removed" detection)
     prev_latest = {
         row.symbol: row.max_d for row in session.execute(text("""
-            SELECT symbol, MAX(snapshot_date) AS max_d
+            SELECT tos_symbol AS symbol, MAX(snapshot_date) AS max_d
             FROM hist_sss
             WHERE snapshot_date < :d
-            GROUP BY symbol
+            GROUP BY tos_symbol
         """), {"d": as_of_date})
     }
 
-    # Lookup sets for cross-tab refs
+    # Lookup sets for cross-tab refs (all keyed by tos_symbol)
     ma_syms  = {row[0] for row in session.execute(text(
-        "SELECT symbol FROM drv_ma WHERE as_of_date = :d"
+        "SELECT tos_symbol FROM drv_ma WHERE as_of_date = :d"
     ), {"d": as_of_date})}
     tl_syms  = {row[0] for row in session.execute(text(
-        "SELECT DISTINCT symbol FROM hist_tl WHERE snapshot_date = :d"
+        "SELECT DISTINCT tos_symbol FROM hist_tl WHERE snapshot_date = :d"
     ), {"d": as_of_date})}
     y_syms   = {row[0] for row in session.execute(text(
-        "SELECT DISTINCT COALESCE(tos_symbol, symbol) FROM hist_y WHERE snapshot_date = :d"
+        "SELECT DISTINCT tos_symbol FROM hist_y WHERE snapshot_date = :d"
     ), {"d": as_of_date})}
 
     out: list[dict] = []
@@ -418,7 +418,7 @@ def _derive_sss_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
 
         out.append({
             "snapshot_date":     r["snapshot_date"],
-            "symbol":            sym,
+            "tos_symbol":        sym,
             "rank_hl":           rank_hl,
             "unranked":          unranked,
             "signal":            signal,

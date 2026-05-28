@@ -140,7 +140,7 @@ def get_briefing(date: Optional[str] = Query(None,
                 outlook_flips["total"] = int(agg["total"] or 0)
                 outlook_flips["held"]  = int(agg["held"]  or 0)
             top = s.execute(text("""
-                SELECT symbol, dominant_action, sources, n_sources_changed
+                SELECT tos_symbol, dominant_action, sources, n_sources_changed
                 FROM v_outlook_changes(:d)
                 WHERE held_today = TRUE
                 ORDER BY n_sources_changed DESC
@@ -985,8 +985,8 @@ def get_portfolio(
                 latest_price_map = {}
                 if latest_dq_date:
                     for r in s.execute(text("""
-                        SELECT symbol, last_price FROM drv_quote
-                         WHERE as_of_date = :d AND symbol = ANY(:syms)
+                        SELECT tos_symbol, last_price FROM drv_quote
+                         WHERE as_of_date = :d AND tos_symbol = ANY(:syms)
                     """), {"d": latest_dq_date, "syms": syms_held}).all():
                         if r[1] is not None:
                             latest_price_map[r[0]] = float(r[1])
@@ -1031,20 +1031,20 @@ def get_portfolio(
             syms = list({r["symbol"] for r in out if r.get("symbol")})
             sector_map = {
                 row[0]: row[1] for row in s.execute(text("""
-                    SELECT DISTINCT ON (symbol) symbol, sector
+                    SELECT DISTINCT ON (tos_symbol) tos_symbol, sector
                     FROM drv_dash
-                    WHERE symbol = ANY(:syms) AND as_of_date <= :d
-                    ORDER BY symbol, as_of_date DESC
+                    WHERE tos_symbol = ANY(:syms) AND as_of_date <= :d
+                    ORDER BY tos_symbol, as_of_date DESC
                 """), {"syms": syms, "d": d}).all()
             }
             act_map: dict = {}
             try:
                 for row in s.execute(text("""
-                    SELECT symbol, consolidated_action, winning_source, winning_priority,
+                    SELECT tos_symbol, consolidated_action, winning_source, winning_priority,
                            suggested_target_dollar, in_my_list
                     FROM drv_actionable
                     WHERE as_of_date = (SELECT MAX(as_of_date) FROM drv_actionable WHERE as_of_date <= :d)
-                      AND symbol = ANY(:syms)
+                      AND tos_symbol = ANY(:syms)
                 """), {"syms": syms, "d": d}).all():
                     act_map[row[0]] = {
                         "consolidated_action":    row[1],
@@ -2102,10 +2102,10 @@ def get_portfolio_symbol(
 
         # Snapshot symbol description / sector
         meta = s.execute(text("""
-          SELECT DISTINCT ON (symbol) symbol, description, sector
+          SELECT DISTINCT ON (tos_symbol) tos_symbol, description, sector
           FROM drv_dash
-          WHERE symbol = :sym
-          ORDER BY symbol, as_of_date DESC
+          WHERE tos_symbol = :sym
+          ORDER BY tos_symbol, as_of_date DESC
         """), {"sym": sym}).mappings().first()
 
     return {

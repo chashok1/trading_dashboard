@@ -131,13 +131,13 @@ def get_symbol_trace(sym: str, as_of: Optional[str] = Query(None, alias="date"))
 
         # ---- 2. Summary row (drv_ma + drv_stks) -----------------------------
         summary_row = s.execute(text("""
-            SELECT m.symbol, m.description, m.sector, m.asset_class, m.last_price,
+            SELECT m.tos_symbol AS symbol, m.description, m.sector, m.asset_class, m.last_price,
                    st.composite_outlook, st.composite_label,
                    st.triggered_atomic_ids, st.triggered_composite_ids
             FROM drv_ma m
             LEFT JOIN drv_stks st
               ON st.as_of_date = m.as_of_date AND st.tos_symbol = m.tos_symbol
-            WHERE m.as_of_date = :d AND m.symbol = :sym
+            WHERE m.as_of_date = :d AND m.tos_symbol = :sym
         """), {"d": snap, "sym": sym_u}).mappings().first()
         if not summary_row:
             raise HTTPException(status_code=404,

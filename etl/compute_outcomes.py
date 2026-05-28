@@ -40,7 +40,9 @@ def compute_outcomes(dry_run: bool = True) -> dict:
 
         # Find unprocessed actions older than 5 trading days
         sql = """
-            SELECT id, as_of_date, symbol, action_code, triggered_rules
+            SELECT id, as_of_date,
+                   COALESCE(tos_symbol, symbol) AS symbol,
+                   action_code, triggered_rules
             FROM user_action_log
             WHERE as_of_date <= CURRENT_DATE - INTERVAL '5 days'
             AND id NOT IN (SELECT DISTINCT id FROM drv_rule_outcome
@@ -84,11 +86,11 @@ def compute_outcomes(dry_run: bool = True) -> dict:
 
                     insert_sql = """
                         INSERT INTO drv_rule_outcome
-                          (rule_id, rule_kind, as_of_date, symbol, action_code,
+                          (rule_id, rule_kind, as_of_date, tos_symbol, action_code,
                            fwd_5d_pct, fwd_20d_pct, hit)
                         VALUES
                           (:rid, :kind, :d, :sym, :code, :f5, :f20, :hit)
-                        ON CONFLICT (rule_id, as_of_date, symbol) DO UPDATE SET
+                        ON CONFLICT (rule_id, as_of_date, tos_symbol) DO UPDATE SET
                           fwd_5d_pct = :f5,
                           fwd_20d_pct = :f20,
                           hit = :hit
@@ -121,7 +123,7 @@ def _get_forward_return(session, symbol: str, as_of_date: date, days: int) -> fl
     """Get forward return N days later."""
     start_price = session.execute(text("""
         SELECT last_price FROM drv_ma
-        WHERE symbol = :sym AND as_of_date = :d
+        WHERE tos_symbol = :sym AND as_of_date = :d
         LIMIT 1
     """), {"sym": symbol, "d": as_of_date}).scalar()
 
@@ -132,7 +134,7 @@ def _get_forward_return(session, symbol: str, as_of_date: date, days: int) -> fl
 
     end_price = session.execute(text("""
         SELECT last_price FROM drv_ma
-        WHERE symbol = :sym AND as_of_date = :d
+        WHERE tos_symbol = :sym AND as_of_date = :d
         LIMIT 1
     """), {"sym": symbol, "d": fwd_date}).scalar()
 

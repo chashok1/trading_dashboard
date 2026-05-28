@@ -52,19 +52,19 @@ def _hit_for(direction: str, fwd: Optional[float], threshold: float) -> Optional
 
 def _forward_return(session, symbol: str, as_of: date, days: int) -> Optional[float]:
     start = session.execute(text(
-        "SELECT last_price FROM drv_ma WHERE symbol=:s AND as_of_date=:d LIMIT 1"
+        "SELECT last_price FROM drv_ma WHERE tos_symbol=:s AND as_of_date=:d LIMIT 1"
     ), {"s": symbol, "d": as_of}).scalar()
     if not start:
         return None
     target = session.execute(text("""
         SELECT MIN(as_of_date) FROM drv_ma
-        WHERE as_of_date > :d AND symbol = :s
+        WHERE as_of_date > :d AND tos_symbol = :s
           AND as_of_date >= :d + (:dd || ' days')::interval
     """), {"d": as_of, "s": symbol, "dd": str(days)}).scalar()
     if not target:
         return None
     end = session.execute(text(
-        "SELECT last_price FROM drv_ma WHERE symbol=:s AND as_of_date=:d LIMIT 1"
+        "SELECT last_price FROM drv_ma WHERE tos_symbol=:s AND as_of_date=:d LIMIT 1"
     ), {"s": symbol, "d": target}).scalar()
     if not end or float(start) == 0:
         return None
@@ -118,7 +118,7 @@ def backtest(
         if rule_id is not None:
             # Atomic rule events from drv_stks.triggered_atomic_ids
             rows = s.execute(text("""
-                SELECT as_of_date, symbol,
+                SELECT as_of_date, tos_symbol,
                        jsonb_path_query(triggered_atomic_ids,
                                         '$ ? (@.rule_id == $rid)',
                                         jsonb_build_object('rid', :rid::int)) AS hit
@@ -132,7 +132,7 @@ def backtest(
         elif rule_code is not None:
             # One composite
             rows = s.execute(text("""
-                SELECT as_of_date, symbol
+                SELECT as_of_date, tos_symbol
                 FROM drv_trig
                 WHERE composite_rule_code = :rc
                   AND triggered = TRUE
@@ -144,7 +144,7 @@ def backtest(
         else:
             # All composites in window
             rows = s.execute(text("""
-                SELECT as_of_date, symbol, composite_rule_code
+                SELECT as_of_date, tos_symbol, composite_rule_code
                 FROM drv_trig
                 WHERE triggered = TRUE AND as_of_date BETWEEN :f AND :t
             """), {"f": from_date, "t": to_date}).fetchall()

@@ -1258,7 +1258,7 @@ def test_rule_group(group_code: str, date: Optional[str] = Query(None)):
                     "sample_symbols": [], "_note": "group has no members"}
 
         rows = s.execute(text("""
-            SELECT symbol, triggered_composite_ids
+            SELECT tos_symbol, triggered_composite_ids
             FROM drv_stks
             WHERE as_of_date = :d
         """), {"d": d}).mappings().all()
@@ -1281,7 +1281,7 @@ def test_rule_group(group_code: str, date: Optional[str] = Query(None)):
                 else:
                     result = result or hit
             if result:
-                triggered_symbols.append(r["symbol"])
+                triggered_symbols.append(r["tos_symbol"])
 
         return {
             "triggered": len(triggered_symbols) > 0,

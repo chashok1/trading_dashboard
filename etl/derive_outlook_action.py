@@ -708,7 +708,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
     total_rows = 0
     insert_sql = text("""
         INSERT INTO drv_outlook_action
-          (as_of_date, symbol, source_code, base_weight, prev_weight, prev_date,
+          (as_of_date, tos_symbol, source_code, base_weight, prev_weight, prev_date,
            weight_delta, held_today, action, action_reason, category,
            analyst_rank, source_run_id, source_snapshot_date)
         VALUES

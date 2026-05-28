@@ -249,14 +249,14 @@ def derive_realized_gain(session: Session) -> int:
         return 0
     session.execute(text("""
         INSERT INTO drv_realized_gain
-          (source, account, symbol, sell_date, shares_sold,
+          (source, account, tos_symbol, sell_date, shares_sold,
            sell_proceeds, cost_basis, realized_gain, realized_gain_pct,
            holding_days_avg, is_long_term, lots_consumed)
         VALUES
           (:source, :account, :symbol, :sell_date, :shares_sold,
            :sell_proceeds, :cost_basis, :realized_gain, :realized_gain_pct,
            :holding_days_avg, :is_long_term, CAST(:lots_consumed AS JSONB))
-        ON CONFLICT (source, account, symbol, sell_date, shares_sold) DO UPDATE SET
+        ON CONFLICT (source, account, tos_symbol, sell_date, shares_sold) DO UPDATE SET
            sell_proceeds     = EXCLUDED.sell_proceeds,
            cost_basis        = EXCLUDED.cost_basis,
            realized_gain     = EXCLUDED.realized_gain,
