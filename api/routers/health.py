@@ -446,6 +446,21 @@ def get_warnings():
         except Exception:
             pass
 
+        # C.5) Check for missing tos_symbol in hist_rr (not defined in ref_rrt)
+        try:
+            null_count = s.execute(text("""
+                SELECT COUNT(*) FROM hist_rr WHERE tos_symbol IS NULL
+            """)).scalar() or 0
+            if null_count > 0:
+                warnings.append({
+                    "id": "hist_rr_missing_tos_symbol",
+                    "level": "warning",
+                    "title": f"{null_count} RR row(s) missing tos_symbol",
+                    "items": [{"label": f"{null_count} rows without TOS symbol mapping (not defined in ref_rrt)"}]
+                })
+        except Exception:
+            pass
+
     # D) Derive-status health checks (stale ref, missing sources, scheduler idle)
     try:
         ds = get_derive_status()
