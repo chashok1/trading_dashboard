@@ -2084,6 +2084,71 @@ def _populate_rr_tos_symbol(session: Session, as_of_date: date) -> int:
     return 0
 
 
+def _populate_tos_table_tos_symbol(session: Session, table: str, as_of_date: date) -> int:
+    """Populate tos_symbol for TOS tables (hist_tl, hist_td, hist_to, hist_tw).
+
+    For TOS workbook sources, symbol IS already the tos_symbol.
+    Just copy symbol → tos_symbol directly.
+    """
+    updated = session.execute(text(f"""
+        UPDATE {table} SET tos_symbol = symbol
+        WHERE snapshot_date = :d AND tos_symbol IS NULL
+    """), {"d": as_of_date}).rowcount
+    return updated
+
+
+def _populate_generic_tos_symbol(session: Session, table: str, as_of_date: date) -> int:
+    """Populate tos_symbol for other hist_* tables by matching against ref_rrt.
+
+    Try to match symbol against tos_ticker, y_ticker, rr_name in that order.
+    Return tos_ticker if matched, otherwise use original symbol.
+    """
+    rows = session.execute(text(f"""
+        SELECT DISTINCT symbol FROM {table}
+        WHERE snapshot_date = :d AND tos_symbol IS NULL
+    """), {"d": as_of_date}).fetchall()
+
+    updated = 0
+    for (symbol,) in rows:
+        # Try matching in order: tos_ticker, y_ticker, rr_name
+        tos_sym = None
+
+        # Try tos_ticker
+        row = session.execute(text("""
+            SELECT tos_ticker FROM ref_rrt WHERE tos_ticker = :sym LIMIT 1
+        """), {"sym": symbol}).first()
+        if row and row[0]:
+            tos_sym = row[0]
+
+        # Try y_ticker
+        if not tos_sym:
+            row = session.execute(text("""
+                SELECT tos_ticker FROM ref_rrt WHERE y_ticker = :sym LIMIT 1
+            """), {"sym": symbol}).first()
+            if row and row[0]:
+                tos_sym = row[0]
+
+        # Try rr_name
+        if not tos_sym:
+            row = session.execute(text("""
+                SELECT tos_ticker FROM ref_rrt WHERE rr_name = :sym LIMIT 1
+            """), {"sym": symbol}).first()
+            if row and row[0]:
+                tos_sym = row[0]
+
+        # Fallback to original symbol if no match
+        if not tos_sym:
+            tos_sym = symbol
+
+        session.execute(text(f"""
+            UPDATE {table} SET tos_symbol = :tos
+            WHERE snapshot_date = :d AND symbol = :sym
+        """), {"tos": tos_sym, "d": as_of_date, "sym": symbol})
+        updated += 1
+
+    return updated
+
+
 def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: int) -> int:
     """Populate MA-tab rule columns QE, QJ, QM, QN, QR in drv_cat_atomic_input.
 
@@ -2286,9 +2351,22 @@ def derive_all(session: Session, as_of_date: date,
     """Run every derive_* in dependency order. Returns {table: rows_built}."""
     counts: dict = {}
 
-    # Populate tos_symbol in hist_y and hist_rr (uses RRT mapping)
+    # Populate tos_symbol in all hist_* tables
+    # hist_y, hist_rr: Use RRT mapping
     counts["hist_y_tos_symbol"] = _populate_y_tos_symbol(session, as_of_date)
     counts["hist_rr_tos_symbol"] = _populate_rr_tos_symbol(session, as_of_date)
+
+    # hist_tl, hist_td, hist_to, hist_tw: Symbol IS tos_symbol (TOS workbook)
+    counts["hist_tl_tos_symbol"] = _populate_tos_table_tos_symbol(session, "hist_tl", as_of_date)
+    counts["hist_td_tos_symbol"] = _populate_tos_table_tos_symbol(session, "hist_td", as_of_date)
+    counts["hist_to_tos_symbol"] = _populate_tos_table_tos_symbol(session, "hist_to", as_of_date)
+    counts["hist_tw_tos_symbol"] = _populate_tos_table_tos_symbol(session, "hist_tw", as_of_date)
+
+    # Others: Match against ref_rrt (tos_ticker, y_ticker, rr_name in order)
+    counts["hist_call_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_call", as_of_date)
+    counts["hist_etf_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_etf", as_of_date)
+    counts["hist_ii_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_ii", as_of_date)
+    counts["hist_sss_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_sss", as_of_date)
 
     # Each derive wrapped so one failing/crashing call doesn't kill the rest
     # AND the calling process. Uses BaseException to also catch SystemExit
