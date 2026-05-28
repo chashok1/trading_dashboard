@@ -469,7 +469,7 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
     """
     sql = text("""
     INSERT INTO drv_ma (
-        as_of_date, symbol, description, sector, asset_class, sub_asset_class, equity_sector,
+        as_of_date, symbol, tos_symbol, description, sector, asset_class, sub_asset_class, equity_sector,
         tl_date, last_price, rsi, imp_volatility, volume, vlm_projected,
         td_date, iv_percentile, hv_percentile, range_compression, d_iv_to_hv, d_vlt_caution,
         a_trend_value, a_trade_value, a_bb_top, a_bb_bottom, a_bb_streak,
@@ -489,12 +489,12 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
     syms AS (
         SELECT DISTINCT s FROM (
             SELECT ticker AS s FROM ref_sector
-            UNION SELECT symbol FROM hist_tl WHERE snapshot_date <= (SELECT d FROM p)
+            UNION SELECT tos_symbol FROM hist_tl WHERE snapshot_date <= (SELECT d FROM p)
             UNION SELECT tos_symbol FROM hist_rr WHERE snapshot_date <= (SELECT d FROM p)
-            UNION SELECT COALESCE(tos_symbol, symbol) FROM hist_y  WHERE snapshot_date <= (SELECT d FROM p)
-            UNION SELECT symbol FROM hist_call WHERE snapshot_date <= (SELECT d FROM p)
-            UNION SELECT symbol FROM hist_etf  WHERE snapshot_date <= (SELECT d FROM p)
-            UNION SELECT symbol FROM hist_ii   WHERE snapshot_date <= (SELECT d FROM p)
+            UNION SELECT tos_symbol FROM hist_y  WHERE snapshot_date <= (SELECT d FROM p)
+            UNION SELECT tos_symbol FROM hist_call WHERE snapshot_date <= (SELECT d FROM p)
+            UNION SELECT tos_symbol FROM hist_etf  WHERE snapshot_date <= (SELECT d FROM p)
+            UNION SELECT tos_symbol FROM hist_ii   WHERE snapshot_date <= (SELECT d FROM p)
         ) u WHERE s IS NOT NULL
     ),
     tl AS (
@@ -502,7 +502,7 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         --   imp_volatility = COALESCE(imp_volatility_raw, 0)
         --   vlm_projected  = intraday volume projected to the full session,
         --                    a pure per-row function of volume + sequence (HHMM)
-        SELECT DISTINCT ON (h.symbol) h.symbol, h.snapshot_date AS tl_date,
+        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol AS symbol, h.snapshot_date AS tl_date,
                h.last_price, h.rsi,
                COALESCE(h.imp_volatility_raw, 0) AS imp_volatility,
                h.volume,
@@ -516,46 +516,46 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
                END AS vlm_projected
         FROM hist_tl h
         WHERE h.snapshot_date <= (SELECT d FROM p)
-        ORDER BY h.symbol, h.snapshot_date DESC, h.sequence DESC
+        ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
     ),
     -- drv_quote: consolidated latest-loaded-wins values across hist_y/tl/td.
     -- drv_ma reads price/rsi/imp_volatility from here first, falling back to
     -- the legacy hist_tl-based `tl` CTE so missing drv_quote rows don't
     -- regress the data.
     dq AS (
-        SELECT DISTINCT ON (symbol) symbol, last_price, rsi, imp_volatility
+        SELECT DISTINCT ON (tos_symbol) tos_symbol AS symbol, last_price, rsi, imp_volatility
         FROM drv_quote
         WHERE as_of_date <= (SELECT d FROM p)
-        ORDER BY symbol, as_of_date DESC
+        ORDER BY tos_symbol, as_of_date DESC
     ),
     td AS (
-        SELECT DISTINCT ON (h.symbol) h.symbol, h.snapshot_date AS td_date,
+        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol AS symbol, h.snapshot_date AS td_date,
                COALESCE(dr.iv_percentile, h.a_iv_percentile)  AS iv_percentile,
                COALESCE(dr.hv_percentile, h.a_hv_percentile)  AS hv_percentile,
                dr.range_compression, dr.d_iv_to_hv, dr.d_vlt_caution,
                h.a_trend_value, h.a_trade_value, h.a_bb_top, h.a_bb_bottom, h.a_bb_streak
         FROM hist_td h
-        LEFT JOIN drv_td dr USING (snapshot_date, symbol, sequence)
+        LEFT JOIN drv_td dr USING (snapshot_date, tos_symbol, sequence)
         WHERE h.snapshot_date <= (SELECT d FROM p)
-        ORDER BY h.symbol, h.snapshot_date DESC, h.sequence DESC
+        ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
     ),
     tw AS (
-        SELECT DISTINCT ON (h.symbol) h.symbol, h.snapshot_date AS tw_date,
+        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol AS symbol, h.snapshot_date AS tw_date,
                dr.a_macd_brr, dr.a_macdh_d_brr, dr.earnings_days_d AS earnings_days,
                dr.sma_20_d AS sma_20, dr.sma_50_d AS sma_50, dr.sma_200_d AS sma_200
         FROM hist_tw h
-        LEFT JOIN drv_tw dr USING (snapshot_date, symbol, sequence)
+        LEFT JOIN drv_tw dr USING (snapshot_date, tos_symbol, sequence)
         WHERE h.snapshot_date <= (SELECT d FROM p)
-        ORDER BY h.symbol, h.snapshot_date DESC, h.sequence DESC
+        ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
     ),
     too AS (
-        SELECT DISTINCT ON (h.symbol) h.symbol, h.beta,
+        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol AS symbol, h.beta,
                COALESCE(dr.market_cap_num::text, h.market_cap_str) AS market_cap_str,
                h.pe_ratio, h.eps, h.div_yield, h.sector
         FROM hist_to h
-        LEFT JOIN drv_to dr USING (snapshot_date, symbol, sequence)
+        LEFT JOIN drv_to dr USING (snapshot_date, tos_symbol, sequence)
         WHERE h.snapshot_date <= (SELECT d FROM p)
-        ORDER BY h.symbol, h.snapshot_date DESC, h.sequence DESC
+        ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
     ),
     rr AS (
         SELECT DISTINCT ON (tos_symbol) tos_symbol AS symbol,
@@ -565,7 +565,7 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         ORDER BY tos_symbol, snapshot_date DESC
     ),
     cl AS (
-        SELECT DISTINCT ON (h.symbol) h.symbol,
+        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol AS symbol,
                h.outlook AS call_outlook,
                h.outlook_modifier AS call_modifier,
                CAST(rp.value AS NUMERIC) AS call_weight
@@ -574,10 +574,10 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
                ON rp.sheet = 'outlook'
               AND UPPER(rp.param_name) = UPPER(COALESCE(h.outlook,''))
         WHERE h.snapshot_date <= (SELECT d FROM p)
-        ORDER BY h.symbol, h.snapshot_date DESC
+        ORDER BY h.tos_symbol, h.snapshot_date DESC
     ),
     ef AS (
-        SELECT DISTINCT ON (h.symbol) h.symbol,
+        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol AS symbol,
                h.brr AS etf_brr, h.trr AS etf_trr,
                COALESCE(h.outlook,
                   CASE WHEN h.brr > 0 THEN 'BULLISH'
@@ -585,10 +585,10 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
                        ELSE 'NEUTRAL' END) AS etf_outlook
         FROM hist_etf h
         WHERE h.snapshot_date <= (SELECT d FROM p)
-        ORDER BY h.symbol, h.snapshot_date DESC
+        ORDER BY h.tos_symbol, h.snapshot_date DESC
     ),
     ii AS (
-        SELECT DISTINCT ON (h.symbol) h.symbol,
+        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol AS symbol,
                h.outlook AS ii_outlook,
                CAST(rp.value AS NUMERIC) AS ii_weight
         FROM hist_ii h
@@ -596,33 +596,33 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
                ON rp.sheet = 'outlook'
               AND UPPER(rp.param_name) = UPPER(COALESCE(h.outlook,''))
         WHERE h.snapshot_date <= (SELECT d FROM p)
-        ORDER BY h.symbol, h.snapshot_date DESC
+        ORDER BY h.tos_symbol, h.snapshot_date DESC
     ),
     sh AS (
-        SELECT DISTINCT ON (h.symbol) h.symbol,
+        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol AS symbol,
                dr.signal AS ssh_signal,
                dr.signal_sign AS ssh_signal_sign,
                dr.rank_hl AS ssh_rank_hl
         FROM hist_sss h
-        LEFT JOIN drv_sss dr USING (snapshot_date, symbol)
+        LEFT JOIN drv_sss dr USING (snapshot_date, tos_symbol)
         WHERE h.snapshot_date <= (SELECT d FROM p)
-        ORDER BY h.symbol, h.snapshot_date DESC
+        ORDER BY h.tos_symbol, h.snapshot_date DESC
     ),
     fid AS (
-        SELECT symbol, SUM(qty) AS held_qty FROM hist_f
+        SELECT tos_symbol AS symbol, SUM(qty) AS held_qty FROM hist_f
         WHERE snapshot_date = (
             SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= (SELECT d FROM p)
         )
-        GROUP BY symbol
+        GROUP BY tos_symbol
     ),
     cs AS (
-        SELECT symbol, SUM(qty) AS held_qty FROM hist_cs
+        SELECT tos_symbol AS symbol, SUM(qty) AS held_qty FROM hist_cs
         WHERE snapshot_date = (
             SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= (SELECT d FROM p)
         )
-        GROUP BY symbol
+        GROUP BY tos_symbol
     )
-    SELECT (SELECT d FROM p) AS as_of_date, s.s,
+    SELECT (SELECT d FROM p) AS as_of_date, s.s AS symbol, s.s AS tos_symbol,
         rs.description,
         rs.equity_sector,
         rs.asset_class, rs.sub_asset_class, rs.equity_sector,
@@ -707,8 +707,8 @@ _QUOTE_FIELDS = (
 
 def _latest_per_symbol(session: Session, table: str, as_of_date: date,
                        column_map: dict) -> dict:
-    """Return {symbol: {drv_field: value, ..., 'loaded_at': ts, 'snapshot_date': d, 'export_date': d, 'export_time': t}} for the latest
-    snapshot ≤ as_of_date in `table`. Per source PK is (snapshot_date, symbol,
+    """Return {tos_symbol: {drv_field: value, ..., 'loaded_at': ts, 'snapshot_date': d, 'export_date': d, 'export_time': t}} for the latest
+    snapshot ≤ as_of_date in `table`. Per source PK is (snapshot_date, tos_symbol,
     sequence); within the latest snapshot_date we order by loaded_at DESC,
     sequence DESC so the topmost row wins.
 
@@ -718,7 +718,7 @@ def _latest_per_symbol(session: Session, table: str, as_of_date: date,
     # Build SELECT list aliased to drv_quote field names so downstream code
     # can use a single shape. Columns the source doesn't have are selected as
     # NULL literals.
-    select_parts = ['symbol', 'snapshot_date', 'loaded_at', 'export_date', 'export_time']
+    select_parts = ['tos_symbol AS symbol', 'snapshot_date', 'loaded_at', 'export_date', 'export_time']
     for drv_field, src_col in column_map.items():
         if src_col is None:
             select_parts.append(f'NULL::NUMERIC AS {drv_field}')
@@ -727,10 +727,10 @@ def _latest_per_symbol(session: Session, table: str, as_of_date: date,
     sel = ', '.join(select_parts)
 
     sql = text(f"""
-        SELECT DISTINCT ON (symbol) {sel}
+        SELECT DISTINCT ON (tos_symbol) {sel}
           FROM {table}
          WHERE snapshot_date <= :d
-         ORDER BY symbol, snapshot_date DESC, loaded_at DESC, sequence DESC
+         ORDER BY tos_symbol, snapshot_date DESC, loaded_at DESC, sequence DESC
     """)
     out = {}
     for r in session.execute(sql, {"d": as_of_date}).mappings():
@@ -792,7 +792,7 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
         # Sort: latest loaded_at first.
         candidates.sort(key=lambda r: r['loaded_at'] or 0, reverse=True)
 
-        rec = {'as_of_date': as_of_date, 'symbol': sym, 'export_date': None, 'export_time': None, 'loaded_at': None}
+        rec = {'as_of_date': as_of_date, 'tos_symbol': sym, 'export_date': None, 'export_time': None, 'loaded_at': None}
         for f in _QUOTE_FIELDS:
             val = None
             for cand in candidates:
@@ -818,7 +818,7 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
         session.execute(
             text("""
                 INSERT INTO drv_quote
-                    (as_of_date, symbol,
+                    (as_of_date, tos_symbol,
                      last_price, net_chng, pct_change,
                      open_price, high_price, low_price,
                      rsi, imp_volatility, export_date, export_time, loaded_at)
@@ -884,7 +884,7 @@ def _derive_dash_impl(session: Session, as_of_date: date, run_id: int) -> int:
     th_high = _f("dash_threshold_high_pct",  10.0)
 
     rows = session.execute(text("""
-        SELECT symbol, description, last_price,
+        SELECT symbol, tos_symbol, description, last_price,
                a_trend_value, a_trade_value, pct_brr,
                rr_outlook, rr_brr, call_outlook, sector, asset_class
         FROM drv_ma WHERE as_of_date = :d
@@ -910,6 +910,7 @@ def _derive_dash_impl(session: Session, as_of_date: date, run_id: int) -> int:
             "as_of_date": as_of_date,
             "section": _classify_section(r["symbol"] or ""),
             "symbol": r["symbol"],
+            "tos_symbol": r["tos_symbol"],
             "description": r["description"],
             "last_price": r["last_price"],
             "a_trend_value": r["a_trend_value"],
@@ -1147,7 +1148,7 @@ def _fetch_eval_rows(session: Session, as_of_date: date,
 
     # Always include drv_ma display columns _derive_stks_impl needs
     base_cols = {
-        "symbol","description","sector","asset_class","last_price",
+        "symbol","tos_symbol","description","sector","asset_class","last_price",
         "a_trend_value","a_trade_value","pct_brr","rr_outlook","rr_brr",
         "call_outlook","call_modifier","etf_outlook","ii_outlook",
         "ssh_signal_sign","iv_percentile","rsi","earnings_days","market_cap_str",
@@ -1492,6 +1493,7 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
         out.append({
             "as_of_date": as_of_date,
             "symbol": r["symbol"],
+            "tos_symbol": r["tos_symbol"],
             "description": r["description"],
             "sector": r["sector"],
             "asset_class": r["asset_class"],

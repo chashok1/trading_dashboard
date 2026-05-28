@@ -1152,7 +1152,17 @@ END $$;
 -- Drop snapshot_date column if it exists (was added outside baseline.sql, not used)
 ALTER TABLE drv_quote DROP COLUMN IF EXISTS snapshot_date;
 
+-- Add tos_symbol to drv_quote (migration for tos_symbol normalization)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_name='drv_quote' AND column_name='tos_symbol') THEN
+    ALTER TABLE drv_quote ADD COLUMN tos_symbol TEXT;
+  END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS ix_drv_quote_symbol ON drv_quote(symbol);
+CREATE INDEX IF NOT EXISTS ix_drv_quote_tos_symbol ON drv_quote(tos_symbol);
 
 -- -----------------------------------------------------
 -- drv_ma - master aggregation per (as_of_date, symbol)
@@ -1908,6 +1918,33 @@ CREATE INDEX IF NOT EXISTS ix_user_action_log_date        ON user_action_log(as_
 CREATE INDEX IF NOT EXISTS ix_user_action_log_date_sym    ON user_action_log(as_of_date, symbol);
 CREATE INDEX IF NOT EXISTS ix_user_action_log_acted       ON user_action_log(acted_at DESC);
 
+-- =====================================================
+-- Migration: Add tos_symbol to all derived tables
+-- =====================================================
+DO $$
+DECLARE
+    tables_to_update TEXT[] := ARRAY['drv_ma', 'drv_dash', 'drv_stks', 'drv_dash_summary',
+                                      'drv_trig', 'drv_rule_outcome', 'drv_actionable',
+                                      'drv_cat_atomic_input', 'drv_realized_gain', 'drv_cs_realized_gain',
+                                      'drv_td', 'drv_tw', 'drv_to', 'drv_sss', 'drv_outlook_action'];
+    tbl TEXT;
+BEGIN
+    FOREACH tbl IN ARRAY tables_to_update LOOP
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = tbl) THEN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_name = tbl AND column_name = 'tos_symbol') THEN
+                EXECUTE 'ALTER TABLE ' || tbl || ' ADD COLUMN tos_symbol TEXT';
+            END IF;
+        END IF;
+    END LOOP;
+END $$;
+
+-- Create indexes on tos_symbol for main derived tables
+CREATE INDEX IF NOT EXISTS ix_drv_ma_tos_symbol ON drv_ma(tos_symbol);
+CREATE INDEX IF NOT EXISTS ix_drv_dash_tos_symbol ON drv_dash(tos_symbol);
+CREATE INDEX IF NOT EXISTS ix_drv_stks_tos_symbol ON drv_stks(tos_symbol);
+CREATE INDEX IF NOT EXISTS ix_drv_cat_atomic_input_tos_symbol ON drv_cat_atomic_input(tos_symbol);
+CREATE INDEX IF NOT EXISTS ix_drv_actionable_tos_symbol ON drv_actionable(tos_symbol);
 
 -- =====================================================
 -- 9. Views and functions
