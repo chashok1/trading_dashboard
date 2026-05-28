@@ -791,17 +791,18 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
         # Sort: latest loaded_at first.
         candidates.sort(key=lambda r: r['loaded_at'] or 0, reverse=True)
 
-        rec = {'as_of_date': as_of_date, 'symbol': sym, 'export_date': None, 'export_time': None, 'loaded_at': None}
+        rec = {'as_of_date': as_of_date, 'symbol': sym, 'snapshot_date': None, 'export_date': None, 'export_time': None, 'loaded_at': None}
         for f in _QUOTE_FIELDS:
             val = None
             for cand in candidates:
                 v = cand.get(f)
                 if v is not None:
                     val = v
-                    # Capture export_date and export_time from the first non-null field's source
+                    # Capture export_date, export_time, and snapshot_date from the first non-null field's source
                     if rec['export_date'] is None:
                         rec['export_date'] = cand.get('export_date')
                         rec['export_time'] = cand.get('export_time')
+                        rec['snapshot_date'] = cand.get('snapshot_date')
                     # Capture loaded_at from the latest candidate (highest loaded_at)
                     if rec['loaded_at'] is None:
                         rec['loaded_at'] = cand.get('loaded_at')
@@ -817,11 +818,11 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
         session.execute(
             text("""
                 INSERT INTO drv_quote
-                    (as_of_date, symbol,
+                    (as_of_date, symbol, snapshot_date,
                      last_price, net_chng, pct_change,
                      open_price, high_price, low_price,
                      rsi, imp_volatility, export_date, export_time, loaded_at)
-                VALUES (:as_of_date, :symbol,
+                VALUES (:as_of_date, :symbol, :snapshot_date,
                         :last_price, :net_chng, :pct_change,
                         :open_price, :high_price, :low_price,
                         :rsi, :imp_volatility, :export_date, :export_time, :loaded_at)
