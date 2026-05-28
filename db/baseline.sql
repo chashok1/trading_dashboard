@@ -487,10 +487,8 @@ CREATE TABLE IF NOT EXISTS hist_tw (
     export_time         TEXT,
     last_price          NUMERIC,
     change_pct          NUMERIC,
-    sector              TEXT,
     beta                NUMERIC,
     standard_dev        NUMERIC,
-    fcf_per_share       NUMERIC,
     high_52             NUMERIC,
     low_52              NUMERIC,
     sma_20              NUMERIC,
@@ -518,6 +516,12 @@ CREATE TABLE IF NOT EXISTS hist_tw (
     PRIMARY KEY (snapshot_date, symbol, sequence)
 );
 CREATE INDEX IF NOT EXISTS ix_hist_tw_symbol ON hist_tw(symbol, snapshot_date);
+
+-- 2026-05-28: Drop unused duplicate columns from hist_tw.
+-- sector: never used (comes from ref_sector, not hist_to which is never loaded)
+-- fcf_per_share: never used (appears in hist_to but both are unused; TO not scheduled)
+ALTER TABLE IF EXISTS hist_tw DROP COLUMN IF EXISTS sector;
+ALTER TABLE IF EXISTS hist_tw DROP COLUMN IF EXISTS fcf_per_share;
 
 -- -----------------------------------------------------
 -- hist_to  <- TO tab (TOS Other - fundamentals)
@@ -2237,6 +2241,11 @@ ALTER TABLE drv_cat_atomic_input
 -- They're now computed in derive_cat_atomic_input from prior snapshot's a_bb_bottom/a_bb_top.
 -- The ALTER TABLE that added these columns to hist_td has been removed; they're only in
 -- drv_cat_atomic_input as derived output.
+
+-- 2026-05-28: Drop bb_bot_prev/bb_top_prev from drv_td (they're moved to drv_cat_atomic_input
+-- via derive_cat_atomic_input computation). drv_td no longer needs to store them.
+ALTER TABLE IF EXISTS drv_td DROP COLUMN IF EXISTS bb_bot_prev;
+ALTER TABLE IF EXISTS drv_td DROP COLUMN IF EXISTS bb_top_prev;
 
 -- 2026-05-27 (v3): dashboard single-cell scalars seeded into ref_param
 -- under sheet='dash'.  Pattern lets future derivers read scalars by name
