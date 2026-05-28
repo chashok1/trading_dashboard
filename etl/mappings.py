@@ -280,7 +280,7 @@ HIST_MAPS = {
 
     # RR tab -> hist_rr
     "RR": dict(
-        sheet="RR",
+        sheet="Table_Section",
         table="hist_rr",
         skip_first_n=0,
         pk_columns=["snapshot_date", "symbol"],
@@ -290,12 +290,11 @@ HIST_MAPS = {
         columns=[
             ("Index",          "symbol",         to_text),
             ("RR Date",        "snapshot_date",  to_date),
-            ("Last Price",     "last_price",     to_numeric),
-            ("Buy Trade",      "buy_trade",      to_numeric),
-            ("Sell Trade",     "sell_trade",     to_numeric),
-            ("Name",           "name",           to_text),
+            ("Prev Close",     "last_price",     to_numeric),
+            ("BUY TRADE",      "buy_trade",      to_numeric),
+            ("SELL TRADE",     "sell_trade",     to_numeric),
+            ("Description",    "name",           to_text),
             ("Outlook",        "outlook",        to_text),
-            ("Market Close",   "market_close",   to_date),
         ],
     ),
 
