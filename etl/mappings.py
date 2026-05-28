@@ -266,7 +266,7 @@ HIST_MAPS = {
             ("Time",                                   "export_time",     to_text),  # CSV alt
             ("Symbol",                                 "symbol",          to_text),
             ("Beta",                                   "beta",            to_numeric),
-            ("Market Cap",                             "market_cap_num",  to_numeric),
+            ("Market Cap",                             "market_cap_str",  to_text),
             ("Long-term Debt to Capital - Current (LTM)", "ltd_to_capital", to_numeric),
             ("Price / Earnings Ratio - Current",       "pe_ratio",        to_numeric),
             ("Price / Book Value Ratio - Current",     "pb_ratio",        to_numeric),
