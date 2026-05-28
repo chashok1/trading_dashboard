@@ -362,7 +362,7 @@ def get_actionable(
         LEFT JOIN LATERAL (
             SELECT user_action, snooze_until
             FROM user_action_log
-            WHERE as_of_date = a.as_of_date AND tos_symbol = a.tos_symbol
+            WHERE user_action_log.as_of_date = a.as_of_date AND user_action_log.symbol = a.symbol
             ORDER BY acted_at DESC LIMIT 1
         ) u ON TRUE
         WHERE {' AND '.join(where)}

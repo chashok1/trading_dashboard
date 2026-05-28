@@ -1913,9 +1913,23 @@ CREATE TABLE IF NOT EXISTS user_action_log (
 ALTER TABLE user_action_log ALTER COLUMN action_code     DROP NOT NULL;
 ALTER TABLE user_action_log ALTER COLUMN triggered_rules DROP NOT NULL;
 
+-- Add tos_symbol to user_action_log for consistency with tos_symbol migration
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_name = 'user_action_log' AND column_name = 'tos_symbol') THEN
+        ALTER TABLE user_action_log ADD COLUMN tos_symbol TEXT;
+    END IF;
+END $$;
+
+-- Populate tos_symbol from symbol for existing rows
+UPDATE user_action_log SET tos_symbol = symbol WHERE tos_symbol IS NULL;
+
 CREATE INDEX IF NOT EXISTS ix_user_action_log_symbol_date ON user_action_log(symbol, as_of_date);
+CREATE INDEX IF NOT EXISTS ix_user_action_log_tos_symbol_date ON user_action_log(tos_symbol, as_of_date);
 CREATE INDEX IF NOT EXISTS ix_user_action_log_date        ON user_action_log(as_of_date);
 CREATE INDEX IF NOT EXISTS ix_user_action_log_date_sym    ON user_action_log(as_of_date, symbol);
+CREATE INDEX IF NOT EXISTS ix_user_action_log_date_tos_sym ON user_action_log(as_of_date, tos_symbol);
 CREATE INDEX IF NOT EXISTS ix_user_action_log_acted       ON user_action_log(acted_at DESC);
 
 -- =====================================================

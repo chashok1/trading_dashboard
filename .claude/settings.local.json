@@ -93,7 +93,19 @@
       "Bash(curl -s \"http://127.0.0.1:8000/api/ref\")",
       "Bash(curl -s \"http://127.0.0.1:8000/api/trace?symbol=AAPL&date=2026-05-27\")",
       "Bash(curl -s \"http://127.0.0.1:8000/api/dash\")",
-      "Bash(curl -X POST \"http://127.0.0.1:8000/api/monitor/derive-missing/run?last_n_days=7\")"
+      "Bash(curl -X POST \"http://127.0.0.1:8000/api/monitor/derive-missing/run?last_n_days=7\")",
+      "Bash(curl -s \"http://127.0.0.1:8000/api/rules/value-source/4?date=2026-05-27&symbol=PPLT\")",
+      "Bash(curl -s \"http://127.0.0.1:8000/api/portfolio?date=2026-05-27\")",
+      "Bash(pkill -f \"uvicorn api.main:app\")",
+      "Bash(awk '{print $2}')",
+      "Bash(xargs kill -9)",
+      "Bash(curl -s \"http://127.0.0.1:8000/api/actionable?date=2026-05-27\")",
+      "Bash(curl -s \"http://127.0.0.1:8001/api/actionable?date=2026-05-27\")",
+      "Bash(taskkill /F /IM python.exe)",
+      "Bash(curl -s \"http://127.0.0.1:8002/api/actionable?date=2026-05-27\")",
+      "Bash(curl -v \"http://127.0.0.1:8002/api/actionable?date=2026-05-27\")",
+      "Bash(curl -s \"http://127.0.0.1:8003/api/actionable?date=2026-05-27\")",
+      "Bash(curl *)"
     ]
   }
 }
