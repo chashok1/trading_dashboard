@@ -1919,17 +1919,20 @@ CREATE INDEX IF NOT EXISTS ix_user_action_log_date_sym    ON user_action_log(as_
 CREATE INDEX IF NOT EXISTS ix_user_action_log_acted       ON user_action_log(acted_at DESC);
 
 -- =====================================================
--- Migration: Add tos_symbol to all derived tables
+-- Migration: Add tos_symbol to all hist and derived tables
 -- =====================================================
 DO $$
 DECLARE
-    tables_to_update TEXT[] := ARRAY['drv_ma', 'drv_dash', 'drv_stks', 'drv_dash_summary',
-                                      'drv_trig', 'drv_rule_outcome', 'drv_actionable',
-                                      'drv_cat_atomic_input', 'drv_realized_gain', 'drv_cs_realized_gain',
-                                      'drv_td', 'drv_tw', 'drv_to', 'drv_sss', 'drv_outlook_action'];
+    hist_tables TEXT[] := ARRAY['hist_cs', 'hist_cst'];
+    drv_tables TEXT[] := ARRAY['drv_ma', 'drv_dash', 'drv_stks', 'drv_dash_summary',
+                                'drv_trig', 'drv_rule_outcome', 'drv_actionable',
+                                'drv_cat_atomic_input', 'drv_realized_gain', 'drv_cs_realized_gain',
+                                'drv_td', 'drv_tw', 'drv_to', 'drv_sss', 'drv_outlook_action'];
+    all_tables TEXT[];
     tbl TEXT;
 BEGIN
-    FOREACH tbl IN ARRAY tables_to_update LOOP
+    all_tables := hist_tables || drv_tables;
+    FOREACH tbl IN ARRAY all_tables LOOP
         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = tbl) THEN
             IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                           WHERE table_name = tbl AND column_name = 'tos_symbol') THEN
@@ -1938,6 +1941,10 @@ BEGIN
         END IF;
     END LOOP;
 END $$;
+
+-- Create indexes on tos_symbol for hist tables
+CREATE INDEX IF NOT EXISTS ix_hist_cs_tos_symbol ON hist_cs(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_cst_tos_symbol ON hist_cst(tos_symbol, trade_date);
 
 -- Create indexes on tos_symbol for main derived tables
 CREATE INDEX IF NOT EXISTS ix_drv_ma_tos_symbol ON drv_ma(tos_symbol);

@@ -1542,12 +1542,12 @@ def _derive_cs_realized_gain_impl(session: Session, as_of_date: date, run_id: in
 
     # Get all sells on as_of_date with their prior-day cost basis
     rows = session.execute(text("""
-        SELECT t.account, t.symbol, t.quantity, t.amount,
+        SELECT t.account, t.symbol, t.tos_symbol, t.quantity, t.amount,
                c.cost_basis, c.qty AS held_qty
         FROM hist_cst t
         LEFT JOIN hist_cs c
                ON c.account = t.account
-              AND c.symbol   = t.symbol
+              AND c.tos_symbol = t.tos_symbol
               AND c.snapshot_date = :prior
         WHERE t.trade_date = :d
           AND LOWER(t.action) = 'sell'
@@ -1555,7 +1555,7 @@ def _derive_cs_realized_gain_impl(session: Session, as_of_date: date, run_id: in
     """), {"d": as_of_date, "prior": prior}).fetchall()
 
     records = []
-    for account, symbol, qty, amount, cost_basis, held_qty in rows:
+    for account, symbol, tos_symbol, qty, amount, cost_basis, held_qty in rows:
         if qty and cost_basis and held_qty and float(held_qty) != 0:
             avg_cost = float(cost_basis) / float(held_qty)
             proceeds = float(amount) if amount else 0.0
@@ -1569,6 +1569,7 @@ def _derive_cs_realized_gain_impl(session: Session, as_of_date: date, run_id: in
             "as_of_date":         as_of_date,
             "account":            account,
             "symbol":             symbol,
+            "tos_symbol":         tos_symbol,
             "realized_gain":      realized,
             "shares_sold":        float(qty) if qty else None,
             "avg_cost_per_share": avg_cost,
@@ -1579,9 +1580,10 @@ def _derive_cs_realized_gain_impl(session: Session, as_of_date: date, run_id: in
         session.execute(
             text("""
                 INSERT INTO drv_cs_realized_gain
-                    (as_of_date, account, symbol, realized_gain, shares_sold, avg_cost_per_share, proceeds)
-                VALUES (:as_of_date, :account, :symbol, :realized_gain, :shares_sold, :avg_cost_per_share, :proceeds)
+                    (as_of_date, account, symbol, tos_symbol, realized_gain, shares_sold, avg_cost_per_share, proceeds)
+                VALUES (:as_of_date, :account, :symbol, :tos_symbol, :realized_gain, :shares_sold, :avg_cost_per_share, :proceeds)
                 ON CONFLICT (as_of_date, account, symbol) DO UPDATE SET
+                    tos_symbol         = EXCLUDED.tos_symbol,
                     realized_gain      = EXCLUDED.realized_gain,
                     shares_sold        = EXCLUDED.shares_sold,
                     avg_cost_per_share = EXCLUDED.avg_cost_per_share,
@@ -1749,20 +1751,20 @@ def _get_continuation_action(entry_wt: Optional[float],
 
 def _derive_missing_symbols_impl(session: Session, as_of_date: date, run_id: int) -> int:
     rows = session.execute(text("""
-        WITH ma AS (SELECT symbol FROM drv_ma WHERE as_of_date = :d),
+        WITH ma AS (SELECT tos_symbol FROM drv_ma WHERE as_of_date = :d),
         seen AS (
-            SELECT symbol, 'tl'   AS src FROM hist_tl   WHERE snapshot_date = :d
+            SELECT tos_symbol, 'tl'   AS src FROM hist_tl   WHERE snapshot_date = :d
             UNION SELECT tos_symbol, 'rr'   FROM hist_rr   WHERE snapshot_date = :d
-            UNION SELECT symbol, 'call' FROM hist_call WHERE snapshot_date = :d
-            UNION SELECT symbol, 'etf'  FROM hist_etf  WHERE snapshot_date = :d
-            UNION SELECT symbol, 'ii'   FROM hist_ii   WHERE snapshot_date = :d
-            UNION SELECT symbol, 'sss'  FROM hist_sss  WHERE snapshot_date = :d
-            UNION SELECT COALESCE(tos_symbol, symbol), 'y'    FROM hist_y    WHERE snapshot_date = :d
+            UNION SELECT tos_symbol, 'call' FROM hist_call WHERE snapshot_date = :d
+            UNION SELECT tos_symbol, 'etf'  FROM hist_etf  WHERE snapshot_date = :d
+            UNION SELECT tos_symbol, 'ii'   FROM hist_ii   WHERE snapshot_date = :d
+            UNION SELECT tos_symbol, 'sss'  FROM hist_sss  WHERE snapshot_date = :d
+            UNION SELECT tos_symbol, 'y'    FROM hist_y    WHERE snapshot_date = :d
         )
-        SELECT s.symbol, string_agg(DISTINCT s.src, ',' ORDER BY s.src) AS found_in
+        SELECT s.tos_symbol AS symbol, string_agg(DISTINCT s.src, ',' ORDER BY s.src) AS found_in
         FROM seen s
-        WHERE NOT EXISTS (SELECT 1 FROM ma WHERE ma.symbol = s.symbol)
-        GROUP BY s.symbol
+        WHERE NOT EXISTS (SELECT 1 FROM ma WHERE ma.tos_symbol = s.tos_symbol)
+        GROUP BY s.tos_symbol
     """), {"d": as_of_date}).mappings().all()
     out = [{
         "as_of_date":    as_of_date,
@@ -2026,6 +2028,7 @@ def _derive_trig_impl(session: Session, as_of_date: date, run_id: int) -> int:
             out_rows.append({
                 "as_of_date":          as_of_date,
                 "symbol":              ma["symbol"],
+                "tos_symbol":          ma["tos_symbol"],
                 "composite_rule_code": code,
                 "score":               float(score),
                 # triggered = any member contributed, not "net score non-zero".
@@ -2418,6 +2421,8 @@ def derive_all(session: Session, as_of_date: date,
     counts["hist_etf_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_etf", as_of_date)
     counts["hist_ii_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_ii", as_of_date)
     counts["hist_sss_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_sss", as_of_date)
+    counts["hist_cs_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_cs", as_of_date)
+    counts["hist_cst_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_cst", as_of_date)
 
     # Each derive wrapped so one failing/crashing call doesn't kill the rest
     # AND the calling process. Uses BaseException to also catch SystemExit
