@@ -64,7 +64,12 @@ def to_numeric(v) -> Optional[float]:
         return None
     try:
         if isinstance(v, str):
-            v = v.replace("$", "").replace(",", "").replace("%", "").strip()
+            # Handle accounting format: ($1.23) means negative 1.23
+            is_negative = "(" in v and ")" in v
+            v = v.replace("$", "").replace(",", "").replace("%", "").replace("(", "").replace(")", "").strip()
+            if is_negative and v:
+                # If it was in parentheses, make it negative
+                v = "-" + v if not v.startswith("-") else v
         f = float(v)
         if math.isnan(f) or math.isinf(f):
             return None
