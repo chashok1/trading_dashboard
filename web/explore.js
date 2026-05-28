@@ -7,6 +7,7 @@ const state = {
     tables: [],
     currentTable: null,
     dashboardDate: null,
+    latestDate: null,
     columns: [],
     rows: [],
     total: 0,
@@ -116,9 +117,9 @@ DOM.tableSelect.addEventListener('change', async (e) => {
     state.sortColumn = null;
     state.sortDirection = 'asc';
     state.filterSymbol = '';
-    state.filterDate = '';
+    state.filterDate = state.latestDate || '';
     DOM.filterSymbol.value = '';
-    DOM.filterDate.value = '';
+    DOM.filterDate.value = state.latestDate || '';
     await loadTable(e.target.value);
 });
 
@@ -204,9 +205,13 @@ async function loadAvailableDates() {
         });
         DOM.datePicker.innerHTML = html;
 
-        // Don't auto-select a date — let user choose when to filter
+        // Default to latest snapshot date available
         if (DOM.datePicker.options.length > 0) {
-            DOM.datePicker.value = '';
+            const latestDate = dates[0].split(' ')[0];  // First date is latest (descending order)
+            state.latestDate = latestDate;
+            DOM.datePicker.value = latestDate;
+            DOM.filterDate.value = latestDate;
+            state.filterDate = latestDate;
         }
     } catch (e) {
         console.error(`Failed to load available dates: ${e.message}`);
