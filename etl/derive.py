@@ -501,15 +501,15 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
     tw AS (
         SELECT DISTINCT ON (h.symbol) h.symbol, h.snapshot_date AS tw_date,
                dr.a_macd_brr, dr.a_macdh_d_brr, dr.earnings_days_d AS earnings_days,
-               dr.sma_20_d AS sma_20, dr.sma_50_d AS sma_50, dr.sma_200_d AS sma_200,
-               h.market_cap_str, h.beta
+               dr.sma_20_d AS sma_20, dr.sma_50_d AS sma_50, dr.sma_200_d AS sma_200
         FROM hist_tw h
         LEFT JOIN drv_tw dr USING (snapshot_date, symbol, sequence)
         WHERE h.snapshot_date <= (SELECT d FROM p)
         ORDER BY h.symbol, h.snapshot_date DESC, h.sequence DESC
     ),
     too AS (
-        SELECT DISTINCT ON (symbol) symbol, pe_ratio, eps, div_yield, sector
+        SELECT DISTINCT ON (symbol) symbol, beta, market_cap_num::text AS market_cap_str,
+               pe_ratio, eps, div_yield, sector
         FROM hist_to WHERE snapshot_date <= (SELECT d FROM p)
         ORDER BY symbol, snapshot_date DESC, sequence DESC
     ),
@@ -591,7 +591,8 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         td.d_iv_to_hv, td.d_vlt_caution,
         td.a_trend_value, td.a_trade_value, td.a_bb_top, td.a_bb_bottom, td.a_bb_streak,
         tw.tw_date, tw.a_macd_brr, tw.a_macdh_d_brr, tw.earnings_days,
-        tw.sma_20, tw.sma_50, tw.sma_200, tw.market_cap_str, tw.beta,
+        tw.sma_20, tw.sma_50, tw.sma_200,
+        too.market_cap_str, too.beta,
         too.pe_ratio, too.eps, too.div_yield,
         rr.rr_date, rr.buy_trade AS rr_buy_trade, rr.sell_trade AS rr_sell_trade, rr.outlook AS rr_outlook,
         cl.call_outlook, cl.call_modifier, cl.call_weight,

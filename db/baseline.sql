@@ -487,7 +487,6 @@ CREATE TABLE IF NOT EXISTS hist_tw (
     export_time         TEXT,
     last_price          NUMERIC,
     change_pct          NUMERIC,
-    beta                NUMERIC,
     standard_dev        NUMERIC,
     high_52             NUMERIC,
     low_52              NUMERIC,
@@ -510,18 +509,19 @@ CREATE TABLE IF NOT EXISTS hist_tw (
     a_3mn_high_low      NUMERIC,
     a_3wk_high_low      NUMERIC,
     a_earnings_days     NUMERIC,
-    market_cap_str      TEXT,
     loaded_at           TIMESTAMP NOT NULL DEFAULT now(),
     source_file         TEXT,
     PRIMARY KEY (snapshot_date, symbol, sequence)
 );
 CREATE INDEX IF NOT EXISTS ix_hist_tw_symbol ON hist_tw(symbol, snapshot_date);
 
--- 2026-05-28: Drop unused duplicate columns from hist_tw.
--- sector: never used (comes from ref_sector, not hist_to which is never loaded)
--- fcf_per_share: never used (appears in hist_to but both are unused; TO not scheduled)
+-- 2026-05-28: Drop unused/duplicate columns from hist_tw.
+-- Consolidate on hist_to as the single source for beta, market_cap, sector, fcf_per_share.
+-- Note: This requires TO file_type to be scheduled in ref_load_files.
 ALTER TABLE IF EXISTS hist_tw DROP COLUMN IF EXISTS sector;
+ALTER TABLE IF EXISTS hist_tw DROP COLUMN IF EXISTS beta;
 ALTER TABLE IF EXISTS hist_tw DROP COLUMN IF EXISTS fcf_per_share;
+ALTER TABLE IF EXISTS hist_tw DROP COLUMN IF EXISTS market_cap_str;
 
 -- -----------------------------------------------------
 -- hist_to  <- TO tab (TOS Other - fundamentals)

@@ -224,9 +224,8 @@ HIST_MAPS = {
             ("Symbol",                     "symbol",             to_text),
             ("Last",                       "last_price",         to_numeric),
             ("%Change",                    "change_pct",         to_numeric),
-            # 2026-05-28: Removed sector and fcf_per_share (unused duplicates).
-            # Sector comes from ref_sector; fcf_per_share never used.
-            ("Beta",                       "beta",               to_numeric),
+            # 2026-05-28: Removed beta, market_cap_str, sector, fcf_per_share.
+            # Consolidated on hist_to as single source for these fields.
             ("StandardDeviation",          "standard_dev",       to_numeric),
             ("52High",                     "high_52",            to_numeric),
             ("52Low",                      "low_52",             to_numeric),
@@ -246,7 +245,6 @@ HIST_MAPS = {
             ("A_3mnHighLow",               "a_3mn_high_low",     to_numeric),
             ("A_3wkHighLow",               "a_3wk_high_low",     to_numeric),
             ("A_EarningsDays",             "a_earnings_days",    to_numeric),
-            ("Market Cap",                 "market_cap_str",     to_text),
         ],
         # NOTE: TW has 3 columns named "SimpleMovingAvg" and 2 named
         # "VolumeAvg". load_raw.py handles duplicates by index when needed.
