@@ -108,12 +108,16 @@ _BATCH_SIZE = 1000  # max rows per INSERT to stay under PostgreSQL's 65535-param
 
 def insert_skip_duplicates(session: Session, table_name: str,
                            rows: Iterable[dict],
-                           progress_cb: Callable[[int, int, int, int], None] | None = None) -> tuple[int, int]:
+                           progress_cb: Callable[[int, int, int, int], None] | None = None,
+                           update_on_conflict_cols: list[str] | None = None) -> tuple[int, int]:
     """
-    Bulk INSERT with ON CONFLICT DO NOTHING, committed per batch.
+    Bulk INSERT with ON CONFLICT DO NOTHING (or DO UPDATE), committed per batch.
     Returns (n_attempted, n_inserted). Skipped rows are silently dropped.
 
     progress_cb(batch_num, total_batches, n_inserted_so_far, n_skipped_so_far) called after each commit.
+
+    update_on_conflict_cols: if set, use ON CONFLICT DO UPDATE for these columns instead of DO NOTHING.
+                             Allows reloads to update specific metadata columns (e.g. ['source_file']).
     """
     rows = list(rows)
     n_attempted = len(rows)
@@ -131,7 +135,15 @@ def insert_skip_duplicates(session: Session, table_name: str,
     for batch_idx, i in enumerate(range(0, len(rows), _BATCH_SIZE), start=1):
         batch = rows[i:i + _BATCH_SIZE]
         batch_size = len(batch)
-        stmt = pg_insert(table).values(batch).on_conflict_do_nothing()
+        stmt = pg_insert(table).values(batch)
+
+        if update_on_conflict_cols:
+            # ON CONFLICT DO UPDATE only for specified columns
+            update_dict = {col: stmt.excluded[col] for col in update_on_conflict_cols if col in all_keys}
+            stmt = stmt.on_conflict_do_update(set_=update_dict)
+        else:
+            stmt = stmt.on_conflict_do_nothing()
+
         result = session.execute(stmt)
         # PostgreSQL returns rowcount=-1 for ON CONFLICT DO NOTHING (unknown).
         # If successful with no error, assume all rows were processed.
@@ -221,10 +233,13 @@ def insert_upsert(session: Session, table_name: str,
         if update_cols:
             set_dict = {col: getattr(stmt.excluded, col) for col in update_cols}
             if has_export_time:
-                # Only update if export_time is different (or was null).
-                # safe_ident: table_name comes from internal callers but we defensively check.
+                # Only update if export_time is different OR source_file is NULL (reprocessing case).
+                # This allows reprocessing to update source_file even when data hasn't changed.
                 safe_table = safe_ident(table_name, {table.name})
-                where_clause = text(f"EXCLUDED.export_time IS DISTINCT FROM {safe_table}.export_time")
+                where_clause = text(
+                    f"EXCLUDED.export_time IS DISTINCT FROM {safe_table}.export_time "
+                    f"OR {safe_table}.source_file IS NULL"
+                )
                 stmt = stmt.on_conflict_do_update(
                     index_elements=pk_list,
                     set_=set_dict,

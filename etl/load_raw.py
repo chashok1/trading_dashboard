@@ -1622,7 +1622,7 @@ def load_cs_positions_csv(session: Session, csv_path: str, source_file: str) -> 
                 'source_file':        source_file,
             })
 
-    n_attempted, n_inserted = insert_skip_duplicates(session, 'hist_cs', records)
+    n_attempted, n_inserted = insert_skip_duplicates(session, 'hist_cs', records, update_on_conflict_cols=['source_file'])
     return rows_read, n_inserted, (n_attempted - n_inserted)
 
 
