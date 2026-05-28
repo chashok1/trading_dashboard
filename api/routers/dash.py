@@ -279,7 +279,7 @@ def get_stks(
             stks.composite_outlook, stks.composite_label,
             stks.triggered_atomic_ids, stks.triggered_composite_ids
         FROM drv_ma ma
-        LEFT JOIN drv_stks stks ON ma.as_of_date = stks.as_of_date AND ma.symbol = stks.symbol
+        LEFT JOIN drv_stks stks ON ma.as_of_date = stks.as_of_date AND ma.tos_symbol = stks.tos_symbol
         WHERE {where_clause}
         ORDER BY ma.symbol
         LIMIT :lim
@@ -356,13 +356,13 @@ def get_actionable(
                u.snooze_until AS snooze_until
         FROM drv_actionable a
         LEFT JOIN drv_ma m
-               ON m.symbol = a.symbol AND m.as_of_date = a.as_of_date
+               ON m.tos_symbol = a.tos_symbol AND m.as_of_date = a.as_of_date
         LEFT JOIN drv_quote q
-               ON q.symbol = a.symbol AND q.as_of_date = a.as_of_date
+               ON q.tos_symbol = a.tos_symbol AND q.as_of_date = a.as_of_date
         LEFT JOIN LATERAL (
             SELECT user_action, snooze_until
             FROM user_action_log
-            WHERE as_of_date = a.as_of_date AND symbol = a.symbol
+            WHERE as_of_date = a.as_of_date AND tos_symbol = a.tos_symbol
             ORDER BY acted_at DESC LIMIT 1
         ) u ON TRUE
         WHERE {' AND '.join(where)}
@@ -620,7 +620,7 @@ def post_actionable_action(symbol: str, payload: dict):
         # Snapshot drv_actionable row
         act_row = s.execute(text("""
             SELECT * FROM drv_actionable
-            WHERE as_of_date = :d AND symbol = :sym
+            WHERE as_of_date = :d AND tos_symbol = :sym
         """), {"d": as_of, "sym": sym_u}).mappings().first()
         if not act_row:
             raise HTTPException(404, f"no drv_actionable row for {sym_u} on {as_of}")
@@ -717,7 +717,7 @@ def clear_actionable_action(symbol: str, date: str = Query(...)):
     with session_scope() as s:
         res = s.execute(text("""
             DELETE FROM user_action_log
-            WHERE as_of_date = :d AND symbol = :sym AND user_action = 'SKIPPED'
+            WHERE as_of_date = :d AND tos_symbol = :sym AND user_action = 'SKIPPED'
         """), {"d": as_of, "sym": sym})
     return {"cleared": res.rowcount or 0}
 

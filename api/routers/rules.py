@@ -469,11 +469,11 @@ def atomic_rule_dryrun(rule_id: str, body: dict):
 
         # Resolve the value the rule reads from drv_ma / drv_cat_atomic_input
         ma_dict = dict(s.execute(text(
-            "SELECT * FROM drv_ma WHERE as_of_date=:d AND symbol=:sym LIMIT 1"
+            "SELECT * FROM drv_ma WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1"
         ), {"d": snap, "sym": sym}).mappings().first() or {})
         try:
             ai_dict = dict(s.execute(text(
-                "SELECT * FROM drv_cat_atomic_input WHERE as_of_date=:d AND symbol=:sym LIMIT 1"
+                "SELECT * FROM drv_cat_atomic_input WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1"
             ), {"d": snap, "sym": sym}).mappings().first() or {})
         except Exception:
             ai_dict = {}
@@ -528,11 +528,11 @@ def atomic_rule_dryrun(rule_id: str, body: dict):
                 tbl, col = col_src
                 if tbl == "drv_ma":
                     rows = s.execute(text(
-                        f'SELECT symbol, "{col}" AS v FROM drv_ma WHERE as_of_date = :d'
+                        f'SELECT tos_symbol AS symbol, "{col}" AS v FROM drv_ma WHERE as_of_date = :d'
                     ), {"d": snap}).mappings().all()
                 else:
                     rows = s.execute(text(
-                        f'SELECT symbol, "{col}" AS v FROM {tbl} WHERE as_of_date = :d'
+                        f'SELECT tos_symbol AS symbol, "{col}" AS v FROM {tbl} WHERE as_of_date = :d'
                     ), {"d": snap}).mappings().all()
                 flips = 0
                 for r in rows:
@@ -891,13 +891,13 @@ def composite_dryrun(rule_id: str, body: dict):
         # 1. fetch drv_ma + drv_cat_atomic_input for the sample symbol
         try:
             ma_dict = dict(s.execute(text(
-                "SELECT * FROM drv_ma WHERE as_of_date=:d AND symbol=:sym LIMIT 1"
+                "SELECT * FROM drv_ma WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1"
             ), {"d": snap, "sym": sym}).mappings().first() or {})
         except Exception:
             ma_dict = {}
         try:
             ai_dict = dict(s.execute(text(
-                "SELECT * FROM drv_cat_atomic_input WHERE as_of_date=:d AND symbol=:sym LIMIT 1"
+                "SELECT * FROM drv_cat_atomic_input WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1"
             ), {"d": snap, "sym": sym}).mappings().first() or {})
         except Exception:
             ai_dict = {}
@@ -998,7 +998,7 @@ def composite_dryrun(rule_id: str, body: dict):
                     try:
                         row = s.execute(text(
                             f'SELECT "{col}" AS v FROM {tbl} '
-                            "WHERE as_of_date=:d AND symbol=:sym LIMIT 1"
+                            "WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1"
                         ), {"d": snap, "sym": sym}).mappings().first()
                         value = row["v"] if row else None
                     except Exception:
@@ -1065,7 +1065,7 @@ def composite_dryrun(rule_id: str, body: dict):
         # Affected-symbols estimate from drv_trig
         try:
             affected = s.execute(text("""
-                SELECT COUNT(DISTINCT symbol) AS n FROM drv_trig
+                SELECT COUNT(DISTINCT tos_symbol) AS n FROM drv_trig
                 WHERE composite_rule_code = :rid AND as_of_date = :d
             """), {"rid": rule_id, "d": snap}).scalar()
         except Exception:

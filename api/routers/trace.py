@@ -34,7 +34,7 @@ def log_user_action(request: UserActionRequest):
             text("""
                 SELECT triggered_atomic_ids, triggered_composite_ids
                 FROM drv_stks
-                WHERE as_of_date = :d AND symbol = :sym
+                WHERE as_of_date = :d AND tos_symbol = :sym
                 LIMIT 1
             """),
             {"d": request.as_of_date, "sym": request.symbol}
@@ -54,7 +54,7 @@ def log_user_action(request: UserActionRequest):
             consolidated = s.execute(
                 text("""
                     SELECT consolidated_action FROM drv_actionable
-                    WHERE as_of_date = :d AND symbol = :sym
+                    WHERE as_of_date = :d AND tos_symbol = :sym
                     LIMIT 1
                 """),
                 {"d": request.as_of_date, "sym": request.symbol}
@@ -136,7 +136,7 @@ def get_symbol_trace(sym: str, as_of: Optional[str] = Query(None, alias="date"))
                    st.triggered_atomic_ids, st.triggered_composite_ids
             FROM drv_ma m
             LEFT JOIN drv_stks st
-              ON st.as_of_date = m.as_of_date AND st.symbol = m.symbol
+              ON st.as_of_date = m.as_of_date AND st.tos_symbol = m.tos_symbol
             WHERE m.as_of_date = :d AND m.symbol = :sym
         """), {"d": snap, "sym": sym_u}).mappings().first()
         if not summary_row:
@@ -477,7 +477,7 @@ def get_symbol_trace(sym: str, as_of: Optional[str] = Query(None, alias="date"))
             SELECT source_code, base_weight, prev_weight, prev_date,
                    weight_delta, held_today, action, action_reason, category
             FROM drv_outlook_action
-            WHERE as_of_date = :d AND symbol = :sym
+            WHERE as_of_date = :d AND tos_symbol = :sym
             ORDER BY source_code
         """), {"d": snap, "sym": sym_u}).mappings().all()
         outlook_actions = [dict(r) for r in outlook_rows]
@@ -493,7 +493,7 @@ def get_symbol_trace(sym: str, as_of: Optional[str] = Query(None, alias="date"))
                    current_position_dollar, held_today, in_my_list,
                    suppressed_reason, triggered_group_ids
             FROM drv_actionable
-            WHERE as_of_date = :d AND symbol = :sym
+            WHERE as_of_date = :d AND tos_symbol = :sym
             LIMIT 1
         """), {"d": snap, "sym": sym_u}).mappings().first()
         actionable = dict(actionable_row) if actionable_row else None
