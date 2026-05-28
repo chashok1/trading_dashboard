@@ -127,6 +127,7 @@ Re-running derive for date D is idempotent: same numbers; only date D's derivati
 13. **Responses use a structured format.** Lead with a short **Summary** — ONLY what the user must act on or pay attention to. Problems Claude both caused and fixed itself (e.g. file-truncation-on-write and its splice recovery) must NOT appear in the Summary — move them to **Details** under a subheading, or omit them entirely. Then **Details**. Include a **Notes** section ONLY when there is a precise, actionable point to make — omit the section entirely when there is none; never pad it. End with **Questions** only if there are real questions. Keep every section to the minimum detail required — not verbose. Skip the scaffolding for trivial one-line answers. Hard rule from the user.
 14. **Manage code changes through git.** All code modifications must be committed to the repository with clear commit messages. This creates a complete audit trail and enables rollback if needed. Claude will create commits for code changes going forward.
 15. **Push back on wasteful or unnecessary requests.** When a request is genuinely wasteful, redundant, or there is a materially better approach, say so instead of just complying — raise it as a subsection under **Notes** (e.g. a `### Worth reconsidering` subheading) stating the concern and the better option. Use this sparingly: only when it genuinely matters, never as routine commentary on ordinary requests. Hard rule from the user.
+16. **Symbol normalization: use tos_symbol in all derives.** All `hist_*` tables have a `tos_symbol` column populated during the ETL load/populate phase. All derive functions (`drv_*`) must use `tos_symbol` as the primary symbol key, never raw `symbol`. This includes: symbol universe CTEs, joins between tables, GROUP BY clauses, and output rows. The populate phase guarantees 100% population of `tos_symbol`, so no `COALESCE(tos_symbol, symbol)` is needed. See `docs/tos_symbol_normalization.md` for details.
 
 ---
 
@@ -231,3 +232,4 @@ If truncated, **don't re-`Edit`** — rewrite the tail via bash heredoc. Smaller
 | Rules engine logic | `docs/rules_logic.md` |
 | Rule groups logic | `docs/rule_groups_logic.md` |
 | Performance / feedback-loop logic | `docs/performance_logic.md` |
+| Symbol normalization strategy (tos_symbol) | `docs/tos_symbol_normalization.md` |
