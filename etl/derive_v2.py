@@ -112,7 +112,7 @@ def _action_to_weight(action_name: Optional[str],
 def _derive_tw_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
     """
     Mirrors TW Excel formulas:
-      G  FCF              = clean(fcf_per_share)
+      G  FCF              = NULL (moved to hist_to)
       H  20 DMA           = clean(sma_20)
       I  50 DMA           = clean(sma_50)
       J  200 DMA          = clean(sma_200)
@@ -143,7 +143,7 @@ def _derive_tw_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
         SELECT snapshot_date, symbol, sequence,
                last_price, change_pct, sma_20, sma_50, sma_200,
                volume, volume_avg_10d, volume_avg_3m, volume_rate_change,
-               a_macd_brr, a_macdh_d_brr, a_earnings_days, fcf_per_share
+               a_macd_brr, a_macdh_d_brr, a_earnings_days
         FROM hist_tw
         WHERE snapshot_date <= :d AND symbol = ANY(:syms)
         ORDER BY symbol, snapshot_date ASC, sequence ASC
@@ -161,7 +161,7 @@ def _derive_tw_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
             continue
         cur = hist[-1]
 
-        fcf = _clean(cur.fcf_per_share)
+        fcf = None  # fcf_per_share moved to hist_to
         sma20 = _clean(cur.sma_20)
         sma50 = _clean(cur.sma_50)
         sma200 = _clean(cur.sma_200)
