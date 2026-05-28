@@ -423,6 +423,7 @@ CREATE INDEX IF NOT EXISTS ix_hist_y_tos_symbol ON hist_y(tos_symbol, snapshot_d
 CREATE TABLE IF NOT EXISTS hist_tl (
     snapshot_date        DATE NOT NULL,
     symbol               TEXT NOT NULL,
+    tos_symbol           TEXT,
     sequence             INTEGER NOT NULL,
     export_date          DATE,
     export_time          TEXT,
@@ -447,6 +448,7 @@ CREATE INDEX IF NOT EXISTS ix_hist_tl_symbol ON hist_tl(symbol, snapshot_date);
 CREATE TABLE IF NOT EXISTS hist_td (
     snapshot_date       DATE NOT NULL,
     symbol              TEXT NOT NULL,
+    tos_symbol          TEXT,
     sequence            INTEGER NOT NULL,
     export_date         DATE,
     export_time         TEXT,
@@ -482,6 +484,7 @@ CREATE INDEX IF NOT EXISTS ix_hist_td_symbol ON hist_td(symbol, snapshot_date);
 CREATE TABLE IF NOT EXISTS hist_tw (
     snapshot_date       DATE NOT NULL,
     symbol              TEXT NOT NULL,
+    tos_symbol          TEXT,
     sequence            INTEGER NOT NULL,
     export_date         DATE,
     export_time         TEXT,
@@ -514,6 +517,7 @@ CREATE TABLE IF NOT EXISTS hist_tw (
     PRIMARY KEY (snapshot_date, symbol, sequence)
 );
 CREATE INDEX IF NOT EXISTS ix_hist_tw_symbol ON hist_tw(symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_tw_tos_symbol ON hist_tw(tos_symbol, snapshot_date);
 
 -- 2026-05-28: Drop unused/duplicate columns from hist_tw.
 -- Consolidate on hist_to as the single source for beta, market_cap, sector, fcf_per_share.
@@ -536,6 +540,7 @@ ALTER TABLE IF EXISTS hist_td DROP COLUMN IF EXISTS bb_top_prev;
 CREATE TABLE IF NOT EXISTS hist_to (
     snapshot_date    DATE NOT NULL,
     symbol           TEXT NOT NULL,
+    tos_symbol       TEXT,
     sequence         INTEGER NOT NULL DEFAULT 0,
     export_date      DATE,
     export_time      TEXT,
@@ -554,6 +559,7 @@ CREATE TABLE IF NOT EXISTS hist_to (
     PRIMARY KEY (snapshot_date, symbol, sequence)
 );
 CREATE INDEX IF NOT EXISTS ix_hist_to_symbol ON hist_to(symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_to_tos_symbol ON hist_to(tos_symbol, snapshot_date);
 
 -- -----------------------------------------------------
 -- hist_call  <- call tab
@@ -561,6 +567,7 @@ CREATE INDEX IF NOT EXISTS ix_hist_to_symbol ON hist_to(symbol, snapshot_date);
 CREATE TABLE IF NOT EXISTS hist_call (
     snapshot_date    DATE NOT NULL,
     symbol           TEXT NOT NULL,
+    tos_symbol       TEXT,
     outlook          TEXT,
     outlook_modifier TEXT,
     loaded_at        TIMESTAMP NOT NULL DEFAULT now(),
@@ -568,6 +575,7 @@ CREATE TABLE IF NOT EXISTS hist_call (
     PRIMARY KEY (snapshot_date, symbol)
 );
 CREATE INDEX IF NOT EXISTS ix_hist_call_symbol ON hist_call(symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_call_tos_symbol ON hist_call(tos_symbol, snapshot_date);
 
 -- -----------------------------------------------------
 -- hist_etf  <- etf tab
@@ -577,6 +585,7 @@ CREATE INDEX IF NOT EXISTS ix_hist_call_symbol ON hist_call(symbol, snapshot_dat
 CREATE TABLE IF NOT EXISTS hist_etf (
     snapshot_date    DATE NOT NULL,
     symbol           TEXT NOT NULL,
+    tos_symbol       TEXT,
     sector           TEXT,
     date_added       DATE,
     recent_price     NUMERIC,
@@ -589,6 +598,7 @@ CREATE TABLE IF NOT EXISTS hist_etf (
     PRIMARY KEY (snapshot_date, symbol)
 );
 CREATE INDEX IF NOT EXISTS ix_hist_etf_symbol  ON hist_etf(symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_etf_tos_symbol ON hist_etf(tos_symbol, snapshot_date);
 CREATE INDEX IF NOT EXISTS ix_hist_etf_outlook ON hist_etf(outlook) WHERE outlook IS NOT NULL;
 
 -- -----------------------------------------------------
@@ -597,12 +607,14 @@ CREATE INDEX IF NOT EXISTS ix_hist_etf_outlook ON hist_etf(outlook) WHERE outloo
 CREATE TABLE IF NOT EXISTS hist_ii (
     snapshot_date    DATE NOT NULL,
     symbol           TEXT NOT NULL,
+    tos_symbol       TEXT,
     outlook          TEXT,
     loaded_at        TIMESTAMP NOT NULL DEFAULT now(),
     source_file      TEXT,
     PRIMARY KEY (snapshot_date, symbol)
 );
 CREATE INDEX IF NOT EXISTS ix_hist_ii_symbol ON hist_ii(symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_ii_tos_symbol ON hist_ii(tos_symbol, snapshot_date);
 
 -- -----------------------------------------------------
 -- hist_sss  <- SSS tab (Signal Strength Summary)
@@ -610,6 +622,7 @@ CREATE INDEX IF NOT EXISTS ix_hist_ii_symbol ON hist_ii(symbol, snapshot_date);
 CREATE TABLE IF NOT EXISTS hist_sss (
     snapshot_date         DATE NOT NULL,
     symbol                TEXT NOT NULL,
+    tos_symbol            TEXT,
     days_on               INTEGER,
     signal_date           DATE,
     prior_close           NUMERIC,
@@ -623,6 +636,7 @@ CREATE TABLE IF NOT EXISTS hist_sss (
     PRIMARY KEY (snapshot_date, symbol)
 );
 CREATE INDEX IF NOT EXISTS ix_hist_sss_symbol ON hist_sss(symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_sss_tos_symbol ON hist_sss(tos_symbol, snapshot_date);
 
 -- -----------------------------------------------------
 -- hist_rr  <- RR tab (Risk Range)
@@ -2289,6 +2303,27 @@ INSERT INTO ref_param (sheet, param_name, value) VALUES
     ('dash', 'intraday_toggle', 'Y')           -- Dash!$AB$24: 'Y' = use intraday DG/DK/DL,
                                                -- 'N' = use daily CY/DC/DD.
 ON CONFLICT (sheet, param_name) DO NOTHING;
+
+-- 2026-05-28: Add tos_symbol to all hist_* tables for symbol normalization
+-- Maps each table's symbol to TOS/thinkOrSwim symbol via RRT (ref_rrt).
+-- COALESCE(tos_symbol, symbol) used throughout derive layer for consistency.
+-- =====================================================
+ALTER TABLE IF EXISTS hist_tl  ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
+ALTER TABLE IF EXISTS hist_td  ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
+ALTER TABLE IF EXISTS hist_tw  ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
+ALTER TABLE IF EXISTS hist_to  ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
+ALTER TABLE IF EXISTS hist_call ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
+ALTER TABLE IF EXISTS hist_etf ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
+ALTER TABLE IF EXISTS hist_ii  ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
+ALTER TABLE IF EXISTS hist_sss ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
+
+CREATE INDEX IF NOT EXISTS ix_hist_tl_tos_symbol ON hist_tl(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_tw_tos_symbol ON hist_tw(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_to_tos_symbol ON hist_to(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_call_tos_symbol ON hist_call(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_etf_tos_symbol ON hist_etf(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_ii_tos_symbol ON hist_ii(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_sss_tos_symbol ON hist_sss(tos_symbol, snapshot_date);
 
 -- =====================================================
 -- End of baseline.sql
