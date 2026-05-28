@@ -858,6 +858,7 @@ def load_tw(session: Session, wb: Workbook, source_file: str) -> tuple[int, int,
             v = sheet.cell(row=row_num, column=vol_indices[1] + 1).value
             rec["volume_avg_3m"] = to_numeric(v) if v is not None else None
 
+        rec["source_file"] = source_file
         records.append(rec)
 
     print(f"\nhist_tw: started. tab rows - {rows_read}")
@@ -1618,6 +1619,7 @@ def load_cs_positions_csv(session: Session, csv_path: str, source_file: str) -> 
                 'reinvest':           to_text(row.get('Reinvest?') or ''),
                 'reinvest_cap_gains': to_text(row.get('Reinvest Capital Gains?') or ''),
                 'security_type':      to_text(row.get('Asset Type') or ''),
+                'source_file':        source_file,
             })
 
     n_attempted, n_inserted = insert_skip_duplicates(session, 'hist_cs', records)
