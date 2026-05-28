@@ -129,6 +129,7 @@ def insert_skip_duplicates(session: Session, table_name: str,
     rows = [{k: row.get(k) for k in all_keys} for row in rows]
 
     table = get_table(table_name)
+    pk_cols = [col.name for col in table.primary_key]
     n_inserted = 0
     total_batches = math.ceil(len(rows) / _BATCH_SIZE)
 
@@ -140,7 +141,7 @@ def insert_skip_duplicates(session: Session, table_name: str,
         if update_on_conflict_cols:
             # ON CONFLICT DO UPDATE only for specified columns
             update_dict = {col: stmt.excluded[col] for col in update_on_conflict_cols if col in all_keys}
-            stmt = stmt.on_conflict_do_update(set_=update_dict)
+            stmt = stmt.on_conflict_do_update(index_elements=pk_cols, set_=update_dict)
         else:
             stmt = stmt.on_conflict_do_nothing()
 
