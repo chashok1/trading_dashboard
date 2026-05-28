@@ -94,7 +94,7 @@ dq AS (
     ORDER BY symbol, as_of_date DESC
 ),
 rr AS (
-    SELECT DISTINCT ON (COALESCE(tos_symbol, symbol))
+    SELECT DISTINCT ON (tos_symbol)
            tos_symbol AS symbol,
            buy_trade, sell_trade
     FROM hist_rr WHERE snapshot_date <= (SELECT d FROM p)
