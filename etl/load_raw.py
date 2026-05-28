@@ -18,7 +18,7 @@ from openpyxl.workbook import Workbook
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from etl.casters import excel_time_to_hhmm, to_date, to_text
+from etl.casters import excel_time_to_hhmm, to_bigint, to_date, to_numeric, to_text
 from etl.db import get_table, insert_skip_duplicates, insert_upsert, session_scope
 from etl.excel_io import find_header_indices, iter_rows_as_dict, open_workbook
 from etl.mappings import HIST_MAPS, REF_MAPS
