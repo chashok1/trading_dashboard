@@ -117,10 +117,33 @@ DOM.tableSelect.addEventListener('change', async (e) => {
     state.sortColumn = null;
     state.sortDirection = 'asc';
     state.filterSymbol = '';
-    state.filterDate = state.latestDate || '';
+
+    const tableName = e.target.value;
+
+    // Find the latest date available in this specific table
+    let latestDateForTable = state.latestDate;
+    try {
+        const dateResp = await fetch(`/api/data/${tableName}?limit=1&offset=0&date=all&sort_by=snapshot_date&sort_dir=desc`);
+        if (dateResp.ok) {
+            const dateData = await dateResp.json();
+            if (dateData.rows && dateData.rows.length > 0) {
+                // Find the date column name for this table
+                const dateCol = dateData.columns.find(c =>
+                    c.name === 'snapshot_date' || c.name === 'as_of_date' || c.name === 'event_date'
+                );
+                if (dateCol && dateData.rows[0][dateCol.name]) {
+                    latestDateForTable = dateData.rows[0][dateCol.name].substring(0, 10);
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('Could not determine latest date for table', e);
+    }
+
+    state.filterDate = latestDateForTable;
     DOM.filterSymbol.value = '';
-    DOM.filterDate.value = state.latestDate || '';
-    await loadTable(e.target.value);
+    DOM.filterDate.value = latestDateForTable;
+    await loadTable(tableName);
 });
 
 DOM.prevBtn.addEventListener('click', async () => {
