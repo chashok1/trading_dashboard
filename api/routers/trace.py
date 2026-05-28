@@ -158,13 +158,13 @@ def get_symbol_trace(sym: str, as_of: Optional[str] = Query(None, alias="date"))
         # ---- 3. Value-source rows (ma + ai) ---------------------------------
         try:
             ma_row = dict(s.execute(text(
-                "SELECT * FROM drv_ma WHERE as_of_date=:d AND symbol=:sym LIMIT 1"
+                "SELECT * FROM drv_ma WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1"
             ), {"d": snap, "sym": sym_u}).mappings().first() or {})
         except Exception:
             ma_row = {}
         try:
             ai_row = dict(s.execute(text(
-                "SELECT * FROM drv_cat_atomic_input WHERE as_of_date=:d AND symbol=:sym LIMIT 1"
+                "SELECT * FROM drv_cat_atomic_input WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1"
             ), {"d": snap, "sym": sym_u}).mappings().first() or {})
         except Exception:
             ai_row = {}
