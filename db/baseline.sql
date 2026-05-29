@@ -2606,6 +2606,7 @@ CREATE TABLE IF NOT EXISTS drv_dash (
 
 CREATE INDEX IF NOT EXISTS ix_drv_dash_date ON drv_dash(as_of_date);
 
+ALTER TABLE drv_dash ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
 
 
 -- -----------------------------------------------------
@@ -2680,7 +2681,7 @@ CREATE TABLE IF NOT EXISTS drv_stks (
 
 CREATE INDEX IF NOT EXISTS ix_drv_stks_date ON drv_stks(as_of_date);
 
-
+ALTER TABLE drv_stks ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
 
 -- -----------------------------------------------------
 
@@ -2750,6 +2751,7 @@ CREATE TABLE IF NOT EXISTS drv_missing_symbols (
 
 CREATE INDEX IF NOT EXISTS ix_drv_missing_date ON drv_missing_symbols(as_of_date);
 
+ALTER TABLE drv_missing_symbols ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
 
 
 -- -----------------------------------------------------
@@ -3297,6 +3299,8 @@ CREATE TABLE IF NOT EXISTS drv_trig (
     PRIMARY KEY (as_of_date, symbol, composite_rule_code)
 
 );
+
+ALTER TABLE drv_trig ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
 
 -- MIGRATED TO tos_symbol: CREATE INDEX IF NOT EXISTS ix_drv_trig_symbol    ON drv_trig(symbol, as_of_date);
 
