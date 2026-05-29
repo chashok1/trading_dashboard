@@ -294,7 +294,7 @@ HIST_MAPS = {
             ("Prev Close",     "last_price",     to_numeric),
             ("BUY TRADE",      "buy_trade",      to_numeric),
             ("SELL TRADE",     "sell_trade",     to_numeric),
-            ("Description",    "description",    to_text),
+            ("Description",    "name",           to_text),
             ("Outlook",        "outlook",        to_text),
         ],
     ),

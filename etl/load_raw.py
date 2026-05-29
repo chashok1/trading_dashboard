@@ -834,8 +834,8 @@ def load_rr(session: Session, wb: Workbook, source_file: str) -> tuple[int, int,
             "last_price":     buy_trade,  # Use buy_trade as last_price since there's no separate price
             "buy_trade":      buy_trade,
             "sell_trade":     sell_trade,
-            "description":    to_text(raw.get("INDEX", "")),
-            "outlook":        None,  # Can be derived if needed
+            "name":           to_text(raw.get("Description", "")),
+            "outlook":        to_text(raw.get("Outlook", "")),
             "market_close":   market_close,
             "source_file":    source_file,
         })

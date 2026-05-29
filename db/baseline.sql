@@ -1300,7 +1300,7 @@ CREATE TABLE IF NOT EXISTS hist_rr (
 
     sell_trade       NUMERIC,
 
-    description      TEXT,
+    name             TEXT,
 
     outlook          TEXT,
 
@@ -1320,8 +1320,8 @@ CREATE INDEX IF NOT EXISTS ix_hist_rr_tos_symbol ON hist_rr(tos_symbol, snapshot
 
 DO $$ BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name='hist_rr' AND column_name='name') THEN
-        ALTER TABLE hist_rr RENAME COLUMN name TO description;
+               WHERE table_name='hist_rr' AND column_name='description') THEN
+        ALTER TABLE hist_rr RENAME COLUMN description TO name;
     END IF;
     IF EXISTS (SELECT 1 FROM information_schema.columns
                WHERE table_name='hist_rr' AND column_name='outlook_modifier') THEN
