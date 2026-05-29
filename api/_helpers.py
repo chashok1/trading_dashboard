@@ -159,18 +159,6 @@ def _apply_filter_rule(session, table, table_name: str, rule: dict, d):
         )
 
     if ft == FILTER_LATEST_BEFORE:
-        # Special case for hist_etfchg and hist_iichg: get latest per symbol (not global latest)
-        if table_name in ("hist_etfchg", "hist_iichg"):
-            return (
-                f"""WHERE ({table_name}.symbol, {date_cast}) IN (
-                    SELECT symbol, MAX({date_cast})
-                    FROM {table_name}
-                    WHERE {date_cast} < :d
-                    GROUP BY symbol
-                )""",
-                {"d": d},
-                f"latest {date_col} per symbol before {d.isoformat()}",
-            )
         max_d = session.execute(
             text(f"SELECT MAX({date_cast}) FROM {table_name} WHERE {date_cast} < :d"),
             {"d": d},
