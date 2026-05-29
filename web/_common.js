@@ -319,12 +319,12 @@
            <div style="font-size:11px;color:#1e293b;line-height:1.35;">${text}</div>
          </div>` : '';
 
-    // ── tagged descRow — shows column id + label + text ──────────────────────
-    const taggedRow = (tag, label, text) => text
+    // ── tagged descRow — short_name badge + label + text ─────────────────────
+    const taggedRow = (shortName, label, text) => text
       ? `<div style="margin-bottom:8px;">
            <div style="display:flex;align-items:baseline;gap:5px;margin-bottom:2px;">
-             <span style="font-size:9px;font-weight:700;color:#c7d2fe;background:#4338ca;
-               padding:1px 4px;border-radius:3px;letter-spacing:0.03em;">${tag}</span>
+             ${shortName ? `<span style="font-size:9px;font-weight:700;color:#fff;background:#4338ca;
+               padding:1px 5px;border-radius:3px;letter-spacing:0.02em;white-space:nowrap;">${shortName}</span>` : ''}
              <span style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;">${label}</span>
            </div>
            <div style="font-size:11px;color:#1e293b;line-height:1.35;">${text}</div>
@@ -352,9 +352,9 @@
         </div>
 
         <div style="padding:8px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;flex:1;">
-          ${taggedRow('QG', 'Trend Trade Rule', ru.tn_td_desc)}
-          ${taggedRow('QL', 'BB Range Streak', ru.bb_desc)}
-          ${taggedRow('QQ', 'RR Desc', ru.rr_desc)}
+          ${taggedRow(ru.tn_td_short, 'Trend Trade Rule', ru.tn_td_desc)}
+          ${taggedRow(ru.bb_short,   'BB Range Streak',  ru.bb_desc)}
+          ${taggedRow(ru.rr_short,   'RR Desc',          ru.rr_desc)}
         </div>
 
         <div style="display:flex;align-items:center;gap:10px;

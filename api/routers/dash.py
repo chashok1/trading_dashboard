@@ -759,12 +759,26 @@ def get_rr_analysis(symbol: str = Query(...), date: str = Query(...)):
             WHERE tos_symbol=:sym AND snapshot_date<=:d ORDER BY snapshot_date DESC LIMIT 1
         """), {"sym": sym, "d": d}).fetchone()
         cat = s.execute(text("""
-            SELECT trr_idx, mrr_idx, lrr_idx,
-                   trade_trend_sd_rule, bb_rng_strk_rule, bull_rr_action, not_bull_rr_action,
-                   tn_td_rule_action, tn_td_rule_desc, bb_rng_strk_action, bb_rng_strk_desc,
-                   risk_rng_longs_action, td_tn_bb_rr_action, td_tn_bb_action_desc, td_tn_bb_action_seq,
-                   rr_bull_bear, rr_desc
-            FROM drv_cat_atomic_input WHERE tos_symbol=:sym AND as_of_date=:d
+            SELECT a.trr_idx, a.mrr_idx, a.lrr_idx,
+                   a.trade_trend_sd_rule, a.bb_rng_strk_rule, a.bull_rr_action, a.not_bull_rr_action,
+                   a.tn_td_rule_action, a.tn_td_rule_desc, a.bb_rng_strk_action, a.bb_rng_strk_desc,
+                   a.risk_rng_longs_action, a.td_tn_bb_rr_action, a.td_tn_bb_action_desc,
+                   a.td_tn_bb_action_seq, a.rr_bull_bear, a.rr_desc,
+                   ltn.short_name AS tn_td_short,
+                   lbb.short_name AS bb_short,
+                   CASE WHEN a.bb_rng_strk_rule >= 2 THEN lbull.short_name
+                        WHEN a.bb_rng_strk_rule >= 0 THEN lnbull.short_name
+                   END AS rr_short
+            FROM drv_cat_atomic_input a
+            LEFT JOIN ref_param_lookup ltn
+              ON ltn.table_name='tn_td_rule' AND ltn.code=(a.trade_trend_sd_rule)::INTEGER::TEXT
+            LEFT JOIN ref_param_lookup lbb
+              ON lbb.table_name='bb_range' AND lbb.code=(a.bb_rng_strk_rule)::INTEGER::TEXT
+            LEFT JOIN ref_param_lookup lbull
+              ON lbull.table_name='bull_rr_rule' AND lbull.code=(a.bull_rr_action)::INTEGER::TEXT
+            LEFT JOIN ref_param_lookup lnbull
+              ON lnbull.table_name='nbull_rr_rule' AND lnbull.code=(a.not_bull_rr_action)::INTEGER::TEXT
+            WHERE a.tos_symbol=:sym AND a.as_of_date=:d
         """), {"sym": sym, "d": d}).fetchone()
 
         ac = _f(tw) if (_f(tw) or 0) <= (_f(med) or float('inf')) else _f(med)
@@ -829,6 +843,9 @@ def get_rr_analysis(symbol: str = Query(...), date: str = Query(...)):
                 "priority":       int(cat[14]) if cat and cat[14] is not None else None,
                 "rr_bull_bear":   cat[15]      if cat else None,
                 "rr_desc":        cat[16]      if cat else None,
+                "tn_td_short":    cat[17]      if cat else None,
+                "bb_short":       cat[18]      if cat else None,
+                "rr_short":       cat[19]      if cat else None,
             },
         }
 
