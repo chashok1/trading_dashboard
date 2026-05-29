@@ -2341,10 +2341,18 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 a.mrr_idx,
                 a.lrr_idx
             FROM drv_quote q
-            LEFT JOIN hist_td td
-              ON td.snapshot_date = q.as_of_date AND td.tos_symbol = q.tos_symbol
-            LEFT JOIN hist_tw tw
-              ON tw.snapshot_date = q.as_of_date AND tw.tos_symbol = q.tos_symbol
+            LEFT JOIN LATERAL (
+                SELECT a_trend_value, a_trade_value, a_bb_top_slope, a_bb_bot_slope
+                FROM hist_td
+                WHERE tos_symbol = q.tos_symbol AND snapshot_date <= q.as_of_date
+                ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
+            ) td ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT standard_dev
+                FROM hist_tw
+                WHERE tos_symbol = q.tos_symbol AND snapshot_date <= q.as_of_date
+                ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
+            ) tw ON TRUE
             LEFT JOIN LATERAL (
                 SELECT percentile_cont(0.5) WITHIN GROUP (
                     ORDER BY standard_dev
