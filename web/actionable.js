@@ -693,7 +693,7 @@ function renderGrid() {
       <td style="padding:6px 2px; text-align:center;"><button type="button" class="btn-suppress" data-sym="${escapeHtml(r.tos_symbol)}" data-suppressed="${r.last_user_action === 'SKIPPED' ? '1' : ''}">${r.last_user_action === 'SKIPPED' ? 'Un-snooze' : 'Snooze'}</button></td>
       <td class="num">${r._metric == null ? '' : (_isPctSource(_mSrc) ? fmtPct(r._metric) : formatNum(r._metric))}</td>
       <td class="num">${fmtUsd(r.current_position_dollar)}</td>
-      <td style="padding:6px 4px; max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${typeof yahooLink === 'function' ? yahooLink(r.tos_symbol) : ''}<strong>${r.tos_symbol || ''}</strong></td>
+      <td class="sym-cell" style="padding:6px 4px; max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml((r.sector||'') + (r.real_asset_class ? ' · ' + r.real_asset_class : ''))}">${typeof yahooLink === 'function' ? yahooLink(r.tos_symbol) : ''}<strong>${r.tos_symbol || ''}</strong>${r.sector||r.real_asset_class ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${[r.sector,r.real_asset_class].filter(Boolean).join(' · ')}</div>` : ''}</td>
       <td class="num ${r.pct_change != null ? (Number(r.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : ''}">${r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''}</td>
       <td style="padding:6px 4px;"><span class="badge-action badge-action-${_badgeAction(r)}">${actionLabel(r)}</span>${_isOverMaxOverlay(r) ? `<div style="font-size:8px;line-height:1;font-weight:600;color:${ACTION_COLOR[action] || '#888'};margin-top:1px;">was ${ACTION_LABEL[action] || action}</div>` : ''}</td>
       <td class="num"><strong>${fmtUsd(r._amt)}</strong></td>
@@ -701,8 +701,6 @@ function renderGrid() {
       <td style="padding:6px 4px; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(reasonText)}">${escapeHtml(reasonText)}</td>
       <td>${fmtMD(r._snapshot)}</td>
       <td style="padding:6px 4px;">${_renderOtherSources(r)}</td>
-      <td>${r.sector || ''}</td>
-      <td>${escapeHtml(r.real_asset_class || '')}</td>
       <td class="num">${fmtUsd(r.last_price)}</td>
       <td class="num">${fmtUsd(r.net_chng)}</td>
       <td>${fmtAsOfExport(r.export_date, r.export_time, r.loaded_at)}</td>
@@ -748,6 +746,7 @@ function exportCsv() {
     ['Other Sources', r => otherSourcesText(r)],
     ['Sector',        r => r.sector || ''],
     ['Real Asset Class', r => r.real_asset_class || ''],
+    // kept in CSV even though removed from table
     ['Pos $',         r => r.current_position_dollar],
     ['Price',         r => r.last_price],
     ['Change $',      r => r.net_chng],
