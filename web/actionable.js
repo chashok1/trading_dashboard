@@ -706,9 +706,12 @@ function renderGrid() {
       <td class="num">${fmtUsd(r.last_price)}</td>
       <td class="num">${fmtUsd(r.net_chng)}</td>
       <td>${fmtAsOfExport(r.export_date, r.export_time, r.loaded_at)}</td>
+      <td class="rr-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-date="${escapeHtml(r.as_of_date||'')}">
+        <span class="rr-action-val" style="font-size:11px;font-weight:600;color:#4338ca;cursor:help;">—</span>
+      </td>
       <td>${tags.join(' ')}</td>
     `;
-    tr.onclick = (e) => { if (e.target.closest('.btn-suppress')) return; openDrilldown(r); };
+    tr.onclick = (e) => { if (e.target.closest('.btn-suppress') || e.target.closest('.rr-action-cell')) return; openDrilldown(r); };
     tb.appendChild(tr);
   }
 }
@@ -1361,4 +1364,99 @@ $('modalClose').addEventListener('click', () => $('modalBackdrop').classList.rem
   $('saveActionBtn').addEventListener('click', saveUserAction);
   $('dismissActionBtn').addEventListener('click', dismissUserAction);
   $('closePop').addEventListener('click', () => $('detailPop')?.classList.remove('open'));
+
+  // ── TrTnBBRskRng column: lazy-load action + hover tooltip ─────────────────
+  document.addEventListener('DOMContentLoaded', setupRRActionCol);
+  setupRRActionCol();
 });
+
+// Cache keyed by "sym@date"
+const _rrDetailCache = new Map();
+
+async function _fetchRRDetail(sym, date) {
+  const key = sym + '@' + date;
+  if (_rrDetailCache.has(key)) return _rrDetailCache.get(key);
+  try {
+    const d = await fetchJson(`/api/actionable/rr-detail?symbol=${encodeURIComponent(sym)}&date=${encodeURIComponent(date)}`);
+    _rrDetailCache.set(key, d);
+    return d;
+  } catch(_) { return null; }
+}
+
+function setupRRActionCol() {
+  // Tooltip element (singleton)
+  let tip = document.getElementById('rrDetailTip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'rrDetailTip';
+    tip.style.cssText = 'position:fixed;z-index:9999;display:none;background:#1e293b;color:#f1f5f9;' +
+      'border-radius:8px;padding:10px 14px;font-size:11px;line-height:1.6;max-width:320px;' +
+      'box-shadow:0 4px 16px rgba(0,0,0,0.35);pointer-events:none;';
+    document.body.appendChild(tip);
+  }
+
+  const fmt2 = v => v == null ? '—' : Number(v).toFixed(2);
+  const scoreCol = v => v == null ? '#94a3b8' : v > 0 ? '#4ade80' : v < 0 ? '#f87171' : '#94a3b8';
+
+  document.addEventListener('mouseover', async (e) => {
+    const cell = e.target.closest('.rr-action-cell');
+    if (!cell) return;
+    const sym = cell.dataset.sym, date = cell.dataset.date;
+    if (!sym || !date) return;
+
+    // Load action value into cell if not yet done
+    const valEl = cell.querySelector('.rr-action-val');
+    if (valEl && valEl.textContent === '—') {
+      const d = await _fetchRRDetail(sym, date);
+      if (d && d.action) {
+        valEl.textContent = d.action;
+      }
+    }
+
+    // Show tooltip
+    const d = await _fetchRRDetail(sym, date);
+    if (!d) return;
+
+    const row = (label, val, color) =>
+      `<div style="display:flex;justify-content:space-between;gap:12px;">
+         <span style="color:#94a3b8;white-space:nowrap;">${label}</span>
+         <span style="font-weight:600;color:${color || '#f1f5f9'};text-align:right;">${val}</span>
+       </div>`;
+
+    const shortDesc = (short, desc) => {
+      if (!short && !desc) return '—';
+      return `${short ? `<span style="color:#a5b4fc;font-weight:700;">${short}</span>${desc ? ': ' : ''}` : ''}${desc || ''}`;
+    };
+
+    tip.innerHTML = `
+      <div style="font-weight:700;color:#fff;margin-bottom:6px;border-bottom:1px solid #334155;padding-bottom:4px;">
+        ${sym} — TrTnBBRskRng
+      </div>
+      ${row('Trade Trend Rule', shortDesc(d.tn_td_short, d.tn_td_desc))}
+      ${row('BB Range Streak',  shortDesc(d.bb_short,   d.bb_desc))}
+      ${row('RR Desc',          shortDesc(d.rr_short,   d.rr_desc))}
+      <div style="border-top:1px solid #334155;margin:5px 0;"></div>
+      ${row('Trade',   fmt2(d.trade), '#f97316')}
+      ${row('Trend',   fmt2(d.trend), '#818cf8')}
+      ${row('TRR',     fmt2(d.trr),   '#4ade80')}
+      ${row('LRR',     fmt2(d.lrr),   '#4ade80')}
+      <div style="border-top:1px solid #334155;margin:5px 0;"></div>
+      ${row('TRR Idx', d.trr_idx != null ? String(d.trr_idx) : '—', scoreCol(d.trr_idx))}
+      ${row('MRR Idx', d.mrr_idx != null ? String(d.mrr_idx) : '—', scoreCol(d.mrr_idx))}
+      ${row('LRR Idx', d.lrr_idx != null ? String(d.lrr_idx) : '—', scoreCol(d.lrr_idx))}
+    `;
+
+    const rect = cell.getBoundingClientRect();
+    tip.style.display = 'block';
+    const tipW = tip.offsetWidth;
+    let left = rect.left - tipW - 8;
+    if (left < 4) left = rect.right + 8;
+    tip.style.left = left + 'px';
+    tip.style.top  = Math.min(rect.top, window.innerHeight - tip.offsetHeight - 8) + 'px';
+  });
+
+  document.addEventListener('mouseout', (e) => {
+    if (!e.target.closest('.rr-action-cell')) return;
+    tip.style.display = 'none';
+  });
+}

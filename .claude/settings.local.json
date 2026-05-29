@@ -114,7 +114,11 @@
       "Bash(sed -i '1831s/^/-- Removed: symbol column no longer exists\\\\n-- /' db/baseline.sql)",
       "Bash(git reset *)",
       "Bash(pkill -9 python)",
-      "Bash(.venv\\\\Scripts\\\\activate.bat)"
+      "Bash(.venv\\\\Scripts\\\\activate.bat)",
+      "Bash(node --check web/_common.js)",
+      "Bash(node --check web/actionable.js)",
+      "Bash(node --check web/trace.js)",
+      "Bash(taskkill /F /PID 20176 /PID 13504)"
     ]
   }
 }

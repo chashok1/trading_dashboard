@@ -850,6 +850,62 @@ def get_rr_analysis(symbol: str = Query(...), date: str = Query(...)):
         }
 
 
+@router.get("/api/actionable/rr-detail")
+def get_rr_detail(symbol: str = Query(...), date: str = Query(...)):
+    """Hover detail for TrTnBBRskRng column — QS + all supporting values."""
+    sym = symbol.upper().strip()
+    try:
+        from datetime import date as date_type
+        d = date_type.fromisoformat(date)
+    except ValueError:
+        raise HTTPException(400, "date must be YYYY-MM-DD")
+    def _f(v): return float(v) if v is not None else None
+    with session_scope() as s:
+        row = s.execute(text("""
+            SELECT
+                a.td_tn_bb_action_desc,
+                a.tn_td_rule_desc,   ltn.short_name AS tn_td_short,
+                a.bb_rng_strk_desc,  lbb.short_name AS bb_short,
+                a.rr_desc,           a.rr_bull_bear,
+                CASE WHEN a.rr_bull_bear='B'  THEN lbull.short_name
+                     WHEN a.rr_bull_bear='!B' THEN lnbull.short_name
+                END AS rr_short,
+                a.trr_idx, a.mrr_idx, a.lrr_idx,
+                m.a_trade_value, m.a_trend_value,
+                rr.sell_trade AS trr, rr.buy_trade AS lrr
+            FROM drv_cat_atomic_input a
+            LEFT JOIN drv_ma m ON m.tos_symbol=a.tos_symbol AND m.as_of_date=a.as_of_date
+            LEFT JOIN hist_rr rr ON rr.tos_symbol=a.tos_symbol
+              AND rr.snapshot_date=(SELECT MAX(snapshot_date) FROM hist_rr
+                                    WHERE tos_symbol=a.tos_symbol AND snapshot_date<=a.as_of_date)
+            LEFT JOIN ref_param_lookup ltn
+              ON ltn.table_name='tn_td_rule' AND ltn.code=(a.trade_trend_sd_rule)::INTEGER::TEXT
+            LEFT JOIN ref_param_lookup lbb
+              ON lbb.table_name='bb_range' AND lbb.code=(a.bb_rng_strk_rule)::INTEGER::TEXT
+            LEFT JOIN ref_param_lookup lbull
+              ON lbull.table_name='bull_rr_rule' AND lbull.code=(a.bull_rr_action)::INTEGER::TEXT
+            LEFT JOIN ref_param_lookup lnbull
+              ON lnbull.table_name='nbull_rr_rule' AND lnbull.code=(a.not_bull_rr_action)::INTEGER::TEXT
+            WHERE a.tos_symbol=:sym AND a.as_of_date=:d
+        """), {"sym": sym, "d": d}).fetchone()
+
+        if not row:
+            return {}
+        return {
+            "action":        row[0],
+            "tn_td_short":   row[2],  "tn_td_desc":  row[1],
+            "bb_short":      row[4],  "bb_desc":     row[3],
+            "rr_bull_bear":  row[6],  "rr_short":    row[7],  "rr_desc": row[5],
+            "trr_idx":       int(row[8])  if row[8]  is not None else None,
+            "mrr_idx":       int(row[9])  if row[9]  is not None else None,
+            "lrr_idx":       int(row[10]) if row[10] is not None else None,
+            "trade":         _f(row[11]),
+            "trend":         _f(row[12]),
+            "trr":           _f(row[13]),
+            "lrr":           _f(row[14]),
+        }
+
+
 @router.get("/api/actionable/rr-history")
 def get_rr_history(symbol: str = Query(...), date: str = Query(...), days: int = Query(60, ge=10, le=180)):
     """Time-series of hist_td.last_price vs RR bands (LRR/MRR/TRR) for a rolling window."""

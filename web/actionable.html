@@ -487,6 +487,7 @@
               <th class="num sortable" data-key="last_price" data-type="num">Price</th>
               <th class="num sortable" data-key="net_chng" data-type="num">Change $</th>
               <th class="sortable" data-key="derived_at" data-type="str">As Of</th>
+              <th>TrTnBBRskRng</th>
               <th>Tags</th>
             </tr>
           </thead>
@@ -506,6 +507,11 @@
       <h2 id="modalTitle">Symbol</h2>
       <div id="modalName" style="font-size:15px; color:#333; font-weight:500; margin:2px 0 6px;"></div>
       <div class="sub" id="modalSub"></div>
+
+      <div class="modal-section" id="rrSection" style="display:none;">
+        <h3>Risk Range Analysis</h3>
+        <div id="rrChart"><span style="color:#94a3b8;font-size:12px;">Loading…</span></div>
+      </div>
 
       <div class="modal-section">
         <h3>Decision</h3>
@@ -538,11 +544,6 @@
           <div id="popLoading" style="display:none; color:var(--text-2,#666); padding:4px;">Loading trace…</div>
           <div id="popContent"></div>
         </div>
-      </div>
-
-      <div class="modal-section" id="rrSection" style="display:none;">
-        <h3>Risk Range Analysis</h3>
-        <div id="rrChart"><span style="color:#94a3b8;font-size:12px;">Loading…</span></div>
       </div>
 
       <div class="modal-section">
