@@ -1146,8 +1146,9 @@ def _fetch_eval_rows(session: Session, as_of_date: date,
     cat_cols    = {col for (tbl, col) in needed if tbl == "drv_cat_atomic_input"}
 
     # Always include drv_ma display columns _derive_stks_impl needs
+    # Note: drv_ma uses tos_symbol only (symbol was dropped in migration)
     base_cols = {
-        "symbol","tos_symbol","description","sector","asset_class","last_price",
+        "tos_symbol","description","sector","asset_class","last_price",
         "a_trend_value","a_trade_value","pct_brr","rr_outlook","rr_brr",
         "call_outlook","call_modifier","etf_outlook","ii_outlook",
         "ssh_signal_sign","iv_percentile","rsi","earnings_days","market_cap_str",
@@ -1169,7 +1170,7 @@ def _fetch_eval_rows(session: Session, as_of_date: date,
         SELECT {ma_select}{cat_select}
         FROM drv_ma m
         LEFT JOIN drv_cat_atomic_input a
-          ON a.as_of_date = m.as_of_date AND a.symbol = m.symbol
+          ON a.as_of_date = m.as_of_date AND a.tos_symbol = m.tos_symbol
         WHERE m.as_of_date = :d
     """)
     rows = []

@@ -3904,7 +3904,7 @@ DO $$
 
 DECLARE
 
-    hist_tables TEXT[] := ARRAY['hist_cs', 'hist_cst'];
+    hist_tables TEXT[] := ARRAY['hist_cs', 'hist_cst', 'hist_f', 'hist_ft'];
 
     drv_tables TEXT[] := ARRAY['drv_ma', 'drv_dash', 'drv_stks', 'drv_dash_summary',
 
