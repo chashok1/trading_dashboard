@@ -730,7 +730,7 @@ def get_actionable_history(symbol: str = Query(...), limit: int = Query(50, ge=1
     with session_scope() as s:
         rows = s.execute(text("""
             SELECT * FROM user_action_log
-            WHERE symbol = :sym
+            WHERE tos_symbol = :sym
             ORDER BY acted_at DESC
             LIMIT :lim
         """), {"sym": sym_u, "lim": limit}).mappings().all()
