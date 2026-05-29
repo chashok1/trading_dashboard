@@ -776,6 +776,74 @@ def load_iichg(session: Session, wb: Workbook, source_file: str) -> tuple[int, i
     return rows_read, n_inserted, n_attempted - n_inserted
 
 
+def load_rr(session: Session, wb: Workbook, source_file: str) -> tuple[int, int, int]:
+    """
+    RR tab -> hist_rr (Treasury/Index recommendations).
+    Columns: Date, INDEX, BUY TRADE, SELL TRADE, etc.
+    """
+    sheet_name = get_sheet_case_insensitive(wb, "rr")
+    if sheet_name is None:
+        if len(wb.sheetnames) == 1:
+            sheet_name = wb.sheetnames[0]
+            log.warning("Sheet 'RR' not found; using single sheet '%s'", sheet_name)
+        else:
+            return 0, 0, 0
+    sheet = wb[sheet_name]
+
+    total_rows = sheet.max_row - 1
+    print(f"\nhist_rr: started. tab rows - {total_rows}")
+
+    records: list[dict] = []
+    rows_read = 0
+
+    for raw in iter_rows_as_dict(sheet, start_row=2):
+        # Find Date column
+        market_close = None
+        for key in raw:
+            if key and "date" in key.lower():
+                market_close = to_date(raw[key])
+                if market_close:
+                    break
+
+        # Find INDEX column (symbol)
+        symbol = None
+        for key in raw:
+            if key and key.strip().upper() == "INDEX":
+                val = to_text(raw[key])
+                # Extract symbol from "UST30Y (BULLISH)" format
+                if val:
+                    symbol = val.split("(")[0].strip() if "(" in val else val
+                break
+
+        if market_close is None or not symbol:
+            continue
+
+        # Find Buy and Sell Trade columns
+        buy_trade = None
+        sell_trade = None
+        for key in raw:
+            if key and "buy" in key.lower():
+                buy_trade = to_numeric(raw[key])
+            elif key and "sell" in key.lower():
+                sell_trade = to_numeric(raw[key])
+
+        rows_read += 1
+        records.append({
+            "snapshot_date":  market_close.date() if hasattr(market_close, 'date') else market_close,
+            "symbol":         symbol,
+            "last_price":     buy_trade,  # Use buy_trade as last_price since there's no separate price
+            "buy_trade":      buy_trade,
+            "sell_trade":     sell_trade,
+            "name":           to_text(raw.get("INDEX", "")),
+            "outlook":        None,  # Can be derived if needed
+            "market_close":   market_close,
+            "source_file":    source_file,
+        })
+
+    n_attempted, n_inserted = insert_skip_duplicates(session, "hist_rr", records)
+    return rows_read, n_inserted, n_attempted - n_inserted
+
+
 def load_tw(session: Session, wb: Workbook, source_file: str) -> tuple[int, int, int]:
     """
     TW tab -> hist_tw with special handling for duplicate column headers.
