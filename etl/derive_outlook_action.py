@@ -84,16 +84,16 @@ def _load_holdings(session: Session, as_of_date: date) -> set[str]:
     on or before as_of_date (using the latest snapshot per source)."""
     rows = session.execute(text(f"""
         WITH fid AS (
-            SELECT symbol, SUM(qty) AS qty
+            SELECT tos_symbol, SUM(qty) AS qty
             FROM hist_f
             WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= '{as_of_date}')
-            GROUP BY symbol
+            GROUP BY tos_symbol
         ),
         cs AS (
-            SELECT symbol, SUM(qty) AS qty
+            SELECT tos_symbol, SUM(qty) AS qty
             FROM hist_cs
             WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= '{as_of_date}')
-            GROUP BY symbol
+            GROUP BY tos_symbol
         )
         SELECT COALESCE(fid.tos_symbol, cs.tos_symbol) AS tos_symbol,
                COALESCE(fid.qty, 0) + COALESCE(cs.qty, 0) AS qty_total
