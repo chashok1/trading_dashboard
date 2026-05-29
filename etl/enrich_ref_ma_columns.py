@@ -188,7 +188,6 @@ _TABLE_ALIAS = {
     "hist_call":    "hcall",
     "hist_etf":     "hetf",
     "hist_sss": "hsss",
-    "drv_ssh":      "dssh",
     "hist_to":      '"to"',
     "hist_ps":      "ps",
     "hist_etfchg":  "etfchg",

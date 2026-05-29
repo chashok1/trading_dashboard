@@ -1987,6 +1987,8 @@ END $$;
 
 DROP TABLE IF EXISTS drv_tl CASCADE;
 
+DROP TABLE IF EXISTS drv_ssh CASCADE;
+
 
 
 -- -----------------------------------------------------
@@ -4744,8 +4746,6 @@ INSERT INTO ref_data_filter_logic (table_name, filter_type, date_column, window_
     ('hist_iichg',         'LATEST_BEFORE',       'event_date',    NULL, 'II change events'),
 
     ('hist_call',          'EXACT_MATCH',         'snapshot_date', NULL, 'Manual call sheet - exact date match'),
-
-    ('drv_ssh',            'EXACT_MATCH',         'snapshot_date', NULL, 'Derived Sector Strength History'),
 
     ('drv_sss',            'EXACT_MATCH',         'snapshot_date', NULL, 'Derived SSS - exact date match'),
 

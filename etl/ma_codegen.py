@@ -65,7 +65,6 @@ JOIN_PATTERNS = {
     "hist_call":_hist_join("hist_call","hcall"),
     "hist_etf": _hist_join("hist_etf", "hetf"),
     "hist_sss": _hist_join("hist_sss", "hsss"),
-    "drv_ssh":  _hist_join("drv_ssh",  "dssh"),
     "hist_to":  ('LEFT JOIN hist_to "to" ON ("to".symbol = syms.symbol '
                  'AND "to".snapshot_date = (SELECT MAX(snapshot_date) FROM hist_to '
                  'WHERE snapshot_date <= :d AND symbol = syms.symbol))'),

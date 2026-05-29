@@ -33,7 +33,6 @@ _TRUNCATE_ORDER = [
     "drv_dash_summary",
     "drv_missing_symbols",
     "drv_ma",
-    "drv_ssh",
     "drv_tw",
     "drv_td",
     # history (raw)
