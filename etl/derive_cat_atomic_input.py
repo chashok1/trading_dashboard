@@ -387,6 +387,15 @@ def compute_intermediates(row: dict) -> dict:
     EQ = _safe_div(ED - AE, AC) if ED is not None and AE is not None else None
     ER = _safe_div(EC - AF, AC) if EC is not None and AF is not None else None
 
+    # ---- ES / ET / EU — Sd-normalized RR risk indices (KI/KJ/KK inputs) ----
+    # DQ = high_today, DM = last_price, DR = low_today (from drv_quote)
+    DQ = _f(row.get("high_today"))
+    DM = _f(row.get("last_price"))
+    DR = _f(row.get("low_today"))
+    ES = _safe_div(DQ - ED, AC) if DQ is not None and ED is not None else None
+    ET = _safe_div(DM - (ED + EC) / 2.0, AC) if DM is not None and EC is not None and ED is not None else None
+    EU = _safe_div(DR - EC, AC) if DR is not None and EC is not None else None
+
     # ---- VS struct ----
     vs = _decode_vs(row.get("a_volume_spike"), AD)
     # FR IVHV = DT*100/CV  (with zero-guard)
@@ -409,7 +418,7 @@ def compute_intermediates(row: dict) -> dict:
         AX=bbs["AX"], AY=bbs["AY"], AZ=bbs["AZ"],
         BB=BB, BC=BC, BE=BE, BF=BF, BJ=BJ, BK=BK, BN=BN, BO=BO,
         BQ=BQ, BS=BS, BU=BU, BW=BW, BY=BY, BZ=BZ, CA=CA,
-        EC=EC, ED=ED, EE=EE, EO=EO, EP=EP, EQ=EQ, ER=ER,
+        EC=EC, ED=ED, EE=EE, EO=EO, EP=EP, EQ=EQ, ER=ER, ES=ES, ET=ET, EU=EU,
         FF=vs["FF"], FH=vs["FH"], FI=vs["FI"], FJ=vs["FJ"],
         FK=vs["FK"], FL=vs["FL"], FM=vs["FM"], FR=FR, GB=GB,
     ))
@@ -488,9 +497,11 @@ COLUMN_SPECS_PASS1 = [
         (lambda r,o: -1.0 if (r.get("EQ") or 0) < 0 else 0.0)),                 # KG
     ("lrr_above_trade",     "composite", None, None,
         (lambda r,o: 1.0 if (r.get("ER") or 0) > 0 else 0.0)),                  # KH
-    # KI/KJ/KK -- TRR/MRR/LRR_Idx require ES/ET/EU (Sd-normalized risk indices)
-    # which depend on DQ/DM/DR (intraday high/last/low overrides).  Still
-    # deferred — needs intraday-vs-daily toggle wiring (Dash!$AB$24).
+    # KI/KJ/KK TRR/MRR/LRR_Idx — 3-clause trig_ifs on ES/ET/EU.
+    # DQ/DM/DR come from drv_quote (high/last/low), matching toggle="Y" behaviour.
+    ("trr_idx",            "trig_ifs", "ES", "TRR_Idx", None),                  # KI
+    ("mrr_idx",            "trig_ifs", "ET", "MRR_Idx", None),                  # KJ
+    ("lrr_idx",            "trig_ifs", "EU", "LRR_Idx", None),                  # KK
     # KL HVAbsolute -- input CV (historical_vol), but Trig key 'HVAbsolute' uses CV.
     ("hvabsolute",          "trig_ifs", "historical_vol", "HVAbsolute", None), # KL
     # KM IVAbsolute -- zero-guarded by DT (imp_volatility)
