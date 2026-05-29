@@ -724,6 +724,112 @@ def clear_actionable_action(symbol: str, date: str = Query(...)):
     return {"cleared": res.rowcount or 0}
 
 
+@router.get("/api/actionable/rr-analysis")
+def get_rr_analysis(symbol: str = Query(...), date: str = Query(...)):
+    """Risk Range Analysis — all data needed for the RR chart in the drilldown."""
+    sym = symbol.upper().strip()
+    try:
+        from datetime import date as date_type
+        d = date_type.fromisoformat(date)
+    except ValueError:
+        raise HTTPException(400, "date must be YYYY-MM-DD")
+    def _f(v): return float(v) if v is not None else None
+    def _sd(n, dn):
+        n, dn = _f(n), _f(dn)
+        return round(n / dn, 4) if (n is not None and dn and dn != 0) else None
+    with session_scope() as s:
+        dq = s.execute(text("""
+            SELECT last_price, high_price, low_price FROM drv_quote
+            WHERE tos_symbol=:sym AND as_of_date<=:d ORDER BY as_of_date DESC LIMIT 1
+        """), {"sym": sym, "d": d}).fetchone()
+        td = s.execute(text("""
+            SELECT last_price, a_trend_value, a_trade_value FROM hist_td
+            WHERE tos_symbol=:sym AND snapshot_date<=:d ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
+        """), {"sym": sym, "d": d}).fetchone()
+        tw = s.execute(text("""
+            SELECT standard_dev FROM hist_tw
+            WHERE tos_symbol=:sym AND snapshot_date<=:d ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
+        """), {"sym": sym, "d": d}).scalar()
+        med = s.execute(text("""
+            SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY standard_dev)
+            FROM hist_tw WHERE tos_symbol=:sym AND snapshot_date<=:d AND standard_dev IS NOT NULL
+        """), {"sym": sym, "d": d}).scalar()
+        rr = s.execute(text("""
+            SELECT buy_trade, sell_trade FROM hist_rr
+            WHERE tos_symbol=:sym AND snapshot_date<=:d ORDER BY snapshot_date DESC LIMIT 1
+        """), {"sym": sym, "d": d}).fetchone()
+        cat = s.execute(text("""
+            SELECT trr_idx, mrr_idx, lrr_idx,
+                   trade_trend_sd_rule, bb_rng_strk_rule, bull_rr_action, not_bull_rr_action,
+                   tn_td_rule_action, tn_td_rule_desc, bb_rng_strk_action, bb_rng_strk_desc,
+                   risk_rng_longs_action, td_tn_bb_rr_action, td_tn_bb_action_desc, td_tn_bb_action_seq
+            FROM drv_cat_atomic_input WHERE tos_symbol=:sym AND as_of_date=:d
+        """), {"sym": sym, "d": d}).fetchone()
+
+        ac = _f(tw) if (_f(tw) or 0) <= (_f(med) or float('inf')) else _f(med)
+        if _f(tw) is not None and _f(med) is not None:
+            ac = min(_f(tw), _f(med))
+        else:
+            ac = _f(tw) or _f(med)
+
+        dx = _f(rr[0]) if rr else None
+        dy = _f(rr[1]) if rr else None
+        ae = _f(td[1]) if td else None
+        af = _f(td[2]) if td else None
+        ec = dx if dx else None   # LRR
+        ed = dy if dy else None   # TRR
+        mrr = ((ec or 0) + (ed or 0)) / 2 if ec and ed else None
+        cur = _f(dq[0]) if dq else None
+        prev_close = _f(td[0]) if td else None
+        high = _f(dq[1]) if dq else None
+        low  = _f(dq[2]) if dq else None
+
+        return {
+            "symbol": sym,
+            "date": date,
+            "price": {
+                "current":    cur,
+                "prev_close": prev_close,
+                "high":       high,
+                "low":        low,
+            },
+            "levels": {
+                "trend": ae,
+                "trade": af,
+                "lrr":   ec,
+                "mrr":   mrr,
+                "trr":   ed,
+            },
+            "sd": {
+                "value":    round(ac, 4) if ac else None,
+                "trend_sd": _sd(cur - ae if cur and ae else None, ac),
+                "trade_sd": _sd(cur - af if cur and af else None, ac),
+                "trr_sd":   _sd((high or cur) - ed if ed and (high or cur) else None, ac),
+                "mrr_sd":   _sd(cur - mrr if cur and mrr else None, ac),
+                "lrr_sd":   _sd((low or cur) - ec if ec and (low or cur) else None, ac),
+            },
+            "idx": {
+                "trr": int(cat[0]) if cat and cat[0] is not None else None,
+                "mrr": int(cat[1]) if cat and cat[1] is not None else None,
+                "lrr": int(cat[2]) if cat and cat[2] is not None else None,
+            },
+            "rules": {
+                "trend_trade":    int(cat[3])  if cat and cat[3]  is not None else None,
+                "bb_streak":      int(cat[4])  if cat and cat[4]  is not None else None,
+                "bull_rr":        int(cat[5])  if cat and cat[5]  is not None else None,
+                "not_bull_rr":    int(cat[6])  if cat and cat[6]  is not None else None,
+                "tn_td_action":   int(cat[7])  if cat and cat[7]  is not None else None,
+                "tn_td_desc":     cat[8]       if cat else None,
+                "bb_action":      int(cat[9])  if cat and cat[9]  is not None else None,
+                "bb_desc":        cat[10]      if cat else None,
+                "rr_action":      int(cat[11]) if cat and cat[11] is not None else None,
+                "final_score":    int(cat[12]) if cat and cat[12] is not None else None,
+                "action":         cat[13]      if cat else None,
+                "priority":       int(cat[14]) if cat and cat[14] is not None else None,
+            },
+        }
+
+
 @router.get("/api/actionable/history")
 def get_actionable_history(symbol: str = Query(...), limit: int = Query(50, ge=1, le=500)):
     sym_u = symbol.upper().strip()

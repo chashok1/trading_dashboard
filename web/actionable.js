@@ -945,6 +945,7 @@ async function openDrilldown(row) {
 
   await loadComparison(row.tos_symbol, row.as_of_date);
   await loadHistory(row.tos_symbol);
+  loadRRAnalysis(row.tos_symbol, row.as_of_date);
 
   $('modalBackdrop').classList.add('open');
 }
@@ -1171,6 +1172,23 @@ function formatNum(v) {
   if (Number.isInteger(n)) return String(n);
   return n.toFixed(3).replace(/\.?0+$/, '');
 }
+
+async function loadRRAnalysis(symbol, date) {
+  const sec = $('rrSection');
+  const el  = $('rrChart');
+  sec.style.display = 'none';
+  el.innerHTML = '<span style="color:#94a3b8;font-size:12px;">Loading…</span>';
+  try {
+    const data = await fetchJson(`/api/actionable/rr-analysis?symbol=${encodeURIComponent(symbol)}&date=${encodeURIComponent(date)}`);
+    if (data && (data.levels.lrr != null || data.levels.trr != null)) {
+      sec.style.display = '';
+      if (window.td_common && window.td_common.renderRRAnalysis) {
+        window.td_common.renderRRAnalysis(data, el);
+      }
+    }
+  } catch(_) {}
+}
+
 
 async function loadHistory(symbol) {
   const tb = $('modalHistory').querySelector('tbody');

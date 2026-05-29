@@ -76,6 +76,25 @@ async function loadTrace() {
   $("cockpitLink").href = `/cockpit?${ck.toString()}`;
 
   render();
+  loadRRChart(STATE.data.tos_symbol, STATE.data.as_of_date);
+}
+
+async function loadRRChart(symbol, date) {
+  const sec = $('rrSection');
+  const el  = $('rrChart');
+  sec.style.display = 'none';
+  try {
+    const data = await fetch(
+      `/api/actionable/rr-analysis?symbol=${encodeURIComponent(symbol)}&date=${encodeURIComponent(date)}`,
+      { headers: { Accept: 'application/json' } }
+    ).then(r => r.ok ? r.json() : null);
+    if (data && (data.levels.lrr != null || data.levels.trr != null)) {
+      sec.style.display = '';
+      if (window.td_common && window.td_common.renderRRAnalysis) {
+        window.td_common.renderRRAnalysis(data, el);
+      }
+    }
+  } catch(_) {}
 }
 
 function showErr(msg) {
