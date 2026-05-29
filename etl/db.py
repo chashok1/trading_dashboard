@@ -309,6 +309,9 @@ def replace_for_date(session: Session, table_name: str,
         text(f"DELETE FROM {safe_table} WHERE {safe_col} = :d"),
         {"d": date_value},
     )
+    # Flush the DELETE to the database before attempting INSERT
+    # This prevents duplicate key errors when called multiple times in rapid succession
+    session.flush()
 
     table = get_table(table_name)
     # Insert in batches to avoid hitting parameter limits on huge rebuilds.
