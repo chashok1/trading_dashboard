@@ -1183,7 +1183,7 @@ async function loadRRAnalysis(symbol, date) {
     if (data && (data.levels.lrr != null || data.levels.trr != null)) {
       sec.style.display = '';
       if (window.td_common && window.td_common.renderRRAnalysis) {
-        window.td_common.renderRRAnalysis(data, el);
+        window.td_common.renderRRAnalysis(data, el, symbol, date);
       }
     }
   } catch(_) {}

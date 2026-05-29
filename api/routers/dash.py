@@ -833,6 +833,52 @@ def get_rr_analysis(symbol: str = Query(...), date: str = Query(...)):
         }
 
 
+@router.get("/api/actionable/rr-history")
+def get_rr_history(symbol: str = Query(...), date: str = Query(...), days: int = Query(60, ge=10, le=180)):
+    """Time-series of hist_td.last_price vs RR bands (LRR/MRR/TRR) for a rolling window."""
+    sym = symbol.upper().strip()
+    try:
+        from datetime import date as date_type, timedelta
+        d_end = date_type.fromisoformat(date)
+        d_start = d_end - timedelta(days=days)
+    except ValueError:
+        raise HTTPException(400, "date must be YYYY-MM-DD")
+    def _f(v): return float(v) if v is not None else None
+    with session_scope() as s:
+        # Daily prices from hist_td
+        td_rows = s.execute(text("""
+            SELECT DISTINCT ON (snapshot_date) snapshot_date, last_price
+            FROM hist_td WHERE tos_symbol=:sym
+              AND snapshot_date >= :s AND snapshot_date <= :e
+            ORDER BY snapshot_date, sequence DESC
+        """), {"sym": sym, "s": d_start, "e": d_end}).fetchall()
+
+        # RR snapshots (weekly/periodic — forward-fill between dates)
+        rr_rows = s.execute(text("""
+            SELECT DISTINCT ON (snapshot_date) snapshot_date, buy_trade, sell_trade
+            FROM hist_rr WHERE tos_symbol=:sym
+              AND snapshot_date >= :s AND snapshot_date <= :e
+            ORDER BY snapshot_date
+        """), {"sym": sym, "s": d_start, "e": d_end}).fetchall()
+
+    # Build date-keyed RR map then forward-fill over td dates
+    rr_map = {str(r[0]): (_f(r[1]), _f(r[2])) for r in rr_rows}
+    last_lrr, last_trr = None, None
+
+    dates, prices, lrrs, trrs, mrrs = [], [], [], [], []
+    for snap, price in td_rows:
+        ds = str(snap)
+        if ds in rr_map:
+            last_lrr, last_trr = rr_map[ds]
+        dates.append(ds)
+        prices.append(_f(price))
+        lrrs.append(last_lrr)
+        trrs.append(last_trr)
+        mrrs.append(round((last_lrr + last_trr) / 2, 3) if last_lrr and last_trr else None)
+
+    return {"symbol": sym, "dates": dates, "price": prices, "lrr": lrrs, "trr": trrs, "mrr": mrrs}
+
+
 @router.get("/api/actionable/history")
 def get_actionable_history(symbol: str = Query(...), limit: int = Query(50, ge=1, le=500)):
     sym_u = symbol.upper().strip()

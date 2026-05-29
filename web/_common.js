@@ -162,9 +162,8 @@
   }
 
   // ─── Risk Range Chart ────────────────────────────────────────────────────────
-  // renderRRAnalysis(data, el) — render the Risk Range chart + stats into `el`.
-  // `data` is the JSON from /api/actionable/rr-analysis.
-  function renderRRAnalysis(data, el) {
+  // renderRRAnalysis(data, el, symbol, date) — render the Risk Range chart + stats.
+  function renderRRAnalysis(data, el, symbol, date) {
     if (!data) { el.innerHTML = '<p style="color:#888;font-size:12px;">No Risk Range data.</p>'; return; }
     const p  = data.price   || {};
     const lv = data.levels  || {};
@@ -188,8 +187,9 @@
       </span>`;
     };
 
-    // ── SVG chart ─────────────────────────────────────────────────────────────
-    const W = 170, H = 210, PAD_L = 46, PAD_R = 56, PAD_T = 10, PAD_B = 10;
+    // ── Today's price bar (current snapshot) ─────────────────────────────────
+    // Left Y-axis = hist_td labels, Right Y-axis = drv_quote labels
+    const W = 160, H = 210, PAD_L = 44, PAD_R = 52, PAD_T = 12, PAD_B = 18;
     const chartW = W - PAD_L - PAD_R;
     const chartH = H - PAD_T - PAD_B;
 
@@ -209,7 +209,6 @@
       `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"/>
        <text x="${x1+4}" y="${y+4}" fill="${color}" font-size="9" font-weight="600">${label}</text>`;
 
-    // RR zone (green tint)
     const rrZone = (lrr != null && trr != null)
       ? `<rect x="${x0}" y="${yPx(trr)}" width="${chartW}" height="${Math.max(yPx(lrr)-yPx(trr),1)}" fill="#f0fdf4"/>`
       : '';
@@ -221,7 +220,6 @@
     if (trade != null && trade >= yMin)               lines.push(hline(yPx(trade), '#f97316', '3 2', `Trade ${fmt(trade)}`));
     if (trend != null && trend >= yMin)               lines.push(hline(yPx(trend), '#818cf8', '3 2', `Trend ${fmt(trend)}`));
 
-    // Price bar (prev → current)
     const priceBar = () => {
       if (cur == null) return '';
       const top = yPx(Math.max(cur, prev ?? cur));
@@ -235,14 +233,31 @@
         <rect x="${xMid-8}" y="${top}" width="16" height="${bH}" fill="${fill}" stroke="${up?'#15803d':'#b91c1c'}" stroke-width="1" rx="1"/>`;
     };
 
-    // Y-axis price labels
-    const yLbls = [];
-    if (prev != null) yLbls.push(`<text x="${x0-3}" y="${yPx(prev)+4}" fill="#64748b" font-size="9" text-anchor="end">${fmt(prev)}</text>`);
-    if (cur  != null) yLbls.push(`<text x="${x0-3}" y="${yPx(cur)+4}"  fill="#111"    font-size="9" text-anchor="end" font-weight="700">${fmt(cur)}</text>`);
+    // Left labels: hist_td (prev close) — offset up/down if too close to cur
+    // Right labels: drv_quote (current)
+    const MIN_LABEL_GAP = 11;
+    let prevY = prev != null ? yPx(prev) : null;
+    let curY  = cur  != null ? yPx(cur)  : null;
+    if (prevY != null && curY != null && Math.abs(prevY - curY) < MIN_LABEL_GAP) {
+      if (prev > cur) { prevY -= MIN_LABEL_GAP / 2; curY += MIN_LABEL_GAP / 2; }
+      else            { prevY += MIN_LABEL_GAP / 2; curY -= MIN_LABEL_GAP / 2; }
+    }
+    const leftLbls = prev != null
+      ? `<text x="${x0-3}" y="${prevY+4}" fill="#64748b" font-size="9" text-anchor="end">${fmt(prev)}</text>
+         <text x="${x0-3}" y="${prevY+13}" fill="#94a3b8" font-size="7" text-anchor="end">prev</text>` : '';
+    const rightLbls = cur != null
+      ? `<text x="${x1+PAD_R-2}" y="${curY+4}" fill="#111" font-size="9" text-anchor="end" font-weight="700">${fmt(cur)}</text>
+         <text x="${x1+PAD_R-2}" y="${curY+13}" fill="#94a3b8" font-size="7" text-anchor="end">today</text>` : '';
 
-    const svg = `<svg width="${W}" height="${H}" style="overflow:visible;display:block;">
-      ${rrZone}${lines.join('')}${priceBar()}${yLbls.join('')}
-      ${prev != null ? `<text x="${xMid}" y="${H}" fill="#94a3b8" font-size="7" text-anchor="middle">prev close</text>` : ''}
+    const svgToday = `<svg width="${W}" height="${H}" style="overflow:visible;display:block;">
+      ${rrZone}${lines.join('')}${priceBar()}${leftLbls}${rightLbls}
+      <text x="${xMid}" y="${H}" fill="#64748b" font-size="8" text-anchor="middle" font-weight="600">Today</text>
+    </svg>`;
+
+    // ── Historical chart ──────────────────────────────────────────────────────
+    const histId = 'rrHist_' + Math.random().toString(36).slice(2);
+    const histSvg = `<svg id="${histId}" width="280" height="${H}" style="overflow:visible;display:block;">
+      <text x="140" y="${H/2}" fill="#94a3b8" font-size="10" text-anchor="middle">Loading history…</text>
     </svg>`;
 
     // ── Action colour ─────────────────────────────────────────────────────────
@@ -253,27 +268,34 @@
     const actionColor = isBull ? '#16a34a' : isBear ? '#dc2626' : '#64748b';
     const actionBg    = isBull ? '#f0fdf4' : isBear ? '#fef2f2' : '#f8fafc';
 
-    // ── Description rows ─────────────────────────────────────────────────────
     const descRow = (label, text) => text
-      ? `<div style="margin-bottom:7px;">
-           <div style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px;">${label}</div>
+      ? `<div style="margin-bottom:6px;">
+           <div style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:1px;">${label}</div>
            <div style="font-size:11px;color:#1e293b;line-height:1.35;">${text}</div>
-         </div>`
-      : '';
+         </div>` : '';
 
     // ── Assemble ──────────────────────────────────────────────────────────────
     el.innerHTML = `
-    <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;">
+    <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;">
 
-      <!-- Chart -->
-      <div style="flex-shrink:0;">${svg}
-        ${outLabels.length ? `<div style="font-size:9px;color:#94a3b8;margin-top:2px;">${outLabels.join(' · ')} (below)</div>` : ''}
+      <!-- Today's bar chart -->
+      <div style="flex-shrink:0;">
+        ${svgToday}
+        ${outLabels.length ? `<div style="font-size:9px;color:#94a3b8;margin-top:1px;">${outLabels.join(' · ')} (below)</div>` : ''}
+      </div>
+
+      <!-- Historical chart -->
+      <div style="flex-shrink:0;">${histSvg}
+        <div style="font-size:8px;color:#94a3b8;text-align:center;margin-top:1px;">
+          <span style="color:#2563eb;">— price</span> &nbsp;
+          <span style="color:#15803d;">— TRR/LRR</span> &nbsp;
+          <span style="color:#4ade80;">— MRR</span>
+        </div>
       </div>
 
       <!-- Right panel -->
-      <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:8px;">
+      <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:8px;">
 
-        <!-- Compact KI/KJ/KK + SD row -->
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;
           padding:5px 8px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;">
           ${dot(ix.trr, 'TRR', sd.trr_sd)}
@@ -288,27 +310,108 @@
           </span>
         </div>
 
-        <!-- Descriptions -->
         <div style="padding:6px 8px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;">
           ${descRow('Trend Trade Rule', ru.tn_td_desc)}
           ${descRow('BB Range Streak', ru.bb_desc)}
           ${descRow('RR Desc', ru.rr_desc)}
         </div>
 
-        <!-- Final action -->
         <div style="display:flex;align-items:center;gap:10px;
           background:${actionBg};border:2px solid ${actionColor};border-radius:8px;padding:8px 12px;">
-          <div style="font-size:26px;font-weight:900;color:${actionColor};line-height:1;min-width:40px;">${actionCode}</div>
+          <div style="font-size:26px;font-weight:900;color:${actionColor};line-height:1;min-width:36px;">${actionCode}</div>
           <div style="flex:1;">
             <div style="font-size:9px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;">Final Action · priority ${priority}</div>
-            <div style="font-size:11px;color:#1e293b;line-height:1.3;margin-top:2px;">
-              Trend Trade BB Risk Range Rule Action
-            </div>
+            <div style="font-size:11px;color:#1e293b;line-height:1.3;margin-top:2px;">Trend Trade BB Risk Range Rule Action</div>
           </div>
         </div>
 
       </div>
     </div>`;
+
+    // ── Async: fetch and render historical chart ──────────────────────────────
+    if (symbol && date) {
+      fetch(`/api/actionable/rr-history?symbol=${encodeURIComponent(symbol)}&date=${encodeURIComponent(date)}&days=60`)
+        .then(r => r.ok ? r.json() : null)
+        .then(h => {
+          const svgEl = document.getElementById(histId);
+          if (!svgEl || !h || !h.dates || !h.dates.length) return;
+          _renderHistChart(svgEl, h, H);
+        })
+        .catch(() => {});
+    }
+  }
+
+  // ── Historical RR line chart ──────────────────────────────────────────────
+  function _renderHistChart(svgEl, h, H) {
+    const dates = h.dates, prices = h.price, lrrs = h.lrr, trrs = h.trr, mrrs = h.mrr;
+    const n = dates.length;
+    if (!n) return;
+
+    const W = 280, PAD_L = 36, PAD_R = 8, PAD_T = 10, PAD_B = 22;
+    const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
+
+    const allVals = [...prices, ...lrrs, ...trrs].filter(v => v != null);
+    if (!allVals.length) return;
+    const yMin = Math.min(...allVals), yMax = Math.max(...allVals);
+    const yRange = yMax - yMin || 1;
+    const pad = yRange * 0.05;
+    const yMinP = yMin - pad, yMaxP = yMax + pad, yRangeP = yMaxP - yMinP;
+
+    const xPx = i => PAD_L + (i / (n - 1)) * cW;
+    const yPx = v => PAD_T + cH * (1 - (v - yMinP) / yRangeP);
+
+    const polyline = (arr, color, width, dash = '') => {
+      const pts = arr.map((v, i) => v != null ? `${xPx(i).toFixed(1)},${yPx(v).toFixed(1)}` : null);
+      // Split into segments at nulls
+      let segs = [], seg = [];
+      pts.forEach(p => {
+        if (p) seg.push(p);
+        else if (seg.length) { segs.push(seg); seg = []; }
+      });
+      if (seg.length) segs.push(seg);
+      return segs.map(s =>
+        `<polyline points="${s.join(' ')}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linejoin="round" ${dash ? `stroke-dasharray="${dash}"` : ''}/>`
+      ).join('');
+    };
+
+    // RR zone fill (between LRR and TRR where both exist)
+    let rrFill = '';
+    const rrPts = lrrs.map((lv, i) => ({ i, lv, tv: trrs[i] })).filter(d => d.lv != null && d.tv != null);
+    if (rrPts.length > 1) {
+      const topPts = rrPts.map(d => `${xPx(d.i).toFixed(1)},${yPx(d.tv).toFixed(1)}`).join(' ');
+      const botPts = [...rrPts].reverse().map(d => `${xPx(d.i).toFixed(1)},${yPx(d.lv).toFixed(1)}`).join(' ');
+      rrFill = `<polygon points="${topPts} ${botPts}" fill="#f0fdf4" stroke="none"/>`;
+    }
+
+    // X-axis date labels (first, middle, last)
+    const dateLabel = i => {
+      const d = dates[i]; if (!d) return '';
+      const parts = d.split('-');
+      return parts.length >= 3 ? `${parts[1]}/${parts[2]}` : d;
+    };
+    const xLabels = [0, Math.floor(n/2), n-1].map(i =>
+      `<text x="${xPx(i).toFixed(1)}" y="${H-4}" fill="#94a3b8" font-size="8" text-anchor="middle">${dateLabel(i)}</text>`
+    ).join('');
+
+    // Y-axis labels (min, max)
+    const yLabels = [yMin, yMax].map(v =>
+      `<text x="${PAD_L-3}" y="${yPx(v)+4}" fill="#94a3b8" font-size="8" text-anchor="end">${v.toFixed(0)}</text>`
+    ).join('');
+
+    // Today marker (last point)
+    const todayX = xPx(n - 1);
+    const todayMark = `<line x1="${todayX}" y1="${PAD_T}" x2="${todayX}" y2="${PAD_T+cH}" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2 2"/>`;
+
+    svgEl.innerHTML = `
+      ${rrFill}
+      ${todayMark}
+      ${polyline(trrs,   '#15803d', 1.2, '4 2')}
+      ${polyline(mrrs,   '#4ade80', 1,   '2 2')}
+      ${polyline(lrrs,   '#15803d', 1.2, '4 2')}
+      ${polyline(prices, '#2563eb', 1.8)}
+      ${xLabels}${yLabels}
+      <text x="${W/2}" y="${H-12}" fill="#64748b" font-size="8" text-anchor="middle" font-weight="600">60-day history</text>
+    `;
   }
 
   window.td_common = {
