@@ -188,37 +188,62 @@
     };
 
     // ── Today's price bar (current snapshot) ─────────────────────────────────
-    // Left Y-axis = hist_td labels, Right Y-axis = drv_quote labels
-    const W = 160, H = 210, PAD_L = 44, PAD_R = 52, PAD_T = 12, PAD_B = 18;
-    const chartW = W - PAD_L - PAD_R;
-    const chartH = H - PAD_T - PAD_B;
-
-    const vals = [cur, prev, hi, lo, lrr, trr].filter(v => v != null);
+    // Include trade/trend in Y range so they show if in range
+    const vals = [cur, prev, hi, lo, lrr, trr, trend, trade].filter(v => v != null);
     const rawMin = Math.min(...vals);
     const rawMax = Math.max(...vals);
+
+    // Left Y-axis = hist_td labels, Right Y-axis = drv_quote + named lines
+    const W = 160, H = 220, PAD_L = 44, PAD_R = 54, PAD_T = 12, PAD_B = 18;
+    const chartW = W - PAD_L - PAD_R;
+    const chartH = H - PAD_T - PAD_B;
     const pad = sdVal ? sdVal * 0.35 : (rawMax - rawMin) * 0.08;
     const yMin = rawMin - pad, yMax = rawMax + pad, yRange = yMax - yMin || 1;
     const yPx = v => PAD_T + chartH * (1 - (v - yMin) / yRange);
     const x0 = PAD_L, x1 = PAD_L + chartW, xMid = PAD_L + chartW * 0.5;
 
-    const outLabels = [];
-    if (trend != null && trend < yMin) outLabels.push(`Trend ${fmt(trend)}`);
-    if (trade != null && trade < yMin) outLabels.push(`Trade ${fmt(trade)}`);
-
-    const hline = (y, color, dash, label) =>
-      `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"/>
+    // Named horizontal lines — all drawn to right side with label
+    const hline = (y, color, dash, label, lw = '1.2') =>
+      `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="${color}" stroke-width="${lw}" stroke-dasharray="${dash}"/>
        <text x="${x1+4}" y="${y+4}" fill="${color}" font-size="9" font-weight="600">${label}</text>`;
+
+    // Light dashed lines for prev/current — label on LEFT for prev, RIGHT for current
+    // Labels sit exactly on the dashed line; gap applied only if labels overlap
+    const prevYexact = prev != null && prev >= yMin && prev <= yMax ? yPx(prev) : null;
+    const curYexact  = cur  != null && cur  >= yMin && cur  <= yMax ? yPx(cur)  : null;
+    const MIN_GAP = 10;
+    let prevLY = prevYexact, curLY = curYexact;
+    if (prevLY != null && curLY != null && Math.abs(prevLY - curLY) < MIN_GAP) {
+      const dir = prev > cur ? -1 : 1;
+      prevLY -= dir * (MIN_GAP - Math.abs(prevLY - curLY)) / 2;
+      curLY  += dir * (MIN_GAP - Math.abs(prevLY - curLY)) / 2;
+    }
+
+    const priceDashes = [
+      prevYexact != null ? `<line x1="${x0}" y1="${prevYexact}" x2="${x1}" y2="${prevYexact}" stroke="#94a3b8" stroke-width="0.8" stroke-dasharray="3 3"/>` : '',
+      curYexact  != null ? `<line x1="${x0}" y1="${curYexact}"  x2="${x1}" y2="${curYexact}"  stroke="#374151" stroke-width="0.8" stroke-dasharray="3 3"/>` : '',
+      // Left label for prev (hist_td)
+      prevLY != null ? `<text x="${x0-3}" y="${prevLY+4}" fill="#64748b" font-size="9" text-anchor="end">${fmt(prev)}</text>
+                        <text x="${x0-3}" y="${prevLY+12}" fill="#94a3b8" font-size="7" text-anchor="end">prev</text>` : '',
+      // Right label for current (drv_quote) — after named line labels
+      curLY != null ? `<text x="${x1+4}" y="${curLY+4}" fill="#111" font-size="9" font-weight="700">${fmt(cur)}</text>
+                       <text x="${x1+4}" y="${curLY+12}" fill="#94a3b8" font-size="7">today</text>` : '',
+    ].join('');
 
     const rrZone = (lrr != null && trr != null)
       ? `<rect x="${x0}" y="${yPx(trr)}" width="${chartW}" height="${Math.max(yPx(lrr)-yPx(trr),1)}" fill="#f0fdf4"/>`
       : '';
 
     const lines = [];
-    if (trr  != null && trr  >= yMin && trr  <= yMax) lines.push(hline(yPx(trr),  '#15803d', '5 2', `TRR ${fmt(trr)}`));
-    if (mrr  != null && mrr  >= yMin && mrr  <= yMax) lines.push(hline(yPx(mrr),  '#4ade80', '2 3', `MRR ${fmt(mrr)}`));
-    if (lrr  != null && lrr  >= yMin && lrr  <= yMax) lines.push(hline(yPx(lrr),  '#15803d', '5 2', `LRR ${fmt(lrr)}`));
-    if (trade != null && trade >= yMin)               lines.push(hline(yPx(trade), '#f97316', '3 2', `Trade ${fmt(trade)}`));
-    if (trend != null && trend >= yMin)               lines.push(hline(yPx(trend), '#818cf8', '3 2', `Trend ${fmt(trend)}`));
+    if (trr   != null && trr   >= yMin && trr   <= yMax) lines.push(hline(yPx(trr),   '#15803d', '5 2', `TRR ${fmt(trr)}`));
+    if (mrr   != null && mrr   >= yMin && mrr   <= yMax) lines.push(hline(yPx(mrr),   '#4ade80', '2 3', `MRR ${fmt(mrr)}`));
+    if (lrr   != null && lrr   >= yMin && lrr   <= yMax) lines.push(hline(yPx(lrr),   '#15803d', '5 2', `LRR ${fmt(lrr)}`));
+    if (trade != null && trade >= yMin && trade <= yMax) lines.push(hline(yPx(trade), '#f97316', '3 2', `Trade ${fmt(trade)}`));
+    if (trend != null && trend >= yMin && trend <= yMax) lines.push(hline(yPx(trend), '#818cf8', '3 2', `Trend ${fmt(trend)}`));
+
+    const outLabels = [];
+    if (trend != null && trend < yMin) outLabels.push(`Trend ${fmt(trend)}`);
+    if (trade != null && trade < yMin) outLabels.push(`Trade ${fmt(trade)}`);
 
     const priceBar = () => {
       if (cur == null) return '';
@@ -233,31 +258,8 @@
         <rect x="${xMid-8}" y="${top}" width="16" height="${bH}" fill="${fill}" stroke="${up?'#15803d':'#b91c1c'}" stroke-width="1" rx="1"/>`;
     };
 
-    // Dashed horizontal reference lines for prev close and current price
-    const refLines = [];
-    if (prev != null && prev >= yMin && prev <= yMax)
-      refLines.push(`<line x1="${x0}" y1="${yPx(prev)}" x2="${x1}" y2="${yPx(prev)}" stroke="#94a3b8" stroke-width="0.8" stroke-dasharray="3 3"/>`);
-    if (cur  != null && cur  >= yMin && cur  <= yMax)
-      refLines.push(`<line x1="${x0}" y1="${yPx(cur)}"  x2="${x1}" y2="${yPx(cur)}"  stroke="#374151" stroke-width="0.8" stroke-dasharray="3 3"/>`);
-
-    // Left labels: hist_td (prev close) — offset up/down if too close to cur
-    // Right labels: drv_quote (current)
-    const MIN_LABEL_GAP = 11;
-    let prevY = prev != null ? yPx(prev) : null;
-    let curY  = cur  != null ? yPx(cur)  : null;
-    if (prevY != null && curY != null && Math.abs(prevY - curY) < MIN_LABEL_GAP) {
-      if (prev > cur) { prevY -= MIN_LABEL_GAP / 2; curY += MIN_LABEL_GAP / 2; }
-      else            { prevY += MIN_LABEL_GAP / 2; curY -= MIN_LABEL_GAP / 2; }
-    }
-    const leftLbls = prev != null
-      ? `<text x="${x0-3}" y="${prevY+4}" fill="#64748b" font-size="9" text-anchor="end">${fmt(prev)}</text>
-         <text x="${x0-3}" y="${prevY+13}" fill="#94a3b8" font-size="7" text-anchor="end">prev</text>` : '';
-    const rightLbls = cur != null
-      ? `<text x="${x1+PAD_R-2}" y="${curY+4}" fill="#111" font-size="9" text-anchor="end" font-weight="700">${fmt(cur)}</text>
-         <text x="${x1+PAD_R-2}" y="${curY+13}" fill="#94a3b8" font-size="7" text-anchor="end">today</text>` : '';
-
     const svgToday = `<svg width="${W}" height="${H}" style="overflow:visible;display:block;">
-      ${rrZone}${lines.join('')}${refLines.join('')}${priceBar()}${leftLbls}${rightLbls}
+      ${rrZone}${lines.join('')}${priceDashes}${priceBar()}
       <text x="${xMid}" y="${H}" fill="#64748b" font-size="8" text-anchor="middle" font-weight="600">Today</text>
     </svg>`;
 
