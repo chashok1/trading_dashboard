@@ -2130,11 +2130,10 @@ def _populate_rr_tos_symbol(session: Session, as_of_date: date) -> int:
     # Clear previous warnings for this date
     clear_screen_warnings(session, "data-quality", as_of_date)
 
-    # Find all distinct RR symbols with NULL tos_symbol
+    # Find all distinct RR symbols with NULL tos_symbol (across all dates)
     rows = session.execute(text("""
-        SELECT DISTINCT symbol FROM hist_rr
-        WHERE snapshot_date = :d AND tos_symbol IS NULL
-    """), {"d": as_of_date}).fetchall()
+        SELECT DISTINCT symbol FROM hist_rr WHERE tos_symbol IS NULL
+    """)).fetchall()
 
     unmapped_count = 0
     for (symbol,) in rows:
@@ -2144,12 +2143,11 @@ def _populate_rr_tos_symbol(session: Session, as_of_date: date) -> int:
         """), {"sym": symbol}).first()
 
         if row and row[0]:
-            # Found in ref_rrt - update tos_symbol
+            # Found in ref_rrt - update all rows for this symbol
             tos_sym = row[0]
             session.execute(text("""
-                UPDATE hist_rr SET tos_symbol = :tos
-                WHERE snapshot_date = :d AND symbol = :sym
-            """), {"tos": tos_sym, "d": as_of_date, "sym": symbol})
+                UPDATE hist_rr SET tos_symbol = :tos WHERE symbol = :sym
+            """), {"tos": tos_sym, "sym": symbol})
         else:
             # NOT found in ref_rrt - keep tos_symbol NULL and create warning
             unmapped_count += 1
