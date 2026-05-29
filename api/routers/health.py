@@ -400,7 +400,7 @@ def get_warnings():
         # A) Recent ETL failures (last 24 hours)
         try:
             rows = s.execute(text("""
-                SELECT table_name, error_msg
+                SELECT file_type, error_msg
                 FROM meta_etl_run
                 WHERE status = 'error' AND started_at > NOW() - INTERVAL '24 hours'
                 ORDER BY started_at DESC LIMIT 10
