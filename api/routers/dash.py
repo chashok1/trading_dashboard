@@ -762,7 +762,8 @@ def get_rr_analysis(symbol: str = Query(...), date: str = Query(...)):
             SELECT trr_idx, mrr_idx, lrr_idx,
                    trade_trend_sd_rule, bb_rng_strk_rule, bull_rr_action, not_bull_rr_action,
                    tn_td_rule_action, tn_td_rule_desc, bb_rng_strk_action, bb_rng_strk_desc,
-                   risk_rng_longs_action, td_tn_bb_rr_action, td_tn_bb_action_desc, td_tn_bb_action_seq
+                   risk_rng_longs_action, td_tn_bb_rr_action, td_tn_bb_action_desc, td_tn_bb_action_seq,
+                   rr_bull_bear, rr_desc
             FROM drv_cat_atomic_input WHERE tos_symbol=:sym AND as_of_date=:d
         """), {"sym": sym, "d": d}).fetchone()
 
@@ -826,6 +827,8 @@ def get_rr_analysis(symbol: str = Query(...), date: str = Query(...)):
                 "final_score":    int(cat[12]) if cat and cat[12] is not None else None,
                 "action":         cat[13]      if cat else None,
                 "priority":       int(cat[14]) if cat and cat[14] is not None else None,
+                "rr_bull_bear":   cat[15]      if cat else None,
+                "rr_desc":        cat[16]      if cat else None,
             },
         }
 

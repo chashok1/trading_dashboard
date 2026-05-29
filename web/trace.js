@@ -67,16 +67,17 @@ async function loadTrace() {
     return;
   }
   STATE.data = await resp.json();
-  if (!STATE.date) $("datePicker").value = STATE.data.as_of_date;
+  const asOf = STATE.data.as_of || STATE.data.as_of_date;
+  if (!STATE.date) $("datePicker").value = asOf;
 
   // Update Cockpit deep-link
   const ck = new URLSearchParams();
   ck.set("symbol", STATE.data.tos_symbol);
-  ck.set("date",   STATE.data.as_of_date);
+  ck.set("date",   asOf);
   $("cockpitLink").href = `/cockpit?${ck.toString()}`;
 
   render();
-  loadRRChart(STATE.data.tos_symbol, STATE.data.as_of_date);
+  loadRRChart(STATE.data.tos_symbol, STATE.data.as_of || STATE.data.as_of_date);
 }
 
 async function loadRRChart(symbol, date) {
