@@ -635,7 +635,7 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         tw.sma_20, tw.sma_50, tw.sma_200,
         too.market_cap_str, too.beta,
         too.pe_ratio, too.eps, too.div_yield,
-        rr.rr_date, rr.buy_trade AS rr_buy_trade, rr.sell_trade AS rr_sell_trade, rr.outlook_modifier AS rr_outlook,
+        rr.rr_date, rr.buy_trade AS rr_buy_trade, rr.sell_trade AS rr_sell_trade, rr.outlook AS rr_outlook,
         cl.call_outlook, cl.call_modifier, cl.call_weight,
         ef.etf_outlook, ef.etf_brr, ef.etf_trr,
         ii.ii_outlook, ii.ii_weight,

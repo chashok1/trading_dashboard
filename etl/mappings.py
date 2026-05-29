@@ -295,7 +295,7 @@ HIST_MAPS = {
             ("BUY TRADE",      "buy_trade",      to_numeric),
             ("SELL TRADE",     "sell_trade",     to_numeric),
             ("Description",    "description",    to_text),
-            ("Outlook",        "outlook_modifier", to_text),
+            ("Outlook",        "outlook",        to_text),
         ],
     ),
 

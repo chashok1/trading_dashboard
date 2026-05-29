@@ -1302,7 +1302,7 @@ CREATE TABLE IF NOT EXISTS hist_rr (
 
     description      TEXT,
 
-    outlook_modifier TEXT,
+    outlook          TEXT,
 
     market_close     TIMESTAMP,
 
@@ -1324,8 +1324,8 @@ DO $$ BEGIN
         ALTER TABLE hist_rr RENAME COLUMN name TO description;
     END IF;
     IF EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name='hist_rr' AND column_name='outlook') THEN
-        ALTER TABLE hist_rr RENAME COLUMN outlook TO outlook_modifier;
+               WHERE table_name='hist_rr' AND column_name='outlook_modifier') THEN
+        ALTER TABLE hist_rr RENAME COLUMN outlook_modifier TO outlook;
     END IF;
 END $$;
 
