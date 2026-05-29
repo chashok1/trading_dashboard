@@ -2237,6 +2237,33 @@ CREATE TABLE IF NOT EXISTS drv_sss (
 
 -- -----------------------------------------------------
 
+-- drv_y - converted float and shares outstanding from hist_y strings
+
+-- Converts hist_y.float_str and hist_y.shares_out_str from text to NUMERIC.
+-- Built by etl/derive.py::derive_y, idempotent per snapshot_date.
+
+-- -----------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS drv_y (
+
+    snapshot_date   DATE NOT NULL,
+
+    tos_symbol      TEXT NOT NULL,
+
+    float           NUMERIC,
+
+    shares_out      NUMERIC,
+
+    computed_at     TIMESTAMP NOT NULL DEFAULT now(),
+
+    source_run_id   BIGINT,
+
+    PRIMARY KEY (snapshot_date, tos_symbol)
+
+);
+
+CREATE INDEX IF NOT EXISTS ix_drv_y_date ON drv_y(snapshot_date);
+
 -- drv_quote - latest-source-wins consolidation of common quote fields.
 
 -- For each (as_of_date, symbol) we merge candidate rows from hist_y,

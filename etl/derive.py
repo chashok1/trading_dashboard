@@ -735,6 +735,39 @@ def _latest_per_symbol(session: Session, table: str, as_of_date: date,
     return out
 
 
+def _derive_y_impl(session: Session, as_of_date: date, run_id: int) -> int:
+    """Convert hist_y float_str and shares_out_str to NUMERIC in drv_y.
+
+    Idempotent: DELETE WHERE snapshot_date=D then INSERT.
+    Handles "--" (missing) and suffix characters (M, K, etc) as NULL.
+    """
+    rows = session.execute(text("""
+        SELECT DISTINCT ON (tos_symbol) tos_symbol, snapshot_date,
+               CASE WHEN float_str IS NULL OR float_str = '--' THEN NULL
+                    ELSE REGEXP_REPLACE(REPLACE(float_str, ',', ''), '[A-Za-z]', '', 'g')::NUMERIC END AS float,
+               CASE WHEN shares_out_str IS NULL OR shares_out_str = '--' THEN NULL
+                    ELSE REGEXP_REPLACE(REPLACE(shares_out_str, ',', ''), '[A-Za-z]', '', 'g')::NUMERIC END AS shares_out
+          FROM hist_y
+         WHERE snapshot_date = :d
+         ORDER BY tos_symbol, loaded_at DESC, sequence DESC
+    """), {"d": as_of_date}).mappings().all()
+
+    out = [
+        {
+            "snapshot_date": r["snapshot_date"],
+            "tos_symbol": r["tos_symbol"],
+            "float": r["float"],
+            "shares_out": r["shares_out"],
+            "source_run_id": run_id,
+        }
+        for r in rows
+    ]
+    return replace_for_date(session, "drv_y", "snapshot_date", as_of_date, out)
+
+
+derive_y = _wrap("drv_y", _derive_y_impl)
+
+
 def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
     """Build drv_quote rows for as_of_date. Idempotent: DELETE then INSERT."""
 
@@ -2517,6 +2550,9 @@ def derive_all(session: Session, as_of_date: date,
     # produced all-NULL rows for ~100 columns — retired 2026-05-27.
 
     # ---- drv2_* layer RETIRED 2026-05-12 — archived 2026-05-12 (see _trash_2026-05-12/etl/_archived/) ----
+
+    # drv_y converts hist_y string columns to numeric
+    counts["drv_y"]                   = _safe("drv_y",                 derive_y)
 
     # drv_quote merges hist_y / hist_tl / hist_td quote fields by latest loaded_at
     counts["drv_quote"]               = _safe("drv_quote",             derive_quote)
