@@ -68,12 +68,12 @@ def generate_drv2_views(session):
             if cat_table != "drv_cat_identity":
                 alias = cat_table.replace("drv_cat_", "")
                 joins.append(
-                    f"LEFT JOIN {cat_table} {alias} USING (as_of_date, symbol)"
+                    f"LEFT JOIN {cat_table} {alias} USING (as_of_date, tos_symbol)"
                 )
 
         # Build SELECT list
         # Include identity columns always
-        select_cols = ["i.as_of_date", "i.symbol"]
+        select_cols = ["i.as_of_date", "i.tos_symbol"]
 
         # Add columns from each cat_table
         for cat_table in sorted(by_cat.keys()):

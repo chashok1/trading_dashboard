@@ -45,30 +45,30 @@ WITH p AS (SELECT CAST(:d AS date) AS d),
 syms AS (
     SELECT DISTINCT s FROM (
         SELECT ticker AS s FROM ref_sector
-        UNION SELECT symbol FROM hist_tl WHERE snapshot_date <= (SELECT d FROM p)
-        UNION SELECT symbol FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
-        UNION SELECT symbol FROM hist_tw WHERE snapshot_date <= (SELECT d FROM p)
+        UNION SELECT tos_symbol AS s FROM hist_tl WHERE snapshot_date <= (SELECT d FROM p)
+        UNION SELECT tos_symbol AS s FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
+        UNION SELECT tos_symbol AS s FROM hist_tw WHERE snapshot_date <= (SELECT d FROM p)
     ) u WHERE s IS NOT NULL
 ),
 td AS (
-    SELECT DISTINCT ON (symbol) symbol,
+    SELECT DISTINCT ON (tos_symbol) tos_symbol,
            a_trend_value, a_trade_value, a_bb_top, a_bb_bottom,
            a_bb_streak, a_bb_high_low, a_bb_high_low_days,
            a_iv_percentile, a_hv_percentile,
            a_bb_top_slope, a_bb_bot_slope,
            historical_vol, imp_volatility, rsi
     FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
-    ORDER BY symbol, snapshot_date DESC, sequence DESC
+    ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
 td_prior AS (
     -- Prior snapshot's a_bb_bottom and a_bb_top for DU/DV fallback in EC/ED
-    SELECT DISTINCT ON (symbol) symbol,
+    SELECT DISTINCT ON (tos_symbol) tos_symbol,
            a_bb_bottom AS bb_bot_prev, a_bb_top AS bb_top_prev
     FROM hist_td WHERE snapshot_date < (SELECT d FROM p)
-    ORDER BY symbol, snapshot_date DESC, sequence DESC
+    ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
 tw AS (
-    SELECT DISTINCT ON (symbol) symbol,
+    SELECT DISTINCT ON (tos_symbol) tos_symbol,
            standard_dev, sma_20, sma_50, sma_200,
            a_macd_brr, a_macdh_d_brr, a_macdays_streak,
            a_3mn_high, a_3mn_low, a_3mn_high_low, a_3wk_high_low,
@@ -76,31 +76,30 @@ tw AS (
            a_volume_spike, volume, volume_avg_3m, volume_rate_change,
            a_earnings_days, high_52, low_52
     FROM hist_tw WHERE snapshot_date <= (SELECT d FROM p)
-    ORDER BY symbol, snapshot_date DESC, sequence DESC
+    ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
 med AS (
     -- AA = as-of-date median of standard_dev (over the symbol's full history
     -- <= D).  Drives AC = MIN(AA, AB) in the MA sheet.
-    SELECT symbol,
+    SELECT tos_symbol,
            percentile_cont(0.5) WITHIN GROUP (ORDER BY standard_dev) AS median_sd
     FROM hist_tw
     WHERE snapshot_date <= (SELECT d FROM p) AND standard_dev IS NOT NULL
-    GROUP BY symbol
+    GROUP BY tos_symbol
 ),
 dq AS (
-    SELECT DISTINCT ON (symbol) symbol, last_price, net_chng, pct_change,
+    SELECT DISTINCT ON (tos_symbol) tos_symbol, last_price, net_chng, pct_change,
            open_price, high_price, low_price
     FROM drv_quote WHERE as_of_date <= (SELECT d FROM p)
-    ORDER BY symbol, as_of_date DESC
+    ORDER BY tos_symbol, as_of_date DESC
 ),
 rr AS (
-    SELECT DISTINCT ON (tos_symbol)
-           tos_symbol AS symbol,
+    SELECT DISTINCT ON (tos_symbol) tos_symbol,
            buy_trade, sell_trade
     FROM hist_rr WHERE snapshot_date <= (SELECT d FROM p)
     ORDER BY tos_symbol, snapshot_date DESC
 )
-SELECT s.s AS symbol,
+SELECT s.s AS tos_symbol,
        -- hist_td (rule input bases)
        td.a_trend_value, td.a_trade_value, td.a_bb_top, td.a_bb_bottom,
        td.a_bb_streak, td.a_bb_high_low, td.a_bb_high_low_days,
@@ -123,12 +122,12 @@ SELECT s.s AS symbol,
        -- hist_rr
        rr.buy_trade, rr.sell_trade
 FROM syms s
-LEFT JOIN td  ON td.symbol  = s.s
-LEFT JOIN td_prior ON td_prior.symbol = s.s
-LEFT JOIN tw  ON tw.symbol  = s.s
-LEFT JOIN med ON med.symbol = s.s
-LEFT JOIN dq  ON dq.symbol  = s.s
-LEFT JOIN rr  ON rr.symbol  = s.s
+LEFT JOIN td  ON td.tos_symbol  = s.s
+LEFT JOIN td_prior ON td_prior.tos_symbol = s.s
+LEFT JOIN tw  ON tw.tos_symbol  = s.s
+LEFT JOIN med ON med.tos_symbol = s.s
+LEFT JOIN dq  ON dq.tos_symbol  = s.s
+LEFT JOIN rr  ON rr.tos_symbol  = s.s
 """
 
 

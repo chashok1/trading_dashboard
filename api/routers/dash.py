@@ -413,7 +413,7 @@ def get_actionable_source_data(
 
         etf = s.execute(text("""
             SELECT brr, trr, snapshot_date FROM hist_etf
-            WHERE symbol = :sym AND snapshot_date <= :d
+            WHERE tos_symbol = :sym AND snapshot_date <= :d
             ORDER BY snapshot_date DESC LIMIT 1
         """), {"sym": sym, "d": d}).first()
         if etf:
@@ -431,7 +431,7 @@ def get_actionable_source_data(
 
         sss = s.execute(text("""
             SELECT pct_delta, anlst_best_idea_rank, snapshot_date FROM hist_sss
-            WHERE symbol = :sym AND snapshot_date <= :d
+            WHERE tos_symbol = :sym AND snapshot_date <= :d
             ORDER BY snapshot_date DESC LIMIT 1
         """), {"sym": sym, "d": d}).first()
         if sss:
@@ -440,7 +440,7 @@ def get_actionable_source_data(
 
         call = s.execute(text("""
             SELECT snapshot_date FROM hist_call
-            WHERE symbol = :sym AND snapshot_date <= :d
+            WHERE tos_symbol = :sym AND snapshot_date <= :d
             ORDER BY snapshot_date DESC LIMIT 1
         """), {"sym": sym, "d": d}).first()
         if call:
@@ -838,7 +838,7 @@ def get_portfolio(
             'F'                                       AS source,
             COALESCE(account_name, account_number)    AS account,
             account_number                            AS account_id,
-            symbol,
+            tos_symbol                                AS symbol,
             description,
             type                                      AS security_type,
             qty,
@@ -864,7 +864,7 @@ def get_portfolio(
             'CS'                                      AS source,
             c.account                                   AS account,
             c.account                                   AS account_id,
-            c.symbol,
+            c.tos_symbol                                AS symbol,
             c.description,
             c.security_type,
             c.qty,
@@ -881,7 +881,7 @@ def get_portfolio(
           FROM hist_cs c
           LEFT JOIN drv_cs_realized_gain rg
                ON rg.account = c.account
-              AND rg.symbol = c.symbol
+              AND rg.tos_symbol = c.tos_symbol
               AND rg.as_of_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
           WHERE TRUE
             AND c.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
@@ -893,7 +893,7 @@ def get_portfolio(
             'CS'                                      AS source,
             rg.account                                  AS account,
             rg.account                                  AS account_id,
-            rg.symbol,
+            rg.tos_symbol                              AS symbol,
             NULL::TEXT                                AS description,
             NULL::TEXT                                AS security_type,
             rg.shares_sold                              AS qty,
@@ -912,7 +912,7 @@ def get_portfolio(
             AND NOT EXISTS (
               SELECT 1 FROM hist_cs c
               WHERE c.account = rg.account
-                AND c.symbol = rg.symbol
+                AND c.tos_symbol = rg.tos_symbol
                 AND c.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
             )
           )

@@ -502,7 +502,7 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         --   imp_volatility = COALESCE(imp_volatility_raw, 0)
         --   vlm_projected  = intraday volume projected to the full session,
         --                    a pure per-row function of volume + sequence (HHMM)
-        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol AS symbol, h.snapshot_date AS tl_date,
+        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol, h.snapshot_date AS tl_date,
                h.last_price, h.rsi,
                COALESCE(h.imp_volatility_raw, 0) AS imp_volatility,
                h.volume,
@@ -523,13 +523,13 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
     -- the legacy hist_tl-based `tl` CTE so missing drv_quote rows don't
     -- regress the data.
     dq AS (
-        SELECT DISTINCT ON (tos_symbol) tos_symbol AS symbol, last_price, rsi, imp_volatility
+        SELECT DISTINCT ON (tos_symbol) tos_symbol, last_price, rsi, imp_volatility
         FROM drv_quote
         WHERE as_of_date <= (SELECT d FROM p)
         ORDER BY tos_symbol, as_of_date DESC
     ),
     td AS (
-        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol AS symbol, h.snapshot_date AS td_date,
+        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol, h.snapshot_date AS td_date,
                COALESCE(dr.iv_percentile, h.a_iv_percentile)  AS iv_percentile,
                COALESCE(dr.hv_percentile, h.a_hv_percentile)  AS hv_percentile,
                dr.range_compression, dr.d_iv_to_hv, dr.d_vlt_caution,
@@ -540,7 +540,7 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
     ),
     tw AS (
-        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol AS symbol, h.snapshot_date AS tw_date,
+        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol, h.snapshot_date AS tw_date,
                dr.a_macd_brr, dr.a_macdh_d_brr, dr.earnings_days_d AS earnings_days,
                dr.sma_20_d AS sma_20, dr.sma_50_d AS sma_50, dr.sma_200_d AS sma_200
         FROM hist_tw h
@@ -549,7 +549,7 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
     ),
     too AS (
-        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol AS symbol, h.beta,
+        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol, h.beta,
                COALESCE(dr.market_cap_num::text, h.market_cap_str) AS market_cap_str,
                h.pe_ratio, h.eps, h.div_yield, h.sector
         FROM hist_to h
@@ -558,14 +558,14 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
     ),
     rr AS (
-        SELECT DISTINCT ON (tos_symbol) tos_symbol AS symbol,
+        SELECT DISTINCT ON (tos_symbol) tos_symbol,
                snapshot_date AS rr_date,
                buy_trade, sell_trade, outlook
         FROM hist_rr WHERE snapshot_date <= (SELECT d FROM p)
         ORDER BY tos_symbol, snapshot_date DESC
     ),
     cl AS (
-        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol AS symbol,
+        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol,
                h.outlook AS call_outlook,
                h.outlook_modifier AS call_modifier,
                CAST(rp.value AS NUMERIC) AS call_weight
@@ -577,7 +577,7 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         ORDER BY h.tos_symbol, h.snapshot_date DESC
     ),
     ef AS (
-        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol AS symbol,
+        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol,
                h.brr AS etf_brr, h.trr AS etf_trr,
                COALESCE(h.outlook,
                   CASE WHEN h.brr > 0 THEN 'BULLISH'
@@ -588,7 +588,7 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         ORDER BY h.tos_symbol, h.snapshot_date DESC
     ),
     ii AS (
-        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol AS symbol,
+        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol,
                h.outlook AS ii_outlook,
                CAST(rp.value AS NUMERIC) AS ii_weight
         FROM hist_ii h
@@ -599,7 +599,7 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         ORDER BY h.tos_symbol, h.snapshot_date DESC
     ),
     sh AS (
-        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol AS symbol,
+        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol,
                dr.signal AS ssh_signal,
                dr.signal_sign AS ssh_signal_sign,
                dr.rank_hl AS ssh_rank_hl
@@ -609,14 +609,14 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         ORDER BY h.tos_symbol, h.snapshot_date DESC
     ),
     fid AS (
-        SELECT tos_symbol AS symbol, SUM(qty) AS held_qty FROM hist_f
+        SELECT tos_symbol, SUM(qty) AS held_qty FROM hist_f
         WHERE snapshot_date = (
             SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= (SELECT d FROM p)
         )
         GROUP BY tos_symbol
     ),
     cs AS (
-        SELECT tos_symbol AS symbol, SUM(qty) AS held_qty FROM hist_cs
+        SELECT tos_symbol, SUM(qty) AS held_qty FROM hist_cs
         WHERE snapshot_date = (
             SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= (SELECT d FROM p)
         )
@@ -653,18 +653,18 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         (SELECT run FROM p)
     FROM syms s
     LEFT JOIN ref_sector rs ON rs.ticker = s.s
-    LEFT JOIN tl  ON tl.symbol  = s.s
-    LEFT JOIN dq  ON dq.symbol  = s.s
-    LEFT JOIN td  ON td.symbol  = s.s
-    LEFT JOIN tw  ON tw.symbol  = s.s
-    LEFT JOIN too ON too.symbol = s.s
-    LEFT JOIN rr  ON rr.symbol  = s.s
-    LEFT JOIN cl  ON cl.symbol  = s.s
-    LEFT JOIN ef  ON ef.symbol  = s.s
-    LEFT JOIN ii  ON ii.symbol  = s.s
-    LEFT JOIN sh  ON sh.symbol  = s.s
-    LEFT JOIN fid ON fid.symbol = s.s
-    LEFT JOIN cs  ON cs.symbol  = s.s
+    LEFT JOIN tl  ON tl.tos_symbol  = s.s
+    LEFT JOIN dq  ON dq.tos_symbol  = s.s
+    LEFT JOIN td  ON td.tos_symbol  = s.s
+    LEFT JOIN tw  ON tw.tos_symbol  = s.s
+    LEFT JOIN too ON too.tos_symbol = s.s
+    LEFT JOIN rr  ON rr.tos_symbol  = s.s
+    LEFT JOIN cl  ON cl.tos_symbol  = s.s
+    LEFT JOIN ef  ON ef.tos_symbol  = s.s
+    LEFT JOIN ii  ON ii.tos_symbol  = s.s
+    LEFT JOIN sh  ON sh.tos_symbol  = s.s
+    LEFT JOIN fid ON fid.tos_symbol = s.s
+    LEFT JOIN cs  ON cs.tos_symbol  = s.s
     """)
 
     # First wipe existing for this date
