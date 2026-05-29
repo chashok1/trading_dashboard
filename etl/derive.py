@@ -739,14 +739,24 @@ def _derive_y_impl(session: Session, as_of_date: date, run_id: int) -> int:
     """Convert hist_y float_str and shares_out_str to NUMERIC in drv_y.
 
     Idempotent: DELETE WHERE snapshot_date=D then INSERT.
-    Handles "--" (missing) and suffix characters (M, K, etc) as NULL.
+    Handles "--" (missing) and M/K suffixes (million/thousand multipliers).
     """
     rows = session.execute(text("""
         SELECT DISTINCT ON (tos_symbol) tos_symbol, snapshot_date,
                CASE WHEN float_str IS NULL OR float_str = '--' THEN NULL
-                    ELSE REGEXP_REPLACE(REPLACE(float_str, ',', ''), '[A-Za-z]', '', 'g')::NUMERIC END AS float,
+                    WHEN RIGHT(UPPER(TRIM(float_str)), 1) = 'M'
+                      THEN REGEXP_REPLACE(REPLACE(float_str, ',', ''), '[^0-9.]', '', 'g')::NUMERIC * 1000000
+                    WHEN RIGHT(UPPER(TRIM(float_str)), 1) = 'K'
+                      THEN REGEXP_REPLACE(REPLACE(float_str, ',', ''), '[^0-9.]', '', 'g')::NUMERIC * 1000
+                    ELSE REGEXP_REPLACE(REPLACE(float_str, ',', ''), '[^0-9.]', '', 'g')::NUMERIC
+               END AS float,
                CASE WHEN shares_out_str IS NULL OR shares_out_str = '--' THEN NULL
-                    ELSE REGEXP_REPLACE(REPLACE(shares_out_str, ',', ''), '[A-Za-z]', '', 'g')::NUMERIC END AS shares_out
+                    WHEN RIGHT(UPPER(TRIM(shares_out_str)), 1) = 'M'
+                      THEN REGEXP_REPLACE(REPLACE(shares_out_str, ',', ''), '[^0-9.]', '', 'g')::NUMERIC * 1000000
+                    WHEN RIGHT(UPPER(TRIM(shares_out_str)), 1) = 'K'
+                      THEN REGEXP_REPLACE(REPLACE(shares_out_str, ',', ''), '[^0-9.]', '', 'g')::NUMERIC * 1000
+                    ELSE REGEXP_REPLACE(REPLACE(shares_out_str, ',', ''), '[^0-9.]', '', 'g')::NUMERIC
+               END AS shares_out
           FROM hist_y
          WHERE snapshot_date = :d
          ORDER BY tos_symbol, loaded_at DESC, sequence DESC
