@@ -2052,7 +2052,7 @@ CREATE TABLE IF NOT EXISTS drv_td (
 
 );
 
-CREATE INDEX IF NOT EXISTS ix_drv_td_symbol ON drv_td(symbol, snapshot_date);
+-- MIGRATED TO tos_symbol: CREATE INDEX IF NOT EXISTS ix_drv_td_symbol ON drv_td(symbol, snapshot_date);
 
 
 
@@ -2120,7 +2120,7 @@ CREATE TABLE IF NOT EXISTS drv_tw (
 
 );
 
-CREATE INDEX IF NOT EXISTS ix_drv_tw_symbol ON drv_tw(symbol, snapshot_date);
+-- MIGRATED TO tos_symbol: CREATE INDEX IF NOT EXISTS ix_drv_tw_symbol ON drv_tw(symbol, snapshot_date);
 
 
 
@@ -2158,7 +2158,7 @@ CREATE TABLE IF NOT EXISTS drv_to (
 
 );
 
-CREATE INDEX IF NOT EXISTS ix_drv_to_symbol ON drv_to(symbol, snapshot_date);
+-- MIGRATED TO tos_symbol: CREATE INDEX IF NOT EXISTS ix_drv_to_symbol ON drv_to(symbol, snapshot_date);
 
 
 
@@ -2216,7 +2216,7 @@ CREATE TABLE IF NOT EXISTS drv_sss (
 
 );
 
-CREATE INDEX IF NOT EXISTS ix_drv_sss_symbol ON drv_sss(symbol, snapshot_date);
+-- MIGRATED TO tos_symbol: CREATE INDEX IF NOT EXISTS ix_drv_sss_symbol ON drv_sss(symbol, snapshot_date);
 
 
 
