@@ -600,6 +600,9 @@ def load_etfchg(session: Session, wb: Workbook, source_file: str) -> tuple[int, 
 
         if d is None or not sym:
             continue
+        # Skip test/dummy rows (e.g., symbol="Dummy" or "TEST" used as formula templates)
+        if sym.upper() in ("DUMMY", "TEST", "TEMPLATE"):
+            continue
         rows_read += 1
         records.append({
             "event_date":    d,
