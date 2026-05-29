@@ -1944,8 +1944,8 @@ ALTER TABLE meta_warning ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
 
 DO $$
 BEGIN
-    UPDATE meta_warning SET tos_symbol = symbol WHERE tos_symbol IS NULL AND symbol IS NOT NULL;
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'meta_warning' AND column_name = 'symbol') THEN
+        UPDATE meta_warning SET tos_symbol = symbol WHERE tos_symbol IS NULL AND symbol IS NOT NULL;
         ALTER TABLE meta_warning DROP COLUMN symbol;
     END IF;
 END $$;
@@ -3531,7 +3531,7 @@ ALTER TABLE IF EXISTS ref_data_filter_logic
 
 CREATE TABLE IF NOT EXISTS ref_my_stocks (
 
-    symbol     TEXT       PRIMARY KEY,
+    tos_symbol TEXT       PRIMARY KEY,
 
     added_at   TIMESTAMP  NOT NULL DEFAULT now(),
 
@@ -3541,11 +3541,19 @@ CREATE TABLE IF NOT EXISTS ref_my_stocks (
 
 );
 
-ALTER TABLE ref_my_stocks ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
-
+-- Migrate from symbol PK to tos_symbol PK
 DO $$
 BEGIN
-    UPDATE ref_my_stocks SET tos_symbol = symbol WHERE tos_symbol IS NULL;
+    -- If old schema still has symbol as PK, migrate
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'ref_my_stocks' AND column_name = 'symbol') THEN
+        -- Populate tos_symbol from symbol
+        UPDATE ref_my_stocks SET tos_symbol = symbol WHERE tos_symbol IS NULL;
+        -- Drop old PK and symbol column
+        ALTER TABLE ref_my_stocks DROP CONSTRAINT ref_my_stocks_pkey;
+        ALTER TABLE ref_my_stocks DROP COLUMN symbol;
+        -- Add new PK on tos_symbol
+        ALTER TABLE ref_my_stocks ADD PRIMARY KEY (tos_symbol);
+    END IF;
 END $$;
 
 -- Note: symbol remains as PK for backward compat; tos_symbol is the normalized key
