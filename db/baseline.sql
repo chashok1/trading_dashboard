@@ -1686,6 +1686,8 @@ CREATE TABLE IF NOT EXISTS hist_ps (
 
     ticker           TEXT NOT NULL,
 
+    tos_symbol       TEXT,
+
     rank             NUMERIC,
 
     wk_ago           NUMERIC,

@@ -2131,6 +2131,57 @@ def _populate_rr_tos_symbol(session: Session, as_of_date: date) -> int:
     return unmapped_count
 
 
+def _populate_ps_tos_symbol(session: Session, as_of_date: date) -> int:
+    """Populate tos_symbol in hist_ps by matching ticker against ref_rrt.
+
+    hist_ps uses 'ticker' instead of 'symbol'. Try to match ticker against
+    tos_ticker, y_ticker, rr_name in that order.
+    """
+    rows = session.execute(text("""
+        SELECT DISTINCT ticker FROM hist_ps
+        WHERE snapshot_date = :d AND tos_symbol IS NULL
+    """), {"d": as_of_date}).fetchall()
+
+    updated = 0
+    for (ticker,) in rows:
+        tos_sym = None
+
+        # Try tos_ticker
+        row = session.execute(text("""
+            SELECT tos_ticker FROM ref_rrt WHERE tos_ticker = :sym LIMIT 1
+        """), {"sym": ticker}).first()
+        if row and row[0]:
+            tos_sym = row[0]
+
+        # Try y_ticker
+        if not tos_sym:
+            row = session.execute(text("""
+                SELECT tos_ticker FROM ref_rrt WHERE y_ticker = :sym LIMIT 1
+            """), {"sym": ticker}).first()
+            if row and row[0]:
+                tos_sym = row[0]
+
+        # Try rr_name
+        if not tos_sym:
+            row = session.execute(text("""
+                SELECT tos_ticker FROM ref_rrt WHERE rr_name = :sym LIMIT 1
+            """), {"sym": ticker}).first()
+            if row and row[0]:
+                tos_sym = row[0]
+
+        # Fallback to ticker itself
+        if not tos_sym:
+            tos_sym = ticker
+
+        session.execute(text("""
+            UPDATE hist_ps SET tos_symbol = :tos
+            WHERE snapshot_date = :d AND ticker = :sym
+        """), {"tos": tos_sym, "d": as_of_date, "sym": ticker})
+        updated += 1
+
+    return updated
+
+
 def _populate_tos_table_tos_symbol(session: Session, table: str, as_of_date: date) -> int:
     """Populate tos_symbol for TOS tables (hist_tl, hist_td, hist_to, hist_tw).
 
@@ -2421,6 +2472,9 @@ def derive_all(session: Session, as_of_date: date,
     counts["hist_cst_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_cst", as_of_date)
     counts["hist_f_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_f", as_of_date)
     counts["hist_ft_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_ft", as_of_date)
+
+    # hist_ps: Uses 'ticker' column instead of 'symbol'
+    counts["hist_ps_tos_symbol"] = _populate_ps_tos_symbol(session, as_of_date)
 
     # Each derive wrapped so one failing/crashing call doesn't kill the rest
     # AND the calling process. Uses BaseException to also catch SystemExit
