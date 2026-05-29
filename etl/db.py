@@ -49,6 +49,12 @@ def session_scope() -> Session:
         session.close()
 
 
+def query_one(session: Session, sql: str):
+    """Execute SQL query and return first column of first row."""
+    row = session.execute(text(sql)).first()
+    return row[0] if row else None
+
+
 # Regex for a syntactically valid SQL identifier (unquoted): starts with a letter
 # or underscore, contains only letters/digits/underscores. Postgres unquoted
 # identifiers are case-insensitive and folded to lowercase, but we use this only

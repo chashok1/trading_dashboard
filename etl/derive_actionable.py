@@ -499,4 +499,4 @@ def derive_actionable(session: Session, as_of_date: date,
         return n
     except Exception as e:
         _close_drv_run(session, rid, rows_built=0, status="error", error_msg=str(e)[:500])
-  
+        raise

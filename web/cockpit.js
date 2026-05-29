@@ -38,7 +38,7 @@ DOM.datePicker.addEventListener('change', async (e) => {
 
 DOM.actionFilter.addEventListener('change', filterActions);
 DOM.sectorFilter.addEventListener('change', filterActions);
-DOM.symbolSearch.addEventListener('input', filterActions);
+DOM.tos_symbolSearch.addEventListener('input', filterActions);
 
 async function loadDates() {
     try {
@@ -92,12 +92,12 @@ function filterActions() {
 function renderTable() {
     const actionFilter = DOM.actionFilter.value;
     const sectorFilter = DOM.sectorFilter.value;
-    const symbolSearch = DOM.symbolSearch.value.toLowerCase();
+    const symbolSearch = DOM.tos_symbolSearch.value.toLowerCase();
 
     const filtered = state.actions.filter(a => {
         const matchAction = !actionFilter || (a.composite_label && a.composite_label.includes(actionFilter));
         const matchSector = !sectorFilter || a.sector === sectorFilter;
-        const matchSymbol = !symbolSearch || a.symbol.toLowerCase().includes(symbolSearch);
+        const matchSymbol = !symbolSearch || a.tos_symbol.toLowerCase().includes(symbolSearch);
         return matchAction && matchSector && matchSymbol;
     });
 
@@ -107,8 +107,8 @@ function renderTable() {
     }
 
     DOM.actionsTableBody.innerHTML = filtered.map(a => `
-        <tr onclick="openDrawer('${a.symbol}')">
-            <td>${typeof yahooLink === 'function' ? yahooLink(a.symbol) : ''}${a.symbol}</td>
+        <tr onclick="openDrawer('${a.tos_symbol}')">
+            <td>${typeof yahooLink === 'function' ? yahooLink(a.tos_symbol) : ''}${a.tos_symbol}</td>
             <td>${a.sector || a.asset_class || '—'}</td>
             <td>$${a.last_price ? a.last_price.toFixed(2) : '—'}</td>
             <td><span class="action-code ${a.composite_label || 'N/A'}">${a.composite_label || '—'}</span></td>
@@ -119,7 +119,7 @@ function renderTable() {
 
 function openDrawer(symbol) {
     state.selectedSymbol = symbol;
-    const action = state.actions.find(a => a.symbol === symbol);
+    const action = state.actions.find(a => a.tos_symbol === symbol);
 
     if (!action) return;
 

@@ -112,7 +112,7 @@ async function loadTrigRules() {
         const symbolSet = new Set();
         const compositeSet = new Set();
         state.allRules.forEach(rule => {
-            symbolSet.add(rule.symbol);
+            symbolSet.add(rule.tos_symbol);
             compositeSet.add(rule.composite_rule_code);
         });
 
@@ -137,7 +137,7 @@ function populateCompositeFilter() {
 }
 
 function getFilteredRules(symbol) {
-    let filtered = state.allRules.filter(r => r.symbol === symbol);
+    let filtered = state.allRules.filter(r => r.tos_symbol === symbol);
 
     if (state.triggeredFilter === 'true') {
         filtered = filtered.filter(r => r.triggered);

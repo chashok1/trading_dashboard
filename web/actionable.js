@@ -247,9 +247,9 @@ function matchesBaseFilters(r) {
     const others = sources.filter(s => (s.source || s.source_code || '') !== winning);
     if (others.length === 0) return false;
   }
-  if (state.filters.symbol_search) {
-    const search = state.filters.symbol_search.toUpperCase();
-    if (!r.symbol || !r.symbol.toUpperCase().includes(search)) return false;
+  if (state.filters.tos_symbol_search) {
+    const search = state.filters.tos_symbol_search.toUpperCase();
+    if (!r.tos_symbol || !r.tos_symbol.toUpperCase().includes(search)) return false;
   }
   return true;
 }
@@ -397,7 +397,7 @@ function _renderOtherSources(r) {
     const src = srcCode.toLowerCase();
     const action = (s.action || '').toUpperCase() || '?';
     const color = colors[action] || '#999';
-    return `<span data-srcpop data-sym="${escapeHtml(r.symbol)}" data-src="${escapeHtml(srcCode)}" style="color:${color}; font-weight:600; margin-right:8px; font-size:11px; cursor:help;">${action} <span style="font-size:9px; opacity:0.7;">(${src})</span></span>`;
+    return `<span data-srcpop data-sym="${escapeHtml(r.tos_symbol)}" data-src="${escapeHtml(srcCode)}" style="color:${color}; font-weight:600; margin-right:8px; font-size:11px; cursor:help;">${action} <span style="font-size:9px; opacity:0.7;">(${src})</span></span>`;
   }).join('');
 }
 
@@ -483,7 +483,7 @@ function _renderSourcePop(el, sym, src, feed, loading) {
   if (_srcPopEl !== el) return;
   const pop = $('sourcePop');
   if (!pop) return;
-  const row = state.rows.find(r => r.symbol === sym);
+  const row = state.rows.find(r => r.tos_symbol === sym);
   const sa = _saFor(row, src);
   const kv = [];
   if (sa) {
@@ -605,8 +605,8 @@ function sortRows() {
       }
 
       // 3. Same action and source: sort by symbol
-      const aSym = (a.symbol || '').toUpperCase();
-      const bSym = (b.symbol || '').toUpperCase();
+      const aSym = (a.tos_symbol || '').toUpperCase();
+      const bSym = (b.tos_symbol || '').toUpperCase();
       return aSym < bSym ? -1 : aSym > bSym ? 1 : 0;
     });
     return;
@@ -690,13 +690,13 @@ function renderGrid() {
 
     const reasonText = _winningReason(r);
     tr.innerHTML = `
-      <td style="padding:6px 2px; text-align:center;"><button type="button" class="btn-suppress" data-sym="${escapeHtml(r.symbol)}" data-suppressed="${r.last_user_action === 'SKIPPED' ? '1' : ''}">${r.last_user_action === 'SKIPPED' ? 'Un-snooze' : 'Snooze'}</button></td>
+      <td style="padding:6px 2px; text-align:center;"><button type="button" class="btn-suppress" data-sym="${escapeHtml(r.tos_symbol)}" data-suppressed="${r.last_user_action === 'SKIPPED' ? '1' : ''}">${r.last_user_action === 'SKIPPED' ? 'Un-snooze' : 'Snooze'}</button></td>
       <td class="num">${r._metric == null ? '' : (_isPctSource(_mSrc) ? fmtPct(r._metric) : formatNum(r._metric))}</td>
       <td class="num">${fmtUsd(r.current_position_dollar)}</td>
-      <td style="padding:6px 4px; max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${typeof yahooLink === 'function' ? yahooLink(r.symbol) : ''}<strong>${r.symbol || ''}</strong></td>
+      <td style="padding:6px 4px; max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${typeof yahooLink === 'function' ? yahooLink(r.tos_symbol) : ''}<strong>${r.tos_symbol || ''}</strong></td>
       <td style="padding:6px 4px;"><span class="badge-action badge-action-${_badgeAction(r)}">${actionLabel(r)}</span>${_isOverMaxOverlay(r) ? `<div style="font-size:8px;line-height:1;font-weight:600;color:${ACTION_COLOR[action] || '#888'};margin-top:1px;">was ${ACTION_LABEL[action] || action}</div>` : ''}</td>
       <td class="num"><strong>${fmtUsd(r._amt)}</strong></td>
-      <td class="src-cell" data-srcpop data-sym="${escapeHtml(r.symbol)}" data-src="${escapeHtml(r.winning_source || '')}" style="padding:6px 4px;">${r.winning_source || ''}</td>
+      <td class="src-cell" data-srcpop data-sym="${escapeHtml(r.tos_symbol)}" data-src="${escapeHtml(r.winning_source || '')}" style="padding:6px 4px;">${r.winning_source || ''}</td>
       <td style="padding:6px 4px; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(reasonText)}">${escapeHtml(reasonText)}</td>
       <td>${fmtMD(r._snapshot)}</td>
       <td style="padding:6px 4px;">${_renderOtherSources(r)}</td>
@@ -735,7 +735,7 @@ function otherSourcesText(r) {
 
 function exportCsv() {
   const cols = [
-    ['Symbol',        r => r.symbol],
+    ['Symbol',        r => r.tos_symbol],
     ['AMT$',          r => r._amt],
     ['Action',        r => r.consolidated_action || ''],
     ['Source',        r => r.winning_source || ''],
@@ -846,8 +846,8 @@ function _assetClass(r) {
 // ---- drilldown ----
 async function openDrilldown(row) {
   state.current = row;
-  $('modalTitle').textContent = row.symbol;
-  $('modalName').textContent = row.symbol || '';
+  $('modalTitle').textContent = row.tos_symbol;
+  $('modalName').textContent = row.tos_symbol || '';
   $('modalSub').textContent = [`as of ${row.as_of_date}`, row.position_category, row.sector].filter(Boolean).join(' · ');
 
   const action = (row.consolidated_action || 'NONE').toUpperCase();
@@ -927,7 +927,7 @@ async function openDrilldown(row) {
       span.dataset.compositeCode = id;
       span.addEventListener('click', (e) => {
         e.stopPropagation();
-        openAtomicPopover(row.symbol, row.as_of_date, id, span);
+        openAtomicPopover(row.tos_symbol, row.as_of_date, id, span);
       });
       firesEl.appendChild(span);
       firesEl.appendChild(document.createTextNode(' '));
@@ -943,8 +943,8 @@ async function openDrilldown(row) {
   $('userNotes').value = '';
   $('actionStatus').textContent = '';
 
-  await loadComparison(row.symbol, row.as_of_date);
-  await loadHistory(row.symbol);
+  await loadComparison(row.tos_symbol, row.as_of_date);
+  await loadHistory(row.tos_symbol);
 
   $('modalBackdrop').classList.add('open');
 }
@@ -1210,12 +1210,12 @@ async function saveUserAction() {
     user_notes: $('userNotes').value || null,
   };
   try {
-    const r = await fetchJson('/api/actionable/' + encodeURIComponent(state.current.symbol) + '/action', {
+    const r = await fetchJson('/api/actionable/' + encodeURIComponent(state.current.tos_symbol) + '/action', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
     $('actionStatus').textContent = 'Saved (log id ' + (r.log_id || '?') + ')';
-    await loadHistory(state.current.symbol);
+    await loadHistory(state.current.tos_symbol);
     // Reload grid so the chip updates
     loadActionable();
   } catch (e) {
@@ -1236,12 +1236,12 @@ async function dismissUserAction() {
     user_notes: $('userNotes').value || 'dismissed',
   };
   try {
-    const r = await fetchJson('/api/actionable/' + encodeURIComponent(state.current.symbol) + '/action', {
+    const r = await fetchJson('/api/actionable/' + encodeURIComponent(state.current.tos_symbol) + '/action', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
     $('actionStatus').textContent = 'Dismissed (log id ' + (r.log_id || '?') + ')';
-    await loadHistory(state.current.symbol);
+    await loadHistory(state.current.tos_symbol);
     loadActionable();
   } catch (e) {
     $('actionStatus').textContent = 'Dismiss failed: ' + e.message;
@@ -1331,7 +1331,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadActionable();
   });
   $('symbolSearch').addEventListener('input', (e) => {
-    state.filters.symbol_search = e.target.value;
+    state.filters.tos_symbol_search = e.target.value;
     applyClientFilter();
   });
 

@@ -528,11 +528,11 @@ def atomic_rule_dryrun(rule_id: str, body: dict):
                 tbl, col = col_src
                 if tbl == "drv_ma":
                     rows = s.execute(text(
-                        f'SELECT tos_symbol AS symbol, "{col}" AS v FROM drv_ma WHERE as_of_date = :d'
+                        f'SELECT tos_symbol, "{col}" AS v FROM drv_ma WHERE as_of_date = :d'
                     ), {"d": snap}).mappings().all()
                 else:
                     rows = s.execute(text(
-                        f'SELECT tos_symbol AS symbol, "{col}" AS v FROM {tbl} WHERE as_of_date = :d'
+                        f'SELECT tos_symbol, "{col}" AS v FROM {tbl} WHERE as_of_date = :d'
                     ), {"d": snap}).mappings().all()
                 flips = 0
                 for r in rows:

@@ -18,7 +18,7 @@ class DashRow(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     as_of_date: date
     section: str
-    symbol: str
+    tos_symbol: str
     description: Optional[str] = None
     last_price: Optional[float] = None
     a_trend_value: Optional[float] = None
@@ -37,7 +37,7 @@ class DashRow(BaseModel):
 class StksRow(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     as_of_date: date
-    symbol: str
+    tos_symbol: str
     description: Optional[str] = None
     sector: Optional[str] = None
     asset_class: Optional[str] = None

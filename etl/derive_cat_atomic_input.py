@@ -1161,4 +1161,4 @@ def derive_cat_atomic_input(session: Session, as_of_date: date,
 def run_parm_lookup_pass3(session: Session, as_of_date: date) -> int:
     """Pass-3 Parm-lookup UPDATE.  Idempotent."""
     result = session.execute(text(PARM_LOOKUP_SQL), {"d": as_of_date})
-    return result.rowcou
+    return result.rowcount or 0

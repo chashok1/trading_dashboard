@@ -132,8 +132,7 @@ hist_rr loaded:
 - `load_rr()` looks up rr_name and sets tos_symbol during load
 
 ### RESULT
-hist_rr always has tos_symbol populated (never NULL).
-No populate function needed.
+hist_rr's tos_symbol is set at load time. **Important**: unlike Groups 2 and 4, RR does NOT fall back to the original RR name if the lookup misses — `tos_symbol` stays NULL and a warning is created in the `data-quality` screen (the canonical strategy in `docs/tos_symbol_normalization.md`). Missing RR mappings are surfaced for manual intervention rather than silently aliased.
 
 ---
 

@@ -78,7 +78,7 @@ async function loadDates() {
 async function loadSymbols() {
     try {
         const data = await fetch(`/api/stks?date=${state.selectedDate}&limit=10000`).then(r => r.json());
-        state.allSymbols = data.map(d => d.symbol).sort();
+        state.allSymbols = data.map(d => d.tos_symbol).sort();
     } catch (e) {
         console.error('Failed to load symbols:', e);
     }
@@ -129,7 +129,7 @@ async function viewSymbolData() {
 
     try {
         const data = await fetch(`/api/stks?date=${date}&limit=5000`).then(r => r.json());
-        const stockData = data.find(d => d.symbol === symbol);
+        const stockData = data.find(d => d.tos_symbol === symbol);
 
         if (!stockData) {
             alert(`Stock ${symbol} not found for date ${date}`);
@@ -150,7 +150,7 @@ async function viewSymbolData() {
 async function loadSelectedStock() {
     try {
         const data = await fetch(`/api/stks?date=${state.selectedDate}&limit=10000`).then(r => r.json());
-        state.selectedStockData = data.find(d => d.symbol === state.selectedSymbol);
+        state.selectedStockData = data.find(d => d.tos_symbol === state.selectedSymbol);
     } catch (e) {
         console.error('Failed to load stock data:', e);
     }

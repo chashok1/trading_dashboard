@@ -71,7 +71,7 @@ async function loadTrace() {
 
   // Update Cockpit deep-link
   const ck = new URLSearchParams();
-  ck.set("symbol", STATE.data.symbol);
+  ck.set("symbol", STATE.data.tos_symbol);
   ck.set("date",   STATE.data.as_of_date);
   $("cockpitLink").href = `/cockpit?${ck.toString()}`;
 
@@ -91,8 +91,8 @@ function render() {
   const d = STATE.data;
   const s = d.summary || {};
 
-  $("symBadge").textContent = d.symbol;
-  $("symName").textContent  = s.description || d.symbol;
+  $("symBadge").textContent = d.tos_symbol;
+  $("symName").textContent  = s.description || d.tos_symbol;
   $("symSub").textContent   =
     [s.sector, s.asset_class, s.last_price != null ? `last $${fmtNum(s.last_price, 2)}` : null]
       .filter(Boolean).join(" · ") || "—";

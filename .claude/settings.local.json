@@ -105,7 +105,16 @@
       "Bash(curl -s \"http://127.0.0.1:8002/api/actionable?date=2026-05-27\")",
       "Bash(curl -v \"http://127.0.0.1:8002/api/actionable?date=2026-05-27\")",
       "Bash(curl -s \"http://127.0.0.1:8003/api/actionable?date=2026-05-27\")",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(pkill -f \"python -m uvicorn\")",
+      "Bash(sed -i 's/^CREATE INDEX IF NOT EXISTS ix_drv_tw_symbol/-- Removed\\\\n-- CREATE INDEX IF NOT EXISTS ix_drv_tw_symbol/' db/baseline.sql)",
+      "Bash(sed -i 's/^CREATE INDEX IF NOT EXISTS ix_drv_to_symbol/-- Removed\\\\n-- CREATE INDEX IF NOT EXISTS ix_drv_to_symbol/' db/baseline.sql)",
+      "Bash(sed -i 's/^CREATE INDEX IF NOT EXISTS ix_drv_sss_symbol/-- Removed\\\\n-- CREATE INDEX IF NOT EXISTS ix_drv_sss_symbol/' db/baseline.sql)",
+      "Bash(sed -i '1653s/^/-- Removed: symbol column no longer exists\\\\n-- /' db/baseline.sql)",
+      "Bash(sed -i '1831s/^/-- Removed: symbol column no longer exists\\\\n-- /' db/baseline.sql)",
+      "Bash(git reset *)",
+      "Bash(pkill -9 python)",
+      "Bash(.venv\\\\Scripts\\\\activate.bat)"
     ]
   }
 }

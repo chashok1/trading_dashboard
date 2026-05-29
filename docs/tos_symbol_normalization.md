@@ -181,3 +181,16 @@ Check warnings if `drv_ma` has fewer symbols than expected.
   - Updated: drv_quote, drv_ma, drv_dash, drv_stks, drv_missing_symbols, drv_trig, drv_cs_realized_gain
   - Added tos_symbol to all hist_* and drv_* tables
   - Created indexes for query performance
+
+- **2026-05-28 (final)**: drv_* `symbol` column fully retired end-to-end (commits 42063f9 + follow-up)
+  - **Schema (db/baseline.sql)**: PK migration block extended to drv_td, drv_tw, drv_to, drv_sss, drv_actionable, drv_outlook_action, drv_realized_gain, drv_rule_outcome, drv_missing_symbols, drv_cat_atomic_input (originally only handled drv_quote / drv_ma / drv_dash / drv_stks / drv_trig / drv_cs_realized_gain). Post-migration `CREATE INDEX IF NOT EXISTS ix_drv_*_tos_symbol` block added for all 9 drv_* tables whose indexes were cascade-dropped by `DROP COLUMN symbol`.
+  - **SQL views/functions**: `v_symbol_history` reads tos_symbol; `v_outlook_changes` RETURNS TABLE signature + body fully renamed to tos_symbol.
+  - **ETL**: every `INSERT INTO drv_*` column list + `ON CONFLICT` clause + output dict key (for `replace_for_date` callers) renamed to tos_symbol — derive.py, derive_v2.py, derive_actionable.py, derive_outlook_action.py, derive_realized.py, derive_cat_atomic_input.py, compute_outcomes.py.
+  - **ETL queries**: drv_* SELECTs/JOINs/WHERE clauses in backtest.py and position_rules.py switched to tos_symbol; derive_v2.py hist_sss/hist_tl/hist_y cross-source CTEs use tos_symbol.
+  - **API queries**: drv_ma / drv_stks / drv_dash / drv_actionable / drv_quote SELECTs in dash.py, trace.py, rules.py switched to tos_symbol. `v_outlook_changes` consumer in dash.py reads `tos_symbol` column.
+  - **API response field names**: explicit Python dict builders (`{"symbol": …}`) renamed to `{"tos_symbol": …}` in trace.py and dash.py. Pydantic models `DashRow.symbol` and `StksRow.symbol` renamed to `tos_symbol`. `UserActionRequest.symbol` kept as `symbol` (user-input request body).
+  - **user_action_log JOINs fixed**: `dash.py /api/dashboard` yesterday_actions join (`drv_rule_outcome.symbol` was dropped) and `dash.py /api/actionable` LATERAL join (`user_action_log.symbol = a.symbol`) both repaired to use `COALESCE(u.tos_symbol, u.symbol)` against the new `drv_*.tos_symbol`. user_action_log INSERTs in dash.py and trace.py now populate **both** symbol and tos_symbol columns so JOINs don't have to fall through COALESCE for new rows.
+  - **Web UI (web/*.js)**: app.js, actionable.js, cockpit.js (all drv_*-backed property reads), trig.js (rule.tos_symbol, drv_trig-backed filter), rules.js (d.tos_symbol from /api/stks), trace.js (STATE.data.tos_symbol, d.tos_symbol from /api/trace). `STATE.symbol` (local state, user input) and `?symbol=` route param left as `symbol`. portfolio.js, portfolio-modal.js, explore.js untouched — their `.symbol` references are from hist_cs/hist_f broker positions, not drv_*.
+  - **Tests**: tests/test_outlook_changes_view.py drv_outlook_action INSERTs and v_outlook_changes SELECT updated to tos_symbol.
+  - **Verification**: 0 remaining drv_*.symbol references across Python/SQL/JS; 14 Python files + 6 JS files parse cleanly; 0 null bytes anywhere.
+

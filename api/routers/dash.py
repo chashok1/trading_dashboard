@@ -112,12 +112,13 @@ def get_briefing(date: Optional[str] = Query(None,
         yesterday_actions = []
         try:
             rows = s.execute(text("""
-                SELECT u.id, u.as_of_date, u.symbol, u.action_code,
-                       u.user_action, u.created_at,
+                SELECT u.id, u.as_of_date,
+                       COALESCE(u.tos_symbol, u.symbol) AS tos_symbol,
+                       u.action_code, u.user_action, u.created_at,
                        o.fwd_5d_pct, o.hit
                 FROM user_action_log u
                 LEFT JOIN drv_rule_outcome o
-                  ON o.symbol = u.symbol
+                  ON o.tos_symbol = COALESCE(u.tos_symbol, u.symbol)
                  AND o.as_of_date = u.as_of_date
                 WHERE u.as_of_date >= :d - INTERVAL '7 days'
                   AND u.as_of_date <= :d
@@ -219,7 +220,7 @@ def get_outlook_changes(
 
     Response item shape:
       {
-        "symbol": "AAPL",
+        "tos_symbol": "AAPL",
         "n_sources_changed": 3,
         "sources":  ["RR", "ETF", "CALL"],   # ordered by dominance priority
         "actions":  ["REMOVE", "REDUCE", "REDUCE"],
@@ -268,7 +269,7 @@ def get_stks(
     where_clause = " AND ".join(["ma.as_of_date = :d"] + where) if where else "ma.as_of_date = :d"
     sql = f"""
         SELECT
-            ma.as_of_date, ma.symbol, ma.description, ma.sector, ma.asset_class,
+            ma.as_of_date, ma.tos_symbol, ma.description, ma.sector, ma.asset_class,
             ma.sub_asset_class, ma.equity_sector, ma.last_price, ma.a_trend_value, ma.a_trade_value,
             ma.a_bb_top, ma.a_bb_bottom, ma.a_bb_streak, ma.a_macd_brr, ma.a_macdh_d_brr,
             ma.pct_brr, ma.rr_outlook, ma.rr_brr, ma.call_outlook, ma.call_modifier,
@@ -281,7 +282,7 @@ def get_stks(
         FROM drv_ma ma
         LEFT JOIN drv_stks stks ON ma.as_of_date = stks.as_of_date AND ma.tos_symbol = stks.tos_symbol
         WHERE {where_clause}
-        ORDER BY ma.symbol
+        ORDER BY ma.tos_symbol
         LIMIT :lim
     """
     with session_scope() as s:
@@ -362,7 +363,8 @@ def get_actionable(
         LEFT JOIN LATERAL (
             SELECT user_action, snooze_until
             FROM user_action_log
-            WHERE user_action_log.as_of_date = a.as_of_date AND user_action_log.symbol = a.symbol
+            WHERE user_action_log.as_of_date = a.as_of_date
+              AND COALESCE(user_action_log.tos_symbol, user_action_log.symbol) = a.tos_symbol
             ORDER BY acted_at DESC LIMIT 1
         ) u ON TRUE
         WHERE {' AND '.join(where)}
@@ -662,7 +664,7 @@ def post_actionable_action(symbol: str, payload: dict):
 
         ret = s.execute(text("""
             INSERT INTO user_action_log (
-                user_id, as_of_date, symbol, user_action, user_action_target,
+                user_id, as_of_date, symbol, tos_symbol, user_action, user_action_target,
                 snooze_until, user_notes,
                 consolidated_action, winning_source, winning_priority,
                 position_category, target_min_dollar, target_max_dollar,
@@ -670,7 +672,7 @@ def post_actionable_action(symbol: str, payload: dict):
                 held_at_action, position_dollar_at_action, in_my_list,
                 source_actions, rules_engine_fires, source_raw_snapshot
             ) VALUES (
-                :uid, :d, :sym, :ua, :target,
+                :uid, :d, :sym, :sym, :ua, :target,
                 :snooze, :notes,
                 :ca, :ws, :wp,
                 :cat, :tmin, :tmax,
@@ -2109,7 +2111,7 @@ def get_portfolio_symbol(
         """), {"sym": sym}).mappings().first()
 
     return {
-        "symbol":      sym,
+        "tos_symbol":  sym,
         "description": (dict(meta).get("description") if meta else None),
         "sector":      (dict(meta).get("sector")      if meta else None),
         "timeseries":  [dict(r) for r in ts][::-1],
@@ -2281,7 +2283,7 @@ def get_portfolio_detail(symbol: str, date: Optional[str] = Query(None)):
             mtd_pct = (mtd_dollar / float(current[2])) * 100 if current[2] else 0.0
 
         return {
-            "symbol": sym,
+            "tos_symbol": sym,
             "as_of_date": d.isoformat(),
             "accounts": [
                 {

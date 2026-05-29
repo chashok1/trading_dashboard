@@ -40,21 +40,21 @@ def test_dominant_action_priority(db_session):
     # Insert two rows: one REMOVE and one INCREASE. Dominant must be REMOVE.
     db_session.execute(text("""
         INSERT INTO drv_outlook_action
-          (as_of_date, symbol, source_code, base_weight, prev_weight,
+          (as_of_date, tos_symbol, source_code, base_weight, prev_weight,
            weight_delta, held_today, action, action_reason)
         VALUES
           (:d, :s, :sc, -2, 3, -5, FALSE, 'REMOVE', 'test')
     """), {"d": test_date, "s": test_sym, "sc": src_a})
     db_session.execute(text("""
         INSERT INTO drv_outlook_action
-          (as_of_date, symbol, source_code, base_weight, prev_weight,
+          (as_of_date, tos_symbol, source_code, base_weight, prev_weight,
            weight_delta, held_today, action, action_reason)
         VALUES
           (:d, :s, :sc, 5, 2, 3, FALSE, 'INCREASE', 'test')
     """), {"d": test_date, "s": test_sym, "sc": src_b})
 
     rows = db_session.execute(text(
-        "SELECT * FROM v_outlook_changes(:d) WHERE symbol = :s"
+        "SELECT * FROM v_outlook_changes(:d) WHERE tos_symbol = :s"
     ), {"d": test_date, "s": test_sym}).mappings().all()
 
     assert len(rows) == 1, f"expected exactly 1 symbol row, got {len(rows)}"

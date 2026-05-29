@@ -2152,9 +2152,12 @@ def _populate_generic_tos_symbol(session: Session, table: str, as_of_date: date)
     Try to match symbol against tos_ticker, y_ticker, rr_name in that order.
     Return tos_ticker if matched, otherwise use original symbol.
     """
+    # hist_cst and hist_ft use trade_date; all others use snapshot_date
+    date_col = "trade_date" if table in ("hist_cst", "hist_ft") else "snapshot_date"
+
     rows = session.execute(text(f"""
         SELECT DISTINCT symbol FROM {table}
-        WHERE snapshot_date = :d AND tos_symbol IS NULL
+        WHERE {date_col} = :d AND tos_symbol IS NULL
     """), {"d": as_of_date}).fetchall()
 
     updated = 0
@@ -2191,7 +2194,7 @@ def _populate_generic_tos_symbol(session: Session, table: str, as_of_date: date)
 
         session.execute(text(f"""
             UPDATE {table} SET tos_symbol = :tos
-            WHERE snapshot_date = :d AND symbol = :sym
+            WHERE {date_col} = :d AND symbol = :sym
         """), {"tos": tos_sym, "d": as_of_date, "sym": symbol})
         updated += 1
 

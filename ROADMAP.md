@@ -75,6 +75,7 @@ Three phases. Phase 1 makes today's app trustworthy; Phase 2 turns the rules eng
 ### Phase 1 — Make the existing surfaces honest (~2 weeks)
 
 1. **Fix Cockpit feedback path.** Switch `POST /api/actions` to `json.dumps` (drop the `repr()`); update `compute_outcomes._determine_hit` to handle `ACTED`/`SKIP`, or have the UI submit the actual action codes (SA/STM/SS/BM). Have `_determine_hit` consult `ref_settings` instead of hard-coded ±0.5% / ±1.0% thresholds.
+   - *Partial progress (2026-05-28, tos_symbol migration):* the `drv_rule_outcome.symbol = u.symbol` JOIN in yesterday_actions was silently broken since the schema migration dropped `drv_rule_outcome.symbol`. Now repaired via `o.tos_symbol = COALESCE(u.tos_symbol, u.symbol)`. user_action_log INSERTs in dash.py and trace.py also populate both columns. Outcome scoring still needs the `repr()`→`json.dumps` and ACTED/SKIP handling fixes called out above.
 2. **Wire the Rules write-API.** Implement `POST/PUT/DELETE` for atomic + composite rules in `api/routers/rules.py`, with dry-run preview returning the count of impacted symbols.
 3. **Implement composite `precondition_expr`.** The `# TODO` at `etl/derive.py:~928` — start with a safe whitelist evaluator (`sector`, `asset_class`, `is_held`, basic comparison + boolean ops).
 4. **Unify the rule scorer.** Route `drv_trig` through `eval_atomic_rule` so `scoring_mode != 'jump'` produces identical results across `drv_trig` and `drv_stks`.

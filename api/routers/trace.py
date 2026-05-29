@@ -73,9 +73,9 @@ def log_user_action(request: UserActionRequest):
         result = s.execute(
             text("""
                 INSERT INTO user_action_log
-                  (as_of_date, symbol, action_code, user_action,
+                  (as_of_date, symbol, tos_symbol, action_code, user_action,
                    triggered_rules, notes)
-                VALUES (:d, :sym, :code, :ua,
+                VALUES (:d, :sym, :sym, :code, :ua,
                    CAST(:rules AS JSONB), :notes)
                 RETURNING id, created_at
             """),
@@ -104,7 +104,7 @@ def get_symbol_trace(sym: str, as_of: Optional[str] = Query(None, alias="date"))
 
     Response shape (consumed by web/trace.js):
       {
-        "symbol": str, "as_of_date": "YYYY-MM-DD",
+        "tos_symbol": str, "as_of_date": "YYYY-MM-DD",
         "summary": {description, sector, asset_class, last_price,
                     composite_outlook, composite_label,
                     n_composite_fired, n_composite_total,
@@ -131,7 +131,7 @@ def get_symbol_trace(sym: str, as_of: Optional[str] = Query(None, alias="date"))
 
         # ---- 2. Summary row (drv_ma + drv_stks) -----------------------------
         summary_row = s.execute(text("""
-            SELECT m.tos_symbol AS symbol, m.description, m.sector, m.asset_class, m.last_price,
+            SELECT m.tos_symbol, m.description, m.sector, m.asset_class, m.last_price,
                    st.composite_outlook, st.composite_label,
                    st.triggered_atomic_ids, st.triggered_composite_ids
             FROM drv_ma m
@@ -499,7 +499,7 @@ def get_symbol_trace(sym: str, as_of: Optional[str] = Query(None, alias="date"))
         actionable = dict(actionable_row) if actionable_row else None
 
         return {
-            "symbol":    sym,
+            "tos_symbol": sym,
             "as_of":     snap.isoformat(),
             "atomics":   atomics_out,
             "composites": composites_out,

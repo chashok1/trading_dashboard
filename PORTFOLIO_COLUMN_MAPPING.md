@@ -22,8 +22,8 @@ All mappings below are for **Charles Schwab (CS)** source. The Fidelity (F) sour
 | **TOT$** (Total Gain $) | `total_gain_dollar` | hist_cs | `gain_dollar` | Lifetime gain/loss in dollars |
 | **TOT%** (Total Gain %) | `total_gain_pct` | hist_cs | `gain_pct` | Lifetime gain/loss as percent |
 | **% of TP** (% of Total Portfolio) | `pct_of_tp` | Computed in API | `market_value` + ref_param | API line 584: `(market_value / Tot_Amt_ref_param * 100)` |
-| **Sector** | `sector` | drv_dash | — (via symbol lookup) | API lines 485-491: `SELECT sector FROM drv_dash WHERE symbol=X ORDER BY as_of_date DESC LIMIT 1` |
-| **Action** (Recommended Action) | `consolidated_action` | drv_actionable | — (via symbol lookup) | API lines 495-501: consolidated action recommendation from rules engine |
+| **Sector** | `sector` | drv_dash | — (via tos_symbol lookup) | API lines 485-491: `SELECT sector FROM drv_dash WHERE tos_symbol=X ORDER BY as_of_date DESC LIMIT 1` |
+| **Action** (Recommended Action) | `consolidated_action` | drv_actionable | — (via tos_symbol lookup) | API lines 495-501: consolidated action recommendation from rules engine |
 | **Limit Min–Max** (Position Limits) | `limit_min`, `limit_max`, `limit_status` | ref_asset_allocation | — (category lookup) | API lines 614-684: based on `applied_category` from winning_source |
 
 ---

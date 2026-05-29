@@ -146,7 +146,7 @@ async function loadTickers() {
     rows.sort((a, b) => {
       const ra = sectionRank(a.section), rb = sectionRank(b.section);
       if (ra !== rb) return ra - rb;
-      return (a.symbol || '').localeCompare(b.symbol || '');
+      return (a.tos_symbol || '').localeCompare(b.tos_symbol || '');
     });
     state.rows = rows;
   } catch (e) {
@@ -161,7 +161,7 @@ function rowMatches(r) {
   if (state.section && r.section !== state.section) return false;
   if (state.search) {
     const needle = state.search.toLowerCase();
-    const sym = (r.symbol || '').toLowerCase();
+    const sym = (r.tos_symbol || '').toLowerCase();
     const desc = (r.description || '').toLowerCase();
     if (!sym.includes(needle) && !desc.includes(needle)) return false;
   }
@@ -199,9 +199,9 @@ function buildSectionBlock(name, rows) {
     const tr = document.createElement('tr');
 
     const tdSym = document.createElement('td');
-    if (r.symbol) {
+    if (r.tos_symbol) {
       const symBtn = document.createElement('button');
-      symBtn.onclick = () => openPortfolioModal(r.symbol);
+      symBtn.onclick = () => openPortfolioModal(r.tos_symbol);
       symBtn.style.background = 'none';
       symBtn.style.border = 'none';
       symBtn.style.color = 'var(--accent,#1d4ed8)';
@@ -209,11 +209,11 @@ function buildSectionBlock(name, rows) {
       symBtn.style.textDecoration = 'none';
       symBtn.style.font = 'inherit';
       symBtn.style.padding = '0';
-      symBtn.textContent = r.symbol;
+      symBtn.textContent = r.tos_symbol;
       if (r.description) symBtn.title = String(r.description);
       // Yahoo lookup badge before the symbol (skipped for cash/pseudo).
       if (window.yahooLink) {
-        tdSym.insertAdjacentHTML('afterbegin', window.yahooLink(r.symbol));
+        tdSym.insertAdjacentHTML('afterbegin', window.yahooLink(r.tos_symbol));
       }
       tdSym.appendChild(symBtn);
     }
@@ -304,8 +304,8 @@ function renderTickerGrid() {
       const half = Math.ceil(stockRows.length / 2);
       const left = stockRows.slice(0, half);
       const right = stockRows.slice(half);
-      const lLabel = `Stock (${(left[0].symbol || 'A')[0]}-${(left[left.length - 1].symbol || 'M')[0]})`;
-      const rLabel = `Stock (${(right[0].symbol || 'N')[0]}-${(right[right.length - 1].symbol || 'Z')[0]})`;
+      const lLabel = `Stock (${(left[0].tos_symbol || 'A')[0]}-${(left[left.length - 1].tos_symbol || 'M')[0]})`;
+      const rLabel = `Stock (${(right[0].tos_symbol || 'N')[0]}-${(right[right.length - 1].tos_symbol || 'Z')[0]})`;
       leftCol.appendChild(buildSectionBlock(lLabel, left));
       rightCol.appendChild(buildSectionBlock(rLabel, right));
     } else {
@@ -468,7 +468,7 @@ const INDEX_VOL_PAIRS = [
 function findRowBySymbols(syms) {
   if (!Array.isArray(state.rows) || state.rows.length === 0) return null;
   const upper = syms.map(s => String(s).toUpperCase());
-  return state.rows.find(r => upper.includes(String(r.symbol || '').toUpperCase())) || null;
+  return state.rows.find(r => upper.includes(String(r.tos_symbol || '').toUpperCase())) || null;
 }
 
 function pctChangeOf(r) {
@@ -499,7 +499,7 @@ function renderIndexBar() {
 
     const wrap = document.createElement('span');
     wrap.className = 'idx-pair';
-    wrap.title = `${pair.idxLabel}: ${idxRow ? idxRow.symbol : 'n/a'}  |  ${pair.volLabel}: ${volRow ? volRow.symbol : 'n/a'}`;
+    wrap.title = `${pair.idxLabel}: ${idxRow ? idxRow.tos_symbol : 'n/a'}  |  ${pair.volLabel}: ${volRow ? volRow.tos_symbol : 'n/a'}`;
     wrap.innerHTML = `
       <span class="idx-cell">
         <span class="idx-name">${pair.idxLabel}</span>
@@ -610,11 +610,11 @@ async function loadOutlookChanges() {
     bar.appendChild(document.createTextNode('  '));
     for (const r of rows.slice(0, 10)) {
       const chip = document.createElement('a');
-      chip.href = `/trace?date=${encodeURIComponent(state.date)}#${encodeURIComponent(r.symbol)}`;
+      chip.href = `/trace?date=${encodeURIComponent(state.date)}#${encodeURIComponent(r.tos_symbol)}`;
       chip.className = `outlook-chip outlook-${r.dominant_action.toLowerCase()}`;
-      chip.title = `${r.symbol}: ${r.actions.join('/')} from ${r.sources.join(', ')}` +
+      chip.title = `${r.tos_symbol}: ${r.actions.join('/')} from ${r.sources.join(', ')}` +
                    (r.held_today ? '  (held)' : '');
-      chip.textContent = `${r.symbol}${r.held_today ? '★' : ''}`;
+      chip.textContent = `${r.tos_symbol}${r.held_today ? '★' : ''}`;
       bar.appendChild(chip);
     }
   } catch (e) {
@@ -644,7 +644,7 @@ async function loadBriefing() {
     const blocks = [];
     if (nActions > 0) {
       const recent = (data.yesterday_actions || []).slice(0, 3)
-        .map(a => `${a.symbol}: ${a.action_code}${a.fwd_5d_pct != null ? ` (${a.fwd_5d_pct.toFixed(1)}%)` : ''}`)
+        .map(a => `${a.tos_symbol}: ${a.action_code}${a.fwd_5d_pct != null ? ` (${a.fwd_5d_pct.toFixed(1)}%)` : ''}`)
         .join('  ·  ');
       blocks.push(`<div class="briefing-block">
         <div class="label">Recent actions</div>
@@ -654,7 +654,7 @@ async function loadBriefing() {
     }
     if (total > 0) {
       const tops = (data.outlook_flips.top_held || [])
-        .map(t => `${t.symbol} (${t.dominant_action})`).join(', ');
+        .map(t => `${t.tos_symbol} (${t.dominant_action})`).join(', ');
       blocks.push(`<div class="briefing-block">
         <div class="label">Outlook flips today</div>
         <div class="value">${total}${held > 0 ? ` <span style="font-size:12px;color:#7c2d12;">(${held} held)</span>` : ''}</div>

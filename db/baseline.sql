@@ -2479,3 +2479,72 @@ ALTER TABLE drv_cat_atomic_input
     ADD COLUMN IF NOT EXISTS bb_rng_strk_rule   NUMERIC,   -- QJ BBRngStrkRule
     ADD COLUMN IF NOT EXISTS bull_rr_action     NUMERIC,   -- QM BullRiskRng-Action
     ADD COLUMN IF NOT EXISTS not_bull_rr_action NUMERIC,   -- QN !BullRiskRng-Action
+    ADD COLUMN IF NOT EXISTS td_tn_bb_rr_action NUMERIC;   -- QR Td Tn BB Risk Range Rule Action
+
+-- -----------------------------------------------------
+-- 2026-05-27 (v2): JF–NP / QE–QT columns populated by the new
+-- etl/derive_cat_atomic_input.py module.  See docs/drv_cat_atomic_input_logic.md.
+-- Adds QH/QI (raw hist_td slopes, exposed for trace) and the seven QE–QT tail
+-- Parm-lookup columns (action codes + descriptions + seq).  Idempotent.
+-- -----------------------------------------------------
+ALTER TABLE drv_cat_atomic_input
+    ADD COLUMN IF NOT EXISTS a_bb_bot_slope          NUMERIC,   -- QH (mirror of hist_td.a_bb_bot_slope)
+    ADD COLUMN IF NOT EXISTS a_bb_top_slope          NUMERIC,   -- QI (mirror of hist_td.a_bb_top_slope)
+    ADD COLUMN IF NOT EXISTS tn_td_rule_action       NUMERIC,   -- QF  XLOOKUP(QE, Parm BS26:BS31 -> BV)
+    ADD COLUMN IF NOT EXISTS tn_td_rule_desc         TEXT,      -- QG  XLOOKUP(QE, Parm BS26:BS31 -> BT)
+    ADD COLUMN IF NOT EXISTS bb_rng_strk_action      NUMERIC,   -- QK  XLOOKUP(QJ, Parm BS51:BS59 -> BV)
+    ADD COLUMN IF NOT EXISTS bb_rng_strk_desc        TEXT,      -- QL  XLOOKUP(QJ, Parm BS51:BS59 -> BT)
+    ADD COLUMN IF NOT EXISTS risk_rng_longs_action   NUMERIC,   -- QO  conditional XLOOKUP via QJ/QM/QN
+    ADD COLUMN IF NOT EXISTS rr_bull_bear            TEXT,      -- QP  'B' / '!B' label
+    ADD COLUMN IF NOT EXISTS rr_desc                 TEXT,      -- QQ  XLOOKUP description
+    ADD COLUMN IF NOT EXISTS td_tn_bb_action_desc    TEXT,      -- QS  XLOOKUP(QR, Parm AO2:AO21 -> AQ)
+    ADD COLUMN IF NOT EXISTS td_tn_bb_action_seq     NUMERIC;   -- QT  XLOOKUP(QR, Parm AO2:AO21 -> AR)
+
+-- -----------------------------------------------------
+-- 2026-05-27 (v2): REMOVED — bb_bot_prev/bb_top_prev no longer loaded from hist_td.
+-- They're now computed in derive_cat_atomic_input from prior snapshot's a_bb_bottom/a_bb_top.
+-- The ALTER TABLE that added these columns to hist_td has been removed; they're only in
+-- drv_cat_atomic_input as derived output.
+
+-- 2026-05-28: Drop bb_bot_prev/bb_top_prev from drv_td (they're moved to drv_cat_atomic_input
+-- via derive_cat_atomic_input computation). drv_td no longer needs to store them.
+ALTER TABLE IF EXISTS drv_td DROP COLUMN IF EXISTS bb_bot_prev;
+ALTER TABLE IF EXISTS drv_td DROP COLUMN IF EXISTS bb_top_prev;
+
+-- 2026-05-27 (v3): dashboard single-cell scalars seeded into ref_param
+-- under sheet='dash'.  Pattern lets future derivers read scalars by name
+-- via `SELECT value FROM ref_param WHERE sheet='dash' AND param_name=...`.
+-- Covers Excel cells like Dash!$AB$24 (intraday-vs-daily toggle).
+-- See docs/drv_cat_atomic_input_logic.md § Dashboard scalars.
+-- Idempotent via ON CONFLICT DO NOTHING.
+-- -----------------------------------------------------
+INSERT INTO ref_param (sheet, param_name, value) VALUES
+    ('dash', 'intraday_toggle', 'Y')           -- Dash!$AB$24: 'Y' = use intraday DG/DK/DL,
+                                               -- 'N' = use daily CY/DC/DD.
+ON CONFLICT (sheet, param_name) DO NOTHING;
+
+-- 2026-05-28: Add tos_symbol to all hist_* tables for symbol normalization
+-- Maps each table's symbol to TOS/thinkOrSwim symbol via RRT (ref_rrt).
+-- COALESCE(tos_symbol, symbol) used throughout derive layer for consistency.
+-- =====================================================
+ALTER TABLE IF EXISTS hist_tl  ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
+ALTER TABLE IF EXISTS hist_td  ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
+ALTER TABLE IF EXISTS hist_tw  ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
+ALTER TABLE IF EXISTS hist_to  ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
+ALTER TABLE IF EXISTS hist_call ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
+ALTER TABLE IF EXISTS hist_etf ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
+ALTER TABLE IF EXISTS hist_ii  ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
+ALTER TABLE IF EXISTS hist_sss ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
+
+CREATE INDEX IF NOT EXISTS ix_hist_tl_tos_symbol ON hist_tl(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_tw_tos_symbol ON hist_tw(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_to_tos_symbol ON hist_to(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_call_tos_symbol ON hist_call(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_etf_tos_symbol ON hist_etf(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_ii_tos_symbol ON hist_ii(tos_symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_hist_sss_tos_symbol ON hist_sss(tos_symbol, snapshot_date);
+
+-- =====================================================
+-- End of baseline.sql
+-- =====================================================
+
