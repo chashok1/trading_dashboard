@@ -998,12 +998,10 @@ def get_portfolio(
                 prev_close_map: dict = {}
                 if latest_dq_date:
                     for r in s.execute(text("""
-                        SELECT DISTINCT ON (symbol) symbol, last_price
-                          FROM hist_td
-                         WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_td
-                                                 WHERE snapshot_date < :d)
-                           AND symbol = ANY(:syms)
-                         ORDER BY symbol, sequence DESC, loaded_at DESC
+                        SELECT tos_symbol, last_price FROM drv_quote
+                         WHERE as_of_date = (SELECT MAX(as_of_date) FROM drv_quote
+                                              WHERE as_of_date < :d)
+                           AND tos_symbol = ANY(:syms)
                     """), {"d": latest_dq_date, "syms": syms_held}).all():
                         if r[1] is not None:
                             prev_close_map[r[0]] = float(r[1])
