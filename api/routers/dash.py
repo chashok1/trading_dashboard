@@ -1372,9 +1372,9 @@ def get_portfolio_accounts(
         # Union of every account known anywhere
         sql = """
             SELECT DISTINCT account, source FROM (
-              SELECT account, 'F'  AS source FROM hist_f
+              SELECT COALESCE(account_name, account_number) AS account, 'F'  AS source FROM hist_f
               UNION  SELECT account, 'CS'    FROM hist_cs
-              UNION  SELECT account, 'F'     FROM hist_ft
+              UNION  SELECT COALESCE(account, account_number) AS account, 'F'     FROM hist_ft
               UNION  SELECT account, 'CS'    FROM hist_cst
             ) u
             WHERE account IS NOT NULL
@@ -1676,7 +1676,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
             ),
             prev_close_cs AS (
                 -- yesterday's close per (account, symbol)
-                SELECT account, symbol, price
+                SELECT account, tos_symbol, price
                   FROM hist_cs
                  WHERE snapshot_date = (SELECT d FROM prev_cs_snap)
             ),
@@ -1686,7 +1686,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                        SUM((cst.price - pc.price) * ABS(COALESCE(cst.quantity, 0))) AS amt
                   FROM hist_cst cst
                   JOIN prev_close_cs pc
-                    ON pc.account = cst.account AND pc.symbol = cst.symbol
+                    ON pc.account = cst.account AND pc.tos_symbol = cst.tos_symbol
                  WHERE cst.trade_date = (SELECT d FROM latest_cs)
                    AND UPPER(COALESCE(cst.action, '')) LIKE '%SELL%'
                    AND cst.quantity IS NOT NULL
@@ -1730,7 +1730,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
               FROM hist_cs c
               LEFT JOIN drv_cs_realized_gain rg
                    ON rg.account = c.account
-                  AND rg.symbol = c.symbol
+                  AND rg.tos_symbol = c.tos_symbol
                   AND rg.as_of_date = (SELECT d FROM latest_cs)
               WHERE c.snapshot_date = (SELECT d FROM latest_cs)
             )
@@ -1783,7 +1783,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                WHERE snapshot_date < (SELECT d FROM latest_cs)
             ),
             prev_close_cs AS (
-              SELECT account, symbol, price FROM hist_cs
+              SELECT account, tos_symbol, price FROM hist_cs
                WHERE snapshot_date = (SELECT d FROM prev_cs_snap)
             ),
             cs_sold_move AS (
@@ -1791,7 +1791,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                      SUM((cst.price - pc.price) * ABS(COALESCE(cst.quantity, 0))) AS amt
                 FROM hist_cst cst
                 JOIN prev_close_cs pc
-                  ON pc.account = cst.account AND pc.symbol = cst.symbol
+                  ON pc.account = cst.account AND pc.tos_symbol = cst.tos_symbol
                WHERE cst.trade_date = (SELECT d FROM latest_cs)
                  AND UPPER(COALESCE(cst.action, '')) LIKE '%SELL%'
                  AND cst.quantity IS NOT NULL
@@ -1839,7 +1839,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
               FROM hist_cs c
               LEFT JOIN drv_cs_realized_gain rg
                    ON rg.account = c.account
-                  AND rg.symbol = c.symbol
+                  AND rg.tos_symbol = c.tos_symbol
                   AND rg.as_of_date = (SELECT d FROM latest_cs)
               LEFT JOIN cs_sold_move sm ON sm.account = c.account
               LEFT JOIN cs_div_int   di ON di.account = c.account
