@@ -256,7 +256,7 @@ def compute_intermediates(row: dict) -> dict:
 
     Source-of-truth: docs/ma_columns_v2.csv formulas.  Adds 40+ derived keys
     to `row` (AC, AD, AG, AH, AI, AS..AZ, AQ, AR, BB, BC, BE, BF, BJ, BK,
-    BN, BO, BQ..CA, EC, ED, EE, EO, EP, EQ, ER, FF..FM, FR, GB).
+    BN, BO, BQ..CA, EC, ED, EE, EO, EP, EQ, ER, ES, ET, EU, FF..FM, FR, GB).
     """
     import math
     D    = _f(row.get("last_price"))

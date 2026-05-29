@@ -5,7 +5,7 @@ Excel `MA` columns **JF..NP** and **QE..QT**.
 
 CLAUDE.md index pointer: *Atomic-input column derivation (JF..NP + QE..QT)*.
 
-Status: **v3, 100% parity** vs `Tickers 2026-04-30.xlsx` smoke test (120/120 checks across 2 symbols). 1 of the original 60+ output columns still deferred (`trr_idx`/`mrr_idx`/`lrr_idx`); see Gaps.
+Status: **v4, QE..QT complete** (2026-05-29). All 16 QE..QT columns implemented. JF..NP parity unchanged at 100% (120/120 smoke-test checks). No deferred columns remain.
 
 ---
 
@@ -46,12 +46,12 @@ derive_all(D)
 Step | Where | What
 ---|---|---
 1 — working set | `WORKING_SET_SQL` in `derive_cat_atomic_input.py` | Single `SELECT` from `hist_td` / `hist_tw` / `drv_quote` / `hist_rr` (`DISTINCT ON (symbol)` latest snapshot ≤ D) plus per-symbol `percentile_cont(0.5)` median of `standard_dev`.
-2 — intermediates | `compute_intermediates(row)` | Per-row Python arithmetic producing ~50 MA-sheet derived inputs (AC, AD, AG, AH, AI, AJ–AZ struct, BB..CA, EC, ED, EE, EO..ER, FF..FM, FR, GB, …).
-3a — Pass-1 outputs | `COLUMN_SPECS_PASS1` + `eval_specs(...)` | Seven formula shapes (see Taxonomy).
+2 — intermediates | `compute_intermediates(row)` | Per-row Python arithmetic producing ~50 MA-sheet derived inputs (AC, AD, AG, AH, AI, AJ–AZ struct, BB..CA, EC, ED, EE, EO..EU, FF..FM, FR, GB, …). ES/ET/EU added 2026-05-29 for KI/KJ/KK.
+3a — Pass-1 outputs | `COLUMN_SPECS_PASS1` + `eval_specs(...)` | Seven formula shapes (see Taxonomy). Includes KI/KJ/KK (trr_idx/mrr_idx/lrr_idx) added 2026-05-29.
 3b — Pass-2 outputs | `COLUMN_SPECS_PASS2` | Composites that read Pass-1 outputs in the same row (KD, KT, LB, LK, LW, MI, MQ, MS, NJ, NN, NO …).
 4 — bulk INSERT | `executemany` in batches of 500 | Idempotent (`DELETE WHERE as_of_date=D` first).
-5 — `trend_trade_rules` | `_derive_trend_trade_rules_impl` in `derive.py` | UPDATE populating QE/QJ/QM/QN/QR.
-6 — Pass-3 update | `PARM_LOOKUP_SQL` via `run_parm_lookup_pass3()` | One SQL UPDATE joining `ref_param_lookup` four times to fill QF/QG/QK/QL/QO/QP/QQ/QS/QT.
+5 — `trend_trade_rules` | `_derive_trend_trade_rules_impl` in `derive.py` | Two-pass UPDATE: Pass 1 → QE/QJ/QM/QN; Pass 2 → QR. hist_td/hist_tw joins use latest-≤-D (fixed 2026-05-29).
+6 — Pass-3 update | `PARM_LOOKUP_SQL` via `run_parm_lookup_pass3()` | One SQL UPDATE joining `ref_param_lookup` five times to fill QF/QG/QK/QL/QO/QP/QQ/QS/QT.
 
 QE/QJ/QM/QN/QR are NOT in `COLUMN_SPECS` — they're populated by `_derive_trend_trade_rules_impl` (existing). Pass-3 reads what that step writes.
 
@@ -194,26 +194,26 @@ Mirrors Excel `100 * MOD(x, TRUNC(x))` (and `-100 *` for the negate variant). Us
 
 ## QE..QT block
 
-Excel col | DB column | How populated
----|---|---
-QE | `trade_trend_sd_rule` | `_derive_trend_trade_rules_impl` Pass 1.
-QF | `tn_td_rule_action` | Pass-3 SQL: `ref_param_lookup` `table_name='tn_td_rule'` keyed by QE.
-QG | `tn_td_rule_desc` | Pass-3 SQL (same join, `.description` col).
-QH | `a_bb_bot_slope` | Pass-1 passthru from `hist_td.a_bb_bot_slope`.
-QI | `a_bb_top_slope` | Pass-1 passthru from `hist_td.a_bb_top_slope`.
-QJ | `bb_rng_strk_rule` | `_derive_trend_trade_rules_impl` Pass 1.
-QK | `bb_rng_strk_action` | Pass-3 SQL: `table_name='bb_range'` keyed by QJ.
-QL | `bb_rng_strk_desc` | Pass-3 SQL.
-QM | `bull_rr_action` | `_derive_trend_trade_rules_impl` Pass 1.
-QN | `not_bull_rr_action` | `_derive_trend_trade_rules_impl` Pass 1.
-QO | `risk_rng_longs_action` | Pass-3 SQL: conditional XLOOKUP via QJ/QM/QN.
-QP | `rr_bull_bear` | Pass-3 SQL: `'B'` if QJ≥2, `'!B'` if QJ≥0, else NULL.
-QQ | `rr_desc` | Pass-3 SQL: description matching QO branch.
-QR | `td_tn_bb_rr_action` | `_derive_trend_trade_rules_impl` Pass 2.
-QS | `td_tn_bb_action_desc` | Pass-3 SQL: `table_name='td_tn_bb_rr_action'`.
-QT | `td_tn_bb_action_seq` | Pass-3 SQL: same row, `.seq` column.
+Excel col | DB column | How populated | Status
+---|---|---|---
+QE | `trade_trend_sd_rule` | `_derive_trend_trade_rules_impl` Pass 1 | ✓
+QF | `tn_td_rule_action` | Pass-3: `ref_param_lookup` `table_name='tn_td_rule'` keyed by QE | ✓
+QG | `tn_td_rule_desc` | Pass-3 (same join, `.description`) | ✓
+QH | `a_bb_bot_slope` | Pass-1 passthru from `drv_quote` / `hist_td` | ✓
+QI | `a_bb_top_slope` | Pass-1 passthru from `drv_quote` / `hist_td` | ✓
+QJ | `bb_rng_strk_rule` | `_derive_trend_trade_rules_impl` Pass 1 (hist_td latest-≤-D) | ✓
+QK | `bb_rng_strk_action` | Pass-3: `table_name='bb_range'` keyed by QJ | ✓
+QL | `bb_rng_strk_desc` | Pass-3 | ✓
+QM | `bull_rr_action` | `_derive_trend_trade_rules_impl` Pass 1 (needs KI/KJ/KK inputs) | ✓ (NULL where no RR data)
+QN | `not_bull_rr_action` | `_derive_trend_trade_rules_impl` Pass 1 | ✓ (NULL where no RR data)
+QO | `risk_rng_longs_action` | Pass-3: conditional via QJ/QM/QN | ✓
+QP | `rr_bull_bear` | Pass-3: `'B'` if QJ≥2, `'!B'` if QJ≥0, else NULL | ✓
+QQ | `rr_desc` | Pass-3: description matching QO branch | ✓
+QR | `td_tn_bb_rr_action` | `_derive_trend_trade_rules_impl` Pass 2 | ✓
+QS | `td_tn_bb_action_desc` | Pass-3: `table_name='td_tn_bb_rr_action'` keyed by QR | ✓
+QT | `td_tn_bb_action_seq` | Pass-3: same row, `.seq` column | ✓
 
-If `ref_param_lookup` is missing the `td_tn_bb_rr_action` table_name slot, QS/QT come out NULL — that's expected pre-seed. Fix by adding rows to the Parm tab in the workbook and re-running `python -m etl.refresh_ref --table ref_param_lookup`.
+`td_tn_bb_rr_action` lookup rows (17 entries) are seeded in `db/baseline.sql` from Parm!AO/AQ/AR. KI/KJ/KK (trr_idx/mrr_idx/lrr_idx) use ES/ET/EU intermediates computed from `drv_quote` high/last/low prices and RR buy/sell trade values.
 
 ---
 
@@ -258,11 +258,9 @@ Currently seeded:
 
 ## Gaps & known divergences
 
-### Still deferred (3 columns)
+### Still deferred (0 columns)
 
-| DB column | Excel col | Blocker |
-|---|---|---|
-| `trr_idx`, `mrr_idx`, `lrr_idx` | KI, KJ, KK | Need ES/ET/EU which depend on DQ/DM/DR (intraday-vs-daily toggle output). Toggle reachable via `get_dash_scalar(session, 'intraday_toggle', 'Y')`. Just needs the intermediate computations wired. |
+All JF..NP and QE..QT columns are now implemented as of 2026-05-29.
 
 ### Known divergences (not real bugs)
 
