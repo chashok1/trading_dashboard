@@ -1644,6 +1644,7 @@ CREATE TABLE IF NOT EXISTS hist_etfchg (
 
 );
 
+ALTER TABLE hist_etfchg ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
 
 
 -- -----------------------------------------------------
@@ -1676,6 +1677,7 @@ CREATE TABLE IF NOT EXISTS hist_iichg (
 
 );
 
+ALTER TABLE hist_iichg ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
 
 
 -- -----------------------------------------------------
@@ -1711,6 +1713,8 @@ CREATE TABLE IF NOT EXISTS hist_ps (
     PRIMARY KEY (snapshot_date, ticker)
 
 );
+
+ALTER TABLE hist_ps ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
 
 
 
