@@ -545,7 +545,7 @@ def get_actionable_comparison(
                    doa.base_weight, doa.prev_weight, doa.action
             FROM drv_outlook_action doa
             JOIN eff ON eff.sc = doa.source_code AND doa.as_of_date = eff.ed
-            WHERE doa.symbol = :sym
+            WHERE doa.tos_symbol = :sym
             ORDER BY doa.source_code
         """), {"sym": sym, "d": d}).all()
 

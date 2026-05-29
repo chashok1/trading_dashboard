@@ -51,9 +51,9 @@ def _load_holdings_with_dollars(session, as_of_date):
             WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
             GROUP BY symbol
         )
-        SELECT COALESCE(fid.symbol, cs.symbol) AS symbol,
+        SELECT COALESCE(fid.tos_symbol, cs.tos_symbol) AS tos_symbol,
                COALESCE(fid.val, 0) + COALESCE(cs.val, 0) AS dollar
-        FROM fid FULL OUTER JOIN cs ON cs.symbol = fid.symbol
+        FROM fid FULL OUTER JOIN cs ON cs.tos_symbol = fid.tos_symbol
     """), {"d": as_of_date}).fetchall()
     return {r[0]: float(r[1] or 0) for r in rows}
 
@@ -193,13 +193,13 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                    END AS effective_date
             FROM (SELECT DISTINCT source_code FROM drv_outlook_action) sources
         )
-        SELECT doa.symbol, doa.source_code, doa.base_weight, doa.prev_weight, doa.prev_date,
+        SELECT doa.tos_symbol, doa.source_code, doa.base_weight, doa.prev_weight, doa.prev_date,
                doa.weight_delta, doa.held_today, doa.action, doa.action_reason, doa.category,
                doa.analyst_rank, doa.as_of_date, doa.source_snapshot_date
         FROM drv_outlook_action doa
         JOIN source_snapshot_dates ssd ON doa.source_code = ssd.source_code
         WHERE doa.as_of_date = ssd.effective_date
-        ORDER BY doa.symbol, doa.source_code
+        ORDER BY doa.tos_symbol, doa.source_code
     """)
     all_actions = session.execute(source_dates_sql, {"d": as_of_date}).mappings().all()
 

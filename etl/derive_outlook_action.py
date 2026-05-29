@@ -95,9 +95,9 @@ def _load_holdings(session: Session, as_of_date: date) -> set[str]:
             WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= '{as_of_date}')
             GROUP BY symbol
         )
-        SELECT COALESCE(fid.symbol, cs.symbol) AS symbol,
+        SELECT COALESCE(fid.tos_symbol, cs.tos_symbol) AS tos_symbol,
                COALESCE(fid.qty, 0) + COALESCE(cs.qty, 0) AS qty_total
-        FROM fid FULL OUTER JOIN cs ON cs.symbol = fid.symbol
+        FROM fid FULL OUTER JOIN cs ON cs.tos_symbol = fid.tos_symbol
     """)).fetchall()
     return {r[0] for r in rows if r[1] and float(r[1]) > 0}
 
@@ -1075,7 +1075,7 @@ def compute_standing_verdicts(session: Session, as_of_date: date) -> list[dict]:
             held = sym in holdings
             act = _verdict(w, held)
             if act:
-                out.append({"symbol": sym, "source": "RR",
+                out.append({"tos_symbol": sym, "source": "RR",
                             "action": act, "weight": w, "held": held})
     except Exception as e:
         log.warning("standing verdict: RR failed (%s)", e)
