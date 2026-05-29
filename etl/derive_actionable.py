@@ -206,7 +206,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     # Group by symbol
     by_sym: dict[str, list[dict]] = {}
     for r in all_actions:
-        by_sym.setdefault(r["symbol"], []).append(dict(r))
+        by_sym.setdefault(r["tos_symbol"], []).append(dict(r))
 
     # Augment with my_stocks symbols that have no actions today
     for sym in my_stocks:
