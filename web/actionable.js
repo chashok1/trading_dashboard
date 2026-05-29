@@ -694,6 +694,7 @@ function renderGrid() {
       <td class="num">${r._metric == null ? '' : (_isPctSource(_mSrc) ? fmtPct(r._metric) : formatNum(r._metric))}</td>
       <td class="num">${fmtUsd(r.current_position_dollar)}</td>
       <td style="padding:6px 4px; max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${typeof yahooLink === 'function' ? yahooLink(r.tos_symbol) : ''}<strong>${r.tos_symbol || ''}</strong></td>
+      <td class="num ${r.pct_change != null ? (Number(r.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : ''}">${r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''}</td>
       <td style="padding:6px 4px;"><span class="badge-action badge-action-${_badgeAction(r)}">${actionLabel(r)}</span>${_isOverMaxOverlay(r) ? `<div style="font-size:8px;line-height:1;font-weight:600;color:${ACTION_COLOR[action] || '#888'};margin-top:1px;">was ${ACTION_LABEL[action] || action}</div>` : ''}</td>
       <td class="num"><strong>${fmtUsd(r._amt)}</strong></td>
       <td class="src-cell" data-srcpop data-sym="${escapeHtml(r.tos_symbol)}" data-src="${escapeHtml(r.winning_source || '')}" style="padding:6px 4px;">${r.winning_source || ''}</td>
@@ -704,7 +705,6 @@ function renderGrid() {
       <td>${escapeHtml(r.real_asset_class || '')}</td>
       <td class="num">${fmtUsd(r.last_price)}</td>
       <td class="num">${fmtUsd(r.net_chng)}</td>
-      <td class="num ${r.pct_change != null ? (Number(r.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : ''}">${r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''}</td>
       <td>${fmtAsOfExport(r.export_date, r.export_time, r.loaded_at)}</td>
       <td>${tags.join(' ')}</td>
     `;
@@ -736,6 +736,7 @@ function otherSourcesText(r) {
 function exportCsv() {
   const cols = [
     ['Symbol',        r => r.tos_symbol],
+    ['Change %',      r => r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''],
     ['AMT$',          r => r._amt],
     ['Action',        r => r.consolidated_action || ''],
     ['Source',        r => r.winning_source || ''],
@@ -747,7 +748,6 @@ function exportCsv() {
     ['Pos $',         r => r.current_position_dollar],
     ['Price',         r => r.last_price],
     ['Change $',      r => r.net_chng],
-    ['Change %',      r => r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''],
     ['As Of',         r => fmtAsOfExport(r.export_date, r.export_time, r.loaded_at)],
     ['Held',          r => r.held_today ? 'Y' : 'N'],
     ['In My List',    r => r.in_my_list ? 'Y' : 'N'],
