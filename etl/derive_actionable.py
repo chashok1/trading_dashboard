@@ -79,7 +79,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     alloc_has = lambda cat: _alloc_key(cat) in asset_alloc
 
     my_stocks = {r[0] for r in session.execute(
-        text("SELECT symbol FROM ref_my_stocks WHERE active = 'Y'")
+        text("SELECT tos_symbol FROM ref_my_stocks WHERE active = 'Y'")
     ).fetchall()}
 
     holdings = _load_holdings_with_dollars(session, as_of_date)

@@ -364,7 +364,7 @@ def get_actionable(
             SELECT user_action, snooze_until
             FROM user_action_log
             WHERE user_action_log.as_of_date = a.as_of_date
-              AND COALESCE(user_action_log.tos_symbol, user_action_log.symbol) = a.tos_symbol
+              AND user_action_log.tos_symbol = a.tos_symbol
             ORDER BY acted_at DESC LIMIT 1
         ) u ON TRUE
         WHERE {' AND '.join(where)}
@@ -1059,7 +1059,7 @@ def get_portfolio(
                 pass
             in_my = set()
             try:
-                for row in s.execute(text("SELECT symbol FROM ref_my_stocks WHERE active = 'Y'")).all():
+                for row in s.execute(text("SELECT tos_symbol FROM ref_my_stocks WHERE active = 'Y'")).all():
                     in_my.add(row[0])
             except Exception:
                 pass

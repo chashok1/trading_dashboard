@@ -1940,8 +1940,15 @@ CREATE INDEX IF NOT EXISTS ix_meta_warning_screen
 
     ON meta_warning(screen, as_of_date);
 
+ALTER TABLE meta_warning ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
 
-
+DO $$
+BEGIN
+    UPDATE meta_warning SET tos_symbol = symbol WHERE tos_symbol IS NULL AND symbol IS NOT NULL;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'meta_warning' AND column_name = 'symbol') THEN
+        ALTER TABLE meta_warning DROP COLUMN symbol;
+    END IF;
+END $$;
 
 
 -- =====================================================
@@ -3534,7 +3541,14 @@ CREATE TABLE IF NOT EXISTS ref_my_stocks (
 
 );
 
+ALTER TABLE ref_my_stocks ADD COLUMN IF NOT EXISTS tos_symbol TEXT;
 
+DO $$
+BEGIN
+    UPDATE ref_my_stocks SET tos_symbol = symbol WHERE tos_symbol IS NULL;
+END $$;
+
+-- Note: symbol remains as PK for backward compat; tos_symbol is the normalized key
 
 -- -----------------------------------------------------
 
@@ -3768,7 +3782,7 @@ CREATE TABLE IF NOT EXISTS user_action_log (
 
     as_of_date                 DATE NOT NULL,
 
-    symbol                     TEXT NOT NULL,
+    tos_symbol                 TEXT NOT NULL,
 
     action_code                TEXT,
 
@@ -3911,6 +3925,15 @@ CREATE INDEX IF NOT EXISTS ix_user_action_log_acted       ON user_action_log(act
 -- =====================================================
 
 -- Migration: Add tos_symbol to all hist and derived tables
+
+-- Migrate user_action_log from symbol to tos_symbol
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'user_action_log' AND column_name = 'symbol') THEN
+        UPDATE user_action_log SET tos_symbol = symbol WHERE tos_symbol IS NULL AND symbol IS NOT NULL;
+        ALTER TABLE user_action_log DROP COLUMN symbol;
+    END IF;
+END $$;
 
 -- =====================================================
 
