@@ -248,7 +248,7 @@
     const svgTT = (() => {
       if (trend == null && trade == null) return '';
       // Fixed small chart: Trend/Trade lines evenly spaced, price indicator only
-      const W2 = 120, H2 = 130, PAD_L2 = 42, PAD_R2 = 50, PAD_T2 = 14, PAD_B2 = 14;
+      const W2 = 120, H2 = 155, PAD_L2 = 42, PAD_R2 = 50, PAD_T2 = 14, PAD_B2 = 38;
       const cW2 = W2 - PAD_L2 - PAD_R2, cH2 = H2 - PAD_T2 - PAD_B2;
       const xa = PAD_L2, xb = PAD_L2 + cW2, xm2 = PAD_L2 + cW2 * 0.5;
 
@@ -286,15 +286,16 @@
         }
       }
 
+      // SD labels sit inside the bottom padding (PAD_B2=38 gives room for 3 lines)
+      const chartLbl = `<text x="${xm2}" y="${H2-24}" fill="#64748b" font-size="8" text-anchor="middle" font-weight="600">Trend/Trade</text>`;
       const trendSdTxt = sd.trend_sd != null
-        ? `<text x="${xm2}" y="${H2+10}" fill="${scoreColor(sd.trend_sd)}" font-size="8" text-anchor="middle">Trend ${fmtSd(sd.trend_sd)}SD</text>` : '';
+        ? `<text x="${xm2}" y="${H2-13}" fill="${scoreColor(sd.trend_sd)}" font-size="8" text-anchor="middle">Trend ${fmtSd(sd.trend_sd)}SD</text>` : '';
       const tradeSdTxt = sd.trade_sd != null
-        ? `<text x="${xm2}" y="${H2+20}" fill="${scoreColor(sd.trade_sd)}" font-size="8" text-anchor="middle">Trade ${fmtSd(sd.trade_sd)}SD</text>` : '';
+        ? `<text x="${xm2}" y="${H2-3}" fill="${scoreColor(sd.trade_sd)}" font-size="8" text-anchor="middle">Trade ${fmtSd(sd.trade_sd)}SD</text>` : '';
 
       return `<svg width="${W2}" height="${H2}" style="overflow:visible;display:block;">
         ${trendLine}${tradeLine}${priceIndicator}
-        <text x="${xm2}" y="${H2}" fill="#64748b" font-size="8" text-anchor="middle" font-weight="600">Trend/Trade</text>
-        ${trendSdTxt}${tradeSdTxt}
+        ${chartLbl}${trendSdTxt}${tradeSdTxt}
       </svg>`;
     })();
 
