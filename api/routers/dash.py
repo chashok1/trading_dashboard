@@ -766,8 +766,8 @@ def get_rr_analysis(symbol: str = Query(...), date: str = Query(...)):
                    a.td_tn_bb_action_seq, a.rr_bull_bear, a.rr_desc,
                    ltn.short_name AS tn_td_short,
                    lbb.short_name AS bb_short,
-                   CASE WHEN a.bb_rng_strk_rule >= 2 THEN lbull.short_name
-                        WHEN a.bb_rng_strk_rule >= 0 THEN lnbull.short_name
+                   CASE WHEN a.rr_bull_bear = 'B'  THEN lbull.short_name
+                        WHEN a.rr_bull_bear = '!B' THEN lnbull.short_name
                    END AS rr_short
             FROM drv_cat_atomic_input a
             LEFT JOIN ref_param_lookup ltn
