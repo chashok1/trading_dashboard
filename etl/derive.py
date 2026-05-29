@@ -444,9 +444,6 @@ def _derive_to_impl(session: Session, as_of_date: date, run_id: int) -> int:
         :run
     FROM hist_to
     WHERE snapshot_date = :d
-    ON CONFLICT (snapshot_date, tos_symbol, sequence) DO UPDATE SET
-        market_cap_num = EXCLUDED.market_cap_num,
-        source_run_id = EXCLUDED.source_run_id
     """)
 
     session.execute(text("DELETE FROM drv_to WHERE snapshot_date = :d"), {"d": as_of_date})
