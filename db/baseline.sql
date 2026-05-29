@@ -3132,6 +3132,27 @@ CREATE TABLE IF NOT EXISTS ref_param_lookup (
 
 CREATE INDEX IF NOT EXISTS ix_ref_param_lookup_action ON ref_param_lookup(action);
 
+-- td_tn_bb_rr_action: QR numeric value -> QS (action code) + QT (sort seq)
+-- Source: Parm!AO (code), AQ (description/action), AR (seq). First match per code.
+INSERT INTO ref_param_lookup (table_name, code, description, seq) VALUES
+    ('td_tn_bb_rr_action', '-10', 'SA',  21),
+    ('td_tn_bb_rr_action', '-9',  'STM', 20),
+    ('td_tn_bb_rr_action', '-8',  'SS',  19),
+    ('td_tn_bb_rr_action', '-7',  'SO',  12),
+    ('td_tn_bb_rr_action', '-6',  'SW',  11),
+    ('td_tn_bb_rr_action', '-5',  'SWW',  5),
+    ('td_tn_bb_rr_action', '-1',  'SN',   3),
+    ('td_tn_bb_rr_action', '0',   'N',    3),
+    ('td_tn_bb_rr_action', '1',   'BN',   3),
+    ('td_tn_bb_rr_action', '3',   'BC',  14),
+    ('td_tn_bb_rr_action', '4',   'BRW',  5),
+    ('td_tn_bb_rr_action', '5',   'BSW',  9),
+    ('td_tn_bb_rr_action', '6',   'BW',  10),
+    ('td_tn_bb_rr_action', '7',   'BR',  13),
+    ('td_tn_bb_rr_action', '8',   'BMN', 15),
+    ('td_tn_bb_rr_action', '9',   'BS',  16),
+    ('td_tn_bb_rr_action', '10',  'BM',  18)
+ON CONFLICT (table_name, code) DO NOTHING;
 
 
 -- -----------------------------------------------------
