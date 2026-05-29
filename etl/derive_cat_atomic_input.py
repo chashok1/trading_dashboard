@@ -1087,8 +1087,8 @@ SET
         WHEN dst.bb_rng_strk_rule >= 0 THEN l_qn.seq
         ELSE NULL END,
     rr_bull_bear = CASE
-        WHEN dst.bb_rng_strk_rule >= 2 AND l_qm.description IS NOT NULL THEN 'B'
-        WHEN dst.bb_rng_strk_rule >= 0 AND l_qn.description IS NOT NULL THEN '!B'
+        WHEN dst.bb_rng_strk_rule >= 2 THEN 'B'
+        WHEN dst.bb_rng_strk_rule >= 0 THEN '!B'
         ELSE NULL END,
     rr_desc = CASE
         WHEN dst.bb_rng_strk_rule >= 2 THEN l_qm.description
