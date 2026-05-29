@@ -1133,7 +1133,7 @@ def derive_cat_atomic_input(session: Session, as_of_date: date,
         out: dict = {}
         eval_specs(row, COLUMN_SPECS_PASS1, trig_rules, out)
         eval_specs(row, COLUMN_SPECS_PASS2, trig_rules, out)
-        rec = {"as_of_date": as_of_date, "tos_symbol": row["symbol"],
+        rec = {"as_of_date": as_of_date, "tos_symbol": row["tos_symbol"],
                "source_run_id": run_id}
         for c in ordered_cols:
             rec[c] = out.get(c)

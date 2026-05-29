@@ -2227,7 +2227,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         WITH inputs AS (
             SELECT
                 q.as_of_date,
-                q.symbol,
+                q.tos_symbol,
                 q.last_price                       AS close,
                 td.a_trend_value,
                 td.a_trade_value,
@@ -2244,20 +2244,20 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 a.lrr_idx
             FROM drv_quote q
             LEFT JOIN hist_td td
-              ON td.snapshot_date = q.as_of_date AND td.symbol = q.symbol
+              ON td.snapshot_date = q.as_of_date AND td.tos_symbol = q.tos_symbol
             LEFT JOIN hist_tw tw
-              ON tw.snapshot_date = q.as_of_date AND tw.symbol = q.symbol
+              ON tw.snapshot_date = q.as_of_date AND tw.tos_symbol = q.tos_symbol
             LEFT JOIN LATERAL (
                 SELECT percentile_cont(0.5) WITHIN GROUP (
                     ORDER BY standard_dev
                 ) AS median_sd
                 FROM hist_tw
-                WHERE symbol = q.symbol
+                WHERE tos_symbol = q.tos_symbol
                   AND snapshot_date <= q.as_of_date
                   AND standard_dev IS NOT NULL
             ) med ON TRUE
             LEFT JOIN drv_cat_atomic_input a
-              ON a.as_of_date = q.as_of_date AND a.symbol = q.symbol
+              ON a.as_of_date = q.as_of_date AND a.tos_symbol = q.tos_symbol
             WHERE q.as_of_date = :d
         ),
         computed AS (
@@ -2333,7 +2333,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 ELSE NULL
             END
         FROM computed c
-        WHERE dst.as_of_date = c.as_of_date AND dst.symbol = c.symbol
+        WHERE dst.as_of_date = c.as_of_date AND dst.tos_symbol = c.tos_symbol
     """), {"d": as_of_date})
 
     rows_pass1 = result.rowcount or 0
@@ -2351,7 +2351,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         WITH base AS (
             SELECT
                 a.as_of_date,
-                a.symbol,
+                a.tos_symbol,
                 a.trade_trend_sd_rule AS qe,
                 a.bb_rng_strk_rule    AS qj,
                 a.bull_rr_action      AS qm_val,
@@ -2362,7 +2362,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         looked_up AS (
             SELECT
                 b.as_of_date,
-                b.symbol,
+                b.tos_symbol,
                 b.qj,
                 l_qf.seq AS qf_seq,
                 l_qk.seq AS qk_seq,
@@ -2394,7 +2394,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
             ELSE NULL
         END
         FROM looked_up l
-        WHERE dst.as_of_date = l.as_of_date AND dst.symbol = l.symbol
+        WHERE dst.as_of_date = l.as_of_date AND dst.tos_symbol = l.tos_symbol
     """), {"d": as_of_date})
 
     return rows_pass1
