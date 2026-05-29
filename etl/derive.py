@@ -744,6 +744,8 @@ def _derive_y_impl(session: Session, as_of_date: date, run_id: int) -> int:
     rows = session.execute(text("""
         SELECT DISTINCT ON (tos_symbol) tos_symbol, snapshot_date,
                CASE WHEN float_str IS NULL OR float_str = '--' THEN NULL
+                    WHEN RIGHT(UPPER(TRIM(float_str)), 1) = 'B'
+                      THEN REGEXP_REPLACE(REPLACE(float_str, ',', ''), '[^0-9.]', '', 'g')::NUMERIC * 1000000000
                     WHEN RIGHT(UPPER(TRIM(float_str)), 1) = 'M'
                       THEN REGEXP_REPLACE(REPLACE(float_str, ',', ''), '[^0-9.]', '', 'g')::NUMERIC * 1000000
                     WHEN RIGHT(UPPER(TRIM(float_str)), 1) = 'K'
@@ -751,6 +753,8 @@ def _derive_y_impl(session: Session, as_of_date: date, run_id: int) -> int:
                     ELSE REGEXP_REPLACE(REPLACE(float_str, ',', ''), '[^0-9.]', '', 'g')::NUMERIC
                END AS float,
                CASE WHEN shares_out_str IS NULL OR shares_out_str = '--' THEN NULL
+                    WHEN RIGHT(UPPER(TRIM(shares_out_str)), 1) = 'B'
+                      THEN REGEXP_REPLACE(REPLACE(shares_out_str, ',', ''), '[^0-9.]', '', 'g')::NUMERIC * 1000000000
                     WHEN RIGHT(UPPER(TRIM(shares_out_str)), 1) = 'M'
                       THEN REGEXP_REPLACE(REPLACE(shares_out_str, ',', ''), '[^0-9.]', '', 'g')::NUMERIC * 1000000
                     WHEN RIGHT(UPPER(TRIM(shares_out_str)), 1) = 'K'
