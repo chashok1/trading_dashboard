@@ -89,7 +89,8 @@ async function loadRRChart(symbol, date) {
       `/api/actionable/rr-analysis?symbol=${encodeURIComponent(symbol)}&date=${encodeURIComponent(date)}`,
       { headers: { Accept: 'application/json' } }
     ).then(r => r.ok ? r.json() : null);
-    if (data && (data.levels.lrr != null || data.levels.trr != null)) {
+    if (data && (data.levels.lrr != null || data.levels.trr != null ||
+                 data.levels.trend != null || data.levels.trade != null)) {
       sec.style.display = '';
       if (window.td_common && window.td_common.renderRRAnalysis) {
         window.td_common.renderRRAnalysis(data, el, symbol, date);

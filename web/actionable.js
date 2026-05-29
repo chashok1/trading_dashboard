@@ -1180,7 +1180,8 @@ async function loadRRAnalysis(symbol, date) {
   el.innerHTML = '<span style="color:#94a3b8;font-size:12px;">Loading…</span>';
   try {
     const data = await fetchJson(`/api/actionable/rr-analysis?symbol=${encodeURIComponent(symbol)}&date=${encodeURIComponent(date)}`);
-    if (data && (data.levels.lrr != null || data.levels.trr != null)) {
+    if (data && (data.levels.lrr != null || data.levels.trr != null ||
+                 data.levels.trend != null || data.levels.trade != null)) {
       sec.style.display = '';
       if (window.td_common && window.td_common.renderRRAnalysis) {
         window.td_common.renderRRAnalysis(data, el, symbol, date);
