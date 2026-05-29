@@ -301,8 +301,8 @@
 
     // ── Historical chart ──────────────────────────────────────────────────────
     const histId = 'rrHist_' + Math.random().toString(36).slice(2);
-    const histSvg = `<svg id="${histId}" width="380" height="${H}" style="overflow:visible;display:block;">
-      <text x="190" y="${H/2}" fill="#94a3b8" font-size="10" text-anchor="middle">Loading history…</text>
+    const histSvg = `<svg id="${histId}" width="100%" height="${H}" style="overflow:visible;display:block;">
+      <text x="50%" y="${H/2}" fill="#94a3b8" font-size="10" text-anchor="middle">Loading history…</text>
     </svg>`;
 
     // ── Action colour ─────────────────────────────────────────────────────────
@@ -319,36 +319,47 @@
            <div style="font-size:11px;color:#1e293b;line-height:1.35;">${text}</div>
          </div>` : '';
 
+    // ── tagged descRow — shows column id + label + text ──────────────────────
+    const taggedRow = (tag, label, text) => text
+      ? `<div style="margin-bottom:8px;">
+           <div style="display:flex;align-items:baseline;gap:5px;margin-bottom:2px;">
+             <span style="font-size:9px;font-weight:700;color:#c7d2fe;background:#4338ca;
+               padding:1px 4px;border-radius:3px;letter-spacing:0.03em;">${tag}</span>
+             <span style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;">${label}</span>
+           </div>
+           <div style="font-size:11px;color:#1e293b;line-height:1.35;">${text}</div>
+         </div>` : '';
+
     // ── Assemble ──────────────────────────────────────────────────────────────
     el.innerHTML = `
-    <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+    <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:nowrap;width:100%;">
 
-      <!-- Left panel (descriptions + action) -->
-      <div style="flex:1;min-width:160px;max-width:260px;display:flex;flex-direction:column;gap:8px;">
+      <!-- Left panel: doubled size -->
+      <div style="flex:2;min-width:280px;display:flex;flex-direction:column;gap:8px;">
 
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-          padding:5px 8px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;">
+          padding:6px 10px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;">
           ${dot(ix.trr, 'TRR', sd.trr_sd)}
           ${dot(ix.mrr, 'MRR', sd.mrr_sd)}
           ${dot(ix.lrr, 'LRR', sd.lrr_sd)}
-          <span style="margin-left:auto;font-size:10px;color:#64748b;">
+          <span style="margin-left:auto;font-size:10px;color:#64748b;white-space:nowrap;">
             <span style="color:#94a3b8;">SD</span> <strong>${fmt(sdVal)}</strong>
-            &nbsp;
+            &nbsp;·&nbsp;
             <span style="color:#94a3b8;">Trend</span> <strong style="color:${scoreColor(sd.trend_sd)}">${fmtSd(sd.trend_sd)}</strong>
-            &nbsp;
+            &nbsp;·&nbsp;
             <span style="color:#94a3b8;">Trade</span> <strong style="color:${scoreColor(sd.trade_sd)}">${fmtSd(sd.trade_sd)}</strong>
           </span>
         </div>
 
-        <div style="padding:6px 8px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;">
-          ${descRow('Trend Trade Rule', ru.tn_td_desc)}
-          ${descRow('BB Range Streak', ru.bb_desc)}
-          ${descRow('RR Desc', ru.rr_desc)}
+        <div style="padding:8px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;flex:1;">
+          ${taggedRow('QG', 'Trend Trade Rule', ru.tn_td_desc)}
+          ${taggedRow('QL', 'BB Range Streak', ru.bb_desc)}
+          ${taggedRow('QQ', 'RR Desc', ru.rr_desc)}
         </div>
 
         <div style="display:flex;align-items:center;gap:10px;
-          background:${actionBg};border:2px solid ${actionColor};border-radius:8px;padding:8px 12px;">
-          <div style="font-size:26px;font-weight:900;color:${actionColor};line-height:1;min-width:36px;">${actionCode}</div>
+          background:${actionBg};border:2px solid ${actionColor};border-radius:8px;padding:10px 14px;">
+          <div style="font-size:28px;font-weight:900;color:${actionColor};line-height:1;min-width:40px;">${actionCode}</div>
           <div style="flex:1;">
             <div style="font-size:9px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;">Final Action · priority ${priority}</div>
             <div style="font-size:11px;color:#1e293b;line-height:1.3;margin-top:2px;">Trend Trade BB Risk Range Rule Action</div>
@@ -357,15 +368,16 @@
 
       </div>
 
-      <!-- Today's bar chart (RR bands) -->
-      <div style="flex-shrink:0;">${svgToday}</div>
+      <!-- Today's bar chart -->
+      <div style="flex:0 0 auto;">${svgToday}</div>
 
-      <!-- Trade / Trend separate chart -->
-      ${svgTT ? `<div style="flex-shrink:0;">${svgTT}</div>` : ''}
+      <!-- Trend/Trade chart -->
+      ${svgTT ? `<div style="flex:0 0 auto;">${svgTT}</div>` : ''}
 
-      <!-- Historical chart -->
-      <div style="flex-shrink:0;">${histSvg}
-        <div style="font-size:8px;color:#94a3b8;text-align:center;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+      <!-- Historical chart: tripled, grows to fill -->
+      <div style="flex:3;min-width:400px;overflow:hidden;">
+        <div id="${histId}_wrap" style="width:100%;">${histSvg}</div>
+        <div style="font-size:8px;color:#94a3b8;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;">
           <span style="color:#2563eb;">&#9644; price</span>
           <span style="color:#15803d;">&#9135;&#9135; TRR/LRR</span>
           <span style="color:#f97316;">&#9135;&#9135; Trade</span>
@@ -401,7 +413,8 @@
     for (let i = 0; i < n; i++) { if (lrrs[i] == null) lrrs[i] = firstLrr ?? null; else break; }
     for (let i = 0; i < n; i++) { if (trrs[i] == null) trrs[i] = firstTrr ?? null; else break; }
 
-    const W = 380, PAD_L = 44, PAD_R = 54, PAD_T = 10, PAD_B = 22;
+    const W = Math.max(svgEl.parentElement ? svgEl.parentElement.offsetWidth || 700 : 700, 400);
+    const PAD_L = 44, PAD_R = 54, PAD_T = 10, PAD_B = 22;
     const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
 
     const allVals = [...prices, ...lrrs, ...trrs, ...trends, ...trades].filter(v => v != null);
