@@ -326,6 +326,7 @@ def _state_dense(session: Session, table: str, date_col: str,
             SELECT {sym_col}, outlook, {mod_expr} AS modifier
               FROM {table}
              WHERE {date_col} = '{as_of_date}'
+               AND {sym_col} IS NOT NULL
         """)).fetchall()
     return {r[0]: _resolve_outlook_weight(r[1], r[2], wt_map) for r in rows}
 

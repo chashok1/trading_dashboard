@@ -74,6 +74,6 @@ def get_warnings(session, screen: str | None = None, as_of_date=None) -> list[di
            "message, created_at FROM meta_warning w")
     if where:
         sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY screen, symbol NULLS FIRST, id"
+    sql += " ORDER BY screen, tos_symbol NULLS FIRST, id"
     rows = session.execute(text(sql), params).mappings().all()
     return [dict(r) for r in rows]
