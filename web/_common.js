@@ -248,7 +248,7 @@
     const svgTT = (() => {
       if (trend == null && trade == null) return '';
       // Fixed small chart: Trend/Trade lines evenly spaced, price indicator only
-      const W2 = 120, H2 = 90, PAD_L2 = 42, PAD_R2 = 50, PAD_T2 = 14, PAD_B2 = 14;
+      const W2 = 120, H2 = 130, PAD_L2 = 42, PAD_R2 = 50, PAD_T2 = 14, PAD_B2 = 14;
       const cW2 = W2 - PAD_L2 - PAD_R2, cH2 = H2 - PAD_T2 - PAD_B2;
       const xa = PAD_L2, xb = PAD_L2 + cW2, xm2 = PAD_L2 + cW2 * 0.5;
 
@@ -320,7 +320,7 @@
 
     // ── Assemble ──────────────────────────────────────────────────────────────
     el.innerHTML = `
-    <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;">
+    <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
 
       <!-- Today's bar chart (RR bands) -->
       <div style="flex-shrink:0;">${svgToday}</div>
@@ -333,14 +333,13 @@
         <div style="font-size:8px;color:#94a3b8;text-align:center;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
           <span style="color:#2563eb;">&#9644; price</span>
           <span style="color:#15803d;">&#9135;&#9135; TRR/LRR</span>
-          <span style="color:#4ade80;">&#9135;&#9135; MRR</span>
           <span style="color:#f97316;">&#9135;&#9135; Trade</span>
           <span style="color:#818cf8;">&#9135;&#9135; Trend</span>
         </div>
       </div>
 
       <!-- Right panel -->
-      <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:8px;">
+      <div style="flex:1;min-width:160px;max-width:260px;display:flex;flex-direction:column;gap:8px;">
 
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;
           padding:5px 8px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;">
@@ -389,7 +388,7 @@
 
   // ── Historical RR line chart ──────────────────────────────────────────────
   function _renderHistChart(svgEl, h, H, levels) {
-    const dates = h.dates, prices = h.price, lrrs = h.lrr, trrs = h.trr, mrrs = h.mrr;
+    const dates = h.dates, prices = h.price, lrrs = h.lrr, trrs = h.trr;
     const trends = h.trend || [], trades = h.trade || [];
     const n = dates.length;
     if (!n) return;
@@ -397,12 +396,7 @@
     const W = 380, PAD_L = 44, PAD_R = 54, PAD_T = 10, PAD_B = 22;
     const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
 
-    // Use current snapshot levels to anchor Y range even if history has sparse RR data
-    const curLrr = levels && levels.lrr, curTrr = levels && levels.trr;
-    const curMrr = levels && levels.mrr;
-
-    const allVals = [...prices, ...lrrs, ...trrs, ...trends, ...trades,
-                     curLrr, curTrr].filter(v => v != null);
+    const allVals = [...prices, ...lrrs, ...trrs, ...trends, ...trades].filter(v => v != null);
     if (!allVals.length) return;
     const yMin = Math.min(...allVals), yMax = Math.max(...allVals);
     const pad = (yMax - yMin) * 0.05 || 1;
@@ -411,7 +405,22 @@
     const xPx = i => PAD_L + (n > 1 ? (i / (n - 1)) * cW : cW / 2);
     const yPx = v => PAD_T + cH * (1 - (v - yMinP) / yRangeP);
 
-    const polyline = (arr, color, lw, dash = '') => {
+    // Step-function polyline — each value holds until the next change
+    const stepPolyline = (arr, color, lw, dash = '') => {
+      const pts = [];
+      for (let i = 0; i < n; i++) {
+        if (arr[i] == null) continue;
+        pts.push(`${xPx(i).toFixed(1)},${yPx(arr[i]).toFixed(1)}`);
+        // Extend horizontally to next point
+        if (i + 1 < n && arr[i+1] != null && arr[i+1] !== arr[i]) {
+          pts.push(`${xPx(i+1).toFixed(1)},${yPx(arr[i]).toFixed(1)}`);
+        }
+      }
+      if (!pts.length) return '';
+      return `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="${lw}" stroke-linejoin="round" ${dash ? `stroke-dasharray="${dash}"` : ''}/>`;
+    };
+
+    const smoothPolyline = (arr, color, lw, dash = '') => {
       const pts = arr.map((v, i) => v != null ? `${xPx(i).toFixed(1)},${yPx(v).toFixed(1)}` : null);
       let segs = [], seg = [];
       pts.forEach(p => { if (p) seg.push(p); else if (seg.length) { segs.push(seg); seg = []; } });
@@ -421,23 +430,31 @@
       ).join('');
     };
 
-    // Full-width horizontal lines for current RR levels (always shown)
-    const hlineR = (v, color, dash, label) => v != null && v >= yMinP && v <= yMaxP
-      ? `<line x1="${PAD_L}" y1="${yPx(v).toFixed(1)}" x2="${PAD_L+cW}" y2="${yPx(v).toFixed(1)}" stroke="${color}" stroke-width="1" stroke-dasharray="${dash}"/>
-         <text x="${PAD_L+cW+3}" y="${yPx(v)+4}" fill="${color}" font-size="8" font-weight="600">${label}</text>` : '';
-
-    // Green zone fill: prefer time-series; fall back to full-width rect using current levels
+    // Green zone fill between TRR and LRR (step-function polygon)
     let rrFill = '';
     const rrPts = lrrs.map((lv, i) => ({ i, lv, tv: trrs[i] })).filter(d => d.lv != null && d.tv != null);
-    if (rrPts.length > 1) {
-      const topPts = rrPts.map(d => `${xPx(d.i).toFixed(1)},${yPx(d.tv).toFixed(1)}`).join(' ');
-      const botPts = [...rrPts].reverse().map(d => `${xPx(d.i).toFixed(1)},${yPx(d.lv).toFixed(1)}`).join(' `');
-      rrFill = `<polygon points="${topPts} ${botPts}" fill="#f0fdf4" stroke="none"/>`;
-    } else if (curLrr != null && curTrr != null) {
-      // Sparse data — draw green zone as a full-width rect using current levels
-      const y1 = yPx(curTrr), y2 = yPx(curLrr);
-      rrFill = `<rect x="${PAD_L}" y="${y1.toFixed(1)}" width="${cW}" height="${Math.max(y2-y1,1).toFixed(1)}" fill="#f0fdf4"/>`;
+    if (rrPts.length >= 1) {
+      // Build step-function polygon top (TRR) then reverse bottom (LRR)
+      const topPts = [], botPts = [];
+      for (let k = 0; k < rrPts.length; k++) {
+        const { i, lv, tv } = rrPts[k];
+        topPts.push(`${xPx(i).toFixed(1)},${yPx(tv).toFixed(1)}`);
+        if (k + 1 < rrPts.length) topPts.push(`${xPx(rrPts[k+1].i).toFixed(1)},${yPx(tv).toFixed(1)}`);
+        botPts.unshift(`${xPx(i).toFixed(1)},${yPx(lv).toFixed(1)}`);
+        if (k + 1 < rrPts.length) botPts.unshift(`${xPx(rrPts[k+1].i).toFixed(1)},${yPx(lv).toFixed(1)}`);
+      }
+      rrFill = `<polygon points="${[...topPts,...botPts].join(' ')}" fill="#f0fdf4" stroke="none"/>`;
     }
+
+    // Right-side labels for latest TRR and LRR
+    const latestTrr = [...trrs].reverse().find(v => v != null);
+    const latestLrr = [...lrrs].reverse().find(v => v != null);
+    const rrLabels = [
+      latestTrr != null && latestTrr >= yMinP && latestTrr <= yMaxP
+        ? `<text x="${PAD_L+cW+3}" y="${yPx(latestTrr)+4}" fill="#15803d" font-size="9" font-weight="600">TRR ${latestTrr.toFixed(0)}</text>` : '',
+      latestLrr != null && latestLrr >= yMinP && latestLrr <= yMaxP
+        ? `<text x="${PAD_L+cW+3}" y="${yPx(latestLrr)+4}" fill="#15803d" font-size="9" font-weight="600">LRR ${latestLrr.toFixed(0)}</text>` : '',
+    ].join('');
 
     // Date labels (first, mid, last)
     const dateLabel = i => { const d = dates[i]; if (!d) return ''; const p = d.split('-'); return p.length >= 3 ? `${p[1]}/${p[2]}` : d; };
@@ -445,15 +462,13 @@
       `<text x="${xPx(i).toFixed(1)}" y="${H-4}" fill="#94a3b8" font-size="8" text-anchor="middle">${dateLabel(i)}</text>`
     ).join('');
 
-    // Y-axis labels
-    const yLabelVals = [yMin, (yMin+yMax)/2, yMax];
-    const yLabels = yLabelVals.map(v =>
+    // Y-axis labels (top, mid, bottom)
+    const yLabels = [yMin, (yMin+yMax)/2, yMax].map(v =>
       `<text x="${PAD_L-3}" y="${yPx(v)+4}" fill="#94a3b8" font-size="8" text-anchor="end">${v.toFixed(0)}</text>`
     ).join('');
 
     const todayX = xPx(n - 1);
     const todayMark = `<line x1="${todayX}" y1="${PAD_T}" x2="${todayX}" y2="${PAD_T+cH}" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2 2"/>`;
-
     const curPrice = prices[n-1];
     const curLine = curPrice != null
       ? `<line x1="${PAD_L}" y1="${yPx(curPrice).toFixed(1)}" x2="${PAD_L+cW}" y2="${yPx(curPrice).toFixed(1)}" stroke="#374151" stroke-width="0.7" stroke-dasharray="3 3"/>` : '';
@@ -461,18 +476,14 @@
     svgEl.setAttribute('width', W);
     svgEl.innerHTML = `
       ${rrFill}
-      ${hlineR(curTrr, '#15803d', '5 2', `TRR ${curTrr != null ? curTrr.toFixed(0) : ''}`)}
-      ${hlineR(curMrr, '#4ade80', '2 3', `MRR ${curMrr != null ? curMrr.toFixed(0) : ''}`)}
-      ${hlineR(curLrr, '#15803d', '5 2', `LRR ${curLrr != null ? curLrr.toFixed(0) : ''}`)}
       ${todayMark}${curLine}
-      ${polyline(trends, '#818cf8', 1,   '3 2')}
-      ${polyline(trades, '#f97316', 1,   '3 2')}
-      ${polyline(trrs,   '#15803d', 1.5, '4 2')}
-      ${polyline(mrrs,   '#4ade80', 1,   '2 2')}
-      ${polyline(lrrs,   '#15803d', 1.5, '4 2')}
-      ${polyline(prices, '#2563eb', 2)}
-      ${xLabels}${yLabels}
-      <text x="${W/2}" y="${H-12}" fill="#64748b" font-size="8" text-anchor="middle" font-weight="600">60-day history</text>
+      ${smoothPolyline(trends, '#818cf8', 1,   '3 2')}
+      ${smoothPolyline(trades, '#f97316', 1,   '3 2')}
+      ${stepPolyline(trrs,   '#15803d', 1.5, '4 2')}
+      ${stepPolyline(lrrs,   '#15803d', 1.5, '4 2')}
+      ${smoothPolyline(prices, '#2563eb', 2)}
+      ${rrLabels}${xLabels}${yLabels}
+      <text x="${(PAD_L+PAD_L+cW)/2}" y="${H-12}" fill="#64748b" font-size="8" text-anchor="middle" font-weight="600">60-day history</text>
     `;
   }
 

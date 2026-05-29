@@ -854,19 +854,18 @@ def get_rr_history(symbol: str = Query(...), date: str = Query(...), days: int =
             ORDER BY snapshot_date, sequence DESC
         """), {"sym": sym, "s": d_start, "e": d_end}).fetchall()
 
-        # RR snapshots (weekly/periodic — forward-fill between dates)
+        # RR snapshots — also fetch one prior to window for backward-fill
         rr_rows = s.execute(text("""
             SELECT DISTINCT ON (snapshot_date) snapshot_date, buy_trade, sell_trade
-            FROM hist_rr WHERE tos_symbol=:sym
-              AND snapshot_date >= :s AND snapshot_date <= :e
+            FROM hist_rr WHERE tos_symbol=:sym AND snapshot_date <= :e
             ORDER BY snapshot_date
-        """), {"sym": sym, "s": d_start, "e": d_end}).fetchall()
+        """), {"sym": sym, "e": d_end}).fetchall()
 
-    # Build date-keyed RR map then forward-fill over td dates
+    # Build date-keyed RR map; forward+backward fill over td dates
     rr_map = {str(r[0]): (_f(r[1]), _f(r[2])) for r in rr_rows}
-    last_lrr, last_trr = None, None
 
-    dates, prices, lrrs, trrs, mrrs, trends, trades = [], [], [], [], [], [], []
+    dates, prices, lrrs, trrs, trends, trades = [], [], [], [], [], []
+    last_lrr, last_trr = None, None
     for snap, price, trend_v, trade_v in td_rows:
         ds = str(snap)
         if ds in rr_map:
@@ -875,13 +874,21 @@ def get_rr_history(symbol: str = Query(...), date: str = Query(...), days: int =
         prices.append(_f(price))
         lrrs.append(last_lrr)
         trrs.append(last_trr)
-        mrrs.append(round((last_lrr + last_trr) / 2, 3) if last_lrr and last_trr else None)
         trends.append(_f(trend_v))
         trades.append(_f(trade_v))
 
+    # Backward-fill: propagate first known RR value to earlier dates
+    first_lrr = next((v for v in lrrs if v is not None), None)
+    first_trr = next((v for v in trrs if v is not None), None)
+    for i in range(len(lrrs)):
+        if lrrs[i] is None: lrrs[i] = first_lrr
+        else: break
+    for i in range(len(trrs)):
+        if trrs[i] is None: trrs[i] = first_trr
+        else: break
+
     return {"symbol": sym, "dates": dates, "price": prices,
-            "lrr": lrrs, "trr": trrs, "mrr": mrrs,
-            "trend": trends, "trade": trades}
+            "lrr": lrrs, "trr": trrs, "trend": trends, "trade": trades}
 
 
 @router.get("/api/actionable/history")
