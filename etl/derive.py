@@ -2201,8 +2201,13 @@ def _populate_generic_tos_symbol(session: Session, table: str, as_of_date: date)
     Try to match symbol against tos_ticker, y_ticker, rr_name in that order.
     Return tos_ticker if matched, otherwise use original symbol.
     """
-    # hist_cst and hist_ft use trade_date; all others use snapshot_date
-    date_col = "trade_date" if table in ("hist_cst", "hist_ft") else "snapshot_date"
+    # Different tables use different date columns
+    if table in ("hist_cst", "hist_ft"):
+        date_col = "trade_date"
+    elif table in ("hist_etfchg", "hist_iichg"):
+        date_col = "event_date"
+    else:
+        date_col = "snapshot_date"
 
     rows = session.execute(text(f"""
         SELECT DISTINCT symbol FROM {table}
@@ -2475,6 +2480,10 @@ def derive_all(session: Session, as_of_date: date,
 
     # hist_ps: Uses 'ticker' column instead of 'symbol'
     counts["hist_ps_tos_symbol"] = _populate_ps_tos_symbol(session, as_of_date)
+
+    # hist_etfchg, hist_iichg: Event-based change tables
+    counts["hist_etfchg_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_etfchg", as_of_date)
+    counts["hist_iichg_tos_symbol"] = _populate_generic_tos_symbol(session, "hist_iichg", as_of_date)
 
     # Each derive wrapped so one failing/crashing call doesn't kill the rest
     # AND the calling process. Uses BaseException to also catch SystemExit

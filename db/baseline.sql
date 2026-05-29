@@ -1628,6 +1628,8 @@ CREATE TABLE IF NOT EXISTS hist_etfchg (
 
     symbol        TEXT NOT NULL,
 
+    tos_symbol    TEXT,
+
     description   TEXT,
 
     outlook       TEXT,
@@ -1657,6 +1659,8 @@ CREATE TABLE IF NOT EXISTS hist_iichg (
     event_date    DATE NOT NULL,
 
     symbol        TEXT NOT NULL,
+
+    tos_symbol    TEXT,
 
     outlook       TEXT,
 
