@@ -130,6 +130,7 @@ Re-running derive for date D is idempotent: same numbers; only date D's derivati
 16. **Symbol normalization: use tos_symbol in all derives.** All `hist_*` tables have a `tos_symbol` column populated during the ETL load/populate phase. All derive functions (`drv_*`) must use `tos_symbol` as the primary symbol key, never raw `symbol`. This includes: symbol universe CTEs, joins between tables, GROUP BY clauses, and output rows. The populate phase guarantees 100% population of `tos_symbol`, so no `COALESCE(tos_symbol, symbol)` is needed. See `docs/tos_symbol_normalization.md` for details.
 17. **Symbol column only in hist_* tables.** The `symbol` column must exist ONLY in `hist_*` tables for backward compatibility. All other tables (`drv_*`, `ref_*`, `meta_*`, views, functions) must use `tos_symbol` exclusively. Never add `symbol` to derived or reference tables.
 18. **Brief description + permission for DB changes.** Any database schema change (ALTER TABLE, CREATE TABLE, indices, functions) must be described in one line, then wait for explicit approval before proceeding.
+19. **Brief description + permission for code logic changes.** Any non-trivial code logic changes (ETL logic, derive functions, API endpoints, business logic) must be described in one line, then wait for explicit approval before proceeding. Excludes: obvious typo fixes, renaming for consistency (when already approved), minimal syntax fixes.
 
 ---
 
