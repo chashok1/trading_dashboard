@@ -172,17 +172,23 @@ def _apply_filter_rule(session, table, table_name: str, rule: dict, d):
         return ("WHERE 1=0", {}, f"no {date_col} < {d.isoformat()} found - empty result")
 
     if ft == FILTER_LATEST_ON_OR_BEFORE:
-        max_d = session.execute(
-            text(f"SELECT MAX({date_cast}) FROM {table_name} WHERE {date_cast} <= :d"),
-            {"d": d},
-        ).scalar()
+        # Special case: for hist_etfchg/hist_iichg, get the absolute latest date in the table
+        if table_name in ("hist_etfchg", "hist_iichg"):
+            max_d = session.execute(
+                text(f"SELECT MAX({date_cast}) FROM {table_name}"),
+            ).scalar()
+        else:
+            max_d = session.execute(
+                text(f"SELECT MAX({date_cast}) FROM {table_name} WHERE {date_cast} <= :d"),
+                {"d": d},
+            ).scalar()
         if max_d:
             return (
                 f"WHERE {date_cast} = :max_d",
                 {"max_d": max_d},
-                f"latest {date_col} <= {d.isoformat()} (resolved to {max_d.isoformat()})",
+                f"latest {date_col} = {max_d.isoformat()}",
             )
-        return ("WHERE 1=0", {}, f"no {date_col} <= {d.isoformat()} found - empty result")
+        return ("WHERE 1=0", {}, f"no data found in {table_name}")
 
     if ft in (FILTER_WINDOW_30_DAYS, FILTER_WINDOW_14_DAYS):
         from datetime import timedelta as _td
