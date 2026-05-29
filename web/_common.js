@@ -233,6 +233,13 @@
         <rect x="${xMid-8}" y="${top}" width="16" height="${bH}" fill="${fill}" stroke="${up?'#15803d':'#b91c1c'}" stroke-width="1" rx="1"/>`;
     };
 
+    // Dashed horizontal reference lines for prev close and current price
+    const refLines = [];
+    if (prev != null && prev >= yMin && prev <= yMax)
+      refLines.push(`<line x1="${x0}" y1="${yPx(prev)}" x2="${x1}" y2="${yPx(prev)}" stroke="#94a3b8" stroke-width="0.8" stroke-dasharray="3 3"/>`);
+    if (cur  != null && cur  >= yMin && cur  <= yMax)
+      refLines.push(`<line x1="${x0}" y1="${yPx(cur)}"  x2="${x1}" y2="${yPx(cur)}"  stroke="#374151" stroke-width="0.8" stroke-dasharray="3 3"/>`);
+
     // Left labels: hist_td (prev close) — offset up/down if too close to cur
     // Right labels: drv_quote (current)
     const MIN_LABEL_GAP = 11;
@@ -250,7 +257,7 @@
          <text x="${x1+PAD_R-2}" y="${curY+13}" fill="#94a3b8" font-size="7" text-anchor="end">today</text>` : '';
 
     const svgToday = `<svg width="${W}" height="${H}" style="overflow:visible;display:block;">
-      ${rrZone}${lines.join('')}${priceBar()}${leftLbls}${rightLbls}
+      ${rrZone}${lines.join('')}${refLines.join('')}${priceBar()}${leftLbls}${rightLbls}
       <text x="${xMid}" y="${H}" fill="#64748b" font-size="8" text-anchor="middle" font-weight="600">Today</text>
     </svg>`;
 
@@ -289,7 +296,9 @@
         <div style="font-size:8px;color:#94a3b8;text-align:center;margin-top:1px;">
           <span style="color:#2563eb;">— price</span> &nbsp;
           <span style="color:#15803d;">— TRR/LRR</span> &nbsp;
-          <span style="color:#4ade80;">— MRR</span>
+          <span style="color:#4ade80;">— MRR</span> &nbsp;
+          <span style="color:#f97316;">— Trade</span> &nbsp;
+          <span style="color:#818cf8;">— Trend</span>
         </div>
       </div>
 
@@ -344,13 +353,14 @@
   // ── Historical RR line chart ──────────────────────────────────────────────
   function _renderHistChart(svgEl, h, H) {
     const dates = h.dates, prices = h.price, lrrs = h.lrr, trrs = h.trr, mrrs = h.mrr;
+    const trends = h.trend || [], trades = h.trade || [];
     const n = dates.length;
     if (!n) return;
 
     const W = 280, PAD_L = 36, PAD_R = 8, PAD_T = 10, PAD_B = 22;
     const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
 
-    const allVals = [...prices, ...lrrs, ...trrs].filter(v => v != null);
+    const allVals = [...prices, ...lrrs, ...trrs, ...trends, ...trades].filter(v => v != null);
     if (!allVals.length) return;
     const yMin = Math.min(...allVals), yMax = Math.max(...allVals);
     const yRange = yMax - yMin || 1;
@@ -402,9 +412,21 @@
     const todayX = xPx(n - 1);
     const todayMark = `<line x1="${todayX}" y1="${PAD_T}" x2="${todayX}" y2="${PAD_T+cH}" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2 2"/>`;
 
+    // Prev close + current dashed reference lines
+    const prevPrice = prices[n-2] != null ? prices[n-2] : null;
+    const curPrice  = prices[n-1] != null ? prices[n-1] : null;
+    const hrefLines = [];
+    if (prevPrice != null)
+      hrefLines.push(`<line x1="${PAD_L}" y1="${yPx(prevPrice).toFixed(1)}" x2="${PAD_L+cW}" y2="${yPx(prevPrice).toFixed(1)}" stroke="#94a3b8" stroke-width="0.7" stroke-dasharray="3 3"/>`);
+    if (curPrice != null)
+      hrefLines.push(`<line x1="${PAD_L}" y1="${yPx(curPrice).toFixed(1)}" x2="${PAD_L+cW}" y2="${yPx(curPrice).toFixed(1)}" stroke="#374151" stroke-width="0.7" stroke-dasharray="3 3"/>`);
+
     svgEl.innerHTML = `
       ${rrFill}
       ${todayMark}
+      ${hrefLines.join('')}
+      ${polyline(trends, '#818cf8', 1,   '3 2')}
+      ${polyline(trades, '#f97316', 1,   '3 2')}
       ${polyline(trrs,   '#15803d', 1.2, '4 2')}
       ${polyline(mrrs,   '#4ade80', 1,   '2 2')}
       ${polyline(lrrs,   '#15803d', 1.2, '4 2')}

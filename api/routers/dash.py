@@ -845,9 +845,10 @@ def get_rr_history(symbol: str = Query(...), date: str = Query(...), days: int =
         raise HTTPException(400, "date must be YYYY-MM-DD")
     def _f(v): return float(v) if v is not None else None
     with session_scope() as s:
-        # Daily prices from hist_td
+        # Daily prices + trend/trade from hist_td
         td_rows = s.execute(text("""
-            SELECT DISTINCT ON (snapshot_date) snapshot_date, last_price
+            SELECT DISTINCT ON (snapshot_date) snapshot_date, last_price,
+                   a_trend_value, a_trade_value
             FROM hist_td WHERE tos_symbol=:sym
               AND snapshot_date >= :s AND snapshot_date <= :e
             ORDER BY snapshot_date, sequence DESC
@@ -865,8 +866,8 @@ def get_rr_history(symbol: str = Query(...), date: str = Query(...), days: int =
     rr_map = {str(r[0]): (_f(r[1]), _f(r[2])) for r in rr_rows}
     last_lrr, last_trr = None, None
 
-    dates, prices, lrrs, trrs, mrrs = [], [], [], [], []
-    for snap, price in td_rows:
+    dates, prices, lrrs, trrs, mrrs, trends, trades = [], [], [], [], [], [], []
+    for snap, price, trend_v, trade_v in td_rows:
         ds = str(snap)
         if ds in rr_map:
             last_lrr, last_trr = rr_map[ds]
@@ -875,8 +876,12 @@ def get_rr_history(symbol: str = Query(...), date: str = Query(...), days: int =
         lrrs.append(last_lrr)
         trrs.append(last_trr)
         mrrs.append(round((last_lrr + last_trr) / 2, 3) if last_lrr and last_trr else None)
+        trends.append(_f(trend_v))
+        trades.append(_f(trade_v))
 
-    return {"symbol": sym, "dates": dates, "price": prices, "lrr": lrrs, "trr": trrs, "mrr": mrrs}
+    return {"symbol": sym, "dates": dates, "price": prices,
+            "lrr": lrrs, "trr": trrs, "mrr": mrrs,
+            "trend": trends, "trade": trades}
 
 
 @router.get("/api/actionable/history")
