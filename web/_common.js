@@ -323,23 +323,7 @@
     el.innerHTML = `
     <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
 
-      <!-- Today's bar chart (RR bands) -->
-      <div style="flex-shrink:0;">${svgToday}</div>
-
-      <!-- Trade / Trend separate chart -->
-      ${svgTT ? `<div style="flex-shrink:0;">${svgTT}</div>` : ''}
-
-      <!-- Historical chart -->
-      <div style="flex-shrink:0;">${histSvg}
-        <div style="font-size:8px;color:#94a3b8;text-align:center;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
-          <span style="color:#2563eb;">&#9644; price</span>
-          <span style="color:#15803d;">&#9135;&#9135; TRR/LRR</span>
-          <span style="color:#f97316;">&#9135;&#9135; Trade</span>
-          <span style="color:#818cf8;">&#9135;&#9135; Trend</span>
-        </div>
-      </div>
-
-      <!-- Right panel -->
+      <!-- Left panel (descriptions + action) -->
       <div style="flex:1;min-width:160px;max-width:260px;display:flex;flex-direction:column;gap:8px;">
 
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;
@@ -372,6 +356,23 @@
         </div>
 
       </div>
+
+      <!-- Today's bar chart (RR bands) -->
+      <div style="flex-shrink:0;">${svgToday}</div>
+
+      <!-- Trade / Trend separate chart -->
+      ${svgTT ? `<div style="flex-shrink:0;">${svgTT}</div>` : ''}
+
+      <!-- Historical chart -->
+      <div style="flex-shrink:0;">${histSvg}
+        <div style="font-size:8px;color:#94a3b8;text-align:center;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+          <span style="color:#2563eb;">&#9644; price</span>
+          <span style="color:#15803d;">&#9135;&#9135; TRR/LRR</span>
+          <span style="color:#f97316;">&#9135;&#9135; Trade</span>
+          <span style="color:#818cf8;">&#9135;&#9135; Trend</span>
+        </div>
+      </div>
+
     </div>`;
 
     // ── Async: fetch and render historical chart ──────────────────────────────
@@ -389,10 +390,16 @@
 
   // ── Historical RR line chart ──────────────────────────────────────────────
   function _renderHistChart(svgEl, h, H, levels) {
-    const dates = h.dates, prices = h.price, lrrs = h.lrr, trrs = h.trr;
+    const dates = h.dates, prices = h.price;
     const trends = h.trend || [], trades = h.trade || [];
     const n = dates.length;
     if (!n) return;
+
+    // Client-side backward+forward fill for LRR/TRR
+    const lrrs = [...(h.lrr || [])], trrs = [...(h.trr || [])];
+    const firstLrr = lrrs.find(v => v != null), firstTrr = trrs.find(v => v != null);
+    for (let i = 0; i < n; i++) { if (lrrs[i] == null) lrrs[i] = firstLrr ?? null; else break; }
+    for (let i = 0; i < n; i++) { if (trrs[i] == null) trrs[i] = firstTrr ?? null; else break; }
 
     const W = 380, PAD_L = 44, PAD_R = 54, PAD_T = 10, PAD_B = 22;
     const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
