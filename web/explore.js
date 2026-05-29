@@ -123,7 +123,8 @@ DOM.tableSelect.addEventListener('change', async (e) => {
     // Find the latest date available in this specific table
     let latestDateForTable = state.latestDate;
     try {
-        const dateResp = await fetch(`/api/data/${tableName}?limit=1&offset=0&date=all&sort_by=snapshot_date&sort_dir=desc`);
+        // First request without sort to find what date columns exist
+        const dateResp = await fetch(`/api/data/${tableName}?limit=1&offset=0&date=all`);
         if (dateResp.ok) {
             const dateData = await dateResp.json();
             if (dateData.rows && dateData.rows.length > 0) {
@@ -131,8 +132,15 @@ DOM.tableSelect.addEventListener('change', async (e) => {
                 const dateCol = dateData.columns.find(c =>
                     c.name === 'snapshot_date' || c.name === 'as_of_date' || c.name === 'event_date'
                 );
-                if (dateCol && dateData.rows[0][dateCol.name]) {
-                    latestDateForTable = dateData.rows[0][dateCol.name].substring(0, 10);
+                if (dateCol) {
+                    // Re-fetch sorted by the actual date column
+                    const sortedResp = await fetch(`/api/data/${tableName}?limit=1&offset=0&date=all&sort_by=${dateCol.name}&sort_dir=desc`);
+                    if (sortedResp.ok) {
+                        const sortedData = await sortedResp.json();
+                        if (sortedData.rows && sortedData.rows.length > 0 && sortedData.rows[0][dateCol.name]) {
+                            latestDateForTable = sortedData.rows[0][dateCol.name].substring(0, 10);
+                        }
+                    }
                 }
             }
         }
