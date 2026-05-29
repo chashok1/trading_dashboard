@@ -319,15 +319,13 @@
            <div style="font-size:11px;color:#1e293b;line-height:1.35;">${text}</div>
          </div>` : '';
 
-    // ── tagged descRow — short_name badge + label + text ─────────────────────
-    const taggedRow = (shortName, label, text) => text
+    // ── tagged descRow — label + "short_name: description" ──────────────────
+    const taggedRow = (shortName, label, text) => (shortName || text)
       ? `<div style="margin-bottom:8px;">
-           <div style="display:flex;align-items:baseline;gap:5px;margin-bottom:2px;">
-             ${shortName ? `<span style="font-size:9px;font-weight:700;color:#fff;background:#4338ca;
-               padding:1px 5px;border-radius:3px;letter-spacing:0.02em;white-space:nowrap;">${shortName}</span>` : ''}
-             <span style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;">${label}</span>
+           <div style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px;">${label}</div>
+           <div style="font-size:11px;color:#1e293b;line-height:1.35;">
+             ${shortName ? `<span style="font-weight:700;color:#4338ca;">${shortName}</span>${text ? ': ' : ''}` : ''}${text || ''}
            </div>
-           <div style="font-size:11px;color:#1e293b;line-height:1.35;">${text}</div>
          </div>` : '';
 
     // ── Assemble ──────────────────────────────────────────────────────────────
