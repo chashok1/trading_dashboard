@@ -188,80 +188,114 @@
     };
 
     // ── Today's price bar (current snapshot) ─────────────────────────────────
-    // Include trade/trend in Y range so they show if in range
-    const vals = [cur, prev, hi, lo, lrr, trr, trend, trade].filter(v => v != null);
-    const rawMin = Math.min(...vals);
-    const rawMax = Math.max(...vals);
+    // ── Chart 1: Today's price bar vs RR bands ────────────────────────────────
+    // Y scale = RR range only (lrr..trr + price); Trade/Trend in separate chart
+    const vals1 = [cur, prev, hi, lo, lrr, trr].filter(v => v != null);
+    const rawMin1 = Math.min(...vals1), rawMax1 = Math.max(...vals1);
+    const W1 = 160, H = 220, PAD_L = 44, PAD_R = 54, PAD_T = 12, PAD_B = 18;
+    const chartW1 = W1 - PAD_L - PAD_R, chartH = H - PAD_T - PAD_B;
+    const pad1 = sdVal ? sdVal * 0.35 : (rawMax1 - rawMin1) * 0.08;
+    const yMin1 = rawMin1 - pad1, yMax1 = rawMax1 + pad1, yRng1 = yMax1 - yMin1 || 1;
+    const yPx1 = v => PAD_T + chartH * (1 - (v - yMin1) / yRng1);
+    const x0 = PAD_L, x1 = PAD_L + chartW1, xMid1 = PAD_L + chartW1 * 0.5;
 
-    // Left Y-axis = hist_td labels, Right Y-axis = drv_quote + named lines
-    const W = 160, H = 220, PAD_L = 44, PAD_R = 54, PAD_T = 12, PAD_B = 18;
-    const chartW = W - PAD_L - PAD_R;
-    const chartH = H - PAD_T - PAD_B;
-    const pad = sdVal ? sdVal * 0.35 : (rawMax - rawMin) * 0.08;
-    const yMin = rawMin - pad, yMax = rawMax + pad, yRange = yMax - yMin || 1;
-    const yPx = v => PAD_T + chartH * (1 - (v - yMin) / yRange);
-    const x0 = PAD_L, x1 = PAD_L + chartW, xMid = PAD_L + chartW * 0.5;
-
-    // Named horizontal lines — all drawn to right side with label
-    const hline = (y, color, dash, label, lw = '1.2') =>
-      `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="${color}" stroke-width="${lw}" stroke-dasharray="${dash}"/>
+    const hline1 = (y, color, dash, label) =>
+      `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"/>
        <text x="${x1+4}" y="${y+4}" fill="${color}" font-size="9" font-weight="600">${label}</text>`;
 
-    // Light dashed lines for prev/current — label on LEFT for prev, RIGHT for current
-    // Labels sit exactly on the dashed line; gap applied only if labels overlap
-    const prevYexact = prev != null && prev >= yMin && prev <= yMax ? yPx(prev) : null;
-    const curYexact  = cur  != null && cur  >= yMin && cur  <= yMax ? yPx(cur)  : null;
+    const prevYe = prev != null && prev >= yMin1 && prev <= yMax1 ? yPx1(prev) : null;
+    const curYe  = cur  != null && cur  >= yMin1 && cur  <= yMax1 ? yPx1(cur)  : null;
     const MIN_GAP = 10;
-    let prevLY = prevYexact, curLY = curYexact;
+    let prevLY = prevYe, curLY = curYe;
     if (prevLY != null && curLY != null && Math.abs(prevLY - curLY) < MIN_GAP) {
-      const dir = prev > cur ? -1 : 1;
-      prevLY -= dir * (MIN_GAP - Math.abs(prevLY - curLY)) / 2;
-      curLY  += dir * (MIN_GAP - Math.abs(prevLY - curLY)) / 2;
+      const half = (MIN_GAP - Math.abs(prevLY - curLY)) / 2;
+      if (prev > cur) { prevLY -= half; curLY += half; } else { prevLY += half; curLY -= half; }
     }
 
-    const priceDashes = [
-      prevYexact != null ? `<line x1="${x0}" y1="${prevYexact}" x2="${x1}" y2="${prevYexact}" stroke="#94a3b8" stroke-width="0.8" stroke-dasharray="3 3"/>` : '',
-      curYexact  != null ? `<line x1="${x0}" y1="${curYexact}"  x2="${x1}" y2="${curYexact}"  stroke="#374151" stroke-width="0.8" stroke-dasharray="3 3"/>` : '',
-      // Left label for prev (hist_td)
+    const priceDashes1 = [
+      prevYe != null ? `<line x1="${x0}" y1="${prevYe}" x2="${x1}" y2="${prevYe}" stroke="#94a3b8" stroke-width="0.8" stroke-dasharray="3 3"/>` : '',
+      curYe  != null ? `<line x1="${x0}" y1="${curYe}"  x2="${x1}" y2="${curYe}"  stroke="#374151" stroke-width="0.8" stroke-dasharray="3 3"/>` : '',
       prevLY != null ? `<text x="${x0-3}" y="${prevLY+4}" fill="#64748b" font-size="9" text-anchor="end">${fmt(prev)}</text>
                         <text x="${x0-3}" y="${prevLY+12}" fill="#94a3b8" font-size="7" text-anchor="end">prev</text>` : '',
-      // Right label for current (drv_quote) — after named line labels
-      curLY != null ? `<text x="${x1+4}" y="${curLY+4}" fill="#111" font-size="9" font-weight="700">${fmt(cur)}</text>
-                       <text x="${x1+4}" y="${curLY+12}" fill="#94a3b8" font-size="7">today</text>` : '',
+      curLY  != null ? `<text x="${x1+4}" y="${curLY+4}" fill="#111" font-size="9" font-weight="700">${fmt(cur)}</text>
+                        <text x="${x1+4}" y="${curLY+12}" fill="#94a3b8" font-size="7">today</text>` : '',
     ].join('');
 
     const rrZone = (lrr != null && trr != null)
-      ? `<rect x="${x0}" y="${yPx(trr)}" width="${chartW}" height="${Math.max(yPx(lrr)-yPx(trr),1)}" fill="#f0fdf4"/>`
-      : '';
+      ? `<rect x="${x0}" y="${yPx1(trr)}" width="${chartW1}" height="${Math.max(yPx1(lrr)-yPx1(trr),1)}" fill="#f0fdf4"/>` : '';
 
-    const lines = [];
-    if (trr   != null && trr   >= yMin && trr   <= yMax) lines.push(hline(yPx(trr),   '#15803d', '5 2', `TRR ${fmt(trr)}`));
-    if (mrr   != null && mrr   >= yMin && mrr   <= yMax) lines.push(hline(yPx(mrr),   '#4ade80', '2 3', `MRR ${fmt(mrr)}`));
-    if (lrr   != null && lrr   >= yMin && lrr   <= yMax) lines.push(hline(yPx(lrr),   '#15803d', '5 2', `LRR ${fmt(lrr)}`));
-    if (trade != null && trade >= yMin && trade <= yMax) lines.push(hline(yPx(trade), '#f97316', '3 2', `Trade ${fmt(trade)}`));
-    if (trend != null && trend >= yMin && trend <= yMax) lines.push(hline(yPx(trend), '#818cf8', '3 2', `Trend ${fmt(trend)}`));
+    const lines1 = [];
+    if (trr != null && trr >= yMin1 && trr <= yMax1) lines1.push(hline1(yPx1(trr), '#15803d', '5 2', `TRR ${fmt(trr)}`));
+    if (mrr != null && mrr >= yMin1 && mrr <= yMax1) lines1.push(hline1(yPx1(mrr), '#4ade80', '2 3', `MRR ${fmt(mrr)}`));
+    if (lrr != null && lrr >= yMin1 && lrr <= yMax1) lines1.push(hline1(yPx1(lrr), '#15803d', '5 2', `LRR ${fmt(lrr)}`));
 
-    const outLabels = [];
-    if (trend != null && trend < yMin) outLabels.push(`Trend ${fmt(trend)}`);
-    if (trade != null && trade < yMin) outLabels.push(`Trade ${fmt(trade)}`);
-
-    const priceBar = () => {
+    const priceBar1 = () => {
       if (cur == null) return '';
-      const top = yPx(Math.max(cur, prev ?? cur));
-      const bot = yPx(Math.min(cur, prev ?? cur));
-      const bH  = Math.max(bot - top, 2);
-      const up  = cur >= (prev ?? cur);
+      const top = yPx1(Math.max(cur, prev ?? cur)), bot = yPx1(Math.min(cur, prev ?? cur));
+      const bH = Math.max(bot - top, 2), up = cur >= (prev ?? cur);
       const fill = up ? '#16a34a' : '#dc2626';
-      const wickT = hi != null ? `<line x1="${xMid}" y1="${yPx(hi)}" x2="${xMid}" y2="${top}" stroke="${fill}" stroke-width="1.5"/>` : '';
-      const wickB = lo != null ? `<line x1="${xMid}" y1="${bot}" x2="${xMid}" y2="${yPx(lo)}" stroke="${fill}" stroke-width="1.5"/>` : '';
-      return `${wickT}${wickB}
-        <rect x="${xMid-8}" y="${top}" width="16" height="${bH}" fill="${fill}" stroke="${up?'#15803d':'#b91c1c'}" stroke-width="1" rx="1"/>`;
+      const wT = hi != null ? `<line x1="${xMid1}" y1="${yPx1(hi)}" x2="${xMid1}" y2="${top}" stroke="${fill}" stroke-width="1.5"/>` : '';
+      const wB = lo != null ? `<line x1="${xMid1}" y1="${bot}" x2="${xMid1}" y2="${yPx1(lo)}" stroke="${fill}" stroke-width="1.5"/>` : '';
+      return `${wT}${wB}<rect x="${xMid1-8}" y="${top}" width="16" height="${bH}" fill="${fill}" stroke="${up?'#15803d':'#b91c1c'}" stroke-width="1" rx="1"/>`;
     };
 
-    const svgToday = `<svg width="${W}" height="${H}" style="overflow:visible;display:block;">
-      ${rrZone}${lines.join('')}${priceDashes}${priceBar()}
-      <text x="${xMid}" y="${H}" fill="#64748b" font-size="8" text-anchor="middle" font-weight="600">Today</text>
+    const svgToday = `<svg width="${W1}" height="${H}" style="overflow:visible;display:block;">
+      ${rrZone}${lines1.join('')}${priceDashes1}${priceBar1()}
+      <text x="${xMid1}" y="${H}" fill="#64748b" font-size="8" text-anchor="middle" font-weight="600">Today (RR)</text>
     </svg>`;
+
+    // ── Chart 2: Trade / Trend — own scale, price indicator only ─────────────
+    const svgTT = (() => {
+      if (trend == null && trade == null) return '';
+      const W2 = 110, PAD_L2 = 42, PAD_R2 = 48, PAD_T2 = 12, PAD_B2 = 18;
+      const cW2 = W2 - PAD_L2 - PAD_R2, cH2 = H - PAD_T2 - PAD_B2;
+      // Y scale covers Trend..Trade only (+ padding)
+      const ttVals = [trend, trade].filter(v => v != null);
+      const ttMin = Math.min(...ttVals), ttMax = Math.max(...ttVals);
+      const ttPad = sdVal ? sdVal * 1.5 : (ttMax - ttMin) * 0.3 || 5;
+      const yMin2 = ttMin - ttPad, yMax2 = ttMax + ttPad, yRng2 = yMax2 - yMin2 || 1;
+      const yPx2 = v => PAD_T2 + cH2 * (1 - (v - yMin2) / yRng2);
+      const xa = PAD_L2, xb = PAD_L2 + cW2, xm2 = PAD_L2 + cW2 * 0.5;
+
+      const hline2 = (y, color, dash, label) =>
+        `<line x1="${xa}" y1="${y}" x2="${xb}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"/>
+         <text x="${xb+3}" y="${y+4}" fill="${color}" font-size="9" font-weight="600">${label}</text>`;
+
+      const trendLine = trend != null ? hline2(yPx2(trend), '#818cf8', '3 2', `Trend ${fmt(trend)}`) : '';
+      const tradeLine = trade != null ? hline2(yPx2(trade), '#f97316', '3 2', `Trade ${fmt(trade)}`) : '';
+
+      // Price indicator — show where current price is relative to these lines
+      let priceIndicator = '';
+      if (cur != null) {
+        if (cur > yMax2) {
+          // Price is above chart — show upward arrow at top with value
+          priceIndicator = `
+            <text x="${xm2}" y="${PAD_T2-2}" fill="#374151" font-size="8" text-anchor="middle" font-weight="700">↑ ${fmt(cur)}</text>
+            <text x="${xm2}" y="${PAD_T2+7}" fill="#94a3b8" font-size="7" text-anchor="middle">price (above)</text>`;
+        } else if (cur < yMin2) {
+          priceIndicator = `
+            <text x="${xm2}" y="${H-PAD_B2+8}" fill="#374151" font-size="8" text-anchor="middle" font-weight="700">↓ ${fmt(cur)}</text>
+            <text x="${xm2}" y="${H-PAD_B2+17}" fill="#94a3b8" font-size="7" text-anchor="middle">price (below)</text>`;
+        } else {
+          // Price is in range — light dashed line
+          const py2 = yPx2(cur);
+          priceIndicator = `
+            <line x1="${xa}" y1="${py2}" x2="${xb}" y2="${py2}" stroke="#374151" stroke-width="0.8" stroke-dasharray="3 3"/>
+            <text x="${xa-3}" y="${py2+4}" fill="#374151" font-size="9" text-anchor="end" font-weight="700">${fmt(cur)}</text>`;
+        }
+      }
+
+      // SD distances as text below chart
+      const trendSdTxt = sd.trend_sd != null
+        ? `<text x="${xm2}" y="${H+2}" fill="${scoreColor(sd.trend_sd)}" font-size="8" text-anchor="middle">Trend ${fmtSd(sd.trend_sd)}SD</text>` : '';
+      const tradeSdTxt = sd.trade_sd != null
+        ? `<text x="${xm2}" y="${H+12}" fill="${scoreColor(sd.trade_sd)}" font-size="8" text-anchor="middle">Trade ${fmtSd(sd.trade_sd)}SD</text>` : '';
+
+      return `<svg width="${W2}" height="${H}" style="overflow:visible;display:block;">
+        ${trendLine}${tradeLine}${priceIndicator}${trendSdTxt}${tradeSdTxt}
+        <text x="${xm2}" y="${H}" fill="#64748b" font-size="8" text-anchor="middle" font-weight="600">Trend/Trade</text>
+      </svg>`;
+    })();
 
     // ── Historical chart ──────────────────────────────────────────────────────
     const histId = 'rrHist_' + Math.random().toString(36).slice(2);
@@ -287,11 +321,11 @@
     el.innerHTML = `
     <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;">
 
-      <!-- Today's bar chart -->
-      <div style="flex-shrink:0;">
-        ${svgToday}
-        ${outLabels.length ? `<div style="font-size:9px;color:#94a3b8;margin-top:1px;">${outLabels.join(' · ')} (below)</div>` : ''}
-      </div>
+      <!-- Today's bar chart (RR bands) -->
+      <div style="flex-shrink:0;">${svgToday}</div>
+
+      <!-- Trade / Trend separate chart -->
+      ${svgTT ? `<div style="flex-shrink:0;">${svgTT}</div>` : ''}
 
       <!-- Historical chart -->
       <div style="flex-shrink:0;">${histSvg}
