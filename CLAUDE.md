@@ -233,3 +233,16 @@ If truncated, **don't re-`Edit`** — rewrite the tail via bash heredoc. Smaller
 | Rule groups logic | `docs/rule_groups_logic.md` |
 | Performance / feedback-loop logic | `docs/performance_logic.md` |
 | Symbol normalization strategy (tos_symbol) | `docs/tos_symbol_normalization.md` |
+
+---
+
+## Recent Migrations (2026-05-29)
+
+- **tos_symbol migration completed**: All `hist_*` and `drv_*` tables now use `tos_symbol` exclusively. Raw `symbol` columns remain in `hist_*` for reference only. Populate functions: `_populate_y_tos_symbol`, `_populate_rr_tos_symbol`, `_populate_ps_tos_symbol`, `_populate_tos_table_tos_symbol`, `_populate_generic_tos_symbol` (handles event_date for etfchg/iichg).
+- **RR file loader**: `load_rr()` in `etl/load_raw.py` loads Treasury/Index recommendations from RR tab. Registered in `CUSTOM_HANDLERS['rr']`.
+- **hist_ps special case**: Uses `ticker` column instead of `symbol`. Has `tos_symbol` populated via `_populate_ps_tos_symbol()` which maps ticker → tos_symbol via ref_rrt.
+- **hist_etfchg / hist_iichg**: Now have `tos_symbol` columns (added via ALTER TABLE in baseline.sql). Populated via `_populate_generic_tos_symbol()` with event_date date column.
+- **ETFChange loader**: `load_etfchg()` skips test/dummy rows (symbol in DUMMY, TEST, TEMPLATE) to prevent placeholder data from being loaded.
+- **Schema migration pattern**: For adding columns to existing tables, use `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` in baseline.sql (after CREATE TABLE ... IF NOT EXISTS blocks).
+- **replace_for_date atomic fix**: Added `session.flush()` after DELETE to ensure deletion is committed before INSERT. Prevents duplicate key errors when function called multiple times in rapid succession.
+- **API: derive-runs endpoint**: Defaults to latest available `as_of_date` (from meta_derived_run.MAX) instead of calendar today. File Monitor derive grid now shows recent runs correctly.
