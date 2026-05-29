@@ -537,11 +537,18 @@ def get_etl_runs(limit: int = Query(50, ge=25, le=250), file_type: Optional[str]
 @router.get("/api/monitor/derive-runs")
 def get_derive_runs(date_param: Optional[str] = Query(None, alias="date")):
     """
-    Derive pipeline runs for a given date. Defaults to today.
+    Derive pipeline runs for a given date. Defaults to the latest available as_of_date.
     """
-    target_date = date_param if date_param else str(date.today())
-
     with session_scope() as s:
+        # If no date specified, use the latest as_of_date from meta_derived_run
+        if not date_param:
+            max_date_row = s.execute(text("""
+                SELECT MAX(as_of_date) FROM meta_derived_run
+            """)).first()
+            target_date = max_date_row[0] if max_date_row and max_date_row[0] else date.today()
+        else:
+            target_date = date_param
+
         result = s.execute(text("""
             SELECT
                 run_id,
