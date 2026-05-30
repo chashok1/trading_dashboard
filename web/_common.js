@@ -315,8 +315,8 @@
              <span style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;">${label}</span>
              ${score != null ? `<span style="font-size:10px;font-weight:700;color:${scoreColor(score)};background:${score>0?'#f0fdf4':score<0?'#fef2f2':'#f8fafc'};border:1px solid ${score>0?'#bbf7d0':score<0?'#fecaca':'#e2e8f0'};padding:0 5px;border-radius:4px;">${score}</span>` : ''}
            </div>
-           <div style="font-size:11px;color:#1e293b;line-height:1.35;">
-             ${shortName ? `<span style="font-weight:700;color:#4338ca;">${shortName}</span>${text ? ': ' : ''}` : ''}${text || ''}
+           <div style="font-size:11px;color:${scoreColor(score)};line-height:1.35;">
+             ${shortName ? `<span style="font-weight:700;">${shortName}</span>${text ? ': ' : ''}` : ''}${text || ''}
            </div>
          </div>` : '';
 
