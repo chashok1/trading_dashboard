@@ -1418,12 +1418,10 @@ function setupRRActionCol() {
       const scCol = sc == null ? '#94a3b8' : sc > 0 ? '#16a34a' : sc < 0 ? '#dc2626' : '#64748b';
       const scBg  = sc == null ? '#f8fafc' : sc > 0 ? '#f0fdf4' : sc < 0 ? '#fef2f2' : '#f8fafc';
       const scBdr = sc == null ? '#e2e8f0' : sc > 0 ? '#bbf7d0' : sc < 0 ? '#fecaca' : '#e2e8f0';
-      return `<div style="margin-bottom:5px;">
-        <div style="display:flex;align-items:center;gap:5px;margin-bottom:1px;">
-          <span style="font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.04em;">${label}</span>
-          ${sc != null ? `<span style="font-size:10px;font-weight:700;color:${scCol};background:${scBg};border:1px solid ${scBdr};padding:0 4px;border-radius:4px;">${sc}</span>` : ''}
-        </div>
-        <div style="font-size:11px;color:#0f172a;line-height:1.3;">${desc || '—'}</div>
+      return `<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:5px;">
+        <span style="font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;">${label}</span>
+        ${sc != null ? `<span style="font-size:10px;font-weight:700;color:${scCol};background:${scBg};border:1px solid ${scBdr};padding:0 4px;border-radius:4px;white-space:nowrap;">${sc}</span>` : ''}
+        <span style="font-size:11px;color:#0f172a;line-height:1.3;text-align:right;margin-left:auto;">${desc || '—'}</span>
       </div>`;
     };
     const sec = label =>
