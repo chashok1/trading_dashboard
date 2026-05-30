@@ -217,6 +217,89 @@ QT | `td_tn_bb_action_seq` | Pass-3: same row, `.seq` column | ✓
 
 ---
 
+## Key formula explanations (plain English)
+
+### Trend Trade Rule (QE = `trade_trend_sd_rule`)
+
+Measures where price sits relative to the Trend and Trade lines, in standard-deviation units.
+
+```
+AC       = min(std_dev, median_sd)            — the SD unit
+trend_sd = (last_price − a_trend_value) / AC  — SDs above/below Trend
+trade_sd = (last_price − a_trade_value) / AC  — SDs above/below Trade
+tt_sd    = (a_trade_value − a_trend_value) / AC — gap between Trade and Trend
+```
+
+| Score | Condition | Meaning |
+|---|---|---|
+| −2 | trend_sd < 0 AND trade_sd < 0 | Price below both Trend and Trade |
+| −1 | tt_sd < 0 AND trade_sd < 1 | Close to or below Trade, near Trend |
+|  1 | else | Neutral |
+|  2 | trend_sd < 0 AND trade_sd > 0 | Above Trade but below Trend |
+|  3 | trend_sd > 0 AND trade_sd > 0 | Above both |
+|  4 | above both AND (gap > 2 SD OR price > 4 SD above either) | Strongly bullish — large gap or far above |
+
+`ref_param_lookup` `table_name='tn_td_rule'` maps QE → `short_name` (e.g. **Bull**, **Bear**, **>Tn<Td**) and `seq` (QF).
+
+---
+
+### BB Range Streak (QJ = `bb_rng_strk_rule`)
+
+Uses `a_bb_top_slope` and `a_bb_bot_slope` (rate of change of Bollinger Band upper/lower from TOS):
+
+| Score | Condition | Meaning |
+|---|---|---|
+|  4 | both slopes ≥ 3 | Both bands steeply up → strong bull |
+|  3 | both slopes ≥ 2 | Both bands moderately up |
+|  2 | top ≥ 3 AND top > bot | Top band rising faster → expanding up |
+|  1 | bot ≥ 2 AND top < 2 | Only bottom rising → accumulation |
+|  0 | else | Neutral |
+| −1 | top ≤ −3 AND bot > −2 | Top falling sharply → distribution |
+| −2 | bot ≤ −2 AND bot < top | Bottom falling faster → expanding down |
+| −3 | both ≤ −2 | Both bands moderately down |
+| −4 | both ≤ −3 | Both bands steeply down → strong bear |
+
+`ref_param_lookup` `table_name='bb_range'` maps QJ → `short_name` (e.g. **Bull**, **Neutral**, **PrBrkUp**) and `seq` (QK).
+
+---
+
+### RR Desc (QQ = `rr_desc`) and QP (`rr_bull_bear`)
+
+**QP** is set from QJ alone:
+- QJ ≥ 2 → `'B'` (Bull territory) → use `bull_rr_rule` table keyed by **QM**
+- QJ ≥ 0 → `'!B'` (Not-Bull) → use `nbull_rr_rule` table keyed by **QN**
+
+**QM** and **QN** are computed from KI/KJ/KK (TRR/MRR/LRR indices — where price sits relative to RR bands in SD units) combined with `perf1d_sd_rule` and `macdh_direction`.
+
+`short_name` from `bull_rr_rule` / `nbull_rr_rule` (e.g. **D>M**, **U=L**) describes the price/RR band relationship. `description` is populated by user from the workbook.
+
+---
+
+### Trend Trade BB Risk Range Rule Action (QR → QS = `td_tn_bb_action_desc`)
+
+Three-layer priority decision — Trend/Trade bearishness overrides everything:
+
+```
+QF = tn_td_rule.seq[QE]         — Trend/Trade signal strength
+QK = bb_range.seq[QJ]           — BB band signal strength
+QO = bull_rr_rule.seq[QM]   if QJ ≥ 2   (Bull path)
+   = nbull_rr_rule.seq[QN]  if QJ ≥ 0   (Not-Bull path)
+
+QR (final score):
+  if QF < 0           → QR = QF   (Trend/Trade bearish → wins)
+  else if QF > 0:
+    if QK < 0         → QR = QK   (BB bearish → wins over bull RR)
+    else              → QR = QO   (Both bullish → RR band position decides)
+  else                → QR = null
+
+QS = td_tn_bb_rr_action[QR]  → action code (e.g. BS=BuySome, STM=SellToMin, SA=SellAll)
+QT = td_tn_bb_rr_action[QR].seq → priority rank
+```
+
+**Plain English**: Trend/Trade bearish signal overrides everything. If Trend/Trade is bullish but BB bands are bearish, BB wins. If both are bullish, the RR band index (price vs TRR/MRR/LRR) determines the final action.
+
+---
+
 ## Idempotency
 
 ```python
