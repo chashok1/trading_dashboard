@@ -901,14 +901,14 @@ def _derive_rr_impl(session: Session, as_of_date: date, run_id: int) -> int:
         SELECT
             :d AS as_of_date,
             s.tos_symbol,
-            COALESCE(rr.buy_trade,  td.a_bb_bottom)  AS lrr,
-            COALESCE(rr.sell_trade, td.a_bb_top)     AS trr,
-            CASE WHEN COALESCE(rr.buy_trade, td.a_bb_bottom) IS NOT NULL
-                  AND COALESCE(rr.sell_trade, td.a_bb_top) IS NOT NULL
-                 THEN (COALESCE(rr.buy_trade, td.a_bb_bottom)
-                     + COALESCE(rr.sell_trade, td.a_bb_top)) / 2.0
+            COALESCE(NULLIF(rr.buy_trade, 0),  td.a_bb_bottom)  AS lrr,
+            COALESCE(NULLIF(rr.sell_trade, 0), td.a_bb_top)     AS trr,
+            CASE WHEN COALESCE(NULLIF(rr.buy_trade, 0), td.a_bb_bottom) IS NOT NULL
+                  AND COALESCE(NULLIF(rr.sell_trade, 0), td.a_bb_top) IS NOT NULL
+                 THEN (COALESCE(NULLIF(rr.buy_trade, 0), td.a_bb_bottom)
+                     + COALESCE(NULLIF(rr.sell_trade, 0), td.a_bb_top)) / 2.0
                  ELSE NULL END                        AS mrr,
-            CASE WHEN rr.buy_trade IS NOT NULL THEN 'RR' ELSE 'BB' END AS source,
+            CASE WHEN NULLIF(rr.buy_trade, 0) IS NOT NULL THEN 'RR' ELSE 'BB' END AS source,
             :run AS source_run_id
         FROM (
             SELECT DISTINCT tos_symbol FROM hist_td WHERE snapshot_date <= :d
