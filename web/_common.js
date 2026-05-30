@@ -253,11 +253,12 @@
       const yTrade = PAD_T2 + cH2 * 0.25;
       const yTrend = PAD_T2 + cH2 * 0.75;
 
-      const hline2 = (y, color, dash) =>
-        `<line x1="${xa}" y1="${y}" x2="${xb}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"/>`;
+      const hline2 = (y, color, dash, label) =>
+        `<line x1="${xa}" y1="${y}" x2="${xb}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"/>
+         ${label ? `<text x="${xb-2}" y="${y-2}" fill="${color}" font-size="8" text-anchor="end" font-weight="600">${label}</text>` : ''}`;
 
-      const tradeLine = trade != null ? hline2(yTrade, '#f97316', '3 2') : '';
-      const trendLine = trend != null ? hline2(yTrend, '#818cf8', '3 2') : '';
+      const tradeLine = trade != null ? hline2(yTrade, '#f97316', '3 2', `Trade ${fmt(trade)}`) : '';
+      const trendLine = trend != null ? hline2(yTrend, '#818cf8', '3 2', `Trend ${fmt(trend)}`) : '';
 
       // Price indicator relative to Trade and Trend
       let priceIndicator = '';
