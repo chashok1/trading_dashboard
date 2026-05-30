@@ -320,41 +320,44 @@
     const infoBox = (content) =>
       `<div style="padding:5px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:9px;">${content}</div>`;
 
-    // ── Box above Graph1: TRR/MRR/LRR dots on one line ──────────────────────
+    // ── Box above Graph1: TRR left · MRR center · LRR right ─────────────────
     const rrIdxBox = infoBox(`
-      <div style="display:flex;align-items:center;gap:12px;white-space:nowrap;">
+      <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
         ${dot(ix.trr, 'TRR', sd.trr_sd)}
         ${dot(ix.mrr, 'MRR', sd.mrr_sd)}
         ${dot(ix.lrr, 'LRR', sd.lrr_sd)}
       </div>`);
 
-    // ── Box above Graph2: SD / Trend / Trade side by side ────────────────────
+    // ── Box above Graph2: SD left · Trend center · Trade right ───────────────
     const sdBox = infoBox(`
-      <div style="display:flex;align-items:center;gap:12px;white-space:nowrap;color:#64748b;">
+      <div style="display:flex;align-items:center;justify-content:space-between;width:100%;color:#64748b;">
         <span><span style="color:#94a3b8;">SD</span> <strong>${fmt(sdVal)}</strong></span>
         <span><span style="color:#94a3b8;">Trend</span> <strong style="color:${scoreColor(sd.trend_sd)}">${fmtSd(sd.trend_sd)}</strong></span>
         <span><span style="color:#94a3b8;">Trade</span> <strong style="color:${scoreColor(sd.trade_sd)}">${fmtSd(sd.trade_sd)}</strong></span>
       </div>`);
 
-    // ── Box below Graph1: TRR/MRR/LRR values on one line ────────────────────
+    // ── Box below Graph1: TRR left · MRR center · LRR right ─────────────────
     const graph1Box = (trr != null || mrr != null || lrr != null) ? infoBox(`
-      <div style="display:flex;gap:12px;white-space:nowrap;">
-        ${trr != null ? `<span><span style="color:#94a3b8;">TRR</span> <strong style="color:#15803d;">${fmt(trr)}</strong></span>` : ''}
-        ${mrr != null ? `<span><span style="color:#94a3b8;">MRR</span> <strong style="color:#4ade80;">${fmt(mrr)}</strong></span>` : ''}
-        ${lrr != null ? `<span><span style="color:#94a3b8;">LRR</span> <strong style="color:#15803d;">${fmt(lrr)}</strong></span>` : ''}
+      <div style="display:flex;justify-content:space-between;width:100%;">
+        ${trr != null ? `<span><span style="color:#94a3b8;">TRR</span> <strong style="color:#15803d;">${fmt(trr)}</strong></span>` : '<span></span>'}
+        ${mrr != null ? `<span><span style="color:#94a3b8;">MRR</span> <strong style="color:#4ade80;">${fmt(mrr)}</strong></span>` : '<span></span>'}
+        ${lrr != null ? `<span><span style="color:#94a3b8;">LRR</span> <strong style="color:#15803d;">${fmt(lrr)}</strong></span>` : '<span></span>'}
       </div>`) : '';
 
-    // ── Box below Graph2: Trade/Trend side by side ───────────────────────────
+    // ── Box below Graph2: Trade left · Trend right ───────────────────────────
     const graph2Box = (trade != null || trend != null) ? infoBox(`
-      <div style="display:flex;gap:12px;white-space:nowrap;">
-        ${trade != null ? `<span><span style="color:#94a3b8;">Trade</span> <strong style="color:#f97316;">${fmt(trade)}</strong></span>` : ''}
-        ${trend != null ? `<span><span style="color:#94a3b8;">Trend</span> <strong style="color:#818cf8;">${fmt(trend)}</strong></span>` : ''}
+      <div style="display:flex;justify-content:space-between;width:100%;">
+        ${trade != null ? `<span><span style="color:#94a3b8;">Trade</span> <strong style="color:#f97316;">${fmt(trade)}</strong></span>` : '<span></span>'}
+        ${trend != null ? `<span><span style="color:#94a3b8;">Trend</span> <strong style="color:#818cf8;">${fmt(trend)}</strong></span>` : '<span></span>'}
       </div>`) : '';
 
-    // ── Box above Graph3: title + legend ─────────────────────────────────────
+    // ── Box above Graph3: title centered ─────────────────────────────────────
     const graph3TopBox = infoBox(`
-      <div style="display:flex;align-items:center;gap:12px;white-space:nowrap;">
-        <span style="font-weight:600;color:#64748b;font-size:9px;">60-day history</span>
+      <div style="text-align:center;font-weight:600;color:#64748b;font-size:9px;">60-day history</div>`);
+
+    // ── Box below Graph3: legend distributed ─────────────────────────────────
+    const graph3BotBox = infoBox(`
+      <div style="display:flex;justify-content:space-between;width:100%;white-space:nowrap;">
         <span style="color:#2563eb;">&#9644; price</span>
         <span style="color:#15803d;">&#9135;&#9135; TRR/LRR</span>
         <span style="color:#f97316;">&#9135;&#9135; Trade</span>
@@ -427,13 +430,13 @@
         ${graph2Box}
       </div>` : ''}
 
-      <!-- Historical chart: top box + centered graph + empty bottom spacer -->
+      <!-- Historical chart: top box + centered graph + legend bottom box -->
       <div style="flex:3;min-width:400px;overflow:hidden;display:flex;flex-direction:column;">
         ${graph3TopBox}
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
           <div id="${histId}_wrap" style="width:100%;">${histSvg}</div>
         </div>
-        <div style="visibility:hidden;">${graph1Box || graph2Box || infoBox('&nbsp;')}</div>
+        ${graph3BotBox}
       </div>
 
     </div>`;
