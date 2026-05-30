@@ -875,7 +875,7 @@ def get_rr_detail(symbol: str = Query(...), date: str = Query(...)):
                 END AS rr_short,
                 a.trr_idx, a.mrr_idx, a.lrr_idx,
                 m.a_trade_value, m.a_trend_value,
-                rr.sell_trade AS trr, rr.buy_trade AS lrr,
+                rr.trr, rr.lrr,
                 a.tn_td_rule_action, a.bb_rng_strk_action,
                 a.risk_rng_longs_action, a.td_tn_bb_rr_action
             FROM drv_cat_atomic_input a
