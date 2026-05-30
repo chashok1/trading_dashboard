@@ -230,6 +230,7 @@
        <text x="${x1+44}" y="${y+4}" fill="#15803d" font-size="8" text-anchor="start" font-weight="600">${label}</text>`;
     const lines1 = [];
     if (trr != null && trr >= yMin1 && trr <= yMax1) lines1.push(rrLabel(yPx1(trr), `TRR ${fmt(trr)}`));
+    if (mrr != null && mrr >= yMin1 && mrr <= yMax1) lines1.push(hline1(yPx1(mrr), '#4ade80', '2 3', null));
     if (lrr != null && lrr >= yMin1 && lrr <= yMax1) lines1.push(rrLabel(yPx1(lrr), `LRR ${fmt(lrr)}`));
 
     const priceBar1 = () => {
