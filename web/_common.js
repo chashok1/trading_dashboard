@@ -255,7 +255,7 @@
 
       const hline2 = (y, color, dash, label) =>
         `<line x1="${xa}" y1="${y}" x2="${xb}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"/>
-         ${label ? `<text x="${xb-2}" y="${y-2}" fill="${color}" font-size="8" text-anchor="end" font-weight="600">${label}</text>` : ''}`;
+         ${label ? `<text x="${xa-3}" y="${y+4}" fill="${color}" font-size="8" text-anchor="end" font-weight="600">${label}</text>` : ''}`;
 
       const tradeLine = trade != null ? hline2(yTrade, '#f97316', '3 2', `Trade ${fmt(trade)}`) : '';
       const trendLine = trend != null ? hline2(yTrend, '#818cf8', '3 2', `Trend ${fmt(trend)}`) : '';
