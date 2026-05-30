@@ -192,7 +192,7 @@
     // Y scale = RR range only (lrr..trr + price); Trade/Trend in separate chart
     const vals1 = [cur, prev, hi, lo, lrr, trr].filter(v => v != null);
     const rawMin1 = Math.min(...vals1), rawMax1 = Math.max(...vals1);
-    const W1 = 160, H = 220, PAD_L = 44, PAD_R = 54, PAD_T = 12, PAD_B = 18;
+    const W1 = 180, H = 220, PAD_L = 44, PAD_R = 72, PAD_T = 12, PAD_B = 18;
     const chartW1 = W1 - PAD_L - PAD_R, chartH = H - PAD_T - PAD_B;
     const pad1 = sdVal ? sdVal * 0.35 : (rawMax1 - rawMin1) * 0.08;
     const yMin1 = rawMin1 - pad1, yMax1 = rawMax1 + pad1, yRng1 = yMax1 - yMin1 || 1;
@@ -201,7 +201,7 @@
 
     const hline1 = (y, color, dash, label) =>
       `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"/>
-       ${label ? `<text x="${x1+3}" y="${y+4}" fill="${color}" font-size="8" text-anchor="start" font-weight="600">${label}</text>` : ''}`;
+       ${label ? `<text x="${x1+6}" y="${y+4}" fill="${color}" font-size="8" text-anchor="start" font-weight="600">${label}</text>` : ''}`;
 
     const prevYe = prev != null && prev >= yMin1 && prev <= yMax1 ? yPx1(prev) : null;
     const curYe  = cur  != null && cur  >= yMin1 && cur  <= yMax1 ? yPx1(cur)  : null;
