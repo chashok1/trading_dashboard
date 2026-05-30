@@ -358,7 +358,6 @@
           background:${actionBg};border:2px solid ${actionColor};border-radius:8px;padding:10px 14px;">
           <div style="font-size:28px;font-weight:900;color:${actionColor};line-height:1;min-width:40px;">${actionCode}</div>
           <div style="flex:1;">
-            <div style="font-size:9px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;">Final Action</div>
             <div style="font-size:11px;color:#1e293b;line-height:1.3;margin-top:2px;">Trend Trade BB Risk Range Rule Action</div>
           </div>
         </div>
