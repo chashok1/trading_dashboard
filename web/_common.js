@@ -246,55 +246,43 @@
     // ── Chart 2: Trade / Trend — fixed small height, no proportional scaling ──
     const svgTT = (() => {
       if (trend == null && trade == null) return '';
-      // Fixed small chart: Trend/Trade lines evenly spaced, price indicator only
-      const W2 = 120, H2 = 155, PAD_L2 = 42, PAD_R2 = 50, PAD_T2 = 14, PAD_B2 = 38;
+      // Proportional Y scale covering Trend, Trade, LRR, TRR + price
+      const W2 = 120, H2 = 155, PAD_L2 = 42, PAD_R2 = 52, PAD_T2 = 12, PAD_B2 = 30;
       const cW2 = W2 - PAD_L2 - PAD_R2, cH2 = H2 - PAD_T2 - PAD_B2;
       const xa = PAD_L2, xb = PAD_L2 + cW2, xm2 = PAD_L2 + cW2 * 0.5;
 
-      // Fixed Y positions: Trade at top third, Trend at bottom third
-      const yTrade = PAD_T2 + cH2 * 0.25;
-      const yTrend = PAD_T2 + cH2 * 0.75;
+      const tt_vals = [trend, trade, lrr, trr, cur].filter(v => v != null);
+      const tt_min = Math.min(...tt_vals), tt_max = Math.max(...tt_vals);
+      const tt_pad = (tt_max - tt_min) * 0.08 || 2;
+      const tt_yMin = tt_min - tt_pad, tt_yMax = tt_max + tt_pad, tt_yRng = tt_yMax - tt_yMin;
+      const tt_yPx = v => PAD_T2 + cH2 * (1 - (v - tt_yMin) / tt_yRng);
 
       const hline2 = (y, color, dash, label) =>
         `<line x1="${xa}" y1="${y}" x2="${xb}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"/>
          <text x="${xb+3}" y="${y+4}" fill="${color}" font-size="9" font-weight="600">${label}</text>`;
 
-      const trendLine = trend != null ? hline2(yTrend, '#818cf8', '3 2', `Trend ${fmt(trend)}`) : '';
-      const tradeLine = trade != null ? hline2(yTrade, '#f97316', '3 2', `Trade ${fmt(trade)}`) : '';
+      const trrLine   = trr   != null ? hline2(tt_yPx(trr),   '#15803d', '5 2', `TRR ${fmt(trr)}`)   : '';
+      const lrrLine   = lrr   != null ? hline2(tt_yPx(lrr),   '#15803d', '5 2', `LRR ${fmt(lrr)}`)   : '';
+      const tradeLine = trade != null ? hline2(tt_yPx(trade),  '#f97316', '3 2', `Trade ${fmt(trade)}`) : '';
+      const trendLine = trend != null ? hline2(tt_yPx(trend),  '#818cf8', '3 2', `Trend ${fmt(trend)}`) : '';
 
-      // Price indicator: arrow at top if above Trade, arrow at bottom if below Trend,
-      // or a marker between the two lines if between Trend and Trade
+      // Price indicator
       let priceIndicator = '';
       if (cur != null) {
-        const aboveTrade = trade != null && cur > trade;
-        const belowTrend = trend != null && cur < trend;
-        if (aboveTrade) {
-          priceIndicator = `
-            <text x="${xm2}" y="${PAD_T2-2}" fill="#374151" font-size="9" text-anchor="middle" font-weight="700">↑ ${fmt(cur)}</text>`;
-        } else if (belowTrend) {
-          priceIndicator = `
-            <text x="${xm2}" y="${H2-2}" fill="#374151" font-size="9" text-anchor="middle" font-weight="700">↓ ${fmt(cur)}</text>`;
-        } else {
-          // Between Trend and Trade — show as dashed line proportionally
-          const ttSpan = (trade ?? trend) - (trend ?? trade);
-          const ttFrac = ttSpan > 0 ? (cur - (trend ?? cur)) / ttSpan : 0.5;
-          const py2 = yTrend - ttFrac * (yTrend - yTrade);
-          priceIndicator = `
-            <line x1="${xa}" y1="${py2}" x2="${xb}" y2="${py2}" stroke="#374151" stroke-width="0.8" stroke-dasharray="3 3"/>
-            <text x="${xa-3}" y="${py2+4}" fill="#374151" font-size="9" text-anchor="end" font-weight="700">${fmt(cur)}</text>`;
-        }
+        const py2 = tt_yPx(cur);
+        priceIndicator = `
+          <line x1="${xa}" y1="${py2}" x2="${xb}" y2="${py2}" stroke="#374151" stroke-width="0.8" stroke-dasharray="3 3"/>
+          <text x="${xa-3}" y="${py2+4}" fill="#374151" font-size="9" text-anchor="end" font-weight="700">${fmt(cur)}</text>`;
       }
 
-      // SD labels sit inside the bottom padding (PAD_B2=38 gives room for 3 lines)
-      const chartLbl = ``;
       const trendSdTxt = sd.trend_sd != null
         ? `<text x="${xm2}" y="${H2-13}" fill="${scoreColor(sd.trend_sd)}" font-size="8" text-anchor="middle">Trend ${fmtSd(sd.trend_sd)}SD</text>` : '';
       const tradeSdTxt = sd.trade_sd != null
         ? `<text x="${xm2}" y="${H2-3}" fill="${scoreColor(sd.trade_sd)}" font-size="8" text-anchor="middle">Trade ${fmtSd(sd.trade_sd)}SD</text>` : '';
 
       return `<svg width="${W2}" height="${H2}" style="overflow:visible;display:block;">
-        ${trendLine}${tradeLine}${priceIndicator}
-        ${chartLbl}${trendSdTxt}${tradeSdTxt}
+        ${trrLine}${lrrLine}${tradeLine}${trendLine}${priceIndicator}
+        ${trendSdTxt}${tradeSdTxt}
       </svg>`;
     })();
 
