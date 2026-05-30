@@ -1433,19 +1433,19 @@ function setupRRActionCol() {
     let decisionHtml = '';
     if (qf != null) {
       if (qf < 0) {
-        decisionHtml = step(0, 'QF', qf, 'Trend/Trade bearish → wins', true);
+        decisionHtml = step(0, 'Trend/Trade', qf, 'bearish → wins', true);
       } else if (qf > 0) {
-        decisionHtml = step(0, 'QF', qf, 'Trend/Trade bullish → check BB', true);
+        decisionHtml = step(0, 'Trend/Trade', qf, 'bullish → check BB', true);
         if (qk != null) {
           if (qk < 0) {
-            decisionHtml += step(1, 'QK', qk, 'BB bearish → wins', true);
+            decisionHtml += step(1, 'BB Range', qk, 'bearish → wins', true);
           } else {
-            decisionHtml += step(1, 'QK', qk, 'BB bullish → use RR', true);
-            decisionHtml += step(2, 'QO', qo, 'RR action → QR', true);
+            decisionHtml += step(1, 'BB Range', qk, 'bullish → use RR', true);
+            decisionHtml += step(2, 'RR Signal', qo, '→ Score', true);
           }
         }
       } else {
-        decisionHtml = step(0, 'QF', qf, 'neutral → null', true);
+        decisionHtml = step(0, 'Trend/Trade', qf, 'neutral → null', true);
       }
     }
 
@@ -1456,7 +1456,7 @@ function setupRRActionCol() {
       ${row('RR Desc',          shortDesc(d.rr_short,   d.rr_desc))}
       ${sec('Decision Path')}
       ${decisionHtml}
-      <div style="margin-top:3px;font-size:11px;font-weight:700;color:${scoreCol(qr)};">QR = ${qr != null ? qr : '—'} → ${d.action || '—'}</div>
+      <div style="margin-top:3px;font-size:11px;font-weight:700;color:${scoreCol(qr)};">Score = ${qr != null ? qr : '—'} → ${d.action || '—'}</div>
       ${sec('Levels')}
       ${row('Trade',   fmt2(d.trade), '#ea580c')}
       ${row('Trend',   fmt2(d.trend), '#6366f1')}

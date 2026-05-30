@@ -364,17 +364,17 @@
             let html = '';
             if (qf == null) return '<span style="color:#94a3b8;">No data</span>';
             if (qf < 0) {
-              html = `QF ${vspan(qf)} ${arr} <span style="color:#dc2626;">Trend/Trade bearish wins</span>`;
+              html = `Trend/Trade ${vspan(qf)} ${arr} <span style="color:#dc2626;">bearish wins</span>`;
             } else if (qf > 0) {
-              html = `QF ${vspan(qf)} ${arr} <span style="color:#475569;">Trend/Trade bullish → check BB</span><br>`;
+              html = `Trend/Trade ${vspan(qf)} ${arr} <span style="color:#475569;">bullish → check BB</span><br>`;
               if (qk != null && qk < 0) {
-                html += `&nbsp;&nbsp;QK ${vspan(qk)} ${arr} <span style="color:#dc2626;">BB bearish wins</span>`;
+                html += `&nbsp;&nbsp;BB Range ${vspan(qk)} ${arr} <span style="color:#dc2626;">bearish wins</span>`;
               } else {
-                html += `&nbsp;&nbsp;QK ${vspan(qk)} ${arr} <span style="color:#475569;">BB bullish → use RR</span><br>`;
-                html += `&nbsp;&nbsp;&nbsp;&nbsp;QO ${vspan(qo)} ${arr} QR ${vspan(qr)}`;
+                html += `&nbsp;&nbsp;BB Range ${vspan(qk)} ${arr} <span style="color:#475569;">bullish → use RR</span><br>`;
+                html += `&nbsp;&nbsp;&nbsp;&nbsp;RR Signal ${vspan(qo)} ${arr} Score ${vspan(qr)}`;
               }
             } else {
-              html = `QF ${vspan(qf)} ${arr} <span style="color:#94a3b8;">neutral → null</span>`;
+              html = `Trend/Trade ${vspan(qf)} ${arr} <span style="color:#94a3b8;">neutral → null</span>`;
             }
             return html;
           })()}
