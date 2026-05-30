@@ -94,10 +94,8 @@ dq AS (
     ORDER BY tos_symbol, as_of_date DESC
 ),
 rr AS (
-    SELECT DISTINCT ON (tos_symbol) tos_symbol,
-           buy_trade, sell_trade
-    FROM hist_rr WHERE snapshot_date <= (SELECT d FROM p)
-    ORDER BY tos_symbol, snapshot_date DESC
+    SELECT tos_symbol, lrr AS buy_trade, trr AS sell_trade
+    FROM drv_rr WHERE as_of_date = (SELECT d FROM p)
 )
 SELECT s.s AS tos_symbol,
        -- hist_td (rule input bases)

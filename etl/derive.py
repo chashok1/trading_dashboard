@@ -555,11 +555,18 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
     ),
     rr AS (
-        SELECT DISTINCT ON (tos_symbol) tos_symbol,
-               snapshot_date AS rr_date,
-               buy_trade, sell_trade, outlook
-        FROM hist_rr WHERE snapshot_date <= (SELECT d FROM p)
-        ORDER BY tos_symbol, snapshot_date DESC
+        SELECT r.tos_symbol,
+               (SELECT MAX(snapshot_date) FROM hist_rr
+                WHERE tos_symbol=r.tos_symbol AND snapshot_date<=(SELECT d FROM p)) AS rr_date,
+               r.lrr AS buy_trade, r.trr AS sell_trade,
+               h.outlook
+        FROM drv_rr r
+        LEFT JOIN LATERAL (
+            SELECT outlook FROM hist_rr
+            WHERE tos_symbol=r.tos_symbol AND snapshot_date<=(SELECT d FROM p)
+            ORDER BY snapshot_date DESC LIMIT 1
+        ) h ON TRUE
+        WHERE r.as_of_date = (SELECT d FROM p)
     ),
     cl AS (
         SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol,
@@ -878,6 +885,55 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
 
 
 derive_quote = _wrap("drv_quote", _derive_quote_impl)
+
+
+def _derive_rr_impl(session: Session, as_of_date: date, run_id: int) -> int:
+    """Derive risk range (LRR/TRR) per symbol: hist_rr preferred, hist_td BB bands fallback.
+
+    Idempotent: DELETE WHERE as_of_date=D then INSERT.
+    source='RR' when hist_rr has data, 'BB' when falling back to a_bb_bottom/a_bb_top.
+    """
+    session.execute(text(
+        "DELETE FROM drv_rr WHERE as_of_date = :d"), {"d": as_of_date})
+
+    result = session.execute(text("""
+        INSERT INTO drv_rr (as_of_date, tos_symbol, lrr, trr, mrr, source, source_run_id)
+        SELECT
+            :d AS as_of_date,
+            s.tos_symbol,
+            COALESCE(rr.buy_trade,  td.a_bb_bottom)  AS lrr,
+            COALESCE(rr.sell_trade, td.a_bb_top)     AS trr,
+            CASE WHEN COALESCE(rr.buy_trade, td.a_bb_bottom) IS NOT NULL
+                  AND COALESCE(rr.sell_trade, td.a_bb_top) IS NOT NULL
+                 THEN (COALESCE(rr.buy_trade, td.a_bb_bottom)
+                     + COALESCE(rr.sell_trade, td.a_bb_top)) / 2.0
+                 ELSE NULL END                        AS mrr,
+            CASE WHEN rr.buy_trade IS NOT NULL THEN 'RR' ELSE 'BB' END AS source,
+            :run AS source_run_id
+        FROM (
+            SELECT DISTINCT tos_symbol FROM hist_td WHERE snapshot_date <= :d
+            UNION
+            SELECT DISTINCT tos_symbol FROM hist_rr WHERE snapshot_date <= :d
+        ) s
+        LEFT JOIN LATERAL (
+            SELECT buy_trade, sell_trade
+            FROM hist_rr
+            WHERE tos_symbol = s.tos_symbol AND snapshot_date <= :d
+            ORDER BY snapshot_date DESC LIMIT 1
+        ) rr ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT a_bb_bottom, a_bb_top
+            FROM hist_td
+            WHERE tos_symbol = s.tos_symbol AND snapshot_date <= :d
+            ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
+        ) td ON TRUE
+        WHERE COALESCE(rr.buy_trade, td.a_bb_bottom) IS NOT NULL
+           OR COALESCE(rr.sell_trade, td.a_bb_top) IS NOT NULL
+    """), {"d": as_of_date, "run": run_id})
+    return result.rowcount or 0
+
+
+derive_rr = _wrap("drv_rr", _derive_rr_impl)
 
 
 # Section classification used by drv_dash
@@ -2576,6 +2632,7 @@ def derive_all(session: Session, as_of_date: date,
 
     # drv_quote merges hist_y / hist_tl / hist_td quote fields by latest loaded_at
     counts["drv_quote"]               = _safe("drv_quote",             derive_quote)
+    counts["drv_rr"]                  = _safe("drv_rr",                derive_rr)
     counts["drv_ma"]                  = _safe("drv_ma",                derive_ma)
     # drv_cat_atomic_input — Python deriver (JF..NP + QH/QI).
     # Must run AFTER drv_quote (Step-1 SELECT pulls last_price from there).

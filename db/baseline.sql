@@ -2322,6 +2322,21 @@ CREATE TABLE IF NOT EXISTS drv_quote (
 
 );
 
+-- drv_rr: derived risk range — hist_rr preferred, hist_td BB bands as fallback
+CREATE TABLE IF NOT EXISTS drv_rr (
+    as_of_date      DATE        NOT NULL,
+    tos_symbol      TEXT        NOT NULL,
+    lrr             NUMERIC,        -- Lower Risk Range (buy_trade or a_bb_bottom)
+    trr             NUMERIC,        -- Top Risk Range  (sell_trade or a_bb_top)
+    mrr             NUMERIC,        -- Midpoint (lrr + trr) / 2
+    source          TEXT,           -- 'RR' or 'BB'
+    source_run_id   BIGINT,
+    derived_at      TIMESTAMP NOT NULL DEFAULT now(),
+    PRIMARY KEY (as_of_date, tos_symbol)
+);
+
+CREATE INDEX IF NOT EXISTS ix_drv_rr_sym ON drv_rr(tos_symbol, as_of_date);
+
 -- Add export_date, export_time, and loaded_at columns if they don't exist (migration for existing tables)
 
 DO $$

@@ -406,9 +406,9 @@ def get_actionable_source_data(
     out: dict = {}
     with session_scope() as s:
         rr = s.execute(text("""
-            SELECT buy_trade, sell_trade, snapshot_date FROM hist_rr
-            WHERE tos_symbol = :sym AND snapshot_date <= :d
-            ORDER BY snapshot_date DESC LIMIT 1
+            SELECT lrr AS buy_trade, trr AS sell_trade, as_of_date AS snapshot_date
+            FROM drv_rr WHERE tos_symbol=:sym AND as_of_date<=:d
+            ORDER BY as_of_date DESC LIMIT 1
         """), {"sym": sym, "d": d}).first()
         if rr:
             out["RR"] = {"buy_trade": _f(rr[0]), "sell_trade": _f(rr[1]),
@@ -758,8 +758,8 @@ def get_rr_analysis(symbol: str = Query(...), date: str = Query(...)):
             FROM hist_tw WHERE tos_symbol=:sym AND snapshot_date<=:d AND standard_dev IS NOT NULL
         """), {"sym": sym, "d": d}).scalar()
         rr = s.execute(text("""
-            SELECT buy_trade, sell_trade FROM hist_rr
-            WHERE tos_symbol=:sym AND snapshot_date<=:d ORDER BY snapshot_date DESC LIMIT 1
+            SELECT lrr AS buy_trade, trr AS sell_trade FROM drv_rr
+            WHERE tos_symbol=:sym AND as_of_date=:d
         """), {"sym": sym, "d": d}).fetchone()
         cat = s.execute(text("""
             SELECT a.trr_idx, a.mrr_idx, a.lrr_idx,
@@ -880,9 +880,7 @@ def get_rr_detail(symbol: str = Query(...), date: str = Query(...)):
                 a.risk_rng_longs_action, a.td_tn_bb_rr_action
             FROM drv_cat_atomic_input a
             LEFT JOIN drv_ma m ON m.tos_symbol=a.tos_symbol AND m.as_of_date=a.as_of_date
-            LEFT JOIN hist_rr rr ON rr.tos_symbol=a.tos_symbol
-              AND rr.snapshot_date=(SELECT MAX(snapshot_date) FROM hist_rr
-                                    WHERE tos_symbol=a.tos_symbol AND snapshot_date<=a.as_of_date)
+            LEFT JOIN drv_rr rr ON rr.tos_symbol=a.tos_symbol AND rr.as_of_date=a.as_of_date
             LEFT JOIN ref_param_lookup ltn
               ON ltn.table_name='tn_td_rule' AND ltn.code=(a.trade_trend_sd_rule)::INTEGER::TEXT
             LEFT JOIN ref_param_lookup lbb
@@ -936,11 +934,11 @@ def get_rr_history(symbol: str = Query(...), date: str = Query(...), days: int =
             ORDER BY snapshot_date, sequence DESC
         """), {"sym": sym, "s": d_start, "e": d_end}).fetchall()
 
-        # RR snapshots — also fetch one prior to window for backward-fill
+        # RR snapshots from drv_rr (hist_rr preferred, BB fallback)
         rr_rows = s.execute(text("""
-            SELECT DISTINCT ON (snapshot_date) snapshot_date, buy_trade, sell_trade
-            FROM hist_rr WHERE tos_symbol=:sym AND snapshot_date <= :e
-            ORDER BY snapshot_date
+            SELECT as_of_date, lrr, trr FROM drv_rr
+            WHERE tos_symbol=:sym AND as_of_date <= :e
+            ORDER BY as_of_date
         """), {"sym": sym, "e": d_end}).fetchall()
 
     # Build date-keyed RR map; forward+backward fill over td dates
