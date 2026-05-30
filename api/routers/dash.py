@@ -877,7 +877,8 @@ def get_rr_detail(symbol: str = Query(...), date: str = Query(...)):
                 m.a_trade_value, m.a_trend_value,
                 rr.trr, rr.lrr,
                 a.tn_td_rule_action, a.bb_rng_strk_action,
-                a.risk_rng_longs_action, a.td_tn_bb_rr_action
+                a.risk_rng_longs_action, a.td_tn_bb_rr_action,
+                a.trade_trend_sd_rule, a.bb_rng_strk_rule
             FROM drv_cat_atomic_input a
             LEFT JOIN drv_ma m ON m.tos_symbol=a.tos_symbol AND m.as_of_date=a.as_of_date
             LEFT JOIN drv_rr rr ON rr.tos_symbol=a.tos_symbol AND rr.as_of_date=a.as_of_date
@@ -910,6 +911,8 @@ def get_rr_detail(symbol: str = Query(...), date: str = Query(...)):
             "bb_action":     int(row[16]) if row[16] is not None else None,
             "rr_action":     int(row[17]) if row[17] is not None else None,
             "final_score":   int(row[18]) if row[18] is not None else None,
+            "trend_trade":   int(row[19]) if row[19] is not None else None,
+            "bb_streak":     int(row[20]) if row[20] is not None else None,
         }
 
 
