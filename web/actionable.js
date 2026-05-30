@@ -1410,11 +1410,11 @@ function setupRRActionCol() {
 
     const row = (label, val, color) =>
       `<div style="display:flex;justify-content:space-between;gap:12px;">
-         <span style="color:#94a3b8;white-space:nowrap;">${label}</span>
+         <span style="color:#cbd5e1;white-space:nowrap;">${label}</span>
          <span style="font-weight:600;color:${color || '#f1f5f9'};text-align:right;">${val}</span>
        </div>`;
     const sec = label =>
-      `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;margin:5px 0 2px;">${label}</div>`;
+      `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:5px 0 2px;">${label}</div>`;
     const shortDesc = (short, desc) => [short ? `<span style="color:#a5b4fc;font-weight:700;">${short}</span>` : '', desc].filter(Boolean).join(': ') || '—';
 
     tip.innerHTML = `
