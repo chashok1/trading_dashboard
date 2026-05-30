@@ -266,6 +266,8 @@ drv_cat_atomic_input → Pass-3 lookups via ref_param_lookup:
     QJ ≥ 2 → QP='B'  → ref_param_lookup(bull_rr_rule,  QM) → short_name + seq (QO)
     QJ ≥ 0 → QP='!B' → ref_param_lookup(nbull_rr_rule, QN) → short_name + seq (QO)
     QM/QN from KI/KJ/KK + perf1d_sd_rule + macdh_direction
+      perf1d_sd_rule (LH): drv_quote.net_chng / AC → trig_ifs("Perf1D SD Rule")
+      macdh_direction (JG): hist_tw.a_macdh_d_brr → SIGN(x), 0→-1
 
   Decision Path (QR → QS):
     IF QF < 0 → QR = QF  (Trend/Trade bearish wins)
