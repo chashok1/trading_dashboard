@@ -355,9 +355,9 @@
     const graph3TopBox = infoBox(`
       <div style="text-align:center;font-weight:600;color:#64748b;font-size:9px;">60-day history</div>`);
 
-    // ── Box below Graph3: legend distributed ─────────────────────────────────
+    // ── Box below Graph3: legend centered, items close together ──────────────
     const graph3BotBox = infoBox(`
-      <div style="display:flex;justify-content:space-between;width:100%;white-space:nowrap;">
+      <div style="display:flex;justify-content:center;gap:10px;white-space:nowrap;">
         <span style="color:#2563eb;">&#9644; price</span>
         <span style="color:#15803d;">&#9135;&#9135; TRR/LRR</span>
         <span style="color:#f97316;">&#9135;&#9135; Trade</span>
