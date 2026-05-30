@@ -198,3 +198,109 @@ fraction.
 After editing this logic: `python rebuild_actionable.py` runs
 `derive_outlook_action` then `derive_actionable` for the recent dates, then
 restart the app.
+
+---
+
+## Risk Range Analysis — UI Data Flow
+
+The **Risk Range Analysis** section appears in the Actionable drilldown modal and the Trace screen. It is rendered by `renderRRAnalysis()` in `web/_common.js` using three API endpoints.
+
+### API Endpoints
+
+| Endpoint | Purpose |
+|---|---|
+| `/api/actionable/rr-analysis?symbol=X&date=D` | Main snapshot — all fields for charts and grid |
+| `/api/actionable/rr-history?symbol=X&date=D&days=60` | 60-day time-series for Graph 3 |
+| `/api/actionable/rr-detail?symbol=X&date=D` | Hover tooltip detail for TrTnBBRskRng column |
+
+### Data Flow by Section
+
+**Graph 1 — Price bar vs RR bands**
+```
+hist_td   → last_price (prev close, left label)
+drv_quote → last_price / high_price / low_price (today, right label)
+hist_rr   → buy_trade (LRR), sell_trade (TRR)
+           → MRR = (LRR + TRR) / 2
+  Displayed: price bar (green=up/red=down) + TRR/MRR/LRR dashed lines + green zone
+```
+
+**Top box above Graph 1 — TRR / MRR / LRR indices**
+```
+drv_quote (high, last, low) + hist_rr (EC=LRR, ED=TRR) + hist_tw (std_dev)
+  AC  = min(std_dev, median_sd)
+  ES  = (high  - ED) / AC   → trig_ifs(lo=-0.25, hi=1)    → KI (trr_idx)
+  ET  = (last  - midpoint) / AC  → trig_ifs(lo=-0.25, hi=0.25) → KJ (mrr_idx)
+  EU  = (low   - EC) / AC   → trig_ifs(lo=-0.25, hi=1)    → KK (lrr_idx)
+  Stored in: drv_cat_atomic_input
+```
+
+**Graph 2 — Trend / Trade lines + price indicator**
+```
+hist_td → a_trend_value (Trend line, fixed position)
+         → a_trade_value (Trade line, fixed position)
+drv_quote → last_price (price indicator: ↑ above Trade, ↓ below Trend, dashed line if between)
+```
+
+**Top box above Graph 2 — SD / Trend SD / Trade SD**
+```
+hist_tw → std_dev, median_sd → AC = min(std_dev, median_sd)
+drv_quote → last_price
+hist_td → a_trend_value, a_trade_value
+  trend_sd = (last - a_trend_value) / AC
+  trade_sd = (last - a_trade_value) / AC
+```
+
+**Grid — Descriptions + Decision Path**
+```
+drv_cat_atomic_input → Pass-3 lookups via ref_param_lookup:
+
+  Trend/Trade (QE → QG):
+    trend_sd/trade_sd/trade_trend_sd → CASE → QE (trade_trend_sd_rule)
+    ref_param_lookup(tn_td_rule, QE) → short_name (badge) + description + seq (QF)
+
+  BB Range Streak (QJ → QL):
+    a_bb_top_slope / a_bb_bot_slope → CASE → QJ (bb_rng_strk_rule)
+    ref_param_lookup(bb_range, QJ)  → short_name (badge) + description + seq (QK)
+
+  RR Desc (QP/QQ):
+    QJ ≥ 2 → QP='B'  → ref_param_lookup(bull_rr_rule,  QM) → short_name + seq (QO)
+    QJ ≥ 0 → QP='!B' → ref_param_lookup(nbull_rr_rule, QN) → short_name + seq (QO)
+    QM/QN from KI/KJ/KK + perf1d_sd_rule + macdh_direction
+
+  Decision Path (QR → QS):
+    IF QF < 0 → QR = QF  (Trend/Trade bearish wins)
+    IF QF > 0 → IF QK < 0 → QR = QK  (BB bearish wins)
+               ELSE        → QR = QO  (RR signal)
+    ref_param_lookup(td_tn_bb_rr_action, QR) → QS action code (BS/STM/SA/…)
+```
+
+**Graph 3 — 60-day history**
+```
+hist_td  → last_price, a_trend_value, a_trade_value  (daily)
+hist_rr  → buy_trade (LRR), sell_trade (TRR)          (periodic, forward+backward filled)
+  → /api/actionable/rr-history  (async, loads after modal opens)
+  Displayed: price line (blue) + TRR/LRR step-function lines (green) + Trade/Trend lines
+```
+
+**TrTnBBRskRng column (actionable table)**
+```
+drv_cat_atomic_input.td_tn_bb_action_desc (QS) joined in /api/actionable query
+  → shown immediately in column (no lazy load)
+  → hover tooltip via /api/actionable/rr-detail: all QE..QT values + levels + indices
+```
+
+### Full Pipeline Summary
+
+```
+Excel files ──ETL──→ hist_td / hist_tw / hist_rr / drv_quote
+                          ↓ derive_all()
+              drv_cat_atomic_input  (KI/KJ/KK, QE..QT via Pass-1/2/3)
+              drv_ma                (a_trend_value, a_trade_value)
+                          ↓ API
+              /api/actionable/rr-analysis   → graphs + grid
+              /api/actionable/rr-history    → Graph 3 history
+              /api/actionable/rr-detail     → hover tooltip
+                          ↓ JS
+              renderRRAnalysis()  in web/_common.js
+              setupRRActionCol()  in web/actionable.js
+```

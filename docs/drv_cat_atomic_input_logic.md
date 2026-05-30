@@ -311,6 +311,12 @@ Then `_derive_trend_trade_rules_impl` runs its two `UPDATE`s, then Pass-3 runs i
 
 ---
 
+## UI — Risk Range Analysis
+
+The Risk Range Analysis section in the Actionable drilldown and Trace screen consumes QE..QT output. Full data flow documented in `docs/actionable_logic.md` under **Risk Range Analysis — UI Data Flow**.
+
+---
+
 ## Dashboard scalars (`Dash!$X$Y` in `ref_param`)
 
 Single-cell Excel variables from the Dash tab live in `ref_param` under `sheet='dash'`. Seed values live in `db/baseline.sql` (2026-05-27 v3 block). Read at runtime:
