@@ -201,7 +201,7 @@
 
     const hline1 = (y, color, dash, label) =>
       `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"/>
-       ${label ? `<text x="${x1-2}" y="${y-2}" fill="${color}" font-size="8" text-anchor="end" font-weight="600">${label}</text>` : ''}`;
+       ${label ? `<text x="${x1+3}" y="${y+4}" fill="${color}" font-size="8" text-anchor="start" font-weight="600">${label}</text>` : ''}`;
 
     const prevYe = prev != null && prev >= yMin1 && prev <= yMax1 ? yPx1(prev) : null;
     const curYe  = cur  != null && cur  >= yMin1 && cur  <= yMax1 ? yPx1(cur)  : null;
@@ -217,8 +217,8 @@
       curYe  != null ? `<line x1="${x0}" y1="${curYe}"  x2="${x1}" y2="${curYe}"  stroke="#374151" stroke-width="0.8" stroke-dasharray="3 3"/>` : '',
       prevLY != null ? `<text x="${x0-3}" y="${prevLY+4}" fill="#64748b" font-size="9" text-anchor="end">${fmt(prev)}</text>
                         <text x="${x0-3}" y="${prevLY+12}" fill="#94a3b8" font-size="7" text-anchor="end">prev</text>` : '',
-      curLY  != null ? `<text x="${x1+4}" y="${curLY+4}" fill="#111" font-size="9" font-weight="700">${fmt(cur)}</text>
-                        <text x="${x1+4}" y="${curLY+12}" fill="#94a3b8" font-size="7">today</text>` : '',
+      curLY  != null ? `<text x="${x0-3}" y="${curLY+4}" fill="#111" font-size="9" text-anchor="end" font-weight="700">${fmt(cur)}</text>
+                        <text x="${x0-3}" y="${curLY+12}" fill="#94a3b8" font-size="7" text-anchor="end">today</text>` : '',
     ].join('');
 
     const rrZone = (lrr != null && trr != null)
@@ -255,7 +255,7 @@
 
       const hline2 = (y, color, dash, label) =>
         `<line x1="${xa}" y1="${y}" x2="${xb}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"/>
-         ${label ? `<text x="${xa-3}" y="${y+4}" fill="${color}" font-size="8" text-anchor="end" font-weight="600">${label}</text>` : ''}`;
+         ${label ? `<text x="${xb+3}" y="${y+4}" fill="${color}" font-size="8" text-anchor="start" font-weight="600">${label}</text>` : ''}`;
 
       const tradeLine = trade != null ? hline2(yTrade, '#f97316', '3 2', `Trade ${fmt(trade)}`) : '';
       const trendLine = trend != null ? hline2(yTrend, '#818cf8', '3 2', `Trend ${fmt(trend)}`) : '';
