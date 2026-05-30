@@ -213,7 +213,7 @@
     }
 
     const priceDashes1 = [
-      prevYe != null ? `<line x1="${x0}" y1="${prevYe}" x2="${x1+40}" y2="${prevYe}" stroke="#94a3b8" stroke-width="0.8" stroke-dasharray="3 3"/>` : '',
+      prevYe != null ? `<line x1="${x0}" y1="${prevYe}" x2="${x1}" y2="${prevYe}" stroke="#94a3b8" stroke-width="0.8" stroke-dasharray="3 3"/>` : '',
       curYe  != null ? `<line x1="${x0}" y1="${curYe}"  x2="${x1+2}"  y2="${curYe}"  stroke="#374151" stroke-width="0.8" stroke-dasharray="3 3"/>` : '',
       prevLY != null ? `<text x="${x0-3}" y="${prevLY+4}" fill="#64748b" font-size="9" text-anchor="end">${fmt(prev)}</text>
                         <text x="${x0-3}" y="${prevLY+12}" fill="#94a3b8" font-size="7" text-anchor="end">prev</text>` : '',
@@ -230,7 +230,6 @@
        <text x="${x1+44}" y="${y+4}" fill="#15803d" font-size="8" text-anchor="start" font-weight="600">${label}</text>`;
     const lines1 = [];
     if (trr != null && trr >= yMin1 && trr <= yMax1) lines1.push(rrLabel(yPx1(trr), `TRR ${fmt(trr)}`));
-    if (mrr != null && mrr >= yMin1 && mrr <= yMax1) lines1.push(hline1(yPx1(mrr), '#4ade80', '2 3', null));
     if (lrr != null && lrr >= yMin1 && lrr <= yMax1) lines1.push(rrLabel(yPx1(lrr), `LRR ${fmt(lrr)}`));
 
     const priceBar1 = () => {
