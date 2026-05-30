@@ -332,7 +332,7 @@
     <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:nowrap;width:100%;">
 
       <!-- Left panel: doubled size -->
-      <div style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:8px;">
+      <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:8px;">
 
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;
           padding:6px 10px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;">

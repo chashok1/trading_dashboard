@@ -867,15 +867,17 @@ def get_rr_detail(symbol: str = Query(...), date: str = Query(...)):
         row = s.execute(text("""
             SELECT
                 a.td_tn_bb_action_desc,
-                a.tn_td_rule_desc,   ltn.short_name AS tn_td_short,
-                a.bb_rng_strk_desc,  lbb.short_name AS bb_short,
-                a.rr_desc,           a.rr_bull_bear,
+                a.tn_td_rule_desc,       ltn.short_name AS tn_td_short,
+                a.bb_rng_strk_desc,      lbb.short_name AS bb_short,
+                a.rr_desc,               a.rr_bull_bear,
                 CASE WHEN a.rr_bull_bear='B'  THEN lbull.short_name
                      WHEN a.rr_bull_bear='!B' THEN lnbull.short_name
                 END AS rr_short,
                 a.trr_idx, a.mrr_idx, a.lrr_idx,
                 m.a_trade_value, m.a_trend_value,
-                rr.sell_trade AS trr, rr.buy_trade AS lrr
+                rr.sell_trade AS trr, rr.buy_trade AS lrr,
+                a.tn_td_rule_action, a.bb_rng_strk_action,
+                a.risk_rng_longs_action, a.td_tn_bb_rr_action
             FROM drv_cat_atomic_input a
             LEFT JOIN drv_ma m ON m.tos_symbol=a.tos_symbol AND m.as_of_date=a.as_of_date
             LEFT JOIN hist_rr rr ON rr.tos_symbol=a.tos_symbol
@@ -906,6 +908,10 @@ def get_rr_detail(symbol: str = Query(...), date: str = Query(...)):
             "trend":         _f(row[12]),
             "trr":           _f(row[13]),
             "lrr":           _f(row[14]),
+            "tn_td_action":  int(row[15]) if row[15] is not None else None,
+            "bb_action":     int(row[16]) if row[16] is not None else None,
+            "rr_action":     int(row[17]) if row[17] is not None else None,
+            "final_score":   int(row[18]) if row[18] is not None else None,
         }
 
 
