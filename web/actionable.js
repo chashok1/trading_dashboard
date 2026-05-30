@@ -1420,13 +1420,12 @@ function setupRRActionCol() {
       const scBdr = sc == null ? '#e2e8f0' : sc > 0 ? '#bbf7d0' : sc < 0 ? '#fecaca' : '#e2e8f0';
       return `<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:5px;">
         <span style="font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;">${label}</span>
-        ${sc != null ? `<span style="font-size:10px;font-weight:700;color:${scCol};background:${scBg};border:1px solid ${scBdr};padding:0 4px;border-radius:4px;white-space:nowrap;">${sc}</span>` : ''}
         <span style="font-size:11px;color:${scCol};line-height:1.3;text-align:right;margin-left:auto;">${desc || '—'}</span>
       </div>`;
     };
     const sec = label =>
       `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:5px 0 2px;">${label}</div>`;
-    const shortDesc = (short, desc) => [short ? `<span style="color:#4338ca;font-weight:700;">${short}</span>` : '', desc].filter(Boolean).join(': ') || '—';
+    const shortDesc = (short, desc) => [short ? `<span style="font-weight:700;">${short}</span>` : '', desc].filter(Boolean).join(': ') || '—';
 
     // ── QR decision path ─────────────────────────────────────────────────────
     const qf = d.tn_td_action, qk = d.bb_action, qo = d.rr_action, qr = d.final_score;
@@ -1462,8 +1461,8 @@ function setupRRActionCol() {
 
     tip.innerHTML = `
       <div style="font-weight:700;color:#0f172a;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;">${sym} — TrTnBBRskRng</div>
-      ${rowScore('Trend/Trade',    d.tn_td_action, shortDesc(d.tn_td_short, d.tn_td_desc))}
-      ${rowScore('BB Range Streak', d.bb_action,  shortDesc(d.bb_short,   d.bb_desc))}
+      ${rowScore('Trend/Trade',    d.trend_trade, shortDesc(d.tn_td_short, d.tn_td_desc))}
+      ${rowScore('BB Range Streak', d.bb_streak,  shortDesc(d.bb_short,   d.bb_desc))}
       ${rowScore('RR',              d.rr_action,  shortDesc(d.rr_short,   d.rr_desc))}
       ${sec('Decision Path')}
       ${decisionHtml}
