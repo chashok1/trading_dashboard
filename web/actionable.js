@@ -1387,14 +1387,14 @@ function setupRRActionCol() {
   if (!tip) {
     tip = document.createElement('div');
     tip.id = 'rrDetailTip';
-    tip.style.cssText = 'position:fixed;z-index:9999;display:none;background:#1e293b;color:#f1f5f9;' +
-      'border-radius:8px;padding:10px 14px;font-size:11px;line-height:1.6;max-width:320px;' +
-      'box-shadow:0 4px 16px rgba(0,0,0,0.35);pointer-events:none;';
+    tip.style.cssText = 'position:fixed;z-index:9999;display:none;background:#fff;color:#1e293b;' +
+      'border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;font-size:11px;line-height:1.6;max-width:320px;' +
+      'box-shadow:0 4px 16px rgba(0,0,0,0.12);pointer-events:none;';
     document.body.appendChild(tip);
   }
 
   const fmt2 = v => v == null ? '—' : Number(v).toFixed(2);
-  const scoreCol = v => v == null ? '#94a3b8' : v > 0 ? '#4ade80' : v < 0 ? '#f87171' : '#94a3b8';
+  const scoreCol = v => v == null ? '#94a3b8' : v > 0 ? '#16a34a' : v < 0 ? '#dc2626' : '#94a3b8';
 
   const body = $('actBody');
   if (!body) return;
@@ -1410,23 +1410,23 @@ function setupRRActionCol() {
 
     const row = (label, val, color) =>
       `<div style="display:flex;justify-content:space-between;gap:12px;">
-         <span style="color:#cbd5e1;white-space:nowrap;">${label}</span>
-         <span style="font-weight:600;color:${color || '#f1f5f9'};text-align:right;">${val}</span>
+         <span style="color:#475569;white-space:nowrap;">${label}</span>
+         <span style="font-weight:600;color:${color || '#0f172a'};text-align:right;">${val}</span>
        </div>`;
     const sec = label =>
       `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:5px 0 2px;">${label}</div>`;
-    const shortDesc = (short, desc) => [short ? `<span style="color:#a5b4fc;font-weight:700;">${short}</span>` : '', desc].filter(Boolean).join(': ') || '—';
+    const shortDesc = (short, desc) => [short ? `<span style="color:#4338ca;font-weight:700;">${short}</span>` : '', desc].filter(Boolean).join(': ') || '—';
 
     tip.innerHTML = `
-      <div style="font-weight:700;color:#fff;margin-bottom:6px;border-bottom:1px solid #334155;padding-bottom:4px;">${sym} — TrTnBBRskRng</div>
+      <div style="font-weight:700;color:#0f172a;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;">${sym} — TrTnBBRskRng</div>
       ${row('Trade Trend Rule', shortDesc(d.tn_td_short, d.tn_td_desc))}
       ${row('BB Range Streak',  shortDesc(d.bb_short,   d.bb_desc))}
       ${row('RR Desc',          shortDesc(d.rr_short,   d.rr_desc))}
       ${sec('Levels')}
-      ${row('Trade',   fmt2(d.trade), '#f97316')}
-      ${row('Trend',   fmt2(d.trend), '#818cf8')}
-      ${row('TRR',     fmt2(d.trr),   '#4ade80')}
-      ${row('LRR',     fmt2(d.lrr),   '#4ade80')}
+      ${row('Trade',   fmt2(d.trade), '#ea580c')}
+      ${row('Trend',   fmt2(d.trend), '#6366f1')}
+      ${row('TRR',     fmt2(d.trr),   '#16a34a')}
+      ${row('LRR',     fmt2(d.lrr),   '#16a34a')}
       ${sec('Indices')}
       ${row('TRR Idx', d.trr_idx != null ? String(d.trr_idx) : '—', scoreCol(d.trr_idx))}
       ${row('MRR Idx', d.mrr_idx != null ? String(d.mrr_idx) : '—', scoreCol(d.mrr_idx))}
