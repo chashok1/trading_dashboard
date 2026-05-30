@@ -224,20 +224,20 @@ QT | `td_tn_bb_action_seq` | Pass-3: same row, `.seq` column | ✓
 Measures where price sits relative to the Trend and Trade lines, in standard-deviation units.
 
 ```
-AC       = min(std_dev, median_sd)            — the SD unit
-trend_sd = (last_price − a_trend_value) / AC  — SDs above/below Trend
-trade_sd = (last_price − a_trade_value) / AC  — SDs above/below Trade
-tt_sd    = (a_trade_value − a_trend_value) / AC — gap between Trade and Trend
+AC              = min(std_dev, median_sd)              — the SD unit
+trend_sd        = (last_price − a_trend_value) / AC    — SDs price is above/below Trend line
+trade_sd        = (last_price − a_trade_value) / AC    — SDs price is above/below Trade line
+trade_trend_sd  = (a_trade_value − a_trend_value) / AC — SDs gap between Trade and Trend lines
 ```
 
 | Score | Condition | Meaning |
 |---|---|---|
 | −2 | trend_sd < 0 AND trade_sd < 0 | Price below both Trend and Trade |
-| −1 | tt_sd < 0 AND trade_sd < 1 | Close to or below Trade, near Trend |
+| −1 | trade_trend_sd < 0 AND trade_sd < 1 | Trade line has crossed below Trend line (inverted), and price is not meaningfully above Trade |
 |  1 | else | Neutral |
 |  2 | trend_sd < 0 AND trade_sd > 0 | Above Trade but below Trend |
 |  3 | trend_sd > 0 AND trade_sd > 0 | Above both |
-|  4 | above both AND (gap > 2 SD OR price > 4 SD above either) | Strongly bullish — large gap or far above |
+|  4 | above both AND (trade_trend_sd > 2 OR max(trend_sd, trade_sd) > 4) | Strongly bullish — large gap between lines or price far above both |
 
 `ref_param_lookup` `table_name='tn_td_rule'` maps QE → `short_name` (e.g. **Bull**, **Bear**, **>Tn<Td**) and `seq` (QF).
 
