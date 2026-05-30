@@ -199,9 +199,8 @@
     const yPx1 = v => PAD_T + chartH * (1 - (v - yMin1) / yRng1);
     const x0 = PAD_L, x1 = PAD_L + chartW1, xMid1 = PAD_L + chartW1 * 0.5;
 
-    const hline1 = (y, color, dash, label) =>
-      `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"/>
-       <text x="${x1+4}" y="${y+4}" fill="${color}" font-size="9" font-weight="600">${label}</text>`;
+    const hline1 = (y, color, dash) =>
+      `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"/>`;
 
     const prevYe = prev != null && prev >= yMin1 && prev <= yMax1 ? yPx1(prev) : null;
     const curYe  = cur  != null && cur  >= yMin1 && cur  <= yMax1 ? yPx1(cur)  : null;
@@ -225,9 +224,9 @@
       ? `<rect x="${x0}" y="${yPx1(trr)}" width="${chartW1}" height="${Math.max(yPx1(lrr)-yPx1(trr),1)}" fill="#f0fdf4"/>` : '';
 
     const lines1 = [];
-    if (trr != null && trr >= yMin1 && trr <= yMax1) lines1.push(hline1(yPx1(trr), '#15803d', '5 2', `TRR ${fmt(trr)}`));
-    if (mrr != null && mrr >= yMin1 && mrr <= yMax1) lines1.push(hline1(yPx1(mrr), '#4ade80', '2 3', `MRR ${fmt(mrr)}`));
-    if (lrr != null && lrr >= yMin1 && lrr <= yMax1) lines1.push(hline1(yPx1(lrr), '#15803d', '5 2', `LRR ${fmt(lrr)}`));
+    if (trr != null && trr >= yMin1 && trr <= yMax1) lines1.push(hline1(yPx1(trr), '#15803d', '5 2'));
+    if (mrr != null && mrr >= yMin1 && mrr <= yMax1) lines1.push(hline1(yPx1(mrr), '#4ade80', '2 3'));
+    if (lrr != null && lrr >= yMin1 && lrr <= yMax1) lines1.push(hline1(yPx1(lrr), '#15803d', '5 2'));
 
     const priceBar1 = () => {
       if (cur == null) return '';
@@ -386,7 +385,14 @@
       </div>
 
       <!-- Today's bar chart -->
-      <div style="flex:0 0 auto;">${svgToday}</div>
+      <div style="flex:0 0 auto;">
+        ${svgToday}
+        <div style="font-size:9px;margin-top:2px;display:flex;justify-content:space-between;gap:4px;">
+          ${trr != null ? `<span style="color:#15803d;font-weight:600;">TRR ${fmt(trr)}</span>` : ''}
+          ${mrr != null ? `<span style="color:#4ade80;font-weight:600;">MRR ${fmt(mrr)}</span>` : ''}
+          ${lrr != null ? `<span style="color:#15803d;font-weight:600;">LRR ${fmt(lrr)}</span>` : ''}
+        </div>
+      </div>
 
       <!-- Trend/Trade chart -->
       ${svgTT ? `<div style="flex:0 0 auto;">${svgTT}</div>` : ''}
