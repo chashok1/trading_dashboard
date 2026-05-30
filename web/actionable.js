@@ -1413,6 +1413,19 @@ function setupRRActionCol() {
          <span style="color:#475569;white-space:nowrap;">${label}</span>
          <span style="font-weight:600;color:${color || '#0f172a'};text-align:right;">${val}</span>
        </div>`;
+    const rowScore = (label, score, desc) => {
+      const sc = score != null ? score : null;
+      const scCol = sc == null ? '#94a3b8' : sc > 0 ? '#16a34a' : sc < 0 ? '#dc2626' : '#64748b';
+      const scBg  = sc == null ? '#f8fafc' : sc > 0 ? '#f0fdf4' : sc < 0 ? '#fef2f2' : '#f8fafc';
+      const scBdr = sc == null ? '#e2e8f0' : sc > 0 ? '#bbf7d0' : sc < 0 ? '#fecaca' : '#e2e8f0';
+      return `<div style="margin-bottom:5px;">
+        <div style="display:flex;align-items:center;gap:5px;margin-bottom:1px;">
+          <span style="font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.04em;">${label}</span>
+          ${sc != null ? `<span style="font-size:10px;font-weight:700;color:${scCol};background:${scBg};border:1px solid ${scBdr};padding:0 4px;border-radius:4px;">${sc}</span>` : ''}
+        </div>
+        <div style="font-size:11px;color:#0f172a;line-height:1.3;">${desc || '—'}</div>
+      </div>`;
+    };
     const sec = label =>
       `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:5px 0 2px;">${label}</div>`;
     const shortDesc = (short, desc) => [short ? `<span style="color:#4338ca;font-weight:700;">${short}</span>` : '', desc].filter(Boolean).join(': ') || '—';
@@ -1451,9 +1464,9 @@ function setupRRActionCol() {
 
     tip.innerHTML = `
       <div style="font-weight:700;color:#0f172a;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;">${sym} — TrTnBBRskRng</div>
-      ${row('Trade Trend Rule', shortDesc(d.tn_td_short, d.tn_td_desc))}
-      ${row('BB Range Streak',  shortDesc(d.bb_short,   d.bb_desc))}
-      ${row('RR Desc',          shortDesc(d.rr_short,   d.rr_desc))}
+      ${rowScore('Trend/Trade',    d.tn_td_action, shortDesc(d.tn_td_short, d.tn_td_desc))}
+      ${rowScore('BB Range Streak', d.bb_action,  shortDesc(d.bb_short,   d.bb_desc))}
+      ${rowScore('RR',              d.rr_action,  shortDesc(d.rr_short,   d.rr_desc))}
       ${sec('Decision Path')}
       ${decisionHtml}
       <div style="margin-top:3px;font-size:11px;font-weight:700;color:${scoreCol(qr)};">Score = ${qr != null ? qr : '—'} → ${d.action || '—'}</div>
