@@ -246,7 +246,7 @@
     // ── Chart 2: Trend/Trade — fixed positions, price indicator ──────────────
     const svgTT = (() => {
       if (trend == null && trade == null) return '';
-      const W2 = 120, H2 = 155, PAD_L2 = 42, PAD_R2 = 50, PAD_T2 = 14, PAD_B2 = 38;
+      const W2 = 120, H2 = 120, PAD_L2 = 42, PAD_R2 = 50, PAD_T2 = 14, PAD_B2 = 14;
       const cW2 = W2 - PAD_L2 - PAD_R2, cH2 = H2 - PAD_T2 - PAD_B2;
       const xa = PAD_L2, xb = PAD_L2 + cW2, xm2 = PAD_L2 + cW2 * 0.5;
 
@@ -278,13 +278,8 @@
         }
       }
 
-      const tradeSdTxt = sd.trade_sd != null
-        ? `<text x="${xm2}" y="${H2-13}" fill="${scoreColor(sd.trade_sd)}" font-size="8" text-anchor="middle">Trade ${fmtSd(sd.trade_sd)}SD</text>` : '';
-      const trendSdTxt = sd.trend_sd != null
-        ? `<text x="${xm2}" y="${H2-3}" fill="${scoreColor(sd.trend_sd)}" font-size="8" text-anchor="middle">Trend ${fmtSd(sd.trend_sd)}SD</text>` : '';
-
       return `<svg width="${W2}" height="${H2}" style="overflow:visible;display:block;">
-        ${tradeLine}${trendLine}${priceIndicator}${tradeSdTxt}${trendSdTxt}
+        ${tradeLine}${trendLine}${priceIndicator}
       </svg>`;
     })();
 
