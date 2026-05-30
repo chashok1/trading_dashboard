@@ -320,30 +320,33 @@
     const infoBox = (content) =>
       `<div style="padding:5px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:9px;">${content}</div>`;
 
-    // ── TRR/MRR/LRR indices box (goes above graphs) ──────────────────────────
-    const indicesBox = infoBox(`
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:nowrap;">
+    // ── Box above Graph1: TRR/MRR/LRR dots ───────────────────────────────────
+    const rrIdxBox = infoBox(`
+      <div style="display:flex;flex-direction:column;gap:3px;">
         ${dot(ix.trr, 'TRR', sd.trr_sd)}
         ${dot(ix.mrr, 'MRR', sd.mrr_sd)}
         ${dot(ix.lrr, 'LRR', sd.lrr_sd)}
-        <span style="margin-left:auto;color:#64748b;white-space:nowrap;">
-          <span style="color:#94a3b8;">SD</span> <strong>${fmt(sdVal)}</strong>
-          &nbsp;·&nbsp;
-          <span style="color:#94a3b8;">Trend</span> <strong style="color:${scoreColor(sd.trend_sd)}">${fmtSd(sd.trend_sd)}</strong>
-          &nbsp;·&nbsp;
-          <span style="color:#94a3b8;">Trade</span> <strong style="color:${scoreColor(sd.trade_sd)}">${fmtSd(sd.trade_sd)}</strong>
-        </span>
       </div>`);
 
-    // ── Below-graph boxes ────────────────────────────────────────────────────
-    const graph1Box = (trr != null || lrr != null) ? infoBox(`
-      <div style="display:flex;justify-content:space-between;gap:8px;">
+    // ── Box above Graph2: SD / Trend / Trade ─────────────────────────────────
+    const sdBox = infoBox(`
+      <div style="display:flex;flex-direction:column;gap:3px;color:#64748b;">
+        <span><span style="color:#94a3b8;">SD</span> <strong>${fmt(sdVal)}</strong></span>
+        <span><span style="color:#94a3b8;">Trend</span> <strong style="color:${scoreColor(sd.trend_sd)}">${fmtSd(sd.trend_sd)}</strong></span>
+        <span><span style="color:#94a3b8;">Trade</span> <strong style="color:${scoreColor(sd.trade_sd)}">${fmtSd(sd.trade_sd)}</strong></span>
+      </div>`);
+
+    // ── Box below Graph1: TRR/MRR/LRR values ─────────────────────────────────
+    const graph1Box = (trr != null || mrr != null || lrr != null) ? infoBox(`
+      <div style="display:flex;flex-direction:column;gap:2px;">
         ${trr != null ? `<span><span style="color:#94a3b8;">TRR</span> <strong style="color:#15803d;">${fmt(trr)}</strong></span>` : ''}
+        ${mrr != null ? `<span><span style="color:#94a3b8;">MRR</span> <strong style="color:#4ade80;">${fmt(mrr)}</strong></span>` : ''}
         ${lrr != null ? `<span><span style="color:#94a3b8;">LRR</span> <strong style="color:#15803d;">${fmt(lrr)}</strong></span>` : ''}
       </div>`) : '';
 
+    // ── Box below Graph2: Trade/Trend values ──────────────────────────────────
     const graph2Box = (trade != null || trend != null) ? infoBox(`
-      <div style="display:flex;justify-content:space-between;gap:8px;">
+      <div style="display:flex;flex-direction:column;gap:2px;">
         ${trade != null ? `<span><span style="color:#94a3b8;">Trade</span> <strong style="color:#f97316;">${fmt(trade)}</strong></span>` : ''}
         ${trend != null ? `<span><span style="color:#94a3b8;">Trend</span> <strong style="color:#818cf8;">${fmt(trend)}</strong></span>` : ''}
       </div>`) : '';
@@ -396,29 +399,19 @@
 
       </div>
 
-      <!-- Middle column: indices box + graphs -->
+      <!-- Column 1: TRR/MRR/LRR box + Graph1 + values box -->
       <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:6px;">
-
-        <!-- Indices box above graphs -->
-        ${indicesBox}
-
-        <!-- Graphs row -->
-        <div style="display:flex;gap:8px;align-items:flex-end;">
-
-          <!-- Graph 1 + box -->
-          <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:4px;">
-            ${svgToday}
-            ${graph1Box}
-          </div>
-
-          <!-- Graph 2 + box -->
-          ${svgTT ? `<div style="flex:0 0 auto;display:flex;flex-direction:column;gap:4px;">
-            ${svgTT}
-            ${graph2Box}
-          </div>` : ''}
-
-        </div>
+        ${rrIdxBox}
+        ${svgToday}
+        ${graph1Box}
       </div>
+
+      <!-- Column 2: SD/Trend/Trade box + Graph2 + values box -->
+      ${svgTT ? `<div style="flex:0 0 auto;display:flex;flex-direction:column;gap:6px;">
+        ${sdBox}
+        ${svgTT}
+        ${graph2Box}
+      </div>` : ''}
 
       <!-- Historical chart: tripled, grows to fill -->
       <div style="flex:3;min-width:400px;overflow:hidden;">
