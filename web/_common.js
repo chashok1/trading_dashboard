@@ -354,8 +354,16 @@
     el.innerHTML = `
     <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:nowrap;width:100%;">
 
-      <!-- Left panel: descriptions + decision + action -->
+      <!-- Left panel: action (top) + descriptions + decision -->
       <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:8px;">
+
+        <div style="display:flex;align-items:center;gap:10px;
+          background:${actionBg};border:2px solid ${actionColor};border-radius:8px;padding:10px 14px;">
+          <div style="font-size:28px;font-weight:900;color:${actionColor};line-height:1;min-width:40px;">${actionCode}</div>
+          <div style="flex:1;">
+            <div style="font-size:11px;color:#1e293b;line-height:1.3;margin-top:2px;">Trend Trade BB Risk Range Rule Action</div>
+          </div>
+        </div>
 
         <div style="padding:9px 11px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;flex:1;">
           ${taggedRow(ru.tn_td_short, 'Trend/Trade',     ru.tn_td_desc, ru.tn_td_action)}
@@ -387,14 +395,6 @@
             }
             return html;
           })()}
-        </div>
-
-        <div style="display:flex;align-items:center;gap:10px;
-          background:${actionBg};border:2px solid ${actionColor};border-radius:8px;padding:10px 14px;">
-          <div style="font-size:28px;font-weight:900;color:${actionColor};line-height:1;min-width:40px;">${actionCode}</div>
-          <div style="flex:1;">
-            <div style="font-size:11px;color:#1e293b;line-height:1.3;margin-top:2px;">Trend Trade BB Risk Range Rule Action</div>
-          </div>
         </div>
 
       </div>
