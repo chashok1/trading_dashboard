@@ -192,7 +192,7 @@
     // Y scale = RR range only (lrr..trr + price); Trade/Trend in separate chart
     const vals1 = [cur, prev, hi, lo, lrr, trr].filter(v => v != null);
     const rawMin1 = Math.min(...vals1), rawMax1 = Math.max(...vals1);
-    const W1 = 180, H = 220, PAD_L = 44, PAD_R = 72, PAD_T = 12, PAD_B = 18;
+    const W1 = 210, H = 220, PAD_L = 44, PAD_R = 102, PAD_T = 12, PAD_B = 18;
     const chartW1 = W1 - PAD_L - PAD_R, chartH = H - PAD_T - PAD_B;
     const pad1 = sdVal ? sdVal * 0.35 : (rawMax1 - rawMin1) * 0.08;
     const yMin1 = rawMin1 - pad1, yMax1 = rawMax1 + pad1, yRng1 = yMax1 - yMin1 || 1;
@@ -217,28 +217,21 @@
       curYe  != null ? `<line x1="${x0}" y1="${curYe}"  x2="${x1}" y2="${curYe}"  stroke="#374151" stroke-width="0.8" stroke-dasharray="3 3"/>` : '',
       prevLY != null ? `<text x="${x0-3}" y="${prevLY+4}" fill="#64748b" font-size="9" text-anchor="end">${fmt(prev)}</text>
                         <text x="${x0-3}" y="${prevLY+12}" fill="#94a3b8" font-size="7" text-anchor="end">prev</text>` : '',
-      curLY  != null ? `<text x="${x0-3}" y="${curLY+4}" fill="#111" font-size="9" text-anchor="end" font-weight="700">${fmt(cur)}</text>
-                        <text x="${x0-3}" y="${curLY+12}" fill="#94a3b8" font-size="7" text-anchor="end">today</text>` : '',
+      curLY  != null ? `<text x="${x1+4}" y="${curLY+4}" fill="#111" font-size="9" text-anchor="start" font-weight="700">${fmt(cur)}</text>
+                        <text x="${x1+4}" y="${curLY+12}" fill="#94a3b8" font-size="7" text-anchor="start">today</text>` : '',
     ].join('');
 
     const rrZone = (lrr != null && trr != null)
       ? `<rect x="${x0}" y="${yPx1(trr)}" width="${chartW1}" height="${Math.max(yPx1(lrr)-yPx1(trr),1)}" fill="#f0fdf4"/>` : '';
 
-    // Adjust TRR/LRR label Y to avoid overlapping price labels (prevLY/curLY on left side)
-    const priceYs = [prevLY, curLY].filter(v => v != null);
-    const avoidY = (lineY, label) => {
-      if (!label) return hline1(lineY, '#15803d', '5 2', null);
-      let labelY = lineY;
-      for (const py of priceYs) {
-        if (Math.abs(labelY - py) < 10) labelY = labelY < py ? labelY - 10 : labelY + 10;
-      }
-      return `<line x1="${x0}" y1="${lineY}" x2="${x1}" y2="${lineY}" stroke="#15803d" stroke-width="1.2" stroke-dasharray="5 2"/>
-              <text x="${x1+6}" y="${labelY+4}" fill="#15803d" font-size="8" text-anchor="start" font-weight="600">${label}</text>`;
-    };
+    // TRR/LRR labels at x1+44 (past today's price label ~40px wide) — no Y collision possible
+    const rrLabel = (y, label) =>
+      `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="#15803d" stroke-width="1.2" stroke-dasharray="5 2"/>
+       <text x="${x1+44}" y="${y+4}" fill="#15803d" font-size="8" text-anchor="start" font-weight="600">${label}</text>`;
     const lines1 = [];
-    if (trr != null && trr >= yMin1 && trr <= yMax1) lines1.push(avoidY(yPx1(trr), `TRR ${fmt(trr)}`));
+    if (trr != null && trr >= yMin1 && trr <= yMax1) lines1.push(rrLabel(yPx1(trr), `TRR ${fmt(trr)}`));
     if (mrr != null && mrr >= yMin1 && mrr <= yMax1) lines1.push(hline1(yPx1(mrr), '#4ade80', '2 3', null));
-    if (lrr != null && lrr >= yMin1 && lrr <= yMax1) lines1.push(avoidY(yPx1(lrr), `LRR ${fmt(lrr)}`));
+    if (lrr != null && lrr >= yMin1 && lrr <= yMax1) lines1.push(rrLabel(yPx1(lrr), `LRR ${fmt(lrr)}`));
 
     const priceBar1 = () => {
       if (cur == null) return '';
