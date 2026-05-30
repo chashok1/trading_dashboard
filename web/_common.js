@@ -352,7 +352,7 @@
       </div>`) : '';
 
     el.innerHTML = `
-    <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:nowrap;width:100%;">
+    <div style="display:flex;gap:14px;align-items:stretch;flex-wrap:nowrap;width:100%;">
 
       <!-- Left panel: action (top) + descriptions + decision -->
       <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:8px;">
@@ -399,28 +399,34 @@
 
       </div>
 
-      <!-- Column 1: TRR/MRR/LRR box + Graph1 + values box -->
-      <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:6px;">
+      <!-- Column 1: top box + graph centered + bottom box -->
+      <div style="flex:0 0 auto;display:flex;flex-direction:column;">
         ${rrIdxBox}
-        ${svgToday}
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
+          ${svgToday}
+        </div>
         ${graph1Box}
       </div>
 
-      <!-- Column 2: SD/Trend/Trade box + Graph2 + values box -->
-      ${svgTT ? `<div style="flex:0 0 auto;display:flex;flex-direction:column;gap:6px;">
+      <!-- Column 2: top box + graph centered + bottom box -->
+      ${svgTT ? `<div style="flex:0 0 auto;display:flex;flex-direction:column;">
         ${sdBox}
-        ${svgTT}
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
+          ${svgTT}
+        </div>
         ${graph2Box}
       </div>` : ''}
 
-      <!-- Historical chart: tripled, grows to fill -->
-      <div style="flex:3;min-width:400px;overflow:hidden;">
-        <div id="${histId}_wrap" style="width:100%;">${histSvg}</div>
-        <div style="font-size:8px;color:#94a3b8;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;">
-          <span style="color:#2563eb;">&#9644; price</span>
-          <span style="color:#15803d;">&#9135;&#9135; TRR/LRR</span>
-          <span style="color:#f97316;">&#9135;&#9135; Trade</span>
-          <span style="color:#818cf8;">&#9135;&#9135; Trend</span>
+      <!-- Historical chart: grows to fill, graph vertically centered -->
+      <div style="flex:3;min-width:400px;overflow:hidden;display:flex;flex-direction:column;">
+        <div style="flex:1;display:flex;flex-direction:column;justify-content:center;">
+          <div id="${histId}_wrap" style="width:100%;">${histSvg}</div>
+          <div style="font-size:8px;color:#94a3b8;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;">
+            <span style="color:#2563eb;">&#9644; price</span>
+            <span style="color:#15803d;">&#9135;&#9135; TRR/LRR</span>
+            <span style="color:#f97316;">&#9135;&#9135; Trade</span>
+            <span style="color:#818cf8;">&#9135;&#9135; Trend</span>
+          </div>
         </div>
       </div>
 
