@@ -200,8 +200,8 @@
     const x0 = PAD_L, x1 = PAD_L + chartW1, xMid1 = PAD_L + chartW1 * 0.5;
 
     const hline1 = (y, color, dash, label) =>
-      `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"/>
-       ${label ? `<text x="${x1+6}" y="${y+4}" fill="${color}" font-size="8" text-anchor="start" font-weight="600">${label}</text>` : ''}`;
+      `<line x1="${x0}" y1="${y}" x2="${x1+40}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"/>
+       ${label ? `<text x="${x1+44}" y="${y+4}" fill="${color}" font-size="8" text-anchor="start" font-weight="600">${label}</text>` : ''}`;
 
     const prevYe = prev != null && prev >= yMin1 && prev <= yMax1 ? yPx1(prev) : null;
     const curYe  = cur  != null && cur  >= yMin1 && cur  <= yMax1 ? yPx1(cur)  : null;
@@ -213,8 +213,8 @@
     }
 
     const priceDashes1 = [
-      prevYe != null ? `<line x1="${x0}" y1="${prevYe}" x2="${x1}" y2="${prevYe}" stroke="#94a3b8" stroke-width="0.8" stroke-dasharray="3 3"/>` : '',
-      curYe  != null ? `<line x1="${x0}" y1="${curYe}"  x2="${x1}" y2="${curYe}"  stroke="#374151" stroke-width="0.8" stroke-dasharray="3 3"/>` : '',
+      prevYe != null ? `<line x1="${x0}" y1="${prevYe}" x2="${x1+40}" y2="${prevYe}" stroke="#94a3b8" stroke-width="0.8" stroke-dasharray="3 3"/>` : '',
+      curYe  != null ? `<line x1="${x0}" y1="${curYe}"  x2="${x1+2}"  y2="${curYe}"  stroke="#374151" stroke-width="0.8" stroke-dasharray="3 3"/>` : '',
       prevLY != null ? `<text x="${x0-3}" y="${prevLY+4}" fill="#64748b" font-size="9" text-anchor="end">${fmt(prev)}</text>
                         <text x="${x0-3}" y="${prevLY+12}" fill="#94a3b8" font-size="7" text-anchor="end">prev</text>` : '',
       curLY  != null ? `<text x="${x1+4}" y="${curLY+4}" fill="#111" font-size="9" text-anchor="start" font-weight="700">${fmt(cur)}</text>
@@ -224,9 +224,9 @@
     const rrZone = (lrr != null && trr != null)
       ? `<rect x="${x0}" y="${yPx1(trr)}" width="${chartW1}" height="${Math.max(yPx1(lrr)-yPx1(trr),1)}" fill="#f0fdf4"/>` : '';
 
-    // TRR/LRR labels at x1+44 (past today's price label ~40px wide) — no Y collision possible
+    // TRR/LRR lines extend to x1+40 (almost touching labels at x1+44)
     const rrLabel = (y, label) =>
-      `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="#15803d" stroke-width="1.2" stroke-dasharray="5 2"/>
+      `<line x1="${x0}" y1="${y}" x2="${x1+40}" y2="${y}" stroke="#15803d" stroke-width="1.2" stroke-dasharray="5 2"/>
        <text x="${x1+44}" y="${y+4}" fill="#15803d" font-size="8" text-anchor="start" font-weight="600">${label}</text>`;
     const lines1 = [];
     if (trr != null && trr >= yMin1 && trr <= yMax1) lines1.push(rrLabel(yPx1(trr), `TRR ${fmt(trr)}`));
@@ -427,7 +427,7 @@
       </div>
 
       <!-- Column 2: top box + graph centered + bottom box -->
-      <div style="flex:0 0 auto;display:flex;flex-direction:column;">
+      <div style="flex:0 0 auto;display:flex;flex-direction:column;align-items:center;">
         ${sdBox}
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
           ${svgTT || ''}
