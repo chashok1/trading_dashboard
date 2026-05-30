@@ -320,9 +320,9 @@
     const infoBox = (content) =>
       `<div style="padding:5px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:9px;">${content}</div>`;
 
-    // ── Box above Graph1: TRR/MRR/LRR dots ───────────────────────────────────
+    // ── Box above Graph1: TRR/MRR/LRR dots on one line ──────────────────────
     const rrIdxBox = infoBox(`
-      <div style="display:flex;flex-direction:column;gap:3px;">
+      <div style="display:flex;align-items:center;gap:12px;white-space:nowrap;">
         ${dot(ix.trr, 'TRR', sd.trr_sd)}
         ${dot(ix.mrr, 'MRR', sd.mrr_sd)}
         ${dot(ix.lrr, 'LRR', sd.lrr_sd)}
@@ -336,9 +336,9 @@
         <span><span style="color:#94a3b8;">Trade</span> <strong style="color:${scoreColor(sd.trade_sd)}">${fmtSd(sd.trade_sd)}</strong></span>
       </div>`);
 
-    // ── Box below Graph1: TRR/MRR/LRR values ─────────────────────────────────
+    // ── Box below Graph1: TRR/MRR/LRR values on one line ────────────────────
     const graph1Box = (trr != null || mrr != null || lrr != null) ? infoBox(`
-      <div style="display:flex;flex-direction:column;gap:2px;">
+      <div style="display:flex;gap:12px;white-space:nowrap;">
         ${trr != null ? `<span><span style="color:#94a3b8;">TRR</span> <strong style="color:#15803d;">${fmt(trr)}</strong></span>` : ''}
         ${mrr != null ? `<span><span style="color:#94a3b8;">MRR</span> <strong style="color:#4ade80;">${fmt(mrr)}</strong></span>` : ''}
         ${lrr != null ? `<span><span style="color:#94a3b8;">LRR</span> <strong style="color:#15803d;">${fmt(lrr)}</strong></span>` : ''}
@@ -352,7 +352,7 @@
       </div>`) : '';
 
     el.innerHTML = `
-    <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:nowrap;width:100%;">
+    <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:nowrap;width:100%;">
 
       <!-- Left panel: action (top) + descriptions + decision -->
       <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:8px;">
