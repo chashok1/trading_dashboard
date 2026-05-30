@@ -316,25 +316,43 @@
          </div>` : '';
 
     // ── Assemble ──────────────────────────────────────────────────────────────
+    // ── Shared box style ──────────────────────────────────────────────────────
+    const infoBox = (content) =>
+      `<div style="padding:5px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:9px;">${content}</div>`;
+
+    // ── TRR/MRR/LRR indices box (goes above graphs) ──────────────────────────
+    const indicesBox = infoBox(`
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:nowrap;">
+        ${dot(ix.trr, 'TRR', sd.trr_sd)}
+        ${dot(ix.mrr, 'MRR', sd.mrr_sd)}
+        ${dot(ix.lrr, 'LRR', sd.lrr_sd)}
+        <span style="margin-left:auto;color:#64748b;white-space:nowrap;">
+          <span style="color:#94a3b8;">SD</span> <strong>${fmt(sdVal)}</strong>
+          &nbsp;·&nbsp;
+          <span style="color:#94a3b8;">Trend</span> <strong style="color:${scoreColor(sd.trend_sd)}">${fmtSd(sd.trend_sd)}</strong>
+          &nbsp;·&nbsp;
+          <span style="color:#94a3b8;">Trade</span> <strong style="color:${scoreColor(sd.trade_sd)}">${fmtSd(sd.trade_sd)}</strong>
+        </span>
+      </div>`);
+
+    // ── Below-graph boxes ────────────────────────────────────────────────────
+    const graph1Box = (trr != null || lrr != null) ? infoBox(`
+      <div style="display:flex;justify-content:space-between;gap:8px;">
+        ${trr != null ? `<span><span style="color:#94a3b8;">TRR</span> <strong style="color:#15803d;">${fmt(trr)}</strong></span>` : ''}
+        ${lrr != null ? `<span><span style="color:#94a3b8;">LRR</span> <strong style="color:#15803d;">${fmt(lrr)}</strong></span>` : ''}
+      </div>`) : '';
+
+    const graph2Box = (trade != null || trend != null) ? infoBox(`
+      <div style="display:flex;justify-content:space-between;gap:8px;">
+        ${trade != null ? `<span><span style="color:#94a3b8;">Trade</span> <strong style="color:#f97316;">${fmt(trade)}</strong></span>` : ''}
+        ${trend != null ? `<span><span style="color:#94a3b8;">Trend</span> <strong style="color:#818cf8;">${fmt(trend)}</strong></span>` : ''}
+      </div>`) : '';
+
     el.innerHTML = `
-    <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:nowrap;width:100%;">
+    <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:nowrap;width:100%;">
 
-      <!-- Left panel: doubled size -->
+      <!-- Left panel: descriptions + decision + action -->
       <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:8px;">
-
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:nowrap;
-          padding:6px 10px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;">
-          ${dot(ix.trr, 'TRR', sd.trr_sd)}
-          ${dot(ix.mrr, 'MRR', sd.mrr_sd)}
-          ${dot(ix.lrr, 'LRR', sd.lrr_sd)}
-          <span style="margin-left:auto;font-size:10px;color:#64748b;white-space:nowrap;">
-            <span style="color:#94a3b8;">SD</span> <strong>${fmt(sdVal)}</strong>
-            &nbsp;·&nbsp;
-            <span style="color:#94a3b8;">Trend</span> <strong style="color:${scoreColor(sd.trend_sd)}">${fmtSd(sd.trend_sd)}</strong>
-            &nbsp;·&nbsp;
-            <span style="color:#94a3b8;">Trade</span> <strong style="color:${scoreColor(sd.trade_sd)}">${fmtSd(sd.trade_sd)}</strong>
-          </span>
-        </div>
 
         <div style="padding:9px 11px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;flex:1;">
           ${taggedRow(ru.tn_td_short, 'Trend/Trade',     ru.tn_td_desc, ru.tn_td_action)}
@@ -378,22 +396,29 @@
 
       </div>
 
-      <!-- Today's bar chart -->
-      <div style="flex:0 0 auto;">
-        ${svgToday}
-        <div style="font-size:9px;margin-top:2px;display:flex;justify-content:space-between;gap:4px;">
-          ${trr != null ? `<span style="color:#15803d;font-weight:600;">TRR ${fmt(trr)}</span>` : ''}
-          ${lrr != null ? `<span style="color:#15803d;font-weight:600;">LRR ${fmt(lrr)}</span>` : ''}
+      <!-- Middle column: indices box + graphs -->
+      <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:6px;">
+
+        <!-- Indices box above graphs -->
+        ${indicesBox}
+
+        <!-- Graphs row -->
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+
+          <!-- Graph 1 + box -->
+          <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:4px;">
+            ${svgToday}
+            ${graph1Box}
+          </div>
+
+          <!-- Graph 2 + box -->
+          ${svgTT ? `<div style="flex:0 0 auto;display:flex;flex-direction:column;gap:4px;">
+            ${svgTT}
+            ${graph2Box}
+          </div>` : ''}
+
         </div>
       </div>
-
-      <!-- Trend/Trade chart -->
-      ${svgTT ? `<div style="flex:0 0 auto;">${svgTT}
-        <div style="font-size:9px;margin-top:2px;display:flex;justify-content:space-between;gap:4px;">
-          ${trade != null ? `<span style="color:#f97316;font-weight:600;">Trade ${fmt(trade)}</span>` : ''}
-          ${trend != null ? `<span style="color:#818cf8;font-weight:600;">Trend ${fmt(trend)}</span>` : ''}
-        </div>
-      </div>` : ''}
 
       <!-- Historical chart: tripled, grows to fill -->
       <div style="flex:3;min-width:400px;overflow:hidden;">
