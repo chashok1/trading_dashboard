@@ -354,8 +354,11 @@ def get_actionable(
                COALESCE(a.source_asset_class, m.asset_class) AS real_asset_class,
                q.last_price, q.net_chng, q.pct_change, q.export_date, q.export_time, q.loaded_at,
                u.user_action AS last_user_action,
-               u.snooze_until AS snooze_until
+               u.snooze_until AS snooze_until,
+               cat.td_tn_bb_action_desc AS rr_action
         FROM drv_actionable a
+        LEFT JOIN drv_cat_atomic_input cat
+               ON cat.tos_symbol = a.tos_symbol AND cat.as_of_date = a.as_of_date
         LEFT JOIN drv_ma m
                ON m.tos_symbol = a.tos_symbol AND m.as_of_date = a.as_of_date
         LEFT JOIN drv_quote q

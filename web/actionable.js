@@ -705,7 +705,7 @@ function renderGrid() {
       <td class="num">${fmtUsd(r.net_chng)}</td>
       <td>${fmtAsOfExport(r.export_date, r.export_time, r.loaded_at)}</td>
       <td class="rr-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-date="${escapeHtml(r.as_of_date||'')}">
-        <span class="rr-action-val" style="font-size:11px;font-weight:600;color:#4338ca;cursor:help;">—</span>
+        <span class="rr-action-val" style="font-size:11px;font-weight:600;color:#4338ca;cursor:help;">${r.rr_action || '—'}</span>
       </td>
       <td>${tags.join(' ')}</td>
     `;
@@ -1402,15 +1402,6 @@ function setupRRActionCol() {
     if (!cell) return;
     const sym = cell.dataset.sym, date = cell.dataset.date;
     if (!sym || !date) return;
-
-    // Load action value into cell if not yet done
-    const valEl = cell.querySelector('.rr-action-val');
-    if (valEl && valEl.textContent === '—') {
-      const d = await _fetchRRDetail(sym, date);
-      if (d && d.action) {
-        valEl.textContent = d.action;
-      }
-    }
 
     // Show tooltip
     const d = await _fetchRRDetail(sym, date);
