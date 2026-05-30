@@ -241,7 +241,6 @@
 
     const svgToday = `<svg width="${W1}" height="${H}" style="overflow:visible;display:block;">
       ${rrZone}${lines1.join('')}${priceDashes1}${priceBar1()}
-      <text x="${xMid1}" y="${H}" fill="#64748b" font-size="8" text-anchor="middle" font-weight="600">Today (RR)</text>
     </svg>`;
 
     // ── Chart 2: Trade / Trend — fixed small height, no proportional scaling ──
@@ -287,7 +286,7 @@
       }
 
       // SD labels sit inside the bottom padding (PAD_B2=38 gives room for 3 lines)
-      const chartLbl = `<text x="${xm2}" y="${H2-24}" fill="#64748b" font-size="8" text-anchor="middle" font-weight="600">Trend/Trade</text>`;
+      const chartLbl = ``;
       const trendSdTxt = sd.trend_sd != null
         ? `<text x="${xm2}" y="${H2-13}" fill="${scoreColor(sd.trend_sd)}" font-size="8" text-anchor="middle">Trend ${fmtSd(sd.trend_sd)}SD</text>` : '';
       const tradeSdTxt = sd.trade_sd != null
@@ -333,7 +332,7 @@
     <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:nowrap;width:100%;">
 
       <!-- Left panel: doubled size -->
-      <div style="flex:2;min-width:280px;display:flex;flex-direction:column;gap:8px;">
+      <div style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:8px;">
 
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;
           padding:6px 10px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;">
@@ -359,7 +358,7 @@
           background:${actionBg};border:2px solid ${actionColor};border-radius:8px;padding:10px 14px;">
           <div style="font-size:28px;font-weight:900;color:${actionColor};line-height:1;min-width:40px;">${actionCode}</div>
           <div style="flex:1;">
-            <div style="font-size:9px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;">Final Action · priority ${priority}</div>
+            <div style="font-size:9px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;">Final Action</div>
             <div style="font-size:11px;color:#1e293b;line-height:1.3;margin-top:2px;">Trend Trade BB Risk Range Rule Action</div>
           </div>
         </div>
