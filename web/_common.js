@@ -328,9 +328,9 @@
         ${dot(ix.lrr, 'LRR', sd.lrr_sd)}
       </div>`);
 
-    // ── Box above Graph2: SD / Trend / Trade ─────────────────────────────────
+    // ── Box above Graph2: SD / Trend / Trade side by side ────────────────────
     const sdBox = infoBox(`
-      <div style="display:flex;flex-direction:column;gap:3px;color:#64748b;">
+      <div style="display:flex;align-items:center;gap:12px;white-space:nowrap;color:#64748b;">
         <span><span style="color:#94a3b8;">SD</span> <strong>${fmt(sdVal)}</strong></span>
         <span><span style="color:#94a3b8;">Trend</span> <strong style="color:${scoreColor(sd.trend_sd)}">${fmtSd(sd.trend_sd)}</strong></span>
         <span><span style="color:#94a3b8;">Trade</span> <strong style="color:${scoreColor(sd.trade_sd)}">${fmtSd(sd.trade_sd)}</strong></span>
@@ -344,12 +344,22 @@
         ${lrr != null ? `<span><span style="color:#94a3b8;">LRR</span> <strong style="color:#15803d;">${fmt(lrr)}</strong></span>` : ''}
       </div>`) : '';
 
-    // ── Box below Graph2: Trade/Trend values ──────────────────────────────────
+    // ── Box below Graph2: Trade/Trend side by side ───────────────────────────
     const graph2Box = (trade != null || trend != null) ? infoBox(`
-      <div style="display:flex;flex-direction:column;gap:2px;">
+      <div style="display:flex;gap:12px;white-space:nowrap;">
         ${trade != null ? `<span><span style="color:#94a3b8;">Trade</span> <strong style="color:#f97316;">${fmt(trade)}</strong></span>` : ''}
         ${trend != null ? `<span><span style="color:#94a3b8;">Trend</span> <strong style="color:#818cf8;">${fmt(trend)}</strong></span>` : ''}
       </div>`) : '';
+
+    // ── Box above Graph3: title + legend ─────────────────────────────────────
+    const graph3TopBox = infoBox(`
+      <div style="display:flex;align-items:center;gap:12px;white-space:nowrap;">
+        <span style="font-weight:600;color:#64748b;font-size:9px;">60-day history</span>
+        <span style="color:#2563eb;">&#9644; price</span>
+        <span style="color:#15803d;">&#9135;&#9135; TRR/LRR</span>
+        <span style="color:#f97316;">&#9135;&#9135; Trade</span>
+        <span style="color:#818cf8;">&#9135;&#9135; Trend</span>
+      </div>`);
 
     el.innerHTML = `
     <div style="display:flex;gap:14px;align-items:stretch;flex-wrap:nowrap;width:100%;">
@@ -417,17 +427,13 @@
         ${graph2Box}
       </div>` : ''}
 
-      <!-- Historical chart: grows to fill, graph vertically centered -->
+      <!-- Historical chart: top box + centered graph + empty bottom spacer -->
       <div style="flex:3;min-width:400px;overflow:hidden;display:flex;flex-direction:column;">
-        <div style="flex:1;display:flex;flex-direction:column;justify-content:center;">
+        ${graph3TopBox}
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
           <div id="${histId}_wrap" style="width:100%;">${histSvg}</div>
-          <div style="font-size:8px;color:#94a3b8;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;">
-            <span style="color:#2563eb;">&#9644; price</span>
-            <span style="color:#15803d;">&#9135;&#9135; TRR/LRR</span>
-            <span style="color:#f97316;">&#9135;&#9135; Trade</span>
-            <span style="color:#818cf8;">&#9135;&#9135; Trend</span>
-          </div>
         </div>
+        <div style="visibility:hidden;">${graph1Box || graph2Box || infoBox('&nbsp;')}</div>
       </div>
 
     </div>`;
