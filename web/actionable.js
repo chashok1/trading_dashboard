@@ -1417,11 +1417,46 @@ function setupRRActionCol() {
       `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:5px 0 2px;">${label}</div>`;
     const shortDesc = (short, desc) => [short ? `<span style="color:#4338ca;font-weight:700;">${short}</span>` : '', desc].filter(Boolean).join(': ') || '—';
 
+    // ── QR decision path ─────────────────────────────────────────────────────
+    const qf = d.tn_td_action, qk = d.bb_action, qo = d.rr_action, qr = d.final_score;
+    const step = (indent, label, val, note, active) => {
+      const pad = '&nbsp;'.repeat(indent * 3);
+      const col = active ? '#0f172a' : '#94a3b8';
+      const valCol = val < 0 ? '#dc2626' : val > 0 ? '#16a34a' : '#64748b';
+      const arrow = active ? '<span style="color:#4338ca;font-weight:700;">→</span>' : '<span style="color:#cbd5e1;">→</span>';
+      return `<div style="font-family:monospace;font-size:10px;color:${col};line-height:1.7;">
+        ${pad}${label} <span style="font-weight:700;color:${valCol};">${val != null ? val : '—'}</span>
+        ${arrow} <span style="color:${active?'#475569':'#cbd5e1'};font-style:italic;">${note}</span>
+      </div>`;
+    };
+
+    let decisionHtml = '';
+    if (qf != null) {
+      if (qf < 0) {
+        decisionHtml = step(0, 'QF', qf, 'Trend/Trade bearish → wins', true);
+      } else if (qf > 0) {
+        decisionHtml = step(0, 'QF', qf, 'Trend/Trade bullish → check BB', true);
+        if (qk != null) {
+          if (qk < 0) {
+            decisionHtml += step(1, 'QK', qk, 'BB bearish → wins', true);
+          } else {
+            decisionHtml += step(1, 'QK', qk, 'BB bullish → use RR', true);
+            decisionHtml += step(2, 'QO', qo, 'RR action → QR', true);
+          }
+        }
+      } else {
+        decisionHtml = step(0, 'QF', qf, 'neutral → null', true);
+      }
+    }
+
     tip.innerHTML = `
       <div style="font-weight:700;color:#0f172a;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;">${sym} — TrTnBBRskRng</div>
       ${row('Trade Trend Rule', shortDesc(d.tn_td_short, d.tn_td_desc))}
       ${row('BB Range Streak',  shortDesc(d.bb_short,   d.bb_desc))}
       ${row('RR Desc',          shortDesc(d.rr_short,   d.rr_desc))}
+      ${sec('Decision Path')}
+      ${decisionHtml}
+      <div style="margin-top:3px;font-size:11px;font-weight:700;color:${scoreCol(qr)};">QR = ${qr != null ? qr : '—'} → ${d.action || '—'}</div>
       ${sec('Levels')}
       ${row('Trade',   fmt2(d.trade), '#ea580c')}
       ${row('Trend',   fmt2(d.trend), '#6366f1')}
