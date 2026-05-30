@@ -322,8 +322,8 @@
 
     // ── Assemble ──────────────────────────────────────────────────────────────
     // ── Shared box style ──────────────────────────────────────────────────────
-    const infoBox = (content) =>
-      `<div style="padding:5px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:9px;">${content}</div>`;
+    const infoBox = (content, extraStyle = '') =>
+      `<div style="padding:5px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:9px;${extraStyle}">${content}</div>`;
 
     // ── Box above Graph1: TRR MRR LRR centered close together ───────────────
     const rrIdxBox = infoBox(`
@@ -349,12 +349,12 @@
         <span><span style="color:#94a3b8;">LRR</span> <strong style="color:#15803d;">${fmt(lrr)}</strong></span>
       </div>`);
 
-    // ── Box below Graph2: Trade Trend centered (always shown) ────────────────
+    // ── Box below Graph2: Trade Trend centered, same width as top box ────────
     const graph2Box = infoBox(`
-      <div style="display:flex;justify-content:center;gap:12px;">
+      <div style="display:flex;justify-content:center;gap:12px;width:100%;">
         <span><span style="color:#94a3b8;">Trade</span> <strong style="color:#f97316;">${fmt(trade)}</strong></span>
         <span><span style="color:#94a3b8;">Trend</span> <strong style="color:#818cf8;">${fmt(trend)}</strong></span>
-      </div>`);
+      </div>`, 'width:100%;box-sizing:border-box;');
 
     // ── Box above Graph3: title centered ─────────────────────────────────────
     const graph3TopBox = infoBox(`
