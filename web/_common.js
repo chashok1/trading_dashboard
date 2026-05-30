@@ -246,60 +246,47 @@
     // ── Chart 2: Trade / Trend — fixed small height, no proportional scaling ──
     const svgTT = (() => {
       if (trend == null && trade == null) return '';
-      // Fixed positions: TRR top, Trade upper-mid, LRR lower-mid, Trend bottom
-      const W2 = 120, H2 = 155, PAD_L2 = 42, PAD_R2 = 50, PAD_T2 = 14, PAD_B2 = 38;
+      // RR range chart: TRR (top), LRR (bottom), prev close + today's price
+      const W2 = 120, H2 = 155, PAD_L2 = 42, PAD_R2 = 50, PAD_T2 = 14, PAD_B2 = 14;
       const cW2 = W2 - PAD_L2 - PAD_R2, cH2 = H2 - PAD_T2 - PAD_B2;
       const xa = PAD_L2, xb = PAD_L2 + cW2, xm2 = PAD_L2 + cW2 * 0.5;
 
-      const yTRR   = PAD_T2 + cH2 * 0.10;
-      const yTrade = PAD_T2 + cH2 * 0.35;
-      const yLRR   = PAD_T2 + cH2 * 0.60;
-      const yTrend = PAD_T2 + cH2 * 0.85;
+      if (lrr == null && trr == null) return '';
+
+      const rr_vals = [trr, lrr, cur, prev].filter(v => v != null);
+      const rr_min = Math.min(...rr_vals), rr_max = Math.max(...rr_vals);
+      const rr_pad = (rr_max - rr_min) * 0.1 || 1;
+      const rr_yMin = rr_min - rr_pad, rr_yMax = rr_max + rr_pad, rr_yRng = rr_yMax - rr_yMin;
+      const rr_yPx = v => PAD_T2 + cH2 * (1 - (v - rr_yMin) / rr_yRng);
 
       const hline2 = (y, color, dash, label) =>
         `<line x1="${xa}" y1="${y}" x2="${xb}" y2="${y}" stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"/>
          <text x="${xb+3}" y="${y+4}" fill="${color}" font-size="9" font-weight="600">${label}</text>`;
 
-      const trrLine   = trr   != null ? hline2(yTRR,   '#15803d', '5 2', `TRR ${fmt(trr)}`)   : '';
-      const tradeLine = trade != null ? hline2(yTrade, '#f97316', '3 2', `Trade ${fmt(trade)}`) : '';
-      const lrrLine   = lrr   != null ? hline2(yLRR,   '#15803d', '5 2', `LRR ${fmt(lrr)}`)   : '';
-      const trendLine = trend != null ? hline2(yTrend, '#818cf8', '3 2', `Trend ${fmt(trend)}`) : '';
+      // Green zone between TRR and LRR
+      const rrZone2 = (trr != null && lrr != null)
+        ? `<rect x="${xa}" y="${rr_yPx(trr)}" width="${cW2}" height="${Math.max(rr_yPx(lrr)-rr_yPx(trr),1)}" fill="#f0fdf4"/>` : '';
 
-      // Price indicator — arrow showing where price is relative to the four lines
-      let priceIndicator = '';
-      if (cur != null) {
-        const aboveTRR  = trr   != null && cur > trr;
-        const belowTrend = trend != null && cur < trend;
-        if (aboveTRR) {
-          priceIndicator = `<text x="${xm2}" y="${PAD_T2-2}" fill="#374151" font-size="9" text-anchor="middle" font-weight="700">↑ ${fmt(cur)}</text>`;
-        } else if (belowTrend) {
-          priceIndicator = `<text x="${xm2}" y="${H2-PAD_B2+10}" fill="#374151" font-size="9" text-anchor="middle" font-weight="700">↓ ${fmt(cur)}</text>`;
-        } else {
-          // Find which band price sits in and interpolate Y
-          const bands = [[trr, yTRR],[trade, yTrade],[lrr, yLRR],[trend, yTrend]].filter(b => b[0] != null);
-          let py2 = yTrade; // default mid
-          for (let i = 0; i < bands.length - 1; i++) {
-            const [hi, yHi] = bands[i], [lo, yLo] = bands[i+1];
-            if (cur <= hi && cur >= lo) {
-              const frac = (hi - cur) / (hi - lo || 1);
-              py2 = yHi + frac * (yLo - yHi);
-              break;
-            }
-          }
-          priceIndicator = `
-            <line x1="${xa}" y1="${py2}" x2="${xb}" y2="${py2}" stroke="#374151" stroke-width="0.8" stroke-dasharray="3 3"/>
-            <text x="${xa-3}" y="${py2+4}" fill="#374151" font-size="9" text-anchor="end" font-weight="700">${fmt(cur)}</text>`;
-        }
+      const trrLine2 = trr != null ? hline2(rr_yPx(trr), '#15803d', '5 2', `TRR ${fmt(trr)}`) : '';
+      const lrrLine2 = lrr != null ? hline2(rr_yPx(lrr), '#15803d', '5 2', `LRR ${fmt(lrr)}`) : '';
+
+      // Prev close (grey dashed, label left) + today (dark dashed, label left)
+      const MIN_GAP = 10;
+      let prevY2 = prev != null ? rr_yPx(prev) : null;
+      let curY2  = cur  != null ? rr_yPx(cur)  : null;
+      if (prevY2 != null && curY2 != null && Math.abs(prevY2 - curY2) < MIN_GAP) {
+        const half = (MIN_GAP - Math.abs(prevY2 - curY2)) / 2;
+        if (prev > cur) { prevY2 -= half; curY2 += half; } else { prevY2 += half; curY2 -= half; }
       }
-
-      const trendSdTxt = sd.trend_sd != null
-        ? `<text x="${xm2}" y="${H2-13}" fill="${scoreColor(sd.trend_sd)}" font-size="8" text-anchor="middle">Trend ${fmtSd(sd.trend_sd)}SD</text>` : '';
-      const tradeSdTxt = sd.trade_sd != null
-        ? `<text x="${xm2}" y="${H2-3}" fill="${scoreColor(sd.trade_sd)}" font-size="8" text-anchor="middle">Trade ${fmtSd(sd.trade_sd)}SD</text>` : '';
+      const prevLine2 = prev != null ? `<line x1="${xa}" y1="${prevY2}" x2="${xb}" y2="${prevY2}" stroke="#94a3b8" stroke-width="0.8" stroke-dasharray="3 3"/>
+        <text x="${xa-3}" y="${prevY2+4}" fill="#64748b" font-size="9" text-anchor="end">${fmt(prev)}</text>
+        <text x="${xa-3}" y="${prevY2+12}" fill="#94a3b8" font-size="7" text-anchor="end">prev</text>` : '';
+      const curLine2  = cur  != null ? `<line x1="${xa}" y1="${curY2}"  x2="${xb}" y2="${curY2}"  stroke="#374151" stroke-width="0.8" stroke-dasharray="3 3"/>
+        <text x="${xa-3}" y="${curY2+4}" fill="#111" font-size="9" text-anchor="end" font-weight="700">${fmt(cur)}</text>
+        <text x="${xa-3}" y="${curY2+12}" fill="#94a3b8" font-size="7" text-anchor="end">today</text>` : '';
 
       return `<svg width="${W2}" height="${H2}" style="overflow:visible;display:block;">
-        ${trrLine}${tradeLine}${lrrLine}${trendLine}${priceIndicator}
-        ${trendSdTxt}${tradeSdTxt}
+        ${rrZone2}${trrLine2}${lrrLine2}${prevLine2}${curLine2}
       </svg>`;
     })();
 
