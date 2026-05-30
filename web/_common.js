@@ -348,10 +348,36 @@
           </span>
         </div>
 
-        <div style="padding:8px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;flex:1;">
+        <div style="padding:9px 11px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;flex:1;">
           ${taggedRow(ru.tn_td_short, 'Trend Trade Rule', ru.tn_td_desc)}
           ${taggedRow(ru.bb_short,   'BB Range Streak',  ru.bb_desc)}
           ${taggedRow(ru.rr_short,   'RR Desc',          ru.rr_desc)}
+        </div>
+
+        <!-- Decision Path -->
+        <div style="padding:6px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-family:monospace;font-size:10px;line-height:1.8;">
+          ${(() => {
+            const qf = ru.tn_td_action, qk = ru.bb_action, qo = ru.rr_action, qr = ru.final_score;
+            const vc = v => v == null ? '#94a3b8' : v < 0 ? '#dc2626' : v > 0 ? '#16a34a' : '#64748b';
+            const vspan = v => `<span style="font-weight:700;color:${vc(v)};">${v != null ? v : '—'}</span>`;
+            const arr = '<span style="color:#4338ca;">→</span>';
+            let html = '';
+            if (qf == null) return '<span style="color:#94a3b8;">No data</span>';
+            if (qf < 0) {
+              html = `QF ${vspan(qf)} ${arr} <span style="color:#dc2626;">Trend/Trade bearish wins</span>`;
+            } else if (qf > 0) {
+              html = `QF ${vspan(qf)} ${arr} <span style="color:#475569;">Trend/Trade bullish → check BB</span><br>`;
+              if (qk != null && qk < 0) {
+                html += `&nbsp;&nbsp;QK ${vspan(qk)} ${arr} <span style="color:#dc2626;">BB bearish wins</span>`;
+              } else {
+                html += `&nbsp;&nbsp;QK ${vspan(qk)} ${arr} <span style="color:#475569;">BB bullish → use RR</span><br>`;
+                html += `&nbsp;&nbsp;&nbsp;&nbsp;QO ${vspan(qo)} ${arr} QR ${vspan(qr)}`;
+              }
+            } else {
+              html = `QF ${vspan(qf)} ${arr} <span style="color:#94a3b8;">neutral → null</span>`;
+            }
+            return html;
+          })()}
         </div>
 
         <div style="display:flex;align-items:center;gap:10px;
