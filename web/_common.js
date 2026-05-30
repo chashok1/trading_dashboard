@@ -224,10 +224,21 @@
     const rrZone = (lrr != null && trr != null)
       ? `<rect x="${x0}" y="${yPx1(trr)}" width="${chartW1}" height="${Math.max(yPx1(lrr)-yPx1(trr),1)}" fill="#f0fdf4"/>` : '';
 
+    // Adjust TRR/LRR label Y to avoid overlapping price labels (prevLY/curLY on left side)
+    const priceYs = [prevLY, curLY].filter(v => v != null);
+    const avoidY = (lineY, label) => {
+      if (!label) return hline1(lineY, '#15803d', '5 2', null);
+      let labelY = lineY;
+      for (const py of priceYs) {
+        if (Math.abs(labelY - py) < 10) labelY = labelY < py ? labelY - 10 : labelY + 10;
+      }
+      return `<line x1="${x0}" y1="${lineY}" x2="${x1}" y2="${lineY}" stroke="#15803d" stroke-width="1.2" stroke-dasharray="5 2"/>
+              <text x="${x1+6}" y="${labelY+4}" fill="#15803d" font-size="8" text-anchor="start" font-weight="600">${label}</text>`;
+    };
     const lines1 = [];
-    if (trr != null && trr >= yMin1 && trr <= yMax1) lines1.push(hline1(yPx1(trr), '#15803d', '5 2', `TRR ${fmt(trr)}`));
+    if (trr != null && trr >= yMin1 && trr <= yMax1) lines1.push(avoidY(yPx1(trr), `TRR ${fmt(trr)}`));
     if (mrr != null && mrr >= yMin1 && mrr <= yMax1) lines1.push(hline1(yPx1(mrr), '#4ade80', '2 3', null));
-    if (lrr != null && lrr >= yMin1 && lrr <= yMax1) lines1.push(hline1(yPx1(lrr), '#15803d', '5 2', `LRR ${fmt(lrr)}`));
+    if (lrr != null && lrr >= yMin1 && lrr <= yMax1) lines1.push(avoidY(yPx1(lrr), `LRR ${fmt(lrr)}`));
 
     const priceBar1 = () => {
       if (cur == null) return '';
