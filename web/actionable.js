@@ -696,6 +696,9 @@ function renderGrid() {
       <td class="sym-cell" style="padding:6px 4px; max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml((r.sector||'') + (r.real_asset_class ? ' · ' + r.real_asset_class : ''))}">${typeof yahooLink === 'function' ? yahooLink(r.tos_symbol) : ''}<strong>${r.tos_symbol || ''}</strong>${r.sector||r.real_asset_class ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${[r.sector,r.real_asset_class].filter(Boolean).join(' · ')}</div>` : ''}</td>
       <td class="num ${r.pct_change != null ? (Number(r.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : ''}">${r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''}</td>
       <td style="padding:6px 4px;"><span class="badge-action badge-action-${_badgeAction(r)}">${actionLabel(r)}</span>${_isOverMaxOverlay(r) ? `<div style="font-size:8px;line-height:1;font-weight:600;color:${ACTION_COLOR[action] || '#888'};margin-top:1px;">was ${ACTION_LABEL[action] || action}</div>` : ''}</td>
+      <td class="rr-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-date="${escapeHtml(r.as_of_date||'')}">
+        <span class="rr-action-val" style="font-size:11px;font-weight:600;color:#4338ca;cursor:help;">${r.rr_action || '—'}</span>
+      </td>
       <td class="num"><strong>${fmtUsd(r._amt)}</strong></td>
       <td class="src-cell" data-srcpop data-sym="${escapeHtml(r.tos_symbol)}" data-src="${escapeHtml(r.winning_source || '')}" style="padding:6px 4px;">${r.winning_source || ''}</td>
       <td style="padding:6px 4px; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(reasonText)}">${escapeHtml(reasonText)}</td>
@@ -704,9 +707,6 @@ function renderGrid() {
       <td class="num">${fmtUsd(r.last_price)}</td>
       <td class="num">${fmtUsd(r.net_chng)}</td>
       <td>${fmtAsOfExport(r.export_date, r.export_time, r.loaded_at)}</td>
-      <td class="rr-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-date="${escapeHtml(r.as_of_date||'')}">
-        <span class="rr-action-val" style="font-size:11px;font-weight:600;color:#4338ca;cursor:help;">${r.rr_action || '—'}</span>
-      </td>
       <td>${tags.join(' ')}</td>
     `;
     tr.onclick = (e) => { if (e.target.closest('.btn-suppress') || e.target.closest('.rr-action-cell')) return; openDrilldown(r); };
