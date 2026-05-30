@@ -1421,7 +1421,7 @@ function setupRRActionCol() {
       return `<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:5px;">
         <span style="font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap;">${label}</span>
         ${sc != null ? `<span style="font-size:10px;font-weight:700;color:${scCol};background:${scBg};border:1px solid ${scBdr};padding:0 4px;border-radius:4px;white-space:nowrap;">${sc}</span>` : ''}
-        <span style="font-size:11px;color:#0f172a;line-height:1.3;text-align:right;margin-left:auto;">${desc || '—'}</span>
+        <span style="font-size:11px;color:${scCol};line-height:1.3;text-align:right;margin-left:auto;">${desc || '—'}</span>
       </div>`;
     };
     const sec = label =>
