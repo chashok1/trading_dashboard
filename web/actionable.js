@@ -1383,58 +1383,54 @@ async function _fetchRRDetail(sym, date) {
 }
 
 function setupRRActionCol() {
-  // Tooltip element (singleton)
+  // Reuse .source-pop element for consistent styling
   let tip = document.getElementById('rrDetailTip');
   if (!tip) {
     tip = document.createElement('div');
     tip.id = 'rrDetailTip';
-    tip.style.cssText = 'position:fixed;z-index:9999;display:none;background:#1e293b;color:#f1f5f9;' +
-      'border-radius:8px;padding:10px 14px;font-size:11px;line-height:1.6;max-width:320px;' +
-      'box-shadow:0 4px 16px rgba(0,0,0,0.35);pointer-events:none;';
+    tip.className = 'source-pop';
+    tip.style.maxWidth = '320px';
     document.body.appendChild(tip);
   }
 
   const fmt2 = v => v == null ? '—' : Number(v).toFixed(2);
-  const scoreCol = v => v == null ? '#94a3b8' : v > 0 ? '#4ade80' : v < 0 ? '#f87171' : '#94a3b8';
+  const scoreCol = v => v == null ? '' : v > 0 ? 'color:#16a34a;' : v < 0 ? 'color:#dc2626;' : 'color:#94a3b8;';
+  const kv = (label, val, style) =>
+    `<tr><td class="k">${label}</td><td class="v" style="${style||''}">${val}</td></tr>`;
+  const sdRow = (label, val, style) =>
+    `<tr><td class="k" colspan="2" style="padding-top:3px;font-size:9px;text-transform:uppercase;letter-spacing:0.4px;color:#94a3b8;">${label}</td></tr>
+     <tr><td class="k" style="padding-left:6px;">↳</td><td class="v" style="${style||''}">${val}</td></tr>`;
 
-  document.addEventListener('mouseover', async (e) => {
+  const body = $('actBody');
+  if (!body) return;
+
+  body.addEventListener('mouseover', async (e) => {
     const cell = e.target.closest('.rr-action-cell');
     if (!cell) return;
     const sym = cell.dataset.sym, date = cell.dataset.date;
     if (!sym || !date) return;
 
-    // Show tooltip
     const d = await _fetchRRDetail(sym, date);
     if (!d) return;
 
-    const row = (label, val, color) =>
-      `<div style="display:flex;justify-content:space-between;gap:12px;">
-         <span style="color:#94a3b8;white-space:nowrap;">${label}</span>
-         <span style="font-weight:600;color:${color || '#f1f5f9'};text-align:right;">${val}</span>
-       </div>`;
-
-    const shortDesc = (short, desc) => {
-      if (!short && !desc) return '—';
-      return `${short ? `<span style="color:#a5b4fc;font-weight:700;">${short}</span>${desc ? ': ' : ''}` : ''}${desc || ''}`;
-    };
+    const shortDesc = (short, desc) => [short ? `<strong>${short}</strong>` : '', desc].filter(Boolean).join(': ') || '—';
 
     tip.innerHTML = `
-      <div style="font-weight:700;color:#fff;margin-bottom:6px;border-bottom:1px solid #334155;padding-bottom:4px;">
-        ${sym} — TrTnBBRskRng
-      </div>
-      ${row('Trade Trend Rule', shortDesc(d.tn_td_short, d.tn_td_desc))}
-      ${row('BB Range Streak',  shortDesc(d.bb_short,   d.bb_desc))}
-      ${row('RR Desc',          shortDesc(d.rr_short,   d.rr_desc))}
-      <div style="border-top:1px solid #334155;margin:5px 0;"></div>
-      ${row('Trade',   fmt2(d.trade), '#f97316')}
-      ${row('Trend',   fmt2(d.trend), '#818cf8')}
-      ${row('TRR',     fmt2(d.trr),   '#4ade80')}
-      ${row('LRR',     fmt2(d.lrr),   '#4ade80')}
-      <div style="border-top:1px solid #334155;margin:5px 0;"></div>
-      ${row('TRR Idx', d.trr_idx != null ? String(d.trr_idx) : '—', scoreCol(d.trr_idx))}
-      ${row('MRR Idx', d.mrr_idx != null ? String(d.mrr_idx) : '—', scoreCol(d.mrr_idx))}
-      ${row('LRR Idx', d.lrr_idx != null ? String(d.lrr_idx) : '—', scoreCol(d.lrr_idx))}
-    `;
+      <div class="sp-title">${sym} — TrTnBBRskRng</div>
+      <table>
+        <tr><td class="k">Trade Trend Rule</td><td class="v">${shortDesc(d.tn_td_short, d.tn_td_desc)}</td></tr>
+        <tr><td class="k">BB Range Streak</td><td class="v">${shortDesc(d.bb_short, d.bb_desc)}</td></tr>
+        <tr><td class="k">RR Desc</td><td class="v">${shortDesc(d.rr_short, d.rr_desc)}</td></tr>
+        <tr><td class="sp-sec" colspan="2">Levels</td></tr>
+        ${kv('Trade', fmt2(d.trade), 'color:#f97316;')}
+        ${kv('Trend', fmt2(d.trend), 'color:#818cf8;')}
+        ${kv('TRR',   fmt2(d.trr),   'color:#16a34a;')}
+        ${kv('LRR',   fmt2(d.lrr),   'color:#16a34a;')}
+        <tr><td class="sp-sec" colspan="2">Indices</td></tr>
+        ${kv('TRR Idx', d.trr_idx != null ? d.trr_idx : '—', scoreCol(d.trr_idx))}
+        ${kv('MRR Idx', d.mrr_idx != null ? d.mrr_idx : '—', scoreCol(d.mrr_idx))}
+        ${kv('LRR Idx', d.lrr_idx != null ? d.lrr_idx : '—', scoreCol(d.lrr_idx))}
+      </table>`;
 
     const rect = cell.getBoundingClientRect();
     tip.style.display = 'block';
@@ -1445,8 +1441,9 @@ function setupRRActionCol() {
     tip.style.top  = Math.min(rect.top, window.innerHeight - tip.offsetHeight - 8) + 'px';
   });
 
-  document.addEventListener('mouseout', (e) => {
+  body.addEventListener('mouseout', (e) => {
     if (!e.target.closest('.rr-action-cell')) return;
+    if (e.relatedTarget && e.target.closest('.rr-action-cell')?.contains(e.relatedTarget)) return;
     tip.style.display = 'none';
   });
 }
