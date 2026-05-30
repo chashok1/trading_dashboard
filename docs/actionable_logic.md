@@ -306,3 +306,79 @@ Excel files ──ETL──→ hist_td / hist_tw / hist_rr / drv_quote
               renderRRAnalysis()  in web/_common.js
               setupRRActionCol()  in web/actionable.js
 ```
+
+---
+
+## Final Action Tables
+
+### Override rules (apply first, before RR signal)
+
+| QE (Trend/Trade seq) | QK (BB Range seq) | Result |
+|---|---|---|
+| < 0 | any | QR = QF → **SA** or **STM** (Trend/Trade bearish wins) |
+| > 0 | < 0 | QR = QK → **STM** or **SS** (BB bearish wins) |
+| = 0 | any | QR = null → no action |
+
+### Table 1 — QE × QJ → Final Action
+
+*When no override applies, uses best-case RR signal (QM=6 / QN=5).*
+
+| QE \ QJ | -4 | -3 | -2 | -1 | 0 | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|---|---|---|---|---|
+| **-2** Bear | SA | SA | SA | SA | SA | SA | SA | SA | SA |
+| **-1** Cls2Tn | SA | SA | SA | SA | SA | SA | SA | SA | SA |
+| **1** >Tn<Td | STM | STM | STM | STM | STM | STM | STM | STM | STM |
+| **2** <Tn>Td | — | — | — | — | — | — | — | — | — |
+| **3** LesBull | STM | STM | STM | STM | **BM** | **BM** | **BM** | **BM** | **BM** |
+| **4** Bull | STM | STM | STM | STM | **BM** | **BM** | **BM** | **BM** | **BM** |
+
+QJ < 0 forces STM even when Trend/Trade is bullish. Both QE and QJ must be positive to reach the RR signal.
+
+### Table 2 — Bull path QM → Final Action
+
+*Only reached when QE ∈ {3,4} AND QJ ∈ {2,3,4} AND QK ≥ 0*
+
+| QM | Short name | QO seq | Final QS | Meaning |
+|---|---|---|---|---|
+| -1 | D>L<M | -9 | **STM** | Sell To Min — bearish in bull zone |
+| 1 | U=M | 8 | **BMN** | Buy Min — at MRR midpoint |
+| 2 | D=L>Td | 8 | **BMN** | Buy Min — at LRR, above Trade |
+| 3 | U>L<M<cd | 8 | **BMN** | Buy Min — above LRR, below MRR, MACDH falling |
+| 4 | U=L | 9 | **BS** | Buy Some — at LRR level |
+| 5 | D>M | 9 | **BS** | Buy Some — pulled back below MRR |
+| 6 | U>L<M>cd | 10 | **BM** | Buy More — above LRR, below MRR, MACDH rising |
+
+### Table 3 — Not-Bull path QN → Final Action
+
+*Only reached when QE ∈ {3,4} AND QJ ∈ {0,1} AND QK ≥ 0*
+
+| QN | Short name | QO seq | Final QS | Meaning |
+|---|---|---|---|---|
+| -1 | >=T | -8 | **SS** | Sell Some — price at/above TRR in not-bull zone |
+| 1 | U>M<T | 0 | **N** | Neutral — above MRR but below Trade line |
+| 2 | U>L<=M<cd | 8 | **BMN** | Buy Min — above LRR, at/below MRR, MACDH falling |
+| 3 | D=L>Td>Tn | 8 | **BMN** | Buy Min — at LRR, above both Trade and Trend |
+| 4 | U=L | 10 | **BM** | Buy More — at LRR level |
+| 5 | U>L<=M>cd | 10 | **BM** | Buy More — above LRR, at/below MRR, MACDH rising |
+
+### Action code reference
+
+| QS | Full name | Priority |
+|---|---|---|
+| SA | Sell All | 21 |
+| STM | Sell To Min | 20 |
+| SS | Sell Some | 19 |
+| SO | Sell Overage | 12 |
+| SW | Sell Watch | 11 |
+| SWW | Sell Watch Watch | 5 |
+| SN | Sell Neutral | 3 |
+| N | Neutral | 3 |
+| BN | Buy Neutral | 3 |
+| BC | Buy Conflict | 14 |
+| BRW | Buy Risk Watch | 5 |
+| BSW | Buy Some Watch | 9 |
+| BW | Buy Watch | 10 |
+| BR | Buy Risk | 13 |
+| BMN | Buy Min | 15 |
+| BS | Buy Some | 16 |
+| BM | Buy More | 18 |
