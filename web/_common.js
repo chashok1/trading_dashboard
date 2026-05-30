@@ -336,20 +336,20 @@
         <span><span style="color:#94a3b8;">Trade</span> <strong style="color:${scoreColor(sd.trade_sd)}">${fmtSd(sd.trade_sd)}</strong></span>
       </div>`);
 
-    // ── Box below Graph1: TRR MRR LRR centered close together ───────────────
-    const graph1Box = (trr != null || mrr != null || lrr != null) ? infoBox(`
+    // ── Box below Graph1: TRR MRR LRR centered (always shown) ───────────────
+    const graph1Box = infoBox(`
       <div style="display:flex;justify-content:center;gap:12px;">
-        ${trr != null ? `<span><span style="color:#94a3b8;">TRR</span> <strong style="color:#15803d;">${fmt(trr)}</strong></span>` : ''}
-        ${mrr != null ? `<span><span style="color:#94a3b8;">MRR</span> <strong style="color:#4ade80;">${fmt(mrr)}</strong></span>` : ''}
-        ${lrr != null ? `<span><span style="color:#94a3b8;">LRR</span> <strong style="color:#15803d;">${fmt(lrr)}</strong></span>` : ''}
-      </div>`) : '';
+        <span><span style="color:#94a3b8;">TRR</span> <strong style="color:#15803d;">${fmt(trr)}</strong></span>
+        <span><span style="color:#94a3b8;">MRR</span> <strong style="color:#4ade80;">${fmt(mrr)}</strong></span>
+        <span><span style="color:#94a3b8;">LRR</span> <strong style="color:#15803d;">${fmt(lrr)}</strong></span>
+      </div>`);
 
-    // ── Box below Graph2: Trade Trend centered close together ────────────────
-    const graph2Box = (trade != null || trend != null) ? infoBox(`
+    // ── Box below Graph2: Trade Trend centered (always shown) ────────────────
+    const graph2Box = infoBox(`
       <div style="display:flex;justify-content:center;gap:12px;">
-        ${trade != null ? `<span><span style="color:#94a3b8;">Trade</span> <strong style="color:#f97316;">${fmt(trade)}</strong></span>` : ''}
-        ${trend != null ? `<span><span style="color:#94a3b8;">Trend</span> <strong style="color:#818cf8;">${fmt(trend)}</strong></span>` : ''}
-      </div>`) : '';
+        <span><span style="color:#94a3b8;">Trade</span> <strong style="color:#f97316;">${fmt(trade)}</strong></span>
+        <span><span style="color:#94a3b8;">Trend</span> <strong style="color:#818cf8;">${fmt(trend)}</strong></span>
+      </div>`);
 
     // ── Box above Graph3: title centered ─────────────────────────────────────
     const graph3TopBox = infoBox(`
@@ -422,13 +422,13 @@
       </div>
 
       <!-- Column 2: top box + graph centered + bottom box -->
-      ${svgTT ? `<div style="flex:0 0 auto;display:flex;flex-direction:column;">
+      <div style="flex:0 0 auto;display:flex;flex-direction:column;">
         ${sdBox}
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
-          ${svgTT}
+          ${svgTT || ''}
         </div>
         ${graph2Box}
-      </div>` : ''}
+      </div>
 
       <!-- Historical chart: top box + centered graph + legend bottom box -->
       <div style="flex:3;min-width:400px;overflow:hidden;display:flex;flex-direction:column;">
