@@ -319,9 +319,12 @@
          </div>` : '';
 
     // ── tagged descRow — label + "short_name: description" ──────────────────
-    const taggedRow = (shortName, label, text) => (shortName || text)
+    const taggedRow = (shortName, label, text, score) => (shortName || text || score != null)
       ? `<div style="margin-bottom:8px;">
-           <div style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px;">${label}</div>
+           <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+             <span style="font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.04em;">${label}</span>
+             ${score != null ? `<span style="font-size:10px;font-weight:700;color:${scoreColor(score)};background:${score>0?'#f0fdf4':score<0?'#fef2f2':'#f8fafc'};border:1px solid ${score>0?'#bbf7d0':score<0?'#fecaca':'#e2e8f0'};padding:0 5px;border-radius:4px;">${score}</span>` : ''}
+           </div>
            <div style="font-size:11px;color:#1e293b;line-height:1.35;">
              ${shortName ? `<span style="font-weight:700;color:#4338ca;">${shortName}</span>${text ? ': ' : ''}` : ''}${text || ''}
            </div>
@@ -349,9 +352,9 @@
         </div>
 
         <div style="padding:9px 11px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;flex:1;">
-          ${taggedRow(ru.tn_td_short, 'Trend Trade Rule', ru.tn_td_desc)}
-          ${taggedRow(ru.bb_short,   'BB Range Streak',  ru.bb_desc)}
-          ${taggedRow(ru.rr_short,   'RR Desc',          ru.rr_desc)}
+          ${taggedRow(ru.tn_td_short, 'Trend/Trade',     ru.tn_td_desc, ru.tn_td_action)}
+          ${taggedRow(ru.bb_short,   'BB Range Streak', ru.bb_desc,   ru.bb_action)}
+          ${taggedRow(ru.rr_short,   'RR',              ru.rr_desc,   ru.rr_action)}
         </div>
 
         <!-- Decision Path -->
@@ -368,10 +371,10 @@
             } else if (qf > 0) {
               html = `Trend/Trade ${vspan(qf)} ${arr} <span style="color:#475569;">bullish → check BB</span><br>`;
               if (qk != null && qk < 0) {
-                html += `&nbsp;&nbsp;BB Range ${vspan(qk)} ${arr} <span style="color:#dc2626;">bearish wins</span>`;
+                html += `&nbsp;&nbsp;BB Range Streak ${vspan(qk)} ${arr} <span style="color:#dc2626;">bearish wins</span>`;
               } else {
-                html += `&nbsp;&nbsp;BB Range ${vspan(qk)} ${arr} <span style="color:#475569;">bullish → use RR</span><br>`;
-                html += `&nbsp;&nbsp;&nbsp;&nbsp;RR Signal ${vspan(qo)} ${arr} Score ${vspan(qr)}`;
+                html += `&nbsp;&nbsp;BB Range Streak ${vspan(qk)} ${arr} <span style="color:#475569;">bullish → use RR</span><br>`;
+                html += `&nbsp;&nbsp;&nbsp;&nbsp;RR ${vspan(qo)} ${arr} Score ${vspan(qr)}`;
               }
             } else {
               html = `Trend/Trade ${vspan(qf)} ${arr} <span style="color:#94a3b8;">neutral → null</span>`;

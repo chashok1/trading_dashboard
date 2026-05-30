@@ -1438,10 +1438,10 @@ function setupRRActionCol() {
         decisionHtml = step(0, 'Trend/Trade', qf, 'bullish → check BB', true);
         if (qk != null) {
           if (qk < 0) {
-            decisionHtml += step(1, 'BB Range', qk, 'bearish → wins', true);
+            decisionHtml += step(1, 'BB Range Streak', qk, 'bearish → wins', true);
           } else {
-            decisionHtml += step(1, 'BB Range', qk, 'bullish → use RR', true);
-            decisionHtml += step(2, 'RR Signal', qo, '→ Score', true);
+            decisionHtml += step(1, 'BB Range Streak', qk, 'bullish → use RR', true);
+            decisionHtml += step(2, 'RR', qo, '→ Score', true);
           }
         }
       } else {
