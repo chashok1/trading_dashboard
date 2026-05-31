@@ -358,7 +358,7 @@
 
     // ── Box above Graph3: OHLC hover display (populated after chart renders) ──
     const graph3TopBox = infoBox(
-      `<div id="${histId}_ohlc" style="font-size:9px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:13px;"></div>`);
+      `<div id="${histId}_ohlc" style="font-size:9px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:13px;text-align:center;"></div>`);
 
     // ── Box below Graph3: label only ──────────────────────────────────────────
     const graph3BotBox = infoBox(
