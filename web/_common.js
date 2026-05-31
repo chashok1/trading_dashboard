@@ -688,11 +688,15 @@
         if (chXbg) { chXbg.setAttribute('x', cx - 16); chXbg.setAttribute('y', PAD_T + cH + 2); }
         if (chXt)  { chXt.setAttribute('x', cx); chXt.setAttribute('y', PAD_T + cH + 8); chXt.textContent = dlbl; }
 
-        // Price + date badge on LEFT y-axis
-        const pval = (yMinP + (1 - (cy - PAD_T) / cH) * yRangeP).toFixed(2);
-        if (chYbg) { chYbg.setAttribute('x', PAD_L + 4);      chYbg.setAttribute('y', (cy - 11).toFixed(1)); }
-        if (chYt)  { chYt.setAttribute('x', PAD_L + 24);     chYt.setAttribute('y', (cy - 4).toFixed(1));  chYt.textContent = pval; }
-        if (chYdt) { chYdt.setAttribute('x', PAD_L + 24);    chYdt.setAttribute('y', (cy + 5).toFixed(1)); chYdt.textContent = dlbl; }
+        // Price + date badge on LEFT y-axis — snap to candle close price
+        const closePrice = closes[ix];
+        if (closePrice != null) {
+          const pval = closePrice.toFixed(2);
+          const pY = yPx(closePrice);
+          if (chYbg) { chYbg.setAttribute('x', PAD_L + 4);  chYbg.setAttribute('y', (pY - 11).toFixed(1)); }
+          if (chYt)  { chYt.setAttribute('x', PAD_L + 24);  chYt.setAttribute('y', (pY - 4).toFixed(1));  chYt.textContent = pval; }
+          if (chYdt) { chYdt.setAttribute('x', PAD_L + 24); chYdt.setAttribute('y', (pY + 5).toFixed(1)); chYdt.textContent = dlbl; }
+        }
 
         showCH(true);
       });
