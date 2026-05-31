@@ -84,6 +84,22 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
 
     holdings = _load_holdings_with_dollars(session, as_of_date)
 
+    # BuySell action → numeric score map for trig_action computation.
+    # Populated from ref_param_lookup where table_name='buysell', extra2=numeric score.
+    # e.g. SA→-10, STM→-9, SS→-8, BM→10, BS→9, BMN→8. Gracefully empty if not loaded.
+    buysell_scores: dict[str, float] = {}
+    try:
+        for r in session.execute(text(
+            "SELECT code, extra2 FROM ref_param_lookup"
+            " WHERE table_name = 'buysell' AND extra2 IS NOT NULL"
+        )).fetchall():
+            try:
+                buysell_scores[str(r[0])] = float(r[1])
+            except (TypeError, ValueError):
+                pass
+    except Exception:
+        pass
+
     # Per-symbol asset_class for sources that bucket by it (PS + ETF/ETFCHG).
     # Loaded once into a dict keyed by symbol — value is asset_class on/before as_of.
     asset_class_ps: dict[str, str] = {}
@@ -249,7 +265,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            units_dollar, maintain_min, suggested_target_dollar,
            held_today, current_position_dollar, in_my_list,
            rules_engine_fires, source_actions, suppressed_reason,
-           triggered_group_ids,
+           triggered_group_ids, trig_action,
            source_run_id)
         VALUES
           (:d, :sym, :desc, :sect,
@@ -258,7 +274,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            :unit, :mm, :stgt,
            :held, :curr, :iml,
            CAST(:fires AS JSONB), CAST(:srca AS JSONB), :supp,
-           CAST(:groups AS JSONB),
+           CAST(:groups AS JSONB), :trig,
            :rid)
     """)
 
@@ -276,14 +292,12 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                     fired_composites.add(cid)
         composite_results = {c: True for c in fired_composites}
 
-        triggered_groups: list[dict] = []  # for the JSONB column
-        group_candidates: list[dict] = []  # synthetic actions, ranked below
+        triggered_groups: list[dict] = []  # for the JSONB column + trig_action
+        group_candidates: list[dict] = []  # synthetic actions for consolidated_action
         for g in action_groups:
             grp_code = g["rule_group_code"]
             label    = g["action_label"]
             grp_prio = g["priority"]
-            if label not in ACTION_RANK:
-                continue
             try:
                 fired, action, _ = eval_rule_group(session, grp_code,
                                                    composite_results, {})
@@ -298,6 +312,10 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                 "priority": grp_prio,
                 "category": g.get("category"),
             })
+            # Only groups with consolidated-action vocab feed the winner sort.
+            # BuySell-vocab groups (SA, SS, BM, …) contribute to trig_action only.
+            if label not in ACTION_RANK:
+                continue
             # Treat each fired group as a synthetic per-source action so the
             # existing tie-break logic still applies. Use a 'RULES:' source
             # prefix and the group's priority (which is *lower=stronger* by
@@ -307,6 +325,26 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                 "source_code":  f"RULES:{grp_code}",
                 "_group_prio":  grp_prio if grp_prio is not None else 500,
             })
+
+        # ─── Compute trig_action from fired rule groups (BuySell vocabulary) ───
+        # For each fired group, look up its action_label in the BuySell score
+        # map (SA=-10, STM=-9, SS=-8, BMN=8, BS=9, BM=10 etc.).
+        # Bearish wins: if any negative scores, take the group with the min score.
+        # Otherwise take the group with the max (most bullish) score.
+        trig_action = None
+        if triggered_groups and buysell_scores:
+            scored = [
+                (g["action"], buysell_scores[g["action"]])
+                for g in triggered_groups
+                if g.get("action") and g["action"] in buysell_scores
+            ]
+            if scored:
+                neg = [(a, s) for a, s in scored if s < 0]
+                pos = [(a, s) for a, s in scored if s > 0]
+                if neg:
+                    trig_action = min(neg, key=lambda x: x[1])[0]
+                elif pos:
+                    trig_action = max(pos, key=lambda x: x[1])[0]
 
         # ─── Pick the winning action ───
         # Outlook-source candidates + synthetic rule-group candidates compete
@@ -478,6 +516,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "srca":  json.dumps(source_actions_payload),
             "supp":  suppressed,
             "groups": json.dumps(triggered_groups) if triggered_groups else None,
+            "trig":  trig_action,
             "rid":   run_id,
         })
         rows_written += 1

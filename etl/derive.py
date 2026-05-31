@@ -477,7 +477,7 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         call_outlook, call_modifier, call_weight,
         etf_outlook, etf_brr, etf_trr,
         ii_outlook, ii_weight,
-        SSS_signal, SSS_signal_sign, SSS_rank_hl,
+        ssh_signal, ssh_signal_sign, ssh_rank_hl,
         held_qty_fid, held_qty_cs,
         pct_brr,
         source_run_id
@@ -604,9 +604,9 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
     ),
     sh AS (
         SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol,
-               dr.signal AS SSS_signal,
-               dr.signal_sign AS SSS_signal_sign,
-               dr.rank_hl AS SSS_rank_hl
+               dr.signal AS ssh_signal,
+               dr.signal_sign AS ssh_signal_sign,
+               dr.rank_hl AS ssh_rank_hl
         FROM hist_sss h
         LEFT JOIN drv_sss dr USING (snapshot_date, tos_symbol)
         WHERE h.snapshot_date <= (SELECT d FROM p)
@@ -646,7 +646,7 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         cl.call_outlook, cl.call_modifier, cl.call_weight,
         ef.etf_outlook, ef.etf_brr, ef.etf_trr,
         ii.ii_outlook, ii.ii_weight,
-        sh.SSS_signal, sh.SSS_signal_sign, sh.SSS_rank_hl,
+        sh.ssh_signal, sh.ssh_signal_sign, sh.ssh_rank_hl,
         fid.held_qty AS held_qty_fid, cs.held_qty AS held_qty_cs,
         -- pct_brr uses the consolidated last_price (drv_quote first, then tl).
         CASE WHEN td.a_trend_value IS NOT NULL AND td.a_trade_value IS NOT NULL
@@ -1557,7 +1557,7 @@ def _derive_dash_impl(session: Session, as_of_date: date, run_id: int) -> int:
 derive_dash = _wrap("drv_dash", _derive_dash_impl)
 
 
-def _composite_outlook(rr_brr, call_outlook, etf_outlook, ii_outlook, sss_signal_sign):
+def _composite_outlook(rr_brr, call_outlook, etf_outlook, ii_outlook, ssh_signal_sign):
     """
     Simple ensemble: each source contributes -1/0/+1, sum then normalize.
     """
@@ -1573,8 +1573,8 @@ def _composite_outlook(rr_brr, call_outlook, etf_outlook, ii_outlook, sss_signal
         if "BULL" in u: score += 1; contributions += 1
         elif "BEAR" in u: score -= 1; contributions += 1
         else: contributions += 1
-    if sss_signal_sign is not None:
-        score += 1 if sss_signal_sign > 0 else (-1 if sss_signal_sign < 0 else 0)
+    if ssh_signal_sign is not None:
+        score += 1 if ssh_signal_sign > 0 else (-1 if ssh_signal_sign < 0 else 0)
         contributions += 1
     if contributions == 0:
         return None, None
@@ -1777,7 +1777,7 @@ def _fetch_eval_rows(session: Session, as_of_date: date,
         "tos_symbol","description","sector","asset_class","last_price",
         "a_trend_value","a_trade_value","pct_brr","rr_outlook","rr_brr",
         "call_outlook","call_modifier","etf_outlook","ii_outlook",
-        "sss_signal_sign","iv_percentile","rsi","earnings_days","market_cap_str",
+        "ssh_signal_sign","iv_percentile","rsi","earnings_days","market_cap_str",
     }
     drv_ma_cols |= base_cols
 
@@ -1993,7 +1993,7 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
     for r in ma_rows:
         co, cl = _composite_outlook(
             r["rr_brr"], r["call_outlook"], r["etf_outlook"],
-            r["ii_outlook"], r["sss_signal_sign"]
+            r["ii_outlook"], r["ssh_signal_sign"]
         )
 
         # Evaluate all atomic rules and track which triggered
@@ -2132,7 +2132,7 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
             "call_modifier": r["call_modifier"],
             "etf_outlook": r["etf_outlook"],
             "ii_outlook": r["ii_outlook"],
-            "sss_signal_sign": r["sss_signal_sign"],
+            "ssh_signal_sign": r["ssh_signal_sign"],
             "iv_percentile": r["iv_percentile"],
             "rsi": r["rsi"],
             "earnings_days": r["earnings_days"],
