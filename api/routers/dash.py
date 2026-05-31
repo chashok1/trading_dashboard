@@ -918,7 +918,7 @@ def get_rr_detail(symbol: str = Query(...), date: str = Query(...)):
 
 @router.get("/api/actionable/rr-history")
 def get_rr_history(symbol: str = Query(...), date: str = Query(...), days: int = Query(60, ge=10, le=180)):
-    """Time-series of hist_td.last_price vs RR bands (LRR/MRR/TRR) for a rolling window."""
+    """Time-series driven by drv_rr dates; price from drv_quote, trend/trade from latest hist_td."""
     sym = symbol.upper().strip()
     try:
         from datetime import date as date_type, timedelta
@@ -928,47 +928,36 @@ def get_rr_history(symbol: str = Query(...), date: str = Query(...), days: int =
         raise HTTPException(400, "date must be YYYY-MM-DD")
     def _f(v): return float(v) if v is not None else None
     with session_scope() as s:
-        # Daily prices + trend/trade from hist_td
-        td_rows = s.execute(text("""
-            SELECT DISTINCT ON (snapshot_date) snapshot_date, last_price,
-                   a_trend_value, a_trade_value
-            FROM hist_td WHERE tos_symbol=:sym
-              AND snapshot_date >= :s AND snapshot_date <= :e
-            ORDER BY snapshot_date, sequence DESC
+        rows = s.execute(text("""
+            SELECT r.as_of_date,
+                   COALESCE(dq.last_price, td.last_price) AS last_price,
+                   td.a_trend_value, td.a_trade_value,
+                   r.lrr, r.trr
+            FROM drv_rr r
+            LEFT JOIN LATERAL (
+                SELECT last_price FROM drv_quote
+                WHERE tos_symbol=:sym AND as_of_date=r.as_of_date
+                LIMIT 1
+            ) dq ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT last_price, a_trend_value, a_trade_value
+                FROM hist_td
+                WHERE tos_symbol=:sym AND snapshot_date <= r.as_of_date
+                ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
+            ) td ON TRUE
+            WHERE r.tos_symbol=:sym
+              AND r.as_of_date >= :s AND r.as_of_date <= :e
+            ORDER BY r.as_of_date
         """), {"sym": sym, "s": d_start, "e": d_end}).fetchall()
 
-        # RR snapshots from drv_rr (hist_rr preferred, BB fallback)
-        rr_rows = s.execute(text("""
-            SELECT as_of_date, lrr, trr FROM drv_rr
-            WHERE tos_symbol=:sym AND as_of_date <= :e
-            ORDER BY as_of_date
-        """), {"sym": sym, "e": d_end}).fetchall()
-
-    # Build date-keyed RR map; forward+backward fill over td dates
-    rr_map = {str(r[0]): (_f(r[1]), _f(r[2])) for r in rr_rows}
-
     dates, prices, lrrs, trrs, trends, trades = [], [], [], [], [], []
-    last_lrr, last_trr = None, None
-    for snap, price, trend_v, trade_v in td_rows:
-        ds = str(snap)
-        if ds in rr_map:
-            last_lrr, last_trr = rr_map[ds]
-        dates.append(ds)
+    for as_of, price, trend_v, trade_v, lrr, trr in rows:
+        dates.append(str(as_of))
         prices.append(_f(price))
-        lrrs.append(last_lrr)
-        trrs.append(last_trr)
+        lrrs.append(_f(lrr))
+        trrs.append(_f(trr))
         trends.append(_f(trend_v))
         trades.append(_f(trade_v))
-
-    # Backward-fill: propagate first known RR value to earlier dates
-    first_lrr = next((v for v in lrrs if v is not None), None)
-    first_trr = next((v for v in trrs if v is not None), None)
-    for i in range(len(lrrs)):
-        if lrrs[i] is None: lrrs[i] = first_lrr
-        else: break
-    for i in range(len(trrs)):
-        if trrs[i] is None: trrs[i] = first_trr
-        else: break
 
     return {"symbol": sym, "dates": dates, "price": prices,
             "lrr": lrrs, "trr": trrs, "trend": trends, "trade": trades}
