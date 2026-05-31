@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Trading Dashboard — Claude Reference
 
 Minimal context for any future Claude session. Functionality and conventions only — no UI/layout detail.
@@ -144,7 +148,11 @@ python -m etl.scheduler                        :: continuous folder watcher (loa
 python -m etl.refresh_ref [--table NAME]       :: refresh tunable ref tables
 python -m etl.cleanup [--dry-run]              :: retention sweep
 python -m db.init_db [--reset-audit]           :: idempotent DDL apply
-start.bat                                      :: launch app
+start.bat                                      :: launch app (opens browser after 5 s)
+uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir api  :: dev server (no browser)
+pytest tests/                                  :: run all tests (most are pure-Python, no DB needed)
+pytest tests/test_foo.py                       :: single test file
+pytest -k test_name                            :: single test by name
 ```
 
 ---
@@ -196,6 +204,7 @@ If truncated, **don't re-`Edit`** — rewrite the tail via bash heredoc. Smaller
 - **Composite PKs break inline editing in `/ref`**: `web/ref.js` renders any `is_pk` column read-only. Prefer single-column PK + `UNIQUE` on the secondary tuple when possible.
 - **Boolean coercion in /ref API**: UI sends `'true'`/`'false'` strings; `api/routers/ref.py::_coerce_row_types` converts to bool for BOOLEAN columns + empty-string → NULL.
 - **`ref.py` has module-level DEBUG prints** that call `discover_data_tables()` at import time — these hit the DB at startup. Don't remove without checking they're not load-bearing for cache warming.
+- **Always start uvicorn with `--reload-dir api`** — without it, uvicorn also watches `etl/working/` where the scheduler writes heartbeat files every few seconds. Each write triggers a full reload on Windows, which can crash the process.
 - **`pytest --json-report --json-report-summary` suppresses per-test entries** for the `/test-results` screen; drop `--json-report-summary` to keep detail rows.
 
 ---
@@ -236,6 +245,7 @@ If truncated, **don't re-`Edit`** — rewrite the tail via bash heredoc. Smaller
 | Rule groups logic | `docs/rule_groups_logic.md` |
 | Performance / feedback-loop logic | `docs/performance_logic.md` |
 | Symbol normalization strategy (tos_symbol) | `docs/tos_symbol_normalization.md` |
+| Screen overview, data-flow diagrams, column lineage (475 cols) | `docs/Screen_and_DataFlow_Reference.md` |
 
 ---
 

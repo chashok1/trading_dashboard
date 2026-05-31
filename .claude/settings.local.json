@@ -118,7 +118,8 @@
       "Bash(node --check web/_common.js)",
       "Bash(node --check web/actionable.js)",
       "Bash(node --check web/trace.js)",
-      "Bash(taskkill /F /PID 20176 /PID 13504)"
+      "Bash(taskkill /F /PID 20176 /PID 13504)",
+      "Bash(2>&1)"
     ]
   }
 }
