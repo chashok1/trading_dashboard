@@ -852,6 +852,18 @@ async function openDrilldown(row) {
   $('modalName').textContent = row.tos_symbol || '';
   $('modalSub').textContent = [`as of ${row.as_of_date}`, row.position_category, row.sector].filter(Boolean).join(' · ');
 
+  const chgEl = $('modalPriceChange');
+  if (row.net_chng != null && row.pct_change != null) {
+    const nc = Number(row.net_chng), pc = Number(row.pct_change);
+    const clr = nc >= 0 ? '#16a34a' : '#dc2626';
+    const fmtAmt = v => { const a = Math.abs(v); return (v < 0 ? '-' : '') + '$' + (a >= 1000 ? Math.round(a).toLocaleString() : a.toFixed(0)); };
+    chgEl.innerHTML = `<span style="font-weight:700;font-size:18px;color:${clr};">${fmtAmt(nc)} (${pc.toFixed(2)}%)</span>`;
+    chgEl.style.display = 'block';
+  } else {
+    chgEl.innerHTML = '';
+    chgEl.style.display = 'none';
+  }
+
   const action = (row.consolidated_action || 'NONE').toUpperCase();
   const kv = $('modalKv');
   kv.innerHTML = `
