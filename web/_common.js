@@ -356,18 +356,20 @@
         <span><span style="color:#94a3b8;">Trend</span> <strong style="color:#818cf8;">${fmt(trend)}</strong></span>
       </div>`, 'width:100%;box-sizing:border-box;');
 
-    // ── Box above Graph3: 60-day history title + change value top-right ─────
+    // ── Change display (above graph3 column) ─────────────────────────────────
     const _netChng = (cur != null && prev != null) ? cur - prev : null;
     const _pctChng = (_netChng != null && prev) ? _netChng / prev * 100 : null;
     const _chngClr = _netChng == null ? '#94a3b8' : _netChng >= 0 ? '#16a34a' : '#dc2626';
     const _fmtChng = v => { const a = Math.abs(v); return (v < 0 ? '-' : '') + '$' + (a >= 1000 ? Math.round(a).toLocaleString() : a.toFixed(0)); };
     const _chngStr = _netChng != null && _pctChng != null
       ? `${_fmtChng(_netChng)} (${_pctChng.toFixed(2)}%)` : '';
+    const graph3ChangeRow = _chngStr
+      ? `<div style="text-align:right;font-weight:700;font-size:15px;color:${_chngClr};padding:0 2px 4px;">${_chngStr}</div>`
+      : '';
+
+    // ── Box above Graph3: title centered ─────────────────────────────────────
     const graph3TopBox = infoBox(`
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <span style="font-weight:600;color:#64748b;font-size:9px;">60-day history</span>
-        ${_chngStr ? `<span style="font-weight:700;color:${_chngClr};font-size:10px;">${_chngStr}</span>` : ''}
-      </div>`);
+      <div style="text-align:center;font-weight:600;color:#64748b;font-size:9px;">60-day history</div>`);
 
     // ── Box below Graph3: legend centered, items close together ──────────────
     const graph3BotBox = infoBox(`
@@ -446,6 +448,7 @@
 
       <!-- Historical chart: top box + centered graph + legend bottom box -->
       <div style="flex:3;min-width:400px;overflow:hidden;display:flex;flex-direction:column;">
+        ${graph3ChangeRow}
         ${graph3TopBox}
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
           <div id="${histId}_wrap" style="width:100%;">${histSvg}</div>
