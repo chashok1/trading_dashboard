@@ -936,6 +936,50 @@ def _derive_rr_impl(session: Session, as_of_date: date, run_id: int) -> int:
 derive_rr = _wrap("drv_rr", _derive_rr_impl)
 
 
+def backfill_drv_rr(d_start: date, d_end: date) -> dict:
+    """Populate drv_rr for every weekday in [d_start, d_end] that has no entry yet.
+
+    Safe to re-run: skips dates already present. Values between file loads are
+    flat (repeating last loaded RR via snapshot_date <= as_of_date laterals),
+    which is correct — RR bands only change when a new file is loaded.
+    """
+    from datetime import timedelta
+    from etl.db import session_scope
+
+    with session_scope() as s:
+        existing = {
+            r[0] for r in s.execute(text(
+                "SELECT DISTINCT as_of_date FROM drv_rr "
+                "WHERE as_of_date >= :s AND as_of_date <= :e"
+            ), {"s": d_start, "e": d_end}).fetchall()
+        }
+
+    missing = []
+    d = d_start
+    while d <= d_end:
+        if d.weekday() < 5 and d not in existing:
+            missing.append(d)
+        d += timedelta(days=1)
+
+    log.info("backfill_drv_rr: %d weekdays to fill (%s → %s)",
+             len(missing), d_start, d_end)
+
+    rows_total = 0
+    errors = 0
+    for d in missing:
+        try:
+            with session_scope() as s:
+                n = derive_rr(s, d)
+                rows_total += n
+        except Exception:
+            log.exception("backfill_drv_rr: %s failed", d)
+            errors += 1
+
+    log.info("backfill_drv_rr: done — %d rows across %d dates (%d errors)",
+             rows_total, len(missing), errors)
+    return {"dates_processed": len(missing), "rows_inserted": rows_total, "errors": errors}
+
+
 # Section classification used by drv_dash
 _VOLATILITY = {"^VIX","^VVIX","^RVX","^VXN","^GVZ","^OVX","^MOVE","^VXD"}
 _INDEX = {"^SPX","^IXIC","^RUT","HYG","LQD","^GDAXI","^N225"}

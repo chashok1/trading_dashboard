@@ -549,6 +549,25 @@ def post_admin_rebuild(req: RebuildRequest):
     }
 
 
+class BackfillRRRequest(BaseModel):
+    days: int = 365   # calendar days back from today
+
+
+@router.post("/api/admin/backfill-drv-rr")
+def post_backfill_drv_rr(req: BackfillRRRequest):
+    """Populate drv_rr for every weekday in the last N calendar days that
+    has no entry yet. Blocking. Safe to re-run (skips existing dates)."""
+    from datetime import date
+    if req.days < 1 or req.days > 1825:
+        raise HTTPException(400, "'days' must be in [1, 1825]")
+    d_end   = date.today()
+    d_start = d_end - timedelta(days=req.days)
+    from etl.derive import backfill_drv_rr
+    result = backfill_drv_rr(d_start, d_end)
+    return {"ok": result["errors"] == 0, **result,
+            "range": f"{d_start} → {d_end}"}
+
+
 # =============================================================================
 # Symbol comparison (master list vs all tables)
 # =============================================================================

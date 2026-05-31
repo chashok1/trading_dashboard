@@ -460,8 +460,7 @@ def _get_nightly_hour(default: int = 22) -> int:
 
 
 def run_nightly_outcomes() -> None:
-    """Fire compute_outcomes + the drv_actionable stale-heal once.
-    Wrapped so failure can't kill the loop."""
+    """Fire compute_outcomes + derive_rr for today + the drv_actionable stale-heal."""
     log.info("nightly: compute_outcomes starting")
     try:
         from etl.compute_outcomes import compute_outcomes
@@ -469,6 +468,17 @@ def run_nightly_outcomes() -> None:
         log.info("nightly: compute_outcomes done: %s", result)
     except Exception:
         log.exception("nightly: compute_outcomes crashed")
+
+    log.info("nightly: derive_rr for today starting")
+    try:
+        from etl.db import session_scope
+        from etl.derive import derive_rr
+        today = date.today()
+        with session_scope() as s:
+            n = derive_rr(s, today)
+        log.info("nightly: derive_rr done: %d rows for %s", n, today)
+    except Exception:
+        log.exception("nightly: derive_rr crashed")
 
     log.info("nightly: stale-heal starting")
     try:
