@@ -96,6 +96,11 @@ def api_test_results():
     return FileResponse(p, media_type="application/json")
 
 
+@router.get("/rule-flow")
+def page_rule_flow():
+    return FileResponse(WEB_DIR / "rule_flow.html", media_type="text/html; charset=utf-8")
+
+
 @router.get("/trace")
 def page_trace():
     return FileResponse(WEB_DIR / "trace.html", media_type="text/html; charset=utf-8")

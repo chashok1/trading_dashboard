@@ -519,3 +519,322 @@ def get_symbol_trace(sym: str, as_of: Optional[str] = Query(None, alias="date"))
                 "n_composites_fired": n_composite_fired,
             },
         }
+
+
+# -----------------------------------------------------------------------------
+# Rule-Flow endpoint — full 5-tier trace for /rule-flow screen
+# -----------------------------------------------------------------------------
+
+@router.get("/api/rule-flow/{sym}", response_model=dict)
+def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
+    """Full data-flow trace across all 5 tiers for the /rule-flow diagnostic screen.
+
+    Returns: indicators, atomics (with reason), composites (with member detail),
+    rule_groups (with composite membership + fired status), and final output.
+    """
+    from etl.derive import eval_atomic_rule, _eval_precondition, _MA_COL_MAP
+
+    sym_u = sym.upper().strip()
+    with session_scope() as s:
+        # 1. Resolve snapshot date
+        if as_of:
+            try:
+                snap = datetime.strptime(as_of, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+        else:
+            row = s.execute(text("SELECT MAX(as_of_date) FROM drv_stks")).scalar()
+            snap = row if row else date.today()
+
+        # 2. drv_ma + drv_cat_atomic_input rows
+        ma_row = dict(s.execute(text(
+            "SELECT * FROM drv_ma WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1"
+        ), {"d": snap, "sym": sym_u}).mappings().first() or {})
+        if not ma_row:
+            raise HTTPException(status_code=404,
+                                detail=f"No data for {sym_u!r} on {snap}")
+        ai_row = dict(s.execute(text(
+            "SELECT * FROM drv_cat_atomic_input WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1"
+        ), {"d": snap, "sym": sym_u}).mappings().first() or {})
+
+        # 3. Indicators — non-null drv_cat_atomic_input values, skip metadata cols
+        skip_cols = {"as_of_date", "tos_symbol", "computed_at", "source_run_id"}
+        indicators = [
+            {"name": k, "value": float(v) if isinstance(v, (int, float)) else v}
+            for k, v in ai_row.items()
+            if k not in skip_cols and v is not None
+        ]
+
+        # 4. Atomic rules
+        atomic_rules = s.execute(text("""
+            SELECT atomic_rule_id, rule_name, ma_column_name,
+                   brkeout_from, brkeout_to, wt_below, wt_between, wt_above,
+                   scoring_mode, category
+            FROM ref_trig_atomic_rule WHERE deprecated_at IS NULL
+            ORDER BY atomic_rule_id
+        """)).mappings().all()
+
+        # 5. Composite mappings
+        mappings = s.execute(text("""
+            SELECT composite_rule_code, COALESCE(member_kind,'atomic') AS member_kind,
+                   atomic_rule_id, weight_override,
+                   data_column, nested_composite_code, precondition_expr
+            FROM ref_trig_composite_mapping
+            WHERE deprecated_at IS NULL
+            ORDER BY composite_rule_code, atomic_rule_id
+        """)).mappings().all()
+
+        # 6. Column resolution (mirrors _resolve_atomic_input_column)
+        rule_names = [a["rule_name"] for a in atomic_rules if a.get("rule_name")]
+        col_lookup: dict = {}
+        reg = s.execute(text("""
+            SELECT excel_header, column_name, drv_cat_table FROM ref_ma_columns
+            WHERE excel_header = ANY(:n)
+            ORDER BY CASE WHEN drv_cat_table='drv_cat_atomic_input' THEN 0 ELSE 1 END
+        """), {"n": rule_names}).mappings().all()
+        for r in reg:
+            col_lookup.setdefault(r["excel_header"], (r["drv_cat_table"], r["column_name"]))
+        for a in atomic_rules:
+            rn = a["rule_name"] or ""
+            if rn in col_lookup:
+                continue
+            ma_col = a.get("ma_column_name") or ""
+            if "." in ma_col:
+                tbl, _, col = ma_col.partition(".")
+                col_lookup[rn] = (tbl, col)
+                continue
+            legacy = _MA_COL_MAP.get(rn) or _MA_COL_MAP.get(ma_col)
+            if legacy:
+                col_lookup[rn] = ("drv_ma", legacy)
+
+        # 7. Evaluate atomic rules
+        atomic_score: dict = {}
+        atomic_value: dict = {}
+        atomic_reason: dict = {}
+        atomics_out = []
+        rolls_into: dict = {}
+        for m in mappings:
+            if m["member_kind"] == "atomic" and m["atomic_rule_id"] is not None:
+                rolls_into.setdefault(m["atomic_rule_id"], []).append(m["composite_rule_code"])
+
+        for a in atomic_rules:
+            rid = a["atomic_rule_id"]
+            rn  = a["rule_name"] or ""
+            src = col_lookup.get(rn)
+            value = None
+            col_display = a.get("ma_column_name") or ""
+            if src:
+                tbl, col = src
+                col_display = f"{tbl}.{col}"
+                value = (ai_row if tbl == "drv_cat_atomic_input" else ma_row).get(col)
+
+            try:
+                weight = float(eval_atomic_rule(value, dict(a)))
+            except Exception:
+                weight = 0.0
+            atomic_score[rid] = weight
+            try:
+                atomic_value[rid] = float(value) if value is not None else None
+            except (TypeError, ValueError):
+                atomic_value[rid] = None
+
+            # Reason
+            try: bf = float(a["brkeout_from"]) if a.get("brkeout_from") is not None else None
+            except (TypeError, ValueError): bf = None
+            try: bt = float(a["brkeout_to"]) if a.get("brkeout_to") is not None else None
+            except (TypeError, ValueError): bt = None
+
+            band = None
+            if not src:
+                reason = "no_column"
+            elif value is None:
+                reason = "no_data"
+            else:
+                try:
+                    vn = float(value)
+                    if bf is None and bt is None:
+                        reason = "no_thresholds"
+                    elif bf is not None and vn < bf:
+                        band = "below"; reason = f"below_band ({vn:g} < {bf:g})"
+                    elif bt is not None and vn > bt:
+                        band = "above"; reason = f"above_band ({vn:g} > {bt:g})"
+                    else:
+                        band = "between"
+                        lo = f"{bf:g}" if bf is not None else "-inf"
+                        hi = f"{bt:g}" if bt is not None else "+inf"
+                        reason = f"in_band ({vn:g} in [{lo},{hi}])"
+                except (TypeError, ValueError):
+                    reason = "not_numeric"
+            atomic_reason[rid] = reason
+
+            try: v_out = float(value) if value is not None else None
+            except (TypeError, ValueError): v_out = None
+            try: wb  = float(a["wt_below"])   if a.get("wt_below")   is not None else None
+            except: wb = None
+            try: wbt = float(a["wt_between"]) if a.get("wt_between") is not None else None
+            except: wbt = None
+            try: wa  = float(a["wt_above"])   if a.get("wt_above")   is not None else None
+            except: wa = None
+
+            atomics_out.append({
+                "id": rid, "rule_name": rn, "ma_column": col_display,
+                "value": v_out, "band": band, "reason": reason,
+                "brkeout_from": bf, "brkeout_to": bt,
+                "wt_below": wb, "wt_between": wbt, "wt_above": wa,
+                "weight": weight, "fired": weight != 0,
+                "category": a.get("category"),
+                "rolls_into": sorted(set(rolls_into.get(rid, []))),
+            })
+
+        atomic_by_id = {a["id"]: a for a in atomics_out}
+
+        # 8. Evaluate composites with member detail
+        composite_index: dict = {}
+        for m in mappings:
+            code = m["composite_rule_code"]
+            if code not in composite_index:
+                composite_index[code] = {
+                    "precondition": m.get("precondition_expr"),
+                    "members": [],
+                }
+            composite_index[code]["members"].append(dict(m))
+
+        composites_out = []
+        composite_fired: dict = {}
+        for code in sorted(composite_index.keys()):
+            info = composite_index[code]
+            pre  = info.get("precondition")
+            if pre and ma_row and not _eval_precondition(pre, ma_row):
+                composites_out.append({"code": code, "fired": False, "score": 0.0,
+                                       "n_member_hit": 0, "precondition_blocked": True,
+                                       "precondition": pre, "members": []})
+                composite_fired[code] = False
+                continue
+
+            score = 0.0
+            n_hit = 0
+            members_out = []
+            for m in info["members"]:
+                kind = m["member_kind"]
+                w = 0.0
+                member_entry: dict = {"kind": kind}
+                if kind == "atomic":
+                    aid = m["atomic_rule_id"]
+                    w   = float(atomic_score.get(aid, 0.0)) if aid is not None else 0.0
+                    ovr = m.get("weight_override")
+                    if ovr is not None and w != 0:
+                        w = float(ovr)
+                    ar = atomic_by_id.get(aid, {})
+                    member_entry.update({
+                        "rule_id": aid, "rule_name": ar.get("rule_name"),
+                        "value": ar.get("value"), "weight": w,
+                        "fired": w != 0, "reason": atomic_reason.get(aid, ""),
+                        "band": ar.get("band"),
+                        "brkeout_from": ar.get("brkeout_from"),
+                        "brkeout_to":   ar.get("brkeout_to"),
+                    })
+                elif kind == "data":
+                    member_entry["column"] = m.get("data_column")
+                elif kind == "composite":
+                    child = m.get("nested_composite_code")
+                    member_entry["child"] = child
+                    w = 1.0 if composite_fired.get(child) else 0.0
+                if w != 0:
+                    n_hit += 1
+                score += w
+                members_out.append(member_entry)
+
+            fired = n_hit > 0
+            composites_out.append({
+                "code": code, "fired": fired, "score": score,
+                "n_member_hit": n_hit, "precondition": pre,
+                "precondition_blocked": False, "members": members_out,
+            })
+            composite_fired[code] = fired
+
+        # 9. Rule groups
+        group_rows = s.execute(text("""
+            SELECT rule_group_code, group_type, action_label, priority, category, intent_text
+            FROM ref_trig_rule_group WHERE deprecated_at IS NULL
+            ORDER BY priority, rule_group_code
+        """)).mappings().all()
+        grp_members = s.execute(text("""
+            SELECT rule_group_code, member_code, member_type, logic_operator, sequence
+            FROM ref_trig_group_member ORDER BY rule_group_code, sequence
+        """)).mappings().all()
+        grp_member_index: dict = {}
+        for gm in grp_members:
+            grp_member_index.setdefault(gm["rule_group_code"], []).append(dict(gm))
+
+        rule_groups_out = []
+        for g in group_rows:
+            code   = g["rule_group_code"]
+            gmembs = grp_member_index.get(code, [])
+            fired  = False
+            member_results = []
+            broke  = False
+            for gm in gmembs:
+                mc = gm["member_code"]
+                mf = composite_fired.get(mc, False)
+                member_results.append({
+                    "code": mc, "operator": gm["logic_operator"],
+                    "member_type": gm["member_type"], "fired": mf,
+                })
+                if gm["logic_operator"] == "AND" and not mf:
+                    broke = True
+                    break
+            if not broke:
+                ops = [gm["logic_operator"] for gm in gmembs]
+                fired = any(r["fired"] for r in member_results) if "OR" in ops \
+                        else all(r["fired"] for r in member_results)
+            rule_groups_out.append({
+                "code": code, "group_type": g["group_type"],
+                "action_label": g.get("action_label"), "priority": g.get("priority"),
+                "category": g.get("category"), "intent_text": g.get("intent_text"),
+                "fired": fired, "members": member_results,
+            })
+
+        # 10. Final output from drv_actionable + buysell scores
+        act = s.execute(text("""
+            SELECT consolidated_action, trig_action, winning_source, winning_priority,
+                   triggered_group_ids, source_actions, suppressed_reason
+            FROM drv_actionable WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1
+        """), {"d": snap, "sym": sym_u}).mappings().first()
+
+        buysell = {r[0]: float(r[1]) for r in s.execute(text(
+            "SELECT code, extra1 FROM ref_param_lookup"
+            " WHERE table_name='buysell' AND extra1 IS NOT NULL"
+        )).fetchall() if r[1] is not None and str(r[1]).replace('-','').replace('.','').isdigit()}
+
+        return {
+            "tos_symbol": sym_u,
+            "as_of": snap.isoformat(),
+            "summary": {
+                "description":     ma_row.get("description"),
+                "sector":          ma_row.get("sector"),
+                "asset_class":     ma_row.get("asset_class"),
+                "last_price":      float(ma_row["last_price"]) if ma_row.get("last_price") else None,
+                "rsi":             float(ma_row["rsi"]) if ma_row.get("rsi") else None,
+                "composite_label": s.execute(text(
+                    "SELECT composite_label FROM drv_stks WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1"
+                ), {"d": snap, "sym": sym_u}).scalar(),
+                "n_atomic_fired":    sum(1 for a in atomics_out if a["fired"]),
+                "n_atomic_total":    len(atomics_out),
+                "n_composite_fired": sum(1 for c in composites_out if c["fired"]),
+                "n_composite_total": len(composites_out),
+                "n_group_fired":     sum(1 for g in rule_groups_out if g["fired"]),
+                "n_group_total":     len(rule_groups_out),
+            },
+            "indicators":   indicators,
+            "atomics":      atomics_out,
+            "composites":   composites_out,
+            "rule_groups":  rule_groups_out,
+            "final": {
+                "consolidated_action": act["consolidated_action"] if act else None,
+                "trig_action":         act["trig_action"]         if act else None,
+                "winning_source":      act["winning_source"]      if act else None,
+                "suppressed_reason":   act["suppressed_reason"]   if act else None,
+                "triggered_groups":    act["triggered_group_ids"] if act else [],
+                "buysell_scores":      buysell,
+            },
+        }

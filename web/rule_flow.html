@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rule Flow — Trading Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    /* ── Layout ── */
+    .rf-wrap { max-width: 1400px; margin: 0 auto; padding: 12px 16px; }
+
+    /* ── Symbol bar ── */
+    .rf-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+              background:#fff; border:1px solid var(--border); border-radius:8px;
+              padding:10px 14px; margin-bottom:14px; }
+    .rf-bar input { border:1px solid var(--border); border-radius:6px;
+                    padding:5px 10px; font-size:14px; width:120px; }
+    .rf-bar input[type=date] { width:160px; }
+    .rf-bar button { background:var(--accent); color:#fff; border:none;
+                     border-radius:6px; padding:6px 16px; font-size:13px;
+                     cursor:pointer; font-weight:600; }
+    .rf-bar button:hover { opacity:.88; }
+    .rf-sym-title { font-size:18px; font-weight:700; margin-left:8px; color:var(--text-1); }
+    .rf-sym-meta  { font-size:12px; color:var(--text-2); }
+
+    /* ── Flow connector ── */
+    .rf-arrow { text-align:center; font-size:22px; color:var(--text-3);
+                line-height:1.4; margin:2px 0; }
+
+    /* ── Tier card ── */
+    .tier { background:#fff; border:1px solid var(--border); border-radius:8px;
+            margin-bottom:4px; overflow:hidden; }
+    .tier-hdr { display:flex; align-items:center; gap:10px; padding:10px 14px;
+                cursor:pointer; user-select:none; border-bottom:1px solid transparent; }
+    .tier-hdr:hover { background:#f9f9f8; }
+    .tier.open .tier-hdr { border-bottom-color:var(--border); }
+    .tier-icon  { font-size:18px; width:26px; text-align:center; }
+    .tier-title { font-weight:700; font-size:14px; flex:1; }
+    .tier-badge { font-size:11px; font-weight:600; padding:2px 8px;
+                  border-radius:99px; white-space:nowrap; }
+    .badge-ok   { background:#dcfce7; color:#15803d; }
+    .badge-warn { background:#fef3c7; color:#b45309; }
+    .badge-none { background:#f3f4f6; color:#6b7280; }
+    .tier-toggle { font-size:14px; color:var(--text-3); transition:transform .2s; }
+    .tier.open .tier-toggle { transform:rotate(180deg); }
+    .tier-body { display:none; padding:12px 14px; }
+    .tier.open .tier-body { display:block; }
+
+    /* ── Indicators grid ── */
+    .ind-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+                gap:4px; }
+    .ind-item { display:flex; justify-content:space-between; gap:8px;
+                font-size:12px; padding:3px 6px; border-radius:4px; background:#f9f9f8; }
+    .ind-name  { color:var(--text-2); }
+    .ind-val   { font-weight:600; color:var(--text-1); }
+
+    /* ── Atomic rules table ── */
+    .rf-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .rf-table th { text-align:left; padding:5px 8px; background:#f3f4f6;
+                   font-weight:600; color:var(--text-2); position:sticky; top:0; }
+    .rf-table td { padding:4px 8px; border-top:1px solid #f0f0ef; vertical-align:middle; }
+    .rf-table tr:hover td { background:#f9f9f8; }
+    .fired-yes  { color:#15803d; font-weight:700; }
+    .fired-no   { color:#9ca3af; }
+    .badge-band { font-size:10px; padding:1px 5px; border-radius:4px; font-weight:600; }
+    .band-below   { background:#fef3c7; color:#b45309; }
+    .band-between { background:#dcfce7; color:#15803d; }
+    .band-above   { background:#dbeafe; color:#1d4ed8; }
+    .reason-bad { color:#b45309; font-style:italic; }
+    .reason-ok  { color:var(--text-2); }
+    .cat-badge  { font-size:10px; padding:1px 5px; border-radius:4px;
+                  background:#e0e7ff; color:#3730a3; }
+
+    /* ── Composite accordion ── */
+    .comp-list { display:flex; flex-direction:column; gap:4px; }
+    .comp-item { border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+    .comp-hdr  { display:flex; align-items:center; gap:8px; padding:7px 10px;
+                 cursor:pointer; user-select:none; }
+    .comp-hdr:hover { background:#f9f9f8; }
+    .comp-code { font-size:12px; font-weight:700; font-family:monospace; flex:1; }
+    .comp-score { font-size:11px; color:var(--text-2); }
+    .comp-body  { display:none; padding:8px 10px; border-top:1px solid var(--border);
+                  background:#fafafa; }
+    .comp-item.open .comp-body { display:block; }
+    .comp-fired { border-left:3px solid #16a34a; }
+    .comp-nofired { border-left:3px solid #d1d5db; }
+    .comp-blocked { border-left:3px solid #f59e0b; }
+    .mem-list { display:flex; flex-direction:column; gap:3px; }
+    .mem-item { display:flex; align-items:center; gap:8px; font-size:11px;
+                padding:3px 6px; border-radius:4px; }
+    .mem-fired   { background:#f0fdf4; }
+    .mem-nofired { background:#f9fafb; color:#9ca3af; }
+    .mem-kind    { font-size:9px; padding:1px 4px; border-radius:3px;
+                   background:#e0e7ff; color:#3730a3; font-weight:600; }
+    .mem-name    { flex:1; font-weight:600; }
+    .mem-val     { color:var(--text-2); }
+    .mem-wt      { font-weight:700; min-width:40px; text-align:right; }
+
+    /* ── Rule groups ── */
+    .grp-list { display:flex; flex-direction:column; gap:4px; }
+    .grp-item { border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+    .grp-hdr  { display:flex; align-items:center; gap:8px; padding:7px 10px;
+                cursor:pointer; user-select:none; }
+    .grp-hdr:hover { background:#f9f9f8; }
+    .grp-code   { font-size:12px; font-weight:700; font-family:monospace; flex:1; }
+    .grp-action { font-size:11px; font-weight:700; padding:2px 7px; border-radius:99px; }
+    .grp-bearish { background:#fee2e2; color:#b91c1c; }
+    .grp-bullish { background:#dcfce7; color:#15803d; }
+    .grp-neutral { background:#f3f4f6; color:#6b7280; }
+    .grp-body   { display:none; padding:8px 10px; border-top:1px solid var(--border);
+                  background:#fafafa; }
+    .grp-item.open .grp-body { display:block; }
+    .grp-fired    { border-left:3px solid #16a34a; }
+    .grp-nofired  { border-left:3px solid #d1d5db; }
+    .grp-member { display:flex; align-items:center; gap:8px; font-size:11px;
+                  padding:3px 6px; border-radius:4px; margin:2px 0; }
+    .grp-mem-fired   { background:#f0fdf4; }
+    .grp-mem-nofired { background:#f9fafb; color:#9ca3af; }
+    .op-badge { font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px;
+                background:#e0e7ff; color:#3730a3; min-width:28px; text-align:center; }
+
+    /* ── Final output ── */
+    .final-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+                  gap:10px; }
+    .final-card { border:1px solid var(--border); border-radius:8px;
+                  padding:12px 14px; text-align:center; }
+    .final-label { font-size:11px; color:var(--text-2); margin-bottom:4px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
+    .final-value { font-size:24px; font-weight:800; }
+    .val-sa  { color:#b91c1c; } .val-stm { color:#c2410c; } .val-ss { color:#d97706; }
+    .val-bm  { color:#15803d; } .val-bs  { color:#16a34a; } .val-bw { color:#059669; }
+    .val-add { color:#15803d; } .val-remove { color:#b91c1c; }
+    .val-hold { color:#6b7280; } .val-null { color:#d1d5db; }
+    .grp-fired-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; justify-content:center; }
+    .grp-pill { font-size:11px; padding:2px 8px; border-radius:99px;
+                background:#dcfce7; color:#15803d; font-weight:600; }
+
+    /* ── Filter / search ── */
+    .rf-filter { display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
+    .rf-filter input { border:1px solid var(--border); border-radius:5px;
+                       padding:4px 9px; font-size:12px; width:180px; }
+    .rf-filter select { border:1px solid var(--border); border-radius:5px;
+                        padding:4px 8px; font-size:12px; }
+    .rf-filter label { font-size:12px; color:var(--text-2); display:flex;
+                       align-items:center; gap:4px; cursor:pointer; }
+    .status-msg { font-size:13px; color:var(--text-2); padding:16px;
+                  text-align:center; }
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <span class="topbar-brand">Trading Dashboard</span>
+  <nav class="topbar-nav">
+    <a href="/">Dashboard</a>
+    <a href="/actionable">Actionable</a>
+    <a href="/trace">Trace</a>
+    <a href="/rule-flow" class="active">Rule Flow</a>
+    <a href="/rules">Rules</a>
+    <a href="/groups">Groups</a>
+  </nav>
+</div>
+
+<div class="rf-wrap">
+
+  <!-- Symbol selector -->
+  <div class="rf-bar">
+    <input id="symInput" type="text" placeholder="Symbol e.g. AAPL" style="text-transform:uppercase">
+    <input id="dateInput" type="date">
+    <button onclick="loadFlow()">Load</button>
+    <span id="symTitle" class="rf-sym-title"></span>
+    <span id="symMeta"  class="rf-sym-meta"></span>
+  </div>
+
+  <div id="rfContent"></div>
+
+</div>
+
+<script src="/static/rule_flow.js"></script>
+<script>
+  // Default date to today
+  document.getElementById('dateInput').value = new Date().toISOString().slice(0,10);
+  // Auto-load from URL params
+  const urlp = new URLSearchParams(location.search);
+  if (urlp.get('symbol')) {
+    document.getElementById('symInput').value = urlp.get('symbol').toUpperCase();
+    if (urlp.get('date')) document.getElementById('dateInput').value = urlp.get('date');
+    loadFlow();
+  }
+</script>
+</body>
+</html>
