@@ -487,7 +487,8 @@
     const pad = (yMax - yMin) * 0.05 || 1;
     const yMinP = yMin - pad, yMaxP = yMax + pad, yRangeP = yMaxP - yMinP;
 
-    const xPx = i => PAD_L + (n > 1 ? (i / (n - 1)) * cW : cW / 2);
+    const nExt = n + 2; // 2 blank slots at the right for breathing room
+    const xPx = i => PAD_L + (nExt > 1 ? (i / (nExt - 1)) * cW : cW / 2);
     const yPx = v => PAD_T + cH * (1 - (v - yMinP) / yRangeP);
 
     // Step-function polyline — each value holds until the next change
@@ -654,7 +655,7 @@
         const rect = svgEl.getBoundingClientRect();
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
-        const ix = Math.max(0, Math.min(n - 1, Math.round((mx - PAD_L) / cW * (n - 1))));
+        const ix = Math.max(0, Math.min(n - 1, Math.round((mx - PAD_L) / cW * (nExt - 1))));
         if (ohlcEl && closes[ix] != null) ohlcEl.innerHTML = fmtOHLC(ix);
 
         const cx = xPx(ix);
