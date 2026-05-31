@@ -363,7 +363,8 @@
     // ── Box below Graph3: legend centered, items close together ──────────────
     const graph3BotBox = infoBox(`
       <div style="display:flex;justify-content:center;gap:10px;white-space:nowrap;">
-        <span style="color:#2563eb;">&#9644; price</span>
+        <span style="color:#16a34a;">&#9646; up</span>
+        <span style="color:#dc2626;">&#9646; down</span>
         <span style="color:#15803d;">&#9135;&#9135; TRR/LRR</span>
       </div>`);
 
@@ -460,7 +461,6 @@
   // ── Historical RR line chart ──────────────────────────────────────────────
   function _renderHistChart(svgEl, h, H, levels) {
     const dates = h.dates;
-    const trends = h.trend || [], trades = h.trade || [];
     const n = dates.length;
     if (!n) return;
 
@@ -470,9 +470,14 @@
     for (let i = 0; i < n; i++) { if (lrrs[i] == null) lrrs[i] = firstLrr ?? null; else break; }
     for (let i = 0; i < n; i++) { if (trrs[i] == null) trrs[i] = firstTrr ?? null; else break; }
 
-    // Forward-fill prices: carry last known value forward between file loads.
-    // No backward fill — price before the first load is genuinely unknown.
-    const prices = [...(h.price || [])];
+    // Raw OHLC — no fill; bars only rendered where data exists
+    const closes = h.price  || [];
+    const opens  = h.open   || [];
+    const highs  = h.high   || [];
+    const lows   = h.low    || [];
+
+    // Forward-fill close only — for the current-price reference line
+    const prices = [...closes];
     let lastP = null;
     for (let i = 0; i < n; i++) { if (prices[i] != null) lastP = prices[i]; else if (lastP != null) prices[i] = lastP; }
 
@@ -480,7 +485,7 @@
     const PAD_L = 44, PAD_R = 54, PAD_T = 10, PAD_B = 22;
     const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
 
-    const allVals = [...prices, ...lrrs, ...trrs, ...trends, ...trades].filter(v => v != null);
+    const allVals = [...closes, ...opens, ...highs, ...lows, ...lrrs, ...trrs].filter(v => v != null);
     if (!allVals.length) return;
     const yMin = Math.min(...allVals), yMax = Math.max(...allVals);
     const pad = (yMax - yMin) * 0.05 || 1;
@@ -570,14 +575,29 @@
     const curLine = curPrice != null
       ? `<line x1="${PAD_L}" y1="${yPx(curPrice).toFixed(1)}" x2="${PAD_L+cW}" y2="${yPx(curPrice).toFixed(1)}" stroke="#374151" stroke-width="0.7" stroke-dasharray="3 3"/>` : '';
 
+    // OHLC candlestick bars
+    const barW = Math.max(2, (cW / n) * 0.7);
+    const candlesticks = closes.map((close, i) => {
+      if (close == null) return '';
+      const open = opens[i] ?? close, high = highs[i] ?? close, low = lows[i] ?? close;
+      const isUp = close >= open;
+      const clr = isUp ? '#16a34a' : '#dc2626';
+      const x = xPx(i);
+      const bodyTop = yPx(Math.max(close, open)).toFixed(1);
+      const bodyBot = yPx(Math.min(close, open)).toFixed(1);
+      const bodyH = Math.max(parseFloat(bodyBot) - parseFloat(bodyTop), 1).toFixed(1);
+      return `<line x1="${x.toFixed(1)}" y1="${yPx(high).toFixed(1)}" x2="${x.toFixed(1)}" y2="${yPx(low).toFixed(1)}" stroke="${clr}" stroke-width="1"/>` +
+             `<rect x="${(x - barW/2).toFixed(1)}" y="${bodyTop}" width="${barW.toFixed(1)}" height="${bodyH}" fill="${clr}"/>`;
+    }).join('');
+
     svgEl.setAttribute('width', W);
     svgEl.innerHTML = `
       ${rightAxis}
       ${rrFill}
       ${todayMark}${curLine}
-      ${stepPolyline(trrs,   '#15803d', 1.5, '4 2')}
-      ${stepPolyline(lrrs,   '#15803d', 1.5, '4 2')}
-      ${smoothPolyline(prices, '#2563eb', 2)}
+      ${stepPolyline(trrs, '#15803d', 1.5, '4 2')}
+      ${stepPolyline(lrrs, '#15803d', 1.5, '4 2')}
+      ${candlesticks}
       ${rrLabels}${xLabels}
     `;
   }

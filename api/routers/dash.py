@@ -930,17 +930,20 @@ def get_rr_history(symbol: str = Query(...), date: str = Query(...), days: int =
     with session_scope() as s:
         rows = s.execute(text("""
             SELECT r.as_of_date,
-                   COALESCE(dq.last_price, td.last_price) AS last_price,
-                   td.a_trend_value, td.a_trade_value,
+                   COALESCE(dq.last_price, td.last_price) AS close,
+                   COALESCE(dq.open_price, td.open_price) AS open,
+                   COALESCE(dq.high_price, td.high_price) AS high,
+                   COALESCE(dq.low_price,  td.low_price)  AS low,
                    r.lrr, r.trr
             FROM drv_rr r
             LEFT JOIN LATERAL (
-                SELECT last_price FROM drv_quote
+                SELECT last_price, open_price, high_price, low_price
+                FROM drv_quote
                 WHERE tos_symbol=:sym AND as_of_date=r.as_of_date
                 LIMIT 1
             ) dq ON TRUE
             LEFT JOIN LATERAL (
-                SELECT last_price, a_trend_value, a_trade_value
+                SELECT last_price, open_price, high_price, low_price
                 FROM hist_td
                 WHERE tos_symbol=:sym AND snapshot_date <= r.as_of_date
                 ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
@@ -950,17 +953,19 @@ def get_rr_history(symbol: str = Query(...), date: str = Query(...), days: int =
             ORDER BY r.as_of_date
         """), {"sym": sym, "s": d_start, "e": d_end}).fetchall()
 
-    dates, prices, lrrs, trrs, trends, trades = [], [], [], [], [], []
-    for as_of, price, trend_v, trade_v, lrr, trr in rows:
+    dates, closes, opens, highs, lows, lrrs, trrs = [], [], [], [], [], [], []
+    for as_of, close, open_, high, low, lrr, trr in rows:
         dates.append(str(as_of))
-        prices.append(_f(price))
+        closes.append(_f(close))
+        opens.append(_f(open_))
+        highs.append(_f(high))
+        lows.append(_f(low))
         lrrs.append(_f(lrr))
         trrs.append(_f(trr))
-        trends.append(_f(trend_v))
-        trades.append(_f(trade_v))
 
-    return {"symbol": sym, "dates": dates, "price": prices,
-            "lrr": lrrs, "trr": trrs, "trend": trends, "trade": trades}
+    return {"symbol": sym, "dates": dates, "price": closes,
+            "open": opens, "high": highs, "low": lows,
+            "lrr": lrrs, "trr": trrs}
 
 
 @router.get("/api/actionable/history")
