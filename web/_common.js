@@ -690,9 +690,9 @@
 
         // Price + date badge on LEFT y-axis
         const pval = (yMinP + (1 - (cy - PAD_T) / cH) * yRangeP).toFixed(2);
-        if (chYbg) { chYbg.setAttribute('x', 2);  chYbg.setAttribute('y', (cy - 11).toFixed(1)); }
-        if (chYt)  { chYt.setAttribute('x', 22);  chYt.setAttribute('y', (cy - 4).toFixed(1));  chYt.textContent = pval; }
-        if (chYdt) { chYdt.setAttribute('x', 22); chYdt.setAttribute('y', (cy + 5).toFixed(1)); chYdt.textContent = dlbl; }
+        if (chYbg) { chYbg.setAttribute('x', PAD_L + 4);      chYbg.setAttribute('y', (cy - 11).toFixed(1)); }
+        if (chYt)  { chYt.setAttribute('x', PAD_L + 24);     chYt.setAttribute('y', (cy - 4).toFixed(1));  chYt.textContent = pval; }
+        if (chYdt) { chYdt.setAttribute('x', PAD_L + 24);    chYdt.setAttribute('y', (cy + 5).toFixed(1)); chYdt.textContent = dlbl; }
 
         showCH(true);
       });
