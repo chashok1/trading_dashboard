@@ -448,14 +448,14 @@
         .then(h => {
           const svgEl = document.getElementById(histId);
           if (!svgEl || !h || !h.dates || !h.dates.length) return;
-          _renderHistChart(svgEl, h, H, lv);
+          _renderHistChart(svgEl, h, H, lv, symbol);
         })
         .catch(() => {});
     }
   }
 
   // ── Historical RR line chart ──────────────────────────────────────────────
-  function _renderHistChart(svgEl, h, H, levels) {
+  function _renderHistChart(svgEl, h, H, levels, symbol) {
     const dates = h.dates;
     const n = dates.length;
     if (!n) return;
@@ -723,16 +723,30 @@
         closeBtn.style.cssText = 'position:absolute;top:8px;right:12px;font-size:22px;line-height:1;border:none;background:transparent;cursor:pointer;color:#64748b;';
         closeBtn.onclick = () => document.body.removeChild(overlay);
 
-        const svgWrap = document.createElement('div');
-        svgWrap.style.cssText = 'flex:1;width:100%;overflow:hidden;';
+        // Symbol + OHLC header
+        const header = document.createElement('div');
+        header.style.cssText = 'display:flex;align-items:center;gap:12px;margin-bottom:6px;';
+        const symSpan = document.createElement('span');
+        symSpan.textContent = symbol || '';
+        symSpan.style.cssText = 'font-size:18px;font-weight:700;color:#1e293b;';
 
         const newSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         newSvg.id = 'rrHistExp_' + Math.random().toString(36).slice(2);
         newSvg.setAttribute('width', '100%');
         newSvg.style.cssText = 'overflow:visible;display:block;';
 
+        const ohlcDiv = document.createElement('div');
+        ohlcDiv.id = newSvg.id + '_ohlc';
+        ohlcDiv.style.cssText = 'font-size:11px;color:#64748b;';
+        header.appendChild(symSpan);
+        header.appendChild(ohlcDiv);
+
+        const svgWrap = document.createElement('div');
+        svgWrap.style.cssText = 'flex:1;width:100%;overflow:hidden;';
         svgWrap.appendChild(newSvg);
+
         box.appendChild(closeBtn);
+        box.appendChild(header);
         box.appendChild(svgWrap);
         overlay.appendChild(box);
         document.body.appendChild(overlay);
@@ -741,7 +755,7 @@
         requestAnimationFrame(() => {
           const bigH = svgWrap.clientHeight || Math.floor(window.innerHeight * 0.8);
           newSvg.setAttribute('height', bigH);
-          _renderHistChart(newSvg, h, bigH, levels);
+          _renderHistChart(newSvg, h, bigH, levels, symbol);
         });
 
         overlay.addEventListener('click', ev => { if (ev.target === overlay) document.body.removeChild(overlay); });
