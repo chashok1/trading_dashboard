@@ -541,9 +541,14 @@
         ? `<text x="${PAD_L+cW+20}" y="${yPx(latestLrr)+4}" fill="#15803d" font-size="9" font-weight="600">LRR ${latestLrr.toFixed(0)}</text>` : '',
     ].join('');
 
-    // Date labels (first, mid, last)
+    // Date labels — fit as many as possible without overlap (~30px per label)
     const dateLabel = i => { const d = dates[i]; if (!d) return ''; const p = d.split('-'); return p.length >= 3 ? `${p[1]}/${p[2]}` : d; };
-    const xLabels = [0, Math.floor(n/2), n-1].filter((v,i,a) => a.indexOf(v) === i).map(i =>
+    const maxLbls = Math.max(2, Math.floor(cW / 30));
+    const lblStep = Math.max(1, Math.floor((n - 1) / (maxLbls - 1)));
+    const lblIdxs = [];
+    for (let i = 0; i < n - 1; i += lblStep) lblIdxs.push(i);
+    lblIdxs.push(n - 1);
+    const xLabels = lblIdxs.map(i =>
       `<text x="${xPx(i).toFixed(1)}" y="${H-4}" fill="#94a3b8" font-size="8" text-anchor="middle">${dateLabel(i)}</text>`
     ).join('');
 
