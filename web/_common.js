@@ -472,12 +472,11 @@
     for (let i = 0; i < n; i++) { if (lrrs[i] == null) lrrs[i] = firstLrr ?? null; else break; }
     for (let i = 0; i < n; i++) { if (trrs[i] == null) trrs[i] = firstTrr ?? null; else break; }
 
-    // Forward + backward fill prices so the line is continuous across gaps
+    // Forward-fill prices: carry last known value forward between file loads.
+    // No backward fill — price before the first load is genuinely unknown.
     const prices = [...(h.price || [])];
     let lastP = null;
     for (let i = 0; i < n; i++) { if (prices[i] != null) lastP = prices[i]; else if (lastP != null) prices[i] = lastP; }
-    const firstP = prices.find(v => v != null);
-    for (let i = 0; i < n; i++) { if (prices[i] == null) prices[i] = firstP ?? null; else break; }
 
     const W = Math.max(svgEl.parentElement ? svgEl.parentElement.offsetWidth || 700 : 700, 400);
     const PAD_L = 44, PAD_R = 54, PAD_T = 10, PAD_B = 22;
