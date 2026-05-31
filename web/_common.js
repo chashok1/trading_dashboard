@@ -622,8 +622,9 @@
       <line id="${svgEl.id}_chh" x1="${PAD_L}" y1="0" x2="${PAD_L+cW}" y2="0" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 3" display="none" pointer-events="none"/>
       <rect id="${svgEl.id}_chxbg" width="32" height="13" rx="2" fill="#475569" display="none" pointer-events="none"/>
       <text id="${svgEl.id}_chxt"  fill="#fff" font-size="8" text-anchor="middle" dominant-baseline="middle" display="none" pointer-events="none"/>
-      <rect id="${svgEl.id}_chybg" width="28" height="13" rx="2" fill="#475569" display="none" pointer-events="none"/>
-      <text id="${svgEl.id}_chyt"  fill="#fff" font-size="8" text-anchor="middle" dominant-baseline="middle" display="none" pointer-events="none"/>
+      <rect id="${svgEl.id}_chybg" width="40" height="22" rx="2" fill="#374151" display="none" pointer-events="none"/>
+      <text id="${svgEl.id}_chyt"  fill="#fff" font-size="8" font-weight="600" text-anchor="middle" dominant-baseline="middle" display="none" pointer-events="none"/>
+      <text id="${svgEl.id}_chydt" fill="#94a3b8" font-size="7" text-anchor="middle" dominant-baseline="middle" display="none" pointer-events="none"/>
     `;
 
     // ── OHLC hover: update top box on mouse move, revert to last day on leave ─
@@ -652,11 +653,12 @@
     const chXt  = document.getElementById(svgEl.id + '_chxt');
     const chYbg = document.getElementById(svgEl.id + '_chybg');
     const chYt  = document.getElementById(svgEl.id + '_chyt');
+    const chYdt = document.getElementById(svgEl.id + '_chydt');
     const lpBg  = document.getElementById(svgEl.id + '_lpbg');
     const lpT   = document.getElementById(svgEl.id + '_lpt');
 
     const showCH = show => {
-      [chV, chH, chXbg, chXt, chYbg, chYt].forEach(el => {
+      [chV, chH, chXbg, chXt, chYbg, chYt, chYdt].forEach(el => {
         if (!el) return;
         if (show) el.removeAttribute('display'); else el.setAttribute('display', 'none');
       });
@@ -686,10 +688,11 @@
         if (chXbg) { chXbg.setAttribute('x', cx - 16); chXbg.setAttribute('y', PAD_T + cH + 2); }
         if (chXt)  { chXt.setAttribute('x', cx); chXt.setAttribute('y', PAD_T + cH + 8); chXt.textContent = dlbl; }
 
-        // Price label on right y-axis
+        // Price + date badge on LEFT y-axis
         const pval = (yMinP + (1 - (cy - PAD_T) / cH) * yRangeP).toFixed(2);
-        if (chYbg) { chYbg.setAttribute('x', PAD_L + cW + 2); chYbg.setAttribute('y', cy - 6); }
-        if (chYt)  { chYt.setAttribute('x', PAD_L + cW + 16); chYt.setAttribute('y', cy); chYt.textContent = pval; }
+        if (chYbg) { chYbg.setAttribute('x', 2);  chYbg.setAttribute('y', (cy - 11).toFixed(1)); }
+        if (chYt)  { chYt.setAttribute('x', 22);  chYt.setAttribute('y', (cy - 4).toFixed(1));  chYt.textContent = pval; }
+        if (chYdt) { chYdt.setAttribute('x', 22); chYdt.setAttribute('y', (cy + 5).toFixed(1)); chYdt.textContent = dlbl; }
 
         showCH(true);
       });
