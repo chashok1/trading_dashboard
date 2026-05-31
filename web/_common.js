@@ -356,9 +356,18 @@
         <span><span style="color:#94a3b8;">Trend</span> <strong style="color:#818cf8;">${fmt(trend)}</strong></span>
       </div>`, 'width:100%;box-sizing:border-box;');
 
-    // ── Box above Graph3: title centered ─────────────────────────────────────
+    // ── Box above Graph3: 60-day history title + change value top-right ─────
+    const _netChng = (cur != null && prev != null) ? cur - prev : null;
+    const _pctChng = (_netChng != null && prev) ? _netChng / prev * 100 : null;
+    const _chngClr = _netChng == null ? '#94a3b8' : _netChng >= 0 ? '#16a34a' : '#dc2626';
+    const _fmtChng = v => { const a = Math.abs(v); return (v < 0 ? '-' : '') + '$' + (a >= 1000 ? Math.round(a).toLocaleString() : a.toFixed(0)); };
+    const _chngStr = _netChng != null && _pctChng != null
+      ? `${_fmtChng(_netChng)} (${_pctChng.toFixed(2)}%)` : '';
     const graph3TopBox = infoBox(`
-      <div style="text-align:center;font-weight:600;color:#64748b;font-size:9px;">60-day history</div>`);
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-weight:600;color:#64748b;font-size:9px;">60-day history</span>
+        ${_chngStr ? `<span style="font-weight:700;color:${_chngClr};font-size:10px;">${_chngStr}</span>` : ''}
+      </div>`);
 
     // ── Box below Graph3: legend centered, items close together ──────────────
     const graph3BotBox = infoBox(`
