@@ -52,7 +52,15 @@ trading-dashboard/
 
 - `ref_*` — reference/lookup (~17 tables). Loaded with `ON CONFLICT DO NOTHING`; tunable tables refresh via `etl/refresh_ref.py` (`DO UPDATE`).
 - `hist_*` — raw history, append-only (~15 tables: y, tl, td, tw, to, rr, call, etf, etfchg, ii, iichg, ssh, ps, f, cs, cst, ft). PK `(snapshot_date, symbol[, sequence|account])`.
-- `drv_*` — derived, **idempotent** (`DELETE WHERE as_of_date=D` → INSERT). Central tables: `drv_ma` (master aggregate, replaces 641-col MA tab), `drv_dash`, `drv_stks`, `drv_dash_summary`, `drv_trig`, `drv_rule_outcome`, `drv_actionable`, `drv_quote` (latest-loaded-wins quote merge across y/tl/td), `drv_realized_gain` (FIFO), `drv_cs_realized_gain`.
+- `drv_*` — derived, **idempotent** (`DELETE WHERE as_of_date=D` → INSERT). Key tables:
+  - **`drv_ma`** — **compatibility VIEW** (not a table as of 2026-05-31) that JOINs 5 component tables below. All existing `SELECT FROM drv_ma` queries continue to work unchanged. Never INSERT into it directly.
+  - **`drv_symbols`** — master ticker universe per date (feeds all component tables).
+  - **`drv_technicals`** — price/RSI/IV/volume + trend/trade/BB lines + MACD/SMA/earnings. Source: hist_tl, drv_quote, hist_td/drv_td, hist_tw/drv_tw, ref_sector.
+  - **`drv_fundamentals`** — market_cap, beta, P/E, EPS, div_yield. Source: hist_to/drv_to.
+  - **`drv_outlooks`** — all outlook source signals + pct_brr. Source: hist_rr/drv_rr, hist_call, hist_etf, hist_ii, hist_sss/drv_sss.
+  - **`drv_portfolio`** — held_qty_fid, held_qty_cs. Source: hist_f, hist_cs.
+  - `drv_dash`, `drv_stks`, `drv_dash_summary`, `drv_trig`, `drv_rule_outcome`, `drv_quote`, `drv_realized_gain`, `drv_cs_realized_gain`, `drv_cat_atomic_input`, `drv_rr`.
+  - `drv_actionable` — final per-symbol recommendation. Key columns: `consolidated_action` (outlook sources + rule groups winner), `trig_action` (best fired rule-group action in SA/STM/SS/BM vocabulary), `triggered_group_ids` JSONB, `source_actions` JSONB.
 - `meta_*` — operational: `meta_etl_run`, `meta_file_processed`, `meta_cleanup_policy`, `meta_cleanup_history`, `meta_derived_run`, `meta_scheduler_log`.
 
 Rule-engine v2 also has: `user_action_log`, `ref_settings`, view `v_rule_performance`, JSONB `triggered_atomic_ids`/`triggered_composite_ids` on `drv_stks`.
@@ -66,7 +74,8 @@ SQL functions in `baseline.sql`: `v_dash(d)`, `v_stks(d)`, `v_ma(d)`, `v_dash_su
 ```
 user picks date D → /api/dash?date=D → SELECT * FROM v_dash(D)
   ← drv_dash WHERE as_of_date=D
-  ← drv_ma(D) joins latest hist_* (snapshot_date ≤ D) + drv_td/tw + drv_quote (COALESCE for price/rsi/imp_volatility; hist_tl quote + vlm_projected read inline in the `tl` CTE)
+  ← drv_ma VIEW (joins drv_symbols + drv_technicals + drv_fundamentals + drv_outlooks + drv_portfolio)
+    ← each component table populated from latest hist_* (snapshot_date ≤ D) + drv_quote
   ← hist_* rows loaded from Excel via etl/etl_load.py (ON CONFLICT DO NOTHING)
 ```
 
@@ -77,7 +86,7 @@ Re-running derive for date D is idempotent: same numbers; only date D's derivati
 ## ETL & rules pipeline
 
 - **Loader path**: `etl/scheduler.py` watches the 17 source dirs (driven by `ref_load_files`). On a file event it calls `etl/etl_load.py::load_one_file`, which dispatches by file_type to a generic mapping in `etl/mappings.py::HIST_MAPS` or a custom handler in `etl/load_raw.py::CUSTOM_HANDLERS`. Commits per 1000-row batch; `meta_etl_run` updated live.
-- **Derive cascade**: `etl/derive.py::derive_all(session, D)` runs every `derive_*` function (drv_quote → drv_cat_* → drv_ma → drv_dash → drv_stks → drv_trig → drv_rule_outcome → drv_actionable etc.). Each is idempotent. `derive_v2.py` overrides v1 implementations of `derive_tw/etf/ii/ssh/ps/sss` at module load.
+- **Derive cascade**: `etl/derive.py::derive_all(session, D)` runs every `derive_*` function in dependency order. Key sequence: drv_quote/drv_rr → drv_symbols → drv_technicals/drv_fundamentals/drv_outlooks/drv_portfolio → drv_cat_atomic_input → drv_dash → drv_stks → drv_outlook_action → drv_actionable → drv_trig. Each is idempotent. `derive_v2.py` overrides v1 implementations of `derive_tw/etf/ii/ssh/ps/sss` at module load.
 - **Outlook + actionable layer**: `derive_outlook_action.py` → per-source actions; `derive_actionable.py` consolidates them + rule-group fires into `drv_actionable`. Full logic: `docs/actionable_logic.md`.
 - **Feedback loop**: `etl/compute_outcomes.py` joins `user_action_log` against subsequent price moves to feed `v_rule_performance` (per-rule hit rate, avg P&L).
 - **Derive trigger**: every load runs the full derive cascade in-process — `derive_all` for the file's date, then a forward re-derive of any later dates the load invalidated (`etl/etl_load.py::load_one_file`). Skip with `--no-derive` (bulk loads). The File Monitor's "Reprocess" and "Run Missing Derives" buttons derive too.
@@ -98,7 +107,7 @@ Re-running derive for date D is idempotent: same numbers; only date D's derivati
 ## Portfolio + quotes
 
 - `drv_quote` is a per-snapshot latest-loaded-wins merge across hist_y / hist_tl / hist_td for 8 quote fields (last_price, net_chng, pct_change, open, high, low, rsi, imp_volatility). Priority: latest loaded_at, then sequence desc.
-- `drv_ma` reads price/rsi/imp_volatility via `COALESCE(drv_quote.X, tl.X)`.
+- `drv_technicals` reads price/rsi/imp_volatility via `COALESCE(drv_quote.X, tl.X)`. The `drv_ma` VIEW exposes these fields unchanged to all existing consumers.
 - **Portfolio API** (`api/routers/dash.py::/api/portfolio`) returns held positions across F (Fidelity) + CS (Schwab) sources. Cash detection: F = `SPAXX**` or description contains "HELD IN MONEY MARKET"; CS = `Cash & Cash Investments` or `security_type='Cash and Money Market'`. SQL fragments `F_IS_CASH / F_IS_NOT_CASH / CS_IS_CASH_C / CS_IS_NOT_CASH_C` (the `_C` variants prefix `c.` for queries joining hist_cs).
 - **Latest-prices toggle** re-prices held positions via drv_quote.last_price with prev_close from hist_td. Client side recomputes tiles from `state.filtered`, splitting cash vs. non-cash rows.
 - **Today's Gain** (Schwab-style) = held day_change + intraday-on-sold + DIV/INT settled.
@@ -127,7 +136,7 @@ Re-running derive for date D is idempotent: same numbers; only date D's derivati
 9. **Top-level layout is settled** — extend, don't rearrange.
 10. **ETL loads commit per 1000-row batch**; progress prints `[Table] batch X/Y (pct%) cumulative: N inserted, M skipped`.
 11. **Plan first → ask permission** (unless the user explicitly says to do it). This is a hard rule from the user.
-12. **Per-screen / per-feature deep-dive docs live in `docs/`.** One file per topic (`docs/<topic>_logic.md`). `CLAUDE.md` carries only a one-line pointer in the Lookup index — never the full detail. To request one, say "document the X screen/logic" and Claude creates/updates `docs/X_logic.md` plus the index row.
+12. **`CLAUDE.md` is an index, not a detail doc.** Per-screen / per-feature deep-dive docs live in `docs/` (`docs/<topic>_logic.md`). `CLAUDE.md` carries only a one-line pointer in the Lookup index — never full column lists, full SQL, or full logic. Future models: if you are tempted to write more than one line of detail into `CLAUDE.md`, stop — create or update the relevant `docs/` file instead, then add a one-line pointer here. To request a new doc, say "document the X screen/logic" and Claude creates `docs/X_logic.md` plus the Lookup row.
 13. **Responses use a structured format.** Lead with a short **Summary** — ONLY what the user must act on or pay attention to. Problems Claude both caused and fixed itself (e.g. file-truncation-on-write and its splice recovery) must NOT appear in the Summary — move them to **Details** under a subheading, or omit them entirely. Then **Details**. Include a **Notes** section ONLY when there is a precise, actionable point to make — omit the section entirely when there is none; never pad it. End with **Questions** only if there are real questions. Keep every section to the minimum detail required — not verbose. Skip the scaffolding for trivial one-line answers. Hard rule from the user.
 14. **Manage code changes through git.** All code modifications must be committed to the repository with clear commit messages. This creates a complete audit trail and enables rollback if needed. Claude will create commits for code changes going forward.
 15. **Push back on wasteful or unnecessary requests.** When a request is genuinely wasteful, redundant, or there is a materially better approach, say so instead of just complying — raise it as a subsection under **Notes** (e.g. a `### Worth reconsidering` subheading) stating the concern and the better option. Use this sparingly: only when it genuinely matters, never as routine commentary on ordinary requests. Hard rule from the user.
@@ -226,16 +235,19 @@ If truncated, **don't re-`Edit`** — rewrite the tail via bash heredoc. Smaller
 | Need | Look in |
 |---|---|
 | TL tab column map | `etl/mappings.py::HIST_MAPS['TL']` |
-| Vlm projection formula | `etl/derive.py::_derive_ma_impl` (inline `tl` CTE; drv_tl retired 2026-05-20) |
+| Vlm projection formula | `etl/derive.py::_derive_technicals_impl` (inline `tl` CTE; drv_tl retired 2026-05-20) |
+| drv_ma component table derive functions | `etl/derive.py::_derive_symbols/technicals/fundamentals/outlooks/portfolio_impl` |
 | Outlook → weight mapping | `ref_param` where `sheet='outlook'` |
 | Atomic rules feeding a composite | `ref_trig_composite_mapping WHERE composite_rule_code=...` |
 | Why a load skipped a row | `meta_etl_run.rows_skipped` |
-| Why a derive looks wrong | `meta_derived_run` then `drv_ma` for that symbol/date |
+| Why a derive looks wrong | `meta_derived_run` then `drv_ma` VIEW for that symbol/date |
 | Last successful load of a file | `meta_file_processed.processed_at` |
 | FastAPI endpoints | `api/routers/*.py` |
 | Section classifier | `etl/derive.py::_classify_section` + `web/app.js::classifySymbolSection` |
 | Cash detection rules | `api/routers/dash.py` (`F_IS_CASH`, `CS_IS_CASH_C` SQL fragments) |
 | Actionable / outlook-action logic | `docs/actionable_logic.md` |
+| Actionable screen 3 action columns | `docs/actionable_logic.md` (consolidated_action, TrTnBBRskRng, Trig) |
+| trig_action computation (BuySell vocab) | `etl/derive_actionable.py::_derive_actionable_impl` (buysell_scores block) |
 | Atomic-input column derivation (JF..NP + QE..QT) | `docs/drv_cat_atomic_input_logic.md` |
 | Dashboard single-cell scalars (Dash!$X$Y) | `ref_param sheet='dash'`; helper `etl/derive_cat_atomic_input.py::get_dash_scalar`; seeds in `db/baseline.sql` 2026-05-27 v3 block |
 | TOS composite-field decoding (a_bb_streak, a_bb_high_low, a_volume_spike) | `etl/derive_cat_atomic_input.py::compute_intermediates` + `_decode_bb_streak` / `_decode_vs` / `_days_from_frac` |
@@ -244,18 +256,4 @@ If truncated, **don't re-`Edit`** — rewrite the tail via bash heredoc. Smaller
 | Rules engine logic | `docs/rules_logic.md` |
 | Rule groups logic | `docs/rule_groups_logic.md` |
 | Performance / feedback-loop logic | `docs/performance_logic.md` |
-| Symbol normalization strategy (tos_symbol) | `docs/tos_symbol_normalization.md` |
-| Screen overview, data-flow diagrams, column lineage (475 cols) | `docs/Screen_and_DataFlow_Reference.md` |
-
----
-
-## Recent Migrations (2026-05-29)
-
-- **tos_symbol migration completed**: All `hist_*` and `drv_*` tables now use `tos_symbol` exclusively. Raw `symbol` columns remain in `hist_*` for reference only. Populate functions: `_populate_y_tos_symbol`, `_populate_rr_tos_symbol`, `_populate_ps_tos_symbol`, `_populate_tos_table_tos_symbol`, `_populate_generic_tos_symbol` (handles event_date for etfchg/iichg).
-- **RR file loader**: `load_rr()` in `etl/load_raw.py` loads Treasury/Index recommendations from RR tab. Registered in `CUSTOM_HANDLERS['rr']`.
-- **hist_ps special case**: Uses `ticker` column instead of `symbol`. Has `tos_symbol` populated via `_populate_ps_tos_symbol()` which maps ticker → tos_symbol via ref_rrt.
-- **hist_etfchg / hist_iichg**: Now have `tos_symbol` columns (added via ALTER TABLE in baseline.sql). Populated via `_populate_generic_tos_symbol()` with event_date date column.
-- **ETFChange loader**: `load_etfchg()` skips test/dummy rows (symbol in DUMMY, TEST, TEMPLATE) to prevent placeholder data from being loaded.
-- **Schema migration pattern**: For adding columns to existing tables, use `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` in baseline.sql (after CREATE TABLE ... IF NOT EXISTS blocks).
-- **replace_for_date atomic fix**: Added `session.flush()` after DELETE to ensure deletion is committed before INSERT. Prevents duplicate key errors when function called multiple times in rapid succession.
-- **API: derive-runs endpoint**: Defaults to latest available `as_of_date` (from meta_derived_run.MAX) instead of calendar today. File Monitor derive grid now shows recent runs correctly.
+| Symbol normalization strategy (tos_symbol) | `docs/t

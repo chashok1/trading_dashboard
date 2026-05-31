@@ -84,22 +84,6 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
 
     holdings = _load_holdings_with_dollars(session, as_of_date)
 
-    # BuySell action → numeric score map for trig_action computation.
-    # Populated from ref_param_lookup where table_name='buysell', extra1=AO weight.
-    # e.g. SA→-10, STM→-9, SS→-8, BM→10, BS→9, BMN→8. Gracefully empty if not loaded.
-    buysell_scores: dict[str, float] = {}
-    try:
-        for r in session.execute(text(
-            "SELECT code, extra1 FROM ref_param_lookup"
-            " WHERE table_name = 'buysell' AND extra1 IS NOT NULL"
-        )).fetchall():
-            try:
-                buysell_scores[str(r[0])] = float(r[1])
-            except (TypeError, ValueError):
-                pass
-    except Exception:
-        pass
-
     # Per-symbol asset_class for sources that bucket by it (PS + ETF/ETFCHG).
     # Loaded once into a dict keyed by symbol — value is asset_class on/before as_of.
     asset_class_ps: dict[str, str] = {}
@@ -265,7 +249,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            units_dollar, maintain_min, suggested_target_dollar,
            held_today, current_position_dollar, in_my_list,
            rules_engine_fires, source_actions, suppressed_reason,
-           triggered_group_ids, trig_action,
+           triggered_group_ids,
            source_run_id)
         VALUES
           (:d, :sym, :desc, :sect,
@@ -274,7 +258,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            :unit, :mm, :stgt,
            :held, :curr, :iml,
            CAST(:fires AS JSONB), CAST(:srca AS JSONB), :supp,
-           CAST(:groups AS JSONB), :trig,
+           CAST(:groups AS JSONB),
            :rid)
     """)
 
@@ -323,26 +307,6 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                 "source_code":  f"RULES:{grp_code}",
                 "_group_prio":  grp_prio if grp_prio is not None else 500,
             })
-
-        # ─── Compute trig_action from fired rule groups (BuySell vocabulary) ───
-        # For each fired group, look up its action_label in the BuySell score
-        # map (SA=-10, STM=-9, SS=-8, BMN=8, BS=9, BM=10 etc.).
-        # Bearish wins: if any negative scores, take the group with the min score.
-        # Otherwise take the group with the max (most bullish) score.
-        trig_action = None
-        if triggered_groups and buysell_scores:
-            scored = [
-                (g["action"], buysell_scores[g["action"]])
-                for g in triggered_groups
-                if g.get("action") and g["action"] in buysell_scores
-            ]
-            if scored:
-                neg = [(a, s) for a, s in scored if s < 0]
-                pos = [(a, s) for a, s in scored if s > 0]
-                if neg:
-                    trig_action = min(neg, key=lambda x: x[1])[0]
-                elif pos:
-                    trig_action = max(pos, key=lambda x: x[1])[0]
 
         # ─── Pick the winning action ───
         # Outlook-source candidates + synthetic rule-group candidates compete
@@ -488,4 +452,51 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             source_ac = asset_class_ps.get(sym)
         elif winning_source in ("ETF", "ETFCHG"):
             source_ac = asset_class_etf.get(sym)
-        # For other sources (RR, SSS, II, etc.), asset_class comes from drv_ma
+        # For other sources (RR, SSS, II, etc.), asset_class comes from drv_ma lookup
+
+        stk = stks.get(sym, {})
+        batch.append({
+            "d":     as_of_date,
+            "sym":   sym,
+            "desc":  stk.get("description"),
+            "sect":  stk.get("sector"),
+            "ca":    consolidated,
+            "ws":    winning_source,
+            "wp":    winning_priority,
+            "cat":   category,
+            "ac":    category,
+            "sac":   source_ac,
+            "tmin":  target_min,
+            "tmax":  target_max,
+            "unit":  units,
+            "mm":    maintain_min,
+            "stgt":  suggested,
+            "held":  held_today,
+            "curr":  held_dollar,
+            "iml":   in_my_list,
+            "fires": json.dumps(rules_fires) if rules_fires else None,
+            "srca":  json.dumps(source_actions_payload),
+            "supp":  suppressed,
+            "groups": json.dumps(triggered_groups) if triggered_groups else None,
+            "rid":   run_id,
+        })
+        rows_written += 1
+
+    # Single executemany — previous version did one INSERT per symbol.
+    if batch:
+        session.execute(insert_sql, batch)
+
+    return rows_written
+
+
+def derive_actionable(session: Session, as_of_date: date,
+                      parent_run_id: Optional[int] = None) -> int:
+    rid = _open_drv_run(session, "drv_actionable", as_of_date, parent_run_id)
+    try:
+        n = _derive_actionable_impl(session, as_of_date, rid)
+        _close_drv_run(session, rid, rows_built=n)
+        log.info("drv_actionable @ %s: %d rows", as_of_date, n)
+        return n
+    except Exception as e:
+        _close_drv_run(session, rid, rows_built=0, status="error", error_msg=str(e)[:500])
+        raise
