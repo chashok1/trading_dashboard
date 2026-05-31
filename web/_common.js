@@ -570,17 +570,14 @@
         `<text x="${PAD_L+cW+4}" y="${parseFloat(yv)+3.5}" fill="#64748b" font-size="8" text-anchor="start">${v.toFixed(0)}</text>` +
         `<text x="${PAD_L-4}" y="${parseFloat(yv)+3.5}" fill="#64748b" font-size="8" text-anchor="end">${v.toFixed(0)}</text>`;
     }
-    // Period-high label: max of actual candle highs, left side only, skip if too close to a tick
+    // Max-price badge: computed here, rendered as SVG element later (toggled by hover)
     const priceMax = Math.max(...highs.filter(v => v != null));
-    if (isFinite(priceMax) && priceMax >= yMinP && priceMax <= yMaxP) {
-      const pmY = yPx(priceMax);
-      // Nearest tick y-position
-      const nearestTick = Math.round(priceMax / step) * step;
-      const nearestY = yPx(nearestTick);
-      if (Math.abs(pmY - nearestY) > 7) {
-        rightAxis += `<text x="${PAD_L-4}" y="${(pmY+3.5).toFixed(1)}" fill="#475569" font-size="8" font-weight="600" text-anchor="end">${priceMax.toFixed(2)}</text>`;
-      }
-    }
+    const priceMaxY = (isFinite(priceMax) && priceMax >= yMinP && priceMax <= yMaxP)
+      ? yPx(priceMax) : null;
+    const maxPriceBadge = priceMaxY != null
+      ? `<rect id="${svgEl.id}_mpbg" x="${PAD_L+4}" y="${(priceMaxY-7).toFixed(1)}" width="38" height="14" rx="2" fill="#475569"/>` +
+        `<text id="${svgEl.id}_mpt" x="${PAD_L+23}" y="${priceMaxY.toFixed(1)}" fill="#fff" font-size="8" font-weight="600" text-anchor="middle" dominant-baseline="middle">${priceMax.toFixed(2)}</text>`
+      : '';
 
     const todayX = xPx(n - 1);
     const todayMark = `<line x1="${todayX}" y1="${PAD_T}" x2="${todayX}" y2="${PAD_T+cH}" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2 2"/>`;
@@ -618,6 +615,7 @@
       ${candlesticks}
       ${rrLabels}${xLabels}
       ${lastPriceBadge}
+      ${maxPriceBadge}
       <line id="${svgEl.id}_chv" x1="0" y1="${PAD_T}" x2="0" y2="${PAD_T+cH}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 3" display="none" pointer-events="none"/>
       <line id="${svgEl.id}_chh" x1="${PAD_L}" y1="0" x2="${PAD_L+cW}" y2="0" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 3" display="none" pointer-events="none"/>
       <rect id="${svgEl.id}_chxbg" width="32" height="13" rx="2" fill="#475569" display="none" pointer-events="none"/>
@@ -656,14 +654,16 @@
     const chYdt = document.getElementById(svgEl.id + '_chydt');
     const lpBg  = document.getElementById(svgEl.id + '_lpbg');
     const lpT   = document.getElementById(svgEl.id + '_lpt');
+    const mpBg  = document.getElementById(svgEl.id + '_mpbg');
+    const mpT   = document.getElementById(svgEl.id + '_mpt');
 
     const showCH = show => {
       [chV, chH, chXbg, chXt, chYbg, chYt, chYdt].forEach(el => {
         if (!el) return;
         if (show) el.removeAttribute('display'); else el.setAttribute('display', 'none');
       });
-      // last-price badge: opposite visibility to crosshair
-      [lpBg, lpT].forEach(el => {
+      // static badges (last price + max price): hide while hovering
+      [lpBg, lpT, mpBg, mpT].forEach(el => {
         if (!el) return;
         if (show) el.setAttribute('display', 'none'); else el.removeAttribute('display');
       });
