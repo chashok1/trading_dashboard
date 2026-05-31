@@ -365,8 +365,6 @@
       <div style="display:flex;justify-content:center;gap:10px;white-space:nowrap;">
         <span style="color:#2563eb;">&#9644; price</span>
         <span style="color:#15803d;">&#9135;&#9135; TRR/LRR</span>
-        <span style="color:#f97316;">&#9135;&#9135; Trade</span>
-        <span style="color:#818cf8;">&#9135;&#9135; Trend</span>
       </div>`);
 
     el.innerHTML = `
@@ -563,8 +561,6 @@
     svgEl.innerHTML = `
       ${rrFill}
       ${todayMark}${curLine}
-      ${smoothPolyline(trends, '#818cf8', 1,   '3 2')}
-      ${smoothPolyline(trades, '#f97316', 1,   '3 2')}
       ${stepPolyline(trrs,   '#15803d', 1.5, '4 2')}
       ${stepPolyline(lrrs,   '#15803d', 1.5, '4 2')}
       ${smoothPolyline(prices, '#2563eb', 2)}
