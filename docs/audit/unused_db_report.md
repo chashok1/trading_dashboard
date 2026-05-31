@@ -51,20 +51,16 @@ that still described the dead columns have been corrected.
 
 ---
 
-## 3. Candidate dead/under-populated columns (confirm against live DB)
+## 3. Candidate dead/under-populated columns — resolved 2026-05-31
 
-Static grep cannot see columns accessed dynamically (`SELECT *` then `row.get(col)`), so this
-is a *watch list*, not a delete list:
+Live DB checks confirmed:
 
-| Table.column | Why flagged | Suggested check |
+| Candidate | Finding | Action taken |
 |---|---|---|
-| `drv_quote.export_date`, `drv_quote.export_time`, `drv_quote.loaded_at` | added post-baseline; only 1 grep hit, may sit NULL | `SELECT count(*) FILTER (WHERE export_date IS NOT NULL) FROM drv_quote` |
-| `drv_cat_atomic_input` `not_*` / `c_*`-prefixed and quoted twin columns (e.g. `c_3m_low_rule` vs `"3m_low_rule"`, `bull`/`not_bull`) | look like Excel-header backward-compat twins | check `ref_ma_columns` registry for which name is the live `source_expr` target |
-| `drv_dash_summary.n_below_trend` | compares `last_price < a_trade_value` (not `a_trend_value`) — possible typo, flagged in `Screen_and_DataFlow_Reference.md` | confirm intended column before relying on the value |
-
-These are **registry-driven** (`ref_ma_columns` → `ma_codegen.py` generates the INSERT…SELECT),
-so the safe way to retire a column is to remove its `ref_ma_columns` row and regenerate, not
-to hand-drop it.
+| `drv_quote.export_date/time/loaded_at` | 79,528 / 79,554 rows populated (99.97%) | None — in active use |
+| `drv_cat_atomic_input` `not_*` / `c_*` columns | All 27 exist as real columns, all populated (confirmed via AAPL trace), accessed via `ref_ma_columns` name resolution by atomic rules | None — in active use |
+| `drv_dash_summary.n_below_trend` | Populated with real values; the "typo" note is a logic question, not dead code | Separate investigation if needed |
+| `ref_ma_columns` rows where `drv_cat_table='drv_cat_separator'` | 519 Excel cell-reference artifacts (`=Trig!AA1`, …) from a retired table with no DDL, no live table, and 0 atomic rule references | **Deleted** — `seed_ref_ma_columns.py` already skips these on re-seed |
 
 ---
 
