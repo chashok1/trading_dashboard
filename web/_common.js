@@ -546,10 +546,22 @@
       `<text x="${xPx(i).toFixed(1)}" y="${H-4}" fill="#94a3b8" font-size="8" text-anchor="middle">${dateLabel(i)}</text>`
     ).join('');
 
-    // Y-axis labels (top, mid, bottom)
-    const yLabels = [yMin, (yMin+yMax)/2, yMax].map(v =>
-      `<text x="${PAD_L-3}" y="${yPx(v)+4}" fill="#94a3b8" font-size="8" text-anchor="end">${v.toFixed(0)}</text>`
-    ).join('');
+    // Right Y-axis: price labels at regular intervals + horizontal grid lines
+    const _niceStep = r => {
+      const rough = r / 5, mag = Math.pow(10, Math.floor(Math.log10(rough || 1)));
+      const n = rough / mag;
+      return n < 1.5 ? mag : n < 3.5 ? 2*mag : n < 7.5 ? 5*mag : 10*mag;
+    };
+    const step = _niceStep(yMax - yMin || 1);
+    const firstTick = Math.ceil(yMinP / step) * step;
+    let rightAxis = '';
+    for (let v = firstTick; v <= yMaxP + 0.001; v = Math.round((v + step) * 1e6) / 1e6) {
+      if (v < yMinP || v > yMaxP) continue;
+      const yv = yPx(v).toFixed(1);
+      rightAxis +=
+        `<line x1="${PAD_L}" y1="${yv}" x2="${PAD_L+cW}" y2="${yv}" stroke="#e2e8f0" stroke-width="0.5"/>` +
+        `<text x="${PAD_L+cW+4}" y="${parseFloat(yv)+3.5}" fill="#64748b" font-size="8" text-anchor="start">${v.toFixed(0)}</text>`;
+    }
 
     const todayX = xPx(n - 1);
     const todayMark = `<line x1="${todayX}" y1="${PAD_T}" x2="${todayX}" y2="${PAD_T+cH}" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2 2"/>`;
@@ -559,13 +571,13 @@
 
     svgEl.setAttribute('width', W);
     svgEl.innerHTML = `
+      ${rightAxis}
       ${rrFill}
       ${todayMark}${curLine}
       ${stepPolyline(trrs,   '#15803d', 1.5, '4 2')}
       ${stepPolyline(lrrs,   '#15803d', 1.5, '4 2')}
       ${smoothPolyline(prices, '#2563eb', 2)}
-      ${rrLabels}${xLabels}${yLabels}
-      <text x="${(PAD_L+PAD_L+cW)/2}" y="${H-12}" fill="#64748b" font-size="8" text-anchor="middle" font-weight="600">60-day history</text>
+      ${rrLabels}${xLabels}
     `;
   }
 
