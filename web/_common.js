@@ -356,17 +356,13 @@
         <span><span style="color:#94a3b8;">Trend</span> <strong style="color:#818cf8;">${fmt(trend)}</strong></span>
       </div>`, 'width:100%;box-sizing:border-box;');
 
-    // ── Box above Graph3: title centered ─────────────────────────────────────
-    const graph3TopBox = infoBox(`
-      <div style="text-align:center;font-weight:600;color:#64748b;font-size:9px;">60-day history</div>`);
+    // ── Box above Graph3: OHLC hover display (populated after chart renders) ──
+    const graph3TopBox = infoBox(
+      `<div id="${histId}_ohlc" style="font-size:9px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:13px;"></div>`);
 
-    // ── Box below Graph3: legend centered, items close together ──────────────
-    const graph3BotBox = infoBox(`
-      <div style="display:flex;justify-content:center;gap:10px;white-space:nowrap;">
-        <span style="color:#16a34a;">&#9646; up</span>
-        <span style="color:#dc2626;">&#9646; down</span>
-        <span style="color:#15803d;">&#9135;&#9135; TRR/LRR</span>
-      </div>`);
+    // ── Box below Graph3: label only ──────────────────────────────────────────
+    const graph3BotBox = infoBox(
+      `<div style="text-align:center;font-weight:600;color:#64748b;font-size:9px;">60-day history</div>`);
 
     el.innerHTML = `
     <div style="display:flex;gap:14px;align-items:stretch;flex-wrap:nowrap;width:100%;">
@@ -600,6 +596,38 @@
       ${candlesticks}
       ${rrLabels}${xLabels}
     `;
+
+    // ── OHLC hover: update top box on mouse move, revert to last day on leave ─
+    const ohlcEl = document.getElementById(svgEl.id + '_ohlc');
+    const lastIdx = closes.reduceRight((a, v, i) => a < 0 && v != null ? i : a, -1);
+
+    const fmtOHLC = i => {
+      const d = dates[i], o = opens[i], hv = highs[i], l = lows[i], c = closes[i];
+      if (c == null) return '';
+      const fmt = v => v != null ? Number(v).toFixed(2) : '—';
+      const clr = c >= (o ?? c) ? '#16a34a' : '#dc2626';
+      const ds = d ? d.slice(5).replace('-', '/') : '';
+      return `<span style="color:#94a3b8;">${ds}</span>` +
+             ` <span>O <b>${fmt(o)}</b></span>` +
+             ` <span style="margin-left:6px;">H <b>${fmt(hv)}</b></span>` +
+             ` <span style="margin-left:6px;">L <b>${fmt(l)}</b></span>` +
+             ` <span style="margin-left:6px;color:${clr};">C <b>${fmt(c)}</b></span>`;
+    };
+
+    if (ohlcEl && lastIdx >= 0) ohlcEl.innerHTML = fmtOHLC(lastIdx);
+
+    const wrap = svgEl.parentElement;
+    if (wrap && ohlcEl) {
+      wrap.addEventListener('mousemove', e => {
+        const rect = svgEl.getBoundingClientRect();
+        const ix = Math.max(0, Math.min(n - 1,
+          Math.round((e.clientX - rect.left - PAD_L) / cW * (n - 1))));
+        if (closes[ix] != null) ohlcEl.innerHTML = fmtOHLC(ix);
+      });
+      wrap.addEventListener('mouseleave', () => {
+        if (lastIdx >= 0) ohlcEl.innerHTML = fmtOHLC(lastIdx);
+      });
+    }
   }
 
   window.td_common = {
