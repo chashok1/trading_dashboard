@@ -115,10 +115,12 @@ absent from the current snapshot and marks them sold.
 Immediately after a successful load, `load_one_file` calls `derive_all(session,
 file_dt)` in-process (skippable via `--no-derive` / `do_derive=False`):
 
-- `derive_all` runs the full cascade for date `file_dt`: drv_quote → drv_cat_*
-  → drv_ma → drv_dash → drv_stks → drv_trig → drv_rule_outcome →
-  drv_actionable, etc. Each step is idempotent (`DELETE WHERE as_of_date=D`
-  then INSERT). Results are recorded in `meta_derived_run`.
+- `derive_all` runs the full cascade for date `file_dt`: drv_quote/drv_rr →
+  drv_symbols/technicals/fundamentals/outlooks/portfolio (the 5 tables the
+  `drv_ma` VIEW joins — `drv_ma` itself is not materialized) → drv_cat_atomic_input
+  → drv_dash → drv_stks → drv_outlook_action → drv_actionable → drv_trig. Each step
+  is idempotent (`DELETE WHERE as_of_date=D` then INSERT). Results are recorded in
+  `meta_derived_run`.
 
 After the primary derive, a **forward re-derive** runs automatically for any
 date already in `drv_dash` with `as_of_date > file_dt`. This handles

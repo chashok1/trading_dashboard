@@ -37,6 +37,10 @@ user picks date D
                 ← drv_ma ← hist_* snapshots WHERE snapshot_date <= D + drv_quote COALESCE
 ```
 
+> **Note:** `drv_ma` is a **VIEW** (since 2026-05-31) joining the 5 component tables
+> (`drv_symbols`, `drv_technicals`, `drv_fundamentals`, `drv_outlooks`, `drv_portfolio`).
+> Every `SELECT ... FROM drv_ma` above works transparently against the VIEW.
+
 `_resolve_date(date)` (in `api/_helpers.py`) maps `None` to
 `MAX(as_of_date) FROM v_available_dates`, where `v_available_dates` is a
 `UNION DISTINCT` of `drv_dash` and `drv_stks` as_of_dates.

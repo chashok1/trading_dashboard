@@ -313,11 +313,13 @@ matrix), and **Table Dependencies** (per-table source summary).
 
 ### Pipeline tiers
 
-- **Tier 1** — `drv_quote`, `drv_tl`, `drv_td`, `drv_tw`, `drv_ssh` — read raw `hist_*`
-  directly. `drv_quote` is a latest-loaded-wins merge across `hist_y` / `hist_tl` /
-  `hist_td`.
-- **Tier 2** — `drv_ma` — the master aggregate; joins Tier 1 + latest `hist_*` rows.
-- **Tier 3** — `drv_cat_atomic_input`, `drv_dash`, `drv_stks` — built on `drv_ma`.
+- **Tier 1** — `drv_quote`, `drv_td`, `drv_tw`, `drv_to`, `drv_sss`, `drv_rr`, `drv_y` —
+  read raw `hist_*` directly. `drv_quote` is a latest-loaded-wins merge across `hist_y` /
+  `hist_tl` / `hist_td`. (`drv_tl` retired 2026-05-20; `drv_ssh` retired earlier.)
+- **Tier 2** — the 5 component tables `drv_symbols`, `drv_technicals`, `drv_fundamentals`,
+  `drv_outlooks`, `drv_portfolio` (joined + latest `hist_*` rows). **`drv_ma` is a VIEW**
+  over these five (as of 2026-05-31) — query it freely, never INSERT into it.
+- **Tier 3** — `drv_cat_atomic_input`, `drv_dash`, `drv_stks` — built on the `drv_ma` VIEW.
 - **Tier 4** — `drv_trig`, `drv_dash_summary`, `drv_missing_symbols`,
   `drv_outlook_action`.
 - **Tier 5** — `drv_actionable` — the consolidated per-symbol decision.
@@ -330,10 +332,11 @@ origin (e.g. `drv_dash` ← `drv_ma` ← `hist_*`).
 
 ### Key findings from the lineage trace
 
-- **42 of `drv_ma`'s 98 columns are dead** — declared in the schema but never written
-  by any derive (no `INSERT`/`UPDATE` populates them); they sit NULL. They were rolled
-  back in Migration 16; the live rule-input columns moved to `drv_cat_atomic_input`.
-  These rows are marked `UNKNOWN` in the workbook.
+- **`drv_ma` is now a VIEW (2026-05-31)** — the former wide ~98-column materialized
+  table (of which ~42 columns sat permanently NULL) was replaced by a JOIN VIEW over the
+  5 component tables. The dead-column problem is therefore obsolete: each component table
+  declares only the columns it actually populates. Live rule-input columns live in
+  `drv_cat_atomic_input`.
 - **`drv_cat_atomic_input` (143 columns) is registry-driven** — built by
   `_derive_cat_table_impl` from an `INSERT…SELECT` that `ma_codegen.py` generates from
   the `ref_ma_columns` database table. The exact per-column SQL (`source_expr`) lives

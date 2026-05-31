@@ -45,13 +45,13 @@ The app runs on `http://127.0.0.1:8000`
 
 - **`ref_*`** — Reference/lookup tables (~17 tables). Loaded with `ON CONFLICT DO NOTHING`.
 - **`hist_*`** — Raw history, append-only (~15 tables). PK: `(snapshot_date, symbol, ...)`.
-- **`drv_*`** — Derived tables (idempotent). Central: `drv_ma`, `drv_dash`, `drv_stks`, `drv_trig`, `drv_actionable`.
+- **`drv_*`** — Derived tables (idempotent). Central: `drv_ma` (a **VIEW** over 5 component tables — `drv_symbols`, `drv_technicals`, `drv_fundamentals`, `drv_outlooks`, `drv_portfolio` — as of 2026-05-31), `drv_dash`, `drv_stks`, `drv_trig`, `drv_actionable`.
 - **`meta_*`** — Operational metadata: `meta_etl_run`, `meta_file_processed`, `meta_derived_run`, etc.
 
 ### Core Pipelines
 
 1. **Loader** (`etl/scheduler.py`): Watches 17 source directories, dispatches file loads to `etl_load.py`.
-2. **Derive Cascade** (`etl/derive.py`): Runs idempotent derivations for each date (quote → ma → dash → stks → trig → actionable).
+2. **Derive Cascade** (`etl/derive.py`): Runs idempotent derivations for each date (quote/rr → symbols/technicals/fundamentals/outlooks/portfolio → cat_atomic_input → dash → stks → outlook_action → actionable → trig).
 3. **Rules Engine**: Atomic predicates → Composite rules → Rule groups → User actions.
 4. **Feedback Loop** (`etl/compute_outcomes.py`): Tracks rule performance via `v_rule_performance`.
 

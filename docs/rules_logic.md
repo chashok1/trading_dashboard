@@ -87,7 +87,8 @@ also return 0.0.
 ### Input data
 
 Atomic rules read from a wide row that is a `drv_ma LEFT JOIN drv_cat_atomic_input`
-joined by `(as_of_date, symbol)`. `_fetch_eval_rows()` constructs the exact
+joined by `(as_of_date, tos_symbol)`. (`drv_ma` is a VIEW since 2026-05-31, so this
+JOIN transparently spans the 5 component tables.) `_fetch_eval_rows()` constructs the exact
 SELECT list from the column map so no unnecessary columns are pulled. Columns
 from `drv_cat_atomic_input` are prefixed `ai_` in the Python dict to avoid
 name collisions; `_read_atomic_value()` handles the routing transparently.

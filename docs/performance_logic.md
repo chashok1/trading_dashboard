@@ -13,8 +13,9 @@ The performance feedback loop closes the rule-engine cycle in three stages:
    and snapshots every rule that was firing at that moment.
 2. **Score** — nightly, `etl/compute_outcomes.py` picks up unprocessed log
    entries whose decision date is at least 5 days old, fetches forward price
-   returns from `drv_ma`, and writes one `drv_rule_outcome` row per triggered
-   rule.
+   returns from `drv_ma` (a VIEW since 2026-05-31; price lookups resolve through
+   the `drv_technicals`/`drv_quote` components), and writes one `drv_rule_outcome`
+   row per triggered rule.
 3. **Aggregate** — `v_rule_performance_window` (and its compat alias
    `v_rule_performance`) groups `drv_rule_outcome` by rule to produce hit rate,
    false-positive rate, and avg/median 5d and 20d returns. The Performance

@@ -168,7 +168,7 @@ Calls the `/api/ref/{table_name}` endpoint and prints the result.
 python -m db.init_db
 python -c "from sqlalchemy import create_engine, text; from config.settings import settings; engine = create_engine(settings.sqlalchemy_url); conn = engine.connect(); result = conn.execute(text('SELECT DISTINCT as_of_date FROM drv_ma ORDER BY 1 DESC LIMIT 10')); print('\n'.join(str(r[0]) for r in result))"
 ```
-Lists the 10 most recent snapshot dates available in `drv_ma`.
+Lists the 10 most recent snapshot dates available in `drv_ma` (a VIEW since 2026-05-31; the query works unchanged). Prefer `SELECT * FROM v_available_dates` for the canonical date list.
 
 ---
 

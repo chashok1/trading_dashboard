@@ -273,7 +273,7 @@ def get_stks(
             ma.sub_asset_class, ma.equity_sector, ma.last_price, ma.a_trend_value, ma.a_trade_value,
             ma.a_bb_top, ma.a_bb_bottom, ma.a_bb_streak, ma.a_macd_brr, ma.a_macdh_d_brr,
             ma.pct_brr, ma.rr_outlook, ma.rr_brr, ma.call_outlook, ma.call_modifier,
-            ma.etf_outlook, ma.ii_outlook, ma.ssh_signal_sign, ma.iv_percentile, ma.imp_volatility,
+            ma.etf_outlook, ma.ii_outlook, ma.sss_signal_sign, ma.iv_percentile, ma.imp_volatility,
             ma.hv_percentile, ma.range_compression, ma.d_iv_to_hv, ma.rsi, ma.earnings_days,
             ma.sma_20, ma.sma_50, ma.sma_200, ma.volume, ma.vlm_projected, ma.market_cap_str,
             ma.beta, ma.pe_ratio, ma.eps, ma.div_yield,

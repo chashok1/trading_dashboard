@@ -3843,6 +3843,14 @@ ALTER TABLE IF EXISTS drv_actionable
 
 ADD COLUMN IF NOT EXISTS source_asset_class TEXT;
 
+-- 2026-05-31: trig_action — best action from fired rule groups (SA/STM/SS/BM vocabulary).
+-- Derived from drv_actionable.triggered_group_ids: most aggressive BuySell score wins
+-- (most negative = most bearish; most positive if no bearish signals).
+
+ALTER TABLE IF EXISTS drv_actionable
+
+ADD COLUMN IF NOT EXISTS trig_action TEXT;
+
 
 
 -- -----------------------------------------------------
@@ -5188,6 +5196,7 @@ SELECT
     o.rr_buy_trade,
     o.rr_sell_trade,
     o.rr_outlook,
+    NULL::NUMERIC AS rr_brr,
     o.call_outlook,
     o.call_modifier,
     o.call_weight,
