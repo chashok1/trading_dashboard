@@ -678,6 +678,444 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
     return result.rowcount or 0
 
 
+
+# =============================================================================
+# drv_symbols — master ticker universe for a date (2026-05-31)
+# =============================================================================
+
+def _derive_symbols_impl(session: Session, as_of_date: date, run_id: int) -> int:
+    """Build drv_symbols: master ticker universe for as_of_date."""
+    session.execute(
+        text("DELETE FROM drv_symbols WHERE as_of_date = :d"),
+        {"d": as_of_date},
+    )
+    result = session.execute(text("""
+        INSERT INTO drv_symbols (as_of_date, tos_symbol)
+        SELECT :d, s FROM (
+            SELECT ticker AS s FROM ref_sector
+            UNION SELECT tos_symbol FROM hist_tl
+                  WHERE snapshot_date <= :d
+            UNION SELECT tos_symbol FROM hist_rr
+                  WHERE snapshot_date <= :d
+            UNION SELECT tos_symbol FROM hist_y
+                  WHERE snapshot_date <= :d
+            UNION SELECT tos_symbol FROM hist_call
+                  WHERE snapshot_date <= :d
+            UNION SELECT tos_symbol FROM hist_etf
+                  WHERE snapshot_date <= :d
+            UNION SELECT tos_symbol FROM hist_ii
+                  WHERE snapshot_date <= :d
+        ) u WHERE s IS NOT NULL
+        ON CONFLICT (as_of_date, tos_symbol) DO NOTHING
+    """), {"d": as_of_date})
+    return result.rowcount or 0
+
+
+derive_symbols = _wrap("drv_symbols", _derive_symbols_impl)
+
+
+# =============================================================================
+# drv_technicals — price, technicals, MACD, SMAs (2026-05-31)
+# =============================================================================
+
+def _derive_technicals_impl(session: Session, as_of_date: date, run_id: int) -> int:
+    """Populate drv_technicals for as_of_date from drv_symbols + hist sources."""
+    session.execute(
+        text("DELETE FROM drv_technicals WHERE as_of_date = :d"),
+        {"d": as_of_date},
+    )
+    # Step 1: tl + dq CTEs (price/rsi/IV)
+    session.execute(text("""
+        CREATE TEMP TABLE _t_tech_tl ON COMMIT DROP AS
+        SELECT DISTINCT ON (h.tos_symbol)
+            h.tos_symbol,
+            h.snapshot_date  AS tl_date,
+            h.last_price, h.rsi,
+            COALESCE(h.imp_volatility_raw,0) AS imp_volatility,
+            h.volume,
+            CASE
+                WHEN h.volume IS NULL OR h.sequence < 930 THEN NULL
+                WHEN h.sequence >= 1600 THEN h.volume::numeric
+                WHEN ((h.sequence/100)*60+(h.sequence%100)-570) > 0
+                    THEN h.volume::numeric*390.0
+                         /((h.sequence/100)*60+(h.sequence%100)-570)
+                ELSE NULL
+            END AS vlm_projected
+        FROM hist_tl h
+        WHERE h.snapshot_date <= :d
+        ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
+    """), {"d": as_of_date})
+
+    session.execute(text("""
+        CREATE TEMP TABLE _t_tech_dq ON COMMIT DROP AS
+        SELECT DISTINCT ON (tos_symbol)
+            tos_symbol, last_price, rsi, imp_volatility
+        FROM drv_quote
+        WHERE as_of_date <= :d
+        ORDER BY tos_symbol, as_of_date DESC
+    """), {"d": as_of_date})
+
+    # Step 2: td + tw CTEs
+    session.execute(text("""
+        CREATE TEMP TABLE _t_tech_td ON COMMIT DROP AS
+        SELECT DISTINCT ON (h.tos_symbol)
+            h.tos_symbol,
+            h.snapshot_date AS td_date,
+            COALESCE(dr.iv_percentile, h.a_iv_percentile) AS iv_percentile,
+            COALESCE(dr.hv_percentile, h.a_hv_percentile) AS hv_percentile,
+            dr.range_compression, dr.d_iv_to_hv, dr.d_vlt_caution,
+            h.a_trend_value, h.a_trade_value,
+            h.a_bb_top, h.a_bb_bottom, h.a_bb_streak
+        FROM hist_td h
+        LEFT JOIN drv_td dr
+               ON dr.snapshot_date = h.snapshot_date
+              AND dr.tos_symbol    = h.tos_symbol
+              AND dr.sequence      = h.sequence
+        WHERE h.snapshot_date <= :d
+        ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
+    """), {"d": as_of_date})
+
+    session.execute(text("""
+        CREATE TEMP TABLE _t_tech_tw ON COMMIT DROP AS
+        SELECT DISTINCT ON (h.tos_symbol)
+            h.tos_symbol,
+            h.snapshot_date AS tw_date,
+            dr.a_macd_brr, dr.a_macdh_d_brr,
+            dr.earnings_days_d  AS earnings_days,
+            dr.sma_20_d         AS sma_20,
+            dr.sma_50_d         AS sma_50,
+            dr.sma_200_d        AS sma_200
+        FROM hist_tw h
+        LEFT JOIN drv_tw dr
+               ON dr.snapshot_date = h.snapshot_date
+              AND dr.tos_symbol    = h.tos_symbol
+              AND dr.sequence      = h.sequence
+        WHERE h.snapshot_date <= :d
+        ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
+    """), {"d": as_of_date})
+
+    # Step 3a: stage ref+price cols (split to stay ≤965 bytes each)
+    session.execute(text("""
+        CREATE TEMP TABLE _t_tech_s1 ON COMMIT DROP AS
+        SELECT s.tos_symbol,
+            rs.description, rs.equity_sector,
+            rs.asset_class, rs.sub_asset_class,
+            tl.tl_date, tl.volume, tl.vlm_projected,
+            COALESCE(dq.last_price,tl.last_price) AS last_price,
+            COALESCE(dq.rsi,tl.rsi) AS rsi,
+            COALESCE(dq.imp_volatility,tl.imp_volatility) AS imp_volatility
+        FROM drv_symbols s
+        LEFT JOIN ref_sector rs ON rs.ticker    =s.tos_symbol
+        LEFT JOIN _t_tech_tl tl ON tl.tos_symbol=s.tos_symbol
+        LEFT JOIN _t_tech_dq dq ON dq.tos_symbol=s.tos_symbol
+        WHERE s.as_of_date=:d
+    """), {"d": as_of_date})
+
+    # Step 3b: stage technical indicator cols
+    session.execute(text("""
+        CREATE TEMP TABLE _t_tech_s2 ON COMMIT DROP AS
+        SELECT s.tos_symbol,
+            td.td_date, td.iv_percentile, td.hv_percentile,
+            td.range_compression, td.d_iv_to_hv, td.d_vlt_caution,
+            td.a_trend_value, td.a_trade_value,
+            td.a_bb_top, td.a_bb_bottom, td.a_bb_streak,
+            tw.tw_date, tw.a_macd_brr, tw.a_macdh_d_brr,
+            tw.earnings_days, tw.sma_20, tw.sma_50, tw.sma_200
+        FROM drv_symbols s
+        LEFT JOIN _t_tech_td td ON td.tos_symbol=s.tos_symbol
+        LEFT JOIN _t_tech_tw tw ON tw.tos_symbol=s.tos_symbol
+        WHERE s.as_of_date=:d
+    """), {"d": as_of_date})
+
+    # Step 3c: combine stages into final INSERT-ready temp table
+    # Column order MUST match drv_technicals definition exactly.
+    session.execute(text("""
+        CREATE TEMP TABLE _t_tech_final ON COMMIT DROP AS
+        SELECT CAST(:d AS date) AS as_of_date, a.tos_symbol,
+            a.description, a.equity_sector AS sector,
+            a.asset_class, a.sub_asset_class, a.equity_sector,
+            a.tl_date, a.last_price, a.rsi, a.imp_volatility,
+            a.volume, a.vlm_projected,
+            b.td_date, b.iv_percentile, b.hv_percentile,
+            b.range_compression, b.d_iv_to_hv, b.d_vlt_caution,
+            b.a_trend_value, b.a_trade_value, b.a_bb_top,
+            b.a_bb_bottom, b.a_bb_streak,
+            b.tw_date, b.a_macd_brr, b.a_macdh_d_brr, b.earnings_days,
+            b.sma_20, b.sma_50, b.sma_200,
+            CAST(:run AS bigint) AS source_run_id
+        FROM _t_tech_s1 a
+        LEFT JOIN _t_tech_s2 b USING (tos_symbol)
+    """), {"d": as_of_date, "run": run_id})
+
+    # Step 3d: insert from final stage (no explicit column list needed)
+    result = session.execute(text(
+        "INSERT INTO drv_technicals SELECT * FROM _t_tech_final"
+    ))
+    return result.rowcount or 0
+
+
+derive_technicals = _wrap("drv_technicals", _derive_technicals_impl)
+
+
+# =============================================================================
+# drv_fundamentals — fundamental data (2026-05-31)
+# =============================================================================
+
+def _derive_fundamentals_impl(session: Session, as_of_date: date, run_id: int) -> int:
+    """Populate drv_fundamentals for as_of_date."""
+    session.execute(
+        text("DELETE FROM drv_fundamentals WHERE as_of_date = :d"),
+        {"d": as_of_date},
+    )
+    session.execute(text("""
+        CREATE TEMP TABLE _t_fund_to ON COMMIT DROP AS
+        SELECT DISTINCT ON (h.tos_symbol)
+            h.tos_symbol, h.beta,
+            COALESCE(dr.market_cap_num::text, h.market_cap_str) AS market_cap_str,
+            h.pe_ratio, h.eps, h.div_yield
+        FROM hist_to h
+        LEFT JOIN drv_to dr
+               ON dr.snapshot_date = h.snapshot_date
+              AND dr.tos_symbol    = h.tos_symbol
+              AND dr.sequence      = h.sequence
+        WHERE h.snapshot_date <= :d
+        ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
+    """), {"d": as_of_date})
+
+    result = session.execute(text("""
+        INSERT INTO drv_fundamentals (
+            as_of_date, tos_symbol,
+            market_cap_str, beta, pe_ratio, eps, div_yield,
+            source_run_id
+        )
+        SELECT :d, s.tos_symbol,
+            f.market_cap_str, f.beta, f.pe_ratio, f.eps, f.div_yield,
+            :run
+        FROM drv_symbols s
+        LEFT JOIN _t_fund_to f ON f.tos_symbol = s.tos_symbol
+        WHERE s.as_of_date = :d
+    """), {"d": as_of_date, "run": run_id})
+    return result.rowcount or 0
+
+
+derive_fundamentals = _wrap("drv_fundamentals", _derive_fundamentals_impl)
+
+
+# =============================================================================
+# drv_outlooks — all outlook source signals (2026-05-31)
+# =============================================================================
+
+def _derive_outlooks_impl(session: Session, as_of_date: date, run_id: int) -> int:
+    """Populate drv_outlooks for as_of_date."""
+    session.execute(
+        text("DELETE FROM drv_outlooks WHERE as_of_date = :d"),
+        {"d": as_of_date},
+    )
+    # rr CTE
+    session.execute(text("""
+        CREATE TEMP TABLE _t_out_rr ON COMMIT DROP AS
+        SELECT r.tos_symbol,
+            (SELECT MAX(snapshot_date) FROM hist_rr
+             WHERE tos_symbol = r.tos_symbol
+               AND snapshot_date <= :d) AS rr_date,
+            r.lrr AS rr_buy_trade,
+            r.trr AS rr_sell_trade,
+            h.outlook  AS rr_outlook
+        FROM drv_rr r
+        LEFT JOIN LATERAL (
+            SELECT outlook FROM hist_rr
+            WHERE tos_symbol = r.tos_symbol
+              AND snapshot_date <= :d
+            ORDER BY snapshot_date DESC LIMIT 1
+        ) h ON TRUE
+        WHERE r.as_of_date = :d
+    """), {"d": as_of_date})
+
+    # call CTE
+    session.execute(text("""
+        CREATE TEMP TABLE _t_out_cl ON COMMIT DROP AS
+        SELECT DISTINCT ON (h.tos_symbol)
+            h.tos_symbol,
+            h.outlook           AS call_outlook,
+            h.outlook_modifier  AS call_modifier,
+            CAST(rp.value AS NUMERIC) AS call_weight
+        FROM hist_call h
+        LEFT JOIN ref_param rp
+               ON rp.sheet = 'outlook'
+              AND UPPER(rp.param_name) = UPPER(COALESCE(h.outlook,''))
+        WHERE h.snapshot_date <= :d
+        ORDER BY h.tos_symbol, h.snapshot_date DESC
+    """), {"d": as_of_date})
+
+    # etf CTE
+    session.execute(text("""
+        CREATE TEMP TABLE _t_out_ef ON COMMIT DROP AS
+        SELECT DISTINCT ON (h.tos_symbol)
+            h.tos_symbol,
+            h.brr AS etf_brr, h.trr AS etf_trr,
+            COALESCE(h.outlook,
+                CASE WHEN h.brr > 0 THEN 'BULLISH'
+                     WHEN h.brr < 0 THEN 'BEARISH'
+                     ELSE 'NEUTRAL' END) AS etf_outlook
+        FROM hist_etf h
+        WHERE h.snapshot_date <= :d
+        ORDER BY h.tos_symbol, h.snapshot_date DESC
+    """), {"d": as_of_date})
+
+    # ii CTE
+    session.execute(text("""
+        CREATE TEMP TABLE _t_out_ii ON COMMIT DROP AS
+        SELECT DISTINCT ON (h.tos_symbol)
+            h.tos_symbol,
+            h.outlook AS ii_outlook,
+            CAST(rp.value AS NUMERIC) AS ii_weight
+        FROM hist_ii h
+        LEFT JOIN ref_param rp
+               ON rp.sheet = 'outlook'
+              AND UPPER(rp.param_name) = UPPER(COALESCE(h.outlook,''))
+        WHERE h.snapshot_date <= :d
+        ORDER BY h.tos_symbol, h.snapshot_date DESC
+    """), {"d": as_of_date})
+
+    # sss CTE
+    session.execute(text("""
+        CREATE TEMP TABLE _t_out_sh ON COMMIT DROP AS
+        SELECT DISTINCT ON (h.tos_symbol)
+            h.tos_symbol,
+            dr.signal       AS SSS_signal,
+            dr.signal_sign  AS SSS_signal_sign,
+            dr.rank_hl      AS SSS_rank_hl
+        FROM hist_sss h
+        LEFT JOIN drv_sss dr
+               ON dr.snapshot_date = h.snapshot_date
+              AND dr.tos_symbol    = h.tos_symbol
+        WHERE h.snapshot_date <= :d
+        ORDER BY h.tos_symbol, h.snapshot_date DESC
+    """), {"d": as_of_date})
+
+    # Stage latest drv_quote price for pct_brr calc
+    session.execute(text("""
+        CREATE TEMP TABLE _t_out_dq ON COMMIT DROP AS
+        SELECT DISTINCT ON (tos_symbol) tos_symbol, last_price
+        FROM drv_quote WHERE as_of_date <= :d
+        ORDER BY tos_symbol, as_of_date DESC
+    """), {"d": as_of_date})
+
+    # Stage outlook signals part 1: rr+call+etf+ii+sss (split ≤965 bytes)
+    session.execute(text("""
+        CREATE TEMP TABLE _t_out_s1 ON COMMIT DROP AS
+        SELECT s.tos_symbol,
+            rr.rr_date, rr.rr_buy_trade, rr.rr_sell_trade, rr.rr_outlook,
+            cl.call_outlook, cl.call_modifier, cl.call_weight,
+            ef.etf_outlook, ef.etf_brr, ef.etf_trr,
+            ii.ii_outlook, ii.ii_weight,
+            sh.SSS_signal, sh.SSS_signal_sign, sh.SSS_rank_hl
+        FROM drv_symbols s
+        LEFT JOIN _t_out_rr rr ON rr.tos_symbol=s.tos_symbol
+        LEFT JOIN _t_out_cl cl ON cl.tos_symbol=s.tos_symbol
+        LEFT JOIN _t_out_ef ef ON ef.tos_symbol=s.tos_symbol
+        LEFT JOIN _t_out_ii ii ON ii.tos_symbol=s.tos_symbol
+        LEFT JOIN _t_out_sh sh ON sh.tos_symbol=s.tos_symbol
+        WHERE s.as_of_date=:d
+    """), {"d": as_of_date})
+
+    # Stage outlook part 2: pct_brr computation (needs drv_technicals)
+    session.execute(text("""
+        CREATE TEMP TABLE _t_out_stage ON COMMIT DROP AS
+        SELECT a.*,
+            CASE
+                WHEN t.a_trend_value IS NOT NULL
+                 AND t.a_trade_value IS NOT NULL
+                 AND (t.a_trend_value-t.a_trade_value)<>0
+                THEN (t.a_trend_value
+                      -COALESCE(dq.last_price,t.last_price))*100.0
+                     /(t.a_trend_value-t.a_trade_value)
+            END AS pct_brr
+        FROM _t_out_s1 a
+        LEFT JOIN drv_technicals t
+               ON t.as_of_date=:d AND t.tos_symbol=a.tos_symbol
+        LEFT JOIN _t_out_dq dq ON dq.tos_symbol=a.tos_symbol
+    """), {"d": as_of_date})
+
+    result = session.execute(text("""
+        INSERT INTO drv_outlooks (
+            as_of_date, tos_symbol,
+            rr_date, rr_buy_trade, rr_sell_trade, rr_outlook,
+            call_outlook, call_modifier, call_weight,
+            etf_outlook, etf_brr, etf_trr,
+            ii_outlook, ii_weight,
+            SSS_signal, SSS_signal_sign, SSS_rank_hl,
+            pct_brr, source_run_id
+        )
+        SELECT :d, tos_symbol,
+            rr_date, rr_buy_trade, rr_sell_trade, rr_outlook,
+            call_outlook, call_modifier, call_weight,
+            etf_outlook, etf_brr, etf_trr,
+            ii_outlook, ii_weight,
+            SSS_signal, SSS_signal_sign, SSS_rank_hl,
+            pct_brr, :run
+        FROM _t_out_stage
+    """), {"d": as_of_date, "run": run_id})
+    return result.rowcount or 0
+
+
+derive_outlooks = _wrap("drv_outlooks", _derive_outlooks_impl)
+
+
+# =============================================================================
+# drv_portfolio — holdings snapshot (2026-05-31)
+# =============================================================================
+
+def _derive_portfolio_impl(session: Session, as_of_date: date, run_id: int) -> int:
+    """Populate drv_portfolio for as_of_date."""
+    session.execute(
+        text("DELETE FROM drv_portfolio WHERE as_of_date = :d"),
+        {"d": as_of_date},
+    )
+    session.execute(text("""
+        CREATE TEMP TABLE _t_port_fid ON COMMIT DROP AS
+        SELECT tos_symbol, SUM(qty) AS held_qty
+        FROM hist_f
+        WHERE snapshot_date = (
+            SELECT MAX(snapshot_date) FROM hist_f
+            WHERE snapshot_date <= :d
+        )
+        GROUP BY tos_symbol
+    """), {"d": as_of_date})
+
+    session.execute(text("""
+        CREATE TEMP TABLE _t_port_cs ON COMMIT DROP AS
+        SELECT tos_symbol, SUM(qty) AS held_qty
+        FROM hist_cs
+        WHERE snapshot_date = (
+            SELECT MAX(snapshot_date) FROM hist_cs
+            WHERE snapshot_date <= :d
+        )
+        GROUP BY tos_symbol
+    """), {"d": as_of_date})
+
+    result = session.execute(text("""
+        INSERT INTO drv_portfolio (
+            as_of_date, tos_symbol,
+            held_qty_fid, held_qty_cs,
+            source_run_id
+        )
+        SELECT
+            :d, s.tos_symbol,
+            fid.held_qty AS held_qty_fid,
+            cs.held_qty  AS held_qty_cs,
+            :run
+        FROM drv_symbols s
+        LEFT JOIN _t_port_fid fid ON fid.tos_symbol = s.tos_symbol
+        LEFT JOIN _t_port_cs  cs  ON cs.tos_symbol  = s.tos_symbol
+        WHERE s.as_of_date = :d
+    """), {"d": as_of_date, "run": run_id})
+    return result.rowcount or 0
+
+
+derive_portfolio = _wrap("drv_portfolio", _derive_portfolio_impl)
+
+
 derive_ma = _wrap("drv_ma", _derive_ma_impl)
 
 
@@ -2721,7 +3159,13 @@ def derive_all(session: Session, as_of_date: date,
     # drv_quote merges hist_y / hist_tl / hist_td quote fields by latest loaded_at
     counts["drv_quote"]               = _safe("drv_quote",             derive_quote)
     counts["drv_rr"]                  = _safe("drv_rr",                derive_rr)
-    counts["drv_ma"]                  = _safe("drv_ma",                derive_ma)
+    # Component tables replacing drv_ma (2026-05-31)
+    counts["drv_symbols"]      = _safe("drv_symbols",      derive_symbols)
+    counts["drv_technicals"]   = _safe("drv_technicals",   derive_technicals)
+    counts["drv_fundamentals"] = _safe("drv_fundamentals", derive_fundamentals)
+    counts["drv_outlooks"]     = _safe("drv_outlooks",     derive_outlooks)
+    counts["drv_portfolio"]    = _safe("drv_portfolio",    derive_portfolio)
+    # drv_ma is now a VIEW — no direct write needed
     # drv_cat_atomic_input — Python deriver (JF..NP + QH/QI).
     # Must run AFTER drv_quote (Step-1 SELECT pulls last_price from there).
     def _drv_cat_atomic_input_runner(session, as_of_date, parent_run_id=None):

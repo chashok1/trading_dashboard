@@ -4044,7 +4044,7 @@ BEGIN
 
     FOREACH tbl IN ARRAY all_tables LOOP
 
-        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = tbl) THEN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = tbl AND table_type = 'BASE TABLE') THEN
 
             IF NOT EXISTS (SELECT 1 FROM information_schema.columns
 
@@ -4072,7 +4072,12 @@ CREATE INDEX IF NOT EXISTS ix_hist_cst_tos_symbol ON hist_cst(tos_symbol, trade_
 
 -- Create indexes on tos_symbol for main derived tables
 
-CREATE INDEX IF NOT EXISTS ix_drv_ma_tos_symbol ON drv_ma(tos_symbol);
+-- drv_ma index: only valid when drv_ma is still a TABLE (pre-migration)
+DO $$ BEGIN
+  IF (SELECT relkind FROM pg_class WHERE relname='drv_ma') = 'r' THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS ix_drv_ma_tos_symbol ON drv_ma(tos_symbol)';
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS ix_drv_dash_tos_symbol ON drv_dash(tos_symbol);
 
@@ -4111,7 +4116,7 @@ BEGIN
 
     FOREACH tbl IN ARRAY drv_tables LOOP
 
-        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = tbl) THEN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = tbl AND table_type = 'BASE TABLE') THEN
 
             IF EXISTS (SELECT 1 FROM information_schema.columns
 
@@ -4149,7 +4154,12 @@ CREATE INDEX IF NOT EXISTS ix_drv_sss_tos_symbol        ON drv_sss(tos_symbol, s
 
 CREATE INDEX IF NOT EXISTS ix_drv_quote_tos_symbol      ON drv_quote(tos_symbol);
 
-CREATE INDEX IF NOT EXISTS ix_drv_ma_tos_symbol         ON drv_ma(tos_symbol, as_of_date);
+-- drv_ma index: only valid when drv_ma is still a TABLE (pre-migration)
+DO $$ BEGIN
+  IF (SELECT relkind FROM pg_class WHERE relname='drv_ma') = 'r' THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS ix_drv_ma_tos_symbol ON drv_ma(tos_symbol, as_of_date)';
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS ix_drv_trig_tos_symbol       ON drv_trig(tos_symbol, as_of_date);
 
@@ -5000,3 +5010,243 @@ CREATE INDEX IF NOT EXISTS ix_hist_sss_tos_symbol ON hist_sss(tos_symbol, snapsh
 
 
 
+
+-- =====================================================
+-- drv_ma decomposition: 5 component tables (2026-05-31)
+-- drv_ma TABLE is replaced by a compatibility VIEW below.
+-- =====================================================
+
+-- -----------------------------------------------------
+-- drv_symbols — master ticker universe for a date
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS drv_symbols (
+    as_of_date   DATE NOT NULL,
+    tos_symbol   TEXT NOT NULL,
+    PRIMARY KEY (as_of_date, tos_symbol)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_symbols_tos_symbol
+    ON drv_symbols(tos_symbol, as_of_date);
+
+-- -----------------------------------------------------
+-- drv_technicals — price, technicals, MACD, SMAs
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS drv_technicals (
+    as_of_date        DATE    NOT NULL,
+    tos_symbol        TEXT    NOT NULL,
+    description       TEXT,
+    sector            TEXT,
+    asset_class       TEXT,
+    sub_asset_class   TEXT,
+    equity_sector     TEXT,
+    tl_date           DATE,
+    last_price        NUMERIC,
+    rsi               NUMERIC,
+    imp_volatility    NUMERIC,
+    volume            BIGINT,
+    vlm_projected     NUMERIC,
+    td_date           DATE,
+    iv_percentile     NUMERIC,
+    hv_percentile     NUMERIC,
+    range_compression NUMERIC,
+    d_iv_to_hv        NUMERIC,
+    d_vlt_caution     TEXT,
+    a_trend_value     NUMERIC,
+    a_trade_value     NUMERIC,
+    a_bb_top          NUMERIC,
+    a_bb_bottom       NUMERIC,
+    a_bb_streak       NUMERIC,
+    tw_date           DATE,
+    a_macd_brr        NUMERIC,
+    a_macdh_d_brr     NUMERIC,
+    earnings_days     NUMERIC,
+    sma_20            NUMERIC,
+    sma_50            NUMERIC,
+    sma_200           NUMERIC,
+    source_run_id     BIGINT,
+    PRIMARY KEY (as_of_date, tos_symbol)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_technicals_tos_symbol
+    ON drv_technicals(tos_symbol, as_of_date);
+
+-- -----------------------------------------------------
+-- drv_fundamentals — fundamental data
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS drv_fundamentals (
+    as_of_date    DATE    NOT NULL,
+    tos_symbol    TEXT    NOT NULL,
+    market_cap_str TEXT,
+    beta          NUMERIC,
+    pe_ratio      NUMERIC,
+    eps           NUMERIC,
+    div_yield     NUMERIC,
+    source_run_id BIGINT,
+    PRIMARY KEY (as_of_date, tos_symbol)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_fundamentals_tos_symbol
+    ON drv_fundamentals(tos_symbol, as_of_date);
+
+-- -----------------------------------------------------
+-- drv_outlooks — all outlook source signals
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS drv_outlooks (
+    as_of_date      DATE    NOT NULL,
+    tos_symbol      TEXT    NOT NULL,
+    rr_date         DATE,
+    rr_buy_trade    NUMERIC,
+    rr_sell_trade   NUMERIC,
+    rr_outlook      TEXT,
+    call_outlook    TEXT,
+    call_modifier   TEXT,
+    call_weight     NUMERIC,
+    etf_outlook     TEXT,
+    etf_brr         NUMERIC,
+    etf_trr         NUMERIC,
+    ii_outlook      TEXT,
+    ii_weight       NUMERIC,
+    SSS_signal      NUMERIC,
+    SSS_signal_sign NUMERIC,
+    SSS_rank_hl     NUMERIC,
+    pct_brr         NUMERIC,
+    source_run_id   BIGINT,
+    PRIMARY KEY (as_of_date, tos_symbol)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_outlooks_tos_symbol
+    ON drv_outlooks(tos_symbol, as_of_date);
+
+-- -----------------------------------------------------
+-- drv_portfolio — holdings snapshot
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS drv_portfolio (
+    as_of_date    DATE    NOT NULL,
+    tos_symbol    TEXT    NOT NULL,
+    held_qty_fid  NUMERIC,
+    held_qty_cs   NUMERIC,
+    source_run_id BIGINT,
+    PRIMARY KEY (as_of_date, tos_symbol)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_portfolio_tos_symbol
+    ON drv_portfolio(tos_symbol, as_of_date);
+
+-- =====================================================
+-- Migrate drv_ma from TABLE to VIEW (2026-05-31)
+-- On existing DBs: drops the old wide table and
+-- replaces it with a JOIN view over the 5 components.
+-- On fresh installs: the CREATE TABLE above already
+-- ran; this DO block converts it to the view.
+-- =====================================================
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname = 'drv_ma' AND c.relkind = 'r'
+          AND n.nspname = 'public'
+    ) THEN
+        DROP TABLE drv_ma CASCADE;
+    END IF;
+END$$;
+
+CREATE OR REPLACE VIEW drv_ma AS
+SELECT
+    s.as_of_date,
+    s.tos_symbol,
+    t.description,
+    t.sector,
+    t.asset_class,
+    t.sub_asset_class,
+    t.equity_sector,
+    t.tl_date,
+    t.last_price,
+    t.rsi,
+    t.imp_volatility,
+    t.volume,
+    t.vlm_projected,
+    t.td_date,
+    t.iv_percentile,
+    t.hv_percentile,
+    t.range_compression,
+    t.d_iv_to_hv,
+    t.d_vlt_caution,
+    t.a_trend_value,
+    t.a_trade_value,
+    t.a_bb_top,
+    t.a_bb_bottom,
+    t.a_bb_streak,
+    t.tw_date,
+    t.a_macd_brr,
+    t.a_macdh_d_brr,
+    t.earnings_days,
+    t.sma_20,
+    t.sma_50,
+    t.sma_200,
+    f.market_cap_str,
+    f.beta,
+    f.pe_ratio,
+    f.eps,
+    f.div_yield,
+    o.rr_date,
+    o.rr_buy_trade,
+    o.rr_sell_trade,
+    o.rr_outlook,
+    o.call_outlook,
+    o.call_modifier,
+    o.call_weight,
+    o.etf_outlook,
+    o.etf_brr,
+    o.etf_trr,
+    o.ii_outlook,
+    o.ii_weight,
+    o.SSS_signal,
+    o.SSS_signal_sign,
+    o.SSS_rank_hl,
+    p.held_qty_fid,
+    p.held_qty_cs,
+    o.pct_brr,
+    NULL::NUMERIC AS macdh_direction,
+    NULL::NUMERIC AS macd_direction,
+    NULL::NUMERIC AS bb_direction,
+    NULL::NUMERIC AS bbthresh_crossover,
+    NULL::NUMERIC AS trade_cross_over,
+    NULL::NUMERIC AS trade_rule,
+    NULL::NUMERIC AS trend_cross_over,
+    NULL::NUMERIC AS trend_rule,
+    NULL::NUMERIC AS trend_trade_dep_rule,
+    NULL::NUMERIC AS trade_trend_relation,
+    NULL::NUMERIC AS trade_trend_relation_neg,
+    NULL::NUMERIC AS brr_pct_dir,
+    NULL::NUMERIC AS trend_below_trr,
+    NULL::NUMERIC AS lrr_above_trade,
+    NULL::NUMERIC AS ivrule,
+    NULL::NUMERIC AS three_m_long,
+    NULL::NUMERIC AS perf1d_sd_neg,
+    NULL::NUMERIC AS perf_sd_rule,
+    NULL::NUMERIC AS perf_sd_rule_neg,
+    NULL::NUMERIC AS perf3d_rule_neg,
+    NULL::NUMERIC AS bb_bull_rule,
+    NULL::NUMERIC AS bb_bull_puts,
+    NULL::NUMERIC AS macd_and_h_rule,
+    NULL::NUMERIC AS macd_and_h_rule_puts,
+    NULL::NUMERIC AS overbought_neg,
+    NULL::NUMERIC AS outlook_3wk_neg,
+    NULL::NUMERIC AS outlook_3wk_days_neg,
+    NULL::NUMERIC AS bull_rule,
+    NULL::NUMERIC AS bull_rule_neg,
+    NULL::NUMERIC AS perfourbull_rule,
+    NULL::NUMERIC AS perfourbull_rule_neg,
+    NULL::NUMERIC AS dma_50_crossover,
+    NULL::NUMERIC AS dma_200_crossover,
+    NULL::NUMERIC AS trade_close_to_brr,
+    NULL::NUMERIC AS trade_close_to_trr,
+    NULL::NUMERIC AS up_resistance,
+    NULL::NUMERIC AS down_resistance,
+    NULL::NUMERIC AS vs_lt_outlook_rule,
+    NULL::NUMERIC AS short_term_outlook_bullish,
+    NULL::NUMERIC AS short_term_outlook_bearish,
+    NULL::NUMERIC AS overbought,
+    NULL::TIMESTAMP AS computed_at,
+    NULL::BIGINT AS source_run_id
+FROM drv_symbols s
+LEFT JOIN drv_technicals  t USING (as_of_date, tos_symbol)
+LEFT JOIN drv_fundamentals f USING (as_of_date, tos_symbol)
+LEFT JOIN drv_outlooks    o USING (as_of_date, tos_symbol)
+LEFT JOIN drv_portfolio   p USING (as_of_date, tos_symbol);
