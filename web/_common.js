@@ -583,8 +583,8 @@
     const curLine = curPriceY != null
       ? `<line x1="${PAD_L}" y1="${curPriceY.toFixed(1)}" x2="${PAD_L+cW}" y2="${curPriceY.toFixed(1)}" stroke="#374151" stroke-width="0.7" stroke-dasharray="3 3"/>` : '';
     const lastPriceBadge = curPriceY != null
-      ? `<rect x="${PAD_L+cW+2}" y="${(curPriceY-7).toFixed(1)}" width="32" height="14" rx="2" fill="#374151"/>` +
-        `<text x="${PAD_L+cW+18}" y="${curPriceY.toFixed(1)}" fill="#fff" font-size="8" font-weight="600" text-anchor="middle" dominant-baseline="middle">${curPrice.toFixed(2)}</text>`
+      ? `<rect id="${svgEl.id}_lpbg" x="${PAD_L+cW+2}" y="${(curPriceY-7).toFixed(1)}" width="32" height="14" rx="2" fill="#374151"/>` +
+        `<text id="${svgEl.id}_lpt" x="${PAD_L+cW+18}" y="${curPriceY.toFixed(1)}" fill="#fff" font-size="8" font-weight="600" text-anchor="middle" dominant-baseline="middle">${curPrice.toFixed(2)}</text>`
       : '';
 
     // OHLC candlestick bars
@@ -646,11 +646,18 @@
     const chXt  = document.getElementById(svgEl.id + '_chxt');
     const chYbg = document.getElementById(svgEl.id + '_chybg');
     const chYt  = document.getElementById(svgEl.id + '_chyt');
+    const lpBg  = document.getElementById(svgEl.id + '_lpbg');
+    const lpT   = document.getElementById(svgEl.id + '_lpt');
 
     const showCH = show => {
       [chV, chH, chXbg, chXt, chYbg, chYt].forEach(el => {
         if (!el) return;
         if (show) el.removeAttribute('display'); else el.setAttribute('display', 'none');
+      });
+      // last-price badge: opposite visibility to crosshair
+      [lpBg, lpT].forEach(el => {
+        if (!el) return;
+        if (show) el.setAttribute('display', 'none'); else el.removeAttribute('display');
       });
     };
 
