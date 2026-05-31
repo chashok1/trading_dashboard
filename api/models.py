@@ -58,7 +58,7 @@ class StksRow(BaseModel):
     call_modifier: Optional[str] = None
     etf_outlook: Optional[str] = None
     ii_outlook: Optional[str] = None
-    ssh_signal_sign: Optional[float] = None
+    sss_signal_sign: Optional[float] = None
     iv_percentile: Optional[float] = None
     imp_volatility: Optional[float] = None
     hv_percentile: Optional[float] = None
