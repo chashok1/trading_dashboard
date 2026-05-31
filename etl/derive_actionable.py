@@ -85,13 +85,13 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     holdings = _load_holdings_with_dollars(session, as_of_date)
 
     # BuySell action → numeric score map for trig_action computation.
-    # Populated from ref_param_lookup where table_name='buysell', extra2=numeric score.
+    # Populated from ref_param_lookup where table_name='buysell', extra1=numeric score.
     # e.g. SA→-10, STM→-9, SS→-8, BM→10, BS→9, BMN→8. Gracefully empty if not loaded.
     buysell_scores: dict[str, float] = {}
     try:
         for r in session.execute(text(
-            "SELECT code, extra2 FROM ref_param_lookup"
-            " WHERE table_name = 'buysell' AND extra2 IS NOT NULL"
+            "SELECT code, extra1 FROM ref_param_lookup"
+            " WHERE table_name = 'buysell' AND extra1 IS NOT NULL"
         )).fetchall():
             try:
                 buysell_scores[str(r[0])] = float(r[1])
