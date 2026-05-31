@@ -572,11 +572,14 @@
     }
     // Max-price badge: computed here, rendered as SVG element later (toggled by hover)
     const priceMax = Math.max(...highs.filter(v => v != null));
+    const priceMaxIdx = isFinite(priceMax) ? highs.indexOf(priceMax) : -1;
+    const priceMaxDate = priceMaxIdx >= 0 ? dateLabel(priceMaxIdx) : '';
     const priceMaxY = (isFinite(priceMax) && priceMax >= yMinP && priceMax <= yMaxP)
       ? yPx(priceMax) : null;
     const maxPriceBadge = priceMaxY != null
-      ? `<rect id="${svgEl.id}_mpbg" x="${PAD_L+4}" y="${(priceMaxY-7).toFixed(1)}" width="38" height="14" rx="2" fill="#475569"/>` +
-        `<text id="${svgEl.id}_mpt" x="${PAD_L+23}" y="${priceMaxY.toFixed(1)}" fill="#fff" font-size="8" font-weight="600" text-anchor="middle" dominant-baseline="middle">${priceMax.toFixed(2)}</text>`
+      ? `<rect id="${svgEl.id}_mpbg" x="${PAD_L+4}" y="${(priceMaxY-11).toFixed(1)}" width="38" height="22" rx="2" fill="#475569"/>` +
+        `<text id="${svgEl.id}_mpt"  x="${PAD_L+23}" y="${(priceMaxY-4).toFixed(1)}" fill="#fff" font-size="8" font-weight="600" text-anchor="middle" dominant-baseline="middle">${priceMax.toFixed(2)}</text>` +
+        `<text id="${svgEl.id}_mpdt" x="${PAD_L+23}" y="${(priceMaxY+6).toFixed(1)}" fill="#94a3b8" font-size="7" text-anchor="middle" dominant-baseline="middle">${priceMaxDate}</text>`
       : '';
 
     const todayX = xPx(n - 1);
@@ -656,6 +659,7 @@
     const lpT   = document.getElementById(svgEl.id + '_lpt');
     const mpBg  = document.getElementById(svgEl.id + '_mpbg');
     const mpT   = document.getElementById(svgEl.id + '_mpt');
+    const mpDt  = document.getElementById(svgEl.id + '_mpdt');
 
     const showCH = show => {
       [chV, chH, chXbg, chXt, chYbg, chYt, chYdt].forEach(el => {
@@ -663,7 +667,7 @@
         if (show) el.removeAttribute('display'); else el.setAttribute('display', 'none');
       });
       // static badges (last price + max price): hide while hovering
-      [lpBg, lpT, mpBg, mpT].forEach(el => {
+      [lpBg, lpT, mpBg, mpT, mpDt].forEach(el => {
         if (!el) return;
         if (show) el.setAttribute('display', 'none'); else el.removeAttribute('display');
       });
