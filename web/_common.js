@@ -560,7 +560,8 @@
       const yv = yPx(v).toFixed(1);
       rightAxis +=
         `<line x1="${PAD_L}" y1="${yv}" x2="${PAD_L+cW}" y2="${yv}" stroke="#e2e8f0" stroke-width="0.5"/>` +
-        `<text x="${PAD_L+cW+4}" y="${parseFloat(yv)+3.5}" fill="#64748b" font-size="8" text-anchor="start">${v.toFixed(0)}</text>`;
+        `<text x="${PAD_L+cW+4}" y="${parseFloat(yv)+3.5}" fill="#64748b" font-size="8" text-anchor="start">${v.toFixed(0)}</text>` +
+        `<text x="${PAD_L-4}" y="${parseFloat(yv)+3.5}" fill="#64748b" font-size="8" text-anchor="end">${v.toFixed(0)}</text>`;
     }
 
     const todayX = xPx(n - 1);
