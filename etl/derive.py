@@ -887,6 +887,50 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
 derive_quote = _wrap("drv_quote", _derive_quote_impl)
 
 
+def backfill_drv_quote(d_start: date, d_end: date) -> dict:
+    """Populate drv_quote for every weekday in [d_start, d_end] that has no entry yet.
+
+    Safe to re-run: skips dates already present. Each date picks the latest
+    loaded source data (snapshot_date <= as_of_date) so prices repeat between
+    file loads — correct behaviour for a latest-loaded-wins merge.
+    """
+    from datetime import timedelta
+    from etl.db import session_scope
+
+    with session_scope() as s:
+        existing = {
+            r[0] for r in s.execute(text(
+                "SELECT DISTINCT as_of_date FROM drv_quote "
+                "WHERE as_of_date >= :s AND as_of_date <= :e"
+            ), {"s": d_start, "e": d_end}).fetchall()
+        }
+
+    missing = []
+    d = d_start
+    while d <= d_end:
+        if d.weekday() < 5 and d not in existing:
+            missing.append(d)
+        d += timedelta(days=1)
+
+    log.info("backfill_drv_quote: %d weekdays to fill (%s → %s)",
+             len(missing), d_start, d_end)
+
+    rows_total = 0
+    errors = 0
+    for d in missing:
+        try:
+            with session_scope() as s:
+                n = derive_quote(s, d)
+                rows_total += n
+        except Exception:
+            log.exception("backfill_drv_quote: %s failed", d)
+            errors += 1
+
+    log.info("backfill_drv_quote: done — %d rows across %d dates (%d errors)",
+             rows_total, len(missing), errors)
+    return {"dates_processed": len(missing), "rows_inserted": rows_total, "errors": errors}
+
+
 def _derive_rr_impl(session: Session, as_of_date: date, run_id: int) -> int:
     """Derive risk range (LRR/TRR) per symbol: hist_rr preferred, hist_td BB bands fallback.
 
