@@ -600,6 +600,12 @@
       ${stepPolyline(lrrs, '#15803d', 1.5, '4 2')}
       ${candlesticks}
       ${rrLabels}${xLabels}
+      <line id="${svgEl.id}_chv" x1="0" y1="${PAD_T}" x2="0" y2="${PAD_T+cH}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 3" display="none" pointer-events="none"/>
+      <line id="${svgEl.id}_chh" x1="${PAD_L}" y1="0" x2="${PAD_L+cW}" y2="0" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 3" display="none" pointer-events="none"/>
+      <rect id="${svgEl.id}_chxbg" width="32" height="13" rx="2" fill="#475569" display="none" pointer-events="none"/>
+      <text id="${svgEl.id}_chxt"  fill="#fff" font-size="8" text-anchor="middle" dominant-baseline="middle" display="none" pointer-events="none"/>
+      <rect id="${svgEl.id}_chybg" width="28" height="13" rx="2" fill="#475569" display="none" pointer-events="none"/>
+      <text id="${svgEl.id}_chyt"  fill="#fff" font-size="8" text-anchor="middle" dominant-baseline="middle" display="none" pointer-events="none"/>
     `;
 
     // ── OHLC hover: update top box on mouse move, revert to last day on leave ─
@@ -622,15 +628,49 @@
     if (ohlcEl && lastIdx >= 0) ohlcEl.innerHTML = fmtOHLC(lastIdx);
 
     const wrap = svgEl.parentElement;
-    if (wrap && ohlcEl) {
+    const chV   = document.getElementById(svgEl.id + '_chv');
+    const chH   = document.getElementById(svgEl.id + '_chh');
+    const chXbg = document.getElementById(svgEl.id + '_chxbg');
+    const chXt  = document.getElementById(svgEl.id + '_chxt');
+    const chYbg = document.getElementById(svgEl.id + '_chybg');
+    const chYt  = document.getElementById(svgEl.id + '_chyt');
+
+    const showCH = show => {
+      [chV, chH, chXbg, chXt, chYbg, chYt].forEach(el => {
+        if (!el) return;
+        if (show) el.removeAttribute('display'); else el.setAttribute('display', 'none');
+      });
+    };
+
+    if (wrap) {
       wrap.addEventListener('mousemove', e => {
         const rect = svgEl.getBoundingClientRect();
-        const ix = Math.max(0, Math.min(n - 1,
-          Math.round((e.clientX - rect.left - PAD_L) / cW * (n - 1))));
-        if (closes[ix] != null) ohlcEl.innerHTML = fmtOHLC(ix);
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const ix = Math.max(0, Math.min(n - 1, Math.round((mx - PAD_L) / cW * (n - 1))));
+        if (ohlcEl && closes[ix] != null) ohlcEl.innerHTML = fmtOHLC(ix);
+
+        const cx = xPx(ix);
+        const cy = Math.max(PAD_T, Math.min(PAD_T + cH, my));
+
+        if (chV) { chV.setAttribute('x1', cx); chV.setAttribute('x2', cx); }
+        if (chH) { chH.setAttribute('y1', cy); chH.setAttribute('y2', cy); }
+
+        // Date label on x-axis
+        const dlbl = dateLabel(ix);
+        if (chXbg) { chXbg.setAttribute('x', cx - 16); chXbg.setAttribute('y', PAD_T + cH + 2); }
+        if (chXt)  { chXt.setAttribute('x', cx); chXt.setAttribute('y', PAD_T + cH + 8); chXt.textContent = dlbl; }
+
+        // Price label on right y-axis
+        const pval = (yMinP + (1 - (cy - PAD_T) / cH) * yRangeP).toFixed(2);
+        if (chYbg) { chYbg.setAttribute('x', PAD_L + cW + 2); chYbg.setAttribute('y', cy - 6); }
+        if (chYt)  { chYt.setAttribute('x', PAD_L + cW + 16); chYt.setAttribute('y', cy); chYt.textContent = pval; }
+
+        showCH(true);
       });
       wrap.addEventListener('mouseleave', () => {
-        if (lastIdx >= 0) ohlcEl.innerHTML = fmtOHLC(lastIdx);
+        if (ohlcEl && lastIdx >= 0) ohlcEl.innerHTML = fmtOHLC(lastIdx);
+        showCH(false);
       });
     }
   }
