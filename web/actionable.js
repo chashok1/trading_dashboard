@@ -699,6 +699,7 @@ function renderGrid() {
       <td class="rr-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-date="${escapeHtml(r.as_of_date||'')}">
         <span class="rr-action-val" style="font-size:11px;font-weight:600;color:#4338ca;cursor:help;">${r.rr_action || '—'}</span>
       </td>
+      <td style="font-size:11px;font-weight:600;color:#7c3aed;text-align:center;" title="Trigger-rule action (best fired rule group)">${escapeHtml(r.trig_action || '—')}</td>
       <td class="num"><strong>${fmtUsd(r._amt)}</strong></td>
       <td class="src-cell" data-srcpop data-sym="${escapeHtml(r.tos_symbol)}" data-src="${escapeHtml(r.winning_source || '')}" style="padding:6px 4px;">${r.winning_source || ''}</td>
       <td style="padding:6px 4px; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(reasonText)}">${escapeHtml(reasonText)}</td>
@@ -740,6 +741,8 @@ function exportCsv() {
     ['Change %',      r => r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''],
     ['AMT$',          r => r._amt],
     ['Action',        r => r.consolidated_action || ''],
+    ['TrTnBBRskRng',  r => r.rr_action || ''],
+    ['Trig',          r => r.trig_action || ''],
     ['Source',        r => r.winning_source || ''],
     ['Metric',        r => r._metric],
     ['Reason',        r => _winningReason(r)],
