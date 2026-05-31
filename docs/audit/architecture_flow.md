@@ -3,7 +3,10 @@
 Easy-to-read Mermaid diagrams of the whole system. These render in GitHub, VS Code, and
 most Markdown viewers. They complement the per-screen SVGs in `docs/diagrams/`.
 
-Last verified against code: **2026-05-31** (post `drv_ma → VIEW` migration).
+Last verified against code: **2026-05-31** (post `drv_ma → VIEW` migration; post unused-code cleanup).
+
+> Note: `v_dash(D)` and `v_stks(D)` are parameterised **functions** (not simple views) —
+> they accept a date arg and return `SETOF drv_dash` / `SETOF drv_stks`.
 
 ---
 
@@ -28,12 +31,12 @@ flowchart LR
     end
 
     subgraph API["FastAPI (127.0.0.1:8000)"]
-        V["v_dash / v_stks / v_ma /\nv_rule_performance"]
+        V["v_dash(D) · v_stks(D) · drv_ma VIEW\nv_rule_performance · v_available_dates"]
         RT["routers: dash, monitor, ref,\nrules, trace, pages, health"]
     end
 
     subgraph UI["web/ screens (vanilla JS + Chart.js)"]
-        S["Dashboard · Cockpit · Actionable ·\nPortfolio · Trace · Performance · File Monitor · Ref"]
+        S["Dashboard · Cockpit · Actionable · Portfolio\nTrace · Rules · Groups · Composite-Edit\nPerformance · Rules-Health · Trig\nFile Monitor · Ref · Explore · DB Stats · Test Results"]
     end
 
     F --> W
@@ -83,7 +86,8 @@ flowchart TD
 ```
 
 > Each step is idempotent: `DELETE WHERE as_of_date=D` then `INSERT`. Re-running for date D
-> is safe. `derive_v2.py` overrides v1 for tw / etf / ii / ssh / ps / sss.
+> is safe. `derive_v2.py` overrides v1 for **tw** and **sss** only — etf / ii / ps overrides
+> were archived 2026-05-12; ssh was never implemented (drv_ssh retired).
 
 ---
 
