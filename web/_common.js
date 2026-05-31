@@ -570,11 +570,17 @@
         `<text x="${PAD_L+cW+4}" y="${parseFloat(yv)+3.5}" fill="#64748b" font-size="8" text-anchor="start">${v.toFixed(0)}</text>` +
         `<text x="${PAD_L-4}" y="${parseFloat(yv)+3.5}" fill="#64748b" font-size="8" text-anchor="end">${v.toFixed(0)}</text>`;
     }
-    // Extra label at actual yMax (period high) — top of chart
-    const ymaxYv = yPx(yMax).toFixed(1);
-    rightAxis +=
-      `<text x="${PAD_L+cW+4}" y="${parseFloat(ymaxYv)+3.5}" fill="#475569" font-size="8" font-weight="600" text-anchor="start">${yMax.toFixed(2)}</text>` +
-      `<text x="${PAD_L-4}" y="${parseFloat(ymaxYv)+3.5}" fill="#475569" font-size="8" font-weight="600" text-anchor="end">${yMax.toFixed(2)}</text>`;
+    // Period-high label: max of actual candle highs, left side only, skip if too close to a tick
+    const priceMax = Math.max(...highs.filter(v => v != null));
+    if (isFinite(priceMax) && priceMax >= yMinP && priceMax <= yMaxP) {
+      const pmY = yPx(priceMax);
+      // Nearest tick y-position
+      const nearestTick = Math.round(priceMax / step) * step;
+      const nearestY = yPx(nearestTick);
+      if (Math.abs(pmY - nearestY) > 7) {
+        rightAxis += `<text x="${PAD_L-4}" y="${(pmY+3.5).toFixed(1)}" fill="#475569" font-size="8" font-weight="600" text-anchor="end">${priceMax.toFixed(2)}</text>`;
+      }
+    }
 
     const todayX = xPx(n - 1);
     const todayMark = `<line x1="${todayX}" y1="${PAD_T}" x2="${todayX}" y2="${PAD_T+cH}" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2 2"/>`;
