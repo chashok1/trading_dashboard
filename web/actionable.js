@@ -857,7 +857,7 @@ async function openDrilldown(row) {
     const nc = Number(row.net_chng), pc = Number(row.pct_change);
     const clr = nc >= 0 ? '#16a34a' : '#dc2626';
     const fmtAmt = v => { const a = Math.abs(v); return (v < 0 ? '-' : '') + '$' + (a >= 1000 ? Math.round(a).toLocaleString() : a.toFixed(0)); };
-    chgEl.innerHTML = `<span style="font-weight:700;font-size:18px;color:${clr};">${fmtAmt(nc)} (${pc.toFixed(2)}%)</span>`;
+    chgEl.innerHTML = `<span style="font-weight:700;font-size:20px;color:${clr};line-height:1.3;">${fmtAmt(nc)} (${pc.toFixed(2)}%)</span>`;
     chgEl.style.display = 'block';
   } else {
     chgEl.innerHTML = '';

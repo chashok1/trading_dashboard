@@ -506,9 +506,13 @@
     <div class="modal" id="modal">
       <button class="modal-close" id="modalClose">&times;</button>
       <h2 id="modalTitle">Symbol</h2>
-      <div id="modalName" style="font-size:15px; color:#333; font-weight:500; margin:2px 0 6px;"></div>
-      <div class="sub" id="modalSub"></div>
-      <div id="modalPriceChange" style="display:none;margin:6px 0 4px;"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div>
+          <div id="modalName" style="font-size:15px;color:#333;font-weight:500;margin:2px 0 2px;"></div>
+          <div class="sub" id="modalSub" style="margin-bottom:0;"></div>
+        </div>
+        <div id="modalPriceChange" style="display:none;"></div>
+      </div>
 
       <div class="modal-section" id="rrSection" style="display:none;">
         <h3>Risk Range Analysis</h3>
