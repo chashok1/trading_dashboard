@@ -478,7 +478,7 @@
     for (let i = 0; i < n; i++) { if (prices[i] != null) lastP = prices[i]; else if (lastP != null) prices[i] = lastP; }
 
     const W = Math.max(svgEl.parentElement ? svgEl.parentElement.offsetWidth || 700 : 700, 400);
-    const PAD_L = 44, PAD_R = 54, PAD_T = 10, PAD_B = 22;
+    const PAD_L = 44, PAD_R = 70, PAD_T = 10, PAD_B = 22;
     const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
 
     const allVals = [...closes, ...opens, ...highs, ...lows, ...lrrs, ...trrs].filter(v => v != null);
@@ -536,9 +536,9 @@
     const latestLrr = [...lrrs].reverse().find(v => v != null);
     const rrLabels = [
       latestTrr != null && latestTrr >= yMinP && latestTrr <= yMaxP
-        ? `<text x="${PAD_L+cW+3}" y="${yPx(latestTrr)+4}" fill="#15803d" font-size="9" font-weight="600">TRR ${latestTrr.toFixed(0)}</text>` : '',
+        ? `<text x="${PAD_L+cW+20}" y="${yPx(latestTrr)+4}" fill="#15803d" font-size="9" font-weight="600">TRR ${latestTrr.toFixed(0)}</text>` : '',
       latestLrr != null && latestLrr >= yMinP && latestLrr <= yMaxP
-        ? `<text x="${PAD_L+cW+3}" y="${yPx(latestLrr)+4}" fill="#15803d" font-size="9" font-weight="600">LRR ${latestLrr.toFixed(0)}</text>` : '',
+        ? `<text x="${PAD_L+cW+20}" y="${yPx(latestLrr)+4}" fill="#15803d" font-size="9" font-weight="600">LRR ${latestLrr.toFixed(0)}</text>` : '',
     ].join('');
 
     // Date labels (first, mid, last)
