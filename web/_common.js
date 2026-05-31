@@ -606,7 +606,6 @@
       ${stepPolyline(lrrs, '#15803d', 1.5, '4 2')}
       ${candlesticks}
       ${rrLabels}${xLabels}
-      <rect id="${svgEl.id}_hl" x="0" y="${PAD_T}" width="${(barW+4).toFixed(1)}" height="${cH}" fill="rgba(148,163,184,0.18)" rx="2" display="none" pointer-events="none"/>
       <line id="${svgEl.id}_chv" x1="0" y1="${PAD_T}" x2="0" y2="${PAD_T+cH}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 3" display="none" pointer-events="none"/>
       <line id="${svgEl.id}_chh" x1="${PAD_L}" y1="0" x2="${PAD_L+cW}" y2="0" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 3" display="none" pointer-events="none"/>
       <rect id="${svgEl.id}_chxbg" width="32" height="13" rx="2" fill="#475569" display="none" pointer-events="none"/>
@@ -635,7 +634,6 @@
     if (ohlcEl && lastIdx >= 0) ohlcEl.innerHTML = fmtOHLC(lastIdx);
 
     const wrap = svgEl.parentElement;
-    const hlRect = document.getElementById(svgEl.id + '_hl');
     const chV   = document.getElementById(svgEl.id + '_chv');
     const chH   = document.getElementById(svgEl.id + '_chh');
     const chXbg = document.getElementById(svgEl.id + '_chxbg');
@@ -644,7 +642,7 @@
     const chYt  = document.getElementById(svgEl.id + '_chyt');
 
     const showCH = show => {
-      [hlRect, chV, chH, chXbg, chXt, chYbg, chYt].forEach(el => {
+      [chV, chH, chXbg, chXt, chYbg, chYt].forEach(el => {
         if (!el) return;
         if (show) el.removeAttribute('display'); else el.setAttribute('display', 'none');
       });
@@ -661,7 +659,6 @@
         const cx = xPx(ix);
         const cy = Math.max(PAD_T, Math.min(PAD_T + cH, my));
 
-        if (hlRect) hlRect.setAttribute('x', (cx - barW/2 - 2).toFixed(1));
         if (chV) { chV.setAttribute('x1', cx); chV.setAttribute('x2', cx); }
         if (chH) { chH.setAttribute('y1', cy); chH.setAttribute('y2', cy); }
 
