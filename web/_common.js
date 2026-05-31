@@ -579,8 +579,13 @@
     const todayX = xPx(n - 1);
     const todayMark = `<line x1="${todayX}" y1="${PAD_T}" x2="${todayX}" y2="${PAD_T+cH}" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2 2"/>`;
     const curPrice = prices[n-1];
-    const curLine = curPrice != null
-      ? `<line x1="${PAD_L}" y1="${yPx(curPrice).toFixed(1)}" x2="${PAD_L+cW}" y2="${yPx(curPrice).toFixed(1)}" stroke="#374151" stroke-width="0.7" stroke-dasharray="3 3"/>` : '';
+    const curPriceY = curPrice != null ? yPx(curPrice) : null;
+    const curLine = curPriceY != null
+      ? `<line x1="${PAD_L}" y1="${curPriceY.toFixed(1)}" x2="${PAD_L+cW}" y2="${curPriceY.toFixed(1)}" stroke="#374151" stroke-width="0.7" stroke-dasharray="3 3"/>` : '';
+    const lastPriceBadge = curPriceY != null
+      ? `<rect x="${PAD_L+cW+2}" y="${(curPriceY-7).toFixed(1)}" width="32" height="14" rx="2" fill="#374151"/>` +
+        `<text x="${PAD_L+cW+18}" y="${curPriceY.toFixed(1)}" fill="#fff" font-size="8" font-weight="600" text-anchor="middle" dominant-baseline="middle">${curPrice.toFixed(2)}</text>`
+      : '';
 
     // OHLC candlestick bars
     const barW = Math.max(2, (cW / n) * 0.7);
@@ -606,6 +611,7 @@
       ${stepPolyline(lrrs, '#15803d', 1.5, '4 2')}
       ${candlesticks}
       ${rrLabels}${xLabels}
+      ${lastPriceBadge}
       <line id="${svgEl.id}_chv" x1="0" y1="${PAD_T}" x2="0" y2="${PAD_T+cH}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 3" display="none" pointer-events="none"/>
       <line id="${svgEl.id}_chh" x1="${PAD_L}" y1="0" x2="${PAD_L+cW}" y2="0" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 3" display="none" pointer-events="none"/>
       <rect id="${svgEl.id}_chxbg" width="32" height="13" rx="2" fill="#475569" display="none" pointer-events="none"/>
