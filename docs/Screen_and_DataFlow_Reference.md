@@ -315,7 +315,7 @@ matrix), and **Table Dependencies** (per-table source summary).
 
 - **Tier 1** — `drv_quote`, `drv_td`, `drv_tw`, `drv_to`, `drv_sss`, `drv_rr`, `drv_y` —
   read raw `hist_*` directly. `drv_quote` is a latest-loaded-wins merge across `hist_y` /
-  `hist_tl` / `hist_td`. (`drv_tl` retired 2026-05-20; `drv_ssh` retired earlier.)
+  `hist_tl` / `hist_td`.
 - **Tier 2** — the 5 component tables `drv_symbols`, `drv_technicals`, `drv_fundamentals`,
   `drv_outlooks`, `drv_portfolio` (joined + latest `hist_*` rows). **`drv_ma` is a VIEW**
   over these five (as of 2026-05-31) — query it freely, never INSERT into it.

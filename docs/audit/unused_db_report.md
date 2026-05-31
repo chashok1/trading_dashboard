@@ -37,14 +37,7 @@ Least-referenced but still live: `ref_my_stocks` (3), `drv_dash_summary` (4), `r
 These were dropped from the pipeline but their DDL / comments may still linger in
 `baseline.sql`. They are **not** written by any current derive:
 
-| Table | Status | Note |
-|---|---|---|
-| `drv_tl` | retired 2026-05-20 | `vlm_projected` + IV cleaning now computed inline in `derive.py`. |
-| `drv_ssh` | retired (earlier) | Sector-strength history no longer derived. |
-
-**Action (your call, no change made):** if no historical rows are needed, drop the DDL/stubs
-from `baseline.sql`. If kept for archival data, add a one-line "RETIRED — read-only" comment
-so future readers don't wire them back in.
+No stub tables remain — `drv_tl` and `drv_ssh` were fully removed (2026-05-31).
 
 ---
 

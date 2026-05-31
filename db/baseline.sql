@@ -1973,26 +1973,6 @@ END $$;
 
 -- -----------------------------------------------------
 
--- drv_tl - RETIRED 2026-05-20. Its two columns (vlm_projected and the
-
--- imp_volatility NaN/NULL cleaning) were pure per-row functions of hist_tl
-
--- with a single consumer (drv_ma); both are now computed inline in the
-
--- `tl` CTE of etl/derive.py::_derive_ma_impl. DROP is idempotent: a no-op
-
--- on fresh installs, removes the legacy table on existing databases.
-
--- -----------------------------------------------------
-
-DROP TABLE IF EXISTS drv_tl CASCADE;
-
-DROP TABLE IF EXISTS drv_ssh CASCADE;
-
-
-
--- -----------------------------------------------------
-
 -- drv_td - per-row derivations from TD
 
 -- -----------------------------------------------------
@@ -4755,9 +4735,9 @@ ON CONFLICT (source_code) DO NOTHING;
 
 -- ref_data_filter_logic seeds
 
--- (Entries for retired tables drv_ssl/drv_sss/drv_etf/drv_call/drv_ii/drv_ps,
+-- (Entries for retired tables drv_ssl/drv_sss/drv_etf/drv_call/drv_ii/drv_ps
 
---  drv_tl, and the drv_cat_* sweep are intentionally omitted.)
+--  and the drv_cat_* sweep are intentionally omitted.)
 
 -- -----------------------------------------------------
 

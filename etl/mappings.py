@@ -142,7 +142,7 @@ HIST_MAPS = {
     ),
 
     # TL tab -> hist_tl (raw cols I-T only; vlm_projected + imp_volatility
-    # cleaning are derived inline in the drv_ma `tl` CTE - drv_tl retired 2026-05-20)
+    # cleaning are derived inline in the drv_ma `tl` CTE)
     "TL": dict(
         sheet="TL",
         table="hist_tl",

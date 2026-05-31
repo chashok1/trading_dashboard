@@ -84,7 +84,7 @@
   </g>
   <g class="c-gray">
     <rect x="60" y="510" width="560" height="36" rx="6" stroke-width="0.5"/>
-    <text class="t" x="340" y="528" text-anchor="middle" dominant-baseline="central">Base layer: drv_quote · drv_td · drv_tw · drv_ssh</text>
+    <text class="t" x="340" y="528" text-anchor="middle" dominant-baseline="central">Base layer: drv_quote · drv_td · drv_tw</text>
   </g>
   <line x1="340" y1="546" x2="340" y2="560" class="arr" marker-end="url(#arrow)"/>
   <g class="c-gray">

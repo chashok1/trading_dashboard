@@ -79,9 +79,6 @@ def derive_all(session: Session, as_of_date: date, run_id: int = None) -> dict:
     counts = {}
 
     # Existing derives (unchanged)
-    counts["drv_tl"] = _wrap("drv_tl", lambda s, d, rid: _derive_tl_impl(s, d))(
-        session, as_of_date, run_id
-    )
     counts["drv_td"] = _wrap("drv_td", lambda s, d, rid: _derive_td_impl(s, d))(
         session, as_of_date, run_id
     )

@@ -62,7 +62,7 @@
   </g>
   <g class="c-gray">
     <rect x="80" y="370" width="520" height="36" rx="6" stroke-width="0.5"/>
-    <text class="t" x="340" y="388" text-anchor="middle" dominant-baseline="central">Base: drv_td, drv_tw, drv_ssh, drv_quote</text>
+    <text class="t" x="340" y="388" text-anchor="middle" dominant-baseline="central">Base: drv_td, drv_tw, drv_quote</text>
   </g>
   <line x1="340" y1="406" x2="340" y2="423" class="arr" marker-end="url(#arrow)"/>
   <g class="c-gray">

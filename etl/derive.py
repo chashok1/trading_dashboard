@@ -69,10 +69,6 @@ def _get_tos_symbol(session: Session, symbol: str, lookup_column: str) -> Option
 # (a) Per-row derived
 # =============================================================================
 
-# drv_tl RETIRED 2026-05-20. Its two derived columns (vlm_projected and the
-# imp_volatility NaN/NULL cleaning) were pure per-row functions of hist_tl with
-# a single consumer (drv_ma). They are now computed inline in the `tl` CTE of
-# _derive_ma_impl below — no separate table or derive step is needed.
 
 
 def _td_clean(v) -> float:
@@ -495,7 +491,7 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         ) u WHERE s IS NOT NULL
     ),
     tl AS (
-        -- vlm_projected + imp_volatility cleaning inlined here (formerly drv_tl):
+        -- vlm_projected + imp_volatility cleaning inlined here:
         --   imp_volatility = COALESCE(imp_volatility_raw, 0)
         --   vlm_projected  = intraday volume projected to the full session,
         --                    a pure per-row function of volume + sequence (HHMM)
