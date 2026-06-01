@@ -651,7 +651,7 @@ COLUMN_SPECS_PASS1 = [
         {"strict": True}),                                                      # NE
     # NF/NG/NH/NI -- VS rules use strict >.
     ("vs_price",            "zero_guard_trig_ifs", "FK", "VS Price Rule",
-        {"guards": ("a_volume_spike",), "strict": True}),                       # NF
+        {"guards": ("a_volume_spike", "FK"), "strict": True}),                  # NF
     ("vs_volume_spike",     "zero_guard_trig_ifs", "FI", "VS Volume Spike Rule",
         {"guards": ("a_volume_spike",), "strict": True}),                       # NG
     ("vs_volatility",       "zero_guard_trig_ifs", "FL", "VS Volatility Rule",
