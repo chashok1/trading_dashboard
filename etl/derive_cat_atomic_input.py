@@ -207,10 +207,11 @@ def _decode_bb_streak(a_bb_streak: Optional[float]) -> dict:
     AW_ = -1.0 if AV_ == 1 else 1.0
     # RIGHT(AU, 2) = last two digits of |AU|.  Use abs to mirror Excel's NUMBERVALUE.
     AX_ = abs(AU_) % 100
-    # AX2 = signed version used by BBThresh_CO_Days2 (zone lo=2):
-    # below zone (AX < 2): apply sign(AU) — bearish streak negates the sub-threshold score
-    # in/above zone (AX >= 2): keep unsigned — actual crossing is always a positive signal
-    AX2_ = AX_ if AX_ >= 2 else AX_ * (1.0 if AU_ >= 0 else -1.0)
+    # AX2 = signed version used by BBThresh_CO_Days2.
+    # Excel IFS: AX>=hi→wa; AX>=lo→wbt; AY>=0→wb; AY<0→-wb
+    # (AX<-hi and AX<-lo never fire since AX=abs(AU)%100 >= 0 always)
+    # So: in/above zone (AX>=2) → always positive; below zone (AX<2) → sign from AY.
+    AX2_ = AX_ if AX_ >= 2 else AX_ * (1.0 if AY_ >= 0 else -1.0)
     AZ_ = round((abs(AS_) - abs(AT_)) * 100, 0)
     return dict(AS=AS_, AT=AT_, AU=AU_, AV=AV_, AW=AW_, AX=AX_, AX2=AX2_, AY=AY_, AZ=AZ_)
 
