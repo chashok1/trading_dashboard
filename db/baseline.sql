@@ -4875,6 +4875,8 @@ ALTER TABLE drv_cat_atomic_input
 
 ALTER TABLE drv_cat_atomic_input
 
+    ADD COLUMN IF NOT EXISTS trend_trade_rule          INTEGER,   -- QE  CASE on trend_sd/trade_sd (lookup code 1-4 for tn_td_rule)
+
     ADD COLUMN IF NOT EXISTS a_bb_bot_slope          NUMERIC,   -- QH (mirror of hist_td.a_bb_bot_slope)
 
     ADD COLUMN IF NOT EXISTS a_bb_top_slope          NUMERIC,   -- QI (mirror of hist_td.a_bb_top_slope)

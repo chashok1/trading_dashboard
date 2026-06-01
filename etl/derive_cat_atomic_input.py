@@ -1097,7 +1097,7 @@ SET
 FROM drv_cat_atomic_input src
 LEFT JOIN ref_param_lookup l_qf
   ON l_qf.table_name = 'tn_td_rule'
- AND l_qf.code = (src.trade_trend_sd_rule)::INTEGER::TEXT
+ AND l_qf.code = (src.trend_trade_rule)::INTEGER::TEXT
 LEFT JOIN ref_param_lookup l_qk
   ON l_qk.table_name = 'bb_range'
  AND l_qk.code = (src.bb_rng_strk_rule)::INTEGER::TEXT

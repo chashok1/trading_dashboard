@@ -2968,7 +2968,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         )
         UPDATE drv_cat_atomic_input dst
         SET
-            trade_trend_sd_rule = CASE
+            trend_trade_rule = CASE
                 WHEN c.trend_sd < 0 AND c.trade_sd < 0 THEN -2
                 WHEN c.trade_trend_sd < 0 AND c.trade_sd < 1 THEN -1
                 WHEN c.trend_sd > 0 AND c.trade_sd > 0
