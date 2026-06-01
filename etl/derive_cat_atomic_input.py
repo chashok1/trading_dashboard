@@ -199,7 +199,7 @@ def _decode_bb_streak(a_bb_streak: Optional[float]) -> dict:
     AS_ = _f(a_bb_streak)
     if AS_ is None:
         return dict(AS=None, AT=None, AU=None, AV=None, AW=None, AX=None,
-                    AY=None, AZ=None)
+                    AX2=None, AY=None, AZ=None)
     AT_ = math.trunc(AS_)
     AY_ = math.trunc(AT_ / 1000)
     AU_ = AT_ - AY_ * 1000
@@ -207,8 +207,12 @@ def _decode_bb_streak(a_bb_streak: Optional[float]) -> dict:
     AW_ = -1.0 if AV_ == 1 else 1.0
     # RIGHT(AU, 2) = last two digits of |AU|.  Use abs to mirror Excel's NUMBERVALUE.
     AX_ = abs(AU_) % 100
+    # AX2 = signed version used by BBThresh_CO_Days2 (zone lo=2):
+    # below zone (AX < 2): apply sign(AU) — bearish streak negates the sub-threshold score
+    # in/above zone (AX >= 2): keep unsigned — actual crossing is always a positive signal
+    AX2_ = AX_ if AX_ >= 2 else AX_ * (1.0 if AU_ >= 0 else -1.0)
     AZ_ = round((abs(AS_) - abs(AT_)) * 100, 0)
-    return dict(AS=AS_, AT=AT_, AU=AU_, AV=AV_, AW=AW_, AX=AX_, AY=AY_, AZ=AZ_)
+    return dict(AS=AS_, AT=AT_, AU=AU_, AV=AV_, AW=AW_, AX=AX_, AX2=AX2_, AY=AY_, AZ=AZ_)
 
 
 def _decode_vs(a_volume_spike: Optional[float], AD: Optional[float]) -> dict:
@@ -413,7 +417,7 @@ def compute_intermediates(row: dict) -> dict:
         AC=AC, AD=AD, AG=AG, AH=AH, AI=AI,
         AJ=AJ, AK=AK, AL=AL, AM=AM, AN=AN, AO=AO, AP=AP, AQ=AQ, AR=AR,
         AS=bbs["AS"], AT=bbs["AT"], AU=bbs["AU"], AV=bbs["AV"], AW=bbs["AW"],
-        AX=bbs["AX"], AY=bbs["AY"], AZ=bbs["AZ"],
+        AX=bbs["AX"], AX2=bbs["AX2"], AY=bbs["AY"], AZ=bbs["AZ"],
         BB=BB, BC=BC, BE=BE, BF=BF, BJ=BJ, BK=BK, BN=BN, BO=BO,
         BQ=BQ, BS=BS, BU=BU, BW=BW, BY=BY, BZ=BZ, CA=CA,
         EC=EC, ED=ED, EE=EE, EO=EO, EP=EP, EQ=EQ, ER=ER, ES=ES, ET=ET, EU=EU,
@@ -462,7 +466,7 @@ COLUMN_SPECS_PASS1 = [
         (lambda r,o: (_f(r.get("AW")) or 0) if _f(r.get("AX")) == 1 else 0.0)),# JJ
     # JK BBThresh CO Days — trig_ifs on AX
     ("bbthresh_co_days",  "trig_ifs", "AX", "BBThresh CO Days",  None),        # JK
-    ("bbthresh_co_days2", "trig_ifs", "AX", "BBThresh CO Days2", None),        # JL
+    ("bbthresh_co_days2", "trig_ifs", "AX2", "BBThresh CO Days2", None),       # JL (signed: bearish streak negates score)
     # JM Trade Cross Over — composite (D/AF/EF/J/I).  EF=prev_close not sourced;
     # approximate via BZ (Perf3D_Value as proxy for prev_close trajectory).
     ("trade_cross_over",  "composite", None, None,
@@ -497,9 +501,9 @@ COLUMN_SPECS_PASS1 = [
         (lambda r,o: 1.0 if (r.get("ER") or 0) > 0 else 0.0)),                  # KH
     # KI/KJ/KK TRR/MRR/LRR_Idx — 3-clause trig_ifs on ES/ET/EU.
     # DQ/DM/DR come from drv_quote (high/last/low), matching toggle="Y" behaviour.
-    ("trr_idx",            "trig_ifs", "ES", "TRR_Idx", None),                  # KI
-    ("mrr_idx",            "trig_ifs", "ET", "MRR_Idx", None),                  # KJ
-    ("lrr_idx",            "trig_ifs", "EU", "LRR_Idx", None),                  # KK
+    ("trr_idx",            "trig_ifs", "ES", "TRR_Idx", {"simple": True}),      # KI (asymmetric zone: use 3-clause eval_atomic_rule)
+    ("mrr_idx",            "trig_ifs", "ET", "MRR_Idx", None),                  # KJ (symmetric zone: 6-clause = 3-clause)
+    ("lrr_idx",            "trig_ifs", "EU", "LRR_Idx", {"simple": True}),     # KK (asymmetric zone: use 3-clause eval_atomic_rule)
     # KL HVAbsolute -- input CV (historical_vol), but Trig key 'HVAbsolute' uses CV.
     ("hvabsolute",          "trig_ifs", "historical_vol", "HVAbsolute", None), # KL
     # KM IVAbsolute -- zero-guarded by DT (imp_volatility)
@@ -1002,12 +1006,19 @@ def eval_specs(row: dict, specs: list, trig_rules: dict, out: dict) -> dict:
             if ftype == "trig_ifs":
                 val = row.get(src) if src in row else out.get(src)
                 strict = False
+                simple = False
                 if isinstance(extra, dict):
                     if extra.get("abs_input") and val is not None:
                         val = abs(_f(val) or 0.0)
                     strict = bool(extra.get("strict"))
-                out[db_col] = _eval_trig_ifs(val, trig_rules.get(rule_name),
-                                              strict=strict)
+                    simple = bool(extra.get("simple"))
+                if simple:
+                    # Use standard 3-clause jump eval (correct for asymmetric zones where lo < 0)
+                    from etl.derive import eval_atomic_rule
+                    out[db_col] = eval_atomic_rule(val, trig_rules.get(rule_name))
+                else:
+                    out[db_col] = _eval_trig_ifs(val, trig_rules.get(rule_name),
+                                                  strict=strict)
 
             elif ftype == "zero_guard_trig_ifs":
                 guards = extra or ()
