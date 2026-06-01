@@ -56,7 +56,9 @@ td AS (
            a_bb_streak, a_bb_high_low, a_bb_high_low_days,
            a_iv_percentile, a_hv_percentile,
            a_bb_top_slope, a_bb_bot_slope,
-           historical_vol
+           historical_vol,
+           high_price AS td_high,   -- EK: prior session high for MAX(EH,EK) in EO/EP
+           low_price  AS td_low     -- EL: prior session low  for MAX(EI,EL) in EP
     FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
     ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
@@ -110,7 +112,8 @@ SELECT s.s AS tos_symbol,
        td.a_bb_streak, td.a_bb_high_low, td.a_bb_high_low_days,
        td.a_iv_percentile, td.a_hv_percentile,
        td.a_bb_top_slope, td.a_bb_bot_slope,
-       td.historical_vol, dq.imp_volatility, dq.rsi,
+       td.historical_vol, td.td_high, td.td_low,
+       dq.imp_volatility, dq.rsi,
        -- derived prior BB values (for EC/ED fallback)
        td_prior.bb_bot_prev, td_prior.bb_top_prev,
        -- hist_tw
@@ -295,12 +298,12 @@ def compute_intermediates(row: dict) -> dict:
     DY   = _f(row.get("sell_trade"))                 # RR_Top    (MA!DY)
     DU   = _f(row.get("bb_bot_prev"))                # BB_Bot_Prev (MA!DU = TD!L)
     DV   = _f(row.get("bb_top_prev"))                # BB_Top_Prev (MA!DV = TD!P)
-    # EK/EL in MA = "High"/"Low" — point at the day-quote not the BB band.
-    # Today's high/low from drv_quote serves as both EH and EK (same value
-    # for end-of-day snapshots).  hist_td also has BB top/bottom but those
-    # are EH/EI in MA's intraday section, not EK/EL.
-    EK   = _f(row.get("high_today"))
-    EL   = _f(row.get("low_today"))
+    # EK/EL: prior session high/low from hist_td.
+    # Excel EO = (ED - IF(EH>EK, EH, EK)) / AC  →  uses MAX(EH, EK).
+    # EH = today's intraday high (drv_quote), EK = prior day's high (hist_td).
+    # Taking MAX ensures the reference high doesn't drop early in a new session.
+    EK   = _f(row.get("td_high"))
+    EL   = _f(row.get("td_low"))
     AP   = _f(row.get("a_bb_high_low_days"))         # MA!AP source
     AJ   = _f(row.get("a_bb_high_low"))              # MA!AJ source — TOS composite
 
