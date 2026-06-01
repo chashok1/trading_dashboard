@@ -721,10 +721,11 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
             if len(sql) > 960:
                 continue
             try:
-                row = s.execute(text(sql), {"sym": sym_u, "d": snap}).mappings().first()
-                if row:
-                    for c, v in dict(row).items():
-                        _src_vals[(tbl, c)] = v
+                with s.begin_nested():
+                    row = s.execute(text(sql), {"sym": sym_u, "d": snap}).mappings().first()
+                    if row:
+                        for c, v in dict(row).items():
+                            _src_vals[(tbl, c)] = v
             except Exception:
                 pass
 
@@ -869,15 +870,16 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
         hist_raw: dict = {}
         for _tbl in ('hist_td', 'hist_tw', 'hist_to', 'hist_tl', 'hist_y'):
             try:
-                _row = s.execute(text(
-                    f"SELECT * FROM {_tbl}"
-                    f" WHERE symbol=:sym AND snapshot_date<=:d"
-                    f" ORDER BY snapshot_date DESC LIMIT 1"
-                ), {"sym": sym_u, "d": snap}).mappings().first()
-                hist_raw[_tbl] = {
-                    k: _ser(v) for k, v in (dict(_row) if _row else {}).items()
-                    if k not in _META_SKIP and v is not None
-                }
+                with s.begin_nested():
+                    _row = s.execute(text(
+                        f"SELECT * FROM {_tbl}"
+                        f" WHERE symbol=:sym AND snapshot_date<=:d"
+                        f" ORDER BY snapshot_date DESC LIMIT 1"
+                    ), {"sym": sym_u, "d": snap}).mappings().first()
+                    hist_raw[_tbl] = {
+                        k: _ser(v) for k, v in (dict(_row) if _row else {}).items()
+                        if k not in _META_SKIP and v is not None
+                    }
             except Exception:
                 hist_raw[_tbl] = {}
 
@@ -886,14 +888,15 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                      'drv_outlooks', 'drv_portfolio', 'drv_cat_atomic_input',
                      'drv_dash', 'drv_actionable', 'drv_quote', 'drv_rr'):
             try:
-                _row = s.execute(text(
-                    f"SELECT * FROM {_tbl}"
-                    f" WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1"
-                ), {"d": snap, "sym": sym_u}).mappings().first()
-                drv_raw[_tbl] = {
-                    k: _ser(v) for k, v in (dict(_row) if _row else {}).items()
-                    if k not in _META_SKIP and v is not None
-                }
+                with s.begin_nested():
+                    _row = s.execute(text(
+                        f"SELECT * FROM {_tbl}"
+                        f" WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1"
+                    ), {"d": snap, "sym": sym_u}).mappings().first()
+                    drv_raw[_tbl] = {
+                        k: _ser(v) for k, v in (dict(_row) if _row else {}).items()
+                        if k not in _META_SKIP and v is not None
+                    }
             except Exception:
                 drv_raw[_tbl] = {}
 
