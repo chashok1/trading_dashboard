@@ -4822,23 +4822,44 @@ ALTER TABLE drv_cat_atomic_input
 
 -- 2026-05-27: targets for MA-tab rule columns QE, QJ, QM, QN, QR.
 
--- (QE target trade_trend_sd_rule already exists above.)
+-- drv_tn_td_bb_rr: Action/lookup columns computed by _derive_trend_trade_rules_impl
+-- and PARM_LOOKUP_SQL.  Separated from drv_cat_atomic_input (which holds atomic
+-- rule inputs JF..NP) to keep the two concerns distinct.
+-- PK: (as_of_date, tos_symbol) — same pattern as all drv_* tables.
 
--- Populated by _derive_trend_trade_rules_impl in etl/derive.py.
+CREATE TABLE IF NOT EXISTS drv_tn_td_bb_rr (
+    as_of_date             DATE    NOT NULL,
+    tos_symbol             TEXT    NOT NULL,
+    -- QE–QN computed by _derive_trend_trade_rules_impl Pass 1
+    trend_trade_rule       INTEGER,          -- QE  CASE on trend_sd/trade_sd (1-4)
+    a_bb_top_slope         NUMERIC,          -- QH  hist_td.a_bb_top_slope
+    a_bb_bot_slope         NUMERIC,          -- QI  hist_td.a_bb_bot_slope
+    bb_rng_strk_rule       NUMERIC,          -- QJ  BBRngStrkRule
+    bull_rr_action         NUMERIC,          -- QM  BullRiskRng-Action
+    not_bull_rr_action     NUMERIC,          -- QN  !BullRiskRng-Action
+    -- QR computed by _derive_trend_trade_rules_impl Pass 2
+    td_tn_bb_rr_action     NUMERIC,          -- QR  combined TD/TN/BB/RR action code
+    -- QF/QG/QK/QL/QO-QR/QS/QT computed by PARM_LOOKUP_SQL
+    tn_td_rule_action      NUMERIC,          -- QF  XLOOKUP(QE, tn_td_rule -> seq)
+    tn_td_rule_desc        TEXT,             -- QG  XLOOKUP(QE, tn_td_rule -> desc)
+    bb_rng_strk_action     NUMERIC,          -- QK  XLOOKUP(QJ, bb_range -> seq)
+    bb_rng_strk_desc       TEXT,             -- QL  XLOOKUP(QJ, bb_range -> desc)
+    risk_rng_longs_action  NUMERIC,          -- QO  conditional via QJ/QM/QN
+    rr_bull_bear           TEXT,             -- QP  'B' / '!B'
+    rr_desc                TEXT,             -- QQ  lookup description
+    td_tn_bb_action_desc   TEXT,             -- QS  XLOOKUP(QR, td_tn_bb_rr_action -> desc)
+    td_tn_bb_action_seq    NUMERIC,          -- QT  XLOOKUP(QR, td_tn_bb_rr_action -> seq)
+    computed_at            TIMESTAMP NOT NULL DEFAULT now(),
+    source_run_id          BIGINT,
+    PRIMARY KEY (as_of_date, tos_symbol)
+);
 
--- Idempotent.
-
--- -----------------------------------------------------
-
-ALTER TABLE drv_cat_atomic_input
-
-    ADD COLUMN IF NOT EXISTS bb_rng_strk_rule   NUMERIC,   -- QJ BBRngStrkRule
-
-    ADD COLUMN IF NOT EXISTS bull_rr_action     NUMERIC,   -- QM BullRiskRng-Action
-
-    ADD COLUMN IF NOT EXISTS not_bull_rr_action NUMERIC,   -- QN !BullRiskRng-Action
-
-    ADD COLUMN IF NOT EXISTS td_tn_bb_rr_action NUMERIC;   -- QR Td Tn BB Risk Range Rule Action
+-- Drop the same columns from drv_cat_atomic_input (they now live in drv_tn_td_bb_rr)
+ALTER TABLE IF EXISTS drv_cat_atomic_input
+    DROP COLUMN IF EXISTS bb_rng_strk_rule,
+    DROP COLUMN IF EXISTS bull_rr_action,
+    DROP COLUMN IF EXISTS not_bull_rr_action,
+    DROP COLUMN IF EXISTS td_tn_bb_rr_action;
 
 
 
@@ -4854,31 +4875,21 @@ ALTER TABLE drv_cat_atomic_input
 
 -- -----------------------------------------------------
 
-ALTER TABLE drv_cat_atomic_input
-
-    ADD COLUMN IF NOT EXISTS trend_trade_rule          INTEGER,   -- QE  CASE on trend_sd/trade_sd (lookup code 1-4 for tn_td_rule)
-
-    ADD COLUMN IF NOT EXISTS a_bb_bot_slope          NUMERIC,   -- QH (mirror of hist_td.a_bb_bot_slope)
-
-    ADD COLUMN IF NOT EXISTS a_bb_top_slope          NUMERIC,   -- QI (mirror of hist_td.a_bb_top_slope)
-
-    ADD COLUMN IF NOT EXISTS tn_td_rule_action       NUMERIC,   -- QF  XLOOKUP(QE, Parm BS26:BS31 -> BV)
-
-    ADD COLUMN IF NOT EXISTS tn_td_rule_desc         TEXT,      -- QG  XLOOKUP(QE, Parm BS26:BS31 -> BT)
-
-    ADD COLUMN IF NOT EXISTS bb_rng_strk_action      NUMERIC,   -- QK  XLOOKUP(QJ, Parm BS51:BS59 -> BV)
-
-    ADD COLUMN IF NOT EXISTS bb_rng_strk_desc        TEXT,      -- QL  XLOOKUP(QJ, Parm BS51:BS59 -> BT)
-
-    ADD COLUMN IF NOT EXISTS risk_rng_longs_action   NUMERIC,   -- QO  conditional XLOOKUP via QJ/QM/QN
-
-    ADD COLUMN IF NOT EXISTS rr_bull_bear            TEXT,      -- QP  'B' / '!B' label
-
-    ADD COLUMN IF NOT EXISTS rr_desc                 TEXT,      -- QQ  XLOOKUP description
-
-    ADD COLUMN IF NOT EXISTS td_tn_bb_action_desc    TEXT,      -- QS  XLOOKUP(QR, Parm AO2:AO21 -> AQ)
-
-    ADD COLUMN IF NOT EXISTS td_tn_bb_action_seq     NUMERIC;   -- QT  XLOOKUP(QR, Parm AO2:AO21 -> AR)
+-- All QE-QT columns now live in drv_tn_td_bb_rr (see above).
+-- Drop them from drv_cat_atomic_input if still present from older migrations.
+ALTER TABLE IF EXISTS drv_cat_atomic_input
+    DROP COLUMN IF EXISTS trend_trade_rule,
+    DROP COLUMN IF EXISTS a_bb_bot_slope,
+    DROP COLUMN IF EXISTS a_bb_top_slope,
+    DROP COLUMN IF EXISTS tn_td_rule_action,
+    DROP COLUMN IF EXISTS tn_td_rule_desc,
+    DROP COLUMN IF EXISTS bb_rng_strk_action,
+    DROP COLUMN IF EXISTS bb_rng_strk_desc,
+    DROP COLUMN IF EXISTS risk_rng_longs_action,
+    DROP COLUMN IF EXISTS rr_bull_bear,
+    DROP COLUMN IF EXISTS rr_desc,
+    DROP COLUMN IF EXISTS td_tn_bb_action_desc,
+    DROP COLUMN IF EXISTS td_tn_bb_action_seq;
 
 
 

@@ -692,10 +692,7 @@ COLUMN_SPECS_PASS1 = [
     ("current_volatility_rule", "zero_guard_trig_ifs", "imp_volatility",
         "Current Volatility Rule", {"guards": ("imp_volatility",), "strict": True}),  # NM (NULL IV → 0)
     # NN/NO -> composite (Pass-2)
-    # ---- QE/QJ/QM/QN/QR computed by _derive_trend_trade_rules_impl ----
-    # QH/QI raw slope mirrors
-    ("a_bb_bot_slope",      "passthru", "a_bb_bot_slope", None, None),         # QH
-    ("a_bb_top_slope",      "passthru", "a_bb_top_slope", None, None),         # QI
+    # QE/QJ/QM/QN/QR/QH/QI + parm-lookup columns now live in drv_tn_td_bb_rr
 ]
 
 
@@ -1108,7 +1105,7 @@ def eval_specs(row: dict, specs: list, trig_rules: dict, out: dict) -> dict:
 # _derive_trend_trade_rules_impl.
 # =============================================================================
 PARM_LOOKUP_SQL = """
-UPDATE drv_cat_atomic_input dst
+UPDATE drv_tn_td_bb_rr dst
 SET
     tn_td_rule_action = l_qf.seq,
     tn_td_rule_desc   = l_qf.description,
@@ -1128,7 +1125,7 @@ SET
         ELSE NULL END,
     td_tn_bb_action_desc = l_qr.description,
     td_tn_bb_action_seq  = l_qr.seq
-FROM drv_cat_atomic_input src
+FROM drv_tn_td_bb_rr src
 LEFT JOIN ref_param_lookup l_qf
   ON l_qf.table_name = 'tn_td_rule'
  AND l_qf.code = (src.trend_trade_rule)::INTEGER::TEXT

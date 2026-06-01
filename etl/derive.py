@@ -2898,7 +2898,10 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
     (the inputs in Pass 1 read its columns, and Pass 2 reads QE/QJ/QM/QN
     that Pass 1 just wrote).
     """
-    # Pass 1: QE, QJ, QM, QN
+    # Idempotent: wipe and rebuild drv_tn_td_bb_rr for this date
+    session.execute(text("DELETE FROM drv_tn_td_bb_rr WHERE as_of_date = :d"), {"d": as_of_date})
+
+    # Pass 1: INSERT QE/QH/QI/QJ/QM/QN into drv_tn_td_bb_rr
     result = session.execute(text("""
         WITH inputs AS (
             SELECT
@@ -2966,9 +2969,15 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 END AS trade_trend_sd
             FROM inputs i
         )
-        UPDATE drv_cat_atomic_input dst
-        SET
-            trend_trade_rule = CASE
+        INSERT INTO drv_tn_td_bb_rr
+            (as_of_date, tos_symbol,
+             a_bb_top_slope, a_bb_bot_slope,
+             trend_trade_rule, bb_rng_strk_rule,
+             bull_rr_action, not_bull_rr_action)
+        SELECT
+            c.as_of_date, c.tos_symbol,
+            c.a_bb_top_slope, c.a_bb_bot_slope,
+            CASE
                 WHEN c.trend_sd < 0 AND c.trade_sd < 0 THEN -2
                 WHEN c.trade_trend_sd < 0 AND c.trade_sd < 1 THEN -1
                 WHEN c.trend_sd > 0 AND c.trade_sd > 0
@@ -2978,7 +2987,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 WHEN c.trend_sd < 0 AND c.trade_sd > 0 THEN 2
                 ELSE 1
             END,
-            bb_rng_strk_rule = CASE
+            CASE
                 WHEN c.a_bb_top_slope >= 3 AND c.a_bb_bot_slope >= 3 THEN 4
                 WHEN c.a_bb_top_slope <= -3 AND c.a_bb_bot_slope <= -3 THEN -4
                 WHEN c.a_bb_top_slope >= 2 AND c.a_bb_bot_slope >= 2 THEN 3
@@ -2991,7 +3000,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                      AND c.a_bb_bot_slope < c.a_bb_top_slope THEN -2
                 ELSE 0
             END,
-            bull_rr_action = CASE
+            CASE
                 WHEN c.perf1d_sd_rule >  0 AND c.lrr_idx = 1
                      AND c.mrr_idx = -1 AND c.macdh_direction > 0 THEN 6
                 WHEN c.perf1d_sd_rule = -1 AND c.mrr_idx = 1 THEN 5
@@ -3005,7 +3014,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                      AND c.lrr_idx = 1 THEN -1
                 ELSE NULL
             END,
-            not_bull_rr_action = CASE
+            CASE
                 WHEN c.perf1d_sd_rule >  0 AND c.lrr_idx = 1
                      AND c.mrr_idx <= 0 AND c.macdh_direction > 0 THEN 5
                 WHEN c.perf1d_sd_rule >  0 AND c.lrr_idx = 0 THEN 4
@@ -3017,7 +3026,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 ELSE NULL
             END
         FROM computed c
-        WHERE dst.as_of_date = c.as_of_date AND dst.tos_symbol = c.tos_symbol
+        WHERE c.tos_symbol IS NOT NULL
     """), {"d": as_of_date})
 
     rows_pass1 = result.rowcount or 0
@@ -3033,15 +3042,19 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
     # cast via ::INTEGER::TEXT so '4' matches the seed row code '4' (no decimal).
     session.execute(text("""
         WITH base AS (
+            -- QE (trade_trend_sd_rule) stays in drv_cat_atomic_input (JV column).
+            -- QJ/QM/QN are now in drv_tn_td_bb_rr (inserted in Pass 1 above).
             SELECT
-                a.as_of_date,
-                a.tos_symbol,
+                r.as_of_date,
+                r.tos_symbol,
                 a.trade_trend_sd_rule AS qe,
-                a.bb_rng_strk_rule    AS qj,
-                a.bull_rr_action      AS qm_val,
-                a.not_bull_rr_action  AS qn_val
-            FROM drv_cat_atomic_input a
-            WHERE a.as_of_date = :d
+                r.bb_rng_strk_rule    AS qj,
+                r.bull_rr_action      AS qm_val,
+                r.not_bull_rr_action  AS qn_val
+            FROM drv_tn_td_bb_rr r
+            LEFT JOIN drv_cat_atomic_input a
+              ON a.as_of_date = r.as_of_date AND a.tos_symbol = r.tos_symbol
+            WHERE r.as_of_date = :d
         ),
         looked_up AS (
             SELECT
@@ -3069,7 +3082,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
               ON l_qn.table_name = 'nbull_rr_rule'
              AND l_qn.code = (b.qn_val)::INTEGER::TEXT
         )
-        UPDATE drv_cat_atomic_input dst
+        UPDATE drv_tn_td_bb_rr dst
         SET td_tn_bb_rr_action = CASE
             WHEN l.qf_seq < 0 THEN l.qf_seq
             WHEN l.qf_seq > 0 THEN

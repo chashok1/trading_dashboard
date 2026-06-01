@@ -355,10 +355,12 @@ def get_actionable(
                q.last_price, q.net_chng, q.pct_change, q.export_date, q.export_time, q.loaded_at,
                u.user_action AS last_user_action,
                u.snooze_until AS snooze_until,
-               cat.td_tn_bb_action_desc AS rr_action
+               rr.td_tn_bb_action_desc AS rr_action
         FROM drv_actionable a
         LEFT JOIN drv_cat_atomic_input cat
                ON cat.tos_symbol = a.tos_symbol AND cat.as_of_date = a.as_of_date
+        LEFT JOIN drv_tn_td_bb_rr rr
+               ON rr.tos_symbol = a.tos_symbol AND rr.as_of_date = a.as_of_date
         LEFT JOIN drv_ma m
                ON m.tos_symbol = a.tos_symbol AND m.as_of_date = a.as_of_date
         LEFT JOIN drv_quote q
@@ -763,24 +765,26 @@ def get_rr_analysis(symbol: str = Query(...), date: str = Query(...)):
         """), {"sym": sym, "d": d}).fetchone()
         cat = s.execute(text("""
             SELECT a.trr_idx, a.mrr_idx, a.lrr_idx,
-                   a.trade_trend_sd_rule, a.bb_rng_strk_rule, a.bull_rr_action, a.not_bull_rr_action,
-                   a.tn_td_rule_action, a.tn_td_rule_desc, a.bb_rng_strk_action, a.bb_rng_strk_desc,
-                   a.risk_rng_longs_action, a.td_tn_bb_rr_action, a.td_tn_bb_action_desc,
-                   a.td_tn_bb_action_seq, a.rr_bull_bear, a.rr_desc,
+                   a.trade_trend_sd_rule, r.bb_rng_strk_rule, r.bull_rr_action, r.not_bull_rr_action,
+                   r.tn_td_rule_action, r.tn_td_rule_desc, r.bb_rng_strk_action, r.bb_rng_strk_desc,
+                   r.risk_rng_longs_action, r.td_tn_bb_rr_action, r.td_tn_bb_action_desc,
+                   r.td_tn_bb_action_seq, r.rr_bull_bear, r.rr_desc,
                    ltn.short_name AS tn_td_short,
                    lbb.short_name AS bb_short,
-                   CASE WHEN a.rr_bull_bear = 'B'  THEN lbull.short_name
-                        WHEN a.rr_bull_bear = '!B' THEN lnbull.short_name
+                   CASE WHEN r.rr_bull_bear = 'B'  THEN lbull.short_name
+                        WHEN r.rr_bull_bear = '!B' THEN lnbull.short_name
                    END AS rr_short
             FROM drv_cat_atomic_input a
+            LEFT JOIN drv_tn_td_bb_rr r
+              ON r.tos_symbol = a.tos_symbol AND r.as_of_date = a.as_of_date
             LEFT JOIN ref_param_lookup ltn
               ON ltn.table_name='tn_td_rule' AND ltn.code=(a.trade_trend_sd_rule)::INTEGER::TEXT
             LEFT JOIN ref_param_lookup lbb
-              ON lbb.table_name='bb_range' AND lbb.code=(a.bb_rng_strk_rule)::INTEGER::TEXT
+              ON lbb.table_name='bb_range' AND lbb.code=(r.bb_rng_strk_rule)::INTEGER::TEXT
             LEFT JOIN ref_param_lookup lbull
-              ON lbull.table_name='bull_rr_rule' AND lbull.code=(a.bull_rr_action)::INTEGER::TEXT
+              ON lbull.table_name='bull_rr_rule' AND lbull.code=(r.bull_rr_action)::INTEGER::TEXT
             LEFT JOIN ref_param_lookup lnbull
-              ON lnbull.table_name='nbull_rr_rule' AND lnbull.code=(a.not_bull_rr_action)::INTEGER::TEXT
+              ON lnbull.table_name='nbull_rr_rule' AND lnbull.code=(r.not_bull_rr_action)::INTEGER::TEXT
             WHERE a.tos_symbol=:sym AND a.as_of_date=:d
         """), {"sym": sym, "d": d}).fetchone()
 
@@ -866,30 +870,32 @@ def get_rr_detail(symbol: str = Query(...), date: str = Query(...)):
     with session_scope() as s:
         row = s.execute(text("""
             SELECT
-                a.td_tn_bb_action_desc,
-                a.tn_td_rule_desc,       ltn.short_name AS tn_td_short,
-                a.bb_rng_strk_desc,      lbb.short_name AS bb_short,
-                a.rr_desc,               a.rr_bull_bear,
-                CASE WHEN a.rr_bull_bear='B'  THEN lbull.short_name
-                     WHEN a.rr_bull_bear='!B' THEN lnbull.short_name
+                r.td_tn_bb_action_desc,
+                r.tn_td_rule_desc,       ltn.short_name AS tn_td_short,
+                r.bb_rng_strk_desc,      lbb.short_name AS bb_short,
+                r.rr_desc,               r.rr_bull_bear,
+                CASE WHEN r.rr_bull_bear='B'  THEN lbull.short_name
+                     WHEN r.rr_bull_bear='!B' THEN lnbull.short_name
                 END AS rr_short,
                 a.trr_idx, a.mrr_idx, a.lrr_idx,
                 m.a_trade_value, m.a_trend_value,
-                rr.trr, rr.lrr,
-                a.tn_td_rule_action, a.bb_rng_strk_action,
-                a.risk_rng_longs_action, a.td_tn_bb_rr_action,
-                a.trade_trend_sd_rule, a.bb_rng_strk_rule
+                rr_tbl.trr, rr_tbl.lrr,
+                r.tn_td_rule_action, r.bb_rng_strk_action,
+                r.risk_rng_longs_action, r.td_tn_bb_rr_action,
+                a.trade_trend_sd_rule, r.bb_rng_strk_rule
             FROM drv_cat_atomic_input a
+            LEFT JOIN drv_tn_td_bb_rr r
+              ON r.tos_symbol = a.tos_symbol AND r.as_of_date = a.as_of_date
             LEFT JOIN drv_ma m ON m.tos_symbol=a.tos_symbol AND m.as_of_date=a.as_of_date
-            LEFT JOIN drv_rr rr ON rr.tos_symbol=a.tos_symbol AND rr.as_of_date=a.as_of_date
+            LEFT JOIN drv_rr rr_tbl ON rr_tbl.tos_symbol=a.tos_symbol AND rr_tbl.as_of_date=a.as_of_date
             LEFT JOIN ref_param_lookup ltn
               ON ltn.table_name='tn_td_rule' AND ltn.code=(a.trade_trend_sd_rule)::INTEGER::TEXT
             LEFT JOIN ref_param_lookup lbb
-              ON lbb.table_name='bb_range' AND lbb.code=(a.bb_rng_strk_rule)::INTEGER::TEXT
+              ON lbb.table_name='bb_range' AND lbb.code=(r.bb_rng_strk_rule)::INTEGER::TEXT
             LEFT JOIN ref_param_lookup lbull
-              ON lbull.table_name='bull_rr_rule' AND lbull.code=(a.bull_rr_action)::INTEGER::TEXT
+              ON lbull.table_name='bull_rr_rule' AND lbull.code=(r.bull_rr_action)::INTEGER::TEXT
             LEFT JOIN ref_param_lookup lnbull
-              ON lnbull.table_name='nbull_rr_rule' AND lnbull.code=(a.not_bull_rr_action)::INTEGER::TEXT
+              ON lnbull.table_name='nbull_rr_rule' AND lnbull.code=(r.not_bull_rr_action)::INTEGER::TEXT
             WHERE a.tos_symbol=:sym AND a.as_of_date=:d
         """), {"sym": sym, "d": d}).fetchone()
 
