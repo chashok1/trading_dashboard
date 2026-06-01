@@ -640,7 +640,7 @@ COLUMN_SPECS_PASS1 = [
             r.get("buy_trade") is not None and r.get("a_trade_value") is not None
             and r.get("AC") and r.get("AC") != 0
             and abs(float(r["buy_trade"]) - float(r["a_trade_value"]))
-                <= float(r["AC"]) * 0.5
+                <= float(r["AC"]) * 0.05       # 5% of SD — tighter than 0.5
         ) else 0.0)),                                                          # NA
     ("trrtrade",            "composite", None, None,
         (lambda r,o: -1.0 if (
@@ -650,9 +650,14 @@ COLUMN_SPECS_PASS1 = [
                 <= float(r["AC"]) * 0.5
         ) else 0.0)),                                                          # NB
     # NC/ND Up/Down Resistance -> composite (needs EH/EI/AC/CG/CH/BA)
-    # NE Earnings -- strict > in Excel.
-    ("earnings",            "trig_ifs", "a_earnings_days", "Earnings Days",
-        {"strict": True}),                                                      # NE
+    # NE Earnings -- strict > in Excel. NULL (no earnings, e.g. ETFs) → wa=1 (far from earnings)
+    # Earnings Days zone=[5,10] wts=(-3,-2,1) strict=True
+    ("earnings",            "composite", None, None,
+        lambda r, o: (lambda v:
+            1.0 if v > 10 else -2.0 if v > 5 else -3.0 if v >= 0
+            else 1.0 if v < -10 else 2.0 if v < -5 else 3.0
+        )(_f(r.get("a_earnings_days")))
+        if r.get("a_earnings_days") is not None else 1.0),                     # NE
     # NF/NG/NH/NI -- VS rules use strict >.
     ("vs_price",            "zero_guard_trig_ifs", "FK", "VS Price Rule",
         {"guards": ("a_volume_spike", "FK"), "strict": True}),                  # NF
