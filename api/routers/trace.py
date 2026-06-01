@@ -567,7 +567,8 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
 
         # 4. Atomic rules
         atomic_rules = s.execute(text("""
-            SELECT atomic_rule_id, rule_name, ma_column_name, source_column,
+            SELECT atomic_rule_id, rule_name, ma_column_name,
+                   source_column, source_table,
                    brkeout_from, brkeout_to, wt_below, wt_between, wt_above,
                    scoring_mode, category
             FROM ref_trig_atomic_rule WHERE deprecated_at IS NULL
@@ -685,17 +686,24 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                 "category": a.get("category"),
                 "rolls_into": sorted(set(rolls_into.get(rid, []))),
                 "source_column": a.get("source_column"),
+                "source_table":  a.get("source_table"),
                 "source_value": None,  # filled below
             })
 
         atomic_by_id = {a["id"]: a for a in atomics_out}
 
-        # 7b. Batch-fetch source_column values
+        # 7b. Batch-fetch source_column values using explicit source_table
         _src_needed: dict = {}   # {tbl: set(cols)}
         _src_idx: dict = {}      # {rule_id: (tbl, col)}
         for a in atomics_out:
             sc = a.get("source_column")
-            if sc and "." in sc:
+            st = a.get("source_table")
+            if sc and st:
+                # Preferred: explicit source_table + source_column (bare DB column name)
+                _src_needed.setdefault(st, set()).add(sc)
+                _src_idx[a["id"]] = (st, sc)
+            elif sc and "." in sc:
+                # Legacy: table.column packed into source_column
                 tbl, col = sc.split(".", 1)
                 _src_needed.setdefault(tbl, set()).add(col)
                 _src_idx[a["id"]] = (tbl, col)

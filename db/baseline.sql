@@ -3817,8 +3817,10 @@ WHERE rule_name = 'Current Volume Rule';
 ALTER TABLE IF EXISTS ref_trig_atomic_rule
 ADD COLUMN IF NOT EXISTS source_column TEXT;
 
--- Seed source_column from Excel column mapping (Rule Name → Excel column header).
--- Re-runnable: overwrites on each init_db so edits here always win.
+ALTER TABLE IF EXISTS ref_trig_atomic_rule
+ADD COLUMN IF NOT EXISTS source_table TEXT;
+
+-- Seed source_column (label) from Excel column mapping. Re-runnable.
 UPDATE ref_trig_atomic_rule AS r
 SET source_column = v.col
 FROM (VALUES
@@ -3899,6 +3901,66 @@ FROM (VALUES
     ('Current Volatility Rule',              'Current Volatility Rule'),
     ('Short Term Oulook (If LT Bullish)',    'Short Term Oulook (If LT Bullish)'),
     ('Short Term Oulook (If LT Bearish)',    'Short Term Oulook (If LT Bearish)')
+) AS v(rname, col)
+WHERE r.rule_name = v.rname;
+
+-- Set source_table + actual DB column name for rules with known DB locations.
+-- These overwrite the Excel-label source_column with the real column name.
+UPDATE ref_trig_atomic_rule AS r
+SET source_table = 'drv_ma', source_column = v.col
+FROM (VALUES
+    ('200-DMA-Rule',            'sma_200'),
+    ('50-DMA-Rule',             'sma_50'),
+    ('RSI Rule',                'rsi'),
+    ('RSI Top',                 'rsi'),
+    ('RSI Puts',                'rsi'),
+    ('IVPercentile',            'iv_percentile'),
+    ('IVPercentile Puts',       'iv_percentile'),
+    ('HVPercentile',            'hv_percentile'),
+    ('HVPercentile Puts',       'hv_percentile'),
+    ('IVAbsolute',              'imp_volatility'),
+    ('IVHV Rule (modified)',    'd_iv_to_hv'),
+    ('IVHV Puts (modified)',    'd_iv_to_hv'),
+    ('MACD Rule',               'a_macd_brr'),
+    ('MACDH Rule',              'a_macdh_d_brr'),
+    ('MACD_BRR Puts',           'a_macd_brr'),
+    ('MACDH_BRR Puts',          'a_macdh_d_brr'),
+    ('BRR% Rule',               'pct_brr'),
+    ('BRR% LRR',                'pct_brr'),
+    ('BRR% R2',                 'pct_brr'),
+    ('BRR% LRR2',               'pct_brr'),
+    ('BRR% TRR',                'pct_brr'),
+    ('BRR% Puts',               'pct_brr'),
+    ('BRR% TRR Puts',           'pct_brr'),
+    ('Earnings Days',           'earnings_days'),
+    ('BBStreak Rule',           'a_bb_streak'),
+    ('BBStreak Rule1',          'a_bb_streak'),
+    ('BBStreak Rule2',          'a_bb_streak'),
+    ('BBStreak Days Rule',      'a_bb_streak'),
+    ('BBStreak Days Up Rule',   'a_bb_streak'),
+    ('BBStreak Days Rule2',     'a_bb_streak'),
+    ('BBStreak Days Up Rule2',  'a_bb_streak')
+) AS v(rname, col)
+WHERE r.rule_name = v.rname;
+
+UPDATE ref_trig_atomic_rule AS r
+SET source_table = 'drv_cat_atomic_input', source_column = v.col
+FROM (VALUES
+    ('BBThresh Crossover', 'bbthresh_crossover'),
+    ('TRR_Idx',            'trr_idx'),
+    ('MRR_Idx',            'mrr_idx'),
+    ('LRR_Idx',            'lrr_idx')
+) AS v(rname, col)
+WHERE r.rule_name = v.rname;
+
+UPDATE ref_trig_atomic_rule AS r
+SET source_table = 'hist_tw', source_column = v.col
+FROM (VALUES
+    ('VS Price Rule',         'a_volume_spike'),
+    ('VS Volume Spike Rule',  'a_volume_spike'),
+    ('VS Volatility Rule',    'a_volume_spike'),
+    ('VS Days',               'a_volume_spike'),
+    ('VS LT Outlook Rule',    'a_volume_spike')
 ) AS v(rname, col)
 WHERE r.rule_name = v.rname;
 

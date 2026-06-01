@@ -492,6 +492,7 @@ function openNewModal(type) {
         document.getElementById('wtBetween').value = '';
         document.getElementById('wtAbove').value = '';
         document.getElementById('sourceColumn').value = '';
+        document.getElementById('sourceTable').value  = '';
     } else {
         DOM.atomicSection.style.display = 'none';
         DOM.compositeSection.style.display = 'block';
@@ -565,6 +566,7 @@ function populateRuleForm(type, rule, isReadOnly) {
         wtAboveField.value = rule.wt_above || '';
         document.getElementById('negMultiplier').value = rule.neg_multiplier ?? 1.0;
         document.getElementById('sourceColumn').value = rule.source_column || '';
+        document.getElementById('sourceTable').value  = rule.source_table  || '';
 
         ruleNameField.readOnly = isReadOnly;
         maColumnNameField.readOnly = true; // Always read-only
@@ -576,6 +578,7 @@ function populateRuleForm(type, rule, isReadOnly) {
         wtAboveField.readOnly = isReadOnly;
         document.getElementById('negMultiplier').readOnly = isReadOnly;
         document.getElementById('sourceColumn').readOnly = isReadOnly;
+        document.getElementById('sourceTable').readOnly  = isReadOnly;
     } else {
         DOM.atomicSection.style.display = 'none';
         DOM.compositeSection.style.display = 'block';
@@ -645,6 +648,7 @@ async function saveRule() {
             wt_above: parseFloat(document.getElementById('wtAbove').value) || null,
             neg_multiplier: parseFloat(document.getElementById('negMultiplier').value) || 1.0,
             source_column: document.getElementById('sourceColumn').value || null,
+            source_table:  document.getElementById('sourceTable').value  || null,
         };
 
         const method = state.editingRule ? 'PUT' : 'POST';
@@ -665,6 +669,7 @@ async function saveRule() {
                     wt_above: data.wt_above,
                     neg_multiplier: data.neg_multiplier,
                     source_column: data.source_column,
+                    source_table:  data.source_table,
                 } : data),
             });
 

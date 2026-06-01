@@ -413,9 +413,15 @@
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label title="Raw source column this rule evaluates, in table.column format (e.g. hist_td.brr_pct). Multiple rules sharing the same underlying value use the same reference.">Source Column</label>
-                    <input type="text" id="sourceColumn" placeholder="e.g. hist_td.brr_pct">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label title="DB table the raw source value comes from (e.g. drv_ma, drv_cat_atomic_input, hist_tw)">Source Table</label>
+                        <input type="text" id="sourceTable" placeholder="e.g. drv_ma">
+                    </div>
+                    <div class="form-group">
+                        <label title="DB column name in Source Table (e.g. sma_200, rsi, pct_brr). Also used as the display label when Source Table is blank.">Source Column</label>
+                        <input type="text" id="sourceColumn" placeholder="e.g. sma_200">
+                    </div>
                 </div>
             </div>
 

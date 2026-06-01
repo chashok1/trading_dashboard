@@ -33,7 +33,7 @@ def list_atomic_rules(
     with session_scope() as s:
         sql = """SELECT atomic_rule_id, rule_name, brkeout_from, brkeout_to,
                         wt_below, wt_between, wt_above, neg_multiplier,
-                        ma_column_name, source_column,
+                        ma_column_name, source_column, source_table,
                         category, intent_text, scoring_mode, score_params, deprecated_at
                  FROM ref_trig_atomic_rule WHERE deprecated_at IS NULL"""
         params = {}
@@ -55,8 +55,8 @@ def get_atomic_rule(rule_id: str):
         row = s.execute(
             text("""SELECT atomic_rule_id as rule_id, rule_name,
                            brkeout_from, brkeout_to, wt_below, wt_between, wt_above,
-                           ma_column_name, source_column, category, intent_text,
-                           scoring_mode, score_params, deprecated_at
+                           ma_column_name, source_column, source_table, category,
+                           intent_text, scoring_mode, score_params, deprecated_at
                     FROM ref_trig_atomic_rule WHERE atomic_rule_id = :rid"""),
             {"rid": rule_id}
         ).mappings().first()
@@ -379,16 +379,17 @@ def create_atomic_rule(body: AtomicRuleCreateRequest):
         s.execute(text("""
             INSERT INTO ref_trig_atomic_rule
               (atomic_rule_id, rule_name, category, intent_text, ma_column_name,
-               source_column, scoring_mode, score_params, brkeout_from, brkeout_to,
-               wt_below, wt_between, wt_above, neg_multiplier)
+               source_column, source_table, scoring_mode, score_params,
+               brkeout_from, brkeout_to, wt_below, wt_between, wt_above, neg_multiplier)
             VALUES
               (:rid, :rname, :cat, :intent, :macol,
-               :sc, :mode, :params::jsonb, :bf, :bt,
+               :sc, :st, :mode, :params::jsonb, :bf, :bt,
                :wb, :wbt, :wa, :nm)
         """), {
             "rid": body.rule_id, "rname": body.rule_name, "cat": body.category,
             "intent": body.intent_text, "macol": body.ma_column_name,
             "sc": body.source_column,
+            "st": body.source_table,
             "mode": body.scoring_mode,
             "params": json.dumps(body.score_params) if body.score_params else None,
             "bf": body.brkeout_from, "bt": body.brkeout_to,

@@ -146,7 +146,9 @@ function renderIndicators(d) {
       ? `<td class="mono" style="box-shadow:inset 3px 0 0 #16a34a">${esc(ind.name)}</td>`
       : `<td class="mono">${esc(ind.name)}</td>`;
     const srcLabel = r.source_column || '';
-    const srcVal   = _findSourceVal(srcLabel, d.hist_raw, d.drv_raw);
+    const srcVal   = r.source_value != null
+                   ? r.source_value
+                   : _findSourceVal(srcLabel, d.hist_raw, d.drv_raw);
     const srcValStr = srcVal != null ? fmt(srcVal) : '—';
     return `<tr ${rowStyle}>
       ${nameCell}
