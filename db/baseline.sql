@@ -3964,6 +3964,106 @@ FROM (VALUES
 ) AS v(rname, col)
 WHERE r.rule_name = v.rname;
 
+-- v2: corrected source_table + source_column derived from full working-set analysis.
+-- These override the partial/wrong seeds above. Each rule points to the actual
+-- raw hist_*/drv_* column that is read into compute_intermediates().
+
+UPDATE ref_trig_atomic_rule AS r
+SET source_table = 'hist_td', source_column = v.col
+FROM (VALUES
+    ('BBThresh Crossover',     'a_bb_streak'),
+    ('BBThresh CO Days',       'a_bb_streak'),
+    ('BBThresh CO Days2',      'a_bb_streak'),
+    ('Trade-Rule',             'a_trade_value'),
+    ('Trend-Rule',             'a_trend_value'),
+    ('Trade Trend SD Rule',    'a_trade_value'),
+    ('HVAbsolute',             'historical_vol'),
+    ('IVPercentile',           'a_iv_percentile'),
+    ('IVPercentile Puts',      'a_iv_percentile'),
+    ('HVPercentile',           'a_hv_percentile'),
+    ('HVPercentile Puts',      'a_hv_percentile'),
+    ('BBHighLow_SD Rule',      'a_bb_high_low'),
+    ('BBHighLow Days Rule',    'a_bb_high_low'),
+    ('BBStreak Rule',          'a_bb_streak'),
+    ('BBStreak Rule1',         'a_bb_streak'),
+    ('BBStreak Rule2',         'a_bb_streak'),
+    ('BBStreak Days Rule',     'a_bb_streak'),
+    ('BBStreak Days Up Rule',  'a_bb_streak'),
+    ('BBStreak Days Rule2',    'a_bb_streak'),
+    ('BBStreak Days Up Rule2', 'a_bb_streak'),
+    ('BBHighDays',             'a_bb_high_low_days'),
+    ('BBLowDays',              'a_bb_high_low_days'),
+    ('Perf3mn SD Rule',        'a_trend_value'),
+    ('Perf3wk SD Rule',        'a_trade_value')
+) AS v(rname, col)
+WHERE r.rule_name = v.rname;
+
+UPDATE ref_trig_atomic_rule AS r
+SET source_table = 'hist_tw', source_column = v.col
+FROM (VALUES
+    ('200-DMA-Rule',          'sma_200'),
+    ('50-DMA-Rule',           'sma_50'),
+    ('52-Wk Low Rule',        'low_52'),
+    ('52-Wk High Rule',       'high_52'),
+    ('Earnings Days',         'a_earnings_days'),
+    ('MACD Rule',             'a_macd_brr'),
+    ('MACD_BRR Puts',         'a_macd_brr'),
+    ('MACDH Rule',            'a_macdh_d_brr'),
+    ('MACDH_BRR Puts',        'a_macdh_d_brr'),
+    ('MACDH Days',            'a_macdays_streak'),
+    ('MACDH Days2',           'a_macdays_streak'),
+    ('3m-Low-Rule',           'a_3mn_low'),
+    ('3m-Low-Days Rule',      'a_3mn_low'),
+    ('3mn-High-Rule',         'a_3mn_high'),
+    ('3mn-High-Dyas Rule',    'a_3mn_high'),
+    ('Perf2M SD Rule',        'a_perf_2m'),
+    ('Perf2wk SD Rule',       'a_perf_2wk'),
+    ('Perf3D SD Rule',        'a_perf_3d'),
+    ('Perf3D 1Off Rule',      'a_perf_3d'),
+    ('3mn Outlook',           'a_3mn_high_low'),
+    ('3mn Outlook Days',      'a_3mn_high_low'),
+    ('3wk Outlook',           'a_3wk_high_low'),
+    ('3wk Outlook Days',      'a_3wk_high_low')
+) AS v(rname, col)
+WHERE r.rule_name = v.rname;
+
+UPDATE ref_trig_atomic_rule AS r
+SET source_table = 'drv_quote', source_column = v.col
+FROM (VALUES
+    ('RSI Rule',                'rsi'),
+    ('RSI Top',                 'rsi'),
+    ('RSI Puts',                'rsi'),
+    ('IVAbsolute',              'imp_volatility'),
+    ('IVHV Rule (modified)',    'imp_volatility'),
+    ('IVHV Puts (modified)',    'imp_volatility'),
+    ('Perf1D SD Rule',          'net_chng'),
+    ('Current Price Rule',      'net_chng'),
+    ('Current Volatility Rule', 'imp_volatility')
+) AS v(rname, col)
+WHERE r.rule_name = v.rname;
+
+UPDATE ref_trig_atomic_rule AS r
+SET source_table = 'drv_rr', source_column = v.col
+FROM (VALUES
+    ('BRR% Rule',      'lrr'),
+    ('BRR% LRR',       'lrr'),
+    ('BRR% R2',        'lrr'),
+    ('BRR% LRR2',      'lrr'),
+    ('BRR% TRR',       'lrr'),
+    ('BRR% Puts',      'lrr'),
+    ('BRR% TRR Puts',  'lrr'),
+    ('High above TRR', 'trr'),
+    ('Low below LRR',  'lrr'),
+    ('TRR_Idx',        'trr'),
+    ('MRR_Idx',        'lrr'),
+    ('LRR_Idx',        'lrr')
+) AS v(rname, col)
+WHERE r.rule_name = v.rname;
+
+UPDATE ref_trig_atomic_rule
+SET source_table = 'hist_tl', source_column = 'volume'
+WHERE rule_name = 'Current Volume Rule';
+
 
 
 -- -----------------------------------------------------
