@@ -493,8 +493,8 @@ COLUMN_SPECS_PASS1 = [
     ("brrpct_puts",         "trig_ifs", "EE", "BRR% Puts",      None),         # KB
     ("brrpct_trr_puts",     "trig_ifs", "EE", "BRR% TRR Puts",  None),         # KC
     # KD BRR% Dir -> composite (Pass-2; reads JI/JG/LG/JW/KB)
-    ("high_trr",            "trig_ifs", "EO", "High above TRR", None),         # KE
-    ("low_lrr",             "trig_ifs", "EP", "Low below LRR",  None),         # KF
+    ("high_trr",            "trig_ifs", "EO", "High above TRR", {"simple": True}),  # KE (zone lo=0: use 3-clause)
+    ("low_lrr",             "trig_ifs", "EP", "Low below LRR",  {"simple": True}),  # KF (zone lo=0: use 3-clause)
     ("trend_below_trr",     "composite", None, None,
         (lambda r,o: -1.0 if (r.get("EQ") or 0) < 0 else 0.0)),                 # KG
     ("lrr_above_trade",     "composite", None, None,
@@ -666,11 +666,14 @@ COLUMN_SPECS_PASS1 = [
     ("current_price_sd_rule", "zero_guard_trig_ifs",
         "_NK_input", "Current Price Rule",
         {"guards": ("AC",), "strict": True}),                                   # NK
-    # NL Current Volume Rule -- input GB.  Asymmetric -1/4 mult on negative side
-    # not yet supported by eval_atomic_rule; using standard trig_ifs (good
-    # enough for most cases; precise behaviour documented in § Caveats).
-    ("current_volume_rule", "trig_ifs", "GB", "Current Volume Rule",
-        {"strict": True}),                                                      # NL
+    # NL Current Volume Rule — asymmetric zone: positive side [100,200], negative side [25,50]
+    # (Excel uses 1/4 of positive thresholds for the negative side).
+    # GB > 200 → 3; GB > 100 → 2; GB >= 0 → 1; GB < -50 → -3; GB < -25 → -2; GB < 0 → -1
+    ("current_volume_rule", "composite", None, None,
+        lambda r, o: (lambda g:
+            3.0 if g > 200 else 2.0 if g > 100 else 1.0 if g >= 0
+            else -3.0 if g < -50 else -2.0 if g < -25 else -1.0
+        )(_f(r.get("GB"))) if _f(r.get("GB")) is not None else 0.0),          # NL
     ("current_volatility_rule", "trig_ifs", "imp_volatility",
         "Current Volatility Rule", {"strict": True}),                           # NM
     # NN/NO -> composite (Pass-2)
