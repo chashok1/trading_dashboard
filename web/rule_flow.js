@@ -128,7 +128,11 @@ function renderIndicators(d) {
   };
 
   const rowsHtml = pairs.map(([ind, r]) => {
-    const valStr = ind.value != null ? fmt(ind.value) : '—';
+    const dispVal = (r && r.source_value != null) ? r.source_value : ind.value;
+    const valStr  = dispVal != null ? fmt(dispVal) : '—';
+    const rawTag  = (r && r.source_column)
+      ? `<span title="${esc(r.source_column)}" style="font-size:9px;color:var(--text-3);margin-left:3px">raw</span>`
+      : '';
     if (!r) {
       return `<tr style="opacity:.45">
         <td class="mono">${esc(ind.name)}</td>
@@ -147,7 +151,7 @@ function renderIndicators(d) {
       : `<td class="mono">${esc(ind.name)}</td>`;
     return `<tr ${rowStyle}>
       ${nameCell}
-      <td style="text-align:right;font-family:monospace;font-size:12px;font-weight:600">${valStr}</td>
+      <td style="text-align:right;font-family:monospace;font-size:12px;font-weight:600">${valStr}${rawTag}</td>
       <td style="text-align:right;font-size:11px;color:var(--text-2)">${r.brkeout_from != null ? fmt(r.brkeout_from) : '—'}</td>
       <td style="text-align:right;font-size:11px;color:var(--text-2)">${r.brkeout_to   != null ? fmt(r.brkeout_to)   : '—'}</td>
       ${zoneCell(band === 'below',   r.wt_below,   'below')}
@@ -164,21 +168,62 @@ function renderIndicators(d) {
       <span class="tier-badge badge-ok">${inds.length} columns</span>
       <span class="tier-toggle">▾</span>
     </div>
-    <div class="tier-body">
-      <div style="overflow-x:auto;max-height:420px;overflow-y:auto">
-        <table class="rf-table" style="width:auto">
-          <thead><tr>
-            <th>Indicator</th><th style="text-align:right">Value</th>
-            <th style="text-align:right">lo</th><th style="text-align:right">hi</th>
-            <th style="text-align:right">wt below</th>
-            <th style="text-align:right">wt between</th>
-            <th style="text-align:right">wt above</th>
-            <th>Weight</th>
-          </tr></thead>
-          <tbody>${rowsHtml || '<tr><td colspan="9" class="status-msg">No indicator data</td></tr>'}</tbody>
-        </table>
+    <div class="tier-body" style="padding:0">
+      <div style="display:flex;gap:0;align-items:start">
+        <div style="flex:0 0 auto;padding:12px;overflow-x:auto;max-height:480px;overflow-y:auto">
+          <table class="rf-table" style="width:auto">
+            <thead><tr>
+              <th>Indicator</th><th style="text-align:right">Value</th>
+              <th style="text-align:right">lo</th><th style="text-align:right">hi</th>
+              <th style="text-align:right">wt below</th>
+              <th style="text-align:right">wt between</th>
+              <th style="text-align:right">wt above</th>
+              <th>Weight</th>
+            </tr></thead>
+            <tbody>${rowsHtml || '<tr><td colspan="8" class="status-msg">No indicator data</td></tr>'}</tbody>
+          </table>
+        </div>
+        <div style="flex:1 1 0;min-width:220px;border-left:1px solid var(--border);padding:12px;max-height:480px;overflow-y:auto">
+          ${renderRawPanels(d)}
+        </div>
       </div>
     </div>
+  </div>`;
+}
+
+// ── Raw side panels (hist_raw + drv_raw) ──────────────────────────────────────
+
+function renderRawPanels(d) {
+  const histSections = _rawSection(d.hist_raw || {}, 'Source Data (TO · TW · TD · TL · Y)');
+  const drvSections  = _rawSection(d.drv_raw  || {}, 'Derived Tables');
+  return histSections + drvSections;
+}
+
+function _rawSection(tableMap, title) {
+  const tables = Object.entries(tableMap);
+  if (!tables.length) return '';
+  const inner = tables.map(([tbl, cols]) => {
+    const entries = Object.entries(cols || {});
+    if (!entries.length) return '';
+    const rows = entries.map(([k, v]) => {
+      const vs = v != null ? String(v) : '—';
+      return `<div style="display:flex;justify-content:space-between;gap:6px;padding:1px 0;border-bottom:1px solid #f4f4f2">
+        <span style="color:var(--text-2);font-family:monospace;font-size:10px;flex:1">${esc(k)}</span>
+        <span style="font-weight:600;font-family:monospace;font-size:11px;text-align:right">${esc(vs)}</span>
+      </div>`;
+    }).join('');
+    return `<details style="margin-bottom:6px" open>
+      <summary style="font-size:11px;font-weight:600;color:var(--text-2);cursor:pointer;padding:2px 0;list-style:none;display:flex;align-items:center;gap:4px">
+        <span style="font-size:9px;color:var(--text-3)">▾</span>${esc(tbl)}
+        <span style="font-size:10px;font-weight:400;color:var(--text-3)">(${entries.length})</span>
+      </summary>
+      <div style="padding-left:4px">${rows}</div>
+    </details>`;
+  }).join('');
+  if (!inner.trim()) return '';
+  return `<div style="margin-bottom:14px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid var(--border)">${esc(title)}</div>
+    ${inner}
   </div>`;
 }
 

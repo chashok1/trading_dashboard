@@ -3812,6 +3812,11 @@ ADD COLUMN IF NOT EXISTS neg_multiplier NUMERIC NOT NULL DEFAULT 1.0;
 UPDATE ref_trig_atomic_rule SET neg_multiplier = 0.25
 WHERE rule_name = 'Current Volume Rule';
 
+-- source_column: table.column reference for the raw hist_* value this rule evaluates
+-- (e.g. hist_td.brr_pct). Multiple rules sharing the same raw value use the same ref.
+ALTER TABLE IF EXISTS ref_trig_atomic_rule
+ADD COLUMN IF NOT EXISTS source_column TEXT;
+
 
 
 -- -----------------------------------------------------

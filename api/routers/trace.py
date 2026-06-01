@@ -567,7 +567,7 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
 
         # 4. Atomic rules
         atomic_rules = s.execute(text("""
-            SELECT atomic_rule_id, rule_name, ma_column_name,
+            SELECT atomic_rule_id, rule_name, ma_column_name, source_column,
                    brkeout_from, brkeout_to, wt_below, wt_between, wt_above,
                    scoring_mode, category
             FROM ref_trig_atomic_rule WHERE deprecated_at IS NULL
@@ -684,9 +684,50 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                 "weight": weight, "fired": weight != 0,
                 "category": a.get("category"),
                 "rolls_into": sorted(set(rolls_into.get(rid, []))),
+                "source_column": a.get("source_column"),
+                "source_value": None,  # filled below
             })
 
         atomic_by_id = {a["id"]: a for a in atomics_out}
+
+        # 7b. Batch-fetch source_column values
+        _src_needed: dict = {}   # {tbl: set(cols)}
+        _src_idx: dict = {}      # {rule_id: (tbl, col)}
+        for a in atomics_out:
+            sc = a.get("source_column")
+            if sc and "." in sc:
+                tbl, col = sc.split(".", 1)
+                _src_needed.setdefault(tbl, set()).add(col)
+                _src_idx[a["id"]] = (tbl, col)
+
+        _src_vals: dict = {}     # {(tbl, col): value}
+        for tbl, cols in _src_needed.items():
+            is_hist = tbl.startswith("hist_")
+            sym_col  = "symbol"        if is_hist else "tos_symbol"
+            date_col = "snapshot_date" if is_hist else "as_of_date"
+            op       = "<="            if is_hist else "="
+            ord_cl   = f" ORDER BY {date_col} DESC LIMIT 1" if is_hist else " LIMIT 1"
+            col_expr = ", ".join(f'"{c}"' for c in sorted(cols))
+            sql = (f"SELECT {col_expr} FROM {tbl}"
+                   f" WHERE {sym_col}=:sym AND {date_col}{op}:d{ord_cl}")
+            if len(sql) > 960:
+                continue
+            try:
+                row = s.execute(text(sql), {"sym": sym_u, "d": snap}).mappings().first()
+                if row:
+                    for c, v in dict(row).items():
+                        _src_vals[(tbl, c)] = v
+            except Exception:
+                pass
+
+        for a in atomics_out:
+            tc = _src_idx.get(a["id"])
+            if tc:
+                v = _src_vals.get(tc)
+                try:
+                    a["source_value"] = float(v) if v is not None else None
+                except (TypeError, ValueError):
+                    a["source_value"] = str(v) if v is not None else None
 
         # 8. Evaluate composites with member detail
         composite_index: dict = {}
@@ -794,6 +835,56 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                 "fired": fired, "members": member_results,
             })
 
+        # 10a. Raw hist_* and drv_* values for side panels
+        def _ser(v):
+            if v is None: return None
+            if isinstance(v, bool): return v
+            if isinstance(v, int): return v
+            if isinstance(v, float): return v
+            if hasattr(v, 'isoformat'): return v.isoformat()
+            if isinstance(v, (list, dict)): return None
+            try: return float(v)
+            except Exception: pass
+            return str(v)
+
+        _META_SKIP = {
+            'snapshot_date', 'as_of_date', 'symbol', 'tos_symbol',
+            'loaded_at', 'computed_at', 'source_run_id', 'sequence', 'account',
+            'triggered_atomic_ids', 'triggered_composite_ids',
+            'triggered_group_ids', 'source_actions',
+        }
+
+        hist_raw: dict = {}
+        for _tbl in ('hist_td', 'hist_tw', 'hist_to', 'hist_tl', 'hist_y'):
+            try:
+                _row = s.execute(text(
+                    f"SELECT * FROM {_tbl}"
+                    f" WHERE symbol=:sym AND snapshot_date<=:d"
+                    f" ORDER BY snapshot_date DESC LIMIT 1"
+                ), {"sym": sym_u, "d": snap}).mappings().first()
+                hist_raw[_tbl] = {
+                    k: _ser(v) for k, v in (dict(_row) if _row else {}).items()
+                    if k not in _META_SKIP and v is not None
+                }
+            except Exception:
+                hist_raw[_tbl] = {}
+
+        drv_raw: dict = {}
+        for _tbl in ('drv_symbols', 'drv_technicals', 'drv_fundamentals',
+                     'drv_outlooks', 'drv_portfolio', 'drv_cat_atomic_input',
+                     'drv_dash', 'drv_actionable', 'drv_quote', 'drv_rr'):
+            try:
+                _row = s.execute(text(
+                    f"SELECT * FROM {_tbl}"
+                    f" WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1"
+                ), {"d": snap, "sym": sym_u}).mappings().first()
+                drv_raw[_tbl] = {
+                    k: _ser(v) for k, v in (dict(_row) if _row else {}).items()
+                    if k not in _META_SKIP and v is not None
+                }
+            except Exception:
+                drv_raw[_tbl] = {}
+
         # 10. Final output from drv_actionable + buysell scores
         act = s.execute(text("""
             SELECT consolidated_action, trig_action, winning_source, winning_priority,
@@ -829,6 +920,8 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
             "atomics":      atomics_out,
             "composites":   composites_out,
             "rule_groups":  rule_groups_out,
+            "hist_raw":     hist_raw,
+            "drv_raw":      drv_raw,
             "final": {
                 "consolidated_action": act["consolidated_action"] if act else None,
                 "trig_action":         act["trig_action"]         if act else None,

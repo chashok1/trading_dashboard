@@ -257,6 +257,7 @@ function renderAtomicTable() {
             <td>${r.rule_name || '—'}</td>
             <td>${r.category || '—'}</td>
             <td style="font-size: 12px; color: var(--text-2); font-family: monospace;">${r.ma_column_name || '—'}</td>
+            <td style="font-size: 11px; color: var(--text-2); font-family: monospace;">${r.source_column || '—'}</td>
             <td style="text-align: center;">${formatNum(r.brkeout_from)}</td>
             <td style="text-align: center;">${formatNum(r.brkeout_to)}</td>
             <td style="text-align: center;">${formatInt(r.wt_below)}</td>
@@ -490,6 +491,7 @@ function openNewModal(type) {
         document.getElementById('wtBelow').value = '';
         document.getElementById('wtBetween').value = '';
         document.getElementById('wtAbove').value = '';
+        document.getElementById('sourceColumn').value = '';
     } else {
         DOM.atomicSection.style.display = 'none';
         DOM.compositeSection.style.display = 'block';
@@ -562,6 +564,7 @@ function populateRuleForm(type, rule, isReadOnly) {
         wtBetweenField.value = rule.wt_between || '';
         wtAboveField.value = rule.wt_above || '';
         document.getElementById('negMultiplier').value = rule.neg_multiplier ?? 1.0;
+        document.getElementById('sourceColumn').value = rule.source_column || '';
 
         ruleNameField.readOnly = isReadOnly;
         maColumnNameField.readOnly = true; // Always read-only
@@ -572,6 +575,7 @@ function populateRuleForm(type, rule, isReadOnly) {
         wtBetweenField.readOnly = isReadOnly;
         wtAboveField.readOnly = isReadOnly;
         document.getElementById('negMultiplier').readOnly = isReadOnly;
+        document.getElementById('sourceColumn').readOnly = isReadOnly;
     } else {
         DOM.atomicSection.style.display = 'none';
         DOM.compositeSection.style.display = 'block';
@@ -640,6 +644,7 @@ async function saveRule() {
             wt_between: parseFloat(document.getElementById('wtBetween').value) || null,
             wt_above: parseFloat(document.getElementById('wtAbove').value) || null,
             neg_multiplier: parseFloat(document.getElementById('negMultiplier').value) || 1.0,
+            source_column: document.getElementById('sourceColumn').value || null,
         };
 
         const method = state.editingRule ? 'PUT' : 'POST';
@@ -659,6 +664,7 @@ async function saveRule() {
                     wt_between: data.wt_between,
                     wt_above: data.wt_above,
                     neg_multiplier: data.neg_multiplier,
+                    source_column: data.source_column,
                 } : data),
             });
 

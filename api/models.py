@@ -183,6 +183,7 @@ class AtomicRuleCreateRequest(BaseModel):
     category: Optional[str] = None
     intent_text: Optional[str] = None
     ma_column_name: Optional[str] = None
+    source_column: Optional[str] = None
     scoring_mode: str = 'jump'
     score_params: Optional[dict] = None
     brkeout_from: Optional[float] = None
@@ -205,6 +206,7 @@ class AtomicRuleUpdateRequest(BaseModel):
     wt_between: Optional[float] = None
     wt_above: Optional[float] = None
     neg_multiplier: Optional[float] = None
+    source_column: Optional[str] = None
 
 
 class CompositeRuleCreateRequest(BaseModel):
