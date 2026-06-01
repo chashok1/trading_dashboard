@@ -128,16 +128,12 @@ function renderIndicators(d) {
   };
 
   const rowsHtml = pairs.map(([ind, r]) => {
-    const dispVal = (r && r.source_value != null) ? r.source_value : ind.value;
-    const valStr  = dispVal != null ? fmt(dispVal) : '—';
-    const rawTag  = (r && r.source_column)
-      ? `<span title="${esc(r.source_column)}" style="font-size:9px;color:var(--text-3);margin-left:3px">raw</span>`
-      : '';
+    const valStr = ind.value != null ? fmt(ind.value) : '—';
     if (!r) {
       return `<tr style="opacity:.45">
         <td class="mono">${esc(ind.name)}</td>
         <td style="text-align:right;font-family:monospace;font-size:12px;font-weight:600">${valStr}</td>
-        <td colspan="6" style="font-size:11px;font-style:italic">no active rule</td>
+        <td colspan="8" style="font-size:11px;font-style:italic">no active rule</td>
       </tr>`;
     }
     const band  = r.band;
@@ -149,9 +145,14 @@ function renderIndicators(d) {
     const nameCell = r.fired
       ? `<td class="mono" style="box-shadow:inset 3px 0 0 #16a34a">${esc(ind.name)}</td>`
       : `<td class="mono">${esc(ind.name)}</td>`;
+    const srcLabel = r.source_column || '';
+    const srcVal   = _findSourceVal(srcLabel, d.hist_raw, d.drv_raw);
+    const srcValStr = srcVal != null ? fmt(srcVal) : '—';
     return `<tr ${rowStyle}>
       ${nameCell}
-      <td style="text-align:right;font-family:monospace;font-size:12px;font-weight:600">${valStr}${rawTag}</td>
+      <td style="text-align:right;font-family:monospace;font-size:12px;font-weight:600">${valStr}</td>
+      <td style="font-size:11px;color:var(--text-2);font-family:monospace">${esc(srcLabel) || '—'}</td>
+      <td style="text-align:right;font-family:monospace;font-size:12px;font-weight:${srcVal!=null?'600':'400'};color:${srcVal!=null?'var(--text-1)':'var(--text-3)'}">${srcValStr}</td>
       <td style="text-align:right;font-size:11px;color:var(--text-2)">${r.brkeout_from != null ? fmt(r.brkeout_from) : '—'}</td>
       <td style="text-align:right;font-size:11px;color:var(--text-2)">${r.brkeout_to   != null ? fmt(r.brkeout_to)   : '—'}</td>
       ${zoneCell(band === 'below',   r.wt_below,   'below')}
@@ -174,13 +175,14 @@ function renderIndicators(d) {
           <table class="rf-table" style="width:auto">
             <thead><tr>
               <th>Indicator</th><th style="text-align:right">Value</th>
+              <th>Source</th><th style="text-align:right">Src Val</th>
               <th style="text-align:right">lo</th><th style="text-align:right">hi</th>
               <th style="text-align:right">wt below</th>
               <th style="text-align:right">wt between</th>
               <th style="text-align:right">wt above</th>
               <th>Weight</th>
             </tr></thead>
-            <tbody>${rowsHtml || '<tr><td colspan="8" class="status-msg">No indicator data</td></tr>'}</tbody>
+            <tbody>${rowsHtml || '<tr><td colspan="10" class="status-msg">No indicator data</td></tr>'}</tbody>
           </table>
         </div>
         <div style="flex:1 1 0;min-width:220px;border-left:1px solid var(--border);padding:12px;max-height:480px;overflow-y:auto">
@@ -189,6 +191,28 @@ function renderIndicators(d) {
       </div>
     </div>
   </div>`;
+}
+
+// ── Source value lookup ───────────────────────────────────────────────────────
+// Searches hist_raw + drv_raw for a column matching the source_column label.
+// Normalises by lowercasing and stripping non-alphanumeric chars (% → pct).
+// Also tries stripping a leading 'a_' prefix that drv_ma uses (e.g. a_macd_brr).
+function _findSourceVal(label, histRaw, drvRaw) {
+  if (!label) return null;
+  const norm = s => s.toLowerCase().replace(/%/g, 'pct').replace(/[^a-z0-9]/g, '');
+  const nl = norm(label);
+  if (!nl) return null;
+  for (const map of [drvRaw || {}, histRaw || {}]) {
+    for (const cols of Object.values(map)) {
+      for (const [k, v] of Object.entries(cols || {})) {
+        if (v == null) continue;
+        const nk = norm(k);
+        if (nk === nl) return v;
+        if (nk.startsWith('a') && nk.slice(1) === nl) return v;
+      }
+    }
+  }
+  return null;
 }
 
 // ── Raw side panels (hist_raw + drv_raw) ──────────────────────────────────────
