@@ -661,7 +661,7 @@ COLUMN_SPECS_PASS1 = [
     # NK/NL/NM -- Current Price/Volume/Volatility SD Rules — strict >.
     ("current_price_sd_rule", "zero_guard_trig_ifs",
         "_NK_input", "Current Price Rule",
-        {"guards": ("AD",), "strict": True}),                                   # NK
+        {"guards": ("AC",), "strict": True}),                                   # NK
     # NL Current Volume Rule -- input GB.  Asymmetric -1/4 mult on negative side
     # not yet supported by eval_atomic_rule; using standard trig_ifs (good
     # enough for most cases; precise behaviour documented in § Caveats).
@@ -1023,7 +1023,7 @@ def eval_specs(row: dict, specs: list, trig_rules: dict, out: dict) -> dict:
                 val = row.get(src) if src in row else out.get(src)
                 if src == "_NK_input":
                     H = _f(row.get("net_chng"))
-                    AD = _f(row.get("AD"))
+                    AD = _f(row.get("AC"))      # AC = MIN(median_sd, std_dev) — raw SD, not price-normalized
                     val = _safe_div(H, AD)
                 out[db_col] = _eval_trig_ifs(val, trig_rules.get(rule_name),
                                               strict=strict)
