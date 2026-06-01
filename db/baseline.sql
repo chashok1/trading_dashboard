@@ -3802,6 +3802,17 @@ ALTER TABLE IF EXISTS drv_actionable
 ADD COLUMN IF NOT EXISTS trig_action TEXT;
 
 
+-- neg_multiplier: scales the negative-side zone thresholds in _eval_trig_ifs.
+-- Default 1.0 = symmetric (negative side mirrors positive). Set to 0.25 for
+-- Current Volume Rule (Excel uses 1/4 of positive thresholds on negative side).
+
+ALTER TABLE IF EXISTS ref_trig_atomic_rule
+ADD COLUMN IF NOT EXISTS neg_multiplier NUMERIC NOT NULL DEFAULT 1.0;
+
+UPDATE ref_trig_atomic_rule SET neg_multiplier = 0.25
+WHERE rule_name = 'Current Volume Rule';
+
+
 
 -- -----------------------------------------------------
 

@@ -635,30 +635,27 @@ COLUMN_SPECS_PASS1 = [
                       < (_f(r.get("sma_200")) or 0)
                       and (_f(r.get("last_price")) or 0) > (_f(r.get("sma_200")) or 0)) else 0.0))
         ))),                                                                    # ND
-    # NA/NB BRRTrade/TRRTrade -> composite (uses DX/DY/AF/AC)
+    # NA/NB BRRTrade/TRRTrade -> composite (uses derived EC/ED with DU/DV fallback, AF, AC)
+    # EC = derived BRR bottom (DX=lrr, fallback DU=bb_bot_prev); ED = derived TRR top.
+    # Threshold: within 0.5 SD of the trade line (a_trade_value / AF).
     ("brrtrade",            "composite", None, None,
         (lambda r,o: 1.0 if (
-            r.get("buy_trade") is not None and r.get("a_trade_value") is not None
+            r.get("EC") is not None and r.get("a_trade_value") is not None
             and r.get("AC") and r.get("AC") != 0
-            and abs(float(r["buy_trade"]) - float(r["a_trade_value"]))
-                <= float(r["AC"]) * 0.05       # 5% of SD — tighter than 0.5
+            and abs(float(r["EC"]) - float(r["a_trade_value"]))
+                <= float(r["AC"]) * 0.5
         ) else 0.0)),                                                          # NA
     ("trrtrade",            "composite", None, None,
         (lambda r,o: -1.0 if (
-            r.get("sell_trade") is not None and r.get("a_trade_value") is not None
+            r.get("ED") is not None and r.get("a_trade_value") is not None
             and r.get("AC") and r.get("AC") != 0
-            and abs(float(r["sell_trade"]) - float(r["a_trade_value"]))
+            and abs(float(r["ED"]) - float(r["a_trade_value"]))
                 <= float(r["AC"]) * 0.5
         ) else 0.0)),                                                          # NB
     # NC/ND Up/Down Resistance -> composite (needs EH/EI/AC/CG/CH/BA)
-    # NE Earnings -- strict > in Excel. NULL (no earnings, e.g. ETFs) → wa=1 (far from earnings)
-    # Earnings Days zone=[5,10] wts=(-3,-2,1) strict=True
-    ("earnings",            "composite", None, None,
-        lambda r, o: (lambda v:
-            1.0 if v > 10 else -2.0 if v > 5 else -3.0 if v >= 0
-            else 1.0 if v < -10 else 2.0 if v < -5 else 3.0
-        )(_f(r.get("a_earnings_days")))
-        if r.get("a_earnings_days") is not None else 1.0),                     # NE
+    # NE Earnings -- strict > in Excel. NULL when source has no earnings (ETFs) → stored as NULL.
+    ("earnings",            "trig_ifs", "a_earnings_days", "Earnings Days",
+        {"strict": True}),                                                      # NE
     # NF/NG/NH/NI -- VS rules use strict >.
     ("vs_price",            "zero_guard_trig_ifs", "FK", "VS Price Rule",
         {"guards": ("a_volume_spike", "FK"), "strict": True}),                  # NF
@@ -672,14 +669,10 @@ COLUMN_SPECS_PASS1 = [
     ("current_price_sd_rule", "zero_guard_trig_ifs",
         "_NK_input", "Current Price Rule",
         {"guards": ("AC",), "strict": True}),                                   # NK
-    # NL Current Volume Rule — asymmetric zone: positive side [100,200], negative side [25,50]
-    # (Excel uses 1/4 of positive thresholds for the negative side).
-    # GB > 200 → 3; GB > 100 → 2; GB >= 0 → 1; GB < -50 → -3; GB < -25 → -2; GB < 0 → -1
-    ("current_volume_rule", "composite", None, None,
-        lambda r, o: (lambda g:
-            3.0 if g > 200 else 2.0 if g > 100 else 1.0 if g >= 0
-            else -3.0 if g < -50 else -2.0 if g < -25 else -1.0
-        )(_f(r.get("GB"))) if _f(r.get("GB")) is not None else 0.0),          # NL
+    # NL Current Volume Rule — strict >. neg_multiplier=0.25 in ref_trig_atomic_rule
+    # makes the negative zone thresholds 1/4 of the positive ([-50,-25] vs [100,200]).
+    ("current_volume_rule", "trig_ifs", "GB", "Current Volume Rule",
+        {"strict": True}),                                                      # NL
     ("current_volatility_rule", "trig_ifs", "imp_volatility",
         "Current Volatility Rule", {"strict": True}),                           # NM
     # NN/NO -> composite (Pass-2)
@@ -920,7 +913,7 @@ def load_trig_rules(session: Session) -> dict:
     rows = session.execute(text("""
         SELECT rule_name, brkeout_from, brkeout_to,
                wt_below, wt_between, wt_above,
-               scoring_mode, score_params
+               scoring_mode, score_params, neg_multiplier
         FROM ref_trig_atomic_rule
         WHERE deprecated_at IS NULL AND rule_name IS NOT NULL
     """)).mappings().all()
@@ -964,21 +957,26 @@ def _eval_trig_ifs(value, rule: Optional[dict], *,
     hi = _f(rule.get("brkeout_to")) or 0.0
     wb_ = _f(rule.get("wt_below")) or 0.0
     wbt = _f(rule.get("wt_between")) or 0.0
-    wa = _f(rule.get("wt_above")) or 0.0
+    wa  = _f(rule.get("wt_above")) or 0.0
+    # neg_multiplier scales negative-side thresholds (default 1.0 = symmetric).
+    # e.g. Current Volume Rule uses 0.25: negative zone is 1/4 of positive zone.
+    nm = float(rule.get("neg_multiplier") or 1.0)
+    nhi = hi * nm
+    nlo = lo * nm
     if strict:
-        if v >  hi:  return wa
-        if v >  lo:  return wbt
-        if v >= 0:   return wb_
-        if v <  -hi: return -wa
-        if v <  -lo: return -wbt
-        if v <  0:   return -wb_
+        if v >   hi:  return wa
+        if v >   lo:  return wbt
+        if v >= 0:    return wb_
+        if v <  -nhi: return -wa
+        if v <  -nlo: return -wbt
+        if v <  0:    return -wb_
     else:
-        if v >= hi:  return wa
-        if v >= lo:  return wbt
-        if v >= 0:   return wb_
-        if v <= -hi: return -wa
-        if v <= -lo: return -wbt
-        if v <  0:   return -wb_
+        if v >= hi:   return wa
+        if v >= lo:   return wbt
+        if v >= 0:    return wb_
+        if v <= -nhi: return -wa
+        if v <= -nlo: return -wbt
+        if v <  0:    return -wb_
     return 0.0
 
 

@@ -561,6 +561,7 @@ function populateRuleForm(type, rule, isReadOnly) {
         wtBelowField.value = rule.wt_below || '';
         wtBetweenField.value = rule.wt_between || '';
         wtAboveField.value = rule.wt_above || '';
+        document.getElementById('negMultiplier').value = rule.neg_multiplier ?? 1.0;
 
         ruleNameField.readOnly = isReadOnly;
         maColumnNameField.readOnly = true; // Always read-only
@@ -570,6 +571,7 @@ function populateRuleForm(type, rule, isReadOnly) {
         wtBelowField.readOnly = isReadOnly;
         wtBetweenField.readOnly = isReadOnly;
         wtAboveField.readOnly = isReadOnly;
+        document.getElementById('negMultiplier').readOnly = isReadOnly;
     } else {
         DOM.atomicSection.style.display = 'none';
         DOM.compositeSection.style.display = 'block';
@@ -637,6 +639,7 @@ async function saveRule() {
             wt_below: parseFloat(document.getElementById('wtBelow').value) || null,
             wt_between: parseFloat(document.getElementById('wtBetween').value) || null,
             wt_above: parseFloat(document.getElementById('wtAbove').value) || null,
+            neg_multiplier: parseFloat(document.getElementById('negMultiplier').value) || 1.0,
         };
 
         const method = state.editingRule ? 'PUT' : 'POST';
@@ -655,6 +658,7 @@ async function saveRule() {
                     wt_below: data.wt_below,
                     wt_between: data.wt_between,
                     wt_above: data.wt_above,
+                    neg_multiplier: data.neg_multiplier,
                 } : data),
             });
 

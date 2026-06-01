@@ -32,7 +32,7 @@ def list_atomic_rules(
     """List atomic rules with optional filtering."""
     with session_scope() as s:
         sql = """SELECT atomic_rule_id, rule_name, brkeout_from, brkeout_to,
-                        wt_below, wt_between, wt_above, ma_column_name,
+                        wt_below, wt_between, wt_above, neg_multiplier, ma_column_name,
                         category, intent_text, scoring_mode, score_params, deprecated_at
                  FROM ref_trig_atomic_rule WHERE deprecated_at IS NULL"""
         params = {}
@@ -379,11 +379,11 @@ def create_atomic_rule(body: AtomicRuleCreateRequest):
             INSERT INTO ref_trig_atomic_rule
               (atomic_rule_id, rule_name, category, intent_text, ma_column_name,
                scoring_mode, score_params, brkeout_from, brkeout_to,
-               wt_below, wt_between, wt_above)
+               wt_below, wt_between, wt_above, neg_multiplier)
             VALUES
               (:rid, :rname, :cat, :intent, :macol,
                :mode, :params::jsonb, :bf, :bt,
-               :wb, :wbt, :wa)
+               :wb, :wbt, :wa, :nm)
         """), {
             "rid": body.rule_id, "rname": body.rule_name, "cat": body.category,
             "intent": body.intent_text, "macol": body.ma_column_name,
@@ -391,6 +391,7 @@ def create_atomic_rule(body: AtomicRuleCreateRequest):
             "params": json.dumps(body.score_params) if body.score_params else None,
             "bf": body.brkeout_from, "bt": body.brkeout_to,
             "wb": body.wt_below, "wbt": body.wt_between, "wa": body.wt_above,
+            "nm": body.neg_multiplier,
         })
         s.commit()
     return {"ok": True, "rule_id": body.rule_id}
@@ -450,7 +451,7 @@ def atomic_rule_dryrun(rule_id: str, body: dict):
         current = s.execute(text("""
             SELECT atomic_rule_id, rule_name, ma_column_name,
                    brkeout_from, brkeout_to, wt_below, wt_between, wt_above,
-                   scoring_mode, score_params
+                   neg_multiplier, scoring_mode, score_params
             FROM ref_trig_atomic_rule
             WHERE atomic_rule_id = :rid AND deprecated_at IS NULL
         """), {"rid": rule_id}).mappings().first()

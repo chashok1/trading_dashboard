@@ -154,10 +154,23 @@ def refresh_trig(wb, source_file) -> dict[str, int]:
     """
     counts: dict[str, int] = {}
     with session_scope() as s:
+        # Preserve non-default neg_multiplier values before wipe (workbook has no column for this)
+        neg_mults = {
+            r[0]: float(r[1])
+            for r in s.execute(text(
+                "SELECT rule_name, neg_multiplier FROM ref_trig_atomic_rule "
+                "WHERE neg_multiplier IS DISTINCT FROM 1.0"
+            )).fetchall()
+        }
         # Composite mapping has FK to atomic_rule -> wipe child first
         s.execute(text("DELETE FROM ref_trig_composite_mapping"))
         s.execute(text("DELETE FROM ref_trig_atomic_rule"))
         load_trig_rules(s, wb)
+        # Restore non-default neg_multiplier values after rebuild
+        for rule_name, nm in neg_mults.items():
+            s.execute(text(
+                "UPDATE ref_trig_atomic_rule SET neg_multiplier=:nm WHERE rule_name=:n"
+            ), {"nm": nm, "n": rule_name})
         for tbl in ("ref_trig_atomic_rule", "ref_trig_composite_mapping"):
             n = s.execute(text(f"SELECT COUNT(*) FROM {tbl}")).scalar()
             counts[tbl] = int(n or 0)

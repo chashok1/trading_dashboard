@@ -190,6 +190,7 @@ class AtomicRuleCreateRequest(BaseModel):
     wt_below: Optional[float] = None
     wt_between: Optional[float] = None
     wt_above: Optional[float] = None
+    neg_multiplier: float = 1.0
 
 
 class AtomicRuleUpdateRequest(BaseModel):
@@ -203,6 +204,7 @@ class AtomicRuleUpdateRequest(BaseModel):
     wt_below: Optional[float] = None
     wt_between: Optional[float] = None
     wt_above: Optional[float] = None
+    neg_multiplier: Optional[float] = None
 
 
 class CompositeRuleCreateRequest(BaseModel):
