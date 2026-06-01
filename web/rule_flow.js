@@ -133,7 +133,7 @@ function renderIndicators(d) {
       return `<tr style="opacity:.45">
         <td class="mono">${esc(ind.name)}</td>
         <td style="text-align:right;font-family:monospace;font-size:12px;font-weight:600">${valStr}</td>
-        <td colspan="7" style="font-size:11px;font-style:italic">no active rule</td>
+        <td colspan="6" style="font-size:11px;font-style:italic">no active rule</td>
       </tr>`;
     }
     const band  = r.band;
@@ -148,7 +148,6 @@ function renderIndicators(d) {
     return `<tr ${rowStyle}>
       ${nameCell}
       <td style="text-align:right;font-family:monospace;font-size:12px;font-weight:600">${valStr}</td>
-      <td style="font-size:11px;color:var(--text-2)">${esc(r.rule_name || '')}</td>
       <td style="text-align:right;font-size:11px;color:var(--text-2)">${r.brkeout_from != null ? fmt(r.brkeout_from) : '—'}</td>
       <td style="text-align:right;font-size:11px;color:var(--text-2)">${r.brkeout_to   != null ? fmt(r.brkeout_to)   : '—'}</td>
       ${zoneCell(band === 'below',   r.wt_below,   'below')}
@@ -167,9 +166,9 @@ function renderIndicators(d) {
     </div>
     <div class="tier-body">
       <div style="overflow-x:auto;max-height:420px;overflow-y:auto">
-        <table class="rf-table">
+        <table class="rf-table" style="width:auto">
           <thead><tr>
-            <th>Indicator</th><th style="text-align:right">Value</th><th>Rule</th>
+            <th>Indicator</th><th style="text-align:right">Value</th>
             <th style="text-align:right">lo</th><th style="text-align:right">hi</th>
             <th style="text-align:right">wt below</th>
             <th style="text-align:right">wt between</th>
