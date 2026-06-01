@@ -193,17 +193,23 @@ function renderIndicators(d) {
 
 // ── Raw side panels (hist_raw + drv_raw) ──────────────────────────────────────
 
+const _HIST_SKIP_COLS = new Set(['source_file','source','file_name','file_path','description']);
+const _DRV_SKIP_COLS  = new Set(['description']);
+
 function renderRawPanels(d) {
-  const histSections = _rawSection(d.hist_raw || {}, 'Source Data (TO · TW · TD · TL · Y)');
-  const drvSections  = _rawSection(d.drv_raw  || {}, 'Derived Tables');
-  return histSections + drvSections;
+  const histHtml = _rawSection(d.hist_raw || {}, 'Source Data (TL · TD · TW · TO · Y)', _HIST_SKIP_COLS);
+  const drvHtml  = _rawSection(d.drv_raw  || {}, 'Derived Tables', _DRV_SKIP_COLS);
+  return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
+    <div>${histHtml}</div>
+    <div>${drvHtml}</div>
+  </div>`;
 }
 
-function _rawSection(tableMap, title) {
+function _rawSection(tableMap, title, skipCols) {
   const tables = Object.entries(tableMap);
   if (!tables.length) return '';
   const inner = tables.map(([tbl, cols]) => {
-    const entries = Object.entries(cols || {});
+    const entries = Object.entries(cols || {}).filter(([k]) => !skipCols || !skipCols.has(k));
     if (!entries.length) return '';
     const rows = entries.map(([k, v]) => {
       const vs = v != null ? String(v) : '—';
