@@ -93,6 +93,13 @@ dq AS (
     FROM drv_quote WHERE as_of_date <= (SELECT d FROM p)
     ORDER BY tos_symbol, as_of_date DESC
 ),
+tl AS (
+    -- Current day volume from TOSL — used as wv for GB (Current Volume Rule).
+    -- Reflects today's actual trading volume vs the 3M weekly average from TOSW.
+    SELECT DISTINCT ON (tos_symbol) tos_symbol, volume AS tl_volume
+    FROM hist_tl WHERE snapshot_date = (SELECT d FROM p)
+    ORDER BY tos_symbol, loaded_at DESC
+),
 rr AS (
     SELECT tos_symbol, lrr AS buy_trade, trr AS sell_trade
     FROM drv_rr WHERE as_of_date = (SELECT d FROM p)
@@ -114,6 +121,8 @@ SELECT s.s AS tos_symbol,
        tw.a_volume_spike, tw.volume, tw.volume_avg_3m, tw.volume_rate_change,
        tw.a_earnings_days, tw.high_52, tw.low_52,
        med.median_sd,
+       -- hist_tl current volume (for GB = Current Volume Rule numerator)
+       tl.tl_volume,
        -- drv_quote
        dq.last_price, dq.net_chng, dq.pct_change,
        dq.high_price AS high_today, dq.low_price AS low_today,
@@ -124,6 +133,7 @@ LEFT JOIN td  ON td.tos_symbol  = s.s
 LEFT JOIN td_prior ON td_prior.tos_symbol = s.s
 LEFT JOIN tw  ON tw.tos_symbol  = s.s
 LEFT JOIN med ON med.tos_symbol = s.s
+LEFT JOIN tl  ON tl.tos_symbol  = s.s
 LEFT JOIN dq  ON dq.tos_symbol  = s.s
 LEFT JOIN rr  ON rr.tos_symbol  = s.s
 """
@@ -405,9 +415,11 @@ def compute_intermediates(row: dict) -> dict:
     DT_  = _f(row.get("imp_volatility"))
     CV_  = _f(row.get("historical_vol"))
     FR = 0.0 if (not DT_ or not CV_) else (DT_ * 100.0 / CV_)
-    # GB Vlm 3m % = GA * 100, where GA = (W_Vlm - VolumeAvg3m) / VolumeAvg3m.
-    # W_Vlm = current week's volume = hist_tw.volume; VolumeAvg3m = volume_avg_3m.
-    wv = _f(row.get("volume"))
+    # GB Vlm 3m % = (current_volume - VolumeAvg3m) / VolumeAvg3m * 100.
+    # Use today's TOSL volume (tl_volume) as the numerator — it reflects actual
+    # current-day trading vs the 3-month weekly average from TOSW.
+    # Falls back to hist_tw.volume when TOSL has no data for the symbol.
+    wv = _f(row.get("tl_volume")) or _f(row.get("volume"))
     av3 = _f(row.get("volume_avg_3m"))
     if wv is not None and av3 and av3 != 0:
         GB = ((wv - av3) / av3) * 100.0
