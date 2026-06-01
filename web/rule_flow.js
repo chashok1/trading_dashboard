@@ -103,9 +103,61 @@ function render(d) {
 
 function renderIndicators(d) {
   const inds = (d.indicators || []).sort((a,b) => a.name.localeCompare(b.name));
-  const items = inds.map(i =>
-    `<div class="ind-item"><span class="ind-name">${esc(i.name)}</span><span class="ind-val">${fmt(i.value)}</span></div>`
-  ).join('');
+
+  // column_name → [atomic rules that read this column]
+  const atomicByCol = {};
+  (d.atomics || []).forEach(a => {
+    const col = (a.ma_column || '').split('.').pop();
+    if (col) (atomicByCol[col] = atomicByCol[col] || []).push(a);
+  });
+
+  // expand: one row per (indicator × rule); indicators with no rule get one row
+  const pairs = [];
+  inds.forEach(ind => {
+    const rules = atomicByCol[ind.name] || [];
+    if (!rules.length) pairs.push([ind, null]);
+    else rules.forEach(r => pairs.push([ind, r]));
+  });
+
+  const zoneCell = (active, wt, label) => {
+    const s = wt != null ? fmt(wt, 0) : '—';
+    if (!active) return `<td style="text-align:right;color:var(--text-3);font-size:12px">${s}</td>`;
+    const bg = wt > 0 ? '#dcfce7' : wt < 0 ? '#fee2e2' : '#f0f0ee';
+    const fg = wt > 0 ? '#166534' : wt < 0 ? '#991b1b' : '#555';
+    return `<td style="text-align:right;background:${bg};color:${fg};font-weight:700;font-size:12px">${s}&thinsp;<span class="badge-band band-${label}" style="font-size:9px">${label}</span></td>`;
+  };
+
+  const rowsHtml = pairs.map(([ind, r]) => {
+    const valStr = ind.value != null ? fmt(ind.value) : '—';
+    if (!r) {
+      return `<tr style="opacity:.45">
+        <td class="mono">${esc(ind.name)}</td>
+        <td style="text-align:right;font-family:monospace;font-size:12px;font-weight:600">${valStr}</td>
+        <td colspan="7" style="font-size:11px;font-style:italic">no active rule</td>
+      </tr>`;
+    }
+    const band  = r.band;
+    const wVal  = r.weight || 0;
+    const wBg   = wVal > 0 ? '#dcfce7' : wVal < 0 ? '#fee2e2' : '#f5f5f3';
+    const wFg   = wVal > 0 ? '#166534' : wVal < 0 ? '#991b1b' : '#6b7280';
+    const wBadge = `<span style="display:inline-block;min-width:32px;text-align:right;font-family:monospace;font-size:12px;font-weight:600;padding:2px 6px;border-radius:4px;background:${wBg};color:${wFg}">${wVal > 0 ? '+' : ''}${wVal}</span>`;
+    const rowStyle = r.fired ? 'style="background:#f8fff3"' : '';
+    const nameCell = r.fired
+      ? `<td class="mono" style="box-shadow:inset 3px 0 0 #16a34a">${esc(ind.name)}</td>`
+      : `<td class="mono">${esc(ind.name)}</td>`;
+    return `<tr ${rowStyle}>
+      ${nameCell}
+      <td style="text-align:right;font-family:monospace;font-size:12px;font-weight:600">${valStr}</td>
+      <td style="font-size:11px;color:var(--text-2)">${esc(r.rule_name || '')}</td>
+      <td style="text-align:right;font-size:11px;color:var(--text-2)">${r.brkeout_from != null ? fmt(r.brkeout_from) : '—'}</td>
+      <td style="text-align:right;font-size:11px;color:var(--text-2)">${r.brkeout_to   != null ? fmt(r.brkeout_to)   : '—'}</td>
+      ${zoneCell(band === 'below',   r.wt_below,   'below')}
+      ${zoneCell(band === 'between', r.wt_between, 'between')}
+      ${zoneCell(band === 'above',   r.wt_above,   'above')}
+      <td>${wBadge}</td>
+    </tr>`;
+  }).join('');
+
   return `
   <div class="tier open" id="tier-ind">
     <div class="tier-hdr" onclick="toggleTier('tier-ind')">
@@ -114,7 +166,19 @@ function renderIndicators(d) {
       <span class="tier-toggle">▾</span>
     </div>
     <div class="tier-body">
-      <div class="ind-grid">${items || '<span class="status-msg">No indicator data</span>'}</div>
+      <div style="overflow-x:auto;max-height:420px;overflow-y:auto">
+        <table class="rf-table">
+          <thead><tr>
+            <th>Indicator</th><th style="text-align:right">Value</th><th>Rule</th>
+            <th style="text-align:right">lo</th><th style="text-align:right">hi</th>
+            <th style="text-align:right">wt below</th>
+            <th style="text-align:right">wt between</th>
+            <th style="text-align:right">wt above</th>
+            <th>Weight</th>
+          </tr></thead>
+          <tbody>${rowsHtml || '<tr><td colspan="9" class="status-msg">No indicator data</td></tr>'}</tbody>
+        </table>
+      </div>
     </div>
   </div>`;
 }
