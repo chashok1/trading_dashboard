@@ -689,8 +689,8 @@ COLUMN_SPECS_PASS1 = [
     # makes the negative zone thresholds 1/4 of the positive ([-50,-25] vs [100,200]).
     ("current_volume_rule", "trig_ifs", "GB", "Current Volume Rule",
         {"strict": True}),                                                      # NL
-    ("current_volatility_rule", "trig_ifs", "imp_volatility",
-        "Current Volatility Rule", {"strict": True}),                           # NM
+    ("current_volatility_rule", "zero_guard_trig_ifs", "imp_volatility",
+        "Current Volatility Rule", {"guards": ("imp_volatility",), "strict": True}),  # NM (NULL IV → 0)
     # NN/NO -> composite (Pass-2)
     # ---- QE/QJ/QM/QN/QR computed by _derive_trend_trade_rules_impl ----
     # QH/QI raw slope mirrors
