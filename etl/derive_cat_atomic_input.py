@@ -58,7 +58,8 @@ td AS (
            a_bb_top_slope, a_bb_bot_slope,
            historical_vol,
            high_price AS td_high,   -- EK: prior session high for MAX(EH,EK) in EO/EP
-           low_price  AS td_low     -- EL: prior session low  for MAX(EI,EL) in EP
+           low_price  AS td_low,    -- EL: prior session low  for MIN(EI,EL) in EP
+           rsi        AS td_rsi     -- closing RSI from TOSD (preferred over intraday TOSL RSI)
     FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
     ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
@@ -112,7 +113,7 @@ SELECT s.s AS tos_symbol,
        td.a_bb_streak, td.a_bb_high_low, td.a_bb_high_low_days,
        td.a_iv_percentile, td.a_hv_percentile,
        td.a_bb_top_slope, td.a_bb_bot_slope,
-       td.historical_vol, td.td_high, td.td_low,
+       td.historical_vol, td.td_high, td.td_low, td.td_rsi,
        dq.imp_volatility, dq.rsi,
        -- derived prior BB values (for EC/ED fallback)
        td_prior.bb_bot_prev, td_prior.bb_top_prev,
