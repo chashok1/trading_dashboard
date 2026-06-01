@@ -2526,32 +2526,38 @@ def eval_atomic_rule(value, rule):
     except (TypeError, ValueError):
         return 0.0
 
+    lo_val = rule.get('brkeout_from')
+    hi_val = rule.get('brkeout_to')
+    wb     = rule.get('wt_below')
+    wbt    = rule.get('wt_between')
+    wa     = rule.get('wt_above')
+
+    # Pass-through: no thresholds or weights configured — column value IS the score.
+    # Applies to direction/flag indicators pre-computed on a -3..3 scale.
+    if lo_val is None and hi_val is None and wb is None and wbt is None and wa is None:
+        return v
+
     try:
-        lo_val = rule.get('brkeout_from')
         lo = float(lo_val) if lo_val is not None else 0.0
     except (TypeError, ValueError):
         lo = 0.0
 
     try:
-        hi_val = rule.get('brkeout_to')
         hi = float(hi_val) if hi_val is not None else 100.0
     except (TypeError, ValueError):
         hi = 100.0
 
     try:
-        wb = rule.get('wt_below')
         wt_below = float(wb) if wb is not None else 0.0
     except (TypeError, ValueError):
         wt_below = 0.0
 
     try:
-        wbt = rule.get('wt_between')
         wt_between = float(wbt) if wbt is not None else 0.0
     except (TypeError, ValueError):
         wt_between = 0.0
 
     try:
-        wa = rule.get('wt_above')
         wt_above = float(wa) if wa is not None else 0.0
     except (TypeError, ValueError):
         wt_above = 0.0
