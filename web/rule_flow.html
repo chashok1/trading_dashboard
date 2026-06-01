@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/static/styles.css">
   <style>
     /* ── Layout ── */
-    .rf-wrap { max-width: 1400px; margin: 0 auto; padding: 12px 16px; }
+    .rf-wrap { width: 100%; padding: 12px 16px; box-sizing: border-box; }
 
     /* ── Symbol bar ── */
     .rf-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap;
@@ -162,10 +162,15 @@
     <a href="/rule-performance" class="nav-item">Performance</a>
     <a href="/trace" class="nav-item">Trace</a>
     <a href="/rule-flow" class="nav-item active">Rule Flow</a>
+    <a href="/trig" class="nav-item">Trig</a>
     <a href="/ref" class="nav-item">Ref Data</a>
     <a href="/explore" class="nav-item">DB Data</a>
+    <a href="/dbstats" class="nav-item">DB Stats</a>
     <a href="/file-monitor" class="nav-item">File Monitor</a>
   </nav>
+  <div class="controls">
+    <span id="apiStatus" class="badge badge-ok" title="API health">●</span>
+  </div>
 </header>
 
 <div class="rf-wrap">
@@ -183,7 +188,9 @@
 
 </div>
 
+<script src="/static/_common.js"></script>
 <script src="/static/rule_flow.js"></script>
+<script src="/static/warning_badge.js"></script>
 <script>
   // Default date to today
   document.getElementById('dateInput').value = new Date().toISOString().slice(0,10);

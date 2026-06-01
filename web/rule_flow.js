@@ -15,6 +15,10 @@ function firedBadge(n, total) {
   const cls = n > 0 ? 'badge-ok' : 'badge-none';
   return `<span class="tier-badge ${cls}">${n} / ${total} fired</span>`;
 }
+function dot(fired, blocked) {
+  const bg = blocked ? '#f59e0b' : fired ? 'var(--bull)' : 'var(--border)';
+  return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${bg};vertical-align:middle;flex-shrink:0"></span>`;
+}
 function actionColor(a) {
   if (!a) return 'val-null';
   const m = {'SA':'val-sa','STM':'val-stm','SS':'val-ss','SW':'val-ss',
@@ -105,7 +109,6 @@ function renderIndicators(d) {
   return `
   <div class="tier open" id="tier-ind">
     <div class="tier-hdr" onclick="toggleTier('tier-ind')">
-      <span class="tier-icon">📊</span>
       <span class="tier-title">Tier 1 — Indicator Values <small style="font-weight:400;color:var(--text-2)">(drv_cat_atomic_input)</small></span>
       <span class="tier-badge badge-ok">${inds.length} columns</span>
       <span class="tier-toggle">▾</span>
@@ -125,28 +128,27 @@ function renderAtomics(d) {
   return `
   <div class="tier open" id="tier-atomic">
     <div class="tier-hdr" onclick="toggleTier('tier-atomic')">
-      <span class="tier-icon">⚡</span>
       <span class="tier-title">Tier 2 — Atomic Rules</span>
       ${firedBadge(sm.n_atomic_fired, sm.n_atomic_total)}
       <span class="tier-toggle">▾</span>
     </div>
     <div class="tier-body">
       <div class="rf-filter">
-        <input id="atomicQ" type="text" placeholder="Search rule name…" oninput="filterAtomics('${esc(d.as_of)}','${esc(d.tos_symbol)}')">
-        <select id="atomicCat" onchange="filterAtomics('${esc(d.as_of)}','${esc(d.tos_symbol)}')">
+        <input id="atomicQ" type="text" placeholder="Search rule name…" oninput="filterAtomics()">
+        <select id="atomicCat" onchange="filterAtomics()">
           <option value="">All categories</option>
           ${[...new Set((d.atomics||[]).map(a=>a.category).filter(Boolean))].sort()
               .map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}
         </select>
-        <label><input type="checkbox" id="atomicFired" onchange="filterAtomics('${esc(d.as_of)}','${esc(d.tos_symbol)}')"> Fired only</label>
-        <label><input type="checkbox" id="atomicIssues" onchange="filterAtomics('${esc(d.as_of)}','${esc(d.tos_symbol)}')"> Issues only</label>
+        <label><input type="checkbox" id="atomicFired" onchange="filterAtomics()"> Fired only</label>
+        <label><input type="checkbox" id="atomicIssues" onchange="filterAtomics()"> Issues only</label>
       </div>
       <div id="atomicTableWrap">${buildAtomicTable(d.atomics || [])}</div>
     </div>
   </div>`;
 }
 
-function filterAtomics(date, sym) {
+function filterAtomics() {
   const q      = document.getElementById('atomicQ').value.toLowerCase();
   const cat    = document.getElementById('atomicCat').value;
   const fired  = document.getElementById('atomicFired').checked;
@@ -208,7 +210,6 @@ function renderComposites(d) {
   return `
   <div class="tier open" id="tier-comp">
     <div class="tier-hdr" onclick="toggleTier('tier-comp')">
-      <span class="tier-icon">🔗</span>
       <span class="tier-title">Tier 3 — Composite Rules</span>
       ${firedBadge(sm.n_composite_fired, sm.n_composite_total)}
       <span class="tier-toggle">▾</span>
@@ -272,7 +273,7 @@ function buildCompItem(c) {
   }).join('');
 
   const pre = c.precondition_blocked
-    ? `<div style="font-size:11px;color:#b45309;padding:4px 0">⚠ Precondition blocked: <code>${esc(c.precondition||'')}</code></div>`
+    ? `<div style="font-size:11px;color:#b45309;padding:4px 0">Precondition blocked: <code>${esc(c.precondition||'')}</code></div>`
     : c.precondition
       ? `<div style="font-size:11px;color:var(--text-2);padding:4px 0">Precondition: <code>${esc(c.precondition)}</code></div>`
       : '';
@@ -280,7 +281,7 @@ function buildCompItem(c) {
   return `
   <div class="comp-item ${edgeCls}" id="${id}">
     <div class="comp-hdr" onclick="toggleComp('${id}')">
-      <span style="font-size:14px">${c.fired ? '🟢' : c.precondition_blocked ? '🟡' : '⚪'}</span>
+      ${dot(c.fired, c.precondition_blocked)}
       <span class="comp-code">${esc(c.code||'')}</span>
       <span class="comp-score">score ${fmt(c.score,1)} · ${c.n_member_hit}/${(c.members||[]).length} members hit</span>
       <span style="font-size:12px;color:var(--text-3)">▾</span>
@@ -303,7 +304,6 @@ function renderGroups(d) {
   return `
   <div class="tier open" id="tier-grp">
     <div class="tier-hdr" onclick="toggleTier('tier-grp')">
-      <span class="tier-icon">🎯</span>
       <span class="tier-title">Tier 4 — Rule Groups</span>
       ${firedBadge(sm.n_group_fired, sm.n_group_total)}
       <span class="tier-toggle">▾</span>
@@ -328,14 +328,14 @@ function buildGrpItem(g) {
     return `<div class="grp-member ${mCls}">
       <span class="op-badge">${esc(m.operator||'')}</span>
       <span style="flex:1;font-weight:600;font-family:monospace;font-size:11px">${esc(m.code||'')}</span>
-      <span style="font-size:12px">${m.fired ? '🟢' : '⚪'}</span>
+      ${dot(m.fired)}
     </div>`;
   }).join('');
 
   return `
   <div class="grp-item ${edgeCls}" id="${id}">
     <div class="grp-hdr" onclick="toggleGrp('${id}')">
-      <span style="font-size:14px">${g.fired ? '🟢' : '⚪'}</span>
+      ${dot(g.fired)}
       <span class="grp-code">${esc(g.code||'')}</span>
       ${actionBadge} ${prioBadge}
       <span style="font-size:12px;color:var(--text-3)">▾</span>
@@ -363,7 +363,6 @@ function renderFinal(d) {
   return `
   <div class="tier open" id="tier-final">
     <div class="tier-hdr" onclick="toggleTier('tier-final')">
-      <span class="tier-icon">✅</span>
       <span class="tier-title">Tier 5 — Final Output</span>
       <span class="tier-toggle">▾</span>
     </div>
@@ -387,7 +386,7 @@ function renderFinal(d) {
             ? `<div class="grp-fired-list">${pills}</div>`
             : '<div style="color:var(--text-3);font-size:13px;margin-top:6px">No groups fired</div>'}
           ${f.suppressed_reason
-            ? `<div style="font-size:11px;color:#b45309;margin-top:8px">⚠ Suppressed: ${esc(f.suppressed_reason)}</div>`
+            ? `<div style="font-size:11px;color:#b45309;margin-top:8px">Suppressed: ${esc(f.suppressed_reason)}</div>`
             : ''}
         </div>
       </div>
