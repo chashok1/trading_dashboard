@@ -2903,23 +2903,13 @@ CREATE TABLE IF NOT EXISTS drv_cat_atomic_input (
 
     rsi_puts                                 NUMERIC,
 
-    c_3m_low_rule                            NUMERIC,
-
     "3m_low_rule"                            NUMERIC,
 
     "3m_low_days_rule"                       NUMERIC,
 
-    c_3m_low_days_rule                       NUMERIC,
-
-    c_3mn_high_rule                          NUMERIC,
-
     "3mn_high_rule"                          NUMERIC,
 
-    c_3mn_high_days_rule                     NUMERIC,
-
     "3mn_high_days_rule"                     NUMERIC,
-
-    c_3m_long                                NUMERIC,
 
     "3m_long"                                NUMERIC,
 
@@ -2991,19 +2981,11 @@ CREATE TABLE IF NOT EXISTS drv_cat_atomic_input (
 
     not_overbought                           NUMERIC,
 
-    c_3mn_outlook                            NUMERIC,
-
     "3mn_outlook"                            NUMERIC,
 
     "3mn_outlook_days"                       NUMERIC,
 
-    c_3mn_outlook_days                       NUMERIC,
-
     "3wk_outlook"                            NUMERIC,
-
-    c_3wk_outlook                            NUMERIC,
-
-    c_3wk_outlook_days                       NUMERIC,
 
     "3wk_outlook_days"                       NUMERIC,
 
@@ -3021,27 +3003,15 @@ CREATE TABLE IF NOT EXISTS drv_cat_atomic_input (
 
     "50_dma_rule"                            NUMERIC,
 
-    c_50_dma_rule                            NUMERIC,
-
     "50_dma_crossover"                       NUMERIC,
-
-    c_50_dma_crossover                       NUMERIC,
-
-    c_200_dma_rule                           NUMERIC,
 
     "200_dma_rule"                           NUMERIC,
 
-    c_200_dma_crossover                      NUMERIC,
-
     "200_dma_crossover"                      NUMERIC,
-
-    c_52_wk_low_rule                         NUMERIC,
 
     "52_wk_low_rule"                         NUMERIC,
 
     "52_wk_high_rule"                        NUMERIC,
-
-    c_52_wk_high_rule                        NUMERIC,
 
     brrtrade                                 NUMERIC,
 
