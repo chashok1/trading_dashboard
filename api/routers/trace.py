@@ -844,14 +844,18 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
             })
 
         # 10a. Raw hist_* and drv_* values for side panels
+        import math as _math
         def _ser(v):
             if v is None: return None
             if isinstance(v, bool): return v
             if isinstance(v, int): return v
-            if isinstance(v, float): return v
+            if isinstance(v, float):
+                return None if _math.isnan(v) or _math.isinf(v) else v
             if hasattr(v, 'isoformat'): return v.isoformat()
             if isinstance(v, (list, dict)): return None
-            try: return float(v)
+            try:
+                fv = float(v)
+                return None if _math.isnan(fv) or _math.isinf(fv) else fv
             except Exception: pass
             return str(v)
 

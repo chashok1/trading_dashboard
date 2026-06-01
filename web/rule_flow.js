@@ -65,7 +65,11 @@ async function loadFlow() {
   try {
     const url = `/api/rule-flow/${encodeURIComponent(sym)}${date ? '?date='+date : ''}`;
     const res = await fetch(url);
-    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || res.statusText); }
+    if (!res.ok) {
+      let msg = res.statusText;
+      try { const e = await res.json(); msg = e.detail || msg; } catch {}
+      throw new Error(`${res.status} ${msg}`);
+    }
     const d = await res.json();
     render(d);
   } catch(e) {
