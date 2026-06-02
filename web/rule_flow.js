@@ -148,12 +148,15 @@ function renderRawPanels(d) {
       .filter(([k, v]) => !_RAW_SKIP_COLS.has(k) && v != null);
     if (!entries.length) return '';
     const cells = entries.map(([k, v]) => {
-      const disp = typeof v === 'boolean' ? String(v) : fmt(v);
-      return `<div style="padding:1px 3px;border-bottom:1px solid #f4f4f2">
-        <div style="font-family:monospace;font-size:10px;color:var(--text-3);
+      const isDate = typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v);
+      const disp = typeof v === 'boolean' ? String(v) : isDate ? v.slice(0, 10) : fmt(v);
+      return `<div style="padding:1px 3px;border-bottom:1px solid #f4f4f2;min-width:0">
+        <div style="font-family:monospace;font-size:11px;color:var(--text-3);
                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
              title="${esc(k)}">${esc(k)}</div>
-        <div style="font-family:monospace;font-size:12px;font-weight:600">${esc(disp)}</div>
+        <div style="font-family:monospace;font-size:13px;font-weight:600;
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+             title="${esc(String(v ?? ''))}">${esc(disp)}</div>
       </div>`;
     }).join('');
     return `<div style="margin-bottom:4px">
