@@ -128,7 +128,7 @@ function renderIndicators(d) {
     if (!active) return `<td style="text-align:right;color:var(--text-3);font-size:12px">${s}</td>`;
     const bg = wt > 0 ? '#dcfce7' : wt < 0 ? '#fee2e2' : '#f0f0ee';
     const fg = wt > 0 ? '#166534' : wt < 0 ? '#991b1b' : '#555';
-    return `<td style="text-align:right;background:${bg};color:${fg};font-weight:700;font-size:12px">${s}&thinsp;<span class="badge-band band-${label}" style="font-size:9px">${label}</span></td>`;
+    return `<td style="text-align:right;background:${bg};color:${fg};font-weight:700;font-size:12px">${s}</td>`;
   };
 
   const rowsHtml = pairs.map(([ind, r]) => {
@@ -183,9 +183,9 @@ function renderIndicators(d) {
               <th>Indicator</th><th style="text-align:right">Value</th>
               <th>Source</th><th style="text-align:right">Src Val</th>
               <th style="text-align:right">lo</th><th style="text-align:right">hi</th>
-              <th style="text-align:right">wt below</th>
-              <th style="text-align:right">wt between</th>
-              <th style="text-align:right">wt above</th>
+              <th style="text-align:right">WT&lt;</th>
+              <th style="text-align:right">WT&lt;&gt;</th>
+              <th style="text-align:right">WT&gt;</th>
               <th>Weight</th>
             </tr></thead>
             <tbody>${rowsHtml || '<tr><td colspan="10" class="status-msg">No indicator data</td></tr>'}</tbody>
