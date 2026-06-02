@@ -240,7 +240,10 @@ function buildAtomicTable(atomics) {
 
   // Apply sort
   if (_atomicSort.col) {
+    const isThreshold = a => a.brkeout_from != null || a.brkeout_to != null ||
+                              a.wt_below != null || a.wt_between != null || a.wt_above != null;
     const sortKey = {
+      type:   a => isThreshold(a) ? 0 : 1,
       rule:   a => (a.rule_name     || '').toLowerCase(),
       col:    a => (a.ma_column     || '').toLowerCase(),
       src:    a => (a.source_column || '').toLowerCase(),
@@ -280,6 +283,10 @@ function buildAtomicTable(atomics) {
     const srcLabel = a.source_column || '';
     const srcVal   = a.source_value != null ? a.source_value
                    : _findSourceVal(srcLabel, window._rfData?.hist_raw, window._rfData?.drv_raw);
+    const ruleType = (a.brkeout_from != null || a.brkeout_to != null ||
+                      a.wt_below != null || a.wt_between != null || a.wt_above != null)
+      ? '<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#dbeafe;color:#1e40af">Threshold</span>'
+      : '<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#dcfce7;color:#166534">Direct</span>';
     return `<tr>
       <td>${cat} ${esc(a.rule_name||'')}</td>
       <td style="font-family:monospace;font-size:10px;color:var(--text-2)">${esc(a.ma_column||'')}</td>
@@ -292,6 +299,7 @@ function buildAtomicTable(atomics) {
       <td class="${firedCls}" style="text-align:right;font-weight:700">${fmt(a.weight)}</td>
       <td class="${firedCls}">${a.fired ? '✓' : '✗'}</td>
       <td class="${reasonCls}" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(a.reason||'')}">${esc(a.reason||'')}</td>
+      <td style="text-align:center;white-space:nowrap">${ruleType}</td>
     </tr>`;
   }).join('');
   return `<div style="overflow-x:auto;max-height:400px;overflow-y:auto">
@@ -300,7 +308,7 @@ function buildAtomicTable(atomics) {
         ${th('Rule','rule')}${th('Column','col')}${th('Source','src')}
         ${th('Src Val','srcval','right')}${th('Value','value','right')}${th('Zone','zone')}
         ${th('Band','band','center')}${th('Weights (b/z/a)','wts')}
-        ${th('Weight','weight','right')}${th('Fired','fired','center')}${th('Reason','reason')}
+        ${th('Weight','weight','right')}${th('Fired','fired','center')}${th('Reason','reason')}${th('Type','type','center')}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
