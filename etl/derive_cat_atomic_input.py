@@ -489,8 +489,9 @@ COLUMN_SPECS_PASS1 = [
         (lambda r,o: _crossover(r.get("last_price"), r.get("a_trade_value"),
                                 r.get("EF"), r.get("high_today"), r.get("low_today")))),  # JM
     ("trend_cross_over",  "composite", None, None,
-        (lambda r,o: _crossover(r.get("last_price"), r.get("a_trend_value"),
-                                r.get("EF"), r.get("high_today"), r.get("low_today")))),  # JP
+        (lambda r,o: _crossover_trend(r.get("last_price"), r.get("a_trend_value"),
+                                      r.get("BZ"), r.get("EF"),
+                                      r.get("high_today"), r.get("low_today")))),          # JP
     # JN — Trade-Rule (trig_ifs on AH = Trade_sd)
     ("trade_rule",        "trig_ifs", "AH", "Trade-Rule",  None),             # JN
     ("not_trade_rule",    "negate",   "trade_rule", None, None),              # JO
@@ -724,6 +725,25 @@ def _crossover(price, ma, prev_close, high=None, low=None) -> Optional[float]:
     lo = _f(low)  or p or 0.0
     if p > m and m > min(ef, lo):   return 1.0
     if max(ef, hi) > m and m > p:   return -1.0
+    return 0.0
+
+
+def _crossover_trend(price, ma, bz, prev_close, high=None, low=None) -> Optional[float]:
+    """JP: Trend Cross Over — same IFS pattern as Trade but includes BZ in min/max.
+
+    =IFS(AND(D>AE, AE>MIN(BZ,EF,J)),  1,
+         AND(MAX(BZ,EF,I)>AE, AE>D), -1,
+         TRUE, 0)
+    """
+    p  = _f(price); m = _f(ma)
+    if p is None or m is None:
+        return 0.0
+    bz_ = _f(bz)  or 0.0
+    ef  = _f(prev_close) or 0.0
+    hi  = _f(high) or p or 0.0
+    lo  = _f(low)  or p or 0.0
+    if p > m and m > min(bz_, ef, lo):    return 1.0
+    if max(bz_, ef, hi) > m and m > p:   return -1.0
     return 0.0
 
 
