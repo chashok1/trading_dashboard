@@ -159,13 +159,11 @@ function renderRawPanels(d) {
              title="${esc(String(v ?? ''))}">${esc(disp)}</div>
       </div>`;
     }).join('');
-    return `<div style="display:flex;gap:0;margin-bottom:4px;align-items:stretch">
+    return `<div style="margin-bottom:4px">
       <div style="font-size:8px;font-weight:700;color:var(--text-3);text-transform:uppercase;
-                  letter-spacing:.05em;writing-mode:vertical-rl;transform:rotate(180deg);
-                  padding:2px 3px;border-right:2px solid var(--border);
-                  flex-shrink:0;text-align:center">${esc(tbl)}</div>
-      <div style="flex:1;display:grid;grid-template-columns:repeat(${RPANEL_VCOLS},1fr);gap:0;
-                  padding-left:4px">${cells}</div>
+                  letter-spacing:.05em;line-height:1.4;padding:0 2px">${esc(tbl)}</div>
+      <div style="display:grid;grid-template-columns:repeat(${RPANEL_VCOLS},1fr);gap:0;
+                  padding-left:16px">${cells}</div>
     </div>`;
   }).join('');
 }
