@@ -191,7 +191,7 @@ function renderIndicators(d) {
             <tbody>${rowsHtml || '<tr><td colspan="10" class="status-msg">No indicator data</td></tr>'}</tbody>
           </table>
         </div>
-        <div style="flex:1 1 0;min-width:220px;border-left:1px solid var(--border);padding:12px;max-height:480px;overflow-y:auto">
+        <div style="flex:1 1 0;min-width:0;border-left:1px solid var(--border);padding:8px;max-height:480px;overflow-y:auto">
           ${renderRawPanels(d)}
         </div>
       </div>
@@ -237,20 +237,17 @@ function renderRawPanels(d) {
     if (!entries.length) return '';
     const cells = entries.map(([k, v]) => {
       const disp = typeof v === 'boolean' ? String(v) : fmt(v);
-      return `<div style="padding:2px 5px;border-bottom:1px solid #f4f4f2">
-        <div style="font-family:monospace;font-size:9px;color:var(--text-2);
+      return `<div style="padding:1px 3px;border-bottom:1px solid #f4f4f2">
+        <div style="font-family:monospace;font-size:8px;color:var(--text-3);
                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
              title="${esc(k)}">${esc(k)}</div>
-        <div style="font-family:monospace;font-size:11px;font-weight:600">${esc(disp)}</div>
+        <div style="font-family:monospace;font-size:10px;font-weight:600">${esc(disp)}</div>
       </div>`;
     }).join('');
-    return `<div style="margin-bottom:10px">
-      <div style="font-size:11px;font-weight:600;color:var(--text-2);
-                  padding:2px 0 3px;border-bottom:1px solid var(--border);
-                  margin-bottom:2px">${esc(tbl)}
-        <span style="font-weight:400;color:var(--text-3)">(${entries.length})</span>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(9,1fr);gap:1px">${cells}</div>
+    return `<div style="margin-bottom:6px">
+      <div style="font-size:9px;font-weight:700;color:var(--text-3);text-transform:uppercase;
+                  letter-spacing:.05em;margin-bottom:1px">${esc(tbl)}&thinsp;<span style="font-weight:400">${entries.length}</span></div>
+      <div style="display:grid;grid-template-columns:repeat(11,1fr);gap:1px">${cells}</div>
     </div>`;
   }).join('');
 }
