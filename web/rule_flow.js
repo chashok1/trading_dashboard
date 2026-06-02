@@ -91,8 +91,6 @@ function render(d) {
      sm.rsi ? `RSI ${fmt(sm.rsi,1)}` : '', sm.composite_label].filter(Boolean).join('  ·  ');
 
   document.getElementById('rfContent').innerHTML = `
-    ${renderIndicators(d)}
-    <div class="rf-arrow">↓</div>
     ${renderAtomics(d)}
     <div class="rf-arrow">↓</div>
     ${renderComposites(d)}
@@ -100,103 +98,8 @@ function render(d) {
     ${renderGroups(d)}
     <div class="rf-arrow">↓</div>
     ${renderFinal(d)}
+    ${renderRawData(d)}
   `;
-}
-
-// ── Tier 1: Indicators ────────────────────────────────────────────────────────
-
-function renderIndicators(d) {
-  const inds = (d.indicators || []).sort((a,b) => a.name.localeCompare(b.name));
-
-  // column_name → [atomic rules that read this column]
-  const atomicByCol = {};
-  (d.atomics || []).forEach(a => {
-    const col = (a.ma_column || '').split('.').pop();
-    if (col) (atomicByCol[col] = atomicByCol[col] || []).push(a);
-  });
-
-  // expand: one row per (indicator × rule); indicators with no rule get one row
-  const pairs = [];
-  inds.forEach(ind => {
-    const rules = atomicByCol[ind.name] || [];
-    if (!rules.length) pairs.push([ind, null]);
-    else rules.forEach(r => pairs.push([ind, r]));
-  });
-
-  const zoneCell = (active, wt, label) => {
-    const s = wt != null ? fmt(wt, 0) : '—';
-    if (!active) return `<td style="text-align:right;color:var(--text-3);font-size:12px">${s}</td>`;
-    const bg = wt > 0 ? '#dcfce7' : wt < 0 ? '#fee2e2' : '#f0f0ee';
-    const fg = wt > 0 ? '#166534' : wt < 0 ? '#991b1b' : '#555';
-    return `<td style="text-align:right;background:${bg};color:${fg};font-weight:700;font-size:12px">${s}</td>`;
-  };
-
-  const rowsHtml = pairs.map(([ind, r]) => {
-    const valStr = ind.value != null ? fmt(ind.value) : '—';
-    if (!r) {
-      return `<tr style="opacity:.45">
-        <td class="mono">${esc(ind.name)}</td>
-        <td style="text-align:right;font-family:monospace;font-size:12px;font-weight:600">${valStr}</td>
-        <td colspan="8" style="font-size:11px;font-style:italic">no active rule</td>
-      </tr>`;
-    }
-    const band  = r.band;
-    const wVal  = r.weight || 0;
-    const wBg   = wVal > 0 ? '#dcfce7' : wVal < 0 ? '#fee2e2' : '#f5f5f3';
-    const wFg   = wVal > 0 ? '#166534' : wVal < 0 ? '#991b1b' : '#6b7280';
-    const wBadge = `<span style="display:inline-block;min-width:32px;text-align:right;font-family:monospace;font-size:12px;font-weight:600;padding:2px 6px;border-radius:4px;background:${wBg};color:${wFg}">${wVal > 0 ? '+' : ''}${wVal}</span>`;
-    const rowStyle = r.fired ? 'style="background:#f8fff3"' : '';
-    const nameCell = r.fired
-      ? `<td class="mono" style="box-shadow:inset 3px 0 0 #16a34a">${esc(ind.name)}</td>`
-      : `<td class="mono">${esc(ind.name)}</td>`;
-    const srcLabel = r.source_column || '';
-    const srcVal   = r.source_value != null
-                   ? r.source_value
-                   : _findSourceVal(srcLabel, d.hist_raw, d.drv_raw);
-    const srcValStr = srcVal != null ? fmt(srcVal) : '—';
-    return `<tr ${rowStyle}>
-      ${nameCell}
-      <td style="text-align:right;font-family:monospace;font-size:12px;font-weight:600">${valStr}</td>
-      <td style="font-size:11px;color:var(--text-2);font-family:monospace;max-width:60px;white-space:normal;word-break:break-all;line-height:1.3">${esc(srcLabel) || '—'}</td>
-      <td style="text-align:right;font-family:monospace;font-size:12px;font-weight:${srcVal!=null?'600':'400'};color:${srcVal!=null?'var(--text-1)':'var(--text-3)'}">${srcValStr}</td>
-      <td style="text-align:right;font-size:11px;color:var(--text-2)">${r.brkeout_from != null ? fmt(r.brkeout_from) : '—'}</td>
-      <td style="text-align:right;font-size:11px;color:var(--text-2)">${r.brkeout_to   != null ? fmt(r.brkeout_to)   : '—'}</td>
-      ${zoneCell(band === 'below',   r.wt_below,   'below')}
-      ${zoneCell(band === 'between', r.wt_between, 'between')}
-      ${zoneCell(band === 'above',   r.wt_above,   'above')}
-      <td>${wBadge}</td>
-    </tr>`;
-  }).join('');
-
-  return `
-  <div class="tier open" id="tier-ind">
-    <div class="tier-hdr" onclick="toggleTier('tier-ind')">
-      <span class="tier-title">Tier 1 — Indicator Values <small style="font-weight:400;color:var(--text-2)">(drv_cat_atomic_input)</small></span>
-      <span class="tier-badge badge-ok">${inds.length} columns</span>
-      <span class="tier-toggle">▾</span>
-    </div>
-    <div class="tier-body" style="padding:0">
-      <div style="display:flex;gap:0;align-items:start">
-        <div style="flex:0 0 auto;padding:12px;overflow-x:auto;max-height:480px;overflow-y:auto">
-          <table class="rf-table" style="width:auto">
-            <thead><tr>
-              <th>Indicator</th><th style="text-align:right">Value</th>
-              <th style="max-width:120px;width:120px">Source</th><th style="text-align:right">Src Val</th>
-              <th style="text-align:right">lo</th><th style="text-align:right">hi</th>
-              <th style="text-align:right">WT&lt;</th>
-              <th style="text-align:right">WT&lt;&gt;</th>
-              <th style="text-align:right">WT&gt;</th>
-              <th>Weight</th>
-            </tr></thead>
-            <tbody>${rowsHtml || '<tr><td colspan="10" class="status-msg">No indicator data</td></tr>'}</tbody>
-          </table>
-        </div>
-        <div style="flex:1 1 0;min-width:0;border-left:1px solid var(--border);padding:8px;max-height:480px;overflow-y:auto">
-          ${renderRawPanels(d)}
-        </div>
-      </div>
-    </div>
-  </div>`;
 }
 
 // ── Source value lookup ───────────────────────────────────────────────────────
@@ -253,6 +156,22 @@ function renderRawPanels(d) {
       <div style="display:grid;grid-template-columns:repeat(${RPANEL_VCOLS},1fr);gap:0">${cells}</div>
     </div>`;
   }).join('');
+}
+
+// ── Raw data panel (below final output) ──────────────────────────────────────
+
+function renderRawData(d) {
+  const html = renderRawPanels(d);
+  if (!html) return '';
+  return `
+  <div class="rf-arrow">↓</div>
+  <div class="tier open" id="tier-raw">
+    <div class="tier-hdr" onclick="toggleTier('tier-raw')">
+      <span class="tier-title">Raw Source Data</span>
+      <span class="tier-toggle">▾</span>
+    </div>
+    <div class="tier-body">${html}</div>
+  </div>`;
 }
 
 // ── Tier 2: Atomic rules ──────────────────────────────────────────────────────
@@ -312,9 +231,14 @@ function buildAtomicTable(atomics) {
       ? `[${fmt(a.brkeout_from)}, ${fmt(a.brkeout_to)}]` : '—';
     const wts  = (a.wt_below != null)
       ? `(${fmt(a.wt_below,0)}, ${fmt(a.wt_between,0)}, ${fmt(a.wt_above,0)})` : '—';
+    const srcLabel = a.source_column || '';
+    const srcVal   = a.source_value != null ? a.source_value
+                   : _findSourceVal(srcLabel, window._rfData?.hist_raw, window._rfData?.drv_raw);
     return `<tr>
       <td>${cat} ${esc(a.rule_name||'')}</td>
       <td style="font-family:monospace;font-size:10px;color:var(--text-2)">${esc(a.ma_column||'')}</td>
+      <td style="font-size:11px;color:var(--text-2);font-family:monospace;max-width:120px;white-space:normal;word-break:break-all;line-height:1.3">${esc(srcLabel)||'—'}</td>
+      <td style="text-align:right;font-weight:${srcVal!=null?'600':'400'};color:${srcVal!=null?'var(--text-1)':'var(--text-3)'}">${srcVal!=null?fmt(srcVal):'—'}</td>
       <td style="text-align:right">${fmt(a.value)}</td>
       <td>${zone}</td>
       <td style="text-align:center">${band}</td>
@@ -327,7 +251,7 @@ function buildAtomicTable(atomics) {
   return `<div style="overflow-x:auto;max-height:400px;overflow-y:auto">
     <table class="rf-table">
       <thead><tr>
-        <th>Rule</th><th>Column</th><th>Value</th><th>Zone</th>
+        <th>Rule</th><th>Column</th><th>Source</th><th style="text-align:right">Src Val</th><th>Value</th><th>Zone</th>
         <th>Band</th><th>Weights (b/z/a)</th><th>Weight</th><th>Fired</th><th>Reason</th>
       </tr></thead>
       <tbody>${rows}</tbody>
