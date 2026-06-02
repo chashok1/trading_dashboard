@@ -187,6 +187,7 @@ function renderRawData(d) {
 // ── Tier 2: Atomic rules ──────────────────────────────────────────────────────
 
 let _atomicFilter = { q: '', cat: '', fired: '' };
+let _atomicSort   = { col: null, dir: 1 };
 
 function renderAtomics(d) {
   const sm = d.summary || {};
@@ -218,7 +219,6 @@ function filterAtomics() {
   const cat    = document.getElementById('atomicCat').value;
   const fired  = document.getElementById('atomicFired').checked;
   const issues = document.getElementById('atomicIssues').checked;
-  // Re-fetch and filter from cached data — use global store
   const atomics = (window._rfData?.atomics || []).filter(a => {
     if (q && !(a.rule_name||'').toLowerCase().includes(q)) return false;
     if (cat && a.category !== cat) return false;
@@ -229,8 +229,44 @@ function filterAtomics() {
   document.getElementById('atomicTableWrap').innerHTML = buildAtomicTable(atomics);
 }
 
+function sortAtomics(col) {
+  if (_atomicSort.col === col) _atomicSort.dir *= -1;
+  else { _atomicSort.col = col; _atomicSort.dir = 1; }
+  filterAtomics();
+}
+
 function buildAtomicTable(atomics) {
   if (!atomics.length) return '<div class="status-msg">No rules match filter</div>';
+
+  // Apply sort
+  if (_atomicSort.col) {
+    const sortKey = {
+      rule:   a => (a.rule_name     || '').toLowerCase(),
+      col:    a => (a.ma_column     || '').toLowerCase(),
+      src:    a => (a.source_column || '').toLowerCase(),
+      srcval: a => a.source_value  ?? -Infinity,
+      value:  a => a.value         ?? -Infinity,
+      zone:   a => a.brkeout_from  ?? -Infinity,
+      band:   a => a.band          || '',
+      wts:    a => a.wt_below      ?? -Infinity,
+      weight: a => a.weight        ?? -Infinity,
+      fired:  a => a.fired ? 1 : 0,
+      reason: a => (a.reason || '').toLowerCase(),
+    }[_atomicSort.col];
+    if (sortKey) atomics = [...atomics].sort((a, b) => {
+      const av = sortKey(a), bv = sortKey(b);
+      return _atomicSort.dir * (av < bv ? -1 : av > bv ? 1 : 0);
+    });
+  }
+
+  const th = (label, col, align) => {
+    const active = _atomicSort.col === col;
+    const ind = active ? (_atomicSort.dir === 1 ? ' ▲' : ' ▼') : '';
+    const a = align ? `text-align:${align};` : '';
+    return `<th style="${a}cursor:pointer;white-space:nowrap;user-select:none"
+               onclick="sortAtomics('${col}')">${label}${ind}</th>`;
+  };
+
   const rows = atomics.map(a => {
     const firedCls = a.fired ? 'fired-yes' : 'fired-no';
     const isIssue  = ['no_column','no_data','no_thresholds'].some(x => (a.reason||'').startsWith(x));
@@ -261,8 +297,10 @@ function buildAtomicTable(atomics) {
   return `<div style="overflow-x:auto;max-height:400px;overflow-y:auto">
     <table class="rf-table">
       <thead><tr>
-        <th>Rule</th><th>Column</th><th>Source</th><th style="text-align:right">Src Val</th><th>Value</th><th>Zone</th>
-        <th>Band</th><th>Weights (b/z/a)</th><th>Weight</th><th>Fired</th><th>Reason</th>
+        ${th('Rule','rule')}${th('Column','col')}${th('Source','src')}
+        ${th('Src Val','srcval','right')}${th('Value','value','right')}${th('Zone','zone')}
+        ${th('Band','band','center')}${th('Weights (b/z/a)','wts')}
+        ${th('Weight','weight','right')}${th('Fired','fired','center')}${th('Reason','reason')}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
