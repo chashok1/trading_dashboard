@@ -57,3 +57,8 @@ _backups/
 # Database
 *.db
 *.sqlite
+
+# Scratch / one-off scripts and generated output files
+_*.py
+*_comparison.xlsx
+~$*.xlsx
