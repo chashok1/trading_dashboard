@@ -228,26 +228,31 @@ const _RAW_SKIP_COLS = new Set([
 ]);
 
 function renderRawPanels(d) {
-  const entries = [];
-  for (const cols of Object.values(d.hist_raw || {}))
-    for (const [k, v] of Object.entries(cols || {}))
-      if (!_RAW_SKIP_COLS.has(k) && v != null) entries.push([k, v]);
-  for (const [tbl, cols] of Object.entries(d.drv_raw || {})) {
-    if (tbl === 'drv_cat_atomic_input') continue;
-    for (const [k, v] of Object.entries(cols || {}))
-      if (!_RAW_SKIP_COLS.has(k) && v != null) entries.push([k, v]);
-  }
-  if (!entries.length) return '';
-  const cells = entries.map(([k, v]) => {
-    const disp = typeof v === 'boolean' ? String(v) : fmt(v);
-    return `<div style="padding:2px 5px;border-bottom:1px solid #f4f4f2">
-      <div style="font-family:monospace;font-size:9px;color:var(--text-2);
-                  overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-           title="${esc(k)}">${esc(k)}</div>
-      <div style="font-family:monospace;font-size:11px;font-weight:600">${esc(disp)}</div>
+  const allTables = [
+    ...Object.entries(d.hist_raw || {}),
+    ...Object.entries(d.drv_raw  || {}).filter(([k]) => k !== 'drv_cat_atomic_input'),
+  ];
+  return allTables.map(([tbl, cols]) => {
+    const entries = Object.entries(cols || {}).filter(([k, v]) => !_RAW_SKIP_COLS.has(k) && v != null);
+    if (!entries.length) return '';
+    const cells = entries.map(([k, v]) => {
+      const disp = typeof v === 'boolean' ? String(v) : fmt(v);
+      return `<div style="padding:2px 5px;border-bottom:1px solid #f4f4f2">
+        <div style="font-family:monospace;font-size:9px;color:var(--text-2);
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+             title="${esc(k)}">${esc(k)}</div>
+        <div style="font-family:monospace;font-size:11px;font-weight:600">${esc(disp)}</div>
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:10px">
+      <div style="font-size:11px;font-weight:600;color:var(--text-2);
+                  padding:2px 0 3px;border-bottom:1px solid var(--border);
+                  margin-bottom:2px">${esc(tbl)}
+        <span style="font-weight:400;color:var(--text-3)">(${entries.length})</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px">${cells}</div>
     </div>`;
   }).join('');
-  return `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px">${cells}</div>`;
 }
 
 // ── Tier 2: Atomic rules ──────────────────────────────────────────────────────
