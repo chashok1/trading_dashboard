@@ -241,10 +241,10 @@ function renderRawPanels(d) {
     const cells = entries.map(([k, v]) => {
       const disp = typeof v === 'boolean' ? String(v) : fmt(v);
       return `<div style="padding:1px 3px;border-bottom:1px solid #f4f4f2">
-        <div style="font-family:monospace;font-size:8px;color:var(--text-3);
+        <div style="font-family:monospace;font-size:10px;color:var(--text-3);
                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
              title="${esc(k)}">${esc(k)}</div>
-        <div style="font-family:monospace;font-size:10px;font-weight:600">${esc(disp)}</div>
+        <div style="font-family:monospace;font-size:12px;font-weight:600">${esc(disp)}</div>
       </div>`;
     }).join('');
     return `<div style="margin-bottom:4px">
