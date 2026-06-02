@@ -177,7 +177,7 @@ function renderIndicators(d) {
     </div>
     <div class="tier-body" style="padding:0">
       <div style="display:flex;gap:0;align-items:start">
-        <div style="flex:0 0 auto;padding:12px;overflow-x:auto;max-height:480px;overflow-y:auto">
+        <div style="flex:0 0 auto;padding:12px;overflow-x:auto;max-height:480px;overflow-y:auto;zoom:0.8">
           <table class="rf-table" style="width:auto">
             <thead><tr>
               <th>Indicator</th><th style="text-align:right">Value</th>
@@ -227,29 +227,43 @@ const _RAW_SKIP_COLS = new Set([
   'source_file','source','file_name','file_path','description',
 ]);
 
+const RPANEL_VCOLS = 12; // value columns; column 0 = table name label
+
 function renderRawPanels(d) {
   const allTables = [
     ...Object.entries(d.hist_raw || {}),
     ...Object.entries(d.drv_raw  || {}).filter(([k]) => k !== 'drv_cat_atomic_input'),
   ];
-  return allTables.map(([tbl, cols]) => {
-    const entries = Object.entries(cols || {}).filter(([k, v]) => !_RAW_SKIP_COLS.has(k) && v != null);
-    if (!entries.length) return '';
-    const cells = entries.map(([k, v]) => {
-      const disp = typeof v === 'boolean' ? String(v) : fmt(v);
-      return `<div style="padding:1px 3px;border-bottom:1px solid #f4f4f2">
-        <div style="font-family:monospace;font-size:8px;color:var(--text-3);
-                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-             title="${esc(k)}">${esc(k)}</div>
-        <div style="font-family:monospace;font-size:10px;font-weight:600">${esc(disp)}</div>
-      </div>`;
-    }).join('');
-    return `<div style="margin-bottom:6px">
-      <div style="font-size:9px;font-weight:700;color:var(--text-3);text-transform:uppercase;
-                  letter-spacing:.05em;margin-bottom:1px">${esc(tbl)}&thinsp;<span style="font-weight:400">${entries.length}</span></div>
-      <div style="display:grid;grid-template-columns:repeat(11,1fr);gap:1px">${cells}</div>
-    </div>`;
-  }).join('');
+  const rows = [];
+  for (const [tbl, cols] of allTables) {
+    const entries = Object.entries(cols || {})
+      .filter(([k, v]) => !_RAW_SKIP_COLS.has(k) && v != null);
+    if (!entries.length) continue;
+    for (let i = 0; i < entries.length; i += RPANEL_VCOLS) {
+      const chunk = entries.slice(i, i + RPANEL_VCOLS);
+      const nameCell = i === 0
+        ? `<div style="writing-mode:vertical-rl;transform:rotate(180deg);
+                       font-size:8px;font-weight:700;color:var(--text-2);
+                       text-align:center;white-space:nowrap;padding:2px 1px;
+                       background:#fafaf8;border-right:1px solid var(--border)">${esc(tbl)}</div>`
+        : `<div style="background:#fafaf8;border-right:1px solid var(--border)"></div>`;
+      const valueCells = chunk.map(([k, v]) => {
+        const disp = typeof v === 'boolean' ? String(v) : fmt(v);
+        return `<div style="padding:1px 3px;border-bottom:1px solid #f4f4f2">
+          <div style="font-family:monospace;font-size:8px;color:var(--text-3);
+                      overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+               title="${esc(k)}">${esc(k)}</div>
+          <div style="font-family:monospace;font-size:10px;font-weight:600">${esc(disp)}</div>
+        </div>`;
+      }).join('');
+      const pad = Array(RPANEL_VCOLS - chunk.length).fill('<div></div>').join('');
+      rows.push(nameCell + valueCells + pad);
+    }
+  }
+  if (!rows.length) return '';
+  return `<div style="display:grid;grid-template-columns:18px repeat(${RPANEL_VCOLS},1fr);gap:0;align-items:stretch">
+    ${rows.join('')}
+  </div>`;
 }
 
 // ── Tier 2: Atomic rules ──────────────────────────────────────────────────────
