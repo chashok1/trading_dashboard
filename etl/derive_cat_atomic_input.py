@@ -502,13 +502,13 @@ COLUMN_SPECS_PASS1 = [
     # JT TrTn Relation -> composite (Pass-2)
     # JU !TrTn Relation -> negate(JT)
     ("trade_trend_sd_rule", "trig_ifs", "AI", "Trade Trend SD Rule", None),    # JV
-    ("brrpct_rule",         "trig_ifs", "EE", "BRR% Rule",      None),         # JW
-    ("brrpct_lrr",          "trig_ifs", "EE", "BRR% LRR",       None),         # JX
-    ("brrpct_r2",           "trig_ifs", "EE", "BRR% R2",        None),         # JY
-    ("brrpct_lrr2",         "trig_ifs", "EE", "BRR% LRR2",      None),         # JZ
-    ("brrpct_trr",          "trig_ifs", "EE", "BRR% TRR",       None),         # KA
-    ("brrpct_puts",         "trig_ifs", "EE", "BRR% Puts",      None),         # KB
-    ("brrpct_trr_puts",     "trig_ifs", "EE", "BRR% TRR Puts",  None),         # KC
+    ("brrpct_rule",         "trig_ifs", "EE", "BRR% Rule",      {"simple": True}),  # JW
+    ("brrpct_lrr",          "trig_ifs", "EE", "BRR% LRR",       {"simple": True}),  # JX
+    ("brrpct_r2",           "trig_ifs", "EE", "BRR% R2",        {"simple": True}),  # JY
+    ("brrpct_lrr2",         "trig_ifs", "EE", "BRR% LRR2",      {"simple": True}),  # JZ
+    ("brrpct_trr",          "trig_ifs", "EE", "BRR% TRR",       {"simple": True}),  # KA
+    ("brrpct_puts",         "trig_ifs", "EE", "BRR% Puts",      {"simple": True}),  # KB
+    ("brrpct_trr_puts",     "trig_ifs", "EE", "BRR% TRR Puts",  {"simple": True}),  # KC
     # KD BRR% Dir -> composite (Pass-2; reads JI/JG/LG/JW/KB)
     ("high_trr",            "trig_ifs", "EO", "High above TRR", {"simple": True}),  # KE (zone lo=0: use 3-clause)
     ("low_lrr",             "trig_ifs", "EP", "Low below LRR",  {"simple": True}),  # KF (zone lo=0: use 3-clause)
