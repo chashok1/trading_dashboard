@@ -157,7 +157,7 @@ function renderIndicators(d) {
     return `<tr ${rowStyle}>
       ${nameCell}
       <td style="text-align:right;font-family:monospace;font-size:12px;font-weight:600">${valStr}</td>
-      <td style="font-size:11px;color:var(--text-2);font-family:monospace">${esc(srcLabel) || '—'}</td>
+      <td style="font-size:9px;color:var(--text-2);font-family:monospace;max-width:60px;white-space:normal;word-break:break-all;line-height:1.2">${esc(srcLabel) || '—'}</td>
       <td style="text-align:right;font-family:monospace;font-size:12px;font-weight:${srcVal!=null?'600':'400'};color:${srcVal!=null?'var(--text-1)':'var(--text-3)'}">${srcValStr}</td>
       <td style="text-align:right;font-size:11px;color:var(--text-2)">${r.brkeout_from != null ? fmt(r.brkeout_from) : '—'}</td>
       <td style="text-align:right;font-size:11px;color:var(--text-2)">${r.brkeout_to   != null ? fmt(r.brkeout_to)   : '—'}</td>
@@ -181,7 +181,7 @@ function renderIndicators(d) {
           <table class="rf-table" style="width:auto">
             <thead><tr>
               <th>Indicator</th><th style="text-align:right">Value</th>
-              <th>Source</th><th style="text-align:right">Src Val</th>
+              <th style="max-width:60px;width:60px">Source</th><th style="text-align:right">Src Val</th>
               <th style="text-align:right">lo</th><th style="text-align:right">hi</th>
               <th style="text-align:right">WT&lt;</th>
               <th style="text-align:right">WT&lt;&gt;</th>
