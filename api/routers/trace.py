@@ -948,3 +948,42 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                 "buysell_scores":      buysell,
             },
         }
+
+
+@router.get("/api/rule-flow/{sym}/intermediates")
+def get_rule_flow_intermediates(sym: str, as_of: Optional[str] = Query(None, alias="date")):
+    """Return compute_intermediates output for one symbol — feeds the Data Flow panel."""
+    import math as _math
+    from datetime import date as _date
+    from etl.derive_cat_atomic_input import get_symbol_intermediates
+    from etl.db import session_scope
+
+    sym_u = sym.upper().strip()
+    if as_of:
+        try:
+            snap = _date.fromisoformat(as_of)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+    else:
+        with session_scope() as s:
+            row = s.execute(text("SELECT MAX(as_of_date) FROM drv_stks")).scalar()
+            snap = row if row else _date.today()
+
+    def _ser(v):
+        if v is None: return None
+        if isinstance(v, bool): return v
+        if isinstance(v, (int, float)):
+            try:
+                return None if _math.isnan(float(v)) or _math.isinf(float(v)) else round(float(v), 6)
+            except Exception: return None
+        if hasattr(v, "isoformat"): return v.isoformat()
+        try:
+            fv = float(v); return None if _math.isnan(fv) or _math.isinf(fv) else round(fv, 6)
+        except Exception: pass
+        return str(v)
+
+    with session_scope() as s:
+        row = get_symbol_intermediates(s, sym_u, snap)
+
+    _SKIP = {"tos_symbol", "as_of_date", "source_run_id", "computed_at"}
+    return {k: _ser(v) for k, v in row.items() if k not in _SKIP}

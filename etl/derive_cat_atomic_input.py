@@ -1198,3 +1198,23 @@ def run_parm_lookup_pass3(session: Session, as_of_date: date) -> int:
     """Pass-3 Parm-lookup UPDATE.  Idempotent."""
     result = session.execute(text(PARM_LOOKUP_SQL), {"d": as_of_date})
     return result.rowcount or 0
+
+
+def get_symbol_intermediates(session: Session, tos_symbol: str, as_of_date) -> dict:
+    """Return compute_intermediates output for one symbol — used by the Rule Flow UI.
+
+    Runs the working-set SQL filtered to a single symbol, calls compute_intermediates,
+    and returns the full row dict (raw SQL columns + all computed intermediates).
+    """
+    filtered_sql = WORKING_SET_SQL.rstrip() + "\nWHERE s.s = :sym"
+    try:
+        row = session.execute(
+            text(filtered_sql), {"d": as_of_date, "sym": tos_symbol}
+        ).mappings().first()
+    except Exception:
+        return {}
+    if not row:
+        return {}
+    row_dict = dict(row)
+    compute_intermediates(row_dict)
+    return row_dict
