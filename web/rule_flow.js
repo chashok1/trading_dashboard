@@ -92,6 +92,7 @@ function render(d) {
 
   document.getElementById('rfContent').innerHTML = `
     ${renderIndicators(d)}
+    ${renderCatInputGrid(d)}
     <div class="rf-arrow">↓</div>
     ${renderAtomics(d)}
     <div class="rf-arrow">↓</div>
@@ -228,7 +229,11 @@ const _DRV_SKIP_COLS  = new Set(['description']);
 
 function renderRawPanels(d) {
   const histHtml = _rawSection(d.hist_raw || {}, 'Source Data (TL · TD · TW · TO · Y)', _HIST_SKIP_COLS);
-  const drvHtml  = _rawSection(d.drv_raw  || {}, 'Derived Tables', _DRV_SKIP_COLS);
+  // drv_cat_atomic_input shown in its own grid below Tier 1 — exclude here
+  const drvFiltered = Object.fromEntries(
+    Object.entries(d.drv_raw || {}).filter(([k]) => k !== 'drv_cat_atomic_input')
+  );
+  const drvHtml = _rawSection(drvFiltered, 'Derived Tables', _DRV_SKIP_COLS);
   return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
     <div>${histHtml}</div>
     <div>${drvHtml}</div>
@@ -260,6 +265,36 @@ function _rawSection(tableMap, title, skipCols) {
   return `<div style="margin-bottom:14px">
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid var(--border)">${esc(title)}</div>
     ${inner}
+  </div>`;
+}
+
+// ── drv_cat_atomic_input grid (shown between Tier 1 and Tier 2) ───────────────
+
+function renderCatInputGrid(d) {
+  const cols = Object.entries(d.drv_raw?.drv_cat_atomic_input || {})
+    .sort((a, b) => a[0].localeCompare(b[0]));
+  if (!cols.length) return '';
+  const items = cols.map(([k, v]) => {
+    const vs = v != null ? fmt(v) : '—';
+    return `<div style="display:flex;justify-content:space-between;gap:8px;
+                        padding:2px 6px;border-bottom:1px solid #f4f4f2">
+      <span style="color:var(--text-2);font-family:monospace;font-size:10px">${esc(k)}</span>
+      <span style="font-weight:600;font-family:monospace;font-size:11px">${esc(vs)}</span>
+    </div>`;
+  }).join('');
+  return `
+  <div class="tier open" id="tier-cat">
+    <div class="tier-hdr" onclick="toggleTier('tier-cat')">
+      <span class="tier-title">drv_cat_atomic_input — all computed values</span>
+      <span class="tier-badge badge-ok">${cols.length} columns</span>
+      <span class="tier-toggle">▾</span>
+    </div>
+    <div class="tier-body">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+                  max-height:320px;overflow-y:auto">
+        ${items}
+      </div>
+    </div>
   </div>`;
 }
 
