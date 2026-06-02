@@ -181,7 +181,7 @@ function renderIndicators(d) {
           <table class="rf-table" style="width:auto">
             <thead><tr>
               <th>Indicator</th><th style="text-align:right">Value</th>
-              <th style="max-width:60px;width:60px">Source</th><th style="text-align:right">Src Val</th>
+              <th style="max-width:120px;width:120px">Source</th><th style="text-align:right">Src Val</th>
               <th style="text-align:right">lo</th><th style="text-align:right">hi</th>
               <th style="text-align:right">WT&lt;</th>
               <th style="text-align:right">WT&lt;&gt;</th>
