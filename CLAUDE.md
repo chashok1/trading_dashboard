@@ -199,6 +199,10 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Atomic-input column derivation (JF..NP + QE..QT) | `docs/drv_cat_atomic_input_logic.md` |
 | Dashboard single-cell scalars (Dash!$X$Y) | `ref_param sheet='dash'`; `etl/derive_cat_atomic_input.py::get_dash_scalar` |
 | TOS composite-field decoding (a_bb_streak, a_bb_high_low, a_volume_spike) | `etl/derive_cat_atomic_input.py::compute_intermediates` |
+| Rule Flow formula source — MA tab formulas | Read directly from `Tickers YYYY-MM-DD.xlsx` MA sheet; comments in code may be stale. Use `openpyxl data_only=False` on row 2 to get formula strings. ArrayFormula objects have `.text` attribute. |
+| Rule Flow Data Flow panel | `GET /api/rule-flow/{sym}/intermediates` → `etl/derive_cat_atomic_input.py::get_symbol_intermediates`. Chain map + labels in `web/rule_flow.js::_CHAIN/_KEY_LABEL`. |
+| Rule Flow crossover formulas — Trade(JM) vs Trend(JP) | Trade: `IFS(D>AF AND AF>MIN(EF,J),1, MAX(EF,I)>AF AND AF>D,-1, 0)` — no BZ. Trend: same but `MIN(BZ,EF,J)` / `MAX(BZ,EF,I)` — includes BZ. DMA crossovers: BZ only. |
+| Current Price SD Rule (NK) input scale | Python uses `net_chng/AC`; Excel uses `pct_change(%)×D/AC` (100× larger). Thresholds in `ref_trig_atomic_rule` calibrated at Python scale — do not change formula without also updating thresholds. |
 | Dashboard / snapshot-date logic | `docs/dashboard_logic.md` |
 | File Monitor logic | `docs/file_monitor_logic.md` |
 | Rules engine logic | `docs/rules_logic.md` |
