@@ -53,6 +53,7 @@ function toggleGrp(id) {
 
 async function loadFlow() {
   const sym  = document.getElementById('symInput').value.trim().toUpperCase();
+  if (sym) localStorage.setItem('ruleflow_symbol', sym);
   const date = document.getElementById('dateInput').value;
   if (!sym) { alert('Enter a symbol'); return; }
 
@@ -80,6 +81,11 @@ async function loadFlow() {
 document.getElementById('symInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') loadFlow();
 });
+
+(function restoreSym() {
+  const saved = localStorage.getItem('ruleflow_symbol');
+  if (saved) document.getElementById('symInput').value = saved;
+})();
 
 // ── Render ────────────────────────────────────────────────────────────────────
 
