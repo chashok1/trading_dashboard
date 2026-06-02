@@ -130,7 +130,7 @@ const _RAW_SKIP_COLS = new Set([
   'source_file','source','file_name','file_path','description',
 ]);
 
-const RPANEL_VCOLS = 12;
+const RPANEL_VCOLS = 13;
 
 function renderRawPanels(d) {
   const allTables = [
