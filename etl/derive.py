@@ -2411,7 +2411,6 @@ _MA_COL_MAP = {
     "MACD_BRR Puts":          "a_macd_brr",
     "MACDH_BRR Puts":         "a_macdh_d_brr",
     "BB Direction":           "a_bb_streak",
-    "BBThresh Crossover":     "a_bb_streak",
     "BBThresh CO Days":       "a_bb_streak",
     "BBThresh CO Days2":      "a_bb_streak",
     "BBStreak Rule":          "a_bb_streak",
