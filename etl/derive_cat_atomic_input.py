@@ -104,7 +104,7 @@ tl AS (
     ORDER BY tos_symbol, loaded_at DESC
 ),
 rr AS (
-    SELECT tos_symbol, lrr AS buy_trade, trr AS sell_trade
+    SELECT tos_symbol, lrr, trr
     FROM drv_rr WHERE as_of_date = (SELECT d FROM p)
 )
 SELECT s.s AS tos_symbol,
@@ -115,7 +115,7 @@ SELECT s.s AS tos_symbol,
        td.a_bb_top_slope, td.a_bb_bot_slope,
        td.historical_vol, td.td_high, td.td_low, td.td_rsi,
        dq.imp_volatility, dq.rsi,
-       -- derived prior BB values (for EC/ED fallback)
+       -- prior BB values for slope calculations (EY/FC)
        td_prior.bb_bot_prev, td_prior.bb_top_prev,
        -- hist_tw
        tw.standard_dev, tw.sma_50, tw.sma_200,
@@ -130,8 +130,8 @@ SELECT s.s AS tos_symbol,
        -- drv_quote
        dq.last_price, dq.net_chng, dq.pct_change,
        dq.high_price AS high_today, dq.low_price AS low_today,
-       -- hist_rr
-       rr.buy_trade, rr.sell_trade
+       -- drv_rr (lrr/trr already have RR→BB fallback baked in)
+       rr.lrr, rr.trr
 FROM syms s
 LEFT JOIN td  ON td.tos_symbol  = s.s
 LEFT JOIN td_prior ON td_prior.tos_symbol = s.s
@@ -295,10 +295,10 @@ def compute_intermediates(row: dict) -> dict:
     CH   = _f(row.get("sma_200"))
     EH   = _f(row.get("high_today"))
     EI   = _f(row.get("low_today"))
-    DX   = _f(row.get("buy_trade"))                  # RR_Bottom (MA!DX)
-    DY   = _f(row.get("sell_trade"))                 # RR_Top    (MA!DY)
-    DU   = _f(row.get("bb_bot_prev"))                # BB_Bot_Prev (MA!DU = TD!L)
-    DV   = _f(row.get("bb_top_prev"))                # BB_Top_Prev (MA!DV = TD!P)
+    EC   = _f(row.get("lrr"))                         # drv_rr.lrr — RR bottom, BB fallback already applied
+    ED   = _f(row.get("trr"))                         # drv_rr.trr — RR top
+    DU   = _f(row.get("bb_bot_prev"))                # BB_Bot_Prev — for BB slope calcs (EY/FC)
+    DV   = _f(row.get("bb_top_prev"))                # BB_Top_Prev — for BB slope calcs
     # EK/EL: prior session high/low from hist_td.
     # Excel EO = (ED - IF(EH>EK, EH, EK)) / AC  →  uses MAX(EH, EK).
     # EH = today's intraday high (drv_quote), EK = prior day's high (hist_td).
@@ -382,10 +382,7 @@ def compute_intermediates(row: dict) -> dict:
     BZ = _safe_div(100 * D, (100 + BX)) if D is not None and BX is not None else None
     CA = _safe_div(G_, AC)                            # Perf1D_sd
 
-    # ---- EC / ED with DU/DV fallback ----
-    EC = DX if (DX is not None and DX != 0) else DU
-    ED = DY if (DY is not None and DY != 0) else DV
-
+    # EC/ED come from drv_rr which already handles RR→BB fallback
     # EE = (D-EC)*100/(ED-EC)
     if EC is not None and EC != 0 and ED is not None and (ED - EC) != 0 and D is not None:
         EE = (D - EC) * 100.0 / (ED - EC)
