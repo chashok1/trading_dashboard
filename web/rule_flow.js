@@ -191,9 +191,6 @@ function renderIndicators(d) {
             <tbody>${rowsHtml || '<tr><td colspan="10" class="status-msg">No indicator data</td></tr>'}</tbody>
           </table>
         </div>
-        <div style="flex:0 0 auto;width:280px;border-left:1px solid var(--border);padding:12px;max-height:480px;overflow-y:auto">
-          ${renderCatInputGrid(d)}
-        </div>
         <div style="flex:1 1 0;min-width:220px;border-left:1px solid var(--border);padding:12px;max-height:480px;overflow-y:auto">
           ${renderRawPanels(d)}
         </div>
@@ -268,26 +265,6 @@ function _rawSection(tableMap, title, skipCols) {
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid var(--border)">${esc(title)}</div>
     ${inner}
   </div>`;
-}
-
-// ── drv_cat_atomic_input grid (shown between Tier 1 and Tier 2) ───────────────
-
-function renderCatInputGrid(d) {
-  const cols = Object.entries(d.drv_raw?.drv_cat_atomic_input || {})
-    .sort((a, b) => a[0].localeCompare(b[0]));
-  if (!cols.length) return '<div style="color:var(--text-3);font-size:11px">No drv_cat_atomic_input data</div>';
-  const title = `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
-                             color:var(--text-2);margin-bottom:6px;padding-bottom:4px;
-                             border-bottom:2px solid var(--border)">
-    drv_cat_atomic_input <span style="font-weight:400">(${cols.length})</span>
-  </div>`;
-  const items = cols.map(([k, v]) => `
-    <div style="display:flex;justify-content:space-between;gap:6px;
-                padding:1px 0;border-bottom:1px solid #f4f4f2;font-size:11px">
-      <span style="color:var(--text-2);font-family:monospace;font-size:10px">${esc(k)}</span>
-      <span style="font-weight:600;font-family:monospace">${esc(v != null ? fmt(v) : '—')}</span>
-    </div>`).join('');
-  return title + items;
 }
 
 // ── Tier 2: Atomic rules ──────────────────────────────────────────────────────
