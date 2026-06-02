@@ -57,9 +57,10 @@ td AS (
            a_iv_percentile, a_hv_percentile,
            a_bb_top_slope, a_bb_bot_slope,
            historical_vol,
-           high_price AS td_high,   -- EK: prior session high for MAX(EH,EK) in EO/EP
-           low_price  AS td_low,    -- EL: prior session low  for MIN(EI,EL) in EP
-           rsi        AS td_rsi     -- closing RSI from TOSD (preferred over intraday TOSL RSI)
+           high_price  AS td_high,  -- EK: prior session high for MAX(EH,EK) in EO/EP
+           low_price   AS td_low,   -- EL: prior session low  for MIN(EI,EL) in EP
+           rsi         AS td_rsi,   -- closing RSI from TOSD (preferred over intraday TOSL RSI)
+           last_price  AS td_last   -- EF: prior session close (CN = D_Last in MA sheet)
     FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
     ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
@@ -113,7 +114,7 @@ SELECT s.s AS tos_symbol,
        td.a_bb_streak, td.a_bb_high_low, td.a_bb_high_low_days,
        td.a_iv_percentile, td.a_hv_percentile,
        td.a_bb_top_slope, td.a_bb_bot_slope,
-       td.historical_vol, td.td_high, td.td_low, td.td_rsi,
+       td.historical_vol, td.td_high, td.td_low, td.td_rsi, td.td_last,
        dq.imp_volatility, dq.rsi,
        -- prior BB values for slope calculations (EY/FC)
        td_prior.bb_bot_prev, td_prior.bb_top_prev,
@@ -303,6 +304,7 @@ def compute_intermediates(row: dict) -> dict:
     # Excel EO = (ED - IF(EH>EK, EH, EK)) / AC  →  uses MAX(EH, EK).
     # EH = today's intraday high (drv_quote), EK = prior day's high (hist_td).
     # Taking MAX ensures the reference high doesn't drop early in a new session.
+    EF   = _f(row.get("td_last"))                # MA!EF = CN = D_Last (prior session close)
     EK   = _f(row.get("td_high"))
     EL   = _f(row.get("td_low"))
     AP   = _f(row.get("a_bb_high_low_days"))         # MA!AP source
@@ -434,7 +436,7 @@ def compute_intermediates(row: dict) -> dict:
         AX=bbs["AX"], AX2=bbs["AX2"], AY=bbs["AY"], AZ=bbs["AZ"],
         BB=BB, BC=BC, BE=BE, BF=BF, BJ=BJ, BK=BK, BN=BN, BO=BO,
         BQ=BQ, BS=BS, BU=BU, BW=BW, BY=BY, BZ=BZ, CA=CA,
-        EC=EC, ED=ED, EE=EE, EO=EO, EP=EP, EQ=EQ, ER=ER, ES=ES, ET=ET, EU=EU,
+        EF=EF, EC=EC, ED=ED, EE=EE, EO=EO, EP=EP, EQ=EQ, ER=ER, ES=ES, ET=ET, EU=EU,
         FF=vs["FF"], FH=vs["FH"], FI=vs["FI"], FJ=vs["FJ"],
         FK=vs["FK"], FL=vs["FL"], FM=vs["FM"], FR=FR, GB=GB,
     ))
@@ -484,11 +486,11 @@ COLUMN_SPECS_PASS1 = [
     # JM Trade Cross Over — composite (D/AF/EF/J/I).  EF=prev_close not sourced;
     # approximate via BZ (Perf3D_Value as proxy for prev_close trajectory).
     ("trade_cross_over",  "composite", None, None,
-        (lambda r,o: _crossover(_f(r.get("last_price")), _f(r.get("a_trade_value")),
-                                _f(r.get("BZ"))))),                            # JM
+        (lambda r,o: _crossover(r.get("last_price"), r.get("a_trade_value"),
+                                r.get("EF"), r.get("high_today"), r.get("low_today")))),  # JM
     ("trend_cross_over",  "composite", None, None,
-        (lambda r,o: _crossover(_f(r.get("last_price")), _f(r.get("a_trend_value")),
-                                _f(r.get("BZ"))))),                            # JP
+        (lambda r,o: _crossover(r.get("last_price"), r.get("a_trend_value"),
+                                r.get("EF"), r.get("high_today"), r.get("low_today")))),  # JP
     # JN — Trade-Rule (trig_ifs on AH = Trade_sd)
     ("trade_rule",        "trig_ifs", "AH", "Trade-Rule",  None),             # JN
     ("not_trade_rule",    "negate",   "trade_rule", None, None),              # JO
@@ -696,15 +698,32 @@ COLUMN_SPECS_PASS1 = [
 # =============================================================================
 # Pass-2 composites (read Pass-1 outputs from the same row).
 # =============================================================================
-def _crossover(price, ma, prev_price) -> Optional[float]:
-    """Three-way crossover: +1 (price > MA > prev), -1 (prev > MA > price), 0."""
-    p = _f(price); m = _f(ma); pp = _f(prev_price)
-    if p is None or m is None or pp is None:
+def _crossover(price, ma, prev_close, high=None, low=None) -> Optional[float]:
+    """Excel IFS crossover used by Trade (JM), Trend (JP), and DMA crossovers.
+
+    Full 5-arg form (Trade/Trend — MA!JM formula):
+      =IFS(AND(D>MA, MA>MIN(EF,J)),  1,   -- crossed up
+           AND(MAX(EF,I)>MA, MA>D), -1,   -- crossed down
+           TRUE,                      0)
+      D=price, MA=line, EF=prev_close(td_last), I=high_today, J=low_today
+
+    3-arg form (high/low=None — DMA crossovers until their formulas are verified):
+      falls back to simple: +1 if D>MA>prev, -1 if prev>MA>D
+    """
+    p  = _f(price);  m  = _f(ma)
+    if p is None or m is None:
         return 0.0
-    if p > m and m > pp:
-        return 1.0
-    if pp > m and m > p:
-        return -1.0
+    if high is None or low is None:
+        # Simple 3-way fallback for callers that don't supply high/low
+        pp = _f(prev_close) or 0.0
+        if p > m and m > pp:  return 1.0
+        if pp > m and m > p:  return -1.0
+        return 0.0
+    ef = _f(prev_close) or 0.0
+    hi = _f(high) or p or 0.0
+    lo = _f(low)  or p or 0.0
+    if p > m and m > min(ef, lo):   return 1.0
+    if max(ef, hi) > m and m > p:   return -1.0
     return 0.0
 
 
