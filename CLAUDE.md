@@ -121,11 +121,13 @@ python -m etl.tickers_initial_load             :: bootstrap full workbook
 python -m etl.etl_load "PATH\TO\FILE.xlsx"     :: manual single file
 python -m etl.scheduler                        :: continuous folder watcher (loads + derives)
 python -m etl.refresh_ref [--table NAME]       :: refresh tunable ref tables
+python -m etl.rebuild_rules                    :: recompile rules after trig workbook edits
 python -m etl.cleanup [--dry-run]              :: retention sweep
 python -m db.init_db [--reset-audit]           :: idempotent DDL apply
 start.bat                                      :: launch app (opens browser after 5 s)
 uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir api
-pytest tests/
+pytest tests/                                  :: all tests (DB tests auto-skip if Postgres absent)
+pytest tests/test_FILE.py -k test_name        :: single test; pure-Python tests never need DB
 ```
 
 ---
@@ -209,6 +211,7 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Flow diagrams (pipeline, derive cascade, rules) | `docs/diagrams/*.svg`, `docs/audit/architecture_flow.md` |
 | Unused DB tables/columns audit | `docs/audit/unused_db_report.md` |
 | Unused/cruft code files audit | `docs/audit/unused_code_report.md` |
+| Full command reference + web endpoints + troubleshooting table | `COMMANDS.md` |
 
 ---
 

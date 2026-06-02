@@ -2688,18 +2688,17 @@ def _derive_cat_table_impl(session: Session, as_of_date: date, run_id: int, cat_
 
 
 def _populate_y_tos_symbol(session: Session, as_of_date: date) -> int:
-    """Populate tos_symbol in hist_y by mapping y_ticker via RRT."""
+    """Populate tos_symbol in hist_y by mapping y_ticker via RRT (all dates)."""
     rows = session.execute(text("""
-        SELECT DISTINCT symbol FROM hist_y
-        WHERE snapshot_date = :d AND tos_symbol IS NULL
-    """), {"d": as_of_date}).fetchall()
+        SELECT DISTINCT symbol FROM hist_y WHERE tos_symbol IS NULL
+    """)).fetchall()
 
     updated = 0
     for (symbol,) in rows:
         tos_sym = _get_tos_symbol(session, symbol, "y_ticker")
         session.execute(text("""
-            UPDATE hist_y SET tos_symbol = :tos WHERE snapshot_date = :d AND symbol = :sym
-        """), {"tos": tos_sym, "d": as_of_date, "sym": symbol})
+            UPDATE hist_y SET tos_symbol = :tos WHERE symbol = :sym AND tos_symbol IS NULL
+        """), {"tos": tos_sym, "sym": symbol})
         updated += 1
 
     return updated
@@ -2767,9 +2766,8 @@ def _populate_ps_tos_symbol(session: Session, as_of_date: date) -> int:
     tos_ticker, y_ticker, rr_name in that order.
     """
     rows = session.execute(text("""
-        SELECT DISTINCT ticker FROM hist_ps
-        WHERE snapshot_date = :d AND tos_symbol IS NULL
-    """), {"d": as_of_date}).fetchall()
+        SELECT DISTINCT ticker FROM hist_ps WHERE tos_symbol IS NULL
+    """)).fetchall()
 
     updated = 0
     for (ticker,) in rows:
@@ -2803,9 +2801,8 @@ def _populate_ps_tos_symbol(session: Session, as_of_date: date) -> int:
             tos_sym = ticker
 
         session.execute(text("""
-            UPDATE hist_ps SET tos_symbol = :tos
-            WHERE snapshot_date = :d AND ticker = :sym
-        """), {"tos": tos_sym, "d": as_of_date, "sym": ticker})
+            UPDATE hist_ps SET tos_symbol = :tos WHERE ticker = :sym AND tos_symbol IS NULL
+        """), {"tos": tos_sym, "sym": ticker})
         updated += 1
 
     return updated
@@ -2815,33 +2812,23 @@ def _populate_tos_table_tos_symbol(session: Session, table: str, as_of_date: dat
     """Populate tos_symbol for TOS tables (hist_tl, hist_td, hist_to, hist_tw).
 
     For TOS workbook sources, symbol IS already the tos_symbol.
-    Just copy symbol → tos_symbol directly.
+    Just copy symbol → tos_symbol directly (all dates).
     """
     updated = session.execute(text(f"""
-        UPDATE {table} SET tos_symbol = symbol
-        WHERE snapshot_date = :d AND tos_symbol IS NULL
-    """), {"d": as_of_date}).rowcount
+        UPDATE {table} SET tos_symbol = symbol WHERE tos_symbol IS NULL
+    """)).rowcount
     return updated
 
 
 def _populate_generic_tos_symbol(session: Session, table: str, as_of_date: date) -> int:
-    """Populate tos_symbol for other hist_* tables by matching against ref_rrt.
+    """Populate tos_symbol for other hist_* tables by matching against ref_rrt (all dates).
 
     Try to match symbol against tos_ticker, y_ticker, rr_name in that order.
     Return tos_ticker if matched, otherwise use original symbol.
     """
-    # Different tables use different date columns
-    if table in ("hist_cst", "hist_ft"):
-        date_col = "trade_date"
-    elif table in ("hist_etfchg", "hist_iichg"):
-        date_col = "event_date"
-    else:
-        date_col = "snapshot_date"
-
     rows = session.execute(text(f"""
-        SELECT DISTINCT symbol FROM {table}
-        WHERE {date_col} = :d AND tos_symbol IS NULL
-    """), {"d": as_of_date}).fetchall()
+        SELECT DISTINCT symbol FROM {table} WHERE tos_symbol IS NULL
+    """)).fetchall()
 
     updated = 0
     for (symbol,) in rows:
@@ -2876,9 +2863,8 @@ def _populate_generic_tos_symbol(session: Session, table: str, as_of_date: date)
             tos_sym = symbol
 
         session.execute(text(f"""
-            UPDATE {table} SET tos_symbol = :tos
-            WHERE {date_col} = :d AND symbol = :sym
-        """), {"tos": tos_sym, "d": as_of_date, "sym": symbol})
+            UPDATE {table} SET tos_symbol = :tos WHERE symbol = :sym AND tos_symbol IS NULL
+        """), {"tos": tos_sym, "sym": symbol})
         updated += 1
 
     return updated
