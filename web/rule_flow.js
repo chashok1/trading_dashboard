@@ -84,7 +84,7 @@ document.getElementById('symInput').addEventListener('keydown', e => {
 
 (function restoreSym() {
   const saved = localStorage.getItem('ruleflow_symbol');
-  if (saved) document.getElementById('symInput').value = saved;
+  if (saved) { document.getElementById('symInput').value = saved; loadFlow(); }
 })();
 
 // ── Render ────────────────────────────────────────────────────────────────────
