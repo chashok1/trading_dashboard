@@ -250,7 +250,7 @@ function renderRawPanels(d) {
                   margin-bottom:2px">${esc(tbl)}
         <span style="font-weight:400;color:var(--text-3)">(${entries.length})</span>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px">${cells}</div>
+      <div style="display:grid;grid-template-columns:repeat(9,1fr);gap:1px">${cells}</div>
     </div>`;
   }).join('');
 }
