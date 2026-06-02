@@ -1999,7 +1999,18 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
         for rule in atomic_rules:
             src = atomic_col_map.get(rule["atomic_rule_id"])
             value = _read_atomic_value(r, src) if src else None
-            weight = eval_atomic_rule(value, rule)
+            # drv_cat_atomic_input columns store pre-evaluated weights (trig_ifs
+            # already ran eval_atomic_rule during derive_cat_atomic_input). Using
+            # eval_atomic_rule again causes double-evaluation: the stored weight
+            # falls in a different zone than the raw indicator, producing the wrong
+            # score (classically wt_above returned as wt_between). Pass through.
+            if src and src[0] == "drv_cat_atomic_input":
+                try:
+                    weight = float(value) if value is not None else 0.0
+                except (TypeError, ValueError):
+                    weight = 0.0
+            else:
+                weight = eval_atomic_rule(value, rule)
             atomic_scores[rule["atomic_rule_id"]] = weight
 
             if weight != 0:

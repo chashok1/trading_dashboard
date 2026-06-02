@@ -308,7 +308,12 @@ def get_symbol_trace(sym: str, as_of: Optional[str] = Query(None, alias="date"))
                         value = None
 
             try:
-                weight = float(eval_atomic_rule(value, dict(a)))
+                # drv_cat_atomic_input columns are pre-evaluated by trig_ifs —
+                # pass through directly to avoid double-evaluation.
+                if src and src[0] == "drv_cat_atomic_input":
+                    weight = float(value) if value is not None else 0.0
+                else:
+                    weight = float(eval_atomic_rule(value, dict(a)))
             except Exception:
                 weight = 0.0
             if weight != 0:
@@ -630,7 +635,10 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                 value = (ai_row if tbl == "drv_cat_atomic_input" else ma_row).get(col)
 
             try:
-                weight = float(eval_atomic_rule(value, dict(a)))
+                if src and src[0] == "drv_cat_atomic_input":
+                    weight = float(value) if value is not None else 0.0
+                else:
+                    weight = float(eval_atomic_rule(value, dict(a)))
             except Exception:
                 weight = 0.0
             atomic_score[rid] = weight
