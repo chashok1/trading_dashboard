@@ -223,7 +223,7 @@ function filterAtomics() {
     if (q && !(a.rule_name||'').toLowerCase().includes(q)) return false;
     if (cat && a.category !== cat) return false;
     if (fired && !a.fired) return false;
-    if (issues && !['no_column','no_data','no_thresholds'].some(x => (a.reason||'').startsWith(x))) return false;
+    if (issues && !['no_column','no_data'].some(x => (a.reason||'').startsWith(x))) return false;
     return true;
   });
   document.getElementById('atomicTableWrap').innerHTML = buildAtomicTable(atomics);
@@ -272,7 +272,7 @@ function buildAtomicTable(atomics) {
 
   const rows = atomics.map(a => {
     const firedCls = a.fired ? 'fired-yes' : 'fired-no';
-    const isIssue  = ['no_column','no_data','no_thresholds'].some(x => (a.reason||'').startsWith(x));
+    const isIssue  = ['no_column','no_data'].some(x => (a.reason||'').startsWith(x));
     const reasonCls = isIssue ? 'reason-bad' : 'reason-ok';
     const band = a.band ? `<span class="badge-band band-${a.band}">${a.band}</span>` : '';
     const cat  = a.category ? `<span class="cat-badge">${esc(a.category)}</span>` : '';
@@ -289,7 +289,7 @@ function buildAtomicTable(atomics) {
       : '<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#dcfce7;color:#166534">Direct</span>';
     return `<tr>
       <td>${cat} ${esc(a.rule_name||'')}</td>
-      <td style="font-family:monospace;font-size:10px;color:var(--text-2)">${esc(a.ma_column||'')}</td>
+      <td style="font-family:monospace;font-size:10px;color:var(--text-2)">${esc((a.ma_column||'').replace('drv_cat_atomic_input.',''))}</td>
       <td style="font-size:11px;color:var(--text-2);font-family:monospace;max-width:120px;white-space:normal;word-break:break-all;line-height:1.3">${esc(srcLabel)||'—'}</td>
       <td style="text-align:right;font-weight:${srcVal!=null?'600':'400'};color:${srcVal!=null?'var(--text-1)':'var(--text-3)'}">${srcVal!=null?fmt(srcVal):'—'}</td>
       <td style="text-align:right">${fmt(a.value)}</td>

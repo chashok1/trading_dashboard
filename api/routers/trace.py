@@ -343,7 +343,7 @@ def get_symbol_trace(sym: str, as_of: Optional[str] = Query(None, alias="date"))
             #   below_band          : v < brkeout_from → wt_below (which may be 0)
             #   in_band             : brkeout_from ≤ v ≤ brkeout_to → wt_between
             #   above_band          : v > brkeout_to → wt_above
-            #   no_thresholds       : rule has no brkeout values set (placeholder)
+            #   direct              : Direct-type rule — value is the pre-scored weight from drv_cat_atomic_input
             applied = value is not None
             band = None
             reason = ""
@@ -356,7 +356,7 @@ def get_symbol_trace(sym: str, as_of: Optional[str] = Query(None, alias="date"))
                     vnum = float(value)
                     has_thresh = (bf is not None) or (bt is not None)
                     if not has_thresh:
-                        reason = "no_thresholds — rule has no brkeout values (placeholder)"
+                        reason = "direct — pre-scored in drv_cat_atomic_input, value is the weight"
                     elif bf is not None and vnum < bf:
                         band = "below"
                         reason = f"below_band — value {vnum:g} < brkeout_from {bf:g}"
@@ -656,7 +656,7 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                 try:
                     vn = float(value)
                     if bf is None and bt is None:
-                        reason = "no_thresholds"
+                        reason = "direct"
                     elif bf is not None and vn < bf:
                         band = "below"; reason = f"below_band ({vn:g} < {bf:g})"
                     elif bt is not None and vn > bt:
