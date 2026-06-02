@@ -670,7 +670,7 @@ COLUMN_SPECS_PASS1 = [
         ) else 0.0)),                                                          # NB
     # NC/ND Up/Down Resistance -> composite (needs EH/EI/AC/CG/CH/BA)
     # NE Earnings -- strict > in Excel. NULL when source has no earnings (ETFs) → stored as NULL.
-    ("earnings",            "trig_ifs", "a_earnings_days", "Earnings Days",
+    ("earnings",            "trig_ifs", "a_earnings_days", "earnings_days",
         {"strict": True}),                                                      # NE
     # NF/NG/NH/NI -- VS rules use strict >.
     ("vs_price",            "zero_guard_trig_ifs", "FK", "VS Price Rule",
