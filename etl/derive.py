@@ -2418,8 +2418,6 @@ _MA_COL_MAP = {
     "BBStreak Rule2":         "a_bb_streak",
     "BBStreak Days Rule":     "a_bb_streak",
     "BBStreak Days Rule2":    "a_bb_streak",
-    "BBStreak Days Up Rule":  "a_bb_streak",   # 70 — pending clarification
-    "BBStreak Days Up Rule2": "a_bb_streak",   # 72 — pending clarification
     "BBHighDays":             "a_bb_streak",
     "BBLowDays":              "a_bb_streak",
     "BBHighLow Days Rule":    "a_bb_streak",
