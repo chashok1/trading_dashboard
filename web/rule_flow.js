@@ -223,48 +223,31 @@ function _findSourceVal(label, histRaw, drvRaw) {
 
 // ── Raw side panels (hist_raw + drv_raw) ──────────────────────────────────────
 
-const _HIST_SKIP_COLS = new Set(['source_file','source','file_name','file_path','description']);
-const _DRV_SKIP_COLS  = new Set(['description']);
+const _RAW_SKIP_COLS = new Set([
+  'source_file','source','file_name','file_path','description',
+]);
 
 function renderRawPanels(d) {
-  const histHtml = _rawSection(d.hist_raw || {}, 'Source Data (TL · TD · TW · TO · Y)', _HIST_SKIP_COLS);
-  // drv_cat_atomic_input shown in its own grid below Tier 1 — exclude here
-  const drvFiltered = Object.fromEntries(
-    Object.entries(d.drv_raw || {}).filter(([k]) => k !== 'drv_cat_atomic_input')
-  );
-  const drvHtml = _rawSection(drvFiltered, 'Derived Tables', _DRV_SKIP_COLS);
-  return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
-    <div>${histHtml}</div>
-    <div>${drvHtml}</div>
-  </div>`;
-}
-
-function _rawSection(tableMap, title, skipCols) {
-  const tables = Object.entries(tableMap);
-  if (!tables.length) return '';
-  const inner = tables.map(([tbl, cols]) => {
-    const entries = Object.entries(cols || {}).filter(([k]) => !skipCols || !skipCols.has(k));
-    if (!entries.length) return '';
-    const rows = entries.map(([k, v]) => {
-      const vs = v != null ? String(v) : '—';
-      return `<div style="display:flex;justify-content:space-between;gap:6px;padding:1px 0;border-bottom:1px solid #f4f4f2">
-        <span style="color:var(--text-2);font-family:monospace;font-size:10px;flex:1">${esc(k)}</span>
-        <span style="font-weight:600;font-family:monospace;font-size:11px;text-align:right">${esc(vs)}</span>
-      </div>`;
-    }).join('');
-    return `<details style="margin-bottom:6px" open>
-      <summary style="font-size:11px;font-weight:600;color:var(--text-2);cursor:pointer;padding:2px 0;list-style:none;display:flex;align-items:center;gap:4px">
-        <span style="font-size:9px;color:var(--text-3)">▾</span>${esc(tbl)}
-        <span style="font-size:10px;font-weight:400;color:var(--text-3)">(${entries.length})</span>
-      </summary>
-      <div style="padding-left:4px">${rows}</div>
-    </details>`;
+  const entries = [];
+  for (const cols of Object.values(d.hist_raw || {}))
+    for (const [k, v] of Object.entries(cols || {}))
+      if (!_RAW_SKIP_COLS.has(k) && v != null) entries.push([k, v]);
+  for (const [tbl, cols] of Object.entries(d.drv_raw || {})) {
+    if (tbl === 'drv_cat_atomic_input') continue;
+    for (const [k, v] of Object.entries(cols || {}))
+      if (!_RAW_SKIP_COLS.has(k) && v != null) entries.push([k, v]);
+  }
+  if (!entries.length) return '';
+  const cells = entries.map(([k, v]) => {
+    const disp = typeof v === 'boolean' ? String(v) : fmt(v);
+    return `<div style="padding:2px 5px;border-bottom:1px solid #f4f4f2">
+      <div style="font-family:monospace;font-size:9px;color:var(--text-2);
+                  overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+           title="${esc(k)}">${esc(k)}</div>
+      <div style="font-family:monospace;font-size:11px;font-weight:600">${esc(disp)}</div>
+    </div>`;
   }).join('');
-  if (!inner.trim()) return '';
-  return `<div style="margin-bottom:14px">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid var(--border)">${esc(title)}</div>
-    ${inner}
-  </div>`;
+  return `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px">${cells}</div>`;
 }
 
 // ── Tier 2: Atomic rules ──────────────────────────────────────────────────────
