@@ -177,7 +177,7 @@ function renderIndicators(d) {
     </div>
     <div class="tier-body" style="padding:0">
       <div style="display:flex;gap:0;align-items:start">
-        <div style="flex:0 0 auto;padding:12px;overflow-x:auto;max-height:480px;overflow-y:auto;zoom:0.8">
+        <div style="flex:0 0 auto;padding:12px;overflow-x:auto;max-height:480px;overflow-y:auto">
           <table class="rf-table" style="width:auto">
             <thead><tr>
               <th>Indicator</th><th style="text-align:right">Value</th>
