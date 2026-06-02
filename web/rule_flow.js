@@ -227,43 +227,32 @@ const _RAW_SKIP_COLS = new Set([
   'source_file','source','file_name','file_path','description',
 ]);
 
-const RPANEL_VCOLS = 12; // value columns; column 0 = table name label
+const RPANEL_VCOLS = 12;
 
 function renderRawPanels(d) {
   const allTables = [
     ...Object.entries(d.hist_raw || {}),
     ...Object.entries(d.drv_raw  || {}).filter(([k]) => k !== 'drv_cat_atomic_input'),
   ];
-  const rows = [];
-  for (const [tbl, cols] of allTables) {
+  return allTables.map(([tbl, cols]) => {
     const entries = Object.entries(cols || {})
       .filter(([k, v]) => !_RAW_SKIP_COLS.has(k) && v != null);
-    if (!entries.length) continue;
-    for (let i = 0; i < entries.length; i += RPANEL_VCOLS) {
-      const chunk = entries.slice(i, i + RPANEL_VCOLS);
-      const nameCell = i === 0
-        ? `<div style="writing-mode:vertical-rl;transform:rotate(180deg);
-                       font-size:8px;font-weight:700;color:var(--text-2);
-                       text-align:center;white-space:nowrap;padding:2px 1px;
-                       background:#fafaf8;border-right:1px solid var(--border)">${esc(tbl)}</div>`
-        : `<div style="background:#fafaf8;border-right:1px solid var(--border)"></div>`;
-      const valueCells = chunk.map(([k, v]) => {
-        const disp = typeof v === 'boolean' ? String(v) : fmt(v);
-        return `<div style="padding:1px 3px;border-bottom:1px solid #f4f4f2">
-          <div style="font-family:monospace;font-size:8px;color:var(--text-3);
-                      overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-               title="${esc(k)}">${esc(k)}</div>
-          <div style="font-family:monospace;font-size:10px;font-weight:600">${esc(disp)}</div>
-        </div>`;
-      }).join('');
-      const pad = Array(RPANEL_VCOLS - chunk.length).fill('<div></div>').join('');
-      rows.push(nameCell + valueCells + pad);
-    }
-  }
-  if (!rows.length) return '';
-  return `<div style="display:grid;grid-template-columns:18px repeat(${RPANEL_VCOLS},1fr);gap:0;align-items:stretch">
-    ${rows.join('')}
-  </div>`;
+    if (!entries.length) return '';
+    const cells = entries.map(([k, v]) => {
+      const disp = typeof v === 'boolean' ? String(v) : fmt(v);
+      return `<div style="padding:1px 3px;border-bottom:1px solid #f4f4f2">
+        <div style="font-family:monospace;font-size:8px;color:var(--text-3);
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+             title="${esc(k)}">${esc(k)}</div>
+        <div style="font-family:monospace;font-size:10px;font-weight:600">${esc(disp)}</div>
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:4px">
+      <div style="font-size:8px;font-weight:700;color:var(--text-3);text-transform:uppercase;
+                  letter-spacing:.05em;line-height:1.4;padding:0 2px">${esc(tbl)}</div>
+      <div style="display:grid;grid-template-columns:repeat(${RPANEL_VCOLS},1fr);gap:0">${cells}</div>
+    </div>`;
+  }).join('');
 }
 
 // ── Tier 2: Atomic rules ──────────────────────────────────────────────────────
