@@ -678,8 +678,9 @@ COLUMN_SPECS_PASS1 = [
         {"guards": ("a_volume_spike", "FK"), "strict": True}),                  # NF
     ("vs_volume_spike",     "zero_guard_trig_ifs", "FI", "VS Volume Spike Rule",
         {"guards": ("a_volume_spike",), "strict": True}),                       # NG
+    # NH: Excel IFS(FL=0,0,...) — guard on FL directly, not just a_volume_spike
     ("vs_volatility",       "zero_guard_trig_ifs", "FL", "VS Volatility Rule",
-        {"guards": ("a_volume_spike",), "strict": True}),                       # NH
+        {"guards": ("a_volume_spike", "FL"), "strict": True}),                  # NH
     ("vs_days",             "zero_guard_trig_ifs", "FM", "VS Days",
         {"guards": ("a_volume_spike",), "strict": True}),                       # NI
     # NK/NL/NM -- Current Price/Volume/Volatility SD Rules — strict >.
