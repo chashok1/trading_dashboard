@@ -116,9 +116,11 @@ enforced by a check constraint:
 | `data` | `data_column`, `data_brkeout_from/to`, `data_wt_*`, `data_scoring_mode`, `data_score_params` | Inline scoring rule — no shared atomic rule definition; column resolved the same way as atomic |
 | `composite` | `nested_composite_code` | Pulls the already-scored child composite's numeric score; `member_multiplier` scales it |
 
-`weight_override` applies to all three kinds: if a member fires (`w ≠ 0`) and
-`weight_override` is set, that value replaces the computed weight before
-summation.
+`weight_override` applies to all three kinds: if a member fires and `weight_override` is set, that value replaces the computed weight.
+
+`condition_operator` (`>=`, `<=`, `>`, `<`, `=`) — explicit condition operator per member. Determines how the member's value is compared against `data_brkeout_from`. When NULL, derived from rule-code prefix (BUY → `>=`, SELL → `<=`), then threshold sign fallback. See `etl/derive.py::_composite_operator`.
+
+`active` (`BOOLEAN DEFAULT TRUE`) — when FALSE, the composite is skipped in evaluation and shown as disabled in the Rule Flow UI.
 
 Soft-delete: `deprecated_at IS NOT NULL` excludes the rule from all derives.
 
@@ -144,10 +146,7 @@ nested-composite members have their child scores ready. A topological sort with
 cycle detection runs once at the start of `_derive_stks_impl`. Cycles are logged
 and broken by defaulting the offending composite to unscored.
 
-A composite **fires** when `n_member_hit > 0` (any member contributed a non-zero
-weight), not when the net score is non-zero. This means a composite with
-offsetting `+1` and `-1` members still counts as fired. This matches the
-semantics of `drv_trig` post the 2026-05-17 fix.
+A composite **fires** when ALL members meet their condition (`n_member_hit == n_total_members`). A member meets its condition when: its value satisfies the `condition_operator` + `data_brkeout_from` threshold (or is nonzero when no threshold is set). This means every member must pass — one miss prevents the composite from firing.
 
 ## drv_trig
 

@@ -207,6 +207,7 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | File Monitor logic | `docs/file_monitor_logic.md` |
 | Rules engine logic | `docs/rules_logic.md` |
 | Rule groups logic | `docs/rule_groups_logic.md` |
+| Rule Flow screen logic (live trace, data flow panel, trig_action calc) | `docs/rule_flow_logic.md` |
 | Performance / feedback-loop logic | `docs/performance_logic.md` |
 | Symbol normalization (tos_symbol) | `docs/tos_symbol_normalization.md` |
 | tos_symbol population — 4 groups (detail) | `detailed_tos_groups.md` |
