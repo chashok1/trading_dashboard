@@ -419,10 +419,9 @@ def compute_intermediates(row: dict) -> dict:
     CV_  = _f(row.get("historical_vol"))
     FR = 0.0 if (not DT_ or not CV_) else (DT_ * 100.0 / CV_)
     # GB Vlm 3m % = (current_volume - VolumeAvg3m) / VolumeAvg3m * 100.
-    # Use today's TOSL volume (tl_volume) as the numerator — it reflects actual
-    # current-day trading vs the 3-month weekly average from TOSW.
-    # Falls back to hist_tw.volume when TOSL has no data for the symbol.
-    wv = _f(row.get("tl_volume")) or _f(row.get("volume"))
+    # Excel Dash!AB25 flag uses TOSW (weekly) volume as numerator (FT=W_Vlm).
+    # Falls back to TOSL (tl_volume) when TOSW has no data for the symbol.
+    wv = _f(row.get("volume")) or _f(row.get("tl_volume"))
     av3 = _f(row.get("volume_avg_3m"))
     if wv is not None and av3 and av3 != 0:
         GB = ((wv - av3) / av3) * 100.0
@@ -687,10 +686,9 @@ COLUMN_SPECS_PASS1 = [
     ("current_price_sd_rule", "zero_guard_trig_ifs",
         "_NK_input", "Current Price Rule",
         {"guards": ("AC",), "strict": True}),                                   # NK
-    # NL Current Volume Rule — strict >. neg_multiplier=0.25 in ref_trig_atomic_rule
-    # makes the negative zone thresholds 1/4 of the positive ([-50,-25] vs [100,200]).
-    ("current_volume_rule", "trig_ifs", "GB", "Current Volume Rule",
-        {"strict": True}),                                                      # NL
+    # NL Current Volume Rule — Excel: IFS(GB=0,0,...). Guard on GB.
+    ("current_volume_rule", "zero_guard_trig_ifs", "GB", "Current Volume Rule",
+        {"guards": ("GB",), "strict": True}),                                   # NL
     ("current_volatility_rule", "zero_guard_trig_ifs", "imp_volatility",
         "Current Volatility Rule", {"guards": ("imp_volatility",), "strict": True}),  # NM (NULL IV → 0)
     # NN/NO -> composite (Pass-2)
