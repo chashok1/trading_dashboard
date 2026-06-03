@@ -523,10 +523,6 @@ function renderDataFlow(ruleName, dbCol, intermediates) {
   return `
   <div style="background:#f8faff;border:1px solid #c7d7f5;border-radius:6px;
               margin:4px 0 8px 0;padding:10px 14px;font-size:11px">
-    <div style="font-weight:700;font-size:12px;color:var(--accent);margin-bottom:4px">
-      ⟶ Data Flow: ${esc(ruleName)}
-    </div>
-    <div style="font-size:10px;color:var(--text-3);margin-bottom:8px;font-family:monospace">${esc(chain.label||'')}</div>
     <table style="border-collapse:collapse;width:100%">
       <thead>
         <tr style="border-bottom:1px solid #dde">
