@@ -291,7 +291,7 @@ function buildAtomicList(atomics) {
     const displayVal = _getDisplayValue(a);
     const wgtColor   = a.weight > 0 ? '#15803d' : a.weight < 0 ? '#b91c1c' : '#9ca3af';
     const colTip     = `${a.rule_name||''}\n${a.ma_column||''}`;
-    return `<div class="a-item" id="ar_${a.id}" style="padding:2px 4px;border-bottom:1px solid #f4f4f2;border-right:1px solid #f4f4f2;min-width:0;align-self:start">
+    return `<div class="a-item" id="ar_${a.id}" style="padding:2px 4px;border-bottom:1px solid #f4f4f2;min-width:0;align-self:start">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:2px">
         <span style="font-family:monospace;font-size:11px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1"
               title="${esc(colTip)}">${esc(dbCol)}</span>
@@ -307,7 +307,8 @@ function buildAtomicList(atomics) {
     </div>`;
   }).join('');
 
-  return `<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:0;align-items:start">${cells}</div>`;
+  const ncols = Math.ceil(atomics.length / 5);
+  return `<div style="display:grid;grid-template-columns:repeat(${ncols},1fr);gap:0;align-items:start">${cells}</div>`;
 }
 
 function toggleAtomicCard(ruleId, dbCol, ruleName) {
