@@ -799,6 +799,7 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                     ar = atomic_by_id.get(aid, {})
                     member_entry.update({
                         "rule_id": aid, "rule_name": ar.get("rule_name"),
+                        "ma_column": ar.get("ma_column"),
                         "value": val, "weight": w,
                         "condition_met": condition_met,
                         "threshold": threshold,

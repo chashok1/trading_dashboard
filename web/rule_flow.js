@@ -563,8 +563,52 @@ async function toggleDataFlow(tr, ruleId, ruleName) {
   tr.insertAdjacentElement('afterend', panelTr);
 }
 
+// Tier 3 member row click — same data-flow panel as Tier 2, inserted as a div
+async function toggleDataFlowInDiv(elemId, ruleId, ruleName) {
+  const el = document.getElementById(elemId);
+  if (!el) return;
+
+  const nextEl = el.nextElementSibling;
+  // Toggle off if already open for this rule
+  if (nextEl && nextEl.classList.contains('df-panel-div') && nextEl.dataset.ruleId == ruleId) {
+    nextEl.remove();
+    el.style.background = '';
+    return;
+  }
+  // Close any other open div panels
+  document.querySelectorAll('.df-panel-div').forEach(p => {
+    if (p.previousElementSibling) p.previousElementSibling.style.background = '';
+    p.remove();
+  });
+  el.style.background = '#eef4ff';
+
+  // Load intermediates (shared cache with Tier 2)
+  if (!_intermediatesCache) {
+    const sym  = document.getElementById('symInput').value.trim().toUpperCase();
+    const date = document.getElementById('dateInput').value;
+    try {
+      const url = `/api/rule-flow/${encodeURIComponent(sym)}/intermediates${date ? '?date='+date : ''}`;
+      const resp = await fetch(url);
+      _intermediatesCache = resp.ok ? await resp.json() : {};
+    } catch(e) { _intermediatesCache = {}; }
+  }
+
+  const dbCol = (el.dataset.col || '').replace('drv_cat_atomic_input.', '');
+  const html  = renderDataFlow(ruleName, dbCol, _intermediatesCache);
+
+  const panel = document.createElement('div');
+  panel.className = 'df-panel-div';
+  panel.dataset.ruleId = ruleId;
+  panel.style.cssText = 'padding:6px 8px 6px 14px;background:#f0f4ff;margin:0 0 2px 0;border-radius:4px;border-left:3px solid #93c5fd';
+  panel.innerHTML = html;
+  el.insertAdjacentElement('afterend', panel);
+}
+
 // Clear intermediates cache when a new symbol/date is loaded
-function _clearIntermediatesCache() { _intermediatesCache = null; }
+function _clearIntermediatesCache() {
+  _intermediatesCache = null;
+  document.querySelectorAll('.df-panel-div').forEach(p => p.remove());
+}
 
 // ── Tier 3: Composites ────────────────────────────────────────────────────────
 
@@ -645,7 +689,7 @@ function buildCompItem(c) {
                 : c.precondition_blocked ? 'comp-blocked'
                 : c.fired ? 'comp-fired' : 'comp-nofired';
   const id = 'comp_' + (c.code||'').replace(/[^a-z0-9]/gi,'_');
-  const members = (c.members || []).map(m => {
+  const members = (c.members || []).map((m, midx) => {
     const met  = m.condition_met ?? m.fired;   // condition met (new) or fired (legacy)
     const mCls = met ? 'mem-fired' : 'mem-nofired';
     const wt   = m.weight != null ? (met ? `<b style="color:#15803d">${fmt(m.weight)}</b>` : `<span style="color:#9ca3af">${fmt(m.weight)}</span>`) : '';
@@ -664,9 +708,14 @@ function buildCompItem(c) {
       const condPart = thr != null
         ? `<span style="font-size:10px;color:var(--text-3)">cond:</span><span style="font-family:monospace;font-size:11px;font-weight:600;color:${met?'#15803d':'#ef4444'}">${op} ${thr}</span>`
         : `<span style="font-size:10px;color:var(--text-3)">cond: ≠0</span>`;
-      return `<div class="mem-item ${mCls}" style="display:grid;grid-template-columns:14px minmax(120px,1fr) auto auto auto;gap:6px;align-items:center;padding:3px 4px">
+      const memElemId = `${id}_m${midx}`;
+      const dbCol = esc((m.ma_column||'').replace('drv_cat_atomic_input.',''));
+      return `<div class="mem-item ${mCls}" id="${memElemId}"
+          data-col="${dbCol}" data-rule-id="${m.rule_id}"
+          style="display:grid;grid-template-columns:14px minmax(120px,1fr) auto auto auto;gap:6px;align-items:center;padding:3px 4px;cursor:pointer"
+          onclick="toggleDataFlowInDiv('${memElemId}',${m.rule_id},'${esc(m.rule_name||'')}')">
         ${checkMark}
-        <span class="mem-name" style="font-size:11px">${esc(m.rule_name||'')}</span>
+        <span class="mem-name" style="font-size:11px">${esc(m.rule_name||'')} <span style="font-size:9px;color:var(--text-3)">▼ details</span></span>
         <span style="display:flex;gap:4px;align-items:center">${valStr}</span>
         <span style="display:flex;gap:4px;align-items:center">${condPart}</span>
         ${wt}
