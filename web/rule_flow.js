@@ -307,7 +307,7 @@ function buildAtomicList(atomics) {
     </div>`;
   }).join('');
 
-  return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;align-items:start">${cells}</div>`;
+  return `<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:0;align-items:start">${cells}</div>`;
 }
 
 function toggleAtomicCard(ruleId, dbCol, ruleName) {
