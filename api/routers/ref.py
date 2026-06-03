@@ -548,7 +548,9 @@ def get_data_table(
         if symbol:
             col_names = {c.name for c in table.columns}
             symbol_col = None
-            if "symbol" in col_names:
+            if "tos_symbol" in col_names:
+                symbol_col = "tos_symbol"
+            elif "symbol" in col_names:
                 symbol_col = "symbol"
             elif "ticker" in col_names:
                 symbol_col = "ticker"
