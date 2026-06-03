@@ -583,7 +583,9 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                    atomic_rule_id, weight_override, data_brkeout_from,
                    data_column, nested_composite_code, precondition_expr,
                    COALESCE(active, TRUE) AS active,
-                   condition_operator
+                   condition_operator,
+                   COALESCE(member_role, 'gate') AS member_role,
+                   evidence_cutoff
             FROM ref_trig_composite_mapping
             WHERE deprecated_at IS NULL
             ORDER BY composite_rule_code, atomic_rule_id
@@ -701,8 +703,11 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                 composite_index[code] = {
                     "precondition": m.get("precondition_expr"),
                     "active":       bool(m.get("active", True)),
+                    "watch_cutoff": None,
                     "members": [],
                 }
+            if composite_index[code]["watch_cutoff"] is None and m.get("evidence_cutoff") is not None:
+                composite_index[code]["watch_cutoff"] = m.get("evidence_cutoff")
             composite_index[code]["members"].append(dict(m))
 
         composites_out = []
@@ -728,11 +733,15 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
 
             score = 0.0
             n_hit = 0
+            # Gate / WATCH partition (mirrors etl/derive.py firing rule)
+            n_gate = n_gate_hit = n_watch = n_watch_hit = 0
+            watch_score = 0.0
             members_out = []
             for m in info["members"]:
                 kind = m.get("member_kind") or m.get("kind", "atomic")
+                role = m.get("member_role") or "gate"
                 w = 0.0
-                member_entry: dict = {"kind": kind}
+                member_entry: dict = {"kind": kind, "role": role}
                 if kind == "atomic":
                     aid       = m.get("atomic_rule_id") or m.get("atom_id")
                     threshold = m.get("data_brkeout_from") if m.get("data_brkeout_from") is not None else m.get("threshold")
@@ -771,19 +780,44 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                     child = m.get("nested_composite_code")
                     member_entry["child"] = child
                     w = 1.0 if composite_fired.get(child) else 0.0
-                if w != 0:
+                hit = (w != 0)
+                member_entry["hit"] = hit
+                if hit:
                     n_hit += 1
+                if role == "watch":
+                    n_watch += 1
+                    if hit:
+                        n_watch_hit += 1
+                        watch_score += w
+                else:
+                    n_gate += 1
+                    if hit:
+                        n_gate_hit += 1
                 score += w
                 members_out.append(member_entry)
 
-            # Fires only when ALL members contribute (all conditions met)
+            # Firing rule (gate / WATCH) — mirrors etl/derive.py:
+            #   all gates hit AND watch evidence clears the cutoff.
+            #   No-gate composites fall back to strict all-hit unless a cutoff is set.
             n_total = len(members_out)
-            fired = n_total > 0 and n_hit == n_total
+            cutoff = info.get("watch_cutoff")
+            gates_pass = (n_gate_hit == n_gate)   # vacuously True when n_gate == 0
+            if n_gate == 0:
+                watch_ok = (watch_score >= float(cutoff)) if cutoff is not None \
+                    else (n_watch_hit == n_watch)
+            else:
+                watch_ok = (cutoff is None) or (watch_score >= float(cutoff))
+            fired = n_total > 0 and gates_pass and watch_ok
             composites_out.append({
                 "code": code, "fired": fired, "score": score,
                 "n_member_hit": n_hit, "active": True,
                 "precondition": pre,
                 "precondition_blocked": False, "members": members_out,
+                # gate/WATCH firing breakdown for the UI
+                "n_gate": n_gate, "n_gate_hit": n_gate_hit,
+                "n_watch": n_watch, "n_watch_hit": n_watch_hit,
+                "watch_score": watch_score, "evidence_cutoff": cutoff,
+                "gates_pass": gates_pass, "watch_ok": watch_ok,
             })
             composite_fired[code] = fired
 

@@ -694,6 +694,32 @@ function filterComposites(q) {
   if (list) list.innerHTML = _buildCompsHtml(comps);
 }
 
+// Header summary for a composite: gate/WATCH breakdown (new API) or legacy text.
+function _compFireSummary(c) {
+  const total = (c.members || []).length;
+  if (c.n_gate == null) {
+    // Legacy API shape (no role breakdown)
+    return `score ${fmt(c.score,1)} · ${c.n_member_hit}/${total} conditions met ${c.fired ? '✓ ALL' : ''}`;
+  }
+  const gatePart = `gates ${c.n_gate_hit}/${c.n_gate}`;
+  let watchPart = '';
+  if (c.n_watch > 0) {
+    const cut = c.evidence_cutoff != null ? ` (need ≥${fmt(c.evidence_cutoff,1)})` : '';
+    watchPart = ` · watch ${c.n_watch_hit}/${c.n_watch}${cut}`;
+  }
+  let verdict;
+  if (c.fired) {
+    verdict = '<b style="color:#15803d">✓ FIRED</b>';
+  } else if (c.gates_pass === false) {
+    verdict = '<span style="color:#b91c1c">gate failed</span>';
+  } else if (c.watch_ok === false) {
+    verdict = '<span style="color:#b45309">watch short</span>';
+  } else {
+    verdict = '';
+  }
+  return `score ${fmt(c.score,1)} · ${gatePart}${watchPart} ${verdict}`;
+}
+
 function buildCompItem(c) {
   const isInactive = c.active === false;
   const edgeCls = isInactive ? 'comp-nofired'
@@ -707,6 +733,11 @@ function buildCompItem(c) {
     const checkMark = met
       ? `<span style="color:#15803d;font-weight:700">✓</span>`
       : `<span style="color:#ef4444;font-weight:700">✗</span>`;
+    const roleBadge = m.role === 'watch'
+      ? `<span title="WATCH — corroborating evidence; does not block the fire" style="font-size:8px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fbbf24;border-radius:3px;padding:0 4px;margin-right:3px">WATCH</span>`
+      : (m.role === 'gate'
+        ? `<span title="Gate — mandatory; must pass for the composite to fire" style="font-size:8px;font-weight:700;color:#3730a3;background:#e0e7ff;border:1px solid #a5b4fc;border-radius:3px;padding:0 4px;margin-right:3px">GATE</span>`
+        : '');
 
     if (m.kind === 'atomic') {
       const thr = m.threshold;
@@ -725,7 +756,7 @@ function buildCompItem(c) {
           style="display:grid;grid-template-columns:14px minmax(120px,1fr) auto auto auto;gap:6px;align-items:center;padding:3px 4px;cursor:pointer"
           onclick="toggleDataFlowInDiv('${memElemId}',${m.rule_id},'${esc(m.rule_name||'')}')">
         ${checkMark}
-        <span class="mem-name" style="font-size:11px">${esc(m.rule_name||'')} <span style="font-size:9px;color:var(--text-3)">▼ details</span></span>
+        <span class="mem-name" style="font-size:11px">${roleBadge}${esc(m.rule_name||'')} <span style="font-size:9px;color:var(--text-3)">▼ details</span></span>
         <span style="display:flex;gap:4px;align-items:center">${valStr}</span>
         <span style="display:flex;gap:4px;align-items:center">${condPart}</span>
         ${wt}
@@ -733,14 +764,14 @@ function buildCompItem(c) {
     } else if (m.kind === 'data') {
       return `<div class="mem-item ${mCls}" style="display:grid;grid-template-columns:14px 1fr auto;gap:4px;align-items:center;padding:3px 4px">
         ${checkMark}
-        <span class="mem-name" style="font-size:11px">data: ${esc(m.column||'')}</span>
+        <span class="mem-name" style="font-size:11px">${roleBadge}data: ${esc(m.column||'')}</span>
         ${wt}
       </div>`;
     } else {
       const childFired = m.fired ?? false;
       return `<div class="mem-item ${mCls}" style="display:grid;grid-template-columns:14px 1fr auto;gap:4px;align-items:center;padding:3px 4px">
         ${checkMark}
-        <span class="mem-name" style="font-size:11px">↳ <em>${esc(m.child||'')}</em> ${childFired?'(fired)':'(not fired)'}</span>
+        <span class="mem-name" style="font-size:11px">${roleBadge}↳ <em>${esc(m.child||'')}</em> ${childFired?'(fired)':'(not fired)'}</span>
         ${wt}
       </div>`;
     }
@@ -757,7 +788,7 @@ function buildCompItem(c) {
     <div class="comp-hdr" onclick="toggleComp('${id}')">
       ${dot(c.fired, c.precondition_blocked)}
       <span class="comp-code">${esc(c.code||'')}</span>
-      <span class="comp-score">${isInactive ? '<span style="color:#9ca3af;font-style:italic">disabled</span>' : `score ${fmt(c.score,1)} · ${c.n_member_hit}/${(c.members||[]).length} conditions met ${c.fired ? '✓ ALL' : ''}`}</span>
+      <span class="comp-score">${isInactive ? '<span style="color:#9ca3af;font-style:italic">disabled</span>' : _compFireSummary(c)}</span>
       <span style="font-size:12px;color:var(--text-3)">▾</span>
     </div>
     <div class="comp-body">

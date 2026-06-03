@@ -56,10 +56,18 @@ A DB CHECK constraint enforces: `action` groups must have `action_label`; `logic
 
 ## group_type: action vs. logical
 
-**`action` groups** are the end-goal objects. They carry an `action_label`
-(one of `SA`, `STM`, `SS`, `BM`, `HOLD`) and a `priority` (1–5). When
-`eval_rule_group` returns `(True, action_label, priority)`, the caller
-(`derive_actionable`) treats this as a candidate action.
+**`action` groups** are the end-goal objects. They carry an `action_label` and
+a `priority` (1–5). When `eval_rule_group` returns
+`(True, action_label, priority)`, the caller (`derive_actionable`) treats this
+as a candidate action.
+
+> **Action vocabulary (canonical, 2026-06-03).** The trading actions encoded in
+> composite rule-codes and group `action_label`s are:
+> `SA, SW, STM, SS` (sell-family) and `B, BS, BR, BW, BM, BMN` (buy-family), plus
+> `HOLD`. Earlier drafts of this doc and `actionable_logic.md` also used an
+> `ADD / REMOVE / INCREASE / REDUCE` sizing vocabulary — that is the
+> *position-sizing* layer in `derive_actionable`, a separate concept from the
+> rule-action labels here. Don't conflate the two.
 
 **`logical` groups** have no `action_label`. They exist solely to be
 referenced as members of other groups under `member_type='group'`. Nesting

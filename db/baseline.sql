@@ -3299,6 +3299,18 @@ CREATE TABLE IF NOT EXISTS ref_trig_composite_mapping (
 ALTER TABLE ref_trig_composite_mapping ADD COLUMN IF NOT EXISTS condition_operator VARCHAR(2)
     CHECK (condition_operator IN ('>=','<=','>','<','='));
 
+-- Gate / WATCH member roles (2026-06-03). A 'gate' member is mandatory (strict
+-- AND, the legacy behavior); a 'watch' member is corroborating evidence that
+-- contributes to score/display but does not by itself block firing. A composite
+-- fires when ALL gates pass AND the watch evidence clears evidence_cutoff
+-- (NULL cutoff = watch never blocks). evidence_cutoff is composite-level, stored
+-- on every member row like the other shared composite metadata.
+-- DEFAULT 'gate' on every existing row → zero behavior change until members are
+-- reclassified (see db/migrate_member_watch_roles.sql). See docs/rule_engine_redesign.md.
+ALTER TABLE ref_trig_composite_mapping ADD COLUMN IF NOT EXISTS member_role TEXT NOT NULL DEFAULT 'gate'
+    CHECK (member_role IN ('gate','watch'));
+ALTER TABLE ref_trig_composite_mapping ADD COLUMN IF NOT EXISTS evidence_cutoff NUMERIC;
+
 -- Backfill: BUY rules → >=, SELL rules → <=
 UPDATE ref_trig_composite_mapping
 SET condition_operator = '>='

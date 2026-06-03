@@ -515,10 +515,17 @@ def load_trig_rules(session: Session, wb: Workbook) -> tuple[int, int, int]:
             if mark is None or (isinstance(mark, str) and mark.strip() == ""):
                 continue
             rows_read += 1
+            wt_num = _safe_num(wt)
+            # Gate / WATCH role (2026-06-03): the workbook encodes weight-1
+            # members as corroborating "watch" signals and weight-10 members as
+            # mandatory gates. Mirror that into member_role so the rule engine
+            # treats watch members as non-blocking evidence. (Existing DB rows are
+            # backfilled by db/migrate_member_watch_roles.sql.)
             comp_records.append({
                 "composite_rule_code": code,
                 "atomic_rule_id": r,
-                "weight_override": _safe_num(wt),
+                "weight_override": wt_num,
+                "member_role": "watch" if wt_num == 1 else "gate",
             })
 
     n_att, n_ins = insert_skip_duplicates(session, "ref_trig_composite_mapping", comp_records)

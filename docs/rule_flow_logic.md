@@ -66,12 +66,23 @@ Each composite shows members with:
 
 | Field | Meaning |
 |---|---|
+| role badge | `GATE` (mandatory) or `WATCH` (corroborating evidence) — `member_role` |
 | check/x | Condition met |
 | val | Atomic weight from `drv_cat_atomic_input` |
 | cond | `operator threshold` e.g. `>= 2` |
 | weight | Assigned weight (`weight_override` if set, else val) |
 
-**Firing rule:** ALL members must meet their condition (`n_member_hit == n_total_members`). Any member miss = composite does not fire.
+**Firing rule (gate / WATCH, 2026-06-03):** a composite fires when **all GATE
+members hit AND the WATCH evidence clears `evidence_cutoff`** (NULL cutoff = WATCH
+never blocks; WATCH members are informational). A composite with no gates falls
+back to strict all-members-hit unless a cutoff is set. The header shows the
+breakdown: `gates G_hit/G_total · watch W_hit/W_total (need ≥cutoff)` plus a
+verdict (`✓ FIRED`, `gate failed`, or `watch short`). This mirrors
+`etl/derive.py` exactly. See `docs/rule_engine_redesign.md`.
+
+> Note: before this change the trace endpoint fired composites on `score > 0`
+> (any member), which diverged from the derive layer's all-members rule. The
+> endpoint now applies the same gate/WATCH logic as the live derive cascade.
 
 **Condition operator precedence** (first wins):
 1. `ref_trig_composite_mapping.condition_operator` - explicit: `>=` `<=` `>` `<` `=`

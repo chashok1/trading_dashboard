@@ -14,10 +14,12 @@ Three tiers of authoring, one evaluation cascade per (symbol, date):
    Evaluated per symbol by `eval_atomic_rule()` in `etl/derive.py`.
 2. **Composite rules** (`ref_trig_composite_mapping`) — named collections of
    members (atomic, inline-data, or nested-composite) whose contributions are
-   summed to a score. A composite "fires" when any member contributes (score ≠ 0
-   on at least one member), subject to an optional precondition gate.
+   summed to a score. A composite "fires" when **ALL** members meet their
+   condition (`n_member_hit == n_total_members` in `etl/derive.py`), subject to
+   an optional precondition gate. One member missing prevents the fire.
    Scores written to `drv_trig` (atomic members only) and the authoritative
    `drv_stks.triggered_composite_ids` JSONB (all member kinds).
+   (A future gate/evidence model is proposed in `docs/rule_engine_redesign.md`.)
 3. **Rule groups** (`ref_trig_rule_group` + `ref_trig_group_member`) — AND/OR
    boolean expressions over composite codes that produce an `action_label` (ADD,
    REMOVE, etc.) and a priority. Fired groups are injected as synthetic
@@ -203,6 +205,13 @@ Fired groups are appended to `drv_stks.triggered_group_ids` and injected as
 outlook-sourced actions.
 
 ## Position rules — `etl/position_rules.py`
+
+> **⚠️ UNUSED MODULE (2026-06-03).** `etl/position_rules.py` has no importers in
+> `etl/` or `api/` and CLAUDE.md lists it as safe to delete. The sizing/
+> suppression logic described below is the *intended* design; the live behavior
+> is implemented directly in `etl/derive_actionable.py` (see
+> `docs/actionable_logic.md`). Treat this section as historical until the module
+> is either re-wired or removed.
 
 Position rules are not trigger suppression in the ETL sense; they are sizing
 and suppression guards applied during `derive_actionable`. They resolve the

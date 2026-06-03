@@ -92,7 +92,8 @@ def get_composite_rule(rule_id: str):
     with session_scope() as s:
         row = s.execute(
             text("""SELECT DISTINCT ON (composite_rule_code) composite_rule_code as rule_id,
-                           category, intent_text, precondition_expr, deprecated_at
+                           category, intent_text, precondition_expr, deprecated_at,
+                           evidence_cutoff
                     FROM ref_trig_composite_mapping WHERE composite_rule_code = :rid"""),
             {"rid": rule_id}
         ).mappings().first()
@@ -109,7 +110,8 @@ def get_composite_rule_atomics(rule_id: str):
             text("""SELECT a.atomic_rule_id, a.rule_name, a.category, a.scoring_mode,
                            a.brkeout_from, a.brkeout_to, a.wt_below, a.wt_between, a.wt_above,
                            m.weight_override, m.data_brkeout_from, m.active,
-                           m.condition_operator
+                           m.condition_operator,
+                           COALESCE(m.member_role, 'gate') AS member_role, m.evidence_cutoff
                     FROM ref_trig_atomic_rule a
                     JOIN ref_trig_composite_mapping m ON a.atomic_rule_id = m.atomic_rule_id
                     WHERE m.composite_rule_code = :crc AND a.deprecated_at IS NULL
@@ -755,6 +757,7 @@ def replace_composite_members(rule_id: str, body: dict):
     category = body.get("category")
     intent   = body.get("intent_text")
     pre      = body.get("precondition_expr")
+    evidence_cutoff = body.get("evidence_cutoff")  # composite-level; None = watch never blocks
 
     warnings = []
 
@@ -763,6 +766,12 @@ def replace_composite_members(rule_id: str, body: dict):
         mig_applied = bool(s.execute(text("""
             SELECT 1 FROM information_schema.columns
             WHERE table_name='ref_trig_composite_mapping' AND column_name='member_kind'
+        """)).first())
+        # Gate/WATCH role columns (added 2026-06-03) — detected separately so a
+        # partial migration can't break inserts.
+        has_role_cols = bool(s.execute(text("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='ref_trig_composite_mapping' AND column_name='member_role'
         """)).first())
 
         # Hard-delete current mappings; we want a clean replace
@@ -781,7 +790,12 @@ def replace_composite_members(rule_id: str, body: dict):
                 op = m.get("condition_operator") or None
                 if op and op not in (">=", "<=", ">", "<", "="):
                     op = None
-                s.execute(text("""
+                role = (m.get("member_role") or "gate").lower()
+                if role not in ("gate", "watch"):
+                    role = "gate"
+                role_cols = ", member_role, evidence_cutoff" if has_role_cols else ""
+                role_vals = ", :mrole, :ecut" if has_role_cols else ""
+                s.execute(text(f"""
                     INSERT INTO ref_trig_composite_mapping
                       (composite_rule_code, member_kind,
                        atomic_rule_id, weight_override,
@@ -790,7 +804,7 @@ def replace_composite_members(rule_id: str, body: dict):
                        data_scoring_mode, data_score_params,
                        nested_composite_code, member_multiplier,
                        category, intent_text, precondition_expr,
-                       condition_operator)
+                       condition_operator{role_cols})
                     VALUES
                       (:rid, :kind,
                        :atom, :wo,
@@ -799,7 +813,7 @@ def replace_composite_members(rule_id: str, body: dict):
                        :dmode, CAST(:dparams AS JSONB),
                        :nest, :mult,
                        :cat, :intent, :pre,
-                       :cop)
+                       :cop{role_vals})
                 """), {
                     "rid":    rule_id,
                     "kind":   kind,
@@ -819,6 +833,8 @@ def replace_composite_members(rule_id: str, body: dict):
                     "intent": intent,
                     "pre":    pre,
                     "cop":    op,
+                    "mrole":  role,
+                    "ecut":   evidence_cutoff,
                 })
             else:
                 # Pre-migration legacy schema — atomic only

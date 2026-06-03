@@ -1885,7 +1885,9 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
                    nested_composite_code, member_multiplier,
                    category, intent_text, precondition_expr,
                    COALESCE(active, TRUE) AS active,
-                   condition_operator
+                   condition_operator,
+                   COALESCE(member_role, 'gate') AS member_role,
+                   evidence_cutoff
             FROM ref_trig_composite_mapping
             WHERE deprecated_at IS NULL
         """)).mappings().all()
@@ -1907,12 +1909,20 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
             composite_index[code] = {
                 "precondition": m.get("precondition_expr"),
                 "active":       bool(m.get("active", True)),
+                # composite-level watch evidence cutoff (NULL = watch never blocks).
+                # Stored on every member row; take the first non-NULL we see.
+                "watch_cutoff": None,
                 "members": []
             }
+        # evidence_cutoff is composite-level metadata duplicated on member rows
+        if composite_index[code]["watch_cutoff"] is None and m.get("evidence_cutoff") is not None:
+            composite_index[code]["watch_cutoff"] = m.get("evidence_cutoff")
+        role = m.get("member_role") or "gate"
         kind = m.get("member_kind") or "atomic"
         if kind == "atomic":
             composite_index[code]["members"].append({
                 "kind":               "atomic",
+                "role":               role,
                 "atom_id":            m["atomic_rule_id"],
                 "threshold":          m.get("data_brkeout_from"),
                 "condition_operator": m.get("condition_operator"),
@@ -1921,6 +1931,7 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
         elif kind == "data":
             composite_index[code]["members"].append({
                 "kind": "data",
+                "role":         role,
                 "column":      m.get("data_column"),
                 "brkeout_from": m.get("data_brkeout_from"),
                 "brkeout_to":   m.get("data_brkeout_to"),
@@ -1934,6 +1945,7 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
         elif kind == "composite":
             composite_index[code]["members"].append({
                 "kind":     "composite",
+                "role":     role,
                 "child":    m.get("nested_composite_code"),
                 "override": m.get("weight_override"),
             })
@@ -2101,8 +2113,17 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
 
             score = 0.0
             n_member_hit = 0   # member-level hit count (any non-zero contribution)
+            # Gate / WATCH partition (2026-06-03). Gates are mandatory (strict
+            # AND); watch members are corroborating evidence that contribute to
+            # score but do not by themselves block the fire.
+            n_gate = 0
+            n_gate_hit = 0
+            n_watch = 0
+            n_watch_hit = 0
+            watch_score = 0.0
             for member in comp_info["members"]:
                 kind = member["kind"]
+                role = member.get("role", "gate")
                 w = 0.0
                 if kind == "atomic":
                     atom_id   = member["atom_id"]
@@ -2156,13 +2177,37 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
                     else:
                         mult = member.get("override")
                         w = float(mult) * child_score if mult is not None else child_score
-                if w != 0:
+                hit = (w != 0)
+                if hit:
                     n_member_hit += 1
+                if role == "watch":
+                    n_watch += 1
+                    if hit:
+                        n_watch_hit += 1
+                        watch_score += w
+                else:
+                    n_gate += 1
+                    if hit:
+                        n_gate_hit += 1
                 score += w
 
-            # A composite fires only when ALL members contribute (all conditions met).
+            # Firing rule (gate / WATCH):
+            #   - ALL gates must hit (strict AND; legacy behavior when every
+            #     member is a gate, which is the default).
+            #   - Watch evidence must clear evidence_cutoff. NULL cutoff = watch
+            #     never blocks (purely informational).
+            #   - A composite with NO gates falls back to strict all-members-hit
+            #     unless an explicit cutoff is set, so pure-watch composites can
+            #     never fire on every symbol.
             n_total_members = len(comp_info["members"])
-            fired = n_total_members > 0 and n_member_hit == n_total_members
+            cutoff = comp_info.get("watch_cutoff")
+            gates_pass = (n_gate_hit == n_gate)   # vacuously True when n_gate == 0
+            if n_gate == 0:
+                watch_ok = (watch_score >= float(cutoff)) if cutoff is not None \
+                    else (n_watch_hit == n_watch)
+            else:
+                watch_ok = (cutoff is None) or (watch_score >= float(cutoff))
+            fired = n_total_members > 0 and gates_pass and watch_ok
             composite_results[code] = fired
             composite_scores[code] = float(score)
             if fired:

@@ -292,6 +292,10 @@
         <label for="preInput">Precondition expression — composite is skipped (NULL score) when false</label>
         <textarea id="preInput" rows="2" placeholder="e.g.  asset_class = 'Equity' AND sector <> 'ETF'"></textarea>
       </div>
+      <div class="ce-field">
+        <label for="evidenceCutoffInput">Evidence cutoff — min total WATCH weight required (blank = WATCH never blocks)</label>
+        <input id="evidenceCutoffInput" type="number" step="0.5" placeholder="blank = informational">
+      </div>
     </div>
 
     <div class="ce-preview" id="dryrunPanel">

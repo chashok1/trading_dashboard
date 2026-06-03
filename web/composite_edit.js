@@ -132,6 +132,7 @@ async function loadComposite() {
     STATE.intent       = detail.intent_text  || null;
     STATE.precondition = detail.precondition_expr || null;
     STATE.active       = detail.active !== false;
+    STATE.evidenceCutoff = detail.evidence_cutoff ?? null;
 
     const atomics = atomicsRes.ok ? await atomicsRes.json() : [];
     // Translate to member objects (atomic only — kind metadata isn't on the legacy GET)
@@ -142,6 +143,7 @@ async function loadComposite() {
       weight_override: a.weight_override,
       data_brkeout_from: a.data_brkeout_from ?? null,
       condition_operator: a.condition_operator ?? null,
+      member_role: a.member_role || "gate",
       _base: { wt_below: a.wt_below, wt_between: a.wt_between, wt_above: a.wt_above },
     }));
 
@@ -158,6 +160,8 @@ async function loadComposite() {
     $("catInput").value   = STATE.category || "";
     $("intentInput").value = STATE.intent  || "";
     $("preInput").value   = STATE.precondition || "";
+    if ($("evidenceCutoffInput"))
+      $("evidenceCutoffInput").value = STATE.evidenceCutoff == null ? "" : STATE.evidenceCutoff;
     document.title = `Composite ${STATE.ruleId} — Trading Dashboard`;
 
     renderMembers();
@@ -209,6 +213,14 @@ function renderMembers() {
       STATE.members[idx].condition_operator = sel.value || null;
     });
   });
+  // Wire gate/WATCH role selects
+  list.querySelectorAll("select.mem-role").forEach(sel => {
+    sel.addEventListener("change", () => {
+      const idx = parseInt(sel.dataset.idx, 10);
+      STATE.members[idx].member_role = sel.value || "gate";
+      renderMembers();  // re-render to update the WATCH highlight
+    });
+  });
   // Wire data-member inline threshold inputs
   list.querySelectorAll("input.data-field").forEach(inp => {
     inp.addEventListener("input", () => {
@@ -234,6 +246,15 @@ function memberRow(m, idx) {
   const ovrField  = `<div class="ovr"><label>override</label>
     <input class="ovr-input" type="number" step="0.5" data-idx="${idx}"
       placeholder="—" value="${m.weight_override == null ? "" : m.weight_override}"></div>`;
+  const role      = (m.member_role || "gate");
+  const roleField = `<div class="ovr" style="min-width:78px"
+      title="Gate = mandatory (strict AND). WATCH = corroborating evidence; does not block the fire.">
+    <label>role</label>
+    <select class="mem-role" data-idx="${idx}"
+        style="font-size:12px;padding:2px 4px;${role==='watch'?'color:#92400e;font-weight:600':''}">
+      <option value="gate"  ${role==='gate' ?'selected':''}>gate</option>
+      <option value="watch" ${role==='watch'?'selected':''}>WATCH</option>
+    </select></div>`;
 
   if (m.kind === "atomic") {
     const thresh  = m.data_brkeout_from;
@@ -268,6 +289,7 @@ function memberRow(m, idx) {
       </div>
       ${opField}
       ${condField}
+      ${roleField}
       ${ovrField}
       ${x}
     </div>`;
@@ -288,7 +310,7 @@ function memberRow(m, idx) {
           <span>w&gt;</span><input class="data-field" data-idx="${idx}" data-field="wt_above"     type="number" step="0.5"  value="${m.wt_above ?? 0}">
         </div>
       </div>
-      <div></div>
+      ${roleField}
       ${ovrField}
       ${x}
     </div>`;
@@ -302,7 +324,7 @@ function memberRow(m, idx) {
         <div class="name">${escapeHtml(m.nested_composite_code)}</div>
         <div class="col">nested composite — score added to parent (× multiplier)</div>
       </div>
-      <div></div>
+      ${roleField}
       ${ovrField}
       ${x}
     </div>`;
@@ -437,11 +459,13 @@ function setupTypeahead(inputId, suggestId, getCorpus, render, value) {
 
 async function saveComposite() {
   if (!STATE.ruleId) { showErr("Load a composite first"); return; }
+  const _ecut = $("evidenceCutoffInput") ? $("evidenceCutoffInput").value.trim() : "";
   const body = {
     members: STATE.members.map(m => stripInternal(m)),
     category:          $("catInput").value || null,
     intent_text:       $("intentInput").value || null,
     precondition_expr: $("preInput").value || null,
+    evidence_cutoff:   _ecut === "" ? null : parseFloat(_ecut),
   };
   $("saveBtn").disabled = true;
   try {
