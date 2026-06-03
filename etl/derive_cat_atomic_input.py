@@ -382,7 +382,9 @@ def compute_intermediates(row: dict) -> dict:
     BW = _safe_div(BV, (AD * 100)) if AD else None
     BY = _safe_div(BX, (AD * 100)) if AD else None
     BZ = _safe_div(100 * D, (100 + BX)) if D is not None and BX is not None else None
-    CA = _safe_div(G_, AC)                            # Perf1D_sd
+    # round() removes IEEE-754 noise at threshold boundaries (e.g. -1.000...002 → -1.0)
+    _ca = _safe_div(G_, AC)
+    CA = round(_ca, 10) if _ca is not None else None  # Perf1D_sd
 
     # EC/ED come from drv_rr which already handles RR→BB fallback
     # EE = (D-EC)*100/(ED-EC)
@@ -558,8 +560,9 @@ COLUMN_SPECS_PASS1 = [
     ("perf3wk_sd_rule",     "trig_ifs", "BU", "Perf3wk SD Rule",  None),       # LE
     ("perf2wk_sd_rule",     "trig_ifs", "BW", "Perf2wk SD Rule",  None),       # LF
     ("perf3d_sd_rule",      "trig_ifs", "BY", "Perf3D SD Rule",   None),       # LG
-    ("perf1d_sd_rule",      "trig_ifs", "CA", "Perf1D SD Rule",   None),       # LH
-    ("not_perf1d_sd",       "negate",   "perf1d_sd_rule", None, None),         # LI
+    # LH: Excel: positive>=, negative< (strict). CA=-2 at -nhi=-2 → False → -wbt.
+    ("perf1d_sd_rule",      "trig_ifs", "CA", "Perf1D SD Rule",   {"strict_neg": True}),  # LH
+    ("not_perf1d_sd",       "negate",   "perf1d_sd_rule", None, None),                # LI
     # LJ -- Perf3D_sd_1off (uses ABS(BY))
     ("perf3d_sd_1off",      "trig_ifs", "BY", "Perf3D 1Off Rule",
         {"abs_input": True}),                                                   # LJ
@@ -980,25 +983,25 @@ def load_trig_rules(session: Session) -> dict:
 # =============================================================================
 def _eval_trig_ifs(value, rule: Optional[dict], *,
                    strict: bool = False,
-                   positive_only: bool = False) -> Optional[float]:
+                   positive_only: bool = False,
+                   strict_neg: bool = False) -> Optional[float]:
     """Excel-faithful Trig-IFS evaluator.
 
     Six-clause IFS (default):
         v >= hi   ->   wt_above           (strict=True: v > hi)
         v >= lo   ->   wt_between         (strict=True: v > lo)
         v >= 0    ->   wt_below
-        v <= -hi  ->  -wt_above
-        v <= -lo  ->  -wt_between
+        v <= -hi  ->  -wt_above           (strict=True or strict_neg: v < -hi)
+        v <= -lo  ->  -wt_between         (strict=True or strict_neg: v < -lo)
         v <  0    ->  -wt_below
 
-    Four-clause positive-only IFS (positive_only=True — used by MACD rules):
-        v >= hi   ->   wt_above           (strict=True: v > hi for all clauses)
-        v >= lo   ->   wt_between
-        v > 0     ->   wt_below           (always strict)
-        TRUE      ->   0                  (zero and negative both return 0)
+    strict_neg=True: positive uses >= (non-strict), negative uses < (strict).
+    Matches Excel IFS pattern: $v>=hi, $v>=lo, v>=0, $v<-hi, $v<-lo, v<0.
 
-    `strict=False` (default): matches the majority of Excel formulas (>=).
-    `strict=True`: matches Puts variants and other strict > rules.
+    Four-clause positive-only IFS (positive_only=True — used by MACD rules).
+
+    `strict=False` (default): positive >=, negative <=.
+    `strict=True`: positive >, negative < (strict both sides).
     """
     if rule is None or value is None:
         return None
@@ -1029,7 +1032,15 @@ def _eval_trig_ifs(value, rule: Optional[dict], *,
             if v >= lo: return wbt
         if v > 0: return wb_
         return 0.0
-    if strict:
+    if strict_neg and not strict:
+        # positive >= (non-strict), negative < (strict) — most common Excel IFS pattern
+        if v >= hi:  return wa
+        if v >= lo:  return wbt
+        if v >= 0:   return wb_
+        if v < -nhi: return -wa
+        if v < -nlo: return -wbt
+        if v <  0:   return -wb_
+    elif strict:
         if v >   hi:  return wa
         if v >   lo:  return wbt
         if v >= 0:    return wb_
@@ -1081,19 +1092,22 @@ def eval_specs(row: dict, specs: list, trig_rules: dict, out: dict) -> dict:
                 strict = False
                 simple = False
                 positive_only = False
+                strict_neg = False
                 if isinstance(extra, dict):
                     if extra.get("abs_input") and val is not None:
                         val = abs(_f(val) or 0.0)
                     strict        = bool(extra.get("strict"))
                     simple        = bool(extra.get("simple"))
                     positive_only = bool(extra.get("positive_only"))
+                    strict_neg    = bool(extra.get("strict_neg"))
                 if simple:
                     # Use standard 3-clause jump eval (correct for asymmetric zones where lo < 0)
                     from etl.derive import eval_atomic_rule
                     out[db_col] = eval_atomic_rule(val, trig_rules.get(rule_name))
                 else:
                     out[db_col] = _eval_trig_ifs(val, trig_rules.get(rule_name),
-                                                  strict=strict, positive_only=positive_only)
+                                                  strict=strict, positive_only=positive_only,
+                                                  strict_neg=strict_neg)
 
             elif ftype == "zero_guard_trig_ifs":
                 guards = extra or ()
