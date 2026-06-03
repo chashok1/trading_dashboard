@@ -200,7 +200,6 @@ function renderAtomics(d) {
   <div class="tier open" id="tier-atomic">
     <div class="tier-hdr" onclick="toggleTier('tier-atomic')">
       <span class="tier-title">Atomic Rules</span>
-      ${firedBadge(sm.n_atomic_fired, sm.n_atomic_total)}
       <span class="tier-toggle">▾</span>
     </div>
     <div class="tier-body">
@@ -305,7 +304,7 @@ function buildAtomicList(atomics) {
     </div>`;
   }).join('');
 
-  return `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0;align-items:start">${cells}</div>`;
+  return `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;align-items:start">${cells}</div>`;
 }
 
 function toggleAtomicCard(ruleId, dbCol, ruleName) {
