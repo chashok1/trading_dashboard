@@ -516,6 +516,13 @@ def load_trig_rules(session: Session, wb: Workbook) -> tuple[int, int, int]:
                 continue
             rows_read += 1
             wt_num = _safe_num(wt)
+            # The 'mark' cell is the per-member CONDITION THRESHOLD from the
+            # workbook (e.g. -1 for a SELL gate). Store it in data_brkeout_from so
+            # the rule engine compares the atomic value against it (operator from
+            # the rule-code prefix: BUY >=, SELL <=). Before 2026-06-03 this was
+            # discarded, so every member degraded to "value != 0" (shown as
+            # "cond: ≠0" in Rule Flow).
+            thr_num = _safe_num(mark)
             # Gate / WATCH role (2026-06-03): the workbook encodes weight-1
             # members as corroborating "watch" signals and weight-10 members as
             # mandatory gates. Mirror that into member_role so the rule engine
@@ -525,10 +532,16 @@ def load_trig_rules(session: Session, wb: Workbook) -> tuple[int, int, int]:
                 "composite_rule_code": code,
                 "atomic_rule_id": r,
                 "weight_override": wt_num,
+                "data_brkeout_from": thr_num,
                 "member_role": "watch" if wt_num == 1 else "gate",
             })
 
-    n_att, n_ins = insert_skip_duplicates(session, "ref_trig_composite_mapping", comp_records)
+    # Workbook is the source of truth: refresh threshold / weight / role on reload
+    # (ON CONFLICT DO UPDATE) so edits to the Trig tab propagate without a reset.
+    n_att, n_ins = insert_skip_duplicates(
+        session, "ref_trig_composite_mapping", comp_records,
+        update_on_conflict_cols=["weight_override", "data_brkeout_from", "member_role"],
+    )
 
     # ─── Pruning pass (2026-05-12) ──────────────────────────────────────────
     # The workbook is the source of truth. Insert-only ON CONFLICT DO NOTHING
@@ -536,12 +549,16 @@ def load_trig_rules(session: Session, wb: Workbook) -> tuple[int, int, int]:
     # deprecated_at = now() so the rule engine ignores them but history is kept.
     workbook_codes = sorted({rec["composite_rule_code"] for rec in comp_records})
     if workbook_codes:
+        # BASE-* composites are seed-defined (db/seeds_base_rules.sql), not in the
+        # workbook — exempt them from pruning so leaf composites can keep nesting
+        # them. (Phase 2, docs/rule_engine_redesign.md.)
         session.execute(
             text("""
                 UPDATE ref_trig_composite_mapping
                    SET deprecated_at = now()
                  WHERE deprecated_at IS NULL
                    AND composite_rule_code != ALL(:codes)
+                   AND composite_rule_code NOT LIKE 'BASE-%'
             """),
             {"codes": workbook_codes},
         )

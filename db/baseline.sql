@@ -3336,6 +3336,66 @@ CREATE INDEX IF NOT EXISTS ix_composite_mapping_kind ON ref_trig_composite_mappi
 
 -- -----------------------------------------------------
 
+-- ref_trig_param_set / ref_trig_param_value (Phase 3, 2026-06-03)
+
+-- Separates rule STRUCTURE (ref_trig_*) from tunable PARAMETERS (thresholds,
+
+-- weights, sigmoid k/x0). A parameter set is a named, versioned overlay applied
+
+-- at scoring time (etl/param_sets.py, consumed by load_trig_rules). The active
+
+-- set (is_active=TRUE) overrides the base values; with no active set the engine
+
+-- uses the values stored directly on ref_trig_atomic_rule (zero change).
+
+-- ML (etl/ml_tune_thresholds.py) proposes a new set, you backtest, then activate.
+
+-- -----------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS ref_trig_param_set (
+
+    param_set_id   SERIAL PRIMARY KEY,
+
+    label          TEXT NOT NULL,
+
+    provenance     TEXT,                 -- 'manual' | 'ml:<model>' | 'backtest'
+
+    is_active      BOOLEAN NOT NULL DEFAULT FALSE,
+
+    notes          TEXT,
+
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+
+);
+
+-- At most one active set.
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_param_set_active
+
+    ON ref_trig_param_set(is_active) WHERE is_active = TRUE;
+
+CREATE TABLE IF NOT EXISTS ref_trig_param_value (
+
+    param_set_id   INTEGER NOT NULL REFERENCES ref_trig_param_set(param_set_id) ON DELETE CASCADE,
+
+    target_kind    TEXT NOT NULL,        -- 'atomic' | 'composite_member' | 'composite'
+
+    target_id      TEXT NOT NULL,        -- atomic_rule_id, or 'code|atomic_id', or composite code
+
+    param_name     TEXT NOT NULL,        -- brkeout_from|brkeout_to|wt_below|wt_between|wt_above|x0|k|evidence_cutoff
+
+    param_value    NUMERIC,
+
+    PRIMARY KEY (param_set_id, target_kind, target_id, param_name)
+
+);
+
+CREATE INDEX IF NOT EXISTS ix_param_value_set ON ref_trig_param_value(param_set_id);
+
+
+
+-- -----------------------------------------------------
+
 -- drv_trig - per-stock per-composite-rule scores
 
 -- -----------------------------------------------------

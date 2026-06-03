@@ -207,6 +207,11 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | File Monitor logic | `docs/file_monitor_logic.md` |
 | Rules engine logic | `docs/rules_logic.md` |
 | Rule groups logic | `docs/rule_groups_logic.md` |
+| Rule engine redesign (gate/WATCH, BASE rules, param sets, ML) | `docs/rule_engine_redesign.md` |
+| Gate/WATCH firing rule | `etl/derive.py::_derive_stks_impl` (gate/watch partition) |
+| Composite member→base map (from Excel) | `docs/composite_member_map.csv` |
+| Param-set overlay | `etl/param_sets.py` → consumed by `etl/derive_cat_atomic_input.py::load_trig_rules` |
+| ML threshold tuning | `etl/ml_tune_thresholds.py` |
 | Rule Flow screen logic (live trace, data flow panel, trig_action calc) | `docs/rule_flow_logic.md` |
 | Performance / feedback-loop logic | `docs/performance_logic.md` |
 | Symbol normalization (tos_symbol) | `docs/tos_symbol_normalization.md` |
@@ -219,6 +224,14 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Full command reference + web endpoints + troubleshooting table | `COMMANDS.md` |
 
 ---
+
+## Recent Migrations (2026-06-03)
+
+- **Gate/WATCH composite firing**: `ref_trig_composite_mapping.member_role` (`gate`|`watch`) + `evidence_cutoff`. Fire = all gates pass AND watch evidence ≥ cutoff (NULL = watch never blocks). Pure-watch falls back to all-hit. Default `gate` = zero change. `etl/derive.py` + `api/routers/trace.py` apply it; `web/composite_edit.*` + `web/rule_flow.*` show roles. Backfill: `db/migrate_member_watch_roles.sql` (weight_override=1 → watch). Full design: `docs/rule_engine_redesign.md`.
+- **Per-member thresholds loaded**: `etl/load_raw.py` now stores the Trig threshold cell into `data_brkeout_from` (was discarded → members degraded to "value≠0"). Workbook reload refreshes weight/threshold/role via ON CONFLICT DO UPDATE.
+- **BASE-* sub-composites (Phase 2)**: `db/seeds_base_rules.sql` (5 reusable bases); exempt from loader pruning. Refactor leaves via `etl/refactor_base_rules.py` (dry-run default).
+- **Param sets (Phase 3)**: `ref_trig_param_set` + `ref_trig_param_value` overlay tunable thresholds/weights/k/x0 at scoring time via `etl/param_sets.py` (consumed by `load_trig_rules`). `db/migrate_sigmoid_learnable.sql` converts monotonic rules jump→sigmoid (+ rollback).
+- **ML tuning (Phase 4)**: `etl/ml_tune_thresholds.py` fits thresholds from `drv_cat_atomic_input` + `drv_rule_outcome`, writes an inactive param set to backtest then activate.
 
 ## Recent Migrations (2026-05-31)
 

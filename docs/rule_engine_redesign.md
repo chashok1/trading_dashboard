@@ -1,9 +1,21 @@
-# Rule Engine Redesign — Proposal
+# Rule Engine Redesign
 
-**Status:** Proposal (not yet implemented). Awaiting approval before any schema or
-code change. Companion data: `docs/composite_member_map.csv` (every composite →
-member → threshold → weight → proposed role → candidate base rule), generated
-from `Tickers 2026-04-30.xlsx`.
+**Status (2026-06-03):** Phases 1–4 **built**. Code is on disk; not yet applied to
+the live DB or committed (see "Going live" below). Companion data:
+`docs/composite_member_map.csv` (every composite → member → threshold → weight →
+proposed role → candidate base rule), generated from `Tickers 2026-04-30.xlsx`.
+
+## Build status & how to go live
+
+| Phase | What | Artifacts | To activate |
+|---|---|---|---|
+| 1 | Gate/WATCH firing | `baseline.sql` (`member_role`,`evidence_cutoff`), `derive.py`, `load_raw.py` (weight-1→watch), `rules.py`, `trace.py`, `composite_edit.*`, `rule_flow.*` | `db.init_db`; then `db/migrate_member_watch_roles.sql` + `rebuild_rules` |
+| 1+ | Load per-member thresholds (fixes `cond ≠0`) | `load_raw.py` (stores `mark`→`data_brkeout_from`, ON CONFLICT refresh) | reload workbook or `rebuild_rules` |
+| 2 | BASE-* sub-composites | `db/seeds_base_rules.sql`, `load_raw.py` (BASE-* prune exemption), `etl/refactor_base_rules.py` | apply seed; `python -m etl.refactor_base_rules` (dry-run) → `--apply` |
+| 3 | Param-set overlay + sigmoid | `baseline.sql` (`ref_trig_param_set/_value`), `etl/param_sets.py`, `derive_cat_atomic_input.py`, `db/migrate_sigmoid_learnable.sql` (+rollback) | `db.init_db`; optional sigmoid migration |
+| 4 | ML threshold tuning | `etl/ml_tune_thresholds.py` | `python -m etl.ml_tune_thresholds` → review → activate set |
+
+Each phase is independently shippable and reversible. Recommended order is top-to-bottom; verify fire-count deltas at each step before the next.
 
 This document proposes how to evolve the composite-rule tier from the flat
 all-AND model inherited from the Excel `Trig` tab into a structure that is (a)

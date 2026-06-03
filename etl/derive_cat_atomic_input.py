@@ -975,6 +975,13 @@ def load_trig_rules(session: Session) -> dict:
     for r in rows:
         if r["rule_name"]:
             out[r["rule_name"]] = dict(r)
+    # Overlay the active parameter set (Phase 3). No-op when no set is active,
+    # so the engine keeps using the base ref_trig_atomic_rule values.
+    try:
+        from etl.param_sets import apply_active_param_set
+        apply_active_param_set(session, out)
+    except Exception:
+        pass
     return out
 
 
