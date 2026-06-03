@@ -773,6 +773,9 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                         "band": ar.get("band"),
                         "brkeout_from": ar.get("brkeout_from"),
                         "brkeout_to":   ar.get("brkeout_to"),
+                        "wt_below":     ar.get("wt_below"),
+                        "wt_between":   ar.get("wt_between"),
+                        "wt_above":     ar.get("wt_above"),
                     })
                 elif kind == "data":
                     member_entry["column"] = m.get("data_column")

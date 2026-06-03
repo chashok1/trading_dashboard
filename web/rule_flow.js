@@ -751,6 +751,17 @@ function buildCompItem(c) {
         : `<span style="font-size:10px;color:var(--text-3)">cond: ≠0</span>`;
       const memElemId = `${id}_m${midx}`;
       const dbCol = esc((m.ma_column||'').replace('drv_cat_atomic_input.',''));
+      const zone = (m.brkeout_from != null || m.brkeout_to != null)
+        ? `zone [${fmt(m.brkeout_from)}, ${fmt(m.brkeout_to)}]` : '';
+      const bandStr = m.band
+        ? `<span class="badge-band band-${m.band}" style="font-size:9px">${m.band}</span>` : '';
+      const wtsStr = m.wt_below != null
+        ? `(${fmt(m.wt_below,0)} / ${fmt(m.wt_between,0)} / ${fmt(m.wt_above,0)})` : '';
+      const zoneLine = (zone || bandStr || wtsStr)
+        ? `<div style="grid-column:2/-1;display:flex;gap:6px;align-items:center;font-size:9px;font-family:monospace;color:var(--text-3);padding-left:2px">
+            ${zone ? `<span>${zone}</span>` : ''} ${bandStr}
+            ${wtsStr ? `<span>${wtsStr}</span>` : ''}
+           </div>` : '';
       return `<div class="mem-item ${mCls}" id="${memElemId}"
           data-col="${dbCol}" data-rule-id="${m.rule_id}"
           style="display:grid;grid-template-columns:14px minmax(120px,1fr) auto auto auto;gap:6px;align-items:center;padding:3px 4px;cursor:pointer"
@@ -760,6 +771,7 @@ function buildCompItem(c) {
         <span style="display:flex;gap:4px;align-items:center">${valStr}</span>
         <span style="display:flex;gap:4px;align-items:center">${condPart}</span>
         ${wt}
+        ${zoneLine}
       </div>`;
     } else if (m.kind === 'data') {
       return `<div class="mem-item ${mCls}" style="display:grid;grid-template-columns:14px 1fr auto;gap:4px;align-items:center;padding:3px 4px">
