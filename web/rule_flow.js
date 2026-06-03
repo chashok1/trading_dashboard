@@ -195,7 +195,7 @@ function renderAtomics(d) {
   return `
   <div class="tier open" id="tier-atomic">
     <div class="tier-hdr" onclick="toggleTier('tier-atomic')">
-      <span class="tier-title">Tier 1 — Atomic Rules</span>
+      <span class="tier-title">Atomic Rules</span>
       ${firedBadge(sm.n_atomic_fired, sm.n_atomic_total)}
       <span class="tier-toggle">▾</span>
     </div>
@@ -646,7 +646,7 @@ function renderComposites(d) {
   return `
   <div class="tier open" id="tier-comp">
     <div class="tier-hdr" onclick="toggleTier('tier-comp')">
-      <span class="tier-title">Tier 3 — Composite Rules</span>
+      <span class="tier-title">Composite Rules</span>
       ${firedBadge(sm.n_composite_fired, sm.n_composite_total)}
       <span class="tier-toggle">▾</span>
     </div>
@@ -756,7 +756,7 @@ function renderGroups(d) {
   return `
   <div class="tier open" id="tier-grp">
     <div class="tier-hdr" onclick="toggleTier('tier-grp')">
-      <span class="tier-title">Tier 4 — Rule Groups</span>
+      <span class="tier-title">Rule Groups</span>
       ${firedBadge(sm.n_group_fired, sm.n_group_total)}
       <span class="tier-toggle">▾</span>
     </div>
@@ -815,7 +815,7 @@ function renderFinal(d) {
   return `
   <div class="tier open" id="tier-final">
     <div class="tier-hdr" onclick="toggleTier('tier-final')">
-      <span class="tier-title">Tier 5 — Final Output</span>
+      <span class="tier-title">Final Output</span>
       <span class="tier-toggle">▾</span>
     </div>
     <div class="tier-body">
