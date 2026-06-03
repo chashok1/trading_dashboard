@@ -1,4 +1,4 @@
-"""drv_cat_atomic_input — Python deriver for MA-tab columns JF..NP + QE..QT.
+﻿"""drv_cat_atomic_input — Python deriver for MA-tab columns JF..NP + QE..QT.
 
 Replaces the ma_codegen / ref_ma_columns.source_expr path for this one table
 (see commit 2026-05-27).  The registry-driven approach left ~100 columns
@@ -83,11 +83,11 @@ tw AS (
     ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
 med AS (
-    -- TEMPORARY OVERRIDE: use Excel SDorMedian values from ref_sdormedian
-    -- to validate other formulas without MedianSD being a confounding variable.
-    -- TODO: replace with correct rolling-window median formula once validated.
-    SELECT tos_symbol, sdormedian AS median_sd
-    FROM ref_sdormedian
+    -- Use standard_dev from hist_tw as the volatility scale input (AC).
+    -- Previously used ref_sdormedian as a temporary override; that table is dropped.
+    SELECT DISTINCT ON (tos_symbol) tos_symbol, standard_dev AS median_sd
+    FROM hist_tw WHERE snapshot_date <= (SELECT d FROM p)
+    ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
 dq AS (
     SELECT DISTINCT ON (tos_symbol) tos_symbol, last_price, net_chng, pct_change,
@@ -469,6 +469,8 @@ def compute_intermediates(row: dict) -> dict:
 #                         (and symmetric negative).
 # =============================================================================
 COLUMN_SPECS_PASS1 = [
+    # AC — volatility scale (MIN(standard_dev, median_sd)); stored so UI can display it
+    ("ac", "passthru", "AC", None, None),
     # ---- JF block opener is just a marker ----
     # JG / JH — sign-with-zero-as-neg over CK / CI (MACDH/MACD direction)
     ("macdh_direction",   "sign_zero_neg", "a_macdh_d_brr", None, None),     # JG
@@ -482,8 +484,8 @@ COLUMN_SPECS_PASS1 = [
     ("bb_threshold",      "composite", None, None,
         (lambda r,o: (_f(r.get("AW")) or 0) if _f(r.get("AX")) == 1 else 0.0)),# JJ
     # JK BBThresh CO Days — trig_ifs on AX
-    ("bbthresh_co_days",  "trig_ifs", "AX", "BBThresh CO Days",  None),        # JK
-    ("bbthresh_co_days2", "trig_ifs", "AX2", "BBThresh CO Days2", None),       # JL (signed: bearish streak negates score)
+    ("bbthresh_co_days",  "trig_ifs", "AX", "bbthresh_co_days",  None),        # JK
+    ("bbthresh_co_days2", "trig_ifs", "AX2", "bbthresh_co_days2", None),       # JL (signed: bearish streak negates score)
     # JM Trade Cross Over — composite (D/AF/EF/J/I).  EF=prev_close not sourced;
     # approximate via BZ (Perf3D_Value as proxy for prev_close trajectory).
     ("trade_cross_over",  "composite", None, None,
@@ -494,22 +496,22 @@ COLUMN_SPECS_PASS1 = [
                                       r.get("BZ"), r.get("EF"),
                                       r.get("high_today"), r.get("low_today")))),          # JP
     # JN — Trade-Rule (trig_ifs on AH = Trade_sd)
-    ("trade_rule",        "trig_ifs", "AH", "Trade-Rule",  None),             # JN
+    ("trade_rule",        "trig_ifs", "AH", "trade_rule",  None),             # JN
     ("not_trade_rule",    "negate",   "trade_rule", None, None),              # JO
     # JP Trend Cross Over — deferred (needs EF/J/I/BZ).
-    ("trend_rule",        "trig_ifs", "AG", "Trend-Rule",  None),             # JQ
+    ("trend_rule",        "trig_ifs", "AG", "trend_rule",  None),             # JQ
     ("not_trend_rule",    "negate",   "trend_rule", None, None),              # JR
     # JS Trend Trade Dep Rule -> composite (Pass-2)
     # JT TrTn Relation -> composite (Pass-2)
     # JU !TrTn Relation -> negate(JT)
-    ("trade_trend_sd_rule", "trig_ifs", "AI", "Trade Trend SD Rule", None),    # JV
-    ("brrpct_rule",         "trig_ifs", "EE", "BRR% Rule",      {"simple": True}),  # JW
+    ("trade_trend_sd_rule", "trig_ifs", "AI", "trade_trend_sd_rule", None),    # JV
+    ("brrpct_rule",         "trig_ifs", "EE", "brrpct_rule",      {"simple": True}),  # JW
     ("brrpct_lrr",          "trig_ifs", "EE", "BRR% LRR",       {"simple": True}),  # JX
     ("brrpct_r2",           "trig_ifs", "EE", "BRR% R2",        {"simple": True}),  # JY
     ("brrpct_lrr2",         "trig_ifs", "EE", "BRR% LRR2",      {"simple": True}),  # JZ
     ("brrpct_trr",          "trig_ifs", "EE", "BRR% TRR",       {"simple": True}),  # KA
-    ("brrpct_puts",         "trig_ifs", "EE", "BRR% Puts",      {"simple": True}),  # KB
-    ("brrpct_trr_puts",     "trig_ifs", "EE", "BRR% TRR Puts",  {"simple": True}),  # KC
+    ("brrpct_puts",         "trig_ifs", "EE", "brrpct_puts",      {"simple": True}),  # KB
+    ("brrpct_trr_puts",     "trig_ifs", "EE", "brrpct_trr_puts",  {"simple": True}),  # KC
     # KD BRR% Dir -> composite (Pass-2; reads JI/JG/LG/JW/KB)
     ("high_trr",            "trig_ifs", "EO", "High above TRR", {"simple": True}),  # KE (zone lo=0: use 3-clause)
     ("low_lrr",             "trig_ifs", "EP", "Low below LRR",  {"simple": True}),  # KF (zone lo=0: use 3-clause)
@@ -519,14 +521,14 @@ COLUMN_SPECS_PASS1 = [
         (lambda r,o: 1.0 if (r.get("ER") or 0) > 0 else 0.0)),                  # KH
     # KI/KJ/KK TRR/MRR/LRR_Idx — 3-clause trig_ifs on ES/ET/EU.
     # DQ/DM/DR come from drv_quote (high/last/low), matching toggle="Y" behaviour.
-    ("trr_idx",            "trig_ifs", "ES", "TRR_Idx", {"simple": True}),      # KI (asymmetric zone: use 3-clause eval_atomic_rule)
-    ("mrr_idx",            "trig_ifs", "ET", "MRR_Idx", None),                  # KJ (symmetric zone: 6-clause = 3-clause)
-    ("lrr_idx",            "trig_ifs", "EU", "LRR_Idx", {"simple": True}),     # KK (asymmetric zone: use 3-clause eval_atomic_rule)
+    ("trr_idx",            "trig_ifs", "ES", "trr_idx", {"simple": True}),      # KI (asymmetric zone: use 3-clause eval_atomic_rule)
+    ("mrr_idx",            "trig_ifs", "ET", "mrr_idx", None),                  # KJ (symmetric zone: 6-clause = 3-clause)
+    ("lrr_idx",            "trig_ifs", "EU", "lrr_idx", {"simple": True}),     # KK (asymmetric zone: use 3-clause eval_atomic_rule)
     # KL HVAbsolute -- input CV (historical_vol), but Trig key 'HVAbsolute' uses CV.
-    ("hvabsolute",          "trig_ifs", "historical_vol", "HVAbsolute", None), # KL
+    ("hvabsolute",          "trig_ifs", "historical_vol", "hvabsolute", None), # KL
     # KM IVAbsolute -- zero-guarded by DT (imp_volatility)
     ("ivabsolute",          "zero_guard_trig_ifs", "imp_volatility",
-        "IVAbsolute", ("imp_volatility",)),                                     # KM
+        "ivabsolute", ("imp_volatility",)),                                     # KM
     # KN/KO IV percentile (zero-guarded by DT, CX)
     ("ivpercentile",        "zero_guard_trig_ifs", "a_iv_percentile",
         "IVPercentile", ("imp_volatility", "a_iv_percentile")),                 # KN
@@ -546,74 +548,74 @@ COLUMN_SPECS_PASS1 = [
         "IVHV Puts (modified)",
         {"guards": ("imp_volatility",)}),                                        # KS
     # KT IVRule -> composite (Pass-2; reads KN, KP, KR)
-    ("rsi_rule",            "trig_ifs", "rsi",        "RSI Rule", None),       # KU
+    ("rsi_rule",            "trig_ifs", "rsi",        "rsi_rule", None),       # KU
     ("rsi_top",             "trig_ifs", "rsi",        "RSI Top",  None),       # KV
-    ("rsi_puts",            "trig_ifs", "rsi",        "RSI Puts",
+    ("rsi_puts",            "trig_ifs", "rsi",        "rsi_puts",
         {"strict": True}),                                                      # KW
-    ("3m_low_rule",         "trig_ifs", "BB",         "3m-Low-Rule",  None),   # KX
-    ("3m_low_days_rule",    "trig_ifs", "BC",         "3m-Low-Days Rule",None),# KY
-    ("3mn_high_rule",       "trig_ifs", "BE",         "3mn-High-Rule",None),   # KZ
-    ("3mn_high_days_rule",  "trig_ifs", "BF",         "3mn-High-Dyas Rule",None), # LA
+    ("3m_low_rule",         "trig_ifs", "BB",         "3m_low_rule",  None),   # KX
+    ("3m_low_days_rule",    "trig_ifs", "BC",         "3m_low_days_rule",None),# KY
+    ("3mn_high_rule",       "trig_ifs", "BE",         "3mn_high_rule",None),   # KZ
+    ("3mn_high_days_rule",  "trig_ifs", "BF",         "3mn_high_days_rule",None), # LA
     # LB 3m-Long -> composite
-    ("perf3mn_sd_rule",     "trig_ifs", "BQ", "Perf3mn SD Rule",  None),       # LC
-    ("perf2m_sd_rule",      "trig_ifs", "BS", "Perf2M SD Rule",   None),       # LD
-    ("perf3wk_sd_rule",     "trig_ifs", "BU", "Perf3wk SD Rule",  None),       # LE
-    ("perf2wk_sd_rule",     "trig_ifs", "BW", "Perf2wk SD Rule",  None),       # LF
-    ("perf3d_sd_rule",      "trig_ifs", "BY", "Perf3D SD Rule",   None),       # LG
+    ("perf3mn_sd_rule",     "trig_ifs", "BQ", "perf3mn_sd_rule",  None),       # LC
+    ("perf2m_sd_rule",      "trig_ifs", "BS", "perf2m_sd_rule",   None),       # LD
+    ("perf3wk_sd_rule",     "trig_ifs", "BU", "perf3wk_sd_rule",  None),       # LE
+    ("perf2wk_sd_rule",     "trig_ifs", "BW", "perf2wk_sd_rule",  None),       # LF
+    ("perf3d_sd_rule",      "trig_ifs", "BY", "perf3d_sd_rule",   None),       # LG
     # LH: Excel: positive>=, negative< (strict). CA=-2 at -nhi=-2 → False → -wbt.
-    ("perf1d_sd_rule",      "trig_ifs", "CA", "Perf1D SD Rule",   {"strict_neg": True}),  # LH
+    ("perf1d_sd_rule",      "trig_ifs", "CA", "perf1d_sd_rule",   {"strict_neg": True}),  # LH
     ("not_perf1d_sd",       "negate",   "perf1d_sd_rule", None, None),                # LI
     # LJ -- Perf3D_sd_1off (uses ABS(BY))
-    ("perf3d_sd_1off",      "trig_ifs", "BY", "Perf3D 1Off Rule",
+    ("perf3d_sd_1off",      "trig_ifs", "BY", "perf3d_sd_1off",
         {"abs_input": True}),                                                   # LJ
     # LK Perf SD Rule -> composite (Pass-2; reads LC..LJ)
     # LL/LM negations
     # LN/LO: Excel IFS(AO>0,wb,...,TRUE,0) — AO=0 returns 0, not wb.
     # Guard on AO ensures AO=0 → 0 (matching Excel's strict AO>0 check).
-    ("bbhighlow_sd_rule",   "zero_guard_trig_ifs", "AO", "BBHighLow_SD Rule",
+    ("bbhighlow_sd_rule",   "zero_guard_trig_ifs", "AO", "bbhighlow_sd_rule",
         {"guards": ("AO",), "strict": True}),                                   # LN
-    ("bbhighlow_days_rule", "zero_guard_trig_ifs", "AM", "BBHighLow Days Rule",
+    ("bbhighlow_days_rule", "zero_guard_trig_ifs", "AM", "bbhighlow_days_rule",
         {"guards": ("AM",), "strict": True}),                                   # LO
     # LP BBStreak Rule -- input AY (BB_Streak; decoded from a_bb_streak)
-    ("bbstreak_rule",       "trig_ifs", "AY", "BBStreak Rule",  None),         # LP
-    ("bbstreakrule1",       "trig_ifs", "AY", "BBStreak Rule1", None),         # LQ
-    ("bbstreak_rule2",      "trig_ifs", "AY", "BBStreak Rule2", None),         # LR
+    ("bbstreak_rule",       "trig_ifs", "AY", "bbstreak_rule",  None),         # LP
+    ("bbstreakrule1",       "trig_ifs", "AY", "bbstreakrule1", None),         # LQ
+    ("bbstreak_rule2",      "trig_ifs", "AY", "bbstreak_rule2", None),         # LR
     # LS/LT/LU/LV -- BBStreak Days variants (input AZ; decoded)
-    ("bbstreak_days_rule",  "trig_ifs", "AZ", "BBStreak Days Rule",     None), # LS
-    ("bbstreak_days_rule2", "trig_ifs", "AZ", "BBStreak Days Up Rule",  None), # LT
-    ("bbstreak_days_rule3", "trig_ifs", "AZ", "BBStreak Days Rule2",    None), # LU
-    ("bbstreak_days_rule4", "trig_ifs", "AZ", "BBStreak Days Up Rule2", None), # LV
+    ("bbstreak_days_rule",  "trig_ifs", "AZ", "bbstreak_days_rule",     None), # LS
+    ("bbstreak_days_rule2", "trig_ifs", "AZ", "bbstreak_days_rule2",  None), # LT
+    ("bbstreak_days_rule3", "trig_ifs", "AZ", "bbstreak_days_rule3",    None), # LU
+    ("bbstreak_days_rule4", "trig_ifs", "AZ", "bbstreak_days_rule4", None), # LV
     # LW BB Bull Rule -> composite
     # LX -> negate
     # LY/LZ -- strict > in Excel.
-    ("bbhighdays",          "trig_ifs", "AQ", "BBHighDays",
+    ("bbhighdays",          "trig_ifs", "AQ", "bbhighdays",
         {"strict": True}),                                                      # LY
-    ("bblowdays",           "trig_ifs", "AR", "BBLowDays",
+    ("bblowdays",           "trig_ifs", "AR", "bblowdays",
         {"strict": True}),                                                      # LZ
     # MA MACD Rule -- input CJ = ABS(CI); 4-clause positive-only (CJ>=hi,>=lo,>0 else 0)
-    ("macd_rule",           "trig_ifs", "a_macd_brr",  "MACD Rule",
+    ("macd_rule",           "trig_ifs", "a_macd_brr",  "macd_rule",
         {"abs_input": True, "positive_only": True}),                            # MA
-    ("macdh_rule",          "trig_ifs", "a_macdh_d_brr","MACDH Rule",
+    ("macdh_rule",          "trig_ifs", "a_macdh_d_brr","macdh_rule",
         {"abs_input": True, "positive_only": True}),                            # MB
     # MC MACD and H Rule -> composite (INT((MA+MB)/2))
     # MD/ME use CJ/CL too — strict > throughout, positive-only (CJ>hi,>lo,>0 else 0)
-    ("macd_brr_puts",       "trig_ifs", "a_macd_brr",   "MACD_BRR Puts",
+    ("macd_brr_puts",       "trig_ifs", "a_macd_brr",   "macd_brr_puts",
         {"abs_input": True, "positive_only": True, "strict": True}),           # MD
-    ("macdh_brr_puts",      "trig_ifs", "a_macdh_d_brr","MACDH_BRR Puts",
+    ("macdh_brr_puts",      "trig_ifs", "a_macdh_d_brr","macdh_brr_puts",
         {"abs_input": True, "positive_only": True, "strict": True}),           # ME
     # MF -> composite
     # MG/MH -- MACDH Days; strict > in Excel.
-    ("macdh_days",          "trig_ifs", "a_macdays_streak", "MACDH Days",
+    ("macdh_days",          "trig_ifs", "a_macdays_streak", "macdh_days",
         {"strict": True}),                                                      # MG
-    ("macdh_days2",         "trig_ifs", "a_macdays_streak", "MACDH Days2",
+    ("macdh_days2",         "trig_ifs", "a_macdays_streak", "macdh_days2",
         {"strict": True}),                                                      # MH
     # MI Overbought -> composite (Pass-2; reads KV/MA/MB)
     # MJ negate
     # MK..MP -- 3mn/3wk outlook variants (inputs BJ/BK/BN/BO)
-    ("3mn_outlook",         "trig_ifs", "BJ", "3mn Outlook",         None),    # MK
-    ("3mn_outlook_days",    "trig_ifs", "BK", "3mn Outlook Days",    None),    # ML
-    ("3wk_outlook",         "trig_ifs", "BN", "3wk Outlook",         None),    # MM
-    ("3wk_outlook_days",    "trig_ifs", "BO", "3wk Outlook Days",    None),    # MN
+    ("3mn_outlook",         "trig_ifs", "BJ", "3mn_outlook",         None),    # MK
+    ("3mn_outlook_days",    "trig_ifs", "BK", "3mn_outlook_days",    None),    # ML
+    ("3wk_outlook",         "trig_ifs", "BN", "3wk_outlook",         None),    # MM
+    ("3wk_outlook_days",    "trig_ifs", "BO", "3wk_outlook_days",    None),    # MN
     # MO/MP negate
     # MQ BULL -> composite ; MR negate
     # MS PerfOrBull -> composite ; MT negate
@@ -675,27 +677,27 @@ COLUMN_SPECS_PASS1 = [
     # NC/ND Up/Down Resistance -> composite (needs EH/EI/AC/CG/CH/BA)
     # NE Earnings -- strict > for hi/lo clauses; JB=0 → wb=-3 (earnings today = signal).
     # NULL (ETFs/no data) → None → one-null in comparison (expected).
-    ("earnings",            "trig_ifs", "a_earnings_days", "earnings_days",
+    ("earnings",            "trig_ifs", "a_earnings_days", "earnings",
         {"strict": True}),                                                      # NE
     # NF/NG/NH/NI -- VS rules use strict >.
-    ("vs_price",            "zero_guard_trig_ifs", "FK", "VS Price Rule",
+    ("vs_price",            "zero_guard_trig_ifs", "FK", "vs_price",
         {"guards": ("a_volume_spike", "FK"), "strict": True}),                  # NF
-    ("vs_volume_spike",     "zero_guard_trig_ifs", "FI", "VS Volume Spike Rule",
+    ("vs_volume_spike",     "zero_guard_trig_ifs", "FI", "vs_volume_spike",
         {"guards": ("a_volume_spike",), "strict": True}),                       # NG
     # NH: Excel IFS(FL=0,0,...) — guard on FL directly, not just a_volume_spike
-    ("vs_volatility",       "zero_guard_trig_ifs", "FL", "VS Volatility Rule",
+    ("vs_volatility",       "zero_guard_trig_ifs", "FL", "vs_volatility",
         {"guards": ("a_volume_spike", "FL"), "strict": True}),                  # NH
-    ("vs_days",             "zero_guard_trig_ifs", "FM", "VS Days",
+    ("vs_days",             "zero_guard_trig_ifs", "FM", "vs_days",
         {"guards": ("a_volume_spike",), "strict": True}),                       # NI
     # NK/NL/NM -- Current Price/Volume/Volatility SD Rules — strict >.
     ("current_price_sd_rule", "zero_guard_trig_ifs",
         "_NK_input", "Current Price Rule",
         {"guards": ("AC",), "strict": True}),                                   # NK
     # NL Current Volume Rule — Excel: IFS(GB=0,0,...). Guard on GB.
-    ("current_volume_rule", "zero_guard_trig_ifs", "GB", "Current Volume Rule",
+    ("current_volume_rule", "zero_guard_trig_ifs", "GB", "current_volume_rule",
         {"guards": ("GB",), "strict": True}),                                   # NL
     ("current_volatility_rule", "zero_guard_trig_ifs", "imp_volatility",
-        "Current Volatility Rule", {"guards": ("imp_volatility",), "strict": True}),  # NM (NULL IV → 0)
+        "current_volatility_rule", {"guards": ("imp_volatility",), "strict": True}),  # NM (NULL IV → 0)
     # NN/NO -> composite (Pass-2)
     # QE/QJ/QM/QN/QR/QH/QI + parm-lookup columns now live in drv_tn_td_bb_rr
 ]
@@ -1270,19 +1272,6 @@ def derive_cat_atomic_input(session: Session, as_of_date: date,
         chunk = records[i:i + BATCH]
         session.execute(insert_sql, chunk)
         inserted += len(chunk)
-
-    # Repopulate AC column from ref_sdormedian (temporary Excel override).
-    # AC is not in COLUMN_SPECS so it's not inserted above; update separately.
-    try:
-        session.execute(text("""
-            UPDATE drv_cat_atomic_input d
-            SET AC = r.sdormedian
-            FROM ref_sdormedian r
-            WHERE d.tos_symbol = r.tos_symbol
-              AND d.as_of_date = :d
-        """), {"d": as_of_date})
-    except Exception:
-        pass  # ref_sdormedian may not exist in all environments
 
     return inserted
 
