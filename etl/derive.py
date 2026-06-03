@@ -1269,13 +1269,24 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
 
     merged: list[dict] = []
     for sym in all_symbols:
-        # Collect candidate rows, sort by loaded_at DESC (latest first).
-        candidates = []
-        for row in (rows_y.get(sym), rows_tl.get(sym), rows_td.get(sym)):
-            if row is not None:
-                candidates.append(row)
-        # Sort: latest loaded_at first.
-        candidates.sort(key=lambda r: r['loaded_at'] or 0, reverse=True)
+        tl_row = rows_tl.get(sym)
+        y_row  = rows_y.get(sym)
+        td_row = rows_td.get(sym)
+
+        # Prefer TL over Y only when both are from the same snapshot_date
+        # (same trading session — matches Excel "L" flag / Dash!AB24).
+        # When sessions differ, fall back to latest-loaded-at across all sources.
+        same_session = (
+            tl_row is not None and y_row is not None
+            and tl_row.get('snapshot_date') == y_row.get('snapshot_date')
+        )
+        if same_session:
+            # TL → TD → Y priority (TL is preferred for the current session)
+            candidates = [r for r in (tl_row, td_row, y_row) if r is not None]
+        else:
+            # Different sessions: latest loaded_at wins
+            candidates = [r for r in (tl_row, td_row, y_row) if r is not None]
+            candidates.sort(key=lambda r: r.get('loaded_at') or 0, reverse=True)
 
         rec = {'as_of_date': as_of_date, 'tos_symbol': sym, 'export_date': None, 'export_time': None, 'loaded_at': None}
         for f in _QUOTE_FIELDS:
