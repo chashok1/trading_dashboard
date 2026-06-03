@@ -291,16 +291,16 @@ function buildAtomicList(atomics) {
     const displayVal = _getDisplayValue(a);
     const wgtColor   = a.weight > 0 ? '#15803d' : a.weight < 0 ? '#b91c1c' : '#9ca3af';
     const colTip     = `${a.rule_name||''}\n${a.ma_column||''}`;
+    const valStr = displayVal != null ? fmt(displayVal) : '—';
     return `<div class="a-item" id="ar_${a.id}" style="padding:2px 4px;border-bottom:1px solid #f4f4f2;min-width:0;align-self:start">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:2px">
         <span style="font-family:monospace;font-size:11px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1"
-              title="${esc(colTip)}">${esc(dbCol)}</span>
+              title="${esc(colTip)}">${esc(dbCol)} <b style="color:var(--text-1)">(${valStr})</b></span>
         <span style="font-family:monospace;font-size:11px;font-weight:700;color:${wgtColor};flex-shrink:0">${fmt(a.weight)}</span>
         <span style="font-size:9px;color:var(--text-3);cursor:pointer;padding:0 2px;flex-shrink:0;line-height:1"
               id="ar_${a.id}_tog"
               onclick="toggleAtomicCard(${a.id},'${esc(dbCol)}','${esc(a.rule_name||'')}')">▼</span>
       </div>
-      <div style="font-family:monospace;font-size:13px;font-weight:600;color:var(--text-1)">${displayVal != null ? fmt(displayVal) : '—'}</div>
       <div id="ar_${a.id}_detail" style="display:none;margin-top:4px;padding-top:4px;border-top:1px dashed #dbeafe"></div>
     </div>`;
   }).join('');
