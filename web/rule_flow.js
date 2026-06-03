@@ -835,7 +835,7 @@ function renderFinal(d) {
   ).join('');
 
   return `
-  <div class="tier" id="tier-final">
+  <div class="tier open" id="tier-final">
     <div class="tier-hdr" onclick="toggleTier('tier-final')">
       <span class="tier-title">Final Output</span>
       <span class="tier-toggle">▾</span>
