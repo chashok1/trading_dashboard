@@ -311,9 +311,11 @@ def compute_intermediates(row: dict) -> dict:
     # ---- BB_Streak struct (AS/AT/AU/AV/AW/AX/AY/AZ) ----
     bbs = _decode_bb_streak(row.get("a_bb_streak"))
     # AQ = TRUNC(AP) BBHighDays.  AR = ABS(100*(AP-AQ)) BBLowDays.
+    # round() removes IEEE-754 noise: 100*(1.05-1)=5.000...004 → 5.
+    # AP's decimal always encodes a 2-digit integer count so rounding is correct.
     if AP is not None:
         AQ = math.trunc(AP)
-        AR = abs(100.0 * (AP - AQ))
+        AR = round(abs(100.0 * (AP - AQ)))
     else:
         AQ = AR = None
 
