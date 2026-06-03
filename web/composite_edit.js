@@ -232,6 +232,11 @@ function memberRow(m, idx) {
     const op     = thresh != null ? (thresh >= 0 ? '≥' : '≤') : '≠0';
     const thrDisp = thresh != null ? `${op} ${thresh}` : 'any ≠0';
     const thrColor = thresh != null && thresh >= 0 ? '#15803d' : '#b91c1c';
+    const noThreshWarn = thresh == null
+      ? `<span title="No condition threshold set — any nonzero value qualifies"
+              style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;border-radius:3px;
+                     font-size:10px;font-weight:700;padding:1px 5px;margin-left:6px">⚠ no threshold</span>`
+      : '';
     const condField = `<div class="ovr" style="min-width:110px">
       <label>condition threshold</label>
       <input class="cond-thresh" type="number" step="1" data-idx="${idx}"
@@ -239,11 +244,11 @@ function memberRow(m, idx) {
         value="${thresh == null ? '' : thresh}"
         title="Positive→value>=thresh (buy), Negative→value<=thresh (sell)">
     </div>`;
-    return `<div class="ce-mem">
+    return `<div class="ce-mem" style="${thresh == null ? 'border-left:3px solid #fbbf24' : ''}">
       <span class="grip" title="Drag to reorder">⋮⋮</span>
       ${kindBadge}
       <div class="body">
-        <div class="name">${escapeHtml(m.rule_name || "atomic#" + m.atomic_rule_id)}</div>
+        <div class="name">${escapeHtml(m.rule_name || "atomic#" + m.atomic_rule_id)}${noThreshWarn}</div>
         <div class="col">cond: <b style="color:${thrColor}">${thrDisp}</b> → assign weight</div>
       </div>
       ${condField}
