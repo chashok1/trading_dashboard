@@ -313,8 +313,7 @@ function buildAtomicList(atomics) {
     </div>`;
   }).join('');
 
-  const ncols = Math.ceil(atomics.length / 5);
-  return `<div style="display:grid;grid-template-columns:repeat(${ncols},1fr);gap:0;align-items:start">${cells}</div>`;
+  return `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0;align-items:start">${cells}</div>`;
 }
 
 function toggleAtomicCard(ruleId, dbCol, ruleName) {
