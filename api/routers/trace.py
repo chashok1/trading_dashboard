@@ -752,6 +752,9 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                 }
             composite_index[code]["members"].append(dict(m))
 
+        import re as _re
+        _SELL_PFX = {'SA', 'SS', 'STM', 'SW', 'SH'}
+
         composites_out = []
         composite_fired: dict = {}
         for code in sorted(composite_index.keys()):
@@ -764,6 +767,11 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                 composite_fired[code] = False
                 continue
 
+            # Operator from composite prefix (BUY→>=, SELL→<=)
+            _pfx_m = _re.match(r'^\d+-([A-Z]+)-', code)
+            _pfx   = _pfx_m.group(1) if _pfx_m else ''
+            comp_op = '<=' if _pfx in _SELL_PFX else '>='
+
             score = 0.0
             n_hit = 0
             members_out = []
@@ -773,14 +781,19 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                 member_entry: dict = {"kind": kind}
                 if kind == "atomic":
                     aid       = m.get("atomic_rule_id") or m.get("atom_id")
-                    threshold = m.get("data_brkeout_from") or m.get("threshold")
+                    threshold = m.get("data_brkeout_from") if m.get("data_brkeout_from") is not None else m.get("threshold")
                     ovr       = m.get("weight_override") or m.get("override")
                     val       = float(atomic_score.get(aid, 0.0)) if aid is not None else 0.0
                     if threshold is None:
                         condition_met = (val != 0)
                     else:
                         thr = float(threshold)
-                        condition_met = (val >= thr) if thr >= 0 else (val <= thr)
+                        if comp_op == '>=':   condition_met = val >= thr
+                        elif comp_op == '<=': condition_met = val <= thr
+                        elif comp_op == '>':  condition_met = val >  thr
+                        elif comp_op == '<':  condition_met = val <  thr
+                        elif comp_op == '=':  condition_met = val == thr
+                        else:                 condition_met = val >= thr
                     w = float(ovr) if (condition_met and ovr is not None) else (val if condition_met else 0.0)
                     ar = atomic_by_id.get(aid, {})
                     member_entry.update({
@@ -788,6 +801,7 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                         "value": val, "weight": w,
                         "condition_met": condition_met,
                         "threshold": threshold,
+                        "operator": comp_op,
                         "fired": condition_met, "reason": atomic_reason.get(aid, ""),
                         "band": ar.get("band"),
                         "brkeout_from": ar.get("brkeout_from"),

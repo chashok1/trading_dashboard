@@ -653,10 +653,13 @@ function buildCompItem(c) {
     if (m.kind === 'atomic') {
       const thr = m.threshold;
       const val = m.value;
-      const op  = thr != null ? (thr >= 0 ? '≥' : '≤') : '≠0';
+      // Operator from API (>=, <=, >, <, =); fallback by side/threshold sign
+      const opSymMap = {'>=':'≥', '<=':'≤', '>':'>', '<':'<', '=':'='};
+      const op = m.operator ? (opSymMap[m.operator] || m.operator)
+               : thr != null ? (thr >= 0 ? '≥' : '≤') : '≠0';
       const valStr  = `<span style="font-size:10px;color:var(--text-3)">val:</span><span style="font-family:monospace;font-size:11px;font-weight:600">${fmt(val)}</span>`;
       const condPart = thr != null
-        ? `<span style="font-size:10px;color:var(--text-3)">cond:</span><span style="font-family:monospace;font-size:11px;color:${met?'#15803d':'#ef4444'}">${op} ${thr}</span>`
+        ? `<span style="font-size:10px;color:var(--text-3)">cond:</span><span style="font-family:monospace;font-size:11px;font-weight:600;color:${met?'#15803d':'#ef4444'}">${op} ${thr}</span>`
         : `<span style="font-size:10px;color:var(--text-3)">cond: ≠0</span>`;
       return `<div class="mem-item ${mCls}" style="display:grid;grid-template-columns:14px minmax(120px,1fr) auto auto auto;gap:6px;align-items:center;padding:3px 4px">
         ${checkMark}
