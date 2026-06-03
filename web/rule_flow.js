@@ -291,11 +291,6 @@ function buildAtomicList(atomics) {
     const displayVal = _getDisplayValue(a);
     const wgtColor   = a.weight > 0 ? '#15803d' : a.weight < 0 ? '#b91c1c' : '#9ca3af';
     const colTip     = `${a.rule_name||''}\n${a.ma_column||''}`;
-    const zone = (a.brkeout_from != null || a.brkeout_to != null)
-      ? `[${fmt(a.brkeout_from)},${fmt(a.brkeout_to)}]` : '';
-    const wts  = a.wt_below != null
-      ? `${fmt(a.wt_below,0)}/${fmt(a.wt_between,0)}/${fmt(a.wt_above,0)}` : '';
-    const zoneWts = [zone, wts].filter(Boolean).join(' ');
     return `<div class="a-item" id="ar_${a.id}" style="padding:2px 4px;border-bottom:1px solid #f4f4f2;min-width:0;align-self:start">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:2px">
         <span style="font-family:monospace;font-size:11px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1"
@@ -306,7 +301,6 @@ function buildAtomicList(atomics) {
               onclick="toggleAtomicCard(${a.id},'${esc(dbCol)}','${esc(a.rule_name||'')}')">▼</span>
       </div>
       <div style="font-family:monospace;font-size:13px;font-weight:600;color:var(--text-1)">${displayVal != null ? fmt(displayVal) : '—'}</div>
-      ${zoneWts ? `<div style="font-family:monospace;font-size:9px;color:var(--text-3);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(zoneWts)}</div>` : ''}
       <div id="ar_${a.id}_detail" style="display:none;margin-top:4px;padding-top:4px;border-top:1px dashed #dbeafe"></div>
     </div>`;
   }).join('');
