@@ -581,7 +581,7 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
         # 5. Composite mappings
         mappings = s.execute(text("""
             SELECT composite_rule_code, COALESCE(member_kind,'atomic') AS member_kind,
-                   atomic_rule_id, weight_override,
+                   atomic_rule_id, weight_override, data_brkeout_from,
                    data_column, nested_composite_code, precondition_expr
             FROM ref_trig_composite_mapping
             WHERE deprecated_at IS NULL
@@ -768,13 +768,13 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
             n_hit = 0
             members_out = []
             for m in info["members"]:
-                kind = m.get("kind") or m.get("member_kind", "atomic")
+                kind = m.get("member_kind") or m.get("kind", "atomic")
                 w = 0.0
                 member_entry: dict = {"kind": kind}
                 if kind == "atomic":
-                    aid       = m.get("atom_id") or m.get("atomic_rule_id")
-                    threshold = m.get("threshold")
-                    ovr       = m.get("override") or m.get("weight_override")
+                    aid       = m.get("atomic_rule_id") or m.get("atom_id")
+                    threshold = m.get("data_brkeout_from") or m.get("threshold")
+                    ovr       = m.get("weight_override") or m.get("override")
                     val       = float(atomic_score.get(aid, 0.0)) if aid is not None else 0.0
                     if threshold is None:
                         condition_met = (val != 0)
