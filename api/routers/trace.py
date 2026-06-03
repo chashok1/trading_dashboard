@@ -768,7 +768,7 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
             n_hit = 0
             members_out = []
             for m in info["members"]:
-                kind = m["member_kind"]
+                kind = m.get("kind") or m.get("member_kind", "atomic")
                 w = 0.0
                 member_entry: dict = {"kind": kind}
                 if kind == "atomic":
