@@ -1390,13 +1390,24 @@ def _derive_rr_impl(session: Session, as_of_date: date, run_id: int) -> int:
         SELECT
             :d AS as_of_date,
             s.tos_symbol,
-            COALESCE(NULLIF(rr.buy_trade, 0),  td.a_bb_bottom)  AS lrr,
-            COALESCE(NULLIF(rr.sell_trade, 0), td.a_bb_top)     AS trr,
-            CASE WHEN COALESCE(NULLIF(rr.buy_trade, 0), td.a_bb_bottom) IS NOT NULL
-                  AND COALESCE(NULLIF(rr.sell_trade, 0), td.a_bb_top) IS NOT NULL
-                 THEN (COALESCE(NULLIF(rr.buy_trade, 0), td.a_bb_bottom)
-                     + COALESCE(NULLIF(rr.sell_trade, 0), td.a_bb_top)) / 2.0
-                 ELSE NULL END                        AS mrr,
+            -- reverse='Y' symbols (yield-quoted, e.g. TNX:CGI): hist_rr stores yield %
+            -- but TOS displays yield×10.  Scale by 10 when sourced from hist_rr only.
+            -- BB fallback (hist_td) is already in TOS display units — no scaling.
+            CASE WHEN rrt.reverse = 'Y' AND NULLIF(rr.buy_trade, 0) IS NOT NULL
+                 THEN rr.buy_trade * 10
+                 ELSE COALESCE(NULLIF(rr.buy_trade, 0), td.a_bb_bottom)
+                 END                              AS lrr,
+            CASE WHEN rrt.reverse = 'Y' AND NULLIF(rr.sell_trade, 0) IS NOT NULL
+                 THEN rr.sell_trade * 10
+                 ELSE COALESCE(NULLIF(rr.sell_trade, 0), td.a_bb_top)
+                 END                              AS trr,
+            CASE WHEN NULLIF(rr.buy_trade, 0) IS NOT NULL
+                  AND NULLIF(rr.sell_trade, 0) IS NOT NULL
+                 THEN (rr.buy_trade + rr.sell_trade)
+                      * CASE WHEN rrt.reverse = 'Y' THEN 5.0 ELSE 0.5 END
+                 WHEN td.a_bb_bottom IS NOT NULL AND td.a_bb_top IS NOT NULL
+                 THEN (td.a_bb_bottom + td.a_bb_top) / 2.0
+                 ELSE NULL END                    AS mrr,
             CASE WHEN NULLIF(rr.buy_trade, 0) IS NOT NULL THEN 'RR' ELSE 'BB' END AS source,
             :run AS source_run_id
         FROM (
@@ -1404,6 +1415,10 @@ def _derive_rr_impl(session: Session, as_of_date: date, run_id: int) -> int:
             UNION
             SELECT DISTINCT tos_symbol FROM hist_rr WHERE snapshot_date <= :d
         ) s
+        LEFT JOIN (
+            SELECT DISTINCT ON (tos_ticker) tos_ticker, reverse
+            FROM ref_rrt ORDER BY tos_ticker, loaded_at DESC
+        ) rrt ON rrt.tos_ticker = s.tos_symbol
         LEFT JOIN LATERAL (
             SELECT buy_trade, sell_trade
             FROM hist_rr
