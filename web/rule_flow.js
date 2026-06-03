@@ -202,13 +202,8 @@ function renderAtomics(d) {
     <div class="tier-body">
       <div class="rf-filter">
         <input id="atomicQ" type="text" placeholder="Search rule name…" oninput="filterAtomics()">
-        <select id="atomicCat" onchange="filterAtomics()">
-          <option value="">All categories</option>
-          ${[...new Set((d.atomics||[]).map(a=>a.category).filter(Boolean))].sort()
-              .map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}
-        </select>
-        <label><input type="checkbox" id="atomicFired" onchange="filterAtomics()"> Fired only</label>
-        <label><input type="checkbox" id="atomicIssues" onchange="filterAtomics()"> Issues only</label>
+        <label><input type="checkbox" id="atomicThreshold" onchange="filterAtomics()"> Threshold</label>
+        <label><input type="checkbox" id="atomicDirect"    onchange="filterAtomics()"> Direct</label>
       </div>
       <div id="atomicTableWrap">${buildAtomicTable(d.atomics || [])}</div>
     </div>
@@ -216,15 +211,20 @@ function renderAtomics(d) {
 }
 
 function filterAtomics() {
-  const q      = document.getElementById('atomicQ').value.toLowerCase();
-  const cat    = document.getElementById('atomicCat').value;
-  const fired  = document.getElementById('atomicFired').checked;
-  const issues = document.getElementById('atomicIssues').checked;
+  const q         = document.getElementById('atomicQ').value.toLowerCase();
+  const showThresh = document.getElementById('atomicThreshold').checked;
+  const showDirect = document.getElementById('atomicDirect').checked;
+  const isThresh = a => a.brkeout_from != null || a.brkeout_to != null ||
+                        a.wt_below != null || a.wt_between != null || a.wt_above != null;
   const atomics = (window._rfData?.atomics || []).filter(a => {
     if (q && !(a.rule_name||'').toLowerCase().includes(q)) return false;
-    if (cat && a.category !== cat) return false;
-    if (fired && !a.fired) return false;
-    if (issues && !['no_column','no_data'].some(x => (a.reason||'').startsWith(x))) return false;
+    // If neither box checked show all; if one/both checked filter to matching type(s)
+    if (showThresh || showDirect) {
+      const thresh = isThresh(a);
+      if (showThresh && showDirect) return true;       // both checked → show all
+      if (showThresh && !thresh) return false;          // Threshold only → hide Direct
+      if (showDirect &&  thresh) return false;          // Direct only → hide Threshold
+    }
     return true;
   });
   document.getElementById('atomicTableWrap').innerHTML = buildAtomicTable(atomics);
