@@ -212,6 +212,9 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Composite member→base map (from Excel) | `docs/composite_member_map.csv` |
 | Param-set overlay | `etl/param_sets.py` → consumed by `etl/derive_cat_atomic_input.py::load_trig_rules` |
 | ML threshold tuning | `etl/ml_tune_thresholds.py` |
+| Param-set management screen | `web/param_sets.*` → `/param-sets`; API `api/routers/rules.py` (`/api/rules/param-sets*`) |
+| Composite editor (clone, threshold pre-fill, BASE picker) | `web/composite_edit.*`; API `/api/rules/composite/{id}/clone`, `/api/rules/base-composites` |
+| Group-of-groups nesting | `web/groups.html` (`memberOptionsHTML`/`memberTypeFor`) |
 | Rule Flow screen logic (live trace, data flow panel, trig_action calc) | `docs/rule_flow_logic.md` |
 | Performance / feedback-loop logic | `docs/performance_logic.md` |
 | Symbol normalization (tos_symbol) | `docs/tos_symbol_normalization.md` |

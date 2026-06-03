@@ -40,6 +40,7 @@
       <a href="/portfolio" class="nav-item">Portfolio</a>
       <a href="/rules" class="nav-item">Rules</a>
       <a href="/groups" class="nav-item active">Rule Groups</a>
+      <a href="/param-sets" class="nav-item">Param Sets</a>
       <a href="/rule-performance" class="nav-item">Performance</a>
       <a href="/trace" class="nav-item">Trace</a>
       <a href="/rule-flow" class="nav-item">Rule Flow</a>
@@ -222,10 +223,41 @@
       return opts.join('');
     }
 
+    // Members can be composite rules OR nested logical groups. One dropdown with
+    // two optgroups; member_type is inferred from which set the code belongs to.
+    function memberOptionsHTML(selected) {
+      const opts = ['<option value="">— Select member —</option>'];
+      const comps = state.compositeRules || [];
+      if (comps.length) {
+        opts.push('<optgroup label="Composite rules">');
+        for (const r of comps) {
+          const v = r.rule_id || r.composite_rule_code || '';
+          opts.push(`<option value="${v}" ${selected === v ? 'selected' : ''}>${v}${r.category ? ' (' + r.category + ')' : ''}</option>`);
+        }
+        opts.push('</optgroup>');
+      }
+      const selfCode = state.editingGroup && state.editingGroup.rule_group_code;
+      const logical = (state.groups || []).filter(g => g.group_type === 'logical' && g.rule_group_code !== selfCode);
+      if (logical.length) {
+        opts.push('<optgroup label="Logical groups (nested)">');
+        for (const g of logical) {
+          const v = g.rule_group_code;
+          opts.push(`<option value="${v}" ${selected === v ? 'selected' : ''}>↳ ${v}</option>`);
+        }
+        opts.push('</optgroup>');
+      }
+      return opts.join('');
+    }
+
+    function memberTypeFor(code) {
+      return (state.groups || []).some(g => g.rule_group_code === code && g.group_type === 'logical')
+        ? 'group' : 'composite';
+    }
+
     function memberRowHTML(idx, code, op) {
       return `
         <div class="member-row" data-index="${idx}">
-          <select onchange="updateHierarchy()">${compositeOptionsHTML(code)}</select>
+          <select onchange="updateHierarchy()">${memberOptionsHTML(code)}</select>
           <select class="op" onchange="updateHierarchy()">
             <option value="AND" ${op === 'AND' ? 'selected' : ''}>AND</option>
             <option value="OR" ${op === 'OR' ? 'selected' : ''}>OR</option>
@@ -323,7 +355,7 @@
         const sels = child.querySelectorAll('select');
         const mc = sels[0].value;
         const op = sels[1].value;
-        if (mc) members.push({ member_code: mc, member_type: 'composite', logic_operator: op });
+        if (mc) members.push({ member_code: mc, member_type: memberTypeFor(mc), logic_operator: op });
       }
       if (!code || members.length === 0) { alert('Group code and at least one member required.'); return; }
 

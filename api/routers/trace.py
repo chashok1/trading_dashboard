@@ -835,27 +835,52 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
         for gm in grp_members:
             grp_member_index.setdefault(gm["rule_group_code"], []).append(dict(gm))
 
+        # Evaluate groups with proper nested-group (member_type='group') support,
+        # mirroring etl/rule_groups.py::eval_rule_group. A member is fired if it's
+        # a composite that fired, or a nested group that itself fired. Recursion is
+        # memoised and cycle-guarded.
+        _group_fired: dict = {}
+
+        def _member_fired(gm, stack):
+            if gm["member_type"] == "group":
+                return _eval_group(gm["member_code"], stack)
+            return composite_fired.get(gm["member_code"], False)
+
+        def _eval_group(code, stack):
+            if code in _group_fired:
+                return _group_fired[code]
+            if code in stack:          # cycle — break defensively
+                _group_fired[code] = False
+                return False
+            gmembs = grp_member_index.get(code, [])
+            sub = stack | {code}
+            fired = False
+            broke = False
+            results = []
+            for gm in gmembs:
+                mf = _member_fired(gm, sub)
+                results.append(mf)
+                if gm["logic_operator"] == "AND" and not mf:
+                    broke = True
+                    break
+            if not broke and gmembs:
+                ops = [gm["logic_operator"] for gm in gmembs]
+                fired = any(results) if "OR" in ops else all(results)
+            _group_fired[code] = fired
+            return fired
+
         rule_groups_out = []
         for g in group_rows:
             code   = g["rule_group_code"]
             gmembs = grp_member_index.get(code, [])
-            fired  = False
-            member_results = []
-            broke  = False
-            for gm in gmembs:
-                mc = gm["member_code"]
-                mf = composite_fired.get(mc, False)
-                member_results.append({
-                    "code": mc, "operator": gm["logic_operator"],
-                    "member_type": gm["member_type"], "fired": mf,
-                })
-                if gm["logic_operator"] == "AND" and not mf:
-                    broke = True
-                    break
-            if not broke:
-                ops = [gm["logic_operator"] for gm in gmembs]
-                fired = any(r["fired"] for r in member_results) if "OR" in ops \
-                        else all(r["fired"] for r in member_results)
+            fired  = _eval_group(code, frozenset())
+            # Build a full member list for display (no short-circuit, so every
+            # member's state is visible — including nested groups).
+            member_results = [{
+                "code": gm["member_code"], "operator": gm["logic_operator"],
+                "member_type": gm["member_type"],
+                "fired": _member_fired(gm, frozenset({code})),
+            } for gm in gmembs]
             rule_groups_out.append({
                 "code": code, "group_type": g["group_type"],
                 "action_label": g.get("action_label"), "priority": g.get("priority"),

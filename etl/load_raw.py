@@ -534,13 +534,40 @@ def load_trig_rules(session: Session, wb: Workbook) -> tuple[int, int, int]:
                 "weight_override": wt_num,
                 "data_brkeout_from": thr_num,
                 "member_role": "watch" if wt_num == 1 else "gate",
+                # Present so ON CONFLICT DO UPDATE can re-activate a workbook
+                # composite that had been deprecated by a prior pruning pass
+                # (insert_skip_duplicates only updates keys present in the row).
+                "deprecated_at": None,
             })
+
+    # Deduplicate by PK (composite_rule_code, atomic_rule_id) BEFORE the upsert.
+    # A composite code can span several adjacent Trig columns (e.g.
+    # 92-BS-RSI-MACD-Vlme-IVHV-IVBRR occupies three), so the same atomic row can
+    # appear under one code more than once. ON CONFLICT DO UPDATE rejects the same
+    # PK twice in a single statement ("cannot affect row a second time"), so we
+    # collapse duplicates here, keeping the FIRST occurrence — identical to the
+    # historical ON CONFLICT DO NOTHING behavior (first column wins).
+    _seen: set = set()
+    _deduped: list[dict] = []
+    for _rec in comp_records:
+        _key = (_rec["composite_rule_code"], _rec["atomic_rule_id"])
+        if _key in _seen:
+            continue
+        _seen.add(_key)
+        _deduped.append(_rec)
+    _n_dup = len(comp_records) - len(_deduped)
+    if _n_dup:
+        log.info("composite mappings: collapsed %d duplicate (code, atomic_id) rows "
+                 "from multi-column composites", _n_dup)
+    comp_records = _deduped
 
     # Workbook is the source of truth: refresh threshold / weight / role on reload
     # (ON CONFLICT DO UPDATE) so edits to the Trig tab propagate without a reset.
+    # deprecated_at is reset so a reloaded workbook composite is re-activated.
     n_att, n_ins = insert_skip_duplicates(
         session, "ref_trig_composite_mapping", comp_records,
-        update_on_conflict_cols=["weight_override", "data_brkeout_from", "member_role"],
+        update_on_conflict_cols=["weight_override", "data_brkeout_from",
+                                 "member_role", "deprecated_at"],
     )
 
     # ─── Pruning pass (2026-05-12) ──────────────────────────────────────────

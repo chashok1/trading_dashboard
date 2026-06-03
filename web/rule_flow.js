@@ -830,9 +830,14 @@ function buildGrpItem(g) {
 
   const members = (g.members || []).map(m => {
     const mCls = m.fired ? 'grp-mem-fired' : 'grp-mem-nofired';
+    const isGroup = m.member_type === 'group';
+    const tag = isGroup
+      ? `<span title="Nested logical group" style="font-size:8px;font-weight:700;color:#3730a3;background:#e0e7ff;border:1px solid #a5b4fc;border-radius:3px;padding:0 4px;margin-right:4px">GROUP</span>`
+      : '';
+    const name = `${isGroup ? '↳ ' : ''}${esc(m.code||'')}`;
     return `<div class="grp-member ${mCls}">
       <span class="op-badge">${esc(m.operator||'')}</span>
-      <span style="flex:1;font-weight:600;font-family:monospace;font-size:11px">${esc(m.code||'')}</span>
+      <span style="flex:1;font-weight:600;font-family:monospace;font-size:11px">${tag}${name}</span>
       ${dot(m.fired)}
     </div>`;
   }).join('');

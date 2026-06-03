@@ -34,6 +34,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   $("saveBtn").addEventListener("click", saveComposite);
   $("deprecateBtn").addEventListener("click", deprecateComposite);
+  $("cloneBtn").addEventListener("click", cloneComposite);
   $("cancelBtn").addEventListener("click", () => location.href = "/rules");
   $("dryrunBtn").addEventListener("click", runDryrun);
 
@@ -80,8 +81,68 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // Bootstrap catalogs (atomics, composites, data cols)
   await loadCatalogs();
+  await loadBases();
   if (STATE.ruleId) await loadComposite();
 });
+
+/* ---------- base-rule picker (Phase 2) ---------- */
+
+async function loadBases() {
+  const box = $("basePicker");
+  try {
+    const r = await fetch("/api/rules/base-composites");
+    STATE.bases = r.ok ? await r.json() : [];
+  } catch (e) {
+    STATE.bases = [];
+  }
+  if (!box) return;
+  if (!STATE.bases.length) {
+    box.innerHTML = `<div style="color:var(--text-3);font-size:12px">No BASE-* rules found. `
+      + `Apply <code>db/seeds_base_rules.sql</code> to create them.</div>`;
+    return;
+  }
+  box.innerHTML = STATE.bases.map(b => {
+    const mem = (b.members || []).map(m => {
+      const opSym = { ">=": "≥", "<=": "≤", ">": ">", "<": "<", "=": "=" }[m.operator] || "";
+      const thr = m.threshold != null ? ` ${opSym}${m.threshold}` : "";
+      const role = m.role === "watch" ? " ·watch" : "";
+      return `${escapeHtml(m.rule_name)}${thr}${role}`;
+    }).join(" · ");
+    const code = escapeAttr(b.code);
+    return `<div class="ce-base-card" style="border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div>
+          <div style="font-weight:700;font-size:13px">${escapeHtml(b.code)}</div>
+          <div style="font-size:11px;color:var(--text-2)">${escapeHtml(b.intent_text || "")}</div>
+        </div>
+        <div style="flex-shrink:0">
+          <button class="ce-btn add-btn base-add" data-code="${code}" data-role="gate">Add as gate</button>
+          <button class="ce-btn base-add" data-code="${code}" data-role="watch" style="margin-left:4px">Add as WATCH</button>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:5px">${mem}</div>
+    </div>`;
+  }).join("");
+  box.querySelectorAll("button.base-add").forEach(btn => {
+    btn.addEventListener("click", () => addBaseMember(btn.dataset.code, btn.dataset.role));
+  });
+}
+
+function addBaseMember(code, role) {
+  if (!code) return;
+  if (code === STATE.ruleId) { showErr("A composite can't reference itself"); return; }
+  if (STATE.members.some(m => m.kind === "composite" && m.nested_composite_code === code)) {
+    showErr(`${code} is already nested`); return;
+  }
+  STATE.members.push({
+    kind: "composite",
+    nested_composite_code: code,
+    member_role: role === "watch" ? "watch" : "gate",
+    weight_override: null,
+  });
+  renderMembers(); showErr(null);
+  showInfo(`Added ${code} as ${role === "watch" ? "WATCH" : "gate"}`);
+}
 
 /* ---------- catalogs ---------- */
 
@@ -373,6 +434,10 @@ function addAtomicMember() {
     atomic_rule_id: a.atomic_rule_id,
     rule_name: a.rule_name,
     weight_override: ovr === "" ? null : parseFloat(ovr),
+    // Pre-fill the condition threshold from the atomic rule's own definition so
+    // the member doesn't degrade to "value ≠ 0". The user can still edit it.
+    data_brkeout_from: a.brkeout_from ?? null,
+    member_role: "gate",
     _base: { wt_below: a.wt_below, wt_between: a.wt_between, wt_above: a.wt_above },
   });
   $("atomicPicker").value = ""; $("atomicOverride").value = "";
@@ -456,6 +521,25 @@ function setupTypeahead(inputId, suggestId, getCorpus, render, value) {
 }
 
 /* ---------- save ---------- */
+
+async function cloneComposite() {
+  if (!STATE.ruleId) { showErr("Load a composite first"); return; }
+  const newCode = (prompt(`Clone "${STATE.ruleId}" to a new composite code:`, STATE.ruleId + "-copy") || "").trim();
+  if (!newCode) return;
+  try {
+    const r = await fetch(`/api/rules/composite/${encodeURIComponent(STATE.ruleId)}/clone`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ new_code: newCode }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+    const out = await r.json();
+    showInfo(`Cloned to ${out.new_code} (${out.members} members). Opening…`);
+    setTimeout(() => { location.href = `/composite-edit?id=${encodeURIComponent(out.new_code)}`; }, 600);
+  } catch (e) {
+    showErr(`Clone failed: ${e.message}`);
+  }
+}
 
 async function saveComposite() {
   if (!STATE.ruleId) { showErr("Load a composite first"); return; }

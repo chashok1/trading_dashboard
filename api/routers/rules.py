@@ -1332,3 +1332,161 @@ def test_rule_group(group_code: str, date: Optional[str] = Query(None)):
             "sample_triggered_count": len(triggered_symbols),
             "sample_symbols": triggered_symbols[:50],
         }
+
+
+# =============================================================================
+# Parameter sets (Phase 3/4 — docs/rule_engine_redesign.md)
+# Manage the tunable-parameter overlays produced by etl/ml_tune_thresholds.py.
+# =============================================================================
+@router.get("/api/rules/param-sets", response_model=list[dict])
+def list_param_sets():
+    """List all parameter sets with value/target counts. Empty if unused."""
+    with session_scope() as s:
+        try:
+            rows = s.execute(text("""
+                SELECT ps.param_set_id, ps.label, ps.provenance, ps.is_active,
+                       ps.notes, ps.created_at,
+                       COUNT(pv.param_set_id)        AS n_values,
+                       COUNT(DISTINCT pv.target_id)  AS n_targets
+                FROM ref_trig_param_set ps
+                LEFT JOIN ref_trig_param_value pv ON pv.param_set_id = ps.param_set_id
+                GROUP BY ps.param_set_id
+                ORDER BY ps.is_active DESC, ps.created_at DESC
+            """)).mappings().all()
+        except Exception:
+            return []   # tables not migrated yet
+        return [dict(r) for r in rows]
+
+
+@router.get("/api/rules/param-sets/{set_id}", response_model=dict)
+def get_param_set(set_id: int):
+    """Header + all values for one parameter set (atomic values carry rule_name)."""
+    with session_scope() as s:
+        hdr = s.execute(text(
+            "SELECT * FROM ref_trig_param_set WHERE param_set_id = :i"
+        ), {"i": set_id}).mappings().first()
+        if not hdr:
+            raise HTTPException(status_code=404, detail=f"param set {set_id} not found")
+        vals = s.execute(text("""
+            SELECT pv.target_kind, pv.target_id, pv.param_name, pv.param_value,
+                   a.rule_name
+            FROM ref_trig_param_value pv
+            LEFT JOIN ref_trig_atomic_rule a
+              ON pv.target_kind = 'atomic' AND a.atomic_rule_id::text = pv.target_id
+            WHERE pv.param_set_id = :i
+            ORDER BY pv.target_id, pv.param_name
+        """), {"i": set_id}).mappings().all()
+        return {"set": dict(hdr), "values": [dict(v) for v in vals]}
+
+
+@router.post("/api/rules/param-sets/{set_id}/activate", response_model=dict)
+def activate_param_set(set_id: int):
+    """Make this the active set (deactivates any other). Re-derive to apply."""
+    with session_scope() as s:
+        if not s.execute(text("SELECT 1 FROM ref_trig_param_set WHERE param_set_id = :i"),
+                         {"i": set_id}).first():
+            raise HTTPException(status_code=404, detail=f"param set {set_id} not found")
+        s.execute(text("UPDATE ref_trig_param_set SET is_active = FALSE WHERE is_active = TRUE"))
+        s.execute(text("UPDATE ref_trig_param_set SET is_active = TRUE WHERE param_set_id = :i"),
+                  {"i": set_id})
+        s.commit()
+    return {"ok": True, "active": set_id,
+            "note": "Run `python -m etl.rebuild_rules` to apply to derived tables."}
+
+
+@router.post("/api/rules/param-sets/{set_id}/deactivate", response_model=dict)
+def deactivate_param_set(set_id: int):
+    """Deactivate this set; engine reverts to base ref_trig_atomic_rule values."""
+    with session_scope() as s:
+        s.execute(text("UPDATE ref_trig_param_set SET is_active = FALSE WHERE param_set_id = :i"),
+                  {"i": set_id})
+        s.commit()
+    return {"ok": True, "note": "Engine now uses base values. Run rebuild_rules to apply."}
+
+
+@router.delete("/api/rules/param-sets/{set_id}", response_model=dict)
+def delete_param_set(set_id: int):
+    """Delete a parameter set and its values (cascade)."""
+    with session_scope() as s:
+        s.execute(text("DELETE FROM ref_trig_param_set WHERE param_set_id = :i"), {"i": set_id})
+        s.commit()
+    return {"ok": True, "deleted": set_id}
+
+
+# =============================================================================
+# BASE-* sub-composites — list for the composite editor's base picker (Phase 2)
+# =============================================================================
+@router.get("/api/rules/base-composites", response_model=list[dict])
+def list_base_composites():
+    """BASE-* composites with a member summary, for the editor's base picker."""
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT m.composite_rule_code AS code, m.intent_text, m.category,
+                   m.member_role, m.data_brkeout_from, m.condition_operator,
+                   a.rule_name
+            FROM ref_trig_composite_mapping m
+            LEFT JOIN ref_trig_atomic_rule a ON a.atomic_rule_id = m.atomic_rule_id
+            WHERE m.composite_rule_code LIKE 'BASE-%' AND m.deprecated_at IS NULL
+            ORDER BY m.composite_rule_code, m.atomic_rule_id
+        """)).mappings().all()
+    out: dict = {}
+    for r in rows:
+        c = out.setdefault(r["code"], {"code": r["code"], "intent_text": r["intent_text"],
+                                       "category": r["category"], "members": []})
+        if r["rule_name"]:
+            c["members"].append({"rule_name": r["rule_name"], "role": r["member_role"],
+                                 "threshold": r["data_brkeout_from"],
+                                 "operator": r["condition_operator"]})
+    return list(out.values())
+
+
+# =============================================================================
+# Clone a composite to a new code (authoring convenience)
+# =============================================================================
+@router.post("/api/rules/composite/{rule_id}/clone", response_model=dict)
+def clone_composite(rule_id: str, body: dict):
+    """Duplicate every member row of a composite under a new code."""
+    new_code = (body.get("new_code") or "").strip()
+    if not new_code:
+        raise HTTPException(status_code=400, detail="new_code required")
+    if new_code == rule_id:
+        raise HTTPException(status_code=400, detail="new_code must differ from source")
+    with session_scope() as s:
+        src = s.execute(text("""
+            SELECT * FROM ref_trig_composite_mapping
+            WHERE composite_rule_code = :c AND deprecated_at IS NULL
+        """), {"c": rule_id}).mappings().all()
+        if not src:
+            raise HTTPException(status_code=404, detail=f"composite {rule_id} not found")
+        if s.execute(text("""
+            SELECT 1 FROM ref_trig_composite_mapping
+            WHERE composite_rule_code = :c AND deprecated_at IS NULL LIMIT 1
+        """), {"c": new_code}).first():
+            raise HTTPException(status_code=409, detail=f"composite {new_code} already exists")
+        for m in src:
+            s.execute(text("""
+                INSERT INTO ref_trig_composite_mapping
+                  (composite_rule_code, member_kind, member_role, atomic_rule_id,
+                   nested_composite_code, weight_override, data_column,
+                   data_brkeout_from, data_brkeout_to, data_wt_below, data_wt_between,
+                   data_wt_above, data_scoring_mode, data_score_params, member_multiplier,
+                   condition_operator, category, intent_text, precondition_expr,
+                   evidence_cutoff, active)
+                VALUES
+                  (:c, :kind, :role, :aid, :nest, :wo, :dc, :dlo, :dhi, :dwb, :dwbt,
+                   :dwa, :dmode, CAST(:dparams AS JSONB), :mult, :cop, :cat, :intent,
+                   :pre, :ecut, :active)
+            """), {
+                "c": new_code, "kind": m["member_kind"], "role": m.get("member_role", "gate"),
+                "aid": m["atomic_rule_id"], "nest": m["nested_composite_code"],
+                "wo": m["weight_override"], "dc": m["data_column"],
+                "dlo": m["data_brkeout_from"], "dhi": m["data_brkeout_to"],
+                "dwb": m["data_wt_below"], "dwbt": m["data_wt_between"], "dwa": m["data_wt_above"],
+                "dmode": m["data_scoring_mode"],
+                "dparams": json.dumps(m["data_score_params"]) if m["data_score_params"] is not None else None,
+                "mult": m["member_multiplier"], "cop": m["condition_operator"],
+                "cat": m["category"], "intent": m["intent_text"], "pre": m["precondition_expr"],
+                "ecut": m.get("evidence_cutoff"), "active": m.get("active", True),
+            })
+        s.commit()
+    return {"ok": True, "new_code": new_code, "members": len(src)}

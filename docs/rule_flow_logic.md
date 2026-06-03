@@ -95,7 +95,14 @@ verdict (`✓ FIRED`, `gate failed`, or `watch short`). This mirrors
 
 ## Rule Groups Panel
 
-Boolean AND/OR expression over composite codes. A group fires when its expression evaluates True. Fired action groups carry an `action_label` and `priority` that feed Final Output.
+Boolean AND/OR expression over composite codes **and nested logical groups**. A
+group fires when its expression evaluates True. Fired action groups carry an
+`action_label` and `priority` that feed Final Output.
+
+Nested logical-group members (`member_type='group'`) are evaluated recursively
+(memoised, cycle-guarded) so the trace mirrors the authoritative
+`etl/rule_groups.py::eval_rule_group`. Such members render with a `GROUP` tag and
+a `↳` prefix in the panel.
 
 ---
 

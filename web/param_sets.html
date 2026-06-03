@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parameter Sets — Trading Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    .ps-banner { padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 13px; }
+    .ps-banner.active { background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; }
+    .ps-banner.none   { background: #f8fafc; border: 1px solid var(--border); color: var(--text-2); }
+    table.ps { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.ps th, table.ps td { padding: 7px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+    table.ps th { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); }
+    table.ps tr.is-active { background: #f0fdf4; }
+    .pill { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 10px; }
+    .pill.on  { background: #dcfce7; color: #166534; }
+    .pill.off { background: #f1f5f9; color: #64748b; }
+    .ps-btn { font: inherit; font-size: 12px; padding: 3px 9px; border: 1px solid var(--border);
+              border-radius: 5px; background: #fff; cursor: pointer; margin-right: 4px; }
+    .ps-btn.primary { background: #059669; color: #fff; border-color: #059669; }
+    .ps-btn.danger  { color: #b91c1c; border-color: #fecaca; }
+    .ps-detail { margin-top: 16px; }
+    .ps-detail table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .ps-detail th, .ps-detail td { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+    .ps-detail td.num { font-family: ui-monospace, Consolas, monospace; text-align: right; }
+    .muted { color: var(--text-3); }
+    .ps-note { font-size: 12px; color: var(--text-2); margin: 8px 0 16px; }
+    #psMsg { font-size: 12px; margin-left: 8px; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span><h1>Trading Dashboard</h1></div>
+    <nav class="nav-menu">
+      <a href="/" class="nav-item">Dashboard</a>
+      <a href="/cockpit" class="nav-item">Cockpit</a>
+      <a href="/actionable" class="nav-item">Actionable</a>
+      <a href="/portfolio" class="nav-item">Portfolio</a>
+      <a href="/rules" class="nav-item">Rules</a>
+      <a href="/groups" class="nav-item">Rule Groups</a>
+      <a href="/param-sets" class="nav-item active">Param Sets</a>
+      <a href="/rule-performance" class="nav-item">Performance</a>
+      <a href="/trace" class="nav-item">Trace</a>
+      <a href="/rule-flow" class="nav-item">Rule Flow</a>
+      <a href="/ref" class="nav-item">Ref Data</a>
+      <a href="/explore" class="nav-item">DB Data</a>
+      <a href="/dbstats" class="nav-item">DB Stats</a>
+      <a href="/file-monitor" class="nav-item">File Monitor</a>
+    </nav>
+    <div class="controls">
+      <button id="reloadBtn" class="btn">Reload</button>
+      <span id="psMsg"></span>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <p class="ps-note">
+        Parameter sets are versioned overlays of tunable thresholds / weights / sigmoid
+        k&amp;x0 produced by <code>etl/ml_tune_thresholds.py</code>. The <b>active</b> set
+        overrides the base rule values at scoring time. With no active set the engine uses
+        the values stored on each atomic rule. After activating or deactivating a set, run
+        <code>python -m etl.rebuild_rules</code> to propagate it to the derived tables.
+      </p>
+      <div id="banner" class="ps-banner none">Loading…</div>
+      <div class="table-wrap">
+        <table class="ps">
+          <thead>
+            <tr>
+              <th>ID</th><th>Label</th><th>Provenance</th><th>Status</th>
+              <th>Rules</th><th>Values</th><th>Created</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="psBody"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
+        </table>
+      </div>
+      <div id="psDetail" class="ps-detail"></div>
+    </section>
+  </main>
+
+  <script src="/static/param_sets.js"></script>
+</body>
+</html>

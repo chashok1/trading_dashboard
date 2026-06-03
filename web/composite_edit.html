@@ -149,6 +149,7 @@
       <a href="/portfolio" class="nav-item">Portfolio</a>
       <a href="/rules" class="nav-item active">Rules</a>
       <a href="/groups" class="nav-item">Rule Groups</a>
+      <a href="/param-sets" class="nav-item">Param Sets</a>
       <a href="/rule-performance" class="nav-item">Performance</a>
       <a href="/trace" class="nav-item">Trace</a>
       <a href="/rule-flow" class="nav-item">Rule Flow</a>
@@ -215,6 +216,7 @@
         <div class="ce-add-tabs">
           <span class="ce-add-tab active" data-kind="atomic">+ Atomic rule</span>
           <span class="ce-add-tab" data-kind="data">+ Data column</span>
+          <span class="ce-add-tab" data-kind="base">+ Base rule</span>
           <span class="ce-add-tab" data-kind="composite">+ Nested composite</span>
         </div>
 
@@ -260,6 +262,17 @@
               </select>
             </div>
             <button id="addDataBtn" class="ce-btn add-btn">Add</button>
+          </div>
+        </div>
+
+        <!-- Base-rule picker -->
+        <div class="ce-add-pane" data-kind="base">
+          <div style="font-size:12px;color:var(--text-2);margin-bottom:8px">
+            Reusable <b>BASE-*</b> sub-composites. Adding one nests it as a single
+            member — pick <b>gate</b> (this base must fire) or <b>WATCH</b> (corroborating).
+          </div>
+          <div id="basePicker" class="ce-base-list">
+            <div style="color:var(--text-3);font-size:12px">Loading base rules…</div>
           </div>
         </div>
 
@@ -311,6 +324,7 @@
     <div class="ce-foot">
       <button id="deprecateBtn" class="ce-btn danger">Deprecate</button>
       <div style="display:flex; gap:8px">
+        <button id="cloneBtn" class="ce-btn">Clone…</button>
         <button id="cancelBtn" class="ce-btn">Cancel</button>
         <button id="saveBtn" class="ce-btn primary">Save changes</button>
       </div>

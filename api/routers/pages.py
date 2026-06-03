@@ -69,6 +69,11 @@ def page_rules():
     return FileResponse(WEB_DIR / "rules.html", media_type="text/html; charset=utf-8")
 
 
+@router.get("/param-sets")
+def page_param_sets():
+    return FileResponse(WEB_DIR / "param_sets.html", media_type="text/html; charset=utf-8")
+
+
 @router.get("/rules-health")
 def page_rules_health():
     return FileResponse(WEB_DIR / "rules_health.html", media_type="text/html; charset=utf-8")
