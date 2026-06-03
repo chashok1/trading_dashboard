@@ -98,14 +98,13 @@ function render(d) {
      sm.rsi ? `RSI ${fmt(sm.rsi,1)}` : '', sm.composite_label].filter(Boolean).join('  ·  ');
 
   document.getElementById('rfContent').innerHTML = `
-    <div style="display:flex;gap:8px;align-items:flex-start">
-      <div style="flex:1;min-width:0">${renderAtomics(d)}</div>
-      <div style="flex:1;min-width:0">${renderComposites(d)}</div>
-    </div>
-    <div class="rf-arrow">↓</div>
-    ${renderGroups(d)}
-    <div class="rf-arrow">↓</div>
     ${renderFinal(d)}
+    <div class="rf-arrow">↑</div>
+    ${renderGroups(d)}
+    <div class="rf-arrow">↑</div>
+    ${renderComposites(d)}
+    <div class="rf-arrow">↑</div>
+    ${renderAtomics(d)}
     ${renderRawData(d)}
   `;
 }
