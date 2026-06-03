@@ -228,9 +228,10 @@ def get_symbol_trace(sym: str, as_of: Optional[str] = Query(None, alias="date"))
             atom_id = m.get("atomic_rule_id")
             if kind == "atomic":
                 composite_index[code]["members"].append({
-                    "kind": "atomic",
-                    "atom_id": atom_id,
-                    "override": m.get("weight_override"),
+                    "kind":      "atomic",
+                    "atom_id":   atom_id,
+                    "threshold": m.get("data_brkeout_from"),
+                    "override":  m.get("weight_override"),
                 })
                 if atom_id is not None:
                     rolls_into.setdefault(atom_id, []).append(code)
@@ -771,16 +772,23 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                 w = 0.0
                 member_entry: dict = {"kind": kind}
                 if kind == "atomic":
-                    aid = m["atomic_rule_id"]
-                    w   = float(atomic_score.get(aid, 0.0)) if aid is not None else 0.0
-                    ovr = m.get("weight_override")
-                    if ovr is not None and w != 0:
-                        w = float(ovr)
+                    aid       = m.get("atom_id") or m.get("atomic_rule_id")
+                    threshold = m.get("threshold")
+                    ovr       = m.get("override") or m.get("weight_override")
+                    val       = float(atomic_score.get(aid, 0.0)) if aid is not None else 0.0
+                    if threshold is None:
+                        condition_met = (val != 0)
+                    else:
+                        thr = float(threshold)
+                        condition_met = (val >= thr) if thr >= 0 else (val <= thr)
+                    w = float(ovr) if (condition_met and ovr is not None) else (val if condition_met else 0.0)
                     ar = atomic_by_id.get(aid, {})
                     member_entry.update({
                         "rule_id": aid, "rule_name": ar.get("rule_name"),
-                        "value": ar.get("value"), "weight": w,
-                        "fired": w != 0, "reason": atomic_reason.get(aid, ""),
+                        "value": val, "weight": w,
+                        "condition_met": condition_met,
+                        "threshold": threshold,
+                        "fired": condition_met, "reason": atomic_reason.get(aid, ""),
                         "band": ar.get("band"),
                         "brkeout_from": ar.get("brkeout_from"),
                         "brkeout_to":   ar.get("brkeout_to"),

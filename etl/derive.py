@@ -1891,9 +1891,10 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
         kind = m.get("member_kind") or "atomic"
         if kind == "atomic":
             composite_index[code]["members"].append({
-                "kind": "atomic",
-                "atom_id":  m["atomic_rule_id"],
-                "override": m.get("weight_override"),
+                "kind":      "atomic",
+                "atom_id":   m["atomic_rule_id"],
+                "threshold": m.get("data_brkeout_from"),   # condition threshold
+                "override":  m.get("weight_override"),     # weight when condition met
             })
         elif kind == "data":
             composite_index[code]["members"].append({
@@ -2077,11 +2078,18 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
                 kind = member["kind"]
                 w = 0.0
                 if kind == "atomic":
-                    atom_id = member["atom_id"]
-                    w = atomic_scores.get(atom_id, 0.0)
-                    ovr = member.get("override")
-                    if ovr is not None and w != 0:
-                        w = float(ovr)
+                    atom_id   = member["atom_id"]
+                    threshold = member.get("threshold")   # condition threshold
+                    ovr       = member.get("override")    # assigned weight
+                    # Read the pre-computed value from drv_cat_atomic_input
+                    val = atomic_scores.get(atom_id, 0.0)
+                    if threshold is None:
+                        # No threshold set — any non-zero value meets condition
+                        condition_met = (val != 0)
+                    else:
+                        thr = float(threshold)
+                        condition_met = (val >= thr) if thr >= 0 else (val <= thr)
+                    w = float(ovr) if (condition_met and ovr is not None) else (val if condition_met else 0.0)
                 elif kind == "data":
                     # Inline rule against the row.  data_column may be
                     # 'drv_cat_atomic_input.col', 'drv_ma.col', or bare 'col'.
