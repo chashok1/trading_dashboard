@@ -757,10 +757,12 @@ function buildCompItem(c) {
         ? `<span class="badge-band band-${m.band}" style="font-size:9px">${m.band}</span>` : '';
       const wtsStr = m.wt_below != null
         ? `(${fmt(m.wt_below,0)} / ${fmt(m.wt_between,0)} / ${fmt(m.wt_above,0)})` : '';
+      const valWt = `<span style="margin-left:12px;color:var(--text-2)">val = <b style="color:var(--text-1)">${fmt(val)}</b> &nbsp; wt = <b style="color:${met?'#15803d':'#9ca3af'}">${fmt(m.weight)}</b></span>`;
       const zoneLine = (zone || bandStr || wtsStr)
         ? `<div style="grid-column:2/-1;display:flex;gap:6px;align-items:center;font-size:9px;font-family:monospace;color:var(--text-3);padding-left:2px">
             ${zone ? `<span>${zone}</span>` : ''} ${bandStr}
             ${wtsStr ? `<span>${wtsStr}</span>` : ''}
+            ${valWt}
            </div>` : '';
       return `<div class="mem-item ${mCls}" id="${memElemId}"
           data-col="${dbCol}" data-rule-id="${m.rule_id}"
