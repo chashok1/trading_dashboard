@@ -674,7 +674,7 @@ function renderComposites(d) {
     <div class="tier-body">
       <div class="rf-filter">
         <input type="text" placeholder="Search composite…" oninput="filterComposites(this.value)">
-        <label><input type="checkbox" id="compMetAll" onchange="filterComposites('')"> Met all</label>
+        <label><input type="checkbox" id="compMetAll" onchange="filterComposites('')"> Fired</label>
       </div>
       <div id="compList">${_buildCompsHtml(comp)}</div>
     </div>
