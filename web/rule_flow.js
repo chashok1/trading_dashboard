@@ -285,81 +285,73 @@ function buildAtomicList(atomics) {
     });
   }
 
-  const items = atomics.map(a => {
-    const isThresh  = isThreshFn(a);
-    const dbCol     = (a.ma_column || '').replace('drv_cat_atomic_input.', '');
+  const cells = atomics.map(a => {
+    const isThresh   = isThreshFn(a);
+    const dbCol      = (a.ma_column || '').replace('drv_cat_atomic_input.', '');
     const displayVal = _getDisplayValue(a);
-    const wgtColor  = a.weight > 0 ? '#15803d' : a.weight < 0 ? '#b91c1c' : '#9ca3af';
-    const typeDot   = isThresh
-      ? `<span title="Threshold" style="font-size:8px;font-weight:700;padding:1px 4px;border-radius:2px;background:#dbeafe;color:#1e40af;flex-shrink:0;line-height:1.6">T</span>`
-      : `<span title="Direct"    style="font-size:8px;font-weight:700;padding:1px 4px;border-radius:2px;background:#dcfce7;color:#166534;flex-shrink:0;line-height:1.6">D</span>`;
-    const cat       = a.category ? `<span class="cat-badge" style="font-size:8px">${esc(a.category)}</span>` : '';
-    const colTip    = `${a.rule_name||''}\n${a.ma_column||''}`;
-
-    // Second line: zone · band · weights (only for Threshold rules)
-    const zone = (a.brkeout_from != null || a.brkeout_to != null)
-      ? `zone [${fmt(a.brkeout_from)}, ${fmt(a.brkeout_to)}]` : '';
-    const band = a.band
-      ? `<span class="badge-band band-${a.band}" style="font-size:9px">${a.band}</span>` : '';
-    const wts  = a.wt_below != null
-      ? `<span style="color:var(--text-3);font-size:9px;font-family:monospace">(${fmt(a.wt_below,0)} / ${fmt(a.wt_between,0)} / ${fmt(a.wt_above,0)})</span>` : '';
-    const detailLine = (zone || band || wts)
-      ? `<div style="display:flex;gap:6px;align-items:center;padding:1px 0 0 0;font-size:9px;font-family:monospace;color:var(--text-3)">
-           ${zone ? `<span>${esc(zone)}</span>` : ''} ${band} ${wts}
-         </div>` : '';
-
-    const elemId = `ar_${a.id}`;
-    return `<div class="a-item" id="${elemId}" style="border-bottom:1px solid #f0f0ef;padding:3px 2px">
-      <div style="display:grid;grid-template-columns:auto auto 1fr auto auto auto;gap:4px;align-items:center;cursor:pointer"
-           onclick="toggleAtomicItem('${elemId}','${esc(dbCol)}','${esc(a.rule_name||'')}')"
-           title="${esc(colTip)}">
+    const wgtColor   = a.weight > 0 ? '#15803d' : a.weight < 0 ? '#b91c1c' : '#9ca3af';
+    const typeDot    = isThresh
+      ? `<span title="Threshold" style="font-size:7px;font-weight:700;padding:0 3px;border-radius:2px;background:#dbeafe;color:#1e40af">T</span>`
+      : `<span title="Direct"    style="font-size:7px;font-weight:700;padding:0 3px;border-radius:2px;background:#dcfce7;color:#166534">D</span>`;
+    const colTip = `${a.rule_name||''}\n${a.ma_column||''}`;
+    return `<div class="a-item" id="ar_${a.id}"
+        style="padding:2px 4px;border-bottom:1px solid #f4f4f2;border-right:1px solid #f4f4f2;cursor:pointer;min-width:0"
+        title="${esc(colTip)}"
+        onclick="showAtomicDetail(${a.id},'${esc(dbCol)}','${esc(a.rule_name||'')}')">
+      <div style="display:flex;align-items:center;gap:3px">
         ${typeDot}
-        ${cat}
-        <span style="font-family:monospace;font-size:11px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(dbCol)}</span>
-        <span style="font-family:monospace;font-size:11px;text-align:right;min-width:48px;color:var(--text-1)">${displayVal != null ? fmt(displayVal) : '—'}</span>
-        <span style="font-family:monospace;font-size:11px;font-weight:700;text-align:right;min-width:40px;color:${wgtColor}">${fmt(a.weight)}</span>
-        <span class="a-tog-${a.id}" style="font-size:9px;color:var(--text-3);padding-left:4px;flex-shrink:0">▼</span>
+        <span style="font-family:monospace;font-size:10px;color:var(--text-3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(dbCol)}</span>
       </div>
-      ${detailLine}
-      <div id="${elemId}_body" style="display:none;padding:3px 0 2px 16px;border-top:1px dashed #e5e7eb;margin-top:2px">
-        <div id="${elemId}_df"></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:4px;margin-top:1px">
+        <span style="font-family:monospace;font-size:12px;font-weight:600;color:var(--text-1)">${displayVal != null ? fmt(displayVal) : '—'}</span>
+        <span style="font-family:monospace;font-size:11px;font-weight:700;color:${wgtColor}">${fmt(a.weight)}</span>
       </div>
     </div>`;
   }).join('');
 
-  return `<div style="font-size:12px">${items}</div>`;
+  return `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0">${cells}</div>
+    <div id="atomicDetailPanel" style="display:none;margin-top:6px;padding:8px 10px;
+         background:#f0f4ff;border-radius:4px;border-left:3px solid #93c5fd"></div>`;
 }
 
-function toggleAtomicItem(elemId, dbCol, ruleName) {
-  const item   = document.getElementById(elemId);
-  if (!item) return;
-  const body   = document.getElementById(`${elemId}_body`);
-  const isOpen = body.style.display !== 'none';
+function showAtomicDetail(ruleId, dbCol, ruleName) {
+  const panel    = document.getElementById('atomicDetailPanel');
+  if (!panel) return;
+  const activeId = panel.dataset.activeId;
 
-  // Close all open atomic items
-  document.querySelectorAll('[id^="ar_"][id$="_body"]').forEach(b => {
-    b.style.display = 'none';
-  });
-  document.querySelectorAll('.a-item').forEach(i => {
-    i.style.background = '';
-    const tog = i.querySelector('[class^="a-tog-"]');
-    if (tog) tog.textContent = '▼';
-  });
+  document.querySelectorAll('.a-item').forEach(c => c.style.outline = '');
 
-  if (isOpen) return;  // was open → just close it
-
-  body.style.display = 'block';
-  item.style.background = '#f0f4ff';
-  const tog = item.querySelector(`[class="a-tog-${elemId.replace('ar_','')}"]`);
-  if (tog) tog.textContent = '▲';
-
-  // Render data flow once
-  const dfDiv = document.getElementById(`${elemId}_df`);
-  if (dfDiv && !dfDiv.dataset.rendered) {
-    dfDiv.dataset.rendered = '1';
-    const html = renderDataFlow(ruleName, dbCol, _intermediatesCache || {});
-    dfDiv.innerHTML = `<div style="margin-top:4px">${html}</div>`;
+  if (String(activeId) === String(ruleId) && panel.style.display !== 'none') {
+    panel.style.display = 'none';
+    panel.dataset.activeId = '';
+    return;
   }
+
+  const cell = document.getElementById(`ar_${ruleId}`);
+  if (cell) cell.style.outline = '2px solid #93c5fd';
+  panel.dataset.activeId = String(ruleId);
+  panel.style.display = 'block';
+
+  const a = window._rfData?.atomics?.find(x => x.id === ruleId);
+  const zoneParts = [];
+  if (a?.brkeout_from != null || a?.brkeout_to != null)
+    zoneParts.push(`zone [${fmt(a.brkeout_from)}, ${fmt(a.brkeout_to)}]`);
+  if (a?.band)
+    zoneParts.push(`<span class="badge-band band-${a.band}">${a.band}</span>`);
+  if (a?.wt_below != null)
+    zoneParts.push(`wts (${fmt(a.wt_below,0)} / ${fmt(a.wt_between,0)} / ${fmt(a.wt_above,0)})`);
+  const metaLine = zoneParts.length
+    ? `<div style="font-size:10px;font-family:monospace;color:var(--text-3);margin-bottom:4px">${zoneParts.join(' · ')}</div>`
+    : '';
+
+  const dfHtml = renderDataFlow(ruleName, dbCol, _intermediatesCache || {});
+  panel.innerHTML = `
+    <div style="font-size:11px;font-weight:700;margin-bottom:2px">
+      ${esc(ruleName)}
+      <span style="font-family:monospace;color:var(--text-3);font-weight:400;font-size:10px;margin-left:6px">${esc(dbCol)}</span>
+    </div>
+    ${metaLine}${dfHtml}`;
 }
 
 // ── Data Flow panel (Tier 2 row click) ───────────────────────────────────────
