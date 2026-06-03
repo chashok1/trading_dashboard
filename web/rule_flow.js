@@ -843,7 +843,7 @@ function renderFinal(d) {
     <div class="tier-body">
       <div class="final-grid">
         <div class="final-card">
-          <div class="final-label">Trig Action <small>(rule groups)</small></div>
+          <div class="final-label">Trig Action</div>
           <div class="final-value ${actionColor(trig)}">${trig || '—'}</div>
           <div style="font-size:11px;color:var(--text-2);margin-top:4px">BuySell score: ${score}</div>
         </div>
