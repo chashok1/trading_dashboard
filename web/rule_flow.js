@@ -285,81 +285,76 @@ function buildAtomicList(atomics) {
     });
   }
 
-  const items = atomics.map(a => {
-    const isThresh  = isThreshFn(a);
-    const dbCol     = (a.ma_column || '').replace('drv_cat_atomic_input.', '');
+  const cells = atomics.map(a => {
+    const isThresh   = isThreshFn(a);
+    const dbCol      = (a.ma_column || '').replace('drv_cat_atomic_input.', '');
     const displayVal = _getDisplayValue(a);
-    const wgtColor  = a.weight > 0 ? '#15803d' : a.weight < 0 ? '#b91c1c' : '#9ca3af';
-    const typeDot   = isThresh
-      ? `<span title="Threshold" style="font-size:8px;font-weight:700;padding:1px 4px;border-radius:2px;background:#dbeafe;color:#1e40af;flex-shrink:0;line-height:1.6">T</span>`
-      : `<span title="Direct"    style="font-size:8px;font-weight:700;padding:1px 4px;border-radius:2px;background:#dcfce7;color:#166534;flex-shrink:0;line-height:1.6">D</span>`;
-    const cat       = a.category ? `<span class="cat-badge" style="font-size:8px">${esc(a.category)}</span>` : '';
-    const colTip    = `${a.rule_name||''}\n${a.ma_column||''}`;
-
-    // Second line: zone · band · weights (only for Threshold rules)
-    const zone = (a.brkeout_from != null || a.brkeout_to != null)
-      ? `zone [${fmt(a.brkeout_from)}, ${fmt(a.brkeout_to)}]` : '';
-    const band = a.band
-      ? `<span class="badge-band band-${a.band}" style="font-size:9px">${a.band}</span>` : '';
+    const wgtColor   = a.weight > 0 ? '#15803d' : a.weight < 0 ? '#b91c1c' : '#9ca3af';
+    const typeTip    = isThresh ? 'Threshold' : 'Direct';
+    const typeDot    = isThresh
+      ? `<span style="font-size:7px;font-weight:700;padding:0 3px;border-radius:2px;background:#dbeafe;color:#1e40af">T</span>`
+      : `<span style="font-size:7px;font-weight:700;padding:0 3px;border-radius:2px;background:#dcfce7;color:#166534">D</span>`;
+    const colTip = `${a.rule_name||''}\n${a.ma_column||''}\nType: ${typeTip}${isThresh && a.band ? '\nBand: '+a.band : ''}`;
+    const zone = isThresh && (a.brkeout_from != null || a.brkeout_to != null)
+      ? `\n[${fmt(a.brkeout_from)}, ${fmt(a.brkeout_to)}]` : '';
     const wts  = a.wt_below != null
-      ? `<span style="color:var(--text-3);font-size:9px;font-family:monospace">(${fmt(a.wt_below,0)} / ${fmt(a.wt_between,0)} / ${fmt(a.wt_above,0)})</span>` : '';
-    const detailLine = (zone || band || wts)
-      ? `<div style="display:flex;gap:6px;align-items:center;padding:1px 0 0 0;font-size:9px;font-family:monospace;color:var(--text-3)">
-           ${zone ? `<span>${esc(zone)}</span>` : ''} ${band} ${wts}
-         </div>` : '';
+      ? `\nwts (${fmt(a.wt_below,0)}/${fmt(a.wt_between,0)}/${fmt(a.wt_above,0)})` : '';
+    const cellTip = esc(colTip + zone + wts);
 
-    const elemId = `ar_${a.id}`;
-    return `<div class="a-item" id="${elemId}" style="border-bottom:1px solid #f0f0ef;padding:3px 2px">
-      <div style="display:grid;grid-template-columns:auto auto 1fr auto auto auto;gap:4px;align-items:center;cursor:pointer"
-           onclick="toggleAtomicItem('${elemId}','${esc(dbCol)}','${esc(a.rule_name||'')}')"
-           title="${esc(colTip)}">
+    const selBorder = `outline:2px solid #93c5fd;outline-offset:-2px;`;
+    return `<div class="a-cell" id="ac_${a.id}"
+        style="padding:2px 4px;border-bottom:1px solid #f4f4f2;cursor:pointer;min-width:0"
+        title="${cellTip}"
+        onclick="showAtomicDetail(${a.id},'${esc(dbCol)}','${esc(a.rule_name||'')}')">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:2px">
         ${typeDot}
-        ${cat}
-        <span style="font-family:monospace;font-size:11px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(dbCol)}</span>
-        <span style="font-family:monospace;font-size:11px;text-align:right;min-width:48px;color:var(--text-1)">${displayVal != null ? fmt(displayVal) : '—'}</span>
-        <span style="font-family:monospace;font-size:11px;font-weight:700;text-align:right;min-width:40px;color:${wgtColor}">${fmt(a.weight)}</span>
-        <span class="a-tog-${a.id}" style="font-size:9px;color:var(--text-3);padding-left:4px;flex-shrink:0">▼</span>
+        <span style="font-family:monospace;font-size:10px;color:var(--text-3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(dbCol)}</span>
       </div>
-      ${detailLine}
-      <div id="${elemId}_body" style="display:none;padding:3px 0 2px 16px;border-top:1px dashed #e5e7eb;margin-top:2px">
-        <div id="${elemId}_df"></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:4px">
+        <span style="font-family:monospace;font-size:12px;font-weight:600;color:var(--text-1)">${displayVal != null ? fmt(displayVal) : '—'}</span>
+        <span style="font-family:monospace;font-size:11px;font-weight:700;color:${wgtColor}">${fmt(a.weight)}</span>
       </div>
     </div>`;
   }).join('');
 
-  return `<div style="font-size:12px">${items}</div>`;
+  return `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:0">${cells}</div>
+    <div id="atomicDetailPanel" style="display:none;margin-top:6px;padding:8px;background:#f0f4ff;border-radius:4px;border-left:3px solid #93c5fd"></div>`;
 }
 
-function toggleAtomicItem(elemId, dbCol, ruleName) {
-  const item   = document.getElementById(elemId);
-  if (!item) return;
-  const body   = document.getElementById(`${elemId}_body`);
-  const isOpen = body.style.display !== 'none';
+function showAtomicDetail(ruleId, dbCol, ruleName) {
+  const panel   = document.getElementById('atomicDetailPanel');
+  const activeId = panel?.dataset?.activeId;
 
-  // Close all open atomic items
-  document.querySelectorAll('[id^="ar_"][id$="_body"]').forEach(b => {
-    b.style.display = 'none';
-  });
-  document.querySelectorAll('.a-item').forEach(i => {
-    i.style.background = '';
-    const tog = i.querySelector('[class^="a-tog-"]');
-    if (tog) tog.textContent = '▼';
-  });
+  // Dehighlight all cells
+  document.querySelectorAll('.a-cell').forEach(c => c.style.outline = '');
 
-  if (isOpen) return;  // was open → just close it
-
-  body.style.display = 'block';
-  item.style.background = '#f0f4ff';
-  const tog = item.querySelector(`[class="a-tog-${elemId.replace('ar_','')}"]`);
-  if (tog) tog.textContent = '▲';
-
-  // Render data flow once
-  const dfDiv = document.getElementById(`${elemId}_df`);
-  if (dfDiv && !dfDiv.dataset.rendered) {
-    dfDiv.dataset.rendered = '1';
-    const html = renderDataFlow(ruleName, dbCol, _intermediatesCache || {});
-    dfDiv.innerHTML = `<div style="margin-top:4px">${html}</div>`;
+  if (String(activeId) === String(ruleId) && panel.style.display !== 'none') {
+    panel.style.display = 'none';
+    panel.dataset.activeId = '';
+    return;
   }
+
+  const cell = document.getElementById(`ac_${ruleId}`);
+  if (cell) cell.style.outline = '2px solid #93c5fd';
+
+  panel.dataset.activeId = String(ruleId);
+  panel.style.display = 'block';
+
+  const zone = window._rfData?.atomics?.find(a => a.id === ruleId);
+  const zoneStr = zone && (zone.brkeout_from != null || zone.brkeout_to != null)
+    ? ` · zone [${fmt(zone.brkeout_from)}, ${fmt(zone.brkeout_to)}]` : '';
+  const bandStr = zone?.band ? ` · <span class="badge-band band-${zone.band}">${zone.band}</span>` : '';
+  const wtsStr  = zone?.wt_below != null
+    ? ` · wts (${fmt(zone.wt_below,0)} / ${fmt(zone.wt_between,0)} / ${fmt(zone.wt_above,0)})` : '';
+
+  const dfHtml = renderDataFlow(ruleName, dbCol, _intermediatesCache || {});
+  panel.innerHTML = `
+    <div style="font-size:11px;font-weight:700;margin-bottom:4px;color:var(--text-1)">
+      ${esc(ruleName)} <span style="font-family:monospace;color:var(--text-3);font-weight:400;font-size:10px">${esc(dbCol)}</span>
+      ${zoneStr}${bandStr}${wtsStr}
+    </div>
+    ${dfHtml}`;
 }
 
 // ── Data Flow panel (Tier 2 row click) ───────────────────────────────────────
@@ -452,38 +447,104 @@ const _CHAIN = {
   lrr_idx:         { keys:['last_price','lrr','AC'], label:'LRR index' },
 };
 
-// Human-readable labels for raw/intermediate keys
+// Human-readable labels (no Excel column letters)
 const _KEY_LABEL = {
-  last_price:'last_price (D)', lrr:'drv_rr.lrr (EC)', trr:'drv_rr.trr (ED)', mrr:'drv_rr.mrr',
-  a_trade_value:'a_trade_value (AF)', a_trend_value:'a_trend_value (AE)',
-  a_bb_streak:'a_bb_streak (AS)', a_bb_high_low_days:'a_bb_high_low_days (AP)',
-  a_iv_percentile:'a_iv_percentile (CX)', a_hv_percentile:'a_hv_percentile (CW)',
-  a_macd_brr:'a_macd_brr (CI)', a_macdh_d_brr:'a_macdh_d_brr (CK)',
-  a_macdays_streak:'a_macdays_streak (CM)', a_perf_3d:'a_perf_3d (BX)',
-  a_perf_2m:'a_perf_2m (BR)', a_perf_2wk:'a_perf_2wk (BV)',
-  imp_volatility:'imp_volatility (DT)', historical_vol:'historical_vol (CV)',
-  rsi:'rsi (DS)', net_chng:'net_chng (G)', AC:'AC = MIN(SD,MedianSD)',
-  AD:'AD = AC/D', AG:'AG = (D-AE)/AC', AH:'AH = (D-AF)/AC', AI:'AI = (AF-AE)/AC',
-  AT:'AT = TRUNC(AS)', AY:'AY = TRUNC(AT/1000)', AU:'AU = AT-AY×1000',
-  AV:'AV = ABS(TRUNC(AU/100))', AW:'AW = IF(AV=1,−1,1)', AX:'AX = |AU| % 100',
-  AX2:'AX2 = signed AX', AN:'AN = BB Direction (decoded)',
-  AQ:'AQ = TRUNC(AP) (BBHighDays)', AR:'AR = ABS(100×(AP-AQ)) (BBLowDays)',
-  AZ:'AZ = ROUND((|AS|-|AT|)×100,0) (BB Streak Days)',
-  BQ:'BQ = (D-AE)/AC (Perf3M_sd)', BS:'BS = Perf2M/(AD×100)',
-  BU:'BU = (D-AF)/AC (Perf3W_sd)', BW:'BW = Perf2Wk/(AD×100)',
-  BY:'BY = Perf3D/(AD×100)', CA:'CA = NetChng/AC (Perf1D_sd)',
-  BZ:'BZ = 100×D/(100+BX) (≈ prev close)', EE:'EE = (D-EC)×100/(ED-EC)',
-  EO:'EO = (ED-MAX(High,TDHigh))/AC', EP:'EP = (MIN(Low,TDLow)-EC)/AC',
-  EQ:'EQ = (ED-AE)/AC', ER:'ER = (EC-AF)/AC',
-  FR:'FR = ImpVol×100/HV (IVHV ratio)',
-  GB:'GB = (vol-avg3m)/avg3m×100',
-  CE:'CE = (52H-D)×100/(52H-52L)',
-  high_52:'high_52 (CD)', low_52:'low_52 (CC)',
-  sma_50:'sma_50 (CG)', sma_200:'sma_200 (CH)',
-  EF:'EF = td_last (prior session close, CN)',
-  high_today:'high_today (EH = today intraday high)', low_today:'low_today (EI = today intraday low)',
-  td_high:'td_high (EK)', td_low:'td_low (EL)',
-  tl_volume:'tl_volume (current day TOSL)', volume_avg_3m:'volume_avg_3m (3M avg)',
+  // Source columns
+  last_price:         'Last Price',
+  lrr:                'Lower Risk Range',
+  trr:                'Target Risk Range',
+  mrr:                'Mid Risk Range',
+  a_trade_value:      'Trade MA',
+  a_trend_value:      'Trend MA',
+  a_bb_streak:        'BB Streak',
+  a_bb_high_low_days: 'BB High/Low Days',
+  a_iv_percentile:    'IV Percentile',
+  a_hv_percentile:    'HV Percentile',
+  a_macd_brr:         'MACD BRR',
+  a_macdh_d_brr:      'MACDH BRR',
+  a_macdays_streak:   'MACD Streak Days',
+  a_perf_3d:          '3-Day Perf',
+  a_perf_2m:          '2-Month Perf',
+  a_perf_2wk:         '2-Week Perf',
+  imp_volatility:     'Implied Volatility',
+  historical_vol:     'Historical Volatility',
+  rsi:                'RSI',
+  net_chng:           'Net Change',
+  high_52:            '52-Week High',
+  low_52:             '52-Week Low',
+  sma_50:             '50-Day SMA',
+  sma_200:            '200-Day SMA',
+  high_today:         'Today High',
+  low_today:          'Today Low',
+  td_high:            'TD High',
+  td_low:             'TD Low',
+  tl_volume:          'Current Volume',
+  volume_avg_3m:      '3M Avg Volume',
+  // Computed intermediates
+  AC:  'Volatility Scale',
+  AD:  'Relative Scale',
+  AG:  'Trend SD Position',
+  AH:  'Trade SD Position',
+  AI:  'Trade-Trend Spread SD',
+  AT:  'BB Streak (int)',
+  AY:  'BB Streak Thousands',
+  AU:  'BB Streak Remainder',
+  AV:  'BB High Hundreds',
+  AW:  'BB Direction Sign',
+  AX:  'BB Low Days',
+  AX2: 'BB Low Days (signed)',
+  AN:  'BB Direction',
+  AQ:  'BB High Days',
+  AR:  'BB Low Days',
+  AZ:  'BB Streak Days Delta',
+  BQ:  '3M Perf SD',
+  BS:  '2M Perf SD',
+  BU:  '3W Perf SD',
+  BW:  '2W Perf SD',
+  BY:  '3D Perf SD',
+  CA:  '1D Perf SD',
+  BZ:  'Prior Session Close (est.)',
+  EE:  'BRR% Position',
+  EO:  'High vs TRR SD',
+  EP:  'Low vs LRR SD',
+  EQ:  'Trend vs TRR SD',
+  ER:  'LRR vs Trade SD',
+  FR:  'IV / HV Ratio',
+  GB:  'Volume vs 3M Avg %',
+  CE:  '52-Week Position %',
+  EF:  'Prior Session Close',
+};
+
+// Formula strings shown as tooltip on hover (keeps them accessible without cluttering labels)
+const _KEY_FORMULA = {
+  AC:  'MIN(SD, MedianSD)',
+  AD:  'AC / Last Price',
+  AG:  '(Last Price − Trend MA) / AC',
+  AH:  '(Last Price − Trade MA) / AC',
+  AI:  '(Trade MA − Trend MA) / AC',
+  AT:  'TRUNC(BB Streak)',
+  AY:  'TRUNC(BB Streak int / 1000)',
+  AU:  'BB Streak int − AY × 1000',
+  AV:  'ABS(TRUNC(AU / 100))',
+  AW:  'IF(AV = 1, −1, 1)',
+  AX:  '|AU| mod 100',
+  AX2: 'Signed AX',
+  AZ:  'ROUND((|BB Streak| − |BB Streak int|) × 100, 0)',
+  BQ:  '(Last Price − Trend MA) / AC',
+  BS:  '2M Perf / (Relative Scale × 100)',
+  BU:  '(Last Price − Trade MA) / AC',
+  BW:  '2W Perf / (Relative Scale × 100)',
+  BY:  '3D Perf / (Relative Scale × 100)',
+  CA:  'Net Change / AC',
+  BZ:  '100 × Last Price / (100 + 3D Perf)  ≈ prior close',
+  EE:  '(Last Price − LRR) × 100 / (TRR − LRR)',
+  EO:  '(TRR − MAX(High, TD High)) / AC',
+  EP:  '(MIN(Low, TD Low) − LRR) / AC',
+  EQ:  '(TRR − Trend MA) / AC',
+  ER:  '(LRR − Trade MA) / AC',
+  FR:  'Implied Vol × 100 / Historical Vol',
+  GB:  '(Volume − 3M Avg) / 3M Avg × 100',
+  CE:  '(52W High − Last Price) × 100 / (52W High − 52W Low)',
 };
 
 function _fmtVal(v) {
@@ -504,15 +565,18 @@ function renderDataFlow(ruleName, dbCol, intermediates) {
   const keys = chain.keys.length ? chain.keys : [dbCol];
 
   const rows = keys.map(k => {
-    const raw = _isRaw(k);
-    const label = _KEY_LABEL[k] || k;
-    const val = intermediates[k] ?? intermediates[k.toLowerCase()];
+    const raw     = _isRaw(k);
+    const label   = _KEY_LABEL[k] || k;
+    const formula = _KEY_FORMULA[k];
+    const val     = intermediates[k] ?? intermediates[k.toLowerCase()];
     const src = raw
       ? `<span style="font-size:9px;color:var(--text-3);font-style:italic">source</span>`
       : `<span style="font-size:9px;color:#7c3aed;font-style:italic">computed</span>`;
+    const labelTip = formula ? `title="${esc(formula)}"` : '';
+    const labelStyle = `font-family:monospace;font-size:11px;padding:2px 8px;color:var(--text-2);white-space:nowrap${formula ? ';cursor:help;text-decoration:underline dotted #aaa' : ''}`;
     return `<tr style="line-height:1.8">
       <td style="font-family:monospace;font-size:11px;padding:2px 8px;white-space:nowrap">${src}</td>
-      <td style="font-family:monospace;font-size:11px;padding:2px 8px;color:var(--text-2);white-space:nowrap">${esc(label)}</td>
+      <td style="${labelStyle}" ${labelTip}>${esc(label)}</td>
       <td style="font-family:monospace;font-size:12px;padding:2px 8px;text-align:right">${_fmtVal(val)}</td>
     </tr>`;
   }).join('');
