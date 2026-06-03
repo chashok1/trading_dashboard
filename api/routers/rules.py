@@ -108,7 +108,8 @@ def get_composite_rule_atomics(rule_id: str):
         rows = s.execute(
             text("""SELECT a.atomic_rule_id, a.rule_name, a.category, a.scoring_mode,
                            a.brkeout_from, a.brkeout_to, a.wt_below, a.wt_between, a.wt_above,
-                           m.weight_override, m.data_brkeout_from, m.active
+                           m.weight_override, m.data_brkeout_from, m.active,
+                           m.condition_operator
                     FROM ref_trig_atomic_rule a
                     JOIN ref_trig_composite_mapping m ON a.atomic_rule_id = m.atomic_rule_id
                     WHERE m.composite_rule_code = :crc AND a.deprecated_at IS NULL
@@ -777,6 +778,9 @@ def replace_composite_members(rule_id: str, body: dict):
                 )
                 continue
             if mig_applied:
+                op = m.get("condition_operator") or None
+                if op and op not in (">=", "<=", ">", "<", "="):
+                    op = None
                 s.execute(text("""
                     INSERT INTO ref_trig_composite_mapping
                       (composite_rule_code, member_kind,
@@ -785,7 +789,8 @@ def replace_composite_members(rule_id: str, body: dict):
                        data_wt_below, data_wt_between, data_wt_above,
                        data_scoring_mode, data_score_params,
                        nested_composite_code, member_multiplier,
-                       category, intent_text, precondition_expr)
+                       category, intent_text, precondition_expr,
+                       condition_operator)
                     VALUES
                       (:rid, :kind,
                        :atom, :wo,
@@ -793,7 +798,8 @@ def replace_composite_members(rule_id: str, body: dict):
                        :dwb, :dwbt, :dwa,
                        :dmode, CAST(:dparams AS JSONB),
                        :nest, :mult,
-                       :cat, :intent, :pre)
+                       :cat, :intent, :pre,
+                       :cop)
                 """), {
                     "rid":    rule_id,
                     "kind":   kind,
@@ -812,6 +818,7 @@ def replace_composite_members(rule_id: str, body: dict):
                     "cat":    category,
                     "intent": intent,
                     "pre":    pre,
+                    "cop":    op,
                 })
             else:
                 # Pre-migration legacy schema — atomic only

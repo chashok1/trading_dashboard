@@ -141,6 +141,7 @@ async function loadComposite() {
       rule_name: a.rule_name,
       weight_override: a.weight_override,
       data_brkeout_from: a.data_brkeout_from ?? null,
+      condition_operator: a.condition_operator ?? null,
       _base: { wt_below: a.wt_below, wt_between: a.wt_between, wt_above: a.wt_above },
     }));
 
@@ -201,6 +202,13 @@ function renderMembers() {
       STATE.members[idx].data_brkeout_from = v === "" ? null : parseFloat(v);
     });
   });
+  // Wire operator selects
+  list.querySelectorAll("select.cond-op").forEach(sel => {
+    sel.addEventListener("change", () => {
+      const idx = parseInt(sel.dataset.idx, 10);
+      STATE.members[idx].condition_operator = sel.value || null;
+    });
+  });
   // Wire data-member inline threshold inputs
   list.querySelectorAll("input.data-field").forEach(inp => {
     inp.addEventListener("input", () => {
@@ -228,29 +236,37 @@ function memberRow(m, idx) {
       placeholder="—" value="${m.weight_override == null ? "" : m.weight_override}"></div>`;
 
   if (m.kind === "atomic") {
-    const thresh = m.data_brkeout_from;
-    const op     = thresh != null ? (thresh >= 0 ? '≥' : '≤') : '≠0';
-    const thrDisp = thresh != null ? `${op} ${thresh}` : 'any ≠0';
-    const thrColor = thresh != null && thresh >= 0 ? '#15803d' : '#b91c1c';
+    const thresh  = m.data_brkeout_from;
+    const selOp   = m.condition_operator || '';
     const noThreshWarn = thresh == null
       ? `<span title="No condition threshold set — any nonzero value qualifies"
               style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;border-radius:3px;
                      font-size:10px;font-weight:700;padding:1px 5px;margin-left:6px">⚠ no threshold</span>`
       : '';
-    const condField = `<div class="ovr" style="min-width:110px">
-      <label>condition threshold</label>
+    const opField = `<div class="ovr" style="min-width:72px">
+      <label>operator</label>
+      <select class="cond-op" data-idx="${idx}" style="font-family:monospace;font-size:13px;padding:2px 4px">
+        <option value=""  ${selOp===''   ?'selected':''}>auto</option>
+        <option value=">=" ${selOp==='>='?'selected':''}>&gt;=</option>
+        <option value="<=" ${selOp==='<='?'selected':''}>&lt;=</option>
+        <option value=">"  ${selOp==='>' ?'selected':''}>&gt;</option>
+        <option value="<"  ${selOp==='<' ?'selected':''}>&lt;</option>
+        <option value="="  ${selOp==='=' ?'selected':''}>=</option>
+      </select>
+    </div>`;
+    const condField = `<div class="ovr" style="min-width:100px">
+      <label>threshold</label>
       <input class="cond-thresh" type="number" step="1" data-idx="${idx}"
         placeholder="any≠0"
-        value="${thresh == null ? '' : thresh}"
-        title="Positive→value>=thresh (buy), Negative→value<=thresh (sell)">
+        value="${thresh == null ? '' : thresh}">
     </div>`;
     return `<div class="ce-mem" style="${thresh == null ? 'border-left:3px solid #fbbf24' : ''}">
       <span class="grip" title="Drag to reorder">⋮⋮</span>
       ${kindBadge}
       <div class="body">
         <div class="name">${escapeHtml(m.rule_name || "atomic#" + m.atomic_rule_id)}${noThreshWarn}</div>
-        <div class="col">cond: <b style="color:${thrColor}">${thrDisp}</b> → assign weight</div>
       </div>
+      ${opField}
       ${condField}
       ${ovrField}
       ${x}

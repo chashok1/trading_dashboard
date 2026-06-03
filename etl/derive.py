@@ -1884,7 +1884,8 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
                    data_scoring_mode, data_score_params,
                    nested_composite_code, member_multiplier,
                    category, intent_text, precondition_expr,
-                   COALESCE(active, TRUE) AS active
+                   COALESCE(active, TRUE) AS active,
+                   condition_operator
             FROM ref_trig_composite_mapping
             WHERE deprecated_at IS NULL
         """)).mappings().all()
@@ -1911,10 +1912,11 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
         kind = m.get("member_kind") or "atomic"
         if kind == "atomic":
             composite_index[code]["members"].append({
-                "kind":      "atomic",
-                "atom_id":   m["atomic_rule_id"],
-                "threshold": m.get("data_brkeout_from"),   # condition threshold
-                "override":  m.get("weight_override"),     # weight when condition met
+                "kind":               "atomic",
+                "atom_id":            m["atomic_rule_id"],
+                "threshold":          m.get("data_brkeout_from"),
+                "condition_operator": m.get("condition_operator"),
+                "override":           m.get("weight_override"),
             })
         elif kind == "data":
             composite_index[code]["members"].append({
@@ -2113,8 +2115,16 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
                         condition_met = (val != 0)
                     else:
                         thr = float(threshold)
-                        op  = _composite_operator(code, thr)
-                        condition_met = (val >= thr) if op == '>=' else (val <= thr)
+                        # Explicit operator stored on member takes priority;
+                        # fall back to rule-code-derived operator
+                        op = member.get("condition_operator") or _composite_operator(code, thr)
+                        condition_met = (
+                            val >= thr if op == '>='
+                            else val <= thr if op == '<='
+                            else val >  thr if op == '>'
+                            else val <  thr if op == '<'
+                            else val == thr   # '='
+                        )
                     w = float(ovr) if (condition_met and ovr is not None) else (val if condition_met else 0.0)
                 elif kind == "data":
                     # Inline rule against the row.  data_column may be

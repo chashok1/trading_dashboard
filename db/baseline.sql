@@ -3258,6 +3258,8 @@ CREATE TABLE IF NOT EXISTS ref_trig_composite_mapping (
 
     active                BOOLEAN NOT NULL DEFAULT TRUE,
 
+    condition_operator    VARCHAR(2),
+
     loaded_at             TIMESTAMP NOT NULL DEFAULT now(),
 
     PRIMARY KEY (composite_rule_code, atomic_rule_id),
@@ -3293,6 +3295,20 @@ CREATE TABLE IF NOT EXISTS ref_trig_composite_mapping (
     )
 
 );
+
+ALTER TABLE ref_trig_composite_mapping ADD COLUMN IF NOT EXISTS condition_operator VARCHAR(2)
+    CHECK (condition_operator IN ('>=','<=','>','<','='));
+
+-- Backfill: BUY rules → >=, SELL rules → <=
+UPDATE ref_trig_composite_mapping
+SET condition_operator = '>='
+WHERE condition_operator IS NULL
+  AND composite_rule_code ~ '^\d+-(B|BS|BR|BW|BM|BMN)-';
+
+UPDATE ref_trig_composite_mapping
+SET condition_operator = '<='
+WHERE condition_operator IS NULL
+  AND composite_rule_code ~ '^\d+-(SA|SS|STM|SW|SH)-';
 
 CREATE INDEX IF NOT EXISTS ix_ref_trig_composite_atom ON ref_trig_composite_mapping(atomic_rule_id);
 

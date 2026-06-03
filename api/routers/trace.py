@@ -582,7 +582,8 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
             SELECT composite_rule_code, COALESCE(member_kind,'atomic') AS member_kind,
                    atomic_rule_id, weight_override, data_brkeout_from,
                    data_column, nested_composite_code, precondition_expr,
-                   COALESCE(active, TRUE) AS active
+                   COALESCE(active, TRUE) AS active,
+                   condition_operator
             FROM ref_trig_composite_mapping
             WHERE deprecated_at IS NULL
             ORDER BY composite_rule_code, atomic_rule_id
@@ -742,8 +743,14 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                         comp_op = None
                     else:
                         thr = float(threshold)
-                        comp_op = _composite_op(code, thr)
-                        condition_met = (val >= thr) if comp_op == '>=' else (val <= thr)
+                        comp_op = m.get("condition_operator") or _composite_op(code, thr)
+                        condition_met = (
+                            val >= thr if comp_op == '>='
+                            else val <= thr if comp_op == '<='
+                            else val >  thr if comp_op == '>'
+                            else val <  thr if comp_op == '<'
+                            else val == thr   # '='
+                        )
                     w = float(ovr) if (condition_met and ovr is not None) else (val if condition_met else 0.0)
                     ar = atomic_by_id.get(aid, {})
                     member_entry.update({
@@ -752,7 +759,7 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                         "value": val, "weight": w,
                         "condition_met": condition_met,
                         "threshold": threshold,
-                        "operator": comp_op,   # '>=' or '<=' from threshold sign
+                        "operator": comp_op,
                         "fired": condition_met, "reason": atomic_reason.get(aid, ""),
                         "band": ar.get("band"),
                         "brkeout_from": ar.get("brkeout_from"),
