@@ -653,7 +653,7 @@ function buildCompItem(c) {
     if (m.kind === 'atomic') {
       const thr = m.threshold;
       const val = m.value;
-      // Operator from API (>=, <=, >, <, =); fallback by side/threshold sign
+      // Operator comes from threshold sign (positive→>=, negative→<=)
       const opSymMap = {'>=':'≥', '<=':'≤', '>':'>', '<':'<', '=':'='};
       const op = m.operator ? (opSymMap[m.operator] || m.operator)
                : thr != null ? (thr >= 0 ? '≥' : '≤') : '≠0';

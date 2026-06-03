@@ -2063,10 +2063,6 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
         composite_results = {}
         composite_scores = {}     # code -> numeric score (for nested lookups)
 
-        import re as _re
-        _SELL_PREFIXES = {'SA', 'SS', 'STM', 'SW', 'SH'}
-        _BUY_PREFIXES  = {'B', 'BS', 'BR', 'BW', 'BM', 'BMN'}
-
         for code in composite_eval_order:
             comp_info = composite_index[code]
             # Precondition gate
@@ -2075,11 +2071,6 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
                     composite_results[code] = False
                     composite_scores[code] = None   # NULL — distinguishable from 0
                     continue
-
-            # Determine operator from composite code prefix (BUY → >=, SELL → <=)
-            _m = _re.match(r'^\d+-([A-Z]+)-', code)
-            _pfx = _m.group(1) if _m else ''
-            comp_op = '<=' if _pfx in _SELL_PREFIXES else '>='
 
             score = 0.0
             n_member_hit = 0   # member-level hit count (any non-zero contribution)
@@ -2097,12 +2088,8 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
                         condition_met = (val != 0)
                     else:
                         thr = float(threshold)
-                        if comp_op == '>=':   condition_met = val >= thr
-                        elif comp_op == '<=': condition_met = val <= thr
-                        elif comp_op == '>':  condition_met = val >  thr
-                        elif comp_op == '<':  condition_met = val <  thr
-                        elif comp_op == '=':  condition_met = val == thr
-                        else:                 condition_met = val >= thr
+                        # Threshold sign encodes operator: positive→>=, negative→<=
+                        condition_met = (val >= thr) if thr >= 0 else (val <= thr)
                     w = float(ovr) if (condition_met and ovr is not None) else (val if condition_met else 0.0)
                 elif kind == "data":
                     # Inline rule against the row.  data_column may be
