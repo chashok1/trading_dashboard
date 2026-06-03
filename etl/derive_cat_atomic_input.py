@@ -83,13 +83,11 @@ tw AS (
     ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
 med AS (
-    -- AA = as-of-date median of standard_dev (over the symbol's full history
-    -- <= D).  Drives AC = MIN(AA, AB) in the MA sheet.
-    SELECT tos_symbol,
-           percentile_cont(0.5) WITHIN GROUP (ORDER BY standard_dev) AS median_sd
-    FROM hist_tw
-    WHERE snapshot_date <= (SELECT d FROM p) AND standard_dev IS NOT NULL
-    GROUP BY tos_symbol
+    -- TEMPORARY OVERRIDE: use Excel SDorMedian values from ref_sdormedian
+    -- to validate other formulas without MedianSD being a confounding variable.
+    -- TODO: replace with correct rolling-window median formula once validated.
+    SELECT tos_symbol, sdormedian AS median_sd
+    FROM ref_sdormedian
 ),
 dq AS (
     SELECT DISTINCT ON (tos_symbol) tos_symbol, last_price, net_chng, pct_change,
@@ -818,7 +816,7 @@ def _overbought_expr(r: dict, o: dict) -> Optional[float]:
 
 def _ivrule_expr(r: dict, o: dict) -> Optional[float]:
     DT_ = _f(r.get("imp_volatility"))
-    if DT_ == 0: return 0.0
+    if not DT_: return 0.0   # Excel: IF(DT=0,0,...) — None treated same as 0
     KN_ = _f(o.get("ivpercentile")) or 0.0
     KP_ = _f(o.get("hvpercentile")) or 0.0
     KR_ = _f(o.get("ivhv")) or 0.0
