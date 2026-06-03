@@ -152,9 +152,12 @@ The modal form includes a **Logic Preview** box that renders
 are added, and a **Test** panel that calls the test endpoint and shows how many
 symbols in `drv_stks` would trigger for the chosen date.
 
-The UI currently only supports `member_type='composite'` members; nested
-logical groups can be wired at the DB level but the form does not expose a
-group-member picker.
+The UI supports both `member_type='composite'` and `member_type='group'`
+members. The member dropdown (`memberOptionsHTML` in `web/groups.html`) lists
+composite rules and logical groups in separate `<optgroup>`s; `memberTypeFor()`
+infers the `member_type` on save, and a group can't list itself. The Rule Flow
+trace evaluates nested groups recursively (memoised, cycle-guarded) so its
+display matches `eval_rule_group`.
 
 ## Derive lifecycle
 

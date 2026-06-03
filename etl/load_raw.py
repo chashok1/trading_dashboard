@@ -564,10 +564,13 @@ def load_trig_rules(session: Session, wb: Workbook) -> tuple[int, int, int]:
     # Workbook is the source of truth: refresh threshold / weight / role on reload
     # (ON CONFLICT DO UPDATE) so edits to the Trig tab propagate without a reset.
     # deprecated_at is reset so a reloaded workbook composite is re-activated.
+    # The table now has a surrogate mapping_id PK, so target the real uniqueness
+    # (composite_rule_code, atomic_rule_id) explicitly for the upsert.
     n_att, n_ins = insert_skip_duplicates(
         session, "ref_trig_composite_mapping", comp_records,
         update_on_conflict_cols=["weight_override", "data_brkeout_from",
                                  "member_role", "deprecated_at"],
+        conflict_cols=["composite_rule_code", "atomic_rule_id"],
     )
 
     # ─── Pruning pass (2026-05-12) ──────────────────────────────────────────

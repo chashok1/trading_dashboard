@@ -115,7 +115,8 @@ _BATCH_SIZE = 1000  # max rows per INSERT to stay under PostgreSQL's 65535-param
 def insert_skip_duplicates(session: Session, table_name: str,
                            rows: Iterable[dict],
                            progress_cb: Callable[[int, int, int, int], None] | None = None,
-                           update_on_conflict_cols: list[str] | None = None) -> tuple[int, int]:
+                           update_on_conflict_cols: list[str] | None = None,
+                           conflict_cols: list[str] | None = None) -> tuple[int, int]:
     """
     Bulk INSERT with ON CONFLICT DO NOTHING (or DO UPDATE), committed per batch.
     Returns (n_attempted, n_inserted). Skipped rows are silently dropped.
@@ -124,6 +125,12 @@ def insert_skip_duplicates(session: Session, table_name: str,
 
     update_on_conflict_cols: if set, use ON CONFLICT DO UPDATE for these columns instead of DO NOTHING.
                              Allows reloads to update specific metadata columns (e.g. ['source_file']).
+    conflict_cols: explicit ON CONFLICT target columns. Defaults to the table's
+                   primary key. Pass this when the PK is a surrogate id but the
+                   real uniqueness lives on another unique index — e.g.
+                   ref_trig_composite_mapping (surrogate mapping_id PK, but the
+                   loader upserts against the UNIQUE (composite_rule_code,
+                   atomic_rule_id) index).
     """
     rows = list(rows)
     n_attempted = len(rows)
@@ -136,6 +143,7 @@ def insert_skip_duplicates(session: Session, table_name: str,
 
     table = get_table(table_name)
     pk_cols = [col.name for col in table.primary_key]
+    conflict_targets = conflict_cols or pk_cols
     n_inserted = 0
     total_batches = math.ceil(len(rows) / _BATCH_SIZE)
 
@@ -147,7 +155,9 @@ def insert_skip_duplicates(session: Session, table_name: str,
         if update_on_conflict_cols:
             # ON CONFLICT DO UPDATE only for specified columns
             update_dict = {col: stmt.excluded[col] for col in update_on_conflict_cols if col in all_keys}
-            stmt = stmt.on_conflict_do_update(index_elements=pk_cols, set_=update_dict)
+            stmt = stmt.on_conflict_do_update(index_elements=conflict_targets, set_=update_dict)
+        elif conflict_cols:
+            stmt = stmt.on_conflict_do_nothing(index_elements=conflict_targets)
         else:
             stmt = stmt.on_conflict_do_nothing()
 

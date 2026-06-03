@@ -106,8 +106,14 @@ and 34 collapsed the others). It holds pre-computed indicator values such as
 There is no separate `ref_trig_composite_rule` header table. A composite rule
 is identified by its `composite_rule_code` (TEXT) and is fully represented by
 its one-or-more rows in the mapping table. Shared metadata (`category`,
-`intent_text`, `precondition_expr`) is stored on every member row and must be
-kept consistent; the API writes it to all rows atomically.
+`intent_text`, `precondition_expr`, `evidence_cutoff`) is stored on every member
+row and must be kept consistent; the API writes it to all rows atomically.
+
+The PK is a surrogate `mapping_id` (BIGSERIAL) as of 2026-06-03; row uniqueness
+for atomic members is enforced by the NULL-permissive
+`UNIQUE (composite_rule_code, atomic_rule_id)` index (`uq_ctm_code_atomic`). The
+old `(composite_rule_code, atomic_rule_id)` PK made `atomic_rule_id` NOT NULL and
+prevented `data` / nested-`composite` members (both NULL there) from existing.
 
 Each mapping row has a `member_kind` of `'atomic'`, `'data'`, or `'composite'`,
 enforced by a check constraint:
@@ -118,9 +124,15 @@ enforced by a check constraint:
 | `data` | `data_column`, `data_brkeout_from/to`, `data_wt_*`, `data_scoring_mode`, `data_score_params` | Inline scoring rule — no shared atomic rule definition; column resolved the same way as atomic |
 | `composite` | `nested_composite_code` | Pulls the already-scored child composite's numeric score; `member_multiplier` scales it |
 
-`weight_override` applies to all three kinds: if a member fires and `weight_override` is set, that value replaces the computed weight.
+`weight_override` applies to all three kinds: if a member fires and `weight_override` is set, that value replaces the computed weight. For atomic members loaded from the workbook this is the Trig weight cell (10 or 1).
+
+`data_brkeout_from` — for `atomic` members this is the per-member **condition threshold** from the Trig column (the cell next to the weight). As of 2026-06-03 the loader stores it (`etl/load_raw.py`); before that it was discarded and members degraded to "value ≠ 0". When NULL, the member still falls back to "value ≠ 0".
 
 `condition_operator` (`>=`, `<=`, `>`, `<`, `=`) — explicit condition operator per member. Determines how the member's value is compared against `data_brkeout_from`. When NULL, derived from rule-code prefix (BUY → `>=`, SELL → `<=`), then threshold sign fallback. See `etl/derive.py::_composite_operator`.
+
+`member_role` (`gate` | `watch`, DEFAULT `gate`) — a **gate** is mandatory (strict AND); a **watch** member is corroborating evidence that contributes to score but does not by itself block firing. The workbook loader maps weight-1 members to `watch`, weight-10 to `gate`. See `docs/rule_engine_redesign.md`.
+
+`evidence_cutoff` (NUMERIC, composite-level, stored on every member row) — minimum total watch-weight required for the watch evidence to pass. NULL = watch never blocks (purely informational).
 
 `active` (`BOOLEAN DEFAULT TRUE`) — when FALSE, the composite is skipped in evaluation and shown as disabled in the Rule Flow UI.
 
@@ -148,7 +160,9 @@ nested-composite members have their child scores ready. A topological sort with
 cycle detection runs once at the start of `_derive_stks_impl`. Cycles are logged
 and broken by defaulting the offending composite to unscored.
 
-A composite **fires** when ALL members meet their condition (`n_member_hit == n_total_members`). A member meets its condition when: its value satisfies the `condition_operator` + `data_brkeout_from` threshold (or is nonzero when no threshold is set). This means every member must pass — one miss prevents the composite from firing.
+A member **meets its condition** when its value satisfies the `condition_operator` + `data_brkeout_from` threshold (or is nonzero when no threshold is set).
+
+**Firing rule (gate / WATCH, 2026-06-03):** members are partitioned by `member_role`. A composite **fires** when **all GATE members meet their condition AND the WATCH evidence clears `evidence_cutoff`** (watch_score = sum of watch weights that hit; NULL cutoff = watch never blocks). A composite with no gates falls back to strict all-members-hit unless a cutoff is set, so a pure-watch composite can't fire on every symbol. The legacy "all members must pass" behavior is the special case where every member is a `gate` (the default), so applying the schema alone changes nothing. Implementation: the partition loop in `etl/derive.py::_derive_stks_impl`; the same logic is mirrored in `api/routers/trace.py` for the Rule Flow trace. Full design: `docs/rule_engine_redesign.md`.
 
 ## drv_trig
 
@@ -289,6 +303,12 @@ composite) with a symbol-scoped dryrun preview.
 | `PUT /api/rules/composite/{id}/members` | Replace full member list (transactional hard-delete + re-insert) |
 | `DELETE /api/rules/composite/{id}` | Soft-deprecate all mapping rows |
 | `POST /api/rules/composite/{id}/dryrun` | Preview composite score before/after proposed members for a sample symbol |
+| `POST /api/rules/composite/{id}/clone` | Duplicate every member row under a new code |
+| `GET /api/rules/base-composites` | List `BASE-*` sub-composites with member summaries (editor base picker) |
+| `GET /api/rules/param-sets` | List parameter sets with value/target counts |
+| `GET /api/rules/param-sets/{id}` | Header + per-target values for one set |
+| `POST /api/rules/param-sets/{id}/activate` · `/deactivate` | Toggle the active set (single active enforced) |
+| `DELETE /api/rules/param-sets/{id}` | Delete a set and its values |
 | `GET /api/rules/groups` | List all rule groups with members |
 | `POST /api/rules/groups` | Create rule group |
 | `PUT /api/rules/groups/{code}` | Update metadata + replace members |
