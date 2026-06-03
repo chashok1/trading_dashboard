@@ -1245,6 +1245,20 @@ def derive_cat_atomic_input(session: Session, as_of_date: date,
         chunk = records[i:i + BATCH]
         session.execute(insert_sql, chunk)
         inserted += len(chunk)
+
+    # Repopulate AC column from ref_sdormedian (temporary Excel override).
+    # AC is not in COLUMN_SPECS so it's not inserted above; update separately.
+    try:
+        session.execute(text("""
+            UPDATE drv_cat_atomic_input d
+            SET AC = r.sdormedian
+            FROM ref_sdormedian r
+            WHERE d.tos_symbol = r.tos_symbol
+              AND d.as_of_date = :d
+        """), {"d": as_of_date})
+    except Exception:
+        pass  # ref_sdormedian may not exist in all environments
+
     return inserted
 
 
