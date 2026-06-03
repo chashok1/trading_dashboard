@@ -778,7 +778,8 @@ function buildCompItem(c) {
                    : m.band === 'above'   ? m.wt_above
                    : m.value;  // Direct rule: drv_cat_atomic_input value IS the score
 
-      const valWt = `<span style="margin-left:12px;color:var(--text-2)">val = <b style="color:var(--text-1)">${fmt(calcVal)}</b> &nbsp; wt = <b style="color:${met?'#15803d':'#9ca3af'}">${fmt(zoneWt)}</b></span>`;
+      const metColor = met ? (_compSide(c.code) === 'sell' ? '#b91c1c' : '#15803d') : '#9ca3af';
+      const valWt = `<span style="margin-left:12px;color:var(--text-2)">val = <b style="color:var(--text-1)">${fmt(calcVal)}</b> &nbsp; wt = <b style="color:${metColor}">${fmt(zoneWt)}</b></span>`;
       const zoneLine = (zone || bandStr || wtsStr)
         ? `<div style="grid-column:2/-1;display:flex;gap:6px;align-items:center;font-size:9px;font-family:monospace;color:var(--text-3);padding-left:2px">
             ${zone ? `<span>${zone}</span>` : ''} ${bandStr}
