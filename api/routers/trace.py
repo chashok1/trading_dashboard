@@ -694,6 +694,8 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
             })
 
         atomic_by_id = {a["id"]: a for a in atomics_out}
+        # Set of atomic rule IDs whose drv_cat_atomic_input value is null
+        atomic_null = {a["id"] for a in atomics_out if a["value"] is None}
 
         # 8. Evaluate composites with member detail
         composite_index: dict = {}
@@ -776,6 +778,7 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                         "wt_below":     ar.get("wt_below"),
                         "wt_between":   ar.get("wt_between"),
                         "wt_above":     ar.get("wt_above"),
+                        "is_null":      aid in atomic_null,
                     })
                 elif kind == "data":
                     member_entry["column"] = m.get("data_column")
@@ -821,6 +824,7 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                 "n_watch": n_watch, "n_watch_hit": n_watch_hit,
                 "watch_score": watch_score, "evidence_cutoff": cutoff,
                 "gates_pass": gates_pass, "watch_ok": watch_ok,
+                "has_null_member": any(m.get("is_null") for m in members_out),
             })
             composite_fired[code] = fired
 

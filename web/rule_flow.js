@@ -717,7 +717,10 @@ function buildCompItem(c) {
   const edgeCls = isInactive ? 'comp-nofired'
                 : c.precondition_blocked ? 'comp-blocked'
                 : c.fired ? 'comp-fired' : 'comp-nofired';
-  const id = 'comp_' + (c.code||'').replace(/[^a-z0-9]/gi,'_');
+  const id        = 'comp_' + (c.code||'').replace(/[^a-z0-9]/gi,'_');
+  const nullWarn  = c.has_null_member
+    ? `<span title="One or more member values are null — evaluation unreliable"
+             style="color:#b45309;font-size:11px;margin-left:4px">⚠</span>` : '';
   const members = (c.members || []).map((m, midx) => {
     const met  = m.condition_met ?? m.fired;   // condition met (new) or fired (legacy)
     const mCls = met ? 'mem-fired' : 'mem-nofired';
@@ -778,12 +781,15 @@ function buildCompItem(c) {
             ${wtsStr ? `<span>${wtsStr}</span>` : ''}
             ${valWt}
            </div>` : '';
+      const nullBadge = m.is_null
+        ? `<span title="Value is null in drv_cat_atomic_input — evaluation skipped"
+                 style="color:#b45309;font-size:10px;margin-left:3px">⚠</span>` : '';
       return `<div class="mem-item ${mCls}" id="${memElemId}"
           data-col="${dbCol}" data-rule-id="${m.rule_id}"
-          style="display:grid;grid-template-columns:14px minmax(120px,1fr) auto auto auto;gap:6px;align-items:center;padding:3px 4px;cursor:pointer"
+          style="display:grid;grid-template-columns:14px minmax(120px,1fr) auto auto auto;gap:6px;align-items:center;padding:3px 4px;cursor:pointer${m.is_null ? ';background:#fffbeb' : ''}"
           onclick="toggleDataFlowInDiv('${memElemId}',${m.rule_id},'${esc(m.rule_name||'')}')">
         ${checkMark}
-        <span class="mem-name" style="font-size:11px">${roleBadge}${esc(m.rule_name||'')} <span style="font-size:9px;color:var(--text-3)">▼ details</span></span>
+        <span class="mem-name" style="font-size:11px">${roleBadge}${esc(m.rule_name||'')}${nullBadge} <span style="font-size:9px;color:var(--text-3)">▼ details</span></span>
         <span style="display:flex;gap:4px;align-items:center">${valStr}</span>
         <span style="display:flex;gap:4px;align-items:center">${condPart}</span>
         ${wt}
@@ -815,7 +821,7 @@ function buildCompItem(c) {
   <div class="comp-item ${edgeCls}" id="${id}">
     <div class="comp-hdr" onclick="toggleComp('${id}')">
       ${dot(c.fired, c.precondition_blocked)}
-      <span class="comp-code">${esc(c.code||'')}</span>
+      <span class="comp-code">${esc(c.code||'')}${nullWarn}</span>
       <span class="comp-score">${isInactive ? '<span style="color:#9ca3af;font-style:italic">disabled</span>' : _compFireSummary(c)}</span>
       <span style="font-size:12px;color:var(--text-3)">▾</span>
     </div>
