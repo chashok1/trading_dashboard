@@ -578,30 +578,39 @@ function _compSide(code) {
   return 'other';
 }
 
-function _buildCompSection(title, color, comps) {
-  if (!comps.length) return '';
+function _buildCompCol(title, color, comps) {
+  if (!comps.length) return `<div style="flex:1"><div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.06em;padding:4px 6px;border-bottom:2px solid ${color}20;margin-bottom:4px">${title} &nbsp;<span style="font-weight:400;color:var(--text-3)">0 rules</span></div></div>`;
   const metAll = comps.filter(c => c.fired).length;
   const items  = [...comps.filter(c => c.fired), ...comps.filter(c => !c.fired)]
                    .map(c => buildCompItem(c)).join('');
   return `
-  <div style="margin-bottom:8px">
+  <div style="flex:1;min-width:0">
     <div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;
-                letter-spacing:.06em;padding:4px 6px;border-bottom:1px solid #eee;margin-bottom:4px">
-      ${title} &nbsp;<span style="font-weight:400;color:var(--text-3)">${metAll} of ${comps.length} all-met</span>
+                letter-spacing:.06em;padding:4px 6px;border-bottom:2px solid ${color}40;margin-bottom:4px">
+      ${title} &nbsp;<span style="font-weight:400;color:var(--text-3)">${metAll}/${comps.length} all-met</span>
     </div>
-    ${items}
+    <div>${items}</div>
   </div>`;
+}
+
+function _buildCompsHtml(comps) {
+  const buy   = comps.filter(c => _compSide(c.code) === 'buy');
+  const sell  = comps.filter(c => _compSide(c.code) === 'sell');
+  const other = comps.filter(c => _compSide(c.code) === 'other');
+  const sideBySide = `
+  <div style="display:flex;gap:8px;align-items:flex-start">
+    ${_buildCompCol('▲ Buy', '#15803d', buy)}
+    ${_buildCompCol('▼ Sell', '#b91c1c', sell)}
+  </div>`;
+  const otherHtml = other.length
+    ? `<div style="margin-top:8px">${_buildCompCol('Other', '#6b7280', other)}</div>`
+    : '';
+  return sideBySide + otherHtml;
 }
 
 function renderComposites(d) {
   const sm   = d.summary || {};
   const comp = d.composites || [];
-  const buyComps  = comp.filter(c => _compSide(c.code) === 'buy');
-  const sellComps = comp.filter(c => _compSide(c.code) === 'sell');
-  const otherComps= comp.filter(c => _compSide(c.code) === 'other');
-  const html = _buildCompSection('▲ Buy', '#15803d', buyComps)
-             + _buildCompSection('▼ Sell', '#b91c1c', sellComps)
-             + _buildCompSection('Other', '#6b7280', otherComps);
   return `
   <div class="tier open" id="tier-comp">
     <div class="tier-hdr" onclick="toggleTier('tier-comp')">
@@ -614,27 +623,20 @@ function renderComposites(d) {
         <input type="text" placeholder="Search composite…" oninput="filterComposites(this.value)">
         <label><input type="checkbox" id="compMetAll" onchange="filterComposites('')"> Met all</label>
       </div>
-      <div class="comp-list" id="compList">${html}</div>
+      <div id="compList">${_buildCompsHtml(comp)}</div>
     </div>
   </div>`;
 }
 
 function filterComposites(q) {
   const metAll = document.getElementById('compMetAll')?.checked;
-  const comps  = window._rfData?.composites || [];
-  const filtered = comps.filter(c => {
+  const comps  = (window._rfData?.composites || []).filter(c => {
     if (metAll && !c.fired) return false;
     if (q && !(c.code||'').toLowerCase().includes(q.toLowerCase())) return false;
     return true;
   });
-  const buyComps  = filtered.filter(c => _compSide(c.code) === 'buy');
-  const sellComps = filtered.filter(c => _compSide(c.code) === 'sell');
-  const otherComps= filtered.filter(c => _compSide(c.code) === 'other');
-  const html = _buildCompSection('▲ Buy', '#15803d', buyComps)
-             + _buildCompSection('▼ Sell', '#b91c1c', sellComps)
-             + _buildCompSection('Other', '#6b7280', otherComps);
   const list = document.getElementById('compList');
-  if (list) list.innerHTML = html;
+  if (list) list.innerHTML = _buildCompsHtml(comps);
 }
 
 function buildCompItem(c) {
