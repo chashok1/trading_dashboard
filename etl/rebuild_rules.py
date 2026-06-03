@@ -62,6 +62,25 @@ def _step_refresh_refs() -> dict:
         except Exception as e:
             log.warning("  %s refresh failed: %s", tbl, e)
             result[tbl] = f"FAIL: {e}"
+
+    # Normalise atomic rule names → drv_cat_atomic_input column names
+    # (workbook uses human names; canonical identity is the column name)
+    try:
+        with session_scope() as s:
+            n = s.execute(text("""
+                UPDATE ref_trig_atomic_rule a
+                SET rule_name      = r.column_name,
+                    ma_column_name = 'drv_cat_atomic_input.' || r.column_name
+                FROM ref_ma_columns r
+                WHERE r.excel_header = a.rule_name
+                  AND r.drv_cat_table = 'drv_cat_atomic_input'
+                  AND a.deprecated_at IS NULL
+            """)).rowcount
+            s.commit()
+        log.info("  rule_name normalised: %d rules → drv_cat_atomic_input column names", n)
+    except Exception as e:
+        log.warning("  rule_name normalisation failed: %s", e)
+
     return result
 
 
