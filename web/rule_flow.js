@@ -568,12 +568,40 @@ function _clearIntermediatesCache() { _intermediatesCache = null; }
 
 // ── Tier 3: Composites ────────────────────────────────────────────────────────
 
+// Classify composite as Buy or Sell from its code prefix
+function _compSide(code) {
+  const m = (code||'').match(/^\d+-([A-Z]+)-/);
+  if (!m) return 'other';
+  const p = m[1];
+  if (['SA','SS','STM','SW','SH'].includes(p)) return 'sell';
+  if (['B','BS','BR','BW','BM','BMN'].includes(p)) return 'buy';
+  return 'other';
+}
+
+function _buildCompSection(title, color, comps) {
+  if (!comps.length) return '';
+  const metAll = comps.filter(c => c.fired).length;
+  const items  = [...comps.filter(c => c.fired), ...comps.filter(c => !c.fired)]
+                   .map(c => buildCompItem(c)).join('');
+  return `
+  <div style="margin-bottom:8px">
+    <div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;
+                letter-spacing:.06em;padding:4px 6px;border-bottom:1px solid #eee;margin-bottom:4px">
+      ${title} &nbsp;<span style="font-weight:400;color:var(--text-3)">${metAll} of ${comps.length} all-met</span>
+    </div>
+    ${items}
+  </div>`;
+}
+
 function renderComposites(d) {
   const sm   = d.summary || {};
   const comp = d.composites || [];
-  const fired   = comp.filter(c => c.fired);
-  const notFired = comp.filter(c => !c.fired);
-  const items = [...fired, ...notFired].map(c => buildCompItem(c)).join('');
+  const buyComps  = comp.filter(c => _compSide(c.code) === 'buy');
+  const sellComps = comp.filter(c => _compSide(c.code) === 'sell');
+  const otherComps= comp.filter(c => _compSide(c.code) === 'other');
+  const html = _buildCompSection('▲ Buy', '#15803d', buyComps)
+             + _buildCompSection('▼ Sell', '#b91c1c', sellComps)
+             + _buildCompSection('Other', '#6b7280', otherComps);
   return `
   <div class="tier open" id="tier-comp">
     <div class="tier-hdr" onclick="toggleTier('tier-comp')">
@@ -584,26 +612,29 @@ function renderComposites(d) {
     <div class="tier-body">
       <div class="rf-filter">
         <input type="text" placeholder="Search composite…" oninput="filterComposites(this.value)">
-        <label><input type="checkbox" id="compFiredOnly" onchange="filterComposites('')"> Fired only</label>
+        <label><input type="checkbox" id="compMetAll" onchange="filterComposites('')"> Met all</label>
       </div>
-      <div class="comp-list" id="compList">${items}</div>
+      <div class="comp-list" id="compList">${html}</div>
     </div>
   </div>`;
 }
 
 function filterComposites(q) {
-  const firedOnly = document.getElementById('compFiredOnly')?.checked;
-  const comps = window._rfData?.composites || [];
+  const metAll = document.getElementById('compMetAll')?.checked;
+  const comps  = window._rfData?.composites || [];
   const filtered = comps.filter(c => {
-    if (firedOnly && !c.fired) return false;
+    if (metAll && !c.fired) return false;
     if (q && !(c.code||'').toLowerCase().includes(q.toLowerCase())) return false;
     return true;
   });
-  const fired   = filtered.filter(c => c.fired);
-  const notFired = filtered.filter(c => !c.fired);
-  const items = [...fired, ...notFired].map(c => buildCompItem(c)).join('');
+  const buyComps  = filtered.filter(c => _compSide(c.code) === 'buy');
+  const sellComps = filtered.filter(c => _compSide(c.code) === 'sell');
+  const otherComps= filtered.filter(c => _compSide(c.code) === 'other');
+  const html = _buildCompSection('▲ Buy', '#15803d', buyComps)
+             + _buildCompSection('▼ Sell', '#b91c1c', sellComps)
+             + _buildCompSection('Other', '#6b7280', otherComps);
   const list = document.getElementById('compList');
-  if (list) list.innerHTML = items;
+  if (list) list.innerHTML = html;
 }
 
 function buildCompItem(c) {
