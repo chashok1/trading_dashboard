@@ -65,6 +65,13 @@ def _step_refresh_refs() -> dict:
 
     # Normalise atomic rule names → drv_cat_atomic_input column names
     # (workbook uses human names; canonical identity is the column name)
+    # _EXTRA maps workbook rule_name → column_name where excel_header differs
+    _EXTRA = {
+        "VS Price Rule":        "vs_price",
+        "VS Volume Spike Rule": "vs_volume_spike",
+        "VS Volatility Rule":   "vs_volatility",
+        "Current Price Rule":   "current_price_sd_rule",
+    }
     try:
         with session_scope() as s:
             n = s.execute(text("""
@@ -76,6 +83,14 @@ def _step_refresh_refs() -> dict:
                   AND r.drv_cat_table = 'drv_cat_atomic_input'
                   AND a.deprecated_at IS NULL
             """)).rowcount
+            for wb_name, col_name in _EXTRA.items():
+                s.execute(text("""
+                    UPDATE ref_trig_atomic_rule
+                    SET rule_name      = :col,
+                        ma_column_name = 'drv_cat_atomic_input.' || :col
+                    WHERE rule_name = :wb AND deprecated_at IS NULL
+                """), {"wb": wb_name, "col": col_name})
+                n += 1
             s.commit()
         log.info("  rule_name normalised: %d rules → drv_cat_atomic_input column names", n)
     except Exception as e:
