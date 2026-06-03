@@ -210,7 +210,7 @@ function renderAtomics(d) {
         <label><input type="checkbox" id="atomicThreshold" onchange="filterAtomics()"> Threshold</label>
         <label><input type="checkbox" id="atomicDirect"    onchange="filterAtomics()"> Direct</label>
       </div>
-      <div id="atomicTableWrap">${buildAtomicList(d.atomics || [])}</div>
+      <div id="atomicTableWrap">${buildAtomicList((d.atomics || []).filter(a => a.rule_name !== 'Begin' && a.rule_name !== 'End'))}</div>
     </div>
   </div>`;
 }
@@ -221,7 +221,9 @@ function filterAtomics() {
   const showDirect = document.getElementById('atomicDirect').checked;
   const isThresh   = a => a.brkeout_from != null || a.brkeout_to != null ||
                           a.wt_below != null || a.wt_between != null || a.wt_above != null;
+  const _DUMMY_RULES = new Set(['Begin', 'End']);
   const atomics = (window._rfData?.atomics || []).filter(a => {
+    if (_DUMMY_RULES.has(a.rule_name)) return false;
     if (q && !(a.rule_name||'').toLowerCase().includes(q) &&
              !(a.ma_column||'').toLowerCase().includes(q)) return false;
     if (showThresh || showDirect) {
