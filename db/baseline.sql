@@ -3311,6 +3311,23 @@ ALTER TABLE ref_trig_composite_mapping ADD COLUMN IF NOT EXISTS member_role TEXT
     CHECK (member_role IN ('gate','watch'));
 ALTER TABLE ref_trig_composite_mapping ADD COLUMN IF NOT EXISTS evidence_cutoff NUMERIC;
 
+-- Surrogate primary key (2026-06-03). The original PK (composite_rule_code,
+-- atomic_rule_id) made atomic_rule_id implicitly NOT NULL, which blocked
+-- 'data' and nested-'composite' members (both have atomic_rule_id = NULL).
+-- Replace it with a surrogate mapping_id PK, and keep a NULL-permissive UNIQUE
+-- on (composite_rule_code, atomic_rule_id) so the workbook loader's ON CONFLICT
+-- upsert + dedup still work for atomic members. Postgres treats NULLs as
+-- distinct, so the many (code, NULL) rows from non-atomic members are allowed.
+-- Idempotent: the PK is dropped + re-added each run (nothing references it); the
+-- unique index uses IF NOT EXISTS. Existing rows are all atomic (the old PK
+-- forbade NULL), so they remain unique under the new index.
+ALTER TABLE ref_trig_composite_mapping DROP CONSTRAINT IF EXISTS ref_trig_composite_mapping_pkey;
+ALTER TABLE ref_trig_composite_mapping ADD COLUMN IF NOT EXISTS mapping_id BIGSERIAL;
+ALTER TABLE ref_trig_composite_mapping ADD PRIMARY KEY (mapping_id);
+ALTER TABLE ref_trig_composite_mapping ALTER COLUMN atomic_rule_id DROP NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ctm_code_atomic
+    ON ref_trig_composite_mapping(composite_rule_code, atomic_rule_id);
+
 -- Backfill: BUY rules → >=, SELL rules → <=
 UPDATE ref_trig_composite_mapping
 SET condition_operator = '>='
