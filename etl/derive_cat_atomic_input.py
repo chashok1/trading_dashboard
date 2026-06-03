@@ -539,9 +539,10 @@ COLUMN_SPECS_PASS1 = [
         {"guards": ("imp_volatility",), "strict": True}),                       # KQ
     ("ivhv",                "zero_guard_trig_ifs", "FR",
         "IVHV Rule (modified)", ("imp_volatility",)),                           # KR
+    # KS: Excel uses >= (not strict >). FR=100 exactly at lo=100 → wbt, not wb.
     ("ivhv_puts",           "zero_guard_trig_ifs", "FR",
         "IVHV Puts (modified)",
-        {"guards": ("imp_volatility",), "strict": True}),                       # KS
+        {"guards": ("imp_volatility",)}),                                        # KS
     # KT IVRule -> composite (Pass-2; reads KN, KP, KR)
     ("rsi_rule",            "trig_ifs", "rsi",        "RSI Rule", None),       # KU
     ("rsi_top",             "trig_ifs", "rsi",        "RSI Top",  None),       # KV
