@@ -1426,9 +1426,11 @@ def _derive_rr_impl(session: Session, as_of_date: date, run_id: int) -> int:
             ORDER BY snapshot_date DESC LIMIT 1
         ) rr ON TRUE
         LEFT JOIN LATERAL (
+            -- DU/DV in Excel = BB_Bot/Top_Prev = PRIOR session's BB bands.
+            -- Use snapshot_date < :d (strictly less) to match Excel's "Prev" semantics.
             SELECT a_bb_bottom, a_bb_top
             FROM hist_td
-            WHERE tos_symbol = s.tos_symbol AND snapshot_date <= :d
+            WHERE tos_symbol = s.tos_symbol AND snapshot_date < :d
             ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
         ) td ON TRUE
         WHERE COALESCE(rr.buy_trade, td.a_bb_bottom) IS NOT NULL
