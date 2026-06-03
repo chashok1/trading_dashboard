@@ -295,7 +295,7 @@ function buildAtomicTable(atomics) {
       <td style="text-align:center;white-space:nowrap">${ruleType}</td>
     </tr>`;
   }).join('');
-  return `<div style="overflow-x:auto;max-height:400px;overflow-y:auto">
+  return `<div style="overflow-x:auto">
     <table class="rf-table" id="atomicTable">
       <thead><tr>
         ${th('Column','col')}${th('Value','value','right')}${th('Zone','zone')}
