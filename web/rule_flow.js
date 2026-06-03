@@ -209,14 +209,6 @@ function renderAtomics(d) {
         <input id="atomicQ" type="text" placeholder="Search…" oninput="filterAtomics()">
         <label><input type="checkbox" id="atomicThreshold" onchange="filterAtomics()"> Threshold</label>
         <label><input type="checkbox" id="atomicDirect"    onchange="filterAtomics()"> Direct</label>
-        <select id="atomicSortSel" onchange="sortAtomics(this.value)" style="margin-left:4px">
-          <option value="">Sort: default</option>
-          <option value="col">Column</option>
-          <option value="value">Value</option>
-          <option value="weight">Weight ↑</option>
-          <option value="weightd">Weight ↓</option>
-          <option value="type">Type</option>
-        </select>
       </div>
       <div id="atomicTableWrap">${buildAtomicList(d.atomics || [])}</div>
     </div>
@@ -273,18 +265,9 @@ function buildAtomicList(atomics) {
   const isThreshFn = a => a.brkeout_from != null || a.brkeout_to != null ||
                            a.wt_below != null || a.wt_between != null || a.wt_above != null;
 
-  if (_atomicSort.col) {
-    const sortKey = {
-      type:   a => isThreshFn(a) ? 0 : 1,
-      col:    a => (a.ma_column || '').toLowerCase(),
-      value:  a => _getDisplayValue(a) ?? -Infinity,
-      weight: a => a.weight ?? -Infinity,
-    }[_atomicSort.col];
-    if (sortKey) atomics = [...atomics].sort((a, b) => {
-      const av = sortKey(a), bv = sortKey(b);
-      return _atomicSort.dir * (av < bv ? -1 : av > bv ? 1 : 0);
-    });
-  }
+  atomics = [...atomics].sort((a, b) =>
+    (a.rule_name || '').toLowerCase().localeCompare((b.rule_name || '').toLowerCase())
+  );
 
   const cells = atomics.map(a => {
     const isThresh   = isThreshFn(a);
