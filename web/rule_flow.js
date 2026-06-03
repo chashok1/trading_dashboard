@@ -347,8 +347,8 @@ const _CHAIN = {
   bbhighdays:      { keys:['a_bb_high_low_days','AQ'], label:'BB High Days' },
   bblowdays:       { keys:['a_bb_high_low_days','AR'], label:'BB Low Days' },
   // Trade / Trend crossover
-  trade_cross_over:{ keys:['last_price','a_trade_value','a_perf_3d','BZ'], label:'Trade line crossover' },
-  trend_cross_over:{ keys:['last_price','a_trend_value','a_perf_3d','BZ'], label:'Trend line crossover' },
+  trade_cross_over:{ keys:['last_price','a_trade_value','EF','high_today','low_today'], label:'IFS(D>AF AND AF>MIN(EF,J),+1, MAX(EF,I)>AF AND AF>D,-1, 0)' },
+  trend_cross_over:{ keys:['last_price','a_trend_value','BZ','EF','high_today','low_today'], label:'IFS(D>AE AND AE>MIN(BZ,EF,J),+1, MAX(BZ,EF,I)>AE AND AE>D,-1, 0)' },
   trade_rule:      { keys:['last_price','a_trade_value','AC','AH'], label:'Trade SD position' },
   trend_rule:      { keys:['last_price','a_trend_value','AC','AG'], label:'Trend SD position' },
   trade_trend_sd_rule:{ keys:['a_trade_value','a_trend_value','AC','AI'], label:'Trade-Trend SD spread' },
@@ -436,7 +436,8 @@ const _KEY_LABEL = {
   CE:'CE = (52H-D)×100/(52H-52L)',
   high_52:'high_52 (CD)', low_52:'low_52 (CC)',
   sma_50:'sma_50 (CG)', sma_200:'sma_200 (CH)',
-  high_today:'high_today (EH)', low_today:'low_today (EI)',
+  EF:'EF = td_last (prior session close, CN)',
+  high_today:'high_today (EH = today intraday high)', low_today:'low_today (EI = today intraday low)',
   td_high:'td_high (EK)', td_low:'td_low (EL)',
   tl_volume:'tl_volume (current day TOSL)', volume_avg_3m:'volume_avg_3m (3M avg)',
 };
@@ -472,13 +473,46 @@ function renderDataFlow(ruleName, dbCol, intermediates) {
     </tr>`;
   }).join('');
 
+  // For crossover columns: show clause-by-clause evaluation
+  let formulaSection = '';
+  if (dbCol === 'trade_cross_over' || dbCol === 'trend_cross_over') {
+    const D   = intermediates['last_price'];
+    const MA  = dbCol === 'trade_cross_over' ? intermediates['a_trade_value'] : intermediates['a_trend_value'];
+    const EF  = intermediates['EF'];
+    const Hi  = intermediates['high_today'];
+    const Lo  = intermediates['low_today'];
+    const BZ  = intermediates['BZ'];
+    const maLabel = dbCol === 'trade_cross_over' ? 'AF (trade line)' : 'AE (trend line)';
+    const minEF   = dbCol === 'trade_cross_over' ? Math.min(EF??D, Lo??D) : Math.min(BZ??D, EF??D, Lo??D);
+    const maxEF   = dbCol === 'trade_cross_over' ? Math.max(EF??D, Hi??D) : Math.max(BZ??D, EF??D, Hi??D);
+    const minLabel = dbCol === 'trade_cross_over' ? 'MIN(EF,J)' : 'MIN(BZ,EF,J)';
+    const maxLabel = dbCol === 'trade_cross_over' ? 'MAX(EF,I)' : 'MAX(BZ,EF,I)';
+    const c1a = D != null && MA != null && D > MA;
+    const c1b = MA != null && MA > minEF;
+    const c2a = maxEF > (MA??0);
+    const c2b = MA != null && D != null && MA > D;
+    const result = (c1a && c1b) ? '+1' : (c2a && c2b) ? '-1' : '0';
+    const clr = result==='+1'?'#15803d':result==='-1'?'#b91c1c':'#6b7280';
+    formulaSection = `
+    <div style="margin-top:10px;padding:8px;background:#fff;border:1px solid #e5e7eb;border-radius:4px;font-family:monospace;font-size:11px">
+      <div style="font-weight:700;color:var(--text-2);margin-bottom:6px">Formula evaluation:</div>
+      <div style="margin:2px 0">Clause +1: D(${_fmtVal(D)}) &gt; ${maLabel}(${_fmtVal(MA)})? <b>${c1a}</b>
+        AND ${maLabel}(${_fmtVal(MA)}) &gt; ${minLabel}(${_fmtVal(minEF)})? <b>${c1b}</b>
+        → <b style="color:${c1a&&c1b?'#15803d':'#999'}">${c1a&&c1b?'+1':'skip'}</b></div>
+      <div style="margin:2px 0">Clause -1: ${maxLabel}(${_fmtVal(maxEF)}) &gt; ${maLabel}(${_fmtVal(MA)})? <b>${c2a}</b>
+        AND ${maLabel}(${_fmtVal(MA)}) &gt; D(${_fmtVal(D)})? <b>${c2b}</b>
+        → <b style="color:${c2a&&c2b?'#b91c1c':'#999'}">${c2a&&c2b?'-1':'skip'}</b></div>
+      <div style="margin-top:6px;font-size:13px;font-weight:700;color:${clr}">Result = ${result}</div>
+    </div>`;
+  }
+
   return `
   <div style="background:#f8faff;border:1px solid #c7d7f5;border-radius:6px;
               margin:4px 0 8px 0;padding:10px 14px;font-size:11px">
-    <div style="font-weight:700;font-size:12px;color:var(--accent);margin-bottom:8px">
+    <div style="font-weight:700;font-size:12px;color:var(--accent);margin-bottom:4px">
       ⟶ Data Flow: ${esc(ruleName)}
-      <span style="font-weight:400;font-size:10px;color:var(--text-3);margin-left:8px">${esc(chain.label||'')}</span>
     </div>
+    <div style="font-size:10px;color:var(--text-3);margin-bottom:8px;font-family:monospace">${esc(chain.label||'')}</div>
     <table style="border-collapse:collapse;width:100%">
       <thead>
         <tr style="border-bottom:1px solid #dde">
@@ -489,6 +523,7 @@ function renderDataFlow(ruleName, dbCol, intermediates) {
       </thead>
       <tbody>${rows}</tbody>
     </table>
+    ${formulaSection}
   </div>`;
 }
 
