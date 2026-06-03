@@ -290,83 +290,49 @@ function buildAtomicList(atomics) {
     const dbCol      = (a.ma_column || '').replace('drv_cat_atomic_input.', '');
     const displayVal = _getDisplayValue(a);
     const wgtColor   = a.weight > 0 ? '#15803d' : a.weight < 0 ? '#b91c1c' : '#9ca3af';
-    const typeDot    = isThresh
-      ? `<span title="Threshold" style="font-size:7px;font-weight:700;padding:0 3px;border-radius:2px;background:#dbeafe;color:#1e40af">T</span>`
-      : `<span title="Direct"    style="font-size:7px;font-weight:700;padding:0 3px;border-radius:2px;background:#dcfce7;color:#166534">D</span>`;
-    const colTip = `${a.rule_name||''}\n${a.ma_column||''}`;
-    return `<div class="a-item" id="ar_${a.id}"
-        style="padding:2px 4px;border-bottom:1px solid #f4f4f2;border-right:1px solid #f4f4f2;cursor:pointer;min-width:0"
-        title="${esc(colTip)}"
-        onclick="showAtomicDetail(${a.id},'${esc(dbCol)}','${esc(a.rule_name||'')}')">
-      <div style="display:flex;align-items:center;gap:3px">
-        ${typeDot}
-        <span style="font-family:monospace;font-size:10px;color:var(--text-3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(dbCol)}</span>
+    const colTip     = `${a.rule_name||''}\n${a.ma_column||''}`;
+    return `<div class="a-item" id="ar_${a.id}" style="padding:2px 4px;border-bottom:1px solid #f4f4f2;border-right:1px solid #f4f4f2;min-width:0;align-self:start">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:2px">
+        <span style="font-family:monospace;font-size:11px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1"
+              title="${esc(colTip)}">${esc(dbCol)}</span>
+        <span style="font-size:9px;color:var(--text-3);cursor:pointer;padding:0 2px;flex-shrink:0;line-height:1"
+              id="ar_${a.id}_tog"
+              onclick="toggleAtomicCard(${a.id},'${esc(dbCol)}','${esc(a.rule_name||'')}')">▼</span>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:4px;margin-top:1px">
-        <span style="font-family:monospace;font-size:12px;font-weight:600;color:var(--text-1)">${displayVal != null ? fmt(displayVal) : '—'}</span>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:4px">
+        <span style="font-family:monospace;font-size:13px;font-weight:600;color:var(--text-1)">${displayVal != null ? fmt(displayVal) : '—'}</span>
         <span style="font-family:monospace;font-size:11px;font-weight:700;color:${wgtColor}">${fmt(a.weight)}</span>
       </div>
+      <div id="ar_${a.id}_detail" style="display:none;margin-top:4px;padding-top:4px;border-top:1px dashed #dbeafe"></div>
     </div>`;
   }).join('');
 
-  return `<div id="atomicGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:0">${cells}</div>`;
+  return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;align-items:start">${cells}</div>`;
 }
 
-function showAtomicDetail(ruleId, dbCol, ruleName) {
-  const grid = document.getElementById('atomicGrid');
-  if (!grid) return;
+function toggleAtomicCard(ruleId, dbCol, ruleName) {
+  const detail = document.getElementById(`ar_${ruleId}_detail`);
+  const tog    = document.getElementById(`ar_${ruleId}_tog`);
+  if (!detail) return;
 
-  const allCells = Array.from(grid.querySelectorAll('.a-item'));
-  const clickedCell = document.getElementById(`ar_${ruleId}`);
-  if (!clickedCell) return;
+  const isOpen = detail.style.display !== 'none';
+  detail.style.display = isOpen ? 'none' : 'block';
+  if (tog) tog.textContent = isOpen ? '▼' : '▲';
 
-  // Find or create the shared inline panel
-  let panel = document.getElementById('atomicDetailPanel');
-  if (!panel) {
-    panel = document.createElement('div');
-    panel.id = 'atomicDetailPanel';
-    panel.style.cssText = 'grid-column:1/-1;padding:8px 10px;background:#f0f4ff;' +
-      'border-top:2px solid #93c5fd;border-bottom:1px solid #dbeafe;display:none';
+  if (!isOpen && !detail.dataset.rendered) {
+    detail.dataset.rendered = '1';
+    const a = window._rfData?.atomics?.find(x => x.id === ruleId);
+    const parts = [];
+    if (a?.brkeout_from != null || a?.brkeout_to != null)
+      parts.push(`zone [${fmt(a.brkeout_from)}, ${fmt(a.brkeout_to)}]`);
+    if (a?.band) parts.push(`<span class="badge-band band-${a.band}">${a.band}</span>`);
+    if (a?.wt_below != null)
+      parts.push(`(${fmt(a.wt_below,0)} / ${fmt(a.wt_between,0)} / ${fmt(a.wt_above,0)})`);
+    const meta = parts.length
+      ? `<div style="font-size:9px;font-family:monospace;color:var(--text-3);margin-bottom:3px">${parts.join(' · ')}</div>`
+      : '';
+    detail.innerHTML = meta + renderDataFlow(ruleName, dbCol, _intermediatesCache || {});
   }
-
-  // Toggle off if same card clicked again
-  if (panel.dataset.activeId === String(ruleId) && panel.style.display !== 'none') {
-    panel.style.display = 'none';
-    panel.dataset.activeId = '';
-    allCells.forEach(c => c.style.outline = '');
-    return;
-  }
-
-  // Highlight selected card
-  allCells.forEach(c => c.style.outline = '');
-  clickedCell.style.outline = '2px solid #93c5fd';
-  panel.dataset.activeId = String(ruleId);
-
-  // Insert panel after the last card in the same row as the clicked card
-  const idx         = allCells.indexOf(clickedCell);
-  const lastInRow   = allCells[Math.min(Math.floor(idx / 3) * 3 + 2, allCells.length - 1)];
-  lastInRow.insertAdjacentElement('afterend', panel);
-  panel.style.display = 'block';
-
-  // Build content
-  const a = window._rfData?.atomics?.find(x => x.id === ruleId);
-  const zoneParts = [];
-  if (a?.brkeout_from != null || a?.brkeout_to != null)
-    zoneParts.push(`zone [${fmt(a.brkeout_from)}, ${fmt(a.brkeout_to)}]`);
-  if (a?.band)
-    zoneParts.push(`<span class="badge-band band-${a.band}">${a.band}</span>`);
-  if (a?.wt_below != null)
-    zoneParts.push(`wts (${fmt(a.wt_below,0)} / ${fmt(a.wt_between,0)} / ${fmt(a.wt_above,0)})`);
-  const metaLine = zoneParts.length
-    ? `<div style="font-size:10px;font-family:monospace;color:var(--text-3);margin-bottom:4px">${zoneParts.join(' · ')}</div>`
-    : '';
-
-  panel.innerHTML = `
-    <div style="font-size:11px;font-weight:700;margin-bottom:2px">
-      ${esc(ruleName)}
-      <span style="font-family:monospace;color:var(--text-3);font-weight:400;font-size:10px;margin-left:6px">${esc(dbCol)}</span>
-    </div>
-    ${metaLine}${renderDataFlow(ruleName, dbCol, _intermediatesCache || {})}`;
 }
 
 // ── Data Flow panel (Tier 2 row click) ───────────────────────────────────────
