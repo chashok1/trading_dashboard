@@ -565,11 +565,12 @@ COLUMN_SPECS_PASS1 = [
         {"abs_input": True}),                                                   # LJ
     # LK Perf SD Rule -> composite (Pass-2; reads LC..LJ)
     # LL/LM negations
-    # LN/LO use STRICT > in Excel.
-    ("bbhighlow_sd_rule",   "trig_ifs", "AO", "BBHighLow_SD Rule",
-        {"strict": True}),                                                      # LN
-    ("bbhighlow_days_rule", "trig_ifs", "AM", "BBHighLow Days Rule",
-        {"strict": True}),                                                      # LO
+    # LN/LO: Excel IFS(AO>0,wb,...,TRUE,0) — AO=0 returns 0, not wb.
+    # Guard on AO ensures AO=0 → 0 (matching Excel's strict AO>0 check).
+    ("bbhighlow_sd_rule",   "zero_guard_trig_ifs", "AO", "BBHighLow_SD Rule",
+        {"guards": ("AO",), "strict": True}),                                   # LN
+    ("bbhighlow_days_rule", "zero_guard_trig_ifs", "AM", "BBHighLow Days Rule",
+        {"guards": ("AM",), "strict": True}),                                   # LO
     # LP BBStreak Rule -- input AY (BB_Streak; decoded from a_bb_streak)
     ("bbstreak_rule",       "trig_ifs", "AY", "BBStreak Rule",  None),         # LP
     ("bbstreakrule1",       "trig_ifs", "AY", "BBStreak Rule1", None),         # LQ
