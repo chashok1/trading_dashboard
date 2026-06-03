@@ -73,7 +73,7 @@ def list_composite_rules(
 ):
     """List composite rules (distinct rules only)."""
     with session_scope() as s:
-        sql = "SELECT DISTINCT ON (composite_rule_code) composite_rule_code, category, intent_text, precondition_expr, deprecated_at FROM ref_trig_composite_mapping WHERE deprecated_at IS NULL"
+        sql = "SELECT DISTINCT ON (composite_rule_code) composite_rule_code, category, intent_text, precondition_expr, deprecated_at, active FROM ref_trig_composite_mapping WHERE deprecated_at IS NULL"
         params = {}
         if category:
             sql += " AND category = :cat"
@@ -108,7 +108,7 @@ def get_composite_rule_atomics(rule_id: str):
         rows = s.execute(
             text("""SELECT a.atomic_rule_id, a.rule_name, a.category, a.scoring_mode,
                            a.brkeout_from, a.brkeout_to, a.wt_below, a.wt_between, a.wt_above,
-                           m.weight_override
+                           m.weight_override, m.data_brkeout_from, m.active
                     FROM ref_trig_atomic_rule a
                     JOIN ref_trig_composite_mapping m ON a.atomic_rule_id = m.atomic_rule_id
                     WHERE m.composite_rule_code = :crc AND a.deprecated_at IS NULL

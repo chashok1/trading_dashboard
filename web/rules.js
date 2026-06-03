@@ -298,18 +298,26 @@ function renderCompositeTable() {
                 symbolScore = formatNum(triggered.score);
             }
         }
+        const ruleId = r.composite_rule_code || r.rule_id || '';
+        const isActive = r.active !== false;
+        const activeBtnLabel = isActive ? 'Disable' : 'Enable';
+        const activeBtnCls   = isActive ? 'btn-deprecate' : 'btn-edit';
+        const activeTag = isActive
+            ? `<span style="color:#15803d;font-size:11px;font-weight:600">● Active</span>`
+            : `<span style="color:#9ca3af;font-size:11px;font-weight:600">○ Disabled</span>`;
 
         return `
-        <tr>
-            <td><strong>${r.composite_rule_code || r.rule_id || '—'}</strong></td>
+        <tr style="${isActive ? '' : 'opacity:0.55'}">
+            <td><strong>${ruleId}</strong>${isActive ? '' : ' <em style="color:#9ca3af;font-size:10px">[disabled]</em>'}</td>
             <td>${r.category || '—'}</td>
             <td>${r.intent_text ? r.intent_text.substring(0, 40) + '...' : '—'}</td>
-            <td>${r.precondition_expr ? r.precondition_expr.substring(0, 30) + '...' : '—'}</td>
+            <td>${activeTag}</td>
             <td>
                 <div class="actions-cell">
-                    <button class="btn-sm btn-edit" onclick="viewRule('composite', '${r.composite_rule_code || r.rule_id}')">View</button>
-                    <button class="btn-sm btn-edit" onclick="editRule('composite', '${r.composite_rule_code || r.rule_id}')">Edit</button>
-                    <button class="btn-sm btn-deprecate" onclick="deprecateRule('${r.composite_rule_code || r.rule_id}', 'composite')">Deprecate</button>
+                    <button class="btn-sm btn-edit" onclick="viewRule('composite', '${ruleId}')">View</button>
+                    <button class="btn-sm btn-edit" onclick="editRule('composite', '${ruleId}')">Edit</button>
+                    <button class="btn-sm ${activeBtnCls}" onclick="toggleCompositeActive('${ruleId}', ${!isActive})">${activeBtnLabel}</button>
+                    <button class="btn-sm btn-deprecate" onclick="deprecateRule('${ruleId}', 'composite')">Deprecate</button>
                 </div>
             </td>
             <td style="text-align: center; font-weight: bold;">${symbolScore}</td>
@@ -718,6 +726,21 @@ async function saveRule() {
             console.error('Error:', e);
             alert('Error saving rule');
         }
+    }
+}
+
+async function toggleCompositeActive(ruleId, setActive) {
+    try {
+        const resp = await fetch(`/api/rules/composite/${encodeURIComponent(ruleId)}/active`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ active: setActive }),
+        });
+        if (!resp.ok) throw new Error(await resp.text());
+        // Refresh composite rules list
+        await loadCompositeRules();
+    } catch (e) {
+        alert('Error toggling rule: ' + e.message);
     }
 }
 

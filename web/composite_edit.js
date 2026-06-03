@@ -12,6 +12,7 @@ const STATE = {
   category: null,
   intent: null,
   precondition: null,
+  active: true,
   members: [],     // [{kind, ...kind-specific fields, weight_override}]
   catalog: { atomics: [], composites: [], dataCols: [] },
 };
@@ -130,6 +131,7 @@ async function loadComposite() {
     STATE.category     = detail.category     || null;
     STATE.intent       = detail.intent_text  || null;
     STATE.precondition = detail.precondition_expr || null;
+    STATE.active       = detail.active !== false;
 
     const atomics = atomicsRes.ok ? await atomicsRes.json() : [];
     // Translate to member objects (atomic only — kind metadata isn't on the legacy GET)
@@ -138,6 +140,7 @@ async function loadComposite() {
       atomic_rule_id: a.atomic_rule_id,
       rule_name: a.rule_name,
       weight_override: a.weight_override,
+      data_brkeout_from: a.data_brkeout_from ?? null,
       _base: { wt_below: a.wt_below, wt_between: a.wt_between, wt_above: a.wt_above },
     }));
 
@@ -146,7 +149,10 @@ async function loadComposite() {
     const act = (STATE.ruleId.match(/(SA|STM|SS|BM|SW)/i) || ["—"])[0].toUpperCase();
     $("actBadge").textContent = act;
     $("actBadge").className = "ce-act " + act;
-    $("metaText").textContent = `${STATE.members.length} members · last edited n/a`;
+    const statusTag = STATE.active
+      ? `<span style="color:#15803d;font-weight:600;font-size:12px">● Active</span>`
+      : `<span style="color:#9ca3af;font-weight:600;font-size:12px">○ Disabled</span>`;
+    $("metaText").innerHTML = `${STATE.members.length} members · ${statusTag} · <button class="btn-sm" onclick="toggleActive()" style="font-size:11px">${STATE.active ? 'Disable' : 'Enable'}</button>`;
     $("actSel").value     = act;
     $("catInput").value   = STATE.category || "";
     $("intentInput").value = STATE.intent  || "";
@@ -187,6 +193,14 @@ function renderMembers() {
       updateRunningTotal();
     });
   });
+  // Wire condition threshold inputs
+  list.querySelectorAll("input.cond-thresh").forEach(inp => {
+    inp.addEventListener("input", () => {
+      const idx = parseInt(inp.dataset.idx, 10);
+      const v = inp.value.trim();
+      STATE.members[idx].data_brkeout_from = v === "" ? null : parseFloat(v);
+    });
+  });
   // Wire data-member inline threshold inputs
   list.querySelectorAll("input.data-field").forEach(inp => {
     inp.addEventListener("input", () => {
@@ -214,17 +228,25 @@ function memberRow(m, idx) {
       placeholder="—" value="${m.weight_override == null ? "" : m.weight_override}"></div>`;
 
   if (m.kind === "atomic") {
-    const baseWt = m._base
-      ? `+${m._base.wt_above}/${m._base.wt_between}/${m._base.wt_below}`
-      : "?";
+    const thresh = m.data_brkeout_from;
+    const op     = thresh != null ? (thresh >= 0 ? '≥' : '≤') : '≠0';
+    const thrDisp = thresh != null ? `${op} ${thresh}` : 'any ≠0';
+    const thrColor = thresh != null && thresh >= 0 ? '#15803d' : '#b91c1c';
+    const condField = `<div class="ovr" style="min-width:110px">
+      <label>condition threshold</label>
+      <input class="cond-thresh" type="number" step="1" data-idx="${idx}"
+        placeholder="any≠0"
+        value="${thresh == null ? '' : thresh}"
+        title="Positive→value>=thresh (buy), Negative→value<=thresh (sell)">
+    </div>`;
     return `<div class="ce-mem">
       <span class="grip" title="Drag to reorder">⋮⋮</span>
       ${kindBadge}
       <div class="body">
         <div class="name">${escapeHtml(m.rule_name || "atomic#" + m.atomic_rule_id)}</div>
-        <div class="col">drv_cat_atomic_input · base wt above/between/below = ${baseWt}</div>
+        <div class="col">cond: <b style="color:${thrColor}">${thrDisp}</b> → assign weight</div>
       </div>
-      <div></div>
+      ${condField}
       ${ovrField}
       ${x}
     </div>`;
@@ -427,6 +449,29 @@ function stripInternal(m) {
     out[k] = m[k];
   }
   return out;
+}
+
+/* ---------- active toggle ---------- */
+
+async function toggleActive() {
+  if (!STATE.ruleId) return;
+  const newActive = !STATE.active;
+  try {
+    const r = await fetch(`/api/rules/composite/${encodeURIComponent(STATE.ruleId)}/active`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active: newActive }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+    STATE.active = newActive;
+    // Refresh the header status badge
+    const statusTag = STATE.active
+      ? `<span style="color:#15803d;font-weight:600;font-size:12px">● Active</span>`
+      : `<span style="color:#9ca3af;font-weight:600;font-size:12px">○ Disabled</span>`;
+    $("metaText").innerHTML = `${STATE.members.length} members · ${statusTag} · <button class="btn-sm" onclick="toggleActive()" style="font-size:11px">${STATE.active ? 'Disable' : 'Enable'}</button>`;
+  } catch (e) {
+    alert(`Toggle failed: ${e.message}`);
+  }
 }
 
 /* ---------- deprecate ---------- */
