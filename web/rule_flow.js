@@ -309,30 +309,46 @@ function buildAtomicList(atomics) {
     </div>`;
   }).join('');
 
-  return `
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0">${cells}</div>
-    <div id="atomicDetailPanel" style="display:none;margin-top:6px;padding:8px 10px;
-         background:#f0f4ff;border-radius:4px;border-left:3px solid #93c5fd"></div>`;
+  return `<div id="atomicGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:0">${cells}</div>`;
 }
 
 function showAtomicDetail(ruleId, dbCol, ruleName) {
-  const panel    = document.getElementById('atomicDetailPanel');
-  if (!panel) return;
-  const activeId = panel.dataset.activeId;
+  const grid = document.getElementById('atomicGrid');
+  if (!grid) return;
 
-  document.querySelectorAll('.a-item').forEach(c => c.style.outline = '');
+  const allCells = Array.from(grid.querySelectorAll('.a-item'));
+  const clickedCell = document.getElementById(`ar_${ruleId}`);
+  if (!clickedCell) return;
 
-  if (String(activeId) === String(ruleId) && panel.style.display !== 'none') {
+  // Find or create the shared inline panel
+  let panel = document.getElementById('atomicDetailPanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'atomicDetailPanel';
+    panel.style.cssText = 'grid-column:1/-1;padding:8px 10px;background:#f0f4ff;' +
+      'border-top:2px solid #93c5fd;border-bottom:1px solid #dbeafe;display:none';
+  }
+
+  // Toggle off if same card clicked again
+  if (panel.dataset.activeId === String(ruleId) && panel.style.display !== 'none') {
     panel.style.display = 'none';
     panel.dataset.activeId = '';
+    allCells.forEach(c => c.style.outline = '');
     return;
   }
 
-  const cell = document.getElementById(`ar_${ruleId}`);
-  if (cell) cell.style.outline = '2px solid #93c5fd';
+  // Highlight selected card
+  allCells.forEach(c => c.style.outline = '');
+  clickedCell.style.outline = '2px solid #93c5fd';
   panel.dataset.activeId = String(ruleId);
+
+  // Insert panel after the last card in the same row as the clicked card
+  const idx         = allCells.indexOf(clickedCell);
+  const lastInRow   = allCells[Math.min(Math.floor(idx / 3) * 3 + 2, allCells.length - 1)];
+  lastInRow.insertAdjacentElement('afterend', panel);
   panel.style.display = 'block';
 
+  // Build content
   const a = window._rfData?.atomics?.find(x => x.id === ruleId);
   const zoneParts = [];
   if (a?.brkeout_from != null || a?.brkeout_to != null)
@@ -345,13 +361,12 @@ function showAtomicDetail(ruleId, dbCol, ruleName) {
     ? `<div style="font-size:10px;font-family:monospace;color:var(--text-3);margin-bottom:4px">${zoneParts.join(' · ')}</div>`
     : '';
 
-  const dfHtml = renderDataFlow(ruleName, dbCol, _intermediatesCache || {});
   panel.innerHTML = `
     <div style="font-size:11px;font-weight:700;margin-bottom:2px">
       ${esc(ruleName)}
       <span style="font-family:monospace;color:var(--text-3);font-weight:400;font-size:10px;margin-left:6px">${esc(dbCol)}</span>
     </div>
-    ${metaLine}${dfHtml}`;
+    ${metaLine}${renderDataFlow(ruleName, dbCol, _intermediatesCache || {})}`;
 }
 
 // ── Data Flow panel (Tier 2 row click) ───────────────────────────────────────
