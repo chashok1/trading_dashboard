@@ -610,31 +610,39 @@ function buildCompItem(c) {
   const edgeCls = c.precondition_blocked ? 'comp-blocked' : c.fired ? 'comp-fired' : 'comp-nofired';
   const id = 'comp_' + (c.code||'').replace(/[^a-z0-9]/gi,'_');
   const members = (c.members || []).map(m => {
-    const fired = m.fired;
-    const mCls  = fired ? 'mem-fired' : 'mem-nofired';
-    const wt    = m.weight != null ? (fired ? `<b>${fmt(m.weight)}</b>` : `${fmt(m.weight)}`) : '';
+    const met  = m.condition_met ?? m.fired;   // condition met (new) or fired (legacy)
+    const mCls = met ? 'mem-fired' : 'mem-nofired';
+    const wt   = m.weight != null ? (met ? `<b style="color:#15803d">${fmt(m.weight)}</b>` : `<span style="color:#9ca3af">${fmt(m.weight)}</span>`) : '';
+    const checkMark = met
+      ? `<span style="color:#15803d;font-weight:700">✓</span>`
+      : `<span style="color:#ef4444;font-weight:700">✗</span>`;
+
     if (m.kind === 'atomic') {
-      const band = m.band ? `<span class="badge-band band-${m.band}" style="font-size:9px">${m.band}</span>` : '';
-      const zone = (m.brkeout_from != null || m.brkeout_to != null)
-        ? `[${fmt(m.brkeout_from)},${fmt(m.brkeout_to)}]` : '';
-      return `<div class="mem-item ${mCls}">
-        <span class="mem-kind">atomic</span>
-        <span class="mem-name">${esc(m.rule_name||'')}</span>
-        <span class="mem-val">${m.value!=null?fmt(m.value):''} ${zone} ${band}</span>
-        <span class="mem-wt" style="color:${fired?'#15803d':'#9ca3af'}">${wt}</span>
-        <span style="font-size:10px;color:var(--text-2)">${esc((m.reason||'').split(' ')[0])}</span>
+      // Show condition: value op threshold → assign weight
+      const thr = m.threshold;
+      const val = m.value;
+      const op  = thr != null ? (thr >= 0 ? '≥' : '≤') : '≠0';
+      const condStr = thr != null
+        ? `<span style="font-family:monospace;font-size:10px;color:var(--text-2)">${fmt(val)} ${op} ${thr}</span>`
+        : `<span style="font-family:monospace;font-size:10px;color:var(--text-2)">value=${fmt(val)}</span>`;
+      return `<div class="mem-item ${mCls}" style="display:grid;grid-template-columns:14px 1fr auto auto;gap:4px;align-items:center;padding:3px 4px">
+        ${checkMark}
+        <span class="mem-name" style="font-size:11px">${esc(m.rule_name||'')}</span>
+        ${condStr}
+        ${wt}
       </div>`;
     } else if (m.kind === 'data') {
-      return `<div class="mem-item ${mCls}">
-        <span class="mem-kind">data</span>
-        <span class="mem-name">${esc(m.column||'')}</span>
-        <span class="mem-wt" style="color:${fired?'#15803d':'#9ca3af'}">${wt}</span>
+      return `<div class="mem-item ${mCls}" style="display:grid;grid-template-columns:14px 1fr auto;gap:4px;align-items:center;padding:3px 4px">
+        ${checkMark}
+        <span class="mem-name" style="font-size:11px">data: ${esc(m.column||'')}</span>
+        ${wt}
       </div>`;
     } else {
-      return `<div class="mem-item ${mCls}">
-        <span class="mem-kind">composite</span>
-        <span class="mem-name">${esc(m.child||'')}</span>
-        <span class="mem-wt" style="color:${fired?'#15803d':'#9ca3af'}">${wt}</span>
+      const childFired = m.fired ?? false;
+      return `<div class="mem-item ${mCls}" style="display:grid;grid-template-columns:14px 1fr auto;gap:4px;align-items:center;padding:3px 4px">
+        ${checkMark}
+        <span class="mem-name" style="font-size:11px">↳ <em>${esc(m.child||'')}</em> ${childFired?'(fired)':'(not fired)'}</span>
+        ${wt}
       </div>`;
     }
   }).join('');
@@ -650,7 +658,7 @@ function buildCompItem(c) {
     <div class="comp-hdr" onclick="toggleComp('${id}')">
       ${dot(c.fired, c.precondition_blocked)}
       <span class="comp-code">${esc(c.code||'')}</span>
-      <span class="comp-score">score ${fmt(c.score,1)} · ${c.n_member_hit}/${(c.members||[]).length} members hit</span>
+      <span class="comp-score">score ${fmt(c.score,1)} · ${c.n_member_hit}/${(c.members||[]).length} conditions met ${c.fired ? '✓ ALL' : ''}</span>
       <span style="font-size:12px;color:var(--text-3)">▾</span>
     </div>
     <div class="comp-body">
