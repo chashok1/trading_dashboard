@@ -750,14 +750,35 @@ function buildCompItem(c) {
         ? `<span style="font-size:10px;color:var(--text-3)">cond:</span><span style="font-family:monospace;font-size:11px;font-weight:600;color:${met?'#15803d':'#ef4444'}">${op} ${thr}</span>`
         : `<span style="font-size:10px;color:var(--text-3)">cond: ≠0</span>`;
       const memElemId = `${id}_m${midx}`;
-      const dbCol = esc((m.ma_column||'').replace('drv_cat_atomic_input.',''));
+      const dbColRaw = (m.ma_column||'').replace('drv_cat_atomic_input.','');
+      const dbCol    = esc(dbColRaw);
       const zone = (m.brkeout_from != null || m.brkeout_to != null)
         ? `zone [${fmt(m.brkeout_from)}, ${fmt(m.brkeout_to)}]` : '';
       const bandStr = m.band
         ? `<span class="badge-band band-${m.band}" style="font-size:9px">${m.band}</span>` : '';
       const wtsStr = m.wt_below != null
         ? `(${fmt(m.wt_below,0)} / ${fmt(m.wt_between,0)} / ${fmt(m.wt_above,0)})` : '';
-      const valWt = `<span style="margin-left:12px;color:var(--text-2)">val = <b style="color:var(--text-1)">${fmt(val)}</b> &nbsp; wt = <b style="color:${met?'#15803d':'#9ca3af'}">${fmt(m.weight)}</b></span>`;
+
+      // Pre-threshold input value (same logic as atomic card _getDisplayValue)
+      const isThresh = m.brkeout_from != null || m.brkeout_to != null ||
+                       m.wt_below != null || m.wt_between != null || m.wt_above != null;
+      let calcVal = m.value;
+      if (isThresh && _intermediatesCache) {
+        const chain = _CHAIN[dbColRaw];
+        if (chain?.keys?.length) {
+          const lastKey = chain.keys[chain.keys.length - 1];
+          const cv = _intermediatesCache[lastKey] ?? _intermediatesCache[(lastKey||'').toLowerCase()];
+          if (cv != null) calcVal = parseFloat(cv);
+        }
+      }
+
+      // Zone-evaluated weight: pick the band slot, not the composite weight
+      const zoneWt = m.band === 'below'   ? m.wt_below
+                   : m.band === 'between' ? m.wt_between
+                   : m.band === 'above'   ? m.wt_above
+                   : m.value;  // Direct rule: drv_cat_atomic_input value IS the score
+
+      const valWt = `<span style="margin-left:12px;color:var(--text-2)">val = <b style="color:var(--text-1)">${fmt(calcVal)}</b> &nbsp; wt = <b style="color:${met?'#15803d':'#9ca3af'}">${fmt(zoneWt)}</b></span>`;
       const zoneLine = (zone || bandStr || wtsStr)
         ? `<div style="grid-column:2/-1;display:flex;gap:6px;align-items:center;font-size:9px;font-family:monospace;color:var(--text-3);padding-left:2px">
             ${zone ? `<span>${zone}</span>` : ''} ${bandStr}
