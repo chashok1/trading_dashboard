@@ -205,38 +205,46 @@ function renderAtomics(d) {
     </div>
     <div class="tier-body">
       <div class="rf-filter">
-        <input id="atomicQ" type="text" placeholder="Search rule name…" oninput="filterAtomics()">
+        <input id="atomicQ" type="text" placeholder="Search…" oninput="filterAtomics()">
         <label><input type="checkbox" id="atomicThreshold" onchange="filterAtomics()"> Threshold</label>
         <label><input type="checkbox" id="atomicDirect"    onchange="filterAtomics()"> Direct</label>
+        <select id="atomicSortSel" onchange="sortAtomics(this.value)" style="margin-left:4px">
+          <option value="">Sort: default</option>
+          <option value="col">Column</option>
+          <option value="value">Value</option>
+          <option value="weight">Weight ↑</option>
+          <option value="weightd">Weight ↓</option>
+          <option value="type">Type</option>
+        </select>
       </div>
-      <div id="atomicTableWrap">${buildAtomicTable(d.atomics || [])}</div>
+      <div id="atomicTableWrap">${buildAtomicList(d.atomics || [])}</div>
     </div>
   </div>`;
 }
 
 function filterAtomics() {
-  const q         = document.getElementById('atomicQ').value.toLowerCase();
+  const q          = document.getElementById('atomicQ').value.toLowerCase();
   const showThresh = document.getElementById('atomicThreshold').checked;
   const showDirect = document.getElementById('atomicDirect').checked;
-  const isThresh = a => a.brkeout_from != null || a.brkeout_to != null ||
-                        a.wt_below != null || a.wt_between != null || a.wt_above != null;
+  const isThresh   = a => a.brkeout_from != null || a.brkeout_to != null ||
+                          a.wt_below != null || a.wt_between != null || a.wt_above != null;
   const atomics = (window._rfData?.atomics || []).filter(a => {
-    if (q && !(a.rule_name||'').toLowerCase().includes(q)) return false;
-    // If neither box checked show all; if one/both checked filter to matching type(s)
+    if (q && !(a.rule_name||'').toLowerCase().includes(q) &&
+             !(a.ma_column||'').toLowerCase().includes(q)) return false;
     if (showThresh || showDirect) {
       const thresh = isThresh(a);
-      if (showThresh && showDirect) return true;       // both checked → show all
-      if (showThresh && !thresh) return false;          // Threshold only → hide Direct
-      if (showDirect &&  thresh) return false;          // Direct only → hide Threshold
+      if (showThresh && showDirect) return true;
+      if (showThresh && !thresh) return false;
+      if (showDirect &&  thresh) return false;
     }
     return true;
   });
-  document.getElementById('atomicTableWrap').innerHTML = buildAtomicTable(atomics);
+  document.getElementById('atomicTableWrap').innerHTML = buildAtomicList(atomics);
 }
 
 function sortAtomics(col) {
-  if (_atomicSort.col === col) _atomicSort.dir *= -1;
-  else { _atomicSort.col = col; _atomicSort.dir = 1; }
+  _atomicSort.col = col === 'weightd' ? 'weight' : col;
+  _atomicSort.dir = col === 'weightd' ? -1 : 1;
   filterAtomics();
 }
 
@@ -258,21 +266,18 @@ function _getDisplayValue(a) {
   return a.value;   // Direct rules: drv_cat_atomic_input value = the scored result
 }
 
-function buildAtomicTable(atomics) {
+function buildAtomicList(atomics) {
   if (!atomics.length) return '<div class="status-msg">No rules match filter</div>';
 
-  // Apply sort
+  const isThreshFn = a => a.brkeout_from != null || a.brkeout_to != null ||
+                           a.wt_below != null || a.wt_between != null || a.wt_above != null;
+
   if (_atomicSort.col) {
-    const isThreshold = a => a.brkeout_from != null || a.brkeout_to != null ||
-                              a.wt_below != null || a.wt_between != null || a.wt_above != null;
     const sortKey = {
-      type:   a => isThreshold(a) ? 0 : 1,
+      type:   a => isThreshFn(a) ? 0 : 1,
       col:    a => (a.ma_column || '').toLowerCase(),
-      value:  a => (a.source_value ?? a.value) ?? -Infinity,
-      zone:   a => a.brkeout_from  ?? -Infinity,
-      band:   a => a.band          || '',
-      wts:    a => a.wt_below      ?? -Infinity,
-      weight: a => a.weight        ?? -Infinity,
+      value:  a => _getDisplayValue(a) ?? -Infinity,
+      weight: a => a.weight ?? -Infinity,
     }[_atomicSort.col];
     if (sortKey) atomics = [...atomics].sort((a, b) => {
       const av = sortKey(a), bv = sortKey(b);
@@ -280,52 +285,81 @@ function buildAtomicTable(atomics) {
     });
   }
 
-  const th = (label, col, align) => {
-    const active = _atomicSort.col === col;
-    const ind = active ? (_atomicSort.dir === 1 ? ' ▲' : ' ▼') : '';
-    const a = align ? `text-align:${align};` : '';
-    return `<th style="${a}cursor:pointer;white-space:nowrap;user-select:none"
-               onclick="sortAtomics('${col}')">${label}${ind}</th>`;
-  };
-
-  const rows = atomics.map(a => {
-    const weightCls = a.weight > 0 ? 'fired-yes' : a.weight < 0 ? 'fired-no' : '';
-    const band = a.band ? `<span class="badge-band band-${a.band}">${a.band}</span>` : '';
-    const cat  = a.category ? `<span class="cat-badge">${esc(a.category)}</span>` : '';
-    const zone = (a.brkeout_from != null || a.brkeout_to != null)
-      ? `[${fmt(a.brkeout_from)}, ${fmt(a.brkeout_to)}]` : '—';
-    const wts  = (a.wt_below != null)
-      ? `(${fmt(a.wt_below,0)}, ${fmt(a.wt_between,0)}, ${fmt(a.wt_above,0)})` : '—';
-    // Value = pre-threshold input (last chain intermediate for Threshold; score for Direct)
+  const items = atomics.map(a => {
+    const isThresh  = isThreshFn(a);
+    const dbCol     = (a.ma_column || '').replace('drv_cat_atomic_input.', '');
     const displayVal = _getDisplayValue(a);
-    const ruleType = (a.brkeout_from != null || a.brkeout_to != null ||
-                      a.wt_below != null || a.wt_between != null || a.wt_above != null)
-      ? '<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#dbeafe;color:#1e40af">Threshold</span>'
-      : '<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#dcfce7;color:#166534">Direct</span>';
-    const colShort = (a.ma_column||'').replace('drv_cat_atomic_input.','');
-    const colTip   = `${esc(a.rule_name||'')}&#10;${esc(a.ma_column||'')}`;
-    return `<tr data-rule-id="${a.id}" data-col="${esc(a.ma_column||'')}"
-               style="cursor:pointer" onclick="toggleDataFlow(this,${a.id},'${esc(a.rule_name||'')}')">
-      <td style="font-family:monospace;font-size:10px;color:var(--text-2)"
-          title="${colTip}">${cat}${esc(colShort)}</td>
-      <td style="text-align:right">${displayVal != null ? fmt(displayVal) : '—'}</td>
-      <td>${zone}</td>
-      <td style="text-align:center">${band}</td>
-      <td style="text-align:right;color:var(--text-3);font-size:10px">${wts}</td>
-      <td class="${weightCls}" style="text-align:right;font-weight:700">${fmt(a.weight)}</td>
-      <td style="text-align:center;white-space:nowrap">${ruleType}</td>
-    </tr>`;
+    const wgtColor  = a.weight > 0 ? '#15803d' : a.weight < 0 ? '#b91c1c' : '#9ca3af';
+    const typeDot   = isThresh
+      ? `<span title="Threshold" style="font-size:8px;font-weight:700;padding:1px 4px;border-radius:2px;background:#dbeafe;color:#1e40af;flex-shrink:0;line-height:1.6">T</span>`
+      : `<span title="Direct"    style="font-size:8px;font-weight:700;padding:1px 4px;border-radius:2px;background:#dcfce7;color:#166534;flex-shrink:0;line-height:1.6">D</span>`;
+    const cat       = a.category ? `<span class="cat-badge" style="font-size:8px">${esc(a.category)}</span>` : '';
+    const colTip    = `${a.rule_name||''}\n${a.ma_column||''}`;
+
+    // Second line: zone · band · weights (only for Threshold rules)
+    const zone = (a.brkeout_from != null || a.brkeout_to != null)
+      ? `zone [${fmt(a.brkeout_from)}, ${fmt(a.brkeout_to)}]` : '';
+    const band = a.band
+      ? `<span class="badge-band band-${a.band}" style="font-size:9px">${a.band}</span>` : '';
+    const wts  = a.wt_below != null
+      ? `<span style="color:var(--text-3);font-size:9px;font-family:monospace">(${fmt(a.wt_below,0)} / ${fmt(a.wt_between,0)} / ${fmt(a.wt_above,0)})</span>` : '';
+    const detailLine = (zone || band || wts)
+      ? `<div style="display:flex;gap:6px;align-items:center;padding:1px 0 0 0;font-size:9px;font-family:monospace;color:var(--text-3)">
+           ${zone ? `<span>${esc(zone)}</span>` : ''} ${band} ${wts}
+         </div>` : '';
+
+    const elemId = `ar_${a.id}`;
+    return `<div class="a-item" id="${elemId}" style="border-bottom:1px solid #f0f0ef;padding:3px 2px">
+      <div style="display:grid;grid-template-columns:auto auto 1fr auto auto auto;gap:4px;align-items:center;cursor:pointer"
+           onclick="toggleAtomicItem('${elemId}','${esc(dbCol)}','${esc(a.rule_name||'')}')"
+           title="${esc(colTip)}">
+        ${typeDot}
+        ${cat}
+        <span style="font-family:monospace;font-size:11px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(dbCol)}</span>
+        <span style="font-family:monospace;font-size:11px;text-align:right;min-width:48px;color:var(--text-1)">${displayVal != null ? fmt(displayVal) : '—'}</span>
+        <span style="font-family:monospace;font-size:11px;font-weight:700;text-align:right;min-width:40px;color:${wgtColor}">${fmt(a.weight)}</span>
+        <span class="a-tog-${a.id}" style="font-size:9px;color:var(--text-3);padding-left:4px;flex-shrink:0">▼</span>
+      </div>
+      ${detailLine}
+      <div id="${elemId}_body" style="display:none;padding:3px 0 2px 16px;border-top:1px dashed #e5e7eb;margin-top:2px">
+        <div id="${elemId}_df"></div>
+      </div>
+    </div>`;
   }).join('');
-  return `<div style="overflow-x:auto">
-    <table class="rf-table" id="atomicTable">
-      <thead><tr>
-        ${th('Column','col')}${th('Value','value','right')}${th('Zone','zone')}
-        ${th('Band','band','center')}${th('Weights (b/z/a)','wts')}
-        ${th('Weight','weight','right')}${th('Type','type','center')}
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-  </div>`;
+
+  return `<div style="font-size:12px">${items}</div>`;
+}
+
+function toggleAtomicItem(elemId, dbCol, ruleName) {
+  const item   = document.getElementById(elemId);
+  if (!item) return;
+  const body   = document.getElementById(`${elemId}_body`);
+  const isOpen = body.style.display !== 'none';
+
+  // Close all open atomic items
+  document.querySelectorAll('[id^="ar_"][id$="_body"]').forEach(b => {
+    b.style.display = 'none';
+  });
+  document.querySelectorAll('.a-item').forEach(i => {
+    i.style.background = '';
+    const tog = i.querySelector('[class^="a-tog-"]');
+    if (tog) tog.textContent = '▼';
+  });
+
+  if (isOpen) return;  // was open → just close it
+
+  body.style.display = 'block';
+  item.style.background = '#f0f4ff';
+  const tog = item.querySelector(`[class="a-tog-${elemId.replace('ar_','')}"]`);
+  if (tog) tog.textContent = '▲';
+
+  // Render data flow once
+  const dfDiv = document.getElementById(`${elemId}_df`);
+  if (dfDiv && !dfDiv.dataset.rendered) {
+    dfDiv.dataset.rendered = '1';
+    const html = renderDataFlow(ruleName, dbCol, _intermediatesCache || {});
+    dfDiv.innerHTML = `<div style="margin-top:4px">${html}</div>`;
+  }
 }
 
 // ── Data Flow panel (Tier 2 row click) ───────────────────────────────────────
