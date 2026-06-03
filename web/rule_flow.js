@@ -847,13 +847,7 @@ function renderFinal(d) {
           <div class="final-value ${actionColor(trig)}">${trig || '—'}</div>
           <div style="font-size:11px;color:var(--text-2);margin-top:4px">BuySell score: ${score}</div>
         </div>
-        <div class="final-card">
-          <div class="final-label">Consolidated Action</div>
-          <div class="final-value ${actionColor(cons)}">${cons || '—'}</div>
-          <div style="font-size:11px;color:var(--text-2);margin-top:4px">
-            Source: ${esc(f.winning_source || '—')}
-          </div>
-        </div>
+
         <div class="final-card" style="grid-column:span 2">
           <div class="final-label">Fired Rule Groups</div>
           ${pills
