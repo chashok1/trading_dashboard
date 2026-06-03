@@ -796,7 +796,9 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                 score += w
                 members_out.append(member_entry)
 
-            fired = n_hit > 0
+            # Fires only when ALL members contribute (all conditions met)
+            n_total = len(members_out)
+            fired = n_total > 0 and n_hit == n_total
             composites_out.append({
                 "code": code, "fired": fired, "score": score,
                 "n_member_hit": n_hit, "precondition": pre,

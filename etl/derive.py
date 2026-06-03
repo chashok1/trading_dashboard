@@ -2116,12 +2116,9 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
                     n_member_hit += 1
                 score += w
 
-            # `fired` reflects WHETHER ANY MEMBER CONTRIBUTED, not whether the
-            # net score was non-zero. A composite with offsetting +1 / -1
-            # contributions used to look "not fired" — wrong, since members
-            # actually fired. Use n_member_hit > 0 instead. drv_trig has been
-            # tracking this for ages.
-            fired = n_member_hit > 0
+            # A composite fires only when ALL members contribute (all conditions met).
+            n_total_members = len(comp_info["members"])
+            fired = n_total_members > 0 and n_member_hit == n_total_members
             composite_results[code] = fired
             composite_scores[code] = float(score)
             if fired:
