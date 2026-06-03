@@ -78,6 +78,23 @@ def to_numeric(v) -> Optional[float]:
         return None
 
 
+def to_earnings_days(v) -> Optional[float]:
+    """Like to_numeric but stores NaN/blank as -99 sentinel.
+
+    Distinguishes 'no earnings data' (NaN → -99) from 'earnings today' (0).
+    Both evaluate to 0 in the formula via positive_only trig_ifs (neither > 0).
+    """
+    if _is_blank(v):
+        return -99.0
+    try:
+        f = float(v)
+        if math.isnan(f) or math.isinf(f):
+            return -99.0
+        return f
+    except (TypeError, ValueError):
+        return -99.0
+
+
 def to_date(v) -> Optional[date]:
     if _is_blank(v):
         return None
