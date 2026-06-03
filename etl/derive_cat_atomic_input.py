@@ -667,10 +667,10 @@ COLUMN_SPECS_PASS1 = [
                 <= float(r["AC"]) * 0.5
         ) else 0.0)),                                                          # NB
     # NC/ND Up/Down Resistance -> composite (needs EH/EI/AC/CG/CH/BA)
-    # NE Earnings -- Excel: IFS(JB>hi,wa, JB>lo,wbt, JB>0,wb, TRUE,0)
-    # strict > for all clauses; JB=0 → 0 (not wb). NULL stays NULL (ETFs = one-null, expected).
+    # NE Earnings -- strict > for hi/lo clauses; JB=0 → wb=-3 (earnings today = signal).
+    # NULL (ETFs/no data) → None → one-null in comparison (expected).
     ("earnings",            "trig_ifs", "a_earnings_days", "earnings_days",
-        {"strict": True, "positive_only": True}),                               # NE
+        {"strict": True}),                                                      # NE
     # NF/NG/NH/NI -- VS rules use strict >.
     ("vs_price",            "zero_guard_trig_ifs", "FK", "VS Price Rule",
         {"guards": ("a_volume_spike", "FK"), "strict": True}),                  # NF
