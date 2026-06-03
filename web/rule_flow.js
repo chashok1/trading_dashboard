@@ -651,17 +651,18 @@ function buildCompItem(c) {
       : `<span style="color:#ef4444;font-weight:700">✗</span>`;
 
     if (m.kind === 'atomic') {
-      // Show condition: value op threshold → assign weight
       const thr = m.threshold;
       const val = m.value;
       const op  = thr != null ? (thr >= 0 ? '≥' : '≤') : '≠0';
-      const condStr = thr != null
-        ? `<span style="font-family:monospace;font-size:10px;color:var(--text-2)">${fmt(val)} ${op} ${thr}</span>`
-        : `<span style="font-family:monospace;font-size:10px;color:var(--text-2)">value=${fmt(val)}</span>`;
-      return `<div class="mem-item ${mCls}" style="display:grid;grid-template-columns:14px 1fr auto auto;gap:4px;align-items:center;padding:3px 4px">
+      const valStr  = `<span style="font-size:10px;color:var(--text-3)">val:</span><span style="font-family:monospace;font-size:11px;font-weight:600">${fmt(val)}</span>`;
+      const condPart = thr != null
+        ? `<span style="font-size:10px;color:var(--text-3)">cond:</span><span style="font-family:monospace;font-size:11px;color:${met?'#15803d':'#ef4444'}">${op} ${thr}</span>`
+        : `<span style="font-size:10px;color:var(--text-3)">cond: ≠0</span>`;
+      return `<div class="mem-item ${mCls}" style="display:grid;grid-template-columns:14px minmax(120px,1fr) auto auto auto;gap:6px;align-items:center;padding:3px 4px">
         ${checkMark}
         <span class="mem-name" style="font-size:11px">${esc(m.rule_name||'')}</span>
-        ${condStr}
+        <span style="display:flex;gap:4px;align-items:center">${valStr}</span>
+        <span style="display:flex;gap:4px;align-items:center">${condPart}</span>
         ${wt}
       </div>`;
     } else if (m.kind === 'data') {
