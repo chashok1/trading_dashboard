@@ -885,10 +885,10 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
             except Exception:
                 drv_raw[_tbl] = {}
 
-        # 10. Final output from drv_actionable + buysell scores
+        # 10. Final output — trig_action/triggered_groups computed live from rule_groups_out;
+        #     consolidated_action/winning_source still read from drv_actionable (outlook pipeline).
         act = s.execute(text("""
-            SELECT consolidated_action, trig_action, winning_source, winning_priority,
-                   triggered_group_ids, source_actions, suppressed_reason
+            SELECT consolidated_action, winning_source, suppressed_reason
             FROM drv_actionable WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1
         """), {"d": snap, "sym": sym_u}).mappings().first()
 
@@ -896,6 +896,23 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
             "SELECT code, extra1 FROM ref_param_lookup"
             " WHERE table_name='buysell' AND extra1 IS NOT NULL"
         )).fetchall() if r[1] is not None and str(r[1]).replace('-','').replace('.','').isdigit()}
+
+        # Derive trig_action live: min-score wins for bearish, max-score for bullish
+        live_triggered = [
+            {"rule_group_code": g["code"], "action": g["action_label"]}
+            for g in rule_groups_out if g["fired"]
+        ]
+        scored = [
+            (g["action_label"], buysell[g["action_label"]])
+            for g in rule_groups_out
+            if g["fired"] and g.get("action_label") in buysell
+        ]
+        if scored:
+            neg = [(a, s_) for a, s_ in scored if s_ < 0]
+            live_trig = min(neg, key=lambda x: x[1])[0] if neg \
+                   else max(scored, key=lambda x: x[1])[0]
+        else:
+            live_trig = None
 
         return {
             "tos_symbol": sym_u,
@@ -924,10 +941,10 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
             "drv_raw":      drv_raw,
             "final": {
                 "consolidated_action": act["consolidated_action"] if act else None,
-                "trig_action":         act["trig_action"]         if act else None,
+                "trig_action":         live_trig,
                 "winning_source":      act["winning_source"]      if act else None,
                 "suppressed_reason":   act["suppressed_reason"]   if act else None,
-                "triggered_groups":    act["triggered_group_ids"] if act else [],
+                "triggered_groups":    live_triggered,
                 "buysell_scores":      buysell,
             },
         }
