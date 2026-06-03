@@ -584,17 +584,17 @@ COLUMN_SPECS_PASS1 = [
         {"strict": True}),                                                      # LY
     ("bblowdays",           "trig_ifs", "AR", "BBLowDays",
         {"strict": True}),                                                      # LZ
-    # MA MACD Rule -- input CJ = ABS(CI); ditto MB uses ABS(CK)
+    # MA MACD Rule -- input CJ = ABS(CI); 4-clause positive-only (CJ>=hi,>=lo,>0 else 0)
     ("macd_rule",           "trig_ifs", "a_macd_brr",  "MACD Rule",
-        {"abs_input": True}),                                                   # MA
+        {"abs_input": True, "positive_only": True}),                            # MA
     ("macdh_rule",          "trig_ifs", "a_macdh_d_brr","MACDH Rule",
-        {"abs_input": True}),                                                   # MB
+        {"abs_input": True, "positive_only": True}),                            # MB
     # MC MACD and H Rule -> composite (INT((MA+MB)/2))
-    # MD/ME use CJ/CL too (abs forms)
+    # MD/ME use CJ/CL too — strict > throughout, positive-only (CJ>hi,>lo,>0 else 0)
     ("macd_brr_puts",       "trig_ifs", "a_macd_brr",   "MACD_BRR Puts",
-        {"abs_input": True}),                                                   # MD
+        {"abs_input": True, "positive_only": True, "strict": True}),           # MD
     ("macdh_brr_puts",      "trig_ifs", "a_macdh_d_brr","MACDH_BRR Puts",
-        {"abs_input": True}),                                                   # ME
+        {"abs_input": True, "positive_only": True, "strict": True}),           # ME
     # MF -> composite
     # MG/MH -- MACDH Days; strict > in Excel.
     ("macdh_days",          "trig_ifs", "a_macdays_streak", "MACDH Days",
@@ -975,21 +975,26 @@ def load_trig_rules(session: Session) -> dict:
 # Evaluator helpers.
 # =============================================================================
 def _eval_trig_ifs(value, rule: Optional[dict], *,
-                   strict: bool = False) -> Optional[float]:
+                   strict: bool = False,
+                   positive_only: bool = False) -> Optional[float]:
     """Excel-faithful Trig-IFS evaluator.
 
-    Six-clause IFS used by every JF..NP trig_ifs formula:
-
+    Six-clause IFS (default):
         v >= hi   ->   wt_above           (strict=True: v > hi)
         v >= lo   ->   wt_between         (strict=True: v > lo)
         v >= 0    ->   wt_below
-        v <= -hi  ->  -wt_above           (strict=True: v < -hi)
-        v <= -lo  ->  -wt_between         (strict=True: v < -lo)
+        v <= -hi  ->  -wt_above
+        v <= -lo  ->  -wt_between
         v <  0    ->  -wt_below
 
+    Four-clause positive-only IFS (positive_only=True — used by MACD rules):
+        v >= hi   ->   wt_above           (strict=True: v > hi for all clauses)
+        v >= lo   ->   wt_between
+        v > 0     ->   wt_below           (always strict)
+        TRUE      ->   0                  (zero and negative both return 0)
+
     `strict=False` (default): matches the majority of Excel formulas (>=).
-    `strict=True`: matches Puts variants, BBHighLow_SD/Days, BBHigh/LowDays,
-    MACDH Days, Earnings, VS rules, Current Price/Volume/Volatility (all use >).
+    `strict=True`: matches Puts variants and other strict > rules.
     """
     if rule is None or value is None:
         return None
@@ -1010,6 +1015,16 @@ def _eval_trig_ifs(value, rule: Optional[dict], *,
     nm = float(rule.get("neg_multiplier") or 1.0)
     nhi = hi * nm
     nlo = lo * nm
+    if positive_only:
+        # 4-clause: positive values only; zero and negative → 0
+        if strict:
+            if v >  hi: return wa
+            if v >  lo: return wbt
+        else:
+            if v >= hi: return wa
+            if v >= lo: return wbt
+        if v > 0: return wb_
+        return 0.0
     if strict:
         if v >   hi:  return wa
         if v >   lo:  return wbt
@@ -1061,18 +1076,20 @@ def eval_specs(row: dict, specs: list, trig_rules: dict, out: dict) -> dict:
                 val = row.get(src) if src in row else out.get(src)
                 strict = False
                 simple = False
+                positive_only = False
                 if isinstance(extra, dict):
                     if extra.get("abs_input") and val is not None:
                         val = abs(_f(val) or 0.0)
-                    strict = bool(extra.get("strict"))
-                    simple = bool(extra.get("simple"))
+                    strict        = bool(extra.get("strict"))
+                    simple        = bool(extra.get("simple"))
+                    positive_only = bool(extra.get("positive_only"))
                 if simple:
                     # Use standard 3-clause jump eval (correct for asymmetric zones where lo < 0)
                     from etl.derive import eval_atomic_rule
                     out[db_col] = eval_atomic_rule(val, trig_rules.get(rule_name))
                 else:
                     out[db_col] = _eval_trig_ifs(val, trig_rules.get(rule_name),
-                                                  strict=strict)
+                                                  strict=strict, positive_only=positive_only)
 
             elif ftype == "zero_guard_trig_ifs":
                 guards = extra or ()
