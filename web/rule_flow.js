@@ -111,6 +111,8 @@ function render(d) {
     ${renderAtomics(d)}
     ${renderRawData(d)}
   `;
+  // Apply default Fired filter now that the checkbox is in the DOM
+  filterComposites('');
 }
 
 // ── Source value lookup ───────────────────────────────────────────────────────
@@ -180,7 +182,7 @@ function renderRawData(d) {
   if (!html) return '';
   return `
   <div class="rf-arrow">↓</div>
-  <div class="tier open" id="tier-raw">
+  <div class="tier" id="tier-raw">
     <div class="tier-hdr" onclick="toggleTier('tier-raw')">
       <span class="tier-title">Raw Source Data</span>
       <span class="tier-toggle">▾</span>
@@ -197,7 +199,7 @@ let _atomicSort   = { col: null, dir: 1 };
 function renderAtomics(d) {
   const sm = d.summary || {};
   return `
-  <div class="tier open" id="tier-atomic">
+  <div class="tier" id="tier-atomic">
     <div class="tier-hdr" onclick="toggleTier('tier-atomic')">
       <span class="tier-title">Atomic Rules</span>
       <span class="tier-toggle">▾</span>
@@ -674,7 +676,7 @@ function renderComposites(d) {
     <div class="tier-body">
       <div class="rf-filter">
         <input type="text" placeholder="Search composite…" oninput="filterComposites(this.value)">
-        <label><input type="checkbox" id="compMetAll" onchange="filterComposites('')"> Fired</label>
+        <label><input type="checkbox" id="compMetAll" onchange="filterComposites('')" checked> Fired</label>
       </div>
       <div id="compList">${_buildCompsHtml(comp)}</div>
     </div>
@@ -774,7 +776,7 @@ function renderGroups(d) {
   const notFired = grps.filter(g => !g.fired);
   const items = [...fired, ...notFired].map(g => buildGrpItem(g)).join('');
   return `
-  <div class="tier open" id="tier-grp">
+  <div class="tier" id="tier-grp">
     <div class="tier-hdr" onclick="toggleTier('tier-grp')">
       <span class="tier-title">Rule Groups</span>
       ${firedBadge(sm.n_group_fired, sm.n_group_total)}
@@ -833,7 +835,7 @@ function renderFinal(d) {
   ).join('');
 
   return `
-  <div class="tier open" id="tier-final">
+  <div class="tier" id="tier-final">
     <div class="tier-hdr" onclick="toggleTier('tier-final')">
       <span class="tier-title">Final Output</span>
       <span class="tier-toggle">▾</span>
