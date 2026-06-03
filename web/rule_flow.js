@@ -194,7 +194,7 @@ function renderRawData(d) {
 // ── Tier 2: Atomic rules ──────────────────────────────────────────────────────
 
 let _atomicFilter = { q: '', cat: '', fired: '' };
-let _atomicSort   = { col: null, dir: 1 };
+let _atomicSort   = { col: 'col', dir: 1 };
 
 function renderAtomics(d) {
   const sm = d.summary || {};
