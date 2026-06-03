@@ -98,9 +98,10 @@ function render(d) {
      sm.rsi ? `RSI ${fmt(sm.rsi,1)}` : '', sm.composite_label].filter(Boolean).join('  ·  ');
 
   document.getElementById('rfContent').innerHTML = `
-    ${renderAtomics(d)}
-    <div class="rf-arrow">↓</div>
-    ${renderComposites(d)}
+    <div style="display:flex;gap:8px;align-items:flex-start">
+      <div style="flex:1;min-width:0">${renderAtomics(d)}</div>
+      <div style="flex:1;min-width:0">${renderComposites(d)}</div>
+    </div>
     <div class="rf-arrow">↓</div>
     ${renderGroups(d)}
     <div class="rf-arrow">↓</div>
@@ -195,7 +196,7 @@ function renderAtomics(d) {
   return `
   <div class="tier open" id="tier-atomic">
     <div class="tier-hdr" onclick="toggleTier('tier-atomic')">
-      <span class="tier-title">Tier 2 — Atomic Rules</span>
+      <span class="tier-title">Tier 1 — Atomic Rules</span>
       ${firedBadge(sm.n_atomic_fired, sm.n_atomic_total)}
       <span class="tier-toggle">▾</span>
     </div>
@@ -245,17 +246,12 @@ function buildAtomicTable(atomics) {
                               a.wt_below != null || a.wt_between != null || a.wt_above != null;
     const sortKey = {
       type:   a => isThreshold(a) ? 0 : 1,
-      rule:   a => (a.rule_name     || '').toLowerCase(),
-      col:    a => (a.ma_column     || '').toLowerCase(),
-      src:    a => (a.source_column || '').toLowerCase(),
-      srcval: a => a.source_value  ?? -Infinity,
-      value:  a => a.value         ?? -Infinity,
+      col:    a => (a.ma_column || '').toLowerCase(),
+      value:  a => (a.source_value ?? a.value) ?? -Infinity,
       zone:   a => a.brkeout_from  ?? -Infinity,
       band:   a => a.band          || '',
       wts:    a => a.wt_below      ?? -Infinity,
       weight: a => a.weight        ?? -Infinity,
-      fired:  a => a.fired ? 1 : 0,
-      reason: a => (a.reason || '').toLowerCase(),
     }[_atomicSort.col];
     if (sortKey) atomics = [...atomics].sort((a, b) => {
       const av = sortKey(a), bv = sortKey(b);
@@ -272,46 +268,39 @@ function buildAtomicTable(atomics) {
   };
 
   const rows = atomics.map(a => {
-    const firedCls = a.fired ? 'fired-yes' : 'fired-no';
-    const isIssue  = ['no_column','no_data'].some(x => (a.reason||'').startsWith(x));
-    const reasonCls = isIssue ? 'reason-bad' : 'reason-ok';
+    const weightCls = a.weight > 0 ? 'fired-yes' : a.weight < 0 ? 'fired-no' : '';
     const band = a.band ? `<span class="badge-band band-${a.band}">${a.band}</span>` : '';
     const cat  = a.category ? `<span class="cat-badge">${esc(a.category)}</span>` : '';
     const zone = (a.brkeout_from != null || a.brkeout_to != null)
       ? `[${fmt(a.brkeout_from)}, ${fmt(a.brkeout_to)}]` : '—';
     const wts  = (a.wt_below != null)
       ? `(${fmt(a.wt_below,0)}, ${fmt(a.wt_between,0)}, ${fmt(a.wt_above,0)})` : '—';
-    const srcLabel = a.source_column || '';
-    const srcVal   = a.source_value != null ? a.source_value
-                   : _findSourceVal(srcLabel, window._rfData?.hist_raw, window._rfData?.drv_raw);
+    // Value = raw pre-scoring input (source_value); Weight = drv_cat_atomic_input score
+    const displayVal = a.source_value ?? a.value;
     const ruleType = (a.brkeout_from != null || a.brkeout_to != null ||
                       a.wt_below != null || a.wt_between != null || a.wt_above != null)
       ? '<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#dbeafe;color:#1e40af">Threshold</span>'
       : '<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#dcfce7;color:#166534">Direct</span>';
-    const colCount = 12; // total columns including Type
+    const colShort = (a.ma_column||'').replace('drv_cat_atomic_input.','');
+    const colTip   = `${esc(a.rule_name||'')}&#10;${esc(a.ma_column||'')}`;
     return `<tr data-rule-id="${a.id}" data-col="${esc(a.ma_column||'')}"
                style="cursor:pointer" onclick="toggleDataFlow(this,${a.id},'${esc(a.rule_name||'')}')">
-      <td>${cat} ${esc(a.rule_name||'')}</td>
-      <td style="font-family:monospace;font-size:10px;color:var(--text-2)">${esc((a.ma_column||'').replace('drv_cat_atomic_input.',''))}</td>
-      <td style="font-size:11px;color:var(--text-2);font-family:monospace;max-width:120px;white-space:normal;word-break:break-all;line-height:1.3">${esc(srcLabel)||'—'}</td>
-      <td style="text-align:right;font-weight:${srcVal!=null?'600':'400'};color:${srcVal!=null?'var(--text-1)':'var(--text-3)'}">${srcVal!=null?fmt(srcVal):'—'}</td>
-      <td style="text-align:right">${fmt(a.value)}</td>
+      <td style="font-family:monospace;font-size:10px;color:var(--text-2)"
+          title="${colTip}">${cat}${esc(colShort)}</td>
+      <td style="text-align:right">${displayVal != null ? fmt(displayVal) : '—'}</td>
       <td>${zone}</td>
       <td style="text-align:center">${band}</td>
-      <td style="text-align:right">${wts}</td>
-      <td class="${firedCls}" style="text-align:right;font-weight:700">${fmt(a.weight)}</td>
-      <td class="${firedCls}">${a.fired ? '✓' : '✗'}</td>
-      <td class="${reasonCls}" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(a.reason||'')}">${esc(a.reason||'')}</td>
+      <td style="text-align:right;color:var(--text-3);font-size:10px">${wts}</td>
+      <td class="${weightCls}" style="text-align:right;font-weight:700">${fmt(a.weight)}</td>
       <td style="text-align:center;white-space:nowrap">${ruleType}</td>
     </tr>`;
   }).join('');
   return `<div style="overflow-x:auto;max-height:400px;overflow-y:auto">
     <table class="rf-table" id="atomicTable">
       <thead><tr>
-        ${th('Rule','rule')}${th('Column','col')}${th('Source','src')}
-        ${th('Src Val','srcval','right')}${th('Value','value','right')}${th('Zone','zone')}
+        ${th('Column','col')}${th('Value','value','right')}${th('Zone','zone')}
         ${th('Band','band','center')}${th('Weights (b/z/a)','wts')}
-        ${th('Weight','weight','right')}${th('Fired','fired','center')}${th('Reason','reason')}${th('Type','type','center')}
+        ${th('Weight','weight','right')}${th('Type','type','center')}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
