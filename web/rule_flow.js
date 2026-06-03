@@ -209,6 +209,7 @@ function renderAtomics(d) {
         <input id="atomicQ" type="text" placeholder="Search…" oninput="filterAtomics()">
         <label><input type="checkbox" id="atomicThreshold" onchange="filterAtomics()"> Threshold</label>
         <label><input type="checkbox" id="atomicDirect"    onchange="filterAtomics()"> Direct</label>
+        <label><input type="checkbox" id="atomicNullOnly"  onchange="filterAtomics()"> ⚠ Null only</label>
       </div>
       <div id="atomicTableWrap">${buildAtomicList((d.atomics || []).filter(a => a.rule_name !== 'Begin' && a.rule_name !== 'End'))}</div>
     </div>
@@ -221,9 +222,11 @@ function filterAtomics() {
   const showDirect = document.getElementById('atomicDirect').checked;
   const isThresh   = a => a.brkeout_from != null || a.brkeout_to != null ||
                           a.wt_below != null || a.wt_between != null || a.wt_above != null;
+  const showNullOnly = document.getElementById('atomicNullOnly').checked;
   const _DUMMY_RULES = new Set(['Begin', 'End']);
   const atomics = (window._rfData?.atomics || []).filter(a => {
     if (_DUMMY_RULES.has(a.rule_name)) return false;
+    if (showNullOnly && a.value != null) return false;
     if (q && !(a.rule_name||'').toLowerCase().includes(q) &&
              !(a.ma_column||'').toLowerCase().includes(q)) return false;
     if (showThresh || showDirect) {
@@ -277,12 +280,16 @@ function buildAtomicList(atomics) {
     const displayVal = _getDisplayValue(a);
     const wgtColor   = a.weight > 0 ? '#15803d' : a.weight < 0 ? '#b91c1c' : '#9ca3af';
     const colTip     = `${a.rule_name||''}\n${a.ma_column||''}`;
-    const valStr = displayVal != null ? fmt(displayVal) : '—';
-    return `<div class="a-item" id="ar_${a.id}" style="padding:2px 4px;border-bottom:1px solid #f4f4f2;min-width:0;align-self:start">
+    const nullVal  = displayVal == null;
+    const valDisp  = nullVal
+      ? `<span title="${esc(a.reason||'null — could not derive from drv_cat_atomic_input')}" style="color:#b45309;font-weight:700">⚠</span>`
+      : `<b style="color:var(--text-1)">(${fmt(displayVal)})</b>`;
+    const cardBg   = nullVal ? 'background:#fffbeb;' : '';
+    return `<div class="a-item" id="ar_${a.id}" style="padding:2px 4px;border-bottom:1px solid #f4f4f2;min-width:0;align-self:start;${cardBg}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:2px;cursor:pointer"
            onclick="toggleAtomicCard(${a.id},'${esc(dbCol)}','${esc(a.rule_name||'')}')">
         <span style="font-family:monospace;font-size:11px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1"
-              title="${esc(colTip)}">${esc(dbCol)} <b style="color:var(--text-1)">(${valStr})</b></span>
+              title="${esc(colTip)}">${esc(dbCol)} ${valDisp}</span>
         <span style="font-family:monospace;font-size:11px;font-weight:700;color:${wgtColor};flex-shrink:0">${fmt(a.weight)}</span>
         <span id="ar_${a.id}_tog" style="font-size:9px;color:var(--text-3);padding:0 2px;flex-shrink:0;line-height:1">▼</span>
       </div>
