@@ -571,7 +571,6 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
         # 4. Atomic rules
         atomic_rules = s.execute(text("""
             SELECT atomic_rule_id, rule_name, ma_column_name,
-                   source_column, source_table,
                    brkeout_from, brkeout_to, wt_below, wt_between, wt_above,
                    scoring_mode, category
             FROM ref_trig_atomic_rule WHERE deprecated_at IS NULL
@@ -689,58 +688,9 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                 "weight": weight, "fired": weight != 0,
                 "category": a.get("category"),
                 "rolls_into": sorted(set(rolls_into.get(rid, []))),
-                "source_column": a.get("source_column"),
-                "source_table":  a.get("source_table"),
-                "source_value": None,  # filled below
             })
 
         atomic_by_id = {a["id"]: a for a in atomics_out}
-
-        # 7b. Batch-fetch source_column values using explicit source_table
-        _src_needed: dict = {}   # {tbl: set(cols)}
-        _src_idx: dict = {}      # {rule_id: (tbl, col)}
-        for a in atomics_out:
-            sc = a.get("source_column")
-            st = a.get("source_table")
-            if sc and st:
-                # Preferred: explicit source_table + source_column (bare DB column name)
-                _src_needed.setdefault(st, set()).add(sc)
-                _src_idx[a["id"]] = (st, sc)
-            elif sc and "." in sc:
-                # Legacy: table.column packed into source_column
-                tbl, col = sc.split(".", 1)
-                _src_needed.setdefault(tbl, set()).add(col)
-                _src_idx[a["id"]] = (tbl, col)
-
-        _src_vals: dict = {}     # {(tbl, col): value}
-        for tbl, cols in _src_needed.items():
-            is_hist = tbl.startswith("hist_")
-            sym_col  = "symbol"        if is_hist else "tos_symbol"
-            date_col = "snapshot_date" if is_hist else "as_of_date"
-            op       = "<="            if is_hist else "="
-            ord_cl   = f" ORDER BY {date_col} DESC LIMIT 1" if is_hist else " LIMIT 1"
-            col_expr = ", ".join(f'"{c}"' for c in sorted(cols))
-            sql = (f"SELECT {col_expr} FROM {tbl}"
-                   f" WHERE {sym_col}=:sym AND {date_col}{op}:d{ord_cl}")
-            if len(sql) > 960:
-                continue
-            try:
-                with s.begin_nested():
-                    row = s.execute(text(sql), {"sym": sym_u, "d": snap}).mappings().first()
-                    if row:
-                        for c, v in dict(row).items():
-                            _src_vals[(tbl, c)] = v
-            except Exception:
-                pass
-
-        for a in atomics_out:
-            tc = _src_idx.get(a["id"])
-            if tc:
-                v = _src_vals.get(tc)
-                try:
-                    a["source_value"] = float(v) if v is not None else None
-                except (TypeError, ValueError):
-                    a["source_value"] = str(v) if v is not None else None
 
         # 8. Evaluate composites with member detail
         composite_index: dict = {}

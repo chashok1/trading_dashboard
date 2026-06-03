@@ -65,13 +65,17 @@ async function loadFlow() {
   history.replaceState(null, '', `?symbol=${encodeURIComponent(sym)}${date ? '&date='+date : ''}`);
 
   try {
-    const url = `/api/rule-flow/${encodeURIComponent(sym)}${date ? '?date='+date : ''}`;
-    const res = await fetch(url);
+    const qs  = date ? '?date=' + date : '';
+    const [res, intRes] = await Promise.all([
+      fetch(`/api/rule-flow/${encodeURIComponent(sym)}${qs}`),
+      fetch(`/api/rule-flow/${encodeURIComponent(sym)}/intermediates${qs}`),
+    ]);
     if (!res.ok) {
       let msg = res.statusText;
       try { const e = await res.json(); msg = e.detail || msg; } catch {}
       throw new Error(`${res.status} ${msg}`);
     }
+    _intermediatesCache = intRes.ok ? await intRes.json() : {};
     const d = await res.json();
     render(d);
   } catch(e) {
@@ -236,6 +240,24 @@ function sortAtomics(col) {
   filterAtomics();
 }
 
+// Return the pre-threshold input value for a rule (the "what is being compared").
+// Threshold rules: last key in _CHAIN looked up from intermediates (e.g. AR=5).
+// Direct rules: the drv_cat_atomic_input column value (which IS the result).
+function _getDisplayValue(a) {
+  const dbCol   = (a.ma_column || '').replace('drv_cat_atomic_input.', '');
+  const isThresh = a.brkeout_from != null || a.brkeout_to != null ||
+                   a.wt_below    != null || a.wt_between != null || a.wt_above != null;
+  if (isThresh && _intermediatesCache) {
+    const chain = _CHAIN[dbCol];
+    if (chain?.keys?.length) {
+      const lastKey = chain.keys[chain.keys.length - 1];
+      const v = _intermediatesCache[lastKey] ?? _intermediatesCache[(lastKey||'').toLowerCase()];
+      if (v != null) return parseFloat(v);
+    }
+  }
+  return a.value;   // Direct rules: drv_cat_atomic_input value = the scored result
+}
+
 function buildAtomicTable(atomics) {
   if (!atomics.length) return '<div class="status-msg">No rules match filter</div>';
 
@@ -274,8 +296,8 @@ function buildAtomicTable(atomics) {
       ? `[${fmt(a.brkeout_from)}, ${fmt(a.brkeout_to)}]` : '—';
     const wts  = (a.wt_below != null)
       ? `(${fmt(a.wt_below,0)}, ${fmt(a.wt_between,0)}, ${fmt(a.wt_above,0)})` : '—';
-    // Value = raw pre-scoring input (source_value); Weight = drv_cat_atomic_input score
-    const displayVal = a.source_value ?? a.value;
+    // Value = pre-threshold input (last chain intermediate for Threshold; score for Direct)
+    const displayVal = _getDisplayValue(a);
     const ruleType = (a.brkeout_from != null || a.brkeout_to != null ||
                       a.wt_below != null || a.wt_between != null || a.wt_above != null)
       ? '<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#dbeafe;color:#1e40af">Threshold</span>'
