@@ -640,7 +640,10 @@ function filterComposites(q) {
 }
 
 function buildCompItem(c) {
-  const edgeCls = c.precondition_blocked ? 'comp-blocked' : c.fired ? 'comp-fired' : 'comp-nofired';
+  const isInactive = c.active === false;
+  const edgeCls = isInactive ? 'comp-nofired'
+                : c.precondition_blocked ? 'comp-blocked'
+                : c.fired ? 'comp-fired' : 'comp-nofired';
   const id = 'comp_' + (c.code||'').replace(/[^a-z0-9]/gi,'_');
   const members = (c.members || []).map(m => {
     const met  = m.condition_met ?? m.fired;   // condition met (new) or fired (legacy)
@@ -695,7 +698,7 @@ function buildCompItem(c) {
     <div class="comp-hdr" onclick="toggleComp('${id}')">
       ${dot(c.fired, c.precondition_blocked)}
       <span class="comp-code">${esc(c.code||'')}</span>
-      <span class="comp-score">score ${fmt(c.score,1)} · ${c.n_member_hit}/${(c.members||[]).length} conditions met ${c.fired ? '✓ ALL' : ''}</span>
+      <span class="comp-score">${isInactive ? '<span style="color:#9ca3af;font-style:italic">disabled</span>' : `score ${fmt(c.score,1)} · ${c.n_member_hit}/${(c.members||[]).length} conditions met ${c.fired ? '✓ ALL' : ''}`}</span>
       <span style="font-size:12px;color:var(--text-3)">▾</span>
     </div>
     <div class="comp-body">

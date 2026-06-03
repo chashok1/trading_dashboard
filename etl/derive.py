@@ -1865,7 +1865,8 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
                    data_wt_below, data_wt_between, data_wt_above,
                    data_scoring_mode, data_score_params,
                    nested_composite_code, member_multiplier,
-                   category, intent_text, precondition_expr
+                   category, intent_text, precondition_expr,
+                   COALESCE(active, TRUE) AS active
             FROM ref_trig_composite_mapping
             WHERE deprecated_at IS NULL
         """)).mappings().all()
@@ -1886,6 +1887,7 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
         if code not in composite_index:
             composite_index[code] = {
                 "precondition": m.get("precondition_expr"),
+                "active":       bool(m.get("active", True)),
                 "members": []
             }
         kind = m.get("member_kind") or "atomic"
@@ -2065,6 +2067,11 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
 
         for code in composite_eval_order:
             comp_info = composite_index[code]
+            # Skip inactive composites
+            if not comp_info.get("active", True):
+                composite_results[code] = False
+                composite_scores[code] = 0.0
+                continue
             # Precondition gate
             if comp_info["precondition"]:
                 if not _eval_precondition(comp_info["precondition"], dict(r)):

@@ -648,6 +648,21 @@ def update_composite_rule(rule_id: str, body: CompositeRuleUpdateRequest):
     return {"ok": True, "updated": result.rowcount}
 
 
+@router.put("/api/rules/composite/{rule_id}/active", response_model=dict)
+def set_composite_active(rule_id: str, body: dict):
+    """Enable or disable a composite rule. Body: {"active": true|false}"""
+    active = bool(body.get("active", True))
+    with session_scope() as s:
+        result = s.execute(
+            text("UPDATE ref_trig_composite_mapping SET active = :a WHERE composite_rule_code = :rid AND deprecated_at IS NULL"),
+            {"a": active, "rid": rule_id}
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"Composite rule {rule_id} not found")
+        s.commit()
+    return {"ok": True, "rule_id": rule_id, "active": active}
+
+
 @router.delete("/api/rules/composite/{rule_id}", response_model=dict)
 def deprecate_composite_rule(rule_id: str):
     """Soft-delete (deprecate) all mapping rows for a composite rule."""

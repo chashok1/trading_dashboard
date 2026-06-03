@@ -582,7 +582,8 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
         mappings = s.execute(text("""
             SELECT composite_rule_code, COALESCE(member_kind,'atomic') AS member_kind,
                    atomic_rule_id, weight_override, data_brkeout_from,
-                   data_column, nested_composite_code, precondition_expr
+                   data_column, nested_composite_code, precondition_expr,
+                   COALESCE(active, TRUE) AS active
             FROM ref_trig_composite_mapping
             WHERE deprecated_at IS NULL
             ORDER BY composite_rule_code, atomic_rule_id
@@ -748,6 +749,7 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
             if code not in composite_index:
                 composite_index[code] = {
                     "precondition": m.get("precondition_expr"),
+                    "active":       bool(m.get("active", True)),
                     "members": [],
                 }
             composite_index[code]["members"].append(dict(m))
@@ -756,10 +758,19 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
         composite_fired: dict = {}
         for code in sorted(composite_index.keys()):
             info = composite_index[code]
-            pre  = info.get("precondition")
+            pre    = info.get("precondition")
+            active = info.get("active", True)
+            if not active:
+                composites_out.append({"code": code, "fired": False, "score": 0.0,
+                                       "n_member_hit": 0, "active": False,
+                                       "precondition_blocked": False,
+                                       "precondition": pre, "members": []})
+                composite_fired[code] = False
+                continue
             if pre and ma_row and not _eval_precondition(pre, ma_row):
                 composites_out.append({"code": code, "fired": False, "score": 0.0,
-                                       "n_member_hit": 0, "precondition_blocked": True,
+                                       "n_member_hit": 0, "active": True,
+                                       "precondition_blocked": True,
                                        "precondition": pre, "members": []})
                 composite_fired[code] = False
                 continue
@@ -813,7 +824,8 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
             fired = n_total > 0 and n_hit == n_total
             composites_out.append({
                 "code": code, "fired": fired, "score": score,
-                "n_member_hit": n_hit, "precondition": pre,
+                "n_member_hit": n_hit, "active": True,
+                "precondition": pre,
                 "precondition_blocked": False, "members": members_out,
             })
             composite_fired[code] = fired

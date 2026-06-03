@@ -3256,6 +3256,8 @@ CREATE TABLE IF NOT EXISTS ref_trig_composite_mapping (
 
     member_multiplier     NUMERIC,
 
+    active                BOOLEAN NOT NULL DEFAULT TRUE,
+
     loaded_at             TIMESTAMP NOT NULL DEFAULT now(),
 
     PRIMARY KEY (composite_rule_code, atomic_rule_id),
