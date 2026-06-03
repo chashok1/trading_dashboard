@@ -305,10 +305,8 @@ function buildAtomicList(atomics) {
               id="ar_${a.id}_tog"
               onclick="toggleAtomicCard(${a.id},'${esc(dbCol)}','${esc(a.rule_name||'')}')">▼</span>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:4px">
-        <span style="font-family:monospace;font-size:13px;font-weight:600;color:var(--text-1)">${displayVal != null ? fmt(displayVal) : '—'}</span>
-        ${zoneWts ? `<span style="font-family:monospace;font-size:9px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(zoneWts)}</span>` : ''}
-      </div>
+      <div style="font-family:monospace;font-size:13px;font-weight:600;color:var(--text-1)">${displayVal != null ? fmt(displayVal) : '—'}</div>
+      ${zoneWts ? `<div style="font-family:monospace;font-size:9px;color:var(--text-3);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(zoneWts)}</div>` : ''}
       <div id="ar_${a.id}_detail" style="display:none;margin-top:4px;padding-top:4px;border-top:1px dashed #dbeafe"></div>
     </div>`;
   }).join('');
