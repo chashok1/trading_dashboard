@@ -292,13 +292,12 @@ function buildAtomicList(atomics) {
     const colTip     = `${a.rule_name||''}\n${a.ma_column||''}`;
     const valStr = displayVal != null ? fmt(displayVal) : '—';
     return `<div class="a-item" id="ar_${a.id}" style="padding:2px 4px;border-bottom:1px solid #f4f4f2;min-width:0;align-self:start">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:2px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:2px;cursor:pointer"
+           onclick="toggleAtomicCard(${a.id},'${esc(dbCol)}','${esc(a.rule_name||'')}')">
         <span style="font-family:monospace;font-size:11px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1"
               title="${esc(colTip)}">${esc(dbCol)} <b style="color:var(--text-1)">(${valStr})</b></span>
         <span style="font-family:monospace;font-size:11px;font-weight:700;color:${wgtColor};flex-shrink:0">${fmt(a.weight)}</span>
-        <span style="font-size:9px;color:var(--text-3);cursor:pointer;padding:0 2px;flex-shrink:0;line-height:1"
-              id="ar_${a.id}_tog"
-              onclick="toggleAtomicCard(${a.id},'${esc(dbCol)}','${esc(a.rule_name||'')}')">▼</span>
+        <span id="ar_${a.id}_tog" style="font-size:9px;color:var(--text-3);padding:0 2px;flex-shrink:0;line-height:1">▼</span>
       </div>
       <div id="ar_${a.id}_detail" style="display:none;margin-top:4px;padding-top:4px;border-top:1px dashed #dbeafe"></div>
     </div>`;
