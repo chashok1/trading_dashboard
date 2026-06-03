@@ -535,7 +535,7 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
     Returns: indicators, atomics (with reason), composites (with member detail),
     rule_groups (with composite membership + fired status), and final output.
     """
-    from etl.derive import eval_atomic_rule, _eval_precondition, _MA_COL_MAP
+    from etl.derive import eval_atomic_rule, _eval_precondition, _MA_COL_MAP, _composite_operator as _composite_op
 
     sym_u = sym.upper().strip()
     with session_scope() as s:
@@ -742,9 +742,8 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                         comp_op = None
                     else:
                         thr = float(threshold)
-                        # Threshold sign encodes operator: positive→>=, negative→<=
-                        condition_met = (val >= thr) if thr >= 0 else (val <= thr)
-                        comp_op = '>=' if thr >= 0 else '<='
+                        comp_op = _composite_op(code, thr)
+                        condition_met = (val >= thr) if comp_op == '>=' else (val <= thr)
                     w = float(ovr) if (condition_met and ovr is not None) else (val if condition_met else 0.0)
                     ar = atomic_by_id.get(aid, {})
                     member_entry.update({

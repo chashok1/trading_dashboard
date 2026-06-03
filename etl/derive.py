@@ -1606,6 +1606,24 @@ def _composite_outlook(rr_brr, call_outlook, etf_outlook, ii_outlook, sss_signal
     return score, label
 
 
+_BUY_PREFIXES  = {'B','BS','BR','BW','BM','BMN'}
+_SELL_PREFIXES = {'SA','SS','STM','SW','SH'}
+
+def _composite_operator(code: str, threshold) -> str:
+    """Return '>=' for BUY rules, '<=' for SELL rules, else derive from threshold sign."""
+    import re
+    m = re.match(r'^\d+-([A-Z]+)-', code or '')
+    if m:
+        p = m.group(1)
+        if p in _BUY_PREFIXES:  return '>='
+        if p in _SELL_PREFIXES: return '<='
+    # fallback: positive threshold → >=, negative → <=
+    try:
+        return '>=' if float(threshold) >= 0 else '<='
+    except (TypeError, ValueError):
+        return '>='
+
+
 def _eval_precondition(expr: str, row: dict) -> bool:
     """
     Safely evaluate a compound precondition expression against a drv_ma row.
@@ -2095,8 +2113,8 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
                         condition_met = (val != 0)
                     else:
                         thr = float(threshold)
-                        # Threshold sign encodes operator: positive→>=, negative→<=
-                        condition_met = (val >= thr) if thr >= 0 else (val <= thr)
+                        op  = _composite_operator(code, thr)
+                        condition_met = (val >= thr) if op == '>=' else (val <= thr)
                     w = float(ovr) if (condition_met and ovr is not None) else (val if condition_met else 0.0)
                 elif kind == "data":
                     # Inline rule against the row.  data_column may be

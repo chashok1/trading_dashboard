@@ -709,10 +709,9 @@ function buildCompItem(c) {
     if (m.kind === 'atomic') {
       const thr = m.threshold;
       const val = m.value;
-      // Operator comes from threshold sign (positive→>=, negative→<=)
+      // Operator from API (derives from rule code: BUY→>=, SELL→<=)
       const opSymMap = {'>=':'≥', '<=':'≤', '>':'>', '<':'<', '=':'='};
-      const op = m.operator ? (opSymMap[m.operator] || m.operator)
-               : thr != null ? (thr >= 0 ? '≥' : '≤') : '≠0';
+      const op = m.operator ? (opSymMap[m.operator] || m.operator) : '≠0';
       const valStr  = `<span style="font-size:10px;color:var(--text-3)">val:</span><span style="font-family:monospace;font-size:11px;font-weight:600">${fmt(val)}</span>`;
       const condPart = thr != null
         ? `<span style="font-size:10px;color:var(--text-3)">cond:</span><span style="font-family:monospace;font-size:11px;font-weight:600;color:${met?'#15803d':'#ef4444'}">${op} ${thr}</span>`
