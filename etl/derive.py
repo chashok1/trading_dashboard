@@ -1144,7 +1144,7 @@ _QUOTE_FIELDS = (
 
 
 def _latest_per_symbol(session: Session, table: str, as_of_date: date,
-                       column_map: dict) -> dict:
+                       column_map: dict, window_days: int | None = None) -> dict:
     """Return {tos_symbol: {drv_field: value, ..., 'loaded_at': ts, 'snapshot_date': d, 'export_date': d, 'export_time': t}} for the latest
     snapshot ≤ as_of_date in `table`. Per source PK is (snapshot_date, tos_symbol,
     sequence); within the latest snapshot_date we order by loaded_at DESC,
@@ -1152,10 +1152,12 @@ def _latest_per_symbol(session: Session, table: str, as_of_date: date,
 
     `column_map` maps drv_quote field name -> source-table column name (or
     None if the source doesn't expose that field).
+
+    `window_days`: if set, only rows within this many days of as_of_date are
+    considered. Use 7 for daily TOS exports (hist_td, hist_tl) so symbols
+    removed from the watchlist stop appearing in drv_quote after a week.
+    Leave None for hist_y (Yahoo Finance) which is the fallback for non-TOS symbols.
     """
-    # Build SELECT list aliased to drv_quote field names so downstream code
-    # can use a single shape. Columns the source doesn't have are selected as
-    # NULL literals.
     select_parts = ['tos_symbol AS symbol', 'snapshot_date', 'loaded_at', 'export_date', 'export_time']
     for drv_field, src_col in column_map.items():
         if src_col is None:
@@ -1164,14 +1166,19 @@ def _latest_per_symbol(session: Session, table: str, as_of_date: date,
             select_parts.append(f'{src_col} AS {drv_field}')
     sel = ', '.join(select_parts)
 
+    where = "snapshot_date <= :d"
+    params: dict = {"d": as_of_date}
+    if window_days is not None:
+        where += f" AND snapshot_date >= :d - INTERVAL '{window_days} days'"
+
     sql = text(f"""
         SELECT DISTINCT ON (tos_symbol) {sel}
           FROM {table}
-         WHERE snapshot_date <= :d
+         WHERE {where}
          ORDER BY tos_symbol, snapshot_date DESC, loaded_at DESC, sequence DESC
     """)
     out = {}
-    for r in session.execute(sql, {"d": as_of_date}).mappings():
+    for r in session.execute(sql, params).mappings():
         out[r['symbol']] = dict(r)
     return out
 
@@ -1258,9 +1265,9 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
         'imp_volatility':  'imp_volatility',
     }
 
-    rows_y  = _latest_per_symbol(session, 'hist_y',  as_of_date, cmap_y)
-    rows_tl = _latest_per_symbol(session, 'hist_tl', as_of_date, cmap_tl)
-    rows_td = _latest_per_symbol(session, 'hist_td', as_of_date, cmap_td)
+    rows_y  = _latest_per_symbol(session, 'hist_y',  as_of_date, cmap_y)                  # no window — Yahoo is fallback for non-TOS symbols
+    rows_tl = _latest_per_symbol(session, 'hist_tl', as_of_date, cmap_tl, window_days=7)  # daily TOS Level: 7-day freshness gate
+    rows_td = _latest_per_symbol(session, 'hist_td', as_of_date, cmap_td, window_days=7)  # daily TOS Daily: 7-day freshness gate
 
     # Union of all symbols seen across the three sources.
     all_symbols = set(rows_y) | set(rows_tl) | set(rows_td)

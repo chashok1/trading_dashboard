@@ -43,13 +43,23 @@ log = logging.getLogger(__name__)
 WORKING_SET_SQL = """
 WITH p AS (SELECT CAST(:d AS date) AS d),
 syms AS (
+    -- Gate: symbol must have a current price in hist_tl (TOS Level, daily intraday feed)
+    -- within the last 7 days. This excludes symbols removed from the TOS watchlist —
+    -- their hist_tl rows go stale within a week and they naturally drop out.
+    -- hist_tl is preferred over drv_quote because drv_quote can carry stale prices
+    -- derived from months-old hist_td/hist_tl rows.
     SELECT DISTINCT s FROM (
         SELECT ticker AS s FROM ref_sector
         UNION SELECT tos_symbol AS s FROM hist_tl WHERE snapshot_date <= (SELECT d FROM p)
         UNION SELECT tos_symbol AS s FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
         UNION SELECT tos_symbol AS s FROM hist_tw WHERE snapshot_date <= (SELECT d FROM p)
     ) u WHERE s IS NOT NULL
-      AND EXISTS (SELECT 1 FROM drv_quote dq WHERE dq.tos_symbol = u.s)
+      AND EXISTS (
+          SELECT 1 FROM hist_tl tl
+          WHERE tl.tos_symbol = u.s
+            AND tl.snapshot_date <= (SELECT d FROM p)
+            AND tl.snapshot_date >= (SELECT d FROM p) - INTERVAL '7 days'
+      )
 ),
 td AS (
     -- 7-day recency gate: only use TOSD data loaded within the last 7 days.
