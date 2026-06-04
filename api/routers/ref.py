@@ -28,33 +28,13 @@ from etl.db import session_scope, get_table
 router = APIRouter()
 
 # ---------------------------------------------------------------------------
-# Symbol rename — updates symbol/tos_symbol across all tables atomically
+# Symbol rename — dynamically discovers every table with symbol/tos_symbol
 # ---------------------------------------------------------------------------
-
-# Tables with only tos_symbol
-_TOS_ONLY = [
-    "drv_actionable", "drv_cat_atomic_input", "drv_cs_realized_gain",
-    "drv_dash", "drv_dash_summary", "drv_fundamentals",
-    "drv_outlook_action", "drv_outlooks", "drv_portfolio",
-    "drv_quote", "drv_realized_gain", "drv_rr", "drv_rule_outcome",
-    "drv_sss", "drv_stks", "drv_symbols", "drv_td", "drv_technicals",
-    "drv_tn_td_bb_rr", "drv_to", "drv_trig", "drv_tw", "drv_y",
-    "drv_missing_symbols", "meta_warning", "ref_my_stocks", "user_action_log",
-]
-# Tables with both symbol and tos_symbol
-_BOTH = [
-    "hist_call", "hist_cs", "hist_cst", "hist_etf", "hist_etfchg",
-    "hist_f", "hist_ft", "hist_ii", "hist_iichg", "hist_rr",
-    "hist_sss", "hist_td", "hist_tl", "hist_to", "hist_tw",
-    "hist_y",
-]
-# Tables with tos_symbol only (no symbol col)
-_TOS_ONLY_PS = ["hist_ps"]
-
 
 @router.post("/api/admin/rename-symbol", response_model=dict)
 def rename_symbol(body: dict):
     """Rename a symbol across every table that stores symbol/tos_symbol.
+    Discovers tables dynamically from information_schema so nothing is missed.
     Body: {"from": "VSCO", "to": "VSXY"}
     """
     old = (body.get("from") or "").strip().upper()
@@ -66,42 +46,44 @@ def rename_symbol(body: dict):
 
     counts: dict = {}
     with session_scope() as s:
-        for tbl in _TOS_ONLY + _TOS_ONLY_PS:
+        # Discover all real tables (not views) with symbol and/or tos_symbol
+        col_rows = s.execute(text("""
+            SELECT t.table_name, array_agg(c.column_name) AS cols
+            FROM information_schema.tables t
+            JOIN information_schema.columns c
+              ON c.table_name = t.table_name AND c.table_schema = 'public'
+            WHERE t.table_schema = 'public'
+              AND t.table_type = 'BASE TABLE'
+              AND c.column_name IN ('symbol', 'tos_symbol')
+            GROUP BY t.table_name
+            ORDER BY t.table_name
+        """)).mappings().all()
+
+        for row in col_rows:
+            tbl  = row["table_name"]
+            cols = set(row["cols"])
+            has_sym = "symbol"     in cols
+            has_tos = "tos_symbol" in cols
             try:
-                r = s.execute(text(
-                    f"UPDATE {tbl} SET tos_symbol=:new WHERE tos_symbol=:old"
-                ), {"new": new, "old": old})
-                if r.rowcount:
-                    counts[tbl] = r.rowcount
+                with s.begin_nested():
+                    if has_sym and has_tos:
+                        r = s.execute(text(
+                            f'UPDATE "{tbl}" SET symbol=:new, tos_symbol=:new '
+                            f'WHERE symbol=:old OR tos_symbol=:old'
+                        ), {"new": new, "old": old})
+                    elif has_tos:
+                        r = s.execute(text(
+                            f'UPDATE "{tbl}" SET tos_symbol=:new WHERE tos_symbol=:old'
+                        ), {"new": new, "old": old})
+                    else:
+                        r = s.execute(text(
+                            f'UPDATE "{tbl}" SET symbol=:new WHERE symbol=:old'
+                        ), {"new": new, "old": old})
+                    if r.rowcount:
+                        counts[tbl] = r.rowcount
             except Exception:
-                pass
-        for tbl in _BOTH:
-            try:
-                r = s.execute(text(
-                    f"UPDATE {tbl} SET symbol=:new, tos_symbol=:new "
-                    f"WHERE symbol=:old OR tos_symbol=:old"
-                ), {"new": new, "old": old})
-                if r.rowcount:
-                    counts[tbl] = r.rowcount
-            except Exception:
-                pass
-        # ref_rrt maps symbol to tos_symbol — update both columns
-        try:
-            r = s.execute(text(
-                "UPDATE ref_rrt SET symbol=:new WHERE symbol=:old"
-            ), {"new": new, "old": old})
-            if r.rowcount:
-                counts["ref_rrt.symbol"] = r.rowcount
-        except Exception:
-            pass
-        try:
-            r = s.execute(text(
-                "UPDATE ref_rrt SET tos_symbol=:new WHERE tos_symbol=:old"
-            ), {"new": new, "old": old})
-            if r.rowcount:
-                counts["ref_rrt.tos_symbol"] = r.rowcount
-        except Exception:
-            pass
+                pass  # skip tables that fail (e.g. views, FKs)
+
         s.commit()
 
     total = sum(counts.values())
