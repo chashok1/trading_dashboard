@@ -3407,6 +3407,21 @@ CREATE TABLE IF NOT EXISTS ref_trig_param_value (
 
 );
 
+-- ref_rrt seed: non-equity index/volatility instruments (2026-06-03)
+INSERT INTO ref_rrt (rr_name, y_ticker, tos_ticker, reverse) VALUES
+    ('GVZ',  '^GVZ',       '$GVZ',  'N'),
+    ('INDU', '^DJI',       '$INDU', 'N'),
+    ('MOVE', '^MOVE',      '$MOVE', 'N'),
+    ('OVX',  '^OVX',       '$OVX',  'N'),
+    ('VOLQ', '^VOLQ',      '$VOLQ', 'N'),
+    ('VXN',  '^VXN',       '$VXN',  'N')
+ON CONFLICT (rr_name) DO UPDATE
+    SET y_ticker   = EXCLUDED.y_ticker,
+        tos_ticker = EXCLUDED.tos_ticker;
+
+UPDATE ref_rrt SET tos_ticker = '$SSEC'
+WHERE rr_name = 'SSEC' AND (tos_ticker IS NULL OR tos_ticker = '');
+
 CREATE INDEX IF NOT EXISTS ix_param_value_set ON ref_trig_param_value(param_set_id);
 
 

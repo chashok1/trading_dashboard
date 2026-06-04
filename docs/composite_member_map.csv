@@ -1,0 +1,500 @@
+composite,action,priority,member,threshold,weight,proposed_role,candidate_base
+899-SA-Trend-Breaks,SA,899,MACDH Direction,-1,10,gate,BASE-Bull-Trend
+899-SA-Trend-Breaks,SA,899,MACD Direction,-1,10,gate,BASE-Bull-Trend
+899-SA-Trend-Breaks,SA,899,Trade-Rule,-1,10,gate,BASE-Bull-Trend
+899-SA-Trend-Breaks,SA,899,Trend Cross Over,-1,10,gate,
+898-SA-Streak-VeryBad,SA,898,MACDH Direction,-1,10,gate,BASE-Bull-Trend
+898-SA-Streak-VeryBad,SA,898,MACD Direction,-1,10,gate,BASE-Bull-Trend
+898-SA-Streak-VeryBad,SA,898,Trade-Rule,-2,10,gate,BASE-Bull-Trend
+898-SA-Streak-VeryBad,SA,898,Perf3D SD Rule,-2,10,gate,
+898-SA-Streak-VeryBad,SA,898,BBStreak Rule,-3,10,gate,
+898-SA-Streak-VeryBad,SA,898,BBStreak Days Up Rule,1,10,gate,
+897-SW-Vlm-Spike-Price-Dn,SW,897,VS LT Outlook Rule,-3,10,gate,BASE-Bull-Context;BASE-Bear-Context
+896-SA-TRbelowTN-Trade-Breaks,SA,896,MACDH Direction,-1,10,gate,BASE-Bull-Trend
+896-SA-TRbelowTN-Trade-Breaks,SA,896,MACD Direction,-1,10,gate,BASE-Bull-Trend
+896-SA-TRbelowTN-Trade-Breaks,SA,896,Trade Cross Over,-1,10,gate,
+896-SA-TRbelowTN-Trade-Breaks,SA,896,Trade Trend Relation,-1,10,gate,
+895-SA-!TN!TD!Bull-TRR-Rev,SA,895,Trade-Rule,-2,10,gate,BASE-Bull-Trend
+895-SA-!TN!TD!Bull-TRR-Rev,SA,895,Trend-Rule,-1,10,gate,BASE-Bull-Trend
+895-SA-!TN!TD!Bull-TRR-Rev,SA,895,BRR% LRR,2,10,gate,BASE-RR-Position
+895-SA-!TN!TD!Bull-TRR-Rev,SA,895,Perf3D SD Rule,1,10,gate,
+895-SA-!TN!TD!Bull-TRR-Rev,SA,895,Perf1D SD Rule,-1,10,gate,BASE-Bull-Context
+895-SA-!TN!TD!Bull-TRR-Rev,SA,895,BBStreak Rule2,0,10,gate,
+895-SA-!TN!TD!Bull-TRR-Rev,SA,895,BBStreak Days Up Rule2,2,10,gate,
+895-SA-!TN!TD!Bull-TRR-Rev,SA,895,PerfOrBull Rule,2,10,gate,
+894-SA-!Bull-TN-TRR,SA,894,Trade-Rule,0,10,gate,BASE-Bull-Trend
+894-SA-!Bull-TN-TRR,SA,894,BRR% TRR Puts,-3,10,gate,BASE-RR-Position
+894-SA-!Bull-TN-TRR,SA,894,!Perf1D SD Rule,-1,10,gate,
+894-SA-!Bull-TN-TRR,SA,894,PerfOrBull Rule,2,10,gate,
+893-SA-TRR-blw-TN,SA,893,Trade-Rule,0,10,gate,BASE-Bull-Trend
+893-SA-TRR-blw-TN,SA,893,Trend-Rule,0,10,gate,BASE-Bull-Trend
+893-SA-TRR-blw-TN,SA,893,BRR% LRR,2,10,gate,BASE-RR-Position
+893-SA-TRR-blw-TN,SA,893,Trend below TRR,-1,10,gate,
+893-SA-TRR-blw-TN,SA,893,!Perf1D SD Rule,-1,10,gate,
+889-STM-OverBought,STM,889,BRR% TRR Puts,-3,10,gate,BASE-RR-Position
+889-STM-OverBought,STM,889,IVPercentile Puts,-3,10,gate,
+889-STM-OverBought,STM,889,HVPercentile Puts,-3,10,gate,
+889-STM-OverBought,STM,889,IVHV Puts (modified),-2,10,gate,
+889-STM-OverBought,STM,889,RSI Puts,-3,10,gate,BASE-Bear-Context
+889-STM-OverBought,STM,889,MACD_BRR Puts,-3,10,gate,
+889-STM-OverBought,STM,889,MACDH_BRR Puts,-3,10,gate,BASE-Bear-Context
+888-STM-!Bull-BBTh-Crossover-RSI-IVHV,STM,888,BBThresh Crossover,-1,10,gate,
+888-STM-!Bull-BBTh-Crossover-RSI-IVHV,STM,888,IVPercentile Puts,-3,10,gate,
+888-STM-!Bull-BBTh-Crossover-RSI-IVHV,STM,888,HVPercentile Puts,-3,10,gate,
+888-STM-!Bull-BBTh-Crossover-RSI-IVHV,STM,888,IVHV Puts (modified),-2,10,gate,
+888-STM-!Bull-BBTh-Crossover-RSI-IVHV,STM,888,RSI Puts,-3,10,gate,BASE-Bear-Context
+888-STM-!Bull-BBTh-Crossover-RSI-IVHV,STM,888,PerfOrBull Rule,2,10,gate,
+887-STM-!Bull--BBTh-Crossover-RSI-IV,STM,887,BBThresh Crossover,-1,10,gate,
+887-STM-!Bull--BBTh-Crossover-RSI-IV,STM,887,IVPercentile Puts,-3,10,gate,
+887-STM-!Bull--BBTh-Crossover-RSI-IV,STM,887,HVPercentile Puts,-3,10,gate,
+887-STM-!Bull--BBTh-Crossover-RSI-IV,STM,887,RSI Puts,-3,10,gate,BASE-Bear-Context
+887-STM-!Bull--BBTh-Crossover-RSI-IV,STM,887,PerfOrBull Rule,2,10,gate,
+859-SS-Bull-BBTh-Crossover-RSI-IVHV,SS,859,BBThresh Crossover,-1,10,gate,
+859-SS-Bull-BBTh-Crossover-RSI-IVHV,SS,859,IVPercentile Puts,-3,10,gate,
+859-SS-Bull-BBTh-Crossover-RSI-IVHV,SS,859,HVPercentile Puts,-3,10,gate,
+859-SS-Bull-BBTh-Crossover-RSI-IVHV,SS,859,IVHV Puts (modified),-2,10,gate,
+859-SS-Bull-BBTh-Crossover-RSI-IVHV,SS,859,RSI Puts,-3,10,gate,BASE-Bear-Context
+859-SS-Bull-BBTh-Crossover-RSI-IVHV,SS,859,!PerfOrBull Rule,-3,10,gate,
+858-SS-Bull-BBTh-Crossover-RSI-IV,SS,858,BBThresh Crossover,-1,10,gate,
+858-SS-Bull-BBTh-Crossover-RSI-IV,SS,858,IVPercentile Puts,-3,10,gate,
+858-SS-Bull-BBTh-Crossover-RSI-IV,SS,858,HVPercentile Puts,-3,10,gate,
+858-SS-Bull-BBTh-Crossover-RSI-IV,SS,858,RSI Puts,-3,10,gate,BASE-Bear-Context
+858-SS-Bull-BBTh-Crossover-RSI-IV,SS,858,!PerfOrBull Rule,-3,10,gate,
+857-SS-BBTh-Crossover-RSIOnly,SS,857,BBThresh Crossover,-1,10,gate,
+857-SS-BBTh-Crossover-RSIOnly,SS,857,RSI Puts,-3,10,gate,BASE-Bear-Context
+798-STM-!Bull-TRR-Rev,STM,798,MACDH Direction,0,10,gate,BASE-Bull-Trend
+798-STM-!Bull-TRR-Rev,STM,798,BRR% LRR,2,10,gate,BASE-RR-Position
+798-STM-!Bull-TRR-Rev,STM,798,Perf3D SD Rule,1,10,gate,
+798-STM-!Bull-TRR-Rev,STM,798,Perf1D SD Rule,-1,10,gate,BASE-Bull-Context
+798-STM-!Bull-TRR-Rev,STM,798,!Perf1D SD Rule,0,10,gate,
+798-STM-!Bull-TRR-Rev,STM,798,BBStreak Rule2,0,10,gate,
+798-STM-!Bull-TRR-Rev,STM,798,BBStreak Days Rule2,2,10,gate,
+798-STM-!Bull-TRR-Rev,STM,798,BBStreak Days Up Rule2,2,10,gate,
+798-STM-!Bull-TRR-Rev,STM,798,PerfOrBull Rule,2,10,gate,
+796-SW-!Bull-BBTh-Crossover,SW,796,BBThresh Crossover,-1,10,gate,
+796-SW-!Bull-BBTh-Crossover,SW,796,BBThresh CO Days2,1,10,gate,
+796-SW-!Bull-BBTh-Crossover,SW,796,PerfOrBull Rule,2,10,gate,
+793-STM-!TD!Bull-TRR-Rev,STM,793,Trade-Rule,-1,10,gate,BASE-Bull-Trend
+793-STM-!TD!Bull-TRR-Rev,STM,793,!Trend Rule,-1,10,gate,
+793-STM-!TD!Bull-TRR-Rev,STM,793,BRR% LRR,2,10,gate,BASE-RR-Position
+793-STM-!TD!Bull-TRR-Rev,STM,793,Perf3D SD Rule,1,10,gate,
+793-STM-!TD!Bull-TRR-Rev,STM,793,Perf1D SD Rule,-1,10,gate,BASE-Bull-Context
+793-STM-!TD!Bull-TRR-Rev,STM,793,BBStreak Rule2,0,10,gate,
+793-STM-!TD!Bull-TRR-Rev,STM,793,BBStreak Days Up Rule2,2,10,gate,
+793-STM-!TD!Bull-TRR-Rev,STM,793,PerfOrBull Rule,2,10,gate,
+792-STM-Bull-TN-TD-TRR-RSI-IV,STM,792,!Trade Rule,0,10,gate,
+792-STM-Bull-TN-TD-TRR-RSI-IV,STM,792,BRR% TRR Puts,-3,10,gate,BASE-RR-Position
+792-STM-Bull-TN-TD-TRR-RSI-IV,STM,792,IVPercentile Puts,-3,10,gate,
+792-STM-Bull-TN-TD-TRR-RSI-IV,STM,792,HVPercentile Puts,-3,10,gate,
+792-STM-Bull-TN-TD-TRR-RSI-IV,STM,792,IVHV Puts (modified),-2,10,gate,
+792-STM-Bull-TN-TD-TRR-RSI-IV,STM,792,RSI Puts,-3,10,gate,BASE-Bear-Context
+792-STM-Bull-TN-TD-TRR-RSI-IV,STM,792,!Perf1D SD Rule,-1,10,gate,
+792-STM-Bull-TN-TD-TRR-RSI-IV,STM,792,PerfOrBull Rule,2,10,gate,
+791-STM-!Bull-HighAbvTRR,STM,791,High above TRR,1,10,gate,BASE-RR-Position
+791-STM-!Bull-HighAbvTRR,STM,791,PerfOrBull Rule,2,10,gate,
+789-SS-!Bull-OverBought,SS,789,BRR% LRR,1,10,gate,BASE-RR-Position
+789-SS-!Bull-OverBought,SS,789,IVPercentile Puts,-2,10,gate,
+789-SS-!Bull-OverBought,SS,789,HVPercentile Puts,-2,10,gate,
+789-SS-!Bull-OverBought,SS,789,RSI Puts,-3,10,gate,BASE-Bear-Context
+789-SS-!Bull-OverBought,SS,789,MACD_BRR Puts,-3,10,gate,
+789-SS-!Bull-OverBought,SS,789,MACDH_BRR Puts,-3,10,gate,BASE-Bear-Context
+789-SS-!Bull-OverBought,SS,789,PerfOrBull Rule,2,10,gate,
+788-SS-!Bull-TN-TD-TRR,SS,788,!Trade Rule,0,10,gate,
+788-SS-!Bull-TN-TD-TRR,SS,788,BRR% TRR Puts,-3,10,gate,BASE-RR-Position
+788-SS-!Bull-TN-TD-TRR,SS,788,LRR above Trade,0,10,gate,BASE-RR-Position
+788-SS-!Bull-TN-TD-TRR,SS,788,!Perf1D SD Rule,-1,10,gate,
+788-SS-!Bull-TN-TD-TRR,SS,788,PerfOrBull Rule,2,10,gate,
+787-SS-Bull-TRR-Rev,SS,787,MACDH Direction,-1,10,gate,BASE-Bull-Trend
+787-SS-Bull-TRR-Rev,SS,787,BRR% TRR Puts,-2,10,gate,BASE-RR-Position
+787-SS-Bull-TRR-Rev,SS,787,Perf3D SD Rule,-1,10,gate,
+787-SS-Bull-TRR-Rev,SS,787,Perf1D SD Rule,-1,10,gate,BASE-Bull-Context
+787-SS-Bull-TRR-Rev,SS,787,BBHighLow Days Rule,1,10,gate,
+787-SS-Bull-TRR-Rev,SS,787,BBStreak Rule2,0,10,gate,
+787-SS-Bull-TRR-Rev,SS,787,BBStreak Days Rule2,1,10,gate,
+787-SS-Bull-TRR-Rev,SS,787,!PerfOrBull Rule,-3,10,gate,
+786-SS-Bull-OverBought,SS,786,BRR% TRR Puts,-3,10,gate,BASE-RR-Position
+786-SS-Bull-OverBought,SS,786,IVPercentile Puts,-3,10,gate,
+786-SS-Bull-OverBought,SS,786,HVPercentile Puts,-3,10,gate,
+786-SS-Bull-OverBought,SS,786,RSI Puts,-3,10,gate,BASE-Bear-Context
+786-SS-Bull-OverBought,SS,786,MACD_BRR Puts,-3,10,gate,
+786-SS-Bull-OverBought,SS,786,MACDH_BRR Puts,-3,10,gate,BASE-Bear-Context
+786-SS-Bull-OverBought,SS,786,!PerfOrBull Rule,-3,10,gate,
+785-SS-Trade-Breaks,SS,785,MACDH Direction,-1,10,gate,BASE-Bull-Trend
+785-SS-Trade-Breaks,SS,785,MACD Direction,-1,10,gate,BASE-Bull-Trend
+785-SS-Trade-Breaks,SS,785,Trade Cross Over,-1,10,gate,
+785-SS-Trade-Breaks,SS,785,!Trade Trend Relation,-1,10,gate,
+785-SS-Trade-Breaks,SS,785,Perf1D SD Rule,0,10,gate,BASE-Bull-Context
+784-SS-Streak-GoingBad,SS,784,MACDH Direction,-1,10,gate,BASE-Bull-Trend
+784-SS-Streak-GoingBad,SS,784,MACD Direction,-1,10,gate,BASE-Bull-Trend
+784-SS-Streak-GoingBad,SS,784,Perf3wk SD Rule,-2,10,gate,
+784-SS-Streak-GoingBad,SS,784,Perf3D SD Rule,-2,10,gate,
+784-SS-Streak-GoingBad,SS,784,BBStreak Rule,-2,10,gate,
+784-SS-Streak-GoingBad,SS,784,BBStreak Days Up Rule2,1,10,gate,
+783-SW-Vol-Spke-Price-Dn-Past,SW,783,VS LT Outlook Rule,-2,10,gate,BASE-Bull-Context;BASE-Bear-Context
+782-SS-3mnHigh,SS,782,RSI Rule,1,10,gate,
+782-SS-3mnHigh,SS,782,3mn-High-Rule,-3,10,gate,
+782-SS-3mnHigh,SS,782,3mn-High-Dyas Rule,2,10,gate,
+782-SS-3mnHigh,SS,782,!Perf1D SD Rule,-1,10,gate,
+781-SS-TRR-CloseToTrade,SS,781,BRR% TRR Puts,-3,10,gate,BASE-RR-Position
+781-SS-TRR-CloseToTrade,SS,781,Trade Close to TRR,-1,10,gate,
+699-SW-Resistance,SW,699,Up Resistance,-0.5,10,gate,
+698-SS-Bull-HighAbvTRR,SS,698,High above TRR,1,10,gate,BASE-RR-Position
+698-SS-Bull-HighAbvTRR,SS,698,!PerfOrBull Rule,-3,10,gate,
+697-STM-Earnings-Date,STM,697,Earnings Days,-3,10,gate,
+449-B-TN-TD-LRR-UP-MACD,B,449,Trade-Rule,0,10,gate,BASE-Bull-Trend
+449-B-TN-TD-LRR-UP-MACD,B,449,Trend-Rule,2,10,gate,BASE-Bull-Trend
+449-B-TN-TD-LRR-UP-MACD,B,449,BRR% TRR Puts,-1,10,gate,BASE-RR-Position
+449-B-TN-TD-LRR-UP-MACD,B,449,LRR above Trade,1,10,gate,BASE-RR-Position
+449-B-TN-TD-LRR-UP-MACD,B,449,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+449-B-TN-TD-LRR-UP-MACD,B,449,IVRule,0,1,evidence,BASE-Vol-Regime
+449-B-TN-TD-LRR-UP-MACD,B,449,RSI Rule,2,1,evidence,
+449-B-TN-TD-LRR-UP-MACD,B,449,Perf1D SD Rule,0,10,gate,BASE-Bull-Context
+449-B-TN-TD-LRR-UP-MACD,B,449,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+449-B-TN-TD-LRR-UP-MACD,B,449,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+448-BS-TN-TD-LRR,BS,448,Trade-Rule,0,10,gate,BASE-Bull-Trend
+448-BS-TN-TD-LRR,BS,448,Trend-Rule,2,10,gate,BASE-Bull-Trend
+448-BS-TN-TD-LRR,BS,448,BRR% LRR,3,10,gate,BASE-RR-Position
+448-BS-TN-TD-LRR,BS,448,LRR above Trade,1,10,gate,BASE-RR-Position
+448-BS-TN-TD-LRR,BS,448,RSI Rule,2,10,gate,
+448-BS-TN-TD-LRR,BS,448,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+448-BS-TN-TD-LRR,BS,448,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+399-B-TN-TD-LRR-UP-MACD,B,399,Trade-Rule,0,10,gate,BASE-Bull-Trend
+399-B-TN-TD-LRR-UP-MACD,B,399,Trend-Rule,2,10,gate,BASE-Bull-Trend
+399-B-TN-TD-LRR-UP-MACD,B,399,BRR% TRR Puts,-1,10,gate,BASE-RR-Position
+399-B-TN-TD-LRR-UP-MACD,B,399,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+399-B-TN-TD-LRR-UP-MACD,B,399,IVRule,0,1,evidence,BASE-Vol-Regime
+399-B-TN-TD-LRR-UP-MACD,B,399,RSI Rule,2,1,evidence,
+399-B-TN-TD-LRR-UP-MACD,B,399,Perf1D SD Rule,0,10,gate,BASE-Bull-Context
+399-B-TN-TD-LRR-UP-MACD,B,399,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+399-B-TN-TD-LRR-UP-MACD,B,399,MACDH_BRR Puts,-2,1,evidence,BASE-Bear-Context
+399-B-TN-TD-LRR-UP-MACD,B,399,MACDH Days,2,10,gate,
+399-B-TN-TD-LRR-UP-MACD,B,399,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+398-B-TN-TD-LRR-UP-DAY,B,398,Trade-Rule,0,10,gate,BASE-Bull-Trend
+398-B-TN-TD-LRR-UP-DAY,B,398,Trend-Rule,2,10,gate,BASE-Bull-Trend
+398-B-TN-TD-LRR-UP-DAY,B,398,BRR% TRR Puts,-1,10,gate,BASE-RR-Position
+398-B-TN-TD-LRR-UP-DAY,B,398,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+398-B-TN-TD-LRR-UP-DAY,B,398,IVRule,0,1,evidence,BASE-Vol-Regime
+398-B-TN-TD-LRR-UP-DAY,B,398,RSI Rule,2,1,evidence,
+398-B-TN-TD-LRR-UP-DAY,B,398,Perf3D SD Rule,2,10,gate,
+398-B-TN-TD-LRR-UP-DAY,B,398,Perf1D SD Rule,0,10,gate,BASE-Bull-Context
+398-B-TN-TD-LRR-UP-DAY,B,398,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+398-B-TN-TD-LRR-UP-DAY,B,398,MACDH_BRR Puts,-2,1,evidence,BASE-Bear-Context
+398-B-TN-TD-LRR-UP-DAY,B,398,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+397-B-TN-TD-LRR,B,397,Trade-Rule,0,10,gate,BASE-Bull-Trend
+397-B-TN-TD-LRR,B,397,Trend-Rule,2,10,gate,BASE-Bull-Trend
+397-B-TN-TD-LRR,B,397,BRR% LRR,3,10,gate,BASE-RR-Position
+397-B-TN-TD-LRR,B,397,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+397-B-TN-TD-LRR,B,397,IVRule,0,10,gate,BASE-Vol-Regime
+397-B-TN-TD-LRR,B,397,RSI Rule,2,10,gate,
+397-B-TN-TD-LRR,B,397,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+397-B-TN-TD-LRR,B,397,MACD_BRR Puts,-2,10,gate,
+397-B-TN-TD-LRR,B,397,MACDH_BRR Puts,-2,10,gate,BASE-Bear-Context
+397-B-TN-TD-LRR,B,397,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+396-BS-LRR-CloseToTrade,BS,396,Trend-Rule,2,10,gate,BASE-Bull-Trend
+396-BS-LRR-CloseToTrade,BS,396,BRR% LRR,3,10,gate,BASE-RR-Position
+396-BS-LRR-CloseToTrade,BS,396,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+396-BS-LRR-CloseToTrade,BS,396,Trade Close to BRR,1,10,gate,
+396-BS-LRR-CloseToTrade,BS,396,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+395-BS-TN-TD-LRR,BS,395,Trade-Rule,0,10,gate,BASE-Bull-Trend
+395-BS-TN-TD-LRR,BS,395,Trend-Rule,2,10,gate,BASE-Bull-Trend
+395-BS-TN-TD-LRR,BS,395,BRR% LRR,3,10,gate,BASE-RR-Position
+395-BS-TN-TD-LRR,BS,395,RSI Rule,2,10,gate,
+395-BS-TN-TD-LRR,BS,395,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+395-BS-TN-TD-LRR,BS,395,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+394-BS-TN-LRR,BS,394,Trade-Rule,-1,10,gate,BASE-Bull-Trend
+394-BS-TN-LRR,BS,394,!Trade Rule,1,10,gate,
+394-BS-TN-LRR,BS,394,Trend-Rule,2,10,gate,BASE-Bull-Trend
+394-BS-TN-LRR,BS,394,BRR% LRR,3,10,gate,BASE-RR-Position
+394-BS-TN-LRR,BS,394,RSI Rule,2,10,gate,
+394-BS-TN-LRR,BS,394,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+394-BS-TN-LRR,BS,394,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+299-BS-BB-Streak-HiHi-TN-TD,BS,299,MACDH Direction,1,10,gate,BASE-Bull-Trend
+299-BS-BB-Streak-HiHi-TN-TD,BS,299,Trade-Rule,0,10,gate,BASE-Bull-Trend
+299-BS-BB-Streak-HiHi-TN-TD,BS,299,Trend-Rule,3,10,gate,BASE-Bull-Trend
+299-BS-BB-Streak-HiHi-TN-TD,BS,299,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+299-BS-BB-Streak-HiHi-TN-TD,BS,299,IVRule,0,1,evidence,BASE-Vol-Regime
+299-BS-BB-Streak-HiHi-TN-TD,BS,299,RSI Puts,-2,10,gate,BASE-Bear-Context
+299-BS-BB-Streak-HiHi-TN-TD,BS,299,3m-Low-Rule,3,1,evidence,
+299-BS-BB-Streak-HiHi-TN-TD,BS,299,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+299-BS-BB-Streak-HiHi-TN-TD,BS,299,BBStreak Rule,3,10,gate,
+299-BS-BB-Streak-HiHi-TN-TD,BS,299,BBStreak Days Rule,3,10,gate,
+299-BS-BB-Streak-HiHi-TN-TD,BS,299,MACDH_BRR Puts,-2,1,evidence,BASE-Bear-Context
+299-BS-BB-Streak-HiHi-TN-TD,BS,299,!Overbought,0,1,evidence,
+299-BS-BB-Streak-HiHi-TN-TD,BS,299,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+298-BS-BB-HL-HiHi-TN-TD,BS,298,MACDH Direction,1,10,gate,BASE-Bull-Trend
+298-BS-BB-HL-HiHi-TN-TD,BS,298,Trade-Rule,0,10,gate,BASE-Bull-Trend
+298-BS-BB-HL-HiHi-TN-TD,BS,298,Trend-Rule,3,10,gate,BASE-Bull-Trend
+298-BS-BB-HL-HiHi-TN-TD,BS,298,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+298-BS-BB-HL-HiHi-TN-TD,BS,298,IVRule,0,1,evidence,BASE-Vol-Regime
+298-BS-BB-HL-HiHi-TN-TD,BS,298,RSI Puts,-2,10,gate,BASE-Bear-Context
+298-BS-BB-HL-HiHi-TN-TD,BS,298,3m-Low-Rule,3,10,gate,
+298-BS-BB-HL-HiHi-TN-TD,BS,298,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+298-BS-BB-HL-HiHi-TN-TD,BS,298,BBHighLow_SD Rule,3,10,gate,
+298-BS-BB-HL-HiHi-TN-TD,BS,298,BBHighLow Days Rule,3,10,gate,
+298-BS-BB-HL-HiHi-TN-TD,BS,298,BBStreak Rule1,-2,10,gate,
+298-BS-BB-HL-HiHi-TN-TD,BS,298,MACDH_BRR Puts,-2,1,evidence,BASE-Bear-Context
+298-BS-BB-HL-HiHi-TN-TD,BS,298,!Overbought,0,10,gate,
+298-BS-BB-HL-HiHi-TN-TD,BS,298,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+279-BS-BB-Streak-HiHi,BS,279,MACDH Direction,1,10,gate,BASE-Bull-Trend
+279-BS-BB-Streak-HiHi,BS,279,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+279-BS-BB-Streak-HiHi,BS,279,IVRule,0,1,evidence,BASE-Vol-Regime
+279-BS-BB-Streak-HiHi,BS,279,RSI Puts,-2,10,gate,BASE-Bear-Context
+279-BS-BB-Streak-HiHi,BS,279,3m-Low-Rule,3,1,evidence,
+279-BS-BB-Streak-HiHi,BS,279,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+279-BS-BB-Streak-HiHi,BS,279,BBStreak Rule,3,10,gate,
+279-BS-BB-Streak-HiHi,BS,279,BBStreak Days Rule,3,10,gate,
+279-BS-BB-Streak-HiHi,BS,279,MACDH_BRR Puts,-2,1,evidence,BASE-Bear-Context
+279-BS-BB-Streak-HiHi,BS,279,!Overbought,0,1,evidence,
+279-BS-BB-Streak-HiHi,BS,279,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+278-BS-BB-HL-HiHi,BS,278,MACDH Direction,1,10,gate,BASE-Bull-Trend
+278-BS-BB-HL-HiHi,BS,278,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+278-BS-BB-HL-HiHi,BS,278,IVRule,0,1,evidence,BASE-Vol-Regime
+278-BS-BB-HL-HiHi,BS,278,RSI Puts,-2,10,gate,BASE-Bear-Context
+278-BS-BB-HL-HiHi,BS,278,3m-Low-Rule,3,10,gate,
+278-BS-BB-HL-HiHi,BS,278,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+278-BS-BB-HL-HiHi,BS,278,BBHighLow_SD Rule,3,10,gate,
+278-BS-BB-HL-HiHi,BS,278,BBHighLow Days Rule,3,10,gate,
+278-BS-BB-HL-HiHi,BS,278,BBStreak Rule1,-2,10,gate,
+278-BS-BB-HL-HiHi,BS,278,MACDH_BRR Puts,-2,1,evidence,BASE-Bear-Context
+278-BS-BB-HL-HiHi,BS,278,!Overbought,0,10,gate,
+278-BS-BB-HL-HiHi,BS,278,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+277-BS-VS-LT,BS,277,MACDH Direction,1,10,gate,BASE-Bull-Trend
+277-BS-VS-LT,BS,277,Trend-Rule,2,10,gate,BASE-Bull-Trend
+277-BS-VS-LT,BS,277,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+277-BS-VS-LT,BS,277,IVRule,0,10,gate,BASE-Vol-Regime
+277-BS-VS-LT,BS,277,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+277-BS-VS-LT,BS,277,VS LT Outlook Rule,3,10,gate,BASE-Bull-Context;BASE-Bear-Context
+269-BS-Bull,BS,269,MACDH Direction,1,10,gate,BASE-Bull-Trend
+269-BS-Bull,BS,269,BB Direction,1,10,gate,
+269-BS-Bull,BS,269,Trade-Rule,2,10,gate,BASE-Bull-Trend
+269-BS-Bull,BS,269,Trend-Rule,3,10,gate,BASE-Bull-Trend
+269-BS-Bull,BS,269,BRR% TRR,2,10,gate,
+269-BS-Bull,BS,269,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+269-BS-Bull,BS,269,IVRule,0,10,gate,BASE-Vol-Regime
+269-BS-Bull,BS,269,RSI Puts,-2,10,gate,BASE-Bear-Context
+269-BS-Bull,BS,269,3m-Low-Rule,3,10,gate,
+269-BS-Bull,BS,269,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+269-BS-Bull,BS,269,Perf SD Rule,2,10,gate,
+269-BS-Bull,BS,269,MACDH_BRR Puts,-2,10,gate,BASE-Bear-Context
+269-BS-Bull,BS,269,!Overbought,0,10,gate,
+269-BS-Bull,BS,269,Bull Rule,3,10,gate,
+269-BS-Bull,BS,269,50-DMA-Rule,1,10,gate,
+269-BS-Bull,BS,269,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+268-BS-3M-HiHi,BS,268,MACDH Direction,1,10,gate,BASE-Bull-Trend
+268-BS-3M-HiHi,BS,268,Trade-Rule,2,10,gate,BASE-Bull-Trend
+268-BS-3M-HiHi,BS,268,Trend-Rule,1,10,gate,BASE-Bull-Trend
+268-BS-3M-HiHi,BS,268,BRR% TRR,2,10,gate,
+268-BS-3M-HiHi,BS,268,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+268-BS-3M-HiHi,BS,268,IVRule,0,1,evidence,BASE-Vol-Regime
+268-BS-3M-HiHi,BS,268,RSI Puts,-2,10,gate,BASE-Bear-Context
+268-BS-3M-HiHi,BS,268,3m-Low-Rule,3,10,gate,
+268-BS-3M-HiHi,BS,268,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+268-BS-3M-HiHi,BS,268,Perf SD Rule,3,10,gate,
+268-BS-3M-HiHi,BS,268,BBStreak Rule1,-2,10,gate,
+268-BS-3M-HiHi,BS,268,MACDH_BRR Puts,-2,1,evidence,BASE-Bear-Context
+268-BS-3M-HiHi,BS,268,!Overbought,0,10,gate,
+268-BS-3M-HiHi,BS,268,50-DMA-Rule,1,10,gate,
+268-BS-3M-HiHi,BS,268,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+267-BS-Trade-CO,BS,267,Trade Cross Over,1,10,gate,
+267-BS-Trade-CO,BS,267,!Trade Rule,-1,10,gate,
+267-BS-Trade-CO,BS,267,BRR% Rule,3,10,gate,BASE-RR-Position
+267-BS-Trade-CO,BS,267,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+267-BS-Trade-CO,BS,267,IVRule,0,10,gate,BASE-Vol-Regime
+267-BS-Trade-CO,BS,267,RSI Puts,-2,10,gate,BASE-Bear-Context
+267-BS-Trade-CO,BS,267,Perf1D SD Rule,1,10,gate,BASE-Bull-Context
+267-BS-Trade-CO,BS,267,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+267-BS-Trade-CO,BS,267,MACDH_BRR Puts,-2,1,evidence,BASE-Bear-Context
+267-BS-Trade-CO,BS,267,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+199-BS-TN-LRR-MACD-UP-DAY,BS,199,!Trade Rule,0,10,gate,
+199-BS-TN-LRR-MACD-UP-DAY,BS,199,Trend-Rule,2,10,gate,BASE-Bull-Trend
+199-BS-TN-LRR-MACD-UP-DAY,BS,199,BRR% Puts,-1,10,gate,
+199-BS-TN-LRR-MACD-UP-DAY,BS,199,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+199-BS-TN-LRR-MACD-UP-DAY,BS,199,IVRule,0,1,evidence,BASE-Vol-Regime
+199-BS-TN-LRR-MACD-UP-DAY,BS,199,RSI Rule,2,1,evidence,
+199-BS-TN-LRR-MACD-UP-DAY,BS,199,Perf3D SD Rule,2,10,gate,
+199-BS-TN-LRR-MACD-UP-DAY,BS,199,Perf1D SD Rule,0,10,gate,BASE-Bull-Context
+199-BS-TN-LRR-MACD-UP-DAY,BS,199,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+199-BS-TN-LRR-MACD-UP-DAY,BS,199,MACDH_BRR Puts,-2,1,evidence,BASE-Bear-Context
+199-BS-TN-LRR-MACD-UP-DAY,BS,199,MACDH Days,2,10,gate,
+199-BS-TN-LRR-MACD-UP-DAY,BS,199,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+198-BS-TN-LRR-UP-MACD,BS,198,!Trade Rule,0,10,gate,
+198-BS-TN-LRR-UP-MACD,BS,198,Trend-Rule,2,10,gate,BASE-Bull-Trend
+198-BS-TN-LRR-UP-MACD,BS,198,BRR% Puts,-1,10,gate,
+198-BS-TN-LRR-UP-MACD,BS,198,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+198-BS-TN-LRR-UP-MACD,BS,198,IVRule,0,1,evidence,BASE-Vol-Regime
+198-BS-TN-LRR-UP-MACD,BS,198,RSI Rule,2,1,evidence,
+198-BS-TN-LRR-UP-MACD,BS,198,Perf1D SD Rule,0,10,gate,BASE-Bull-Context
+198-BS-TN-LRR-UP-MACD,BS,198,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+198-BS-TN-LRR-UP-MACD,BS,198,MACDH_BRR Puts,-2,1,evidence,BASE-Bear-Context
+198-BS-TN-LRR-UP-MACD,BS,198,MACDH Days,2,10,gate,
+198-BS-TN-LRR-UP-MACD,BS,198,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+197-BS-TN-LRR-UP-DAY,BS,197,!Trade Rule,0,10,gate,
+197-BS-TN-LRR-UP-DAY,BS,197,Trend-Rule,2,10,gate,BASE-Bull-Trend
+197-BS-TN-LRR-UP-DAY,BS,197,BRR% Puts,-1,10,gate,
+197-BS-TN-LRR-UP-DAY,BS,197,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+197-BS-TN-LRR-UP-DAY,BS,197,IVRule,0,1,evidence,BASE-Vol-Regime
+197-BS-TN-LRR-UP-DAY,BS,197,RSI Rule,2,1,evidence,
+197-BS-TN-LRR-UP-DAY,BS,197,Perf3D SD Rule,2,10,gate,
+197-BS-TN-LRR-UP-DAY,BS,197,Perf1D SD Rule,0,10,gate,BASE-Bull-Context
+197-BS-TN-LRR-UP-DAY,BS,197,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+197-BS-TN-LRR-UP-DAY,BS,197,BBHighLow_SD Rule,2,10,gate,
+197-BS-TN-LRR-UP-DAY,BS,197,BBHighLow Days Rule,2,10,gate,
+197-BS-TN-LRR-UP-DAY,BS,197,MACDH_BRR Puts,-2,1,evidence,BASE-Bear-Context
+197-BS-TN-LRR-UP-DAY,BS,197,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+196-BS-TN-LRR,BS,196,!Trade Rule,0,10,gate,
+196-BS-TN-LRR,BS,196,Trend-Rule,2,10,gate,BASE-Bull-Trend
+196-BS-TN-LRR,BS,196,BRR% LRR2,3,10,gate,
+196-BS-TN-LRR,BS,196,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+196-BS-TN-LRR,BS,196,IVRule,0,1,evidence,BASE-Vol-Regime
+196-BS-TN-LRR,BS,196,RSI Rule,2,1,evidence,
+196-BS-TN-LRR,BS,196,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+196-BS-TN-LRR,BS,196,MACDH_BRR Puts,-2,1,evidence,BASE-Bear-Context
+196-BS-TN-LRR,BS,196,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+189-BR-BB-LoHi,BR,189,MACDH Direction,1,10,gate,BASE-Bull-Trend
+189-BR-BB-LoHi,BR,189,BB Direction,1,10,gate,
+189-BR-BB-LoHi,BR,189,BRR% Rule,3,10,gate,BASE-RR-Position
+189-BR-BB-LoHi,BR,189,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+189-BR-BB-LoHi,BR,189,IVRule,0,1,evidence,BASE-Vol-Regime
+189-BR-BB-LoHi,BR,189,RSI Puts,-2,1,evidence,BASE-Bear-Context
+189-BR-BB-LoHi,BR,189,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+189-BR-BB-LoHi,BR,189,BBHighLow_SD Rule,2,10,gate,
+189-BR-BB-LoHi,BR,189,BBHighLow Days Rule,2,10,gate,
+189-BR-BB-LoHi,BR,189,BBStreak Rule2,3,10,gate,
+189-BR-BB-LoHi,BR,189,BBStreak Days Rule,2,10,gate,
+189-BR-BB-LoHi,BR,189,MACDH_BRR Puts,-2,1,evidence,BASE-Bear-Context
+189-BR-BB-LoHi,BR,189,MACDH Days,3,10,gate,
+189-BR-BB-LoHi,BR,189,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+188-BR-TNabvTD-UP-MACD-DAY,BR,188,!Trade Trend Relation,0,10,gate,
+188-BR-TNabvTD-UP-MACD-DAY,BR,188,BRR% Rule,3,10,gate,BASE-RR-Position
+188-BR-TNabvTD-UP-MACD-DAY,BR,188,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+188-BR-TNabvTD-UP-MACD-DAY,BR,188,IVRule,0,1,evidence,BASE-Vol-Regime
+188-BR-TNabvTD-UP-MACD-DAY,BR,188,RSI Puts,-2,10,gate,BASE-Bear-Context
+188-BR-TNabvTD-UP-MACD-DAY,BR,188,Perf3D SD Rule,2,10,gate,
+188-BR-TNabvTD-UP-MACD-DAY,BR,188,Perf1D SD Rule,1,1,evidence,BASE-Bull-Context
+188-BR-TNabvTD-UP-MACD-DAY,BR,188,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+188-BR-TNabvTD-UP-MACD-DAY,BR,188,MACD_BRR Puts,-2,10,gate,
+188-BR-TNabvTD-UP-MACD-DAY,BR,188,MACDH_BRR Puts,-2,10,gate,BASE-Bear-Context
+188-BR-TNabvTD-UP-MACD-DAY,BR,188,MACDH Days,3,10,gate,
+188-BR-TNabvTD-UP-MACD-DAY,BR,188,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+187-BR-NoTN-NoTD-UP-MACD-DAY,BR,187,!Trade Rule,-1,10,gate,
+187-BR-NoTN-NoTD-UP-MACD-DAY,BR,187,!Trend Rule,0,10,gate,
+187-BR-NoTN-NoTD-UP-MACD-DAY,BR,187,BRR% Rule,3,10,gate,BASE-RR-Position
+187-BR-NoTN-NoTD-UP-MACD-DAY,BR,187,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+187-BR-NoTN-NoTD-UP-MACD-DAY,BR,187,IVRule,0,1,evidence,BASE-Vol-Regime
+187-BR-NoTN-NoTD-UP-MACD-DAY,BR,187,RSI Puts,-2,1,evidence,BASE-Bear-Context
+187-BR-NoTN-NoTD-UP-MACD-DAY,BR,187,Perf2wk SD Rule,3,10,gate,
+187-BR-NoTN-NoTD-UP-MACD-DAY,BR,187,Perf3D SD Rule,2,10,gate,
+187-BR-NoTN-NoTD-UP-MACD-DAY,BR,187,Perf1D SD Rule,1,10,gate,BASE-Bull-Context
+187-BR-NoTN-NoTD-UP-MACD-DAY,BR,187,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+187-BR-NoTN-NoTD-UP-MACD-DAY,BR,187,MACDH_BRR Puts,-2,1,evidence,BASE-Bear-Context
+187-BR-NoTN-NoTD-UP-MACD-DAY,BR,187,MACDH Days,3,10,gate,
+187-BR-NoTN-NoTD-UP-MACD-DAY,BR,187,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+186-BR-Trend-CO,BR,186,Trend Cross Over,1,10,gate,
+186-BR-Trend-CO,BR,186,BRR% Rule,3,1,evidence,BASE-RR-Position
+186-BR-Trend-CO,BR,186,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+186-BR-Trend-CO,BR,186,IVRule,0,10,gate,BASE-Vol-Regime
+186-BR-Trend-CO,BR,186,RSI Puts,-2,10,gate,BASE-Bear-Context
+186-BR-Trend-CO,BR,186,Perf2wk SD Rule,3,10,gate,
+186-BR-Trend-CO,BR,186,Perf3D SD Rule,2,10,gate,
+186-BR-Trend-CO,BR,186,Perf1D SD Rule,1,10,gate,BASE-Bull-Context
+186-BR-Trend-CO,BR,186,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+186-BR-Trend-CO,BR,186,MACDH_BRR Puts,-2,10,gate,BASE-Bear-Context
+186-BR-Trend-CO,BR,186,MACDH Days,2,10,gate,
+186-BR-Trend-CO,BR,186,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+99-BS-Min,BS,99,MACDH Direction,1,10,gate,BASE-Bull-Trend
+99-BS-Min,BS,99,BB Direction,1,10,gate,
+99-BS-Min,BS,99,BRR% Rule,3,10,gate,BASE-RR-Position
+99-BS-Min,BS,99,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+99-BS-Min,BS,99,IVRule,0,1,evidence,BASE-Vol-Regime
+99-BS-Min,BS,99,RSI Rule,2,10,gate,
+99-BS-Min,BS,99,Perf3D SD Rule,1,10,gate,
+99-BS-Min,BS,99,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+99-BS-Min,BS,99,MACD_BRR Puts,-2,10,gate,
+99-BS-Min,BS,99,MACDH_BRR Puts,-2,10,gate,BASE-Bear-Context
+99-BS-Min,BS,99,50-DMA-Rule,1,1,evidence,
+99-BS-Min,BS,99,50-DMA-Crossover,0,1,evidence,
+99-BS-Min,BS,99,200-DMA-Rule,1,1,evidence,
+99-BS-Min,BS,99,200-DMA-Crossover,0,1,evidence,
+99-BS-Min,BS,99,52-Wk Low Rule,3,10,gate,
+99-BS-Min,BS,99,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+98-BW-TD-LRR-RSI,BW,98,Trade-Rule,0,10,gate,BASE-Bull-Trend
+98-BW-TD-LRR-RSI,BW,98,Trend-Rule,2,10,gate,BASE-Bull-Trend
+98-BW-TD-LRR-RSI,BW,98,BRR% LRR,3,10,gate,BASE-RR-Position
+98-BW-TD-LRR-RSI,BW,98,LRR above Trade,1,10,gate,BASE-RR-Position
+98-BW-TD-LRR-RSI,BW,98,IVPercentile Puts,-1,10,gate,
+98-BW-TD-LRR-RSI,BW,98,HVPercentile Puts,-1,10,gate,
+98-BW-TD-LRR-RSI,BW,98,RSI Puts,-1,10,gate,BASE-Bear-Context
+98-BW-TD-LRR-RSI,BW,98,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+97-BW-TD-RSI-IV,BW,97,Trade-Rule,0,10,gate,BASE-Bull-Trend
+97-BW-TD-RSI-IV,BW,97,Trend-Rule,2,10,gate,BASE-Bull-Trend
+97-BW-TD-RSI-IV,BW,97,LRR above Trade,1,10,gate,BASE-RR-Position
+97-BW-TD-RSI-IV,BW,97,IVPercentile Puts,-1,10,gate,
+97-BW-TD-RSI-IV,BW,97,HVPercentile Puts,-1,10,gate,
+97-BW-TD-RSI-IV,BW,97,IVHV Rule (modified),3,10,gate,BASE-Vol-Regime
+97-BW-TD-RSI-IV,BW,97,RSI Puts,-1,10,gate,BASE-Bear-Context
+97-BW-TD-RSI-IV,BW,97,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+96-BW-RSI-IVHV-Min,BW,96,Trade-Rule,-1,10,gate,BASE-Bull-Trend
+96-BW-RSI-IVHV-Min,BW,96,Trend-Rule,2,10,gate,BASE-Bull-Trend
+96-BW-RSI-IVHV-Min,BW,96,IVPercentile,3,10,gate,BASE-Vol-Regime
+96-BW-RSI-IVHV-Min,BW,96,HVPercentile,3,10,gate,BASE-Vol-Regime
+96-BW-RSI-IVHV-Min,BW,96,IVHV Rule (modified),3,10,gate,BASE-Vol-Regime
+96-BW-RSI-IVHV-Min,BW,96,RSI Puts,-1,10,gate,BASE-Bear-Context
+96-BW-RSI-IVHV-Min,BW,96,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+96-BW-RSI-IVHV-Min,BW,96,MACDH_BRR Puts,-1,10,gate,BASE-Bear-Context
+96-BW-RSI-IVHV-Min,BW,96,MACDH Days,2,10,gate,
+96-BW-RSI-IVHV-Min,BW,96,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+95-BW-LowBelwLRR,BW,95,BB Direction,0,10,gate,
+95-BW-LowBelwLRR,BW,95,Trade-Rule,-1,10,gate,BASE-Bull-Trend
+95-BW-LowBelwLRR,BW,95,Trend-Rule,2,10,gate,BASE-Bull-Trend
+95-BW-LowBelwLRR,BW,95,Low below LRR,3,10,gate,BASE-RR-Position
+95-BW-LowBelwLRR,BW,95,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+94-BW-UP-MACD,BW,94,Trade-Rule,-1,10,gate,BASE-Bull-Trend
+94-BW-UP-MACD,BW,94,Trend-Rule,2,10,gate,BASE-Bull-Trend
+94-BW-UP-MACD,BW,94,BRR% Rule,3,10,gate,BASE-RR-Position
+94-BW-UP-MACD,BW,94,IVPercentile,2,1,evidence,BASE-Vol-Regime
+94-BW-UP-MACD,BW,94,HVPercentile,2,1,evidence,BASE-Vol-Regime
+94-BW-UP-MACD,BW,94,IVHV Rule (modified),3,1,evidence,BASE-Vol-Regime
+94-BW-UP-MACD,BW,94,RSI Rule,2,1,evidence,
+94-BW-UP-MACD,BW,94,Perf1D SD Rule,0,10,gate,BASE-Bull-Context
+94-BW-UP-MACD,BW,94,Perf3D 1Off Rule,3,10,gate,BASE-Bull-Context
+94-BW-UP-MACD,BW,94,MACDH_BRR Puts,-2,1,evidence,BASE-Bear-Context
+94-BW-UP-MACD,BW,94,MACDH Days,2,10,gate,
+94-BW-UP-MACD,BW,94,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+93-BW-LRRabvTD,BW,93,MACDH Direction,1,10,gate,BASE-Bull-Trend
+93-BW-LRRabvTD,BW,93,Trade-Rule,0,10,gate,BASE-Bull-Trend
+93-BW-LRRabvTD,BW,93,Trend-Rule,2,10,gate,BASE-Bull-Trend
+93-BW-LRRabvTD,BW,93,LRR above Trade,1,10,gate,BASE-RR-Position
+93-BW-LRRabvTD,BW,93,VS LT Outlook Rule,0,10,gate,BASE-Bull-Context;BASE-Bear-Context
+92-BS-RSI-MACD-Vlme-IVHV-IVBRR,BS,92,RSI Rule,2,10,gate,
+52-BS-BRR,BS,52,BRR% R2,3,10,gate,
+51-BS-TRADE-TREND,BS,51,Trade-Rule,0,10,gate,BASE-Bull-Trend
+51-BS-TRADE-TREND,BS,51,Trend-Rule,1,10,gate,BASE-Bull-Trend
+Rating,,Rating,=L1,<openpyxl.worksheet.formula.ArrayFormula object at 0x7b8535c5abc0>,,review,
+Rating,,Rating,MACDH Direction,1,,review,BASE-Bull-Trend
+Rating,,Rating,MACD Direction,1,,review,BASE-Bull-Trend
+Rating,,Rating,BB Direction,1,,review,
+Rating,,Rating,BBThresh Crossover,1,,review,
+Rating,,Rating,Trade-Rule,1,,review,BASE-Bull-Trend
+Rating,,Rating,Trend-Rule,1,,review,BASE-Bull-Trend
+Rating,,Rating,BRR% Rule,1,,review,BASE-RR-Position
+Rating,,Rating,IVPercentile,1,,review,BASE-Vol-Regime
+Rating,,Rating,HVPercentile,1,,review,BASE-Vol-Regime
+Rating,,Rating,IVHV Rule (modified),1,,review,BASE-Vol-Regime
+Rating,,Rating,IVHV Puts (modified),1,,review,
+Rating,,Rating,RSI Rule,1,,review,
+Rating,,Rating,3m-Low-Rule,1,,review,
+Rating,,Rating,Perf3mn SD Rule,1,,review,
+Rating,,Rating,Perf2M SD Rule,1,,review,
+Rating,,Rating,Perf3wk SD Rule,1,,review,
+Rating,,Rating,Perf2wk SD Rule,1,,review,
+Rating,,Rating,Perf3D SD Rule,1,,review,
+Rating,,Rating,Perf1D SD Rule,1,,review,BASE-Bull-Context
+Rating,,Rating,!Perf1D SD Rule,1,,review,
+Rating,,Rating,Perf3D 1Off Rule,1,,review,BASE-Bull-Context
+Rating,,Rating,BBHighLow_SD Rule,1,,review,
+Rating,,Rating,BBStreak Rule,1,,review,
+Rating,,Rating,BBStreak Rule1,1,,review,
+Rating,,Rating,50-DMA-Rule,1,,review,
+Rating,,Rating,200-DMA-Rule,1,,review,
+Rating,,Rating,52-Wk Low Rule,1,,review,
+Rating,,Rating,VS LT Outlook Rule,1,,review,BASE-Bull-Context;BASE-Bear-Context
