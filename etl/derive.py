@@ -2065,11 +2065,16 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
             # drv_cat_atomic_input stores pre-evaluated weights (trig_ifs already
             # called eval_atomic_rule during derive_cat_atomic_input). All active
             # atomic rules now source from there — pass through directly.
+            # Store None when the source column is NULL so composite condition checks
+            # can distinguish "no data" from "value is zero". A NULL value must never
+            # satisfy any condition (0.0 <= threshold would silently pass for SELL rules).
             try:
                 weight = float(value) if value is not None else 0.0
+                stored = float(value) if value is not None else None
             except (TypeError, ValueError):
                 weight = 0.0
-            atomic_scores[rule["atomic_rule_id"]] = weight
+                stored = None
+            atomic_scores[rule["atomic_rule_id"]] = stored  # None preserved
 
             if weight != 0:
                 # Preserve original value type. TEXT-direction columns ('+', '-',
@@ -2129,9 +2134,12 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
                     atom_id   = member["atom_id"]
                     threshold = member.get("threshold")   # condition threshold
                     ovr       = member.get("override")    # assigned weight
-                    # Read the pre-computed value from drv_cat_atomic_input
-                    val = atomic_scores.get(atom_id, 0.0)
-                    if threshold is None:
+                    # Read the pre-computed value from drv_cat_atomic_input.
+                    # None means the source column was NULL — treat as not met.
+                    val = atomic_scores.get(atom_id)
+                    if val is None:
+                        condition_met = False
+                    elif threshold is None:
                         # No threshold set — any non-zero value meets condition
                         condition_met = (val != 0)
                     else:

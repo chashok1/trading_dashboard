@@ -503,15 +503,15 @@ COLUMN_SPECS_PASS1 = [
     # JU !TrTn Relation -> negate(JT)
     ("trade_trend_sd_rule", "trig_ifs", "AI", "trade_trend_sd_rule", None),    # JV
     ("brrpct_rule",         "trig_ifs", "EE", "brrpct_rule",      {"simple": True}),  # JW
-    ("brrpct_lrr",          "trig_ifs", "EE", "BRR% LRR",       {"simple": True}),  # JX
-    ("brrpct_r2",           "trig_ifs", "EE", "BRR% R2",        {"simple": True}),  # JY
-    ("brrpct_lrr2",         "trig_ifs", "EE", "BRR% LRR2",      {"simple": True}),  # JZ
-    ("brrpct_trr",          "trig_ifs", "EE", "BRR% TRR",       {"simple": True}),  # KA
+    ("brrpct_lrr",          "trig_ifs", "EE", "brrpct_lrr",    {"simple": True}),  # JX
+    ("brrpct_r2",           "trig_ifs", "EE", "brrpct_r2",     {"simple": True}),  # JY
+    ("brrpct_lrr2",         "trig_ifs", "EE", "brrpct_lrr2",   {"simple": True}),  # JZ
+    ("brrpct_trr",          "trig_ifs", "EE", "brrpct_trr",    {"simple": True}),  # KA
     ("brrpct_puts",         "trig_ifs", "EE", "brrpct_puts",      {"simple": True}),  # KB
     ("brrpct_trr_puts",     "trig_ifs", "EE", "brrpct_trr_puts",  {"simple": True}),  # KC
     # KD BRR% Dir -> composite (Pass-2; reads JI/JG/LG/JW/KB)
-    ("high_trr",            "trig_ifs", "EO", "High above TRR", {"simple": True}),  # KE (zone lo=0: use 3-clause)
-    ("low_lrr",             "trig_ifs", "EP", "Low below LRR",  {"simple": True}),  # KF (zone lo=0: use 3-clause)
+    ("high_trr",            "trig_ifs", "EO", "high_trr",        {"simple": True}),  # KE (zone lo=0: use 3-clause)
+    ("low_lrr",             "trig_ifs", "EP", "low_lrr",         {"simple": True}),  # KF (zone lo=0: use 3-clause)
     ("trend_below_trr",     "composite", None, None,
         (lambda r,o: -1.0 if (r.get("EQ") or 0) < 0 else 0.0)),                 # KG
     ("lrr_above_trade",     "composite", None, None,
@@ -528,21 +528,21 @@ COLUMN_SPECS_PASS1 = [
         "ivabsolute", ("imp_volatility",)),                                     # KM
     # KN/KO IV percentile (zero-guarded by DT, CX)
     ("ivpercentile",        "zero_guard_trig_ifs", "a_iv_percentile",
-        "IVPercentile", ("imp_volatility", "a_iv_percentile")),                 # KN
+        "ivpercentile", ("imp_volatility", "a_iv_percentile")),                 # KN
     # "Puts" variants use STRICT > in Excel — note strict=True.
     ("ivpercentile_puts",   "zero_guard_trig_ifs", "a_iv_percentile",
-        "IVPercentile Puts",
+        "ivpercentile_puts",
         {"guards": ("imp_volatility", "a_iv_percentile"), "strict": True}),    # KO
     ("hvpercentile",        "zero_guard_trig_ifs", "a_hv_percentile",
-        "HVPercentile", ("imp_volatility",)),                                   # KP
+        "hvpercentile", ("imp_volatility",)),                                   # KP
     ("hvpercentile_puts",   "zero_guard_trig_ifs", "a_hv_percentile",
-        "HVPercentile Puts",
+        "hvpercentile_puts",
         {"guards": ("imp_volatility",), "strict": True}),                       # KQ
     ("ivhv",                "zero_guard_trig_ifs", "FR",
-        "IVHV Rule (modified)", ("imp_volatility",)),                           # KR
+        "ivrule", ("imp_volatility",)),                                          # KR
     # KS: Excel uses >= (not strict >). FR=100 exactly at lo=100 → wbt, not wb.
     ("ivhv_puts",           "zero_guard_trig_ifs", "FR",
-        "IVHV Puts (modified)",
+        "ivhv_puts",
         {"guards": ("imp_volatility",)}),                                        # KS
     # KT IVRule -> composite (Pass-2; reads KN, KP, KR)
     ("rsi_rule",            "trig_ifs", "rsi",        "rsi_rule", None),       # KU
@@ -688,7 +688,7 @@ COLUMN_SPECS_PASS1 = [
         {"guards": ("a_volume_spike",), "strict": True}),                       # NI
     # NK/NL/NM -- Current Price/Volume/Volatility SD Rules — strict >.
     ("current_price_sd_rule", "zero_guard_trig_ifs",
-        "_NK_input", "Current Price Rule",
+        "_NK_input", "current_price_sd_rule",
         {"guards": ("AC",), "strict": True}),                                   # NK
     # NL Current Volume Rule — Excel: IFS(GB=0,0,...). Guard on GB.
     ("current_volume_rule", "zero_guard_trig_ifs", "GB", "current_volume_rule",
@@ -972,8 +972,16 @@ def load_trig_rules(session: Session) -> dict:
     """)).mappings().all()
     out = {}
     for r in rows:
-        if r["rule_name"]:
-            out[r["rule_name"]] = dict(r)
+        name = r["rule_name"]
+        if not name:
+            continue
+        # If a rule name appears twice (e.g. one with thresholds, one without),
+        # keep the entry that has actual threshold data. Null-threshold entries are
+        # placeholder rows used only for composite-member column resolution.
+        existing = out.get(name)
+        has_thresholds = r["brkeout_from"] is not None or r["wt_below"] is not None
+        if existing is None or has_thresholds:
+            out[name] = dict(r)
     # Overlay the active parameter set (Phase 3). No-op when no set is active,
     # so the engine keeps using the base ref_trig_atomic_rule values.
     try:
