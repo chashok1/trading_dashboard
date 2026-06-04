@@ -91,22 +91,28 @@ def rename_symbol(body: dict):
 
 
 @router.get("/api/admin/missing-symbols", response_model=list)
-def get_missing_symbols():
-    """Symbols in drv_cat_atomic_input (latest date) missing from hist_tw or hist_td."""
+def get_missing_symbols(exclude_non_equity: bool = True):
+    """Symbols in drv_cat_atomic_input (latest date) missing from hist_tw or hist_td.
+    By default excludes indices (^), futures (=F) and forex (=X).
+    """
+    exclusion = ""
+    if exclude_non_equity:
+        exclusion = """
+              AND d.tos_symbol NOT LIKE '^%'
+              AND d.tos_symbol NOT LIKE '%=F'
+              AND d.tos_symbol NOT LIKE '%=X'
+        """
     with session_scope() as s:
-        rows = s.execute(text("""
+        rows = s.execute(text(f"""
             SELECT d.tos_symbol,
                    CASE WHEN tw.tos_symbol IS NULL THEN true ELSE false END AS missing_tw,
                    CASE WHEN td.tos_symbol IS NULL THEN true ELSE false END AS missing_td
             FROM drv_cat_atomic_input d
-            LEFT JOIN (
-                SELECT DISTINCT tos_symbol FROM hist_tw
-            ) tw ON tw.tos_symbol = d.tos_symbol
-            LEFT JOIN (
-                SELECT DISTINCT tos_symbol FROM hist_td
-            ) td ON td.tos_symbol = d.tos_symbol
+            LEFT JOIN (SELECT DISTINCT tos_symbol FROM hist_tw) tw ON tw.tos_symbol = d.tos_symbol
+            LEFT JOIN (SELECT DISTINCT tos_symbol FROM hist_td) td ON td.tos_symbol = d.tos_symbol
             WHERE d.as_of_date = (SELECT MAX(as_of_date) FROM drv_cat_atomic_input)
               AND (tw.tos_symbol IS NULL OR td.tos_symbol IS NULL)
+              {exclusion}
             ORDER BY d.tos_symbol
         """)).mappings().all()
     return [dict(r) for r in rows]
