@@ -340,11 +340,14 @@ async function loadTable(tableName) {
         const offset = state.currentPage * state.pageSize;
         let url = `/api/data/${tableName}?limit=${state.pageSize}&offset=${offset}`;
 
-        // Date range takes priority over single date when set
+        // If a symbol is set with no explicit date range → show all dates for that symbol.
+        // Date range takes priority over single date when both symbol and range are set.
         if (state.filterDateFrom || state.filterDateTo) {
-            url += `&date=all`;  // disable single-date filter
+            url += `&date=all`;
             if (state.filterDateFrom) url += `&date_from=${state.filterDateFrom}`;
             if (state.filterDateTo)   url += `&date_to=${state.filterDateTo}`;
+        } else if (state.filterSymbol && !state.filterDate) {
+            url += `&date=all`;   // symbol only — search across all dates
         } else if (state.filterDate) {
             url += `&date=${state.filterDate}`;
         } else {
