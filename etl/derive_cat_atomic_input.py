@@ -346,11 +346,8 @@ def compute_intermediates(row: dict) -> dict:
     # AO = (D - ABS(AL)) / AC  (BBHighLow_SD)
     AO = None  # set below once AC is known
 
-    # AC = MIN(AA, AB)   per ma_columns_v2.csv
-    if AA is not None and AB is not None:
-        AC = min(AA, AB)
-    else:
-        AC = AA if AA is not None else AB
+    # AC = standard_dev (TOS export); median fallback removed
+    AC = AB if AB is not None else AA
     # AD = AC / D
     AD = _safe_div(AC, D) if D and D != 0 else None
 
@@ -1132,7 +1129,7 @@ def eval_specs(row: dict, specs: list, trig_rules: dict, out: dict) -> dict:
                 val = row.get(src) if src in row else out.get(src)
                 if src == "_NK_input":
                     H = _f(row.get("net_chng"))
-                    AD = _f(row.get("AC"))      # AC = MIN(median_sd, std_dev) — raw SD, not price-normalized
+                    AD = _f(row.get("AC"))      # AC = standard_dev (raw SD, not price-normalized)
                     val = _safe_div(H, AD)
                 out[db_col] = _eval_trig_ifs(val, trig_rules.get(rule_name),
                                               strict=strict)
