@@ -139,6 +139,30 @@ def _step_refresh_refs() -> dict:
     except Exception as e:
         log.warning("  rule_name normalisation failed: %s", e)
 
+    # Backfill condition_operator for composite members where it is NULL.
+    # BUY rule codes → >=, SELL rule codes → <=.
+    # Explicit per-member overrides (already set) are left unchanged.
+    try:
+        with session_scope() as s:
+            nb = s.execute(text(r"""
+                UPDATE ref_trig_composite_mapping
+                SET condition_operator = '>='
+                WHERE condition_operator IS NULL
+                  AND deprecated_at IS NULL
+                  AND composite_rule_code ~ '^\d+-(B|BS|BR|BW|BM|BMN)-'
+            """)).rowcount
+            ns = s.execute(text(r"""
+                UPDATE ref_trig_composite_mapping
+                SET condition_operator = '<='
+                WHERE condition_operator IS NULL
+                  AND deprecated_at IS NULL
+                  AND composite_rule_code ~ '^\d+-(SA|SS|STM|SW|SH)-'
+            """)).rowcount
+            s.commit()
+        log.info("  condition_operator backfilled: %d BUY (>=), %d SELL (<=)", nb, ns)
+    except Exception as e:
+        log.warning("  condition_operator backfill failed: %s", e)
+
     return result
 
 
