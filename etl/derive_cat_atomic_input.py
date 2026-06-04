@@ -57,8 +57,8 @@ syms AS (
       AND EXISTS (
           SELECT 1 FROM hist_tl tl
           WHERE tl.tos_symbol = u.s
-            AND tl.snapshot_date <= (SELECT d FROM p)
-            AND tl.snapshot_date >= (SELECT d FROM p) - INTERVAL '7 days'
+            AND tl.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_tl
+                                     WHERE snapshot_date <= (SELECT d FROM p))
       )
 ),
 td AS (
