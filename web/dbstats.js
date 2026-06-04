@@ -224,5 +224,63 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     DOM.copyMissingBtn.addEventListener('click', copyMissingSymbols);
 
+    // uppercase-on-type for rename inputs
+    ['renameFrom','renameTo'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', () => { el.value = el.value.toUpperCase(); });
+    });
+
     setInterval(checkHealth, 10000);
 });
+
+async function doRename() {
+    const from = (document.getElementById('renameFrom').value || '').trim().toUpperCase();
+    const to   = (document.getElementById('renameTo').value   || '').trim().toUpperCase();
+    const res  = document.getElementById('renameResult');
+    if (!from || !to) { res.innerHTML = '<span style="color:#b91c1c">Enter both symbols.</span>'; return; }
+    if (from === to)  { res.innerHTML = '<span style="color:#b91c1c">From and To are the same.</span>'; return; }
+    if (!confirm(`Rename ${from} → ${to} across ALL tables? This cannot be undone.`)) return;
+    res.innerHTML = '<span style="color:var(--text-3)">Renaming…</span>';
+    try {
+        const data = await fetchJSON('/api/admin/rename-symbol', {
+            method: 'POST',
+            body: JSON.stringify({ from, to }),
+        });
+        const tables = Object.entries(data.by_table || {})
+            .map(([t, n]) => `${t} (${n})`).join(', ') || 'none';
+        res.innerHTML = `<span style="color:#15803d">✓ Renamed ${from} → ${to}. ${data.total_rows} rows updated.<br>
+            <span style="font-size:11px;color:var(--text-3)">${tables}</span></span>`;
+        document.getElementById('renameFrom').value = '';
+        document.getElementById('renameTo').value   = '';
+    } catch(e) {
+        res.innerHTML = `<span style="color:#b91c1c">Error: ${e.message}</span>`;
+    }
+}
+
+async function loadMissingSourceData() {
+    const el = document.getElementById('missingSourceList');
+    el.innerHTML = '<span style="color:var(--text-3)">Loading…</span>';
+    try {
+        const rows = await fetchJSON('/api/admin/missing-symbols');
+        if (!rows.length) {
+            el.innerHTML = '<span style="color:#15803d">All symbols have hist_tw and hist_td data.</span>';
+            return;
+        }
+        const html = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr>
+                <th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)">Symbol</th>
+                <th style="text-align:center;padding:4px 8px;border-bottom:1px solid var(--border)">hist_tw</th>
+                <th style="text-align:center;padding:4px 8px;border-bottom:1px solid var(--border)">hist_td</th>
+            </tr></thead>
+            <tbody>${rows.map(r => `<tr>
+                <td style="padding:3px 8px;font-family:monospace">${r.tos_symbol}</td>
+                <td style="text-align:center;padding:3px 8px;color:${r.missing_tw?'#b91c1c':'#15803d'}">${r.missing_tw?'MISSING':'ok'}</td>
+                <td style="text-align:center;padding:3px 8px;color:${r.missing_td?'#b91c1c':'#15803d'}">${r.missing_td?'MISSING':'ok'}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+        <div style="margin-top:6px;font-size:11px;color:var(--text-3)">${rows.length} symbol(s) with missing source data</div>`;
+        el.innerHTML = html;
+    } catch(e) {
+        el.innerHTML = `<span style="color:#b91c1c">Error: ${e.message}</span>`;
+    }
+}

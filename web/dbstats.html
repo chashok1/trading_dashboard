@@ -192,6 +192,50 @@
         </button>
     </div>
 
+    <!-- Rename Symbol -->
+    <div class="card">
+        <div class="stats-header">
+            <h2>Rename Symbol</h2>
+        </div>
+        <p style="color:var(--text-2);font-size:13px;margin-bottom:16px">
+            Renames a symbol across every hist_* and drv_* table atomically. Use this to correct a mismatched ticker (e.g. VSCO → VSXY).
+        </p>
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+            <div>
+                <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px">From (old symbol)</label>
+                <input id="renameFrom" type="text" placeholder="VSCO"
+                    style="padding:8px 12px;border:1px solid var(--border);border-radius:4px;font-size:14px;width:160px;text-transform:uppercase">
+            </div>
+            <div>
+                <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px">To (new symbol)</label>
+                <input id="renameTo" type="text" placeholder="VSXY"
+                    style="padding:8px 12px;border:1px solid var(--border);border-radius:4px;font-size:14px;width:160px;text-transform:uppercase">
+            </div>
+            <button onclick="doRename()"
+                style="padding:8px 20px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;font-weight:600">
+                Rename
+            </button>
+        </div>
+        <div id="renameResult" style="margin-top:12px;font-size:13px"></div>
+    </div>
+
+    <!-- Missing Symbols (tos_symbol vs hist_tw/td) -->
+    <div class="card">
+        <div class="stats-header">
+            <h2>Missing Source Data</h2>
+            <button onclick="loadMissingSourceData()"
+                style="padding:6px 14px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600">
+                Refresh
+            </button>
+        </div>
+        <p style="color:var(--text-2);font-size:13px;margin-bottom:12px">
+            Symbols in drv_cat_atomic_input (latest date) missing from hist_tw or hist_td by tos_symbol.
+        </p>
+        <div id="missingSourceList" style="font-size:13px">
+            <p style="color:var(--text-3)">Click Refresh to load.</p>
+        </div>
+    </div>
+
     <div class="card">
         <div class="stats-header">
             <h2>Database Table Statistics</h2>

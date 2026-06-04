@@ -27,6 +27,109 @@ from etl.db import session_scope, get_table
 
 router = APIRouter()
 
+# ---------------------------------------------------------------------------
+# Symbol rename — updates symbol/tos_symbol across all tables atomically
+# ---------------------------------------------------------------------------
+
+# Tables with only tos_symbol
+_TOS_ONLY = [
+    "drv_actionable", "drv_cat_atomic_input", "drv_cs_realized_gain",
+    "drv_dash", "drv_dash_summary", "drv_fundamentals",
+    "drv_outlook_action", "drv_outlooks", "drv_portfolio",
+    "drv_quote", "drv_realized_gain", "drv_rr", "drv_rule_outcome",
+    "drv_sss", "drv_stks", "drv_symbols", "drv_td", "drv_technicals",
+    "drv_tn_td_bb_rr", "drv_to", "drv_trig", "drv_tw", "drv_y",
+    "drv_missing_symbols", "meta_warning", "ref_my_stocks", "user_action_log",
+]
+# Tables with both symbol and tos_symbol
+_BOTH = [
+    "hist_call", "hist_cs", "hist_cst", "hist_etf", "hist_etfchg",
+    "hist_f", "hist_ft", "hist_ii", "hist_iichg", "hist_rr",
+    "hist_sss", "hist_td", "hist_tl", "hist_to", "hist_tw",
+    "hist_y",
+]
+# Tables with tos_symbol only (no symbol col)
+_TOS_ONLY_PS = ["hist_ps"]
+
+
+@router.post("/api/admin/rename-symbol", response_model=dict)
+def rename_symbol(body: dict):
+    """Rename a symbol across every table that stores symbol/tos_symbol.
+    Body: {"from": "VSCO", "to": "VSXY"}
+    """
+    old = (body.get("from") or "").strip().upper()
+    new = (body.get("to") or "").strip().upper()
+    if not old or not new:
+        raise HTTPException(status_code=400, detail="from and to are required")
+    if old == new:
+        raise HTTPException(status_code=400, detail="from and to are the same")
+
+    counts: dict = {}
+    with session_scope() as s:
+        for tbl in _TOS_ONLY + _TOS_ONLY_PS:
+            try:
+                r = s.execute(text(
+                    f"UPDATE {tbl} SET tos_symbol=:new WHERE tos_symbol=:old"
+                ), {"new": new, "old": old})
+                if r.rowcount:
+                    counts[tbl] = r.rowcount
+            except Exception:
+                pass
+        for tbl in _BOTH:
+            try:
+                r = s.execute(text(
+                    f"UPDATE {tbl} SET symbol=:new, tos_symbol=:new "
+                    f"WHERE symbol=:old OR tos_symbol=:old"
+                ), {"new": new, "old": old})
+                if r.rowcount:
+                    counts[tbl] = r.rowcount
+            except Exception:
+                pass
+        # ref_rrt maps symbol to tos_symbol — update both columns
+        try:
+            r = s.execute(text(
+                "UPDATE ref_rrt SET symbol=:new WHERE symbol=:old"
+            ), {"new": new, "old": old})
+            if r.rowcount:
+                counts["ref_rrt.symbol"] = r.rowcount
+        except Exception:
+            pass
+        try:
+            r = s.execute(text(
+                "UPDATE ref_rrt SET tos_symbol=:new WHERE tos_symbol=:old"
+            ), {"new": new, "old": old})
+            if r.rowcount:
+                counts["ref_rrt.tos_symbol"] = r.rowcount
+        except Exception:
+            pass
+        s.commit()
+
+    total = sum(counts.values())
+    return {"ok": True, "from": old, "to": new, "total_rows": total, "by_table": counts}
+
+
+@router.get("/api/admin/missing-symbols", response_model=list)
+def get_missing_symbols():
+    """Symbols in drv_cat_atomic_input (latest date) missing from hist_tw or hist_td."""
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT d.tos_symbol,
+                   CASE WHEN tw.tos_symbol IS NULL THEN true ELSE false END AS missing_tw,
+                   CASE WHEN td.tos_symbol IS NULL THEN true ELSE false END AS missing_td
+            FROM drv_cat_atomic_input d
+            LEFT JOIN (
+                SELECT DISTINCT tos_symbol FROM hist_tw
+            ) tw ON tw.tos_symbol = d.tos_symbol
+            LEFT JOIN (
+                SELECT DISTINCT tos_symbol FROM hist_td
+            ) td ON td.tos_symbol = d.tos_symbol
+            WHERE d.as_of_date = (SELECT MAX(as_of_date) FROM drv_cat_atomic_input)
+              AND (tw.tos_symbol IS NULL OR td.tos_symbol IS NULL)
+            ORDER BY d.tos_symbol
+        """)).mappings().all()
+    return [dict(r) for r in rows]
+
+
 
 # =============================================================================
 # Pydantic models — API contracts
