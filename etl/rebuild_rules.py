@@ -139,6 +139,18 @@ def _step_refresh_refs() -> dict:
     except Exception as e:
         log.warning("  rule_name normalisation failed: %s", e)
 
+    # Hard-delete composites that exist in the workbook but should not be used.
+    _DELETE_COMPOSITES = ['Rating']
+    try:
+        with session_scope() as s:
+            for code in _DELETE_COMPOSITES:
+                s.execute(text(
+                    "DELETE FROM ref_trig_composite_mapping WHERE composite_rule_code = :code"
+                ), {"code": code})
+            s.commit()
+    except Exception as e:
+        log.warning("  composite hard-delete failed: %s", e)
+
     # Backfill condition_operator for composite members where it is NULL.
     # BUY rule codes → >=, SELL rule codes → <=.
     # Explicit per-member overrides (already set) are left unchanged.
