@@ -183,7 +183,11 @@
             </div>
         </div>
 
-        <h3 style="margin: 20px 0 12px 0; font-size: 15px;">Missing Symbols</h3>
+        <h3 style="margin: 20px 0 8px 0; font-size: 15px;">Missing Symbols</h3>
+        <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-bottom:12px;cursor:pointer">
+            <input type="checkbox" id="excludeNonEquityComparison" checked onchange="loadSymbols()">
+            Exclude indices (^), futures (=F), forex (=X)
+        </label>
         <div id="missingSymbolsList" style="background: #f9f9f7; border: 1px solid var(--border); border-radius: 4px; padding: 12px;">
             <p style="color: var(--text-3); font-size: 12px;">Loading...</p>
         </div>

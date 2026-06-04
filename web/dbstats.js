@@ -69,7 +69,8 @@ async function loadStats() {
 
 async function loadSymbols() {
     try {
-        const url = `/api/symbols/comparison`;
+        const exclude = document.getElementById('excludeNonEquityComparison')?.checked !== false;
+        const url = `/api/symbols/comparison?exclude_non_equity=${exclude}`;
         const symbols = await fetchJSON(url);
         state.symbols = symbols;
         renderSymbols();

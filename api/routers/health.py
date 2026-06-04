@@ -591,8 +591,12 @@ def post_backfill_drv_quote(req: BackfillQuoteRequest):
 # Symbol comparison (master list vs all tables)
 # =============================================================================
 
+def _is_non_equity(sym: str) -> bool:
+    return sym.startswith('^') or sym.endswith('=F') or sym.endswith('=X')
+
+
 @router.get("/api/symbols/comparison")
-def get_symbols_comparison():
+def get_symbols_comparison(exclude_non_equity: bool = True):
     """
     Compare symbols across all hist_* tables using LATEST snapshots (not a fixed date).
 
@@ -674,6 +678,9 @@ def get_symbols_comparison():
                         # Don't show contract symbols as missing (they're expected to be different)
                         missing = [s for s in missing if s not in contract_symbols]
 
+                    if exclude_non_equity:
+                        missing = [s for s in missing if not _is_non_equity(s)]
+
                     if missing:
                         result["missing_by_source"].append({
                             "source": source_names[key],
@@ -725,6 +732,8 @@ def get_symbols_comparison():
                             # Find symbols NOT in TL
                             missing = sorted(set(table_symbols) - set(tl_symbols))
 
+                        if exclude_non_equity:
+                            missing = [s for s in missing if not _is_non_equity(s)]
                         if missing:
                             result["missing_by_source"].append({
                                 "source": source_name,
