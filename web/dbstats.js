@@ -262,8 +262,7 @@ async function loadMissingSourceData() {
     const el = document.getElementById('missingSourceList');
     el.innerHTML = '<span style="color:var(--text-3)">Loading…</span>';
     try {
-        const exclude = document.getElementById('excludeNonEquity')?.checked !== false;
-        const rows = await fetchJSON(`/api/admin/missing-symbols?exclude_non_equity=${exclude}`);
+        const rows = await fetchJSON('/api/admin/missing-symbols?exclude_non_equity=true');
         if (!rows.length) {
             el.innerHTML = '<span style="color:#15803d">All symbols have hist_tw and hist_td data.</span>';
             return;
