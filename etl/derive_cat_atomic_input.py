@@ -49,6 +49,7 @@ syms AS (
         UNION SELECT tos_symbol AS s FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
         UNION SELECT tos_symbol AS s FROM hist_tw WHERE snapshot_date <= (SELECT d FROM p)
     ) u WHERE s IS NOT NULL
+      AND EXISTS (SELECT 1 FROM drv_quote dq WHERE dq.tos_symbol = u.s)
 ),
 td AS (
     SELECT DISTINCT ON (tos_symbol) tos_symbol,
