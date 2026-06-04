@@ -15,8 +15,8 @@ function firedBadge(n, total) {
   const cls = n > 0 ? 'badge-ok' : 'badge-none';
   return `<span class="tier-badge ${cls}">${n} / ${total} fired</span>`;
 }
-function dot(fired, blocked) {
-  const bg = blocked ? '#f59e0b' : fired ? 'var(--bull)' : 'var(--border)';
+function dot(fired, blocked, isSell) {
+  const bg = blocked ? '#f59e0b' : fired ? (isSell ? '#dc2626' : 'var(--bull)') : 'var(--border)';
   return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${bg};vertical-align:middle;flex-shrink:0"></span>`;
 }
 function actionColor(a) {
@@ -701,7 +701,7 @@ function _compFireSummary(c) {
   }
   let verdict;
   if (c.fired) {
-    verdict = '<b style="color:#15803d">✓ FIRED</b>';
+    verdict = `<b style="color:${_compSide(c.code) === 'sell' ? '#b91c1c' : '#15803d'}">✓ FIRED</b>`;
   } else if (c.gates_pass === false) {
     verdict = '<span style="color:#b91c1c">gate failed</span>';
   } else if (c.watch_ok === false) {
@@ -714,19 +714,21 @@ function _compFireSummary(c) {
 
 function buildCompItem(c) {
   const isInactive = c.active === false;
+  const side   = _compSide(c.code);
+  const hitClr = side === 'sell' ? '#b91c1c' : '#15803d';
   const edgeCls = isInactive ? 'comp-nofired'
                 : c.precondition_blocked ? 'comp-blocked'
-                : c.fired ? 'comp-fired' : 'comp-nofired';
+                : c.fired ? (side === 'sell' ? 'comp-fired-sell' : 'comp-fired') : 'comp-nofired';
   const id        = 'comp_' + (c.code||'').replace(/[^a-z0-9]/gi,'_');
   const nullWarn  = c.has_null_member
     ? `<span title="One or more member values are null — evaluation unreliable"
              style="color:#b45309;font-size:11px;margin-left:4px">⚠</span>` : '';
   const members = (c.members || []).map((m, midx) => {
     const met  = m.condition_met ?? m.fired;   // condition met (new) or fired (legacy)
-    const mCls = met ? 'mem-fired' : 'mem-nofired';
-    const wt   = m.weight != null ? (met ? `<b style="color:#15803d">${fmt(m.weight)}</b>` : `<span style="color:#9ca3af">${fmt(m.weight)}</span>`) : '';
+    const mCls = met ? (side === 'sell' ? 'mem-fired-sell' : 'mem-fired') : 'mem-nofired';
+    const wt   = m.weight != null ? (met ? `<b style="color:${hitClr}">${fmt(m.weight)}</b>` : `<span style="color:#9ca3af">${fmt(m.weight)}</span>`) : '';
     const checkMark = met
-      ? `<span style="color:#15803d;font-weight:700">✓</span>`
+      ? `<span style="color:${hitClr};font-weight:700">✓</span>`
       : `<span style="color:#ef4444;font-weight:700">✗</span>`;
     const roleBadge = m.role === 'watch'
       ? `<span title="WATCH — corroborating evidence; does not block the fire" style="font-size:8px;font-weight:700;color:#92400e;background:#fef3c7;border:1px solid #fbbf24;border-radius:3px;padding:0 4px;margin-right:3px">WATCH</span>`
@@ -742,7 +744,7 @@ function buildCompItem(c) {
       const op = m.operator ? (opSymMap[m.operator] || m.operator) : '≠0';
       const valStr  = `<span style="font-size:10px;color:var(--text-3)">val:</span><span style="font-family:monospace;font-size:11px;font-weight:600">${fmt(val)}</span>`;
       const condPart = thr != null
-        ? `<span style="font-size:10px;color:var(--text-3)">cond:</span><span style="font-family:monospace;font-size:11px;font-weight:600;color:${met?'#15803d':'#ef4444'}">${op} ${thr}</span>`
+        ? `<span style="font-size:10px;color:var(--text-3)">cond:</span><span style="font-family:monospace;font-size:11px;font-weight:600;color:${met?hitClr:'#ef4444'}">${op} ${thr}</span>`
         : `<span style="font-size:10px;color:var(--text-3)">cond: ≠0</span>`;
       const memElemId = `${id}_m${midx}`;
       const dbColRaw = (m.ma_column||'').replace('drv_cat_atomic_input.','');
@@ -820,7 +822,7 @@ function buildCompItem(c) {
   return `
   <div class="comp-item ${edgeCls}" id="${id}">
     <div class="comp-hdr" onclick="toggleComp('${id}')">
-      ${dot(c.fired, c.precondition_blocked)}
+      ${dot(c.fired, c.precondition_blocked, side === 'sell')}
       <span class="comp-code">${esc(c.code||'')}${nullWarn}</span>
       <span class="comp-score">${isInactive ? '<span style="color:#9ca3af;font-style:italic">disabled</span>' : _compFireSummary(c)}</span>
       <span style="font-size:12px;color:var(--text-3)">▾</span>
