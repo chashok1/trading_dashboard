@@ -52,6 +52,9 @@ syms AS (
       AND EXISTS (SELECT 1 FROM drv_quote dq WHERE dq.tos_symbol = u.s)
 ),
 td AS (
+    -- 7-day recency gate: only use TOSD data loaded within the last 7 days.
+    -- Symbols removed from the TOS watchlist have stale rows (months old);
+    -- using old trend/trade line values against today's price is meaningless.
     SELECT DISTINCT ON (tos_symbol) tos_symbol,
            a_trend_value, a_trade_value, a_bb_top, a_bb_bottom,
            a_bb_streak, a_bb_high_low, a_bb_high_low_days,
@@ -63,21 +66,23 @@ td AS (
            rsi         AS td_rsi,   -- closing RSI from TOSD (preferred over intraday TOSL RSI)
            last_price  AS td_last   -- EF: prior session close (CN = D_Last in MA sheet)
     FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
+      AND snapshot_date >= (SELECT d FROM p) - INTERVAL '7 days'
     ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
 td_fb_trend AS (
-    -- Fallback: latest row with non-null a_trend_value. Separate from trade fallback
-    -- because one column can be NaN on a date where the other is valid (e.g. BECN
-    -- 2026-02-06 has trade but not trend; 2026-02-05 has both).
+    -- Fallback: latest non-null a_trend_value within 7 days (handles single-day NaN exports).
+    -- Separate from trade fallback because one column can be NaN on a date where the other is valid.
     SELECT DISTINCT ON (tos_symbol) tos_symbol, a_trend_value AS fb_trend
     FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
+      AND snapshot_date >= (SELECT d FROM p) - INTERVAL '7 days'
       AND a_trend_value IS NOT NULL
     ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
 td_fb_trade AS (
-    -- Fallback: latest row with non-null a_trade_value.
+    -- Fallback: latest non-null a_trade_value within 7 days.
     SELECT DISTINCT ON (tos_symbol) tos_symbol, a_trade_value AS fb_trade
     FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
+      AND snapshot_date >= (SELECT d FROM p) - INTERVAL '7 days'
       AND a_trade_value IS NOT NULL
     ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
@@ -89,6 +94,8 @@ td_prior AS (
     ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
 tw AS (
+    -- 14-day recency gate: TOSW is weekly so legitimate gap can be up to 10 days.
+    -- Symbols removed from the weekly watchlist have stale rows (months old); exclude them.
     SELECT DISTINCT ON (tos_symbol) tos_symbol,
            standard_dev, sma_20, sma_50, sma_200,
            a_macd_brr, a_macdh_d_brr, a_macdays_streak,
@@ -97,22 +104,24 @@ tw AS (
            a_volume_spike, volume, volume_avg_3m, volume_rate_change,
            a_earnings_days, high_52, low_52
     FROM hist_tw WHERE snapshot_date <= (SELECT d FROM p)
+      AND snapshot_date >= (SELECT d FROM p) - INTERVAL '14 days'
     ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
 tw_fb AS (
-    -- Fallback: latest non-null a_macdays_streak for symbols where the most-recent
-    -- TOSW row has null (some export dates omit this column entirely).
+    -- Fallback: latest non-null a_macdays_streak within 14 days.
     SELECT DISTINCT ON (tos_symbol) tos_symbol,
            a_macdays_streak AS fb_streak
     FROM hist_tw WHERE snapshot_date <= (SELECT d FROM p)
+      AND snapshot_date >= (SELECT d FROM p) - INTERVAL '14 days'
       AND a_macdays_streak IS NOT NULL
     ORDER BY tos_symbol, snapshot_date DESC
 ),
 med AS (
-    -- Use standard_dev from hist_tw as the volatility scale input (AC).
-    -- Previously used ref_sdormedian as a temporary override; that table is dropped.
+    -- Secondary source for AC (standard_dev). Same 14-day freshness gate as tw
+    -- so stale symbols don't get a stale AC through this fallback path.
     SELECT DISTINCT ON (tos_symbol) tos_symbol, standard_dev AS median_sd
     FROM hist_tw WHERE snapshot_date <= (SELECT d FROM p)
+      AND snapshot_date >= (SELECT d FROM p) - INTERVAL '14 days'
     ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
 dq AS (
