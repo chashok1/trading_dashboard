@@ -670,9 +670,10 @@ def get_symbols_comparison(exclude_non_equity: bool = True):
                         }
                         missing = [s for s in missing if s not in contract_symbols]
                     else:
-                        # TW, TO, TD: TOS exports, direct comparison (no RRT mapping)
+                        # TW, TO, TD: prefer tos_symbol when available (handles renamed
+                        # tickers like BNY→BK where symbol=BNY but tos_symbol=BK)
                         rows = s.execute(text(f"""
-                            SELECT DISTINCT symbol
+                            SELECT DISTINCT COALESCE(tos_symbol, symbol) AS symbol
                             FROM {table}
                             WHERE snapshot_date = :d
                             ORDER BY symbol
