@@ -591,8 +591,15 @@ def post_backfill_drv_quote(req: BackfillQuoteRequest):
 # Symbol comparison (master list vs all tables)
 # =============================================================================
 
+_KNOWN_NON_EQUITY = {'SSEC', 'SHCOMP', 'HSI', 'N225', 'FTSE'}
+
 def _is_non_equity(sym: str) -> bool:
-    return sym.startswith('^') or sym.endswith('=F') or sym.endswith('=X')
+    return (sym.startswith('^')        # US/global indices  e.g. ^VIX, ^SPX
+            or sym.startswith('/')     # futures contracts  e.g. /CL, /GC, /6B
+            or sym.endswith('=F')      # Yahoo futures      e.g. CL=F
+            or sym.endswith('=X')      # Yahoo forex        e.g. EURUSD=X
+            or ':FRED' in sym          # FRED economic data e.g. DGS2:FRED
+            or sym in _KNOWN_NON_EQUITY)
 
 
 @router.get("/api/symbols/comparison")
