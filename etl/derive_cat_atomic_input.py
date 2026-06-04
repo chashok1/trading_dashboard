@@ -64,6 +64,15 @@ td AS (
     FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
     ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
+td_fb AS (
+    -- Fallback: latest non-null a_trend_value / a_trade_value for symbols where the
+    -- most-recent TOSD row exported NaN (→ NULL). Mirrors the MACDays fix in tw_fb.
+    SELECT DISTINCT ON (tos_symbol) tos_symbol,
+           a_trend_value AS fb_trend, a_trade_value AS fb_trade
+    FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
+      AND (a_trend_value IS NOT NULL OR a_trade_value IS NOT NULL)
+    ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
+),
 td_prior AS (
     -- Prior snapshot's a_bb_bottom and a_bb_top for DU/DV fallback in EC/ED
     SELECT DISTINCT ON (tos_symbol) tos_symbol,
@@ -81,6 +90,15 @@ tw AS (
            a_earnings_days, high_52, low_52
     FROM hist_tw WHERE snapshot_date <= (SELECT d FROM p)
     ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
+),
+tw_fb AS (
+    -- Fallback: latest non-null a_macdays_streak for symbols where the most-recent
+    -- TOSW row has null (some export dates omit this column entirely).
+    SELECT DISTINCT ON (tos_symbol) tos_symbol,
+           a_macdays_streak AS fb_streak
+    FROM hist_tw WHERE snapshot_date <= (SELECT d FROM p)
+      AND a_macdays_streak IS NOT NULL
+    ORDER BY tos_symbol, snapshot_date DESC
 ),
 med AS (
     -- Use standard_dev from hist_tw as the volatility scale input (AC).
@@ -107,8 +125,11 @@ rr AS (
     FROM drv_rr WHERE as_of_date = (SELECT d FROM p)
 )
 SELECT s.s AS tos_symbol,
-       -- hist_td (rule input bases)
-       td.a_trend_value, td.a_trade_value, td.a_bb_top, td.a_bb_bottom,
+       -- hist_td (rule input bases); COALESCE falls back to latest non-null row
+       -- for columns that can be null on the most-recent export date (NaN → NULL).
+       COALESCE(td.a_trend_value, td_fb.fb_trend) AS a_trend_value,
+       COALESCE(td.a_trade_value, td_fb.fb_trade) AS a_trade_value,
+       td.a_bb_top, td.a_bb_bottom,
        td.a_bb_streak, td.a_bb_high_low, td.a_bb_high_low_days,
        td.a_iv_percentile, td.a_hv_percentile,
        td.a_bb_top_slope, td.a_bb_bot_slope,
@@ -118,7 +139,8 @@ SELECT s.s AS tos_symbol,
        td_prior.bb_bot_prev, td_prior.bb_top_prev,
        -- hist_tw
        tw.standard_dev, tw.sma_50, tw.sma_200,
-       tw.a_macd_brr, tw.a_macdh_d_brr, tw.a_macdays_streak,
+       tw.a_macd_brr, tw.a_macdh_d_brr,
+       COALESCE(tw.a_macdays_streak, tw_fb.fb_streak) AS a_macdays_streak,
        tw.a_3mn_high, tw.a_3mn_low, tw.a_3mn_high_low, tw.a_3wk_high_low,
        tw.a_perf_2m, tw.a_perf_2wk, tw.a_perf_3d,
        tw.a_volume_spike, tw.volume, tw.volume_avg_3m, tw.volume_rate_change,
@@ -132,9 +154,11 @@ SELECT s.s AS tos_symbol,
        -- drv_rr (lrr/trr already have RR→BB fallback baked in)
        rr.lrr, rr.trr
 FROM syms s
-LEFT JOIN td  ON td.tos_symbol  = s.s
+LEFT JOIN td     ON td.tos_symbol     = s.s
+LEFT JOIN td_fb  ON td_fb.tos_symbol  = s.s
 LEFT JOIN td_prior ON td_prior.tos_symbol = s.s
-LEFT JOIN tw  ON tw.tos_symbol  = s.s
+LEFT JOIN tw     ON tw.tos_symbol     = s.s
+LEFT JOIN tw_fb  ON tw_fb.tos_symbol  = s.s
 LEFT JOIN med ON med.tos_symbol = s.s
 LEFT JOIN tl  ON tl.tos_symbol  = s.s
 LEFT JOIN dq  ON dq.tos_symbol  = s.s
