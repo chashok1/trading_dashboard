@@ -174,7 +174,20 @@ def _step_refresh_refs() -> dict:
             # so explicit overrides must be re-applied after the blanket backfill.
             # Format: (composite_rule_code, atomic_rule_id) → operator
             _MEMBER_OVERRIDES = {
-                ('698-SS-Bull-HighAbvTRR', 29): '>=',  # high_trr: fire when high IS above TRR
+                # Rules with wt_above > wt_below assigned to SELL composites:
+                # blanket <= is wrong — these fire positively, so condition must be >=
+                ('698-SS-Bull-HighAbvTRR',       29): '>=',  # high_trr
+                ('791-STM-!Bull-HighAbvTRR',     29): '>=',  # high_trr
+                ('784-SS-Streak-GoingBad',        72): '>=',  # bbstreak_days_rule4
+                ('787-SS-Bull-TRR-Rev',           65): '>=',  # bbhighlow_days_rule
+                ('793-STM-!TD!Bull-TRR-Rev',      72): '>=',  # bbstreak_days_rule4
+                ('793-STM-!TD!Bull-TRR-Rev',      57): '>=',  # perf3d_sd_rule
+                ('796-SW-!Bull-BBTh-Crossover',   10): '>=',  # bbthresh_co_days2
+                ('798-STM-!Bull-TRR-Rev',         72): '>=',  # bbstreak_days_rule4
+                ('798-STM-!Bull-TRR-Rev',         57): '>=',  # perf3d_sd_rule
+                ('895-SA-!TN!TD!Bull-TRR-Rev',    72): '>=',  # bbstreak_days_rule4
+                ('895-SA-!TN!TD!Bull-TRR-Rev',    57): '>=',  # perf3d_sd_rule
+                ('898-SA-Streak-VeryBad',         70): '>=',  # bbstreak_days_rule2
             }
             for (code, aid), op in _MEMBER_OVERRIDES.items():
                 s.execute(text("""
