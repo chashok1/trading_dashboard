@@ -593,12 +593,17 @@ def post_backfill_drv_quote(req: BackfillQuoteRequest):
 
 _KNOWN_NON_EQUITY = {'SSEC', 'SHCOMP', 'HSI', 'N225', 'FTSE'}
 
+# Foreign-exchange suffixes used by Yahoo Finance / Bloomberg for non-US listings
+_FOREIGN_SUFFIXES = {'.SS', '.SZ', '.HK', '.T', '.L', '.PA', '.DE', '.AS', '.MI', '.MC'}
+
 def _is_non_equity(sym: str) -> bool:
-    return (sym.startswith('^')        # US/global indices  e.g. ^VIX, ^SPX
-            or sym.startswith('/')     # futures contracts  e.g. /CL, /GC, /6B
-            or sym.endswith('=F')      # Yahoo futures      e.g. CL=F
-            or sym.endswith('=X')      # Yahoo forex        e.g. EURUSD=X
-            or ':FRED' in sym          # FRED economic data e.g. DGS2:FRED
+    return (sym.startswith('^')        # Yahoo/TOS indices     e.g. ^VIX, ^SPX
+            or sym.startswith('$')     # TOS index notation    e.g. $INDU, $GVZ, $VXN
+            or sym.startswith('/')     # TOS futures contracts e.g. /CL, /GC, /6B
+            or sym.endswith('=F')      # Yahoo futures         e.g. CL=F
+            or sym.endswith('=X')      # Yahoo forex           e.g. EURUSD=X
+            or ':FRED' in sym          # FRED economic data    e.g. DGS2:FRED
+            or any(sym.endswith(sfx) for sfx in _FOREIGN_SUFFIXES)  # e.g. 000001.SS
             or sym in _KNOWN_NON_EQUITY)
 
 
