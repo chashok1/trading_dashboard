@@ -65,13 +65,20 @@ td AS (
     FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
     ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
-td_fb AS (
-    -- Fallback: latest non-null a_trend_value / a_trade_value for symbols where the
-    -- most-recent TOSD row exported NaN (→ NULL). Mirrors the MACDays fix in tw_fb.
-    SELECT DISTINCT ON (tos_symbol) tos_symbol,
-           a_trend_value AS fb_trend, a_trade_value AS fb_trade
+td_fb_trend AS (
+    -- Fallback: latest row with non-null a_trend_value. Separate from trade fallback
+    -- because one column can be NaN on a date where the other is valid (e.g. BECN
+    -- 2026-02-06 has trade but not trend; 2026-02-05 has both).
+    SELECT DISTINCT ON (tos_symbol) tos_symbol, a_trend_value AS fb_trend
     FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
-      AND (a_trend_value IS NOT NULL OR a_trade_value IS NOT NULL)
+      AND a_trend_value IS NOT NULL
+    ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
+),
+td_fb_trade AS (
+    -- Fallback: latest row with non-null a_trade_value.
+    SELECT DISTINCT ON (tos_symbol) tos_symbol, a_trade_value AS fb_trade
+    FROM hist_td WHERE snapshot_date <= (SELECT d FROM p)
+      AND a_trade_value IS NOT NULL
     ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
 ),
 td_prior AS (
@@ -128,8 +135,8 @@ rr AS (
 SELECT s.s AS tos_symbol,
        -- hist_td (rule input bases); COALESCE falls back to latest non-null row
        -- for columns that can be null on the most-recent export date (NaN → NULL).
-       COALESCE(td.a_trend_value, td_fb.fb_trend) AS a_trend_value,
-       COALESCE(td.a_trade_value, td_fb.fb_trade) AS a_trade_value,
+       COALESCE(td.a_trend_value, td_fb_trend.fb_trend) AS a_trend_value,
+       COALESCE(td.a_trade_value, td_fb_trade.fb_trade) AS a_trade_value,
        td.a_bb_top, td.a_bb_bottom,
        td.a_bb_streak, td.a_bb_high_low, td.a_bb_high_low_days,
        td.a_iv_percentile, td.a_hv_percentile,
@@ -155,8 +162,9 @@ SELECT s.s AS tos_symbol,
        -- drv_rr (lrr/trr already have RR→BB fallback baked in)
        rr.lrr, rr.trr
 FROM syms s
-LEFT JOIN td     ON td.tos_symbol     = s.s
-LEFT JOIN td_fb  ON td_fb.tos_symbol  = s.s
+LEFT JOIN td           ON td.tos_symbol           = s.s
+LEFT JOIN td_fb_trend  ON td_fb_trend.tos_symbol  = s.s
+LEFT JOIN td_fb_trade  ON td_fb_trade.tos_symbol  = s.s
 LEFT JOIN td_prior ON td_prior.tos_symbol = s.s
 LEFT JOIN tw     ON tw.tos_symbol     = s.s
 LEFT JOIN tw_fb  ON tw_fb.tos_symbol  = s.s
