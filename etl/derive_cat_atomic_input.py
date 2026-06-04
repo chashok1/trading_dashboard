@@ -1099,13 +1099,13 @@ def _eval_trig_ifs(value, rule: Optional[dict], *,
         if v > 0: return wb_
         return 0.0
     if strict_neg and not strict:
-        # positive >= (non-strict), negative < (strict) — most common Excel IFS pattern
-        if v >= hi:  return wa
-        if v >= lo:  return wbt
-        if v >= 0:   return wb_
-        if v < -nhi: return -wa
-        if v < -nlo: return -wbt
-        if v <  0:   return -wb_
+        # positive >= (non-strict), negative: strict outer, inclusive inner
+        if v >= hi:   return wa
+        if v >= lo:   return wbt
+        if v >= 0:    return wb_
+        if v <  -nhi: return -wa   # strict outer
+        if v <= -nlo: return -wbt  # inclusive inner
+        if v <  0:    return -wb_
     elif strict:
         if v >   hi:  return wa
         if v >   lo:  return wbt
@@ -1117,8 +1117,8 @@ def _eval_trig_ifs(value, rule: Optional[dict], *,
         if v >= hi:   return wa
         if v >= lo:   return wbt
         if v >= 0:    return wb_
-        if v <= -nhi: return -wa
-        if v <= -nlo: return -wbt
+        if v <  -nhi: return -wa   # strict: mirrors positive v > hi
+        if v <= -nlo: return -wbt  # inclusive: mirrors positive v >= lo
         if v <  0:    return -wb_
     return 0.0
 
