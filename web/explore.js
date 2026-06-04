@@ -17,6 +17,8 @@ const state = {
     sortDirection: 'asc',
     filterSymbol: '',
     filterDate: '',
+    filterDateFrom: '',
+    filterDateTo: '',
     checkedRows: new Set(),
 };
 
@@ -34,8 +36,10 @@ const DOM = {
     inlinePrevBtn: document.getElementById('inlinePrevBtn'),
     inlineNextBtn: document.getElementById('inlineNextBtn'),
     inlinePageInfo: document.getElementById('inlinePageInfo'),
-    filterSymbol: document.getElementById('filterSymbol'),
-    filterDate: document.getElementById('filterDate'),
+    filterSymbol:   document.getElementById('filterSymbol'),
+    filterDate:     document.getElementById('filterDate'),
+    filterDateFrom: document.getElementById('filterDateFrom'),
+    filterDateTo:   document.getElementById('filterDateTo'),
     filterApplyBtn: document.getElementById('filterApplyBtn'),
     filterClearBtn: document.getElementById('filterClearBtn'),
     insertRowBtn: document.getElementById('insertRowBtn'),
@@ -46,10 +50,14 @@ const DOM = {
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
     // Start with blank filters
-    state.filterSymbol = '';
-    state.filterDate = '';
-    if (DOM.filterSymbol) DOM.filterSymbol.value = '';
-    if (DOM.filterDate) DOM.filterDate.value = '';
+    state.filterSymbol   = '';
+    state.filterDate     = '';
+    state.filterDateFrom = '';
+    state.filterDateTo   = '';
+    if (DOM.filterSymbol)   DOM.filterSymbol.value   = '';
+    if (DOM.filterDate)     DOM.filterDate.value     = '';
+    if (DOM.filterDateFrom) DOM.filterDateFrom.value = '';
+    if (DOM.filterDateTo)   DOM.filterDateTo.value   = '';
 
     await loadAvailableDates();
     await loadTableList();
@@ -72,8 +80,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 function setupFilterListeners() {
     if (DOM.filterApplyBtn) {
         DOM.filterApplyBtn.addEventListener('click', async () => {
-            state.filterSymbol = DOM.filterSymbol?.value.trim().toUpperCase() || '';
-            state.filterDate = DOM.filterDate?.value || '';
+            state.filterSymbol   = DOM.filterSymbol?.value.trim().toUpperCase() || '';
+            state.filterDate     = DOM.filterDate?.value || '';
+            state.filterDateFrom = DOM.filterDateFrom?.value || '';
+            state.filterDateTo   = DOM.filterDateTo?.value || '';
             state.currentPage = 0;
             if (state.currentTable) {
                 await loadTable(state.currentTable);
@@ -84,10 +94,14 @@ function setupFilterListeners() {
     if (DOM.filterClearBtn) {
         DOM.filterClearBtn.addEventListener('click', async () => {
             // Clear all filters completely (show all data across all dates)
-            state.filterSymbol = '';
-            state.filterDate = '';
-            if (DOM.filterSymbol) DOM.filterSymbol.value = '';
-            if (DOM.filterDate) DOM.filterDate.value = '';
+            state.filterSymbol   = '';
+            state.filterDate     = '';
+            state.filterDateFrom = '';
+            state.filterDateTo   = '';
+            if (DOM.filterSymbol)   DOM.filterSymbol.value   = '';
+            if (DOM.filterDate)     DOM.filterDate.value     = '';
+            if (DOM.filterDateFrom) DOM.filterDateFrom.value = '';
+            if (DOM.filterDateTo)   DOM.filterDateTo.value   = '';
             state.currentPage = 0;
             if (state.currentTable) {
                 await loadTable(state.currentTable);
@@ -254,6 +268,11 @@ async function loadAvailableDates() {
 DOM.datePicker?.addEventListener('change', async (e) => {
     const selectedDate = e.target.value;
     DOM.filterDate.value = selectedDate;
+    // Clear date range when single date is chosen
+    if (DOM.filterDateFrom) DOM.filterDateFrom.value = '';
+    if (DOM.filterDateTo)   DOM.filterDateTo.value   = '';
+    state.filterDateFrom = '';
+    state.filterDateTo   = '';
 });
 
 async function loadTableList() {
@@ -321,15 +340,18 @@ async function loadTable(tableName) {
         const offset = state.currentPage * state.pageSize;
         let url = `/api/data/${tableName}?limit=${state.pageSize}&offset=${offset}`;
 
-        // Add date filter if provided, otherwise use "all" to search all dates
-        if (state.filterDate) {
+        // Date range takes priority over single date when set
+        if (state.filterDateFrom || state.filterDateTo) {
+            url += `&date=all`;  // disable single-date filter
+            if (state.filterDateFrom) url += `&date_from=${state.filterDateFrom}`;
+            if (state.filterDateTo)   url += `&date_to=${state.filterDateTo}`;
+        } else if (state.filterDate) {
             url += `&date=${state.filterDate}`;
         } else {
-            // Empty date means search all dates in database
             url += `&date=all`;
         }
 
-        // Add symbol filter if provided
+        // Symbol filter
         if (state.filterSymbol) {
             url += `&symbol=${encodeURIComponent(state.filterSymbol)}`;
         }

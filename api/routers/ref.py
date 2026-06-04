@@ -578,6 +578,8 @@ def get_data_table(
     table_name: str,
     date: Optional[str] = Query(None),
     symbol: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
     # Trig screen pulls drv_trig in one shot (~5000-50000 rows), so the cap is
     # generous. Pagination (`offset`) is still respected for screens that page.
     limit: int = Query(200, ge=1, le=100000),
@@ -654,6 +656,21 @@ def get_data_table(
                 where_clause = where_clause + " " + symbol_filter
             elif symbol_filter:
                 where_clause = symbol_filter
+
+        # Date range filter (overrides single date when provided)
+        if (date_from or date_to) and date_col and not show_all_dates:
+            range_parts = []
+            if date_from:
+                range_parts.append(f"{date_col} >= :date_from")
+                params["date_from"] = date_from
+            if date_to:
+                range_parts.append(f"{date_col} <= :date_to")
+                params["date_to"] = date_to
+            range_clause = " AND ".join(range_parts)
+            connector = "AND" if where_clause else "WHERE"
+            where_clause = f"{where_clause} {connector} {range_clause}".strip()
+            range_desc = f"{date_from or '…'} → {date_to or '…'}"
+            filter_description = (filter_description + f" · date range {range_desc}") if filter_description else f"date range {range_desc}"
 
         # Determine ORDER BY. safe_ident enforces the allow-list of column names, defaulting to PK
         # for safe deterministic ordering.
