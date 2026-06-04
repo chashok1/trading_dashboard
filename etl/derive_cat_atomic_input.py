@@ -549,7 +549,7 @@ COLUMN_SPECS_PASS1 = [
         {"guards": ("imp_volatility",)}),                                        # KS
     # KT IVRule -> composite (Pass-2; reads KN, KP, KR)
     ("rsi_rule",            "trig_ifs", "rsi",        "rsi_rule", None),       # KU
-    ("rsi_top",             "trig_ifs", "rsi",        "RSI Top",  None),       # KV
+    ("rsi_top",             "trig_ifs", "rsi",        "rsi_top",  None),       # KV
     ("rsi_puts",            "trig_ifs", "rsi",        "rsi_puts",
         {"strict": True}),                                                      # KW
     ("3m_low_rule",         "trig_ifs", "BB",         "3m_low_rule",  None),   # KX
@@ -621,20 +621,20 @@ COLUMN_SPECS_PASS1 = [
     # MS PerfOrBull -> composite ; MT negate
     # MU 50-DMA-Rule -- trig_ifs_dma over (D, CG, AC)
     ("50_dma_rule",         "trig_ifs_dma",
-        ("last_price","sma_50","AC"), "50-DMA-Rule", None),                    # MU
+        ("last_price","sma_50","AC"), "50_dma_rule", None),                    # MU
     # MV 50-DMA-Crossover -> composite (reads D/CG/BZ)
     ("50_dma_crossover",    "composite", None, None,
         (lambda r,o: _crossover(r.get("last_price"), r.get("sma_50"),
                                 r.get("BZ")))),                                # MV
     ("200_dma_rule",        "trig_ifs_dma",
-        ("last_price","sma_200","AC"), "200-DMA-Rule", None),                  # MW
+        ("last_price","sma_200","AC"), "200_dma_rule", None),                  # MW
     ("200_dma_crossover",   "composite", None, None,
         (lambda r,o: _crossover(r.get("last_price"), r.get("sma_200"),
                                 r.get("BZ")))),                                # MX
     ("52_wk_low_rule",      "trig_ifs_dma",
-        ("last_price","low_52","AC"), "52-Wk Low Rule", None),                 # MY
+        ("last_price","low_52","AC"), "52_wk_low_rule", None),                 # MY
     ("52_wk_high_rule",     "trig_ifs_dma",
-        ("last_price","high_52","AC"), "52-Wk High Rule", None),               # MZ
+        ("last_price","high_52","AC"), "52_wk_high_rule", None),               # MZ
     # NC/ND Up/Down Resistance -> composite (D/EH/EI/CG/CH/BA/AC)
     ("up_resistance", "composite", None, None,
         (lambda r,o: (
