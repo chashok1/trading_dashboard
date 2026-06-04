@@ -151,9 +151,9 @@ def _step_refresh_refs() -> dict:
     except Exception as e:
         log.warning("  composite hard-delete failed: %s", e)
 
-    # Backfill condition_operator for composite members where it is NULL.
-    # BUY rule codes → >=, SELL rule codes → <=.
-    # Explicit per-member overrides (already set) are left unchanged.
+    # Backfill condition_operator for composite members.
+    # BUY rule codes → >=  (only fills NULL rows; existing values are correct).
+    # SELL rule codes → <= (unconditional — overwrites any previously-set >=).
     try:
         with session_scope() as s:
             nb = s.execute(text(r"""
@@ -166,40 +166,11 @@ def _step_refresh_refs() -> dict:
             ns = s.execute(text(r"""
                 UPDATE ref_trig_composite_mapping
                 SET condition_operator = '<='
-                WHERE condition_operator IS NULL
-                  AND deprecated_at IS NULL
+                WHERE deprecated_at IS NULL
                   AND composite_rule_code ~ '^\d+-(SA|SS|STM|SW|SH)-'
             """)).rowcount
-            # Per-member operator overrides: workbook reload resets all to NULL,
-            # so explicit overrides must be re-applied after the blanket backfill.
-            # Format: (composite_rule_code, atomic_rule_id) → operator
-            _MEMBER_OVERRIDES = {
-                # Rules with wt_above > wt_below assigned to SELL composites:
-                # blanket <= is wrong — these fire positively, so condition must be >=
-                ('698-SS-Bull-HighAbvTRR',       29): '>=',  # high_trr
-                ('791-STM-!Bull-HighAbvTRR',     29): '>=',  # high_trr
-                ('784-SS-Streak-GoingBad',        72): '>=',  # bbstreak_days_rule4
-                ('787-SS-Bull-TRR-Rev',           65): '>=',  # bbhighlow_days_rule
-                ('793-STM-!TD!Bull-TRR-Rev',      72): '>=',  # bbstreak_days_rule4
-                ('793-STM-!TD!Bull-TRR-Rev',      57): '>=',  # perf3d_sd_rule
-                ('796-SW-!Bull-BBTh-Crossover',   10): '>=',  # bbthresh_co_days2
-                ('798-STM-!Bull-TRR-Rev',         72): '>=',  # bbstreak_days_rule4
-                ('798-STM-!Bull-TRR-Rev',         57): '>=',  # perf3d_sd_rule
-                ('895-SA-!TN!TD!Bull-TRR-Rev',    72): '>=',  # bbstreak_days_rule4
-                ('895-SA-!TN!TD!Bull-TRR-Rev',    57): '>=',  # perf3d_sd_rule
-                ('898-SA-Streak-VeryBad',         70): '>=',  # bbstreak_days_rule2
-            }
-            for (code, aid), op in _MEMBER_OVERRIDES.items():
-                s.execute(text("""
-                    UPDATE ref_trig_composite_mapping
-                    SET condition_operator = :op
-                    WHERE composite_rule_code = :code
-                      AND atomic_rule_id = :aid
-                      AND deprecated_at IS NULL
-                """), {"op": op, "code": code, "aid": aid})
             s.commit()
-        log.info("  condition_operator backfilled: %d BUY (>=), %d SELL (<=) + %d overrides",
-                 nb, ns, len(_MEMBER_OVERRIDES))
+        log.info("  condition_operator backfilled: %d BUY (>=), %d SELL (<=)", nb, ns)
     except Exception as e:
         log.warning("  condition_operator backfill failed: %s", e)
 
