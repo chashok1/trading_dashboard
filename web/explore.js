@@ -77,6 +77,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
+function clearDate(inputId) {
+    const el = document.getElementById(inputId);
+    if (el) el.value = '';
+    if (inputId === 'filterDate')     state.filterDate     = '';
+    if (inputId === 'filterDateFrom') state.filterDateFrom = '';
+    if (inputId === 'filterDateTo')   state.filterDateTo   = '';
+}
+
 function setupFilterListeners() {
     if (DOM.filterApplyBtn) {
         DOM.filterApplyBtn.addEventListener('click', async () => {

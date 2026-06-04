@@ -313,14 +313,17 @@
                 <div class="filter-group">
                     <label for="filterDate">Date:</label>
                     <input type="date" id="filterDate">
+                    <button onclick="clearDate('filterDate')" title="Clear date" style="padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:white;cursor:pointer;font-size:12px;color:var(--text-3)">×</button>
                 </div>
                 <div class="filter-group">
                     <label for="filterDateFrom">From:</label>
                     <input type="date" id="filterDateFrom">
+                    <button onclick="clearDate('filterDateFrom')" title="Clear from date" style="padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:white;cursor:pointer;font-size:12px;color:var(--text-3)">×</button>
                 </div>
                 <div class="filter-group">
                     <label for="filterDateTo">To:</label>
                     <input type="date" id="filterDateTo">
+                    <button onclick="clearDate('filterDateTo')" title="Clear to date" style="padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:white;cursor:pointer;font-size:12px;color:var(--text-3)">×</button>
                 </div>
                 <button id="filterApplyBtn" class="filter-btn">Apply Filters</button>
                 <button id="filterClearBtn" class="filter-clear-btn">Clear</button>
