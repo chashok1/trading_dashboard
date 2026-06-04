@@ -652,23 +652,30 @@ def get_symbols_comparison(exclude_non_equity: bool = True):
 
                 if table_date:
                     if key == "y":
-                        # Y: Use tos_symbol column (already mapped via RRT during load)
-                        rows = s.execute(text(f"""
-                            SELECT DISTINCT COALESCE(tos_symbol, symbol) AS symbol
-                            FROM {table}
-                            WHERE snapshot_date = :d ORDER BY symbol
+                        # Y: join ref_rrt on tos_ticker to get y_ticker for non-equity
+                        # detection — same approach as RR. Symbols whose y_ticker matches
+                        # _is_non_equity (e.g. DX=F, JPY=X) are excluded automatically.
+                        rows = s.execute(text("""
+                            SELECT DISTINCT
+                                COALESCE(h.tos_symbol, h.symbol) AS sym,
+                                r.y_ticker
+                            FROM hist_y h
+                            LEFT JOIN ref_rrt r
+                                ON r.tos_ticker = COALESCE(h.tos_symbol, h.symbol)
+                            WHERE h.snapshot_date = :d
+                            ORDER BY sym
                         """), {"d": table_date}).fetchall()
-                        y_symbols = sorted(set(r[0] for r in rows if r[0]))
+                        yticker_map_y = {r[0]: r[1] for r in rows if r[0]}
+                        y_symbols = sorted(yticker_map_y.keys())
 
-                        # Missing: symbols in Y (tos_symbol) not in TL
+                        # Missing: symbols in Y not in TL
                         missing = sorted(set(y_symbols) - set(tl_symbols))
 
-                        # Filter out contract symbols
-                        contract_symbols = {
-                            '/6B', '/6C', '/6E', '/6J', '/6M', '/6N', '/6S', '/6Z',
-                            '/BZ', '/CL', '/ES', '/GC', '/HG', '/NG', '/NQ', '/SI', '/YM', '/ZB', '/ZF', '/ZN', '/ZT',
-                        }
-                        missing = [s for s in missing if s not in contract_symbols]
+                        if exclude_non_equity:
+                            def _y_is_non_equity(sym: str) -> bool:
+                                yt = yticker_map_y.get(sym)
+                                return _is_non_equity(yt) if yt else _is_non_equity(sym)
+                            missing = [s for s in missing if not _y_is_non_equity(s)]
                     else:
                         # TW, TO, TD: prefer tos_symbol when available (handles renamed
                         # tickers like BNY→BK where symbol=BNY but tos_symbol=BK)
@@ -681,17 +688,8 @@ def get_symbols_comparison(exclude_non_equity: bool = True):
                         table_symbols = sorted(set(r[0] for r in rows if r[0]))
                         missing = sorted(set(table_symbols) - set(tl_symbols))
 
-                    # For Y: filter out contract symbols (those with contracts='Y' flag)
-                    if key == "y":
-                        # Symbols that are futures contracts with dynamic contract months
-                        contract_symbols = {
-                            '/6B', '/6C', '/6E', '/6J', '/6M', '/6N', '/6S', '/6Z',
-                            '/BZ', '/CL', '/ES', '/GC', '/HG', '/NG', '/NQ', '/SI', '/YM', '/ZB', '/ZF', '/ZN', '/ZT',
-                        }
-                        # Don't show contract symbols as missing (they're expected to be different)
-                        missing = [s for s in missing if s not in contract_symbols]
-
-                    if exclude_non_equity:
+                    # For non-Y tables apply generic pattern filter (Y already filtered above)
+                    if exclude_non_equity and key != "y":
                         missing = [s for s in missing if not _is_non_equity(s)]
 
                     if missing:
