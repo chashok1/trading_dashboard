@@ -62,32 +62,21 @@ def rename_symbol(body: dict):
         for row in col_rows:
             tbl  = row["table_name"]
             cols = set(row["cols"])
-            has_sym = "symbol"     in cols
-            has_tos = "tos_symbol" in cols
             try:
                 with s.begin_nested():
-                    if has_sym and has_tos:
-                        # Update each column independently: only touch symbol when
-                        # symbol matches, only touch tos_symbol when tos_symbol matches.
-                        # CASE expression avoids overwriting a valid tos_symbol with the
-                        # old symbol value (e.g. symbol=BNY, tos_symbol=BK → rename BNY
-                        # should give symbol=BK, tos_symbol=BK, not symbol=BK, tos_symbol=BNY)
-                        r = s.execute(text(f"""
-                            UPDATE "{tbl}"
-                            SET symbol     = CASE WHEN symbol     = :old THEN :new ELSE symbol     END,
-                                tos_symbol = CASE WHEN tos_symbol = :old THEN :new ELSE tos_symbol END
-                            WHERE symbol = :old OR tos_symbol = :old
-                        """), {"new": new, "old": old})
-                    elif has_tos:
-                        r = s.execute(text(
-                            f'UPDATE "{tbl}" SET tos_symbol=:new WHERE tos_symbol=:old'
-                        ), {"new": new, "old": old})
-                    else:
+                    n = 0
+                    if "symbol" in cols:
                         r = s.execute(text(
                             f'UPDATE "{tbl}" SET symbol=:new WHERE symbol=:old'
                         ), {"new": new, "old": old})
-                    if r.rowcount:
-                        counts[tbl] = r.rowcount
+                        n += r.rowcount
+                    if "tos_symbol" in cols:
+                        r = s.execute(text(
+                            f'UPDATE "{tbl}" SET tos_symbol=:new WHERE tos_symbol=:old'
+                        ), {"new": new, "old": old})
+                        n += r.rowcount
+                    if n:
+                        counts[tbl] = n
             except Exception:
                 pass  # skip tables that fail (e.g. views, FKs)
 
