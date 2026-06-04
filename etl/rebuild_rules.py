@@ -170,8 +170,23 @@ def _step_refresh_refs() -> dict:
                   AND deprecated_at IS NULL
                   AND composite_rule_code ~ '^\d+-(SA|SS|STM|SW|SH)-'
             """)).rowcount
+            # Per-member operator overrides: workbook reload resets all to NULL,
+            # so explicit overrides must be re-applied after the blanket backfill.
+            # Format: (composite_rule_code, atomic_rule_id) → operator
+            _MEMBER_OVERRIDES = {
+                ('698-SS-Bull-HighAbvTRR', 29): '>=',  # high_trr: fire when high IS above TRR
+            }
+            for (code, aid), op in _MEMBER_OVERRIDES.items():
+                s.execute(text("""
+                    UPDATE ref_trig_composite_mapping
+                    SET condition_operator = :op
+                    WHERE composite_rule_code = :code
+                      AND atomic_rule_id = :aid
+                      AND deprecated_at IS NULL
+                """), {"op": op, "code": code, "aid": aid})
             s.commit()
-        log.info("  condition_operator backfilled: %d BUY (>=), %d SELL (<=)", nb, ns)
+        log.info("  condition_operator backfilled: %d BUY (>=), %d SELL (<=) + %d overrides",
+                 nb, ns, len(_MEMBER_OVERRIDES))
     except Exception as e:
         log.warning("  condition_operator backfill failed: %s", e)
 
