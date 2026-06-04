@@ -719,16 +719,35 @@ def get_symbols_comparison(exclude_non_equity: bool = True):
 
                     if table_date:
                         if table == "hist_rr":
-                            # RR: Use tos_symbol column (already mapped via RRT during load)
-                            rows = s.execute(text(f"""
-                                SELECT DISTINCT COALESCE(tos_symbol, symbol) AS symbol
-                                FROM {table}
-                                WHERE {date_col} = :d ORDER BY symbol
+                            # RR: join to ref_rrt to get y_ticker for non-equity detection.
+                            # Symbols in ref_rrt with a non-equity y_ticker are excluded via
+                            # _is_non_equity(y_ticker). Symbols not in ref_rrt fall back to
+                            # pattern matching on the tos_symbol itself.
+                            rows = s.execute(text("""
+                                SELECT DISTINCT
+                                    COALESCE(h.tos_symbol, h.symbol) AS sym,
+                                    r.y_ticker
+                                FROM hist_rr h
+                                LEFT JOIN ref_rrt r ON r.tos_ticker = COALESCE(h.tos_symbol, h.symbol)
+                                WHERE h.snapshot_date = :d
+                                ORDER BY sym
                             """), {"d": table_date}).fetchall()
                             rr_symbols = sorted(set(r[0] for r in rows if r[0]))
 
                             # Missing: symbols in RR (tos_symbol) not in TL
                             missing = sorted(set(rr_symbols) - set(tl_symbols))
+
+                            if exclude_non_equity:
+                                # Build y_ticker lookup for ref_rrt-mapped symbols
+                                yticker_map = {r[0]: r[1] for r in rows if r[0]}
+                                def _rr_is_non_equity(sym: str) -> bool:
+                                    yt = yticker_map.get(sym)
+                                    # If in ref_rrt: classify by y_ticker (Yahoo format)
+                                    if yt:
+                                        return _is_non_equity(yt)
+                                    # Not in ref_rrt: fall back to pattern on sym itself
+                                    return _is_non_equity(sym)
+                                missing = [s for s in missing if not _rr_is_non_equity(s)]
                         else:
                             rows = s.execute(text(f"""
                                 SELECT DISTINCT symbol FROM {table}
@@ -739,7 +758,8 @@ def get_symbols_comparison(exclude_non_equity: bool = True):
                             # Find symbols NOT in TL
                             missing = sorted(set(table_symbols) - set(tl_symbols))
 
-                        if exclude_non_equity:
+                        # For non-RR tables apply generic pattern filter
+                        if exclude_non_equity and table != "hist_rr":
                             missing = [s for s in missing if not _is_non_equity(s)]
                         if missing:
                             result["missing_by_source"].append({
