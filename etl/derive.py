@@ -37,6 +37,70 @@ log = logging.getLogger(__name__)
 
 
 # =============================================================================
+# Anchor date — the single source of truth for the derive date (2026-06-05)
+# =============================================================================
+# hist_td (TOSD) is exported once per session, at market close (export_time is
+# fixed at 16:30). Its latest export_date is therefore the most recent COMPLETED
+# market session, and it is the ONLY thing that advances the derive date D.
+#
+#   * snapshot_date on every hist_* table is INFORMATIONAL only; derivation keys
+#     off export_date.
+#   * The daily-EOD sources (TOSL/TOSD/TOSW/Y) are read with an EXACT match
+#     export_date = D (no per-symbol carry-forward). A symbol absent from D's
+#     TOSD export is excluded from the whole cascade (drv_symbols universe).
+#   * Periodic feeds (RR/CALL/ETF/II/SSS/PS) and position files (CS/F) keep the
+#     carry-forward window (latest export/snapshot <= D) because they do not
+#     refresh every session.
+#   * drv_quote may use a fresher intraday TOSL/Y price (export_date up to today)
+#     while still being tagged as_of_date = D — see _derive_quote_impl.
+#
+# Full design: docs/derive_date_logic.md
+# =============================================================================
+
+# Daily-EOD sources locked to the anchor date (exact export_date = D match).
+ANCHOR_LOCKED_SOURCES = ("hist_tl", "hist_td", "hist_tw", "hist_y")
+
+
+def get_anchor_date(session: Session) -> Optional[date]:
+    """Return the derive anchor D = MAX(export_date) in hist_td (TOSD).
+
+    Returns None when hist_td is empty / has no export_date — the caller should
+    raise a 'TOSD missing' warning and NOT advance the derive date."""
+    row = session.execute(
+        text("SELECT MAX(export_date) FROM hist_td")
+    ).first()
+    return row[0] if row and row[0] else None
+
+
+def warn_missing_eod_sources(session: Session, as_of_date: date) -> list[str]:
+    """Raise a dashboard/actionable warning for each daily-EOD source that has
+    no rows at export_date = D. Returns the list of missing source tables.
+
+    Idempotent: re-clears the 'freshness' warning slice for D before re-adding.
+    Surfaced on the screen toolbars via GET /api/warnings."""
+    missing: list[str] = []
+    for tbl in ANCHOR_LOCKED_SOURCES:
+        present = session.execute(
+            text(f"SELECT 1 FROM {tbl} WHERE export_date = :d LIMIT 1"),
+            {"d": as_of_date},
+        ).first()
+        if not present:
+            missing.append(tbl)
+    for screen in ("dashboard", "actionable"):
+        clear_screen_warnings(session, screen, as_of_date)
+        for tbl in missing:
+            label = tbl.replace("hist_", "").upper()
+            add_warning(
+                session, screen,
+                f"{label} export missing for {as_of_date} — "
+                f"derivation ran without it.",
+                as_of_date=as_of_date, code="missing_eod_source",
+                severity="warning",
+            )
+    return missing
+
+
+# =============================================================================
 # Symbol mapping helper (using RRT table)
 # =============================================================================
 
@@ -680,28 +744,24 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
 # =============================================================================
 
 def _derive_symbols_impl(session: Session, as_of_date: date, run_id: int) -> int:
-    """Build drv_symbols: master ticker universe for as_of_date."""
+    """Build drv_symbols: master ticker universe for as_of_date.
+
+    ANCHORED ON TOSD (2026-06-05): the universe is exactly the symbols present
+    in hist_td at export_date = D (the anchor). A symbol missing from D's TOSD
+    export is excluded from the entire downstream cascade — every other drv_*
+    table LEFT JOINs from drv_symbols, so dropping it here drops it everywhere.
+    No per-symbol carry-forward, no ref_sector backfill: "missing today =
+    excluded today". See docs/derive_date_logic.md."""
     session.execute(
         text("DELETE FROM drv_symbols WHERE as_of_date = :d"),
         {"d": as_of_date},
     )
     result = session.execute(text("""
         INSERT INTO drv_symbols (as_of_date, tos_symbol)
-        SELECT :d, s FROM (
-            SELECT ticker AS s FROM ref_sector
-            UNION SELECT tos_symbol FROM hist_tl
-                  WHERE snapshot_date <= :d
-            UNION SELECT tos_symbol FROM hist_rr
-                  WHERE snapshot_date <= :d
-            UNION SELECT tos_symbol FROM hist_y
-                  WHERE snapshot_date <= :d
-            UNION SELECT tos_symbol FROM hist_call
-                  WHERE snapshot_date <= :d
-            UNION SELECT tos_symbol FROM hist_etf
-                  WHERE snapshot_date <= :d
-            UNION SELECT tos_symbol FROM hist_ii
-                  WHERE snapshot_date <= :d
-        ) u WHERE s IS NOT NULL
+        SELECT :d, tos_symbol
+          FROM hist_td
+         WHERE export_date = :d AND tos_symbol IS NOT NULL
+         GROUP BY tos_symbol
         ON CONFLICT (as_of_date, tos_symbol) DO NOTHING
     """), {"d": as_of_date})
     return result.rowcount or 0
@@ -738,8 +798,8 @@ def _derive_technicals_impl(session: Session, as_of_date: date, run_id: int) -> 
                 ELSE NULL
             END AS vlm_projected
         FROM hist_tl h
-        WHERE h.snapshot_date <= :d
-        ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
+        WHERE h.export_date = :d          -- anchor-locked: exact match, no carry-forward
+        ORDER BY h.tos_symbol, h.sequence DESC
     """), {"d": as_of_date})
 
     session.execute(text("""
@@ -767,8 +827,8 @@ def _derive_technicals_impl(session: Session, as_of_date: date, run_id: int) -> 
                ON dr.snapshot_date = h.snapshot_date
               AND dr.tos_symbol    = h.tos_symbol
               AND dr.sequence      = h.sequence
-        WHERE h.snapshot_date <= :d
-        ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
+        WHERE h.export_date = :d          -- anchor-locked: exact match, no carry-forward
+        ORDER BY h.tos_symbol, h.sequence DESC
     """), {"d": as_of_date})
 
     session.execute(text("""
@@ -786,8 +846,8 @@ def _derive_technicals_impl(session: Session, as_of_date: date, run_id: int) -> 
                ON dr.snapshot_date = h.snapshot_date
               AND dr.tos_symbol    = h.tos_symbol
               AND dr.sequence      = h.sequence
-        WHERE h.snapshot_date <= :d
-        ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
+        WHERE h.export_date = :d          -- anchor-locked: exact match, no carry-forward
+        ORDER BY h.tos_symbol, h.sequence DESC
     """), {"d": as_of_date})
 
     # Step 3a: stage ref+price cols (split to stay ≤965 bytes each)
@@ -1144,7 +1204,8 @@ _QUOTE_FIELDS = (
 
 
 def _latest_per_symbol(session: Session, table: str, as_of_date: date,
-                       column_map: dict, window_days: int | None = None) -> dict:
+                       column_map: dict, window_days: int | None = None,
+                       ceiling_date: date | None = None) -> dict:
     """Return {tos_symbol: {drv_field: value, ..., 'loaded_at': ts, 'snapshot_date': d, 'export_date': d, 'export_time': t}} for the latest
     snapshot ≤ as_of_date in `table`. Per source PK is (snapshot_date, tos_symbol,
     sequence); within the latest snapshot_date we order by loaded_at DESC,
@@ -1157,7 +1218,14 @@ def _latest_per_symbol(session: Session, table: str, as_of_date: date,
     considered. Use 7 for daily TOS exports (hist_td, hist_tl) so symbols
     removed from the watchlist stop appearing in drv_quote after a week.
     Leave None for hist_y (Yahoo Finance) which is the fallback for non-TOS symbols.
+
+    `ceiling_date`: upper bound for the latest-snapshot search. Defaults to
+    as_of_date (no look-ahead — correct for historical re-derives). On the
+    CURRENT anchor date the caller passes today's date so a fresher intraday
+    TOSL/Y export (snapshot/export_date after D) still feeds the live quote,
+    while the resulting drv_quote row stays tagged as_of_date = D.
     """
+    ceil = ceiling_date or as_of_date
     select_parts = ['tos_symbol AS symbol', 'snapshot_date', 'loaded_at', 'export_date', 'export_time']
     for drv_field, src_col in column_map.items():
         if src_col is None:
@@ -1166,10 +1234,10 @@ def _latest_per_symbol(session: Session, table: str, as_of_date: date,
             select_parts.append(f'{src_col} AS {drv_field}')
     sel = ', '.join(select_parts)
 
-    where = "snapshot_date <= :d"
-    params: dict = {"d": as_of_date}
+    where = "snapshot_date <= :ceil"
+    params: dict = {"d": as_of_date, "ceil": ceil}
     if window_days is not None:
-        where += f" AND snapshot_date >= :d - INTERVAL '{window_days} days'"
+        where += f" AND snapshot_date >= :ceil - INTERVAL '{window_days} days'"
 
     sql = text(f"""
         SELECT DISTINCT ON (tos_symbol) {sel}
@@ -1265,9 +1333,16 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
         'imp_volatility':  'imp_volatility',
     }
 
-    rows_y  = _latest_per_symbol(session, 'hist_y',  as_of_date, cmap_y)                  # no window — Yahoo is fallback for non-TOS symbols
-    rows_tl = _latest_per_symbol(session, 'hist_tl', as_of_date, cmap_tl, window_days=7)  # daily TOS Level: 7-day freshness gate
-    rows_td = _latest_per_symbol(session, 'hist_td', as_of_date, cmap_td, window_days=7)  # daily TOS Daily: 7-day freshness gate
+    # On the CURRENT anchor date, allow a fresher intraday TOSL/Y export
+    # (snapshot/export after D) to feed the live quote — still tagged D.
+    # For historical re-derives (as_of_date < anchor) the ceiling is D itself,
+    # so no future data leaks in.
+    anchor = get_anchor_date(session)
+    ceil = date.today() if (anchor is not None and as_of_date == anchor) else as_of_date
+
+    rows_y  = _latest_per_symbol(session, 'hist_y',  as_of_date, cmap_y,  ceiling_date=ceil)                  # no window — Yahoo is fallback for non-TOS symbols
+    rows_tl = _latest_per_symbol(session, 'hist_tl', as_of_date, cmap_tl, window_days=7, ceiling_date=ceil)  # daily TOS Level: 7-day freshness gate
+    rows_td = _latest_per_symbol(session, 'hist_td', as_of_date, cmap_td, window_days=7, ceiling_date=ceil)  # daily TOS Daily: 7-day freshness gate
 
     # Union of all symbols seen across the three sources.
     all_symbols = set(rows_y) | set(rows_tl) | set(rows_td)
@@ -3270,6 +3345,15 @@ def derive_all(session: Session, as_of_date: date,
     counts["drv_fundamentals"] = _safe("drv_fundamentals", derive_fundamentals)
     counts["drv_outlooks"]     = _safe("drv_outlooks",     derive_outlooks)
     counts["drv_portfolio"]    = _safe("drv_portfolio",    derive_portfolio)
+    # Surface any daily-EOD source (TOSL/TOSD/TOSW/Y) missing at export_date = D
+    # on the dashboard / actionable toolbars. Non-fatal; derivation still ran.
+    try:
+        missing_eod = warn_missing_eod_sources(session, as_of_date)
+        counts["missing_eod_sources"] = len(missing_eod)
+    except BaseException:
+        log.exception("warn_missing_eod_sources failed (continuing)")
+        try: session.rollback()
+        except Exception: pass
     # drv_ma is now a VIEW — no direct write needed
     # drv_cat_atomic_input — Python deriver (JF..NP + QH/QI).
     # Must run AFTER drv_quote (Step-1 SELECT pulls last_price from there).

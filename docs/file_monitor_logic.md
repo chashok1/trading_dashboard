@@ -112,10 +112,15 @@ absent from the current snapshot and marks them sold.
 
 ## In-process derive trigger
 
-Immediately after a successful load, `load_one_file` calls `derive_all(session,
-file_dt)` in-process (skippable via `--no-derive` / `do_derive=False`):
+Immediately after a successful load, `load_one_file` resolves the **anchor date**
+`D = get_anchor_date(session)` (= `MAX(export_date)` in `hist_td` / TOSD) and calls
+`derive_all(session, D)` in-process (skippable via `--no-derive` / `do_derive=False`).
+The derive date is the anchor, **not** the loaded file's filename date — only a TOSD
+load advances `D`; every other load re-derives the current anchor. If `hist_td` is empty
+(`D is None`) the loader writes a "cannot anchor a derive date" warning to
+`meta_scheduler_log` and skips the derive. Full rules: `docs/derive_date_logic.md`.
 
-- `derive_all` runs the full cascade for date `file_dt`: drv_quote/drv_rr →
+- `derive_all` runs the full cascade for anchor date `D`: drv_quote/drv_rr →
   drv_symbols/technicals/fundamentals/outlooks/portfolio (the 5 tables the
   `drv_ma` VIEW joins — `drv_ma` itself is not materialized) → drv_cat_atomic_input
   → drv_dash → drv_stks → drv_outlook_action → drv_actionable → drv_trig. Each step

@@ -31,7 +31,7 @@ from sqlalchemy import text
 
 from config.settings import settings
 from etl.db import session_scope
-from etl.derive import derive_all
+from etl.derive import derive_all, get_anchor_date
 from etl.excel_io import open_workbook
 from etl.load_raw import (
     close_run, file_hash, load_etf, load_etfchg, load_iichg, load_one_tab,
@@ -136,6 +136,20 @@ def infer_file_type(filename: str) -> Optional[str]:
     # last token should be the date; everything before is the file type
     ft = " ".join(parts[:-1])
     return ft
+
+
+def _log_anchor_warning(msg: str, file_name: str) -> None:
+    """Surface a 'cannot anchor derive' problem to the scheduler log + DB."""
+    log.warning(msg, extra={'file_name': file_name})
+    logging.getLogger("scheduler").warning(msg, extra={'file_name': file_name})
+    try:
+        with session_scope() as s:
+            s.execute(text("""
+                INSERT INTO meta_scheduler_log (logged_at, message, log_level, file_name)
+                VALUES (now(), :msg, 'WARNING', :fn)
+            """), {"msg": msg, "fn": file_name})
+    except Exception:
+        log.exception("could not write anchor warning to meta_scheduler_log")
 
 
 def load_one_file(file_path: str, file_type: Optional[str] = None,
@@ -313,13 +327,21 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
                 # would make Python treat derive_all as a function-scoped
                 # variable everywhere in load_one_file, breaking the
                 # generic-loader branch below with UnboundLocalError.
-                if do_derive and ins > 0 and file_dt:
+                # Derive the ANCHOR date (MAX export_date in hist_td), not this
+                # file's filename date. See get_anchor_date / docs/derive_date_logic.md.
+                if do_derive and ins > 0:
                     try:
-                        log.info("deriving all tables for %s ...", file_dt)
                         with session_scope() as s2:
-                            derive_all(s2, file_dt)
+                            anchor_d = get_anchor_date(s2)
+                            if anchor_d is None:
+                                _log_anchor_warning(
+                                    f"{p.name}: loaded, but hist_td (TOSD) is empty "
+                                    f"— cannot anchor a derive date.", p.name)
+                            else:
+                                log.info("deriving all tables for anchor %s ...", anchor_d)
+                                derive_all(s2, anchor_d)
                     except Exception as e:
-                        log.exception("derive_all failed for %s", file_dt)
+                        log.exception("derive_all failed for anchor date")
             except Exception as e:
                 # Aborted-txn safe error path
                 try: s.rollback()
@@ -429,18 +451,28 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
     # forward re-derive below then repairs any later dates that a backfilled
     # or out-of-order file invalidated. Skip the whole step with --no-derive
     # (do_derive=False) — used for bulk loads that derive once at the end.
+    # Derive target = the ANCHOR date (MAX export_date in hist_td / TOSD), NOT
+    # this file's filename date. TOSD is the only thing that advances the date;
+    # every other load (intraday TOSL/Y, periodic feeds) re-derives the current
+    # anchor. If hist_td is empty the date cannot be anchored — warn, don't derive.
+    # See get_anchor_date() / docs/derive_date_logic.md.
     derive_error = None
-    if do_derive and file_dt is not None:
-        log.info("rebuilding derived tables for %s ...", file_dt)
-        try:
-            with session_scope() as s2:
-                derive_all(s2, file_dt)
-        except BaseException as e:
-            derive_error = str(e)
-            log.exception("derive_all failed for %s (continuing)", file_dt)
-    elif do_derive:
-        log.debug("derive skipped for %s: no snapshot date parsed from filename",
-                  p.name)
+    derive_dt = None
+    if do_derive:
+        with session_scope() as s2:
+            derive_dt = get_anchor_date(s2)
+        if derive_dt is None:
+            _log_anchor_warning(
+                f"{p.name}: loaded, but hist_td (TOSD) has no export_date — "
+                f"cannot anchor a derive date. Load a TOSD export first.", p.name)
+        else:
+            log.info("rebuilding derived tables for anchor %s ...", derive_dt)
+            try:
+                with session_scope() as s2:
+                    derive_all(s2, derive_dt)
+            except BaseException as e:
+                derive_error = str(e)
+                log.exception("derive_all failed for %s (continuing)", derive_dt)
 
     # --- Automatic forward re-derive --------------------------------------
     # A file whose rows land on an OLD snapshot date can invalidate every
@@ -451,7 +483,7 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
     # file_dt. No-op for a normal current-day load (nothing is derived past
     # file_dt); only does real work on backfills / out-of-order loads.
     # Runs only when the main derive succeeded and new rows were inserted.
-    if (do_derive and file_dt is not None and derive_error is None
+    if (do_derive and derive_dt is not None and derive_error is None
             and 'ins' in locals() and ins > 0):
         try:
             with session_scope() as s3:
@@ -459,11 +491,11 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
                     r[0] for r in s3.execute(text(
                         "SELECT DISTINCT as_of_date FROM drv_dash "
                         "WHERE as_of_date > :fd ORDER BY as_of_date"
-                    ), {"fd": file_dt}).all()
+                    ), {"fd": derive_dt}).all()
                 ]
             if forward_dates:
                 log.info("forward re-derive: %d date(s) after %s need rebuilding",
-                         len(forward_dates), file_dt)
+                         len(forward_dates), derive_dt)
                 for i, fwd in enumerate(forward_dates, 1):
                     log.info("forward re-derive: %s (%d/%d)", fwd, i, len(forward_dates))
                     try:

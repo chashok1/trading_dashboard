@@ -65,11 +65,23 @@ Also: `user_action_log`, `ref_settings`, `v_rule_performance` view.
 
 ## Snapshot-date mental model
 
+**Derive date `D` is the ANCHOR = `MAX(export_date) FROM hist_td` (TOSD).** Only a
+TOSD load advances `D`; every other load (intraday TOSL/Y, periodic feeds, positions)
+re-derives the current anchor. `snapshot_date` is **informational** — derivation keys off
+`export_date`. Daily-EOD sources (TOSL/TOSD/TOSW/Y) match `export_date = D` exactly, max
+`sequence` per symbol (no per-symbol carry-forward; a symbol missing from D's TOSD export is
+excluded everywhere via `drv_symbols`). Periodic feeds (RR/CALL/ETF/II/SSS/PS) and positions
+(CS/F) keep carry-forward `<= D`. Full detail: `docs/derive_date_logic.md`.
+
 ```
-user picks date D → /api/dash?date=D → SELECT * FROM v_dash(D)
+load lands → D = get_anchor_date()   [MAX(export_date) in hist_td]
+  → /api/dash?date=D → SELECT * FROM v_dash(D)
   ← drv_dash WHERE as_of_date=D
   ← drv_ma VIEW (drv_symbols + drv_technicals + drv_fundamentals + drv_outlooks + drv_portfolio)
-    ← each component table populated from latest hist_* (snapshot_date ≤ D) + drv_quote
+    ← drv_symbols = symbols in hist_td WHERE export_date=D   (the universe; missing → excluded)
+    ← daily-EOD tl/td/tw/y: export_date=D exact, max(sequence) per symbol
+    ← periodic rr/call/etf/ii/sss/ps + positions cs/f: latest snapshot ≤ D
+    ← drv_quote: latest price (intraday OK on the anchor date), tagged as_of_date=D
   ← hist_* loaded from Excel (ON CONFLICT DO NOTHING)
 ```
 
@@ -204,6 +216,7 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Rule Flow crossover formulas — Trade(JM) vs Trend(JP) | Trade: `IFS(D>AF AND AF>MIN(EF,J),1, MAX(EF,I)>AF AND AF>D,-1, 0)` — no BZ. Trend: same but `MIN(BZ,EF,J)` / `MAX(BZ,EF,I)` — includes BZ. DMA crossovers: BZ only. |
 | Current Price SD Rule (NK) input scale | Python uses `net_chng/AC`; Excel uses `pct_change(%)×D/AC` (100× larger). Thresholds in `ref_trig_atomic_rule` calibrated at Python scale — do not change formula without also updating thresholds. |
 | Dashboard / snapshot-date logic | `docs/dashboard_logic.md` |
+| Derive date / anchor logic (export_date, TOSD, per-source rules) | `docs/derive_date_logic.md`; `etl/derive.py::get_anchor_date` / `ANCHOR_LOCKED_SOURCES` |
 | File Monitor logic | `docs/file_monitor_logic.md` |
 | Rules engine logic | `docs/rules_logic.md` |
 | Rule groups logic | `docs/rule_groups_logic.md` |
@@ -227,6 +240,10 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Full command reference + web endpoints + troubleshooting table | `COMMANDS.md` |
 
 ---
+
+## Recent Migrations (2026-06-05)
+
+- **Anchor-date derive model**: Derive date `D` is now `MAX(export_date) FROM hist_td` (TOSD), resolved by `etl/derive.py::get_anchor_date`. Only TOSD advances `D`; `etl/etl_load.py` derives the anchor (not the filename date) after every load. `snapshot_date` is informational; derivation keys off `export_date`. Daily-EOD sources (TOSL/TOSD/TOSW/Y, `ANCHOR_LOCKED_SOURCES`) read `export_date = D` exactly with max `sequence` per symbol — no per-symbol carry-forward. `drv_symbols` universe = `hist_td WHERE export_date = D`, so a symbol missing from D's TOSD export is excluded from the whole cascade. Periodic feeds + positions keep `<= D` carry-forward. `drv_quote` may use a fresher intraday price on the anchor date (tagged `as_of_date=D`). Missing daily-EOD files surface via `warn_missing_eod_sources` → `meta_warning` (dashboard/actionable toolbars). **No schema change**; apply across history with File Monitor → Force Re-derive. Full design: `docs/derive_date_logic.md`.
 
 ## Recent Migrations (2026-06-03)
 
