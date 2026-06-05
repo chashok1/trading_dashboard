@@ -300,6 +300,7 @@ def list_actionable_dates():
     with session_scope() as s:
         rows = s.execute(text("""
             SELECT DISTINCT as_of_date FROM drv_actionable
+            WHERE as_of_date <= COALESCE((SELECT MAX(export_date) FROM hist_td), as_of_date)
             ORDER BY 1 DESC
         """)).fetchall()
     return [r[0].isoformat() for r in rows]

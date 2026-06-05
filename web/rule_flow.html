@@ -195,15 +195,25 @@
 <script src="/static/rule_flow.js"></script>
 <script src="/static/warning_badge.js"></script>
 <script>
-  // Default date to today
-  document.getElementById('dateInput').value = new Date().toISOString().slice(0,10);
-  // Auto-load from URL params
-  const urlp = new URLSearchParams(location.search);
-  if (urlp.get('symbol')) {
-    document.getElementById('symInput').value = urlp.get('symbol').toUpperCase();
-    if (urlp.get('date')) document.getElementById('dateInput').value = urlp.get('date');
-    loadFlow();
-  }
+  // Default the date to the anchor D = MAX(export_date) FROM hist_td. /api/dates
+  // is capped at the anchor, so dates[0] is it. URL ?date= overrides; fall back
+  // to today only if no dates exist. Auto-load (URL symbol, else the remembered
+  // symbol from rule_flow.js) runs AFTER the date is set, so the data loads for
+  // the anchor instead of an empty/today date.
+  (async function initRuleFlow() {
+    const urlp = new URLSearchParams(location.search);
+    const dateEl = document.getElementById('dateInput');
+    let anchor = null;
+    try {
+      const dates = await fetch('/api/dates').then(r => r.ok ? r.json() : []);
+      if (Array.isArray(dates) && dates.length) anchor = dates[0];
+    } catch (_) { /* ignore */ }
+    dateEl.value = urlp.get('date') || anchor || new Date().toISOString().slice(0, 10);
+
+    const urlSym = urlp.get('symbol');
+    if (urlSym) document.getElementById('symInput').value = urlSym.toUpperCase();
+    if (document.getElementById('symInput').value.trim()) loadFlow();
+  })();
 </script>
 </body>
 </html>

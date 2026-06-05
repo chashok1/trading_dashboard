@@ -104,6 +104,39 @@ runs `derive_all(session, D)` — it no longer derives the filename date. If `D`
 is `None` (no TOSD yet) it logs a "cannot anchor a derive date" warning to
 `meta_scheduler_log` and skips. The CST/FT transaction branches are untouched.
 
+## Default date on screens
+
+Every screen defaults its date control to the anchor `D`. This is enforced in
+**one place** rather than per-screen: `v_available_dates` (and
+`/api/actionable/dates`) are **capped at the anchor**
+(`WHERE as_of_date <= COALESCE((SELECT MAX(export_date) FROM hist_td), as_of_date)`).
+Because every screen takes `dates[0]` (newest) from those lists, and
+`_resolve_date(None)` takes `MAX(as_of_date)` from `v_available_dates`, both the
+front-end default and the backend default resolve to the anchor — and stray
+post-migration future-dated derives never show. Apply the view change with
+`python -m db.init_db`.
+
+## "Data is behind the latest market close" warning + highlight
+
+The anchor is the latest *loaded* close; the **expected** latest close is a
+calendar/clock fact. When the expected close has passed but its data isn't
+loaded (e.g. Fri after 16:30 ET through Mon before 16:30 ET, but only Thursday
+is loaded), the user must be told.
+
+- `GET /api/anchor-status` (request-time, since it depends on the current clock)
+  returns `{anchor_date, expected_close, is_stale, message}`.
+  `api/_helpers.py::expected_market_close_date()` computes the most recent
+  completed **US trading session** — a weekday that is not in `ref_holiday`,
+  past the cutoff `ref_settings.market_close_cutoff` (default `16:30`) in
+  `ref_settings.market_timezone` (default `America/New_York`). Market holidays
+  are skipped via `ref_holiday`. On Windows accurate tz needs the `tzdata`
+  package; absent it, it falls back to the server's local clock.
+- `web/warning_badge.js` (the shared topbar warning toolbar on every page) polls
+  `/api/anchor-status`; when `is_stale` it raises an amber toolbar warning with
+  the message **and** adds the `.date-stale` class to `#datePicker` (amber
+  border/background). The displayed date stays the **actual anchor** — the date
+  that has data — so the label never mismatches the data shown.
+
 ## Missing-file warnings
 
 `warn_missing_eod_sources(session, D)` (called at the end of `derive_all`)

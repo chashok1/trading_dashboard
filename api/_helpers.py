@@ -5,7 +5,7 @@ at least two routers; helpers used by only one router stayed with that router.
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time as _dtime, timedelta
 from functools import lru_cache as _lru_cache  # noqa: F401  (kept for parity)
 from pathlib import Path
 from typing import Optional
@@ -40,7 +40,12 @@ WEB_DIR = PROJECT_ROOT / "web"
 # -----------------------------------------------------------------------------
 
 def _resolve_date(d: Optional[str]) -> date:
-    """If date is None, return latest available; else parse YYYY-MM-DD."""
+    """If date is None, return the default (latest available); else parse
+    YYYY-MM-DD.
+
+    The default is the anchor D = MAX(export_date) FROM hist_td (TOSD market
+    close): v_available_dates is capped at the anchor, so MAX(as_of_date) there
+    IS the anchor. See docs/derive_date_logic.md."""
     if d is None:
         with session_scope() as s:
             row = s.execute(text(
@@ -55,6 +60,97 @@ def _resolve_date(d: Optional[str]) -> date:
     except ValueError:
         raise HTTPException(status_code=400,
                             detail="date must be YYYY-MM-DD")
+
+
+# -----------------------------------------------------------------------------
+# Expected market-close date — for the "data is stale" toolbar warning
+# -----------------------------------------------------------------------------
+
+def _get_ref_setting(name: str, default: str) -> str:
+    """Read a ref_settings value, falling back to `default` on any miss/error."""
+    try:
+        with session_scope() as s:
+            row = s.execute(text(
+                "SELECT setting_value FROM ref_settings WHERE setting_name = :n"
+            ), {"n": name}).first()
+        return row[0] if row and row[0] is not None else default
+    except Exception:
+        return default
+
+
+def expected_market_close_date(now: Optional[datetime] = None) -> date:
+    """Most recent COMPLETED US market session as of `now`, in market time.
+
+    A session counts as complete once the wall clock passes the cutoff
+    (ref_settings.market_close_cutoff, default '16:30') in the market timezone
+    (ref_settings.market_timezone, default 'America/New_York'). So Friday after
+    16:30 ET → Friday; Sat/Sun → Friday; Monday before 16:30 ET → Friday.
+
+    Weekday-based: it does NOT account for market holidays, so on a holiday it
+    may name a session that didn't trade until the next real session loads. On
+    Windows, accurate tz handling needs the `tzdata` package; without it this
+    falls back to the server's local clock."""
+    cutoff_str = _get_ref_setting("market_close_cutoff", "16:30")
+    tzname = _get_ref_setting("market_timezone", "America/New_York")
+    try:
+        hh, mm = (int(x) for x in str(cutoff_str).split(":")[:2])
+    except Exception:
+        hh, mm = 16, 30
+    if now is None:
+        try:
+            from zoneinfo import ZoneInfo
+            now = datetime.now(ZoneInfo(tzname))
+        except Exception:
+            now = datetime.now()  # fallback: server local clock
+    # Market holidays (recent window — we only ever walk back a few days).
+    holidays: set = set()
+    try:
+        with session_scope() as s:
+            rows = s.execute(text(
+                "SELECT holiday_date FROM ref_holiday "
+                "WHERE holiday_date >= :lo AND holiday_date <= :hi"
+            ), {"lo": now.date() - timedelta(days=20), "hi": now.date()}).all()
+        holidays = {r[0] for r in rows}
+    except Exception:
+        holidays = set()
+
+    def _is_session(dd: date) -> bool:
+        return dd.weekday() < 5 and dd not in holidays
+
+    d = now.date()
+    # Today qualifies only if it's a trading day AND we're past the cutoff.
+    if _is_session(d) and (now.hour, now.minute) >= (hh, mm):
+        return d
+    # Otherwise the latest completed session is the most recent prior trading day.
+    d -= timedelta(days=1)
+    while not _is_session(d):
+        d -= timedelta(days=1)
+    return d
+
+
+def anchor_date_and_status(now: Optional[datetime] = None) -> dict:
+    """Resolve the loaded anchor (MAX(export_date) FROM hist_td) and whether it
+    is behind the expected market close. Used by GET /api/anchor-status."""
+    with session_scope() as s:
+        row = s.execute(text("SELECT MAX(export_date) FROM hist_td")).first()
+    anchor = row[0] if row and row[0] else None
+    expected = expected_market_close_date(now)
+    is_stale = False
+    message = None
+    if anchor is None:
+        is_stale = True
+        message = "No TOSD (hist_td) data loaded yet."
+    elif anchor < expected:
+        is_stale = True
+        message = (f"Latest market session ({expected:%a %Y-%m-%d}) not loaded — "
+                   f"showing {anchor:%a %Y-%m-%d}. Load that day's "
+                   f"TOSD/TOSL/TOSW/Y files.")
+    return {
+        "anchor_date": anchor.isoformat() if anchor else None,
+        "expected_close": expected.isoformat(),
+        "is_stale": is_stale,
+        "message": message,
+    }
 
 
 # -----------------------------------------------------------------------------

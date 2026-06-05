@@ -2,6 +2,13 @@
 
 Index file only. Detail lives in `docs/`. See Lookup index below.
 
+> **Session start (token-efficient init):** This file auto-loads — that is the
+> whole context backbone. Do NOT read other docs, scan the tree, or "review the
+> project" up front. Read only this `CLAUDE.md`, then ask which screen/feature
+> the user is working on and open just the one matching `docs/*_logic.md` from
+> the Lookup index. Use `/clear` between unrelated tasks so a fresh session
+> reloads only this lean index. (Rules 10–11 enforce this.)
+
 ---
 
 ## What it is
@@ -173,7 +180,7 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 - **Always `--reload-dir api`** with uvicorn — without it, `etl/working/` heartbeat writes trigger constant reloads on Windows.
 - **`init_db` swallows DO blocks** — for DO-block migrations, also provide a `migrate_X.py`. Template: `migrate_ref_load_files_pk.py`.
 - **git lock files on Windows mount** — `.git/index.lock` / `.git/HEAD.lock` can stick after agent-based commits. Delete from Windows Explorer before next git op.
-- **Mount staleness** — `stat`/`wc` can lag on the sandbox mount. Use `cat`/`tail -c N`.
+- **Mount staleness (agent sessions) — KNOWN FALSE ALARM, do NOT investigate** — when Claude edits an existing file, the Linux sandbox mirror often freezes on a *stale/truncated* copy of that file for the rest of the session. `wc`/`cat`/`tail`/`dd`/`git diff`/`python ast.parse` run **in the sandbox** will then show the file cut off mid-line. This is cosmetic: the real Windows file is complete and correct (newly-created files mirror fine; only in-session-edited files go stale). **Response:** trust the editor's own Read as ground truth, do NOT chase it or "repair" the file, and do NOT `git commit` from the sandbox (it would stage the truncated mirror) — commit from Windows, or verify there with `python -c "import ast; ast.parse(open(r'PATH').read())"`. (Plain lag where `cat`/`tail -c N` helps is the milder, separate case.)
 - **Composite PKs in /ref UI** — `web/ref.js` renders PK columns read-only. Prefer single-col PK + UNIQUE.
 
 ---
@@ -217,6 +224,8 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Current Price SD Rule (NK) input scale | Python uses `net_chng/AC`; Excel uses `pct_change(%)×D/AC` (100× larger). Thresholds in `ref_trig_atomic_rule` calibrated at Python scale — do not change formula without also updating thresholds. |
 | Dashboard / snapshot-date logic | `docs/dashboard_logic.md` |
 | Derive date / anchor logic (export_date, TOSD, per-source rules) | `docs/derive_date_logic.md`; `etl/derive.py::get_anchor_date` / `ANCHOR_LOCKED_SOURCES` |
+| Default screen date = anchor (capped dates list) | `db/baseline.sql` `v_available_dates`; `api/_helpers.py::_resolve_date`; `/api/actionable/dates` |
+| "Data behind market close" warning + date highlight | `/api/anchor-status`; `api/_helpers.py::expected_market_close_date`; `web/warning_badge.js` (`.date-stale`) |
 | File Monitor logic | `docs/file_monitor_logic.md` |
 | Rules engine logic | `docs/rules_logic.md` |
 | Rule groups logic | `docs/rule_groups_logic.md` |
@@ -243,7 +252,9 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 
 ## Recent Migrations (2026-06-05)
 
-- **Anchor-date derive model**: Derive date `D` is now `MAX(export_date) FROM hist_td` (TOSD), resolved by `etl/derive.py::get_anchor_date`. Only TOSD advances `D`; `etl/etl_load.py` derives the anchor (not the filename date) after every load. `snapshot_date` is informational; derivation keys off `export_date`. Daily-EOD sources (TOSL/TOSD/TOSW/Y, `ANCHOR_LOCKED_SOURCES`) read `export_date = D` exactly with max `sequence` per symbol — no per-symbol carry-forward. `drv_symbols` universe = daily-EOD sources (td/tl/tw/y) at `export_date = D` (exact, no carry-forward) UNION periodic feeds (etf/ii/call/rr) at `snapshot_date <= D` — so a stock missing from today's TOSD/TOSL is excluded, but non-TOSD symbols (e.g. ETFs in etf/ii feeds) still appear. Periodic feeds + positions keep `<= D` carry-forward. **Run Missing Derives** now enumerates TOSD market-close dates (`DISTINCT export_date FROM hist_td`) via `api/routers/monitor.py::_find_missing_derive_dates`. `drv_quote` may use a fresher intraday price on the anchor date (tagged `as_of_date=D`). Missing daily-EOD files surface via `warn_missing_eod_sources` → `meta_warning` (dashboard/actionable toolbars). **No schema change**; apply across history with File Monitor → Force Re-derive. Full design: `docs/derive_date_logic.md`.
+- **Anchor-date derive model**: Derive date `D` is now `MAX(export_date) FROM hist_td` (TOSD), resolved by `etl/derive.py::get_anchor_date`. Only TOSD advances `D`; `etl/etl_load.py` derives the anchor (not the filename date) after every load. `snapshot_date` is informational; derivation keys off `export_date`. Daily-EOD sources (TOSL/TOSD/TOSW/Y, `ANCHOR_LOCKED_SOURCES`) read `export_date = D` exactly with max `sequence` per symbol — no per-symbol carry-forward. `drv_symbols` universe = daily-EOD sources (td/tl/tw/y) at `export_date = D` (exact, no carry-forward) UNION periodic feeds (etf/ii/call/rr) at `snapshot_date <= D` — so a stock missing from today's TOSD/TOSL is excluded, but non-TOSD symbols (e.g. ETFs in etf/ii feeds) still appear. Periodic feeds + positions keep `<= D` carry-forward. **Run Missing Derives** now enumerates TOSD market-close dates (`DISTINCT export_date FROM hist_td`) via `api/routers/monitor.py::_find_missing_derive_dates`. `drv_quote` may use a fresher intraday price on the anchor date (tagged `as_of_date=D`). Missing daily-EOD files surface via `warn_missing_eod_sources` → `meta_warning` (dashboard/actionable toolbars). **No schema change** to the derive logic; apply across history with File Monitor → Force Re-derive. Full design: `docs/derive_date_logic.md`.
+- **Default screen date = anchor**: `v_available_dates` and `/api/actionable/dates` are capped at `MAX(export_date) FROM hist_td`, so every screen's default (`dates[0]`) and `_resolve_date(None)` resolve to the anchor (stray future-dated derives no longer show). View change → **`python -m db.init_db`** to apply.
+- **"Data behind market close" warning + date highlight**: `GET /api/anchor-status` (request-time) compares the anchor to `api/_helpers.py::expected_market_close_date()` (most recent completed US trading session — weekday not in `ref_holiday` — past `ref_settings.market_close_cutoff` default `16:30` in `market_timezone` default `America/New_York`; Windows needs `tzdata`). `web/warning_badge.js` polls it and, when stale, raises an amber toolbar warning + adds `.date-stale` to `#datePicker`. Displayed date stays the actual anchor.
 
 ## Recent Migrations (2026-06-03)
 

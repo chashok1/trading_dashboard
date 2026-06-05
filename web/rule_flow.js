@@ -88,8 +88,12 @@ document.getElementById('symInput').addEventListener('keydown', e => {
 });
 
 (function restoreSym() {
+  // Only restore the remembered symbol into the input here. The actual
+  // auto-load is triggered by the inline init in rule_flow.html AFTER it has
+  // set the date control to the anchor — otherwise loadFlow would fire with an
+  // empty/today date before the anchor is resolved.
   const saved = localStorage.getItem('ruleflow_symbol');
-  if (saved) { document.getElementById('symInput').value = saved; loadFlow(); }
+  if (saved) document.getElementById('symInput').value = saved;
 })();
 
 // ── Render ────────────────────────────────────────────────────────────────────

@@ -11,7 +11,7 @@
   'use strict';
 
   const POLL_MS = 5 * 60 * 1000;  // 5 minutes
-  const STATE = { apiWarnings: [], pageWarnings: [], expanded: false };
+  const STATE = { apiWarnings: [], pageWarnings: [], anchorWarning: [], expanded: false };
 
   // ---- styles (injected once) ----------------------------------------------
   function injectStyles() {
@@ -114,6 +114,16 @@
       #warnPanel::-webkit-scrollbar-track { background: transparent; }
       #warnPanel::-webkit-scrollbar-thumb { background: #d0d0d0; border-radius: 3px; }
       #warnPanel::-webkit-scrollbar-thumb:hover { background: #999; }
+
+      /* Date control highlighted when the loaded data is behind the latest
+         market close (see /api/anchor-status). */
+      #datePicker.date-stale, select.date-stale {
+        border: 2px solid #f59e0b !important;
+        background: #fff7ed !important;
+        color: #92400e !important;
+        font-weight: 600;
+        box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.30);
+      }
     `;
     const tag = document.createElement('style');
     tag.id = 'wbStyles';
@@ -173,7 +183,7 @@
 
   // ---- rendering --------------------------------------------------
   function render() {
-    const all = [...STATE.apiWarnings, ...STATE.pageWarnings];
+    const all = [...STATE.anchorWarning, ...STATE.apiWarnings, ...STATE.pageWarnings];
     const unique = {};
     for (const w of all) {
       if (!unique[w.id]) unique[w.id] = w;
@@ -245,7 +255,38 @@
         }));
       }
     } catch (_) { /* silent */ }
+
+    // Anchor staleness: is the loaded data behind the latest market close?
+    // Request-time check (depends on the current clock). When stale, raise a
+    // toolbar warning AND highlight the #datePicker control.
+    try {
+      const ar = await fetch('/api/anchor-status');
+      if (ar.ok) applyAnchorStatus(await ar.json());
+    } catch (_) { /* silent */ }
+
     render();
+  }
+
+  function applyAnchorStatus(st) {
+    const sel = document.getElementById('datePicker');
+    if (st && st.is_stale) {
+      STATE.anchorWarning = [{
+        id: 'anchor-stale',
+        level: 'warning',
+        title: st.message || 'Loaded data is behind the latest market close.',
+        items: [],
+      }];
+      if (sel) {
+        sel.classList.add('date-stale');
+        sel.title = st.message || 'Data behind latest market close';
+      }
+    } else {
+      STATE.anchorWarning = [];
+      if (sel) {
+        sel.classList.remove('date-stale');
+        sel.removeAttribute('title');
+      }
+    }
   }
 
   // ---- public API -----------------------------------------------------

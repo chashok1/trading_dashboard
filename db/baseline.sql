@@ -4618,13 +4618,20 @@ $$;
 
 -- -----------------------------------------------------
 
+-- Capped at the anchor date D = MAX(export_date) FROM hist_td (TOSD market
+-- close), so the latest available date — used as the default on every screen
+-- (dates[0]) and by _resolve_date() — is always the anchor, never a stray
+-- post-migration future-dated derive. COALESCE keeps it open when hist_td is
+-- empty. See docs/derive_date_logic.md.
 CREATE OR REPLACE VIEW v_available_dates AS
 
-    SELECT DISTINCT as_of_date FROM drv_dash
+    SELECT as_of_date FROM (
+        SELECT as_of_date FROM drv_dash
+        UNION
+        SELECT as_of_date FROM drv_stks
+    ) u
 
-    UNION
-
-    SELECT DISTINCT as_of_date FROM drv_stks
+    WHERE as_of_date <= COALESCE((SELECT MAX(export_date) FROM hist_td), as_of_date)
 
     ORDER BY 1 DESC;
 

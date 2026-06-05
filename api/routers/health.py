@@ -69,6 +69,18 @@ def list_dates():
     return [r[0].isoformat() for r in rows]
 
 
+@router.get("/api/anchor-status")
+def anchor_status():
+    """Anchor date (MAX(export_date) FROM hist_td) vs the expected market close.
+
+    Request-time check (depends on the current clock, so it can't be baked into
+    the derive-time meta_warning store). The toolbar (warning_badge.js) polls
+    this to raise the 'data behind latest market close' warning and highlight
+    the date control. See docs/derive_date_logic.md."""
+    from api._helpers import anchor_date_and_status
+    return anchor_date_and_status()
+
+
 @router.get("/api/sectors")
 def list_sectors():
     """Distinct sectors present in drv_ma (used for filter dropdowns)."""
