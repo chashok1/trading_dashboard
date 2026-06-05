@@ -1018,7 +1018,8 @@ def load_trig_rules(session: Session) -> dict:
     rows = session.execute(text("""
         SELECT rule_name, brkeout_from, brkeout_to,
                wt_below, wt_between, wt_above,
-               scoring_mode, score_params, neg_multiplier
+               scoring_mode, score_params, neg_multiplier,
+               neg_brkeout_from, neg_brkeout_to
         FROM ref_trig_atomic_rule
         WHERE deprecated_at IS NULL AND rule_name IS NOT NULL
     """)).mappings().all()
@@ -1083,11 +1084,17 @@ def _eval_trig_ifs(value, rule: Optional[dict], *,
     wb_ = _f(rule.get("wt_below")) or 0.0
     wbt = _f(rule.get("wt_between")) or 0.0
     wa  = _f(rule.get("wt_above")) or 0.0
-    # neg_multiplier scales negative-side thresholds (default 1.0 = symmetric).
-    # e.g. Current Volume Rule uses 0.25: negative zone is 1/4 of positive zone.
-    nm = float(rule.get("neg_multiplier") or 1.0)
-    nhi = hi * nm
-    nlo = lo * nm
+    # Negative-side thresholds: use explicit neg_brkeout_from/to when set;
+    # otherwise scale by neg_multiplier (default 1.0 = symmetric).
+    nlo_explicit = _f(rule.get("neg_brkeout_from"))
+    nhi_explicit = _f(rule.get("neg_brkeout_to"))
+    if nlo_explicit is not None and nhi_explicit is not None:
+        nlo = nlo_explicit
+        nhi = nhi_explicit
+    else:
+        nm = float(rule.get("neg_multiplier") or 1.0)
+        nlo = lo * nm
+        nhi = hi * nm
     if positive_only:
         # 4-clause: positive values only; zero and negative → 0
         if strict:

@@ -3929,14 +3929,22 @@ ADD COLUMN IF NOT EXISTS trig_action TEXT;
 
 
 -- neg_multiplier: scales the negative-side zone thresholds in _eval_trig_ifs.
--- Default 1.0 = symmetric (negative side mirrors positive). Set to 0.25 for
--- Current Volume Rule (Excel uses 1/4 of positive thresholds on negative side).
-
+-- Default 1.0 = symmetric (negative side mirrors positive).
 ALTER TABLE IF EXISTS ref_trig_atomic_rule
 ADD COLUMN IF NOT EXISTS neg_multiplier NUMERIC NOT NULL DEFAULT 1.0;
 
-UPDATE ref_trig_atomic_rule SET neg_multiplier = 0.25
-WHERE rule_name = 'Current Volume Rule';
+-- neg_brkeout_from / neg_brkeout_to: explicit negative-side thresholds.
+-- When set, _eval_trig_ifs uses these directly (not neg_multiplier * brkeout_*).
+-- current_volume_rule uses 25/50 (= 100/200 * 0.25) per Excel formula.
+ALTER TABLE IF EXISTS ref_trig_atomic_rule
+ADD COLUMN IF NOT EXISTS neg_brkeout_from NUMERIC;
+
+ALTER TABLE IF EXISTS ref_trig_atomic_rule
+ADD COLUMN IF NOT EXISTS neg_brkeout_to NUMERIC;
+
+UPDATE ref_trig_atomic_rule
+SET neg_brkeout_from = 25, neg_brkeout_to = 50
+WHERE rule_name = 'current_volume_rule';
 
 -- source_column: table.column reference for the raw hist_* value this rule evaluates
 -- (e.g. hist_td.brr_pct). Multiple rules sharing the same raw value use the same ref.
