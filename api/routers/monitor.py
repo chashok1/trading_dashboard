@@ -990,18 +990,21 @@ def reprocess_file(file_path: str = Query(...),
 # date. Used by the File Monitor "Run Missing Derives" button.
 
 def _find_missing_derive_dates(session, last_n_days: Optional[int] = None) -> list:
-    """Return ascending list of snapshot dates with hist_* data but no
-    successful meta_derived_run row.
+    """Return ascending list of market-close dates with no successful
+    meta_derived_run row.
 
-    If ``last_n_days`` is provided (positive int), only return dates
-    within the last N days (snapshot_date >= CURRENT_DATE - N).
+    Anchored on TOSD (2026-06-05): the valid derive dates are the TOSD
+    market-close dates (DISTINCT export_date FROM hist_td) — the same anchor
+    set get_anchor_date() resolves from. Other hist_* snapshot dates are NOT
+    independent derive dates; they only ever contribute to a TOSD anchor.
+
+    If ``last_n_days`` is provided (positive int), only return dates within the
+    last N days (d >= CURRENT_DATE - N).
     """
     sql = """
         WITH hist_dates AS (
-            SELECT DISTINCT snapshot_date AS d FROM hist_cs
-            UNION SELECT DISTINCT snapshot_date FROM hist_f
-            UNION SELECT DISTINCT snapshot_date FROM hist_tl
-            UNION SELECT DISTINCT snapshot_date FROM hist_td
+            SELECT DISTINCT export_date AS d FROM hist_td
+             WHERE export_date IS NOT NULL
         ),
         done AS (
             SELECT DISTINCT as_of_date AS d FROM meta_derived_run

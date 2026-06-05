@@ -45,7 +45,7 @@ Consequences:
 
 | Source | Tables | Rule for anchor date D |
 |---|---|---|
-| **TOSD** | `hist_td` | **Anchor.** `D = MAX(export_date)`. Also defines the symbol universe: `drv_symbols` = symbols in `hist_td WHERE export_date = D`. |
+| **TOSD** | `hist_td` | **Anchor.** `D = MAX(export_date)`. Seeds the symbol universe (see below). |
 | **TOSL, TOSW, Y** | `hist_tl`, `hist_tw`, `hist_y` | **Exact match `export_date = D`**, latest `sequence` per symbol. No carry-forward. A symbol absent from D's export is dropped from the anchored fields. |
 | **drv_quote feed** | `hist_tl`, `hist_y`, `hist_td` | **Latest available price** (snapshot up to *today*, not capped at D) on the current anchor date, so an intraday export refreshes the live quote. Row tagged `as_of_date = D`. Historical re-derives are capped at their own date (no look-ahead). |
 | **RR, CALL, ETF/ETFCHG, II/IICHG, SSS, PS** | `hist_rr`, `hist_call`, … | **Carry-forward**: latest `snapshot_date <= D` per symbol. These feeds are weekly/periodic and legitimately predate D. |
@@ -55,19 +55,22 @@ Consequences:
 
 ### Symbol universe — the key leverage point
 
-`drv_symbols` is the master ticker list for D, built **only** from
-`hist_td WHERE export_date = D`. Every downstream component table
-(`drv_technicals`, `drv_fundamentals`, `drv_outlooks`, `drv_portfolio`) is built
-`FROM drv_symbols s ... WHERE s.as_of_date = D`, so a symbol not in the universe
-is automatically excluded from the entire cascade. "Missing from today's TOSD =
-excluded from all calculations for D." There is no `ref_sector` backfill and no
-per-symbol carry-forward of the universe.
+`drv_symbols` is the master ticker list for D: every symbol with **current** data
+from any source on D —
 
-> Edge note: a symbol that appears only in a non-TOSD feed (e.g. an ETF tracked
-> in `hist_etf`/`hist_ii` but never in TOSD) will *not* appear in the universe.
-> This is intended by the anchor model. If such symbols must always be present,
-> widen the `drv_symbols` source to a UNION of the daily-EOD sources at
-> `export_date = D` — but keep it exact-date (no `<= D`).
+- **daily-EOD** (`hist_td`/`hist_tl`/`hist_tw`/`hist_y`): exact `export_date = D`
+  (no carry-forward), so a stock that dropped off today's TOSD/TOSL export is
+  excluded; and
+- **periodic outlook feeds** (`hist_etf`/`hist_ii`/`hist_call`/`hist_rr`): latest
+  `snapshot_date <= D` (carry-forward), so **non-TOSD symbols** tracked only in
+  those feeds — e.g. ETFs — still appear.
+
+There is no `ref_sector` backfill: a reference ticker with no live data on D is
+excluded. Every downstream component table (`drv_technicals`,
+`drv_fundamentals`, `drv_outlooks`, `drv_portfolio`) is built
+`FROM drv_symbols s ... WHERE s.as_of_date = D`, so this set IS the cascade's
+universe for D. "Missing from today's daily-EOD export (and from every periodic
+feed) = excluded from all calculations for D."
 
 ## What the anchor-locked reads look like in code
 
@@ -115,7 +118,11 @@ complementary.
 
 There is no idempotency hazard — every derive still does
 `DELETE WHERE as_of_date = D` then INSERT. To apply this logic across history,
-use **Force Re-derive** in the File Monitor (or
-`python -m etl.derive_freshness`-style re-runs). Spot-check by confirming a
-symbol present in TOSD only on some dates appears in `drv_symbols` exactly on
-those dates and is absent on others.
+use **Force Re-derive** in the File Monitor. Spot-check by confirming a symbol
+present in TOSD only on some dates appears in `drv_symbols` exactly on those
+dates and is absent on others (while an ETF tracked only in `hist_etf` persists
+via carry-forward).
+
+**Run Missing Derives** enumerates derive dates from TOSD market-close dates
+(`DISTINCT export_date FROM hist_td`), not a mix of `snapshot_date`s — these are
+the only valid anchor dates. See `api/routers/monitor.py::_find_missing_derive_dates`.

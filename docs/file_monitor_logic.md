@@ -236,11 +236,10 @@ to preview, then `POST /api/monitor/derive-missing/run`. The server-side
 `_find_missing_derive_dates()` queries:
 
 ```sql
+-- Anchored on TOSD (2026-06-05): valid derive dates are the TOSD market-close
+-- dates only, not a mix of snapshot_dates from several tables.
 WITH hist_dates AS (
-    SELECT DISTINCT snapshot_date AS d FROM hist_cs
-    UNION SELECT DISTINCT snapshot_date FROM hist_f
-    UNION SELECT DISTINCT snapshot_date FROM hist_tl
-    UNION SELECT DISTINCT snapshot_date FROM hist_td
+    SELECT DISTINCT export_date AS d FROM hist_td WHERE export_date IS NOT NULL
 ),
 done AS (
     SELECT DISTINCT as_of_date AS d FROM meta_derived_run WHERE status = 'success'

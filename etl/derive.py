@@ -746,22 +746,34 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
 def _derive_symbols_impl(session: Session, as_of_date: date, run_id: int) -> int:
     """Build drv_symbols: master ticker universe for as_of_date.
 
-    ANCHORED ON TOSD (2026-06-05): the universe is exactly the symbols present
-    in hist_td at export_date = D (the anchor). A symbol missing from D's TOSD
-    export is excluded from the entire downstream cascade — every other drv_*
-    table LEFT JOINs from drv_symbols, so dropping it here drops it everywhere.
-    No per-symbol carry-forward, no ref_sector backfill: "missing today =
-    excluded today". See docs/derive_date_logic.md."""
+    ANCHORED ON TOSD (2026-06-05): the universe is every symbol that has CURRENT
+    data from any source on D —
+      * daily-EOD sources (td/tl/tw/y): exact export_date = D (no carry-forward),
+        so a stock that dropped off today's TOSD/TOSL export is excluded; and
+      * periodic outlook feeds (etf/ii/call/rr): latest snapshot <= D
+        (carry-forward), so non-TOSD symbols tracked only in those feeds — e.g.
+        ETFs — still appear.
+    No ref_sector backfill: a reference ticker with no live data on D is excluded.
+    Every other drv_* table LEFT JOINs from drv_symbols, so this set IS the
+    cascade's universe for D. See docs/derive_date_logic.md."""
     session.execute(
         text("DELETE FROM drv_symbols WHERE as_of_date = :d"),
         {"d": as_of_date},
     )
     result = session.execute(text("""
         INSERT INTO drv_symbols (as_of_date, tos_symbol)
-        SELECT :d, tos_symbol
-          FROM hist_td
-         WHERE export_date = :d AND tos_symbol IS NOT NULL
-         GROUP BY tos_symbol
+        SELECT :d, s FROM (
+            -- daily-EOD: exact export_date = D (anchor-locked, no carry-forward)
+            SELECT tos_symbol AS s FROM hist_td WHERE export_date = :d
+            UNION SELECT tos_symbol FROM hist_tl WHERE export_date = :d
+            UNION SELECT tos_symbol FROM hist_tw WHERE export_date = :d
+            UNION SELECT tos_symbol FROM hist_y  WHERE export_date = :d
+            -- periodic feeds: latest snapshot <= D (carry-forward; keeps ETFs etc.)
+            UNION SELECT tos_symbol FROM hist_etf  WHERE snapshot_date <= :d
+            UNION SELECT tos_symbol FROM hist_ii   WHERE snapshot_date <= :d
+            UNION SELECT tos_symbol FROM hist_call WHERE snapshot_date <= :d
+            UNION SELECT tos_symbol FROM hist_rr   WHERE snapshot_date <= :d
+        ) u WHERE s IS NOT NULL
         ON CONFLICT (as_of_date, tos_symbol) DO NOTHING
     """), {"d": as_of_date})
     return result.rowcount or 0
