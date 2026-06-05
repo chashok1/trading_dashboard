@@ -5132,8 +5132,6 @@ INSERT INTO ref_data_filter_logic (table_name, filter_type, date_column, window_
 
     ('hist_psrk',          'EXACT_MATCH',         'snapshot_date', NULL, 'Price Strength Rank (PSRK format)'),
 
-    ('hist_ssh',           'EXACT_MATCH',         'snapshot_date', NULL, 'Sector Strength History'),
-
     ('hist_etfchg',        'LATEST_BEFORE',       'event_date',    NULL, 'ETF change events'),
 
     ('hist_iichg',         'LATEST_BEFORE',       'event_date',    NULL, 'II change events'),

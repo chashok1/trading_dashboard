@@ -41,7 +41,6 @@ _TRUNCATE_ORDER = [
     "hist_ps",
     "hist_iichg",
     "hist_etfchg",
-    "hist_ssh",
     "hist_ii",
     "hist_etf",
     "hist_call",

@@ -80,7 +80,7 @@ Re-running derive for date D is idempotent. No date is ever silently overwritten
 ## ETL & rules pipeline
 
 - **Loader**: `etl/scheduler.py` watches 17 source dirs (`ref_load_files`). File events → `etl_load.py::load_one_file` → `mappings.py::HIST_MAPS` or `load_raw.py::CUSTOM_HANDLERS`. Batches 1000 rows; `meta_etl_run` updated live.
-- **Derive cascade**: `derive_all(session, D)` order: drv_quote/drv_rr → drv_symbols → drv_technicals/drv_fundamentals/drv_outlooks/drv_portfolio → drv_cat_atomic_input → drv_dash → drv_stks → drv_outlook_action → drv_actionable → drv_trig. All idempotent. `derive_v2.py` overrides v1 for derive_tw/etf/ii/ssh/ps/sss.
+- **Derive cascade**: `derive_all(session, D)` order: drv_quote/drv_rr → drv_symbols → drv_technicals/drv_fundamentals/drv_outlooks/drv_portfolio → drv_cat_atomic_input → drv_dash → drv_stks → drv_outlook_action → drv_actionable → drv_trig. All idempotent. `derive_v2.py` overrides v1 for derive_tw/etf/ii/ps/sss.
 - **Actionable**: `derive_outlook_action.py` → per-source actions; `derive_actionable.py` consolidates + rule-group fires → `drv_actionable`. See `docs/actionable_logic.md`.
 - **Derive trigger**: every load re-derives its date + any later dates it invalidated. Skip with `--no-derive`.
 
