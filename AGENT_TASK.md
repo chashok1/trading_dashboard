@@ -1,62 +1,72 @@
-# AGENT TASK 21 — finish the checkpoint: commit the remaining core work, heal web/ index
+# AGENT TASK 22 — Phase 4 step 1: is there enough outcome data to tune on? (read-only)
 
-**You (VS Code agent), Windows git.** Write to **`AGENT_RESULT_21.md`**.
-Heartbeat: append `⏳ HH:MM:SS — <step>` lines as you go.
+**You (VS Code agent) have DB access.** READ-ONLY — change nothing. Write to
+**`AGENT_RESULT_22.md`**. Heartbeat: append `⏳ HH:MM:SS — <step>` lines as you go.
 
-The previous commit (1b8c4be) only captured a PARTIAL set. These core changes are
-STILL uncommitted: etl/derive.py, etl/derive_cat_atomic_input.py, etl/etl_load.py,
-etl/refactor_base_rules.py, db/baseline.sql, db/seeds_base_rules.sql, api/_helpers.py,
-api/routers/{dash,health,monitor}.py, CLAUDE.md, docs/file_monitor_logic.md,
-web/groups.html, web/rule_flow.{html,js}, plus the updated workbooks. Also the web/
-index is flapping (trace.js/trig.*/warning_badge.js show as staged-deleted, plus a
-malformed rename) — these files DO exist on disk; the index is just corrupted.
+The ML tuner (`etl/ml_tune_thresholds.py`) learns per-atomic-rule thresholds from
+`drv_rule_outcome` (labels: `hit`, `fwd_5d_pct`, `fwd_20d_pct`) joined to
+`drv_cat_atomic_input` (features). Default needs ≥50 samples per rule. Before we
+run it, measure whether the data supports it.
 
-## Step 1 — reset the index to clear corruption (working tree untouched)
-```
-git reset
-git status --porcelain
-```
-Paste status. Working-tree files are NOT changed by `git reset` — it only unstages.
-After this, web/ files that exist on disk should show as normal modified/untracked,
-NOT deleted.
-
-## Step 2 — verify web/ real files are present on disk (sanity)
-```
-git ls-files web/ | findstr /i "warning_badge styles trace trig rules_health"
-dir web\warning_badge.js web\styles.css web\trace.html web\trig.html
-```
-Confirm those files exist on disk. **If any real web/*.js/.html/.css is MISSING from
-disk, STOP and report** (we'd restore from HEAD: `git checkout HEAD -- web/<file>`).
-
-## Step 3 — stage disk reality
-```
-git add -A
-git status --porcelain
-```
-Paste the staged list. It MUST include the core files listed above as modified, and
-it must NOT show any real web file as deleted (D). `etl/working/*` should be absent
-(gitignored). If a real web file still shows as deleted after `git add -A`, STOP and
-restore it: `git checkout HEAD -- web/<file>` then `git add web/<file>`.
-
-## Step 4 — remove the scaffolding backup dir (don't commit it)
-If `_session_backup_20260606/` exists, delete it (it's a backup of throwaway files):
-`rmdir /s /q _session_backup_20260606` (or rm -rf). Re-run `git status` — ensure it's
-gone and not staged.
-
-## Step 5 — commit
-```
-git commit -m "checkpoint (cont.): anchor-date model, earnings_days decrement, drv_trig double-eval + nested-composite gating + drv_trig nesting, Phase 2 strict base-rule refactor, seeds weight_override, api/docs/web updates; heal web/ index"
+## Q1 — overall volume + date range
+```sql
+SELECT COUNT(*) AS rows,
+       MIN(as_of_date) AS first_date, MAX(as_of_date) AS last_date,
+       COUNT(DISTINCT as_of_date) AS n_dates,
+       COUNT(DISTINCT tos_symbol) AS n_symbols
+FROM drv_rule_outcome;
 ```
 
-## Step 6 — verify clean
+## Q2 — label population (how many rows have usable labels)
+```sql
+SELECT rule_kind,
+       COUNT(*) AS rows,
+       COUNT(*) FILTER (WHERE hit IS NOT NULL)         AS has_hit,
+       COUNT(*) FILTER (WHERE fwd_5d_pct IS NOT NULL)  AS has_fwd5,
+       COUNT(*) FILTER (WHERE fwd_20d_pct IS NOT NULL) AS has_fwd20
+FROM drv_rule_outcome
+GROUP BY rule_kind ORDER BY rows DESC;
 ```
-git status --porcelain
-git log --oneline -3
-git show --stat HEAD | head -40
-```
-Paste all three. Confirm: (a) status clean except intentionally-untracked items
-(AGENT_TASK.md/AGENT_RESULT_21.md, etl/working data); (b) the new commit's file list
-includes etl/derive.py, etl/derive_cat_atomic_input.py, db/baseline.sql,
-db/seeds_base_rules.sql, api/*, docs/*, web/* ; (c) no real web file deleted.
 
-Write `DONE` at the bottom of `AGENT_RESULT_21.md`.
+## Q3 — per-atomic-rule sample counts (the binding constraint: ≥50/rule)
+Count usable (feature+label) samples per atomic rule, the way the tuner joins:
+```sql
+WITH feats AS (
+  SELECT a.atomic_rule_id, a.rule_name, c.column_name AS col
+  FROM ref_trig_atomic_rule a
+  JOIN ref_ma_columns c ON c.excel_header = a.rule_name
+       AND c.drv_cat_table = 'drv_cat_atomic_input'
+  WHERE a.deprecated_at IS NULL
+)
+SELECT COUNT(*) AS atomic_rules_resolved,
+       COUNT(*) FILTER (WHERE n >= 50)  AS rules_ge_50,
+       COUNT(*) FILTER (WHERE n >= 100) AS rules_ge_100
+FROM (
+  SELECT ro.rule_id, COUNT(*) AS n
+  FROM drv_rule_outcome ro
+  WHERE ro.rule_kind='atomic' AND ro.fwd_20d_pct IS NOT NULL
+  GROUP BY ro.rule_id
+) c;
+```
+Also list the TOP 15 atomic rules by sample count (rule_id, n) so we see the best-covered rules:
+```sql
+SELECT ro.rule_id, COUNT(*) n
+FROM drv_rule_outcome ro
+WHERE ro.rule_kind='atomic' AND ro.fwd_20d_pct IS NOT NULL
+GROUP BY ro.rule_id ORDER BY n DESC LIMIT 15;
+```
+
+## Q4 — how is the outcome table populated? (so we know if it'll grow)
+Briefly: what writes `drv_rule_outcome` (grep etl/ for it — e.g. compute_outcomes.py),
+and does `fwd_20d_pct` require 20 trading days to elapse (so only older dates have it)?
+One or two sentences + the source file name.
+
+## Verdict
+State plainly:
+1. Total outcome rows + date span (how many days of history).
+2. How many atomic rules clear the ≥50-sample bar (and ≥100).
+3. Is `fwd_20d_pct` populated, and for what fraction of dates?
+4. Your read: is there enough to attempt a first ML tune now, or is the history too
+   thin (and roughly how much more time/data would help)?
+
+Write `DONE` at the bottom of `AGENT_RESULT_22.md`.
