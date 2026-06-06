@@ -3487,7 +3487,7 @@ CREATE TABLE IF NOT EXISTS drv_rule_outcome (
 
     as_of_date     DATE NOT NULL,
 
-    symbol         TEXT NOT NULL,
+    tos_symbol     TEXT NOT NULL,
 
     action_code    TEXT,
 
@@ -3499,7 +3499,7 @@ CREATE TABLE IF NOT EXISTS drv_rule_outcome (
 
     computed_at    TIMESTAMPTZ DEFAULT now(),
 
-    PRIMARY KEY (rule_id, as_of_date, symbol)
+    PRIMARY KEY (rule_id, as_of_date, tos_symbol)
 
 );
 

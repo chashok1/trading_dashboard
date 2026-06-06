@@ -69,7 +69,7 @@ def _rule_feature_columns(s, valid_cols) -> dict:
         SELECT a.atomic_rule_id, a.rule_name, c.column_name
         FROM ref_trig_atomic_rule a
         JOIN ref_ma_columns c
-          ON c.excel_header = a.rule_name AND c.drv_cat_table = 'drv_cat_atomic_input'
+          ON c.column_name = a.rule_name AND c.drv_cat_table = 'drv_cat_atomic_input'
         WHERE a.deprecated_at IS NULL
     """)).mappings().all()
     out = {}
@@ -91,7 +91,7 @@ def _fetch_xy(s, col, rule_id, label, window):
         WHERE ro.rule_kind = 'atomic' AND ro.rule_id = :rid
           AND ci."{col}" IS NOT NULL
           AND ro.{fwd_col} IS NOT NULL
-    """), {"rid": rule_id}).all()
+    """), {"rid": str(rule_id)}).all()
     xs = [r[0] for r in rows if r[0] is not None]
     hits = [r[1] for r in rows if r[0] is not None]
     fwds = [r[2] for r in rows if r[0] is not None]

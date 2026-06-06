@@ -1,67 +1,109 @@
-# AGENT TASK 23 — Phase 4: how much history do we have? (read-only)
+# AGENT TASK 24 — Phase 4 end-to-end (backfill → outcomes → scorecard → tune → backtest)
 
-**You (VS Code agent) have DB access.** READ-ONLY — change nothing. Write to
-**`AGENT_RESULT_23.md`**. Heartbeat: append `⏳ HH:MM:SS — <step>` lines as you go.
+**You (VS Code agent) have DB + Windows git.** Write to **`AGENT_RESULT_24.md`**.
+**HEARTBEAT:** before each step and each long command, append
+`⏳ HH:MM:SS — <step>`. Long steps (backfill, atomic outcomes) log per-item — paste
+periodic progress. Write `DONE` only at the very end.
 
-Goal: size the firing-based outcome approach. Plan is to validate each rule firing
-against the stock's forward return. That needs: (a) rule firings across many past
-dates (drv_trig/drv_stks), (b) price history to compute forward returns (drv_ma),
-(c) enough dates ≥20 trading days old. We mostly have derives for 6/4–6/5 today;
-this measures how far back we can backfill and how many samples that yields.
+This is additive and safe: it derives MISSING historical dates, fills a new
+outcomes table, and writes a NEW inactive `ml:` profile. It NEVER edits your rules
+or the Baseline profile (id=1), which stays the active production profile. Two new
+scripts back this: `etl/backfill_derives.py`, `etl/compute_firing_outcomes.py`
+(plus a 1-line fix in `etl/ml_tune_thresholds.py`). If ANY step errors, STOP and
+paste the full traceback.
 
-## Q1 — raw price-history depth (drives backfill range)
+## Step 1 — smoke-test the backfill (2 dates)
+```
+python -m etl.backfill_derives --limit 2
+```
+Paste output. Confirm it derived 2 dates without error. If it errors, STOP.
+
+## Step 2 — full backfill of all missing dates (LONG — ~50 dates)
+```
+python -m etl.backfill_derives
+```
+This loops `derive_all` over every hist_td date missing from drv_trig (Feb–May).
+Paste the first few and last few per-date lines + the final "Backfill done: N/N".
+Then confirm coverage:
 ```sql
-SELECT 'hist_td' t, MIN(export_date) lo, MAX(export_date) hi,
-       COUNT(DISTINCT export_date) n_dates FROM hist_td
-UNION ALL
-SELECT 'hist_tl', MIN(export_date), MAX(export_date), COUNT(DISTINCT export_date) FROM hist_tl
-UNION ALL
-SELECT 'hist_tw', MIN(snapshot_date), MAX(snapshot_date), COUNT(DISTINCT snapshot_date) FROM hist_tw;
+SELECT COUNT(DISTINCT as_of_date) AS derived_dates,
+       MIN(as_of_date) lo, MAX(as_of_date) hi FROM drv_trig;
+```
+Expect ~79 dates, 2026-02-02 → 2026-06-05.
+
+## Step 3 — build firing outcomes
+```
+python -m etl.compute_firing_outcomes --truncate
+```
+Paste the log (composite + atomic upsert counts, final row count). Then:
+```sql
+SELECT rule_kind, COUNT(*) rows, COUNT(DISTINCT as_of_date) dates,
+       COUNT(*) FILTER (WHERE fwd_20d_pct IS NOT NULL) has_fwd20
+FROM drv_rule_outcome GROUP BY rule_kind;
 ```
 
-## Q2 — price source for forward returns (drv_ma)
-`compute_outcomes` reads forward prices from `drv_ma.last_price` by date. Check it:
+## Step 4 — RULE PERFORMANCE SCORECARD (the key deliverable)
+For composite rules, how did firings actually perform forward? Paste both:
 ```sql
-SELECT MIN(as_of_date) lo, MAX(as_of_date) hi, COUNT(DISTINCT as_of_date) n_dates
-FROM drv_ma;
+-- best & worst composites by mean 20d forward return (min 30 fires)
+SELECT rule_id, COUNT(*) fires, ROUND(AVG(fwd_20d_pct)::numeric,2) avg_fwd20,
+       ROUND(AVG(hit::int)::numeric,3) win_rate
+FROM drv_rule_outcome WHERE rule_kind='composite' AND fwd_20d_pct IS NOT NULL
+GROUP BY rule_id HAVING COUNT(*) >= 30
+ORDER BY avg_fwd20 DESC;
 ```
-(If drv_ma is a view over the component tables, this still reflects available dates.)
+(Top of the list = rules whose firings preceded the best moves; bottom = rules that
+fired before poor/adverse moves — candidates to review. Note: BUY codes want high
+avg_fwd20, SELL codes want low/negative.)
 
-## Q3 — existing derive coverage (where firings already exist)
+## Step 5 — ML tune (exploratory; writes INACTIVE profile)
+```
+python -m etl.ml_tune_thresholds --method sweep --min-samples 100 --label-window 20
+```
+Paste: how many rules tuned + 5 example (rule, new brkeout_from). Confirm it printed
+"INACTIVE" and did NOT activate. Verify:
 ```sql
-SELECT 'drv_cat_atomic_input' t, MIN(as_of_date) lo, MAX(as_of_date) hi, COUNT(DISTINCT as_of_date) n FROM drv_cat_atomic_input
-UNION ALL SELECT 'drv_trig', MIN(as_of_date), MAX(as_of_date), COUNT(DISTINCT as_of_date) FROM drv_trig
-UNION ALL SELECT 'drv_stks', MIN(as_of_date), MAX(as_of_date), COUNT(DISTINCT as_of_date) FROM drv_stks;
+SELECT param_set_id, label, provenance, is_active FROM ref_trig_param_set ORDER BY 1;
 ```
+Baseline (id=1) must still be is_active=TRUE; the new ml set is_active=FALSE.
 
-## Q4 — sample-size estimate
-1. Firings per date (composite level), on the dates we DO have:
+## Step 6 — backtest the ml profile vs Baseline (reversible), then revert
+Snapshot Baseline firing on 2026-06-05, activate ml set, re-derive, diff, REVERT.
 ```sql
-SELECT as_of_date, COUNT(*) FILTER (WHERE triggered) AS fires
-FROM drv_trig GROUP BY as_of_date ORDER BY as_of_date;
+DROP TABLE IF EXISTS _ml_base;
+CREATE TABLE _ml_base AS
+SELECT composite_rule_code code, tos_symbol FROM drv_trig
+WHERE as_of_date='2026-06-05' AND triggered=TRUE;
+-- activate ml set (two-step: clear then set, to satisfy one-active constraint)
+UPDATE ref_trig_param_set SET is_active=FALSE;
+UPDATE ref_trig_param_set SET is_active=TRUE WHERE provenance LIKE 'ml:%';
 ```
-2. Trading dates that are ≥20 trading days old AND have price data (eligible for a
-   20d forward label). Approximate from hist_td:
+```
+python agent_rederive_all.py
+```
 ```sql
-SELECT COUNT(*) AS dates_20d_eligible FROM (
-  SELECT DISTINCT export_date FROM hist_td
-  WHERE export_date <= (SELECT MAX(export_date) FROM hist_td) - INTERVAL '28 days'
-) x;
+SELECT
+ (SELECT COUNT(*) FROM drv_trig t WHERE as_of_date='2026-06-05' AND triggered
+    AND (composite_rule_code,tos_symbol) NOT IN (SELECT code,tos_symbol FROM _ml_base)) AS ml_newly_fires,
+ (SELECT COUNT(*) FROM _ml_base b WHERE (b.code,b.tos_symbol) NOT IN
+    (SELECT composite_rule_code,tos_symbol FROM drv_trig WHERE as_of_date='2026-06-05' AND triggered)) AS ml_stops_firing;
 ```
+Paste the two counts (how much the tuned profile shifts signals vs Baseline).
+**Then REVERT to Baseline and re-derive so production is unchanged:**
+```sql
+UPDATE ref_trig_param_set SET is_active=FALSE;
+UPDATE ref_trig_param_set SET is_active=TRUE WHERE param_set_id=1;
+```
+```
+python agent_rederive_all.py
+python compare_trigma.py
+```
+Confirm Baseline restored: Phase 1 ~99.91%, Phase 2 ~99.89%.
 
-## Q5 — can we backfill derives across history?
-Backfilling firings for a past date D needs hist_td/tl/tw (+ periodic feeds) loaded
-for/around D. Based on Q1, state: roughly how many past trading dates have the
-source data needed to run `derive_all(D)`? Is the price history weeks, months, or
-just the last few days?
+## Step 7 — verdict
+State: (a) backfill date count; (b) outcome row counts (composite/atomic);
+(c) top 3 and bottom 3 composites by avg_fwd20 from the scorecard; (d) ml profile
+id + #rules tuned + that it's INACTIVE; (e) how many signals the ml profile shifts
+on 6/5; (f) Baseline restored as active (99.91/99.89). 
 
-## Verdict
-State plainly:
-1. Price history span (dates, from–to).
-2. Derive coverage now (how many dates have firings).
-3. Rough usable training-date count (≥20d old with data) and estimated total
-   firing samples if we backfilled (dates × avg fires/date).
-4. Your read: is there enough history to make the firing-based approach worthwhile
-   now, or is the loaded history too shallow (just a few days)?
-
-Write `DONE` at the bottom of `AGENT_RESULT_23.md`.
+Write `DONE` at the bottom of `AGENT_RESULT_24.md`.
