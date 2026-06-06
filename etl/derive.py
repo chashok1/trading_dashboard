@@ -849,7 +849,12 @@ def _derive_technicals_impl(session: Session, as_of_date: date, run_id: int) -> 
             h.tos_symbol,
             h.snapshot_date AS tw_date,
             dr.a_macd_brr, dr.a_macdh_d_brr,
-            dr.earnings_days_d  AS earnings_days,
+            -- earnings_days: TOSW days-COUNT (no date); decrement carried-forward
+            -- weekly snapshot by elapsed days. NULL/-99(NaN) sentinels pass through.
+            CASE WHEN dr.earnings_days_d IS NULL OR dr.earnings_days_d = -99
+                 THEN dr.earnings_days_d
+                 ELSE dr.earnings_days_d - (:d - h.snapshot_date)
+            END                 AS earnings_days,
             dr.sma_20_d         AS sma_20,
             dr.sma_50_d         AS sma_50,
             dr.sma_200_d        AS sma_200
@@ -858,8 +863,9 @@ def _derive_technicals_impl(session: Session, as_of_date: date, run_id: int) -> 
                ON dr.snapshot_date = h.snapshot_date
               AND dr.tos_symbol    = h.tos_symbol
               AND dr.sequence      = h.sequence
-        WHERE h.export_date = :d          -- anchor-locked: exact match, no carry-forward
-        ORDER BY h.tos_symbol, h.sequence DESC
+        WHERE h.snapshot_date <= :d            -- TOSW weekly/periodic: carry forward
+          AND h.snapshot_date >= :d - 14       -- within 14 days (decremented above)
+        ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
     """), {"d": as_of_date})
 
     # Step 3a: stage ref+price cols (split to stay ≤965 bytes each)
@@ -1356,6 +1362,11 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
     rows_tl = _latest_per_symbol(session, 'hist_tl', as_of_date, cmap_tl, window_days=7, ceiling_date=ceil)  # daily TOS Level: 7-day freshness gate
     rows_td = _latest_per_symbol(session, 'hist_td', as_of_date, cmap_td, window_days=7, ceiling_date=ceil)  # daily TOS Daily: 7-day freshness gate
 
+    # Tag each candidate with the feed it came from, for drv_quote.source.
+    for _r in rows_tl.values(): _r['_src'] = 'TL'
+    for _r in rows_td.values(): _r['_src'] = 'TD'
+    for _r in rows_y.values():  _r['_src'] = 'Y'
+
     # Union of all symbols seen across the three sources.
     all_symbols = set(rows_y) | set(rows_tl) | set(rows_td)
     if not all_symbols:
@@ -1382,21 +1393,25 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
             candidates = [r for r in (tl_row, td_row, y_row) if r is not None]
             candidates.sort(key=lambda r: r.get('loaded_at') or 0, reverse=True)
 
-        rec = {'as_of_date': as_of_date, 'tos_symbol': sym, 'export_date': None, 'export_time': None, 'loaded_at': None}
+        rec = {'as_of_date': as_of_date, 'tos_symbol': sym, 'export_date': None, 'export_time': None, 'loaded_at': None, 'source': None}
         for f in _QUOTE_FIELDS:
             val = None
             for cand in candidates:
                 v = cand.get(f)
-                if v is not None:
-                    val = v
-                    # Capture export_date and export_time from the first non-null field's source
-                    if rec['export_date'] is None:
-                        rec['export_date'] = cand.get('export_date')
-                        rec['export_time'] = cand.get('export_time')
-                    # Capture loaded_at from the latest candidate (highest loaded_at)
-                    if rec['loaded_at'] is None:
-                        rec['loaded_at'] = cand.get('loaded_at')
-                    break
+                # Treat 0 as "no data" for session high/low/open (e.g. Yahoo has
+                # no intraday OHLC) so a feed with real values (TOSD) wins instead
+                # of being overridden by a 0.
+                if v is None or (v == 0 and f in ('high_price', 'low_price', 'open_price')):
+                    continue
+                val = v
+                # Capture export_date/time + source from the first real field's feed
+                if rec['export_date'] is None:
+                    rec['export_date'] = cand.get('export_date')
+                    rec['export_time'] = cand.get('export_time')
+                    rec['source'] = cand.get('_src')
+                if rec['loaded_at'] is None:
+                    rec['loaded_at'] = cand.get('loaded_at')
+                break
             rec[f] = val
         merged.append(rec)
 
@@ -1411,11 +1426,11 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
                     (as_of_date, tos_symbol,
                      last_price, net_chng, pct_change,
                      open_price, high_price, low_price,
-                     rsi, imp_volatility, export_date, export_time, loaded_at)
+                     rsi, imp_volatility, export_date, export_time, loaded_at, source)
                 VALUES (:as_of_date, :tos_symbol,
                         :last_price, :net_chng, :pct_change,
                         :open_price, :high_price, :low_price,
-                        :rsi, :imp_volatility, :export_date, :export_time, :loaded_at)
+                        :rsi, :imp_volatility, :export_date, :export_time, :loaded_at, :source)
             """),
             merged,
         )
@@ -1957,6 +1972,72 @@ def _read_atomic_value(row: dict, src: tuple):
     return row.get(col)  # drv_ma or any other table joined into the SELECT
 
 
+# =============================================================================
+# Shared composite-firing primitives — used by BOTH _derive_stks_impl and
+# _derive_trig_impl so the two can never drift (they did: drv_trig used to
+# trigger on "any member contributed"). Mirrors Excel: a member "fires" when
+# atomic_value <op> member_threshold, and the composite fires only when every
+# gate fires (== Excel deficit < 10).
+# =============================================================================
+
+def _atomic_member_weight(val, threshold, operator, override, code) -> float:
+    """Contribution of one atomic composite member: evaluate its condition
+    (val <op> threshold; NULL threshold => any non-zero) and return the weight
+    (override if the condition is met, else the value, else 0)."""
+    if val is None:
+        condition_met = False
+    elif threshold is None:
+        condition_met = (val != 0)
+    else:
+        thr = float(threshold)
+        op = operator or _composite_operator(code, thr)
+        condition_met = (
+            val >= thr if op == '>='
+            else val <= thr if op == '<='
+            else val >  thr if op == '>'
+            else val <  thr if op == '<'
+            else val == thr   # '='
+        )
+    return (float(override) if (condition_met and override is not None)
+            else (val if condition_met else 0.0))
+
+
+def _composite_fire(member_evals, cutoff):
+    """Apply the gate/watch firing rule to a composite.
+
+    member_evals: list of (role, weight) for the composite's members.
+    Fire = ALL gates hit AND watch evidence clears `cutoff` (NULL cutoff = watch
+    never blocks). Pure-watch (no gates) falls back to all-watch-hit unless a
+    cutoff is set. Returns (score, triggered, n_hit)."""
+    score = 0.0
+    n_hit = 0
+    n_gate = n_gate_hit = n_watch = n_watch_hit = 0
+    watch_score = 0.0
+    for role, w in member_evals:
+        hit = (w != 0)
+        if hit:
+            n_hit += 1
+        if role == "watch":
+            n_watch += 1
+            if hit:
+                n_watch_hit += 1
+                watch_score += w
+        else:
+            n_gate += 1
+            if hit:
+                n_gate_hit += 1
+        score += w
+    n_total = len(member_evals)
+    gates_pass = (n_gate_hit == n_gate)   # vacuously True when n_gate == 0
+    if n_gate == 0:
+        watch_ok = (watch_score >= float(cutoff)) if cutoff is not None \
+            else (n_watch_hit == n_watch)
+    else:
+        watch_ok = (cutoff is None) or (watch_score >= float(cutoff))
+    triggered = (n_total > 0 and gates_pass and watch_ok)
+    return score, triggered, n_hit
+
+
 def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
     # Fetch atomic rules with scoring mode info
     atomic_rules = session.execute(text("""
@@ -2210,45 +2291,19 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
                     composite_scores[code] = None   # NULL — distinguishable from 0
                     continue
 
-            score = 0.0
-            n_member_hit = 0   # member-level hit count (any non-zero contribution)
-            # Gate / WATCH partition (2026-06-03). Gates are mandatory (strict
-            # AND); watch members are corroborating evidence that contribute to
-            # score but do not by themselves block the fire.
-            n_gate = 0
-            n_gate_hit = 0
-            n_watch = 0
-            n_watch_hit = 0
-            watch_score = 0.0
+            member_evals = []   # (role, weight) per member, for _composite_fire
             for member in comp_info["members"]:
                 kind = member["kind"]
                 role = member.get("role", "gate")
                 w = 0.0
                 if kind == "atomic":
-                    atom_id   = member["atom_id"]
-                    threshold = member.get("threshold")   # condition threshold
-                    ovr       = member.get("override")    # assigned weight
-                    # Read the pre-computed value from drv_cat_atomic_input.
-                    # None means the source column was NULL — treat as not met.
-                    val = atomic_scores.get(atom_id)
-                    if val is None:
-                        condition_met = False
-                    elif threshold is None:
-                        # No threshold set — any non-zero value meets condition
-                        condition_met = (val != 0)
-                    else:
-                        thr = float(threshold)
-                        # Explicit operator stored on member takes priority;
-                        # fall back to rule-code-derived operator
-                        op = member.get("condition_operator") or _composite_operator(code, thr)
-                        condition_met = (
-                            val >= thr if op == '>='
-                            else val <= thr if op == '<='
-                            else val >  thr if op == '>'
-                            else val <  thr if op == '<'
-                            else val == thr   # '='
-                        )
-                    w = float(ovr) if (condition_met and ovr is not None) else (val if condition_met else 0.0)
+                    w = _atomic_member_weight(
+                        atomic_scores.get(member["atom_id"]),
+                        member.get("threshold"),
+                        member.get("condition_operator"),
+                        member.get("override"),
+                        code,
+                    )
                 elif kind == "data":
                     # Inline rule against the row.  data_column may be
                     # 'drv_cat_atomic_input.col', 'drv_ma.col', or bare 'col'.
@@ -2279,37 +2334,11 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
                     else:
                         mult = member.get("override")
                         w = float(mult) * child_score if mult is not None else child_score
-                hit = (w != 0)
-                if hit:
-                    n_member_hit += 1
-                if role == "watch":
-                    n_watch += 1
-                    if hit:
-                        n_watch_hit += 1
-                        watch_score += w
-                else:
-                    n_gate += 1
-                    if hit:
-                        n_gate_hit += 1
-                score += w
+                member_evals.append((role, w))
 
-            # Firing rule (gate / WATCH):
-            #   - ALL gates must hit (strict AND; legacy behavior when every
-            #     member is a gate, which is the default).
-            #   - Watch evidence must clear evidence_cutoff. NULL cutoff = watch
-            #     never blocks (purely informational).
-            #   - A composite with NO gates falls back to strict all-members-hit
-            #     unless an explicit cutoff is set, so pure-watch composites can
-            #     never fire on every symbol.
-            n_total_members = len(comp_info["members"])
-            cutoff = comp_info.get("watch_cutoff")
-            gates_pass = (n_gate_hit == n_gate)   # vacuously True when n_gate == 0
-            if n_gate == 0:
-                watch_ok = (watch_score >= float(cutoff)) if cutoff is not None \
-                    else (n_watch_hit == n_watch)
-            else:
-                watch_ok = (cutoff is None) or (watch_score >= float(cutoff))
-            fired = n_total_members > 0 and gates_pass and watch_ok
+            # Firing (gate/WATCH) — shared with drv_trig via _composite_fire.
+            score, fired, n_member_hit = _composite_fire(
+                member_evals, comp_info.get("watch_cutoff"))
             composite_results[code] = fired
             composite_scores[code] = float(score)
             if fired:
@@ -2805,17 +2834,31 @@ def _derive_trig_impl(session: Session, as_of_date: date, run_id: int) -> int:
         log.warning("drv_trig: no atomic rules; skipping")
         return 0
     mappings = session.execute(text("""
-        SELECT composite_rule_code, atomic_rule_id, weight_override
+        SELECT composite_rule_code, atomic_rule_id, weight_override,
+               data_brkeout_from, condition_operator, member_role, evidence_cutoff
         FROM ref_trig_composite_mapping
         WHERE deprecated_at IS NULL AND atomic_rule_id IS NOT NULL
     """)).mappings().all()
     if not mappings:
         log.warning("drv_trig: no composite mappings; skipping")
         return 0
+    # Member detail per composite + composite-level watch cutoff. Mirrors the
+    # gate/watch firing in _derive_stks_impl so drv_trig.triggered now means
+    # "all gates hit AND watch cleared cutoff" (== Excel deficit < 10), not the
+    # old "any member contributed".
     composite_index: dict = {}
+    watch_cutoff: dict = {}
     for m in mappings:
-        composite_index.setdefault(m["composite_rule_code"], []).append(
-            (m["atomic_rule_id"], m["weight_override"]))
+        code = m["composite_rule_code"]
+        composite_index.setdefault(code, []).append({
+            "atom_id":   m["atomic_rule_id"],
+            "override":  m["weight_override"],
+            "threshold": m["data_brkeout_from"],
+            "operator":  m["condition_operator"],
+            "role":      (m["member_role"] or "gate"),
+        })
+        if watch_cutoff.get(code) is None and m["evidence_cutoff"] is not None:
+            watch_cutoff[code] = m["evidence_cutoff"]
 
     atomic_col_map = _resolve_atomic_input_column(session)
     ma_rows = _fetch_eval_rows(session, as_of_date, atomic_col_map)
@@ -2831,24 +2874,23 @@ def _derive_trig_impl(session: Session, as_of_date: date, run_id: int) -> int:
             v = _read_atomic_value(ma, src) if src else None
             atomic_weights[r["atomic_rule_id"]] = eval_atomic_rule(v, r)
 
-        for code, parts in composite_index.items():
-            score = 0.0
-            n_hit = 0
-            for (atom_id, override) in parts:
-                w = atomic_weights.get(atom_id, 0)
-                if override is not None and w != 0:
-                    w = float(override)
-                if w != 0:
-                    n_hit += 1
-                score += w
+        for code, members in composite_index.items():
+            # Per-member (role, weight), then the shared gate/watch firing —
+            # identical to _derive_stks_impl via _composite_fire.
+            member_evals = [
+                (mem["role"], _atomic_member_weight(
+                    atomic_weights.get(mem["atom_id"]), mem["threshold"],
+                    mem["operator"], mem["override"], code))
+                for mem in members
+            ]
+            score, triggered, n_hit = _composite_fire(
+                member_evals, watch_cutoff.get(code))
             out_rows.append({
                 "as_of_date":          as_of_date,
                 "tos_symbol":          ma["tos_symbol"],
                 "composite_rule_code": code,
                 "score":               float(score),
-                # triggered = any member contributed, not "net score non-zero".
-                # Matches drv_stks semantics post 2026-05-17 fix.
-                "triggered":           n_hit > 0,
+                "triggered":           triggered,
                 "n_atomic_hit":        n_hit,
                 "source_run_id":       run_id,
             })
