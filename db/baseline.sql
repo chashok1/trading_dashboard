@@ -2296,11 +2296,16 @@ CREATE TABLE IF NOT EXISTS drv_quote (
 
     loaded_at       TIMESTAMP,
 
+    source          TEXT,           -- feed that provided last_price: 'Y' | 'TL' | 'TD'
+
     derived_at      TIMESTAMP NOT NULL DEFAULT now(),
 
     PRIMARY KEY (as_of_date, symbol)
 
 );
+
+-- drv_quote.source added 2026-06-05 — which feed won last_price (debug 0 high/low etc.)
+ALTER TABLE drv_quote ADD COLUMN IF NOT EXISTS source TEXT;
 
 -- drv_rr: derived risk range — hist_rr preferred, hist_td BB bands as fallback
 CREATE TABLE IF NOT EXISTS drv_rr (

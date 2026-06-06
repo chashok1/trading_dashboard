@@ -106,7 +106,7 @@ td_prior AS (
 tw AS (
     -- 14-day recency gate: TOSW is weekly so legitimate gap can be up to 10 days.
     -- Symbols removed from the weekly watchlist have stale rows (months old); exclude them.
-    SELECT DISTINCT ON (tos_symbol) tos_symbol,
+    SELECT DISTINCT ON (tos_symbol) tos_symbol, snapshot_date AS tw_snap,
            standard_dev, sma_20, sma_50, sma_200,
            a_macd_brr, a_macdh_d_brr, a_macdays_streak,
            a_3mn_high, a_3mn_low, a_3mn_high_low, a_3wk_high_low,
@@ -171,7 +171,12 @@ SELECT s.s AS tos_symbol,
        tw.a_3mn_high, tw.a_3mn_low, tw.a_3mn_high_low, tw.a_3wk_high_low,
        tw.a_perf_2m, tw.a_perf_2wk, tw.a_perf_3d,
        tw.a_volume_spike, tw.volume, tw.volume_avg_3m, tw.volume_rate_change,
-       tw.a_earnings_days, tw.high_52, tw.low_52,
+       -- earnings_days is a TOSW days-COUNT (no date); a carried-forward weekly
+       -- snapshot must be decremented by elapsed days to stay current. NULL passes through.
+       CASE WHEN tw.a_earnings_days IS NULL THEN NULL
+            ELSE tw.a_earnings_days - ((SELECT d FROM p) - tw.tw_snap)
+       END AS a_earnings_days,
+       tw.high_52, tw.low_52,
        med.median_sd,
        -- hist_tl current volume (for GB = Current Volume Rule numerator)
        tl.tl_volume,
@@ -398,7 +403,10 @@ def compute_intermediates(row: dict) -> dict:
     # AO = (D - ABS(AL)) / AC  (BBHighLow_SD)
     AO = None  # set below once AC is known
 
-    # AC = standard_dev (TOS export); median fallback removed
+    # AC = standard_dev only — matches Excel MA!AC currently set to =AA (StandardDeviation).
+    # TEMPORARY (per user, 2026-06-05): will switch back to MIN(standard_dev, median_sd)
+    # once the Excel AC formula is reverted to =MIN(AA,AB). (AB=standard_dev, AA=median_sd;
+    # median kept only as a null fallback.)
     AC = AB if AB is not None else AA
     # AD = AC / D
     AD = _safe_div(AC, D) if D and D != 0 else None
@@ -468,7 +476,9 @@ def compute_intermediates(row: dict) -> dict:
     # FR IVHV = DT*100/CV  (with zero-guard)
     DT_  = _f(row.get("imp_volatility"))
     CV_  = _f(row.get("historical_vol"))
-    FR = 0.0 if (not DT_ or not CV_) else (DT_ * 100.0 / CV_)
+    # round to drop IEEE float noise at a threshold (e.g. 0.35*100/0.28 = 125 is
+    # stored as 124.99999999999996) so IVHV / IVHV-puts grade the same band as Excel.
+    FR = 0.0 if (not DT_ or not CV_) else round(DT_ * 100.0 / CV_, 9)
     # GB Vlm 3m % = (current_volume - VolumeAvg3m) / VolumeAvg3m * 100.
     # Excel Dash!AB25 flag uses TOSW (weekly) volume as numerator (FT=W_Vlm).
     # Falls back to TOSL (tl_volume) when TOSW has no data for the symbol.
@@ -1096,36 +1106,29 @@ def _eval_trig_ifs(value, rule: Optional[dict], *,
         nlo = lo * nm
         nhi = hi * nm
     if positive_only:
-        # 4-clause: positive values only; zero and negative → 0
-        if strict:
-            if v >  hi: return wa
-            if v >  lo: return wbt
-        else:
-            if v >= hi: return wa
-            if v >= lo: return wbt
+        # 4-clause: positive values only; zero and negative → 0.
+        # Standard inclusive boundary (>=) — `strict` no longer narrows it.
+        if v >= hi: return wa
+        if v >= lo: return wbt
         if v > 0: return wb_
         return 0.0
     if strict_neg and not strict:
-        # positive >= (non-strict), negative: strict outer, inclusive inner
+        # Standard: positive >= , negative <= (both inclusive / symmetric).
         if v >= hi:   return wa
         if v >= lo:   return wbt
         if v >= 0:    return wb_
-        if v <  -nhi: return -wa   # strict outer
-        if v <= -nlo: return -wbt  # inclusive inner
-        if v <  0:    return -wb_
-    elif strict:
-        if v >   hi:  return wa
-        if v >   lo:  return wbt
-        if v >= 0:    return wb_
-        if v <  -nhi: return -wa
-        if v <  -nlo: return -wbt
+        if v <= -nhi: return -wa
+        if v <= -nlo: return -wbt
         if v <  0:    return -wb_
     else:
+        # Standard: positive >= , negative <= (both inclusive / symmetric).
+        # Negative was strict `<` before — an oversight; integer-input rules
+        # (e.g. bbstreak) land exactly on the threshold and were mis-graded.
         if v >= hi:   return wa
         if v >= lo:   return wbt
         if v >= 0:    return wb_
-        if v <  -nhi: return -wa   # strict: mirrors positive v > hi
-        if v <= -nlo: return -wbt  # inclusive: mirrors positive v >= lo
+        if v <= -nhi: return -wa
+        if v <= -nlo: return -wbt
         if v <  0:    return -wb_
     return 0.0
 

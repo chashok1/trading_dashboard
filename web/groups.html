@@ -167,8 +167,16 @@
     const state = { groups: [], compositeRules: [], editingGroup: null };
 
     document.addEventListener('DOMContentLoaded', async () => {
-      const today = new Date().toISOString().slice(0,10);
-      document.getElementById('testDate').value = today;
+      // Default the test date to the anchor D (=MAX(export_date) FROM hist_td).
+      // /api/dates is capped at the anchor, so dates[0] is it; fall back to today
+      // only if no dates exist. (Defaulting to today tested against a date with
+      // no data.)
+      let anchor = null;
+      try {
+        const dates = await fetch('/api/dates').then(r => r.ok ? r.json() : []);
+        if (Array.isArray(dates) && dates.length) anchor = dates[0];
+      } catch (_) { /* ignore */ }
+      document.getElementById('testDate').value = anchor || new Date().toISOString().slice(0,10);
       document.getElementById('newGroupBtn').addEventListener('click', openNewGroupModal);
       await loadCompositeRules();
       await loadGroups();

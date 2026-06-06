@@ -2872,7 +2872,17 @@ def _derive_trig_impl(session: Session, as_of_date: date, run_id: int) -> int:
         for r in rules:
             src = atomic_col_map.get(r["atomic_rule_id"])
             v = _read_atomic_value(ma, src) if src else None
-            atomic_weights[r["atomic_rule_id"]] = eval_atomic_rule(v, r)
+            # drv_cat_atomic_input already holds pre-evaluated atomic weights
+            # (trig_ifs called eval_atomic_rule during derive_cat_atomic_input).
+            # Pass through directly — mirrors _derive_stks_impl. Re-applying
+            # eval_atomic_rule here DOUBLE-evaluated (e.g. earnings 1 -> -3),
+            # over-firing gates like 697. None preserved so NULL never satisfies
+            # a condition (0.0 <= threshold would silently pass SELL rules).
+            try:
+                atomic_weights[r["atomic_rule_id"]] = (
+                    float(v) if v is not None else None)
+            except (TypeError, ValueError):
+                atomic_weights[r["atomic_rule_id"]] = None
 
         for code, members in composite_index.items():
             # Per-member (role, weight), then the shared gate/watch firing —
