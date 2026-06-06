@@ -29,121 +29,117 @@ PHASE 1: ATOMIC RULE COLUMNS (drv_cat_atomic_input)
 Comparing 113 columns across 792 symbols
 
 Total cells compared:     88704
-Total mismatches:         21958
-Match rate:               75.25%
-Perfect-match symbols:    1/792
+Total mismatches:         77
+Match rate:               99.91%
+Perfect-match symbols:    755/792
 
 Mismatches by column (top 30):
   Column                                    Mismatch Count
   ──────────────────────────────────────── ───────────────
-  current_price_sd_rule                                592
-  perf1d_sd_rule                                       582
-  not_perf1d_sd                                        582
-  perf3d_sd_rule                                       524
-  not_perf3d_rule                                      524
-  perf2wk_sd_rule                                      498
-  current_volume_rule                                  467
-  brrpct_dir                                           413
-  macdh_days                                           395
-  macdh_days2                                          395
-  brrpct_lrr                                           388
-  perf3wk_sd_rule                                      385
-  3wk_outlook                                          380
-  not_3wk_ol                                           380
-  bbthresh_co_days2                                    379
-  bb_threshold                                         367
-  brrpct_trr_puts                                      364
-  bbstreak_days_rule3                                  358
-  bbstreak_days_rule4                                  358
-  brrpct_lrr2                                          356
-  brrpct_r2                                            355
-  mrr_idx                                              355
-  brrpct_trr                                           345
-  50_dma_rule                                          329
-  brrpct_puts                                          316
-  lrr_idx                                              299
-  brrpct_rule                                          290
-  low_lrr                                              286
-  3wk_outlook_days                                     282
-  not_3wk_ol_days                                      282
+  current_price_sd_rule                                 18
+  lrr_idx                                                8
+  trade_cross_over                                       7
+  trend_cross_over                                       6
+  trr_idx                                                4
+  low_lrr                                                4
+  high_trr                                               3
+  50_dma_rule                                            2
+  hvpercentile                                           2
+  hvpercentile_puts                                      2
+  brrtrade                                               2
+  perf3wk_sd_rule                                        2
+  ivabsolute                                             2
+  current_volatility_rule                                2
+  down_resistance                                        2
+  52_wk_high_rule                                        1
+  3mn_high_days_rule                                     1
+  short_term_oulook_if_lt_bullish                        1
+  short_term_oulook_if_lt_bearish                        1
+  3mn_outlook                                            1
+  brrpct_rule                                            1
+  brrpct_dir                                             1
+  200_dma_rule                                           1
+  trend_rule                                             1
+  not_trend_rule                                         1
+  trend_trade_dep_rule                                   1
 
 Top symbols by mismatch count (top 20):
   Symbol                 Mismatches
   ──────────────────── ────────────
-  URA                            67
-  BIDU                           65
-  EWY                            65
-  KVUE                           64
-  URNJ                           64
-  AFK                            63
-  COPJ                           63
-  ARKK                           61
-  B                              61
-  MCHP                           61
-  NEM                            61
-  XLG                            61
-  COPX                           59
-  EWA                            59
-  KBWP                           59
-  SCJ                            59
-  EWS                            58
-  QQQ                            58
-  URNM                           58
-  WGMI                           58
+  STKL                            6
+  CFLT                            5
+  EXAS                            5
+  FYBR                            5
+  K                               5
+  MCW                             5
+  TOKE                            4
+  EWN                             3
+  KW                              3
+  NORW                            3
+  XTL                             3
+  CRCL                            2
+  PR                              2
+  UHAL                            2
+  WYFI                            2
+  ARHS                            1
+  BALL                            1
+  BIP                             1
+  BUXX                            1
+  CSX                             1
 
-Sample mismatches (first 50 of 21958):
+Sample mismatches (first 50 of 77):
   Symbol               Column                                   Excel         DB
   ──────────────────── ─────────────────────────────────── ────────── ──────────
-  AAAU                 macdh_direction                              1         -1
-  AAAU                 macd_direction                               1         -1
-  AAAU                 bbthresh_co_days2                            2          3
-  AAAU                 trade_cross_over                             1          0
-  AAAU                 trade_rule                                   1         -2
-  AAAU                 not_trade_rule                              -1          2
-  AAAU                 trend_rule                                  -3         -2
-  AAAU                 not_trend_rule                               3          2
-  AAAU                 trend_trade_dep_rule                         1         -2
-  AAAU                 trade_trend_sd_rule                         -3         -2
-  AAAU                 brrpct_lrr                                   2          3
-  AAAU                 brrpct_r2                                    2          3
-  AAAU                 brrpct_dir                                   3         -1
-  AAAU                 low_lrr                                      1          3
-  AAAU                 lrr_idx                                      1         -1
-  AAAU                 hvpercentile_puts                           -1         -2
-  AAAU                 3m_low_rule                                  1         -1
-  AAAU                 3m_long                                      1          0
-  AAAU                 perf3mn_sd_rule                             -3         -2
-  AAAU                 perf3wk_sd_rule                              1         -2
-  AAAU                 perf2wk_sd_rule                             -2         -3
-  AAAU                 perf3d_sd_rule                               1         -3
-  AAAU                 perf1d_sd_rule                               2         -3
-  AAAU                 not_perf1d_sd                               -2          3
-  AAAU                 not_perf3d_rule                             -1          3
-  AAAU                 bbhighlow_sd_rule                            2          1
-  AAAU                 bbhighlow_days_rule                          2          1
-  AAAU                 bbstreak_days_rule                           2          3
-  AAAU                 bbstreak_days_rule2                          2          1
-  AAAU                 bbstreak_days_rule3                          1          3
-  AAAU                 bbstreak_days_rule4                          3          1
-  AAAU                 bb_bull_rule                                 2          1
-  AAAU                 bb_bull_puts                                -2         -1
-  AAAU                 bblowdays                                    2          1
-  AAAU                 macdh_days                                   2         -2
-  AAAU                 macdh_days2                                  2         -2
-  AAAU                 3mn_outlook                                  1         -3
-  AAAU                 3mn_outlook_days                             3         -3
-  AAAU                 3wk_outlook                                  2         -3
-  AAAU                 3wk_outlook_days                             2         -3
-  AAAU                 not_3wk_ol                                  -2          3
-  AAAU                 not_3wk_ol_days                             -2          3
-  AAAU                 bull                                         0         -2
-  AAAU                 not_bull                                     0          2
-  AAAU                 perforbull                                  -1         -2
-  AAAU                 not_perforbull                               1          2
-  AAAU                 200_dma_rule                                 2         -1
-  AAAU                 200_dma_crossover                            0         -1
-  AAAU                 up_resistance                                0       -0.5
-  AAAU                 current_price_sd_rule                        2         -3
+  ARHS                 current_price_sd_rule                       -1         -2
+  BALL                 50_dma_rule                                 -3         -2
+  BIP                  52_wk_high_rule                             -3         -2
+  BUXX                 current_price_sd_rule                        0          1
+  CFLT                 trade_cross_over                             1          0
+  CFLT                 trend_cross_over                             1          0
+  CFLT                 trr_idx                                     -1          0
+  CFLT                 lrr_idx                                     -1          0
+  CFLT                 current_price_sd_rule                        0          1
+  CRCL                 hvpercentile                                 3       None
+  CRCL                 hvpercentile_puts                            0       None
+  CSX                  low_lrr                                      1          2
+  DRVN                 brrtrade                                     1          0
+  ETH-USD              3mn_high_days_rule                           3         -1
+  EWN                  current_price_sd_rule                       -2         -3
+  EWN                  short_term_oulook_if_lt_bullish              0          3
+  EWN                  short_term_oulook_if_lt_bearish              0         -1
+  EXAS                 trade_cross_over                             1          0
+  EXAS                 trend_cross_over                             1          0
+  EXAS                 trr_idx                                     -1          0
+  EXAS                 lrr_idx                                     -1          0
+  EXAS                 current_price_sd_rule                        0          1
+  FLNG                 3mn_outlook                                 -2         -1
+  FYBR                 trade_cross_over                             1          0
+  FYBR                 trend_cross_over                             1          0
+  FYBR                 trr_idx                                     -1          0
+  FYBR                 lrr_idx                                     -1          0
+  FYBR                 current_price_sd_rule                        0          1
+  GAP                  current_price_sd_rule                        0          1
+  GTBIF                perf3wk_sd_rule                              3          2
+  K                    trade_cross_over                             1          0
+  K                    trend_cross_over                             1          0
+  K                    trr_idx                                     -1          0
+  K                    lrr_idx                                     -1          0
+  K                    current_price_sd_rule                        0          1
+  KNX                  current_price_sd_rule                        0          1
+  KW                   brrpct_rule                                  3          2
+  KW                   brrpct_dir                                   3          2
+  KW                   current_price_sd_rule                        1          2
+  LEVI                 current_price_sd_rule                        0          1
+  LUXE                 200_dma_rule                                -3         -2
+  MCW                  trade_cross_over                             1          0
+  MCW                  trend_cross_over                             1          0
+  MCW                  high_trr                                     3          2
+  MCW                  lrr_idx                                     -1          1
+  MCW                  current_price_sd_rule                        0          1
+  NORW                 trend_rule                                   2          1
+  NORW                 not_trend_rule                              -2         -1
+  NORW                 trend_trade_dep_rule                         2          1
+  PK                   low_lrr                                      1          2
 
 ──────────────────────────────────────────────────────────────────────
 PHASE 2: COMPOSITE RULE SCORES (drv_trig)
@@ -155,124 +151,99 @@ Only in DB:               ['51-BS-TRADE-TREND', '52-BS-BRR', '92-BS-RSI-MACD-Vlm
 
 Comparing 61 codes across 792 symbols
 Total cells compared:     48312
-Total mismatches:         1496
-Match rate:               96.90%
-Perfect-match symbols:    172/792
+Total mismatches:         55
+Match rate:               99.89%
+Perfect-match symbols:    737/792
 
 Mismatches by composite code (top 30):
   Code                                           Mismatch Count
   ───────────────────────────────────────────── ───────────────
-  796-SW-!Bull-BBTh-Crossover                               189
-  699-SW-Resistance                                         146
-  395-BS-TN-TD-LRR                                          103
-  397-B-TN-TD-LRR                                           103
-  448-BS-TN-TD-LRR                                           85
-  93-BW-LRRabvTD                                             78
-  99-BS-Min                                                  70
-  186-BR-Trend-CO                                            65
-  791-STM-!Bull-HighAbvTRR                                   54
-  785-SS-Trade-Breaks                                        48
-  279-BS-BB-Streak-HiHi                                      44
-  396-BS-LRR-CloseToTrade                                    43
-  267-BS-Trade-CO                                            41
-  788-SS-!Bull-TN-TD-TRR                                     40
-  899-SA-Trend-Breaks                                        39
-  896-SA-TRbelowTN-Trade-Breaks                              33
-  898-SA-Streak-VeryBad                                      32
-  95-BW-LowBelwLRR                                           31
-  196-BS-TN-LRR                                              31
-  784-SS-Streak-GoingBad                                     28
-  698-SS-Bull-HighAbvTRR                                     28
-  94-BW-UP-MACD                                              27
-  893-SA-TRR-blw-TN                                          19
-  394-BS-TN-LRR                                              19
-  449-B-TN-TD-LRR-UP-MACD                                    15
-  188-BR-TNabvTD-UP-MACD-DAY                                 13
-  98-BW-TD-LRR-RSI                                           12
-  198-BS-TN-LRR-UP-MACD                                      11
-  399-B-TN-TD-LRR-UP-MACD                                     8
-  268-BS-3M-HiHi                                              7
+  186-BR-Trend-CO                                            51
+  396-BS-LRR-CloseToTrade                                     1
+  94-BW-UP-MACD                                               1
+  196-BS-TN-LRR                                               1
+  95-BW-LowBelwLRR                                            1
 
 Top symbols by composite mismatch count (top 20):
   Symbol                 Mismatches
   ──────────────────── ────────────
-  SWBI                            9
-  CLOZ                            8
-  FORM                            8
-  LIT                             8
-  S                               8
-  TSM                             8
-  AFRM                            7
-  AVGO                            7
-  COCO                            7
-  EDEN                            7
-  EWJV                            7
-  INTC                            7
-  IRM                             7
-  JPXN                            7
-  MCHP                            7
-  MDLZ                            7
-  THD                             7
-  ULS                             7
-  AMN                             6
-  EPOL                            6
+  AMH                             1
+  AMN                             1
+  AMPH                            1
+  AVB                             1
+  BNDD                            1
+  BXP                             1
+  CAKE                            1
+  CFLT                            1
+  CHEF                            1
+  CPT                             1
+  CSX                             1
+  DK                              1
+  DOV                             1
+  DRVN                            1
+  ELV                             1
+  ENR                             1
+  EQR                             1
+  ESS                             1
+  EXPD                            1
+  FOXA                            1
 
-Sample composite mismatches (first 50 of 1496):
+Sample composite mismatches (first 50 of 55):
   Symbol               Code                                            ExVal  ExFired  DBFired
   ──────────────────── ───────────────────────────────────────────── ─────── ──────── ────────
-  AAAU                 267-BS-Trade-CO                                     1     True    False
-  AAAU                 699-SW-Resistance                                  10    False     True
-  AAAU                 784-SS-Streak-GoingBad                             50    False     True
-  AAAU                 898-SA-Streak-VeryBad                              50    False     True
-  AAAU                 99-BS-Min                                           2     True    False
-  AAL                  395-BS-TN-TD-LRR                                    0     True    False
-  AAL                  396-BS-LRR-CloseToTrade                             0     True    False
-  AAL                  397-B-TN-TD-LRR                                     1     True    False
-  AAL                  448-BS-TN-TD-LRR                                    0     True    False
-  AAL                  449-B-TN-TD-LRR-UP-MACD                            11    False     True
-  AAPL                 395-BS-TN-TD-LRR                                   10    False     True
-  AAPL                 397-B-TN-TD-LRR                                    11    False     True
-  AAPL                 448-BS-TN-TD-LRR                                   10    False     True
-  ABBV                 186-BR-Trend-CO                                     2     True    False
-  ABNB                 449-B-TN-TD-LRR-UP-MACD                             1     True    False
-  ABR                  893-SA-TRR-blw-TN                                   0     True    False
-  ABT                  699-SW-Resistance                                  10    False     True
-  ACHC                 791-STM-!Bull-HighAbvTRR                            0     True    False
-  ACHR                 699-SW-Resistance                                  10    False     True
-  ACHR                 796-SW-!Bull-BBTh-Crossover                         0     True    False
-  ACHR                 896-SA-TRbelowTN-Trade-Breaks                      10    False     True
-  ACHR                 899-SA-Trend-Breaks                                20    False     True
-  ACI                  188-BR-TNabvTD-UP-MACD-DAY                          1     True    False
-  ADBE                 697-STM-Earnings-Date                              10    False     True
-  ADBE                 796-SW-!Bull-BBTh-Crossover                        20    False     True
-  AFK                  785-SS-Trade-Breaks                                40    False     True
-  AFK                  796-SW-!Bull-BBTh-Crossover                        10    False     True
-  AFK                  94-BW-UP-MACD                                       1     True    False
-  AFRM                 395-BS-TN-TD-LRR                                   10    False     True
-  AFRM                 396-BS-LRR-CloseToTrade                            10    False     True
-  AFRM                 397-B-TN-TD-LRR                                    11    False     True
-  AFRM                 448-BS-TN-TD-LRR                                   10    False     True
-  AFRM                 449-B-TN-TD-LRR-UP-MACD                             1     True    False
-  AFRM                 699-SW-Resistance                                  10    False     True
-  AFRM                 95-BW-LowBelwLRR                                   20    False     True
-  AGCO                 699-SW-Resistance                                  10    False     True
-  AGCO                 791-STM-!Bull-HighAbvTRR                            0     True    False
-  AHR                  99-BS-Min                                          23    False     True
-  AIQUY                699-SW-Resistance                                  10    False     True
-  ALB                  785-SS-Trade-Breaks                                 0     True    False
-  ALB                  898-SA-Streak-VeryBad                              10    False     True
-  ALB                  899-SA-Trend-Breaks                                10    False     True
-  ALCO                 399-B-TN-TD-LRR-UP-MACD                             1     True    False
-  ALCO                 94-BW-UP-MACD                                       3     True    False
-  ALCO                 99-BS-Min                                           2     True    False
-  ALNY                 699-SW-Resistance                                   0     True    False
-  ALNY                 791-STM-!Bull-HighAbvTRR                            0     True    False
-  AMAT                 279-BS-BB-Streak-HiHi                               2     True    False
-  AMAT                 791-STM-!Bull-HighAbvTRR                            0     True    False
-  AMAT                 796-SW-!Bull-BBTh-Crossover                        20    False     True
+  AMH                  186-BR-Trend-CO                                     2     True    False
+  AMN                  186-BR-Trend-CO                                     1     True    False
+  AMPH                 186-BR-Trend-CO                                     1     True    False
+  AVB                  186-BR-Trend-CO                                     2     True    False
+  BNDD                 186-BR-Trend-CO                                     2     True    False
+  BXP                  186-BR-Trend-CO                                     2     True    False
+  CAKE                 186-BR-Trend-CO                                     1     True    False
+  CFLT                 186-BR-Trend-CO                                     2     True    False
+  CHEF                 186-BR-Trend-CO                                     2     True    False
+  CPT                  186-BR-Trend-CO                                     2     True    False
+  CSX                  186-BR-Trend-CO                                     2     True    False
+  DK                   186-BR-Trend-CO                                     2     True    False
+  DOV                  186-BR-Trend-CO                                     2     True    False
+  DRVN                 396-BS-LRR-CloseToTrade                             0     True    False
+  ELV                  186-BR-Trend-CO                                     2     True    False
+  ENR                  186-BR-Trend-CO                                     2     True    False
+  EQR                  186-BR-Trend-CO                                     2     True    False
+  ESS                  186-BR-Trend-CO                                     2     True    False
+  EXPD                 186-BR-Trend-CO                                     2     True    False
+  FOXA                 186-BR-Trend-CO                                     1     True    False
+  FYBR                 186-BR-Trend-CO                                     2     True    False
+  GD                   186-BR-Trend-CO                                     2     True    False
+  GLASF                186-BR-Trend-CO                                     2     True    False
+  H                    186-BR-Trend-CO                                     2     True    False
+  HLT                  186-BR-Trend-CO                                     2     True    False
+  INVH                 186-BR-Trend-CO                                     2     True    False
+  KW                   94-BW-UP-MACD                                       1     True    False
+  LFMD                 186-BR-Trend-CO                                     2     True    False
+  LLY                  186-BR-Trend-CO                                     2     True    False
+  MAC                  186-BR-Trend-CO                                     2     True    False
+  MAR                  186-BR-Trend-CO                                     2     True    False
+  MCW                  186-BR-Trend-CO                                     2     True    False
+  MNST                 186-BR-Trend-CO                                     1     True    False
+  NORW                 196-BS-TN-LRR                                       1     True    False
+  NYT                  186-BR-Trend-CO                                     2     True    False
+  OMF                  186-BR-Trend-CO                                     2     True    False
+  PNC                  186-BR-Trend-CO                                     2     True    False
+  POOL                 186-BR-Trend-CO                                     2     True    False
+  PRAA                 186-BR-Trend-CO                                     1     True    False
+  R                    186-BR-Trend-CO                                     2     True    False
+  RHP                  186-BR-Trend-CO                                     2     True    False
+  SFD                  186-BR-Trend-CO                                     2     True    False
+  SLG                  186-BR-Trend-CO                                     2     True    False
+  SPG                  186-BR-Trend-CO                                     2     True    False
+  STKL                 186-BR-Trend-CO                                     2     True    False
+  TCNNF                186-BR-Trend-CO                                     2     True    False
+  UNH                  186-BR-Trend-CO                                     2     True    False
+  USFD                 186-BR-Trend-CO                                     2     True    False
+  UUP                  186-BR-Trend-CO                                     2     True    False
+  VNO                  186-BR-Trend-CO                                     2     True    False
 
 ======================================================================
 SUMMARY
 ======================================================================
-Phase 1 (atomic) :  75.25% match  (21958 mismatches across 111 columns, 792 symbols)
-Phase 2 (composite): 96.90% match  (1496 mismatches across 44 codes, 792 symbols)
+Phase 1 (atomic) :  99.91% match  (77 mismatches across 26 columns, 792 symbols)
+Phase 2 (composite): 99.89% match  (55 mismatches across 5 codes, 792 symbols)
