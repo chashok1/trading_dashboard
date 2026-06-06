@@ -17,7 +17,10 @@
 --   * Thresholds are the dominant per-member value observed in the workbook.
 --     condition_operator is explicit (bull bases >=, bear bases <=) because the
 --     BASE-* codes don't match the BUY/SELL prefix the auto-operator keys on.
---   * weight_override left NULL — members use their atomic rule's own weight.
+--   * weight_override = 10 (the gate weight) so a base member behaves identically
+--     to the flat leaf gate member it replaces — including the val=0 / threshold=0
+--     case, where override=10 keeps the gate-hit (returns 10) instead of returning
+--     the raw 0 (which the `w != 0` gate test would read as "not hit").
 --   * atomic_rule_id values are the workbook row numbers (the loader's PK).
 --
 -- BASE-* composites are EXEMPT from the workbook pruning pass (etl/load_raw.py),
@@ -63,7 +66,7 @@ INSERT INTO ref_trig_composite_mapping
      data_brkeout_from, condition_operator, weight_override,
      category, intent_text, active)
 SELECT bm.composite_rule_code, bm.atomic_rule_id, 'atomic', 'gate',
-       bm.data_brkeout_from, bm.condition_operator, NULL,
+       bm.data_brkeout_from, bm.condition_operator, 10,
        bm.category, bm.intent_text, TRUE
 FROM base_members bm
 JOIN ref_trig_atomic_rule a ON a.atomic_rule_id = bm.atomic_rule_id

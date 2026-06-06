@@ -2327,9 +2327,14 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
                 elif kind == "composite":
                     child = member.get("child")
                     child_score = composite_scores.get(child)
-                    if child_score is None:
-                        # Child either doesn't exist, was skipped by its own
-                        # precondition, or hasn't been evaluated (cycle).  Skip.
+                    # A nested composite contributes ONLY when it actually FIRED
+                    # (all its own gates passed + watch cutoff cleared). Gating on
+                    # the raw summed score instead would let a child that did NOT
+                    # fire still pass the parent's gate (score!=0 whenever any one
+                    # child member scored) — turning the parent AND into an OR.
+                    if child_score is None or not composite_results.get(child, False):
+                        # Child doesn't exist, was precondition-skipped, hit a
+                        # cycle, or did not fire → contributes nothing.
                         w = 0.0
                     else:
                         mult = member.get("override")
@@ -2834,24 +2839,30 @@ def _derive_trig_impl(session: Session, as_of_date: date, run_id: int) -> int:
         log.warning("drv_trig: no atomic rules; skipping")
         return 0
     mappings = session.execute(text("""
-        SELECT composite_rule_code, atomic_rule_id, weight_override,
-               data_brkeout_from, condition_operator, member_role, evidence_cutoff
+        SELECT composite_rule_code, COALESCE(member_kind,'atomic') AS member_kind,
+               atomic_rule_id, nested_composite_code, weight_override,
+               data_brkeout_from, condition_operator,
+               COALESCE(member_role,'gate') AS member_role, evidence_cutoff
         FROM ref_trig_composite_mapping
-        WHERE deprecated_at IS NULL AND atomic_rule_id IS NOT NULL
+        WHERE deprecated_at IS NULL
     """)).mappings().all()
     if not mappings:
         log.warning("drv_trig: no composite mappings; skipping")
         return 0
     # Member detail per composite + composite-level watch cutoff. Mirrors the
-    # gate/watch firing in _derive_stks_impl so drv_trig.triggered now means
-    # "all gates hit AND watch cleared cutoff" (== Excel deficit < 10), not the
-    # old "any member contributed".
+    # gate/watch firing in _derive_stks_impl so drv_trig.triggered means
+    # "all gates hit AND watch cleared cutoff" (== Excel deficit < 10).
+    # Nested-composite members (Phase 2 BASE-* refs) are now scored too, so
+    # refactored leaves stay consistent with the authoritative drv_stks.
+    # `data`-kind members remain ignored here (unchanged historical behavior).
     composite_index: dict = {}
     watch_cutoff: dict = {}
     for m in mappings:
         code = m["composite_rule_code"]
         composite_index.setdefault(code, []).append({
+            "kind":      m["member_kind"],
             "atom_id":   m["atomic_rule_id"],
+            "child":     m["nested_composite_code"],
             "override":  m["weight_override"],
             "threshold": m["data_brkeout_from"],
             "operator":  m["condition_operator"],
@@ -2859,6 +2870,13 @@ def _derive_trig_impl(session: Session, as_of_date: date, run_id: int) -> int:
         })
         if watch_cutoff.get(code) is None and m["evidence_cutoff"] is not None:
             watch_cutoff[code] = m["evidence_cutoff"]
+
+    # Evaluate composites with no nested-composite member first (e.g. BASE-*),
+    # then those that reference them — one shallow topo pass (bases never nest).
+    def _has_nested(ms):
+        return any(mm["kind"] == "composite" for mm in ms)
+    eval_order = ([c for c, ms in composite_index.items() if not _has_nested(ms)]
+                  + [c for c, ms in composite_index.items() if _has_nested(ms)])
 
     atomic_col_map = _resolve_atomic_input_column(session)
     ma_rows = _fetch_eval_rows(session, as_of_date, atomic_col_map)
@@ -2884,26 +2902,47 @@ def _derive_trig_impl(session: Session, as_of_date: date, run_id: int) -> int:
             except (TypeError, ValueError):
                 atomic_weights[r["atomic_rule_id"]] = None
 
-        for code, members in composite_index.items():
-            # Per-member (role, weight), then the shared gate/watch firing —
-            # identical to _derive_stks_impl via _composite_fire.
-            member_evals = [
-                (mem["role"], _atomic_member_weight(
-                    atomic_weights.get(mem["atom_id"]), mem["threshold"],
-                    mem["operator"], mem["override"], code))
-                for mem in members
-            ]
+        comp_fired: dict = {}
+        comp_score: dict = {}
+        for code in eval_order:
+            members = composite_index[code]
+            member_evals = []
+            for mem in members:
+                if mem["kind"] == "atomic":
+                    w = _atomic_member_weight(
+                        atomic_weights.get(mem["atom_id"]), mem["threshold"],
+                        mem["operator"], mem["override"], code)
+                elif mem["kind"] == "composite":
+                    # Nested composite contributes ONLY when it actually fired —
+                    # same gating as the fixed _derive_stks_impl (score!=0 alone
+                    # would turn the parent AND into an OR).
+                    child = mem["child"]
+                    if comp_fired.get(child, False):
+                        cs = comp_score.get(child, 0.0)
+                        w = (float(mem["override"]) * cs
+                             if mem["override"] is not None else cs)
+                    else:
+                        w = 0.0
+                else:
+                    # data-kind members: not scored in drv_trig (unchanged).
+                    continue
+                member_evals.append((mem["role"], w))
             score, triggered, n_hit = _composite_fire(
                 member_evals, watch_cutoff.get(code))
-            out_rows.append({
-                "as_of_date":          as_of_date,
-                "tos_symbol":          ma["tos_symbol"],
-                "composite_rule_code": code,
-                "score":               float(score),
-                "triggered":           triggered,
-                "n_atomic_hit":        n_hit,
-                "source_run_id":       run_id,
-            })
+            comp_fired[code] = triggered
+            comp_score[code] = float(score)
+            # Preserve historical row-set: only emit for composites that have an
+            # atomic or nested member (data-only composites were never written).
+            if any(mm["kind"] in ("atomic", "composite") for mm in members):
+                out_rows.append({
+                    "as_of_date":          as_of_date,
+                    "tos_symbol":          ma["tos_symbol"],
+                    "composite_rule_code": code,
+                    "score":               float(score),
+                    "triggered":           triggered,
+                    "n_atomic_hit":        n_hit,
+                    "source_run_id":       run_id,
+                })
     return replace_for_date(session, "drv_trig", "as_of_date", as_of_date, out_rows)
 
 

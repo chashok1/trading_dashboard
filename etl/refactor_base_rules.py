@@ -69,20 +69,58 @@ def _load_composites(s):
     return comps
 
 
-def _base_member_ids(comps):
-    """{base_code: set(atomic_rule_id)} for BASE-* composites."""
+def _base_member_defs(comps):
+    """{base_code: {atomic_rule_id: (threshold, operator, role, weight)}} for BASE-*."""
     out = {}
     for code, c in comps.items():
         if code.startswith("BASE-"):
-            ids = {m["atomic_rule_id"] for m in c["members"]
-                   if m["member_kind"] == "atomic" and m["atomic_rule_id"] is not None}
-            if ids:
-                out[code] = ids
+            d = {m["atomic_rule_id"]: (m["data_brkeout_from"],
+                                       m["condition_operator"],
+                                       m["member_role"] or "gate",
+                                       m["weight_override"])
+                 for m in c["members"]
+                 if m["member_kind"] == "atomic" and m["atomic_rule_id"] is not None}
+            if d:
+                out[code] = d
     return out
 
 
-def _plan_leaf(code, c, base_ids, min_overlap):
-    """Return (new_members, replacements) or None if no base fully matches."""
+def _num(x):
+    try:
+        return float(x) if x is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _member_equiv(leaf_m, base_def):
+    """True only if the leaf's atomic member is IDENTICAL to the base's member
+    on ALL firing-relevant fields: threshold, operator, role, AND weight_override.
+    Weight matters because the gate-hit test is `w != 0`: a condition that is met
+    but yields weight 0 (e.g. value 0 with threshold 0, no override) reads as
+    'not hit'. So a base member and the leaf member it replaces must share the
+    same weight or firing can differ on the value==0 edge. A None operator on the
+    leaf is a conservative non-match. This guarantees firing-equivalence."""
+    bthr, bop, brole, bwt = base_def
+    lthr = leaf_m["data_brkeout_from"]
+    lop = leaf_m["condition_operator"]
+    lrole = leaf_m["member_role"] or "gate"
+    lwt = leaf_m["weight_override"]
+    if _num(lthr) != _num(bthr):
+        return False
+    if not lop or not bop or lop != bop:
+        return False
+    if lrole != (brole or "gate"):
+        return False
+    if _num(lwt) != _num(bwt):
+        return False
+    return True
+
+
+def _plan_leaf(code, c, base_defs, min_overlap):
+    """Return (new_members, replacements) or None if no base fully matches.
+    A base is absorbed only when EVERY one of its atomic members is present in
+    the leaf AND identical (threshold/operator/role) — see _member_equiv. This
+    keeps the rewrite strictly firing-equivalent; mismatched leaves are skipped."""
     atomic_ids = {m["atomic_rule_id"] for m in c["members"]
                   if m["member_kind"] == "atomic" and m["atomic_rule_id"] is not None}
     by_id = {m["atomic_rule_id"]: m for m in c["members"]
@@ -90,12 +128,14 @@ def _plan_leaf(code, c, base_ids, min_overlap):
     replaced_ids: set = set()
     nested_to_add = []
     replacements = []
-    # Greedy: apply each base whose members are a full subset and not yet consumed.
-    for base, ids in sorted(base_ids.items(), key=lambda kv: -len(kv[1])):
+    # Greedy: apply each base whose members are a full subset, identical, unconsumed.
+    for base, defs in sorted(base_defs.items(), key=lambda kv: -len(kv[1])):
+        ids = set(defs)
         if len(ids) < min_overlap:
             continue
-        if ids.issubset(atomic_ids) and not (ids & replaced_ids):
-            roles = {by_id[i]["member_role"] for i in ids}
+        if (ids.issubset(atomic_ids) and not (ids & replaced_ids)
+                and all(_member_equiv(by_id[i], defs[i]) for i in ids)):
+            roles = {by_id[i]["member_role"] or "gate" for i in ids}
             nested_role = "gate" if roles == {"gate"} else "watch"
             nested_to_add.append((base, nested_role))
             replacements.append({"base": base, "role": nested_role,
@@ -182,11 +222,11 @@ def main() -> int:
 
     with session_scope() as s:
         comps = _load_composites(s)
-        base_ids = _base_member_ids(comps)
-        if not base_ids:
+        base_defs = _base_member_defs(comps)
+        if not base_defs:
             log.error("No BASE-* composites found — apply db/seeds_base_rules.sql first.")
             return 1
-        log.info("BASE rules: %s", {b: sorted(ids) for b, ids in base_ids.items()})
+        log.info("BASE rules: %s", {b: sorted(d) for b, d in base_defs.items()})
 
         # Build the plan
         plans = {}
@@ -195,7 +235,7 @@ def main() -> int:
                 continue
             if args.only and code not in args.only:
                 continue
-            planned = _plan_leaf(code, c, base_ids, args.min_overlap)
+            planned = _plan_leaf(code, c, base_defs, args.min_overlap)
             if planned:
                 plans[code] = planned
         if not plans:
