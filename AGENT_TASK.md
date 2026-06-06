@@ -1,48 +1,43 @@
-# AGENT TASK 06 — verify drv_trig double-eval fix (697 over-firing)
+# AGENT TASK 09 — PRMB: do Excel-fired and DB-fired match?
 
-**You (VS Code agent) have DB access.** Run in a **fresh process** (not the
-running app). Write output to a NEW file **`AGENT_RESULT_06.md`**.
+**You (VS Code agent) have DB access.** Write output to **`AGENT_RESULT_09.md`**.
+Compare date = 2026-06-05 (current anchor; matches the fresh TrigMA.xlsx).
 
-## What changed (code already edited)
-`etl/derive.py::_derive_trig_impl` was re-applying `eval_atomic_rule()` to values
-that are ALREADY pre-evaluated atomic weights in `drv_cat_atomic_input`. That
-double-evaluated earnings (atomic 1 → re-eval 1<5 → -3), so the 697 gate
-`atomic <= -3` passed for every non-null earnings → 564 false fires.
-Fix: pass the value through directly (None preserved), mirroring
-`_derive_stks_impl`. No more second `eval_atomic_rule` call.
+## Step 1 — per-composite fired comparison for PRMB
+Using the same logic compare_trigma.py uses (Excel deficit < 10 = fired; DB =
+drv_trig.triggered), list EVERY composite for PRMB where they DISAGREE, and also
+report the totals. Easiest path: add a one-off symbol filter in compare_trigma.py
+(or replicate its Phase-2 join) and print, for PRMB:
 
-## Step 1 — re-derive 2026-06-04 (fresh process)
 ```
-python agent_rederive_all.py
+composite_rule_code | excel_deficit | excel_fired | db_triggered | db_score | match?
 ```
-Paste the counts.
+List all disagreements; then give the count of composites that match vs mismatch.
 
-## Step 2 — confirm 697 now fires ONLY for imminent earnings
+## Step 2 — PRMB atomic values (to explain any disagreement)
 ```sql
-SELECT a.tos_symbol, a.earnings AS atomic_earnings,
-       t.triggered AS db_697_fired, t.score
-FROM drv_cat_atomic_input a
-JOIN drv_trig t
-     ON t.tos_symbol = a.tos_symbol AND t.as_of_date = a.as_of_date
-    AND t.composite_rule_code = '697-STM-Earnings-Date'
-WHERE a.as_of_date = '2026-06-04'
-  AND a.tos_symbol IN ('AAPL','AAL','NVDA','CRM','MSFT','ASO','ORCL','DOCU')
-ORDER BY a.earnings, a.tos_symbol;
+SELECT * FROM drv_cat_atomic_input
+WHERE tos_symbol = 'PRMB' AND as_of_date = '2026-06-05';
 ```
-Expected: `db_697_fired = True` ONLY where `atomic_earnings = -3` (ASO, ORCL,
-DOCU…); False for AAPL/NVDA/etc (atomic = 1).
+Paste the row (or at least the non-null atomic columns). I mainly want the
+atomic columns involved in any mismatched composite.
 
-## Step 3 — full regression compare
+## Step 3 — does PRMB have full source data?
+```sql
+SELECT 'hist_td' t, COUNT(*) n FROM hist_td WHERE tos_symbol='PRMB' AND export_date='2026-06-05'
+UNION ALL SELECT 'hist_tl', COUNT(*) FROM hist_tl WHERE tos_symbol='PRMB' AND export_date='2026-06-05'
+UNION ALL SELECT 'hist_tw', COUNT(*) FROM hist_tw WHERE tos_symbol='PRMB' AND snapshot_date<='2026-06-05' AND snapshot_date>='2026-06-05'::date-14
+UNION ALL SELECT 'drv_quote', COUNT(*) FROM drv_quote WHERE tos_symbol='PRMB' AND as_of_date='2026-06-05';
 ```
-python compare_trigma.py > trigma_report.txt 2>&1
+Paste it. Also note PRMB's td_high / td_low (for the crossover gap):
+```sql
+SELECT td_high, td_low, a_trend_value, a_trade_value, lrr, trr
+FROM drv_cat_atomic_input WHERE tos_symbol='PRMB' AND as_of_date='2026-06-05';
 ```
-Paste the final summary (Phase 1 atomic %, Phase 2 composite %) and the top-10
-composite mismatch table.
 
-I expect Phase 2 to jump (697's 564 should mostly clear) and Phase 1 unchanged.
-Flag any composite whose mismatch count went UP versus the prior run (697=564,
-93-BW-LRRabvTD=86, 99-BS-Min=70, 186-BR-Trend-CO=61, 791=60, 395=52, 397=52,
-279=48, 94-BW-UP-MACD=46, 396=32) — that would mean the pass-through change
-regressed another composite and we need to look.
+## Step 4 — verdict
+State plainly: for PRMB, do Excel-fired and DB-fired MATCH across all composites?
+If not, list the mismatching composites and your best one-line cause for each
+(e.g. "trend_cross_over NULL because td_high/td_low missing").
 
-Write `DONE` at the bottom of `AGENT_RESULT_06.md`.
+Write `DONE` at the bottom of `AGENT_RESULT_09.md`.
