@@ -62,3 +62,6 @@ _backups/
 _*.py
 *_comparison.xlsx
 ~$*.xlsx
+
+# Runtime ingest dir (source CSVs, logs, scheduler state — not code)
+etl/working/

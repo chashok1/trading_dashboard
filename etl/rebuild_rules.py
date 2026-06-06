@@ -174,6 +174,26 @@ def _step_refresh_refs() -> dict:
     except Exception as e:
         log.warning("  condition_operator backfill failed: %s", e)
 
+    # Re-apply DB-only atomic-rule customizations that live in db/baseline.sql but
+    # NOT in the workbook, so the workbook refresh above doesn't silently strip
+    # them. Keep in sync with baseline.sql. (current_volume_rule's negative-side
+    # thresholds: neg_brkeout_from=25, neg_brkeout_to=50 — without these the rule
+    # cannot emit its -2/-3 band and the atomic match regresses ~0.3%.)
+    try:
+        with session_scope() as s:
+            nr = s.execute(text("""
+                UPDATE ref_trig_atomic_rule
+                SET neg_brkeout_from = 25, neg_brkeout_to = 50
+                WHERE rule_name = 'current_volume_rule'
+                  AND (neg_brkeout_from IS DISTINCT FROM 25
+                       OR neg_brkeout_to IS DISTINCT FROM 50)
+            """)).rowcount
+            s.commit()
+        if nr:
+            log.info("  re-applied current_volume_rule neg thresholds (25/50)")
+    except Exception as e:
+        log.warning("  current_volume_rule neg-threshold re-apply failed: %s", e)
+
     return result
 
 
