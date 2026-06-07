@@ -125,10 +125,18 @@
           : '';
         const tip = escHtml(`${item.label} — as of: ${item.latest_date || '?'}${pctPart}`);
 
+        // Format latest_date (YYYY-MM-DD) → mm/dd, guard against null/missing
+        let dateLbl = '--';
+        if (item.latest_date && /^\d{4}-\d{2}-\d{2}$/.test(item.latest_date)) {
+          const parts = item.latest_date.split('-');
+          dateLbl = parts[1] + '/' + parts[2];
+        }
+
         return `<div class="mt-econ-row" title="${tip}">` +
           `<span class="mt-econ-name">${escHtml(item.label)}</span>` +
           `<span class="mt-econ-val">${val}</span>` +
           (chgStr ? `<span class="mt-econ-chg ${chgCls}">${chgStr}</span>` : '') +
+          `<span class="mt-econ-date">${dateLbl}</span>` +
           `</div>`;
       }).join('');
 
