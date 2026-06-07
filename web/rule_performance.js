@@ -38,12 +38,12 @@ async function loadMyActions() {
             return;
         }
         const num = v => (v === null || v === undefined) ? '—'
-            : `<span style="color:${v >= 0 ? '#15803d' : '#b91c1c'}">${Number(v).toFixed(2)}%</span>`;
+            : `<span class="${v >= 0 ? 'act-buy-strong' : 'act-sell-strong'}">${Number(v).toFixed(2)}%</span>`;
         body.innerHTML = recent.map(r => `
             <tr>
                 <td style="font-size:11px;">${(r.acted_at || r.as_of_date || '').toString().slice(0,10)}</td>
                 <td><strong>${r.tos_symbol || ''}</strong></td>
-                <td>${r.consolidated_action || '—'}</td>
+                <td title="${r.consolidated_action || ''}">${r.consolidated_action ? actionText(actionDisplay(r.consolidated_action)) : '—'}</td>
                 <td>${r.user_action || '—'}</td>
                 <td>${num(r.fwd_5d_pct)}</td>
                 <td>${num(r.fwd_20d_pct)}</td>

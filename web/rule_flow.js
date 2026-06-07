@@ -97,10 +97,10 @@ function compEdgeBadge(code) {
   const sc = (_rfScore || {})[code];
   if (!sc || sc.edge_20d == null) return '';
   const e = Number(sc.edge_20d);
-  const col = e > 0.5 ? '#15803d' : e < -0.5 ? '#b91c1c' : '#6b7280';
+  const cls = e > 0.5 ? 'edge-pos' : e < -0.5 ? 'edge-neg' : 'edge-neu';
   const wr = (sc.win_rate != null) ? ` · ${(Number(sc.win_rate) * 100).toFixed(0)}%` : '';
-  return ` <span title="Rule's historical 20d edge across all symbols (${sc.fires} fires) — diagnostic"`
-       + ` style="color:${col};font-size:10px;font-weight:600;">${e >= 0 ? '+' : ''}${e.toFixed(1)}%${wr}</span>`;
+  return ` <span class="${cls}" title="Rule's historical 20d edge across all symbols (${sc.fires} fires) — diagnostic"`
+       + ` style="font-size:10px;">${e >= 0 ? '+' : ''}${e.toFixed(1)}%${wr}</span>`;
 }
 
 document.getElementById('symInput').addEventListener('keydown', e => {
@@ -302,7 +302,7 @@ function buildAtomicList(atomics) {
     const isThresh   = isThreshFn(a);
     const dbCol      = (a.ma_column || '').replace('drv_cat_atomic_input.', '');
     const displayVal = _getDisplayValue(a);
-    const wgtColor   = a.weight > 0 ? '#15803d' : a.weight < 0 ? '#b91c1c' : '#9ca3af';
+    const wgtColor   = a.weight > 0 ? 'var(--act-buy-strong)' : a.weight < 0 ? 'var(--act-sell-strong)' : '#9ca3af';
     const colTip     = `${a.rule_name||''}\n${a.ma_column||''}`;
     const nullVal  = displayVal == null;
     const valDisp  = nullVal
@@ -523,16 +523,16 @@ function renderDataFlow(ruleName, dbCol, intermediates) {
     const c2a = maxEF > (MA??0);
     const c2b = MA != null && D != null && MA > D;
     const result = (c1a && c1b) ? '+1' : (c2a && c2b) ? '-1' : '0';
-    const clr = result==='+1'?'#15803d':result==='-1'?'#b91c1c':'#6b7280';
+    const clr = result==='+1'?'var(--act-buy-strong)':result==='-1'?'var(--act-sell-strong)':'var(--act-neutral)';
     formulaSection = `
     <div style="margin-top:10px;padding:8px;background:#fff;border:1px solid #e5e7eb;border-radius:4px;font-family:monospace;font-size:11px">
       <div style="font-weight:700;color:var(--text-2);margin-bottom:6px">Formula evaluation:</div>
       <div style="margin:2px 0">Clause +1: D(${_fmtVal(D)}) &gt; ${maLabel}(${_fmtVal(MA)})? <b>${c1a}</b>
         AND ${maLabel}(${_fmtVal(MA)}) &gt; ${minLabel}(${_fmtVal(minEF)})? <b>${c1b}</b>
-        → <b style="color:${c1a&&c1b?'#15803d':'#999'}">${c1a&&c1b?'+1':'skip'}</b></div>
+        → <b style="color:${c1a&&c1b?'var(--act-buy-strong)':'#999'}">${c1a&&c1b?'+1':'skip'}</b></div>
       <div style="margin:2px 0">Clause -1: ${maxLabel}(${_fmtVal(maxEF)}) &gt; ${maLabel}(${_fmtVal(MA)})? <b>${c2a}</b>
         AND ${maLabel}(${_fmtVal(MA)}) &gt; D(${_fmtVal(D)})? <b>${c2b}</b>
-        → <b style="color:${c2a&&c2b?'#b91c1c':'#999'}">${c2a&&c2b?'-1':'skip'}</b></div>
+        → <b style="color:${c2a&&c2b?'var(--act-sell-strong)':'#999'}">${c2a&&c2b?'-1':'skip'}</b></div>
       <div style="margin-top:6px;font-size:13px;font-weight:700;color:${clr}">Result = ${result}</div>
     </div>`;
   }
@@ -670,11 +670,11 @@ function _buildCompsHtml(comps) {
   const other = comps.filter(c => _compSide(c.code) === 'other');
   const sideBySide = `
   <div style="display:flex;gap:8px;align-items:flex-start">
-    ${_buildCompCol('▲ Buy', '#15803d', buy)}
-    ${_buildCompCol('▼ Sell', '#b91c1c', sell)}
+    ${_buildCompCol('▲ Buy', 'var(--act-buy-strong)', buy)}
+    ${_buildCompCol('▼ Sell', 'var(--act-sell-strong)', sell)}
   </div>`;
   const otherHtml = other.length
-    ? `<div style="margin-top:8px">${_buildCompCol('Other', '#6b7280', other)}</div>`
+    ? `<div style="margin-top:8px">${_buildCompCol('Other', 'var(--act-neutral)', other)}</div>`
     : '';
   return sideBySide + otherHtml;
 }
@@ -725,9 +725,9 @@ function _compFireSummary(c) {
   }
   let verdict;
   if (c.fired) {
-    verdict = `<b style="color:${_compSide(c.code) === 'sell' ? '#b91c1c' : '#15803d'}">✓ FIRED</b>`;
+    verdict = `<b style="color:${_compSide(c.code) === 'sell' ? 'var(--act-sell-strong)' : 'var(--act-buy-strong)'}">✓ FIRED</b>`;
   } else if (c.gates_pass === false) {
-    verdict = '<span style="color:#b91c1c">gate failed</span>';
+    verdict = '<span style="color:var(--act-sell-strong)">gate failed</span>';
   } else if (c.watch_ok === false) {
     verdict = '<span style="color:#b45309">watch short</span>';
   } else {
@@ -739,7 +739,7 @@ function _compFireSummary(c) {
 function buildCompItem(c) {
   const isInactive = c.active === false;
   const side   = _compSide(c.code);
-  const hitClr = side === 'sell' ? '#b91c1c' : '#15803d';
+  const hitClr = side === 'sell' ? 'var(--act-sell-strong)' : 'var(--act-buy-strong)';
   const edgeCls = isInactive ? 'comp-nofired'
                 : c.precondition_blocked ? 'comp-blocked'
                 : c.fired ? (side === 'sell' ? 'comp-fired-sell' : 'comp-fired') : 'comp-nofired';
@@ -799,7 +799,7 @@ function buildCompItem(c) {
                    : m.band === 'above'   ? m.wt_above
                    : m.value;  // Direct rule: drv_cat_atomic_input value IS the score
 
-      const metColor = met ? (_compSide(c.code) === 'sell' ? '#b91c1c' : '#15803d') : '#9ca3af';
+      const metColor = met ? (_compSide(c.code) === 'sell' ? 'var(--act-sell-strong)' : 'var(--act-buy-strong)') : '#9ca3af';
       const valWt = `<span style="margin-left:12px;color:var(--text-2)">val = <b style="color:var(--text-1)">${fmt(calcVal)}</b> &nbsp; wt = <b style="color:${metColor}">${fmt(zoneWt)}</b></span>`;
       const zoneLine = (zone || bandStr || wtsStr)
         ? `<div style="grid-column:2/-1;display:flex;gap:6px;align-items:center;font-size:9px;font-family:monospace;color:var(--text-3);padding-left:2px">
@@ -926,9 +926,14 @@ function renderFinal(d) {
   const cons  = f.consolidated_action;
   const score = trig ? (bs[trig] != null ? fmt(bs[trig], 0) : '—') : '—';
   const firedGroups = (f.triggered_groups || []);
-  const pills = firedGroups.map(g =>
-    `<span class="grp-pill">${esc(g.rule_group_code||'')} → ${esc(g.action||'')}</span>`
-  ).join('');
+  // actionDisplay/actionText from actions.js (loaded before this script)
+  const trigDisp = actionDisplay(trig);
+  const consDisp = actionDisplay(cons);
+  const pills = firedGroups.map(g => {
+    const grpAct = g.action || '';
+    const grpDisp = actionDisplay(grpAct);
+    return `<span class="grp-pill">${esc(g.rule_group_code||'')} → ${esc(actionText(grpDisp))}</span>`;
+  }).join('');
 
   return `
   <div class="tier open" id="tier-final">
@@ -940,11 +945,16 @@ function renderFinal(d) {
       <div class="final-grid">
         <div class="final-card">
           <div class="final-label">Trig Action</div>
-          <div class="final-value ${actionColor(trig)}">${trig || '—'}</div>
+          <div class="final-value ${actionColor(trig)}" title="${esc(trig || '—')}">${esc(actionText(trigDisp))}</div>
           <div style="font-size:11px;color:var(--text-2);margin-top:4px">BuySell score: ${score}</div>
         </div>
 
-        <div class="final-card" style="grid-column:span 2">
+        <div class="final-card">
+          <div class="final-label">Consolidated Action</div>
+          <div class="final-value ${actionColor(cons)}" title="${esc(cons || '—')}">${esc(actionText(consDisp))}</div>
+        </div>
+
+        <div class="final-card">
           <div class="final-label">Fired Rule Groups</div>
           ${pills
             ? `<div class="grp-fired-list">${pills}</div>`

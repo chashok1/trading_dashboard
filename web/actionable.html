@@ -19,14 +19,7 @@
       flex-wrap: wrap;
       gap: 8px;
     }
-    .act-toolbar-title {
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--text-1, #222);
-      padding-right: 10px;
-      border-right: 1px solid var(--border, #ddd);
-      white-space: nowrap;
-    }
+    /* act-toolbar-title kept for legacy references but no longer rendered */
     .act-summary {
       display: flex;
       gap: 6px;
@@ -55,13 +48,13 @@
       font-weight: 700;
       font-size: 12px;
     }
-    .act-chip-remove   { border-left: 4px solid #d83a3a; }
-    .act-chip-reduce   { border-left: 4px solid #e07c1a; }
-    .act-chip-increase { border-left: 4px solid #2f9e2f; }
-    .act-chip-add      { border-left: 4px solid #1f7af2; }
-    .act-chip-hold     { border-left: 4px solid #888; }
+    .act-chip-remove   { border-left: 4px solid var(--act-sell-strong); }
+    .act-chip-reduce   { border-left: 4px solid var(--act-sell); }
+    .act-chip-increase { border-left: 4px solid var(--act-buy); }
+    .act-chip-add      { border-left: 4px solid var(--act-buy-weak); }
+    .act-chip-hold     { border-left: 4px solid var(--act-neutral); }
     .act-chip-none     { border-left: 4px solid #c4c4c4; }
-    .act-chip-over_max { border-left: 4px solid #e07c1a; }
+    .act-chip-over_max { border-left: 4px solid var(--act-sell-weak); }
 
     .act-toolbar label {
       font-size: 11px;
@@ -89,7 +82,7 @@
       font-size: 11px;
     }
     table.act-grid th, table.act-grid td {
-      padding: 6px 8px;
+      padding: 4px 8px;
       border-bottom: 1px solid var(--border, #ececec);
       text-align: left;
       vertical-align: middle;
@@ -103,12 +96,27 @@
       position: sticky;
       top: 0;
       z-index: 1;
+      padding-top: 4px;
+      padding-bottom: 4px;
+      white-space: nowrap;
     }
     table.act-grid tbody tr:hover { background: var(--surface-hover, #f0f6ff); cursor: pointer; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
     .act-grid th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
     .act-grid th.sortable:hover { background: var(--surface-hover, #f0f6ff); }
     .act-grid th .sort-ind { font-size: 9px; opacity: 0.85; }
+    /* Two-line column header: bold title + muted subtitle */
+    .act-grid th .th-subtitle {
+      display: block;
+      font-size: 10px;
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: 0;
+      color: var(--text-2, #888);
+      line-height: 1.2;
+      margin-top: 1px;
+      white-space: nowrap;
+    }
     .src-cell, [data-srcpop] { cursor: help; }
     .source-pop {
       position: fixed; z-index: 1000; display: none;
@@ -130,23 +138,7 @@
     .source-pop .sp-sec { color: #94a3b8; font-size: 9px;
                           text-transform: uppercase; letter-spacing: 0.5px; padding-top: 5px; }
 
-    .badge-action {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.4px;
-      color: #fff;
-      min-width: 56px;
-      text-align: center;
-    }
-    .badge-action-REMOVE   { background: #d83a3a; }
-    .badge-action-REDUCE   { background: #e07c1a; }
-    .badge-action-INCREASE { background: #2f9e2f; }
-    .badge-action-ADD      { background: #1f7af2; }
-    .badge-action-HOLD     { background: #888; }
-    .badge-action-NONE     { background: #c4c4c4; color: #444; }
+    /* .badge-action and .badge-action-* removed — superseded by .act-badge in styles.css */
 
     .pill {
       display: inline-block;
@@ -325,10 +317,10 @@
       letter-spacing: 0.4px;
       color: var(--text-2, #666);
     }
-    table.atomic-table tr.fired { background: #e8f7ec; }
-    table.atomic-table tr.fired td:first-child { border-left: 3px solid #2f9e2f; }
-    table.atomic-table .wt-pos { color: #1c6c30; font-weight: 600; }
-    table.atomic-table .wt-neg { color: #8c1d1d; font-weight: 600; }
+    table.atomic-table tr.fired { background: var(--act-buy-strong-bg); }
+    table.atomic-table tr.fired td:first-child { border-left: 3px solid var(--act-buy); }
+    table.atomic-table .wt-pos { color: var(--act-buy-strong); font-weight: 600; }
+    table.atomic-table .wt-neg { color: var(--act-sell-strong); font-weight: 600; }
 
     /* Dismiss button (secondary action) */
     .btn-dismiss {
@@ -396,10 +388,92 @@
     .cmp-delta-none { color: var(--text-2, #aaa); }
     .cmp-empty { font-size: 10px; color: var(--text-2, #888); padding: 6px 2px; }
 
+    /* Icon-only toolbar buttons (Focus, Export CSV) — match topbar .btn height/padding */
+    .btn-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 8px;
+      border: 1px solid var(--border, #e0e0e0);
+      border-radius: 6px;
+      background: var(--card-bg, #fff);
+      cursor: pointer;
+      color: var(--text-1, #222);
+      line-height: 1;
+    }
+    .btn-icon:hover { background: #f4f4f2; }
+    .btn-icon svg { display: block; }
+
     /* Fill remaining viewport — table expands to bottom */
     body.act-page main { overflow: hidden; display: flex; flex-direction: column; padding-bottom: 0; }
     body.act-page main > .card { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
     body.act-page .act-table-wrap { flex: 1; overflow: auto; min-height: 0; }
+
+    /* ── Pass 1: Conviction badge ─────────────────────────────────────────── */
+    .conviction-badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 700;
+      background: #f0f4f8; color: #334;
+      cursor: default;
+    }
+    .conviction-badge.edge-positive { background: #e6f4ea; color: #1c6c30; }
+    .conviction-badge.edge-none     { background: #f0f4f8; color: #334; }
+
+    /* ── Pass 1: AMT$ prominent cell ─────────────────────────────────────── */
+    .amt-primary { font-size: 14px; font-weight: 800; }
+
+    /* ── Pass 2: Show-all bar ─────────────────────────────────────────────── */
+    .show-all-bar {
+      text-align: center; padding: 8px;
+      border-top: 1px solid var(--border, #ececec);
+    }
+    .show-all-bar button {
+      padding: 4px 16px; font-size: 11px;
+      border: 1px solid var(--border, #ddd); border-radius: 6px;
+      background: #f5f5f7; cursor: pointer;
+    }
+    .show-all-bar button:hover { background: #e8e8ec; }
+
+    /* ── Pass 3: Inline action buttons ──────────────────────────────────── */
+    .act-inline-btns { display: flex; gap: 4px; align-items: center; white-space: nowrap; }
+    .btn-done  { background: #e6f4ea; color: #1c6c30; border: 1px solid #b0d9b9; border-radius: 5px; padding: 2px 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
+    .btn-skip  { background: #f4f4f7; color: #555;    border: 1px solid #ddd;    border-radius: 5px; padding: 2px 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
+    .btn-snz   { background: #fff3cd; color: #6b4d00; border: 1px solid #ead88d; border-radius: 5px; padding: 2px 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
+    .btn-done:hover { background: #d0ebd8; } .btn-skip:hover { background: #e8e8ec; } .btn-snz:hover { background: #f0d888; }
+    tr.row-acted { opacity: 0.45; }
+
+    /* ── Pass 3: Bulk bar ────────────────────────────────────────────────── */
+    .bulk-bar {
+      display: none; align-items: center; gap: 8px; padding: 6px 12px;
+      background: #eef2fb; border: 1px solid #c5d4f0; border-radius: 6px; margin-bottom: 6px; font-size: 12px;
+    }
+    .bulk-bar.visible { display: flex; }
+    .bulk-bar strong { margin-right: 4px; }
+
+    /* ── Pass 3: Focus mode overlay ──────────────────────────────────────── */
+    .focus-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+      display: none; z-index: 900;
+      align-items: center; justify-content: center;
+    }
+    .focus-backdrop.open { display: flex; }
+    .focus-card {
+      background: #fff; border-radius: 12px;
+      padding: 32px 36px; width: 480px; max-width: 95vw;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      text-align: center;
+    }
+    .focus-card .fc-sym    { font-size: 40px; font-weight: 900; letter-spacing: -1px; margin-bottom: 4px; }
+    .focus-card .fc-action { margin-bottom: 8px; }
+    .focus-card .fc-amt    { font-size: 26px; font-weight: 800; color: #1c1917; margin-bottom: 6px; }
+    .focus-card .fc-why    { font-size: 13px; color: #57534e; margin-bottom: 20px; min-height: 20px; }
+    .focus-card .fc-prog   { font-size: 11px; color: #a8a29e; margin-bottom: 16px; }
+    .focus-card .fc-btns   { display: flex; gap: 10px; justify-content: center; margin-bottom: 12px; flex-wrap: wrap; }
+    .fc-btn-done  { padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; background: var(--act-buy); color: #fff; border: none; }
+    .fc-btn-skip  { padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; background: #e5e5e2; color: #333; border: none; }
+    .fc-btn-snz   { padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; background: #fef3c7; color: #6b4d00; border: none; }
+    .fc-btn-next  { padding: 8px 20px; border-radius: 6px; font-size: 12px; cursor: pointer; background: #f0f4f8; color: #444; border: 1px solid #ddd; }
+    .focus-card .fc-esc   { font-size: 11px; color: #a8a29e; margin-top: 6px; }
   </style>
 </head>
 <body class="act-page">
@@ -437,23 +511,75 @@
       <div class="status-bar" id="statusBar"></div>
 
       <div class="act-toolbar">
+        <!-- Single consolidated filter bar -->
         <div class="act-toolbar-main">
-          <span class="act-toolbar-title">Actionable</span>
-          <label>Source</label>
-          <select id="sourceFilter"><option value="">All</option></select>
-          <label class="toggle"><input type="checkbox" id="heldOnly"> Positions only</label>
-          <label class="toggle"><input type="checkbox" id="showActed"> Acted/snoozed</label>
-          <label class="toggle"><input type="checkbox" id="withSource"> Has Source</label>
-          <label class="toggle"><input type="checkbox" id="withOther"> Has Other</label>
-          <label class="toggle"><input type="checkbox" id="showNoAction"> No-action</label>
-          <label class="toggle"><input type="checkbox" id="showSuppressed"> Suppressed</label>
-          <label class="toggle"><input type="checkbox" id="showZeroAmt"> $0 AMT</label>
-          <input type="text" id="symbolSearch" placeholder="Symbol…" style="padding:3px 8px; border:1px solid var(--border); border-radius:4px; font-size:11px; width:90px;">
+          <!-- Action chips -->
           <div class="act-summary" id="summaryChips"></div>
-          <div style="margin-left:auto; display:flex; align-items:center; gap:8px; flex-shrink:0;">
-            <span style="font-size:11px; color:var(--text-2,#666);" id="rowCount"></span>
-            <button id="exportCsvBtn" class="btn">Export CSV</button>
+          <!-- Buys/Sells quick toggle -->
+          <div class="buysell-toggle">
+            <button id="buyToggle" title="Show buy actions (BUY SOME + BUY TO MIN)">Buys</button>
+            <button id="sellToggle" title="Show sell actions (SELL ALL + SELL OVERAGE + SELL SOME)">Sells</button>
           </div>
+          <!-- Conviction -->
+          <div class="seg-ctrl" id="convictionCtrl" title="Conviction filter">
+            <button class="seg-active" data-conv="any">Any</button>
+            <button data-conv="multi">Multi</button>
+            <button data-conv="proven">Proven</button>
+          </div>
+          <!-- Positions-only toggle -->
+          <label class="toggle" style="font-size:11px; white-space:nowrap;"><input type="checkbox" id="heldOnly"> Positions</label>
+          <!-- Source filter -->
+          <label style="font-size:11px; color:var(--text-2,#666); margin-right:2px; white-space:nowrap;">Source</label>
+          <select id="sourceFilter"><option value="">All</option></select>
+          <!-- Symbol search -->
+          <input type="text" id="symbolSearch" placeholder="Symbol…" style="padding:3px 8px; border:1px solid var(--border); border-radius:4px; font-size:11px; width:80px;">
+          <!-- Right side: row count, More, Clear, Focus icon, Export icon -->
+          <div style="margin-left:auto; display:flex; align-items:center; gap:6px; flex-shrink:0;">
+            <span style="font-size:11px; color:var(--text-2,#666);" id="rowCount"></span>
+            <button id="moreFiltersBtn" style="padding:3px 8px; font-size:10px; border:1px solid var(--border); border-radius:4px; background:#fff; cursor:pointer;">More &#8943;</button>
+            <span id="filterActiveBadge" style="display:none;" class="filter-active-badge">0</span>
+            <button id="clearFiltersBtn" style="padding:3px 8px; font-size:10px; border:1px solid var(--border); border-radius:4px; background:#fff; cursor:pointer; color:#c41e3a;" title="Clear all filters">Clear</button>
+            <!-- Focus icon button (eye/target style) -->
+            <button id="focusModeBtn" class="btn-icon" title="Focus mode">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M2 12C4.5 6.5 9 3 12 3s7.5 3.5 10 9c-2.5 5.5-7 9-10 9S4.5 17.5 2 12z"/>
+              </svg>
+            </button>
+            <!-- Export CSV icon button (download style) -->
+            <button id="exportCsvBtn" class="btn-icon" title="Export CSV">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <!-- More panel (hidden by default) — secondary filters -->
+        <div class="act-more-panel" id="morePanel">
+          <!-- Sector filter (moved from main bar) -->
+          <span class="act-fzone-label">Sector</span>
+          <select id="sectorFilter" style="padding:2px 5px; font-size:11px; border:1px solid var(--border); border-radius:4px; background:#fff;">
+            <option value="">All Sectors</option>
+          </select>
+          <!-- Asset class filter (moved from main bar) -->
+          <span class="act-fzone-label" style="margin-left:6px;">Asset Class</span>
+          <select id="assetClassFilter" style="padding:2px 5px; font-size:11px; border:1px solid var(--border); border-radius:4px; background:#fff;">
+            <option value="">All Asset Classes</option>
+          </select>
+          <!-- $ at stake filter (moved from main bar) -->
+          <span class="act-fzone-label" style="margin-left:6px;">$ Stake</span>
+          <div class="seg-ctrl" id="amtCtrl">
+            <button class="seg-active" data-amt="0">Any</button>
+            <button data-amt="5000">≥$5k</button>
+            <button data-amt="25000">≥$25k</button>
+          </div>
+          <span class="act-fzone-label" style="margin-left:6px;">Show</span>
+          <label class="toggle"><input type="checkbox" id="showNoAction"> +No-action</label>
+          <label class="toggle"><input type="checkbox" id="showZeroAmt"> +$0 AMT</label>
+          <label class="toggle"><input type="checkbox" id="showSuppressed"> +Suppressed</label>
+          <label class="toggle"><input type="checkbox" id="showActed"> +Acted/Snoozed</label>
         </div>
       </div>
 
@@ -462,28 +588,29 @@
         <button class="btn" id="staleRederiveBtn" type="button" style="white-space:nowrap;">Re-derive now</button>
       </div>
 
+      <div class="bulk-bar" id="bulkBar">
+        <strong id="bulkCount">0 selected</strong>
+        <button class="btn-done" id="bulkDoneBtn">&#10003; Done</button>
+        <button class="btn-skip" id="bulkSkipBtn">&#10007; Skip</button>
+        <button class="btn-snz"  id="bulkSnzBtn">&#128164; Snooze</button>
+        <button class="btn-dismiss" id="bulkClearBtn" style="margin-left:auto;">Clear</button>
+      </div>
+
       <div class="act-table-wrap">
         <table class="act-grid" id="actGrid">
           <thead>
             <tr>
-              <th></th>
-              <th class="num sortable" data-key="_metric" data-type="num">Metric</th>
-              <th class="num sortable" data-key="current_position_dollar" data-type="num">Pos $</th>
-              <th class="sortable" data-key="symbol" data-type="str">Symbol</th>
-              <th class="num sortable" data-key="pct_change" data-type="num">Change %</th>
-              <th class="sortable" data-key="consolidated_action" data-type="str">Action</th>
-              <th>TrTnBBRskRng</th>
-              <th class="sortable" data-key="trig_action" data-type="str">Trig</th>
-              <th title="Fired rules, winning first, each with its historical 20d edge (green=positive, red=negative)">Rules (edge)</th>
+              <th style="width:28px;"><input type="checkbox" id="bulkSelectAll" title="Select all"></th>
+              <th class="sortable" data-key="tos_symbol" data-type="str">Symbol</th>
+              <th class="sortable" data-key="consolidated_action" data-type="str" data-label="Sources" title="Consolidated from RR/CALL/ETF/II/SSS/PS (most-aggressive-wins), then sized to your min/max/holdings.">Sources</th>
+              <th class="sortable" data-key="rr_action" data-type="str" data-label="Technical" title="Trend-vs-Trade crossover + Bollinger range streak + Risk-Range position.">Technical</th>
+              <th class="sortable" data-key="_fc_strength" data-type="num" title="Final Call: reconciled action with confidence badge (drives ranking + default Act)">Final Call</th>
+              <th class="num sortable" data-key="current_position_dollar" data-type="num" title="Current position $ held">Pos $</th>
               <th class="num sortable" data-key="_amt" data-type="num">AMT$</th>
-              <th class="sortable" data-key="winning_source" data-type="str">Source</th>
-              <th>Reason</th>
-              <th class="sortable" data-key="_snapshot" data-type="str">Snapshot</th>
-              <th>Other Sources</th>
-              <th class="num sortable" data-key="last_price" data-type="num">Price</th>
-              <th class="num sortable" data-key="net_chng" data-type="num">Change $</th>
-              <th class="sortable" data-key="derived_at" data-type="str">As Of</th>
-              <th>Tags</th>
+              <th class="num sortable" data-key="_priority" data-type="num" title="Priority = |final-call strength| × |AMT$|">Pri</th>
+              <th class="num sortable" data-key="pct_change" data-type="num">%chg / Price</th>
+              <th>Rules (edge)</th>
+              <th>Act</th>
             </tr>
           </thead>
           <tbody id="actBody"></tbody>
@@ -494,6 +621,24 @@
   <div id="sourcePop" class="source-pop"></div>
 
   </main>
+
+  <!-- Focus mode overlay (Pass 3) -->
+  <div class="focus-backdrop" id="focusBackdrop">
+    <div class="focus-card">
+      <div class="fc-prog" id="fcProg"></div>
+      <div class="fc-sym"  id="fcSym"></div>
+      <div class="fc-action" id="fcAction"></div>
+      <div class="fc-amt"  id="fcAmt"></div>
+      <div class="fc-why"  id="fcWhy"></div>
+      <div class="fc-btns">
+        <button class="fc-btn-done" id="fcDoneBtn">&#10003; Done</button>
+        <button class="fc-btn-skip" id="fcSkipBtn">&#10007; Skip</button>
+        <button class="fc-btn-snz"  id="fcSnzBtn">&#128164; Snooze</button>
+      </div>
+      <div><button class="fc-btn-next" id="fcNextBtn">Next &#8250;</button></div>
+      <div class="fc-esc">Esc or <button class="fc-btn-next" id="fcCloseBtn">&#8592; Back to grid</button></div>
+    </div>
+  </div>
 
   <!-- Drill-down modal -->
   <div class="modal-backdrop" id="modalBackdrop">
@@ -592,6 +737,7 @@
   </div>
 
   <script src="/static/_common.js"></script>
+  <script src="/static/actions.js"></script>
   <script src="/static/actionable.js"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>

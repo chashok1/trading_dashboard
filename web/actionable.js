@@ -5,21 +5,31 @@ const state = {
   allRows: [],   // full unfiltered dataset for the date
   baseRows: [],  // passes every filter except the action chip (drives chip counts)
   rows: [],      // filtered subset shown in grid
-  sort: { key: null, dir: 1, type: 'str' },  // active column sort
+  sort: { key: '_priority', dir: -1, type: 'num' },  // default: priority DESC
   filters: {
     action: '',          // '' | REMOVE | REDUCE | INCREASE | ADD | HOLD
+    buys_sells: '',      // '' | 'buy' | 'sell' (quick toggle)
     source: '',
     held_only: false,
     show_acted: false,
     show_suppressed: false,
-    source_filter: false,
-    other_filter: false,
     show_no_action: false,  // when false, blank-action rows are hidden
     show_zero_amt: false,   // when false, rows with $0 AMT$ are hidden
     symbol_search: '',   // symbol search text filter
+    sector: '',          // sector dropdown
+    asset_class: '',     // asset class dropdown
+    conviction: 'any',   // 'any' | 'multi' | 'proven'
+    amt_min: 0,          // 0 | 5000 | 25000
   },
   current: null,
   sourceMethods: {},   // source_code -> base_weight_method (Metric-column sort)
+  // Pass 2: top-N collapse
+  showAll: false,
+  TOP_N: 15,
+  // Pass 3: bulk select
+  selected: new Set(),
+  // Pass 3: focus mode
+  focusIdx: 0,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -42,6 +52,17 @@ function fmtUsd(v) {
   if (!isFinite(n)) return '';
   if (Math.abs(n) >= 1000) return '$' + (Math.round(n)).toLocaleString();
   return '$' + n.toFixed(0);
+}
+// Compact currency: $38k, $1.2m, $500 — for Pos $ column
+function fmtCompact(v) {
+  if (v === null || v === undefined || v === '') return '';
+  const n = Number(v);
+  if (!isFinite(n) || n === 0) return '';
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(1).replace(/\.0$/, '') + 'm';
+  if (abs >= 1e3) return sign + '$' + Math.round(abs / 1e3) + 'k';
+  return sign + '$' + Math.round(abs);
 }
 function fmtDate(d) {
   if (!d) return '—';
@@ -159,21 +180,36 @@ async function loadSources() {
   } catch (_) { state.scorecard = {}; }
 }
 
+// Resolve the buy/sell side for a fired rule ID via actions.js (single source
+// of truth). Uses the scorecard's direction field ('BUY'/'SELL') and maps it
+// through actionDisplay() to get the canonical side string ('buy'/'sell'/'neutral').
+function _ruleSide(id) {
+  const sc = (state.scorecard || {})[id];
+  if (!sc || !sc.direction) return 'neutral';
+  // Map scorecard direction → representative BuySell code → actionDisplay side.
+  const code = sc.direction === 'BUY' ? 'BM' : sc.direction === 'SELL' ? 'SA' : '';
+  return actionDisplay(code).side; // 'buy' | 'sell' | 'neutral'
+}
+
 // Build the inline edge badge HTML for a fired composite code (or '' if unknown).
+// Color = direction (buy=green, sell=red, neutral=grey); fill = edge strength.
 function ruleEdgeBadge(code) {
   const sc = (state.scorecard || {})[code];
   if (!sc || sc.edge_20d == null) return '';
   const e = Number(sc.edge_20d);
-  const col = e > 0.5 ? '#15803d' : e < -0.5 ? '#b91c1c' : '#6b7280';
+  const side = _ruleSide(code);
+  const sideCls = side === 'buy' ? 'rule-buy' : side === 'sell' ? 'rule-sell' : 'rule-neutral';
+  const emphCls = e > 0 ? 'rule-strong' : 'rule-weak';
   const wr = (sc.win_rate != null) ? ` · ${(Number(sc.win_rate) * 100).toFixed(0)}%` : '';
   const sign = e >= 0 ? '+' : '';
-  return ` <span title="Rule's historical 20d edge across all symbols (${sc.fires} fires) — diagnostic, shallow history" `
-       + `style="color:${col};font-size:10px;font-weight:600;">${sign}${e.toFixed(1)}%${wr}</span>`;
+  return ` <span class="rule-edge-badge ${sideCls} ${emphCls}" `
+       + `title="Rule's historical 20d edge across all symbols (${sc.fires} fires) — diagnostic, shallow history">`
+       + `${sign}${e.toFixed(1)}%${wr}</span>`;
 }
 
 // Grid cell: fired rules ordered winning-first (highest score), each with its
-// historical edge. Shows all fired rules (they wrap within the cell); the row
-// popup has the full per-rule detail. Edge color: green positive, red negative.
+// historical edge. Hue = direction (buy=green, sell=red, neutral=grey);
+// fill = edge emphasis (solid=positive, muted/outlined=non-positive).
 function firesCellHtml(r) {
   let fires = r.rules_engine_fires;
   if (typeof fires === 'string') { try { fires = JSON.parse(fires); } catch (_) { fires = []; } }
@@ -188,9 +224,11 @@ function firesCellHtml(r) {
   // winning first: highest fired score, then strongest edge
   items.sort((a, b) => (b.score - a.score) || ((b.e ?? -99) - (a.e ?? -99)));
   return items.map(it => {
-    const col = it.e == null ? '#9ca3af' : it.e > 0.5 ? '#15803d' : it.e < -0.5 ? '#b91c1c' : '#6b7280';
-    const edge = it.e == null ? '' : ` <b style="color:${col}">${it.e >= 0 ? '+' : ''}${it.e.toFixed(1)}</b>`;
-    return `<span class="pill pill-rule" style="font-size:9px;white-space:nowrap;">${escapeHtml(it.id)}${edge}</span>`;
+    const side = _ruleSide(it.id);
+    const sideCls = side === 'buy' ? 'rule-buy' : side === 'sell' ? 'rule-sell' : 'rule-neutral';
+    const emphCls = (it.e != null && it.e > 0) ? 'rule-strong' : 'rule-weak';
+    const edge = it.e == null ? '' : ` <b>${it.e >= 0 ? '+' : ''}${it.e.toFixed(1)}</b>`;
+    return `<span class="act-badge act-badge-sm ${sideCls} ${emphCls}" style="white-space:nowrap;">${escapeHtml(it.id)}${edge}</span>`;
   }).join(' ');
 }
 
@@ -226,7 +264,10 @@ function fmtPct(v) {
 // ---- core load ----
 async function loadActionable() {
   if (!state.date) return;
-  // Always fetch all rows — action/category filters applied client-side so chip counts stay accurate
+  // Reset to default actionability sort on every fresh data load (date change / refresh).
+  // Column-header clicks override this until the next load or Clear.
+  state.sort = { key: '_priority', dir: -1, type: 'num' };
+  // Always fetch all rows -- action/category filters applied client-side so chip counts stay accurate
   const params = new URLSearchParams({ date: state.date });
   if (state.filters.show_acted) params.append('show_acted', 'true');
   if (state.filters.show_suppressed) params.append('show_suppressed', 'true');
@@ -259,6 +300,15 @@ async function loadActionable() {
         r._amt = r.suggested_target_dollar;
       }
     });
+    // Priority and Final Call must be computed after _amt (uses _agreeingSources +
+    // _hasPositiveEdge which need source_actions and scorecard, both already loaded).
+    state.allRows.forEach(r => {
+      var fc = finalCall(r);
+      r._fc_strength = fc.strength;
+      r._fc_code     = fc.code;
+      r._fc_side     = fc.side;
+      r._priority = _computePriority(r);
+    });
     applyClientFilter();
   } catch (e) {
     showStatus('Failed to load actionable: ' + e.message, 'error', 0);
@@ -266,7 +316,8 @@ async function loadActionable() {
 }
 
 // Client filters EXCEPT the action chip. Kept separate so the action-chip
-// counts can reflect every other active filter.
+// counts can reflect every other active filter (including buys_sells).
+// All active filters combine with AND.
 function matchesBaseFilters(r) {
   if (!state.filters.show_no_action && !r.consolidated_action) return false;
   if (!state.filters.show_zero_amt && !r._amt) return false;
@@ -276,44 +327,60 @@ function matchesBaseFilters(r) {
   if (state.filters.held_only) {
     if (!r.held_today) return false;
   }
-  if (state.filters.source_filter) {
-    if (!r.winning_source) return false;
+  if (state.filters.sector) {
+    if ((r.sector || '') !== state.filters.sector) return false;
   }
-  if (state.filters.other_filter) {
-    let sources = r.source_actions;
-    if (typeof sources === "string") {
-      try { sources = JSON.parse(sources); } catch (_) { sources = []; }
-    }
-    if (!Array.isArray(sources)) return false;
-    const winning = (r.winning_source || '').toString();
-    const others = sources.filter(s => (s.source || s.source_code || '') !== winning);
-    if (others.length === 0) return false;
+  if (state.filters.asset_class) {
+    const rac = r.real_asset_class || r.asset_class || '';
+    if (rac !== state.filters.asset_class) return false;
   }
-  if (state.filters.tos_symbol_search) {
-    const search = state.filters.tos_symbol_search.toUpperCase();
+  if (state.filters.conviction === 'multi') {
+    if (_agreeingSources(r) < 2) return false;
+  } else if (state.filters.conviction === 'proven') {
+    if (!_hasPositiveEdge(r)) return false;
+  }
+  if (state.filters.amt_min > 0) {
+    if (Math.abs(Number(r._amt) || 0) < state.filters.amt_min) return false;
+  }
+  const symSearch = state.filters.symbol_search || state.filters.tos_symbol_search || '';
+  if (symSearch) {
+    const search = symSearch.toUpperCase();
     if (!r.tos_symbol || !r.tos_symbol.toUpperCase().includes(search)) return false;
+  }
+  // buys_sells included here so chip counts reflect it (AND logic with action chip)
+  if (state.filters.buys_sells === 'buy') {
+    const a = (r.consolidated_action || '').toUpperCase();
+    if (a !== 'INCREASE' && a !== 'ADD') return false;
+  } else if (state.filters.buys_sells === 'sell') {
+    const a = (r.consolidated_action || '').toUpperCase();
+    if (a !== 'REMOVE' && a !== 'REDUCE' && !_isOverMaxOverlay(r)) return false;
   }
   return true;
 }
 
 function applyClientFilter() {
-  // A source picked in the dropdown can vanish from the dataset (e.g. when
-  // switching to a date where that source has no rows). Drop the stale
-  // filter so the grid doesn't silently show nothing while the dropdown has
-  // already reset itself to "All".
   if (state.filters.source && !_availableSources().has(state.filters.source)) {
     state.filters.source = '';
   }
-  // Rows passing every filter except the action chip (drives chip counts).
+  // baseRows: all filters except the action chip (drives chip counts that reflect
+  // every active filter including buys_sells, via matchesBaseFilters).
   state.baseRows = state.allRows.filter(matchesBaseFilters);
-  // Apply the action chip on top for the grid itself.
+  // rows: baseRows + action chip filter (AND combined)
   state.rows = state.baseRows.filter(r => {
     if (!state.filters.action) return true;
     if (state.filters.action === 'OVER_MAX') return _isOverMaxOverlay(r);
     return (r.consolidated_action || 'NONE').toUpperCase() === state.filters.action;
   });
+  // Reset collapse and selection on filter change.
+  state.showAll = false;
+  state.selected.clear();
+  renderBulkBar();
   renderSummary();
   renderSourceFilter();
+  renderSectorFilter();
+  renderAssetClassFilter();
+  updateFilterBadge();
+  saveFiltersToStorage();
   renderGrid();
 }
 
@@ -363,15 +430,23 @@ function renderSummary() {
   wrap.innerHTML = '';
   const order = ['REMOVE', 'OVER_MAX', 'REDUCE', 'INCREASE', 'ADD', 'HOLD', 'NONE'];
   const all = document.createElement('div');
-  all.className = 'act-chip' + (state.filters.action === '' ? ' active' : '');
+  all.className = 'act-chip' + (state.filters.action === '' && !state.filters.buys_sells ? ' active' : '');
   all.innerHTML = `<span>ALL</span><span class="count">${state.baseRows.length}</span>`;
-  all.onclick = () => { state.filters.action = ''; applyClientFilter(); };
+  all.onclick = () => {
+    state.filters.action = '';
+    state.filters.buys_sells = '';
+    const buyBtn = $('buyToggle');  if (buyBtn) buyBtn.classList.remove('active');
+    const sellBtn = $('sellToggle'); if (sellBtn) sellBtn.classList.remove('active');
+    applyClientFilter();
+  };
   wrap.appendChild(all);
   for (const a of order) {
     const chip = document.createElement('div');
+    const disp = actionDisplay(a);
     chip.className = 'act-chip act-chip-' + a.toLowerCase()
                    + (state.filters.action === a ? ' active' : '');
-    chip.innerHTML = `<span>${ACTION_LABEL[a] || a}</span><span class="count">${counts[a] || 0}</span>`;
+    chip.title = disp.label || a;
+    chip.innerHTML = `<span>${actionText(disp)}</span><span class="count">${counts[a] || 0}</span>`;
     chip.onclick = () => {
       state.filters.action = (state.filters.action === a) ? '' : a;
       applyClientFilter();
@@ -407,6 +482,143 @@ function renderSourceFilter() {
   }
 }
 
+function renderSectorFilter() {
+  const sel = $('sectorFilter');
+  if (!sel) return;
+  const cur = state.filters.sector;
+  const sectors = new Set();
+  for (const r of state.allRows) { if (r.sector) sectors.add(r.sector); }
+  sel.innerHTML = '<option value="">All Sectors</option>';
+  for (const s of Array.from(sectors).sort()) {
+    const o = document.createElement('option');
+    o.value = s; o.textContent = s;
+    if (s === cur) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+
+function renderAssetClassFilter() {
+  const sel = $('assetClassFilter');
+  if (!sel) return;
+  const cur = state.filters.asset_class;
+  const classes = new Set();
+  for (const r of state.allRows) {
+    const v = r.real_asset_class || r.asset_class || '';
+    if (v) classes.add(v);
+  }
+  sel.innerHTML = '<option value="">All Asset Classes</option>';
+  for (const c of Array.from(classes).sort()) {
+    const o = document.createElement('option');
+    o.value = c; o.textContent = c;
+    if (c === cur) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+
+// Count of non-default active filters (for the N-active badge)
+function _countActiveFilters() {
+  const f = state.filters;
+  let n = 0;
+  if (f.action) n++;
+  if (f.buys_sells) n++;
+  if (f.source) n++;
+  if (f.held_only) n++;
+  if (f.sector) n++;
+  if (f.asset_class) n++;
+  if (f.conviction !== 'any') n++;
+  if (f.amt_min > 0) n++;
+  if (f.show_no_action) n++;
+  if (f.show_zero_amt) n++;
+  if (f.show_suppressed) n++;
+  if (f.show_acted) n++;
+  if (f.symbol_search) n++;
+  return n;
+}
+
+function updateFilterBadge() {
+  const badge = $('filterActiveBadge');
+  if (!badge) return;
+  const n = _countActiveFilters();
+  if (n > 0) {
+    badge.textContent = n;
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// localStorage persistence
+const LS_KEY = 'act_filters_v2';
+function saveFiltersToStorage() {
+  try {
+    const f = state.filters;
+    const toSave = {
+      source: f.source, held_only: f.held_only, show_acted: f.show_acted,
+      show_suppressed: f.show_suppressed, show_no_action: f.show_no_action,
+      show_zero_amt: f.show_zero_amt, symbol_search: f.symbol_search,
+      sector: f.sector, asset_class: f.asset_class, conviction: f.conviction,
+      amt_min: f.amt_min, buys_sells: f.buys_sells,
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(toSave));
+  } catch (_) {}
+}
+
+function loadFiltersFromStorage() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    const f = state.filters;
+    if (saved.source !== undefined)       f.source = saved.source;
+    if (saved.held_only !== undefined)    f.held_only = saved.held_only;
+    if (saved.show_acted !== undefined)   f.show_acted = saved.show_acted;
+    if (saved.show_suppressed !== undefined) f.show_suppressed = saved.show_suppressed;
+    if (saved.show_no_action !== undefined) f.show_no_action = saved.show_no_action;
+    if (saved.show_zero_amt !== undefined) f.show_zero_amt = saved.show_zero_amt;
+    if (saved.symbol_search !== undefined) f.symbol_search = saved.symbol_search;
+    if (saved.sector !== undefined)       f.sector = saved.sector;
+    if (saved.asset_class !== undefined)  f.asset_class = saved.asset_class;
+    if (saved.conviction !== undefined)   f.conviction = saved.conviction;
+    if (saved.amt_min !== undefined)      f.amt_min = Number(saved.amt_min) || 0;
+    if (saved.buys_sells !== undefined)   f.buys_sells = saved.buys_sells;
+  } catch (_) {}
+}
+
+function syncFilterUi() {
+  // Sync all UI elements to current state.filters
+  const f = state.filters;
+  const heldOnly = $('heldOnly');     if (heldOnly) heldOnly.checked = f.held_only;
+  const showActed = $('showActed');   if (showActed) showActed.checked = f.show_acted;
+  const showSup = $('showSuppressed'); if (showSup) showSup.checked = f.show_suppressed;
+  const showNA = $('showNoAction');   if (showNA) showNA.checked = f.show_no_action;
+  const showZ = $('showZeroAmt');     if (showZ) showZ.checked = f.show_zero_amt;
+  const sym = $('symbolSearch');      if (sym) sym.value = f.symbol_search || '';
+  // conviction segmented
+  document.querySelectorAll('#convictionCtrl button').forEach(b => {
+    b.classList.toggle('seg-active', b.dataset.conv === f.conviction);
+  });
+  // amt segmented
+  document.querySelectorAll('#amtCtrl button').forEach(b => {
+    b.classList.toggle('seg-active', Number(b.dataset.amt) === f.amt_min);
+  });
+  // buy/sell toggle
+  const buyBtn  = $('buyToggle');  if (buyBtn)  buyBtn.classList.toggle('active', f.buys_sells === 'buy');
+  const sellBtn = $('sellToggle'); if (sellBtn) sellBtn.classList.toggle('active', f.buys_sells === 'sell');
+}
+
+function clearAllFilters() {
+  const f = state.filters;
+  f.action = ''; f.buys_sells = ''; f.source = ''; f.held_only = false;
+  f.show_acted = false; f.show_suppressed = false; f.show_no_action = false;
+  f.show_zero_amt = false; f.symbol_search = ''; f.sector = ''; f.asset_class = '';
+  f.conviction = 'any'; f.amt_min = 0;
+  // Reset sort to default actionability order (updateSortIndicators called in renderGrid)
+  state.sort = { key: '_priority', dir: -1, type: 'num' };
+  // Reset show_acted / show_suppressed -> requires refetch
+  syncFilterUi();
+  loadActionable();
+}
+
 // ---- grid ----
 // Helper: render other (non-winning) source actions as inline pills
 function _renderOtherSources(r) {
@@ -426,20 +638,15 @@ function _renderOtherSources(r) {
     (ACTION_RANK[(b.action || '').toUpperCase()] || 0) -
     (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
   
-  const colors = {
-    'REMOVE': '#d83a3a',
-    'REDUCE': '#e07c1a',
-    'INCREASE': '#2f9e2f',
-    'ADD': '#1f7af2',
-    'HOLD': '#888',
-  };
-  
+  // colorCls from actions.js (single source of truth)
   return others.map(s => {
     const srcCode = (s.source || s.source_code || '?');
     const src = srcCode.toLowerCase();
     const action = (s.action || '').toUpperCase() || '?';
-    const color = colors[action] || '#999';
-    return `<span data-srcpop data-sym="${escapeHtml(r.tos_symbol)}" data-src="${escapeHtml(srcCode)}" style="color:${color}; font-weight:600; margin-right:8px; font-size:11px; cursor:help;">${action} <span style="font-size:9px; opacity:0.7;">(${src})</span></span>`;
+    const actDisp = actionDisplay(action);
+    const colorCls = (actDisp.colorCls || 'act-neutral') + '-fill';
+    const actLabel = actionText(actDisp) || action;
+    return `<span data-srcpop data-sym="${escapeHtml(r.tos_symbol)}" data-src="${escapeHtml(srcCode)}" class="act-badge act-badge-sm ${colorCls}" style="margin-right:4px; cursor:help;" title="${escapeHtml(srcCode)}">${escapeHtml(actLabel)} <span style="font-size:8px; opacity:0.8;">(${src})</span></span>`;
   }).join('');
 }
 
@@ -458,29 +665,18 @@ function _saFor(row, src) {
 // Action severity rank — REMOVE strongest. Mirrors the consolidation sort.
 const ACTION_RANK = { REMOVE: 4, REDUCE: 3, INCREASE: 2, ADD: 1, HOLD: 0 };
 
-// Instructional labels for the consolidated Action badge. The raw
-// consolidated_action value, winning_source, color, chip and sort are all
-// unchanged — only the badge text. When the held position exceeds the
-// category Max (REMOVE excepted), the badge overlays SELL→MAX on top of
-// whatever action fired, and the original label is shown in small letters
-// underneath ("was BUY SOME" etc.) so the source signal is still visible.
-const ACTION_LABEL = {
-  REMOVE: 'SELL ALL', REDUCE: 'SELL SOME', INCREASE: 'BUY SOME',
-  ADD: 'BUY→MIN', HOLD: 'HOLD', NONE: '—',
-  // Synthetic pseudo-action used by the SELL→MAX summary chip. Rows are
-  // matched via _isOverMaxOverlay (pos > Max), not consolidated_action.
-  OVER_MAX: 'SELL→MAX',
-};
-// Action color palette — matches .badge-action-* in actionable.html. Used
-// to tint the "was X" overlay annotation in the original action's color.
-const ACTION_COLOR = {
-  REMOVE: '#d83a3a', REDUCE: '#e07c1a', INCREASE: '#2f9e2f',
-  ADD: '#1f7af2', HOLD: '#888', NONE: '#c4c4c4',
-};
+// Action color lookup: returns a CSS class from the token palette (actions.js).
+// Used to color the "was X" overlay annotation via the act-* CSS utility classes.
+function _actionColorCls(act) {
+  return actionDisplay(act).colorCls || 'act-neutral';
+}
+// actionDisplay() is provided by actions.js (loaded before this script).
+// actionLabel: plain-English label for a row's consolidated_action.
+// OVER_MAX synthetic overlay gets its own display entry.
 function actionLabel(row) {
-  if (_isOverMaxOverlay(row)) return 'SELL→MAX';
+  if (_isOverMaxOverlay(row)) return actionText(actionDisplay('OVER_MAX'));
   const a = ((row && row.consolidated_action) || 'NONE').toUpperCase();
-  return ACTION_LABEL[a] || a;
+  return actionText(actionDisplay(a));
 }
 // Badge color class — REDUCE (orange) when the over-Max overlay fires so
 // the sell intent reads at a glance; otherwise mirrors consolidated_action.
@@ -506,6 +702,339 @@ function _sourcesOf(row) {
   return Array.isArray(sa) ? sa : [];
 }
 
+// ── Source sub-line (Action cell second line) ──────────────────────────────
+// Returns compact HTML like: RR·<colored>BS</colored>  II·<colored>BM</colored>
+// Winning source first, then others sorted by severity.  Empty → ''.
+function _srcSubLineHtml(r) {
+  const sources = _sourcesOf(r);
+  if (!sources.length) return '';
+  const winning = (r.winning_source || '').toString();
+  // Put winning source first, then sort remainder by severity.
+  const winner = sources.filter(s => (s.source || s.source_code || '') === winning);
+  const others = sources.filter(s => (s.source || s.source_code || '') !== winning);
+  others.sort((a, b) =>
+    (ACTION_RANK[(b.action || '').toUpperCase()] || 0) -
+    (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
+  const ordered = winner.concat(others);
+  const tokens = ordered.map(s => {
+    const srcCode = escapeHtml(s.source || s.source_code || '?');
+    const act = (s.action || '').toUpperCase();
+    const disp = actionDisplay(act);
+    const colorCls = disp.colorCls || 'act-neutral';
+    const actText = escapeHtml(actionText(disp) || act || '?');
+    return `<span class="act-src-token"><span class="act-src-label">${srcCode}</span>·<span class="${colorCls}">${actText}</span></span>`;
+  });
+  return `<div class="act-src-sub">${tokens.join('')}</div>`;
+}
+
+// ── Pass 1: Conviction ─────────────────────────────────────────────────────
+// Count source_actions entries whose action aligns with consolidated_action direction.
+// "align" = same sell/buy side (REMOVE/REDUCE/OVER_MAX → sell; INCREASE/ADD → buy).
+function _agreeingSources(row) {
+  const ca = (row.consolidated_action || '').toUpperCase();
+  const isSell = ca === 'REMOVE' || ca === 'REDUCE' || ca === 'OVER_MAX';
+  const isBuy  = ca === 'INCREASE' || ca === 'ADD';
+  const sources = _sourcesOf(row);
+  if (!sources.length) return 0;
+  let count = 0;
+  for (const s of sources) {
+    const sa = (s.action || '').toUpperCase();
+    if (isSell && (sa === 'REMOVE' || sa === 'REDUCE')) count++;
+    else if (isBuy && (sa === 'INCREASE' || sa === 'ADD')) count++;
+  }
+  return count;
+}
+
+// True if any fired rule has positive 20d edge.
+function _hasPositiveEdge(row) {
+  let fires = row.rules_engine_fires;
+  if (typeof fires === 'string') { try { fires = JSON.parse(fires); } catch (_) { fires = []; } }
+  if (!Array.isArray(fires) || !fires.length) return false;
+  const sc = state.scorecard || {};
+  for (const f of fires) {
+    const id = String(f.rule_id || f.id || f);
+    if (sc[id] && sc[id].edge_20d != null && Number(sc[id].edge_20d) > 0.5) return true;
+  }
+  return false;
+}
+
+// Conviction badge HTML for grid cell.
+function _convictionHtml(row) {
+  const n = _agreeingSources(row);
+  const edge = _hasPositiveEdge(row);
+  const cls = edge ? 'conviction-badge edge-positive' : 'conviction-badge edge-none';
+  const sources = _sourcesOf(row);
+  const labels = sources
+    .filter(s => {
+      const ca = (row.consolidated_action || '').toUpperCase();
+      const sa = (s.action || '').toUpperCase();
+      const isSell = ca === 'REMOVE' || ca === 'REDUCE';
+      const isBuy  = ca === 'INCREASE' || ca === 'ADD';
+      return (isSell && (sa === 'REMOVE' || sa === 'REDUCE')) || (isBuy && (sa === 'INCREASE' || sa === 'ADD'));
+    })
+    .map(s => s.source || s.source_code || '?')
+    .join(', ');
+  const tip = labels || 'no agreeing sources';
+  return `<span class="${cls}" title="${escapeHtml(tip)}">${n}&#10003;${edge ? ' &#9650;' : ''}</span>`;
+}
+
+// ── Final Call — reconcile three action lenses into one decision ────────────
+//
+// Scale: sell-all=-3, sell-some=-2, sell-overage=-1, hold=0,
+//        buy-some/min/more=+2
+// (OVER_MAX synthetic uses -1 so it sorts below genuine sells.)
+var _FC_SCALE = {
+  SA: -3, REMOVE: -3,
+  SS: -2, STM: -2, REDUCE: -2,
+  OVER_MAX: -1,
+  HOLD: 0, NONE: 0,
+  BS: 2, INCREASE: 2, BMN: 2, ADD: 2, BM: 2,
+};
+
+function _fcStrength(code) {
+  if (!code) return 0;
+  var v = _FC_SCALE[('' + code).toUpperCase()];
+  return (v !== undefined) ? v : 0;
+}
+
+// Best-matching action display for a numeric strength (pick the canonical code
+// that sits nearest to the target strength, honouring sign).
+function _fcStrengthToAction(strength, consolidated) {
+  // Round to nearest integer for lookup
+  var s = Math.round(strength);
+  if (s <= -3) return actionDisplay('SA');
+  if (s === -2) return actionDisplay('SS');
+  if (s === -1) return actionDisplay('OVER_MAX');
+  if (s === 0)  return actionDisplay('HOLD');
+  // positive: prefer what consolidated_action says if same side
+  var ca = (consolidated || '').toUpperCase();
+  if (s >= 2) {
+    if (ca === 'ADD' || ca === 'BMN') return actionDisplay('ADD');
+    if (ca === 'BM')  return actionDisplay('BM');
+    return actionDisplay('INCREASE');
+  }
+  return actionDisplay('HOLD');
+}
+
+/**
+ * finalCall(row) -> {label, code, side, strength, confidence, feasible}
+ *
+ * Two-driver hierarchical decision:
+ *   Sources (consolidated_action) = strategic: gates ownership (own it or exit).
+ *   Technical (rr_action)         = tactical: trim/add while owning.
+ *   Rules/edge are NOT consulted here — kept in the Rules column for manual
+ *   cross-reference only.
+ */
+function finalCall(row) {
+  var ca  = (row.consolidated_action || '').toUpperCase();
+  var rra = (row.rr_action           || '').toUpperCase();
+
+  // ── 0. No recommendation at all ──────────────────────────────────────────
+  if (!ca || ca === 'NONE') {
+    var dispNone = actionDisplay('HOLD');
+    return {
+      label: dispNone.label, code: dispNone.code,
+      side: 'neutral', strength: 0,
+      confidence: 'none', feasible: false,
+    };
+  }
+
+  // ── Helper classifiers ────────────────────────────────────────────────────
+  var caOverMax  = _isOverMaxOverlay(row);
+  var isHeld     = !!row.held_today;
+  var atMax      = caOverMax;  // position already exceeds category Max
+
+  // Sources side categorisation
+  var srcIsExit    = (ca === 'REMOVE' || ca === 'SA');
+  var srcIsReduce  = (ca === 'REDUCE' || ca === 'SS' || ca === 'STM');
+  var srcIsBuy     = (ca === 'INCREASE' || ca === 'BS' || ca === 'BM' || ca === 'ADD' || ca === 'BMN');
+  var srcIsAdd     = (ca === 'ADD' || ca === 'BMN');  // specifically "ADD to position / BUY TO MIN"
+  var srcIsHold    = (!srcIsExit && !srcIsReduce && !srcIsBuy);  // HOLD or neutral
+
+  // Technical side categorisation
+  var techIsSell   = (rra === 'SS' || rra === 'STM' || rra === 'SO' ||
+                      rra === 'REDUCE' || rra === 'SA' || rra === 'REMOVE');
+  var techIsBuy    = (rra === 'BS' || rra === 'BM' ||
+                      rra === 'INCREASE');
+  var techIsBuyMin = (rra === 'BMN' || rra === 'ADD');
+  var techIsNeutral = (!techIsSell && !techIsBuy && !techIsBuyMin);
+
+  // ── 1. Feasibility (pre-check): never sell unheld, never buy past Max ─────
+  // Selling an unheld position is infeasible; we'll guard this below per-path.
+  // Buying past Max is infeasible; over-max rows are flagged via caOverMax.
+
+  // ── 2. Strategic gate: SELL ALL / REMOVE → exit regardless of Technical ──
+  if (srcIsExit || caOverMax) {
+    // Over-max uses the OVER_MAX strength so it sorts below genuine SELL ALL.
+    var exitStrength = caOverMax ? _FC_SCALE['OVER_MAX'] : _FC_SCALE['SA'];
+    var exitCode     = caOverMax ? 'OVER_MAX' : 'SA';
+    var exitDisp     = actionDisplay(exitCode);
+    // Feasibility: can only sell if held (or over-max which implies held via overlay).
+    if (!isHeld && !caOverMax) {
+      var holdDisp = actionDisplay('HOLD');
+      return {
+        label: holdDisp.label, code: holdDisp.code,
+        side: 'neutral', strength: 0,
+        confidence: 'gate',
+        gateReason: 'Exit signal but not held — no action feasible',
+        feasible: false,
+      };
+    }
+    return {
+      label:      exitDisp.label,
+      code:       exitDisp.code,
+      side:       exitDisp.side,
+      cls:        exitDisp.cls,
+      strength:   exitStrength,
+      confidence: 'gate',
+      gateReason: caOverMax
+        ? 'Over category Max — trim back to cap'
+        : 'Sources: exit signal — Technical not evaluated',
+      feasible:   true,
+    };
+  }
+
+  // ── 3. Sources endorses owning → Technical drives tactical action ─────────
+  // At this point ca is REDUCE, HOLD, INCREASE, ADD, or equivalent.
+
+  // Don't-initiate guard: NOT held AND Sources doesn't endorse buying → HOLD
+  if (!isHeld && !srcIsBuy) {
+    var holdD = actionDisplay('HOLD');
+    return {
+      label: holdD.label, code: holdD.code,
+      side: 'neutral', strength: 0,
+      confidence: 'gate',
+      gateReason: 'Not held + Sources don’t endorse buying — hold',
+      feasible: true,
+    };
+  }
+
+  var fcDisp, fcStrength, confidence, gateReason;
+
+  if (techIsSell) {
+    // Technical says trim — but only if held (can't sell what you don't have).
+    if (!isHeld) {
+      // Technical wants to sell, but not held → HOLD (infeasible sell).
+      // At this point srcIsBuy must be true (the !isHeld && !srcIsBuy guard above
+      // already returned). So Sources says buy but Technical says sell — genuine
+      // conflict, even though the sell is infeasible.  Use 'mixed', not 'high'.
+      fcDisp     = actionDisplay('HOLD');
+      fcStrength = 0;
+      confidence = 'mixed';
+    } else if (srcIsReduce) {
+      // Sources AND Technical both say sell → High confidence SELL SOME
+      fcDisp     = actionDisplay('SS');
+      fcStrength = _FC_SCALE['SS'];
+      confidence = 'high';
+    } else {
+      // Sources owns/buys, Technical says sell → Mixed (conflict)
+      fcDisp     = actionDisplay('SS');
+      fcStrength = _FC_SCALE['SS'];
+      confidence = 'mixed';
+    }
+  } else if (techIsBuy || techIsBuyMin) {
+    // Technical says add.
+    // Note: at this point srcIsBuy is true OR isHeld is true (the don't-initiate
+    // guard above already filtered out !isHeld && !srcIsBuy).
+    if (srcIsReduce) {
+      // Sources is souring (REDUCE), Technical says buy — conflict: downgrade to HOLD
+      fcDisp     = actionDisplay('HOLD');
+      fcStrength = 0;
+      confidence = 'mixed';
+    } else if (atMax) {
+      // Already at/past Max — cap: can't add more
+      fcDisp     = actionDisplay('HOLD');
+      fcStrength = 0;
+      confidence = 'gate';
+      gateReason = 'At/over category Max — cannot add more';
+    } else if (!isHeld && srcIsAdd) {
+      // Not yet held, Sources says ADD (buy-to-min intent) → BUY TO MIN (establish)
+      fcDisp     = actionDisplay('BMN');
+      fcStrength = _FC_SCALE['BMN'];
+      confidence = 'high';
+    } else {
+      // Sources owns/buys (or held), Technical says buy — add.
+      // Prefer BM (buy-more) if either lens calls for it strongly.
+      var buyCode = (rra === 'BM' || ca === 'BM' || ca === 'INCREASE' || ca === 'BS') ? 'BM' : 'BS';
+      fcDisp     = actionDisplay(buyCode);
+      fcStrength = _FC_SCALE[buyCode] || _FC_SCALE['BS'];
+      confidence = (srcIsBuy) ? 'high' : 'mixed';
+    }
+  } else {
+    // Technical is neutral/BMN/HOLD
+    if (!isHeld && srcIsAdd) {
+      // Not held, Sources says ADD → BUY TO MIN (establish position)
+      fcDisp     = actionDisplay('BMN');
+      fcStrength = _FC_SCALE['BMN'];
+      confidence = 'gate';
+      gateReason = 'Sources says ADD, Technical neutral — establishing position';
+    } else if (srcIsReduce) {
+      // Sources souring, Technical neutral → HOLD (no action but watch)
+      fcDisp     = actionDisplay('HOLD');
+      fcStrength = 0;
+      // Mild conflict: Sources wants down, Technical neutral
+      confidence = 'mixed';
+    } else {
+      // Sources neutral/hold, Technical neutral — no active signal from either lens
+      fcDisp     = actionDisplay('HOLD');
+      fcStrength = 0;
+      confidence = 'gate';
+      gateReason = 'No active signal — Sources and Technical both neutral';
+    }
+  }
+
+  return {
+    label:      fcDisp.label,
+    code:       fcDisp.code,
+    side:       fcDisp.side,
+    cls:        fcDisp.cls,
+    strength:   fcStrength,
+    confidence: confidence,
+    gateReason: gateReason || null,
+    feasible:   true,
+  };
+}
+
+// HTML for the Final Call cell (label + confidence badge).
+function _finalCallHtml(row) {
+  var fc = finalCall(row);
+  if (!fc.feasible || fc.confidence === 'none') {
+    return '<span style="color:#cbd5e1;">—</span>';
+  }
+  var text = actionText(fc);  // code-only (e.g. "SA"), full label in tooltip via fc.label
+  // Badge
+  var badgeHtml;
+  if (fc.confidence === 'high') {
+    badgeHtml = '<span class="fc-conf-badge fc-conf-high" title="Sources and Technical align">High</span>';
+  } else if (fc.confidence === 'gate') {
+    var gateTitle = fc.gateReason || 'Deterministic gate — Technical not evaluated';
+    badgeHtml = '<span class="fc-conf-badge fc-conf-gate" title="' + escapeHtml(gateTitle) + '">Gate</span>';
+  } else {
+    badgeHtml = '<span class="fc-conf-badge fc-conf-mixed" title="Sources and Technical conflict — cross-check the Rules column">&#9888; Mixed</span>';
+  }
+  // Color via actions.js token (act-*-fill gives background + white text)
+  var fcDisp = actionDisplay(fc.code || (fc.side === 'sell' ? 'SA' : fc.side === 'buy' ? 'BS' : 'HOLD'));
+  var colorCls = (fcDisp.colorCls || 'act-neutral') + '-fill';
+  return '<span class="act-badge ' + colorCls + '" title="' +
+         escapeHtml(fc.label || text) + '">' +
+         escapeHtml(text) + '</span> ' + badgeHtml;
+}
+
+// ── Pass 2: Priority score ──────────────────────────────────────────────────
+// Priority = final-call strength × |AMT$|. Falls back to conviction × edge if
+// no final call strength (e.g. blank consolidated_action).
+function _computePriority(row) {
+  var fc = finalCall(row);
+  var amt = Math.abs(Number(row._amt) || 0);
+  if (fc.feasible && Math.abs(fc.strength) > 0) {
+    return Math.abs(fc.strength) * amt;
+  }
+  // Fallback: original conviction × edge scoring
+  var n = _agreeingSources(row);
+  var edge = _hasPositiveEdge(row) ? 1.5 : 1.0;
+  return n * amt * edge;
+}
+
 // True if `src` drove this row OR appears among its other sources.
 function _rowHasSource(row, src) {
   if (!src) return true;
@@ -528,8 +1057,15 @@ function _renderSourcePop(el, sym, src, feed, loading) {
   const row = state.rows.find(r => r.tos_symbol === sym);
   const sa = _saFor(row, src);
   const kv = [];
+  let saActionHtml = '';
   if (sa) {
-    if (sa.action)               kv.push(['Action', sa.action]);
+    if (sa.action) {
+      const saAct = (sa.action || '').toUpperCase();
+      const saDisp = actionDisplay(saAct);
+      const saText = actionText(saDisp) || saAct;
+      const saCls = (saDisp.colorCls || 'act-neutral') + '-fill';
+      saActionHtml = `<span class="act-badge act-badge-sm ${saCls}" style="font-size:10px;">${escapeHtml(saText)}</span>`;
+    }
     if (sa.weight != null)       kv.push(['Weight', formatNum(sa.weight)]);
     if (sa.prev_weight != null)  kv.push(['Prev wt', formatNum(sa.prev_weight)]);
     if (sa.weight_delta != null) kv.push(['&#916;', formatNum(sa.weight_delta)]);
@@ -548,6 +1084,9 @@ function _renderSourcePop(el, sym, src, feed, loading) {
                 ['Analyst Rank', (f.anlst_best_idea_rank == null ? '' : f.anlst_best_idea_rank)]);
   }
   let html = '<div class="sp-title">' + escapeHtml(src) + '</div><table>';
+  if (saActionHtml) {
+    html += '<tr><td class="k">Action</td><td class="v">' + saActionHtml + '</td></tr>';
+  }
   for (const [k, v] of kv) {
     html += '<tr><td class="k">' + k + '</td><td class="v">' + escapeHtml(v) + '</td></tr>';
   }
@@ -622,37 +1161,6 @@ function initSourcePopover() {
 // ---- column sorting ----
 function sortRows() {
   const { key, dir, type } = state.sort;
-  if (!key) {
-    // No explicit column sort. Default sort: by action (REMOVE/REDUCE/INCREASE/ADD/HOLD),
-    // then by primary source within each action.
-    state.rows.sort((a, b) => {
-      // 1. Sort by action severity (REMOVE → HOLD)
-      // SELL→MAX overlay gets rank between REDUCE (3) and INCREASE (2)
-      const aAction = (a.consolidated_action || 'NONE').toUpperCase();
-      const bAction = (b.consolidated_action || 'NONE').toUpperCase();
-      const aIsOverMax = _isOverMaxOverlay(a);
-      const bIsOverMax = _isOverMaxOverlay(b);
-
-      // SELL→MAX overlay overrides the action rank: gets fixed rank 3.5
-      let aRank = aIsOverMax ? 3.5 : (ACTION_RANK[aAction] ?? -1);
-      let bRank = bIsOverMax ? 3.5 : (ACTION_RANK[bAction] ?? -1);
-
-      if (aRank !== bRank) return bRank - aRank;
-
-      // 2. Within same action, sort by primary source
-      const aSrc = (a.winning_source || '').toUpperCase();
-      const bSrc = (b.winning_source || '').toUpperCase();
-      if (aSrc !== bSrc) {
-        return aSrc < bSrc ? -1 : 1;
-      }
-
-      // 3. Same action and source: sort by symbol
-      const aSym = (a.tos_symbol || '').toUpperCase();
-      const bSym = (b.tos_symbol || '').toUpperCase();
-      return aSym < bSym ? -1 : aSym > bSym ? 1 : 0;
-    });
-    return;
-  }
   const num = type === 'num';
   state.rows.sort((a, b) => {
     let va = a[key], vb = b[key];
@@ -678,17 +1186,18 @@ function updateSortIndicators() {
   document.querySelectorAll('#actGrid th.sortable').forEach(th => {
     const base = th.dataset.label || th.textContent.trim();
     if (th.dataset.key === state.sort.key) {
-      th.innerHTML = base + ' <span class="sort-ind">' +
+      th.innerHTML = escapeHtml(base) + ' <span class="sort-ind">' +
         (state.sort.dir === 1 ? '&#9650;' : '&#9660;') + '</span>';
     } else {
-      th.textContent = base;
+      th.innerHTML = escapeHtml(base);
     }
   });
 }
 
 function initSorting() {
   document.querySelectorAll('#actGrid th.sortable').forEach(th => {
-    th.dataset.label = th.textContent.trim();
+    // Preserve data-label if already set in HTML (e.g. for multi-line headers)
+    if (!th.dataset.label) th.dataset.label = th.textContent.trim();
     th.addEventListener('click', () => {
       const key = th.dataset.key;
       if (state.sort.key === key) {
@@ -705,56 +1214,109 @@ function initSorting() {
 }
 
 function renderGrid() {
-  // Compute each row's Metric and winning-source Snapshot before sorting.
-  const _mSrc = state.filters.source;
   for (const r of state.rows) {
-    r._metric = _rowMetric(r, _mSrc);
     r._snapshot = _winningSnapshot(r);
+    // Re-compute priority and final call here in case scorecard loaded after allRows.
+    var fc = finalCall(r);
+    r._fc_strength = fc.strength;
+    r._fc_code     = fc.code;
+    r._fc_side     = fc.side;
+    r._priority = _computePriority(r);
   }
   sortRows();
+  updateSortIndicators();
   const tb = $('actBody');
   tb.innerHTML = '';
-  $('rowCount').textContent = `${state.rows.length} row${state.rows.length === 1 ? '' : 's'}`;
-  $('emptyState').style.display = state.rows.length === 0 ? 'block' : 'none';
+  const total = state.rows.length;
+  $('rowCount').textContent = `${total} row${total === 1 ? '' : 's'}`;
+  $('emptyState').style.display = total === 0 ? 'block' : 'none';
 
-  for (const r of state.rows) {
+  const visibleRows = state.showAll ? state.rows : state.rows.slice(0, state.TOP_N);
+
+  for (const r of visibleRows) {
     const tr = document.createElement('tr');
     const action = (r.consolidated_action || 'NONE').toUpperCase();
-    const tags = [];
-    if (r.in_my_list) tags.push('<span class="pill pill-my">&#9733; MY</span>');
-    const fires = Array.isArray(r.rules_engine_fires) ? r.rules_engine_fires
-                 : (typeof r.rules_engine_fires === 'string'
-                    ? (() => { try { return JSON.parse(r.rules_engine_fires); } catch (_) { return []; } })()
-                    : []);
-    if (fires && fires.length) tags.push(`<span class="pill pill-rule">RULE&#215;${fires.length}</span>`);
-    if (r.suppressed_reason) tags.push(`<span class="pill pill-suppressed">${r.suppressed_reason}</span>`);
-    if (r.last_user_action) tags.push(`<span class="pill pill-acted">${r.last_user_action}</span>`);
+    const isActed = r._rowActed;
+    if (isActed) tr.classList.add('row-acted');
+    tr.dataset.sym = r.tos_symbol;
 
-    const reasonText = _winningReason(r);
+    const pctCls = r.pct_change != null ? (Number(r.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : '';
+    const pctStr = r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : '';
+    const priceStr = r.last_price != null ? fmtUsd(r.last_price) : '';
+    const isChecked = state.selected.has(r.tos_symbol);
+
+    // TrTnBBRskRng cell: run action through actionDisplay; attach rr-action-cell for hover tooltip
+    const rrRaw = r.rr_action || '';
+    const rrDisp = actionDisplay(rrRaw);
+    const rrHtml = rrRaw
+      ? `<span class="act-badge ${(rrDisp.colorCls || 'act-neutral') + '-fill'}" title="${escapeHtml(rrDisp.label || rrRaw)}">${actionText(rrDisp)}</span>`
+      : '<span style="color:#cbd5e1;">--</span>';
+
+    // Final Call cell — reconciled action + confidence badge
+    const fcHtml = _finalCallHtml(r);
+    // Default Act action: use final call code when available, else 'DONE'
+    const fcActCode = r._fc_code || 'DONE';
+
+    const posStr = fmtCompact(r.current_position_dollar);
     tr.innerHTML = `
-      <td style="padding:6px 2px; text-align:center;"><button type="button" class="btn-suppress" data-sym="${escapeHtml(r.tos_symbol)}" data-suppressed="${r.last_user_action === 'SKIPPED' ? '1' : ''}">${r.last_user_action === 'SKIPPED' ? 'Un-snooze' : 'Snooze'}</button></td>
-      <td class="num">${r._metric == null ? '' : (_isPctSource(_mSrc) ? fmtPct(r._metric) : formatNum(r._metric))}</td>
-      <td class="num">${fmtUsd(r.current_position_dollar)}</td>
-      <td class="sym-cell" style="padding:6px 4px; max-width:70px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml((r.sector||'') + (r.real_asset_class ? ' · ' + r.real_asset_class : ''))}">${typeof yahooLink === 'function' ? yahooLink(r.tos_symbol) : ''}<strong>${r.tos_symbol || ''}</strong>${r.sector||r.real_asset_class ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${[r.sector,r.real_asset_class].filter(Boolean).join(' · ')}</div>` : ''}</td>
-      <td class="num ${r.pct_change != null ? (Number(r.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : ''}">${r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''}</td>
-      <td style="padding:6px 4px;"><span class="badge-action badge-action-${_badgeAction(r)}">${actionLabel(r)}</span>${_isOverMaxOverlay(r) ? `<div style="font-size:8px;line-height:1;font-weight:600;color:${ACTION_COLOR[action] || '#888'};margin-top:1px;">was ${ACTION_LABEL[action] || action}</div>` : ''}</td>
-      <td class="rr-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-date="${escapeHtml(r.as_of_date||'')}">
-        <span class="rr-action-val" style="font-size:11px;font-weight:600;color:#4338ca;cursor:help;">${r.rr_action || '—'}</span>
+      <td style="padding:4px 6px; text-align:center;">
+        <input type="checkbox" class="row-check" data-sym="${escapeHtml(r.tos_symbol)}"${isChecked ? ' checked' : ''}>
       </td>
-      <td style="font-size:11px;font-weight:600;color:#7c3aed;text-align:center;" title="Trigger-rule action (best fired rule group)">${escapeHtml(r.trig_action || '—')}</td>
-      <td class="fires-cell" style="padding:6px 4px; max-width:320px; line-height:1.7;">${firesCellHtml(r)}</td>
-      <td class="num"><strong>${fmtUsd(r._amt)}</strong></td>
-      <td class="src-cell" data-srcpop data-sym="${escapeHtml(r.tos_symbol)}" data-src="${escapeHtml(r.winning_source || '')}" style="padding:6px 4px;">${r.winning_source || ''}</td>
-      <td style="padding:6px 4px; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(reasonText)}">${escapeHtml(reasonText)}</td>
-      <td>${fmtMD(r._snapshot)}</td>
-      <td style="padding:6px 4px;">${_renderOtherSources(r)}</td>
-      <td class="num">${fmtUsd(r.last_price)}</td>
-      <td class="num">${fmtUsd(r.net_chng)}</td>
-      <td>${fmtAsOfExport(r.export_date, r.export_time, r.loaded_at)}</td>
-      <td>${tags.join(' ')}</td>
+      <td style="padding:6px 4px;">
+        ${typeof yahooLink === 'function' ? yahooLink(r.tos_symbol) : ''}
+        <strong style="font-size:13px;">${escapeHtml(r.tos_symbol || '')}</strong>
+        ${r.sector ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px;">${escapeHtml(r.sector)}</div>` : ''}
+      </td>
+      <td class="act-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:help;">
+        <span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-fill'}" title="${escapeHtml(actionDisplay(_badgeAction(r)).label || actionLabel(r))}">${actionLabel(r)}</span>
+        ${_isOverMaxOverlay(r) ? `<div style="font-size:8px;line-height:1;font-weight:600;margin-top:1px;" class="${_actionColorCls(action)}">was ${actionText(actionDisplay(action))}</div>` : ''}
+        ${_srcSubLineHtml(r)}
+      </td>
+      <td class="rr-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-date="${escapeHtml(r.as_of_date || state.date || '')}" style="padding:6px 4px; cursor:help;">
+        ${rrHtml}
+        <div class="rr-sub-line" style="font-size:9px;color:#94a3b8;line-height:1;margin-top:2px;white-space:nowrap;"></div>
+      </td>
+      <td style="padding:6px 4px;">${fcHtml}</td>
+      <td class="num" style="font-size:11px; color:#475569;">${posStr || '<span style="color:#cbd5e1;">—</span>'}</td>
+      <td class="num"><span class="amt-primary">${fmtUsd(r._amt)}</span></td>
+      <td class="num">${_convictionHtml(r)}</td>
+      <td class="num">
+        <span class="${pctCls}" style="font-weight:700;">${pctStr}</span>
+        ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
+      </td>
+      <td style="padding:4px 6px; max-width:180px; overflow:hidden;">${firesCellHtml(r)}</td>
+      <td style="padding:4px 6px;">
+        <div class="act-inline-btns">
+          <button type="button" class="btn-done btn-inline-done" data-sym="${escapeHtml(r.tos_symbol)}" data-fc="${escapeHtml(fcActCode)}" title="Act: log final call action">&#10003; ${escapeHtml(fcActCode)}</button>
+          <button type="button" class="btn-skip btn-inline-skip" data-sym="${escapeHtml(r.tos_symbol)}" title="Skip">&#10007;</button>
+          <button type="button" class="btn-snz btn-inline-snz"  data-sym="${escapeHtml(r.tos_symbol)}" title="Snooze">&#128164;</button>
+        </div>
+      </td>
     `;
-    tr.onclick = (e) => { if (e.target.closest('.btn-suppress') || e.target.closest('.rr-action-cell')) return; openDrilldown(r); };
+    tr.onclick = (e) => {
+      if (e.target.closest('.btn-inline-done') || e.target.closest('.btn-inline-skip') ||
+          e.target.closest('.btn-inline-snz')  || e.target.closest('.row-check')) return;
+      openDrilldown(r);
+    };
     tb.appendChild(tr);
+  }
+
+  // Top-N collapse bar
+  const oldBar = tb.parentElement.querySelector('.show-all-bar');
+  if (oldBar) oldBar.remove();
+  if (!state.showAll && total > state.TOP_N) {
+    const bar = document.createElement('div');
+    bar.className = 'show-all-bar';
+    bar.innerHTML = `<button>Show all (${total})</button>`;
+    bar.querySelector('button').onclick = () => { state.showAll = true; renderGrid(); };
+    tb.parentElement.appendChild(bar);
+  }
+
+  // Sync select-all checkbox
+  const allChk = $('bulkSelectAll');
+  if (allChk) {
+    allChk.checked = state.selected.size > 0 && state.selected.size >= visibleRows.length;
+    allChk.indeterminate = state.selected.size > 0 && state.selected.size < visibleRows.length;
   }
 }
 
@@ -762,6 +1324,108 @@ function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[c]));
+}
+
+// ── Pass 3: Bulk bar ───────────────────────────────────────────────────────
+function renderBulkBar() {
+  const bar = $('bulkBar');
+  if (!bar) return;
+  const n = state.selected.size;
+  if (n > 0) {
+    bar.classList.add('visible');
+    $('bulkCount').textContent = `${n} selected`;
+  } else {
+    bar.classList.remove('visible');
+  }
+}
+
+// Inline action: call the same endpoint as the modal Save/Dismiss.
+async function inlineAction(sym, action) {
+  if (!sym || !state.date) return;
+  const row = state.allRows.find(r => r.tos_symbol === sym);
+  const asOf = row ? row.as_of_date : state.date;
+  // user_action must be the legacy enum (DONE/SKIPPED/SNOOZED/OVERRIDDEN).
+  // The Final Call BuySell code (SA/SS/BM/etc.) goes into action_code.
+  const isLegacyAction = ['DONE','SKIPPED','SNOOZED','OVERRIDDEN'].includes((action||'').toUpperCase());
+  const userAction = isLegacyAction ? action.toUpperCase() : 'DONE';
+  const actionCode = isLegacyAction ? null : action;
+  const payload = { as_of_date: asOf, user_action: userAction,
+                    action_code: actionCode, user_notes: 'inline' };
+  try {
+    await fetchJson('/api/actionable/' + encodeURIComponent(sym) + '/action', {
+      method: 'POST', body: JSON.stringify(payload),
+    });
+    // Mark row visually acted; keep in grid until next reload.
+    if (row) row._rowActed = true;
+    const tr = document.querySelector(`#actBody tr[data-sym="${CSS.escape(sym)}"]`);
+    if (tr) tr.classList.add('row-acted');
+    showStatus(`${action}: ${sym}`, 'success', 2500);
+  } catch (e) {
+    showStatus(`${action} failed: ${e.message}`, 'error');
+  }
+}
+
+async function bulkAction(action) {
+  const syms = Array.from(state.selected);
+  if (!syms.length) return;
+  for (const sym of syms) await inlineAction(sym, action);
+  state.selected.clear();
+  renderBulkBar();
+  renderGrid();
+}
+
+// ── Pass 3: Focus mode ─────────────────────────────────────────────────────
+function _focusRows() {
+  return state.rows.filter(r => !r._rowActed);
+}
+
+function openFocusMode() {
+  state.focusIdx = 0;
+  _renderFocusCard();
+  $('focusBackdrop').classList.add('open');
+}
+
+function _renderFocusCard() {
+  const rows = _focusRows();
+  if (!rows.length) {
+    $('focusBackdrop').classList.remove('open');
+    showStatus('All done! No more rows.', 'success', 3000);
+    return;
+  }
+  if (state.focusIdx >= rows.length) state.focusIdx = rows.length - 1;
+  const r = rows[state.focusIdx];
+  $('fcProg').textContent = `${state.focusIdx + 1} of ${rows.length}`;
+  $('fcSym').textContent = r.tos_symbol || '';
+  $('fcAction').innerHTML = `<span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-fill'}" style="font-size:16px;padding:4px 14px;">${actionLabel(r)}</span>`;
+  $('fcAmt').textContent = fmtUsd(r._amt) || '—';
+  // "Why": top fired rule or winning source + reason snippet.
+  let why = '';
+  let fires = r.rules_engine_fires;
+  if (typeof fires === 'string') { try { fires = JSON.parse(fires); } catch (_) { fires = []; } }
+  if (Array.isArray(fires) && fires.length) {
+    const topRule = String(fires[0].rule_id || fires[0].id || fires[0]);
+    why = 'Rule: ' + topRule;
+  } else if (r.winning_source) {
+    why = r.winning_source;
+    const reason = _winningReason(r);
+    if (reason) why += ': ' + reason.slice(0, 80);
+  }
+  $('fcWhy').textContent = why;
+}
+
+function focusAdvance(action) {
+  const rows = _focusRows();
+  if (!rows.length) return;
+  const r = rows[state.focusIdx];
+  if (action) {
+    inlineAction(r.tos_symbol, action).then(() => {
+      state.focusIdx = Math.min(state.focusIdx, _focusRows().length - 1);
+      _renderFocusCard();
+    });
+  } else {
+    state.focusIdx = Math.min(state.focusIdx + 1, _focusRows().length - 1);
+    _renderFocusCard();
+  }
 }
 
 // ---- CSV export (current filtered + sorted view) ----
@@ -783,9 +1447,9 @@ function exportCsv() {
     ['Symbol',        r => r.tos_symbol],
     ['Change %',      r => r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''],
     ['AMT$',          r => r._amt],
-    ['Action',        r => r.consolidated_action || ''],
+    ['Action',        r => r.consolidated_action ? actionText(actionDisplay(r.consolidated_action)) : ''],
     ['TrTnBBRskRng',  r => r.rr_action || ''],
-    ['Trig',          r => r.trig_action || ''],
+    ['Trig',          r => r.trig_action ? actionText(actionDisplay(r.trig_action)) : ''],
     ['Source',        r => r.winning_source || ''],
     ['Metric',        r => r._metric],
     ['Reason',        r => _winningReason(r)],
@@ -901,9 +1565,9 @@ async function openDrilldown(row) {
   const chgEl = $('modalPriceChange');
   if (row.net_chng != null && row.pct_change != null) {
     const nc = Number(row.net_chng), pc = Number(row.pct_change);
-    const clr = nc >= 0 ? '#16a34a' : '#dc2626';
+    const chgCls = nc >= 0 ? 'act-buy-strong' : 'act-sell-strong';
     const fmtAmt = v => { const a = Math.abs(v); return (v < 0 ? '-' : '') + '$' + (a >= 1000 ? Math.round(a).toLocaleString() : a.toFixed(0)); };
-    chgEl.innerHTML = `<span style="font-weight:700;font-size:20px;color:${clr};line-height:1.3;">${fmtAmt(nc)} (${pc.toFixed(2)}%)</span>`;
+    chgEl.innerHTML = `<span class="${chgCls}" style="font-weight:700;font-size:20px;line-height:1.3;">${fmtAmt(nc)} (${pc.toFixed(2)}%)</span>`;
     chgEl.style.display = 'block';
   } else {
     chgEl.innerHTML = '';
@@ -913,7 +1577,7 @@ async function openDrilldown(row) {
   const action = (row.consolidated_action || 'NONE').toUpperCase();
   const kv = $('modalKv');
   kv.innerHTML = `
-    <dt>Action</dt><dd><span class="badge-action badge-action-${_badgeAction(row)}">${actionLabel(row)}</span>${_isOverMaxOverlay(row) ? ` <small style="color:${ACTION_COLOR[action] || '#888'};font-weight:600;font-size:9px;">was ${ACTION_LABEL[action] || action}</small>` : ''}</dd>
+    <dt>Action</dt><dd><span class="act-badge ${(actionDisplay(_badgeAction(row)).colorCls || 'act-neutral') + '-fill'}">${actionLabel(row)}</span>${_isOverMaxOverlay(row) ? ` <small class="${_actionColorCls(action)}" style="font-weight:600;font-size:9px;">was ${actionText(actionDisplay(action))}</small>` : ''}</dd>
     <dt>Winning source</dt><dd>${row.winning_source || '—'}</dd>
     <dt>Real asset class</dt><dd>${row.real_asset_class || '—'}</dd>
     <dt>Held today</dt><dd>${row.held_today ? 'Yes' : 'No'}</dd>
@@ -959,7 +1623,7 @@ async function openDrilldown(row) {
         <td><span class="${todayOl.cls}" style="font-weight:600;">${todayOl.label}</span>${todayMod}</td>
         <td><span class="${prevOl.cls}">${prevOl.label}</span>${prevMod}</td>
         <td>${s.held_today ? 'Y' : 'N'}</td>
-        <td>${sa ? `<span class="badge-action badge-action-${sa}">${sa}</span>` : ''}</td>
+        <td>${sa ? `<span class="act-badge ${(actionDisplay(sa).colorCls || 'act-neutral') + '-fill'}">${actionText(actionDisplay(sa)) || sa}</span>` : ''}</td>
         <td style="font-size:10px;">${escapeHtml(s.action_reason || s.reason || '')}</td>
       `;
       tr.addEventListener('click', () => toggleCmpRow(tr, srcCode));
@@ -982,7 +1646,7 @@ async function openDrilldown(row) {
       const id    = String(f.rule_id || f.id || f);
       const score = (f.score != null) ? ` <span style="opacity:.65;font-size:10px;">${f.score}</span>` : '';
       const span = document.createElement('span');
-      span.className = 'pill pill-rule';
+      span.className = 'act-badge act-badge-sm pill-rule';
       span.innerHTML = `${escapeHtml(id)}${score}${ruleEdgeBadge(id)}`;
       span.dataset.compositeCode = id;
       span.addEventListener('click', (e) => {
@@ -1105,9 +1769,10 @@ function _comparisonPanelHtml(srcCode) {
     ? ('not in ' + kind + ' bundle')
     : ((fmtMD(rec && rec.snapshot_date) || '?') +
        ((rec && rec.weight != null) ? (' &middot; wt ' + formatNum(rec.weight)) : ''));
-  const act = c.action ? '<span class="badge-action badge-action-' +
-              escapeHtml((c.action || '').toUpperCase()) + '">' +
-              escapeHtml((c.action || '').toUpperCase()) + '</span> ' : '';
+  const _actCode = (c.action || '').toUpperCase();
+  const act = _actCode ? '<span class="act-badge ' +
+              escapeHtml((actionDisplay(_actCode).colorCls || 'act-neutral') + '-fill') + '">' +
+              escapeHtml(actionText(actionDisplay(_actCode)) || _actCode) + '</span> ' : '';
   return '<div class="cmp-panel">' +
     '<div class="cmp-panel-head">' +
       '<span class="cmp-src">' + act + escapeHtml(srcCode) + ' &middot; record comparison</span>' +
@@ -1354,9 +2019,18 @@ async function toggleSuppress(symbol, isSuppressed) {
 
 // ---- wire up ----
 document.addEventListener('DOMContentLoaded', async () => {
+  // Restore filters before loading data
+  loadFiltersFromStorage();
+  // initSorting must run before loadDates/renderGrid so th.dataset.label is
+  // captured from the clean header text (before sort indicators are injected).
+  initSorting();
+
   await loadSources();
   await loadDates();
   checkFreshness();
+
+  // Sync UI to restored state
+  syncFilterUi();
 
   $('datePicker').addEventListener('change', (e) => {
     state.date = e.target.value;
@@ -1366,15 +2040,69 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('refreshBtn').addEventListener('click', () => { loadActionable(); checkFreshness(); });
   $('staleRederiveBtn').addEventListener('click', rederiveStale);
   $('exportCsvBtn').addEventListener('click', exportCsv);
-  initSorting();
   initSourcePopover();
+  // Inline action buttons (Pass 3)
   $('actBody').addEventListener('click', (e) => {
+    const doneBtn = e.target.closest('.btn-inline-done');
+    if (doneBtn) {
+      e.stopPropagation();
+      // Use final call code as the action if available, else 'DONE'
+      const actCode = doneBtn.dataset.fc || 'DONE';
+      inlineAction(doneBtn.dataset.sym, actCode);
+      return;
+    }
+    const skipBtn = e.target.closest('.btn-inline-skip');
+    if (skipBtn) { e.stopPropagation(); inlineAction(skipBtn.dataset.sym, 'SKIPPED'); return; }
+    const snzBtn = e.target.closest('.btn-inline-snz');
+    if (snzBtn) { e.stopPropagation(); inlineAction(snzBtn.dataset.sym, 'SNOOZED'); return; }
+    const chk = e.target.closest('.row-check');
+    if (chk) {
+      e.stopPropagation();
+      const sym = chk.dataset.sym;
+      if (chk.checked) state.selected.add(sym); else state.selected.delete(sym);
+      renderBulkBar();
+      const allChk = $('bulkSelectAll');
+      if (allChk) {
+        const vis = Array.from(document.querySelectorAll('.row-check'));
+        allChk.checked = vis.length > 0 && vis.every(c => c.checked);
+        allChk.indeterminate = state.selected.size > 0 && !allChk.checked;
+      }
+      return;
+    }
     const btn = e.target.closest('.btn-suppress');
     if (!btn) return;
     e.stopPropagation();
     toggleSuppress(btn.dataset.sym, btn.dataset.suppressed === '1');
   });
 
+  // Bulk select-all
+  $('bulkSelectAll').addEventListener('change', (e) => {
+    const vis = Array.from(document.querySelectorAll('.row-check'));
+    if (e.target.checked) vis.forEach(c => { state.selected.add(c.dataset.sym); c.checked = true; });
+    else { state.selected.clear(); vis.forEach(c => { c.checked = false; }); }
+    renderBulkBar();
+  });
+
+  // Bulk action buttons
+  $('bulkDoneBtn').addEventListener('click', () => bulkAction('DONE'));
+  $('bulkSkipBtn').addEventListener('click', () => bulkAction('SKIPPED'));
+  $('bulkSnzBtn').addEventListener('click',  () => bulkAction('SNOOZED'));
+  $('bulkClearBtn').addEventListener('click', () => { state.selected.clear(); renderBulkBar(); renderGrid(); });
+
+  // Focus mode
+  $('focusModeBtn').addEventListener('click', openFocusMode);
+  $('fcDoneBtn').addEventListener('click', () => focusAdvance('DONE'));
+  $('fcSkipBtn').addEventListener('click', () => focusAdvance('SKIPPED'));
+  $('fcSnzBtn').addEventListener('click',  () => focusAdvance('SNOOZED'));
+  $('fcNextBtn').addEventListener('click', () => focusAdvance(null));
+  $('fcCloseBtn').addEventListener('click', () => $('focusBackdrop').classList.remove('open'));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && $('focusBackdrop').classList.contains('open')) {
+      $('focusBackdrop').classList.remove('open');
+    }
+  });
+
+  // ── Filter zone wire-ups ────────────────────────────────────────────────────
   $('sourceFilter').addEventListener('change', (e) => {
     state.filters.source = e.target.value;
     state.sort = { key: null, dir: 1, type: 'str' };
@@ -1389,14 +2117,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.filters.show_acted = e.target.checked;
     loadActionable();
   });
-  $('withSource').addEventListener('change', (e) => {
-    state.filters.source_filter = e.target.checked;
-    applyClientFilter();
-  });
-  $('withOther').addEventListener('change', (e) => {
-    state.filters.other_filter = e.target.checked;
-    applyClientFilter();
-  });
   $('showNoAction').addEventListener('change', (e) => {
     state.filters.show_no_action = e.target.checked;
     applyClientFilter();
@@ -1410,9 +2130,62 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadActionable();
   });
   $('symbolSearch').addEventListener('input', (e) => {
-    state.filters.tos_symbol_search = e.target.value;
+    state.filters.symbol_search = e.target.value;
     applyClientFilter();
   });
+  $('sectorFilter').addEventListener('change', (e) => {
+    state.filters.sector = e.target.value;
+    applyClientFilter();
+  });
+  $('assetClassFilter').addEventListener('change', (e) => {
+    state.filters.asset_class = e.target.value;
+    applyClientFilter();
+  });
+
+  // Conviction segmented control
+  $('convictionCtrl').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-conv]');
+    if (!btn) return;
+    state.filters.conviction = btn.dataset.conv;
+    document.querySelectorAll('#convictionCtrl button').forEach(b =>
+      b.classList.toggle('seg-active', b === btn));
+    applyClientFilter();
+  });
+
+  // $ at stake segmented control
+  $('amtCtrl').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-amt]');
+    if (!btn) return;
+    state.filters.amt_min = Number(btn.dataset.amt) || 0;
+    document.querySelectorAll('#amtCtrl button').forEach(b =>
+      b.classList.toggle('seg-active', b === btn));
+    applyClientFilter();
+  });
+
+  // Buys/Sells quick toggle
+  $('buyToggle').addEventListener('click', () => {
+    state.filters.buys_sells = (state.filters.buys_sells === 'buy') ? '' : 'buy';
+    if (state.filters.buys_sells) state.filters.action = '';  // clear chip selection
+    $('buyToggle').classList.toggle('active', state.filters.buys_sells === 'buy');
+    $('sellToggle').classList.remove('active');
+    applyClientFilter();
+  });
+  $('sellToggle').addEventListener('click', () => {
+    state.filters.buys_sells = (state.filters.buys_sells === 'sell') ? '' : 'sell';
+    if (state.filters.buys_sells) state.filters.action = '';  // clear chip selection
+    $('sellToggle').classList.toggle('active', state.filters.buys_sells === 'sell');
+    $('buyToggle').classList.remove('active');
+    applyClientFilter();
+  });
+
+  // More panel toggle
+  $('moreFiltersBtn').addEventListener('click', () => {
+    $('morePanel').classList.toggle('open');
+    $('moreFiltersBtn').textContent = $('morePanel').classList.contains('open') ? 'Less ✕' : 'More ⋯';
+  });
+
+  // Clear all filters
+  $('clearFiltersBtn').addEventListener('click', clearAllFilters);
 
 $('modalClose').addEventListener('click', () => $('modalBackdrop').classList.remove('open'));
   $('modalBackdrop').addEventListener('click', (e) => {
@@ -1422,10 +2195,140 @@ $('modalClose').addEventListener('click', () => $('modalBackdrop').classList.rem
   $('dismissActionBtn').addEventListener('click', dismissUserAction);
   $('closePop').addEventListener('click', () => $('detailPop')?.classList.remove('open'));
 
+  // ── Action column hover popup ──────────────────────────────────────────────
+  setupActionCol();
   // ── TrTnBBRskRng column: lazy-load action + hover tooltip ─────────────────
   document.addEventListener('DOMContentLoaded', setupRRActionCol);
   setupRRActionCol();
 });
+
+// ── Action-cell hover popup ────────────────────────────────────────────────
+// Builds a glance-level "why" popup from fields already on the row.
+// Reuses the same fixed-position tooltip pattern as the TrTnBBRskRng popup.
+
+function _actionPopHtml(sym) {
+  const r = state.rows.find(row => row.tos_symbol === sym);
+  if (!r) return '';
+
+  const action = (r.consolidated_action || 'NONE').toUpperCase();
+  const dispAct = actionDisplay(action);
+  const actionLbl = actionText(dispAct) || action;
+
+  // Winning source entry
+  const winEntry = _winningSourceEntry(r);
+  const winSrc   = r.winning_source || (winEntry && (winEntry.source || winEntry.source_code)) || '';
+  const winMethod = (winEntry && (winEntry.base_weight_method || winEntry.method)) || '';
+  const winReason = _winningReason(r);
+
+  // Section helpers
+  const sec = label =>
+    `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:6px 0 2px;">${label}</div>`;
+  const kv = (k, v) =>
+    `<div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:2px;">
+       <span style="color:#475569;white-space:nowrap;">${k}</span>
+       <span style="font-weight:600;color:#0f172a;text-align:right;">${v}</span>
+     </div>`;
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  let html = `<div style="font-weight:700;color:#0f172a;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;">` +
+    `${escapeHtml(sym)} — ` +
+    `<span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-fill'}">${escapeHtml(actionLbl)}</span>` +
+    `</div>`;
+
+  // ── Suppression ────────────────────────────────────────────────────────────
+  if (r.suppressed_reason) {
+    html += `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:4px 8px;margin-bottom:6px;font-size:10px;color:#991b1b;font-weight:600;">` +
+      `Suppressed: ${escapeHtml(r.suppressed_reason)}</div>`;
+  }
+
+  // ── Winning source ─────────────────────────────────────────────────────────
+  if (winSrc) {
+    html += sec('Winning Source');
+    html += kv('Source', escapeHtml(winSrc));
+    if (winMethod) html += kv('Method/Metric', escapeHtml(winMethod));
+    if (winReason) {
+      html += `<div style="font-size:10px;color:#475569;margin-top:3px;white-space:normal;line-height:1.4;">` +
+        `${escapeHtml(winReason)}</div>`;
+    }
+  }
+
+  // ── Other sources ──────────────────────────────────────────────────────────
+  let sources = r.source_actions;
+  if (typeof sources === 'string') { try { sources = JSON.parse(sources); } catch (_) { sources = []; } }
+  if (Array.isArray(sources) && sources.length) {
+    // Winning first, then others sorted by action severity
+    const winFirst = sources.filter(s => (s.source || s.source_code || '') === winSrc);
+    const others = sources.filter(s => (s.source || s.source_code || '') !== winSrc);
+    others.sort((a, b) =>
+      (ACTION_RANK[(b.action || '').toUpperCase()] || 0) -
+      (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
+    const ordered = [...winFirst, ...others];
+
+    html += sec('All Sources');
+    for (const s of ordered) {
+      const srcCode = s.source || s.source_code || '?';
+      const srcAct  = (s.action || '').toUpperCase() || '?';
+      const isWin   = srcCode === winSrc;
+      const dispS   = actionDisplay(srcAct);
+      const actText = actionText(dispS) || srcAct;
+      html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">` +
+        `<span style="font-size:10px;color:#475569;min-width:44px;">${escapeHtml(srcCode)}</span>` +
+        `<span class="act-badge act-badge-sm ${(actionDisplay(srcAct).colorCls || 'act-neutral') + '-fill'}">${escapeHtml(actText)}</span>` +
+        (isWin ? `<span style="font-size:9px;color:#16a34a;font-weight:600;">&#10003; winning</span>` : '') +
+        `</div>`;
+    }
+  }
+
+  // ── Sizing ─────────────────────────────────────────────────────────────────
+  const hasSize = r.current_position_dollar != null || r.suggested_target_dollar != null ||
+                  r.target_min_dollar != null || r.target_max_dollar != null || r._amt != null;
+  if (hasSize) {
+    html += sec('Sizing');
+    if (r.current_position_dollar != null)  html += kv('Current Pos $', fmtUsd(r.current_position_dollar));
+    if (r.suggested_target_dollar != null)  html += kv('Target $',      fmtUsd(r.suggested_target_dollar));
+    if (r.target_min_dollar != null)        html += kv('Min $',         fmtUsd(r.target_min_dollar));
+    if (r.target_max_dollar != null)        html += kv('Max $',         fmtUsd(r.target_max_dollar));
+    if (r._amt != null)                     html += kv('AMT$',          fmtUsd(r._amt));
+  }
+
+  return html;
+}
+
+function setupActionCol() {
+  let tip = document.getElementById('actDetailTip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'actDetailTip';
+    tip.style.cssText = 'position:fixed;z-index:9999;display:none;background:#fff;color:#1e293b;' +
+      'border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;font-size:11px;line-height:1.6;max-width:300px;' +
+      'box-shadow:0 4px 16px rgba(0,0,0,0.12);pointer-events:none;';
+    document.body.appendChild(tip);
+  }
+
+  const body = $('actBody');
+  if (!body) return;
+
+  body.addEventListener('mouseover', (e) => {
+    const cell = e.target.closest('.act-action-cell');
+    if (!cell) return;
+    const sym = cell.dataset.sym;
+    if (!sym) return;
+    tip.innerHTML = _actionPopHtml(sym);
+    const rect = cell.getBoundingClientRect();
+    tip.style.display = 'block';
+    const tipW = tip.offsetWidth;
+    let left = rect.right + 8;
+    if (left + tipW > window.innerWidth - 4) left = rect.left - tipW - 8;
+    tip.style.left = Math.max(4, left) + 'px';
+    tip.style.top  = Math.min(rect.top, window.innerHeight - tip.offsetHeight - 8) + 'px';
+  });
+
+  body.addEventListener('mouseout', (e) => {
+    if (!e.target.closest('.act-action-cell')) return;
+    if (e.relatedTarget && e.target.closest('.act-action-cell')?.contains(e.relatedTarget)) return;
+    tip.style.display = 'none';
+  });
+}
 
 // Cache keyed by "sym@date"
 const _rrDetailCache = new Map();
@@ -1466,6 +2369,27 @@ function setupRRActionCol() {
     const d = await _fetchRRDetail(sym, date);
     if (!d) return;
 
+    // Update sub-line in the cell with the Trend/Trade · BB · RR component triplet.
+    const subLine = cell.querySelector('.rr-sub-line');
+    if (subLine && !subLine.dataset.filled) {
+      const _sc = v => v == null ? '—' : String(v);
+      const _scColor = v => v == null ? '#94a3b8' : v > 0 ? '#16a34a' : v < 0 ? '#dc2626' : '#64748b';
+      subLine.innerHTML =
+        `<span style="color:${_scColor(d.tn_td_action)}">${_sc(d.tn_td_action)}</span>` +
+        `<span style="color:#cbd5e1;margin:0 1px;">·</span>` +
+        `<span style="color:${_scColor(d.bb_action)}">${_sc(d.bb_action)}</span>` +
+        `<span style="color:#cbd5e1;margin:0 1px;">·</span>` +
+        `<span style="color:${_scColor(d.rr_action)}">${_sc(d.rr_action)}</span>`;
+      subLine.dataset.filled = '1';
+    }
+
+    // Look up row price for the tooltip header.
+    const rowData = state.rows.find(r => r.tos_symbol === sym);
+    const lastPrice = rowData && rowData.last_price != null ? rowData.last_price : null;
+    const priceHtml = lastPrice != null
+      ? `<span style="font-size:13px;font-weight:700;color:#0f172a;margin-left:6px;">${fmtUsd(lastPrice)}</span>`
+      : '';
+
     const row = (label, val, color) =>
       `<div style="display:flex;justify-content:space-between;gap:12px;">
          <span style="color:#475569;white-space:nowrap;">${label}</span>
@@ -1486,6 +2410,10 @@ function setupRRActionCol() {
     const shortDesc = (short, desc) => [short ? `<span style="font-weight:700;">${short}</span>` : '', desc].filter(Boolean).join(': ') || '—';
 
     // ── QR decision path ─────────────────────────────────────────────────────
+    // qf/qk/qo are the stored seq values (QF/QK/QO from PARM_LOOKUP_SQL).
+    // qr is the ground-truth stored score (QR from Pass 2, which uses the
+    // atomic-input QE — potentially a different source than PARM_LOOKUP_SQL QF).
+    // Drive the path display from qr (ground truth) with qf/qk/qo as context.
     const qf = d.tn_td_action, qk = d.bb_action, qo = d.rr_action, qr = d.final_score;
     const step = (indent, label, val, note, active) => {
       const pad = '&nbsp;'.repeat(indent * 3);
@@ -1499,33 +2427,62 @@ function setupRRActionCol() {
     };
 
     let decisionHtml = '';
-    if (qf != null) {
+    if (qr != null) {
+      // Determine which driver caused qr, using qr as ground truth.
+      // qf < 0 means Trend/Trade was bearish and should have driven qr = qf.
+      // qk < 0 (with qf > 0) means BB was bearish and should have driven qr = qk.
+      // Otherwise qr should equal qo (RR signal).
+      if (qf != null && qf < 0 && qr < 0) {
+        // Trend/Trade bearish wins — consistent with qr.
+        decisionHtml = step(0, 'Trend/Trade (QF)', qf, 'bearish → wins', true);
+      } else if (qf != null && qf > 0 && qk != null && qk < 0 && qr < 0) {
+        // BB bearish wins over bullish Trend/Trade — consistent with qr.
+        decisionHtml = step(0, 'Trend/Trade (QF)', qf, 'bullish → check BB', true);
+        decisionHtml += step(1, 'BB Range Streak (QK)', qk, 'bearish → wins', true);
+      } else if (qf != null && qf > 0 && (qk == null || qk >= 0)) {
+        // Should be RR path.  Show it, but flag if qr diverges from qo
+        // (can happen when the Pass-2 QE source differs from PARM_LOOKUP_SQL QF).
+        const rrNote = (qo != null && qr != null && qo !== qr)
+          ? 'QO=' + qo + ' but score overridden (see Score)'
+          : '→ Score';
+        decisionHtml = step(0, 'Trend/Trade (QF)', qf, 'bullish → check BB', true);
+        decisionHtml += step(1, 'BB Range Streak (QK)', qk != null ? qk : 0, 'not bearish → use RR', true);
+        decisionHtml += step(2, 'RR (QO)', qo, rrNote, true);
+      } else if (qr < 0) {
+        // qr is negative but QF path doesn't clearly explain it — show QF as context.
+        decisionHtml = step(0, 'Trend/Trade (QF)', qf, qf != null && qf < 0 ? 'bearish → wins' : 'see score', true);
+      } else {
+        // Neutral / no path
+        if (qf != null) decisionHtml = step(0, 'Trend/Trade (QF)', qf, 'neutral → null', true);
+      }
+    } else if (qf != null) {
+      // No stored score yet — reconstruct from qf/qk/qo as before.
       if (qf < 0) {
-        decisionHtml = step(0, 'Trend/Trade', qf, 'bearish → wins', true);
+        decisionHtml = step(0, 'Trend/Trade (QF)', qf, 'bearish → wins', true);
       } else if (qf > 0) {
-        decisionHtml = step(0, 'Trend/Trade', qf, 'bullish → check BB', true);
+        decisionHtml = step(0, 'Trend/Trade (QF)', qf, 'bullish → check BB', true);
         if (qk != null) {
           if (qk < 0) {
-            decisionHtml += step(1, 'BB Range Streak', qk, 'bearish → wins', true);
+            decisionHtml += step(1, 'BB Range Streak (QK)', qk, 'bearish → wins', true);
           } else {
-            decisionHtml += step(1, 'BB Range Streak', qk, 'bullish → use RR', true);
-            decisionHtml += step(2, 'RR', qo, '→ Score', true);
+            decisionHtml += step(1, 'BB Range Streak (QK)', qk, 'not bearish → use RR', true);
+            decisionHtml += step(2, 'RR (QO)', qo, '→ Score', true);
           }
         }
       } else {
-        decisionHtml = step(0, 'Trend/Trade', qf, 'neutral → null', true);
+        decisionHtml = step(0, 'Trend/Trade (QF)', qf, 'neutral → null', true);
       }
     }
 
     tip.innerHTML = `
-      <div style="font-weight:700;color:#0f172a;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;">${sym} — TrTnBBRskRng</div>
+      <div style="font-weight:700;color:#0f172a;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;display:flex;align-items:baseline;gap:8px;">${escapeHtml(sym)} — TrTnBBRskRng${priceHtml}</div>
       ${rowScore('Trend/Trade',    d.trend_trade, shortDesc(d.tn_td_short, d.tn_td_desc))}
       ${rowScore('BB Range Streak', d.bb_streak,  shortDesc(d.bb_short,   d.bb_desc))}
       ${rowScore('RR',              d.rr_action,  shortDesc(d.rr_short,   d.rr_desc))}
       ${sec('Decision Path')}
       ${decisionHtml}
       <div style="margin-top:3px;font-size:11px;font-weight:700;color:${scoreCol(qr)};">Score = ${qr != null ? qr : '—'} → ${d.action || '—'}</div>
-      ${sec('Levels')}
+      ${sec('Levels' + (lastPrice != null ? ' · Price ' + fmtUsd(lastPrice) : ''))}
       ${row('Trade',   fmt2(d.trade), '#ea580c')}
       ${row('Trend',   fmt2(d.trend), '#6366f1')}
       ${row('TRR',     fmt2(d.trr),   '#16a34a')}

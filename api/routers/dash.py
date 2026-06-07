@@ -670,7 +670,8 @@ def post_actionable_action(symbol: str, payload: dict):
 
         ret = s.execute(text("""
             INSERT INTO user_action_log (
-                user_id, as_of_date, symbol, tos_symbol, user_action, user_action_target,
+                user_id, as_of_date, symbol, tos_symbol,
+                action_code, user_action, user_action_target,
                 snooze_until, user_notes,
                 consolidated_action, winning_source, winning_priority,
                 position_category, target_min_dollar, target_max_dollar,
@@ -678,7 +679,8 @@ def post_actionable_action(symbol: str, payload: dict):
                 held_at_action, position_dollar_at_action, in_my_list,
                 source_actions, rules_engine_fires, source_raw_snapshot
             ) VALUES (
-                :uid, :d, :sym, :sym, :ua, :target,
+                :uid, :d, :sym, :sym,
+                :ac, :ua, :target,
                 :snooze, :notes,
                 :ca, :ws, :wp,
                 :cat, :tmin, :tmax,
@@ -688,7 +690,9 @@ def post_actionable_action(symbol: str, payload: dict):
             ) RETURNING id
         """), {
             "uid":    payload.get("user_id", "default"),
-            "d":      as_of, "sym": sym_u, "ua": user_action,
+            "d":      as_of, "sym": sym_u,
+            "ac":     payload.get("action_code"),
+            "ua":     user_action,
             "target": payload.get("user_action_target"),
             "snooze": snooze_until,
             "notes":  payload.get("user_notes"),

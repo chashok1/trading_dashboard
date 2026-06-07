@@ -38,7 +38,7 @@
     .tier-title { font-weight:700; font-size:14px; flex:1; }
     .tier-badge { font-size:11px; font-weight:600; padding:2px 8px;
                   border-radius:99px; white-space:nowrap; }
-    .badge-ok   { background:#dcfce7; color:#15803d; }
+    .badge-ok   { background:var(--act-buy-strong-bg); color:var(--act-buy-strong); }
     .badge-warn { background:#fef3c7; color:#b45309; }
     .badge-none { background:#f3f4f6; color:#6b7280; }
     .tier-toggle { font-size:14px; color:var(--text-3); transition:transform .2s; }
@@ -60,11 +60,11 @@
                    font-weight:600; color:var(--text-2); position:sticky; top:0; }
     .rf-table td { padding:4px 8px; border-top:1px solid #f0f0ef; vertical-align:middle; }
     .rf-table tr:hover td { background:#f9f9f8; }
-    .fired-yes  { color:#15803d; font-weight:700; }
+    .fired-yes  { color:var(--act-buy-strong); font-weight:700; }
     .fired-no   { color:#9ca3af; }
     .badge-band { font-size:10px; padding:1px 5px; border-radius:4px; font-weight:600; }
     .band-below   { background:#fef3c7; color:#b45309; }
-    .band-between { background:#dcfce7; color:#15803d; }
+    .band-between { background:var(--act-buy-strong-bg); color:var(--act-buy-strong); }
     .band-above   { background:#dbeafe; color:#1d4ed8; }
     .reason-bad { color:#b45309; font-style:italic; }
     .reason-ok  { color:var(--text-2); }
@@ -82,8 +82,8 @@
     .comp-body  { display:none; padding:8px 10px; border-top:1px solid var(--border);
                   background:#fafafa; }
     .comp-item.open .comp-body { display:block; }
-    .comp-fired      { border-left:3px solid #16a34a; }
-    .comp-fired-sell { border-left:3px solid #dc2626; }
+    .comp-fired      { border-left:3px solid var(--act-buy-strong); }
+    .comp-fired-sell { border-left:3px solid var(--act-sell-strong); }
     .comp-nofired    { border-left:3px solid #d1d5db; }
     .comp-blocked    { border-left:3px solid #f59e0b; }
     .mem-fired-sell  { background:#fff1f2; }
@@ -106,13 +106,11 @@
     .grp-hdr:hover { background:#f9f9f8; }
     .grp-code   { font-size:12px; font-weight:700; font-family:monospace; flex:1; }
     .grp-action { font-size:11px; font-weight:700; padding:2px 7px; border-radius:99px; }
-    .grp-bearish { background:#fee2e2; color:#b91c1c; }
-    .grp-bullish { background:#dcfce7; color:#15803d; }
-    .grp-neutral { background:#f3f4f6; color:#6b7280; }
+    /* grp-bearish / grp-bullish / grp-neutral defined in styles.css (token-driven) */
     .grp-body   { display:none; padding:8px 10px; border-top:1px solid var(--border);
                   background:#fafafa; }
     .grp-item.open .grp-body { display:block; }
-    .grp-fired    { border-left:3px solid #16a34a; }
+    .grp-fired    { border-left:3px solid var(--act-buy-strong); }
     .grp-nofired  { border-left:3px solid #d1d5db; }
     .grp-member { display:flex; align-items:center; gap:8px; font-size:11px;
                   padding:3px 6px; border-radius:4px; margin:2px 0; }
@@ -128,13 +126,10 @@
                   padding:12px 14px; text-align:center; }
     .final-label { font-size:11px; color:var(--text-2); margin-bottom:4px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; }
     .final-value { font-size:24px; font-weight:800; }
-    .val-sa  { color:#b91c1c; } .val-stm { color:#c2410c; } .val-ss { color:#d97706; }
-    .val-bm  { color:#15803d; } .val-bs  { color:#16a34a; } .val-bw { color:#059669; }
-    .val-add { color:#15803d; } .val-remove { color:#b91c1c; }
-    .val-hold { color:#6b7280; } .val-null { color:#d1d5db; }
+    /* val-sa/stm/ss/bm/bs/bw/add/remove/hold/null defined in styles.css (token-driven) */
     .grp-fired-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; justify-content:center; }
     .grp-pill { font-size:11px; padding:2px 8px; border-radius:99px;
-                background:#dcfce7; color:#15803d; font-weight:600; }
+                background:var(--act-buy-strong-bg); color:var(--act-buy-strong); font-weight:600; }
 
     /* ── Filter / search ── */
     .rf-filter { display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
@@ -192,7 +187,9 @@
 </div>
 
 <script src="/static/_common.js"></script>
+<script src="/static/actions.js"></script>
 <script src="/static/rule_flow.js"></script>
+<script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>
 <script>
   // Default the date to the anchor D = MAX(export_date) FROM hist_td. /api/dates
