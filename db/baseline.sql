@@ -5774,3 +5774,19 @@ CREATE TABLE IF NOT EXISTS meta_macro_fetch (
 );
 CREATE INDEX IF NOT EXISTS ix_meta_macro_fetch_started
     ON meta_macro_fetch(started_at DESC);
+
+-- =====================================================
+-- ref_market_metric — metric registry for the market tape
+-- Source-agnostic: each row carries an ordered source_priority JSONB array
+-- ("adapter:symbol" strings) so the resolver tries each left-to-right.
+-- Seeded by db/seeds_market_metric.sql (applied by db/init_db.py).
+-- =====================================================
+CREATE TABLE IF NOT EXISTS ref_market_metric (
+    metric_key      TEXT PRIMARY KEY,
+    label           TEXT NOT NULL,
+    grp             TEXT NOT NULL,
+    source_priority JSONB NOT NULL DEFAULT '[]'::JSONB,
+    value_format    TEXT NOT NULL DEFAULT 'price',
+    sort_order      INT  NOT NULL DEFAULT 0,
+    enabled         BOOLEAN NOT NULL DEFAULT TRUE
+);

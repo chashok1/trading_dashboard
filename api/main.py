@@ -32,7 +32,7 @@ except Exception:
     raise
 
 _routers: dict = {}
-for _name in ("dash", "health", "macro", "monitor", "pages", "ref", "rules", "trace"):
+for _name in ("dash", "health", "macro", "marketbar", "monitor", "pages", "ref", "rules", "trace"):
     try:
         import importlib
         _routers[_name] = importlib.import_module(f"api.routers.{_name}")
@@ -41,14 +41,15 @@ for _name in ("dash", "health", "macro", "monitor", "pages", "ref", "rules", "tr
         _log.critical("FATAL: failed to load router '%s':\n%s", _name, traceback.format_exc())
         raise
 
-dash    = _routers["dash"]
-health  = _routers["health"]
-macro   = _routers["macro"]
-monitor = _routers["monitor"]
-pages   = _routers["pages"]
-ref     = _routers["ref"]
-rules   = _routers["rules"]
-trace   = _routers["trace"]
+dash      = _routers["dash"]
+health    = _routers["health"]
+macro     = _routers["macro"]
+marketbar = _routers["marketbar"]
+monitor   = _routers["monitor"]
+pages     = _routers["pages"]
+ref       = _routers["ref"]
+rules     = _routers["rules"]
+trace     = _routers["trace"]
 
 
 app = FastAPI(
@@ -108,6 +109,7 @@ async def _shutdown():
 app.include_router(health.router)
 app.include_router(dash.router)
 app.include_router(macro.router)
+app.include_router(marketbar.router)
 app.include_router(monitor.router)
 app.include_router(ref.router)
 app.include_router(rules.router)
