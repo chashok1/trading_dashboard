@@ -96,22 +96,36 @@
 
   // ---- build econ expander panel ----------------------------------------
   function buildEconHtml(macro) {
-    const groups = macro.groups || [];
-    if (!groups.length) return '<span style="color:var(--text-3);font-size:11px;">No econ data available.</span>';
+    const groups = macro.groups || {};
+    const entries = Object.entries(groups);
+    if (!entries.length) return '<span style="color:var(--text-3);font-size:11px;">No econ data available.</span>';
 
-    return groups.map(grp => {
-      const rows = (grp.items || []).map(item => {
-        const val = item.value !== null && item.value !== undefined
-          ? Number(item.value).toLocaleString('en-US', { maximumFractionDigits: 2 })
-          : '—';
-        const chgRaw = item.chg !== null && item.chg !== undefined ? Number(item.chg) : null;
+    return entries.map(([groupName, items]) => {
+      const rows = (items || []).map(item => {
+        // Format value using unit: '%' → fixed 2 dp + '%', else toLocaleString 2 dp
+        let val;
+        if (item.latest_value !== null && item.latest_value !== undefined) {
+          const n = Number(item.latest_value);
+          val = (item.unit === '%')
+            ? n.toFixed(2) + '%'
+            : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        } else {
+          val = '—';
+        }
+
+        const chgRaw = (item.chg_abs !== null && item.chg_abs !== undefined) ? Number(item.chg_abs) : null;
         const chgStr = chgRaw !== null
           ? (chgRaw >= 0 ? '+' : '') + chgRaw.toFixed(2)
           : '';
         const chgCls = chgRaw === null ? '' : chgRaw > 0 ? 'mt-up' : chgRaw < 0 ? 'mt-down' : 'mt-flat';
-        const stale  = item.stale ? ' mt-econ-stale' : '';
-        const tip    = escHtml(`${item.label} — as of: ${item.as_of || '?'}` + (item.stale ? ' (stale)' : ''));
-        return `<div class="mt-econ-row${stale}" title="${tip}">` +
+
+        // Tooltip: label, date, and optional pct change
+        const pctPart = (item.chg_pct !== null && item.chg_pct !== undefined)
+          ? ` (${Number(item.chg_pct).toFixed(2)}%)`
+          : '';
+        const tip = escHtml(`${item.label} — as of: ${item.latest_date || '?'}${pctPart}`);
+
+        return `<div class="mt-econ-row" title="${tip}">` +
           `<span class="mt-econ-name">${escHtml(item.label)}</span>` +
           `<span class="mt-econ-val">${val}</span>` +
           (chgStr ? `<span class="mt-econ-chg ${chgCls}">${chgStr}</span>` : '') +
@@ -119,7 +133,7 @@
       }).join('');
 
       return `<div class="mt-econ-group">` +
-        `<div class="mt-econ-group-label">${escHtml(grp.group || grp.label || '')}</div>` +
+        `<div class="mt-econ-group-label">${escHtml(groupName)}</div>` +
         rows +
         `</div>`;
     }).join('');
