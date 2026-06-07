@@ -107,6 +107,25 @@
     </header>
 
     <main>
+        <div class="card" style="margin-bottom:12px;">
+            <div class="performance-header">
+                <strong style="font-size:15px;">Your actions</strong>
+                <span style="color:var(--text-3);font-size:12px;">How the recommendations you acted on (DONE) actually performed — your personal track record.</span>
+                <span style="flex:1"></span>
+                <span id="myActionsSummary" style="font-size:12px;color:var(--text-3);"></span>
+            </div>
+            <div class="scrollable-table-container" style="max-height:220px;">
+                <table class="perf-table">
+                    <thead>
+                        <tr><th>When</th><th>Symbol</th><th>Recommended</th><th>You did</th><th>5d</th><th>20d</th></tr>
+                    </thead>
+                    <tbody id="myActionsBody">
+                        <tr><td colspan="6" style="text-align:center;padding:14px;color:var(--text-3);">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="card">
             <div class="performance-header">
                 <strong style="font-size:15px;">Rule scorecard</strong>

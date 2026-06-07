@@ -14,7 +14,45 @@ const DOM = {
     perfTableBody: document.getElementById('perfTableBody'),
 };
 
-document.addEventListener('DOMContentLoaded', loadScorecard);
+document.addEventListener('DOMContentLoaded', () => {
+    loadScorecard();
+    loadMyActions();
+});
+
+async function loadMyActions() {
+    const body = document.getElementById('myActionsBody');
+    const summ = document.getElementById('myActionsSummary');
+    try {
+        const data = await fetch('/api/rules/my-actions?limit=200').then(r => r.json());
+        const recent = data.recent || [];
+        const s = data.summary || {};
+        if (s.n_actions) {
+            const avg = s.avg_fwd_20d != null ? `${Number(s.avg_fwd_20d).toFixed(2)}%` : '—';
+            summ.textContent = `${s.n_actions} actions · ${s.n_scored || 0} scored · avg 20d ${avg}`;
+        } else {
+            summ.textContent = '';
+        }
+        if (!recent.length) {
+            body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;color:var(--text-3);">'
+                + 'No actions logged yet. Act on a recommendation in the Actionable screen — once 20 trading days pass, your result shows here.</td></tr>';
+            return;
+        }
+        const num = v => (v === null || v === undefined) ? '—'
+            : `<span style="color:${v >= 0 ? '#15803d' : '#b91c1c'}">${Number(v).toFixed(2)}%</span>`;
+        body.innerHTML = recent.map(r => `
+            <tr>
+                <td style="font-size:11px;">${(r.acted_at || r.as_of_date || '').toString().slice(0,10)}</td>
+                <td><strong>${r.tos_symbol || ''}</strong></td>
+                <td>${r.consolidated_action || '—'}</td>
+                <td>${r.user_action || '—'}</td>
+                <td>${num(r.fwd_5d_pct)}</td>
+                <td>${num(r.fwd_20d_pct)}</td>
+            </tr>`).join('');
+    } catch (e) {
+        console.error('Failed to load my-actions:', e);
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#b91c1c;">Error loading actions</td></tr>';
+    }
+}
 
 async function loadScorecard() {
     const minFires = document.getElementById('minFires')?.value ?? 30;

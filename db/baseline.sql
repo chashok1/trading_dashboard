@@ -4901,6 +4901,43 @@ WHERE rule_kind = 'composite' AND fwd_20d_pct IS NOT NULL
 GROUP BY rule_id;
 
 
+-- -----------------------------------------------------
+-- v_user_action_performance - YOUR decisions vs what the stock then did.
+-- One row per DONE action in user_action_log, joined to the 5d/20d forward
+-- return of the symbol from that date (same LEAD-over-drv_ma basis as the rule
+-- outcomes). This is the personal feedback loop — distinct from the rule
+-- scorecard. Empty until you start logging actions on the Actionable screen;
+-- recent dates won't have a 20d return until 20 trading days pass.
+-- -----------------------------------------------------
+CREATE OR REPLACE VIEW v_user_action_performance AS
+WITH px AS (
+    SELECT tos_symbol, as_of_date, last_price,
+           LEAD(last_price, 5)  OVER w AS p5,
+           LEAD(last_price, 20) OVER w AS p20
+    FROM drv_ma
+    WHERE last_price IS NOT NULL
+    WINDOW w AS (PARTITION BY tos_symbol ORDER BY as_of_date)
+),
+fwd AS (
+    SELECT tos_symbol, as_of_date,
+           CASE WHEN last_price > 0 AND p5  IS NOT NULL
+                THEN (p5  - last_price) / last_price * 100 END AS fwd5,
+           CASE WHEN last_price > 0 AND p20 IS NOT NULL
+                THEN (p20 - last_price) / last_price * 100 END AS fwd20
+    FROM px
+)
+SELECT u.id, u.acted_at, u.as_of_date,
+       u.tos_symbol,
+       u.user_action, u.consolidated_action,
+       ROUND(f.fwd5::numeric, 2)                   AS fwd_5d_pct,
+       ROUND(f.fwd20::numeric, 2)                  AS fwd_20d_pct
+FROM user_action_log u
+LEFT JOIN fwd f
+       ON f.tos_symbol = u.tos_symbol
+      AND f.as_of_date = u.as_of_date
+WHERE u.user_action = 'DONE';
+
+
 
 -- -----------------------------------------------------
 

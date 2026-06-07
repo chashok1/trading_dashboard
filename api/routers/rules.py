@@ -394,6 +394,31 @@ def get_rule_scorecard(
         return [dict(r) for r in rows]
 
 
+@router.get("/api/rules/my-actions", response_model=dict)
+def get_my_actions(limit: int = Query(200, ge=1, le=2000)):
+    """Personal action track record (Phase 4): your DONE actions joined to the
+    stock's forward return (v_user_action_performance). Distinct from the rule
+    scorecard. Empty until you log actions on the Actionable screen.
+    Returns {summary, recent[]}.
+    """
+    with session_scope() as s:
+        recent = s.execute(text("""
+            SELECT id, acted_at, as_of_date, tos_symbol, user_action,
+                   consolidated_action, fwd_5d_pct, fwd_20d_pct
+            FROM v_user_action_performance
+            ORDER BY acted_at DESC NULLS LAST
+            LIMIT :lim
+        """), {"lim": limit}).mappings().all()
+        summ = s.execute(text("""
+            SELECT COUNT(*)                                          AS n_actions,
+                   COUNT(*) FILTER (WHERE fwd_20d_pct IS NOT NULL)   AS n_scored,
+                   ROUND(AVG(fwd_20d_pct)::numeric, 2)               AS avg_fwd_20d,
+                   ROUND(AVG(fwd_5d_pct)::numeric, 2)                AS avg_fwd_5d
+            FROM v_user_action_performance
+        """)).mappings().first()
+        return {"summary": dict(summ) if summ else {}, "recent": [dict(r) for r in recent]}
+
+
 @router.post("/api/rules/atomic", response_model=dict, status_code=201)
 def create_atomic_rule(body: AtomicRuleCreateRequest):
     """Create a new atomic rule."""

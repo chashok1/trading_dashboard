@@ -179,3 +179,29 @@ python -m etl.ml_tune_thresholds --method sweep --min-samples 100 --label-window
 psql -d trading -c "UPDATE ref_trig_param_set SET is_active=FALSE; UPDATE ref_trig_param_set SET is_active=TRUE WHERE param_set_id=1;"
 python agent_rederive_all.py
 ```
+
+---
+
+## 7. Where this shows in the UI
+
+- **Performance screen** (`/rule-performance`): two panels. "Rule scorecard" =
+  `v_rule_scorecard` ranked by `edge_20d` (which rules predict the right move).
+  "Your actions" = `v_user_action_performance` (`GET /api/rules/my-actions`): the
+  recommendations you marked DONE on the Actionable screen, joined to the stock's
+  forward return — your personal track record. Empty until you log actions.
+- **Actionable screen** (`/actionable`): the action surface. The grid has a
+  **"Rules (edge)"** column (after "Trig") listing each row's fired rules
+  winning-first (highest firing score), each chip showing its historical edge
+  (`52-BS-BRR +1.9`, green/red) — at-a-glance conviction while scanning. Open a
+  symbol's detail for the full per-rule breakdown, where each fired-rule pill also
+  shows the edge badge (`+1.9% · 50%`). Both read `/api/rules/scorecard` (cached in
+  `state.scorecard`, loaded in `loadSources`; cell builder `firesCellHtml`).
+  Act/Skip/Snooze logs to `user_action_log` (with `rules_engine_fires`), which
+  feeds "Your actions".
+- **Rule Flow** (`/rule-flow`): per-symbol firing chain; each composite shows the
+  same edge badge.
+- **Param Sets** (`/param-sets`): activate/deactivate profiles (Baseline / Sigmoid /
+  ml). NOTE: activating only flips the flag — re-derive for it to take effect.
+
+The edge badges read the live scorecard, so they refresh whenever you re-run the
+outcome ETL. All of it stays diagnostic until history spans more than one regime.

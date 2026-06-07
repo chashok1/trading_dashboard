@@ -171,6 +171,29 @@ function ruleEdgeBadge(code) {
        + `style="color:${col};font-size:10px;font-weight:600;">${sign}${e.toFixed(1)}%${wr}</span>`;
 }
 
+// Grid cell: fired rules ordered winning-first (highest score), each with its
+// historical edge. Shows all fired rules (they wrap within the cell); the row
+// popup has the full per-rule detail. Edge color: green positive, red negative.
+function firesCellHtml(r) {
+  let fires = r.rules_engine_fires;
+  if (typeof fires === 'string') { try { fires = JSON.parse(fires); } catch (_) { fires = []; } }
+  if (!Array.isArray(fires) || !fires.length) return '<span style="color:#cbd5e1">—</span>';
+  const sc = state.scorecard || {};
+  const items = fires.map(f => {
+    const id = String(f.rule_id || f.id || f);
+    const e  = (sc[id] && sc[id].edge_20d != null) ? Number(sc[id].edge_20d) : null;
+    const score = (f.score != null) ? Number(f.score) : 0;
+    return { id, e, score };
+  });
+  // winning first: highest fired score, then strongest edge
+  items.sort((a, b) => (b.score - a.score) || ((b.e ?? -99) - (a.e ?? -99)));
+  return items.map(it => {
+    const col = it.e == null ? '#9ca3af' : it.e > 0.5 ? '#15803d' : it.e < -0.5 ? '#b91c1c' : '#6b7280';
+    const edge = it.e == null ? '' : ` <b style="color:${col}">${it.e >= 0 ? '+' : ''}${it.e.toFixed(1)}</b>`;
+    return `<span class="pill pill-rule" style="font-size:9px;white-space:nowrap;">${escapeHtml(it.id)}${edge}</span>`;
+  }).join(' ');
+}
+
 // Best-first Metric direction: rank ascending (rank 1 best), else descending.
 function _metricAscending(src) {
   return (state.sourceMethods || {})[src] === 'rank';
@@ -719,6 +742,7 @@ function renderGrid() {
         <span class="rr-action-val" style="font-size:11px;font-weight:600;color:#4338ca;cursor:help;">${r.rr_action || '—'}</span>
       </td>
       <td style="font-size:11px;font-weight:600;color:#7c3aed;text-align:center;" title="Trigger-rule action (best fired rule group)">${escapeHtml(r.trig_action || '—')}</td>
+      <td class="fires-cell" style="padding:6px 4px; max-width:320px; line-height:1.7;">${firesCellHtml(r)}</td>
       <td class="num"><strong>${fmtUsd(r._amt)}</strong></td>
       <td class="src-cell" data-srcpop data-sym="${escapeHtml(r.tos_symbol)}" data-src="${escapeHtml(r.winning_source || '')}" style="padding:6px 4px;">${r.winning_source || ''}</td>
       <td style="padding:6px 4px; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(reasonText)}">${escapeHtml(reasonText)}</td>
