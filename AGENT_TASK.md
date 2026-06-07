@@ -1,54 +1,40 @@
-# AGENT TASK 27 — make the Performance screen show the rule scorecard
+# AGENT TASK 28 — verify rule-edge badges on Actionable + Rule Flow, commit
 
-**You (VS Code agent), DB + Windows git.** Write to **`AGENT_RESULT_27.md`**.
+**You (VS Code agent), Windows git.** Write to **`AGENT_RESULT_28.md`**.
 
-Why the screen was empty: `v_rule_performance_window` defaulted its date bounds to
-`CURRENT_DATE` (wall clock), but the data is dated 2026 — so `as_of_date <= CURRENT_DATE`
-excluded everything if the machine clock < data dates. Fixes made (code already on disk):
-- `db/baseline.sql`: window view now anchors to `MAX(as_of_date) FROM drv_rule_outcome`
-  (falls back to CURRENT_DATE); plus the existing `v_rule_scorecard`.
-- `api/routers/rules.py`: new `GET /api/rules/scorecard` (reads v_rule_scorecard).
-- `web/rule_performance.*`: the Performance screen now renders the direction-adjusted
-  scorecard (edge_20d) with a caveat banner.
+Frontend-only change (no DB, no rules). The Actionable detail and Rule Flow now
+show each fired rule's historical edge (from the live `/api/rules/scorecard`)
+as a small colored badge next to the rule code. Files changed:
+`web/actionable.js`, `web/rule_flow.js`.
 
-## Step 1 — apply DB changes
+## Step 1 — confirm the endpoint is live
 ```
-python -m db.init_db
+curl -s "http://127.0.0.1:8000/api/rules/scorecard?min_fires=0&limit=3"
 ```
-Verify + confirm the wall-clock gap was the cause:
-```sql
-SELECT CURRENT_DATE AS clock, (SELECT MAX(as_of_date) FROM drv_rule_outcome) AS data_max;
-SELECT COUNT(*) FROM v_rule_performance_window(180, NULL, NULL);   -- should now be > 0
-SELECT COUNT(*) FROM v_rule_scorecard;                              -- composite rules
-```
-Paste. (If clock < data_max, that confirms the bug; the fix makes both return rows.)
+Should return JSON rows with edge_20d. (Already shipped earlier; just confirming.)
 
-## Step 2 — verify the endpoints (app auto-reloads on api/ changes)
-```
-curl -s "http://127.0.0.1:8000/api/rules/scorecard?min_fires=30&limit=5"
-curl -s "http://127.0.0.1:8000/api/rules/performance?limit=5"
-```
-Both should return non-empty JSON. If `/api/rules/scorecard` 404s, the app didn't
-reload — restart uvicorn (per start.bat / the `--reload-dir api` runner) and retry.
-Paste a couple of rows from the scorecard response.
+## Step 2 — check the screens (hard-refresh; web/ is static)
+1. Open `/actionable`, click a symbol row to open its detail. In the "Rules fires"
+   area, each fired-rule pill should now show a small edge like `+1.9% · 50%`
+   (green if positive, red if negative). Open the browser devtools Console and
+   confirm NO JS errors on the page.
+2. Open `/rule-flow`, load a symbol (e.g. AAPL). Each composite code should show
+   the same edge badge. Confirm no console errors.
 
-## Step 3 — confirm in the browser
-Open `/rule-performance`, hard-refresh. Confirm the table now shows rows
-(Rule / Dir / Fires / Edge 20d / Win % / Raw 20d / Span), sorted by Edge 20d.
-One line: does it show data now?
+Paste: one line each on whether badges render on Actionable and Rule Flow, and
+whether the console is clean. If a screen errors, paste the console error.
 
-## Step 4 — commit
+## Step 3 — commit
 ```
-git add db/baseline.sql api/routers/rules.py web/rule_performance.html web/rule_performance.js
-git status --porcelain   # confirm only these 4 (+ no AGENT_/agent_/working)
-git commit -m "Performance screen: direction-adjusted rule scorecard (/api/rules/scorecard, v_rule_scorecard); anchor v_rule_performance_window to data max date instead of wall clock (fixes empty screen)"
+git add web/actionable.js web/rule_flow.js
+git status --porcelain   # confirm only these two (+ nothing unexpected)
+git commit -m "UI: inline rule-edge badges on Actionable detail + Rule Flow (v_rule_scorecard via /api/rules/scorecard) — show each fired rule's historical 20d edge at the point of decision"
 git log --oneline -2
 ```
 Paste status + log.
 
 ## Verdict
-State: (a) CURRENT_DATE vs data_max (was the wall-clock gap the cause?); (b) both
-views now return rows; (c) scorecard endpoint returns data; (d) screen shows data;
-(e) committed.
+(a) badges show on Actionable? (b) badges show on Rule Flow? (c) console clean?
+(d) committed? If any screen has a JS error, STOP and paste it so I can fix.
 
-Write `DONE` at the bottom of `AGENT_RESULT_27.md`.
+Write `DONE` at the bottom of `AGENT_RESULT_28.md`.
