@@ -45,8 +45,9 @@ endpoint per series (stdlib `urllib`, no new dependency), upserts into
 `hist_macro`.
 
 ```cmd
-python -m etl.fetch_macro                 :: latest ~120 obs per enabled series
+python -m etl.fetch_macro                 :: latest ~120 obs per enabled series (throttled)
 python -m etl.fetch_macro --full          :: full history (first backfill)
+python -m etl.fetch_macro --force         :: ignore the throttle and fetch now
 python -m etl.fetch_macro --limit 5       :: just the most recent few
 python -m etl.fetch_macro --series DGS10  :: one series only
 ```
@@ -61,6 +62,37 @@ it as `settings.fred_api_key`.
 label, unit, latest_value, latest_date, prior_value, prior_date, chg_abs,
 chg_pct}, ... ] } }`. Groups ordered index → rates → inflation → jobs → risk →
 fx_cmdty. Registered in `api/main.py`.
+
+## Rate-limit protection (throttle)
+
+FRED allows 120 requests/minute; a full fetch is only ~19 (one per enabled
+series), so the limit is hard to hit — but to stop accidental repeated runs from
+stacking up, `fetch_macro` is **throttled**:
+
+- Every real run is logged to `meta_macro_fetch` (operational; skipped/throttled
+  runs are NOT logged). The throttle reads the last `started_at` from it.
+- If the last real run started within the throttle **window**, the call is a
+  no-op returning `{"skipped": true, "reason": "throttled", "age_min": N}`.
+  `--force` (CLI) overrides.
+- The window is tunable via `ref_settings.macro_fetch_min_interval_min`
+  (default seeded at **360** = 6h). Change without code edits:
+  `UPDATE ref_settings SET setting_value='120' WHERE setting_name='macro_fetch_min_interval_min';`
+  Precedence: explicit `min_interval_min` arg / `--min-interval` → ref_settings →
+  code default (`DEFAULT_MIN_INTERVAL_MIN`).
+
+### Reads never call FRED
+
+`GET /api/macro` only queries `v_macro_latest` (the DB) — opening/refreshing the
+screen is **zero** FRED requests, regardless of frequency. Fresh data only enters
+via a `fetch_macro` run.
+
+### Manual refresh button
+
+`POST /api/macro/refresh` runs a **throttled** fetch (trigger `api`, not forced),
+so repeated clicks cannot stack up requests — within the window it just returns
+the skipped/throttled status. `GET /api/macro` also returns a `last_fetch` block
+(started_at, status, rows_inserted, ...) for a "last fetched" stamp next to the
+button. (The button itself is wired when the cockpit band is built.)
 
 ## What FRED does NOT provide
 

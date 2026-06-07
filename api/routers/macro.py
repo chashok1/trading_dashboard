@@ -29,6 +29,23 @@ router = APIRouter(tags=["macro"])
 _GROUP_ORDER = ["index", "rates", "inflation", "jobs", "risk", "fx_cmdty"]
 
 
+def _last_fetch(s) -> dict | None:
+    """Most recent real fetch run (for the 'last fetched' stamp by the button)."""
+    row = s.execute(text("""
+        SELECT started_at, finished_at, status, rows_inserted,
+               series_ok, series_failed, note
+        FROM meta_macro_fetch
+        ORDER BY started_at DESC
+        LIMIT 1
+    """)).mappings().first()
+    if not row:
+        return None
+    d = dict(row)
+    for k in ("started_at", "finished_at"):
+        d[k] = d[k].isoformat() if d[k] else None
+    return d
+
+
 @router.get("/api/macro")
 def get_macro() -> dict:
     with session_scope() as s:
@@ -38,6 +55,7 @@ def get_macro() -> dict:
                    chg_abs, chg_pct
             FROM v_macro_latest
         """)).mappings().all()
+        last_fetch = _last_fetch(s)
 
     groups: dict[str, list[dict]] = {}
     as_of = None
@@ -65,4 +83,23 @@ def get_macro() -> dict:
         if g not in ordered:
             ordered[g] = groups[g]
 
-    return {"as_of": as_of.isoformat() if as_of else None, "groups": ordered}
+    return {
+        "as_of": as_of.isoformat() if as_of else None,
+        "groups": ordered,
+        "last_fetch": last_fetch,
+    }
+
+
+@router.post("/api/macro/refresh")
+def refresh_macro() -> dict:
+    """Trigger a FRED fetch for the manual Refresh button.
+
+    Throttled (respects ref_settings.macro_fetch_min_interval_min): if a real
+    fetch ran within the window this is a no-op and returns
+    {"skipped": true, "reason": "throttled", "age_min": N, ...} — so repeated
+    clicks cannot stack up FRED requests. Use the CLI with --force for a forced
+    refresh. Runs synchronously (a few seconds).
+    """
+    # Imported lazily so the API starts even if the etl module has an issue.
+    from etl.fetch_macro import fetch_macro
+    return fetch_macro(trigger="api")

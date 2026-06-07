@@ -43,3 +43,12 @@ ON CONFLICT (series_id) DO UPDATE SET
     unit       = EXCLUDED.unit,
     sort_order = EXCLUDED.sort_order,
     enabled    = EXCLUDED.enabled;
+
+-- Tunable throttle window for etl/fetch_macro.py (minutes). The fetcher refuses
+-- to call FRED if a real run started within this window (override with --force).
+-- DO NOTHING so your tuned value survives re-running db.init_db; change it with
+--   UPDATE ref_settings SET setting_value='120' WHERE setting_name='macro_fetch_min_interval_min';
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('macro_fetch_min_interval_min', '360',
+     'Min minutes between FRED macro fetches (etl/fetch_macro.py throttle); --force overrides')
+ON CONFLICT (setting_name) DO NOTHING;

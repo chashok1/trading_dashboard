@@ -5756,3 +5756,21 @@ LEFT JOIN ranked cur ON cur.series_id = s.series_id AND cur.rn = 1
 LEFT JOIN ranked prv ON prv.series_id = s.series_id AND prv.rn = 2
 WHERE s.enabled
 ORDER BY s.grp, s.sort_order, s.series_id;
+
+-- meta_macro_fetch — one row per real FRED fetch run (skipped/throttled runs are
+-- NOT logged). Drives the fetch throttle (etl/fetch_macro.py refuses to call
+-- FRED if the last run started within the throttle window) and the "last
+-- fetched" stamp shown next to the manual Refresh button.
+CREATE TABLE IF NOT EXISTS meta_macro_fetch (
+    id            BIGSERIAL PRIMARY KEY,
+    started_at    TIMESTAMP NOT NULL DEFAULT now(),
+    finished_at   TIMESTAMP,
+    trigger       TEXT NOT NULL DEFAULT 'cli',   -- cli | api | scheduler
+    status        TEXT NOT NULL,                 -- ok | partial | error
+    series_ok     INTEGER NOT NULL DEFAULT 0,
+    series_failed INTEGER NOT NULL DEFAULT 0,
+    rows_inserted INTEGER NOT NULL DEFAULT 0,
+    note          TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_meta_macro_fetch_started
+    ON meta_macro_fetch(started_at DESC);
