@@ -33,7 +33,7 @@ html, body {
   padding: 0;
   border-bottom: 1px solid var(--border);
   background: var(--card-bg);
-  height: 60px;
+  height: 36px;
 }
 
 #hbBanner { display: none !important; }
@@ -41,23 +41,23 @@ html, body {
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 24px;
+  gap: 8px;
+  padding: 0 16px;
   height: 100%;
   border-right: 1px solid var(--border);
 }
 
 .brand h1 {
   margin: 0;
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.5px;
   color: var(--accent);
 }
 
 .dot {
-  width: 10px;
-  height: 10px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--accent);
 }
@@ -77,11 +77,11 @@ html, body {
   display: flex;
   align-items: center;
   height: 100%;
-  padding: 0 14px;
+  padding: 0 10px;
   color: var(--text-2);
   text-decoration: none;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
   border-radius: 4px;
@@ -167,11 +167,11 @@ html, body {
 /* ===== FULL-WIDTH PAGE LAYOUT ===== */
 .page-wrapper {
   margin: 0;
-  padding: 20px;
+  padding: 4px;
 }
 .page-header {
-  max-width: 1200px;
-  margin: 0 auto 16px;
+  max-width: none;
+  margin: 0 0 8px;
 }
 .page-content {
   max-width: none;
@@ -222,9 +222,9 @@ main {
 .card {
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 16px;
-  margin: 0 8px;
+  border-radius: 6px;
+  padding: 8px;
+  margin: 0;
 }
 .card h2 {
   margin: 0 0 12px;
@@ -601,7 +601,7 @@ tbody tr:hover { background: #fafafa; }
       background: var(--accent, #1d4ed8); color: #fff; border-color: var(--accent, #1d4ed8);
     }
     .empty-note { padding: 12px; color: var(--text-3, #6b7280); font-size: 12px; font-style: italic; }
-    .side-scroll { max-height: calc((100vh - 200px) / 2); overflow-y: auto; overflow-x: hidden; }
+    .side-scroll { max-height: calc((100vh - 110px) / 2); overflow-y: auto; overflow-x: hidden; }
     .side-scroll .mini-grid th { position: sticky; top: 0; z-index: 1; }
 
     /* Top bar: index / volatility scorecard */
@@ -655,17 +655,78 @@ tbody tr:hover { background: #fafafa; }
  * Full-width override — every page spans the browser viewport.
  * Anything that previously had max-width here gets unset.
  * ========================================================================= */
-html, body { width: 100%; max-width: 100%; height: 100%; overflow-y: auto; }
+html { height: 100%; }
+body { width: 100%; max-width: 100%; height: 100%; overflow: hidden; display: flex; flex-direction: column; }
 main, .page-wrapper, .page-header, .page-content {
   width: 100%;
   max-width: none;
   margin-left: 0;
   margin-right: 0;
 }
-main { margin: 8px 0 0 0; padding: 0 16px 24px; }
+main { flex: 1; min-height: 0; overflow-y: auto; margin: 4px 0 0 0; padding: 0 4px 8px; }
 @media (min-width: 1400px) {
-  main { margin: 8px 0 0 0; padding: 0 24px 24px; }
+  main { margin: 4px 0 0 0; padding: 0 4px 8px; }
 }
+
+/* Hide outer scrollbar on all pages (wheel-scroll still works) */
+main::-webkit-scrollbar { display: none; }
+main { scrollbar-width: none; }
+
+/* === Per-page viewport-fill: main → card → table fills remaining height === */
+
+/* Shared: lock main so it never overflows */
+body.fill-page main,
+body.dash-page main,
+body.rules-page main,
+body.trig-page main,
+body.ref-page main,
+body.perf-page main,
+body.portfolio-page main,
+body.dbstats-page main {
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding-bottom: 0 !important;
+}
+
+/* fill-page: single-card pages (cockpit, trace) */
+body.fill-page main > .card { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+body.fill-page .scrollable-table-container { flex: 1; max-height: none !important; overflow: auto; min-height: 0; }
+
+/* Rules: card fills, active tab fills, table fills */
+body.rules-page main > .card { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+body.rules-page .tab-content.active { display: flex !important; flex-direction: column; flex: 1; min-height: 0; }
+body.rules-page .tab-content.active .scrollable-table-container { flex: 1; max-height: none !important; overflow: auto; min-height: 0; }
+
+/* Dashboard: grid fills, ticker-grid left col fills */
+body.dash-page .dash-grid { flex: 1; min-height: 0; align-items: stretch; }
+body.dash-page .card.ticker-grid { display: flex; flex-direction: column; overflow: hidden; }
+body.dash-page .card.ticker-grid > div:first-child { flex: 1; overflow: auto; min-height: 0; max-height: none !important; }
+body.dash-page .side-stack { overflow-y: auto; min-height: 0; }
+
+/* Trig: card fills, two-panel container fills */
+body.trig-page main > .card { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+body.trig-page .trig-container { flex: 1; min-height: 0; margin-bottom: 0 !important; align-items: stretch; }
+body.trig-page .trig-list { max-height: none !important; overflow-y: auto; }
+body.trig-page .trig-detail { overflow-y: auto; }
+
+/* Ref: card fills, table container fills */
+body.ref-page main > .card { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+body.ref-page .ref-table-container { flex: 1; max-height: none !important; overflow: auto; min-height: 0; }
+
+/* Portfolio: card fills, active tab pane fills, positions table fills */
+body.portfolio-page main > .card { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+body.portfolio-page .pf-tab-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+body.portfolio-page .pf-tab-pane[hidden] { display: none !important; }
+
+/* Performance: last card (scorecard) fills remaining */
+body.perf-page main { gap: 6px; }
+body.perf-page main > .card:last-child { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+body.perf-page main > .card:last-child .scrollable-table-container { flex: 1; max-height: none !important; overflow: auto; min-height: 0; }
+
+/* DBStats: last card (stats table) fills remaining */
+body.dbstats-page main > .card:last-child { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+body.dbstats-page .stats-table-container { flex: 1; max-height: none !important; overflow: auto; min-height: 0; }
 
 /* ===========================================================================
  * Modal dialogs (used by /groups, etc.)

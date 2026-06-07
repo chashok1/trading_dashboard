@@ -191,7 +191,7 @@
     .timeline-meta { color: var(--text-2,#666); }
   </style>
 </head>
-<body>
+<body class="portfolio-page">
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
@@ -364,7 +364,7 @@
         </table>
       </div>
 
-      <div style="border: 1px solid var(--border, #ececec); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; height: calc(100vh - 310px);">
+      <div style="border: 1px solid var(--border, #ececec); border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; flex: 1; min-height: 0;">
         <div style="overflow-x: auto; overflow-y: auto; flex: 1;">
           <table class="pf-grid" id="pfGrid">
             <thead>
@@ -534,7 +534,8 @@
   <script src="/static/portfolio.js"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>
-  <script src="/static/warning_badge.js"></script>
+  <script src="/static/market_bar.js" defer></script>
+<script src="/static/warning_badge.js"></script>
 
   <!-- Rich Portfolio Detail Modal (z-index above existing drilldown) -->
   <div class="modal-overlay" id="portfolioModal">

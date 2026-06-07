@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/static/styles.css">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
-<body>
+<body class="dash-page">
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
@@ -113,11 +113,8 @@
 
     <div class="dash-grid">
       <section class="card ticker-grid">
-        <div style="max-height: calc(100vh - 170px); overflow: auto;">
+        <div style="overflow: auto;">
           <div class="sections-grid" id="tickerSections"></div>
-        </div>
-        <div class="table-footer" style="padding-top:8px;">
-          <span id="tickerCount">0 rows</span>
         </div>
       </section>
 
@@ -163,17 +160,15 @@
     </div>
   </main>
 
-  <footer class="foot">
-    <span>Snapshot date: <strong id="footDate">—</strong></span>
-    <span>API: <a href="/docs" target="_blank">/docs</a></span>
-  </footer>
+
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
   <script src="/static/_common.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>
-  <script src="/static/warning_badge.js"></script>
+  <script src="/static/market_bar.js" defer></script>
+<script src="/static/warning_badge.js"></script>
 
   <!-- Portfolio Detail Modal -->
   <div class="modal-overlay" id="portfolioModal">

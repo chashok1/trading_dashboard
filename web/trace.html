@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/static/styles.css">
   <style>
     /* ---- Page-specific layout ---- */
-    main.trace-main { padding: 16px 24px 32px; max-width: 1280px; margin: 0 auto; }
+    main.trace-main { padding: 4px; max-width: none; margin: 0; }
 
     .trace-hdr {
       display: flex; align-items: center; gap: 14px;
@@ -164,7 +164,7 @@
     table.rules-tbl col.c-rolls   { width: 18%; }
   </style>
 </head>
-<body>
+<body class="fill-page">
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
@@ -263,7 +263,8 @@
     <script src="/static/_common.js"></script>
     <script src="/static/trace.js"></script>
     <script src="/static/rebuild_modal.js"></script>
-    <script src="/static/warning_badge.js"></script>
+    <script src="/static/market_bar.js" defer></script>
+<script src="/static/warning_badge.js"></script>
 </body>
 </html>
 

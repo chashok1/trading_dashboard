@@ -177,7 +177,7 @@
         .macro-error { color: #991b1b; padding: 12px 0; font-size: 13px; }
     </style>
 </head>
-<body>
+<body class="fill-page">
     <header class="topbar">
         <div class="brand">
             <span class="dot"></span>
@@ -208,20 +208,6 @@
     </header>
 
     <main>
-        <div class="card" id="macroCard">
-            <div class="macro-head">
-                <h2 class="macro-title">Market context</h2>
-                <div class="macro-meta">
-                    <span id="macroAsOf" class="macro-asof"></span>
-                    <span id="macroLastFetch" class="macro-lastfetch"></span>
-                    <button id="macroRefreshBtn" class="btn" type="button">Refresh data</button>
-                </div>
-            </div>
-            <div id="macroBand" class="macro-band">
-                <div class="macro-loading">Loading market data…</div>
-            </div>
-        </div>
-
         <div class="card">
             <div class="cockpit-header">
                 <div class="cockpit-controls">
@@ -291,9 +277,9 @@
 
     <script src="/static/_common.js"></script>
     <script src="/static/cockpit.js"></script>
-    <script src="/static/macro_band.js"></script>
     <script src="/static/rebuild_modal.js"></script>
-  <script src="/static/warning_badge.js"></script>
+  <script src="/static/market_bar.js" defer></script>
+<script src="/static/warning_badge.js"></script>
 </body>
 </html>
 
