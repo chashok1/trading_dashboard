@@ -4875,6 +4875,32 @@ WHERE as_of_date >= CURRENT_DATE - INTERVAL '180 days'
 GROUP BY rule_id, rule_kind;
 
 
+-- -----------------------------------------------------
+-- v_rule_scorecard - DIRECTION-ADJUSTED composite rule efficacy (Phase 4).
+-- edge_20d > 0  => the rule's signal was correct on average. BUY rules want the
+-- stock to rise (+fwd_20d); SELL rules want it to fall (-fwd_20d), so edge_20d
+-- flips the sign for SELL codes. Rank by edge_20d DESC = best rules first.
+-- win_rate already uses the direction-aware `hit` column. BASE-* are infra, excluded.
+-- NOTE: only as trustworthy as the loaded history (currently ~4 months / one
+-- market regime) — read as a diagnostic, not gospel. Re-run the outcome ETL as
+-- history grows. See docs/rule_tuning_and_outcomes.md.
+-- -----------------------------------------------------
+CREATE OR REPLACE VIEW v_rule_scorecard AS
+SELECT
+    rule_id,
+    CASE WHEN rule_id ~ '^\d+-(B|BS|BR|BW|BM|BMN)-' THEN 'BUY' ELSE 'SELL' END AS direction,
+    COUNT(*) AS fires,
+    ROUND(AVG(CASE WHEN rule_id ~ '^\d+-(B|BS|BR|BW|BM|BMN)-'
+                   THEN fwd_20d_pct ELSE -fwd_20d_pct END)::numeric, 3) AS edge_20d,
+    ROUND(AVG(hit::int)::numeric, 3)    AS win_rate,
+    ROUND(AVG(fwd_20d_pct)::numeric, 3) AS raw_avg_fwd20,
+    MIN(as_of_date) AS first_seen, MAX(as_of_date) AS last_seen
+FROM drv_rule_outcome
+WHERE rule_kind = 'composite' AND fwd_20d_pct IS NOT NULL
+  AND rule_id NOT LIKE 'BASE-%'
+GROUP BY rule_id;
+
+
 
 -- -----------------------------------------------------
 

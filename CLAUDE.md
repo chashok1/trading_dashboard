@@ -239,6 +239,9 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Group-of-groups nesting | `web/groups.html` (`memberOptionsHTML`/`memberTypeFor`) |
 | Rule Flow screen logic (live trace, data flow panel, trig_action calc) | `docs/rule_flow_logic.md` |
 | Performance / feedback-loop logic | `docs/performance_logic.md` |
+| Rule tuning, profiles (param sets), outcomes & scorecard — USE & FIX guide | `docs/rule_tuning_and_outcomes.md` |
+| Firing-based outcomes ETL (validate rules vs forward returns) | `etl/compute_firing_outcomes.py` (+ `etl/backfill_derives.py`) → `drv_rule_outcome` |
+| Direction-adjusted rule scorecard (which rules predict the right move) | `v_rule_scorecard` (db/baseline.sql); `SELECT * FROM v_rule_scorecard ORDER BY edge_20d DESC` |
 | Symbol normalization (tos_symbol) | `docs/tos_symbol_normalization.md` |
 | tos_symbol population — 4 groups (detail) | `detailed_tos_groups.md` |
 | tos_symbol fallback/strategy (Groups 2–4) | `strategy_and_fallback_details.md` |
@@ -249,6 +252,13 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Full command reference + web endpoints + troubleshooting table | `COMMANDS.md` |
 
 ---
+
+## Recent Migrations (2026-06-06)
+
+- **Phase 2 base rules LIVE (firing-equivalent).** 8 leaf composites nest `BASE-Bull-Context`/`BASE-Bull-Trend`. Engine fixes that made it score-neutral: nested-composite gating fires only when the child fired (`_derive_stks_impl`), `_derive_trig_impl` now scores nested members (two-pass), `seeds_base_rules.sql` gate members `weight_override=10`, `refactor_base_rules.py` only absorbs members identical in threshold/operator/role. `_derive_trig_impl` also no longer double-evaluates pre-scored atomics (fixed 697 over-fire).
+- **Phase 3 profiles LIVE.** `ref_trig_param_set`/`_value` overlay (`etl/param_sets.py`). Profiles: id=1 **Baseline 2026-06-05** (active, frozen current numbers, rollback anchor), id=2 Sigmoid v1 (inactive scaffold), id=3 ml-sweep-20d (inactive, overfit). One active at a time; switch two-step then re-derive. Rollback = activate id=1.
+- **Phase 4 outcomes + scorecard.** `etl/backfill_derives.py` (additive historical derive backfill) + `etl/compute_firing_outcomes.py` populate `drv_rule_outcome` from rule firings + forward returns (no `user_action_log`). `v_rule_scorecard` ranks composites by direction-adjusted `edge_20d`. `drv_rule_outcome` PK fixed to `(rule_id, as_of_date, tos_symbol)`; column `symbol`→`tos_symbol`. ML (`ml_tune_thresholds.py`) writes inactive `ml:` profiles. **Caveat: only ~4 months/one regime loaded — diagnostic only; don't activate tuned profiles yet.** Full guide: `docs/rule_tuning_and_outcomes.md`.
+- **`rebuild_rules` durability.** Now re-applies `current_volume_rule` neg thresholds (25/50) that a workbook reload would otherwise strip. Keep DB-only rule tweaks in sync there + `baseline.sql`.
 
 ## Recent Migrations (2026-06-05)
 
