@@ -138,6 +138,43 @@
             font-size: 12px;
             color: var(--text-2);
         }
+        /* --- Market context band (macro_band.js) --- */
+        .macro-head {
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 12px; margin-bottom: 14px;
+        }
+        .macro-title { margin: 0; font-size: 16px; color: var(--text-1); }
+        .macro-meta {
+            display: flex; align-items: center; gap: 12px;
+            font-size: 12px; color: var(--text-2);
+        }
+        .macro-lastfetch.is-throttled { color: var(--text-1); font-weight: 600; }
+        .macro-group { margin-bottom: 16px; }
+        .macro-group:last-child { margin-bottom: 0; }
+        .macro-group-label {
+            font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+            color: var(--text-3); margin: 0 0 8px;
+        }
+        .macro-tiles {
+            display: grid; gap: 10px;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        }
+        .macro-tile {
+            border: 1px solid var(--border); border-radius: 6px;
+            padding: 10px 12px; background: #fff;
+        }
+        .macro-tile .mt-label {
+            font-size: 12px; color: var(--text-2); margin-bottom: 4px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .macro-tile .mt-value { font-size: 18px; font-weight: 600; color: var(--text-1); }
+        .macro-tile .mt-chg { font-size: 12px; margin-top: 2px; }
+        .macro-tile .mt-date { font-size: 10px; color: var(--text-3); margin-top: 4px; }
+        .mt-up { color: #166534; }
+        .mt-down { color: #991b1b; }
+        .mt-flat { color: var(--text-3); }
+        .macro-loading, .macro-empty { color: var(--text-3); padding: 12px 0; font-size: 13px; }
+        .macro-error { color: #991b1b; padding: 12px 0; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -171,6 +208,20 @@
     </header>
 
     <main>
+        <div class="card" id="macroCard">
+            <div class="macro-head">
+                <h2 class="macro-title">Market context</h2>
+                <div class="macro-meta">
+                    <span id="macroAsOf" class="macro-asof"></span>
+                    <span id="macroLastFetch" class="macro-lastfetch"></span>
+                    <button id="macroRefreshBtn" class="btn" type="button">Refresh data</button>
+                </div>
+            </div>
+            <div id="macroBand" class="macro-band">
+                <div class="macro-loading">Loading market data…</div>
+            </div>
+        </div>
+
         <div class="card">
             <div class="cockpit-header">
                 <div class="cockpit-controls">
@@ -240,6 +291,7 @@
 
     <script src="/static/_common.js"></script>
     <script src="/static/cockpit.js"></script>
+    <script src="/static/macro_band.js"></script>
     <script src="/static/rebuild_modal.js"></script>
   <script src="/static/warning_badge.js"></script>
 </body>

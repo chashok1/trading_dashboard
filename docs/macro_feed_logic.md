@@ -92,7 +92,24 @@ via a `fetch_macro` run.
 so repeated clicks cannot stack up requests — within the window it just returns
 the skipped/throttled status. `GET /api/macro` also returns a `last_fetch` block
 (started_at, status, rows_inserted, ...) for a "last fetched" stamp next to the
-button. (The button itself is wired when the cockpit band is built.)
+button.
+
+## UI — Cockpit "Market context" band
+
+`web/macro_band.js` (loaded by `web/cockpit.html`) renders a "Market context"
+card at the top of the Cockpit screen (`/cockpit`), above the actions table.
+It is self-contained (own file, inits on DOMContentLoaded) so it can't disturb
+the existing cockpit logic.
+
+- Reads `GET /api/macro` and renders one section per group (Indexes, Rates &
+  curve, Inflation, Jobs, Risk, Dollar & commodities), each a grid of tiles
+  (label, value formatted by unit, change, observation date).
+- Change shown as absolute points for `%` series (yields/unemployment/spreads)
+  and percent for the rest; green up / red down.
+- "Refresh data" button → `POST /api/macro/refresh` (throttled). If the server
+  returns `skipped`, the stamp shows "Up to date (fetched Nm ago)"; otherwise
+  the band reloads with fresh values. The header also shows `as of <date>` and
+  an "updated <relative>" stamp from `last_fetch`. Reads never hit FRED.
 
 ## What FRED does NOT provide
 

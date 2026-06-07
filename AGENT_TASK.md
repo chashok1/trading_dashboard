@@ -1,78 +1,57 @@
-# AGENT TASK 32 — apply + verify macro fetch throttle + manual refresh, commit
+# AGENT TASK 33 — verify Cockpit "Market context" band, commit
 
-**You (VS Code agent), DB + internet (FRED) + Windows git.** Write results to
-**`AGENT_RESULT_32.md`**. Builds on Task 31 (macro feed, already applied). This
-round adds a rate-limit safety throttle, a tunable throttle setting in
-`ref_settings`, a run log, and a manual-refresh endpoint. Code is on disk;
-apply + verify + commit here. UI button is intentionally still deferred.
-
-Run from project root with venv active:
-`cd C:\Ashok\Invest\Projects\trading-dashboard` then `.venv\Scripts\activate`.
+**You (VS Code agent), browser + Windows git.** Write results to
+**`AGENT_RESULT_33.md`**. Builds on Tasks 31–32 (macro feed + throttle, already
+applied & committed). This round is **front-end only** — static web files. No DB
+change, no FRED key, no server restart needed (just hard-refresh the page).
 
 Files changed (on disk — do NOT rewrite):
-- `db/baseline.sql` — NEW table `meta_macro_fetch` (fetch run log).
-- `db/seeds_macro.sql` — seeds `ref_settings.macro_fetch_min_interval_min = '360'` (DO NOTHING).
-- `etl/fetch_macro.py` — throttle (no-op if a real run started within the window),
-  `--force` / `--min-interval`, logs each real run to `meta_macro_fetch`. Window
-  precedence: `--min-interval`/arg → `ref_settings` → code default 360 (6h).
-- `api/routers/macro.py` — `GET /api/macro` now returns `last_fetch`; new
-  `POST /api/macro/refresh` (throttled; for the future Refresh button).
+- `web/cockpit.html` — adds a "Market context" card above the actions table
+  (container `#macroBand`, `#macroRefreshBtn`, `#macroAsOf`, `#macroLastFetch`) +
+  scoped tile styles + `<script src="/static/macro_band.js">`.
+- `web/macro_band.js` — NEW, self-contained band renderer.
 - `docs/macro_feed_logic.md`, `CLAUDE.md` — docs.
 
-## Step 1 — apply schema + seed
+## Step 1 — syntax
 ```
-python -m db.init_db
-SELECT to_regclass('meta_macro_fetch');                                  -- not null
-SELECT setting_value FROM ref_settings WHERE setting_name='macro_fetch_min_interval_min';  -- 360
+node --check web\macro_band.js   :: -> no output = OK
 ```
-Paste.
+Paste result.
 
-## Step 2 — verify the throttle (this is the key test)
-```
-:: baseline count
-SELECT COUNT(*) FROM meta_macro_fetch;
+## Step 2 — browser check (app already running; if not: `uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir api`)
+Open http://127.0.0.1:8000/cockpit and **hard-refresh** (Ctrl+F5; web/ is static).
+Confirm and paste one line each:
+1. A **"Market context"** card appears at the top, above the actions table, with
+   grouped tiles — Indexes (S&P 500, Nasdaq, Dow), Rates & curve (10Y, 2Y, …),
+   Inflation, Jobs, Risk (VIX, …), Dollar & commodities. Tiles show a value, a
+   colored change (green up / red down), and a date.
+2. The header shows `as of <date>` and an `updated <relative>` stamp.
+3. Click **"Refresh data"**. Because Task 32 just fetched, it should be throttled:
+   the stamp changes to **"Up to date (fetched Nm ago)"** and the button
+   re-enables. (No error, no duplicate fetch.)
+4. Browser console is **clean** (no JS errors, no failed requests).
 
-:: (a) forced run -> should hit FRED, add exactly ONE meta row
-python -m etl.fetch_macro --force
-SELECT COUNT(*), MAX(started_at), MAX(status) FROM meta_macro_fetch;
+> Optional — prove a real refresh path: in a terminal
+> `UPDATE ref_settings SET setting_value='0' WHERE setting_name='macro_fetch_min_interval_min';`
+> then click Refresh (tiles reload with fresh values), then set it back to `'360'`.
+> Skip if not needed.
 
-:: (b) immediate plain run -> should print "throttled ... use --force" and add NO row
-python -m etl.fetch_macro
-SELECT COUNT(*) FROM meta_macro_fetch;   -- unchanged vs (a)
-
-:: (c) short-window override proves tunability -> fetches again, +1 row
-python -m etl.fetch_macro --min-interval 0
-SELECT COUNT(*) FROM meta_macro_fetch;
+## Step 3 — commit
 ```
-Expect: (a) +1 row, status `ok` (or `partial` if a series fails); (b) NO new row +
-a `throttled` log line; (c) +1 row. Paste the three counts + the throttled log line.
-
-## Step 3 — endpoints (app auto-reloads on api/ change; else start uvicorn)
-```
-curl -s http://127.0.0.1:8000/api/macro
-curl -s -X POST http://127.0.0.1:8000/api/macro/refresh
-```
-Expect: GET payload now has a `"last_fetch"` block (started_at/status/rows_inserted).
-POST right after Step 2 should return `{"skipped":true,"reason":"throttled","age_min":...}`
-(because it ran moments ago). Paste the `last_fetch` block + the POST response.
-
-## Step 4 — commit
-```
-python -m py_compile etl\fetch_macro.py api\routers\macro.py && echo OK_compile
-git add db/baseline.sql db/seeds_macro.sql etl/fetch_macro.py api/routers/macro.py docs/macro_feed_logic.md CLAUDE.md AGENT_TASK.md
-git status --porcelain   :: confirm only these (+ AGENT_RESULT_32.md); .env must NOT appear
-git commit -m "Macro feed: FRED fetch throttle (meta_macro_fetch + ref_settings) + last_fetch in GET /api/macro + POST /api/macro/refresh"
+git add web/cockpit.html web/macro_band.js docs/macro_feed_logic.md CLAUDE.md AGENT_TASK.md
+git status --porcelain   :: confirm only these (+ AGENT_RESULT_33.md)
+git commit -m "Cockpit: Market context band (macro tiles + throttled Refresh) wired to /api/macro"
 git log --oneline -2
 ```
 (Delete `.git\index.lock`/`HEAD.lock` from Explorer first if present.)
 Paste status + log.
 
 ## Verdict
-(a) meta_macro_fetch exists + setting seeded ✓
-(b) throttle proven: forced run logs, immediate plain run is a no-op, --min-interval 0 overrides ✓
-(c) GET returns last_fetch, POST /refresh respects throttle ✓
+(a) band renders with grouped tiles + as-of/updated stamps ✓
+(b) Refresh button respects throttle ("Up to date") ✓
+(c) console clean ✓
 (d) committed ✓
-If the throttle does NOT skip on the immediate plain run, STOP and paste the
-fetch_macro output + `SELECT * FROM meta_macro_fetch ORDER BY started_at DESC LIMIT 3;`.
+If the band is blank or the console shows an error, STOP and paste: the console
+error, and the output of `curl -s http://127.0.0.1:8000/api/macro | head -c 400`.
 
-Write `DONE` at the bottom of `AGENT_RESULT_32.md`.
+Write `DONE` at the bottom of `AGENT_RESULT_33.md`.

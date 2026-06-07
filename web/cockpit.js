@@ -38,7 +38,7 @@ DOM.datePicker.addEventListener('change', async (e) => {
 
 DOM.actionFilter.addEventListener('change', filterActions);
 DOM.sectorFilter.addEventListener('change', filterActions);
-DOM.tos_symbolSearch.addEventListener('input', filterActions);
+DOM.symbolSearch.addEventListener('input', filterActions);
 
 async function loadDates() {
     try {
@@ -92,7 +92,7 @@ function filterActions() {
 function renderTable() {
     const actionFilter = DOM.actionFilter.value;
     const sectorFilter = DOM.sectorFilter.value;
-    const symbolSearch = DOM.tos_symbolSearch.value.toLowerCase();
+    const symbolSearch = DOM.symbolSearch.value.toLowerCase();
 
     const filtered = state.actions.filter(a => {
         const matchAction = !actionFilter || (a.composite_label && a.composite_label.includes(actionFilter));
