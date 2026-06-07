@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     notify_email_to: str = ""
 
+    # Macro feed (FRED) — free API key from
+    # https://fred.stlouisfed.org/docs/api/api_key.html
+    fred_api_key: str = ""
+
     model_config = SettingsConfigDict(
         env_file=str(PROJECT_ROOT / ".env"),
         env_file_encoding="utf-8",

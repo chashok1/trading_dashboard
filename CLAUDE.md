@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Trading Dashboard — Claude Reference
 
 Index file only. Detail lives in `docs/`. See Lookup index below.
@@ -242,6 +246,9 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Rule tuning, profiles (param sets), outcomes & scorecard — USE & FIX guide | `docs/rule_tuning_and_outcomes.md` |
 | Firing-based outcomes ETL (validate rules vs forward returns) | `etl/compute_firing_outcomes.py` (+ `etl/backfill_derives.py`) → `drv_rule_outcome` |
 | Direction-adjusted rule scorecard (which rules predict the right move) | `v_rule_scorecard` (db/baseline.sql); `SELECT * FROM v_rule_scorecard ORDER BY edge_20d DESC` |
+| Rule-edge in the UI (badges + Actionable "Rules (edge)" column) | `web/actionable.js` (`firesCellHtml`, `ruleEdgeBadge`), `web/rule_flow.js` (`compEdgeBadge`) ← `/api/rules/scorecard` |
+| Personal action track record ("Your actions" panel) | `v_user_action_performance` (db/baseline.sql) → `/api/rules/my-actions` → `web/rule_performance.*` |
+| Performance screen (scorecard + Your actions panels) | `web/rule_performance.*`; endpoints `/api/rules/scorecard`, `/api/rules/my-actions`, `/api/rules/performance` |
 | Symbol normalization (tos_symbol) | `docs/tos_symbol_normalization.md` |
 | tos_symbol population — 4 groups (detail) | `detailed_tos_groups.md` |
 | tos_symbol fallback/strategy (Groups 2–4) | `strategy_and_fallback_details.md` |
@@ -249,9 +256,14 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Flow diagrams (pipeline, derive cascade, rules) | `docs/diagrams/*.svg`, `docs/audit/architecture_flow.md` |
 | Unused DB tables/columns audit | `docs/audit/unused_db_report.md` |
 | Unused/cruft code files audit | `docs/audit/unused_code_report.md` |
+| Macro feed (FRED) — econ data + EOD index levels | `docs/macro_feed_logic.md`; `etl/fetch_macro.py`; `ref_macro_series`/`hist_macro`/`v_macro_latest`; `/api/macro` |
 | Full command reference + web endpoints + troubleshooting table | `COMMANDS.md` |
 
 ---
+
+## Recent Migrations (2026-06-07)
+
+- **Macro feed (FRED) — data layer only (UI deferred).** New `ref_macro_series` (tunable catalog, seeded by `db/seeds_macro.sql`, ~20 series) + append-only `hist_macro` (PK `(series_id, obs_date)`, `ON CONFLICT DO NOTHING`) + `v_macro_latest` view (latest+prior+chg). `etl/fetch_macro.py` pulls from FRED via stdlib `urllib` (no new dependency) — the only **pull** ingest, NOT in `etl/scheduler.py`; run daily after close. `FRED_API_KEY` in `.env` → `settings.fred_api_key`. `GET /api/macro` (`api/routers/macro.py`, registered in `main.py`) returns grouped tiles for the planned cockpit band. Covers econ data AND EOD index levels (`SP500`/`NASDAQCOM`/`DJIA`/`RU2000PR`/`VIXCLS`) — no second API needed for an EOD workflow. Complementary to workbook-sourced `ref_econ_indicator`/`ref_calendar_event`. Apply: add key to `.env` → `python -m db.init_db` → `python -m etl.fetch_macro --full`. Cockpit UI band still TODO. Full design: `docs/macro_feed_logic.md`.
 
 ## Recent Migrations (2026-06-06)
 
@@ -259,6 +271,7 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 - **Phase 3 profiles LIVE.** `ref_trig_param_set`/`_value` overlay (`etl/param_sets.py`). Profiles: id=1 **Baseline 2026-06-05** (active, frozen current numbers, rollback anchor), id=2 Sigmoid v1 (inactive scaffold), id=3 ml-sweep-20d (inactive, overfit). One active at a time; switch two-step then re-derive. Rollback = activate id=1.
 - **Phase 4 outcomes + scorecard.** `etl/backfill_derives.py` (additive historical derive backfill) + `etl/compute_firing_outcomes.py` populate `drv_rule_outcome` from rule firings + forward returns (no `user_action_log`). `v_rule_scorecard` ranks composites by direction-adjusted `edge_20d`. `drv_rule_outcome` PK fixed to `(rule_id, as_of_date, tos_symbol)`; column `symbol`→`tos_symbol`. ML (`ml_tune_thresholds.py`) writes inactive `ml:` profiles. **Caveat: only ~4 months/one regime loaded — diagnostic only; don't activate tuned profiles yet.** Full guide: `docs/rule_tuning_and_outcomes.md`.
 - **`rebuild_rules` durability.** Now re-applies `current_volume_rule` neg thresholds (25/50) that a workbook reload would otherwise strip. Keep DB-only rule tweaks in sync there + `baseline.sql`.
+- **Rules made usable in the UI.** Performance screen (`/rule-performance`) now shows the direction-adjusted scorecard (`/api/rules/scorecard`) + a "Your actions" panel (`/api/rules/my-actions`). Actionable (`/actionable`) gained a "Rules (edge)" column (fired rules winning-first w/ edge) + edge badges in the row popup; Rule Flow composites show the same badge. `v_rule_performance_window` re-anchored to `MAX(as_of_date)` (was wall-clock `CURRENT_DATE` → blank screen). Full UI map: `docs/rule_tuning_and_outcomes.md` §7.
 
 ## Recent Migrations (2026-06-05)
 

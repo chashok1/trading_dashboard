@@ -5692,3 +5692,67 @@ LEFT JOIN drv_technicals  t USING (as_of_date, tos_symbol)
 LEFT JOIN drv_fundamentals f USING (as_of_date, tos_symbol)
 LEFT JOIN drv_outlooks    o USING (as_of_date, tos_symbol)
 LEFT JOIN drv_portfolio   p USING (as_of_date, tos_symbol);
+
+
+-- =====================================================
+-- MACRO FEED (FRED) — 2026-06-07
+-- Economic data + EOD index levels pulled from the St. Louis Fed
+-- FRED API (etl/fetch_macro.py). Independent of the per-symbol
+-- derive pipeline (no tos_symbol / anchor machinery). Complements the
+-- workbook-sourced ref_econ_indicator / ref_calendar_event (which hold
+-- *which* events + expected values); this holds *observed* time series.
+-- See docs/macro_feed_logic.md.
+-- =====================================================
+
+-- ref_macro_series — tunable catalog: which FRED series to pull + how to show.
+-- Refresh labels/groups by editing db/seeds_macro.sql then `python -m db.init_db`.
+CREATE TABLE IF NOT EXISTS ref_macro_series (
+    series_id   TEXT PRIMARY KEY,                 -- FRED series id, e.g. DGS10
+    label       TEXT NOT NULL,                    -- display label, e.g. "10Y Treasury"
+    grp         TEXT NOT NULL,                    -- rates|inflation|jobs|risk|index|fx_cmdty
+    unit        TEXT,                             -- display unit hint: %, index, $, k
+    sort_order  INTEGER NOT NULL DEFAULT 100,     -- order within group
+    enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+    loaded_at   TIMESTAMP NOT NULL DEFAULT now()
+);
+
+-- hist_macro — raw observations, append-only (convention 1: ON CONFLICT DO NOTHING).
+-- One row per (series_id, obs_date). value NULL when FRED reports "." (no data).
+CREATE TABLE IF NOT EXISTS hist_macro (
+    series_id   TEXT NOT NULL,
+    obs_date    DATE NOT NULL,
+    value       DOUBLE PRECISION,
+    source      TEXT NOT NULL DEFAULT 'FRED',
+    fetched_at  TIMESTAMP NOT NULL DEFAULT now(),
+    PRIMARY KEY (series_id, obs_date)
+);
+CREATE INDEX IF NOT EXISTS ix_hist_macro_date ON hist_macro(obs_date);
+
+-- v_macro_latest — latest + prior non-null observation per enabled series,
+-- with absolute and percent change. Consumed by GET /api/macro.
+CREATE OR REPLACE VIEW v_macro_latest AS
+WITH ranked AS (
+    SELECT h.series_id, h.obs_date, h.value,
+           ROW_NUMBER() OVER (PARTITION BY h.series_id
+                              ORDER BY h.obs_date DESC) AS rn
+    FROM hist_macro h
+    WHERE h.value IS NOT NULL
+)
+SELECT s.series_id,
+       s.label,
+       s.grp,
+       s.unit,
+       s.sort_order,
+       cur.value     AS latest_value,
+       cur.obs_date  AS latest_date,
+       prv.value     AS prior_value,
+       prv.obs_date  AS prior_date,
+       (cur.value - prv.value) AS chg_abs,
+       CASE WHEN prv.value IS NULL OR prv.value = 0 THEN NULL
+            ELSE (cur.value - prv.value) / abs(prv.value) * 100.0
+       END AS chg_pct
+FROM ref_macro_series s
+LEFT JOIN ranked cur ON cur.series_id = s.series_id AND cur.rn = 1
+LEFT JOIN ranked prv ON prv.series_id = s.series_id AND prv.rn = 2
+WHERE s.enabled
+ORDER BY s.grp, s.sort_order, s.series_id;

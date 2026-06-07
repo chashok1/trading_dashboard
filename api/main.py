@@ -32,7 +32,7 @@ except Exception:
     raise
 
 _routers: dict = {}
-for _name in ("dash", "health", "monitor", "pages", "ref", "rules", "trace"):
+for _name in ("dash", "health", "macro", "monitor", "pages", "ref", "rules", "trace"):
     try:
         import importlib
         _routers[_name] = importlib.import_module(f"api.routers.{_name}")
@@ -43,6 +43,7 @@ for _name in ("dash", "health", "monitor", "pages", "ref", "rules", "trace"):
 
 dash    = _routers["dash"]
 health  = _routers["health"]
+macro   = _routers["macro"]
 monitor = _routers["monitor"]
 pages   = _routers["pages"]
 ref     = _routers["ref"]
@@ -106,6 +107,7 @@ async def _shutdown():
 # API routers
 app.include_router(health.router)
 app.include_router(dash.router)
+app.include_router(macro.router)
 app.include_router(monitor.router)
 app.include_router(ref.router)
 app.include_router(rules.router)
