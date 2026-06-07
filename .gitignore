@@ -65,3 +65,11 @@ _*.py
 
 # Runtime ingest dir (source CSVs, logs, scheduler state — not code)
 etl/working/
+
+# Agent workflow — transient artifacts
+/AGENT_WORK.md
+/AGENT_WORK_*.md
+/DEV_HANDOFF.md
+/TEST_REPORT_*.md
+/AGENT_RESULT*.md
+/agent_watch.log
