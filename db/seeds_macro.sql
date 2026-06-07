@@ -26,17 +26,17 @@ INSERT INTO ref_macro_series (series_id, label, grp, unit, sort_order, enabled) 
     ('PAYEMS',       'Nonfarm payrolls',    'jobs',      'k',     20, TRUE),
     ('ICSA',         'Initial claims',      'jobs',      'count', 30, TRUE),
     -- Risk & financial conditions -----------------------------------------
-    ('VIXCLS',       'VIX',                 'risk',      'index', 10, TRUE),
+    ('VIXCLS',       'VIX',                 'risk',      'index', 10, FALSE),
     ('BAMLH0A0HYM2', 'HY credit spread',    'risk',      '%',     20, TRUE),
     ('NFCI',         'Fin conditions (NFCI)','risk',     'index', 30, TRUE),
     -- Equity indexes (EOD level; ~1 day lag) ------------------------------
-    ('SP500',        'S&P 500',             'index',     'index', 10, TRUE),
-    ('NASDAQCOM',    'Nasdaq Composite',    'index',     'index', 20, TRUE),
-    ('DJIA',         'Dow Jones',           'index',     'index', 30, TRUE),
+    ('SP500',        'S&P 500',             'index',     'index', 10, FALSE),
+    ('NASDAQCOM',    'Nasdaq Composite',    'index',     'index', 20, FALSE),
+    ('DJIA',         'Dow Jones',           'index',     'index', 30, FALSE),
     ('RU2000PR',     'Russell 2000',        'index',     'index', 40, FALSE), -- retired FRED id (HTTP 400)
     -- Dollar & commodities -------------------------------------------------
-    ('DTWEXBGS',     'Trade-wtd USD',       'fx_cmdty',  'index', 10, TRUE),
-    ('DCOILWTICO',   'WTI crude',           'fx_cmdty',  '$',     20, TRUE)
+    ('DTWEXBGS',     'Trade-wtd USD',       'fx_cmdty',  'index', 10, FALSE),
+    ('DCOILWTICO',   'WTI crude',           'fx_cmdty',  '$',     20, FALSE)
 ON CONFLICT (series_id) DO UPDATE SET
     label      = EXCLUDED.label,
     grp        = EXCLUDED.grp,
