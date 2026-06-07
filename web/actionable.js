@@ -150,6 +150,25 @@ async function loadSources() {
     state.sourceMethods = {};
     for (const r of rows) state.sourceMethods[r.source_code] = r.base_weight_method;
   } catch (_) { state.sourceMethods = {}; }
+  // Rule track-record (v_rule_scorecard) keyed by composite code, for the
+  // edge badges on fired-rule pills. Diagnostic only while history is shallow.
+  try {
+    const sc = await fetchJson('/api/rules/scorecard?min_fires=0&limit=2000');
+    state.scorecard = {};
+    for (const r of sc) state.scorecard[r.rule_id] = r;
+  } catch (_) { state.scorecard = {}; }
+}
+
+// Build the inline edge badge HTML for a fired composite code (or '' if unknown).
+function ruleEdgeBadge(code) {
+  const sc = (state.scorecard || {})[code];
+  if (!sc || sc.edge_20d == null) return '';
+  const e = Number(sc.edge_20d);
+  const col = e > 0.5 ? '#15803d' : e < -0.5 ? '#b91c1c' : '#6b7280';
+  const wr = (sc.win_rate != null) ? ` · ${(Number(sc.win_rate) * 100).toFixed(0)}%` : '';
+  const sign = e >= 0 ? '+' : '';
+  return ` <span title="Rule's historical 20d edge across all symbols (${sc.fires} fires) — diagnostic, shallow history" `
+       + `style="color:${col};font-size:10px;font-weight:600;">${sign}${e.toFixed(1)}%${wr}</span>`;
 }
 
 // Best-first Metric direction: rank ascending (rank 1 best), else descending.
@@ -940,7 +959,7 @@ async function openDrilldown(row) {
       const score = (f.score != null) ? ` <span style="opacity:.65;font-size:10px;">${f.score}</span>` : '';
       const span = document.createElement('span');
       span.className = 'pill pill-rule';
-      span.innerHTML = `${escapeHtml(id)}${score}`;
+      span.innerHTML = `${escapeHtml(id)}${score}${ruleEdgeBadge(id)}`;
       span.dataset.compositeCode = id;
       span.addEventListener('click', (e) => {
         e.stopPropagation();

@@ -76,11 +76,31 @@ async function loadFlow() {
       throw new Error(`${res.status} ${msg}`);
     }
     _intermediatesCache = intRes.ok ? await intRes.json() : {};
+    if (_rfScore === null) {
+      try {
+        const sres = await fetch('/api/rules/scorecard?min_fires=0&limit=2000');
+        const arr = sres.ok ? await sres.json() : [];
+        _rfScore = {};
+        for (const r of arr) _rfScore[r.rule_id] = r;
+      } catch (_) { _rfScore = {}; }
+    }
     const d = await res.json();
     render(d);
   } catch(e) {
     cont.innerHTML = `<div class="status-msg" style="color:#b91c1c">Error: ${esc(e.message)}</div>`;
   }
+}
+
+// Rule track-record (v_rule_scorecard) for the inline edge badges. Fetched once.
+let _rfScore = null;
+function compEdgeBadge(code) {
+  const sc = (_rfScore || {})[code];
+  if (!sc || sc.edge_20d == null) return '';
+  const e = Number(sc.edge_20d);
+  const col = e > 0.5 ? '#15803d' : e < -0.5 ? '#b91c1c' : '#6b7280';
+  const wr = (sc.win_rate != null) ? ` · ${(Number(sc.win_rate) * 100).toFixed(0)}%` : '';
+  return ` <span title="Rule's historical 20d edge across all symbols (${sc.fires} fires) — diagnostic"`
+       + ` style="color:${col};font-size:10px;font-weight:600;">${e >= 0 ? '+' : ''}${e.toFixed(1)}%${wr}</span>`;
 }
 
 document.getElementById('symInput').addEventListener('keydown', e => {
@@ -827,7 +847,7 @@ function buildCompItem(c) {
   <div class="comp-item ${edgeCls}" id="${id}">
     <div class="comp-hdr" onclick="toggleComp('${id}')">
       ${dot(c.fired, c.precondition_blocked, side === 'sell')}
-      <span class="comp-code">${esc(c.code||'')}${nullWarn}</span>
+      <span class="comp-code">${esc(c.code||'')}${nullWarn}${compEdgeBadge(c.code)}</span>
       <span class="comp-score">${isInactive ? '<span style="color:#9ca3af;font-style:italic">disabled</span>' : _compFireSummary(c)}</span>
       <span style="font-size:12px;color:var(--text-3)">▾</span>
     </div>
