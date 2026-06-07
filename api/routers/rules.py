@@ -369,6 +369,31 @@ def get_rule_performance(
         return [dict(r) for r in rows]
 
 
+@router.get("/api/rules/scorecard", response_model=list[dict])
+def get_rule_scorecard(
+    min_fires: int = Query(30, ge=0, le=100000,
+                           description="Only rules with at least this many fires"),
+    limit: int = Query(500, ge=1, le=5000),
+):
+    """Direction-adjusted composite rule scorecard (Phase 4).
+
+    Reads v_rule_scorecard: `edge_20d` is the average 20d forward return IN THE
+    RULE'S FAVOR (SELL sign flipped), so >0 = the signal was right on average.
+    No wall-clock window — covers all loaded outcome history. Diagnostic only
+    while history is shallow / single-regime; see docs/rule_tuning_and_outcomes.md.
+    """
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT rule_id, direction, fires, edge_20d, win_rate, raw_avg_fwd20,
+                   first_seen, last_seen
+            FROM v_rule_scorecard
+            WHERE fires >= :mf
+            ORDER BY edge_20d DESC NULLS LAST
+            LIMIT :lim
+        """), {"mf": min_fires, "lim": limit}).mappings().all()
+        return [dict(r) for r in rows]
+
+
 @router.post("/api/rules/atomic", response_model=dict, status_code=201)
 def create_atomic_rule(body: AtomicRuleCreateRequest):
     """Create a new atomic rule."""

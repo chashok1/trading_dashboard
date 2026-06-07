@@ -64,6 +64,15 @@
             margin-left: 4px;
             font-size: 11px;
         }
+        .edge-pos { color: #15803d; font-weight: 600; }
+        .edge-neg { color: #b91c1c; font-weight: 600; }
+        .edge-neu { color: #6b7280; }
+        .dir-buy  { color: #1e3a8a; font-weight: 600; }
+        .dir-sell { color: #7c2d12; font-weight: 600; }
+        .caveat-note {
+            margin: 0 0 12px; padding: 8px 12px; font-size: 12px; line-height: 1.5;
+            background: #fff8e1; border: 1px solid #f3d27a; border-radius: 6px; color: #5b4400;
+        }
     </style>
 </head>
 <body>
@@ -100,33 +109,38 @@
     <main>
         <div class="card">
             <div class="performance-header">
-                <label>Sort by:</label>
-                <select id="sortSelect" onchange="changeSortBy(this.value)">
-                    <option value="hit_rate">Hit Rate</option>
-                    <option value="sample_size">Sample Size</option>
-                    <option value="rule_id">Rule ID</option>
-                    <option value="avg_fwd_5d">Avg 5D Return</option>
+                <strong style="font-size:15px;">Rule scorecard</strong>
+                <span style="color:var(--text-3);font-size:12px;">Direction-adjusted — Edge&nbsp;20d &gt; 0 means the rule's signal was right on average (SELL sign flipped).</span>
+                <span style="flex:1"></span>
+                <label for="minFires">Min fires:</label>
+                <select id="minFires" onchange="loadScorecard()">
+                    <option value="30" selected>30</option>
+                    <option value="100">100</option>
+                    <option value="0">all</option>
                 </select>
+            </div>
+
+            <div class="caveat-note">
+                Diagnostic only: computed from ~4 months of one market regime, so the BUY/SELL split mostly reflects market drift, not rule skill. A rule that stays positive once your history spans both up and down markets is the real signal. See <code>docs/rule_tuning_and_outcomes.md</code>.
             </div>
 
             <div class="scrollable-table-container">
                 <table class="perf-table">
                     <thead>
                         <tr>
-                            <th onclick="sortBy('rule_id')">Rule ID <span class="sort-indicator"></span></th>
-                            <th onclick="sortBy('rule_kind')">Kind <span class="sort-indicator"></span></th>
-                            <th onclick="sortBy('sample_size')">Sample Size <span class="sort-indicator"></span></th>
-                            <th onclick="sortBy('hit_rate')">Hit Rate <span class="sort-indicator"></span></th>
-                            <th onclick="sortBy('false_positive_rate')">False Pos <span class="sort-indicator"></span></th>
-                            <th onclick="sortBy('avg_fwd_5d')">Avg 5D Return <span class="sort-indicator"></span></th>
-                            <th onclick="sortBy('avg_fwd_20d')">Avg 20D Return <span class="sort-indicator"></span></th>
-                            <th>Last Seen</th>
+                            <th onclick="sortBy('rule_id')">Rule <span class="sort-indicator"></span></th>
+                            <th onclick="sortBy('direction')">Dir <span class="sort-indicator"></span></th>
+                            <th onclick="sortBy('fires')">Fires <span class="sort-indicator"></span></th>
+                            <th onclick="sortBy('edge_20d')">Edge 20d <span class="sort-indicator">▾</span></th>
+                            <th onclick="sortBy('win_rate')">Win % <span class="sort-indicator"></span></th>
+                            <th onclick="sortBy('raw_avg_fwd20')">Raw 20d <span class="sort-indicator"></span></th>
+                            <th>Span</th>
                         </tr>
                     </thead>
                     <tbody id="perfTableBody">
                         <tr>
-                            <td colspan="8" style="text-align: center; padding: 20px; color: var(--text-3);">
-                                Loading performance data...
+                            <td colspan="7" style="text-align: center; padding: 20px; color: var(--text-3);">
+                                Loading scorecard…
                             </td>
                         </tr>
                     </tbody>

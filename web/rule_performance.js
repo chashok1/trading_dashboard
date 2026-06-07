@@ -1,10 +1,12 @@
 /**
- * Rule Performance — View rule hit rates and effectiveness
+ * Rule Performance — direction-adjusted rule scorecard (Phase 4).
+ * Reads /api/rules/scorecard (v_rule_scorecard). edge_20d > 0 = the rule's
+ * signal was right on average. No wall-clock window — covers all loaded history.
  */
 
 const state = {
     rules: [],
-    sortBy: 'hit_rate',
+    sortBy: 'edge_20d',
     sortDir: 'desc',
 };
 
@@ -12,50 +14,57 @@ const DOM = {
     perfTableBody: document.getElementById('perfTableBody'),
 };
 
-document.addEventListener('DOMContentLoaded', async () => {
-    await loadPerformance();
-});
+document.addEventListener('DOMContentLoaded', loadScorecard);
 
-async function loadPerformance() {
+async function loadScorecard() {
+    const minFires = document.getElementById('minFires')?.value ?? 30;
+    DOM.perfTableBody.innerHTML =
+        '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-3);">Loading scorecard…</td></tr>';
     try {
-        const data = await fetch('/api/rules/performance?sort=hit_rate&limit=500').then(r => r.json());
-        state.rules = data;
+        const data = await fetch(`/api/rules/scorecard?min_fires=${minFires}&limit=1000`)
+            .then(r => r.json());
+        state.rules = Array.isArray(data) ? data : [];
         renderTable();
     } catch (e) {
-        console.error('Failed to load performance:', e);
-        DOM.perfTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-3);">Error loading data</td></tr>';
+        console.error('Failed to load scorecard:', e);
+        DOM.perfTableBody.innerHTML =
+            '<tr><td colspan="7" style="text-align:center;color:#b91c1c;">Error loading scorecard</td></tr>';
     }
 }
 
 function renderTable() {
-    if (state.rules.length === 0) {
-        DOM.perfTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--text-3);">No performance data</td></tr>';
+    if (!state.rules.length) {
+        DOM.perfTableBody.innerHTML =
+            '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-3);">' +
+            'No scorecard data. Run the outcome ETL: <code>python -m etl.compute_firing_outcomes --truncate</code></td></tr>';
         return;
     }
 
-    DOM.perfTableBody.innerHTML = state.rules.map(r => {
-        const hitRate = (r.hit_rate || 0) * 100;
-        const hitClass = hitRate > 60 ? 'high' : hitRate > 40 ? 'medium' : 'low';
+    const dir = state.sortDir === 'asc' ? 1 : -1;
+    const rows = [...state.rules].sort((a, b) => {
+        let va = a[state.sortBy], vb = b[state.sortBy];
+        if (typeof va === 'string') return va.localeCompare(vb) * dir;
+        return ((va ?? 0) - (vb ?? 0)) * dir;
+    });
 
+    const num = (v, d = 2) => (v === null || v === undefined) ? '—' : Number(v).toFixed(d);
+    const edgeCls = v => v > 0.5 ? 'edge-pos' : v < -0.5 ? 'edge-neg' : 'edge-neu';
+
+    DOM.perfTableBody.innerHTML = rows.map(r => {
+        const span = (r.first_seen && r.last_seen)
+            ? `${r.first_seen} → ${r.last_seen}` : '—';
+        const dirCls = r.direction === 'BUY' ? 'dir-buy' : 'dir-sell';
         return `
-            <tr onclick="viewRuleDetails('${r.rule_id}')">
+            <tr>
                 <td><strong>${r.rule_id}</strong></td>
-                <td>${r.rule_kind || '—'}</td>
-                <td>${r.sample_size || 0}</td>
-                <td><span class="hit-rate ${hitClass}">${hitRate.toFixed(1)}%</span></td>
-                <td>${((r.false_positive_rate || 0) * 100).toFixed(1)}%</td>
-                <td>${r.avg_fwd_5d ? r.avg_fwd_5d.toFixed(2) + '%' : '—'}</td>
-                <td>${r.avg_fwd_20d ? r.avg_fwd_20d.toFixed(2) + '%' : '—'}</td>
-                <td>${r.last_seen || '—'}</td>
-            </tr>
-        `;
+                <td class="${dirCls}">${r.direction || '—'}</td>
+                <td>${r.fires ?? 0}</td>
+                <td class="${edgeCls(r.edge_20d)}">${num(r.edge_20d)}%</td>
+                <td>${num((r.win_rate ?? 0) * 100, 1)}%</td>
+                <td style="color:var(--text-3)">${num(r.raw_avg_fwd20)}%</td>
+                <td style="color:var(--text-3);font-size:11px;">${span}</td>
+            </tr>`;
     }).join('');
-}
-
-function changeSortBy(value) {
-    state.sortBy = value;
-    // In a real app, would re-fetch with new sort parameter
-    console.log('Sort by:', value);
 }
 
 function sortBy(column) {
@@ -63,19 +72,10 @@ function sortBy(column) {
         state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
     } else {
         state.sortBy = column;
-        state.sortDir = 'desc';
+        state.sortDir = column === 'rule_id' || column === 'direction' ? 'asc' : 'desc';
     }
-    // Re-render or reload
     renderTable();
 }
 
-function viewRuleDetails(ruleId) {
-    console.log('Viewing rule details:', ruleId);
-    // Open detail view
-    alert(`Viewing details for rule: ${ruleId}\n(Detail view coming soon)`);
-}
-
-// Expose functions
-window.changeSortBy = changeSortBy;
+window.loadScorecard = loadScorecard;
 window.sortBy = sortBy;
-window.viewRuleDetails = viewRuleDetails;

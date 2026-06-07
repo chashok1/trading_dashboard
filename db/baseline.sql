@@ -4950,9 +4950,9 @@ CREATE OR REPLACE FUNCTION v_rule_performance_window(
 
         SELECT
 
-            COALESCE(p_to,   CURRENT_DATE)                                AS hi,
+            COALESCE(p_to,   (SELECT MAX(as_of_date) FROM drv_rule_outcome), CURRENT_DATE) AS hi,
 
-            COALESCE(p_from, CURRENT_DATE - (p_window_days || ' days')::interval) AS lo
+            COALESCE(p_from, COALESCE((SELECT MAX(as_of_date) FROM drv_rule_outcome), CURRENT_DATE) - (p_window_days || ' days')::interval) AS lo
 
     )
 
