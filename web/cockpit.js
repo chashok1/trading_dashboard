@@ -7,9 +7,61 @@ const state = {
     actions: [],
     selectedSymbol: null,
     sectors: [],
-    chart: null,
     allSymbols: [],
 };
+
+// TOS symbol → TradingView exchange:symbol
+const TV_MAP = {
+    'SPX': 'SP:SPX',   '$SPX': 'SP:SPX',
+    '$COMP': 'NASDAQ:COMP', 'COMP': 'NASDAQ:COMP', 'COMPQ': 'NASDAQ:COMP',
+    '$DJI': 'DJ:DJI',  'DJI': 'DJ:DJI', 'INDU': 'DJ:DJI',
+    'RUT': 'TVC:RUT',
+    'VIX': 'CBOE:VIX',  'VXN': 'CBOE:VXN', 'VXD': 'CBOE:VXD',
+    'RVX': 'TVC:RVX',   'OVX': 'CBOE:OVX', 'GVZ': 'CBOE:GVZ',
+    'MOVE': 'TVC:MOVE', 'DXY': 'TVC:DXY',  '$DXY': 'TVC:DXY',
+    '/CL': 'NYMEX:CL1!', '/GC': 'COMEX:GC1!', '/ES': 'CME:ES1!',
+    '/NQ': 'CME:NQ1!',   '/RTY': 'CME:RTY1!',
+};
+
+function toTvSymbol(sym) {
+    if (!sym) return 'AMEX:SPY';
+    if (TV_MAP[sym]) return TV_MAP[sym];
+    if (sym.startsWith('/')) return sym.slice(1) + '1!';
+    if (sym.startsWith('$')) return sym.slice(1);
+    return sym;
+}
+
+let _tvSeq = 0;
+
+function renderTvChart(symbol) {
+    const container = document.getElementById('tv_chart_container');
+    const label = document.getElementById('chartSymbolLabel');
+    const ticker = document.getElementById('chartSymbolTicker');
+    if (label) label.textContent = 'Chart';
+    if (ticker) ticker.textContent = symbol || '';
+
+    container.innerHTML = '';
+    const id = 'tv_w' + (++_tvSeq);
+    const div = document.createElement('div');
+    div.id = id;
+    div.style.height = '100%';
+    container.appendChild(div);
+
+    /* global TradingView */
+    new TradingView.widget({
+        autosize: true,
+        symbol: toTvSymbol(symbol),
+        interval: 'D',
+        timezone: 'America/New_York',
+        theme: 'light',
+        style: '1',
+        locale: 'en',
+        enable_publishing: false,
+        allow_symbol_change: true,
+        save_image: false,
+        container_id: id,
+    });
+}
 
 const DOM = {
     datePicker: document.getElementById('datePicker'),
@@ -22,7 +74,6 @@ const DOM = {
     drawerPrice: document.getElementById('drawerPrice'),
     atomicRulesList: document.getElementById('atomicRulesList'),
     compositeRulesList: document.getElementById('compositeRulesList'),
-    priceChart: document.getElementById('priceChart'),
 };
 
 // Initialize
@@ -122,6 +173,8 @@ function openDrawer(symbol) {
     const action = state.actions.find(a => a.tos_symbol === symbol);
 
     if (!action) return;
+
+    renderTvChart(symbol);
 
     DOM.drawerSymbol.textContent = symbol;
     DOM.drawerPrice.textContent = `$${action.last_price?.toFixed(2) || '—'}`;

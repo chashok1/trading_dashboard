@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Action Cockpit — Trading Dashboard</title>
     <link rel="stylesheet" href="/static/styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <style>
         .cockpit-header {
             display: flex;
@@ -138,6 +137,56 @@
             font-size: 12px;
             color: var(--text-2);
         }
+        /* --- Split layout --- */
+        .cockpit-split {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+        .cockpit-table-panel {
+            flex: 0 0 42%;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            height: 640px;
+        }
+        .cockpit-table-panel .scrollable-table-container {
+            flex: 1;
+            overflow-y: auto;
+            min-height: 0;
+        }
+        .cockpit-chart-panel {
+            flex: 1;
+            min-width: 0;
+            height: 640px;
+            display: flex;
+            flex-direction: column;
+        }
+        .chart-panel-header {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .chart-panel-header .chart-sym { color: var(--accent); }
+        #tv_chart_container {
+            flex: 1;
+            min-height: 0;
+            width: 100%;
+        }
+        .chart-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-3);
+            font-size: 14px;
+        }
         /* --- Market context band (macro_band.js) --- */
         .macro-head {
             display: flex; justify-content: space-between; align-items: center;
@@ -208,42 +257,56 @@
     </header>
 
     <main>
-        <div class="card">
-            <div class="cockpit-header">
-                <div class="cockpit-controls">
-                    <select id="actionFilter">
-                        <option value="">All Actions</option>
-                        <option value="SA">SA (Sell All)</option>
-                        <option value="STM">STM (Sell to Min)</option>
-                        <option value="SS">SS (Sell Some)</option>
-                        <option value="BM">BM (Buy More)</option>
-                    </select>
-                    <select id="sectorFilter">
-                        <option value="">All Sectors</option>
-                    </select>
-                    <input type="text" id="symbolSearch" placeholder="Search symbol..." style="min-width: 150px;">
+        <!-- Filters row -->
+        <div class="card" style="margin-bottom:12px; padding:10px 14px;">
+            <div class="cockpit-controls">
+                <select id="actionFilter">
+                    <option value="">All Actions</option>
+                    <option value="SA">SA (Sell All)</option>
+                    <option value="STM">STM (Sell to Min)</option>
+                    <option value="SS">SS (Sell Some)</option>
+                    <option value="BM">BM (Buy More)</option>
+                </select>
+                <select id="sectorFilter">
+                    <option value="">All Sectors</option>
+                </select>
+                <input type="text" id="symbolSearch" placeholder="Search symbol..." style="min-width: 150px;">
+            </div>
+        </div>
+
+        <!-- Split: table left, chart right -->
+        <div class="cockpit-split">
+            <div class="cockpit-table-panel card">
+                <div class="scrollable-table-container">
+                    <table class="actions-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Sector</th>
+                                <th>Price</th>
+                                <th>Action</th>
+                                <th>Score</th>
+                            </tr>
+                        </thead>
+                        <tbody id="actionsTableBody">
+                            <tr>
+                                <td colspan="5" style="text-align:center; padding:20px; color:var(--text-3);">
+                                    Select a date to view actions
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
-            <div class="scrollable-table-container">
-                <table class="actions-table">
-                    <thead>
-                        <tr>
-                            <th>Symbol</th>
-                            <th>Sector</th>
-                            <th>Price</th>
-                            <th>Action</th>
-                            <th>Score</th>
-                        </tr>
-                    </thead>
-                    <tbody id="actionsTableBody">
-                        <tr>
-                            <td colspan="7" style="text-align: center; padding: 20px; color: var(--text-3);">
-                                Select a date to view actions
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="cockpit-chart-panel card">
+                <div class="chart-panel-header">
+                    <span id="chartSymbolLabel">Chart</span>
+                    <span class="chart-sym" id="chartSymbolTicker"></span>
+                </div>
+                <div id="tv_chart_container">
+                    <div class="chart-placeholder">Click a row to view chart</div>
+                </div>
             </div>
         </div>
     </main>
@@ -258,10 +321,6 @@
         </div>
 
         <div class="drawer-content">
-            <div class="chart-container">
-                <canvas id="priceChart"></canvas>
-            </div>
-
             <h3>Triggered Atomic Rules</h3>
             <ul class="rules-list" id="atomicRulesList"></ul>
 
@@ -275,6 +334,7 @@
         </div>
     </div>
 
+    <script src="https://s3.tradingview.com/tv.js"></script>
     <script src="/static/_common.js"></script>
     <script src="/static/cockpit.js"></script>
     <script src="/static/rebuild_modal.js"></script>
