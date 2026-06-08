@@ -23,6 +23,7 @@ const state = {
   },
   current: null,
   sourceMethods: {},   // source_code -> base_weight_method (Metric-column sort)
+  buysellSeq: {},      // buysell code -> seq from ref_param_lookup (priority sort)
   // Pass 2: top-N collapse
   showAll: false,
   TOP_N: 15,
@@ -178,6 +179,11 @@ async function loadSources() {
     state.scorecard = {};
     for (const r of sc) state.scorecard[r.rule_id] = r;
   } catch (_) { state.scorecard = {}; }
+  // Buysell code→seq map from ref_param_lookup for the default priority sort.
+  // SA has seq=21 (highest); sorting by seq DESC puts SA at the top.
+  try {
+    state.buysellSeq = await fetchJson('/api/ref/buysell');
+  } catch (_) { state.buysellSeq = {}; }
 }
 
 // Resolve the buy/sell side for a fired rule ID via actions.js (single source
@@ -644,7 +650,7 @@ function _renderOtherSources(r) {
     const src = srcCode.toLowerCase();
     const action = (s.action || '').toUpperCase() || '?';
     const actDisp = actionDisplay(action);
-    const colorCls = (actDisp.colorCls || 'act-neutral') + '-fill';
+    const colorCls = (actDisp.colorCls || 'act-neutral') + '-tint';
     const actLabel = actionText(actDisp) || action;
     return `<span data-srcpop data-sym="${escapeHtml(r.tos_symbol)}" data-src="${escapeHtml(srcCode)}" class="act-badge act-badge-sm ${colorCls}" style="margin-right:4px; cursor:help;" title="${escapeHtml(srcCode)}">${escapeHtml(actLabel)} <span style="font-size:8px; opacity:0.8;">(${src})</span></span>`;
   }).join('');
@@ -1012,27 +1018,37 @@ function _finalCallHtml(row) {
   } else {
     badgeHtml = '<span class="fc-conf-badge fc-conf-mixed" title="Sources and Technical conflict — cross-check the Rules column">&#9888; Mixed</span>';
   }
-  // Color via actions.js token (act-*-fill gives background + white text)
+  // Color via actions.js token (act-*-tint gives soft colored fill + colored text + border)
   var fcDisp = actionDisplay(fc.code || (fc.side === 'sell' ? 'SA' : fc.side === 'buy' ? 'BS' : 'HOLD'));
-  var colorCls = (fcDisp.colorCls || 'act-neutral') + '-fill';
+  var colorCls = (fcDisp.colorCls || 'act-neutral') + '-tint';
   return '<span class="act-badge ' + colorCls + '" title="' +
          escapeHtml(fc.label || text) + '">' +
          escapeHtml(text) + '</span> ' + badgeHtml;
 }
 
 // ── Pass 2: Priority score ──────────────────────────────────────────────────
-// Priority = final-call strength × |AMT$|. Falls back to conviction × edge if
-// no final call strength (e.g. blank consolidated_action).
+// Priority = buysell SEQ of the Final Call action code (from ref_param_lookup).
+// Sort direction is DESCENDING so the highest seq (SA=21) appears at the top.
+//
+// Feasibility gate: infeasible Final Call (e.g. unheld SELL ALL → HOLD)
+// receives seq = -1 so it sinks below all real codes (lowest seqs start at 3).
+//
+// Codes not present in the buysell map (HOLD, OVER_MAX, none) also receive
+// seq = -1 and sort to the bottom. Dollars at stake break ties within the
+// same seq tier (×1e12 keeps tiers from crossing).
 function _computePriority(row) {
   var fc = finalCall(row);
   var amt = Math.abs(Number(row._amt) || 0);
-  if (fc.feasible && Math.abs(fc.strength) > 0) {
-    return Math.abs(fc.strength) * amt;
+  if (!fc.feasible) {
+    // Infeasible: sink to bottom (seq = -1 < all real codes).
+    return -1 * 1e12 + amt;
   }
-  // Fallback: original conviction × edge scoring
-  var n = _agreeingSources(row);
-  var edge = _hasPositiveEdge(row) ? 1.5 : 1.0;
-  return n * amt * edge;
+  var code = (fc.code || '').toUpperCase();
+  var seqMap = state.buysellSeq || {};
+  // OVER_MAX is a synthetic code; map it to SO (SellOverage, seq=12) for sorting.
+  if (code === 'OVER_MAX') code = 'SO';
+  var seq = (seqMap[code] !== undefined) ? seqMap[code] : -1;
+  return seq * 1e12 + amt;
 }
 
 // True if `src` drove this row OR appears among its other sources.
@@ -1063,7 +1079,7 @@ function _renderSourcePop(el, sym, src, feed, loading) {
       const saAct = (sa.action || '').toUpperCase();
       const saDisp = actionDisplay(saAct);
       const saText = actionText(saDisp) || saAct;
-      const saCls = (saDisp.colorCls || 'act-neutral') + '-fill';
+      const saCls = (saDisp.colorCls || 'act-neutral') + '-tint';
       saActionHtml = `<span class="act-badge act-badge-sm ${saCls}" style="font-size:10px;">${escapeHtml(saText)}</span>`;
     }
     if (sa.weight != null)       kv.push(['Weight', formatNum(sa.weight)]);
@@ -1249,8 +1265,14 @@ function renderGrid() {
     const rrRaw = r.rr_action || '';
     const rrDisp = actionDisplay(rrRaw);
     const rrHtml = rrRaw
-      ? `<span class="act-badge ${(rrDisp.colorCls || 'act-neutral') + '-fill'}" title="${escapeHtml(rrDisp.label || rrRaw)}">${actionText(rrDisp)}</span>`
+      ? `<span class="act-badge ${(rrDisp.colorCls || 'act-neutral') + '-tint'}" title="${escapeHtml(rrDisp.label || rrRaw)}">${actionText(rrDisp)}</span>`
       : '<span style="color:#cbd5e1;">--</span>';
+    const _rrSubLineHtml = (() => {
+      const td = r.tn_td_desc || '', bb = r.bb_desc || '', rr = r.rr_desc || '';
+      if (!td && !bb && !rr) return '';
+      const line = t => `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;">${escapeHtml(t)}</div>`;
+      return `<div class="rr-sub-line" style="font-size:9px;color:#94a3b8;line-height:1.4;" data-filled="1">${td ? line('TnTd: ' + td) : ''}${bb ? line('BB: ' + bb) : ''}${rr ? line('RR: ' + rr) : ''}</div>`;
+    })();
 
     // Final Call cell — reconciled action + confidence badge
     const fcHtml = _finalCallHtml(r);
@@ -1262,29 +1284,33 @@ function renderGrid() {
       <td style="padding:4px 6px; text-align:center;">
         <input type="checkbox" class="row-check" data-sym="${escapeHtml(r.tos_symbol)}"${isChecked ? ' checked' : ''}>
       </td>
+      <td class="num" style="font-size:11px; color:#475569;">${posStr || '<span style="color:#cbd5e1;">—</span>'}</td>
+      <td class="num">
+        <span class="${pctCls}" style="font-weight:700;">${pctStr}</span>
+        ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
+      </td>
+      <td class="num">${_convictionHtml(r)}</td>
+      <td class="num"><span class="amt-primary">${fmtUsd(r._amt)}</span></td>
       <td style="padding:6px 4px;">
         ${typeof yahooLink === 'function' ? yahooLink(r.tos_symbol) : ''}
         <strong style="font-size:13px;">${escapeHtml(r.tos_symbol || '')}</strong>
         ${r.sector ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px;">${escapeHtml(r.sector)}</div>` : ''}
       </td>
       <td class="act-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:help;">
-        <span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-fill'}" title="${escapeHtml(actionDisplay(_badgeAction(r)).label || actionLabel(r))}">${actionLabel(r)}</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-tint'}" title="${escapeHtml(actionDisplay(_badgeAction(r)).label || actionLabel(r))}">${actionLabel(r)}</span>
+          ${_srcSubLineHtml(r)}
+        </div>
         ${_isOverMaxOverlay(r) ? `<div style="font-size:8px;line-height:1;font-weight:600;margin-top:1px;" class="${_actionColorCls(action)}">was ${actionText(actionDisplay(action))}</div>` : ''}
-        ${_srcSubLineHtml(r)}
       </td>
       <td class="rr-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-date="${escapeHtml(r.as_of_date || state.date || '')}" style="padding:6px 4px; cursor:help;">
-        ${rrHtml}
-        <div class="rr-sub-line" style="font-size:9px;color:#94a3b8;line-height:1;margin-top:2px;white-space:nowrap;"></div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          ${rrHtml}
+          ${_rrSubLineHtml}
+        </div>
       </td>
       <td style="padding:6px 4px;">${fcHtml}</td>
-      <td class="num" style="font-size:11px; color:#475569;">${posStr || '<span style="color:#cbd5e1;">—</span>'}</td>
-      <td class="num"><span class="amt-primary">${fmtUsd(r._amt)}</span></td>
-      <td class="num">${_convictionHtml(r)}</td>
-      <td class="num">
-        <span class="${pctCls}" style="font-weight:700;">${pctStr}</span>
-        ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
-      </td>
-      <td style="padding:4px 6px; max-width:180px; overflow:hidden;">${firesCellHtml(r)}</td>
+      <td style="padding:4px 6px; max-width:360px; overflow:hidden;">${firesCellHtml(r)}</td>
       <td style="padding:4px 6px;">
         <div class="act-inline-btns">
           <button type="button" class="btn-done btn-inline-done" data-sym="${escapeHtml(r.tos_symbol)}" data-fc="${escapeHtml(fcActCode)}" title="Act: log final call action">&#10003; ${escapeHtml(fcActCode)}</button>
@@ -1396,7 +1422,7 @@ function _renderFocusCard() {
   const r = rows[state.focusIdx];
   $('fcProg').textContent = `${state.focusIdx + 1} of ${rows.length}`;
   $('fcSym').textContent = r.tos_symbol || '';
-  $('fcAction').innerHTML = `<span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-fill'}" style="font-size:16px;padding:4px 14px;">${actionLabel(r)}</span>`;
+  $('fcAction').innerHTML = `<span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-tint'}" style="font-size:16px;padding:4px 14px;">${actionLabel(r)}</span>`;
   $('fcAmt').textContent = fmtUsd(r._amt) || '—';
   // "Why": top fired rule or winning source + reason snippet.
   let why = '';
@@ -1577,7 +1603,7 @@ async function openDrilldown(row) {
   const action = (row.consolidated_action || 'NONE').toUpperCase();
   const kv = $('modalKv');
   kv.innerHTML = `
-    <dt>Action</dt><dd><span class="act-badge ${(actionDisplay(_badgeAction(row)).colorCls || 'act-neutral') + '-fill'}">${actionLabel(row)}</span>${_isOverMaxOverlay(row) ? ` <small class="${_actionColorCls(action)}" style="font-weight:600;font-size:9px;">was ${actionText(actionDisplay(action))}</small>` : ''}</dd>
+    <dt>Action</dt><dd><span class="act-badge ${(actionDisplay(_badgeAction(row)).colorCls || 'act-neutral') + '-tint'}">${actionLabel(row)}</span>${_isOverMaxOverlay(row) ? ` <small class="${_actionColorCls(action)}" style="font-weight:600;font-size:9px;">was ${actionText(actionDisplay(action))}</small>` : ''}</dd>
     <dt>Winning source</dt><dd>${row.winning_source || '—'}</dd>
     <dt>Real asset class</dt><dd>${row.real_asset_class || '—'}</dd>
     <dt>Held today</dt><dd>${row.held_today ? 'Yes' : 'No'}</dd>
@@ -1623,7 +1649,7 @@ async function openDrilldown(row) {
         <td><span class="${todayOl.cls}" style="font-weight:600;">${todayOl.label}</span>${todayMod}</td>
         <td><span class="${prevOl.cls}">${prevOl.label}</span>${prevMod}</td>
         <td>${s.held_today ? 'Y' : 'N'}</td>
-        <td>${sa ? `<span class="act-badge ${(actionDisplay(sa).colorCls || 'act-neutral') + '-fill'}">${actionText(actionDisplay(sa)) || sa}</span>` : ''}</td>
+        <td>${sa ? `<span class="act-badge ${(actionDisplay(sa).colorCls || 'act-neutral') + '-tint'}">${actionText(actionDisplay(sa)) || sa}</span>` : ''}</td>
         <td style="font-size:10px;">${escapeHtml(s.action_reason || s.reason || '')}</td>
       `;
       tr.addEventListener('click', () => toggleCmpRow(tr, srcCode));
@@ -1771,7 +1797,7 @@ function _comparisonPanelHtml(srcCode) {
        ((rec && rec.weight != null) ? (' &middot; wt ' + formatNum(rec.weight)) : ''));
   const _actCode = (c.action || '').toUpperCase();
   const act = _actCode ? '<span class="act-badge ' +
-              escapeHtml((actionDisplay(_actCode).colorCls || 'act-neutral') + '-fill') + '">' +
+              escapeHtml((actionDisplay(_actCode).colorCls || 'act-neutral') + '-tint') + '">' +
               escapeHtml(actionText(actionDisplay(_actCode)) || _actCode) + '</span> ' : '';
   return '<div class="cmp-panel">' +
     '<div class="cmp-panel-head">' +
@@ -2232,7 +2258,7 @@ function _actionPopHtml(sym) {
   // ── Header ────────────────────────────────────────────────────────────────
   let html = `<div style="font-weight:700;color:#0f172a;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;">` +
     `${escapeHtml(sym)} — ` +
-    `<span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-fill'}">${escapeHtml(actionLbl)}</span>` +
+    `<span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-tint'}">${escapeHtml(actionLbl)}</span>` +
     `</div>`;
 
   // ── Suppression ────────────────────────────────────────────────────────────
@@ -2273,7 +2299,7 @@ function _actionPopHtml(sym) {
       const actText = actionText(dispS) || srcAct;
       html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">` +
         `<span style="font-size:10px;color:#475569;min-width:44px;">${escapeHtml(srcCode)}</span>` +
-        `<span class="act-badge act-badge-sm ${(actionDisplay(srcAct).colorCls || 'act-neutral') + '-fill'}">${escapeHtml(actText)}</span>` +
+        `<span class="act-badge act-badge-sm ${(actionDisplay(srcAct).colorCls || 'act-neutral') + '-tint'}">${escapeHtml(actText)}</span>` +
         (isWin ? `<span style="font-size:9px;color:#16a34a;font-weight:600;">&#10003; winning</span>` : '') +
         `</div>`;
     }
