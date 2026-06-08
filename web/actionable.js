@@ -1310,7 +1310,7 @@ function renderGrid() {
         </div>
       </td>
       <td style="padding:6px 4px;">${fcHtml}</td>
-      <td style="padding:4px 6px; max-width:360px; overflow:hidden;">${firesCellHtml(r)}</td>
+      <td style="padding:4px 6px; max-width:720px; overflow:hidden;">${firesCellHtml(r)}</td>
       <td style="padding:4px 6px;">
         <div class="act-inline-btns">
           <button type="button" class="btn-done btn-inline-done" data-sym="${escapeHtml(r.tos_symbol)}" data-fc="${escapeHtml(fcActCode)}" title="Act: log final call action">&#10003; ${escapeHtml(fcActCode)}</button>
