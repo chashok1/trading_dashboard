@@ -1138,6 +1138,22 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   background: var(--act-neutral-bg);
   color: var(--act-neutral);
 }
+/* Action color overrides for act-badge — compound selectors beat the base .act-badge rule */
+.act-badge.act-sell-strong-fill { background: var(--act-sell-strong);   color: #fff; border: none; }
+.act-badge.act-sell-fill        { background: var(--act-sell);           color: #fff; border: none; }
+.act-badge.act-sell-weak-fill   { background: var(--act-sell-weak);      color: #fff; border: none; }
+.act-badge.act-buy-strong-fill  { background: var(--act-buy-strong);     color: #fff; border: none; }
+.act-badge.act-buy-fill         { background: var(--act-buy);            color: #fff; border: none; }
+.act-badge.act-buy-weak-fill    { background: var(--act-buy-weak);       color: #fff; border: none; }
+.act-badge.act-neutral-fill     { background: var(--act-neutral);        color: #fff; border: none; }
+.act-badge.act-sell-strong-tint { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); border: 1px solid var(--act-sell-strong); }
+.act-badge.act-sell-tint        { background: var(--act-sell-bg);        color: var(--act-sell);        border: 1px solid var(--act-sell); }
+.act-badge.act-sell-weak-tint   { background: var(--act-sell-weak-bg);   color: var(--act-sell-weak);   border: 1px solid var(--act-sell-weak); }
+.act-badge.act-buy-strong-tint  { background: var(--act-buy-strong-bg);  color: var(--act-buy-strong);  border: 1px solid var(--act-buy-strong); }
+.act-badge.act-buy-tint         { background: var(--act-buy-bg);         color: var(--act-buy);         border: 1px solid var(--act-buy); }
+.act-badge.act-buy-weak-tint    { background: var(--act-buy-weak-bg);    color: var(--act-buy-weak);    border: 1px solid var(--act-buy-weak); }
+.act-badge.act-neutral-tint     { background: var(--act-neutral-bg);     color: var(--act-neutral);     border: 1px solid #d1d5db; }
+
 /* Smaller variant for dense lists (Rules / edge column, other-source pills) */
 .act-badge-sm {
   font-size: 9px;
@@ -1192,11 +1208,10 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 .act-badge-sm.rule-neutral.rule-strong { background: var(--act-neutral); color: #fff; border: none; border-radius: 8px; padding: 1px 5px; }
 .act-badge-sm.rule-neutral.rule-weak   { background: var(--act-neutral-bg); color: #374151; border: 1px solid #d1d5db; border-radius: 8px; padding: 1px 5px; }
 
-/* Source-action sub-line (Action cell second line) */
+/* Source-action sub-line (inline, to the right of the action badge) */
 .act-src-sub {
   font-size: 9px;
   line-height: 1.4;
-  margin-top: 3px;
   display: flex;
   flex-wrap: wrap;
   gap: 3px 5px;
