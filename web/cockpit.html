@@ -187,6 +187,30 @@
             color: var(--text-3);
             font-size: 14px;
         }
+        /* --- Widget showcase --- */
+        .showcase-heading {
+            font-size: 13px; font-weight: 600; color: var(--text-2);
+            margin: 28px 0 4px; text-transform: uppercase; letter-spacing: .04em;
+            border-top: 1px solid var(--border); padding-top: 20px;
+        }
+        .widget-label {
+            font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+            color: var(--text-3); margin: 14px 0 6px; padding-left: 2px;
+        }
+        .mini-charts-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+        }
+        .mini-chart-card {
+            height: 220px; overflow: hidden; padding: 0; border-radius: 6px;
+            border: 1px solid var(--border); background: #fff;
+        }
+        .overview-calendar-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
         /* --- Market context band (macro_band.js) --- */
         .macro-head {
             display: flex; justify-content: space-between; align-items: center;
@@ -309,6 +333,146 @@
                 </div>
             </div>
         </div>
+        <!-- =====================================================
+             TradingView Widget Showcase
+             ===================================================== -->
+        <div class="showcase-heading">TradingView Widgets &mdash; preview for other screens</div>
+
+        <!-- 1. Ticker Tape -->
+        <div class="widget-label">Ticker Tape &middot; toolbar / top-of-screen option</div>
+        <div style="border:1px solid var(--border); border-radius:6px; overflow:hidden; background:#fff;">
+            <div class="tradingview-widget-container">
+                <div class="tradingview-widget-container__widget"></div>
+                <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
+                {
+                    "symbols": [
+                        {"proName":"FOREXCOM:SPXUSD","title":"S&P 500"},
+                        {"proName":"FOREXCOM:NSXUSD","title":"Nasdaq 100"},
+                        {"proName":"FOREXCOM:DJI","title":"Dow Jones"},
+                        {"proName":"TVC:RUT","title":"Russell 2K"},
+                        {"proName":"CBOE:VIX","title":"VIX"},
+                        {"proName":"TVC:US10Y","title":"10Y Yield"},
+                        {"proName":"COMEX:GC1!","title":"Gold"},
+                        {"proName":"NYMEX:CL1!","title":"Crude Oil"},
+                        {"proName":"BITSTAMP:BTCUSD","title":"Bitcoin"},
+                        {"proName":"FX:EURUSD","title":"EUR/USD"},
+                        {"proName":"FX:USDJPY","title":"USD/JPY"}
+                    ],
+                    "showSymbolLogo": true,
+                    "isTransparent": false,
+                    "displayMode": "adaptive",
+                    "colorTheme": "light",
+                    "locale": "en"
+                }
+                </script>
+            </div>
+        </div>
+
+        <!-- 2. Mini Charts -->
+        <div class="widget-label">Mini Charts &middot; per-symbol card option</div>
+        <div class="mini-charts-row">
+            <div class="mini-chart-card">
+                <div class="tradingview-widget-container" style="height:100%;">
+                    <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%;"></div>
+                    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+                    {"symbol":"FOREXCOM:SPXUSD","width":"100%","height":220,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+                    </script>
+                </div>
+            </div>
+            <div class="mini-chart-card">
+                <div class="tradingview-widget-container" style="height:100%;">
+                    <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%;"></div>
+                    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+                    {"symbol":"CBOE:VIX","width":"100%","height":220,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+                    </script>
+                </div>
+            </div>
+            <div class="mini-chart-card">
+                <div class="tradingview-widget-container" style="height:100%;">
+                    <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%;"></div>
+                    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+                    {"symbol":"COMEX:GC1!","width":"100%","height":220,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+                    </script>
+                </div>
+            </div>
+            <div class="mini-chart-card">
+                <div class="tradingview-widget-container" style="height:100%;">
+                    <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%;"></div>
+                    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+                    {"symbol":"NYMEX:CL1!","width":"100%","height":220,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+                    </script>
+                </div>
+            </div>
+            <div class="mini-chart-card">
+                <div class="tradingview-widget-container" style="height:100%;">
+                    <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%;"></div>
+                    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+                    {"symbol":"BITSTAMP:BTCUSD","width":"100%","height":220,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+                    </script>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Market Overview + Economic Calendar -->
+        <div class="overview-calendar-row">
+            <div>
+                <div class="widget-label">Market Overview &middot; multi-symbol tabbed (Indices / Commodities / Bonds / Forex)</div>
+                <div style="border:1px solid var(--border); border-radius:6px; overflow:hidden; background:#fff; height:450px;">
+                    <div class="tradingview-widget-container" style="height:450px;">
+                        <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%;"></div>
+                        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-market-overview.js" async>
+                        {
+                            "colorTheme":"light","dateRange":"12M","showChart":true,"locale":"en",
+                            "width":"100%","height":450,"isTransparent":false,
+                            "showSymbolLogo":true,"showFloatingTooltip":false,
+                            "plotLineColorGrowing":"rgba(41,98,255,1.0)","plotLineColorFalling":"rgba(41,98,255,1.0)",
+                            "gridLineColor":"rgba(240,243,250,0)","scaleFontColor":"rgba(106,109,120,1.0)",
+                            "belowLineFillColorGrowing":"rgba(41,98,255,0.12)","belowLineFillColorFalling":"rgba(41,98,255,0.12)",
+                            "belowLineFillColorGrowingBottom":"rgba(41,98,255,0)","belowLineFillColorFallingBottom":"rgba(41,98,255,0)",
+                            "symbolActiveColor":"rgba(41,98,255,0.12)",
+                            "tabs":[
+                                {"title":"Indices","originalTitle":"Indices","symbols":[
+                                    {"s":"FOREXCOM:SPXUSD","d":"S&P 500"},{"s":"FOREXCOM:NSXUSD","d":"Nasdaq 100"},
+                                    {"s":"FOREXCOM:DJI","d":"Dow Jones"},{"s":"TVC:RUT","d":"Russell 2K"},
+                                    {"s":"INDEX:NKY","d":"Nikkei 225"},{"s":"INDEX:DEU40","d":"DAX"},
+                                    {"s":"CBOE:VIX","d":"VIX"}
+                                ]},
+                                {"title":"Commodities","originalTitle":"Commodities","symbols":[
+                                    {"s":"COMEX:GC1!","d":"Gold"},{"s":"NYMEX:CL1!","d":"Crude Oil"},
+                                    {"s":"NYMEX:NG1!","d":"Nat Gas"},{"s":"COMEX:SI1!","d":"Silver"},
+                                    {"s":"COMEX:HG1!","d":"Copper"}
+                                ]},
+                                {"title":"Bonds","originalTitle":"Bonds","symbols":[
+                                    {"s":"TVC:US10Y","d":"10Y Yield"},{"s":"TVC:US02Y","d":"2Y Yield"},
+                                    {"s":"TVC:US30Y","d":"30Y Yield"},{"s":"CBOT:ZB1!","d":"T-Bond"}
+                                ]},
+                                {"title":"Forex","originalTitle":"Forex","symbols":[
+                                    {"s":"FX:EURUSD"},{"s":"FX:GBPUSD"},{"s":"FX:USDJPY"},
+                                    {"s":"FX:USDCAD"},{"s":"FX:AUDUSD"}
+                                ]}
+                            ]
+                        }
+                        </script>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <div class="widget-label">Economic Calendar &middot; upcoming US macro events</div>
+                <div style="border:1px solid var(--border); border-radius:6px; overflow:hidden; background:#fff; height:450px;">
+                    <div class="tradingview-widget-container" style="height:450px;">
+                        <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%;"></div>
+                        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-events-calendar.js" async>
+                        {
+                            "colorTheme":"light","isTransparent":false,
+                            "width":"100%","height":450,"locale":"en",
+                            "importanceFilter":"0,1","countryFilter":"us"
+                        }
+                        </script>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </main>
 
     <div class="drawer" id="detailDrawer">
