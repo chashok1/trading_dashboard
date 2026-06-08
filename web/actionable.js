@@ -1020,7 +1020,7 @@ function _finalCallHtml(row) {
   }
   // Color via actions.js token (act-*-tint gives soft colored fill + colored text + border)
   var fcDisp = actionDisplay(fc.code || (fc.side === 'sell' ? 'SA' : fc.side === 'buy' ? 'BS' : 'HOLD'));
-  var colorCls = (fcDisp.colorCls || 'act-neutral') + '-fill';
+  var colorCls = (fcDisp.colorCls || 'act-neutral') + '-tint';
   return '<span class="act-badge ' + colorCls + '" title="' +
          escapeHtml(fc.label || text) + '">' +
          escapeHtml(text) + '</span> ' + badgeHtml;
@@ -1265,7 +1265,7 @@ function renderGrid() {
     const rrRaw = r.rr_action || '';
     const rrDisp = actionDisplay(rrRaw);
     const rrHtml = rrRaw
-      ? `<span class="act-badge ${(rrDisp.colorCls || 'act-neutral') + '-fill'}" title="${escapeHtml(rrDisp.label || rrRaw)}">${actionText(rrDisp)}</span>`
+      ? `<span class="act-badge ${(rrDisp.colorCls || 'act-neutral') + '-tint'}" title="${escapeHtml(rrDisp.label || rrRaw)}">${actionText(rrDisp)}</span>`
       : '<span style="color:#cbd5e1;">--</span>';
     const _rrSubLineHtml = (() => {
       const td = r.tn_td_desc || '', bb = r.bb_desc || '';
@@ -1300,7 +1300,7 @@ function renderGrid() {
       <td class="num"><span class="amt-primary">${fmtUsd(r._amt)}</span></td>
       <td class="act-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:help;">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-fill'}" title="${escapeHtml(actionDisplay(_badgeAction(r)).label || actionLabel(r))}">${actionLabel(r)}</span>
+          <span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-tint'}" title="${escapeHtml(actionDisplay(_badgeAction(r)).label || actionLabel(r))}">${actionLabel(r)}</span>
           ${_srcSubLineHtml(r)}
         </div>
         ${_isOverMaxOverlay(r) ? `<div style="font-size:8px;line-height:1;font-weight:600;margin-top:1px;" class="${_actionColorCls(action)}">was ${actionText(actionDisplay(action))}</div>` : ''}
