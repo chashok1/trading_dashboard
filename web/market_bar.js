@@ -14,7 +14,7 @@
   const REFRESH_MS = 60 * 1000;  // auto-refresh every 60 s
 
   // Metric keys whose direction is inverted (up = bad / red)
-  const INVERTED = new Set(['VIX', 'HY', 'HYSPRD']);
+  const INVERTED = new Set(['VIX', 'VXN', 'HY', 'HYSPRD']);
 
   // ---- formatting helpers -----------------------------------------------
   function fmtValue(v, fmt) {
@@ -71,19 +71,37 @@
     const asOf = data.as_of || '';
 
     const cells = items.map(item => {
-      const val    = fmtValue(item.value, item.value_format);
-      const chg    = fmtChgPct(item.chg_pct);
-      const arrow  = dirArrow(item.chg_pct);
-      const cls    = dirClass(item.chg_pct, item.metric_key);
-      const stale  = item.stale ? ' mt-stale' : '';
-      const tip    = escHtml(
-        `${item.label} — source: ${item.source || '?'}, as of: ${item.as_of || '?'}`
-        + (item.stale ? ' (stale)' : '')
-      );
+      const valStr  = fmtValue(item.value, item.value_format);
+      const chgStr  = fmtChgPct(item.chg_pct);
+      const arrow   = dirArrow(item.chg_pct);
+      const cls     = dirClass(item.chg_pct, item.metric_key);
+      const stale   = item.stale ? ' mt-stale' : '';
+
+      // Tooltip: full value, change, source, date
+      const tipParts = [`${item.label}: ${valStr}`];
+      if (chgStr) tipParts.push(`${arrow}${chgStr}`);
+      tipParts.push(`source: ${item.source || '?'}, as of: ${item.as_of || '?'}`);
+      if (item.stale) tipParts.push('stale');
+      const tip = escHtml(tipParts.join('  '));
+
+      // Compact display:
+      //   level  (VIX/VXN) → colored level value  e.g. "VIX 18.8"
+      //   pct    (rates)   → plain level value     e.g. "10Y 4.50%"
+      //   index/price      → colored pct change    e.g. "S&P ▲+0.70%"
+      let content;
+      if (item.value_format === 'level') {
+        content = `<span class="mt-value ${cls}">${valStr}</span>`;
+      } else if (item.value_format === 'pct') {
+        content = `<span class="mt-value">${valStr}</span>`;
+      } else {
+        content = chgStr
+          ? `<span class="mt-chg ${cls}">${arrow}${chgStr}</span>`
+          : `<span class="mt-value">${valStr}</span>`;
+      }
+
       return `<div class="mt-cell${stale}" title="${tip}">` +
         `<span class="mt-label">${escHtml(item.label)}</span>` +
-        `<span class="mt-value">${val}</span>` +
-        (chg ? `<span class="mt-chg ${cls}">${arrow}${chg}</span>` : '') +
+        content +
         `</div>`;
     }).join('');
 
