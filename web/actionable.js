@@ -1268,7 +1268,8 @@ function renderGrid() {
       ? `<span class="act-badge ${(rrDisp.colorCls || 'act-neutral') + '-tint'}" title="${escapeHtml(rrDisp.label || rrRaw)}">${actionText(rrDisp)}</span>`
       : '<span style="color:#cbd5e1;">--</span>';
     const _rrSubLineHtml = (() => {
-      const td = r.tn_td_desc || '', bb = r.bb_desc || '', rr = r.rr_desc || '';
+      const td = r.tn_td_desc || '', bb = r.bb_desc || '';
+      const rr = r.rr_desc || (r.rr_bull_bear ? (r.rr_bull_bear === 'B' ? 'Bull' : 'Not-Bull') : '');
       if (!td && !bb && !rr) return '';
       const line = t => `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;">${escapeHtml(t)}</div>`;
       return `<div class="rr-sub-line" style="font-size:9px;color:#94a3b8;line-height:1.4;" data-filled="1">${td ? line('TnTd: ' + td) : ''}${bb ? line('BB: ' + bb) : ''}${rr ? line('RR: ' + rr) : ''}</div>`;
@@ -1290,12 +1291,13 @@ function renderGrid() {
         ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
       </td>
       <td class="num">${_convictionHtml(r)}</td>
-      <td class="num"><span class="amt-primary">${fmtUsd(r._amt)}</span></td>
       <td style="padding:6px 4px;">
         ${typeof yahooLink === 'function' ? yahooLink(r.tos_symbol) : ''}
         <strong style="font-size:13px;">${escapeHtml(r.tos_symbol || '')}</strong>
         ${r.sector ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px;">${escapeHtml(r.sector)}</div>` : ''}
       </td>
+      <td style="padding:6px 4px;">${fcHtml}</td>
+      <td class="num"><span class="amt-primary">${fmtUsd(r._amt)}</span></td>
       <td class="act-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:help;">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-tint'}" title="${escapeHtml(actionDisplay(_badgeAction(r)).label || actionLabel(r))}">${actionLabel(r)}</span>
@@ -1309,8 +1311,7 @@ function renderGrid() {
           ${_rrSubLineHtml}
         </div>
       </td>
-      <td style="padding:6px 4px;">${fcHtml}</td>
-      <td style="padding:4px 6px; max-width:720px; overflow:hidden;">${firesCellHtml(r)}</td>
+      <td class="rules-link-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:4px 6px; max-width:720px; overflow:hidden; cursor:pointer;" title="Open Rule Flow for ${escapeHtml(r.tos_symbol)}">${firesCellHtml(r)}</td>
       <td style="padding:4px 6px;">
         <div class="act-inline-btns">
           <button type="button" class="btn-done btn-inline-done" data-sym="${escapeHtml(r.tos_symbol)}" data-fc="${escapeHtml(fcActCode)}" title="Act: log final call action">&#10003; ${escapeHtml(fcActCode)}</button>
@@ -1322,6 +1323,11 @@ function renderGrid() {
     tr.onclick = (e) => {
       if (e.target.closest('.btn-inline-done') || e.target.closest('.btn-inline-skip') ||
           e.target.closest('.btn-inline-snz')  || e.target.closest('.row-check')) return;
+      const rulesCell = e.target.closest('.rules-link-cell');
+      if (rulesCell) {
+        window.location.href = '/rule-flow?symbol=' + encodeURIComponent(rulesCell.dataset.sym);
+        return;
+      }
       openDrilldown(r);
     };
     tb.appendChild(tr);

@@ -356,7 +356,11 @@ def get_actionable(
                q.last_price, q.net_chng, q.pct_change, q.export_date, q.export_time, q.loaded_at,
                u.user_action AS last_user_action,
                u.snooze_until AS snooze_until,
-               rr.td_tn_bb_action_desc AS rr_action
+               rr.td_tn_bb_action_desc AS rr_action,
+               rr.tn_td_rule_desc AS tn_td_desc,
+               rr.bb_rng_strk_desc AS bb_desc,
+               rr.rr_desc,
+               rr.rr_bull_bear
         FROM drv_actionable a
         LEFT JOIN drv_cat_atomic_input cat
                ON cat.tos_symbol = a.tos_symbol AND cat.as_of_date = a.as_of_date
