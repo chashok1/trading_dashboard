@@ -3316,12 +3316,16 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
     # cast via ::INTEGER::TEXT so '4' matches the seed row code '4' (no decimal).
     session.execute(text("""
         WITH base AS (
-            -- QE (trade_trend_sd_rule) stays in drv_cat_atomic_input (JV column).
-            -- QJ/QM/QN are now in drv_tn_td_bb_rr (inserted in Pass 1 above).
+            -- QE = trend_trade_rule: the -2..4 Trend/Trade CATEGORY computed in
+            -- Pass 1 (drv_tn_td_bb_rr). This is what tn_td_rule expects (codes
+            -- -2/-1/1/2/3/4). Do NOT use drv_cat_atomic_input.trade_trend_sd_rule
+            -- (the JV trig_ifs output, e.g. 1=">Tn<Td"/seq -9) — that mis-fires
+            -- the Trend/Trade-bearish override and masks the RR signal (bug fix).
+            -- QJ/QM/QN are also in drv_tn_td_bb_rr (inserted in Pass 1 above).
             SELECT
                 r.as_of_date,
                 r.tos_symbol,
-                a.trade_trend_sd_rule AS qe,
+                r.trend_trade_rule AS qe,
                 r.bb_rng_strk_rule    AS qj,
                 r.bull_rr_action      AS qm_val,
                 r.not_bull_rr_action  AS qn_val
