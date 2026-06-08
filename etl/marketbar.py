@@ -57,7 +57,7 @@ def _tos_adapter(session: Session, symbol: str) -> dict | None:
     row = session.execute(_TOS_SQL, {"sym": symbol}).mappings().first()
     if row is None or row["last_price"] is None:
         return None
-    as_of = row["as_of_date"] or row["export_date"]
+    as_of = row["export_date"] or row["as_of_date"]
     return {
         "value":   float(row["last_price"]),
         "chg":     float(row["net_chng"])   if row["net_chng"]   is not None else None,
