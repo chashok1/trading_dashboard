@@ -187,6 +187,11 @@
             color: var(--text-3);
             font-size: 14px;
         }
+        /* --- Cockpit page scroll --- */
+        body.cockpit-page main { overflow-y: auto; }
+        body.cockpit-page main::-webkit-scrollbar { display: block; width: 6px; }
+        body.cockpit-page main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        body.cockpit-page main { scrollbar-width: thin; }
         /* --- Widget showcase --- */
         .showcase-heading {
             font-size: 13px; font-weight: 600; color: var(--text-2);
@@ -250,7 +255,7 @@
         .macro-error { color: #991b1b; padding: 12px 0; font-size: 13px; }
     </style>
 </head>
-<body class="fill-page">
+<body class="cockpit-page">
     <header class="topbar">
         <div class="brand">
             <span class="dot"></span>
