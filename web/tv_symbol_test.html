@@ -306,6 +306,75 @@
 </div>
 
 <!-- ============================================================
+     TICKER TAPE TESTS — tape widget is more permissive than mini chart
+     Test FOREXCOM:/CAPITALCOM: symbols in tape format
+     ============================================================ -->
+
+<h2 style="color:#1d4ed8; border-color:#1d4ed8;">Ticker Tape — FOREXCOM/CAPITALCOM symbols (proper levels)</h2>
+<p style="font-size:12px;color:#555;margin:4px 0 8px;">Tape widget allows CFD data. If these show prices, use them in the tape instead of ETFs.</p>
+
+<div style="border:1px solid #93c5fd;border-radius:6px;overflow:hidden;background:#fff;margin-bottom:8px;">
+  <div style="font-size:11px;font-weight:600;color:#1d4ed8;padding:5px 10px;background:#eff6ff;">Tape A — FOREXCOM variants</div>
+  <div class="tradingview-widget-container">
+    <div class="tradingview-widget-container__widget"></div>
+    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
+    {"symbols":[
+      {"proName":"FOREXCOM:SPXUSD","title":"S&P 500"},
+      {"proName":"FOREXCOM:NSXUSD","title":"Nasdaq 100"},
+      {"proName":"FOREXCOM:DJI","title":"Dow Jones"},
+      {"proName":"FOREXCOM:US2000","title":"Russell 2K"},
+      {"proName":"FOREXCOM:VIXF","title":"VIX"},
+      {"proName":"FOREXCOM:US10YR","title":"10Y Yield"},
+      {"proName":"FOREXCOM:US2YR","title":"2Y Yield"},
+      {"proName":"FOREXCOM:US30YR","title":"30Y Yield"},
+      {"proName":"FOREXCOM:USDOLLAR","title":"DXY"}
+    ],"showSymbolLogo":true,"isTransparent":false,"displayMode":"adaptive","colorTheme":"light","locale":"en"}
+    </script>
+  </div>
+</div>
+
+<div style="border:1px solid #93c5fd;border-radius:6px;overflow:hidden;background:#fff;margin-bottom:8px;">
+  <div style="font-size:11px;font-weight:600;color:#1d4ed8;padding:5px 10px;background:#eff6ff;">Tape B — CAPITALCOM variants</div>
+  <div class="tradingview-widget-container">
+    <div class="tradingview-widget-container__widget"></div>
+    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
+    {"symbols":[
+      {"proName":"CAPITALCOM:US500","title":"S&P 500"},
+      {"proName":"CAPITALCOM:US100","title":"Nasdaq 100"},
+      {"proName":"CAPITALCOM:US30","title":"Dow Jones"},
+      {"proName":"CAPITALCOM:US2000","title":"Russell 2K"},
+      {"proName":"CAPITALCOM:VIX","title":"VIX"},
+      {"proName":"CAPITALCOM:US10Y","title":"10Y Yield"},
+      {"proName":"CAPITALCOM:US02Y","title":"2Y Yield"},
+      {"proName":"CAPITALCOM:US30Y","title":"30Y Yield"},
+      {"proName":"CAPITALCOM:DXY","title":"DXY"}
+    ],"showSymbolLogo":true,"isTransparent":false,"displayMode":"adaptive","colorTheme":"light","locale":"en"}
+    </script>
+  </div>
+</div>
+
+<div style="border:1px solid #93c5fd;border-radius:6px;overflow:hidden;background:#fff;margin-bottom:20px;">
+  <div style="font-size:11px;font-weight:600;color:#1d4ed8;padding:5px 10px;background:#eff6ff;">Tape C — mixed best guess</div>
+  <div class="tradingview-widget-container">
+    <div class="tradingview-widget-container__widget"></div>
+    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
+    {"symbols":[
+      {"proName":"FOREXCOM:SPXUSD","title":"S&P 500"},
+      {"proName":"FOREXCOM:NSXUSD","title":"Nasdaq 100"},
+      {"proName":"CAPITALCOM:VIX","title":"VIX"},
+      {"proName":"CAPITALCOM:US10Y","title":"10Y Yield"},
+      {"proName":"CAPITALCOM:US02Y","title":"2Y Yield"},
+      {"proName":"CAPITALCOM:US30Y","title":"30Y Yield"},
+      {"proName":"CAPITALCOM:DXY","title":"DXY"},
+      {"proName":"TVC:GOLD","title":"Gold"},
+      {"proName":"TVC:USOIL","title":"Crude Oil"},
+      {"proName":"BITSTAMP:BTCUSD","title":"Bitcoin"}
+    ],"showSymbolLogo":true,"isTransparent":false,"displayMode":"adaptive","colorTheme":"light","locale":"en"}
+    </script>
+  </div>
+</div>
+
+<!-- ============================================================
      ALTERNATIVES TO TRY — proper index/rate symbols
      Report which cells show actual data vs "only available"
      ============================================================ -->
