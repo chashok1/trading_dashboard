@@ -1621,7 +1621,7 @@ async function openDrilldown(row) {
   }
   if (Array.isArray(sourceList) && sourceList.length) {
     for (const s of sourceList) {
-      const srcCode = s.source_code || s.source || '';
+      const srcCode = s.source || s.source_code || '';
       const tr = document.createElement('tr');
       tr.dataset.cmpsrc = srcCode;
       tr.className = 'cmp-src-row';
@@ -1645,7 +1645,7 @@ async function openDrilldown(row) {
         <td><span class="${prevOl.cls}">${prevOl.label}</span>${prevMod}</td>
         <td>${s.held_today ? 'Y' : 'N'}</td>
         <td>${sa ? `<span class="act-badge ${(actionDisplay(sa).colorCls || 'act-neutral') + '-tint'}">${actionText(actionDisplay(sa)) || sa}</span>` : ''}</td>
-        <td style="font-size:10px;">${escapeHtml(s.action_reason || s.reason || '')}</td>
+        <td style="font-size:10px;">${escapeHtml(s.reason || s.action_reason || '')}</td>
       `;
       tr.addEventListener('click', () => toggleCmpRow(tr, srcCode));
       srcTbody.appendChild(tr);
@@ -2231,10 +2231,6 @@ function _actionPopHtml(sym) {
   const r = state.rows.find(row => row.tos_symbol === sym);
   if (!r) return '';
 
-  const action = (r.consolidated_action || 'NONE').toUpperCase();
-  const dispAct = actionDisplay(action);
-  const actionLbl = actionText(dispAct) || action;
-
   // Winning source entry
   const winEntry = _winningSourceEntry(r);
   const winSrc   = r.winning_source || (winEntry && (winEntry.source || winEntry.source_code)) || '';
@@ -2253,7 +2249,7 @@ function _actionPopHtml(sym) {
   // ── Header ────────────────────────────────────────────────────────────────
   let html = `<div style="font-weight:700;color:#0f172a;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;">` +
     `${escapeHtml(sym)} — ` +
-    `<span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-tint'}">${escapeHtml(actionLbl)}</span>` +
+    `<span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-tint'}">${escapeHtml(actionLabel(r))}</span>` +
     `</div>`;
 
   // ── Suppression ────────────────────────────────────────────────────────────

@@ -480,6 +480,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                 "prev_date":   a["prev_date"].isoformat() if a["prev_date"] else None,
                 "weight_delta": float(a["weight_delta"]) if a["weight_delta"] is not None else None,
                 "reason":      a["action_reason"],
+                "held_today":  bool(a.get("held_today") or False),
                 "analyst_rank": a.get("analyst_rank"),
                 "snapshot_date": (a["source_snapshot_date"] or a["as_of_date"]).isoformat() if (a["source_snapshot_date"] or a["as_of_date"]) else None,
             })
