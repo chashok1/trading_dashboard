@@ -984,14 +984,6 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 }
 .market-tape::-webkit-scrollbar { display: none; }
 
-.mt-asof {
-  font-size: 10px;
-  color: var(--text-3);
-  padding: 0 8px 0 4px;
-  border-right: 1px solid var(--border);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
 
 .mt-cell {
   display: inline-flex;

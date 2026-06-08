@@ -109,7 +109,6 @@
   // ---- build tape row ---------------------------------------------------
   function buildTapeHtml(data) {
     const items = data.items || [];
-    const asOf = data.as_of || '';
 
     const byKey  = Object.fromEntries(items.map(it => [it.metric_key, it]));
     const paired = new Set(PAIRS.flatMap(p => [p.idx, p.vol].filter(Boolean)));
@@ -148,7 +147,6 @@
     }
 
     return (
-      `<span class="mt-asof">as of ${escHtml(asOf)}</span>` +
       cells.join('') +
       `<button class="mt-expander" id="mtExpandBtn" type="button" aria-expanded="false" title="Show full econ panel">Econ ▾</button>`
     );
