@@ -356,11 +356,11 @@ function matchesBaseFilters(r) {
   }
   // buys_sells included here so chip counts reflect it (AND logic with action chip)
   if (state.filters.buys_sells === 'buy') {
-    const a = (r.consolidated_action || '').toUpperCase();
-    if (a !== 'INCREASE' && a !== 'ADD') return false;
+    const ca = _chipAction(r);
+    if (ca !== 'INCREASE' && ca !== 'ADD') return false;
   } else if (state.filters.buys_sells === 'sell') {
-    const a = (r.consolidated_action || '').toUpperCase();
-    if (a !== 'REMOVE' && a !== 'REDUCE' && !_isOverMaxOverlay(r)) return false;
+    const ca = _chipAction(r);
+    if (ca !== 'REMOVE' && ca !== 'REDUCE' && ca !== 'OVER_MAX') return false;
   }
   return true;
 }
@@ -375,8 +375,7 @@ function applyClientFilter() {
   // rows: baseRows + action chip filter (AND combined)
   state.rows = state.baseRows.filter(r => {
     if (!state.filters.action) return true;
-    if (state.filters.action === 'OVER_MAX') return _isOverMaxOverlay(r);
-    return (r.consolidated_action || 'NONE').toUpperCase() === state.filters.action;
+    return _chipAction(r) === state.filters.action;
   });
   // Reset collapse and selection on filter change.
   state.showAll = false;
@@ -426,12 +425,8 @@ async function rederiveStale() {
 function renderSummary() {
   const counts = { REMOVE: 0, OVER_MAX: 0, REDUCE: 0, INCREASE: 0, ADD: 0, HOLD: 0, NONE: 0 };
   for (const r of state.baseRows) {
-    const a = (r.consolidated_action || 'NONE').toUpperCase();
+    const a = _chipAction(r);
     if (counts[a] !== undefined) counts[a] += 1;
-    // OVER_MAX is a synthetic chip — rows tagged via the display overlay
-    // (pos > Max), independent of consolidated_action. A row counts in BOTH
-    // its underlying action chip AND OVER_MAX.
-    if (_isOverMaxOverlay(r)) counts.OVER_MAX += 1;
   }
   const wrap = $('summaryChips');
   wrap.innerHTML = '';
@@ -685,6 +680,22 @@ function actionLabel(row) {
   const a = ((row && row.consolidated_action) || 'NONE').toUpperCase();
   return actionText(actionDisplay(a));
 }
+// Chip bucket for a row — derived from finalCall() so filter pills match
+// what the Final Call column actually shows.
+// Returns one of: REMOVE | REDUCE | INCREASE | ADD | HOLD | OVER_MAX | NONE
+function _chipAction(row) {
+  if (_isOverMaxOverlay(row)) return 'OVER_MAX';
+  const fc = finalCall(row);
+  if (!fc.feasible) return 'NONE';
+  const code = (fc.code || '').toUpperCase();
+  if (code === 'SA') return 'REMOVE';
+  if (code === 'SS' || code === 'STM' || code === 'SO') return 'REDUCE';
+  if (code === 'BM' || code === 'BS') return 'INCREASE';
+  if (code === 'BMN') return 'ADD';
+  if (fc.side === 'neutral' || code === 'HOLD') return 'HOLD';
+  return 'NONE';
+}
+
 // Badge color class — REDUCE (orange) when the over-Max overlay fires so
 // the sell intent reads at a glance; otherwise mirrors consolidated_action.
 function _badgeAction(row) {
