@@ -15,10 +15,16 @@ VALUES
     ('RUT',   'Russell 2K', 'index',  '["tos:RUT"]'::JSONB,                     'index', 40,  TRUE),
     ('VIX',   'VIX',        'risk',   '["tos:VIX","fred:VIXCLS"]'::JSONB,       'level', 50,  TRUE),
     ('VXN',   'VXN',        'risk',   '["tos:VXN:CGI"]'::JSONB,                 'level', 55,  TRUE),
+    ('VXD',   'VXD',        'risk',   '["tos:VXD:CGI"]'::JSONB,                 'level', 57,  TRUE),
+    ('RVX',   'RVX',        'risk',   '["tos:RVX:CGI"]'::JSONB,                 'level', 58,  TRUE),
     ('US10Y', '10Y',        'rates',  '["fred:DGS10"]'::JSONB,                  'pct',   60,  TRUE),
+    ('MOVE',  'MOVE',       'rates',  '["tos:MOVE:GIF"]'::JSONB,                'level', 65,  TRUE),
     ('T2S10', '2s10s',      'rates',  '["fred:T10Y2Y"]'::JSONB,                 'pct',   70,  TRUE),
     ('DXY',   'Dollar',     'fx',     '["tos:$DXY","fred:DTWEXBGS"]'::JSONB,    'index', 80,  TRUE),
     ('WTI',   'Crude',      'cmdty',  '["tos:/CL","fred:DCOILWTICO"]'::JSONB,   'price', 90,  TRUE),
+    ('OVX',   'OVX',        'risk',   '["tos:OVX:CGI"]'::JSONB,                 'level', 92,  TRUE),
+    ('GC',    'Gold',       'cmdty',  '["tos:/GC"]'::JSONB,                     'price', 94,  TRUE),
+    ('GVZ',   'GVZ',        'risk',   '["tos:GVZ:CGI"]'::JSONB,                 'level', 96,  TRUE),
     ('HY',    'HY spread',  'credit', '["fred:BAMLH0A0HYM2"]'::JSONB,           'pct',   100, TRUE)
 ON CONFLICT (metric_key) DO UPDATE SET
     label           = EXCLUDED.label,

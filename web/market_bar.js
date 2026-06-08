@@ -14,7 +14,18 @@
   const REFRESH_MS = 60 * 1000;  // auto-refresh every 60 s
 
   // Metric keys whose direction is inverted (up = bad / red)
-  const INVERTED = new Set(['VIX', 'VXN', 'HY', 'HYSPRD']);
+  const INVERTED = new Set(['VIX', 'VXN', 'VXD', 'RVX', 'OVX', 'GVZ', 'MOVE', 'HY', 'HYSPRD']);
+
+  // Display pairs: [idx metric_key, vol metric_key | null for standalone]
+  const PAIRS = [
+    { idx: 'SPX',  vol: 'VIX'  },
+    { idx: 'COMP', vol: 'VXN'  },
+    { idx: 'DJI',  vol: 'VXD'  },
+    { idx: 'RUT',  vol: 'RVX'  },
+    { idx: 'WTI',  vol: 'OVX'  },
+    { idx: 'GC',   vol: 'GVZ'  },
+    { idx: 'MOVE', vol: null   },
+  ];
 
   // ---- formatting helpers -----------------------------------------------
   function fmtValue(v, fmt) {
@@ -65,49 +76,80 @@
     }[c]));
   }
 
+  // ---- cell helpers -------------------------------------------------------
+
+  function itemTip(item, valStr, chgStr, arrow) {
+    const parts = [`${item.label}: ${valStr}`];
+    if (chgStr) parts.push(`${arrow}${chgStr}`);
+    parts.push(`source: ${item.source || '?'}, as of: ${item.as_of || '?'}`);
+    if (item.stale) parts.push('stale');
+    return escHtml(parts.join('  '));
+  }
+
+  function itemContent(item) {
+    const valStr = fmtValue(item.value, item.value_format);
+    const chgStr = fmtChgPct(item.chg_pct);
+    const arrow  = dirArrow(item.chg_pct);
+    const cls    = dirClass(item.chg_pct, item.metric_key);
+    const tip    = itemTip(item, valStr, chgStr, arrow);
+    // level → show value colored; pct → show value plain; else → show % change
+    let inner;
+    if (item.value_format === 'level') {
+      inner = `<span class="mt-value ${cls}">${valStr}</span>`;
+    } else if (item.value_format === 'pct') {
+      inner = `<span class="mt-value">${valStr}</span>`;
+    } else {
+      inner = chgStr
+        ? `<span class="mt-chg ${cls}">${arrow}${chgStr}</span>`
+        : `<span class="mt-value">${valStr}</span>`;
+    }
+    return { tip, inner };
+  }
+
   // ---- build tape row ---------------------------------------------------
   function buildTapeHtml(data) {
     const items = data.items || [];
     const asOf = data.as_of || '';
 
-    const cells = items.map(item => {
-      const valStr  = fmtValue(item.value, item.value_format);
-      const chgStr  = fmtChgPct(item.chg_pct);
-      const arrow   = dirArrow(item.chg_pct);
-      const cls     = dirClass(item.chg_pct, item.metric_key);
-      const stale   = item.stale ? ' mt-stale' : '';
+    const byKey  = Object.fromEntries(items.map(it => [it.metric_key, it]));
+    const paired = new Set(PAIRS.flatMap(p => [p.idx, p.vol].filter(Boolean)));
+    const cells  = [];
 
-      // Tooltip: full value, change, source, date
-      const tipParts = [`${item.label}: ${valStr}`];
-      if (chgStr) tipParts.push(`${arrow}${chgStr}`);
-      tipParts.push(`source: ${item.source || '?'}, as of: ${item.as_of || '?'}`);
-      if (item.stale) tipParts.push('stale');
-      const tip = escHtml(tipParts.join('  '));
+    // Render PAIRS in defined order
+    for (const pair of PAIRS) {
+      const idxItem = byKey[pair.idx];
+      const volItem = pair.vol ? byKey[pair.vol] : null;
+      if (!idxItem && !volItem) continue;
 
-      // Compact display:
-      //   level  (VIX/VXN) → colored level value  e.g. "VIX 18.8"
-      //   pct    (rates)   → plain level value     e.g. "10Y 4.50%"
-      //   index/price      → colored pct change    e.g. "S&P ▲+0.70%"
-      let content;
-      if (item.value_format === 'level') {
-        content = `<span class="mt-value ${cls}">${valStr}</span>`;
-      } else if (item.value_format === 'pct') {
-        content = `<span class="mt-value">${valStr}</span>`;
-      } else {
-        content = chgStr
-          ? `<span class="mt-chg ${cls}">${arrow}${chgStr}</span>`
-          : `<span class="mt-value">${valStr}</span>`;
+      const stale = ((idxItem && idxItem.stale) || (volItem && volItem.stale)) ? ' mt-stale' : '';
+      const parts = [];
+
+      if (idxItem) {
+        const { tip, inner } = itemContent(idxItem);
+        parts.push(`<span class="mt-pair-side" title="${tip}"><span class="mt-label">${escHtml(idxItem.label)}</span>${inner}</span>`);
+      }
+      if (idxItem && volItem) {
+        parts.push(`<span class="mt-sep">·</span>`);
+      }
+      if (volItem) {
+        const { tip, inner } = itemContent(volItem);
+        parts.push(`<span class="mt-pair-side" title="${tip}"><span class="mt-label">${escHtml(volItem.label)}</span>${inner}</span>`);
       }
 
-      return `<div class="mt-cell${stale}" title="${tip}">` +
-        `<span class="mt-label">${escHtml(item.label)}</span>` +
-        content +
-        `</div>`;
-    }).join('');
+      cells.push(`<div class="mt-pair${stale}">${parts.join('')}</div>`);
+    }
+
+    // Render any remaining items not covered by PAIRS
+    for (const item of items) {
+      if (paired.has(item.metric_key)) continue;
+      const { tip, inner } = itemContent(item);
+      const stale = item.stale ? ' mt-stale' : '';
+      cells.push(`<div class="mt-cell${stale}" title="${tip}"><span class="mt-label">${escHtml(item.label)}</span>${inner}</div>`);
+    }
 
     return (
       `<span class="mt-asof">as of ${escHtml(asOf)}</span>` +
-      cells +
+      cells.join('') +
       `<button class="mt-expander" id="mtExpandBtn" type="button" aria-expanded="false" title="Show full econ panel">Econ ▾</button>`
     );
   }

@@ -1005,6 +1005,27 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 }
 .mt-cell:last-of-type { border-right: none; }
 
+.mt-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border-right: 1px solid var(--border);
+  height: 100%;
+  flex-shrink: 0;
+}
+.mt-pair-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  cursor: default;
+}
+.mt-sep {
+  color: var(--text-3);
+  font-size: 9px;
+  padding: 0 1px;
+}
+
 .mt-label {
   font-size: 10px;
   font-weight: 600;
