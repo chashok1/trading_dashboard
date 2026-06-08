@@ -12,15 +12,15 @@ const state = {
 
 // TOS symbol → TradingView exchange:symbol
 const TV_MAP = {
-    'SPX': 'SP:SPX',   '$SPX': 'SP:SPX',
-    '$COMP': 'NASDAQ:COMP', 'COMP': 'NASDAQ:COMP', 'COMPQ': 'NASDAQ:COMP',
-    '$DJI': 'DJ:DJI',  'DJI': 'DJ:DJI', 'INDU': 'DJ:DJI',
+    'SPX': 'SP:SPX',    '$SPX': 'SP:SPX',
+    '$COMP': 'NASDAQ:NDX', 'COMP': 'NASDAQ:NDX', 'COMPQ': 'NASDAQ:NDX',
+    '$DJI': 'DJ:DJI',   'DJI': 'DJ:DJI', 'INDU': 'DJ:DJI',
     'RUT': 'TVC:RUT',
-    'VIX': 'CBOE:VIX',  'VXN': 'CBOE:VXN', 'VXD': 'CBOE:VXD',
-    'RVX': 'TVC:RVX',   'OVX': 'CBOE:OVX', 'GVZ': 'CBOE:GVZ',
+    'VIX': 'TVC:VIX',   'VXN': 'TVC:VXN',  'VXD': 'TVC:VXD',
+    'RVX': 'TVC:RVX',   'OVX': 'TVC:OVX',  'GVZ': 'TVC:GVZ',
     'MOVE': 'TVC:MOVE', 'DXY': 'TVC:DXY',  '$DXY': 'TVC:DXY',
-    '/CL': 'NYMEX:CL1!', '/GC': 'COMEX:GC1!', '/ES': 'CME:ES1!',
-    '/NQ': 'CME:NQ1!',   '/RTY': 'CME:RTY1!',
+    '/CL': 'TVC:USOIL', '/GC': 'TVC:GOLD', '/ES': 'SP:SPX',
+    '/NQ': 'NASDAQ:NDX', '/RTY': 'TVC:RUT',
 };
 
 function toTvSymbol(sym) {
