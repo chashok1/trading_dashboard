@@ -17,26 +17,26 @@
   --ok: #16a34a;
 
   /* ── Action/direction palette (single source of truth) ─────────────────── */
-  /* Sell hues */
-  --act-sell-strong:       #d83a3a;   /* SA / REMOVE — sell all */
-  --act-sell-strong-bg:    #fde8e8;
-  --act-sell:              #c2410c;   /* SS / STM / REDUCE / SO — sell some */
-  --act-sell-bg:           #fdeee4;
-  --act-sell-weak:         #e07c1a;   /* SW / SWW — sell watch */
-  --act-sell-weak-bg:      #fef3e4;
-  /* Buy hues */
-  --act-buy-strong:        #14532d;   /* BM — buy more (darkest) */
-  --act-buy-strong-bg:     #bbf7d0;
-  --act-buy:               #15803d;   /* BS / INCREASE — buy some (mid) */
-  --act-buy-bg:            #cdeccd;
-  --act-buy-weak:          #2f9e2f;   /* BMN / ADD / BW / BSW — buy to min (lightest) */
-  --act-buy-weak-bg:       #e3f6e3;
+  /* Sell hues — muted brick/sienna */
+  --act-sell-strong:       #9e3636;   /* SA / REMOVE — sell all */
+  --act-sell-strong-bg:    #f4e6e6;
+  --act-sell:              #8b4828;   /* SS / STM / REDUCE / SO — sell some */
+  --act-sell-bg:           #f4e9e2;
+  --act-sell-weak:         #8a6028;   /* SW / SWW — sell watch */
+  --act-sell-weak-bg:      #f4eddd;
+  /* Buy hues — muted sage/forest */
+  --act-buy-strong:        #2a5a3d;   /* BM — buy more (darkest) */
+  --act-buy-strong-bg:     #d6eadd;
+  --act-buy:               #3a6a4a;   /* BS / INCREASE — buy some (mid) */
+  --act-buy-bg:            #dceadd;
+  --act-buy-weak:          #4a784a;   /* BMN / ADD / BW / BSW — buy to min (lightest) */
+  --act-buy-weak-bg:       #e2eee2;
   /* Neutral / hold */
   --act-neutral:           #6b7280;
   --act-neutral-bg:        #f3f4f6;
   /* Mixed / watch */
-  --act-mixed:             #e07c1a;
-  --act-mixed-bg:          #fef3c7;
+  --act-mixed:             #8a6028;
+  --act-mixed-bg:          #f2e8c4;
 }
 
 /* ── Action color utility classes (token-driven) ────────────────────────── */
@@ -1178,9 +1178,9 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 /* act-badge-sm direction colors (grid cell rule badges — replaces pill-rule colors) */
 /* Override any lower-specificity rule-* rules (border-radius/padding from act-badge-sm base) */
 .act-badge-sm.rule-buy.rule-strong    { background: var(--act-buy); color: #fff; border: none; border-radius: 8px; padding: 1px 5px; }
-.act-badge-sm.rule-buy.rule-weak      { background: var(--act-buy-bg); color: var(--act-buy-strong); border: 1px solid #86efac; border-radius: 8px; padding: 1px 5px; }
+.act-badge-sm.rule-buy.rule-weak      { background: var(--act-buy-bg); color: var(--act-buy-strong); border: 1px solid #9ec4a8; border-radius: 8px; padding: 1px 5px; }
 .act-badge-sm.rule-sell.rule-strong   { background: var(--act-sell-strong); color: #fff; border: none; border-radius: 8px; padding: 1px 5px; }
-.act-badge-sm.rule-sell.rule-weak     { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); border: 1px solid #fca5a5; border-radius: 8px; padding: 1px 5px; }
+.act-badge-sm.rule-sell.rule-weak     { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); border: 1px solid #c4a0a0; border-radius: 8px; padding: 1px 5px; }
 .act-badge-sm.rule-neutral.rule-strong { background: var(--act-neutral); color: #fff; border: none; border-radius: 8px; padding: 1px 5px; }
 .act-badge-sm.rule-neutral.rule-weak   { background: var(--act-neutral-bg); color: #374151; border: 1px solid #d1d5db; border-radius: 8px; padding: 1px 5px; }
 
