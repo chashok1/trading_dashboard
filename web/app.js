@@ -115,7 +115,7 @@ async function loadDates() {
   }
   state.date = dates[0] || null;
   if (state.date) sel.value = state.date;
-  $('footDate').textContent = state.date ? fmtDate(state.date) : '—';
+  { const _fd = $('footDate'); if (_fd) _fd.textContent = state.date ? fmtDate(state.date) : '—'; }
 }
 
 // ---------- section chips ----------
@@ -154,7 +154,6 @@ async function loadTickers() {
     state.rows = [];
   }
   renderTickerGrid();
-  renderIndexBar();
 }
 
 function rowMatches(r) {
@@ -452,69 +451,6 @@ function quadMini(periodLabel, quadValue, isCurrent) {
   return wrap;
 }
 
-// ---------- top index/volatility scorecard ----------
-
-const INDEX_VOL_PAIRS = [
-  { idxLabel: 'S&P', idxSyms: ['SPX', '$SPX', '/ES', 'GSPC', '^GSPC', 'SPY'],
-    volLabel: 'VIX', volSyms: ['VIX', '$VIX', '^VIX'] },
-  { idxLabel: 'NDX', idxSyms: ['NDX', '$NDX', '/NQ', '^NDX', 'QQQ'],
-    volLabel: 'VXN', volSyms: ['VXN', '$VXN', '^VXN'] },
-  { idxLabel: 'RUT', idxSyms: ['RUT', '$RUT', '/RTY', '^RUT', 'IWM'],
-    volLabel: 'RVX', volSyms: ['RVX', '$RVX', '^RVX'] },
-  { idxLabel: 'DJI', idxSyms: ['DJI', '$DJI', '/YM', 'INDU', '^DJI', 'DIA'],
-    volLabel: 'VXD', volSyms: ['VXD', '$VXD', '^VXD'] },
-];
-
-function findRowBySymbols(syms) {
-  if (!Array.isArray(state.rows) || state.rows.length === 0) return null;
-  const upper = syms.map(s => String(s).toUpperCase());
-  return state.rows.find(r => upper.includes(String(r.tos_symbol || '').toUpperCase())) || null;
-}
-
-function pctChangeOf(r) {
-  if (!r) return null;
-  const last = Number(r.last_price);
-  const trade = Number(r.a_trade_value);
-  if (!Number.isFinite(last) || !Number.isFinite(trade) || trade === 0) return null;
-  return ((last - trade) / trade) * 100;
-}
-
-function renderIndexBar() {
-  const bar = $('indexBar');
-  const empty = $('indexBarEmpty');
-  if (!bar) return;
-  [...bar.querySelectorAll('.idx-pair')].forEach(n => n.remove());
-
-  if (!state.rows || state.rows.length === 0) {
-    if (empty) { empty.hidden = false; empty.textContent = 'Loading index data…'; }
-    return;
-  }
-  if (empty) empty.hidden = true;
-
-  for (const pair of INDEX_VOL_PAIRS) {
-    const idxRow = findRowBySymbols(pair.idxSyms);
-    const volRow = findRowBySymbols(pair.volSyms);
-    const idxPct = pctChangeOf(idxRow);
-    const volPct = pctChangeOf(volRow);
-
-    const wrap = document.createElement('span');
-    wrap.className = 'idx-pair';
-    wrap.title = `${pair.idxLabel}: ${idxRow ? idxRow.tos_symbol : 'n/a'}  |  ${pair.volLabel}: ${volRow ? volRow.tos_symbol : 'n/a'}`;
-    wrap.innerHTML = `
-      <span class="idx-cell">
-        <span class="idx-name">${pair.idxLabel}</span>
-        <span class="idx-pct ${signClass(idxPct)}">${idxPct != null ? fmtPct(idxPct, 2) : '—'}</span>
-      </span>
-      <span class="idx-sep">·</span>
-      <span class="idx-cell">
-        <span class="idx-name">${pair.volLabel}</span>
-        <span class="idx-pct ${signClass(volPct)}">${volPct != null ? fmtPct(volPct, 2) : '—'}</span>
-      </span>
-    `;
-    bar.appendChild(wrap);
-  }
-}
-
 // ---------- quads (side panel mini-grid) ----------
 
 async function loadQuads() {
@@ -698,7 +634,7 @@ async function refreshAll() {
     loadOutlookChanges(),
     loadBriefing(),
   ]);
-  $('footDate').textContent = state.date ? fmtDate(state.date) : '—';
+  { const _fd = $('footDate'); if (_fd) _fd.textContent = state.date ? fmtDate(state.date) : '—'; }
 }
 
 

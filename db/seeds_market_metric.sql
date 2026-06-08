@@ -14,6 +14,7 @@ VALUES
     ('DJI',   'Dow',        'index',  '["tos:$DJI","fred:DJIA"]'::JSONB,        'index', 30,  TRUE),
     ('RUT',   'Russell 2K', 'index',  '["tos:RUT"]'::JSONB,                     'index', 40,  TRUE),
     ('VIX',   'VIX',        'risk',   '["tos:VIX","fred:VIXCLS"]'::JSONB,       'level', 50,  TRUE),
+    ('VXN',   'VXN',        'risk',   '["tos:VXN:CGI"]'::JSONB,                 'level', 55,  TRUE),
     ('US10Y', '10Y',        'rates',  '["fred:DGS10"]'::JSONB,                  'pct',   60,  TRUE),
     ('T2S10', '2s10s',      'rates',  '["fred:T10Y2Y"]'::JSONB,                 'pct',   70,  TRUE),
     ('DXY',   'Dollar',     'fx',     '["tos:$DXY","fred:DTWEXBGS"]'::JSONB,    'index', 80,  TRUE),
