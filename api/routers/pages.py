@@ -29,6 +29,11 @@ def page_cockpit():
     return FileResponse(WEB_DIR / "cockpit.html", media_type="text/html; charset=utf-8")
 
 
+@router.get("/tv-symbol-test")
+def page_tv_symbol_test():
+    return FileResponse(WEB_DIR / "tv_symbol_test.html", media_type="text/html; charset=utf-8")
+
+
 @router.get("/composite-edit")
 def page_composite_edit():
     return FileResponse(WEB_DIR / "composite_edit.html", media_type="text/html; charset=utf-8")

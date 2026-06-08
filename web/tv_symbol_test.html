@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TradingView Symbol Test</title>
+<style>
+  body { font-family: sans-serif; margin: 16px; background: #f5f5f5; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  p  { font-size: 13px; color: #666; margin: 0 0 20px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em;
+       color: #888; margin: 24px 0 8px; border-top: 1px solid #ddd; padding-top: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .cell { background: #fff; border: 1px solid #ddd; border-radius: 6px; overflow: hidden; }
+  .cell-label { font-size: 11px; font-weight: 600; color: #444;
+                padding: 6px 10px; background: #f9f9f9; border-bottom: 1px solid #eee; }
+</style>
+</head>
+<body>
+<h1>TradingView Embed Symbol Test</h1>
+<p>Each card uses the <code>embed-widget-mini-symbol-overview</code> widget.
+   Cards that say "only available on TradingView.com" are restricted — need a free alternative.</p>
+
+<h2>US ETFs (should all work)</h2>
+<div class="grid">
+
+  <div class="cell">
+    <div class="cell-label">AMEX:SPY — S&amp;P 500 ETF</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"AMEX:SPY","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">NASDAQ:QQQ — Nasdaq 100 ETF</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"NASDAQ:QQQ","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">AMEX:DIA — Dow ETF</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"AMEX:DIA","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">AMEX:IWM — Russell 2K ETF</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"AMEX:IWM","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+</div>
+
+<h2>Volatility</h2>
+<div class="grid">
+
+  <div class="cell">
+    <div class="cell-label">TVC:VIX — VIX (TradingView calc)</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"TVC:VIX","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">AMEX:VIXY — VIX Futures ETF (alt)</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"AMEX:VIXY","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">NASDAQ:UVXY — Ultra VIX ETF</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"NASDAQ:UVXY","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+</div>
+
+<h2>Commodities (TVC)</h2>
+<div class="grid">
+
+  <div class="cell">
+    <div class="cell-label">TVC:GOLD</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"TVC:GOLD","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">TVC:USOIL — Crude Oil</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"TVC:USOIL","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">TVC:NATGAS</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"TVC:NATGAS","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">TVC:SILVER</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"TVC:SILVER","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">TVC:COPPER</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"TVC:COPPER","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+</div>
+
+<h2>Rates &amp; Dollar (TVC)</h2>
+<div class="grid">
+
+  <div class="cell">
+    <div class="cell-label">TVC:US10Y — 10Y Yield</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"TVC:US10Y","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">TVC:US02Y — 2Y Yield</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"TVC:US02Y","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">TVC:US30Y — 30Y Yield</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"TVC:US30Y","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">TVC:DXY — US Dollar Index</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"TVC:DXY","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+</div>
+
+<h2>International Indices (TVC)</h2>
+<div class="grid">
+
+  <div class="cell">
+    <div class="cell-label">TVC:NI225 — Nikkei 225</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"TVC:NI225","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">TVC:DEU40 — DAX (corrected)</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"TVC:DEU40","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">AMEX:EWJ — Japan ETF (alt)</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"AMEX:EWJ","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">AMEX:EWG — Germany ETF (alt)</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"AMEX:EWG","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+</div>
+
+<h2>Forex</h2>
+<div class="grid">
+
+  <div class="cell">
+    <div class="cell-label">FX:EURUSD</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"FX:EURUSD","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">FX:GBPUSD</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"FX:GBPUSD","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">FX:USDJPY</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"FX:USDJPY","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+  <div class="cell">
+    <div class="cell-label">FX:USDCAD</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"FX:USDCAD","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+</div>
+
+<h2>Crypto</h2>
+<div class="grid">
+
+  <div class="cell">
+    <div class="cell-label">BITSTAMP:BTCUSD — Bitcoin</div>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+      {"symbol":"BITSTAMP:BTCUSD","width":"100%","height":180,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
+      </script>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
