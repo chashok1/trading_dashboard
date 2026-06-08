@@ -47,7 +47,7 @@ _TOS_SQL = text("""
 SELECT last_price, net_chng, pct_change, as_of_date, export_date
 FROM drv_quote
 WHERE tos_symbol = :sym
-ORDER BY as_of_date DESC
+ORDER BY export_date DESC, as_of_date DESC
 LIMIT 1
 """)
 
