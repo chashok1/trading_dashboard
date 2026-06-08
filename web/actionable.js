@@ -1007,7 +1007,7 @@ function _finalCallHtml(row) {
   if (!fc.feasible || fc.confidence === 'none') {
     return '<span style="color:#cbd5e1;">—</span>';
   }
-  var text = actionText(fc);  // code-only (e.g. "SA"), full label in tooltip via fc.label
+  var text = fc.label || actionText(fc);  // plain-English label (e.g. "SELL ALL")
   // Badge
   var badgeHtml;
   if (fc.confidence === 'high') {
@@ -1020,7 +1020,7 @@ function _finalCallHtml(row) {
   }
   // Color via actions.js token (act-*-tint gives soft colored fill + colored text + border)
   var fcDisp = actionDisplay(fc.code || (fc.side === 'sell' ? 'SA' : fc.side === 'buy' ? 'BS' : 'HOLD'));
-  var colorCls = (fcDisp.colorCls || 'act-neutral') + '-tint';
+  var colorCls = (fcDisp.colorCls || 'act-neutral') + '-fill';
   return '<span class="act-badge ' + colorCls + '" title="' +
          escapeHtml(fc.label || text) + '">' +
          escapeHtml(text) + '</span> ' + badgeHtml;
@@ -1247,7 +1247,7 @@ function renderGrid() {
   $('rowCount').textContent = `${total} row${total === 1 ? '' : 's'}`;
   $('emptyState').style.display = total === 0 ? 'block' : 'none';
 
-  const visibleRows = state.showAll ? state.rows : state.rows.slice(0, state.TOP_N);
+  const visibleRows = state.rows;
 
   for (const r of visibleRows) {
     const tr = document.createElement('tr');
@@ -1265,7 +1265,7 @@ function renderGrid() {
     const rrRaw = r.rr_action || '';
     const rrDisp = actionDisplay(rrRaw);
     const rrHtml = rrRaw
-      ? `<span class="act-badge ${(rrDisp.colorCls || 'act-neutral') + '-tint'}" title="${escapeHtml(rrDisp.label || rrRaw)}">${actionText(rrDisp)}</span>`
+      ? `<span class="act-badge ${(rrDisp.colorCls || 'act-neutral') + '-fill'}" title="${escapeHtml(rrDisp.label || rrRaw)}">${actionText(rrDisp)}</span>`
       : '<span style="color:#cbd5e1;">--</span>';
     const _rrSubLineHtml = (() => {
       const td = r.tn_td_desc || '', bb = r.bb_desc || '';
@@ -1300,7 +1300,7 @@ function renderGrid() {
       <td class="num"><span class="amt-primary">${fmtUsd(r._amt)}</span></td>
       <td class="act-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:help;">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-tint'}" title="${escapeHtml(actionDisplay(_badgeAction(r)).label || actionLabel(r))}">${actionLabel(r)}</span>
+          <span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-fill'}" title="${escapeHtml(actionDisplay(_badgeAction(r)).label || actionLabel(r))}">${actionLabel(r)}</span>
           ${_srcSubLineHtml(r)}
         </div>
         ${_isOverMaxOverlay(r) ? `<div style="font-size:8px;line-height:1;font-weight:600;margin-top:1px;" class="${_actionColorCls(action)}">was ${actionText(actionDisplay(action))}</div>` : ''}
@@ -1331,17 +1331,6 @@ function renderGrid() {
       openDrilldown(r);
     };
     tb.appendChild(tr);
-  }
-
-  // Top-N collapse bar
-  const oldBar = tb.parentElement.querySelector('.show-all-bar');
-  if (oldBar) oldBar.remove();
-  if (!state.showAll && total > state.TOP_N) {
-    const bar = document.createElement('div');
-    bar.className = 'show-all-bar';
-    bar.innerHTML = `<button>Show all (${total})</button>`;
-    bar.querySelector('button').onclick = () => { state.showAll = true; renderGrid(); };
-    tb.parentElement.appendChild(bar);
   }
 
   // Sync select-all checkbox
