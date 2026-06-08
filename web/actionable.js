@@ -214,8 +214,8 @@ function ruleEdgeBadge(code) {
 }
 
 // Grid cell: fired rules ordered winning-first (highest score), each with its
-// historical edge. Hue = direction (buy=green, sell=red, neutral=grey);
-// fill = edge emphasis (solid=positive, muted/outlined=non-positive).
+// historical edge. Hue = Final Call action side (all pills match row's action);
+// fill = edge emphasis (bold border=positive edge, light border=non-positive).
 function firesCellHtml(r) {
   let fires = r.rules_engine_fires;
   if (typeof fires === 'string') { try { fires = JSON.parse(fires); } catch (_) { fires = []; } }
@@ -229,9 +229,10 @@ function firesCellHtml(r) {
   });
   // winning first: highest fired score, then strongest edge
   items.sort((a, b) => (b.score - a.score) || ((b.e ?? -99) - (a.e ?? -99)));
+  // All pills share the Final Call's color side
+  const fcSide = actionDisplay(_badgeAction(r)).side;
+  const sideCls = fcSide === 'buy' ? 'rule-buy' : fcSide === 'sell' ? 'rule-sell' : 'rule-neutral';
   return items.map(it => {
-    const side = _ruleSide(it.id);
-    const sideCls = side === 'buy' ? 'rule-buy' : side === 'sell' ? 'rule-sell' : 'rule-neutral';
     const emphCls = (it.e != null && it.e > 0) ? 'rule-strong' : 'rule-weak';
     const edge = it.e == null ? '' : ` <b>${it.e >= 0 ? '+' : ''}${it.e.toFixed(1)}</b>`;
     return `<span class="act-badge act-badge-sm ${sideCls} ${emphCls}" style="white-space:nowrap;">${escapeHtml(it.id)}${edge}</span>`;
