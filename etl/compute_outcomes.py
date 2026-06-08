@@ -41,7 +41,7 @@ def compute_outcomes(dry_run: bool = True) -> dict:
         # Find unprocessed actions older than 5 trading days
         sql = """
             SELECT id, as_of_date,
-                   COALESCE(tos_symbol, symbol) AS symbol,
+                   tos_symbol AS symbol,
                    action_code, triggered_rules
             FROM user_action_log
             WHERE as_of_date <= CURRENT_DATE - INTERVAL '5 days'
