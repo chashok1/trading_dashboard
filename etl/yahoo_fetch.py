@@ -354,6 +354,23 @@ def fetch_y_load(batch_size: int = 100, delay_sec: float = 30.0) -> dict:
 
     logger.info("Yahoo Y load: %d total, %d inserted into hist_y, %d batches",
                 total, inserted, batches)
+
+    # Mark YFiles as done in today's schedule so the File Monitor shows it
+    # complete even though no file was dropped into the watched directory.
+    if inserted > 0 or total > 0:
+        try:
+            import time as _time
+            with session_scope() as s:
+                s.execute(text("""
+                    INSERT INTO meta_file_processed
+                        (file_path, file_mtime, file_type, file_date, processed_at)
+                    VALUES (:fp, :fm, 'YFiles', :fd, now())
+                    ON CONFLICT (file_path) DO UPDATE SET processed_at = now()
+                """), {'fp': f'yahoo_auto:{today.isoformat()}',
+                       'fm': _time.time(), 'fd': today})
+        except Exception as e:
+            logger.warning("Could not mark YFiles processed: %s", e)
+
     return {"total": total, "batches": batches, "inserted_hist_y": inserted}
 
 
