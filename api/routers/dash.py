@@ -2658,19 +2658,17 @@ def market_quotes():
     return results
 
 
-@router.post("/api/yahoo-fetch/rrt")
-def yahoo_fetch_rrt():
-    """Force-fetch Yahoo quotes for all RRT symbols (bypasses TTL)."""
-    from etl.yahoo_fetch import fetch_rrt_quotes
-    return fetch_rrt_quotes(force=True)
-
-
-
 @router.post("/api/yahoo-fetch/y-load")
 def yahoo_fetch_y_load():
-    """Fetch Yahoo data for all RRT symbols and insert into hist_y as a Y load."""
-    from etl.yahoo_fetch import fetch_y_load
-    return fetch_y_load(batch_size=100, delay_sec=30.0)
+    """Unified Y fetch: OHLCV batch before 4 PM ET, full detail after 4 PM (once/day)."""
+    try:
+        from etl.yahoo_fetch import fetch_y_smart
+        return fetch_y_smart()
+    except Exception as exc:
+        import traceback
+        import logging
+        logging.getLogger(__name__).error("yahoo_fetch_y_load error: %s", traceback.format_exc())
+        return {"error": str(exc)}
 
 
 @router.get("/api/yahoo-fetch/status")
