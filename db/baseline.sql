@@ -5781,6 +5781,38 @@ CREATE INDEX IF NOT EXISTS ix_meta_macro_fetch_started
 -- ("adapter:symbol" strings) so the resolver tries each left-to-right.
 -- Seeded by db/seeds_market_metric.sql (applied by db/init_db.py).
 -- =====================================================
+-- =====================================================
+-- cache_yahoo_quote — rolling Yahoo Finance quote cache (one row per symbol)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS cache_yahoo_quote (
+    tos_symbol         TEXT NOT NULL,
+    y_ticker           TEXT NOT NULL,
+    open_price         NUMERIC,
+    high_price         NUMERIC,
+    low_price          NUMERIC,
+    last_price         NUMERIC,
+    prev_close         NUMERIC,
+    volume             BIGINT,
+    fetched_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    fetch_status       TEXT DEFAULT 'ok',
+    -- detail columns populated by after-market fetch_y_detail()
+    company_name       TEXT,
+    short_ratio        NUMERIC,
+    float_shares       BIGINT,
+    shares_outstanding BIGINT,
+    detail_fetched_at  TIMESTAMPTZ,
+    PRIMARY KEY (tos_symbol)
+);
+ALTER TABLE cache_yahoo_quote ADD COLUMN IF NOT EXISTS company_name TEXT;
+ALTER TABLE cache_yahoo_quote ADD COLUMN IF NOT EXISTS short_ratio NUMERIC;
+ALTER TABLE cache_yahoo_quote ADD COLUMN IF NOT EXISTS float_shares BIGINT;
+ALTER TABLE cache_yahoo_quote ADD COLUMN IF NOT EXISTS shares_outstanding BIGINT;
+ALTER TABLE cache_yahoo_quote ADD COLUMN IF NOT EXISTS detail_fetched_at TIMESTAMPTZ;
+
+INSERT INTO ref_settings (setting_name, setting_value)
+VALUES ('yahoo_fetch_interval_sec', '300')
+ON CONFLICT (setting_name) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS ref_market_metric (
     metric_key      TEXT PRIMARY KEY,
     label           TEXT NOT NULL,

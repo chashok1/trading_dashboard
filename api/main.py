@@ -99,6 +99,16 @@ async def _startup():
         _log.error("startup stale-heal thread FAILED:\n%s",
                    traceback.format_exc())
 
+    # Start auto-fetch loop: triggers after-market Y load + detail at 4:30 PM ET
+    # on trading days (Mon-Fri), once per day, no external scheduler needed.
+    try:
+        import asyncio
+        from etl.yahoo_fetch import auto_fetch_loop
+        asyncio.create_task(auto_fetch_loop())
+        _log.info("Auto-fetch loop started")
+    except Exception:
+        _log.error("Auto-fetch loop FAILED:\n%s", traceback.format_exc())
+
 
 @app.on_event("shutdown")
 async def _shutdown():

@@ -2614,3 +2614,83 @@ def get_symbol_history(
         """), params).mappings().all()
 
     return [SymbolHistoryRow(**r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Market quotes — served from cache_yahoo_quote (lazy TTL fetch via yahoo_fetch)
+# ---------------------------------------------------------------------------
+
+@router.get("/api/market-quotes")
+def market_quotes():
+    """Return Yahoo Finance quotes from cache; lazy-fetches from Yahoo if stale."""
+    from etl.yahoo_fetch import fetch_rrt_quotes
+    fetch_rrt_quotes()  # no-op if cache is fresh
+
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT tos_symbol, y_ticker, open_price, high_price, low_price,
+                   last_price, prev_close, volume, fetched_at, fetch_status
+            FROM cache_yahoo_quote
+            ORDER BY tos_symbol
+        """)).fetchall()
+
+    results = []
+    for r in rows:
+        last = float(r.last_price) if r.last_price is not None else None
+        prev = float(r.prev_close) if r.prev_close is not None else None
+        chg  = round(last - prev, 4)      if last and prev else None
+        pct  = round(chg / prev * 100, 2) if chg and prev  else None
+        results.append({
+            "tos_symbol":  r.tos_symbol,
+            "y_ticker":    r.y_ticker,
+            "open_price":  float(r.open_price)  if r.open_price  is not None else None,
+            "high_price":  float(r.high_price)  if r.high_price  is not None else None,
+            "low_price":   float(r.low_price)   if r.low_price   is not None else None,
+            "last_price":  last,
+            "prev_close":  prev,
+            "change":      chg,
+            "pct_change":  pct,
+            "volume":      r.volume,
+            "fetched_at":  r.fetched_at.isoformat() if r.fetched_at else None,
+            "fetch_status": r.fetch_status,
+        })
+    return results
+
+
+@router.post("/api/yahoo-fetch/rrt")
+def yahoo_fetch_rrt():
+    """Force-fetch Yahoo quotes for all RRT symbols (bypasses TTL)."""
+    from etl.yahoo_fetch import fetch_rrt_quotes
+    return fetch_rrt_quotes(force=True)
+
+
+
+@router.post("/api/yahoo-fetch/y-load")
+def yahoo_fetch_y_load():
+    """Fetch Yahoo data for all RRT symbols and insert into hist_y as a Y load."""
+    from etl.yahoo_fetch import fetch_y_load
+    return fetch_y_load(batch_size=100, delay_sec=30.0)
+
+
+@router.get("/api/yahoo-fetch/status")
+def yahoo_fetch_status():
+    """Return cache_yahoo_quote row count and last fetch timestamps."""
+    with session_scope() as s:
+        row = s.execute(text("""
+            SELECT COUNT(*) as cnt,
+                   MAX(fetched_at) as last_fetched,
+                   MAX(detail_fetched_at) as last_detail
+            FROM cache_yahoo_quote
+        """)).fetchone()
+    return {
+        "count": row.cnt,
+        "last_fetched": row.last_fetched.isoformat() if row.last_fetched else None,
+        "last_detail_fetched": row.last_detail.isoformat() if row.last_detail else None,
+    }
+
+
+@router.get("/api/yahoo-fetch/auto-status")
+def yahoo_auto_status():
+    """Return auto-fetch loop state (running, last date, next trigger)."""
+    from etl.yahoo_fetch import get_auto_fetch_status
+    return get_auto_fetch_status()
