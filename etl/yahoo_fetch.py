@@ -15,13 +15,14 @@ logger = logging.getLogger(__name__)
 
 HARD_FLOOR_SEC = 60  # never fetch more often than this regardless of config
 
-# ref_settings key written at the START of fetch_y_load_full() so both the
-# scheduler process and the FastAPI process can see it and avoid double-runs.
-_FETCH_STARTED_KEY = 'yahoo_auto_fetch_date'
+# ref_settings keys (cross-process, survive crashes as date strings)
+_FETCH_STARTED_KEY = 'yahoo_auto_fetch_date'   # set BEFORE EOD download starts
+_EOD_DONE_KEY      = 'yahoo_eod_done_date'     # set AFTER EOD completes successfully
+_RUNNING_KEY       = 'yahoo_fetch_running'     # ISO timestamp while any fetch runs
 
 # --- module-level state ---
 _last_fetch_ts: float = 0.0          # monotonic; last RRT fetch
-_y_load_running: bool = False         # True while full Y load is in progress
+_fetch_running: bool = False          # True while any fetch is in progress (this process)
 _last_auto_fetch_date: date | None = None  # date of last successful auto-fetch
 
 try:
@@ -104,7 +105,7 @@ def _mark_fetch_started(d: date) -> None:
 
 
 def _already_fetched_today() -> bool:
-    """Cross-process check: has today's auto-fetch started (by either process)?"""
+    """Cross-process check: has today's EOD fetch started (by either process)?"""
     today = date.today()
     if _last_auto_fetch_date == today:
         return True
@@ -118,16 +119,81 @@ def _already_fetched_today() -> bool:
         return False
 
 
+def _is_eod_done_today() -> bool:
+    """True when today's EOD full fetch completed successfully."""
+    try:
+        with session_scope() as s:
+            val = s.execute(text(
+                "SELECT setting_value FROM ref_settings WHERE setting_name = :k"
+            ), {'k': _EOD_DONE_KEY}).scalar()
+        return val == date.today().isoformat()
+    except Exception:
+        return False
+
+
+def _mark_eod_done(d: date) -> None:
+    try:
+        with session_scope() as s:
+            s.execute(text("""
+                INSERT INTO ref_settings (setting_name, setting_value)
+                VALUES (:k, :v)
+                ON CONFLICT (setting_name) DO UPDATE SET setting_value = EXCLUDED.setting_value
+            """), {'k': _EOD_DONE_KEY, 'v': d.isoformat()})
+    except Exception as e:
+        logger.warning("Could not mark EOD done: %s", e)
+
+
+def _mark_fetch_running(running: bool) -> None:
+    """Write or clear cross-process running flag (ISO timestamp = set, absent = clear)."""
+    try:
+        with session_scope() as s:
+            if running:
+                s.execute(text("""
+                    INSERT INTO ref_settings (setting_name, setting_value)
+                    VALUES (:k, :v)
+                    ON CONFLICT (setting_name) DO UPDATE SET setting_value = EXCLUDED.setting_value
+                """), {'k': _RUNNING_KEY, 'v': datetime.now(timezone.utc).isoformat()})
+            else:
+                s.execute(text(
+                    "DELETE FROM ref_settings WHERE setting_name = :k"
+                ), {'k': _RUNNING_KEY})
+    except Exception as e:
+        logger.warning("Could not update running flag: %s", e)
+
+
+def _is_any_fetch_running() -> bool:
+    """True if a fetch is active in this process or another (stale after 60 min)."""
+    if _fetch_running:
+        return True
+    try:
+        with session_scope() as s:
+            val = s.execute(text(
+                "SELECT setting_value FROM ref_settings WHERE setting_name = :k"
+            ), {'k': _RUNNING_KEY}).scalar()
+        if val:
+            started = datetime.fromisoformat(val)
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=timezone.utc)
+            return (datetime.now(timezone.utc) - started).total_seconds() < 3600
+    except Exception:
+        pass
+    return False
+
+
 def _get_all_symbols() -> list[tuple[str, str]]:
-    """Return [(tos_symbol, y_ticker)] for all current drv_symbols."""
+    """Return [(tos_symbol, y_ticker)] for TOSD symbols + all ref_rrt symbols."""
     with session_scope() as s:
         rows = s.execute(text("""
             SELECT DISTINCT s.tos_symbol,
                    COALESCE(r.y_ticker, s.tos_symbol) AS y_ticker
             FROM drv_symbols s
             LEFT JOIN ref_rrt r ON r.tos_ticker = s.tos_symbol
-            WHERE s.as_of_date = (SELECT MAX(as_of_date) FROM drv_symbols)
-            ORDER BY s.tos_symbol
+            WHERE s.as_of_date = (SELECT MAX(export_date) FROM hist_td)
+            UNION
+            SELECT r.tos_ticker, r.y_ticker
+            FROM ref_rrt r
+            WHERE r.tos_ticker IS NOT NULL AND r.y_ticker IS NOT NULL
+            ORDER BY 1
         """)).fetchall()
     return [(r[0], r[1]) for r in rows if r[0] and r[1]]
 
@@ -259,7 +325,7 @@ def fetch_rrt_quotes(force: bool = False) -> dict:
 
 def _fetch_ohlcv_to_cache(tickers: list[tuple[str, str]],
                            batch_size: int = 100,
-                           delay_sec: float = 30.0) -> dict:
+                           delay_sec: float = 3.0) -> dict:
     """
     Batch-download OHLCV for all tickers and upsert into cache_yahoo_quote only.
     Does NOT write to hist_y — caller does that after all cache data is ready.
@@ -419,7 +485,7 @@ def _load_cache_to_hist_y(load_date: date) -> dict:
                  company_name, short_ratio, float_str, shares_out_str,
                  source_file)
             SELECT
-                :ld, tos_symbol, tos_symbol, 0,
+                :ld, y_ticker, tos_symbol, 0,
                 fetched_at::date,
                 TO_CHAR(fetched_at AT TIME ZONE 'UTC', 'HH24:MI:SS'),
                 last_price,
@@ -461,6 +527,51 @@ def _load_cache_to_hist_y(load_date: date) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Post-load tos_symbol fix — run after CSV load, before derive
+# ---------------------------------------------------------------------------
+
+def _fix_hist_y_tos_symbol(load_date: date) -> None:
+    """Populate hist_y.tos_symbol from cache_yahoo_quote after a CSV load.
+    CSV mapping writes symbol=y_ticker but leaves tos_symbol NULL.
+    cache_yahoo_quote has the y_ticker→tos_symbol mapping we need.
+    Fallback: tos_symbol = symbol for any unmatched rows."""
+    try:
+        with session_scope() as s:
+            s.execute(text("""
+                UPDATE hist_y h
+                SET tos_symbol = c.tos_symbol
+                FROM cache_yahoo_quote c
+                WHERE h.symbol = c.y_ticker
+                  AND h.snapshot_date = :d
+                  AND h.tos_symbol IS NULL
+            """), {"d": load_date})
+            s.execute(text("""
+                UPDATE hist_y
+                SET tos_symbol = symbol
+                WHERE snapshot_date = :d AND tos_symbol IS NULL
+            """), {"d": load_date})
+    except Exception as e:
+        logger.warning("Could not fix hist_y.tos_symbol: %s", e)
+
+
+def _load_yfiles_csv(csv_path: pathlib.Path, load_date: date) -> dict:
+    """Load a YFiles CSV with do_derive=False, fix tos_symbol, then derive."""
+    from etl.etl_load import load_one_file
+    load_result = load_one_file(str(csv_path), do_derive=False)
+    _fix_hist_y_tos_symbol(load_date)
+    try:
+        from etl.derive import derive_all, get_anchor_date
+        with session_scope() as s:
+            anchor = get_anchor_date(s)
+        if anchor:
+            with session_scope() as s:
+                derive_all(s, anchor)
+    except Exception as e:
+        logger.warning("Derive after Y load failed: %s", e)
+    return load_result
+
+
+# ---------------------------------------------------------------------------
 # CSV helpers — write cache_yahoo_quote as a YFiles-format CSV
 # ---------------------------------------------------------------------------
 
@@ -489,17 +600,20 @@ def _fmt_num(v) -> str:
 
 
 def _write_yfiles_csv(load_date: date,
-                      target_dir: pathlib.Path) -> "pathlib.Path | None":
+                      target_dir: pathlib.Path,
+                      force_time: "str | None" = None) -> "pathlib.Path | None":
     """
     Generate a YFiles CSV from cache_yahoo_quote and write it to target_dir.
     Column order matches HIST_MAPS['Y'] CSV-alt names so load_one_file() picks
-    it up correctly. Returns the written Path, or None on failure.
+    it up correctly.  force_time overrides the Time column (e.g. '1630' for EOD).
+    If the file already exists it is sent to the recycle bin before being replaced.
+    Returns the written Path, or None on failure.
     """
     try:
         with session_scope() as s:
             rows = s.execute(text("""
                 SELECT
-                    tos_symbol, company_name, last_price,
+                    y_ticker, company_name, last_price,
                     CASE WHEN prev_close IS NOT NULL
                          THEN last_price - prev_close END,
                     CASE WHEN prev_close > 0
@@ -508,7 +622,7 @@ def _write_yfiles_csv(load_date: date,
                     short_ratio, float_shares, shares_outstanding
                 FROM cache_yahoo_quote
                 WHERE last_price IS NOT NULL
-                ORDER BY tos_symbol
+                ORDER BY y_ticker
             """)).fetchall()
     except Exception as e:
         logger.error("Could not read cache for YFiles CSV: %s", e)
@@ -519,10 +633,23 @@ def _write_yfiles_csv(load_date: date,
         return None
 
     now_et = datetime.now(_ET) if _ET else datetime.now(timezone.utc)
-    date_str = load_date.isoformat()
-    time_str = now_et.strftime("%H:%M:%S")
-    filename = f"y_{load_date.strftime('%Y%m%d')}_{now_et.strftime('%H%M%S')}.csv"
+    date_str = f"{load_date.month}/{load_date.day}/{load_date.year}"
+    time_str = force_time if force_time is not None else now_et.strftime("%H%M")
+    filename = f"YFiles {load_date.isoformat()}.csv"
     csv_path = target_dir / filename
+
+    # Send existing file to recycle bin before overwriting
+    if csv_path.exists():
+        try:
+            import send2trash
+            send2trash.send2trash(str(csv_path))
+            logger.info("Recycled existing YFiles CSV: %s", csv_path.name)
+        except Exception as e:
+            logger.warning("Could not recycle %s (%s) — deleting permanently", csv_path.name, e)
+            try:
+                csv_path.unlink()
+            except Exception:
+                pass
 
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -571,8 +698,7 @@ def fetch_y_load(batch_size: int = 100, delay_sec: float = 30.0) -> dict:
     if yfiles_dir is not None:
         csv_path = _write_yfiles_csv(today, yfiles_dir)
         if csv_path is not None:
-            from etl.etl_load import load_one_file
-            load_result = load_one_file(str(csv_path))
+            load_result = _load_yfiles_csv(csv_path, today)
             logger.info("fetch_y_load: %d symbols, %d batches, csv=%s",
                         total, batches, csv_path.name)
             return {"total": total, "batches": batches,
@@ -591,52 +717,134 @@ def fetch_y_load(batch_size: int = 100, delay_sec: float = 30.0) -> dict:
 # ---------------------------------------------------------------------------
 
 def fetch_y_load_full() -> dict:
-    """
-    Full after-market Y load — three phases:
-      1. Batch OHLCV → cache_yahoo_quote (fast, ~4 min)
-      2. Per-symbol detail → cache_yahoo_quote (slow, ~20 min)
-      3. cache_yahoo_quote → hist_y (one clean INSERT, complete rows)
-    hist_y is written only after both cache phases are done so it always
-    gets full data. ON CONFLICT DO NOTHING — TOS rows always win.
-    """
-    global _y_load_running, _last_auto_fetch_date
-    if _y_load_running:
+    """Internal: full after-market Y load. Use fetch_y_smart() from outside."""
+    global _fetch_running, _last_auto_fetch_date
+    if _fetch_running:
         return {"skipped": True, "reason": "already running"}
-    _y_load_running = True
+    _fetch_running = True
+    _mark_fetch_running(True)
     today = date.today()
-    _mark_fetch_started(today)  # write DB flag BEFORE download — cross-process lock
+    _mark_fetch_started(today)  # cross-process guard: written BEFORE download
     try:
         tickers = _get_all_symbols()
 
-        logger.info("Auto-fetch phase 1: OHLCV for %d symbols...", len(tickers))
+        logger.info("Y full fetch phase 1: OHLCV for %d symbols...", len(tickers))
         cache_result = _fetch_ohlcv_to_cache(tickers)
 
-        logger.info("Auto-fetch phase 2: detail fetch...")
+        logger.info("Y full fetch phase 2: detail fetch...")
         detail_result = fetch_y_detail()
 
-        logger.info("Auto-fetch phase 3: write YFiles CSV and load...")
+        logger.info("Y full fetch phase 3: write CSV (time=1630) and load...")
         yfiles_dir = _get_yfiles_dir()
         if yfiles_dir is not None:
-            csv_path = _write_yfiles_csv(today, yfiles_dir)
+            csv_path = _write_yfiles_csv(today, yfiles_dir, force_time="1630")
             if csv_path is not None:
-                from etl.etl_load import load_one_file
-                load_result = load_one_file(str(csv_path))
-                hist_result = {"csv": str(csv_path), "load": load_result}
+                hist_result = {"csv": str(csv_path),
+                               "load": _load_yfiles_csv(csv_path, today)}
             else:
                 hist_result = _load_cache_to_hist_y(today)
         else:
             hist_result = _load_cache_to_hist_y(today)
 
         _last_auto_fetch_date = today
-        logger.info("Auto-fetch complete for %s: cache=%s detail=%s hist=%s",
-                    today, cache_result, detail_result, hist_result)
+        _mark_eod_done(today)
+        logger.info("Y full fetch complete for %s", today)
         return {"cache": cache_result, "detail": detail_result,
                 "hist": hist_result, "date": str(today)}
     except Exception as ex:
-        logger.error("Auto-fetch error: %s", ex)
+        logger.error("Y full fetch error: %s", ex)
         return {"error": str(ex)}
     finally:
-        _y_load_running = False
+        _fetch_running = False
+        _mark_fetch_running(False)
+
+
+# ---------------------------------------------------------------------------
+# Public: unified smart fetch (single entry point for button + auto-fetcher)
+# ---------------------------------------------------------------------------
+
+def fetch_y_smart() -> dict:
+    """
+    Unified Y fetch called by the manual button and both auto-fetch paths.
+
+    Rules:
+    - EOD done today          → skip (button is disabled)
+    - Any fetch running       → skip (concurrent-run guard, cross-process)
+    - Before 4 PM ET          → batch OHLCV only; CSV time = current HHMM
+    - At/after 4 PM ET        → full fetch (OHLCV + detail); CSV time = 1630;
+                                marks EOD done — never runs again today
+    """
+    if _is_eod_done_today():
+        return {"skipped": True, "reason": "eod_done",
+                "msg": "EOD Y load already completed for today"}
+    # Cross-process guard: _already_fetched_today covers the window between
+    # EOD starting and EOD completing (e.g. scheduler started at 4:15, app
+    # fallback wakes at 4:30 while download still running).
+    if _already_fetched_today() or _is_any_fetch_running():
+        return {"skipped": True, "reason": "running",
+                "msg": "A fetch is already in progress"}
+
+    global _fetch_running, _last_auto_fetch_date
+    _fetch_running = True
+    _mark_fetch_running(True)
+    today = date.today()
+
+    try:
+        tickers = _get_all_symbols()
+
+        if _is_at_or_after(16, 0):
+            # ── EOD path ──────────────────────────────────────────────────
+            _mark_fetch_started(today)  # cross-process guard before slow download
+
+            logger.info("Y smart (EOD): OHLCV for %d symbols...", len(tickers))
+            cache_result = _fetch_ohlcv_to_cache(tickers)
+
+            logger.info("Y smart (EOD): detail fetch...")
+            detail_result = fetch_y_detail()
+
+            logger.info("Y smart (EOD): writing CSV with time=1630...")
+            yfiles_dir = _get_yfiles_dir()
+            if yfiles_dir is not None:
+                csv_path = _write_yfiles_csv(today, yfiles_dir, force_time="1630")
+                if csv_path is not None:
+                    hist_result = {"csv": str(csv_path),
+                                   "load": _load_yfiles_csv(csv_path, today)}
+                else:
+                    hist_result = _load_cache_to_hist_y(today)
+            else:
+                hist_result = _load_cache_to_hist_y(today)
+
+            _last_auto_fetch_date = today
+            _mark_eod_done(today)
+            logger.info("Y smart (EOD) complete for %s", today)
+            return {"eod": True, "cache": cache_result,
+                    "detail": detail_result, "hist": hist_result}
+
+        else:
+            # ── Intraday batch path ────────────────────────────────────────
+            logger.info("Y smart (intraday): OHLCV for %d symbols...", len(tickers))
+            cache_result = _fetch_ohlcv_to_cache(tickers)
+
+            yfiles_dir = _get_yfiles_dir()
+            if yfiles_dir is not None:
+                csv_path = _write_yfiles_csv(today, yfiles_dir)   # uses current HHMM
+                if csv_path is not None:
+                    hist_result = {"csv": str(csv_path),
+                                   "load": _load_yfiles_csv(csv_path, today)}
+                else:
+                    hist_result = _load_cache_to_hist_y(today)
+            else:
+                hist_result = _load_cache_to_hist_y(today)
+
+            logger.info("Y smart (intraday) complete for %s", today)
+            return {"eod": False, "cache": cache_result, "hist": hist_result}
+
+    except Exception as ex:
+        logger.error("Y smart fetch error: %s", ex)
+        return {"error": str(ex)}
+    finally:
+        _fetch_running = False
+        _mark_fetch_running(False)
 
 
 # ---------------------------------------------------------------------------
@@ -648,12 +856,13 @@ def get_auto_fetch_status() -> dict:
     today = date.today()
     is_trading = _is_trading_day(today)
     is_after   = _is_after_market_close()
+    eod_done   = _is_eod_done_today()
 
-    if _y_load_running:
+    if _fetch_running:
         next_info = "running now"
     elif not is_trading:
         next_info = "weekend — skipped"
-    elif _last_auto_fetch_date == today:
+    elif eod_done:
         next_info = "done for today"
     elif is_after:
         next_info = "pending — will start shortly"
@@ -661,7 +870,8 @@ def get_auto_fetch_status() -> dict:
         next_info = "today at 4:15 PM ET (scheduler) / 4:30 PM ET (app)"
 
     return {
-        "running":               _y_load_running,
+        "running":               _fetch_running,
+        "eod_done":              eod_done,
         "last_auto_fetch_date":  str(_last_auto_fetch_date) if _last_auto_fetch_date else None,
         "is_after_market_close": is_after,
         "is_trading_day":        is_trading,
@@ -694,10 +904,11 @@ async def auto_fetch_loop() -> None:
             if (
                 _is_trading_day(today)
                 and _is_at_or_after(16, 30)
+                and not _is_eod_done_today()
                 and not _already_fetched_today()
-                and not _y_load_running
+                and not _fetch_running
             ):
-                logger.info("Auto-fetch (app fallback): triggering full Y load for %s", today)
-                loop.run_in_executor(executor, fetch_y_load_full)
+                logger.info("Auto-fetch (app fallback): triggering Y load for %s", today)
+                loop.run_in_executor(executor, fetch_y_smart)
         except Exception as e:
             logger.error("auto_fetch_loop error: %s", e)
