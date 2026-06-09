@@ -26,7 +26,7 @@ try:
     from zoneinfo import ZoneInfo
     _ET = ZoneInfo("America/New_York")
 except Exception:
-    _ET = None  # fallback: treat UTC as ET (acceptable if zoneinfo missing)
+    _ET = None
 
 
 # ---------------------------------------------------------------------------
@@ -50,18 +50,26 @@ def _is_after_market_close() -> bool:
     if _ET:
         now = datetime.now(_ET)
     else:
-        # UTC fallback: 4:30 PM ET = ~21:30 UTC (EST) or ~20:30 UTC (EDT)
-        # Use 21:30 UTC as a conservative estimate
         now = datetime.now(timezone.utc)
         return (now.hour, now.minute) >= (21, 30)
     return (now.hour, now.minute) >= (16, 30)
 
 
+def _is_at_or_after(hour: int, minute: int) -> bool:
+    """True if current ET time is >= the given hour:minute."""
+    if _ET:
+        now = datetime.now(_ET)
+    else:
+        now = datetime.now(timezone.utc)
+        hour += 4
+    return (now.hour, now.minute) >= (hour, minute)
+
+
 def _is_trading_day(d: date | None = None) -> bool:
-    """True if the given date (default: today) is Mon–Fri."""
+    """True if the given date (default: today) is Mon-Fri."""
     if d is None:
         d = date.today()
-    return d.weekday() < 5  # 0=Mon .. 4=Fri
+    return d.weekday() < 5
 
 
 def _init_last_auto_fetch_date() -> None:
@@ -94,11 +102,10 @@ def _mark_fetch_started(d: date) -> None:
 
 
 def _already_fetched_today() -> bool:
-    """Cross-process check: has today's auto-fetch started (by either process)?
-    Reads ref_settings so both scheduler and FastAPI app share state via DB."""
+    """Cross-process check: has today's auto-fetch started (by either process)?"""
     today = date.today()
     if _last_auto_fetch_date == today:
-        return True  # in-process fast path
+        return True
     try:
         with session_scope() as s:
             val = s.execute(text(
@@ -109,15 +116,28 @@ def _already_fetched_today() -> bool:
         return False
 
 
+def _get_all_symbols() -> list[tuple[str, str]]:
+    """Return [(tos_symbol, y_ticker)] for all current drv_symbols."""
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT DISTINCT s.tos_symbol,
+                   COALESCE(r.y_ticker, s.tos_symbol) AS y_ticker
+            FROM drv_symbols s
+            LEFT JOIN ref_rrt r ON r.tos_ticker = s.tos_symbol
+            WHERE s.as_of_date = (SELECT MAX(as_of_date) FROM drv_symbols)
+            ORDER BY s.tos_symbol
+        """)).fetchall()
+    return [(r[0], r[1]) for r in rows if r[0] and r[1]]
+
+
 # ---------------------------------------------------------------------------
-# Low-level batch fetch → cache_yahoo_quote
+# Low-level batch fetch → cache_yahoo_quote (RRT symbols, lazy TTL)
 # ---------------------------------------------------------------------------
 
 def _fetch_and_store(tickers: list[tuple[str, str]]) -> dict:
     """
     Fetch (tos_symbol, y_ticker) pairs from Yahoo in one batch call.
     Upserts raw OHLCV + prev_close into cache_yahoo_quote.
-    Returns {'ok': N, 'error': N, 'fetched_at': iso_str}.
     """
     try:
         import yfinance as yf
@@ -232,37 +252,26 @@ def fetch_rrt_quotes(force: bool = False) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Public: Y Load (batch OHLCV for all drv_symbols → hist_y + cache)
+# Phase 1: batch OHLCV → cache_yahoo_quote (no hist_y write)
 # ---------------------------------------------------------------------------
 
-def fetch_y_load(batch_size: int = 100, delay_sec: float = 30.0) -> dict:
+def _fetch_ohlcv_to_cache(tickers: list[tuple[str, str]],
+                           batch_size: int = 100,
+                           delay_sec: float = 30.0) -> dict:
     """
-    Fetch Yahoo Finance OHLCV for all drv_symbols and insert into hist_y.
-    ON CONFLICT DO NOTHING so real TOS data always wins.
-    Also upserts cache_yahoo_quote.
+    Batch-download OHLCV for all tickers and upsert into cache_yahoo_quote only.
+    Does NOT write to hist_y — caller does that after all cache data is ready.
     """
     try:
         import yfinance as yf
     except ImportError:
         raise RuntimeError("yfinance not installed")
 
-    with session_scope() as s:
-        rows = s.execute(text("""
-            SELECT DISTINCT s.tos_symbol,
-                   COALESCE(r.y_ticker, s.tos_symbol) AS y_ticker
-            FROM drv_symbols s
-            LEFT JOIN ref_rrt r ON r.tos_ticker = s.tos_symbol
-            WHERE s.as_of_date = (SELECT MAX(as_of_date) FROM drv_symbols)
-            ORDER BY s.tos_symbol
-        """)).fetchall()
-
-    tickers = [(r[0], r[1]) for r in rows if r[0] and r[1]]
     total = len(tickers)
-    inserted = 0
+    ok_total = 0
+    err_total = 0
     batches = 0
     fetched_at = datetime.now(timezone.utc)
-    today = fetched_at.date()
-    export_time = fetched_at.strftime("%H:%M:%S")
 
     for i in range(0, total, batch_size):
         batch = tickers[i: i + batch_size]
@@ -275,62 +284,39 @@ def fetch_y_load(batch_size: int = 100, delay_sec: float = 30.0) -> dict:
                 progress=False, auto_adjust=True, group_by="ticker",
             )
         except Exception as e:
-            logger.error("Yahoo Y load batch %d download failed: %s", batches, e)
+            logger.error("Yahoo OHLCV batch %d download failed: %s", batches, e)
+            err_total += len(batch)
             if i + batch_size < total:
                 time.sleep(delay_sec)
             continue
 
-        hist_rows = []
         cache_rows = []
-
-        for tos_ticker, y_ticker in batch:
+        for tos_symbol, y_ticker in batch:
             try:
                 closes = raw[y_ticker]["Close"].dropna() if y_ticker in raw else None
                 if closes is None or closes.empty:
+                    err_total += 1
                     continue
                 last_price = float(closes.iloc[-1])
                 prev_close = float(closes.iloc[-2]) if len(closes) >= 2 else None
-                chg  = round(last_price - prev_close, 6) if prev_close else None
-                pct  = round(chg / prev_close * 100, 4)  if chg and prev_close else None
                 opens = raw[y_ticker]["Open"].dropna()
                 highs = raw[y_ticker]["High"].dropna()
                 lows  = raw[y_ticker]["Low"].dropna()
                 vols  = raw[y_ticker]["Volume"].dropna()
-                open_p  = float(opens.iloc[-1]) if not opens.empty else None
-                high_p  = float(highs.iloc[-1]) if not highs.empty else None
-                low_p   = float(lows.iloc[-1])  if not lows.empty  else None
-                vol     = int(vols.iloc[-1])     if not vols.empty  else None
-
-                hist_rows.append(dict(
-                    snapshot_date=today, symbol=tos_ticker, tos_symbol=tos_ticker,
-                    sequence=0, export_date=today, export_time=export_time,
-                    last_price=last_price, change_amt=chg, change_pct=pct,
-                    open_price=open_p, high_price=high_p, low_price=low_p,
-                    source_file="yahoo_fetch",
-                ))
                 cache_rows.append(dict(
-                    tos_symbol=tos_ticker, y_ticker=y_ticker,
-                    open_price=open_p, high_price=high_p, low_price=low_p,
-                    last_price=last_price, prev_close=prev_close, volume=vol,
+                    tos_symbol=tos_symbol, y_ticker=y_ticker,
+                    open_price=float(opens.iloc[-1]) if not opens.empty else None,
+                    high_price=float(highs.iloc[-1]) if not highs.empty else None,
+                    low_price=float(lows.iloc[-1])   if not lows.empty  else None,
+                    last_price=last_price,
+                    prev_close=prev_close,
+                    volume=int(vols.iloc[-1]) if not vols.empty else None,
                     fetched_at=fetched_at, fetch_status="ok",
                 ))
+                ok_total += 1
             except Exception as ex:
-                logger.warning("Yahoo Y load parse error %s: %s", y_ticker, ex)
-
-        if hist_rows:
-            with session_scope() as s:
-                result = s.execute(text("""
-                    INSERT INTO hist_y
-                        (snapshot_date, symbol, tos_symbol, sequence, export_date,
-                         export_time, last_price, change_amt, change_pct,
-                         open_price, high_price, low_price, source_file)
-                    VALUES
-                        (:snapshot_date, :symbol, :tos_symbol, :sequence, :export_date,
-                         :export_time, :last_price, :change_amt, :change_pct,
-                         :open_price, :high_price, :low_price, :source_file)
-                    ON CONFLICT DO NOTHING
-                """), hist_rows)
-                inserted += result.rowcount
+                logger.warning("Yahoo OHLCV parse error %s: %s", y_ticker, ex)
+                err_total += 1
 
         if cache_rows:
             with session_scope() as s:
@@ -352,30 +338,12 @@ def fetch_y_load(batch_size: int = 100, delay_sec: float = 30.0) -> dict:
         if i + batch_size < total:
             time.sleep(delay_sec)
 
-    logger.info("Yahoo Y load: %d total, %d inserted into hist_y, %d batches",
-                total, inserted, batches)
-
-    # Mark YFiles as done in today's schedule so the File Monitor shows it
-    # complete even though no file was dropped into the watched directory.
-    if inserted > 0 or total > 0:
-        try:
-            import time as _time
-            with session_scope() as s:
-                s.execute(text("""
-                    INSERT INTO meta_file_processed
-                        (file_path, file_mtime, file_type, file_date, processed_at)
-                    VALUES (:fp, :fm, 'YFiles', :fd, now())
-                    ON CONFLICT (file_path) DO UPDATE SET processed_at = now()
-                """), {'fp': f'yahoo_auto:{today.isoformat()}',
-                       'fm': _time.time(), 'fd': today})
-        except Exception as e:
-            logger.warning("Could not mark YFiles processed: %s", e)
-
-    return {"total": total, "batches": batches, "inserted_hist_y": inserted}
+    logger.info("OHLCV to cache: %d ok, %d errors, %d batches", ok_total, err_total, batches)
+    return {"total": total, "batches": batches, "ok": ok_total, "errors": err_total}
 
 
 # ---------------------------------------------------------------------------
-# Public: Detail fetch (company info — after market close only)
+# Phase 2: per-symbol detail → cache_yahoo_quote (after market close only)
 # ---------------------------------------------------------------------------
 
 def fetch_y_detail(delay_sec: float = 1.5) -> dict:
@@ -389,16 +357,7 @@ def fetch_y_detail(delay_sec: float = 1.5) -> dict:
     except ImportError:
         raise RuntimeError("yfinance not installed")
 
-    with session_scope() as s:
-        rows = s.execute(text("""
-            SELECT DISTINCT s.tos_symbol, COALESCE(r.y_ticker, s.tos_symbol) AS y_ticker
-            FROM drv_symbols s
-            LEFT JOIN ref_rrt r ON r.tos_ticker = s.tos_symbol
-            WHERE s.as_of_date = (SELECT MAX(as_of_date) FROM drv_symbols)
-            ORDER BY s.tos_symbol
-        """)).fetchall()
-
-    symbols = [(r[0], r[1]) for r in rows if r[0] and r[1]]
+    symbols = _get_all_symbols()
     detail_fetched_at = datetime.now(timezone.utc)
     updated = 0
     errors = 0
@@ -438,30 +397,124 @@ def fetch_y_detail(delay_sec: float = 1.5) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Public: Full after-market load (batch OHLCV + detail)
+# Phase 3: cache_yahoo_quote → hist_y  (complete rows, one INSERT)
+# ---------------------------------------------------------------------------
+
+def _load_cache_to_hist_y(load_date: date) -> dict:
+    """
+    INSERT from cache_yahoo_quote into hist_y using ON CONFLICT DO NOTHING.
+    Called after the cache is fully populated (OHLCV + optionally detail) so
+    hist_y always gets complete rows — never a partial write.
+    Also marks YFiles as done in meta_file_processed.
+    """
+    with session_scope() as s:
+        result = s.execute(text("""
+            INSERT INTO hist_y
+                (snapshot_date, symbol, tos_symbol, sequence,
+                 export_date, export_time,
+                 last_price, change_amt, change_pct,
+                 open_price, high_price, low_price,
+                 company_name, short_ratio, float_str, shares_out_str,
+                 source_file)
+            SELECT
+                :ld, tos_symbol, tos_symbol, 0,
+                fetched_at::date,
+                TO_CHAR(fetched_at AT TIME ZONE 'UTC', 'HH24:MI:SS'),
+                last_price,
+                CASE WHEN prev_close IS NOT NULL
+                     THEN last_price - prev_close END,
+                CASE WHEN prev_close > 0
+                     THEN (last_price - prev_close) / prev_close * 100 END,
+                open_price, high_price, low_price,
+                company_name,
+                short_ratio,
+                CASE WHEN float_shares       IS NOT NULL
+                     THEN float_shares::TEXT END,
+                CASE WHEN shares_outstanding IS NOT NULL
+                     THEN shares_outstanding::TEXT END,
+                'yahoo_fetch'
+            FROM cache_yahoo_quote
+            WHERE last_price IS NOT NULL
+            ON CONFLICT DO NOTHING
+        """), {'ld': load_date})
+        inserted = result.rowcount
+
+    logger.info("cache → hist_y: %d rows inserted for %s", inserted, load_date)
+
+    # Mark YFiles done in today's schedule (even though no file was dropped)
+    try:
+        import time as _time
+        with session_scope() as s:
+            s.execute(text("""
+                INSERT INTO meta_file_processed
+                    (file_path, file_mtime, file_type, file_date, processed_at)
+                VALUES (:fp, :fm, 'YFiles', :fd, now())
+                ON CONFLICT (file_path) DO UPDATE SET processed_at = now()
+            """), {'fp': f'yahoo_auto:{load_date.isoformat()}',
+                   'fm': _time.time(), 'fd': load_date})
+    except Exception as e:
+        logger.warning("Could not mark YFiles processed: %s", e)
+
+    return {"inserted_hist_y": inserted}
+
+
+# ---------------------------------------------------------------------------
+# Public: Y Load (manual button — OHLCV only, no detail)
+# ---------------------------------------------------------------------------
+
+def fetch_y_load(batch_size: int = 100, delay_sec: float = 30.0) -> dict:
+    """
+    Manual Y load: batch OHLCV → cache_yahoo_quote, then cache → hist_y.
+    No per-symbol detail fetch (use fetch_y_load_full for that).
+    hist_y is written only after the cache is fully populated.
+    """
+    tickers = _get_all_symbols()
+    cache_result = _fetch_ohlcv_to_cache(tickers, batch_size, delay_sec)
+    hist_result  = _load_cache_to_hist_y(date.today())
+    total = cache_result.get("total", 0)
+    batches = cache_result.get("batches", 0)
+    inserted = hist_result.get("inserted_hist_y", 0)
+    logger.info("fetch_y_load: %d symbols, %d batches, %d inserted hist_y",
+                total, batches, inserted)
+    return {"total": total, "batches": batches, "inserted_hist_y": inserted}
+
+
+# ---------------------------------------------------------------------------
+# Public: Full after-market load (OHLCV + detail, then cache → hist_y)
 # ---------------------------------------------------------------------------
 
 def fetch_y_load_full() -> dict:
     """
-    Full after-market Y load: batch OHLCV (fetch_y_load) then per-symbol
-    detail (fetch_y_detail). Writes DB flag at start so both the scheduler
-    and FastAPI loop see it and avoid double-runs.
+    Full after-market Y load — three phases:
+      1. Batch OHLCV → cache_yahoo_quote (fast, ~4 min)
+      2. Per-symbol detail → cache_yahoo_quote (slow, ~20 min)
+      3. cache_yahoo_quote → hist_y (one clean INSERT, complete rows)
+    hist_y is written only after both cache phases are done so it always
+    gets full data. ON CONFLICT DO NOTHING — TOS rows always win.
     """
     global _y_load_running, _last_auto_fetch_date
     if _y_load_running:
         return {"skipped": True, "reason": "already running"}
     _y_load_running = True
     today = date.today()
-    _mark_fetch_started(today)  # write BEFORE download so other process sees it immediately
+    _mark_fetch_started(today)  # write DB flag BEFORE download — cross-process lock
     try:
-        logger.info("Auto-fetch: starting batch Y load for %s...", today)
-        batch_result = fetch_y_load()
-        logger.info("Auto-fetch: batch done %s; starting detail fetch...", batch_result)
+        tickers = _get_all_symbols()
+
+        logger.info("Auto-fetch phase 1: OHLCV for %d symbols...", len(tickers))
+        cache_result = _fetch_ohlcv_to_cache(tickers)
+
+        logger.info("Auto-fetch phase 2: detail fetch...")
         detail_result = fetch_y_detail()
+
+        logger.info("Auto-fetch phase 3: cache -> hist_y...")
+        hist_result = _load_cache_to_hist_y(today)
+
         _last_auto_fetch_date = today
-        logger.info("Auto-fetch complete for %s: batch=%s detail=%s",
-                    today, batch_result, detail_result)
-        return {"batch": batch_result, "detail": detail_result, "date": str(today)}
+        logger.info("Auto-fetch complete for %s: cache=%s detail=%s hist_y=%s",
+                    today, cache_result, detail_result, hist_result)
+        return {"cache": cache_result, "detail": detail_result,
+                "hist_y": hist_result, "date": str(today)}
     except Exception as ex:
         logger.error("Auto-fetch error: %s", ex)
         return {"error": str(ex)}
@@ -488,7 +541,7 @@ def get_auto_fetch_status() -> dict:
     elif is_after:
         next_info = "pending — will start shortly"
     else:
-        next_info = "today at 4:30 PM ET"
+        next_info = "today at 4:15 PM ET (scheduler) / 4:30 PM ET (app)"
 
     return {
         "running":               _y_load_running,
@@ -503,21 +556,10 @@ def get_auto_fetch_status() -> dict:
 # Background async loop (started by api/main.py on startup)
 # ---------------------------------------------------------------------------
 
-def _is_at_or_after(hour: int, minute: int) -> bool:
-    """True if current ET time is >= the given hour:minute."""
-    if _ET:
-        now = datetime.now(_ET)
-    else:
-        now = datetime.now(timezone.utc)
-        hour += 4   # rough UTC→ET offset (no DST adjustment in fallback)
-    return (now.hour, now.minute) >= (hour, minute)
-
-
 async def auto_fetch_loop() -> None:
     """
     FastAPI fallback: fires at 4:30 PM ET if the scheduler didn't already run
-    at 4:15. Checks _already_fetched_today() via DB so both processes coordinate
-    without any direct communication.
+    at 4:15. Checks _already_fetched_today() via DB so both processes coordinate.
     """
     import asyncio
     from concurrent.futures import ThreadPoolExecutor
@@ -525,7 +567,6 @@ async def auto_fetch_loop() -> None:
     loop = asyncio.get_running_loop()
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="yahoo-auto")
 
-    # Re-read last fetch date from DB so server restarts don't re-run same day
     await loop.run_in_executor(executor, _init_last_auto_fetch_date)
 
     logger.info("Auto-fetch loop started — fallback fires at 4:30 PM ET (checks every 60 s)")
@@ -535,7 +576,7 @@ async def auto_fetch_loop() -> None:
             today = date.today()
             if (
                 _is_trading_day(today)
-                and _is_at_or_after(16, 30)   # 4:30 PM ET — scheduler fires at 4:15
+                and _is_at_or_after(16, 30)
                 and not _already_fetched_today()
                 and not _y_load_running
             ):
