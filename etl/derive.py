@@ -1269,6 +1269,43 @@ def _latest_per_symbol(session: Session, table: str, as_of_date: date,
     return out
 
 
+def _cache_yahoo_rows(session: Session) -> dict:
+    """Read cache_yahoo_quote → same {tos_symbol: fields} format as _latest_per_symbol.
+    Used as fourth (lowest) source in _derive_quote_impl."""
+    rows = session.execute(text("""
+        SELECT tos_symbol,
+               last_price,
+               (last_price - prev_close)                              AS net_chng,
+               CASE WHEN prev_close > 0
+                    THEN (last_price - prev_close) / prev_close * 100
+                    ELSE NULL END                                     AS pct_change,
+               open_price, high_price, low_price,
+               fetched_at                                             AS loaded_at,
+               fetched_at::date                                       AS snapshot_date,
+               fetched_at::date                                       AS export_date,
+               TO_CHAR(fetched_at AT TIME ZONE 'UTC', 'HH24:MI:SS')  AS export_time
+          FROM cache_yahoo_quote
+         WHERE last_price IS NOT NULL
+    """)).mappings()
+    out = {}
+    for r in rows:
+        out[r['tos_symbol']] = {
+            'last_price':     r['last_price'],
+            'net_chng':       r['net_chng'],
+            'pct_change':     r['pct_change'],
+            'open_price':     r['open_price'],
+            'high_price':     r['high_price'],
+            'low_price':      r['low_price'],
+            'rsi':            None,
+            'imp_volatility': None,
+            'loaded_at':      r['loaded_at'],
+            'snapshot_date':  r['snapshot_date'],
+            'export_date':    r['export_date'],
+            'export_time':    r['export_time'],
+        }
+    return out
+
+
 def _derive_y_impl(session: Session, as_of_date: date, run_id: int) -> int:
     """Convert hist_y float_str and shares_out_str to NUMERIC in drv_y.
 
@@ -1358,25 +1395,28 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
     anchor = get_anchor_date(session)
     ceil = date.today() if (anchor is not None and as_of_date == anchor) else as_of_date
 
-    rows_y  = _latest_per_symbol(session, 'hist_y',  as_of_date, cmap_y,  ceiling_date=ceil)                  # no window — Yahoo is fallback for non-TOS symbols
-    rows_tl = _latest_per_symbol(session, 'hist_tl', as_of_date, cmap_tl, window_days=7, ceiling_date=ceil)  # daily TOS Level: 7-day freshness gate
-    rows_td = _latest_per_symbol(session, 'hist_td', as_of_date, cmap_td, window_days=7, ceiling_date=ceil)  # daily TOS Daily: 7-day freshness gate
+    rows_y     = _latest_per_symbol(session, 'hist_y',  as_of_date, cmap_y,  ceiling_date=ceil)                  # no window — Yahoo is fallback for non-TOS symbols
+    rows_tl    = _latest_per_symbol(session, 'hist_tl', as_of_date, cmap_tl, window_days=7, ceiling_date=ceil)  # daily TOS Level: 7-day freshness gate
+    rows_td    = _latest_per_symbol(session, 'hist_td', as_of_date, cmap_td, window_days=7, ceiling_date=ceil)  # daily TOS Daily: 7-day freshness gate
+    rows_cache = _cache_yahoo_rows(session)                                                                      # batch Yahoo cache — lowest priority
 
     # Tag each candidate with the feed it came from, for drv_quote.source.
-    for _r in rows_tl.values(): _r['_src'] = 'TL'
-    for _r in rows_td.values(): _r['_src'] = 'TD'
-    for _r in rows_y.values():  _r['_src'] = 'Y'
+    for _r in rows_tl.values():    _r['_src'] = 'TL'
+    for _r in rows_td.values():    _r['_src'] = 'TD'
+    for _r in rows_y.values():     _r['_src'] = 'Y'
+    for _r in rows_cache.values(): _r['_src'] = 'CACHE'
 
-    # Union of all symbols seen across the three sources.
-    all_symbols = set(rows_y) | set(rows_tl) | set(rows_td)
+    # Union of all symbols seen across all four sources.
+    all_symbols = set(rows_y) | set(rows_tl) | set(rows_td) | set(rows_cache)
     if not all_symbols:
         return 0
 
     merged: list[dict] = []
     for sym in all_symbols:
-        tl_row = rows_tl.get(sym)
-        y_row  = rows_y.get(sym)
-        td_row = rows_td.get(sym)
+        tl_row    = rows_tl.get(sym)
+        y_row     = rows_y.get(sym)
+        td_row    = rows_td.get(sym)
+        cache_row = rows_cache.get(sym)
 
         # Prefer TL over Y only when both are from the same snapshot_date
         # (same trading session — matches Excel "L" flag / Dash!AB24).
@@ -1386,11 +1426,11 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
             and tl_row.get('snapshot_date') == y_row.get('snapshot_date')
         )
         if same_session:
-            # TL → TD → Y priority (TL is preferred for the current session)
-            candidates = [r for r in (tl_row, td_row, y_row) if r is not None]
+            # TL → TD → Y → CACHE priority (TL preferred for current session)
+            candidates = [r for r in (tl_row, td_row, y_row, cache_row) if r is not None]
         else:
-            # Different sessions: latest loaded_at wins
-            candidates = [r for r in (tl_row, td_row, y_row) if r is not None]
+            # Different sessions: latest loaded_at wins; CACHE participates naturally
+            candidates = [r for r in (tl_row, td_row, y_row, cache_row) if r is not None]
             candidates.sort(key=lambda r: r.get('loaded_at') or 0, reverse=True)
 
         rec = {'as_of_date': as_of_date, 'tos_symbol': sym, 'export_date': None, 'export_time': None, 'loaded_at': None, 'source': None}
