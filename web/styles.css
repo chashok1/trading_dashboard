@@ -881,10 +881,9 @@ body.trig-page .trig-detail { overflow-y: auto; }
 body.ref-page main > .card { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 body.ref-page .ref-table-container { flex: 1; max-height: none !important; overflow: auto; min-height: 0; }
 
-/* Portfolio: card fills, active tab pane fills, positions table fills */
-body.portfolio-page main > .card { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
-body.portfolio-page .pf-tab-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-body.portfolio-page .pf-tab-pane[hidden] { display: none !important; }
+/* Portfolio: active tab pane fills, card inside fills, positions table fills */
+body.portfolio-page .pf-tab-pane.active { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+body.portfolio-page .pf-tab-pane.active > .card { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 
 /* Performance: last card (scorecard) fills remaining */
 body.perf-page main { gap: 6px; }
