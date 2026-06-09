@@ -2436,7 +2436,11 @@ function setupRRActionCol() {
     };
     const sec = label =>
       `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:5px 0 2px;">${label}</div>`;
-    const shortDesc = (short, desc) => [short ? `<span style="font-weight:700;">${short}</span>` : '', desc].filter(Boolean).join(': ') || '—';
+    const shortDesc = (short, desc) => {
+      const sHtml = short ? `<span style="font-weight:700;">${short}</span>` : '';
+      const dPart = (desc && desc !== short) ? desc : '';
+      return [sHtml, dPart].filter(Boolean).join(': ') || desc || '—';
+    };
 
     // ── QR decision path ─────────────────────────────────────────────────────
     // qf/qk/qo are the stored seq values (QF/QK/QO from PARM_LOOKUP_SQL).
