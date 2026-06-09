@@ -1,7 +1,9 @@
 """Yahoo Finance quote fetcher — lazy TTL cache for ref_rrt symbols."""
 from __future__ import annotations
 
+import csv
 import logging
+import pathlib
 import time
 from datetime import date, datetime, timezone
 
@@ -459,22 +461,127 @@ def _load_cache_to_hist_y(load_date: date) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# CSV helpers — write cache_yahoo_quote as a YFiles-format CSV
+# ---------------------------------------------------------------------------
+
+def _get_yfiles_dir() -> "pathlib.Path | None":
+    """Read source_dir from ref_load_files for the YFiles file type."""
+    try:
+        with session_scope() as s:
+            val = s.execute(text("""
+                SELECT source_dir FROM ref_load_files
+                WHERE UPPER(file_type) = 'YFILES' LIMIT 1
+            """)).scalar()
+        return pathlib.Path(val) if val else None
+    except Exception as e:
+        logger.warning("Could not read YFiles source_dir: %s", e)
+        return None
+
+
+def _fmt_num(v) -> str:
+    """Format a numeric value for CSV output (empty string for None)."""
+    if v is None:
+        return ""
+    try:
+        return f"{float(v):.6g}"
+    except (TypeError, ValueError):
+        return ""
+
+
+def _write_yfiles_csv(load_date: date,
+                      target_dir: pathlib.Path) -> "pathlib.Path | None":
+    """
+    Generate a YFiles CSV from cache_yahoo_quote and write it to target_dir.
+    Column order matches HIST_MAPS['Y'] CSV-alt names so load_one_file() picks
+    it up correctly. Returns the written Path, or None on failure.
+    """
+    try:
+        with session_scope() as s:
+            rows = s.execute(text("""
+                SELECT
+                    tos_symbol, company_name, last_price,
+                    CASE WHEN prev_close IS NOT NULL
+                         THEN last_price - prev_close END,
+                    CASE WHEN prev_close > 0
+                         THEN (last_price - prev_close) / prev_close * 100 END,
+                    open_price, high_price, low_price,
+                    short_ratio, float_shares, shares_outstanding
+                FROM cache_yahoo_quote
+                WHERE last_price IS NOT NULL
+                ORDER BY tos_symbol
+            """)).fetchall()
+    except Exception as e:
+        logger.error("Could not read cache for YFiles CSV: %s", e)
+        return None
+
+    if not rows:
+        logger.warning("cache_yahoo_quote empty — no CSV written")
+        return None
+
+    now_et = datetime.now(_ET) if _ET else datetime.now(timezone.utc)
+    date_str = load_date.isoformat()
+    time_str = now_et.strftime("%H:%M:%S")
+    filename = f"y_{load_date.strftime('%Y%m%d')}_{now_et.strftime('%H%M%S')}.csv"
+    csv_path = target_dir / filename
+
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        with open(csv_path, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow([
+                "Date", "Time", "Symbol", "Company Name",
+                "Last Price", "Change", "Change (%)",
+                "Open", "High", "Low",
+                "Short Ratio", "Float", "Shares Out",
+            ])
+            for (sym, co, lp, chg, chgp, op, hi, lo, sr, fs, so) in rows:
+                w.writerow([
+                    date_str, time_str, sym, co or "",
+                    _fmt_num(lp), _fmt_num(chg), _fmt_num(chgp),
+                    _fmt_num(op), _fmt_num(hi), _fmt_num(lo),
+                    _fmt_num(sr),
+                    int(fs) if fs is not None else "",
+                    int(so) if so is not None else "",
+                ])
+        logger.info("YFiles CSV: %d rows -> %s", len(rows), csv_path)
+        return csv_path
+    except Exception as e:
+        logger.error("Failed to write YFiles CSV %s: %s", csv_path, e)
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Public: Y Load (manual button — OHLCV only, no detail)
 # ---------------------------------------------------------------------------
 
 def fetch_y_load(batch_size: int = 100, delay_sec: float = 30.0) -> dict:
     """
-    Manual Y load: batch OHLCV → cache_yahoo_quote, then cache → hist_y.
-    No per-symbol detail fetch (use fetch_y_load_full for that).
-    hist_y is written only after the cache is fully populated.
+    Manual Y load: batch OHLCV -> cache_yahoo_quote, then write a YFiles CSV
+    and process it immediately via load_one_file() so the scheduler can't
+    double-process it. Falls back to direct cache->hist_y if YFiles dir is
+    unavailable.
     """
     tickers = _get_all_symbols()
     cache_result = _fetch_ohlcv_to_cache(tickers, batch_size, delay_sec)
-    hist_result  = _load_cache_to_hist_y(date.today())
+    today = date.today()
     total = cache_result.get("total", 0)
     batches = cache_result.get("batches", 0)
+
+    yfiles_dir = _get_yfiles_dir()
+    if yfiles_dir is not None:
+        csv_path = _write_yfiles_csv(today, yfiles_dir)
+        if csv_path is not None:
+            from etl.etl_load import load_one_file
+            load_result = load_one_file(str(csv_path))
+            logger.info("fetch_y_load: %d symbols, %d batches, csv=%s",
+                        total, batches, csv_path.name)
+            return {"total": total, "batches": batches,
+                    "csv": str(csv_path), "load": load_result}
+
+    # Fallback: direct cache -> hist_y (no CSV written)
+    hist_result = _load_cache_to_hist_y(today)
     inserted = hist_result.get("inserted_hist_y", 0)
-    logger.info("fetch_y_load: %d symbols, %d batches, %d inserted hist_y",
+    logger.info("fetch_y_load (fallback): %d symbols, %d batches, %d inserted",
                 total, batches, inserted)
     return {"total": total, "batches": batches, "inserted_hist_y": inserted}
 
@@ -507,14 +614,24 @@ def fetch_y_load_full() -> dict:
         logger.info("Auto-fetch phase 2: detail fetch...")
         detail_result = fetch_y_detail()
 
-        logger.info("Auto-fetch phase 3: cache -> hist_y...")
-        hist_result = _load_cache_to_hist_y(today)
+        logger.info("Auto-fetch phase 3: write YFiles CSV and load...")
+        yfiles_dir = _get_yfiles_dir()
+        if yfiles_dir is not None:
+            csv_path = _write_yfiles_csv(today, yfiles_dir)
+            if csv_path is not None:
+                from etl.etl_load import load_one_file
+                load_result = load_one_file(str(csv_path))
+                hist_result = {"csv": str(csv_path), "load": load_result}
+            else:
+                hist_result = _load_cache_to_hist_y(today)
+        else:
+            hist_result = _load_cache_to_hist_y(today)
 
         _last_auto_fetch_date = today
-        logger.info("Auto-fetch complete for %s: cache=%s detail=%s hist_y=%s",
+        logger.info("Auto-fetch complete for %s: cache=%s detail=%s hist=%s",
                     today, cache_result, detail_result, hist_result)
         return {"cache": cache_result, "detail": detail_result,
-                "hist_y": hist_result, "date": str(today)}
+                "hist": hist_result, "date": str(today)}
     except Exception as ex:
         logger.error("Auto-fetch error: %s", ex)
         return {"error": str(ex)}
