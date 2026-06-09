@@ -141,6 +141,12 @@
                        align-items:center; gap:4px; cursor:pointer; }
     .status-msg { font-size:13px; color:var(--text-2); padding:16px;
                   text-align:center; }
+    /* Show scrollbar — content can grow tall when atomic rules expand */
+    main { scrollbar-width: thin; }
+    main::-webkit-scrollbar { display: block; width: 8px; }
+    main::-webkit-scrollbar-track { background: transparent; }
+    main::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+    main::-webkit-scrollbar-thumb:hover { background: #aaa; }
   </style>
 </head>
 <body>
