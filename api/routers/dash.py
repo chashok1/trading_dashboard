@@ -787,7 +787,7 @@ def get_rr_analysis(symbol: str = Query(...), date: str = Query(...)):
             LEFT JOIN drv_tn_td_bb_rr r
               ON r.tos_symbol = a.tos_symbol AND r.as_of_date = a.as_of_date
             LEFT JOIN ref_param_lookup ltn
-              ON ltn.table_name='tn_td_rule' AND ltn.code=(a.trade_trend_sd_rule)::INTEGER::TEXT
+              ON ltn.table_name='tn_td_rule' AND ltn.code=(r.trend_trade_rule)::INTEGER::TEXT
             LEFT JOIN ref_param_lookup lbb
               ON lbb.table_name='bb_range' AND lbb.code=(r.bb_rng_strk_rule)::INTEGER::TEXT
             LEFT JOIN ref_param_lookup lbull
@@ -898,7 +898,7 @@ def get_rr_detail(symbol: str = Query(...), date: str = Query(...)):
             LEFT JOIN drv_ma m ON m.tos_symbol=a.tos_symbol AND m.as_of_date=a.as_of_date
             LEFT JOIN drv_rr rr_tbl ON rr_tbl.tos_symbol=a.tos_symbol AND rr_tbl.as_of_date=a.as_of_date
             LEFT JOIN ref_param_lookup ltn
-              ON ltn.table_name='tn_td_rule' AND ltn.code=(a.trade_trend_sd_rule)::INTEGER::TEXT
+              ON ltn.table_name='tn_td_rule' AND ltn.code=(r.trend_trade_rule)::INTEGER::TEXT
             LEFT JOIN ref_param_lookup lbb
               ON lbb.table_name='bb_range' AND lbb.code=(r.bb_rng_strk_rule)::INTEGER::TEXT
             LEFT JOIN ref_param_lookup lbull
