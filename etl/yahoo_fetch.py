@@ -909,6 +909,6 @@ async def auto_fetch_loop() -> None:
                 and not _fetch_running
             ):
                 logger.info("Auto-fetch (app fallback): triggering Y load for %s", today)
-                loop.run_in_executor(executor, fetch_y_smart)
+                await loop.run_in_executor(executor, fetch_y_smart)
         except Exception as e:
             logger.error("auto_fetch_loop error: %s", e)
