@@ -196,8 +196,8 @@ def discover_ref_tables():
 
 
 def discover_data_tables():
-    """All hist_/drv_/meta_ tables and v_* views — browsable in /explore."""
-    base = _list_tables_like(["hist_%", "drv_%", "meta_%"])
+    """All hist_/drv_/meta_/cache_ tables and v_* views — browsable in /explore."""
+    base = _list_tables_like(["hist_%", "drv_%", "meta_%", "cache_%"])
     views = _list_views_like(["v_%"])
     return sorted(set(base + views))
 

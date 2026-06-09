@@ -1016,6 +1016,7 @@ def get_table_stats(date: Optional[str] = Query(None)):
                     WHEN t.table_name LIKE 'drv_%' THEN 'drv'
                     WHEN t.table_name LIKE 'ref_%' THEN 'ref'
                     WHEN t.table_name LIKE 'meta_%' THEN 'meta'
+                    WHEN t.table_name LIKE 'cache_%' THEN 'cache'
                     ELSE 'other'
                 END as category,
                 EXISTS(SELECT 1 FROM information_schema.columns
