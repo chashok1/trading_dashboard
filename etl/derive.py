@@ -1298,7 +1298,7 @@ def _cache_yahoo_rows(session: Session) -> dict:
             'low_price':      r['low_price'],
             'rsi':            None,
             'imp_volatility': None,
-            'loaded_at':      r['loaded_at'],
+            'loaded_at':      r['loaded_at'].replace(tzinfo=None) if r['loaded_at'] else None,
             'snapshot_date':  r['snapshot_date'],
             'export_date':    r['export_date'],
             'export_time':    r['export_time'],
@@ -1431,7 +1431,9 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
         else:
             # Different sessions: latest loaded_at wins; CACHE participates naturally
             candidates = [r for r in (tl_row, td_row, y_row, cache_row) if r is not None]
-            candidates.sort(key=lambda r: r.get('loaded_at') or 0, reverse=True)
+            candidates.sort(
+                key=lambda r: (r.get('loaded_at') or datetime.min).replace(tzinfo=None),
+                reverse=True)
 
         rec = {'as_of_date': as_of_date, 'tos_symbol': sym, 'export_date': None, 'export_time': None, 'loaded_at': None, 'source': None}
         for f in _QUOTE_FIELDS:
