@@ -347,35 +347,86 @@
 <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>
 
-<!-- Yahoo Finance manual fetch card -->
-<div style="position:fixed;bottom:16px;right:16px;z-index:200;background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px 16px;box-shadow:0 4px 16px rgba(0,0,0,0.12);min-width:300px;">
-  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);margin-bottom:6px;">Yahoo Finance Cache</div>
-  <div id="yahooLastFetched" style="font-size:11px;color:var(--text-3);margin-bottom:4px;">Loading status…</div>
-  <div id="yahooAutoStatus" style="font-size:11px;color:var(--text-3);margin-bottom:8px;"></div>
+<!-- Yahoo Finance fetch card -->
+<div style="position:fixed;bottom:16px;right:16px;z-index:200;background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px 16px;box-shadow:0 4px 16px rgba(0,0,0,0.12);min-width:310px;max-width:360px;">
+
+  <!-- header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+    <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-2);">Yahoo Finance</span>
+    <span style="font-size:10px;color:var(--text-3);">Scheduler 4:15 ET &nbsp;|&nbsp; App 4:30 ET</span>
+  </div>
+
+  <!-- cache row -->
+  <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:11px;margin-bottom:8px;">
+    <span style="color:var(--text-3);">OHLCV</span>
+    <span id="yf-ohlcv" style="color:var(--text-2);">—</span>
+    <span style="color:var(--text-3);">Detail</span>
+    <span id="yf-detail" style="color:var(--text-2);">—</span>
+    <span style="color:var(--text-3);">Auto</span>
+    <span id="yf-auto" style="color:var(--text-2);">—</span>
+  </div>
+
+  <!-- divider -->
+  <div style="border-top:1px solid var(--border);margin-bottom:8px;"></div>
+
+  <!-- buttons -->
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
     <button class="btn" id="yahooRrtBtn"   onclick="yahooFetch('rrt')"    style="font-size:11px;">Fetch RRT</button>
     <button class="btn" id="yahooYLoadBtn" onclick="yahooFetch('y-load')" style="font-size:11px;">Fetch Y Load</button>
   </div>
-  <div id="yahooFetchStatus" style="font-size:11px;color:var(--text-2);min-height:16px;"></div>
+  <div id="yahooFetchStatus" style="font-size:11px;color:var(--text-2);min-height:14px;"></div>
 </div>
 
 <script>
+function _fmtTime(iso) {
+  if (!iso) return null;
+  return new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}
+function _fmtAge(iso) {
+  if (!iso) return null;
+  const mins = Math.round((Date.now() - new Date(iso)) / 60000);
+  return mins < 60 ? mins + ' min ago' : Math.round(mins/60) + ' hr ago';
+}
+
 function yahooLoadStatus() {
   fetch('/api/yahoo-fetch/status')
     .then(r => r.json())
     .then(d => {
-      const el = document.getElementById('yahooLastFetched');
+      const ohlcvEl  = document.getElementById('yf-ohlcv');
+      const detailEl = document.getElementById('yf-detail');
       if (!d.last_fetched) {
-        el.textContent = 'Cache empty — not yet fetched';
+        ohlcvEl.textContent  = 'not yet fetched';
+        detailEl.textContent = 'not yet fetched';
       } else {
-        const dt = new Date(d.last_fetched);
-        const age = Math.round((Date.now() - dt) / 60000);
-        let txt = d.count + ' symbols · last fetched ' + age + ' min ago (' + dt.toLocaleTimeString() + ')';
-        if (d.last_detail_fetched) {
-          const dd = new Date(d.last_detail_fetched);
-          txt += ' · detail @ ' + dd.toLocaleTimeString();
-        }
-        el.textContent = txt;
+        ohlcvEl.textContent = d.count + ' symbols · ' + _fmtTime(d.last_fetched) + ' (' + _fmtAge(d.last_fetched) + ')';
+        detailEl.textContent = d.last_detail_fetched
+          ? _fmtTime(d.last_detail_fetched) + ' (' + _fmtAge(d.last_detail_fetched) + ')'
+          : 'not yet fetched';
+      }
+    })
+    .catch(() => {});
+}
+
+function yahooAutoStatus() {
+  fetch('/api/yahoo-fetch/auto-status')
+    .then(r => r.json())
+    .then(d => {
+      const el = document.getElementById('yf-auto');
+      if (d.running) {
+        el.textContent = 'Running now…';
+        el.style.color = '#b45309';
+      } else if (!d.is_trading_day) {
+        el.textContent = 'Weekend — resumes Monday';
+        el.style.color = 'var(--text-3)';
+      } else if (d.last_auto_fetch_date) {
+        const done = d.last_auto_fetch_date === new Date().toISOString().slice(0,10);
+        el.textContent = done
+          ? 'Done today (' + d.last_auto_fetch_date + ')'
+          : 'Last: ' + d.last_auto_fetch_date + ' · ' + d.next_fetch;
+        el.style.color = done ? '#166534' : '#b45309';
+      } else {
+        el.textContent = d.next_fetch;
+        el.style.color = 'var(--text-3)';
       }
     })
     .catch(() => {});
@@ -387,43 +438,26 @@ function yahooFetch(mode) {
   const status = document.getElementById('yahooFetchStatus');
   btn.disabled = true;
   status.style.color = 'var(--text-2)';
-  const msgs = {rrt:'Fetching RRT symbols…', 'y-load':'Fetching Y load into hist_y (30s between batches)…'};
+  const msgs = {rrt:'Fetching RRT symbols…', 'y-load':'Fetching Y load (30s between batches)…'};
   status.textContent = msgs[mode] || 'Fetching…';
-  fetch('/api/yahoo-fetch/' + mode, {method: 'POST'})
+  fetch('/api/yahoo-fetch/' + mode, {method:'POST'})
     .then(r => r.json())
     .then(d => {
       status.style.color = '#166534';
       if (d.skipped) {
-        status.textContent = 'Cache still fresh — ' + d.reason;
+        status.textContent = 'Skipped — ' + d.reason;
       } else {
         const parts = [];
         if (d.ok   != null) parts.push(d.ok + ' ok');
         if (d.error != null && d.error > 0) parts.push(d.error + ' errors');
-        if (d.inserted_hist_y != null) parts.push(d.inserted_hist_y + ' inserted → hist_y');
-        if (d.total != null) parts.push(d.total + ' symbols, ' + d.batches + ' batch' + (d.batches !== 1 ? 'es' : ''));
+        if (d.inserted_hist_y != null) parts.push(d.inserted_hist_y + ' inserted hist_y');
+        if (d.total != null) parts.push(d.total + ' symbols, ' + d.batches + ' batches');
         status.textContent = parts.join(' · ') + ' ✓';
       }
       yahooLoadStatus();
     })
     .catch(e => { status.style.color = '#b91c1c'; status.textContent = 'Error: ' + e; })
     .finally(() => { btn.disabled = false; });
-}
-
-function yahooAutoStatus() {
-  fetch('/api/yahoo-fetch/auto-status')
-    .then(r => r.json())
-    .then(d => {
-      const el = document.getElementById('yahooAutoStatus');
-      if (d.running) {
-        el.textContent = 'Auto-fetch running now…';
-        el.style.color = '#b45309';
-      } else {
-        const lastDate = d.last_auto_fetch_date || 'never';
-        el.textContent = 'Auto last: ' + lastDate + ' · Next: ' + d.next_fetch;
-        el.style.color = d.last_auto_fetch_date ? '#166534' : 'var(--text-3)';
-      }
-    })
-    .catch(() => {});
 }
 
 yahooLoadStatus();
