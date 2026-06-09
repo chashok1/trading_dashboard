@@ -371,7 +371,6 @@
 
   <!-- buttons -->
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-    <button class="btn" id="yahooRrtBtn"   onclick="yahooFetch('rrt')"    style="font-size:11px;">Fetch RRT</button>
     <button class="btn" id="yahooYLoadBtn" onclick="yahooFetch('y-load')" style="font-size:11px;">Fetch Y Load</button>
   </div>
   <div id="yahooFetchStatus" style="font-size:11px;color:var(--text-2);min-height:14px;"></div>
@@ -411,53 +410,73 @@ function yahooAutoStatus() {
   fetch('/api/yahoo-fetch/auto-status')
     .then(r => r.json())
     .then(d => {
-      const el = document.getElementById('yf-auto');
-      if (d.running) {
-        el.textContent = 'Running now…';
-        el.style.color = '#b45309';
+      const el  = document.getElementById('yf-auto');
+      const btn = document.getElementById('yahooYLoadBtn');
+      if (d.eod_done) {
+        el.textContent  = 'EOD done today — no further fetches';
+        el.style.color  = '#166534';
+        btn.disabled    = true;
+        btn.title       = 'EOD Y load already completed for today';
+      } else if (d.running) {
+        el.textContent  = 'Running now…';
+        el.style.color  = '#b45309';
+        btn.disabled    = true;
+        btn.title       = 'Fetch already in progress';
       } else if (!d.is_trading_day) {
-        el.textContent = 'Weekend — resumes Monday';
-        el.style.color = 'var(--text-3)';
+        el.textContent  = 'Weekend — resumes Monday';
+        el.style.color  = 'var(--text-3)';
+        btn.disabled    = false;
+        btn.title       = '';
       } else if (d.last_auto_fetch_date) {
-        const done = d.last_auto_fetch_date === new Date().toISOString().slice(0,10);
-        el.textContent = done
-          ? 'Done today (' + d.last_auto_fetch_date + ')'
-          : 'Last: ' + d.last_auto_fetch_date + ' · ' + d.next_fetch;
-        el.style.color = done ? '#166534' : '#b45309';
+        el.textContent  = 'Last: ' + d.last_auto_fetch_date + ' · ' + d.next_fetch;
+        el.style.color  = '#b45309';
+        btn.disabled    = false;
+        btn.title       = '';
       } else {
-        el.textContent = d.next_fetch;
-        el.style.color = 'var(--text-3)';
+        el.textContent  = d.next_fetch;
+        el.style.color  = 'var(--text-3)';
+        btn.disabled    = false;
+        btn.title       = '';
       }
     })
     .catch(() => {});
 }
 
 function yahooFetch(mode) {
-  const btnId = {rrt:'yahooRrtBtn', 'y-load':'yahooYLoadBtn'}[mode];
-  const btn = document.getElementById(btnId);
+  const btn    = document.getElementById('yahooYLoadBtn');
   const status = document.getElementById('yahooFetchStatus');
   btn.disabled = true;
-  status.style.color = 'var(--text-2)';
-  const msgs = {rrt:'Fetching RRT symbols…', 'y-load':'Fetching Y load (30s between batches)…'};
-  status.textContent = msgs[mode] || 'Fetching…';
-  fetch('/api/yahoo-fetch/' + mode, {method:'POST'})
+  status.style.color  = 'var(--text-2)';
+  status.textContent  = 'Fetching Y data (3 s between batches)…';
+  fetch('/api/yahoo-fetch/y-load', {method:'POST'})
     .then(r => r.json())
     .then(d => {
-      status.style.color = '#166534';
       if (d.skipped) {
-        status.textContent = 'Skipped — ' + d.reason;
+        status.style.color = d.reason === 'eod_done' ? '#166534' : '#b45309';
+        status.textContent = d.msg || ('Skipped — ' + d.reason);
+        if (d.reason === 'eod_done') btn.disabled = true;
+      } else if (d.error) {
+        status.style.color = '#b91c1c';
+        status.textContent = 'Error: ' + d.error;
+        btn.disabled = false;
       } else {
+        status.style.color = '#166534';
+        const c = d.cache || {};
         const parts = [];
-        if (d.ok   != null) parts.push(d.ok + ' ok');
-        if (d.error != null && d.error > 0) parts.push(d.error + ' errors');
-        if (d.inserted_hist_y != null) parts.push(d.inserted_hist_y + ' inserted hist_y');
-        if (d.total != null) parts.push(d.total + ' symbols, ' + d.batches + ' batches');
+        if (c.ok   != null) parts.push(c.ok + ' ok');
+        if (c.errors > 0)   parts.push(c.errors + ' errors');
+        if (d.eod)          parts.push('EOD — detail + 1630 CSV');
         status.textContent = parts.join(' · ') + ' ✓';
+        btn.disabled = !!d.eod;  // disable if EOD completed
       }
       yahooLoadStatus();
+      yahooAutoStatus();
     })
-    .catch(e => { status.style.color = '#b91c1c'; status.textContent = 'Error: ' + e; })
-    .finally(() => { btn.disabled = false; });
+    .catch(e => {
+      status.style.color = '#b91c1c';
+      status.textContent = 'Error: ' + e;
+      btn.disabled = false;
+    });
 }
 
 yahooLoadStatus();

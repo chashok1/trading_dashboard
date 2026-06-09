@@ -681,7 +681,7 @@ def _write_yfiles_csv(load_date: date,
 # Public: Y Load (manual button — OHLCV only, no detail)
 # ---------------------------------------------------------------------------
 
-def fetch_y_load(batch_size: int = 100, delay_sec: float = 30.0) -> dict:
+def fetch_y_load(batch_size: int = 100, delay_sec: float = 3.0) -> dict:
     """
     Manual Y load: batch OHLCV -> cache_yahoo_quote, then write a YFiles CSV
     and process it immediately via load_one_file() so the scheduler can't
