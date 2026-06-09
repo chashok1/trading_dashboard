@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 
 HARD_FLOOR_SEC = 60  # never fetch more often than this regardless of config
 
+# ref_settings key written at the START of fetch_y_load_full() so both the
+# scheduler process and the FastAPI process can see it and avoid double-runs.
+_FETCH_STARTED_KEY = 'yahoo_auto_fetch_date'
+
 # --- module-level state ---
 _last_fetch_ts: float = 0.0          # monotonic; last RRT fetch
 _y_load_running: bool = False         # True while full Y load is in progress
@@ -73,6 +77,36 @@ def _init_last_auto_fetch_date() -> None:
             logger.info("Auto-fetch: last detail fetch was %s", val)
     except Exception as e:
         logger.warning("Auto-fetch: could not read last detail date: %s", e)
+
+
+def _mark_fetch_started(d: date) -> None:
+    """Write today's date to ref_settings BEFORE the long download begins.
+    Both the scheduler and the FastAPI loop read this to avoid double-runs."""
+    try:
+        with session_scope() as s:
+            s.execute(text("""
+                INSERT INTO ref_settings (setting_name, setting_value)
+                VALUES (:k, :v)
+                ON CONFLICT (setting_name) DO UPDATE SET setting_value = EXCLUDED.setting_value
+            """), {'k': _FETCH_STARTED_KEY, 'v': d.isoformat()})
+    except Exception as e:
+        logger.warning("Auto-fetch: could not mark started: %s", e)
+
+
+def _already_fetched_today() -> bool:
+    """Cross-process check: has today's auto-fetch started (by either process)?
+    Reads ref_settings so both scheduler and FastAPI app share state via DB."""
+    today = date.today()
+    if _last_auto_fetch_date == today:
+        return True  # in-process fast path
+    try:
+        with session_scope() as s:
+            val = s.execute(text(
+                "SELECT setting_value FROM ref_settings WHERE setting_name = :k"
+            ), {'k': _FETCH_STARTED_KEY}).scalar()
+        return val == today.isoformat()
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -393,18 +427,20 @@ def fetch_y_detail(delay_sec: float = 1.5) -> dict:
 def fetch_y_load_full() -> dict:
     """
     Full after-market Y load: batch OHLCV (fetch_y_load) then per-symbol
-    detail (fetch_y_detail). Sets _last_auto_fetch_date on success.
+    detail (fetch_y_detail). Writes DB flag at start so both the scheduler
+    and FastAPI loop see it and avoid double-runs.
     """
     global _y_load_running, _last_auto_fetch_date
     if _y_load_running:
         return {"skipped": True, "reason": "already running"}
     _y_load_running = True
+    today = date.today()
+    _mark_fetch_started(today)  # write BEFORE download so other process sees it immediately
     try:
-        logger.info("Auto-fetch: starting batch Y load...")
+        logger.info("Auto-fetch: starting batch Y load for %s...", today)
         batch_result = fetch_y_load()
         logger.info("Auto-fetch: batch done %s; starting detail fetch...", batch_result)
         detail_result = fetch_y_detail()
-        today = date.today()
         _last_auto_fetch_date = today
         logger.info("Auto-fetch complete for %s: batch=%s detail=%s",
                     today, batch_result, detail_result)
@@ -450,11 +486,21 @@ def get_auto_fetch_status() -> dict:
 # Background async loop (started by api/main.py on startup)
 # ---------------------------------------------------------------------------
 
+def _is_at_or_after(hour: int, minute: int) -> bool:
+    """True if current ET time is >= the given hour:minute."""
+    if _ET:
+        now = datetime.now(_ET)
+    else:
+        now = datetime.now(timezone.utc)
+        hour += 4   # rough UTC→ET offset (no DST adjustment in fallback)
+    return (now.hour, now.minute) >= (hour, minute)
+
+
 async def auto_fetch_loop() -> None:
     """
-    Async task started at FastAPI startup. Checks every 60 s whether to trigger
-    the after-market Y load. Conditions: Mon–Fri, after 4:30 PM ET, not yet run
-    today, not already running.
+    FastAPI fallback: fires at 4:30 PM ET if the scheduler didn't already run
+    at 4:15. Checks _already_fetched_today() via DB so both processes coordinate
+    without any direct communication.
     """
     import asyncio
     from concurrent.futures import ThreadPoolExecutor
@@ -463,20 +509,20 @@ async def auto_fetch_loop() -> None:
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="yahoo-auto")
 
     # Re-read last fetch date from DB so server restarts don't re-run same day
-    loop.run_in_executor(executor, _init_last_auto_fetch_date)
+    await loop.run_in_executor(executor, _init_last_auto_fetch_date)
 
-    logger.info("Auto-fetch loop started (checks every 60 s)")
+    logger.info("Auto-fetch loop started — fallback fires at 4:30 PM ET (checks every 60 s)")
     while True:
         await asyncio.sleep(60)
         try:
             today = date.today()
             if (
                 _is_trading_day(today)
-                and _is_after_market_close()
-                and _last_auto_fetch_date != today
+                and _is_at_or_after(16, 30)   # 4:30 PM ET — scheduler fires at 4:15
+                and not _already_fetched_today()
                 and not _y_load_running
             ):
-                logger.info("Auto-fetch: triggering full Y load for %s", today)
+                logger.info("Auto-fetch (app fallback): triggering full Y load for %s", today)
                 loop.run_in_executor(executor, fetch_y_load_full)
         except Exception as e:
             logger.error("auto_fetch_loop error: %s", e)

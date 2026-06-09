@@ -529,6 +529,61 @@ def maybe_run_nightly(state_path: Path) -> None:
     _write_nightly_state(state_path, now.date())
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# After-market Yahoo Y load — fires at 4:15 PM ET Mon–Fri.
+# Writes a DB flag at start so the FastAPI fallback (4:30 PM ET) skips it.
+# Runs in a daemon thread — the 20+ min download must not block the scheduler.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_yahoo_fetch_thread: "threading.Thread | None" = None
+
+
+def _yahoo_fetch_et_now():
+    """Return current datetime in US/Eastern (falls back to local if zoneinfo missing)."""
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("America/New_York"))
+    except Exception:
+        return datetime.now()
+
+
+def maybe_run_yahoo_fetch() -> None:
+    """Fire the full after-market Y load at 4:15 PM ET, once per trading day.
+    Cross-process safe: _already_fetched_today() reads a DB flag written at
+    the start of fetch_y_load_full(), so the FastAPI fallback at 4:30 will see
+    it and skip even while this thread is still running."""
+    global _yahoo_fetch_thread
+    import threading
+
+    now_et = _yahoo_fetch_et_now()
+    # Only run Mon–Fri at or after 16:15 ET
+    if now_et.weekday() >= 5:
+        return
+    if (now_et.hour, now_et.minute) < (16, 15):
+        return
+
+    # Thread still running from a previous trigger — don't spawn another
+    if _yahoo_fetch_thread is not None and _yahoo_fetch_thread.is_alive():
+        return
+
+    from etl.yahoo_fetch import _already_fetched_today, fetch_y_load_full
+    if _already_fetched_today():
+        return
+
+    log.info("scheduler: triggering after-market Yahoo Y load at %s ET",
+             now_et.strftime("%H:%M"))
+
+    def _run():
+        try:
+            result = fetch_y_load_full()
+            log.info("scheduler: Yahoo Y load complete: %s", result)
+        except Exception:
+            log.exception("scheduler: Yahoo Y load crashed")
+
+    _yahoo_fetch_thread = threading.Thread(target=_run, name="yahoo-y-load", daemon=True)
+    _yahoo_fetch_thread.start()
+
+
 def get_latest_processed_time() -> float:
     """Get the most recent processed_at timestamp from meta_file_processed.
     Returns 0 if no files have been processed yet (process all files).
@@ -748,6 +803,14 @@ def main() -> int:
                 except Exception:
                     try:
                         log.exception("maybe_run_nightly failed (continuing)")
+                    except Exception:
+                        pass
+            if tick % 60 == 0:
+                try:
+                    maybe_run_yahoo_fetch()
+                except Exception:
+                    try:
+                        log.exception("maybe_run_yahoo_fetch failed (continuing)")
                     except Exception:
                         pass
     except KeyboardInterrupt:
