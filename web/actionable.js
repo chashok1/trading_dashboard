@@ -2126,7 +2126,7 @@ function _setTvTape(visible) {
   if (wrapper) wrapper.style.display = visible ? '' : 'none';
   const btn = $('tvToggleBtn');
   if (btn) {
-    btn.textContent = visible ? 'TV ▴' : 'TV ▾';
+    btn.innerHTML = visible ? 'TV &#9650;' : 'TV &#9660;';
     btn.title = visible ? 'Hide TradingView tape' : 'Show TradingView tape';
     btn.classList.toggle('active', visible);
   }

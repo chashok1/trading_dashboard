@@ -1121,7 +1121,11 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   white-space: nowrap;
 }
 
-/* Active state for toolbar toggle buttons (Actionable, TV) */
+/* Toolbar toggle buttons (Actionable, TV) — default + active states */
+#actionableOnlyBtn, #tvToggleBtn {
+  background: #fff;
+  color: inherit;
+}
 #actionableOnlyBtn.active, #tvToggleBtn.active {
   background: var(--accent, #0a84ff);
   color: #fff;
