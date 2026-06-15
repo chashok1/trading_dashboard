@@ -152,7 +152,7 @@
         const valStr = fmtValue(item.value, item.value_format);
         const pctStr = chgStr ? arrow + chgStr : valStr;
         const tip    = itemTip(item, valStr, chgStr, arrow);
-        grpCells.push(chipHtml(item.metric_key, item.rr_outlook, pctStr, cls,
+        grpCells.push(chipHtml(item.label || item.metric_key, item.rr_outlook, pctStr, cls,
                                item.rr_buy, item.rr_sell, item.value, tip, item.stale));
       }
       if (!grpCells.length) continue;
@@ -182,7 +182,7 @@
         const pct    = item.pct != null ? Number(item.pct) : null;
         const cls    = dirClass(pct, null);
         const chgStr = pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—';
-        const name   = (item.symbol || '').replace(/^\//, '') || item.label || '?';
+        const name   = item.label || (item.symbol || '').replace(/^\//, '') || '?';
         const buyStr = item.buy != null ? Number(item.buy).toFixed(2) : '—';
         const sellStr = item.sell != null ? Number(item.sell).toFixed(2) : '—';
         const tip    = escHtml(
