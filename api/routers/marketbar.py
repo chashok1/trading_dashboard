@@ -233,8 +233,13 @@ _RR_META_ALL: dict[str, tuple[str, str]] = {
 _CATEGORY_ORDER_ALL = ['Indexes', 'Risk', 'FX', 'Commodities', 'Credit', 'Tech', 'ETFs']
 
 
-def _build_rr_response(rows, meta: dict, cat_order: list, exclude: set | None = None) -> dict:
-    """Shared builder for rr-bar endpoints."""
+def _build_rr_response(rows, meta: dict, cat_order: list,
+                        exclude: set | None = None,
+                        curated_only: bool = False) -> dict:
+    """Shared builder for rr-bar endpoints.
+
+    curated_only=True: skip any symbol not in meta (no 'Other' bucket).
+    """
     groups: dict[str, list] = {cat: [] for cat in cat_order}
     other: list = []
 
@@ -243,6 +248,8 @@ def _build_rr_response(rows, meta: dict, cat_order: list, exclude: set | None = 
         if exclude and sym in exclude:
             continue
         m = meta.get(sym)
+        if curated_only and m is None:
+            continue
         cat, label = m if m else ('Other', sym)
 
         q_price = float(row['q_price']) if row['q_price'] is not None else None
@@ -300,10 +307,11 @@ _RR_SQL = text("""
 
 @router.get("/api/rr-bar")
 def get_rr_bar() -> dict:
-    """RR symbols grouped by category for the second market tape (excludes bar-1 symbols)."""
+    """RR symbols grouped by category for the second market tape (curated list only)."""
     with session_scope() as s:
         rows = s.execute(_RR_SQL).mappings().all()
-    return _build_rr_response(rows, _RR_META, _CATEGORY_ORDER, exclude=_FIRST_BAR_RR)
+    return _build_rr_response(rows, _RR_META, _CATEGORY_ORDER,
+                               exclude=_FIRST_BAR_RR, curated_only=True)
 
 
 @router.get("/api/rr-bar-all")
