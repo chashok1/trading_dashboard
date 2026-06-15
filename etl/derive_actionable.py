@@ -84,6 +84,65 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
 
     holdings = _load_holdings_with_dollars(session, as_of_date)
 
+    # Task 8: load stop-level settings from ref_settings.
+    def _ref_setting(name, default):
+        try:
+            row = session.execute(
+                text("SELECT setting_value FROM ref_settings WHERE setting_name = :n"),
+                {"n": name}
+            ).first()
+            return row[0] if row and row[0] is not None else default
+        except Exception:
+            return default
+
+    stop_mode = _ref_setting("stop_mode", "trade_line_or_pct")
+    try:
+        stop_pct = float(_ref_setting("stop_pct", "0.08"))
+    except (TypeError, ValueError):
+        stop_pct = 0.08
+
+    # Load EOD trade-line (a_trade_value) and live last_price per symbol.
+    _trade_val: dict[str, float] = {}
+    try:
+        for r in session.execute(text("""
+            SELECT tos_symbol, a_trade_value
+            FROM drv_technicals WHERE as_of_date = :d
+              AND a_trade_value IS NOT NULL
+        """), {"d": as_of_date}).fetchall():
+            if r[1] is not None:
+                _trade_val[r[0]] = float(r[1])
+    except Exception:
+        pass
+
+    _last_price: dict[str, float] = {}
+    try:
+        for r in session.execute(text("""
+            SELECT tos_symbol, last_price
+            FROM drv_quote WHERE as_of_date = :d
+              AND last_price IS NOT NULL
+        """), {"d": as_of_date}).fetchall():
+            if r[1] is not None:
+                _last_price[r[0]] = float(r[1])
+    except Exception:
+        pass
+
+    def _compute_stop(sym, consolidated_action):
+        """Compute stop_level for a symbol.
+        For BUY-family (INCREASE/ADD) and held positions: apply stop formula.
+        For SELL-family: same level annotated as 'exit below' in UI.
+        Returns None if no price data available."""
+        price = _last_price.get(sym)
+        if price is None or price <= 0:
+            return None
+        pct_floor = price * (1.0 - stop_pct)
+        if stop_mode == "trade_line_or_pct":
+            trade = _trade_val.get(sym)
+            if trade is not None and trade > 0:
+                return max(trade, pct_floor)
+            return pct_floor
+        # Fallback: pct-only
+        return pct_floor
+
     # BuySell action → numeric score map for trig_action computation.
     # Populated from ref_param_lookup where table_name='buysell', extra1=numeric score.
     # e.g. SA→-10, STM→-9, SS→-8, BM→10, BS→9, BMN→8. Gracefully empty if not loaded.
@@ -101,26 +160,28 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         pass
 
     # Per-symbol asset_class for sources that bucket by it (PS + ETF/ETFCHG).
-    # Loaded once into a dict keyed by symbol — value is asset_class on/before as_of.
+    # Keyed by tos_symbol (normalized) — fixes ticker/symbol vs tos_symbol bug.
     asset_class_ps: dict[str, str] = {}
     for r in session.execute(text("""
-        SELECT DISTINCT ON (ticker) ticker, asset_class
+        SELECT DISTINCT ON (COALESCE(tos_symbol, ticker))
+               COALESCE(tos_symbol, ticker) AS sym, asset_class
         FROM hist_ps
         WHERE asset_class IS NOT NULL AND asset_class <> ''
           AND snapshot_date <= :d
-        ORDER BY ticker, snapshot_date DESC
+        ORDER BY COALESCE(tos_symbol, ticker), snapshot_date DESC
     """), {"d": as_of_date}).fetchall():
-        if r[1]: asset_class_ps[r[0]] = r[1]
+        if r[0] and r[1]: asset_class_ps[r[0]] = r[1]
 
     asset_class_etf: dict[str, str] = {}
     for r in session.execute(text("""
-        SELECT DISTINCT ON (symbol) symbol, asset_class
+        SELECT DISTINCT ON (COALESCE(tos_symbol, symbol))
+               COALESCE(tos_symbol, symbol) AS sym, asset_class
         FROM hist_etf
         WHERE asset_class IS NOT NULL AND asset_class <> ''
           AND snapshot_date <= :d
-        ORDER BY symbol, snapshot_date DESC
+        ORDER BY COALESCE(tos_symbol, symbol), snapshot_date DESC
     """), {"d": as_of_date}).fetchall():
-        if r[1]: asset_class_etf[r[0]] = r[1]
+        if r[0] and r[1]: asset_class_etf[r[0]] = r[1]
 
     def _category_for(sym, win_src, fallback):
         """Resolve ref_asset_allocation lookup key.
@@ -261,12 +322,13 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         INSERT INTO drv_actionable
           (as_of_date, tos_symbol, description, sector,
            consolidated_action, winning_source, winning_priority,
-           position_category, asset_class, source_asset_class, target_min_dollar, target_max_dollar,
+           position_category, asset_class, source_asset_class,
+           target_min_dollar, target_max_dollar,
            units_dollar, maintain_min, suggested_target_dollar,
            held_today, current_position_dollar, in_my_list,
            rules_engine_fires, source_actions, suppressed_reason,
            triggered_group_ids, trig_action,
-           source_run_id)
+           stop_level, source_run_id)
         VALUES
           (:d, :sym, :desc, :sect,
            :ca, :ws, :wp,
@@ -275,7 +337,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            :held, :curr, :iml,
            CAST(:fires AS JSONB), CAST(:srca AS JSONB), :supp,
            CAST(:groups AS JSONB), :trig,
-           :rid)
+           :stop, :rid)
     """)
 
     rows_written = 0
@@ -356,6 +418,12 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         # SSS ADD/REMOVE stay eligible.
         # CALL always loses to other sources: it's demoted to Other Sources
         # if any other source has an action (CALL only wins if it's the only source).
+        # Behavior rule 3: not-held PS REMOVE must not erase a competing ADD.
+        # A not-held PS REMOVE is excluded from the winner sort; it is still
+        # recorded in source_actions so the per-source signal is visible.
+
+        # Current held status for this symbol (reuse from holdings dict)
+        _held_now = holdings.get(sym, 0.0) > 0
 
         # Check if any non-CALL source exists in src_actions (before filtering informational)
         other_sources_present = any(a["source_code"] != "CALL" for a in src_actions)
@@ -365,6 +433,10 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             if a["action"] in ACTION_RANK
             and not (a["source_code"] == "SSS"
                      and a["action"] in ("INCREASE", "REDUCE"))
+            # Behavior rule 3: not-held PS REMOVE excluded from consolidated winner
+            and not (a["source_code"] == "PS"
+                     and a["action"] == "REMOVE"
+                     and not _held_now)
         ]
         # If other sources exist, exclude CALL from being a winner
         if other_sources_present:
@@ -493,6 +565,13 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             source_ac = asset_class_etf.get(sym)
         # For other sources (RR, SSS, II, etc.), asset_class comes from drv_ma lookup
 
+        # Task 8: compute stop_level for BUY-family, held, and SELL-family rows.
+        _show_stop = (
+            held_today
+            or consolidated in ("INCREASE", "ADD", "REMOVE", "REDUCE")
+        )
+        stop_level_val = _compute_stop(sym, consolidated) if _show_stop else None
+
         stk = stks.get(sym, {})
         batch.append({
             "d":     as_of_date,
@@ -518,6 +597,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "supp":  suppressed,
             "groups": json.dumps(triggered_groups) if triggered_groups else None,
             "trig":  trig_action,
+            "stop":  stop_level_val,
             "rid":   run_id,
         })
         rows_written += 1

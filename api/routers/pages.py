@@ -6,7 +6,7 @@ precedence and the catch-all /static mount only handles bare asset paths.
 from __future__ import annotations
 
 from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from api._helpers import WEB_DIR
@@ -26,12 +26,9 @@ def page_index():
 
 @router.get("/cockpit")
 def page_cockpit():
-    return FileResponse(WEB_DIR / "cockpit.html", media_type="text/html; charset=utf-8")
+    """Task 7: Cockpit retired — 301 redirect to /actionable."""
+    return RedirectResponse(url="/actionable", status_code=301)
 
-
-@router.get("/tv-symbol-test")
-def page_tv_symbol_test():
-    return FileResponse(WEB_DIR / "tv_symbol_test.html", media_type="text/html; charset=utf-8")
 
 
 @router.get("/composite-edit")

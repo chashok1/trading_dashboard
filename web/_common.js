@@ -365,20 +365,22 @@
       `<div style="text-align:center;font-weight:600;color:#64748b;font-size:9px;">60-day history</div>`);
 
     el.innerHTML = `
-    <div style="display:flex;gap:14px;align-items:stretch;flex-wrap:nowrap;width:100%;">
+    <div style="display:grid;grid-template-columns:minmax(220px,1fr) auto auto minmax(320px,3fr);gap:14px;align-items:stretch;width:100%;overflow-x:auto;">
 
       <!-- Left panel: action (top) + descriptions + decision -->
-      <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:8px;">
+      <div style="display:flex;flex-direction:column;gap:8px;min-width:0;">
 
-        <div style="display:flex;align-items:center;gap:10px;
-          background:${actionBg};border:2px solid ${actionColor};border-radius:8px;padding:10px 14px;">
-          <div style="font-size:28px;font-weight:900;color:${actionColor};line-height:1;min-width:40px;">${actionCode}</div>
-          <div style="flex:1;">
-            <div style="font-size:11px;color:#1e293b;line-height:1.3;margin-top:2px;">Trend Trade BB Risk Range Rule Action</div>
-          </div>
+        <div style="font-size:12px;color:#64748b;display:flex;align-items:center;gap:8px;">
+          <span>Trend Trade BB Risk Range Rule Action</span>
+          ${(() => {
+            const _d = window.actionDisplay && ru.action ? window.actionDisplay(ru.action) : null;
+            const _cls = _d ? `act-badge ${_d.colorCls}-tint` : 'act-badge act-neutral-tint';
+            const _code = _d ? (_d.code || ru.action || '—') : '—';
+            return `<span class="${_cls}">${_code}</span>`;
+          })()}
         </div>
 
-        <div style="padding:9px 11px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;flex:1;">
+        <div style="padding:9px 11px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;flex:1;min-height:60px;">
           ${taggedRow(ru.tn_td_short, 'Trend/Trade',     ru.tn_td_desc, ru.tn_td_action)}
           ${taggedRow(ru.bb_short,   'BB Range Streak', ru.bb_desc,   ru.bb_action)}
           ${taggedRow(ru.rr_short,   'RR',              ru.rr_desc,   ru.rr_action)}
@@ -413,7 +415,7 @@
       </div>
 
       <!-- Column 1: top box + graph centered + bottom box -->
-      <div style="flex:0 0 auto;display:flex;flex-direction:column;">
+      <div style="display:flex;flex-direction:column;">
         ${rrIdxBox}
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
           ${svgToday}
@@ -422,7 +424,7 @@
       </div>
 
       <!-- Column 2: top box + graph centered + bottom box -->
-      <div style="flex:0 0 auto;display:flex;flex-direction:column;align-items:center;">
+      <div style="display:flex;flex-direction:column;align-items:center;">
         ${sdBox}
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
           ${svgTT || ''}
@@ -431,7 +433,7 @@
       </div>
 
       <!-- Historical chart: top box + centered graph + legend bottom box -->
-      <div style="flex:3;min-width:400px;overflow:hidden;display:flex;flex-direction:column;">
+      <div style="overflow:hidden;display:flex;flex-direction:column;min-width:0;">
         ${graph3TopBox}
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
           <div id="${histId}_wrap" style="width:100%;">${histSvg}</div>

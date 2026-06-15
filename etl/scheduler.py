@@ -548,10 +548,8 @@ def _yahoo_fetch_et_now():
 
 
 def maybe_run_yahoo_fetch() -> None:
-    """Fire the full after-market Y load at 4:15 PM ET, once per trading day.
-    Cross-process safe: _already_fetched_today() reads a DB flag written at
-    the start of fetch_y_load_full(), so the FastAPI fallback at 4:30 will see
-    it and skip even while this thread is still running."""
+    """Fire the Y load at 4:15 PM ET, once per trading day.
+    Delegates entirely to fetch_y_smart() which enforces all rules."""
     global _yahoo_fetch_thread
     import threading
 
@@ -566,16 +564,15 @@ def maybe_run_yahoo_fetch() -> None:
     if _yahoo_fetch_thread is not None and _yahoo_fetch_thread.is_alive():
         return
 
-    from etl.yahoo_fetch import _already_fetched_today, fetch_y_load_full
-    if _already_fetched_today():
+    from etl.yahoo_fetch import fetch_y_smart, _is_eod_done_today
+    if _is_eod_done_today():
         return
 
-    log.info("scheduler: triggering after-market Yahoo Y load at %s ET",
-             now_et.strftime("%H:%M"))
+    log.info("scheduler: triggering Yahoo Y load at %s ET", now_et.strftime("%H:%M"))
 
     def _run():
         try:
-            result = fetch_y_load_full()
+            result = fetch_y_smart()
             log.info("scheduler: Yahoo Y load complete: %s", result)
         except Exception:
             log.exception("scheduler: Yahoo Y load crashed")

@@ -74,7 +74,7 @@ async function loadTrace() {
   const ck = new URLSearchParams();
   ck.set("symbol", STATE.data.tos_symbol);
   ck.set("date",   asOf);
-  $("cockpitLink").href = `/cockpit?${ck.toString()}`;
+  $("cockpitLink").href = `/actionable?${ck.toString()}`;
 
   render();
   loadRRChart(STATE.data.tos_symbol, STATE.data.as_of || STATE.data.as_of_date);

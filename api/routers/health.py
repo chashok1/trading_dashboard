@@ -69,6 +69,47 @@ def list_dates():
     return [r[0].isoformat() for r in rows]
 
 
+@router.get("/api/derive-cascade-status")
+def get_derive_cascade_status(date: Optional[str] = Query(None)):
+    """Latest cascade_status for the viewed date (or anchor if date omitted).
+
+    Returns {date, cascade_status, failed_steps, ok}.
+    Used by warning_badge.js to surface 'derivation incomplete for D' banner.
+    Task 3 — derive_all SUCCESS/PARTIAL/FAILED."""
+    from api._helpers import _resolve_date
+    d = _resolve_date(date)
+    with session_scope() as s:
+        row = s.execute(text("""
+            SELECT cascade_status, error_msg, started_at
+            FROM meta_derived_run
+            WHERE as_of_date = :d AND target_table = '_cascade'
+            ORDER BY started_at DESC LIMIT 1
+        """), {"d": d}).mappings().first()
+    if not row:
+        return {"date": d.isoformat(), "cascade_status": None,
+                "failed_steps": [], "ok": True}
+    cs = row["cascade_status"]
+    steps = [s.strip() for s in (row["error_msg"] or "").split(",") if s.strip()]
+    return {
+        "date": d.isoformat(),
+        "cascade_status": cs,
+        "failed_steps": steps,
+        "ok": cs == "SUCCESS" or cs is None,
+    }
+
+
+@router.get("/api/eod-feed-status")
+def eod_feed_status(date: Optional[str] = Query(None)):
+    """Check whether the EOD price feed (TOSL/hist_tl) has rows for `date`.
+
+    When `date` is omitted the anchor date (MAX(export_date) FROM hist_td) is
+    used. Returns {missing, date, message}. The Actionable page shows a blocking
+    red banner when missing=true. See TASK 2 — missing-feed guardian."""
+    from api._helpers import _resolve_date, eod_feed_status as _check
+    d = _resolve_date(date)
+    return _check(d)
+
+
 @router.get("/api/anchor-status")
 def anchor_status():
     """Anchor date (MAX(export_date) FROM hist_td) vs the expected market close.
@@ -472,6 +513,27 @@ def get_warnings():
                 })
         except Exception:
             pass
+
+    # D.5) Derive cascade PARTIAL/FAILED for anchor date
+    try:
+        from api._helpers import _resolve_date
+        d_anchor = _resolve_date(None)
+        with session_scope() as s_cs:
+            cs_row = s_cs.execute(text("""
+                SELECT cascade_status, error_msg FROM meta_derived_run
+                WHERE as_of_date = :d AND target_table = '_cascade'
+                ORDER BY started_at DESC LIMIT 1
+            """), {"d": d_anchor}).mappings().first()
+        if cs_row and cs_row["cascade_status"] in ("PARTIAL", "FAILED"):
+            steps = cs_row["error_msg"] or ""
+            warnings.append({
+                "id": "derive_cascade",
+                "level": "error" if cs_row["cascade_status"] == "FAILED" else "warning",
+                "title": f"Derivation {cs_row['cascade_status']} for {d_anchor}",
+                "items": [{"label": f"Failed steps: {steps}"}] if steps else [],
+            })
+    except Exception:
+        pass
 
     # D) Derive-status health checks (stale ref, missing sources, scheduler idle)
     try:

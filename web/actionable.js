@@ -8,18 +8,11 @@ const state = {
   sort: { key: '_priority', dir: -1, type: 'num' },  // default: priority DESC
   filters: {
     action: '',          // '' | REMOVE | REDUCE | INCREASE | ADD | HOLD
-    buys_sells: '',      // '' | 'buy' | 'sell' (quick toggle)
     source: '',
     held_only: false,
-    show_acted: false,
-    show_suppressed: false,
-    show_no_action: false,  // when false, blank-action rows are hidden
-    show_zero_amt: false,   // when false, rows with $0 AMT$ are hidden
+    show_hidden: false,  // when true, reveals suppressed/$0/no-action/acted/unheld-remove rows
     symbol_search: '',   // symbol search text filter
-    sector: '',          // sector dropdown
-    asset_class: '',     // asset class dropdown
     conviction: 'any',   // 'any' | 'multi' | 'proven'
-    amt_min: 0,          // 0 | 5000 | 25000
   },
   current: null,
   sourceMethods: {},   // source_code -> base_weight_method (Metric-column sort)
@@ -163,6 +156,7 @@ async function loadDates() {
   state.date = dates[0] || null;
   if (state.date) sel.value = state.date;
   await loadActionable();
+  checkEodFeed();
 }
 
 // ---- source metadata (base_weight_method per source, for Metric sort) ----
@@ -199,23 +193,37 @@ function _ruleSide(id) {
 
 // Build the inline edge badge HTML for a fired composite code (or '' if unknown).
 // Color = direction (buy=green, sell=red, neutral=grey); fill = edge strength.
+// Confidence buckets: 'proven' = solid badge; 'promising' = normal; 'unproven' = muted grey.
 function ruleEdgeBadge(code) {
   const sc = (state.scorecard || {})[code];
   if (!sc || sc.edge_20d == null) return '';
   const e = Number(sc.edge_20d);
+  const conf = sc.confidence || 'unproven';
+  const n = sc.n_fires != null ? sc.n_fires : (sc.fires != null ? sc.fires : '?');
+  const ciLow  = sc.edge_20d_ci_low  != null ? Number(sc.edge_20d_ci_low).toFixed(1)  : null;
+  const ciHigh = sc.edge_20d_ci_high != null ? Number(sc.edge_20d_ci_high).toFixed(1) : null;
+  const ciStr  = ciLow != null ? ` CI [${ciLow}%,${ciHigh}%]` : '';
+  if (conf === 'unproven') {
+    // Muted grey badge — no color signal until sample is adequate
+    return ` <span class="rule-edge-badge rule-neutral rule-weak" style="opacity:0.55;" `
+         + `title="Unproven (n=${n}, too few fires or CI straddles 0${ciStr}) — diagnostic only">`
+         + `n=${n}</span>`;
+  }
   const side = _ruleSide(code);
   const sideCls = side === 'buy' ? 'rule-buy' : side === 'sell' ? 'rule-sell' : 'rule-neutral';
-  const emphCls = e > 0 ? 'rule-strong' : 'rule-weak';
+  const emphCls = conf === 'proven' ? 'rule-strong' : (e > 0 ? 'rule-strong' : 'rule-weak');
   const wr = (sc.win_rate != null) ? ` · ${(Number(sc.win_rate) * 100).toFixed(0)}%` : '';
   const sign = e >= 0 ? '+' : '';
+  const provenMark = conf === 'proven' ? ' ✓' : '';
   return ` <span class="rule-edge-badge ${sideCls} ${emphCls}" `
-       + `title="Rule's historical 20d edge across all symbols (${sc.fires} fires) — diagnostic, shallow history">`
-       + `${sign}${e.toFixed(1)}%${wr}</span>`;
+       + `title="${conf}: 20d edge (n=${n}${ciStr}) — diagnostic, shallow history">`
+       + `${sign}${e.toFixed(1)}%${wr}${provenMark}</span>`;
 }
 
 // Grid cell: fired rules ordered winning-first (highest score), each with its
 // historical edge. Hue = Final Call action side (all pills match row's action);
 // fill = edge emphasis (bold border=positive edge, light border=non-positive).
+// Unproven rules (n<30 or CI straddles 0) render muted regardless of edge sign.
 function firesCellHtml(r) {
   let fires = r.rules_engine_fires;
   if (typeof fires === 'string') { try { fires = JSON.parse(fires); } catch (_) { fires = []; } }
@@ -223,19 +231,39 @@ function firesCellHtml(r) {
   const sc = state.scorecard || {};
   const items = fires.map(f => {
     const id = String(f.rule_id || f.id || f);
-    const e  = (sc[id] && sc[id].edge_20d != null) ? Number(sc[id].edge_20d) : null;
+    const s   = sc[id] || {};
+    const e   = s.edge_20d  != null ? Number(s.edge_20d)  : null;
+    const conf = s.confidence || 'unproven';
+    const n    = s.n_fires   != null ? s.n_fires : (s.fires != null ? s.fires : null);
     const score = (f.score != null) ? Number(f.score) : 0;
-    return { id, e, score };
+    return { id, e, conf, n, score };
   });
   // winning first: highest fired score, then strongest edge
   items.sort((a, b) => (b.score - a.score) || ((b.e ?? -99) - (a.e ?? -99)));
-  // All pills share the Final Call's color side
-  const fcSide = actionDisplay(_badgeAction(r)).side;
-  const sideCls = fcSide === 'buy' ? 'rule-buy' : fcSide === 'sell' ? 'rule-sell' : 'rule-neutral';
+  const _RULE_CLR = {
+    'act-sell-strong': '#991b1b', 'act-sell': '#ef4444', 'act-sell-weak': '#f97316',
+    'act-buy-strong':  '#14532d', 'act-buy':  '#22c55e', 'act-buy-weak':  '#86efac',
+  };
+  const _RULE_EXTRA = { 'BR': 'act-buy', 'B': 'act-buy-weak' };
+  const _ruleColor = (id) => {
+    for (const part of String(id).toUpperCase().split('-')) {
+      const d = actionDisplay(part);
+      const cls = (d.colorCls && d.colorCls !== 'act-neutral' ? d.colorCls : null) || _RULE_EXTRA[part];
+      if (cls && _RULE_CLR[cls]) return _RULE_CLR[cls];
+    }
+    return '#94a3b8';
+  };
   return items.map(it => {
-    const emphCls = (it.e != null && it.e > 0) ? 'rule-strong' : 'rule-weak';
+    const color = _ruleColor(it.id);
+    if (it.conf === 'unproven') {
+      const nLabel = it.n != null ? `n=${it.n}` : '';
+      const tip = `Unproven rule${it.n != null ? ' ('+nLabel+')' : ''} — too few fires or CI straddles 0`;
+      return `<span style="white-space:nowrap;opacity:0.45;font-size:11px;color:${color};" title="${tip}">`
+           + `${escapeHtml(it.id)}${nLabel ? ' <b>'+nLabel+'</b>' : ''}</span>`;
+    }
+    const weight = (it.e != null && it.e > 0) ? '700' : '400';
     const edge = it.e == null ? '' : ` <b>${it.e >= 0 ? '+' : ''}${it.e.toFixed(1)}</b>`;
-    return `<span class="act-badge act-badge-sm ${sideCls} ${emphCls}" style="white-space:nowrap;">${escapeHtml(it.id)}${edge}</span>`;
+    return `<span style="white-space:nowrap;font-size:11px;font-weight:${weight};color:${color};">${escapeHtml(it.id)}${edge}</span>`;
   }).join(' ');
 }
 
@@ -275,9 +303,12 @@ async function loadActionable() {
   // Column-header clicks override this until the next load or Clear.
   state.sort = { key: '_priority', dir: -1, type: 'num' };
   // Always fetch all rows -- action/category filters applied client-side so chip counts stay accurate
+  // When show_hidden is on, also fetch acted/suppressed rows from the API.
   const params = new URLSearchParams({ date: state.date });
-  if (state.filters.show_acted) params.append('show_acted', 'true');
-  if (state.filters.show_suppressed) params.append('show_suppressed', 'true');
+  if (state.filters.show_hidden) {
+    params.append('show_acted', 'true');
+    params.append('show_suppressed', 'true');
+  }
   try {
     const rows = await fetchJson('/api/actionable?' + params.toString());
     state.allRows = Array.isArray(rows) ? rows : [];
@@ -323,44 +354,31 @@ async function loadActionable() {
 }
 
 // Client filters EXCEPT the action chip. Kept separate so the action-chip
-// counts can reflect every other active filter (including buys_sells).
+// counts can reflect every other active filter.
 // All active filters combine with AND.
 function matchesBaseFilters(r) {
-  if (!state.filters.show_no_action && !r.consolidated_action) return false;
-  if (!state.filters.show_zero_amt && !r._amt) return false;
+  // When show_hidden is OFF, hide suppressed/$0 AMT/no-action/acted/unheld-remove rows.
+  if (!state.filters.show_hidden) {
+    if (!r.consolidated_action) return false;
+    if (!r._amt) return false;
+    const ca = (r.consolidated_action || '').toUpperCase();
+    if (ca === 'REMOVE' && !r.held_today) return false;
+  }
   if (state.filters.source) {
     if (!_rowHasSource(r, state.filters.source)) return false;
   }
   if (state.filters.held_only) {
     if (!r.held_today) return false;
   }
-  if (state.filters.sector) {
-    if ((r.sector || '') !== state.filters.sector) return false;
-  }
-  if (state.filters.asset_class) {
-    const rac = r.real_asset_class || r.asset_class || '';
-    if (rac !== state.filters.asset_class) return false;
-  }
   if (state.filters.conviction === 'multi') {
     if (_agreeingSources(r) < 2) return false;
   } else if (state.filters.conviction === 'proven') {
     if (!_hasPositiveEdge(r)) return false;
   }
-  if (state.filters.amt_min > 0) {
-    if (Math.abs(Number(r._amt) || 0) < state.filters.amt_min) return false;
-  }
-  const symSearch = state.filters.symbol_search || state.filters.tos_symbol_search || '';
+  const symSearch = state.filters.symbol_search || '';
   if (symSearch) {
     const search = symSearch.toUpperCase();
     if (!r.tos_symbol || !r.tos_symbol.toUpperCase().includes(search)) return false;
-  }
-  // buys_sells included here so chip counts reflect it (AND logic with action chip)
-  if (state.filters.buys_sells === 'buy') {
-    const ca = _chipAction(r);
-    if (ca !== 'INCREASE' && ca !== 'ADD') return false;
-  } else if (state.filters.buys_sells === 'sell') {
-    const ca = _chipAction(r);
-    if (ca !== 'REMOVE' && ca !== 'REDUCE' && ca !== 'OVER_MAX') return false;
   }
   return true;
 }
@@ -370,7 +388,7 @@ function applyClientFilter() {
     state.filters.source = '';
   }
   // baseRows: all filters except the action chip (drives chip counts that reflect
-  // every active filter including buys_sells, via matchesBaseFilters).
+  // every other active filter, via matchesBaseFilters).
   state.baseRows = state.allRows.filter(matchesBaseFilters);
   // rows: baseRows + action chip filter (AND combined)
   state.rows = state.baseRows.filter(r => {
@@ -383,11 +401,69 @@ function applyClientFilter() {
   renderBulkBar();
   renderSummary();
   renderSourceFilter();
-  renderSectorFilter();
-  renderAssetClassFilter();
-  updateFilterBadge();
   saveFiltersToStorage();
   renderGrid();
+  _symTapeStart = 0;
+  renderSymTape();
+}
+
+// ---- symbol tape (filterable chip bar) ------------------------------------
+const _SYM_BATCH = 20;
+let _symTapeStart = 0;
+
+function _symTapeBg(row) {
+  const a = _chipAction(row);
+  if (a === 'REMOVE' || a === 'REDUCE') return '#b91c1c';
+  if (a === 'INCREASE' || a === 'ADD')  return '#15803d';
+  return '#64748b';
+}
+
+function renderSymTape() {
+  const track = document.getElementById('symTapeTrack');
+  const prevBtn = document.getElementById('symTapePrev');
+  const nextBtn = document.getElementById('symTapeNext');
+  const badge   = document.getElementById('symTapeBadge');
+  if (!track) return;
+
+  const rows  = state.rows;
+  const total = rows.length;
+  const start = Math.max(0, Math.min(_symTapeStart, total - 1));
+  _symTapeStart = start;
+  const end   = Math.min(start + _SYM_BATCH, total);
+  const batch = rows.slice(start, end);
+
+  track.innerHTML = batch.map(r => {
+    const pct    = r.pct_change != null ? Number(r.pct_change) : null;
+    const pctStr = pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—';
+    const pctCls = pct == null ? 'mt-flat' : pct > 0.001 ? 'mt-up' : pct < -0.001 ? 'mt-down' : 'mt-flat';
+    const bg     = _symTapeBg(r);
+    const action = r.consolidated_action || '';
+    const tip    = escapeHtml([r.tos_symbol, action, pctStr, r.last_price != null ? '$'+Number(r.last_price).toFixed(2) : ''].filter(Boolean).join('  '));
+    return `<div class="rr-chip" title="${tip}">` +
+      `<div class="rr-chip-top">` +
+      `<span class="rr-sym" style="background:${bg};">${escapeHtml(r.tos_symbol)}</span>` +
+      `<span class="mt-chg ${pctCls}">${pctStr}</span>` +
+      `</div>` +
+      `<div class="rr-rb"></div>` +
+      `</div>`;
+  }).join('');
+
+  if (prevBtn) prevBtn.disabled = start === 0;
+  if (nextBtn) nextBtn.disabled = end >= total;
+  if (badge)   badge.textContent = total === 0 ? 'No symbols' : `${start + 1}–${end} of ${total}`;
+}
+
+function _initSymTape() {
+  const prev = document.getElementById('symTapePrev');
+  const next = document.getElementById('symTapeNext');
+  if (prev) prev.addEventListener('click', () => {
+    _symTapeStart = Math.max(0, _symTapeStart - _SYM_BATCH);
+    renderSymTape();
+  });
+  if (next) next.addEventListener('click', () => {
+    _symTapeStart = Math.min(state.rows.length - 1, _symTapeStart + _SYM_BATCH);
+    renderSymTape();
+  });
 }
 
 // ---- staleness banner ----
@@ -404,6 +480,32 @@ async function checkFreshness() {
       banner.style.display = 'flex';
     } else {
       banner.style.display = 'none';
+    }
+  } catch (_) {
+    banner.style.display = 'none';
+  }
+}
+
+// ---- Task 2: EOD feed missing banner ----
+async function checkEodFeed() {
+  const banner = $('eodMissingBanner');
+  if (!banner || !state.date) return;
+  try {
+    const f = await fetchJson('/api/eod-feed-status?date=' +
+      encodeURIComponent(state.date));
+    if (f && f.missing) {
+      $('eodMissingMsg').textContent = f.message ||
+        'EOD price feed (TOSL) missing for this date — recommendations may be unreliable.';
+      banner.style.display = 'block';
+      // Apply warning style to every data row
+      document.querySelectorAll('#actGrid tbody tr').forEach(tr => {
+        tr.style.opacity = '0.7';
+      });
+    } else {
+      banner.style.display = 'none';
+      document.querySelectorAll('#actGrid tbody tr').forEach(tr => {
+        tr.style.opacity = '';
+      });
     }
   } catch (_) {
     banner.style.display = 'none';
@@ -432,13 +534,10 @@ function renderSummary() {
   wrap.innerHTML = '';
   const order = ['REMOVE', 'OVER_MAX', 'REDUCE', 'INCREASE', 'ADD', 'HOLD', 'NONE'];
   const all = document.createElement('div');
-  all.className = 'act-chip' + (state.filters.action === '' && !state.filters.buys_sells ? ' active' : '');
+  all.className = 'act-chip' + (state.filters.action === '' ? ' active' : '');
   all.innerHTML = `<span>ALL</span><span class="count">${state.baseRows.length}</span>`;
   all.onclick = () => {
     state.filters.action = '';
-    state.filters.buys_sells = '';
-    const buyBtn = $('buyToggle');  if (buyBtn) buyBtn.classList.remove('active');
-    const sellBtn = $('sellToggle'); if (sellBtn) sellBtn.classList.remove('active');
     applyClientFilter();
   };
   wrap.appendChild(all);
@@ -484,82 +583,15 @@ function renderSourceFilter() {
   }
 }
 
-function renderSectorFilter() {
-  const sel = $('sectorFilter');
-  if (!sel) return;
-  const cur = state.filters.sector;
-  const sectors = new Set();
-  for (const r of state.allRows) { if (r.sector) sectors.add(r.sector); }
-  sel.innerHTML = '<option value="">All Sectors</option>';
-  for (const s of Array.from(sectors).sort()) {
-    const o = document.createElement('option');
-    o.value = s; o.textContent = s;
-    if (s === cur) o.selected = true;
-    sel.appendChild(o);
-  }
-}
-
-function renderAssetClassFilter() {
-  const sel = $('assetClassFilter');
-  if (!sel) return;
-  const cur = state.filters.asset_class;
-  const classes = new Set();
-  for (const r of state.allRows) {
-    const v = r.real_asset_class || r.asset_class || '';
-    if (v) classes.add(v);
-  }
-  sel.innerHTML = '<option value="">All Asset Classes</option>';
-  for (const c of Array.from(classes).sort()) {
-    const o = document.createElement('option');
-    o.value = c; o.textContent = c;
-    if (c === cur) o.selected = true;
-    sel.appendChild(o);
-  }
-}
-
-// Count of non-default active filters (for the N-active badge)
-function _countActiveFilters() {
-  const f = state.filters;
-  let n = 0;
-  if (f.action) n++;
-  if (f.buys_sells) n++;
-  if (f.source) n++;
-  if (f.held_only) n++;
-  if (f.sector) n++;
-  if (f.asset_class) n++;
-  if (f.conviction !== 'any') n++;
-  if (f.amt_min > 0) n++;
-  if (f.show_no_action) n++;
-  if (f.show_zero_amt) n++;
-  if (f.show_suppressed) n++;
-  if (f.show_acted) n++;
-  if (f.symbol_search) n++;
-  return n;
-}
-
-function updateFilterBadge() {
-  const badge = $('filterActiveBadge');
-  if (!badge) return;
-  const n = _countActiveFilters();
-  if (n > 0) {
-    badge.textContent = n;
-    badge.style.display = 'inline-block';
-  } else {
-    badge.style.display = 'none';
-  }
-}
 
 // localStorage persistence
-const LS_KEY = 'act_filters_v2';
+const LS_KEY = 'act_filters_v3';
 function saveFiltersToStorage() {
   try {
     const f = state.filters;
     const toSave = {
-      source: f.source, held_only: f.held_only, show_acted: f.show_acted,
-      show_suppressed: f.show_suppressed, show_no_action: f.show_no_action,
-      show_zero_amt: f.show_zero_amt, symbol_search: f.symbol_search,
-      sector: f.sector, asset_class: f.asset_class, conviction: f.conviction,
-      amt_min: f.amt_min, buys_sells: f.buys_sells,
+      source: f.source, held_only: f.held_only, show_hidden: f.show_hidden,
+      symbol_search: f.symbol_search, conviction: f.conviction,
     };
     localStorage.setItem(LS_KEY, JSON.stringify(toSave));
   } catch (_) {}
@@ -571,52 +603,35 @@ function loadFiltersFromStorage() {
     if (!raw) return;
     const saved = JSON.parse(raw);
     const f = state.filters;
+    // Only load keys that exist in the current schema; ignore stale keys gracefully.
     if (saved.source !== undefined)       f.source = saved.source;
-    if (saved.held_only !== undefined)    f.held_only = saved.held_only;
-    if (saved.show_acted !== undefined)   f.show_acted = saved.show_acted;
-    if (saved.show_suppressed !== undefined) f.show_suppressed = saved.show_suppressed;
-    if (saved.show_no_action !== undefined) f.show_no_action = saved.show_no_action;
-    if (saved.show_zero_amt !== undefined) f.show_zero_amt = saved.show_zero_amt;
+    if (saved.held_only !== undefined)    f.held_only = !!saved.held_only;
+    if (saved.show_hidden !== undefined)  f.show_hidden = !!saved.show_hidden;
     if (saved.symbol_search !== undefined) f.symbol_search = saved.symbol_search;
-    if (saved.sector !== undefined)       f.sector = saved.sector;
-    if (saved.asset_class !== undefined)  f.asset_class = saved.asset_class;
     if (saved.conviction !== undefined)   f.conviction = saved.conviction;
-    if (saved.amt_min !== undefined)      f.amt_min = Number(saved.amt_min) || 0;
-    if (saved.buys_sells !== undefined)   f.buys_sells = saved.buys_sells;
   } catch (_) {}
 }
 
 function syncFilterUi() {
   // Sync all UI elements to current state.filters
   const f = state.filters;
-  const heldOnly = $('heldOnly');     if (heldOnly) heldOnly.checked = f.held_only;
-  const showActed = $('showActed');   if (showActed) showActed.checked = f.show_acted;
-  const showSup = $('showSuppressed'); if (showSup) showSup.checked = f.show_suppressed;
-  const showNA = $('showNoAction');   if (showNA) showNA.checked = f.show_no_action;
-  const showZ = $('showZeroAmt');     if (showZ) showZ.checked = f.show_zero_amt;
-  const sym = $('symbolSearch');      if (sym) sym.value = f.symbol_search || '';
+  const heldOnly = $('heldOnly');       if (heldOnly) heldOnly.checked = f.held_only;
+  const showHidden = $('showHidden');   if (showHidden) showHidden.checked = f.show_hidden;
+  const sym = $('symbolSearch');        if (sym) sym.value = f.symbol_search || '';
   // conviction segmented
   document.querySelectorAll('#convictionCtrl button').forEach(b => {
     b.classList.toggle('seg-active', b.dataset.conv === f.conviction);
   });
-  // amt segmented
-  document.querySelectorAll('#amtCtrl button').forEach(b => {
-    b.classList.toggle('seg-active', Number(b.dataset.amt) === f.amt_min);
-  });
-  // buy/sell toggle
-  const buyBtn  = $('buyToggle');  if (buyBtn)  buyBtn.classList.toggle('active', f.buys_sells === 'buy');
-  const sellBtn = $('sellToggle'); if (sellBtn) sellBtn.classList.toggle('active', f.buys_sells === 'sell');
 }
 
 function clearAllFilters() {
   const f = state.filters;
-  f.action = ''; f.buys_sells = ''; f.source = ''; f.held_only = false;
-  f.show_acted = false; f.show_suppressed = false; f.show_no_action = false;
-  f.show_zero_amt = false; f.symbol_search = ''; f.sector = ''; f.asset_class = '';
-  f.conviction = 'any'; f.amt_min = 0;
+  f.action = ''; f.source = ''; f.held_only = false;
+  f.show_hidden = false;
+  f.symbol_search = ''; f.conviction = 'any';
   // Reset sort to default actionability order (updateSortIndicators called in renderGrid)
   state.sort = { key: '_priority', dir: -1, type: 'num' };
-  // Reset show_acted / show_suppressed -> requires refetch
+  // Reset show_hidden -> requires refetch (show_hidden=false excludes acted/suppressed from API)
   syncFilterUi();
   loadActionable();
 }
@@ -666,6 +681,12 @@ function _saFor(row, src) {
 
 // Action severity rank — REMOVE strongest. Mirrors the consolidation sort.
 const ACTION_RANK = { REMOVE: 4, REDUCE: 3, INCREASE: 2, ADD: 1, HOLD: 0 };
+
+// Per-code colors shared by Sources and Technical columns.
+const ACTION_CODE_COLOR = { SA:'#991b1b', SS:'#ef4444', STM:'#f97316', BM:'#14532d', BS:'#22c55e', BMN:'#86efac' };
+function _actionCodeColor(disp) {
+  return ACTION_CODE_COLOR[disp.code] || (disp.side === 'sell' ? '#ef4444' : disp.side === 'buy' ? '#22c55e' : 'inherit');
+}
 
 // Action color lookup: returns a CSS class from the token palette (actions.js).
 // Used to color the "was X" overlay annotation via the act-* CSS utility classes.
@@ -738,11 +759,11 @@ function _srcSubLineHtml(r) {
     const srcCode = escapeHtml(s.source || s.source_code || '?');
     const act = (s.action || '').toUpperCase();
     const disp = actionDisplay(act);
+    const code = escapeHtml(disp.code || act || '?');
     const colorCls = disp.colorCls || 'act-neutral';
-    const actText = escapeHtml(actionText(disp) || act || '?');
-    return `<span class="act-src-token"><span class="act-src-label">${srcCode}</span>·<span class="${colorCls}">${actText}</span></span>`;
+    return `<span class="act-src-token"><span class="${colorCls}" style="font-size:9px;">${srcCode}-${code}</span></span>`;
   });
-  return `<div class="act-src-sub">${tokens.join('')}</div>`;
+  return `<div class="act-src-sub">${tokens.join(' ')}</div>`;
 }
 
 // ── Pass 1: Conviction ─────────────────────────────────────────────────────
@@ -774,6 +795,18 @@ function _hasPositiveEdge(row) {
     if (sc[id] && sc[id].edge_20d != null && Number(sc[id].edge_20d) > 0.5) return true;
   }
   return false;
+}
+
+// Returns the hidden reason string for a row, or null if not hidden.
+function _hiddenReason(r) {
+  if (r.suppressed_reason) return 'Snoozed: ' + r.suppressed_reason;
+  const ua = (r.last_user_action || '').toUpperCase();
+  if (ua === 'DONE' || ua === 'SKIPPED' || ua === 'OVERRIDDEN') return 'Acted: ' + ua;
+  if (!r.consolidated_action) return 'No action';
+  if (!r._amt) return 'AMT$ = 0';
+  const ca = (r.consolidated_action || '').toUpperCase();
+  if (ca === 'REMOVE' && !r.held_today) return 'REMOVE – not held';
+  return null;
 }
 
 // Conviction badge HTML for grid cell.
@@ -1023,19 +1056,20 @@ function _finalCallHtml(row) {
   // Badge
   var badgeHtml;
   if (fc.confidence === 'high') {
-    badgeHtml = '<span class="fc-conf-badge fc-conf-high" title="Sources and Technical align">High</span>';
+    badgeHtml = '<span style="font-size:9px;color:#16a34a;" title="Sources and Technical align">High</span>';
   } else if (fc.confidence === 'gate') {
     var gateTitle = fc.gateReason || 'Deterministic gate — Technical not evaluated';
-    badgeHtml = '<span class="fc-conf-badge fc-conf-gate" title="' + escapeHtml(gateTitle) + '">Gate</span>';
+    badgeHtml = '<span style="font-size:9px;color:#64748b;" title="' + escapeHtml(gateTitle) + '">Gate</span>';
   } else {
-    badgeHtml = '<span class="fc-conf-badge fc-conf-mixed" title="Sources and Technical conflict — cross-check the Rules column">&#9888; Mixed</span>';
+    badgeHtml = '<span style="font-size:9px;color:#f97316;" title="Sources and Technical conflict — cross-check the Rules column">Mixed</span>';
   }
   // Color via actions.js token (act-*-tint gives soft colored fill + colored text + border)
   var fcDisp = actionDisplay(fc.code || (fc.side === 'sell' ? 'SA' : fc.side === 'buy' ? 'BS' : 'HOLD'));
   var colorCls = (fcDisp.colorCls || 'act-neutral') + '-tint';
+  var subIcon = '<div style="font-size:9px;line-height:1.4;">' + badgeHtml + '</div>';
   return '<span class="act-badge ' + colorCls + '" title="' +
          escapeHtml(fc.label || text) + '">' +
-         escapeHtml(text) + '</span> ' + badgeHtml;
+         escapeHtml(text) + '</span>' + subIcon;
 }
 
 // ── Pass 2: Priority score ──────────────────────────────────────────────────
@@ -1179,9 +1213,7 @@ function initSourcePopover() {
     if (el && el.dataset.src) showSourcePop(el);
   });
   body.addEventListener('mouseout', (e) => {
-    const el = e.target.closest('[data-srcpop]');
-    if (!el) return;
-    if (e.relatedTarget && el.contains(e.relatedTarget)) return;
+    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop]')) return;
     hideSourcePop();
   });
 }
@@ -1251,6 +1283,7 @@ function renderGrid() {
     r._fc_side     = fc.side;
     r._priority = _computePriority(r);
   }
+  hideSourcePop();
   sortRows();
   updateSortIndicators();
   const tb = $('actBody');
@@ -1271,14 +1304,19 @@ function renderGrid() {
     const pctCls = r.pct_change != null ? (Number(r.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : '';
     const pctStr = r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : '';
     const priceStr = r.last_price != null ? fmtUsd(r.last_price) : '';
+    // Task 4: intraday marker — shown when the quote is fresher than the EOD anchor
+    const intradayTag = r.quote_is_intraday
+      ? '<span title="Intraday price — pct_brr/zone computed against live quote" style="font-size:8px;color:#0a84ff;font-weight:700;margin-left:2px;">IDY</span>'
+      : '';
     const isChecked = state.selected.has(r.tos_symbol);
 
     // TrTnBBRskRng cell: run action through actionDisplay; attach rr-action-cell for hover tooltip
     const rrRaw = r.rr_action || '';
     const rrDisp = actionDisplay(rrRaw);
+    const _rrBadgeStyle = 'display:inline-block;width:36px;flex-shrink:0;font-weight:700;font-size:12px;text-align:right;margin-right:8px;';
     const rrHtml = rrRaw
-      ? `<span class="act-badge ${(rrDisp.colorCls || 'act-neutral') + '-tint'}" title="${escapeHtml(rrDisp.label || rrRaw)}">${actionText(rrDisp)}</span>`
-      : '<span style="color:#cbd5e1;">--</span>';
+      ? `<span style="${_rrBadgeStyle}color:${_actionCodeColor(rrDisp)};" title="${escapeHtml(rrDisp.label || rrRaw)}">${escapeHtml(rrDisp.code || actionText(rrDisp))}</span>`
+      : `<span style="${_rrBadgeStyle}color:#cbd5e1;">--</span>`;
     const _rrSubLineHtml = (() => {
       const td = r.tn_td_desc || '', bb = r.bb_desc || '';
       const rr = r.rr_desc || (r.rr_bull_bear ? (r.rr_bull_bear === 'B' ? 'Bull' : 'Not-Bull') : '');
@@ -1293,32 +1331,34 @@ function renderGrid() {
     const fcActCode = r._fc_code || 'DONE';
 
     const posStr = fmtCompact(r.current_position_dollar);
+    const _hReason = _hiddenReason(r);
     tr.innerHTML = `
       <td style="padding:4px 6px; text-align:center;">
         <input type="checkbox" class="row-check" data-sym="${escapeHtml(r.tos_symbol)}"${isChecked ? ' checked' : ''}>
       </td>
+      <td class="num" style="font-size:10px;color:#f59e0b;font-weight:700;text-align:center;">${_hReason ? `<span title="${escapeHtml(_hReason)}">Y</span>` : ''}</td>
       <td class="num" style="font-size:11px; color:#475569;">${posStr || '<span style="color:#cbd5e1;">—</span>'}</td>
       <td class="num">
-        <span class="${pctCls}" style="font-weight:700;">${pctStr}</span>
+        <span class="${pctCls}" style="font-weight:700;">${pctStr}${intradayTag}</span>
         ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
       </td>
-      <td class="num">${_convictionHtml(r)}</td>
       <td style="padding:6px 4px;">
         ${typeof yahooLink === 'function' ? yahooLink(r.tos_symbol) : ''}
         <strong style="font-size:13px;">${escapeHtml(r.tos_symbol || '')}</strong>
         ${r.sector ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px;">${escapeHtml(r.sector)}</div>` : ''}
       </td>
       <td style="padding:6px 4px;">${fcHtml}</td>
-      <td class="num"><span class="amt-primary">${fmtUsd(r._amt)}</span></td>
+      <td class="num" ${r.held_accounts ? `title="Held in: ${escapeHtml(r.held_accounts)}"` : ''}>
+        <span class="amt-primary">${fmtUsd(r._amt)}</span>
+        ${r.stop_level != null ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;" title="Stop / exit-below level (task 8)">stop ${fmtUsd(r.stop_level)}</div>` : ''}
+      </td>
       <td class="act-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:help;">
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-tint'}" title="${escapeHtml(actionDisplay(_badgeAction(r)).label || actionLabel(r))}">${actionLabel(r)}</span>
-          ${_srcSubLineHtml(r)}
-        </div>
+        ${(()=>{ const _bd=actionDisplay(_badgeAction(r)); return `<span style="font-weight:700;font-size:12px;color:${_actionCodeColor(_bd)};" title="${escapeHtml(_bd.label||actionLabel(r))}">${escapeHtml(_bd.code||actionLabel(r))}</span>`; })()}
+        ${_srcSubLineHtml(r)}
         ${_isOverMaxOverlay(r) ? `<div style="font-size:8px;line-height:1;font-weight:600;margin-top:1px;" class="${_actionColorCls(action)}">was ${actionText(actionDisplay(action))}</div>` : ''}
       </td>
       <td class="rr-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-date="${escapeHtml(r.as_of_date || state.date || '')}" style="padding:6px 4px; cursor:help;">
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:flex-start;gap:6px;">
           ${rrHtml}
           ${_rrSubLineHtml}
         </div>
@@ -1590,6 +1630,7 @@ function _assetClass(r) {
 
 // ---- drilldown ----
 async function openDrilldown(row) {
+  hideSourcePop();
   state.current = row;
   $('modalTitle').textContent = row.tos_symbol;
   $('modalName').textContent = row.tos_symbol || '';
@@ -2057,6 +2098,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // initSorting must run before loadDates/renderGrid so th.dataset.label is
   // captured from the clean header text (before sort indicators are injected).
   initSorting();
+  _initSymTape();
 
   await loadSources();
   await loadDates();
@@ -2069,8 +2111,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.date = e.target.value;
     loadActionable();
     checkFreshness();
+    checkEodFeed();
   });
-  $('refreshBtn').addEventListener('click', () => { loadActionable(); checkFreshness(); });
+  $('refreshBtn').addEventListener('click', () => {
+    loadActionable();
+    checkFreshness();
+    checkEodFeed();
+  });
   $('staleRederiveBtn').addEventListener('click', rederiveStale);
   $('exportCsvBtn').addEventListener('click', exportCsv);
   initSourcePopover();
@@ -2146,32 +2193,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.filters.held_only = e.target.checked;
     applyClientFilter();
   });
-  $('showActed').addEventListener('change', (e) => {
-    state.filters.show_acted = e.target.checked;
-    loadActionable();
-  });
-  $('showNoAction').addEventListener('change', (e) => {
-    state.filters.show_no_action = e.target.checked;
-    applyClientFilter();
-  });
-  $('showZeroAmt').addEventListener('change', (e) => {
-    state.filters.show_zero_amt = e.target.checked;
-    applyClientFilter();
-  });
-  $('showSuppressed').addEventListener('change', (e) => {
-    state.filters.show_suppressed = e.target.checked;
+  $('showHidden').addEventListener('change', (e) => {
+    state.filters.show_hidden = e.target.checked;
+    // show_hidden also controls whether acted/suppressed rows are fetched from the API
     loadActionable();
   });
   $('symbolSearch').addEventListener('input', (e) => {
     state.filters.symbol_search = e.target.value;
-    applyClientFilter();
-  });
-  $('sectorFilter').addEventListener('change', (e) => {
-    state.filters.sector = e.target.value;
-    applyClientFilter();
-  });
-  $('assetClassFilter').addEventListener('change', (e) => {
-    state.filters.asset_class = e.target.value;
     applyClientFilter();
   });
 
@@ -2183,38 +2211,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('#convictionCtrl button').forEach(b =>
       b.classList.toggle('seg-active', b === btn));
     applyClientFilter();
-  });
-
-  // $ at stake segmented control
-  $('amtCtrl').addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-amt]');
-    if (!btn) return;
-    state.filters.amt_min = Number(btn.dataset.amt) || 0;
-    document.querySelectorAll('#amtCtrl button').forEach(b =>
-      b.classList.toggle('seg-active', b === btn));
-    applyClientFilter();
-  });
-
-  // Buys/Sells quick toggle
-  $('buyToggle').addEventListener('click', () => {
-    state.filters.buys_sells = (state.filters.buys_sells === 'buy') ? '' : 'buy';
-    if (state.filters.buys_sells) state.filters.action = '';  // clear chip selection
-    $('buyToggle').classList.toggle('active', state.filters.buys_sells === 'buy');
-    $('sellToggle').classList.remove('active');
-    applyClientFilter();
-  });
-  $('sellToggle').addEventListener('click', () => {
-    state.filters.buys_sells = (state.filters.buys_sells === 'sell') ? '' : 'sell';
-    if (state.filters.buys_sells) state.filters.action = '';  // clear chip selection
-    $('sellToggle').classList.toggle('active', state.filters.buys_sells === 'sell');
-    $('buyToggle').classList.remove('active');
-    applyClientFilter();
-  });
-
-  // More panel toggle
-  $('moreFiltersBtn').addEventListener('click', () => {
-    $('morePanel').classList.toggle('open');
-    $('moreFiltersBtn').textContent = $('morePanel').classList.contains('open') ? 'Less ✕' : 'More ⋯';
   });
 
   // Clear all filters
@@ -2353,8 +2349,7 @@ function setupActionCol() {
   });
 
   body.addEventListener('mouseout', (e) => {
-    if (!e.target.closest('.act-action-cell')) return;
-    if (e.relatedTarget && e.target.closest('.act-action-cell')?.contains(e.relatedTarget)) return;
+    if (e.relatedTarget && e.relatedTarget.closest('.act-action-cell')) return;
     tip.style.display = 'none';
   });
 }
@@ -2535,8 +2530,7 @@ function setupRRActionCol() {
   });
 
   body.addEventListener('mouseout', (e) => {
-    if (!e.target.closest('.rr-action-cell')) return;
-    if (e.relatedTarget && e.target.closest('.rr-action-cell')?.contains(e.relatedTarget)) return;
+    if (e.relatedTarget && e.relatedTarget.closest('.rr-action-cell')) return;
     tip.style.display = 'none';
   });
 }

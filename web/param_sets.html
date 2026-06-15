@@ -27,6 +27,9 @@
     .muted { color: var(--text-3); }
     .ps-note { font-size: 12px; color: var(--text-2); margin: 8px 0 16px; }
     #psMsg { font-size: 12px; margin-left: 8px; }
+    .pill.unvalidated { background: #fef3c7; color: #92400e; }
+    .edge-pos { color: #059669; font-weight: 600; font-size: 12px; font-family: ui-monospace, monospace; }
+    .edge-neg { color: #b91c1c; font-weight: 600; font-size: 12px; font-family: ui-monospace, monospace; }
   </style>
 </head>
 <body>
@@ -34,7 +37,6 @@
     <div class="brand"><span class="dot"></span><h1>Trading Dashboard</h1></div>
     <nav class="nav-menu">
       <a href="/" class="nav-item">Dashboard</a>
-      <a href="/cockpit" class="nav-item">Cockpit</a>
       <a href="/actionable" class="nav-item">Actionable</a>
       <a href="/portfolio" class="nav-item">Portfolio</a>
       <a href="/rules" class="nav-item">Rules</a>
@@ -69,10 +71,11 @@
           <thead>
             <tr>
               <th>ID</th><th>Label</th><th>Provenance</th><th>Status</th>
-              <th>Rules</th><th>Values</th><th>Created</th><th>Actions</th>
+              <th>Rules</th><th>Values</th><th>Train Edge</th><th>Holdout Edge</th>
+              <th>Created</th><th>Actions</th>
             </tr>
           </thead>
-          <tbody id="psBody"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
+          <tbody id="psBody"><tr><td colspan="10" class="muted">Loading…</td></tr></tbody>
         </table>
       </div>
       <div id="psDetail" class="ps-detail"></div>

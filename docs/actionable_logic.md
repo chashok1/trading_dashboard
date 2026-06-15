@@ -382,3 +382,32 @@ QJ < 0 forces STM even when Trend/Trade is bullish. Both QE and QJ must be posit
 | BMN | Buy Min | 15 |
 | BS | Buy Some | 16 |
 | BM | Buy More | 18 |
+
+---
+
+## Stop-level (`drv_actionable.stop_level`)
+
+Computed in `etl/derive_actionable.py::_compute_stop()` for held positions and
+BUY/SELL-family actions (INCREASE, ADD, REDUCE, REMOVE). None otherwise.
+
+**Formula** (mode `trade_line_or_pct`, the default):
+
+```
+stop_level = MAX(trade_line, last_price * (1 - stop_pct))
+```
+
+- `trade_line` — EOD `a_trade_value` from `drv_technicals` for that symbol/date.
+- `last_price` — most recent price from `drv_quote`.
+- `stop_pct` — `ref_settings.stop_pct` (default `0.08` = 8%).
+
+If no price data is available, `stop_level` is NULL.
+
+**Tuning knobs** (in `ref_settings`):
+
+| setting_name | default | meaning |
+|---|---|---|
+| `stop_mode` | `trade_line_or_pct` | Computation mode (only one mode implemented). |
+| `stop_pct` | `0.08` | Percentage below current price used as the pct-based floor. |
+
+To change: `UPDATE ref_settings SET setting_value = '0.05' WHERE setting_name = 'stop_pct';`
+then re-derive (`python -m etl.scheduler` or File Monitor → Force Re-derive).

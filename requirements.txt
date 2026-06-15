@@ -9,3 +9,4 @@ pydantic>=2.9.0
 pydantic-settings>=2.6.0
 watchdog>=5.0.0
 python-dateutil>=2.9.0
+send2trash>=1.8.0

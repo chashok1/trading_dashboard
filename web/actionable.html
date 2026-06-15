@@ -178,10 +178,10 @@
       border-radius: 6px;
       vertical-align: middle;
     }
-    .pill-my { background: #fff3cd; color: #6b4d00; }
+    .pill-my { background: #FAEEDA; color: #633806; }
     .pill-rule { background: #e6e6ff; color: #2e2e80; }
-    .pill-suppressed { background: #fbeaea; color: #8c1d1d; font-style: italic; }
-    .pill-acted { background: #e6f4ea; color: #1c6c30; }
+    .pill-suppressed { background: #FCEBEB; color: #791F1F; font-style: italic; }
+    .pill-acted { background: #EAF3DE; color: #27500A; }
 
     /* drilldown modal */
     .modal-backdrop {
@@ -251,9 +251,9 @@
       font-size: 12px;
       display: none;
     }
-    .status-bar.success { background: #e6f4ea; color: #1c6c30; display: block; }
-    .status-bar.error   { background: #fbeaea; color: #8c1d1d; display: block; }
-    .status-bar.info    { background: #eef2f7; color: #334; display: block; }
+    .status-bar.success { background: #EAF3DE; color: #27500A; display: block; }
+    .status-bar.error   { background: #FCEBEB; color: #791F1F; display: block; }
+    .status-bar.info    { background: #F1EFE8; color: #444441; display: block; }
 
     /* Clickable composite-rule pill */
     .pill-rule {
@@ -404,8 +404,62 @@
     .btn-icon:hover { background: #f4f4f2; }
     .btn-icon svg { display: block; }
 
+    /* ── Task 7: Market-context band (macro tiles) ──────────────────────── */
+    .macro-card {
+      margin-bottom: 8px;
+      background: var(--card-bg, #fff);
+      border: 1px solid var(--border, #e0e0e0);
+      border-radius: 6px;
+      padding: 0;
+      overflow: hidden;
+    }
+    .macro-card-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 12px;
+      cursor: pointer;
+      user-select: none;
+      background: var(--surface, #fafafa);
+      border-bottom: 1px solid transparent;
+    }
+    .macro-card.open .macro-card-header { border-bottom-color: var(--border, #e0e0e0); }
+    .macro-card-header .mc-caret {
+      font-size: 10px; color: var(--text-2, #888);
+      transition: transform 0.15s;
+    }
+    .macro-card.open .mc-caret { transform: rotate(90deg); }
+    .macro-card-header .mc-title { font-size: 11px; font-weight: 600; color: var(--text-1, #222); }
+    .macro-card-header .mc-meta  { font-size: 10px; color: var(--text-2, #888); margin-left: auto; }
+    .macro-card-body { display: none; padding: 10px 14px; }
+    .macro-card.open .macro-card-body { display: block; }
+    /* Tile styles (mirrors cockpit.html) */
+    .macro-group { margin-bottom: 14px; }
+    .macro-group:last-child { margin-bottom: 0; }
+    .macro-group-label {
+      font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+      color: var(--text-3, #aaa); margin: 0 0 6px;
+    }
+    .macro-tiles {
+      display: grid; gap: 8px;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    }
+    .macro-tile {
+      border: 1px solid var(--border, #e0e0e0); border-radius: 6px;
+      padding: 8px 10px; background: #fff;
+    }
+    .macro-tile .mt-label {
+      font-size: 11px; color: var(--text-2, #666); margin-bottom: 3px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .macro-tile .mt-value { font-size: 16px; font-weight: 600; color: var(--text-1, #222); }
+    .macro-tile .mt-chg   { font-size: 11px; margin-top: 2px; }
+    .macro-tile .mt-date  { font-size: 9px; color: var(--text-3, #aaa); margin-top: 3px; }
+    .mt-up { color: #166534; } .mt-down { color: #991b1b; } .mt-flat { color: #888; }
+    .macro-loading, .macro-empty, .macro-error { color: var(--text-3, #aaa); padding: 8px 0; font-size: 12px; }
+    .macro-error { color: #991b1b; }
+    .macro-lastfetch.is-throttled { color: var(--text-1); font-weight: 600; }
+
     /* Fill remaining viewport — table expands to bottom */
-    body.act-page main { overflow: hidden; display: flex; flex-direction: column; padding-bottom: 0; }
+    body.act-page main { overflow: hidden; display: flex; flex-direction: column; }
     body.act-page main > .card { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
     body.act-page .act-table-wrap { flex: 1; overflow: auto; min-height: 0; }
 
@@ -413,11 +467,11 @@
     .conviction-badge {
       display: inline-flex; align-items: center; gap: 3px;
       padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 700;
-      background: #f0f4f8; color: #334;
+      background: transparent; color: #888780; border: 0.5px solid #D3D1C7;
       cursor: default;
     }
-    .conviction-badge.edge-positive { background: #e6f4ea; color: #1c6c30; }
-    .conviction-badge.edge-none     { background: #f0f4f8; color: #334; }
+    .conviction-badge.edge-positive { background: #E1F5EE; color: #085041; border: none; }
+    .conviction-badge.edge-none     { background: transparent; color: #888780; border: 0.5px solid #D3D1C7; }
 
     /* ── Pass 1: AMT$ prominent cell ─────────────────────────────────────── */
     .amt-primary { font-size: 14px; font-weight: 800; }
@@ -436,10 +490,10 @@
 
     /* ── Pass 3: Inline action buttons ──────────────────────────────────── */
     .act-inline-btns { display: flex; gap: 4px; align-items: center; white-space: nowrap; }
-    .btn-done  { background: #e6f4ea; color: #1c6c30; border: 1px solid #b0d9b9; border-radius: 5px; padding: 2px 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
-    .btn-skip  { background: #f4f4f7; color: #555;    border: 1px solid #ddd;    border-radius: 5px; padding: 2px 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
-    .btn-snz   { background: #fff3cd; color: #6b4d00; border: 1px solid #ead88d; border-radius: 5px; padding: 2px 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
-    .btn-done:hover { background: #d0ebd8; } .btn-skip:hover { background: #e8e8ec; } .btn-snz:hover { background: #f0d888; }
+    .btn-done  { background: #EAF3DE; color: #27500A; border: none; border-radius: 8px; padding: 2px 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
+    .btn-skip  { background: #F1EFE8; color: #444441; border: none; border-radius: 8px; padding: 2px 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
+    .btn-snz   { background: #FAEEDA; color: #633806; border: none; border-radius: 8px; padding: 2px 8px; font-size: 10px; font-weight: 700; cursor: pointer; }
+    .btn-done:hover { filter: brightness(0.95); } .btn-skip:hover { filter: brightness(0.95); } .btn-snz:hover { filter: brightness(0.95); }
     tr.row-acted { opacity: 0.45; }
 
     /* ── Pass 3: Bulk bar ────────────────────────────────────────────────── */
@@ -469,9 +523,10 @@
     .focus-card .fc-why    { font-size: 13px; color: #57534e; margin-bottom: 20px; min-height: 20px; }
     .focus-card .fc-prog   { font-size: 11px; color: #a8a29e; margin-bottom: 16px; }
     .focus-card .fc-btns   { display: flex; gap: 10px; justify-content: center; margin-bottom: 12px; flex-wrap: wrap; }
-    .fc-btn-done  { padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; background: var(--act-buy); color: #fff; border: none; }
-    .fc-btn-skip  { padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; background: #e5e5e2; color: #333; border: none; }
-    .fc-btn-snz   { padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; background: #fef3c7; color: #6b4d00; border: none; }
+    .fc-btn-done  { padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; background: #EAF3DE; color: #27500A; border: none; }
+    .fc-btn-skip  { padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; background: #F1EFE8; color: #444441; border: none; }
+    .fc-btn-snz   { padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; background: #FAEEDA; color: #633806; border: none; }
+    .fc-btn-done:hover, .fc-btn-skip:hover, .fc-btn-snz:hover { filter: brightness(0.95); }
     .fc-btn-next  { padding: 8px 20px; border-radius: 6px; font-size: 12px; cursor: pointer; background: #f0f4f8; color: #444; border: 1px solid #ddd; }
     .focus-card .fc-esc   { font-size: 11px; color: #a8a29e; margin-top: 6px; }
   </style>
@@ -484,7 +539,6 @@
     </div>
     <nav class="nav-menu">
       <a href="/" class="nav-item">Dashboard</a>
-      <a href="/cockpit" class="nav-item">Cockpit</a>
       <a href="/actionable" class="nav-item active">Actionable</a>
       <a href="/portfolio" class="nav-item">Portfolio</a>
       <a href="/rules" class="nav-item">Rules</a>
@@ -510,16 +564,32 @@
     <div class="card">
       <div class="status-bar" id="statusBar"></div>
 
+      <!-- Task 7: Market-context band (was Cockpit) — collapsible card above toolbar -->
+      <div class="macro-card" id="macroCard">
+        <div class="macro-card-header" id="macroCardHeader">
+          <span class="mc-caret">&#9654;</span>
+          <span class="mc-title">Market Context</span>
+          <span class="mc-meta">
+            <span id="macroAsOf"></span>
+            <span id="macroLastFetch" class="macro-lastfetch" style="margin-left:8px;"></span>
+            <button id="macroRefreshBtn" class="btn" style="margin-left:8px; padding:2px 8px; font-size:10px;">Refresh data</button>
+          </span>
+        </div>
+        <div class="macro-card-body">
+          <div id="macroBand"><div class="macro-loading">Loading market data…</div></div>
+        </div>
+      </div>
+
+      <!-- Task 2: EOD feed missing banner — shown when hist_tl absent for date -->
+      <div id="eodMissingBanner" style="display:none; margin-bottom:8px; padding:9px 14px; border-radius:6px; background:#fee2e2; border:1px solid #e6a4a4; color:#8c1d1d; font-size:12px; font-weight:600;">
+        <span id="eodMissingMsg">EOD price feed missing — recommendations unreliable.</span>
+      </div>
+
       <div class="act-toolbar">
         <!-- Single consolidated filter bar -->
         <div class="act-toolbar-main">
           <!-- Action chips -->
           <div class="act-summary" id="summaryChips"></div>
-          <!-- Buys/Sells quick toggle -->
-          <div class="buysell-toggle">
-            <button id="buyToggle" title="Show buy actions (BUY SOME + BUY TO MIN)">Buys</button>
-            <button id="sellToggle" title="Show sell actions (SELL ALL + SELL OVERAGE + SELL SOME)">Sells</button>
-          </div>
           <!-- Conviction -->
           <div class="seg-ctrl" id="convictionCtrl" title="Conviction filter">
             <button class="seg-active" data-conv="any">Any</button>
@@ -533,11 +603,11 @@
           <select id="sourceFilter"><option value="">All</option></select>
           <!-- Symbol search -->
           <input type="text" id="symbolSearch" placeholder="Symbol…" style="padding:3px 8px; border:1px solid var(--border); border-radius:4px; font-size:11px; width:80px;">
-          <!-- Right side: row count, More, Clear, Focus icon, Export icon -->
+          <!-- Show Hidden toggle -->
+          <label class="toggle" style="font-size:11px; white-space:nowrap;" title="Show suppressed, $0 AMT, no-action, acted/snoozed, and unheld-remove rows"><input type="checkbox" id="showHidden"> Show Hidden</label>
+          <!-- Right side: row count, Clear, Focus icon, Export icon -->
           <div style="margin-left:auto; display:flex; align-items:center; gap:6px; flex-shrink:0;">
             <span style="font-size:11px; color:var(--text-2,#666);" id="rowCount"></span>
-            <button id="moreFiltersBtn" style="padding:3px 8px; font-size:10px; border:1px solid var(--border); border-radius:4px; background:#fff; cursor:pointer;">More &#8943;</button>
-            <span id="filterActiveBadge" style="display:none;" class="filter-active-badge">0</span>
             <button id="clearFiltersBtn" style="padding:3px 8px; font-size:10px; border:1px solid var(--border); border-radius:4px; background:#fff; cursor:pointer; color:#c41e3a;" title="Clear all filters">Clear</button>
             <!-- Focus icon button (eye/target style) -->
             <button id="focusModeBtn" class="btn-icon" title="Focus mode">
@@ -556,34 +626,17 @@
             </button>
           </div>
         </div>
-        <!-- More panel (hidden by default) — secondary filters -->
-        <div class="act-more-panel" id="morePanel">
-          <!-- Sector filter (moved from main bar) -->
-          <span class="act-fzone-label">Sector</span>
-          <select id="sectorFilter" style="padding:2px 5px; font-size:11px; border:1px solid var(--border); border-radius:4px; background:#fff;">
-            <option value="">All Sectors</option>
-          </select>
-          <!-- Asset class filter (moved from main bar) -->
-          <span class="act-fzone-label" style="margin-left:6px;">Asset Class</span>
-          <select id="assetClassFilter" style="padding:2px 5px; font-size:11px; border:1px solid var(--border); border-radius:4px; background:#fff;">
-            <option value="">All Asset Classes</option>
-          </select>
-          <!-- $ at stake filter (moved from main bar) -->
-          <span class="act-fzone-label" style="margin-left:6px;">$ Stake</span>
-          <div class="seg-ctrl" id="amtCtrl">
-            <button class="seg-active" data-amt="0">Any</button>
-            <button data-amt="5000">≥$5k</button>
-            <button data-amt="25000">≥$25k</button>
-          </div>
-          <span class="act-fzone-label" style="margin-left:6px;">Show</span>
-          <label class="toggle"><input type="checkbox" id="showNoAction"> +No-action</label>
-          <label class="toggle"><input type="checkbox" id="showZeroAmt"> +$0 AMT</label>
-          <label class="toggle"><input type="checkbox" id="showSuppressed"> +Suppressed</label>
-          <label class="toggle"><input type="checkbox" id="showActed"> +Acted/Snoozed</label>
-        </div>
       </div>
 
-      <div id="staleBanner" style="display:none; margin-bottom:8px; padding:7px 12px; border-radius:6px; background:#faeeda; border:1px solid #854f0b; color:#633806; font-size:12px; align-items:center; gap:12px;">
+      <!-- Symbol tape: filterable chip bar, synced to active filters -->
+      <div id="symTape" class="sym-tape-bar">
+        <button id="symTapePrev" class="sym-tape-nav" title="Previous batch">&#9664;</button>
+        <div id="symTapeTrack" class="sym-tape-track"></div>
+        <button id="symTapeNext" class="sym-tape-nav" title="Next batch">&#9654;</button>
+        <span id="symTapeBadge" class="sym-tape-badge"></span>
+      </div>
+
+      <div id="staleBanner" style="display:none; margin-bottom:8px; padding:7px 12px; border-radius:6px; background:#FAEEDA; border:none; color:#633806; font-size:12px; align-items:center; gap:12px;">
         <span id="staleBannerMsg" style="flex:1;">This date's data is stale.</span>
         <button class="btn" id="staleRederiveBtn" type="button" style="white-space:nowrap;">Re-derive now</button>
       </div>
@@ -601,11 +654,11 @@
           <thead>
             <tr>
               <th style="width:28px;"><input type="checkbox" id="bulkSelectAll" title="Select all"></th>
+              <th style="width:18px;" title="H = row is hidden by the default filter (hover cell for reason)">H</th>
               <th class="num sortable" data-key="current_position_dollar" data-type="num" title="Current position $ held" style="width:58px;">Pos $</th>
               <th class="num sortable" data-key="pct_change" data-type="num" style="width:62px;">%chg / Price</th>
-              <th class="num sortable" data-key="_priority" data-type="num" title="Priority = |final-call strength| × |AMT$|" style="width:76px;">Pri</th>
               <th class="sortable" data-key="tos_symbol" data-type="str" style="width:68px;">Symbol</th>
-              <th class="sortable" data-key="_fc_strength" data-type="num" title="Final Call: reconciled action with confidence badge (drives ranking + default Act)" style="width:150px;">Final Call</th>
+              <th class="sortable" data-key="_fc_strength" data-type="num" title="Final Call: reconciled action with confidence badge (drives ranking + default Act)" style="width:90px;">Final Call</th>
               <th class="num sortable" data-key="_amt" data-type="num" style="width:58px;">AMT$</th>
               <th class="sortable" data-key="consolidated_action" data-type="str" data-label="Sources" title="Consolidated from RR/CALL/ETF/II/SSS/PS (most-aggressive-wins), then sized to your min/max/holdings." style="width:200px;">Sources</th>
               <th class="sortable" data-key="rr_action" data-type="str" data-label="Technical" title="Trend-vs-Trade crossover + Bollinger range streak + Risk-Range position." style="width:200px;">Technical</th>
@@ -741,6 +794,62 @@
   <script src="/static/actionable.js"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
+  <script src="/static/macro_band.js" defer></script>
+  <script>
+  /* Task 7: macro-card collapse toggle (localStorage-persisted) */
+  (function () {
+    var KEY = 'macroCardOpen';
+    var card = document.getElementById('macroCard');
+    var hdr  = document.getElementById('macroCardHeader');
+    if (!card || !hdr) return;
+    // Restore state — default collapsed
+    var open = localStorage.getItem(KEY) === 'true';
+    if (open) card.classList.add('open');
+    hdr.addEventListener('click', function (e) {
+      // Don't collapse when clicking the Refresh button
+      if (e.target && e.target.id === 'macroRefreshBtn') return;
+      card.classList.toggle('open');
+      localStorage.setItem(KEY, card.classList.contains('open') ? 'true' : 'false');
+    });
+  })();
+  </script>
 <script src="/static/warning_badge.js"></script>
+
+<!-- TradingView Ticker Tape — fixed at bottom -->
+<div id="tv-tape-wrapper" style="border-top:1px solid #ddd;background:#fff;flex-shrink:0;">
+  <div class="tradingview-widget-container">
+    <div class="tradingview-widget-container__widget"></div>
+    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
+    {"symbols":[
+      {"proName":"FX:EURUSD","title":"EUR/USD"},
+      {"proName":"FX:USDJPY","title":"USD/JPY"},
+      {"proName":"FX:GBPUSD","title":"GBP/USD"},
+      {"proName":"FX:AUDUSD","title":"AUD/USD"},
+      {"proName":"FX:USDCAD","title":"USD/CAD"},
+      {"proName":"FX:USDCHF","title":"USD/CHF"},
+      {"proName":"FX:NZDUSD","title":"NZD/USD"},
+      {"proName":"FX:EURJPY","title":"EUR/JPY"},
+      {"proName":"FX:EURGBP","title":"EUR/GBP"},
+      {"proName":"FOREXCOM:SPXUSD","title":"S&P 500"},
+      {"proName":"FOREXCOM:NSXUSD","title":"Nasdaq 100"},
+      {"proName":"FOREXCOM:DJI","title":"Dow Jones"},
+      {"proName":"FOREXCOM:US2000","title":"Russell 2K"},
+      {"proName":"CAPITALCOM:VIX","title":"VIX"},
+      {"proName":"CAPITALCOM:DXY","title":"Dollar"},
+      {"proName":"TVC:GOLD","title":"Gold"},
+      {"proName":"TVC:SILVER","title":"Silver"},
+      {"proName":"TVC:PLATINUM","title":"Platinum"},
+      {"proName":"CAPITALCOM:COPPER","title":"Copper"},
+      {"proName":"TVC:USOIL","title":"WTI Crude"},
+      {"proName":"TVC:UKOIL","title":"Brent Crude"},
+      {"proName":"CAPITALCOM:NATURALGAS","title":"Nat Gas"},
+      {"proName":"CAPITALCOM:CORN","title":"Corn"},
+      {"proName":"CAPITALCOM:WHEAT","title":"Wheat"},
+      {"proName":"AMEX:SOYB","title":"Soybeans"},
+      {"proName":"BITSTAMP:BTCUSD","title":"Bitcoin"}
+    ],"showSymbolLogo":false,"isTransparent":false,"displayMode":"adaptive","colorTheme":"light","locale":"en"}
+    </script>
+  </div>
+</div>
 </body>
 </html>

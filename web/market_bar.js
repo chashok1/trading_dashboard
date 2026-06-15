@@ -106,50 +106,106 @@
     return { tip, inner };
   }
 
-  // ---- build tape row ---------------------------------------------------
+  // ---- shared chip helpers -----------------------------------------------
+
+  function outlookBg(outlook) {
+    const ol = (outlook || '').toLowerCase();
+    return ol === 'bullish' ? '#15803d'
+         : ol === 'bearish' ? '#b91c1c'
+         : '#64748b';
+  }
+
+  function rangeBar(buy, sell, cur) {
+    if (buy == null || sell == null || sell <= buy || cur == null) {
+      return '<div class="rr-rb"></div>';
+    }
+    const pct = Math.max(0, Math.min(1, (Number(cur) - Number(buy)) / (Number(sell) - Number(buy))));
+    const w = Math.round(pct * 100);
+    return `<div class="rr-rb">` +
+      `<div class="rr-rb-fill" style="width:${w}%;"></div>` +
+      `<div class="rr-rb-tick" style="left:${w}%;"></div>` +
+      `</div>`;
+  }
+
+  function chipHtml(name, ol, pctStr, pctCls, buy, sell, cur, tip, stale) {
+    const staleCls = stale ? ' mt-stale' : '';
+    return `<div class="rr-chip${staleCls}" title="${tip}">` +
+      `<div class="rr-chip-top">` +
+      `<span class="rr-sym" style="background:${outlookBg(ol)};">${escHtml(name)}</span>` +
+      `<span class="mt-chg ${pctCls}">${pctStr}</span>` +
+      `</div>` +
+      rangeBar(buy, sell, cur) +
+      `</div>`;
+  }
+
+  // ---- build tape row (bar 1) -------------------------------------------
   function buildTapeHtml(data) {
     const items = data.items || [];
+    const byKey = Object.fromEntries(items.map(it => [it.metric_key, it]));
+    const seen  = new Set();
+    const cells = [];
 
-    const byKey  = Object.fromEntries(items.map(it => [it.metric_key, it]));
-    const paired = new Set(PAIRS.flatMap(p => [p.idx, p.vol].filter(Boolean)));
-    const cells  = [];
-
-    // Render PAIRS in defined order
     for (const pair of PAIRS) {
-      const idxItem = byKey[pair.idx];
-      const volItem = pair.vol ? byKey[pair.vol] : null;
-      if (!idxItem && !volItem) continue;
-
-      const stale = ((idxItem && idxItem.stale) || (volItem && volItem.stale)) ? ' mt-stale' : '';
-      const parts = [];
-
-      if (idxItem) {
-        const { tip, inner } = itemContent(idxItem);
-        parts.push(`<span class="mt-pair-side" title="${tip}"><span class="mt-label">${escHtml(idxItem.label)}</span>${inner}</span>`);
+      for (const key of [pair.idx, pair.vol].filter(Boolean)) {
+        const item = byKey[key];
+        if (!item) continue;
+        seen.add(key);
+        const cls    = dirClass(item.chg_pct, item.metric_key);
+        const chgStr = fmtChgPct(item.chg_pct);
+        const arrow  = dirArrow(item.chg_pct);
+        const valStr = fmtValue(item.value, item.value_format);
+        const pctStr = chgStr ? arrow + chgStr : valStr;
+        const tip    = itemTip(item, valStr, chgStr, arrow);
+        cells.push(chipHtml(item.metric_key, item.rr_outlook, pctStr, cls,
+                            item.rr_buy, item.rr_sell, item.value, tip, item.stale));
       }
-      if (idxItem && volItem) {
-        parts.push(`<span class="mt-sep">·</span>`);
-      }
-      if (volItem) {
-        const { tip, inner } = itemContent(volItem);
-        parts.push(`<span class="mt-pair-side" title="${tip}"><span class="mt-label">${escHtml(volItem.label)}</span>${inner}</span>`);
-      }
-
-      cells.push(`<div class="mt-pair${stale}">${parts.join('')}</div>`);
     }
 
-    // Render any remaining items not covered by PAIRS
     for (const item of items) {
-      if (paired.has(item.metric_key)) continue;
-      const { tip, inner } = itemContent(item);
-      const stale = item.stale ? ' mt-stale' : '';
-      cells.push(`<div class="mt-cell${stale}" title="${tip}"><span class="mt-label">${escHtml(item.label)}</span>${inner}</div>`);
+      if (seen.has(item.metric_key)) continue;
+      const cls    = dirClass(item.chg_pct, item.metric_key);
+      const chgStr = fmtChgPct(item.chg_pct);
+      const arrow  = dirArrow(item.chg_pct);
+      const valStr = fmtValue(item.value, item.value_format);
+      const pctStr = chgStr ? arrow + chgStr : valStr;
+      const tip    = itemTip(item, valStr, chgStr, arrow);
+      cells.push(chipHtml(item.metric_key, item.rr_outlook, pctStr, cls,
+                          item.rr_buy, item.rr_sell, item.value, tip, item.stale));
     }
 
-    return (
-      cells.join('') +
-      `<button class="mt-expander" id="mtExpandBtn" type="button" aria-expanded="false" title="Show full econ panel">Econ ▾</button>`
-    );
+    cells.push(`<button class="mt-expander" id="mtExpandBtn" type="button" aria-expanded="false" title="Show full econ panel">Econ ▾</button>`);
+    return cells.join('');
+  }
+
+  // ---- build RR tape (bar 2) — chips, no category headers ---------------
+  const RR_CAT_ORDER = ['Commodities', 'ETFs', 'Tech', 'Indexes', 'FX', 'Credit', 'Other'];
+
+  function buildRrHtml(data) {
+    const groups = data.groups || {};
+    const allCats = [...RR_CAT_ORDER, ...Object.keys(groups).filter(k => !RR_CAT_ORDER.includes(k))];
+    const cells = [];
+
+    for (const cat of allCats) {
+      const items = groups[cat];
+      if (!items || !items.length) continue;
+      for (const item of items) {
+        const pct    = item.pct != null ? Number(item.pct) : null;
+        const cls    = dirClass(pct, null);
+        const chgStr = pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—';
+        const name   = (item.symbol || '').replace(/^\//, '') || item.label || '?';
+        const buyStr = item.buy != null ? Number(item.buy).toFixed(2) : '—';
+        const sellStr = item.sell != null ? Number(item.sell).toFixed(2) : '—';
+        const tip    = escHtml(
+          `${item.label || item.symbol}  ${chgStr}` +
+          (item.buy != null ? `  range: ${buyStr}–${sellStr}` : '') +
+          (item.outlook ? `  ${item.outlook}` : '') +
+          (item.as_of ? `  as of: ${item.as_of}` : '')
+        );
+        cells.push(chipHtml(name, item.outlook, chgStr, cls,
+                            item.buy, item.sell, item.bar_price, tip, false));
+      }
+    }
+    return cells.join('');
   }
 
   // ---- build econ expander panel ----------------------------------------
@@ -208,6 +264,7 @@
   // ---- DOM mount --------------------------------------------------------
   let tapeEl = null;
   let econEl = null;
+  let rrTapeEl = null;
 
   function ensureMount() {
     if (tapeEl) return;
@@ -215,7 +272,7 @@
     const topbar = document.querySelector('header.topbar');
     if (!topbar) return;
 
-    // Tape strip
+    // Bar 1 — market pairs tape
     tapeEl = document.createElement('div');
     tapeEl.id = 'marketTape';
     tapeEl.className = 'market-tape';
@@ -228,6 +285,13 @@
     econEl.className = 'mt-econ-panel';
     econEl.innerHTML = '<span style="color:var(--text-3);font-size:11px;">Loading…</span>';
     tapeEl.insertAdjacentElement('afterend', econEl);
+
+    // Bar 2 — RR symbols tape
+    rrTapeEl = document.createElement('div');
+    rrTapeEl.id = 'rrTape';
+    rrTapeEl.className = 'rr-tape';
+    rrTapeEl.innerHTML = '<span style="color:var(--text-3);padding:0 8px;font-size:11px;">Loading RR data…</span>';
+    econEl.insertAdjacentElement('afterend', rrTapeEl);
 
     // Expand/collapse toggle (delegated — button injected after fetch)
     document.addEventListener('click', (e) => {
@@ -260,6 +324,22 @@
     }
   }
 
+  async function loadRrBar() {
+    ensureMount();
+    if (!rrTapeEl) return;
+    try {
+      const r = await fetch('/api/rr-bar');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      rrTapeEl.innerHTML = buildRrHtml(data);
+    } catch (err) {
+      if (rrTapeEl) {
+        rrTapeEl.innerHTML =
+          '<span style="color:var(--bear,#b91c1c);padding:0 8px;font-size:11px;">RR data unavailable</span>';
+      }
+    }
+  }
+
   async function loadEcon() {
     if (!econEl) return;
     try {
@@ -279,7 +359,8 @@
   // ---- entry ------------------------------------------------------------
   function init() {
     loadTape();
-    setInterval(loadTape, REFRESH_MS);
+    loadRrBar();
+    setInterval(() => { loadTape(); loadRrBar(); }, REFRESH_MS);
   }
 
   if (document.readyState === 'loading') {

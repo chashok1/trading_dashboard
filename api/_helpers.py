@@ -128,6 +128,32 @@ def expected_market_close_date(now: Optional[datetime] = None) -> date:
     return d
 
 
+def eod_feed_status(as_of_date) -> dict:
+    """Check whether the EOD price feed (hist_tl) has rows for `as_of_date`.
+
+    Returns {missing: bool, date: str, message: str|None}.
+    Used by GET /api/eod-feed-status and consumed by actionable.js for the
+    blocking red banner (Task 2 — missing-feed guardian)."""
+    try:
+        with session_scope() as s:
+            row = s.execute(text(
+                "SELECT 1 FROM hist_tl WHERE export_date = :d LIMIT 1"
+            ), {"d": as_of_date}).first()
+        missing = row is None
+    except Exception:
+        missing = False  # DB error — don't block the UI
+    msg = None
+    if missing:
+        d_str = as_of_date.isoformat() if hasattr(as_of_date, 'isoformat') else str(as_of_date)
+        msg = (f"EOD price feed (TOSL) missing for {d_str} — "
+               f"recommendations may be unreliable.")
+    return {
+        "missing": missing,
+        "date": as_of_date.isoformat() if hasattr(as_of_date, 'isoformat') else str(as_of_date),
+        "message": msg,
+    }
+
+
 def anchor_date_and_status(now: Optional[datetime] = None) -> dict:
     """Resolve the loaded anchor (MAX(export_date) FROM hist_td) and whether it
     is behind the expected market close. Used by GET /api/anchor-status."""

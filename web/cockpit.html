@@ -192,6 +192,17 @@
         body.cockpit-page main::-webkit-scrollbar { display: block; width: 6px; }
         body.cockpit-page main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
         body.cockpit-page main { scrollbar-width: thin; }
+        /* --- Compact mini charts strip --- */
+        .compact-charts-strip {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+        .compact-chart-cell {
+            height: 120px; overflow: hidden;
+            border-radius: 5px; border: 1px solid var(--border); background: #fff;
+        }
         /* --- Widget showcase --- */
         .showcase-heading {
             font-size: 13px; font-weight: 600; color: var(--text-2);
@@ -338,147 +349,7 @@
                 </div>
             </div>
         </div>
-        <!-- =====================================================
-             TradingView Widget Showcase
-             ===================================================== -->
-        <div class="showcase-heading">TradingView Widgets &mdash; preview for other screens</div>
-
-        <!-- 1. Ticker Tape -->
-        <div class="widget-label">Ticker Tape &middot; toolbar / top-of-screen option</div>
-        <div style="border:1px solid var(--border); border-radius:6px; overflow:hidden; background:#fff;">
-            <div class="tradingview-widget-container">
-                <div class="tradingview-widget-container__widget"></div>
-                <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
-                {
-                    "symbols": [
-                        {"proName":"AMEX:SPY","title":"S&P 500"},
-                        {"proName":"NASDAQ:QQQ","title":"Nasdaq 100"},
-                        {"proName":"AMEX:DIA","title":"Dow Jones"},
-                        {"proName":"AMEX:IWM","title":"Russell 2K"},
-                        {"proName":"AMEX:VIXY","title":"VIX"},
-                        {"proName":"NASDAQ:IEF","title":"10Y Yield"},
-                        {"proName":"TVC:GOLD","title":"Gold"},
-                        {"proName":"TVC:USOIL","title":"Crude Oil"},
-                        {"proName":"AMEX:UUP","title":"US Dollar"},
-                        {"proName":"BITSTAMP:BTCUSD","title":"Bitcoin"},
-                        {"proName":"FX:EURUSD","title":"EUR/USD"},
-                        {"proName":"FX:USDJPY","title":"USD/JPY"}
-                    ],
-                    "showSymbolLogo": true,
-                    "isTransparent": false,
-                    "displayMode": "adaptive",
-                    "colorTheme": "light",
-                    "locale": "en"
-                }
-                </script>
-            </div>
-        </div>
-
-        <!-- 2. Mini Charts -->
-        <div class="widget-label">Mini Charts &middot; per-symbol card option</div>
-        <div class="mini-charts-row">
-            <div class="mini-chart-card">
-                <div class="tradingview-widget-container" style="height:100%;">
-                    <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%;"></div>
-                    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
-                    {"symbol":"AMEX:SPY","width":"100%","height":220,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
-                    </script>
-                </div>
-            </div>
-            <div class="mini-chart-card">
-                <div class="tradingview-widget-container" style="height:100%;">
-                    <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%;"></div>
-                    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
-                    {"symbol":"AMEX:VIXY","width":"100%","height":220,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
-                    </script>
-                </div>
-            </div>
-            <div class="mini-chart-card">
-                <div class="tradingview-widget-container" style="height:100%;">
-                    <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%;"></div>
-                    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
-                    {"symbol":"TVC:GOLD","width":"100%","height":220,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
-                    </script>
-                </div>
-            </div>
-            <div class="mini-chart-card">
-                <div class="tradingview-widget-container" style="height:100%;">
-                    <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%;"></div>
-                    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
-                    {"symbol":"TVC:USOIL","width":"100%","height":220,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
-                    </script>
-                </div>
-            </div>
-            <div class="mini-chart-card">
-                <div class="tradingview-widget-container" style="height:100%;">
-                    <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%;"></div>
-                    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
-                    {"symbol":"BITSTAMP:BTCUSD","width":"100%","height":220,"locale":"en","dateRange":"3M","colorTheme":"light","isTransparent":false,"autosize":false,"largeChartUrl":""}
-                    </script>
-                </div>
-            </div>
-        </div>
-
-        <!-- 3. Market Overview + Economic Calendar -->
-        <div class="overview-calendar-row">
-            <div>
-                <div class="widget-label">Market Overview &middot; multi-symbol tabbed (Indices / Commodities / Bonds / Forex)</div>
-                <div style="border:1px solid var(--border); border-radius:6px; overflow:hidden; background:#fff; height:450px;">
-                    <div class="tradingview-widget-container" style="height:450px;">
-                        <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%;"></div>
-                        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-market-overview.js" async>
-                        {
-                            "colorTheme":"light","dateRange":"12M","showChart":true,"locale":"en",
-                            "width":"100%","height":450,"isTransparent":false,
-                            "showSymbolLogo":true,"showFloatingTooltip":false,
-                            "plotLineColorGrowing":"rgba(41,98,255,1.0)","plotLineColorFalling":"rgba(41,98,255,1.0)",
-                            "gridLineColor":"rgba(240,243,250,0)","scaleFontColor":"rgba(106,109,120,1.0)",
-                            "belowLineFillColorGrowing":"rgba(41,98,255,0.12)","belowLineFillColorFalling":"rgba(41,98,255,0.12)",
-                            "belowLineFillColorGrowingBottom":"rgba(41,98,255,0)","belowLineFillColorFallingBottom":"rgba(41,98,255,0)",
-                            "symbolActiveColor":"rgba(41,98,255,0.12)",
-                            "tabs":[
-                                {"title":"Indices","originalTitle":"Indices","symbols":[
-                                    {"s":"AMEX:SPY","d":"S&P 500"},{"s":"NASDAQ:QQQ","d":"Nasdaq 100"},
-                                    {"s":"AMEX:DIA","d":"Dow Jones"},{"s":"AMEX:IWM","d":"Russell 2K"},
-                                    {"s":"AMEX:EWJ","d":"Japan (EWJ)"},{"s":"AMEX:EWG","d":"Germany (EWG)"},
-                                    {"s":"AMEX:VIXY","d":"VIX (VIXY)"}
-                                ]},
-                                {"title":"Commodities","originalTitle":"Commodities","symbols":[
-                                    {"s":"TVC:GOLD","d":"Gold"},{"s":"TVC:USOIL","d":"Crude Oil"},
-                                    {"s":"AMEX:UNG","d":"Nat Gas (UNG)"},{"s":"TVC:SILVER","d":"Silver"},
-                                    {"s":"AMEX:CPER","d":"Copper (CPER)"}
-                                ]},
-                                {"title":"Bonds","originalTitle":"Bonds","symbols":[
-                                    {"s":"NASDAQ:IEF","d":"10Y (IEF)"},{"s":"NASDAQ:SHY","d":"2Y (SHY)"},
-                                    {"s":"NASDAQ:TLT","d":"30Y (TLT)"}
-                                ]},
-                                {"title":"Forex","originalTitle":"Forex","symbols":[
-                                    {"s":"FX:EURUSD"},{"s":"FX:GBPUSD"},{"s":"FX:USDJPY"},
-                                    {"s":"FX:USDCAD"},{"s":"FX:AUDUSD"}
-                                ]}
-                            ]
-                        }
-                        </script>
-                    </div>
-                </div>
-            </div>
-            <div>
-                <div class="widget-label">Economic Calendar &middot; upcoming US macro events</div>
-                <div style="border:1px solid var(--border); border-radius:6px; overflow:hidden; background:#fff; height:450px;">
-                    <div class="tradingview-widget-container" style="height:450px;">
-                        <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%;"></div>
-                        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-events-calendar.js" async>
-                        {
-                            "colorTheme":"light","isTransparent":false,
-                            "width":"100%","height":450,"locale":"en",
-                            "importanceFilter":"0,1","countryFilter":"us"
-                        }
-                        </script>
-                    </div>
-                </div>
-            </div>
-        </div>
-
+        <!-- showcase removed -->
     </main>
 
     <div class="drawer" id="detailDrawer">

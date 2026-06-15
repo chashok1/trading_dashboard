@@ -57,7 +57,7 @@ async function loadMyActions() {
 async function loadScorecard() {
     const minFires = document.getElementById('minFires')?.value ?? 30;
     DOM.perfTableBody.innerHTML =
-        '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-3);">Loading scorecard…</td></tr>';
+        '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-3);">Loading scorecard…</td></tr>';
     try {
         const data = await fetch(`/api/rules/scorecard?min_fires=${minFires}&limit=1000`)
             .then(r => r.json());
@@ -66,14 +66,14 @@ async function loadScorecard() {
     } catch (e) {
         console.error('Failed to load scorecard:', e);
         DOM.perfTableBody.innerHTML =
-            '<tr><td colspan="7" style="text-align:center;color:#b91c1c;">Error loading scorecard</td></tr>';
+            '<tr><td colspan="8" style="text-align:center;color:#b91c1c;">Error loading scorecard</td></tr>';
     }
 }
 
 function renderTable() {
     if (!state.rules.length) {
         DOM.perfTableBody.innerHTML =
-            '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-3);">' +
+            '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-3);">' +
             'No scorecard data. Run the outcome ETL: <code>python -m etl.compute_firing_outcomes --truncate</code></td></tr>';
         return;
     }
@@ -91,13 +91,25 @@ function renderTable() {
     DOM.perfTableBody.innerHTML = rows.map(r => {
         const span = (r.first_seen && r.last_seen)
             ? `${r.first_seen} → ${r.last_seen}` : '—';
-        const dirCls = r.direction === 'BUY' ? 'dir-buy' : 'dir-sell';
+        const dirCls  = r.direction === 'BUY' ? 'dir-buy' : 'dir-sell';
+        const conf    = r.confidence || 'unproven';
+        const unproven = conf === 'unproven';
+        const rowStyle = unproven ? ' style="opacity:0.55;"' : '';
+        const confBadge = conf === 'proven'
+            ? `<span style="color:#15803d;font-weight:700;font-size:10px;"> ✓proven</span>`
+            : conf === 'promising'
+            ? `<span style="color:#92400e;font-size:10px;"> promising</span>`
+            : `<span style="color:#94a3b8;font-size:10px;"> unproven</span>`;
+        const ciLow  = r.edge_20d_ci_low  != null ? Number(r.edge_20d_ci_low).toFixed(2)  : '—';
+        const ciHigh = r.edge_20d_ci_high != null ? Number(r.edge_20d_ci_high).toFixed(2) : '—';
+        const ciStr  = (ciLow !== '—' && ciHigh !== '—') ? `[${ciLow}%, ${ciHigh}%]` : '—';
         return `
-            <tr>
-                <td><strong>${r.rule_id}</strong></td>
+            <tr${rowStyle}>
+                <td><strong>${r.rule_id}</strong>${confBadge}</td>
                 <td class="${dirCls}">${r.direction || '—'}</td>
-                <td>${r.fires ?? 0}</td>
+                <td>${r.n_fires ?? r.fires ?? 0}</td>
                 <td class="${edgeCls(r.edge_20d)}">${num(r.edge_20d)}%</td>
+                <td style="color:var(--text-3);font-size:11px;" title="95% CI for edge_20d">${ciStr}</td>
                 <td>${num((r.win_rate ?? 0) * 100, 1)}%</td>
                 <td style="color:var(--text-3)">${num(r.raw_avg_fwd20)}%</td>
                 <td style="color:var(--text-3);font-size:11px;">${span}</td>

@@ -92,15 +92,28 @@ async function loadFlow() {
 }
 
 // Rule track-record (v_rule_scorecard) for the inline edge badges. Fetched once.
+// confidence: 'proven' = solid; 'promising' = normal; 'unproven' = muted grey + n= label.
 let _rfScore = null;
 function compEdgeBadge(code) {
   const sc = (_rfScore || {})[code];
   if (!sc || sc.edge_20d == null) return '';
-  const e = Number(sc.edge_20d);
+  const e    = Number(sc.edge_20d);
+  const conf = sc.confidence || 'unproven';
+  const n    = sc.n_fires != null ? sc.n_fires : (sc.fires != null ? sc.fires : '?');
+  const ciLow  = sc.edge_20d_ci_low  != null ? Number(sc.edge_20d_ci_low).toFixed(1)  : null;
+  const ciHigh = sc.edge_20d_ci_high != null ? Number(sc.edge_20d_ci_high).toFixed(1) : null;
+  const ciStr  = ciLow != null ? ` CI [${ciLow}%,${ciHigh}%]` : '';
+  if (conf === 'unproven') {
+    return ` <span class="edge-neu" style="font-size:10px;opacity:0.55;" `
+         + `title="Unproven (n=${n}${ciStr}) — too few fires or CI straddles 0">`
+         + `n=${n}</span>`;
+  }
   const cls = e > 0.5 ? 'edge-pos' : e < -0.5 ? 'edge-neg' : 'edge-neu';
   const wr = (sc.win_rate != null) ? ` · ${(Number(sc.win_rate) * 100).toFixed(0)}%` : '';
-  return ` <span class="${cls}" title="Rule's historical 20d edge across all symbols (${sc.fires} fires) — diagnostic"`
-       + ` style="font-size:10px;">${e >= 0 ? '+' : ''}${e.toFixed(1)}%${wr}</span>`;
+  const provenMark = conf === 'proven' ? ' ✓' : '';
+  return ` <span class="${cls}" style="font-size:10px;" `
+       + `title="${conf}: 20d edge (n=${n}${ciStr}) — diagnostic">`
+       + `${e >= 0 ? '+' : ''}${e.toFixed(1)}%${wr}${provenMark}</span>`;
 }
 
 document.getElementById('symInput').addEventListener('keydown', e => {

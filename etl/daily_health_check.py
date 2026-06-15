@@ -110,7 +110,26 @@ def _check_scheduler_idle(session) -> dict:
             "ok": ok, "detail": detail, "items": []}
 
 
-CHECKS = [_check_hist_gap, _check_stale_ref, _check_source_missing, _check_scheduler_idle]
+def _check_derive_health(session) -> dict:
+    """Any meta_derived_run cascade_status PARTIAL/FAILED in last 24h on critical tables."""
+    rows = session.execute(text("""
+        SELECT as_of_date, cascade_status, error_msg, started_at
+        FROM meta_derived_run
+        WHERE target_table = '_cascade'
+          AND cascade_status IN ('PARTIAL', 'FAILED')
+          AND started_at > NOW() - INTERVAL '24 hours'
+        ORDER BY started_at DESC
+        LIMIT 10
+    """)).mappings().all()
+    items = [{"date": str(r["as_of_date"]), "status": r["cascade_status"],
+              "failed_steps": r["error_msg"] or ""}
+             for r in rows]
+    return {"id": "derive_health", "title": "Derive cascade status (last 24h)",
+            "ok": not items, "items": items}
+
+
+CHECKS = [_check_hist_gap, _check_stale_ref, _check_source_missing,
+          _check_scheduler_idle, _check_derive_health]
 
 
 def main() -> int:

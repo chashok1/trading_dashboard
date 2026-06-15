@@ -156,6 +156,25 @@ class TableStats(BaseModel):
 
 
 # =============================================================================
+# Buysell code → seq map (for Actionable default sort)
+# =============================================================================
+
+@router.get("/api/ref/buysell", response_model=dict)
+def get_buysell_seq():
+    """Return buysell code→seq map from ref_param_lookup.
+
+    Used by the Actionable screen to drive the default sort order by the
+    authoritative ref_param_lookup SEQ (SA=21 is highest, sorts to top DESC).
+    """
+    with session_scope() as s:
+        rows = s.execute(text(
+            "SELECT code, seq FROM ref_param_lookup"
+            " WHERE table_name='buysell'"
+        )).mappings().all()
+    return {r["code"]: int(r["seq"]) for r in rows}
+
+
+# =============================================================================
 # Ref table CRUD
 # =============================================================================
 

@@ -2,8 +2,9 @@
 Upgraded derive functions for TW, PS, ETF, II, SSS.
 Translates the actual Excel formulas extracted from the workbook into Python.
 
-derive_tw and derive_sss defined here are re-exported by etl/derive.py
-via a top-of-file import, so derive_all() can call them directly.
+derive_tw is defined here and re-exported by etl/derive.py
+via a top-of-file import, so derive_all() can call it directly.
+derive_sss was retired 2026-06-13 (drv_sss dropped; SSS now in drv_source_standing).
 
 Each function follows the same pattern as the originals:
   - opens a meta_derived_run row
@@ -294,153 +295,9 @@ derive_tw = _wrap("drv_tw", _derive_tw_v2_impl)
 # _derive_ii_v2_impl + derive_ii ARCHIVED 2026-05-12 — archived 2026-05-12 (see _trash_2026-05-12/etl/_archived/)
 
 # =============================================================================
-# SSS — Signal Strength Summary
+# SSS — _derive_sss_v2_impl + derive_sss RETIRED 2026-06-13
+# drv_sss table dropped; SSS data now stored in drv_source_standing.
 # =============================================================================
-
-def _derive_sss_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
-    """
-    Mirrors SSS Excel formulas:
-      D Rank HL    = if Unranked = "" use Rank else 0
-      E Unranked   = if Anlst="KMSignal" 99, "Bench" 50, else ""
-      F Signal     = pct_delta (% Delta Since Initial from raw Y col)
-      G AnlstBest  = anlst_best_idea_rank raw
-      H Rank       = parse "/" from G - first part as int (or 99 KMSignal, 50 Bench)
-      I Total      = parse "/" from G - second part (default 9)
-      J SignalSign = IFS(F>0.5,3, F>0.25,2, F>0,1, F<=0,-1)
-      K Is Latest  = "Y" if this date = max(snapshot_date) globally
-      L Latest     = symbol if this is max date for THIS symbol
-      M Removed    = if was latest before but not this time
-      N Miss MA    = symbol if missing from MA AND is_latest=Y
-      O,P,Q,R     = lookup symbol against TL/MA/Y/SSS
-    """
-    cur_rows = session.execute(text("""
-        SELECT snapshot_date, tos_symbol AS symbol, days_on, signal_date, prior_close,
-               last_close, pct_delta, sector, analyst, anlst_best_idea_rank
-        FROM hist_sss WHERE snapshot_date = :d
-    """), {"d": as_of_date}).mappings().all()
-    if not cur_rows:
-        return 0
-
-    # Global max snapshot_date in hist_sss up to as_of_date
-    max_date_global = session.execute(text("""
-        SELECT MAX(snapshot_date) FROM hist_sss WHERE snapshot_date <= :d
-    """), {"d": as_of_date}).scalar()
-
-    # Latest date PER symbol (keyed by tos_symbol — normalized)
-    latest_per_sym = {
-        row.symbol: row.max_d for row in session.execute(text("""
-            SELECT tos_symbol AS symbol, MAX(snapshot_date) AS max_d
-            FROM hist_sss WHERE snapshot_date <= :d GROUP BY tos_symbol
-        """), {"d": as_of_date})
-    }
-
-    # Was this symbol latest on PREVIOUS snapshot_date (for "removed" detection)
-    prev_latest = {
-        row.symbol: row.max_d for row in session.execute(text("""
-            SELECT tos_symbol AS symbol, MAX(snapshot_date) AS max_d
-            FROM hist_sss
-            WHERE snapshot_date < :d
-            GROUP BY tos_symbol
-        """), {"d": as_of_date})
-    }
-
-    # Lookup sets for cross-tab refs (all keyed by tos_symbol)
-    ma_syms  = {row[0] for row in session.execute(text(
-        "SELECT tos_symbol FROM drv_ma WHERE as_of_date = :d"
-    ), {"d": as_of_date})}
-    tl_syms  = {row[0] for row in session.execute(text(
-        "SELECT DISTINCT tos_symbol FROM hist_tl WHERE snapshot_date = :d"
-    ), {"d": as_of_date})}
-    y_syms   = {row[0] for row in session.execute(text(
-        "SELECT DISTINCT tos_symbol FROM hist_y WHERE snapshot_date = :d"
-    ), {"d": as_of_date})}
-
-    out: list[dict] = []
-    for r in cur_rows:
-        sym = r["symbol"]
-        anlst_raw = (r["anlst_best_idea_rank"] or "").strip()
-
-        # E Unranked
-        if anlst_raw.lower() == "kmsignal":
-            unranked = "99"
-        elif anlst_raw.lower() == "bench":
-            unranked = "50"
-        else:
-            unranked = ""
-
-        # H Rank
-        if anlst_raw.lower() == "kmsignal":
-            rank = 99
-        elif anlst_raw.lower() == "bench":
-            rank = 50
-        else:
-            try:
-                rank = float(anlst_raw.split("/")[0]) if "/" in anlst_raw else None
-            except ValueError:
-                rank = None
-
-        # I Total
-        try:
-            total = float(anlst_raw.split("/")[1]) if "/" in anlst_raw else 9.0
-        except (ValueError, IndexError):
-            total = 9.0
-
-        # D Rank HL
-        rank_hl = (rank if rank is not None else 0) if not unranked else 0
-
-        # F Signal
-        signal = _clean(r["pct_delta"])
-
-        # J Signal Sign
-        if signal > 0.5: sig_sign = 3
-        elif signal > 0.25: sig_sign = 2
-        elif signal > 0: sig_sign = 1
-        else: sig_sign = -1
-
-        # K Is Latest
-        is_latest = "Y" if r["snapshot_date"] == max_date_global else ""
-
-        # L Latest (per symbol)
-        latest_for_sym = "Y" if latest_per_sym.get(sym) == r["snapshot_date"] else ""
-
-        # M Removed Date
-        removed = None
-        if latest_for_sym == "Y" and is_latest != "Y":
-            removed = r["snapshot_date"]
-
-        # N Miss MA
-        miss_ma = sym if (is_latest == "Y" and sym not in ma_syms) else ""
-
-        # Lookups
-        tos_lookup = sym if sym in tl_syms else None
-        ma_lookup = sym if sym in ma_syms else None
-        y_lookup = sym if sym in y_syms else None
-
-        out.append({
-            "snapshot_date":     r["snapshot_date"],
-            "tos_symbol":        sym,
-            "rank_hl":           rank_hl,
-            "unranked":          unranked,
-            "signal":            signal,
-            "anlst_best_idea":   anlst_raw,
-            "rank":              rank,
-            "total":             total,
-            "signal_sign":       sig_sign,
-            "is_latest":         is_latest,
-            "latest_symbol":     sym if latest_for_sym == "Y" else None,
-            "removed_date":      removed,
-            "miss_ma":           miss_ma,
-            "tos_lookup":        tos_lookup,
-            "ma_lookup":         ma_lookup,
-            "y_lookup":          y_lookup,
-            "vlkup":             None,  # would lookup against drv_sss
-            "source_run_id":     run_id,
-        })
-    return replace_for_date(session, "drv_sss", "snapshot_date", as_of_date, out)
-
-
-derive_sss = _wrap("drv_sss", _derive_sss_v2_impl)
-
 
 # =============================================================================
 # PS — archive note: ps tab derivation removed 2026-05 (ps5/pstn tables removed)

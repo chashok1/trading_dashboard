@@ -354,13 +354,34 @@ def get_actionable(
         SELECT a.*,
                COALESCE(a.source_asset_class, m.asset_class) AS real_asset_class,
                q.last_price, q.net_chng, q.pct_change, q.export_date, q.export_time, q.loaded_at,
+               q.pct_brr AS quote_pct_brr, q.zone_signal AS quote_zone,
+               q.is_intraday AS quote_is_intraday,
                u.user_action AS last_user_action,
                u.snooze_until AS snooze_until,
                rr.td_tn_bb_action_desc AS rr_action,
                rr.tn_td_rule_desc AS tn_td_desc,
                rr.bb_rng_strk_desc AS bb_desc,
                rr.rr_desc,
-               rr.rr_bull_bear
+               rr.rr_bull_bear,
+               (SELECT STRING_AGG(acct, ', ' ORDER BY acct)
+                FROM (
+                    SELECT DISTINCT COALESCE(f.account_name, f.account_number) AS acct
+                    FROM hist_f f
+                    WHERE f.tos_symbol = a.tos_symbol
+                      AND f.snapshot_date = (
+                          SELECT MAX(snapshot_date) FROM hist_f
+                          WHERE snapshot_date <= a.as_of_date)
+                      AND f.qty > 0
+                    UNION
+                    SELECT DISTINCT c.account AS acct
+                    FROM hist_cs c
+                    WHERE c.tos_symbol = a.tos_symbol
+                      AND c.snapshot_date = (
+                          SELECT MAX(snapshot_date) FROM hist_cs
+                          WHERE snapshot_date <= a.as_of_date)
+                      AND c.qty > 0
+                ) _accts
+               ) AS held_accounts
         FROM drv_actionable a
         LEFT JOIN drv_cat_atomic_input cat
                ON cat.tos_symbol = a.tos_symbol AND cat.as_of_date = a.as_of_date

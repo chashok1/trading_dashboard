@@ -12,7 +12,7 @@ VALUES
     ('SPX',   'S&P',        'index',  '["tos:SPX","fred:SP500"]'::JSONB,       'index', 10,  TRUE),
     ('COMP',  'Nasdaq',     'index',  '["tos:$COMP","fred:NASDAQCOM"]'::JSONB,  'index', 20,  TRUE),
     ('DJI',   'Dow',        'index',  '["tos:$DJI","fred:DJIA"]'::JSONB,        'index', 30,  TRUE),
-    ('RUT',   'Russell 2K', 'index',  '["tos:RUT"]'::JSONB,                     'index', 40,  TRUE),
+    ('RUT',   'RUT',        'index',  '["tos:RUT"]'::JSONB,                     'index', 40,  TRUE),
     ('VIX',   'VIX',        'risk',   '["tos:VIX","fred:VIXCLS"]'::JSONB,       'level', 50,  TRUE),
     ('VXN',   'VXN',        'risk',   '["tos:VXN:CGI"]'::JSONB,                 'level', 55,  TRUE),
     ('VXD',   'VXD',        'risk',   '["tos:VXD"]'::JSONB,                     'level', 57,  TRUE),

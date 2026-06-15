@@ -967,7 +967,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   display: flex;
   align-items: center;
   gap: 0;
-  height: 28px;
+  height: 44px;
   background: var(--card-bg);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
@@ -983,6 +983,143 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 }
 .market-tape::-webkit-scrollbar { display: none; }
 
+/* RR tape — bar 2, stacked below bar 1 */
+.rr-tape {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 44px;
+  background: var(--surface-1, var(--card-bg));
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: none;
+  padding: 0 8px;
+  font-size: 11px;
+  position: sticky;
+  top: 44px;
+  z-index: 89;
+  flex-shrink: 0;
+}
+.rr-tape::-webkit-scrollbar { display: none; }
+
+.rr-cat {
+  padding: 0 8px;
+  border-right: 1px solid var(--border);
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-3);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+/* Per-symbol chip inside rr-tape */
+.rr-chip {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-right: 1px solid var(--border);
+  height: 100%;
+  flex-shrink: 0;
+  cursor: default;
+  box-sizing: border-box;
+}
+
+.rr-chip-top {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Outlook-colored symbol button */
+.rr-sym {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+/* Range bar */
+.rr-rb {
+  position: relative;
+  height: 5px;
+  background: var(--border, #e5e7eb);
+  border-radius: 2px;
+  min-width: 52px;
+}
+.rr-rb-fill {
+  position: absolute;
+  left: 0; top: 0;
+  height: 100%;
+  border-radius: 2px;
+  background: #94a3b8;
+  opacity: 0.4;
+}
+.rr-rb-tick {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 9px;
+  background: var(--text-1, #111);
+  transform: translateX(-1px);
+  border-radius: 1px;
+}
+
+/* Symbol tape — filterable, below the actionable filter bar */
+.sym-tape-bar {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 88px;
+  z-index: 87;
+  flex-shrink: 0;
+}
+.sym-tape-track {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  height: 100%;
+  padding: 0 2px;
+}
+.sym-tape-nav {
+  flex-shrink: 0;
+  width: 28px;
+  height: 100%;
+  border: none;
+  border-right: 1px solid var(--border);
+  background: var(--card-bg);
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-2);
+}
+.sym-tape-nav:last-of-type { border-right: none; border-left: 1px solid var(--border); }
+.sym-tape-nav:disabled { opacity: 0.25; cursor: default; }
+.sym-tape-nav:not(:disabled):hover { background: rgba(0,0,0,0.04); }
+.sym-tape-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-3);
+  padding: 0 8px;
+  border-left: 1px solid var(--border);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
 
 .mt-cell {
   display: inline-flex;

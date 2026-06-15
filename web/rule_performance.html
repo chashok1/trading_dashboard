@@ -79,7 +79,6 @@
         </div>
         <nav class="nav-menu">
             <a href="/" class="nav-item">Dashboard</a>
-            <a href="/cockpit" class="nav-item">Cockpit</a>
             <a href="/actionable" class="nav-item">Actionable</a>
             <a href="/portfolio" class="nav-item">Portfolio</a>
             <a href="/rules" class="nav-item">Rules</a>
@@ -145,8 +144,9 @@
                         <tr>
                             <th onclick="sortBy('rule_id')">Rule <span class="sort-indicator"></span></th>
                             <th onclick="sortBy('direction')">Dir <span class="sort-indicator"></span></th>
-                            <th onclick="sortBy('fires')">Fires <span class="sort-indicator"></span></th>
+                            <th onclick="sortBy('n_fires')">n <span class="sort-indicator"></span></th>
                             <th onclick="sortBy('edge_20d')">Edge 20d <span class="sort-indicator">▾</span></th>
+                            <th title="95% confidence interval for Edge 20d">95% CI</th>
                             <th onclick="sortBy('win_rate')">Win % <span class="sort-indicator"></span></th>
                             <th onclick="sortBy('raw_avg_fwd20')">Raw 20d <span class="sort-indicator"></span></th>
                             <th>Span</th>
@@ -154,7 +154,7 @@
                     </thead>
                     <tbody id="perfTableBody">
                         <tr>
-                            <td colspan="7" style="text-align: center; padding: 20px; color: var(--text-3);">
+                            <td colspan="8" style="text-align: center; padding: 20px; color: var(--text-3);">
                                 Loading scorecard…
                             </td>
                         </tr>

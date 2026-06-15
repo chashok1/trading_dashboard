@@ -133,6 +133,7 @@ Three tiers: atomic rules (`ref_trig_atomic_rule`) → composite rules (`ref_tri
 14. **Push back on wasteful requests.** State concern + better option under `### Worth reconsidering`. Use sparingly. Hard rule.
 15. **tos_symbol in all drv_*.** Never use raw `symbol` in derive functions. `symbol` column exists in `hist_*` only. See `docs/tos_symbol_normalization.md`.
 16. **tos_symbol fallback files at root** — `detailed_tos_groups.md` and `strategy_and_fallback_details.md` live at project root (not `docs/`); move them when convenient.
+17. **Cowork defaults to hand-off, not editing.** By default in Cowork (desktop) sessions Claude is the orchestrator/architect: it investigates, plans, and authors task specs rather than editing code. Implementation normally goes to the VS Code **developer agent** via `agent-tasks/TASK_<n>.md`, with `AGENT_WORK.md` as the developer's master pointer (the file `/dev-cycle` reads) and `AGENT_TASK.md` as the tester's verification pointer; the developer logs `DEV_HANDOFF.md` (ends `ALL_DONE`) and hands verification to the **tester agent**, which writes `AGENT_RESULT_<n>.md` (ends `DONE`/`FAILED`). **Exception: if the user explicitly asks Claude to write or fix code, do it directly.** DB queries always go to the developer regardless — Cowork has no DB access (sandbox can't reach local Postgres). No agent commits/pushes — user commits from Windows (overrides #13 in this flow). Full workflow + file conventions: `docs/agent_handoff_workflow.md`.
 
 ---
 
@@ -257,7 +258,8 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Unused DB tables/columns audit | `docs/audit/unused_db_report.md` |
 | Unused/cruft code files audit | `docs/audit/unused_code_report.md` |
 | Macro feed (FRED) — econ data + EOD index levels | `docs/macro_feed_logic.md`; `etl/fetch_macro.py`; `ref_macro_series`/`hist_macro`/`v_macro_latest`; `/api/macro` |
-| Cockpit Market-context band (macro tiles + Refresh) | `web/macro_band.js` (loaded by `web/cockpit.html`, `/cockpit`); reads `/api/macro`, `POST /api/macro/refresh` |
+| Actionable Market-context band (macro tiles + Refresh) | `web/macro_band.js` (loaded by `web/actionable.html`, `/actionable`); `/cockpit` 301-redirects to `/actionable`; reads `/api/macro`, `POST /api/macro/refresh` |
 | Full command reference + web endpoints + troubleshooting table | `COMMANDS.md` |
 | Schema + behaviour migration history (all dated changes) | `docs/migrations.md` |
+| Agent handoff workflow (Cowork → developer → tester; file naming, markers, no-commit) | `docs/agent_handoff_workflow.md` |
 

@@ -53,9 +53,5 @@ You are a **code writer**. Your only job is to implement features and fixes. Wri
 7. **Report back** (your final message) in 3-6 lines: the archived filename (`AGENT_WORK_<N>.md`), files changed, and the test commands you put in `DEV_HANDOFF.md`. Be concise.
 
 ## Rules
-- **You write code, nothing else.** No tests, no test fixtures, no "while I'm here" refactors. If you spot unrelated problems, note them in `DEV_HANDOFF.md` under Risks & notes — do not fix them.
-- **Stay inside the diff you were asked for.** Touch only what the task requires. Follow the existing patterns, naming, and structure of the surrounding code.
-- One task per run. Never invent work beyond `AGENT_WORK.md`.
-- Never delete or overwrite raw history/data. Follow repo `CLAUDE.md` conventions exactly.
-- Commit code changes to git with a clear message when the repo is git-tracked.
-- You cannot call the Tester yourself (subagents can't spawn subagents). Finishing with `Status: READY_FOR_TEST` is the signal for the orchestrator to run the Tester.
+- **`etl/` changes → restart before re-derive.** The app runs uvicorn with `--reload-dir api`, so it does NOT hot-reload `etl/`. Whenever you change anything under `etl/` (derive logic, loaders), state explicitly in `DEV_HANDOFF.md > How to test`: STOP the server, relaunch `start.bat` (loads the new code), THEN re-derive. Otherwise the running server re-derives with stale code and the fix appears to do nothing.
+- **You write code, nothing else.** No tests, no test fixtures, no "while I'm here" refactors. If you spot unrelated problems, note them in `DEV_HANDOFF.md` under Risks & notes — do not fi

@@ -314,6 +314,58 @@ def _state_etf_ii(session: Session, base_table: str, change_table: str,
     return result
 
 
+def _state_etf_ii_tos(session: Session, base_table: str, change_table: str,
+                      as_of_date: date, wt_map: dict[str, float]) -> dict:
+    """Like _state_etf_ii but keys result on tos_symbol instead of raw symbol.
+
+    Used to load the PREVIOUS period's effective state for comparison, so that
+    held-detection and action classification use the normalized tos_symbol key.
+    """
+    chg_norm = _normalize_change_str_sql("change_str")
+    rows = session.execute(
+        text(f"""
+            WITH latest_snap AS (
+                SELECT MAX(snapshot_date) AS d FROM {base_table}
+                 WHERE snapshot_date <= '{as_of_date}'
+            ),
+            bundle_base AS (
+                SELECT COALESCE(tos_symbol, symbol) AS sym,
+                       outlook, snapshot_date AS d
+                  FROM {base_table}
+                 WHERE snapshot_date = (SELECT d FROM latest_snap)
+            ),
+            bundle_patches AS (
+                SELECT COALESCE(tos_symbol, symbol) AS sym,
+                       ({chg_norm}) AS outlook, event_date AS d
+                  FROM {change_table}
+                 WHERE event_date > (SELECT d FROM latest_snap)
+                   AND event_date <= '{as_of_date}'
+                   AND change_str IS NOT NULL
+            ),
+            unified AS (
+                SELECT * FROM bundle_base
+                UNION ALL
+                SELECT * FROM bundle_patches
+            ),
+            ranked AS (
+                SELECT sym, outlook, d,
+                       ROW_NUMBER() OVER (PARTITION BY sym ORDER BY d DESC) AS rk
+                  FROM unified
+            )
+            SELECT sym, outlook FROM ranked WHERE rk = 1
+        """)).fetchall()
+    result: dict = {}
+    for sym, outlook in rows:
+        if not outlook:
+            continue
+        if str(outlook).upper() == "NEUTRAL":
+            continue
+        w = _resolve_outlook_weight(outlook, None, wt_map)
+        if w is not None:
+            result[sym] = w
+    return result
+
+
 def _state_dense(session: Session, table: str, date_col: str,
                  as_of_date: date, wt_map: dict[str, float]) -> dict:
     """Effective state at as_of_date for a dense source (exact-match on date)."""
@@ -505,7 +557,8 @@ def _action_outlook_modifier(base, prev, held: bool) -> tuple[Optional[str], str
     return None, "not held, no action"
 
 
-def _action_standing(base, prev, held: bool = False) -> tuple[Optional[str], str]:
+def _action_standing(base, prev, held: bool = False,
+                     drop_action: str = "REDUCE") -> tuple[Optional[str], str]:
     """Standing-list classifier (used by II, ETF, RR).
 
     Presence on the current list with a positive weight is a buy verdict
@@ -514,8 +567,11 @@ def _action_standing(base, prev, held: bool = False) -> tuple[Optional[str], str
 
       base > 0                  -> ADD     (positive weight on the current list)
       base < 0                  -> REMOVE  (negative weight on the current list)
-      base absent, prev present -> REDUCE if held, else silent (dropped from list)
+      base absent, prev present -> drop_action if held, else silent (dropped from list)
       otherwise                 -> silent
+
+    drop_action defaults to "REDUCE".  Pass "REMOVE" for ETF so a symbol
+    dropped from the ETF list while held triggers Sell All, not Sell Some.
     """
     if base is not None:
         try:
@@ -530,9 +586,9 @@ def _action_standing(base, prev, held: bool = False) -> tuple[Optional[str], str
     if prev is not None:
         if held:
             try:
-                return "REDUCE", f"dropped from list (was {float(prev):+g})"
+                return drop_action, f"dropped from list (was {float(prev):+g})"
             except (TypeError, ValueError):
-                return "REDUCE", "dropped from list"
+                return drop_action, "dropped from list"
         else:
             return None, "dropped from list, not held"
     return None, "not on list"
@@ -740,44 +796,81 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                 _ETF_II_CHG = {"ETF": "hist_etfchg", "II": "hist_iichg"}
 
                 if sc in _ETF_II_CHG:
-                    # Periodic sources (ETF=SUN, II=MON) with intra-week
-                    # patches. Week-bucketed: latest snapshot in the current
-                    # week vs. latest in the previous week; anchor read from
-                    # ref_load_files (per-source default).
-                    default_dow = 0 if sc == "ETF" else 1
-                    anchor_dow = _load_anchor_dow(session, table, default_dow)
-                    curr_snap, prev_snap = _find_week_period_snapshots(
-                        session, table, date_col, as_of_date, anchor_dow
-                    )
+                    # ETF/II: read current from drv_source_standing (bundle-cap,
+                    # tos_symbol keyed). Previous from hist_*+chg with tos_symbol.
+                    curr_etf_rows = session.execute(text("""
+                        SELECT tos_symbol, weight, snapshot_date
+                        FROM drv_source_standing
+                        WHERE as_of_date = :d AND source_code = :sc
+                    """), {"d": as_of_date, "sc": sc}).fetchall()
 
-                    # Presence guard: must have snapshot in current period
-                    if curr_snap is None:
-                        log.warning("source %s (%s) has no snapshot in the "
-                                    "current week (anchor dow %d, <= %s) - "
-                                    "skipping (no actions emitted)",
-                                    sc, table, anchor_dow, as_of_date)
+                    if not curr_etf_rows:
+                        log.warning("source %s: no drv_source_standing rows at "
+                                    "%s — skipping", sc, as_of_date)
                         session.execute(text("RELEASE SAVEPOINT sp_source"))
                         continue
 
-                    # Get effective state: snapshot + intra-period patches
-                    today_w = _state_etf_ii(session, table, _ETF_II_CHG[sc],
-                                            curr_snap, wt_map)
-                    prev_date = prev_snap  # Use the previous period's snapshot date directly
-                    prev_w  = _state_etf_ii(session, table, _ETF_II_CHG[sc],
-                                            prev_date, wt_map) if prev_date else {}
+                    curr_snap = curr_etf_rows[0][2]
+                    today_w = {r[0]: r[1] for r in curr_etf_rows}
+
+                    # Previous period: latest hist_etf/hist_ii snapshot before
+                    # curr_snap (using tos_symbol for correct keying)
+                    prev_snap_row = session.execute(text(
+                        f"SELECT MAX(snapshot_date) FROM {table} "
+                        "WHERE snapshot_date < :snap"
+                    ), {"snap": curr_snap}).first()
+                    prev_date = prev_snap_row[0] if prev_snap_row else None
+                    prev_w: dict = {}
+                    if prev_date:
+                        # Use _state_etf_ii but remap symbol→tos_symbol via the
+                        # tos_symbol column already populated in hist_* tables.
+                        prev_w = _state_etf_ii_tos(
+                            session, table, _ETF_II_CHG[sc],
+                            prev_date, wt_map)
                     suppress = False
                 elif sc == "CALL":
-                    # Standing-recommendation model. A positive call is a
-                    # standing ADD/INCREASE until acted on; INCREASE/REDUCE
-                    # surface only while a real weight change is still inside
-                    # the 30-day window. Self-contained - emits its own rows
-                    # and skips the shared _action_standing loop below.
+                    # CALL: read current from drv_source_standing (30-day window,
+                    # tos_symbol keyed). Prior-diff detection via hist_call.
                     lb = int(s.get("lookback_days") or 30)
-                    states = _call_window_states(session, table, date_col,
-                                                 as_of_date, wt_map, lb)
+                    # Current CALL state from drv_source_standing
+                    call_rows = session.execute(text("""
+                        SELECT tos_symbol, weight, snapshot_date, modifier
+                        FROM drv_source_standing
+                        WHERE as_of_date = :d AND source_code = 'CALL'
+                    """), {"d": as_of_date}).fetchall()
+                    # Build call states {sym: (cur_w, cur_date, prior_diff_w, prior_diff_date)}
+                    # by re-reading hist_call for the prior-diff detection only
+                    cur_call_by_sym = {r[0]: (r[1], r[2]) for r in call_rows}
+                    # Build prior-diff from hist_call for tos_symbol keyed symbols
+                    prior_diff: dict = {}
+                    if cur_call_by_sym:
+                        cutoff = as_of_date - timedelta(days=lb)
+                        hcall_rows = session.execute(text("""
+                            WITH ranked AS (
+                                SELECT COALESCE(tos_symbol, symbol) AS sym,
+                                       outlook, outlook_modifier, snapshot_date,
+                                       ROW_NUMBER() OVER (
+                                           PARTITION BY COALESCE(tos_symbol, symbol)
+                                           ORDER BY snapshot_date DESC
+                                       ) AS rk
+                                FROM hist_call
+                                WHERE snapshot_date <= :d
+                                  AND snapshot_date >= :cut
+                                  AND COALESCE(tos_symbol, symbol) IS NOT NULL
+                            )
+                            SELECT sym, outlook, outlook_modifier, snapshot_date, rk
+                            FROM ranked WHERE rk <= 2 ORDER BY sym, rk
+                        """), {"d": as_of_date, "cut": cutoff}).fetchall()
+                        for sym, outlook, modifier, snap, rk in hcall_rows:
+                            w = _resolve_outlook_weight(outlook, modifier, wt_map)
+                            if rk == 2:
+                                cur_w = cur_call_by_sym.get(sym, (None, None))[0]
+                                if cur_w != w:
+                                    prior_diff[sym] = (w, snap)
                     call_batch = []
-                    for csym, (cw, cd, pdw, pdd) in states.items():
+                    for csym, (cw, cd) in cur_call_by_sym.items():
                         chld = csym in holdings
+                        pdw, pdd = prior_diff.get(csym, (None, None))
                         cact, creason = _action_call_standing(cw, pdw, chld)
                         if cact is None:
                             continue
@@ -801,35 +894,41 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                     session.execute(text("RELEASE SAVEPOINT sp_source"))
                     continue
                 else:
-                    # Dense source (exact-match snapshot date, e.g., RR).
-                    # If loads_prior_day_data: file loaded today contains yesterday's snapshot,
-                    # so compare (yesterday snapshot vs. most recent prior snapshot).
-                    # Otherwise: compare today vs. yesterday normally.
-                    loads_prior = s.get("loads_prior_day_data", False)
-                    comparison_date = (as_of_date - timedelta(days=1)) if loads_prior else as_of_date
+                    # RR (dense source). Read current from drv_source_standing
+                    # (tos_symbol keyed). Previous from hist_rr with tos_symbol.
+                    rr_rows = session.execute(text("""
+                        SELECT tos_symbol, weight, snapshot_date
+                        FROM drv_source_standing
+                        WHERE as_of_date = :d AND source_code = 'RR'
+                    """), {"d": as_of_date}).fetchall()
 
-                    # Presence guard: if no snapshot for comparison_date, skip (don't emit phantom REMOVEs)
-                    if not _source_has_rows_for_date(session, table, date_col, comparison_date):
-                        log.warning("source %s (%s) has no rows for %s — skipping (no actions emitted)",
-                                    sc, table, comparison_date)
+                    loads_prior = s.get("loads_prior_day_data", False)
+                    comparison_date = as_of_date
+
+                    if not rr_rows:
+                        # Fallback: no standing rows — skip to avoid phantom REMOVEs
+                        log.warning("source %s: no drv_source_standing rows at "
+                                    "%s — skipping", sc, as_of_date)
                         session.execute(text("RELEASE SAVEPOINT sp_source"))
                         continue
 
-                    # Find most recent prior snapshot before comparison_date
-                    prev_date_row = session.execute(text(f"""
-                        SELECT MAX({date_col}) FROM {table} WHERE {date_col} < '{comparison_date}'
-                    """)).first()
-                    prev_date = prev_date_row[0] if prev_date_row else None
+                    today_w = {r[0]: r[1] for r in rr_rows}
+                    curr_snap_rr = rr_rows[0][2]  # snapshot_date
 
-                    today_w = _state_dense(session, table, date_col,
-                                           comparison_date, wt_map)
-                    prev_w  = _state_dense(session, table, date_col,
-                                           prev_date, wt_map) if prev_date else {}
+                    # Previous: most recent hist_rr snapshot before curr_snap_rr
+                    prev_date_row = session.execute(text(
+                        "SELECT MAX(snapshot_date) FROM hist_rr "
+                        "WHERE snapshot_date < :snap"
+                    ), {"snap": curr_snap_rr}).first()
+                    prev_date = prev_date_row[0] if prev_date_row else None
+                    prev_w = _state_dense(
+                        session, table, date_col, prev_date, wt_map
+                    ) if prev_date else {}
                     suppress = False
+                    curr_snap = curr_snap_rr  # used in action_date / source_snap below
 
                 # Process actions for outlook_modifier sources (ETF/II, CALL, RR)
-                # For periodic sources (ETF/II), use the period's snapshot date, not as_of_date
-                action_date = (curr_snap if sc in _ETF_II_CHG else as_of_date)
+                action_date = curr_snap if sc in _ETF_II_CHG else as_of_date
                 source_snap = curr_snap if sc in _ETF_II_CHG else comparison_date
                 all_syms = set(today_w) | set(prev_w)
                 batch = []
@@ -837,7 +936,8 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                     base = today_w.get(sym)
                     prev = prev_w.get(sym)
                     held = sym in holdings
-                    act, reason = _action_standing(base, prev, held)
+                    drop_act = "REMOVE" if sc == "ETF" else "REDUCE"
+                    act, reason = _action_standing(base, prev, held, drop_act)
                     if act is None:
                         # No-op — skip writing the row entirely. Keeps
                         # drv_outlook_action focused on real signals.
@@ -871,34 +971,39 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                     total_rows += len(batch)
 
             elif method == "rank":
-                # Rank method is used by PS (weekly). Compare the latest
-                # snapshot in the current week against the latest in the
-                # previous week. Week anchor comes from ref_load_files
-                # (FRI fallback); see _find_week_period_snapshots.
-                anchor_dow = _load_anchor_dow(session, table)
-                curr_snap, prev_snap = _find_week_period_snapshots(
-                    session, table, date_col, as_of_date, anchor_dow
-                )
+                # PS (weekly rank). Read current state from drv_source_standing
+                # (whole-snapshot, tos_symbol keyed). Previous from hist_ps
+                # with tos_symbol for correct comparison.
+                curr_ps_rows = session.execute(text("""
+                    SELECT tos_symbol, rank, snapshot_date
+                    FROM drv_source_standing
+                    WHERE as_of_date = :d AND source_code = 'PS'
+                """), {"d": as_of_date}).fetchall()
 
-                # Presence guard: must have snapshot in current period
-                if curr_snap is None:
-                    log.warning("source %s (%s) has no snapshot in the current "
-                                "week (anchor dow %d, <= %s) - skipping "
-                                "(no actions emitted)",
-                                sc, table, anchor_dow, as_of_date)
+                if not curr_ps_rows:
+                    log.warning("source %s: no drv_source_standing rows for "
+                                "PS at %s — skipping", sc, as_of_date)
                     session.execute(text("RELEASE SAVEPOINT sp_source"))
                     continue
 
-                rank_col = "rank"
-                today_r, _, _ = _rank_snapshots(
-                    session, table, date_col, rank_col, key_col, curr_snap
-                )
+                curr_snap = curr_ps_rows[0][2]  # snapshot_date
+                today_r = {r[0]: r[1] for r in curr_ps_rows if r[1] is not None}
+
+                # Previous snapshot: most recent hist_ps snapshot before curr_snap
+                prev_snap_row = session.execute(text(f"""
+                    SELECT MAX({date_col}) FROM {table}
+                    WHERE {date_col} < :snap
+                """), {"snap": curr_snap}).first()
+                prev_date = prev_snap_row[0] if prev_snap_row else None
                 prev_r: dict = {}
-                prev_date = None
-                if prev_snap:
-                    prev_r, _, prev_date = _rank_snapshots(
-                        session, table, date_col, rank_col, key_col, prev_snap
-                    )
+                if prev_date:
+                    prev_rows = session.execute(text(f"""
+                        SELECT tos_symbol, rank FROM {table}
+                        WHERE {date_col} = :pd
+                          AND tos_symbol IS NOT NULL
+                          AND rank IS NOT NULL
+                    """), {"pd": prev_date}).fetchall()
+                    prev_r = {r[0]: r[1] for r in prev_rows}
 
                 all_syms = set(today_r) | set(prev_r)
                 batch = []
@@ -907,6 +1012,13 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                     prev = prev_r.get(sym)
                     held = sym in holdings
                     act, reason = _action_rank(curr, prev, held)
+                    # Behavior rule 3: PS drop emits REMOVE even when not held.
+                    # _action_rank returns None for not-held drop; override for PS.
+                    if act is None and curr is None and prev is not None:
+                        act, reason = "REMOVE", "dropped from PS list (not held)"
+                    # Skip if still no action (e.g. curr==prev==None)
+                    if act is None:
+                        continue
                     delta = None
                     if curr is not None and prev is not None:
                         try:
@@ -922,11 +1034,6 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                         "source_snap": curr_snap,
                     })
                 if batch:
-                    # Periodic sources (ETF/II/PS/SSS) key rows on the period
-                    # snapshot date, not the derive date D, so the as_of_date=D
-                    # wipe above misses them. Clear this source's rows for the
-                    # date it is about to write before re-inserting, so a
-                    # re-derive of any date in the period stays idempotent.
                     session.execute(text(
                         "DELETE FROM drv_outlook_action "
                         "WHERE source_code = :sc AND as_of_date = :d"
@@ -937,37 +1044,39 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
 
             elif method == "rank_pct_delta":
                 # SSS (weekly). Action is computed from pct_delta only;
-                # anlst_best_idea_rank is display-only. Week-bucketed:
-                # latest snapshot in the current week vs. latest in the
-                # previous week; anchor read from ref_load_files (def Mon).
-                anchor_dow = _load_anchor_dow(session, table, 1)
-                curr_snap, prev_snap = _find_week_period_snapshots(
-                    session, table, date_col, as_of_date, anchor_dow
-                )
+                # anlst_best_idea_rank is display-only.
+                # Reads current state from drv_source_standing (whole-snapshot,
+                # tos_symbol keyed). Previous state from hist_sss with tos_symbol.
+                # Guard: drv_source_standing must have SSS rows for as_of_date.
+                curr_sss_rows = session.execute(text("""
+                    SELECT tos_symbol, raw_value AS pd, rank AS arank,
+                           snapshot_date
+                    FROM drv_source_standing
+                    WHERE as_of_date = :d AND source_code = 'SSS'
+                """), {"d": as_of_date}).fetchall()
 
-                # Presence guard: must have snapshot in current period
-                if curr_snap is None:
-                    log.warning("source %s (%s) has no snapshot in the "
-                                "current week (anchor dow %d, <= %s) - "
-                                "skipping (no actions emitted)",
-                                sc, table, anchor_dow, as_of_date)
+                if not curr_sss_rows:
+                    log.warning("source %s: no drv_source_standing rows for "
+                                "SSS at %s — skipping", sc, as_of_date)
                     session.execute(text("RELEASE SAVEPOINT sp_source"))
                     continue
 
-                # pct_delta drives the action; anlst_best_idea_rank is display-only.
-                today_rows = session.execute(text(f"""
-                    SELECT symbol, pct_delta AS pd, anlst_best_idea_rank AS arank
-                    FROM {table} WHERE {date_col} = '{curr_snap}'
-                """)).fetchall()
-                today = {r[0]: (r[1], r[2]) for r in today_rows}
+                curr_snap = curr_sss_rows[0][3]  # snapshot_date from standing
+                today = {r[0]: (r[1], r[2]) for r in curr_sss_rows}
 
-                prev_date = prev_snap
+                # Previous snapshot: most recent hist_sss snapshot before curr_snap
+                prev_snap_row = session.execute(text(f"""
+                    SELECT MAX({date_col}) FROM {table}
+                    WHERE {date_col} < :snap
+                """), {"snap": curr_snap}).first()
+                prev_date = prev_snap_row[0] if prev_snap_row else None
                 prev: dict = {}
                 if prev_date:
                     prev_rows = session.execute(text(f"""
-                        SELECT symbol, pct_delta AS pd
-                        FROM {table} WHERE {date_col} = '{prev_date}'
-                    """)).fetchall()
+                        SELECT tos_symbol, pct_delta AS pd
+                        FROM {table} WHERE {date_col} = :pd
+                          AND tos_symbol IS NOT NULL
+                    """), {"pd": prev_date}).fetchall()
                     prev = {r[0]: r[1] for r in prev_rows}
 
                 all_syms = set(today) | set(prev)
@@ -1030,76 +1139,7 @@ def derive_outlook_action(session: Session, as_of_date: date,
 
 
 # ---------------------------------------------------------------------------
-# Standing verdict - per-symbol current-state recommendation (RR/ETF/II)
+# compute_standing_verdicts — RETIRED 2026-06-13 (Increment 6 cleanup)
+# No external callers. drv_source_standing is the canonical standing layer.
 # ---------------------------------------------------------------------------
-
-def compute_standing_verdicts(session: Session, as_of_date: date) -> list[dict]:
-    """Standing per-symbol verdict for RR / ETF / II - a verdict for *every*
-    symbol in each source's current universe, not just the movers.
-
-    Rule (current outlook weight + held status):
-        weight > 0,  not held -> ADD
-        weight > 0,  held     -> HOLD
-        weight <= 0, held     -> REMOVE
-        weight <= 0, not held -> (omitted)
-
-    Read-only, computed on demand. Returns a list of dicts:
-        {symbol, source, action, weight, held}
-    """
-    wt_map   = _load_outlook_weights(session)
-    holdings = _load_holdings(session, as_of_date)
-
-    def _verdict(weight, held):
-        try:
-            w = float(weight) if weight is not None else None
-        except (TypeError, ValueError):
-            w = None
-        if w is None:
-            return None
-        if w > 0:
-            return "HOLD" if held else "ADD"
-        return "REMOVE" if held else None
-
-    out: list[dict] = []
-
-    # RR - dense source (exact-match snapshot). loads_prior_day_data shifts
-    # the effective snapshot back one day, matching the change classifier.
-    try:
-        rr = session.execute(text(
-            "SELECT loads_prior_day_data FROM ref_outlook_source "
-            "WHERE source_code = 'RR'"
-        )).first()
-        loads_prior = bool(rr[0]) if rr else False
-        cmp_date = (as_of_date - timedelta(days=1)) if loads_prior else as_of_date
-        today_w = _state_dense(session, "hist_rr", "snapshot_date", cmp_date, wt_map)
-        for sym, w in today_w.items():
-            held = sym in holdings
-            act = _verdict(w, held)
-            if act:
-                out.append({"tos_symbol": sym, "source": "RR",
-                            "action": act, "weight": w, "held": held})
-    except Exception as e:
-        log.warning("standing verdict: RR failed (%s)", e)
-
-    # ETF / II - week-bucketed periodic sources.
-    for sc, table, chg, default_dow in (
-        ("ETF", "hist_etf", "hist_etfchg", 0),
-        ("II",  "hist_ii",  "hist_iichg",  1),
-    ):
-        try:
-            anchor = _load_anchor_dow(session, table, default_dow)
-            curr_snap, _ = _find_week_period_snapshots(
-                session, table, "snapshot_date", as_of_date, anchor)
-            if curr_snap is None:
-                continue
-            today_w = _state_etf_ii(session, table, chg, curr_snap, wt_map)
-            for sym, w in today_w.items():
-                held = sym in holdings
-                act = _verdict(w, held)
-                if act:
-                    out.append({"symbol": sym, "source": sc,
-                                "action": act, "weight": w, "held": held})
-        except Exception as e:
-            log.warning("standing verdict: %s failed (%s)", sc, e)
-
-    return out
+# (function removed)

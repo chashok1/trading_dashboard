@@ -94,12 +94,13 @@ the skipped/throttled status. `GET /api/macro` also returns a `last_fetch` block
 (started_at, status, rows_inserted, ...) for a "last fetched" stamp next to the
 button.
 
-## UI — Cockpit "Market context" band
+## UI — Actionable "Market context" band
 
-`web/macro_band.js` (loaded by `web/cockpit.html`) renders a "Market context"
-card at the top of the Cockpit screen (`/cockpit`), above the actions table.
-It is self-contained (own file, inits on DOMContentLoaded) so it can't disturb
-the existing cockpit logic.
+`web/macro_band.js` (loaded by `web/actionable.html`) renders a collapsible
+"Market context" card at the top of the Actionable screen (`/actionable`), above
+the toolbar. It is self-contained (own file, inits on DOMContentLoaded) so it
+can't disturb the actionable logic. (The `/cockpit` route now 301-redirects to
+`/actionable`.)
 
 - Reads `GET /api/macro` and renders one section per group (Indexes, Rates &
   curve, Inflation, Jobs, Risk, Dollar & commodities), each a grid of tiles

@@ -28,10 +28,9 @@ from etl.warnings import clear_screen_warnings, add_warning
 # without a circular import.
 from etl._derive_common import _open_drv_run, _close_drv_run, _wrap
 
-# derive_tw and derive_sss have formula-faithful implementations in
-# derive_v2.py — import them here so derive_all() can call them like any
-# other deriver. (Previously a bottom-of-file rebind handled this.)
-from etl.derive_v2 import derive_tw, derive_sss
+# derive_tw has a formula-faithful implementation in derive_v2.py.
+# derive_sss was retired 2026-06-13 (drv_sss dropped; SSS now in drv_source_standing).
+from etl.derive_v2 import derive_tw
 
 log = logging.getLogger(__name__)
 
@@ -663,14 +662,14 @@ def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
         ORDER BY h.tos_symbol, h.snapshot_date DESC
     ),
     sh AS (
-        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol,
-               dr.signal AS SSS_signal,
-               dr.signal_sign AS SSS_signal_sign,
-               dr.rank_hl AS SSS_rank_hl
-        FROM hist_sss h
-        LEFT JOIN drv_sss dr USING (snapshot_date, tos_symbol)
-        WHERE h.snapshot_date <= (SELECT d FROM p)
-        ORDER BY h.tos_symbol, h.snapshot_date DESC
+        -- drv_sss retired (2026-06-13); this dead CTE returns NULLs for SSS columns
+        SELECT DISTINCT ON (tos_symbol) tos_symbol,
+               NULL::NUMERIC AS SSS_signal,
+               NULL::NUMERIC AS SSS_signal_sign,
+               NULL::NUMERIC AS SSS_rank_hl
+        FROM hist_sss
+        WHERE snapshot_date <= (SELECT d FROM p)
+        ORDER BY tos_symbol, snapshot_date DESC
     ),
     fid AS (
         SELECT tos_symbol, SUM(qty) AS held_qty FROM hist_f
@@ -985,86 +984,68 @@ def _derive_outlooks_impl(session: Session, as_of_date: date, run_id: int) -> in
         text("DELETE FROM drv_outlooks WHERE as_of_date = :d"),
         {"d": as_of_date},
     )
-    # rr CTE
+    # rr CTE — lrr/trr from drv_rr; rr_date/rr_outlook from drv_source_standing
     session.execute(text("""
         CREATE TEMP TABLE _t_out_rr ON COMMIT DROP AS
         SELECT r.tos_symbol,
-            (SELECT MAX(snapshot_date) FROM hist_rr
-             WHERE tos_symbol = r.tos_symbol
-               AND snapshot_date <= :d) AS rr_date,
+            ss.snapshot_date AS rr_date,
             r.lrr AS rr_buy_trade,
             r.trr AS rr_sell_trade,
-            h.outlook  AS rr_outlook
+            ss.outlook  AS rr_outlook
         FROM drv_rr r
-        LEFT JOIN LATERAL (
-            SELECT outlook FROM hist_rr
-            WHERE tos_symbol = r.tos_symbol
-              AND snapshot_date <= :d
-            ORDER BY snapshot_date DESC LIMIT 1
-        ) h ON TRUE
+        LEFT JOIN drv_source_standing ss
+               ON ss.as_of_date = :d
+              AND ss.source_code = 'RR'
+              AND ss.tos_symbol  = r.tos_symbol
         WHERE r.as_of_date = :d
     """), {"d": as_of_date})
 
-    # call CTE
+    # call CTE — reads drv_source_standing (30-day window, tos_symbol keyed)
     session.execute(text("""
         CREATE TEMP TABLE _t_out_cl ON COMMIT DROP AS
-        SELECT DISTINCT ON (h.tos_symbol)
-            h.tos_symbol,
-            h.outlook           AS call_outlook,
-            h.outlook_modifier  AS call_modifier,
-            CAST(rp.value AS NUMERIC) AS call_weight
-        FROM hist_call h
-        LEFT JOIN ref_param rp
-               ON rp.sheet = 'outlook'
-              AND UPPER(rp.param_name) = UPPER(COALESCE(h.outlook,''))
-        WHERE h.snapshot_date <= :d
-        ORDER BY h.tos_symbol, h.snapshot_date DESC
+        SELECT tos_symbol,
+               outlook   AS call_outlook,
+               modifier  AS call_modifier,
+               weight    AS call_weight
+        FROM drv_source_standing
+        WHERE as_of_date = :d AND source_code = 'CALL'
     """), {"d": as_of_date})
 
-    # etf CTE
+    # etf CTE — reads drv_source_standing (bundle-cap, tos_symbol keyed)
     session.execute(text("""
         CREATE TEMP TABLE _t_out_ef ON COMMIT DROP AS
-        SELECT DISTINCT ON (h.tos_symbol)
-            h.tos_symbol,
+        SELECT dss.tos_symbol,
             h.brr AS etf_brr, h.trr AS etf_trr,
-            COALESCE(h.outlook,
-                CASE WHEN h.brr > 0 THEN 'BULLISH'
-                     WHEN h.brr < 0 THEN 'BEARISH'
-                     ELSE 'NEUTRAL' END) AS etf_outlook
-        FROM hist_etf h
-        WHERE h.snapshot_date <= :d
-        ORDER BY h.tos_symbol, h.snapshot_date DESC
+            dss.outlook AS etf_outlook
+        FROM drv_source_standing dss
+        LEFT JOIN LATERAL (
+            SELECT brr, trr FROM hist_etf
+            WHERE tos_symbol = dss.tos_symbol
+              AND snapshot_date <= :d
+            ORDER BY snapshot_date DESC LIMIT 1
+        ) h ON TRUE
+        WHERE dss.as_of_date = :d AND dss.source_code = 'ETF'
     """), {"d": as_of_date})
 
-    # ii CTE
+    # ii CTE — reads drv_source_standing (bundle-cap, tos_symbol keyed)
     session.execute(text("""
         CREATE TEMP TABLE _t_out_ii ON COMMIT DROP AS
-        SELECT DISTINCT ON (h.tos_symbol)
-            h.tos_symbol,
-            h.outlook AS ii_outlook,
-            CAST(rp.value AS NUMERIC) AS ii_weight
-        FROM hist_ii h
-        LEFT JOIN ref_param rp
-               ON rp.sheet = 'outlook'
-              AND UPPER(rp.param_name) = UPPER(COALESCE(h.outlook,''))
-        WHERE h.snapshot_date <= :d
-        ORDER BY h.tos_symbol, h.snapshot_date DESC
+        SELECT tos_symbol,
+               outlook   AS ii_outlook,
+               weight    AS ii_weight
+        FROM drv_source_standing
+        WHERE as_of_date = :d AND source_code = 'II'
     """), {"d": as_of_date})
 
-    # sss CTE
+    # sss CTE — reads drv_source_standing (whole-snapshot, tos_symbol keyed)
     session.execute(text("""
         CREATE TEMP TABLE _t_out_sh ON COMMIT DROP AS
-        SELECT DISTINCT ON (h.tos_symbol)
-            h.tos_symbol,
-            dr.signal       AS SSS_signal,
-            dr.signal_sign  AS SSS_signal_sign,
-            dr.rank_hl      AS SSS_rank_hl
-        FROM hist_sss h
-        LEFT JOIN drv_sss dr
-               ON dr.snapshot_date = h.snapshot_date
-              AND dr.tos_symbol    = h.tos_symbol
-        WHERE h.snapshot_date <= :d
-        ORDER BY h.tos_symbol, h.snapshot_date DESC
+        SELECT tos_symbol,
+               raw_value  AS SSS_signal,
+               signal_sign AS SSS_signal_sign,
+               rank_hl    AS SSS_rank_hl
+        FROM drv_source_standing
+        WHERE as_of_date = :d AND source_code = 'SSS'
     """), {"d": as_of_date})
 
     # Stage latest drv_quote price for pct_brr calc
@@ -1457,6 +1438,74 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
             rec[f] = val
         merged.append(rec)
 
+    # Task 4: load EOD line values from drv_technicals (already derived for D)
+    # and ref_settings thresholds to compute live pct_brr / zone / distances.
+    tech_map: dict[str, dict] = {}
+    try:
+        tech_rows = session.execute(text("""
+            SELECT tos_symbol, a_trend_value, a_trade_value
+            FROM drv_technicals WHERE as_of_date = :d
+        """), {"d": as_of_date}).mappings().all()
+        for tr in tech_rows:
+            tech_map[tr["tos_symbol"]] = {
+                "trend": tr["a_trend_value"],
+                "trade": tr["a_trade_value"],
+            }
+    except Exception:
+        pass
+
+    _dq_settings: dict = {}
+    try:
+        _dq_settings = dict(session.execute(text(
+            "SELECT setting_name, setting_value FROM ref_settings "
+            "WHERE setting_name IN "
+            "('dash_threshold_low_pct','dash_threshold_high_pct')"
+        )).fetchall())
+    except Exception:
+        pass
+
+    def _f(key, default):
+        try:
+            return float(_dq_settings.get(key, default))
+        except (TypeError, ValueError):
+            return float(default)
+
+    th_low  = _f("dash_threshold_low_pct",  -10.0)
+    th_high = _f("dash_threshold_high_pct",  10.0)
+
+    for rec in merged:
+        sym = rec["tos_symbol"]
+        price = rec.get("last_price")
+        tech = tech_map.get(sym, {})
+        trend = tech.get("trend")
+        trade = tech.get("trade")
+        # pct_brr = (trend - price) * 100 / (trend - trade) when denom != 0
+        pct_brr_val = None
+        if (price is not None and trend is not None and trade is not None
+                and (float(trend) - float(trade)) != 0):
+            pct_brr_val = (float(trend) - float(price)) * 100.0 / (float(trend) - float(trade))
+        # zone signal using same thresholds as drv_dash
+        zone_val = None
+        if pct_brr_val is not None:
+            if pct_brr_val <= th_low:
+                zone_val = "Y"
+            elif pct_brr_val >= th_high:
+                zone_val = "N"
+            else:
+                zone_val = "W"
+        # distance to EOD lines (positive = price below the line)
+        dist_trend = (float(trend) - float(price)) if (trend is not None and price is not None) else None
+        dist_trade = (float(trade) - float(price)) if (trade is not None and price is not None) else None
+        # is_intraday: export_date > as_of_date (live quote landed after EOD anchor)
+        ed = rec.get("export_date")
+        is_intraday = (ed is not None and ed > as_of_date) if ed else False
+
+        rec["pct_brr"]      = pct_brr_val
+        rec["zone_signal"]  = zone_val
+        rec["dist_to_trend"] = dist_trend
+        rec["dist_to_trade"] = dist_trade
+        rec["is_intraday"]  = is_intraday
+
     # Idempotent rebuild for as_of_date.
     session.execute(text("DELETE FROM drv_quote WHERE as_of_date = :d"),
                     {"d": as_of_date})
@@ -1468,11 +1517,17 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
                     (as_of_date, tos_symbol,
                      last_price, net_chng, pct_change,
                      open_price, high_price, low_price,
-                     rsi, imp_volatility, export_date, export_time, loaded_at, source)
+                     rsi, imp_volatility, export_date, export_time,
+                     loaded_at, source,
+                     pct_brr, zone_signal, dist_to_trend,
+                     dist_to_trade, is_intraday)
                 VALUES (:as_of_date, :tos_symbol,
                         :last_price, :net_chng, :pct_change,
                         :open_price, :high_price, :low_price,
-                        :rsi, :imp_volatility, :export_date, :export_time, :loaded_at, :source)
+                        :rsi, :imp_volatility, :export_date, :export_time,
+                        :loaded_at, :source,
+                        :pct_brr, :zone_signal, :dist_to_trend,
+                        :dist_to_trade, :is_intraday)
             """),
             merged,
         )
@@ -1537,7 +1592,7 @@ def _derive_rr_impl(session: Session, as_of_date: date, run_id: int) -> int:
         "DELETE FROM drv_rr WHERE as_of_date = :d"), {"d": as_of_date})
 
     result = session.execute(text("""
-        INSERT INTO drv_rr (as_of_date, tos_symbol, lrr, trr, mrr, source, source_run_id)
+        INSERT INTO drv_rr (as_of_date, tos_symbol, lrr, trr, mrr, outlook, source, source_run_id)
         SELECT
             :d AS as_of_date,
             s.tos_symbol,
@@ -1559,6 +1614,7 @@ def _derive_rr_impl(session: Session, as_of_date: date, run_id: int) -> int:
                  WHEN td.a_bb_bottom IS NOT NULL AND td.a_bb_top IS NOT NULL
                  THEN (td.a_bb_bottom + td.a_bb_top) / 2.0
                  ELSE NULL END                    AS mrr,
+            rr.outlook                           AS outlook,
             CASE WHEN NULLIF(rr.buy_trade, 0) IS NOT NULL THEN 'RR' ELSE 'BB' END AS source,
             :run AS source_run_id
         FROM (
@@ -1571,7 +1627,7 @@ def _derive_rr_impl(session: Session, as_of_date: date, run_id: int) -> int:
             FROM ref_rrt ORDER BY tos_ticker, loaded_at DESC
         ) rrt ON rrt.tos_ticker = s.tos_symbol
         LEFT JOIN LATERAL (
-            SELECT buy_trade, sell_trade
+            SELECT buy_trade, sell_trade, outlook
             FROM hist_rr
             WHERE tos_symbol = s.tos_symbol AND snapshot_date <= :d
             ORDER BY snapshot_date DESC LIMIT 1
@@ -3452,6 +3508,9 @@ def derive_all(session: Session, as_of_date: date,
     # Each derive wrapped so one failing/crashing call doesn't kill the rest
     # AND the calling process. Uses BaseException to also catch SystemExit
     # (some libraries call sys.exit() on internal assertion failure).
+    # Task 3: collect per-step failures for cascade_status summary.
+    _failed_steps: list[str] = []
+
     def _safe(name, fn):
         try:
             log.info("derive_all: %s starting", name)
@@ -3459,6 +3518,7 @@ def derive_all(session: Session, as_of_date: date,
             log.info("derive_all: %s done (%s rows)", name, n)
             return n
         except BaseException as e:
+            _failed_steps.append(name)
             try:
                 log.exception("derive_all: %s FAILED (continuing): %s", name, e)
             except Exception:
@@ -3472,7 +3532,7 @@ def derive_all(session: Session, as_of_date: date,
     counts["drv_td"]  = _safe("drv_td",  derive_td)
     counts["drv_to"]  = _safe("drv_to",  derive_to)
     counts["drv_tw"]  = _safe("drv_tw",  derive_tw)
-    counts["drv_sss"] = _safe("drv_sss", derive_sss)
+    # drv_sss retired 2026-06-13 — table dropped; SSS data now in drv_source_standing
 
     # drv_cat_atomic_input is now computed by etl/derive_cat_atomic_input.py
     # (Python deriver, see docs/drv_cat_atomic_input_logic.md).  It depends on
@@ -3488,6 +3548,13 @@ def derive_all(session: Session, as_of_date: date,
     # drv_quote merges hist_y / hist_tl / hist_td quote fields by latest loaded_at
     counts["drv_quote"]               = _safe("drv_quote",             derive_quote)
     counts["drv_rr"]                  = _safe("drv_rr",                derive_rr)
+    # Canonical per-source standing (must run AFTER drv_rr and tos_symbol
+    # population, BEFORE drv_outlooks and the action consumers).
+    def _drv_source_standing_runner(session, as_of_date, parent_run_id=None):
+        from etl.derive_source_standing import derive_source_standing
+        return derive_source_standing(session, as_of_date, parent_run_id)
+    counts["drv_source_standing"] = _safe(
+        "drv_source_standing", _drv_source_standing_runner)
     # Component tables replacing drv_ma (2026-05-31)
     counts["drv_symbols"]      = _safe("drv_symbols",      derive_symbols)
     counts["drv_technicals"]   = _safe("drv_technicals",   derive_technicals)
@@ -3547,5 +3614,39 @@ def derive_all(session: Session, as_of_date: date,
 
     counts["drv_missing_symbols"] = _safe("drv_missing_symbols", derive_missing_symbols)
     counts["drv_trig"]            = _safe("drv_trig",            derive_trig)
+
+    # Task 3: write cascade summary row to meta_derived_run.
+    # CRITICAL steps — if any fail the cascade is FAILED; partial failures = PARTIAL.
+    _CRITICAL = {"drv_symbols", "drv_technicals", "drv_cat_atomic_input",
+                 "drv_stks", "drv_actionable"}
+    critical_failures = _CRITICAL & set(_failed_steps)
+    if not _failed_steps:
+        _cascade_status = "SUCCESS"
+    elif critical_failures:
+        _cascade_status = "FAILED"
+    else:
+        _cascade_status = "PARTIAL"
+    counts["cascade_status"] = _cascade_status
+    counts["failed_steps"] = list(_failed_steps)
+    try:
+        _failed_str = ",".join(_failed_steps) if _failed_steps else None
+        session.execute(text("""
+            INSERT INTO meta_derived_run
+              (as_of_date, target_table, status, cascade_status,
+               rows_built, error_msg, parent_run_id)
+            VALUES (:d, '_cascade', :st, :cs, :rb, :em, :pr)
+        """), {
+            "d": as_of_date,
+            "st": "success" if _cascade_status == "SUCCESS" else "error",
+            "cs": _cascade_status,
+            "rb": len(counts),
+            "em": _failed_str,
+            "pr": parent_run_id,
+        })
+        session.commit()
+    except BaseException:
+        log.exception("derive_all: failed to write cascade summary row (non-fatal)")
+        try: session.rollback()
+        except Exception: pass
 
     return counts

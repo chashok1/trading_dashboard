@@ -60,9 +60,17 @@ function renderBanner() {
   }
 }
 
+function fmtEdge(v) {
+  if (v == null) return '<span class="muted">—</span>';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '<span class="muted">—</span>';
+  const cls = n > 0 ? "edge-pos" : "edge-neg";
+  return `<span class="${cls}">${n >= 0 ? "+" : ""}${(n * 100).toFixed(2)}%</span>`;
+}
+
 function renderTable() {
   if (!_sets.length) {
-    $("psBody").innerHTML = `<tr><td colspan="8" class="muted">No parameter sets yet. `
+    $("psBody").innerHTML = `<tr><td colspan="10" class="muted">No parameter sets yet. `
       + `Create one with <code>python -m etl.ml_tune_thresholds</code>.</td></tr>`;
     return;
   }
@@ -70,16 +78,22 @@ function renderTable() {
     const status = s.is_active
       ? `<span class="pill on">ACTIVE</span>`
       : `<span class="pill off">inactive</span>`;
+    const validated = s.validated
+      ? ""
+      : `<span class="pill unvalidated" title="No holdout split — legacy profile">unvalidated</span> `;
     const actToggle = s.is_active
       ? `<button class="ps-btn" data-act="deactivate" data-id="${s.param_set_id}">Deactivate</button>`
       : `<button class="ps-btn primary" data-act="activate" data-id="${s.param_set_id}">Activate</button>`;
+    const hn = s.holdout_n != null ? `<div class="muted" style="font-size:10px">n=${s.holdout_n}</div>` : "";
     return `<tr class="${s.is_active ? "is-active" : ""}">
       <td>${s.param_set_id}</td>
-      <td><b>${esc(s.label)}</b>${s.notes ? `<div class="muted" style="font-size:11px">${esc(s.notes)}</div>` : ""}</td>
+      <td>${validated}<b>${esc(s.label)}</b>${s.notes ? `<div class="muted" style="font-size:11px">${esc(s.notes)}</div>` : ""}</td>
       <td>${esc(s.provenance || "")}</td>
       <td>${status}</td>
       <td>${s.n_targets}</td>
       <td>${s.n_values}</td>
+      <td>${fmtEdge(s.train_edge)}</td>
+      <td>${fmtEdge(s.holdout_edge)}${hn}</td>
       <td class="muted">${fmtDate(s.created_at)}</td>
       <td>
         <button class="ps-btn" data-act="view" data-id="${s.param_set_id}">View</button>

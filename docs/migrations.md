@@ -4,6 +4,18 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ---
 
+## 2026-06-10
+
+- **Cockpit retired (Task 7).** `/cockpit` now returns `301 Redirect → /actionable`. All nav menus updated (removed Cockpit link). `web/macro_band.js` Market-context band moved to `web/actionable.html` as a collapsible card above the toolbar (collapse state persists in `localStorage['macroCardOpen']`). `docs/macro_feed_logic.md` and `CLAUDE.md` lookup table updated.
+- **EOD feed status warning (Task 2).** `GET /api/eod-feed-status` checks `hist_tl` for rows on the anchor date. Returns `{missing, date, message}`. `web/actionable.js` calls it on load/date-change/refresh and shows a red blocking banner (`#eodMissingBanner`) with dimmed rows (opacity 0.7) when missing. `/api/healthz/warnings` also surfaces the status.
+- **Derive cascade status tracking (Task 3).** `meta_derived_run` gained `cascade_status TEXT` column. `derive_all()` tracks failed steps and writes a `target_table='_cascade'` summary row with `SUCCESS/PARTIAL/FAILED`. `/api/derive-cascade-status` endpoint returns latest cascade status for a date. `/api/healthz/warnings` surfaces PARTIAL/FAILED. `daily_health_check.py` includes derive health in its checks.
+- **Intraday price tag in drv_quote (Task 4).** `drv_quote` gained columns `pct_brr`, `zone_signal` (Y/W/N), `dist_to_trend`, `dist_to_trade`, `is_intraday`. Actionable screen shows a blue "IDY" badge when `quote_is_intraday=true`. Apply: `python -m db.init_db` then re-derive.
+- **Backfill pipeline unified (Task 5).** `etl/backfill_full.py` combines `backfill_derives.py` + `compute_firing_outcomes.py` into one command: inventory, derive missing dates, compute outcomes. Usage: `python -m etl.backfill_full [--inventory] [--limit N] [--skip-outcomes] [--from DATE] [--to DATE]`.
+- **ML holdout validation (Task 6).** `ml_tune_thresholds.py` now does a chronological 70/30 train/holdout split, evaluates edge on both halves, and refuses to save (warns) if holdout edge <= 0 or < half of train edge (overfit guard, bypassable with `--no-holdout-gate`). Param set rows now store `train_edge`, `holdout_edge`, `holdout_n`, `validated=TRUE`. Legacy rows default to `validated=FALSE` (shown as "unvalidated" tag in the UI). Param Sets screen shows Train Edge and Holdout Edge columns side-by-side. Apply: `python -m db.init_db`.
+- **Stop-level in drv_actionable (Task 8).** `drv_actionable` gained `stop_level NUMERIC`. Computed as `MAX(trade_line, price*(1-stop_pct))` using `ref_settings.stop_mode`/`stop_pct`. Shown below AMT$ in Actionable rows. `ref_settings` seeded with `stop_mode='trade_line_or_pct'` and `stop_pct='0.08'`. Apply: `python -m db.init_db` then re-derive.
+
+---
+
 ## 2026-06-07
 
 - **Macro feed (FRED) — data layer only (UI deferred).** New `ref_macro_series` (tunable catalog, seeded by `db/seeds_macro.sql`, ~20 series) + append-only `hist_macro` (PK `(series_id, obs_date)`, `ON CONFLICT DO NOTHING`) + `v_macro_latest` view (latest+prior+chg). `etl/fetch_macro.py` pulls from FRED via stdlib `urllib` (no new dependency) — the only **pull** ingest, NOT in `etl/scheduler.py`; run daily after close. `FRED_API_KEY` in `.env` → `settings.fred_api_key`. `GET /api/macro` (`api/routers/macro.py`, registered in `main.py`) returns grouped tiles for the planned cockpit band. Covers econ data AND EOD index levels (`SP500`/`NASDAQCOM`/`DJIA`/`RU2000PR`/`VIXCLS`) — no second API needed for an EOD workflow. Complementary to workbook-sourced `ref_econ_indicator`/`ref_calendar_event`. Apply: add key to `.env` → `python -m db.init_db` → `python -m etl.fetch_macro --full`. Full design: `docs/macro_feed_logic.md`.

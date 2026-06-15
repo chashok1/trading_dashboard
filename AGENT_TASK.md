@@ -1,57 +1,47 @@
-# AGENT TASK 33 — verify Cockpit "Market context" band, commit
+# AGENT TASK — Task 46 verification (market-bar tile restyle)
 
-**You (VS Code agent), browser + Windows git.** Write results to
-**`AGENT_RESULT_33.md`**. Builds on Tasks 31–32 (macro feed + throttle, already
-applied & committed). This round is **front-end only** — static web files. No DB
-change, no FRED key, no server restart needed (just hard-refresh the page).
+**Tester agent (VS Code), psql + browser. You HAVE database access.**
+Pre-req: `DEV_HANDOFF.md` ends `ALL_DONE`. If not, STOP and report. Write results
+to **`AGENT_RESULT_46.md`** (exact filename), ending `DONE` or `FAILED: <checks>`.
+**DO NOT COMMIT.** Paste real query/console output as evidence for every check — a
+check with no pasted output counts as `FAILED`.
 
-Files changed (on disk — do NOT rewrite):
-- `web/cockpit.html` — adds a "Market context" card above the actions table
-  (container `#macroBand`, `#macroRefreshBtn`, `#macroAsOf`, `#macroLastFetch`) +
-  scoped tile styles + `<script src="/static/macro_band.js">`.
-- `web/macro_band.js` — NEW, self-contained band renderer.
-- `docs/macro_feed_logic.md`, `CLAUDE.md` — docs.
+Anchor: `:D = SELECT MAX(export_date) FROM hist_td`.
 
-## Step 1 — syntax
-```
-node --check web\macro_band.js   :: -> no output = OK
-```
-Paste result.
+## Check 1 — drv_rr.outlook column added + populated
+- `\d drv_rr` shows an `outlook TEXT` column.
+- ```sql
+  SELECT count(*) FILTER (WHERE outlook IS NOT NULL) AS with_ol,
+         count(*) FILTER (WHERE source='RR') AS rr_rows, count(*) AS total
+  FROM drv_rr WHERE as_of_date=(SELECT MAX(as_of_date) FROM drv_rr);
+  ```
+  `with_ol` > 0 and equals `rr_rows`. Paste 5 sample RR rows (tos_symbol, lrr, trr,
+  outlook, source). Paste one BB-fallback row showing `outlook IS NULL`.
 
-## Step 2 — browser check (app already running; if not: `uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir api`)
-Open http://127.0.0.1:8000/cockpit and **hard-refresh** (Ctrl+F5; web/ is static).
-Confirm and paste one line each:
-1. A **"Market context"** card appears at the top, above the actions table, with
-   grouped tiles — Indexes (S&P 500, Nasdaq, Dow), Rates & curve (10Y, 2Y, …),
-   Inflation, Jobs, Risk (VIX, …), Dollar & commodities. Tiles show a value, a
-   colored change (green up / red down), and a date.
-2. The header shows `as of <date>` and an `updated <relative>` stamp.
-3. Click **"Refresh data"**. Because Task 32 just fetched, it should be throttled:
-   the stamp changes to **"Up to date (fetched Nm ago)"** and the button
-   re-enables. (No error, no duplicate fetch.)
-4. Browser console is **clean** (no JS errors, no failed requests).
+## Check 2 — API emits OHLC + drv_rr range/outlook
+- `curl -s localhost:8000/api/marketbar | python -m json.tool` — paste one item
+  with non-null `open/high/low/close`, `rr_buy`, `rr_sell`, `rr_outlook`.
+- `curl -s localhost:8000/api/rr-bar | python -m json.tool` — paste one item with
+  `open/high/low/close`, `buy`, `sell`, `outlook`, `bar_price`.
 
-> Optional — prove a real refresh path: in a terminal
-> `UPDATE ref_settings SET setting_value='0' WHERE setting_name='macro_fetch_min_interval_min';`
-> then click Refresh (tiles reload with fresh values), then set it back to `'360'`.
-> Skip if not needed.
+## Check 3 — Frontend renders + layout preserved
+- `node --check web/market_bar.js` — passes.
+- `/actionable` hard-refresh, console clean. Confirm (one line each): both bars are
+  still single-row horizontal scrollers; each tile has a colored symbol button, a
+  colored %, a range bar with a current-price tick, and a candle (wicks + flat
+  body) on the right.
+- Direction/inversion: paste a one-line confirmation that a rising **VIX** shows a
+  **red** % (INVERTED preserved) and its candle matches that direction; a Bullish
+  symbol shows a green symbol button, a Bearish one red.
 
-## Step 3 — commit
-```
-git add web/cockpit.html web/macro_band.js docs/macro_feed_logic.md CLAUDE.md AGENT_TASK.md
-git status --porcelain   :: confirm only these (+ AGENT_RESULT_33.md)
-git commit -m "Cockpit: Market context band (macro tiles + throttled Refresh) wired to /api/macro"
-git log --oneline -2
-```
-(Delete `.git\index.lock`/`HEAD.lock` from Explorer first if present.)
-Paste status + log.
+## Check 4 — Idempotency
+- Re-run the derive for :D twice; paste matching `drv_rr` row counts and identical
+  `outlook` values (a diff or matching aggregate).
+
+## Check 5 — Regression
+- `pytest tests/ -q --tb=no` — DB tests must EXECUTE (not skip). Report new failures
+  vs the pre-existing ~89 baseline. Confirm `tests/test_agent_work_46.py` passes.
 
 ## Verdict
-(a) band renders with grouped tiles + as-of/updated stamps ✓
-(b) Refresh button respects throttle ("Up to date") ✓
-(c) console clean ✓
-(d) committed ✓
-If the band is blank or the console shows an error, STOP and paste: the console
-error, and the output of `curl -s http://127.0.0.1:8000/api/macro | head -c 400`.
-
-Write `DONE` at the bottom of `AGENT_RESULT_33.md`.
+Per check: PASS/FAIL + pasted evidence. Final line of `AGENT_RESULT_46.md`:
+`DONE` or `FAILED: <checks>`.

@@ -2171,59 +2171,53 @@ CREATE TABLE IF NOT EXISTS drv_to (
 
 -- -----------------------------------------------------
 
--- drv_sss - per-row derivations from SSS
+-- drv_source_standing — canonical per-source standing layer (2026-06-13)
+-- One row per (as_of_date, source_code, tos_symbol). Only on_list=TRUE rows
+-- are written (absence = removed). Built by etl/derive_source_standing.py
+-- BEFORE the action and signal consumers. Idempotent per as_of_date.
+-- Sources: SSS | ETF | II | PS | RR | CALL
 
 -- -----------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS drv_sss (
+CREATE TABLE IF NOT EXISTS drv_source_standing (
 
-    snapshot_date     DATE NOT NULL,
+    as_of_date    DATE     NOT NULL,
+    source_code   TEXT     NOT NULL,
+    tos_symbol    TEXT     NOT NULL,
+    snapshot_date DATE,
+    on_list       BOOLEAN  NOT NULL DEFAULT TRUE,
+    weight        NUMERIC,
+    rank          NUMERIC,
+    raw_value     NUMERIC,
+    signal_sign   INTEGER,
+    rank_hl       NUMERIC,
+    outlook       TEXT,
+    modifier      TEXT,
+    source_run_id BIGINT,
 
-    symbol            TEXT NOT NULL,
-
-    rank_hl           NUMERIC,
-
-    unranked          TEXT,
-
-    signal            NUMERIC,
-
-    anlst_best_idea   TEXT,
-
-    rank              NUMERIC,
-
-    total             NUMERIC,
-
-    signal_sign       NUMERIC,
-
-    is_latest         CHAR(1),
-
-    latest_symbol     TEXT,
-
-    removed_date      DATE,
-
-    miss_ma           TEXT,
-
-    tos_lookup        TEXT,
-
-    ma_lookup         TEXT,
-
-    y_lookup          TEXT,
-
-    vlkup             TEXT,
-
-    computed_at       TIMESTAMP NOT NULL DEFAULT now(),
-
-    source_run_id     BIGINT,
-
-    PRIMARY KEY (snapshot_date, symbol),
-
-    FOREIGN KEY (snapshot_date, symbol)
-
-        REFERENCES hist_sss(snapshot_date, symbol) ON DELETE CASCADE
+    PRIMARY KEY (as_of_date, source_code, tos_symbol)
 
 );
 
--- MIGRATED TO tos_symbol: CREATE INDEX IF NOT EXISTS ix_drv_sss_symbol ON drv_sss(symbol, snapshot_date);
+CREATE INDEX IF NOT EXISTS ix_drv_src_standing_date
+    ON drv_source_standing(as_of_date, source_code);
+
+CREATE INDEX IF NOT EXISTS ix_drv_src_standing_sym
+    ON drv_source_standing(tos_symbol, as_of_date);
+
+
+
+-- drv_sss RETIRED 2026-06-13 — table dropped; data now in drv_source_standing.
+
+-- Migration: drop drv_sss if it still exists on older databases.
+
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables
+             WHERE table_name = 'drv_sss' AND table_type = 'BASE TABLE') THEN
+    DROP TABLE drv_sss CASCADE;
+    RAISE NOTICE 'drv_sss dropped (retired 2026-06-13)';
+  END IF;
+END $$;
 
 
 
@@ -2314,6 +2308,7 @@ CREATE TABLE IF NOT EXISTS drv_rr (
     lrr             NUMERIC,        -- Lower Risk Range (buy_trade or a_bb_bottom)
     trr             NUMERIC,        -- Top Risk Range  (sell_trade or a_bb_top)
     mrr             NUMERIC,        -- Midpoint (lrr + trr) / 2
+    outlook         TEXT,           -- outlook from hist_rr (Bullish/Bearish/Neutral); NULL when BB fallback
     source          TEXT,           -- 'RR' or 'BB'
     source_run_id   BIGINT,
     derived_at      TIMESTAMP NOT NULL DEFAULT now(),
@@ -2321,6 +2316,8 @@ CREATE TABLE IF NOT EXISTS drv_rr (
 );
 
 CREATE INDEX IF NOT EXISTS ix_drv_rr_sym ON drv_rr(tos_symbol, as_of_date);
+
+ALTER TABLE drv_rr ADD COLUMN IF NOT EXISTS outlook TEXT;
 
 -- Add export_date, export_time, and loaded_at columns if they don't exist (migration for existing tables)
 
@@ -4392,7 +4389,7 @@ DECLARE
 
                                 'drv_cat_atomic_input', 'drv_realized_gain', 'drv_cs_realized_gain',
 
-                                'drv_td', 'drv_tw', 'drv_to', 'drv_sss', 'drv_outlook_action'];
+                                'drv_td', 'drv_tw', 'drv_to', 'drv_outlook_action'];
 
     all_tables TEXT[];
 
@@ -4466,7 +4463,7 @@ DECLARE
 
                                 'drv_cat_atomic_input', 'drv_realized_gain', 'drv_cs_realized_gain',
 
-                                'drv_td', 'drv_tw', 'drv_to', 'drv_sss', 'drv_outlook_action',
+                                'drv_td', 'drv_tw', 'drv_to', 'drv_outlook_action',
 
                                 'drv_quote', 'drv_missing_symbols'];
 
@@ -4510,9 +4507,10 @@ CREATE INDEX IF NOT EXISTS ix_drv_tw_tos_symbol         ON drv_tw(tos_symbol, sn
 
 CREATE INDEX IF NOT EXISTS ix_drv_to_tos_symbol         ON drv_to(tos_symbol, snapshot_date);
 
-CREATE INDEX IF NOT EXISTS ix_drv_sss_tos_symbol        ON drv_sss(tos_symbol, snapshot_date);
+-- ix_drv_sss_tos_symbol RETIRED 2026-06-13 (drv_sss table dropped)
 
 CREATE INDEX IF NOT EXISTS ix_drv_quote_tos_symbol      ON drv_quote(tos_symbol);
+CREATE INDEX IF NOT EXISTS ix_drv_quote_tos_symbol_date ON drv_quote(tos_symbol, as_of_date);
 
 -- drv_ma index: only valid when drv_ma is still a TABLE (pre-migration)
 DO $$ BEGIN
@@ -4881,24 +4879,52 @@ GROUP BY rule_id, rule_kind;
 -- stock to rise (+fwd_20d); SELL rules want it to fall (-fwd_20d), so edge_20d
 -- flips the sign for SELL codes. Rank by edge_20d DESC = best rules first.
 -- win_rate already uses the direction-aware `hit` column. BASE-* are infra, excluded.
--- NOTE: only as trustworthy as the loaded history (currently ~4 months / one
--- market regime) — read as a diagnostic, not gospel. Re-run the outcome ETL as
--- history grows. See docs/rule_tuning_and_outcomes.md.
+-- n_fires / ci_low / ci_high: 95% CI = edge ± 1.96*stddev_samp/sqrt(n).
+-- confidence: 'proven' n>=100 AND ci_low>0; 'promising' n>=30 AND edge>0;
+--             else 'unproven'. Diagnostic — one market regime only.
 -- -----------------------------------------------------
-CREATE OR REPLACE VIEW v_rule_scorecard AS
+DROP VIEW IF EXISTS v_rule_scorecard CASCADE;
+CREATE VIEW v_rule_scorecard AS
+WITH base AS (
+    SELECT rule_id, hit, fwd_20d_pct, as_of_date,
+           CASE WHEN rule_id ~ '^\d+-(B|BS|BR|BW|BM|BMN)-'
+                THEN fwd_20d_pct ELSE -fwd_20d_pct END AS da
+    FROM drv_rule_outcome
+    WHERE rule_kind = 'composite' AND fwd_20d_pct IS NOT NULL
+      AND rule_id NOT LIKE 'BASE-%'
+),
+agg AS (
+    SELECT rule_id,
+           COUNT(*)                          AS n,
+           AVG(da)                           AS e,
+           STDDEV_SAMP(da)                   AS sd,
+           AVG(hit::int)                     AS wr,
+           AVG(fwd_20d_pct)                  AS raw,
+           MIN(as_of_date)                   AS fs,
+           MAX(as_of_date)                   AS ls
+    FROM base GROUP BY rule_id
+)
 SELECT
     rule_id,
-    CASE WHEN rule_id ~ '^\d+-(B|BS|BR|BW|BM|BMN)-' THEN 'BUY' ELSE 'SELL' END AS direction,
-    COUNT(*) AS fires,
-    ROUND(AVG(CASE WHEN rule_id ~ '^\d+-(B|BS|BR|BW|BM|BMN)-'
-                   THEN fwd_20d_pct ELSE -fwd_20d_pct END)::numeric, 3) AS edge_20d,
-    ROUND(AVG(hit::int)::numeric, 3)    AS win_rate,
-    ROUND(AVG(fwd_20d_pct)::numeric, 3) AS raw_avg_fwd20,
-    MIN(as_of_date) AS first_seen, MAX(as_of_date) AS last_seen
-FROM drv_rule_outcome
-WHERE rule_kind = 'composite' AND fwd_20d_pct IS NOT NULL
-  AND rule_id NOT LIKE 'BASE-%'
-GROUP BY rule_id;
+    CASE WHEN rule_id ~ '^\d+-(B|BS|BR|BW|BM|BMN)-'
+         THEN 'BUY' ELSE 'SELL' END              AS direction,
+    n                                             AS fires,
+    n                                             AS n_fires,
+    ROUND(e::numeric, 3)                          AS edge_20d,
+    ROUND((e - 1.96*sd/NULLIF(SQRT(n),0))::numeric,3)
+                                                  AS edge_20d_ci_low,
+    ROUND((e + 1.96*sd/NULLIF(SQRT(n),0))::numeric,3)
+                                                  AS edge_20d_ci_high,
+    CASE
+        WHEN n >= 100
+             AND (e - 1.96*sd/NULLIF(SQRT(n),0)) > 0 THEN 'proven'
+        WHEN n >= 30 AND e > 0                        THEN 'promising'
+        ELSE 'unproven'
+    END                                           AS confidence,
+    ROUND(wr::numeric, 3)                         AS win_rate,
+    ROUND(raw::numeric, 3)                        AS raw_avg_fwd20,
+    fs AS first_seen, ls AS last_seen
+FROM agg;
 
 
 -- -----------------------------------------------------
@@ -5065,7 +5091,7 @@ COMMENT ON TABLE ref_calendar_event IS
 
 -- meta_cleanup_policy seeds
 
--- (drv_ssl/drv_sss policies omitted: those tables were retired by 28.)
+-- (drv_ssl/drv_sss cleanup policies omitted: drv_ssl retired by migration 28; drv_sss retired 2026-06-13.)
 
 -- -----------------------------------------------------
 
@@ -5221,7 +5247,7 @@ INSERT INTO ref_data_filter_logic (table_name, filter_type, date_column, window_
 
     ('hist_call',          'EXACT_MATCH',         'snapshot_date', NULL, 'Manual call sheet - exact date match'),
 
-    ('drv_sss',            'EXACT_MATCH',         'snapshot_date', NULL, 'Derived SSS - exact date match'),
+    ('drv_source_standing','EXACT_MATCH',         'as_of_date',    NULL, 'Canonical per-source standing layer'),
 
     ('drv_outlook_action',   'EXACT_MATCH',         'as_of_date',    NULL, 'Per-source action per (date, symbol)'),
 
@@ -5822,3 +5848,49 @@ CREATE TABLE IF NOT EXISTS ref_market_metric (
     sort_order      INT  NOT NULL DEFAULT 0,
     enabled         BOOLEAN NOT NULL DEFAULT TRUE
 );
+
+-- 2026-06-10 Task 6: hold-out validation columns on ref_trig_param_set.
+-- train_edge / holdout_edge: mean fwd return on the respective split.
+-- holdout_n: number of observations in the hold-out set.
+-- validated: TRUE once a hold-out run has been performed.
+ALTER TABLE IF EXISTS ref_trig_param_set
+ADD COLUMN IF NOT EXISTS train_edge NUMERIC;
+
+ALTER TABLE IF EXISTS ref_trig_param_set
+ADD COLUMN IF NOT EXISTS holdout_edge NUMERIC;
+
+ALTER TABLE IF EXISTS ref_trig_param_set
+ADD COLUMN IF NOT EXISTS holdout_n INTEGER;
+
+ALTER TABLE IF EXISTS ref_trig_param_set
+ADD COLUMN IF NOT EXISTS validated BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- 2026-06-10 Task 8: stop_level on drv_actionable.
+-- Computed from stop_mode ref_settings knob:
+--   'trade_line_or_pct': MAX(a_trade_value, last_price * (1 - stop_pct))
+-- Default stop_pct = 0.08 (8%). Both knobs editable via /ref screen.
+ALTER TABLE IF EXISTS drv_actionable
+ADD COLUMN IF NOT EXISTS stop_level NUMERIC;
+
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('stop_mode', 'trade_line_or_pct',
+     'Stop-loss computation mode: trade_line_or_pct = MAX(a_trade_value, price*(1-stop_pct))'),
+    ('stop_pct',  '0.08',
+     'Percentage below current price for the pct-floor leg of stop_level (default 8%)')
+ON CONFLICT (setting_name) DO NOTHING;
+
+-- 2026-06-10 Task 4: live pct_brr / zone / distances on drv_quote.
+-- Computed from EOD a_trend_value/a_trade_value (drv_technicals) + live last_price.
+-- is_intraday=TRUE when the quote is fresher than the anchor export_date.
+ALTER TABLE IF EXISTS drv_quote ADD COLUMN IF NOT EXISTS pct_brr NUMERIC;
+ALTER TABLE IF EXISTS drv_quote ADD COLUMN IF NOT EXISTS zone_signal TEXT;
+ALTER TABLE IF EXISTS drv_quote ADD COLUMN IF NOT EXISTS dist_to_trend NUMERIC;
+ALTER TABLE IF EXISTS drv_quote ADD COLUMN IF NOT EXISTS dist_to_trade NUMERIC;
+ALTER TABLE IF EXISTS drv_quote ADD COLUMN IF NOT EXISTS is_intraday BOOLEAN;
+
+-- 2026-06-10 Task 3: cascade_status on meta_derived_run.
+-- Added to the existing table (no new table needed). Set only on the summary row
+-- target_table='_cascade'; individual step rows leave it NULL.
+-- Values: SUCCESS | PARTIAL | FAILED
+ALTER TABLE IF EXISTS meta_derived_run
+ADD COLUMN IF NOT EXISTS cascade_status TEXT;

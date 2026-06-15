@@ -384,8 +384,9 @@ def get_rule_scorecard(
     """
     with session_scope() as s:
         rows = s.execute(text("""
-            SELECT rule_id, direction, fires, edge_20d, win_rate, raw_avg_fwd20,
-                   first_seen, last_seen
+            SELECT rule_id, direction, fires, n_fires, edge_20d,
+                   edge_20d_ci_low, edge_20d_ci_high, confidence,
+                   win_rate, raw_avg_fwd20, first_seen, last_seen
             FROM v_rule_scorecard
             WHERE fires >= :mf
             ORDER BY edge_20d DESC NULLS LAST
@@ -1396,6 +1397,8 @@ def list_param_sets():
             rows = s.execute(text("""
                 SELECT ps.param_set_id, ps.label, ps.provenance, ps.is_active,
                        ps.notes, ps.created_at,
+                       ps.train_edge, ps.holdout_edge, ps.holdout_n,
+                       COALESCE(ps.validated, FALSE) AS validated,
                        COUNT(pv.param_set_id)        AS n_values,
                        COUNT(DISTINCT pv.target_id)  AS n_targets
                 FROM ref_trig_param_set ps
