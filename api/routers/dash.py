@@ -353,6 +353,7 @@ def get_actionable(
     sql = f"""
         SELECT a.*,
                COALESCE(a.source_asset_class, m.asset_class) AS real_asset_class,
+               m.iv_percentile, m.pct_brr AS ma_pct_brr,
                q.last_price, q.net_chng, q.pct_change, q.export_date, q.export_time, q.loaded_at,
                q.pct_brr AS quote_pct_brr, q.zone_signal AS quote_zone,
                q.is_intraday AS quote_is_intraday,

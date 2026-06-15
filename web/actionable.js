@@ -444,12 +444,37 @@ function renderSymTape() {
     const bg     = _symTapeBg(r);
     const action = r.consolidated_action || '';
     const tip    = escapeHtml([r.tos_symbol, action, pctStr, r.last_price != null ? '$'+Number(r.last_price).toFixed(2) : ''].filter(Boolean).join('  '));
+
+    // Range bar fill — pct_brr is 0–100 (position within buy–sell range)
+    const pctBrr = r.quote_pct_brr != null ? Number(r.quote_pct_brr)
+                 : r.ma_pct_brr   != null ? Number(r.ma_pct_brr) : null;
+    const rbW    = pctBrr != null ? Math.round(Math.max(0, Math.min(100, pctBrr))) : null;
+    const rbHtml = rbW != null
+      ? `<div class="rr-rb"><div class="rr-rb-fill" style="width:${rbW}%;"></div>` +
+        `<div class="rr-rb-tick" style="left:${rbW}%;"></div></div>`
+      : `<div class="rr-rb"></div>`;
+
+    // Action label (canonical code via actions.js) and IV percentile
+    const disp     = actionDisplay(r.consolidated_action);
+    const actCode  = actionText(disp);
+    const actColor = disp.side === 'sell' ? '#b91c1c' : disp.side === 'buy' ? '#15803d' : '#64748b';
+    const actLabel = (actCode && actCode !== '--') ? actCode : '';
+    const ivVal    = r.iv_percentile != null ? Math.round(Number(r.iv_percentile)) : null;
+    const ivStr    = ivVal != null ? `IV ${ivVal}%` : '';
+    const metaHtml = (actLabel || ivStr)
+      ? `<div class="sym-tile-meta">` +
+        (actLabel ? `<span class="sym-act-lbl" style="color:${actColor};">${actLabel}</span>` : '') +
+        (ivStr    ? `<span class="sym-iv">${ivStr}</span>` : '') +
+        `</div>`
+      : '';
+
     return `<div class="rr-chip" title="${tip}">` +
       `<div class="rr-chip-top">` +
       `<span class="rr-sym" style="background:${bg};">${escapeHtml(r.tos_symbol)}</span>` +
       `<span class="mt-chg ${pctCls}">${pctStr}</span>` +
       `</div>` +
-      `<div class="rr-rb"></div>` +
+      rbHtml +
+      metaHtml +
       `</div>`;
   }).join('');
 

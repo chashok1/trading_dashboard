@@ -1055,7 +1055,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 /* Range bar */
 .rr-rb {
   position: relative;
-  height: 5px;
+  height: 3px;
   background: var(--border, #e5e7eb);
   border-radius: 2px;
   min-width: 52px;
@@ -1070,7 +1070,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 }
 .rr-rb-tick {
   position: absolute;
-  top: -2px;
+  top: -3px;
   width: 2px;
   height: 9px;
   background: var(--text-1, #111);
@@ -1078,11 +1078,29 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   border-radius: 1px;
 }
 
+/* Symbol tape chip: action label + IV row */
+.sym-tile-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sym-act-lbl {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.sym-iv {
+  font-size: 9px;
+  color: var(--text-3, #9ca3af);
+  white-space: nowrap;
+  margin-left: auto;
+}
+
 /* Symbol tape — filterable, below the actionable filter bar */
 .sym-tape-bar {
   display: flex;
   align-items: center;
-  height: 44px;
+  height: 54px;
   background: var(--card-bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
