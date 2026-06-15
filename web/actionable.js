@@ -2126,12 +2126,14 @@ const _TV_SYMS_REGULAR = [
   {proName:'FX:GBPUSD',        title:'GBP/USD'},
 ];
 
-// Futures session (outside regular hours, futures markets open): futures symbols
+// Futures session: FOREXCOM/OANDA CFD equivalents — these track the futures
+// overnight and work in the free TradingView embed (CME contracts require a
+// paid CME data subscription and show "No Data" in free embeds).
 const _TV_SYMS_FUTURES = [
-  {proName:'CME_MINI:ES1!',    title:'S&P Fut'},
-  {proName:'CME_MINI:NQ1!',    title:'Nasdaq Fut'},
-  {proName:'CBOT_MINI:YM1!',   title:'Dow Fut'},
-  {proName:'CME_MINI:RTY1!',   title:'Russell Fut'},
+  {proName:'FOREXCOM:SPXUSD',  title:'S&P Fut'},
+  {proName:'FOREXCOM:NSXUSD',  title:'Nasdaq Fut'},
+  {proName:'FOREXCOM:DJI',     title:'Dow Fut'},
+  {proName:'FOREXCOM:US2000',  title:'Russell Fut'},
   {proName:'CAPITALCOM:VIX',   title:'VIX'},
   {proName:'CAPITALCOM:DXY',   title:'Dollar'},
   {proName:'TVC:GOLD',         title:'Gold'},
