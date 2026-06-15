@@ -19,18 +19,6 @@
 
   const INVERTED = new Set(['VIX', 'VXN', 'VXD', 'RVX', 'OVX', 'GVZ', 'MOVE', 'HY', 'HYSPRD']);
 
-  const PAIRS = [
-    { idx: 'SPX',  vol: 'VIX'  },
-    { idx: 'COMP', vol: 'VXN'  },
-    { idx: 'DJI',  vol: 'VXD'  },
-    { idx: 'RUT',  vol: 'RVX'  },
-    { idx: 'WTI',  vol: null   },
-    { idx: 'BZ',   vol: 'OVX'  },
-    { idx: 'GC',   vol: 'GVZ'  },
-    { idx: 'DXY',  vol: null   },
-    { idx: 'MOVE', vol: null   },
-  ];
-
   // ---- formatting helpers -----------------------------------------------
   function fmtValue(v, fmt) {
     if (v === null || v === undefined) return '—';
@@ -141,39 +129,35 @@
       `</div>`;
   }
 
-  // ---- build tape row (bar 1) -------------------------------------------
+  // ---- build tape row (bar 1) — explicit labeled groups -----------------
+  const BAR1_GROUPS = [
+    { label: 'Eq',    keys: ['SPX', 'VIX', 'COMP', 'VXN', 'DJI', 'VXD', 'RUT', 'RVX'] },
+    { label: 'Cmdty', keys: ['WTI', 'BZ', 'OVX', 'GC', 'GVZ'] },
+    { label: 'FX',    keys: ['DXY', 'MOVE'] },
+  ];
+
   function buildTapeHtml(data) {
     const items = data.items || [];
     const byKey = Object.fromEntries(items.map(it => [it.metric_key, it]));
-    const seen  = new Set();
     const cells = [];
 
-    for (const pair of PAIRS) {
-      for (const key of [pair.idx, pair.vol].filter(Boolean)) {
+    for (const grp of BAR1_GROUPS) {
+      const grpCells = [];
+      for (const key of grp.keys) {
         const item = byKey[key];
         if (!item) continue;
-        seen.add(key);
         const cls    = dirClass(item.chg_pct, item.metric_key);
         const chgStr = fmtChgPct(item.chg_pct);
         const arrow  = dirArrow(item.chg_pct);
         const valStr = fmtValue(item.value, item.value_format);
         const pctStr = chgStr ? arrow + chgStr : valStr;
         const tip    = itemTip(item, valStr, chgStr, arrow);
-        cells.push(chipHtml(item.metric_key, item.rr_outlook, pctStr, cls,
-                            item.rr_buy, item.rr_sell, item.value, tip, item.stale));
+        grpCells.push(chipHtml(item.metric_key, item.rr_outlook, pctStr, cls,
+                               item.rr_buy, item.rr_sell, item.value, tip, item.stale));
       }
-    }
-
-    for (const item of items) {
-      if (seen.has(item.metric_key)) continue;
-      const cls    = dirClass(item.chg_pct, item.metric_key);
-      const chgStr = fmtChgPct(item.chg_pct);
-      const arrow  = dirArrow(item.chg_pct);
-      const valStr = fmtValue(item.value, item.value_format);
-      const pctStr = chgStr ? arrow + chgStr : valStr;
-      const tip    = itemTip(item, valStr, chgStr, arrow);
-      cells.push(chipHtml(item.metric_key, item.rr_outlook, pctStr, cls,
-                          item.rr_buy, item.rr_sell, item.value, tip, item.stale));
+      if (!grpCells.length) continue;
+      cells.push(`<span class="rr-cat">${escHtml(grp.label)}</span>`);
+      cells.push(...grpCells);
     }
 
     return cells.join('');
@@ -181,7 +165,11 @@
 
   // ---- build RR bar (bar 2 or 3) — chips with inline group headings ----
   const BAR2_CATS = ['ETFs', 'Commodities', 'Credit'];
-  const BAR3_CATS = ['Tech', 'FX', 'Indexes'];
+  const BAR3_CATS = ['Rates', 'Tech', 'FX', 'Crypto'];
+  const CAT_SHORT  = {
+    'ETFs': 'ETF', 'Commodities': 'Cmdty', 'Credit': 'Crd',
+    'Rates': 'Rates', 'Tech': 'Tech', 'FX': 'FX', 'Indexes': 'Idx', 'Crypto': 'Crypt',
+  };
 
   function buildRrBarHtml(data, cats) {
     const groups = data.groups || {};
@@ -189,7 +177,7 @@
     for (const cat of cats) {
       const items = groups[cat];
       if (!items || !items.length) continue;
-      cells.push(`<span class="rr-cat">${escHtml(cat)}</span>`);
+      cells.push(`<span class="rr-cat">${escHtml(CAT_SHORT[cat] || cat)}</span>`);
       for (const item of items) {
         const pct    = item.pct != null ? Number(item.pct) : null;
         const cls    = dirClass(pct, null);
@@ -311,10 +299,14 @@
     if (!tapeEl) return;
 
     try {
-      const r = await fetch('/api/marketbar');
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const data = await r.json();
-      tapeEl.innerHTML = buildTapeHtml(data);
+      const [mktRes, rrRes] = await Promise.all([
+        fetch('/api/marketbar'),
+        fetch('/api/rr-bar'),
+      ]);
+      if (!mktRes.ok) throw new Error('HTTP ' + mktRes.status);
+      if (!rrRes.ok)  throw new Error('HTTP ' + rrRes.status);
+      const [mktData, rrData] = await Promise.all([mktRes.json(), rrRes.json()]);
+      tapeEl.innerHTML = buildTapeHtml(mktData) + buildRrBarHtml(rrData, ['Indexes']);
     } catch (err) {
       if (tapeEl) {
         tapeEl.innerHTML =
@@ -331,7 +323,10 @@
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
       rrTapeEl.innerHTML  = buildRrBarHtml(data, BAR2_CATS);
-      rrTape3El.innerHTML = buildRrBarHtml(data, BAR3_CATS);
+      const econOpen = (document.getElementById('econPanel') || {}).classList
+                       && document.getElementById('econPanel').classList.contains('open');
+      rrTape3El.innerHTML = buildRrBarHtml(data, BAR3_CATS) +
+        `<button id="econBtn" class="mt-expander${econOpen ? ' active' : ''}" type="button" title="Toggle FRED macro panel">Econ ${econOpen ? '&#9652;' : '&#9662;'}</button>`;
     } catch (err) {
       const msg = '<span style="color:var(--bear,#b91c1c);padding:0 8px;font-size:11px;">RR data unavailable</span>';
       if (rrTapeEl)  rrTapeEl.innerHTML  = msg;

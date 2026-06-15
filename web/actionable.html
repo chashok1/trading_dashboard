@@ -10,7 +10,7 @@
       background: var(--surface, #fafafa);
       border: 1px solid var(--border, #e0e0e0);
       border-radius: 6px;
-      margin-bottom: 8px;
+      margin-bottom: 2px;
       padding: 5px 12px 5px;
     }
     .act-toolbar-main {
@@ -523,10 +523,6 @@
       </div>
 
       <div class="act-toolbar">
-        <!-- Econ toggle row — above filter chips -->
-        <div style="margin:-5px -12px 5px; padding:3px 12px; border-bottom:1px solid var(--border,#e0e0e0); display:flex; align-items:center;">
-          <button id="econBtn" style="padding:2px 8px; font-size:10px; border:1px solid var(--border); border-radius:4px; cursor:pointer;">Econ &#9662;</button>
-        </div>
         <!-- Single consolidated filter bar -->
         <div class="act-toolbar-main">
           <!-- Action chips -->
@@ -571,14 +567,6 @@
         </div>
       </div>
 
-      <!-- Symbol tape: filterable chip bar, synced to active filters -->
-      <div id="symTape" class="sym-tape-bar">
-        <button id="symTapePrev" class="sym-tape-nav" title="Previous batch">&#9664;</button>
-        <div id="symTapeTrack" class="sym-tape-track"></div>
-        <button id="symTapeNext" class="sym-tape-nav" title="Next batch">&#9654;</button>
-        <span id="symTapeBadge" class="sym-tape-badge"></span>
-      </div>
-
       <div id="staleBanner" style="display:none; margin-bottom:8px; padding:7px 12px; border-radius:6px; background:#FAEEDA; border:none; color:#633806; font-size:12px; align-items:center; gap:12px;">
         <span id="staleBannerMsg" style="flex:1;">This date's data is stale.</span>
         <button class="btn" id="staleRederiveBtn" type="button" style="white-space:nowrap;">Re-derive now</button>
@@ -590,6 +578,14 @@
         <button class="btn-skip" id="bulkSkipBtn">&#10007; Skip</button>
         <button class="btn-snz"  id="bulkSnzBtn">&#128164; Snooze</button>
         <button class="btn-dismiss" id="bulkClearBtn" style="margin-left:auto;">Clear</button>
+      </div>
+
+      <!-- Symbol tape: filterable chip bar, directly above the grid -->
+      <div id="symTape" class="sym-tape-bar">
+        <button id="symTapePrev" class="sym-tape-nav" title="Previous batch">&#9664;</button>
+        <div id="symTapeTrack" class="sym-tape-track"></div>
+        <button id="symTapeNext" class="sym-tape-nav" title="Next batch">&#9654;</button>
+        <span id="symTapeBadge" class="sym-tape-badge"></span>
       </div>
 
       <div class="act-table-wrap">

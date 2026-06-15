@@ -54,11 +54,7 @@ _METRIC_TO_RR_SYMBOL: dict[str, str] = {
 # Synthetic bar-1 items sourced directly from hist_rr
 # (tos_symbol, metric_key, display_label, value_format)
 _SYNTHETIC_BAR1 = [
-    ('DGS2:FRED', 'US2Y',  '2Y',    'pct'),
-    ('TNX:CGI',   'US10Y', '10Y',   'pct'),
-    ('TYX:CGI',   'US30Y', '30Y',   'pct'),
     ('/BZ',       'BZ',    'Brent',   'price'),
-    ('/BTC',      'BTC',   'BTC',     'price'),
 ]
 _SYNTHETIC_KEYS = {mk for _, mk, _, _ in _SYNTHETIC_BAR1}
 # synthetics that display % change — fetch pct_change from drv_quote
@@ -173,9 +169,7 @@ def get_marketbar() -> dict:
 # hist_rr tos_symbols covered by bar 1 — excluded from bar 2
 _FIRST_BAR_RR = {
     'SPX', '$COMP', 'RUT', 'VIX', '$DXY',
-    'DGS2:FRED', 'TNX:CGI', 'TYX:CGI',  # rates → bar 1
     '/BZ', '/CL', '/GC',                 # Brent, WTI, Gold → bar 1
-    '/BTC',                               # Bitcoin → bar 1
 }
 
 # Category + short label for each known RR symbol (bar 2 + bar 3)
@@ -224,7 +218,7 @@ _RR_META: dict[str, tuple[str, str]] = {
     'XLY':      ('ETFs',        'XLY'),
 }
 
-_CATEGORY_ORDER = ['Commodities', 'ETFs', 'Tech', 'Indexes', 'FX', 'Credit']
+_CATEGORY_ORDER = ['Rates', 'Commodities', 'ETFs', 'Tech', 'Indexes', 'FX', 'Credit']
 
 # Extended meta for the all-symbols (bar 3) endpoint — includes first-bar symbols
 _RR_META_ALL: dict[str, tuple[str, str]] = {
