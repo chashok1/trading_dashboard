@@ -13,6 +13,7 @@ const state = {
     show_hidden: false,  // when true, reveals suppressed/$0/no-action/acted/unheld-remove rows
     symbol_search: '',   // symbol search text filter
     conviction: 'any',   // 'any' | 'multi' | 'proven'
+    actionable_only: true, // hides HOLD and NONE rows by default
   },
   current: null,
   sourceMethods: {},   // source_code -> base_weight_method (Metric-column sort)
@@ -390,10 +391,14 @@ function applyClientFilter() {
   // baseRows: all filters except the action chip (drives chip counts that reflect
   // every other active filter, via matchesBaseFilters).
   state.baseRows = state.allRows.filter(matchesBaseFilters);
-  // rows: baseRows + action chip filter (AND combined)
+  // rows: baseRows + action chip filter + actionable_only (AND combined)
   state.rows = state.baseRows.filter(r => {
-    if (!state.filters.action) return true;
-    return _chipAction(r) === state.filters.action;
+    if (state.filters.action) return _chipAction(r) === state.filters.action;
+    if (state.filters.actionable_only) {
+      const a = _chipAction(r);
+      return a !== 'HOLD' && a !== 'NONE';
+    }
+    return true;
   });
   // Reset collapse and selection on filter change.
   state.showAll = false;
@@ -592,6 +597,7 @@ function saveFiltersToStorage() {
     const toSave = {
       source: f.source, held_only: f.held_only, show_hidden: f.show_hidden,
       symbol_search: f.symbol_search, conviction: f.conviction,
+      actionable_only: f.actionable_only,
     };
     localStorage.setItem(LS_KEY, JSON.stringify(toSave));
   } catch (_) {}
@@ -609,6 +615,7 @@ function loadFiltersFromStorage() {
     if (saved.show_hidden !== undefined)  f.show_hidden = !!saved.show_hidden;
     if (saved.symbol_search !== undefined) f.symbol_search = saved.symbol_search;
     if (saved.conviction !== undefined)   f.conviction = saved.conviction;
+    if (saved.actionable_only !== undefined) f.actionable_only = !!saved.actionable_only;
   } catch (_) {}
 }
 
@@ -622,12 +629,18 @@ function syncFilterUi() {
   document.querySelectorAll('#convictionCtrl button').forEach(b => {
     b.classList.toggle('seg-active', b.dataset.conv === f.conviction);
   });
+  // actionable_only toggle
+  const aoBtn = $('actionableOnlyBtn');
+  if (aoBtn) {
+    aoBtn.textContent = f.actionable_only ? 'Actionable' : 'All';
+    aoBtn.classList.toggle('active', f.actionable_only);
+  }
 }
 
 function clearAllFilters() {
   const f = state.filters;
   f.action = ''; f.source = ''; f.held_only = false;
-  f.show_hidden = false;
+  f.show_hidden = false; f.actionable_only = true;
   f.symbol_search = ''; f.conviction = 'any';
   // Reset sort to default actionability order (updateSortIndicators called in renderGrid)
   state.sort = { key: '_priority', dir: -1, type: 'num' };
@@ -2091,6 +2104,52 @@ async function toggleSuppress(symbol, isSuppressed) {
   }
 }
 
+// ---- TradingView tape toggle --------------------------------------------------
+const _TV_LS_KEY = 'act_tv_tape';
+
+function _isMarketHours() {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun, 6=Sat
+  if (day === 0 || day === 6) return false;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric', minute: 'numeric', hour12: false,
+  }).formatToParts(now);
+  const h = parseInt((parts.find(p => p.type === 'hour') || {}).value || '0', 10);
+  const m = parseInt((parts.find(p => p.type === 'minute') || {}).value || '0', 10);
+  const mins = h * 60 + m;
+  return mins >= 570 && mins < 960; // 9:30–16:00 ET
+}
+
+function _setTvTape(visible) {
+  const wrapper = $('tv-tape-wrapper');
+  if (wrapper) wrapper.style.display = visible ? '' : 'none';
+  const btn = $('tvToggleBtn');
+  if (btn) {
+    btn.textContent = visible ? 'TV ▴' : 'TV ▾';
+    btn.title = visible ? 'Hide TradingView tape' : 'Show TradingView tape';
+    btn.classList.toggle('active', visible);
+  }
+  try { localStorage.setItem(_TV_LS_KEY, visible ? '1' : '0'); } catch (_) {}
+}
+
+function _initTvToggle() {
+  // Decide initial state: prefer localStorage override, else use market hours
+  let show;
+  try {
+    const stored = localStorage.getItem(_TV_LS_KEY);
+    show = stored !== null ? stored === '1' : _isMarketHours();
+  } catch (_) {
+    show = _isMarketHours();
+  }
+  _setTvTape(show);
+  const btn = $('tvToggleBtn');
+  if (btn) btn.addEventListener('click', () => {
+    const wrapper = $('tv-tape-wrapper');
+    _setTvTape(!wrapper || wrapper.style.display === 'none');
+  });
+}
+
 // ---- wire up ----
 document.addEventListener('DOMContentLoaded', async () => {
   // Restore filters before loading data
@@ -2212,6 +2271,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       b.classList.toggle('seg-active', b === btn));
     applyClientFilter();
   });
+
+  // Actionable-only toggle
+  $('actionableOnlyBtn').addEventListener('click', () => {
+    state.filters.actionable_only = !state.filters.actionable_only;
+    syncFilterUi();
+    applyClientFilter();
+  });
+
+  // TradingView tape toggle
+  _initTvToggle();
 
   // Clear all filters
   $('clearFiltersBtn').addEventListener('click', clearAllFilters);

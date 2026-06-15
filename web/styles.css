@@ -1121,6 +1121,13 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   white-space: nowrap;
 }
 
+/* Active state for toolbar toggle buttons (Actionable, TV) */
+#actionableOnlyBtn.active, #tvToggleBtn.active {
+  background: var(--accent, #0a84ff);
+  color: #fff;
+  border-color: var(--accent, #0a84ff);
+}
+
 .mt-cell {
   display: inline-flex;
   align-items: center;
