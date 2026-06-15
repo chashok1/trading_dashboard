@@ -2107,18 +2107,85 @@ async function toggleSuppress(symbol, isSuppressed) {
 // ---- TradingView tape toggle --------------------------------------------------
 const _TV_LS_KEY = 'act_tv_tape';
 
-function _isMarketHours() {
-  const now = new Date();
-  const day = now.getDay(); // 0=Sun, 6=Sat
-  if (day === 0 || day === 6) return false;
+// Regular session (Mon–Fri 9:30–16:00 ET): cash index symbols
+const _TV_SYMS_REGULAR = [
+  {proName:'FOREXCOM:SPXUSD',  title:'S&P 500'},
+  {proName:'FOREXCOM:NSXUSD',  title:'Nasdaq 100'},
+  {proName:'FOREXCOM:DJI',     title:'Dow Jones'},
+  {proName:'FOREXCOM:US2000',  title:'Russell 2K'},
+  {proName:'CAPITALCOM:VIX',   title:'VIX'},
+  {proName:'CAPITALCOM:DXY',   title:'Dollar'},
+  {proName:'TVC:GOLD',         title:'Gold'},
+  {proName:'TVC:SILVER',       title:'Silver'},
+  {proName:'TVC:USOIL',        title:'WTI Crude'},
+  {proName:'TVC:UKOIL',        title:'Brent'},
+  {proName:'CAPITALCOM:NATURALGAS', title:'Nat Gas'},
+  {proName:'BITSTAMP:BTCUSD',  title:'Bitcoin'},
+  {proName:'FX:EURUSD',        title:'EUR/USD'},
+  {proName:'FX:USDJPY',        title:'USD/JPY'},
+  {proName:'FX:GBPUSD',        title:'GBP/USD'},
+];
+
+// Futures session (outside regular hours, futures markets open): futures symbols
+const _TV_SYMS_FUTURES = [
+  {proName:'CME_MINI:ES1!',    title:'S&P Fut'},
+  {proName:'CME_MINI:NQ1!',    title:'Nasdaq Fut'},
+  {proName:'CBOT_MINI:YM1!',   title:'Dow Fut'},
+  {proName:'CME_MINI:RTY1!',   title:'Russell Fut'},
+  {proName:'CAPITALCOM:VIX',   title:'VIX'},
+  {proName:'CAPITALCOM:DXY',   title:'Dollar'},
+  {proName:'TVC:GOLD',         title:'Gold'},
+  {proName:'TVC:SILVER',       title:'Silver'},
+  {proName:'TVC:USOIL',        title:'WTI Crude'},
+  {proName:'TVC:UKOIL',        title:'Brent'},
+  {proName:'CAPITALCOM:NATURALGAS', title:'Nat Gas'},
+  {proName:'BITSTAMP:BTCUSD',  title:'Bitcoin'},
+  {proName:'FX:EURUSD',        title:'EUR/USD'},
+  {proName:'FX:USDJPY',        title:'USD/JPY'},
+  {proName:'FX:GBPUSD',        title:'GBP/USD'},
+];
+
+// Returns 'regular' | 'futures' | 'none'
+// Regular:  Mon–Fri 09:30–16:00 ET
+// Futures:  Sun 18:00 ET through Fri 17:00 ET, outside regular hours
+//           (US equity futures run Sun 18:00 – Fri 17:00 ET with daily ~5–5:15 PM break)
+// None:     Fri 17:00 ET – Sun 18:00 ET (weekend, futures closed)
+function _tvMode() {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
-    hour: 'numeric', minute: 'numeric', hour12: false,
-  }).formatToParts(now);
-  const h = parseInt((parts.find(p => p.type === 'hour') || {}).value || '0', 10);
-  const m = parseInt((parts.find(p => p.type === 'minute') || {}).value || '0', 10);
-  const mins = h * 60 + m;
-  return mins >= 570 && mins < 960; // 9:30–16:00 ET
+    weekday: 'short', hour: 'numeric', minute: 'numeric', hour12: false,
+  }).formatToParts(new Date());
+  const get = t => (parts.find(p => p.type === t) || {}).value || '';
+  const day  = get('weekday');
+  const mins = parseInt(get('hour'), 10) * 60 + parseInt(get('minute'), 10);
+
+  if (day === 'Sat') return 'none';
+  if (day === 'Sun' && mins < 1080) return 'none';   // before 18:00 ET Sunday
+  if (day === 'Fri' && mins >= 1020) return 'none';  // Fri 17:00 ET and later
+  // Regular trading window
+  if (['Mon','Tue','Wed','Thu','Fri'].includes(day) && mins >= 570 && mins < 960) return 'regular';
+  return 'futures';
+}
+
+function _buildTvWidget(symbols) {
+  const wrapper = $('tv-tape-wrapper');
+  if (!wrapper) return;
+  wrapper.innerHTML = '';
+  const container = document.createElement('div');
+  container.className = 'tradingview-widget-container';
+  const wd = document.createElement('div');
+  wd.className = 'tradingview-widget-container__widget';
+  container.appendChild(wd);
+  const sc = document.createElement('script');
+  sc.type = 'text/javascript';
+  sc.src = 'https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js';
+  sc.async = true;
+  sc.textContent = JSON.stringify({
+    symbols, showSymbolLogo: false, isTransparent: false,
+    displayMode: 'adaptive', colorTheme: 'light', locale: 'en',
+  });
+  container.appendChild(sc);
+  wrapper.appendChild(container);
 }
 
 function _setTvTape(visible) {
@@ -2129,21 +2196,39 @@ function _setTvTape(visible) {
     btn.innerHTML = visible ? 'TV &#9650;' : 'TV &#9660;';
     btn.title = visible ? 'Hide TradingView tape' : 'Show TradingView tape';
     btn.classList.toggle('active', visible);
+    btn.disabled = false;
   }
   try { localStorage.setItem(_TV_LS_KEY, visible ? '1' : '0'); } catch (_) {}
 }
 
 function _initTvToggle() {
-  // Decide initial state: prefer localStorage override, else use market hours
-  let show;
+  const mode = _tvMode();
+  const btn = $('tvToggleBtn');
+
+  if (mode === 'none') {
+    // Futures closed — hide tape, disable button
+    const wrapper = $('tv-tape-wrapper');
+    if (wrapper) wrapper.style.display = 'none';
+    if (btn) {
+      btn.innerHTML = 'TV &#9660;';
+      btn.title = 'TradingView tape (market closed)';
+      btn.disabled = true;
+      btn.classList.remove('active');
+    }
+    return;
+  }
+
+  // Load the correct symbol set for the current session
+  _buildTvWidget(mode === 'regular' ? _TV_SYMS_REGULAR : _TV_SYMS_FUTURES);
+
+  // Visibility: respect user's localStorage preference, default to visible
+  let show = true;
   try {
     const stored = localStorage.getItem(_TV_LS_KEY);
-    show = stored !== null ? stored === '1' : _isMarketHours();
-  } catch (_) {
-    show = _isMarketHours();
-  }
+    if (stored !== null) show = stored === '1';
+  } catch (_) {}
   _setTvTape(show);
-  const btn = $('tvToggleBtn');
+
   if (btn) btn.addEventListener('click', () => {
     const wrapper = $('tv-tape-wrapper');
     _setTvTape(!wrapper || wrapper.style.display === 'none');

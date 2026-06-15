@@ -817,41 +817,7 @@
   </script>
 <script src="/static/warning_badge.js"></script>
 
-<!-- TradingView Ticker Tape — fixed at bottom -->
-<div id="tv-tape-wrapper" style="border-top:1px solid #ddd;background:#fff;flex-shrink:0;">
-  <div class="tradingview-widget-container">
-    <div class="tradingview-widget-container__widget"></div>
-    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
-    {"symbols":[
-      {"proName":"FX:EURUSD","title":"EUR/USD"},
-      {"proName":"FX:USDJPY","title":"USD/JPY"},
-      {"proName":"FX:GBPUSD","title":"GBP/USD"},
-      {"proName":"FX:AUDUSD","title":"AUD/USD"},
-      {"proName":"FX:USDCAD","title":"USD/CAD"},
-      {"proName":"FX:USDCHF","title":"USD/CHF"},
-      {"proName":"FX:NZDUSD","title":"NZD/USD"},
-      {"proName":"FX:EURJPY","title":"EUR/JPY"},
-      {"proName":"FX:EURGBP","title":"EUR/GBP"},
-      {"proName":"FOREXCOM:SPXUSD","title":"S&P 500"},
-      {"proName":"FOREXCOM:NSXUSD","title":"Nasdaq 100"},
-      {"proName":"FOREXCOM:DJI","title":"Dow Jones"},
-      {"proName":"FOREXCOM:US2000","title":"Russell 2K"},
-      {"proName":"CAPITALCOM:VIX","title":"VIX"},
-      {"proName":"CAPITALCOM:DXY","title":"Dollar"},
-      {"proName":"TVC:GOLD","title":"Gold"},
-      {"proName":"TVC:SILVER","title":"Silver"},
-      {"proName":"TVC:PLATINUM","title":"Platinum"},
-      {"proName":"CAPITALCOM:COPPER","title":"Copper"},
-      {"proName":"TVC:USOIL","title":"WTI Crude"},
-      {"proName":"TVC:UKOIL","title":"Brent Crude"},
-      {"proName":"CAPITALCOM:NATURALGAS","title":"Nat Gas"},
-      {"proName":"CAPITALCOM:CORN","title":"Corn"},
-      {"proName":"CAPITALCOM:WHEAT","title":"Wheat"},
-      {"proName":"AMEX:SOYB","title":"Soybeans"},
-      {"proName":"BITSTAMP:BTCUSD","title":"Bitcoin"}
-    ],"showSymbolLogo":false,"isTransparent":false,"displayMode":"adaptive","colorTheme":"light","locale":"en"}
-    </script>
-  </div>
-</div>
+<!-- TradingView Ticker Tape — injected dynamically by _initTvToggle() in actionable.js -->
+<div id="tv-tape-wrapper" style="border-top:1px solid #ddd;background:#fff;flex-shrink:0;display:none;"></div>
 </body>
 </html>
