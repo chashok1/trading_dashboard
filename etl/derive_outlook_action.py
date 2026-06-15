@@ -19,6 +19,8 @@ from typing import Optional
 from sqlalchemy import text, insert
 from sqlalchemy.orm import Session
 
+from etl._derive_common import position_ceiling
+
 log = logging.getLogger("etl.derive_outlook_action")
 
 
@@ -81,24 +83,32 @@ def _resolve_outlook_weight(outlook: Optional[str], modifier: Optional[str],
 
 def _load_holdings(session: Session, as_of_date: date) -> set[str]:
     """Return the set of symbols where SUM(qty) > 0 across hist_f + hist_cs
-    on or before as_of_date (using the latest snapshot per source)."""
-    rows = session.execute(text(f"""
+    on or before as_of_date (using the latest snapshot per source).
+
+    Uses position_ceiling so weekend/holiday position exports (snapshot_date > D)
+    are included on the live anchor but excluded on historical re-derives."""
+    ceil = position_ceiling(session, as_of_date)
+    rows = session.execute(text("""
         WITH fid AS (
             SELECT tos_symbol, SUM(qty) AS qty
             FROM hist_f
-            WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= '{as_of_date}')
+            WHERE snapshot_date = (
+                SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :ceil
+            )
             GROUP BY tos_symbol
         ),
         cs AS (
             SELECT tos_symbol, SUM(qty) AS qty
             FROM hist_cs
-            WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= '{as_of_date}')
+            WHERE snapshot_date = (
+                SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :ceil
+            )
             GROUP BY tos_symbol
         )
         SELECT COALESCE(fid.tos_symbol, cs.tos_symbol) AS tos_symbol,
                COALESCE(fid.qty, 0) + COALESCE(cs.qty, 0) AS qty_total
         FROM fid FULL OUTER JOIN cs ON cs.tos_symbol = fid.tos_symbol
-    """)).fetchall()
+    """), {"ceil": ceil}).fetchall()
     return {r[0] for r in rows if r[1] and float(r[1]) > 0}
 
 

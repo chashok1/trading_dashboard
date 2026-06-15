@@ -1,8 +1,12 @@
 /* Trading Dashboard — global market tape
  *
- * Self-mounting widget. Injects a slim horizontal ribbon (28px) below the
- * topbar on every page.  Fed by GET /api/marketbar (read-only, no FRED calls).
- * A ▾ toggle at the end opens an econ expander panel (GET /api/macro).
+ * Self-mounting widget. Injects three sticky ribbons below the topbar:
+ *   Bar 1 (#marketTape)  — index/vol pairs + rates + commodities + bonds
+ *   Bar 2 (#rrTape)      — ETFs + Commodities  (curated, with group labels)
+ *   Bar 3 (#rrTape3)     — Tech + FX + Indexes (curated, with group labels)
+ *
+ * The Econ panel (#econPanel) is a static div in the page HTML (actionable.html).
+ * It is toggled by #econBtn and lazily loaded from GET /api/macro.
  *
  * Color convention: green = "good", red = "bad".
  *   Normal:   up → green, down → red  (indexes, DXY, WTI, rates)
@@ -11,19 +15,19 @@
 (function () {
   'use strict';
 
-  const REFRESH_MS = 60 * 1000;  // auto-refresh every 60 s
+  const REFRESH_MS = 60 * 1000;
 
-  // Metric keys whose direction is inverted (up = bad / red)
   const INVERTED = new Set(['VIX', 'VXN', 'VXD', 'RVX', 'OVX', 'GVZ', 'MOVE', 'HY', 'HYSPRD']);
 
-  // Display pairs: [idx metric_key, vol metric_key | null for standalone]
   const PAIRS = [
     { idx: 'SPX',  vol: 'VIX'  },
     { idx: 'COMP', vol: 'VXN'  },
     { idx: 'DJI',  vol: 'VXD'  },
     { idx: 'RUT',  vol: 'RVX'  },
-    { idx: 'WTI',  vol: 'OVX'  },
+    { idx: 'WTI',  vol: null   },
+    { idx: 'BZ',   vol: 'OVX'  },
     { idx: 'GC',   vol: 'GVZ'  },
+    { idx: 'DXY',  vol: null   },
     { idx: 'MOVE', vol: null   },
   ];
 
@@ -92,7 +96,6 @@
     const arrow  = dirArrow(item.chg_pct);
     const cls    = dirClass(item.chg_pct, item.metric_key);
     const tip    = itemTip(item, valStr, chgStr, arrow);
-    // level → show value colored; pct → show value plain; else → show % change
     let inner;
     if (item.value_format === 'level') {
       inner = `<span class="mt-value ${cls}">${valStr}</span>`;
@@ -173,21 +176,20 @@
                           item.rr_buy, item.rr_sell, item.value, tip, item.stale));
     }
 
-    cells.push(`<button class="mt-expander" id="mtExpandBtn" type="button" aria-expanded="false" title="Show full econ panel">Econ ▾</button>`);
     return cells.join('');
   }
 
-  // ---- build RR tape (bar 2) — chips, no category headers ---------------
-  const RR_CAT_ORDER = ['Commodities', 'ETFs', 'Tech', 'Indexes', 'FX', 'Credit', 'Other'];
+  // ---- build RR bar (bar 2 or 3) — chips with inline group headings ----
+  const BAR2_CATS = ['ETFs', 'Commodities', 'Credit'];
+  const BAR3_CATS = ['Tech', 'FX', 'Indexes'];
 
-  function buildRrHtml(data) {
+  function buildRrBarHtml(data, cats) {
     const groups = data.groups || {};
-    const allCats = [...RR_CAT_ORDER, ...Object.keys(groups).filter(k => !RR_CAT_ORDER.includes(k))];
     const cells = [];
-
-    for (const cat of allCats) {
+    for (const cat of cats) {
       const items = groups[cat];
       if (!items || !items.length) continue;
+      cells.push(`<span class="rr-cat">${escHtml(cat)}</span>`);
       for (const item of items) {
         const pct    = item.pct != null ? Number(item.pct) : null;
         const cls    = dirClass(pct, null);
@@ -216,7 +218,6 @@
 
     return entries.map(([groupName, items]) => {
       const rows = (items || []).map(item => {
-        // Format value using unit: '%' → fixed 2 dp + '%', else toLocaleString 2 dp
         let val;
         if (item.latest_value !== null && item.latest_value !== undefined) {
           const n = Number(item.latest_value);
@@ -233,13 +234,11 @@
           : '';
         const chgCls = chgRaw === null ? '' : chgRaw > 0 ? 'mt-up' : chgRaw < 0 ? 'mt-down' : 'mt-flat';
 
-        // Tooltip: label, date, and optional pct change
         const pctPart = (item.chg_pct !== null && item.chg_pct !== undefined)
           ? ` (${Number(item.chg_pct).toFixed(2)}%)`
           : '';
         const tip = escHtml(`${item.label} — as of: ${item.latest_date || '?'}${pctPart}`);
 
-        // Format latest_date (YYYY-MM-DD) → mm/dd, guard against null/missing
         let dateLbl = '--';
         if (item.latest_date && /^\d{4}-\d{2}-\d{2}$/.test(item.latest_date)) {
           const parts = item.latest_date.split('-');
@@ -262,9 +261,9 @@
   }
 
   // ---- DOM mount --------------------------------------------------------
-  let tapeEl = null;
-  let econEl = null;
-  let rrTapeEl = null;
+  let tapeEl    = null;
+  let rrTapeEl  = null;
+  let rrTape3El = null;
 
   function ensureMount() {
     if (tapeEl) return;
@@ -279,30 +278,30 @@
     tapeEl.innerHTML = '<span style="color:var(--text-3);padding:0 8px;font-size:11px;">Loading market data…</span>';
     topbar.insertAdjacentElement('afterend', tapeEl);
 
-    // Econ panel (hidden by default)
-    econEl = document.createElement('div');
-    econEl.id = 'mtEconPanel';
-    econEl.className = 'mt-econ-panel';
-    econEl.innerHTML = '<span style="color:var(--text-3);font-size:11px;">Loading…</span>';
-    tapeEl.insertAdjacentElement('afterend', econEl);
-
-    // Bar 2 — RR symbols tape
+    // Bar 2 — ETFs + Commodities
     rrTapeEl = document.createElement('div');
     rrTapeEl.id = 'rrTape';
     rrTapeEl.className = 'rr-tape';
-    rrTapeEl.innerHTML = '<span style="color:var(--text-3);padding:0 8px;font-size:11px;">Loading RR data…</span>';
-    econEl.insertAdjacentElement('afterend', rrTapeEl);
+    rrTapeEl.innerHTML = '<span style="color:var(--text-3);padding:0 8px;font-size:11px;">Loading…</span>';
+    tapeEl.insertAdjacentElement('afterend', rrTapeEl);
 
-    // Expand/collapse toggle (delegated — button injected after fetch)
+    // Bar 3 — Tech + FX + Indexes
+    rrTape3El = document.createElement('div');
+    rrTape3El.id = 'rrTape3';
+    rrTape3El.className = 'rr-tape';
+    rrTape3El.innerHTML = '<span style="color:var(--text-3);padding:0 8px;font-size:11px;">Loading…</span>';
+    rrTapeEl.insertAdjacentElement('afterend', rrTape3El);
+
+    // Wire #econBtn → #econPanel (only present on pages that include it, e.g. actionable)
     document.addEventListener('click', (e) => {
-      const btn = e.target.closest('#mtExpandBtn');
+      const btn = e.target.closest('#econBtn');
       if (!btn) return;
-      const open = econEl.classList.toggle('open');
-      btn.setAttribute('aria-expanded', String(open));
-      btn.textContent = open ? 'Econ ▴' : 'Econ ▾';
-      if (open && !econEl.dataset.loaded) {
-        loadEcon();
-      }
+      const panel = document.getElementById('econPanel');
+      if (!panel) return;
+      const open = panel.classList.toggle('open');
+      btn.innerHTML = open ? 'Econ &#9652;' : 'Econ &#9662;';
+      btn.classList.toggle('active', open);
+      if (open && !panel.dataset.loaded) loadEcon();
     });
   }
 
@@ -326,31 +325,32 @@
 
   async function loadRrBar() {
     ensureMount();
-    if (!rrTapeEl) return;
+    if (!rrTapeEl || !rrTape3El) return;
     try {
       const r = await fetch('/api/rr-bar');
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
-      rrTapeEl.innerHTML = buildRrHtml(data);
+      rrTapeEl.innerHTML  = buildRrBarHtml(data, BAR2_CATS);
+      rrTape3El.innerHTML = buildRrBarHtml(data, BAR3_CATS);
     } catch (err) {
-      if (rrTapeEl) {
-        rrTapeEl.innerHTML =
-          '<span style="color:var(--bear,#b91c1c);padding:0 8px;font-size:11px;">RR data unavailable</span>';
-      }
+      const msg = '<span style="color:var(--bear,#b91c1c);padding:0 8px;font-size:11px;">RR data unavailable</span>';
+      if (rrTapeEl)  rrTapeEl.innerHTML  = msg;
+      if (rrTape3El) rrTape3El.innerHTML = msg;
     }
   }
 
   async function loadEcon() {
-    if (!econEl) return;
+    const panel = document.getElementById('econPanel');
+    if (!panel) return;
     try {
       const r = await fetch('/api/macro');
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
-      econEl.innerHTML = buildEconHtml(data);
-      econEl.dataset.loaded = '1';
+      panel.innerHTML = buildEconHtml(data);
+      panel.dataset.loaded = '1';
     } catch (err) {
-      if (econEl) {
-        econEl.innerHTML =
+      if (panel) {
+        panel.innerHTML =
           '<span style="color:var(--bear,#b91c1c);font-size:11px;">Econ data unavailable</span>';
       }
     }

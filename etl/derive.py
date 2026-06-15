@@ -26,7 +26,7 @@ from etl.warnings import clear_screen_warnings, add_warning
 # Shared meta_derived_run helpers + the _wrap decorator. Extracted to
 # etl/_derive_common.py so derive.py and derive_v2.py can both use them
 # without a circular import.
-from etl._derive_common import _open_drv_run, _close_drv_run, _wrap
+from etl._derive_common import _open_drv_run, _close_drv_run, _wrap, position_ceiling
 
 # derive_tw has a formula-faithful implementation in derive_v2.py.
 # derive_sss was retired 2026-06-13 (drv_sss dropped; SSS now in drv_source_standing).
@@ -1121,8 +1121,10 @@ derive_outlooks = _wrap("drv_outlooks", _derive_outlooks_impl)
 # drv_portfolio — holdings snapshot (2026-05-31)
 # =============================================================================
 
+
 def _derive_portfolio_impl(session: Session, as_of_date: date, run_id: int) -> int:
     """Populate drv_portfolio for as_of_date."""
+    ceil = position_ceiling(session, as_of_date)
     session.execute(
         text("DELETE FROM drv_portfolio WHERE as_of_date = :d"),
         {"d": as_of_date},
@@ -1133,10 +1135,10 @@ def _derive_portfolio_impl(session: Session, as_of_date: date, run_id: int) -> i
         FROM hist_f
         WHERE snapshot_date = (
             SELECT MAX(snapshot_date) FROM hist_f
-            WHERE snapshot_date <= :d
+            WHERE snapshot_date <= :ceil
         )
         GROUP BY tos_symbol
-    """), {"d": as_of_date})
+    """), {"ceil": ceil})
 
     session.execute(text("""
         CREATE TEMP TABLE _t_port_cs ON COMMIT DROP AS
@@ -1144,10 +1146,10 @@ def _derive_portfolio_impl(session: Session, as_of_date: date, run_id: int) -> i
         FROM hist_cs
         WHERE snapshot_date = (
             SELECT MAX(snapshot_date) FROM hist_cs
-            WHERE snapshot_date <= :d
+            WHERE snapshot_date <= :ceil
         )
         GROUP BY tos_symbol
-    """), {"d": as_of_date})
+    """), {"ceil": ceil})
 
     result = session.execute(text("""
         INSERT INTO drv_portfolio (

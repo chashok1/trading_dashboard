@@ -404,59 +404,9 @@
     .btn-icon:hover { background: #f4f4f2; }
     .btn-icon svg { display: block; }
 
-    /* ── Task 7: Market-context band (macro tiles) ──────────────────────── */
-    .macro-card {
-      margin-bottom: 8px;
-      background: var(--card-bg, #fff);
-      border: 1px solid var(--border, #e0e0e0);
-      border-radius: 6px;
-      padding: 0;
-      overflow: hidden;
-    }
-    .macro-card-header {
-      display: flex; align-items: center; gap: 8px;
-      padding: 7px 12px;
-      cursor: pointer;
-      user-select: none;
-      background: var(--surface, #fafafa);
-      border-bottom: 1px solid transparent;
-    }
-    .macro-card.open .macro-card-header { border-bottom-color: var(--border, #e0e0e0); }
-    .macro-card-header .mc-caret {
-      font-size: 10px; color: var(--text-2, #888);
-      transition: transform 0.15s;
-    }
-    .macro-card.open .mc-caret { transform: rotate(90deg); }
-    .macro-card-header .mc-title { font-size: 11px; font-weight: 600; color: var(--text-1, #222); }
-    .macro-card-header .mc-meta  { font-size: 10px; color: var(--text-2, #888); margin-left: auto; }
-    .macro-card-body { display: none; padding: 10px 14px; }
-    .macro-card.open .macro-card-body { display: block; }
-    /* Tile styles (mirrors cockpit.html) */
-    .macro-group { margin-bottom: 14px; }
-    .macro-group:last-child { margin-bottom: 0; }
-    .macro-group-label {
-      font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
-      color: var(--text-3, #aaa); margin: 0 0 6px;
-    }
-    .macro-tiles {
-      display: grid; gap: 8px;
-      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    }
-    .macro-tile {
-      border: 1px solid var(--border, #e0e0e0); border-radius: 6px;
-      padding: 8px 10px; background: #fff;
-    }
-    .macro-tile .mt-label {
-      font-size: 11px; color: var(--text-2, #666); margin-bottom: 3px;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .macro-tile .mt-value { font-size: 16px; font-weight: 600; color: var(--text-1, #222); }
-    .macro-tile .mt-chg   { font-size: 11px; margin-top: 2px; }
-    .macro-tile .mt-date  { font-size: 9px; color: var(--text-3, #aaa); margin-top: 3px; }
-    .mt-up { color: #166534; } .mt-down { color: #991b1b; } .mt-flat { color: #888; }
-    .macro-loading, .macro-empty, .macro-error { color: var(--text-3, #aaa); padding: 8px 0; font-size: 12px; }
-    .macro-error { color: #991b1b; }
-    .macro-lastfetch.is-throttled { color: var(--text-1); font-weight: 600; }
+    /* Econ toggle button */
+    #econBtn { background: #fff; color: inherit; }
+    #econBtn.active { background: var(--accent, #0a84ff); color: #fff; border-color: var(--accent, #0a84ff); }
 
     /* Fill remaining viewport — table expands to bottom */
     body.act-page main { overflow: hidden; display: flex; flex-direction: column; }
@@ -564,21 +514,8 @@
     <div class="card">
       <div class="status-bar" id="statusBar"></div>
 
-      <!-- Task 7: Market-context band (was Cockpit) — collapsible card above toolbar -->
-      <div class="macro-card" id="macroCard">
-        <div class="macro-card-header" id="macroCardHeader">
-          <span class="mc-caret">&#9654;</span>
-          <span class="mc-title">Market Context</span>
-          <span class="mc-meta">
-            <span id="macroAsOf"></span>
-            <span id="macroLastFetch" class="macro-lastfetch" style="margin-left:8px;"></span>
-            <button id="macroRefreshBtn" class="btn" style="margin-left:8px; padding:2px 8px; font-size:10px;">Refresh data</button>
-          </span>
-        </div>
-        <div class="macro-card-body">
-          <div id="macroBand"><div class="macro-loading">Loading market data…</div></div>
-        </div>
-      </div>
+      <!-- Econ panel — FRED macro data, lazy-loaded, toggled by #econBtn in toolbar -->
+      <div id="econPanel" class="mt-econ-panel" style="margin-bottom:8px; border-radius:6px; border:1px solid var(--border,#e0e0e0);"></div>
 
       <!-- Task 2: EOD feed missing banner — shown when hist_tl absent for date -->
       <div id="eodMissingBanner" style="display:none; margin-bottom:8px; padding:9px 14px; border-radius:6px; background:#fee2e2; border:1px solid #e6a4a4; color:#8c1d1d; font-size:12px; font-weight:600;">
@@ -586,6 +523,10 @@
       </div>
 
       <div class="act-toolbar">
+        <!-- Econ toggle row — above filter chips -->
+        <div style="margin:-5px -12px 5px; padding:3px 12px; border-bottom:1px solid var(--border,#e0e0e0); display:flex; align-items:center;">
+          <button id="econBtn" style="padding:2px 8px; font-size:10px; border:1px solid var(--border); border-radius:4px; cursor:pointer;">Econ &#9662;</button>
+        </div>
         <!-- Single consolidated filter bar -->
         <div class="act-toolbar-main">
           <!-- Action chips -->
@@ -796,25 +737,6 @@
   <script src="/static/actionable.js"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
-  <script src="/static/macro_band.js" defer></script>
-  <script>
-  /* Task 7: macro-card collapse toggle (localStorage-persisted) */
-  (function () {
-    var KEY = 'macroCardOpen';
-    var card = document.getElementById('macroCard');
-    var hdr  = document.getElementById('macroCardHeader');
-    if (!card || !hdr) return;
-    // Restore state — default collapsed
-    var open = localStorage.getItem(KEY) === 'true';
-    if (open) card.classList.add('open');
-    hdr.addEventListener('click', function (e) {
-      // Don't collapse when clicking the Refresh button
-      if (e.target && e.target.id === 'macroRefreshBtn') return;
-      card.classList.toggle('open');
-      localStorage.setItem(KEY, card.classList.contains('open') ? 'true' : 'false');
-    });
-  })();
-  </script>
 <script src="/static/warning_badge.js"></script>
 
 <!-- TradingView Ticker Tape — injected dynamically by _initTvToggle() in actionable.js -->

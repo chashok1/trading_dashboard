@@ -778,7 +778,7 @@ def get_rr_analysis(symbol: str = Query(...), date: str = Query(...)):
             WHERE tos_symbol=:sym AND as_of_date<=:d ORDER BY as_of_date DESC LIMIT 1
         """), {"sym": sym, "d": d}).fetchone()
         td = s.execute(text("""
-            SELECT last_price, a_trend_value, a_trade_value FROM hist_td
+            SELECT a_trend_value, a_trade_value FROM hist_td
             WHERE tos_symbol=:sym AND snapshot_date<=:d ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
         """), {"sym": sym, "d": d}).fetchone()
         tw = s.execute(text("""
@@ -826,13 +826,13 @@ def get_rr_analysis(symbol: str = Query(...), date: str = Query(...)):
 
         dx = _f(rr[0]) if rr else None
         dy = _f(rr[1]) if rr else None
-        ae = _f(td[1]) if td else None
-        af = _f(td[2]) if td else None
+        ae = _f(td[0]) if td else None
+        af = _f(td[1]) if td else None
         ec = dx if dx else None   # LRR
         ed = dy if dy else None   # TRR
         mrr = ((ec or 0) + (ed or 0)) / 2 if ec and ed else None
         cur = _f(dq[0]) if dq else None
-        prev_close = _f(td[0]) if td else None
+        prev_close = _f(dq[0]) if dq else None  # drv_quote last_price (no raw hist_td price)
         high = _f(dq[1]) if dq else None
         low  = _f(dq[2]) if dq else None
 
@@ -966,10 +966,10 @@ def get_rr_history(symbol: str = Query(...), date: str = Query(...), days: int =
     with session_scope() as s:
         rows = s.execute(text("""
             SELECT r.as_of_date,
-                   COALESCE(dq.last_price, td.last_price) AS close,
-                   COALESCE(dq.open_price, td.open_price) AS open,
-                   COALESCE(dq.high_price, td.high_price) AS high,
-                   COALESCE(dq.low_price,  td.low_price)  AS low,
+                   dq.last_price AS close,
+                   dq.open_price AS open,
+                   dq.high_price AS high,
+                   dq.low_price  AS low,
                    r.lrr, r.trr
             FROM drv_rr r
             LEFT JOIN LATERAL (
@@ -978,12 +978,6 @@ def get_rr_history(symbol: str = Query(...), date: str = Query(...), days: int =
                 WHERE tos_symbol=:sym AND as_of_date=r.as_of_date
                 LIMIT 1
             ) dq ON TRUE
-            LEFT JOIN LATERAL (
-                SELECT last_price, open_price, high_price, low_price
-                FROM hist_td
-                WHERE tos_symbol=:sym AND snapshot_date <= r.as_of_date
-                ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
-            ) td ON TRUE
             WHERE r.tos_symbol=:sym
               AND r.as_of_date >= :s AND r.as_of_date <= :e
             ORDER BY r.as_of_date

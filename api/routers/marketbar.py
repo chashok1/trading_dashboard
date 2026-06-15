@@ -59,8 +59,6 @@ _SYNTHETIC_BAR1 = [
     ('TYX:CGI',   'US30Y', '30Y',   'pct'),
     ('/BZ',       'BZ',    'Brent',   'price'),
     ('/BTC',      'BTC',   'BTC',     'price'),
-    ('HYG',       'HYG',  'HY Bond', 'price'),
-    ('LQD',       'LQD',  'IG Bond', 'price'),
 ]
 _SYNTHETIC_KEYS = {mk for _, mk, _, _ in _SYNTHETIC_BAR1}
 # synthetics that display % change — fetch pct_change from drv_quote
@@ -99,7 +97,11 @@ def get_marketbar() -> dict:
                 "WHERE as_of_date = (SELECT MAX(as_of_date) FROM drv_quote)"
             )).mappings().all()
         }
-        # hist_rr last_price for synthetic items (rates/Brent etc. whose price isn't in drv_quote)
+        # hist_rr last_price: fallback for synthetic symbols not covered by drv_quote
+        # (DGS2:FRED, TNX:CGI, TYX:CGI are FRED/index tickers only in hist_rr —
+        # not in hist_tl/hist_td/hist_y — so drv_quote has no row for them).
+        # HYG, LQD, /BZ, /BTC may appear in drv_quote; drv_quote price wins when present.
+        # TODO follow-up: extend drv_quote feed to cover FRED/CGI rate tickers.
         hist_rr_price: dict[str, float | None] = {
             r['tos_symbol']: float(r['last_price']) if r['last_price'] is not None else None
             for r in s.execute(text(
@@ -128,13 +130,17 @@ def get_marketbar() -> dict:
             d['close'] = ohlc['c']
         enriched.append(d)
 
-    # Append synthetic items (rates + Brent + bonds) sourced from hist_rr price + drv_rr range
+    # Append synthetic items (rates + Brent + bonds).
+    # Price: drv_quote (canonical) wins; hist_rr is fallback for symbols not in drv_quote.
     for rr_sym, metric_key, label, vfmt in _SYNTHETIC_BAR1:
-        last_price = hist_rr_price.get(rr_sym)
+        ohlc = ohlc_lookup.get(rr_sym)
+        # Prefer drv_quote price; fall back to hist_rr for FRED/CGI tickers not in drv_quote
+        last_price = (ohlc['c'] if ohlc and ohlc['c'] is not None
+                      else hist_rr_price.get(rr_sym))
+        price_source = 'drv_quote' if (ohlc and ohlc['c'] is not None) else 'hist_rr'
         if last_price is None:
             continue
         rr = rr_lookup.get(rr_sym)
-        ohlc = ohlc_lookup.get(rr_sym)
         d: dict = {
             'metric_key':   metric_key,
             'label':        label,
@@ -144,7 +150,7 @@ def get_marketbar() -> dict:
             'chg_pct':      ohlc['pct'] if ohlc and vfmt == 'price' else None,
             'value_format': vfmt,
             'as_of':        None,
-            'source':       'hist_rr',
+            'source':       price_source,
             'stale':        False,
         }
         if rr and rr['buy'] and rr['sell']:
@@ -170,7 +176,6 @@ _FIRST_BAR_RR = {
     'DGS2:FRED', 'TNX:CGI', 'TYX:CGI',  # rates → bar 1
     '/BZ', '/CL', '/GC',                 # Brent, WTI, Gold → bar 1
     '/BTC',                               # Bitcoin → bar 1
-    'HYG', 'LQD',                         # HY Bond, IG Bond → bar 1
 }
 
 # Category + short label for each known RR symbol (bar 2 + bar 3)

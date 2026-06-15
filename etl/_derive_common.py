@@ -19,11 +19,29 @@ import logging
 from datetime import date, datetime
 from typing import Optional
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from etl.db import get_table
 
 log = logging.getLogger("etl.derive")
+
+
+def position_ceiling(session: Session, as_of_date: date) -> date:
+    """Return the snapshot_date ceiling for F/CS position carry-forward.
+
+    On the LIVE anchor (as_of_date == MAX(export_date) FROM hist_td) the ceiling
+    is today, so a position file exported on a non-trading day (weekend/holiday,
+    snapshot_date > D) is included.  On historical re-derives the ceiling stays
+    at as_of_date to prevent look-ahead.
+
+    Mirrors the pattern used by _derive_quote_impl (derive.py:1376-1377).
+    """
+    row = session.execute(
+        text("SELECT MAX(export_date) FROM hist_td")
+    ).first()
+    anchor = row[0] if row and row[0] else None
+    return date.today() if (anchor is not None and as_of_date == anchor) else as_of_date
 
 
 def _open_drv_run(session: Session, target: str, as_of_date: date,

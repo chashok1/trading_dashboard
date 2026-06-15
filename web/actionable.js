@@ -2331,8 +2331,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Filter zone wire-ups ────────────────────────────────────────────────────
   $('sourceFilter').addEventListener('change', (e) => {
     state.filters.source = e.target.value;
-    state.sort = { key: null, dir: 1, type: 'str' };
-    updateSortIndicators();
     applyClientFilter();
   });
   $('heldOnly').addEventListener('change', (e) => {

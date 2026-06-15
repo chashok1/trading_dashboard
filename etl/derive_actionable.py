@@ -14,6 +14,8 @@ from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from etl._derive_common import position_ceiling
+
 log = logging.getLogger("etl.derive_actionable")
 
 ACTION_RANK = {"REMOVE": 4, "REDUCE": 3, "INCREASE": 2, "ADD": 1, "HOLD": 0}
@@ -37,24 +39,32 @@ def _close_drv_run(session, run_id, *, rows_built=0, status="success", error_msg
 
 
 def _load_holdings_with_dollars(session, as_of_date):
-    """Return {symbol: total_dollar_value}."""
+    """Return {symbol: total_dollar_value}.
+
+    Uses position_ceiling so weekend/holiday position exports (snapshot_date > D)
+    are included on the live anchor but excluded on historical re-derives."""
+    ceil = position_ceiling(session, as_of_date)
     rows = session.execute(text("""
         WITH fid AS (
             SELECT tos_symbol, SUM(qty) AS qty, SUM(current_value) AS val
             FROM hist_f
-            WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+            WHERE snapshot_date = (
+                SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :ceil
+            )
             GROUP BY tos_symbol
         ),
         cs AS (
             SELECT tos_symbol, SUM(qty) AS qty, SUM(market_value) AS val
             FROM hist_cs
-            WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
+            WHERE snapshot_date = (
+                SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :ceil
+            )
             GROUP BY tos_symbol
         )
         SELECT COALESCE(fid.tos_symbol, cs.tos_symbol) AS tos_symbol,
                COALESCE(fid.val, 0) + COALESCE(cs.val, 0) AS dollar
         FROM fid FULL OUTER JOIN cs ON cs.tos_symbol = fid.tos_symbol
-    """), {"d": as_of_date}).fetchall()
+    """), {"ceil": ceil}).fetchall()
     return {r[0]: float(r[1] or 0) for r in rows}
 
 
