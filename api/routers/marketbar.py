@@ -235,16 +235,16 @@ _RR_META: dict[str, tuple[str, str]] = {
     'PINK':     ('ETFs',        'PINK'),
     'SPMO':     ('ETFs',        'SPMO'),
     'URA':      ('ETFs',        'URA'),
-    'XLE':      ('ETFs',        'XLE'),
-    'XLF':      ('ETFs',        'XLF'),
-    'XLK':      ('ETFs',        'XLK'),
-    'XLP':      ('ETFs',        'XLP'),
-    'XLRE':     ('ETFs',        'XLRE'),
-    'XLU':      ('ETFs',        'XLU'),
-    'XLY':      ('ETFs',        'XLY'),
+    'XLE':      ('Sectors',     'XLE'),
+    'XLF':      ('Sectors',     'XLF'),
+    'XLK':      ('Sectors',     'XLK'),
+    'XLP':      ('Sectors',     'XLP'),
+    'XLRE':     ('Sectors',     'XLRE'),
+    'XLU':      ('Sectors',     'XLU'),
+    'XLY':      ('Sectors',     'XLY'),
 }
 
-_CATEGORY_ORDER = ['Rates', 'Commodities', 'ETFs', 'Tech', 'Indexes', 'FX', 'Credit']
+_CATEGORY_ORDER = ['Rates', 'Commodities', 'ETFs', 'Sectors', 'Tech', 'Indexes', 'FX', 'Credit']
 
 # Extended meta for the all-symbols (bar 3) endpoint — includes first-bar symbols
 _RR_META_ALL: dict[str, tuple[str, str]] = {
