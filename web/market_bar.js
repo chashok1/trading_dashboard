@@ -159,12 +159,7 @@
                                item.rr_buy, item.rr_sell, item.value, tip, item.stale));
       }
       if (!grpCells.length) continue;
-      cells.push(
-        `<div class="rr-group">` +
-        `<span class="rr-cat">${escHtml(grp.label)}</span>` +
-        grpCells.join('') +
-        `</div>`
-      );
+      cells.push(`<div class="rr-group">${grpCells.join('')}</div>`);
     }
 
     return cells.join('');
@@ -201,12 +196,7 @@
         chips.push(chipHtml(name, item.outlook, chgStr, cls,
                             item.buy, item.sell, item.bar_price, tip, false));
       }
-      cells.push(
-        `<div class="rr-group">` +
-        `<span class="rr-cat">${escHtml(CAT_SHORT[cat] || cat)}</span>` +
-        chips.join('') +
-        `</div>`
-      );
+      cells.push(`<div class="rr-group">${chips.join('')}</div>`);
     }
     return cells.join('');
   }
