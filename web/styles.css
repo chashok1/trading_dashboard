@@ -969,7 +969,8 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   gap: 10px;
   height: 45px;
   background: var(--card-bg);
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
+  margin-top: 6px;
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
@@ -989,8 +990,9 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   align-items: center;
   gap: 10px;
   height: 45px;
-  background: var(--surface-1, var(--card-bg));
-  border-bottom: 1px solid var(--border);
+  background: var(--card-bg);
+  border-bottom: none;
+  margin-top: 6px;
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
@@ -1004,10 +1006,8 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 }
 .rr-tape::-webkit-scrollbar { display: none; }
 
-/* Bar 2 — no bottom border (bar 3 immediately follows) */
-#rrTape { border-bottom: 1px solid var(--border); }
-/* Bar 3 — sticky below bar 2 */
-#rrTape3 { top: 90px; z-index: 88; }
+/* Bar 3 — sticky below bar 2, retains bottom border for content separation */
+#rrTape3 { top: 90px; z-index: 88; border-bottom: 1px solid var(--border); }
 
 /* Group box — wraps label + chips for each category */
 .rr-group {
