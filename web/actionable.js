@@ -726,10 +726,15 @@ function _saFor(row, src) {
 // Action severity rank — REMOVE strongest. Mirrors the consolidation sort.
 const ACTION_RANK = { REMOVE: 4, REDUCE: 3, INCREASE: 2, ADD: 1, HOLD: 0 };
 
-// Per-code colors shared by Sources and Technical columns.
-const ACTION_CODE_COLOR = { SA:'#991b1b', SS:'#ef4444', STM:'#f97316', BM:'#14532d', BS:'#22c55e', BMN:'#86efac' };
+// Per-code colors shared by Sources and Technical columns — matches Final Call / Portfolio palette.
+const ACTION_CODE_COLOR = {
+  SA:'#d83a3a',
+  SS:'#e07c1a', STM:'#e07c1a', SO:'#e07c1a', SW:'#e07c1a', SWW:'#e07c1a',
+  BM:'#2f9e2f', BS:'#2f9e2f',
+  BMN:'#1f7af2', BW:'#1f7af2', BSW:'#1f7af2',
+};
 function _actionCodeColor(disp) {
-  return ACTION_CODE_COLOR[disp.code] || (disp.side === 'sell' ? '#ef4444' : disp.side === 'buy' ? '#22c55e' : 'inherit');
+  return ACTION_CODE_COLOR[disp.code] || (disp.side === 'sell' ? '#d83a3a' : disp.side === 'buy' ? '#2f9e2f' : '#888');
 }
 
 // Action color lookup: returns a CSS class from the token palette (actions.js).
