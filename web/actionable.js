@@ -1547,7 +1547,10 @@ function renderGrid() {
         ${r.stop_level != null ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;" title="Stop / exit-below level (task 8)">stop ${fmtUsd(r.stop_level)}</div>` : ''}
       </td>
       <td class="act-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:help;">
-        ${(()=>{ const _bd=actionDisplay(_badgeAction(r)); return `<span style="font-weight:700;font-size:12px;color:${_actionCodeColor(_bd)};" title="${escapeHtml(_bd.label||actionLabel(r))}">${escapeHtml(_bd.code||actionLabel(r))}</span>`; })()}
+        <div style="display:flex;align-items:baseline;gap:5px;">
+          ${(()=>{ const _bd=actionDisplay(_badgeAction(r)); return `<span style="font-weight:700;font-size:12px;color:${_actionCodeColor(_bd)};" title="${escapeHtml(_bd.label||actionLabel(r))}">${escapeHtml(_bd.code||actionLabel(r))}</span>`; })()}
+          ${(()=>{ const _wr=_winningReason(r); return _wr ? `<span style="font-size:9px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px;" title="${escapeHtml(_wr)}">${escapeHtml(_wr.length>28?_wr.slice(0,28)+'…':_wr)}</span>` : ''; })()}
+        </div>
         ${_srcSubLineHtml(r)}
         ${_isOverMaxOverlay(r) ? `<div style="font-size:8px;line-height:1;font-weight:600;margin-top:1px;" class="${_actionColorCls(action)}">was ${actionText(actionDisplay(action))}</div>` : ''}
       </td>
