@@ -1498,8 +1498,9 @@ function renderGrid() {
     const pctStr = r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : '';
     const priceStr = r.last_price != null ? fmtUsd(r.last_price) : '';
     // Task 4: intraday marker — shown when the quote is fresher than the EOD anchor
+    const _idyTime = r.export_time ? (' @ ' + String(r.export_time).slice(0, 5)) : '';
     const intradayTag = r.quote_is_intraday
-      ? '<span title="Intraday price — pct_brr/zone computed against live quote" style="font-size:8px;color:#0a84ff;font-weight:700;margin-left:2px;">IDY</span>'
+      ? `<span title="Intraday price${escapeHtml(_idyTime)} — pct_brr/zone computed against live quote" style="font-size:8px;color:#0a84ff;font-weight:700;margin-left:2px;">IDY</span>`
       : '';
     const isChecked = state.selected.has(r.tos_symbol);
 
