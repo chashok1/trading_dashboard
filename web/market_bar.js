@@ -135,7 +135,8 @@
   // ---- build tape row (bar 1) — explicit labeled groups -----------------
   const BAR1_GROUPS = [
     { label: 'Eq',    keys: ['SPX', 'VIX', 'COMP', 'VXN', 'DJI', 'VXD', 'RUT', 'RVX'] },
-    { label: 'Cmdty', keys: ['WTI', 'BZ', 'OVX', 'GC', 'GVZ'] },
+    { label: 'Oil',   keys: ['WTI', 'BZ', 'OVX'] },
+    { label: 'Gold',  keys: ['GC', 'GVZ'] },
     { label: 'FX',    keys: ['DXY', 'MOVE'] },
   ];
 
