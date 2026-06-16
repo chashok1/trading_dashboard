@@ -1135,6 +1135,17 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   height: 100%;
   overflow: hidden;
   border-right: none;
+  position: relative;
+}
+#symTapeTrack .rr-chip + .rr-chip::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 20px;
+  background: var(--border);
 }
 .sym-tape-nav {
   flex-shrink: 0;
