@@ -134,9 +134,9 @@
   // ---- build tape row (bar 1) — explicit labeled groups -----------------
   const BAR1_GROUPS = [
     { label: 'Eq',    keys: ['SPX', 'VIX', 'COMP', 'VXN', 'DJI', 'VXD', 'RUT', 'RVX'] },
-    { label: 'Oil',   keys: ['WTI', 'BZ', 'OVX'] },
-    { label: 'Gold',  keys: ['GC', 'GVZ'] },
     { label: 'FX',    keys: ['DXY', 'MOVE'] },
+    { label: 'Gold',  keys: ['GC', 'GVZ'] },
+    { label: 'Oil',   keys: ['WTI', 'BZ', 'OVX'] },
   ];
 
   function buildTapeHtml(data) {
@@ -166,8 +166,8 @@
   }
 
   // ---- build RR bar (bar 2 or 3) — chips with inline group headings ----
-  const BAR2_CATS = ['Sectors', 'FX', 'Rates', 'Credit', 'Indexes'];
-  const BAR3_CATS = ['ETFs', 'Tech', 'Crypto'];
+  const BAR2_CATS = ['Sectors', 'Rates', 'Credit', 'Indexes'];
+  const BAR3_CATS = ['Tech', 'ETFs', 'Crypto'];
   const CAT_SHORT  = {
     'ETFs': 'ETF', 'Sectors': 'Sect', 'Commodities': 'Cmdty', 'Credit': 'Crd',
     'Rates': 'Rates', 'Tech': 'Tech', 'FX': 'FX', 'Indexes': 'Idx', 'Crypto': 'Crypt',
