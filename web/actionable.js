@@ -443,7 +443,13 @@ function renderSymTape() {
     const pctCls = pct == null ? 'mt-flat' : pct > 0.001 ? 'mt-up' : pct < -0.001 ? 'mt-down' : 'mt-flat';
     const bg     = _symTapeBg(r);
     const action = r.consolidated_action || '';
-    const tip    = escapeHtml([r.tos_symbol, action, pctStr, r.last_price != null ? '$'+Number(r.last_price).toFixed(2) : ''].filter(Boolean).join('  '));
+    const fmt2   = v => v != null ? Number(v).toFixed(2) : '—';
+    const lrrStr = r.lrr != null ? `LRR ${fmt2(r.lrr)}` : '';
+    const mrrStr = r.mrr != null ? `MRR ${fmt2(r.mrr)}` : '';
+    const trrStr = r.trr != null ? `TRR ${fmt2(r.trr)}` : '';
+    const tip    = escapeHtml([r.tos_symbol, action, pctStr,
+      r.last_price != null ? '$'+Number(r.last_price).toFixed(2) : '',
+      lrrStr, mrrStr, trrStr].filter(Boolean).join('  '));
 
     // Range bar fill — pct_brr is 0–100 (position within buy–sell range)
     const pctBrr = r.quote_pct_brr != null ? Number(r.quote_pct_brr)
@@ -468,7 +474,7 @@ function renderSymTape() {
         `</div>`
       : '';
 
-    return `<div class="rr-chip" title="${tip}">` +
+    return `<div class="rr-chip" data-sym="${escapeHtml(r.tos_symbol)}" title="${tip}">` +
       `<div class="rr-chip-top">` +
       `<span class="rr-sym" style="background:${bg};">${escapeHtml(r.tos_symbol)}</span>` +
       `<span class="mt-chg ${pctCls}">${pctStr}</span>` +
@@ -1243,6 +1249,151 @@ function hideSourcePop() {
   if (pop) pop.style.display = 'none';
 }
 
+// ---- sym tape rich hover popover ----------------------------------------
+function _buildSymTilePopHtml(r) {
+  if (!r) return '';
+  const fmt2 = v => v != null ? Number(v).toFixed(2) : '—';
+
+  // Header
+  const disp    = actionDisplay(r.consolidated_action);
+  const actCode = actionText(disp);
+  const actCls  = (disp.colorCls || 'act-neutral') + '-tint';
+  const pct     = r.pct_change != null ? Number(r.pct_change) : null;
+  const pctStr  = pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—';
+  const pctCls  = pct == null ? '' : pct > 0.001 ? 'mt-up' : pct < -0.001 ? 'mt-down' : 'mt-flat';
+  let html = `<div class="stp-header">` +
+    `<span class="stp-sym">${escapeHtml(r.tos_symbol)}</span>` +
+    (actCode && actCode !== '--' ? `<span class="act-badge act-badge-sm ${actCls}">${escapeHtml(actCode)}</span>` : '') +
+    `<span class="stp-price">${r.last_price != null ? '$' + Number(r.last_price).toFixed(2) : ''}` +
+    (pctStr ? ` <span class="${pctCls}">${pctStr}</span>` : '') +
+    `</span></div>`;
+
+  // Sources
+  const sources = _sourcesOf(r);
+  if (sources.length) {
+    html += `<div class="stp-section"><div class="stp-label">Sources</div>`;
+    sources.forEach(s => {
+      const sc   = s.source_code || s.source || '';
+      const sa   = (s.action || '').toUpperCase();
+      const sd   = actionDisplay(sa);
+      const sCls = (sd.colorCls || 'act-neutral') + '-tint';
+      const sTxt = actionText(sd) || sa || '—';
+      const wt   = s.weight != null ? Number(s.weight).toFixed(2) : null;
+      html += `<div class="stp-row">` +
+        `<span class="stp-key">${escapeHtml(sc)}</span>` +
+        `<span class="act-badge act-badge-sm ${sCls}">${escapeHtml(sTxt)}</span>` +
+        (wt ? `<span class="stp-val">${wt}</span>` : '') +
+        `</div>`;
+    });
+    html += `</div>`;
+  }
+
+  // Technical
+  const pctBrr   = r.quote_pct_brr != null ? r.quote_pct_brr : r.ma_pct_brr;
+  const hasTech  = r.lrr != null || r.mrr != null || r.trr != null ||
+                   pctBrr != null || r.quote_zone || r.rr_desc;
+  if (hasTech) {
+    html += `<div class="stp-section"><div class="stp-label">Technical</div>`;
+    if (r.lrr  != null) html += `<div class="stp-row"><span class="stp-key">LRR</span><span class="stp-val">${fmt2(r.lrr)}</span></div>`;
+    if (r.mrr  != null) html += `<div class="stp-row"><span class="stp-key">MRR</span><span class="stp-val">${fmt2(r.mrr)}</span></div>`;
+    if (r.trr  != null) html += `<div class="stp-row"><span class="stp-key">TRR</span><span class="stp-val">${fmt2(r.trr)}</span></div>`;
+    if (pctBrr != null) html += `<div class="stp-row"><span class="stp-key">BRR%</span><span class="stp-val">${Math.round(Number(pctBrr))}%</span></div>`;
+    if (r.quote_zone) html += `<div class="stp-row"><span class="stp-key">Zone</span><span class="stp-val">${escapeHtml(r.quote_zone)}</span></div>`;
+    if (r.rr_desc)    html += `<div class="stp-desc">${escapeHtml(r.rr_desc)}</div>`;
+    html += `</div>`;
+  }
+
+  // Rules
+  let fires = r.rules_engine_fires;
+  if (typeof fires === 'string') { try { fires = JSON.parse(fires); } catch (_) { fires = []; } }
+  if (Array.isArray(fires) && fires.length) {
+    html += `<div class="stp-section"><div class="stp-label">Rules</div>` +
+      `<div class="stp-rules">${firesCellHtml(r)}</div></div>`;
+  }
+
+  return html;
+}
+
+function _showSymTilePop(chipEl) {
+  const sym = chipEl.dataset.sym;
+  if (!sym) return;
+  const r   = state.rows.find(row => row.tos_symbol === sym);
+  const pop = $('symTilePop');
+  if (!pop || !r) return;
+  pop.innerHTML    = _buildSymTilePopHtml(r);
+  pop.style.display = 'block';
+  const rect = chipEl.getBoundingClientRect();
+  const popH = pop.offsetHeight;
+  let top  = rect.top + window.scrollY - popH - 8;
+  if (top < 4) top = rect.bottom + window.scrollY + 8;
+  const left = Math.max(4, Math.min(window.innerWidth - 260, rect.left + window.scrollX));
+  pop.style.top  = top  + 'px';
+  pop.style.left = left + 'px';
+}
+
+function _hideSymTilePop() {
+  const pop = $('symTilePop');
+  if (pop) pop.style.display = 'none';
+}
+
+function initSymTilePop() {
+  const track = $('symTapeTrack');
+  if (!track) return;
+
+  track.addEventListener('mouseover', (e) => {
+    const chip = e.target.closest('.rr-chip[data-sym]');
+    if (chip) _showSymTilePop(chip);
+  });
+  track.addEventListener('mouseout', (e) => {
+    if (!e.relatedTarget || !e.relatedTarget.closest('.rr-chip[data-sym]')) {
+      _hideSymTilePop();
+    }
+  });
+  track.addEventListener('click', (e) => {
+    const chip = e.target.closest('.rr-chip[data-sym]');
+    if (!chip) return;
+    _hideSymTilePop();
+    const sym = chip.dataset.sym;
+    const r   = state.rows.find(row => row.tos_symbol === sym);
+    if (r) openDrilldown(r);
+  });
+}
+
+function initGridSymClick() {
+  const body = $('actBody');
+  if (!body) return;
+  body.addEventListener('click', (e) => {
+    const cell = e.target.closest('[data-sym-cell]');
+    if (!cell) return;
+    const sym = cell.dataset.symCell;
+    const r   = state.rows.find(row => row.tos_symbol === sym);
+    const disp = actionDisplay(r?.consolidated_action || '');
+    const code = actionText(disp);
+    const cls  = (disp.colorCls || 'act-neutral') + '-tint';
+    openChartModal(sym, {
+      description: r?.description,
+      price:       r?.last_price,
+      pctChange:   r?.pct_change,
+      badgeHtml:   code ? `<span class="act-badge ${cls}">${escapeHtml(code)}</span>` : '',
+    });
+  });
+}
+
+function initEcoBarClick() {
+  ['marketTape','rrTape','rrTape3'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('click', (e) => {
+      const chip = e.target.closest('.rr-chip[data-sym]');
+      if (!chip) return;
+      const sym = chip.dataset.sym;
+      const r   = state.rows.find(row => row.tos_symbol === sym)
+               || { tos_symbol: sym, as_of_date: state.date };
+      openDrilldown(r);
+    });
+  });
+}
+
 function initSourcePopover() {
   const body = $('actBody');
   if (!body) return;
@@ -1335,7 +1486,8 @@ function renderGrid() {
   for (const r of visibleRows) {
     const tr = document.createElement('tr');
     const action = (r.consolidated_action || 'NONE').toUpperCase();
-    const isActed = r._rowActed;
+    const _ua = (r.last_user_action || '').toUpperCase();
+    const isActed = r._rowActed || _ua === 'DONE' || _ua === 'SKIPPED' || _ua === 'OVERRIDDEN';
     if (isActed) tr.classList.add('row-acted');
     tr.dataset.sym = r.tos_symbol;
 
@@ -1380,9 +1532,9 @@ function renderGrid() {
         <span class="${pctCls}" style="font-weight:700;">${pctStr}${intradayTag}</span>
         ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
       </td>
-      <td style="padding:6px 4px;">
+      <td data-sym-cell="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer;" title="Click for chart">
         ${typeof yahooLink === 'function' ? yahooLink(r.tos_symbol) : ''}
-        <strong style="font-size:13px;">${escapeHtml(r.tos_symbol || '')}</strong>
+        <strong class="tv-sym-link" style="font-size:13px;">${escapeHtml(r.tos_symbol || '')}</strong>
         ${r.sector ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px;">${escapeHtml(r.sector)}</div>` : ''}
       </td>
       <td style="padding:6px 4px;">${fcHtml}</td>
@@ -1666,24 +1818,77 @@ function _assetClass(r) {
   return '';
 }
 
+// ---- drilldown TV chart ----
+const _DD_TV_MAP = {
+  '$SPX':'SP:SPX','SPX':'SP:SPX','$COMP':'NASDAQ:NDX','COMP':'NASDAQ:NDX','COMPQ':'NASDAQ:NDX',
+  '$DJI':'DJ:DJI','DJI':'DJ:DJI','INDU':'DJ:DJI','RUT':'TVC:RUT',
+  'VIX':'TVC:VIX','VXN':'TVC:VXN','VXD':'TVC:VXD','RVX':'TVC:RVX',
+  'OVX':'TVC:OVX','GVZ':'TVC:GVZ','MOVE':'TVC:MOVE',
+  'DXY':'TVC:DXY','$DXY':'TVC:DXY',
+  '/CL':'TVC:USOIL','/GC':'TVC:GOLD','/ES':'SP:SPX','/NQ':'NASDAQ:NDX','/RTY':'TVC:RUT',
+};
+let _ddTvSeq = 0;
+function _loadDrilldownChart(sym) {
+  const el = $('modalTvChart');
+  if (!el) return;
+  el.innerHTML = '';
+  if (!sym || sym.startsWith('$_CASH')) {
+    el.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;">No chart</div>';
+    return;
+  }
+  let tvSym = _DD_TV_MAP[sym] || (sym.startsWith('$') ? sym.slice(1) : sym.startsWith('/') ? sym.slice(1)+'1!' : sym);
+  const id = 'dd_tv_' + (++_ddTvSeq);
+  const wrap = document.createElement('div');
+  wrap.id = id;
+  wrap.style.cssText = 'width:100%;height:100%;';
+  el.appendChild(wrap);
+  const s = document.createElement('script');
+  s.src = 'https://s3.tradingview.com/tv.js';
+  s.onload = () => {
+    new TradingView.widget({
+      autosize:true, symbol:tvSym, interval:'D',
+      timezone:'America/New_York', theme:'light', style:'1', locale:'en',
+      enable_publishing:false, allow_symbol_change:true, save_image:false,
+      studies:['BB@tv-basicstudies','RSI@tv-basicstudies'],
+      container_id:id,
+    });
+  };
+  if (window.TradingView) {
+    // already loaded
+    new TradingView.widget({
+      autosize:true, symbol:tvSym, interval:'D',
+      timezone:'America/New_York', theme:'light', style:'1', locale:'en',
+      enable_publishing:false, allow_symbol_change:true, save_image:false,
+      studies:['BB@tv-basicstudies','RSI@tv-basicstudies'],
+      container_id:id,
+    });
+  } else {
+    document.head.appendChild(s);
+  }
+}
+
 // ---- drilldown ----
 async function openDrilldown(row) {
   hideSourcePop();
   state.current = row;
   $('modalTitle').textContent = row.tos_symbol;
-  $('modalName').textContent = row.tos_symbol || '';
-  $('modalSub').textContent = [`as of ${row.as_of_date}`, row.position_category, row.sector].filter(Boolean).join(' · ');
+  $('modalPrice').textContent = row.last_price != null ? '$' + Number(row.last_price).toFixed(2) : '';
+  $('modalSector').textContent = row.sector || '';
+  const _ac = row.real_asset_class || '';
+  $('modalAssetClass').textContent = _ac;
+  $('modalAssetClass').style.display = _ac ? '' : 'none';
+  const _posDollar = row.current_position_dollar != null ? 'Pos: ' + fmtUsd(row.current_position_dollar) : '';
+  $('modalPositionDollar').textContent = _posDollar;
+  $('modalPositionDollar').style.display = _posDollar ? '' : 'none';
 
   const chgEl = $('modalPriceChange');
   if (row.net_chng != null && row.pct_change != null) {
     const nc = Number(row.net_chng), pc = Number(row.pct_change);
     const chgCls = nc >= 0 ? 'act-buy-strong' : 'act-sell-strong';
-    const fmtAmt = v => { const a = Math.abs(v); return (v < 0 ? '-' : '') + '$' + (a >= 1000 ? Math.round(a).toLocaleString() : a.toFixed(0)); };
-    chgEl.innerHTML = `<span class="${chgCls}" style="font-weight:700;font-size:20px;line-height:1.3;">${fmtAmt(nc)} (${pc.toFixed(2)}%)</span>`;
-    chgEl.style.display = 'block';
+    const fmtAmt = v => { const a = Math.abs(v); return (v < 0 ? '-' : '+') + '$' + (a >= 1000 ? Math.round(a).toLocaleString() : a.toFixed(2)); };
+    chgEl.innerHTML = `<span class="${chgCls}" style="font-weight:700;font-size:15px;">${fmtAmt(nc)} (${pc.toFixed(2)}%)</span>`;
   } else {
     chgEl.innerHTML = '';
-    chgEl.style.display = 'none';
   }
 
   const action = (row.consolidated_action || 'NONE').toUpperCase();
@@ -1691,19 +1896,11 @@ async function openDrilldown(row) {
   kv.innerHTML = `
     <dt>Action</dt><dd><span class="act-badge ${(actionDisplay(_badgeAction(row)).colorCls || 'act-neutral') + '-tint'}">${actionLabel(row)}</span>${_isOverMaxOverlay(row) ? ` <small class="${_actionColorCls(action)}" style="font-weight:600;font-size:9px;">was ${actionText(actionDisplay(action))}</small>` : ''}</dd>
     <dt>Winning source</dt><dd>${row.winning_source || '—'}</dd>
-    <dt>Real asset class</dt><dd>${row.real_asset_class || '—'}</dd>
-    <dt>Held today</dt><dd>${row.held_today ? 'Yes' : 'No'}</dd>
-    <dt>Position $</dt><dd>${fmtUsd(row.current_position_dollar) || '—'}</dd>
-    <dt>Price</dt><dd>${fmtUsd(row.last_price) || '—'}</dd>
-    <dt>Change</dt><dd>${fmtUsd(row.net_chng)} (<span class="${row.pct_change != null ? (Number(row.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : ''}">${row.pct_change != null ? (Number(row.pct_change).toFixed(2) + '%') : ''}</span>)</dd>
-    <dt>As of</dt><dd>${fmtAsOf(row.derived_at) || '—'}</dd>
     <dt>AMT$</dt><dd><strong>${fmtUsd(row._amt) || '—'}</strong></dd>
-    <dt>In My List</dt><dd>${row.in_my_list ? 'Yes' : 'No'}</dd>
     <dt>Suppressed</dt><dd>${row.suppressed_reason || '—'}</dd>
   `;
 
-  // Per-source actions table — each row expands inline to a full
-  // current-vs-previous record comparison (toggleCmpRow / loadComparison).
+  // Per-source actions table
   const srcTbody = $('modalSources').querySelector('tbody');
   srcTbody.innerHTML = '';
   let sourceList = row.source_actions;
@@ -1782,6 +1979,7 @@ async function openDrilldown(row) {
   await loadComparison(row.tos_symbol, row.as_of_date);
   await loadHistory(row.tos_symbol);
   loadRRAnalysis(row.tos_symbol, row.as_of_date);
+  _loadDrilldownChart(row.tos_symbol);
 
   $('modalBackdrop').classList.add('open');
 }
@@ -2270,6 +2468,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // captured from the clean header text (before sort indicators are injected).
   initSorting();
   _initSymTape();
+  initSymTilePop();
+  initGridSymClick();
+  initEcoBarClick();
 
   await loadSources();
   await loadDates();
@@ -2395,9 +2596,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Clear all filters
   $('clearFiltersBtn').addEventListener('click', clearAllFilters);
 
-$('modalClose').addEventListener('click', () => $('modalBackdrop').classList.remove('open'));
+const _closeModal = () => {
+    $('modalBackdrop').classList.remove('open');
+    const tc = $('modalTvChart'); if (tc) tc.innerHTML = '';
+  };
+  $('modalClose').addEventListener('click', _closeModal);
   $('modalBackdrop').addEventListener('click', (e) => {
-    if (e.target === $('modalBackdrop')) $('modalBackdrop').classList.remove('open');
+    if (e.target === $('modalBackdrop')) _closeModal();
   });
   $('saveActionBtn').addEventListener('click', saveUserAction);
   $('dismissActionBtn').addEventListener('click', dismissUserAction);
@@ -2611,9 +2816,9 @@ function setupRRActionCol() {
     const sec = label =>
       `<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:5px 0 2px;">${label}</div>`;
     const shortDesc = (short, desc) => {
-      const sHtml = short ? `<span style="font-weight:700;">${short}</span>` : '';
-      const dPart = (desc && desc !== short) ? desc : '';
-      return [sHtml, dPart].filter(Boolean).join(': ') || desc || '—';
+      const sHtml = short ? `<span style="font-weight:700;">${escapeHtml(short)}</span>` : '';
+      const dPart = (desc && desc !== short) ? escapeHtml(desc) : '';
+      return [sHtml, dPart].filter(Boolean).join(': ') || escapeHtml(desc) || '—';
     };
 
     // ── QR decision path ─────────────────────────────────────────────────────
