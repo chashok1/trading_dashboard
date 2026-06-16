@@ -464,7 +464,7 @@ function renderSymTape() {
     // Action label (canonical code via actions.js) and IV percentile
     const disp     = actionDisplay(r.consolidated_action);
     const actCode  = actionText(disp);
-    const actColor = disp.side === 'sell' ? '#b91c1c' : disp.side === 'buy' ? '#15803d' : '#64748b';
+    const actColor = _actionCodeColor(disp);
     const actLabel = (actCode && actCode !== '--') ? actCode : '';
     const ivVal    = r.iv_percentile != null ? Math.round(Number(r.iv_percentile)) : null;
     const ivStr    = ivVal != null ? `IV ${ivVal}%` : '';
