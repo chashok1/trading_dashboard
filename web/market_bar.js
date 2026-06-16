@@ -159,8 +159,12 @@
                                item.rr_buy, item.rr_sell, item.value, tip, item.stale));
       }
       if (!grpCells.length) continue;
-      cells.push(`<span class="rr-cat">${escHtml(grp.label)}</span>`);
-      cells.push(...grpCells);
+      cells.push(
+        `<div class="rr-group">` +
+        `<span class="rr-cat">${escHtml(grp.label)}</span>` +
+        grpCells.join('') +
+        `</div>`
+      );
     }
 
     return cells.join('');
@@ -180,7 +184,7 @@
     for (const cat of cats) {
       const items = groups[cat];
       if (!items || !items.length) continue;
-      cells.push(`<span class="rr-cat">${escHtml(CAT_SHORT[cat] || cat)}</span>`);
+      const chips = [];
       for (const item of items) {
         const pct    = item.pct != null ? Number(item.pct) : null;
         const cls    = dirClass(pct, null);
@@ -194,9 +198,15 @@
           (item.outlook ? `  Outlook: ${item.outlook}` : '') +
           (item.as_of ? `  as of: ${item.as_of}` : '')
         );
-        cells.push(chipHtml(name, item.outlook, chgStr, cls,
+        chips.push(chipHtml(name, item.outlook, chgStr, cls,
                             item.buy, item.sell, item.bar_price, tip, false));
       }
+      cells.push(
+        `<div class="rr-group">` +
+        `<span class="rr-cat">${escHtml(CAT_SHORT[cat] || cat)}</span>` +
+        chips.join('') +
+        `</div>`
+      );
     }
     return cells.join('');
   }

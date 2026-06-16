@@ -966,7 +966,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 .market-tape {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 5px;
   height: 44px;
   background: var(--card-bg);
   border-bottom: 1px solid var(--border);
@@ -987,7 +987,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 .rr-tape {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 5px;
   height: 44px;
   background: var(--surface-1, var(--card-bg));
   border-bottom: 1px solid var(--border);
@@ -1006,6 +1006,18 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 
 /* Bar 3 — sticky below bar 2 */
 #rrTape3 { top: 88px; z-index: 88; }
+
+/* Group box — wraps label + chips for each category */
+.rr-group {
+  display: inline-flex;
+  align-items: stretch;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.rr-group .rr-chip:last-child { border-right: none; }
 
 .rr-cat {
   padding: 0 6px;
