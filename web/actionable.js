@@ -440,7 +440,7 @@ function renderSymTape() {
   track.innerHTML = batch.map(r => {
     const pct    = r.pct_change != null ? Number(r.pct_change) : null;
     const pctStr = pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—';
-    const pctBg  = pct == null ? null : pct > 0.001 ? '#2f9e2f' : pct < -0.001 ? '#d83a3a' : null;
+    const pctBg  = pct == null ? null : pct > 0.001 ? '#2f9e2f' : pct < -0.001 ? '#d83a3a' : '#888';
     const pctBoxStyle = pctBg ? `background:${pctBg};color:#fff;padding:1px 5px;border-radius:3px;` : 'color:#94a3b8;';
     const bg     = _symTapeBg(r);
     const action = r.consolidated_action || '';
