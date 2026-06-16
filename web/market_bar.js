@@ -73,6 +73,7 @@
   function itemTip(item, valStr, chgStr, arrow) {
     const parts = [`${item.label}: ${valStr}`];
     if (chgStr) parts.push(`${arrow}${chgStr}`);
+    if (item.rr_outlook) parts.push(`Outlook: ${item.rr_outlook}`);
     parts.push(`source: ${item.source || '?'}, as of: ${item.as_of || '?'}`);
     if (item.stale) parts.push('stale');
     return escHtml(parts.join('  '));
@@ -190,7 +191,7 @@
         const tip    = escHtml(
           `${item.label || item.symbol}  ${chgStr}` +
           (item.buy != null ? `  range: ${buyStr}–${sellStr}` : '') +
-          (item.outlook ? `  ${item.outlook}` : '') +
+          (item.outlook ? `  Outlook: ${item.outlook}` : '') +
           (item.as_of ? `  as of: ${item.as_of}` : '')
         );
         cells.push(chipHtml(name, item.outlook, chgStr, cls,

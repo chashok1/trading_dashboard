@@ -450,6 +450,7 @@ function renderSymTape() {
     const trrStr = r.trr != null ? `TRR ${fmt2(r.trr)}` : '';
     const tip    = escapeHtml([r.tos_symbol, action, pctStr,
       r.last_price != null ? '$'+Number(r.last_price).toFixed(2) : '',
+      r.rr_outlook ? 'Outlook: ' + r.rr_outlook : '',
       lrrStr, mrrStr, trrStr].filter(Boolean).join('  '));
 
     // Range bar fill — pct_brr is 0–100 (position within buy–sell range)
