@@ -1125,10 +1125,14 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 .sym-tape-track {
   flex: 1;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   overflow: hidden;
   height: 100%;
   padding: 0 2px;
+}
+#symTapeTrack .rr-chip {
+  height: 100%;
+  overflow: hidden;
 }
 .sym-tape-nav {
   flex-shrink: 0;
