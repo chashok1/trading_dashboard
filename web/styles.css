@@ -1025,6 +1025,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 }
 .rr-group:last-child { border-right: none; padding-right: 0; }
 .rr-group .rr-chip { border-right: none; }
+.rr-group .rr-chip + .rr-chip { border-left: 1px solid var(--border); }
 
 .rr-cat {
   padding: 0 6px;
