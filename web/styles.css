@@ -987,7 +987,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 .rr-tape {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 10px;
   height: 44px;
   background: var(--surface-1, var(--card-bg));
   border-bottom: 1px solid var(--border);
