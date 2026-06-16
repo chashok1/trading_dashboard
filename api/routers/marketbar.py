@@ -60,6 +60,27 @@ _SYNTHETIC_KEYS = {mk for _, mk, _, _ in _SYNTHETIC_BAR1}
 # synthetics that display % change — fetch pct_change from drv_quote
 _SYNTHETIC_PCT_SYMS = {rr_sym for rr_sym, _, _, vfmt in _SYNTHETIC_BAR1 if vfmt == 'price'}
 
+_HIST_RR_PREV_SQL = text(
+    "SELECT tos_symbol, last_price FROM hist_rr WHERE snapshot_date="
+    "(SELECT MAX(snapshot_date) FROM hist_rr WHERE snapshot_date<"
+    "(SELECT MAX(snapshot_date) FROM hist_rr))"
+)
+
+
+def _hist_rr_pct(session) -> dict[str, float]:
+    """Day-over-day % change from hist_rr for symbols that lack drv_quote pct_change."""
+    cur = {r['tos_symbol']: float(r['last_price'])
+           for r in session.execute(text(
+               "SELECT tos_symbol, last_price FROM hist_rr "
+               "WHERE snapshot_date=(SELECT MAX(snapshot_date) FROM hist_rr)"
+           )).mappings().all() if r['last_price'] is not None}
+    prev = {r['tos_symbol']: float(r['last_price'])
+            for r in session.execute(_HIST_RR_PREV_SQL).mappings().all()
+            if r['last_price'] is not None}
+    return {sym: round((c / prev[sym] - 1) * 100, 2)
+            for sym, c in cur.items()
+            if sym in prev and prev[sym] > 0}
+
 
 @router.get("/api/marketbar")
 def get_marketbar() -> dict:
@@ -105,6 +126,8 @@ def get_marketbar() -> dict:
                 "WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_rr)"
             )).mappings().all()
         }
+        # Day-over-day pct from hist_rr — fallback for futures not in drv_quote
+        rr_pct_fallback = _hist_rr_pct(s)
 
     # Enrich existing ref_market_metric items with rr range data + OHLC
     enriched = []
@@ -124,6 +147,8 @@ def get_marketbar() -> dict:
             d['high']  = ohlc['h']
             d['low']   = ohlc['l']
             d['close'] = ohlc['c']
+        if d.get('chg_pct') is None and rr_sym:
+            d['chg_pct'] = rr_pct_fallback.get(rr_sym)
         enriched.append(d)
 
     # Append synthetic items (rates + Brent + bonds).
@@ -143,7 +168,8 @@ def get_marketbar() -> dict:
             'grp':          'synthetic',
             'value':        last_price,
             'chg':          None,
-            'chg_pct':      ohlc['pct'] if ohlc and vfmt == 'price' else None,
+            'chg_pct':      (ohlc['pct'] if (ohlc and ohlc['pct'] is not None)
+                            else rr_pct_fallback.get(rr_sym)) if vfmt == 'price' else None,
             'value_format': vfmt,
             'as_of':        None,
             'source':       price_source,
@@ -234,7 +260,8 @@ _CATEGORY_ORDER_ALL = ['Indexes', 'Risk', 'FX', 'Commodities', 'Credit', 'Tech',
 
 def _build_rr_response(rows, meta: dict, cat_order: list,
                         exclude: set | None = None,
-                        curated_only: bool = False) -> dict:
+                        curated_only: bool = False,
+                        rr_pct: dict | None = None) -> dict:
     """Shared builder for rr-bar endpoints.
 
     curated_only=True: skip any symbol not in meta (no 'Other' bucket).
@@ -252,7 +279,8 @@ def _build_rr_response(rows, meta: dict, cat_order: list,
         cat, label = m if m else ('Other', sym)
 
         q_price = float(row['q_price']) if row['q_price'] is not None else None
-        pct     = float(row['pct'])     if row['pct']     is not None else None
+        pct     = (float(row['pct']) if row['pct'] is not None
+                   else (rr_pct.get(sym) if rr_pct else None))
 
         buy  = float(row['buy_trade'])  if row['buy_trade']  is not None else None
         sell = float(row['sell_trade']) if row['sell_trade'] is not None else None
@@ -309,8 +337,9 @@ def get_rr_bar() -> dict:
     """RR symbols grouped by category for the second market tape (curated list only)."""
     with session_scope() as s:
         rows = s.execute(_RR_SQL).mappings().all()
+        pct_fb = _hist_rr_pct(s)
     return _build_rr_response(rows, _RR_META, _CATEGORY_ORDER,
-                               exclude=_FIRST_BAR_RR, curated_only=True)
+                               exclude=_FIRST_BAR_RR, curated_only=True, rr_pct=pct_fb)
 
 
 @router.get("/api/rr-bar-all")
@@ -318,4 +347,6 @@ def get_rr_bar_all() -> dict:
     """All hist_rr symbols for the third market tape (excludes bar-1 symbols)."""
     with session_scope() as s:
         rows = s.execute(_RR_SQL).mappings().all()
-    return _build_rr_response(rows, _RR_META_ALL, _CATEGORY_ORDER_ALL, exclude=_FIRST_BAR_RR)
+        pct_fb = _hist_rr_pct(s)
+    return _build_rr_response(rows, _RR_META_ALL, _CATEGORY_ORDER_ALL,
+                               exclude=_FIRST_BAR_RR, rr_pct=pct_fb)
