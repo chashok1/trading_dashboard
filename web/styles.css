@@ -1134,6 +1134,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 #symTapeTrack .rr-chip {
   height: 100%;
   overflow: hidden;
+  border-right: none;
 }
 .sym-tape-nav {
   flex-shrink: 0;
