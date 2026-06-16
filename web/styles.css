@@ -202,10 +202,10 @@ html, body {
 .filters select,
 .filters input,
 #datePicker {
-  padding: 6px 10px;
+  padding: 3px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  font: inherit;
+  font-size: 12px;
   color: var(--text-1);
   background: var(--card-bg);
   box-sizing: border-box;
@@ -213,11 +213,12 @@ html, body {
 }
 
 .btn {
-  padding: 6px 12px;
+  padding: 3px 10px;
   border: 1px solid var(--border);
   background: var(--card-bg);
   border-radius: 6px;
   cursor: pointer;
+  font-size: 12px;
   color: var(--text-1);
   box-sizing: border-box;
   height: 28px;
