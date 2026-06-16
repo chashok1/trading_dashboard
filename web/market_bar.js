@@ -166,7 +166,7 @@
   }
 
   // ---- build RR bar (bar 2 or 3) — chips with inline group headings ----
-  const BAR2_CATS = ['Sectors', 'FX', 'Rates', 'Credit', 'Indexes'];
+  const BAR2_CATS = ['Sectors', 'FX', 'Indexes', 'Rates'];
   const BAR3_CATS = ['Tech', 'ETFs', 'Crypto'];
   const CAT_SHORT  = {
     'ETFs': 'ETF', 'Sectors': 'Sect', 'Commodities': 'Cmdty', 'Credit': 'Crd',
@@ -309,7 +309,7 @@
       if (!mktRes.ok) throw new Error('HTTP ' + mktRes.status);
       if (!rrRes.ok)  throw new Error('HTTP ' + rrRes.status);
       const [mktData, rrData] = await Promise.all([mktRes.json(), rrRes.json()]);
-      tapeEl.innerHTML = buildTapeHtml(mktData) + buildRrBarHtml(rrData, ['Commodities']);
+      tapeEl.innerHTML = buildTapeHtml(mktData) + buildRrBarHtml(rrData, ['Commodities', 'Credit']);
     } catch (err) {
       if (tapeEl) {
         tapeEl.innerHTML =
