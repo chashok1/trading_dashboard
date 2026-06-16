@@ -208,6 +208,8 @@ html, body {
   font: inherit;
   color: var(--text-1);
   background: var(--card-bg);
+  box-sizing: border-box;
+  height: 28px;
 }
 
 .btn {
@@ -217,6 +219,8 @@ html, body {
   border-radius: 6px;
   cursor: pointer;
   color: var(--text-1);
+  box-sizing: border-box;
+  height: 28px;
 }
 
 .btn:hover {
