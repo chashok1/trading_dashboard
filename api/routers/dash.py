@@ -350,10 +350,27 @@ def get_actionable(
             "  AND a.current_position_dollar > a.target_max_dollar))"
         )
 
+    # Pre-compute max position snapshot dates (two fast date lookups)
+    with session_scope() as _s:
+        max_f_snap = _s.execute(
+            text("SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d"),
+            {"d": d},
+        ).scalar()
+        max_cs_snap = _s.execute(
+            text("SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d"),
+            {"d": d},
+        ).scalar()
+    params["max_f_snap"] = max_f_snap
+    params["max_cs_snap"] = max_cs_snap
+
+    # Use drv_technicals/drv_outlooks directly instead of drv_ma VIEW (which
+    # expands to 5 tables) to keep join count below GEQO threshold (12).
+    # drv_cat_atomic_input is also dropped — no columns from it are selected.
     sql = f"""
         SELECT a.*,
-               COALESCE(a.source_asset_class, m.asset_class) AS real_asset_class,
-               m.iv_percentile, m.pct_brr AS ma_pct_brr,
+               COALESCE(a.source_asset_class, mt.asset_class) AS real_asset_class,
+               mt.iv_percentile, mo.pct_brr AS ma_pct_brr,
+               dr.lrr, dr.mrr, dr.trr,
                q.last_price, q.net_chng, q.pct_change, q.export_date, q.export_time, q.loaded_at,
                q.pct_brr AS quote_pct_brr, q.zone_signal AS quote_zone,
                q.is_intraday AS quote_is_intraday,
@@ -364,32 +381,16 @@ def get_actionable(
                rr.bb_rng_strk_desc AS bb_desc,
                rr.rr_desc,
                rr.rr_bull_bear,
-               (SELECT STRING_AGG(acct, ', ' ORDER BY acct)
-                FROM (
-                    SELECT DISTINCT COALESCE(f.account_name, f.account_number) AS acct
-                    FROM hist_f f
-                    WHERE f.tos_symbol = a.tos_symbol
-                      AND f.snapshot_date = (
-                          SELECT MAX(snapshot_date) FROM hist_f
-                          WHERE snapshot_date <= a.as_of_date)
-                      AND f.qty > 0
-                    UNION
-                    SELECT DISTINCT c.account AS acct
-                    FROM hist_cs c
-                    WHERE c.tos_symbol = a.tos_symbol
-                      AND c.snapshot_date = (
-                          SELECT MAX(snapshot_date) FROM hist_cs
-                          WHERE snapshot_date <= a.as_of_date)
-                      AND c.qty > 0
-                ) _accts
-               ) AS held_accounts
+               _ha.held_accounts
         FROM drv_actionable a
-        LEFT JOIN drv_cat_atomic_input cat
-               ON cat.tos_symbol = a.tos_symbol AND cat.as_of_date = a.as_of_date
         LEFT JOIN drv_tn_td_bb_rr rr
                ON rr.tos_symbol = a.tos_symbol AND rr.as_of_date = a.as_of_date
-        LEFT JOIN drv_ma m
-               ON m.tos_symbol = a.tos_symbol AND m.as_of_date = a.as_of_date
+        LEFT JOIN drv_rr dr
+               ON dr.tos_symbol = a.tos_symbol AND dr.as_of_date = a.as_of_date
+        LEFT JOIN drv_technicals mt
+               ON mt.tos_symbol = a.tos_symbol AND mt.as_of_date = a.as_of_date
+        LEFT JOIN drv_outlooks mo
+               ON mo.tos_symbol = a.tos_symbol AND mo.as_of_date = a.as_of_date
         LEFT JOIN drv_quote q
                ON q.tos_symbol = a.tos_symbol AND q.as_of_date = a.as_of_date
         LEFT JOIN LATERAL (
@@ -399,6 +400,23 @@ def get_actionable(
               AND user_action_log.tos_symbol = a.tos_symbol
             ORDER BY acted_at DESC LIMIT 1
         ) u ON TRUE
+        LEFT JOIN (
+            SELECT tos_symbol,
+                   STRING_AGG(DISTINCT acct, ', ' ORDER BY acct) AS held_accounts
+            FROM (
+                SELECT f.tos_symbol,
+                       COALESCE(f.account_name, f.account_number) AS acct
+                FROM hist_f f
+                WHERE f.snapshot_date = :max_f_snap AND f.qty > 0
+                  AND f.tos_symbol IS NOT NULL
+                UNION ALL
+                SELECT c.tos_symbol, c.account AS acct
+                FROM hist_cs c
+                WHERE c.snapshot_date = :max_cs_snap AND c.qty > 0
+                  AND c.tos_symbol IS NOT NULL
+            ) _pos
+            GROUP BY tos_symbol
+        ) _ha ON _ha.tos_symbol = a.tos_symbol
         WHERE {' AND '.join(where)}
     """
     with session_scope() as s:

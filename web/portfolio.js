@@ -966,7 +966,7 @@ function renderGrid() {
     const acctTag = acctInfo ? getAccountTag(acctInfo.num, acctInfo.source) : getAccountTag('?', '?');
     tr.innerHTML = `
       <td style="text-align:center; padding:8px 4px;"><span style="display:inline-block; padding:4px 8px; border-radius:4px; background:${acctTag.bgColor}; color:${acctTag.fgColor}; font-weight:600; font-size:12px;">${acctTag.tag}</span></td>
-      <td>${typeof yahooLink === 'function' ? yahooLink(r.symbol) : ''}<strong><button onclick="event.stopPropagation(); openPortfolioModal('${r.symbol}')" style="background:none; border:none; color:var(--accent,#1d4ed8); text-decoration:none; cursor:pointer; font-weight:600; font-family:inherit; font-size:inherit; padding:0;">${escapeHtml(r.symbol)}</button></strong></td>
+      <td>${typeof yahooLink === 'function' ? yahooLink(r.symbol) : ''}<strong><span class="tv-sym-link" data-sym="${escapeHtml(r.symbol)}" data-desc="${(r.description||'').replace(/"/g,'&quot;')}" onclick="event.stopPropagation(); _portSymClick(this)">${escapeHtml(r.symbol)}</span></strong> <button onclick="event.stopPropagation(); openPortfolioModal('${r.symbol}')" style="background:none; border:none; color:var(--text-3); cursor:pointer; font-size:11px; padding:0 2px;" title="Detail">☰</button></td>
       <td title="${escapeHtml(r.description || '')}">${escapeHtml((r.description || '').slice(0, 32))}</td>
       <td class="num">${fmtNum(r.qty, 2)}</td>
       <td class="num">${r.avg_cost != null ? '$' + Number(r.avg_cost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''}</td>
@@ -1598,3 +1598,10 @@ async function loadRealized() {
     </tr>`).join('');
   }
 }
+
+function _portSymClick(el) {
+  openChartModal(el.dataset.sym, {
+    description: el.dataset.desc,
+  });
+}
+window._portSymClick = _portSymClick;

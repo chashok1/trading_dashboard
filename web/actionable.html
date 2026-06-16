@@ -137,6 +137,26 @@
     .source-pop td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; }
     .source-pop .sp-sec { color: #94a3b8; font-size: 9px;
                           text-transform: uppercase; letter-spacing: 0.5px; padding-top: 5px; }
+    .sym-tile-pop {
+      position: fixed; z-index: 1001;
+      background: #fff; color: #1e293b;
+      border: 1px solid #e2e8f0; border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.14);
+      padding: 8px 12px; font-size: 11px; line-height: 1.5;
+      min-width: 200px; max-width: 280px; pointer-events: none;
+    }
+    .stp-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+                  padding-bottom: 5px; border-bottom: 1px solid #e2e8f0; }
+    .stp-sym { font-weight: 700; font-size: 12px; }
+    .stp-price { margin-left: auto; font-size: 10px; color: #475569; }
+    .stp-section { margin-top: 5px; }
+    .stp-label { font-size: 9px; font-weight: 700; text-transform: uppercase;
+                 letter-spacing: 0.5px; color: #94a3b8; margin-bottom: 3px; }
+    .stp-row { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
+    .stp-key { color: #64748b; min-width: 44px; flex-shrink: 0; }
+    .stp-val { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .stp-desc { font-size: 10px; color: #64748b; margin-top: 2px; }
+    .stp-rules { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 
     /* .badge-action and .badge-action-* removed — superseded by .act-badge in styles.css */
 
@@ -611,6 +631,7 @@
       </div>
     </div>
   <div id="sourcePop" class="source-pop"></div>
+  <div id="symTilePop" class="sym-tile-pop" style="display:none;"></div>
 
   </main>
 
@@ -636,56 +657,66 @@
   <div class="modal-backdrop" id="modalBackdrop">
     <div class="modal" id="modal">
       <button class="modal-close" id="modalClose">&times;</button>
-      <h2 id="modalTitle">Symbol</h2>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <div>
-          <div id="modalName" style="font-size:15px;color:#333;font-weight:500;margin:2px 0 2px;"></div>
-          <div class="sub" id="modalSub" style="margin-bottom:0;"></div>
-        </div>
-        <div id="modalPriceChange" style="display:none;"></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <h2 id="modalTitle" style="margin:0;">Symbol</h2>
+        <div id="modalPrice" style="font-size:15px;font-weight:600;color:var(--text-1,#111);"></div>
+        <div id="modalPriceChange"></div>
+        <div id="modalSector" style="font-size:13px;color:var(--text-2,#666);"></div>
+        <div id="modalAssetClass" style="font-size:13px;color:var(--text-2,#666);"></div>
+        <div id="modalPositionDollar" style="font-size:13px;color:var(--text-2,#666);"></div>
       </div>
 
       <div class="modal-section" id="rrSection" style="display:none;">
-        <h3>Risk Range Analysis</h3>
         <div id="rrChart"><span style="color:#94a3b8;font-size:12px;">Loading…</span></div>
       </div>
 
       <div class="modal-section">
-        <h3>Decision</h3>
-        <dl class="kv" id="modalKv"></dl>
-      </div>
-
-      <div class="modal-section">
-        <h3>Per-source actions</h3>
-        <table class="modal-table" id="modalSources">
-          <thead><tr>
-            <th>Source</th><th>Method</th><th>Snapshot</th><th class="num">Base wt</th>
-            <th class="num">Prev wt</th><th class="num">Δ</th><th>Prev Snapshot</th>
-            <th>Analyst Rank</th>
-            <th>Today</th><th>Was</th>
-            <th>Held</th><th>Action</th><th>Reason</th>
-          </tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div class="modal-section">
-        <h3>Rules engine fires <span style="font-size:10px; color:var(--text-2,#666); text-transform:none; letter-spacing:0; font-weight:normal;">(click a composite to see contributing atomic rules)</span></h3>
-        <div id="modalFires" style="font-size:12px;">—</div>
-        <div id="atomicPopover" class="atomic-popover">
-          <h4>
-            Atomic rules for
-            <span class="composite-code" id="popComposite"></span>
-            <button class="close-pop" id="closePop" title="Close">&times;</button>
-          </h4>
-          <div id="popLoading" style="display:none; color:var(--text-2,#666); padding:4px;">Loading trace…</div>
-          <div id="popContent"></div>
+        <div style="display:flex;align-items:flex-start;gap:12px;">
+          <h3 style="margin:0;white-space:nowrap;min-width:110px;">Source Action</h3>
+          <div style="flex:1;min-width:0;">
+            <dl class="kv" id="modalKv" style="margin:0;"></dl>
+            <table class="modal-table" id="modalSources" style="margin-top:8px;">
+              <thead><tr>
+                <th>Source</th><th>Method</th><th>Snapshot</th><th class="num">Base wt</th>
+                <th class="num">Prev wt</th><th class="num">Δ</th><th>Prev Snapshot</th>
+                <th>Analyst Rank</th>
+                <th>Today</th><th>Was</th>
+                <th>Held</th><th>Action</th><th>Reason</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:12px;margin-top:10px;">
+          <div style="width:110px;flex-shrink:0;">
+            <h3 style="margin:0;">Rules <span style="font-size:10px;color:var(--text-3,#888);font-weight:normal;text-transform:none;letter-spacing:0;">(Click rule)</span></h3>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div id="modalFires" style="font-size:12px;">—</div>
+            <div id="atomicPopover" class="atomic-popover">
+              <h4>
+                Atomic rules for
+                <span class="composite-code" id="popComposite"></span>
+                <button class="close-pop" id="closePop" title="Close">&times;</button>
+              </h4>
+              <div id="popLoading" style="display:none; color:var(--text-2,#666); padding:4px;">Loading trace…</div>
+              <div id="popContent"></div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="modal-section">
-        <h3>Capture user decision</h3>
-        <div class="action-form">
+        <div style="display:flex;align-items:flex-start;gap:12px;">
+          <h3 style="margin:0;white-space:nowrap;min-width:110px;">Chart</h3>
+          <div id="modalTvChart" style="flex:1;height:320px;border-radius:6px;overflow:hidden;"></div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;">
+          <h3 style="margin:0;white-space:nowrap;min-width:110px;">User Action</h3>
+          <div class="action-form" style="border:none;padding:0;margin-top:0;">
           <label>Action
             <select id="userAction">
               <option value="DONE">DONE</option>
@@ -705,30 +736,36 @@
           <label>Snooze until
             <input type="date" id="snoozeUntil">
           </label>
-          <label style="flex:1; min-width:220px;">Notes
-            <input type="text" id="userNotes" placeholder="optional…" style="width:100%;">
+          <label style="flex:1; min-width:220px; display:flex; align-items:center; gap:6px;">Notes
+            <input type="text" id="userNotes" placeholder="optional…" style="flex:1;">
           </label>
           <button class="btn" id="saveActionBtn">Save</button>
           <button class="btn btn-dismiss" id="dismissActionBtn" title="Log as SKIPPED with no snooze">Dismiss</button>
+        </div>
         </div>
         <div id="actionStatus" style="font-size:11px; margin-top:6px; color:var(--text-2,#666);"></div>
       </div>
 
       <div class="modal-section">
-        <h3>History</h3>
-        <table class="modal-table" id="modalHistory">
-          <thead><tr>
-            <th>When</th><th>User</th><th>Action</th><th>Target</th>
-            <th>Source/Pri</th><th>Notes</th>
-          </tr></thead>
-          <tbody></tbody>
-        </table>
-        <div id="modalHistoryEmpty" style="display:none; color:var(--text-2,#666); font-size:11px; padding:6px;">No prior decisions.</div>
+        <div style="display:flex;align-items:flex-start;gap:12px;">
+          <h3 style="margin:0;white-space:nowrap;min-width:110px;">History</h3>
+          <div style="flex:1;min-width:0;">
+            <table class="modal-table" id="modalHistory">
+              <thead><tr>
+                <th>When</th><th>User</th><th>Action</th><th>Target</th>
+                <th>Source/Pri</th><th>Notes</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+            <div id="modalHistoryEmpty" style="display:none; color:var(--text-2,#666); font-size:11px; padding:6px;">No prior decisions.</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
   <script src="/static/_common.js"></script>
+  <script src="/static/chart_modal.js"></script>
   <script src="/static/actions.js"></script>
   <script src="/static/actionable.js"></script>
   <script src="/static/rebuild_modal.js"></script>

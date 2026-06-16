@@ -159,13 +159,28 @@ function renderTable() {
 
     DOM.actionsTableBody.innerHTML = filtered.map(a => `
         <tr onclick="openDrawer('${a.tos_symbol}')">
-            <td>${typeof yahooLink === 'function' ? yahooLink(a.tos_symbol) : ''}${a.tos_symbol}</td>
+            <td>${typeof yahooLink === 'function' ? yahooLink(a.tos_symbol) : ''}<span
+                class="tv-sym-link"
+                data-sym="${a.tos_symbol}"
+                data-desc="${(a.description||'').replace(/"/g,'&quot;')}"
+                data-price="${a.last_price||''}"
+                data-pct="${a.pct_change||''}"
+                onclick="event.stopPropagation(); _cockpitSymClick(this)"
+                >${a.tos_symbol}</span></td>
             <td>${a.sector || a.asset_class || '—'}</td>
             <td>$${a.last_price ? a.last_price.toFixed(2) : '—'}</td>
             <td><span class="action-code ${a.composite_label || 'N/A'}">${a.composite_label || '—'}</span></td>
             <td>${a.composite_outlook ? a.composite_outlook.toFixed(2) : '—'}</td>
         </tr>
     `).join('');
+}
+
+function _cockpitSymClick(el) {
+    openChartModal(el.dataset.sym, {
+        description: el.dataset.desc,
+        price:       parseFloat(el.dataset.price) || null,
+        pctChange:   parseFloat(el.dataset.pct)   || null,
+    });
 }
 
 function openDrawer(symbol) {
@@ -238,7 +253,8 @@ async function logAction(type) {
     }
 }
 
-// Expose closeDrawer for onclick handlers
+// Expose for onclick handlers
 window.closeDrawer = closeDrawer;
 window.openDrawer = openDrawer;
 window.logAction = logAction;
+window._cockpitSymClick = _cockpitSymClick;
