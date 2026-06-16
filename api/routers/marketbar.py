@@ -214,7 +214,7 @@ _RR_META: dict[str, tuple[str, str]] = {
     '/NG':      ('Commodities', 'Nat Gas'),
     '/SI':      ('Commodities', 'Silver'),
     '/BTC':     ('Crypto',      'Bitcoin'),
-    'MOVE':     ('Rates',       'MOVE'),
+    'MOVE:GIF': ('MOVE',        'MOVE'),
     'DGS2:FRED':('Rates',       '2Y'),
     'TNX:CGI':  ('Rates',       '10Y'),
     'TYX:CGI':  ('Rates',       '30Y'),
@@ -245,7 +245,7 @@ _RR_META: dict[str, tuple[str, str]] = {
     'XLY':      ('Sectors',     'XLY'),
 }
 
-_CATEGORY_ORDER = ['Rates', 'Commodities', 'ETFs', 'Sectors', 'Tech', 'Indexes', 'FX', 'Credit', 'Crypto']
+_CATEGORY_ORDER = ['Rates', 'Commodities', 'ETFs', 'Sectors', 'Tech', 'Indexes', 'FX', 'Credit', 'Crypto', 'MOVE']
 
 # Extended meta for the all-symbols (bar 3) endpoint — includes first-bar symbols
 _RR_META_ALL: dict[str, tuple[str, str]] = {
@@ -304,10 +304,6 @@ def _build_rr_response(rows, meta: dict, cat_order: list,
             groups[cat].append(item)
         else:
             other.append(item)
-
-    _rates_order = {s: i for i, s in enumerate(['MOVE', 'DGS2:FRED', 'TNX:CGI', 'TYX:CGI'])}
-    if 'Rates' in groups:
-        groups['Rates'].sort(key=lambda x: _rates_order.get(x['symbol'], 999))
 
     out = {k: v for k, v in groups.items() if v}
     if other:
