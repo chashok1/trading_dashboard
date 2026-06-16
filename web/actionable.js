@@ -1291,9 +1291,12 @@ function _buildSymTilePopHtml(r) {
   // Technical
   const pctBrr   = r.quote_pct_brr != null ? r.quote_pct_brr : r.ma_pct_brr;
   const hasTech  = r.lrr != null || r.mrr != null || r.trr != null ||
-                   pctBrr != null || r.quote_zone || r.rr_desc;
+                   pctBrr != null || r.quote_zone || r.rr_desc ||
+                   r.tn_td_desc || r.bb_desc;
   if (hasTech) {
     html += `<div class="stp-section"><div class="stp-label">Technical</div>`;
+    if (r.tn_td_desc) html += `<div class="stp-row"><span class="stp-key">TnTd</span><span class="stp-val">${escapeHtml(r.tn_td_desc)}</span></div>`;
+    if (r.bb_desc)    html += `<div class="stp-row"><span class="stp-key">BB</span><span class="stp-val">${escapeHtml(r.bb_desc)}</span></div>`;
     if (r.lrr  != null) html += `<div class="stp-row"><span class="stp-key">LRR</span><span class="stp-val">${fmt2(r.lrr)}</span></div>`;
     if (r.mrr  != null) html += `<div class="stp-row"><span class="stp-key">MRR</span><span class="stp-val">${fmt2(r.mrr)}</span></div>`;
     if (r.trr  != null) html += `<div class="stp-row"><span class="stp-key">TRR</span><span class="stp-val">${fmt2(r.trr)}</span></div>`;
@@ -1324,9 +1327,9 @@ function _showSymTilePop(chipEl) {
   pop.style.display = 'block';
   const rect = chipEl.getBoundingClientRect();
   const popH = pop.offsetHeight;
-  let top  = rect.top + window.scrollY - popH - 8;
-  if (top < 4) top = rect.bottom + window.scrollY + 8;
-  const left = Math.max(4, Math.min(window.innerWidth - 260, rect.left + window.scrollX));
+  let top  = rect.top - popH - 8;
+  if (top < 4) top = rect.bottom + 8;
+  const left = Math.max(4, Math.min(window.innerWidth - 260, rect.left));
   pop.style.top  = top  + 'px';
   pop.style.left = left + 'px';
 }
