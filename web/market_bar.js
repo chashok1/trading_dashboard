@@ -173,8 +173,8 @@
   }
 
   // ---- build RR bar (bar 2 or 3) — chips with inline group headings ----
-  const BAR2_CATS = ['Sectors', 'FX', 'Indexes', 'Rates'];
-  const BAR3_CATS = ['Tech', 'ETFs', 'Credit'];
+  const BAR2_CATS = ['Sectors', 'FX', 'Indexes', 'Credit', 'Rates'];
+  const BAR3_CATS = ['Tech', 'ETFs'];
   const CAT_SHORT  = {
     'ETFs': 'ETF', 'Sectors': 'Sect', 'Commodities': 'Cmdty', 'Credit': 'Crd',
     'Rates': 'Rates', 'Tech': 'Tech', 'FX': 'FX', 'Indexes': 'Idx', 'Crypto': 'Crypt', 'MOVE': 'MOVE',
