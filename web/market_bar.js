@@ -18,6 +18,12 @@
 
   const INVERTED = new Set(['HY', 'HYSPRD']);
 
+  const LABEL_SHORT = {
+    'Shanghai': 'SSE',   'Nikkei': 'NIKK',  'HY Bond': 'HY',
+    'IG Bond':  'IG',    'Nasdaq':  'Ndaq',  'Dollar':  'USD',
+    'Nat Gas':  'Nat',   'Bitcoin': 'BTC',
+  };
+
   // ---- formatting helpers -----------------------------------------------
   function fmtValue(v, fmt) {
     if (v === null || v === undefined) return '—';
@@ -155,7 +161,8 @@
         const valStr = fmtValue(item.value, item.value_format);
         const pctStr = chgStr ? arrow + chgStr : valStr;
         const tip    = itemTip(item, valStr, chgStr, arrow);
-        grpCells.push(chipHtml(item.label || item.metric_key, item.rr_outlook, pctStr, cls,
+        const chipLabel = LABEL_SHORT[item.label] || item.label || item.metric_key;
+        grpCells.push(chipHtml(chipLabel, item.rr_outlook, pctStr, cls,
                                item.rr_buy, item.rr_sell, item.value, tip, item.stale));
       }
       if (!grpCells.length) continue;
@@ -184,7 +191,7 @@
         const pct    = item.pct != null ? Number(item.pct) : null;
         const cls    = dirClass(pct, null);
         const chgStr = pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—';
-        const name   = item.label || (item.symbol || '').replace(/^\//, '') || '?';
+        const name   = LABEL_SHORT[item.label] || item.label || (item.symbol || '').replace(/^\//, '') || '?';
         const buyStr = item.buy != null ? Number(item.buy).toFixed(2) : '—';
         const sellStr = item.sell != null ? Number(item.sell).toFixed(2) : '—';
         const tip    = escHtml(
