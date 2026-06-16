@@ -2891,9 +2891,9 @@ function setupRRActionCol() {
 
     tip.innerHTML = `
       <div style="font-weight:700;color:#0f172a;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;display:flex;align-items:baseline;gap:8px;">${escapeHtml(sym)} — TrTnBBRskRng${priceHtml}</div>
-      ${rowScore('Trend/Trade',    d.trend_trade, shortDesc(d.tn_td_short, rowData?.tn_td_desc || d.tn_td_desc))}
-      ${rowScore('BB Range Streak', d.bb_streak,  shortDesc(d.bb_short,   rowData?.bb_desc   || d.bb_desc))}
-      ${rowScore('RR',              d.rr_action,  shortDesc(d.rr_short,   d.rr_desc))}
+      ${rowScore('Trend/Trade',    d.trend_trade, shortDesc(null, rowData?.tn_td_desc || d.tn_td_desc))}
+      ${rowScore('BB Range Streak', d.bb_streak,  shortDesc(null, rowData?.bb_desc   || d.bb_desc))}
+      ${rowScore('RR',              d.rr_action,  shortDesc(null, d.rr_desc))}
       ${sec('Decision Path')}
       ${decisionHtml}
       <div style="margin-top:3px;font-size:11px;font-weight:700;color:${scoreCol(qr)};">Score = ${qr != null ? qr : '—'} → ${d.action || '—'}</div>
