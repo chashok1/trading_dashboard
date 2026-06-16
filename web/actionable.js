@@ -417,9 +417,11 @@ const _SYM_BATCH = 20;
 let _symTapeStart = 0;
 
 function _symTapeBg(row) {
-  const ol = (row.rr_outlook || '').toLowerCase();
-  if (ol === 'bullish') return '#2f9e2f';
-  if (ol === 'bearish') return '#d83a3a';
+  const a = _chipAction(row);
+  if (a === 'REMOVE')   return '#d83a3a';
+  if (a === 'REDUCE')   return '#e07c1a';
+  if (a === 'INCREASE') return '#2f9e2f';
+  if (a === 'ADD')      return '#1f7af2';
   return '#888';
 }
 
