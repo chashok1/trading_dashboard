@@ -1107,9 +1107,9 @@ function _finalCallHtml(row) {
   } else {
     badgeHtml = '<span style="font-size:9px;color:#f97316;" title="Sources and Technical conflict — cross-check the Rules column">Mixed</span>';
   }
-  // Color via actions.js token (act-*-tint gives soft colored fill + colored text + border)
+  // Color via actions.js token (act-*-fill gives solid fill + white text, matching Portfolio Action column)
   var fcDisp = actionDisplay(fc.code || (fc.side === 'sell' ? 'SA' : fc.side === 'buy' ? 'BS' : 'HOLD'));
-  var colorCls = (fcDisp.colorCls || 'act-neutral') + '-tint';
+  var colorCls = (fcDisp.colorCls || 'act-neutral') + '-fill';
   var subIcon = '<div style="font-size:9px;line-height:1.4;">' + badgeHtml + '</div>';
   return '<span class="act-badge ' + colorCls + '" title="' +
          escapeHtml(fc.label || text) + '">' +
