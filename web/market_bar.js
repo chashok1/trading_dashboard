@@ -8,16 +8,15 @@
  * The Econ panel (#econPanel) is a static div in the page HTML (actionable.html).
  * It is toggled by #econBtn and lazily loaded from GET /api/macro.
  *
- * Color convention: green = "good", red = "bad".
- *   Normal:   up → green, down → red  (indexes, DXY, WTI, rates)
- *   Inverted: up → red,  down → green (VIX, HY — risk/stress metrics)
+ * Color convention: green = up, red = down for all metrics.
+ *   Inverted: up → red, down → green (HY credit spread only)
  */
 (function () {
   'use strict';
 
   const REFRESH_MS = 60 * 1000;
 
-  const INVERTED = new Set(['VIX', 'VXN', 'VXD', 'RVX', 'OVX', 'GVZ', 'MOVE', 'HY', 'HYSPRD']);
+  const INVERTED = new Set(['HY', 'HYSPRD']);
 
   // ---- formatting helpers -----------------------------------------------
   function fmtValue(v, fmt) {
