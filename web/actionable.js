@@ -1116,7 +1116,7 @@ function _finalCallHtml(row) {
   var fcDisp = actionDisplay(fc.code || (fc.side === 'sell' ? 'SA' : fc.side === 'buy' ? 'BS' : 'HOLD'));
   var colorCls = (fcDisp.colorCls || 'act-neutral') + '-fill';
   var subIcon = '<div style="font-size:9px;line-height:1.4;">' + badgeHtml + '</div>';
-  return '<span class="act-badge ' + colorCls + '" title="' +
+  return '<span class="act-badge act-badge-sm ' + colorCls + '" title="' +
          escapeHtml(fc.label || text) + '">' +
          escapeHtml(text) + '</span>' + subIcon;
 }
