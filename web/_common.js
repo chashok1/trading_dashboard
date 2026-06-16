@@ -385,9 +385,9 @@
         </div>
 
         <div style="padding:7px 11px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;flex:1;min-height:0;">
-          ${taggedRow(ru.tn_td_short, 'Trend/Trade',     ru.tn_td_desc, ru.tn_td_action)}
-          ${taggedRow(ru.bb_short,   'BB Range Streak', ru.bb_desc,   ru.bb_action)}
-          ${taggedRow(ru.rr_short,   'RR',              ru.rr_desc,   ru.rr_action)}
+          ${taggedRow(null, 'Trend/Trade',     ru.tn_td_desc, ru.tn_td_action)}
+          ${taggedRow(null, 'BB Range Streak', ru.bb_desc,   ru.bb_action)}
+          ${taggedRow(null, 'RR',              ru.rr_desc,   ru.rr_action)}
         </div>
 
         <!-- Decision Path -->
