@@ -137,7 +137,6 @@
     { label: 'Oil',   keys: ['WTI', 'BZ', 'OVX'] },
     { label: 'Gold',  keys: ['GC', 'GVZ'] },
     { label: 'FX',    keys: ['DXY', 'MOVE'] },
-    { label: 'Cu',    keys: ['HG'] },
   ];
 
   function buildTapeHtml(data) {
@@ -167,12 +166,11 @@
   }
 
   // ---- build RR bar (bar 2 or 3) — chips with inline group headings ----
-  const BAR2_CATS = ['ETFs', 'Sectors', 'Commodities', 'GBP', '2Y', 'Credit', 'Shanghai'];
-  const BAR3_CATS = ['DRAM', 'Rates', 'Tech', 'FX', 'Crypto'];
+  const BAR2_CATS = ['ETFs', 'Sectors', 'Commodities', 'Credit'];
+  const BAR3_CATS = ['Rates', 'Tech', 'FX', 'Crypto'];
   const CAT_SHORT  = {
     'ETFs': 'ETF', 'Sectors': 'Sect', 'Commodities': 'Cmdty', 'Credit': 'Crd',
     'Rates': 'Rates', 'Tech': 'Tech', 'FX': 'FX', 'Indexes': 'Idx', 'Crypto': 'Crypt',
-    'DRAM': 'DRAM', '2Y': '2Y', 'GBP': 'GBP', 'Shanghai': 'SHG',
   };
 
   function buildRrBarHtml(data, cats) {

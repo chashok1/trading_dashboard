@@ -55,7 +55,6 @@ _METRIC_TO_RR_SYMBOL: dict[str, str] = {
 # (tos_symbol, metric_key, display_label, value_format)
 _SYNTHETIC_BAR1 = [
     ('/BZ',       'BZ',    'Brent',   'price'),
-    ('/HG',       'HG',    'Copper',  'price'),
 ]
 _SYNTHETIC_KEYS = {mk for _, mk, _, _ in _SYNTHETIC_BAR1}
 # synthetics that display % change — fetch pct_change from drv_quote
@@ -196,15 +195,15 @@ def get_marketbar() -> dict:
 # hist_rr tos_symbols covered by bar 1 — excluded from bar 2
 _FIRST_BAR_RR = {
     'SPX', '$COMP', 'RUT', 'VIX', '$DXY',
-    '/BZ', '/CL', '/GC', '/HG',          # Brent, WTI, Gold, Copper → bar 1
+    '/BZ', '/CL', '/GC',                 # Brent, WTI, Gold → bar 1
 }
 
 # Category + short label for each known RR symbol (bar 2 + bar 3)
 _RR_META: dict[str, tuple[str, str]] = {
-    '$SSEC':    ('Shanghai',    'Shanghai'),
+    '$SSEC':    ('Indexes',     'Shanghai'),
     'GDAXI:DE': ('Indexes',     'DAX'),
     'N225:JP':  ('Indexes',     'Nikkei'),
-    '/6B':      ('GBP',         'GBP/USD'),
+    '/6B':      ('FX',          'GBP/USD'),
     '/6C':      ('FX',          'CAD/USD'),
     '/6E':      ('FX',          'EUR/USD'),
     '/6J':      ('FX',          'USD/JPY'),
@@ -215,7 +214,7 @@ _RR_META: dict[str, tuple[str, str]] = {
     '/NG':      ('Commodities', 'Nat Gas'),
     '/SI':      ('Commodities', 'Silver'),
     '/BTC':     ('Crypto',      'Bitcoin'),
-    'DGS2:FRED':('2Y',          '2Y'),
+    'DGS2:FRED':('Rates',       '2Y'),
     'TNX:CGI':  ('Rates',       '10Y'),
     'TYX:CGI':  ('Rates',       '30Y'),
     'LQD':      ('Credit',      'IG Bond'),
@@ -229,7 +228,7 @@ _RR_META: dict[str, tuple[str, str]] = {
     'NVDA':     ('Tech',        'NVDA'),
     'ORCL':     ('Tech',        'ORCL'),
     'TSLA':     ('Tech',        'TSLA'),
-    'DRAM':     ('DRAM',        'DRAM'),
+    'DRAM':     ('ETFs',        'DRAM'),
     'GDX':      ('ETFs',        'GDX'),
     'IAK':      ('ETFs',        'IAK'),
     'ITA':      ('ETFs',        'ITA'),
@@ -245,7 +244,7 @@ _RR_META: dict[str, tuple[str, str]] = {
     'XLY':      ('Sectors',     'XLY'),
 }
 
-_CATEGORY_ORDER = ['Commodities', 'ETFs', 'Sectors', 'Tech', 'Indexes', 'Rates', 'FX', 'GBP', '2Y', 'Credit', 'Shanghai']
+_CATEGORY_ORDER = ['Rates', 'Commodities', 'ETFs', 'Sectors', 'Tech', 'Indexes', 'FX', 'Credit']
 
 # Extended meta for the all-symbols (bar 3) endpoint — includes first-bar symbols
 _RR_META_ALL: dict[str, tuple[str, str]] = {
@@ -256,7 +255,7 @@ _RR_META_ALL: dict[str, tuple[str, str]] = {
     'VIX':   ('Risk',    'VIX'),
     '$DXY':  ('FX',      'DXY'),
 }
-_CATEGORY_ORDER_ALL = ['DRAM', 'Indexes', 'Risk', 'FX', 'Commodities', 'Credit', 'Tech', 'ETFs']
+_CATEGORY_ORDER_ALL = ['Indexes', 'Risk', 'FX', 'Commodities', 'Credit', 'Tech', 'ETFs']
 
 
 def _build_rr_response(rows, meta: dict, cat_order: list,
