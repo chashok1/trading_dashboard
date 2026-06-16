@@ -101,9 +101,9 @@
 
   function outlookBg(outlook) {
     const ol = (outlook || '').toLowerCase();
-    return ol === 'bullish' ? '#15803d'
-         : ol === 'bearish' ? '#b91c1c'
-         : '#64748b';
+    return ol === 'bullish' ? '#2f9e2f'
+         : ol === 'bearish' ? '#d83a3a'
+         : '#888';
   }
 
   function rangeBar(buy, sell, cur) {
@@ -120,7 +120,7 @@
 
   function chipHtml(name, ol, pctStr, pctCls, buy, sell, cur, tip, stale) {
     const staleCls = stale ? ' mt-stale' : '';
-    const pctBg = pctCls === 'mt-up' ? '#15803d' : pctCls === 'mt-down' ? '#b91c1c' : null;
+    const pctBg = pctCls === 'mt-up' ? '#2f9e2f' : pctCls === 'mt-down' ? '#d83a3a' : null;
     const pctBoxStyle = pctBg ? `background:${pctBg};color:#fff;padding:1px 5px;border-radius:3px;` : 'color:#94a3b8;';
     return `<div class="rr-chip${staleCls}" data-sym="${escHtml(name)}" title="${tip}" style="cursor:pointer;">` +
       `<div class="rr-chip-top">` +
