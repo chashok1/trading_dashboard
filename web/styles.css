@@ -1041,13 +1041,10 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   gap: 5px;
 }
 
-/* Outlook-colored symbol button */
+/* Outlook-colored symbol text */
 .rr-sym {
   font-size: 10px;
   font-weight: 700;
-  color: #fff;
-  padding: 1px 6px;
-  border-radius: 3px;
   letter-spacing: 0.03em;
   white-space: nowrap;
 }

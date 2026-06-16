@@ -440,7 +440,8 @@ function renderSymTape() {
   track.innerHTML = batch.map(r => {
     const pct    = r.pct_change != null ? Number(r.pct_change) : null;
     const pctStr = pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—';
-    const pctCls = pct == null ? 'mt-flat' : pct > 0.001 ? 'mt-up' : pct < -0.001 ? 'mt-down' : 'mt-flat';
+    const pctBg  = pct == null ? null : pct > 0.001 ? '#15803d' : pct < -0.001 ? '#b91c1c' : null;
+    const pctBoxStyle = pctBg ? `background:${pctBg};color:#fff;padding:1px 5px;border-radius:3px;` : 'color:#94a3b8;';
     const bg     = _symTapeBg(r);
     const action = r.consolidated_action || '';
     const fmt2   = v => v != null ? Number(v).toFixed(2) : '—';
@@ -476,8 +477,8 @@ function renderSymTape() {
 
     return `<div class="rr-chip" data-sym="${escapeHtml(r.tos_symbol)}" title="${tip}">` +
       `<div class="rr-chip-top">` +
-      `<span class="rr-sym" style="background:${bg};">${escapeHtml(r.tos_symbol)}</span>` +
-      `<span class="mt-chg ${pctCls}">${pctStr}</span>` +
+      `<span class="rr-sym" style="color:${bg};">${escapeHtml(r.tos_symbol)}</span>` +
+      `<span class="mt-chg" style="${pctBoxStyle}">${pctStr}</span>` +
       `</div>` +
       rbHtml +
       metaHtml +
