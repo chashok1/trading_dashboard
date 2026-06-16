@@ -120,10 +120,12 @@
 
   function chipHtml(name, ol, pctStr, pctCls, buy, sell, cur, tip, stale) {
     const staleCls = stale ? ' mt-stale' : '';
-    return `<div class="rr-chip${staleCls}" title="${tip}">` +
+    const pctBg = pctCls === 'mt-up' ? '#15803d' : pctCls === 'mt-down' ? '#b91c1c' : null;
+    const pctBoxStyle = pctBg ? `background:${pctBg};color:#fff;padding:1px 5px;border-radius:3px;` : 'color:#94a3b8;';
+    return `<div class="rr-chip${staleCls}" data-sym="${escHtml(name)}" title="${tip}" style="cursor:pointer;">` +
       `<div class="rr-chip-top">` +
-      `<span class="rr-sym" style="background:${outlookBg(ol)};">${escHtml(name)}</span>` +
-      `<span class="mt-chg ${pctCls}">${pctStr}</span>` +
+      `<span class="rr-sym" style="color:${outlookBg(ol)};">${escHtml(name)}</span>` +
+      `<span class="mt-chg" style="${pctBoxStyle}">${pctStr}</span>` +
       `</div>` +
       rangeBar(buy, sell, cur) +
       `</div>`;
