@@ -1020,6 +1020,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
+  align-self: stretch;
   border-right: 1px solid var(--border);
   padding-right: 10px;
 }
