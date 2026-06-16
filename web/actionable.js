@@ -417,10 +417,10 @@ const _SYM_BATCH = 20;
 let _symTapeStart = 0;
 
 function _symTapeBg(row) {
-  const a = _chipAction(row);
-  if (a === 'REMOVE' || a === 'REDUCE') return '#b91c1c';
-  if (a === 'INCREASE' || a === 'ADD')  return '#15803d';
-  return '#94a3b8';
+  const pct = row.pct_change != null ? Number(row.pct_change) : null;
+  if (pct != null && pct > 0.001)  return '#2f9e2f';
+  if (pct != null && pct < -0.001) return '#d83a3a';
+  return '#888';
 }
 
 function renderSymTape() {
@@ -440,7 +440,7 @@ function renderSymTape() {
   track.innerHTML = batch.map(r => {
     const pct    = r.pct_change != null ? Number(r.pct_change) : null;
     const pctStr = pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—';
-    const pctBg  = pct == null ? null : pct > 0.001 ? '#15803d' : pct < -0.001 ? '#b91c1c' : null;
+    const pctBg  = pct == null ? null : pct > 0.001 ? '#2f9e2f' : pct < -0.001 ? '#d83a3a' : null;
     const pctBoxStyle = pctBg ? `background:${pctBg};color:#fff;padding:1px 5px;border-radius:3px;` : 'color:#94a3b8;';
     const bg     = _symTapeBg(r);
     const action = r.consolidated_action || '';
