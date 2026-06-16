@@ -418,11 +418,9 @@ let _symTapeStart = 0;
 
 function _symTapeBg(row) {
   const a = _chipAction(row);
-  if (a === 'REMOVE')   return '#d83a3a';
-  if (a === 'REDUCE')   return '#e07c1a';
-  if (a === 'INCREASE') return '#2f9e2f';
-  if (a === 'ADD')      return '#1f7af2';
-  return '#888';
+  if (a === 'REMOVE' || a === 'REDUCE') return '#b91c1c';
+  if (a === 'INCREASE' || a === 'ADD')  return '#15803d';
+  return '#94a3b8';
 }
 
 function renderSymTape() {
@@ -442,7 +440,7 @@ function renderSymTape() {
   track.innerHTML = batch.map(r => {
     const pct    = r.pct_change != null ? Number(r.pct_change) : null;
     const pctStr = pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—';
-    const pctBg  = pct == null ? null : pct > 0.001 ? '#2f9e2f' : pct < -0.001 ? '#d83a3a' : null;
+    const pctBg  = pct == null ? null : pct > 0.001 ? '#15803d' : pct < -0.001 ? '#b91c1c' : null;
     const pctBoxStyle = pctBg ? `background:${pctBg};color:#fff;padding:1px 5px;border-radius:3px;` : 'color:#94a3b8;';
     const bg     = _symTapeBg(r);
     const action = r.consolidated_action || '';
@@ -466,7 +464,7 @@ function renderSymTape() {
     // Action label (canonical code via actions.js) and IV percentile
     const disp     = actionDisplay(r.consolidated_action);
     const actCode  = actionText(disp);
-    const actColor = _actionCodeColor(disp);
+    const actColor = disp.side === 'sell' ? '#b91c1c' : disp.side === 'buy' ? '#15803d' : '#64748b';
     const actLabel = (actCode && actCode !== '--') ? actCode : '';
     const ivVal    = r.iv_percentile != null ? Math.round(Number(r.iv_percentile)) : null;
     const ivStr    = ivVal != null ? `IV ${ivVal}%` : '';
