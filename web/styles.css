@@ -969,7 +969,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   gap: 10px;
   height: 44px;
   background: var(--card-bg);
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
@@ -1004,6 +1004,8 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 }
 .rr-tape::-webkit-scrollbar { display: none; }
 
+/* Bar 2 — no bottom border (bar 3 immediately follows) */
+#rrTape { border-bottom: none; }
 /* Bar 3 — sticky below bar 2 */
 #rrTape3 { top: 88px; z-index: 88; }
 
