@@ -120,8 +120,8 @@
 
   function chipHtml(name, ol, pctStr, pctCls, buy, sell, cur, tip, stale) {
     const staleCls = stale ? ' mt-stale' : '';
-    const pctBg = pctCls === 'mt-up' ? '#2f9e2f' : pctCls === 'mt-down' ? '#d83a3a' : null;
-    const pctBoxStyle = pctBg ? `background:${pctBg};color:#fff;padding:1px 5px;border-radius:3px;` : 'color:#94a3b8;';
+    const pctBg = pctCls === 'mt-up' ? '#2f9e2f' : pctCls === 'mt-down' ? '#d83a3a' : '#888';
+    const pctBoxStyle = `background:${pctBg};color:#fff;padding:1px 5px;border-radius:3px;`;
     return `<div class="rr-chip${staleCls}" data-sym="${escHtml(name)}" title="${tip}" style="cursor:pointer;">` +
       `<div class="rr-chip-top">` +
       `<span class="rr-sym" style="color:${outlookBg(ol)};">${escHtml(name)}</span>` +
@@ -309,7 +309,7 @@
       if (!mktRes.ok) throw new Error('HTTP ' + mktRes.status);
       if (!rrRes.ok)  throw new Error('HTTP ' + rrRes.status);
       const [mktData, rrData] = await Promise.all([mktRes.json(), rrRes.json()]);
-      tapeEl.innerHTML = buildTapeHtml(mktData) + buildRrBarHtml(rrData, ['Commodities', 'MOVE']);
+      tapeEl.innerHTML = buildTapeHtml(mktData) + buildRrBarHtml(rrData, ['Commodities']);
     } catch (err) {
       if (tapeEl) {
         tapeEl.innerHTML =
