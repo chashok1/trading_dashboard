@@ -316,7 +316,7 @@
              ${score != null ? `<span style="font-size:10px;font-weight:700;color:${scoreColor(score)};background:${score>0?'#f0fdf4':score<0?'#fef2f2':'#f8fafc'};border:1px solid ${score>0?'#bbf7d0':score<0?'#fecaca':'#e2e8f0'};padding:0 5px;border-radius:4px;">${score}</span>` : ''}
            </div>
            <div style="font-size:11px;color:${scoreColor(score)};line-height:1.35;">
-             ${shortName ? `<span style="font-weight:700;">${shortName}</span>${text ? ': ' : ''}` : ''}${text || ''}
+             ${shortName ? `<span style="font-weight:700;">${escapeHtml(shortName)}</span>${text ? ': ' : ''}` : ''}${escapeHtml(text)}
            </div>
          </div>` : '';
 
@@ -367,10 +367,14 @@
     el.innerHTML = `
     <div style="display:grid;grid-template-columns:minmax(220px,1fr) auto auto minmax(320px,3fr);gap:14px;align-items:stretch;width:100%;overflow-x:auto;">
 
-      <!-- Left panel: action (top) + descriptions + decision -->
-      <div style="display:flex;flex-direction:column;gap:8px;min-width:0;">
+      <!-- Left panel: header (top, aligns with rrIdxBox) + action line + descriptions + decision -->
+      <div style="display:flex;flex-direction:column;gap:6px;min-width:0;">
 
-        <div style="font-size:12px;color:#64748b;display:flex;align-items:center;gap:8px;">
+        <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;padding:5px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;white-space:nowrap;">
+          Risk Range Analysis
+        </div>
+
+        <div style="font-size:12px;color:#64748b;display:flex;align-items:center;gap:8px;padding:2px 0;">
           <span>Trend Trade BB Risk Range Rule Action</span>
           ${(() => {
             const _d = window.actionDisplay && ru.action ? window.actionDisplay(ru.action) : null;
@@ -380,7 +384,7 @@
           })()}
         </div>
 
-        <div style="padding:9px 11px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;flex:1;min-height:60px;">
+        <div style="padding:7px 11px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;flex:1;min-height:0;">
           ${taggedRow(ru.tn_td_short, 'Trend/Trade',     ru.tn_td_desc, ru.tn_td_action)}
           ${taggedRow(ru.bb_short,   'BB Range Streak', ru.bb_desc,   ru.bb_action)}
           ${taggedRow(ru.rr_short,   'RR',              ru.rr_desc,   ru.rr_action)}
