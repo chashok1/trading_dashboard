@@ -1498,7 +1498,7 @@ function renderGrid() {
     const pctStr = r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : '';
     const priceStr = r.last_price != null ? fmtUsd(r.last_price) : '';
     // Task 4: intraday marker — shown when the quote is fresher than the EOD anchor
-    const _idyTime = r.export_time ? (' @ ' + String(r.export_time).slice(0, 5)) : '';
+    const _idyTime = (() => { const t = String(r.export_time || '').replace(/:/g, ''); return t.length >= 4 ? ' @ ' + t.slice(0,2) + ':' + t.slice(2,4) : ''; })();
     const intradayTag = r.quote_is_intraday
       ? `<span title="Intraday price${escapeHtml(_idyTime)} — pct_brr/zone computed against live quote" style="font-size:8px;color:#0a84ff;font-weight:700;margin-left:2px;">IDY</span>`
       : '';
@@ -1531,7 +1531,7 @@ function renderGrid() {
         <input type="checkbox" class="row-check" data-sym="${escapeHtml(r.tos_symbol)}"${isChecked ? ' checked' : ''}>
       </td>
       <td class="num" style="font-size:10px;color:#f59e0b;font-weight:700;text-align:center;">${_hReason ? `<span title="${escapeHtml(_hReason)}">Y</span>` : ''}</td>
-      <td class="num" style="font-size:11px; color:#475569;">${posStr || '<span style="color:#cbd5e1;">—</span>'}</td>
+      <td class="num" style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="Held in: ${escapeHtml(r.held_accounts)}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}</td>
       <td class="num">
         <span class="${pctCls}" style="font-weight:700;">${pctStr}${intradayTag}</span>
         ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
@@ -1542,7 +1542,7 @@ function renderGrid() {
         ${r.sector ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px;">${escapeHtml(r.sector)}</div>` : ''}
       </td>
       <td style="padding:6px 4px;">${fcHtml}</td>
-      <td class="num" ${r.held_accounts ? `title="Held in: ${escapeHtml(r.held_accounts)}"` : ''}>
+      <td class="num">
         <span class="amt-primary">${fmtUsd(r._amt)}</span>
         ${r.stop_level != null ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;" title="Stop / exit-below level (task 8)">stop ${fmtUsd(r.stop_level)}</div>` : ''}
       </td>
