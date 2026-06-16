@@ -1015,7 +1015,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   height: 38px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 2px 4px;
+  padding: 1px 2px;
   flex-shrink: 0;
 }
 .rr-group .rr-chip { border-right: none; }
