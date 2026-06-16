@@ -67,6 +67,27 @@ _HIST_RR_PREV_SQL = text(
 )
 
 
+_DQ_PCT_SQL = text(
+    "WITH top2 AS (SELECT DISTINCT as_of_date FROM drv_quote "
+    "ORDER BY as_of_date DESC LIMIT 2), "
+    "ranked AS (SELECT tos_symbol, last_price, "
+    "ROW_NUMBER() OVER (PARTITION BY tos_symbol ORDER BY as_of_date DESC) AS rn "
+    "FROM drv_quote WHERE as_of_date IN (SELECT as_of_date FROM top2) "
+    "AND last_price IS NOT NULL AND last_price > 0) "
+    "SELECT cur.tos_symbol, "
+    "round(((cur.last_price / prev.last_price) - 1) * 100, 2) AS pct "
+    "FROM ranked cur JOIN ranked prev "
+    "ON prev.tos_symbol = cur.tos_symbol AND prev.rn = 2 WHERE cur.rn = 1"
+)
+
+
+def _drv_quote_pct(session) -> dict[str, float]:
+    """Day-over-day % from drv_quote — fallback for symbols whose pct_change is stored as 0."""
+    return {r['tos_symbol']: float(r['pct'])
+            for r in session.execute(_DQ_PCT_SQL).mappings().all()
+            if r['pct'] is not None}
+
+
 def _hist_rr_pct(session) -> dict[str, float]:
     """Day-over-day % change from hist_rr for symbols that lack drv_quote pct_change."""
     cur = {r['tos_symbol']: float(r['last_price'])
@@ -262,7 +283,8 @@ _CATEGORY_ORDER_ALL = ['Indexes', 'Risk', 'FX', 'Commodities', 'Credit', 'Tech',
 def _build_rr_response(rows, meta: dict, cat_order: list,
                         exclude: set | None = None,
                         curated_only: bool = False,
-                        rr_pct: dict | None = None) -> dict:
+                        rr_pct: dict | None = None,
+                        dq_pct: dict | None = None) -> dict:
     """Shared builder for rr-bar endpoints.
 
     curated_only=True: skip any symbol not in meta (no 'Other' bucket).
@@ -280,8 +302,9 @@ def _build_rr_response(rows, meta: dict, cat_order: list,
         cat, label = m if m else ('Other', sym)
 
         q_price = float(row['q_price']) if row['q_price'] is not None else None
-        pct     = (float(row['pct']) if row['pct'] is not None
-                   else (rr_pct.get(sym) if rr_pct else None))
+        pct     = (float(row['pct']) if row['pct'] is not None else None)
+        if not pct:
+            pct = (rr_pct.get(sym) if rr_pct else None) or (dq_pct.get(sym) if dq_pct else None)
 
         buy  = float(row['buy_trade'])  if row['buy_trade']  is not None else None
         sell = float(row['sell_trade']) if row['sell_trade'] is not None else None
@@ -339,8 +362,10 @@ def get_rr_bar() -> dict:
     with session_scope() as s:
         rows = s.execute(_RR_SQL).mappings().all()
         pct_fb = _hist_rr_pct(s)
+        dq_fb  = _drv_quote_pct(s)
     return _build_rr_response(rows, _RR_META, _CATEGORY_ORDER,
-                               exclude=_FIRST_BAR_RR, curated_only=True, rr_pct=pct_fb)
+                               exclude=_FIRST_BAR_RR, curated_only=True,
+                               rr_pct=pct_fb, dq_pct=dq_fb)
 
 
 @router.get("/api/rr-bar-all")
@@ -349,5 +374,6 @@ def get_rr_bar_all() -> dict:
     with session_scope() as s:
         rows = s.execute(_RR_SQL).mappings().all()
         pct_fb = _hist_rr_pct(s)
+        dq_fb  = _drv_quote_pct(s)
     return _build_rr_response(rows, _RR_META_ALL, _CATEGORY_ORDER_ALL,
-                               exclude=_FIRST_BAR_RR, rr_pct=pct_fb)
+                               exclude=_FIRST_BAR_RR, rr_pct=pct_fb, dq_pct=dq_fb)
