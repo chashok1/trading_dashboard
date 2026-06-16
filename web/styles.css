@@ -1010,14 +1010,16 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 /* Group box — wraps label + chips for each category */
 .rr-group {
   display: inline-flex;
-  align-items: stretch;
-  height: 36px;
+  align-items: center;
+  gap: 2px;
+  height: 38px;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
+  border-radius: 8px;
+  padding: 2px 4px;
   flex-shrink: 0;
 }
-.rr-group .rr-chip:last-child { border-right: none; }
+.rr-group .rr-chip { border-right: none; }
+.rr-group .rr-chip + .rr-chip { border-left: 1px solid var(--border); }
 
 .rr-cat {
   padding: 0 6px;
@@ -1039,9 +1041,9 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   flex-direction: column;
   justify-content: center;
   gap: 4px;
-  padding: 4px 8px;
+  padding: 2px 8px;
   border-right: 1px solid var(--border);
-  height: 100%;
+  align-self: stretch;
   flex-shrink: 0;
   cursor: default;
   box-sizing: border-box;
