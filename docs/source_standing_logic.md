@@ -115,8 +115,9 @@ formula logic (e.g. SSS's Excel rank/signal math currently in
 
 - **SSS whole-snapshot:** dropped symbol = removed; never carried from an older
   load. (Fixes the NULL signal bug and the resurrection bug.)
-- **SSS INCREASE/REDUCE stay demoted** from the consolidated headline action
-  (unchanged — appear under Other Sources only).
+- **SSS INCREASE/REDUCE compete via recency** — SSS now enters the winner sort
+  like any other source (recency-first, then aggressiveness). The former demotion
+  was removed in TASK 49.
 - **PS drop emits REMOVE even when not held** (so it is recorded/visible as a
   per-source signal), but the **consolidated/final action ignores a not-held
   REMOVE** and it must not erase a competing ADD on the same symbol.

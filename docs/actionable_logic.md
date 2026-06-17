@@ -42,7 +42,7 @@ runs inside its own SAVEPOINT so one failure doesn't abort the rest.
 | II | outlook_modifier | Monthly bundle, latest snapshot ≤ D + intra-month `iichg` patches | `_action_standing` | NEUTRAL outlook = removed from list |
 | CALL | outlook_modifier | Standing model — 30-day sparse window | `_action_call_standing` | see below |
 | PS | rank | Weekly, FRI anchor; lower rank number = better | `_action_rank` | |
-| SSS | rank_pct_delta | Weekly, MON anchor; driven by `pct_delta` | `_action_sss_pct_delta` | INCREASE/REDUCE informational only |
+| SSS | rank_pct_delta | Weekly, MON anchor; driven by `pct_delta` | `_action_sss_pct_delta` | |
 
 ### Classifier rules
 
@@ -84,18 +84,27 @@ Initial); analyst rank is display-only:
 - new → ADD; dropped → REMOVE if held, else silent
 - on the list both weeks: pct_delta < 0 → REMOVE; rising → INCREASE;
   falling → REDUCE; steady → HOLD
-- SSS INCREASE/REDUCE are demoted — they appear under Other Sources but
-  never become the consolidated action.
 
 ## Stage 2 — consolidation (`derive_actionable.py`)
 
 **Winner.** Every per-source action for the date, plus any fired action-type
-rule groups (synthetic `RULES:<code>` candidates), compete in one sort:
-`(-ACTION_RANK, priority ASC)`, where
-`ACTION_RANK = REMOVE 4 · REDUCE 3 · INCREASE 2 · ADD 1 · HOLD 0`.
-Most aggressive wins; ties broken by `investment_priority` /
-rule-group `priority` (lower = stronger). SSS INCREASE/REDUCE are excluded
-from this contest.
+rule groups (synthetic `RULES:<code>` candidates), compete via a
+**held/not-held branch**:
+
+- **Held symbol** — fixed `SOURCE_ORDER` (PS=1 · ETF=2 · RR=3 · SSS=4 · II=5 · CALL=6).
+  The highest-precedence source present sets the headline, whatever its action.
+- **Not-held symbol** — the most-recently-updated source wins (recency of
+  `source_snapshot_date`); ties on date break by `SOURCE_ORDER`.
+
+Rule-group candidates rank after the six sources using their group `priority`
+value. Group-fired candidates use `as_of_date` as their update date; a
+candidate with no date is treated as oldest (ordinal 0).
+
+Removed behaviors (as of 2026-06-17): CALL "only wins when it's the only
+source" carve-out (CALL now ranks last by `SOURCE_ORDER`); not-held PS REMOVE
+exclusion (a PS REMOVE can win on the not-held path if it is the freshest
+signal, but is still stamped "NOT HELD" and suppressed); SSS INCREASE/REDUCE
+demotion (SSS competes on equal footing by source rank or recency).
 
 **Category.** PS/ETF/ETFCHG winners look up `ref_asset_allocation` by the
 symbol's `asset_class`; other sources use `position_category`. That yields

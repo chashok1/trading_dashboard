@@ -46,7 +46,7 @@
     <text class="tsx" x="340" y="250" text-anchor="middle" dominant-baseline="central">outlook_v2 (RR, ETF, II):  new + weight &gt; 2 → ADD · dropped → REMOVE · shift → INCREASE/REDUCE</text>
     <text class="tsx" x="340" y="271" text-anchor="middle" dominant-baseline="central">call_standing (CALL):  30-day standing model · positive → ADD/INCREASE · weight ≤ 0 → REMOVE (held)</text>
     <text class="tsx" x="340" y="292" text-anchor="middle" dominant-baseline="central">rank (PS):  weekly rank · improved → INCREASE · degraded → REDUCE · new → ADD</text>
-    <text class="tsx" x="340" y="313" text-anchor="middle" dominant-baseline="central">sss_pct_delta (SSS):  weekly pct_delta drives action · INCREASE/REDUCE informational only</text>
+    <text class="tsx" x="340" y="313" text-anchor="middle" dominant-baseline="central">sss_pct_delta (SSS):  weekly pct_delta drives action · INCREASE/REDUCE/ADD/REMOVE/HOLD</text>
   </g>
   <line class="arr" x1="340" y1="339" x2="340" y2="374" marker-end="url(#arrow)"/>
 
@@ -61,9 +61,9 @@
     <rect x="40" y="472" width="600" height="120" rx="10"/>
     <text class="th" x="340" y="495" text-anchor="middle" dominant-baseline="central">2 · Consolidation — derive_actionable.py</text>
     <text class="ts" x="340" y="519" text-anchor="middle" dominant-baseline="central">every per-source action + fired rule groups (RULES:code) compete together</text>
-    <text class="ts" x="340" y="540" text-anchor="middle" dominant-baseline="central">winner = sort by (−ACTION_RANK, priority) — most aggressive wins, ties by priority</text>
-    <text class="ts" x="340" y="561" text-anchor="middle" dominant-baseline="central">ACTION_RANK:  REMOVE 4 · REDUCE 3 · INCREASE 2 · ADD 1 · HOLD 0</text>
-    <text class="ts" x="340" y="582" text-anchor="middle" dominant-baseline="central">SSS INCREASE / REDUCE are excluded from the winner contest</text>
+    <text class="ts" x="340" y="540" text-anchor="middle" dominant-baseline="central">held → fixed SOURCE_ORDER (PS·ETF·RR·SSS·II·CALL) — strongest present source wins</text>
+    <text class="ts" x="340" y="561" text-anchor="middle" dominant-baseline="central">not held → most-recently-updated source wins; tie on date → SOURCE_ORDER</text>
+    <text class="ts" x="340" y="582" text-anchor="middle" dominant-baseline="central">rule-group candidates rank after six sources by group priority</text>
   </g>
   <line class="arr" x1="340" y1="593" x2="340" y2="628" marker-end="url(#arrow)"/>
 

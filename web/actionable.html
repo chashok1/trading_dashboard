@@ -56,6 +56,14 @@
     .act-chip-none     { border-left: 4px solid #c4c4c4; }
     .act-chip-over_max { border-left: 4px solid var(--act-sell-weak); }
 
+    .src-reasons { margin-top: 0; }
+    .src-reason-line { display:flex; align-items:baseline; gap:2px; line-height:1.25;
+      white-space:nowrap; overflow:hidden; }
+    .src-tag { font-size:9px; font-weight:700; flex-shrink:0; color:#374151; }
+    .src-ic  { font-family:ui-monospace,Menlo,monospace; font-size:13px;
+      font-weight:700; width:1.2em; flex-shrink:0; text-align:center; }
+    .src-rsn { font-size:9px; color:#94a3b8; overflow:hidden; text-overflow:ellipsis; }
+
     .act-toolbar label {
       font-size: 11px;
       color: var(--text-2, #666);
@@ -95,6 +103,7 @@
       background: var(--surface, #fafafa);
       position: sticky;
       top: 0;
+      text-align: center;
       z-index: 1;
       padding-top: 4px;
       padding-bottom: 4px;

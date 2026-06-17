@@ -189,7 +189,7 @@ def get_marketbar() -> dict:
             d['low']   = ohlc['l']
             d['close'] = ohlc['c']
             d['quote_time'] = ohlc.get('qt') or ohlc.get('qd')
-        if d.get('chg_pct') is None and rr_sym:
+        if not d.get('chg_pct') and rr_sym:
             d['chg_pct'] = rr_pct_fallback.get(rr_sym)
         vol_sym = _METRIC_TO_VOL_SYM.get(d.get('metric_key', ''))
         if vol_sym and vol_sym in vol_thresh:

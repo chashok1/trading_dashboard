@@ -80,8 +80,44 @@
     return '--';
   }
 
+  // Icon map: action code -> { glyph, color }
+  var _ICON = {
+    // buys (up)
+    BM:  { g: '⇈', c: '#14532d' },
+    BS:  { g: '↑', c: '#22c55e' },
+    BMN: { g: '↥', c: '#16a34a' },
+    BW:  { g: '◇', c: '#22c55e' },
+    BSW: { g: '◇', c: '#22c55e' },
+    HOLD:{ g: '=', c: '#9ca3af' },
+    N:   { g: '=', c: '#9ca3af' },
+    BN:  { g: '=', c: '#9ca3af' },
+    // sells (down)
+    SA:  { g: '⇊', c: '#991b1b' },
+    SS:  { g: '↓', c: '#ef4444' },
+    STM: { g: '↓', c: '#ef4444' },
+    SO:  { g: '↧', c: '#ea580c' },
+    SW:  { g: '◇', c: '#f97316' },
+    SWW: { g: '◇', c: '#f97316' },
+    SN:  { g: '=', c: '#9ca3af' },
+  };
+  var _ICON_NONE = { g: '·', c: '#d1d5db' };
+
+  /**
+   * actionIcon(code) -> { glyph, color, code, label, title }
+   * Resolves any raw action or alias (ADD->BMN, REMOVE->SA, …) then returns
+   * the matching glyph and color for rendering in the Sources column.
+   */
+  function actionIcon(code) {
+    var d = actionDisplay(code);                 // resolves ADD->BMN, REMOVE->SA, ...
+    var ic = _ICON[d.code] || (d.side === 'neutral' ? _ICON.HOLD : _ICON_NONE);
+    var title = (d.code && d.code !== d.label) ? (d.code + ' - ' + d.label)
+                                               : (d.label || 'None');
+    return { glyph: ic.g, color: ic.c, code: d.code, label: d.label, title: title };
+  }
+
   // Expose on window for use by per-screen scripts.
   window.actionDisplay = actionDisplay;
   window.actionText    = actionText;
+  window.actionIcon    = actionIcon;
   window._ACTION_MAP   = _MAP;  // for debugging / direct key iteration
 }());

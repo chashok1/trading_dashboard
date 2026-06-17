@@ -14,9 +14,11 @@ this without being re-told.
   `localhost:5432`); database work always goes to the developer. Cowork reviews
   results and reports to the user.
 - **Developer agent (in VS Code)** — implements the task specs, runs the code,
-  and has `psql` / database access. Logs its progress in `DEV_HANDOFF.md`.
+  and has `psql` / database access. Logs its progress in `DEV_HANDOFF.md` and stops
+  at `ALL_DONE`. Does not invoke the tester.
 - **Tester agent (in VS Code)** — verifies the developer's work against a live
-  Postgres + running app, and writes a pass/fail report.
+  Postgres + running app, and writes a pass/fail report. **Runs only when the user
+  explicitly requests a test round — never by default.**
 
 ## The flow
 
@@ -30,13 +32,18 @@ this without being re-told.
    runs migrations / derives via `psql` and `python -m ...`. Records every change
    (files changed, decisions, risks) in `DEV_HANDOFF.md`, ending the file with
    the literal marker `ALL_DONE` when finished. If not done, it does not write
-   `ALL_DONE`.
-3. **Developer hands off testing.** Per `AGENT_TASK.md`, the tester runs the
-   verification blocks and writes evidence to `AGENT_RESULT_<n>.md`, ending with
-   `DONE` or `FAILED: <blocks>`. Pre-req gate: `DEV_HANDOFF.md` must end with
-   `ALL_DONE` first, else the tester stops and reports.
-4. **Cowork reviews** `AGENT_RESULT_<n>.md`, relays the outcome to the user, and
-   plans the next task or fix.
+   `ALL_DONE`. The developer does **not** hand off to the tester — it stops at
+   `ALL_DONE` and reports back.
+3. **Testing is on-request only.** Do **NOT** hand off to the tester by default.
+   A tester round runs only when **the user explicitly asks for it**. When the user
+   does ask, point the tester at `AGENT_TASK.md`; it runs the verification blocks
+   and writes evidence to `AGENT_RESULT_<n>.md`, ending with `DONE` or
+   `FAILED: <blocks>`. Pre-req gate: `DEV_HANDOFF.md` must end with `ALL_DONE`
+   first, else the tester stops and reports. Until the user asks, the spec's
+   "How to verify" section is just reference — nobody runs it automatically.
+4. **Cowork reviews** the developer's `DEV_HANDOFF.md` (and `AGENT_RESULT_<n>.md`
+   if a test round was requested), relays the outcome to the user, and plans the
+   next task or fix.
 5. **User commits.** No agent commits or pushes — the user commits from Windows
    after a task passes. (This overrides `CLAUDE.md` convention #13 within this
    flow.)

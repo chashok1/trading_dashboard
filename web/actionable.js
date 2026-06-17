@@ -896,6 +896,50 @@ function _srcSubLineHtml(r) {
   return `<div class="act-src-sub">${tokens.join(' ')}</div>`;
 }
 
+// Per-source reason lines for the Sources column: "SRC <icon> reason".
+function _srcReasonsHtml(r) {
+  const sources = _sourcesOf(r);
+  if (!sources.length) return '';
+  const winning = (r.winning_source || '').toString();
+  const winner = sources.filter(s => (s.source || s.source_code || '') === winning);
+  const others = sources.filter(s => (s.source || s.source_code || '') !== winning);
+  others.sort((a, b) =>
+    (ACTION_RANK[(b.action || '').toUpperCase()] || 0) -
+    (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
+  const rows = winner.concat(others).map(s => {
+    const src    = escapeHtml(s.source || s.source_code || '?');
+    const ic     = actionIcon(s.action);
+    const reason = s.reason ? escapeHtml(s.reason) : '';
+    return `<div class="src-reason-line">
+      <span class="src-ic" style="color:${ic.color};">${ic.glyph}</span>
+      <span class="src-tag">${src}</span>
+      <span class="src-rsn">${reason}</span>
+    </div>`;
+  });
+  return `<div class="src-reasons">${rows.join('')}</div>`;
+}
+
+function _srcTooltip(r) {
+  const sources = _sourcesOf(r);
+  if (!sources.length) return '';
+  const winning = (r.winning_source || '').toString();
+  const winner = sources.filter(s => (s.source || s.source_code || '') === winning);
+  const others = sources.filter(s => (s.source || s.source_code || '') !== winning);
+  others.sort((a, b) =>
+    (ACTION_RANK[(b.action || '').toUpperCase()] || 0) -
+    (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
+  const lines = winner.concat(others).map(s => {
+    const isWin = (s.source || s.source_code || '') === winning;
+    const src   = s.source || s.source_code || '?';
+    const ic    = actionIcon(s.action);
+    const act   = (s.action || '').toUpperCase();
+    const dt    = fmtMD(s.snapshot_date) || '?';
+    const rsn   = s.reason || '';
+    return (isWin ? '✓ ' : '  ') + src + '  ' + ic.glyph + '  ' + act + '  ' + dt + '  ' + rsn;
+  });
+  return 'ALL SOURCES\n' + lines.join('\n');
+}
+
 // ── Pass 1: Conviction ─────────────────────────────────────────────────────
 // Count source_actions entries whose action aligns with consolidated_action direction.
 // "align" = same sell/buy side (REMOVE/REDUCE/OVER_MAX → sell; INCREASE/ADD → buy).
@@ -1640,13 +1684,13 @@ function renderGrid() {
     // TrTnBBRskRng cell: run action through actionDisplay; attach rr-action-cell for hover tooltip
     const rrRaw = r.rr_action || '';
     const rrDisp = actionDisplay(rrRaw);
-    const _rrBadgeStyle = 'display:inline-block;width:36px;flex-shrink:0;font-weight:700;font-size:12px;text-align:right;margin-right:8px;';
+    const _rrIcData = actionIcon(rrRaw);
     const rrHtml = rrRaw
-      ? `<span style="${_rrBadgeStyle}color:${_actionCodeColor(rrDisp)};" title="${escapeHtml(rrDisp.label || rrRaw)}">${escapeHtml(rrDisp.code || actionText(rrDisp))}</span>`
-      : `<span style="${_rrBadgeStyle}color:#cbd5e1;">--</span>`;
+      ? `<span class="rr-main-ic" style="font-family:ui-monospace,monospace;font-size:24px;font-weight:700;color:${_rrIcData.color};cursor:help;flex-shrink:0;display:inline-block;width:36px;text-align:center;">${_rrIcData.glyph}</span>`
+      : `<span class="rr-main-ic" style="font-size:12px;color:#cbd5e1;cursor:default;flex-shrink:0;display:inline-block;width:36px;text-align:center;">—</span>`;
     const _rrSubLineHtml = (() => {
       const td = r.tn_td_desc || '', bb = r.bb_desc || '';
-      const rr = r.rr_desc || (r.rr_bull_bear ? (r.rr_bull_bear === 'B' ? 'Bull' : 'Not-Bull') : '');
+      const rr = r.rr_desc || (rrRaw && r.rr_bull_bear ? (r.rr_bull_bear === 'B' ? 'Bull' : 'Not-Bull') : '');
       if (!td && !bb && !rr) return '';
       const line = t => `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;">${escapeHtml(t)}</div>`;
       return `<div class="rr-sub-line" style="font-size:9px;color:#94a3b8;line-height:1.4;" data-filled="1">${td ? line('TnTd: ' + td) : ''}${bb ? line('BB: ' + bb) : ''}${rr ? line('RR: ' + rr) : ''}</div>`;
@@ -1680,14 +1724,15 @@ function renderGrid() {
         ${r.stop_level != null ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;" title="Stop / exit-below level (task 8)">stop ${fmtUsd(r.stop_level)}</div>` : ''}
       </td>
       <td class="act-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:help;">
-        <div style="display:flex;align-items:baseline;gap:5px;">
-          ${(()=>{ const _bd=actionDisplay(_badgeAction(r)); return `<span style="font-weight:700;font-size:12px;color:${_actionCodeColor(_bd)};" title="${escapeHtml(_bd.label||actionLabel(r))}">${escapeHtml(_bd.code||actionLabel(r))}</span>`; })()}
-          ${(()=>{ const _wr=_winningReason(r); return _wr ? `<span style="font-size:9px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px;" title="${escapeHtml(_wr)}">${escapeHtml(_wr.length>28?_wr.slice(0,28)+'…':_wr)}</span>` : ''; })()}
+        <div style="display:flex;align-items:flex-start;gap:8px;">
+          <div style="width:38px;flex-shrink:0;align-self:center;text-align:center;">
+            ${(()=>{ const _ic=actionIcon(_badgeAction(r)); return `<span class="act-main-ic" style="font-family:ui-monospace,monospace;font-size:24px;font-weight:700;color:${_ic.color};cursor:help;">${_ic.glyph}</span>`; })()}
+            ${_isOverMaxOverlay(r) ? `<div style="font-size:8px;line-height:1;font-weight:600;margin-top:1px;" class="${_actionColorCls(action)}">was ${actionText(actionDisplay(action))}</div>` : ''}
+          </div>
+          ${_srcReasonsHtml(r)}
         </div>
-        ${_srcSubLineHtml(r)}
-        ${_isOverMaxOverlay(r) ? `<div style="font-size:8px;line-height:1;font-weight:600;margin-top:1px;" class="${_actionColorCls(action)}">was ${actionText(actionDisplay(action))}</div>` : ''}
       </td>
-      <td class="rr-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-date="${escapeHtml(r.as_of_date || state.date || '')}" style="padding:6px 4px; cursor:help;">
+      <td class="rr-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-date="${escapeHtml(r.as_of_date || state.date || '')}" style="padding:6px 4px;">
         <div style="display:flex;align-items:flex-start;gap:6px;">
           ${rrHtml}
           ${_rrSubLineHtml}
@@ -2796,9 +2841,13 @@ function _actionPopHtml(sym) {
      </div>`;
 
   // ── Header ────────────────────────────────────────────────────────────────
-  let html = `<div style="font-weight:700;color:#0f172a;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;">` +
-    `${escapeHtml(sym)} — ` +
+  const _hIc = actionIcon(_badgeAction(r));
+  const _hPrice = r.last_price != null ? fmtUsd(r.last_price) : '';
+  let html = `<div style="font-weight:700;color:#0f172a;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;display:flex;align-items:baseline;gap:6px;">` +
+    `<span>${escapeHtml(sym)}</span>` +
     `<span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-tint'}">${escapeHtml(actionLabel(r))}</span>` +
+    `<span style="font-size:10px;font-weight:400;color:#475569;">${escapeHtml(_hIc.label)}</span>` +
+    (_hPrice ? `<span style="margin-left:auto;font-size:12px;font-weight:700;color:#0f172a;">${escapeHtml(_hPrice)}</span>` : '') +
     `</div>`;
 
   // ── Suppression ────────────────────────────────────────────────────────────
@@ -2835,12 +2884,17 @@ function _actionPopHtml(sym) {
       const srcCode = s.source || s.source_code || '?';
       const srcAct  = (s.action || '').toUpperCase() || '?';
       const isWin   = srcCode === winSrc;
-      const dispS   = actionDisplay(srcAct);
-      const actText = actionText(dispS) || srcAct;
-      html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">` +
-        `<span style="font-size:10px;color:#475569;min-width:44px;">${escapeHtml(srcCode)}</span>` +
-        `<span class="act-badge act-badge-sm ${(actionDisplay(srcAct).colorCls || 'act-neutral') + '-tint'}">${escapeHtml(actText)}</span>` +
-        (isWin ? `<span style="font-size:9px;color:#16a34a;font-weight:600;">&#10003; winning</span>` : '') +
+      const ic      = actionIcon(srcAct);
+      const actText = actionText(actionDisplay(srcAct)) || srcAct;
+      const dt      = fmtMD(s.snapshot_date) || '—';
+      const rsn     = s.reason || '';
+      html += `<div style="display:flex;align-items:baseline;gap:5px;margin-bottom:3px;font-size:10px;">` +
+        `<span style="min-width:10px;color:#16a34a;font-weight:700;">${isWin ? '✓' : ''}</span>` +
+        `<span style="min-width:32px;color:#475569;font-weight:600;">${escapeHtml(srcCode)}</span>` +
+        `<span style="font-family:ui-monospace,monospace;font-size:12px;font-weight:700;color:${ic.color};min-width:14px;text-align:center;" title="${escapeHtml(ic.title)}">${ic.glyph}</span>` +
+        `<span style="min-width:46px;color:#0f172a;font-weight:600;">${escapeHtml(actText)}</span>` +
+        `<span style="min-width:30px;color:#94a3b8;">${escapeHtml(dt)}</span>` +
+        `<span style="color:#475569;white-space:normal;line-height:1.3;">${escapeHtml(rsn)}</span>` +
         `</div>`;
     }
   }
@@ -2875,12 +2929,14 @@ function setupActionCol() {
   if (!body) return;
 
   body.addEventListener('mouseover', (e) => {
-    const cell = e.target.closest('.act-action-cell');
+    const ic = e.target.closest('.act-main-ic');
+    if (!ic) return;
+    const cell = ic.closest('.act-action-cell');
     if (!cell) return;
     const sym = cell.dataset.sym;
     if (!sym) return;
     tip.innerHTML = _actionPopHtml(sym);
-    const rect = cell.getBoundingClientRect();
+    const rect = ic.getBoundingClientRect();
     tip.style.display = 'block';
     const tipW = tip.offsetWidth;
     let left = rect.right + 8;
@@ -2890,7 +2946,7 @@ function setupActionCol() {
   });
 
   body.addEventListener('mouseout', (e) => {
-    if (e.relatedTarget && e.relatedTarget.closest('.act-action-cell')) return;
+    if (e.relatedTarget && e.relatedTarget.closest('.act-main-ic')) return;
     tip.style.display = 'none';
   });
 }
@@ -2926,7 +2982,9 @@ function setupRRActionCol() {
   if (!body) return;
 
   body.addEventListener('mouseover', async (e) => {
-    const cell = e.target.closest('.rr-action-cell');
+    const ic = e.target.closest('.rr-main-ic');
+    if (!ic) return;
+    const cell = ic.closest('.rr-action-cell');
     if (!cell) return;
     const sym = cell.dataset.sym, date = cell.dataset.date;
     if (!sym || !date) return;
@@ -2952,8 +3010,11 @@ function setupRRActionCol() {
     const rowData = state.rows.find(r => r.tos_symbol === sym);
     const lastPrice = rowData && rowData.last_price != null ? rowData.last_price : null;
     const priceHtml = lastPrice != null
-      ? `<span style="font-size:13px;font-weight:700;color:#0f172a;margin-left:6px;">${fmtUsd(lastPrice)}</span>`
+      ? `<span style="margin-left:auto;font-size:12px;font-weight:700;color:#0f172a;">${fmtUsd(lastPrice)}</span>`
       : '';
+    const _rrHDisp = actionDisplay(d.action || rowData?.rr_action || '');
+    const _rrHCode = actionText(_rrHDisp);
+    const _rrHDesc = _rrHDisp.label || '';
 
     const row = (label, val, color) =>
       `<div style="display:flex;justify-content:space-between;gap:12px;">
@@ -3044,10 +3105,15 @@ function setupRRActionCol() {
     }
 
     tip.innerHTML = `
-      <div style="font-weight:700;color:#0f172a;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;display:flex;align-items:baseline;gap:8px;">${escapeHtml(sym)} — TrTnBBRskRng${priceHtml}</div>
+      <div style="font-weight:700;color:#0f172a;margin-bottom:6px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;display:flex;align-items:baseline;gap:6px;">
+        <span>${escapeHtml(sym)}</span>
+        ${_rrHCode && _rrHCode !== '--' ? `<span class="act-badge ${(_rrHDisp.colorCls || 'act-neutral') + '-tint'}">${escapeHtml(_rrHCode)}</span>` : ''}
+        ${_rrHDesc ? `<span style="font-size:10px;font-weight:400;color:#475569;">${escapeHtml(_rrHDesc)}</span>` : ''}
+        ${priceHtml}
+      </div>
       ${rowScore('Trend/Trade',    d.trend_trade, shortDesc(null, rowData?.tn_td_desc || d.tn_td_desc))}
       ${rowScore('BB Range Streak', d.bb_streak,  shortDesc(null, rowData?.bb_desc   || d.bb_desc))}
-      ${rowScore('RR',              d.rr_action,  shortDesc(null, d.rr_desc))}
+      ${(()=>{ const _z=rowData?.rr_bull_bear?(rowData.rr_bull_bear==='B'?'Bull Up':'Bull Side Ways'):''; const _zc=rowData?.rr_bull_bear==='B'?'#16a34a':'#f59e0b'; return rowScore(`RR${_z?` <span style="font-size:8px;font-weight:400;text-transform:none;color:${_zc};">${_z}</span>`:''}`,d.rr_action,shortDesc(null,d.rr_desc)); })()}
       ${sec('Decision Path')}
       ${decisionHtml}
       <div style="margin-top:3px;font-size:11px;font-weight:700;color:${scoreCol(qr)};">Score = ${qr != null ? qr : '—'} → ${d.action || '—'}</div>
@@ -3061,7 +3127,7 @@ function setupRRActionCol() {
       ${row('MRR Idx', d.mrr_idx != null ? String(d.mrr_idx) : '—', scoreCol(d.mrr_idx))}
       ${row('LRR Idx', d.lrr_idx != null ? String(d.lrr_idx) : '—', scoreCol(d.lrr_idx))}`;
 
-    const rect = cell.getBoundingClientRect();
+    const rect = ic.getBoundingClientRect();
     tip.style.display = 'block';
     const tipW = tip.offsetWidth;
     let left = rect.left - tipW - 8;
@@ -3071,7 +3137,7 @@ function setupRRActionCol() {
   });
 
   body.addEventListener('mouseout', (e) => {
-    if (e.relatedTarget && e.relatedTarget.closest('.rr-action-cell')) return;
+    if (e.relatedTarget && e.relatedTarget.closest('.rr-main-ic')) return;
     tip.style.display = 'none';
   });
 }

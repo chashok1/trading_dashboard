@@ -344,9 +344,9 @@
     // ── Box below Graph1: TRR MRR LRR centered (always shown) ───────────────
     const graph1Box = infoBox(`
       <div style="display:flex;justify-content:center;gap:12px;">
-        <span><span style="color:#94a3b8;">TRR</span> <strong style="color:#15803d;">${fmt(trr)}</strong></span>
+        <span><span style="color:#94a3b8;">TRR</span> <strong style="color:#be185d;">${fmt(trr)}</strong></span>
         <span><span style="color:#94a3b8;">MRR</span> <strong style="color:#4ade80;">${fmt(mrr)}</strong></span>
-        <span><span style="color:#94a3b8;">LRR</span> <strong style="color:#15803d;">${fmt(lrr)}</strong></span>
+        <span><span style="color:#94a3b8;">LRR</span> <strong style="color:#be185d;">${fmt(lrr)}</strong></span>
       </div>`);
 
     // ── Box below Graph2: Trade Trend centered, same width as top box ────────
@@ -487,7 +487,10 @@
     const PAD_L = 44, PAD_R = 90, PAD_T = 10, PAD_B = 22;
     const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
 
-    const allVals = [...closes, ...opens, ...highs, ...lows, ...lrrs, ...trrs].filter(v => v != null);
+    const tradeLevel = levels && levels.trade != null ? levels.trade : null;
+    const trendLevel = levels && levels.trend != null ? levels.trend : null;
+    const allVals = [...closes, ...opens, ...highs, ...lows, ...lrrs, ...trrs,
+                     tradeLevel, trendLevel].filter(v => v != null);
     if (!allVals.length) return;
     const yMin = Math.min(...allVals), yMax = Math.max(...allVals);
     const pad = (yMax - yMin) * 0.05 || 1;
@@ -535,7 +538,7 @@
         botPts.unshift(`${xPx(i).toFixed(1)},${yPx(lv).toFixed(1)}`);
         if (k + 1 < rrPts.length) botPts.unshift(`${xPx(rrPts[k+1].i).toFixed(1)},${yPx(lv).toFixed(1)}`);
       }
-      rrFill = `<polygon points="${[...topPts,...botPts].join(' ')}" fill="#f0fdf4" stroke="none"/>`;
+      rrFill = `<polygon points="${[...topPts,...botPts].join(' ')}" fill="#fdf2f8" stroke="none"/>`;
     }
 
     // Right-side labels for latest TRR and LRR
@@ -543,9 +546,9 @@
     const latestLrr = [...lrrs].reverse().find(v => v != null);
     const rrLabels = [
       latestTrr != null && latestTrr >= yMinP && latestTrr <= yMaxP
-        ? `<text x="${PAD_L+cW+40}" y="${yPx(latestTrr)+4}" fill="#15803d" font-size="9" font-weight="600">TRR ${latestTrr.toFixed(0)}</text>` : '',
+        ? `<text x="${PAD_L+cW+40}" y="${yPx(latestTrr)+4}" fill="#be185d" font-size="9" font-weight="600">TRR ${latestTrr.toFixed(0)}</text>` : '',
       latestLrr != null && latestLrr >= yMinP && latestLrr <= yMaxP
-        ? `<text x="${PAD_L+cW+40}" y="${yPx(latestLrr)+4}" fill="#15803d" font-size="9" font-weight="600">LRR ${latestLrr.toFixed(0)}</text>` : '',
+        ? `<text x="${PAD_L+cW+40}" y="${yPx(latestLrr)+4}" fill="#be185d" font-size="9" font-weight="600">LRR ${latestLrr.toFixed(0)}</text>` : '',
     ].join('');
 
     // Date labels — fit as many as possible without overlap (~30px per label)
@@ -588,6 +591,13 @@
         `<text id="${svgEl.id}_mpdt" x="${PAD_L+23}" y="${(priceMaxY+6).toFixed(1)}" fill="#94a3b8" font-size="7" text-anchor="middle" dominant-baseline="middle">${priceMaxDate}</text>`
       : '';
 
+    const tradeLine = (tradeLevel != null && tradeLevel >= yMinP && tradeLevel <= yMaxP)
+      ? `<line x1="${PAD_L}" y1="${yPx(tradeLevel).toFixed(1)}" x2="${PAD_L+cW+35}" y2="${yPx(tradeLevel).toFixed(1)}" stroke="#f97316" stroke-width="1" stroke-dasharray="5 3"/>` +
+        `<text x="${PAD_L+cW+38}" y="${(yPx(tradeLevel)+3.5).toFixed(1)}" fill="#f97316" font-size="8" font-weight="600" text-anchor="start">Trade</text>` : '';
+    const trendLine = (trendLevel != null && trendLevel >= yMinP && trendLevel <= yMaxP)
+      ? `<line x1="${PAD_L}" y1="${yPx(trendLevel).toFixed(1)}" x2="${PAD_L+cW+35}" y2="${yPx(trendLevel).toFixed(1)}" stroke="#818cf8" stroke-width="1" stroke-dasharray="5 3"/>` +
+        `<text x="${PAD_L+cW+38}" y="${(yPx(trendLevel)+3.5).toFixed(1)}" fill="#818cf8" font-size="8" font-weight="600" text-anchor="start">Trend</text>` : '';
+
     const todayX = xPx(n - 1);
     const todayMark = `<line x1="${todayX}" y1="${PAD_T}" x2="${todayX}" y2="${PAD_T+cH}" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2 2"/>`;
     const curPrice = prices[n-1];
@@ -619,8 +629,9 @@
       ${rightAxis}
       ${rrFill}
       ${todayMark}${curLine}
-      ${stepPolyline(trrs, '#15803d', 1.5, '4 2')}
-      ${stepPolyline(lrrs, '#15803d', 1.5, '4 2')}
+      ${tradeLine}${trendLine}
+      ${stepPolyline(trrs, '#ec4899', 1.5, '5 3')}
+      ${stepPolyline(lrrs, '#ec4899', 1.5, '5 3')}
       ${candlesticks}
       ${rrLabels}${xLabels}
       ${lastPriceBadge}

@@ -18,7 +18,8 @@ from etl._derive_common import position_ceiling
 
 log = logging.getLogger("etl.derive_actionable")
 
-ACTION_RANK = {"REMOVE": 4, "REDUCE": 3, "INCREASE": 2, "ADD": 1, "HOLD": 0}
+ACTION_RANK  = {"REMOVE": 4, "REDUCE": 3, "INCREASE": 2, "ADD": 1, "HOLD": 0}
+SOURCE_ORDER = {"PS": 1, "ETF": 2, "RR": 3, "SSS": 4, "II": 5, "CALL": 6}
 
 
 def _open_drv_run(session, target, as_of_date, parent_run_id=None):
@@ -419,53 +420,36 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                     trig_action = max(pos, key=lambda x: x[1])[0]
 
         # ─── Pick the winning action ───
-        # Outlook-source candidates + synthetic rule-group candidates compete
-        # in a single sort: (-ACTION_RANK, priority ASC). Group priority comes
-        # from ref_trig_rule_group.priority; outlook priority from
-        # ref_outlook_source.investment_priority. Both are "lower = wins".
-        # SSS INCREASE/REDUCE are informational only — they may appear under
-        # Other Sources but never become the consolidated (main) action.
-        # SSS ADD/REMOVE stay eligible.
-        # CALL always loses to other sources: it's demoted to Other Sources
-        # if any other source has an action (CALL only wins if it's the only source).
-        # Behavior rule 3: not-held PS REMOVE must not erase a competing ADD.
-        # A not-held PS REMOVE is excluded from the winner sort; it is still
-        # recorded in source_actions so the per-source signal is visible.
-
-        # Current held status for this symbol (reuse from holdings dict)
+        # Held symbol  → fixed source order PS>ETF>RR>SSS>II>CALL.
+        # Not-held     → latest update wins; tie on date → source order.
+        # Rule-group candidates keep their group priority and rank after the six sources.
         _held_now = holdings.get(sym, 0.0) > 0
 
-        # Check if any non-CALL source exists in src_actions (before filtering informational)
-        other_sources_present = any(a["source_code"] != "CALL" for a in src_actions)
+        for gc in group_candidates:
+            gc["_update_date"] = as_of_date    # rule groups fire on the current derive date
 
-        outlook_candidates = [
-            a for a in src_actions
-            if a["action"] in ACTION_RANK
-            and not (a["source_code"] == "SSS"
-                     and a["action"] in ("INCREASE", "REDUCE"))
-            # Behavior rule 3: not-held PS REMOVE excluded from consolidated winner
-            and not (a["source_code"] == "PS"
-                     and a["action"] == "REMOVE"
-                     and not _held_now)
-        ]
-        # If other sources exist, exclude CALL from being a winner
-        if other_sources_present:
-            outlook_candidates = [a for a in outlook_candidates if a["source_code"] != "CALL"]
+        def _order(a):
+            if "_group_prio" in a:
+                return a["_group_prio"]
+            return SOURCE_ORDER.get(a["source_code"], 99)
 
-        candidates = list(outlook_candidates) + group_candidates
+        def _upd_ord(a):                       # higher = more recent
+            d = a.get("_update_date") or a.get("source_snapshot_date") or a.get("as_of_date")
+            return d.toordinal() if d else 0
+
+        candidates = [a for a in src_actions if a["action"] in ACTION_RANK] + group_candidates
         winning_source = None
         winning_priority = None
         consolidated = None
         if candidates:
-            def _prio(a):
-                if "_group_prio" in a:
-                    return a["_group_prio"]
-                return src_priority.get(a["source_code"], 999)
-            candidates.sort(key=lambda a: (-ACTION_RANK[a["action"]], _prio(a)))
+            if _held_now:
+                candidates.sort(key=_order)                            # source order
+            else:
+                candidates.sort(key=lambda a: (-_upd_ord(a), _order(a)))  # latest update, tie→order
             winner = candidates[0]
             consolidated = winner["action"]
             winning_source = winner["source_code"]
-            winning_priority = _prio(winner)
+            winning_priority = _order(winner)
 
         # ─── Decide category for sizing ───
         # For PS / ETF / ETFCHG winners, the lookup key is the per-symbol
@@ -539,8 +523,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
 
         # ─── Suppress edge cases ───
         # Keep the row when any source emitted a real action (ADD/REMOVE/
-        # INCREASE/REDUCE) even if none won the consolidated slot — e.g. SSS
-        # INCREASE/REDUCE, which are demoted to Other Sources only.
+        # INCREASE/REDUCE) even if none won the consolidated slot (e.g. a
+        # not-held PS REMOVE that was excluded from the winner contest).
         has_other_signal = any(
             a["action"] in ("REMOVE", "REDUCE", "INCREASE", "ADD")
             for a in src_actions
