@@ -5894,3 +5894,14 @@ ALTER TABLE IF EXISTS drv_quote ADD COLUMN IF NOT EXISTS is_intraday BOOLEAN;
 -- Values: SUCCESS | PARTIAL | FAILED
 ALTER TABLE IF EXISTS meta_derived_run
 ADD COLUMN IF NOT EXISTS cascade_status TEXT;
+
+-- -----------------------------------------------------
+-- ref_vol_threshold — volatility regime thresholds
+-- Below low  → Investable | low–high → Chop | above high → Not Investable
+-- -----------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS ref_vol_threshold (
+    tos_symbol  TEXT    PRIMARY KEY,
+    low         NUMERIC NOT NULL,
+    high        NUMERIC NOT NULL
+);

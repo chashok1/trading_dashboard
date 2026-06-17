@@ -39,6 +39,17 @@ from etl.marketbar import resolve_all
 
 router = APIRouter(tags=["marketbar"])
 
+# Maps marketbar metric_key → ref_vol_threshold tos_symbol
+_METRIC_TO_VOL_SYM: dict[str, str] = {
+    'VIX':  'VIX',
+    'VVIX': 'VVIX',
+    'RVX':  'RVX',
+    'VXN':  'VXN:CGI',
+    'VXD':  'VXD',
+    'GVZ':  'GVZ:CGI',
+    'OVX':  'OVX:CGI',
+}
+
 # Maps marketbar metric_key → hist_rr tos_symbol (for range bar enrichment)
 _METRIC_TO_RR_SYMBOL: dict[str, str] = {
     'SPX':  'SPX',
@@ -120,7 +131,7 @@ def get_marketbar() -> dict:
                 "WHERE as_of_date = (SELECT MAX(as_of_date) FROM drv_rr)"
             )).mappings().all()
         }
-        # OHLC + pct_change from drv_quote at latest anchor
+        # OHLC + pct_change + quote time from drv_quote at latest anchor
         ohlc_lookup: dict[str, dict] = {
             r['tos_symbol']: {
                 'o':   float(r['open_price'])  if r['open_price']  is not None else None,
@@ -128,10 +139,12 @@ def get_marketbar() -> dict:
                 'l':   float(r['low_price'])   if r['low_price']   is not None else None,
                 'c':   float(r['last_price'])  if r['last_price']  is not None else None,
                 'pct': float(r['pct_change'])  if r['pct_change']  is not None else None,
+                'qt':  str(r['export_time'])   if r['export_time'] is not None else None,
+                'qd':  r['export_date'].isoformat() if r['export_date'] is not None else None,
             }
             for r in s.execute(text(
                 "SELECT tos_symbol, open_price, high_price, low_price, "
-                "last_price, pct_change FROM drv_quote "
+                "last_price, pct_change, export_time, export_date FROM drv_quote "
                 "WHERE as_of_date = (SELECT MAX(as_of_date) FROM drv_quote)"
             )).mappings().all()
         }
@@ -149,6 +162,13 @@ def get_marketbar() -> dict:
         }
         # Day-over-day pct from hist_rr — fallback for futures not in drv_quote
         rr_pct_fallback = _hist_rr_pct(s)
+        # Vol thresholds for volatility regime chips
+        vol_thresh: dict[str, dict] = {
+            r['tos_symbol']: {'low': float(r['low']), 'high': float(r['high'])}
+            for r in s.execute(text(
+                "SELECT tos_symbol, low, high FROM ref_vol_threshold"
+            )).mappings().all()
+        }
 
     # Enrich existing ref_market_metric items with rr range data + OHLC
     enriched = []
@@ -168,8 +188,13 @@ def get_marketbar() -> dict:
             d['high']  = ohlc['h']
             d['low']   = ohlc['l']
             d['close'] = ohlc['c']
+            d['quote_time'] = ohlc.get('qt') or ohlc.get('qd')
         if d.get('chg_pct') is None and rr_sym:
             d['chg_pct'] = rr_pct_fallback.get(rr_sym)
+        vol_sym = _METRIC_TO_VOL_SYM.get(d.get('metric_key', ''))
+        if vol_sym and vol_sym in vol_thresh:
+            d['vol_low']  = vol_thresh[vol_sym]['low']
+            d['vol_high'] = vol_thresh[vol_sym]['high']
         enriched.append(d)
 
     # Append synthetic items (rates + Brent + bonds).
@@ -205,6 +230,7 @@ def get_marketbar() -> dict:
             d['high']  = ohlc['h']
             d['low']   = ohlc['l']
             d['close'] = ohlc['c']
+            d['quote_time'] = ohlc.get('qt') or ohlc.get('qd')
         enriched.append(d)
 
     return {
@@ -284,7 +310,8 @@ def _build_rr_response(rows, meta: dict, cat_order: list,
                         exclude: set | None = None,
                         curated_only: bool = False,
                         rr_pct: dict | None = None,
-                        dq_pct: dict | None = None) -> dict:
+                        dq_pct: dict | None = None,
+                        vol_thresh: dict | None = None) -> dict:
     """Shared builder for rr-bar endpoints.
 
     curated_only=True: skip any symbol not in meta (no 'Other' bucket).
@@ -310,18 +337,24 @@ def _build_rr_response(rows, meta: dict, cat_order: list,
         sell = float(row['sell_trade']) if row['sell_trade'] is not None else None
 
         item = {
-            'symbol':    sym,
-            'label':     label,
-            'bar_price': q_price,
-            'pct':       pct,
-            'buy':       buy,
-            'sell':      sell,
-            'outlook':   row['outlook'] or 'Neutral',
-            'name':      row.get('name') or sym,
-            'open':      float(row['open_price'])  if row['open_price']  is not None else None,
-            'high':      float(row['high_price'])  if row['high_price']  is not None else None,
-            'low':       float(row['low_price'])   if row['low_price']   is not None else None,
-            'close':     q_price,
+            'symbol':       sym,
+            'label':        label,
+            'bar_price':    q_price,
+            'pct':          pct,
+            'buy':          buy,
+            'sell':         sell,
+            'outlook':      row['outlook'] or 'Neutral',
+            'name':         row.get('name') or sym,
+            'open':         float(row['open_price'])  if row['open_price']  is not None else None,
+            'high':         float(row['high_price'])  if row['high_price']  is not None else None,
+            'low':          float(row['low_price'])   if row['low_price']   is not None else None,
+            'close':        q_price,
+            'as_of':        str(row['export_date']) if row.get('export_date') else None,
+            'quote_time':   str(row['export_time']) if row.get('export_time') else None,
+            'price_source': 'drv_quote' if q_price is not None else None,
+            'rr_source':    'hist_rr'   if (buy is not None and sell is not None) else None,
+            'vol_low':      vol_thresh[sym]['low']  if (vol_thresh and sym in vol_thresh) else None,
+            'vol_high':     vol_thresh[sym]['high'] if (vol_thresh and sym in vol_thresh) else None,
         }
         if cat in groups:
             groups[cat].append(item)
@@ -346,7 +379,8 @@ _RR_SQL = text("""
            r.outlook,
            q.open_price, q.high_price, q.low_price,
            q.last_price AS q_price,
-           q.pct_change AS pct
+           q.pct_change AS pct,
+           q.export_time, q.export_date
     FROM drv_rr r
     LEFT JOIN (
         SELECT DISTINCT ON (tos_symbol) tos_symbol, name
@@ -360,24 +394,35 @@ _RR_SQL = text("""
 """)
 
 
+_VOL_THRESH_SQL = text("SELECT tos_symbol, low, high FROM ref_vol_threshold")
+
+
+def _load_vol_thresh(s) -> dict:
+    return {r['tos_symbol']: {'low': float(r['low']), 'high': float(r['high'])}
+            for r in s.execute(_VOL_THRESH_SQL).mappings().all()}
+
+
 @router.get("/api/rr-bar")
 def get_rr_bar() -> dict:
     """RR symbols grouped by category for the second market tape (curated list only)."""
     with session_scope() as s:
-        rows = s.execute(_RR_SQL).mappings().all()
-        pct_fb = _hist_rr_pct(s)
-        dq_fb  = _drv_quote_pct(s)
+        rows      = s.execute(_RR_SQL).mappings().all()
+        pct_fb    = _hist_rr_pct(s)
+        dq_fb     = _drv_quote_pct(s)
+        vol_thresh = _load_vol_thresh(s)
     return _build_rr_response(rows, _RR_META, _CATEGORY_ORDER,
                                exclude=_FIRST_BAR_RR, curated_only=True,
-                               rr_pct=pct_fb, dq_pct=dq_fb)
+                               rr_pct=pct_fb, dq_pct=dq_fb, vol_thresh=vol_thresh)
 
 
 @router.get("/api/rr-bar-all")
 def get_rr_bar_all() -> dict:
     """All hist_rr symbols for the third market tape (excludes bar-1 symbols)."""
     with session_scope() as s:
-        rows = s.execute(_RR_SQL).mappings().all()
-        pct_fb = _hist_rr_pct(s)
-        dq_fb  = _drv_quote_pct(s)
+        rows      = s.execute(_RR_SQL).mappings().all()
+        pct_fb    = _hist_rr_pct(s)
+        dq_fb     = _drv_quote_pct(s)
+        vol_thresh = _load_vol_thresh(s)
     return _build_rr_response(rows, _RR_META_ALL, _CATEGORY_ORDER_ALL,
-                               exclude=_FIRST_BAR_RR, rr_pct=pct_fb, dq_pct=dq_fb)
+                               exclude=_FIRST_BAR_RR, rr_pct=pct_fb, dq_pct=dq_fb,
+                               vol_thresh=vol_thresh)

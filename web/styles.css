@@ -1026,7 +1026,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 }
 .rr-group:last-child { border-right: none; padding-right: 0; }
 .rr-group .rr-chip { border-right: none; align-self: center; }
-.rr-group .rr-chip + .rr-chip { border-left: 1px solid var(--border); }
+.rr-group .rr-chip + .rr-chip { border-left: none; }
 
 .rr-cat {
   padding: 0 6px;
@@ -1054,6 +1054,22 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   flex-shrink: 0;
   cursor: default;
   box-sizing: border-box;
+}
+
+/* Toolbar chips: make room on the right for the candle-as-separator */
+.market-tape .rr-chip,
+.rr-tape .rr-chip {
+  position: relative;
+  padding-right: 14px;
+}
+
+/* Candle SVG: fixed 7×20px (no CSS resizing — SVG height attribute controls size, no scaling). */
+svg.rr-candle {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 7px;
+  display: block;
 }
 
 .rr-chip-top {
@@ -1096,6 +1112,26 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   border-radius: 1px;
 }
 
+/* Volatility range bar — 3-zone (green/amber/red) with threshold dots */
+.vol-rb { background: transparent; }
+.vol-z {
+  position: absolute;
+  top: 0; height: 100%;
+}
+.vol-z-g { left: 0;   width: 33%; background: rgba(47,158,47,0.35); border-radius: 2px 0 0 2px; }
+.vol-z-a { left: 33%; width: 34%; background: #eab308; }
+.vol-z-r { left: 67%; width: 33%; background: rgba(216,58,58,0.30); border-radius: 0 2px 2px 0; }
+.vol-dot {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: #334155;
+  border: 1px solid #fff;
+  z-index: 2;
+}
+
 /* Symbol tape chip: action label + IV row */
 .sym-tile-meta {
   display: flex;
@@ -1118,7 +1154,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 .sym-tape-bar {
   display: flex;
   align-items: center;
-  height: 45px;
+  height: 55px;
   background: var(--card-bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -1133,19 +1169,17 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 }
 #symTapeTrack .rr-chip {
   height: 100%;
-  overflow: hidden;
+  overflow: visible;
   border-right: none;
   position: relative;
+  padding-right: 12px;
 }
-#symTapeTrack .rr-chip + .rr-chip::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 1px;
-  height: 20px;
-  background: var(--border);
+/* ::before separator replaced by candle SVG */
+#symTapeTrack .rr-chip + .rr-chip::before { display: none; }
+/* Candle in symTape: vertically centered (chip is 55px, candle is 20px → offset 18px) */
+#symTapeTrack svg.rr-candle {
+  top: 18px;
+  right: 1px;
 }
 .sym-tape-nav {
   flex-shrink: 0;

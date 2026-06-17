@@ -67,6 +67,13 @@
     return n > 0 ? '▲' : '▼';
   }
 
+  function volZoneCls(value, low, high) {
+    if (value == null) return 'mt-flat';
+    if (value < low)   return 'mt-up';    // green = investable
+    if (value <= high) return 'mt-chop';  // amber = chop
+    return 'mt-down';                     // red = elevated vol
+  }
+
   function escHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -75,32 +82,179 @@
 
   // ---- cell helpers -------------------------------------------------------
 
-  function itemTip(item, valStr, chgStr, arrow) {
-    const parts = [`${item.label}: ${valStr}`];
-    if (chgStr) parts.push(`${arrow}${chgStr}`);
-    if (item.rr_outlook) parts.push(`Outlook: ${item.rr_outlook}`);
-    parts.push(`source: ${item.source || '?'}, as of: ${item.as_of || '?'}`);
-    if (item.stale) parts.push('stale');
-    return escHtml(parts.join('  '));
+  function itemTipObj(item, chipLabel, valStr, chgStr, arrow, cls) {
+    const sym  = item.symbol || item.metric_key || '';
+    const fmtN = (v) => v != null ? fmtValue(v, item.value_format || 'price') : null;
+    return {
+      dname:        item.label || chipLabel,
+      sym:          sym,
+      price:        valStr,
+      pct:          chgStr,
+      arrow:        arrow,
+      pctCls:       cls,
+      outlook:      item.rr_outlook || '',
+      price_source: item.source || '',
+      rr_source:    (item.rr_buy != null && item.rr_sell != null) ? 'hist_rr' : '',
+      asof:         (item.as_of || '').slice(0, 10),
+      quote_time:   item.quote_time || '',
+      buy:          fmtN(item.rr_buy),
+      sell:         fmtN(item.rr_sell),
+      open:         fmtN(item.open),
+      high:         fmtN(item.high),
+      low:          fmtN(item.low),
+      stale:        !!item.stale,
+    };
   }
 
-  function itemContent(item) {
-    const valStr = fmtValue(item.value, item.value_format);
-    const chgStr = fmtChgPct(item.chg_pct);
-    const arrow  = dirArrow(item.chg_pct);
-    const cls    = dirClass(item.chg_pct, item.metric_key);
-    const tip    = itemTip(item, valStr, chgStr, arrow);
-    let inner;
-    if (item.value_format === 'level') {
-      inner = `<span class="mt-value ${cls}">${valStr}</span>`;
-    } else if (item.value_format === 'pct') {
-      inner = `<span class="mt-value">${valStr}</span>`;
-    } else {
-      inner = chgStr
-        ? `<span class="mt-chg ${cls}">${arrow}${chgStr}</span>`
-        : `<span class="mt-value">${valStr}</span>`;
+  function rrItemTipObj(name, item, chgStr, cls, pct) {
+    const sym   = item.symbol || '';
+    const fmtN2 = (v) => v != null ? Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null;
+    const price = fmtN2(item.bar_price);
+    const arrow = pct != null ? (pct > 0 ? '▲' : pct < 0 ? '▼' : '') : '';
+    return {
+      dname:        item.label || name,
+      sym:          sym,
+      price:        price,
+      pct:          chgStr,
+      arrow:        arrow,
+      pctCls:       cls,
+      outlook:      item.outlook || '',
+      price_source: item.price_source || '',
+      rr_source:    (item.buy != null && item.sell != null) ? 'hist_rr' : '',
+      asof:         (item.as_of || '').slice(0, 10),
+      quote_time:   item.quote_time || '',
+      buy:          item.buy  != null ? Number(item.buy).toFixed(2)  : null,
+      sell:         item.sell != null ? Number(item.sell).toFixed(2) : null,
+      open:         fmtN2(item.open),
+      high:         fmtN2(item.high),
+      low:          fmtN2(item.low),
+      stale:        false,
+    };
+  }
+
+  // ---- rich tooltip -------------------------------------------------------
+
+  let _tipEl = null;
+
+  function _ensureTip() {
+    if (_tipEl) return _tipEl;
+    _tipEl = document.createElement('div');
+    _tipEl.id = 'mtChipTip';
+    Object.assign(_tipEl.style, {
+      position: 'fixed', zIndex: '9999', pointerEvents: 'none',
+      background: '#fff', border: '1px solid #dde', borderRadius: '8px',
+      boxShadow: '0 4px 16px rgba(0,0,0,0.13)', padding: '10px 13px',
+      fontSize: '12px', lineHeight: '1.5', minWidth: '140px', maxWidth: '240px',
+      display: 'none', color: '#1e293b', whiteSpace: 'nowrap',
+    });
+    document.body.appendChild(_tipEl);
+    return _tipEl;
+  }
+
+  function _buildTipHtml(d) {
+    const showSym  = d.sym && d.sym !== d.dname;
+    const pctColor = d.pctCls === 'mt-up' ? '#2f9e2f' : d.pctCls === 'mt-down' ? '#d83a3a' : '#888';
+    const olLower  = (d.outlook || '').toLowerCase();
+    const olColor  = olLower === 'bullish' ? '#2f9e2f' : olLower === 'bearish' ? '#d83a3a' : '#666';
+
+    // as-of: prefer time (HH:MM) + date, else just date
+    const timeStr    = d.quote_time ? String(d.quote_time).slice(0, 5) : '';
+    const dateStr    = d.asof || '';
+    const dateTimeStr = timeStr ? `${dateStr} ${timeStr}` : dateStr;
+
+    let h = `<div style="font-weight:700;font-size:13px;margin-bottom:${showSym?'1px':'4px'};">${escHtml(d.dname)}</div>`;
+    if (showSym) {
+      h += `<div style="color:#888;font-size:10px;margin-bottom:4px;letter-spacing:0.02em;">${escHtml(d.sym)}</div>`;
     }
-    return { tip, inner };
+
+    // Price + pct change
+    if (d.price && d.price !== '—') {
+      h += `<div style="display:flex;align-items:baseline;gap:7px;">` +
+           `<span style="font-size:13px;font-weight:600;">${escHtml(d.price)}</span>`;
+      if (d.pct) h += `<span style="color:${pctColor};font-size:12px;">${escHtml(d.arrow)}${escHtml(d.pct)}</span>`;
+      h += `</div>`;
+    } else if (d.pct) {
+      h += `<div style="color:${pctColor};font-size:13px;font-weight:600;">${escHtml(d.arrow)}${escHtml(d.pct)}</div>`;
+    }
+
+    // As-of date + time + price source
+    if (dateTimeStr || d.price_source) {
+      const srcTxt = d.price_source ? ` · ${escHtml(d.price_source)}` : '';
+      h += `<div style="font-size:10px;color:#aaa;margin-top:2px;margin-bottom:5px;">${dateTimeStr ? 'as of ' + escHtml(dateTimeStr) : ''}${srcTxt}</div>`;
+    }
+
+    // Open / High / Low
+    const ohlParts = [];
+    if (d.open) ohlParts.push(`O: ${escHtml(d.open)}`);
+    if (d.high) ohlParts.push(`H: ${escHtml(d.high)}`);
+    if (d.low)  ohlParts.push(`L: ${escHtml(d.low)}`);
+    if (ohlParts.length) {
+      h += `<div style="font-size:11px;color:#555;display:flex;gap:14px;margin-bottom:4px;">${ohlParts.map(p => `<span>${p}</span>`).join('')}</div>`;
+    }
+
+    if (d.outlook) {
+      h += `<div style="font-size:11px;color:${olColor};">Outlook: ${escHtml(d.outlook)}</div>`;
+    }
+    if (d.buy && d.sell) {
+      const rrSrc = d.rr_source ? ` <span style="color:#aaa;font-size:10px;">· ${escHtml(d.rr_source)}</span>` : '';
+      h += `<div style="margin-top:3px;font-size:11px;color:#666;">Range: ${escHtml(d.buy)} – ${escHtml(d.sell)}${rrSrc}</div>`;
+    }
+    if (d.stale) h += `<div style="margin-top:3px;font-size:10px;color:#f97316;">⚠ stale</div>`;
+    return h;
+  }
+
+  function _posTip(e) {
+    if (!_tipEl || _tipEl.style.display === 'none') return;
+    const tw = _tipEl.offsetWidth, th = _tipEl.offsetHeight;
+    let x = e.clientX + 14, y = e.clientY + 14;
+    if (x + tw > window.innerWidth  - 8) x = e.clientX - tw - 8;
+    if (y + th > window.innerHeight - 8) y = e.clientY - th - 8;
+    _tipEl.style.left = x + 'px';
+    _tipEl.style.top  = y + 'px';
+  }
+
+  function _showTip(e, chip) {
+    const raw = chip.dataset.tip;
+    if (!raw) return;
+    let d;
+    try { d = JSON.parse(raw); } catch { return; }
+    const el = _ensureTip();
+    el.innerHTML = _buildTipHtml(d);
+    el.style.display = 'block';
+    _posTip(e);
+  }
+
+  function _hideTip() { if (_tipEl) _tipEl.style.display = 'none'; }
+
+  function _attachTooltip(container) {
+    container.addEventListener('mouseover',  (e) => { const c = e.target.closest('.rr-chip'); if (c) _showTip(e, c); else _hideTip(); });
+    container.addEventListener('mousemove',  _posTip);
+    container.addEventListener('mouseleave', _hideTip);
+  }
+
+  // ---- mini candlestick SVG -----------------------------------------------
+
+  function _candleSvg(o, h, l, c) {
+    if (o == null || h == null || l == null || c == null) return '';
+    const range = h - l;
+    if (range <= 0) return '';
+
+    // Fixed 7×20 px canvas — width=height attributes match viewBox so there is NO scaling.
+    // shape-rendering="crispEdges" disables anti-aliasing on lines/rects for pixel-sharp output.
+    const VW = 7, VH = 20, PAD = 1;
+    const usable = VH - 2 * PAD;
+    const toY = p => Math.round(PAD + usable * (1 - (p - l) / range));
+
+    const color   = c >= o ? '#2f9e2f' : '#d83a3a';
+    const wickTop = toY(h);
+    const wickBot = toY(l);
+    const bodyTop = toY(Math.max(o, c));
+    const bodyH   = Math.max(1, toY(Math.min(o, c)) - bodyTop);
+
+    return `<svg class="rr-candle" width="${VW}" height="${VH}" viewBox="0 0 ${VW} ${VH}" shape-rendering="crispEdges">` +
+      `<line x1="3.5" y1="${wickTop}" x2="3.5" y2="${wickBot}" stroke="${color}" stroke-width="1"/>` +
+      `<rect x="2" y="${bodyTop}" width="3" height="${bodyH}" fill="${color}"/>` +
+      `</svg>`;
   }
 
   // ---- shared chip helpers -----------------------------------------------
@@ -124,16 +278,50 @@
       `</div>`;
   }
 
-  function chipHtml(name, ol, pctStr, pctCls, buy, sell, cur, tip, stale) {
+  function volRangeBar(value, low, high) {
+    if (value == null || low == null || high == null) return '<div class="rr-rb"></div>';
+    // Zones are equal thirds. Tick uses piecewise scale so it lands inside the right zone:
+    //   0 → low  maps to 0–33%,  low → high maps to 33–67%,  high → high×1.5 maps to 67–100%
+    let valPct;
+    if (value <= 0) {
+      valPct = 0;
+    } else if (value <= low) {
+      valPct = Math.round(value / low * 33);
+    } else if (value <= high) {
+      valPct = Math.round(33 + (value - low) / (high - low) * 34);
+    } else {
+      valPct = Math.min(100, Math.round(67 + (value - high) / (high * 0.5) * 33));
+    }
+    return `<div class="rr-rb vol-rb">` +
+      `<div class="vol-z vol-z-g"></div>` +
+      `<div class="vol-z vol-z-a"></div>` +
+      `<div class="vol-z vol-z-r"></div>` +
+      `<div class="vol-dot" style="left:33%;"></div>` +
+      `<div class="vol-dot" style="left:67%;"></div>` +
+      `<div class="rr-rb-tick" style="left:${valPct}%;"></div>` +
+      `</div>`;
+  }
+
+  function chipHtml(name, ol, pctStr, pctCls, buy, sell, cur, tipObj, stale, ohlc, volThresh) {
     const staleCls = stale ? ' mt-stale' : '';
     const pctBg = pctCls === 'mt-up' ? '#2f9e2f' : pctCls === 'mt-down' ? '#d83a3a' : '#888';
     const pctBoxStyle = `background:${pctBg};color:#fff;padding:1px 5px;border-radius:3px;`;
-    return `<div class="rr-chip${staleCls}" data-sym="${escHtml(name)}" title="${tip}" style="cursor:pointer;">` +
+    const zoneColor = volThresh
+      ? (volThresh.zone === 'mt-up' ? '#2f9e2f' : volThresh.zone === 'mt-chop' ? '#eab308' : '#d83a3a')
+      : null;
+    const symColor = zoneColor || outlookBg(ol);
+    const dataTip = tipObj ? ` data-tip="${escHtml(JSON.stringify(tipObj))}"` : '';
+    const candle = ohlc ? _candleSvg(ohlc.o, ohlc.h, ohlc.l, ohlc.c) : '';
+    const rb = volThresh
+      ? volRangeBar(volThresh.value, volThresh.low, volThresh.high)
+      : rangeBar(buy, sell, cur);
+    return `<div class="rr-chip${staleCls}" data-sym="${escHtml(name)}"${dataTip} style="cursor:pointer;">` +
       `<div class="rr-chip-top">` +
-      `<span class="rr-sym" style="color:${outlookBg(ol)};">${escHtml(name)}</span>` +
+      `<span class="rr-sym" style="color:${symColor};">${escHtml(name)}</span>` +
       `<span class="mt-chg" style="${pctBoxStyle}">${pctStr}</span>` +
       `</div>` +
-      rangeBar(buy, sell, cur) +
+      rb +
+      candle +
       `</div>`;
   }
 
@@ -155,15 +343,20 @@
       for (const key of grp.keys) {
         const item = byKey[key];
         if (!item) continue;
-        const cls    = dirClass(item.chg_pct, item.metric_key);
-        const chgStr = fmtChgPct(item.chg_pct);
-        const arrow  = dirArrow(item.chg_pct);
-        const valStr = fmtValue(item.value, item.value_format);
-        const pctStr = chgStr ? arrow + chgStr : valStr;
-        const tip    = itemTip(item, valStr, chgStr, arrow);
+        const volThresh = item.vol_low != null
+          ? { low: item.vol_low, high: item.vol_high, value: item.value,
+              zone: volZoneCls(item.value, item.vol_low, item.vol_high) } : null;
+        const cls       = dirClass(item.chg_pct, item.metric_key);
+        const chgStr    = fmtChgPct(item.chg_pct);
+        const arrow     = dirArrow(item.chg_pct);
+        const valStr    = fmtValue(item.value, item.value_format);
+        const pctStr    = volThresh ? valStr : (chgStr ? arrow + chgStr : valStr);
         const chipLabel = LABEL_SHORT[item.label] || item.label || item.metric_key;
+        const tipObj    = itemTipObj(item, chipLabel, valStr, chgStr, arrow, cls);
+        const ohlc1     = (item.open != null && item.high != null && item.low != null)
+          ? { o: item.open, h: item.high, l: item.low, c: item.value } : null;
         grpCells.push(chipHtml(chipLabel, item.rr_outlook, pctStr, cls,
-                               item.rr_buy, item.rr_sell, item.value, tip, item.stale));
+                               item.rr_buy, item.rr_sell, item.value, tipObj, item.stale, ohlc1, volThresh));
       }
       if (!grpCells.length) continue;
       cells.push(`<div class="rr-group">${grpCells.join('')}</div>`);
@@ -188,20 +381,20 @@
       if (!items || !items.length) continue;
       const chips = [];
       for (const item of items) {
+        const volThresh = item.vol_low != null
+          ? { low: item.vol_low, high: item.vol_high, value: item.bar_price,
+              zone: volZoneCls(item.bar_price, item.vol_low, item.vol_high) } : null;
         const pct    = item.pct != null ? Number(item.pct) : null;
         const cls    = dirClass(pct, null);
-        const chgStr = pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—';
+        const chgStr = volThresh
+          ? (item.bar_price != null ? Number(item.bar_price).toFixed(2) : '—')
+          : (pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—');
         const name   = LABEL_SHORT[item.label] || item.label || (item.symbol || '').replace(/^\//, '') || '?';
-        const buyStr = item.buy != null ? Number(item.buy).toFixed(2) : '—';
-        const sellStr = item.sell != null ? Number(item.sell).toFixed(2) : '—';
-        const tip    = escHtml(
-          `${item.label || item.symbol}  ${chgStr}` +
-          (item.buy != null ? `  range: ${buyStr}–${sellStr}` : '') +
-          (item.outlook ? `  Outlook: ${item.outlook}` : '') +
-          (item.as_of ? `  as of: ${item.as_of}` : '')
-        );
+        const tipObj = rrItemTipObj(name, item, chgStr, cls, pct);
+        const ohlc2  = (item.open != null && item.high != null && item.low != null && item.bar_price != null)
+          ? { o: item.open, h: item.high, l: item.low, c: item.bar_price } : null;
         chips.push(chipHtml(name, item.outlook, chgStr, cls,
-                            item.buy, item.sell, item.bar_price, tip, false));
+                            item.buy, item.sell, item.bar_price, tipObj, false, ohlc2, volThresh));
       }
       cells.push(`<div class="rr-group">${chips.join('')}</div>`);
     }
@@ -290,6 +483,11 @@
     rrTape3El.innerHTML = '<span style="color:var(--text-3);padding:0 8px;font-size:11px;">Loading…</span>';
     rrTapeEl.insertAdjacentElement('afterend', rrTape3El);
 
+    // Attach rich tooltip to all three tape containers (event delegation — once only)
+    _attachTooltip(tapeEl);
+    _attachTooltip(rrTapeEl);
+    _attachTooltip(rrTape3El);
+
     // Wire #econBtn → #econPanel (only present on pages that include it, e.g. actionable)
     document.addEventListener('click', (e) => {
       const btn = e.target.closest('#econBtn');
@@ -373,4 +571,17 @@
   } else {
     init();
   }
+
+  // Public tooltip API — lets other scripts (actionable.js) reuse the same tooltip + candle
+  window.mtTip = {
+    showObj: function(e, obj) {
+      const el = _ensureTip();
+      el.innerHTML = _buildTipHtml(obj);
+      el.style.display = 'block';
+      _posTip(e);
+    },
+    move: _posTip,
+    hide: _hideTip,
+    candleSvg: _candleSvg,
+  };
 })();

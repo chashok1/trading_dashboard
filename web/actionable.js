@@ -63,6 +63,86 @@ function fmtDate(d) {
   if (!d) return '—';
   return d.toString().slice(0, 10);
 }
+
+// ---------- Side panel helpers ----------
+
+function _quadColorClass(q) {
+  const s = String(q || '');
+  if (/4/.test(s)) return 'quad-q4';
+  if (/3/.test(s)) return 'quad-q3';
+  if (/2/.test(s)) return 'quad-q2';
+  if (/1/.test(s)) return 'quad-q1';
+  return 'quad-q-unknown';
+}
+const _MONTH_3C = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+function _shortMonthLbl(p) {
+  if (p.start_date) { const d = new Date(p.start_date); if (!isNaN(d)) return _MONTH_3C[d.getMonth()]; }
+  if (p.label) { const m = String(p.label).match(/^\d{4}-(\d{2})/); if (m) { const i = +m[1]-1; return (i>=0&&i<12)?_MONTH_3C[i]:String(p.label).toUpperCase(); } return String(p.label).toUpperCase(); }
+  return '—';
+}
+function _shortQtrLbl(p) {
+  if (p.start_date) { const d = new Date(p.start_date); if (!isNaN(d)) return `Q${Math.floor(d.getMonth()/3)+1} '${String(d.getFullYear()).slice(-2)}`; }
+  return p.label ? String(p.label) : '—';
+}
+function _quadMiniEl(label, quadValue, isCurrent) {
+  const w = document.createElement('span'); w.className = 'quad-mini' + (isCurrent ? ' is-current' : '');
+  const l = document.createElement('span'); l.className = 'qlbl'; l.textContent = label;
+  const v = document.createElement('span'); v.className = 'qval ' + _quadColorClass(quadValue);
+  v.textContent = (quadValue || '—').replace(/^Quad\s*/i, 'Q');
+  w.appendChild(l); w.appendChild(v); return w;
+}
+function _normSignal(v) {
+  if (!v) return { cls: '', label: '' };
+  const u = String(v).trim().toUpperCase();
+  if (u === '0' || u === 'N' || u === 'NEUTRAL' || u === 'NEU') return { cls: 'NEUTRAL', label: 'NEUTRAL' };
+  if (u.startsWith('BULL') || u === '+' || u === 'POS' || u === 'POSITIVE' || u === 'UP') return { cls: 'BULLISH', label: 'BULLISH' };
+  if (u.startsWith('BEAR') || u === '-' || u === 'NEG' || u === 'NEGATIVE' || u === 'DN' || u === 'DOWN') return { cls: 'BEARISH', label: 'BEARISH' };
+  return { cls: u.replace(/[^A-Z0-9]/g, ''), label: String(v).trim() };
+}
+
+async function loadSideQuads() {
+  const line = $('quadsBody'), empty = $('quadsEmpty'); if (!line) return;
+  line.innerHTML = ''; empty.hidden = true;
+  try {
+    const data = await fetchJson(state.date ? `/api/dashboard/quads?date=${encodeURIComponent(state.date)}` : '/api/dashboard/quads');
+    if (data.current_quarter) line.appendChild(_quadMiniEl(_shortQtrLbl(data.current_quarter), data.current_quarter.quad, true));
+    if (data.next_quarter)    line.appendChild(_quadMiniEl(_shortQtrLbl(data.next_quarter), data.next_quarter.quad, false));
+    (data.months || []).forEach((m, i) => line.appendChild(_quadMiniEl(_shortMonthLbl(m), m.quad, i === 0)));
+    if (!line.childElementCount) empty.hidden = false;
+  } catch(e) { console.error('Side quads:', e); empty.hidden = false; }
+}
+async function loadSideEcon() {
+  const tbody = $('econBody'), empty = $('econEmpty'); if (!tbody) return;
+  tbody.innerHTML = '';
+  try {
+    const rows = await fetchJson(state.date ? `/api/dashboard/econ-indicators?date=${encodeURIComponent(state.date)}&limit=20` : '/api/dashboard/econ-indicators?limit=20');
+    if (!rows?.length) { empty.hidden = false; return; }
+    empty.hidden = true;
+    for (const r of rows) {
+      const tr = document.createElement('tr'), sig = _normSignal(r.signal);
+      tr.innerHTML = `<td class="text">${r.indicator||''}</td><td>${fmtDate(r.indicator_date)}</td><td class="num">${r.days??''}</td><td class="text">${sig.label?`<span class="signal-${sig.cls}">${sig.label}</span>`:''}</td>`;
+      tbody.appendChild(tr);
+    }
+  } catch(e) { console.error('Side econ:', e); empty.hidden = false; }
+}
+async function loadSideEarnings() {
+  const tbody = $('earningsBody'), empty = $('earningsEmpty'); if (!tbody) return;
+  tbody.innerHTML = '';
+  try {
+    const rows = await fetchJson(state.date ? `/api/dashboard/earnings?date=${encodeURIComponent(state.date)}&days_ahead=60&limit=50` : '/api/dashboard/earnings?days_ahead=60&limit=50');
+    if (!rows?.length) { empty.hidden = false; return; }
+    empty.hidden = true;
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td class="text">${r.category||''}</td><td>${fmtDate(r.event_date)}</td><td class="num">${r.days_until!=null?r.days_until+'d':''}</td>`;
+      tbody.appendChild(tr);
+    }
+  } catch(e) { console.error('Side earnings:', e); empty.hidden = false; }
+}
+function loadSidePanels() {
+  if (!$('actSidePanel')?.classList.contains('pinned')) return;
+  Promise.all([loadSideQuads(), loadSideEcon(), loadSideEarnings()]);
+}
 // Short MM/DD date for snapshot columns (no year). '' for empty.
 function fmtMD(d) {
   if (!d) return '';
@@ -349,6 +429,7 @@ async function loadActionable() {
       r._priority = _computePriority(r);
     });
     applyClientFilter();
+    loadSidePanels();
   } catch (e) {
     showStatus('Failed to load actionable: ' + e.message, 'error', 0);
   }
@@ -448,10 +529,6 @@ function renderSymTape() {
     const lrrStr = r.lrr != null ? `LRR ${fmt2(r.lrr)}` : '';
     const mrrStr = r.mrr != null ? `MRR ${fmt2(r.mrr)}` : '';
     const trrStr = r.trr != null ? `TRR ${fmt2(r.trr)}` : '';
-    const tip    = escapeHtml([r.tos_symbol, action, pctStr,
-      r.last_price != null ? '$'+Number(r.last_price).toFixed(2) : '',
-      r.rr_outlook ? 'Outlook: ' + r.rr_outlook : '',
-      lrrStr, mrrStr, trrStr].filter(Boolean).join('  '));
 
     // Range bar fill — pct_brr is 0–100 (position within buy–sell range)
     const pctBrr = r.quote_pct_brr != null ? Number(r.quote_pct_brr)
@@ -476,13 +553,15 @@ function renderSymTape() {
         `</div>`
       : '';
 
-    return `<div class="rr-chip" data-sym="${escapeHtml(r.tos_symbol)}" title="${tip}">` +
+    const candle = window.mtTip?.candleSvg(r.open_price, r.high_price, r.low_price, r.last_price) || '';
+    return `<div class="rr-chip" data-sym="${escapeHtml(r.tos_symbol)}">` +
       `<div class="rr-chip-top">` +
       `<span class="rr-sym" style="color:${bg};">${escapeHtml(r.tos_symbol)}</span>` +
       `<span class="mt-chg" style="${pctBoxStyle}">${pctStr}</span>` +
       `</div>` +
       rbHtml +
       metaHtml +
+      candle +
       `</div>`;
   }).join('');
 
@@ -1346,23 +1425,70 @@ function _hideSymTilePop() {
   if (pop) pop.style.display = 'none';
 }
 
+function _showSymRichTip(e, chipEl) {
+  if (!window.mtTip) return;
+  const sym = chipEl.dataset.sym;
+  const r   = state.rows.find(row => row.tos_symbol === sym);
+  if (!r) return;
+  const pct    = r.pct_change != null ? Number(r.pct_change) : null;
+  const pctStr = pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—';
+  const pctCls = pct == null ? 'mt-flat' : pct > 0.001 ? 'mt-up' : pct < -0.001 ? 'mt-down' : 'mt-flat';
+  const arrow  = pct == null ? '' : pct > 0.001 ? '▲' : pct < -0.001 ? '▼' : '';
+  const fmtN   = v => v != null ? Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null;
+  window.mtTip.showObj(e, {
+    dname:        r.tos_symbol,
+    sym:          r.tos_symbol,
+    price:        fmtN(r.last_price),
+    pct:          pctStr,
+    arrow:        arrow,
+    pctCls:       pctCls,
+    outlook:      r.rr_outlook || '',
+    price_source: r.last_price != null ? 'drv_quote' : '',
+    rr_source:    (r.lrr != null && r.trr != null) ? 'hist_rr' : '',
+    asof:         r.export_date ? String(r.export_date).slice(0, 10) : '',
+    quote_time:   r.export_time ? String(r.export_time).slice(0, 5) : '',
+    buy:          r.lrr != null ? Number(r.lrr).toFixed(2) : null,
+    sell:         r.trr != null ? Number(r.trr).toFixed(2) : null,
+    open:         fmtN(r.open_price),
+    high:         fmtN(r.high_price),
+    low:          fmtN(r.low_price),
+    stale:        false,
+  });
+}
+
 function initSymTilePop() {
   const track = $('symTapeTrack');
   if (!track) return;
 
   track.addEventListener('mouseover', (e) => {
     const chip = e.target.closest('.rr-chip[data-sym]');
-    if (chip) _showSymTilePop(chip);
+    if (!chip) { _hideSymTilePop(); window.mtTip?.hide(); return; }
+    if (e.target.closest('.sym-tile-meta')) {
+      // Action label area → existing symTilePop
+      window.mtTip?.hide();
+      _showSymTilePop(chip);
+    } else {
+      // Symbol / price / range bar area → rich market tooltip
+      _hideSymTilePop();
+      _showSymRichTip(e, chip);
+    }
+  });
+  track.addEventListener('mousemove', (e) => {
+    if (e.target.closest('.rr-chip[data-sym]') && !e.target.closest('.sym-tile-meta')) {
+      window.mtTip?.move(e);
+    }
   });
   track.addEventListener('mouseout', (e) => {
     if (!e.relatedTarget || !e.relatedTarget.closest('.rr-chip[data-sym]')) {
       _hideSymTilePop();
+      window.mtTip?.hide();
     }
   });
   track.addEventListener('click', (e) => {
     const chip = e.target.closest('.rr-chip[data-sym]');
     if (!chip) return;
     _hideSymTilePop();
+    window.mtTip?.hide();
     const sym = chip.dataset.sym;
     const r   = state.rows.find(row => row.tos_symbol === sym);
     if (r) openDrilldown(r);
@@ -2621,6 +2747,23 @@ const _closeModal = () => {
   $('saveActionBtn').addEventListener('click', saveUserAction);
   $('dismissActionBtn').addEventListener('click', dismissUserAction);
   $('closePop').addEventListener('click', () => $('detailPop')?.classList.remove('open'));
+
+  // ── Side panel toggle ─────────────────────────────────────────────────────
+  const _sideEl  = $('actSidePanel');
+  const _sideBtn = $('sidePanelBtn');
+  if (_sideEl && _sideBtn) {
+    if (localStorage.getItem('actSidePinned') === '1') {
+      _sideEl.classList.add('pinned');
+      _sideBtn.classList.add('sp-active');
+      loadSidePanels();
+    }
+    _sideBtn.addEventListener('click', () => {
+      const pinned = _sideEl.classList.toggle('pinned');
+      _sideBtn.classList.toggle('sp-active', pinned);
+      localStorage.setItem('actSidePinned', pinned ? '1' : '0');
+      if (pinned) loadSidePanels();
+    });
+  }
 
   // ── Action column hover popup ──────────────────────────────────────────────
   setupActionCol();
