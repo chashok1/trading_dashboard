@@ -119,8 +119,8 @@ function render() {
       .filter(Boolean).join(" · ") || "—";
 
   // KPIs
-  setKpi("kpiOutlook", fmtSigned(s.composite_outlook), classByLabel(s.composite_label));
-  setKpi("kpiLabel",   s.composite_label || "—",       classByLabel(s.composite_label));
+  setKpi("kpiOutlook", s.rr_outlook || "—", classByLabel(s.rr_outlook));
+  setKpi("kpiLabel",   s.rr_outlook || "—", classByLabel(s.rr_outlook));
   setKpi("kpiCompFired", `${s.n_composite_fired || 0} / ${s.n_composite_total || 0}`, "");
   setKpi("kpiAtomFired", `${s.n_atomic_fired   || 0} / ${s.n_atomic_total   || 0}`, "");
 

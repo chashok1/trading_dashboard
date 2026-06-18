@@ -136,7 +136,7 @@ function render(d) {
   document.getElementById('symTitle').textContent = d.tos_symbol;
   document.getElementById('symMeta').textContent =
     [sm.description, sm.sector, sm.asset_class, sm.last_price ? `$${fmt(sm.last_price)}` : '',
-     sm.rsi ? `RSI ${fmt(sm.rsi,1)}` : '', sm.composite_label].filter(Boolean).join('  ·  ');
+     sm.rsi ? `RSI ${fmt(sm.rsi,1)}` : '', sm.rr_outlook].filter(Boolean).join('  ·  ');
 
   document.getElementById('rfContent').innerHTML = `
     ${renderFinal(d)}

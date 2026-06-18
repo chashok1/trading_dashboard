@@ -106,7 +106,7 @@ def get_symbol_trace(sym: str, as_of: Optional[str] = Query(None, alias="date"))
       {
         "tos_symbol": str, "as_of_date": "YYYY-MM-DD",
         "summary": {description, sector, asset_class, last_price,
-                    composite_outlook, composite_label,
+                    rr_outlook,
                     n_composite_fired, n_composite_total,
                     n_atomic_fired,  n_atomic_total},
         "composites": [ { code, fired, score, label, n_atomics, n_fired }, ... ],
@@ -132,11 +132,13 @@ def get_symbol_trace(sym: str, as_of: Optional[str] = Query(None, alias="date"))
         # ---- 2. Summary row (drv_ma + drv_stks) -----------------------------
         summary_row = s.execute(text("""
             SELECT m.tos_symbol, m.description, m.sector, m.asset_class, m.last_price,
-                   st.composite_outlook, st.composite_label,
+                   r.outlook AS rr_outlook,
                    st.triggered_atomic_ids, st.triggered_composite_ids
             FROM drv_ma m
             LEFT JOIN drv_stks st
               ON st.as_of_date = m.as_of_date AND st.tos_symbol = m.tos_symbol
+            LEFT JOIN drv_rr r
+              ON r.as_of_date = m.as_of_date AND r.tos_symbol = m.tos_symbol
             WHERE m.as_of_date = :d AND m.tos_symbol = :sym
         """), {"d": snap, "sym": sym_u}).mappings().first()
         if not summary_row:
@@ -989,8 +991,8 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
                 "asset_class":     ma_row.get("asset_class"),
                 "last_price":      float(ma_row["last_price"]) if ma_row.get("last_price") else None,
                 "rsi":             float(ma_row["rsi"]) if ma_row.get("rsi") else None,
-                "composite_label": s.execute(text(
-                    "SELECT composite_label FROM drv_stks WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1"
+                "rr_outlook": s.execute(text(
+                    "SELECT outlook FROM drv_rr WHERE as_of_date=:d AND tos_symbol=:sym LIMIT 1"
                 ), {"d": snap, "sym": sym_u}).scalar(),
                 "n_atomic_fired":    sum(1 for a in atomics_out if a["fired"]),
                 "n_atomic_total":    len(atomics_out),

@@ -370,9 +370,9 @@ def get_actionable(
         SELECT a.*,
                COALESCE(a.source_asset_class, mt.asset_class) AS real_asset_class,
                mt.iv_percentile, mo.pct_brr AS ma_pct_brr,
-               dr.lrr, dr.mrr, dr.trr,
+               dr.lrr, dr.mrr, dr.trr, dr.outlook AS rr_outlook,
                q.last_price, q.net_chng, q.pct_change, q.export_date, q.export_time, q.loaded_at,
-               q.open_price, q.high_price, q.low_price,
+               q.open_price, q.high_price, q.low_price, q.imp_volatility, q.iv_to_hv,
                q.pct_brr AS quote_pct_brr, q.zone_signal AS quote_zone,
                q.is_intraday AS quote_is_intraday,
                u.user_action AS last_user_action,
@@ -810,7 +810,7 @@ def get_rr_analysis(symbol: str = Query(...), date: str = Query(...)):
             FROM hist_tw WHERE tos_symbol=:sym AND snapshot_date<=:d AND standard_dev IS NOT NULL
         """), {"sym": sym, "d": d}).scalar()
         rr = s.execute(text("""
-            SELECT lrr AS buy_trade, trr AS sell_trade FROM drv_rr
+            SELECT lrr AS buy_trade, trr AS sell_trade, outlook FROM drv_rr
             WHERE tos_symbol=:sym AND as_of_date=:d
         """), {"sym": sym, "d": d}).fetchone()
         cat = s.execute(text("""
@@ -846,6 +846,7 @@ def get_rr_analysis(symbol: str = Query(...), date: str = Query(...)):
 
         dx = _f(rr[0]) if rr else None
         dy = _f(rr[1]) if rr else None
+        rr_outlook = rr[2] if rr else None
         ae = _f(td[0]) if td else None
         af = _f(td[1]) if td else None
         ec = dx if dx else None   # LRR
@@ -857,8 +858,9 @@ def get_rr_analysis(symbol: str = Query(...), date: str = Query(...)):
         low  = _f(dq[2]) if dq else None
 
         return {
-            "symbol": sym,
-            "date": date,
+            "symbol":     sym,
+            "date":       date,
+            "rr_outlook": rr_outlook,
             "price": {
                 "current":    cur,
                 "prev_close": prev_close,

@@ -146,7 +146,7 @@ function renderTable() {
     const symbolSearch = DOM.symbolSearch.value.toLowerCase();
 
     const filtered = state.actions.filter(a => {
-        const matchAction = !actionFilter || (a.composite_label && a.composite_label.includes(actionFilter));
+        const matchAction = !actionFilter || (a.rr_outlook && a.rr_outlook.toUpperCase().includes(actionFilter.toUpperCase()));
         const matchSector = !sectorFilter || a.sector === sectorFilter;
         const matchSymbol = !symbolSearch || a.tos_symbol.toLowerCase().includes(symbolSearch);
         return matchAction && matchSector && matchSymbol;
@@ -169,8 +169,7 @@ function renderTable() {
                 >${a.tos_symbol}</span></td>
             <td>${a.sector || a.asset_class || '—'}</td>
             <td>$${a.last_price ? a.last_price.toFixed(2) : '—'}</td>
-            <td><span class="action-code ${a.composite_label || 'N/A'}">${a.composite_label || '—'}</span></td>
-            <td>${a.composite_outlook ? a.composite_outlook.toFixed(2) : '—'}</td>
+            <td colspan="2"><span style="font-weight:600;color:${window.outlookColor?.(a.rr_outlook)||'inherit'}">${a.rr_outlook || '—'}</span></td>
         </tr>
     `).join('');
 }

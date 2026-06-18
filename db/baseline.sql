@@ -2284,6 +2284,8 @@ CREATE TABLE IF NOT EXISTS drv_quote (
 
     imp_volatility  NUMERIC,
 
+    iv_to_hv        INTEGER,        -- IV/HV ratio as whole % (imp_volatility / hist_td.historical_vol * 100)
+
     export_date     DATE,
 
     export_time     TEXT,
@@ -2298,8 +2300,10 @@ CREATE TABLE IF NOT EXISTS drv_quote (
 
 );
 
--- drv_quote.source added 2026-06-05 — which feed won last_price (debug 0 high/low etc.)
+-- drv_quote.source added 2026-06-05 — which feed won last_price (debug 0 high/log etc.)
 ALTER TABLE drv_quote ADD COLUMN IF NOT EXISTS source TEXT;
+-- drv_quote.iv_to_hv added 2026-06-17 — IV/HV ratio as whole %
+ALTER TABLE drv_quote ADD COLUMN IF NOT EXISTS iv_to_hv INTEGER;
 
 -- drv_rr: derived risk range — hist_rr preferred, hist_td BB bands as fallback
 CREATE TABLE IF NOT EXISTS drv_rr (

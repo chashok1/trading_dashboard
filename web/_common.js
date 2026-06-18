@@ -170,6 +170,7 @@
     const sd = data.sd      || {};
     const ix = data.idx     || {};
     const ru = data.rules   || {};
+    const rrOutlookRaw = data.rr_outlook || null;
 
     const cur = p.current, prev = p.prev_close, hi = p.high, lo = p.low;
     const trend = lv.trend, trade = lv.trade, lrr = lv.lrr, mrr = lv.mrr, trr = lv.trr;
@@ -388,6 +389,14 @@
           ${taggedRow(null, 'Trend/Trade',     ru.tn_td_desc, ru.tn_td_action)}
           ${taggedRow(null, 'BB Range Streak', ru.bb_desc,   ru.bb_action)}
           ${taggedRow(null, 'RR',              ru.rr_desc,   ru.rr_action)}
+          ${rrOutlookRaw ? (() => {
+            const olColor = (window.outlookColor ? window.outlookColor(rrOutlookRaw) : null) || '#64748b';
+            const olLabel = rrOutlookRaw.charAt(0).toUpperCase() + rrOutlookRaw.slice(1).toLowerCase();
+            return `<div style="margin-top:4px;display:flex;align-items:center;gap:6px;font-size:10px;">` +
+              `<span style="color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:9px;">Outlook</span>` +
+              `<span style="font-weight:700;color:${olColor};">${escapeHtml(olLabel)}</span>` +
+              `</div>`;
+          })() : ''}
         </div>
 
         <!-- Decision Path -->
@@ -780,6 +789,60 @@
     }
   }
 
+  // ── Percent Ring ──────────────────────────────────────────────────────────
+  // pctRing(value, opts) -> SVG string. value is in PERCENT units (42 = 42%, 300 = 300%).
+  // Each 100% adds a concentric ring working inward: outermost = first loop, next = second, etc.
+  // Colors: green (1st), deep-green (2nd), amber (3rd), red (4th+).
+  // null/undefined/<=0 -> empty track ring. Tooltip shows exact value.
+  function pctRing(value, opts) {
+    opts = opts || {};
+    var size  = opts.size   || 22;
+    var sw    = opts.stroke || 2;
+    var gap   = opts.gap    || 1;
+    var track = opts.track  || '#eef0f3';
+    var c = size / 2;
+    var v = (value == null || isNaN(value)) ? null : Number(value);
+    var label = v == null ? '—' : Math.round(v) + '%';
+    // opts.color overrides all ring colors with a single hue (caller picks green/red/etc.)
+    var baseColor = opts.color || null;
+    var COLORS = baseColor
+      ? [baseColor, baseColor, baseColor, baseColor]
+      : ['#22c55e', '#16a34a', '#f59e0b', '#ef4444'];
+
+    var svg = '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+
+              '" role="img" aria-label="'+label+'"><title>'+label+'</title>';
+
+    if (v == null || v <= 0) {
+      var r0 = c - sw / 2;
+      svg += '<circle cx="'+c+'" cy="'+c+'" r="'+r0+'" fill="none" stroke="'+track+'" stroke-width="'+sw+'"/>';
+      return svg + '</svg>';
+    }
+
+    var laps = Math.floor(v / 100);
+    var frac = (v % 100) / 100;
+    var maxRings = Math.floor(c / (sw + gap));
+    var totalRings = laps + (frac > 0 ? 1 : 0);
+    var rings = Math.min(totalRings, maxRings);
+
+    for (var i = 0; i < rings; i++) {
+      var r = c - sw / 2 - i * (sw + gap);
+      var C = 2 * Math.PI * r;
+      var color = COLORS[Math.min(i, COLORS.length - 1)];
+      // track
+      svg += '<circle cx="'+c+'" cy="'+c+'" r="'+r+'" fill="none" stroke="'+track+'" stroke-width="'+sw+'"/>';
+      if (i < laps) {
+        // complete loop
+        svg += '<circle cx="'+c+'" cy="'+c+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'"/>';
+      } else if (frac > 0) {
+        // partial arc for the current incomplete loop
+        svg += '<circle cx="'+c+'" cy="'+c+'" r="'+r+'" fill="none" stroke="'+color+
+               '" stroke-width="'+sw+'" stroke-linecap="round" stroke-dasharray="'+
+               (frac*C).toFixed(2)+' '+C.toFixed(2)+'" transform="rotate(-90 '+c+' '+c+')"/>';
+      }
+    }
+    return svg + '</svg>';
+  }
+
   window.td_common = {
     fetchJson,
     escapeHtml,
@@ -791,6 +854,8 @@
     clearDateCache,
     yahooLink,
     renderRRAnalysis,
+    pctRing,
   };
   window.yahooLink = yahooLink;
+  window.pctRing = pctRing;
 })();

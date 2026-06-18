@@ -227,7 +227,7 @@ function buildSectionBlock(name, rows) {
     tr.appendChild(tdPct);
 
     const tdHeOl = document.createElement('td'); outlookCell(tdHeOl, r.rr_outlook); tr.appendChild(tdHeOl);
-    const tdTrTn = document.createElement('td'); outlookCell(tdTrTn, r.call_outlook); tr.appendChild(tdTrTn);
+    const tdTrTn = document.createElement('td'); outlookCell(tdTrTn, r.rr_outlook); tr.appendChild(tdTrTn);
 
     const tdMq = document.createElement('td'); tdMq.textContent = r.mq || ''; tr.appendChild(tdMq);
     const tdQq = document.createElement('td'); tdQq.textContent = r.qq || ''; tr.appendChild(tdQq);

@@ -498,6 +498,11 @@ const _SYM_BATCH = 20;
 let _symTapeStart = 0;
 
 function _symTapeBg(row) {
+  if (row.rr_outlook && window.outlookColor) {
+    const c = window.outlookColor(row.rr_outlook);
+    if (c && c !== 'inherit') return c;
+  }
+  // No outlook — fall back to pct_change direction
   const pct = row.pct_change != null ? Number(row.pct_change) : null;
   if (pct != null && pct > 0.001)  return '#2f9e2f';
   if (pct != null && pct < -0.001) return '#d83a3a';
@@ -545,11 +550,14 @@ function renderSymTape() {
     const actColor = _actionCodeColor(disp);
     const actLabel = (actCode && actCode !== '--') ? actCode : '';
     const ivVal    = r.iv_percentile != null ? Math.round(Number(r.iv_percentile)) : null;
-    const ivStr    = ivVal != null ? `IV ${ivVal}%` : '';
-    const metaHtml = (actLabel || ivStr)
+    const ivToHv   = r.iv_to_hv != null ? Number(r.iv_to_hv) : null;
+    const ivRing   = (window.pctRing && ivVal  != null) ? window.pctRing(ivVal,  { size: 18 }) : '';
+    const hvColor  = ivToHv != null ? (ivToHv >= 110 ? '#dc2626' : '#16a34a') : null;
+    const hvRing   = (window.pctRing && ivToHv != null) ? window.pctRing(ivToHv, { size: 18, color: hvColor }) : '';
+    const metaHtml = (actLabel || ivRing || hvRing)
       ? `<div class="sym-tile-meta">` +
-        (actLabel ? `<span class="sym-act-lbl" style="color:${actColor};">${actLabel}</span>` : '') +
-        (ivStr    ? `<span class="sym-iv">${ivStr}</span>` : '') +
+        (actLabel         ? `<span class="sym-act-lbl" style="color:${actColor};">${actLabel}</span>` : '') +
+        (ivRing || hvRing ? `<span class="sym-iv" style="display:inline-flex;gap:2px;align-items:center;">${ivRing}${hvRing}</span>` : '') +
         `</div>`
       : '';
 
@@ -1398,6 +1406,22 @@ function _buildSymTilePopHtml(r) {
     (pctStr ? ` <span class="${pctCls}">${pctStr}</span>` : '') +
     `</span></div>`;
 
+  // Outlook — driven by drv_rr rr_outlook (same field that colors the symbol text)
+  const _olColor = lbl => {
+    if (window.outlookColor) {
+      const c = window.outlookColor(lbl);
+      if (c && c !== 'inherit') return c;
+    }
+    const u = (lbl || '').toUpperCase();
+    return u.includes('BULL') ? '#16a34a' : u.includes('BEAR') ? '#dc2626' : '#64748b';
+  };
+  const rrOutlook = r.rr_outlook ? String(r.rr_outlook).charAt(0).toUpperCase() + String(r.rr_outlook).slice(1).toLowerCase() : null;
+  if (rrOutlook) {
+    html += `<div class="stp-section"><div class="stp-label">Outlook</div>` +
+      `<div class="stp-row"><span class="stp-key">RR</span><span class="stp-val" style="font-weight:700;color:${_olColor(rrOutlook)};">${escapeHtml(rrOutlook)}</span></div>` +
+      `</div>`;
+  }
+
   // Sources
   const sources = _sourcesOf(r);
   if (sources.length) {
@@ -1496,6 +1520,8 @@ function _showSymRichTip(e, chipEl) {
     open:         fmtN(r.open_price),
     high:         fmtN(r.high_price),
     low:          fmtN(r.low_price),
+    iv_pct:       r.iv_percentile != null ? Math.round(Number(r.iv_percentile)) : null,
+    iv_to_hv:     r.iv_to_hv != null ? Number(r.iv_to_hv) : null,
     stale:        false,
   });
 }

@@ -1445,13 +1445,14 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
     tech_map: dict[str, dict] = {}
     try:
         tech_rows = session.execute(text("""
-            SELECT tos_symbol, a_trend_value, a_trade_value
+            SELECT tos_symbol, a_trend_value, a_trade_value, d_iv_to_hv
             FROM drv_technicals WHERE as_of_date = :d
         """), {"d": as_of_date}).mappings().all()
         for tr in tech_rows:
             tech_map[tr["tos_symbol"]] = {
-                "trend": tr["a_trend_value"],
-                "trade": tr["a_trade_value"],
+                "trend":      tr["a_trend_value"],
+                "trade":      tr["a_trade_value"],
+                "d_iv_to_hv": tr["d_iv_to_hv"],
             }
     except Exception:
         pass
@@ -1502,6 +1503,8 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
         ed = rec.get("export_date")
         is_intraday = (ed is not None and ed > as_of_date) if ed else False
 
+        raw_iv_hv = tech.get("d_iv_to_hv")
+        rec["iv_to_hv"]     = round(float(raw_iv_hv) * 100) if (raw_iv_hv and float(raw_iv_hv) != 0) else None
         rec["pct_brr"]      = pct_brr_val
         rec["zone_signal"]  = zone_val
         rec["dist_to_trend"] = dist_trend
@@ -1519,14 +1522,16 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
                     (as_of_date, tos_symbol,
                      last_price, net_chng, pct_change,
                      open_price, high_price, low_price,
-                     rsi, imp_volatility, export_date, export_time,
+                     rsi, imp_volatility, iv_to_hv,
+                     export_date, export_time,
                      loaded_at, source,
                      pct_brr, zone_signal, dist_to_trend,
                      dist_to_trade, is_intraday)
                 VALUES (:as_of_date, :tos_symbol,
                         :last_price, :net_chng, :pct_change,
                         :open_price, :high_price, :low_price,
-                        :rsi, :imp_volatility, :export_date, :export_time,
+                        :rsi, :imp_volatility, :iv_to_hv,
+                        :export_date, :export_time,
                         :loaded_at, :source,
                         :pct_brr, :zone_signal, :dist_to_trend,
                         :dist_to_trade, :is_intraday)
@@ -1649,6 +1654,38 @@ def _derive_rr_impl(session: Session, as_of_date: date, run_id: int) -> int:
 
 
 derive_rr = _wrap("drv_rr", _derive_rr_impl)
+
+
+def _derive_rr_outlook_from_qe(session: Session, as_of_date: date,
+                                run_id: int) -> int:
+    """Second-pass UPDATE: fill drv_rr.outlook for source='BB' rows from QE.
+
+    drv_tn_td_bb_rr.trend_trade_rule (QE) maps to outlook labels:
+      4→Bullish, 3→Mild Bullish, 2→Light Bullish,
+      1→Neutral, -1→Mild Bearish, -2→Bearish.
+
+    Idempotent: drv_rr is rebuilt each derive (BB rows always start NULL);
+    this UPDATE repopulates them.  RR-feed rows (source='RR') are never touched.
+    """
+    result = session.execute(text("""
+        UPDATE drv_rr d
+        SET outlook = CASE r.trend_trade_rule
+                WHEN  4 THEN 'Bullish'
+                WHEN  3 THEN 'Mild Bullish'
+                WHEN  2 THEN 'Light Bullish'
+                WHEN  1 THEN 'Neutral'
+                WHEN -1 THEN 'Mild Bearish'
+                WHEN -2 THEN 'Bearish'
+                ELSE NULL END
+        FROM drv_tn_td_bb_rr r
+        WHERE r.as_of_date = d.as_of_date
+          AND r.tos_symbol = d.tos_symbol
+          AND d.as_of_date = :d
+          AND d.source = 'BB'
+          AND d.outlook IS NULL
+          AND r.trend_trade_rule IS NOT NULL
+    """), {"d": as_of_date})
+    return result.rowcount or 0
 
 
 def backfill_drv_rr(d_start: date, d_end: date) -> dict:
@@ -3583,6 +3620,9 @@ def derive_all(session: Session, as_of_date: date,
     # MA-tab rule columns (QE/QJ/QM/QN/QR) — must run AFTER drv_cat_atomic_input
     # (Pass-1 reads its perf1d_sd_rule / trade_rule / trend_rule / etc.).
     counts["trend_trade_rules"]       = _safe("trend_trade_rules",     _derive_trend_trade_rules_impl)
+    # Fill drv_rr.outlook for BB-fallback rows from QE (second pass; drv_tn_td_bb_rr
+    # must exist first, so this runs after trend_trade_rules).
+    counts["drv_rr_outlook_from_qe"]  = _safe("drv_rr_outlook_from_qe", _derive_rr_outlook_from_qe)
     # Parm-lookup Pass-3 (QF/QG/QK/QL/QO/QP/QQ/QS/QT) — runs AFTER
     # trend_trade_rules has populated QE/QJ/QM/QN/QR.
     def _drv_cat_atomic_input_pass3(session, as_of_date, parent_run_id=None):

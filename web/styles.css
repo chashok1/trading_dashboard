@@ -494,6 +494,7 @@ tbody td {
   border-bottom: 1px solid #f4f4f2;
 }
 tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.pct-ring-cell { text-align:center; padding:2px 4px; line-height:0; }
 tbody tr:hover { background: #fafafa; }
 
 .pill {

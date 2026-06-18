@@ -154,8 +154,8 @@
   function _buildTipHtml(d) {
     const showSym  = d.sym && d.sym !== d.dname;
     const pctColor = d.pctCls === 'mt-up' ? '#2f9e2f' : d.pctCls === 'mt-down' ? '#d83a3a' : '#888';
-    const olLower  = (d.outlook || '').toLowerCase();
-    const olColor  = olLower === 'bullish' ? '#2f9e2f' : olLower === 'bearish' ? '#d83a3a' : '#666';
+    const olColor  = (window.outlookColor && d.outlook)
+      ? (window.outlookColor(d.outlook) || '#666') : '#666';
 
     // as-of: prefer time (HH:MM) + date, else just date
     const timeStr    = d.quote_time ? String(d.quote_time).slice(0, 5) : '';
@@ -192,6 +192,12 @@
       h += `<div style="font-size:11px;color:#555;display:flex;gap:14px;margin-bottom:4px;">${ohlParts.map(p => `<span>${p}</span>`).join('')}</div>`;
     }
 
+    if (d.iv_pct != null || d.iv_to_hv != null) {
+      const hvColor = (d.iv_to_hv != null && d.iv_to_hv >= 110) ? '#dc2626' : '#16a34a';
+      const ivTxt   = d.iv_pct   != null ? `<span style="color:#374151;">IV <b>${d.iv_pct}%</b></span>` : '';
+      const hvTxt   = d.iv_to_hv != null ? `<span style="color:${hvColor};">IV/HV <b>${d.iv_to_hv}%</b></span>` : '';
+      h += `<div style="display:flex;gap:10px;align-items:center;font-size:11px;margin-bottom:3px;">${ivTxt}${hvTxt}</div>`;
+    }
     if (d.outlook) {
       h += `<div style="font-size:11px;color:${olColor};">Outlook: ${escHtml(d.outlook)}</div>`;
     }
@@ -260,9 +266,13 @@
   // ---- shared chip helpers -----------------------------------------------
 
   function outlookBg(outlook) {
+    if (window.outlookColor) {
+      const c = window.outlookColor(outlook);
+      if (c && c !== 'inherit') return c;
+    }
     const ol = (outlook || '').toLowerCase();
-    return ol === 'bullish' ? '#2f9e2f'
-         : ol === 'bearish' ? '#d83a3a'
+    return ol.includes('bull') ? '#2f9e2f'
+         : ol.includes('bear') ? '#d83a3a'
          : '#888';
   }
 

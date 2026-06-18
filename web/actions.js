@@ -115,9 +115,29 @@
     return { glyph: ic.g, color: ic.c, code: d.code, label: d.label, title: title };
   }
 
+  // Outlook color map: QE label → hex text color.
+  var _OUTLOOK_COLOR = {
+    'bullish':       '#16a34a',
+    'mild bullish':  '#4ade80',
+    'light bullish': '#a3e635',
+    'neutral':       '#9ca3af',
+    'mild bearish':  '#fb923c',
+    'bearish':       '#ef4444',
+  };
+
+  /**
+   * outlookColor(label) -> hex color string (or 'inherit' for unknown).
+   * Case-insensitive. Used to color rr_outlook / drv_rr.outlook text.
+   */
+  function outlookColor(label) {
+    if (!label) return 'inherit';
+    return _OUTLOOK_COLOR[('' + label).toLowerCase()] || 'inherit';
+  }
+
   // Expose on window for use by per-screen scripts.
-  window.actionDisplay = actionDisplay;
-  window.actionText    = actionText;
-  window.actionIcon    = actionIcon;
-  window._ACTION_MAP   = _MAP;  // for debugging / direct key iteration
+  window.actionDisplay  = actionDisplay;
+  window.actionText     = actionText;
+  window.actionIcon     = actionIcon;
+  window.outlookColor   = outlookColor;
+  window._ACTION_MAP    = _MAP;  // for debugging / direct key iteration
 }());
