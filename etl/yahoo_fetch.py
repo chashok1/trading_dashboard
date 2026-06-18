@@ -362,6 +362,8 @@ def _fetch_ohlcv_to_cache(tickers: list[tuple[str, str]],
         batch = tickers[i: i + batch_size]
         ytickers = [t[1] for t in batch]
         batches += 1
+        num_batches = (total + batch_size - 1) // batch_size
+        logger.info("batch %d/%d: %s", batches, num_batches, ", ".join(ytickers))
 
         try:
             raw = yf.download(
