@@ -135,26 +135,7 @@ function applyFilter() {
     renderTable();
 }
 
-async function fetchJSON(url, options = {}) {
-    try {
-        const resp = await fetch(url, {
-            headers: { 'Content-Type': 'application/json' },
-            ...options,
-        });
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-            const errorMsg = err?.detail || err?.message || resp.statusText || `HTTP ${resp.status}`;
-            const fullError = new Error(errorMsg);
-            fullError.status = resp.status;
-            throw fullError;
-        }
-        return await resp.json();
-    } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error(`Fetch error: ${msg}`, e);
-        throw e;
-    }
-}
+// fetchJSON is provided by _common.js (window.fetchJSON).
 
 async function loadTableList() {
     try {
@@ -353,14 +334,14 @@ async function updateCell(colName, newValue, cellEl) {
             method: 'PATCH',
             body: JSON.stringify({
                 pk,
-                updates: { [colName]: newValue || null },
+                updates: { [colName]: newValue },
             }),
         });
 
         if (result.updated > 0) {
             cellEl.classList.add('flash-success');
-            cellEl.textContent = newValue || '(null)';
-            cellEl.dataset.original = newValue || '(null)';
+            cellEl.textContent = newValue === '' ? '(empty)' : newValue;
+            cellEl.dataset.original = newValue === '' ? '(empty)' : newValue;
             showStatus(`Updated ${colName}`, 'success');
         } else {
             cellEl.classList.add('flash-error');
@@ -587,10 +568,7 @@ function highlightKeywords(text) {
     return result;
 }
 
-function escapeHtml(text) {
-    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
-    return String(text).replace(/[&<>"']/g, m => map[m]);
-}
+// escapeHtml is provided by _common.js (window.escapeHtml).
 
 async function deleteSelectedRows() {
     if (state.checkedRows.size === 0 || !state.currentTable) return;

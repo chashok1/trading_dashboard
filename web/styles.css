@@ -854,8 +854,7 @@ body.rules-page main,
 body.trig-page main,
 body.ref-page main,
 body.perf-page main,
-body.portfolio-page main,
-body.dbstats-page main {
+body.portfolio-page main {
   overflow: hidden !important;
   display: flex !important;
   flex-direction: column !important;

@@ -195,7 +195,9 @@ def _get_all_symbols() -> list[tuple[str, str]]:
             WHERE r.tos_ticker IS NOT NULL AND r.y_ticker IS NOT NULL
             ORDER BY 1
         """)).fetchall()
-    return [(r[0], r[1]) for r in rows if r[0] and r[1]]
+    # Drop symbols where the y_ticker is still a $-prefixed TOS symbol —
+    # Yahoo doesn't recognise these and they always return no_data.
+    return [(r[0], r[1]) for r in rows if r[0] and r[1] and not r[1].startswith('$')]
 
 
 # ---------------------------------------------------------------------------

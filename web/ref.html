@@ -74,10 +74,16 @@
         .ref-table-container {
             max-height: 70vh;
             overflow-x: auto;
-            overflow-y: auto;
+            overflow-y: scroll;
             border: 1px solid var(--border);
             border-radius: 6px;
+            scrollbar-width: thin;
+            scrollbar-color: #a8a29e transparent;
         }
+        .ref-table-container::-webkit-scrollbar { width: 8px; }
+        .ref-table-container::-webkit-scrollbar-track { background: transparent; }
+        .ref-table-container::-webkit-scrollbar-thumb { background: #a8a29e; border-radius: 4px; }
+        .ref-table-container::-webkit-scrollbar-thumb:hover { background: #57534e; }
         .ref-table {
             width: 100%;
             border-collapse: collapse;
