@@ -448,8 +448,18 @@ def fetch_y_detail(delay_sec: float = 1.5) -> dict:
     detail_fetched_at = datetime.now(timezone.utc)
     updated = 0
     errors = 0
+    total = len(symbols)
+    _chunk: list[str] = []
+    _chunk_start = 1
+    CHUNK = 50
 
-    for tos_symbol, y_ticker in symbols:
+    for idx, (tos_symbol, y_ticker) in enumerate(symbols, 1):
+        _chunk.append(y_ticker)
+        if len(_chunk) >= CHUNK or idx == total:
+            logger.info("detail [%d-%d/%d]: %s", _chunk_start, idx, total, ", ".join(_chunk))
+            _chunk = []
+            _chunk_start = idx + 1
+
         try:
             info = yf.Ticker(y_ticker).info
             company_name  = info.get("longName") or info.get("shortName")
