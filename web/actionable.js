@@ -549,15 +549,16 @@ function renderSymTape() {
     const actCode  = actionText(disp);
     const actColor = _actionCodeColor(disp);
     const actLabel = (actCode && actCode !== '--') ? actCode : '';
-    const ivVal    = r.iv_percentile != null ? Math.round(Number(r.iv_percentile)) : null;
-    const ivToHv   = r.iv_to_hv != null ? Number(r.iv_to_hv) : null;
-    const ivRing   = (window.pctRing && ivVal  != null) ? window.pctRing(ivVal,  { size: 18 }) : '';
-    const hvColor  = ivToHv != null ? (ivToHv >= 110 ? '#dc2626' : '#16a34a') : null;
-    const hvRing   = (window.pctRing && ivToHv != null) ? window.pctRing(ivToHv, { size: 18, color: hvColor }) : '';
-    const metaHtml = (actLabel || ivRing || hvRing)
+    const ivPctile  = r.iv_percentile    != null ? Math.round(Number(r.iv_percentile))   : null;
+    const ivToHv    = r.iv_to_hv_discount != null ? Number(r.iv_to_hv_discount)          : null;
+    const ivpColor  = ivPctile != null ? (ivPctile > 90 ? '#dc2626' : '#16a34a') : null;
+    const ivPctRing = (window.pctRing && ivPctile != null) ? window.pctRing(ivPctile,         { size: 14, color: ivpColor }) : '';
+    const hvColor   = ivToHv   != null ? (ivToHv  < 0  ? '#dc2626' : '#16a34a') : null;
+    const hvRing    = (window.pctRing && ivToHv   != null) ? window.pctRing(Math.abs(ivToHv), { size: 14, color: hvColor  }) : '';
+    const metaHtml = (actLabel || ivPctRing || hvRing)
       ? `<div class="sym-tile-meta">` +
-        (actLabel         ? `<span class="sym-act-lbl" style="color:${actColor};">${actLabel}</span>` : '') +
-        (ivRing || hvRing ? `<span class="sym-iv" style="display:inline-flex;gap:2px;align-items:center;">${ivRing}${hvRing}</span>` : '') +
+        (actLabel              ? `<span class="sym-act-lbl" style="color:${actColor};">${actLabel}</span>` : '') +
+        (ivPctRing || hvRing   ? `<span class="sym-iv" style="display:inline-flex;gap:2px;align-items:center;">${ivPctRing}${hvRing}</span>` : '') +
         `</div>`
       : '';
 
@@ -1520,8 +1521,9 @@ function _showSymRichTip(e, chipEl) {
     open:         fmtN(r.open_price),
     high:         fmtN(r.high_price),
     low:          fmtN(r.low_price),
-    iv_pct:       r.iv_percentile != null ? Math.round(Number(r.iv_percentile)) : null,
-    iv_to_hv:     r.iv_to_hv != null ? Number(r.iv_to_hv) : null,
+    iv_pct:       r.imp_volatility    != null ? Math.round(Number(r.imp_volatility) * 100) : null,
+    iv_pctile:    r.iv_percentile     != null ? Math.round(Number(r.iv_percentile))        : null,
+    iv_to_hv:     r.iv_to_hv_discount != null ? Number(r.iv_to_hv_discount)               : null,
     stale:        false,
   });
 }
@@ -1664,6 +1666,8 @@ function initSorting() {
       }
       updateSortIndicators();
       renderGrid();
+      _symTapeStart = 0;
+      renderSymTape();
     });
   });
 }

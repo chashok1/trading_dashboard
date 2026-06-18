@@ -1504,7 +1504,7 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
         is_intraday = (ed is not None and ed > as_of_date) if ed else False
 
         raw_iv_hv = tech.get("d_iv_to_hv")
-        rec["iv_to_hv"]     = round(float(raw_iv_hv) * 100) if (raw_iv_hv and float(raw_iv_hv) != 0) else None
+        rec["iv_to_hv_discount"] = round((1.0 - float(raw_iv_hv)) * 100) if (raw_iv_hv and float(raw_iv_hv) != 0) else None
         rec["pct_brr"]      = pct_brr_val
         rec["zone_signal"]  = zone_val
         rec["dist_to_trend"] = dist_trend
@@ -1522,7 +1522,7 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
                     (as_of_date, tos_symbol,
                      last_price, net_chng, pct_change,
                      open_price, high_price, low_price,
-                     rsi, imp_volatility, iv_to_hv,
+                     rsi, imp_volatility, iv_to_hv_discount,
                      export_date, export_time,
                      loaded_at, source,
                      pct_brr, zone_signal, dist_to_trend,
@@ -1530,7 +1530,7 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
                 VALUES (:as_of_date, :tos_symbol,
                         :last_price, :net_chng, :pct_change,
                         :open_price, :high_price, :low_price,
-                        :rsi, :imp_volatility, :iv_to_hv,
+                        :rsi, :imp_volatility, :iv_to_hv_discount,
                         :export_date, :export_time,
                         :loaded_at, :source,
                         :pct_brr, :zone_signal, :dist_to_trend,

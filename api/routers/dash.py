@@ -372,7 +372,7 @@ def get_actionable(
                mt.iv_percentile, mo.pct_brr AS ma_pct_brr,
                dr.lrr, dr.mrr, dr.trr, dr.outlook AS rr_outlook,
                q.last_price, q.net_chng, q.pct_change, q.export_date, q.export_time, q.loaded_at,
-               q.open_price, q.high_price, q.low_price, q.imp_volatility, q.iv_to_hv,
+               q.open_price, q.high_price, q.low_price, q.imp_volatility, q.iv_to_hv_discount,
                q.pct_brr AS quote_pct_brr, q.zone_signal AS quote_zone,
                q.is_intraday AS quote_is_intraday,
                u.user_action AS last_user_action,
