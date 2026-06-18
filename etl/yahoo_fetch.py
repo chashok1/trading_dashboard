@@ -181,14 +181,19 @@ def _is_any_fetch_running() -> bool:
 
 
 def _get_all_symbols() -> list[tuple[str, str]]:
-    """Return [(tos_symbol, y_ticker)] for TOSD symbols + all ref_rrt symbols."""
+    """Return [(tos_symbol, y_ticker)] for TOSD symbols + ref_rrt symbols only.
+
+    Sources from hist_td (today's TOSD, ~882 symbols) not drv_symbols, so
+    periodic feeds (call/rr/etf/ii) that inflate drv_symbols are excluded.
+    ref_rrt adds a small number of extra watchlist symbols with Yahoo mappings.
+    """
     with session_scope() as s:
         rows = s.execute(text("""
-            SELECT DISTINCT s.tos_symbol,
-                   COALESCE(r.y_ticker, s.tos_symbol) AS y_ticker
-            FROM drv_symbols s
-            LEFT JOIN ref_rrt r ON r.tos_ticker = s.tos_symbol
-            WHERE s.as_of_date = (SELECT MAX(export_date) FROM hist_td)
+            SELECT DISTINCT t.tos_symbol,
+                   COALESCE(r.y_ticker, t.tos_symbol) AS y_ticker
+            FROM hist_td t
+            LEFT JOIN ref_rrt r ON r.tos_ticker = t.tos_symbol
+            WHERE t.export_date = (SELECT MAX(export_date) FROM hist_td)
             UNION
             SELECT r.tos_ticker, r.y_ticker
             FROM ref_rrt r
