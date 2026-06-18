@@ -503,6 +503,12 @@ def _load_cache_to_hist_y(load_date: date) -> dict:
                 'yahoo_fetch'
             FROM cache_yahoo_quote
             WHERE last_price IS NOT NULL
+              AND tos_symbol IN (
+                  SELECT tos_symbol FROM drv_symbols
+                   WHERE as_of_date = (SELECT MAX(export_date) FROM hist_td)
+                  UNION
+                  SELECT tos_ticker FROM ref_rrt WHERE tos_ticker IS NOT NULL
+              )
             ON CONFLICT DO NOTHING
         """), {'ld': load_date})
         inserted = result.rowcount

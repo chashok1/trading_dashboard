@@ -9,6 +9,7 @@ const state = {
   filters: {
     action: '',          // '' | REMOVE | REDUCE | INCREASE | ADD | HOLD
     source: '',
+    account: '',
     held_only: false,
     show_hidden: false,  // when true, reveals suppressed/$0/no-action/acted/unheld-remove rows
     symbol_search: '',   // symbol search text filter
@@ -29,17 +30,7 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 
-async function fetchJson(url, opts = {}) {
-  const r = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts,
-  });
-  if (!r.ok) {
-    const e = await r.json().catch(() => ({ detail: r.statusText }));
-    throw new Error(e.detail || r.statusText);
-  }
-  return r.json();
-}
+// fetchJson is provided by _common.js (window.fetchJson).
 
 function fmtUsd(v) {
   if (v === null || v === undefined || v === '') return '';
@@ -449,6 +440,11 @@ function matchesBaseFilters(r) {
   if (state.filters.source) {
     if (!_rowHasSource(r, state.filters.source)) return false;
   }
+  if (state.filters.account) {
+    if (!r.held_accounts) return false;
+    const accts = r.held_accounts.split(',').map(a => a.trim());
+    if (!accts.includes(state.filters.account)) return false;
+  }
   if (state.filters.held_only) {
     if (!r.held_today) return false;
   }
@@ -487,6 +483,7 @@ function applyClientFilter() {
   renderBulkBar();
   renderSummary();
   renderSourceFilter();
+  renderAccountFilter();
   saveFiltersToStorage();
   renderGrid();
   _symTapeStart = 0;
@@ -709,6 +706,35 @@ function renderSourceFilter() {
   }
 }
 
+function _availableAccounts() {
+  const have = new Set();
+  for (const r of state.allRows) {
+    if (!r.held_accounts) continue;
+    for (const a of r.held_accounts.split(',')) {
+      const t = a.trim();
+      if (t) have.add(t);
+    }
+  }
+  return have;
+}
+
+function renderAccountFilter() {
+  const sel = $('accountFilter');
+  if (!sel) return;
+  const have = _availableAccounts();
+  if (state.filters.account && !have.has(state.filters.account)) {
+    state.filters.account = '';
+  }
+  const cur = state.filters.account;
+  sel.innerHTML = '<option value="">All</option>';
+  for (const a of Array.from(have).sort()) {
+    const o = document.createElement('option');
+    o.value = a; o.textContent = a;
+    if (a === cur) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+
 
 // localStorage persistence
 const LS_KEY = 'act_filters_v3';
@@ -716,7 +742,7 @@ function saveFiltersToStorage() {
   try {
     const f = state.filters;
     const toSave = {
-      source: f.source, held_only: f.held_only, show_hidden: f.show_hidden,
+      source: f.source, account: f.account, held_only: f.held_only, show_hidden: f.show_hidden,
       symbol_search: f.symbol_search, conviction: f.conviction,
       actionable_only: f.actionable_only,
     };
@@ -732,6 +758,7 @@ function loadFiltersFromStorage() {
     const f = state.filters;
     // Only load keys that exist in the current schema; ignore stale keys gracefully.
     if (saved.source !== undefined)       f.source = saved.source;
+    if (saved.account !== undefined)      f.account = saved.account;
     if (saved.held_only !== undefined)    f.held_only = !!saved.held_only;
     if (saved.show_hidden !== undefined)  f.show_hidden = !!saved.show_hidden;
     if (saved.symbol_search !== undefined) f.symbol_search = saved.symbol_search;
@@ -744,6 +771,7 @@ function syncFilterUi() {
   // Sync all UI elements to current state.filters
   const f = state.filters;
   const heldOnly = $('heldOnly');       if (heldOnly) heldOnly.checked = f.held_only;
+  const acctFilter = $('accountFilter'); if (acctFilter) acctFilter.value = f.account || '';
   const showHidden = $('showHidden');   if (showHidden) showHidden.checked = f.show_hidden;
   const sym = $('symbolSearch');        if (sym) sym.value = f.symbol_search || '';
   // conviction segmented
@@ -760,7 +788,7 @@ function syncFilterUi() {
 
 function clearAllFilters() {
   const f = state.filters;
-  f.action = ''; f.source = ''; f.held_only = false;
+  f.action = ''; f.source = ''; f.account = ''; f.held_only = false;
   f.show_hidden = false; f.actionable_only = true;
   f.symbol_search = ''; f.conviction = 'any';
   // Reset sort to default actionability order (updateSortIndicators called in renderGrid)
@@ -1060,6 +1088,22 @@ function _fcStrengthToAction(strength, consolidated) {
  *   cross-reference only.
  */
 function finalCall(row) {
+  // TASK_53: read server-computed final call when available (derived at ETL time).
+  // Falls back to client-side computation for rows missing the new columns (e.g.
+  // re-derives that haven't run yet, or historical dates pre-migration).
+  if (row.final_code !== undefined && row.final_code !== null) {
+    var _feasible = (row.fc_feasible === true || row.fc_feasible === 'true');
+    var _strength = Number(row.fc_strength) || 0;
+    var _confidence = row.fc_confidence || 'none';
+    var _code = row.final_code || '';
+    var _label = row.final_action || '';
+    var _side = row.final_side || 'neutral';
+    return {
+      label: _label, code: _code, side: _side,
+      strength: _strength, confidence: _confidence, feasible: _feasible,
+    };
+  }
+
   var ca  = (row.consolidated_action || '').toUpperCase();
   var rra = (row.rr_action           || '').toUpperCase();
 
@@ -1266,8 +1310,15 @@ function _finalCallHtml(row) {
 // seq = -1 and sort to the bottom. Dollars at stake break ties within the
 // same seq tier (×1e12 keeps tiers from crossing).
 function _computePriority(row) {
-  var fc = finalCall(row);
+  // TASK_53: use server-computed priority_rank when available (uses same formula).
+  // Server uses seq * 1e6 + |amt|; client uses seq * 1e12 + |amt|.
+  // We still add |_amt| at the client scale so ties break on dollars at stake.
   var amt = Math.abs(Number(row._amt) || 0);
+  if (row.priority_rank !== undefined && row.priority_rank !== null) {
+    var pr = Number(row.priority_rank);
+    if (isFinite(pr)) return pr * 1e6 + amt;
+  }
+  var fc = finalCall(row);
   if (!fc.feasible) {
     // Infeasible: sink to bottom (seq = -1 < all real codes).
     return -1 * 1e12 + amt;
@@ -1798,11 +1849,7 @@ function renderGrid() {
   }
 }
 
-function escapeHtml(s) {
-  return String(s ?? '').replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[c]));
-}
+// escapeHtml is provided by _common.js (window.escapeHtml).
 
 // ── Pass 3: Bulk bar ───────────────────────────────────────────────────────
 function renderBulkBar() {
@@ -2772,6 +2819,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Filter zone wire-ups ────────────────────────────────────────────────────
   $('sourceFilter').addEventListener('change', (e) => {
     state.filters.source = e.target.value;
+    applyClientFilter();
+  });
+  $('accountFilter').addEventListener('change', (e) => {
+    state.filters.account = e.target.value;
     applyClientFilter();
   });
   $('heldOnly').addEventListener('change', (e) => {

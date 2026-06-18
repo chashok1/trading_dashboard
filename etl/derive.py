@@ -26,11 +26,19 @@ from etl.warnings import clear_screen_warnings, add_warning
 # Shared meta_derived_run helpers + the _wrap decorator. Extracted to
 # etl/_derive_common.py so derive.py and derive_v2.py can both use them
 # without a circular import.
-from etl._derive_common import _open_drv_run, _close_drv_run, _wrap, position_ceiling
+from etl._derive_common import (
+    _open_drv_run, _close_drv_run, _wrap, position_ceiling,
+    _load_outlook_weights, _outlook_to_weight,  # TASK_56: consolidated
+)
 
 # derive_tw has a formula-faithful implementation in derive_v2.py.
 # derive_sss was retired 2026-06-13 (drv_sss dropped; SSS now in drv_source_standing).
 from etl.derive_v2 import derive_tw
+
+# TASK_55: pure rule-eval utilities extracted to etl/_rule_eval.py so the API
+# serving layer can import them without coupling to ETL internals.
+from etl._rule_eval import eval_atomic_rule, _eval_precondition  # noqa: F401 (re-exported)
+from etl._rule_eval import _composite_operator, _MA_COL_MAP       # noqa: F401 (re-exported)
 
 log = logging.getLogger(__name__)
 
@@ -1401,22 +1409,15 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
         td_row    = rows_td.get(sym)
         cache_row = rows_cache.get(sym)
 
-        # Prefer TL over Y only when both are from the same snapshot_date
-        # (same trading session — matches Excel "L" flag / Dash!AB24).
-        # When sessions differ, fall back to latest-loaded-at across all sources.
-        same_session = (
-            tl_row is not None and y_row is not None
-            and tl_row.get('snapshot_date') == y_row.get('snapshot_date')
-        )
-        if same_session:
-            # TL → TD → Y → CACHE priority (TL preferred for current session)
-            candidates = [r for r in (tl_row, td_row, y_row, cache_row) if r is not None]
-        else:
-            # Different sessions: latest loaded_at wins; CACHE participates naturally
-            candidates = [r for r in (tl_row, td_row, y_row, cache_row) if r is not None]
-            candidates.sort(
-                key=lambda r: (r.get('loaded_at') or datetime.min).replace(tzinfo=None),
-                reverse=True)
+        # Always rank by loaded_at DESC: whichever feed was loaded most recently
+        # wins for each field. Y loaded at 15:01 beats TL loaded at 11:04 for
+        # price fields. TL/TD still win for rsi/imp_volatility because Y returns
+        # NULL for those — the per-field loop skips NULL and falls through.
+        # CACHE participates at its natural loaded_at (always oldest in practice).
+        candidates = [r for r in (tl_row, td_row, y_row, cache_row) if r is not None]
+        candidates.sort(
+            key=lambda r: (r.get('loaded_at') or datetime.min).replace(tzinfo=None),
+            reverse=True)
 
         rec = {'as_of_date': as_of_date, 'tos_symbol': sym, 'export_date': None, 'export_time': None, 'loaded_at': None, 'source': None}
         for f in _QUOTE_FIELDS:
@@ -1852,25 +1853,10 @@ def _composite_outlook(rr_brr, call_outlook, etf_outlook, ii_outlook, sss_signal
     return score, label
 
 
-_BUY_PREFIXES  = {'B','BS','BR','BW','BM','BMN'}
-_SELL_PREFIXES = {'SA','SS','STM','SW','SH'}
-
-def _composite_operator(code: str, threshold) -> str:
-    """Return '>=' for BUY rules, '<=' for SELL rules, else derive from threshold sign."""
-    import re
-    m = re.match(r'^\d+-([A-Z]+)-', code or '')
-    if m:
-        p = m.group(1)
-        if p in _BUY_PREFIXES:  return '>='
-        if p in _SELL_PREFIXES: return '<='
-    # fallback: positive threshold → >=, negative → <=
-    try:
-        return '>=' if float(threshold) >= 0 else '<='
-    except (TypeError, ValueError):
-        return '>='
-
-
-def _eval_precondition(expr: str, row: dict) -> bool:
+# _BUY_PREFIXES, _SELL_PREFIXES, _composite_operator, _eval_precondition,
+# eval_atomic_rule, _MA_COL_MAP are now in etl/_rule_eval.py (imported at the
+# top of this file).  The local definitions below have been removed; the
+# imported names are used everywhere in this module.
     """
     Safely evaluate a compound precondition expression against a drv_ma row.
 
@@ -2361,6 +2347,7 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
     ma_rows = _fetch_eval_rows(session, as_of_date, atomic_col_map)
 
     out = []
+    trace_rows = []   # TASK_55: per-symbol rule trace for drv_trace
     for r in ma_rows:
         co, cl = _composite_outlook(
             r["rr_brr"], r["call_outlook"], r["etf_outlook"],
@@ -2533,7 +2520,40 @@ def _derive_stks_impl(session: Session, as_of_date: date, run_id: int) -> int:
             "triggered_group_ids": triggered_groups,
             "source_run_id": run_id,
         })
-    return replace_for_date(session, "drv_stks", "as_of_date", as_of_date, out)
+        # TASK_55: accumulate full-detail trace for drv_trace
+        trace_rows.append({
+            "as_of_date": as_of_date,
+            "tos_symbol":  r["tos_symbol"],
+            "payload": {
+                "atomics":       triggered_atomics,
+                "atomic_scores": {str(k): v for k, v in atomic_scores.items()},
+                "composites":    triggered_composites,
+                "composite_scores": {
+                    k: float(v) for k, v in composite_scores.items() if v is not None
+                },
+                "rule_groups": triggered_groups,
+            },
+        })
+
+    # Write drv_stks (existing) and drv_trace (TASK_55) atomically.
+    n = replace_for_date(session, "drv_stks", "as_of_date", as_of_date, out)
+    if trace_rows:
+        import json as _json
+        session.execute(
+            text("DELETE FROM drv_trace WHERE as_of_date = :d"),
+            {"d": as_of_date}
+        )
+        session.execute(
+            text("""
+                INSERT INTO drv_trace (as_of_date, tos_symbol, payload)
+                VALUES (:as_of_date, :tos_symbol, CAST(:payload AS jsonb))
+            """),
+            [{"as_of_date": tr["as_of_date"],
+              "tos_symbol":  tr["tos_symbol"],
+              "payload":     _json.dumps(tr["payload"])}
+             for tr in trace_rows]
+        )
+    return n
 
 
 derive_stks = _wrap("drv_stks", _derive_stks_impl)
@@ -2665,22 +2685,7 @@ derive_dash_summary = _wrap("drv_dash_summary", _derive_dash_summary_impl)
 # These read from ref_param + ref_param_lookup (loaded from Parm tab).
 # =============================================================================
 
-def _load_outlook_weights(session: Session) -> dict[str, float]:
-    """Returns {OUTLOOK_TEXT_UPPER: weight} from ref_param sheet='outlook'."""
-    rows = session.execute(text("""
-        SELECT param_name, value FROM ref_param WHERE sheet = 'outlook'
-    """)).fetchall()
-    out: dict[str, float] = {}
-    for name, val in rows:
-        try:
-            out[name.upper()] = float(val) if val is not None else 0.0
-        except (TypeError, ValueError):
-            continue
-    # Sensible fallbacks if the Parm tab hasn't been loaded yet
-    out.setdefault("BULLISH", 3.0)
-    out.setdefault("BEARISH", -3.0)
-    out.setdefault("NEUTRAL", 0.0)
-    return out
+# _load_outlook_weights imported from etl._derive_common (TASK_56).
 
 
 def _load_buysell_lookup(session: Session) -> dict[float, tuple[str, float]]:
@@ -2704,17 +2709,7 @@ def _load_buysell_lookup(session: Session) -> dict[float, tuple[str, float]]:
     return out
 
 
-def _outlook_to_weight(outlook: Optional[str], modifier: Optional[str],
-                       wt_map: dict[str, float]) -> Optional[float]:
-    if not outlook:
-        return None
-    base = wt_map.get(str(outlook).upper())
-    if base is None:
-        return 0.0
-    # Modifier adjustments would go here if we had the rule (e.g. Bench halves)
-    if modifier and "bench" in str(modifier).lower():
-        return base / 3.0
-    return base
+# _outlook_to_weight imported from etl._derive_common (TASK_56).
 
 
 def _weight_to_buysell(weight: Optional[float],
@@ -2793,169 +2788,17 @@ derive_missing_symbols = _wrap("drv_missing_symbols", _derive_missing_symbols_im
 # =============================================================================
 # Trig - per-stock per-composite-rule scoring
 # =============================================================================
-
-_MA_COL_MAP = {
-    # MACD family — shadowed by ref_ma_columns for active rules; kept for legacy dryruns
-    "MACDH Direction":        "a_macdh_d_brr",
-    "MACD Direction":         "a_macd_brr",
-    "MACD Rule":              "a_macd_brr",
-    "MACDH Rule":             "a_macdh_d_brr",
-    "MACDH Days":             "a_macdh_d_brr",
-    "MACDH Days2":            "a_macdh_d_brr",
-    "MACD_BRR Puts":          "a_macd_brr",
-    "MACDH_BRR Puts":         "a_macdh_d_brr",
-    # BB family — active rules resolved via ref_ma_columns; kept for legacy
-    "BB Direction":           "a_bb_streak",
-    "BBThresh CO Days":       "a_bb_streak",
-    "BBStreak Rule":          "a_bb_streak",
-    "BBStreak Rule2":         "a_bb_streak",
-    "BBStreak Days Rule":     "a_bb_streak",
-    "BBStreak Days Rule2":    "a_bb_streak",
-    "BBHighDays":             "a_bb_streak",
-    "BBLowDays":              "a_bb_streak",
-    "BBHighLow Days Rule":    "a_bb_streak",
-    "BBHighLow_SD Rule":      "a_bb_streak",
-    "Trade Cross Over":       "pct_brr",
-    "RSI":                    "rsi",
-    "Overbought":             "rsi",
-    "IV":                     "imp_volatility",
-    "IVAbsolute":             "imp_volatility",
-    "TrendValue":             "a_trend_value",
-    "TradeValue":             "a_trade_value",
-    "Trend-Rule":             "a_trend_value",
-    "Trade-Rule":             "a_trade_value",
-    "Trade Trend SD Rule":    "a_trend_value",
-    "BB Top":                 "a_bb_top",
-    "BB Bottom":              "a_bb_bottom",
-    "BRR":                    "rr_brr",
-    "Last":                   "last_price",
-    "Last Price":             "last_price",
-    "Volume":                 "volume",
-    "Current Volume Rule":    "vlm_projected",
-    "52-Wk High Rule":        "sma_200",
-    "52-Wk Low Rule":         "sma_200",
-    "200-DMA-Rule":           "sma_200",
-    "50-DMA-Rule":            "sma_50",
-    "3m-High-Rule":           "sma_200",
-    "3m-Low-Rule":            "sma_200",
-    "3mn-High-Rule":          "sma_200",
-    "3mn-Low-Rule":           "sma_200",
-    "3wk Outlook":            "a_macd_brr",
-    "3wk Outlook Days":       "a_macd_brr",
-    "3m-Low-Days Rule":       "a_bb_streak",
-    "3mn Outlook":            "a_macd_brr",
-    "3mn Outlook Days":       "a_macd_brr",
-    "Perf1D SD Rule":         "last_price",
-    "Perf2M SD Rule":         "volume",
-    "Perf3D SD Rule":         "range_compression",
-    "Perf3mn SD Rule":        "range_compression",
-    "LRR_Idx":                "a_trend_value",
-    "MRR_Idx":                "a_trade_value",
-    "TRR_Idx":                "a_bb_top",
-    "Short Term Oulook (If LT Bearish)": "a_macd_brr",
-    "Short Term Oulook (If LT Bullish)": "a_macd_brr",
-    "VS Days":                "earnings_days",
-    "VS LT Outlook Rule":     "a_macd_brr",
-}
+# _MA_COL_MAP, eval_atomic_rule, _eval_precondition, _composite_operator are
+# imported from etl._rule_eval at the top of this file.
 
 
 # Legacy _bucket_weight() removed 2026-05-17. It only handled scoring_mode='jump'
 # and was the source of the drv_trig vs. drv_stks discrepancy on linear/sigmoid
-# rules. All atomic-rule scoring now flows through eval_atomic_rule() below, so
-# every consumer (drv_stks, drv_trig, rule dry-runs) produces identical scores.
+# rules. All atomic-rule scoring now flows through eval_atomic_rule() (defined
+# in etl._rule_eval) so every consumer produces identical scores.
 
 
-def eval_atomic_rule(value, rule):
-    """
-    Evaluate an atomic rule using the configured scoring_mode.
-
-    Args:
-        value: The measured value from drv_ma
-        rule: Dict with keys:
-          - scoring_mode: 'jump' | 'linear' | 'sigmoid'
-          - brkeout_from, brkeout_to: threshold boundaries
-          - wt_below, wt_between, wt_above: weight assignments
-          - score_params: optional JSONB with {'k': float, 'x0': float} for sigmoid
-
-    Returns:
-        float: the computed weight
-    """
-    if value is None:
-        return 0.0
-
-    try:
-        v = float(value)
-    except (TypeError, ValueError):
-        return 0.0
-
-    lo_val = rule.get('brkeout_from')
-    hi_val = rule.get('brkeout_to')
-    wb     = rule.get('wt_below')
-    wbt    = rule.get('wt_between')
-    wa     = rule.get('wt_above')
-
-    # Pass-through: no thresholds or weights configured — column value IS the score.
-    # Applies to direction/flag indicators pre-computed on a -3..3 scale.
-    if lo_val is None and hi_val is None and wb is None and wbt is None and wa is None:
-        return v
-
-    try:
-        lo = float(lo_val) if lo_val is not None else 0.0
-    except (TypeError, ValueError):
-        lo = 0.0
-
-    try:
-        hi = float(hi_val) if hi_val is not None else 100.0
-    except (TypeError, ValueError):
-        hi = 100.0
-
-    try:
-        wt_below = float(wb) if wb is not None else 0.0
-    except (TypeError, ValueError):
-        wt_below = 0.0
-
-    try:
-        wt_between = float(wbt) if wbt is not None else 0.0
-    except (TypeError, ValueError):
-        wt_between = 0.0
-
-    try:
-        wt_above = float(wa) if wa is not None else 0.0
-    except (TypeError, ValueError):
-        wt_above = 0.0
-
-    mode = rule.get('scoring_mode', 'jump')
-
-    if mode == 'jump':
-        if v < lo:
-            return wt_below
-        elif v > hi:
-            return wt_above
-        else:
-            return wt_between
-
-    elif mode == 'linear':
-        # Linear interpolation from wt_below to wt_above across [lo, hi]
-        if v <= lo:
-            return wt_below
-        elif v >= hi:
-            return wt_above
-        else:
-            t = (v - lo) / (hi - lo) if hi != lo else 0.5
-            return wt_below + t * (wt_above - wt_below)
-
-    elif mode == 'sigmoid':
-        import math
-        params = rule.get('score_params') or {}
-        k = float(params.get('k', 0.1)) if params else 0.1
-        x0 = float(params.get('x0', (lo + hi) / 2)) if params else (lo + hi) / 2
-        try:
-            s = 1.0 / (1.0 + math.exp(-k * (v - x0)))
-            return wt_below + s * (wt_above - wt_below)
-        except (OverflowError, ValueError):
-            return wt_above if v > x0 else wt_below
-
-    return 0.0
+# eval_atomic_rule is imported from etl._rule_eval (see top of file).
 
 
 def _derive_trig_impl(session: Session, as_of_date: date, run_id: int) -> int:
@@ -3515,6 +3358,18 @@ def derive_all(session: Session, as_of_date: date,
                parent_run_id: Optional[int] = None) -> dict:
     """Run every derive_* in dependency order. Returns {table: rows_built}."""
     counts: dict = {}
+
+    # Sweep meta_derived_run rows stuck in status='running' from a prior cascade
+    # that was killed or aborted before _close_drv_run could fire. Threshold: 2 h.
+    abandoned = session.execute(text("""
+        UPDATE meta_derived_run
+           SET status = 'abandoned', finished_at = NOW(),
+               error_msg = 'swept by derive_all startup — prior cascade did not close cleanly'
+         WHERE status = 'running'
+           AND started_at < NOW() - INTERVAL '2 hours'
+    """)).rowcount
+    if abandoned:
+        log.warning("derive_all: swept %d orphaned running rows (>2h old)", abandoned)
 
     # Populate tos_symbol in all hist_* tables
     # hist_y, hist_rr: Use RRT mapping
