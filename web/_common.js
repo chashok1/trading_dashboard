@@ -225,7 +225,7 @@
     // Y scale = RR range only (lrr..trr + price); Trade/Trend in separate chart
     const vals1 = [cur, prev, hi, lo, lrr, trr].filter(v => v != null);
     const rawMin1 = Math.min(...vals1), rawMax1 = Math.max(...vals1);
-    const W1 = 210, H = 220, PAD_L = 44, PAD_R = 102, PAD_T = 12, PAD_B = 18;
+    const W1 = 210, H = 160, PAD_L = 44, PAD_R = 102, PAD_T = 12, PAD_B = 18;
     const chartW1 = W1 - PAD_L - PAD_R, chartH = H - PAD_T - PAD_B;
     const pad1 = sdVal ? sdVal * 0.35 : (rawMax1 - rawMin1) * 0.08;
     const yMin1 = rawMin1 - pad1, yMax1 = rawMax1 + pad1, yRng1 = yMax1 - yMin1 || 1;
@@ -517,7 +517,7 @@
     for (let i = 0; i < n; i++) { if (prices[i] != null) lastP = prices[i]; else if (lastP != null) prices[i] = lastP; }
 
     const W = Math.max(svgEl.parentElement ? svgEl.parentElement.offsetWidth || 700 : 700, 400);
-    const PAD_L = 44, PAD_R = 90, PAD_T = 10, PAD_B = 22;
+    const PAD_L = 44, PAD_R = 140, PAD_T = 10, PAD_B = 22;
     const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
 
     const tradeLevel = levels && levels.trade != null ? levels.trade : null;
@@ -616,11 +616,11 @@
       : '';
 
     const tradeLine = (tradeLevel != null && tradeLevel >= yMinP && tradeLevel <= yMaxP)
-      ? `<line x1="${PAD_L}" y1="${yPx(tradeLevel).toFixed(1)}" x2="${PAD_L+cW+35}" y2="${yPx(tradeLevel).toFixed(1)}" stroke="#f97316" stroke-width="1" stroke-dasharray="5 3"/>` +
-        `<text x="${PAD_L+cW+38}" y="${(yPx(tradeLevel)+3.5).toFixed(1)}" fill="#f97316" font-size="8" font-weight="600" text-anchor="start">Trade</text>` : '';
+      ? `<line x1="${PAD_L}" y1="${yPx(tradeLevel).toFixed(1)}" x2="${PAD_L+cW+90}" y2="${yPx(tradeLevel).toFixed(1)}" stroke="#f97316" stroke-width="2" stroke-dasharray="2 5" stroke-linecap="round"/>` +
+        `<text x="${PAD_L+cW+93}" y="${(yPx(tradeLevel)+3.5).toFixed(1)}" fill="#f97316" font-size="8" font-weight="700" text-anchor="start">Trade</text>` : '';
     const trendLine = (trendLevel != null && trendLevel >= yMinP && trendLevel <= yMaxP)
-      ? `<line x1="${PAD_L}" y1="${yPx(trendLevel).toFixed(1)}" x2="${PAD_L+cW+35}" y2="${yPx(trendLevel).toFixed(1)}" stroke="#818cf8" stroke-width="1" stroke-dasharray="5 3"/>` +
-        `<text x="${PAD_L+cW+38}" y="${(yPx(trendLevel)+3.5).toFixed(1)}" fill="#818cf8" font-size="8" font-weight="600" text-anchor="start">Trend</text>` : '';
+      ? `<line x1="${PAD_L}" y1="${yPx(trendLevel).toFixed(1)}" x2="${PAD_L+cW+90}" y2="${yPx(trendLevel).toFixed(1)}" stroke="#818cf8" stroke-width="2" stroke-dasharray="2 5" stroke-linecap="round"/>` +
+        `<text x="${PAD_L+cW+93}" y="${(yPx(trendLevel)+3.5).toFixed(1)}" fill="#818cf8" font-size="8" font-weight="700" text-anchor="start">Trend</text>` : '';
 
     const todayX = xPx(n - 1);
     const todayMark = `<line x1="${todayX}" y1="${PAD_T}" x2="${todayX}" y2="${PAD_T+cH}" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2 2"/>`;
