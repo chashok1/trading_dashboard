@@ -389,9 +389,17 @@
         <span><span style="color:#94a3b8;">Trend</span> <strong style="color:#818cf8;">${fmt(trend)}</strong></span>
       </div>`, 'width:100%;box-sizing:border-box;');
 
-    // ── Box above Graph4: OHLC hover display (populated after chart renders) ──
+    // ── Graph4 top bar: TRR/MRR/LRR + SD/Trend/Trade left; OHLC right ────────
     const graph3TopBox = infoBox(
-      `<div id="${histId}_ohlc" style="font-size:9px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:13px;text-align:right;"></div>`);
+      `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">` +
+      `<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">` +
+        `${dot(ix.trr,'TRR',sd.trr_sd)}${dot(ix.mrr,'MRR',sd.mrr_sd)}${dot(ix.lrr,'LRR',sd.lrr_sd)}` +
+        `<span style="color:#94a3b8;font-size:9px;">SD</span><strong style="font-size:9px;">${fmt(sdVal)}</strong>` +
+        `<span style="color:#94a3b8;font-size:9px;">Trend</span><strong style="font-size:9px;color:${scoreColor(sd.trend_sd)};">${fmtSd(sd.trend_sd)}</strong>` +
+        `<span style="color:#94a3b8;font-size:9px;">Trade</span><strong style="font-size:9px;color:${scoreColor(sd.trade_sd)};">${fmtSd(sd.trade_sd)}</strong>` +
+      `</div>` +
+      `<div id="${histId}_ohlc" style="font-size:9px;color:#64748b;white-space:nowrap;min-height:13px;text-align:right;flex-shrink:0;"></div>` +
+      `</div>`);
 
     el.innerHTML = `
     <div style="display:grid;grid-template-columns:minmax(220px,1fr) auto auto minmax(320px,3fr);gap:14px;align-items:stretch;width:100%;overflow-x:auto;">
@@ -469,12 +477,8 @@
         </div>
       </div>
 
-      <!-- Historical chart: header + OHLC + graph + bottom bar -->
+      <!-- Historical chart: combined top bar + graph + bottom bar -->
       <div style="overflow:hidden;display:flex;flex-direction:column;min-width:0;">
-        <div style="display:flex;gap:6px;margin-bottom:2px;">
-          ${rrIdxBox}
-          ${sdBox}
-        </div>
         ${graph3TopBox}
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
           <div id="${histId}_wrap" style="width:100%;">${histSvg}</div>
