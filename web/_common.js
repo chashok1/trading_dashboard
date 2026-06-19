@@ -402,7 +402,7 @@
       `</div>`);
 
     el.innerHTML = `
-    <div style="display:grid;grid-template-columns:minmax(220px,1fr) auto auto minmax(320px,3fr);gap:14px;align-items:stretch;width:100%;overflow-x:auto;">
+    <div style="display:grid;grid-template-columns:minmax(220px,1fr) minmax(320px,3fr);gap:14px;align-items:stretch;width:100%;overflow-x:auto;">
 
       <!-- Left panel: header (top, aligns with graph) + action line + descriptions + decision -->
       <div style="display:flex;flex-direction:column;gap:6px;min-width:0;">
@@ -461,20 +461,6 @@
           })()}
         </div>
 
-      </div>
-
-      <!-- Column 1: graph only (no top/bottom boxes) -->
-      <div style="display:flex;flex-direction:column;">
-        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
-          ${svgToday}
-        </div>
-      </div>
-
-      <!-- Column 2: graph only (no top/bottom boxes) -->
-      <div style="display:flex;flex-direction:column;align-items:center;">
-        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
-          ${svgTT || ''}
-        </div>
       </div>
 
       <!-- Historical chart: combined top bar + graph + bottom bar -->
@@ -547,29 +533,20 @@
     const xPx = i => PAD_L + (nExt > 1 ? (i / (nExt - 1)) * cW : cW / 2);
     const yPx = v => PAD_T + cH * (1 - (v - yMinP) / yRangeP);
 
-    // Step-function polyline — each value holds until the next change
-    const stepPolyline = (arr, color, lw, dash = '') => {
+    // Smooth cubic-Bezier path (Catmull-Rom → cubic control points)
+    const smoothPath = (arr, color, lw, dash = '') => {
       const pts = [];
-      for (let i = 0; i < n; i++) {
-        if (arr[i] == null) continue;
-        pts.push(`${xPx(i).toFixed(1)},${yPx(arr[i]).toFixed(1)}`);
-        // Extend horizontally to next point
-        if (i + 1 < n && arr[i+1] != null && arr[i+1] !== arr[i]) {
-          pts.push(`${xPx(i+1).toFixed(1)},${yPx(arr[i]).toFixed(1)}`);
-        }
-      }
+      for (let i = 0; i < n; i++) { if (arr[i] != null) pts.push([xPx(i), yPx(arr[i])]); }
       if (!pts.length) return '';
-      return `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="${lw}" stroke-linejoin="round" ${dash ? `stroke-dasharray="${dash}"` : ''}/>`;
-    };
-
-    const smoothPolyline = (arr, color, lw, dash = '') => {
-      const pts = arr.map((v, i) => v != null ? `${xPx(i).toFixed(1)},${yPx(v).toFixed(1)}` : null);
-      let segs = [], seg = [];
-      pts.forEach(p => { if (p) seg.push(p); else if (seg.length) { segs.push(seg); seg = []; } });
-      if (seg.length) segs.push(seg);
-      return segs.map(s =>
-        `<polyline points="${s.join(' ')}" fill="none" stroke="${color}" stroke-width="${lw}" stroke-linejoin="round" ${dash ? `stroke-dasharray="${dash}"` : ''}/>`
-      ).join('');
+      if (pts.length === 1) return `<circle cx="${pts[0][0].toFixed(1)}" cy="${pts[0][1].toFixed(1)}" r="2" fill="${color}"/>`;
+      let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[Math.max(0, i-1)], p1 = pts[i], p2 = pts[i+1], p3 = pts[Math.min(pts.length-1, i+2)];
+        const cp1x = p1[0] + (p2[0] - p0[0]) / 6, cp1y = p1[1] + (p2[1] - p0[1]) / 6;
+        const cp2x = p2[0] - (p3[0] - p1[0]) / 6, cp2y = p2[1] - (p3[1] - p1[1]) / 6;
+        d += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+      }
+      return `<path d="${d}" fill="none" stroke="${color}" stroke-width="${lw}" stroke-linecap="round" ${dash ? `stroke-dasharray="${dash}"` : ''}/>`;
     };
 
     // Green zone fill between TRR and LRR (step-function polygon)
@@ -677,8 +654,8 @@
       ${rrFill}
       ${todayMark}${curLine}
       ${tradeLine}${trendLine}
-      ${stepPolyline(trrs, '#ec4899', 1.5, '5 3')}
-      ${stepPolyline(lrrs, '#ec4899', 1.5, '5 3')}
+      ${smoothPath(trrs, '#ec4899', 1.5, '5 3')}
+      ${smoothPath(lrrs, '#ec4899', 1.5, '5 3')}
       ${candlesticks}
       ${rrLabels}${xLabels}
       ${lastPriceBadge}
