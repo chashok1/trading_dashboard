@@ -633,8 +633,8 @@
     const curLine = curPriceY != null
       ? `<line x1="${PAD_L}" y1="${curPriceY.toFixed(1)}" x2="${PAD_L+cW}" y2="${curPriceY.toFixed(1)}" stroke="#374151" stroke-width="0.7" stroke-dasharray="3 3"/>` : '';
     const lastPriceBadge = curPriceY != null
-      ? `<rect id="${svgEl.id}_lpbg" x="${PAD_L+cW+10}" y="${(curPriceY-7).toFixed(1)}" width="32" height="14" rx="2" fill="#374151"/>` +
-        `<text id="${svgEl.id}_lpt" x="${PAD_L+cW+26}" y="${curPriceY.toFixed(1)}" fill="#fff" font-size="8" font-weight="600" text-anchor="middle" dominant-baseline="middle">${curPrice.toFixed(2)}</text>`
+      ? `<rect id="${svgEl.id}_lpbg" x="${PAD_L+cW+20}" y="${(curPriceY-7).toFixed(1)}" width="32" height="14" rx="2" fill="#374151"/>` +
+        `<text id="${svgEl.id}_lpt" x="${PAD_L+cW+36}" y="${curPriceY.toFixed(1)}" fill="#fff" font-size="8" font-weight="600" text-anchor="middle" dominant-baseline="middle">${curPrice.toFixed(2)}</text>`
       : '';
 
     // OHLC candlestick bars
