@@ -517,7 +517,11 @@
     for (let i = 0; i < n; i++) { if (prices[i] != null) lastP = prices[i]; else if (lastP != null) prices[i] = lastP; }
 
     const W = Math.max(svgEl.parentElement ? svgEl.parentElement.offsetWidth || 700 : 700, 400);
-    const PAD_L = 44, PAD_R = 140, PAD_T = 10, PAD_B = 22;
+    const PAD_L = 44, PAD_R = 190, PAD_T = 10, PAD_B = 22;
+    // Right-side columns (offsets from PAD_L+cW):
+    //   +4  : Y-axis tick numbers + current price badge (cW+2, width 32)
+    //   +70 : TRR / LRR labels
+    //   +135: Trade / Trend labels
     const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
 
     const tradeLevel = levels && levels.trade != null ? levels.trade : null;
@@ -570,9 +574,9 @@
     const latestLrr = [...lrrs].reverse().find(v => v != null);
     const rrLabels = [
       latestTrr != null && latestTrr >= yMinP && latestTrr <= yMaxP
-        ? `<text x="${PAD_L+cW+40}" y="${yPx(latestTrr)+4}" fill="#be185d" font-size="9" font-weight="600">TRR ${latestTrr.toFixed(0)}</text>` : '',
+        ? `<text x="${PAD_L+cW+70}" y="${yPx(latestTrr)+4}" fill="#be185d" font-size="9" font-weight="600">TRR ${latestTrr.toFixed(0)}</text>` : '',
       latestLrr != null && latestLrr >= yMinP && latestLrr <= yMaxP
-        ? `<text x="${PAD_L+cW+40}" y="${yPx(latestLrr)+4}" fill="#be185d" font-size="9" font-weight="600">LRR ${latestLrr.toFixed(0)}</text>` : '',
+        ? `<text x="${PAD_L+cW+70}" y="${yPx(latestLrr)+4}" fill="#be185d" font-size="9" font-weight="600">LRR ${latestLrr.toFixed(0)}</text>` : '',
     ].join('');
 
     // Date labels — fit as many as possible without overlap (~30px per label)
@@ -616,11 +620,11 @@
       : '';
 
     const tradeLine = (tradeLevel != null && tradeLevel >= yMinP && tradeLevel <= yMaxP)
-      ? `<line x1="${PAD_L}" y1="${yPx(tradeLevel).toFixed(1)}" x2="${PAD_L+cW+90}" y2="${yPx(tradeLevel).toFixed(1)}" stroke="#f97316" stroke-width="2" stroke-dasharray="2 5" stroke-linecap="round"/>` +
-        `<text x="${PAD_L+cW+93}" y="${(yPx(tradeLevel)+3.5).toFixed(1)}" fill="#f97316" font-size="8" font-weight="700" text-anchor="start">Trade</text>` : '';
+      ? `<line x1="${PAD_L}" y1="${yPx(tradeLevel).toFixed(1)}" x2="${PAD_L+cW+132}" y2="${yPx(tradeLevel).toFixed(1)}" stroke="#f97316" stroke-width="2" stroke-dasharray="2 5" stroke-linecap="round"/>` +
+        `<text x="${PAD_L+cW+135}" y="${(yPx(tradeLevel)+3.5).toFixed(1)}" fill="#f97316" font-size="8" font-weight="700" text-anchor="start">Trade</text>` : '';
     const trendLine = (trendLevel != null && trendLevel >= yMinP && trendLevel <= yMaxP)
-      ? `<line x1="${PAD_L}" y1="${yPx(trendLevel).toFixed(1)}" x2="${PAD_L+cW+90}" y2="${yPx(trendLevel).toFixed(1)}" stroke="#818cf8" stroke-width="2" stroke-dasharray="2 5" stroke-linecap="round"/>` +
-        `<text x="${PAD_L+cW+93}" y="${(yPx(trendLevel)+3.5).toFixed(1)}" fill="#818cf8" font-size="8" font-weight="700" text-anchor="start">Trend</text>` : '';
+      ? `<line x1="${PAD_L}" y1="${yPx(trendLevel).toFixed(1)}" x2="${PAD_L+cW+132}" y2="${yPx(trendLevel).toFixed(1)}" stroke="#818cf8" stroke-width="2" stroke-dasharray="2 5" stroke-linecap="round"/>` +
+        `<text x="${PAD_L+cW+135}" y="${(yPx(trendLevel)+3.5).toFixed(1)}" fill="#818cf8" font-size="8" font-weight="700" text-anchor="start">Trend</text>` : '';
 
     const todayX = xPx(n - 1);
     const todayMark = `<line x1="${todayX}" y1="${PAD_T}" x2="${todayX}" y2="${PAD_T+cH}" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2 2"/>`;
