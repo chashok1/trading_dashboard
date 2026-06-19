@@ -483,10 +483,13 @@
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
           <div id="${histId}_wrap" style="width:100%;">${histSvg}</div>
         </div>
-        <div style="display:flex;gap:6px;margin-top:2px;">
-          ${graph1Box}
-          ${graph2Box}
-        </div>
+        ${infoBox(`<div style="display:flex;align-items:center;gap:12px;">` +
+          `<span><span style="color:#94a3b8;">TRR</span> <strong style="color:#be185d;">${fmt(trr)}</strong></span>` +
+          `<span><span style="color:#94a3b8;">MRR</span> <strong style="color:#4ade80;">${fmt(mrr)}</strong></span>` +
+          `<span><span style="color:#94a3b8;">LRR</span> <strong style="color:#be185d;">${fmt(lrr)}</strong></span>` +
+          `<span><span style="color:#94a3b8;">Trade</span> <strong style="color:#f97316;">${fmt(trade)}</strong></span>` +
+          `<span><span style="color:#94a3b8;">Trend</span> <strong style="color:#818cf8;">${fmt(trend)}</strong></span>` +
+          `</div>`)}
       </div>
 
     </div>`;
