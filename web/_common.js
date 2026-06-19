@@ -57,19 +57,46 @@
     })[c]);
   }
 
-  function fmtUsd(v) {
+  /**
+   * Format a number as USD.
+   * @param {*}       v     — the value
+   * @param {object} [opts]
+   * @param {boolean} [opts.compact]  — use K/M suffixes (portfolio.js style)
+   * @param {boolean} [opts.sign]     — prepend + for positive values
+   */
+  function fmtUsd(v, opts = {}) {
     if (v === null || v === undefined || v === '') return '';
     const n = Number(v);
     if (!isFinite(n)) return '';
-    if (Math.abs(n) >= 1000) return '$' + Math.round(n).toLocaleString();
-    return '$' + n.toFixed(0);
+    const abs = Math.abs(n);
+    let s;
+    if (opts.compact && abs >= 1e6) {
+      s = (abs / 1e6).toLocaleString(undefined,
+          { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'M';
+    } else if (opts.compact && abs >= 1e3) {
+      s = (abs / 1e3).toLocaleString(undefined,
+          { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + 'K';
+    } else if (abs >= 1000) {
+      s = Math.round(abs).toLocaleString();
+    } else {
+      s = abs.toFixed(0);
+    }
+    const prefix = (n < 0 ? '-$' : (opts.sign && n > 0 ? '+$' : '$'));
+    return prefix + s;
   }
 
-  function fmtPct(v, decimals = 2) {
+  /**
+   * Format a number as a percentage.
+   * @param {*}      v        — the value (treated as already-a-percent, e.g. 5.3 → "5.30%")
+   * @param {number} [decimals=2]
+   * @param {boolean} [opts.sign]  — prepend + for positive
+   */
+  function fmtPct(v, decimals = 2, opts = {}) {
     if (v === null || v === undefined || v === '') return '';
     const n = Number(v);
     if (!isFinite(n)) return '';
-    return n.toFixed(decimals) + '%';
+    const sign = (opts && opts.sign) ? (n >= 0 ? '+' : '') : '';
+    return sign + n.toFixed(decimals) + '%';
   }
 
   function fmtDate(d) {
@@ -77,12 +104,17 @@
     return String(d).slice(0, 10);
   }
 
-  function fmtNum(v) {
+  /**
+   * Generic number formatter.
+   * @param {*}      v
+   * @param {number} [digits=2]  — max decimal places
+   */
+  function fmtNum(v, digits = 2) {
     if (v === null || v === undefined || v === '') return '';
     const n = Number(v);
     if (!isFinite(n)) return '';
     if (Number.isInteger(n)) return String(n);
-    return n.toFixed(3).replace(/\.?0+$/, '');
+    return n.toFixed(digits).replace(/\.?0+$/, '');
   }
 
   function _readDateCache() {
@@ -357,18 +389,14 @@
         <span><span style="color:#94a3b8;">Trend</span> <strong style="color:#818cf8;">${fmt(trend)}</strong></span>
       </div>`, 'width:100%;box-sizing:border-box;');
 
-    // ── Box above Graph3: OHLC hover display (populated after chart renders) ──
+    // ── Box above Graph4: OHLC hover display (populated after chart renders) ──
     const graph3TopBox = infoBox(
-      `<div id="${histId}_ohlc" style="font-size:9px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:13px;text-align:center;"></div>`);
-
-    // ── Box below Graph3: label only ──────────────────────────────────────────
-    const graph3BotBox = infoBox(
-      `<div style="text-align:center;font-weight:600;color:#64748b;font-size:9px;">60-day history</div>`);
+      `<div id="${histId}_ohlc" style="font-size:9px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:13px;text-align:right;"></div>`);
 
     el.innerHTML = `
     <div style="display:grid;grid-template-columns:minmax(220px,1fr) auto auto minmax(320px,3fr);gap:14px;align-items:stretch;width:100%;overflow-x:auto;">
 
-      <!-- Left panel: header (top, aligns with rrIdxBox) + action line + descriptions + decision -->
+      <!-- Left panel: header (top, aligns with graph) + action line + descriptions + decision -->
       <div style="display:flex;flex-direction:column;gap:6px;min-width:0;">
 
         <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;padding:5px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;white-space:nowrap;">
@@ -427,31 +455,34 @@
 
       </div>
 
-      <!-- Column 1: top box + graph centered + bottom box -->
+      <!-- Column 1: graph only (no top/bottom boxes) -->
       <div style="display:flex;flex-direction:column;">
-        ${rrIdxBox}
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
           ${svgToday}
         </div>
-        ${graph1Box}
       </div>
 
-      <!-- Column 2: top box + graph centered + bottom box -->
+      <!-- Column 2: graph only (no top/bottom boxes) -->
       <div style="display:flex;flex-direction:column;align-items:center;">
-        ${sdBox}
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
           ${svgTT || ''}
         </div>
-        ${graph2Box}
       </div>
 
-      <!-- Historical chart: top box + centered graph + legend bottom box -->
+      <!-- Historical chart: header + OHLC + graph + bottom bar -->
       <div style="overflow:hidden;display:flex;flex-direction:column;min-width:0;">
+        <div style="display:flex;gap:6px;margin-bottom:2px;">
+          ${rrIdxBox}
+          ${sdBox}
+        </div>
         ${graph3TopBox}
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;">
           <div id="${histId}_wrap" style="width:100%;">${histSvg}</div>
         </div>
-        ${graph3BotBox}
+        <div style="display:flex;gap:6px;margin-top:2px;">
+          ${graph1Box}
+          ${graph2Box}
+        </div>
       </div>
 
     </div>`;
@@ -856,6 +887,17 @@
     renderRRAnalysis,
     pctRing,
   };
-  window.yahooLink = yahooLink;
-  window.pctRing = pctRing;
+  // TASK_58: expose helpers directly on window so pages that previously defined
+  // their own local copies can remove them and use the canonical versions without
+  // updating every call site.
+  window.fetchJson    = fetchJson;
+  window.escapeHtml   = escapeHtml;
+  window.fmtUsd       = fmtUsd;
+  window.fmtPct       = fmtPct;
+  window.fmtDate      = fmtDate;
+  window.fmtNum       = fmtNum;
+  // fetchJSON is a common alias used in ref.js, dbstats.js, explore.js, trig.js
+  window.fetchJSON    = fetchJson;
+  window.yahooLink    = yahooLink;
+  window.pctRing      = pctRing;
 })();
