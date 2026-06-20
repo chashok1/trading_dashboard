@@ -207,7 +207,8 @@ HIST_MAPS = {
         ],
     ),
 
-    # TW tab -> hist_tw (raw cols Y-BC)
+    # TW tab -> hist_tw
+    # Column names as of current TOS export (all distinct — no duplicate headers).
     "TW": dict(
         sheet="TW",
         table="hist_tw",
@@ -217,37 +218,36 @@ HIST_MAPS = {
         seq_source_col="Export Time",
         symbol_source_col="Symbol",
         columns=[
-            ("Export Date",                "export_date",        to_date),
-            ("Date",                       "export_date",        to_date),  # CSV alt
-            ("Export Time",                "export_time",        to_text),
-            ("Time",                       "export_time",        to_text),  # CSV alt
-            ("Symbol",                     "symbol",             to_text),
-            ("Last",                       "last_price",         to_numeric),
-            ("%Change",                    "change_pct",         to_numeric),
-            # 2026-05-28: Removed beta, market_cap_str, sector, fcf_per_share.
-            # Consolidated on hist_to as single source for these fields.
-            ("StandardDeviation",          "standard_dev",       to_numeric),
-            ("52High",                     "high_52",            to_numeric),
-            ("52Low",                      "low_52",             to_numeric),
-            ("SimpleMovingAvg",            "sma_20",             to_numeric),  # AJ
-            ("A_MCADays_Streak",           "a_macdays_streak",   to_numeric),
-            ("A_MACD_BRR",                 "a_macd_brr",         to_numeric),
-            ("A_MACDH_D_BRR",              "a_macdh_d_brr",      to_numeric),
-            ("Volume",                     "volume",             to_bigint),
-            ("A_VolumeSpike",              "a_volume_spike",     to_numeric),
-            ("VolumeAvg",                  "volume_avg_10d",     to_numeric),  # AR
-            ("VolumeRateOfChange",         "volume_rate_change", to_numeric),
-            ("A_Perf2M",                   "a_perf_2m",          to_numeric),
-            ("A_Perf2Wk",                  "a_perf_2wk",         to_numeric),
-            ("A_Perf3D",                   "a_perf_3d",          to_numeric),
-            ("A_3mnHigh",                  "a_3mn_high",         to_numeric),
-            ("A_3mnLow",                   "a_3mn_low",          to_numeric),
-            ("A_3mnHighLow",               "a_3mn_high_low",     to_numeric),
-            ("A_3wkHighLow",               "a_3wk_high_low",     to_numeric),
-            ("A_EarningsDays",             "a_earnings_days",    to_numeric),
+            ("Export Date",        "export_date",        to_date),
+            ("Date",               "export_date",        to_date),
+            ("Export Time",        "export_time",        to_text),
+            ("Time",               "export_time",        to_text),
+            ("Symbol",             "symbol",             to_text),
+            ("Last",               "last_price",         to_numeric),
+            ("%Change",            "change_pct",         to_numeric),
+            ("StandardDeviation",  "standard_dev",       to_numeric),
+            ("52High",             "high_52",            to_numeric),
+            ("52Low",              "low_52",             to_numeric),
+            ("20 DMA",             "sma_20",             to_numeric),
+            ("50 DMA",             "sma_50",             to_numeric),
+            ("200 DMA",            "sma_200",            to_numeric),
+            ("A_MCADays_Streak",   "a_macdays_streak",   to_numeric),
+            ("A_MACD_BRR",         "a_macd_brr",         to_numeric),
+            ("A_MACDH_D_BRR",      "a_macdh_d_brr",      to_numeric),
+            ("Volume",             "volume",             to_bigint),
+            ("A_VolumeSpike",      "a_volume_spike",     to_numeric),
+            ("Avg Vlm (10day)",    "volume_avg_10d",     to_numeric),
+            ("Avg Vlm (3m)",       "volume_avg_3m",      to_numeric),
+            ("VolumeRateOfChange", "volume_rate_change", to_numeric),
+            ("A_Perf2M",           "a_perf_2m",          to_numeric),
+            ("A_Perf2Wk",          "a_perf_2wk",         to_numeric),
+            ("A_Perf3D",           "a_perf_3d",          to_numeric),
+            ("A_3mnHigh",          "a_3mn_high",         to_numeric),
+            ("A_3mnLow",           "a_3mn_low",          to_numeric),
+            ("A_3mnHighLow",       "a_3mn_high_low",     to_numeric),
+            ("A_3wkHighLow",       "a_3wk_high_low",     to_numeric),
+            ("A_EarningsDays",     "a_earnings_days",    to_numeric),
         ],
-        # NOTE: TW has 3 columns named "SimpleMovingAvg" and 2 named
-        # "VolumeAvg". load_raw.py handles duplicates by index when needed.
     ),
 
     # TO tab -> hist_to (fundamentals - mostly all raw)

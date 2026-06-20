@@ -66,7 +66,7 @@ CUSTOM_HANDLERS = {
     "etfchg": load_etfchg,
     "iichg":  load_iichg,
     "rr":     load_rr,
-    "tw":     load_tw,  # Handles duplicate column headers (3x SimpleMovingAvg, 2x VolumeAvg)
+    "tw":     load_tw,
     "ref_tickers": load_ref_tables,
     # 'miss' has no loader - it is a derived table only
 }
