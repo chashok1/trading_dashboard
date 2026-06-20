@@ -323,9 +323,9 @@ def main() -> int:
                holdout_from_date, holdout_to_date,
                holdout_auc, holdout_n, calibration_table, notes)
             VALUES
-              (:active, :feats::jsonb, :coefs::jsonb, :intercept,
+              (:active, cast(:feats as jsonb), cast(:coefs as jsonb), :intercept,
                :tf, :tt, :hf, :ht,
-               :auc, :hn, :calib::jsonb, :notes)
+               :auc, :hn, cast(:calib as jsonb), :notes)
             RETURNING model_id
         """), {
             "active":    args.activate,
