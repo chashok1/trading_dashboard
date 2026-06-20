@@ -34,6 +34,8 @@
     'SO':       { label: 'SELL OVER',    code: 'SO',  side: 'sell',    cls: 'act-chip-reduce',   colorCls: 'act-sell' },
     'SW':       { label: 'SELL WATCH',   code: 'SW',  side: 'sell',    cls: 'act-chip-reduce',   colorCls: 'act-sell-weak' },
     'SWW':      { label: 'SELL WATCH W', code: 'SWW', side: 'sell',    cls: 'act-chip-reduce',   colorCls: 'act-sell-weak' },
+    // -- Sell / Generic (legacy) -----------------------------------------------
+    'S':        { label: 'SELL',         code: 'SS',  side: 'sell',    cls: 'act-chip-reduce',   colorCls: 'act-sell' },
     // -- Buy / Increase --------------------------------------------------------
     'INCREASE': { label: 'BUY SOME',     code: 'BS',  side: 'buy',     cls: 'act-chip-increase', colorCls: 'act-buy' },
     'BS':       { label: 'BUY SOME',     code: 'BS',  side: 'buy',     cls: 'act-chip-increase', colorCls: 'act-buy' },
@@ -43,6 +45,11 @@
     'BMN':      { label: 'BUY TO MIN',   code: 'BMN', side: 'buy',     cls: 'act-chip-add',      colorCls: 'act-buy-weak' },
     'BW':       { label: 'BUY WATCH',    code: 'BW',  side: 'buy',     cls: 'act-chip-add',      colorCls: 'act-buy-weak' },
     'BSW':      { label: 'BUY SOME W',   code: 'BSW', side: 'buy',     cls: 'act-chip-add',      colorCls: 'act-buy-weak' },
+    // -- Buy / Rebalance / Call / Legacy -------------------------------------------
+    'BR':       { label: 'BUY REBAL',    code: 'BR',  side: 'buy',     cls: 'act-chip-add',      colorCls: 'act-buy' },
+    'BC':       { label: 'BUY CALL',     code: 'BC',  side: 'buy',     cls: 'act-chip-add',      colorCls: 'act-buy-weak' },
+    'BRW':      { label: 'BUY REB W',    code: 'BRW', side: 'buy',     cls: 'act-chip-add',      colorCls: 'act-buy-weak' },
+    'B':        { label: 'BUY',          code: 'B',   side: 'buy',     cls: 'act-chip-increase', colorCls: 'act-buy-weak' },
     // -- Hold ------------------------------------------------------------------
     'HOLD':     { label: 'HOLD',         code: 'HOLD', side: 'neutral', cls: 'act-chip-hold',    colorCls: 'act-neutral' },
     'N':        { label: 'NEUTRAL',      code: 'N',    side: 'neutral', cls: 'act-chip-hold',    colorCls: 'act-neutral' },

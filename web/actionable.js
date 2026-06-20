@@ -15,10 +15,13 @@ const state = {
     symbol_search: '',   // symbol search text filter
     conviction: 'any',   // 'any' | 'multi' | 'proven'
     actionable_only: true, // hides HOLD and NONE rows by default
+    bull_prob_min: 0,    // TASK_66: minimum bull_prob (0 = no filter)
+    agreement_class: '', // TASK_69: '' = all; else exact match on agreement_class
   },
   current: null,
   sourceMethods: {},   // source_code -> base_weight_method (Metric-column sort)
   buysellSeq: {},      // buysell code -> seq from ref_param_lookup (priority sort)
+  agreementScorecard: null, // TASK_69: {agreement_class -> avg_fwd_20d} cache
   // Pass 2: top-N collapse
   showAll: false,
   TOP_N: 15,
@@ -250,6 +253,16 @@ async function loadSources() {
   try {
     state.buysellSeq = await fetchJson('/api/ref/buysell');
   } catch (_) { state.buysellSeq = {}; }
+  // TASK_69: agreement scorecard — keyed by agreement_class -> avg_fwd_20d.
+  try {
+    const asc = await fetchJson('/api/rules/agreement-scorecard');
+    state.agreementScorecard = {};
+    for (const r of (asc || [])) {
+      if (r.agreement_class != null) {
+        state.agreementScorecard[r.agreement_class] = r.avg_fwd_20d;
+      }
+    }
+  } catch (_) { state.agreementScorecard = {}; }
 }
 
 // Resolve the buy/sell side for a fired rule ID via actions.js (single source
@@ -316,11 +329,11 @@ function firesCellHtml(r) {
     'act-sell-strong': '#991b1b', 'act-sell': '#ef4444', 'act-sell-weak': '#f97316',
     'act-buy-strong':  '#14532d', 'act-buy':  '#22c55e', 'act-buy-weak':  '#86efac',
   };
-  const _RULE_EXTRA = { 'BR': 'act-buy', 'B': 'act-buy-weak' };
+  // D5: _RULE_EXTRA (BR/B overrides) removed — BR and B now in actions.js _MAP.
   const _ruleColor = (id) => {
     for (const part of String(id).toUpperCase().split('-')) {
       const d = actionDisplay(part);
-      const cls = (d.colorCls && d.colorCls !== 'act-neutral' ? d.colorCls : null) || _RULE_EXTRA[part];
+      const cls = (d.colorCls && d.colorCls !== 'act-neutral') ? d.colorCls : null;
       if (cls && _RULE_CLR[cls]) return _RULE_CLR[cls];
     }
     return '#94a3b8';
@@ -458,6 +471,14 @@ function matchesBaseFilters(r) {
     const search = symSearch.toUpperCase();
     if (!r.tos_symbol || !r.tos_symbol.toUpperCase().includes(search)) return false;
   }
+  // TASK_66: bull_prob minimum filter
+  const bpMin = Number(state.filters.bull_prob_min) || 0;
+  if (bpMin > 0) {
+    if (r.bull_prob == null || Number(r.bull_prob) < bpMin) return false;
+  }
+  // TASK_69: agreement_class filter
+  const agCls = state.filters.agreement_class || '';
+  if (agCls && r.agreement_class !== agCls) return false;
   return true;
 }
 
@@ -777,6 +798,8 @@ function syncFilterUi() {
   const acctFilter = $('accountFilter'); if (acctFilter) acctFilter.value = f.account || '';
   const showHidden = $('showHidden');   if (showHidden) showHidden.checked = f.show_hidden;
   const sym = $('symbolSearch');        if (sym) sym.value = f.symbol_search || '';
+  const bp = $('bullProbFilter');       if (bp) bp.value = f.bull_prob_min || 0;
+  const ag = $('agreementFilter');      if (ag) ag.value = f.agreement_class || '';
   // conviction segmented
   document.querySelectorAll('#convictionCtrl button').forEach(b => {
     b.classList.toggle('seg-active', b.dataset.conv === f.conviction);
@@ -794,6 +817,10 @@ function clearAllFilters() {
   f.action = ''; f.source = ''; f.account = ''; f.held_only = false;
   f.show_hidden = false; f.actionable_only = true;
   f.symbol_search = ''; f.conviction = 'any';
+  f.bull_prob_min = 0;
+  f.agreement_class = '';
+  const bpEl = $('bullProbFilter'); if (bpEl) bpEl.value = '0';
+  const agEl = $('agreementFilter'); if (agEl) agEl.value = '';
   // Reset sort to default actionability order (updateSortIndicators called in renderGrid)
   state.sort = { key: '_priority', dir: -1, type: 'num' };
   // Reset show_hidden -> requires refetch (show_hidden=false excludes acted/suppressed from API)
@@ -1086,16 +1113,22 @@ function _fcStrengthToAction(strength, consolidated) {
 /**
  * finalCall(row) -> {label, code, side, strength, confidence, feasible}
  *
- * Two-driver hierarchical decision:
+ * D6: server (derive_actionable.py::_compute_final_call) is the single source
+ * of truth. This function reads final_code/final_side/fc_* when present.
+ * The client-side computation below is a fallback ONLY for:
+ *   (a) historical dates pre-TASK_53 migration (no final_code column yet), or
+ *   (b) rows returned by a non-derived path (e.g. direct DB query without derive).
+ * Do NOT add decision logic here — keep it in _compute_final_call on the server.
+ *
+ * Two-driver hierarchical decision (mirrored server-side):
  *   Sources (consolidated_action) = strategic: gates ownership (own it or exit).
  *   Technical (rr_action)         = tactical: trim/add while owning.
  *   Rules/edge are NOT consulted here — kept in the Rules column for manual
  *   cross-reference only.
  */
 function finalCall(row) {
-  // TASK_53: read server-computed final call when available (derived at ETL time).
-  // Falls back to client-side computation for rows missing the new columns (e.g.
-  // re-derives that haven't run yet, or historical dates pre-migration).
+  // D6: prefer server-computed final call (derived at ETL time via _compute_final_call).
+  // Client-side code below is a thin read-only fallback for pre-migration rows.
   if (row.final_code !== undefined && row.final_code !== null) {
     var _feasible = (row.fc_feasible === true || row.fc_feasible === 'true');
     var _strength = Number(row.fc_strength) || 0;
@@ -1797,6 +1830,58 @@ function initSourcePopover() {
   });
 }
 
+// ---- TASK_66: bull_prob cell renderer ----
+// Shows probability as a percent with color coding.
+// Agreement badge: green dot = high agreement (≥0.7), amber = mixed (0.4–0.7), red = split (<0.4).
+function _bullProbCellHtml(r) {
+  const prob = r.bull_prob;
+  if (prob == null) return '<span style="color:#cbd5e1;font-size:10px;">—</span>';
+  const pct = Math.round(Number(prob) * 100);
+  const probColor = pct >= 65 ? '#16a34a' : pct >= 50 ? '#d97706' : '#dc2626';
+  const agr = r.bull_agreement;
+  let agrBadge = '';
+  if (agr != null) {
+    const agrVal = Number(agr);
+    const agrColor = agrVal >= 0.7 ? '#16a34a' : agrVal >= 0.4 ? '#d97706' : '#dc2626';
+    const agrTitle = `Signal agreement: ${Math.round(agrVal * 100)}% of signals bullish`;
+    agrBadge = `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${agrColor};margin-left:3px;vertical-align:middle;" title="${agrTitle}"></span>`;
+  }
+  return `<span style="font-weight:700;font-size:11px;color:${probColor};">${pct}%</span>${agrBadge}`;
+}
+
+// ---- TASK_69: agreement_class cell renderer ----
+// Colors: agree_bull=green, agree_bear=red, split_tech_bull=amber, split_tech_bear=orange, neutral=slate.
+// Edge badge loaded from v_agreement_scorecard (stored in state.agreementScorecard).
+const _AGR_LABEL = {
+  agree_bull:      'Bull',
+  agree_bear:      'Bear',
+  split_tech_bull: 'SplTB',
+  split_tech_bear: 'SplTSB',
+  neutral:         'Neutral',
+};
+const _AGR_COLOR = {
+  agree_bull:      '#16a34a',
+  agree_bear:      '#dc2626',
+  split_tech_bull: '#d97706',
+  split_tech_bear: '#ea580c',
+  neutral:         '#94a3b8',
+};
+function _agreementCellHtml(r) {
+  const cls = r.agreement_class;
+  if (!cls) return '<span style="color:#cbd5e1;font-size:10px;">—</span>';
+  const lbl = _AGR_LABEL[cls] || cls;
+  const color = _AGR_COLOR[cls] || '#64748b';
+  // Edge badge from scorecard (populated after /api/rules/agreement-scorecard loads)
+  let edgeBadge = '';
+  if (state.agreementScorecard && state.agreementScorecard[cls] != null) {
+    const e = Number(state.agreementScorecard[cls]);
+    const eColor = e > 0.5 ? '#16a34a' : e < -0.5 ? '#dc2626' : '#d97706';
+    const eSign = e >= 0 ? '+' : '';
+    edgeBadge = `<span style="font-size:9px;color:${eColor};margin-left:3px;" title="Avg fwd 20d for ${cls}: ${eSign}${e.toFixed(2)}%">${eSign}${e.toFixed(1)}</span>`;
+  }
+  return `<span style="font-size:10px;font-weight:700;color:${color};" title="${cls}">${lbl}</span>${edgeBadge}`;
+}
+
 // ---- column sorting ----
 function sortRows() {
   const { key, dir, type } = state.sort;
@@ -1956,6 +2041,8 @@ function renderGrid() {
       <td class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macdh_d_brr)}">${r.a_macdh_d_brr != null ? Number(r.a_macdh_d_brr).toFixed(2) : ''}</td>
       <td class="num" style="font-size:11px;font-weight:600;color:${_rsiColor(r.rsi)}">${r.rsi != null ? Number(r.rsi).toFixed(1) : ''}</td>
       <td class="rules-link-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:4px 6px; max-width:720px; overflow:hidden; cursor:pointer;" title="Open Rule Flow for ${escapeHtml(r.tos_symbol)}">${firesCellHtml(r)}</td>
+      <td class="num" style="padding:4px 6px; white-space:nowrap;">${_bullProbCellHtml(r)}</td>
+      <td style="padding:4px 6px; white-space:nowrap;">${_agreementCellHtml(r)}</td>
       <td style="padding:4px 6px;">
         <div class="act-inline-btns">
           <button type="button" class="btn-done btn-inline-done" data-sym="${escapeHtml(r.tos_symbol)}" data-fc="${escapeHtml(fcActCode)}" title="Act: log final call action">&#10003; ${escapeHtml(fcActCode)}</button>
@@ -2977,6 +3064,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.filters.symbol_search = e.target.value;
     applyClientFilter();
   });
+
+  // TASK_66: Bull Prob minimum filter
+  const bullProbFilterEl = $('bullProbFilter');
+  if (bullProbFilterEl) {
+    bullProbFilterEl.addEventListener('input', (e) => {
+      state.filters.bull_prob_min = parseFloat(e.target.value) || 0;
+      applyClientFilter();
+    });
+  }
+
+  // TASK_69: Agreement class filter
+  const agreementFilterEl = $('agreementFilter');
+  if (agreementFilterEl) {
+    agreementFilterEl.addEventListener('change', (e) => {
+      state.filters.agreement_class = e.target.value || '';
+      applyClientFilter();
+    });
+  }
 
   // Conviction segmented control
   $('convictionCtrl').addEventListener('click', (e) => {

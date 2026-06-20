@@ -445,6 +445,117 @@ def get_my_actions(limit: int = Query(200, ge=1, le=2000)):
         return {"summary": dict(summ) if summ else {}, "recent": [dict(r) for r in recent]}
 
 
+@router.get("/api/rules/bull-model", response_model=dict)
+def get_bull_model():
+    """TASK_66: return the active ref_bull_model metadata (no raw DB data).
+    Returns {} when no model has been trained yet."""
+    with session_scope() as s:
+        row = s.execute(text(
+            "SELECT model_id, trained_at, feature_names, intercept,"
+            " train_from_date, train_to_date,"
+            " holdout_from_date, holdout_to_date,"
+            " holdout_auc, holdout_n, calibration_table, notes"
+            " FROM ref_bull_model WHERE is_active = TRUE LIMIT 1"
+        )).mappings().first()
+        if row is None:
+            return {}
+        return dict(row)
+
+
+@router.get("/api/actionable/bull-prob", response_model=list[dict])
+def get_bull_prob(
+    date: Optional[str] = Query(None),
+    min_prob: float = Query(0.0, ge=0.0, le=1.0,
+                            description="Only return rows with bull_prob >= min_prob"),
+):
+    """TASK_66: return bull_prob + bull_agreement for all symbols on a date.
+    Sorted by bull_prob DESC. Empty list when model has not been run."""
+    from api._helpers import _resolve_date as _rd
+    d = _rd(date)
+    with session_scope() as s:
+        rows = s.execute(text(
+            "SELECT tos_symbol, bull_prob, bull_agreement,"
+            " consolidated_action, final_code"
+            " FROM drv_actionable"
+            " WHERE as_of_date = :d"
+            "   AND bull_prob IS NOT NULL"
+            "   AND bull_prob >= :mp"
+            " ORDER BY bull_prob DESC NULLS LAST"
+        ), {"d": d, "mp": min_prob}).mappings().all()
+        return [dict(r) for r in rows]
+
+
+@router.get("/api/rules/bull-gate-thresholds", response_model=list[dict])
+def get_bull_gate_thresholds():
+    """TASK_67: return all bull-gate threshold overrides with original vs
+    calculated values and the latest fit history row for comparison.
+    Returns [] when ref_threshold_override does not exist yet."""
+    with session_scope() as s:
+        try:
+            rows = s.execute(text("""
+                SELECT o.rule_key, o.description,
+                       o.original_value, o.calculated_value,
+                       o.active_source, o.updated_at,
+                       h.fitted_value AS last_fitted_value,
+                       h.fit_date, h.train_start, h.train_end,
+                       h.holdout_metric, h.n AS holdout_n
+                FROM ref_threshold_override o
+                LEFT JOIN LATERAL (
+                    SELECT fitted_value, fit_date, train_start,
+                           train_end, holdout_metric, n
+                    FROM ref_threshold_fit_history
+                    WHERE rule_key = o.rule_key
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                ) h ON TRUE
+                ORDER BY o.rule_key
+            """)).mappings().all()
+        except Exception:
+            return []
+        return [dict(r) for r in rows]
+
+
+@router.get("/api/rules/agreement-scorecard", response_model=list[dict])
+def get_agreement_scorecard():
+    """TASK_69: per-bucket forward-return efficacy from v_agreement_scorecard.
+    Returns [] when no drv_rule_outcome rows have been matched yet."""
+    with session_scope() as s:
+        try:
+            rows = s.execute(text(
+                "SELECT agreement_class, n, avg_fwd_5d, avg_fwd_20d,"
+                " win_rate, ci_low, ci_high, confidence"
+                " FROM v_agreement_scorecard"
+            )).mappings().all()
+        except Exception:
+            return []
+        return [dict(r) for r in rows]
+
+
+@router.post("/api/rules/bull-gate-thresholds/{rule_key}/activate",
+             response_model=dict)
+def set_bull_gate_source(rule_key: str, body: dict):
+    """TASK_67: set active_source for one rule_key.
+    body: {active_source: 'original' | 'calculated'}
+    Reverting = POST with active_source='original' — no recompute needed."""
+    src = (body.get("active_source") or "").strip()
+    if src not in ("original", "calculated"):
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=400,
+            detail="active_source must be 'original' or 'calculated'")
+    with session_scope() as s:
+        result = s.execute(text("""
+            UPDATE ref_threshold_override
+               SET active_source = :src, updated_at = NOW()
+             WHERE rule_key = :k
+        """), {"src": src, "k": rule_key})
+        if result.rowcount == 0:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail=f"rule_key {rule_key!r} not found")
+        s.commit()
+    return {"ok": True, "rule_key": rule_key, "active_source": src}
+
+
 @router.post("/api/rules/atomic", response_model=dict, status_code=201)
 def create_atomic_rule(body: AtomicRuleCreateRequest):
     """Create a new atomic rule."""

@@ -193,6 +193,24 @@
          + 'line-height:1.2; display:inline-block;">Y!</a>';
   }
 
+  // ── Outlook color — canonical hex map (D3: single source of truth).
+  // Matches actions.js _OUTLOOK_COLOR exactly; _common.js exposes it so pages
+  // that load _common.js but NOT actions.js (trace, dbstats…) still have one color.
+  // If actions.js is also loaded, window.outlookColor is simply overwritten with the
+  // identical implementation — no conflict.
+  var _OUTLOOK_COLOR_MAP = {
+    'bullish':       '#16a34a',
+    'mild bullish':  '#4ade80',
+    'light bullish': '#a3e635',
+    'neutral':       '#9ca3af',
+    'mild bearish':  '#fb923c',
+    'bearish':       '#ef4444',
+  };
+  function outlookColor(label) {
+    if (!label) return 'inherit';
+    return _OUTLOOK_COLOR_MAP[('' + label).toLowerCase()] || 'inherit';
+  }
+
   // ─── Risk Range Chart ────────────────────────────────────────────────────────
   // renderRRAnalysis(data, el, symbol, date) — render the Risk Range chart + stats.
   function renderRRAnalysis(data, el, symbol, date) {
@@ -330,8 +348,13 @@
     // ── Action colour ─────────────────────────────────────────────────────────
     const actionCode = ru.action || '—';
     const priority   = ru.priority != null ? ru.priority : '—';
-    const isBull = ['B','BM','BS','BN','BMN','BRW','BW','BSW','BR','BC'].includes(actionCode);
-    const isBear = ['SA','S','STM','SS','SO','SW','SWW','SN'].includes(actionCode);
+    // D5: use canonical actionDisplay if available (actions.js); else fall back
+    // to the same side-list that actions.js encodes so both can't drift.
+    var _adSide = (window.actionDisplay ? window.actionDisplay(actionCode).side : null);
+    var isBull = _adSide ? (_adSide === 'buy')
+      : ['B','BM','BS','BN','BMN','BRW','BW','BSW','BR','BC'].includes(actionCode);
+    var isBear = _adSide ? (_adSide === 'sell')
+      : ['SA','S','STM','SS','SO','SW','SWW','SN'].includes(actionCode);
     const actionColor = isBull ? '#16a34a' : isBear ? '#dc2626' : '#64748b';
     const actionBg    = isBull ? '#f0fdf4' : isBear ? '#fef2f2' : '#f8fafc';
 
@@ -422,7 +445,7 @@
           ${taggedRow(null, 'BB Range Streak', ru.bb_desc,   ru.bb_action)}
           ${taggedRow(null, 'RR',              ru.rr_desc,   ru.rr_action)}
           ${rrOutlookRaw ? (() => {
-            const olColor = (window.outlookColor ? window.outlookColor(rrOutlookRaw) : null) || '#64748b';
+            const olColor = (outlookColor(rrOutlookRaw) !== 'inherit' ? outlookColor(rrOutlookRaw) : null) || '#64748b';
             const olLabel = rrOutlookRaw.charAt(0).toUpperCase() + rrOutlookRaw.slice(1).toLowerCase();
             return `<div style="margin-top:4px;display:flex;align-items:center;gap:6px;font-size:10px;">` +
               `<span style="color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:9px;">Outlook</span>` +
@@ -992,6 +1015,7 @@
     loadDates,
     clearDateCache,
     yahooLink,
+    outlookColor,
     renderRRAnalysis,
     pctRing,
     rvolDot,
@@ -1010,6 +1034,9 @@
   // fetchJSON is a common alias used in ref.js, dbstats.js, explore.js, trig.js
   window.fetchJSON    = fetchJson;
   window.yahooLink    = yahooLink;
+  // D3: outlookColor canonical single source. actions.js re-exports the same
+  // function so loading order doesn't matter — last write wins, same value.
+  window.outlookColor = outlookColor;
   window.pctRing      = pctRing;
   window.rvolDot      = rvolDot;
   window.ivGlyph      = ivGlyph;

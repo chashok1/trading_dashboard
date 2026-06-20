@@ -19,12 +19,20 @@ const atomicState = {
 const DOM = {
     perfTableBody: document.getElementById('perfTableBody'),
     atomicTableBody: document.getElementById('atomicTableBody'),
+    agreementTableBody: document.getElementById('agreementTableBody'),
+};
+
+const agreementState = {
+    rows: [],
+    sortBy: 'avg_fwd_20d',
+    sortDir: 'desc',
 };
 
 document.addEventListener('DOMContentLoaded', () => {
     loadScorecard();
     loadMyActions();
     loadAtomicScorecard();
+    loadAgreementScorecard();
 });
 
 async function loadMyActions() {
@@ -216,3 +224,83 @@ function atomicSortBy(column) {
 
 window.loadAtomicScorecard = loadAtomicScorecard;
 window.atomicSortBy = atomicSortBy;
+
+// ---- TASK_69: Agreement scorecard ----
+const _AGR_COLOR_PERF = {
+    agree_bull:      '#16a34a',
+    agree_bear:      '#dc2626',
+    split_tech_bull: '#d97706',
+    split_tech_bear: '#ea580c',
+    neutral:         '#94a3b8',
+};
+
+async function loadAgreementScorecard() {
+    if (!DOM.agreementTableBody) return;
+    DOM.agreementTableBody.innerHTML =
+        '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-3);">Loading…</td></tr>';
+    try {
+        const data = await fetch('/api/rules/agreement-scorecard').then(r => r.json());
+        agreementState.rows = Array.isArray(data) ? data : [];
+        renderAgreementTable();
+    } catch (e) {
+        console.error('Failed to load agreement scorecard:', e);
+        DOM.agreementTableBody.innerHTML =
+            '<tr><td colspan="7" style="text-align:center;color:#b91c1c;">Error loading agreement scorecard</td></tr>';
+    }
+}
+
+function renderAgreementTable() {
+    if (!DOM.agreementTableBody) return;
+    if (!agreementState.rows.length) {
+        DOM.agreementTableBody.innerHTML =
+            '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-3);">'
+            + 'No data yet — agreement_class is populated after derive_bull_prob runs with an active model, and outcome ETL must have computed forward returns.</td></tr>';
+        return;
+    }
+    const dir = agreementState.sortDir === 'asc' ? 1 : -1;
+    const rows = [...agreementState.rows].sort((a, b) => {
+        let va = a[agreementState.sortBy], vb = b[agreementState.sortBy];
+        if (typeof va === 'string' || typeof vb === 'string') {
+            return ((va || '').localeCompare(vb || '')) * dir;
+        }
+        return ((va ?? 0) - (vb ?? 0)) * dir;
+    });
+    const num = (v, d = 2) => (v === null || v === undefined) ? '—' : Number(v).toFixed(d);
+    const edgeCls = v => v > 0.5 ? 'edge-pos' : v < -0.5 ? 'edge-neg' : 'edge-neu';
+    DOM.agreementTableBody.innerHTML = rows.map(r => {
+        const cls = r.agreement_class || '';
+        const color = _AGR_COLOR_PERF[cls] || '#64748b';
+        const conf = r.confidence || 'unproven';
+        const confBadge = conf === 'proven'
+            ? `<span style="color:#15803d;font-weight:700;font-size:10px;">proven</span>`
+            : conf === 'promising'
+            ? `<span style="color:#92400e;font-size:10px;">promising</span>`
+            : `<span style="color:#94a3b8;font-size:10px;">unproven</span>`;
+        const ciLow  = r.ci_low  != null ? Number(r.ci_low).toFixed(2)  : '—';
+        const ciHigh = r.ci_high != null ? Number(r.ci_high).toFixed(2) : '—';
+        const ciStr  = (ciLow !== '—' && ciHigh !== '—') ? `[${ciLow}%, ${ciHigh}%]` : '—';
+        return `
+            <tr>
+                <td><strong style="color:${color};">${cls}</strong></td>
+                <td>${r.n ?? 0}</td>
+                <td class="${edgeCls(r.avg_fwd_20d)}">${num(r.avg_fwd_20d)}%</td>
+                <td style="color:var(--text-3)">${num(r.avg_fwd_5d)}%</td>
+                <td>${num((r.win_rate ?? 0) * 100, 1)}%</td>
+                <td style="color:var(--text-3);font-size:11px;" title="95% CI for avg_fwd_20d">${ciStr}</td>
+                <td>${confBadge}</td>
+            </tr>`;
+    }).join('');
+}
+
+function agSortBy(column) {
+    if (agreementState.sortBy === column) {
+        agreementState.sortDir = agreementState.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+        agreementState.sortBy = column;
+        agreementState.sortDir = column === 'agreement_class' ? 'asc' : 'desc';
+    }
+    renderAgreementTable();
+}
+
+window.loadAgreementScorecard = loadAgreementScorecard;
+window.agSortBy = agSortBy;

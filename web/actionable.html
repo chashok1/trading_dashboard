@@ -580,6 +580,20 @@
           <select id="accountFilter" style="max-width:8em;"><option value="">All</option></select>
           <!-- Symbol search -->
           <input type="text" id="symbolSearch" placeholder="Symbol…" style="padding:3px 8px; border:1px solid var(--border); border-radius:4px; font-size:11px; width:80px;">
+          <!-- Bull Prob filter (TASK_66) -->
+          <label style="font-size:11px; color:var(--text-2,#666); white-space:nowrap;" title="P(↑20d) minimum — only show rows where bull_prob ≥ this value. 0 = show all.">P(↑20d) ≥</label>
+          <input type="number" id="bullProbFilter" min="0" max="1" step="0.05" value="0"
+                 style="width:50px; padding:2px 5px; font-size:11px; border:1px solid var(--border); border-radius:4px;">
+          <!-- Agreement class filter (TASK_69) -->
+          <label style="font-size:11px; color:var(--text-2,#666); white-space:nowrap;" title="Filter by agreement class — agree_bull/agree_bear/split_tech_bull/split_tech_bear/neutral">Agree</label>
+          <select id="agreementFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:110px;" title="Filter by agreement class (TASK_69)">
+            <option value="">All</option>
+            <option value="agree_bull">Agree Bull</option>
+            <option value="agree_bear">Agree Bear</option>
+            <option value="split_tech_bull">Split Tech Bull</option>
+            <option value="split_tech_bear">Split Tech Bear</option>
+            <option value="neutral">Neutral</option>
+          </select>
           <!-- Show Hidden toggle -->
           <label class="toggle" style="font-size:11px; white-space:nowrap;" title="Show suppressed, $0 AMT, no-action, acted/snoozed, and unheld-remove rows"><input type="checkbox" id="showHidden"> Show Hidden</label>
           <!-- Right side: row count, Clear, Focus icon, Export icon -->
@@ -654,6 +668,8 @@
               <th class="num sortable" data-key="a_macdh_d_brr" data-type="num" title="MACD Histogram direction BRR" style="width:52px;">MACDH</th>
               <th class="num sortable" data-key="rsi" data-type="num" title="Relative Strength Index (0–100)" style="width:44px;">RSI</th>
               <th style="width:720px;">Rules (edge)</th>
+              <th class="num sortable" data-key="bull_prob" data-type="num" title="Bull Prob: P(up 20d) from calibrated logistic model (TASK_66). Sortable — rank by probability. Agreement badge = share of signals pointing bullish." style="width:72px;">P(↑20d)</th>
+              <th class="sortable" data-key="agreement_class" data-type="str" title="Agreement class (TASK_69): agree_bull / agree_bear / split_tech_bull / split_tech_bear / neutral — bull_prob direction vs consolidated action direction." style="width:100px;">Agree</th>
               <th>Act</th>
             </tr>
           </thead>

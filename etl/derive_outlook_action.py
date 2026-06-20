@@ -23,6 +23,7 @@ from etl._derive_common import (
     position_ceiling,
     _open_drv_run, _close_drv_run,          # TASK_56: use canonical parameterized versions
     _load_outlook_weights, _outlook_to_weight,  # TASK_56: consolidated
+    normalize_change_str_sql,               # D1: canonical SQL change_str normalizer
 )
 
 log = logging.getLogger("etl.derive_outlook_action")
@@ -201,19 +202,18 @@ def _find_week_period_snapshots(session: Session, table: str, date_col: str,
 # Each returns {symbol: weight} at a single date. Callers fetch (today,
 # yesterday) and compare via _action_standing.
 
-def _normalize_change_str_sql(col_expr: str) -> str:
-    """SQL CASE that maps etfchg/iichg change_str into hist_etf-style outlook tokens."""
-    return f"""CASE UPPER(COALESCE({col_expr},''))
-            WHEN 'LONG'    THEN 'BULLISH'
-            WHEN 'SHORT'   THEN 'BEARISH'
-            WHEN 'NEUTRAL' THEN 'NEUTRAL'
-            ELSE {col_expr}
-        END"""
+# D1: _normalize_change_str_sql removed — use normalize_change_str_sql from _derive_common.
 
 
 def _state_etf_ii(session: Session, base_table: str, change_table: str,
                   as_of_date: date, wt_map: dict[str, float]) -> dict:
     """Effective state at as_of_date for an ETF+ETFCHG-style pair.
+
+    D2 NOTE: This is a legacy duplicate of derive_source_standing._build_etf_ii.
+    The canonical live-state builder is _build_etf_ii in derive_source_standing.py.
+    This copy is kept ONLY for the prev-period comparison path in
+    _derive_outlook_action_impl. Removal requires reading from drv_source_standing
+    snapshots; deferred pending confirmation that prior derive dates always exist.
 
     Bundle-capped (2026-05-12): only the LATEST hist_etf snapshot ≤ as_of_date
     is consulted as the baseline, plus any hist_etfchg patches between that
@@ -223,7 +223,7 @@ def _state_etf_ii(session: Session, base_table: str, change_table: str,
     Returns {symbol: weight}. Symbols whose latest effective outlook is
     NEUTRAL or NULL are excluded (Neutral = removed from list).
     """
-    chg_norm = _normalize_change_str_sql("change_str")
+    chg_norm = normalize_change_str_sql("change_str")
     # BUNDLE-CAP RULE: only consult the LATEST hist_etf snapshot ≤ as_of_date
     # (the current "weekly bundle") plus any etfchg patches that arrived
     # AFTER that snapshot and on/before as_of_date. Rows from older
@@ -281,12 +281,13 @@ def _state_etf_ii(session: Session, base_table: str, change_table: str,
 
 def _state_etf_ii_tos(session: Session, base_table: str, change_table: str,
                       as_of_date: date, wt_map: dict[str, float]) -> dict:
-    """Like _state_etf_ii but keys result on tos_symbol instead of raw symbol.
+    """D2 NOTE: Like _state_etf_ii (another legacy duplicate of _build_etf_ii).
+    Keys result on tos_symbol instead of raw symbol.
 
     Used to load the PREVIOUS period's effective state for comparison, so that
     held-detection and action classification use the normalized tos_symbol key.
     """
-    chg_norm = _normalize_change_str_sql("change_str")
+    chg_norm = normalize_change_str_sql("change_str")
     rows = session.execute(
         text(f"""
             WITH latest_snap AS (

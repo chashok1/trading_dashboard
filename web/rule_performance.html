@@ -205,6 +205,33 @@
                 </table>
             </div>
         </div>
+        <div class="card" style="margin-top:12px;">
+            <div class="performance-header">
+                <strong style="font-size:15px;">Agreement scorecard</strong>
+                <span style="color:var(--text-3);font-size:12px;">Per-bucket realized forward returns — does agree_bull outperform split_tech_bear? (TASK_69)</span>
+            </div>
+            <div class="caveat-note">
+                Buckets: <b>agree_bull</b> = model bull + source buy; <b>agree_bear</b> = model bear + source sell; <b>split_tech_bull</b> = model bull but source sell; <b>split_tech_bear</b> = model bear but source buy; <b>neutral</b> = mixed/uncommitted. Forward returns from drv_rule_outcome.
+            </div>
+            <div class="scrollable-table-container">
+                <table class="perf-table">
+                    <thead>
+                        <tr>
+                            <th onclick="agSortBy('agreement_class')">Bucket <span class="sort-indicator"></span></th>
+                            <th onclick="agSortBy('n')">n <span class="sort-indicator"></span></th>
+                            <th onclick="agSortBy('avg_fwd_20d')">Avg 20d <span class="sort-indicator">▾</span></th>
+                            <th onclick="agSortBy('avg_fwd_5d')">Avg 5d <span class="sort-indicator"></span></th>
+                            <th onclick="agSortBy('win_rate')">Win % <span class="sort-indicator"></span></th>
+                            <th title="95% confidence interval">95% CI</th>
+                            <th onclick="agSortBy('confidence')">Confidence <span class="sort-indicator"></span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="agreementTableBody">
+                        <tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-3);">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </main>
 
     <script src="/static/_common.js"></script>

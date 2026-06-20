@@ -37,6 +37,72 @@ from etl._derive_common import _safe_div  # TASK_56: consolidated
 
 log = logging.getLogger(__name__)
 
+# =============================================================================
+# TASK_67: revertible bull-gate threshold cache.
+# Populated at derive time by load_bull_gate_thresholds(session) from
+# ref_threshold_override.  Falls back to hardcoded Excel-relic values when the
+# table is absent or when active_source='original'.
+# The expr functions (_bull_expr etc.) read from this dict; never import it
+# externally — use load_bull_gate_thresholds() to refresh before a derive run.
+# =============================================================================
+_BULL_GATE_THRESHOLDS: dict = {}
+
+# Hardcoded fallback values (Excel originals).
+_BULL_GATE_DEFAULTS: dict = {
+    "bull.pos_hi.JN": 3.0,
+    "bull.pos_hi.JQ": 2.0,
+    "bull.pos_hi.JV": 2.0,
+    "bull.pos_hi.LZ": 3.0,
+    "bull.pos_lo.JN": 2.0,
+    "bull.pos_lo.JQ": 2.0,
+    "bull.pos_lo.JV": 2.0,
+    "bull.pos_lo.LZ": 2.0,
+    "bull.neg_hi.JN": -3.0,
+    "bull.neg_hi.JQ": -2.0,
+    "bull.neg_hi.JV": -2.0,
+    "bull.neg_hi.LY": 3.0,
+    "bull.neg_lo.JN": -2.0,
+    "bull.neg_lo.JQ": -2.0,
+    "bull.neg_lo.JV": -2.0,
+    "bull.neg_lo.LY": 2.0,
+    "perforbull.hi": 3.0,
+    "perforbull.lo": 3.0,
+    "bb_bull.hi.LP": 3.0,
+    "bb_bull.hi.LS": 3.0,
+    "bb_bull.lo.LP": 3.0,
+    "bb_bull.lo.LS": 3.0,
+}
+
+
+def _thr(key: str) -> float:
+    """Return the active threshold for key, falling back to the hardcoded default."""
+    v = _BULL_GATE_THRESHOLDS.get(key)
+    if v is None:
+        return _BULL_GATE_DEFAULTS.get(key, 0.0)
+    return float(v)
+
+
+def load_bull_gate_thresholds(session: Session) -> None:
+    """Refresh the module-level _BULL_GATE_THRESHOLDS dict from ref_threshold_override.
+
+    Reads the active value (original_value or calculated_value per active_source).
+    Safe to call even if the table does not exist — leaves the dict unchanged.
+    """
+    global _BULL_GATE_THRESHOLDS
+    try:
+        rows = session.execute(text("""
+            SELECT rule_key,
+                   CASE WHEN active_source = 'calculated' AND calculated_value IS NOT NULL
+                        THEN calculated_value
+                        ELSE original_value
+                   END AS active_value
+            FROM ref_threshold_override
+        """)).all()
+        _BULL_GATE_THRESHOLDS = {r[0]: float(r[1]) for r in rows if r[1] is not None}
+        log.debug("load_bull_gate_thresholds: loaded %d keys", len(_BULL_GATE_THRESHOLDS))
+    except Exception as e:
+        log.debug("load_bull_gate_thresholds: table unavailable (%s), using defaults", e)
+
 
 # =============================================================================
 # Step 1 — working-set SELECT.
@@ -825,7 +891,9 @@ def _crossover_trend(price, ma, bz, prev_close, high=None, low=None) -> Optional
 
 
 def _bull_expr(r: dict, o: dict) -> Optional[float]:
-    """MQ: BULL — composite over JN/JQ/JV/LZ/LY/KH."""
+    """MQ: BULL — composite over JN/JQ/JV/LZ/LY/KH.
+    Thresholds read from _BULL_GATE_THRESHOLDS (TASK_67 revertible config)
+    with fallback to hardcoded Excel originals."""
     JN = _f(o.get("trade_rule"))
     JQ = _f(o.get("trend_rule"))
     JV = _f(o.get("trade_trend_sd_rule"))
@@ -834,21 +902,34 @@ def _bull_expr(r: dict, o: dict) -> Optional[float]:
     KH = _f(o.get("lrr_above_trade"))
     def ge(a, b): return a is not None and a >= b
     def le(a, b): return a is not None and a <= b
-    if ge(JN,3) and ge(JQ,2) and ge(JV,2) and ge(LZ,3): return 3.0
-    if KH and KH > 0 and ge(JV,2):                       return 3.0
-    if ge(JN,2) and ge(JQ,2) and ge(JV,2) and ge(LZ,2):  return 2.0
-    if le(JN,-3) and le(JQ,-2) and le(JV,-2) and ge(LY,3): return -3.0
-    if le(JN,-2) and le(JQ,-2) and le(JV,-2) and ge(LY,2): return -2.0
+    # Bullish arm — thresholds from config (TASK_67)
+    ph_JN = _thr("bull.pos_hi.JN"); ph_JQ = _thr("bull.pos_hi.JQ")
+    ph_JV = _thr("bull.pos_hi.JV"); ph_LZ = _thr("bull.pos_hi.LZ")
+    pl_JN = _thr("bull.pos_lo.JN"); pl_JQ = _thr("bull.pos_lo.JQ")
+    pl_JV = _thr("bull.pos_lo.JV"); pl_LZ = _thr("bull.pos_lo.LZ")
+    # Bearish arm
+    nh_JN = _thr("bull.neg_hi.JN"); nh_JQ = _thr("bull.neg_hi.JQ")
+    nh_JV = _thr("bull.neg_hi.JV"); nh_LY = _thr("bull.neg_hi.LY")
+    nl_JN = _thr("bull.neg_lo.JN"); nl_JQ = _thr("bull.neg_lo.JQ")
+    nl_JV = _thr("bull.neg_lo.JV"); nl_LY = _thr("bull.neg_lo.LY")
+    if ge(JN,ph_JN) and ge(JQ,ph_JQ) and ge(JV,ph_JV) and ge(LZ,ph_LZ): return 3.0
+    if KH and KH > 0 and ge(JV,ph_JV):                                    return 3.0
+    if ge(JN,pl_JN) and ge(JQ,pl_JQ) and ge(JV,pl_JV) and ge(LZ,pl_LZ): return 2.0
+    if le(JN,nh_JN) and le(JQ,nh_JQ) and le(JV,nh_JV) and ge(LY,nh_LY): return -3.0
+    if le(JN,nl_JN) and le(JQ,nl_JQ) and le(JV,nl_JV) and ge(LY,nl_LY): return -2.0
     return 0.0
 
 
 def _perforbull_expr(r: dict, o: dict) -> Optional[float]:
     """MS: PerfOrBull = IFS(OR(LK>=3,MQ>=3),3, OR(LK<=-3,MQ<=-3),-3,
-                            TRUE, INT((LK+MQ)/2))."""
+                            TRUE, INT((LK+MQ)/2)).
+    Thresholds from _BULL_GATE_THRESHOLDS (TASK_67 revertible config)."""
     LK = _f(o.get("perf_sd_rule")) or 0.0
     MQ = _f(o.get("bull")) or 0.0
-    if LK >= 3 or MQ >= 3: return 3.0
-    if LK <= -3 or MQ <= -3: return -3.0
+    hi = _thr("perforbull.hi")
+    lo = _thr("perforbull.lo")
+    if LK >= hi or MQ >= hi: return 3.0
+    if LK <= -lo or MQ <= -lo: return -3.0
     # Excel INT() = floor() (toward -inf); Python int() truncates toward 0.
     import math
     return float(math.floor((LK + MQ) / 2))
@@ -875,12 +956,15 @@ def _perf_sd_rule_expr(r: dict, o: dict) -> Optional[float]:
 
 
 def _bb_bull_rule_expr(r: dict, o: dict) -> Optional[float]:
-    """LW: BB Bull Rule = IFS(AND(LP>=3,LS>=3),3, AND(LP<=-3,LS<=-3),-3, TRUE, LN)."""
+    """LW: BB Bull Rule = IFS(AND(LP>=3,LS>=3),3, AND(LP<=-3,LS<=-3),-3, TRUE, LN).
+    Thresholds from _BULL_GATE_THRESHOLDS (TASK_67 revertible config)."""
     LP = _f(o.get("bbstreak_rule")) or 0.0
     LS = _f(o.get("bbstreak_days_rule")) or 0.0
     LN = _f(o.get("bbhighlow_sd_rule"))   # zero_guard_trig_ifs on AO (BBHighLow_SD)
-    if LP >= 3 and LS >= 3: return 3.0
-    if LP <= -3 and LS <= -3: return -3.0
+    hi_LP = _thr("bb_bull.hi.LP"); hi_LS = _thr("bb_bull.hi.LS")
+    lo_LP = _thr("bb_bull.lo.LP"); lo_LS = _thr("bb_bull.lo.LS")
+    if LP >= hi_LP and LS >= hi_LS: return 3.0
+    if LP <= -lo_LP and LS <= -lo_LS: return -3.0
     return LN
 
 
@@ -1322,6 +1406,9 @@ def derive_cat_atomic_input(session: Session, as_of_date: date,
                             parent_run_id: Optional[int] = None) -> int:
     """Compute drv_cat_atomic_input rows for `as_of_date`.  Idempotent."""
     run_id = parent_run_id or 0
+    # TASK_67: load revertible bull-gate thresholds from ref_threshold_override.
+    # Falls back to hardcoded defaults when table is absent or active_source='original'.
+    load_bull_gate_thresholds(session)
     trig_rules = load_trig_rules(session)
     if not trig_rules:
         log.warning("drv_cat_atomic_input: ref_trig_atomic_rule empty; skipping")

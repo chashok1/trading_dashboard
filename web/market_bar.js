@@ -266,15 +266,12 @@
 
   // ---- shared chip helpers -----------------------------------------------
 
+  // D3: delegate entirely to canonical outlookColor (defined in _common.js,
+  // always loaded before market_bar.js). No duplicate palette.
   function outlookBg(outlook) {
-    if (window.outlookColor) {
-      const c = window.outlookColor(outlook);
-      if (c && c !== 'inherit') return c;
-    }
-    const ol = (outlook || '').toLowerCase();
-    return ol.includes('bull') ? '#2f9e2f'
-         : ol.includes('bear') ? '#d83a3a'
-         : '#888';
+    if (!outlook) return '#888';
+    const c = window.outlookColor ? window.outlookColor(outlook) : 'inherit';
+    return (c && c !== 'inherit') ? c : '#888';
   }
 
   function rangeBar(buy, sell, cur) {

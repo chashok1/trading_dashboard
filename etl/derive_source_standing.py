@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 from etl._derive_common import (
     _wrap,
     _clean, _load_outlook_weights, _outlook_to_weight,  # TASK_56: consolidated
+    normalize_change_str,  # D1: canonical change_str normalizer
 )
 
 log = logging.getLogger("etl.derive_source_standing")
@@ -125,18 +126,7 @@ def _build_sss(session: Session, as_of_date: date, run_id: int) -> list[dict]:
 # ETF + II builder (Increment 2)
 # ---------------------------------------------------------------------------
 
-def _normalize_change_str(change_str: Optional[str]) -> Optional[str]:
-    """Map etfchg/iichg change_str into hist_etf-style outlook tokens."""
-    if not change_str:
-        return change_str
-    cs = change_str.strip().upper()
-    if cs == "LONG":
-        return "BULLISH"
-    if cs == "SHORT":
-        return "BEARISH"
-    if cs == "NEUTRAL":
-        return "NEUTRAL"
-    return change_str
+# D1: _normalize_change_str removed — use normalize_change_str from _derive_common.
 
 
 def _build_etf_ii(session: Session, as_of_date: date,
@@ -180,7 +170,7 @@ def _build_etf_ii(session: Session, as_of_date: date,
     for sym, change_str, ev_date in patch_rows:
         if not sym:
             continue
-        normalized = _normalize_change_str(change_str)
+        normalized = normalize_change_str(change_str)
         if normalized:
             # Patches override base; later patches override earlier
             effective[sym] = (normalized, ev_date)

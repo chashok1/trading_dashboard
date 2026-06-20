@@ -1626,6 +1626,13 @@ def _derive_dash_impl(session: Session, as_of_date: date, run_id: int) -> int:
 derive_dash = _wrap("drv_dash", _derive_dash_impl)
 
 
+def _brr_sign(brr) -> int:
+    """D7: Canonical brr sign → ±1/0 vote. Single definition; do not inline elsewhere."""
+    if brr is None:
+        return 0
+    return 1 if brr > 0 else (-1 if brr < 0 else 0)
+
+
 def _composite_outlook(rr_brr, call_outlook, etf_outlook, ii_outlook, sss_signal_sign):
     """
     Simple ensemble: each source contributes -1/0/+1, sum then normalize.
@@ -1633,7 +1640,7 @@ def _composite_outlook(rr_brr, call_outlook, etf_outlook, ii_outlook, sss_signal
     score = 0
     contributions = 0
     if rr_brr is not None:
-        score += 1 if rr_brr > 0 else (-1 if rr_brr < 0 else 0)
+        score += _brr_sign(rr_brr)
         contributions += 1
     for o in (call_outlook, etf_outlook, ii_outlook):
         if not o:
@@ -3331,6 +3338,17 @@ def derive_all(session: Session, as_of_date: date,
     except Exception:
         log.exception("drv_actionable import/run failed (continuing)")
         counts["drv_actionable"] = 0
+        try: session.rollback()
+        except Exception: pass
+
+    # TASK_66: score bull_prob + bull_agreement after drv_actionable is built.
+    # Non-critical: if no active model the columns stay NULL (additive only).
+    try:
+        from etl.derive_bull_prob import derive_bull_prob
+        counts["drv_bull_prob"] = _safe("drv_bull_prob", derive_bull_prob)
+    except Exception:
+        log.exception("derive_bull_prob import failed (non-fatal)")
+        counts["drv_bull_prob"] = 0
         try: session.rollback()
         except Exception: pass
 

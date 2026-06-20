@@ -156,9 +156,220 @@ def _mean_edge(xs, fwds, threshold=None):
     return float(f[mask].mean()), int(mask.sum())
 
 
+# =============================================================================
+# TASK_67 — Bull-gate threshold fitting
+# =============================================================================
+
+# Each entry: (rule_key, feature_col, direction)
+# direction: 'ge' → feature >= threshold is the bullish/bearish arm
+#            'le' → feature <= threshold (negative arm)
+# feature_col: column in drv_cat_atomic_input to read
+# Candidate threshold values: integer grid -5 .. 5
+_BULL_GATE_RULES = [
+    # Bullish arm of _bull_expr
+    ("bull.pos_hi.JN", "trade_rule",          "ge"),
+    ("bull.pos_hi.JQ", "trend_rule",          "ge"),
+    ("bull.pos_hi.JV", "trade_trend_sd_rule", "ge"),
+    ("bull.pos_lo.JN", "trade_rule",          "ge"),
+    ("bull.pos_lo.JQ", "trend_rule",          "ge"),
+    ("bull.pos_lo.JV", "trade_trend_sd_rule", "ge"),
+    # Bearish arm (negative thresholds; for le() comparisons)
+    ("bull.neg_hi.JN", "trade_rule",          "le"),
+    ("bull.neg_hi.JQ", "trend_rule",          "le"),
+    ("bull.neg_lo.JN", "trade_rule",          "le"),
+    ("bull.neg_lo.JQ", "trend_rule",          "le"),
+    # BB streak thresholds
+    ("bb_bull.hi.LP",  "bbstreak_rule",       "ge"),
+    ("bb_bull.hi.LS",  "bbstreak_days_rule",  "ge"),
+]
+
+
+def _fetch_bull_gate_xy(s, col, direction, label_window):
+    """Fetch (feature[], fwd[], dates[]) for a bull-gate rule.
+
+    For 'ge' rules we compute fwd return for rows where col IS NOT NULL.
+    For 'le' rules same but on the negative tail.
+    Chronologically ordered so callers can split by index.
+    """
+    fwd_col = "fwd_5d_pct" if label_window == 5 else "fwd_20d_pct"
+    # col is validated against the allow-list _VALID_BULL_COLS upstream
+    rows = s.execute(text(f"""
+        SELECT ci."{col}"::float AS x,
+               ro.{fwd_col}::float AS fwd,
+               ro.as_of_date AS dt
+        FROM drv_rule_outcome ro
+        JOIN drv_cat_atomic_input ci
+          ON ci.tos_symbol = ro.tos_symbol
+         AND ci.as_of_date = ro.as_of_date
+        WHERE ro.{fwd_col} IS NOT NULL
+          AND ci."{col}" IS NOT NULL
+        ORDER BY ro.as_of_date
+    """)).all()
+    xs   = [r[0] for r in rows]
+    fwds = [r[1] for r in rows]
+    dts  = [r[2] for r in rows]
+    return xs, fwds, dts
+
+
+def _sweep_bull_gate(xs, fwds, direction, min_support, candidates=None):
+    """Sweep integer thresholds and pick the one maximising mean fwd return
+    for the selected subset (>= t for 'ge', <= t for 'le').
+    Returns (best_t, best_edge, n_above) or (None, None, 0).
+    """
+    import numpy as np
+    x = np.array(xs, dtype=float)
+    f = np.array(fwds, dtype=float)
+    if candidates is None:
+        candidates = list(range(-5, 6))  # integer grid -5..5
+    best_t, best_m, best_n = None, -1e18, 0
+    for t in candidates:
+        if direction == "ge":
+            sel = x >= t
+        else:
+            sel = x <= t
+        if sel.sum() < min_support:
+            continue
+        m = float(f[sel].mean())
+        if m > best_m:
+            best_m, best_t, best_n = m, float(t), int(sel.sum())
+    return best_t, (best_m if best_t is not None else None), best_n
+
+
+def _get_proven_rule_keys(s):
+    """Return set of rule_names with proven/promising confidence in v_atomic_rule_scorecard."""
+    try:
+        rows = s.execute(text(
+            "SELECT rule_name FROM v_atomic_rule_scorecard "
+            "WHERE confidence IN ('proven', 'promising')"
+        )).scalars().all()
+        return set(rows)
+    except Exception:
+        return set()   # scorecard table absent → no gating
+
+
+def _valid_bull_cols(s) -> set:
+    """Columns actually present in drv_cat_atomic_input."""
+    try:
+        rows = s.execute(text(
+            "SELECT column_name FROM information_schema.columns"
+            " WHERE table_name='drv_cat_atomic_input'"
+        )).scalars().all()
+        return set(rows)
+    except Exception:
+        return set()
+
+
+def main_bull_gate(args) -> int:
+    """Fit bull-gate thresholds and write to ref_threshold_override + history."""
+    if not settings.pg_password:
+        log.error("PG_PASSWORD empty in .env"); return 2
+
+    train_pct = max(0.5, min(0.95, args.train_pct))
+    label_window = args.label_window
+
+    with session_scope() as s:
+        proven = _get_proven_rule_keys(s)
+        valid_cols = _valid_bull_cols(s)
+        today_str = s.execute(text("SELECT CURRENT_DATE")).scalar().isoformat()
+
+        results = []  # (rule_key, fitted_value, holdout_metric, n, train_start, train_end)
+
+        for rule_key, col, direction in _BULL_GATE_RULES:
+            # Gate: only fit rules whose feature column has scorecard edge
+            if proven and col not in proven:
+                log.info("  SKIP %s — col '%s' not proven/promising", rule_key, col)
+                continue
+            if col not in valid_cols:
+                log.warning("  SKIP %s — col '%s' not in drv_cat_atomic_input", rule_key, col)
+                continue
+
+            xs, fwds, dts = _fetch_bull_gate_xy(s, col, direction, label_window)
+            n_total = len(xs)
+            if n_total < args.min_samples:
+                log.info("  SKIP %s — only %d samples (need %d)", rule_key, n_total, args.min_samples)
+                continue
+
+            split_idx = max(1, int(n_total * train_pct))
+            xs_tr, fwds_tr, dts_tr = xs[:split_idx], fwds[:split_idx], dts[:split_idx]
+            xs_ho, fwds_ho = xs[split_idx:], fwds[split_idx:]
+
+            train_start = min(dts_tr).isoformat() if dts_tr else None
+            train_end   = max(dts_tr).isoformat() if dts_tr else None
+
+            best_t, train_edge, n_above = _sweep_bull_gate(
+                xs_tr, fwds_tr, direction, args.min_support)
+            if best_t is None:
+                log.info("  SKIP %s — no threshold passed min_support=%d", rule_key, args.min_support)
+                continue
+
+            # Evaluate holdout
+            import numpy as np
+            xh = np.array(xs_ho, dtype=float)
+            fh = np.array(fwds_ho, dtype=float)
+            if direction == "ge":
+                hmask = xh >= best_t
+            else:
+                hmask = xh <= best_t
+            ho_n = int(hmask.sum())
+            ho_edge = float(fh[hmask].mean()) if ho_n > 0 else None
+
+            if not args.no_holdout_gate and (ho_edge is None or ho_edge <= 0):
+                log.warning("  SKIP %s — holdout edge %.3f <= 0 (overfit flag)",
+                            rule_key, ho_edge or 0)
+                continue
+
+            log.info("  [%s] col=%-22s dir=%-2s fitted=%-4s "
+                     "train_edge=%.3f holdout_edge=%.3f holdout_n=%d",
+                     rule_key, col, direction, best_t,
+                     train_edge or 0, ho_edge or 0, ho_n)
+            results.append((rule_key, best_t, ho_edge, ho_n, train_start, train_end))
+
+        if not results:
+            log.warning("No bull-gate rules passed filters. Nothing written.")
+            return 0
+
+        # Write calculated_value + history rows
+        for rule_key, fitted, ho_edge, ho_n, tr_start, tr_end in results:
+            s.execute(text("""
+                UPDATE ref_threshold_override
+                   SET calculated_value = :v, updated_at = NOW()
+                 WHERE rule_key = :k
+            """), {"v": fitted, "k": rule_key})
+            s.execute(text("""
+                INSERT INTO ref_threshold_fit_history
+                  (rule_key, fitted_value, fit_date,
+                   train_start, train_end, holdout_metric, n,
+                   notes)
+                VALUES (:k, :v, :fd, :ts, :te, :hm, :n, :notes)
+            """), {
+                "k":     rule_key,
+                "v":     fitted,
+                "fd":    today_str,
+                "ts":    tr_start,
+                "te":    tr_end,
+                "hm":    ho_edge,
+                "n":     ho_n,
+                "notes": (f"method=sweep label_window={label_window}d "
+                          f"train_pct={train_pct:.0%}"),
+            })
+
+        s.commit()
+        log.info("=== Bull-gate fitting done: %d rules updated ===", len(results))
+        log.info("  calculated_value written to ref_threshold_override "
+                 "(active_source still 'original').")
+        log.info("  To activate: UPDATE ref_threshold_override "
+                 "SET active_source='calculated' WHERE rule_key IN (%s);",
+                 ", ".join(f"'{r[0]}'" for r in results))
+        log.info("  Then re-derive to apply new thresholds.")
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--target", choices=["param-set", "bull-gate"], default="param-set",
+                   help="param-set (default): tune ref_trig_param_set thresholds; "
+                        "bull-gate: fit revertible bull-gate cutoffs (TASK_67)")
     p.add_argument("--method", choices=["logreg", "sweep"], default="logreg")
     p.add_argument("--label", choices=["hit", "fwd20"], default="hit",
                    help="logreg uses hit; sweep uses forward return")
@@ -174,6 +385,10 @@ def main() -> int:
     p.add_argument("--no-holdout-gate", action="store_true",
                    help="Skip the hold-out guard (allow saving even with negative holdout edge)")
     args = p.parse_args()
+
+    # TASK_67: dispatch to bull-gate fitter when --target bull-gate
+    if args.target == "bull-gate":
+        return main_bull_gate(args)
 
     if not settings.pg_password:
         log.error("PG_PASSWORD empty in .env"); return 2

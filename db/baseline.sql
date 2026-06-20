@@ -4892,7 +4892,7 @@ DROP VIEW IF EXISTS v_rule_scorecard CASCADE;
 CREATE VIEW v_rule_scorecard AS
 WITH base AS (
     SELECT rule_id, hit, fwd_20d_pct, as_of_date,
-           CASE WHEN rule_id ~ '^\d+-(B|BS|BR|BW|BM|BMN)-'
+           CASE WHEN rule_id ~ '^\d+-(B|BS|BR|BW|BM|BMN|BSW|BC|BRW)-'
                 THEN fwd_20d_pct ELSE -fwd_20d_pct END AS da
     FROM drv_rule_outcome
     WHERE rule_kind = 'composite' AND fwd_20d_pct IS NOT NULL
@@ -4911,7 +4911,7 @@ agg AS (
 )
 SELECT
     rule_id,
-    CASE WHEN rule_id ~ '^\d+-(B|BS|BR|BW|BM|BMN)-'
+    CASE WHEN rule_id ~ '^\d+-(B|BS|BR|BW|BM|BMN|BSW|BC|BRW)-'
          THEN 'BUY' ELSE 'SELL' END              AS direction,
     n                                             AS fires,
     n                                             AS n_fires,
@@ -6038,3 +6038,153 @@ ON CONFLICT (setting_name) DO NOTHING;
 ALTER TABLE IF EXISTS drv_tw ADD COLUMN IF NOT EXISTS vlm_3m_pct  NUMERIC;
 ALTER TABLE IF EXISTS drv_tw ADD COLUMN IF NOT EXISTS vlm_desc    TEXT;
 ALTER TABLE IF EXISTS drv_tw ADD COLUMN IF NOT EXISTS vlm_action  TEXT;
+
+-- 2026-06-20 TASK_66: calibrated bull-probability model.
+-- ref_bull_model stores fitted logistic-regression coefficients (one active row).
+-- Each row = one training run. Only the row with is_active=TRUE is used at
+-- derive time. History rows (is_active=FALSE) are retained for audit.
+CREATE TABLE IF NOT EXISTS ref_bull_model (
+    model_id         SERIAL PRIMARY KEY,
+    trained_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    is_active        BOOLEAN     NOT NULL DEFAULT FALSE,
+    feature_names    JSONB       NOT NULL DEFAULT '[]',
+    coefficients     JSONB       NOT NULL DEFAULT '{}',
+    intercept        NUMERIC     NOT NULL DEFAULT 0,
+    train_from_date  DATE,
+    train_to_date    DATE,
+    holdout_from_date DATE,
+    holdout_to_date  DATE,
+    holdout_auc      NUMERIC,
+    holdout_n        INTEGER,
+    calibration_table JSONB,
+    notes            TEXT
+);
+
+-- Only one active model at a time (partial unique index).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_ref_bull_model_active
+    ON ref_bull_model (is_active)
+    WHERE is_active = TRUE;
+
+-- bull_prob / bull_agreement columns on drv_actionable (Phase C output).
+-- bull_prob: 0-1 logistic probability symbol is up 20 days from now.
+-- bull_agreement: fraction of contributing signals pointing the same direction.
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS bull_prob       NUMERIC;
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS bull_agreement  NUMERIC;
+
+-- 2026-06-20 TASK_67: revertible bull-gate threshold config.
+-- ref_threshold_override holds per-rule-key the original (Excel-relic) value,
+-- the latest data-fitted value, and which one is currently active.
+-- original_value is written ONCE at seed time and never overwritten (convention #1).
+-- active_source: 'original' (default) | 'calculated'
+-- Reverting = set active_source='original' — no recompute, no data loss.
+CREATE TABLE IF NOT EXISTS ref_threshold_override (
+    rule_key         TEXT    PRIMARY KEY,
+    description      TEXT,
+    original_value   NUMERIC NOT NULL,
+    calculated_value NUMERIC,
+    active_source    TEXT    NOT NULL DEFAULT 'original'
+                            CHECK (active_source IN ('original','calculated')),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ref_threshold_fit_history: every fitting run appended here.
+-- holdout_metric: mean fwd_20d_pct on the holdout set at the calculated threshold.
+-- n: number of hold-out observations used.
+CREATE TABLE IF NOT EXISTS ref_threshold_fit_history (
+    id             SERIAL PRIMARY KEY,
+    rule_key       TEXT    NOT NULL
+                           REFERENCES ref_threshold_override(rule_key)
+                           ON DELETE CASCADE,
+    fitted_value   NUMERIC NOT NULL,
+    fit_date       DATE    NOT NULL DEFAULT CURRENT_DATE,
+    train_start    DATE,
+    train_end      DATE,
+    holdout_metric NUMERIC,
+    n              INTEGER,
+    notes          TEXT,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_thresh_fit_hist_key
+    ON ref_threshold_fit_history(rule_key, fit_date DESC);
+
+-- Seed original bull-gate thresholds (write-once; ON CONFLICT DO NOTHING).
+-- Keys match the Python code in _bull_expr / _bb_bull_rule_expr / _perforbull_expr
+-- in etl/derive_cat_atomic_input.py.
+-- Batch 1: _bull_expr bullish arm + bearish arm
+INSERT INTO ref_threshold_override (rule_key, description, original_value) VALUES
+('bull.pos_hi.JN', 'BULL top: trade_rule >= this', 3),
+('bull.pos_hi.JQ', 'BULL top: trend_rule >= this', 2),
+('bull.pos_hi.JV', 'BULL top: trade_trend_sd_rule >= this', 2),
+('bull.pos_hi.LZ', 'BULL top: bblowdays >= this', 3),
+('bull.pos_lo.JN', 'BULL mid: trade_rule >= this', 2),
+('bull.pos_lo.JQ', 'BULL mid: trend_rule >= this', 2),
+('bull.pos_lo.JV', 'BULL mid: trade_trend_sd_rule >= this', 2),
+('bull.pos_lo.LZ', 'BULL mid: bblowdays >= this', 2),
+('bull.neg_hi.JN', 'BULL bear top: trade_rule <= this', -3),
+('bull.neg_hi.JQ', 'BULL bear top: trend_rule <= this', -2),
+('bull.neg_hi.JV', 'BULL bear top: trade_trend_sd <= this', -2),
+('bull.neg_hi.LY', 'BULL bear top: bbhighdays >= this', 3)
+ON CONFLICT (rule_key) DO NOTHING;
+
+-- Batch 2: _bull_expr bearish mid + perforbull + bb_bull
+INSERT INTO ref_threshold_override (rule_key, description, original_value) VALUES
+('bull.neg_lo.JN', 'BULL bear mid: trade_rule <= this', -2),
+('bull.neg_lo.JQ', 'BULL bear mid: trend_rule <= this', -2),
+('bull.neg_lo.JV', 'BULL bear mid: trade_trend_sd <= this', -2),
+('bull.neg_lo.LY', 'BULL bear mid: bbhighdays >= this', 2),
+('perforbull.hi', 'PerfOrBull: LK or MQ >= this gives 3', 3),
+('perforbull.lo', 'PerfOrBull: LK or MQ <= neg-this gives -3', 3),
+('bb_bull.hi.LP', 'BB Bull: bbstreak_rule >= this gives 3', 3),
+('bb_bull.hi.LS', 'BB Bull: bbstreak_days_rule >= this gives 3', 3),
+('bb_bull.lo.LP', 'BB Bull: bbstreak_rule <= neg-this gives -3', 3),
+('bb_bull.lo.LS', 'BB Bull: bbstreak_days_rule <= neg-this gives -3', 3)
+ON CONFLICT (rule_key) DO NOTHING;
+
+-- 2026-06-20 TASK_69: agreement_class on drv_actionable.
+-- Derived from bull_prob direction vs consolidated_action direction.
+-- Buckets: agree_bull / agree_bear / split_tech_bull / split_tech_bear / neutral
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS agreement_class TEXT;
+
+-- v_agreement_scorecard: forward-return efficacy per agreement_class bucket.
+-- Uses drv_rule_outcome as the forward-return source (same as v_rule_scorecard).
+-- Joins drv_actionable to drv_rule_outcome on (tos_symbol, as_of_date).
+-- avg_fwd_5d / avg_fwd_20d: raw mean (no direction adjustment).
+-- win_rate: fraction with fwd_20d_pct > 0.
+-- confidence: proven n>=50 AND avg>0; promising n>=20 AND avg>0; else unproven.
+DROP VIEW IF EXISTS v_agreement_scorecard;
+CREATE VIEW v_agreement_scorecard AS
+WITH joined AS (
+    SELECT a.agreement_class,
+           o.fwd_5d_pct,
+           o.fwd_20d_pct,
+           (o.fwd_20d_pct > 0) AS win
+    FROM drv_actionable a
+    JOIN drv_rule_outcome o
+      ON o.tos_symbol = a.tos_symbol
+     AND o.as_of_date = a.as_of_date
+    WHERE a.agreement_class IS NOT NULL
+      AND o.fwd_20d_pct     IS NOT NULL
+),
+agg AS (
+    SELECT agreement_class,
+           COUNT(*)             AS n,
+           AVG(fwd_5d_pct)      AS e5,
+           AVG(fwd_20d_pct)     AS e20,
+           STDDEV_SAMP(fwd_20d_pct) AS sd20,
+           AVG(win::int)        AS wr
+    FROM joined GROUP BY agreement_class
+)
+SELECT agreement_class, n,
+    ROUND(e5::numeric,  3) AS avg_fwd_5d,
+    ROUND(e20::numeric, 3) AS avg_fwd_20d,
+    ROUND(wr::numeric,  3) AS win_rate,
+    ROUND((e20-1.96*sd20/NULLIF(SQRT(n),0))::numeric,3) AS ci_low,
+    ROUND((e20+1.96*sd20/NULLIF(SQRT(n),0))::numeric,3) AS ci_high,
+    CASE WHEN n>=50 AND e20>0 THEN 'proven'
+         WHEN n>=20 AND e20>0 THEN 'promising'
+         ELSE 'unproven' END AS confidence
+FROM agg ORDER BY avg_fwd_20d DESC NULLS LAST;

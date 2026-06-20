@@ -107,6 +107,47 @@ def _outlook_to_weight(outlook: Optional[str], modifier: Optional[str],
     return base
 
 
+# =============================================================================
+# D1 — change_str normalization: single source of truth for LONG/SHORT→BULLISH/BEARISH
+# Both the Python helper and the SQL generator live here so callers never diverge.
+# =============================================================================
+
+def normalize_change_str(change_str: Optional[str]) -> Optional[str]:
+    """Map etfchg/iichg change_str into hist_etf-style outlook tokens.
+
+    LONG → BULLISH, SHORT → BEARISH, NEUTRAL → NEUTRAL.
+    Case-insensitive; returns the input unchanged for any other value.
+    Canonical Python version — SQL equivalent: normalize_change_str_sql().
+    """
+    if not change_str:
+        return change_str
+    cs = change_str.strip().upper()
+    if cs == "LONG":
+        return "BULLISH"
+    if cs == "SHORT":
+        return "BEARISH"
+    if cs == "NEUTRAL":
+        return "NEUTRAL"
+    return change_str
+
+
+def normalize_change_str_sql(col_expr: str) -> str:
+    """Return a SQL CASE expression that maps change_str column to outlook tokens.
+
+    Mirrors normalize_change_str() exactly — update both together if the
+    mapping ever changes. Used inline in CTEs that run wholly in the DB.
+    Canonical SQL version — Python equivalent: normalize_change_str().
+    """
+    return (
+        f"CASE UPPER(COALESCE({col_expr},''))"
+        " WHEN 'LONG'    THEN 'BULLISH'"
+        " WHEN 'SHORT'   THEN 'BEARISH'"
+        " WHEN 'NEUTRAL' THEN 'NEUTRAL'"
+        f" ELSE {col_expr}"
+        " END"
+    )
+
+
 def position_ceiling(session: Session, as_of_date: date) -> date:
     """Return the snapshot_date ceiling for F/CS position carry-forward.
 

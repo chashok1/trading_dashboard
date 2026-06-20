@@ -28,9 +28,17 @@ function actionColor(a) {
   return m[a] || 'val-hold';
 }
 function buysellColor(a) {
+  // D5: delegate to canonical actionDisplay (actions.js) when available.
   if (!a) return 'grp-neutral';
-  if (['SA','STM','SS','SW','S'].includes(a)) return 'grp-bearish';
-  if (['BM','BS','BW','BR','BMN','B'].includes(a)) return 'grp-bullish';
+  if (window.actionDisplay) {
+    const side = window.actionDisplay(a).side;
+    if (side === 'sell') return 'grp-bearish';
+    if (side === 'buy')  return 'grp-bullish';
+    return 'grp-neutral';
+  }
+  // fallback (matches actions.js _MAP sell/buy sides):
+  if (['SA','STM','SS','SO','SW','SWW','SN','S'].includes(a)) return 'grp-bearish';
+  if (['BM','BS','BW','BSW','BR','BMN','BRW','BC','B','BN'].includes(a)) return 'grp-bullish';
   return 'grp-neutral';
 }
 
@@ -652,13 +660,21 @@ function _clearIntermediatesCache() {
 
 // ── Tier 3: Composites ────────────────────────────────────────────────────────
 
-// Classify composite as Buy or Sell from its code prefix
+// Classify composite as Buy or Sell from its code prefix.
+// D5: delegates to canonical actionDisplay (actions.js) when available.
 function _compSide(code) {
   const m = (code||'').match(/^\d+-([A-Z]+)-/);
   if (!m) return 'other';
   const p = m[1];
-  if (['SA','SS','STM','SW','SH'].includes(p)) return 'sell';
-  if (['B','BS','BR','BW','BM','BMN'].includes(p)) return 'buy';
+  if (window.actionDisplay) {
+    const side = window.actionDisplay(p).side;
+    if (side === 'sell') return 'sell';
+    if (side === 'buy')  return 'buy';
+    return 'other';
+  }
+  // fallback (matches actions.js _MAP sell/buy sides):
+  if (['SA','SS','STM','SO','SW','SWW','SN','S','SH'].includes(p)) return 'sell';
+  if (['B','BS','BR','BW','BM','BMN','BSW','BC','BRW','BN'].includes(p)) return 'buy';
   return 'other';
 }
 
