@@ -19,66 +19,21 @@ from typing import Optional
 from sqlalchemy import text, insert
 from sqlalchemy.orm import Session
 
-from etl._derive_common import position_ceiling
+from etl._derive_common import (
+    position_ceiling,
+    _open_drv_run, _close_drv_run,          # TASK_56: use canonical parameterized versions
+    _load_outlook_weights, _outlook_to_weight,  # TASK_56: consolidated
+)
 
 log = logging.getLogger("etl.derive_outlook_action")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Inlined _wrap / run-tracking (mirror derive_v2.py pattern; avoid circ import)
+# Helpers (local aliases for previously-local names)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _open_drv_run(session: Session, target: str, as_of_date: date,
-                  parent_run_id: Optional[int] = None) -> int:
-    row = session.execute(text(f"""
-        INSERT INTO meta_derived_run (as_of_date, target_table, status, parent_run_id)
-        VALUES ('{as_of_date}', '{target}', 'running', {parent_run_id})
-        RETURNING run_id
-    """)).first()
-    return row[0] if row else 0
-
-
-def _close_drv_run(session: Session, run_id: int, *, rows_built: int = 0,
-                   status: str = "success", error_msg: Optional[str] = None) -> None:
-    if not run_id:
-        return
-    session.execute(text(f"""
-        UPDATE meta_derived_run SET rows_built={rows_built}, status='{status}', error_msg='{error_msg}'
-        WHERE run_id = {run_id}
-    """))
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _load_outlook_weights(session: Session) -> dict[str, float]:
-    """Lookup {OUTLOOK_TEXT_UPPER: weight} from ref_param sheet='outlook'."""
-    rows = session.execute(text("""
-        SELECT param_name, value FROM ref_param WHERE sheet = 'outlook'
-    """)).fetchall()
-    out: dict[str, float] = {}
-    for name, val in rows:
-        try:
-            out[name.upper()] = float(val) if val is not None else 0.0
-        except (TypeError, ValueError):
-            continue
-    out.setdefault("BULLISH",  3.0)
-    out.setdefault("BEARISH", -3.0)
-    out.setdefault("NEUTRAL",  0.0)
-    return out
-
-
-def _resolve_outlook_weight(outlook: Optional[str], modifier: Optional[str],
-                            wt_map: dict[str, float]) -> Optional[float]:
-    if not outlook:
-        return None
-    base = wt_map.get(str(outlook).upper())
-    if base is None:
-        return 0.0
-    if modifier and "bench" in str(modifier).lower():
-        return base / 3.0
-    return base
+# _resolve_outlook_weight was a local alias; unify with the canonical name.
+_resolve_outlook_weight = _outlook_to_weight
 
 
 def _load_holdings(session: Session, as_of_date: date) -> set[str]:
@@ -939,7 +894,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
 
                 # Process actions for outlook_modifier sources (ETF/II, CALL, RR)
                 action_date = curr_snap if sc in _ETF_II_CHG else as_of_date
-                source_snap = curr_snap if sc in _ETF_II_CHG else comparison_date
+                source_snap = curr_snap if (sc in _ETF_II_CHG or sc == "RR") else comparison_date
                 all_syms = set(today_w) | set(prev_w)
                 batch = []
                 for sym in all_syms:

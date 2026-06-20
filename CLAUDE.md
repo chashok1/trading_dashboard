@@ -215,8 +215,8 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Why a derive looks wrong | `meta_derived_run` then `drv_ma` VIEW for that symbol/date |
 | Last successful file load | `meta_file_processed.processed_at` |
 | FastAPI endpoints | `api/routers/*.py` |
-| Section classifier | `etl/derive.py::_classify_section` + `web/app.js::classifySymbolSection` |
-| Cash detection rules | `api/routers/dash.py` (`F_IS_CASH`, `CS_IS_CASH_C` SQL fragments) |
+| Section classifier | `etl/derive.py::_classify_section` (JS classifySymbolSection no longer exists) |
+| Cash detection rules | `db/baseline.sql` `is_cash()` DB function (TASK_54); `api/routers/dash.py` for query usage |
 | Actionable / outlook-action logic | `docs/actionable_logic.md` |
 | Actionable screen 3 action columns | `docs/actionable_logic.md` (consolidated_action, TrTnBBRskRng, Trig) |
 | trig_action computation (BuySell vocab) | `etl/derive_actionable.py::_derive_actionable_impl` (buysell_scores block) |

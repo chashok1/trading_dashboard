@@ -4933,6 +4933,51 @@ FROM agg;
 
 
 -- -----------------------------------------------------
+-- v_atomic_rule_scorecard - raw forward-return efficacy per atomic rule.
+-- No direction adjustment (atomic features aren't BUY/SELL).
+-- Joins ref_trig_atomic_rule for rule_name/intent_text.
+-- confidence: 'proven' n>=100 AND ci_low>0; 'promising' n>=30 AND avg>0.
+-- -----------------------------------------------------
+DROP VIEW IF EXISTS v_atomic_rule_scorecard CASCADE;
+CREATE VIEW v_atomic_rule_scorecard AS
+WITH agg AS (
+    SELECT rule_id,
+           COUNT(*)              AS n,
+           AVG(fwd_20d_pct)      AS e,
+           STDDEV_SAMP(fwd_20d_pct) AS sd,
+           AVG(fwd_5d_pct)       AS e5,
+           AVG(hit::int)         AS wr,
+           MIN(as_of_date)       AS fs,
+           MAX(as_of_date)       AS ls
+    FROM drv_rule_outcome
+    WHERE rule_kind = 'atomic' AND fwd_20d_pct IS NOT NULL
+    GROUP BY rule_id
+)
+SELECT
+    a.rule_id,
+    r.rule_name,
+    r.intent_text,
+    a.n,
+    ROUND(a.e5::numeric, 3)                          AS avg_fwd_5d,
+    ROUND(a.e::numeric, 3)                           AS avg_fwd_20d,
+    ROUND(a.wr::numeric, 3)                          AS win_rate,
+    ROUND((a.e - 1.96*a.sd/NULLIF(SQRT(a.n),0))::numeric,3)
+                                                     AS ci_low,
+    ROUND((a.e + 1.96*a.sd/NULLIF(SQRT(a.n),0))::numeric,3)
+                                                     AS ci_high,
+    CASE
+        WHEN a.n >= 100
+             AND (a.e - 1.96*a.sd/NULLIF(SQRT(a.n),0)) > 0
+             THEN 'proven'
+        WHEN a.n >= 30 AND a.e > 0 THEN 'promising'
+        ELSE 'unproven'
+    END                                              AS confidence,
+    a.fs AS first_seen, a.ls AS last_seen
+FROM agg a
+LEFT JOIN ref_trig_atomic_rule r ON r.atomic_rule_id::text = a.rule_id;
+
+
+-- -----------------------------------------------------
 -- v_user_action_performance - YOUR decisions vs what the stock then did.
 -- One row per DONE action in user_action_log, joined to the 5d/20d forward
 -- return of the symbol from that date (same LEAD-over-drv_ma basis as the rule
@@ -5910,3 +5955,86 @@ CREATE TABLE IF NOT EXISTS ref_vol_threshold (
     low         NUMERIC NOT NULL,
     high        NUMERIC NOT NULL
 );
+
+-- 2026-06-17 TASK_54: canonical cash-detection function.
+-- Encodes the union of F_IS_CASH + CS_IS_CASH rules in one place.
+-- Used by portfolio/holdings queries to emit is_cash per row.
+CREATE OR REPLACE FUNCTION is_cash(
+    p_symbol       TEXT,
+    p_security_type TEXT,
+    p_description  TEXT
+) RETURNS BOOLEAN
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+    SELECT (
+        COALESCE(p_symbol, '') = 'SPAXX**'
+        OR UPPER(COALESCE(p_description, '')) LIKE '%HELD IN MONEY MARKET%'
+        OR COALESCE(p_symbol, '') = 'Cash & Cash Investments'
+        OR COALESCE(p_security_type, '') = 'Cash and Money Market'
+    )
+$$;
+
+-- 2026-06-17 TASK_53: final_call columns on drv_actionable.
+-- Persists the JS finalCall() decision tree result at derive time so the
+-- browser reads pre-computed values instead of recomputing them.
+-- final_action: plain-English label  (e.g. "SELL ALL", "BUY MORE")
+-- final_code:   BuySell code         (e.g. "SA", "BM", "BS", "HOLD")
+-- final_side:   'sell' | 'buy' | 'neutral'
+-- fc_strength:  numeric strength (-3 .. +2)
+-- fc_confidence:'high' | 'gate' | 'mixed' | 'none'
+-- fc_feasible:  TRUE when an actionable recommendation exists
+-- priority_rank: sort key (buysell seq * 1e6 + amt_dollars)
+ALTER TABLE IF EXISTS drv_actionable ADD COLUMN IF NOT EXISTS final_action    TEXT;
+ALTER TABLE IF EXISTS drv_actionable ADD COLUMN IF NOT EXISTS final_code      TEXT;
+ALTER TABLE IF EXISTS drv_actionable ADD COLUMN IF NOT EXISTS final_side      TEXT;
+ALTER TABLE IF EXISTS drv_actionable ADD COLUMN IF NOT EXISTS fc_strength     NUMERIC;
+ALTER TABLE IF EXISTS drv_actionable ADD COLUMN IF NOT EXISTS fc_confidence   TEXT;
+ALTER TABLE IF EXISTS drv_actionable ADD COLUMN IF NOT EXISTS fc_feasible     BOOLEAN;
+ALTER TABLE IF EXISTS drv_actionable ADD COLUMN IF NOT EXISTS priority_rank   NUMERIC;
+
+-- 2026-06-17 TASK_57: category-totals snapshot.
+-- Derived once per date from drv_actionable; /api/briefing reads it directly.
+CREATE TABLE IF NOT EXISTS drv_category_totals (
+    as_of_date        DATE    NOT NULL,
+    position_category TEXT    NOT NULL,
+    total_dollar      NUMERIC,
+    drift_band        TEXT,   -- 'BELOW_MIN' | 'WITHIN' | 'ABOVE_MAX'
+    PRIMARY KEY (as_of_date, position_category)
+);
+
+-- TASK_55: per-symbol rule-trace snapshot written at derive time by
+-- _derive_stks_impl.  API endpoints (/api/trace, /api/rule-flow) read this
+-- table instead of re-running ETL evaluation logic at request time.
+-- payload JSONB: { atomics, composites, rule_groups }
+CREATE TABLE IF NOT EXISTS drv_trace (
+    as_of_date   DATE NOT NULL,
+    tos_symbol   TEXT NOT NULL,
+    payload      JSONB NOT NULL DEFAULT '{}',
+    derived_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (as_of_date, tos_symbol)
+);
+
+-- 2026-06-20 TASK_64: sd_median_window_days — rolling window for the true
+-- percentile_cont(0.5) median of hist_tw.standard_dev used as AC denominator.
+-- Both the Python engine (derive_cat_atomic_input) and the SQL twin
+-- (_derive_trend_trade_rules_impl in derive.py) read this key at derive time.
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('sd_median_window_days', '30',
+     'Trailing calendar-day window for computing the rolling median SD (AC denominator). '
+     'Both Python and SQL twin engines use this value.')
+ON CONFLICT (setting_name) DO NOTHING;
+
+-- 2026-06-20 TASK_64 Fix 5: BB-slope thresholds and reverse-symbol RR scales.
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('bb_slope_hi',          '3',   'BBRngStrkRule high threshold (±3): top/bottom slope >= this → score ±4'),
+    ('bb_slope_lo',          '2',   'BBRngStrkRule low threshold (±2): top/bottom slope >= this → score ±3'),
+    ('rr_reverse_scale',     '10',  'Reverse-symbol LRR/TRR multiplier (yield×10 → TOS display units)'),
+    ('rr_reverse_mid_scale', '5',   'Reverse-symbol MRR multiplier ((buy+sell)×5 = midpoint in display units)')
+ON CONFLICT (setting_name) DO NOTHING;
+
+-- 2026-06-20 TASK_64 Fix 6: new volume output columns on drv_tw.
+-- vlm_3m_pct  : GB value (((volume - avg_3m)/avg_3m)*100) — was computed but discarded.
+-- vlm_desc    : human-readable label for the w_vlm_rule_desc code (GF in Excel, Parm!BS/BT).
+-- vlm_action  : buy/accumulate/avoid tag per the Vlm_Action lookup (GG in Excel, Parm!BS/BU).
+ALTER TABLE IF EXISTS drv_tw ADD COLUMN IF NOT EXISTS vlm_3m_pct  NUMERIC;
+ALTER TABLE IF EXISTS drv_tw ADD COLUMN IF NOT EXISTS vlm_desc    TEXT;
+ALTER TABLE IF EXISTS drv_tw ADD COLUMN IF NOT EXISTS vlm_action  TEXT;

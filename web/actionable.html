@@ -513,6 +513,9 @@
     .fc-btn-done:hover, .fc-btn-skip:hover, .fc-btn-snz:hover { filter: brightness(0.95); }
     .fc-btn-next  { padding: 8px 20px; border-radius: 6px; font-size: 12px; cursor: pointer; background: #f0f4f8; color: #444; border: 1px solid #ddd; }
     .focus-card .fc-esc   { font-size: 11px; color: #a8a29e; margin-top: 6px; }
+
+    /* TASK 61: RVOL magnitude circle */
+    .rvol-cell { text-align: center; padding: 2px 4px; line-height: 0; }
   </style>
 </head>
 <body class="act-page">
@@ -645,6 +648,11 @@
               <th class="num sortable" data-key="_amt" data-type="num" style="width:58px;">AMT$</th>
               <th class="sortable" data-key="consolidated_action" data-type="str" data-label="Sources" title="Consolidated from RR/CALL/ETF/II/SSS/PS (most-aggressive-wins), then sized to your min/max/holdings." style="width:200px;">Sources</th>
               <th class="sortable" data-key="rr_action" data-type="str" data-label="Technical" title="Trend-vs-Trade crossover + Bollinger range streak + Risk-Range position." style="width:200px;">Technical</th>
+              <th class="num sortable" data-key="rvol" data-type="num" title="Relative Volume (today÷10d avg). Hollow = below avg; solid gray = ~avg; amber/green = above avg. Caret = vs yesterday." style="width:36px;">Vol</th>
+              <th class="num" title="IV Glyph: IVP (blue) · HV (slate) · IV (dark). Background = IV/HV discount shade." style="width:44px;">IV</th>
+              <th class="num sortable" data-key="a_macd_brr" data-type="num" title="MACD Bull-Run-Risk score" style="width:52px;">MACD</th>
+              <th class="num sortable" data-key="a_macdh_d_brr" data-type="num" title="MACD Histogram direction BRR" style="width:52px;">MACDH</th>
+              <th class="num sortable" data-key="rsi" data-type="num" title="Relative Strength Index (0–100)" style="width:44px;">RSI</th>
               <th style="width:720px;">Rules (edge)</th>
               <th>Act</th>
             </tr>
@@ -716,10 +724,14 @@
         <div id="modalSector" style="font-size:13px;color:var(--text-2,#666);"></div>
         <div id="modalAssetClass" style="font-size:13px;color:var(--text-2,#666);"></div>
         <div id="modalPositionDollar" style="font-size:13px;color:var(--text-2,#666);"></div>
+        <div id="modalCompanyName" style="font-size:11px;color:var(--text-3,#94a3b8);font-style:italic;"></div>
       </div>
 
       <div class="modal-section" id="rrSection" style="display:none;">
-        <div id="rrChart"><span style="color:#94a3b8;font-size:12px;">Loading…</span></div>
+        <div style="display:flex;align-items:flex-start;gap:12px;">
+          <h3 style="margin:0;white-space:nowrap;min-width:110px;">RR Analysis</h3>
+          <div id="rrChart" style="flex:1;min-width:0;"><span style="color:#94a3b8;font-size:12px;">Loading…</span></div>
+        </div>
       </div>
 
       <div class="modal-section">

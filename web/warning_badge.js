@@ -233,11 +233,7 @@
     }
   }
 
-  function escapeHtml(s) {
-    return String(s ?? '').replace(/[&<>"']/g, c => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[c]));
-  }
+  // escapeHtml is provided by _common.js (window.escapeHtml).
 
   // ---- polling --------------------------------------------------------
   async function poll() {

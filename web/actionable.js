@@ -541,21 +541,24 @@ function renderSymTape() {
         `<div class="rr-rb-tick" style="left:${rbW}%;"></div></div>`
       : `<div class="rr-rb"></div>`;
 
-    // Action label (canonical code via actions.js) and IV percentile
+    // Action icon (glyph via actions.js) and IV bar glyph (TASK 62)
     const disp     = actionDisplay(r.consolidated_action);
-    const actCode  = actionText(disp);
-    const actColor = _actionCodeColor(disp);
-    const actLabel = (actCode && actCode !== '--') ? actCode : '';
-    const ivPctile  = r.iv_percentile    != null ? Math.round(Number(r.iv_percentile))   : null;
-    const ivToHv    = r.iv_to_hv_discount != null ? Number(r.iv_to_hv_discount)          : null;
-    const ivpColor  = ivPctile != null ? (ivPctile > 90 ? '#dc2626' : '#16a34a') : null;
-    const ivPctRing = (window.pctRing && ivPctile != null) ? window.pctRing(ivPctile,         { size: 14, color: ivpColor }) : '';
-    const hvColor   = ivToHv   != null ? (ivToHv  < 0  ? '#dc2626' : '#16a34a') : null;
-    const hvRing    = (window.pctRing && ivToHv   != null) ? window.pctRing(Math.abs(ivToHv), { size: 14, color: hvColor  }) : '';
-    const metaHtml = (actLabel || ivPctRing || hvRing)
+    const actIc    = actionIcon(r.consolidated_action);
+    const actGlyph = actIc.glyph !== '·' ? actIc.glyph : '';
+    const actColor = actIc.color;
+    // iv/hv stored as fractions (0.35 = 35%) → multiply by 100 for glyph percent units
+    const _ivPct = r.imp_volatility != null ? Number(r.imp_volatility) * 100 : null;
+    const _hvPct = r.hv            != null ? Number(r.hv)            * 100 : null;
+    const ivGlyphHtml = window.ivGlyph
+      ? window.ivGlyph(r.iv_percentile, _ivPct, _hvPct, r.iv_to_hv_discount, { size: 16, width: 24 })
+      : '';
+    const rvolHtml = typeof rvolDot === 'function'
+      ? rvolDot(r.rvol, r.rvol_prior, { size: 16 }) : '';
+    const metaHtml = (actGlyph || rvolHtml || ivGlyphHtml)
       ? `<div class="sym-tile-meta">` +
-        (actLabel              ? `<span class="sym-act-lbl" style="color:${actColor};">${actLabel}</span>` : '') +
-        (ivPctRing || hvRing   ? `<span class="sym-iv" style="display:inline-flex;gap:2px;align-items:center;">${ivPctRing}${hvRing}</span>` : '') +
+        (actGlyph  ? `<span class="sym-act-lbl" style="color:${actColor};font-family:ui-monospace,monospace;">${actGlyph}</span>` : '') +
+        (rvolHtml  ? `<span class="sym-rvol">${rvolHtml}</span>` : '') +
+        (ivGlyphHtml ? `<span class="sym-iv">${ivGlyphHtml}</span>` : '') +
         `</div>`
       : '';
 
@@ -944,12 +947,14 @@ function _srcReasonsHtml(r) {
     (ACTION_RANK[(b.action || '').toUpperCase()] || 0) -
     (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
   const rows = winner.concat(others).map(s => {
-    const src    = escapeHtml(s.source || s.source_code || '?');
+    const src    = escapeHtml((s.source || s.source_code || '?').slice(0, 2));
     const ic     = actionIcon(s.action);
     const reason = s.reason ? escapeHtml(s.reason) : '';
+    const dtRaw  = fmtMD(s.snapshot_date);
+    const dt     = dtRaw ? `<span style="font-size:9px;font-weight:400;opacity:0.7;"> (${dtRaw.replace(/^0/, '')})</span>` : '';
     return `<div class="src-reason-line">
       <span class="src-ic" style="color:${ic.color};">${ic.glyph}</span>
-      <span class="src-tag">${src}</span>
+      <span class="src-tag">${src}${dt}</span>
       <span class="src-rsn">${reason}</span>
     </div>`;
   });
@@ -1653,15 +1658,141 @@ function initEcoBarClick() {
   });
 }
 
+// ---- rich Vol popover -------------------------------------------------------
+function _decodeVolumeSpike(FF) {
+  // Reproduces Excel: FH = RIGHT("0000000000" & FG & REPT("0",9-LEN(FG)), 10)
+  // Source of truth: etl/derive_cat_atomic_input.py::_decode_vs (Python).
+  // Step 1: right-pad fgStr to >=9 chars; Step 2: prepend 10 zeros; Step 3: last 10.
+  if (FF == null || FF === 0) return null;
+  const FG = Math.abs(Number(FF));
+  const fgStr = FG.toFixed(2);
+  const reptPad = Math.max(0, 9 - fgStr.length);
+  const FH = ('0000000000' + fgStr + '0'.repeat(reptPad)).slice(-10);
+  const nv = s => { const n = parseInt(s, 10); return isNaN(n) ? 0 : n; };
+  return { FI: nv(FH.slice(0,2)), FJ: nv(FH.slice(2,5)),
+           FL: nv(FH.slice(5,7)), FM: nv(FH.slice(8,10)) };
+}
+
+function _macdColor(v) {
+  if (v == null) return '';
+  const n = Number(v);
+  if (n >  0.5) return '#15803d';   // strong bull  — green-700
+  if (n >  0)   return '#4ade80';   // mild bull    — green-400
+  if (n < -0.5) return '#b91c1c';   // strong bear  — red-700
+  if (n <  0)   return '#f87171';   // mild bear    — red-400
+  return '#6b7280';                  // flat         — gray-500
+}
+function _rsiColor(v) {
+  if (v == null) return '';
+  const n = Number(v);
+  if (n >= 70) return '#b91c1c';    // overbought   — red-700
+  if (n >= 60) return '#f97316';    // elevated     — orange-500
+  if (n <= 30) return '#15803d';    // oversold     — green-700
+  if (n <= 40) return '#4ade80';    // low          — green-400
+  return '#6b7280';                  // neutral      — gray-500
+}
+
+function _buildVolPopHtml(r) {
+  const fmtV = v => v != null ? Number(v).toLocaleString() : '—';
+  const fmtR = v => v != null ? Number(v).toFixed(2) + '×' : '—';
+  const fmtN = v => v != null ? Number(v).toFixed(2) : '—';
+  const fmtP = v => v != null ? Number(v).toFixed(1) + '%' : '—';
+  const dir = r.rvol != null && r.rvol_prior != null && r.rvol_prior > 0
+    ? (r.rvol / r.rvol_prior > 1.05 ? '▲' : r.rvol / r.rvol_prior < 0.95 ? '▼' : '→') : '';
+  const dirCls = dir === '▲' ? 'color:#16a34a' : dir === '▼' ? 'color:#dc2626' : 'color:#888';
+  const vs = _decodeVolumeSpike(r.a_volume_spike);
+  const rows = [
+    ['Rel Vol (RVOL)',    fmtR(r.rvol)],
+    ['Prior Day RVOL',   fmtR(r.rvol_prior)],
+    ['vs Prior',         dir ? `<span style="${dirCls}">${dir}</span>` : '—'],
+    ['Volume',           fmtV(r.w_volume || r.volume)],
+    ['Proj Volume',      fmtV(r.vlm_projected)],
+    ['Avg Vol 10d',      fmtV(r.volume_avg_10d)],
+    ['Avg Vol 3m',       fmtV(r.volume_avg_3m)],
+    ['Vlm vs 3m Avg',    fmtP(r.vlm_3m_pct)],
+    ['Vol Rate Chg',     fmtN(r.volume_rate_change)],
+    ['Vol Signal',       r.vlm_desc || '—'],
+  ];
+  let html = '<div class="sp-title">Volume</div><table>';
+  for (const [k, v] of rows)
+    html += `<tr><td class="k">${k}</td><td class="v">${v}</td></tr>`;
+  if (vs) {
+    html += '<tr><td class="sp-sec" colspan="2">Vol Spike (decoded)</td></tr>';
+    html += `<tr><td class="k">VS Spike</td><td class="v">${vs.FI}</td></tr>`;
+    html += `<tr><td class="k">VS Price Chg</td><td class="v">${vs.FJ}</td></tr>`;
+    html += `<tr><td class="k">VS Volatility</td><td class="v">${vs.FL}</td></tr>`;
+    html += `<tr><td class="k">VS Days</td><td class="v">${vs.FM}</td></tr>`;
+  }
+  return html + '</table>';
+}
+
+// ---- rich IV popover --------------------------------------------------------
+function _buildIvPopHtml(r) {
+  const fmtP = v => v != null ? Number(v).toFixed(1) + '%' : '—';
+  const fmtN = v => v != null ? Number(v).toFixed(1) : '—';
+  const iv  = r.imp_volatility != null ? r.imp_volatility * 100 : null;
+  const hv  = r.hv             != null ? r.hv             * 100 : null;
+  const dc  = r.iv_to_hv_discount;
+  const dcStr = dc != null
+    ? (dc > 0 ? '<span style="color:#16a34a">cheap ' : '<span style="color:#dc2626">rich ') +
+      Math.abs(dc).toFixed(1) + '%</span>'
+    : '—';
+  const ivpVal = r.iv_percentile != null ? Math.round(Number(r.iv_percentile)) : null;
+  const ivpColor = window._ivpBarColor ? window._ivpBarColor(ivpVal) : '#333';
+  const ivpHtml = ivpVal != null
+    ? `<span style="color:${ivpColor};font-weight:700;">${ivpVal}</span>`
+    : '—';
+  const rows = [
+    ['IVP (IV Rank)',    ivpHtml],
+    ['IV (Impl Vol)',    fmtP(iv)],
+    ['HV (Hist Vol)',    fmtP(hv)],
+    ['IV/HV Status',    dcStr],
+    ['HV Percentile',   fmtN(r.hv_percentile)],
+    ['Range Compress',  fmtN(r.range_compression)],
+    ['d IV/HV',         r.d_iv_to_hv != null ? Number(r.d_iv_to_hv).toFixed(3) : '—'],
+  ];
+  let html = '<div class="sp-title">Volatility</div><table>';
+  for (const [k, v] of rows)
+    html += `<tr><td class="k">${k}</td><td class="v">${v}</td></tr>`;
+  return html + '</table>';
+}
+
+function _showDataPop(el, html) {
+  const pop = $('sourcePop');
+  if (!pop) return;
+  pop.innerHTML = html;
+  pop.style.display = 'block';
+  const rect = el.getBoundingClientRect();
+  let top = rect.bottom + 4;
+  if (top + pop.offsetHeight > window.innerHeight - 8)
+    top = Math.max(8, rect.top - pop.offsetHeight - 4);
+  let left = rect.left;
+  if (left + pop.offsetWidth > window.innerWidth - 8)
+    left = Math.max(8, window.innerWidth - pop.offsetWidth - 8);
+  pop.style.top  = top  + 'px';
+  pop.style.left = left + 'px';
+}
+
 function initSourcePopover() {
   const body = $('actBody');
   if (!body) return;
   body.addEventListener('mouseover', (e) => {
     const el = e.target.closest('[data-srcpop]');
-    if (el && el.dataset.src) showSourcePop(el);
+    if (el && el.dataset.src) { showSourcePop(el); return; }
+    const volEl = e.target.closest('[data-volpop]');
+    if (volEl) {
+      const r = state.rows.find(x => x.tos_symbol === volEl.dataset.sym);
+      if (r) _showDataPop(volEl, _buildVolPopHtml(r));
+      return;
+    }
+    const ivEl = e.target.closest('[data-ivpop]');
+    if (ivEl) {
+      const r = state.rows.find(x => x.tos_symbol === ivEl.dataset.sym);
+      if (r) _showDataPop(ivEl, _buildIvPopHtml(r));
+    }
   });
   body.addEventListener('mouseout', (e) => {
-    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop]')) return;
+    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop]')) return;
     hideSourcePop();
   });
 }
@@ -1819,6 +1950,11 @@ function renderGrid() {
           ${_rrSubLineHtml}
         </div>
       </td>
+      <td class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}${r.vlm_action ? `<span style="display:inline-block;margin-left:3px;font-size:9px;padding:1px 3px;border-radius:3px;background:${r.vlm_action==='Accumulate'?'#bbf7d0':r.vlm_action==='Avoid'?'#fecaca':'#e5e7eb'};color:#374151;font-weight:600;">${escapeHtml(r.vlm_action)}</span>` : ''}</td>
+      <td class="num" data-sym="${escapeHtml(r.tos_symbol)}" data-ivpop style="padding:3px 4px;cursor:default;">${window.ivGlyph ? window.ivGlyph(r.iv_percentile, r.imp_volatility != null ? r.imp_volatility * 100 : null, r.hv != null ? r.hv * 100 : null, r.iv_to_hv_discount) : ''}</td>
+      <td class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macd_brr)}">${r.a_macd_brr != null ? Number(r.a_macd_brr).toFixed(2) : ''}</td>
+      <td class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macdh_d_brr)}">${r.a_macdh_d_brr != null ? Number(r.a_macdh_d_brr).toFixed(2) : ''}</td>
+      <td class="num" style="font-size:11px;font-weight:600;color:${_rsiColor(r.rsi)}">${r.rsi != null ? Number(r.rsi).toFixed(1) : ''}</td>
       <td class="rules-link-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:4px 6px; max-width:720px; overflow:hidden; cursor:pointer;" title="Open Rule Flow for ${escapeHtml(r.tos_symbol)}">${firesCellHtml(r)}</td>
       <td style="padding:4px 6px;">
         <div class="act-inline-btns">
@@ -2142,6 +2278,9 @@ async function openDrilldown(row) {
   const _posDollar = row.current_position_dollar != null ? 'Pos: ' + fmtUsd(row.current_position_dollar) : '';
   $('modalPositionDollar').textContent = _posDollar;
   $('modalPositionDollar').style.display = _posDollar ? '' : 'none';
+  const _cname = row.company_name || '';
+  $('modalCompanyName').textContent = _cname;
+  $('modalCompanyName').style.display = _cname ? '' : 'none';
 
   const chgEl = $('modalPriceChange');
   if (row.net_chng != null && row.pct_change != null) {

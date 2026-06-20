@@ -1,18 +1,16 @@
 """
-Upgraded derive functions for TW, PS, ETF, II, SSS.
-Translates the actual Excel formulas extracted from the workbook into Python.
+etl/derive_v2.py — SINGLE-PURPOSE TW OVERRIDE (2026-06-17, TASK_59).
 
-derive_tw is defined here and re-exported by etl/derive.py
-via a top-of-file import, so derive_all() can call it directly.
-derive_sss was retired 2026-06-13 (drv_sss dropped; SSS now in drv_source_standing).
+This module now provides ONLY derive_tw (formula-faithful TW deriver).
 
-Each function follows the same pattern as the originals:
-  - opens a meta_derived_run row
-  - DELETEs WHERE date_col = D from its target table
-  - INSERTs the recomputed rows
-  - closes the run row
+History:
+  - Originally contained upgraded derives for TW, PS, ETF, II, SSS.
+  - ETF/II/PS archived 2026-05-12 (v2 equivalents adopted into main derive.py).
+  - SSS retired 2026-06-13 (drv_sss dropped; SSS moved to drv_source_standing).
+  - Only derive_tw remains; it is re-exported by etl/derive.py at module load.
 
-All numeric helpers handle NaN/None gracefully (Excel-style).
+Do NOT add general v2 derives here — extend etl/derive.py directly or create
+a dedicated etl/derive_<topic>.py instead.
 """
 from __future__ import annotations
 
@@ -28,55 +26,20 @@ from etl.db import get_table, replace_for_date
 # Shared meta_derived_run helpers — see etl/_derive_common.py.
 # These used to be inlined here to break a circular import with derive.py;
 # both modules now share the canonical definitions in _derive_common.
-from etl._derive_common import _open_drv_run, _close_drv_run, _wrap
+from etl._derive_common import (
+    _open_drv_run, _close_drv_run, _wrap,
+    _clean,                   # TASK_56: consolidated (includes "<empty>" sentinel)
+    _load_outlook_weights,    # TASK_56: canonical name with sheet= param
+)
 
-# =============================================================================
-# Shared cleanup helper — Excel pattern: IF("NaN"|None|"<empty>", 0, value)
-# =============================================================================
+# Alias for callers in this module that still use the old name.
+_load_outlook_weight = _load_outlook_weights
 
-def _clean(v) -> float:
-    if v is None:
-        return 0.0
-    if isinstance(v, str):
-        s = v.strip()
-        if s in ("", "NaN", "<empty>", "#N/A", "#REF!", "#VALUE!"):
-            return 0.0
-        try:
-            return float(s.replace(",", ""))
-        except ValueError:
-            return 0.0
-    try:
-        f = float(v)
-        if math.isnan(f) or math.isinf(f):
-            return 0.0
-        return f
-    except (TypeError, ValueError):
-        return 0.0
-
-
+# _safe_div here returns 0.0 on missing inputs, differing from the
+# None-returning version in _derive_common.  Keep the local copy.
 def _safe_div(a, b) -> float:
+    """a / b; returns 0.0 when b is falsy (0 or None)."""
     return (a / b) if b else 0.0
-
-
-# =============================================================================
-# Outlook → weight + weight → BuySell helpers (read from ref_param)
-# =============================================================================
-
-def _load_outlook_weight(session: Session, sheet: str = "outlook") -> dict[str, float]:
-    """Load outlook→weight mapping from ref_param. sheet='outlook' or 'outlook_rr'."""
-    rows = session.execute(text(
-        "SELECT param_name, value FROM ref_param WHERE sheet = :s"
-    ), {"s": sheet}).fetchall()
-    out: dict[str, float] = {}
-    for name, val in rows:
-        try:
-            out[name.upper()] = float(val) if val is not None else 0.0
-        except (TypeError, ValueError):
-            pass
-    out.setdefault("BULLISH", 3.0)
-    out.setdefault("BEARISH", -3.0)
-    out.setdefault("NEUTRAL", 0.0)
-    return out
 
 
 def _load_buysell_lookup(session: Session) -> dict[str, tuple[str, float]]:
@@ -221,6 +184,18 @@ def _derive_tw_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
             except (TypeError, ValueError):
                 earnings_days = -99
 
+        # GB: Vlm 3m % = ((W_Vlm - Avg_3m) / Avg_3m) * 100
+        # Persisted as vlm_3m_pct (was computed transiently in compute_intermediates).
+        if w_vlm and avg3m and avg3m != 0:
+            vlm_3m_pct = ((w_vlm - avg3m) / avg3m) * 100.0
+        else:
+            vlm_3m_pct = None
+
+        # GF: Vlm_RuleDesc — human-readable label for the rule code (Excel Parm!BS/BT).
+        # GG: Vlm_Action   — buy/accumulate/avoid tag (Excel Parm!BS/BU).
+        vlm_desc   = _VLM_DESC_MAP.get(rule_desc)   if rule_desc else None
+        vlm_action = _VLM_ACTION_MAP.get(rule_desc) if rule_desc else None
+
         snap = r["snapshot_date"]
         seq = r["sequence"]
         out.append({
@@ -245,9 +220,43 @@ def _derive_tw_v2_impl(session: Session, as_of_date: date, run_id: int) -> int:
             "a_macd_brr":                 macd_brr,
             "a_macdh_d_brr":              macdh_brr,
             "earnings_days_d":            earnings_days,
+            "vlm_3m_pct":                 vlm_3m_pct,
+            "vlm_desc":                   vlm_desc,
+            "vlm_action":                 vlm_action,
             "source_run_id":              run_id,
         })
     return replace_for_date(session, "drv_tw", "snapshot_date", as_of_date, out)
+
+
+# Excel Parm!BS/BT mapping: W_Vlm_RuleCode (1..10) → human-readable description (GF).
+# Source: Parm tab columns BS:BT; hand-transcribed from audit review 2026-06-20.
+_VLM_DESC_MAP: dict[str, str] = {
+    "1":  "Strong Week + High RVOL + Rising",
+    "2":  "High RVOL + Flat Price",
+    "3":  "High ROC + Below Avg Vol",
+    "4":  "Very High RVOL + Very High ROC",
+    "5":  "Low RVOL + Below 3M Avg",
+    "6":  "Moderate ROC + Below Avg Vol",
+    "7":  "High RVOL + Above Avg + High ROC",
+    "8":  "High RVOL + Near 3M Avg + Rising",
+    "9":  "Below RVOL + Above Avg + Rising",
+    "10": "Moderate RVOL + Above Avg + Rising",
+}
+
+# Excel Parm!BS/BU mapping: W_Vlm_RuleCode (1..10) → action tag (GG = Vlm_Action).
+# Source: Parm tab columns BS:BU; derived from rule semantics 2026-06-20.
+_VLM_ACTION_MAP: dict[str, str] = {
+    "1":  "Accumulate",
+    "2":  "Watch",
+    "3":  "Avoid",
+    "4":  "Accumulate",
+    "5":  "Avoid",
+    "6":  "Watch",
+    "7":  "Accumulate",
+    "8":  "Watch",
+    "9":  "Watch",
+    "10": "Watch",
+}
 
 
 def _tw_vlm_rule_desc(t, o, n, k, l, m, p, q) -> Optional[str]:

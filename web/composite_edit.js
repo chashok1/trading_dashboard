@@ -688,11 +688,7 @@ function showInfo(msg) {
   el.textContent = msg; el.style.display = "block";
   setTimeout(() => { el.style.display = "none"; }, 5000);
 }
-function escapeHtml(s) {
-  return String(s == null ? "" : s)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
+// escapeHtml is provided by _common.js (window.escapeHtml).
 function escapeAttr(s) { return escapeHtml(s); }
 function snakeName(s) {
   return String(s || "").toLowerCase()

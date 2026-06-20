@@ -523,226 +523,14 @@ derive_to = _wrap("drv_to", _derive_to_impl)
 
 # =============================================================================
 # (b) Cross-table aggregates
+# NOTE: _derive_ma_impl / derive_ma removed 2026-06-20 (TASK_64 Fix 4a).
+#       drv_ma is a VIEW (db/baseline.sql) — not a writable table.
+#       The function was never called in derive_all(); dead code deleted.
 # =============================================================================
 
-def _derive_ma_impl(session: Session, as_of_date: date, run_id: int) -> int:
-    """
-    drv_ma: master aggregation. For each symbol, take the latest record from
-    each source where snapshot_date <= as_of_date.
-    Symbols come from union of ref_sector + every hist source seen.
-    """
-    sql = text("""
-    INSERT INTO drv_ma (
-        as_of_date, tos_symbol, description, sector, asset_class, sub_asset_class, equity_sector,
-        tl_date, last_price, rsi, imp_volatility, volume, vlm_projected,
-        td_date, iv_percentile, hv_percentile, range_compression, d_iv_to_hv, d_vlt_caution,
-        a_trend_value, a_trade_value, a_bb_top, a_bb_bottom, a_bb_streak,
-        tw_date, a_macd_brr, a_macdh_d_brr, earnings_days, sma_20, sma_50, sma_200,
-        market_cap_str, beta,
-        pe_ratio, eps, div_yield,
-        rr_date, rr_buy_trade, rr_sell_trade, rr_outlook,
-        call_outlook, call_modifier, call_weight,
-        etf_outlook, etf_brr, etf_trr,
-        ii_outlook, ii_weight,
-        SSS_signal, SSS_signal_sign, SSS_rank_hl,
-        held_qty_fid, held_qty_cs,
-        pct_brr,
-        source_run_id
-    )
-    WITH p AS (SELECT CAST(:d AS date) AS d, CAST(:run AS bigint) AS run),
-    syms AS (
-        SELECT DISTINCT s FROM (
-            SELECT ticker AS s FROM ref_sector
-            UNION SELECT tos_symbol FROM hist_tl WHERE snapshot_date <= (SELECT d FROM p)
-            UNION SELECT tos_symbol FROM hist_rr WHERE snapshot_date <= (SELECT d FROM p)
-            UNION SELECT tos_symbol FROM hist_y  WHERE snapshot_date <= (SELECT d FROM p)
-            UNION SELECT tos_symbol FROM hist_call WHERE snapshot_date <= (SELECT d FROM p)
-            UNION SELECT tos_symbol FROM hist_etf  WHERE snapshot_date <= (SELECT d FROM p)
-            UNION SELECT tos_symbol FROM hist_ii   WHERE snapshot_date <= (SELECT d FROM p)
-        ) u WHERE s IS NOT NULL
-    ),
-    tl AS (
-        -- vlm_projected + imp_volatility cleaning inlined here:
-        --   imp_volatility = COALESCE(imp_volatility_raw, 0)
-        --   vlm_projected  = intraday volume projected to the full session,
-        --                    a pure per-row function of volume + sequence (HHMM)
-        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol, h.snapshot_date AS tl_date,
-               h.last_price, h.rsi,
-               COALESCE(h.imp_volatility_raw, 0) AS imp_volatility,
-               h.volume,
-               CASE
-                   WHEN h.volume IS NULL OR h.sequence < 930 THEN NULL
-                   WHEN h.sequence >= 1600 THEN h.volume::numeric
-                   WHEN ((h.sequence / 100) * 60 + (h.sequence % 100) - 570) > 0
-                       THEN h.volume::numeric * 390.0
-                            / ((h.sequence / 100) * 60 + (h.sequence % 100) - 570)
-                   ELSE NULL
-               END AS vlm_projected
-        FROM hist_tl h
-        WHERE h.snapshot_date <= (SELECT d FROM p)
-        ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
-    ),
-    -- drv_quote: consolidated latest-loaded-wins values across hist_y/tl/td.
-    -- drv_ma reads price/rsi/imp_volatility from here first, falling back to
-    -- the legacy hist_tl-based `tl` CTE so missing drv_quote rows don't
-    -- regress the data.
-    dq AS (
-        SELECT DISTINCT ON (tos_symbol) tos_symbol, last_price, rsi, imp_volatility
-        FROM drv_quote
-        WHERE as_of_date <= (SELECT d FROM p)
-        ORDER BY tos_symbol, as_of_date DESC
-    ),
-    td AS (
-        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol, h.snapshot_date AS td_date,
-               COALESCE(dr.iv_percentile, h.a_iv_percentile)  AS iv_percentile,
-               COALESCE(dr.hv_percentile, h.a_hv_percentile)  AS hv_percentile,
-               dr.range_compression, dr.d_iv_to_hv, dr.d_vlt_caution,
-               h.a_trend_value, h.a_trade_value, h.a_bb_top, h.a_bb_bottom, h.a_bb_streak
-        FROM hist_td h
-        LEFT JOIN drv_td dr USING (snapshot_date, tos_symbol, sequence)
-        WHERE h.snapshot_date <= (SELECT d FROM p)
-        ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
-    ),
-    tw AS (
-        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol, h.snapshot_date AS tw_date,
-               dr.a_macd_brr, dr.a_macdh_d_brr, dr.earnings_days_d AS earnings_days,
-               dr.sma_20_d AS sma_20, dr.sma_50_d AS sma_50, dr.sma_200_d AS sma_200
-        FROM hist_tw h
-        LEFT JOIN drv_tw dr USING (snapshot_date, tos_symbol, sequence)
-        WHERE h.snapshot_date <= (SELECT d FROM p)
-        ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
-    ),
-    too AS (
-        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol, h.beta,
-               COALESCE(dr.market_cap_num::text, h.market_cap_str) AS market_cap_str,
-               h.pe_ratio, h.eps, h.div_yield, h.sector
-        FROM hist_to h
-        LEFT JOIN drv_to dr USING (snapshot_date, tos_symbol, sequence)
-        WHERE h.snapshot_date <= (SELECT d FROM p)
-        ORDER BY h.tos_symbol, h.snapshot_date DESC, h.sequence DESC
-    ),
-    rr AS (
-        SELECT r.tos_symbol,
-               (SELECT MAX(snapshot_date) FROM hist_rr
-                WHERE tos_symbol=r.tos_symbol AND snapshot_date<=(SELECT d FROM p)) AS rr_date,
-               r.lrr AS buy_trade, r.trr AS sell_trade,
-               h.outlook
-        FROM drv_rr r
-        LEFT JOIN LATERAL (
-            SELECT outlook FROM hist_rr
-            WHERE tos_symbol=r.tos_symbol AND snapshot_date<=(SELECT d FROM p)
-            ORDER BY snapshot_date DESC LIMIT 1
-        ) h ON TRUE
-        WHERE r.as_of_date = (SELECT d FROM p)
-    ),
-    cl AS (
-        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol,
-               h.outlook AS call_outlook,
-               h.outlook_modifier AS call_modifier,
-               CAST(rp.value AS NUMERIC) AS call_weight
-        FROM hist_call h
-        LEFT JOIN ref_param rp
-               ON rp.sheet = 'outlook'
-              AND UPPER(rp.param_name) = UPPER(COALESCE(h.outlook,''))
-        WHERE h.snapshot_date <= (SELECT d FROM p)
-        ORDER BY h.tos_symbol, h.snapshot_date DESC
-    ),
-    ef AS (
-        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol,
-               h.brr AS etf_brr, h.trr AS etf_trr,
-               COALESCE(h.outlook,
-                  CASE WHEN h.brr > 0 THEN 'BULLISH'
-                       WHEN h.brr < 0 THEN 'BEARISH'
-                       ELSE 'NEUTRAL' END) AS etf_outlook
-        FROM hist_etf h
-        WHERE h.snapshot_date <= (SELECT d FROM p)
-        ORDER BY h.tos_symbol, h.snapshot_date DESC
-    ),
-    ii AS (
-        SELECT DISTINCT ON (h.tos_symbol) h.tos_symbol,
-               h.outlook AS ii_outlook,
-               CAST(rp.value AS NUMERIC) AS ii_weight
-        FROM hist_ii h
-        LEFT JOIN ref_param rp
-               ON rp.sheet = 'outlook'
-              AND UPPER(rp.param_name) = UPPER(COALESCE(h.outlook,''))
-        WHERE h.snapshot_date <= (SELECT d FROM p)
-        ORDER BY h.tos_symbol, h.snapshot_date DESC
-    ),
-    sh AS (
-        -- drv_sss retired (2026-06-13); this dead CTE returns NULLs for SSS columns
-        SELECT DISTINCT ON (tos_symbol) tos_symbol,
-               NULL::NUMERIC AS SSS_signal,
-               NULL::NUMERIC AS SSS_signal_sign,
-               NULL::NUMERIC AS SSS_rank_hl
-        FROM hist_sss
-        WHERE snapshot_date <= (SELECT d FROM p)
-        ORDER BY tos_symbol, snapshot_date DESC
-    ),
-    fid AS (
-        SELECT tos_symbol, SUM(qty) AS held_qty FROM hist_f
-        WHERE snapshot_date = (
-            SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= (SELECT d FROM p)
-        )
-        GROUP BY tos_symbol
-    ),
-    cs AS (
-        SELECT tos_symbol, SUM(qty) AS held_qty FROM hist_cs
-        WHERE snapshot_date = (
-            SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= (SELECT d FROM p)
-        )
-        GROUP BY tos_symbol
-    )
-    SELECT (SELECT d FROM p) AS as_of_date, s.s AS tos_symbol,
-        rs.description,
-        rs.equity_sector,
-        rs.asset_class, rs.sub_asset_class, rs.equity_sector,
-        tl.tl_date,
-        COALESCE(dq.last_price,     tl.last_price)     AS last_price,
-        COALESCE(dq.rsi,            tl.rsi)            AS rsi,
-        COALESCE(dq.imp_volatility, tl.imp_volatility) AS imp_volatility,
-        tl.volume, tl.vlm_projected,
-        td.td_date, td.iv_percentile, td.hv_percentile, td.range_compression,
-        td.d_iv_to_hv, td.d_vlt_caution,
-        td.a_trend_value, td.a_trade_value, td.a_bb_top, td.a_bb_bottom, td.a_bb_streak,
-        tw.tw_date, tw.a_macd_brr, tw.a_macdh_d_brr, tw.earnings_days,
-        tw.sma_20, tw.sma_50, tw.sma_200,
-        too.market_cap_str, too.beta,
-        too.pe_ratio, too.eps, too.div_yield,
-        rr.rr_date, rr.buy_trade AS rr_buy_trade, rr.sell_trade AS rr_sell_trade, rr.outlook AS rr_outlook,
-        cl.call_outlook, cl.call_modifier, cl.call_weight,
-        ef.etf_outlook, ef.etf_brr, ef.etf_trr,
-        ii.ii_outlook, ii.ii_weight,
-        sh.SSS_signal, sh.SSS_signal_sign, sh.SSS_rank_hl,
-        fid.held_qty AS held_qty_fid, cs.held_qty AS held_qty_cs,
-        -- pct_brr uses the consolidated last_price (drv_quote first, then tl).
-        CASE WHEN td.a_trend_value IS NOT NULL AND td.a_trade_value IS NOT NULL
-              AND (td.a_trend_value - td.a_trade_value) <> 0
-             THEN (td.a_trend_value - COALESCE(dq.last_price, tl.last_price)) * 100.0
-                  / (td.a_trend_value - td.a_trade_value)
-        END AS pct_brr,
-        (SELECT run FROM p)
-    FROM syms s
-    LEFT JOIN ref_sector rs ON rs.ticker = s.s
-    LEFT JOIN tl  ON tl.tos_symbol  = s.s
-    LEFT JOIN dq  ON dq.tos_symbol  = s.s
-    LEFT JOIN td  ON td.tos_symbol  = s.s
-    LEFT JOIN tw  ON tw.tos_symbol  = s.s
-    LEFT JOIN too ON too.tos_symbol = s.s
-    LEFT JOIN rr  ON rr.tos_symbol  = s.s
-    LEFT JOIN cl  ON cl.tos_symbol  = s.s
-    LEFT JOIN ef  ON ef.tos_symbol  = s.s
-    LEFT JOIN ii  ON ii.tos_symbol  = s.s
-    LEFT JOIN sh  ON sh.tos_symbol  = s.s
-    LEFT JOIN fid ON fid.tos_symbol = s.s
-    LEFT JOIN cs  ON cs.tos_symbol  = s.s
-    """)
+# (Cross-table aggregate section — _derive_ma_impl deleted 2026-06-20 Fix 4a)
 
-    # First wipe existing for this date
-    session.execute(text("DELETE FROM drv_ma WHERE as_of_date = :d"),
-                    {"d": as_of_date})
-    result = session.execute(sql, {"d": as_of_date, "run": run_id})
-    return result.rowcount or 0
+
 
 
 
@@ -1181,7 +969,7 @@ def _derive_portfolio_impl(session: Session, as_of_date: date, run_id: int) -> i
 derive_portfolio = _wrap("drv_portfolio", _derive_portfolio_impl)
 
 
-derive_ma = _wrap("drv_ma", _derive_ma_impl)
+# derive_ma removed 2026-06-20 (TASK_64 Fix 4a — dead code; drv_ma is a VIEW).
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1595,9 +1383,18 @@ def _derive_rr_impl(session: Session, as_of_date: date, run_id: int) -> int:
 
     Idempotent: DELETE WHERE as_of_date=D then INSERT.
     source='RR' when hist_rr has data, 'BB' when falling back to a_bb_bottom/a_bb_top.
+    Reverse-symbol scale factors read from ref_settings:
+      rr_reverse_scale (default 10) — LRR/TRR multiplier for yield-quoted symbols.
+      rr_reverse_mid_scale (default 5) — MRR multiplier for yield-quoted symbols.
     """
     session.execute(text(
         "DELETE FROM drv_rr WHERE as_of_date = :d"), {"d": as_of_date})
+    _rr_settings = dict(session.execute(text(
+        "SELECT setting_name, CAST(setting_value AS NUMERIC) FROM ref_settings "
+        "WHERE setting_name IN ('rr_reverse_scale','rr_reverse_mid_scale')"
+    )).fetchall())
+    rr_scale = float(_rr_settings.get("rr_reverse_scale", 10))
+    rr_mid   = float(_rr_settings.get("rr_reverse_mid_scale", 5))
 
     result = session.execute(text("""
         INSERT INTO drv_rr (as_of_date, tos_symbol, lrr, trr, mrr, outlook, source, source_run_id)
@@ -1605,20 +1402,20 @@ def _derive_rr_impl(session: Session, as_of_date: date, run_id: int) -> int:
             :d AS as_of_date,
             s.tos_symbol,
             -- reverse='Y' symbols (yield-quoted, e.g. TNX:CGI): hist_rr stores yield %
-            -- but TOS displays yield×10.  Scale by 10 when sourced from hist_rr only.
+            -- but TOS displays yield*rr_scale.  Scale factor from ref_settings.
             -- BB fallback (hist_td) is already in TOS display units — no scaling.
             CASE WHEN rrt.reverse = 'Y' AND NULLIF(rr.buy_trade, 0) IS NOT NULL
-                 THEN rr.buy_trade * 10
+                 THEN rr.buy_trade * :rr_scale
                  ELSE COALESCE(NULLIF(rr.buy_trade, 0), td.a_bb_bottom)
                  END                              AS lrr,
             CASE WHEN rrt.reverse = 'Y' AND NULLIF(rr.sell_trade, 0) IS NOT NULL
-                 THEN rr.sell_trade * 10
+                 THEN rr.sell_trade * :rr_scale
                  ELSE COALESCE(NULLIF(rr.sell_trade, 0), td.a_bb_top)
                  END                              AS trr,
             CASE WHEN NULLIF(rr.buy_trade, 0) IS NOT NULL
                   AND NULLIF(rr.sell_trade, 0) IS NOT NULL
                  THEN (rr.buy_trade + rr.sell_trade)
-                      * CASE WHEN rrt.reverse = 'Y' THEN 5.0 ELSE 0.5 END
+                      * CASE WHEN rrt.reverse = 'Y' THEN :rr_mid ELSE 0.5 END
                  WHEN td.a_bb_bottom IS NOT NULL AND td.a_bb_top IS NOT NULL
                  THEN (td.a_bb_bottom + td.a_bb_top) / 2.0
                  ELSE NULL END                    AS mrr,
@@ -1650,7 +1447,8 @@ def _derive_rr_impl(session: Session, as_of_date: date, run_id: int) -> int:
         ) td ON TRUE
         WHERE COALESCE(rr.buy_trade, td.a_bb_bottom) IS NOT NULL
            OR COALESCE(rr.sell_trade, td.a_bb_top) IS NOT NULL
-    """), {"d": as_of_date, "run": run_id})
+    """), {"d": as_of_date, "run": run_id,
+           "rr_scale": rr_scale, "rr_mid": rr_mid})
     return result.rowcount or 0
 
 
@@ -2022,6 +1820,10 @@ def _resolve_atomic_input_column(session: Session) -> dict:
         legacy_col = _MA_COL_MAP.get(ma_col)
         if legacy_col:
             out[rid] = ("drv_ma", legacy_col)
+            continue
+        # Excel section-marker rows (Begin/End) — skip silently
+        _MARKERS = {"Begin", "End"}
+        if rule_name in _MARKERS or ma_col in _MARKERS:
             continue
         # Unresolvable — leave out so eval falls through to None/0
         log.warning(
@@ -3155,6 +2957,27 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
     # Idempotent: wipe and rebuild drv_tn_td_bb_rr for this date
     session.execute(text("DELETE FROM drv_tn_td_bb_rr WHERE as_of_date = :d"), {"d": as_of_date})
 
+    # Read BB-slope thresholds from ref_settings (defaults: hi=3, lo=2).
+    # These control the bb_rng_strk_rule CASE expression thresholds.
+    _bb_settings = dict(session.execute(text(
+        "SELECT setting_name, CAST(setting_value AS NUMERIC) FROM ref_settings "
+        "WHERE setting_name IN ('bb_slope_hi','bb_slope_lo')"
+    )).fetchall())
+    bb_slope_hi = float(_bb_settings.get("bb_slope_hi", 3))
+    bb_slope_lo = float(_bb_settings.get("bb_slope_lo", 2))
+
+    # Read sd_median_window_days from ref_settings (default 30).
+    # Both this SQL twin and the Python engine (derive_cat_atomic_input) must use
+    # the same window so LEAST(sd, median_sd) agrees between the two engines.
+    _win_row = session.execute(text(
+        "SELECT setting_value FROM ref_settings WHERE setting_name='sd_median_window_days'"
+    )).first()
+    try:
+        _win_days = int(_win_row[0]) if _win_row else 30
+    except (TypeError, ValueError):
+        _win_days = 30
+    win_interval = f"{_win_days} days"
+
     # Pass 1: INSERT QE/QH/QI/QJ/QM/QN into drv_tn_td_bb_rr
     result = session.execute(text("""
         WITH inputs AS (
@@ -3195,6 +3018,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 FROM hist_tw
                 WHERE tos_symbol = q.tos_symbol
                   AND snapshot_date <= q.as_of_date
+                  AND snapshot_date >= q.as_of_date - CAST(:win AS INTERVAL)
                   AND standard_dev IS NOT NULL
             ) med ON TRUE
             LEFT JOIN drv_cat_atomic_input a
@@ -3242,15 +3066,15 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 ELSE 1
             END,
             CASE
-                WHEN c.a_bb_top_slope >= 3 AND c.a_bb_bot_slope >= 3 THEN 4
-                WHEN c.a_bb_top_slope <= -3 AND c.a_bb_bot_slope <= -3 THEN -4
-                WHEN c.a_bb_top_slope >= 2 AND c.a_bb_bot_slope >= 2 THEN 3
-                WHEN c.a_bb_top_slope <= -2 AND c.a_bb_bot_slope <= -2 THEN -3
-                WHEN c.a_bb_bot_slope >= 2 AND c.a_bb_top_slope <  2 THEN 1
-                WHEN c.a_bb_top_slope <= -3 AND c.a_bb_bot_slope > -2 THEN -1
-                WHEN c.a_bb_top_slope >= 3
+                WHEN c.a_bb_top_slope >= :bshi AND c.a_bb_bot_slope >= :bshi THEN 4
+                WHEN c.a_bb_top_slope <= -:bshi AND c.a_bb_bot_slope <= -:bshi THEN -4
+                WHEN c.a_bb_top_slope >= :bslo AND c.a_bb_bot_slope >= :bslo THEN 3
+                WHEN c.a_bb_top_slope <= -:bslo AND c.a_bb_bot_slope <= -:bslo THEN -3
+                WHEN c.a_bb_bot_slope >= :bslo AND c.a_bb_top_slope < :bslo THEN 1
+                WHEN c.a_bb_top_slope <= -:bshi AND c.a_bb_bot_slope > -:bslo THEN -1
+                WHEN c.a_bb_top_slope >= :bshi
                      AND c.a_bb_top_slope > c.a_bb_bot_slope THEN 2
-                WHEN c.a_bb_bot_slope <= -2
+                WHEN c.a_bb_bot_slope <= -:bslo
                      AND c.a_bb_bot_slope < c.a_bb_top_slope THEN -2
                 ELSE 0
             END,
@@ -3281,7 +3105,8 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
             END
         FROM computed c
         WHERE c.tos_symbol IS NOT NULL
-    """), {"d": as_of_date})
+    """), {"d": as_of_date, "win": win_interval,
+           "bshi": bb_slope_hi, "bslo": bb_slope_lo})
 
     rows_pass1 = result.rowcount or 0
 

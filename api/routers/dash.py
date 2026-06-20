@@ -152,31 +152,49 @@ def get_briefing(date: Optional[str] = Query(None,
             warnings.append(f"outlook_flips failed: {e}")
 
         # 3. Allocation drift — categories outside [min, max]
+        # TASK_57: read from drv_category_totals (derived once by ETL).
+        # Falls back to inline aggregation when drv_category_totals has no rows
+        # for the date (e.g. before the next re-derive).
         allocation_drift = []
         try:
-            # SUM current $ per category from drv_actionable (uses the same
-            # category-resolution logic derive_actionable just ran)
             rows = s.execute(text("""
-                WITH cat AS (
-                    SELECT position_category AS category,
-                           SUM(COALESCE(current_position_dollar, 0)) AS held
-                    FROM drv_actionable
-                    WHERE as_of_date = :d AND position_category IS NOT NULL
-                    GROUP BY position_category
-                )
-                SELECT a.category, c.held, a.min_dollar, a.max_dollar,
-                       CASE
-                         WHEN a.min_dollar IS NOT NULL AND c.held < a.min_dollar THEN 'BELOW_MIN'
-                         WHEN a.max_dollar IS NOT NULL AND c.held > a.max_dollar THEN 'ABOVE_MAX'
-                         ELSE 'WITHIN'
-                       END AS status
-                FROM ref_asset_allocation a
-                JOIN cat c ON c.category = a.category
-                WHERE (a.min_dollar IS NOT NULL AND c.held < a.min_dollar)
-                   OR (a.max_dollar IS NOT NULL AND c.held > a.max_dollar)
-                ORDER BY a.category
+                SELECT t.position_category AS category,
+                       t.total_dollar AS held,
+                       a.min_dollar, a.max_dollar, t.drift_band AS status
+                FROM drv_category_totals t
+                JOIN ref_asset_allocation a ON a.category = t.position_category
+                WHERE t.as_of_date = :d
+                  AND t.drift_band <> 'WITHIN'
+                ORDER BY t.position_category
             """), {"d": d}).mappings().all()
-            allocation_drift = [dict(r) for r in rows]
+            if rows:
+                allocation_drift = [dict(r) for r in rows]
+            else:
+                # Fallback: inline aggregation when drv_category_totals is stale
+                rows2 = s.execute(text("""
+                    WITH cat AS (
+                        SELECT position_category AS category,
+                               SUM(COALESCE(current_position_dollar,0)) AS held
+                        FROM drv_actionable
+                        WHERE as_of_date = :d
+                          AND position_category IS NOT NULL
+                        GROUP BY position_category
+                    )
+                    SELECT a.category, c.held, a.min_dollar, a.max_dollar,
+                           CASE
+                             WHEN a.min_dollar IS NOT NULL AND c.held < a.min_dollar
+                               THEN 'BELOW_MIN'
+                             WHEN a.max_dollar IS NOT NULL AND c.held > a.max_dollar
+                               THEN 'ABOVE_MAX'
+                             ELSE 'WITHIN'
+                           END AS status
+                    FROM ref_asset_allocation a
+                    JOIN cat c ON c.category = a.category
+                    WHERE (a.min_dollar IS NOT NULL AND c.held < a.min_dollar)
+                       OR (a.max_dollar IS NOT NULL AND c.held > a.max_dollar)
+                    ORDER BY a.category
+                """), {"d": d}).mappings().all()
+                allocation_drift = [dict(r) for r in rows2]
         except Exception as e:
             warnings.append(f"allocation_drift failed: {e}")
 
@@ -369,7 +387,10 @@ def get_actionable(
     sql = f"""
         SELECT a.*,
                COALESCE(a.source_asset_class, mt.asset_class) AS real_asset_class,
-               mt.iv_percentile, mo.pct_brr AS ma_pct_brr,
+               mt.iv_percentile, mt.hv_percentile, mt.range_compression, mt.d_iv_to_hv,
+               mt.volume, mt.vlm_projected,
+               mt.a_macd_brr, mt.a_macdh_d_brr, mt.rsi,
+               mo.pct_brr AS ma_pct_brr,
                dr.lrr, dr.mrr, dr.trr, dr.outlook AS rr_outlook,
                q.last_price, q.net_chng, q.pct_change, q.export_date, q.export_time, q.loaded_at,
                q.open_price, q.high_price, q.low_price, q.imp_volatility, q.iv_to_hv_discount,
@@ -382,7 +403,15 @@ def get_actionable(
                rr.bb_rng_strk_desc AS bb_desc,
                rr.rr_desc,
                rr.rr_bull_bear,
-               _ha.held_accounts
+               _ha.held_accounts,
+               hy.company_name,
+               tw.rvol, tw.rvol_prior, tw.w_volume,
+               tw.avg_vlm_10d_d AS volume_avg_10d,
+               tw.avg_vlm_3m_d  AS volume_avg_3m,
+               tw.vlm_rate_change_d AS volume_rate_change,
+               tw.vlm_3m_pct, tw.vlm_desc, tw.vlm_action,
+               hv_td.historical_vol AS hv,
+               htw.a_volume_spike
         FROM drv_actionable a
         LEFT JOIN drv_tn_td_bb_rr rr
                ON rr.tos_symbol = a.tos_symbol AND rr.as_of_date = a.as_of_date
@@ -394,6 +423,11 @@ def get_actionable(
                ON mo.tos_symbol = a.tos_symbol AND mo.as_of_date = a.as_of_date
         LEFT JOIN drv_quote q
                ON q.tos_symbol = a.tos_symbol AND q.as_of_date = a.as_of_date
+        LEFT JOIN LATERAL (
+            SELECT company_name FROM hist_y
+            WHERE tos_symbol = a.tos_symbol
+            ORDER BY snapshot_date DESC LIMIT 1
+        ) hy ON TRUE
         LEFT JOIN LATERAL (
             SELECT user_action, snooze_until
             FROM user_action_log
@@ -418,6 +452,30 @@ def get_actionable(
             ) _pos
             GROUP BY tos_symbol
         ) _ha ON _ha.tos_symbol = a.tos_symbol
+        LEFT JOIN LATERAL (
+            SELECT w_vlm_expn_ratio AS rvol,
+                   w_prior_day_vlm_expn_ratio AS rvol_prior,
+                   w_volume, avg_vlm_10d_d, avg_vlm_3m_d, vlm_rate_change_d,
+                   vlm_3m_pct, vlm_desc, vlm_action
+            FROM drv_tw
+            WHERE tos_symbol = a.tos_symbol
+              AND snapshot_date = a.as_of_date
+            ORDER BY sequence DESC LIMIT 1
+        ) tw ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT historical_vol
+            FROM hist_td
+            WHERE tos_symbol = a.tos_symbol
+              AND snapshot_date <= a.as_of_date
+            ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
+        ) hv_td ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT a_volume_spike
+            FROM hist_tw
+            WHERE tos_symbol = a.tos_symbol
+              AND snapshot_date <= a.as_of_date
+            ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
+        ) htw ON TRUE
         WHERE {' AND '.join(where)}
     """
     with session_scope() as s:
@@ -1148,7 +1206,8 @@ def get_portfolio(
             total_gl_pct                              AS total_gain_pct,
             cost_basis_total                          AS cost_basis,
             pct_of_account,
-            snapshot_date
+            snapshot_date,
+            is_cash(tos_symbol, type, description)    AS is_cash
           FROM hist_f
           WHERE TRUE
             AND snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
@@ -1174,7 +1233,8 @@ def get_portfolio(
             c.gain_pct                                  AS total_gain_pct,
             c.cost_basis,
             NULL::NUMERIC                             AS pct_of_account,
-            c.snapshot_date
+            c.snapshot_date,
+            is_cash(c.tos_symbol, c.security_type, c.description) AS is_cash
           FROM hist_cs c
           LEFT JOIN drv_cs_realized_gain rg
                ON rg.account = c.account
@@ -1203,7 +1263,8 @@ def get_portfolio(
             NULL::NUMERIC                             AS total_gain_pct,
             NULL::NUMERIC                             AS cost_basis,
             NULL::NUMERIC                             AS pct_of_account,
-            (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)  AS snapshot_date
+            (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)  AS snapshot_date,
+            FALSE                                     AS is_cash
           FROM drv_cs_realized_gain rg
           WHERE rg.as_of_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
             AND NOT EXISTS (
@@ -1246,7 +1307,8 @@ def get_portfolio(
                ELSE NULL END                 AS total_gain_pct,
           SUM(cost_basis)                    AS cost_basis,
           SUM(pct_of_account)                AS pct_of_account,
-          MAX(snapshot_date)                 AS snapshot_date
+          MAX(snapshot_date)                 AS snapshot_date,
+          BOOL_OR(is_cash)                   AS is_cash
         FROM u
         GROUP BY symbol
         ORDER BY SUM(market_value) DESC NULLS LAST, symbol

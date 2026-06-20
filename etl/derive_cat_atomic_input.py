@@ -33,12 +33,15 @@ import logging
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from etl._derive_common import _safe_div  # TASK_56: consolidated
+
 log = logging.getLogger(__name__)
 
 
 # =============================================================================
 # Step 1 — working-set SELECT.
-# Mirrors the latest-snapshot-<=D pattern used by _derive_ma_impl.
+# Mirrors the latest-snapshot-<=D pattern used by the component derive functions.
+# Accepts bind params :d (date) and :win (interval string, e.g. '30 days').
 # =============================================================================
 WORKING_SET_SQL = """
 WITH p AS (SELECT CAST(:d AS date) AS d),
@@ -127,12 +130,17 @@ tw_fb AS (
     ORDER BY tos_symbol, snapshot_date DESC
 ),
 med AS (
-    -- Secondary source for AC (standard_dev). Same 14-day freshness gate as tw
-    -- so stale symbols don't get a stale AC through this fallback path.
-    SELECT DISTINCT ON (tos_symbol) tos_symbol, standard_dev AS median_sd
-    FROM hist_tw WHERE snapshot_date <= (SELECT d FROM p)
-      AND snapshot_date >= (SELECT d FROM p) - INTERVAL '14 days'
-    ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
+    -- True rolling median of standard_dev over the trailing :win calendar days.
+    -- percentile_cont(0.5) gives the statistical median used as the AC cap:
+    --   AC = LEAST(standard_dev, median_sd) = MIN(latest SD, rolling-median SD).
+    -- Window size is read from ref_settings.sd_median_window_days (default 30).
+    SELECT tos_symbol,
+           percentile_cont(0.5) WITHIN GROUP (ORDER BY standard_dev) AS median_sd
+    FROM hist_tw
+    WHERE snapshot_date <= (SELECT d FROM p)
+      AND snapshot_date >= (SELECT d FROM p) - CAST(:win AS INTERVAL)
+      AND standard_dev IS NOT NULL
+    GROUP BY tos_symbol
 ),
 dq AS (
     SELECT DISTINCT ON (tos_symbol) tos_symbol, last_price, net_chng, pct_change,
@@ -203,16 +211,7 @@ LEFT JOIN rr  ON rr.tos_symbol  = s.s
 # Step 2 — MA-sheet intermediates.  All per-row arithmetic.
 # Source-of-truth: docs/ma_columns_v2.csv formula column.
 # =============================================================================
-def _safe_div(num, den):
-    """num / den with NULL / divide-by-zero -> None."""
-    try:
-        n = float(num) if num is not None else None
-        d = float(den) if den is not None else None
-        if n is None or d is None or d == 0:
-            return None
-        return n / d
-    except (TypeError, ValueError):
-        return None
+# _safe_div imported from etl._derive_common (TASK_56).
 
 
 def _f(v) -> Optional[float]:
@@ -304,11 +303,15 @@ def _decode_vs(a_volume_spike: Optional[float], AD: Optional[float]) -> dict:
         return dict(FF=FF, FH=None, FI=0, FJ=0, FK=0, FL=0, FM=0)
     FG = abs(FF)
     fg_str = f"{FG:.2f}"  # numeric->string with 2 decimals
-    # Excel concatenates "0000000000" + str(FG) + REPT("0", 9-LEN(str(FG))),
-    # then takes RIGHT(...,10).  For most realistic FG (8-10 char), the
-    # 9-LEN term is 0 or negative (REPT returns "").  Final string is the
-    # last 10 chars of "0000000000"+fg_str.
-    padded = "0000000000" + fg_str
+    # Faithfully reproduces Excel:
+    #   FH = RIGHT("0000000000" & FG & REPT("0", 9-LEN(FG)), 10)
+    # Step 1: right-pad fg_str to at least 9 chars with trailing zeros.
+    # Step 2: prepend 10 leading zeros.
+    # Step 3: take the last 10 chars.
+    # This differs from the previous implementation when len(fg_str) < 9;
+    # for fg_str >= 9 chars the REPT term is "" and the result is identical.
+    rept_pad = max(0, 9 - len(fg_str))
+    padded = "0000000000" + fg_str + ("0" * rept_pad)
     FH = padded[-10:]
     def _nv(s: str) -> int:
         try: return int(s)
@@ -403,11 +406,16 @@ def compute_intermediates(row: dict) -> dict:
     # AO = (D - ABS(AL)) / AC  (BBHighLow_SD)
     AO = None  # set below once AC is known
 
-    # AC = standard_dev only — matches Excel MA!AC currently set to =AA (StandardDeviation).
-    # TEMPORARY (per user, 2026-06-05): will switch back to MIN(standard_dev, median_sd)
-    # once the Excel AC formula is reverted to =MIN(AA,AB). (AB=standard_dev, AA=median_sd;
-    # median kept only as a null fallback.)
-    AC = AB if AB is not None else AA
+    # AC = MIN(standard_dev, rolling_median_sd) — matches the Excel AC formula =MIN(AA,AB).
+    # AB = current standard_dev (hist_tw.standard_dev for anchor date).
+    # AA = rolling median_sd (true percentile_cont(0.5) over last sd_median_window_days days).
+    # Null-safe: if either is None, use the other; if both None, AC is None.
+    if AB is not None and AA is not None:
+        AC = min(AB, AA)
+    elif AB is not None:
+        AC = AB
+    else:
+        AC = AA
     # AD = AC / D
     AD = _safe_div(AC, D) if D and D != 0 else None
 
@@ -439,6 +447,9 @@ def compute_intermediates(row: dict) -> dict:
     BW = _safe_div(BV, (AD * 100)) if AD else None
     BY = _safe_div(BX, (AD * 100)) if AD else None
     BZ = _safe_div(100 * D, (100 + BX)) if D is not None and BX is not None else None
+    # CA = Perf1D_sd. Python scale: net_chng/AC (~100× smaller than Excel's pct_change%×D/AC).
+    # The perf1d_sd_rule thresholds in ref_trig_atomic_rule are calibrated to THIS scale —
+    # do not change this formula without also re-calibrating those thresholds.
     # round() removes IEEE-754 noise at threshold boundaries (e.g. -1.000...002 → -1.0)
     _ca = _safe_div(G_, AC)
     CA = round(_ca, 10) if _ca is not None else None  # Perf1D_sd
@@ -818,8 +829,8 @@ def _bull_expr(r: dict, o: dict) -> Optional[float]:
     JN = _f(o.get("trade_rule"))
     JQ = _f(o.get("trend_rule"))
     JV = _f(o.get("trade_trend_sd_rule"))
-    LZ = _f(o.get("bblowdays"))           # placeholder None
-    LY = _f(o.get("bbhighdays"))          # placeholder None
+    LZ = _f(o.get("bblowdays"))   # trig_ifs on AR (BBLowDays decoded from a_bb_high_low_days)
+    LY = _f(o.get("bbhighdays"))  # trig_ifs on AQ (BBHighDays decoded from a_bb_high_low_days)
     KH = _f(o.get("lrr_above_trade"))
     def ge(a, b): return a is not None and a >= b
     def le(a, b): return a is not None and a <= b
@@ -867,7 +878,7 @@ def _bb_bull_rule_expr(r: dict, o: dict) -> Optional[float]:
     """LW: BB Bull Rule = IFS(AND(LP>=3,LS>=3),3, AND(LP<=-3,LS<=-3),-3, TRUE, LN)."""
     LP = _f(o.get("bbstreak_rule")) or 0.0
     LS = _f(o.get("bbstreak_days_rule")) or 0.0
-    LN = _f(o.get("bbhighlow_sd_rule"))   # placeholder None
+    LN = _f(o.get("bbhighlow_sd_rule"))   # zero_guard_trig_ifs on AO (BBHighLow_SD)
     if LP >= 3 and LS >= 3: return 3.0
     if LP <= -3 and LS <= -3: return -3.0
     return LN
@@ -1291,6 +1302,22 @@ WHERE dst.as_of_date = src.as_of_date AND dst.tos_symbol = src.tos_symbol
 """
 
 
+def _get_sd_window(session: Session) -> str:
+    """Return the sd_median_window_days interval string for WORKING_SET_SQL's :win param.
+
+    Reads ref_settings.sd_median_window_days (default 30). Returns a Postgres
+    INTERVAL-compatible string, e.g. '30 days'.
+    """
+    row = session.execute(text(
+        "SELECT setting_value FROM ref_settings WHERE setting_name='sd_median_window_days'"
+    )).first()
+    try:
+        days = int(row[0]) if row else 30
+    except (TypeError, ValueError):
+        days = 30
+    return f"{days} days"
+
+
 def derive_cat_atomic_input(session: Session, as_of_date: date,
                             parent_run_id: Optional[int] = None) -> int:
     """Compute drv_cat_atomic_input rows for `as_of_date`.  Idempotent."""
@@ -1299,10 +1326,11 @@ def derive_cat_atomic_input(session: Session, as_of_date: date,
     if not trig_rules:
         log.warning("drv_cat_atomic_input: ref_trig_atomic_rule empty; skipping")
         return 0
+    win = _get_sd_window(session)
     session.execute(
         text("DELETE FROM drv_cat_atomic_input WHERE as_of_date = :d"),
         {"d": as_of_date})
-    rows = session.execute(text(WORKING_SET_SQL), {"d": as_of_date}).mappings().all()
+    rows = session.execute(text(WORKING_SET_SQL), {"d": as_of_date, "win": win}).mappings().all()
     if not rows:
         return 0
     all_db_cols = ([s[0] for s in COLUMN_SPECS_PASS1]
@@ -1355,10 +1383,11 @@ def get_symbol_intermediates(session: Session, tos_symbol: str, as_of_date) -> d
     Runs the working-set SQL filtered to a single symbol, calls compute_intermediates,
     and returns the full row dict (raw SQL columns + all computed intermediates).
     """
+    win = _get_sd_window(session)
     filtered_sql = WORKING_SET_SQL.rstrip() + "\nWHERE s.s = :sym"
     try:
         row = session.execute(
-            text(filtered_sql), {"d": as_of_date, "sym": tos_symbol}
+            text(filtered_sql), {"d": as_of_date, "sym": tos_symbol, "win": win}
         ).mappings().first()
     except Exception:
         return {}

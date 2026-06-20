@@ -20,22 +20,7 @@ const DOM = {
     copyMissingBtn: document.getElementById('copyMissingBtn'),
 };
 
-async function fetchJSON(url, options = {}) {
-    try {
-        const resp = await fetch(url, {
-            headers: { 'Content-Type': 'application/json' },
-            ...options,
-        });
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-            throw new Error(err.detail || resp.statusText);
-        }
-        return await resp.json();
-    } catch (e) {
-        console.error(`Fetch error: ${e.message}`);
-        throw e;
-    }
-}
+// fetchJSON is provided by _common.js (window.fetchJSON).
 
 async function loadDates() {
     try {
@@ -189,10 +174,7 @@ function showStatus(message, type) {
     }
 }
 
-function escapeHtml(text) {
-    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
-    return String(text).replace(/[&<>"']/g, m => map[m]);
-}
+// escapeHtml is provided by _common.js (window.escapeHtml).
 
 async function checkHealth() {
     try {

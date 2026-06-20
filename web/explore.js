@@ -226,22 +226,7 @@ if (DOM.deleteRowBtn) {
     });
 }
 
-async function fetchJSON(url, options = {}) {
-    try {
-        const resp = await fetch(url, {
-            headers: { 'Content-Type': 'application/json' },
-            ...options,
-        });
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-            throw new Error(err.detail || resp.statusText);
-        }
-        return await resp.json();
-    } catch (e) {
-        console.error(`Fetch error: ${e.message}`);
-        throw e;
-    }
-}
+// fetchJSON is provided by _common.js (window.fetchJSON).
 
 async function loadAvailableDates() {
     try {
@@ -542,16 +527,7 @@ function showStatus(message, type) {
     DOM.statusBar.style.display = 'block';
 }
 
-function escapeHtml(text) {
-    const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;',
-    };
-    return text.replace(/[&<>"']/g, m => map[m]);
-}
+// escapeHtml is provided by _common.js (window.escapeHtml).
 
 function isFilePathColumn(colName) {
     const lowerName = colName.toLowerCase();

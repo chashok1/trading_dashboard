@@ -324,14 +324,7 @@ function closeTrendModal() {
     if (bd) bd.style.display = 'none';
 }
 
-async function fetchJson(url, opts = {}) {
-  const r = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts });
-  if (!r.ok) {
-    const e = await r.json().catch(() => ({ detail: r.statusText }));
-    throw new Error(e.detail || r.statusText);
-  }
-  return r.json();
-}
+// fetchJson is provided by _common.js (window.fetchJson).
 
 function fmtUsd(v, opts = {}) {
   if (v === null || v === undefined || v === '' || !isFinite(Number(v))) return '';
@@ -404,11 +397,7 @@ function exportPositionsCsv() {
   URL.revokeObjectURL(url);
 }
 
-function escapeHtml(s) {
-  return String(s ?? '').replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[c]));
-}
+// escapeHtml is provided by _common.js (window.escapeHtml).
 
 // ---- date picker ----
 async function loadDates() {
@@ -437,11 +426,15 @@ async function loadDates() {
 
 // ---- KPI tiles renderer ----
 
-// ---- Cash-row detection (mirrors backend F_IS_CASH / CS_IS_CASH) -------
-// Used so client-side aggregates separate cash from investable market value
-// the same way /api/portfolio/summary does.
+// ---- Cash-row detection -----------------------------------------------
+// TASK_54: reads server-emitted is_cash flag (computed by the DB function
+// is_cash() in baseline.sql). Falls back to client-side rules for rows
+// that predate the migration or come from other endpoints.
 function isCashRow(r) {
   if (!r) return false;
+  // Prefer server-computed flag when present.
+  if (r.is_cash !== undefined && r.is_cash !== null) return r.is_cash === true;
+  // Fallback: reproduce the rules for older data / non-portfolio endpoints.
   const sym  = (r.symbol || '');
   const desc = (r.description || '').toUpperCase();
   const stype = (r.security_type || '');

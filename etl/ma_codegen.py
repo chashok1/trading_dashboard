@@ -19,8 +19,9 @@ log = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Symbol universe â€” UNION across hist_* (matches _derive_ma_impl behaviour).
+# Symbol universe — UNION across hist_* (same approach as derive_symbols).
 # Symbols loaded into hist_* but missing from ref_sector still get a row (B4).
+# (_derive_ma_impl was removed 2026-06-20; drv_ma is a VIEW, not a table.)
 # =============================================================================
 SYMBOL_UNIVERSE_CTE = """
 WITH p AS (SELECT CAST(:d AS date) AS d),

@@ -22,66 +22,20 @@ Behavior rules baked in (per user acceptance criteria):
 from __future__ import annotations
 
 import logging
-import math
 from datetime import date, timedelta
 from typing import Optional
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from etl._derive_common import _wrap
+from etl._derive_common import (
+    _wrap,
+    _clean, _load_outlook_weights, _outlook_to_weight,  # TASK_56: consolidated
+)
 
 log = logging.getLogger("etl.derive_source_standing")
 
 _TARGET = "drv_source_standing"
-
-
-def _clean(v) -> float:
-    """Excel-style clean: NaN/None/blank -> 0.0."""
-    if v is None:
-        return 0.0
-    if isinstance(v, str):
-        s = v.strip()
-        if s in ("", "NaN", "#N/A", "#REF!", "#VALUE!"):
-            return 0.0
-        try:
-            return float(s.replace(",", ""))
-        except ValueError:
-            return 0.0
-    try:
-        f = float(v)
-        return 0.0 if (math.isnan(f) or math.isinf(f)) else f
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _load_outlook_weights(session: Session) -> dict[str, float]:
-    """Load {OUTLOOK_UPPER: weight} from ref_param sheet='outlook'."""
-    rows = session.execute(text(
-        "SELECT param_name, value FROM ref_param WHERE sheet = 'outlook'"
-    )).fetchall()
-    out: dict[str, float] = {}
-    for name, val in rows:
-        try:
-            out[str(name).upper()] = float(val) if val is not None else 0.0
-        except (TypeError, ValueError):
-            pass
-    out.setdefault("BULLISH", 3.0)
-    out.setdefault("BEARISH", -3.0)
-    out.setdefault("NEUTRAL", 0.0)
-    return out
-
-
-def _outlook_to_weight(outlook: Optional[str], modifier: Optional[str],
-                       wt_map: dict[str, float]) -> Optional[float]:
-    if not outlook:
-        return None
-    base = wt_map.get(str(outlook).upper())
-    if base is None:
-        return 0.0
-    if modifier and "bench" in str(modifier).lower():
-        return base / 3.0
-    return base
 
 
 # ---------------------------------------------------------------------------

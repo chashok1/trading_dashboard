@@ -395,6 +395,31 @@ def get_rule_scorecard(
         return [dict(r) for r in rows]
 
 
+@router.get("/api/rules/atomic-scorecard", response_model=list[dict])
+def get_atomic_rule_scorecard(
+    min_n: int = Query(0, ge=0, le=100000,
+                       description="Only rules with at least this many outcomes"),
+    limit: int = Query(500, ge=1, le=5000),
+):
+    """Raw (no direction adjustment) forward-return scorecard per atomic rule.
+
+    Reads v_atomic_rule_scorecard. avg_fwd_20d > 0 means the rule's readings
+    were followed by positive 20d returns on average (raw, not sign-flipped).
+    Sorted by avg_fwd_20d DESC by default.
+    """
+    with session_scope() as s:
+        rows = s.execute(text(
+            "SELECT rule_id, rule_name, intent_text, n, avg_fwd_5d,"
+            " avg_fwd_20d, win_rate, ci_low, ci_high, confidence,"
+            " first_seen, last_seen"
+            " FROM v_atomic_rule_scorecard"
+            " WHERE n >= :mn"
+            " ORDER BY avg_fwd_20d DESC NULLS LAST"
+            " LIMIT :lim"
+        ), {"mn": min_n, "lim": limit}).mappings().all()
+        return [dict(r) for r in rows]
+
+
 @router.get("/api/rules/my-actions", response_model=dict)
 def get_my_actions(limit: int = Query(200, ge=1, le=2000)):
     """Personal action track record (Phase 4): your DONE actions joined to the

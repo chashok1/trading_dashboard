@@ -432,16 +432,7 @@ async function showFileLogsPopup(fileType) {
     }
 }
 
-function escapeHtml(text) {
-    const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-    };
-    return text.replace(/[&<>"']/g, m => map[m]);
-}
+// escapeHtml is provided by _common.js (window.escapeHtml).
 
 function renderSummary() {
     const s = state.summary;
@@ -774,10 +765,7 @@ function updateFileTypeFilterOptions() {
     select2.value = currentValue2;
 }
 
-function escapeHtml(text) {
-    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
-    return text.replace(/[&<>"']/g, c => map[c]);
-}
+// escapeHtml is provided by _common.js (window.escapeHtml).
 
 function updateLastRefreshed() {
     const now = new Date();

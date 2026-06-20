@@ -115,7 +115,7 @@ def get_symbol_trace(sym: str, as_of: Optional[str] = Query(None, alias="date"))
                           fired, category, rolls_into[] }, ... ]
       }
     """
-    from etl.derive import eval_atomic_rule, _eval_precondition
+    from etl._rule_eval import eval_atomic_rule, _eval_precondition
 
     sym_u = sym.upper().strip()
     with session_scope() as s:
@@ -537,7 +537,7 @@ def get_rule_flow(sym: str, as_of: Optional[str] = Query(None, alias="date")):
     Returns: indicators, atomics (with reason), composites (with member detail),
     rule_groups (with composite membership + fired status), and final output.
     """
-    from etl.derive import eval_atomic_rule, _eval_precondition, _MA_COL_MAP, _composite_operator as _composite_op
+    from etl._rule_eval import eval_atomic_rule, _eval_precondition, _MA_COL_MAP, _composite_operator as _composite_op
 
     sym_u = sym.upper().strip()
     with session_scope() as s:

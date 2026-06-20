@@ -214,9 +214,9 @@
     const dot = (v, label, sdv) => {
       const c = scoreColor(v);
       const sdStr = sdv != null ? ` ${fmtSd(sdv)}SD` : '';
-      return `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:#475569;">
-        <span style="width:9px;height:9px;border-radius:50%;background:${c};display:inline-block;flex-shrink:0;"></span>
-        <span style="font-weight:600;">${label}</span><span style="color:#94a3b8;font-size:9px;">${sdStr}</span>
+      return `<span style="display:inline-flex;align-items:center;gap:2px;font-size:8px;color:#475569;">
+        <span style="width:7px;height:7px;border-radius:50%;background:${c};display:inline-block;flex-shrink:0;"></span>
+        <span style="font-weight:600;">${label}</span><span style="color:#94a3b8;font-size:7px;">${sdStr}</span>
       </span>`;
     };
 
@@ -225,7 +225,7 @@
     // Y scale = RR range only (lrr..trr + price); Trade/Trend in separate chart
     const vals1 = [cur, prev, hi, lo, lrr, trr].filter(v => v != null);
     const rawMin1 = Math.min(...vals1), rawMax1 = Math.max(...vals1);
-    const W1 = 210, H = 160, PAD_L = 44, PAD_R = 102, PAD_T = 12, PAD_B = 18;
+    const W1 = 210, H = 120, PAD_L = 44, PAD_R = 102, PAD_T = 10, PAD_B = 14;
     const chartW1 = W1 - PAD_L - PAD_R, chartH = H - PAD_T - PAD_B;
     const pad1 = sdVal ? sdVal * 0.35 : (rawMax1 - rawMin1) * 0.08;
     const yMin1 = rawMin1 - pad1, yMax1 = rawMax1 + pad1, yRng1 = yMax1 - yMin1 || 1;
@@ -356,7 +356,7 @@
     // ── Assemble ──────────────────────────────────────────────────────────────
     // ── Shared box style ──────────────────────────────────────────────────────
     const infoBox = (content, extraStyle = '') =>
-      `<div style="padding:5px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:9px;${extraStyle}">${content}</div>`;
+      `<div style="padding:2px 6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;font-size:8px;${extraStyle}">${content}</div>`;
 
     // ── Box above Graph1: TRR MRR LRR centered close together ───────────────
     const rrIdxBox = infoBox(`
@@ -394,25 +394,21 @@
       `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">` +
       `<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">` +
         `${dot(ix.trr,'TRR',sd.trr_sd)}${dot(ix.mrr,'MRR',sd.mrr_sd)}${dot(ix.lrr,'LRR',sd.lrr_sd)}` +
-        `<span style="color:#94a3b8;font-size:9px;">SD</span><strong style="font-size:9px;">${fmt(sdVal)}</strong>` +
-        `<span style="color:#94a3b8;font-size:9px;">Trend</span><strong style="font-size:9px;color:${scoreColor(sd.trend_sd)};">${fmtSd(sd.trend_sd)}</strong>` +
-        `<span style="color:#94a3b8;font-size:9px;">Trade</span><strong style="font-size:9px;color:${scoreColor(sd.trade_sd)};">${fmtSd(sd.trade_sd)}</strong>` +
+        `<span style="color:#94a3b8;font-size:8px;">SD</span><strong style="font-size:8px;">${fmt(sdVal)}</strong>` +
+        `<span style="color:#94a3b8;font-size:8px;">Trend</span><strong style="font-size:8px;color:${scoreColor(sd.trend_sd)};">${fmtSd(sd.trend_sd)}</strong>` +
+        `<span style="color:#94a3b8;font-size:8px;">Trade</span><strong style="font-size:8px;color:${scoreColor(sd.trade_sd)};">${fmtSd(sd.trade_sd)}</strong>` +
       `</div>` +
       `<div id="${histId}_ohlc" style="font-size:9px;color:#64748b;white-space:nowrap;min-height:13px;text-align:right;flex-shrink:0;"></div>` +
       `</div>`);
 
     el.innerHTML = `
-    <div style="display:grid;grid-template-columns:minmax(220px,1fr) minmax(320px,3fr);gap:14px;align-items:stretch;width:100%;overflow-x:auto;">
+    <div style="display:grid;grid-template-columns:minmax(165px,0.75fr) 1fr minmax(0,2.25fr);gap:14px;align-items:stretch;width:100%;overflow-x:auto;">
 
       <!-- Left panel: header (top, aligns with graph) + action line + descriptions + decision -->
       <div style="display:flex;flex-direction:column;gap:6px;min-width:0;">
 
-        <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;padding:5px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;white-space:nowrap;">
-          Risk Range Analysis
-        </div>
-
         <div style="font-size:12px;color:#64748b;display:flex;align-items:center;gap:8px;padding:2px 0;">
-          <span>Trend Trade BB Risk Range Rule Action</span>
+          <span>Tn/Td BB RR Action</span>
           ${(() => {
             const _d = window.actionDisplay && ru.action ? window.actionDisplay(ru.action) : null;
             const _cls = _d ? `act-badge ${_d.colorCls}-tint` : 'act-badge act-neutral-tint';
@@ -462,6 +458,9 @@
         </div>
 
       </div>
+
+      <!-- Middle spacer -->
+      <div></div>
 
       <!-- Historical chart: combined top bar + graph + bottom bar -->
       <div style="overflow:hidden;display:flex;flex-direction:column;min-width:0;">
@@ -517,11 +516,8 @@
     for (let i = 0; i < n; i++) { if (prices[i] != null) lastP = prices[i]; else if (lastP != null) prices[i] = lastP; }
 
     const W = Math.max(svgEl.parentElement ? svgEl.parentElement.offsetWidth || 700 : 700, 400);
-    const PAD_L = 44, PAD_R = 190, PAD_T = 10, PAD_B = 22;
-    // Right-side columns (offsets from PAD_L+cW):
-    //   +4  : Y-axis tick numbers + current price badge (cW+2, width 32)
-    //   +70 : TRR / LRR labels
-    //   +135: Trade / Trend labels
+    const PAD_L = 44, PAD_R = 115, PAD_T = 10, PAD_B = 22;
+    // Right-side zones (from right edge): Trade/Trend at W-4, TRR/LRR at W-70, price ticks left-only
     const cW = W - PAD_L - PAD_R, cH = H - PAD_T - PAD_B;
 
     const tradeLevel = levels && levels.trade != null ? levels.trade : null;
@@ -533,7 +529,7 @@
     const pad = (yMax - yMin) * 0.05 || 1;
     const yMinP = yMin - pad, yMaxP = yMax + pad, yRangeP = yMaxP - yMinP;
 
-    const nExt = n + 2; // 2 blank slots at the right for breathing room
+    const nExt = n; // bars fill to right edge of chart area
     const xPx = i => PAD_L + (nExt > 1 ? (i / (nExt - 1)) * cW : cW / 2);
     const yPx = v => PAD_T + cH * (1 - (v - yMinP) / yRangeP);
 
@@ -569,19 +565,19 @@
       rrFill = `<polygon points="${[...topPts,...botPts].join(' ')}" fill="#fdf2f8" stroke="none"/>`;
     }
 
-    // Right-side labels for latest TRR and LRR
+    // Right-side labels for TRR/LRR — offset left from Trade/Trend to avoid overlap
     const latestTrr = [...trrs].reverse().find(v => v != null);
     const latestLrr = [...lrrs].reverse().find(v => v != null);
     const rrLabels = [
       latestTrr != null && latestTrr >= yMinP && latestTrr <= yMaxP
-        ? `<text x="${PAD_L+cW+70}" y="${yPx(latestTrr)+4}" fill="#be185d" font-size="9" font-weight="600">TRR ${latestTrr.toFixed(0)}</text>` : '',
+        ? `<text x="${W-70}" y="${yPx(latestTrr)+4}" fill="#be185d" font-size="9" font-weight="600" text-anchor="end">TRR ${latestTrr.toFixed(0)}</text>` : '',
       latestLrr != null && latestLrr >= yMinP && latestLrr <= yMaxP
-        ? `<text x="${PAD_L+cW+70}" y="${yPx(latestLrr)+4}" fill="#be185d" font-size="9" font-weight="600">LRR ${latestLrr.toFixed(0)}</text>` : '',
+        ? `<text x="${W-70}" y="${yPx(latestLrr)+4}" fill="#be185d" font-size="9" font-weight="600" text-anchor="end">LRR ${latestLrr.toFixed(0)}</text>` : '',
     ].join('');
 
     // Date labels — fit as many as possible without overlap (~30px per label)
     const dateLabel = i => { const d = dates[i]; if (!d) return ''; const p = d.split('-'); return p.length >= 3 ? `${p[1]}/${p[2]}` : d; };
-    const maxLbls = Math.max(2, Math.floor(cW / 30));
+    const maxLbls = Math.max(2, Math.floor(cW / 50));
     const lblStep = Math.max(1, Math.floor((n - 1) / (maxLbls - 1)));
     const lblIdxs = [];
     for (let i = 0; i < n - 1; i += lblStep) lblIdxs.push(i);
@@ -604,7 +600,6 @@
       const yv = yPx(v).toFixed(1);
       rightAxis +=
         `<line x1="${PAD_L}" y1="${yv}" x2="${PAD_L+cW}" y2="${yv}" stroke="#e2e8f0" stroke-width="0.5"/>` +
-        `<text x="${PAD_L+cW+4}" y="${parseFloat(yv)+3.5}" fill="#64748b" font-size="8" text-anchor="start">${v.toFixed(0)}</text>` +
         `<text x="${PAD_L-4}" y="${parseFloat(yv)+3.5}" fill="#64748b" font-size="8" text-anchor="end">${v.toFixed(0)}</text>`;
     }
     // Max-price badge: computed here, rendered as SVG element later (toggled by hover)
@@ -620,11 +615,11 @@
       : '';
 
     const tradeLine = (tradeLevel != null && tradeLevel >= yMinP && tradeLevel <= yMaxP)
-      ? `<line x1="${PAD_L}" y1="${yPx(tradeLevel).toFixed(1)}" x2="${PAD_L+cW+132}" y2="${yPx(tradeLevel).toFixed(1)}" stroke="#f97316" stroke-width="2" stroke-dasharray="2 5" stroke-linecap="round"/>` +
-        `<text x="${PAD_L+cW+135}" y="${(yPx(tradeLevel)+3.5).toFixed(1)}" fill="#f97316" font-size="8" font-weight="700" text-anchor="start">Trade</text>` : '';
+      ? `<line x1="${PAD_L}" y1="${yPx(tradeLevel).toFixed(1)}" x2="${W-2}" y2="${yPx(tradeLevel).toFixed(1)}" stroke="#f97316" stroke-width="2" stroke-dasharray="2 5" stroke-linecap="round"/>` +
+        `<text x="${W-4}" y="${(yPx(tradeLevel)+3.5).toFixed(1)}" fill="#f97316" font-size="8" font-weight="700" text-anchor="end">Trade</text>` : '';
     const trendLine = (trendLevel != null && trendLevel >= yMinP && trendLevel <= yMaxP)
-      ? `<line x1="${PAD_L}" y1="${yPx(trendLevel).toFixed(1)}" x2="${PAD_L+cW+132}" y2="${yPx(trendLevel).toFixed(1)}" stroke="#818cf8" stroke-width="2" stroke-dasharray="2 5" stroke-linecap="round"/>` +
-        `<text x="${PAD_L+cW+135}" y="${(yPx(trendLevel)+3.5).toFixed(1)}" fill="#818cf8" font-size="8" font-weight="700" text-anchor="start">Trend</text>` : '';
+      ? `<line x1="${PAD_L}" y1="${yPx(trendLevel).toFixed(1)}" x2="${W-2}" y2="${yPx(trendLevel).toFixed(1)}" stroke="#818cf8" stroke-width="2" stroke-dasharray="2 5" stroke-linecap="round"/>` +
+        `<text x="${W-4}" y="${(yPx(trendLevel)+3.5).toFixed(1)}" fill="#818cf8" font-size="8" font-weight="700" text-anchor="end">Trend</text>` : '';
 
     const todayX = xPx(n - 1);
     const todayMark = `<line x1="${todayX}" y1="${PAD_T}" x2="${todayX}" y2="${PAD_T+cH}" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2 2"/>`;
@@ -632,10 +627,7 @@
     const curPriceY = curPrice != null ? yPx(curPrice) : null;
     const curLine = curPriceY != null
       ? `<line x1="${PAD_L}" y1="${curPriceY.toFixed(1)}" x2="${PAD_L+cW}" y2="${curPriceY.toFixed(1)}" stroke="#374151" stroke-width="0.7" stroke-dasharray="3 3"/>` : '';
-    const lastPriceBadge = curPriceY != null
-      ? `<rect id="${svgEl.id}_lpbg" x="${PAD_L+cW+20}" y="${(curPriceY-7).toFixed(1)}" width="32" height="14" rx="2" fill="#374151"/>` +
-        `<text id="${svgEl.id}_lpt" x="${PAD_L+cW+36}" y="${curPriceY.toFixed(1)}" fill="#fff" font-size="8" font-weight="600" text-anchor="middle" dominant-baseline="middle">${curPrice.toFixed(2)}</text>`
-      : '';
+    const lastPriceBadge = '';
 
     // OHLC candlestick bars
     const barW = Math.max(2, (cW / n) * 0.7);
@@ -862,6 +854,134 @@
     return svg + '</svg>';
   }
 
+  // ── RVOL Dot (TASK 61) ───────────────────────────────────────────────────
+  // rvolDot(value, prior, opts) -> SVG string.
+  //   value = today's RVOL in x-units (1.0 = average volume). null -> dotted ring.
+  //   prior = yesterday's RVOL (for the trend caret); null -> no caret.
+  // Fill = magnitude band; corner caret = day-over-day trend (±10% = flat dash).
+  var _RVOL_BANDS = [
+    // [maxExclusive, filled?, color]
+    [0.5,      false, '#B4B2A9'],
+    [0.8,      false, '#888780'],
+    [1.2,      true,  '#D3D1C7'],
+    [1.8,      true,  '#EF9F27'],
+    [Infinity, true,  '#639922'],
+  ];
+  var _RVOL_FLAT = 0.10;   // ±10% day-over-day = flat (no arrow)
+  function rvolDot(value, prior, opts) {
+    opts = opts || {};
+    var size = opts.size || 18, sw = opts.stroke || 1.5;
+    var cx = 8, cy = 13, r = 4;               // dot low-left; arrowhead top-right
+    var v = (value == null || isNaN(value)) ? null : Number(value);
+    var p = (prior == null || isNaN(prior)) ? null : Number(prior);
+    var dir = '';                              // '', 'up', 'down', 'flat'
+    if (v != null && p != null && p > 0) {
+      var rel = v / p;
+      dir = rel > 1 + _RVOL_FLAT ? 'up' : rel < 1 - _RVOL_FLAT ? 'down' : 'flat';
+    }
+    var arrow = dir === 'up' ? '↑' : dir === 'down' ? '↓' : dir === 'flat' ? '→' : '';
+    var label = (v == null ? 'RVOL —' : 'RVOL ' + v.toFixed(1) + '×') +
+                (arrow ? ' ' + arrow + ' vs prior' : '');
+    // viewBox always 20×20 (content coords); size controls display px only
+    var VB = 20;
+    var svg = '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + VB + ' ' + VB +
+              '" role="img" aria-label="' + label + '"><title>' + label + '</title>';
+    if (v == null) {
+      svg += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="#D3D1C7"' +
+             ' stroke-width="' + sw + '" stroke-dasharray="2 2"/>';
+    } else {
+      var band = _RVOL_BANDS.find(function (b) { return v < b[0]; }) ||
+                 _RVOL_BANDS[_RVOL_BANDS.length - 1];
+      svg += band[1]
+        ? '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="' + band[2] + '"/>'
+        : '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + band[2] +
+          '" stroke-width="' + sw + '"/>';
+    }
+    // arrowhead (concave base), top-right corner; circle sits below with gap
+    if (dir === 'up')        svg += '<path d="M15 1 L12 8 L15 5.5 L18 8 Z" fill="#3B6D11"/>';
+    else if (dir === 'down') svg += '<path d="M15 8 L12 1 L15 3.5 L18 1 Z" fill="#A32D2D"/>';
+    else if (dir === 'flat') svg += '<rect x="12" y="3" width="6" height="1.8" rx="0.9" fill="#888780"/>';
+    return svg + '</svg>';
+  }
+
+  // ── IV Bar Glyph (TASK 62) ──────────────────────────────────────────────────
+  // ivGlyph(ivp, iv, hv, discount, opts) -> SVG string.
+  //   ivp      = IV percentile 0–100 (iv_percentile)
+  //   iv, hv   = IV and HV levels in PERCENT units (35 = 35%); pass *100 if fractions
+  //   discount = iv_to_hv_discount = (1-IV/HV)*100; >0 cheap (green), <0 rich (red)
+  // Bars on a shared 0–100 frame: IVP (blue) · HV (light) · IV (dark); a bracket
+  // ties the HV and IV tops, colored by discount.
+  // Bar colors — HV/IV driven by discount; IVP bar driven by percentile level.
+  var _IV_COLOR_HV   = '#374151';  // near-black (gray-700)
+  var _IV_COLOR_IV   = '#000000';  // black
+  var _IV_COLOR_UP   = '#16a34a';  // green (IV cheap vs HV)
+  var _IV_COLOR_DOWN = '#dc2626';  // red   (IV rich vs HV)
+  var _IV_COLOR_PAR  = '#888780';  // gray  (parity)
+  // IVP color: <50 bright green, >=90 bright red, 50-70 green shades, 70-90 red shades.
+  // Green anchor = pct-positive (#1c6c30), red anchor = pct-negative (#c41e3a).
+  function _ivpBarColor(ivp) {
+    if (ivp == null) return '#7c3aed';  // fallback violet when no data
+    var v = Math.max(0, Math.min(100, ivp));
+    if (v < 50) return '#1c6c30';   // bright green
+    if (v >= 90) return '#c41e3a';  // bright red
+    var lp = function(a, b, t) { return Math.round(a + (b - a) * t); };
+    var hx = function(r, g, b) {
+      return '#' + [r, g, b].map(function(n) { return n.toString(16).padStart(2, '0'); }).join('');
+    };
+    if (v < 70) {
+      // 50→70: bright green #1c6c30 to light green #7abf96
+      var t = (v - 50) / 20;
+      return hx(lp(0x1c, 0x7a, t), lp(0x6c, 0xbf, t), lp(0x30, 0x96, t));
+    } else {
+      // 70→90: light red #e89aaa to bright red #c41e3a
+      var t = (v - 70) / 20;
+      return hx(lp(0xe8, 0xc4, t), lp(0x9a, 0x1e, t), lp(0xaa, 0x3a, t));
+    }
+  }
+  function ivGlyph(ivp, iv, hv, discount, opts) {
+    opts = opts || {};
+    var H = opts.size || 20;                              // display height in px
+    var BW_IVP = 4, BW_HV_IV = 3;                         // IVP wider; HV/IV medium
+    // IVP at x=2, wide gap, then HV at x=17, IV at x=23; VW sized to fit
+    var VW = 28, VH = 32, y100 = 5, y0 = 27, FH = y0 - y100;
+    // allow explicit width override (stretches bars horizontally)
+    function num(v) { return (v == null || isNaN(v)) ? null : Number(v); }
+    function clamp(v) { return Math.max(0, Math.min(100, v)); }
+    function top(v) { return v == null ? null : y0 - clamp(v) / 100 * FH; }
+    function bar(x, v, fill, bw) {
+      var t = top(v); if (t == null) return '';
+      return '<rect x="' + x + '" y="' + t.toFixed(2) + '" width="' + bw + '" height="' + (y0 - t).toFixed(2) + '" fill="' + fill + '"/>';
+    }
+    ivp = num(ivp); iv = num(iv); hv = num(hv); var dc = num(discount);
+    var ivpCol = _ivpBarColor(ivp);
+    var W = opts.width ? opts.width : (H * VW / VH).toFixed(1);
+    var label = 'IVP ' + (ivp == null ? '—' : Math.round(ivp)) +
+                ', IV ' + (iv == null ? '—' : Math.round(iv)) +
+                ', HV ' + (hv == null ? '—' : Math.round(hv)) +
+                ', IV/HV ' + (dc == null ? '—' : Math.round(dc) + '%');
+    var svg = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + VW + ' ' + VH +
+              '" role="img" aria-label="' + label + '">';
+    // frame rules
+    svg += '<line x1="1" y1="' + y100 + '" x2="27" y2="' + y100 + '" stroke="rgba(30,30,30,.90)" stroke-width="1.1" stroke-dasharray="2 2"/>';
+    svg += '<line x1="1" y1="' + (y0 - FH * 0.5).toFixed(1) + '" x2="27" y2="' + (y0 - FH * 0.5).toFixed(1) + '" stroke="rgba(30,30,30,.65)" stroke-width="0.9" stroke-dasharray="2 2"/>';
+    svg += '<line x1="1" y1="' + y0 + '" x2="27" y2="' + y0 + '" stroke="rgba(60,60,60,.9)" stroke-width="1.2"/>';
+    // bar colors: discount drives HV/IV color; magnitude scales opacity (0.45→1.0)
+    var hvCol, ivCol;
+    if (dc == null) {
+      hvCol = _IV_COLOR_HV;
+      ivCol = _IV_COLOR_IV;
+    } else {
+      var mag   = Math.min(Math.abs(dc) / 30, 1);
+      var alpha = (0.45 + mag * 0.55).toFixed(2);
+      var barCol = dc > 0 ? 'rgba(22,163,74,' + alpha + ')' : 'rgba(220,38,38,' + alpha + ')';
+      hvCol = barCol;
+      ivCol = barCol;
+    }
+    // bars: IVP at x=2, wide gap, HV at x=17, IV at x=23
+    svg += bar(2, ivp, ivpCol, BW_IVP) + bar(17, hv, hvCol, BW_HV_IV) + bar(23, iv, ivCol, BW_HV_IV);
+    return svg + '</svg>';
+  }
+
   window.td_common = {
     fetchJson,
     escapeHtml,
@@ -874,6 +994,9 @@
     yahooLink,
     renderRRAnalysis,
     pctRing,
+    rvolDot,
+    ivGlyph,
+    _ivpBarColor,
   };
   // TASK_58: expose helpers directly on window so pages that previously defined
   // their own local copies can remove them and use the canonical versions without
@@ -888,4 +1011,7 @@
   window.fetchJSON    = fetchJson;
   window.yahooLink    = yahooLink;
   window.pctRing      = pctRing;
+  window.rvolDot      = rvolDot;
+  window.ivGlyph      = ivGlyph;
+  window._ivpBarColor = _ivpBarColor;
 })();

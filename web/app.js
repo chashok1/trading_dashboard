@@ -95,11 +95,7 @@ function outlookCell(td, value) {
   td.innerHTML = label ? `<span class="signal-${cls}">${label}</span>` : '';
 }
 
-async function fetchJson(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`${url} → ${r.status}`);
-  return r.json();
-}
+// fetchJson is provided by _common.js (window.fetchJson).
 
 // ---------- date picker ----------
 

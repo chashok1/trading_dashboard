@@ -21,6 +21,167 @@ log = logging.getLogger("etl.derive_actionable")
 ACTION_RANK  = {"REMOVE": 4, "REDUCE": 3, "INCREASE": 2, "ADD": 1, "HOLD": 0}
 SOURCE_ORDER = {"PS": 1, "ETF": 2, "RR": 3, "SSS": 4, "II": 5, "CALL": 6}
 
+# Final-call strength scale (mirrors JS _FC_SCALE in actionable.js).
+_FC_SCALE: dict[str, int] = {
+    "SA": -3, "REMOVE": -3,
+    "SS": -2, "STM": -2, "REDUCE": -2,
+    "OVER_MAX": -1,
+    "HOLD": 0, "NONE": 0,
+    "BS": 2, "INCREASE": 2, "BMN": 2, "ADD": 2, "BM": 2,
+}
+
+# Canonical action-code → (label, code, side) — mirrors actions.js _MAP.
+_ACTION_DISPLAY: dict[str, tuple[str, str, str]] = {
+    "REMOVE":   ("SELL ALL",     "SA",   "sell"),
+    "SA":       ("SELL ALL",     "SA",   "sell"),
+    "REDUCE":   ("SELL SOME",    "SS",   "sell"),
+    "SS":       ("SELL SOME",    "SS",   "sell"),
+    "STM":      ("SELL TRIM",    "STM",  "sell"),
+    "OVER_MAX": ("SELL OVERAGE", "SO",   "sell"),
+    "SO":       ("SELL OVER",    "SO",   "sell"),
+    "INCREASE": ("BUY SOME",     "BS",   "buy"),
+    "BS":       ("BUY SOME",     "BS",   "buy"),
+    "BM":       ("BUY MORE",     "BM",   "buy"),
+    "ADD":      ("BUY TO MIN",   "BMN",  "buy"),
+    "BMN":      ("BUY TO MIN",   "BMN",  "buy"),
+    "HOLD":     ("HOLD",         "HOLD", "neutral"),
+    "N":        ("NEUTRAL",      "N",    "neutral"),
+    "NONE":     ("None",         "",     "neutral"),
+}
+
+
+def _action_display(code: Optional[str]) -> tuple[str, str, str]:
+    """Return (label, code, side) for an action code (case-insensitive)."""
+    if not code:
+        return ("None", "", "neutral")
+    return _ACTION_DISPLAY.get(str(code).upper(),
+                               (str(code), "", "neutral"))
+
+
+def _compute_final_call(
+    consolidated_action: Optional[str],
+    rr_action: Optional[str],
+    held_today: bool,
+    current_position_dollar: float,
+    target_max_dollar: Optional[float],
+) -> dict:
+    """Python port of JS finalCall() in web/actionable.js.
+
+    Returns dict with keys: final_action, final_code, final_side,
+    fc_strength, fc_confidence, fc_feasible.
+    """
+    ca  = (consolidated_action or "").upper()
+    rra = (rr_action           or "").upper()
+
+    # ── 0. No recommendation at all ──────────────────────────────────────
+    if not ca or ca == "NONE":
+        lbl, code, side = _action_display("HOLD")
+        return {
+            "final_action": lbl, "final_code": code, "final_side": side,
+            "fc_strength": 0, "fc_confidence": "none", "fc_feasible": False,
+        }
+
+    # ── Helper classifiers ──────────────────────────────────────────────
+    # Over-max: held position exceeds category ceiling (not REMOVE)
+    at_max = False
+    if ca != "REMOVE" and held_today and target_max_dollar and target_max_dollar > 0:
+        if current_position_dollar > target_max_dollar:
+            at_max = True
+
+    is_held    = held_today
+
+    src_is_exit   = ca in ("REMOVE", "SA")
+    src_is_reduce = ca in ("REDUCE", "SS", "STM")
+    src_is_buy    = ca in ("INCREASE", "BS", "BM", "ADD", "BMN")
+    src_is_add    = ca in ("ADD", "BMN")
+
+    tech_is_sell   = rra in ("SS", "STM", "SO", "REDUCE", "SA", "REMOVE")
+    tech_is_buy    = rra in ("BS", "BM", "INCREASE")
+    tech_is_buy_min = rra in ("BMN", "ADD")
+
+    # ── 1. Strategic gate: SELL ALL / REMOVE or over-max ────────────────
+    if src_is_exit or at_max:
+        exit_strength = _FC_SCALE.get("OVER_MAX", -1) if at_max else _FC_SCALE.get("SA", -3)
+        exit_code = "OVER_MAX" if at_max else "SA"
+        lbl, code, side = _action_display(exit_code)
+        if not is_held and not at_max:
+            hold_lbl, hold_code, hold_side = _action_display("HOLD")
+            return {
+                "final_action": hold_lbl, "final_code": hold_code,
+                "final_side": hold_side, "fc_strength": 0,
+                "fc_confidence": "gate", "fc_feasible": False,
+            }
+        return {
+            "final_action": lbl, "final_code": code, "final_side": side,
+            "fc_strength": exit_strength, "fc_confidence": "gate", "fc_feasible": True,
+        }
+
+    # ── 2. Don't-initiate guard ──────────────────────────────────────────
+    if not is_held and not src_is_buy:
+        hold_lbl, hold_code, hold_side = _action_display("HOLD")
+        return {
+            "final_action": hold_lbl, "final_code": hold_code,
+            "final_side": hold_side, "fc_strength": 0,
+            "fc_confidence": "gate", "fc_feasible": True,
+        }
+
+    fc_label: str
+    fc_code: str
+    fc_side: str
+    fc_strength: int
+    confidence: str
+
+    if tech_is_sell:
+        if not is_held:
+            fc_lbl, fc_code, fc_side = _action_display("HOLD")
+            fc_strength = 0
+            confidence = "mixed"
+        elif src_is_reduce:
+            fc_lbl, fc_code, fc_side = _action_display("SS")
+            fc_strength = _FC_SCALE.get("SS", -2)
+            confidence = "high"
+        else:
+            fc_lbl, fc_code, fc_side = _action_display("SS")
+            fc_strength = _FC_SCALE.get("SS", -2)
+            confidence = "mixed"
+    elif tech_is_buy or tech_is_buy_min:
+        if src_is_reduce:
+            fc_lbl, fc_code, fc_side = _action_display("HOLD")
+            fc_strength = 0
+            confidence = "mixed"
+        elif at_max:
+            fc_lbl, fc_code, fc_side = _action_display("HOLD")
+            fc_strength = 0
+            confidence = "gate"
+        elif not is_held and src_is_add:
+            fc_lbl, fc_code, fc_side = _action_display("BMN")
+            fc_strength = _FC_SCALE.get("BMN", 2)
+            confidence = "high"
+        else:
+            buy_code = "BM" if (rra in ("BM",) or ca in ("BM", "INCREASE", "BS")) else "BS"
+            fc_lbl, fc_code, fc_side = _action_display(buy_code)
+            fc_strength = _FC_SCALE.get(buy_code, 2)
+            confidence = "high" if src_is_buy else "mixed"
+    else:
+        # Technical neutral
+        if not is_held and src_is_add:
+            fc_lbl, fc_code, fc_side = _action_display("BMN")
+            fc_strength = _FC_SCALE.get("BMN", 2)
+            confidence = "gate"
+        elif src_is_reduce:
+            fc_lbl, fc_code, fc_side = _action_display("HOLD")
+            fc_strength = 0
+            confidence = "mixed"
+        else:
+            fc_lbl, fc_code, fc_side = _action_display("HOLD")
+            fc_strength = 0
+            confidence = "gate"
+
+    return {
+        "final_action": fc_lbl, "final_code": fc_code, "final_side": fc_side,
+        "fc_strength": fc_strength, "fc_confidence": confidence, "fc_feasible": True,
+    }
+
 
 def _open_drv_run(session, target, as_of_date, parent_run_id=None):
     row = session.execute(text("""
@@ -158,15 +319,33 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     # Populated from ref_param_lookup where table_name='buysell', extra1=numeric score.
     # e.g. SA→-10, STM→-9, SS→-8, BM→10, BS→9, BMN→8. Gracefully empty if not loaded.
     buysell_scores: dict[str, float] = {}
+    # BuySell code → seq for priority_rank (mirrors JS state.buysellSeq).
+    buysell_seq: dict[str, float] = {}
     try:
         for r in session.execute(text(
-            "SELECT code, extra1 FROM ref_param_lookup"
-            " WHERE table_name = 'buysell' AND extra1 IS NOT NULL"
+            "SELECT code, extra1, seq FROM ref_param_lookup"
+            " WHERE table_name = 'buysell'"
         )).fetchall():
             try:
-                buysell_scores[str(r[0])] = float(r[1])
+                if r[1] is not None:
+                    buysell_scores[str(r[0])] = float(r[1])
+                if r[2] is not None:
+                    buysell_seq[str(r[0]).upper()] = float(r[2])
             except (TypeError, ValueError):
                 pass
+    except Exception:
+        pass
+
+    # Load td_tn_bb_action_desc (the rr_action for finalCall) from drv_tn_td_bb_rr.
+    rr_action_map: dict[str, str] = {}
+    try:
+        for r in session.execute(text("""
+            SELECT tos_symbol, td_tn_bb_action_desc
+            FROM drv_tn_td_bb_rr WHERE as_of_date = :d
+              AND td_tn_bb_action_desc IS NOT NULL
+        """), {"d": as_of_date}).fetchall():
+            if r[0] and r[1]:
+                rr_action_map[r[0]] = r[1]
     except Exception:
         pass
 
@@ -339,7 +518,9 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            held_today, current_position_dollar, in_my_list,
            rules_engine_fires, source_actions, suppressed_reason,
            triggered_group_ids, trig_action,
-           stop_level, source_run_id)
+           stop_level, source_run_id,
+           final_action, final_code, final_side,
+           fc_strength, fc_confidence, fc_feasible, priority_rank)
         VALUES
           (:d, :sym, :desc, :sect,
            :ca, :ws, :wp,
@@ -348,7 +529,9 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            :held, :curr, :iml,
            CAST(:fires AS JSONB), CAST(:srca AS JSONB), :supp,
            CAST(:groups AS JSONB), :trig,
-           :stop, :rid)
+           :stop, :rid,
+           :f_action, :f_code, :f_side,
+           :f_strength, :f_confidence, :f_feasible, :f_priority)
     """)
 
     rows_written = 0
@@ -566,6 +749,29 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         )
         stop_level_val = _compute_stop(sym, consolidated) if _show_stop else None
 
+        # ─── TASK_53: Compute final_call + priority_rank at derive time ───
+        rr_act = rr_action_map.get(sym)
+        fc = _compute_final_call(
+            consolidated_action=consolidated,
+            rr_action=rr_act,
+            held_today=held_today,
+            current_position_dollar=held_dollar,
+            target_max_dollar=target_max,
+        )
+        # priority_rank mirrors JS _computePriority: seq * 1e6 + |amt|.
+        # amt = suggested - held for buys; held for sells; 0 otherwise.
+        if suggested is not None and held_dollar is not None:
+            _amt = abs(float(suggested) - float(held_dollar))
+        else:
+            _amt = 0.0
+        fc_code_upper = (fc["final_code"] or "").upper()
+        if fc_code_upper == "SO":  # OVER_MAX synthetic maps to SO for seq lookup
+            _seq_key = "SO"
+        else:
+            _seq_key = fc_code_upper
+        _seq = buysell_seq.get(_seq_key, -1.0) if fc["fc_feasible"] else -1.0
+        priority_rank = _seq * 1e6 + _amt
+
         stk = stks.get(sym, {})
         batch.append({
             "d":     as_of_date,
@@ -593,12 +799,67 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "trig":  trig_action,
             "stop":  stop_level_val,
             "rid":   run_id,
+            "f_action":     fc["final_action"],
+            "f_code":       fc["final_code"],
+            "f_side":       fc["final_side"],
+            "f_strength":   fc["fc_strength"],
+            "f_confidence": fc["fc_confidence"],
+            "f_feasible":   fc["fc_feasible"],
+            "f_priority":   priority_rank,
         })
         rows_written += 1
 
     # Single executemany — previous version did one INSERT per symbol.
     if batch:
         session.execute(insert_sql, batch)
+
+    # TASK_57: populate drv_category_totals once per derive (idempotent).
+    # Read back from drv_actionable now that it's been flushed so we can
+    # aggregate without holding the full Python batch in memory again.
+    try:
+        session.execute(
+            text("DELETE FROM drv_category_totals WHERE as_of_date = :d"),
+            {"d": as_of_date}
+        )
+        cat_rows = session.execute(text("""
+            SELECT a.position_category,
+                   SUM(COALESCE(a.current_position_dollar, 0)) AS total_dollar,
+                   r.min_dollar, r.max_dollar
+            FROM drv_actionable a
+            LEFT JOIN ref_asset_allocation r
+                   ON UPPER(r.category) = UPPER(a.position_category)
+            WHERE a.as_of_date = :d
+              AND a.position_category IS NOT NULL
+            GROUP BY a.position_category, r.min_dollar, r.max_dollar
+        """), {"d": as_of_date}).mappings().all()
+        if cat_rows:
+            totals_batch = []
+            for cr in cat_rows:
+                held = float(cr["total_dollar"] or 0)
+                mn   = float(cr["min_dollar"]) if cr["min_dollar"] is not None else None
+                mx   = float(cr["max_dollar"]) if cr["max_dollar"] is not None else None
+                if mn is not None and held < mn:
+                    band = "BELOW_MIN"
+                elif mx is not None and held > mx:
+                    band = "ABOVE_MAX"
+                else:
+                    band = "WITHIN"
+                totals_batch.append({
+                    "as_of_date":        as_of_date,
+                    "position_category": cr["position_category"],
+                    "total_dollar":      held,
+                    "drift_band":        band,
+                })
+            session.execute(
+                text("""
+                    INSERT INTO drv_category_totals
+                        (as_of_date, position_category, total_dollar, drift_band)
+                    VALUES (:as_of_date, :position_category, :total_dollar, :drift_band)
+                """),
+                totals_batch
+            )
+    except Exception as _ct_err:
+        log.warning("drv_category_totals failed (non-fatal): %s", _ct_err)
 
     return rows_written
 

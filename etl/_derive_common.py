@@ -3,19 +3,23 @@ Shared helpers for the derive pipeline.
 
 Extracted from etl/derive.py on 2026-05-12 so that both etl/derive.py and
 etl/derive_v2.py can import them without creating a circular dependency.
-(Previously, derive_v2 inlined its own copies because derive.py imported
-from derive_v2 at the bottom of the file; that bottom-of-file monkeypatch
-is now gone.)
 
-Three building blocks:
+Building blocks:
   * _open_drv_run  — insert a meta_derived_run row with status='running'
   * _close_drv_run — update the row with rows_built, status, and any error
   * _wrap          — decorator that opens the run, calls the deriver, closes
                      the run, and propagates exceptions
+
+TASK_56 additions (2026-06-17) — single definitions used by all derive modules:
+  * _clean(v)          — Excel-style numeric coercion to float (NaN/blank → 0)
+  * _safe_div(n, d)    — n / d with None / zero-guard (returns None on missing)
+  * _load_outlook_weights(session, sheet)  — ref_param outlook weight map
+  * _outlook_to_weight(outlook, modifier, wt_map)  — resolve weight with bench adj
 """
 from __future__ import annotations
 
 import logging
+import math
 from datetime import date, datetime
 from typing import Optional
 
@@ -25,6 +29,82 @@ from sqlalchemy.orm import Session
 from etl.db import get_table
 
 log = logging.getLogger("etl.derive")
+
+
+# =============================================================================
+# TASK_56 — consolidated utilities (single definition, used by all derive modules)
+# =============================================================================
+
+def _clean(v) -> float:
+    """Excel-style coercion: NaN / None / blank / error strings → 0.0."""
+    if v is None:
+        return 0.0
+    if isinstance(v, str):
+        s = v.strip()
+        if s in ("", "NaN", "<empty>", "#N/A", "#REF!", "#VALUE!"):
+            return 0.0
+        try:
+            return float(s.replace(",", ""))
+        except ValueError:
+            return 0.0
+    try:
+        f = float(v)
+        return 0.0 if (math.isnan(f) or math.isinf(f)) else f
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _safe_div(num, den):
+    """num / den with None / zero-guard.  Returns None when inputs are missing."""
+    try:
+        n = float(num) if num is not None else None
+        d = float(den) if den is not None else None
+        if n is None or d is None or d == 0:
+            return None
+        return n / d
+    except (TypeError, ValueError):
+        return None
+
+
+def _load_outlook_weights(session: Session,
+                          sheet: str = "outlook") -> dict[str, float]:
+    """Return {OUTLOOK_TEXT_UPPER: weight} from ref_param for the given sheet.
+
+    Defaults to sheet='outlook'; pass sheet='outlook_rr' for RR variant.
+    Provides fallback defaults (BULLISH=3, BEARISH=-3, NEUTRAL=0) so callers
+    work even before the Parm workbook has been loaded.
+    """
+    rows = session.execute(
+        text("SELECT param_name, value FROM ref_param WHERE sheet = :s"),
+        {"s": sheet}
+    ).fetchall()
+    out: dict[str, float] = {}
+    for name, val in rows:
+        try:
+            out[str(name).upper()] = float(val) if val is not None else 0.0
+        except (TypeError, ValueError):
+            continue
+    out.setdefault("BULLISH",  3.0)
+    out.setdefault("BEARISH", -3.0)
+    out.setdefault("NEUTRAL",  0.0)
+    return out
+
+
+def _outlook_to_weight(outlook: Optional[str], modifier: Optional[str],
+                       wt_map: dict[str, float]) -> Optional[float]:
+    """Convert an outlook string to a numeric weight.
+
+    Applies a /3 reduction when modifier contains 'bench'.
+    Returns None for empty/missing outlooks; 0.0 for unrecognised strings.
+    """
+    if not outlook:
+        return None
+    base = wt_map.get(str(outlook).upper())
+    if base is None:
+        return 0.0
+    if modifier and "bench" in str(modifier).lower():
+        return base / 3.0
+    return base
 
 
 def position_ceiling(session: Session, as_of_date: date) -> date:

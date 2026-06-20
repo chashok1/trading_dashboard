@@ -437,17 +437,7 @@ function shortColName(s) {
   return i === -1 ? String(s) : String(s).slice(i + 1);
 }
 
-function escapeHtml(s) {
-  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c) {
-    return ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;"
-    })[c];
-  });
-}
+// escapeHtml is provided by _common.js (window.escapeHtml).
 
 function escapeAttr(s) {
   return escapeHtml(s);

@@ -10,13 +10,21 @@ const state = {
     sortDir: 'desc',
 };
 
+const atomicState = {
+    rules: [],
+    sortBy: 'avg_fwd_20d',
+    sortDir: 'desc',
+};
+
 const DOM = {
     perfTableBody: document.getElementById('perfTableBody'),
+    atomicTableBody: document.getElementById('atomicTableBody'),
 };
 
 document.addEventListener('DOMContentLoaded', () => {
     loadScorecard();
     loadMyActions();
+    loadAtomicScorecard();
 });
 
 async function loadMyActions() {
@@ -129,3 +137,82 @@ function sortBy(column) {
 
 window.loadScorecard = loadScorecard;
 window.sortBy = sortBy;
+
+async function loadAtomicScorecard() {
+    const minN = document.getElementById('atomicMinN')?.value ?? 0;
+    DOM.atomicTableBody.innerHTML =
+        '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text-3);">Loading individual rules…</td></tr>';
+    try {
+        const data = await fetch(`/api/rules/atomic-scorecard?min_n=${minN}&limit=1000`)
+            .then(r => r.json());
+        atomicState.rules = Array.isArray(data) ? data : [];
+        renderAtomicTable();
+    } catch (e) {
+        console.error('Failed to load atomic scorecard:', e);
+        DOM.atomicTableBody.innerHTML =
+            '<tr><td colspan="9" style="text-align:center;color:#b91c1c;">Error loading individual rules</td></tr>';
+    }
+}
+
+function renderAtomicTable() {
+    if (!atomicState.rules.length) {
+        DOM.atomicTableBody.innerHTML =
+            '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text-3);">' +
+            'No data. Run outcome ETL: <code>python -m etl.compute_firing_outcomes --truncate</code></td></tr>';
+        return;
+    }
+
+    const dir = atomicState.sortDir === 'asc' ? 1 : -1;
+    const rows = [...atomicState.rules].sort((a, b) => {
+        let va = a[atomicState.sortBy], vb = b[atomicState.sortBy];
+        if (typeof va === 'string' || typeof vb === 'string') {
+            return ((va || '').localeCompare(vb || '')) * dir;
+        }
+        return ((va ?? 0) - (vb ?? 0)) * dir;
+    });
+
+    const num = (v, d = 2) => (v === null || v === undefined) ? '—' : Number(v).toFixed(d);
+    const edgeCls = v => v > 0.5 ? 'edge-pos' : v < -0.5 ? 'edge-neg' : 'edge-neu';
+
+    DOM.atomicTableBody.innerHTML = rows.map(r => {
+        const span = (r.first_seen && r.last_seen)
+            ? `${r.first_seen} → ${r.last_seen}` : '—';
+        const conf = r.confidence || 'unproven';
+        const unproven = conf === 'unproven';
+        const rowStyle = unproven ? ' style="opacity:0.55;"' : '';
+        const confBadge = conf === 'proven'
+            ? `<span style="color:#15803d;font-weight:700;font-size:10px;">proven</span>`
+            : conf === 'promising'
+            ? `<span style="color:#92400e;font-size:10px;">promising</span>`
+            : `<span style="color:#94a3b8;font-size:10px;">unproven</span>`;
+        const ciLow  = r.ci_low  != null ? Number(r.ci_low).toFixed(2)  : '—';
+        const ciHigh = r.ci_high != null ? Number(r.ci_high).toFixed(2) : '—';
+        const ciStr  = (ciLow !== '—' && ciHigh !== '—') ? `[${ciLow}%, ${ciHigh}%]` : '—';
+        return `
+            <tr${rowStyle}>
+                <td><strong>${r.rule_id}</strong></td>
+                <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+                    title="${r.rule_name || ''}">${r.rule_name || '—'}</td>
+                <td>${r.n ?? 0}</td>
+                <td class="${edgeCls(r.avg_fwd_20d)}">${num(r.avg_fwd_20d)}%</td>
+                <td style="color:var(--text-3)">${num(r.avg_fwd_5d)}%</td>
+                <td style="color:var(--text-3);font-size:11px;" title="95% CI">${ciStr}</td>
+                <td>${num((r.win_rate ?? 0) * 100, 1)}%</td>
+                <td>${confBadge}</td>
+                <td style="color:var(--text-3);font-size:11px;">${span}</td>
+            </tr>`;
+    }).join('');
+}
+
+function atomicSortBy(column) {
+    if (atomicState.sortBy === column) {
+        atomicState.sortDir = atomicState.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+        atomicState.sortBy = column;
+        atomicState.sortDir = (column === 'rule_id' || column === 'rule_name') ? 'asc' : 'desc';
+    }
+    renderAtomicTable();
+}
+
+window.loadAtomicScorecard = loadAtomicScorecard;
+window.atomicSortBy = atomicSortBy;

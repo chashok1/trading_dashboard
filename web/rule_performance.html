@@ -162,6 +162,49 @@
                 </table>
             </div>
         </div>
+
+        <div class="card" style="margin-top:12px;">
+            <div class="performance-header">
+                <strong style="font-size:15px;">Individual rules</strong>
+                <span style="color:var(--text-3);font-size:12px;">Raw (no direction adjustment) — avg 20d &gt; 0 means readings preceded positive returns on average.</span>
+                <span style="flex:1"></span>
+                <label for="atomicMinN">Min n:</label>
+                <select id="atomicMinN" onchange="loadAtomicScorecard()">
+                    <option value="0" selected>all</option>
+                    <option value="10">10</option>
+                    <option value="30">30</option>
+                </select>
+            </div>
+
+            <div class="caveat-note">
+                Atomic features fire independently of BUY/SELL direction. Positive avg 20d may simply reflect the market trend during the data window — compare across rules to spot relative differences.
+            </div>
+
+            <div class="scrollable-table-container">
+                <table class="perf-table">
+                    <thead>
+                        <tr>
+                            <th onclick="atomicSortBy('rule_id')">Rule ID <span class="sort-indicator"></span></th>
+                            <th onclick="atomicSortBy('rule_name')">Name <span class="sort-indicator"></span></th>
+                            <th onclick="atomicSortBy('n')">n <span class="sort-indicator"></span></th>
+                            <th onclick="atomicSortBy('avg_fwd_20d')">Avg 20d <span class="sort-indicator">▾</span></th>
+                            <th onclick="atomicSortBy('avg_fwd_5d')">Avg 5d <span class="sort-indicator"></span></th>
+                            <th title="95% confidence interval">95% CI</th>
+                            <th onclick="atomicSortBy('win_rate')">Win % <span class="sort-indicator"></span></th>
+                            <th>Confidence</th>
+                            <th>Span</th>
+                        </tr>
+                    </thead>
+                    <tbody id="atomicTableBody">
+                        <tr>
+                            <td colspan="9" style="text-align:center;padding:20px;color:var(--text-3);">
+                                Loading individual rules…
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </main>
 
     <script src="/static/_common.js"></script>
