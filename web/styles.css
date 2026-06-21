@@ -971,17 +971,17 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 .market-tape {
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 45px;
+  gap: 6px;
+  height: 34px;
   background: var(--card-bg);
   border-bottom: none;
-  margin-top: 6px;
+  margin-top: 4px;
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
   scrollbar-width: none;
-  padding: 0 8px;
-  font-size: 11px;
+  padding: 0 6px;
+  font-size: 10px;
   position: sticky;
   top: 0;
   z-index: 90;
@@ -993,26 +993,26 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 .rr-tape {
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 45px;
+  gap: 6px;
+  height: 34px;
   background: var(--card-bg);
   border-bottom: none;
-  margin-top: 6px;
+  margin-top: 4px;
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
   scrollbar-width: none;
-  padding: 0 8px;
-  font-size: 11px;
+  padding: 0 6px;
+  font-size: 10px;
   position: sticky;
-  top: 45px;
+  top: 34px;
   z-index: 89;
   flex-shrink: 0;
 }
 .rr-tape::-webkit-scrollbar { display: none; }
 
 /* Bar 3 — sticky below bar 2, retains bottom border for content separation */
-#rrTape3 { top: 90px; z-index: 88; border-bottom: 1px solid var(--border); }
+#rrTape3 { top: 68px; z-index: 88; border-bottom: 1px solid var(--border); }
 
 /* Group box — wraps chips for each category */
 .rr-group {
@@ -1022,20 +1022,20 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   flex-shrink: 0;
   align-self: stretch;
   border-right: 1px solid var(--border);
-  padding-right: 10px;
+  padding-right: 6px;
 }
 .rr-group:last-child { border-right: none; padding-right: 0; }
 .rr-group .rr-chip { border-right: none; align-self: center; }
 .rr-group .rr-chip + .rr-chip { border-left: none; }
 
 .rr-cat {
-  padding: 0 6px;
+  padding: 0 4px;
   border-right: 1px solid var(--border);
   align-self: stretch;
   display: inline-flex;
   align-items: center;
   color: var(--text-3);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1047,8 +1047,8 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   display: inline-flex;
   flex-direction: column;
   justify-content: center;
-  gap: 4px;
-  padding: 2px 8px;
+  gap: 2px;
+  padding: 1px 6px;
   border-right: 1px solid var(--border);
   align-self: stretch;
   flex-shrink: 0;
@@ -1060,7 +1060,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 .market-tape .rr-chip,
 .rr-tape .rr-chip {
   position: relative;
-  padding-right: 14px;
+  padding-right: 12px;
 }
 
 /* Candle SVG: fixed 7×20px (no CSS resizing — SVG height attribute controls size, no scaling). */
@@ -1080,7 +1080,7 @@ svg.rr-candle {
 
 /* Outlook-colored symbol text */
 .rr-sym {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.03em;
   white-space: nowrap;
@@ -1092,7 +1092,7 @@ svg.rr-candle {
   height: 3px;
   background: var(--border, #e5e7eb);
   border-radius: 2px;
-  min-width: 52px;
+  min-width: 40px;
 }
 .rr-rb-fill {
   position: absolute;
