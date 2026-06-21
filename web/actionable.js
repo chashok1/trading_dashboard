@@ -1782,7 +1782,7 @@ function _buildIvPopHtml(r) {
     ['IV/HV Status',    dcStr],
     ['HV Percentile',   fmtN(r.hv_percentile)],
     ['Range Compress',  fmtN(r.range_compression)],
-    ['d IV/HV',         r.d_iv_to_hv != null ? Number(r.d_iv_to_hv).toFixed(3) : '—'],
+    ['IV/HV Ratio',     r.d_iv_to_hv != null ? Number(r.d_iv_to_hv).toFixed(3) : '—'],
   ];
   let html = '<div class="sp-title">Volatility</div><table>';
   for (const [k, v] of rows)
@@ -1880,6 +1880,38 @@ function _agreementCellHtml(r) {
     edgeBadge = `<span style="font-size:9px;color:${eColor};margin-left:3px;" title="Avg fwd 20d for ${cls}: ${eSign}${e.toFixed(2)}%">${eSign}${e.toFixed(1)}</span>`;
   }
   return `<span style="font-size:10px;font-weight:700;color:${color};" title="${cls}">${lbl}</span>${edgeBadge}`;
+}
+
+// ---- TASK_70: Final Call (cal) cell renderer ----
+// Shows the calibrated final call (derived from bull_prob) beside the existing
+// Final Call column so the user can compare them side-by-side.
+// Uses the same badge style as _finalCallHtml but reads *_cal fields.
+// A "vs" highlight (amber border) is added when the two disagree on side.
+function _finalCallCalHtml(r) {
+  const code = r.final_code_cal;
+  if (code == null || code === '') {
+    return '<span style="color:#cbd5e1;font-size:10px;">—</span>';
+  }
+  const label    = r.final_action_cal || code;
+  const side     = r.final_side_cal   || 'neutral';
+  const strength = Number(r.fc_strength_cal) || 0;
+  // Treat as feasible when code is non-null.
+  var fcDisp = actionDisplay(code);
+  var colorCls = (fcDisp.colorCls || 'act-neutral') + '-fill';
+  // "vs" highlight: amber left-border when cal side differs from existing FC side.
+  var vsBorder = '';
+  var vsTitle   = '';
+  const existSide = r.final_side || 'neutral';
+  if (existSide && side !== existSide) {
+    vsBorder = 'border-left:3px solid #f59e0b;padding-left:3px;';
+    vsTitle  = ' — disagrees with Final Call (' + existSide + ' vs ' + side + ')';
+  }
+  var tipText = 'Cal: ' + label + ' (strength ' + strength + ', p=' +
+    (r.bull_prob != null ? Math.round(Number(r.bull_prob)*100) + '%' : '?') +
+    ')' + vsTitle;
+  return '<span class="act-badge act-badge-sm ' + colorCls + '" ' +
+    'style="' + vsBorder + '" title="' + escapeHtml(tipText) + '">' +
+    escapeHtml(label) + '</span>';
 }
 
 // ---- column sorting ----
@@ -2016,6 +2048,7 @@ function renderGrid() {
         ${r.sector ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px;">${escapeHtml(r.sector)}</div>` : ''}
       </td>
       <td style="padding:6px 4px;">${fcHtml}</td>
+      <td style="padding:6px 4px;">${_finalCallCalHtml(r)}</td>
       <td class="num">
         <span class="amt-primary">${fmtUsd(r._amt)}</span>
         ${r.stop_level != null ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;" title="Stop / exit-below level (task 8)">stop ${fmtUsd(r.stop_level)}</div>` : ''}

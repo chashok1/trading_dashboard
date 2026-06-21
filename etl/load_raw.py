@@ -954,13 +954,40 @@ def load_tw(session: Session, wb: Workbook, source_file: str) -> tuple[int, int,
             return 0, 0, 0
 
     sheet = wb[sheet_name]
-    from etl.excel_io import iter_rows_as_dict
+    from etl.excel_io import get_headers
+
+    # Read raw headers so we can detect old vs new TOS export format.
+    # Old format: 3× "SimpleMovingAvg" (20/50/200 DMA) + 2× "VolumeAvg" (10d/3m).
+    # New format: distinct names "20 DMA", "50 DMA", "200 DMA", "Avg Vlm (10day)", "Avg Vlm (3m)".
+    raw_headers = get_headers(sheet)
+    if "SimpleMovingAvg" in raw_headers:
+        # Rename duplicates to the new canonical names so the mapping works on both formats.
+        sma_seen = vol_seen = 0
+        headers = []
+        for h in raw_headers:
+            if h == "SimpleMovingAvg":
+                sma_seen += 1
+                headers.append(("20 DMA", "50 DMA", "200 DMA")[sma_seen - 1]
+                               if sma_seen <= 3 else h)
+            elif h == "VolumeAvg":
+                vol_seen += 1
+                headers.append(("Avg Vlm (10day)", "Avg Vlm (3m)")[vol_seen - 1]
+                               if vol_seen <= 2 else h)
+            else:
+                headers.append(h)
+    else:
+        headers = raw_headers
 
     records: list[dict] = []
     rows_read = 0
+    last_col = sheet.max_column
 
-    for row_data in iter_rows_as_dict(sheet, start_row=2):
+    for r in range(2, sheet.max_row + 1):
+        row_vals = [sheet.cell(row=r, column=c).value for c in range(1, last_col + 1)]
+        if all(v is None for v in row_vals):
+            break
         rows_read += 1
+        row_data = {headers[i]: row_vals[i] for i in range(len(headers))}
         rec, skip_reason = _row_to_record(row_data, mapping, source_file)
         if rec is None:
             continue

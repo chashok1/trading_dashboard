@@ -3352,6 +3352,34 @@ def derive_all(session: Session, as_of_date: date,
         try: session.rollback()
         except Exception: pass
 
+    # TASK_70: calibrated Final Call from bull_prob (evaluation-only, parallel).
+    # Runs after derive_bull_prob so bull_prob is already populated.
+    # Failure must not affect the cascade or any existing column.
+    try:
+        from etl.derive_final_call_cal import derive_final_call_cal
+        counts["drv_final_call_cal"] = _safe(
+            "drv_final_call_cal", derive_final_call_cal
+        )
+    except Exception:
+        log.exception("derive_final_call_cal import failed (non-fatal)")
+        counts["drv_final_call_cal"] = 0
+        try: session.rollback()
+        except Exception: pass
+
+    # TASK_71: infer position actions from hist_cst/hist_ft transactions.
+    # Runs after derive_actionable (needs drv_actionable for attribution).
+    # Non-critical: failure must not break the cascade.
+    try:
+        from etl.derive_position_action import derive_position_action
+        counts["drv_position_action"] = _safe(
+            "drv_position_action", derive_position_action
+        )
+    except Exception:
+        log.exception("derive_position_action import failed (non-fatal)")
+        counts["drv_position_action"] = 0
+        try: session.rollback()
+        except Exception: pass
+
     counts["drv_missing_symbols"] = _safe("drv_missing_symbols", derive_missing_symbols)
     counts["drv_trig"]            = _safe("drv_trig",            derive_trig)
 

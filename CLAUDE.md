@@ -262,4 +262,7 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Full command reference + web endpoints + troubleshooting table | `COMMANDS.md` |
 | Schema + behaviour migration history (all dated changes) | `docs/migrations.md` |
 | Agent handoff workflow (Cowork → developer → tester; file naming, markers, no-commit) | `docs/agent_handoff_workflow.md` |
+| Bull-calc analysis (two stacks, duplications, money-first improvements P1–P5) | `docs/audit/bull_calc_analysis.md` |
+| Bull-calc rollout / how to enable + revert (TASK 65–69) — read after a break | `docs/bull_rollout_runbook.md` |
+| Bull-calc logic + data-flow diagrams (feeds→stacks→Final Call; decision tree) | `docs/diagrams/bull_calc_data_flow.svg`, `docs/diagrams/bull_calc_decision_logic.svg` |
 

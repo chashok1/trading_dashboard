@@ -8,10 +8,17 @@
 > weighting here. Starting before that means weighting noise.
 
 ## Why (one line)
-Replace the two separate, equal-weight bull verdicts (sentiment label + technical gate)
-with **one number per symbol: the probability the stock is up over the next 20 days**,
-weighted by how predictive each signal has actually been. Background:
-`docs/audit/bull_calc_analysis.md` §4–5 (P2).
+The two stacks already combine in `_compute_final_call` (`etl/derive_actionable.py`), but
+via a hand-coded precedence tree with **fixed `_FC_SCALE` strengths** never fit to
+returns, and disagreements collapse to HOLD/`fc_confidence="mixed"`. Add **one calibrated
+number per symbol: P(stock up over next 20 days)**, weighted by how predictive each signal
+has actually been — running *beside* the existing Final Call for comparison, not replacing
+it. Background: `docs/audit/bull_calc_analysis.md` §1, §4–5 (P2).
+
+**Compare, don't rip out:** keep `_compute_final_call` and its output intact. The new
+`bull_prob` is a parallel column so the user can judge calibrated-probability vs the
+current rule-based Final Call before trusting it. The eventual goal is to let `bull_prob`
+inform `_FC_SCALE`'s strengths, but that is a later task — not this one.
 
 ## The idea in one breath
 Today `_composite_outlook` gives every source one equal vote. Instead: learn each

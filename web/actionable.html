@@ -437,9 +437,10 @@
     #econBtn { background: #fff; color: inherit; }
     #econBtn.active { background: var(--accent, #0a84ff); color: #fff; border-color: var(--accent, #0a84ff); }
 
-    /* Fill remaining viewport — table expands to bottom */
-    body.act-page main { overflow: hidden; display: flex; flex-direction: row; }
+    /* Fill remaining viewport — toolbar spans full width; grid+side sit in a row below */
+    body.act-page main { overflow: hidden; display: flex; flex-direction: column; }
     body.act-page main > .card { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+    body.act-page .act-content-row { display: flex; flex: 1; min-height: 0; overflow: hidden; }
     body.act-page .act-table-wrap { flex: 1; overflow: auto; min-height: 0; }
 
     /* Side panels */
@@ -649,6 +650,7 @@
         <span id="symTapeBadge" class="sym-tape-badge"></span>
       </div>
 
+      <div class="act-content-row">
       <div class="act-table-wrap">
         <table class="act-grid" id="actGrid">
           <thead>
@@ -659,6 +661,7 @@
               <th class="num sortable" data-key="pct_change" data-type="num" style="width:62px;">%chg / Price</th>
               <th class="sortable" data-key="tos_symbol" data-type="str" style="width:68px;">Symbol</th>
               <th class="sortable" data-key="_fc_strength" data-type="num" title="Final Call: reconciled action with confidence badge (drives ranking + default Act)" style="width:90px;">Final Call</th>
+              <th class="sortable" data-key="fc_strength_cal" data-type="num" title="Final Call (cal): calibrated call from bull_prob probability bands. Evaluation-only — compare vs Final Call to assess the model. NULL when no active model." style="width:90px;">FC (cal)</th>
               <th class="num sortable" data-key="_amt" data-type="num" style="width:58px;">AMT$</th>
               <th class="sortable" data-key="consolidated_action" data-type="str" data-label="Sources" title="Consolidated from RR/CALL/ETF/II/SSS/PS (most-aggressive-wins), then sized to your min/max/holdings." style="width:200px;">Sources</th>
               <th class="sortable" data-key="rr_action" data-type="str" data-label="Technical" title="Trend-vs-Trade crossover + Bollinger range streak + Risk-Range position." style="width:200px;">Technical</th>
@@ -677,37 +680,37 @@
         </table>
         <div class="empty-state" id="emptyState" style="display:none;">No actionable rows match these filters.</div>
       </div>
-    </div>
+      <aside class="side-stack act-side" id="actSidePanel">
+        <section class="card">
+          <div class="panel-bar"><span class="panel-title">Quads</span></div>
+          <div class="quads-line" id="quadsBody"></div>
+          <div class="empty-note" id="quadsEmpty" hidden>No data.</div>
+        </section>
+        <section class="card">
+          <div class="panel-bar"><span class="panel-title">Econ Indicators</span></div>
+          <div class="side-scroll">
+            <table class="mini-grid">
+              <thead><tr><th>Indicator</th><th>Date</th><th>Days</th><th>Signal</th></tr></thead>
+              <tbody id="econBody"></tbody>
+            </table>
+            <div class="empty-note" id="econEmpty" hidden>No data.</div>
+          </div>
+        </section>
+        <section class="card">
+          <div class="panel-bar"><span class="panel-title">Earnings / Events</span></div>
+          <div class="side-scroll">
+            <table class="mini-grid">
+              <thead><tr><th>Event</th><th>Date</th><th>In</th></tr></thead>
+              <tbody id="earningsBody"></tbody>
+            </table>
+            <div class="empty-note" id="earningsEmpty" hidden>No data.</div>
+          </div>
+        </section>
+      </aside>
+      </div><!-- end .act-content-row -->
+    </div><!-- end .card -->
   <div id="sourcePop" class="source-pop"></div>
   <div id="symTilePop" class="sym-tile-pop" style="display:none;"></div>
-
-  <aside class="side-stack act-side" id="actSidePanel">
-    <section class="card">
-      <div class="panel-bar"><span class="panel-title">Quads</span></div>
-      <div class="quads-line" id="quadsBody"></div>
-      <div class="empty-note" id="quadsEmpty" hidden>No data.</div>
-    </section>
-    <section class="card">
-      <div class="panel-bar"><span class="panel-title">Econ Indicators</span></div>
-      <div class="side-scroll">
-        <table class="mini-grid">
-          <thead><tr><th>Indicator</th><th>Date</th><th>Days</th><th>Signal</th></tr></thead>
-          <tbody id="econBody"></tbody>
-        </table>
-        <div class="empty-note" id="econEmpty" hidden>No data.</div>
-      </div>
-    </section>
-    <section class="card">
-      <div class="panel-bar"><span class="panel-title">Earnings / Events</span></div>
-      <div class="side-scroll">
-        <table class="mini-grid">
-          <thead><tr><th>Event</th><th>Date</th><th>In</th></tr></thead>
-          <tbody id="earningsBody"></tbody>
-        </table>
-        <div class="empty-note" id="earningsEmpty" hidden>No data.</div>
-      </div>
-    </section>
-  </aside>
 
   </main>
 

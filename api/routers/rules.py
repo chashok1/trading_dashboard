@@ -422,24 +422,30 @@ def get_atomic_rule_scorecard(
 
 @router.get("/api/rules/my-actions", response_model=dict)
 def get_my_actions(limit: int = Query(200, ge=1, le=2000)):
-    """Personal action track record (Phase 4): your DONE actions joined to the
-    stock's forward return (v_user_action_performance). Distinct from the rule
-    scorecard. Empty until you log actions on the Actionable screen.
+    """Personal action track record (TASK_71): unified manual + inferred-from-
+    positions actions joined to forward returns (v_user_action_performance).
+    source_kind='manual' rows come from user_action_log (ACT button).
+    source_kind='inferred' rows come from drv_position_action (auto-detected).
+    attribution='rule'|'discretionary' present on all rows.
     Returns {summary, recent[]}.
     """
     with session_scope() as s:
         recent = s.execute(text("""
             SELECT id, acted_at, as_of_date, tos_symbol, user_action,
-                   consolidated_action, fwd_5d_pct, fwd_20d_pct
+                   consolidated_action, change_type, shares_delta,
+                   attribution, source_kind, attributed_rule_ids,
+                   fwd_5d_pct, fwd_20d_pct
             FROM v_user_action_performance
             ORDER BY acted_at DESC NULLS LAST
             LIMIT :lim
         """), {"lim": limit}).mappings().all()
         summ = s.execute(text("""
             SELECT COUNT(*)                                          AS n_actions,
-                   COUNT(*) FILTER (WHERE fwd_20d_pct IS NOT NULL)   AS n_scored,
-                   ROUND(AVG(fwd_20d_pct)::numeric, 2)               AS avg_fwd_20d,
-                   ROUND(AVG(fwd_5d_pct)::numeric, 2)                AS avg_fwd_5d
+                   COUNT(*) FILTER (WHERE source_kind = 'inferred') AS n_inferred,
+                   COUNT(*) FILTER (WHERE source_kind = 'manual')   AS n_manual,
+                   COUNT(*) FILTER (WHERE fwd_20d_pct IS NOT NULL)  AS n_scored,
+                   ROUND(AVG(fwd_20d_pct)::numeric, 2)              AS avg_fwd_20d,
+                   ROUND(AVG(fwd_5d_pct)::numeric, 2)               AS avg_fwd_5d
             FROM v_user_action_performance
         """)).mappings().first()
         return {"summary": dict(summ) if summ else {}, "recent": [dict(r) for r in recent]}
@@ -482,6 +488,30 @@ def get_bull_prob(
             "   AND bull_prob >= :mp"
             " ORDER BY bull_prob DESC NULLS LAST"
         ), {"d": d, "mp": min_prob}).mappings().all()
+        return [dict(r) for r in rows]
+
+
+@router.get("/api/actionable/final-call-cal", response_model=list[dict])
+def get_final_call_cal(date: Optional[str] = Query(None)):
+    """TASK_70: calibrated Final Call from bull_prob for all symbols on a date.
+    Returns tos_symbol, bull_prob, final_code, final_code_cal, final_action_cal,
+    final_side_cal, fc_strength_cal, fc_strength, consolidated_action, held_today.
+    Sorted by fc_strength_cal DESC (most bullish first) then tos_symbol.
+    Empty list when no active model or bull_prob not yet scored."""
+    from api._helpers import _resolve_date as _rd
+    d = _rd(date)
+    with session_scope() as s:
+        rows = s.execute(text(
+            "SELECT tos_symbol, bull_prob, bull_agreement,"
+            " consolidated_action, held_today,"
+            " final_code, final_action, fc_strength,"
+            " final_code_cal, final_action_cal,"
+            " final_side_cal, fc_strength_cal"
+            " FROM drv_actionable"
+            " WHERE as_of_date = :d"
+            "   AND final_code_cal IS NOT NULL"
+            " ORDER BY fc_strength_cal DESC NULLS LAST, tos_symbol"
+        ), {"d": d}).mappings().all()
         return [dict(r) for r in rows]
 
 

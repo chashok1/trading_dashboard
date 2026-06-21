@@ -4984,7 +4984,10 @@ LEFT JOIN ref_trig_atomic_rule r ON r.atomic_rule_id::text = a.rule_id;
 -- outcomes). This is the personal feedback loop — distinct from the rule
 -- scorecard. Empty until you start logging actions on the Actionable screen;
 -- recent dates won't have a 20d return until 20 trading days pass.
--- -----------------------------------------------------
+-- NOTE: superseded later in this file (after v_unified_track_record) by TASK_71
+-- to include inferred-from-position actions. This definition is a placeholder
+-- that works on a fresh DB before drv_position_action exists.
+DROP VIEW IF EXISTS v_user_action_performance CASCADE;
 CREATE OR REPLACE VIEW v_user_action_performance AS
 WITH px AS (
     SELECT tos_symbol, as_of_date, last_price,
@@ -5005,6 +5008,11 @@ fwd AS (
 SELECT u.id, u.acted_at, u.as_of_date,
        u.tos_symbol,
        u.user_action, u.consolidated_action,
+       NULL::TEXT      AS change_type,
+       NULL::NUMERIC   AS shares_delta,
+       'rule'::TEXT    AS attribution,
+       'manual'::TEXT  AS source_kind,
+       NULL::JSONB     AS attributed_rule_ids,
        ROUND(f.fwd5::numeric, 2)                   AS fwd_5d_pct,
        ROUND(f.fwd20::numeric, 2)                  AS fwd_20d_pct
 FROM user_action_log u
@@ -6143,6 +6151,123 @@ INSERT INTO ref_threshold_override (rule_key, description, original_value) VALUE
 ('bb_bull.lo.LS', 'BB Bull: bbstreak_days_rule <= neg-this gives -3', 3)
 ON CONFLICT (rule_key) DO NOTHING;
 
+-- 2026-06-20 TASK_71: drv_position_action — inferred trades from transaction history.
+-- Source: hist_cst (Schwab) + hist_ft (Fidelity) — real Buy/Sell events with quantities.
+-- change_type: BUY | ADD | REDUCE | SELL_ALL
+-- attribution: 'rule' (matched drv_actionable recommendation) | 'discretionary'
+-- attributed_rule_ids: JSONB array of matched triggered_group_ids or source_actions keys
+-- source: 'cst' (Schwab) | 'ft' (Fidelity)
+-- Idempotent: DELETE WHERE as_of_date=D then INSERT.
+CREATE TABLE IF NOT EXISTS drv_position_action (
+    as_of_date          DATE    NOT NULL,
+    tos_symbol          TEXT    NOT NULL,
+    trade_date          DATE    NOT NULL,
+    change_type         TEXT    NOT NULL
+        CHECK (change_type IN ('BUY','ADD','REDUCE','SELL_ALL')),
+    shares_delta        NUMERIC NOT NULL,
+    dollar_delta        NUMERIC,
+    inferred_action_code TEXT,
+    attributed_rule_ids JSONB,
+    attribution         TEXT    NOT NULL DEFAULT 'discretionary'
+        CHECK (attribution IN ('rule','discretionary')),
+    source              TEXT    NOT NULL DEFAULT 'unknown',
+    computed_at         TIMESTAMP NOT NULL DEFAULT now(),
+    PRIMARY KEY (as_of_date, tos_symbol, trade_date, source, change_type)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_position_action_date
+    ON drv_position_action(as_of_date);
+CREATE INDEX IF NOT EXISTS ix_drv_position_action_sym
+    ON drv_position_action(tos_symbol, as_of_date);
+CREATE INDEX IF NOT EXISTS ix_drv_position_action_attr
+    ON drv_position_action(attribution, as_of_date);
+
+-- v_unified_track_record: positions-primary; manual user_action_log overrides.
+-- For each (tos_symbol, as_of_date) prefer the manual row (if user_action='DONE')
+-- else use the inferred drv_position_action row.
+-- source_kind: 'manual' | 'inferred'
+CREATE OR REPLACE VIEW v_unified_track_record AS
+WITH manual AS (
+    SELECT tos_symbol, as_of_date,
+           id AS manual_id,
+           consolidated_action,
+           user_action,
+           acted_at,
+           NULL::TEXT             AS change_type,
+           NULL::NUMERIC          AS shares_delta,
+           NULL::NUMERIC          AS dollar_delta,
+           NULL::TEXT             AS inferred_action_code,
+           NULL::JSONB            AS attributed_rule_ids,
+           'rule'::TEXT           AS attribution,
+           'manual'::TEXT         AS source_kind
+    FROM user_action_log
+    WHERE user_action = 'DONE'
+),
+inferred AS (
+    SELECT tos_symbol, as_of_date,
+           NULL::BIGINT           AS manual_id,
+           NULL::TEXT             AS consolidated_action,
+           NULL::TEXT             AS user_action,
+           computed_at            AS acted_at,
+           change_type,
+           shares_delta,
+           dollar_delta,
+           inferred_action_code,
+           attributed_rule_ids,
+           attribution,
+           'inferred'::TEXT       AS source_kind
+    FROM drv_position_action
+    WHERE NOT EXISTS (
+        SELECT 1 FROM user_action_log u2
+        WHERE u2.tos_symbol = drv_position_action.tos_symbol
+          AND u2.as_of_date = drv_position_action.as_of_date
+          AND u2.user_action = 'DONE'
+    )
+)
+SELECT * FROM manual
+UNION ALL
+SELECT * FROM inferred;
+
+-- 2026-06-20 TASK_71 (supersedes earlier definition): unified personal track record.
+-- Includes manual DONE entries (from user_action_log) AND inferred-from-positions.
+-- source_kind='manual'|'inferred'; attribution='rule'|'discretionary'.
+-- MUST be defined after drv_position_action and v_unified_track_record exist.
+DROP VIEW IF EXISTS v_user_action_performance CASCADE;
+CREATE OR REPLACE VIEW v_user_action_performance AS
+WITH px AS (
+    SELECT tos_symbol, as_of_date, last_price,
+           LEAD(last_price, 5)  OVER w AS p5,
+           LEAD(last_price, 20) OVER w AS p20
+    FROM drv_ma
+    WHERE last_price IS NOT NULL
+    WINDOW w AS (PARTITION BY tos_symbol ORDER BY as_of_date)
+),
+fwd AS (
+    SELECT tos_symbol, as_of_date,
+           CASE WHEN last_price > 0 AND p5  IS NOT NULL
+                THEN (p5  - last_price) / last_price * 100 END AS fwd5,
+           CASE WHEN last_price > 0 AND p20 IS NOT NULL
+                THEN (p20 - last_price) / last_price * 100 END AS fwd20
+    FROM px
+)
+SELECT u.manual_id        AS id,
+       u.acted_at,
+       u.as_of_date,
+       u.tos_symbol,
+       u.user_action,
+       COALESCE(u.consolidated_action,
+                u.inferred_action_code) AS consolidated_action,
+       u.change_type,
+       u.shares_delta,
+       u.attribution,
+       u.source_kind,
+       u.attributed_rule_ids,
+       ROUND(f.fwd5::numeric, 2)       AS fwd_5d_pct,
+       ROUND(f.fwd20::numeric, 2)      AS fwd_20d_pct
+FROM v_unified_track_record u
+LEFT JOIN fwd f
+       ON f.tos_symbol = u.tos_symbol
+      AND f.as_of_date = u.as_of_date;
+
 -- 2026-06-20 TASK_69: agreement_class on drv_actionable.
 -- Derived from bull_prob direction vs consolidated_action direction.
 -- Buckets: agree_bull / agree_bear / split_tech_bull / split_tech_bear / neutral
@@ -6188,3 +6313,19 @@ SELECT agreement_class, n,
          WHEN n>=20 AND e20>0 THEN 'promising'
          ELSE 'unproven' END AS confidence
 FROM agg ORDER BY avg_fwd_20d DESC NULLS LAST;
+
+-- 2026-06-20 TASK_70: calibrated Final Call columns on drv_actionable.
+-- Derived from bull_prob via probability bands (parallel path, evaluation-only).
+-- final_action_cal: plain-English label  (e.g. "SELL ALL", "BUY MORE")
+-- final_code_cal:   BuySell code         (e.g. "SA", "BM")
+-- final_side_cal:   'buy' | 'sell' | 'neutral'
+-- fc_strength_cal:  numeric on same _FC_SCALE as fc_strength (-3..+2)
+-- All NULL when no active bull model. Do NOT alter existing final_* columns.
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS final_action_cal  TEXT;
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS final_code_cal    TEXT;
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS final_side_cal    TEXT;
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS fc_strength_cal   NUMERIC;

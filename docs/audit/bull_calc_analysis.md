@@ -6,11 +6,11 @@
 
 ## TL;DR (what you must act on)
 
-1. **You have two unrelated "bull" engines that never reconcile.** A *sentiment* stack (analyst/source outlooks → BULLISH/BEARISH text) and a *technical* stack (MA/Bollinger integer scores, the `bull`/`MQ` gate that switches RR interpretation). A symbol can be technical-bull and sentiment-bear at the same time and **nothing combines them into one number you can act on.** This is the biggest money leak: you can't size a position off "how bullish, with what confidence."
+1. **The two stacks DO combine — but only as a hand-coded action merge, not a calibrated score.** A *sentiment* stack (analyst/source outlooks → `consolidated_action`) and a *technical* stack (MA/Bollinger, the `bull`/`MQ` gate → `rr_action`) are reconciled by `_compute_final_call` (`etl/derive_actionable.py`) into the Actionable screen's Final Call. **Correction to an earlier draft of this doc:** they are not "uncombined." The real gap is *how* they combine: a precedence decision-tree that outputs an action word (BUY SOME) plus a strength from a **fixed hand-typed table** (`_FC_SCALE`: BM=+2, SS=−2…) never fit to forward returns; and when the stacks disagree it collapses to HOLD with `fc_confidence="mixed"` — discarding the split instead of measuring whether mixed setups pay. So you get *what to do*, not *how likely it is to work*, and you can't size off "how bullish, with what confidence."
 2. **The bull gate that drives your buy/sell interpretation is never validated against forward returns.** `_bull_expr` thresholds (`≥2`, `≥3`, `≤-2`…) are hardcoded ports from the old Excel sheet. `v_rule_scorecard` measures *composite rules*, but the bull gate itself (and `bull_rr_action` vs `not_bull_rr_action`) has no edge measurement. You are trusting an arbitrary threshold to decide which playbook to run.
 3. **At least 6 real duplications** — same bull/bear logic maintained in 2–4 places (Python+SQL, backend+JS). These don't lose money directly but guarantee drift: two color palettes, four hand-typed action-code lists, the RR "decision path" re-implemented in JS, the ETF/II bundle logic written twice.
 
-The fix that makes money: **collapse the two stacks into one calibrated bull-probability, score it on forward returns, and size by edge.** Everything else is cleanup.
+The fix that makes money: **keep the existing Final Call, but add a calibrated bull-probability beside it** — replace `_FC_SCALE`'s typed-in strengths with weights fit to forward returns, and turn the "mixed" dodge into a measured edge. Run it alongside the current final call so you can compare before trusting it. Everything else is cleanup.
 
 ---
 
@@ -77,7 +77,7 @@ Also: three different bull verdicts (per-source weights, ensemble label, counts)
 **Where money leaks:**
 
 1. **The gate is unmeasured.** `bull`/`not_bull` and `bull_rr_action`/`not_bull_rr_action` decide which playbook runs, but no view scores the gate's own forward edge. You can't answer "when the gate says +3, what's the 20-day return vs +2?" → thresholds are faith-based.
-2. **Two stacks, no probability.** Sentiment-bull + technical-bear is a real, common, *informative* disagreement — usually the highest-edge or highest-risk setups. Today it's discarded; you see two separate labels, not one "P(up) = 0.6, low agreement" number you can size on.
+2. **The stacks combine, but with no probability.** `_compute_final_call` reconciles sentiment (`consolidated_action`) and technical (`rr_action`) into the Final Call — so they *are* combined. But the combination uses fixed `_FC_SCALE` strengths, and sentiment-bull + technical-bear (a common, *informative* disagreement — often the highest-edge or highest-risk setups) collapses to HOLD/`fc_confidence="mixed"`, i.e. the split is sidestepped, never scored. You get an action, not a "P(up)=0.6, low agreement" number you can size on.
 3. **Hardcoded Excel thresholds.** `≥2/≥3` etc. were tuned by hand in a spreadsheet years of regime ago. None are fit to your actual forward-return data, even though you now *have* that data (`drv_rule_outcome`).
 4. **Direction by regex is fragile.** `v_rule_scorecard` infers BUY/SELL from `rule_id` text; the JS side lists diverge (D5). A mislabeled direction flips the sign of `edge_20d` — you could be trusting a "winning" rule that's actually a loser.
 5. **Equal-weight votes.** `_composite_outlook` gives RR, call, ETF, II, SSS one vote each. If ETF outlook has 3× the edge of II, you're diluting your best source.
@@ -108,5 +108,24 @@ Replace the equal-weight ensemble with a single model (start simple: logistic re
 ## Worth reconsidering
 
 Before building new models (P2), spend an hour on P1. If the existing `bull` gate already has no measurable edge over a coin flip, that tells you the whole MA/Bollinger Excel port may not be worth maintaining — and the cheapest money-making move is deleting Stack B, not improving it. Measure first.
+
+## 6. Implementation status — P1–P5 mapped to tasks
+
+Each recommendation is specced as a developer task (`agent-tasks/TASK_<n>_*.md`) and
+queued in `AGENT_WORK_7.md`. How to enable/revert without losing the current structure:
+`docs/bull_rollout_runbook.md`.
+
+| Rec | Task | What it does | Screen placement | Enable / revert |
+|---|---|---|---|---|
+| **P1** | **TASK 65** | Grade each *individual* atomic rule by its own forward-return edge (data already in `drv_rule_outcome` where `rule_kind='atomic'`) | **Performance** screen — new panel beside composite scorecard (trust/research view, NOT Actionable) | Always-on report; nothing to switch |
+| **P2** | **TASK 66** | One calibrated `bull_prob = P(up_20d)` per symbol, weighting signals by measured edge, + `bull_agreement` | **Actionable** screen — sortable column + top filter (the money screen); `bull_prob` per-symbol on Rule Flow | Additive column; "enable" = sort/filter & trade by it. Ignoring it changes nothing |
+| **P3** | **TASK 67** | Fit bull-gate thresholds to data, but keep **original + calculated + active** side by side with fit-history | **Rules/Param** screen — original vs calculated + "would it have made more?" comparison | The one real switch: `active_source='calculated'` to enable; `='original'` to revert (one row, instant). Defaults to original |
+| **P4** | **TASK 68** | Collapse duplicated bull/bear logic (D1–D7) to one source of truth each | Invisible (behavior-preserving) | Always-on cleanup; nothing to switch |
+| **P5** | **TASK 69** | Classify agree-bull / agree-bear / split, validate each bucket's forward edge | **Actionable** badge beside `bull_prob` (+ filter); validation report on **Performance** | Additive; reuses TASK 66's agreement inputs (no duplicate calc) |
+
+**Build order (in `AGENT_WORK_7.md`):** 65 → 66 → 67 → 69 in sequence (66/67/69 need 65's
+edge numbers); 68 runs in parallel. **Safety:** everything is additive or revertible —
+money-affecting switches (trusting `bull_prob`, activating calculated thresholds) are
+manual, so the current working structure is never lost until the user opts in.
 
 *Sources: `etl/derive.py`, `etl/derive_cat_atomic_input.py`, `etl/derive_outlook_action.py`, `etl/derive_source_standing.py`, `etl/_derive_common.py`, `etl/derive_actionable.py`, `db/baseline.sql` (`v_rule_scorecard`), `api/routers/{dash,marketbar,rules,trace}.py`, `web/{actions,_common,market_bar,actionable,rule_flow}.js`.*

@@ -44,29 +44,50 @@ async function loadMyActions() {
         const s = data.summary || {};
         if (s.n_actions) {
             const avg = s.avg_fwd_20d != null ? `${Number(s.avg_fwd_20d).toFixed(2)}%` : '—';
-            summ.textContent = `${s.n_actions} actions · ${s.n_scored || 0} scored · avg 20d ${avg}`;
+            const inferred = s.n_inferred ? ` · ${s.n_inferred} inferred` : '';
+            summ.textContent = `${s.n_actions} actions${inferred} · ${s.n_scored || 0} scored · avg 20d ${avg}`;
         } else {
             summ.textContent = '';
         }
         if (!recent.length) {
-            body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;color:var(--text-3);">'
-                + 'No actions logged yet. Act on a recommendation in the Actionable screen — once 20 trading days pass, your result shows here.</td></tr>';
+            body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:14px;color:var(--text-3);">'
+                + 'No actions logged yet. Real position changes will appear here automatically once the derive runs.</td></tr>';
             return;
         }
         const num = v => (v === null || v === undefined) ? '—'
             : `<span class="${v >= 0 ? 'act-buy-strong' : 'act-sell-strong'}">${Number(v).toFixed(2)}%</span>`;
+        // Attribution badge: rule = green, discretionary = grey
+        const attrBadge = r => {
+            if (r.attribution === 'rule') {
+                return '<span style="font-size:9px;background:#dcfce7;color:#166534;border-radius:3px;padding:1px 4px;font-weight:700;">rule</span>';
+            }
+            return '<span style="font-size:9px;background:#f1f5f9;color:#64748b;border-radius:3px;padding:1px 4px;">discr.</span>';
+        };
+        // Source badge: manual = blue, inferred = purple
+        const srcBadge = r => {
+            if (r.source_kind === 'manual') {
+                return '<span style="font-size:9px;background:#dbeafe;color:#1d4ed8;border-radius:3px;padding:1px 4px;">manual</span>';
+            }
+            return '<span style="font-size:9px;background:#ede9fe;color:#6d28d9;border-radius:3px;padding:1px 4px;">auto</span>';
+        };
+        const actionLabel = r => {
+            if (r.consolidated_action) return actionText(actionDisplay(r.consolidated_action));
+            if (r.change_type) return r.change_type.replace('_', ' ');
+            return '—';
+        };
         body.innerHTML = recent.map(r => `
             <tr>
                 <td style="font-size:11px;">${(r.acted_at || r.as_of_date || '').toString().slice(0,10)}</td>
                 <td><strong>${r.tos_symbol || ''}</strong></td>
-                <td title="${r.consolidated_action || ''}">${r.consolidated_action ? actionText(actionDisplay(r.consolidated_action)) : '—'}</td>
-                <td>${r.user_action || '—'}</td>
+                <td title="${r.consolidated_action || r.change_type || ''}">${actionLabel(r)}</td>
+                <td>${srcBadge(r)}</td>
+                <td>${attrBadge(r)}</td>
                 <td>${num(r.fwd_5d_pct)}</td>
                 <td>${num(r.fwd_20d_pct)}</td>
             </tr>`).join('');
     } catch (e) {
         console.error('Failed to load my-actions:', e);
-        body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#b91c1c;">Error loading actions</td></tr>';
+        body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#b91c1c;">Error loading actions</td></tr>';
     }
 }
 
