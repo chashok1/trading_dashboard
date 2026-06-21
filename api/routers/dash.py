@@ -482,70 +482,525 @@ def get_actionable(
     with session_scope() as s:
         rows = s.execute(text(sql), params).mappings().all()
 
-    # --- Quad-outlook enrichment (separate queries, no extra join) ---
-    # Resolve the two active quads for date D
-    _quad_m: str | None = None
-    _quad_q: str | None = None
-    # (category, sub_category_lower) -> {quad_col: text}
+    # --- Macro quad enrichment + MacroNet (separate queries, no extra join) ---
+    # Phase 1: join fix + period truth + monthly-weight schema
+    # Phase 2: style-factor classification
+    # Phase 3: MacroNet backend (distribution-weighted monthly + fixed quarterly)
+    # Phase 4: vocab + confidence + turn + structured detail
+
+    # ── Outlook text → stance (+1/0/-1) ─────────────────────────────────────
+    _STANCE: dict[str, int] = {
+        "bullish": 1, "neutral": 0, "bearish": -1,
+    }
+
+    # ── Asset class near-synonym map → ref_quad_outlook sub_category ─────────
+    _AC_ALIAS: dict[str, str] = {
+        "domestic equities":         "equities",
+        "global equities":           "equities",
+        "international equities":    "equities",
+        "emerging markets equities": "equities",
+        "us fixed income":           "fixed income",
+        "domestic fixed income":     "fixed income",
+        "foreign currencies":        "fx",
+        "foreign currency":          "fx",
+        "cash":                      "fixed income",
+    }
+
+    # ── Period data class (holds pct distribution) ───────────────────────────
+    class _Period:
+        __slots__ = ("quad", "start_date", "end_date", "dtb", "pcts")
+        def __init__(self, quad, start_date, end_date, dtb, pcts):
+            self.quad = quad
+            self.start_date = start_date
+            self.end_date = end_date
+            self.dtb = dtb   # calendar days to end_date from anchor d
+            self.pcts = pcts  # dict quad1..4 pct or None
+
+    _mp_cur: _Period | None = None   # monthly current
+    _mp_nxt: _Period | None = None   # monthly next
+    _qp_cur: _Period | None = None   # quarterly current
+    _qp_nxt: _Period | None = None   # quarterly next
+
+    # (category, sub_category_lower) -> {quad1..4: text}
     _quad_lookup: dict[tuple[str, str], dict[str, str | None]] = {}
+
+    # ticker -> (category, sub_category_lower) for direct ticker-keyed match
+    _ticker_lookup: dict[str, tuple[str, str]] = {}
+
+    # top-level quarterly stance: "Asset Class" → "Equities" per quad col
+    _qtr_top: dict[str, int] = {}  # "quad1"..4 → stance (+1/0/-1)
+
+    # style/fund lookups (set inside try; defaults here guard against early raise)
+    _style_lookup: dict[str, dict[str, str | None]] = {}
+    _fund: dict[str, dict] = {}
+
+    # Tunable params — new naming (TASK_74 Phase 1).
+    # Legacy names (macro_N_m, macro_N_q, macro_wm_max, macro_wq_max,
+    # macro_a, macro_b) are still in ref_settings for rollback; new names take
+    # precedence. Defaults align with those legacy fallbacks.
+    _ramp_begin: int   = 12   # quad_month_ramp_begin_days
+    _lead_days:  int   = 5    # quad_month_lead_days
+    _a: float          = 0.65  # quad_horizon_weight_qtr  (legacy: macro_a)
+    _b: float          = 0.35  # quad_horizon_weight_mo   (legacy: macro_b)
+
+    # MacroNet → vocabulary thresholds
+    _THR_SA:  float = -1.5
+    _THR_STM: float = -0.5
+    _THR_BS:  float = 0.5
+    _THR_BM:  float = 1.5
+
     try:
         with session_scope() as _qs:
-            _quad_m = _qs.execute(text(
-                "SELECT quad FROM ref_quad_periods"
-                " WHERE period_type = 'monthly' AND :d >= start_date"
-                " AND (:d <= end_date OR end_date IS NULL)"
-                " ORDER BY start_date DESC LIMIT 1"
-            ), {"d": d}).scalar()
-            _quad_q = _qs.execute(text(
-                "SELECT quad FROM ref_quad_periods"
-                " WHERE period_type = 'quarterly' AND :d >= start_date"
-                " AND (:d <= end_date OR end_date IS NULL)"
-                " ORDER BY start_date DESC LIMIT 1"
-            ), {"d": d}).scalar()
-            # Fetch Asset Class and Equity Sectors blocks only
+            # Load all tunable params from ref_settings in one query
+            _settings = dict(_qs.execute(text(
+                "SELECT setting_name, setting_value FROM ref_settings"
+                " WHERE setting_name IN"
+                " ('quad_month_ramp_begin_days','quad_month_lead_days',"
+                "  'quad_horizon_weight_qtr','quad_horizon_weight_mo',"
+                "  'macro_thr_sa','macro_thr_stm','macro_thr_bs','macro_thr_bm')"
+            )).fetchall() or [])
+            if "quad_month_ramp_begin_days" in _settings:
+                _ramp_begin = int(_settings["quad_month_ramp_begin_days"])
+            if "quad_month_lead_days" in _settings:
+                _lead_days = int(_settings["quad_month_lead_days"])
+            if "quad_horizon_weight_qtr" in _settings:
+                _a = float(_settings["quad_horizon_weight_qtr"])
+            if "quad_horizon_weight_mo" in _settings:
+                _b = float(_settings["quad_horizon_weight_mo"])
+            if "macro_thr_sa"  in _settings: _THR_SA  = float(_settings["macro_thr_sa"])
+            if "macro_thr_stm" in _settings: _THR_STM = float(_settings["macro_thr_stm"])
+            if "macro_thr_bs"  in _settings: _THR_BS  = float(_settings["macro_thr_bs"])
+            if "macro_thr_bm"  in _settings: _THR_BM  = float(_settings["macro_thr_bm"])
+
+            # Load all quad periods with pct distribution
+            _periods = _qs.execute(text(
+                "SELECT period_type, quad, start_date, end_date,"
+                " quad1_pct, quad2_pct, quad3_pct, quad4_pct"
+                " FROM ref_quad_periods ORDER BY period_type, start_date"
+            )).mappings().all()
+
+            def _dtb(end_date):
+                if end_date is None:
+                    return 9999
+                from datetime import date as _date_t
+                delta = (end_date - d) if hasattr(d, 'toordinal') else (
+                    _date_t.fromisoformat(str(end_date)) - _date_t.fromisoformat(str(d))
+                )
+                return delta.days if hasattr(delta, 'days') else int(delta)
+
+            def _pcts(p):
+                v = [p["quad1_pct"], p["quad2_pct"],
+                     p["quad3_pct"], p["quad4_pct"]]
+                if all(x is None for x in v):
+                    return None
+                return {f"quad{i+1}": (float(v[i]) if v[i] is not None else 0.0)
+                        for i in range(4)}
+
+            _monthly  = [p for p in _periods if p["period_type"] == "monthly"]
+            _quarterly = [p for p in _periods if p["period_type"] == "quarterly"]
+
+            for p in _monthly:
+                sd, ed = p["start_date"], p["end_date"]
+                if (sd <= d) and (ed is None or d <= ed) and _mp_cur is None:
+                    _mp_cur = _Period(p["quad"], sd, ed, _dtb(ed), _pcts(p))
+            for p in sorted(_monthly, key=lambda x: x["start_date"]):
+                if _mp_cur and p["start_date"] > _mp_cur.start_date and _mp_nxt is None:
+                    _mp_nxt = _Period(
+                        p["quad"], p["start_date"], p["end_date"],
+                        _dtb(p["end_date"]), _pcts(p))
+
+            for p in _quarterly:
+                sd, ed = p["start_date"], p["end_date"]
+                if (sd <= d) and (ed is None or d <= ed) and _qp_cur is None:
+                    _qp_cur = _Period(p["quad"], sd, ed, _dtb(ed), None)
+            for p in sorted(_quarterly, key=lambda x: x["start_date"]):
+                if _qp_cur and p["start_date"] > _qp_cur.start_date and _qp_nxt is None:
+                    _qp_nxt = _Period(p["quad"], p["start_date"], p["end_date"],
+                                      _dtb(p["end_date"]), None)
+
+            # Load all quad outlook rows (including Equity Style)
             _qrows = _qs.execute(text(
-                "SELECT category, sub_category,"
+                "SELECT category, sub_category, ticker,"
                 " quad1, quad2, quad3, quad4"
                 " FROM ref_quad_outlook"
-                " WHERE category IN ('Asset Class','Equity Sectors')"
             )).mappings().all()
             for qr in _qrows:
                 key = (qr["category"], (qr["sub_category"] or "").lower())
                 _quad_lookup[key] = {
-                    "quad1": qr["quad1"],
-                    "quad2": qr["quad2"],
-                    "quad3": qr["quad3"],
-                    "quad4": qr["quad4"],
+                    "quad1": qr["quad1"], "quad2": qr["quad2"],
+                    "quad3": qr["quad3"], "quad4": qr["quad4"],
                 }
-    except Exception:
-        pass  # If tables missing or error, skip silently
+                if qr["ticker"]:
+                    _ticker_lookup[qr["ticker"].upper()] = (
+                        qr["category"], (qr["sub_category"] or "").lower()
+                    )
 
-    def _resolve_quad_outlook(
+            # Top-level quarterly anchor: "Asset Class → Equities" per quad
+            _eq_row = _quad_lookup.get(("Asset Class", "equities"), {})
+            for _qk in ("quad1", "quad2", "quad3", "quad4"):
+                _qtr_top[_qk] = _STANCE.get(
+                    (_eq_row.get(_qk) or "").strip().lower(), 0)
+
+            # Load style outlook (Equity Style block)
+            for qr in _qrows:
+                if qr["category"] == "Equity Style":
+                    _style_lookup[(qr["sub_category"] or "").lower()] = {
+                        "quad1": qr["quad1"], "quad2": qr["quad2"],
+                        "quad3": qr["quad3"], "quad4": qr["quad4"],
+                    }
+
+            # Load fundamentals for style classification
+            _fund_rows = _qs.execute(text(
+                "SELECT tos_symbol, market_cap_str, beta, pe_ratio, eps, div_yield"
+                " FROM drv_fundamentals WHERE as_of_date = :d"
+            ), {"d": d}).mappings().all()
+            for fr in _fund_rows:
+                _fund[fr["tos_symbol"]] = dict(fr)
+
+    except Exception as _exc:
+        import logging
+        logging.getLogger("dash").warning("quad enrichment load failed: %s", _exc)
+
+    def _quad_col(quad_str: str | None) -> str | None:
+        """Map 'Quad N' / 'N' → 'quadN'; return None if unrecognised."""
+        if not quad_str:
+            return None
+        m_ = re.search(r"(\d)", quad_str)
+        return ("quad" + m_.group(1)) if m_ else None
+
+    def _effective_quad_col(pcts: dict | None, fallback_col: str | None) -> str | None:
+        """Return the quadN key with the highest % from distribution.
+        Falls back to fallback_col when distribution is missing/all-zero."""
+        if pcts:
+            best = max(pcts, key=lambda k: pcts[k])
+            if pcts[best] > 0:
+                return best
+        return fallback_col
+
+    def _col_to_quad_name(col: str | None) -> str | None:
+        """Convert 'quadN' → 'Quad N' for display."""
+        if not col:
+            return None
+        m_ = re.search(r"(\d)", col)
+        return f"Quad {m_.group(1)}" if m_ else col
+
+    def _outlook_stance(text_: str | None) -> int:
+        """Map BULLISH/Neutral/BEARISH → +1/0/-1."""
+        return _STANCE.get((text_ or "").strip().lower(), 0)
+
+    def _dist_weighted_stance(
+        memberships: list[dict],
+        pcts: dict | None,
+        one_hot_col: str | None,
+    ) -> float:
+        """Distribution-weighted net stance.
+
+        When pcts are available (monthly): sum over each quad's
+        distribution share × that quad's membership net.
+        Falls back to one-hot (single quad column) when pcts=None.
+        """
+        if not memberships:
+            return 0.0
+        if pcts is None or one_hot_col is None:
+            # One-hot fallback: just use the dominant quad column
+            if one_hot_col is None:
+                return 0.0
+            net = 0.0
+            for m in memberships:
+                net += m["weight"] * _outlook_stance(m.get(one_hot_col))
+            return net
+        # Distribution-weighted
+        net = 0.0
+        for qk in ("quad1", "quad2", "quad3", "quad4"):
+            pct = pcts.get(qk, 0.0) / 100.0
+            if pct <= 0:
+                continue
+            q_net = 0.0
+            for m in memberships:
+                q_net += m["weight"] * _outlook_stance(m.get(qk))
+            net += pct * q_net
+        return net
+
+    def _resolve_memberships(
+        sym: str,
         real_asset_class: str | None,
         sector: str | None,
-        active_quad: str | None,
-    ) -> str | None:
-        """Return outlook text for a symbol given its asset class/sector + active quad."""
-        if not active_quad:
-            return None
-        # Map 'Quad N' -> 'quadN' column name
-        m = re.search(r"(\d)", active_quad or "")
-        if not m:
-            return None
-        col = "quad" + m.group(1)
-        # Equity-sector lookup first
+    ) -> list[dict]:
+        """Return per-membership list: {label, category, sub_cat, weight, quad1..4}."""
+        memberships: list[dict] = []
+
+        def _add(label: str, cat: str, sub_cat: str,
+                 cat_key: tuple[str, str], weight: float) -> None:
+            row = _quad_lookup.get(cat_key)
+            if row:
+                memberships.append({
+                    "label": label, "category": cat, "sub_cat": sub_cat,
+                    "weight": weight,
+                    "quad1": row["quad1"], "quad2": row["quad2"],
+                    "quad3": row["quad3"], "quad4": row["quad4"],
+                })
+
+        # ── Ticker-keyed match (highest priority) ───────────────────────────
+        tk_key = _ticker_lookup.get(sym.upper())
+        if tk_key:
+            row = _quad_lookup.get(tk_key)
+            if row:
+                memberships.append({
+                    "label": f"ticker={sym}", "category": tk_key[0],
+                    "sub_cat": tk_key[1], "weight": 2.0,
+                    "quad1": row["quad1"], "quad2": row["quad2"],
+                    "quad3": row["quad3"], "quad4": row["quad4"],
+                    "_match": "ticker",
+                })
+                return memberships
+
         rac = (real_asset_class or "").strip()
         sec = (sector or "").strip()
-        if rac.lower() == "equities" and sec:
-            qrow = _quad_lookup.get(("Equity Sectors", sec.lower()))
-            if qrow:
-                return qrow.get(col)
-        # Asset-class lookup
+
+        # ── Equity-sector lookup (case-insensitive) ─────────────────────────
+        if sec and sec.lower() not in ("n/a", "none"):
+            _add(f"sector={sec}", "Equity Sectors", sec,
+                 ("Equity Sectors", sec.lower()), 2.0)
+
+        # ── Asset-class lookup ───────────────────────────────────────────────
         if rac:
-            qrow = _quad_lookup.get(("Asset Class", rac.lower()))
-            if qrow:
-                return qrow.get(col)
-        return None
+            ac_key = _AC_ALIAS.get(rac.lower(), rac.lower())
+            _add(f"asset={rac}", "Asset Class", rac,
+                 ("Asset Class", ac_key), 1.0)
+
+        # ── Style-factor classification (Phase 2) ───────────────────────────
+        fund = _fund.get(sym, {})
+        beta_v = float(fund["beta"])  if fund.get("beta")     is not None else None
+        pe_v   = float(fund["pe_ratio"]) if fund.get("pe_ratio") is not None else None
+        dy_v   = float(fund["div_yield"]) if fund.get("div_yield") is not None else None
+
+        def _parse_cap(s):
+            if not s:
+                return None
+            s = str(s).replace(",", "").strip()
+            if s.endswith(" M"):
+                try: return float(s[:-2]) * 1e6
+                except ValueError: return None
+            try: return float(s)
+            except ValueError: return None
+
+        cap_v = _parse_cap(fund.get("market_cap_str"))
+
+        def _style(sub: str) -> None:
+            row = _style_lookup.get(sub.lower())
+            if row:
+                memberships.append({
+                    "label": f"style={sub}", "category": "Equity Style",
+                    "sub_cat": sub, "weight": 0.5,
+                    "quad1": row["quad1"], "quad2": row["quad2"],
+                    "quad3": row["quad3"], "quad4": row["quad4"],
+                    "_match": "style",
+                })
+
+        if cap_v is not None and cap_v > 0:
+            if   cap_v >= 10e9: _style("Secular")
+            elif cap_v >= 2e9:  _style("Mid Caps")
+            else:               _style("Small Caps")
+
+        if beta_v is not None:
+            if   beta_v > 1.3: _style("High Beta")
+            elif beta_v < 0.7: _style("Low Beta")
+
+        if dy_v is not None and dy_v > 1.5:
+            _style("Dividend")
+
+        if pe_v is not None and pe_v > 0:
+            if   pe_v < 15:  _style("Value")
+            elif pe_v > 30:  _style("Momentum")
+
+        return memberships
+
+    def _next_weight(dtb: int) -> float:
+        """Phase 3 ramp/lead formula.
+
+        next_weight = clamp((ramp_begin - dtb) / (ramp_begin - lead_days), 0, 1)
+        Three zones:
+          dtb > ramp_begin      → 0 (all current month)
+          lead_days < dtb ≤ ramp_begin → linear ramp
+          dtb ≤ lead_days       → 1 (fully anticipate next month)
+        """
+        denom = _ramp_begin - _lead_days
+        if denom <= 0:
+            return 1.0 if dtb <= _lead_days else 0.0
+        raw = (_ramp_begin - dtb) / denom
+        return max(0.0, min(1.0, raw))
+
+    def _macronet_to_vocab(mn: float) -> str:
+        if mn >= _THR_BM:  return "BM"
+        if mn >= _THR_BS:  return "BS"
+        if mn <= _THR_SA:  return "SA"
+        if mn <= _THR_STM: return "STM"
+        return "HOLD"
+
+    def _compute_macro(
+        sym: str,
+        real_asset_class: str | None,
+        sector: str | None,
+    ) -> dict:
+        """Full MacroNet computation per symbol.
+
+        Returns: macro_value, macro_conf, macro_turn, macro_detail, macro_howto.
+        All blank/None on no data — never raises.
+        """
+        _blank = {
+            "macro_value": None, "macro_conf": None,
+            "macro_turn": None, "macro_detail": None, "macro_howto": None,
+        }
+        memberships = _resolve_memberships(sym, real_asset_class, sector)
+        if not memberships:
+            return _blank
+
+        m_cur_q = _quad_col(_mp_cur.quad if _mp_cur else None)
+        m_nxt_q = _quad_col(_mp_nxt.quad if _mp_nxt else None)
+        q_cur_q = _quad_col(_qp_cur.quad if _qp_cur else None)
+        q_nxt_q = _quad_col(_qp_nxt.quad if _qp_nxt else None)
+
+        # Effective quad: highest-% from distribution; fallback to declared quad
+        m_eff_q   = _effective_quad_col(_mp_cur.pcts if _mp_cur else None, m_cur_q)
+        m_nxt_eff = _effective_quad_col(_mp_nxt.pcts if _mp_nxt else None, m_nxt_q)
+        q_eff_q   = _effective_quad_col(_qp_cur.pcts if _qp_cur else None, q_cur_q)
+        q_nxt_eff = _effective_quad_col(_qp_nxt.pcts if _qp_nxt else None, q_nxt_q)
+
+        if not m_eff_q and not q_eff_q:
+            return _blank
+
+        # ── Monthly M: distribution-weighted + ramp/lead blend ──────────────
+        dtb_m = _mp_cur.dtb if _mp_cur else 9999
+        S_m_cur = _dist_weighted_stance(
+            memberships, _mp_cur.pcts if _mp_cur else None, m_eff_q)
+        S_m_nxt = _dist_weighted_stance(
+            memberships, _mp_nxt.pcts if _mp_nxt else None, m_nxt_eff
+        ) if m_nxt_eff else S_m_cur
+
+        nw = _next_weight(dtb_m)
+        M = round((1.0 - nw) * S_m_cur + nw * S_m_nxt, 4)
+
+        # Confidence = max quadk_pct of current month (1.0 for one-hot)
+        conf: float | None
+        if _mp_cur and _mp_cur.pcts:
+            conf = round(max(_mp_cur.pcts.values()) / 100.0, 3)
+        else:
+            conf = 1.0 if m_cur_q else None
+
+        # ── Quarterly Qtr: fixed top-level stance, no blend ─────────────────
+        # Source: "Asset Class → Equities" outlook for the current quarter's quad.
+        # Use effective quad (highest-% from distribution; fallback to declared).
+        Qtr: float
+        _q_for_top = q_eff_q or m_eff_q
+        Qtr = float(_qtr_top.get(_q_for_top, 0)) if (_q_for_top and _qtr_top) else 0.0
+
+        # ── Combine ──────────────────────────────────────────────────────────
+        macro_net = round(_a * Qtr + _b * M, 4)
+        vocab = _macronet_to_vocab(macro_net)
+
+        # ── Turn signal ──────────────────────────────────────────────────────
+        # Monthly divergence near month-end
+        turn: str | None = None
+        turn_extra: str = ""
+        if m_nxt_eff and abs(S_m_cur - S_m_nxt) >= 0.5 and dtb_m <= _ramp_begin:
+            turn = "↗" if S_m_nxt > S_m_cur else "↘"
+            if _mp_nxt:
+                nxt_conf = int(max(_mp_nxt.pcts.values())) if _mp_nxt.pcts else 100
+                turn_extra = f" {_mp_nxt.quad} {nxt_conf}%"
+        # Quarterly alert near quarter-end (discrete, separate from M)
+        elif q_nxt_eff and _qp_cur and _qp_cur.dtb <= 20:
+            q_nxt_stance = float(_qtr_top.get(q_nxt_eff, 0))
+            if abs(Qtr - q_nxt_stance) >= 1.0:
+                turn = "↗" if q_nxt_stance > Qtr else "↘"
+                if _qp_nxt:
+                    turn_extra = f" {_qp_nxt.quad} (Qtr)"
+
+        # ── Structured detail for tooltip ────────────────────────────────────
+        # Month distribution block
+        m_dist_now: list[dict] = []
+        if _mp_cur and _mp_cur.pcts:
+            for qk in ("quad1", "quad2", "quad3", "quad4"):
+                pv = _mp_cur.pcts.get(qk, 0.0)
+                if pv > 0:
+                    m_dist_now.append({"quad": qk.replace("quad", "Quad "),
+                                        "pct": pv})
+        m_dist_nxt: list[dict] = []
+        if _mp_nxt and _mp_nxt.pcts:
+            for qk in ("quad1", "quad2", "quad3", "quad4"):
+                pv = _mp_nxt.pcts.get(qk, 0.0)
+                if pv > 0:
+                    m_dist_nxt.append({"quad": qk.replace("quad", "Quad "),
+                                        "pct": pv})
+
+        # Per-membership outlook — use effective quad (highest-% from distribution)
+        mem_detail: list[dict] = []
+        for mb in memberships:
+            out_cur = mb.get(m_eff_q or "quad1")
+            mem_detail.append({
+                "label": mb["label"],
+                "category": mb.get("category", ""),
+                "sub_cat": mb.get("sub_cat", ""),
+                "weight": mb["weight"],
+                "outlook": out_cur,
+                "stance": _outlook_stance(out_cur),
+            })
+
+        detail = {
+            "month": {
+                "now": {
+                    "quad": _col_to_quad_name(m_eff_q),
+                    "dist": m_dist_now,
+                    "net": round(S_m_cur, 3),
+                    "dtb": dtb_m,
+                },
+                "next": {
+                    "quad": _col_to_quad_name(m_nxt_eff),
+                    "dist": m_dist_nxt,
+                    "net": round(S_m_nxt, 3),
+                } if m_nxt_eff else None,
+                "blend_now_pct": round((1.0 - nw) * 100),
+                "blend_nxt_pct": round(nw * 100),
+                "M": round(M, 3),
+            },
+            "quarter": {
+                "now": _col_to_quad_name(q_eff_q),
+                "Qtr": Qtr,
+                "dtb": _qp_cur.dtb if _qp_cur else None,
+                "next": _col_to_quad_name(q_nxt_eff),
+                "turn_alert": (turn == "↘" or turn == "↗") and bool(turn_extra and "(Qtr)" in turn_extra),
+            },
+            "macro_net": macro_net,
+            "a": _a, "b": _b,
+            "conf": conf,
+            "vocab": vocab,
+            "memberships": mem_detail,
+        }
+
+        # ── How-to directive ─────────────────────────────────────────────────
+        conf_str = f"{int((conf or 0) * 100)}%" if conf is not None else "?"
+        howto_parts: list[str] = []
+        if vocab in ("BM", "BS"):
+            howto_parts.append(f"Macro favors LONG ({vocab}). "
+                                f"Press bottom-up BUY calls at {conf_str} confidence.")
+        elif vocab in ("SA", "STM"):
+            howto_parts.append(f"Macro favors SHORT/TRIM ({vocab}). "
+                                f"Back off BUY calls at {conf_str} confidence.")
+        else:
+            howto_parts.append(f"Macro neutral (HOLD). "
+                                f"No conviction adjustment ({conf_str}).")
+        if turn:
+            howto_parts.append(
+                f"Turn signal {turn}{turn_extra}: next period diverges — watch for regime shift.")
+        howto_parts.append(
+            "Technical/Sources is always master — MACRO adjusts conviction only.")
+
+        return {
+            "macro_value": vocab,
+            "macro_conf": conf,
+            "macro_turn": (turn + turn_extra) if turn else None,
+            "macro_detail": detail,
+            "macro_howto": " ".join(howto_parts),
+        }
 
     out = []
     for r in rows:
@@ -555,12 +1010,20 @@ def get_actionable(
         snooze = d_.get("snooze_until")
         if not show_acted and snooze and snooze >= d:
             continue
+        sym = d_.get("tos_symbol", "")
         rac = d_.get("real_asset_class")
         sec = d_.get("sector")
-        d_["quad_m"] = _quad_m
-        d_["quad_q"] = _quad_q
-        d_["quad_m_outlook"] = _resolve_quad_outlook(rac, sec, _quad_m)
-        d_["quad_q_outlook"] = _resolve_quad_outlook(rac, sec, _quad_q)
+        # backward-compat quad labels
+        d_["quad_m"] = _mp_cur.quad if _mp_cur else None
+        d_["quad_q"] = _qp_cur.quad if _qp_cur else None
+        try:
+            macro = _compute_macro(sym, rac, sec)
+        except Exception:
+            macro = {
+                "macro_value": None, "macro_conf": None,
+                "macro_turn": None, "macro_detail": None, "macro_howto": None,
+            }
+        d_.update(macro)
         out.append(d_)
     return out
 

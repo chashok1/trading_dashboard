@@ -58,16 +58,257 @@ function fmtDate(d) {
   return d.toString().slice(0, 10);
 }
 
-// ---------- Side panel helpers ----------
+// ---------- Side panel helpers + MACRO band (TASK_74) ----------
 
-function _quadColorClass(q) {
-  const s = String(q || '');
-  if (/4/.test(s)) return 'quad-q4';
-  if (/3/.test(s)) return 'quad-q3';
-  if (/2/.test(s)) return 'quad-q2';
-  if (/1/.test(s)) return 'quad-q1';
-  return 'quad-q-unknown';
+function _normSignal(v) {
+  if (!v) return { cls: '', label: '' };
+  const u = String(v).trim().toUpperCase();
+  if (u === '0' || u === 'N' || u === 'NEUTRAL' || u === 'NEU') return { cls: 'NEUTRAL', label: 'NEUTRAL' };
+  if (u.startsWith('BULL') || u === '+' || u === 'POS' || u === 'POSITIVE' || u === 'UP') return { cls: 'BULLISH', label: 'BULLISH' };
+  if (u.startsWith('BEAR') || u === '-' || u === 'NEG' || u === 'NEGATIVE' || u === 'DN' || u === 'DOWN') return { cls: 'BEARISH', label: 'BEARISH' };
+  return { cls: u.replace(/[^A-Z0-9]/g, ''), label: String(v).trim() };
 }
+
+// ── MACRO column cell renderer (TASK_74) ────────────────────────────────────
+// Renders a single cell for the MACRO column using the existing actionDisplay()
+// colors/vocabulary. The turn arrow (↗/↘ + next quad/%) is appended when present.
+// Confidence cue: faded badge at < 60% confidence.
+// On hover, a tooltip shows the full MacroNet breakdown from macro_detail.
+function macroCellHtml(r) {
+  const mv = r.macro_value;
+  const turn = r.macro_turn || '';
+  const conf = r.macro_conf != null ? r.macro_conf : null;
+  const opacity = conf != null && conf < 0.6 ? Math.max(0.45, conf / 0.6) : 1.0;
+  const sym = r.tos_symbol || '';
+  if (!mv || mv === 'HOLD') {
+    const holdCls = mv ? 'color:#9ca3af' : 'color:#cbd5e1';
+    const lbl = mv ? 'HOLD' : '—';
+    return `<span style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};cursor:help;" data-macropop="${escapeHtml(sym)}">${escapeHtml(lbl)}${turn ? ' ' + turn : ''}</span>`;
+  }
+  const d = actionDisplay(mv);
+  const cls = d.colorCls || 'act-neutral';
+  return `<span class="act-badge ${cls}-tint" style="font-size:10px;padding:1px 5px;cursor:help;opacity:${opacity.toFixed(2)};" `
+       + `data-macropop="${escapeHtml(sym)}">${escapeHtml(d.code || mv)}${turn ? ' ' + turn : ''}</span>`;
+}
+
+// Build tooltip text for a MACRO cell from macro_detail + macro_howto.
+// Layout: How to act → Month distribution + Category/Subcategory drivers
+//         → Quarter → MacroNet
+function _macroTooltip(r) {
+  let det = r.macro_detail;
+  if (typeof det === 'string') { try { det = JSON.parse(det); } catch (_) { det = null; } }
+  if (!det) return r.macro_value ? `MacroNet → ${r.macro_value}` : '';
+  const lines = [];
+
+  // ── How to act ────────────────────────────────────────────────────────────
+  if (r.macro_howto) {
+    lines.push('HOW TO ACT');
+    lines.push(r.macro_howto);
+    lines.push('');
+  }
+
+  // ── Month distribution ────────────────────────────────────────────────────
+  const mo = det.month || {};
+  const moNow = mo.now || {};
+  const moNxt = mo.next;
+  const distNow = moNow.dist || [];
+  lines.push('MONTH');
+  if (moNow.quad) {
+    const distStr = distNow.length
+      ? distNow.map(x => `${x.quad} ${x.pct}%`).join(' · ')
+      : `${moNow.quad} (no dist)`;
+    lines.push(`  Now (${moNow.quad}): ${distStr}  [dtb ${moNow.dtb}d, net=${moNow.net}]`);
+  }
+  if (moNxt && moNxt.quad) {
+    const distNxtArr = moNxt.dist || [];
+    const distNxtStr = distNxtArr.length
+      ? distNxtArr.map(x => `${x.quad} ${x.pct}%`).join(' · ')
+      : `${moNxt.quad}`;
+    lines.push(`  Next (${moNxt.quad}): ${distNxtStr}  [net=${moNxt.net}]`);
+    lines.push(`  Blend: now ${mo.blend_now_pct}% / next ${mo.blend_nxt_pct}%  →  M=${mo.M}`);
+  } else {
+    lines.push(`  M=${mo.M}`);
+  }
+
+  // ── Category / Subcategory / Outlook drivers ──────────────────────────────
+  const mems = det.memberships || [];
+  if (mems.length) {
+    lines.push('');
+    lines.push('CATEGORY DRIVERS');
+    mems.forEach(m => {
+      const st = m.stance > 0 ? '+1' : m.stance < 0 ? '-1' : ' 0';
+      const cat = m.category ? `${m.category} / ${m.sub_cat || m.label}` : m.label;
+      lines.push(`  ${cat}  (×${m.weight})  →  ${m.outlook || '—'} [${st}]`);
+    });
+  }
+
+  // ── Quarter ────────────────────────────────────────────────────────────────
+  const qtr = det.quarter || {};
+  if (qtr.now) {
+    lines.push('');
+    lines.push('QUARTER (fixed top-level anchor, no blend)');
+    const qtrLine = `  ${qtr.now}  →  Qtr=${qtr.Qtr}`;
+    const dtbStr = qtr.dtb != null ? `  (${qtr.dtb}d left)` : '';
+    lines.push(qtrLine + dtbStr);
+    if (qtr.next && qtr.turn_alert) {
+      lines.push(`  → ${qtr.next} next quarter (near-end alert)`);
+    }
+  }
+
+  // ── MacroNet ──────────────────────────────────────────────────────────────
+  lines.push('');
+  lines.push(`MacroNet = ${det.a}×Qtr(${det.quarter?.Qtr ?? '?'}) + ${det.b}×M(${det.month?.M ?? '?'}) = ${det.macro_net}  →  ${det.vocab}`);
+  if (det.conf != null) {
+    lines.push(`Confidence: ${Math.round(det.conf * 100)}%`);
+  }
+
+  // ── Turn ──────────────────────────────────────────────────────────────────
+  if (r.macro_turn) {
+    lines.push(`Turn signal: ${r.macro_turn}`);
+  }
+
+  return lines.join('\n');
+}
+
+// Rich HTML popover for a MACRO cell — reuses #sourcePop / _showDataPop.
+function _buildMacroPopHtml(r) {
+  let det = r.macro_detail;
+  if (typeof det === 'string') { try { det = JSON.parse(det); } catch (_) { det = null; } }
+  const mv = r.macro_value || '—';
+  const conf = r.macro_conf != null ? Math.round(r.macro_conf * 100) + '%' : null;
+  const turn = r.macro_turn || null;
+
+  // Horizontal distribution bar (colored quad segments)
+  const _quadDistBar = dist => {
+    if (!dist || !dist.length) return '';
+    const segs = dist.map(x =>
+      `<div style="width:${x.pct}%;background:${_quadColor(x.quad)};height:100%;" title="${escapeHtml(x.quad)} ${x.pct}%"></div>`
+    ).join('');
+    return `<div style="display:inline-flex;width:110px;height:7px;border-radius:3px;overflow:hidden;border:1px solid #e2e8f0;vertical-align:middle;margin-left:6px;">${segs}</div>`;
+  };
+  const _quadDistBreakdown = dist =>
+    (dist || []).map(x =>
+      `<span style="color:${_quadColor(x.quad)};font-weight:600;">${escapeHtml(x.quad)}</span> ${x.pct}%`
+    ).join(' &nbsp;·&nbsp; ');
+
+  // Color helpers
+  const _vocabColor = v => {
+    if (!v) return '#9ca3af';
+    const u = v.toUpperCase();
+    if (u === 'SA')   return '#991b1b';
+    if (u === 'STM')  return '#ef4444';
+    if (u === 'BS')   return '#22c55e';
+    if (u === 'BM')   return '#14532d';
+    return '#9ca3af'; // HOLD / neutral
+  };
+  const _outlookColor = t => {
+    if (!t) return '#9ca3af';
+    const u = t.toUpperCase();
+    if (u === 'BULLISH') return '#1c6c30';
+    if (u === 'BEARISH') return '#8c1d1d';
+    if (u === 'NEUTRAL') return '#5b4900';
+    return '#475569';
+  };
+  const _sigColor = v => v > 0 ? '#16a34a' : v < 0 ? '#dc2626' : '#9ca3af';
+  const _coloredQuad = q => q ? `<span style="color:${_quadColor(q)};font-weight:600;">${escapeHtml(q)}</span>` : '—';
+  const _coloredVocab = v => v ? `<span style="color:${_vocabColor(v)};font-weight:700;">${escapeHtml(v)}</span>` : '—';
+
+  const mvColor = _vocabColor(mv !== '—' ? mv : null);
+  let h = `<div class="sp-title">MacroNet — <span style="color:${mvColor};font-weight:700;">${escapeHtml(mv)}</span>${turn ? ' <span style="color:#f97316;">' + escapeHtml(turn) + '</span>' : ''}</div>`;
+
+  if (!det) {
+    h += `<div style="color:#94a3b8;font-size:10px;">No detail available.</div>`;
+    return h;
+  }
+
+  h += '<table>';
+
+  // How to act — trim at "Technical/Sources" (that's a reminder, not signal info)
+  if (r.macro_howto) {
+    const howtoTrimmed = r.macro_howto.replace(/\s*Technical\/Sources.*$/i, '').trim();
+    if (howtoTrimmed) {
+      h += `<tr><td class="sp-sec" colspan="2">How to Act</td></tr>`;
+      h += `<tr><td colspan="2" style="font-size:10px;color:#374151;padding:2px 0 5px;">${escapeHtml(howtoTrimmed)}</td></tr>`;
+    }
+  }
+
+  // Month distribution
+  const mo = det.month || {};
+  const moNow = mo.now || {};
+  const moNxt = mo.next;
+  h += `<tr><td class="sp-sec" colspan="2">Month</td></tr>`;
+  if (moNow.quad) {
+    const bar = _quadDistBar(moNow.dist);
+    const breakdown = _quadDistBreakdown(moNow.dist);
+    h += `<tr><td class="k">Now</td><td class="v">${_coloredQuad(moNow.quad)}${bar}</td></tr>`;
+    if (breakdown) h += `<tr><td></td><td style="font-size:9px;color:#475569;padding-bottom:3px;">${breakdown}</td></tr>`;
+    if (moNow.dtb != null) h += `<tr><td class="k">Days to boundary</td><td class="v">${moNow.dtb}d</td></tr>`;
+  }
+  if (moNxt && moNxt.quad) {
+    const barNxt = _quadDistBar(moNxt.dist);
+    const breakdownNxt = _quadDistBreakdown(moNxt.dist);
+    h += `<tr><td class="k">Next</td><td class="v">${_coloredQuad(moNxt.quad)}${barNxt}</td></tr>`;
+    if (breakdownNxt) h += `<tr><td></td><td style="font-size:9px;color:#475569;padding-bottom:3px;">${breakdownNxt}</td></tr>`;
+    if (mo.blend_now_pct != null)
+      h += `<tr><td class="k">Blend</td><td class="v">now ${mo.blend_now_pct}% / next ${mo.blend_nxt_pct}%</td></tr>`;
+  }
+  if (mo.M != null) {
+    const mVal = Number(mo.M);
+    h += `<tr><td class="k">Monthly signal (M)</td><td class="v" style="color:${_sigColor(mVal)};font-weight:700;">${mVal > 0 ? '+' : ''}${mVal}</td></tr>`;
+  }
+
+  // Category drivers
+  const mems = det.memberships || [];
+  if (mems.length) {
+    h += `<tr><td class="sp-sec" colspan="2">Category Drivers</td></tr>`;
+    for (const m of mems) {
+      const st = m.stance > 0 ? '▲ +1' : m.stance < 0 ? '▼ −1' : '→ 0';
+      const stColor = m.stance > 0 ? '#16a34a' : m.stance < 0 ? '#dc2626' : '#9ca3af';
+      const olColor = _outlookColor(m.outlook);
+      const cat = m.category ? `${escapeHtml(m.category)} / ${escapeHtml(m.sub_cat || m.label || '')}` : escapeHtml(m.label || '');
+      h += `<tr><td class="k" style="font-size:9px;max-width:140px;white-space:normal;word-break:break-word;">${cat}</td>`
+         + `<td class="v" style="font-size:9px;white-space:nowrap;"><span style="color:${stColor}">${st}</span>`
+         + ` · <span style="color:${olColor};font-weight:600;">${escapeHtml(m.outlook || '—')}</span>`
+         + ` <span style="color:#94a3b8;">(×${m.weight})</span></td></tr>`;
+    }
+  }
+
+  // Quarter
+  const qtr = det.quarter || {};
+  if (qtr.now) {
+    h += `<tr><td class="sp-sec" colspan="2">Qtr (fixed anchor)</td></tr>`;
+    h += `<tr><td class="k">Current</td><td class="v">${_coloredQuad(qtr.now)}</td></tr>`;
+    if (qtr.dtb != null) h += `<tr><td class="k">Days to end</td><td class="v">${qtr.dtb}d</td></tr>`;
+    if (qtr.Qtr != null) {
+      const qVal = Number(qtr.Qtr);
+      h += `<tr><td class="k">Qtr signal</td><td class="v" style="color:${_sigColor(qVal)};font-weight:700;">${qVal > 0 ? '+' : ''}${qVal}</td></tr>`;
+    }
+    if (qtr.next && qtr.turn_alert)
+      h += `<tr><td colspan="2" style="font-size:9px;color:#f97316;">→ ${_coloredQuad(qtr.next)} next (near-end alert)</td></tr>`;
+  }
+
+  // MacroNet formula
+  h += `<tr><td class="sp-sec" colspan="2">MacroNet</td></tr>`;
+  const netVal = det.macro_net != null ? Number(det.macro_net) : null;
+  const qV = det.quarter?.Qtr ?? '?', mV = det.month?.M ?? '?';
+  h += `<tr><td class="k">Formula</td><td class="v" style="font-size:9px;">`
+     + `${det.a}×Qtr(<span style="color:${_sigColor(Number(qV))}">${qV}</span>) + `
+     + `${det.b}×M(<span style="color:${_sigColor(Number(mV))}">${mV}</span>) = `
+     + `<span style="color:${netVal != null ? _sigColor(netVal) : '#475569'};font-weight:700;">${netVal ?? '?'}</span></td></tr>`;
+  h += `<tr><td class="k">Signal</td><td class="v">${_coloredVocab(det.vocab || mv)}</td></tr>`;
+  if (conf) {
+    const confNum = r.macro_conf != null ? Number(r.macro_conf) : 0;
+    const confColor = confNum >= 0.7 ? '#16a34a' : confNum >= 0.4 ? '#d97706' : '#dc2626';
+    h += `<tr><td class="k">Confidence</td><td class="v" style="color:${confColor};font-weight:700;">${conf}</td></tr>`;
+  }
+  if (turn) h += `<tr><td class="k">Turn signal</td><td class="v" style="color:#f97316;font-weight:700;">${escapeHtml(turn)}</td></tr>`;
+
+  h += '</table>';
+  return h;
+}
+
+// ── MACRO Regime Band (TASK_74) ─────────────────────────────────────────────
+// Loads /api/dashboard/quads and renders the regime band above the grid.
 const _MONTH_3C = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 function _shortMonthLbl(p) {
   if (p.start_date) { const d = new Date(p.start_date); if (!isNaN(d)) return _MONTH_3C[d.getMonth()]; }
@@ -78,51 +319,72 @@ function _shortQtrLbl(p) {
   if (p.start_date) { const d = new Date(p.start_date); if (!isNaN(d)) return `Q${Math.floor(d.getMonth()/3)+1} '${String(d.getFullYear()).slice(-2)}`; }
   return p.label ? String(p.label) : '—';
 }
-function _quadMiniEl(label, quadValue, isCurrent) {
-  const w = document.createElement('span'); w.className = 'quad-mini' + (isCurrent ? ' is-current' : '');
-  const l = document.createElement('span'); l.className = 'qlbl'; l.textContent = label;
-  const v = document.createElement('span'); v.className = 'qval ' + _quadColorClass(quadValue);
-  v.textContent = (quadValue || '—').replace(/^Quad\s*/i, 'Q');
-  w.appendChild(l); w.appendChild(v); return w;
+function _quadShort(q) { return q ? String(q).replace(/^Quad\s*/i, 'Q') : '—'; }
+// Return the displayed quad name from a period object, using distribution argmax
+// when available, falling back to the declared `.quad` field.
+function _effectiveQuad(p) {
+  if (!p) return null;
+  const pcts = { 'Quad 1': p.quad1_pct || 0, 'Quad 2': p.quad2_pct || 0,
+                 'Quad 3': p.quad3_pct || 0, 'Quad 4': p.quad4_pct || 0 };
+  const total = Object.values(pcts).reduce((a, b) => a + b, 0);
+  if (total > 0) return Object.entries(pcts).sort((a, b) => b[1] - a[1])[0][0];
+  return p.quad || null;
 }
-function _normSignal(v) {
-  if (!v) return { cls: '', label: '' };
-  const u = String(v).trim().toUpperCase();
-  if (u === '0' || u === 'N' || u === 'NEUTRAL' || u === 'NEU') return { cls: 'NEUTRAL', label: 'NEUTRAL' };
-  if (u.startsWith('BULL') || u === '+' || u === 'POS' || u === 'POSITIVE' || u === 'UP') return { cls: 'BULLISH', label: 'BULLISH' };
-  if (u.startsWith('BEAR') || u === '-' || u === 'NEG' || u === 'NEGATIVE' || u === 'DN' || u === 'DOWN') return { cls: 'BEARISH', label: 'BEARISH' };
-  return { cls: u.replace(/[^A-Z0-9]/g, ''), label: String(v).trim() };
-}
-
-// Quad-outlook badge (Monthly / Quarterly columns)
-// Maps outlook text (lowercase) -> buy | sell | neutral
-const QUAD_OUTLOOK_SIDE = {
-  'bullish':  'buy',
-  'bearish':  'sell',
-  'neutral':  'neutral',
-};
-function quadOutlookBadge(text, activeQuad) {
-  if (!text) return '<span style="color:#cbd5e1">—</span>';
-  const side = QUAD_OUTLOOK_SIDE[text.trim().toLowerCase()] || 'neutral';
-  const color = side === 'buy' ? '#22c55e' : side === 'sell' ? '#ef4444' : '#9ca3af';
-  const bg    = side === 'buy' ? '#f0fdf4' : side === 'sell' ? '#fef2f2' : '#f3f4f6';
-  const label = text.trim();
-  const qtip  = activeQuad ? ` (${activeQuad})` : '';
-  return `<span style="display:inline-block;padding:1px 5px;border-radius:3px;`
-       + `background:${bg};color:${color};font-size:9px;font-weight:700;`
-       + `white-space:nowrap;" title="${escapeHtml(label + qtip)}">${escapeHtml(label)}</span>`;
+function _quadColor(q) {
+  if (!q) return '#9ca3af';
+  if (/1/.test(q)) return '#2f9e2f'; // Q1 = bullish/growth
+  if (/2/.test(q)) return '#1f7af2'; // Q2 = neutral/up
+  if (/3/.test(q)) return '#e07c1a'; // Q3 = slowing
+  if (/4/.test(q)) return '#d83a3a'; // Q4 = risk-off
+  return '#9ca3af';
 }
 
-async function loadSideQuads() {
-  const line = $('quadsBody'), empty = $('quadsEmpty'); if (!line) return;
-  line.innerHTML = ''; empty.hidden = true;
+async function loadMacroBand() {
+  const band = $('macroBand');
+  if (!band) return;
   try {
-    const data = await fetchJson(state.date ? `/api/dashboard/quads?date=${encodeURIComponent(state.date)}` : '/api/dashboard/quads');
-    if (data.current_quarter) line.appendChild(_quadMiniEl(_shortQtrLbl(data.current_quarter), data.current_quarter.quad, true));
-    if (data.next_quarter)    line.appendChild(_quadMiniEl(_shortQtrLbl(data.next_quarter), data.next_quarter.quad, false));
-    (data.months || []).forEach((m, i) => line.appendChild(_quadMiniEl(_shortMonthLbl(m), m.quad, i === 0)));
-    if (!line.childElementCount) empty.hidden = false;
-  } catch(e) { console.error('Side quads:', e); empty.hidden = false; }
+    const data = await fetchJson(state.date
+      ? `/api/dashboard/quads?date=${encodeURIComponent(state.date)}`
+      : '/api/dashboard/quads');
+    const cq = data.current_quarter, nq = data.next_quarter;
+    const months = data.months || [];
+    const cm = months[0], nm = months[1];
+    const elM = $('macroBandMonth'), elQ = $('macroBandQtr'), elF = $('macroBandFavoring');
+    if (!elM) return;
+    // Month span — use distribution argmax; fallback to declared quad
+    const mCur = _effectiveQuad(cm) || '—';
+    const mNxt = _effectiveQuad(nm);
+    const mDtb = cm?.end_date ? Math.max(0, Math.round((new Date(cm.end_date) - new Date(data.as_of_date)) / 864e5)) : null;
+    elM.innerHTML = `<span style="color:#64748b;font-size:10px;">Month</span> `
+      + `<strong style="color:${_quadColor(mCur)}">${escapeHtml(mCur)}</strong>`
+      + (mDtb != null ? ` <span style="color:#94a3b8;font-size:10px;">(${mDtb}d left)</span>` : '')
+      + (mNxt ? ` → <strong style="color:${_quadColor(mNxt)};opacity:0.7;">${escapeHtml(mNxt)}</strong>` : '');
+    // Quarter span — use distribution argmax; fallback to declared quad
+    const qCur = _effectiveQuad(cq) || '—';
+    const qNxt = _effectiveQuad(nq);
+    const qDtb = cq?.end_date ? Math.max(0, Math.round((new Date(cq.end_date) - new Date(data.as_of_date)) / 864e5)) : null;
+    elQ.innerHTML = `<span style="color:#64748b;font-size:10px;">Qtr</span> `
+      + `<strong style="color:${_quadColor(qCur)}">${escapeHtml(qCur)}</strong>`
+      + (qDtb != null ? ` <span style="color:#94a3b8;font-size:10px;">(${qDtb}d left)</span>` : '')
+      + (qNxt ? ` → <strong style="color:${_quadColor(qNxt)};opacity:0.7;">${escapeHtml(qNxt)}</strong>` : '');
+    // Favoring line: derive from majority of current MACRO values
+    if (state.allRows && state.allRows.length) {
+      const cnts = {};
+      for (const row of state.allRows) {
+        const mv = row.macro_value;
+        if (mv) cnts[mv] = (cnts[mv] || 0) + 1;
+      }
+      const top = Object.entries(cnts).sort((a, b) => b[1] - a[1])[0];
+      if (top) {
+        const d_ = actionDisplay(top[0]);
+        const pct = Math.round(top[1] / state.allRows.length * 100);
+        elF.textContent = `Favoring: ${d_.code || top[0]} (${pct}% of universe)`;
+      }
+    } else {
+      elF.textContent = '';
+    }
+    band.style.display = 'flex';
+  } catch(e) { console.error('MACRO band:', e); if (band) band.style.display = 'none'; }
 }
 async function loadSideEcon() {
   const tbody = $('econBody'), empty = $('econEmpty'); if (!tbody) return;
@@ -154,7 +416,7 @@ async function loadSideEarnings() {
 }
 function loadSidePanels() {
   if (!$('actSidePanel')?.classList.contains('pinned')) return;
-  Promise.all([loadSideQuads(), loadSideEcon(), loadSideEarnings()]);
+  Promise.all([loadSideEcon(), loadSideEarnings()]);
 }
 // Short MM/DD date for snapshot columns (no year). '' for empty.
 function fmtMD(d) {
@@ -453,6 +715,7 @@ async function loadActionable() {
     });
     applyClientFilter();
     loadSidePanels();
+    loadMacroBand();
   } catch (e) {
     showStatus('Failed to load actionable: ' + e.message, 'error', 0);
   }
@@ -1852,10 +2115,16 @@ function initSourcePopover() {
     if (ivEl) {
       const r = state.rows.find(x => x.tos_symbol === ivEl.dataset.sym);
       if (r) _showDataPop(ivEl, _buildIvPopHtml(r));
+      return;
+    }
+    const macroEl = e.target.closest('[data-macropop]');
+    if (macroEl) {
+      const r = state.rows.find(x => x.tos_symbol === macroEl.dataset.macropop);
+      if (r) _showDataPop(macroEl, _buildMacroPopHtml(r));
     }
   };
   const _onOut = (e) => {
-    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop]')) return;
+    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop],[data-macropop]')) return;
     hideSourcePop();
   };
   body.addEventListener('mouseover', _onOver);
@@ -2085,6 +2354,7 @@ function renderGrid() {
         ${r.sector ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px;">${escapeHtml(r.sector)}</div>` : ''}
       </td>
       <td style="padding:6px 4px;">${fcHtml}</td>
+      <td style="padding:4px 6px; text-align:center;">${macroCellHtml(r)}</td>
       <td style="padding:6px 4px;">${_finalCallCalHtml(r)}</td>
       <td class="num">
         <span class="amt-primary">${fmtUsd(r._amt)}</span>
@@ -2113,8 +2383,6 @@ function renderGrid() {
       <td class="rules-link-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:4px 6px; max-width:720px; overflow:hidden; cursor:pointer;" title="Open Rule Flow for ${escapeHtml(r.tos_symbol)}">${firesCellHtml(r)}</td>
       <td class="num" style="padding:4px 6px; white-space:nowrap;">${_bullProbCellHtml(r)}</td>
       <td style="padding:4px 6px; white-space:nowrap;">${_agreementCellHtml(r)}</td>
-      <td style="padding:4px 6px; text-align:center;">${quadOutlookBadge(r.quad_m_outlook, r.quad_m)}</td>
-      <td style="padding:4px 6px; text-align:center;">${quadOutlookBadge(r.quad_q_outlook, r.quad_q)}</td>
       <td style="padding:4px 6px;">
         <div class="act-inline-btns">
           <button type="button" class="btn-done btn-inline-done" data-sym="${escapeHtml(r.tos_symbol)}" data-fc="${escapeHtml(fcActCode)}" title="Act: log final call action">&#10003; ${escapeHtml(fcActCode)}</button>
@@ -2276,8 +2544,7 @@ function exportCsv() {
     ['Other Sources', r => otherSourcesText(r)],
     ['Sector',        r => r.sector || ''],
     ['Real Asset Class', r => r.real_asset_class || ''],
-    ['Quad (M)',       r => r.quad_m_outlook || ''],
-    ['Quad (Q)',       r => r.quad_q_outlook || ''],
+    ['MACRO',          r => r.macro_value ? (r.macro_value + (r.macro_turn ? ' ' + r.macro_turn : '')) : ''],
     // kept in CSV even though removed from table
     ['Pos $',         r => r.current_position_dollar],
     ['Price',         r => r.last_price],

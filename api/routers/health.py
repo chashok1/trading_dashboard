@@ -227,7 +227,8 @@ def get_dashboard_quads(
     }
     with session_scope() as s:
         cq = s.execute(text("""
-            SELECT period_type, label, start_date, end_date, quad
+            SELECT period_type, label, start_date, end_date, quad,
+                   quad1_pct, quad2_pct, quad3_pct, quad4_pct
             FROM ref_quad_periods
             WHERE period_type = 'quarterly'
               AND :d >= start_date
@@ -240,7 +241,8 @@ def get_dashboard_quads(
 
         anchor = cq["start_date"] if cq else d
         nq = s.execute(text("""
-            SELECT period_type, label, start_date, end_date, quad
+            SELECT period_type, label, start_date, end_date, quad,
+                   quad1_pct, quad2_pct, quad3_pct, quad4_pct
             FROM ref_quad_periods
             WHERE period_type = 'quarterly'
               AND start_date > :anchor
@@ -251,7 +253,8 @@ def get_dashboard_quads(
             out["next_quarter"] = dict(nq)
 
         months = s.execute(text("""
-            SELECT period_type, label, start_date, end_date, quad
+            SELECT period_type, label, start_date, end_date, quad,
+                   quad1_pct, quad2_pct, quad3_pct, quad4_pct
             FROM ref_quad_periods
             WHERE period_type = 'monthly'
               AND COALESCE(end_date, start_date) >= :d
