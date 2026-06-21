@@ -578,8 +578,8 @@ function renderSymTape() {
     const metaHtml = (actGlyph || rvolHtml || ivGlyphHtml)
       ? `<div class="sym-tile-meta">` +
         (actGlyph  ? `<span class="sym-act-lbl" style="color:${actColor};font-family:ui-monospace,monospace;">${actGlyph}</span>` : '') +
-        (rvolHtml  ? `<span class="sym-rvol">${rvolHtml}</span>` : '') +
-        (ivGlyphHtml ? `<span class="sym-iv">${ivGlyphHtml}</span>` : '') +
+        (rvolHtml  ? `<span class="sym-rvol" data-volpop data-sym="${escapeHtml(r.tos_symbol)}" style="cursor:default;">${rvolHtml}</span>` : '') +
+        (ivGlyphHtml ? `<span class="sym-iv" data-ivpop data-sym="${escapeHtml(r.tos_symbol)}" style="cursor:default;">${ivGlyphHtml}</span>` : '') +
         `</div>`
       : '';
 
@@ -1624,7 +1624,11 @@ function initSymTilePop() {
   track.addEventListener('mouseover', (e) => {
     const chip = e.target.closest('.rr-chip[data-sym]');
     if (!chip) { _hideSymTilePop(); window.mtTip?.hide(); return; }
-    if (e.target.closest('.sym-tile-meta')) {
+    if (e.target.closest('[data-volpop],[data-ivpop]')) {
+      // Vol/IV icons → handled by initSourcePopover; suppress symTilePop
+      _hideSymTilePop();
+      window.mtTip?.hide();
+    } else if (e.target.closest('.sym-tile-meta')) {
       // Action label area → existing symTilePop
       window.mtTip?.hide();
       _showSymTilePop(chip);
@@ -1816,7 +1820,7 @@ function _showDataPop(el, html) {
 function initSourcePopover() {
   const body = $('actBody');
   if (!body) return;
-  body.addEventListener('mouseover', (e) => {
+  const _onOver = (e) => {
     const el = e.target.closest('[data-srcpop]');
     if (el && el.dataset.src) { showSourcePop(el); return; }
     const volEl = e.target.closest('[data-volpop]');
@@ -1830,11 +1834,18 @@ function initSourcePopover() {
       const r = state.rows.find(x => x.tos_symbol === ivEl.dataset.sym);
       if (r) _showDataPop(ivEl, _buildIvPopHtml(r));
     }
-  });
-  body.addEventListener('mouseout', (e) => {
+  };
+  const _onOut = (e) => {
     if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop]')) return;
     hideSourcePop();
-  });
+  };
+  body.addEventListener('mouseover', _onOver);
+  body.addEventListener('mouseout', _onOut);
+  const tape = $('symTapeTrack');
+  if (tape) {
+    tape.addEventListener('mouseover', _onOver);
+    tape.addEventListener('mouseout', _onOut);
+  }
 }
 
 // ---- TASK_66: bull_prob cell renderer ----
