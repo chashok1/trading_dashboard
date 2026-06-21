@@ -441,7 +441,7 @@
     body.act-page main { overflow: hidden; display: flex; flex-direction: column; }
     body.act-page main > .card { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
     body.act-page .act-content-row { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-    body.act-page .act-table-wrap { flex: 1; overflow: auto; min-height: 0; }
+    body.act-page .act-table-wrap { flex: 1; overflow-x: hidden; overflow-y: auto; min-height: 0; }
 
     /* Side panels */
     .act-side { width: 300px; flex-shrink: 0; display: none; flex-direction: column; gap: 6px; overflow-y: auto; border-left: 1px solid var(--border, #e0e0e0); padding: 0 0 12px 12px; }
@@ -663,9 +663,9 @@
               <th class="sortable" data-key="_fc_strength" data-type="num" title="Final Call: reconciled action with confidence badge (drives ranking + default Act)" style="width:90px;">Final Call</th>
               <th class="sortable" data-key="fc_strength_cal" data-type="num" title="Final Call (cal): calibrated call from bull_prob probability bands. Evaluation-only — compare vs Final Call to assess the model. NULL when no active model." style="width:90px;">FC (cal)</th>
               <th class="num sortable" data-key="_amt" data-type="num" style="width:58px;">AMT$</th>
-              <th class="sortable" data-key="consolidated_action" data-type="str" data-label="Sources" title="Consolidated from RR/CALL/ETF/II/SSS/PS (most-aggressive-wins), then sized to your min/max/holdings." style="width:200px;">Sources</th>
+              <th class="sortable" data-key="consolidated_action" data-type="str" data-label="Sources" title="Consolidated from RR/CALL/ETF/II/SSS/PS (most-aggressive-wins), then sized to your min/max/holdings." style="width:41px;">Sources</th>
               <th class="sortable" data-key="rr_action" data-type="str" data-label="Technical" title="Trend-vs-Trade crossover + Bollinger range streak + Risk-Range position." style="width:200px;">Technical</th>
-              <th class="num sortable" data-key="rvol" data-type="num" title="Relative Volume (today÷10d avg). Hollow = below avg; solid gray = ~avg; amber/green = above avg. Caret = vs yesterday." style="width:36px;">Vol</th>
+              <th class="num sortable" data-key="rvol" data-type="num" title="Relative Volume (today÷10d avg). Hollow = below avg; solid gray = ~avg; amber/green = above avg. Caret = vs yesterday." style="width:36px;">Vlm</th>
               <th class="num" title="IV Glyph: IVP (blue) · HV (slate) · IV (dark). Background = IV/HV discount shade." style="width:44px;">IV</th>
               <th class="num sortable" data-key="a_macd_brr" data-type="num" title="MACD Bull-Run-Risk score" style="width:52px;">MACD</th>
               <th class="num sortable" data-key="a_macdh_d_brr" data-type="num" title="MACD Histogram direction BRR" style="width:52px;">MACDH</th>

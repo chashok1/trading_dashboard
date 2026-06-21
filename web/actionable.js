@@ -1735,22 +1735,22 @@ function _buildVolPopHtml(r) {
   const dirCls = dir === '▲' ? 'color:#16a34a' : dir === '▼' ? 'color:#dc2626' : 'color:#888';
   const vs = _decodeVolumeSpike(r.a_volume_spike);
   const rows = [
-    ['Rel Vol (RVOL)',    fmtR(r.rvol)],
+    ['Rel Vlm (RVOL)',    fmtR(r.rvol)],
     ['Prior Day RVOL',   fmtR(r.rvol_prior)],
     ['vs Prior',         dir ? `<span style="${dirCls}">${dir}</span>` : '—'],
     ['Volume',           fmtV(r.w_volume || r.volume)],
     ['Proj Volume',      fmtV(r.vlm_projected)],
-    ['Avg Vol 10d',      fmtV(r.volume_avg_10d)],
-    ['Avg Vol 3m',       fmtV(r.volume_avg_3m)],
+    ['Avg Vlm 10d',      fmtV(r.volume_avg_10d)],
+    ['Avg Vlm 3m',       fmtV(r.volume_avg_3m)],
     ['Vlm vs 3m Avg',    fmtP(r.vlm_3m_pct)],
-    ['Vol Rate Chg',     fmtN(r.volume_rate_change)],
-    ['Vol Signal',       r.vlm_desc || '—'],
+    ['Vlm Rate Chg',     fmtN(r.volume_rate_change)],
+    ['Vlm Signal',       r.vlm_desc || '—'],
   ];
   let html = '<div class="sp-title">Volume</div><table>';
   for (const [k, v] of rows)
     html += `<tr><td class="k">${k}</td><td class="v">${v}</td></tr>`;
   if (vs) {
-    html += '<tr><td class="sp-sec" colspan="2">Vol Spike (decoded)</td></tr>';
+    html += '<tr><td class="sp-sec" colspan="2">Vlm Spike (decoded)</td></tr>';
     html += `<tr><td class="k">VS Spike</td><td class="v">${vs.FI}</td></tr>`;
     html += `<tr><td class="k">VS Price Chg</td><td class="v">${vs.FJ}</td></tr>`;
     html += `<tr><td class="k">VS Volatility</td><td class="v">${vs.FL}</td></tr>`;
@@ -2068,7 +2068,7 @@ function renderGrid() {
           ${_rrSubLineHtml}
         </div>
       </td>
-      <td class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}${r.vlm_action ? `<span style="display:inline-block;margin-left:3px;font-size:9px;padding:1px 3px;border-radius:3px;background:${r.vlm_action==='Accumulate'?'#bbf7d0':r.vlm_action==='Avoid'?'#fecaca':'#e5e7eb'};color:#374151;font-weight:600;">${escapeHtml(r.vlm_action)}</span>` : ''}</td>
+      <td class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}${r.vlm_action ? `<span style="display:inline-block;margin-left:3px;font-size:9px;padding:1px 3px;border-radius:3px;background:${r.vlm_action==='Accumulate'?'#bbf7d0':r.vlm_action==='Avoid'?'#fecaca':'#e5e7eb'};color:#374151;font-weight:600;">${escapeHtml(r.vlm_action === 'Accumulate' ? 'Accum' : r.vlm_action)}</span>` : ''}</td>
       <td class="num" data-sym="${escapeHtml(r.tos_symbol)}" data-ivpop style="padding:3px 4px;cursor:default;">${window.ivGlyph ? window.ivGlyph(r.iv_percentile, r.imp_volatility != null ? r.imp_volatility * 100 : null, r.hv != null ? r.hv * 100 : null, r.iv_to_hv_discount) : ''}</td>
       <td class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macd_brr)}">${r.a_macd_brr != null ? Number(r.a_macd_brr).toFixed(2) : ''}</td>
       <td class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macdh_d_brr)}">${r.a_macdh_d_brr != null ? Number(r.a_macdh_d_brr).toFixed(2) : ''}</td>
