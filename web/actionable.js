@@ -1745,16 +1745,23 @@ function _buildVolPopHtml(r) {
     ['Vlm vs 3m Avg',    fmtP(r.vlm_3m_pct)],
     ['Vlm Rate Chg',     fmtN(r.volume_rate_change)],
     ['Vlm Signal',       r.vlm_desc || '—'],
+    ['Vlm Action',       r.vlm_action ? (r.vlm_action === 'Accumulate' ? 'Accum' : r.vlm_action) : '—'],
   ];
   let html = '<div class="sp-title">Volume</div><table>';
   for (const [k, v] of rows)
     html += `<tr><td class="k">${k}</td><td class="v">${v}</td></tr>`;
-  if (vs) {
+  if (vs && vs.FI > 60) {
+    const dir = (r.a_volume_spike || 0) >= 0 ? '↑' : '↓';
+    const spikeStr = vs.FI === 0 ? '—' : vs.FI <= 15 ? 'Minor' : vs.FI <= 35 ? 'Mild' : vs.FI <= 60 ? 'Moderate' : vs.FI <= 80 ? 'Strong' : 'Extreme';
+    const priceStr = vs.FJ === 0 ? '—' : `${dir} ${vs.FJ <= 100 ? 'Small' : vs.FJ <= 300 ? 'Moderate' : vs.FJ <= 600 ? 'Large' : 'Sharp'}`;
+    const volStr   = vs.FL === 0 ? '—' : vs.FL <= 25 ? 'Low' : vs.FL <= 50 ? 'Moderate' : vs.FL <= 75 ? 'Elevated' : 'High';
+    const daysStr  = vs.FM === 0 ? '—' : vs.FM === 1 ? '1 day' : `${vs.FM} days`;
     html += '<tr><td class="sp-sec" colspan="2">Vlm Spike (decoded)</td></tr>';
-    html += `<tr><td class="k">VS Spike</td><td class="v">${vs.FI}</td></tr>`;
-    html += `<tr><td class="k">VS Price Chg</td><td class="v">${vs.FJ}</td></tr>`;
-    html += `<tr><td class="k">VS Volatility</td><td class="v">${vs.FL}</td></tr>`;
-    html += `<tr><td class="k">VS Days</td><td class="v">${vs.FM}</td></tr>`;
+    html += '<tr><td colspan="2" style="font-size:9px;color:#94a3b8;padding:1px 4px 4px;">TOS unusual volume event: how big, price direction, volatility, when it occurred</td></tr>';
+    html += `<tr><td class="k">Spike Strength</td><td class="v">${spikeStr}</td></tr>`;
+    html += `<tr><td class="k">Price Move</td><td class="v">${priceStr}</td></tr>`;
+    html += `<tr><td class="k">Volatility</td><td class="v">${volStr}</td></tr>`;
+    html += `<tr><td class="k">Days Ago</td><td class="v">${daysStr}</td></tr>`;
   }
   return html + '</table>';
 }
