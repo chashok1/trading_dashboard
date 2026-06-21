@@ -94,6 +94,25 @@ function _normSignal(v) {
   return { cls: u.replace(/[^A-Z0-9]/g, ''), label: String(v).trim() };
 }
 
+// Quad-outlook badge (Monthly / Quarterly columns)
+// Maps outlook text (lowercase) -> buy | sell | neutral
+const QUAD_OUTLOOK_SIDE = {
+  'bullish':  'buy',
+  'bearish':  'sell',
+  'neutral':  'neutral',
+};
+function quadOutlookBadge(text, activeQuad) {
+  if (!text) return '<span style="color:#cbd5e1">—</span>';
+  const side = QUAD_OUTLOOK_SIDE[text.trim().toLowerCase()] || 'neutral';
+  const color = side === 'buy' ? '#22c55e' : side === 'sell' ? '#ef4444' : '#9ca3af';
+  const bg    = side === 'buy' ? '#f0fdf4' : side === 'sell' ? '#fef2f2' : '#f3f4f6';
+  const label = text.trim();
+  const qtip  = activeQuad ? ` (${activeQuad})` : '';
+  return `<span style="display:inline-block;padding:1px 5px;border-radius:3px;`
+       + `background:${bg};color:${color};font-size:9px;font-weight:700;`
+       + `white-space:nowrap;" title="${escapeHtml(label + qtip)}">${escapeHtml(label)}</span>`;
+}
+
 async function loadSideQuads() {
   const line = $('quadsBody'), empty = $('quadsEmpty'); if (!line) return;
   line.innerHTML = ''; empty.hidden = true;
@@ -2086,7 +2105,7 @@ function renderGrid() {
           ${_rrSubLineHtml}
         </div>
       </td>
-      <td class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}${r.vlm_action ? `<span style="display:inline-block;margin-left:3px;font-size:9px;padding:1px 3px;border-radius:3px;background:${r.vlm_action==='Accumulate'?'#bbf7d0':r.vlm_action==='Avoid'?'#fecaca':'#e5e7eb'};color:#374151;font-weight:600;">${escapeHtml(r.vlm_action === 'Accumulate' ? 'Accum' : r.vlm_action)}</span>` : ''}</td>
+      <td class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}${r.vlm_action ? `<span style="display:inline-block;margin-left:3px;font-size:9px;padding:1px 3px;border-radius:3px;background:${r.vlm_action==='Accumulate'?'#bbf7d0':r.vlm_action==='Avoid'?'#fecaca':'#e5e7eb'};color:#374151;font-weight:600;text-decoration:none;vertical-align:middle;">${escapeHtml(r.vlm_action === 'Accumulate' ? 'Accum' : r.vlm_action)}</span>` : ''}</td>
       <td class="num" data-sym="${escapeHtml(r.tos_symbol)}" data-ivpop style="padding:3px 4px;cursor:default;">${window.ivGlyph ? window.ivGlyph(r.iv_percentile, r.imp_volatility != null ? r.imp_volatility * 100 : null, r.hv != null ? r.hv * 100 : null, r.iv_to_hv_discount) : ''}</td>
       <td class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macd_brr)}">${r.a_macd_brr != null ? Number(r.a_macd_brr).toFixed(2) : ''}</td>
       <td class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macdh_d_brr)}">${r.a_macdh_d_brr != null ? Number(r.a_macdh_d_brr).toFixed(2) : ''}</td>
@@ -2094,6 +2113,8 @@ function renderGrid() {
       <td class="rules-link-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:4px 6px; max-width:720px; overflow:hidden; cursor:pointer;" title="Open Rule Flow for ${escapeHtml(r.tos_symbol)}">${firesCellHtml(r)}</td>
       <td class="num" style="padding:4px 6px; white-space:nowrap;">${_bullProbCellHtml(r)}</td>
       <td style="padding:4px 6px; white-space:nowrap;">${_agreementCellHtml(r)}</td>
+      <td style="padding:4px 6px; text-align:center;">${quadOutlookBadge(r.quad_m_outlook, r.quad_m)}</td>
+      <td style="padding:4px 6px; text-align:center;">${quadOutlookBadge(r.quad_q_outlook, r.quad_q)}</td>
       <td style="padding:4px 6px;">
         <div class="act-inline-btns">
           <button type="button" class="btn-done btn-inline-done" data-sym="${escapeHtml(r.tos_symbol)}" data-fc="${escapeHtml(fcActCode)}" title="Act: log final call action">&#10003; ${escapeHtml(fcActCode)}</button>
@@ -2255,6 +2276,8 @@ function exportCsv() {
     ['Other Sources', r => otherSourcesText(r)],
     ['Sector',        r => r.sector || ''],
     ['Real Asset Class', r => r.real_asset_class || ''],
+    ['Quad (M)',       r => r.quad_m_outlook || ''],
+    ['Quad (Q)',       r => r.quad_q_outlook || ''],
     // kept in CSV even though removed from table
     ['Pos $',         r => r.current_position_dollar],
     ['Price',         r => r.last_price],

@@ -290,14 +290,6 @@ CREATE TABLE IF NOT EXISTS ref_quad_outlook (
 
     quad4          TEXT,
 
-    m_outlook      TEXT,
-
-    m_score        NUMERIC,
-
-    q_outlook      TEXT,
-
-    q_score        NUMERIC,
-
     loaded_at      TIMESTAMP NOT NULL DEFAULT now(),
 
     PRIMARY KEY (category, sub_category)
@@ -6329,3 +6321,11 @@ ALTER TABLE IF EXISTS drv_actionable
     ADD COLUMN IF NOT EXISTS final_side_cal    TEXT;
 ALTER TABLE IF EXISTS drv_actionable
     ADD COLUMN IF NOT EXISTS fc_strength_cal   NUMERIC;
+
+-- 2026-06-21: drop unused m_outlook/m_score/q_outlook/q_score from ref_quad_outlook.
+-- These columns were populated from HQuad cols 9-12 but never queried.
+-- New quad-outlook logic reads quad1..4 + ref_quad_periods instead.
+ALTER TABLE IF EXISTS ref_quad_outlook DROP COLUMN IF EXISTS m_outlook;
+ALTER TABLE IF EXISTS ref_quad_outlook DROP COLUMN IF EXISTS m_score;
+ALTER TABLE IF EXISTS ref_quad_outlook DROP COLUMN IF EXISTS q_outlook;
+ALTER TABLE IF EXISTS ref_quad_outlook DROP COLUMN IF EXISTS q_score;

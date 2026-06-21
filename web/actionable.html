@@ -441,7 +441,7 @@
     body.act-page main { overflow: hidden; display: flex; flex-direction: column; }
     body.act-page main > .card { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
     body.act-page .act-content-row { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-    body.act-page .act-table-wrap { flex: 1; overflow-x: hidden; overflow-y: auto; min-height: 0; }
+    body.act-page .act-table-wrap { flex: 1; overflow-x: auto; overflow-y: auto; min-height: 0; }
 
     /* Side panels */
     .act-side { width: 300px; flex-shrink: 0; display: none; flex-direction: column; gap: 6px; overflow-y: auto; border-left: 1px solid var(--border, #e0e0e0); padding: 0 0 12px 12px; }
@@ -673,6 +673,8 @@
               <th style="width:720px;">Rules (edge)</th>
               <th class="num sortable" data-key="bull_prob" data-type="num" title="Bull Prob: P(up 20d) from calibrated logistic model (TASK_66). Sortable — rank by probability. Agreement badge = share of signals pointing bullish." style="width:72px;">P(↑20d)</th>
               <th class="sortable" data-key="agreement_class" data-type="str" title="Agreement class (TASK_69): agree_bull / agree_bear / split_tech_bull / split_tech_bear / neutral — bull_prob direction vs consolidated action direction." style="width:100px;">Agree</th>
+              <th class="sortable" data-key="quad_m_outlook" data-type="str" title="Monthly quad regime outlook (BULLISH/BEARISH/Neutral) from ref_quad_outlook for the symbol's asset class / sector." style="width:64px;">Quad (M)</th>
+              <th class="sortable" data-key="quad_q_outlook" data-type="str" title="Quarterly quad regime outlook (BULLISH/BEARISH/Neutral) from ref_quad_outlook for the symbol's asset class / sector." style="width:64px;">Quad (Q)</th>
               <th>Act</th>
             </tr>
           </thead>

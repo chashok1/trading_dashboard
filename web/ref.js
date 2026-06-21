@@ -9,6 +9,9 @@ const state = {
     pageSize: 200,
     checkedRows: new Set(),
     filterText: '',
+    sortKey: null,
+    sortDir: 'asc',
+    pageRows: [],
 };
 
 const DOM = {
@@ -167,6 +170,8 @@ async function loadTable(tableName) {
         state.columns = [];
         state.rows = [];
         state.allRows = [];
+        state.sortKey = null;
+        state.sortDir = 'asc';
         DOM.tableBody.innerHTML = '';
         DOM.headerRow.innerHTML = '';
         updateCopyButtonState();
@@ -227,10 +232,24 @@ function renderTable() {
     // Headers - keep existing checkboxes th
     const checkboxHeader = '<th style="width: 32px; padding: 12px 6px;"><input type="checkbox" id="selectAll" title="Select all rows on this page"></th>';
     const headers = state.columns.map(col => {
-        const classList = col.is_pk ? ' class="pk-col"' : '';
-        return `<th${classList}>${col.name}</th>`;
+        const isSort = state.sortKey === col.name;
+        const ind = isSort ? (state.sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+        const cls = col.is_pk ? 'pk-col sortable' : 'sortable';
+        return `<th class="${cls}" data-col="${col.name}" style="cursor:pointer;user-select:none;">${col.name}${ind}</th>`;
     }).join('');
     DOM.headerRow.innerHTML = checkboxHeader + headers;
+    DOM.headerRow.querySelectorAll('th[data-col]').forEach(th => {
+        th.addEventListener('click', () => {
+            const col = th.dataset.col;
+            if (state.sortKey === col) {
+                state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                state.sortKey = col;
+                state.sortDir = 'asc';
+            }
+            renderTable();
+        });
+    });
     DOM.selectAll = document.getElementById('selectAll');
     DOM.selectAll.addEventListener('change', (e) => {
         state.checkedRows.clear();
@@ -244,8 +263,26 @@ function renderTable() {
         updateDeleteButtonState();
     });
 
+    // Sort
+    let displayRows = [...state.rows];
+    if (state.sortKey) {
+        const key = state.sortKey, asc = state.sortDir === 'asc';
+        displayRows.sort((a, b) => {
+            const va = a[key], vb = b[key];
+            if (va == null && vb == null) return 0;
+            if (va == null) return asc ? 1 : -1;
+            if (vb == null) return asc ? -1 : 1;
+            const na = Number(va), nb = Number(vb);
+            if (!isNaN(na) && !isNaN(nb)) return asc ? na - nb : nb - na;
+            return asc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+        });
+    }
+    const pageStart = state.currentPage * state.pageSize;
+    const pageRows = displayRows.slice(pageStart, pageStart + state.pageSize);
+    state.pageRows = pageRows;
+
     // Rows with checkbox column
-    const rows = state.rows.map((row, idx) => {
+    const rows = pageRows.map((row, idx) => {
         const isChecked = state.checkedRows.has(idx) ? 'checked' : '';
         const checkbox = `<td style="padding: 10px 6px;"><input type="checkbox" data-row-idx="${idx}" ${isChecked}></td>`;
         const cells = state.columns.map(col => {
@@ -324,7 +361,7 @@ async function updateCell(colName, newValue, cellEl) {
 
     // Build PK object
     const pk = {};
-    const row = state.rows[Array.from(cellEl.parentNode.parentNode.children).findIndex(r => r === cellEl.parentNode)];
+    const row = state.pageRows[Array.from(cellEl.parentNode.parentNode.children).findIndex(r => r === cellEl.parentNode)];
     state.columns.forEach(col => {
         if (col.is_pk) pk[col.name] = row[col.name];
     });

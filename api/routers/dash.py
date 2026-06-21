@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -480,6 +481,72 @@ def get_actionable(
     """
     with session_scope() as s:
         rows = s.execute(text(sql), params).mappings().all()
+
+    # --- Quad-outlook enrichment (separate queries, no extra join) ---
+    # Resolve the two active quads for date D
+    _quad_m: str | None = None
+    _quad_q: str | None = None
+    # (category, sub_category_lower) -> {quad_col: text}
+    _quad_lookup: dict[tuple[str, str], dict[str, str | None]] = {}
+    try:
+        with session_scope() as _qs:
+            _quad_m = _qs.execute(text(
+                "SELECT quad FROM ref_quad_periods"
+                " WHERE period_type = 'monthly' AND :d >= start_date"
+                " AND (:d <= end_date OR end_date IS NULL)"
+                " ORDER BY start_date DESC LIMIT 1"
+            ), {"d": d}).scalar()
+            _quad_q = _qs.execute(text(
+                "SELECT quad FROM ref_quad_periods"
+                " WHERE period_type = 'quarterly' AND :d >= start_date"
+                " AND (:d <= end_date OR end_date IS NULL)"
+                " ORDER BY start_date DESC LIMIT 1"
+            ), {"d": d}).scalar()
+            # Fetch Asset Class and Equity Sectors blocks only
+            _qrows = _qs.execute(text(
+                "SELECT category, sub_category,"
+                " quad1, quad2, quad3, quad4"
+                " FROM ref_quad_outlook"
+                " WHERE category IN ('Asset Class','Equity Sectors')"
+            )).mappings().all()
+            for qr in _qrows:
+                key = (qr["category"], (qr["sub_category"] or "").lower())
+                _quad_lookup[key] = {
+                    "quad1": qr["quad1"],
+                    "quad2": qr["quad2"],
+                    "quad3": qr["quad3"],
+                    "quad4": qr["quad4"],
+                }
+    except Exception:
+        pass  # If tables missing or error, skip silently
+
+    def _resolve_quad_outlook(
+        real_asset_class: str | None,
+        sector: str | None,
+        active_quad: str | None,
+    ) -> str | None:
+        """Return outlook text for a symbol given its asset class/sector + active quad."""
+        if not active_quad:
+            return None
+        # Map 'Quad N' -> 'quadN' column name
+        m = re.search(r"(\d)", active_quad or "")
+        if not m:
+            return None
+        col = "quad" + m.group(1)
+        # Equity-sector lookup first
+        rac = (real_asset_class or "").strip()
+        sec = (sector or "").strip()
+        if rac.lower() == "equities" and sec:
+            qrow = _quad_lookup.get(("Equity Sectors", sec.lower()))
+            if qrow:
+                return qrow.get(col)
+        # Asset-class lookup
+        if rac:
+            qrow = _quad_lookup.get(("Asset Class", rac.lower()))
+            if qrow:
+                return qrow.get(col)
+        return None
+
     out = []
     for r in rows:
         d_ = dict(r)
@@ -488,6 +555,12 @@ def get_actionable(
         snooze = d_.get("snooze_until")
         if not show_acted and snooze and snooze >= d:
             continue
+        rac = d_.get("real_asset_class")
+        sec = d_.get("sector")
+        d_["quad_m"] = _quad_m
+        d_["quad_q"] = _quad_q
+        d_["quad_m_outlook"] = _resolve_quad_outlook(rac, sec, _quad_m)
+        d_["quad_q_outlook"] = _resolve_quad_outlook(rac, sec, _quad_q)
         out.append(d_)
     return out
 

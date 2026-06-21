@@ -1356,10 +1356,6 @@ def load_hquad(session: Session, wb: Workbook, source_file: str) -> tuple[int, i
             "quad2":           to_text(sheet.cell(row=r, column=6).value),
             "quad3":           to_text(sheet.cell(row=r, column=7).value),
             "quad4":           to_text(sheet.cell(row=r, column=8).value),
-            "m_outlook":       to_text(sheet.cell(row=r, column=9).value),
-            "m_score":         _safe_num(sheet.cell(row=r, column=10).value),
-            "q_outlook":       to_text(sheet.cell(row=r, column=11).value),
-            "q_score":         _safe_num(sheet.cell(row=r, column=12).value),
         })
     n_attempted, n_inserted = insert_skip_duplicates(session, "ref_quad_outlook", records)
     return rows_read, n_inserted, n_attempted - n_inserted

@@ -650,7 +650,10 @@
     const curPriceY = curPrice != null ? yPx(curPrice) : null;
     const curLine = curPriceY != null
       ? `<line x1="${PAD_L}" y1="${curPriceY.toFixed(1)}" x2="${PAD_L+cW}" y2="${curPriceY.toFixed(1)}" stroke="#374151" stroke-width="0.7" stroke-dasharray="3 3"/>` : '';
-    const lastPriceBadge = '';
+    const lastPriceBadge = (curPriceY != null && curPrice != null)
+      ? `<rect x="${W-68}" y="${(curPriceY-8).toFixed(1)}" width="36" height="16" rx="2" fill="#374151"/>` +
+        `<text x="${W-50}" y="${curPriceY.toFixed(1)}" fill="#fff" font-size="9" font-weight="700" text-anchor="middle" dominant-baseline="middle">${curPrice.toFixed(2)}</text>`
+      : '';
 
     // OHLC candlestick bars
     const barW = Math.max(2, (cW / n) * 0.7);
@@ -908,7 +911,7 @@
     // viewBox always 20×20 (content coords); size controls display px only
     var VB = 20;
     var svg = '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + VB + ' ' + VB +
-              '" role="img" aria-label="' + label + '"><title>' + label + '</title>';
+              '" style="vertical-align:middle;" role="img" aria-label="' + label + '"><title>' + label + '</title>';
     if (v == null) {
       svg += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="#D3D1C7"' +
              ' stroke-width="' + sw + '" stroke-dasharray="2 2"/>';
@@ -920,10 +923,7 @@
         : '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + band[2] +
           '" stroke-width="' + sw + '"/>';
     }
-    // arrowhead (concave base), top-right corner; circle sits below with gap
-    if (dir === 'up')        svg += '<path d="M15 1 L12 8 L15 5.5 L18 8 Z" fill="#3B6D11"/>';
-    else if (dir === 'down') svg += '<path d="M15 8 L12 1 L15 3.5 L18 1 Z" fill="#A32D2D"/>';
-    else if (dir === 'flat') svg += '<rect x="12" y="3" width="6" height="1.8" rx="0.9" fill="#888780"/>';
+    // direction shown in tooltip (vs Prior row); no in-cell arrow to avoid visual noise
     return svg + '</svg>';
   }
 
