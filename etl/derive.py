@@ -3383,6 +3383,19 @@ def derive_all(session: Session, as_of_date: date,
     counts["drv_missing_symbols"] = _safe("drv_missing_symbols", derive_missing_symbols)
     counts["drv_trig"]            = _safe("drv_trig",            derive_trig)
 
+    # TASK_79: USD correlation matrix (needs drv_quote for TOS prices).
+    # Non-critical: failure must not break the cascade.
+    try:
+        from etl.derive_usd_correlation import derive_usd_correlation
+        counts["drv_usd_correlation"] = _safe(
+            "drv_usd_correlation", derive_usd_correlation
+        )
+    except Exception:
+        log.exception("derive_usd_correlation import failed (non-fatal)")
+        counts["drv_usd_correlation"] = 0
+        try: session.rollback()
+        except Exception: pass
+
     # Task 3: write cascade summary row to meta_derived_run.
     # CRITICAL steps — if any fail the cascade is FAILED; partial failures = PARTIAL.
     _CRITICAL = {"drv_symbols", "drv_technicals", "drv_cat_atomic_input",

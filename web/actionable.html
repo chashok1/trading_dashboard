@@ -135,7 +135,7 @@
       border-radius: 8px;
       box-shadow: 0 4px 16px rgba(0,0,0,0.12);
       padding: 10px 14px; font-size: 11px; line-height: 1.6;
-      min-width: 150px; max-width: 300px;
+      min-width: 150px; max-width: 380px;
       pointer-events: none;
     }
     .source-pop .sp-title { font-weight: 700; color: #0f172a; margin-bottom: 6px;
@@ -143,7 +143,7 @@
     .source-pop table { border-collapse: collapse; width: 100%; }
     .source-pop td { padding: 1px 0; vertical-align: top; }
     .source-pop td.k { color: #475569; padding-right: 12px; white-space: nowrap; }
-    .source-pop td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; }
+    .source-pop td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; word-break: break-word; }
     .source-pop .sp-sec { color: #94a3b8; font-size: 9px;
                           text-transform: uppercase; letter-spacing: 0.5px; padding-top: 5px; }
     .sym-tile-pop {
@@ -650,6 +650,16 @@
         <span id="symTapeBadge" class="sym-tape-badge"></span>
       </div>
 
+      <!-- MACRO Regime Band (TASK_74) — full-width strip above the grid; shown by loadMacroBand() -->
+      <div id="macroBand" style="display:none; padding:5px 10px; background:#f8f8fc; border:1px solid #e0e0f0; border-radius:5px; margin-bottom:6px; font-size:11px; align-items:center; gap:16px; flex-wrap:wrap;">
+        <span style="font-weight:700; color:#555; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">Regime</span>
+        <span id="macroBandMonth" style="white-space:nowrap;"></span>
+        <span style="color:#ddd;">|</span>
+        <span id="macroBandQtr" style="white-space:nowrap;"></span>
+        <span style="color:#ddd;">|</span>
+        <span id="macroBandFavoring" style="white-space:nowrap; color:#475569;"></span>
+      </div>
+
       <div class="act-content-row">
       <div class="act-table-wrap">
         <table class="act-grid" id="actGrid">
@@ -661,6 +671,7 @@
               <th class="num sortable" data-key="pct_change" data-type="num" style="width:62px;">%chg / Price</th>
               <th class="sortable" data-key="tos_symbol" data-type="str" style="width:68px;">Symbol</th>
               <th class="sortable" data-key="_fc_strength" data-type="num" title="Final Call: reconciled action with confidence badge (drives ranking + default Act)" style="width:90px;">Final Call</th>
+              <th class="sortable" data-key="macro_value" data-type="str" title="MACRO regime stance: MacroNet of sector+asset+style factors under current+next month/quarter quads → SA/STM/HOLD/BS/BM. Hover for breakdown." style="width:64px;">MACRO</th>
               <th class="sortable" data-key="fc_strength_cal" data-type="num" title="Final Call (cal): calibrated call from bull_prob probability bands. Evaluation-only — compare vs Final Call to assess the model. NULL when no active model." style="width:90px;">FC (cal)</th>
               <th class="num sortable" data-key="_amt" data-type="num" style="width:58px;">AMT$</th>
               <th class="sortable" data-key="consolidated_action" data-type="str" data-label="Sources" title="Consolidated from RR/CALL/ETF/II/SSS/PS (most-aggressive-wins), then sized to your min/max/holdings." style="width:41px;">Sources</th>
@@ -673,8 +684,6 @@
               <th style="width:720px;">Rules (edge)</th>
               <th class="num sortable" data-key="bull_prob" data-type="num" title="Bull Prob: P(up 20d) from calibrated logistic model (TASK_66). Sortable — rank by probability. Agreement badge = share of signals pointing bullish." style="width:72px;">P(↑20d)</th>
               <th class="sortable" data-key="agreement_class" data-type="str" title="Agreement class (TASK_69): agree_bull / agree_bear / split_tech_bull / split_tech_bear / neutral — bull_prob direction vs consolidated action direction." style="width:100px;">Agree</th>
-              <th class="sortable" data-key="quad_m_outlook" data-type="str" title="Monthly quad regime outlook (BULLISH/BEARISH/Neutral) from ref_quad_outlook for the symbol's asset class / sector." style="width:64px;">Quad (M)</th>
-              <th class="sortable" data-key="quad_q_outlook" data-type="str" title="Quarterly quad regime outlook (BULLISH/BEARISH/Neutral) from ref_quad_outlook for the symbol's asset class / sector." style="width:64px;">Quad (Q)</th>
               <th>Act</th>
             </tr>
           </thead>
@@ -683,11 +692,6 @@
         <div class="empty-state" id="emptyState" style="display:none;">No actionable rows match these filters.</div>
       </div>
       <aside class="side-stack act-side" id="actSidePanel">
-        <section class="card">
-          <div class="panel-bar"><span class="panel-title">Quads</span></div>
-          <div class="quads-line" id="quadsBody"></div>
-          <div class="empty-note" id="quadsEmpty" hidden>No data.</div>
-        </section>
         <section class="card">
           <div class="panel-bar"><span class="panel-title">Econ Indicators</span></div>
           <div class="side-scroll">
@@ -855,6 +859,8 @@
   <script src="/static/actionable.js"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
+  <script src="/static/macro_areas.js" defer></script>
+  <script src="/static/macro_usd_corr.js" defer></script>
 <script src="/static/warning_badge.js"></script>
 
 <!-- TradingView Ticker Tape — injected dynamically by _initTvToggle() in actionable.js -->

@@ -6329,3 +6329,165 @@ ALTER TABLE IF EXISTS ref_quad_outlook DROP COLUMN IF EXISTS m_outlook;
 ALTER TABLE IF EXISTS ref_quad_outlook DROP COLUMN IF EXISTS m_score;
 ALTER TABLE IF EXISTS ref_quad_outlook DROP COLUMN IF EXISTS q_outlook;
 ALTER TABLE IF EXISTS ref_quad_outlook DROP COLUMN IF EXISTS q_score;
+
+-- 2026-06-21: MacroNet tunable parameters in ref_settings (TASK_74).
+-- N_m/N_q: proximity ramp window (days); wm_max/wq_max: max next-period weight;
+-- a/b: quarter vs month blend; thr_*: MacroNet → vocabulary thresholds.
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('macro_N_m',    '5',    'MacroNet: monthly proximity ramp window (days)')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('macro_N_q',    '15',   'MacroNet: quarterly proximity ramp window (days)')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('macro_wm_max', '0.75', 'MacroNet: max weight for next-month quad near boundary')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('macro_wq_max', '0.50', 'MacroNet: max weight for next-quarter quad near boundary')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('macro_a',      '0.65', 'MacroNet: quarter blend weight (a in a*Q + b*M)')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('macro_b',      '0.35', 'MacroNet: month blend weight (b in a*Q + b*M)')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('macro_thr_bm', '1.5',  'MacroNet threshold: >= this → BM (buy more)')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('macro_thr_bs', '0.5',  'MacroNet threshold: >= this → BS (buy some)')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('macro_thr_stm','-0.5', 'MacroNet threshold: <= this → STM (trim)')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('macro_thr_sa', '-1.5', 'MacroNet threshold: <= this → SA (sell all)')
+ON CONFLICT (setting_name) DO NOTHING;
+
+-- 2026-06-21: Phase 1 schema — monthly quad distribution columns (TASK_74).
+-- Monthly rows: quad1_pct..quad4_pct sum to ~100; quarterly rows keep NULL.
+ALTER TABLE ref_quad_periods
+  ADD COLUMN IF NOT EXISTS quad1_pct NUMERIC,
+  ADD COLUMN IF NOT EXISTS quad2_pct NUMERIC,
+  ADD COLUMN IF NOT EXISTS quad3_pct NUMERIC,
+  ADD COLUMN IF NOT EXISTS quad4_pct NUMERIC;
+
+-- 2026-06-21: Phase 1 tunable params — ramp/lead + horizon weights (TASK_74).
+-- These replace the earlier macro_N_m/N_q/wm_max/wq_max naming.
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('quad_month_ramp_begin_days', '12',
+   'MacroNet: days before month-end the next-month weight starts ramping')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('quad_month_lead_days', '5',
+   'MacroNet: days before month-end next-month weight hits 100%')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('quad_horizon_weight_qtr', '0.65',
+   'MacroNet: Quarter weight a in MacroNet = a*Qtr + b*M')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('quad_horizon_weight_mo', '0.35',
+   'MacroNet: Month weight b in MacroNet = a*Qtr + b*M')
+ON CONFLICT (setting_name) DO NOTHING;
+
+-- 2026-06-21 TASK_78: ref_macro_area — area→member map for Macro read card.
+-- area_key: stable area identifier (usd, us_equities, volatility, rates, credit,
+--           commodities, crypto, global_equities)
+-- member_symbol: tos_symbol of the member (matches drv_rr.tos_symbol)
+-- role: 'dual'=has technicals; 'rr_only'=RR+outlook only; 'gauge'=vol zone;
+--       'curve'=yield/curve — skip rr_pos (yield×10 scale mismatch)
+-- PK (area_key, member_symbol)
+CREATE TABLE IF NOT EXISTS ref_macro_area (
+    area_key       TEXT    NOT NULL,
+    label          TEXT    NOT NULL,
+    member_symbol  TEXT    NOT NULL,
+    role           TEXT    NOT NULL DEFAULT 'dual'
+        CHECK (role IN ('dual','rr_only','gauge','curve')),
+    sort_order     INT     NOT NULL DEFAULT 0,
+    enabled        BOOL    NOT NULL DEFAULT TRUE,
+    PRIMARY KEY (area_key, member_symbol)
+);
+
+-- 2026-06-21 TASK_78: macro-area thresholds in ref_settings.
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('macro_area_hot_pct',  '0.85',
+   'Macro read: rr_pos >= this is HOT (trim signal)')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('macro_area_cold_pct', '0.15',
+   'Macro read: rr_pos <= this is COLD (add signal)')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('macro_area_conv_min', '0.33',
+   'Macro read: minimum conviction to show Long/Short (vs Neutral)')
+ON CONFLICT (setting_name) DO NOTHING;
+
+-- 2026-06-21 TASK_79: ref_corr_asset — USD correlation asset catalog.
+-- source_spec JSONB: ordered priority list e.g. ["tos:$DXY","stooq:^dxy"]
+-- is_usd_base: TRUE for the USD ($DXY) row; all others correlated against it.
+CREATE TABLE IF NOT EXISTS ref_corr_asset (
+    asset_key    TEXT    PRIMARY KEY,
+    label        TEXT    NOT NULL,
+    source_spec  JSONB   NOT NULL DEFAULT '[]',
+    is_usd_base  BOOL    NOT NULL DEFAULT FALSE,
+    sort_order   INT     NOT NULL DEFAULT 0,
+    enabled      BOOL    NOT NULL DEFAULT TRUE
+);
+
+-- 2026-06-21 TASK_79: hist_quote_daily — Stooq keyless daily-close backfill.
+-- Append-only; ON CONFLICT DO NOTHING (convention 1).
+-- PK (source, symbol, obs_date): source='stooq'|'tos'; symbol is raw Stooq
+-- symbol or tos_symbol as appropriate.
+CREATE TABLE IF NOT EXISTS hist_quote_daily (
+    source      TEXT    NOT NULL,
+    symbol      TEXT    NOT NULL,
+    obs_date    DATE    NOT NULL,
+    close       NUMERIC,
+    loaded_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (source, symbol, obs_date)
+);
+CREATE INDEX IF NOT EXISTS ix_hist_quote_daily_sym
+    ON hist_quote_daily(symbol, obs_date);
+
+-- 2026-06-21 TASK_79: drv_usd_correlation — rolling Pearson r (5 windows)
+-- + 52-wk rolling-30D stats block. Idempotent: DELETE+INSERT on as_of_date.
+-- tos_symbol: same as asset_key (or $DXY for the base). Use tos_symbol
+-- convention (rule 15) — this is the symbol that appears in our TOS data.
+CREATE TABLE IF NOT EXISTS drv_usd_correlation (
+    as_of_date      DATE    NOT NULL,
+    asset_key       TEXT    NOT NULL,
+    tos_symbol      TEXT,
+    w15             NUMERIC,
+    w30             NUMERIC,
+    w90             NUMERIC,
+    w120            NUMERIC,
+    w180            NUMERIC,
+    n15             INT,
+    n30             INT,
+    n90             INT,
+    n120            INT,
+    n180            INT,
+    roll30_high     NUMERIC,
+    roll30_low      NUMERIC,
+    roll30_pct_pos  NUMERIC,
+    roll30_pct_neg  NUMERIC,
+    derived_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (as_of_date, asset_key)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_usd_corr_date
+    ON drv_usd_correlation(as_of_date DESC);
+
+-- 2026-06-21 TASK_79: correlation color thresholds in ref_settings.
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('corr_green_min',    '0.50',
+   'USD correlation: r >= this renders green (positive corr)')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('corr_red_strong',   '-0.70',
+   'USD correlation: r <= this renders strong-red (strong neg corr)')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('corr_red_mod',      '-0.50',
+   'USD correlation: -0.70 < r <= this renders moderate-red')
+ON CONFLICT (setting_name) DO NOTHING;
