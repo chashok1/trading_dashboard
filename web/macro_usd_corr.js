@@ -1,27 +1,29 @@
-/* macro_usd_corr.js — USD Correlations card for /actionable (TASK_79).
+/* macro_usd_corr.js — USD Correlations for /actionable (TASK_79/TASK_85).
  *
  * Self-contained; reads GET /api/correlations?date=<D>.
  *
- * Two parts:
- *   1. Standalone collapsible "USD Correlations" card injected below the
- *      Macro read card (#macroReadWrapper).
- *   2. One-line summary row wired into #macroCorrRow (the placeholder
- *      left by macro_areas.js in the Macro read table).
+ * TASK_85 (primary): compact heatmap rendered into #macroRailCorr (side rail).
+ *   Rows = SPX, Gold, Brent, CRB, BTC; cols = 15/30/90/120/180D.
+ *   Color cells by existing price-level thresholds. Value in-cell; NULL → "—".
+ *   Hover a row → shows 52-wk Hi/Lo/%pos/%neg in a tooltip.
  *
- * Color thresholds (mirroring ref_settings):
+ * Legacy: standalone collapsible card below Macro read card (#macroReadWrapper).
+ * Also fills #macroCorrSummary placeholder row (in legacy card if present).
+ *
+ * Color thresholds (price-level Pearson r):
  *   r >= +0.50  -> green  (.ucr-pos)
  *   r <= -0.70  -> strong red (.ucr-neg-s)
- *   -0.70 < r <= -0.50 -> moderate amber (.ucr-neg-m)
+ *   -0.70 < r <= -0.40 -> moderate amber (.ucr-neg-m)
  *   else        -> plain
  *   NULL        -> "—" (.ucr-nil)
  */
 (function () {
   'use strict';
 
-  /* Thresholds calibrated for price-level Pearson r (provider-style, trend-dominated).
+  /* Thresholds calibrated for price-level Pearson r (trend-dominated).
    * Price-level r is much stronger than daily-return r — values of ±0.7+ are common. */
   var CORR_GREEN    =  0.50;   // green  (positive)
-  var CORR_RED_STR  = -0.70;   // strong red (strongly negative)
+  var CORR_RED_STR  = -0.70;   // strong red
   var CORR_RED_MOD  = -0.40;   // amber  (mildly negative)
 
   var WINDOWS = [15, 30, 90, 120, 180];
@@ -54,13 +56,124 @@
     return '';
   }
 
-  function corrCell(v, extraClass) {
+  function corrCell(v) {
     var cls = corrClass(v);
-    if (extraClass) cls = (cls ? cls + ' ' : '') + extraClass;
     return '<td class="' + cls + '">' + fmtR(v) + '</td>';
   }
 
-  /* ── table build ─────────────────────────────────────────────────── */
+  /* ── compact rail heatmap ─────────────────────────────────────────── */
+  function railHeatmapHtml(data) {
+    var rows = data.rows || [];
+    if (!rows.length) {
+      return '<div class="msr-loading">No data yet.</div>';
+    }
+
+    var hdr =
+      '<thead><tr>' +
+        '<th></th>' +
+        WINDOWS.map(function (w) {
+          return '<th>' + WIN_LABELS[w] + '</th>';
+        }).join('') +
+      '</tr></thead>';
+
+    var body = '<tbody>';
+    rows.forEach(function (r) {
+      /* Build 52-wk tooltip */
+      var tip =
+        esc(r.label) + ' | 52w: ' +
+        'Hi ' + fmtR(r.roll30_high) + ' ' +
+        'Lo ' + fmtR(r.roll30_low) + ' ' +
+        '%+ ' + fmtPct(r.roll30_pct_pos) + ' ' +
+        '%- ' + fmtPct(r.roll30_pct_neg);
+      body += '<tr data-tip="' + tip + '">' +
+        '<td>' + esc(r.label) + '</td>' +
+        WINDOWS.map(function (w) {
+          return corrCell(r['w' + w]);
+        }).join('') +
+      '</tr>';
+    });
+    body += '</tbody>';
+
+    return '<table class="msr-ucr-table">' + hdr + body + '</table>';
+  }
+
+  /* ── render into side rail ─────────────────────────────────────────── */
+  function renderRail(data) {
+    var container = document.getElementById('macroRailCorr');
+    if (!container) return;
+
+    if (!data || !data.rows || !data.rows.length) {
+      container.innerHTML =
+        '<div class="msr-loading">No USD corr data yet. ' +
+        'Run <code>python -m etl.fetch_quotes --full</code>.</div>';
+      return;
+    }
+
+    container.innerHTML = railHeatmapHtml(data);
+
+    /* Wire 52-wk tooltip on row hover */
+    var tooltip = document.getElementById('msrUcrTooltip');
+    if (!tooltip) {
+      tooltip = document.createElement('div');
+      tooltip.id = 'msrUcrTooltip';
+      tooltip.className = 'msr-tooltip';
+      document.body.appendChild(tooltip);
+    }
+
+    container.querySelectorAll('tr[data-tip]').forEach(function (row) {
+      row.addEventListener('mouseenter', function (e) {
+        var tipText = row.dataset.tip || '';
+        /* Parse "Asset | 52w: Hi +X Lo -Y %+ Z%- W%" into structured HTML */
+        tooltip.innerHTML = _buildUcrTip(tipText, row);
+        tooltip.style.display = 'block';
+        _positionTooltip(tooltip, e);
+      });
+      row.addEventListener('mousemove', function (e) { _positionTooltip(tooltip, e); });
+      row.addEventListener('mouseleave', function () { tooltip.style.display = 'none'; });
+    });
+  }
+
+  function _buildUcrTip(raw, row) {
+    /* raw format: "Label | 52w: Hi +X Lo -Y %+ Z %- W" */
+    var idx = raw.indexOf('|');
+    var label = idx >= 0 ? raw.slice(0, idx).trim() : raw;
+    var rest  = idx >= 0 ? raw.slice(idx + 1).trim() : '';
+    /* Extract values from cells */
+    var cells = row.querySelectorAll('td');
+    var windowVals = '';
+    WINDOWS.forEach(function (w, i) {
+      var td = cells[i + 1];
+      if (td) {
+        var cls = td.className;
+        var style = cls.indexOf('ucr-pos') >= 0 ? 'color:#166534;font-weight:700;'
+                  : cls.indexOf('ucr-neg-s') >= 0 ? 'color:#991b1b;font-weight:700;'
+                  : cls.indexOf('ucr-neg-m') >= 0 ? 'color:#854d0e;'
+                  : '';
+        windowVals += '<div class="msr-tooltip-row">' +
+          '<span class="msr-tooltip-k">' + WIN_LABELS[w] + '</span>' +
+          '<span class="msr-tooltip-v" style="' + style + '">' + esc(td.textContent) + '</span>' +
+          '</div>';
+      }
+    });
+    return (
+      '<div class="msr-tooltip-title">' + esc(label) + ' vs USD</div>' +
+      windowVals +
+      '<div style="margin-top:4px;padding-top:3px;border-top:1px solid #e2e8f0;font-size:10px;color:#64748b;">' +
+        rest.replace(/52w:/,'52-wk:') +
+      '</div>'
+    );
+  }
+
+  function _positionTooltip(el, e) {
+    var x = e.clientX + 12, y = e.clientY + 12;
+    var vw = window.innerWidth, vh = window.innerHeight;
+    if (x + 260 > vw) x = e.clientX - 264;
+    if (y + 180 > vh) y = e.clientY - 184;
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+  }
+
+  /* ── legacy full-width card table ─────────────────────────────────── */
   function tableHtml(data) {
     var rows = data.rows || [];
     var hdr =
@@ -80,7 +193,8 @@
       body += '<tr>' +
         '<td>' + esc(r.label) + '</td>' +
         WINDOWS.map(function (w) {
-          return corrCell(r['w' + w]);
+          var cls = corrClass(r['w' + w]);
+          return '<td class="' + cls + '">' + fmtR(r['w' + w]) + '</td>';
         }).join('') +
         '<td class="ucr-divider ' + corrClass(r.roll30_high) + '">' + fmtR(r.roll30_high) + '</td>' +
         '<td class="' + corrClass(r.roll30_low) + '">' + fmtR(r.roll30_low) + '</td>' +
@@ -93,7 +207,6 @@
     return '<table class="ucr-table">' + hdr + body + '</table>';
   }
 
-  /* ── compact bar: all assets, 15D + 30D ─────────────────────────── */
   function barHtml(data) {
     var rows = data.rows || [];
     if (!rows.length) return '<span class="mra-muted">no data</span>';
@@ -114,7 +227,6 @@
     }).join('');
   }
 
-  /* ── summary chips for Macro read master-switch row ─────────────── */
   function summaryHtml(data) {
     var rows = data.rows || [];
     function findRow(key) { return rows.find(function (r) { return r.asset_key === key; }); }
@@ -130,8 +242,8 @@
            || '<span class="mra-muted">no data</span>';
   }
 
-  /* ── render / inject ─────────────────────────────────────────────── */
-  function render(data) {
+  /* ── render legacy full-width card ──────────────────────────────────── */
+  function renderLegacyCard(data) {
     var card = document.getElementById('usdCorrCard');
     if (card) {
       if (!data || !data.rows || !data.rows.length) {
@@ -146,13 +258,11 @@
     var asOf = document.getElementById('usdCorrAsOf');
     if (asOf && data && data.as_of) asOf.textContent = data.as_of;
 
-    /* Header bar — all assets, 15D + 30D */
     var hdrChips = document.getElementById('usdCorrHdrChips');
     if (hdrChips && data && data.rows && data.rows.length) {
       hdrChips.innerHTML = barHtml(data);
     }
 
-    /* Update the Macro read master-switch placeholder */
     var corrSummary = document.getElementById('macroCorrSummary');
     if (corrSummary) {
       if (data && data.rows && data.rows.length) {
@@ -164,14 +274,16 @@
   }
 
   function renderError(msg) {
+    var rail = document.getElementById('macroRailCorr');
+    if (rail) rail.innerHTML = '<div class="msr-err">USD corr unavailable: ' + esc(msg) + '</div>';
     var card = document.getElementById('usdCorrCard');
     if (card) card.innerHTML = '<div class="ucr-err">USD correlations unavailable: ' + esc(msg) + '</div>';
     var corrSummary = document.getElementById('macroCorrSummary');
     if (corrSummary) corrSummary.innerHTML = '<span class="mra-muted">unavailable</span>';
   }
 
-  /* ── inject collapsible card below Macro read, collapsed by default ─ */
-  function injectCard() {
+  /* ── inject legacy full-width card (if #macroReadWrapper exists) ──── */
+  function injectLegacyCard() {
     if (document.getElementById('usdCorrWrapper')) return;
     var wrapper = document.createElement('div');
     wrapper.id = 'usdCorrWrapper';
@@ -209,37 +321,44 @@
     }
   }
 
+  /* ── main load ──────────────────────────────────────────────────────── */
   async function load() {
-    injectCard();
-    var dateEl = document.getElementById('datePicker');
+    var dateEl    = document.getElementById('datePicker');
     var dateParam = dateEl && dateEl.value ? '?date=' + dateEl.value : '';
     try {
       var resp = await fetch('/api/correlations' + dateParam);
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       var data = await resp.json();
-      render(data);
+
+      /* Primary: render side rail heatmap */
+      renderRail(data);
+
+      /* Legacy: full-width collapsible card (only if wrapper was injected) */
+      if (document.getElementById('usdCorrCard')) {
+        renderLegacyCard(data);
+      }
     } catch (e) {
       renderError(e && e.message ? e.message : String(e));
     }
   }
 
-  /* Wait for macro_areas.js to finish injecting the placeholder row */
   function init() {
     if (!document.querySelector('main .card')) return;
 
-    /* If the macroReadReady event fires first, load immediately;
-       otherwise load after DOMContentLoaded (macro_areas may not be present) */
+    /* Load immediately when the macro-areas card is ready, or after short delay */
     document.addEventListener('macroReadReady', function () {
       load();
     });
 
-    /* Also load unconditionally after a short delay in case
-       macro_areas.js is absent or fails */
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);
 
+    /* Fallback: load unconditionally after 1.2s if not triggered yet */
     setTimeout(function () {
-      if (!document.getElementById('usdCorrWrapper')) load();
+      if (!document.getElementById('macroRailCorr') ||
+          document.getElementById('macroRailCorr').querySelector('.msr-loading')) {
+        load();
+      }
     }, 1200);
   }
 

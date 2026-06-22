@@ -339,13 +339,61 @@ function _quadColor(q) {
   return '#9ca3af';
 }
 
+// ── TASK_86: Render Bull/Bear factor pills on the regime band ────────────────
+// Trims to MAX_PILLS per group inline; full list shown in title tooltip.
+const _MAX_BAND_PILLS = 5;
+function _renderBandFactors(data) {
+  const el = $('macroBandFactors');
+  if (!el) return;
+  const bull = data.bull || [], bear = data.bear || [];
+  if (!bull.length && !bear.length) { el.innerHTML = ''; return; }
+
+  const _arrow = dir => {
+    if (dir === 'bull') return '<span class="qf-arrow-bull">↑</span>';
+    if (dir === 'bear') return '<span class="qf-arrow-bear">↓</span>';
+    return '<span class="qf-arrow-neutral">→</span>';
+  };
+  const _pillsHtml = (items, pillCls) => {
+    const visible = items.slice(0, _MAX_BAND_PILLS);
+    const hidden  = items.slice(_MAX_BAND_PILLS);
+    let h = visible.map(f =>
+      `<span class="qf-pill ${pillCls}" title="${escapeHtml(f.factor)}">`
+      + `${escapeHtml(f.factor)} ${_arrow(f.qtr)}</span>`
+    ).join('');
+    if (hidden.length) {
+      const allNames = items.map(f => f.factor).join(', ');
+      h += `<span class="qf-pill ${pillCls}" title="${escapeHtml(allNames)}" style="opacity:0.65;">+${hidden.length}…</span>`;
+    }
+    return h;
+  };
+
+  let h = '';
+  if (bull.length) {
+    const allBull = bull.map(f => f.factor).join(', ');
+    h += `<span class="qf-group" title="Monthly Bull factors: ${escapeHtml(allBull)}">`
+       + `<span class="qf-label qf-label-bull">Bull</span>`
+       + _pillsHtml(bull, 'qf-pill-bull')
+       + '</span>';
+  }
+  if (bear.length) {
+    const allBear = bear.map(f => f.factor).join(', ');
+    h += `<span class="qf-group" title="Monthly Bear factors: ${escapeHtml(allBear)}">`
+       + `<span class="qf-label qf-label-bear">Bear</span>`
+       + _pillsHtml(bear, 'qf-pill-bear')
+       + '</span>';
+  }
+  el.innerHTML = h;
+}
+
 async function loadMacroBand() {
   const band = $('macroBand');
   if (!band) return;
   try {
-    const data = await fetchJson(state.date
-      ? `/api/dashboard/quads?date=${encodeURIComponent(state.date)}`
-      : '/api/dashboard/quads');
+    const dateParam = state.date ? `?date=${encodeURIComponent(state.date)}` : '';
+    const [data, factors] = await Promise.all([
+      fetchJson(`/api/dashboard/quads${dateParam}`),
+      fetchJson(`/api/quad/band-factors${dateParam}`).catch(() => ({ bull: [], bear: [] })),
+    ]);
     const cq = data.current_quarter, nq = data.next_quarter;
     const months = data.months || [];
     const cm = months[0], nm = months[1];
@@ -383,6 +431,8 @@ async function loadMacroBand() {
     } else {
       elF.textContent = '';
     }
+    // TASK_86: factor pills
+    _renderBandFactors(factors);
     band.style.display = 'flex';
   } catch(e) { console.error('MACRO band:', e); if (band) band.style.display = 'none'; }
 }
@@ -1089,8 +1139,7 @@ function syncFilterUi() {
   // actionable_only toggle
   const aoBtn = $('actionableOnlyBtn');
   if (aoBtn) {
-    aoBtn.textContent = f.actionable_only ? 'Actionable' : 'All';
-    aoBtn.classList.toggle('active', f.actionable_only);
+    aoBtn.classList.toggle('active', !!f.actionable_only);
   }
 }
 
@@ -1962,6 +2011,19 @@ function initGridSymClick() {
   });
 }
 
+function _initSidePanels() {
+  document.querySelectorAll('#actSidePanel .sp-hdr').forEach(hdr => {
+    const panel = hdr.closest('.sp-panel');
+    if (!panel) return;
+    const key = 'sp_' + (hdr.dataset.panel || panel.id || '');
+    if (localStorage.getItem(key) === 'collapsed') panel.classList.add('sp-collapsed');
+    hdr.addEventListener('click', () => {
+      panel.classList.toggle('sp-collapsed');
+      localStorage.setItem(key, panel.classList.contains('sp-collapsed') ? 'collapsed' : 'open');
+    });
+  });
+}
+
 function initEcoBarClick() {
   ['marketTape','rrTape','rrTape3'].forEach(id => {
     const el = document.getElementById(id);
@@ -2349,9 +2411,7 @@ function renderGrid() {
         ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
       </td>
       <td data-sym-cell="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer;" title="Click for chart">
-        ${typeof yahooLink === 'function' ? yahooLink(r.tos_symbol) : ''}
-        <strong class="tv-sym-link" style="font-size:13px;">${escapeHtml(r.tos_symbol || '')}</strong>
-        ${r.sector ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px;">${escapeHtml(r.sector)}</div>` : ''}
+        <strong class="tv-sym-link" style="font-size:11px;">${escapeHtml(r.tos_symbol || '')}</strong>
       </td>
       <td style="padding:6px 4px;">${fcHtml}</td>
       <td style="padding:4px 6px; text-align:center;">${macroCellHtml(r)}</td>
@@ -3247,7 +3307,6 @@ function _setTvTape(visible) {
   if (wrapper) wrapper.style.display = visible ? '' : 'none';
   const btn = $('tvToggleBtn');
   if (btn) {
-    btn.innerHTML = visible ? 'TV &#9650;' : 'TV &#9660;';
     btn.title = visible ? 'Hide TradingView tape' : 'Show TradingView tape';
     btn.classList.toggle('active', visible);
     btn.disabled = false;
@@ -3300,6 +3359,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initSymTilePop();
   initGridSymClick();
   initEcoBarClick();
+  _initSidePanels();
 
   await loadSources();
   await loadDates();

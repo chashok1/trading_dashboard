@@ -11,13 +11,13 @@
       border: 1px solid var(--border, #e0e0e0);
       border-radius: 6px;
       margin-bottom: 2px;
-      padding: 5px 12px 5px;
+      padding: 3px 8px;
     }
     .act-toolbar-main {
       display: flex;
       align-items: center;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 5px;
     }
     /* act-toolbar-title kept for legacy references but no longer rendered */
     .act-summary {
@@ -27,15 +27,15 @@
       align-items: center;
     }
     .act-chip {
-      padding: 2px 10px;
-      border-radius: 12px;
+      padding: 1px 7px;
+      border-radius: 10px;
       background: var(--surface, #f5f5f7);
       border: 1px solid var(--border, #e0e0e0);
       cursor: pointer;
-      font-size: 11px;
+      font-size: 10px;
       display: inline-flex;
       align-items: center;
-      gap: 5px;
+      gap: 4px;
       user-select: none;
     }
     .act-chip:hover { filter: brightness(0.97); }
@@ -46,7 +46,7 @@
     }
     .act-chip .count {
       font-weight: 700;
-      font-size: 12px;
+      font-size: 10px;
     }
     .act-chip-remove   { border-left: 4px solid var(--act-sell-strong); }
     .act-chip-reduce   { border-left: 4px solid var(--act-sell); }
@@ -65,22 +65,30 @@
     .src-rsn { font-size:9px; color:#94a3b8; overflow:hidden; text-overflow:ellipsis; }
 
     .act-toolbar label {
-      font-size: 11px;
+      font-size: 10px;
       color: var(--text-2, #666);
-      margin-right: 2px;
+      margin-right: 1px;
     }
     .act-toolbar select {
-      padding: 3px 7px;
-      font-size: 11px;
+      padding: 1px 5px;
+      font-size: 10px;
       border: 1px solid var(--border, #e0e0e0);
       border-radius: 4px;
       background: #fff;
+      height: 20px;
+    }
+    .act-toolbar input[type="text"],
+    .act-toolbar input[type="number"] {
+      padding: 1px 5px !important;
+      font-size: 10px !important;
+      height: 20px;
+      box-sizing: border-box;
     }
     .act-toolbar .toggle {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      font-size: 11px;
+      gap: 3px;
+      font-size: 10px;
       cursor: pointer;
     }
 
@@ -432,20 +440,30 @@
     }
     .btn-icon:hover { background: #f4f4f2; }
     .btn-icon svg { display: block; }
+    .btn-icon-sm { padding: 3px 4px; border-radius: 4px; }
 
     /* Econ toggle button */
     #econBtn { background: #fff; color: inherit; }
     #econBtn.active { background: var(--accent, #0a84ff); color: #fff; border-color: var(--accent, #0a84ff); }
 
-    /* Fill remaining viewport — toolbar spans full width; grid+side sit in a row below */
+    /* Fill remaining viewport — card is a row: main-col (column) + side panel (full height) */
     body.act-page main { overflow: hidden; display: flex; flex-direction: column; }
-    body.act-page main > .card { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+    body.act-page main > .card { flex: 1; min-width: 0; display: flex; flex-direction: row; overflow: hidden; min-height: 0; }
+    body.act-page .act-main-col { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; min-width: 0; }
     body.act-page .act-content-row { display: flex; flex: 1; min-height: 0; overflow: hidden; }
     body.act-page .act-table-wrap { flex: 1; overflow-x: auto; overflow-y: auto; min-height: 0; }
 
     /* Side panels */
-    .act-side { width: 300px; flex-shrink: 0; display: none; flex-direction: column; gap: 6px; overflow-y: auto; border-left: 1px solid var(--border, #e0e0e0); padding: 0 0 12px 12px; }
-    .act-side.pinned { display: flex; }
+    .act-side { width: 260px; flex-shrink: 0; display: none; flex-direction: column; gap: 6px; overflow-y: auto; border-left: 1px solid var(--border, #e0e0e0); padding: 0 0 12px 0; }
+    .act-side.pinned { display: flex; position: fixed; top: 0; right: 0; bottom: 0; z-index: 100; background: var(--surface, #fafafa); box-shadow: -2px 0 8px rgba(0,0,0,0.07); }
+    body:has(#actSidePanel.pinned) .act-main-col { padding-right: 264px; }
+    body:has(#actSidePanel.pinned) .topbar { padding-right: 264px; }
+    /* Collapsible panels */
+    .sp-panel .sp-hdr { cursor: pointer; user-select: none; display: flex; align-items: center; }
+    .sp-panel .sp-hdr:hover { background: rgba(0,0,0,0.04); }
+    .sp-chevron { margin-left: auto; font-size: 10px; line-height: 1; transition: transform 0.15s; flex-shrink: 0; padding-left: 4px; }
+    .sp-panel.sp-collapsed .sp-chevron { transform: rotate(-90deg); }
+    .sp-panel.sp-collapsed .sp-body { display: none; }
     #sidePanelBtn.sp-active { color: var(--accent, #0a84ff); }
 
     /* ── Pass 1: Conviction badge ─────────────────────────────────────────── */
@@ -459,7 +477,7 @@
     .conviction-badge.edge-none     { background: transparent; color: #888780; border: 0.5px solid #D3D1C7; }
 
     /* ── Pass 1: AMT$ prominent cell ─────────────────────────────────────── */
-    .amt-primary { font-size: 14px; font-weight: 800; }
+    .amt-primary { font-size: 11px; font-weight: 800; }
 
     /* ── Pass 2: Show-all bar ─────────────────────────────────────────────── */
     .show-all-bar {
@@ -550,6 +568,7 @@
 
   <main>
     <div class="card">
+      <div class="act-main-col">
       <div class="status-bar" id="statusBar"></div>
 
       <!-- Econ panel — FRED macro data, lazy-loaded, toggled by #econBtn in toolbar -->
@@ -571,8 +590,10 @@
             <button data-conv="multi">Multi</button>
             <button data-conv="proven">Proven</button>
           </div>
+          <!-- Show Hidden toggle — next to Proven -->
+          <label class="toggle" style="font-size:11px; white-space:nowrap;" title="Show suppressed, $0 AMT, no-action, acted/snoozed, and unheld-remove rows"><input type="checkbox" id="showHidden"> Show H</label>
           <!-- Positions-only toggle -->
-          <label class="toggle" style="font-size:11px; white-space:nowrap;"><input type="checkbox" id="heldOnly"> Positions</label>
+          <label class="toggle" style="font-size:11px; white-space:nowrap;"><input type="checkbox" id="heldOnly"> Pos</label>
           <!-- Source filter -->
           <label style="font-size:11px; color:var(--text-2,#666); margin-right:2px; white-space:nowrap;">Source</label>
           <select id="sourceFilter"><option value="">All</option></select>
@@ -595,32 +616,42 @@
             <option value="split_tech_bear">Split Tech Bear</option>
             <option value="neutral">Neutral</option>
           </select>
-          <!-- Show Hidden toggle -->
-          <label class="toggle" style="font-size:11px; white-space:nowrap;" title="Show suppressed, $0 AMT, no-action, acted/snoozed, and unheld-remove rows"><input type="checkbox" id="showHidden"> Show Hidden</label>
-          <!-- Right side: row count, Clear, Focus icon, Export icon -->
-          <div style="margin-left:auto; display:flex; align-items:center; gap:6px; flex-shrink:0;">
+          <!-- Right side: row count + icon buttons -->
+          <div style="margin-left:auto; display:flex; align-items:center; gap:4px; flex-shrink:0;">
             <span style="font-size:11px; color:var(--text-2,#666);" id="rowCount"></span>
-            <button id="actionableOnlyBtn" style="padding:3px 8px; font-size:10px; border:1px solid var(--border); border-radius:4px; cursor:pointer;" title="Toggle: Actionable only vs All rows">Actionable</button>
-            <button id="tvToggleBtn" style="padding:3px 8px; font-size:10px; border:1px solid var(--border); border-radius:4px; cursor:pointer;" title="Toggle TradingView tape">TV &#9660;</button>
-            <button id="clearFiltersBtn" style="padding:3px 8px; font-size:10px; border:1px solid var(--border); border-radius:4px; background:#fff; cursor:pointer; color:#c41e3a;" title="Clear all filters">Clear</button>
-            <!-- Focus icon button (eye/target style) -->
-            <button id="focusModeBtn" class="btn-icon" title="Focus mode">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <button id="actionableOnlyBtn" class="btn-icon btn-icon-sm" title="Toggle: Actionable only vs All rows">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+              </svg>
+            </button>
+            <button id="tvToggleBtn" class="btn-icon btn-icon-sm" title="Toggle TradingView tape">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
+              </svg>
+            </button>
+            <button id="clearFiltersBtn" class="btn-icon btn-icon-sm" style="color:#c41e3a;" title="Clear all filters">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+            <!-- Focus icon button -->
+            <button id="focusModeBtn" class="btn-icon btn-icon-sm" title="Focus mode">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="12" cy="12" r="3"/>
                 <path d="M2 12C4.5 6.5 9 3 12 3s7.5 3.5 10 9c-2.5 5.5-7 9-10 9S4.5 17.5 2 12z"/>
               </svg>
             </button>
-            <!-- Export CSV icon button (download style) -->
-            <button id="exportCsvBtn" class="btn-icon" title="Export CSV">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <!-- Export CSV icon button -->
+            <button id="exportCsvBtn" class="btn-icon btn-icon-sm" title="Export CSV">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
             </button>
             <!-- Side panel toggle icon button -->
-            <button id="sidePanelBtn" class="btn-icon" title="Toggle side panels">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <button id="sidePanelBtn" class="btn-icon btn-icon-sm" title="Toggle side panels">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect x="3" y="3" width="18" height="18" rx="2"/>
                 <line x1="15" y1="3" x2="15" y2="21"/>
               </svg>
@@ -650,14 +681,16 @@
         <span id="symTapeBadge" class="sym-tape-badge"></span>
       </div>
 
-      <!-- MACRO Regime Band (TASK_74) — full-width strip above the grid; shown by loadMacroBand() -->
-      <div id="macroBand" style="display:none; padding:5px 10px; background:#f8f8fc; border:1px solid #e0e0f0; border-radius:5px; margin-bottom:6px; font-size:11px; align-items:center; gap:16px; flex-wrap:wrap;">
-        <span style="font-weight:700; color:#555; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">Regime</span>
+      <!-- MACRO Regime Band (TASK_74/86) — full-width strip above the grid; shown by loadMacroBand() -->
+      <div id="macroBand" style="display:none; padding:3px 8px; background:#f8f8fc; border:1px solid #e0e0f0; border-radius:5px; margin-bottom:4px; font-size:10px; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span style="font-weight:700; color:#555; font-size:9px; text-transform:uppercase; letter-spacing:0.5px;">Regime</span>
         <span id="macroBandMonth" style="white-space:nowrap;"></span>
         <span style="color:#ddd;">|</span>
         <span id="macroBandQtr" style="white-space:nowrap;"></span>
         <span style="color:#ddd;">|</span>
         <span id="macroBandFavoring" style="white-space:nowrap; color:#475569;"></span>
+        <span style="color:#ddd;">|</span>
+        <span id="macroBandFactors" style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;"></span>
       </div>
 
       <div class="act-content-row">
@@ -690,30 +723,68 @@
           <tbody id="actBody"></tbody>
         </table>
         <div class="empty-state" id="emptyState" style="display:none;">No actionable rows match these filters.</div>
-      </div>
+      </div><!-- end .act-table-wrap -->
+      </div><!-- end .act-content-row -->
+      </div><!-- end .act-main-col -->
       <aside class="side-stack act-side" id="actSidePanel">
-        <section class="card">
-          <div class="panel-bar"><span class="panel-title">Econ Indicators</span></div>
-          <div class="side-scroll">
-            <table class="mini-grid">
-              <thead><tr><th>Indicator</th><th>Date</th><th>Days</th><th>Signal</th></tr></thead>
-              <tbody id="econBody"></tbody>
-            </table>
-            <div class="empty-note" id="econEmpty" hidden>No data.</div>
+        <!-- Macro Rail (TASK_85): areas -->
+        <section id="macroRailSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fafafa; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="macroRail">
+            Macro
+            <span class="msr-legend">
+              <span class="msr-legend-up">▲</span> Long &nbsp;
+              <span class="msr-legend-down">▼</span> Short
+            </span>
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div id="macroRailAreas"><div class="msr-loading">Loading…</div></div>
           </div>
         </section>
-        <section class="card">
-          <div class="panel-bar"><span class="panel-title">Earnings / Events</span></div>
-          <div class="side-scroll">
-            <table class="mini-grid">
-              <thead><tr><th>Event</th><th>Date</th><th>In</th></tr></thead>
-              <tbody id="earningsBody"></tbody>
-            </table>
-            <div class="empty-note" id="earningsEmpty" hidden>No data.</div>
+
+        <!-- USD Correlations — own collapsible panel -->
+        <section id="usdCorrSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fafafa; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="usdCorr">
+            USD Correlations
+            <span class="msr-method-note" style="margin-left:4px; font-size:8px; font-style:italic; color:#94a3b8;" title="Pearson of raw daily closes — matches provider methodology (price-levels, not returns)">price-levels</span>
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div id="macroRailCorr"><div class="msr-loading">Loading…</div></div>
+          </div>
+        </section>
+
+        <section class="card sp-panel">
+          <div class="panel-bar sp-hdr" data-panel="econIndicators">
+            <span class="panel-title">Econ Indicators</span>
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div class="side-scroll">
+              <table class="mini-grid">
+                <thead><tr><th>Indicator</th><th>Date</th><th>Days</th><th>Signal</th></tr></thead>
+                <tbody id="econBody"></tbody>
+              </table>
+              <div class="empty-note" id="econEmpty" hidden>No data.</div>
+            </div>
+          </div>
+        </section>
+        <section class="card sp-panel">
+          <div class="panel-bar sp-hdr" data-panel="earningsEvents">
+            <span class="panel-title">Earnings / Events</span>
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div class="side-scroll">
+              <table class="mini-grid">
+                <thead><tr><th>Event</th><th>Date</th><th>In</th></tr></thead>
+                <tbody id="earningsBody"></tbody>
+              </table>
+              <div class="empty-note" id="earningsEmpty" hidden>No data.</div>
+            </div>
           </div>
         </section>
       </aside>
-      </div><!-- end .act-content-row -->
     </div><!-- end .card -->
   <div id="sourcePop" class="source-pop"></div>
   <div id="symTilePop" class="sym-tile-pop" style="display:none;"></div>
