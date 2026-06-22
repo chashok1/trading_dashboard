@@ -503,6 +503,7 @@ def get_derive_status():
                 r[0] for r in s.execute(text("""
                     SELECT DISTINCT as_of_date FROM drv_dash
                     WHERE as_of_date < CURRENT_DATE - INTERVAL '1 day'
+                      AND EXTRACT(DOW FROM as_of_date) NOT IN (0, 6)
                       AND as_of_date NOT IN (SELECT holiday_date FROM ref_holiday)
                     ORDER BY as_of_date DESC LIMIT :n
                 """), {"n": _RECENT_DATE_WINDOW}).fetchall()

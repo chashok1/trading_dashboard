@@ -118,7 +118,7 @@ html, body {
   padding: 0;
   border-bottom: 1px solid var(--border);
   background: var(--card-bg);
-  height: 36px;
+  height: 28px;
 }
 
 #hbBanner { display: none !important; }
@@ -188,40 +188,40 @@ html, body {
   display: flex;
   align-items: center;
   height: 100%;
-  gap: 12px;
-  padding: 0 24px;
+  gap: 6px;
+  padding: 0 12px;
   border-left: 1px solid var(--border);
 }
 
 .controls label {
   color: var(--text-2);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .controls select,
 .filters select,
 .filters input,
 #datePicker {
-  padding: 3px 8px;
+  padding: 1px 6px;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: 4px;
+  font-size: 11px;
   color: var(--text-1);
   background: var(--card-bg);
   box-sizing: border-box;
-  height: 28px;
+  height: 20px;
 }
 
 .btn {
-  padding: 3px 10px;
+  padding: 1px 8px;
   border: 1px solid var(--border);
   background: var(--card-bg);
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-1);
   box-sizing: border-box;
-  height: 28px;
+  height: 20px;
 }
 
 .btn:hover {
@@ -971,7 +971,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 .market-tape {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 0;
   height: 30px;
   background: var(--card-bg);
   border-bottom: none;
@@ -993,7 +993,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 .rr-tape {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 0;
   height: 30px;
   background: var(--card-bg);
   border-bottom: none;
@@ -1022,14 +1022,14 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   flex-shrink: 0;
   align-self: stretch;
   border-right: 1px solid var(--border);
-  padding-right: 6px;
+  padding-right: 1px;
 }
 .rr-group:last-child { border-right: none; padding-right: 0; }
 .rr-group .rr-chip { border-right: none; align-self: center; }
 .rr-group .rr-chip + .rr-chip { border-left: none; }
 
 .rr-cat {
-  padding: 0 4px;
+  padding: 0 3px 0 1px;
   border-right: 1px solid var(--border);
   align-self: stretch;
   display: inline-flex;
@@ -1048,7 +1048,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   flex-direction: column;
   justify-content: center;
   gap: 1px;
-  padding: 1px 4px;
+  padding: 1px 3px 1px 1px;
   border-right: 1px solid var(--border);
   align-self: stretch;
   flex-shrink: 0;
@@ -1072,10 +1072,27 @@ svg.rr-candle {
   display: block;
 }
 
+/* symTapeTrack chips (rr-chip-top = old full-width row layout, unchanged) */
 .rr-chip-top {
   display: flex;
   align-items: center;
   gap: 3px;
+}
+
+/* marketTape / rrTape chip body — sym col left, pct button right */
+.rr-chip-body {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 2px;
+}
+/* Fixed-width column: sym on top, range bar on bottom */
+.rr-chip-sym-col {
+  width: 28px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 /* Outlook-colored symbol text */
@@ -1085,6 +1102,10 @@ svg.rr-candle {
   letter-spacing: 0.03em;
   white-space: nowrap;
 }
+/* Smaller font on all tapes */
+.market-tape .rr-sym,
+.rr-tape .rr-sym,
+#symTapeTrack .rr-sym { font-size: 8px; }
 
 /* Range bar */
 .rr-rb {
@@ -1092,7 +1113,7 @@ svg.rr-candle {
   height: 2px;
   background: var(--border, #e5e7eb);
   border-radius: 2px;
-  min-width: 30px;
+  min-width: 20px;
 }
 .rr-rb-fill {
   position: absolute;
@@ -1110,6 +1131,17 @@ svg.rr-candle {
   background: var(--text-1, #111);
   transform: translateX(-1px);
   border-radius: 1px;
+}
+/* Sphere marker on all tape range bars */
+.market-tape .rr-rb .rr-rb-tick,
+.rr-tape .rr-rb .rr-rb-tick,
+#symTapeTrack .rr-rb .rr-rb-tick {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  top: -1px;
+  background: #374151;
+  transform: translateX(-50%);
 }
 
 /* Volatility range bar — 3-zone (green/amber/red) with threshold dots */
@@ -1177,6 +1209,7 @@ svg.rr-candle {
   flex: 1;
   display: flex;
   align-items: stretch;
+  gap: 8px;
   overflow: hidden;
   height: 100%;
   padding: 0 2px;
@@ -1185,15 +1218,15 @@ svg.rr-candle {
   height: 100%;
   overflow: visible;
   border-right: none;
-  position: relative;
-  padding-right: 12px;
+  padding-right: 3px;
 }
 /* ::before separator replaced by candle SVG */
 #symTapeTrack .rr-chip + .rr-chip::before { display: none; }
-/* Candle in symTape: vertically centered (chip is 55px, candle is 20px → offset 18px) */
-#symTapeTrack svg.rr-candle {
-  top: 18px;
-  right: 1px;
+/* Candle inline in icons row — static, pushed right to align with button edge */
+#symTapeTrack .sym-tile-meta svg.rr-candle {
+  position: static;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 .sym-tape-nav {
   flex-shrink: 0;
@@ -1284,6 +1317,13 @@ svg.rr-candle {
   font-family: ui-monospace, "SF Mono", Consolas, monospace;
   font-size: 10px;
   font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  min-width: 44px;
+  text-align: center;
+  white-space: nowrap;
+  box-sizing: border-box;
+  display: inline-block;
 }
 
 .mt-up   { color: var(--act-buy-strong); }
@@ -1764,7 +1804,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
   font-size: 9px; letter-spacing: 0.5px; margin: 0; padding: 0; border: none;
 }
 .act-side .mini-grid { font-size: 10px; }
-.act-side .mini-grid th { font-size: 9px; padding: 2px 5px; }
+.act-side .mini-grid th { font-size: 9px; padding: 2px 5px; background: #fff; }
 .act-side .mini-grid td { padding: 2px 5px; }
 
 /* ── TASK_86: Regime band — Bull/Bear factor pills ────────────────────────── */

@@ -65,7 +65,7 @@ _METRIC_TO_RR_SYMBOL: dict[str, str] = {
 # Synthetic bar-1 items sourced directly from hist_rr
 # (tos_symbol, metric_key, display_label, value_format)
 _SYNTHETIC_BAR1 = [
-    ('/BZ',       'BZ',    'Brent',   'price'),
+    ('/BZ',       'BZ',    'BRENT',   'price'),
 ]
 _SYNTHETIC_KEYS = {mk for _, mk, _, _ in _SYNTHETIC_BAR1}
 # synthetics that display % change — fetch pct_change from drv_quote
@@ -250,16 +250,16 @@ _RR_META: dict[str, tuple[str, str]] = {
     '$SSEC':    ('Indexes',     'Shanghai'),
     'GDAXI:DE': ('Indexes',     'DAX'),
     'N225:JP':  ('Indexes',     'Nikkei'),
-    '/6B':      ('FX',          'GBP/USD'),
-    '/6C':      ('FX',          'CAD/USD'),
-    '/6E':      ('FX',          'EUR/USD'),
-    '/6J':      ('FX',          'USD/JPY'),
+    '/6B':      ('FX',          'GBP$'),
+    '/6C':      ('FX',          'CAD$'),
+    '/6E':      ('FX',          'EUR$'),
+    '/6J':      ('FX',          '$JPY'),
     '/CL':      ('Commodities', 'WTI'),
-    '/GC':      ('Commodities', 'Gold'),
-    '/BZ':      ('Commodities', 'Brent'),
-    '/HG':      ('Commodities', 'Copper'),
-    '/NG':      ('Commodities', 'Nat Gas'),
-    '/SI':      ('Commodities', 'Silver'),
+    '/GC':      ('Commodities', 'GOLD'),
+    '/BZ':      ('Commodities', 'BRENT'),
+    '/HG':      ('Commodities', 'COPR'),
+    '/NG':      ('Commodities', 'NGAS'),
+    '/SI':      ('Commodities', 'SLVR'),
     '/BTC':     ('Crypto',      'Bitcoin'),
     'MOVE:GIF': ('Rates',       'MOVE'),
     'DGS2:FRED':('Rates',       '2Y'),
@@ -298,7 +298,7 @@ _CATEGORY_ORDER = ['Rates', 'Commodities', 'ETFs', 'Sectors', 'Tech', 'Indexes',
 _RR_META_ALL: dict[str, tuple[str, str]] = {
     **_RR_META,
     'SPX':   ('Indexes', 'SPX'),
-    '$COMP': ('Indexes', 'Nasdaq'),
+    '$COMP': ('Indexes', 'NDAQ'),
     'RUT':   ('Indexes', 'Russell'),
     'VIX':   ('Risk',    'VIX'),
     '$DXY':  ('FX',      'DXY'),

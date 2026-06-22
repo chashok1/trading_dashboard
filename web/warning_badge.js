@@ -24,14 +24,16 @@
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        padding: 5px 10px;
+        padding: 1px 8px;
         border-radius: 4px;
         border: 1px solid #ccc;
         background: #f5f5f7;
         color: #555;
-        font-size: 12px;
+        font-size: 11px;
         cursor: pointer;
         font-weight: 500;
+        height: 20px;
+        box-sizing: border-box;
       }
       #warnBtn:hover { background: #e8e8ec; }
       #warnBtn.active-warning {

@@ -19,9 +19,8 @@
   const INVERTED = new Set(['HY', 'HYSPRD']);
 
   const LABEL_SHORT = {
-    'Shanghai': 'SSE',   'Nikkei': 'NIKK',  'HY Bond': 'HY',
-    'IG Bond':  'IG',    'Nasdaq':  'Ndaq',  'Dollar':  'USD',
-    'Nat Gas':  'Nat',   'Bitcoin': 'BTC',
+    'Shanghai': 'SSE',  'Nikkei': 'NIKK',  'HY Bond': 'HY',
+    'IG Bond':  'IG',   'Dollar': 'USD',    'Bitcoin': 'BTC',
   };
 
   // ---- formatting helpers -----------------------------------------------
@@ -44,9 +43,7 @@
 
   function fmtChgPct(chg_pct) {
     if (chg_pct === null || chg_pct === undefined) return '';
-    const n = Number(chg_pct);
-    const sign = n > 0 ? '+' : '';
-    return sign + n.toFixed(2) + '%';
+    return Math.abs(Number(chg_pct)).toFixed(2) + '%';
   }
 
   function dirClass(chg_pct, metric_key) {
@@ -246,9 +243,9 @@
     const range = h - l;
     if (range <= 0) return '';
 
-    // Fixed 7×20 px canvas — width=height attributes match viewBox so there is NO scaling.
+    // Fixed 7×14 px canvas — VH chosen to match the mt-chg button height (~14px).
     // shape-rendering="crispEdges" disables anti-aliasing on lines/rects for pixel-sharp output.
-    const VW = 7, VH = 20, PAD = 1;
+    const VW = 7, VH = 14, PAD = 1;
     const usable = VH - 2 * PAD;
     const toY = p => Math.round(PAD + usable * (1 - (p - l) / range));
 
@@ -280,10 +277,7 @@
     }
     const pct = Math.max(0, Math.min(1, (Number(cur) - Number(buy)) / (Number(sell) - Number(buy))));
     const w = Math.round(pct * 100);
-    return `<div class="rr-rb">` +
-      `<div class="rr-rb-fill" style="width:${w}%;"></div>` +
-      `<div class="rr-rb-tick" style="left:${w}%;"></div>` +
-      `</div>`;
+    return `<div class="rr-rb"><div class="rr-rb-tick" style="left:${w}%;"></div></div>`;
   }
 
   function volRangeBar(value, low, high) {
@@ -313,7 +307,7 @@
   function chipHtml(name, ol, pctStr, pctCls, buy, sell, cur, tipObj, stale, ohlc, volThresh) {
     const staleCls = stale ? ' mt-stale' : '';
     const pctBg = pctCls === 'mt-up' ? '#2f9e2f' : pctCls === 'mt-down' ? '#d83a3a' : '#888';
-    const pctBoxStyle = `background:${pctBg};color:#fff;padding:1px 5px;border-radius:3px;`;
+    const pctBoxStyle = `background:${pctBg};color:#fff;`;
     const zoneColor = volThresh
       ? (volThresh.zone === 'mt-up' ? '#2f9e2f' : volThresh.zone === 'mt-chop' ? '#eab308' : '#d83a3a')
       : null;
@@ -324,11 +318,13 @@
       ? volRangeBar(volThresh.value, volThresh.low, volThresh.high)
       : rangeBar(buy, sell, cur);
     return `<div class="rr-chip${staleCls}" data-sym="${escHtml(name)}"${dataTip} style="cursor:pointer;">` +
-      `<div class="rr-chip-top">` +
+      `<div class="rr-chip-body">` +
+      `<div class="rr-chip-sym-col">` +
       `<span class="rr-sym" style="color:${symColor};">${escHtml(name)}</span>` +
+      rb +
+      `</div>` +
       `<span class="mt-chg" style="${pctBoxStyle}">${pctStr}</span>` +
       `</div>` +
-      rb +
       candle +
       `</div>`;
   }
@@ -358,7 +354,7 @@
         const chgStr    = fmtChgPct(item.chg_pct);
         const arrow     = dirArrow(item.chg_pct);
         const valStr    = fmtValue(item.value, item.value_format);
-        const pctStr    = volThresh ? valStr : (chgStr ? arrow + chgStr : valStr);
+        const pctStr    = volThresh ? valStr : (chgStr || valStr);
         const chipLabel = LABEL_SHORT[item.label] || item.label || item.metric_key;
         const tipObj    = itemTipObj(item, chipLabel, valStr, chgStr, arrow, cls);
         const ohlc1     = (item.open != null && item.high != null && item.low != null)
@@ -396,7 +392,7 @@
         const cls    = dirClass(pct, null);
         const chgStr = volThresh
           ? (item.bar_price != null ? Number(item.bar_price).toFixed(2) : '—')
-          : (pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—');
+          : (pct != null ? Math.abs(pct).toFixed(2) + '%' : '—');
         const name   = LABEL_SHORT[item.label] || item.label || (item.symbol || '').replace(/^\//, '') || '?';
         const tipObj = rrItemTipObj(name, item, chgStr, cls, pct);
         const ohlc2  = (item.open != null && item.high != null && item.low != null && item.bar_price != null)

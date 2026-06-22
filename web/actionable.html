@@ -458,6 +458,9 @@
     .act-side.pinned { display: flex; position: fixed; top: 0; right: 0; bottom: 0; z-index: 100; background: var(--surface, #fafafa); box-shadow: -2px 0 8px rgba(0,0,0,0.07); }
     body:has(#actSidePanel.pinned) .act-main-col { padding-right: 264px; }
     body:has(#actSidePanel.pinned) .topbar { padding-right: 264px; }
+    body:has(#actSidePanel.pinned) #marketTape,
+    body:has(#actSidePanel.pinned) #rrTape,
+    body:has(#actSidePanel.pinned) #rrTape3 { padding-right: 264px; }
     /* Collapsible panels */
     .sp-panel .sp-hdr { cursor: pointer; user-select: none; display: flex; align-items: center; }
     .sp-panel .sp-hdr:hover { background: rgba(0,0,0,0.04); }
@@ -698,13 +701,13 @@
             <tr>
               <th style="width:28px;"><input type="checkbox" id="bulkSelectAll" title="Select all"></th>
               <th style="width:18px;" title="H = row is hidden by the default filter (hover cell for reason)">H</th>
-              <th class="num sortable" data-key="current_position_dollar" data-type="num" title="Current position $ held" style="width:58px;">Pos $</th>
+              <th class="num sortable" data-key="current_position_dollar" data-type="num" title="Current position $ held" style="width:58px;">POS$</th>
+              <th class="num sortable" data-key="_amt" data-type="num" style="width:58px;">AMT$</th>
               <th class="num sortable" data-key="pct_change" data-type="num" style="width:62px;">%chg / Price</th>
               <th class="sortable" data-key="tos_symbol" data-type="str" style="width:68px;">Symbol</th>
               <th class="sortable" data-key="_fc_strength" data-type="num" title="Final Call: reconciled action with confidence badge (drives ranking + default Act)" style="width:90px;">Final Call</th>
               <th class="sortable" data-key="macro_value" data-type="str" title="MACRO regime stance: MacroNet of sector+asset+style factors under current+next month/quarter quads → SA/STM/HOLD/BS/BM. Hover for breakdown." style="width:64px;">MACRO</th>
               <th class="sortable" data-key="fc_strength_cal" data-type="num" title="Final Call (cal): calibrated call from bull_prob probability bands. Evaluation-only — compare vs Final Call to assess the model. NULL when no active model." style="width:90px;">FC (cal)</th>
-              <th class="num sortable" data-key="_amt" data-type="num" style="width:58px;">AMT$</th>
               <th class="sortable" data-key="consolidated_action" data-type="str" data-label="Sources" title="Consolidated from RR/CALL/ETF/II/SSS/PS (most-aggressive-wins), then sized to your min/max/holdings." style="width:41px;">Sources</th>
               <th class="sortable" data-key="rr_action" data-type="str" data-label="Technical" title="Trend-vs-Trade crossover + Bollinger range streak + Risk-Range position." style="width:200px;">Technical</th>
               <th class="num sortable" data-key="rvol" data-type="num" title="Relative Volume (today÷10d avg). Hollow = below avg; solid gray = ~avg; amber/green = above avg. Caret = vs yesterday." style="width:36px;">Vlm</th>
@@ -752,9 +755,9 @@
           </div>
         </section>
 
-        <section class="card sp-panel">
-          <div class="panel-bar sp-hdr" data-panel="econIndicators">
-            <span class="panel-title">Econ Indicators</span>
+        <section class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="econIndicators">
+            Econ Indicators
             <span class="sp-chevron">▾</span>
           </div>
           <div class="sp-body">
@@ -767,9 +770,9 @@
             </div>
           </div>
         </section>
-        <section class="card sp-panel">
-          <div class="panel-bar sp-hdr" data-panel="earningsEvents">
-            <span class="panel-title">Earnings / Events</span>
+        <section class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="earningsEvents">
+            Earnings / Events
             <span class="sp-chevron">▾</span>
           </div>
           <div class="sp-body">

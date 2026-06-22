@@ -966,9 +966,9 @@ function renderSymTape() {
 
   track.innerHTML = batch.map(r => {
     const pct    = r.pct_change != null ? Number(r.pct_change) : null;
-    const pctStr = pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—';
+    const pctStr = pct != null ? Math.abs(pct).toFixed(2) + '%' : '—';
     const pctBg  = pct == null ? null : pct > 0.001 ? '#2f9e2f' : pct < -0.001 ? '#d83a3a' : '#888';
-    const pctBoxStyle = pctBg ? `background:${pctBg};color:#fff;padding:1px 5px;border-radius:3px;` : 'color:#94a3b8;';
+    const pctBoxStyle = pctBg ? `background:${pctBg};color:#fff;` : 'color:#94a3b8;';
     const bg     = _symTapeBg(r);
     const action = r.consolidated_action || '';
     const fmt2   = v => v != null ? Number(v).toFixed(2) : '—';
@@ -981,8 +981,7 @@ function renderSymTape() {
                  : r.ma_pct_brr   != null ? Number(r.ma_pct_brr) : null;
     const rbW    = pctBrr != null ? Math.round(Math.max(0, Math.min(100, pctBrr))) : null;
     const rbHtml = rbW != null
-      ? `<div class="rr-rb"><div class="rr-rb-fill" style="width:${rbW}%;"></div>` +
-        `<div class="rr-rb-tick" style="left:${rbW}%;"></div></div>`
+      ? `<div class="rr-rb"><div class="rr-rb-tick" style="left:${rbW}%;"></div></div>`
       : `<div class="rr-rb"></div>`;
 
     // Action icon (glyph via actions.js) and IV bar glyph (TASK 62)
@@ -998,23 +997,25 @@ function renderSymTape() {
       : '';
     const rvolHtml = typeof rvolDot === 'function'
       ? rvolDot(r.rvol, r.rvol_prior, { size: 16 }) : '';
-    const metaHtml = (actGlyph || rvolHtml || ivGlyphHtml)
+    const candle = window.mtTip?.candleSvg(r.open_price, r.high_price, r.low_price, r.last_price) || '';
+    const metaHtml = (actGlyph || rvolHtml || ivGlyphHtml || candle)
       ? `<div class="sym-tile-meta">` +
-        (actGlyph  ? `<span class="sym-act-lbl" style="color:${actColor};font-family:ui-monospace,monospace;">${actGlyph}</span>` : '') +
-        (rvolHtml  ? `<span class="sym-rvol" data-volpop data-sym="${escapeHtml(r.tos_symbol)}" style="cursor:default;">${rvolHtml}</span>` : '') +
+        (actGlyph    ? `<span class="sym-act-lbl" style="color:${actColor};font-family:ui-monospace,monospace;">${actGlyph}</span>` : '') +
+        (rvolHtml    ? `<span class="sym-rvol" data-volpop data-sym="${escapeHtml(r.tos_symbol)}" style="cursor:default;">${rvolHtml}</span>` : '') +
         (ivGlyphHtml ? `<span class="sym-iv" data-ivpop data-sym="${escapeHtml(r.tos_symbol)}" style="cursor:default;">${ivGlyphHtml}</span>` : '') +
+        candle +
         `</div>`
       : '';
 
-    const candle = window.mtTip?.candleSvg(r.open_price, r.high_price, r.low_price, r.last_price) || '';
     return `<div class="rr-chip" data-sym="${escapeHtml(r.tos_symbol)}">` +
-      `<div class="rr-chip-top">` +
+      `<div class="rr-chip-body">` +
+      `<div class="rr-chip-sym-col">` +
       `<span class="rr-sym" style="color:${bg};">${escapeHtml(r.tos_symbol)}</span>` +
+      rbHtml +
+      `</div>` +
       `<span class="mt-chg" style="${pctBoxStyle}">${pctStr}</span>` +
       `</div>` +
-      rbHtml +
       metaHtml +
-      candle +
       `</div>`;
   }).join('');
 
@@ -2506,6 +2507,10 @@ function renderGrid() {
       <td class="num" style="font-size:10px;color:#f59e0b;font-weight:700;text-align:center;">${_hReason ? `<span title="${escapeHtml(_hReason)}">Y</span>` : ''}</td>
       <td class="num" style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="Held in: ${escapeHtml(r.held_accounts)}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}</td>
       <td class="num">
+        <span class="amt-primary">${fmtUsd(r._amt)}</span>
+        ${r.stop_level != null ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;" title="Stop / exit-below level (task 8)">stop ${fmtUsd(r.stop_level)}</div>` : ''}
+      </td>
+      <td class="num">
         <span class="${pctCls}" style="font-weight:700;">${pctStr}${intradayTag}</span>
         ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
       </td>
@@ -2515,10 +2520,6 @@ function renderGrid() {
       <td style="padding:6px 4px;">${fcHtml}</td>
       <td style="padding:4px 6px; text-align:center;">${macroCellHtml(r)}</td>
       <td style="padding:6px 4px;">${_finalCallCalHtml(r)}</td>
-      <td class="num">
-        <span class="amt-primary">${fmtUsd(r._amt)}</span>
-        ${r.stop_level != null ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;" title="Stop / exit-below level (task 8)">stop ${fmtUsd(r.stop_level)}</div>` : ''}
-      </td>
       <td class="act-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:help;">
         <div style="display:flex;align-items:flex-start;gap:8px;">
           <div style="width:38px;flex-shrink:0;align-self:center;text-align:center;">
@@ -2705,7 +2706,7 @@ function exportCsv() {
     ['Real Asset Class', r => r.real_asset_class || ''],
     ['MACRO',          r => r.macro_value ? (r.macro_value + (r.macro_turn ? ' ' + r.macro_turn : '')) : ''],
     // kept in CSV even though removed from table
-    ['Pos $',         r => r.current_position_dollar],
+    ['POS$',          r => r.current_position_dollar],
     ['Price',         r => r.last_price],
     ['Change $',      r => r.net_chng],
     ['As Of',         r => fmtAsOfExport(r.export_date, r.export_time, r.loaded_at)],

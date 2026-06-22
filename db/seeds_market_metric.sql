@@ -10,8 +10,8 @@ INSERT INTO ref_market_metric
     (metric_key, label, grp, source_priority, value_format, sort_order, enabled)
 VALUES
     ('SPX',   'S&P',        'index',  '["tos:SPX","fred:SP500"]'::JSONB,       'index', 10,  TRUE),
-    ('COMP',  'Nasdaq',     'index',  '["tos:$COMP","fred:NASDAQCOM"]'::JSONB,  'index', 20,  TRUE),
-    ('DJI',   'Dow',        'index',  '["tos:$DJI","fred:DJIA"]'::JSONB,        'index', 30,  TRUE),
+    ('COMP',  'NDAQ',       'index',  '["tos:$COMP","fred:NASDAQCOM"]'::JSONB,  'index', 20,  TRUE),
+    ('DJI',   'DOW',        'index',  '["tos:$DJI","fred:DJIA"]'::JSONB,        'index', 30,  TRUE),
     ('RUT',   'RUT',        'index',  '["tos:RUT"]'::JSONB,                     'index', 40,  TRUE),
     ('VIX',   'VIX',        'risk',   '["tos:VIX","fred:VIXCLS"]'::JSONB,       'level', 50,  TRUE),
     ('VXN',   'VXN',        'risk',   '["tos:VXN:CGI"]'::JSONB,                 'level', 55,  TRUE),
@@ -21,9 +21,9 @@ VALUES
     ('MOVE',  'MOVE',       'rates',  '["tos:MOVE:GIF"]'::JSONB,                'level', 65,  TRUE),
     ('T2S10', '2s10s',      'rates',  '["fred:T10Y2Y"]'::JSONB,                 'pct',   70,  FALSE),
     ('DXY',   'Dollar',     'fx',     '["tos:$DXY","fred:DTWEXBGS"]'::JSONB,    'index', 80,  TRUE),
-    ('WTI',   'Crude',      'cmdty',  '["tos:/CL","fred:DCOILWTICO"]'::JSONB,   'price', 90,  TRUE),
+    ('WTI',   'CRUDE',      'cmdty',  '["tos:/CL","fred:DCOILWTICO"]'::JSONB,   'price', 90,  TRUE),
     ('OVX',   'OVX',        'risk',   '["tos:OVX:CGI"]'::JSONB,                 'level', 92,  TRUE),
-    ('GC',    'Gold',       'cmdty',  '["tos:/GC"]'::JSONB,                     'price', 94,  TRUE),
+    ('GC',    'GOLD',       'cmdty',  '["tos:/GC"]'::JSONB,                     'price', 94,  TRUE),
     ('GVZ',   'GVZ',        'risk',   '["tos:GVZ:CGI"]'::JSONB,                 'level', 96,  TRUE),
     ('HY',    'HY spread',  'credit', '["fred:BAMLH0A0HYM2"]'::JSONB,           'pct',   100, FALSE)
 ON CONFLICT (metric_key) DO UPDATE SET
