@@ -1758,6 +1758,15 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .msr-loading { font-size: 10px; color: #a8a29e; padding: 8px; }
 .msr-err     { font-size: 10px; color: #991b1b; padding: 6px 8px; }
 
+/* Sidebar Econ/Earnings panels — match Macro panel font scale */
+.act-side .panel-bar { margin-bottom: 0; }
+.act-side .panel-title {
+  font-size: 9px; letter-spacing: 0.5px; margin: 0; padding: 0; border: none;
+}
+.act-side .mini-grid { font-size: 10px; }
+.act-side .mini-grid th { font-size: 9px; padding: 2px 5px; }
+.act-side .mini-grid td { padding: 2px 5px; }
+
 /* ── TASK_86: Regime band — Bull/Bear factor pills ────────────────────────── */
 .qf-group    { display: inline-flex; align-items: center; gap: 4px; }
 .qf-label    { font-size: 9px; font-weight: 700; text-transform: uppercase;

@@ -57,6 +57,11 @@ function fmtDate(d) {
   if (!d) return '—';
   return d.toString().slice(0, 10);
 }
+function fmtDateMD(d) {
+  if (!d) return '—';
+  const s = d.toString().slice(0, 10); // YYYY-MM-DD
+  return s.slice(5, 7) + '/' + s.slice(8, 10);
+}
 
 // ---------- Side panel helpers + MACRO band (TASK_74) ----------
 
@@ -459,7 +464,7 @@ async function loadSideEarnings() {
     empty.hidden = true;
     for (const r of rows) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td class="text">${r.category||''}</td><td>${fmtDate(r.event_date)}</td><td class="num">${r.days_until!=null?r.days_until+'d':''}</td>`;
+      tr.innerHTML = `<td class="text">${r.category||''}</td><td>${fmtDateMD(r.event_date)}</td><td class="num">${r.days_until!=null?r.days_until+'d':''}</td>`;
       tbody.appendChild(tr);
     }
   } catch(e) { console.error('Side earnings:', e); empty.hidden = false; }
