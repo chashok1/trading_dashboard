@@ -207,6 +207,151 @@ def get_dashboard_earnings(
     return [dict(r) for r in rows]
 
 
+@router.get("/api/quad/band-factors")
+def get_quad_band_factors(
+    date: Optional[str] = Query(None, description="As-of date (defaults to today)"),
+):
+    """
+    Bull/Bear factor pills for the regime band (TASK_86).
+
+    Returns monthly-weighted stance (bull/bear) for each style/sector factor
+    from ref_quad_outlook, plus per-period outlooks for tooltip display.
+
+    Response shape:
+      { "bull": [{"factor":"Cyclical","qtr":"bull"}, ...],
+        "bear": [...],
+        "quads": {"cur_month":"Quad 2","next_month":"Quad 3","cur_qtr":"Quad 2"},
+        "factors": [{"category":"sector","factor":"Info Tech",
+                     "cur_month":"Bullish","next_month":"Bearish","cur_qtr":"Bullish"}, ...] }
+
+    Resilient: returns empty lists when no monthly/quarterly period exists.
+    SQL per statement <= 965 bytes.
+    """
+    d = datetime.strptime(date, "%Y-%m-%d").date() if date else datetime.now().date()
+    STANCE = {"Bullish": 1, "Neutral": 0, "Bearish": -1}
+    QUAD_LABELS = ["Quad 1", "Quad 2", "Quad 3", "Quad 4"]
+
+    def _argmax_quad(pcts_list):
+        vals = [float(v or 0) for v in pcts_list]
+        return QUAD_LABELS[vals.index(max(vals))] if any(vals) else None
+
+    def _eff_quad(row):
+        if not row:
+            return None
+        q = _argmax_quad([row.get(f"quad{i+1}_pct", 0) for i in range(4)])
+        return q or row.get("quad")
+
+    def _quad_col(qname):
+        if not qname:
+            return None
+        for n in "1234":
+            if n in qname:
+                return f"quad{n}"
+        return None
+
+    with session_scope() as s:
+        # 1. Active monthly period — quad distribution pcts
+        mo = s.execute(text(
+            "SELECT quad1_pct,quad2_pct,quad3_pct,quad4_pct,quad"
+            " FROM ref_quad_periods"
+            " WHERE period_type='monthly' AND :d>=start_date"
+            " AND (:d<=end_date OR end_date IS NULL)"
+            " ORDER BY start_date DESC LIMIT 1"
+        ), {"d": d}).mappings().first()
+
+        # 2. Next monthly period
+        nm = s.execute(text(
+            "SELECT quad1_pct,quad2_pct,quad3_pct,quad4_pct,quad"
+            " FROM ref_quad_periods WHERE period_type='monthly'"
+            " AND start_date>(SELECT COALESCE(end_date,start_date)"
+            " FROM ref_quad_periods WHERE period_type='monthly'"
+            " AND :d>=start_date AND (:d<=end_date OR end_date IS NULL)"
+            " ORDER BY start_date DESC LIMIT 1)"
+            " ORDER BY start_date ASC LIMIT 1"
+        ), {"d": d}).mappings().first()
+
+        # 3. Active quarterly period — single quad label
+        qtr_row = s.execute(text(
+            "SELECT quad FROM ref_quad_periods"
+            " WHERE period_type='quarterly' AND :d>=start_date"
+            " AND (:d<=end_date OR end_date IS NULL)"
+            " ORDER BY start_date DESC LIMIT 1"
+        ), {"d": d}).mappings().first()
+
+        # 3b. Next quarterly period
+        nq_row = s.execute(text(
+            "SELECT quad FROM ref_quad_periods"
+            " WHERE period_type='quarterly'"
+            " AND start_date>(SELECT COALESCE(end_date,start_date)"
+            " FROM ref_quad_periods WHERE period_type='quarterly'"
+            " AND :d>=start_date AND (:d<=end_date OR end_date IS NULL)"
+            " ORDER BY start_date DESC LIMIT 1)"
+            " ORDER BY start_date ASC LIMIT 1"
+        ), {"d": d}).mappings().first()
+
+        # 4. Style/sector factors with category
+        factors = s.execute(text(
+            "SELECT category,sub_category,quad1,quad2,quad3,quad4"
+            " FROM ref_quad_outlook"
+            " WHERE category IN ('Equity Sectors','Equity Style')"
+            " ORDER BY category,sub_category"
+        )).mappings().all()
+
+    if not mo or not factors:
+        return {"bull": [], "bear": [], "quads": {}, "factors": []}
+
+    pcts = [float(mo[f"quad{i+1}_pct"] or 0) / 100.0 for i in range(4)]
+
+    cur_month_q = _eff_quad(mo)
+    nxt_month_q = _eff_quad(nm)
+    qtr_quad = (qtr_row["quad"] if qtr_row else None) or ""
+    nxt_qtr_quad = (nq_row["quad"] if nq_row else None) or ""
+
+    cur_col = _quad_col(cur_month_q)
+    nxt_col = _quad_col(nxt_month_q)
+    qtr_col = _quad_col(qtr_quad)
+    nxt_qtr_col = _quad_col(nxt_qtr_quad)
+
+    qtr_col_idx = None
+    if "1" in qtr_quad: qtr_col_idx = 0
+    elif "2" in qtr_quad: qtr_col_idx = 1
+    elif "3" in qtr_quad: qtr_col_idx = 2
+    elif "4" in qtr_quad: qtr_col_idx = 3
+
+    bull_list, bear_list, factor_list = [], [], []
+    for row in factors:
+        cols = [row["quad1"], row["quad2"], row["quad3"], row["quad4"]]
+        _st = lambda v: STANCE.get((v or "").strip().capitalize(), 0)
+        monthly_score = sum(pcts[i] * _st(cols[i]) for i in range(4))
+
+        if monthly_score != 0:
+            qtr_stance = _st(cols[qtr_col_idx]) if qtr_col_idx is not None else 0
+            qtr_dir = "bull" if qtr_stance > 0 else "bear" if qtr_stance < 0 else "neutral"
+            entry = {"factor": row["sub_category"], "qtr": qtr_dir}
+            (bull_list if monthly_score > 0 else bear_list).append(entry)
+
+        factor_list.append({
+            "category": row["category"],
+            "factor": row["sub_category"],
+            "cur_month": row[cur_col] if cur_col else None,
+            "next_month": row[nxt_col] if nxt_col else None,
+            "cur_qtr": row[qtr_col] if qtr_col else None,
+            "next_qtr": row[nxt_qtr_col] if nxt_qtr_col else None,
+        })
+
+    return {
+        "bull": bull_list,
+        "bear": bear_list,
+        "quads": {
+            "cur_month": cur_month_q,
+            "next_month": nxt_month_q,
+            "cur_qtr": qtr_quad or None,
+            "next_qtr": nxt_qtr_quad or None,
+        },
+        "factors": factor_list,
+    }
+
+
 @router.get("/api/dashboard/quads")
 def get_dashboard_quads(
     date: Optional[str] = Query(None, description="As-of date (defaults to today)"),

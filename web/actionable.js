@@ -22,6 +22,9 @@ const state = {
   sourceMethods: {},   // source_code -> base_weight_method (Metric-column sort)
   buysellSeq: {},      // buysell code -> seq from ref_param_lookup (priority sort)
   agreementScorecard: null, // TASK_69: {agreement_class -> avg_fwd_20d} cache
+  quadFactors: null,        // cached from /api/quad/band-factors for MACRO tooltip
+  quadData: null,           // cached from /api/dashboard/quads (period dates for dtb)
+  allAccounts: [],          // all account names from /api/actionable/accounts
   // Pass 2: top-N collapse
   showAll: false,
   TOP_N: 15,
@@ -262,34 +265,77 @@ function _buildMacroPopHtml(r) {
     h += `<tr><td class="k">Monthly signal (M)</td><td class="v" style="color:${_sigColor(mVal)};font-weight:700;">${mVal > 0 ? '+' : ''}${mVal}</td></tr>`;
   }
 
-  // Category drivers
+  // Category Drivers — three separate sections with per-period outlook + score
   const mems = det.memberships || [];
-  if (mems.length) {
-    h += `<tr><td class="sp-sec" colspan="2">Category Drivers</td></tr>`;
-    for (const m of mems) {
-      const st = m.stance > 0 ? '▲ +1' : m.stance < 0 ? '▼ −1' : '→ 0';
-      const stColor = m.stance > 0 ? '#16a34a' : m.stance < 0 ? '#dc2626' : '#9ca3af';
-      const olColor = _outlookColor(m.outlook);
-      const cat = m.category ? `${escapeHtml(m.category)} / ${escapeHtml(m.sub_cat || m.label || '')}` : escapeHtml(m.label || '');
-      h += `<tr><td class="k" style="font-size:9px;max-width:140px;white-space:normal;word-break:break-word;">${cat}</td>`
-         + `<td class="v" style="font-size:9px;white-space:nowrap;"><span style="color:${stColor}">${st}</span>`
-         + ` · <span style="color:${olColor};font-weight:600;">${escapeHtml(m.outlook || '—')}</span>`
-         + ` <span style="color:#94a3b8;">(×${m.weight})</span></td></tr>`;
-    }
-  }
-
-  // Quarter
   const qtr = det.quarter || {};
-  if (qtr.now) {
-    h += `<tr><td class="sp-sec" colspan="2">Qtr (fixed anchor)</td></tr>`;
-    h += `<tr><td class="k">Current</td><td class="v">${_coloredQuad(qtr.now)}</td></tr>`;
-    if (qtr.dtb != null) h += `<tr><td class="k">Days to end</td><td class="v">${qtr.dtb}d</td></tr>`;
-    if (qtr.Qtr != null) {
-      const qVal = Number(qtr.Qtr);
-      h += `<tr><td class="k">Qtr signal</td><td class="v" style="color:${_sigColor(qVal)};font-weight:700;">${qVal > 0 ? '+' : ''}${qVal}</td></tr>`;
+  if (mems.length) {
+    const _qfMap = {};
+    if (state.quadFactors && state.quadFactors.factors) {
+      for (const f of state.quadFactors.factors)
+        _qfMap[`${f.category}|${(f.factor || '').toLowerCase()}`] = f;
     }
-    if (qtr.next && qtr.turn_alert)
-      h += `<tr><td colspan="2" style="font-size:9px;color:#f97316;">→ ${_coloredQuad(qtr.next)} next (near-end alert)</td></tr>`;
+    const _qds = (state.quadFactors || {}).quads || {};
+
+    // Days-to-end for next monthly period from cached quads response
+    const _qMonths = (state.quadData || {}).months || [];
+    const _asOf = (state.quadData || {}).as_of_date;
+    const _nxtMoDtb = (() => {
+      const p = _qMonths[1];
+      if (!p || !p.end_date || !_asOf) return null;
+      return Math.max(0, Math.round((new Date(p.end_date) - new Date(_asOf)) / 864e5));
+    })();
+
+    const _stOf = v => { const u = (v || '').toUpperCase(); return u === 'BULLISH' ? 1 : u === 'BEARISH' ? -1 : 0; };
+    const _ocOf = v => { const u = (v || '').toUpperCase(); return u === 'BULLISH' ? '#1c6c30' : u === 'BEARISH' ? '#8c1d1d' : u ? '#5b4900' : '#9ca3af'; };
+    const _olLbl = v => { if (!v) return '—'; const u = v.toUpperCase(); return u === 'BULLISH' ? 'Bullish' : u === 'BEARISH' ? 'Bearish' : v; };
+
+    const _periodSection = (title, quad, qfKey, dtbText, extraRows) => {
+      let score = 0;
+      const qLabel = quad ? ` <span style="color:${_quadColor(quad)};font-size:9px;font-weight:400;">${escapeHtml(quad)}</span>` : '';
+      const dtbLabel = dtbText ? ` <span style="color:#94a3b8;font-size:9px;font-weight:400;">${escapeHtml(dtbText)}</span>` : '';
+      h += `<tr><td class="sp-sec" colspan="2">${escapeHtml(title)}${qLabel}${dtbLabel}</td></tr>`;
+      for (const m of mems) {
+        const qf = _qfMap[`${m.category}|${(m.sub_cat || m.label || '').toLowerCase()}`];
+        const ol = qf ? qf[qfKey] : (qfKey === 'cur_month' ? m.outlook : null);
+        const st = _stOf(ol);
+        score += st * (m.weight || 1);
+        const stSym = st > 0 ? '▲' : st < 0 ? '▼' : '→';
+        const stColor = st > 0 ? '#16a34a' : st < 0 ? '#dc2626' : '#9ca3af';
+        const cat = m.category
+          ? `${escapeHtml(m.category)} / ${escapeHtml(m.sub_cat || m.label || '')}`
+          : escapeHtml(m.label || '');
+        h += `<tr><td class="k" style="font-size:9px;max-width:140px;white-space:normal;word-break:break-word;">${cat}</td>`
+           + `<td class="v" style="font-size:9px;white-space:nowrap;">`
+           + `<span style="color:${stColor}">${stSym}</span> `
+           + `<span style="color:${_ocOf(ol)};font-weight:600;">${escapeHtml(_olLbl(ol))}</span>`
+           + ` <span style="color:#94a3b8;">(×${m.weight})</span></td></tr>`;
+      }
+      if (extraRows) h += extraRows;
+      const scColor = score > 0 ? '#16a34a' : score < 0 ? '#dc2626' : '#9ca3af';
+      h += `<tr><td class="k" style="font-size:9px;color:#475569;">Score</td>`
+         + `<td class="v" style="color:${scColor};font-weight:700;font-size:11px;">${score > 0 ? '+' : ''}${score.toFixed(1)}</td></tr>`;
+    };
+
+    // Quarter extra rows: Qtr signal + next quarter alert
+    const _qtrExtra = (() => {
+      let x = '';
+      if (qtr.Qtr != null) {
+        const qv = Number(qtr.Qtr);
+        x += `<tr><td class="k" style="font-size:9px;color:#475569;">Qtr signal</td>`
+           + `<td class="v" style="color:${_sigColor(qv)};font-weight:700;">${qv > 0 ? '+' : ''}${qv}</td></tr>`;
+      }
+      if (qtr.next) {
+        const nc = qtr.turn_alert ? '#f97316' : '#94a3b8';
+        const ns = qtr.turn_alert ? ' <span style="color:#f97316;">(near-end!)</span>' : '';
+        x += `<tr><td class="k" style="font-size:9px;color:#475569;">Next quarter</td>`
+           + `<td class="v" style="color:${nc};">${_coloredQuad(qtr.next)}${ns}</td></tr>`;
+      }
+      return x;
+    })();
+
+    _periodSection('Current Month', _qds.cur_month, 'cur_month', moNow.dtb != null ? `(${moNow.dtb}d left)` : null);
+    _periodSection('Next Month',    _qds.next_month, 'next_month', moNow.dtb != null ? `(in ${moNow.dtb}d)` : null);
+    _periodSection('Quarter',       _qds.cur_qtr,    'cur_qtr',    qtr.dtb != null ? `(${qtr.dtb}d left)` : null, _qtrExtra);
   }
 
   // MacroNet formula
@@ -308,6 +354,64 @@ function _buildMacroPopHtml(r) {
   }
   if (turn) h += `<tr><td class="k">Turn signal</td><td class="v" style="color:#f97316;font-weight:700;">${escapeHtml(turn)}</td></tr>`;
 
+  h += '</table>';
+  return h;
+}
+
+// Rich popover for regime-band quad labels (data-quadbandpop="all_periods|cur_month|next_month|cur_qtr|next_qtr")
+function _buildQuadBandPopHtml(key) {
+  const facs  = (state.quadFactors || {}).factors || [];
+  const quads = (state.quadFactors || {}).quads   || {};
+
+  // ── "Month" label: comparison table across all 3 periods ──────────────────
+  if (key === 'all_periods') {
+    const _oc = v => { const u=(v||'').toUpperCase(); return u==='BULLISH'?'#1c6c30':u==='BEARISH'?'#8c1d1d':'#9ca3af'; };
+    const _ol = v => { if (!v) return '—'; const u=v.toUpperCase(); return u==='BULLISH'?'Bullish':u==='BEARISH'?'Bearish':v; };
+    const bull = facs.filter(f => (f.cur_month||'').toUpperCase()==='BULLISH');
+    const bear = facs.filter(f => (f.cur_month||'').toUpperCase()==='BEARISH');
+    const neut = facs.filter(f => { const u=(f.cur_month||'').toUpperCase(); return u!=='BULLISH'&&u!=='BEARISH'; });
+    const _vcol = 'padding-left:12px;min-width:58px;';
+    const _row = f =>
+      `<tr><td class="k">${escapeHtml(f.factor)}</td>`
+      + `<td class="v" style="${_vcol}color:${_oc(f.cur_month)};font-size:10px;font-weight:600;">${_ol(f.cur_month)}</td>`
+      + `<td class="v" style="${_vcol}color:${_oc(f.next_month)};font-size:10px;font-weight:600;">${_ol(f.next_month)}</td>`
+      + `<td class="v" style="${_vcol}color:${_oc(f.cur_qtr)};font-size:10px;font-weight:600;">${_ol(f.cur_qtr)}</td>`
+      + `</tr>`;
+    const _hdr = `<tr style="border-bottom:1px solid #e2e8f0;">`
+      + `<td class="k" style="color:#94a3b8;font-size:9px;padding-bottom:3px;">Factor</td>`
+      + `<td class="v" style="${_vcol}color:#94a3b8;font-size:9px;white-space:nowrap;padding-bottom:3px;">Cur Month</td>`
+      + `<td class="v" style="${_vcol}color:#94a3b8;font-size:9px;white-space:nowrap;padding-bottom:3px;">Next Month</td>`
+      + `<td class="v" style="${_vcol}color:#94a3b8;font-size:9px;white-space:nowrap;padding-bottom:3px;">Quarter</td>`
+      + `</tr>`;
+    let h = `<div class="sp-title">Monthly Outlook</div><table>${_hdr}`;
+    const sections = [
+      [bull, `<tr><td class="sp-sec" colspan="4" style="color:#1c6c30;">↑ Bull — Current Month</td></tr>`],
+      [bear, `<tr><td class="sp-sec" colspan="4" style="color:#8c1d1d;">↓ Bear — Current Month</td></tr>`],
+      [neut, neut.length ? `<tr><td class="sp-sec" colspan="4" style="color:#9ca3af;">Neutral</td></tr>` : ''],
+    ];
+    for (const [items, hdr] of sections) { if (items.length) { h += hdr; items.forEach(f => { h += _row(f); }); } }
+    return h + '</table>';
+  }
+
+  const quad  = quads[key] || '—';
+  const periodLabel = { cur_month: 'Current Month', next_month: 'Next Month', cur_qtr: 'Current Quarter', next_qtr: 'Next Quarter' }[key] || key;
+  const bull = facs.filter(f => (f[key] || '').toUpperCase() === 'BULLISH');
+  const bear = facs.filter(f => (f[key] || '').toUpperCase() === 'BEARISH');
+  let h = `<div class="sp-title" style="color:${_quadColor(quad)}">${escapeHtml(quad)}</div>`;
+  h += `<div style="color:#94a3b8;font-size:9px;margin-bottom:4px;padding:0 6px;">${periodLabel}</div>`;
+  h += '<table>';
+  if (bull.length) {
+    h += `<tr><td class="sp-sec" colspan="2" style="color:#1c6c30;">↑ Bull Factors</td></tr>`;
+    for (const f of bull)
+      h += `<tr><td class="k">${escapeHtml(f.factor)}</td><td class="v" style="color:#1c6c30;font-weight:600;font-size:10px;">Bullish</td></tr>`;
+  }
+  if (bear.length) {
+    h += `<tr><td class="sp-sec" colspan="2" style="color:#8c1d1d;">↓ Bear Factors</td></tr>`;
+    for (const f of bear)
+      h += `<tr><td class="k">${escapeHtml(f.factor)}</td><td class="v" style="color:#8c1d1d;font-weight:600;font-size:10px;">Bearish</td></tr>`;
+  }
+  if (!bull.length && !bear.length)
+    h += `<tr><td class="k" colspan="2" style="color:#9ca3af;">No factor data</td></tr>`;
   h += '</table>';
   return h;
 }
@@ -344,51 +448,6 @@ function _quadColor(q) {
   return '#9ca3af';
 }
 
-// ── TASK_86: Render Bull/Bear factor pills on the regime band ────────────────
-// Trims to MAX_PILLS per group inline; full list shown in title tooltip.
-const _MAX_BAND_PILLS = 5;
-function _renderBandFactors(data) {
-  const el = $('macroBandFactors');
-  if (!el) return;
-  const bull = data.bull || [], bear = data.bear || [];
-  if (!bull.length && !bear.length) { el.innerHTML = ''; return; }
-
-  const _arrow = dir => {
-    if (dir === 'bull') return '<span class="qf-arrow-bull">↑</span>';
-    if (dir === 'bear') return '<span class="qf-arrow-bear">↓</span>';
-    return '<span class="qf-arrow-neutral">→</span>';
-  };
-  const _pillsHtml = (items, pillCls) => {
-    const visible = items.slice(0, _MAX_BAND_PILLS);
-    const hidden  = items.slice(_MAX_BAND_PILLS);
-    let h = visible.map(f =>
-      `<span class="qf-pill ${pillCls}" title="${escapeHtml(f.factor)}">`
-      + `${escapeHtml(f.factor)} ${_arrow(f.qtr)}</span>`
-    ).join('');
-    if (hidden.length) {
-      const allNames = items.map(f => f.factor).join(', ');
-      h += `<span class="qf-pill ${pillCls}" title="${escapeHtml(allNames)}" style="opacity:0.65;">+${hidden.length}…</span>`;
-    }
-    return h;
-  };
-
-  let h = '';
-  if (bull.length) {
-    const allBull = bull.map(f => f.factor).join(', ');
-    h += `<span class="qf-group" title="Monthly Bull factors: ${escapeHtml(allBull)}">`
-       + `<span class="qf-label qf-label-bull">Bull</span>`
-       + _pillsHtml(bull, 'qf-pill-bull')
-       + '</span>';
-  }
-  if (bear.length) {
-    const allBear = bear.map(f => f.factor).join(', ');
-    h += `<span class="qf-group" title="Monthly Bear factors: ${escapeHtml(allBear)}">`
-       + `<span class="qf-label qf-label-bear">Bear</span>`
-       + _pillsHtml(bear, 'qf-pill-bear')
-       + '</span>';
-  }
-  el.innerHTML = h;
-}
 
 async function loadMacroBand() {
   const band = $('macroBand');
@@ -404,41 +463,63 @@ async function loadMacroBand() {
     const cm = months[0], nm = months[1];
     const elM = $('macroBandMonth'), elQ = $('macroBandQtr'), elF = $('macroBandFavoring');
     if (!elM) return;
-    // Month span — use distribution argmax; fallback to declared quad
+
+    // Inline distribution bar from period quad pcts
+    const _distBar = p => {
+      if (!p) return '';
+      const segs = [
+        {q:'Quad 1',pct:p.quad1_pct||0},{q:'Quad 2',pct:p.quad2_pct||0},
+        {q:'Quad 3',pct:p.quad3_pct||0},{q:'Quad 4',pct:p.quad4_pct||0},
+      ].filter(s=>s.pct>0);
+      if (!segs.length) return '';
+      const bars = segs.map(s=>`<div style="width:${s.pct}%;background:${_quadColor(s.q)};height:100%;" title="${escapeHtml(s.q)} ${s.pct}%"></div>`).join('');
+      return `<span style="display:inline-flex;width:60px;height:5px;border-radius:2px;overflow:hidden;border:1px solid #e2e8f0;vertical-align:middle;margin-left:3px;">${bars}</span>`;
+    };
+
+    // Month span — data-quadbandpop triggers rich popover
     const mCur = _effectiveQuad(cm) || '—';
     const mNxt = _effectiveQuad(nm);
     const mDtb = cm?.end_date ? Math.max(0, Math.round((new Date(cm.end_date) - new Date(data.as_of_date)) / 864e5)) : null;
-    elM.innerHTML = `<span style="color:#64748b;font-size:10px;">Month</span> `
-      + `<strong style="color:${_quadColor(mCur)}">${escapeHtml(mCur)}</strong>`
+    elM.innerHTML = `<span style="color:#64748b;font-size:10px;cursor:help;text-decoration:underline dotted;" data-quadbandpop="all_periods">Month</span> `
+      + `<strong style="color:${_quadColor(mCur)};cursor:help;" data-quadbandpop="cur_month">${escapeHtml(mCur)}</strong>`
+      + _distBar(cm)
       + (mDtb != null ? ` <span style="color:#94a3b8;font-size:10px;">(${mDtb}d left)</span>` : '')
-      + (mNxt ? ` → <strong style="color:${_quadColor(mNxt)};opacity:0.7;">${escapeHtml(mNxt)}</strong>` : '');
-    // Quarter span — use distribution argmax; fallback to declared quad
+      + (mNxt ? ` → <strong style="color:${_quadColor(mNxt)};opacity:0.7;cursor:help;" data-quadbandpop="next_month">${escapeHtml(mNxt)}</strong>${_distBar(nm)}` : '');
+
+    // Quarter span
     const qCur = _effectiveQuad(cq) || '—';
     const qNxt = _effectiveQuad(nq);
     const qDtb = cq?.end_date ? Math.max(0, Math.round((new Date(cq.end_date) - new Date(data.as_of_date)) / 864e5)) : null;
     elQ.innerHTML = `<span style="color:#64748b;font-size:10px;">Qtr</span> `
-      + `<strong style="color:${_quadColor(qCur)}">${escapeHtml(qCur)}</strong>`
+      + `<strong style="color:${_quadColor(qCur)};cursor:help;" data-quadbandpop="cur_qtr">${escapeHtml(qCur)}</strong>`
+      + _distBar(cq)
       + (qDtb != null ? ` <span style="color:#94a3b8;font-size:10px;">(${qDtb}d left)</span>` : '')
-      + (qNxt ? ` → <strong style="color:${_quadColor(qNxt)};opacity:0.7;">${escapeHtml(qNxt)}</strong>` : '');
-    // Favoring line: derive from majority of current MACRO values
+      + (qNxt ? ` → <strong style="color:${_quadColor(qNxt)};opacity:0.7;cursor:help;" data-quadbandpop="next_qtr">${escapeHtml(qNxt)}</strong>${_distBar(nq)}` : '');
+
+    // Favoring line
     if (state.allRows && state.allRows.length) {
       const cnts = {};
-      for (const row of state.allRows) {
-        const mv = row.macro_value;
-        if (mv) cnts[mv] = (cnts[mv] || 0) + 1;
-      }
-      const top = Object.entries(cnts).sort((a, b) => b[1] - a[1])[0];
-      if (top) {
-        const d_ = actionDisplay(top[0]);
-        const pct = Math.round(top[1] / state.allRows.length * 100);
-        elF.textContent = `Favoring: ${d_.code || top[0]} (${pct}% of universe)`;
-      }
-    } else {
-      elF.textContent = '';
-    }
-    // TASK_86: factor pills
-    _renderBandFactors(factors);
+      for (const row of state.allRows) { const mv = row.macro_value; if (mv) cnts[mv] = (cnts[mv]||0)+1; }
+      const top = Object.entries(cnts).sort((a,b)=>b[1]-a[1])[0];
+      if (top) { const d_ = actionDisplay(top[0]); const pct = Math.round(top[1]/state.allRows.length*100); elF.textContent = `Favoring: ${d_.code||top[0]} (${pct}% of universe)`; }
+    } else { elF.textContent = ''; }
+
+    state.quadData = data;
+    state.quadFactors = factors;
     band.style.display = 'flex';
+
+    // Wire rich popover on band quad labels (done once; re-attaching is safe via delegation)
+    if (!band._qbpInit) {
+      band._qbpInit = true;
+      band.addEventListener('mouseover', e => {
+        const el = e.target.closest('[data-quadbandpop]');
+        if (el) _showDataPop(el, _buildQuadBandPopHtml(el.dataset.quadbandpop));
+      });
+      band.addEventListener('mouseout', e => {
+        if (e.relatedTarget && e.relatedTarget.closest('[data-quadbandpop]')) return;
+        hideSourcePop();
+      });
+    }
   } catch(e) { console.error('MACRO band:', e); if (band) band.style.display = 'none'; }
 }
 async function loadSideEcon() {
@@ -731,7 +812,12 @@ async function loadActionable() {
     params.append('show_suppressed', 'true');
   }
   try {
-    const rows = await fetchJson('/api/actionable?' + params.toString());
+    const dateParam = state.date ? `?date=${encodeURIComponent(state.date)}` : '';
+    const [rows, accts] = await Promise.all([
+      fetchJson('/api/actionable?' + params.toString()),
+      fetchJson(`/api/actionable/accounts${dateParam}`).catch(() => []),
+    ]);
+    state.allAccounts = Array.isArray(accts) ? accts : [];
     state.allRows = Array.isArray(rows) ? rows : [];
     state.allRows.forEach(r => {
       const act = (r.consolidated_action || '').toUpperCase();
@@ -1082,7 +1168,11 @@ function _availableAccounts() {
 function renderAccountFilter() {
   const sel = $('accountFilter');
   if (!sel) return;
-  const have = _availableAccounts();
+  // Use the dedicated accounts list (all held accounts, not just actionable symbols).
+  // Fall back to scraping state.allRows if the API list hasn't loaded yet.
+  const have = state.allAccounts.length
+    ? new Set(state.allAccounts)
+    : _availableAccounts();
   if (state.filters.account && !have.has(state.filters.account)) {
     state.filters.account = '';
   }
@@ -2376,9 +2466,13 @@ function renderGrid() {
     const pctCls = r.pct_change != null ? (Number(r.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : '';
     const pctStr = r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : '';
     const priceStr = r.last_price != null ? fmtUsd(r.last_price) : '';
-    // Task 4: intraday marker — shown when the quote is fresher than the EOD anchor
-    const _idyTime = (() => { const t = String(r.export_time || '').replace(/:/g, ''); return t.length >= 4 ? ' @ ' + t.slice(0,2) + ':' + t.slice(2,4) : ''; })();
-    const intradayTag = r.quote_is_intraday
+    // Task 4: intraday marker — shown only when quote is fresher than EOD anchor
+    //         AND export_time falls within regular market hours (0930–1559 ET).
+    const _idyRaw = String(r.export_time || '').replace(/:/g, '');
+    const _idyTime = _idyRaw.length >= 4 ? ' @ ' + _idyRaw.slice(0,2) + ':' + _idyRaw.slice(2,4) : '';
+    const _idyHHMM = _idyRaw.length >= 4 ? parseInt(_idyRaw.slice(0,4)) : null;
+    const _inMktHours = _idyHHMM != null && _idyHHMM >= 930 && _idyHHMM < 1600;
+    const intradayTag = r.quote_is_intraday && _inMktHours
       ? `<span title="Intraday price${escapeHtml(_idyTime)} — pct_brr/zone computed against live quote" style="font-size:8px;color:#0a84ff;font-weight:700;margin-left:2px;">IDY</span>`
       : '';
     const isChecked = state.selected.has(r.tos_symbol);

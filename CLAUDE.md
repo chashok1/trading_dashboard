@@ -259,6 +259,7 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Unused/cruft code files audit | `docs/audit/unused_code_report.md` |
 | Macro feed (FRED) — econ data + EOD index levels | `docs/macro_feed_logic.md`; `etl/fetch_macro.py`; `ref_macro_series`/`hist_macro`/`v_macro_latest`; `/api/macro` |
 | Actionable Market-context band (macro tiles + Refresh) | `web/macro_band.js` (loaded by `web/actionable.html`, `/actionable`); `/cockpit` 301-redirects to `/actionable`; reads `/api/macro`, `POST /api/macro/refresh` |
+| Quad regime → MACRO overlay (design, diagrams, MacroNet, band, precedence, single MACRO column) | `docs/quad_design.md` (+ `docs/diagrams/quad_*.svg`); spec `agent-tasks/TASK_74_quad_macro_overlay.md` |
 | Full command reference + web endpoints + troubleshooting table | `COMMANDS.md` |
 | Schema + behaviour migration history (all dated changes) | `docs/migrations.md` |
 | Agent handoff workflow (Cowork → developer → tester; file naming, markers, no-commit) | `docs/agent_handoff_workflow.md` |

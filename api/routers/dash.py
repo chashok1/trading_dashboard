@@ -325,6 +325,32 @@ def list_actionable_dates():
     return [r[0].isoformat() for r in rows]
 
 
+@router.get("/api/actionable/accounts")
+def list_actionable_accounts(date: Optional[str] = Query(None)):
+    """All unique account names from latest hist_f + hist_cs snapshots <= date."""
+    from api._helpers import _resolve_date
+    d = _resolve_date(date)
+    with session_scope() as s:
+        max_f = s.execute(
+            text("SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date<=:d"),
+            {"d": d},
+        ).scalar()
+        max_cs = s.execute(
+            text("SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date<=:d"),
+            {"d": d},
+        ).scalar()
+        rows = s.execute(text(
+            "SELECT DISTINCT acct FROM ("
+            "SELECT COALESCE(account_name,account_number) AS acct FROM hist_f"
+            " WHERE snapshot_date=:mf"
+            " UNION"
+            " SELECT account AS acct FROM hist_cs"
+            " WHERE snapshot_date=:mc"
+            ") _a WHERE acct IS NOT NULL ORDER BY acct"
+        ), {"mf": max_f, "mc": max_cs}).fetchall()
+    return [r[0] for r in rows]
+
+
 @router.get("/api/actionable/sources")
 def list_actionable_sources():
     """source_code -> base_weight_method for active outlook sources. Lets the
