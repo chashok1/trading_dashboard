@@ -1,12 +1,17 @@
 """
-Derive drv_usd_correlation — TASK_79.
+Derive drv_usd_correlation — TASK_79 / updated TASK_84.
 
-Rolling Pearson correlation of USD daily returns vs SPX / Brent / CRB /
+Rolling Pearson correlation of USD raw price levels vs SPX / Brent / CRB /
 Gold / Bitcoin across 15/30/90/120/180 trading-day windows, plus a
 52-week rolling-30D stats block.
 
+Methodology: Pearson of raw daily closes (price-levels), NOT daily returns.
+This matches the provider methodology (bake-off: levels MAE ~0.087 vs
+returns ~0.28).  Each window is the trailing-N aligned daily closes for
+both USD and the asset — no differencing.
+
 Price series: unified daily close per asset = coalesce(TOS drv_quote,
-Stooq hist_quote_daily), TOS wins on overlap. Same for USD ($DXY).
+yfinance hist_quote_daily), TOS wins on overlap. Same for USD ($DXY).
 
 Idempotent: DELETE WHERE as_of_date=D then INSERT.
 Wire into derive_all() after drv_quote.
@@ -30,6 +35,15 @@ WINDOWS = [15, 30, 90, 120, 180]
 STATS_WINDOW_30 = 30    # rolling 30D corr
 STATS_LOOKBACK  = 252   # 252 rolling-30D points for the 52-wk stats block
 
+# FX sign convention (TASK_82 Part 3 — enforced here for any future FX asset):
+#   /6E  EUR/USD  (~1.14) — INVERSE  to USD (up-dollar → down /6E)
+#   /6B  GBP/USD  (~1.32) — INVERSE  to USD (up-dollar → down /6B)
+#   /6C  CAD/USD  (~0.71) — INVERSE  to USD (up-dollar → down /6C)
+#   /6J  USD/JPY  (~159)  — CO-DIRECTIONAL with USD (up-dollar → up /6J)
+# None of these are currently in ref_corr_asset. If added, /6J returns must be
+# NEGATED before computing Pearson r with USD, so its sign aligns with /6E/6B/6C
+# (all becoming "foreign-per-USD" on an inverse basis relative to USD strength).
+
 
 def _pearson(xs: list[float], ys: list[float]) -> Optional[float]:
     """Pearson r for two equal-length lists; None if undefined."""
@@ -44,12 +58,6 @@ def _pearson(xs: list[float], ys: list[float]) -> Optional[float]:
     if dx == 0 or dy == 0:
         return None
     return num / (dx * dy)
-
-
-def _pct_returns(prices: list[float]) -> list[float]:
-    """Simple daily pct returns from a sorted price list."""
-    return [(prices[i] - prices[i - 1]) / prices[i - 1]
-            for i in range(1, len(prices)) if prices[i - 1] != 0]
 
 
 def _load_price_series(session: Session, asset_key: str,
@@ -169,32 +177,31 @@ def _derive_usd_correlation_impl(
         usd_seq   = [usd_prices[d]   for d in common]
         asset_seq = [asset_prices[d] for d in common]
 
-        # Daily returns (len = n-1 vs prices len n)
-        usd_ret   = _pct_returns(usd_seq)
-        asset_ret = _pct_returns(asset_seq)
-        # Returns align: index i => return from common[i] to common[i+1]
-        n_ret = len(usd_ret)  # == len(asset_ret) == len(common) - 1
+        # Price-levels Pearson — use raw closes directly (no differencing).
+        # Methodology: provider-style (TASK_84 bake-off: MAE ~0.087 vs returns ~0.28).
+        n_prices = len(usd_seq)  # number of aligned daily closes
 
-        # Rolling correlation windows (trailing N returns ending at as_of_date)
+        # Rolling correlation windows (trailing N price levels ending at as_of_date)
         corr: dict[int, Optional[float]] = {}
         n_count: dict[int, Optional[int]] = {}
         for w in WINDOWS:
-            if n_ret >= w:
-                xs = usd_ret[-w:]
-                ys = asset_ret[-w:]
+            if n_prices >= w:
+                xs = usd_seq[-w:]
+                ys = asset_seq[-w:]
                 corr[w]   = _pearson(xs, ys)
                 n_count[w] = w
             else:
-                corr[w]   = _pearson(usd_ret, asset_ret) if n_ret >= 2 else None
-                n_count[w] = n_ret if n_ret >= 2 else None
+                corr[w]   = _pearson(usd_seq, asset_seq) if n_prices >= 2 else None
+                n_count[w] = n_prices if n_prices >= 2 else None
 
         # 52-wk rolling-30D stats block
-        # Build series of rolling-30D correlations for the last 252 returns
+        # Build series of rolling-30D price-levels Pearson for the last
+        # STATS_LOOKBACK + STATS_WINDOW_30 prices so we get 252 rolling points.
         roll30_series: list[float] = []
-        start_idx = max(0, n_ret - STATS_LOOKBACK - STATS_WINDOW_30)
-        for i in range(start_idx + STATS_WINDOW_30, n_ret + 1):
-            xs30 = usd_ret[i - STATS_WINDOW_30: i]
-            ys30 = asset_ret[i - STATS_WINDOW_30: i]
+        start_idx = max(0, n_prices - STATS_LOOKBACK - STATS_WINDOW_30)
+        for i in range(start_idx + STATS_WINDOW_30, n_prices + 1):
+            xs30 = usd_seq[i - STATS_WINDOW_30: i]
+            ys30 = asset_seq[i - STATS_WINDOW_30: i]
             r30  = _pearson(xs30, ys30)
             if r30 is not None:
                 roll30_series.append(r30)

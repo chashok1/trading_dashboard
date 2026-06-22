@@ -1177,7 +1177,13 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
     rows_y     = _latest_per_symbol(session, 'hist_y',  as_of_date, cmap_y,  ceiling_date=ceil)                  # no window — Yahoo is fallback for non-TOS symbols
     rows_tl    = _latest_per_symbol(session, 'hist_tl', as_of_date, cmap_tl, window_days=7, ceiling_date=ceil)  # daily TOS Level: 7-day freshness gate
     rows_td    = _latest_per_symbol(session, 'hist_td', as_of_date, cmap_td, window_days=7, ceiling_date=ceil)  # daily TOS Daily: 7-day freshness gate
-    rows_cache = _cache_yahoo_rows(session)                                                                      # batch Yahoo cache — lowest priority
+    # CACHE (batch Yahoo intraday) is only valid on the live anchor date.
+    # For historical re-derives (as_of_date < anchor) it must NOT participate —
+    # its fetched_at timestamp is always newer than any historical TOS EOD row,
+    # so it would silently win the loaded_at sort and freeze stale prices across
+    # multiple prior dates (the CACHE-wins bug, TASK_82 Part 2).
+    is_anchor = (anchor is not None and as_of_date == anchor)
+    rows_cache = _cache_yahoo_rows(session) if is_anchor else {}                # batch Yahoo cache — anchor-date only
 
     # Tag each candidate with the feed it came from, for drv_quote.source.
     for _r in rows_tl.values():    _r['_src'] = 'TL'

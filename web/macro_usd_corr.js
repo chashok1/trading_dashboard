@@ -18,10 +18,11 @@
 (function () {
   'use strict';
 
-  /* Thresholds calibrated for daily-return Pearson r (lower than price-level r) */
-  var CORR_GREEN    =  0.25;   // green  (positive)
-  var CORR_RED_STR  = -0.40;   // strong red (strongly negative)
-  var CORR_RED_MOD  = -0.20;   // amber  (mildly negative)
+  /* Thresholds calibrated for price-level Pearson r (provider-style, trend-dominated).
+   * Price-level r is much stronger than daily-return r — values of ±0.7+ are common. */
+  var CORR_GREEN    =  0.50;   // green  (positive)
+  var CORR_RED_STR  = -0.70;   // strong red (strongly negative)
+  var CORR_RED_MOD  = -0.40;   // amber  (mildly negative)
 
   var WINDOWS = [15, 30, 90, 120, 180];
   var WIN_LABELS = { 15: '15D', 30: '30D', 90: '90D', 120: '120D', 180: '180D' };
@@ -179,6 +180,7 @@
       '<div class="ucr-header" id="usdCorrHeader">' +
         '<span class="ucr-title">USD Corr</span>' +
         '<span class="ucr-toggle">▶</span>' +
+        '<span class="ucr-method" title="Pearson of raw daily closes — matches provider methodology (price-levels, not returns)">price-levels</span>' +
         '<span class="ucr-hdr-chips" id="usdCorrHdrChips"></span>' +
         '<span class="ucr-asof" id="usdCorrAsOf"></span>' +
       '</div>' +

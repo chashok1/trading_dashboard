@@ -11,7 +11,7 @@
 INSERT INTO ref_corr_asset
     (asset_key, label, source_spec, is_usd_base, sort_order, enabled)
 VALUES
-  ('usd',     '$USD Index', '["tos:$DXY","yfinance:DX-Y.NYB"]',  TRUE,  0,  TRUE),
+  ('usd',     '$USD Index', '["yfinance:DX-Y.NYB"]',              TRUE,  0,  TRUE),
   ('spx',     'S&P 500',    '["yfinance:^GSPC","tos:SPY"]',      FALSE, 10, TRUE),
   ('brent',   'Brent Oil',  '["yfinance:BZ=F"]',                 FALSE, 20, TRUE),
   ('crb',     'CRB (proxy)','["yfinance:DBC","tos:DBC"]',        FALSE, 30, TRUE),

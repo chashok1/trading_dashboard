@@ -1609,6 +1609,7 @@ svg.rr-candle {
   cursor: pointer;
 }
 .ucr-toggle { font-size: 9px; color: #888; }
+.ucr-method { font-size: 9px; color: #64748b; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 3px; padding: 1px 5px; font-style: italic; cursor: default; }
 .ucr-hdr-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .ucr-bar-asset { display: inline-flex; align-items: center; gap: 2px; font-size: 10px; }
 .ucr-bar-lbl   { font-weight: 600; color: #555; margin-right: 1px; }
