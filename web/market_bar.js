@@ -304,7 +304,16 @@
       `</div>`;
   }
 
-  function chipHtml(name, ol, pctStr, pctCls, buy, sell, cur, tipObj, stale, ohlc, volThresh) {
+  function _msGlyphTape(sym) {
+    const map = window._macroScoreMap;
+    if (!map || !sym || !(sym in map) || map[sym] == null) return '';
+    const s = Number(map[sym]);
+    if (s > 0) return '<span style="font-size:6px;color:#16a34a;line-height:1;vertical-align:middle;">▲</span>';
+    if (s < 0) return '<span style="font-size:6px;color:#dc2626;line-height:1;vertical-align:middle;">▼</span>';
+    return '';
+  }
+
+  function chipHtml(name, ol, pctStr, pctCls, buy, sell, cur, tipObj, stale, ohlc, volThresh, scoreSym) {
     const staleCls = stale ? ' mt-stale' : '';
     const pctBg = pctCls === 'mt-up' ? '#2f9e2f' : pctCls === 'mt-down' ? '#d83a3a' : '#888';
     const pctBoxStyle = `background:${pctBg};color:#fff;`;
@@ -317,9 +326,7 @@
     const rb = volThresh
       ? volRangeBar(volThresh.value, volThresh.low, volThresh.high)
       : rangeBar(buy, sell, cur);
-    const _pg = pctCls === 'mt-up' ? '<span style="font-size:6px;color:#16a34a;line-height:1;vertical-align:middle;">▲</span>'
-              : pctCls === 'mt-down' ? '<span style="font-size:6px;color:#dc2626;line-height:1;vertical-align:middle;">▼</span>'
-              : '';
+    const _pg = _msGlyphTape(scoreSym);
     return `<div class="rr-chip${staleCls}" data-sym="${escHtml(name)}"${dataTip} style="cursor:pointer;">` +
       `<div class="rr-chip-body">` +
       `<div class="rr-chip-sym-col">` +
@@ -363,7 +370,8 @@
         const ohlc1     = (item.open != null && item.high != null && item.low != null)
           ? { o: item.open, h: item.high, l: item.low, c: item.value } : null;
         grpCells.push(chipHtml(chipLabel, item.rr_outlook, pctStr, cls,
-                               item.rr_buy, item.rr_sell, item.value, tipObj, item.stale, ohlc1, volThresh));
+                               item.rr_buy, item.rr_sell, item.value, tipObj, item.stale, ohlc1, volThresh,
+                               (item.symbol || item.metric_key || '').replace(/^\//, '')));
       }
       if (!grpCells.length) continue;
       cells.push(`<div class="rr-group">${grpCells.join('')}</div>`);
@@ -401,7 +409,8 @@
         const ohlc2  = (item.open != null && item.high != null && item.low != null && item.bar_price != null)
           ? { o: item.open, h: item.high, l: item.low, c: item.bar_price } : null;
         chips.push(chipHtml(name, item.outlook, chgStr, cls,
-                            item.buy, item.sell, item.bar_price, tipObj, false, ohlc2, volThresh));
+                            item.buy, item.sell, item.bar_price, tipObj, false, ohlc2, volThresh,
+                            (item.symbol || '').replace(/^\//, '')));
       }
       cells.push(`<div class="rr-group">${chips.join('')}</div>`);
     }
