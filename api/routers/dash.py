@@ -571,7 +571,8 @@ def get_actionable(
     _mp_nxt: _Period | None = None   # monthly next
     _qp_cur: _Period | None = None   # quarterly current
     _qp_nxt: _Period | None = None   # quarterly next
-    _qp_cur_label: str | None = None  # display-only: effective quad col from pct argmax
+    _qp_cur_label: str | None = None  # display-only: effective quad col (computed after fn defs)
+    _qp_cur_pcts_tmp: dict | None = None  # raw pcts saved during try block for label use
 
     # (category, sub_category_lower) -> {quad1..4: text}
     _quad_lookup: dict[tuple[str, str], dict[str, str | None]] = {}
@@ -665,7 +666,7 @@ def get_actionable(
                 sd, ed = p["start_date"], p["end_date"]
                 if (sd <= d) and (ed is None or d <= ed) and _qp_cur is None:
                     _qp_cur = _Period(p["quad"], sd, ed, _dtb(ed), None)
-                    _qp_cur_label = _effective_quad_col(_pcts(p), _quad_col(p.get("quad")))
+                    _qp_cur_pcts_tmp = _pcts(p)  # save pcts; label computed after fn defs
             for p in sorted(_quarterly, key=lambda x: x["start_date"]):
                 if _qp_cur and p["start_date"] > _qp_cur.start_date and _qp_nxt is None:
                     _qp_nxt = _Period(p["quad"], p["start_date"], p["end_date"],
@@ -729,6 +730,12 @@ def get_actionable(
             if pcts[best] > 0:
                 return best
         return fallback_col
+
+    # Compute quarterly display label now that _quad_col / _effective_quad_col exist
+    _qp_cur_label = _effective_quad_col(
+        _qp_cur_pcts_tmp,
+        _quad_col(_qp_cur.quad if _qp_cur else None),
+    )
 
     def _col_to_quad_name(col: str | None) -> str | None:
         """Convert 'quadN' → 'Quad N' for display."""
