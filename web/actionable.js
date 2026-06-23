@@ -277,20 +277,29 @@ function _buildMacroPopHtml(r) {
       ? `<span style="color:${_sigColor(v)};font-weight:600;">${v >= 0 ? '+' : ''}${v.toFixed(2)}</span>`
       : '?';
     // Always show blend formula: w=... → (1−w)·cur + w·nxt = result
+    // When in ramp window (0 < w < 1), show simplified clamp formula with actual days
+    const _wLabel = (w, rB, lD) => {
+      const den = rB - lD;
+      if (w > 0.005 && w < 0.995) {
+        const days = Math.round(rB - w * den);
+        return `clamp((${rB}&#8722;${days})/${den},0,1)=${w.toFixed(2)}`;
+      }
+      return w.toFixed(2);
+    };
     if (moNow != null) {
       const w1m = mo_w.toFixed(2), w0m = (1 - mo_w).toFixed(2);
       const bM = moNxt != null
-        ? `(1−${w1m})·cur(${_sv(moNow)}) + ${w1m}·nxt(${_sv(moNxt)})`
-        : `1.00·cur(${_sv(moNow)})`;
-      mBlendHtml = `w=${w1m} &nbsp;→&nbsp; ${bM}`
+        ? `(1&#8722;${w1m})&#xB7;cur(${_sv(moNow)}) + ${w1m}&#xB7;nxt(${_sv(moNxt)})`
+        : `1.00&#xB7;cur(${_sv(moNow)})`;
+      mBlendHtml = `w=${_wLabel(mo_w, 12, 5)} &nbsp;&#8594;&nbsp; ${bM}`
                  + ` = <span style="color:${_sigColor(Mv)};font-weight:700;">${Mv >= 0 ? '+' : ''}${Mv.toFixed(2)}</span>`;
     }
     if (qNow != null) {
       const w1q = qtr_w.toFixed(2), w0q = (1 - qtr_w).toFixed(2);
       const bQ = qNxt != null
-        ? `(1−${w1q})·cur(${_sv(qNow)}) + ${w1q}·nxt(${_sv(qNxt)})`
-        : `1.00·cur(${_sv(qNow)})`;
-      qBlendHtml = `w=${w1q} &nbsp;→&nbsp; ${bQ}`
+        ? `(1&#8722;${w1q})&#xB7;cur(${_sv(qNow)}) + ${w1q}&#xB7;nxt(${_sv(qNxt)})`
+        : `1.00&#xB7;cur(${_sv(qNow)})`;
+      qBlendHtml = `w=${_wLabel(qtr_w, 20, 10)} &nbsp;&#8594;&nbsp; ${bQ}`
                  + ` = <span style="color:${_sigColor(Qv)};font-weight:700;">${Qv >= 0 ? '+' : ''}${Qv.toFixed(2)}</span>`;
     }
     macroFormulaHtml =
