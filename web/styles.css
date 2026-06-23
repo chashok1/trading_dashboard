@@ -1259,11 +1259,6 @@ svg.rr-candle {
   background: #fff;
   color: inherit;
 }
-#actionableOnlyBtn.active, #tvToggleBtn.active {
-  background: var(--accent, #0a84ff);
-  color: #fff;
-  border-color: var(--accent, #0a84ff);
-}
 
 .mt-cell {
   display: inline-flex;
