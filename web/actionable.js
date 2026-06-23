@@ -257,21 +257,48 @@ function _buildMacroPopHtml(r) {
   const qDtb   = qtr.dtb;
 
   // ── MacroNet formula (shared) ──────────────────────────────────────────────
+  // Full expansion: M = blend(cur_month, nxt_month, mo_w)
+  //                 Q = blend(cur_qtr,   nxt_qtr,   qtr_w)
+  //                 MacroNet = wt_mo×M + wt_qtr×Q
   const hasDeriveTime = r.macronet != null && r.monthly_score != null;
-  let formulaHtml;
+  let mBlendHtml = null, qBlendHtml = null, macroFormulaHtml;
   if (hasDeriveTime) {
-    const Mv = Number(r.monthly_score), Qv = Number(r.quarterly_score ?? 0);
-    const net = Number(r.macronet);
-    const wMo = det.b ?? 0.65, wQtr = det.a ?? 0.35;
-    formulaHtml = `${wMo}×M(<span style="color:${_sigColor(Mv)};font-weight:600;">${Mv.toFixed(3)}</span>) `
-                + `+ ${wQtr}×Q(<span style="color:${_sigColor(Qv)};font-weight:600;">${Qv.toFixed(3)}</span>) `
-                + `= <span style="color:${_sigColor(net)};font-weight:700;">${net.toFixed(4)}</span>`;
+    const Mv    = Number(r.monthly_score);
+    const Qv    = Number(r.quarterly_score ?? 0);
+    const net   = Number(r.macronet);
+    const wMo   = det.b ?? 0.65, wQtr = det.a ?? 0.35;
+    const mo_w  = r.month_weight != null ? Number(r.month_weight) : 0;
+    const qtr_w = r.qtr_weight   != null ? Number(r.qtr_weight)   : 0;
+    const moNow = r.month_now_net  != null ? Number(r.month_now_net)  : null;
+    const moNxt = r.month_next_net != null ? Number(r.month_next_net) : null;
+    const qNow  = r.qtr_now_net   != null ? Number(r.qtr_now_net)   : null;
+    const qNxt  = r.qtr_next_net  != null ? Number(r.qtr_next_net)  : null;
+    const _sv = v => v != null
+      ? `<span style="color:${_sigColor(v)};font-weight:600;">${v >= 0 ? '+' : ''}${v.toFixed(2)}</span>`
+      : '?';
+    if (mo_w > 0.01 && moNow != null && moNxt != null) {
+      mBlendHtml = `(1−${mo_w.toFixed(2)})×Cur(${_sv(moNow)}) + ${mo_w.toFixed(2)}×Nxt(${_sv(moNxt)})`
+                 + ` = <span style="color:${_sigColor(Mv)};font-weight:700;">${Mv >= 0 ? '+' : ''}${Mv.toFixed(3)}</span>`;
+    } else if (moNow != null) {
+      mBlendHtml = `${_sv(moNow)} <span style="color:#94a3b8;font-size:8px;">(cur month, no blend)</span>`;
+    }
+    if (qtr_w > 0.01 && qNow != null && qNxt != null) {
+      qBlendHtml = `(1−${qtr_w.toFixed(2)})×Cur(${_sv(qNow)}) + ${qtr_w.toFixed(2)}×Nxt(${_sv(qNxt)})`
+                 + ` = <span style="color:${_sigColor(Qv)};font-weight:700;">${Qv >= 0 ? '+' : ''}${Qv.toFixed(3)}</span>`;
+    } else if (qNow != null) {
+      qBlendHtml = `${_sv(qNow)} <span style="color:#94a3b8;font-size:8px;">(cur quarter, no blend)</span>`;
+    }
+    macroFormulaHtml =
+      `${wMo}×M(<span style="color:${_sigColor(Mv)};font-weight:600;">${Mv >= 0 ? '+' : ''}${Mv.toFixed(3)}</span>) `
+      + `+ ${wQtr}×Q(<span style="color:${_sigColor(Qv)};font-weight:600;">${Qv >= 0 ? '+' : ''}${Qv.toFixed(3)}</span>) `
+      + `= <span style="color:${_sigColor(net)};font-weight:700;">${net.toFixed(4)}</span>`;
   } else {
     const netVal = det.macro_net != null ? Number(det.macro_net) : null;
     const qV = det.quarter?.Qtr ?? '?', mV = det.month?.M ?? '?';
-    formulaHtml = `${det.a}×Qtr(<span style="color:${_sigColor(Number(qV))}">${qV}</span>) `
-                + `+ ${det.b}×M(<span style="color:${_sigColor(Number(mV))}">${mV}</span>) `
-                + `= <span style="color:${netVal != null ? _sigColor(netVal) : '#475569'};font-weight:700;">${netVal ?? '?'}</span>`;
+    macroFormulaHtml =
+      `${det.a}×Qtr(<span style="color:${_sigColor(Number(qV))}">${qV}</span>) `
+      + `+ ${det.b}×M(<span style="color:${_sigColor(Number(mV))}">${mV}</span>) `
+      + `= <span style="color:${netVal != null ? _sigColor(netVal) : '#475569'};font-weight:700;">${netVal ?? '?'}</span>`;
   }
 
   // ── Summary (top) — 3-period cards + MacroNet result ─────────────────────
@@ -307,7 +334,9 @@ function _buildMacroPopHtml(r) {
      + `</td>`
      + `</tr></table></td></tr>`;
 
-  h += `<tr><td class="k">MacroNet</td><td class="v" style="font-size:9px;">${formulaHtml} → ${_coloredVocab(mv)}</td></tr>`;
+  if (mBlendHtml) h += `<tr><td class="k" style="font-size:9px;color:#64748b;">M (monthly)</td><td class="v" style="font-size:9px;">${mBlendHtml}</td></tr>`;
+  if (qBlendHtml) h += `<tr><td class="k" style="font-size:9px;color:#64748b;">Q (quarter)</td><td class="v" style="font-size:9px;">${qBlendHtml}</td></tr>`;
+  h += `<tr><td class="k">MacroNet</td><td class="v" style="font-size:9px;">${macroFormulaHtml} → ${_coloredVocab(mv)}</td></tr>`;
   if (conf != null) {
     const confNum = r.macro_conf != null ? Number(r.macro_conf) : 0;
     const confColor = confNum >= 0.7 ? '#16a34a' : confNum >= 0.4 ? '#d97706' : '#dc2626';
