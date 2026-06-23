@@ -620,7 +620,7 @@ async function loadMacroBand() {
       if (!segs.length) return '';
       const bars = segs.map(s => {
         const lbl = s.pct >= 15
-          ? `<span style="font-size:7px;color:#fff;font-weight:600;line-height:1;pointer-events:none;">Q${s.q.slice(-1)} ${Math.round(s.pct)}%</span>`
+          ? `<span style="font-size:8px;color:#fff;font-weight:600;line-height:1;pointer-events:none;">Q${s.q.slice(-1)} ${Math.round(s.pct)}</span>`
           : '';
         return `<div style="width:${s.pct}%;background:${_quadColor(s.q)};height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;" title="${escapeHtml(s.q)} ${s.pct}%">${lbl}</div>`;
       }).join('');
@@ -771,7 +771,7 @@ function _renderQuadOutlookPanel(data) {
       ? [1,2,3,4].map(i => {
           const pct = Math.round(cm[`quad${i}_pct`] || 0);
           const col = _quadColor(`Quad ${i}`);
-          return `<span style="color:${col};">${_qdLbl(`Quad ${i}`)}:${pct}%</span>`;
+          return `<span style="color:${col};">${_qdLbl(`Quad ${i}`)}:${pct}</span>`;
         }).join('<span style="color:#cbd5e1;">,</span>')
       : '—';
     const mPart = mQuad
@@ -789,7 +789,7 @@ function _renderQuadOutlookPanel(data) {
     if (!segs.length) return '';
     const bars = segs.map(s => {
       const lbl = s.pct >= 15
-        ? `<span style="font-size:7px;color:#fff;font-weight:600;pointer-events:none;">Q${s.q.slice(-1)} ${Math.round(s.pct)}%</span>`
+        ? `<span style="font-size:8px;color:#fff;font-weight:600;pointer-events:none;">Q${s.q.slice(-1)} ${Math.round(s.pct)}</span>`
         : '';
       return `<div style="width:${s.pct}%;background:${_quadColor(s.q)};height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;" title="${escapeHtml(s.q)} ${s.pct}%">${lbl}</div>`;
     }).join('');
@@ -811,7 +811,7 @@ function _renderQuadOutlookPanel(data) {
        + `</td>`
        + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">`
        + `<div style="display:flex;align-items:center;justify-content:center;width:140px;height:14px;border-radius:3px;overflow:hidden;background:${qcol};border:1px solid #e2e8f0;" title="${escapeHtml(quad)} 100%">`
-       + `<span style="font-size:7px;color:#fff;font-weight:600;pointer-events:none;">${escapeHtml(_qdLbl(quad))} 100%</span>`
+       + `<span style="font-size:8px;color:#fff;font-weight:600;pointer-events:none;">${escapeHtml(_qdLbl(quad))} 100</span>`
        + `</div>`
        + `</td>`
        + `</tr>`;
