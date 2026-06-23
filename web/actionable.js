@@ -100,7 +100,7 @@ function macroCellHtml(r) {
     if (net == null) return `<span style="color:#d1d5db;font-size:7px;" title="${title}">—</span>`;
     const n = Number(net);
     const col = n > 0 ? '#16a34a' : n < 0 ? '#dc2626' : '#9ca3af';
-    const g   = n > 0 ? '▶' : n < 0 ? '◀' : '—';
+    const g   = n > 0 ? '↑' : n < 0 ? '↓' : '—';
     return `<span style="color:${col};font-size:7px;" title="${title}: ${n > 0 ? '+' : ''}${n.toFixed(2)}">${g}</span>`;
   };
   const hasDots = r.month_now_net != null || r.month_next_net != null || r.qtr_now_net != null;
