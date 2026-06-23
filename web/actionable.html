@@ -437,14 +437,33 @@
       cursor: pointer;
       color: var(--text-1, #222);
       line-height: 1;
+      position: relative;
     }
     .btn-icon:hover { background: #f4f4f2; }
     .btn-icon svg { display: block; }
     .btn-icon-sm { padding: 3px 4px; border-radius: 4px; }
+    /* Styled tooltips via data-tip attribute */
+    .btn-icon[data-tip]::after {
+      content: attr(data-tip);
+      position: absolute;
+      top: calc(100% + 5px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 500;
+      white-space: nowrap;
+      padding: 3px 7px;
+      border-radius: 4px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s 0.4s;
+      z-index: 500;
+    }
+    .btn-icon[data-tip]:hover::after { opacity: 1; }
 
-    /* Econ toggle button */
-    #econBtn { background: #fff; color: inherit; }
-    #econBtn.active { background: var(--accent, #0a84ff); color: #fff; border-color: var(--accent, #0a84ff); }
+
 
     /* Fill remaining viewport — card is a row: main-col (column) + side panel (full height) */
     body.act-page main { overflow: hidden; display: flex; flex-direction: column; }
@@ -593,10 +612,23 @@
             <button data-conv="multi">Multi</button>
             <button data-conv="proven">Proven</button>
           </div>
-          <!-- Show Hidden toggle — next to Proven -->
-          <label class="toggle" style="font-size:11px; white-space:nowrap;" title="Show suppressed, $0 AMT, no-action, acted/snoozed, and unheld-remove rows"><input type="checkbox" id="showHidden"> Show H</label>
-          <!-- Positions-only toggle -->
-          <label class="toggle" style="font-size:11px; white-space:nowrap;"><input type="checkbox" id="heldOnly"> Pos</label>
+          <!-- Row filter toggles: Show Hidden, Positions Only, Actionable Only -->
+          <button id="showHidden" class="btn-icon btn-icon-sm" data-tip="Show Hidden" title="Show suppressed, $0 AMT, no-action, acted/snoozed, and unheld-remove rows">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+              <line x1="3" y1="3" x2="21" y2="21"/>
+            </svg>
+          </button>
+          <button id="heldOnly" class="btn-icon btn-icon-sm" data-tip="Positions Only" title="Positions only — show rows where you hold a position">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+            </svg>
+          </button>
+          <button id="actionableOnlyBtn" class="btn-icon btn-icon-sm" data-tip="Actionable Only" title="Toggle: Actionable only vs All rows">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+          </button>
           <!-- Source filter -->
           <label style="font-size:11px; color:var(--text-2,#666); margin-right:2px; white-space:nowrap;">Source</label>
           <select id="sourceFilter"><option value="">All</option></select>
@@ -619,44 +651,45 @@
             <option value="split_tech_bear">Split Tech Bear</option>
             <option value="neutral">Neutral</option>
           </select>
-          <!-- Right side: row count + icon buttons -->
+          <!-- Right side: row count + panel toggles + actions -->
           <div style="margin-left:auto; display:flex; align-items:center; gap:4px; flex-shrink:0;">
             <span style="font-size:11px; color:var(--text-2,#666);" id="rowCount"></span>
-            <button id="actionableOnlyBtn" class="btn-icon btn-icon-sm" title="Toggle: Actionable only vs All rows">
+            <!-- Panel toggles -->
+            <button id="econFilterBtn" data-econ-toggle type="button" class="btn-icon btn-icon-sm" data-tip="Econ Panel" title="Toggle Econ / FRED macro panel">
               <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
+                <line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
               </svg>
             </button>
-            <button id="tvToggleBtn" class="btn-icon btn-icon-sm" title="Toggle TradingView tape">
+            <button id="tvToggleBtn" class="btn-icon btn-icon-sm" data-tip="Symbol Tape" title="Toggle TradingView tape">
               <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
               </svg>
             </button>
-            <button id="clearFiltersBtn" class="btn-icon btn-icon-sm" style="color:#c41e3a;" title="Clear all filters">
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-            <!-- Focus icon button -->
-            <button id="focusModeBtn" class="btn-icon btn-icon-sm" title="Focus mode">
+            <button id="focusModeBtn" class="btn-icon btn-icon-sm" data-tip="Focus Mode" title="Focus mode">
               <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="12" cy="12" r="3"/>
                 <path d="M2 12C4.5 6.5 9 3 12 3s7.5 3.5 10 9c-2.5 5.5-7 9-10 9S4.5 17.5 2 12z"/>
               </svg>
             </button>
-            <!-- Export CSV icon button -->
-            <button id="exportCsvBtn" class="btn-icon btn-icon-sm" title="Export CSV">
+            <button id="sidePanelBtn" class="btn-icon btn-icon-sm" data-tip="Side Panel" title="Toggle side panels">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <line x1="15" y1="3" x2="15" y2="21"/>
+              </svg>
+            </button>
+            <!-- Actions: divider then clear + export -->
+            <span style="width:1px; background:var(--border,#e0e0e0); align-self:stretch; margin:2px 2px;"></span>
+            <button id="clearFiltersBtn" class="btn-icon btn-icon-sm" data-tip="Clear Filters" style="color:#c41e3a;" title="Clear all filters">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+            <button id="exportCsvBtn" class="btn-icon btn-icon-sm" data-tip="Export CSV" title="Export CSV">
               <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-            </button>
-            <!-- Side panel toggle icon button -->
-            <button id="sidePanelBtn" class="btn-icon btn-icon-sm" title="Toggle side panels">
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <line x1="15" y1="3" x2="15" y2="21"/>
               </svg>
             </button>
           </div>

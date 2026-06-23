@@ -492,15 +492,16 @@
     _attachTooltip(rrTapeEl);
     _attachTooltip(rrTape3El);
 
-    // Wire #econBtn → #econPanel (only present on pages that include it, e.g. actionable)
+    // Wire [data-econ-toggle] buttons → #econPanel (any button with the attribute)
     document.addEventListener('click', (e) => {
-      const btn = e.target.closest('#econBtn');
+      const btn = e.target.closest('[data-econ-toggle]');
       if (!btn) return;
       const panel = document.getElementById('econPanel');
       if (!panel) return;
       const open = panel.classList.toggle('open');
-      btn.innerHTML = open ? 'Econ &#9652;' : 'Econ &#9662;';
-      btn.classList.toggle('active', open);
+      document.querySelectorAll('[data-econ-toggle]').forEach(b => {
+        b.classList.toggle('active', open);
+      });
       if (open && !panel.dataset.loaded) loadEcon();
     });
   }
@@ -535,10 +536,7 @@
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
       rrTapeEl.innerHTML  = buildRrBarHtml(data, BAR2_CATS);
-      const econOpen = (document.getElementById('econPanel') || {}).classList
-                       && document.getElementById('econPanel').classList.contains('open');
-      rrTape3El.innerHTML = buildRrBarHtml(data, BAR3_CATS) +
-        `<button id="econBtn" class="mt-expander${econOpen ? ' active' : ''}" type="button" title="Toggle FRED macro panel">Econ ${econOpen ? '&#9652;' : '&#9662;'}</button>`;
+      rrTape3El.innerHTML = buildRrBarHtml(data, BAR3_CATS);
     } catch (err) {
       const msg = '<span style="color:var(--bear,#b91c1c);padding:0 8px;font-size:11px;">RR data unavailable</span>';
       if (rrTapeEl)  rrTapeEl.innerHTML  = msg;
