@@ -3549,8 +3549,9 @@ CREATE TABLE IF NOT EXISTS drv_macro_score (
     qtr_next_net    NUMERIC,
     qtr_weight      NUMERIC,
     quarterly_score NUMERIC,
-    macronet        NUMERIC,
-    macro_action    TEXT,
+    macronet             NUMERIC,
+    macro_action         TEXT,
+    monthly_scores_json  JSONB,
     PRIMARY KEY (as_of_date, tos_symbol)
 );
 CREATE INDEX IF NOT EXISTS ix_drv_macro_score_date
@@ -6525,6 +6526,9 @@ ALTER TABLE ref_quad_periods ADD COLUMN IF NOT EXISTS quad1_pct NUMERIC;
 ALTER TABLE ref_quad_periods ADD COLUMN IF NOT EXISTS quad2_pct NUMERIC;
 ALTER TABLE ref_quad_periods ADD COLUMN IF NOT EXISTS quad3_pct NUMERIC;
 ALTER TABLE ref_quad_periods ADD COLUMN IF NOT EXISTS quad4_pct NUMERIC;
+
+-- 2026-06-23: per-month MacroNet scores for all available periods.
+ALTER TABLE drv_macro_score ADD COLUMN IF NOT EXISTS monthly_scores_json JSONB;
 
 -- 2026-06-23: Quarterly MacroNet ramp params (separate from monthly).
 INSERT INTO ref_settings (setting_name, setting_value, description) VALUES

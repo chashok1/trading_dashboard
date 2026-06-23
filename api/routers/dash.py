@@ -461,7 +461,8 @@ def get_actionable(
                ms.macronet, ms.macro_action,
                ms.monthly_score, ms.quarterly_score,
                ms.month_now_net, ms.month_next_net, ms.month_weight,
-               ms.qtr_now_net, ms.qtr_next_net, ms.qtr_weight
+               ms.qtr_now_net, ms.qtr_next_net, ms.qtr_weight,
+               ms.monthly_scores_json
         FROM drv_actionable a
         LEFT JOIN drv_tn_td_bb_rr rr
                ON rr.tos_symbol = a.tos_symbol AND rr.as_of_date = a.as_of_date

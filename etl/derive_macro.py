@@ -11,6 +11,7 @@ Results written to drv_macro_score (idempotent DELETE+INSERT).
 """
 
 import calendar as _cal
+import json
 import logging
 import math
 from datetime import date
@@ -243,6 +244,17 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         log.info("derive_macronet: ref_quad_outlook is empty — skipping")
         return 0
 
+    # All monthly rows that have distribution data (for per-month score array)
+    all_monthly = session.execute(text(
+        "SELECT year, period_num, quad, label,"
+        " quad1_pct, quad2_pct, quad3_pct, quad4_pct"
+        " FROM ref_quad_periods WHERE period_type='monthly'"
+        " AND (quad1_pct IS NOT NULL OR quad2_pct IS NOT NULL"
+        "   OR quad3_pct IS NOT NULL OR quad4_pct IS NOT NULL)"
+        " ORDER BY year, period_num"
+    )).fetchall()
+    _all_monthly_pcts = [_norm_pcts(p) for p in all_monthly]
+
     # Load symbols with fundamentals via drv_ma view
     sym_rows = session.execute(text("""
         SELECT tos_symbol, sector, asset_class,
@@ -271,6 +283,21 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         Q = (1 - qtr_w) * qtr_now_net + qtr_w * qtr_next_net
         macronet = wt_mo * M + wt_qtr * Q
 
+        # Per-month scores for all available periods (sparkline data)
+        monthly_scores = []
+        for p, pcts in zip(all_monthly, _all_monthly_pcts):
+            net_m = _membership_net(memberships, outlook_map, pcts)
+            _fallback_lbl = f"{_cal.month_abbr[p.period_num]}-{str(p.year)[2:]}"
+            _lbl = p.label if (p.label and len(str(p.label)) < 20) else _fallback_lbl
+            monthly_scores.append({
+                'label':      _lbl,
+                'year':       p.year,
+                'period_num': p.period_num,
+                'quad':       p.quad,
+                'score':      round(net_m, 4),
+                'is_current': (p.year == cur_mo_y and p.period_num == cur_mo_n),
+            })
+
         out.append({
             'as_of_date':    as_of_date,
             'tos_symbol':    r.tos_symbol,
@@ -282,8 +309,9 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
             'qtr_next_net':  round(qtr_next_net, 4),
             'qtr_weight':    round(qtr_w, 4),
             'quarterly_score': round(Q, 4),
-            'macronet':      round(macronet, 4),
-            'macro_action':  to_action(macronet),
+            'macronet':           round(macronet, 4),
+            'macro_action':       to_action(macronet),
+            'monthly_scores_json': json.dumps(monthly_scores),
         })
 
     if not out:
@@ -296,11 +324,13 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         INSERT INTO drv_macro_score
           (as_of_date, tos_symbol, month_now_net, month_next_net,
            month_weight, monthly_score, qtr_now_net, qtr_next_net,
-           qtr_weight, quarterly_score, macronet, macro_action)
+           qtr_weight, quarterly_score, macronet, macro_action,
+           monthly_scores_json)
         VALUES
           (:as_of_date, :tos_symbol, :month_now_net, :month_next_net,
            :month_weight, :monthly_score, :qtr_now_net, :qtr_next_net,
-           :qtr_weight, :quarterly_score, :macronet, :macro_action)
+           :qtr_weight, :quarterly_score, :macronet, :macro_action,
+           :monthly_scores_json)
     """), out)
     session.commit()
     log.info("derive_macronet: %d symbols scored for %s", len(out), as_of_date)

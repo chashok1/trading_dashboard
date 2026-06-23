@@ -104,16 +104,37 @@ function macroCellHtml(r) {
       + _dot(r.qtr_now_net,    'Cur quarter')
       + `</div>`
     : '';
+  // Sparkline: one bar per available month, height ∝ |score|, color = direction
+  const _sparksRaw = r.monthly_scores_json;
+  const _sparks = Array.isArray(_sparksRaw) ? _sparksRaw
+    : (typeof _sparksRaw === 'string'
+        ? (() => { try { return JSON.parse(_sparksRaw); } catch(_e) { return null; } })()
+        : null);
+  let sparkLine = '';
+  if (_sparks && _sparks.length >= 2) {
+    const maxAbs = Math.max(..._sparks.map(s => Math.abs(s.score || 0)), 0.001);
+    const bars = _sparks.map(s => {
+      const sc  = s.score || 0;
+      const bh  = Math.max(2, Math.round(Math.abs(sc) / maxAbs * 8));
+      const col = sc > 0 ? '#16a34a' : sc < 0 ? '#dc2626' : '#9ca3af';
+      const bw  = s.is_current ? '3' : '2';
+      const bdr = s.is_current ? 'border:1px solid #475569;box-sizing:border-box;' : '';
+      const ti  = `${s.label || ''} ${sc >= 0 ? '+' : ''}${sc.toFixed(2)}`;
+      return `<span title="${escapeHtml(ti)}" style="display:inline-block;width:${bw}px;height:${bh}px;background:${col};vertical-align:bottom;${bdr}"></span>`;
+    }).join('<span style="display:inline-block;width:1px;"></span>');
+    sparkLine = `<div style="display:flex;justify-content:center;align-items:flex-end;gap:1px;height:9px;margin-top:1px;">${bars}</div>`;
+  }
   if (!mv || mv === 'HOLD') {
     const holdCls = mv ? 'color:#9ca3af' : 'color:#cbd5e1';
     const lbl = mv ? 'HOLD' : '—';
-    return `<div style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};cursor:help;text-align:center;" data-macropop="${escapeHtml(sym)}">${escapeHtml(lbl)}${turn ? ' ' + turn : ''}${dotsLine}</div>`;
+    return `<div style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};cursor:help;text-align:center;" data-macropop="${escapeHtml(sym)}">${escapeHtml(lbl)}${turn ? ' ' + turn : ''}${dotsLine}${sparkLine}</div>`;
   }
   const d = actionDisplay(mv);
   const cls = d.colorCls || 'act-neutral';
   return `<div style="text-align:center;cursor:help;opacity:${opacity.toFixed(2)};" data-macropop="${escapeHtml(sym)}">`
        + `<span class="act-badge ${cls}-tint" style="font-size:10px;padding:1px 5px;">${escapeHtml(d.code || mv)}${turn ? ' ' + turn : ''}</span>`
        + dotsLine
+       + sparkLine
        + `</div>`;
 }
 
@@ -198,241 +219,65 @@ function _macroTooltip(r) {
 
 // Rich HTML popover for a MACRO cell — reuses #sourcePop / _showDataPop.
 function _buildMacroPopHtml(r) {
-  let det = r.macro_detail;
-  if (typeof det === 'string') { try { det = JSON.parse(det); } catch (_) { det = null; } }
   const mv   = r.macro_value || '—';
-  const conf = r.macro_conf != null ? Math.round(r.macro_conf * 100) : null;
   const turn = r.macro_turn || null;
   const sym  = r.tos_symbol || '—';
 
-  const _quadDistBar = dist => {
-    if (!dist || !dist.length) return '';
-    const segs = dist.map(x =>
-      `<div style="width:${x.pct}%;background:${_quadColor(x.quad)};height:100%;" title="${escapeHtml(x.quad)} ${x.pct}%"></div>`
-    ).join('');
-    return `<div style="display:inline-flex;width:110px;height:7px;border-radius:3px;overflow:hidden;border:1px solid #e2e8f0;vertical-align:middle;margin-right:6px;">${segs}</div>`;
-  };
-  const _quadDistBreakdown = dist =>
-    (dist || []).map(x =>
-      `<span style="color:${_quadColor(x.quad)};font-weight:600;">${escapeHtml(x.quad)}</span> ${x.pct}%`
-    ).join(' &nbsp;·&nbsp; ');
-
-  const _vocabColor = v => {
-    if (!v) return '#9ca3af';
-    const u = v.toUpperCase();
-    if (u === 'SA')  return '#991b1b';
-    if (u === 'STM') return '#ef4444';
-    if (u === 'BS')  return '#22c55e';
-    if (u === 'BM')  return '#14532d';
-    return '#9ca3af';
-  };
+  const _vocabColor   = v => { if (!v) return '#9ca3af'; const u = v.toUpperCase(); if (u==='SA') return '#991b1b'; if (u==='STM') return '#ef4444'; if (u==='BS') return '#22c55e'; if (u==='BM') return '#14532d'; return '#9ca3af'; };
   const _sigColor     = v => v > 0 ? '#16a34a' : v < 0 ? '#dc2626' : '#9ca3af';
-  const _coloredQuad  = q => q ? `<span style="color:${_quadColor(q)};font-weight:600;">${escapeHtml(q)}</span>` : '—';
   const _coloredVocab = v => v ? `<span style="color:${_vocabColor(v)};font-weight:700;">${escapeHtml(v)}</span>` : '—';
 
   const mvColor = _vocabColor(mv !== '—' ? mv : null);
   let h = `<div class="sp-title">${escapeHtml(sym)} &mdash; <span style="color:${mvColor};font-weight:700;">${escapeHtml(mv)}</span>${turn ? ' <span style="color:#f97316;">' + escapeHtml(turn) + '</span>' : ''}</div>`;
+  h += '<table>';
 
-  if (!det) {
-    h += `<div style="color:#94a3b8;font-size:10px;">No detail available.</div>`;
-    return h;
-  }
+  // Parse monthly scores array (JSONB → array of {label, quad, score, is_current})
+  const _sparksRaw2 = r.monthly_scores_json;
+  const _sparks2 = Array.isArray(_sparksRaw2) ? _sparksRaw2
+    : (typeof _sparksRaw2 === 'string'
+        ? (() => { try { return JSON.parse(_sparksRaw2); } catch(_e) { return null; } })()
+        : null);
 
-  const mems  = det.memberships || [];
-  const mo    = det.month || {};
-  const moNow = mo.now || {};
-  const moNxt = mo.next;
-  const qtr   = det.quarter || {};
-
-  const _qfMap = {};
-  if (state.quadFactors && state.quadFactors.factors) {
-    for (const f of state.quadFactors.factors)
-      _qfMap[`${f.category}|${(f.factor || '').toLowerCase()}`] = f;
-  }
-  const _qds  = (state.quadFactors || {}).quads || {};
-  const cmQuad = _qds.cur_month  || moNow.quad;
-  const nmQuad = _qds.next_month || (moNxt && moNxt.quad);
-  const qQuad  = qtr.quad_label || _qds.cur_qtr || qtr.now;
-  const cmDtb  = moNow.dtb;
-  const qDtb   = qtr.dtb;
-
-  // ── MacroNet formula (shared) ──────────────────────────────────────────────
-  // Full expansion: M = blend(cur_month, nxt_month, mo_w)
-  //                 Q = blend(cur_qtr,   nxt_qtr,   qtr_w)
-  //                 MacroNet = wt_mo×M + wt_qtr×Q
+  // ── Monthly scores table ──────────────────────────────────────────────────
   const hasDeriveTime = r.macronet != null && r.monthly_score != null;
-  let mBlendHtml = null, qBlendHtml = null, macroFormulaHtml;
+  // Monthly scores: one row per available month
+  if (_sparks2 && _sparks2.length) {
+    h += `<tr><td class="sp-sec" colspan="2">Monthly Scores</td></tr>`;
+    for (const s of _sparks2) {
+      const sc   = s.score != null ? Number(s.score) : null;
+      const col  = sc == null ? '#9ca3af' : sc > 0 ? '#16a34a' : sc < 0 ? '#dc2626' : '#9ca3af';
+      const gl   = sc == null ? '—' : sc > 0 ? '▲' : sc < 0 ? '▼' : '→';
+      const scHtml = sc != null
+        ? `<span style="color:${col};font-weight:700;">${sc >= 0 ? '+' : ''}${sc.toFixed(2)}</span>`
+        : '<span style="color:#9ca3af;">—</span>';
+      const isCur  = !!s.is_current;
+      const rowBg  = isCur ? 'background:#f1f5f9;' : '';
+      const lblW   = isCur ? 'font-weight:700;' : '';
+      const qcol   = s.quad ? _quadColor(s.quad) : '#9ca3af';
+      h += `<tr style="${rowBg}">`
+         + `<td class="k" style="font-size:9px;${lblW}padding:1px 4px;">${escapeHtml(s.label || '')}</td>`
+         + `<td class="v" style="font-size:9px;padding:1px 4px;white-space:nowrap;">`
+         + `<span style="color:${qcol};font-weight:600;font-size:8px;">${escapeHtml(s.quad || '')}</span>`
+         + `&nbsp;<span style="color:${col};">${gl}</span>&nbsp;${scHtml}`
+         + `</td></tr>`;
+    }
+  } else {
+    h += `<tr><td colspan="2" style="color:#94a3b8;font-size:10px;padding:4px 0;">No score data.</td></tr>`;
+  }
+
+  // MacroNet formula
   if (hasDeriveTime) {
-    const Mv    = Number(r.monthly_score);
-    const Qv    = Number(r.quarterly_score ?? 0);
-    const net   = Number(r.macronet);
-    const wMo   = det.b ?? 0.65, wQtr = det.a ?? 0.35;
-    const mo_w  = r.month_weight != null ? Number(r.month_weight) : 0;
-    const qtr_w = r.qtr_weight   != null ? Number(r.qtr_weight)   : 0;
-    const moNow = r.month_now_net  != null ? Number(r.month_now_net)  : null;
-    const moNxt = r.month_next_net != null ? Number(r.month_next_net) : null;
-    const qNow  = r.qtr_now_net   != null ? Number(r.qtr_now_net)   : null;
-    const qNxt  = r.qtr_next_net  != null ? Number(r.qtr_next_net)  : null;
-    const _sv = v => v != null
-      ? `<span style="color:${_sigColor(v)};font-weight:600;">${v >= 0 ? '+' : ''}${v.toFixed(2)}</span>`
-      : '?';
-    // Always show blend formula: w=... → (1−w)·cur + w·nxt = result
-    // When in ramp window (0 < w < 1), show simplified clamp formula with actual days
-    const _wLabel = (w, rB, lD) => {
-      const den = rB - lD;
-      if (w > 0.005 && w < 0.995) {
-        const days = Math.round(rB - w * den);
-        return `clamp((${rB}&#8722;${days})/${den},0,1)=${w.toFixed(2)}`;
-      }
-      return w.toFixed(2);
-    };
-    if (moNow != null) {
-      const w1m = mo_w.toFixed(2), w0m = (1 - mo_w).toFixed(2);
-      const bM = moNxt != null
-        ? `(1&#8722;${w1m})&#xB7;cur(${_sv(moNow)}) + ${w1m}&#xB7;nxt(${_sv(moNxt)})`
-        : `1.00&#xB7;cur(${_sv(moNow)})`;
-      mBlendHtml = `w=${_wLabel(mo_w, 12, 5)} &nbsp;&#8594;&nbsp; ${bM}`
-                 + ` = <span style="color:${_sigColor(Mv)};font-weight:700;">${Mv >= 0 ? '+' : ''}${Mv.toFixed(2)}</span>`;
-    }
-    if (qNow != null) {
-      const w1q = qtr_w.toFixed(2), w0q = (1 - qtr_w).toFixed(2);
-      const bQ = qNxt != null
-        ? `(1&#8722;${w1q})&#xB7;cur(${_sv(qNow)}) + ${w1q}&#xB7;nxt(${_sv(qNxt)})`
-        : `1.00&#xB7;cur(${_sv(qNow)})`;
-      qBlendHtml = `w=${_wLabel(qtr_w, 20, 10)} &nbsp;&#8594;&nbsp; ${bQ}`
-                 + ` = <span style="color:${_sigColor(Qv)};font-weight:700;">${Qv >= 0 ? '+' : ''}${Qv.toFixed(2)}</span>`;
-    }
-    macroFormulaHtml =
+    let det2 = r.macro_detail;
+    if (typeof det2 === 'string') { try { det2 = JSON.parse(det2); } catch(_e) { det2 = null; } }
+    const Mv  = Number(r.monthly_score);
+    const Qv  = Number(r.quarterly_score ?? 0);
+    const net = Number(r.macronet);
+    const wMo = det2?.b ?? 0.65, wQtr = det2?.a ?? 0.35;
+    const fml =
       `${wMo}×M(<span style="color:${_sigColor(Mv)};font-weight:600;">${Mv >= 0 ? '+' : ''}${Mv.toFixed(3)}</span>) `
       + `+ ${wQtr}×Q(<span style="color:${_sigColor(Qv)};font-weight:600;">${Qv >= 0 ? '+' : ''}${Qv.toFixed(3)}</span>) `
       + `= <span style="color:${_sigColor(net)};font-weight:700;">${net.toFixed(4)}</span>`;
-  } else {
-    const netVal = det.macro_net != null ? Number(det.macro_net) : null;
-    const qV = det.quarter?.Qtr ?? '?', mV = det.month?.M ?? '?';
-    macroFormulaHtml =
-      `${det.a}×Qtr(<span style="color:${_sigColor(Number(qV))}">${qV}</span>) `
-      + `+ ${det.b}×M(<span style="color:${_sigColor(Number(mV))}">${mV}</span>) `
-      + `= <span style="color:${netVal != null ? _sigColor(netVal) : '#475569'};font-weight:700;">${netVal ?? '?'}</span>`;
-  }
-
-  // ── Summary (top) — 3-period cards + MacroNet result ─────────────────────
-  h += '<table>';
-  const _card = (label, quad, net, dtbLabel) => {
-    const hasNet = net != null;
-    const n = hasNet ? Number(net) : null;
-    const gCol  = !hasNet ? '#d1d5db' : n > 0 ? '#16a34a' : n < 0 ? '#dc2626' : '#9ca3af';
-    const glyph = !hasNet ? '—' : n > 0 ? '▲' : n < 0 ? '▼' : '—';
-    const netLbl = hasNet ? `<div style="font-size:8px;color:${gCol};font-weight:600;">${n > 0 ? '+' : ''}${n.toFixed(2)}</div>` : '';
-    const qLbl  = quad ? `<div style="color:${_quadColor(quad)};font-weight:700;font-size:9px;white-space:nowrap;">${escapeHtml(quad)}</div>` : '';
-    return `<td style="text-align:center;padding:4px 6px;border-right:1px solid #e2e8f0;vertical-align:top;">`
-         + `<div style="font-size:8px;color:#94a3b8;margin-bottom:2px;">${escapeHtml(label)}</div>`
-         + qLbl
-         + `<div style="font-size:13px;color:${gCol};line-height:1.2;">${glyph}</div>`
-         + netLbl
-         + (dtbLabel ? `<div style="font-size:8px;color:#94a3b8;">${escapeHtml(dtbLabel)}</div>` : '')
-         + `</td>`;
-  };
-  h += `<tr><td colspan="2" style="padding:4px 0 6px;">`
-     + `<table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:4px;"><tr>`
-     + _card('Cur Month', cmQuad, r.month_now_net,  cmDtb != null ? `${cmDtb}d left` : null)
-     + _card('Nxt Month', nmQuad, r.month_next_net, cmDtb != null ? `in ${cmDtb}d`   : null)
-     + `<td style="text-align:center;padding:4px 6px;vertical-align:top;">`
-     + `<div style="font-size:8px;color:#94a3b8;margin-bottom:2px;">Quarter</div>`
-     + (qQuad ? `<div style="color:${_quadColor(qQuad)};font-weight:700;font-size:9px;">${escapeHtml(qQuad)}</div>` : '')
-     + (() => { const n = r.qtr_now_net != null ? Number(r.qtr_now_net) : null;
-                const gc = n == null ? '#d1d5db' : n > 0 ? '#16a34a' : n < 0 ? '#dc2626' : '#9ca3af';
-                const g  = n == null ? '—' : n > 0 ? '▲' : n < 0 ? '▼' : '—';
-                const nl = n != null ? `<div style="font-size:8px;color:${gc};font-weight:600;">${n > 0 ? '+' : ''}${n.toFixed(2)}</div>` : '';
-                return `<div style="font-size:13px;color:${gc};line-height:1.2;">${g}</div>${nl}`; })()
-     + (qDtb != null ? `<div style="font-size:8px;color:#94a3b8;">${qDtb}d left</div>` : '')
-     + `</td>`
-     + `</tr></table></td></tr>`;
-
-  if (mBlendHtml) h += `<tr><td class="k" style="font-size:9px;color:#64748b;">M (monthly)</td><td class="v" style="font-size:9px;">${mBlendHtml}</td></tr>`;
-  if (qBlendHtml) h += `<tr><td class="k" style="font-size:9px;color:#64748b;">Q (quarter)</td><td class="v" style="font-size:9px;">${qBlendHtml}</td></tr>`;
-  h += `<tr><td class="k">MacroNet</td><td class="v" style="font-size:9px;">${macroFormulaHtml} → ${_coloredVocab(mv)}</td></tr>`;
-  if (conf != null) {
-    const confNum = r.macro_conf != null ? Number(r.macro_conf) : 0;
-    const confColor = confNum >= 0.7 ? '#16a34a' : confNum >= 0.4 ? '#d97706' : '#dc2626';
-    h += `<tr><td class="k">Confidence</td><td class="v" style="color:${confColor};font-weight:700;">${conf}%</td></tr>`;
-  }
-  if (turn) h += `<tr><td class="k">Turn signal</td><td class="v" style="color:#f97316;font-weight:700;">${escapeHtml(turn)}</td></tr>`;
-
-  // ── How to act ─────────────────────────────────────────────────────────────
-  if (r.macro_howto) {
-    const howtoTrimmed = r.macro_howto.replace(/\s*Technical\/Sources.*$/i, '').trim();
-    if (howtoTrimmed) {
-      h += `<tr><td class="sp-sec" colspan="2">How to Act</td></tr>`;
-      h += `<tr><td colspan="2" style="font-size:10px;color:#374151;padding:2px 0 5px;">${escapeHtml(howtoTrimmed)}</td></tr>`;
-    }
-  }
-
-  // ── Per-period detail sections ─────────────────────────────────────────────
-  if (mems.length) {
-    const _stOf  = v => { const u = (v || '').toUpperCase(); return u === 'BULLISH' ? 1 : u === 'BEARISH' ? -1 : 0; };
-    const _ocOf  = v => { const u = (v || '').toUpperCase(); return u === 'BULLISH' ? '#1c6c30' : u === 'BEARISH' ? '#8c1d1d' : u ? '#5b4900' : '#9ca3af'; };
-    const _olLbl = v => { if (!v) return '—'; const u = v.toUpperCase(); return u === 'BULLISH' ? 'Bullish' : u === 'BEARISH' ? 'Bearish' : v; };
-
-    const _memberBlock = qfKey => {
-      let score = 0, rows = '';
-      for (const m of mems) {
-        const qf = _qfMap[`${m.category}|${(m.sub_cat || m.label || '').toLowerCase()}`];
-        // For cur_qtr and next_month use per-period outlooks stored in member data (from API);
-        // band-factors cur_qtr is unreliable when quarterly period isn't resolved in that endpoint
-        let ol;
-        if (qfKey === 'cur_qtr')     ol = m.qtr_outlook ?? (qf ? qf[qfKey] : null);
-        else if (qfKey === 'next_month') ol = m.nxt_outlook ?? (qf ? qf[qfKey] : null);
-        else ol = qf ? qf[qfKey] : (qfKey === 'cur_month' ? m.outlook : null);
-        const st = _stOf(ol);
-        score += st * (m.weight || 1);
-        const stSym   = st > 0 ? '▲' : st < 0 ? '▼' : '→';
-        const stColor = st > 0 ? '#16a34a' : st < 0 ? '#dc2626' : '#9ca3af';
-        const cat = m.category
-          ? `${escapeHtml(m.category)} / ${escapeHtml(m.sub_cat || m.label || '')}`
-          : escapeHtml(m.label || '');
-        rows += `<tr><td class="k" style="font-size:9px;max-width:140px;white-space:normal;word-break:break-word;">${cat}</td>`
-              + `<td class="v" style="font-size:9px;white-space:nowrap;">`
-              + `<span style="color:${stColor}">${stSym}</span> `
-              + `<span style="color:${_ocOf(ol)};font-weight:600;">${escapeHtml(_olLbl(ol))}</span>`
-              + ` <span style="color:#94a3b8;">(×${m.weight})</span></td></tr>`;
-      }
-      const scColor = score > 0 ? '#16a34a' : score < 0 ? '#dc2626' : '#9ca3af';
-      rows += `<tr><td class="k" style="font-size:9px;color:#475569;">Score</td>`
-            + `<td class="v" style="color:${scColor};font-weight:700;font-size:11px;">${score > 0 ? '+' : ''}${score.toFixed(1)}</td></tr>`;
-      return rows;
-    };
-
-    const _secHdr = (title, quad, dtbLabel) => {
-      const qLbl = quad ? ` <span style="color:${_quadColor(quad)};font-size:9px;font-weight:400;">${escapeHtml(quad)}</span>` : '';
-      const dLbl = dtbLabel ? ` <span style="color:#94a3b8;font-size:9px;">${escapeHtml(dtbLabel)}</span>` : '';
-      return `<tr><td class="sp-sec" colspan="2">${escapeHtml(title)}${qLbl}${dLbl}</td></tr>`;
-    };
-
-    // Current Month
-    h += _secHdr('Current Month', cmQuad, cmDtb != null ? `(${cmDtb}d left)` : null);
-    if (moNow.dist && moNow.dist.length)
-      h += `<tr><td colspan="2" style="padding:2px 0 4px;">${_quadDistBar(moNow.dist)}<span style="font-size:9px;color:#475569;">${_quadDistBreakdown(moNow.dist)}</span></td></tr>`;
-    h += _memberBlock('cur_month');
-
-    // Next Month
-    h += _secHdr('Next Month', nmQuad, cmDtb != null ? `(in ${cmDtb}d)` : null);
-    if (moNxt && moNxt.dist && moNxt.dist.length)
-      h += `<tr><td colspan="2" style="padding:2px 0 4px;">${_quadDistBar(moNxt.dist)}<span style="font-size:9px;color:#475569;">${_quadDistBreakdown(moNxt.dist)}</span></td></tr>`;
-    h += _memberBlock('next_month');
-
-    // Quarter — one-hot: always 100% of the current quad
-    h += _secHdr('Quarter', qQuad, qDtb != null ? `(${qDtb}d left)` : null);
-    if (qQuad) {
-      const qDist = [{ quad: qQuad, pct: 100 }];
-      h += `<tr><td colspan="2" style="padding:2px 0 4px;">${_quadDistBar(qDist)}<span style="font-size:9px;color:#475569;">${_quadDistBreakdown(qDist)}</span></td></tr>`;
-    }
-    h += _memberBlock('cur_qtr');
-    if (qtr.next) {
-      const nc = qtr.turn_alert ? '#f97316' : '#94a3b8';
-      const ns = qtr.turn_alert ? ' <span style="color:#f97316;">(near-end!)</span>' : '';
-      h += `<tr><td class="k" style="font-size:9px;color:#475569;">Next quarter</td>`
-         + `<td class="v" style="color:${nc};">${_coloredQuad(qtr.next)}${ns}</td></tr>`;
-    }
+    h += `<tr><td class="k">MacroNet</td><td class="v" style="font-size:9px;">${fml} → ${_coloredVocab(mv)}</td></tr>`;
   }
 
   h += '</table>';

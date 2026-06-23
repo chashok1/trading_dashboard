@@ -23,6 +23,7 @@ VALUES
   ('monthly', 2027,  4, 'Quad 1', 'Apr-27', 54,  6,  4, 36)
 ON CONFLICT (period_type, year, period_num) DO UPDATE SET
   quad      = EXCLUDED.quad,
+  label     = EXCLUDED.label,
   quad1_pct = EXCLUDED.quad1_pct,
   quad2_pct = EXCLUDED.quad2_pct,
   quad3_pct = EXCLUDED.quad3_pct,
