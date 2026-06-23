@@ -528,23 +528,6 @@ async function loadMacroBand() {
       } else { elBreadth.textContent = ''; }
     }
 
-    // Actionable count: buy vs sell breakdown
-    const elActionable = $('macroBandActionable');
-    if (elActionable) {
-      if (universe.length) {
-        let buys = 0, sells = 0;
-        for (const r of universe) {
-          const side = actionDisplay(r.consolidated_action).side;
-          if (side === 'buy') buys++;
-          else if (side === 'sell') sells++;
-        }
-        elActionable.innerHTML =
-          `<span style="color:#166534;">${buys} Buys</span>` +
-          ` <span style="color:#6b7280;">·</span> ` +
-          `<span style="color:#991b1b;">${sells} Sells</span>`;
-      } else { elActionable.textContent = ''; }
-    }
-
     // Action split: distribution grouped buy→neutral→sell
     const elSplit = $('macroBandSplit');
     if (elSplit) {
