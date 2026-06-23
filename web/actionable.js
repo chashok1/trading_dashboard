@@ -587,8 +587,8 @@ function _qdLbl(q) { return q ? q.replace('Quad ', 'Qd') : '—'; }
 function _qLbl(q)  { return q ? q.replace('Quad ', 'Q')  : '—'; }
 function _msGlyph(score) {
   const s = score == null ? null : Number(score);
-  if (s > 0) return '<span style="font-size:6px;color:#16a34a;line-height:1;vertical-align:middle;">↑</span>';
-  if (s < 0) return '<span style="font-size:6px;color:#dc2626;line-height:1;vertical-align:middle;">↓</span>';
+  if (s > 0) return '<span style="font-size:6px;color:#16a34a;line-height:1;vertical-align:middle;">▲</span>';
+  if (s < 0) return '<span style="font-size:6px;color:#dc2626;line-height:1;vertical-align:middle;">▼</span>';
   return '';
 }
 function _quadColor(q) {

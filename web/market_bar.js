@@ -81,8 +81,8 @@
     const map = window._macroScoreMap;
     if (!map || !(sym in map)) return '';
     const s = Number(map[sym]);
-    if (s > 0) return '<span style="font-size:6px;color:#16a34a;line-height:1;vertical-align:middle;">↑</span>';
-    if (s < 0) return '<span style="font-size:6px;color:#dc2626;line-height:1;vertical-align:middle;">↓</span>';
+    if (s > 0) return '<span style="font-size:6px;color:#16a34a;line-height:1;vertical-align:middle;">▲</span>';
+    if (s < 0) return '<span style="font-size:6px;color:#dc2626;line-height:1;vertical-align:middle;">▼</span>';
     return '';
   }
 
