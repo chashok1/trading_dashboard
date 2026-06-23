@@ -776,23 +776,8 @@ function _renderQuadOutlookPanel(data) {
 
   let h = '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
 
-  // ── Monthly distributions ────────────────────────────────────────────────
-  h += `<tr><td colspan="2" style="padding:4px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Monthly</td></tr>`;
-  for (const m of months) {
-    const lbl = m.label || '—';
-    const quad = _effectiveQuad(m) || '';
-    const qcol = _quadColor(quad);
-    h += `<tr>`
-       + `<td style="padding:2px 6px;white-space:nowrap;vertical-align:middle;">`
-       + `<span style="color:#94a3b8;font-size:9px;">${escapeHtml(lbl)}</span>`
-       + `<span style="font-weight:600;color:${qcol};margin-left:3px;">${escapeHtml(_qdLbl(quad))}</span>`
-       + `</td>`
-       + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">${_segBar(m, 140)}</td>`
-       + `</tr>`;
-  }
-
   // ── Quarterly ────────────────────────────────────────────────────────────
-  h += `<tr><td colspan="2" style="padding:6px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;border-top:1px solid #f1f5f9;">Quarterly</td></tr>`;
+  h += `<tr><td colspan="2" style="padding:4px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Quarterly</td></tr>`;
   for (const qp of [cq, nq].filter(Boolean)) {
     const quad = qp.quad || '';
     const qcol = _quadColor(quad);
@@ -807,6 +792,21 @@ function _renderQuadOutlookPanel(data) {
        + `<span style="font-size:7px;color:#fff;font-weight:600;pointer-events:none;">${escapeHtml(_qdLbl(quad))} 100%</span>`
        + `</div>`
        + `</td>`
+       + `</tr>`;
+  }
+
+  // ── Monthly distributions ────────────────────────────────────────────────
+  h += `<tr><td colspan="2" style="padding:6px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;border-top:1px solid #f1f5f9;">Monthly</td></tr>`;
+  for (const m of months) {
+    const lbl = m.label || '—';
+    const quad = _effectiveQuad(m) || '';
+    const qcol = _quadColor(quad);
+    h += `<tr>`
+       + `<td style="padding:2px 6px;white-space:nowrap;vertical-align:middle;">`
+       + `<span style="color:#94a3b8;font-size:9px;">${escapeHtml(lbl)}</span>`
+       + `<span style="font-weight:600;color:${qcol};margin-left:3px;">${escapeHtml(_qdLbl(quad))}</span>`
+       + `</td>`
+       + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">${_segBar(m, 140)}</td>`
        + `</tr>`;
   }
 
