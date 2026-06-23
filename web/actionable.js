@@ -583,7 +583,7 @@ function _effectiveQuad(p) {
   if (total > 0) return Object.entries(pcts).sort((a, b) => b[1] - a[1])[0][0];
   return p.quad || null;
 }
-function _qdLbl(q) { return q ? q.replace('Quad ', 'Qd') : '—'; }
+function _qdLbl(q) { return q ? q.replace('Quad ', 'Q') : '—'; }
 function _quadColor(q) {
   if (!q) return '#9ca3af';
   if (/1/.test(q)) return '#2f9e2f'; // Q1 = bullish/growth
