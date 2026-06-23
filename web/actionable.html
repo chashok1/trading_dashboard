@@ -665,7 +665,13 @@
             <option value="split_tech_bear">Split Tech Bear</option>
             <option value="neutral">Neutral</option>
           </select>
-          <!-- Right side: row count + panel toggles + actions -->
+          <!-- Clear filters — lives with the filters, not the panel toggles -->
+          <button id="clearFiltersBtn" class="btn-icon btn-icon-sm" data-tip="Clear Filters" style="color:#c41e3a;" title="Clear all filters">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+          <!-- Right side: row count + panel toggles + export -->
           <div style="margin-left:auto; display:flex; align-items:center; gap:4px; flex-shrink:0;">
             <span style="font-size:11px; color:var(--text-2,#666);" id="rowCount"></span>
             <!-- Panel toggles -->
@@ -704,13 +710,7 @@
                 <line x1="15" y1="3" x2="15" y2="21"/>
               </svg>
             </button>
-            <!-- Actions: divider then clear + export -->
-            <span style="width:1px; background:var(--border,#e0e0e0); align-self:stretch; margin:2px 2px;"></span>
-            <button id="clearFiltersBtn" class="btn-icon btn-icon-sm" data-tip="Clear Filters" style="color:#c41e3a;" title="Clear all filters">
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
+            <!-- Export -->
             <button id="exportCsvBtn" class="btn-icon btn-icon-sm" data-tip="Export CSV" title="Export CSV">
               <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
