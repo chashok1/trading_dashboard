@@ -2444,7 +2444,9 @@ function _initSidePanels() {
     const panel = hdr.closest('.sp-panel');
     if (!panel) return;
     const key = 'sp_' + (hdr.dataset.panel || panel.id || '');
-    if (localStorage.getItem(key) === 'collapsed') panel.classList.add('sp-collapsed');
+    const _defaultCollapsed = key === 'sp_quadOutlook';
+    const _stored = localStorage.getItem(key);
+    if (_defaultCollapsed ? _stored !== 'open' : _stored === 'collapsed') panel.classList.add('sp-collapsed');
     hdr.addEventListener('click', () => {
       panel.classList.toggle('sp-collapsed');
       localStorage.setItem(key, panel.classList.contains('sp-collapsed') ? 'collapsed' : 'open');
