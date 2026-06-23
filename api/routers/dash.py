@@ -438,7 +438,8 @@ def get_actionable(
                tw.vlm_rate_change_d AS volume_rate_change,
                tw.vlm_3m_pct, tw.vlm_desc, tw.vlm_action,
                hv_td.historical_vol AS hv,
-               htw.a_volume_spike
+               htw.a_volume_spike,
+               ms.macronet, ms.macro_action
         FROM drv_actionable a
         LEFT JOIN drv_tn_td_bb_rr rr
                ON rr.tos_symbol = a.tos_symbol AND rr.as_of_date = a.as_of_date
@@ -503,6 +504,8 @@ def get_actionable(
               AND snapshot_date <= a.as_of_date
             ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
         ) htw ON TRUE
+        LEFT JOIN drv_macro_score ms
+               ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = a.as_of_date
         WHERE {' AND '.join(where)}
     """
     with session_scope() as s:
@@ -1042,13 +1045,23 @@ def get_actionable(
         # backward-compat quad labels
         d_["quad_m"] = _mp_cur.quad if _mp_cur else None
         d_["quad_q"] = _qp_cur.quad if _qp_cur else None
-        try:
-            macro = _compute_macro(sym, rac, sec)
-        except Exception:
+        # Prefer derive-time drv_macro_score; fall back to API-time _compute_macro
+        if d_.get("macro_action"):
             macro = {
-                "macro_value": None, "macro_conf": None,
-                "macro_turn": None, "macro_detail": None, "macro_howto": None,
+                "macro_value": d_["macro_action"],
+                "macro_conf": None,
+                "macro_turn": None,
+                "macro_detail": {"macronet": d_.get("macronet")},
+                "macro_howto": None,
             }
+        else:
+            try:
+                macro = _compute_macro(sym, rac, sec)
+            except Exception:
+                macro = {
+                    "macro_value": None, "macro_conf": None,
+                    "macro_turn": None, "macro_detail": None, "macro_howto": None,
+                }
         d_.update(macro)
         out.append(d_)
     return out
