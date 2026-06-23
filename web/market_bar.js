@@ -304,10 +304,9 @@
       `</div>`;
   }
 
-  function _msGlyphTape(sym) {
-    const map = window._macroScoreMap;
-    if (!map || !sym || !(sym in map) || map[sym] == null) return '';
-    const s = Number(map[sym]);
+  function _msGlyphTape(score) {
+    if (score == null) return '';
+    const s = Number(score);
     if (s > 0) return '<span style="font-size:6px;color:#16a34a;line-height:1;vertical-align:middle;">▲</span>';
     if (s < 0) return '<span style="font-size:6px;color:#dc2626;line-height:1;vertical-align:middle;">▼</span>';
     return '';
@@ -371,7 +370,7 @@
           ? { o: item.open, h: item.high, l: item.low, c: item.value } : null;
         grpCells.push(chipHtml(chipLabel, item.rr_outlook, pctStr, cls,
                                item.rr_buy, item.rr_sell, item.value, tipObj, item.stale, ohlc1, volThresh,
-                               (item.symbol || item.metric_key || '').replace(/^\//, '')));
+                               item.monthly_score ?? null));
       }
       if (!grpCells.length) continue;
       cells.push(`<div class="rr-group">${grpCells.join('')}</div>`);
@@ -410,7 +409,7 @@
           ? { o: item.open, h: item.high, l: item.low, c: item.bar_price } : null;
         chips.push(chipHtml(name, item.outlook, chgStr, cls,
                             item.buy, item.sell, item.bar_price, tipObj, false, ohlc2, volThresh,
-                            (item.symbol || '').replace(/^\//, '')));
+                            item.monthly_score));
       }
       cells.push(`<div class="rr-group">${chips.join('')}</div>`);
     }

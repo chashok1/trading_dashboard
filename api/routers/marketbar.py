@@ -336,25 +336,27 @@ def _build_rr_response(rows, meta: dict, cat_order: list,
         buy  = float(row['buy_trade'])  if row['buy_trade']  is not None else None
         sell = float(row['sell_trade']) if row['sell_trade'] is not None else None
 
+        ms = row.get('monthly_score')
         item = {
-            'symbol':       sym,
-            'label':        label,
-            'bar_price':    q_price,
-            'pct':          pct,
-            'buy':          buy,
-            'sell':         sell,
-            'outlook':      row['outlook'] or 'Neutral',
-            'name':         row.get('name') or sym,
-            'open':         float(row['open_price'])  if row['open_price']  is not None else None,
-            'high':         float(row['high_price'])  if row['high_price']  is not None else None,
-            'low':          float(row['low_price'])   if row['low_price']   is not None else None,
-            'close':        q_price,
-            'as_of':        str(row['export_date']) if row.get('export_date') else None,
-            'quote_time':   str(row['export_time']) if row.get('export_time') else None,
-            'price_source': 'drv_quote' if q_price is not None else None,
-            'rr_source':    'hist_rr'   if (buy is not None and sell is not None) else None,
-            'vol_low':      vol_thresh[sym]['low']  if (vol_thresh and sym in vol_thresh) else None,
-            'vol_high':     vol_thresh[sym]['high'] if (vol_thresh and sym in vol_thresh) else None,
+            'symbol':        sym,
+            'label':         label,
+            'bar_price':     q_price,
+            'pct':           pct,
+            'buy':           buy,
+            'sell':          sell,
+            'outlook':       row['outlook'] or 'Neutral',
+            'name':          row.get('name') or sym,
+            'open':          float(row['open_price'])  if row['open_price']  is not None else None,
+            'high':          float(row['high_price'])  if row['high_price']  is not None else None,
+            'low':           float(row['low_price'])   if row['low_price']   is not None else None,
+            'close':         q_price,
+            'as_of':         str(row['export_date']) if row.get('export_date') else None,
+            'quote_time':    str(row['export_time']) if row.get('export_time') else None,
+            'price_source':  'drv_quote' if q_price is not None else None,
+            'rr_source':     'hist_rr'   if (buy is not None and sell is not None) else None,
+            'vol_low':       vol_thresh[sym]['low']  if (vol_thresh and sym in vol_thresh) else None,
+            'vol_high':      vol_thresh[sym]['high'] if (vol_thresh and sym in vol_thresh) else None,
+            'monthly_score': float(ms) if ms is not None else None,
         }
         if cat in groups:
             groups[cat].append(item)
@@ -380,7 +382,8 @@ _RR_SQL = text("""
            q.open_price, q.high_price, q.low_price,
            q.last_price AS q_price,
            q.pct_change AS pct,
-           q.export_time, q.export_date
+           q.export_time, q.export_date,
+           ms.monthly_score
     FROM drv_rr r
     LEFT JOIN (
         SELECT DISTINCT ON (tos_symbol) tos_symbol, name
@@ -389,6 +392,9 @@ _RR_SQL = text("""
     LEFT JOIN drv_quote q
            ON q.tos_symbol = r.tos_symbol
           AND q.as_of_date = (SELECT MAX(as_of_date) FROM drv_quote)
+    LEFT JOIN drv_macro_score ms
+           ON ms.tos_symbol = r.tos_symbol
+          AND ms.as_of_date = (SELECT MAX(as_of_date) FROM drv_macro_score)
     WHERE r.as_of_date = (SELECT MAX(as_of_date) FROM drv_rr)
     ORDER BY r.tos_symbol
 """)
