@@ -608,8 +608,22 @@ async function loadMacroBand() {
     const elM = $('macroBandMonth'), elQ = $('macroBandQtr'), elF = $('macroBandFavoring');
     if (!elM) return;
 
-    // Inline distribution bar from period quad pcts
-    const _distBar = p => {
+    // Segmented distribution bar with % labels inside each segment (for monthly periods)
+    const _distBarMonth = p => {
+      if (!p) return '';
+      const segs = [
+        {q:'Quad 1',pct:p.quad1_pct||0},{q:'Quad 2',pct:p.quad2_pct||0},
+        {q:'Quad 3',pct:p.quad3_pct||0},{q:'Quad 4',pct:p.quad4_pct||0},
+      ].filter(s=>s.pct>0);
+      if (!segs.length) return '';
+      const bars = segs.map(s => {
+        const lbl = s.pct >= 14 ? `<span style="font-size:8px;color:#fff;font-weight:600;line-height:1;pointer-events:none;">${Math.round(s.pct)}%</span>` : '';
+        return `<div style="width:${s.pct}%;background:${_quadColor(s.q)};height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;" title="${escapeHtml(s.q)} ${s.pct}%">${lbl}</div>`;
+      }).join('');
+      return `<span style="display:inline-flex;width:120px;height:14px;border-radius:3px;overflow:hidden;border:1px solid #e2e8f0;vertical-align:middle;margin-left:5px;">${bars}</span>`;
+    };
+    // Thin solid bar for quarterly (one-hot — colored label already conveys the quad)
+    const _distBarQtr = p => {
       if (!p) return '';
       const segs = [
         {q:'Quad 1',pct:p.quad1_pct||0},{q:'Quad 2',pct:p.quad2_pct||0},
@@ -617,7 +631,7 @@ async function loadMacroBand() {
       ].filter(s=>s.pct>0);
       if (!segs.length) return '';
       const bars = segs.map(s=>`<div style="width:${s.pct}%;background:${_quadColor(s.q)};height:100%;" title="${escapeHtml(s.q)} ${s.pct}%"></div>`).join('');
-      return `<span style="display:inline-flex;width:60px;height:5px;border-radius:2px;overflow:hidden;border:1px solid #e2e8f0;vertical-align:middle;margin-left:3px;">${bars}</span>`;
+      return `<span style="display:inline-flex;width:40px;height:5px;border-radius:2px;overflow:hidden;border:1px solid #e2e8f0;vertical-align:middle;margin-left:3px;">${bars}</span>`;
     };
 
     // Month span — data-quadbandpop triggers rich popover
@@ -626,9 +640,9 @@ async function loadMacroBand() {
     const mDtb = cm?.end_date ? Math.max(0, Math.round((new Date(cm.end_date) - new Date(data.as_of_date)) / 864e5)) : null;
     elM.innerHTML = `<span style="color:#64748b;font-size:10px;cursor:help;text-decoration:underline dotted;" data-quadbandpop="all_periods">Month</span> `
       + `<strong style="color:${_quadColor(mCur)};cursor:help;" data-quadbandpop="cur_month">${escapeHtml(mCur)}</strong>`
-      + _distBar(cm)
+      + _distBarMonth(cm)
       + (mDtb != null ? ` <span style="color:#94a3b8;font-size:10px;">(${mDtb}d left)</span>` : '')
-      + (mNxt ? ` → <strong style="color:${_quadColor(mNxt)};opacity:0.7;cursor:help;" data-quadbandpop="next_month">${escapeHtml(mNxt)}</strong>${_distBar(nm)}` : '');
+      + (mNxt ? ` → <strong style="color:${_quadColor(mNxt)};opacity:0.7;cursor:help;" data-quadbandpop="next_month">${escapeHtml(mNxt)}</strong>${_distBarMonth(nm)}` : '');
 
     // Quarter span
     const qCur = _effectiveQuad(cq) || '—';
@@ -636,9 +650,9 @@ async function loadMacroBand() {
     const qDtb = cq?.end_date ? Math.max(0, Math.round((new Date(cq.end_date) - new Date(data.as_of_date)) / 864e5)) : null;
     elQ.innerHTML = `<span style="color:#64748b;font-size:10px;">Qtr</span> `
       + `<strong style="color:${_quadColor(qCur)};cursor:help;" data-quadbandpop="cur_qtr">${escapeHtml(qCur)}</strong>`
-      + _distBar(cq)
+      + _distBarQtr(cq)
       + (qDtb != null ? ` <span style="color:#94a3b8;font-size:10px;">(${qDtb}d left)</span>` : '')
-      + (qNxt ? ` → <strong style="color:${_quadColor(qNxt)};opacity:0.7;cursor:help;" data-quadbandpop="next_qtr">${escapeHtml(qNxt)}</strong>${_distBar(nq)}` : '');
+      + (qNxt ? ` → <strong style="color:${_quadColor(qNxt)};opacity:0.7;cursor:help;" data-quadbandpop="next_qtr">${escapeHtml(qNxt)}</strong>${_distBarQtr(nq)}` : '');
 
     // Macro distribution — same universe as action split below
     if (elF) elF.innerHTML = '';
