@@ -118,30 +118,36 @@ Three zones: `ref_days > ramp_begin` → next 0% (100% this month); between → 
 
 ![Next-month weight (ramp begins → lead days)](diagrams/quad_month_ramp.svg)
 
-### Quarterly = same calculation as monthly, one-hot weight
+### Quarterly = same calculation as monthly, one-hot weight + anticipation ramp
 
 Uses **identical Stage 1–2 logic** (same memberships, same aggregation weights) — the only
 difference is the input distribution: the active quarter's quad gets **100% weight**, all
 others **0%**:
 
 ```
-quarterly_stance(membership) = 1.0 × outlook(active_quad)     ← one-hot vs monthly's distribution
-Q = sector×2 + asset_class×1 + Σ(each style ×0.5)            ← same aggregation as monthly
+qtr_now_net  = sector×2 + asset_class×1 + Σ(style×0.5)   using 1.0 × outlook(current_quad)
+qtr_next_net = sector×2 + asset_class×1 + Σ(style×0.5)   using 1.0 × outlook(next_quad)
 ```
 
-This means a Tech stock and a Utilities stock get **different Q values** within the same
-quarter. Q is constant for the quarter (no ramp/lead, no blending), stepping only at the
-quarter boundary. Near quarter-end the **next quarter** is surfaced as a discrete turn alert
-— it does **not** blend into `Q`.
+Then apply the **same ramp/lead anticipation** as monthly, but keyed to trading days to
+**quarter-end** (with separate, likely longer tunables):
+
+```
+ref_days_qtr  = trading days to quarter-end
+next_qtr_weight = clamp( (ramp_begin_qtr − ref_days_qtr) / (ramp_begin_qtr − lead_days_qtr), 0, 1 )
+Q = (1 − next_qtr_weight)·qtr_now_net + next_qtr_weight·qtr_next_net
+```
+
+Each stock gets its own `Q` value. The ramp naturally surfaces the next quarter's regime
+without a separate "discrete turn alert" — the blend IS the alert.
 
 ### Combine
 
 ```
-MacroNet = b·M + a·Q       b > a   (Month = primary signal — probability-weighted + ramp; Quarter = same-calc strategic anchor at lower weight)
+MacroNet = b·M + a·Q       b > a   (Month = primary signal — probability-weighted distribution + ramp; Quarter = same-calc strategic anchor at lower weight + own ramp)
 ```
 
-`MacroNet` → SA/STM/SS/BM via a threshold map. The turn signal feeds from the monthly
-current-vs-next divergence (continuous) and the late-quarter next-quarter alert (discrete).
+`MacroNet` → SA/STM/SS/BM via a threshold map.
 
 ---
 
@@ -207,6 +213,8 @@ Leads with **How to act**, then the evidence — no data-model narration:
 |---|---|---|
 | `quad_month_ramp_begin_days` | 12 | days before month-end the next-month weight starts ramping |
 | `quad_month_lead_days` | 5 | days before month-end the next-month weight hits 100% |
+| `quad_qtr_ramp_begin_days` | 20 | days before quarter-end the next-quarter weight starts ramping |
+| `quad_qtr_lead_days` | 10 | days before quarter-end the next-quarter weight hits 100% |
 | `quad_horizon_weight_qtr` | 0.35 | Quarter weight `a` in MacroNet |
 | `quad_horizon_weight_mo` | 0.65 | Month weight `b` in MacroNet |
 | `quad_category_weight_*` | sector 2, asset 1, style 0.5 | category aggregation weights |
