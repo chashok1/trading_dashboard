@@ -270,9 +270,10 @@ def get_quad_band_factors(
             " ORDER BY start_date ASC LIMIT 1"
         ), {"d": d}).mappings().first()
 
-        # 3. Active quarterly period — single quad label
+        # 3. Active quarterly period — quad label via pct argmax fallback
         qtr_row = s.execute(text(
-            "SELECT quad FROM ref_quad_periods"
+            "SELECT quad,quad1_pct,quad2_pct,quad3_pct,quad4_pct"
+            " FROM ref_quad_periods"
             " WHERE period_type='quarterly' AND :d>=start_date"
             " AND (:d<=end_date OR end_date IS NULL)"
             " ORDER BY start_date DESC LIMIT 1"
@@ -304,7 +305,7 @@ def get_quad_band_factors(
 
     cur_month_q = _eff_quad(mo)
     nxt_month_q = _eff_quad(nm)
-    qtr_quad = (qtr_row["quad"] if qtr_row else None) or ""
+    qtr_quad = _eff_quad(qtr_row) or ""
     nxt_qtr_quad = (nq_row["quad"] if nq_row else None) or ""
 
     cur_col = _quad_col(cur_month_q)

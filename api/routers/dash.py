@@ -571,6 +571,7 @@ def get_actionable(
     _mp_nxt: _Period | None = None   # monthly next
     _qp_cur: _Period | None = None   # quarterly current
     _qp_nxt: _Period | None = None   # quarterly next
+    _qp_cur_label: str | None = None  # display-only: effective quad col from pct argmax
 
     # (category, sub_category_lower) -> {quad1..4: text}
     _quad_lookup: dict[tuple[str, str], dict[str, str | None]] = {}
@@ -664,6 +665,7 @@ def get_actionable(
                 sd, ed = p["start_date"], p["end_date"]
                 if (sd <= d) and (ed is None or d <= ed) and _qp_cur is None:
                     _qp_cur = _Period(p["quad"], sd, ed, _dtb(ed), None)
+                    _qp_cur_label = _effective_quad_col(_pcts(p), _quad_col(p.get("quad")))
             for p in sorted(_quarterly, key=lambda x: x["start_date"]):
                 if _qp_cur and p["start_date"] > _qp_cur.start_date and _qp_nxt is None:
                     _qp_nxt = _Period(p["quad"], p["start_date"], p["end_date"],
@@ -1019,6 +1021,7 @@ def get_actionable(
             },
             "quarter": {
                 "now": _col_to_quad_name(q_eff_q),
+                "quad_label": _col_to_quad_name(_qp_cur_label),
                 "Qtr": Qtr,
                 "dtb": _qp_cur.dtb if _qp_cur else None,
                 "next": _col_to_quad_name(q_nxt_eff),

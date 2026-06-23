@@ -252,7 +252,7 @@ function _buildMacroPopHtml(r) {
   const _qds  = (state.quadFactors || {}).quads || {};
   const cmQuad = _qds.cur_month  || moNow.quad;
   const nmQuad = _qds.next_month || (moNxt && moNxt.quad);
-  const qQuad  = _qds.cur_qtr   || qtr.now;
+  const qQuad  = qtr.quad_label || _qds.cur_qtr || qtr.now;
   const cmDtb  = moNow.dtb;
   const qDtb   = qtr.dtb;
 
@@ -276,13 +276,22 @@ function _buildMacroPopHtml(r) {
     const _sv = v => v != null
       ? `<span style="color:${_sigColor(v)};font-weight:600;">${v >= 0 ? '+' : ''}${v.toFixed(2)}</span>`
       : '?';
-    if (mo_w > 0.01 && moNow != null && moNxt != null) {
-      mBlendHtml = `(1−${mo_w.toFixed(2)})×Cur(${_sv(moNow)}) + ${mo_w.toFixed(2)}×Nxt(${_sv(moNxt)})`
-                 + ` = <span style="color:${_sigColor(Mv)};font-weight:700;">${Mv >= 0 ? '+' : ''}${Mv.toFixed(3)}</span>`;
+    // Always show blend formula: w=... → (1−w)·cur + w·nxt = result
+    if (moNow != null) {
+      const w1m = mo_w.toFixed(2), w0m = (1 - mo_w).toFixed(2);
+      const bM = moNxt != null
+        ? `(1−${w1m})·cur(${_sv(moNow)}) + ${w1m}·nxt(${_sv(moNxt)})`
+        : `1.00·cur(${_sv(moNow)})`;
+      mBlendHtml = `w=${w1m} &nbsp;→&nbsp; ${bM}`
+                 + ` = <span style="color:${_sigColor(Mv)};font-weight:700;">${Mv >= 0 ? '+' : ''}${Mv.toFixed(2)}</span>`;
     }
-    if (qtr_w > 0.01 && qNow != null && qNxt != null) {
-      qBlendHtml = `(1−${qtr_w.toFixed(2)})×Cur(${_sv(qNow)}) + ${qtr_w.toFixed(2)}×Nxt(${_sv(qNxt)})`
-                 + ` = <span style="color:${_sigColor(Qv)};font-weight:700;">${Qv >= 0 ? '+' : ''}${Qv.toFixed(3)}</span>`;
+    if (qNow != null) {
+      const w1q = qtr_w.toFixed(2), w0q = (1 - qtr_w).toFixed(2);
+      const bQ = qNxt != null
+        ? `(1−${w1q})·cur(${_sv(qNow)}) + ${w1q}·nxt(${_sv(qNxt)})`
+        : `1.00·cur(${_sv(qNow)})`;
+      qBlendHtml = `w=${w1q} &nbsp;→&nbsp; ${bQ}`
+                 + ` = <span style="color:${_sigColor(Qv)};font-weight:700;">${Qv >= 0 ? '+' : ''}${Qv.toFixed(2)}</span>`;
     }
     macroFormulaHtml =
       `${wMo}×M(<span style="color:${_sigColor(Mv)};font-weight:600;">${Mv >= 0 ? '+' : ''}${Mv.toFixed(3)}</span>) `
