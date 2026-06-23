@@ -758,6 +758,28 @@ function _renderQuadOutlookPanel(data) {
   const months = data.months || [];
   const cq = data.current_quarter, nq = data.next_quarter;
 
+  // ── Header summary ───────────────────────────────────────────────────────
+  const hdrEl = $('quadOutlookHdr');
+  if (hdrEl) {
+    const cm = months[0];
+    const qQuad = _effectiveQuad(cq);
+    const mQuad = _effectiveQuad(cm);
+    const qPart = qQuad
+      ? `Q→<span style="color:${_quadColor(qQuad)};font-weight:700;">${_qdLbl(qQuad)}</span>`
+      : 'Q→—';
+    const mDist = cm
+      ? [1,2,3,4].map(i => {
+          const pct = Math.round(cm[`quad${i}_pct`] || 0);
+          const col = _quadColor(`Quad ${i}`);
+          return `<span style="color:${col};">Qd${i}:${pct}%</span>`;
+        }).join('<span style="color:#cbd5e1;">,</span>')
+      : '—';
+    const mPart = mQuad
+      ? `M(<span style="color:${_quadColor(mQuad)};font-weight:700;">${_qdLbl(mQuad)}</span>)→${mDist}`
+      : '—';
+    hdrEl.innerHTML = `${qPart}&nbsp;&nbsp;${mPart}`;
+  }
+
   const _segBar = (p, width) => {
     if (!p) return '';
     const segs = [
