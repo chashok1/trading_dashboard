@@ -657,6 +657,12 @@ def _write_yfiles_csv(load_date: date,
                     short_ratio, float_shares, shares_outstanding
                 FROM cache_yahoo_quote
                 WHERE last_price IS NOT NULL
+                  AND tos_symbol IN (
+                      SELECT DISTINCT tos_symbol FROM hist_td
+                       WHERE export_date = (SELECT MAX(export_date) FROM hist_td)
+                      UNION
+                      SELECT tos_ticker FROM ref_rrt WHERE tos_ticker IS NOT NULL
+                  )
                 ORDER BY y_ticker
             """)).fetchall()
     except Exception as e:
