@@ -330,6 +330,16 @@ CREATE TABLE IF NOT EXISTS ref_quad_periods (
 
 -- -----------------------------------------------------
 
+CREATE TABLE IF NOT EXISTS ref_accounts (
+    account_number   TEXT PRIMARY KEY,
+    short_name       TEXT,
+    custom_name      TEXT,
+    source           TEXT,
+    notes            TEXT
+);
+
+-- -----------------------------------------------------
+
 CREATE TABLE IF NOT EXISTS ref_param (
 
     sheet       TEXT NOT NULL,

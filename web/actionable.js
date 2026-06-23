@@ -24,7 +24,7 @@ const state = {
   agreementScorecard: null, // TASK_69: {agreement_class -> avg_fwd_20d} cache
   quadFactors: null,        // cached from /api/quad/band-factors for MACRO tooltip
   quadData: null,           // cached from /api/dashboard/quads (period dates for dtb)
-  allAccounts: [],          // all account names from /api/actionable/accounts
+  allAccounts: [],          // [{account_number, display_name, short_name, custom_name}] from /api/actionable/accounts
   // Pass 2: top-N collapse
   showAll: false,
   TOP_N: 15,
@@ -1209,6 +1209,18 @@ function renderSourceFilter() {
   }
 }
 
+// Returns the display name for an account_number using state.allAccounts lookup.
+function _acctDisplayName(acctNum) {
+  const a = state.allAccounts.find(x => x.account_number === acctNum);
+  return a ? (a.display_name || a.account_number) : acctNum;
+}
+
+// Returns comma-separated display names for a held_accounts string (account_numbers).
+function _heldAccountsDisplay(held) {
+  if (!held) return '';
+  return held.split(',').map(n => _acctDisplayName(n.trim())).join(', ');
+}
+
 function _availableAccounts() {
   const have = new Set();
   for (const r of state.allRows) {
@@ -1224,20 +1236,25 @@ function _availableAccounts() {
 function renderAccountFilter() {
   const sel = $('accountFilter');
   if (!sel) return;
-  // Use the dedicated accounts list (all held accounts, not just actionable symbols).
-  // Fall back to scraping state.allRows if the API list hasn't loaded yet.
-  const have = state.allAccounts.length
-    ? new Set(state.allAccounts)
-    : _availableAccounts();
-  if (state.filters.account && !have.has(state.filters.account)) {
+  // Use dedicated accounts list (objects with account_number + display_name).
+  // Fall back to scraping raw account_numbers from state.allRows.
+  const fallbackNums = state.allAccounts.length ? null : _availableAccounts();
+  const accounts = state.allAccounts.length
+    ? state.allAccounts
+    : Array.from(fallbackNums).map(n => ({ account_number: n, display_name: n }));
+
+  if (state.filters.account && !accounts.some(a => a.account_number === state.filters.account)) {
     state.filters.account = '';
   }
   const cur = state.filters.account;
   sel.innerHTML = '<option value="">All</option>';
-  for (const a of Array.from(have).sort()) {
+  const sorted = [...accounts].sort((a, b) =>
+    (a.display_name || a.account_number).localeCompare(b.display_name || b.account_number));
+  for (const a of sorted) {
     const o = document.createElement('option');
-    o.value = a; o.textContent = a;
-    if (a === cur) o.selected = true;
+    o.value = a.account_number;
+    o.textContent = a.display_name || a.account_number;
+    if (a.account_number === cur) o.selected = true;
     sel.appendChild(o);
   }
 }
@@ -2560,7 +2577,7 @@ function renderGrid() {
         <input type="checkbox" class="row-check" data-sym="${escapeHtml(r.tos_symbol)}"${isChecked ? ' checked' : ''}>
       </td>
       <td class="num" style="font-size:10px;color:#f59e0b;font-weight:700;text-align:center;">${_hReason ? `<span title="${escapeHtml(_hReason)}">Y</span>` : ''}</td>
-      <td class="num" style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="Held in: ${escapeHtml(r.held_accounts)}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}</td>
+      <td class="num" style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="Held in: ${escapeHtml(_heldAccountsDisplay(r.held_accounts))}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}</td>
       <td class="num">
         <span class="amt-primary">${fmtUsd(r._amt)}</span>
         ${r.stop_level != null ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;" title="Stop / exit-below level (task 8)">stop ${fmtUsd(r.stop_level)}</div>` : ''}

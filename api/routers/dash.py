@@ -327,7 +327,8 @@ def list_actionable_dates():
 
 @router.get("/api/actionable/accounts")
 def list_actionable_accounts(date: Optional[str] = Query(None)):
-    """All unique account names from latest hist_f + hist_cs snapshots <= date."""
+    """Distinct accounts by account_number from latest hist_f + hist_cs snapshots,
+    joined with ref_accounts for display names."""
     from api._helpers import _resolve_date
     d = _resolve_date(date)
     with session_scope() as s:
@@ -340,15 +341,33 @@ def list_actionable_accounts(date: Optional[str] = Query(None)):
             {"d": d},
         ).scalar()
         rows = s.execute(text(
-            "SELECT DISTINCT acct FROM ("
-            "SELECT COALESCE(account_name,account_number) AS acct FROM hist_f"
-            " WHERE snapshot_date=:mf"
+            "SELECT DISTINCT acct_num, acct_name FROM ("
+            " SELECT account_number AS acct_num,"
+            "  COALESCE(account_name,account_number) AS acct_name FROM hist_f"
+            "  WHERE snapshot_date=:mf"
             " UNION"
-            " SELECT account AS acct FROM hist_cs"
-            " WHERE snapshot_date=:mc"
-            ") _a WHERE acct IS NOT NULL ORDER BY acct"
+            " SELECT account AS acct_num, account AS acct_name FROM hist_cs"
+            "  WHERE snapshot_date=:mc"
+            ") _a WHERE acct_num IS NOT NULL ORDER BY acct_num"
         ), {"mf": max_f, "mc": max_cs}).fetchall()
-    return [r[0] for r in rows]
+        refs = s.execute(text(
+            "SELECT account_number, short_name, custom_name"
+            " FROM ref_accounts"
+        )).fetchall()
+    ref_map = {r[0]: (r[1], r[2]) for r in refs}
+    result = []
+    for r in rows:
+        acct_num, acct_name = r[0], r[1]
+        short_name, custom_name = ref_map.get(acct_num, (None, None))
+        display_name = custom_name or short_name or acct_name or acct_num
+        result.append({
+            "account_number": acct_num,
+            "account_name": acct_name,
+            "short_name": short_name,
+            "custom_name": custom_name,
+            "display_name": display_name,
+        })
+    return result
 
 
 @router.get("/api/actionable/sources")
@@ -468,7 +487,7 @@ def get_actionable(
                    STRING_AGG(DISTINCT acct, ', ' ORDER BY acct) AS held_accounts
             FROM (
                 SELECT f.tos_symbol,
-                       COALESCE(f.account_name, f.account_number) AS acct
+                       f.account_number AS acct
                 FROM hist_f f
                 WHERE f.snapshot_date = :max_f_snap AND f.qty > 0
                   AND f.tos_symbol IS NOT NULL
@@ -1046,23 +1065,18 @@ def get_actionable(
         # backward-compat quad labels
         d_["quad_m"] = _mp_cur.quad if _mp_cur else None
         d_["quad_q"] = _qp_cur.quad if _qp_cur else None
-        # Prefer derive-time drv_macro_score; fall back to API-time _compute_macro
-        if d_.get("macro_action"):
+        # Always compute full detail for rich tooltip; prefer derive-time action/score if available
+        try:
+            macro = _compute_macro(sym, rac, sec)
+        except Exception:
             macro = {
-                "macro_value": d_["macro_action"],
-                "macro_conf": None,
-                "macro_turn": None,
-                "macro_detail": {"macronet": d_.get("macronet")},
-                "macro_howto": None,
+                "macro_value": None, "macro_conf": None,
+                "macro_turn": None, "macro_detail": None, "macro_howto": None,
+                "macronet": None,
             }
-        else:
-            try:
-                macro = _compute_macro(sym, rac, sec)
-            except Exception:
-                macro = {
-                    "macro_value": None, "macro_conf": None,
-                    "macro_turn": None, "macro_detail": None, "macro_howto": None,
-                }
+        if d_.get("macro_action"):
+            macro["macro_value"] = d_["macro_action"]
+            macro["macronet"] = d_.get("macronet")
         d_.update(macro)
         out.append(d_)
     return out
