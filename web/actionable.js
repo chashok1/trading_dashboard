@@ -88,18 +88,21 @@ function macroCellHtml(r) {
   const conf = r.macro_conf != null ? r.macro_conf : null;
   const opacity = conf != null && conf < 0.6 ? Math.max(0.45, conf / 0.6) : 1.0;
   const sym = r.tos_symbol || '';
-  // Raw MacroNet score from drv_macro_score (null when falling back to API-time calc)
   const score = r.macronet != null ? Number(r.macronet).toFixed(2) : null;
-  const scoreLbl = score != null ? ` <span style="font-size:8px;opacity:0.65;">${score}</span>` : '';
+  const scoreLine = score != null
+    ? `<div style="font-size:8px;opacity:0.6;line-height:1;margin-top:1px;">${score}</div>`
+    : '';
   if (!mv || mv === 'HOLD') {
     const holdCls = mv ? 'color:#9ca3af' : 'color:#cbd5e1';
     const lbl = mv ? 'HOLD' : '—';
-    return `<span style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};cursor:help;" data-macropop="${escapeHtml(sym)}">${escapeHtml(lbl)}${turn ? ' ' + turn : ''}${scoreLbl}</span>`;
+    return `<div style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};cursor:help;text-align:center;" data-macropop="${escapeHtml(sym)}">${escapeHtml(lbl)}${turn ? ' ' + turn : ''}${scoreLine}</div>`;
   }
   const d = actionDisplay(mv);
   const cls = d.colorCls || 'act-neutral';
-  return `<span class="act-badge ${cls}-tint" style="font-size:10px;padding:1px 5px;cursor:help;opacity:${opacity.toFixed(2)};" `
-       + `data-macropop="${escapeHtml(sym)}">${escapeHtml(d.code || mv)}${turn ? ' ' + turn : ''}${scoreLbl}</span>`;
+  return `<div style="text-align:center;cursor:help;opacity:${opacity.toFixed(2)};" data-macropop="${escapeHtml(sym)}">`
+       + `<span class="act-badge ${cls}-tint" style="font-size:10px;padding:1px 5px;">${escapeHtml(d.code || mv)}${turn ? ' ' + turn : ''}</span>`
+       + scoreLine
+       + `</div>`;
 }
 
 // Build tooltip text for a MACRO cell from macro_detail + macro_howto.

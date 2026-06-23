@@ -1,209 +1,168 @@
 # Quad regime → MACRO — design
 
-How the macro **quad regime** becomes a single, money-making **MACRO** signal per stock on
-the Actionable screen. Authoritative design doc; implementation spec is
-`agent-tasks/TASK_74_quad_macro_overlay.md`.
+How the macro **quad regime** becomes a single **MACRO** signal per stock on the
+Actionable screen. Authoritative design + implementation reference.
 
-Outlook source: `ref_quad_outlook.quad1..quad4` **text as-is** — values are
-**Bullish / Bearish / Neutral**, mapped to **+1 / 0 / −1**. Active regime + monthly
-distribution: `ref_quad_periods`.
-
----
-
-## Settled decisions
-
-1. **Overlay, not a standalone signal.** The quad decides when to press a bottom-up call
-   and when to back off — never a buy/sell on its own.
-2. **Sources / Technical is the master (precedence).** The quad **never** flips the action;
-   it only adjusts conviction and raises flags. It may *lean* the call only when Technical
-   is neutral/absent (low confidence).
-3. **One `MACRO` column** in the app's existing action vocabulary (SA / STM / SS / BM …) and
-   `actionDisplay()` colors. Replaces the two decorative `Quad (M)` / `Quad (Q)` columns.
-4. **One regime band** (Month | Quarter | Favoring) above the table. **The `Quads` side
-   panel (`#quadsBody`) is retired** and folded into the band.
-5. **Monthly is a weighted distribution; quarterly is a fixed top-level anchor.** Different
-   calculations (see Stage 3).
-6. **MacroNet is fixed / presentation-independent.** Precedence + vocabulary mapping are
-   applied at consumption only.
-7. All weights/windows/thresholds live in `ref_settings`, tunable against outcomes.
+**Key tables:** `ref_quad_periods` (period distributions), `ref_quad_outlook`
+(Bullish/Bearish/Neutral per category × quad), `drv_macro_score` (output).
+**Deriver:** `etl/derive_macro.py` → wired into `derive_all()` after `drv_ma`.
 
 ---
 
-## Data model — capture the monthly quad distribution
+## Principles
 
-The "U.S. Monthly Quad Forecast" gives, for **each month**, a probability **distribution**
-across the four quads (e.g. Jun = 76% Quad 2 / 24% Quad 4). That distribution is **not in
-the DB today** — capturing it is the schema change.
+1. **Overlay, not standalone.** MACRO decides when to press a bottom-up call and
+   when to back off — never a buy/sell on its own.
+2. **Technical is master.** MACRO never flips the action; it adjusts conviction and
+   flags conflicts. It may lean the call only when Technical is neutral/absent.
+3. **One `MACRO` column** in SA/BM/HOLD/STM/SS vocabulary + `actionDisplay()` colors.
+4. **One regime band** (Month | Quarter | Favoring + breadth + action split) above the grid.
+5. **Both horizons use identical per-stock calculation** — same membership aggregation,
+   same ramp/lead logic; only the input weights differ (distribution vs one-hot).
+6. All weights/windows/thresholds live in `ref_settings`, tunable against outcomes.
 
-**`ref_quad_periods`** — add the four monthly weights:
+---
 
-```sql
-ALTER TABLE ref_quad_periods
-  ADD COLUMN IF NOT EXISTS quad1_pct NUMERIC,
-  ADD COLUMN IF NOT EXISTS quad2_pct NUMERIC,
-  ADD COLUMN IF NOT EXISTS quad3_pct NUMERIC,
-  ADD COLUMN IF NOT EXISTS quad4_pct NUMERIC;
-```
+## Data model
 
-- **Monthly rows:** `quad1_pct..quad4_pct` populated from the HQds forecast (sum ≈ 100).
-  `quad` stays as the **argmax** (dominant quad) for the band label.
-- **Quarterly rows:** keep the single top-level `quad`; the `quad*_pct` columns stay **NULL**
-  (quarterly carries no distribution — see Stage 3).
-- Data source: the distribution is supplied as **`db/seeds_quad_periods.sql`** (captured
-  from the forecast chart, user-confirmed) — it UPSERTs `quad1_pct..quad4_pct` onto the
-  monthly rows. If the percentages are later added to the HQds tab,
-  `etl/load_raw.py::load_hqds` can populate them instead.
+**`ref_quad_periods`** — one row per month and one per quarter:
 
-![ref_quad_periods table design](diagrams/quad_ref_quad_periods_table.svg)
+| Column | Monthly rows | Quarterly rows |
+|---|---|---|
+| `period_type` | `'month'` | `'quarter'` |
+| `quad` | argmax of distribution | fixed top-level quad |
+| `quad1_pct … quad4_pct` | probability weights (sum ≈ 100) | NULL (one-hot implied) |
+| `start_date / end_date` | month boundary | quarter boundary |
 
-`ref_quad_outlook` (Bullish/Bearish/Neutral per `category, sub_category` × quad1..4) is
-unchanged — it already exists.
+Seeded from `db/seeds_quad_periods.sql`. If HQds tab gains a pct column,
+`etl/load_raw.py::load_hqds` can populate it instead.
+
+**`ref_quad_outlook`** — unchanged, already exists:
+`(category, sub_category)` × `quad1..quad4` = Bullish / Neutral / Bearish.
+Categories in use: `Equity Sectors`, `Asset Class`, `Equity Style`.
+
+**`drv_macro_score`** — output table (idempotent DELETE+INSERT per derive date):
+`as_of_date, tos_symbol, month_now_net, month_next_net, month_weight, monthly_score,
+qtr_now_net, qtr_next_net, qtr_weight, quarterly_score, macronet, macro_action`
 
 ---
 
 ## Pipeline
 
-![Quad → MACRO pipeline](diagrams/quad_pipeline.svg)
+![MacroNet formula pipeline](diagrams/macronet_formula.svg)
 
 ---
 
-## Stage 1–2 — one stock, many categories → net score (monthly)
+## Stage 1–2 — per-stock membership net score
 
-A symbol is a **bundle of memberships**, each a `(category, sub_category)` row in
-`ref_quad_outlook` with its own Bullish/Bearish/Neutral per quad.
+A symbol is a **bundle of memberships**, each `(category, sub_category, weight)`:
 
-| Membership | Source for the symbol |
+| Membership | Category | Weight | Source |
+|---|---|---|---|
+| Sector | `Equity Sectors` | **×2** | `drv_ma.sector` |
+| Asset class | `Asset Class` | **×1** | `drv_ma.asset_class` |
+| Style factors | `Equity Style` | **×0.5 each** | classified from fundamentals |
+
+**Style classification thresholds** (in `etl/derive_macro.py::_classify_style`):
+
+| Style tag | Condition |
 |---|---|
-| Asset class | `drv_*.asset_class` |
-| Sector (equities) | `drv_ma.sector` / `equity_sector` |
-| Scale / Value / Sensitivity / Solvency / Quality / Dividend / Momentum (style) | `drv_fundamentals.market_cap / pe_ratio / beta / fcf_per_share / eps / div_yield`, `rsi` |
+| High Beta | `beta ≥ 1.5` |
+| Low Beta | `beta ≤ 0.7` |
+| Defensives | sector ∈ Consumer Staples, Health Care, Utilities, Real Estate |
+| Cyclical | sector ∈ Industrials, Materials, Energy, Consumer Discretionary, Financials |
+| Value | `0 < P/E ≤ 15` |
+| Secular | `P/E > 30` |
+| Dividend | `div_yield > 2%` |
+| Momentum | `RSI > 65` |
+| Small Caps | `market_cap < $2B` |
+| Mid Caps | `$2B ≤ market_cap < $10B` |
 
-For a **month**, each membership's stance is the quad-distribution-weighted blend of its
-four outlooks:
-
+For each membership, stance against a quad distribution:
 ```
-membership_stance(month) = Σ_k  (quadk_pct/100) · stance(Quad k text)     stance: Bullish +1 / Neutral 0 / Bearish −1
+stance = Σ_k  (quad_k_pct / 100) × outlook(quad_k)     +1 / 0 / −1
 ```
 
-Then aggregate memberships (top-line dominates, style tilts):
-
+Aggregate:
 ```
-month_net = sector×2 + asset_class×1 + Σ(each style ×0.5)
+net = sector×2 + asset_class×1 + Σ(style×0.5)
 ```
-
-Conflicts (top-line vs style disagree) are flagged. Confidence = `max(quadk_pct)` (or
-`1 − entropy`) of the month's distribution — damps the lean on ambiguous months.
 
 ---
 
-## Stage 3 — monthly blend (ramp/lead) + fixed quarterly anchor → MacroNet
+## Stage 3 — two horizons, same formula, different input weights
 
-**The two horizons are calculated differently — this asymmetry is deliberate.**
+**Both monthly and quarterly** run identical Stage 1–2 logic. The only difference is
+how the quad distribution is expressed:
 
-### Monthly = dynamic, tactical (weighted + anticipatory blend)
+| Horizon | Distribution input | Ramp tunables |
+|---|---|---|
+| Monthly | `quad1_pct … quad4_pct` from `ref_quad_periods` | `quad_month_ramp_begin_days` = 12, `quad_month_lead_days` = 5 |
+| Quarterly | one-hot: 100% on active quad, 0% on others | `quad_qtr_ramp_begin_days` = 20, `quad_qtr_lead_days` = 10 |
 
-Compute `month_net` for **this month** and **next month** (Stage 1–2). Blend them by an
-**anticipation lead** — the market prices next month's econ *before* month-end, so the
-next-month weight reaches **100% a set number of days before the boundary** and holds:
-
-```
-ref_days   = trading days to month-end
-next_weight = clamp( (ramp_begin − ref_days) / (ramp_begin − lead_days), 0, 1 )
-M = (1 − next_weight)·month_now_net + next_weight·month_next_net
-```
-
-Three zones: `ref_days > ramp_begin` → next 0% (100% this month); between → linear ramp;
-`ref_days ≤ lead_days` → next **100%** (fully anticipating next month). Two tunables:
-**`ramp_begin`** and **`lead_days`**.
-
-![Next-month weight (ramp begins → lead days)](diagrams/quad_month_ramp.svg)
-
-### Quarterly = same calculation as monthly, one-hot weight + anticipation ramp
-
-Uses **identical Stage 1–2 logic** (same memberships, same aggregation weights) — the only
-difference is the input distribution: the active quarter's quad gets **100% weight**, all
-others **0%**:
+Each horizon computes a score for **now** and **next** period, then blends by a
+ramp keyed to trading days to period-end:
 
 ```
-qtr_now_net  = sector×2 + asset_class×1 + Σ(style×0.5)   using 1.0 × outlook(current_quad)
-qtr_next_net = sector×2 + asset_class×1 + Σ(style×0.5)   using 1.0 × outlook(next_quad)
+next_weight = clamp( (ramp_begin − days_to_end) / (ramp_begin − lead_days), 0, 1 )
+
+M = (1 − next_weight) · month_now_net  +  next_weight · month_next_net
+Q = (1 − next_weight) · qtr_now_net    +  next_weight · qtr_next_net
 ```
 
-Then apply the **same ramp/lead anticipation** as monthly, but keyed to trading days to
-**quarter-end** (with separate, likely longer tunables):
-
-```
-ref_days_qtr  = trading days to quarter-end
-next_qtr_weight = clamp( (ramp_begin_qtr − ref_days_qtr) / (ramp_begin_qtr − lead_days_qtr), 0, 1 )
-Q = (1 − next_qtr_weight)·qtr_now_net + next_qtr_weight·qtr_next_net
-```
-
-Each stock gets its own `Q` value. The ramp naturally surfaces the next quarter's regime
-without a separate "discrete turn alert" — the blend IS the alert.
+Three zones for each: fully current → linear ramp → fully next (anticipating the
+market pricing the next period before the boundary).
 
 ### Combine
 
 ```
-MacroNet = b·M + a·Q       b > a   (Month = primary signal — probability-weighted distribution + ramp; Quarter = same-calc strategic anchor at lower weight + own ramp)
+MacroNet = 0.65 · M  +  0.35 · Q
 ```
 
-`MacroNet` → SA/STM/SS/BM via a threshold map.
+Monthly overweights quarterly because it carries full probability distribution +
+anticipation ramp. Quarterly is the same calc but with cruder one-hot input.
 
 ---
 
-## Stage 4 — precedence: Technical is master
+## Stage 4 — threshold map → action
 
-`MacroNet` × the bottom-up direction yields a **conviction + flag**, never an action. The
-**Action column always equals the Technical signal**; the quad only moves conviction and
-raises the flag (and may lean the call when Technical is neutral, at low confidence).
+`MacroNet` is mapped to the standard action vocabulary via `ref_settings` keys:
+
+| Key | Default | Action |
+|---|---|---|
+| `macronet_threshold_sa` | 1.5 | ≥ → **SA** |
+| `macronet_threshold_bm` | 0.5 | ≥ → **BM** |
+| `macronet_threshold_stm` | −0.5 | ≥ → **HOLD** (else STM) |
+| `macronet_threshold_ss` | −1.5 | ≥ → **STM** (else SS) |
+
+Thresholds are deliberately uncalibrated until `ref_quad_periods` is seeded and
+the distribution of scores across the live universe can be inspected. Tune so that
+~10% of symbols score SA, ~30% BM, etc.
+
+---
+
+## Stage 5 — precedence: Technical is master
+
+MACRO is an overlay — it never overrides the Technical action.
 
 | Bottom-up ↓ \ Macro → | Bullish | Neutral | Bearish |
 |---|---|---|---|
-| **Buy**  | PRESS LONG | Long | **CONFLICT — trim/skip** |
+| **Buy** | PRESS LONG | Long | **CONFLICT — trim/skip** |
 | **Neutral** | Watch-long | — | Watch-short |
 | **Sell** | Dip — don't short | Short | PRESS short / exit |
 
 ---
 
-## Stage 5 — presentation
+## Stage 6 — presentation
 
-### Placement
-
-![Where it goes on the Actionable screen](diagrams/quad_screen_placement.svg)
-
-![Regime band — monthly factor groups with quarterly arrows](diagrams/quad_regime_band.svg)
-
-- **Regime band (new):** one thin full-width line above `#actGrid` — **on the same line:**
-  Month (now → next), Quarter (now, → next quad **only near quarter-end**), then the active
-  **monthly** quad's **Bullish** (green) and **Bearish** (red) factor lists, market-wide
-  (the style/sector `sub_category` values in `ref_quad_outlook` favored/unfavored under the
-  active monthly quad, weighted by the month's quad %). **Each factor carries a quarterly
-  direction arrow** — green ↑ (quarterly bullish) / red ↓ (quarterly bearish), read from
-  `ref_quad_outlook` under the **quarterly** quad — so month‑vs‑quarter divergence is
-  visible per factor (e.g. `High‑Beta ↓` = bullish this month, quarter turning against it).
-  Display‑only; the quarterly MacroNet term stays top‑level. Lists trimmed to fit; full set
-  on hover. Reuses `/api/dashboard/quads` (+ a small factor-list helper).
-- **`MACRO` column:** replaces `Quad (M)` / `Quad (Q)` near `Act`. Renders in SA/STM
-  vocabulary + a confidence cue + a graded turn arrow (`↘ Quad 4 45%↑`). Same words/colors
-  as the Technical column, so a conflict is obvious at a glance.
-- **Retire** the `Quads` side panel (`#quadsBody` `<section>` + its JS).
-
-### The MACRO tooltip
-
-![Detailed MACRO tooltip](diagrams/quad_macro_tooltip.svg)
-
-Leads with **How to act**, then the evidence — no data-model narration:
-
-- **How to act** — precedence ("keep the BUY"), confidence-scaled sizing ("trim to ~half"),
-  monthly-tactical vs quarterly-strategic wording, and a turn watch.
-- **Month** — the now/next distributions (`Quad 2 76% · Quad 4 24%`) with the
-  `blend 60 / 40` weight from ramp/lead; **Category / Sub category / Outlook**
-  (Bullish/Bearish/Neutral, +1/0/−1) drivers read straight from `ref_quad_outlook`; the
-  blended `Month` value.
-- **Quarter** — `Quad 3` (and `→ Quad 1 in 12d` only near quarter-end) + its value.
-- **MacroNet** → SA/STM/SS/BM.
-
-"Quad N" = the regime number; **Month** / **Quarter** = the horizons (never the bare "Q").
+- **MACRO column** on Actionable grid: shows `macro_action` badge + raw `macronet`
+  score in small faded label (e.g. `BM 1.88`). Rendered by `macroCellHtml()` in
+  `web/actionable.js`. Sortable via `data-key="macro_value"`.
+- **Regime band** (`#macroBand`): Month | Quarter | Favoring | ↑↓ breadth | action split.
+  Loaded by `loadMacroBand()` in `web/actionable.js`.
+- **Tooltip** on MACRO cell: shows `macronet` score + breakdown (when `macro_detail`
+  is populated). Currently shows raw score only; full breakdown pending richer
+  `macro_detail` payload.
 
 ---
 
@@ -211,31 +170,29 @@ Leads with **How to act**, then the evidence — no data-model narration:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `quad_month_ramp_begin_days` | 12 | days before month-end the next-month weight starts ramping |
-| `quad_month_lead_days` | 5 | days before month-end the next-month weight hits 100% |
-| `quad_qtr_ramp_begin_days` | 20 | days before quarter-end the next-quarter weight starts ramping |
-| `quad_qtr_lead_days` | 10 | days before quarter-end the next-quarter weight hits 100% |
-| `quad_horizon_weight_qtr` | 0.35 | Quarter weight `a` in MacroNet |
-| `quad_horizon_weight_mo` | 0.65 | Month weight `b` in MacroNet |
-| `quad_category_weight_*` | sector 2, asset 1, style 0.5 | category aggregation weights |
-| `macronet_threshold_*` | TBD | MacroNet → SA/STM/SS/BM cutoffs (confirm vs `actionDisplay()` vocab) |
+| `quad_month_ramp_begin_days` | 12 | days before month-end ramp starts |
+| `quad_month_lead_days` | 5 | days before month-end weight hits 100% next |
+| `quad_qtr_ramp_begin_days` | 20 | days before quarter-end ramp starts |
+| `quad_qtr_lead_days` | 10 | days before quarter-end weight hits 100% next |
+| `quad_horizon_weight_mo` | 0.65 | Monthly weight in MacroNet |
+| `quad_horizon_weight_qtr` | 0.35 | Quarterly weight in MacroNet |
+| `macronet_threshold_sa` | 1.5 | MacroNet ≥ → SA |
+| `macronet_threshold_bm` | 0.5 | MacroNet ≥ → BM |
+| `macronet_threshold_stm` | −0.5 | MacroNet ≥ → HOLD (else STM) |
+| `macronet_threshold_ss` | −1.5 | MacroNet ≥ → STM (else SS) |
 
 Stance map: Bullish +1 · Neutral 0 · Bearish −1.
 
 ---
 
-## Build sequence
+## Implementation files
 
-`agent-tasks/TASK_74_quad_macro_overlay.md`, phased:
-
-1. **Join fix + period truth + monthly-weight schema** — verify/correct the symbol→quad
-   join; add `q1_pct..q4_pct`; load monthly distribution; resolver returns current + next +
-   ref_days per horizon.
-2. **Style-factor classification** — per-symbol style memberships from fundamentals.
-3. **MacroNet backend** — distribution-weighted monthly stance (one-hot until weights land)
-   → ramp/lead blend `M` + fixed top-level `Q` → MacroNet + turn flag → SA/STM mapping.
-4. **Presentation** — single `MACRO` column + tooltip; regime band; **retire the Quads
-   side panel**.
-
-Follow-on: `agent-tasks/TASK_75_quad_rotation_shortlist.md` — the Stage-5 rotate-in /
-rotate-out lists + sortable MACRO column (build after TASK_74).
+| File | Role |
+|---|---|
+| `etl/derive_macro.py` | Per-symbol MacroNet deriver; writes `drv_macro_score` |
+| `etl/derive.py::derive_all` | Wires in `_derive_macro_impl` after `drv_ma` |
+| `db/baseline.sql` | `drv_macro_score` table + index |
+| `db/seeds_quad_periods.sql` | Seeds monthly quad distributions |
+| `api/routers/dash.py` | LEFT JOINs `drv_macro_score`; prefers it over API-time calc |
+| `web/actionable.js` | `macroCellHtml()` renders MACRO column; `loadMacroBand()` for band |
+| `docs/diagrams/macronet_formula.svg` | Full pipeline visualization |

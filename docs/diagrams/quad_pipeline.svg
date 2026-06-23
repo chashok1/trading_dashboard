@@ -1,111 +1,105 @@
-<svg width="100%" viewBox="0 0 680 952" role="img" xmlns="http://www.w3.org/2000/svg">
-<title>Quad regime to MACRO: how a stock gets scored</title>
-<desc>Five-stage pipeline: memberships, weighted monthly net per quad, monthly blend (ramp/lead) plus a fixed quarterly anchor to MacroNet, alignment conviction matrix, money outputs.</desc>
-<defs>
-<marker id="ar" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#94a3b8"/></marker>
-<style>
-.t{font:14px system-ui,sans-serif;fill:#1f2937}
-.th{font:600 14px system-ui,sans-serif;fill:#1f2937}
-.ts{font:12px system-ui,sans-serif;fill:#6b7280}
-.lab{font:600 13px system-ui,sans-serif;fill:#2563eb}
-.bull{font:600 13px system-ui,sans-serif;fill:#16a34a}
-.bear{font:600 13px system-ui,sans-serif;fill:#dc2626}
-.reg{fill:none;stroke:#94a3b8;stroke-dasharray:4 4}
-.box{fill:#ffffff;stroke:#cbd5e1;stroke-width:1.5}
-.chip{fill:#ffffff;stroke:#cbd5e1;stroke-width:1.25}
-.gl{stroke:#cbd5e1;stroke-width:1}
-</style>
-</defs>
-<text class="th" x="40" y="28" style="font-size:15px">How a stock gets scored: quad regime &#8594; MACRO</text>
-<text class="ts" x="40" y="46">Your bottom-up call &#215; the macro regime &#8594; one verdict, re-ranked every day</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 320" font-family="ui-monospace,monospace" font-size="11">
+  <rect width="880" height="320" fill="#f8fafc"/>
+  <text x="440" y="22" text-anchor="middle" font-size="13" font-weight="700" fill="#1e293b">Quad → MACRO Pipeline</text>
 
-<rect class="reg" x="44" y="60" width="592" height="138" rx="10"/>
-<text class="lab" x="58" y="80">1 &#183; One stock, many categories &#8212; each has Bullish / Bearish / Neutral per quad</text>
-<rect class="chip" x="72" y="92" width="165" height="26" rx="6"/><text class="ts" x="154" y="109" text-anchor="middle">Asset class</text>
-<rect class="chip" x="255" y="92" width="165" height="26" rx="6"/><text class="ts" x="337" y="109" text-anchor="middle">Sector</text>
-<rect class="chip" x="438" y="92" width="165" height="26" rx="6"/><text class="ts" x="520" y="109" text-anchor="middle">Cap size</text>
-<rect class="chip" x="72" y="124" width="165" height="26" rx="6"/><text class="ts" x="154" y="141" text-anchor="middle">Value / growth</text>
-<rect class="chip" x="255" y="124" width="165" height="26" rx="6"/><text class="ts" x="337" y="141" text-anchor="middle">Cyclical / defensive</text>
-<rect class="chip" x="438" y="124" width="165" height="26" rx="6"/><text class="ts" x="520" y="141" text-anchor="middle">Leverage</text>
-<rect class="chip" x="72" y="156" width="165" height="26" rx="6"/><text class="ts" x="154" y="173" text-anchor="middle">Quality</text>
-<rect class="chip" x="255" y="156" width="165" height="26" rx="6"/><text class="ts" x="337" y="173" text-anchor="middle">Dividend</text>
-<rect class="chip" x="438" y="156" width="165" height="26" rx="6"/><text class="ts" x="520" y="173" text-anchor="middle">Momentum</text>
-<line x1="340" y1="198" x2="340" y2="236" class="gl" marker-end="url(#ar)"/>
+  <!-- DATA SOURCES -->
+  <rect x="10" y="40" width="140" height="56" rx="5" fill="#fff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="80" y="55" text-anchor="middle" fill="#475569" font-weight="700" font-size="9.5">DATA SOURCES</text>
+  <text x="80" y="69" text-anchor="middle" fill="#64748b" font-size="9">ref_quad_periods</text>
+  <text x="80" y="81" text-anchor="middle" fill="#64748b" font-size="9">(monthly pcts + qtr quad)</text>
+  <text x="80" y="93" text-anchor="middle" fill="#64748b" font-size="9">ref_quad_outlook (+1/0/-1)</text>
 
-<rect class="reg" x="44" y="212" width="592" height="86" rx="10"/>
-<text class="lab" x="58" y="232">2 &#183; Weight by the month's quad % &#8594; one net score</text>
-<rect class="box" x="120" y="240" width="440" height="48" rx="8"/>
-<text class="th" x="340" y="262" text-anchor="middle">net = sector &#215;2 + asset &#215;1 + each style &#215;0.5</text>
-<text class="ts" x="340" y="280" text-anchor="middle">each outlook weighted by Quad % (Bullish +1 / Neutral 0 / Bearish &#8722;1)</text>
-<line x1="340" y1="298" x2="340" y2="344" class="gl" marker-end="url(#ar)"/>
+  <rect x="10" y="106" width="140" height="44" rx="5" fill="#fff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="80" y="121" text-anchor="middle" fill="#475569" font-weight="700" font-size="9.5">SYMBOL ATTRIBUTES</text>
+  <text x="80" y="135" text-anchor="middle" fill="#64748b" font-size="9">drv_ma: sector, asset_class,</text>
+  <text x="80" y="147" text-anchor="middle" fill="#64748b" font-size="9">beta, P/E, RSI, div_yield, mktcap</text>
 
-<rect class="reg" x="44" y="314" width="592" height="244" rx="10"/>
-<text class="lab" x="58" y="334">3 &#183; Month blends now&#8594;next (ramp/lead) &#183; Quarter is a fixed anchor</text>
-<rect class="box" x="60" y="348" width="126" height="42" rx="8"/><text class="th" x="123" y="367" text-anchor="middle">Month &#183; now</text><text class="ts" x="123" y="382" text-anchor="middle">weighted net</text>
-<rect class="box" x="192" y="348" width="126" height="42" rx="8"/><text class="th" x="255" y="367" text-anchor="middle">Month &#183; next</text><text class="ts" x="255" y="382" text-anchor="middle">weighted net</text>
-<rect class="box" x="360" y="348" width="126" height="42" rx="8"/><text class="th" x="423" y="367" text-anchor="middle">Qtr &#183; now</text><text class="ts" x="423" y="382" text-anchor="middle">fixed</text>
-<rect class="box" x="492" y="348" width="126" height="42" rx="8"/><text class="th" x="555" y="367" text-anchor="middle">Qtr &#183; next</text><text class="ts" x="555" y="382" text-anchor="middle">near qtr-end</text>
-<line x1="123" y1="390" x2="172" y2="430" class="gl" marker-end="url(#ar)"/>
-<line x1="255" y1="390" x2="236" y2="430" class="gl" marker-end="url(#ar)"/>
-<line x1="423" y1="390" x2="420" y2="430" class="gl" marker-end="url(#ar)"/>
-<line x1="555" y1="390" x2="556" y2="430" class="gl" marker-end="url(#ar)"/>
-<rect class="box" x="118" y="430" width="172" height="44" rx="8"/><text class="th" x="204" y="450" text-anchor="middle">M = blend now&#8594;next</text><text class="ts" x="204" y="466" text-anchor="middle">ramp begins &#8594; lead days</text>
-<rect class="box" x="360" y="430" width="120" height="44" rx="8"/><text class="th" x="420" y="450" text-anchor="middle">Quarter</text><text class="ts" x="420" y="466" text-anchor="middle">fixed anchor</text>
-<rect class="box" x="494" y="430" width="124" height="44" rx="8" stroke="#d97706"/><text class="th" x="556" y="450" text-anchor="middle">Turn alert</text><text class="ts" x="556" y="466" text-anchor="middle">next qtr, near end</text>
-<line x1="204" y1="474" x2="288" y2="500" class="gl" marker-end="url(#ar)"/>
-<line x1="420" y1="474" x2="368" y2="500" class="gl" marker-end="url(#ar)"/>
-<line x1="556" y1="474" x2="556" y2="498" class="gl" stroke-dasharray="4 4" marker-end="url(#ar)"/>
-<text class="ts" x="566" y="490" text-anchor="start" fill="#d97706">flag</text>
-<rect class="box" x="230" y="500" width="200" height="46" rx="8" stroke="#2563eb"/>
-<text class="th" x="330" y="522" text-anchor="middle">MacroNet = a&#183;Qtr + b&#183;M</text>
-<text class="ts" x="330" y="538" text-anchor="middle">Quarter anchor + Month timing</text>
-<line x1="330" y1="546" x2="362" y2="598" class="gl" marker-end="url(#ar)"/>
+  <line x1="150" y1="68" x2="165" y2="68" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="165" y1="68" x2="165" y2="128" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="150" y1="128" x2="178" y2="128" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
 
-<rect class="reg" x="44" y="574" width="592" height="176" rx="10"/>
-<text class="lab" x="58" y="594">4 &#183; Conviction = your signal &#215; the regime (Technical is master)</text>
-<rect class="box" x="58" y="602" width="542" height="124" rx="6" fill="none"/>
-<line x1="150" y1="602" x2="150" y2="726" class="gl"/>
-<line x1="300" y1="602" x2="300" y2="726" class="gl"/>
-<line x1="450" y1="602" x2="450" y2="726" class="gl"/>
-<line x1="58" y1="632" x2="600" y2="632" class="gl"/>
-<line x1="58" y1="663" x2="600" y2="663" class="gl"/>
-<line x1="58" y1="694" x2="600" y2="694" class="gl"/>
-<text class="ts" x="104" y="613" text-anchor="middle">signal &#8595;</text>
-<text class="ts" x="104" y="626" text-anchor="middle">regime &#8594;</text>
-<text class="bull" x="225" y="621" text-anchor="middle">Bullish</text>
-<text class="ts" x="375" y="621" text-anchor="middle">Neutral</text>
-<text class="bear" x="525" y="621" text-anchor="middle">Bearish</text>
-<text class="th" x="104" y="652" text-anchor="middle">Buy</text>
-<text class="th" x="104" y="683" text-anchor="middle">Neutral</text>
-<text class="th" x="104" y="714" text-anchor="middle">Sell</text>
-<text class="bull" x="225" y="652" text-anchor="middle">PRESS LONG</text>
-<text class="t" x="375" y="652" text-anchor="middle">Long</text>
-<text class="bear" x="525" y="652" text-anchor="middle">CONFLICT</text>
-<text class="ts" x="225" y="683" text-anchor="middle">Watch long</text>
-<text class="ts" x="375" y="683" text-anchor="middle">&#8212;</text>
-<text class="ts" x="525" y="683" text-anchor="middle">Watch short</text>
-<text class="t" x="225" y="714" text-anchor="middle">Dip &#183; don't short</text>
-<text class="t" x="375" y="714" text-anchor="middle">Short</text>
-<text class="bear" x="525" y="714" text-anchor="middle">PRESS short / exit</text>
-<text class="ts" x="340" y="742" text-anchor="middle">action stays Technical's &#183; cell sets conviction + flag only</text>
-<line x1="375" y1="750" x2="342" y2="792" class="gl" marker-end="url(#ar)"/>
+  <!-- STAGE 1-2 -->
+  <rect x="180" y="50" width="155" height="155" rx="5" fill="#fff" stroke="#93c5fd" stroke-width="1.5"/>
+  <rect x="180" y="50" width="155" height="20" rx="5" fill="#1d4ed8"/>
+  <rect x="180" y="64" width="155" height="6" fill="#1d4ed8"/>
+  <text x="257" y="64" text-anchor="middle" fill="#fff" font-weight="700" font-size="9.5">STAGE 1-2: MEMBERSHIP NET</text>
+  <text x="257" y="83" text-anchor="middle" fill="#64748b" font-size="9">Classify style from fundamentals:</text>
+  <text x="257" y="95" text-anchor="middle" fill="#475569" font-size="8.5">High/Low Beta, Cyclical/Defensive</text>
+  <text x="257" y="107" text-anchor="middle" fill="#475569" font-size="8.5">Value/Secular, Dividend, Momentum</text>
+  <text x="257" y="119" text-anchor="middle" fill="#475569" font-size="8.5">Small/Mid Cap</text>
+  <line x1="190" y1="124" x2="325" y2="124" stroke="#e2e8f0"/>
+  <text x="257" y="136" text-anchor="middle" fill="#64748b" font-size="9">Per membership:</text>
+  <text x="257" y="148" text-anchor="middle" fill="#1e40af" font-size="8.5">stance = Sk(pct_k/100) x outlook_k</text>
+  <line x1="190" y1="154" x2="325" y2="154" stroke="#e2e8f0"/>
+  <text x="257" y="166" text-anchor="middle" fill="#64748b" font-size="9">Aggregate:</text>
+  <text x="257" y="178" text-anchor="middle" fill="#1e40af" font-size="8.5">net = sector*2 + asset*1 + S(style*0.5)</text>
+  <text x="257" y="193" text-anchor="middle" fill="#64748b" font-size="8">now_net and next_net per horizon</text>
 
-<rect class="reg" x="44" y="766" width="592" height="118" rx="10"/>
-<text class="lab" x="58" y="786">5 &#183; What you see &#8212; the money</text>
-<rect class="box" x="55" y="794" width="185" height="74" rx="8"/>
-<text class="th" x="147" y="816" text-anchor="middle">Re-ranked list</text>
-<text class="ts" x="147" y="834" text-anchor="middle">aligned trades rise</text>
-<text class="ts" x="147" y="850" text-anchor="middle">conflicts sink + flag</text>
-<rect class="box" x="250" y="794" width="185" height="74" rx="8"/>
-<text class="th" x="342" y="816" text-anchor="middle">Turn alert</text>
-<text class="ts" x="342" y="834" text-anchor="middle">now-vs-next gap</text>
-<text class="ts" x="342" y="850" text-anchor="middle">= trim into strength</text>
-<rect class="box" x="445" y="794" width="185" height="74" rx="8"/>
-<text class="th" x="537" y="816" text-anchor="middle">Rotation list</text>
-<text class="ts" x="537" y="834" text-anchor="middle">next-quarter winners</text>
-<text class="ts" x="537" y="850" text-anchor="middle">add &#183; losers trim</text>
+  <line x1="335" y1="128" x2="363" y2="128" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
 
-<rect x="120" y="906" width="10" height="10" rx="2" fill="#16a34a"/><text class="ts" x="136" y="915">Bullish / press</text>
-<rect x="270" y="906" width="10" height="10" rx="2" fill="#dc2626"/><text class="ts" x="286" y="915">Bearish / conflict</text>
-<rect x="440" y="906" width="10" height="10" rx="2" fill="#cbd5e1"/><text class="ts" x="456" y="915">Neutral / watch</text>
+  <!-- STAGE 3 -->
+  <rect x="365" y="50" width="190" height="155" rx="5" fill="#fff" stroke="#a5b4fc" stroke-width="1.5"/>
+  <rect x="365" y="50" width="190" height="20" rx="5" fill="#4f46e5"/>
+  <rect x="365" y="64" width="190" height="6" fill="#4f46e5"/>
+  <text x="460" y="64" text-anchor="middle" fill="#fff" font-weight="700" font-size="9.5">STAGE 3: RAMP + COMBINE</text>
+
+  <rect x="375" y="76" width="170" height="48" rx="3" fill="#eff6ff" stroke="#bfdbfe"/>
+  <text x="460" y="88" text-anchor="middle" fill="#1e40af" font-weight="600" font-size="9">MONTHLY (pct distribution)</text>
+  <text x="460" y="100" text-anchor="middle" fill="#1e40af" font-size="8.5">w = ramp(days to month-end, 12d to 5d)</text>
+  <text x="460" y="113" text-anchor="middle" fill="#1e40af" font-size="8.5">M = (1-w)*now_net + w*next_net</text>
+
+  <rect x="375" y="130" width="170" height="48" rx="3" fill="#eef2ff" stroke="#c7d2fe"/>
+  <text x="460" y="142" text-anchor="middle" fill="#3730a3" font-weight="600" font-size="9">QUARTERLY (one-hot)</text>
+  <text x="460" y="154" text-anchor="middle" fill="#3730a3" font-size="8.5">w = ramp(days to qtr-end, 20d to 10d)</text>
+  <text x="460" y="167" text-anchor="middle" fill="#3730a3" font-size="8.5">Q = (1-w)*now_net + w*next_net</text>
+
+  <rect x="375" y="184" width="170" height="15" rx="3" fill="#fffbeb" stroke="#fde68a"/>
+  <text x="460" y="195" text-anchor="middle" fill="#92400e" font-weight="700" font-size="9">MacroNet = 0.65*M + 0.35*Q</text>
+
+  <line x1="555" y1="128" x2="583" y2="128" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- STAGE 4 -->
+  <rect x="585" y="80" width="130" height="95" rx="5" fill="#fff" stroke="#6ee7b7" stroke-width="1.5"/>
+  <rect x="585" y="80" width="130" height="20" rx="5" fill="#059669"/>
+  <rect x="585" y="94" width="130" height="6" fill="#059669"/>
+  <text x="650" y="94" text-anchor="middle" fill="#fff" font-weight="700" font-size="9.5">STAGE 4: THRESHOLD</text>
+  <text x="650" y="112" text-anchor="middle" fill="#64748b" font-size="8.5">macronet_threshold_* (ref_settings)</text>
+  <rect x="595" y="118" width="110" height="50" rx="3" fill="#f0fdf4" stroke="#bbf7d0"/>
+  <text x="650" y="130" text-anchor="middle" fill="#166534" font-weight="700" font-size="9">1.5 = SA</text>
+  <text x="650" y="142" text-anchor="middle" fill="#166534" font-size="9">0.5 = BM   0 = HOLD</text>
+  <text x="650" y="154" text-anchor="middle" fill="#991b1b" font-size="9">-0.5 = STM   -1.5 = SS</text>
+
+  <line x1="715" y1="128" x2="743" y2="128" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- OUTPUT -->
+  <rect x="745" y="70" width="125" height="115" rx="5" fill="#fff" stroke="#f59e0b" stroke-width="1.5"/>
+  <rect x="745" y="70" width="125" height="20" rx="5" fill="#d97706"/>
+  <rect x="745" y="84" width="125" height="6" fill="#d97706"/>
+  <text x="807" y="84" text-anchor="middle" fill="#fff" font-weight="700" font-size="9.5">OUTPUT</text>
+  <text x="807" y="102" text-anchor="middle" fill="#475569" font-size="9">drv_macro_score</text>
+  <text x="807" y="114" text-anchor="middle" fill="#64748b" font-size="8.5">macronet (numeric)</text>
+  <text x="807" y="126" text-anchor="middle" fill="#64748b" font-size="8.5">macro_action (SA/BM/...)</text>
+  <line x1="755" y1="132" x2="865" y2="132" stroke="#e2e8f0"/>
+  <text x="807" y="146" text-anchor="middle" fill="#475569" font-size="9">Actionable UI</text>
+  <text x="807" y="158" text-anchor="middle" fill="#64748b" font-size="8.5">MACRO column:</text>
+  <text x="807" y="170" text-anchor="middle" fill="#64748b" font-size="8.5">badge + score sub-label</text>
+
+  <!-- PRECEDENCE -->
+  <rect x="585" y="200" width="130" height="55" rx="5" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.2"/>
+  <text x="650" y="215" text-anchor="middle" fill="#991b1b" font-weight="700" font-size="9">STAGE 5: PRECEDENCE</text>
+  <text x="650" y="229" text-anchor="middle" fill="#7f1d1d" font-size="8.5">Technical = master</text>
+  <text x="650" y="241" text-anchor="middle" fill="#7f1d1d" font-size="8.5">MACRO: conviction only</text>
+  <text x="650" y="253" text-anchor="middle" fill="#7f1d1d" font-size="8.5">never flips the action</text>
+
+  <!-- BOTTOM note -->
+  <rect x="10" y="240" width="555" height="56" rx="5" fill="#f1f5f9" stroke="#e2e8f0"/>
+  <text x="287" y="256" text-anchor="middle" fill="#475569" font-weight="700" font-size="9">DERIVE TRIGGER</text>
+  <text x="287" y="270" text-anchor="middle" fill="#64748b" font-size="8.5">derive_all() calls _derive_macro_impl after drv_ma. Skips gracefully when ref_quad_periods is empty.</text>
+  <text x="287" y="284" text-anchor="middle" fill="#64748b" font-size="8.5">Idempotent (DELETE+INSERT). API prefers drv_macro_score; falls back to query-time calc when NULL.</text>
+
+  <defs>
+    <marker id="arr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <path d="M0,0 L7,3.5 L0,7 Z" fill="#94a3b8"/>
+    </marker>
+  </defs>
 </svg>
