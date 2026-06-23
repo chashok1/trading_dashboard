@@ -96,12 +96,19 @@ function macroCellHtml(r) {
     const g   = n > 0 ? '▲' : n < 0 ? '▼' : '—';
     return `<span style="color:${col};font-size:7px;" title="${title}: ${n > 0 ? '+' : ''}${n.toFixed(2)}">${g}</span>`;
   };
+  const _dotQ = (net, title) => {
+    if (net == null) return `<span style="color:#d1d5db;font-size:7px;" title="${title}">—</span>`;
+    const n = Number(net);
+    const col = n > 0 ? '#16a34a' : n < 0 ? '#dc2626' : '#9ca3af';
+    const g   = n > 0 ? '▶' : n < 0 ? '◀' : '—';
+    return `<span style="color:${col};font-size:7px;" title="${title}: ${n > 0 ? '+' : ''}${n.toFixed(2)}">${g}</span>`;
+  };
   const hasDots = r.month_now_net != null || r.month_next_net != null || r.qtr_now_net != null;
   const dotsLine = hasDots
     ? `<div style="display:flex;justify-content:center;gap:4px;line-height:1;margin-top:2px;">`
       + _dot(r.month_now_net,  'Cur month')
       + _dot(r.month_next_net, 'Nxt month')
-      + _dot(r.qtr_now_net,    'Cur quarter')
+      + _dotQ(r.qtr_now_net,   'Cur quarter')
       + `</div>`
     : '';
   // Sparkline: one bar per available month, height ∝ |score|, color = direction
@@ -127,12 +134,12 @@ function macroCellHtml(r) {
   if (!mv || mv === 'HOLD') {
     const holdCls = mv ? 'color:#9ca3af' : 'color:#cbd5e1';
     const lbl = mv ? 'HOLD' : '—';
-    return `<div style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};cursor:help;text-align:center;" data-macropop="${escapeHtml(sym)}">${escapeHtml(lbl)}${turn ? ' ' + turn : ''}${dotsLine}${sparkLine}</div>`;
+    return `<div style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};cursor:help;text-align:center;" data-macropop="${escapeHtml(sym)}">${escapeHtml(lbl)}${dotsLine}${sparkLine}</div>`;
   }
   const d = actionDisplay(mv);
   const cls = d.colorCls || 'act-neutral';
   return `<div style="text-align:center;cursor:help;opacity:${opacity.toFixed(2)};" data-macropop="${escapeHtml(sym)}">`
-       + `<span class="act-badge ${cls}-tint" style="font-size:10px;padding:1px 5px;">${escapeHtml(d.code || mv)}${turn ? ' ' + turn : ''}</span>`
+       + `<span class="act-badge ${cls}-tint" style="font-size:10px;padding:1px 5px;">${escapeHtml(d.code || mv)}</span>`
        + dotsLine
        + sparkLine
        + `</div>`;
