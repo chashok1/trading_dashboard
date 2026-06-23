@@ -878,7 +878,7 @@ def get_actionable(
         """
         _blank = {
             "macro_value": None, "macro_conf": None,
-            "macro_turn": None, "macro_detail": None, "macro_howto": None,
+            "macro_turn": None, "macro_detail": None, "macro_howto": None, "macronet": None,
         }
         memberships = _resolve_memberships(sym, real_asset_class, sector)
         if not memberships:
@@ -1029,6 +1029,7 @@ def get_actionable(
             "macro_turn": (turn + turn_extra) if turn else None,
             "macro_detail": detail,
             "macro_howto": " ".join(howto_parts),
+            "macronet": macro_net,
         }
 
     out = []
