@@ -665,7 +665,13 @@
             <option value="split_tech_bear">Split Tech Bear</option>
             <option value="neutral">Neutral</option>
           </select>
-          <!-- Export CSV + Clear filters — lives with the filters, not the panel toggles -->
+          <!-- Focus + Export CSV + Clear filters — lives with the filters -->
+          <button id="focusModeBtn" class="btn-icon btn-icon-sm" data-tip="Focus Mode" title="Focus mode">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M2 12C4.5 6.5 9 3 12 3s7.5 3.5 10 9c-2.5 5.5-7 9-10 9S4.5 17.5 2 12z"/>
+            </svg>
+          </button>
           <button id="exportCsvBtn" class="btn-icon btn-icon-sm" data-tip="Export CSV" title="Export CSV">
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -678,21 +684,10 @@
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
-          <!-- Right side: row count + panel toggles + export -->
+          <!-- Right side: row count + panel toggles -->
           <div style="margin-left:auto; display:flex; align-items:center; gap:4px; flex-shrink:0;">
             <span style="font-size:11px; color:var(--text-2,#666);" id="rowCount"></span>
-            <!-- Panel toggles -->
-            <button id="econFilterBtn" data-econ-toggle type="button" class="btn-icon btn-icon-sm" data-tip="Econ Panel" title="Toggle Econ / FRED macro panel">
-              <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
-                <line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
-                <line x1="1" y1="1" x2="23" y2="23"/>
-              </svg>
-              <svg class="icon-on" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
-                <line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
-              </svg>
-            </button>
+            <!-- Panel toggles: Symbol Tape + Econ (market data views) then Side Panel -->
             <button id="tvToggleBtn" class="btn-icon btn-icon-sm" data-tip="Symbol Tape" title="Toggle TradingView tape">
               <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
@@ -702,10 +697,15 @@
                 <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
               </svg>
             </button>
-            <button id="focusModeBtn" class="btn-icon btn-icon-sm" data-tip="Focus Mode" title="Focus mode">
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M2 12C4.5 6.5 9 3 12 3s7.5 3.5 10 9c-2.5 5.5-7 9-10 9S4.5 17.5 2 12z"/>
+            <button id="econFilterBtn" data-econ-toggle type="button" class="btn-icon btn-icon-sm" data-tip="Econ Panel" title="Toggle Econ / FRED macro panel">
+              <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
+                <line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+              <svg class="icon-on" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
+                <line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
               </svg>
             </button>
             <button id="sidePanelBtn" class="btn-icon btn-icon-sm" data-tip="Side Panel" title="Toggle side panels">
