@@ -784,8 +784,8 @@ function _renderQuadOutlookPanel(data) {
     const qcol = _quadColor(quad);
     h += `<tr>`
        + `<td style="padding:2px 6px;white-space:nowrap;vertical-align:middle;">`
-       + `<span style="font-weight:600;color:${qcol};">${escapeHtml(_qdLbl(quad))}</span>`
-       + `<span style="color:#94a3b8;font-size:9px;margin-left:3px;">${escapeHtml(lbl)}</span>`
+       + `<span style="color:#94a3b8;font-size:9px;">${escapeHtml(lbl)}</span>`
+       + `<span style="font-weight:600;color:${qcol};margin-left:3px;">${escapeHtml(_qdLbl(quad))}</span>`
        + `</td>`
        + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">${_segBar(m, 140)}</td>`
        + `</tr>`;
@@ -799,8 +799,8 @@ function _renderQuadOutlookPanel(data) {
     const lbl = qp.label || '—';
     h += `<tr>`
        + `<td style="padding:2px 6px;white-space:nowrap;vertical-align:middle;">`
-       + `<span style="font-weight:600;color:${qcol};">${escapeHtml(_qdLbl(quad))}</span>`
-       + `<span style="color:#94a3b8;font-size:9px;margin-left:3px;">${escapeHtml(lbl)}</span>`
+       + `<span style="color:#94a3b8;font-size:9px;">${escapeHtml(lbl)}</span>`
+       + `<span style="font-weight:600;color:${qcol};margin-left:3px;">${escapeHtml(_qdLbl(quad))}</span>`
        + `</td>`
        + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">`
        + `<div style="display:flex;align-items:center;justify-content:center;width:140px;height:14px;border-radius:3px;overflow:hidden;background:${qcol};border:1px solid #e2e8f0;" title="${escapeHtml(quad)} 100%">`
