@@ -983,16 +983,20 @@ def get_actionable(
                     m_dist_nxt.append({"quad": qk.replace("quad", "Quad "),
                                         "pct": pv})
 
-        # Per-membership outlook — use effective quad (highest-% from distribution)
+        # Per-membership outlook — include per-period stances for tooltip sections
         mem_detail: list[dict] = []
         for mb in memberships:
             out_cur = mb.get(m_eff_q or "quad1")
+            out_nxt = mb.get(m_nxt_eff) if m_nxt_eff else None
+            out_qtr = mb.get(q_eff_q) if q_eff_q else None
             mem_detail.append({
                 "label": mb["label"],
                 "category": mb.get("category", ""),
                 "sub_cat": mb.get("sub_cat", ""),
                 "weight": mb["weight"],
                 "outlook": out_cur,
+                "nxt_outlook": out_nxt,
+                "qtr_outlook": out_qtr,
                 "stance": _outlook_stance(out_cur),
             })
 

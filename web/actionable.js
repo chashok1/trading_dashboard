@@ -279,14 +279,10 @@ function _buildMacroPopHtml(r) {
     if (mo_w > 0.01 && moNow != null && moNxt != null) {
       mBlendHtml = `(1−${mo_w.toFixed(2)})×Cur(${_sv(moNow)}) + ${mo_w.toFixed(2)}×Nxt(${_sv(moNxt)})`
                  + ` = <span style="color:${_sigColor(Mv)};font-weight:700;">${Mv >= 0 ? '+' : ''}${Mv.toFixed(3)}</span>`;
-    } else if (moNow != null) {
-      mBlendHtml = `${_sv(moNow)} <span style="color:#94a3b8;font-size:8px;">(cur month, no blend)</span>`;
     }
     if (qtr_w > 0.01 && qNow != null && qNxt != null) {
       qBlendHtml = `(1−${qtr_w.toFixed(2)})×Cur(${_sv(qNow)}) + ${qtr_w.toFixed(2)}×Nxt(${_sv(qNxt)})`
                  + ` = <span style="color:${_sigColor(Qv)};font-weight:700;">${Qv >= 0 ? '+' : ''}${Qv.toFixed(3)}</span>`;
-    } else if (qNow != null) {
-      qBlendHtml = `${_sv(qNow)} <span style="color:#94a3b8;font-size:8px;">(cur quarter, no blend)</span>`;
     }
     macroFormulaHtml =
       `${wMo}×M(<span style="color:${_sigColor(Mv)};font-weight:600;">${Mv >= 0 ? '+' : ''}${Mv.toFixed(3)}</span>) `
@@ -363,7 +359,12 @@ function _buildMacroPopHtml(r) {
       let score = 0, rows = '';
       for (const m of mems) {
         const qf = _qfMap[`${m.category}|${(m.sub_cat || m.label || '').toLowerCase()}`];
-        const ol = qf ? qf[qfKey] : (qfKey === 'cur_month' ? m.outlook : null);
+        // For cur_qtr and next_month use per-period outlooks stored in member data (from API);
+        // band-factors cur_qtr is unreliable when quarterly period isn't resolved in that endpoint
+        let ol;
+        if (qfKey === 'cur_qtr')     ol = m.qtr_outlook ?? (qf ? qf[qfKey] : null);
+        else if (qfKey === 'next_month') ol = m.nxt_outlook ?? (qf ? qf[qfKey] : null);
+        else ol = qf ? qf[qfKey] : (qfKey === 'cur_month' ? m.outlook : null);
         const st = _stOf(ol);
         score += st * (m.weight || 1);
         const stSym   = st > 0 ? '▲' : st < 0 ? '▼' : '→';
@@ -408,11 +409,6 @@ function _buildMacroPopHtml(r) {
       h += `<tr><td colspan="2" style="padding:2px 0 4px;">${_quadDistBar(qDist)}<span style="font-size:9px;color:#475569;">${_quadDistBreakdown(qDist)}</span></td></tr>`;
     }
     h += _memberBlock('cur_qtr');
-    if (qtr.Qtr != null) {
-      const qv = Number(qtr.Qtr);
-      h += `<tr><td class="k" style="font-size:9px;color:#475569;">Qtr signal</td>`
-         + `<td class="v" style="color:${_sigColor(qv)};font-weight:700;">${qv > 0 ? '+' : ''}${qv}</td></tr>`;
-    }
     if (qtr.next) {
       const nc = qtr.turn_alert ? '#f97316' : '#94a3b8';
       const ns = qtr.turn_alert ? ' <span style="color:#f97316;">(near-end!)</span>' : '';
