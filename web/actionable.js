@@ -583,7 +583,8 @@ function _effectiveQuad(p) {
   if (total > 0) return Object.entries(pcts).sort((a, b) => b[1] - a[1])[0][0];
   return p.quad || null;
 }
-function _qdLbl(q) { return q ? q.replace('Quad ', 'Q') : '—'; }
+function _qdLbl(q) { return q ? q.replace('Quad ', 'Qd') : '—'; }
+function _qLbl(q)  { return q ? q.replace('Quad ', 'Q')  : '—'; }
 function _quadColor(q) {
   if (!q) return '#9ca3af';
   if (/1/.test(q)) return '#2f9e2f'; // Q1 = bullish/growth
@@ -765,17 +766,17 @@ function _renderQuadOutlookPanel(data) {
     const qQuad = _effectiveQuad(cq);
     const mQuad = _effectiveQuad(cm);
     const qPart = qQuad
-      ? `Q→<span style="color:${_quadColor(qQuad)};font-weight:700;">${_qdLbl(qQuad)}</span>`
+      ? `Q→<span style="color:${_quadColor(qQuad)};font-weight:700;">${_qLbl(qQuad)}</span>`
       : 'Q→—';
     const mDist = cm
       ? [1,2,3,4].map(i => {
           const pct = Math.round(cm[`quad${i}_pct`] || 0);
           const col = _quadColor(`Quad ${i}`);
-          return `<span style="color:${col};">${_qdLbl(`Quad ${i}`)}:${pct}</span>`;
+          return `<span style="color:${col};">Q${i}:${pct}</span>`;
         }).join('<span style="color:#cbd5e1;">,</span>')
       : '—';
     const mPart = mQuad
-      ? `M(<span style="color:${_quadColor(mQuad)};font-weight:700;">${_qdLbl(mQuad)}</span>)→${mDist}`
+      ? `M(<span style="color:${_quadColor(mQuad)};font-weight:700;">${_qLbl(mQuad)}</span>)→${mDist}`
       : '—';
     hdrEl.innerHTML = `${qPart}&nbsp;&nbsp;${mPart}`;
   }
