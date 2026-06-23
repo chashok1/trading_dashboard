@@ -118,23 +118,26 @@ Three zones: `ref_days > ramp_begin` → next 0% (100% this month); between → 
 
 ![Next-month weight (ramp begins → lead days)](diagrams/quad_month_ramp.svg)
 
-### Quarterly = fixed, strategic (top level only)
+### Quarterly = same calculation as monthly, one-hot weight
 
-The quarter's quad is a **single top-level value, constant for the whole quarter** — it
-does **not** drift, get revised, or blend mid-quarter, and it has **no per-category
-breakdown** (different, simpler calculation than monthly):
+Uses **identical Stage 1–2 logic** (same memberships, same aggregation weights) — the only
+difference is the input distribution: the active quarter's quad gets **100% weight**, all
+others **0%**:
 
 ```
-Qtr = top-level stance of the quarter's fixed quad   (changes only as a discrete step at the quarter boundary)
+quarterly_stance(membership) = 1.0 × outlook(active_quad)     ← one-hot vs monthly's distribution
+Q = sector×2 + asset_class×1 + Σ(each style ×0.5)            ← same aggregation as monthly
 ```
 
-Near quarter-end, the **next quarter** is surfaced as a **discrete turn alert** (heads-up
-to rotate) — it does **not** blend into `Qtr`.
+This means a Tech stock and a Utilities stock get **different Q values** within the same
+quarter. Q is constant for the quarter (no ramp/lead, no blending), stepping only at the
+quarter boundary. Near quarter-end the **next quarter** is surfaced as a discrete turn alert
+— it does **not** blend into `Q`.
 
 ### Combine
 
 ```
-MacroNet = a·Qtr + b·M       b > a   (Month = primary signal — probability-weighted distribution + anticipation ramp; Quarter = coarse directional anchor)
+MacroNet = b·M + a·Q       b > a   (Month = primary signal — probability-weighted + ramp; Quarter = same-calc strategic anchor at lower weight)
 ```
 
 `MacroNet` → SA/STM/SS/BM via a threshold map. The turn signal feeds from the monthly
