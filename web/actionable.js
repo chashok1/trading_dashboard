@@ -583,6 +583,7 @@ function _effectiveQuad(p) {
   if (total > 0) return Object.entries(pcts).sort((a, b) => b[1] - a[1])[0][0];
   return p.quad || null;
 }
+function _qdLbl(q) { return q ? q.replace('Quad ', 'Qd ') : '—'; }
 function _quadColor(q) {
   if (!q) return '#9ca3af';
   if (/1/.test(q)) return '#2f9e2f'; // Q1 = bullish/growth
@@ -608,7 +609,7 @@ async function loadMacroBand() {
     const elM = $('macroBandMonth'), elQ = $('macroBandQtr'), elF = $('macroBandFavoring');
     if (!elM) return;
 
-    const _qdLbl = q => q ? q.replace('Quad ', 'Qd ') : '—';
+    // _qdLbl defined at module scope below
     // Segmented distribution bar with Q1 50% labels inside each segment (monthly)
     const _distBarMonth = p => {
       if (!p) return '';
@@ -734,6 +735,7 @@ async function loadMacroBand() {
     state.quadData = data;
     state.quadFactors = factors;
     band.style.display = 'flex';
+    _renderQuadOutlookPanel(data);
 
     // Wire rich popover on band quad labels (done once; re-attaching is safe via delegation)
     if (!band._qbpInit) {
@@ -749,6 +751,75 @@ async function loadMacroBand() {
     }
   } catch(e) { console.error('MACRO band:', e); if (band) band.style.display = 'none'; }
 }
+
+function _renderQuadOutlookPanel(data) {
+  const el = $('quadOutlookBody');
+  if (!el) return;
+  const months = (data.months || []).slice(0, 6);
+  const cq = data.current_quarter, nq = data.next_quarter;
+
+  const _segBar = (p, width) => {
+    if (!p) return '';
+    const segs = [
+      {q:'Quad 1',pct:p.quad1_pct||0},{q:'Quad 2',pct:p.quad2_pct||0},
+      {q:'Quad 3',pct:p.quad3_pct||0},{q:'Quad 4',pct:p.quad4_pct||0},
+    ].filter(s => s.pct > 0);
+    if (!segs.length) return '';
+    const bars = segs.map(s => {
+      const lbl = s.pct >= 15
+        ? `<span style="font-size:7px;color:#fff;font-weight:600;pointer-events:none;">Q${s.q.slice(-1)} ${Math.round(s.pct)}%</span>`
+        : '';
+      return `<div style="width:${s.pct}%;background:${_quadColor(s.q)};height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;" title="${escapeHtml(s.q)} ${s.pct}%">${lbl}</div>`;
+    }).join('');
+    return `<div style="display:flex;width:${width}px;height:14px;border-radius:3px;overflow:hidden;border:1px solid #e2e8f0;">${bars}</div>`;
+  };
+
+  let h = '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
+
+  // ── Monthly distributions ────────────────────────────────────────────────
+  h += `<tr><td colspan="2" style="padding:4px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Monthly</td></tr>`;
+  for (const m of months) {
+    const lbl = m.label || '—';
+    const quad = m.quad || '';
+    const qcol = _quadColor(quad);
+    const dtb = m.end_date ? Math.max(0, Math.round((new Date(m.end_date) - new Date(data.as_of_date)) / 864e5)) : null;
+    const dtbHtml = dtb != null ? `<span style="color:#94a3b8;font-size:8px;"> ${dtb}d</span>` : '';
+    h += `<tr>`
+       + `<td style="padding:2px 6px;white-space:nowrap;vertical-align:middle;">`
+       + `<span style="font-weight:600;color:${qcol};">${escapeHtml(_qdLbl(quad))}</span>`
+       + `<span style="color:#94a3b8;font-size:9px;margin-left:3px;">${escapeHtml(lbl)}</span>`
+       + dtbHtml
+       + `</td>`
+       + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">${_segBar(m, 140)}</td>`
+       + `</tr>`;
+  }
+
+  // ── Quarterly ────────────────────────────────────────────────────────────
+  h += `<tr><td colspan="2" style="padding:6px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;border-top:1px solid #f1f5f9;">Quarterly</td></tr>`;
+  for (const qp of [cq, nq].filter(Boolean)) {
+    const quad = qp.quad || '';
+    const qcol = _quadColor(quad);
+    const lbl = qp.label || '—';
+    const dtb = qp.end_date ? Math.max(0, Math.round((new Date(qp.end_date) - new Date(data.as_of_date)) / 864e5)) : null;
+    const dtbHtml = dtb != null ? `<span style="color:#94a3b8;font-size:8px;"> ${dtb}d</span>` : '';
+    h += `<tr>`
+       + `<td style="padding:2px 6px;white-space:nowrap;vertical-align:middle;">`
+       + `<span style="font-weight:600;color:${qcol};">${escapeHtml(_qdLbl(quad))}</span>`
+       + `<span style="color:#94a3b8;font-size:9px;margin-left:3px;">${escapeHtml(lbl)}</span>`
+       + dtbHtml
+       + `</td>`
+       + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">`
+       + `<div style="display:inline-block;width:140px;height:10px;border-radius:3px;overflow:hidden;background:${qcol};border:1px solid #e2e8f0;" title="${escapeHtml(quad)} 100%">`
+       + `<span style="font-size:7px;color:#fff;font-weight:600;padding-left:4px;line-height:10px;">${escapeHtml(_qdLbl(quad))}</span>`
+       + `</div>`
+       + `</td>`
+       + `</tr>`;
+  }
+
+  h += '</table>';
+  el.innerHTML = h;
+}
+
 async function loadSideEcon() {
   const tbody = $('econBody'), empty = $('econEmpty'); if (!tbody) return;
   tbody.innerHTML = '';
