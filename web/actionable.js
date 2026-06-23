@@ -504,12 +504,23 @@ async function loadMacroBand() {
       if (top) { const d_ = actionDisplay(top[0]); const pct = Math.round(top[1]/state.allRows.length*100); elF.textContent = `Favoring: ${d_.code||top[0]} (${pct}% of universe)`; }
     } else { elF.textContent = ''; }
 
+    // Universe: same rules as matchesBaseFilters(show_hidden=off) —
+    // excludes null-action, zero-AMT, and unheld-REMOVE rows.
+    // Ignores active user filters (held_only, source, etc.) so stats
+    // always reflect the full real signal universe, not just visible rows.
+    const universe = (state.allRows || []).filter(r => {
+      if (!r.consolidated_action) return false;
+      if (!r._amt) return false;
+      if ((r.consolidated_action || '').toUpperCase() === 'REMOVE' && !r.held_today) return false;
+      return true;
+    });
+
     // Breadth: ↑/↓ count from pct_change
     const elBreadth = $('macroBandBreadth');
     if (elBreadth) {
-      if (state.allRows?.length) {
+      if (universe.length) {
         let up = 0, dn = 0;
-        for (const r of state.allRows) {
+        for (const r of universe) {
           const p = r.pct_change != null ? Number(r.pct_change) : null;
           if (p != null) { if (p > 0) up++; else if (p < 0) dn++; }
         }
@@ -517,21 +528,21 @@ async function loadMacroBand() {
       } else { elBreadth.textContent = ''; }
     }
 
-    // Actionable count: rows with a buy or sell consolidated_action
+    // Actionable count: universe rows with a buy or sell action
     const elActionable = $('macroBandActionable');
     if (elActionable) {
-      if (state.allRows?.length) {
-        const n = state.allRows.filter(r => actionDisplay(r.consolidated_action).side !== 'neutral').length;
+      if (universe.length) {
+        const n = universe.filter(r => actionDisplay(r.consolidated_action).side !== 'neutral').length;
         elActionable.textContent = `${n} actionable`;
       } else { elActionable.textContent = ''; }
     }
 
-    // Action split: consolidated_action distribution, grouped buy→neutral→sell
+    // Action split: distribution grouped buy→neutral→sell
     const elSplit = $('macroBandSplit');
     if (elSplit) {
-      if (state.allRows?.length) {
+      if (universe.length) {
         const cnts2 = {};
-        for (const r of state.allRows) {
+        for (const r of universe) {
           const a = r.consolidated_action;
           if (a) cnts2[a] = (cnts2[a]||0) + 1;
         }
