@@ -118,9 +118,11 @@ function macroCellHtml(r) {
         ? (() => { try { return JSON.parse(_sparksRaw); } catch(_e) { return null; } })()
         : null);
   let sparkLine = '';
-  if (_sparks && _sparks.length >= 2) {
-    const maxAbs = Math.max(..._sparks.map(s => Math.abs(s.score || 0)), 0.001);
-    const bars = _sparks.map(s => {
+  const _curIdx = _sparks ? _sparks.findIndex(s => s.is_current) : -1;
+  const _sparksVis = _sparks && _curIdx >= 0 ? _sparks.slice(_curIdx) : _sparks;
+  if (_sparksVis && _sparksVis.length >= 2) {
+    const maxAbs = Math.max(..._sparksVis.map(s => Math.abs(s.score || 0)), 0.001);
+    const bars = _sparksVis.map(s => {
       const sc  = s.score || 0;
       const bh  = Math.max(2, Math.round(Math.abs(sc) / maxAbs * 8));
       const col = sc > 0 ? '#16a34a' : sc < 0 ? '#dc2626' : '#9ca3af';
