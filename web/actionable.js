@@ -803,8 +803,8 @@ function _renderQuadOutlookPanel(data) {
        + `<span style="color:#94a3b8;font-size:9px;margin-left:3px;">${escapeHtml(lbl)}</span>`
        + `</td>`
        + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">`
-       + `<div style="display:inline-block;width:140px;height:10px;border-radius:3px;overflow:hidden;background:${qcol};border:1px solid #e2e8f0;" title="${escapeHtml(quad)} 100%">`
-       + `<span style="font-size:7px;color:#fff;font-weight:600;padding-left:4px;line-height:10px;">${escapeHtml(_qdLbl(quad))}</span>`
+       + `<div style="display:flex;align-items:center;justify-content:center;width:140px;height:14px;border-radius:3px;overflow:hidden;background:${qcol};border:1px solid #e2e8f0;" title="${escapeHtml(quad)} 100%">`
+       + `<span style="font-size:7px;color:#fff;font-weight:600;pointer-events:none;">${escapeHtml(_qdLbl(quad))} 100%</span>`
        + `</div>`
        + `</td>`
        + `</tr>`;
