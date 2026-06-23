@@ -458,7 +458,8 @@ def get_actionable(
                tw.vlm_3m_pct, tw.vlm_desc, tw.vlm_action,
                hv_td.historical_vol AS hv,
                htw.a_volume_spike,
-               ms.macronet, ms.macro_action
+               ms.macronet, ms.macro_action,
+               ms.monthly_score, ms.quarterly_score
         FROM drv_actionable a
         LEFT JOIN drv_tn_td_bb_rr rr
                ON rr.tos_symbol = a.tos_symbol AND rr.as_of_date = a.as_of_date

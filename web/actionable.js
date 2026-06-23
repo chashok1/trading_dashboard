@@ -344,15 +344,26 @@ function _buildMacroPopHtml(r) {
     _periodSection('Quarter',       _qds.cur_qtr,    'cur_qtr',    qtr.dtb != null ? `(${qtr.dtb}d left)` : null, _qtrExtra);
   }
 
-  // MacroNet formula
+  // MacroNet formula — prefer derive-time values (monthly_score/quarterly_score) when available.
   h += `<tr><td class="sp-sec" colspan="2">MacroNet</td></tr>`;
-  const netVal = det.macro_net != null ? Number(det.macro_net) : null;
-  const qV = det.quarter?.Qtr ?? '?', mV = det.month?.M ?? '?';
-  h += `<tr><td class="k">Formula</td><td class="v" style="font-size:9px;">`
-     + `${det.a}×Qtr(<span style="color:${_sigColor(Number(qV))}">${qV}</span>) + `
-     + `${det.b}×M(<span style="color:${_sigColor(Number(mV))}">${mV}</span>) = `
-     + `<span style="color:${netVal != null ? _sigColor(netVal) : '#475569'};font-weight:700;">${netVal ?? '?'}</span></td></tr>`;
-  h += `<tr><td class="k">Signal</td><td class="v">${_coloredVocab(det.vocab || mv)}</td></tr>`;
+  const hasDeriveTime = r.macronet != null && r.monthly_score != null;
+  let formulaHtml;
+  if (hasDeriveTime) {
+    const Mv = Number(r.monthly_score), Qv = Number(r.quarterly_score ?? 0);
+    const net = Number(r.macronet);
+    const wMo  = det.b ?? 0.65, wQtr = det.a ?? 0.35;
+    formulaHtml = `${wMo}×M(<span style="color:${_sigColor(Mv)};font-weight:600;">${Mv.toFixed(3)}</span>) + `
+                + `${wQtr}×Q(<span style="color:${_sigColor(Qv)};font-weight:600;">${Qv.toFixed(3)}</span>) = `
+                + `<span style="color:${_sigColor(net)};font-weight:700;">${net.toFixed(4)}</span>`;
+  } else {
+    const netVal = det.macro_net != null ? Number(det.macro_net) : null;
+    const qV = det.quarter?.Qtr ?? '?', mV = det.month?.M ?? '?';
+    formulaHtml = `${det.a}×Qtr(<span style="color:${_sigColor(Number(qV))}">${qV}</span>) + `
+                + `${det.b}×M(<span style="color:${_sigColor(Number(mV))}">${mV}</span>) = `
+                + `<span style="color:${netVal != null ? _sigColor(netVal) : '#475569'};font-weight:700;">${netVal ?? '?'}</span>`;
+  }
+  h += `<tr><td class="k">Formula</td><td class="v" style="font-size:9px;">${formulaHtml}</td></tr>`;
+  h += `<tr><td class="k">Signal</td><td class="v">${_coloredVocab(mv)}</td></tr>`;
   if (conf) {
     const confNum = r.macro_conf != null ? Number(r.macro_conf) : 0;
     const confColor = confNum >= 0.7 ? '#16a34a' : confNum >= 0.4 ? '#d97706' : '#dc2626';

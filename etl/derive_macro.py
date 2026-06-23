@@ -133,7 +133,9 @@ def _classify_style(beta, pe_ratio, div_yield, rsi, market_cap_str, sector):
 def _load_settings(session):
     rows = session.execute(text(
         "SELECT setting_name, setting_value FROM ref_settings"
-        " WHERE setting_name LIKE 'quad_%' OR setting_name LIKE 'macronet_%'"
+        " WHERE setting_name LIKE 'quad_%'"
+        "    OR setting_name LIKE 'macronet_%'"
+        "    OR setting_name LIKE 'macro_thr_%'"
     )).fetchall()
     return {r.setting_name: r.setting_value for r in rows}
 
@@ -155,17 +157,19 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
     lead_qtr       = _int('quad_qtr_lead_days', 10)
     wt_mo          = _float('quad_horizon_weight_mo', 0.65)
     wt_qtr         = _float('quad_horizon_weight_qtr', 0.35)
-    thr_sa         = _float('macronet_threshold_sa', 1.5)
-    thr_bm         = _float('macronet_threshold_bm', 0.5)
-    thr_stm        = _float('macronet_threshold_stm', -0.5)
-    thr_ss         = _float('macronet_threshold_ss', -1.5)
+    # Thresholds — use same setting names as API _macronet_to_vocab (macro_thr_*)
+    # with fallback to legacy macronet_threshold_* settings.
+    thr_bm  = _float('macro_thr_bm',  _float('macronet_threshold_sa',  1.5))
+    thr_bs  = _float('macro_thr_bs',  _float('macronet_threshold_bm',  0.5))
+    thr_stm = _float('macro_thr_stm', _float('macronet_threshold_stm', -0.5))
+    thr_sa  = _float('macro_thr_sa',  _float('macronet_threshold_ss',  -1.5))
 
     def to_action(v):
-        if v >= thr_sa:  return 'SA'
-        if v >= thr_bm:  return 'BM'
-        if v >= thr_stm: return 'HOLD'
-        if v >= thr_ss:  return 'STM'
-        return 'SS'
+        if v >= thr_bm:   return 'BM'
+        if v >= thr_bs:   return 'BS'
+        if v <= thr_sa:   return 'SA'
+        if v <= thr_stm:  return 'STM'
+        return 'HOLD'
 
     # Load quad periods: current + next for both month and quarter
     periods = session.execute(text("""
