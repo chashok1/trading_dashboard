@@ -1179,6 +1179,7 @@ async function loadActionable() {
     window._macroScoreMap = Object.fromEntries(
       state.allRows.map(r => [r.tos_symbol, r.monthly_score ?? null])
     );
+    if (window._refreshTapeGlyphs) window._refreshTapeGlyphs();
     applyClientFilter();
     loadSidePanels();
     loadMacroBand();

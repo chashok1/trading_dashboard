@@ -519,6 +519,17 @@
   }
 
   // ---- fetch & render ---------------------------------------------------
+  let _lastMktData = null;
+  let _lastRrData  = null;
+
+  function _renderAll() {
+    if (_lastMktData && tapeEl)
+      tapeEl.innerHTML = buildTapeHtml(_lastMktData) + buildRrBarHtml(_lastRrData || {}, ['Commodities', 'Crypto']);
+    if (_lastRrData && rrTape2El) rrTape2El.innerHTML = buildRrBarHtml(_lastRrData, BAR2_CATS);
+    if (_lastRrData && rrTape3El) rrTape3El.innerHTML = buildRrBarHtml(_lastRrData, BAR3_CATS);
+  }
+  window._refreshTapeGlyphs = _renderAll;
+
   async function loadTape() {
     ensureMount();
     if (!tapeEl) return;
@@ -530,8 +541,8 @@
       ]);
       if (!mktRes.ok) throw new Error('HTTP ' + mktRes.status);
       if (!rrRes.ok)  throw new Error('HTTP ' + rrRes.status);
-      const [mktData, rrData] = await Promise.all([mktRes.json(), rrRes.json()]);
-      tapeEl.innerHTML = buildTapeHtml(mktData) + buildRrBarHtml(rrData, ['Commodities', 'Crypto']);
+      [_lastMktData, _lastRrData] = await Promise.all([mktRes.json(), rrRes.json()]);
+      _renderAll();
     } catch (err) {
       if (tapeEl) {
         tapeEl.innerHTML =
@@ -546,9 +557,9 @@
     try {
       const r = await fetch('/api/rr-bar');
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      const data = await r.json();
-      rrTape2El.innerHTML  = buildRrBarHtml(data, BAR2_CATS);
-      rrTape3El.innerHTML = buildRrBarHtml(data, BAR3_CATS);
+      _lastRrData = await r.json();
+      rrTape2El.innerHTML = buildRrBarHtml(_lastRrData, BAR2_CATS);
+      rrTape3El.innerHTML = buildRrBarHtml(_lastRrData, BAR3_CATS);
     } catch (err) {
       const msg = '<span style="color:var(--bear,#b91c1c);padding:0 8px;font-size:11px;">RR data unavailable</span>';
       if (rrTape2El)  rrTape2El.innerHTML  = msg;
