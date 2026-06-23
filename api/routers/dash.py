@@ -590,8 +590,8 @@ def get_actionable(
     # precedence. Defaults align with those legacy fallbacks.
     _ramp_begin: int   = 12   # quad_month_ramp_begin_days
     _lead_days:  int   = 5    # quad_month_lead_days
-    _a: float          = 0.65  # quad_horizon_weight_qtr  (legacy: macro_a)
-    _b: float          = 0.35  # quad_horizon_weight_mo   (legacy: macro_b)
+    _a: float          = 0.35  # quad_horizon_weight_qtr  (quarterly weight)
+    _b: float          = 0.65  # quad_horizon_weight_mo   (monthly weight)
 
     # MacroNet → vocabulary thresholds
     _THR_SA:  float = -1.5
