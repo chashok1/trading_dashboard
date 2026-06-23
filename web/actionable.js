@@ -88,20 +88,32 @@ function macroCellHtml(r) {
   const conf = r.macro_conf != null ? r.macro_conf : null;
   const opacity = conf != null && conf < 0.6 ? Math.max(0.45, conf / 0.6) : 1.0;
   const sym = r.tos_symbol || '';
-  const score = r.macronet != null ? Number(r.macronet).toFixed(2) : null;
-  const scoreLine = score != null
-    ? `<div style="font-size:8px;opacity:0.6;line-height:1;margin-top:1px;">${score}</div>`
+  // Three-period alignment: cur-month / next-month / cur-quarter
+  const _dot = (net, title) => {
+    if (net == null) return `<span style="color:#d1d5db;font-size:7px;" title="${title}">—</span>`;
+    const n = Number(net);
+    const col = n > 0 ? '#16a34a' : n < 0 ? '#dc2626' : '#9ca3af';
+    const g   = n > 0 ? '▲' : n < 0 ? '▼' : '—';
+    return `<span style="color:${col};font-size:7px;" title="${title}: ${n > 0 ? '+' : ''}${n.toFixed(2)}">${g}</span>`;
+  };
+  const hasDots = r.month_now_net != null || r.month_next_net != null || r.qtr_now_net != null;
+  const dotsLine = hasDots
+    ? `<div style="display:flex;justify-content:center;gap:4px;line-height:1;margin-top:2px;">`
+      + _dot(r.month_now_net,  'Cur month')
+      + _dot(r.month_next_net, 'Nxt month')
+      + _dot(r.qtr_now_net,    'Cur quarter')
+      + `</div>`
     : '';
   if (!mv || mv === 'HOLD') {
     const holdCls = mv ? 'color:#9ca3af' : 'color:#cbd5e1';
     const lbl = mv ? 'HOLD' : '—';
-    return `<div style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};cursor:help;text-align:center;" data-macropop="${escapeHtml(sym)}">${escapeHtml(lbl)}${turn ? ' ' + turn : ''}${scoreLine}</div>`;
+    return `<div style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};cursor:help;text-align:center;" data-macropop="${escapeHtml(sym)}">${escapeHtml(lbl)}${turn ? ' ' + turn : ''}${dotsLine}</div>`;
   }
   const d = actionDisplay(mv);
   const cls = d.colorCls || 'act-neutral';
   return `<div style="text-align:center;cursor:help;opacity:${opacity.toFixed(2)};" data-macropop="${escapeHtml(sym)}">`
        + `<span class="act-badge ${cls}-tint" style="font-size:10px;padding:1px 5px;">${escapeHtml(d.code || mv)}${turn ? ' ' + turn : ''}</span>`
-       + scoreLine
+       + dotsLine
        + `</div>`;
 }
 
