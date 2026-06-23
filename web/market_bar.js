@@ -77,15 +77,6 @@
     }[c]));
   }
 
-  function _tapeGlyph(sym) {
-    const map = window._macroScoreMap;
-    if (!map || !(sym in map)) return '';
-    const s = Number(map[sym]);
-    if (s > 0) return '<span style="font-size:6px;color:#16a34a;line-height:1;vertical-align:middle;">▲</span>';
-    if (s < 0) return '<span style="font-size:6px;color:#dc2626;line-height:1;vertical-align:middle;">▼</span>';
-    return '';
-  }
-
   // ---- cell helpers -------------------------------------------------------
 
   function itemTipObj(item, chipLabel, valStr, chgStr, arrow, cls) {
@@ -326,10 +317,13 @@
     const rb = volThresh
       ? volRangeBar(volThresh.value, volThresh.low, volThresh.high)
       : rangeBar(buy, sell, cur);
+    const _pg = pctCls === 'mt-up' ? '<span style="font-size:6px;color:#16a34a;line-height:1;vertical-align:middle;">▲</span>'
+              : pctCls === 'mt-down' ? '<span style="font-size:6px;color:#dc2626;line-height:1;vertical-align:middle;">▼</span>'
+              : '';
     return `<div class="rr-chip${staleCls}" data-sym="${escHtml(name)}"${dataTip} style="cursor:pointer;">` +
       `<div class="rr-chip-body">` +
       `<div class="rr-chip-sym-col">` +
-      `<span class="rr-sym" style="color:${symColor};">${_tapeGlyph(name)}${escHtml(name)}</span>` +
+      `<span class="rr-sym" style="color:${symColor};">${_pg}${escHtml(name)}</span>` +
       rb +
       `</div>` +
       `<span class="mt-chg" style="${pctBoxStyle}">${pctStr}</span>` +
