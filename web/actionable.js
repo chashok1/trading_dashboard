@@ -504,6 +504,53 @@ async function loadMacroBand() {
       if (top) { const d_ = actionDisplay(top[0]); const pct = Math.round(top[1]/state.allRows.length*100); elF.textContent = `Favoring: ${d_.code||top[0]} (${pct}% of universe)`; }
     } else { elF.textContent = ''; }
 
+    // Breadth: ↑/↓ count from pct_change
+    const elBreadth = $('macroBandBreadth');
+    if (elBreadth) {
+      if (state.allRows?.length) {
+        let up = 0, dn = 0;
+        for (const r of state.allRows) {
+          const p = r.pct_change != null ? Number(r.pct_change) : null;
+          if (p != null) { if (p > 0) up++; else if (p < 0) dn++; }
+        }
+        elBreadth.innerHTML = `<span style="color:#166534;">↑${up}</span> <span style="color:#991b1b;">↓${dn}</span>`;
+      } else { elBreadth.textContent = ''; }
+    }
+
+    // Actionable count: rows with a buy or sell consolidated_action
+    const elActionable = $('macroBandActionable');
+    if (elActionable) {
+      if (state.allRows?.length) {
+        const n = state.allRows.filter(r => actionDisplay(r.consolidated_action).side !== 'neutral').length;
+        elActionable.textContent = `${n} actionable`;
+      } else { elActionable.textContent = ''; }
+    }
+
+    // Action split: consolidated_action distribution, grouped buy→neutral→sell
+    const elSplit = $('macroBandSplit');
+    if (elSplit) {
+      if (state.allRows?.length) {
+        const cnts2 = {};
+        for (const r of state.allRows) {
+          const a = r.consolidated_action;
+          if (a) cnts2[a] = (cnts2[a]||0) + 1;
+        }
+        const SIDE_ORDER = { buy: 0, neutral: 1, sell: 2 };
+        const parts = Object.entries(cnts2)
+          .sort((a, b) => {
+            const sa = SIDE_ORDER[actionDisplay(a[0]).side] ?? 1;
+            const sb = SIDE_ORDER[actionDisplay(b[0]).side] ?? 1;
+            return sa !== sb ? sa - sb : b[1] - a[1];
+          })
+          .map(([code, cnt]) => {
+            const d = actionDisplay(code);
+            const col = d.side === 'buy' ? '#166534' : d.side === 'sell' ? '#991b1b' : '#6b7280';
+            return `<span style="color:${col};">${escapeHtml(actionText(d))}:${cnt}</span>`;
+          });
+        elSplit.innerHTML = parts.join(' ');
+      } else { elSplit.textContent = ''; }
+    }
+
     state.quadData = data;
     state.quadFactors = factors;
     band.style.display = 'flex';
