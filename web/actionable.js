@@ -123,10 +123,10 @@ function macroCellHtml(r) {
     const bars = _sparks.map(s => {
       const sc  = s.score || 0;
       const bh  = Math.max(2, Math.round(Math.abs(sc) / maxAbs * 8));
-      const col = sc > 0 ? '#16a34a' : sc < 0 ? '#dc2626' : '#9ca3af';
+      const col = _quadColor(s.quad);
       const bw  = s.is_current ? '3' : '2';
       const bdr = s.is_current ? 'border:1px solid #475569;box-sizing:border-box;' : '';
-      const ti  = `${s.label || ''} ${sc >= 0 ? '+' : ''}${sc.toFixed(2)}`;
+      const ti  = `${s.label || ''} (${s.quad || ''}) ${sc >= 0 ? '+' : ''}${sc.toFixed(2)}`;
       return `<span title="${escapeHtml(ti)}" style="display:inline-block;width:${bw}px;height:${bh}px;background:${col};vertical-align:bottom;${bdr}"></span>`;
     }).join('<span style="display:inline-block;width:1px;"></span>');
     sparkLine = `<div data-scorespop="${escapeHtml(sym)}" style="display:flex;justify-content:center;align-items:flex-end;gap:1px;height:9px;margin-top:1px;cursor:help;">${bars}</div>`;
