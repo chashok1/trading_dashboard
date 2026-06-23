@@ -3531,6 +3531,25 @@ CREATE TABLE IF NOT EXISTS drv_cs_realized_gain (
 
 CREATE INDEX IF NOT EXISTS ix_drv_cs_realized_gain_date ON drv_cs_realized_gain(as_of_date);
 
+-- drv_macro_score: per-symbol MacroNet = 0.65*M + 0.35*Q
+CREATE TABLE IF NOT EXISTS drv_macro_score (
+    as_of_date      DATE        NOT NULL,
+    tos_symbol      TEXT        NOT NULL,
+    month_now_net   NUMERIC,
+    month_next_net  NUMERIC,
+    month_weight    NUMERIC,
+    monthly_score   NUMERIC,
+    qtr_now_net     NUMERIC,
+    qtr_next_net    NUMERIC,
+    qtr_weight      NUMERIC,
+    quarterly_score NUMERIC,
+    macronet        NUMERIC,
+    macro_action    TEXT,
+    PRIMARY KEY (as_of_date, tos_symbol)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_macro_score_date
+    ON drv_macro_score(as_of_date);
+
 
 
 

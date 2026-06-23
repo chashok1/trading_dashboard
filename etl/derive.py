@@ -3402,6 +3402,17 @@ def derive_all(session: Session, as_of_date: date,
         try: session.rollback()
         except Exception: pass
 
+    # MacroNet per-symbol score (needs drv_ma, ref_quad_periods, ref_quad_outlook).
+    # Non-critical: no quad period data → skips gracefully.
+    try:
+        from etl.derive_macro import _derive_macro_impl
+        counts["drv_macro_score"] = _safe("drv_macro_score", _derive_macro_impl)
+    except Exception:
+        log.exception("derive_macronet import failed (non-fatal)")
+        counts["drv_macro_score"] = 0
+        try: session.rollback()
+        except Exception: pass
+
     # Task 3: write cascade summary row to meta_derived_run.
     # CRITICAL steps — if any fail the cascade is FAILED; partial failures = PARTIAL.
     _CRITICAL = {"drv_symbols", "drv_technicals", "drv_cat_atomic_input",
