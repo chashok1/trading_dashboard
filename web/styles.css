@@ -1080,7 +1080,7 @@ svg.rr-candle {
   gap: 3px;
 }
 
-/* marketTape / rrTape chip body — sym col left, pct button right */
+/* rrTape1 / rrTape2 / rrTape3 chip body — sym col left, pct button right */
 .rr-chip-body {
   display: flex;
   flex-direction: row;

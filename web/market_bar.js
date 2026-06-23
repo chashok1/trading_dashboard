@@ -1,8 +1,8 @@
 /* Trading Dashboard — global market tape
  *
  * Self-mounting widget. Injects three sticky ribbons below the topbar:
- *   Bar 1 (#marketTape)  — index/vol pairs + rates + commodities + bonds
- *   Bar 2 (#rrTape)      — ETFs + Commodities  (curated, with group labels)
+ *   Bar 1 (#rrTape1)  — index/vol pairs + rates + commodities + bonds
+ *   Bar 2 (#rrTape2) — ETFs + Commodities  (curated, with group labels)
  *   Bar 3 (#rrTape3)     — Tech + FX + Indexes (curated, with group labels)
  *
  * The Econ panel (#econPanel) is a static div in the page HTML (actionable.html).
@@ -75,6 +75,15 @@
     return String(s ?? '').replace(/[&<>"']/g, c => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[c]));
+  }
+
+  function _tapeGlyph(sym) {
+    const map = window._macroScoreMap;
+    if (!map || !(sym in map)) return '';
+    const s = Number(map[sym]);
+    if (s > 0) return '<span style="font-size:6px;color:#16a34a;line-height:1;vertical-align:middle;">↑</span>';
+    if (s < 0) return '<span style="font-size:6px;color:#dc2626;line-height:1;vertical-align:middle;">↓</span>';
+    return '';
   }
 
   // ---- cell helpers -------------------------------------------------------
@@ -320,7 +329,7 @@
     return `<div class="rr-chip${staleCls}" data-sym="${escHtml(name)}"${dataTip} style="cursor:pointer;">` +
       `<div class="rr-chip-body">` +
       `<div class="rr-chip-sym-col">` +
-      `<span class="rr-sym" style="color:${symColor};">${escHtml(name)}</span>` +
+      `<span class="rr-sym" style="color:${symColor};">${_tapeGlyph(name)}${escHtml(name)}</span>` +
       rb +
       `</div>` +
       `<span class="mt-chg" style="${pctBoxStyle}">${pctStr}</span>` +
@@ -457,7 +466,7 @@
 
   // ---- DOM mount --------------------------------------------------------
   let tapeEl    = null;
-  let rrTapeEl  = null;
+  let rrTape2El = null;
   let rrTape3El = null;
 
   function ensureMount() {
@@ -468,28 +477,28 @@
 
     // Bar 1 — market pairs tape
     tapeEl = document.createElement('div');
-    tapeEl.id = 'marketTape';
+    tapeEl.id = 'rrTape1';
     tapeEl.className = 'market-tape';
     tapeEl.innerHTML = '<span style="color:var(--text-3);padding:0 8px;font-size:11px;">Loading market data…</span>';
     topbar.insertAdjacentElement('afterend', tapeEl);
 
     // Bar 2 — ETFs + Commodities
-    rrTapeEl = document.createElement('div');
-    rrTapeEl.id = 'rrTape';
-    rrTapeEl.className = 'rr-tape';
-    rrTapeEl.innerHTML = '<span style="color:var(--text-3);padding:0 8px;font-size:11px;">Loading…</span>';
-    tapeEl.insertAdjacentElement('afterend', rrTapeEl);
+    rrTape2El = document.createElement('div');
+    rrTape2El.id = 'rrTape2';
+    rrTape2El.className = 'rr-tape';
+    rrTape2El.innerHTML = '<span style="color:var(--text-3);padding:0 8px;font-size:11px;">Loading…</span>';
+    tapeEl.insertAdjacentElement('afterend', rrTape2El);
 
     // Bar 3 — Tech + FX + Indexes
     rrTape3El = document.createElement('div');
     rrTape3El.id = 'rrTape3';
     rrTape3El.className = 'rr-tape';
     rrTape3El.innerHTML = '<span style="color:var(--text-3);padding:0 8px;font-size:11px;">Loading…</span>';
-    rrTapeEl.insertAdjacentElement('afterend', rrTape3El);
+    rrTape2El.insertAdjacentElement('afterend', rrTape3El);
 
     // Attach rich tooltip to all three tape containers (event delegation — once only)
     _attachTooltip(tapeEl);
-    _attachTooltip(rrTapeEl);
+    _attachTooltip(rrTape2El);
     _attachTooltip(rrTape3El);
 
     // Wire [data-econ-toggle] buttons → #econPanel (any button with the attribute)
@@ -530,16 +539,16 @@
 
   async function loadRrBar() {
     ensureMount();
-    if (!rrTapeEl || !rrTape3El) return;
+    if (!rrTape2El || !rrTape3El) return;
     try {
       const r = await fetch('/api/rr-bar');
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
-      rrTapeEl.innerHTML  = buildRrBarHtml(data, BAR2_CATS);
+      rrTape2El.innerHTML  = buildRrBarHtml(data, BAR2_CATS);
       rrTape3El.innerHTML = buildRrBarHtml(data, BAR3_CATS);
     } catch (err) {
       const msg = '<span style="color:var(--bear,#b91c1c);padding:0 8px;font-size:11px;">RR data unavailable</span>';
-      if (rrTapeEl)  rrTapeEl.innerHTML  = msg;
+      if (rrTape2El)  rrTape2El.innerHTML  = msg;
       if (rrTape3El) rrTape3El.innerHTML = msg;
     }
   }

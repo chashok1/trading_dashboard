@@ -585,6 +585,12 @@ function _effectiveQuad(p) {
 }
 function _qdLbl(q) { return q ? q.replace('Quad ', 'Qd') : '—'; }
 function _qLbl(q)  { return q ? q.replace('Quad ', 'Q')  : '—'; }
+function _msGlyph(score) {
+  const s = score == null ? null : Number(score);
+  if (s > 0) return '<span style="font-size:6px;color:#16a34a;line-height:1;vertical-align:middle;">↑</span>';
+  if (s < 0) return '<span style="font-size:6px;color:#dc2626;line-height:1;vertical-align:middle;">↓</span>';
+  return '';
+}
 function _quadColor(q) {
   if (!q) return '#9ca3af';
   if (/1/.test(q)) return '#2f9e2f'; // Q1 = bullish/growth
@@ -1169,6 +1175,10 @@ async function loadActionable() {
       r._fc_side     = fc.side;
       r._priority = _computePriority(r);
     });
+    // Expose monthly score map for market_bar.js tape chips
+    window._macroScoreMap = Object.fromEntries(
+      state.allRows.map(r => [r.tos_symbol, r.monthly_score ?? null])
+    );
     applyClientFilter();
     loadSidePanels();
     loadMacroBand();
@@ -1325,7 +1335,7 @@ function renderSymTape() {
     return `<div class="rr-chip" data-sym="${escapeHtml(r.tos_symbol)}">` +
       `<div class="rr-chip-body">` +
       `<div class="rr-chip-sym-col">` +
-      `<span class="rr-sym" style="color:${bg};">${escapeHtml(r.tos_symbol)}</span>` +
+      `<span class="rr-sym" style="color:${bg};">${_msGlyph(r.monthly_score)}${escapeHtml(r.tos_symbol)}</span>` +
       rbHtml +
       `</div>` +
       `<span class="mt-chg" style="${pctBoxStyle}">${pctStr}</span>` +
@@ -2455,7 +2465,7 @@ function _initSidePanels() {
 }
 
 function initEcoBarClick() {
-  ['marketTape','rrTape','rrTape3'].forEach(id => {
+  ['rrTape1','rrTape2','rrTape3'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('click', (e) => {
