@@ -617,7 +617,7 @@ async function loadMacroBand() {
       ].filter(s=>s.pct>0);
       if (!segs.length) return '';
       const bars = segs.map(s => {
-        const qlbl = s.q.replace('Quad ', 'Q');
+        const qlbl = s.q.replace('Quad ', 'Qd ');
         const lbl = s.pct >= 15 ? `<span style="font-size:8px;color:#fff;font-weight:600;line-height:1;pointer-events:none;">${qlbl} ${Math.round(s.pct)}%</span>` : '';
         return `<div style="width:${s.pct}%;background:${_quadColor(s.q)};height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;" title="${escapeHtml(s.q)} ${s.pct}%">${lbl}</div>`;
       }).join('');
