@@ -782,13 +782,10 @@ function _renderQuadOutlookPanel(data) {
     const lbl = m.label || '—';
     const quad = _effectiveQuad(m) || '';
     const qcol = _quadColor(quad);
-    const dtb = m.end_date ? Math.max(0, Math.round((new Date(m.end_date) - new Date(data.as_of_date)) / 864e5)) : null;
-    const dtbHtml = dtb != null ? `<span style="color:#94a3b8;font-size:8px;"> ${dtb}d</span>` : '';
     h += `<tr>`
        + `<td style="padding:2px 6px;white-space:nowrap;vertical-align:middle;">`
        + `<span style="font-weight:600;color:${qcol};">${escapeHtml(_qdLbl(quad))}</span>`
        + `<span style="color:#94a3b8;font-size:9px;margin-left:3px;">${escapeHtml(lbl)}</span>`
-       + dtbHtml
        + `</td>`
        + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">${_segBar(m, 140)}</td>`
        + `</tr>`;
@@ -800,13 +797,10 @@ function _renderQuadOutlookPanel(data) {
     const quad = qp.quad || '';
     const qcol = _quadColor(quad);
     const lbl = qp.label || '—';
-    const dtb = qp.end_date ? Math.max(0, Math.round((new Date(qp.end_date) - new Date(data.as_of_date)) / 864e5)) : null;
-    const dtbHtml = dtb != null ? `<span style="color:#94a3b8;font-size:8px;"> ${dtb}d</span>` : '';
     h += `<tr>`
        + `<td style="padding:2px 6px;white-space:nowrap;vertical-align:middle;">`
        + `<span style="font-weight:600;color:${qcol};">${escapeHtml(_qdLbl(quad))}</span>`
        + `<span style="color:#94a3b8;font-size:9px;margin-left:3px;">${escapeHtml(lbl)}</span>`
-       + dtbHtml
        + `</td>`
        + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">`
        + `<div style="display:inline-block;width:140px;height:10px;border-radius:3px;overflow:hidden;background:${qcol};border:1px solid #e2e8f0;" title="${escapeHtml(quad)} 100%">`
