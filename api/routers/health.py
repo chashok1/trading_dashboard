@@ -358,54 +358,60 @@ def get_dashboard_quads(
       - current_quarter: quarter containing :d
       - next_quarter:    quarter immediately after current_quarter
       - months:          list of 4 monthly periods (current month + next 3)
-    All resolved from ref_quad_periods.
+    All resolved from ref_quad_periods (year/period_num schema).
+    start_date and end_date are computed at query time for JS compatibility.
     """
     d = datetime.strptime(date, "%Y-%m-%d").date() if date else datetime.now().date()
-    out = {
-        "as_of_date": d.isoformat(),
-        "current_quarter": None,
-        "next_quarter": None,
-        "months": [],
-    }
+    cur_qtr_n = (d.month - 1) // 3 + 1
+    cur_qtr_y = d.year
+    nxt_qtr_n = cur_qtr_n + 1 if cur_qtr_n < 4 else 1
+    nxt_qtr_y = d.year if cur_qtr_n < 4 else d.year + 1
+
+    def _row(r):
+        return dict(r) if r else None
+
     with session_scope() as s:
         cq = s.execute(text("""
-            SELECT period_type, label, start_date, end_date, quad,
-                   quad1_pct, quad2_pct, quad3_pct, quad4_pct
+            SELECT period_type, year, period_num, label, quad,
+                   quad1_pct, quad2_pct, quad3_pct, quad4_pct,
+                   make_date(year, (period_num-1)*3+1, 1) AS start_date,
+                   (make_date(year, period_num*3, 1)
+                    + INTERVAL '1 month' - INTERVAL '1 day')::date AS end_date
             FROM ref_quad_periods
             WHERE period_type = 'quarterly'
-              AND :d >= start_date
-              AND (:d <= end_date OR end_date IS NULL)
-            ORDER BY start_date DESC
-            LIMIT 1
-        """), {"d": d}).mappings().first()
-        if cq:
-            out["current_quarter"] = dict(cq)
+              AND year = :y AND period_num = :qn
+        """), {"y": cur_qtr_y, "qn": cur_qtr_n}).mappings().first()
 
-        anchor = cq["start_date"] if cq else d
         nq = s.execute(text("""
-            SELECT period_type, label, start_date, end_date, quad,
-                   quad1_pct, quad2_pct, quad3_pct, quad4_pct
+            SELECT period_type, year, period_num, label, quad,
+                   quad1_pct, quad2_pct, quad3_pct, quad4_pct,
+                   make_date(year, (period_num-1)*3+1, 1) AS start_date,
+                   (make_date(year, period_num*3, 1)
+                    + INTERVAL '1 month' - INTERVAL '1 day')::date AS end_date
             FROM ref_quad_periods
             WHERE period_type = 'quarterly'
-              AND start_date > :anchor
-            ORDER BY start_date ASC
-            LIMIT 1
-        """), {"anchor": anchor}).mappings().first()
-        if nq:
-            out["next_quarter"] = dict(nq)
+              AND year = :y AND period_num = :qn
+        """), {"y": nxt_qtr_y, "qn": nxt_qtr_n}).mappings().first()
 
         months = s.execute(text("""
-            SELECT period_type, label, start_date, end_date, quad,
-                   quad1_pct, quad2_pct, quad3_pct, quad4_pct
+            SELECT period_type, year, period_num, label, quad,
+                   quad1_pct, quad2_pct, quad3_pct, quad4_pct,
+                   make_date(year, period_num, 1) AS start_date,
+                   (make_date(year, period_num, 1)
+                    + INTERVAL '1 month' - INTERVAL '1 day')::date AS end_date
             FROM ref_quad_periods
             WHERE period_type = 'monthly'
-              AND COALESCE(end_date, start_date) >= :d
-            ORDER BY start_date ASC
+              AND (year > :y OR (year = :y AND period_num >= :mn))
+            ORDER BY year ASC, period_num ASC
             LIMIT 4
-        """), {"d": d}).mappings().all()
-        out["months"] = [dict(m) for m in months]
+        """), {"y": d.year, "mn": d.month}).mappings().all()
 
-    return out
+    return {
+        "as_of_date": d.isoformat(),
+        "current_quarter": _row(cq),
+        "next_quarter":    _row(nq),
+        "months":          [dict(m) for m in months],
+    }
 
 
 
