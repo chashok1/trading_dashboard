@@ -403,7 +403,6 @@ def get_dashboard_quads(
             WHERE period_type = 'monthly'
               AND (year > :y OR (year = :y AND period_num >= :mn))
             ORDER BY year ASC, period_num ASC
-            LIMIT 4
         """), {"y": d.year, "mn": d.month}).mappings().all()
 
     return {

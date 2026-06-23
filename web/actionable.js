@@ -755,7 +755,7 @@ async function loadMacroBand() {
 function _renderQuadOutlookPanel(data) {
   const el = $('quadOutlookBody');
   if (!el) return;
-  const months = (data.months || []).slice(0, 6);
+  const months = data.months || [];
   const cq = data.current_quarter, nq = data.next_quarter;
 
   const _segBar = (p, width) => {
@@ -780,7 +780,7 @@ function _renderQuadOutlookPanel(data) {
   h += `<tr><td colspan="2" style="padding:4px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Monthly</td></tr>`;
   for (const m of months) {
     const lbl = m.label || '—';
-    const quad = m.quad || '';
+    const quad = _effectiveQuad(m) || '';
     const qcol = _quadColor(quad);
     const dtb = m.end_date ? Math.max(0, Math.round((new Date(m.end_date) - new Date(data.as_of_date)) / 864e5)) : null;
     const dtbHtml = dtb != null ? `<span style="color:#94a3b8;font-size:8px;"> ${dtb}d</span>` : '';
