@@ -305,21 +305,17 @@ CREATE TABLE IF NOT EXISTS ref_quad_outlook (
 -- -----------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS ref_quad_periods (
-
-    period_type  TEXT NOT NULL,
-
-    start_date   DATE NOT NULL,
-
-    end_date     DATE,
-
+    period_type  TEXT    NOT NULL,
+    year         INT     NOT NULL,
+    period_num   INT     NOT NULL,
     quad         TEXT,
-
     label        TEXT,
-
+    quad1_pct    NUMERIC,
+    quad2_pct    NUMERIC,
+    quad3_pct    NUMERIC,
+    quad4_pct    NUMERIC,
     loaded_at    TIMESTAMP NOT NULL DEFAULT now(),
-
-    PRIMARY KEY (period_type, start_date)
-
+    PRIMARY KEY  (period_type, year, period_num)
 );
 
 
@@ -6519,4 +6515,23 @@ ON CONFLICT (setting_name) DO NOTHING;
 INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
   ('corr_red_mod',      '-0.50',
    'USD correlation: -0.70 < r <= this renders moderate-red')
+ON CONFLICT (setting_name) DO NOTHING;
+
+-- 2026-06-23: ref_quad_periods v2 — standard calendar PK (year, period_num).
+-- For existing DBs: run db/migrate_quad_periods_v2.py to migrate and drop start/end cols.
+ALTER TABLE ref_quad_periods ADD COLUMN IF NOT EXISTS year INT;
+ALTER TABLE ref_quad_periods ADD COLUMN IF NOT EXISTS period_num INT;
+ALTER TABLE ref_quad_periods ADD COLUMN IF NOT EXISTS quad1_pct NUMERIC;
+ALTER TABLE ref_quad_periods ADD COLUMN IF NOT EXISTS quad2_pct NUMERIC;
+ALTER TABLE ref_quad_periods ADD COLUMN IF NOT EXISTS quad3_pct NUMERIC;
+ALTER TABLE ref_quad_periods ADD COLUMN IF NOT EXISTS quad4_pct NUMERIC;
+
+-- 2026-06-23: Quarterly MacroNet ramp params (separate from monthly).
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('quad_qtr_ramp_begin_days', '20',
+   'MacroNet: bdays before quarter-end next-quarter weight starts ramping')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('quad_qtr_lead_days', '10',
+   'MacroNet: bdays before quarter-end next-quarter weight hits 100%')
 ON CONFLICT (setting_name) DO NOTHING;

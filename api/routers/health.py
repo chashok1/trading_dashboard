@@ -249,46 +249,42 @@ def get_quad_band_factors(
                 return f"quad{n}"
         return None
 
+    # Derive current and next calendar periods from d
+    _cur_mo_y, _cur_mo_n = d.year, d.month
+    _cur_qtr_n = (d.month - 1) // 3 + 1
+    _cur_qtr_y = d.year
+    _nxt_mo_n = d.month + 1 if d.month < 12 else 1
+    _nxt_mo_y = d.year if d.month < 12 else d.year + 1
+    _nxt_qtr_n = _cur_qtr_n + 1 if _cur_qtr_n < 4 else 1
+    _nxt_qtr_y = d.year if _cur_qtr_n < 4 else d.year + 1
+
     with session_scope() as s:
         # 1. Active monthly period — quad distribution pcts
         mo = s.execute(text(
             "SELECT quad1_pct,quad2_pct,quad3_pct,quad4_pct,quad"
             " FROM ref_quad_periods"
-            " WHERE period_type='monthly' AND :d>=start_date"
-            " AND (:d<=end_date OR end_date IS NULL)"
-            " ORDER BY start_date DESC LIMIT 1"
-        ), {"d": d}).mappings().first()
+            " WHERE period_type='monthly' AND year=:cy AND period_num=:cm"
+        ), {"cy": _cur_mo_y, "cm": _cur_mo_n}).mappings().first()
 
         # 2. Next monthly period
         nm = s.execute(text(
             "SELECT quad1_pct,quad2_pct,quad3_pct,quad4_pct,quad"
-            " FROM ref_quad_periods WHERE period_type='monthly'"
-            " AND start_date>(SELECT COALESCE(end_date,start_date)"
-            " FROM ref_quad_periods WHERE period_type='monthly'"
-            " AND :d>=start_date AND (:d<=end_date OR end_date IS NULL)"
-            " ORDER BY start_date DESC LIMIT 1)"
-            " ORDER BY start_date ASC LIMIT 1"
-        ), {"d": d}).mappings().first()
+            " FROM ref_quad_periods"
+            " WHERE period_type='monthly' AND year=:ny AND period_num=:nm"
+        ), {"ny": _nxt_mo_y, "nm": _nxt_mo_n}).mappings().first()
 
-        # 3. Active quarterly period — quad label via pct argmax fallback
+        # 3. Active quarterly period
         qtr_row = s.execute(text(
             "SELECT quad,quad1_pct,quad2_pct,quad3_pct,quad4_pct"
             " FROM ref_quad_periods"
-            " WHERE period_type='quarterly' AND :d>=start_date"
-            " AND (:d<=end_date OR end_date IS NULL)"
-            " ORDER BY start_date DESC LIMIT 1"
-        ), {"d": d}).mappings().first()
+            " WHERE period_type='quarterly' AND year=:cy AND period_num=:cq"
+        ), {"cy": _cur_qtr_y, "cq": _cur_qtr_n}).mappings().first()
 
         # 3b. Next quarterly period
         nq_row = s.execute(text(
             "SELECT quad FROM ref_quad_periods"
-            " WHERE period_type='quarterly'"
-            " AND start_date>(SELECT COALESCE(end_date,start_date)"
-            " FROM ref_quad_periods WHERE period_type='quarterly'"
-            " AND :d>=start_date AND (:d<=end_date OR end_date IS NULL)"
-            " ORDER BY start_date DESC LIMIT 1)"
-            " ORDER BY start_date ASC LIMIT 1"
-        ), {"d": d}).mappings().first()
+            " WHERE period_type='quarterly' AND year=:ny AND period_num=:nq"
+        ), {"ny": _nxt_qtr_y, "nq": _nxt_qtr_n}).mappings().first()
 
         # 4. Style/sector factors with category
         factors = s.execute(text(

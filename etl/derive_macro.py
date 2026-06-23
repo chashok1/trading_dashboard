@@ -10,7 +10,9 @@ Both horizons use the same membership aggregation:
 Results written to drv_macro_score (idempotent DELETE+INSERT).
 """
 
+import calendar as _cal
 import logging
+import math
 from datetime import date
 
 import pandas as pd
@@ -171,40 +173,60 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         if v <= thr_stm:  return 'STM'
         return 'HOLD'
 
-    # Load quad periods: current + next for both month and quarter
-    periods = session.execute(text("""
-        SELECT period_type, quad,
-               quad1_pct, quad2_pct, quad3_pct, quad4_pct,
-               start_date, end_date
-        FROM ref_quad_periods
-        WHERE (period_type='monthly' AND start_date <= :d AND end_date >= :d)
-           OR (period_type='monthly' AND start_date > :d
-               AND start_date <= :d + interval '45 days')
-           OR (period_type='quarterly' AND start_date <= :d AND end_date >= :d)
-           OR (period_type='quarterly' AND start_date > :d
-               AND start_date <= :d + interval '120 days')
-        ORDER BY period_type, start_date
-    """), {'d': as_of_date}).fetchall()
+    # Derive current and next calendar periods from anchor date
+    cur_mo_y, cur_mo_n = as_of_date.year, as_of_date.month
+    cur_qtr_y, cur_qtr_n = as_of_date.year, (as_of_date.month - 1) // 3 + 1
+    nxt_mo_n = cur_mo_n + 1 if cur_mo_n < 12 else 1
+    nxt_mo_y = cur_mo_y if cur_mo_n < 12 else cur_mo_y + 1
+    nxt_qtr_n = cur_qtr_n + 1 if cur_qtr_n < 4 else 1
+    nxt_qtr_y = cur_qtr_y if cur_qtr_n < 4 else cur_qtr_y + 1
 
-    months   = [p for p in periods if p.period_type == 'monthly']
-    quarters = [p for p in periods if p.period_type == 'quarterly']
+    def _period_end(ptype, yr, pnum):
+        end_m = pnum if ptype == 'monthly' else pnum * 3
+        return date(yr, end_m, _cal.monthrange(yr, end_m)[1])
 
-    if not months or not quarters:
+    periods = session.execute(text(
+        "SELECT period_type, year, period_num, quad,"
+        " quad1_pct, quad2_pct, quad3_pct, quad4_pct"
+        " FROM ref_quad_periods"
+        " WHERE (period_type='monthly' AND year=:cmy AND period_num=:cmn)"
+        " OR (period_type='monthly' AND year=:nmy AND period_num=:nmn)"
+        " OR (period_type='quarterly' AND year=:cqy AND period_num=:cqn)"
+        " OR (period_type='quarterly' AND year=:nqy AND period_num=:nqn)"
+    ), {
+        'cmy': cur_mo_y,  'cmn': cur_mo_n,
+        'nmy': nxt_mo_y,  'nmn': nxt_mo_n,
+        'cqy': cur_qtr_y, 'cqn': cur_qtr_n,
+        'nqy': nxt_qtr_y, 'nqn': nxt_qtr_n,
+    }).fetchall()
+
+    def _fp(ptype, yr, pnum):
+        for p in periods:
+            if p.period_type == ptype and p.year == yr and p.period_num == pnum:
+                return p
+        return None
+
+    mo_now   = _fp('monthly',   cur_mo_y,  cur_mo_n)
+    mo_next  = _fp('monthly',   nxt_mo_y,  nxt_mo_n)
+    qtr_now  = _fp('quarterly', cur_qtr_y, cur_qtr_n)
+    qtr_next = _fp('quarterly', nxt_qtr_y, nxt_qtr_n)
+
+    if not mo_now or not qtr_now:
         log.info("derive_macronet: no quad period rows for %s — skipping", as_of_date)
         return 0
 
-    mo_now   = months[0]
-    mo_next  = months[1] if len(months) > 1 else months[0]
-    qtr_now  = quarters[0]
-    qtr_next = quarters[1] if len(quarters) > 1 else quarters[0]
+    if mo_next is None:
+        mo_next = mo_now
+    if qtr_next is None:
+        qtr_next = qtr_now
 
-    mo_now_pcts  = _norm_pcts(mo_now)
-    mo_next_pcts = _norm_pcts(mo_next)
+    mo_now_pcts   = _norm_pcts(mo_now)
+    mo_next_pcts  = _norm_pcts(mo_next)
     qtr_now_pcts  = _onehot(qtr_now.quad)
     qtr_next_pcts = _onehot(qtr_next.quad)
 
-    mo_days  = _bdays_to(as_of_date, mo_now.end_date)
-    qtr_days = _bdays_to(as_of_date, qtr_now.end_date)
+    mo_days  = _bdays_to(as_of_date, _period_end('monthly',   cur_mo_y,  cur_mo_n))
+    qtr_days = _bdays_to(as_of_date, _period_end('quarterly', cur_qtr_y, cur_qtr_n))
     mo_w     = _ramp_weight(mo_days, ramp_mo_begin, lead_mo)
     qtr_w    = _ramp_weight(qtr_days, ramp_qtr_begin, lead_qtr)
 

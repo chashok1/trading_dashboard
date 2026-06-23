@@ -1367,11 +1367,12 @@ def load_hqds(session: Session, wb: Workbook, source_file: str) -> tuple[int, in
     Two sub-sections in the same sheet:
       cols A-G: monthly periods   (A=Month, B=Start, C=End, D=Active, E=Quads, F=Start2, G=End2)
       cols I-O: quarterly periods (I=Quarter, J=Start, K=End, L=Active, M=Quads, N=Start2, O=End2)
-    We use B (start_date) + C (end_date) for monthly and J/K for quarterly.
-    label = the human label (Month or Quarter text).
-    quad  = the Quads string.
-    PK = (period_type, start_date).
+    Start/End dates in the Excel are used only to derive (year, period_num); they are NOT stored.
+    Monthly: year=start.year, period_num=start.month (1-12).
+    Quarterly: year=start.year, period_num=ceil(start.month/3) (1-4, standard Q1-Q4).
+    PK = (period_type, year, period_num).
     """
+    import math
     sheet_name = get_sheet_case_insensitive(wb, "HQds")
     if sheet_name is None:
         return 0, 0, 0
@@ -1384,28 +1385,26 @@ def load_hqds(session: Session, wb: Workbook, source_file: str) -> tuple[int, in
         # Monthly
         m_label = sheet.cell(row=r, column=1).value
         m_start = to_date(sheet.cell(row=r, column=2).value)
-        m_end   = to_date(sheet.cell(row=r, column=3).value)
         m_quad  = to_text(sheet.cell(row=r, column=5).value)
         if m_start is not None:
             rows_read += 1
             records.append({
                 "period_type": "monthly",
-                "start_date":  m_start,
-                "end_date":    m_end,
+                "year":        m_start.year,
+                "period_num":  m_start.month,
                 "quad":        m_quad,
                 "label":       to_text(m_label) if m_label is not None else None,
             })
         # Quarterly
         q_label = sheet.cell(row=r, column=9).value
         q_start = to_date(sheet.cell(row=r, column=10).value)
-        q_end   = to_date(sheet.cell(row=r, column=11).value)
         q_quad  = to_text(sheet.cell(row=r, column=13).value)
         if q_start is not None:
             rows_read += 1
             records.append({
                 "period_type": "quarterly",
-                "start_date":  q_start,
-                "end_date":    q_end,
+                "year":        q_start.year,
+                "period_num":  math.ceil(q_start.month / 3),
                 "quad":        q_quad,
                 "label":       to_text(q_label) if q_label is not None else None,
             })

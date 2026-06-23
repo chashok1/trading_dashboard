@@ -591,10 +591,12 @@ def get_actionable(
     # Legacy names (macro_N_m, macro_N_q, macro_wm_max, macro_wq_max,
     # macro_a, macro_b) are still in ref_settings for rollback; new names take
     # precedence. Defaults align with those legacy fallbacks.
-    _ramp_begin: int   = 12   # quad_month_ramp_begin_days
-    _lead_days:  int   = 5    # quad_month_lead_days
-    _a: float          = 0.35  # quad_horizon_weight_qtr  (quarterly weight)
-    _b: float          = 0.65  # quad_horizon_weight_mo   (monthly weight)
+    _ramp_mo_begin:  int = 12   # quad_month_ramp_begin_days
+    _lead_mo:        int = 5    # quad_month_lead_days
+    _ramp_qtr_begin: int = 20   # quad_qtr_ramp_begin_days
+    _lead_qtr:       int = 10   # quad_qtr_lead_days
+    _a: float            = 0.35  # quad_horizon_weight_qtr  (quarterly weight)
+    _b: float            = 0.65  # quad_horizon_weight_mo   (monthly weight)
 
     # MacroNet → vocabulary thresholds
     _THR_SA:  float = -1.5
@@ -609,13 +611,18 @@ def get_actionable(
                 "SELECT setting_name, setting_value FROM ref_settings"
                 " WHERE setting_name IN"
                 " ('quad_month_ramp_begin_days','quad_month_lead_days',"
+                "  'quad_qtr_ramp_begin_days','quad_qtr_lead_days',"
                 "  'quad_horizon_weight_qtr','quad_horizon_weight_mo',"
                 "  'macro_thr_sa','macro_thr_stm','macro_thr_bs','macro_thr_bm')"
             )).fetchall() or [])
             if "quad_month_ramp_begin_days" in _settings:
-                _ramp_begin = int(_settings["quad_month_ramp_begin_days"])
+                _ramp_mo_begin = int(_settings["quad_month_ramp_begin_days"])
             if "quad_month_lead_days" in _settings:
-                _lead_days = int(_settings["quad_month_lead_days"])
+                _lead_mo = int(_settings["quad_month_lead_days"])
+            if "quad_qtr_ramp_begin_days" in _settings:
+                _ramp_qtr_begin = int(_settings["quad_qtr_ramp_begin_days"])
+            if "quad_qtr_lead_days" in _settings:
+                _lead_qtr = int(_settings["quad_qtr_lead_days"])
             if "quad_horizon_weight_qtr" in _settings:
                 _a = float(_settings["quad_horizon_weight_qtr"])
             if "quad_horizon_weight_mo" in _settings:
@@ -625,21 +632,22 @@ def get_actionable(
             if "macro_thr_bs"  in _settings: _THR_BS  = float(_settings["macro_thr_bs"])
             if "macro_thr_bm"  in _settings: _THR_BM  = float(_settings["macro_thr_bm"])
 
-            # Load all quad periods with pct distribution
-            _periods = _qs.execute(text(
-                "SELECT period_type, quad, start_date, end_date,"
-                " quad1_pct, quad2_pct, quad3_pct, quad4_pct"
-                " FROM ref_quad_periods ORDER BY period_type, start_date"
-            )).mappings().all()
+            # Standard calendar period end-dates — no stored start/end in DB.
+            import calendar as _cal
+            from datetime import date as _date_cls
+
+            def _std_end(ptype: str, yr: int, pnum: int):
+                """Last calendar day of the given month (pnum=1-12) or quarter (pnum=1-4)."""
+                end_m = pnum if ptype == 'monthly' else pnum * 3
+                return _date_cls(yr, end_m, _cal.monthrange(yr, end_m)[1])
 
             def _dtb(end_date):
                 if end_date is None:
                     return 9999
-                from datetime import date as _date_t
-                delta = (end_date - d) if hasattr(d, 'toordinal') else (
-                    _date_t.fromisoformat(str(end_date)) - _date_t.fromisoformat(str(d))
-                )
-                return delta.days if hasattr(delta, 'days') else int(delta)
+                return (end_date - d).days if isinstance(end_date, _date_cls) else (
+                    _date_cls.fromisoformat(str(end_date))
+                    - _date_cls.fromisoformat(str(d))
+                ).days
 
             def _pcts(p):
                 v = [p["quad1_pct"], p["quad2_pct"],
@@ -649,28 +657,60 @@ def get_actionable(
                 return {f"quad{i+1}": (float(v[i]) if v[i] is not None else 0.0)
                         for i in range(4)}
 
-            _monthly  = [p for p in _periods if p["period_type"] == "monthly"]
-            _quarterly = [p for p in _periods if p["period_type"] == "quarterly"]
+            # Current and next calendar periods derived from anchor date d
+            _cur_mo_y, _cur_mo_n = d.year, d.month
+            _cur_qtr_y = d.year
+            _cur_qtr_n = (d.month - 1) // 3 + 1
+            _nxt_mo_n = d.month + 1 if d.month < 12 else 1
+            _nxt_mo_y = d.year if d.month < 12 else d.year + 1
+            _nxt_qtr_n = _cur_qtr_n + 1 if _cur_qtr_n < 4 else 1
+            _nxt_qtr_y = d.year if _cur_qtr_n < 4 else d.year + 1
 
-            for p in _monthly:
-                sd, ed = p["start_date"], p["end_date"]
-                if (sd <= d) and (ed is None or d <= ed) and _mp_cur is None:
-                    _mp_cur = _Period(p["quad"], sd, ed, _dtb(ed), _pcts(p))
-            for p in sorted(_monthly, key=lambda x: x["start_date"]):
-                if _mp_cur and p["start_date"] > _mp_cur.start_date and _mp_nxt is None:
-                    _mp_nxt = _Period(
-                        p["quad"], p["start_date"], p["end_date"],
-                        _dtb(p["end_date"]), _pcts(p))
+            # Load exactly the 4 needed periods by (year, period_num)
+            _period_rows = _qs.execute(text(
+                "SELECT period_type, year, period_num, quad,"
+                " quad1_pct, quad2_pct, quad3_pct, quad4_pct"
+                " FROM ref_quad_periods"
+                " WHERE (period_type='monthly' AND year=:cmy AND period_num=:cmn)"
+                " OR (period_type='monthly' AND year=:nmy AND period_num=:nmn)"
+                " OR (period_type='quarterly' AND year=:cqy AND period_num=:cqn)"
+                " OR (period_type='quarterly' AND year=:nqy AND period_num=:nqn)"
+            ), {
+                'cmy': _cur_mo_y,  'cmn': _cur_mo_n,
+                'nmy': _nxt_mo_y,  'nmn': _nxt_mo_n,
+                'cqy': _cur_qtr_y, 'cqn': _cur_qtr_n,
+                'nqy': _nxt_qtr_y, 'nqn': _nxt_qtr_n,
+            }).mappings().all()
 
-            for p in _quarterly:
-                sd, ed = p["start_date"], p["end_date"]
-                if (sd <= d) and (ed is None or d <= ed) and _qp_cur is None:
-                    _qp_cur = _Period(p["quad"], sd, ed, _dtb(ed), None)
-                    _qp_cur_pcts_tmp = _pcts(p)  # save pcts; label computed after fn defs
-            for p in sorted(_quarterly, key=lambda x: x["start_date"]):
-                if _qp_cur and p["start_date"] > _qp_cur.start_date and _qp_nxt is None:
-                    _qp_nxt = _Period(p["quad"], p["start_date"], p["end_date"],
-                                      _dtb(p["end_date"]), None)
+            def _fp(ptype, yr, pnum):
+                for _p in _period_rows:
+                    if (_p["period_type"] == ptype
+                            and _p["year"] == yr and _p["period_num"] == pnum):
+                        return _p
+                return None
+
+            _pm_cur = _fp('monthly',   _cur_mo_y,  _cur_mo_n)
+            _pm_nxt = _fp('monthly',   _nxt_mo_y,  _nxt_mo_n)
+            _pq_cur = _fp('quarterly', _cur_qtr_y, _cur_qtr_n)
+            _pq_nxt = _fp('quarterly', _nxt_qtr_y, _nxt_qtr_n)
+
+            if _pm_cur:
+                _mo_end = _std_end('monthly', _cur_mo_y, _cur_mo_n)
+                _mp_cur = _Period(
+                    _pm_cur["quad"], None, _mo_end, _dtb(_mo_end), _pcts(_pm_cur))
+            if _pm_nxt:
+                _nxt_mo_end = _std_end('monthly', _nxt_mo_y, _nxt_mo_n)
+                _mp_nxt = _Period(
+                    _pm_nxt["quad"], None, _nxt_mo_end, _dtb(_nxt_mo_end), _pcts(_pm_nxt))
+            if _pq_cur:
+                _qtr_end = _std_end('quarterly', _cur_qtr_y, _cur_qtr_n)
+                _qp_cur = _Period(
+                    _pq_cur["quad"], None, _qtr_end, _dtb(_qtr_end), None)
+                _qp_cur_pcts_tmp = _pcts(_pq_cur)
+            if _pq_nxt:
+                _nxt_qtr_end = _std_end('quarterly', _nxt_qtr_y, _nxt_qtr_n)
+                _qp_nxt = _Period(
+                    _pq_nxt["quad"], None, _nxt_qtr_end, _dtb(_nxt_qtr_end), None)
 
             # Load all quad outlook rows (including Equity Style)
             _qrows = _qs.execute(text(
@@ -875,19 +915,16 @@ def get_actionable(
 
         return memberships
 
-    def _next_weight(dtb: int) -> float:
-        """Phase 3 ramp/lead formula.
-
-        next_weight = clamp((ramp_begin - dtb) / (ramp_begin - lead_days), 0, 1)
-        Three zones:
-          dtb > ramp_begin      → 0 (all current month)
-          lead_days < dtb ≤ ramp_begin → linear ramp
-          dtb ≤ lead_days       → 1 (fully anticipate next month)
-        """
-        denom = _ramp_begin - _lead_days
+    def _next_weight(dtb: int, ramp_begin: int | None = None,
+                     lead_days: int | None = None) -> float:
+        """Ramp/lead: clamp((ramp_begin - dtb) / (ramp_begin - lead_days), 0, 1).
+        Defaults to monthly params; pass quarterly params explicitly for Q blend."""
+        rb = ramp_begin if ramp_begin is not None else _ramp_mo_begin
+        ld = lead_days  if lead_days  is not None else _lead_mo
+        denom = rb - ld
         if denom <= 0:
-            return 1.0 if dtb <= _lead_days else 0.0
-        raw = (_ramp_begin - dtb) / denom
+            return 1.0 if dtb <= ld else 0.0
+        raw = (rb - dtb) / denom
         return max(0.0, min(1.0, raw))
 
     def _macronet_to_vocab(mn: float) -> str:
@@ -962,13 +999,13 @@ def get_actionable(
         # Monthly divergence near month-end
         turn: str | None = None
         turn_extra: str = ""
-        if m_nxt_eff and abs(S_m_cur - S_m_nxt) >= 0.5 and dtb_m <= _ramp_begin:
+        if m_nxt_eff and abs(S_m_cur - S_m_nxt) >= 0.5 and dtb_m <= _ramp_mo_begin:
             turn = "↗" if S_m_nxt > S_m_cur else "↘"
             if _mp_nxt:
                 nxt_conf = int(max(_mp_nxt.pcts.values())) if _mp_nxt.pcts else 100
                 turn_extra = f" {_mp_nxt.quad} {nxt_conf}%"
         # Quarterly alert near quarter-end (discrete, separate from M)
-        elif q_nxt_eff and _qp_cur and _qp_cur.dtb <= 20:
+        elif q_nxt_eff and _qp_cur and _qp_cur.dtb <= _ramp_qtr_begin:
             q_nxt_stance = float(_qtr_top.get(q_nxt_eff, 0))
             if abs(Qtr - q_nxt_stance) >= 1.0:
                 turn = "↗" if q_nxt_stance > Qtr else "↘"
