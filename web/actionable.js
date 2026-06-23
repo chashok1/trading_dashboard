@@ -583,7 +583,7 @@ function _effectiveQuad(p) {
   if (total > 0) return Object.entries(pcts).sort((a, b) => b[1] - a[1])[0][0];
   return p.quad || null;
 }
-function _qdLbl(q) { return q ? q.replace('Quad ', 'Qd ') : '—'; }
+function _qdLbl(q) { return q ? q.replace('Quad ', 'Qd') : '—'; }
 function _quadColor(q) {
   if (!q) return '#9ca3af';
   if (/1/.test(q)) return '#2f9e2f'; // Q1 = bullish/growth
@@ -771,7 +771,7 @@ function _renderQuadOutlookPanel(data) {
       ? [1,2,3,4].map(i => {
           const pct = Math.round(cm[`quad${i}_pct`] || 0);
           const col = _quadColor(`Quad ${i}`);
-          return `<span style="color:${col};">Qd${i}:${pct}%</span>`;
+          return `<span style="color:${col};">${_qdLbl(`Quad ${i}`)}:${pct}%</span>`;
         }).join('<span style="color:#cbd5e1;">,</span>')
       : '—';
     const mPart = mQuad
