@@ -1,0 +1,52 @@
+<svg width="100%" viewBox="0 0 480 372" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>MACRO hover tooltip for AAPL</title>
+<desc>Leads with how to act, then the monthly quad distribution, the Category/Sub category/Outlook drivers (Bullish/Bearish/Neutral), the fixed quarterly anchor with next quarter shown near quarter-end, and the combined MacroNet.</desc>
+<style>
+.t{font:12px system-ui,sans-serif;fill:#1f2937}
+.s{font:11.5px system-ui,sans-serif;fill:#6b7280}
+.b{font:700 12px system-ui,sans-serif;fill:#1f2937}
+.h{font:600 10.5px system-ui,sans-serif;fill:#6b7280;letter-spacing:.04em}
+.bear{fill:#dc2626}.bull{fill:#16a34a}.mut{fill:#64748b}.amb{fill:#d97706}.acc{fill:#2563eb}
+</style>
+<rect x="6" y="6" width="468" height="360" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.25"/>
+
+<!-- header -->
+<text x="22" y="32" style="font:700 14px ui-monospace,monospace;fill:#1f2937">AAPL</text>
+<text class="t" x="458" y="32" text-anchor="end">MACRO <tspan class="bear" font-weight="700">SS</tspan> <tspan class="s">&#183; 78% &#183;</tspan> Tech <tspan class="bull" font-weight="700">SA</tspan></text>
+<line x1="6" y1="44" x2="474" y2="44" stroke="#e5e7eb"/>
+
+<!-- how to act -->
+<text class="acc" x="22" y="62" style="font-weight:600;letter-spacing:.04em;font-size:10.5px">HOW TO ACT</text>
+<text class="t" x="22" y="80">Keep the <tspan class="bull" font-weight="700">BUY</tspan> &#8212; Technical leads.</text>
+<text class="t" x="22" y="97"><tspan class="bear" font-weight="700">Trim to ~half, tighten stop</tspan> &#8212; monthly headwind.</text>
+<text class="t" x="22" y="114">Re-add on the <tspan class="bull" font-weight="700">Quad 1</tspan> flip <tspan class="s">(~12d).</tspan></text>
+<line x1="6" y1="126" x2="474" y2="126" stroke="#e5e7eb"/>
+
+<!-- month -->
+<text class="s" x="22" y="144">Month</text>
+<text class="s" x="458" y="144" text-anchor="end">blend <tspan class="b">60 / 40</tspan> &#183; Jun / Jul</text>
+<text class="s" x="22" y="166">now</text>
+<rect x="64" y="156" width="68.4" height="10" fill="#4ade80"/><rect x="132.4" y="156" width="21.6" height="10" fill="#ef4444"/>
+<text class="t" x="162" y="165">Jun <tspan font-weight="700">Quad 2</tspan> 76% &#183; Quad 4 24%</text>
+<text class="s" x="22" y="184">in 4d</text>
+<rect x="64" y="174" width="48.6" height="10" fill="#16a34a"/><rect x="112.6" y="174" width="5.4" height="10" fill="#4ade80"/><rect x="118" y="174" width="3.6" height="10" fill="#eab308"/><rect x="121.6" y="174" width="32.4" height="10" fill="#ef4444"/>
+<text class="s" x="162" y="183">Jul <tspan fill="#1f2937" font-weight="700">Quad 1</tspan> 54% &#183; Quad 4 36%</text>
+<line x1="6" y1="194" x2="474" y2="194" stroke="#e5e7eb"/>
+
+<!-- drivers -->
+<text class="h" x="22" y="210">Category</text>
+<text class="h" x="170" y="210">Sub category</text>
+<text class="h" x="458" y="210" text-anchor="end">Outlook</text>
+<text class="t" x="22" y="228">Sensitivity</text><text class="t" x="170" y="228">High-beta</text><text class="bear" x="458" y="228" text-anchor="end">Bearish &#8722;1</text>
+<text class="t" x="22" y="245">Solvency</text><text class="t" x="170" y="245">Elevated</text><text class="bear" x="458" y="245" text-anchor="end">Bearish &#8722;1</text>
+<text class="t" x="22" y="262">Momentum</text><text class="t" x="170" y="262">Weak</text><text class="bear" x="458" y="262" text-anchor="end">Bearish &#8722;1</text>
+<text class="s" x="22" y="279">Equity Sectors</text><text class="s" x="170" y="279">Technology</text><text class="mut" x="458" y="279" text-anchor="end">Neutral 0</text>
+<text class="s" x="22" y="296">Asset Class</text><text class="s" x="170" y="296">Equities</text><text class="mut" x="458" y="296" text-anchor="end">Neutral 0</text>
+<text class="s" x="458" y="315" text-anchor="end">Month <tspan class="bear" font-weight="700">&#8722;0.40</tspan></text>
+<line x1="6" y1="325" x2="474" y2="325" stroke="#e5e7eb"/>
+
+<!-- quarter + net -->
+<text class="s" x="22" y="343">Quarter</text>
+<text class="t" x="458" y="343" text-anchor="end"><tspan class="bear" font-weight="700">Quad 3</tspan> <tspan class="amb">&#8594; Quad 1 in 12d</tspan> <tspan class="s">&#183;</tspan> <tspan class="bear" font-weight="700">&#8722;0.60</tspan></text>
+<text class="t" x="458" y="360" text-anchor="end">MacroNet <tspan class="bear" font-weight="700">&#8722;0.53</tspan> &#8594; <tspan font-weight="700">SS</tspan></text>
+</svg>

@@ -1,0 +1,23 @@
+<svg width="100%" viewBox="0 0 680 116" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Regime band — monthly factor groups with quarterly arrows</title>
+<desc>One thin line: month and quarter quad, then the monthly bullish and bearish factor groups; each factor has a green up or red down arrow for the quarterly direction.</desc>
+<style>
+.t{font:12px system-ui,sans-serif;fill:#1f2937}
+.s{font:12px system-ui,sans-serif;fill:#6b7280}
+.b{font:600 12px system-ui,sans-serif;fill:#1f2937}
+.cap{font:11.5px system-ui,sans-serif;fill:#6b7280}
+.lab{font:600 13px system-ui,sans-serif;fill:#2563eb}
+.up{font:700 12px system-ui,sans-serif;fill:#16a34a}
+.dn{font:700 12px system-ui,sans-serif;fill:#dc2626}
+.bull{font:700 12px system-ui,sans-serif;fill:#16a34a}
+.bear{font:700 12px system-ui,sans-serif;fill:#dc2626}
+</style>
+<text class="lab" x="40" y="24">Regime band (top of Actionable) — one line</text>
+
+<rect x="40" y="38" width="600" height="40" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.25"/>
+<text x="54" y="63">
+<tspan class="s">Month </tspan><tspan class="b">Quad 2 </tspan><tspan class="s">(4d&#8594;Q1)  &#183;  </tspan><tspan class="s">Quarter </tspan><tspan class="b">Quad 3 </tspan><tspan class="s">(12d&#8594;Q1)  &#183;  </tspan><tspan class="bull">Bull </tspan><tspan class="t">Cyclical</tspan><tspan class="up">&#8593;</tspan><tspan class="t"> High-Beta</tspan><tspan class="dn">&#8595;</tspan><tspan class="t"> Value</tspan><tspan class="up">&#8593;</tspan><tspan class="s">  &#183;  </tspan><tspan class="bear">Bear </tspan><tspan class="t">Defensive</tspan><tspan class="dn">&#8595;</tspan><tspan class="t"> Quality</tspan><tspan class="dn">&#8595;</tspan><tspan class="t"> Low-Vol</tspan><tspan class="up">&#8593;</tspan></text>
+
+<text class="cap" x="40" y="98">Group (Bull / Bear) = active <tspan font-weight="600" fill="#1f2937">monthly</tspan> quad &#183; <tspan class="up">&#8593;</tspan>/<tspan class="dn">&#8595;</tspan> next to each factor = that factor's <tspan font-weight="600" fill="#1f2937">quarterly</tspan> direction (from ref_quad_outlook).</text>
+<text class="cap" x="40" y="112">Divergence (e.g. High-Beta bullish this month but <tspan class="dn">&#8595;</tspan> next quarter) is the watch signal. Lists trim to fit; full set on hover.</text>
+</svg>

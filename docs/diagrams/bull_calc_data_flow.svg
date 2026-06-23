@@ -1,0 +1,73 @@
+<svg viewBox="0 0 860 560" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, system-ui, Segoe UI, sans-serif">
+  <title>Bull-calc data flow</title>
+  <desc>17 source feeds load into hist tables, then split into two lanes. Left lane (sentiment): outlook feeds to weighted/consolidated drv_source_standing to consolidated_action. Right lane (technical): price/MA/Bollinger to atomic rules in drv_cat_atomic_input; bull gate produces rr_action, rules engine produces trig_action. consolidated_action and rr_action combine in _compute_final_call; with trig_action they land in drv_actionable and the Actionable screen.</desc>
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="#888780"/></marker>
+    <marker id="g" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="#1D9E75"/></marker>
+  </defs>
+
+  <text x="430" y="22" text-anchor="middle" font-size="16" font-weight="700" fill="#2C2C2A">Bull-calc data flow — feeds to Final Call</text>
+  <text x="430" y="40" text-anchor="middle" font-size="11" fill="#5F5E5A">left lane = Sentiment (Stack A) · right lane = Technical (Stack B) · green = the bull gate path</text>
+
+  <g stroke="#888780" stroke-width="1.4" fill="none" marker-end="url(#a)">
+    <line x1="430" y1="90" x2="250" y2="116"/>
+    <line x1="430" y1="90" x2="612" y2="116"/>
+    <line x1="235" y1="168" x2="235" y2="190"/>
+    <line x1="235" y1="242" x2="235" y2="264"/>
+    <line x1="625" y1="168" x2="625" y2="190"/>
+    <line x1="625" y1="242" x2="690" y2="264"/>
+    <line x1="235" y1="322" x2="282" y2="358"/>
+    <line x1="697" y1="330" x2="650" y2="358"/>
+    <line x1="460" y1="388" x2="518" y2="388"/>
+    <line x1="645" y1="416" x2="475" y2="456"/>
+  </g>
+  <g stroke="#1D9E75" stroke-width="1.6" fill="none" marker-end="url(#g)">
+    <line x1="625" y1="242" x2="558" y2="264"/>
+    <line x1="555" y1="330" x2="372" y2="358"/>
+  </g>
+
+  <rect x="330" y="54" width="200" height="36" rx="8" fill="#ffffff" stroke="#888780"/>
+  <text x="430" y="72" text-anchor="middle" font-size="12.5" font-weight="700" fill="#2C2C2A">17 source feeds</text>
+  <text x="430" y="85" text-anchor="middle" font-size="10" fill="#5F5E5A">raw → hist_* tables</text>
+
+  <text x="235" y="110" text-anchor="middle" font-size="10.5" font-weight="700" letter-spacing="0.5" fill="#5F5E5A">STACK A · SENTIMENT</text>
+  <text x="625" y="110" text-anchor="middle" font-size="10.5" font-weight="700" letter-spacing="0.5" fill="#5F5E5A">STACK B · TECHNICAL</text>
+
+  <rect x="100" y="118" width="270" height="50" rx="8" fill="#ffffff" stroke="#888780"/>
+  <text x="235" y="139" text-anchor="middle" font-size="12" font-weight="700" fill="#2C2C2A">Outlook feeds</text>
+  <text x="235" y="156" text-anchor="middle" font-size="9.5" fill="#5F5E5A">RR · CALL · ETF · II · SSS · PS</text>
+  <rect x="100" y="190" width="270" height="50" rx="8" fill="#ffffff" stroke="#888780"/>
+  <text x="235" y="211" text-anchor="middle" font-size="12" font-weight="700" fill="#2C2C2A">Weight + consolidate</text>
+  <text x="235" y="228" text-anchor="middle" font-size="9.5" fill="#5F5E5A">outlook→weight · drv_source_standing</text>
+  <rect x="100" y="264" width="270" height="56" rx="8" fill="#ffffff" stroke="#444441" stroke-width="2"/>
+  <text x="235" y="287" text-anchor="middle" font-size="12" font-weight="700" fill="#2C2C2A">consolidated_action</text>
+  <text x="235" y="304" text-anchor="middle" font-size="9.5" fill="#5F5E5A">most-aggressive-wins · drv_outlook_action</text>
+
+  <rect x="490" y="118" width="270" height="50" rx="8" fill="#ffffff" stroke="#888780"/>
+  <text x="625" y="139" text-anchor="middle" font-size="12" font-weight="700" fill="#2C2C2A">Price / MA / Bollinger</text>
+  <text x="625" y="156" text-anchor="middle" font-size="9.5" fill="#5F5E5A">TL · TD · TW · Y → drv_technicals</text>
+  <rect x="490" y="190" width="270" height="50" rx="8" fill="#ffffff" stroke="#888780"/>
+  <text x="625" y="211" text-anchor="middle" font-size="12" font-weight="700" fill="#2C2C2A">Atomic rules</text>
+  <text x="625" y="228" text-anchor="middle" font-size="9.5" fill="#5F5E5A">trade · trend · BB streaks · drv_cat_atomic_input</text>
+  <rect x="490" y="264" width="132" height="64" rx="8" fill="#E1F5EE" stroke="#1D9E75"/>
+  <text x="556" y="284" text-anchor="middle" font-size="11" font-weight="700" fill="#0F6E56">Bull gate ±3</text>
+  <text x="556" y="299" text-anchor="middle" font-size="8.5" fill="#0F6E56">_bull_expr (MQ)</text>
+  <text x="556" y="314" text-anchor="middle" font-size="8.5" font-weight="600" fill="#0F6E56">→ rr_action</text>
+  <rect x="634" y="264" width="126" height="64" rx="8" fill="#ffffff" stroke="#888780"/>
+  <text x="697" y="284" text-anchor="middle" font-size="11" font-weight="700" fill="#2C2C2A">Rules engine</text>
+  <text x="697" y="299" text-anchor="middle" font-size="8.5" fill="#5F5E5A">composite → groups</text>
+  <text x="697" y="314" text-anchor="middle" font-size="8.5" font-weight="600" fill="#5F5E5A">→ trig_action</text>
+
+  <rect x="140" y="358" width="320" height="56" rx="8" fill="#ffffff" stroke="#444441" stroke-width="2"/>
+  <text x="300" y="381" text-anchor="middle" font-size="12.5" font-weight="700" fill="#2C2C2A">Final Call</text>
+  <text x="300" y="398" text-anchor="middle" font-size="9.5" fill="#5F5E5A">_compute_final_call( sentiment + technical )</text>
+  <rect x="520" y="358" width="250" height="56" rx="8" fill="#ffffff" stroke="#888780"/>
+  <text x="645" y="381" text-anchor="middle" font-size="12" font-weight="700" fill="#2C2C2A">drv_actionable</text>
+  <text x="645" y="398" text-anchor="middle" font-size="9.5" fill="#5F5E5A">final_code · trig_action</text>
+
+  <rect x="300" y="456" width="300" height="46" rx="8" fill="#E1F5EE" stroke="#1D9E75"/>
+  <text x="450" y="477" text-anchor="middle" font-size="12" font-weight="700" fill="#0F6E56">Actionable screen</text>
+  <text x="450" y="492" text-anchor="middle" font-size="9" fill="#0F6E56">Final Call column + ranked list</text>
+
+  <text x="430" y="532" text-anchor="middle" font-size="9.5" fill="#5F5E5A">Additive layers sit beside, not inside: bull_prob, FC(cal), agreement, position-inferred actions.</text>
+</svg>

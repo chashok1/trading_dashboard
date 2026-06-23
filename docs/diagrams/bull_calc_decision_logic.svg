@@ -1,0 +1,80 @@
+<svg viewBox="0 0 820 690" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, system-ui, Segoe UI, sans-serif">
+  <title>Bull-calc decision logic</title>
+  <desc>The bull gate decides which risk-range playbook is read, producing rr_action (technical input). The Final Call then runs a precedence: if sentiment says sell-all or over-max, exit; else if not held and no buy signal, hold; else combine technical and sentiment — technical sell gives sell-some, technical buy gives buy when sentiment agrees else hold, technical neutral gives buy-to-min when adding and unheld else hold. Output is a final action plus confidence of high, mixed or gate.</desc>
+  <defs>
+    <marker id="aa" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 Z" fill="#888780"/></marker>
+  </defs>
+
+  <text x="410" y="22" text-anchor="middle" font-size="16" font-weight="700" fill="#2C2C2A">Bull-calc decision logic</text>
+  <text x="410" y="40" text-anchor="middle" font-size="11" fill="#5F5E5A">green = buy outcome · red = sell outcome · gray = hold / gate</text>
+
+  <rect x="150" y="56" width="520" height="48" rx="8" fill="#E1F5EE" stroke="#1D9E75"/>
+  <text x="410" y="77" text-anchor="middle" font-size="12" font-weight="700" fill="#0F6E56">Bull gate (−3..+3) switches the Risk-Range playbook</text>
+  <text x="410" y="93" text-anchor="middle" font-size="9.5" fill="#0F6E56">gate ≥ 2 → bull_rr_action · else not_bull_rr_action   ⇒   rr_action (technical input)</text>
+
+  <text x="410" y="128" text-anchor="middle" font-size="10.5" font-weight="600" fill="#5F5E5A">Final Call combines SENTIMENT (consolidated_action) + TECHNICAL (rr_action) ↓</text>
+
+  <g stroke="#888780" stroke-width="1.4" fill="none" marker-end="url(#aa)">
+    <line x1="410" y1="104" x2="232" y2="138"/>
+    <line x1="230" y1="206" x2="230" y2="258"/>
+    <line x1="230" y1="326" x2="230" y2="378"/>
+    <line x1="230" y1="446" x2="230" y2="498"/>
+    <line x1="230" y1="566" x2="230" y2="612"/>
+    <line x1="325" y1="172" x2="468" y2="170"/>
+    <line x1="325" y1="292" x2="468" y2="290"/>
+    <line x1="325" y1="412" x2="468" y2="410"/>
+    <line x1="325" y1="532" x2="468" y2="530"/>
+    <line x1="435" y1="632" x2="468" y2="632"/>
+  </g>
+  <g font-size="9" fill="#5F5E5A">
+    <text x="245" y="235">No ↓</text>
+    <text x="245" y="355">No ↓</text>
+    <text x="245" y="475">No ↓</text>
+    <text x="245" y="595">No ↓</text>
+    <text x="390" y="162">Yes →</text>
+    <text x="390" y="282">Yes →</text>
+    <text x="390" y="402">Yes →</text>
+    <text x="390" y="522">Yes →</text>
+  </g>
+
+  <g stroke="#888780" fill="#ffffff">
+    <polygon points="135,172 230,138 325,172 230,206"/>
+    <polygon points="135,292 230,258 325,292 230,326"/>
+    <polygon points="135,412 230,378 325,412 230,446"/>
+    <polygon points="135,532 230,498 325,532 230,566"/>
+  </g>
+  <g font-size="9.5" fill="#2C2C2A" text-anchor="middle">
+    <text x="230" y="170">Sentiment =</text>
+    <text x="230" y="182">SELL ALL / over-max?</text>
+    <text x="230" y="290">Not held AND</text>
+    <text x="230" y="302">sentiment not a buy?</text>
+    <text x="230" y="410">Technical (rr_action)</text>
+    <text x="230" y="422">= SELL?</text>
+    <text x="230" y="530">Technical</text>
+    <text x="230" y="542">= BUY?</text>
+  </g>
+
+  <rect x="468" y="146" width="322" height="48" rx="8" fill="#FCEBEB" stroke="#E24B4A"/>
+  <text x="629" y="167" text-anchor="middle" font-size="11.5" font-weight="700" fill="#791F1F">SELL ALL / exit</text>
+  <text x="629" y="183" text-anchor="middle" font-size="9" fill="#791F1F">strategic gate — overrides everything</text>
+
+  <rect x="468" y="266" width="322" height="48" rx="8" fill="#ffffff" stroke="#888780"/>
+  <text x="629" y="287" text-anchor="middle" font-size="11.5" font-weight="700" fill="#2C2C2A">HOLD — don't initiate</text>
+  <text x="629" y="303" text-anchor="middle" font-size="9" fill="#5F5E5A">not held + no buy signal</text>
+
+  <rect x="468" y="386" width="322" height="48" rx="8" fill="#FCEBEB" stroke="#E24B4A"/>
+  <text x="629" y="407" text-anchor="middle" font-size="11.5" font-weight="700" fill="#791F1F">SELL SOME (if held)</text>
+  <text x="629" y="423" text-anchor="middle" font-size="9" fill="#791F1F">high if sentiment also reducing, else mixed</text>
+
+  <rect x="468" y="506" width="322" height="48" rx="8" fill="#E1F5EE" stroke="#1D9E75"/>
+  <text x="629" y="527" text-anchor="middle" font-size="11.5" font-weight="700" fill="#0F6E56">BUY</text>
+  <text x="629" y="543" text-anchor="middle" font-size="9" fill="#0F6E56">high if sentiment agrees · HOLD (mixed) if it conflicts</text>
+
+  <rect x="100" y="612" width="300" height="52" rx="8" fill="#ffffff" stroke="#888780"/>
+  <text x="250" y="633" text-anchor="middle" font-size="10.5" font-weight="700" fill="#2C2C2A">Technical neutral →</text>
+  <text x="250" y="649" text-anchor="middle" font-size="9" fill="#5F5E5A">BUY-to-min if adding &amp; unheld, else HOLD</text>
+
+  <rect x="468" y="608" width="322" height="52" rx="8" fill="#ffffff" stroke="#444441" stroke-width="2"/>
+  <text x="629" y="630" text-anchor="middle" font-size="11.5" font-weight="700" fill="#2C2C2A">Output: final action + confidence</text>
+  <text x="629" y="647" text-anchor="middle" font-size="9.5" fill="#5F5E5A">strength (−3..+2) · confidence = high / mixed / gate</text>
+</svg>

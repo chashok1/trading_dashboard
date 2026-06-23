@@ -1,0 +1,33 @@
+<svg width="100%" viewBox="0 0 680 232" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Next-month weight with an anticipation lead</title>
+<desc>Next-month weight is 0% early in the month, ramps from "ramp begins", reaches 100% at "lead days" before month-end, and holds at 100% through the boundary.</desc>
+<style>
+.t{font:13px system-ui,sans-serif;fill:#1f2937}
+.s{font:11.5px system-ui,sans-serif;fill:#6b7280}
+.b{font:600 13px system-ui,sans-serif;fill:#1f2937}
+</style>
+<text class="b" x="40" y="26">Next-month weight across the month (Month blend)</text>
+
+<rect x="487" y="48" width="133" height="122" fill="#2563eb14"/>
+<text class="s" x="553" y="64" text-anchor="middle" fill="#2563eb">100% next</text>
+<text class="s" x="553" y="78" text-anchor="middle" fill="#2563eb">(anticipated)</text>
+
+<line x1="60" y1="170" x2="620" y2="170" stroke="#cbd5e1"/>
+<line x1="60" y1="48" x2="60" y2="170" stroke="#cbd5e1"/>
+<text class="s" x="54" y="52" text-anchor="end">100%</text>
+<text class="s" x="54" y="173" text-anchor="end">0%</text>
+
+<polyline points="60,170 300,170 487,48 620,48" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+
+<line x1="300" y1="170" x2="300" y2="184" stroke="#2563eb" stroke-dasharray="4 4"/>
+<text class="s" x="300" y="198" text-anchor="middle" fill="#2563eb">ramp begins (12d)</text>
+<line x1="487" y1="48" x2="487" y2="184" stroke="#2563eb" stroke-dasharray="4 4"/>
+<text class="s" x="487" y="198" text-anchor="middle" fill="#2563eb">lead days (5d)</text>
+
+<circle cx="513" cy="48" r="4" fill="#d97706"/>
+<line x1="513" y1="48" x2="513" y2="170" stroke="#d97706" stroke-dasharray="3 3"/>
+<text class="s" x="513" y="214" text-anchor="middle" fill="#d97706">today &#183; 4d left &#8594; 100% next</text>
+
+<text class="s" x="60" y="188" text-anchor="start">month start</text>
+<text class="b" x="620" y="188" text-anchor="end">month-end</text>
+</svg>

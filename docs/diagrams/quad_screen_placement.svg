@@ -1,0 +1,49 @@
+<svg width="100%" viewBox="0 0 680 452" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Where the quad pieces go on the Actionable screen</title>
+<desc>The regime band is a new full-width strip above the table; a single MACRO column replaces the two Quad columns; the Quads side panel is retired and folded into the band.</desc>
+<style>
+.t{font:13px system-ui,sans-serif;fill:#1f2937}
+.th{font:600 13px system-ui,sans-serif;fill:#1f2937}
+.ts{font:11.5px system-ui,sans-serif;fill:#6b7280}
+.lg{font:600 11px system-ui,sans-serif}
+.bull{fill:#16a34a;font:600 13px system-ui,sans-serif}
+.bear{fill:#dc2626;font:600 13px system-ui,sans-serif}
+.bx{fill:#ffffff;stroke:#cbd5e1;stroke-width:1.25}
+</style>
+<text class="th" x="40" y="26" style="font-size:15px">Where it goes on the Actionable screen</text>
+
+<rect class="bx" x="40" y="40" width="600" height="24" rx="5"/>
+<text class="ts" x="52" y="56">Actionable &#183; date picker &#183; filters</text>
+
+<!-- band -->
+<rect x="40" y="72" width="600" height="50" rx="6" fill="#16a34a14" stroke="#16a34a" stroke-width="2"/>
+<text class="lg" x="52" y="88" fill="#16a34a">&#9312; REGIME BAND &#8212; new full-width strip above the table (replaces the Quads side panel)</text>
+<text class="t" x="52" y="110"><tspan class="th">Month</tspan> Quad 3 &#8594; Quad 1 <tspan fill="#d97706">in 4d</tspan>   |   <tspan class="th">Quarter</tspan> Quad 3 &#8594; Quad 1 <tspan class="ts">in 12d</tspan>   |   Favoring <tspan class="bull" style="font-weight:600">energy&#183;utilities&#183;gold</tspan> &#8212; fading <tspan class="bear" style="font-weight:600">high-beta&#183;small caps</tspan></text>
+
+<!-- table -->
+<rect class="bx" x="40" y="134" width="430" height="300" rx="6"/>
+<rect x="380" y="134" width="50" height="300" fill="#2563eb12"/>
+<line x1="380" y1="134" x2="380" y2="434" stroke="#2563eb" stroke-width="1.5"/>
+<line x1="430" y1="134" x2="430" y2="434" stroke="#2563eb" stroke-width="1.5"/>
+<line x1="40" y1="162" x2="470" y2="162" stroke="#cbd5e1"/>
+<text class="ts" x="52" y="152">Symbol &#183; Final Call &#183; Sources &#183; Technical &#183; &#8230;</text>
+<text class="lg" x="405" y="150" fill="#2563eb" text-anchor="middle">&#9313;</text>
+<text class="lg" x="405" y="159" fill="#2563eb" text-anchor="middle" style="font-size:9.5px">MACRO</text>
+<text class="t" x="52" y="186">XOM &#183; SA &#183; &#8230;</text><text class="bull" x="405" y="186" text-anchor="middle">SA</text>
+<text class="t" x="52" y="212">AAPL &#183; SA &#183; &#8230;</text><text class="bear" x="405" y="212" text-anchor="middle">SS</text>
+<text class="t" x="52" y="238">IWM &#183; SS &#183; &#8230;</text><text class="bear" x="405" y="238" text-anchor="middle">SS</text>
+<text class="ts" x="52" y="264">KO &#183; SA &#183; &#8230;</text><text class="bull" x="402" y="264" text-anchor="middle">STM</text>
+<text class="ts" x="52" y="300">&#9313; single MACRO column replaces the two</text>
+<text class="ts" x="52" y="316"><tspan font-style="italic">Quad (M)</tspan> / <tspan font-style="italic">Quad (Q)</tspan> columns &#183; hover = full tooltip</text>
+<text class="ts" x="52" y="346" fill="#2563eb">Action column stays Technical (master); MACRO is context.</text>
+
+<!-- sidebar -->
+<rect x="480" y="134" width="160" height="64" rx="6" fill="#d977060d" stroke="#d97706" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text class="lg" x="492" y="154" fill="#d97706">&#9314; Quads panel</text>
+<text class="ts" x="492" y="172" text-decoration="line-through">#quadsBody side panel</text>
+<text class="ts" x="492" y="190" fill="#d97706">RETIRED &#8594; folded into band</text>
+
+<rect class="bx" x="480" y="208" width="160" height="120" rx="6"/>
+<text class="ts" x="492" y="228">Econ indicators (kept)</text>
+<text class="ts" x="492" y="248">Earnings / calendar (kept)</text>
+</svg>
