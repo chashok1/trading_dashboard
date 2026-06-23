@@ -481,10 +481,20 @@ function _buildScoresPopHtml(r) {
       : '<span style="color:#9ca3af;">—</span>';
     const isCur = !!s.is_current;
     const qcol  = s.quad ? _quadColor(s.quad) : '#9ca3af';
+    const distSegs = [
+      {q:'Quad 1',pct:s.q1||0},{q:'Quad 2',pct:s.q2||0},
+      {q:'Quad 3',pct:s.q3||0},{q:'Quad 4',pct:s.q4||0},
+    ].filter(x => x.pct > 0);
+    const distBar = distSegs.length
+      ? `<span style="display:inline-flex;width:50px;height:4px;border-radius:2px;overflow:hidden;vertical-align:middle;margin-left:4px;border:1px solid #e2e8f0;">`
+        + distSegs.map(x => `<div style="width:${x.pct}%;background:${_quadColor(x.q)};height:100%;" title="${escapeHtml(x.q)} ${x.pct}%"></div>`).join('')
+        + `</span>`
+      : '';
     h += `<tr${isCur ? ' style="background:#f1f5f9;"' : ''}>`
        + `<td class="k" style="font-size:9px;${isCur ? 'font-weight:700;' : ''}padding:1px 4px;">${escapeHtml(s.label || '')}</td>`
        + `<td class="v" style="font-size:9px;padding:1px 4px;white-space:nowrap;">`
        + `<span style="color:${qcol};font-weight:600;font-size:8px;">${escapeHtml(s.quad || '')}</span>`
+       + distBar
        + `&nbsp;<span style="color:${col};">${gl}</span>&nbsp;${scHtml}`
        + `</td></tr>`;
   }

@@ -296,6 +296,10 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
                 'quad':       p.quad,
                 'score':      round(net_m, 4),
                 'is_current': (p.year == cur_mo_y and p.period_num == cur_mo_n),
+                'q1': float(p.quad1_pct or 0),
+                'q2': float(p.quad2_pct or 0),
+                'q3': float(p.quad3_pct or 0),
+                'q4': float(p.quad4_pct or 0),
             })
 
         out.append({
