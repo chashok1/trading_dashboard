@@ -513,13 +513,9 @@ async function loadMacroBand() {
       + (qDtb != null ? ` <span style="color:#94a3b8;font-size:10px;">(${qDtb}d left)</span>` : '')
       + (qNxt ? ` → <strong style="color:${_quadColor(qNxt)};opacity:0.7;cursor:help;" data-quadbandpop="next_qtr">${escapeHtml(qNxt)}</strong>${_distBar(nq)}` : '');
 
-    // Favoring line
-    if (state.allRows && state.allRows.length) {
-      const cnts = {};
-      for (const row of state.allRows) { const mv = row.macro_value; if (mv) cnts[mv] = (cnts[mv]||0)+1; }
-      const top = Object.entries(cnts).sort((a,b)=>b[1]-a[1])[0];
-      if (top) { const d_ = actionDisplay(top[0]); const pct = Math.round(top[1]/state.allRows.length*100); elF.textContent = `Favoring: ${d_.code||top[0]} (${pct}% of universe)`; }
-    } else { elF.textContent = ''; }
+    // Macro distribution — same universe as action split below
+    if (elF) elF.innerHTML = '';
+    // universe is computed below; defer macro dist render until then
 
     // Universe: same rules as matchesBaseFilters(show_hidden=off) —
     // excludes null-action, zero-AMT, and unheld-REMOVE rows.
@@ -543,6 +539,27 @@ async function loadMacroBand() {
         }
         elBreadth.innerHTML = `<span style="color:#166534;">↑${up}</span> <span style="color:#991b1b;">↓${dn}</span>`;
       } else { elBreadth.textContent = ''; }
+    }
+
+    // Macro distribution — counts macro_value within the same universe as action split
+    if (elF && universe.length) {
+      const mcnts = {};
+      for (const r of universe) { const mv = r.macro_value; if (mv) mcnts[mv] = (mcnts[mv]||0)+1; }
+      const SIDE_ORDER = { buy: 0, neutral: 1, sell: 2 };
+      const mparts = Object.entries(mcnts)
+        .sort((a, b) => {
+          const sa = SIDE_ORDER[actionDisplay(a[0]).side] ?? 1;
+          const sb = SIDE_ORDER[actionDisplay(b[0]).side] ?? 1;
+          return sa !== sb ? sa - sb : b[1] - a[1];
+        })
+        .map(([code, cnt]) => {
+          const d = actionDisplay(code);
+          const col = d.side === 'buy' ? '#166534' : d.side === 'sell' ? '#991b1b' : '#6b7280';
+          return `<span style="color:${col};">${escapeHtml(d.code || code)}:${cnt}</span>`;
+        });
+      elF.innerHTML = mparts.length
+        ? `<span style="color:#64748b;font-size:10px;">Macro </span>${mparts.join(' ')}`
+        : '';
     }
 
     // Action split: distribution grouped buy→neutral→sell
