@@ -99,8 +99,7 @@
 
   <!-- Arrows from monthly boxes to combine -->
   <line x1="370" y1="290" x2="430" y2="290" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arr-blue)"/>
-  <line x1="370" y1="440" x2="410" y2="440" x2="410" y2="370" stroke="#6366f1" stroke-width="1.5"/>
-  <line x1="410" y1="370" x2="430" y2="320" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arr-indigo)"/>
+  <polyline points="370,440 410,440 410,370 430,320" fill="none" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arr-indigo)"/>
 
   <!-- Also draw arrow from Stage1 to quarterly track -->
   <line x1="158" y1="350" x2="178" y2="350" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
