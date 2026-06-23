@@ -123,7 +123,7 @@ function macroCellHtml(r) {
     const bars = _sparks.map(s => {
       const sc  = s.score || 0;
       const bh  = Math.max(2, Math.round(Math.abs(sc) / maxAbs * 8));
-      const col = _quadColor(s.quad);
+      const col = sc > 0 ? '#16a34a' : sc < 0 ? '#dc2626' : '#9ca3af';
       const bw  = s.is_current ? '3' : '2';
       const bdr = s.is_current ? 'border:1px solid #475569;box-sizing:border-box;' : '';
       const ti  = `${s.label || ''} (${s.quad || ''}) ${sc >= 0 ? '+' : ''}${sc.toFixed(2)}`;
