@@ -616,12 +616,16 @@ async function loadMacroBand() {
         {q:'Quad 3',pct:p.quad3_pct||0},{q:'Quad 4',pct:p.quad4_pct||0},
       ].filter(s=>s.pct>0);
       if (!segs.length) return '';
-      const bars = segs.map(s => {
-        const qlbl = s.q.replace('Quad ', 'Qd ');
-        const lbl = s.pct >= 15 ? `<span style="font-size:8px;color:#fff;font-weight:600;line-height:1;pointer-events:none;">${qlbl} ${Math.round(s.pct)}%</span>` : '';
-        return `<div style="width:${s.pct}%;background:${_quadColor(s.q)};height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;" title="${escapeHtml(s.q)} ${s.pct}%">${lbl}</div>`;
-      }).join('');
-      return `<span style="display:inline-flex;width:120px;height:14px;border-radius:3px;overflow:hidden;border:1px solid #e2e8f0;vertical-align:middle;margin-left:5px;">${bars}</span>`;
+      const bars = segs.map(s =>
+        `<div style="width:${s.pct}%;background:${_quadColor(s.q)};height:100%;" title="${escapeHtml(s.q)} ${s.pct}%"></div>`
+      ).join('');
+      const lbls = segs.map(s =>
+        `<span style="color:${_quadColor(s.q)};font-weight:600;">${s.q.replace('Quad ','Qd ')} ${Math.round(s.pct)}%</span>`
+      ).join('<span style="color:#cbd5e1;"> · </span>');
+      return `<span style="display:inline-flex;flex-direction:column;vertical-align:middle;margin-left:5px;gap:1px;">`
+           + `<span style="display:inline-flex;width:120px;height:6px;border-radius:2px;overflow:hidden;border:1px solid #e2e8f0;">${bars}</span>`
+           + `<span style="font-size:8px;line-height:1;white-space:nowrap;">${lbls}</span>`
+           + `</span>`;
     };
     // Thin solid bar for quarterly (one-hot — colored label already conveys the quad)
     const _distBarQtr = p => {
