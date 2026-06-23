@@ -63,9 +63,21 @@ def _bdays_to(anchor, end_dt):
     return max(0, len(pd.bdate_range(anchor, end_dt)) - 1)
 
 
-def _onehot(quad_num):
-    q = int(quad_num)
-    return [1.0 if i + 1 == q else 0.0 for i in range(4)]
+def _onehot(quad_val):
+    """Convert 'Quad N' or bare int/str N to one-hot [q1,q2,q3,q4]."""
+    s = str(quad_val).strip()
+    # Handle 'Quad 3', 'QUAD3', 'Q3', bare '3'
+    for tok in s.split():
+        try:
+            q = int(tok)
+            return [1.0 if i + 1 == q else 0.0 for i in range(4)]
+        except ValueError:
+            continue
+    try:
+        q = int(s[-1])
+        return [1.0 if i + 1 == q else 0.0 for i in range(4)]
+    except (ValueError, IndexError):
+        return [0.25, 0.25, 0.25, 0.25]  # uniform fallback
 
 
 def _norm_pcts(p):
@@ -120,10 +132,10 @@ def _classify_style(beta, pe_ratio, div_yield, rsi, market_cap_str, sector):
 
 def _load_settings(session):
     rows = session.execute(text(
-        "SELECT key, value FROM ref_settings"
-        " WHERE key LIKE 'quad_%' OR key LIKE 'macronet_%'"
+        "SELECT setting_name, setting_value FROM ref_settings"
+        " WHERE setting_name LIKE 'quad_%' OR setting_name LIKE 'macronet_%'"
     )).fetchall()
-    return {r.key: r.value for r in rows}
+    return {r.setting_name: r.setting_value for r in rows}
 
 
 def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
@@ -161,17 +173,17 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
                quad1_pct, quad2_pct, quad3_pct, quad4_pct,
                start_date, end_date
         FROM ref_quad_periods
-        WHERE (period_type='month' AND start_date <= :d AND end_date >= :d)
-           OR (period_type='month' AND start_date > :d
+        WHERE (period_type='monthly' AND start_date <= :d AND end_date >= :d)
+           OR (period_type='monthly' AND start_date > :d
                AND start_date <= :d + interval '45 days')
-           OR (period_type='quarter' AND start_date <= :d AND end_date >= :d)
-           OR (period_type='quarter' AND start_date > :d
+           OR (period_type='quarterly' AND start_date <= :d AND end_date >= :d)
+           OR (period_type='quarterly' AND start_date > :d
                AND start_date <= :d + interval '120 days')
         ORDER BY period_type, start_date
     """), {'d': as_of_date}).fetchall()
 
-    months   = [p for p in periods if p.period_type == 'month']
-    quarters = [p for p in periods if p.period_type == 'quarter']
+    months   = [p for p in periods if p.period_type == 'monthly']
+    quarters = [p for p in periods if p.period_type == 'quarterly']
 
     if not months or not quarters:
         log.info("derive_macronet: no quad period rows for %s — skipping", as_of_date)
