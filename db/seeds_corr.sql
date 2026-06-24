@@ -4,19 +4,24 @@
 -- Idempotent: ON CONFLICT DO NOTHING.
 --
 -- source_spec JSONB: ordered priority list, first source that has data wins.
+--   "histy:<sym>"     => look in hist_y WHERE symbol=<sym> (weekdays; TASK_90)
 --   "tos:<sym>"       => look in drv_quote WHERE tos_symbol = <sym>
 --   "yfinance:<sym>"  => look in hist_quote_daily WHERE source='yfinance' AND symbol=<sym>
+--
+-- USD, SPX, Brent, Gold, Bitcoin prefer histy (loaded daily by YFiles run, always
+-- current) with yfinance as long-history fallback using the SAME ticker symbol.
+-- CRB (DBC) is yfinance-only (not in hist_y).
 -- =====================================================
 
 INSERT INTO ref_corr_asset
     (asset_key, label, source_spec, is_usd_base, sort_order, enabled)
 VALUES
-  ('usd',     '$USD Index', '["yfinance:DX-Y.NYB"]',              TRUE,  0,  TRUE),
-  ('spx',     'S&P 500',    '["yfinance:^GSPC","tos:SPY"]',      FALSE, 10, TRUE),
-  ('brent',   'Brent Oil',  '["yfinance:BZ=F"]',                 FALSE, 20, TRUE),
-  ('crb',     'CRB (proxy)','["yfinance:DBC","tos:DBC"]',        FALSE, 30, TRUE),
-  ('gold',    'Gold',       '["yfinance:GC=F","tos:GLD"]',       FALSE, 40, TRUE),
-  ('bitcoin', 'Bitcoin',    '["yfinance:BTC-USD","tos:/BTC"]',   FALSE, 50, TRUE)
+  ('usd',     '$USD Index', '["histy:^NYICDX","yfinance:^NYICDX"]',       TRUE,  0,  TRUE),
+  ('spx',     'S&P 500',    '["histy:^SPX","yfinance:^SPX"]',             FALSE, 10, TRUE),
+  ('brent',   'Brent Oil',  '["histy:BZ=F","yfinance:BZ=F"]',             FALSE, 20, TRUE),
+  ('crb',     'CRB (proxy)','["yfinance:DBC"]',                           FALSE, 30, TRUE),
+  ('gold',    'Gold',       '["histy:GC=F","yfinance:GC=F"]',             FALSE, 40, TRUE),
+  ('bitcoin', 'Bitcoin',    '["histy:BTC-USD","yfinance:BTC-USD"]',       FALSE, 50, TRUE)
 ON CONFLICT (asset_key) DO UPDATE SET
     source_spec = EXCLUDED.source_spec,
     label       = EXCLUDED.label;

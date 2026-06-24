@@ -10,8 +10,10 @@ This matches the provider methodology (bake-off: levels MAE ~0.087 vs
 returns ~0.28).  Each window is the trailing-N aligned daily closes for
 both USD and the asset — no differencing.
 
-Price series: unified daily close per asset = coalesce(TOS drv_quote,
-yfinance hist_quote_daily), TOS wins on overlap. Same for USD ($DXY).
+Price series: unified daily close per asset = coalesce(hist_y daily load,
+yfinance hist_quote_daily). Source priority is spec-list order (first wins).
+USD: histy:^NYICDX wins on recent dates; yfinance:DX-Y.NYB provides history.
+SPX: histy:^SPX wins on recent dates; yfinance:^GSPC provides history.
 
 Idempotent: DELETE WHERE as_of_date=D then INSERT.
 Wire into derive_all() after drv_quote.
@@ -66,7 +68,8 @@ def _load_price_series(session: Session, asset_key: str,
 
     TOS source:      drv_quote.last_price WHERE tos_symbol=<sym>.
     yfinance source: hist_quote_daily WHERE source='yfinance' AND symbol=<sym>.
-    On overlap: TOS wins.
+    histy source:    hist_y.last_price WHERE symbol=<sym> (weekdays only).
+    Earlier entries in source_spec win on date overlap (first wins).
     """
     merged: dict[date, float] = {}
 
@@ -82,7 +85,7 @@ def _load_price_series(session: Session, asset_key: str,
                 ORDER BY as_of_date
             """), {"s": tos_sym}).all()
             for obs_date, close in rows:
-                if obs_date not in merged:  # TOS wins on overlap
+                if obs_date not in merged:
                     merged[obs_date] = float(close)
         elif spec.startswith("yfinance:"):
             yf_sym = spec[9:]
@@ -93,6 +96,18 @@ def _load_price_series(session: Session, asset_key: str,
                   AND close IS NOT NULL
                 ORDER BY obs_date
             """), {"s": yf_sym}).all()
+            for obs_date, close in rows:
+                if obs_date not in merged:
+                    merged[obs_date] = float(close)
+        elif spec.startswith("histy:"):
+            hy_sym = spec[6:]
+            rows = session.execute(text("""
+                SELECT export_date, last_price
+                FROM hist_y
+                WHERE symbol = :s AND last_price IS NOT NULL
+                  AND EXTRACT(DOW FROM export_date) NOT IN (0, 6)
+                ORDER BY export_date
+            """), {"s": hy_sym}).all()
             for obs_date, close in rows:
                 if obs_date not in merged:
                     merged[obs_date] = float(close)
