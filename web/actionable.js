@@ -1194,6 +1194,9 @@ async function loadActionable() {
 function matchesBaseFilters(r) {
   // When show_hidden is OFF, hide suppressed/$0 AMT/no-action/acted/unheld-remove rows.
   if (!state.filters.show_hidden) {
+    if (r.suppressed_reason) return false;
+    const ua = (r.last_user_action || '').toUpperCase();
+    if (ua === 'DONE' || ua === 'SKIPPED' || ua === 'OVERRIDDEN') return false;
     if (!r.consolidated_action) return false;
     if (!r._amt) return false;
     const ca = (r.consolidated_action || '').toUpperCase();
@@ -1565,9 +1568,17 @@ function loadFiltersFromStorage() {
 function syncFilterUi() {
   // Sync all UI elements to current state.filters
   const f = state.filters;
-  const heldOnly = $('heldOnly');       if (heldOnly) heldOnly.classList.toggle('active', !!f.held_only);
+  const heldOnly = $('heldOnly');
+  if (heldOnly) {
+    heldOnly.classList.toggle('active', !!f.held_only);
+    heldOnly.setAttribute('data-tip', f.held_only ? 'Show All' : 'Positions Only');
+  }
   const acctFilter = $('accountFilter'); if (acctFilter) acctFilter.value = f.account || '';
-  const showHidden = $('showHidden');   if (showHidden) showHidden.classList.toggle('active', !!f.show_hidden);
+  const showHidden = $('showHidden');
+  if (showHidden) {
+    showHidden.classList.toggle('active', !!f.show_hidden);
+    showHidden.setAttribute('data-tip', f.show_hidden ? 'Show Active Only' : 'Show Hidden');
+  }
   const sym = $('symbolSearch');        if (sym) sym.value = f.symbol_search || '';
   const bp = $('bullProbFilter');       if (bp) bp.value = f.bull_prob_min || 0;
   const ag = $('agreementFilter');      if (ag) ag.value = f.agreement_class || '';
@@ -1579,6 +1590,7 @@ function syncFilterUi() {
   const aoBtn = $('actionableOnlyBtn');
   if (aoBtn) {
     aoBtn.classList.toggle('active', !!f.actionable_only);
+    aoBtn.setAttribute('data-tip', f.actionable_only ? 'Show All' : 'Actionable Only');
   }
 }
 
@@ -3906,11 +3918,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('heldOnly').addEventListener('click', () => {
     state.filters.held_only = !state.filters.held_only;
     $('heldOnly').classList.toggle('active', state.filters.held_only);
+    $('heldOnly').setAttribute('data-tip', state.filters.held_only ? 'Show All' : 'Positions Only');
     applyClientFilter();
   });
   $('showHidden').addEventListener('click', () => {
     state.filters.show_hidden = !state.filters.show_hidden;
     $('showHidden').classList.toggle('active', state.filters.show_hidden);
+    $('showHidden').setAttribute('data-tip', state.filters.show_hidden ? 'Show Active Only' : 'Show Hidden');
     // show_hidden also controls whether acted/suppressed rows are fetched from the API
     loadActionable();
   });
