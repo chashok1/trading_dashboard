@@ -51,6 +51,26 @@ def page_file_monitor():
     return FileResponse(WEB_DIR / "file_monitor.html", media_type="text/html; charset=utf-8")
 
 
+@router.get("/ingest-log")
+def page_ingest_log():
+    return FileResponse(WEB_DIR / "ingest_log.html", media_type="text/html; charset=utf-8")
+
+
+@router.get("/notes")
+def page_notes():
+    return FileResponse(WEB_DIR / "notes.html", media_type="text/html; charset=utf-8")
+
+
+@router.get("/digest")
+def page_digest():
+    return FileResponse(WEB_DIR / "digest.html", media_type="text/html; charset=utf-8")
+
+
+@router.get("/symbol-hedgeye")
+def page_symbol_hedgeye():
+    return FileResponse(WEB_DIR / "symbol_hedgeye.html", media_type="text/html; charset=utf-8")
+
+
 @router.get("/groups")
 def page_groups():
     return FileResponse(WEB_DIR / "groups.html", media_type="text/html; charset=utf-8")

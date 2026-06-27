@@ -581,6 +581,55 @@ def maybe_run_yahoo_fetch() -> None:
     _yahoo_fetch_thread.start()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Hedgeye email poll — fires on the configurable interval (default 240 s).
+# Only runs when hedgeye_enabled=true in ref_settings.
+# Runs in a daemon thread so the main file-watch loop is never blocked.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_hedgeye_last_run: float = 0.0
+_hedgeye_thread: "threading.Thread | None" = None
+
+
+def maybe_run_hedgeye_poll() -> None:
+    """Poll the Hedgeye inbox if enabled and the configured interval has elapsed."""
+    global _hedgeye_last_run, _hedgeye_thread
+    import threading as _threading
+
+    # Don't spawn a second thread if the previous one is still running.
+    if _hedgeye_thread is not None and _hedgeye_thread.is_alive():
+        return
+
+    try:
+        from etl.hedgeye import config as _hcfg
+        enabled = (_hcfg.get("enabled") or "false").lower() == "true"
+        if not enabled:
+            return
+        interval = int(_hcfg.get("poll_sec") or 240)
+    except Exception:
+        return
+
+    if (time.time() - _hedgeye_last_run) < interval:
+        return
+
+    _hedgeye_last_run = time.time()
+
+    def _run():
+        try:
+            from etl.hedgeye_fetch import _process_pass
+            from etl.hedgeye import config as _cfg_mod
+            from datetime import timedelta, timezone as _tz
+            cfg = _cfg_mod.load()
+            since = datetime.now(_tz.utc) - timedelta(days=2)
+            n = _process_pass(cfg, since, dry_run=False)
+            log.info("hedgeye: poll done — %d emails processed", n)
+        except Exception:
+            log.exception("hedgeye: poll crashed")
+
+    _hedgeye_thread = _threading.Thread(target=_run, name="hedgeye-poll", daemon=True)
+    _hedgeye_thread.start()
+
+
 def get_latest_processed_time() -> float:
     """Get the most recent processed_at timestamp from meta_file_processed.
     Returns 0 if no files have been processed yet (process all files).
@@ -808,6 +857,14 @@ def main() -> int:
                 except Exception:
                     try:
                         log.exception("maybe_run_yahoo_fetch failed (continuing)")
+                    except Exception:
+                        pass
+            if tick % 60 == 0:
+                try:
+                    maybe_run_hedgeye_poll()
+                except Exception:
+                    try:
+                        log.exception("maybe_run_hedgeye_poll failed (continuing)")
                     except Exception:
                         pass
     except KeyboardInterrupt:

@@ -585,6 +585,9 @@
       <a href="/explore" class="nav-item">DB Data</a>
       <a href="/dbstats" class="nav-item">DB Stats</a>
       <a href="/file-monitor" class="nav-item">File Monitor</a>
+      <a href="/ingest-log" class="nav-item">Ingest Log</a>
+      <a href="/digest" class="nav-item">Digest</a>
+      <a href="/notes" class="nav-item">Notes</a>
     </nav>
     <div class="controls">
       <label for="datePicker">As of</label>
@@ -755,6 +758,9 @@
         <span style="color:#ddd;">|</span>
         <span id="macroBandSplit" style="white-space:nowrap;"></span>
       </div>
+
+      <!-- Hedgeye action panel (TASK_100) — Top-5 / Real-Time Alerts / RR trend flips / stance -->
+      <div id="hedgeyePanel" style="display:none; margin-bottom:6px;"></div>
 
       <div class="act-content-row">
       <div class="act-table-wrap">
@@ -1006,8 +1012,9 @@
   <script src="/static/macro_areas.js" defer></script>
   <script src="/static/macro_usd_corr.js" defer></script>
 <script src="/static/warning_badge.js"></script>
+<script src="/static/hedgeye_panel.js" defer></script>
 
-<!-- TradingView Ticker Tape — injected dynamically by _initTvToggle() in actionable.js -->
+<!-- TradingView Ticker Tape - injected dynamically by _initTvToggle() in actionable.js -->
 <div id="tv-tape-wrapper" style="border-top:1px solid #ddd;background:#fff;flex-shrink:0;display:none;"></div>
 </body>
 </html>

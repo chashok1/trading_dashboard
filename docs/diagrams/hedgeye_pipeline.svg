@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 760" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#5b6470"/>
+    </marker>
+    <style>
+      .t{fill:#252729} .mut{fill:#6b7280} .wht{fill:#fff}
+      .hdr{font-size:15px;font-weight:700} .sm{font-size:11.5px} .xs{font-size:10.5px}
+      .lane{font-size:13px;font-weight:700}
+    </style>
+  </defs>
+
+  <rect width="1180" height="760" fill="#f7f8fa"/>
+  <text x="28" y="38" class="t hdr" font-size="22">Hedgeye Email → Pipeline (automated, no-LLM, headless)</text>
+  <text x="28" y="60" class="mut sm">info@hedgeye.com = research (keep) · hedgeye@hedgeye.com = marketing (drop) · mailbox: chilukua14@gmail.com</text>
+
+  <!-- INBOX -->
+  <rect x="28" y="86" width="250" height="150" rx="10" fill="#fff" stroke="#d4d8de"/>
+  <text x="42" y="110" class="t" font-size="13" font-weight="700">INBOX (poll every 3–5 min)</text>
+  <text x="42" y="132" class="mut xs">Risk Range · Real-Time Alerts</text>
+  <text x="42" y="150" class="mut xs">ETF Pro chg · Investing Ideas</text>
+  <text x="42" y="168" class="mut xs">Signal Strength · Portfolio Sol.</text>
+  <text x="42" y="186" class="mut xs">Macro Show · Early Look · The Call</text>
+  <text x="42" y="204" class="mut xs">Market Situation · MOMO · Top 3</text>
+  <text x="42" y="222" class="mut xs">Inflation Nowcast · Quarterly Outlook</text>
+
+  <!-- FETCH/CLASSIFY -->
+  <rect x="320" y="96" width="240" height="130" rx="10" fill="#eef2ff" stroke="#c7d2fe"/>
+  <text x="334" y="120" class="t" font-size="13" font-weight="700">hedgeye_fetch.py</text>
+  <text x="334" y="140" class="mut xs">Gmail API / IMAP · read-only</text>
+  <text x="334" y="160" class="t xs" font-weight="700">classify() — deterministic</text>
+  <text x="334" y="177" class="mut xs">subject regex + header image</text>
+  <text x="334" y="193" class="mut xs">asset + meta tags</text>
+  <text x="334" y="213" class="mut xs">dedupe → meta_hedgeye_msg</text>
+
+  <line x1="278" y1="161" x2="318" y2="161" stroke="#5b6470" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- THREE LANES -->
+  <!-- DATA -->
+  <rect x="610" y="74" width="250" height="196" rx="10" fill="#e9f8ef" stroke="#9ad9b4"/>
+  <text x="624" y="98" class="lane" fill="#0f8a48">① DATA → hist tables</text>
+  <text x="624" y="120" class="t xs">Risk Range → hist_rr</text>
+  <text x="624" y="138" class="t xs">ETF Pro chg → hist_etfchg</text>
+  <text x="624" y="156" class="t xs">Investing Ideas → hist_ii/iichg</text>
+  <text x="624" y="174" class="t xs">Real-Time Alert → hist_rta *new</text>
+  <text x="624" y="192" class="t xs">Macro stance → hist_hedgeye_stance *new</text>
+  <text x="624" y="210" class="t xs">The Call → hist_call + hist_call_top5 *new</text>
+  <text x="624" y="228" class="t xs">Portfolio Sol → hist_ps (full) · Nowcast → hist_macro</text>
+  <text x="624" y="246" class="mut xs">Signal Strength → hist_sss (delta only)</text>
+
+  <!-- ANALYSIS -->
+  <rect x="610" y="284" width="250" height="120" rx="10" fill="#fff6e6" stroke="#f0cf86"/>
+  <text x="624" y="308" class="lane" fill="#b8791a">② ANALYSIS → note_repo</text>
+  <text x="624" y="330" class="t xs">Market Situation (dealer gamma)</text>
+  <text x="624" y="348" class="t xs">Early Look · Macro Show prose · Top 3</text>
+  <text x="624" y="366" class="t xs">snippet + tags + Gmail link · charts → folder</text>
+  <text x="624" y="386" class="mut xs">opt LLM enrichment (on request) → llm_analysis</text>
+
+  <!-- RULES -->
+  <rect x="610" y="418" width="250" height="120" rx="10" fill="#fdeef0" stroke="#f3b4bd"/>
+  <text x="624" y="442" class="lane" fill="#c0334a">③ MACRO RULES → rule_candidate</text>
+  <text x="624" y="464" class="t xs">RTA coaching notes</text>
+  <text x="624" y="482" class="t xs">Early Look / Macro Show themes</text>
+  <text x="624" y="500" class="t xs">Quad regime · Inflation direction</text>
+  <text x="624" y="520" class="mut xs">note_repo → builder → you approve → ref_trig_*</text>
+
+  <line x1="560" y1="150" x2="606" y2="150" stroke="#5b6470" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="560" y1="161" x2="606" y2="330" stroke="#5b6470" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="560" y1="172" x2="606" y2="460" stroke="#5b6470" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- DOWNSTREAM -->
+  <rect x="610" y="586" width="540" height="120" rx="10" fill="#fff" stroke="#d4d8de"/>
+  <text x="624" y="610" class="t" font-size="13" font-weight="700">Existing pipeline (reuse — Rule: use existing method)</text>
+  <text x="624" y="634" class="mut sm">derive_all(D) → drv_* → rules engine → drv_actionable → your dashboard</text>
+  <text x="624" y="660" class="mut xs">DATA option A (recommended): write the tab .xlsx into the watched folder → existing loader ingests + derives</text>
+  <text x="624" y="678" class="mut xs">DATA option B: direct hist upsert (for new tables hist_rta / hist_hedgeye_stance)</text>
+  <text x="624" y="696" class="mut xs">All loads: ON CONFLICT DO NOTHING · idempotent · survives restarts</text>
+
+  <line x1="735" y1="270" x2="735" y2="584" stroke="#5b6470" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- CADENCE strip -->
+  <rect x="28" y="284" width="532" height="422" rx="10" fill="#fff" stroke="#d4d8de"/>
+  <text x="44" y="308" class="t" font-size="13" font-weight="700">Consumption cadence (event-driven + 2 roll-ups)</text>
+
+  <text x="44" y="338" class="t sm" font-weight="700">Pre-open ~08:15 ET — one digest</text>
+  <text x="44" y="357" class="mut xs">Market Situation gamma · Early Look takeaways · Top 3 · overnight RTAs</text>
+
+  <text x="44" y="388" class="t sm" font-weight="700">Open / intraday — the money-makers</text>
+  <text x="44" y="407" class="mut xs">Risk Range bands + TREND flips live on dashboard</text>
+  <text x="44" y="424" class="mut xs">Real-Time Alerts → drv_actionable (you execute the trade)</text>
+  <text x="44" y="441" class="mut xs">ETF Pro / Investing Ideas changes → hist_*</text>
+
+  <text x="44" y="472" class="t sm" font-weight="700">EOD</text>
+  <text x="44" y="491" class="mut xs">Macro Show stance + Signal Strength reconcile vs your book; flag disagreements</text>
+
+  <text x="44" y="522" class="t sm" font-weight="700">Weekly</text>
+  <text x="44" y="541" class="mut xs">Portfolio Solutions re-rank · Inflation Nowcast trend · macro roll-up</text>
+
+  <text x="44" y="572" class="t sm" font-weight="700">Monthly / Quarterly</text>
+  <text x="44" y="591" class="mut xs">Inflation print · Quarterly Outlook → forces permanent macro-rule review (Quad)</text>
+
+  <rect x="44" y="610" width="500" height="80" rx="8" fill="#f3f4f6" stroke="#e1e4e8"/>
+  <text x="56" y="632" class="t xs" font-weight="700">Rule of thumb</text>
+  <text x="56" y="651" class="mut xs">Quantitative + explicit-action feeds → DATA (can auto-drive the engine).</text>
+  <text x="56" y="668" class="mut xs">Qualitative feeds → tagged candidates you approve.</text>
+  <text x="56" y="685" class="mut xs">You stay in control of permanent rules; the copy/paste disappears.</text>
+</svg>

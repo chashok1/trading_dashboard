@@ -232,6 +232,9 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Default screen date = anchor (capped dates list) | `db/baseline.sql` `v_available_dates`; `api/_helpers.py::_resolve_date`; `/api/actionable/dates` |
 | "Data behind market close" warning + date highlight | `/api/anchor-status`; `api/_helpers.py::expected_market_close_date`; `web/warning_badge.js` (`.date-stale`) |
 | File Monitor logic | `docs/file_monitor_logic.md` |
+| Unified ingest log (file + email) | `v_ingest_log` (db/baseline.sql); API `/api/ingest-log` |
+| Feed catalog (one feed, file + email recognizers) | `v_feed_catalog` + `feed_code` on ref_load_files/ref_hedgeye_email_type (db/baseline.sql; seed db/seeds_feed_code.sql) |
+| Hedgeye action panel (Top-5/alerts/RR flips/stance) on Actionable | `api/routers/hedgeye.py` (`/api/actionable/hedgeye`); `web/hedgeye_panel.js` (loaded by actionable.html) |
 | Rules engine logic | `docs/rules_logic.md` |
 | Rule groups logic | `docs/rule_groups_logic.md` |
 | Rule engine redesign (gate/WATCH, BASE rules, param sets, ML) | `docs/rule_engine_redesign.md` |

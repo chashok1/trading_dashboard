@@ -170,6 +170,9 @@
     <a href="/explore" class="nav-item">DB Data</a>
     <a href="/dbstats" class="nav-item">DB Stats</a>
     <a href="/file-monitor" class="nav-item">File Monitor</a>
+    <a href="/ingest-log" class="nav-item">Ingest Log</a>
+      <a href="/digest" class="nav-item">Digest</a>
+      <a href="/notes" class="nav-item">Notes</a>
   </nav>
   <div class="controls">
     <span id="apiStatus" class="badge badge-ok" title="API health">●</span>
@@ -216,8 +219,4 @@
 
     const urlSym = urlp.get('symbol');
     if (urlSym) document.getElementById('symInput').value = urlSym.toUpperCase();
-    if (document.getElementById('symInput').value.trim()) loadFlow();
-  })();
-</script>
-</body>
-</html>
+    if (document.getElementById('symInput').value.

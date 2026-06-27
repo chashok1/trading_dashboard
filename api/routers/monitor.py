@@ -583,6 +583,81 @@ def get_derive_runs(date_param: Optional[str] = Query(None, alias="date")):
         ]
 
 
+# ── Unified ingest log ───────────────────────────────────────────────────────
+
+@router.get("/api/ingest-log")
+def get_ingest_log(
+    date_param: Optional[str] = Query(None, alias="date"),
+    channel: Optional[str] = Query(None, description="file_load | email"),
+    feed: Optional[str] = Query(None, description="file_type / email_type filter"),
+    limit: int = Query(500, ge=1, le=5000),
+):
+    """
+    Unified chronological ingest ledger (v_ingest_log).
+
+    Unions meta_file_processed (file loads, incl. email-rendered tab-backed
+    feeds) with meta_hedgeye_msg (every email received).
+
+    channel values:
+      file_load  — a file was loaded into hist_* tables
+      email      — an email was received and classified by the Hedgeye pipeline
+
+    A tab-backed Hedgeye feed (e.g. RR) appears TWICE by design:
+      channel='email'     — the email receipt
+      channel='file_load' — the file the email produced that was loaded
+
+    Limit defaults to 500 rows. Providing a date filter removes the row cap.
+    """
+    where_clauses = []
+    params: dict = {}
+
+    if date_param:
+        where_clauses.append(
+            "(data_date = :d OR processed_at::date = :d)"
+        )
+        params["d"] = date_param
+        # No row cap when a date is given — typically a single day
+        params["limit"] = limit * 10
+    else:
+        params["limit"] = limit
+
+    if channel:
+        where_clauses.append("channel = :channel")
+        params["channel"] = channel
+
+    if feed:
+        where_clauses.append("feed ILIKE :feed")
+        params["feed"] = feed
+
+    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+    sql = text(f"""
+        SELECT channel, source_kind, source_ref, feed,
+               target_tab, data_date, status, processed_at
+        FROM v_ingest_log
+        {where_sql}
+        ORDER BY processed_at DESC
+        LIMIT :limit
+    """)
+
+    with session_scope() as s:
+        rows = s.execute(sql, params).fetchall()
+
+    return [
+        {
+            "channel":     r[0],
+            "source_kind": r[1],
+            "source_ref":  r[2],
+            "feed":        r[3],
+            "target_tab":  r[4],
+            "data_date":   r[5].isoformat() if r[5] else None,
+            "status":      r[6],
+            "processed_at": r[7].isoformat() if r[7] else None,
+        }
+        for r in rows
+    ]
+
+
 # ── Live SSE stream ───────────────────────────────────────────────────────────
 
 def _query_running_jobs() -> list[dict]:

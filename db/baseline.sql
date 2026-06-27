@@ -1804,6 +1804,28 @@ ALTER TABLE IF EXISTS meta_file_processed
 
     DROP COLUMN IF EXISTS file_hash;
 
+ALTER TABLE IF EXISTS meta_file_processed
+
+    ADD COLUMN IF NOT EXISTS source_kind TEXT NOT NULL DEFAULT 'file';
+
+
+
+-- -----------------------------------------------------
+
+-- meta_file_origin  (email-rendered files registry)
+
+-- -----------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS meta_file_origin (
+
+    file_path   TEXT PRIMARY KEY,
+
+    source_kind TEXT NOT NULL DEFAULT 'email',
+
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+
+);
+
 
 
 -- -----------------------------------------------------
@@ -6539,3 +6561,230 @@ INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
   ('quad_qtr_lead_days', '10',
    'MacroNet: bdays before quarter-end next-quarter weight hits 100%')
 ON CONFLICT (setting_name) DO NOTHING;
+
+-- =====================================================
+-- 2026-06-26 TASK_93: Hedgeye email pipeline
+-- (folded from db/hedgeye_schema.sql)
+-- Design: docs/hedgeye_feeds_design.md
+-- =====================================================
+
+-- Idempotency ledger: one row per email ever seen (keeps message_id for re-fetch)
+CREATE TABLE IF NOT EXISTS meta_hedgeye_msg (
+    message_id    TEXT PRIMARY KEY,
+    email_type    TEXT,
+    sender        TEXT,
+    subject       TEXT,
+    status        TEXT,
+    detail        JSONB,
+    processed_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- Real-Time Alerts (action feed). PK = message_id (one alert per email).
+CREATE TABLE IF NOT EXISTS hist_rta (
+    message_id     TEXT PRIMARY KEY,
+    alert_ts       TIMESTAMPTZ,
+    snapshot_date  DATE,
+    is_correction  BOOLEAN DEFAULT FALSE,
+    superseded     BOOLEAN DEFAULT FALSE,
+    analyst        TEXT,
+    signal_kind    TEXT,
+    action         TEXT,
+    side           TEXT,
+    symbol         TEXT,
+    tos_symbol     TEXT,
+    price          NUMERIC,
+    dur_trade      BOOLEAN,
+    dur_trend      BOOLEAN,
+    dur_tail       BOOLEAN,
+    coaching_notes TEXT,
+    raw_subject    TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_hist_rta_sym ON hist_rta (tos_symbol, alert_ts DESC);
+
+-- The Call top-5 most actionable ideas per daily email.
+CREATE TABLE IF NOT EXISTS hist_call_top5 (
+    snapshot_date     DATE,
+    message_id        TEXT,
+    rank              INT,
+    symbol            TEXT,
+    tos_symbol        TEXT,
+    side              TEXT,
+    rationale_snippet TEXT,
+    PRIMARY KEY (snapshot_date, tos_symbol)
+);
+
+-- Daily Macro Show Bullish/Bearish ticker list.
+CREATE TABLE IF NOT EXISTS hist_hedgeye_stance (
+    snapshot_date  DATE,
+    message_id     TEXT,
+    stance         TEXT,
+    symbol         TEXT,
+    tos_symbol     TEXT,
+    label          TEXT,
+    PRIMARY KEY (snapshot_date, label)
+);
+
+-- Signal Strength delta events.
+CREATE TABLE IF NOT EXISTS hist_sss_change (
+    snapshot_date  DATE,
+    message_id     TEXT,
+    action         TEXT,
+    symbol         TEXT,
+    tos_symbol     TEXT,
+    PRIMARY KEY (snapshot_date, action, tos_symbol)
+);
+
+-- Notes repository (deterministic snippet only, not the email body).
+CREATE TABLE IF NOT EXISTS note_repo (
+    note_id      BIGSERIAL PRIMARY KEY,
+    message_id   TEXT NOT NULL,
+    note_date    DATE,
+    source_type  TEXT,
+    gmail_link   TEXT,
+    analyst      TEXT,
+    tickers      TEXT[]  DEFAULT '{}',
+    theme_tags   TEXT[]  DEFAULT '{}',
+    quad         INT,
+    signal_kind  TEXT,
+    note_text    TEXT,
+    subject      TEXT,
+    status       TEXT DEFAULT 'new',
+    UNIQUE (message_id, source_type, note_text)
+);
+CREATE INDEX IF NOT EXISTS ix_note_repo_tickers ON note_repo USING GIN (tickers);
+CREATE INDEX IF NOT EXISTS ix_note_repo_date ON note_repo (note_date DESC);
+
+-- Optional cached LLM enrichment output (display-only, non-authoritative).
+CREATE TABLE IF NOT EXISTS llm_analysis (
+    message_id      TEXT,
+    model           TEXT,
+    prompt_version  TEXT,
+    schema_version  TEXT,
+    json_output     JSONB,
+    created_at      TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (message_id, model, prompt_version)
+);
+
+-- Archived chart images.
+CREATE TABLE IF NOT EXISTS hist_media (
+    message_id   TEXT,
+    seq          INT,
+    local_path   TEXT,
+    source_url   TEXT,
+    captured_at  TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (message_id, seq)
+);
+
+-- Interactive rule-building workspace.
+CREATE TABLE IF NOT EXISTS rule_candidate (
+    candidate_id      BIGSERIAL PRIMARY KEY,
+    title             TEXT,
+    hypothesis        TEXT,
+    linked_note_ids   BIGINT[] DEFAULT '{}',
+    proposed_rule_def JSONB,
+    status            TEXT DEFAULT 'draft',
+    promoted_rule_id  TEXT,
+    created_at        TIMESTAMPTZ DEFAULT now(),
+    updated_at        TIMESTAMPTZ DEFAULT now()
+);
+
+-- Classifier registry (table-driven router).
+CREATE TABLE IF NOT EXISTS ref_hedgeye_email_type (
+    email_type   TEXT PRIMARY KEY,
+    destination  TEXT,
+    cadence      TEXT,
+    subject_re   TEXT,
+    asset_name   TEXT,
+    parser       TEXT,
+    enabled      BOOLEAN DEFAULT TRUE
+);
+
+-- Derived: day-over-day Risk Range TREND flips.
+CREATE OR REPLACE VIEW drv_rr_trend_change AS
+SELECT snapshot_date AS as_of_date, tos_symbol,
+       prev_outlook AS from_trend, outlook AS to_trend
+FROM (
+    SELECT snapshot_date, tos_symbol, outlook,
+           LAG(outlook) OVER (PARTITION BY tos_symbol ORDER BY snapshot_date) AS prev_outlook
+    FROM hist_rr
+) t
+WHERE prev_outlook IS NOT NULL AND prev_outlook <> outlook;
+
+-- Column extensions on existing tables for Hedgeye email feed data:
+-- hist_iichg / hist_etfchg: add action (add|remove), side (long|short), message_id
+ALTER TABLE hist_iichg ADD COLUMN IF NOT EXISTS action     TEXT;
+ALTER TABLE hist_iichg ADD COLUMN IF NOT EXISTS side       TEXT;
+ALTER TABLE hist_iichg ADD COLUMN IF NOT EXISTS message_id TEXT;
+
+ALTER TABLE hist_etfchg ADD COLUMN IF NOT EXISTS action     TEXT;
+ALTER TABLE hist_etfchg ADD COLUMN IF NOT EXISTS side       TEXT;
+ALTER TABLE hist_etfchg ADD COLUMN IF NOT EXISTS message_id TEXT;
+
+-- hist_call / hist_ps: add message_id for source tracing
+ALTER TABLE hist_call ADD COLUMN IF NOT EXISTS message_id TEXT;
+ALTER TABLE hist_ps   ADD COLUMN IF NOT EXISTS message_id TEXT;
+
+-- =====================================================
+-- v_ingest_log — unified chronological ingest ledger
+-- Unions meta_file_processed (file loads, incl. email-
+-- rendered tab-backed feeds) with meta_hedgeye_msg
+-- (every email ever processed). channel + source_kind
+-- distinguish origin:
+--   channel='file_load', source_kind='file'  → real file
+--   channel='file_load', source_kind='email' → tab-backed email file
+--   channel='email',     source_kind='email' → email receipt
+-- A tab-backed feed appears TWICE (both channels) by design.
+-- For "what landed in tables" filter channel='file_load'.
+-- For "what emails arrived"  filter channel='email'.
+-- =====================================================
+CREATE OR REPLACE VIEW v_ingest_log AS
+SELECT
+    'file_load'                    AS channel,
+    COALESCE(source_kind, 'file')  AS source_kind,
+    file_path                      AS source_ref,
+    file_type                      AS feed,
+    target_tab,
+    file_date                      AS data_date,
+    'loaded'                       AS status,
+    processed_at
+FROM meta_file_processed
+UNION ALL
+SELECT
+    'email'                        AS channel,
+    'email'                        AS source_kind,
+    message_id                     AS source_ref,
+    email_type                     AS feed,
+    NULL                           AS target_tab,
+    NULL::date                     AS data_date,
+    status,
+    processed_at
+FROM meta_hedgeye_msg;
+
+-- =====================================================
+-- Feed catalog (TASK_97) — one feed identity, two recognizers.
+-- Additive: each feed gets a canonical feed_code on BOTH registries;
+-- v_feed_catalog joins them so each logical feed shows its filename
+-- recognizer (ref_load_files) AND its subject recognizer
+-- (ref_hedgeye_email_type) on one row. Descriptive only — nothing in
+-- the ingest hot path reads feed_code yet. Seed values:
+-- db/seeds_feed_code.sql (idempotent UPDATEs).
+-- =====================================================
+ALTER TABLE ref_load_files         ADD COLUMN IF NOT EXISTS feed_code TEXT;
+ALTER TABLE ref_hedgeye_email_type ADD COLUMN IF NOT EXISTS feed_code TEXT;
+
+CREATE OR REPLACE VIEW v_feed_catalog AS
+SELECT
+    COALESCE(lf.feed_code, et.feed_code)                     AS feed_code,
+    lf.file_type,
+    lf.source_dir,
+    lf.target_tab,
+    lf.week_day,
+    lf.file_time,
+    et.email_type,
+    et.subject_re,
+    et.cadence,
+    et.destination,
+    et.parser,
+    COALESCE(lf.enabled, TRUE) AND COALESCE(et.enabled, TRUE) AS enabled
+FROM ref_load_files lf
+FULL OUTER JOIN ref_hedgeye_email_type et ON lf.feed_code = et.feed_code;

@@ -1,0 +1,160 @@
+"""
+Dispatch — route a Parsed result to its destinations and record the ledger.
+
+DATA lane    : insert_skip_duplicates into the hist_* tables (append-only,
+               ON CONFLICT DO NOTHING — convention 1).
+ANALYSIS/RULES: notes -> note_repo.
+Images       : download to the configurable archive folder; path -> hist_media.
+Ledger       : meta_hedgeye_msg(message_id, email_type, status) — idempotency.
+
+This module performs the DB writes, so it only runs where Postgres is reachable
+(the app host / developer + tester agents), never inside the Cowork sandbox.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from sqlalchemy import text
+
+from etl.db import insert_skip_duplicates
+from etl.hedgeye.emit import FILE_LANES, write_feed
+
+log = logging.getLogger("hedgeye.dispatch")
+
+
+def already_processed(session, message_id: str) -> bool:
+    return bool(session.execute(
+        text("SELECT 1 FROM meta_hedgeye_msg WHERE message_id=:m"),
+        {"m": message_id}).first())
+
+
+def record_ledger(session, email, email_type: str, status: str,
+                  detail: Optional[dict] = None) -> None:
+    session.execute(text(
+        "INSERT INTO meta_hedgeye_msg "
+        "(message_id, email_type, sender, subject, status, detail, processed_at) "
+        "VALUES (:m,:t,:s,:subj,:st,:d, now()) "
+        "ON CONFLICT (message_id) DO UPDATE SET "
+        "email_type=EXCLUDED.email_type, status=EXCLUDED.status, "
+        "detail=EXCLUDED.detail, processed_at=now()"),
+        {"m": email.message_id, "t": email_type, "s": email.sender[:200],
+         "subj": email.subject[:400], "st": status,
+         "d": json.dumps(detail or {})})
+
+
+def _write_notes(session, notes: list[dict]) -> None:
+    rows = []
+    for n in notes:
+        rows.append({
+            "message_id": n["message_id"], "note_date": n["note_date"],
+            "source_type": n["source_type"], "gmail_link": n["gmail_link"],
+            "analyst": n.get("analyst"), "tickers": n.get("tickers") or [],
+            "theme_tags": n.get("theme_tags") or [], "quad": n.get("quad"),
+            "signal_kind": n.get("signal_kind"), "note_text": n["note_text"],
+            "subject": n.get("subject"), "status": n.get("status", "new"),
+        })
+    if rows:
+        insert_skip_duplicates(session, "note_repo", rows)
+
+
+def archive_images(urls: list[str], folder: str, email, max_n: int = 4) -> list[dict]:
+    """Download up to max_n chart images to a positional-named file in `folder`."""
+    out = []
+    d = email.edt_date or datetime.now(timezone.utc).date()
+    base = Path(folder) / email.message_id.strip("<>").replace("/", "_")[:60]
+    base.mkdir(parents=True, exist_ok=True)
+    for i, url in enumerate(urls[:max_n], 1):
+        dest = base / f"chart_{d.isoformat()}_{i:02d}.png"
+        try:
+            urllib.request.urlretrieve(url, dest)
+            out.append({"message_id": email.message_id, "seq": i,
+                        "local_path": str(dest), "source_url": url,
+                        "captured_at": datetime.now(timezone.utc)})
+        except Exception as e:  # noqa: BLE001
+            log.warning("image archive failed %s: %s", url, e)
+    return out
+
+
+def _adapt_rows(table: str, rows: list[dict]) -> list[dict]:
+    """Map parser-emitted columns to live DB columns where names differ.
+
+    hist_iichg / hist_etfchg: parser uses snapshot_date; DB PK uses event_date.
+    hist_macro: strip message_id (not a hist_macro column); default source=HEDGEYE.
+    All other tables: pass through unchanged (columns already match).
+    """
+    if not rows:
+        return rows
+    if table in ("hist_iichg", "hist_etfchg"):
+        out = []
+        for r in rows:
+            nr = dict(r)
+            if "snapshot_date" in nr:
+                nr["event_date"] = nr.pop("snapshot_date")
+            out.append(nr)
+        return out
+    if table == "hist_macro":
+        out = []
+        for r in rows:
+            nr = {k: v for k, v in r.items() if k != "message_id"}
+            nr.setdefault("source", "HEDGEYE")
+            out.append(nr)
+        return out
+    return rows
+
+
+def dispatch(session, email, email_type: str, parsed, cfg) -> dict:
+    """Write everything for one parsed email. Returns a small summary dict.
+
+    Tab-backed feeds (risk_range / investing_ideas / etf_changes /
+    portfolio_solutions / the_call's hist_call rows) are routed via
+    emit.write_feed() → file in source_dir → scheduler → loader → derive.
+    Email-only feeds (hist_rta, hist_call_top5, hist_hedgeye_stance, etc.)
+    continue with direct insert_skip_duplicates (unchanged).
+    """
+    summary = {"type": email_type, "tables": {}, "files": {},
+               "notes": 0, "images": 0,
+               "flags": parsed.flags, "warnings": parsed.warnings}
+
+    feed_date = email.edt_date or email.received.date()
+
+    for table, rows in parsed.tables.items():
+        if rows:
+            if (email_type, table) in FILE_LANES:
+                # Route via file → existing loader (no direct DB insert here)
+                result = write_feed(session, email_type, feed_date, rows)
+                summary["files"][table] = result or "skipped"
+            else:
+                adapted = _adapt_rows(table, rows)
+                attempted, inserted = insert_skip_duplicates(
+                    session, table, adapted
+                )
+                summary["tables"][table] = inserted
+
+    if parsed.notes:
+        _write_notes(session, parsed.notes)
+        summary["notes"] = len(parsed.notes)
+
+    if parsed.images:
+        media = archive_images(parsed.images, cfg.image_dir, email)
+        if media:
+            insert_skip_duplicates(session, "hist_media", media)
+            summary["images"] = len(media)
+
+    # correction auto-reverse: cancel the prior open alert for this ticker
+    if "correction" in parsed.flags:
+        session.execute(text(
+            "UPDATE hist_rta SET superseded = TRUE "
+            "WHERE tos_symbol IS NOT NULL AND superseded IS NOT TRUE "
+            "AND alert_ts < :ts AND alert_ts > :ts - interval '1 day' "
+            "AND tos_symbol = (SELECT tos_symbol FROM hist_rta "
+            "WHERE message_id=:m)"),
+            {"ts": email.received, "m": email.message_id})
+
+    record_ledger(session, email, email_type, "ok", summary)
+    return summary

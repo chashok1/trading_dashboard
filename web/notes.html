@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notes &amp; Rule Candidates — Trading Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    main { padding: 12px 16px; }
+    .nb-bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+    .nb-bar input, .nb-bar select { padding:4px 8px; border:1px solid var(--border,#ccc); border-radius:4px; font-size:12px; }
+    .nb-cols { display:flex; gap:14px; align-items:flex-start; }
+    .nb-col { flex:1; min-width:0; }
+    .note-card { border:1px solid var(--border,#e0e0e0); border-radius:5px; padding:8px 10px; margin-bottom:6px; font-size:12px; }
+    .note-card.sel { border-color:#534ab7; background:#fbfbfe; }
+    .note-meta { font-size:10px; color:#777; margin-bottom:3px; }
+    .cand-card { border:1px solid #e6e3f5; border-radius:5px; padding:8px 10px; margin-bottom:6px; font-size:12px; background:#fbfbfe; }
+    .pill { display:inline-block; padding:0 6px; border-radius:3px; font-size:10px; font-weight:700; background:#eee; color:#444; margin-left:4px; }
+    h3 { font-size:13px; margin:4px 0 8px; }
+    button.btn { padding:4px 10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><h1>Notes &amp; Rule Candidates</h1></div>
+    <nav class="nav-menu">
+      <a href="/" class="nav-item">Dashboard</a>
+      <a href="/actionable" class="nav-item">Actionable</a>
+      <a href="/portfolio" class="nav-item">Portfolio</a>
+      <a href="/rules" class="nav-item">Rules</a>
+      <a href="/groups" class="nav-item">Rule Groups</a>
+      <a href="/param-sets" class="nav-item">Param Sets</a>
+      <a href="/rule-performance" class="nav-item">Performance</a>
+      <a href="/trace" class="nav-item">Trace</a>
+      <a href="/rule-flow" class="nav-item">Rule Flow</a>
+      <a href="/ref" class="nav-item">Ref Data</a>
+      <a href="/explore" class="nav-item">DB Data</a>
+      <a href="/dbstats" class="nav-item">DB Stats</a>
+      <a href="/file-monitor" class="nav-item">File Monitor</a>
+      <a href="/ingest-log" class="nav-item">Ingest Log</a>
+      <a href="/digest" class="nav-item">Digest</a>
+      <a href="/notes" class="nav-item active">Notes</a>
+    </nav>
+  </header>
+  <main>
+    <div class="nb-bar">
+      <input type="text" id="q" placeholder="Search text…">
+      <input type="text" id="ticker" placeholder="Ticker">
+      <select id="sourceType"><option value="">All sources</option></select>
+      <input type="date" id="date">
+      <button class="btn" id="reload">Search</button>
+      <button class="btn" id="clear">Clear</button>
+      <span id="count" style="font-size:11px; color:#777;"></span>
+    </div>
+    <div class="nb-cols">
+      <div class="nb-col">
+        <h3>Notes</h3>
+        <div id="notes"></div>
+      </div>
+      <div class="nb-col" style="max-width:380px;">
+        <h3>New rule candidate</h3>
+        <div style="border:1px solid #e6e3f5; border-radius:5px; padding:10px; margin-bottom:12px;">
+          <input type="text" id="candTitle" placeholder="Title" style="width:100%; margin-bottom:6px; padding:4px 8px; border:1px solid var(--border,#ccc); border-radius:4px;">
+          <textarea id="candHyp" placeholder="Hypothesis / rule idea" rows="3" style="width:100%; margin-bottom:6px; padding:4px 8px; border:1px solid var(--border,#ccc); border-radius:4px; font-family:inherit;"></textarea>
+          <div style="font-size:11px; color:#777; margin-bottom:6px;">Linked notes: <span id="linkedCount">0</span> (click notes to link)</div>
+          <button class="btn" id="createCand">Create candidate</button>
+          <span id="createMsg" style="font-size:11px; margin-left:6px;"></span>
+        </div>
+        <h3>Existing candidates</h3>
+        <div id="candidates"></div>
+      </div>
+    </div>
+  </main>
+  <script src="/static/notes.js" defer></script>
+</body>
+</html>

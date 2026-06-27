@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Digest — Trading Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    main { padding: 12px 16px; max-width: 980px; }
+    .dg-bar { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
+    .dg-bar input, .dg-bar select { padding:4px 8px; border:1px solid var(--border,#ccc); border-radius:4px; font-size:12px; }
+    .dg-sec { margin-bottom:16px; }
+    .dg-sec h3 { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#534ab7; margin:0 0 6px; }
+    .dg-note { border:1px solid var(--border,#e6e3f5); border-radius:5px; padding:8px 10px; margin-bottom:6px; font-size:12px; }
+    .dg-note .m { font-size:10px; color:#777; margin-bottom:3px; }
+    .dg-alert { font-size:12px; padding:3px 0; border-bottom:1px dotted #eee; }
+    table.dg-tbl { border-collapse:collapse; width:100%; font-size:12px; }
+    table.dg-tbl th, table.dg-tbl td { border-bottom:1px solid #eee; padding:4px 8px; text-align:left; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><h1>Digest</h1></div>
+    <nav class="nav-menu">
+      <a href="/" class="nav-item">Dashboard</a>
+      <a href="/actionable" class="nav-item">Actionable</a>
+      <a href="/portfolio" class="nav-item">Portfolio</a>
+      <a href="/rules" class="nav-item">Rules</a>
+      <a href="/groups" class="nav-item">Rule Groups</a>
+      <a href="/param-sets" class="nav-item">Param Sets</a>
+      <a href="/rule-performance" class="nav-item">Performance</a>
+      <a href="/trace" class="nav-item">Trace</a>
+      <a href="/rule-flow" class="nav-item">Rule Flow</a>
+      <a href="/ref" class="nav-item">Ref Data</a>
+      <a href="/explore" class="nav-item">DB Data</a>
+      <a href="/dbstats" class="nav-item">DB Stats</a>
+      <a href="/file-monitor" class="nav-item">File Monitor</a>
+      <a href="/ingest-log" class="nav-item">Ingest Log</a>
+      <a href="/digest" class="nav-item active">Digest</a>
+      <a href="/notes" class="nav-item">Notes</a>
+    </nav>
+  </header>
+  <main>
+    <div class="dg-bar">
+      <select id="mode">
+        <option value="preopen">Pre-open</option>
+        <option value="weekly">Weekly roll-up</option>
+      </select>
+      <input type="date" id="date">
+      <button class="btn" id="reload">Load</button>
+      <span id="asof" style="font-size:11px; color:#777;"></span>
+    </div>
+    <div id="body"></div>
+  </main>
+  <script src="/static/digest.js" defer></script>
+</body>
+</html>

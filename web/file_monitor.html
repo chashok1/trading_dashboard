@@ -122,6 +122,9 @@
       <a href="/explore" class="nav-item">DB Data</a>
     <a href="/dbstats" class="nav-item">DB Stats</a>
     <a href="/file-monitor" class="nav-item active">File Monitor</a>
+    <a href="/ingest-log" class="nav-item">Ingest Log</a>
+      <a href="/digest" class="nav-item">Digest</a>
+      <a href="/notes" class="nav-item">Notes</a>
   </nav>
   <div class="controls">
     <span id="refreshCountdown" style="min-width: 150px;"></span>
@@ -480,7 +483,4 @@ function yahooFetch(mode) {
 
 yahooLoadStatus();
 yahooAutoStatus();
-setInterval(() => { yahooLoadStatus(); yahooAutoStatus(); }, 30000);
-</script>
-</body>
-</html>
+setInterval(() => { yahooLoadStatus(); y

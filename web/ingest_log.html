@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ingest Log — Trading Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css">
+<style>
+  body { overflow: hidden; }
+
+  main {
+    height: calc(100vh - 60px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 16px;
+    gap: 10px;
+    box-sizing: border-box;
+    margin: 0;
+  }
+
+  .il-filter-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--card-bg);
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+
+  .il-filter-bar label {
+    color: var(--text-3);
+    font-size: 11px;
+    margin-right: 2px;
+  }
+
+  .il-filter-bar select,
+  .il-filter-bar input[type="text"],
+  .il-filter-bar input[type="date"] {
+    font-size: 12px;
+    padding: 3px 7px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: #fff;
+    color: var(--text-1);
+  }
+
+  .il-count {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-3);
+    flex-shrink: 0;
+  }
+
+  .il-table-section {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .il-table-section .table-wrap {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+  }
+
+  /* Email badge */
+  .badge-email {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    background: #e0e7ff;
+    color: #3730a3;
+    vertical-align: middle;
+    margin-left: 3px;
+  }
+
+  /* Status badges */
+  .status-loaded  { color: #166534; }
+  .status-error   { color: #b91c1c; font-weight: 600; }
+  .status-skipped { color: var(--text-3); }
+
+  /* Truncated reference */
+  .source-ref {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+    vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="dot"></span>
+    <h1>Trading Dashboard</h1>
+  </div>
+  <nav class="nav-menu">
+    <a href="/" class="nav-item">Dashboard</a>
+    <a href="/actionable" class="nav-item">Actionable</a>
+    <a href="/portfolio" class="nav-item">Portfolio</a>
+    <a href="/rules" class="nav-item">Rules</a>
+    <a href="/groups" class="nav-item">Rule Groups</a>
+    <a href="/rule-performance" class="nav-item">Performance</a>
+    <a href="/trace" class="nav-item">Trace</a>
+    <a href="/rule-flow" class="nav-item">Rule Flow</a>
+    <a href="/ref" class="nav-item">Ref Data</a>
+    <a href="/explore" class="nav-item">DB Data</a>
+    <a href="/dbstats" class="nav-item">DB Stats</a>
+    <a href="/file-monitor" class="nav-item">File Monitor</a>
+    <a href="/ingest-log" class="nav-item active">Ingest Log</a>
+    <a href="/digest" class="nav-item">Digest</a>
+    <a href="/notes" class="nav-item">Notes</a>
+  </nav>
+  <div class="controls">
+    <button id="refreshBtn" class="btn">Refresh</button>
+    <span id="health" class="badge badge-ok">●</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- Filter bar -->
+  <div class="il-filter-bar">
+    <label for="channelSelect">Channel</label>
+    <select id="channelSelect">
+      <option value="">All</option>
+      <option value="file_load">file_load</option>
+      <option value="email">email</option>
+    </select>
+
+    <label for="feedInput">Feed</label>
+    <input type="text" id="feedInput" placeholder="e.g. RR" style="width:90px;">
+
+    <label for="dateInput">Date</label>
+    <input type="date" id="dateInput">
+
+    <button id="clearBtn" class="btn btn-sm" title="Clear all filters">Clear</button>
+
+    <span class="il-count" id="rowCount"></span>
+  </div>
+
+  <!-- Results table -->
+  <div class="il-table-section">
+    <div class="table-wrap">
+      <table id="ingestTable">
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Channel</th>
+            <th>Source</th>
+            <th>Feed</th>
+            <th>Target table</th>
+            <th>Data date</th>
+            <th>Status</th>
+            <th>Reference</th>
+          </tr>
+        </thead>
+        <tbody id="ingestBody">
+          <tr><td colspan="8" style="color:var(--text-3);text-align:center;padding:20px;">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<script src="/static/_common.js"></script>
+<script src="/static/ingest_log.js"></script>
+</body>
+</html>

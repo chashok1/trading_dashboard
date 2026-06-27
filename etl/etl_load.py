@@ -98,20 +98,26 @@ def already_processed(session, file_path: str, file_mtime: float) -> bool:
 def mark_processed(session, *, file_path: str, file_mtime: float,
                    file_type: str, target_tab: str,
                    file_dt: Optional[date], run_id: int) -> None:
+    # Resolve source_kind: 'email' if emit.py registered this path, else 'file'
+    sk_row = session.execute(text(
+        "SELECT source_kind FROM meta_file_origin WHERE file_path=:p"
+    ), {"p": file_path}).first()
+    source_kind = sk_row[0] if sk_row else "file"
     session.execute(text("""
         INSERT INTO meta_file_processed
             (file_path, file_mtime, file_type, target_tab, file_date,
-             processed_at, last_run_id)
-        VALUES (:p, :mt, :ft, :tab, :d, now(), :rid)
+             processed_at, last_run_id, source_kind)
+        VALUES (:p, :mt, :ft, :tab, :d, now(), :rid, :sk)
         ON CONFLICT (file_path) DO UPDATE
           SET file_mtime   = EXCLUDED.file_mtime,
               file_type    = EXCLUDED.file_type,
               target_tab   = EXCLUDED.target_tab,
               file_date    = EXCLUDED.file_date,
               processed_at = now(),
-              last_run_id  = EXCLUDED.last_run_id
+              last_run_id  = EXCLUDED.last_run_id,
+              source_kind  = EXCLUDED.source_kind
     """), {"p": file_path, "mt": file_mtime, "ft": file_type, "tab": target_tab,
-           "d": file_dt, "rid": run_id})
+           "d": file_dt, "rid": run_id, "sk": source_kind})
 
 
 def copy_to_working(src: Path) -> Path:
