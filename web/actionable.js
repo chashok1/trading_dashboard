@@ -1555,13 +1555,7 @@ function loadFiltersFromStorage() {
     const saved = JSON.parse(raw);
     const f = state.filters;
     // Only load keys that exist in the current schema; ignore stale keys gracefully.
-    if (saved.source !== undefined)       f.source = saved.source;
-    if (saved.account !== undefined)      f.account = saved.account;
-    if (saved.held_only !== undefined)    f.held_only = !!saved.held_only;
-    if (saved.show_hidden !== undefined)  f.show_hidden = !!saved.show_hidden;
-    if (saved.symbol_search !== undefined) f.symbol_search = saved.symbol_search;
-    if (saved.conviction !== undefined)   f.conviction = saved.conviction;
-    if (saved.actionable_only !== undefined) f.actionable_only = !!saved.actionable_only;
+    // all filters reset to defaults on page open — nothing restored from storage
   } catch (_) {}
 }
 
@@ -1571,13 +1565,13 @@ function syncFilterUi() {
   const heldOnly = $('heldOnly');
   if (heldOnly) {
     heldOnly.classList.toggle('active', !!f.held_only);
-    heldOnly.setAttribute('data-tip', f.held_only ? 'Show All' : 'Positions Only');
+    heldOnly.setAttribute('data-tip', f.held_only ? 'Positions Only  →  Show All' : 'All Symbols  →  Positions Only');
   }
   const acctFilter = $('accountFilter'); if (acctFilter) acctFilter.value = f.account || '';
   const showHidden = $('showHidden');
   if (showHidden) {
     showHidden.classList.toggle('active', !!f.show_hidden);
-    showHidden.setAttribute('data-tip', f.show_hidden ? 'Show Active Only' : 'Show Hidden');
+    showHidden.setAttribute('data-tip', f.show_hidden ? 'Show Hidden  →  Active Only' : 'Active Only  →  Show Hidden');
   }
   const sym = $('symbolSearch');        if (sym) sym.value = f.symbol_search || '';
   const bp = $('bullProbFilter');       if (bp) bp.value = f.bull_prob_min || 0;
@@ -1590,7 +1584,7 @@ function syncFilterUi() {
   const aoBtn = $('actionableOnlyBtn');
   if (aoBtn) {
     aoBtn.classList.toggle('active', !!f.actionable_only);
-    aoBtn.setAttribute('data-tip', f.actionable_only ? 'Show All' : 'Actionable Only');
+    aoBtn.setAttribute('data-tip', f.actionable_only ? 'Actionable Only  →  Show All' : 'Show All  →  Actionable Only');
   }
 }
 
@@ -2467,7 +2461,7 @@ function _initSidePanels() {
     const panel = hdr.closest('.sp-panel');
     if (!panel) return;
     const key = 'sp_' + (hdr.dataset.panel || panel.id || '');
-    const _defaultCollapsed = key === 'sp_quadOutlook';
+    const _defaultCollapsed = key === 'sp_quadOutlook' || key === 'sp_usdCorr';
     const _stored = localStorage.getItem(key);
     if (_defaultCollapsed ? _stored !== 'open' : _stored === 'collapsed') panel.classList.add('sp-collapsed');
     hdr.addEventListener('click', () => {
@@ -3918,13 +3912,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('heldOnly').addEventListener('click', () => {
     state.filters.held_only = !state.filters.held_only;
     $('heldOnly').classList.toggle('active', state.filters.held_only);
-    $('heldOnly').setAttribute('data-tip', state.filters.held_only ? 'Show All' : 'Positions Only');
+    $('heldOnly').setAttribute('data-tip', state.filters.held_only ? 'Positions Only  →  Show All' : 'All Symbols  →  Positions Only');
     applyClientFilter();
   });
   $('showHidden').addEventListener('click', () => {
     state.filters.show_hidden = !state.filters.show_hidden;
     $('showHidden').classList.toggle('active', state.filters.show_hidden);
-    $('showHidden').setAttribute('data-tip', state.filters.show_hidden ? 'Show Active Only' : 'Show Hidden');
+    $('showHidden').setAttribute('data-tip', state.filters.show_hidden ? 'Show Hidden  →  Active Only' : 'Active Only  →  Show Hidden');
     // show_hidden also controls whether acted/suppressed rows are fetched from the API
     loadActionable();
   });

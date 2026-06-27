@@ -619,7 +619,7 @@
             <button data-conv="proven">Proven</button>
           </div>
           <!-- Row filter toggles: Show Hidden, Positions Only, Actionable Only -->
-          <button id="showHidden" class="btn-icon btn-icon-sm" data-tip="Show Hidden" title="Show Hidden">
+          <button id="showHidden" class="btn-icon btn-icon-sm" data-tip="Active Only  →  Show Hidden">
             <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
             </svg>
@@ -627,7 +627,7 @@
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
             </svg>
           </button>
-          <button id="heldOnly" class="btn-icon btn-icon-sm" data-tip="Positions Only" title="Positions Only">
+          <button id="heldOnly" class="btn-icon btn-icon-sm" data-tip="All Symbols  →  Positions Only">
             <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="1" y1="1" x2="23" y2="23"/>
             </svg>
@@ -635,7 +635,7 @@
               <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><polyline points="9 13 11 15 15 11"/>
             </svg>
           </button>
-          <button id="actionableOnlyBtn" class="btn-icon btn-icon-sm" data-tip="Actionable Only" title="Show All">
+          <button id="actionableOnlyBtn" class="btn-icon btn-icon-sm" data-tip="Actionable Only  →  Show All">
             <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect x="3" y="3" width="18" height="18" rx="2"/>
             </svg>
@@ -808,8 +808,7 @@
         <!-- USD Correlations — own collapsible panel -->
         <section id="usdCorrSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
           <div class="msr-section-hdr sp-hdr" data-panel="usdCorr">
-            USD Correlations
-            <span class="msr-method-note" style="margin-left:4px; font-size:8px; font-style:italic; color:#94a3b8;" title="Pearson of raw daily closes — matches provider methodology (price-levels, not returns)">price-levels</span>
+            <span id="usdCorrSideHdr" style="font-size:10px;font-weight:600;">USD Corr</span>
             <span class="sp-chevron">▾</span>
           </div>
           <div class="sp-body">
