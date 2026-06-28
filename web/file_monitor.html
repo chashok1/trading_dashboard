@@ -208,7 +208,7 @@
   <!-- Three grids share the remaining vertical space -->
   <div id="fm-tables">
 
-    <!-- Left column: Schedule (top) + Scheduler Output (bottom) -->
+    <!-- Left column: Schedule (top) + Recent ETL Loads (bottom) -->
     <div class="fm-col" style="flex: 1.5;">
 
       <div class="fm-section" style="flex:1.5;">
@@ -233,58 +233,6 @@
               </tr>
             </thead>
             <tbody id="scheduleBody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Scheduler Output Grid -->
-      <div class="fm-section">
-        <div class="fm-section-header">
-          <h2>Scheduler Output</h2>
-          <div style="display:flex;gap:12px;align-items:center;margin-left:auto;">
-            <select id="schedulerLevelFilter" class="btn" style="padding:3px 8px;">
-              <option value="">All levels</option>
-              <option value="ERROR">Errors</option>
-              <option value="WARNING">Warnings</option>
-              <option value="INFO">Info</option>
-            </select>
-            <select id="schedulerFileFilter" class="btn" style="padding:3px 8px;">
-              <option value="">All files</option>
-            </select>
-            <span id="refreshCountdown" style="font-size:11px;color:var(--text-3);"></span>
-          </div>
-        </div>
-        <div class="table-wrap" style="flex:1;overflow-y:auto;">
-          <div id="schedulerOutputGrid" style="font-family:monospace;font-size:11px;color:var(--text-2);line-height:1.4;">
-            <div style="color:var(--text-3);padding:8px;">Loading scheduler output...</div>
-          </div>
-        </div>
-      </div>
-
-    </div><!-- .fm-col -->
-
-    <!-- Right column: Derive Pipeline (top) and ETL Loads (bottom) -->
-    <div class="fm-col">
-
-      <!-- Derive Pipeline Grid -->
-      <div class="fm-section">
-        <div class="fm-section-header">
-          <h2>Derive Pipeline — Today</h2>
-        </div>
-        <div class="table-wrap">
-          <table id="deriveTable">
-            <thead>
-              <tr>
-                <th>Run ID</th>
-                <th>Started</th>
-                <th>As-of Date</th>
-                <th>Target Table</th>
-                <th>Status</th>
-                <th class="num">Rows Built</th>
-                <th>Duration</th>
-              </tr>
-            </thead>
-            <tbody id="deriveBody"></tbody>
           </table>
         </div>
       </div>
@@ -326,7 +274,59 @@
         </div>
       </div>
 
-    </div>
+    </div><!-- .fm-col left -->
+
+    <!-- Right column: Scheduler Output (top) + Derive Pipeline (bottom) -->
+    <div class="fm-col">
+
+      <!-- Scheduler Output Grid -->
+      <div class="fm-section">
+        <div class="fm-section-header">
+          <h2>Scheduler Output</h2>
+          <div style="display:flex;gap:12px;align-items:center;margin-left:auto;">
+            <select id="schedulerLevelFilter" class="btn" style="padding:3px 8px;">
+              <option value="">All levels</option>
+              <option value="ERROR">Errors</option>
+              <option value="WARNING">Warnings</option>
+              <option value="INFO">Info</option>
+            </select>
+            <select id="schedulerFileFilter" class="btn" style="padding:3px 8px;">
+              <option value="">All files</option>
+            </select>
+            <span id="refreshCountdown" style="font-size:11px;color:var(--text-3);"></span>
+          </div>
+        </div>
+        <div class="table-wrap" style="flex:1;overflow-y:auto;">
+          <div id="schedulerOutputGrid" style="font-family:monospace;font-size:11px;color:var(--text-2);line-height:1.4;">
+            <div style="color:var(--text-3);padding:8px;">Loading scheduler output...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Derive Pipeline Grid -->
+      <div class="fm-section">
+        <div class="fm-section-header">
+          <h2>Derive Pipeline — Today</h2>
+        </div>
+        <div class="table-wrap">
+          <table id="deriveTable">
+            <thead>
+              <tr>
+                <th>Run ID</th>
+                <th>Started</th>
+                <th>As-of Date</th>
+                <th>Target Table</th>
+                <th>Status</th>
+                <th class="num">Rows Built</th>
+                <th>Duration</th>
+              </tr>
+            </thead>
+            <tbody id="deriveBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- .fm-col right -->
 
 </div>
 
