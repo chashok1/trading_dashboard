@@ -136,6 +136,12 @@ def dispatch(session, email, email_type: str, parsed, cfg) -> dict:
     feed_date = email.edt_date or email.received.date()
     if email_type in _NEXT_DAY_FEEDS:
         feed_date = _next_business_day(feed_date)
+        if feed_date > date.today():
+            log.info(
+                "dispatch: %s feed_date=%s is in the future — skipping file emit",
+                email_type, feed_date,
+            )
+            return summary
 
     for table, rows in parsed.tables.items():
         if rows:
