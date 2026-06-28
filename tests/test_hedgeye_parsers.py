@@ -137,7 +137,7 @@ def test_the_call():
     call = p.tables["hist_call"]
     assert {"BJRI", "MGM", "HLT"} <= {r["symbol"] for r in call}
     mstr = next(r for r in call if r["symbol"] == "MSTR")
-    assert mstr["outlook"] == "short"
+    assert mstr["outlook"] == "BEARISH"
     top = p.tables["hist_call_top5"]
     assert [r["symbol"] for r in top] == ["BJRI", "MGM", "HLT"]
     assert top[0]["side"] == "long" and top[0]["rank"] == 1

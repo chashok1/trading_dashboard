@@ -1,0 +1,84 @@
+<svg viewBox="0 0 900 980" xmlns="http://www.w3.org/2000/svg" role="img" font-family="ui-sans-serif, system-ui, sans-serif">
+<title>Hedgeye Gmail data-loading dataflow</title>
+<desc>How Hedgeye emails are polled, classified, deduped, parsed, then loaded into hist_* tables via two lanes: a file lane that drops xlsx/csv into the watched source dir, and a direct-insert lane.</desc>
+<defs>
+<marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0 0L10 5L0 10z" fill="#7c7c7c"/>
+</marker>
+</defs>
+<style>
+.box{fill:#ffffff;stroke:#444;stroke-width:1.5;}
+.sub{fill:#f4f4f2;stroke:#bbb;stroke-width:1;}
+.t{fill:#1a1a1a;font-size:15px;font-weight:650;}
+.s{fill:#444;font-size:12px;}
+.m{fill:#777;font-size:11px;font-style:italic;}
+.lab{fill:#777;font-size:11px;}
+.edge{stroke:#7c7c7c;stroke-width:1.6;fill:none;}
+.code{font-family:ui-monospace,monospace;}
+</style>
+<rect class="box" x="300" y="20" width="300" height="62" rx="10"/>
+<text class="t" x="450" y="46" text-anchor="middle">Gmail inbox</text>
+<text class="s code" x="450" y="66" text-anchor="middle">FROM info@hedgeye.com - marketing dropped</text>
+<line class="edge" x1="450" y1="82" x2="450" y2="108" marker-end="url(#arr)"/>
+<rect class="box" x="280" y="110" width="340" height="74" rx="10"/>
+<text class="t code" x="450" y="136" text-anchor="middle">etl/hedgeye_fetch.py</text>
+<text class="s" x="450" y="156" text-anchor="middle">headless poller - IMAP read-only</text>
+<text class="m" x="450" y="173" text-anchor="middle">iter_since(last 2 days) to Email objects</text>
+<line class="edge" x1="450" y1="184" x2="450" y2="210" marker-end="url(#arr)"/>
+<rect class="box" x="300" y="212" width="300" height="74" rx="10"/>
+<text class="t code" x="450" y="238" text-anchor="middle">classify()</text>
+<text class="s" x="450" y="257" text-anchor="middle">subject regex + banner image + meta</text>
+<text class="m" x="450" y="274" text-anchor="middle">DATA / ANALYSIS / RULES / DROP</text>
+<line class="edge" x1="600" y1="249" x2="720" y2="249" marker-end="url(#arr)"/>
+<text class="lab" x="660" y="242" text-anchor="middle">DROP</text>
+<rect class="sub" x="720" y="226" width="150" height="46" rx="10"/>
+<text class="s" x="795" y="254" text-anchor="middle">skipped</text>
+<line class="edge" x1="450" y1="286" x2="450" y2="312" marker-end="url(#arr)"/>
+<text class="lab" x="466" y="303">DATA</text>
+<rect class="box" x="300" y="314" width="300" height="66" rx="10"/>
+<text class="t code" x="450" y="340" text-anchor="middle">already_processed?</text>
+<text class="s code" x="450" y="360" text-anchor="middle">meta_hedgeye_msg ledger (message_id)</text>
+<line class="edge" x1="450" y1="380" x2="450" y2="406" marker-end="url(#arr)"/>
+<text class="lab" x="478" y="397">new</text>
+<rect class="box" x="300" y="408" width="300" height="66" rx="10"/>
+<text class="t code" x="450" y="434" text-anchor="middle">parser_for(et) to Parsed</text>
+<text class="s" x="450" y="454" text-anchor="middle">.tables . .notes . .images . .flags</text>
+<line class="edge" x1="450" y1="474" x2="450" y2="500" marker-end="url(#arr)"/>
+<rect class="box" x="300" y="502" width="300" height="60" rx="10"/>
+<text class="t code" x="450" y="528" text-anchor="middle">dispatch()</text>
+<text class="s" x="450" y="547" text-anchor="middle">routes each table to its lane</text>
+<line class="edge" x1="380" y1="562" x2="230" y2="610" marker-end="url(#arr)"/>
+<line class="edge" x1="520" y1="562" x2="670" y2="610" marker-end="url(#arr)"/>
+<text class="lab" x="262" y="595" text-anchor="middle">5 tab-backed feeds</text>
+<text class="lab" x="648" y="595" text-anchor="middle">email-only feeds</text>
+<rect class="box" x="40" y="612" width="380" height="92" rx="10" stroke="#7F77DD"/>
+<text class="t" x="230" y="636" text-anchor="middle">Lane A - FILE (reuse the loader)</text>
+<text class="s code" x="230" y="657" text-anchor="middle">emit.write_feed() renders into source_dir:</text>
+<text class="s code" x="230" y="676" text-anchor="middle">RR . IIChange . ETFChange . PS  .xlsx</text>
+<text class="s code" x="230" y="693" text-anchor="middle">call .csv   (skip if real file exists)</text>
+<line class="edge" x1="230" y1="704" x2="230" y2="730" marker-end="url(#arr)"/>
+<rect class="sub" x="55" y="732" width="350" height="58" rx="10"/>
+<text class="s code" x="230" y="756" text-anchor="middle">scheduler to etl_load to HIST_MAPS</text>
+<text class="m" x="230" y="775" text-anchor="middle">source_kind='email' . ON CONFLICT DO NOTHING</text>
+<rect class="box" x="480" y="612" width="380" height="92" rx="10" stroke="#1D9E75"/>
+<text class="t" x="670" y="636" text-anchor="middle">Lane B - DIRECT insert</text>
+<text class="s code" x="670" y="657" text-anchor="middle">insert_skip_duplicates() to</text>
+<text class="s code" x="670" y="676" text-anchor="middle">hist_rta . hist_call_top5</text>
+<text class="s code" x="670" y="693" text-anchor="middle">hist_hedgeye_stance . hist_macro</text>
+<line class="edge" x1="670" y1="704" x2="670" y2="730" marker-end="url(#arr)"/>
+<rect class="sub" x="495" y="732" width="350" height="58" rx="10"/>
+<text class="s code" x="670" y="756" text-anchor="middle">_trigger_derive() to derive_all(D)</text>
+<text class="m" x="670" y="775" text-anchor="middle">only when direct rows landed</text>
+<line class="edge" x1="230" y1="790" x2="430" y2="852" marker-end="url(#arr)"/>
+<line class="edge" x1="670" y1="790" x2="470" y2="852" marker-end="url(#arr)"/>
+<rect class="box" x="300" y="854" width="300" height="62" rx="10"/>
+<text class="t code" x="450" y="880" text-anchor="middle">hist_*  to  derive_all(D)</text>
+<text class="s code" x="450" y="900" text-anchor="middle">idempotent . DELETE WHERE as_of=D then INSERT</text>
+<line class="edge" x1="450" y1="916" x2="450" y2="940" marker-end="url(#arr)"/>
+<rect class="sub" x="300" y="942" width="300" height="32" rx="10"/>
+<text class="s code" x="450" y="963" text-anchor="middle">drv_* to drv_actionable to dashboard</text>
+<rect x="40" y="20" width="13" height="13" rx="3" fill="#ffffff" stroke="#7F77DD" stroke-width="1.5"/>
+<text class="lab" x="60" y="31">file lane</text>
+<rect x="40" y="40" width="13" height="13" rx="3" fill="#ffffff" stroke="#1D9E75" stroke-width="1.5"/>
+<text class="lab" x="60" y="51">direct lane</text>
+</svg>

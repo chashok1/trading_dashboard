@@ -55,6 +55,46 @@ data, don't pin it to an older anchor**):
 Pick the cleanest approach consistent with the periodic-feed carry-forward model in
 `docs/derive_date_logic.md` (Hedgeye feeds are periodic ≤ D, like rr/call/etf).
 
+## Step 3b — Why are no files generated in the Archive folders?
+
+Ashok reports the email path isn't writing workbook files into the watched Archive dirs
+(RR/IIChange/ETFChange/PS/call). `etl/hedgeye/emit.py::write_feed` skips writing in three
+cases — determine which applies:
+
+1. **Idempotency (most likely).** The original TASK_93 run recorded these emails in
+   `meta_hedgeye_msg` but did NOT emit files. `hedgeye_fetch._process_pass` skips any
+   `already_processed(message_id)`, so the emit step never runs on re-run. Check:
+   ```sql
+   SELECT email_type, count(*) FROM meta_hedgeye_msg GROUP BY 1 ORDER BY 1;
+   ```
+   To regenerate, clear the relevant ledger rows (and re-derive as needed), then
+   `--backfill`:
+   ```sql
+   DELETE FROM meta_hedgeye_msg
+    WHERE email_type IN ('risk_range','investing_ideas','etf_changes',
+                         'portfolio_solutions','the_call');
+   ```
+   Then `python -m etl.hedgeye_fetch --backfill <date>` and watch for emit log lines
+   (`emit: wrote …`).
+
+2. **Precedence — real file already present.** `_file_exists_for_date` skips when an
+   existing file matches that feed+date in `source_dir`. If Ashok already exported real
+   files there, this is by design. Confirm by checking the folder vs the data date.
+
+3. **source_dir not resolving.** `_get_source_dir` needs `ref_load_files.source_dir`
+   for that `file_type` with `enabled=TRUE`. Check each — esp. `IIChange` (never had real
+   files):
+   ```sql
+   SELECT file_type, source_dir, enabled FROM ref_load_files
+    WHERE UPPER(file_type) IN ('RR','IICHANGE','ETFCHANGE','PS','CALL');
+   ```
+   Fix any missing/disabled row or wrong path. Confirm the folder exists + is writable.
+
+Decide the intended behavior with Ashok's workflow in mind: the email file should be
+generated when it's the source of that day's data (so it can feed the Excel workbook),
+and skipped only when a real export already exists. Adjust the ledger-clear / precedence
+logic accordingly and confirm files actually appear in the Archive folders after a run.
+
 ## Step 4 — Verify UI functionality
 
 - `/actionable` → the Hedgeye panel (below the macro band) shows Top-5 / Alerts / RR

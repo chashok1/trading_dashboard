@@ -69,15 +69,25 @@ def _get_source_dir(session, file_type: str) -> Optional[str]:
     return row[0] if row else None
 
 
-def _register_origin(session, file_path: Path) -> None:
-    """Insert into meta_file_origin so mark_processed() stamps source_kind='email'."""
-    session.execute(
-        text(
-            "INSERT INTO meta_file_origin (file_path, source_kind) "
-            "VALUES (:p, 'email') ON CONFLICT (file_path) DO NOTHING"
-        ),
-        {"p": str(file_path)},
-    )
+def _register_origin(file_path: Path) -> None:
+    """Register in meta_file_origin so mark_processed() stamps source_kind='email'.
+
+    Uses its own committed session so the row is visible to the scheduler
+    before we write the file to disk (avoids the race where the scheduler
+    picks up the file before the caller's session commits).
+    """
+    from etl.db import session_scope as _ss
+    try:
+        with _ss() as s:
+            s.execute(
+                text(
+                    "INSERT INTO meta_file_origin (file_path, source_kind) "
+                    "VALUES (:p, 'email') ON CONFLICT (file_path) DO NOTHING"
+                ),
+                {"p": str(file_path)},
+            )
+    except Exception:
+        log.warning("emit: could not register origin for %s (non-fatal)", file_path)
 
 
 # ---------------------------------------------------------------------------
@@ -301,6 +311,9 @@ def write_feed(
         return None
 
     dest = _dest_path(source_dir, file_type, feed_date, ext)
+    # Register origin BEFORE writing the file so mark_processed sees it even
+    # when the scheduler picks up the file before this session commits.
+    _register_origin(dest)
     renderer = _RENDERERS[email_type]
     try:
         renderer(rows, dest)
@@ -308,6 +321,5 @@ def write_feed(
         log.exception("emit: render failed for %s %s", email_type, feed_date)
         return None
 
-    _register_origin(session, dest)
     log.info("emit: wrote %s (%d rows)", dest, len(rows))
     return str(dest)

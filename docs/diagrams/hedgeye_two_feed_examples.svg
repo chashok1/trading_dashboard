@@ -1,0 +1,96 @@
+<svg viewBox="0 0 920 880" xmlns="http://www.w3.org/2000/svg" role="img" font-family="ui-sans-serif, system-ui, sans-serif">
+<title>Two worked Hedgeye feed examples</title>
+<desc>Risk Range goes through the file lane: parsed to hist_rr rows then rendered as an xlsx for the loader. Real-Time Alert goes through the direct lane: parsed to a hist_rta row inserted straight into the table.</desc>
+<defs>
+<marker id="a2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0 0L10 5L0 10z" fill="#7c7c7c"/>
+</marker>
+</defs>
+<style>
+.box{fill:#ffffff;stroke:#444;stroke-width:1.5;}
+.hd{fill:#1a1a1a;font-size:15px;font-weight:700;}
+.t{fill:#1a1a1a;font-size:12.5px;font-weight:600;}
+.s{fill:#444;font-size:11.5px;}
+.code{font-family:ui-monospace,monospace;}
+.mono{fill:#444;font-size:11px;font-family:ui-monospace,monospace;}
+.mut{fill:#777;font-size:10.5px;}
+.e{stroke:#7c7c7c;stroke-width:1.6;fill:none;}
+.raw{fill:#f4f4f2;stroke:#bbb;stroke-width:1;}
+</style>
+<rect x="30" y="16" width="410" height="34" rx="8" class="box" stroke="#7F77DD"/>
+<text class="hd" x="235" y="39" text-anchor="middle">Lane A . Risk Range to FILE</text>
+<rect x="480" y="16" width="410" height="34" rx="8" class="box" stroke="#1D9E75"/>
+<text class="hd" x="685" y="39" text-anchor="middle">Lane B . Real-Time Alert to DIRECT</text>
+<rect x="30" y="64" width="410" height="92" rx="8" class="raw"/>
+<text class="mut" x="44" y="82">subject:</text>
+<text class="mono" x="100" y="82">RISK RANGE SIGNALS</text>
+<text class="mut" x="44" y="104">body:</text>
+<text class="mono" x="100" y="104">S&amp;P 500 (BULLISH)</text>
+<text class="mono" x="100" y="120">  S&amp;P 500   7,266  7,594  7,365</text>
+<text class="mut" x="100" y="140">desc        BUY    SELL   PREV</text>
+<line class="e" x1="235" y1="156" x2="235" y2="182" marker-end="url(#a2)"/>
+<text class="mut" x="250" y="173">parse_risk_range()</text>
+<rect x="30" y="184" width="410" height="96" rx="8" class="box"/>
+<text class="t" x="44" y="206">regex per symbol block:</text>
+<text class="mono" x="44" y="225">^(.+?) \((BULL|BEAR|NEUTRAL)\)$</text>
+<text class="s" x="44" y="245">next line: last 3 numbers = BUY / SELL / PREV</text>
+<text class="s" x="44" y="263">+ OutBucket roster (no prices, zeros) . stop at #OUTBUCKET</text>
+<line class="e" x1="235" y1="280" x2="235" y2="306" marker-end="url(#a2)"/>
+<rect x="30" y="308" width="410" height="74" rx="8" class="box"/>
+<text class="t" x="44" y="328">~38 rows to Parsed.tables["hist_rr"]</text>
+<text class="mono" x="44" y="348">{symbol:SPX, outlook:BULLISH, buy_trade:7266,</text>
+<text class="mono" x="44" y="364"> sell_trade:7594, last_price:7365, market_close:D}</text>
+<line class="e" x1="235" y1="382" x2="235" y2="408" marker-end="url(#a2)"/>
+<text class="mut" x="250" y="399">in FILE_LANES to write_feed()</text>
+<rect x="30" y="410" width="410" height="86" rx="8" class="box" stroke="#7F77DD"/>
+<text class="t" x="44" y="431">render_risk_range() to xlsx in source_dir</text>
+<text class="mono" x="44" y="451">RR 2026-06-28.xlsx</text>
+<text class="s" x="44" y="470">sheet "Table_Section" . skip if real file exists</text>
+<text class="mut" x="44" y="487">pre-registers meta_file_origin (source_kind='email')</text>
+<line class="e" x1="235" y1="496" x2="235" y2="522" marker-end="url(#a2)"/>
+<rect x="30" y="524" width="410" height="60" rx="8" class="raw"/>
+<text class="t" x="235" y="546" text-anchor="middle">existing scheduler to etl_load to load_rr</text>
+<text class="s code" x="235" y="566" text-anchor="middle">hist_rr  (ON CONFLICT DO NOTHING)</text>
+<rect x="480" y="64" width="410" height="92" rx="8" class="raw"/>
+<text class="mut" x="494" y="82">subject:</text>
+<text class="mono" x="550" y="82">**Real-Time Alert: KM Sell</text>
+<text class="mono" x="550" y="98">Signal: Rollins (ROP) -KM</text>
+<text class="mut" x="494" y="120">body:</text>
+<text class="mono" x="550" y="120">SELL SIGNAL - SHORTING ROP $339.80</text>
+<text class="mono" x="550" y="138">Durations / Coaching Notes: ...</text>
+<line class="e" x1="685" y1="156" x2="685" y2="182" marker-end="url(#a2)"/>
+<text class="mut" x="700" y="173">parse_real_time_alert()</text>
+<rect x="480" y="184" width="410" height="96" rx="8" class="box"/>
+<text class="t" x="494" y="206">subject to analyst + signal_kind</text>
+<text class="s" x="494" y="225">headline regex to action/symbol/price/side</text>
+<text class="s" x="494" y="244">"Durations" line to dur_trade/trend/tail bools</text>
+<text class="s" x="494" y="263">"Coaching Notes:" to text + a note_repo row</text>
+<line class="e" x1="685" y1="280" x2="685" y2="306" marker-end="url(#a2)"/>
+<rect x="480" y="308" width="410" height="74" rx="8" class="box"/>
+<text class="t" x="494" y="328">1 row to Parsed.tables["hist_rta"]</text>
+<text class="mono" x="494" y="348">{action:SELL, side:short, symbol:ROP,</text>
+<text class="mono" x="494" y="364"> price:339.80, dur_*:..., coaching_notes:...}</text>
+<line class="e" x1="685" y1="382" x2="685" y2="408" marker-end="url(#a2)"/>
+<text class="mut" x="700" y="399">not in FILE_LANES to direct</text>
+<rect x="480" y="410" width="410" height="86" rx="8" class="box" stroke="#1D9E75"/>
+<text class="t" x="494" y="431">insert_skip_duplicates(s, "hist_rta", rows)</text>
+<text class="s" x="494" y="452">no file written - straight into the table</text>
+<text class="s" x="494" y="471">correction email? to flag superseded on prior</text>
+<text class="mut" x="494" y="488">alert for same ticker (auto-reverse)</text>
+<line class="e" x1="685" y1="496" x2="685" y2="522" marker-end="url(#a2)"/>
+<rect x="480" y="524" width="410" height="60" rx="8" class="raw"/>
+<text class="t" x="685" y="546" text-anchor="middle">_trigger_derive() to derive_all(D)</text>
+<text class="s code" x="685" y="566" text-anchor="middle">fires because direct rows landed</text>
+<line class="e" x1="235" y1="584" x2="430" y2="640" marker-end="url(#a2)"/>
+<line class="e" x1="685" y1="584" x2="490" y2="640" marker-end="url(#a2)"/>
+<rect x="280" y="642" width="360" height="58" rx="8" class="box"/>
+<text class="t code" x="460" y="666" text-anchor="middle">derive_all(D) to drv_* to drv_actionable</text>
+<text class="s" x="460" y="686" text-anchor="middle">both lanes reconverge here</text>
+<line class="e" x1="460" y1="700" x2="460" y2="724" marker-end="url(#a2)"/>
+<rect x="300" y="726" width="320" height="34" rx="8" class="raw"/>
+<text class="t" x="460" y="748" text-anchor="middle">dashboard . actionable screen</text>
+<rect x="30" y="784" width="860" height="74" rx="8" class="box"/>
+<text class="t" x="44" y="806">Both rows also pass through, every email:</text>
+<text class="s code" x="44" y="826">meta_hedgeye_msg ledger (dedupe by message_id) . record_ledger(status='ok') . Gmail kept as archive (only message_id stored)</text>
+<text class="mut" x="44" y="846">Lane decided by membership in FILE_LANES (risk_range, investing_ideas, etf_changes, portfolio_solutions, the_call) - else direct.</text>
+</svg>

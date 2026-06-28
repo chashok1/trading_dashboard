@@ -188,6 +188,28 @@ def _html_tables(html: str) -> list[list[list[str]]]:
 _RR_HEAD = re.compile(r"^(\S.*?)\s+\((BULLISH|BEARISH|NEUTRAL)\)$")
 _RR_CHANGE = re.compile(
     r"^(\S+)\s+changed from (Bullish|Bearish|Neutral) to (Bullish|Bearish|Neutral)$", re.I)
+# OutBucket section line: "Description (SYMBOL) = Bullish|Bearish|Neutral (date)"
+_RR_OB_LINE = re.compile(
+    r"^(.+?)\s+\(([A-Z][A-Z0-9./\-]{0,15})\)\s*=\s*(Bullish|Bearish|Neutral)",
+    re.I,
+)
+
+
+def _parse_desc_prices(line: str):
+    """Split 'Desc text 7,266 7,594 7,365' into (desc_str_or_None, [f,f,f]).
+
+    Finds the last 3 numeric tokens and returns everything before them as the
+    description.  Handles cases where the description itself contains numbers
+    (e.g. 'S&P 500 7,266 7,568 7,357' → desc='S&P 500').
+    """
+    tokens = line.split()
+    num_positions = [i for i, t in enumerate(tokens) if _NUM.match(t.replace("#", ""))]
+    if len(num_positions) < 3:
+        return None, []
+    last3 = num_positions[-3:]
+    prices = [_num(tokens[p]) for p in last3]
+    desc = " ".join(tokens[: last3[0]]).strip() or None
+    return desc, prices
 
 
 def parse_risk_range(email: Email) -> Parsed:
@@ -195,15 +217,27 @@ def parse_risk_range(email: Email) -> Parsed:
     lines = _body_lines(email.plaintext)
     d = email.edt_date
 
-    # cut at the OutBucket section
-    body = []
+    # Split body at the OutBucket explanatory section separator.
+    # Lines before the separator: main signal table.
+    # Lines after: OutBucket roster ("Description (SYM) = Outlook (date)").
+    # Do NOT break early — we need the OutBucket section to get those symbols.
+    # Strip the inline "#OUTBUCKET" tag from main-section price rows.
+    body: list[str] = []
+    outbucket_lines: list[str] = []
+    in_outbucket = False
     for ln in lines:
-        if "#OUTBUCKET" in ln.upper() or ln.upper().startswith("THE #OUTBUCKET"):
-            ln = ln.split("#OUTBUCKET")[0].strip()
-            if ln:
-                body.append(ln)
-            break
-        body.append(ln)
+        upper = ln.upper()
+        if re.match(r"THE\s+#OUTBUCKET\s+ARE\s+THE\s+TICKERS", upper):
+            in_outbucket = True
+            continue
+        if in_outbucket:
+            outbucket_lines.append(ln)
+            continue
+        # main section: strip inline #OUTBUCKET tag from price lines
+        if "#OUTBUCKET" in upper:
+            ln = re.split(r"\s*#OUTBUCKET\b", ln, flags=re.I)[0].strip()
+        if ln:
+            body.append(ln)
 
     # printed TREND CHANGE block -> transient QA only (not stored)
     printed_changes = {}
@@ -213,6 +247,8 @@ def parse_risk_range(email: Email) -> Parsed:
             printed_changes[m.group(1).upper()] = (m.group(2).title(), m.group(3).title())
 
     rows = []
+
+    # --- Main signal section: SYMBOL (OUTLOOK) / Description BUY SELL PREV ---
     i = 0
     while i < len(body) - 1:
         m = _RR_HEAD.match(body[i])
@@ -220,18 +256,34 @@ def parse_risk_range(email: Email) -> Parsed:
             sym = m.group(1).strip().upper()
             outlook = m.group(2).upper()
             nxt = body[i + 1]
-            nums = [t for t in nxt.split() if _NUM.match(t.replace("#", ""))]
-            if len(nums) >= 3:
-                buy, sell, prev = (_num(nums[-3]), _num(nums[-2]), _num(nums[-1]))
+            desc, prices = _parse_desc_prices(nxt)
+            if len(prices) >= 3:
+                buy, sell, prev = prices[-3], prices[-2], prices[-1]
                 rows.append({
                     "snapshot_date": d, "market_close": d,
-                    "symbol": sym, "tos_symbol": sym, "name": None,
+                    "symbol": sym, "tos_symbol": sym, "name": desc,
                     "outlook": outlook, "buy_trade": buy, "sell_trade": sell,
                     "last_price": prev,
                 })
                 i += 2
                 continue
         i += 1
+
+    # --- OutBucket section: "Description (SYMBOL) = Outlook (date)" ---
+    # These symbols have no price targets; emit zeros so they appear in the
+    # output with their Description and Outlook populated.
+    for ln in outbucket_lines:
+        m = _RR_OB_LINE.match(ln)
+        if m:
+            desc = m.group(1).strip()
+            sym = m.group(2).strip().upper()
+            outlook = m.group(3).upper()
+            rows.append({
+                "snapshot_date": d, "market_close": d,
+                "symbol": sym, "tos_symbol": sym, "name": desc,
+                "outlook": outlook, "buy_trade": 0, "sell_trade": 0,
+                "last_price": 0,
+            })
 
     p.add_rows("hist_rr", rows)
     p.flags.append(f"rr_rows={len(rows)}")
@@ -369,9 +421,15 @@ def parse_investing_ideas(email: Email) -> Parsed:
         m = re.search(r"\(([A-Z][A-Z0-9.\-]{0,9})\)", subj)
         if m:
             symbols = [m.group(1)]
+    # Extract description: text between Add/Remove and (TICKER) in subject
+    desc = None
+    m_desc = re.search(r"(?:Add|Remove)\s+(.+?)\s*\(([A-Z][A-Z0-9.\-]{0,9})\)", subj, re.I)
+    if m_desc:
+        desc = m_desc.group(1).strip() or None
     rows = [{
         "snapshot_date": email.edt_date, "message_id": email.message_id,
         "action": action, "side": side, "symbol": s, "tos_symbol": s,
+        "description": desc,
     } for s in symbols]
     p.add_rows("hist_iichg", rows)
     return p
@@ -401,10 +459,12 @@ def parse_etf_changes(email: Email) -> Parsed:
         if cur_action:
             m = re.search(r"\(([A-Z][A-Z0-9.\-]{0,9})\)", ln)
             if m:
+                desc = ln[:m.start()].strip() or None
                 rows.append({
                     "snapshot_date": email.edt_date, "message_id": email.message_id,
                     "action": cur_action, "side": cur_side,
                     "symbol": m.group(1), "tos_symbol": m.group(1),
+                    "description": desc,
                 })
     p.add_rows("hist_etfchg", rows)
     return p
@@ -438,6 +498,29 @@ def parse_signal_strength(email: Email) -> Parsed:
 # 6) Portfolio Solutions weekly re-rank -> hist_ps  (full table from HTML)
 # ---------------------------------------------------------------------------
 
+# Maps lowercased HTML header → hist_ps field key (for columns beyond rank/ticker).
+# Hedgeye HTML uses: '1-Week Change', '1-Month Change', 'Entry Date',
+#                    'Asset Class', 'Position Sizing'.
+_PS_EXTRA_COL_MAP: dict[str, str] = {
+    "1-week change":   "wk_ago",
+    "1-week chg":      "wk_ago",
+    "1wk chg":         "wk_ago",
+    "1-weekchange":    "wk_ago",
+    "1-month change":  "mn_ago",
+    "1-month chg":     "mn_ago",
+    "1mo chg":         "mn_ago",
+    "1-monthchange":   "mn_ago",
+    "entry date":      "date_added",
+    "entrydate":       "date_added",
+    "date added":      "date_added",
+    "asset class":     "asset_class",
+    "assetclass":      "asset_class",
+    "position sizing": "position_sizing",
+    "position size":   "position_sizing",
+    "positionsizing":  "position_sizing",
+    "sizing":          "position_sizing",
+}
+
 
 def parse_portfolio_solutions(email: Email) -> Parsed:
     p = Parsed("portfolio_solutions")
@@ -445,20 +528,34 @@ def parse_portfolio_solutions(email: Email) -> Parsed:
     for tbl in _html_tables(email.html):
         if not tbl:
             continue
-        header = [c.lower() for c in tbl[0]]
+        header = [c.lower().strip() for c in tbl[0]]
         if "rank" in header and "ticker" in header:
-            idx = {name: header.index(name) for name in header}
-            r_i = idx.get("rank"); t_i = idx.get("ticker")
+            r_i = header.index("rank")
+            t_i = header.index("ticker")
+            # Map extra HTML columns → dest keys using _PS_EXTRA_COL_MAP
+            extra_idx: dict[str, int] = {}
+            for hi, h in enumerate(header):
+                dest = _PS_EXTRA_COL_MAP.get(h)
+                if dest:
+                    extra_idx.setdefault(dest, hi)
             for cells in tbl[1:]:
                 if len(cells) <= max(r_i, t_i):
                     continue
                 rank = _num(cells[r_i])
                 tick = cells[t_i].strip().upper()
                 if tick and rank is not None:
-                    rows.append({
-                        "snapshot_date": email.edt_date, "message_id": email.message_id,
-                        "rank": int(rank), "ticker": tick, "tos_symbol": tick,
-                    })
+                    row: dict = {
+                        "snapshot_date": email.edt_date,
+                        "message_id":    email.message_id,
+                        "rank":          int(rank),
+                        "ticker":        tick,
+                        "tos_symbol":    tick,
+                    }
+                    for dest_key, col_idx in extra_idx.items():
+                        if col_idx < len(cells):
+                            val = cells[col_idx].strip() if cells[col_idx] else None
+                            row[dest_key] = val or None
+                    rows.append(row)
             break
     p.add_rows("hist_ps", rows)
     if not rows:
@@ -529,15 +626,33 @@ def parse_macro_show_summary(email: Email) -> Parsed:
 # 8) The Call (Replay & Summary) -> hist_call (positions) + hist_call_top5
 # ---------------------------------------------------------------------------
 
+_CALL_OUTLOOK = {"LONGS": "BULLISH", "SHORTS": "BEARISH", "NEUTRAL": "NEUTRAL"}
+_CALL_SIDE = {"LONGS": "long", "SHORTS": "short", "NEUTRAL": "neutral"}
+_CALL_MODIFIERS = ("best idea long", "best idea short", "long bench", "short bench")
+
 
 def parse_the_call(email: Email) -> Parsed:
     p = Parsed("the_call")
     text = email.plaintext
 
+    # Build modifier map: scan body for "(SYMBOL): ... modifier-keyword ..." lines.
+    # Modifier keywords (case-insensitive): "long bench", "short bench",
+    # "best idea long", "best idea short".
+    modifier_map: dict[str, str] = {}
+    for ln in _body_lines(text):
+        lm = re.search(r"\(([A-Z][A-Z0-9.\-]{0,9})\):", ln)
+        if lm:
+            sym_key = lm.group(1).upper()
+            ln_lower = ln.lower()
+            for kw in _CALL_MODIFIERS:
+                if kw in ln_lower:
+                    modifier_map[sym_key] = kw
+                    break
+
     # HEDGEYE POSITIONS: LONGS / SHORTS / NEUTRAL lines
     side_for = {}
     pos_rows = []
-    for label, outlook in (("LONGS", "long"), ("SHORTS", "short"), ("NEUTRAL", "neutral")):
+    for label, outlook in _CALL_OUTLOOK.items():
         m = re.search(rf"{label}:\s*(.+)", text)
         if m:
             for sym in re.split(r"[,\s]+", m.group(1).splitlines()[0].strip()):
@@ -546,8 +661,9 @@ def parse_the_call(email: Email) -> Parsed:
                     pos_rows.append({
                         "snapshot_date": email.edt_date, "message_id": email.message_id,
                         "symbol": sym, "tos_symbol": sym, "outlook": outlook,
+                        "outlook_modifier": modifier_map.get(sym) or _CALL_SIDE[label],
                     })
-                    side_for[sym] = outlook
+                    side_for[sym] = _CALL_SIDE[label]  # lowercase for top5 side column
     p.add_rows("hist_call", pos_rows)
 
     # Top 5 Most Actionable Stock Ideas: "Name (TICKER): rationale …"
