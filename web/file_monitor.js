@@ -557,7 +557,7 @@ function renderSchedule() {
             <td style="white-space:nowrap;">${historyDots}</td>
             <td>${blankProcessed ? '—' : row.file_date || '—'}</td>
             <td>${blankProcessed ? '—' : row.processed_at ? new Date(row.processed_at).toLocaleTimeString() : '—'}</td>
-            <td class="file-cell" style="color:var(--text-2);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" title="${escapeHtml(row.source_dir || '')} (click for logs)">${blankProcessed ? '—' : escapeHtml(fileName)}</td>
+            <td class="file-cell" style="color:var(--text-2);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" title="${escapeHtml(row.source_dir || '')} (click for logs)">${blankProcessed ? '—' : escapeHtml(fileName)}</td>
             <td class="num" style="${rowCountHighlight}">${rowsInsertedCell}</td>
             <td style="text-align:center;">
                 <button class="btn btn-sm reprocess-btn"
