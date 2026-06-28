@@ -156,6 +156,11 @@ def dispatch(session, email, email_type: str, parsed, cfg) -> dict:
                 )
                 summary["tables"][table] = inserted
 
+    if email_type == "portfolio_solutions":
+        from etl.hedgeye import ps_grids
+        grids = ps_grids.generate_from_email(email, feed_date)
+        summary["files"].update(grids)
+
     if parsed.notes:
         _write_notes(session, parsed.notes)
         summary["notes"] = len(parsed.notes)
