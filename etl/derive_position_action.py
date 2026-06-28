@@ -247,7 +247,7 @@ def _derive_position_action_impl(session: Session, as_of_date: date) -> int:
                    attributed_rule_ids, attribution, source)
                 VALUES (:d, :sym, :td, :ct,
                         :sq, :da, :ia,
-                        :ar::jsonb, :at, :src)
+                        CAST(:ar AS JSONB), :at, :src)
                 ON CONFLICT DO NOTHING
             """), rec)
             inserted += 1
