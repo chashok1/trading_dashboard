@@ -123,13 +123,10 @@ html, body {
 
 #hbBanner { display: none !important; }
 
+/* TASK_103 — brand block (the dot + "Trading Dashboard" title) hidden to give
+ * the nav bar more horizontal room. Revert by restoring display:flex. */
 .brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 16px;
-  height: 100%;
-  border-right: 1px solid var(--border);
+  display: none;
 }
 
 .brand h1 {

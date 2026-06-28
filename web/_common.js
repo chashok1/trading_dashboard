@@ -1042,3 +1042,61 @@
   window.ivGlyph      = ivGlyph;
   window._ivpBarColor = _ivpBarColor;
 })();
+
+/* TASK_103 — single canonical top-nav, rendered identically on every page.
+ * The nav used to be copy-pasted into all ~22 HTML files and had drifted apart
+ * (different items, order and counts per page). We now define it ONCE here and
+ * render it into each page's <nav class="nav-menu"> on load, REPLACING whatever
+ * static markup that page shipped with. So every page shows the same bar, and
+ * adding / renaming / reordering a link is a one-line change in NAV_LINKS below
+ * — no per-page edits. (Pages keep an inert <nav class="nav-menu"> placeholder;
+ * its contents are overwritten here. This is the one intentional load-time
+ * side effect in this module; everything above remains side-effect-free.) */
+(function () {
+  'use strict';
+  // Canonical nav — display order. Excludes /cockpit (301 → /actionable) and
+  // /composite-edit (sub-editor; highlights Rules via ACTIVE_ALIAS).
+  var NAV_LINKS = [
+    { href: '/',                 label: 'Dashboard' },
+    { href: '/actionable',       label: 'Actionable' },
+    { href: '/portfolio',        label: 'Portfolio' },
+    { href: '/rules',            label: 'Rules' },
+    { href: '/groups',           label: 'Rule Groups' },
+    { href: '/param-sets',       label: 'Param Sets' },
+    { href: '/rule-performance', label: 'Performance' },
+    { href: '/rules-health',     label: 'Health' },
+    { href: '/trace',            label: 'Trace' },
+    { href: '/rule-flow',        label: 'Rule Flow' },
+    { href: '/trig',             label: 'Trig' },
+    { href: '/ref',              label: 'Ref Data' },
+    { href: '/explore',          label: 'DB Data' },
+    { href: '/dbstats',          label: 'DB Stats' },
+    { href: '/file-monitor',     label: 'File Monitor' },
+    { href: '/ingest-log',       label: 'Ingest Log' },
+    { href: '/digest',           label: 'Digest' },
+    { href: '/notes',            label: 'Notes' },
+    { href: '/symbol-hedgeye',   label: 'Stock Hedgeye' },
+    { href: '/test-results',     label: 'Tests' },
+  ];
+  // Sub-pages not shown in the bar → highlight a parent item instead.
+  var ACTIVE_ALIAS = { '/composite-edit': '/rules' };
+
+  function renderNav() {
+    var nav = document.querySelector('nav.nav-menu');
+    if (!nav) return;
+    var path = location.pathname.replace(/\/+$/, '') || '/';
+    var active = ACTIVE_ALIAS[path] || path;
+    var html = '';
+    for (var i = 0; i < NAV_LINKS.length; i++) {
+      var L = NAV_LINKS[i];
+      var cls = 'nav-item' + (L.href === active ? ' active' : '');
+      html += '<a href="' + L.href + '" class="' + cls + '">' + L.label + '</a>';
+    }
+    nav.innerHTML = html;
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', renderNav);
+  } else {
+    renderNav();
+  }
+})();
