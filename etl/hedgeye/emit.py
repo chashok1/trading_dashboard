@@ -33,6 +33,7 @@ EMIT_MAP: dict[str, tuple[str, str]] = {
     "risk_range":          ("RR",         "xlsx"),
     "investing_ideas":     ("IIChange",   "xlsx"),
     "etf_changes":         ("ETFChange",  "xlsx"),
+    "etf_weekly":          ("ETF",        "xlsx"),
     "portfolio_solutions": ("PS",         "xlsx"),
     "the_call":            ("call",       "csv"),
 }
@@ -48,6 +49,7 @@ FILE_LANES: frozenset[tuple[str, str]] = frozenset({
     ("risk_range",          "hist_rr"),
     ("investing_ideas",     "hist_iichg"),
     ("etf_changes",         "hist_etfchg"),
+    ("etf_weekly",          "hist_etf"),
     ("portfolio_solutions", "hist_ps"),
     ("the_call",            "hist_call"),
 })
@@ -262,10 +264,39 @@ def render_the_call(rows: list[dict], path: Path) -> None:
             ])
 
 
+def render_etf_weekly(rows: list[dict], path: Path) -> None:
+    """Write ETF weekly rows as xlsx matching the real ETF archive file format.
+
+    Sheet: Data Sheet (single-sheet; load_etf uses single-sheet fallback).
+    Layout (col A-H): Date, Desc, Ticker, DateAdded, Price, Low, High, AssetClass.
+    Section-header rows (BULLISH/BEARISH) have Ticker=None so load_etf
+    correctly sets current_outlook for following data rows.
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Data Sheet"
+    ws.append(["Date", " Desc", "Ticker", "Date Added",
+               "Price", "Low", "High", "Asset Class"])
+    for r in rows:
+        ws.append([
+            r.get("snapshot_date"),
+            r.get("sector") or "",
+            r.get("symbol") or None,
+            r.get("date_added"),
+            r.get("recent_price"),
+            r.get("brr"),
+            r.get("trr"),
+            r.get("asset_class") or "",
+        ])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(str(path))
+
+
 _RENDERERS = {
     "risk_range":          render_risk_range,
     "investing_ideas":     render_investing_ideas,
     "etf_changes":         render_etf_changes,
+    "etf_weekly":          render_etf_weekly,
     "portfolio_solutions": render_portfolio_solutions,
     "the_call":            render_the_call,
 }

@@ -471,6 +471,90 @@ def parse_etf_changes(email: Email) -> Parsed:
 
 
 # ---------------------------------------------------------------------------
+# 4b) ETF Pro Plus weekly report -> hist_etf (via FILE_LANES)
+# ---------------------------------------------------------------------------
+
+def _strip_dollar(val: str) -> Optional[float]:
+    try:
+        return float(str(val).replace("$", "").replace(",", "").strip())
+    except (ValueError, AttributeError):
+        return None
+
+
+def _parse_mdy(val: str) -> Optional[date]:
+    try:
+        return datetime.strptime(val.strip(), "%m/%d/%Y").date()
+    except (ValueError, AttributeError):
+        return None
+
+
+def parse_etf_weekly(email: Email) -> Parsed:
+    """ETF Pro Plus – New Weekly Report → hist_etf via file.
+
+    HTML Table layout (col indices, 0-based):
+      0=Description  1=Ticker  2=DateAdded  3=RecentPrice
+      4=TrendLow(BRR)  5=TrendHigh(TRR)  6=AssetClass
+    Section-header rows mid-table have col[1]=='TICKER' and col[0] in
+    ('BULLISH','BEARISH') — used to track current outlook.
+    """
+    p = Parsed("etf_weekly")
+    rows: list[dict] = []
+    for tbl in _html_tables(email.html):
+        if not tbl or len(tbl[0]) < 2:
+            continue
+        if tbl[0][1].strip().upper() != "TICKER":
+            continue
+        if tbl[0][0].strip().upper() not in ("BULLISH", "BEARISH"):
+            continue
+
+        current_outlook = tbl[0][0].strip().upper()
+        # Opening section-header row (drives load_etf outlook tracking)
+        rows.append({
+            "snapshot_date": email.edt_date, "message_id": email.message_id,
+            "symbol": None, "tos_symbol": None,
+            "sector": current_outlook, "outlook": current_outlook,
+            "date_added": None, "recent_price": None,
+            "brr": None, "trr": None, "asset_class": None,
+        })
+        for cells in tbl[1:]:
+            if len(cells) < 2:
+                continue
+            if cells[1].strip().upper() == "TICKER":
+                # Mid-table section-header (BEARISH block)
+                current_outlook = cells[0].strip().upper()
+                rows.append({
+                    "snapshot_date": email.edt_date, "message_id": email.message_id,
+                    "symbol": None, "tos_symbol": None,
+                    "sector": current_outlook, "outlook": current_outlook,
+                    "date_added": None, "recent_price": None,
+                    "brr": None, "trr": None, "asset_class": None,
+                })
+                continue
+            if len(cells) < 7:
+                continue
+            ticker = cells[1].strip().upper()
+            if not ticker:
+                continue
+            rows.append({
+                "snapshot_date": email.edt_date, "message_id": email.message_id,
+                "symbol": ticker, "tos_symbol": ticker,
+                "sector": cells[0].strip() or None,
+                "outlook": current_outlook,
+                "date_added": _parse_mdy(cells[2]),
+                "recent_price": _strip_dollar(cells[3]),
+                "brr": _strip_dollar(cells[4]),
+                "trr": _strip_dollar(cells[5]),
+                "asset_class": cells[6].strip() or None,
+            })
+        break
+
+    p.add_rows("hist_etf", rows)
+    if not rows:
+        p.warnings.append("ETF weekly: no table found")
+    return p
+
+
+# ---------------------------------------------------------------------------
 # 5) Signal Strength Stocks -> hist_sss  (delta events only)
 # ---------------------------------------------------------------------------
 
@@ -778,6 +862,7 @@ PARSERS: dict[str, Callable[[Email], Parsed]] = {
     "real_time_alert": parse_real_time_alert,
     "investing_ideas": parse_investing_ideas,
     "etf_changes": parse_etf_changes,
+    "etf_weekly": parse_etf_weekly,
     "signal_strength": parse_signal_strength,
     "portfolio_solutions": parse_portfolio_solutions,
     "macro_show_summary": parse_macro_show_summary,
