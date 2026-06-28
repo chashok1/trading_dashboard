@@ -146,12 +146,6 @@ def dispatch(session, email, email_type: str, parsed, cfg) -> dict:
     for table, rows in parsed.tables.items():
         if rows:
             if (email_type, table) in FILE_LANES:
-                if email_type in _NEXT_DAY_FEEDS:
-                    # Stamp rows with the shifted date so file content is consistent
-                    rows = [
-                        {**r, "snapshot_date": feed_date, "market_close": feed_date}
-                        for r in rows
-                    ]
                 # Route via file → existing loader (no direct DB insert here)
                 result = write_feed(session, email_type, feed_date, rows)
                 summary["files"][table] = result or "skipped"
