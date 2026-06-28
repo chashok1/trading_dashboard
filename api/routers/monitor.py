@@ -447,12 +447,21 @@ def get_schedule():
         from collections import defaultdict
         processed_by_type = defaultdict(set)
         for r in processed_rows:
-            processed_by_type[r[0]].add(r[1])
+            processed_by_type[r[0].lower()].add(r[1])
+
+        def _prev_bday(d: date) -> date:
+            prev = d - timedelta(days=1)
+            while prev.weekday() >= 5:
+                prev -= timedelta(days=1)
+            return prev
 
         def was_received(file_type: str, week_day: str, expected: date) -> bool:
-            dates = processed_by_type.get(file_type, set())
+            dates = processed_by_type.get(file_type.lower(), set())
             if week_day in ('WKDAY', 'ALL'):
-                # Daily — exact date only
+                # If file is absent AND the previous business day was a market holiday,
+                # no file was ever expected (covers next-day feeds like RR).
+                if expected not in dates and _prev_bday(expected) in holidays:
+                    return True
                 return expected in dates
             else:
                 # Weekly — any file_date within the 7-day window counts
