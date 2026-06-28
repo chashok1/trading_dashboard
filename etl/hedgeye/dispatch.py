@@ -16,7 +16,7 @@ import json
 import logging
 import os
 import urllib.request
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -26,6 +26,18 @@ from etl.db import insert_skip_duplicates
 from etl.hedgeye.emit import FILE_LANES, write_feed
 
 log = logging.getLogger("hedgeye.dispatch")
+
+
+def _next_business_day(d: date) -> date:
+    """Return d + 1 calendar day, advancing past any weekend."""
+    d = d + timedelta(days=1)
+    while d.weekday() >= 5:  # 5=Sat, 6=Sun
+        d = d + timedelta(days=1)
+    return d
+
+
+# email_types whose signals are published on day D for use on day D+1
+_NEXT_DAY_FEEDS = frozenset({"risk_range"})
 
 
 def already_processed(session, message_id: str) -> bool:
@@ -122,10 +134,18 @@ def dispatch(session, email, email_type: str, parsed, cfg) -> dict:
                "flags": parsed.flags, "warnings": parsed.warnings}
 
     feed_date = email.edt_date or email.received.date()
+    if email_type in _NEXT_DAY_FEEDS:
+        feed_date = _next_business_day(feed_date)
 
     for table, rows in parsed.tables.items():
         if rows:
             if (email_type, table) in FILE_LANES:
+                if email_type in _NEXT_DAY_FEEDS:
+                    # Stamp rows with the shifted date so file content is consistent
+                    rows = [
+                        {**r, "snapshot_date": feed_date, "market_close": feed_date}
+                        for r in rows
+                    ]
                 # Route via file → existing loader (no direct DB insert here)
                 result = write_feed(session, email_type, feed_date, rows)
                 summary["files"][table] = result or "skipped"
