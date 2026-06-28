@@ -34,6 +34,7 @@ EMIT_MAP: dict[str, tuple[str, str]] = {
     "investing_ideas":     ("IIChange",   "xlsx"),
     "etf_changes":         ("ETFChange",  "xlsx"),
     "etf_weekly":          ("ETF",        "xlsx"),
+    "ii_weekly":           ("II",         "xlsx"),
     "portfolio_solutions": ("PS",         "xlsx"),
     "the_call":            ("call",       "csv"),
 }
@@ -50,6 +51,7 @@ FILE_LANES: frozenset[tuple[str, str]] = frozenset({
     ("investing_ideas",     "hist_iichg"),
     ("etf_changes",         "hist_etfchg"),
     ("etf_weekly",          "hist_etf"),
+    ("ii_weekly",           "hist_ii"),
     ("portfolio_solutions", "hist_ps"),
     ("the_call",            "hist_call"),
 })
@@ -264,6 +266,24 @@ def render_the_call(rows: list[dict], path: Path) -> None:
             ])
 
 
+def render_ii_weekly(rows: list[dict], path: Path) -> None:
+    """Write II weekly rows as xlsx matching the real II archive file format.
+
+    Sheet: Data Sheet. Headers: Date, ' Outlook', ' Ticker'.
+    Only data rows (symbol set); section-header sentinel rows are skipped.
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Data Sheet"
+    ws.append(["Date", " Outlook", " Ticker"])
+    for r in rows:
+        if not r.get("symbol"):
+            continue
+        ws.append([r.get("snapshot_date"), r.get("outlook"), r.get("symbol")])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(str(path))
+
+
 def render_etf_weekly(rows: list[dict], path: Path) -> None:
     """Write ETF weekly rows as xlsx matching the real ETF archive file format.
 
@@ -297,6 +317,7 @@ _RENDERERS = {
     "investing_ideas":     render_investing_ideas,
     "etf_changes":         render_etf_changes,
     "etf_weekly":          render_etf_weekly,
+    "ii_weekly":           render_ii_weekly,
     "portfolio_solutions": render_portfolio_solutions,
     "the_call":            render_the_call,
 }

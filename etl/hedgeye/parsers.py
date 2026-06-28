@@ -555,6 +555,107 @@ def parse_etf_weekly(email: Email) -> Parsed:
 
 
 # ---------------------------------------------------------------------------
+# 4c) Investing Ideas Newsletter -> hist_ii (file) + per-stock notes
+# ---------------------------------------------------------------------------
+
+def parse_ii_weekly(email: Email) -> Parsed:
+    """Investing Ideas Newsletter → two outputs:
+
+    1. hist_ii rows (via FILE_LANES → II YYYY-MM-DD.xlsx):
+       Parsed from 'Long: X, Y' / 'Short: A, B' lines at the top.
+
+    2. note_repo rows (direct insert via dispatch):
+       One note per ticker from the per-stock analysis blocks:
+       TICKER / Sector / Sector Head / THESIS SUMMARY / WEEKEND UPDATE.
+    """
+    p = Parsed("ii_weekly")
+    lines = _body_lines(email.plaintext)
+
+    # --- Part 1: full position list ---
+    long_tickers: list[str] = []
+    short_tickers: list[str] = []
+    for ln in lines:
+        s = ln.strip()
+        sl = s.lower()
+        if sl.startswith("long:"):
+            long_tickers = [t.strip().upper() for t in s[5:].split(",") if t.strip()]
+        elif sl.startswith("short:"):
+            short_tickers = [t.strip().upper() for t in s[6:].split(",") if t.strip()]
+
+    if not long_tickers and not short_tickers:
+        p.warnings.append("ii_weekly: no Long/Short lines found")
+        return p
+
+    ii_rows: list[dict] = []
+    for tick in long_tickers:
+        ii_rows.append({"snapshot_date": email.edt_date, "message_id": email.message_id,
+                        "symbol": tick, "tos_symbol": tick, "outlook": "Long"})
+    for tick in short_tickers:
+        ii_rows.append({"snapshot_date": email.edt_date, "message_id": email.message_id,
+                        "symbol": tick, "tos_symbol": tick, "outlook": "Short"})
+    p.add_rows("hist_ii", ii_rows)
+
+    # --- Part 2: per-stock analysis blocks ---
+    all_tickers = set(long_tickers + short_tickers)
+    outlook_map = {t: "Long" for t in long_tickers}
+    outlook_map.update({t: "Short" for t in short_tickers})
+
+    in_analysis = False
+    cur_ticker: Optional[str] = None
+    cur_analyst: Optional[str] = None
+    cur_lines: list[str] = []
+
+    def _flush():
+        if cur_ticker and cur_lines:
+            text = "\n".join(cur_lines).strip()
+            if text:
+                p.notes.append(_note(
+                    email, "investing_ideas", text,
+                    tickers=[cur_ticker],
+                    analyst=cur_analyst,
+                    signal_kind=f"{outlook_map.get(cur_ticker, '')} thesis+update",
+                ))
+
+    for ln in lines:
+        s = ln.strip()
+        if not s:
+            if in_analysis and cur_ticker:
+                cur_lines.append("")
+            continue
+
+        if "New Range Charts" in s:
+            in_analysis = True
+            continue
+
+        if not in_analysis:
+            continue
+
+        if s.startswith("Please visit") or s.startswith("\xa9") or s.startswith("©"):
+            break
+
+        if s in all_tickers:
+            _flush()
+            cur_ticker = s
+            cur_analyst = None
+            cur_lines = []
+            continue
+
+        if cur_ticker:
+            if s.startswith("Sector Head:"):
+                cur_analyst = s[12:].strip()
+            elif s.startswith("Sector:"):
+                pass  # skip sector line; captured in analyst context if needed
+            else:
+                cur_lines.append(s)
+
+    _flush()
+
+    if not p.notes:
+        p.warnings.append("ii_weekly: no per-stock analysis blocks found")
+    return p
+
+
+# ---------------------------------------------------------------------------
 # 5) Signal Strength Stocks -> hist_sss  (delta events only)
 # ---------------------------------------------------------------------------
 
@@ -863,6 +964,7 @@ PARSERS: dict[str, Callable[[Email], Parsed]] = {
     "investing_ideas": parse_investing_ideas,
     "etf_changes": parse_etf_changes,
     "etf_weekly": parse_etf_weekly,
+    "ii_weekly": parse_ii_weekly,
     "signal_strength": parse_signal_strength,
     "portfolio_solutions": parse_portfolio_solutions,
     "macro_show_summary": parse_macro_show_summary,
