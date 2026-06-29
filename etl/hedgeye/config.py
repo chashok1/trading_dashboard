@@ -39,7 +39,7 @@ KEYS = {
 
 DEFAULTS = {
     "enabled": "false",
-    "poll_sec": "240",
+    "poll_sec": "900",
     "provider": "imap",
     "mailbox": "INBOX",
     "image_dir": "etl/working/hedgeye_charts",
