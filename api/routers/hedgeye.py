@@ -126,6 +126,26 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                     out["stance"][key].append(sym)
             out["stance_date"] = stance_date.isoformat()
 
+        # Market Situation Report — latest gamma metrics on/before effective_date.
+        msr_date = s.execute(text(
+            "SELECT MAX(snapshot_date) FROM hist_msr WHERE snapshot_date <= :eff"
+        ), {"eff": effective_date}).scalar()
+        if msr_date is not None:
+            msr_row = s.execute(text(
+                "SELECT gamma_throttle, rvol_10day FROM hist_msr"
+                " WHERE snapshot_date = :md"
+            ), {"md": msr_date}).first()
+            if msr_row:
+                out["msr"] = {
+                    "date": msr_date.isoformat(),
+                    "gamma_throttle": (
+                        float(msr_row[0]) if msr_row[0] is not None else None
+                    ),
+                    "rvol_10day": (
+                        float(msr_row[1]) if msr_row[1] is not None else None
+                    ),
+                }
+
     return out
 
 

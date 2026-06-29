@@ -81,6 +81,18 @@
     }).join('');
   }
 
+  function msrHtml(msr) {
+    if (!msr) return '';
+    var parts = [];
+    if (msr.gamma_throttle != null)
+      parts.push('<span style="color:#555;">Gamma Throttle:</span> <strong>' +
+        esc(msr.gamma_throttle.toFixed(2)) + '</strong>');
+    if (msr.rvol_10day != null)
+      parts.push('<span style="color:#555;">10-Day rVol:</span> <strong>' +
+        esc(msr.rvol_10day.toFixed(2)) + '</strong>');
+    return '<div style="font-size:11px; line-height:1.7;">' + parts.join('&nbsp;&nbsp;') + '</div>';
+  }
+
   function stanceHtml(stance) {
     stance = stance || {};
     var bull = (stance.bullish || []);
@@ -100,7 +112,8 @@
     if (!el) return;
     var hasAny = (data.top5 && data.top5.length) || (data.alerts && data.alerts.length) ||
       (data.trend_flips && data.trend_flips.length) ||
-      (data.stance && ((data.stance.bullish || []).length || (data.stance.bearish || []).length));
+      (data.stance && ((data.stance.bullish || []).length || (data.stance.bearish || []).length)) ||
+      (data.msr && (data.msr.gamma_throttle != null || data.msr.rvol_10day != null));
     if (!hasAny) { el.style.display = 'none'; return; }
 
     var body = '<div style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start;">' +
@@ -108,6 +121,7 @@
       sectionHtml('Real-Time Alerts', alertsHtml(data.alerts)) +
       sectionHtml('Risk-Range Flips', flipsHtml(data.trend_flips)) +
       sectionHtml('Macro Show Stance', stanceHtml(data.stance)) +
+      sectionHtml('Mkt Situation', msrHtml(data.msr), 'no data') +
       '</div>';
 
     el.innerHTML =

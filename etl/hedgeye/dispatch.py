@@ -188,10 +188,16 @@ def dispatch(session, email, email_type: str, parsed, cfg) -> dict:
         summary["notes"] = len(parsed.notes)
 
     if parsed.images:
-        media = archive_images(parsed.images, cfg.image_dir, email)
-        if media:
-            insert_skip_duplicates(session, "hist_media", media)
-            summary["images"] = len(media)
+        if email_type == "market_situation":
+            from etl.hedgeye import msr_ocr
+            summary["msr"] = msr_ocr.process_msr_images(
+                parsed.images, feed_date, email.message_id, session
+            )
+        else:
+            media = archive_images(parsed.images, cfg.image_dir, email)
+            if media:
+                insert_skip_duplicates(session, "hist_media", media)
+                summary["images"] = len(media)
 
     # correction auto-reverse: cancel the prior open alert for this ticker
     if "correction" in parsed.flags:

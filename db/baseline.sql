@@ -6788,3 +6788,11 @@ SELECT
     COALESCE(lf.enabled, TRUE) AND COALESCE(et.enabled, TRUE) AS enabled
 FROM ref_load_files lf
 FULL OUTER JOIN ref_hedgeye_email_type et ON lf.feed_code = et.feed_code;
+
+-- hist_msr — Market Situation Report: intraday gamma metrics (one row per day)
+CREATE TABLE IF NOT EXISTS hist_msr (
+    snapshot_date   DATE         NOT NULL PRIMARY KEY,
+    gamma_throttle  NUMERIC(10,4),
+    rvol_10day      NUMERIC(10,4),
+    message_id      TEXT
+);
