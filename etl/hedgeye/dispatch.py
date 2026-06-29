@@ -36,8 +36,22 @@ def _next_business_day(d: date) -> date:
     return d
 
 
-# email_types whose signals are published on day D for use on day D+1
-_NEXT_DAY_FEEDS = frozenset({"risk_range"})
+def _prev_business_day(session, d: date) -> date:
+    """Return the most recent business day before d, skipping weekends and ref_holiday entries."""
+    try:
+        rows = session.execute(text("SELECT holiday_date FROM ref_holiday")).fetchall()
+        holidays = {r[0] for r in rows}
+    except Exception:
+        holidays = set()
+    d = d - timedelta(days=1)
+    while d.weekday() >= 5 or d in holidays:
+        d = d - timedelta(days=1)
+    return d
+
+
+# No feed types currently use next-day date adjustment.
+# RR emails use received date as file name; data inside is for the previous business day.
+_NEXT_DAY_FEEDS: frozenset = frozenset()
 
 
 def already_processed(session, message_id: str) -> bool:
@@ -142,6 +156,14 @@ def dispatch(session, email, email_type: str, parsed, cfg) -> dict:
                 email_type, feed_date,
             )
             return summary
+
+    # RR: data inside the file represents the previous business day (skipping weekends + holidays)
+    if email_type == "risk_range":
+        prev_day = _prev_business_day(session, feed_date)
+        for rows in parsed.tables.values():
+            for row in rows:
+                row["snapshot_date"] = prev_day
+                row["market_close"] = prev_day
 
     for table, rows in parsed.tables.items():
         if rows:
