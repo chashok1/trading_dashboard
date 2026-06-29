@@ -119,6 +119,31 @@
     return metrics + img;
   }
 
+  function positionsHtml(pos) {
+    if (!pos || (!pos.longs.length && !pos.shorts.length)) return '';
+    var symHtml = function (p, color) {
+      var s = symLink(p.sym);
+      return p.best
+        ? '<span style="color:' + color + '; font-weight:700;">' + s + '*</span>'
+        : '<span style="color:' + color + ';">' + s + '</span>';
+    };
+    var line = function (label, arr, color) {
+      if (!arr.length) return '';
+      return '<div style="font-size:10px; line-height:1.6;">' +
+        '<span style="font-weight:700; color:' + color + ';">' +
+        label + ' (' + arr.length + ')</span> ' +
+        arr.map(function (p) { return symHtml(p, color); }).join(' ') + '</div>';
+    };
+    var n = (pos.neutral || []);
+    var neutralLine = n.length
+      ? '<div style="font-size:10px; line-height:1.5; color:#888;">N ' +
+        n.map(function (p) { return esc(p.sym); }).join(' ') + '</div>'
+      : '';
+    return line('L', pos.longs, '#1d9e75') +
+           line('S', pos.shorts, '#d4537e') +
+           neutralLine;
+  }
+
   function stanceHtml(stance) {
     stance = stance || {};
     var bull = (stance.bullish || []);
@@ -140,17 +165,25 @@
       (data.trend_flips && data.trend_flips.length) ||
       (data.stance && ((data.stance.bullish || []).length || (data.stance.bearish || []).length)) ||
       (data.msr && (data.msr.gamma_throttle != null || data.msr.rvol_10day != null)) ||
-      (data.early_look && data.early_look.takeaways);
+      (data.early_look && data.early_look.takeaways) ||
+      (data.positions && (data.positions.longs.length || data.positions.shorts.length));
     if (!hasAny) { el.style.display = 'none'; return; }
 
     var elDate = data.early_look ? ' <span style="color:#999;font-weight:400;">(' + esc(data.early_look.date || '') + ')</span>' : '';
+    var posDate = data.positions ? ' <span style="color:#999;font-weight:400;">(' + esc(data.positions.date || '') + ')</span>' : '';
     var body = '<div style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start;">' +
       sectionHtml('Top-5 Ideas', top5Html(data.top5)) +
       sectionHtml('Real-Time Alerts', alertsHtml(data.alerts)) +
-      sectionHtml('Risk-Range Flips', flipsHtml(data.trend_flips)) +
-      sectionHtml('Macro Show Stance', stanceHtml(data.stance)) +
+      sectionHtml('Trend Change', flipsHtml(data.trend_flips)) +
+      sectionHtml('Macro TL;DR', stanceHtml(data.stance)) +
       sectionHtml('Mkt Situation', msrHtml(data.msr), 'no data') +
       '</div>' +
+      (data.positions
+        ? '<div style="margin-top:8px; border-top:1px solid #ece9f8; padding-top:6px;">' +
+          '<div style="font-weight:700; font-size:9px; text-transform:uppercase; ' +
+          'letter-spacing:0.5px; color:#555; margin-bottom:4px;">Hedgeye Positions' + posDate + '</div>' +
+          positionsHtml(data.positions) + '</div>'
+        : '') +
       (data.early_look
         ? '<div style="margin-top:8px; border-top:1px solid #ece9f8; padding-top:6px;">' +
           '<div style="font-weight:700; font-size:9px; text-transform:uppercase; ' +

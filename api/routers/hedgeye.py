@@ -129,6 +129,33 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                     out["stance"][key].append(sym)
             out["stance_date"] = stance_date.isoformat()
 
+        # Hedgeye Positions — latest hist_call snapshot on/before effective_date.
+        call_date = s.execute(text(
+            "SELECT MAX(snapshot_date) FROM hist_call WHERE snapshot_date <= :eff"
+        ), {"eff": effective_date}).scalar()
+        if call_date is not None:
+            call_rows = s.execute(text(
+                "SELECT COALESCE(tos_symbol,symbol) sym, outlook, outlook_modifier"
+                " FROM hist_call WHERE snapshot_date = :cd"
+                " ORDER BY CASE WHEN outlook_modifier LIKE 'best idea%'"
+                " THEN 0 ELSE 1 END, sym"
+            ), {"cd": call_date}).fetchall()
+            out["positions"] = {
+                "date": call_date.isoformat(),
+                "longs": [
+                    {"sym": r[0], "best": "best idea" in (r[2] or "")}
+                    for r in call_rows if r[1] == "BULLISH"
+                ],
+                "shorts": [
+                    {"sym": r[0], "best": "best idea" in (r[2] or "")}
+                    for r in call_rows if r[1] == "BEARISH"
+                ],
+                "neutral": [
+                    {"sym": r[0]}
+                    for r in call_rows if r[1] == "NEUTRAL"
+                ],
+            }
+
         # Early Look — latest key takeaways on/before effective_date.
         el_row = s.execute(text(
             "SELECT note_date, subject, note_text FROM note_repo"
