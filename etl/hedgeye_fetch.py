@@ -23,6 +23,7 @@ import argparse
 import logging
 import time
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -35,6 +36,41 @@ from etl.hedgeye.source import open_source
 
 setup_logging()
 log = logging.getLogger("hedgeye_fetch")
+
+_ET = ZoneInfo("America/New_York")
+_MARKET_OPEN_H  = 7   # 7:30 AM ET — first Hedgeye emails arrive ~8 AM
+_MARKET_OPEN_M  = 30
+_MARKET_CLOSE_H = 17  # 5:30 PM ET — after-close window done
+_MARKET_CLOSE_M = 30
+
+
+def _load_holidays() -> set:
+    """Return set of date objects from ref_holiday (best-effort; empty on error)."""
+    try:
+        from etl.db import session_scope
+        from sqlalchemy import text
+        with session_scope() as s:
+            rows = s.execute(text("SELECT holiday_date FROM ref_holiday")).fetchall()
+            return {r[0] for r in rows}
+    except Exception:
+        return set()
+
+
+def _poll_interval_sec(cfg, holidays: set) -> int:
+    """Return seconds to sleep before the next poll pass.
+
+    Weekend or market holiday → twice a day (43200 s).
+    Weekday outside 7:30 AM–5:30 PM ET → once an hour (3600 s).
+    Otherwise → cfg.poll_sec (tunable via ref_settings, default 240 s).
+    """
+    now = datetime.now(_ET)
+    if now.weekday() >= 5 or now.date() in holidays:
+        return 43200  # twice a day
+    market_open  = now.replace(hour=_MARKET_OPEN_H,  minute=_MARKET_OPEN_M,  second=0)
+    market_close = now.replace(hour=_MARKET_CLOSE_H, minute=_MARKET_CLOSE_M, second=0)
+    if now < market_open or now >= market_close:
+        return 3600   # once an hour after hours
+    return cfg.poll_sec
 
 
 def _trigger_derive() -> None:
@@ -121,13 +157,21 @@ def main() -> None:
 
     since = datetime.now(timezone.utc) - timedelta(days=2)
     if args.loop:
+        holidays = _load_holidays()
+        next_holiday_refresh = 86400  # refresh holiday set once a day
         while True:
             try:
                 got = _process_pass(cfg, since, args.dry_run)
                 log.info("pass done: %d processed", got)
             except Exception:  # noqa: BLE001
                 log.exception("poll pass failed")
-            time.sleep(cfg.poll_sec)
+            interval = _poll_interval_sec(cfg, holidays)
+            log.debug("next poll in %ds", interval)
+            time.sleep(interval)
+            next_holiday_refresh -= interval
+            if next_holiday_refresh <= 0:
+                holidays = _load_holidays()
+                next_holiday_refresh = 86400
     else:
         _process_pass(cfg, since, args.dry_run)
 
