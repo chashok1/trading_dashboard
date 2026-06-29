@@ -11,6 +11,7 @@ INSERT INTO ref_settings (setting_name, setting_value) VALUES
   ('hedgeye_mailbox',            'INBOX'),
   ('hedgeye_image_dir',          'etl/working/hedgeye_charts'),
   ('hedgeye_hefiles_dir',        'C:\Ashok\Investing\Stocks\HEFiles'),
+  ('hedgeye_msr_dir',            'C:\Ashok\Investing\Stocks\MSR'),
   ('hedgeye_llm_enabled',        'false')
 ON CONFLICT (setting_name) DO NOTHING;
 

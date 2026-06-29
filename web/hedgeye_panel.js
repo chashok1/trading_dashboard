@@ -90,7 +90,17 @@
     if (msr.rvol_10day != null)
       parts.push('<span style="color:#555;">10-Day rVol:</span> <strong>' +
         esc(msr.rvol_10day.toFixed(2)) + '</strong>');
-    return '<div style="font-size:11px; line-height:1.7;">' + parts.join('&nbsp;&nbsp;') + '</div>';
+    var metrics = parts.length
+      ? '<div style="font-size:11px; line-height:1.7;">' + parts.join('&nbsp;&nbsp;') + '</div>'
+      : '';
+    var img = msr.image_url
+      ? '<img src="' + esc(msr.image_url) + '" ' +
+        'style="max-width:100%; height:auto; max-height:110px; margin-top:5px; ' +
+        'border-radius:3px; display:block; cursor:pointer;" ' +
+        'title="MSR ' + esc(msr.date || '') + '" ' +
+        'onerror="this.style.display=\'none\'">'
+      : '';
+    return metrics + img;
   }
 
   function stanceHtml(stance) {

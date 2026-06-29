@@ -204,7 +204,7 @@ def dispatch(session, email, email_type: str, parsed, cfg) -> dict:
             from etl.hedgeye import msr_ocr
             summary["msr"] = msr_ocr.process_msr_images(
                 parsed.images, feed_date, email.message_id, session,
-                hefiles_dir=cfg.hefiles_dir,
+                msr_dir=cfg.msr_dir,
             )
         elif email_type == "signal_strength" and parsed.images:
             _save_hefiles_image(

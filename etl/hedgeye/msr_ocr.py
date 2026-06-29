@@ -2,10 +2,11 @@
 MSR chart OCR — process MARKET SITUATION REPORT chart images in-memory.
 
 Downloads each chart URL, runs Tesseract OCR, applies two rules:
-  1. "SPX Gamma Exposure" found → save image to HEFiles/MSR_{date}.png
+  1. "SPX Gamma Exposure" found → save image to msr_dir/MSR YYYY-MM-DD.png
   2. "Gamma Throttle" found → parse Gamma Throttle + 10-Day rVol → hist_msr
 
-No images are written to hedgeye_charts; no hist_media entries are created.
+Rolling 30-day archive: images older than 30 days are deleted automatically.
+No images written to hedgeye_charts; no hist_media entries created.
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ import io
 import logging
 import re
 import urllib.request
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from sqlalchemy import text
@@ -37,8 +38,24 @@ def _ocr(img_bytes: bytes) -> str:
         return ""
 
 
+def _cleanup_old(msr_dir: str, days: int = 30) -> None:
+    """Delete MSR images whose filename date is older than `days` days."""
+    cutoff = date.today() - timedelta(days=days)
+    try:
+        for f in Path(msr_dir).glob("MSR *.png"):
+            try:
+                d = date.fromisoformat(f.stem[4:])   # "MSR 2026-06-29" -> "2026-06-29"
+                if d < cutoff:
+                    f.unlink()
+                    log.info("msr_ocr: deleted old MSR %s", f.name)
+            except (ValueError, OSError):
+                pass
+    except Exception as e:
+        log.warning("msr_ocr: cleanup failed: %s", e)
+
+
 def process_msr_images(
-    urls: list[str], email_date: date, message_id: str, session, hefiles_dir: str = ""
+    urls: list[str], email_date: date, message_id: str, session, msr_dir: str = ""
 ) -> dict:
     """OCR each chart in-memory; apply SPX Gamma and Gamma Throttle rules."""
     spx_saved = False
@@ -57,13 +74,14 @@ def process_msr_images(
 
         if not spx_saved and "SPX Gamma Exposure" in ocr_text:
             try:
-                out_dir = Path(hefiles_dir) if hefiles_dir else Path(".")
+                out_dir = Path(msr_dir) if msr_dir else Path(".")
                 out_dir.mkdir(parents=True, exist_ok=True)
-                dest = out_dir / f"MSR_{email_date.isoformat()}.png"
+                dest = out_dir / f"MSR {email_date.isoformat()}.png"
                 dest.write_bytes(img_bytes)
                 spx_saved = True
                 summary["spx_gamma_saved"] = True
                 log.info("msr_ocr: SPX Gamma chart saved -> %s", dest)
+                _cleanup_old(str(out_dir))
             except Exception as e:
                 log.warning("msr_ocr: failed to save SPX Gamma chart: %s", e)
 

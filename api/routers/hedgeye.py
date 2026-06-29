@@ -16,7 +16,10 @@ from typing import Optional
 
 import json
 
+from pathlib import Path
+
 from fastapi import APIRouter, Query, Body, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy import text
 
 from etl.db import session_scope
@@ -144,9 +147,21 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                     "rvol_10day": (
                         float(msr_row[1]) if msr_row[1] is not None else None
                     ),
+                    "image_url": f"/api/msr/image?date={msr_date.isoformat()}",
                 }
 
     return out
+
+
+@router.get("/api/msr/image")
+def msr_image(date: Optional[str] = Query(None)):
+    from etl.hedgeye import config as hcfg
+    msr_dir = hcfg.get("msr_dir") or hcfg.DEFAULTS.get("msr_dir", "")
+    d = _resolve_date(date)
+    img_path = Path(msr_dir) / f"MSR {d.isoformat()}.png"
+    if not img_path.exists():
+        raise HTTPException(status_code=404, detail="MSR image not found")
+    return FileResponse(str(img_path), media_type="image/png")
 
 
 # ---------------------------------------------------------------------------
