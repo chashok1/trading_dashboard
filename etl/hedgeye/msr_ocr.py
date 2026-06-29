@@ -22,8 +22,8 @@ log = logging.getLogger("hedgeye.msr_ocr")
 
 _TESSERACT = r"C:\Users\chash\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"
 
-_GT_RE = re.compile(r"Gamma\s+Throttle[:\s]+([\d.]+)", re.IGNORECASE)
-_RV_RE = re.compile(r"10[- ]Day\s+rVol[:\s]+([\d.]+)", re.IGNORECASE)
+_GT_RE = re.compile(r"Gamma\s+Throttle[:\s]+(-?[\d.]+)", re.IGNORECASE)
+_RV_RE = re.compile(r"10[- ]Day\s+rVol[:\s]+(-?[\d.]+)", re.IGNORECASE)
 
 
 def _ocr(img_bytes: bytes) -> str:
