@@ -288,7 +288,6 @@ def parse_risk_range(email: Email) -> Parsed:
     p.add_rows("hist_rr", rows)
     p.flags.append(f"rr_rows={len(rows)}")
     if printed_changes:
-        # QA cross-check happens at dispatch time vs drv_rr_trend_change; transient
         p.warnings.append(f"trend_change_printed={len(printed_changes)} (QA only, not stored)")
     return p
 
