@@ -234,7 +234,8 @@
       : '';
 
     var bodyHtml =
-      '<div id="hePanelBody" style="display:' + (collapsed ? 'none' : 'block') + '; margin-top:6px;">' +
+      '<div id="hePanelBody" style="display:' + (collapsed ? 'none' : 'block') + '; margin-top:6px; ' +
+      'max-height:260px; overflow-y:auto;">' +
       flexRow + earlyBox + '</div>';
 
     var toggleIcon = collapsed ? '&#9660;' : '&#9650;';
