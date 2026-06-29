@@ -119,6 +119,22 @@
     return metrics + img;
   }
 
+  function etfChangesHtml(etf) {
+    if (!etf || !etf.changes || !etf.changes.length) return '';
+    var adds = etf.changes.filter(function (c) { return c.action === 'add'; });
+    var removes = etf.changes.filter(function (c) { return c.action === 'remove'; });
+    var line = function (label, arr, color) {
+      if (!arr.length) return '';
+      return '<div style="font-size:10px; line-height:1.6;">' +
+        '<span style="font-weight:700; color:' + color + ';">' + label + '</span> ' +
+        arr.map(function (c) {
+          var sc = c.side === 'long' ? '#1d9e75' : '#d4537e';
+          return '<span style="color:' + sc + ';">' + symLink(c.sym) + '</span>';
+        }).join(' ') + '</div>';
+    };
+    return line('ADD', adds, '#1d9e75') + line('REM', removes, '#c0392b');
+  }
+
   function positionsHtml(pos) {
     if (!pos || (!pos.longs.length && !pos.shorts.length)) return '';
     var symHtml = function (p, color) {
@@ -166,14 +182,17 @@
       (data.stance && ((data.stance.bullish || []).length || (data.stance.bearish || []).length)) ||
       (data.msr && (data.msr.gamma_throttle != null || data.msr.rvol_10day != null)) ||
       (data.early_look && data.early_look.takeaways) ||
-      (data.positions && (data.positions.longs.length || data.positions.shorts.length));
+      (data.positions && (data.positions.longs.length || data.positions.shorts.length)) ||
+      (data.etf_changes && data.etf_changes.changes && data.etf_changes.changes.length);
     if (!hasAny) { el.style.display = 'none'; return; }
 
     var elDate = data.early_look ? ' <span style="color:#999;font-weight:400;">(' + esc(data.early_look.date || '') + ')</span>' : '';
     var posDate = data.positions ? ' <span style="color:#999;font-weight:400;">(' + esc(data.positions.date || '') + ')</span>' : '';
+    var etfDate = data.etf_changes ? ' <span style="color:#999;font-weight:400;">(' + esc(data.etf_changes.date || '') + ')</span>' : '';
     var body = '<div style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start;">' +
       sectionHtml('Top-5 Ideas', top5Html(data.top5)) +
       sectionHtml('Real-Time Alerts', alertsHtml(data.alerts)) +
+      sectionHtml('ETF Pro Changes', etfChangesHtml(data.etf_changes)) +
       sectionHtml('Trend Change', flipsHtml(data.trend_flips)) +
       sectionHtml('Macro TL;DR', stanceHtml(data.stance)) +
       sectionHtml('Mkt Situation', msrHtml(data.msr), 'no data') +

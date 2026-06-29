@@ -47,7 +47,8 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
         latest_q = (
             "SELECT MAX(d) FROM ("
             "SELECT MAX(snapshot_date) d FROM hist_rta "
-            "UNION ALL SELECT MAX(snapshot_date) FROM hist_call_top5) sub"
+            "UNION ALL SELECT MAX(snapshot_date) FROM hist_call_top5 "
+            "UNION ALL SELECT MAX(event_date) FROM hist_etfchg) sub"
         )
         latest_hedgeye = s.execute(text(latest_q)).scalar()
         effective_date = max(d, latest_hedgeye) if latest_hedgeye else d
@@ -153,6 +154,24 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                 "neutral": [
                     {"sym": r[0]}
                     for r in call_rows if r[1] == "NEUTRAL"
+                ],
+            }
+
+        # ETF Pro changes — latest event_date on/before effective_date.
+        etf_date = s.execute(text(
+            "SELECT MAX(event_date) FROM hist_etfchg WHERE event_date <= :eff"
+        ), {"eff": effective_date}).scalar()
+        if etf_date is not None:
+            etf_rows = s.execute(text(
+                "SELECT COALESCE(tos_symbol,symbol) sym, outlook, change_str"
+                " FROM hist_etfchg WHERE event_date = :ed"
+                " ORDER BY change_str, sym"
+            ), {"ed": etf_date}).fetchall()
+            out["etf_changes"] = {
+                "date": etf_date.isoformat(),
+                "changes": [
+                    {"sym": r[0], "side": r[1], "action": r[2]}
+                    for r in etf_rows
                 ],
             }
 
