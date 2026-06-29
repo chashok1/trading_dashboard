@@ -402,6 +402,21 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
                 read, ins, skp, skip_reasons = load_one_tab(s, wb, mapping, str(p), run_id=run_id)
 
             close_run(s, run_id, rows_read=read, rows_inserted=ins, rows_skipped=skp, skip_reasons=skip_reasons or None)
+
+            # For RR files the file name date is the email received date, but the
+            # data date (snapshot_date in hist_rr) is the previous business day.
+            # Override file_dt so meta_file_processed.file_date reflects the data date.
+            if target_tab.lower() == "rr" and ins > 0:
+                try:
+                    actual_dt = s.execute(
+                        text("SELECT MAX(snapshot_date) FROM hist_rr WHERE source_file = :fp"),
+                        {"fp": str(p)},
+                    ).scalar()
+                    if actual_dt:
+                        file_dt = actual_dt
+                except Exception:
+                    pass
+
             mark_processed(s, file_path=str(p), file_mtime=file_mtime,
                            file_type=ft, target_tab=target_tab,
                            file_dt=file_dt, run_id=run_id)
