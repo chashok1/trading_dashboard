@@ -129,6 +129,19 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                     out["stance"][key].append(sym)
             out["stance_date"] = stance_date.isoformat()
 
+        # Early Look — latest key takeaways on/before effective_date.
+        el_row = s.execute(text(
+            "SELECT note_date, subject, note_text FROM note_repo"
+            " WHERE source_type='early_look' AND note_date <= :eff"
+            " ORDER BY note_date DESC, note_id DESC LIMIT 1"
+        ), {"eff": effective_date}).first()
+        if el_row:
+            out["early_look"] = {
+                "date": el_row[0].isoformat(),
+                "subject": el_row[1],
+                "takeaways": el_row[2],
+            }
+
         # Market Situation Report — latest gamma metrics on/before effective_date.
         msr_date = s.execute(text(
             "SELECT MAX(snapshot_date) FROM hist_msr WHERE snapshot_date <= :eff"

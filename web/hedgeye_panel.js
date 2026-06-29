@@ -81,6 +81,22 @@
     }).join('');
   }
 
+  function earlyLookHtml(el) {
+    if (!el || !el.takeaways) return '';
+    var bullets = el.takeaways.split(/[••�]+/).map(function (s) {
+      return s.replace(/\s+/g, ' ').trim();
+    }).filter(function (s) { return s.length > 10; });
+    if (!bullets.length) {
+      bullets = [el.takeaways.slice(0, 600)];
+    }
+    return bullets.map(function (b) {
+      return '<div style="font-size:10px; line-height:1.5; margin-bottom:3px; padding-left:8px; ' +
+        'text-indent:-8px;">' +
+        '<span style="color:#534ab7; font-weight:700;">&#8226;</span> ' +
+        esc(b.slice(0, 200)) + (b.length > 200 ? '…' : '') + '</div>';
+    }).slice(0, 5).join('');
+  }
+
   function msrHtml(msr) {
     if (!msr) return '';
     var parts = [];
@@ -123,16 +139,24 @@
     var hasAny = (data.top5 && data.top5.length) || (data.alerts && data.alerts.length) ||
       (data.trend_flips && data.trend_flips.length) ||
       (data.stance && ((data.stance.bullish || []).length || (data.stance.bearish || []).length)) ||
-      (data.msr && (data.msr.gamma_throttle != null || data.msr.rvol_10day != null));
+      (data.msr && (data.msr.gamma_throttle != null || data.msr.rvol_10day != null)) ||
+      (data.early_look && data.early_look.takeaways);
     if (!hasAny) { el.style.display = 'none'; return; }
 
+    var elDate = data.early_look ? ' <span style="color:#999;font-weight:400;">(' + esc(data.early_look.date || '') + ')</span>' : '';
     var body = '<div style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start;">' +
       sectionHtml('Top-5 Ideas', top5Html(data.top5)) +
       sectionHtml('Real-Time Alerts', alertsHtml(data.alerts)) +
       sectionHtml('Risk-Range Flips', flipsHtml(data.trend_flips)) +
       sectionHtml('Macro Show Stance', stanceHtml(data.stance)) +
       sectionHtml('Mkt Situation', msrHtml(data.msr), 'no data') +
-      '</div>';
+      '</div>' +
+      (data.early_look
+        ? '<div style="margin-top:8px; border-top:1px solid #ece9f8; padding-top:6px;">' +
+          '<div style="font-weight:700; font-size:9px; text-transform:uppercase; ' +
+          'letter-spacing:0.5px; color:#555; margin-bottom:4px;">Early Look' + elDate + '</div>' +
+          earlyLookHtml(data.early_look) + '</div>'
+        : '');
 
     el.innerHTML =
       '<div style="padding:5px 10px; background:#fbfbfe; border:1px solid #e6e3f5; border-radius:5px;">' +
