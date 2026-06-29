@@ -676,6 +676,9 @@ def parse_signal_strength(email: Email) -> Parsed:
                     })
     p.add_rows("hist_sss_change", rows)
     p.flags.append("delta_only")
+    p.images = _chart_image_urls(email.html)
+    if not p.images:
+        p.images = re.findall(r'<img[^>]+src="(https?://[^"]+)"', email.html)[:1]
     return p
 
 

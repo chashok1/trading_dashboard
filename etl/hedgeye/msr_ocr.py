@@ -21,7 +21,6 @@ from sqlalchemy import text
 log = logging.getLogger("hedgeye.msr_ocr")
 
 _TESSERACT = r"C:\Users\chash\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"
-_HEFILES = Path(r"C:\Ashok\Investing\Stocks\HEFiles")
 
 _GT_RE = re.compile(r"Gamma\s+Throttle[:\s]+([\d.]+)", re.IGNORECASE)
 _RV_RE = re.compile(r"10[- ]Day\s+rVol[:\s]+([\d.]+)", re.IGNORECASE)
@@ -39,7 +38,7 @@ def _ocr(img_bytes: bytes) -> str:
 
 
 def process_msr_images(
-    urls: list[str], email_date: date, message_id: str, session
+    urls: list[str], email_date: date, message_id: str, session, hefiles_dir: str = ""
 ) -> dict:
     """OCR each chart in-memory; apply SPX Gamma and Gamma Throttle rules."""
     spx_saved = False
@@ -58,8 +57,9 @@ def process_msr_images(
 
         if not spx_saved and "SPX Gamma Exposure" in ocr_text:
             try:
-                _HEFILES.mkdir(parents=True, exist_ok=True)
-                dest = _HEFILES / f"MSR_{email_date.isoformat()}.png"
+                out_dir = Path(hefiles_dir) if hefiles_dir else Path(".")
+                out_dir.mkdir(parents=True, exist_ok=True)
+                dest = out_dir / f"MSR_{email_date.isoformat()}.png"
                 dest.write_bytes(img_bytes)
                 spx_saved = True
                 summary["spx_gamma_saved"] = True

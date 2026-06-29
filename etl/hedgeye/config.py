@@ -28,6 +28,7 @@ KEYS = {
     "imap_user": "hedgeye_imap_user",
     "mailbox": "hedgeye_mailbox",                  # default INBOX
     "image_dir": "hedgeye_image_dir",              # configurable archive folder
+    "hefiles_dir": "hedgeye_hefiles_dir",          # HEFiles output directory
     # optional LLM enrichment (off by default)
     "llm_enabled": "hedgeye_llm_enabled",
     "llm_provider": "hedgeye_llm_provider",
@@ -43,6 +44,7 @@ DEFAULTS = {
     "provider": "imap",
     "mailbox": "INBOX",
     "image_dir": "etl/working/hedgeye_charts",
+    "hefiles_dir": r"C:\Ashok\Investing\Stocks\HEFiles",
     "llm_enabled": "false",
 }
 
@@ -64,6 +66,7 @@ class Settings:
     imap_password: Optional[str]
     mailbox: str
     image_dir: str
+    hefiles_dir: str
     llm_enabled: bool
 
 
@@ -101,5 +104,6 @@ def load() -> Settings:
         imap_password=secret("imap_password"),
         mailbox=get("mailbox") or "INBOX",
         image_dir=get("image_dir") or DEFAULTS["image_dir"],
+        hefiles_dir=get("hefiles_dir") or DEFAULTS["hefiles_dir"],
         llm_enabled=(get("llm_enabled") or "false").lower() == "true",
     )

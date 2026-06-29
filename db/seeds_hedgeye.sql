@@ -10,6 +10,7 @@ INSERT INTO ref_settings (setting_name, setting_value) VALUES
   ('hedgeye_imap_user',          'chilukua14@gmail.com'),
   ('hedgeye_mailbox',            'INBOX'),
   ('hedgeye_image_dir',          'etl/working/hedgeye_charts'),
+  ('hedgeye_hefiles_dir',        'C:\Ashok\Investing\Stocks\HEFiles'),
   ('hedgeye_llm_enabled',        'false')
 ON CONFLICT (setting_name) DO NOTHING;
 

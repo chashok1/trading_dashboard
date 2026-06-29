@@ -107,6 +107,18 @@ def archive_images(urls: list[str], folder: str, email, max_n: int = 4) -> list[
     return out
 
 
+def _save_hefiles_image(url: str, hefiles_dir: str, filename: str) -> None:
+    """Download a single image URL and save it to hefiles_dir/{filename}."""
+    try:
+        dest = Path(hefiles_dir)
+        dest.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(url, timeout=15) as resp:
+            (dest / filename).write_bytes(resp.read())
+        log.info("saved %s -> %s", filename, hefiles_dir)
+    except Exception as e:
+        log.warning("_save_hefiles_image failed %s: %s", filename, e)
+
+
 def _adapt_rows(table: str, rows: list[dict]) -> list[dict]:
     """Map parser-emitted columns to live DB columns where names differ.
 
@@ -191,8 +203,15 @@ def dispatch(session, email, email_type: str, parsed, cfg) -> dict:
         if email_type == "market_situation":
             from etl.hedgeye import msr_ocr
             summary["msr"] = msr_ocr.process_msr_images(
-                parsed.images, feed_date, email.message_id, session
+                parsed.images, feed_date, email.message_id, session,
+                hefiles_dir=cfg.hefiles_dir,
             )
+        elif email_type == "signal_strength" and parsed.images:
+            _save_hefiles_image(
+                parsed.images[0], cfg.hefiles_dir,
+                f"SSS_{feed_date.isoformat()}.png",
+            )
+            summary["images"] = 1
         else:
             media = archive_images(parsed.images, cfg.image_dir, email)
             if media:
