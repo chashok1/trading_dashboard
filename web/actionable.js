@@ -2,6 +2,7 @@
 
 const state = {
   date: null,
+  anchorDate: null,  // latest available date (dates[0]) -- "viewing live" reference
   allRows: [],   // full unfiltered dataset for the date
   baseRows: [],  // passes every filter except the action chip (drives chip counts)
   rows: [],      // filtered subset shown in grid
@@ -605,7 +606,12 @@ async function loadMacroBand() {
   const band = $('macroBand');
   if (!band) return;
   try {
-    const dateParam = state.date ? `?date=${encodeURIComponent(state.date)}` : '';
+    // Quad regime is a calendar-based forward outlook, not tied to the trading
+    // anchor -- omit `date` when viewing live so the backend's own real-today
+    // default applies (current month/quarter don't wait on TOSD to load).
+    // Viewing an explicit historical date still passes it through (no look-ahead).
+    const viewingLive = !state.date || state.date === state.anchorDate;
+    const dateParam = viewingLive ? '' : `?date=${encodeURIComponent(state.date)}`;
     const [data, factors] = await Promise.all([
       fetchJson(`/api/dashboard/quads${dateParam}`),
       fetchJson(`/api/quad/band-factors${dateParam}`).catch(() => ({ bull: [], bear: [] })),
@@ -967,6 +973,7 @@ async function loadDates() {
     sel.appendChild(o);
   }
   state.date = dates[0] || null;
+  state.anchorDate = state.date;
   if (state.date) sel.value = state.date;
   await loadActionable();
   checkEodFeed();

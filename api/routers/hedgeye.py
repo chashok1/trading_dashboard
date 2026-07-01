@@ -31,6 +31,11 @@ _gmail_fetch_state: dict = {"running": False, "last_run": None, "last_count": No
 
 router = APIRouter(tags=["hedgeye"])
 
+# email_types that drive the panel's effective_date. Kept to the two
+# reliably-daily morning feeds (see actionable_hedgeye below) — every other
+# type has no panel card or isn't daily, so it must not move this date.
+_PANEL_EMAIL_TYPES = ("risk_range", "early_look")
+
 
 @router.get("/api/actionable/hedgeye")
 def actionable_hedgeye(date: Optional[str] = Query(None)):
@@ -77,31 +82,36 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
         anchor = s.execute(text("SELECT MAX(as_of_date) FROM v_available_dates")).scalar()
         viewing_live = anchor is not None and d >= anchor
 
-        # Compute effective date: clamp up to latest available Hedgeye data,
-        # but only when viewing live (see viewing_live above).
+        # Compute effective date: clamp up to the latest calendar date a
+        # panel-relevant email was received (_PANEL_EMAIL_TYPES only — a
+        # weekly/analysis email with no panel card must not move this), but
+        # only when viewing live (see viewing_live above). Weekend dates are
+        # excluded too: the anchor is always a market weekday, and a stray
+        # weekend send (e.g. a resend) should never park the panel on a
+        # Saturday/Sunday it can never advance past. This is a ceiling, not a
+        # manufacture — bumping it only lets already-ingested rows whose own
+        # date already qualifies show through; it can't pull in data that
+        # isn't there yet. So every section below can share one effective_date
+        # instead of each computing its own, which used to let some cards
+        # advance to today while others stayed on yesterday.
         if viewing_live:
-            latest_q = (
-                "SELECT MAX(d) FROM ("
-                "SELECT MAX(snapshot_date) d FROM hist_rta "
-                "UNION ALL SELECT MAX(snapshot_date) FROM hist_call_top5 "
-                "UNION ALL SELECT MAX(event_date) FROM hist_etfchg) sub"
-            )
-            latest_hedgeye = s.execute(text(latest_q)).scalar()
+            latest_hedgeye = s.execute(text(
+                "SELECT MAX((received_at AT TIME ZONE 'America/New_York')::date)"
+                " FROM meta_hedgeye_msg WHERE received_at IS NOT NULL"
+                " AND email_type = ANY(:types)"
+                " AND EXTRACT(DOW FROM received_at AT TIME ZONE 'America/New_York') NOT IN (0, 6)"
+            ), {"types": list(_PANEL_EMAIL_TYPES)}).scalar()
             effective_date = max(d, latest_hedgeye) if latest_hedgeye else d
         else:
             effective_date = d
-
-        # Bound for note-only sections (Early Look, Call Macro): these aren't
-        # anchored to market-close data, so when viewing live they can show up
-        # through today's real calendar date; when viewing history they're
-        # capped at `d` like everything else — no look-ahead.
-        note_bound = s.execute(text("SELECT CURRENT_DATE")).scalar() if viewing_live else d
         out["as_of"] = effective_date.isoformat()
 
-        # Top-5 actionable ideas — latest call snapshot on/before effective_date.
+        # Top-5 actionable ideas — only if received exactly on effective_date;
+        # no carry-forward, so a day with nothing new shows blank rather than
+        # quietly repeating an older snapshot.
         top_date = s.execute(text(
             "SELECT MAX(snapshot_date) FROM hist_call_top5"
-            " WHERE snapshot_date <= :eff"
+            " WHERE snapshot_date = :eff"
         ), {"eff": effective_date}).scalar()
         if top_date is not None:
             rows = s.execute(text(
@@ -115,9 +125,9 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
             out["top5_date"] = top_date.isoformat()
             out["top5_received_at"] = _recv(s, "hist_call_top5", "snapshot_date", top_date)
 
-        # Real-Time Alerts — latest snapshot on/before effective_date, non-superseded.
+        # Real-Time Alerts — only if received exactly on effective_date, non-superseded.
         rta_date = s.execute(text(
-            "SELECT MAX(snapshot_date) FROM hist_rta WHERE snapshot_date <= :eff"
+            "SELECT MAX(snapshot_date) FROM hist_rta WHERE snapshot_date = :eff"
         ), {"eff": effective_date}).scalar()
         if rta_date is not None:
             out["rta_date"] = rta_date.isoformat()
@@ -147,34 +157,35 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                     "notes": r[9],
                 })
 
-        # Risk Range trend flips — latest as_of_date on/before effective_date.
-        # drv_rr_trend_change is derived; flip_date = prev_biz_day of the RR email.
-        # Match the risk_range email received the next 1-3 calendar days after flip_date.
-        flip_date = s.execute(text(
-            "SELECT MAX(as_of_date) FROM drv_rr_trend_change WHERE as_of_date <= :eff"
+        # Risk Range trend flips — blank unless a risk_range email was actually
+        # received on effective_date. Flip data itself is intrinsically dated
+        # the prior business day (RR reports on prior close), so unlike the
+        # other sections we can't match on date equality directly — instead
+        # gate on "did an RR email land today", then look up its flip data.
+        rr_recv = s.execute(text(
+            "SELECT received_at FROM meta_hedgeye_msg"
+            " WHERE email_type = 'risk_range' AND received_at IS NOT NULL"
+            " AND (received_at AT TIME ZONE 'America/New_York')::date = :eff"
+            " ORDER BY received_at DESC LIMIT 1"
         ), {"eff": effective_date}).scalar()
-        if flip_date is not None:
-            out["trend_flips_date"] = flip_date.isoformat()
-            rr_recv = s.execute(text(
-                "SELECT received_at FROM meta_hedgeye_msg"
-                " WHERE email_type = 'risk_range' AND received_at IS NOT NULL"
-                " AND (received_at AT TIME ZONE 'America/New_York')::date > :d"
-                " AND (received_at AT TIME ZONE 'America/New_York')::date <= :d + interval '3 days'"
-                " ORDER BY received_at LIMIT 1"
-            ), {"d": flip_date}).scalar()
-            if rr_recv:
+        if rr_recv is not None:
+            flip_date = s.execute(text(
+                "SELECT MAX(as_of_date) FROM drv_rr_trend_change WHERE as_of_date <= :eff"
+            ), {"eff": effective_date}).scalar()
+            if flip_date is not None:
+                out["trend_flips_date"] = flip_date.isoformat()
                 out["trend_flips_received_at"] = rr_recv.isoformat()
-            rows = s.execute(text(
-                "SELECT tos_symbol, from_trend, to_trend "
-                "FROM drv_rr_trend_change WHERE as_of_date = :fd ORDER BY tos_symbol"
-            ), {"fd": flip_date}).fetchall()
-            out["trend_flips"] = [
-                {"symbol": r[0], "from": r[1], "to": r[2]} for r in rows
-            ]
+                rows = s.execute(text(
+                    "SELECT tos_symbol, from_trend, to_trend "
+                    "FROM drv_rr_trend_change WHERE as_of_date = :fd ORDER BY tos_symbol"
+                ), {"fd": flip_date}).fetchall()
+                out["trend_flips"] = [
+                    {"symbol": r[0], "from": r[1], "to": r[2]} for r in rows
+                ]
 
-        # Macro Show stance — latest stance snapshot on/before effective_date.
+        # Macro Show stance — only if received exactly on effective_date.
         stance_date = s.execute(text(
-            "SELECT MAX(snapshot_date) FROM hist_hedgeye_stance WHERE snapshot_date <= :eff"
+            "SELECT MAX(snapshot_date) FROM hist_hedgeye_stance WHERE snapshot_date = :eff"
         ), {"eff": effective_date}).scalar()
         if stance_date is not None:
             rows = s.execute(text(
@@ -190,9 +201,9 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
             out["stance_date"] = stance_date.isoformat()
             out["stance_received_at"] = _recv(s, "hist_hedgeye_stance", "snapshot_date", stance_date)
 
-        # Hedgeye Positions — latest hist_call snapshot on/before effective_date.
+        # Hedgeye Positions — only if received exactly on effective_date.
         call_date = s.execute(text(
-            "SELECT MAX(snapshot_date) FROM hist_call WHERE snapshot_date <= :eff"
+            "SELECT MAX(snapshot_date) FROM hist_call WHERE snapshot_date = :eff"
         ), {"eff": effective_date}).scalar()
         if call_date is not None:
             call_rows = s.execute(text(
@@ -218,9 +229,9 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                 ],
             }
 
-        # ETF Pro changes — latest event_date on/before effective_date.
+        # ETF Pro changes — only if received exactly on effective_date.
         etf_date = s.execute(text(
-            "SELECT MAX(event_date) FROM hist_etfchg WHERE event_date <= :eff"
+            "SELECT MAX(event_date) FROM hist_etfchg WHERE event_date = :eff"
         ), {"eff": effective_date}).scalar()
         if etf_date is not None:
             etf_rows = s.execute(text(
@@ -237,9 +248,9 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                 ],
             }
 
-        # Signal Strength (SSS) changes — latest snapshot_date on/before effective_date.
+        # Signal Strength (SSS) changes — only if received exactly on effective_date.
         sss_date = s.execute(text(
-            "SELECT MAX(snapshot_date) FROM hist_sss_change WHERE snapshot_date <= :eff"
+            "SELECT MAX(snapshot_date) FROM hist_sss_change WHERE snapshot_date = :eff"
         ), {"eff": effective_date}).scalar()
         if sss_date is not None:
             sss_rows = s.execute(text(
@@ -253,13 +264,12 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                 "changes": [{"sym": r[0], "action": r[1]} for r in sss_rows],
             }
 
-        # Early Look — note-only, not anchored to market close: show up through
-        # today regardless of effective_date (TOSD lag shouldn't hold back same-day analysis).
+        # Early Look — note-only; only if received exactly on effective_date.
         el_row = s.execute(text(
             "SELECT note_date, subject, note_text, message_id FROM note_repo"
-            " WHERE source_type='early_look' AND note_date <= :b"
-            " ORDER BY note_date DESC, note_id DESC LIMIT 1"
-        ), {"b": note_bound}).first()
+            " WHERE source_type='early_look' AND note_date = :b"
+            " ORDER BY note_id DESC LIMIT 1"
+        ), {"b": effective_date}).first()
         if el_row:
             recv = s.execute(text(
                 "SELECT received_at FROM meta_hedgeye_msg WHERE message_id=:m"
@@ -272,12 +282,12 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                 "takeaways": el_row[2],
             }
 
-        # The Call — Macro Commentary — note-only, same rationale as Early Look above.
+        # The Call — Macro Commentary — note-only; only if received exactly on effective_date.
         cm_row = s.execute(text(
             "SELECT note_date, subject, note_text, message_id FROM note_repo"
-            " WHERE source_type='the_call_macro' AND note_date <= :b"
-            " ORDER BY note_date DESC, note_id DESC LIMIT 1"
-        ), {"b": note_bound}).first()
+            " WHERE source_type='the_call_macro' AND note_date = :b"
+            " ORDER BY note_id DESC LIMIT 1"
+        ), {"b": effective_date}).first()
         if cm_row:
             recv = s.execute(text(
                 "SELECT received_at FROM meta_hedgeye_msg WHERE message_id=:m"
@@ -290,9 +300,9 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                 "note_text": cm_row[2],
             }
 
-        # Market Situation Report — latest gamma metrics on/before effective_date.
+        # Market Situation Report — only if received exactly on effective_date.
         msr_date = s.execute(text(
-            "SELECT MAX(snapshot_date) FROM hist_msr WHERE snapshot_date <= :eff"
+            "SELECT MAX(snapshot_date) FROM hist_msr WHERE snapshot_date = :eff"
         ), {"eff": effective_date}).scalar()
         if msr_date is not None:
             msr_row = s.execute(text(
@@ -445,7 +455,7 @@ def update_rule_candidate(cid: int, payload: dict = Body(...)):
 
 def _notes_for(s, stypes, d, lim=5):
     rows = s.execute(text(
-        "SELECT note_date, source_type, subject, note_text, gmail_link FROM note_repo "
+        "SELECT note_date, source_type, subject, note_text, signal_kind, gmail_link FROM note_repo "
         "WHERE source_type = ANY(:st) AND note_date <= :d "
         "ORDER BY note_date DESC, note_id DESC LIMIT :lim"
     ), {"st": stypes, "d": d, "lim": lim}).mappings().fetchall()
