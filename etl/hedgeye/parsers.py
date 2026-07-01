@@ -817,6 +817,12 @@ _CALL_OUTLOOK = {"LONGS": "BULLISH", "SHORTS": "BEARISH", "NEUTRAL": "NEUTRAL"}
 _CALL_SIDE = {"LONGS": "long", "SHORTS": "short", "NEUTRAL": "neutral"}
 _CALL_MODIFIERS = ("best idea long", "best idea short", "long bench", "short bench")
 
+# Each Top-5 rationale paragraph reliably ends with its own "long"/"short" tag
+# (e.g. "...skewed negatively; short", "...back-half setup; active short") —
+# a more reliable side signal than the day's HEDGEYE POSITIONS list, which a
+# Top-5 idea isn't always a member of.
+_TOP5_SIDE_TAIL_RE = re.compile(r"\b(long|short)\b\W*$", re.IGNORECASE)
+
 
 def parse_the_call(email: Email) -> Parsed:
     p = Parsed("the_call")
@@ -893,7 +899,8 @@ def parse_the_call(email: Email) -> Parsed:
             if block and full_text:
                 entries.append((pm.group(1).upper(), block, full_text))
         for i, (sym, block, full_text) in enumerate(entries):
-            side = side_for.get(sym, "long")
+            tail_m = _TOP5_SIDE_TAIL_RE.search(block.rstrip())
+            side = tail_m.group(1).lower() if tail_m else side_for.get(sym, "long")
             if i < 5:
                 top_rows.append({
                     "snapshot_date": email.edt_date, "message_id": email.message_id,

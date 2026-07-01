@@ -142,7 +142,7 @@
           '<strong>' + esc(msr.gamma_throttle.toFixed(2)) + '</strong></div>';
       if (msr.rvol_10day != null)
         metrics += '<div style="font-size:10px; line-height:1.8;">' +
-          '<span style="color:#888;">Relative Volume</span> ' +
+          '<span style="color:#888;">Realized Volatility</span> ' +
           '<strong>' + esc(msr.rvol_10day.toFixed(2)) + '</strong></div>';
     }
     var img = (msr && msr.image_url)
@@ -260,8 +260,8 @@
     if (!hasAny) { el.style.display = 'none'; return; }
 
     var collapsed = localStorage.getItem('hePanel_collapsed') === '1';
-    var etfTitle = 'ETFCHG';
-    var sssTitle = 'SSS';
+    var etfTitle = 'ETF CHG';
+    var sssTitle = 'SSS CHG';
 
     // Show email received time (mm/dd H:MM AM/PM) when available, else date only (mm/dd).
     var td = function (receivedAt, dateIso) {
@@ -313,11 +313,11 @@
     var row2 =
       '<div style="display:flex; gap:3px; flex-wrap:nowrap; align-items:stretch; height:110px; margin-top:3px;">' +
       _card(linked('Call', 'call'),                  positionsHtml(data.positions),    'flex:2',                       td(data.positions && data.positions.received_at, data.positions && data.positions.date)) +
-      _card(linked('Alerts', 'alerts'),              alertsHtml(data.alerts),          'flex:0 0 calc(35ch + 20px)',   td(data.rta_received_at, data.rta_date)) +
+      _card(linked('RTA', 'alerts'),                 alertsHtml(data.alerts),          'flex:0 0 calc(35ch + 20px)',   td(data.rta_received_at, data.rta_date)) +
       _card(linked(etfTitle, 'etf_pro'),             etfChangesHtml(data.etf_changes), 'flex:1',                       td(data.etf_changes && data.etf_changes.received_at, data.etf_changes && data.etf_changes.date)) +
       _card(linked(sssTitle, 'sss'),                 sssChangesHtml(data.sss_changes), 'flex:1',                       td(data.sss_changes && data.sss_changes.received_at, data.sss_changes && data.sss_changes.date)) +
-      _card(linked('Trend Change', 'trend_change'),  flipsHtml(data.trend_flips),      'flex:0 0 calc(22.5ch + 18px)', td(data.trend_flips_received_at, data.trend_flips_date)) +
-      _card(linked('Macro TL;DR', 'macro_show'),     stanceHtml(data.stance),          'flex:2',                       td(data.stance_received_at, data.stance_date)) +
+      _card(linked('Risk Range', 'trend_change'),    flipsHtml(data.trend_flips),      'flex:0 0 calc(22.5ch + 18px)', td(data.trend_flips_received_at, data.trend_flips_date)) +
+      _card(linked('Macro Show', 'macro_show'),      stanceHtml(data.stance),          'flex:2',                       td(data.stance_received_at, data.stance_date)) +
       '</div>';
 
     var bodyHtml =
@@ -381,12 +381,35 @@
     }
   }
 
+  // Poll /api/hedgeye/fetch-status for new emails and auto-refresh the panel
+  // when one lands, instead of waiting for a manual Refresh click.
+  var _lastEmailSignal = null;
+
+  function _emailSignal(status) {
+    var latest = '';
+    (status.today_by_type || []).forEach(function (t) {
+      if (t.latest && t.latest > latest) latest = t.latest;
+    });
+    return status.today_total + '|' + latest;
+  }
+
+  async function checkForNewEmail() {
+    try {
+      var status = await fetchJson('/api/hedgeye/fetch-status');
+      var sig = _emailSignal(status);
+      if (_lastEmailSignal !== null && sig !== _lastEmailSignal) load();
+      _lastEmailSignal = sig;
+    } catch (e) { /* non-critical, ignore */ }
+  }
+
   function init() {
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);
     var rb = document.getElementById('refreshBtn');
     if (rb) rb.addEventListener('click', function () { setTimeout(load, 300); });
     setTimeout(load, 600);
+    setTimeout(checkForNewEmail, 1000);
+    setInterval(checkForNewEmail, 30000);
   }
 
   if (document.readyState === 'loading') {
