@@ -1,21 +1,23 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>File Monitor â€” Trading Dashboard</title>
+    <title>File Monitor - Trading Dashboard</title>
     <link rel="stylesheet" href="/static/styles.css">
 <style>
-  /* â”€â”€ File Monitor: viewport-locked, no page scroll â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* File Monitor: viewport-locked, no page scroll */
   body { overflow: hidden; }
+  /* Suppress tape margin-top so no grey strip between topbar and tapes */
+  .market-tape, .rr-tape { margin-top: 0; }
 
   main {
     height: calc(100vh - 60px);
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    padding: 12px 16px;
-    gap: 10px;
+    padding: 2px 3px;
+    gap: 2px;
     box-sizing: border-box;
     margin: 0;
   }
@@ -25,7 +27,7 @@
     min-height: 0;
     display: flex;
     flex-direction: row;
-    gap: 10px;
+    gap: 2px;
   }
 
   /* Left column: Schedule + Derive stacked */
@@ -35,7 +37,7 @@
     flex: 1;
     min-width: 0;
     min-height: 0;
-    gap: 10px;
+    gap: 2px;
   }
 
   .fm-section {
@@ -43,9 +45,13 @@
     flex-direction: column;
     min-height: 0;
     flex: 1;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow: hidden;
   }
 
-  /* ETL Loads â€” wider right column */
+  /* ETL Loads - wider right column */
   .fm-section.fm-lg { flex: 0.8; }
 
   .fm-section-header {
@@ -53,7 +59,9 @@
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
-    margin-bottom: 5px;
+    padding: 3px 6px;
+    border-bottom: 1px solid var(--border);
+    background: var(--card-bg);
   }
   .fm-section-header h2 {
     margin: 0;
@@ -64,11 +72,13 @@
     letter-spacing: 0.06em;
   }
 
-  /* let flex drive height â€” override the global 70vh cap */
+  /* table-wrap sits inside the card — remove its own border/radius */
   .fm-section .table-wrap {
     flex: 1;
     min-height: 0;
     max-height: none;
+    border: none;
+    border-radius: 0;
   }
 
   #lastRefreshed { flex-shrink: 0; }
@@ -117,7 +127,7 @@
     <a href="/rule-performance" class="nav-item">Performance</a>
     <a href="/trace" class="nav-item">Trace</a>
       <a href="/rule-flow" class="nav-item">Rule Flow</a>
-    
+
     <a href="/ref" class="nav-item">Ref Data</a>
       <a href="/explore" class="nav-item">DB Data</a>
     <a href="/dbstats" class="nav-item">DB Stats</a>
@@ -129,77 +139,74 @@
   <div class="controls">
     <span id="refreshCountdown" style="min-width: 150px;"></span>
     <button id="refreshBtn" class="btn">Refresh</button>
-    <span id="health" class="badge badge-ok">â—</span>
+    <span id="health" class="badge badge-ok">&#9679;</span>
   </div>
 </header>
 
 <main>
 
   <!-- Combined status bar: scheduler + KPIs + auto-start -->
-  <div id="schedulerBar" style="flex-shrink:0;display:flex;align-items:center;gap:12px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card-bg);font-size:12px;">
+  <div id="schedulerBar" style="flex-shrink:0;display:flex;align-items:center;flex-wrap:nowrap;gap:8px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card-bg);font-size:12px;">
 
-    <!-- ETL Scheduler status (start manually via `python -m etl.scheduler`) -->
+    <!-- ETL Scheduler status -->
     <span id="schedulerDot" style="width:10px;height:10px;border-radius:50%;background:var(--text-3);flex-shrink:0;"></span>
-    <span id="schedulerText" style="color:var(--text-2);">Checking schedulerâ€¦</span>
-    <span id="schedulerHint" style="color:var(--text-3); font-size:11px; font-style:italic;"></span>
-    <!-- Buttons removed: start via `python -m etl.scheduler` from a terminal.
-         Buttons hidden (display:none) so any JS that still references them won't fail. -->
+    <span id="schedulerText" style="color:var(--text-2);white-space:nowrap;">Checking...</span>
+    <!-- hint shown as tooltip via title on schedulerText; span kept for JS compat -->
+    <span id="schedulerHint" style="display:none;"></span>
     <button id="startSchedulerBtn" style="display:none;"></button>
     <button id="stopSchedulerBtn"  style="display:none;"></button>
 
     <!-- KPI summary -->
-    <span style="color:var(--border);font-size:16px;line-height:1;">|</span>
-    <span style="color:var(--text-3);">Sched</span> <strong id="ki-scheduled" style="font-size:12px;">â€”</strong>
-    <span style="color:var(--text-3);">Â·</span>
-    <span style="color:var(--text-3);">Done</span> <strong id="ki-processed" style="font-size:12px;">â€”</strong>
-    <span style="color:var(--text-3);">Â·</span>
-    <span style="color:var(--text-3);">Running</span> <strong id="ki-running" style="font-size:12px;">â€”</strong>
-    <span style="color:var(--text-3);">Â·</span>
-    <span style="color:var(--text-3);">Errors</span> <strong id="ki-errors" style="font-size:12px;">â€”</strong>
-    <span style="color:var(--text-3);">Â·</span>
-    <span style="color:var(--text-3);">Derives</span> <strong id="ki-derives" style="font-size:12px;">â€”</strong>
-    <span style="color:var(--text-3);">Â·</span>
-    <span style="color:var(--text-3);font-size:11px;">last</span>
-    <select id="missingDerivesDays" title="Limit to dates within the last N days"
-            style="font-size:11px;padding:1px 4px;">
-        <option value="1">1</option>
-        <option value="3">3</option>
-        <option value="7" selected>7</option>
-        <option value="14">14</option>
-        <option value="30">30</option>
-        <option value="60">60</option>
-        <option value="90">90</option>
+    <span style="color:var(--border);line-height:1;flex-shrink:0;">|</span>
+    <span style="color:var(--text-3);">Sched</span><strong id="ki-scheduled" style="font-size:12px;">-</strong>
+    <span style="color:var(--text-3);">&middot;</span>
+    <span style="color:var(--text-3);">Done</span><strong id="ki-processed" style="font-size:12px;">-</strong>
+    <span style="color:var(--text-3);">&middot;</span>
+    <span style="color:var(--text-3);">Run</span><strong id="ki-running" style="font-size:12px;">-</strong>
+    <span style="color:var(--text-3);">&middot;</span>
+    <span style="color:var(--text-3);">Err</span><strong id="ki-errors" style="font-size:12px;">-</strong>
+    <span style="color:var(--text-3);">&middot;</span>
+    <span style="color:var(--text-3);">Drv</span><strong id="ki-derives" style="font-size:12px;">-</strong>
+    <span style="color:var(--text-3);">&middot;</span>
+    <select id="missingDerivesDays" title="Limit derive actions to last N days"
+            style="font-size:11px;padding:1px 2px;width:46px;">
+        <option value="1">1d</option>
+        <option value="3">3d</option>
+        <option value="7" selected>7d</option>
+        <option value="14">14d</option>
+        <option value="30">30d</option>
+        <option value="60">60d</option>
+        <option value="90">90d</option>
     </select>
-    <span style="color:var(--text-3);font-size:11px;">days</span>
-    <button id="runMissingDerivesBtn" class="btn btn-sm" title="Find dates with hist_* data but no derive run, then run derive_all oldestâ†’newest"
-            style="font-size:11px;padding:2px 8px;">Run Missing Derives</button>
+    <button id="runMissingDerivesBtn" class="btn btn-sm" title="Find dates with hist_* data but no derive run, then run derive_all oldest to newest"
+            style="font-size:11px;padding:2px 6px;white-space:nowrap;">Miss Derives</button>
     <button id="forceRederiveBtn" class="btn btn-sm" title="Re-derive every already-derived date in the last N days (re-applies derive-code changes)"
-            style="font-size:11px;padding:2px 8px;">Force Re-derive</button>
-    <span id="missingDerivesStatus" style="color:var(--text-2);font-size:11px;"></span>
+            style="font-size:11px;padding:2px 6px;white-space:nowrap;">Re-derive</button>
+    <span id="missingDerivesStatus" style="color:var(--text-2);font-size:11px;white-space:nowrap;"></span>
     <button id="runStaleDerivesBtn" class="btn btn-sm" title="Find stale drv_actionable dates (newer source data loaded after they were derived) and re-derive them"
-            style="font-size:11px;padding:2px 8px;">Run Stale Derives</button>
-    <span id="staleDerivesStatus" style="color:var(--text-2);font-size:11px;"></span>
-    <span style="color:var(--text-3);">Â·</span>
-    <span style="color:var(--text-3);">Last</span> <strong id="ki-last" style="font-size:12px;">â€”</strong>
+            style="font-size:11px;padding:2px 6px;white-space:nowrap;">Stale Derives</button>
+    <span id="staleDerivesStatus" style="color:var(--text-2);font-size:11px;white-space:nowrap;"></span>
+    <span style="color:var(--text-3);">&middot;</span>
+    <span style="color:var(--text-3);">Last</span><strong id="ki-last" style="font-size:12px;">-</strong>
 
     <!-- Auto-start: ETL Scheduler task -->
-    <span style="margin-left:auto;color:var(--border);font-size:16px;line-height:1;">|</span>
+    <span style="margin-left:auto;color:var(--border);line-height:1;flex-shrink:0;">|</span>
     <span id="startupSchedDot" style="width:10px;height:10px;border-radius:50%;background:var(--text-3);flex-shrink:0;"></span>
-    <span id="startupSchedText" style="color:var(--text-2);">Scheduler auto-startâ€¦</span>
-    <button id="registerSchedBtn" class="btn btn-sm" style="display:none;">Register Scheduler</button>
+    <span id="startupSchedText" style="color:var(--text-2);white-space:nowrap;">ETL...</span>
+    <button id="registerSchedBtn" class="btn btn-sm" style="display:none;font-size:11px;padding:2px 6px;">Reg Sched</button>
 
     <!-- Auto-start: Trading App task -->
-    <span style="color:var(--border);font-size:16px;line-height:1;">|</span>
+    <span style="color:var(--border);line-height:1;flex-shrink:0;">|</span>
     <span id="startupAppDot" style="width:10px;height:10px;border-radius:50%;background:var(--text-3);flex-shrink:0;"></span>
-    <span id="startupAppText" style="color:var(--text-2);">App auto-startâ€¦</span>
-    <button id="registerAppBtn" class="btn btn-sm" style="display:none;">Register App</button>
-    <button id="unregisterBtn"  class="btn btn-sm" style="display:none;">Unregister Both</button>
+    <span id="startupAppText" style="color:var(--text-2);white-space:nowrap;">App...</span>
+    <button id="registerAppBtn" class="btn btn-sm" style="display:none;font-size:11px;padding:2px 6px;">Reg App</button>
+    <button id="unregisterBtn"  class="btn btn-sm" style="display:none;font-size:11px;padding:2px 6px;">Unreg</button>
 
   </div>
 
-  <!-- Live processing banner â€” shown only when ETL is running -->
+  <!-- Live processing banner - shown only when ETL is running -->
   <div id="liveBanner">
-    <span class="live-spinner">âŸ³</span>
+    <span class="live-spinner">&#8635;</span>
     <span style="color:#92400e;font-weight:700;letter-spacing:0.04em;">PROCESSING</span>
     <span style="color:var(--border);">|</span>
     <div id="liveJobs" style="display:flex;flex-wrap:wrap;gap:16px;flex:1;"></div>
@@ -211,7 +218,7 @@
     <!-- Left column: Schedule (top) + Recent ETL Loads (bottom) -->
     <div class="fm-col" style="flex: 1.6;">
 
-      <div class="fm-section" style="flex:1.5;">
+      <div class="fm-section" style="flex:1.65;">
         <div class="fm-section-header">
           <h2>Today's Schedule <span id="scheduleDate" style="font-weight:400;color:var(--text-3);text-transform:none;letter-spacing:0;font-size:11px;"></span></h2>
         </div>
@@ -280,7 +287,7 @@
     <div class="fm-col" style="flex: 1.8;">
 
       <!-- Scheduler Output Grid -->
-      <div class="fm-section" style="flex:2.5;">
+      <div class="fm-section" style="flex:1.65;">
         <div class="fm-section-header">
           <h2>Scheduler Output</h2>
           <div style="display:flex;gap:12px;align-items:center;margin-left:auto;">
@@ -304,12 +311,12 @@
       </div>
 
       <!-- Bottom row: Derive Pipeline + Yahoo Finance side by side -->
-      <div style="flex:1;display:flex;flex-direction:row;gap:10px;min-height:0;">
+      <div style="flex:1;display:flex;flex-direction:row;gap:2px;min-height:0;">
 
         <!-- Derive Pipeline Grid -->
         <div class="fm-section">
           <div class="fm-section-header">
-            <h2>Derive Pipeline â€” Today</h2>
+            <h2>Derive Pipeline - Today</h2>
           </div>
           <div class="table-wrap">
             <table id="deriveTable">
@@ -330,25 +337,36 @@
         </div>
 
         <!-- Yahoo Finance Panel -->
-        <div class="fm-section" style="flex:0 0 260px;">
+        <div class="fm-section" style="flex:0 0 200px;">
           <div class="fm-section-header">
-            <h2>Yahoo Finance</h2>
-            <span style="font-size:10px;color:var(--text-3);margin-left:auto;">Sched 4:15 Â· App 4:30 ET</span>
+            <h2>Yahoo</h2>
+            <span style="font-size:10px;color:var(--text-3);margin-left:6px;flex:1;">4:15/4:30 ET</span>
+            <button class="btn btn-sm" id="yahooYLoadBtn" onclick="yahooFetch('y-load')" style="font-size:11px;padding:1px 7px;">Fetch Y</button>
+            <span id="yahooFetchStatus" style="font-size:10px;color:var(--text-2);margin-left:4px;white-space:nowrap;"></span>
           </div>
-          <div style="padding:6px 0;display:flex;flex-direction:column;gap:8px;overflow-y:auto;">
+          <div style="padding:6px 8px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1;min-height:0;">
             <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:11px;">
               <span style="color:var(--text-3);">OHLCV</span>
-              <span id="yf-ohlcv" style="color:var(--text-2);">â€”</span>
+              <span id="yf-ohlcv" style="color:var(--text-2);">-</span>
               <span style="color:var(--text-3);">Detail</span>
-              <span id="yf-detail" style="color:var(--text-2);">â€”</span>
+              <span id="yf-detail" style="color:var(--text-2);">-</span>
               <span style="color:var(--text-3);">Auto</span>
-              <span id="yf-auto" style="color:var(--text-2);">â€”</span>
+              <span id="yf-auto" style="color:var(--text-2);">-</span>
             </div>
-            <div style="border-top:1px solid var(--border);"></div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button class="btn" id="yahooYLoadBtn" onclick="yahooFetch('y-load')" style="font-size:11px;">Fetch Y Load</button>
-            </div>
-            <div id="yahooFetchStatus" style="font-size:11px;color:var(--text-2);min-height:14px;"></div>
+          </div>
+        </div>
+
+        <!-- Gmail Panel -->
+        <div class="fm-section" style="flex:0 0 220px;">
+          <div class="fm-section-header">
+            <h2>Gmail</h2>
+            <span id="gmailDot" style="width:8px;height:8px;border-radius:50%;background:var(--text-3);flex-shrink:0;margin-left:6px;"></span>
+            <span id="gmailState" style="font-size:10px;color:var(--text-3);margin-left:4px;flex:1;"></span>
+            <button class="btn btn-sm" id="gmailFetchBtn" onclick="gmailFetchNow()" style="font-size:11px;padding:1px 7px;">Fetch</button>
+            <span id="gmailFetchResult" style="font-size:10px;color:var(--text-2);margin-left:4px;white-space:nowrap;"></span>
+          </div>
+          <div style="padding:6px 8px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1;min-height:0;">
+            <div id="gmailTypeList" style="font-size:10px;color:var(--text-3);line-height:1.8;overflow-y:auto;flex:1;min-height:0;"></div>
           </div>
         </div>
 
@@ -398,7 +416,7 @@ function yahooLoadStatus() {
         ohlcvEl.textContent  = 'not yet fetched';
         detailEl.textContent = 'not yet fetched';
       } else {
-        ohlcvEl.textContent = d.count + ' symbols Â· ' + _fmtTime(d.last_fetched) + ' (' + _fmtAge(d.last_fetched) + ')';
+        ohlcvEl.textContent = d.count + ' symbols - ' + _fmtTime(d.last_fetched) + ' (' + _fmtAge(d.last_fetched) + ')';
         detailEl.textContent = d.last_detail_fetched
           ? _fmtTime(d.last_detail_fetched) + ' (' + _fmtAge(d.last_detail_fetched) + ')'
           : 'not yet fetched';
@@ -414,22 +432,22 @@ function yahooAutoStatus() {
       const el  = document.getElementById('yf-auto');
       const btn = document.getElementById('yahooYLoadBtn');
       if (d.eod_done) {
-        el.textContent  = 'EOD done today â€” no further fetches';
+        el.textContent  = 'EOD done today - no further fetches';
         el.style.color  = '#166534';
         btn.disabled    = true;
         btn.title       = 'EOD Y load already completed for today';
       } else if (d.running) {
-        el.textContent  = 'Running nowâ€¦';
+        el.textContent  = 'Running now...';
         el.style.color  = '#b45309';
         btn.disabled    = true;
         btn.title       = 'Fetch already in progress';
       } else if (!d.is_trading_day) {
-        el.textContent  = 'Weekend â€” resumes Monday';
+        el.textContent  = 'Weekend - resumes Monday';
         el.style.color  = 'var(--text-3)';
         btn.disabled    = false;
         btn.title       = '';
       } else if (d.last_auto_fetch_date) {
-        el.textContent  = 'Last: ' + d.last_auto_fetch_date + ' Â· ' + d.next_fetch;
+        el.textContent  = 'Last: ' + d.last_auto_fetch_date + ' - ' + d.next_fetch;
         el.style.color  = '#b45309';
         btn.disabled    = false;
         btn.title       = '';
@@ -448,13 +466,13 @@ function yahooFetch(mode) {
   const status = document.getElementById('yahooFetchStatus');
   btn.disabled = true;
   status.style.color  = 'var(--text-2)';
-  status.textContent  = 'Fetching Y data (3 s between batches)â€¦';
+  status.textContent  = 'Fetching Y data (3 s between batches)...';
   fetch('/api/yahoo-fetch/y-load', {method:'POST'})
     .then(r => r.json())
     .then(d => {
       if (d.skipped) {
         status.style.color = d.reason === 'eod_done' ? '#166534' : '#b45309';
-        status.textContent = d.msg || ('Skipped â€” ' + d.reason);
+        status.textContent = d.msg || ('Skipped - ' + d.reason);
         if (d.reason === 'eod_done') btn.disabled = true;
       } else if (d.error) {
         status.style.color = '#b91c1c';
@@ -466,8 +484,8 @@ function yahooFetch(mode) {
         const parts = [];
         if (c.ok   != null) parts.push(c.ok + ' ok');
         if (c.errors > 0)   parts.push(c.errors + ' errors');
-        if (d.eod)          parts.push('EOD â€” detail + 1630 CSV');
-        status.textContent = parts.join(' Â· ') + ' âœ“';
+        if (d.eod)          parts.push('EOD - detail + 1630 CSV');
+        status.textContent = parts.join(' - ') + ' ok';
         btn.disabled = !!d.eod;
       }
       yahooLoadStatus();
@@ -483,6 +501,91 @@ function yahooFetch(mode) {
 yahooLoadStatus();
 yahooAutoStatus();
 setInterval(() => { yahooLoadStatus(); yahooAutoStatus(); }, 30000);
+
+function _typeLabel(t) {
+  const map = {
+    the_call:'Call', etf_changes:'ETF Chg', real_time_alert:'RTA',
+    risk_range:'RR', macro_show_summary:'Macro Sum', macro_show_access:'Early Look',
+    early_look:'Early Look', signal_strength:'SSS', market_situation:'MSR',
+    inflation_nowcast:'Inflation', portfolio_solutions:'PS',
+  };
+  return map[t] || t;
+}
+
+function gmailStatus() {
+  fetch('/api/hedgeye/fetch-status')
+    .then(r => r.json())
+    .then(d => {
+      const dot   = document.getElementById('gmailDot');
+      const state = document.getElementById('gmailState');
+      const list  = document.getElementById('gmailTypeList');
+      const btn   = document.getElementById('gmailFetchBtn');
+      if (d.running) {
+        dot.style.background = '#d97706';
+        state.textContent = 'Fetching...';
+        state.style.color = '#d97706';
+        btn.disabled = true;
+      } else {
+        dot.style.background = d.today_total > 0 ? '#16a34a' : 'var(--text-3)';
+        state.textContent = d.today_total > 0
+          ? d.today_total + ' emails today'
+          : (d.last_run ? 'Last: ' + _fmtAge(d.last_run) : 'Not fetched today');
+        state.style.color = d.last_error ? '#b91c1c' : 'var(--text-3)';
+        btn.disabled = false;
+      }
+      if (d.last_error) state.textContent = 'Error: ' + d.last_error;
+      if (d.today_by_type && d.today_by_type.length) {
+        list.innerHTML = d.today_by_type.map(r =>
+          '<span style="color:var(--text-2);">' + _typeLabel(r.type) + '</span>' +
+          ' <span style="color:var(--text-3);">x' + r.count + '</span>' +
+          (r.latest ? ' <span style="color:#999;">' + _fmtTime(r.latest) + '</span>' : '')
+        ).join('<br>');
+      } else {
+        list.textContent = d.running ? '' : 'No emails today yet';
+      }
+    })
+    .catch(() => {});
+}
+
+function gmailFetchNow() {
+  const btn = document.getElementById('gmailFetchBtn');
+  const res = document.getElementById('gmailFetchResult');
+  btn.disabled = true;
+  res.textContent = 'Starting...';
+  res.style.color = 'var(--text-2)';
+  fetch('/api/hedgeye/fetch-now', {method:'POST'})
+    .then(r => r.json())
+    .then(d => {
+      if (d.started) {
+        res.textContent = 'Running...';
+        res.style.color = '#b45309';
+        const poll = setInterval(() => {
+          fetch('/api/hedgeye/fetch-status').then(r => r.json()).then(s => {
+            if (!s.running) {
+              clearInterval(poll);
+              res.textContent = s.last_error
+                ? 'Error: ' + s.last_error
+                : (s.last_count != null ? s.last_count + ' new emails' : 'Done');
+              res.style.color = s.last_error ? '#b91c1c' : '#166534';
+              gmailStatus();
+            }
+          }).catch(() => clearInterval(poll));
+        }, 2000);
+      } else {
+        res.textContent = d.reason === 'already_running' ? 'Already running' : 'Not started';
+        res.style.color = '#b45309';
+        btn.disabled = false;
+      }
+    })
+    .catch(e => {
+      res.textContent = 'Error: ' + e;
+      res.style.color = '#b91c1c';
+      btn.disabled = false;
+    });
+}
+
+gmailStatus();
+setInterval(gmailStatus, 30000);
 </script>
 </body>
 </html>

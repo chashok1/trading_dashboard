@@ -471,8 +471,13 @@
   let rrTape2El = null;
   let rrTape3El = null;
 
+  const TAPE_PAGES = new Set(['/', '/actionable', '/portfolio']);
+
   function ensureMount() {
     if (tapeEl) return;
+
+    const path = window.location.pathname.replace(/\/+$/, '') || '/';
+    if (!TAPE_PAGES.has(path)) return;
 
     const topbar = document.querySelector('header.topbar');
     if (!topbar) return;

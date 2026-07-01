@@ -605,7 +605,17 @@ def maybe_run_hedgeye_poll() -> None:
         enabled = (_hcfg.get("enabled") or "false").lower() == "true"
         if not enabled:
             return
-        interval = int(_hcfg.get("poll_sec") or 240)
+        _now = datetime.now()
+        _minute_of_day = _now.hour * 60 + _now.minute
+        _morning_start = int(_hcfg.get("poll_morning_start_min") or 360)   # 06:00
+        _morning_end = int(_hcfg.get("poll_morning_end_min") or 630)      # 10:30
+        _biz_end = int(_hcfg.get("poll_biz_end_min") or 960)              # 16:00
+        if _now.weekday() < 5 and _morning_start <= _minute_of_day < _morning_end:
+            interval = int(_hcfg.get("poll_morning_sec") or 300)
+        elif _now.weekday() < 5 and _morning_end <= _minute_of_day < _biz_end:
+            interval = int(_hcfg.get("poll_biz_sec") or 900)
+        else:
+            interval = int(_hcfg.get("poll_off_sec") or 3600)
     except Exception:
         return
 
@@ -622,7 +632,10 @@ def maybe_run_hedgeye_poll() -> None:
             cfg = _cfg_mod.load()
             since = datetime.now(_tz.utc) - timedelta(days=2)
             n = _process_pass(cfg, since, dry_run=False)
-            log.info("hedgeye: poll done — %d emails processed", n)
+            if n:
+                log.info("hedgeye: poll done — %d emails processed", n)
+            else:
+                log.debug("hedgeye: poll done — 0 emails processed")
         except Exception:
             log.exception("hedgeye: poll crashed")
 

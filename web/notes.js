@@ -23,17 +23,36 @@
     return p.length ? '?' + p.join('&') : '';
   }
 
+  function sideColor(side) {
+    var v = String(side || '').toLowerCase();
+    if (v.indexOf('long') >= 0 || v.indexOf('bull') >= 0 || v.indexOf('buy') >= 0) return '#1d9e75';
+    if (v.indexOf('short') >= 0 || v.indexOf('bear') >= 0 || v.indexOf('sell') >= 0) return '#d4537e';
+    return null;
+  }
+
+  // Color a leading "Company Name (TICKER): " prefix red/green by signal_kind.
+  var NAME_TICKER_PREFIX = /^([^\n(]*\([A-Z][A-Z0-9.\-]{0,9}\):\s*)([\s\S]*)$/;
+
+  function noteTextHtml(n) {
+    var raw = n.note_text || '';
+    var m = NAME_TICKER_PREFIX.exec(raw);
+    if (m) {
+      var color = sideColor(n.signal_kind);
+      var style = 'font-weight:700;' + (color ? ' color:' + color + ';' : '');
+      return '<span style="' + style + '">' + esc(m[1]) + '</span>' + esc(m[2]);
+    }
+    return esc(raw);
+  }
+
   function noteCard(n) {
     var sel = linked[n.note_id] ? ' sel' : '';
     var tickers = (n.tickers || []).join(', ');
-    var snippet = (n.note_text || '').slice(0, 280);
     return '<div class="note-card' + sel + '" data-id="' + n.note_id + '">' +
       '<div class="note-meta">' + esc(n.note_date || '') + ' · ' + esc(n.source_type || '') +
       (n.analyst ? ' · ' + esc(n.analyst) : '') + (tickers ? ' · ' + esc(tickers) : '') +
       (n.quad ? ' · Quad' + esc(n.quad) : '') + '</div>' +
       '<div style="font-weight:600;">' + esc(n.subject || '(no subject)') + '</div>' +
-      '<div style="color:#444;">' + esc(snippet) + (snippet.length >= 280 ? '…' : '') + '</div>' +
-      (n.gmail_link ? '<a href="' + esc(n.gmail_link) + '" target="_blank" rel="noopener" style="font-size:10px;">open in Gmail</a>' : '') +
+      '<div style="color:#444; white-space:pre-wrap;">' + noteTextHtml(n) + '</div>' +
       '</div>';
   }
 
@@ -97,6 +116,11 @@
     $('reload').addEventListener('click', loadNotes);
     $('clear').addEventListener('click', function () {
       $('q').value = ''; $('ticker').value = ''; $('sourceType').value = ''; $('date').value = ''; loadNotes();
+    });
+    ['q', 'ticker', 'date'].forEach(function (id) {
+      $(id).addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') loadNotes();
+      });
     });
     $('createCand').addEventListener('click', createCandidate);
     loadNotes(); loadCandidates();

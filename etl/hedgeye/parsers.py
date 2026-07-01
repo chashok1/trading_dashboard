@@ -836,13 +836,25 @@ def parse_the_call(email: Email) -> Parsed:
                     modifier_map[sym_key] = kw
                     break
 
+    # Macro Commentary — general market-wide prose (Quad/FX/commodity framing),
+    # not tied to one symbol. Stored like Early Look's Key Takeaways: one note,
+    # full text, tagged with whatever tickers happen to appear in it.
+    mc = re.search(r"Macro Commentary\s*(.+?)\s*Sector Summary", text, re.S)
+    if mc:
+        commentary = re.sub(r"\s+", " ", mc.group(1)).strip()
+        if commentary:
+            mc_tickers = sorted(set(_TICKER_PAREN.findall(commentary)))
+            p.notes.append(_note(email, "the_call_macro", commentary[:2000], tickers=mc_tickers))
+
     # HEDGEYE POSITIONS: LONGS / SHORTS / NEUTRAL lines
     side_for = {}
     pos_rows = []
     for label, outlook in _CALL_OUTLOOK.items():
         m = re.search(rf"{label}:\s*(.+)", text)
         if m:
-            for sym in re.split(r"[,\s]+", m.group(1).splitlines()[0].strip()):
+            line = m.group(1).splitlines()[0].strip()
+            syms = []
+            for sym in re.split(r"[,\s]+", line):
                 sym = sym.strip().upper()
                 if re.match(r"^[A-Z][A-Z0-9.\-]{0,9}$", sym):
                     pos_rows.append({
@@ -851,27 +863,47 @@ def parse_the_call(email: Email) -> Parsed:
                         "outlook_modifier": modifier_map.get(sym) or _CALL_SIDE[label],
                     })
                     side_for[sym] = _CALL_SIDE[label]  # lowercase for top5 side column
+                    syms.append(sym)
+            if syms:
+                # One note per section; all its symbols point to the same note_text.
+                p.notes.append(_note(email, "the_call_positions",
+                                     f"HEDGEYE POSITIONS — {label}: {line}",
+                                     tickers=syms))
     p.add_rows("hist_call", pos_rows)
 
-    # Top 5 Most Actionable Stock Ideas: "Name (TICKER): rationale …"
+    # Top 5 Most Actionable (Stock) Ideas, then per-symbol sector/policy
+    # commentary for the rest of the email. Each entry is its own blank-line-
+    # delimited paragraph starting "Company Name (TICKER): text …" — splitting
+    # on paragraph boundaries (rather than up to the next ticker match) keeps
+    # a paragraph's block from swallowing the next paragraph's section-header/
+    # analyst-attribution line and the start of the following company name.
+    # The first 5 matched paragraphs are the Top-5 list; the rest is commentary.
     top_rows = []
-    m = re.search(r"Top 5 Most Actionable Stock Ideas(.+)", text, re.S)
+    m = re.search(r"Top 5 Most Actionable(?: Stock Ideas)?(.+)", text, re.S)
     if m:
         seg = m.group(1)
-        marks = list(re.finditer(r"\(([A-Z][A-Z0-9.\-]{0,9})\):\s*", seg))
-        for rank, mt in enumerate(marks[:5], 1):
-            sym = mt.group(1).upper()
-            start = mt.end()
-            end = marks[rank].start() if rank < len(marks) else len(seg)
-            rationale = re.sub(r"\s+", " ", seg[start:end]).strip()
-            # drop a trailing next-idea name fragment if present
-            rationale = re.split(r"\s+[A-Z][\w.&,'’ -]+\($", rationale)[0]
-            top_rows.append({
-                "snapshot_date": email.edt_date, "message_id": email.message_id,
-                "rank": rank, "symbol": sym, "tos_symbol": sym,
-                "side": side_for.get(sym, "long"),
-                "rationale_snippet": rationale[:400],
-            })
+        entries = []
+        for para in re.split(r"(?:\r?\n){2,}", seg):
+            para = para.strip()
+            pm = re.match(r"[^\n(]*\(([A-Z][A-Z0-9.\-]{0,9})\):\s*(.+)", para, re.S) if para else None
+            if not pm:
+                continue
+            block = re.sub(r"\s+", " ", pm.group(2)).strip()
+            full_text = re.sub(r"\s+", " ", para).strip()
+            if block and full_text:
+                entries.append((pm.group(1).upper(), block, full_text))
+        for i, (sym, block, full_text) in enumerate(entries):
+            side = side_for.get(sym, "long")
+            if i < 5:
+                top_rows.append({
+                    "snapshot_date": email.edt_date, "message_id": email.message_id,
+                    "rank": i + 1, "symbol": sym, "tos_symbol": sym,
+                    "side": side,
+                    "rationale_snippet": block[:400],
+                })
+                p.notes.append(_note(email, "the_call_top5", full_text, tickers=[sym], signal_kind=side))
+            else:
+                p.notes.append(_note(email, "the_call_commentary", full_text, tickers=[sym], signal_kind=side))
     p.add_rows("hist_call_top5", top_rows)
     return p
 

@@ -49,6 +49,7 @@ trading-dashboard/
             build_drv_cat_layers.py, gen_data_flow_doc.py,
             check_null_columns(_v2).py, check_hist_to_nulls.py
           UNUSED (no importer; safe to delete): position_rules.py
+          hedgeye/  Hedgeye email ingest sub-package: source.py (Gmail IMAP) → classify.py → parsers.py → dispatch.py → emit.py. Feeds: hist_rta, hist_call, hist_call_top5, hist_etfchg, hist_rr, hist_sss_change, hist_msr, hist_hedgeye_stance, note_repo.
           working/  runtime ingest dir (source files + scheduler lock/logs — not code)
   web/    per-screen .html + .js, shared styles.css + _common.js
   docs/   design docs (+ docs/diagrams/*.svg, docs/audit/*.md)
@@ -62,15 +63,15 @@ trading-dashboard/
 ## Database — 4 table families
 
 - `ref_*` — reference/lookup. Tunable tables refresh via `etl/refresh_ref.py`.
-- `hist_*` — raw history, append-only (y, tl, td, tw, to, rr, call, etf, etfchg, ii, iichg, ssh, ps, f, cs, cst, ft). PK `(snapshot_date, symbol[, sequence|account])`.
+- `hist_*` — raw history, append-only (y, tl, td, tw, to, rr, call, call_top5, etf, etfchg, ii, iichg, sss, sss_change, ps, f, cs, cst, ft, rta, msr, hedgeye_stance, quote_daily, macro). PK `(snapshot_date, symbol[, sequence|account])`.
 - `drv_*` — derived, idempotent (`DELETE WHERE as_of_date=D` → INSERT). Key tables:
   - **`drv_ma`** — **compatibility VIEW** (not a table as of 2026-05-31). JOINs the 5 component tables. Never INSERT into it.
   - `drv_symbols`, `drv_technicals`, `drv_fundamentals`, `drv_outlooks`, `drv_portfolio` — 5 component tables written by derive_all (replaced drv_ma).
   - `drv_dash`, `drv_stks`, `drv_dash_summary`, `drv_trig`, `drv_rule_outcome`, `drv_quote`, `drv_rr`, `drv_cat_atomic_input`, `drv_realized_gain`, `drv_cs_realized_gain`.
   - `drv_actionable` — final recommendation per symbol. Columns: `consolidated_action`, `trig_action` (SA/STM/SS/BM vocab), `triggered_group_ids` JSONB, `source_actions` JSONB.
-- `meta_*` — operational (etl_run, file_processed, cleanup_policy, derived_run, scheduler_log).
+- `meta_*` — operational (etl_run, file_processed, cleanup_policy, derived_run, scheduler_log, hedgeye_msg [raw Hedgeye emails before parsing], warning, macro_fetch).
 
-Also: `user_action_log`, `ref_settings`, `v_rule_performance` view.
+Also: `user_action_log`, `ref_settings`, `ext_links` (external provider URLs keyed by `panel_key` — e.g. `early_look`, `call`, `etf_pro`; served by `GET /api/ext-links`), `v_rule_performance` view.
 
 ---
 
@@ -149,6 +150,7 @@ python -m etl.rebuild_rules                    :: recompile rules after trig wor
 python -m etl.cleanup [--dry-run]              :: retention sweep
 python -m db.init_db [--reset-audit]           :: idempotent DDL apply
 start.bat                                      :: launch app (opens browser after 5 s)
+run_scheduler.bat                              :: keep-alive scheduler loop (auto-restarts on crash, 2 s delay)
 uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir api
 pytest tests/                                  :: all tests (DB tests auto-skip if Postgres absent)
 pytest tests/test_FILE.py -k test_name        :: single test; pure-Python tests never need DB
@@ -234,7 +236,9 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | File Monitor logic | `docs/file_monitor_logic.md` |
 | Unified ingest log (file + email) | `v_ingest_log` (db/baseline.sql); API `/api/ingest-log` |
 | Feed catalog (one feed, file + email recognizers) | `v_feed_catalog` + `feed_code` on ref_load_files/ref_hedgeye_email_type (db/baseline.sql; seed db/seeds_feed_code.sql) |
-| Hedgeye action panel (Top-5/alerts/RR flips/stance) on Actionable | `api/routers/hedgeye.py` (`/api/actionable/hedgeye`); `web/hedgeye_panel.js` (loaded by actionable.html) |
+| Hedgeye action panel (Top-5/alerts/RR flips/stance/ETF/SSS/positions/Early Look/MSR) on Actionable | `api/routers/hedgeye.py` (`/api/actionable/hedgeye`); `web/hedgeye_panel.js`. Panel sits above `.act-toolbar` in actionable.html. `effective_date = MAX(anchor, latest across hist_rta/hist_call_top5/hist_etfchg)` so intraday feeds surface immediately. |
+| Hedgeye email pipeline | `etl/hedgeye/`: `source.py` (Gmail IMAP) → `classify.py` (email type) → `parsers.py` (extract rows) → `dispatch.py` (write feed file + ledger) → `emit.py` (push to DB). Config in `.env` + `etl/hedgeye/config.py`. Design: `docs/hedgeye_feeds_design.md`, `docs/hedgeye_loading_dataflow.md`. |
+| External provider links per panel section | `ext_links` table (`panel_key`, `label`, `url`). `GET /api/ext-links` returns all; `PUT /api/ext-links/{panel_key}` updates. Panel headers show ↗ link when url is set. |
 | Rules engine logic | `docs/rules_logic.md` |
 | Rule groups logic | `docs/rule_groups_logic.md` |
 | Rule engine redesign (gate/WATCH, BASE rules, param sets, ML) | `docs/rule_engine_redesign.md` |

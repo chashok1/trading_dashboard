@@ -1183,6 +1183,14 @@ async function loadActionable() {
     applyClientFilter();
     loadSidePanels();
     loadMacroBand();
+    const now = new Date();
+    const mo = now.getMonth() + 1;
+    const dd = String(now.getDate()).padStart(2, '0');
+    let hh = now.getHours(), mm = String(now.getMinutes()).padStart(2, '0');
+    const ap = hh >= 12 ? 'PM' : 'AM';
+    if (hh > 12) hh -= 12; else if (hh === 0) hh = 12;
+    const el = document.getElementById('loadedAt');
+    if (el) el.textContent = mo + '/' + dd + ' ' + hh + ':' + mm + ' ' + ap;
   } catch (e) {
     showStatus('Failed to load actionable: ' + e.message, 'error', 0);
   }

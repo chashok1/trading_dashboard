@@ -175,13 +175,13 @@ function renderStartupStatus(s) {
 
     // ETL Scheduler dot + button
     schedDot.style.background = unknown ? 'var(--text-3)' : schedOn ? 'var(--bull)' : 'var(--bear)';
-    schedText.textContent = unknown ? 'Scheduler auto-start: ?' : schedOn ? 'Scheduler auto-start: ON' : 'Scheduler auto-start: OFF';
+    schedText.textContent = unknown ? 'ETL: ?' : schedOn ? 'ETL: ON' : 'ETL: OFF';
     schedText.style.color = unknown ? 'var(--text-2)' : schedOn ? 'var(--bull)' : 'var(--bear)';
     regSchedBtn.style.display = (!unknown && !schedOn) ? '' : 'none';
 
     // Trading App dot + button
     appDot.style.background = unknown ? 'var(--text-3)' : appOn ? 'var(--bull)' : 'var(--bear)';
-    appText.textContent = unknown ? 'App auto-start: ?' : appOn ? 'App auto-start: ON' : 'App auto-start: OFF';
+    appText.textContent = unknown ? 'App: ?' : appOn ? 'App: ON' : 'App: OFF';
     appText.style.color = unknown ? 'var(--text-2)' : appOn ? 'var(--bull)' : 'var(--bear)';
     regAppBtn.style.display = (!unknown && !appOn) ? '' : 'none';
 
@@ -213,12 +213,14 @@ function renderSchedulerStatus(s) {
     const hint = $('schedulerHint');
     if (!s || !s.running) {
         dot.style.background = 'var(--bear)';
-        text.textContent = 'ETL Scheduler — Stopped';
+        text.textContent = 'Scheduler: Stopped';
+        text.title = 'Start with: python -m etl.scheduler';
         text.style.color = 'var(--bear)';
-        if (hint) hint.textContent = '— start with `python -m etl.scheduler` in a terminal';
+        if (hint) hint.textContent = '';
     } else {
         dot.style.background = 'var(--bull)';
-        text.textContent = 'ETL Scheduler — Running';
+        text.textContent = 'Scheduler: Running';
+        text.title = '';
         text.style.color = 'var(--bull)';
         if (hint) hint.textContent = '';
     }

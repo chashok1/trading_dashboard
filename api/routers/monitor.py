@@ -178,10 +178,13 @@ def get_schedule():
                 -- This makes multi-slot file_types (e.g., TOSL @ 16:00 and
                 -- 17:00) correctly transition the later slot to overdue
                 -- when its file hasn't arrived yet.
+                -- Use processed_at::date (not file_date) so RR files — whose
+                -- file_date is overridden to the prior-day data date — still
+                -- count as "received today".
                 SELECT UPPER(file_type) AS file_type, file_date, processed_at,
                        last_run_id, file_path
                 FROM meta_file_processed, today t
-                WHERE file_date = t.d
+                WHERE processed_at::date = t.d
             ),
             last_fp_all AS (
                 -- All processed files, any date. Per-slot LATERAL join below
@@ -248,8 +251,8 @@ def get_schedule():
                 CASE
                     WHEN ru.file_type IS NOT NULL THEN 'running'
                     WHEN er.file_type IS NOT NULL THEN 'error'
-                    WHEN fp.file_date IS NOT NULL THEN 'done'
-                    WHEN lp.file_date IS NOT NULL AND (ws.window_date IS NULL OR lp.file_date >= ws.window_date) THEN 'done'
+                    WHEN fp.processed_at IS NOT NULL THEN 'done'
+                    WHEN lp.file_date IS NOT NULL AND (ws.window_date IS NULL OR lp.processed_at::date >= ws.window_date) THEN 'done'
                     WHEN r.optional = TRUE THEN 'optional'
                     WHEN it.file_type IS NOT NULL AND r.file_time IS NOT NULL AND CURRENT_TIME < r.file_time THEN 'pending'
                     -- Only mark overdue if today is the scheduled day AND we're past the scheduled time

@@ -23,6 +23,12 @@ except Exception:  # importable in pure-test contexts without a DB
 KEYS = {
     "enabled": "hedgeye_enabled",
     "poll_sec": "hedgeye_poll_interval_sec",
+    "poll_morning_sec": "hedgeye_poll_interval_morning_sec",
+    "poll_biz_sec": "hedgeye_poll_interval_biz_sec",
+    "poll_off_sec": "hedgeye_poll_interval_off_sec",
+    "poll_morning_start_min": "hedgeye_poll_morning_start_min",
+    "poll_morning_end_min": "hedgeye_poll_morning_end_min",
+    "poll_biz_end_min": "hedgeye_poll_biz_end_min",
     "provider": "hedgeye_email_provider",          # imap | gmail_api
     "imap_host": "hedgeye_imap_host",
     "imap_user": "hedgeye_imap_user",
@@ -42,6 +48,12 @@ KEYS = {
 DEFAULTS = {
     "enabled": "false",
     "poll_sec": "900",
+    "poll_morning_sec": "300",
+    "poll_biz_sec": "900",
+    "poll_off_sec": "3600",
+    "poll_morning_start_min": "360",
+    "poll_morning_end_min": "630",
+    "poll_biz_end_min": "960",
     "provider": "imap",
     "mailbox": "INBOX",
     "image_dir": "etl/working/hedgeye_charts",

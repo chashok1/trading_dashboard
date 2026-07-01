@@ -64,14 +64,15 @@ def record_ledger(session, email, email_type: str, status: str,
                   detail: Optional[dict] = None) -> None:
     session.execute(text(
         "INSERT INTO meta_hedgeye_msg "
-        "(message_id, email_type, sender, subject, status, detail, processed_at) "
-        "VALUES (:m,:t,:s,:subj,:st,:d, now()) "
+        "(message_id, email_type, sender, subject, status, detail, processed_at, received_at) "
+        "VALUES (:m,:t,:s,:subj,:st,:d, now(), :recv) "
         "ON CONFLICT (message_id) DO UPDATE SET "
         "email_type=EXCLUDED.email_type, status=EXCLUDED.status, "
-        "detail=EXCLUDED.detail, processed_at=now()"),
+        "detail=EXCLUDED.detail, processed_at=now(), "
+        "received_at=COALESCE(meta_hedgeye_msg.received_at, EXCLUDED.received_at)"),
         {"m": email.message_id, "t": email_type, "s": email.sender[:200],
          "subj": email.subject[:400], "st": status,
-         "d": json.dumps(detail or {})})
+         "d": json.dumps(detail or {}), "recv": email.received})
 
 
 def _write_notes(session, notes: list[dict]) -> None:

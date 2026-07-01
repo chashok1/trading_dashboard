@@ -6576,7 +6576,8 @@ CREATE TABLE IF NOT EXISTS meta_hedgeye_msg (
     subject       TEXT,
     status        TEXT,
     detail        JSONB,
-    processed_at  TIMESTAMPTZ DEFAULT now()
+    processed_at  TIMESTAMPTZ DEFAULT now(),
+    received_at   TIMESTAMPTZ
 );
 
 -- Real-Time Alerts (action feed). PK = message_id (one alert per email).
@@ -6648,11 +6649,15 @@ CREATE TABLE IF NOT EXISTS note_repo (
     signal_kind  TEXT,
     note_text    TEXT,
     subject      TEXT,
-    status       TEXT DEFAULT 'new',
-    UNIQUE (message_id, source_type, note_text)
+    status       TEXT DEFAULT 'new'
 );
 CREATE INDEX IF NOT EXISTS ix_note_repo_tickers ON note_repo USING GIN (tickers);
 CREATE INDEX IF NOT EXISTS ix_note_repo_date ON note_repo (note_date DESC);
+-- note_text can run long (full commentary paragraphs); a plain btree UNIQUE on
+-- (message_id, source_type, note_text) overflows Postgres's 2704-byte index row
+-- cap. Dedup on an md5 hash of the text instead (fixed-width, same semantics).
+ALTER TABLE note_repo DROP CONSTRAINT IF EXISTS note_repo_message_id_source_type_note_text_key;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_note_repo_dedup ON note_repo (message_id, source_type, md5(note_text));
 
 -- Optional cached LLM enrichment output (display-only, non-authoritative).
 CREATE TABLE IF NOT EXISTS llm_analysis (
@@ -6723,6 +6728,9 @@ ALTER TABLE hist_etfchg ADD COLUMN IF NOT EXISTS message_id TEXT;
 -- hist_call / hist_ps: add message_id for source tracing
 ALTER TABLE hist_call ADD COLUMN IF NOT EXISTS message_id TEXT;
 ALTER TABLE hist_ps   ADD COLUMN IF NOT EXISTS message_id TEXT;
+
+-- meta_hedgeye_msg: add received_at (email Date header, when Hedgeye sent it)
+ALTER TABLE meta_hedgeye_msg ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ;
 
 -- =====================================================
 -- v_ingest_log — unified chronological ingest ledger

@@ -12,6 +12,7 @@ Read-only. date defaults to the anchor via _resolve_date. tos_symbol everywhere.
 """
 from __future__ import annotations
 
+import threading
 from typing import Optional
 
 import json
@@ -24,6 +25,9 @@ from sqlalchemy import text
 
 from etl.db import session_scope
 from api._helpers import _resolve_date
+
+_gmail_fetch_lock = threading.Lock()
+_gmail_fetch_state: dict = {"running": False, "last_run": None, "last_count": None, "last_error": None}
 
 router = APIRouter(tags=["hedgeye"])
 
@@ -39,19 +43,59 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
         "stance": {"bullish": [], "bearish": []},
     }
 
+    def _recv(s, table: str, date_col: str, date_val) -> Optional[str]:
+        """received_at via message_id join (works when message_id is populated)."""
+        if date_val is None:
+            return None
+        row = s.execute(text(
+            f"SELECT m.received_at FROM meta_hedgeye_msg m"
+            f" JOIN {table} h ON h.message_id = m.message_id"
+            f" WHERE h.{date_col} = :d AND m.received_at IS NOT NULL"
+            f" ORDER BY m.received_at DESC LIMIT 1"
+        ), {"d": date_val}).scalar()
+        return row.isoformat() if row else None
+
+    def _recv_by_type(s, email_type: str, data_date) -> Optional[str]:
+        """received_at by matching email_type + ET calendar date.
+        Used for file-lane feeds (hist_call, hist_etfchg) whose message_id
+        is never written by the file loader, and for derived tables."""
+        if data_date is None:
+            return None
+        row = s.execute(text(
+            "SELECT received_at FROM meta_hedgeye_msg"
+            " WHERE email_type = :et AND received_at IS NOT NULL"
+            " AND (received_at AT TIME ZONE 'America/New_York')::date = :d"
+            " ORDER BY received_at DESC LIMIT 1"
+        ), {"et": email_type, "d": data_date}).scalar()
+        return row.isoformat() if row else None
+
     with session_scope() as s:
-        # Compute effective date: clamp up to latest available Hedgeye data.
-        # Hedgeye emails arrive intraday and may be dated newer than the anchor
-        # (TOSD) date, causing exact-date filters to return nothing. Use the
-        # most-recent available Hedgeye date when it is newer than the anchor.
-        latest_q = (
-            "SELECT MAX(d) FROM ("
-            "SELECT MAX(snapshot_date) d FROM hist_rta "
-            "UNION ALL SELECT MAX(snapshot_date) FROM hist_call_top5 "
-            "UNION ALL SELECT MAX(event_date) FROM hist_etfchg) sub"
-        )
-        latest_hedgeye = s.execute(text(latest_q)).scalar()
-        effective_date = max(d, latest_hedgeye) if latest_hedgeye else d
+        # viewing_live: is `d` the current anchor (no historical date requested)?
+        # Only then do we clamp up to "latest available" data — a historical
+        # date must not look ahead to today's data (same no-look-ahead rule as
+        # drv_quote; see docs/derive_date_logic.md).
+        anchor = s.execute(text("SELECT MAX(as_of_date) FROM v_available_dates")).scalar()
+        viewing_live = anchor is not None and d >= anchor
+
+        # Compute effective date: clamp up to latest available Hedgeye data,
+        # but only when viewing live (see viewing_live above).
+        if viewing_live:
+            latest_q = (
+                "SELECT MAX(d) FROM ("
+                "SELECT MAX(snapshot_date) d FROM hist_rta "
+                "UNION ALL SELECT MAX(snapshot_date) FROM hist_call_top5 "
+                "UNION ALL SELECT MAX(event_date) FROM hist_etfchg) sub"
+            )
+            latest_hedgeye = s.execute(text(latest_q)).scalar()
+            effective_date = max(d, latest_hedgeye) if latest_hedgeye else d
+        else:
+            effective_date = d
+
+        # Bound for note-only sections (Early Look, Call Macro): these aren't
+        # anchored to market-close data, so when viewing live they can show up
+        # through today's real calendar date; when viewing history they're
+        # capped at `d` like everything else — no look-ahead.
+        note_bound = s.execute(text("SELECT CURRENT_DATE")).scalar() if viewing_live else d
         out["as_of"] = effective_date.isoformat()
 
         # Top-5 actionable ideas — latest call snapshot on/before effective_date.
@@ -69,12 +113,15 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                 for r in rows
             ]
             out["top5_date"] = top_date.isoformat()
+            out["top5_received_at"] = _recv(s, "hist_call_top5", "snapshot_date", top_date)
 
         # Real-Time Alerts — latest snapshot on/before effective_date, non-superseded.
         rta_date = s.execute(text(
             "SELECT MAX(snapshot_date) FROM hist_rta WHERE snapshot_date <= :eff"
         ), {"eff": effective_date}).scalar()
         if rta_date is not None:
+            out["rta_date"] = rta_date.isoformat()
+            out["rta_received_at"] = _recv(s, "hist_rta", "snapshot_date", rta_date)
             rows = s.execute(text(
                 "SELECT alert_ts, action, side, COALESCE(tos_symbol, symbol) AS sym, price, "
                 "dur_trade, dur_trend, dur_tail, is_correction, coaching_notes "
@@ -101,10 +148,22 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                 })
 
         # Risk Range trend flips — latest as_of_date on/before effective_date.
+        # drv_rr_trend_change is derived; flip_date = prev_biz_day of the RR email.
+        # Match the risk_range email received the next 1-3 calendar days after flip_date.
         flip_date = s.execute(text(
             "SELECT MAX(as_of_date) FROM drv_rr_trend_change WHERE as_of_date <= :eff"
         ), {"eff": effective_date}).scalar()
         if flip_date is not None:
+            out["trend_flips_date"] = flip_date.isoformat()
+            rr_recv = s.execute(text(
+                "SELECT received_at FROM meta_hedgeye_msg"
+                " WHERE email_type = 'risk_range' AND received_at IS NOT NULL"
+                " AND (received_at AT TIME ZONE 'America/New_York')::date > :d"
+                " AND (received_at AT TIME ZONE 'America/New_York')::date <= :d + interval '3 days'"
+                " ORDER BY received_at LIMIT 1"
+            ), {"d": flip_date}).scalar()
+            if rr_recv:
+                out["trend_flips_received_at"] = rr_recv.isoformat()
             rows = s.execute(text(
                 "SELECT tos_symbol, from_trend, to_trend "
                 "FROM drv_rr_trend_change WHERE as_of_date = :fd ORDER BY tos_symbol"
@@ -129,6 +188,7 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                 if key:
                     out["stance"][key].append(sym)
             out["stance_date"] = stance_date.isoformat()
+            out["stance_received_at"] = _recv(s, "hist_hedgeye_stance", "snapshot_date", stance_date)
 
         # Hedgeye Positions — latest hist_call snapshot on/before effective_date.
         call_date = s.execute(text(
@@ -143,6 +203,7 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
             ), {"cd": call_date}).fetchall()
             out["positions"] = {
                 "date": call_date.isoformat(),
+                "received_at": _recv_by_type(s, "the_call", call_date),
                 "longs": [
                     {"sym": r[0], "best": "best idea" in (r[2] or "")}
                     for r in call_rows if r[1] == "BULLISH"
@@ -169,23 +230,64 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
             ), {"ed": etf_date}).fetchall()
             out["etf_changes"] = {
                 "date": etf_date.isoformat(),
+                "received_at": _recv_by_type(s, "etf_changes", etf_date),
                 "changes": [
                     {"sym": r[0], "side": r[1], "action": r[2]}
                     for r in etf_rows
                 ],
             }
 
-        # Early Look — latest key takeaways on/before effective_date.
+        # Signal Strength (SSS) changes — latest snapshot_date on/before effective_date.
+        sss_date = s.execute(text(
+            "SELECT MAX(snapshot_date) FROM hist_sss_change WHERE snapshot_date <= :eff"
+        ), {"eff": effective_date}).scalar()
+        if sss_date is not None:
+            sss_rows = s.execute(text(
+                "SELECT COALESCE(tos_symbol,symbol) sym, action"
+                " FROM hist_sss_change WHERE snapshot_date = :sd AND symbol != 'NONE'"
+                " ORDER BY action DESC, sym"
+            ), {"sd": sss_date}).fetchall()
+            out["sss_changes"] = {
+                "date": sss_date.isoformat(),
+                "received_at": _recv(s, "hist_sss_change", "snapshot_date", sss_date),
+                "changes": [{"sym": r[0], "action": r[1]} for r in sss_rows],
+            }
+
+        # Early Look — note-only, not anchored to market close: show up through
+        # today regardless of effective_date (TOSD lag shouldn't hold back same-day analysis).
         el_row = s.execute(text(
-            "SELECT note_date, subject, note_text FROM note_repo"
-            " WHERE source_type='early_look' AND note_date <= :eff"
+            "SELECT note_date, subject, note_text, message_id FROM note_repo"
+            " WHERE source_type='early_look' AND note_date <= :b"
             " ORDER BY note_date DESC, note_id DESC LIMIT 1"
-        ), {"eff": effective_date}).first()
+        ), {"b": note_bound}).first()
         if el_row:
+            recv = s.execute(text(
+                "SELECT received_at FROM meta_hedgeye_msg WHERE message_id=:m"
+                " AND received_at IS NOT NULL LIMIT 1"
+            ), {"m": el_row[3]}).scalar()
             out["early_look"] = {
                 "date": el_row[0].isoformat(),
+                "received_at": recv.isoformat() if recv else None,
                 "subject": el_row[1],
                 "takeaways": el_row[2],
+            }
+
+        # The Call — Macro Commentary — note-only, same rationale as Early Look above.
+        cm_row = s.execute(text(
+            "SELECT note_date, subject, note_text, message_id FROM note_repo"
+            " WHERE source_type='the_call_macro' AND note_date <= :b"
+            " ORDER BY note_date DESC, note_id DESC LIMIT 1"
+        ), {"b": note_bound}).first()
+        if cm_row:
+            recv = s.execute(text(
+                "SELECT received_at FROM meta_hedgeye_msg WHERE message_id=:m"
+                " AND received_at IS NOT NULL LIMIT 1"
+            ), {"m": cm_row[3]}).scalar()
+            out["call_macro"] = {
+                "date": cm_row[0].isoformat(),
+                "received_at": recv.isoformat() if recv else None,
+                "subject": cm_row[1],
+                "note_text": cm_row[2],
             }
 
         # Market Situation Report — latest gamma metrics on/before effective_date.
@@ -200,6 +302,7 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
             if msr_row:
                 out["msr"] = {
                     "date": msr_date.isoformat(),
+                    "received_at": _recv(s, "hist_msr", "snapshot_date", msr_date),
                     "gamma_throttle": (
                         float(msr_row[0]) if msr_row[0] is not None else None
                     ),
@@ -210,6 +313,26 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                 }
 
     return out
+
+
+@router.get("/api/ext-links")
+def ext_links():
+    with session_scope() as s:
+        rows = s.execute(text(
+            "SELECT panel_key, label, url FROM ext_links ORDER BY sort_order"
+        )).fetchall()
+    return {r[0]: {"label": r[1], "url": r[2]} for r in rows}
+
+
+@router.put("/api/ext-links/{panel_key}")
+def update_ext_link(panel_key: str, payload: dict = Body(...)):
+    url = payload.get("url", "")
+    with session_scope() as s:
+        s.execute(text(
+            "UPDATE ext_links SET url=:u WHERE panel_key=:k"
+        ), {"u": url, "k": panel_key})
+        s.commit()
+    return {"panel_key": panel_key, "url": url}
 
 
 @router.get("/api/msr/image")
@@ -242,7 +365,7 @@ def list_notes(date: Optional[str] = Query(None), ticker: Optional[str] = Query(
         clauses.append("(note_text ILIKE :q OR subject ILIKE :q)"); params["q"] = "%" + q + "%"
     where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
     sql = ("SELECT note_id, note_date, source_type, analyst, subject, note_text, "
-           "tickers, theme_tags, quad, gmail_link, status FROM note_repo" + where +
+           "tickers, theme_tags, quad, signal_kind, gmail_link, status FROM note_repo" + where +
            " ORDER BY note_date DESC NULLS LAST, note_id DESC LIMIT :lim")
     with session_scope() as s:
         rows = s.execute(text(sql), params).mappings().fetchall()
@@ -436,6 +559,65 @@ def symbol_hedgeye(sym: str, date: Optional[str] = Query(None)):
 # ---------------------------------------------------------------------------
 # LLM enrichment (optional, display-only) — read cached output if present
 # ---------------------------------------------------------------------------
+
+@router.get("/api/hedgeye/fetch-status")
+def hedgeye_fetch_status():
+    """Last Gmail fetch state + recent email counts by type."""
+    with session_scope() as s:
+        rows = s.execute(text(
+            "SELECT email_type, COUNT(*) n, MAX(received_at) latest"
+            " FROM meta_hedgeye_msg WHERE received_at IS NOT NULL"
+            " AND (received_at AT TIME ZONE 'America/New_York')::date = CURRENT_DATE"
+            " GROUP BY email_type ORDER BY latest DESC"
+        )).fetchall()
+        total = s.execute(text(
+            "SELECT COUNT(*) FROM meta_hedgeye_msg"
+            " WHERE (received_at AT TIME ZONE 'America/New_York')::date = CURRENT_DATE"
+        )).scalar()
+    return {
+        "running": _gmail_fetch_state["running"],
+        "last_run": _gmail_fetch_state["last_run"],
+        "last_count": _gmail_fetch_state["last_count"],
+        "last_error": _gmail_fetch_state["last_error"],
+        "today_total": total or 0,
+        "today_by_type": [
+            {"type": r[0], "count": r[1],
+             "latest": r[2].isoformat() if r[2] else None}
+            for r in rows
+        ],
+    }
+
+
+@router.post("/api/hedgeye/fetch-now")
+def hedgeye_fetch_now():
+    """Trigger an on-demand Gmail fetch in the background."""
+    if _gmail_fetch_state["running"]:
+        return {"started": False, "reason": "already_running"}
+
+    def _run():
+        from datetime import date, timedelta
+        _gmail_fetch_state["running"] = True
+        _gmail_fetch_state["last_error"] = None
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+            from etl.hedgeye import config as _cfg_mod
+            from etl.hedgeye_fetch import _process_pass
+            cfg = _cfg_mod.load()
+            since = date.today() - timedelta(days=1)
+            n = _process_pass(cfg, since, dry_run=False)
+            _gmail_fetch_state["last_count"] = n
+        except Exception as exc:
+            _gmail_fetch_state["last_error"] = str(exc)
+        finally:
+            from datetime import datetime, timezone
+            _gmail_fetch_state["last_run"] = datetime.now(timezone.utc).isoformat()
+            _gmail_fetch_state["running"] = False
+
+    t = threading.Thread(target=_run, name="hedgeye-adhoc", daemon=True)
+    t.start()
+    return {"started": True}
+
 
 @router.get("/api/notes/{message_id}/llm")
 def note_llm(message_id: str):

@@ -4,7 +4,6 @@
 -- ref_settings defaults (secrets stay in .env, never here) -------------------
 INSERT INTO ref_settings (setting_name, setting_value) VALUES
   ('hedgeye_enabled',            'false'),
-  ('hedgeye_poll_interval_sec',  '240'),
   ('hedgeye_email_provider',     'imap'),
   ('hedgeye_imap_host',          'imap.gmail.com'),
   ('hedgeye_imap_user',          'chilukua14@gmail.com'),
@@ -14,6 +13,22 @@ INSERT INTO ref_settings (setting_name, setting_value) VALUES
   ('hedgeye_msr_dir',            'C:\Ashok\Investing\Stocks\MSR'),
   ('hedgeye_llm_enabled',        'false')
 ON CONFLICT (setting_name) DO NOTHING;
+
+-- Poll intervals use DO UPDATE so init_db always keeps them at the intended
+-- values (the original seed had 240 s which was never corrected by DO NOTHING).
+-- Three-tier weekday schedule (ET), based on observed Hedgeye send-time clustering:
+--   06:00-10:30 morning  -> poll_interval_morning_sec (RR/Early Look/Macro Show/The Call cluster here)
+--   10:30-16:00 biz      -> poll_interval_biz_sec (RTA/signal_strength trickle all day)
+--   otherwise            -> poll_interval_off_sec (nothing meaningful arrives)
+INSERT INTO ref_settings (setting_name, setting_value) VALUES
+  ('hedgeye_poll_interval_sec',        '900'),
+  ('hedgeye_poll_interval_morning_sec','300'),
+  ('hedgeye_poll_interval_biz_sec',    '900'),
+  ('hedgeye_poll_interval_off_sec',    '3600'),
+  ('hedgeye_poll_morning_start_min',   '360'),
+  ('hedgeye_poll_morning_end_min',     '630'),
+  ('hedgeye_poll_biz_end_min',         '960')
+ON CONFLICT (setting_name) DO UPDATE SET setting_value = EXCLUDED.setting_value;
 
 -- Macro series for the inflation nowcast --------------------------------------
 -- grp/sort_order match ref_macro_series live schema (grp NOT NULL, no default).
