@@ -1271,8 +1271,8 @@ function _symTapeBg(row) {
   }
   // No outlook — fall back to pct_change direction
   const pct = row.pct_change != null ? Number(row.pct_change) : null;
-  if (pct != null && pct > 0.001)  return '#2f9e2f';
-  if (pct != null && pct < -0.001) return '#d83a3a';
+  if (pct != null && pct > 0.001)  return '#1d9e75';
+  if (pct != null && pct < -0.001) return '#d4537e';
   return '#888';
 }
 
@@ -1293,7 +1293,7 @@ function renderSymTape() {
   track.innerHTML = batch.map(r => {
     const pct    = r.pct_change != null ? Number(r.pct_change) : null;
     const pctStr = pct != null ? Math.abs(pct).toFixed(2) + '%' : '—';
-    const pctBg  = pct == null ? null : pct > 0.001 ? '#2f9e2f' : pct < -0.001 ? '#d83a3a' : '#888';
+    const pctBg  = pct == null ? null : pct > 0.001 ? '#1d9e75' : pct < -0.001 ? '#d4537e' : '#888';
     const pctBoxStyle = pctBg ? `background:${pctBg};color:#fff;` : 'color:#94a3b8;';
     const bg     = _symTapeBg(r);
     const action = r.consolidated_action || '';
@@ -2104,8 +2104,13 @@ function _finalCallHtml(row) {
   // Color via actions.js token (act-*-fill gives solid fill + white text, matching Portfolio Action column)
   var fcDisp = actionDisplay(fc.code || (fc.side === 'sell' ? 'SA' : fc.side === 'buy' ? 'BS' : 'HOLD'));
   var colorCls = (fcDisp.colorCls || 'act-neutral') + '-fill';
+  // SA (SELL ALL) / BM (BUY MORE) match the HEDGEYE panel's red/green exactly;
+  // weaker tiers (SS/STM/SO/SW, BS/BMN/BW) and neutral keep the standard palette.
+  var hedgeyeStyle = fcDisp.code === 'SA' ? 'background:#d4537e;'
+                    : fcDisp.code === 'BM' ? 'background:#1d9e75;'
+                    : '';
   var subIcon = '<div style="font-size:9px;line-height:1.4;">' + badgeHtml + '</div>';
-  return '<span class="act-badge act-badge-sm ' + colorCls + '" title="' +
+  return '<span class="act-badge act-badge-sm ' + colorCls + '" style="' + hedgeyeStyle + '" title="' +
          escapeHtml(fc.label || text) + '">' +
          escapeHtml(text) + '</span>' + subIcon;
 }

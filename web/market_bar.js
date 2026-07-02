@@ -150,7 +150,7 @@
 
   function _buildTipHtml(d) {
     const showSym  = d.sym && d.sym !== d.dname;
-    const pctColor = d.pctCls === 'mt-up' ? '#2f9e2f' : d.pctCls === 'mt-down' ? '#d83a3a' : '#888';
+    const pctColor = d.pctCls === 'mt-up' ? '#1d9e75' : d.pctCls === 'mt-down' ? '#d4537e' : '#888';
     const olColor  = (window.outlookColor && d.outlook)
       ? (window.outlookColor(d.outlook) || '#666') : '#666';
 
@@ -249,7 +249,7 @@
     const usable = VH - 2 * PAD;
     const toY = p => Math.round(PAD + usable * (1 - (p - l) / range));
 
-    const color   = c >= o ? '#2f9e2f' : '#d83a3a';
+    const color   = c >= o ? '#1d9e75' : '#d4537e';
     const wickTop = toY(h);
     const wickBot = toY(l);
     const bodyTop = toY(Math.max(o, c));
@@ -314,10 +314,10 @@
 
   function chipHtml(name, ol, pctStr, pctCls, buy, sell, cur, tipObj, stale, ohlc, volThresh, scoreSym) {
     const staleCls = stale ? ' mt-stale' : '';
-    const pctBg = pctCls === 'mt-up' ? '#2f9e2f' : pctCls === 'mt-down' ? '#d83a3a' : '#888';
+    const pctBg = pctCls === 'mt-up' ? '#1d9e75' : pctCls === 'mt-down' ? '#d4537e' : '#888';
     const pctBoxStyle = `background:${pctBg};color:#fff;`;
     const zoneColor = volThresh
-      ? (volThresh.zone === 'mt-up' ? '#2f9e2f' : volThresh.zone === 'mt-chop' ? '#eab308' : '#d83a3a')
+      ? (volThresh.zone === 'mt-up' ? '#1d9e75' : volThresh.zone === 'mt-chop' ? '#eab308' : '#d4537e')
       : null;
     const symColor = zoneColor || outlookBg(ol);
     const dataTip = tipObj ? ` data-tip="${escHtml(JSON.stringify(tipObj))}"` : '';
