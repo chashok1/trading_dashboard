@@ -1172,6 +1172,7 @@ async function loadActionable() {
     applyClientFilter();
     loadSidePanels();
     loadMacroBand();
+    if (window.reloadMacroAreas) window.reloadMacroAreas();
     const now = new Date();
     const mo = now.getMonth() + 1;
     const dd = String(now.getDate()).padStart(2, '0');
@@ -1407,6 +1408,24 @@ async function checkEodFeed() {
   } catch (_) {
     banner.style.display = 'none';
   }
+}
+
+// ---- Auto-refresh once when fresh TL (TOSL) / Yahoo quote data lands ------
+// Mirrors hedgeye_panel.js's checkForNewEmail: poll a lightweight signal and
+// reload only when it changes, so the grid picks up new prices without
+// waiting for a manual Refresh click, and without refreshing on every poll.
+let _lastDataSignal = null;
+async function checkForNewData() {
+  try {
+    const status = await fetchJson('/api/actionable/data-status');
+    const sig = (status && status.last_at) || '';
+    if (_lastDataSignal !== null && sig !== _lastDataSignal) {
+      loadActionable();
+      checkFreshness();
+      checkEodFeed();
+    }
+    _lastDataSignal = sig;
+  } catch (_) { /* non-critical, ignore */ }
 }
 
 async function rederiveStale() {
@@ -3824,6 +3843,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadSources();
   await loadDates();
   checkFreshness();
+  checkForNewData();
+  setInterval(checkForNewData, 30000);
 
   // Sync UI to restored state
   syncFilterUi();

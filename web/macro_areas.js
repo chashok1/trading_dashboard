@@ -473,4 +473,10 @@
     init();
   }
 
+  // Exposed so actionable.js's Refresh button (loadActionable) can re-pull
+  // the Macro rail too -- previously only the #datePicker "change" event
+  // reloaded it, so the volatility gauges (and the rest of the rail) went
+  // stale after the initial page load until the date was changed.
+  window.reloadMacroAreas = load;
+
 })();

@@ -1225,6 +1225,20 @@ def get_actionable_freshness(date: Optional[str] = Query(None)):
     }
 
 
+@router.get("/api/actionable/data-status")
+def get_actionable_data_status():
+    """Latest processed_at for the TOSL (TL) and Yahoo (YFiles) quote feeds —
+    the sources drv_quote reads its price/pct_change from. Polled by the
+    Actionable page to auto-refresh once when fresh quote data lands,
+    instead of only refreshing on a manual Refresh click or date change."""
+    with session_scope() as s:
+        last_at = s.execute(text("""
+            SELECT MAX(processed_at) FROM meta_file_processed
+            WHERE UPPER(file_type) IN ('TOSL', 'YFILES')
+        """)).scalar()
+    return {"last_at": last_at.isoformat() if last_at else None}
+
+
 @router.get("/api/actionable/comparison")
 def get_actionable_comparison(
     symbol: str = Query(...),
