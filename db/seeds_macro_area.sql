@@ -28,10 +28,15 @@ VALUES
   ('us_equities', 'US Equities', 'IWM',   'dual',    60)
 ON CONFLICT (area_key, member_symbol) DO NOTHING;
 
--- Volatility (gauge only) ---------------------------------------------
+-- Volatility (gauge only; one row per index, own label, rendered as its own
+-- row) -- sort_order kept high (900s) so it's the last area in _AREA_ORDER
+-- (moved to bottom of the Macro panel).
 INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order)
 VALUES
-  ('volatility', 'Volatility', 'VIX', 'gauge', 10)
+  ('volatility', 'S&P Vol',    'VIX',     'gauge', 10),
+  ('volatility', 'Nasdaq Vol', 'VXN:CGI', 'gauge', 20),
+  ('volatility', 'Dow Vol',    'VXD',     'gauge', 30),
+  ('volatility', 'Russell Vol', 'RVX',    'gauge', 40)
 ON CONFLICT (area_key, member_symbol) DO NOTHING;
 
 -- Rates / curve -------------------------------------------------------

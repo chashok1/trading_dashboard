@@ -250,6 +250,27 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         return str(cat).strip().upper() if cat else ""
     alloc_has = lambda cat: _alloc_key(cat) in asset_alloc
 
+    # Hedgeye's PS/ETF feeds use finer-grained asset_class labels than the
+    # coarse ref_asset_allocation buckets actually configured (Equities,
+    # Fixed Income, Foreign Currency) — map the near-synonyms onto those
+    # buckets so they size against the existing envelope instead of falling
+    # back to the generic PS/ETF one. Exact matches (e.g. literal "Equities")
+    # bypass this map untouched since alloc_has() already finds them.
+    _ASSET_CLASS_ALIAS = {
+        "domestic equities":          "Equities",
+        "global equities":            "Equities",
+        "international equities":     "Equities",
+        "emerging markets equities":  "Equities",
+        "domestic fixed income":      "Fixed Income",
+        "us fixed income":            "Fixed Income",
+        "foreign currencies":         "Foreign Currency",
+    }
+
+    def _norm_asset_class(cat):
+        if not cat:
+            return cat
+        return _ASSET_CLASS_ALIAS.get(str(cat).strip().lower(), cat)
+
     my_stocks = {r[0] for r in session.execute(
         text("SELECT tos_symbol FROM ref_my_stocks WHERE active = 'Y'")
     ).fetchall()}
@@ -387,9 +408,10 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         ref_asset_allocation row. A present-but-unmapped class falls through
         to the fallback (and logs a warning) instead of silently sizing to $0."""
         def _use_ac(ac):
-            # Return ac if it maps to an allocation row; else warn + None.
+            # Return ac (post-alias) if it maps to an allocation row; else warn + None.
             if not ac:
                 return None
+            ac = _norm_asset_class(ac)
             if alloc_has(ac):
                 return ac
             log.warning("derive_actionable: %s asset_class %r for %s has no "

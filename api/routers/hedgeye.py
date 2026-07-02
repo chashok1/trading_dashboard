@@ -12,6 +12,7 @@ Read-only. date defaults to the anchor via _resolve_date. tos_symbol everywhere.
 """
 from __future__ import annotations
 
+import re
 import threading
 from typing import Optional
 
@@ -31,10 +32,25 @@ _gmail_fetch_state: dict = {"running": False, "last_run": None, "last_count": No
 
 router = APIRouter(tags=["hedgeye"])
 
-# email_types that drive the panel's effective_date. Kept to the two
-# reliably-daily morning feeds (see actionable_hedgeye below) — every other
+# email_types that drive the panel's effective_date. Kept to the reliably-daily
+# morning feeds with a panel card (see actionable_hedgeye below) — every other
 # type has no panel card or isn't daily, so it must not move this date.
-_PANEL_EMAIL_TYPES = ("risk_range", "early_look")
+_PANEL_EMAIL_TYPES = ("risk_range", "early_look", "macro_show_access")
+
+# Strips the leading "Company Name (TICKER): " prefix each the_call_commentary
+# note starts with, matching the same convention web/notes.js bolds instead of
+# dropping — here we want the bare commentary text only, for a plain tooltip.
+_NAME_TICKER_PREFIX_RE = re.compile(r"^[^\n(]*\([A-Z][A-Z0-9.\-]{0,9}\):\s*")
+
+
+def _strip_name_prefix(text_: str) -> str:
+    return _NAME_TICKER_PREFIX_RE.sub("", text_ or "", count=1)
+
+
+# Pulls the "3.83% y/y" + "-24.0 bp" figures back out of the note_repo text
+# parse_inflation_nowcast already writes ("CPI nowcast {value}% y/y, {seq_bp}
+# bp (...)"), so the panel doesn't need its own copy of these numbers.
+_INFL_NOTE_RE = re.compile(r"CPI nowcast\s+([+-]?[\d.]+)%\s*y/y,\s*([+-]?[\d.]+)\s*bp", re.I)
 
 
 @router.get("/api/actionable/hedgeye")
@@ -189,15 +205,15 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
         ), {"eff": effective_date}).scalar()
         if stance_date is not None:
             rows = s.execute(text(
-                "SELECT stance, COALESCE(tos_symbol, symbol) AS sym "
+                "SELECT stance, COALESCE(tos_symbol, symbol) AS sym, label "
                 "FROM hist_hedgeye_stance WHERE snapshot_date = :sd "
                 "AND COALESCE(tos_symbol, symbol) IS NOT NULL ORDER BY sym"
             ), {"sd": stance_date}).fetchall()
-            for st, sym in rows:
+            for st, sym, label in rows:
                 key = "bullish" if (st or "").strip().lower().startswith("bull") else \
                       "bearish" if (st or "").strip().lower().startswith("bear") else None
                 if key:
-                    out["stance"][key].append(sym)
+                    out["stance"][key].append({"sym": sym, "label": label})
             out["stance_date"] = stance_date.isoformat()
             out["stance_received_at"] = _recv(s, "hist_hedgeye_stance", "snapshot_date", stance_date)
 
@@ -212,19 +228,35 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                 " ORDER BY CASE WHEN outlook_modifier LIKE 'best idea%'"
                 " THEN 0 ELSE 1 END, sym"
             ), {"cd": call_date}).fetchall()
+
+            # Per-symbol sector/policy commentary paragraph (same source as the
+            # Notes screen's the_call_commentary cards) for the Call section's
+            # symbol hover tooltip — bare commentary text, prefix stripped.
+            commentary_rows = s.execute(text(
+                "SELECT tickers, note_text FROM note_repo"
+                " WHERE source_type='the_call_commentary' AND note_date = :cd"
+            ), {"cd": call_date}).fetchall()
+            commentary_by_sym: dict[str, str] = {}
+            for tickers, note_text in commentary_rows:
+                for t in (tickers or []):
+                    if t not in commentary_by_sym:
+                        commentary_by_sym[t] = _strip_name_prefix(note_text)
+
             out["positions"] = {
                 "date": call_date.isoformat(),
                 "received_at": _recv_by_type(s, "the_call", call_date),
                 "longs": [
-                    {"sym": r[0], "best": "best idea" in (r[2] or "")}
+                    {"sym": r[0], "best": "best idea" in (r[2] or ""), "modifier": r[2],
+                     "commentary": commentary_by_sym.get(r[0])}
                     for r in call_rows if r[1] == "BULLISH"
                 ],
                 "shorts": [
-                    {"sym": r[0], "best": "best idea" in (r[2] or "")}
+                    {"sym": r[0], "best": "best idea" in (r[2] or ""), "modifier": r[2],
+                     "commentary": commentary_by_sym.get(r[0])}
                     for r in call_rows if r[1] == "BEARISH"
                 ],
                 "neutral": [
-                    {"sym": r[0]}
+                    {"sym": r[0], "commentary": commentary_by_sym.get(r[0])}
                     for r in call_rows if r[1] == "NEUTRAL"
                 ],
             }
@@ -245,6 +277,25 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                 "changes": [
                     {"sym": r[0], "side": r[1], "action": r[2]}
                     for r in etf_rows
+                ],
+            }
+
+        # Investing Ideas changes — only if received exactly on effective_date.
+        ii_date = s.execute(text(
+            "SELECT MAX(event_date) FROM hist_iichg WHERE event_date = :eff"
+        ), {"eff": effective_date}).scalar()
+        if ii_date is not None:
+            ii_rows = s.execute(text(
+                "SELECT COALESCE(tos_symbol,symbol) sym, outlook, change_str"
+                " FROM hist_iichg WHERE event_date = :ed"
+                " ORDER BY change_str, sym"
+            ), {"ed": ii_date}).fetchall()
+            out["ii_changes"] = {
+                "date": ii_date.isoformat(),
+                "received_at": _recv_by_type(s, "investing_ideas", ii_date),
+                "changes": [
+                    {"sym": r[0], "side": r[1], "action": r[2]}
+                    for r in ii_rows
                 ],
             }
 
@@ -300,6 +351,25 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                 "note_text": cm_row[2],
             }
 
+        # Macro Show — Hedgeye's Top 3 Things — note-only; only if received
+        # exactly on effective_date.
+        t3_row = s.execute(text(
+            "SELECT note_date, subject, note_text, message_id FROM note_repo"
+            " WHERE source_type='macro_show_top3' AND note_date = :b"
+            " ORDER BY note_id DESC LIMIT 1"
+        ), {"b": effective_date}).first()
+        if t3_row:
+            recv = s.execute(text(
+                "SELECT received_at FROM meta_hedgeye_msg WHERE message_id=:m"
+                " AND received_at IS NOT NULL LIMIT 1"
+            ), {"m": t3_row[3]}).scalar()
+            out["top3_things"] = {
+                "date": t3_row[0].isoformat(),
+                "received_at": recv.isoformat() if recv else None,
+                "subject": t3_row[1],
+                "note_text": t3_row[2],
+            }
+
         # Market Situation Report — only if received exactly on effective_date.
         msr_date = s.execute(text(
             "SELECT MAX(snapshot_date) FROM hist_msr WHERE snapshot_date = :eff"
@@ -321,6 +391,30 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                     ),
                     "image_url": f"/api/msr/image?date={msr_date.isoformat()}",
                 }
+
+        # Hedgeye Monthly Inflation Nowcast image — only if received exactly on effective_date.
+        infl_row = s.execute(text(
+            "SELECT (received_at AT TIME ZONE 'America/New_York')::date AS d, received_at"
+            " FROM meta_hedgeye_msg WHERE email_type='inflation_nowcast'"
+            " AND received_at IS NOT NULL"
+            " AND (received_at AT TIME ZONE 'America/New_York')::date = :eff"
+            " ORDER BY received_at DESC LIMIT 1"
+        ), {"eff": effective_date}).first()
+        if infl_row is not None:
+            infl_note = s.execute(text(
+                "SELECT note_text FROM note_repo"
+                " WHERE source_type='inflation' AND note_date = :d"
+                " AND note_text NOT LIKE '%None%'"
+                " ORDER BY note_id DESC LIMIT 1"
+            ), {"d": infl_row[0]}).scalar()
+            m_infl = _INFL_NOTE_RE.search(infl_note or "")
+            out["inflation_nowcast"] = {
+                "date": infl_row[0].isoformat(),
+                "received_at": infl_row[1].isoformat(),
+                "image_url": f"/api/inflation-nowcast/image?date={infl_row[0].isoformat()}",
+                "value": float(m_infl.group(1)) if m_infl else None,
+                "seq_bp": float(m_infl.group(2)) if m_infl else None,
+            }
 
     return out
 
@@ -353,6 +447,17 @@ def msr_image(date: Optional[str] = Query(None)):
     img_path = Path(msr_dir) / f"MSR {d.isoformat()}.png"
     if not img_path.exists():
         raise HTTPException(status_code=404, detail="MSR image not found")
+    return FileResponse(str(img_path), media_type="image/png")
+
+
+@router.get("/api/inflation-nowcast/image")
+def inflation_nowcast_image(date: Optional[str] = Query(None)):
+    from etl.hedgeye import config as hcfg
+    hefiles_dir = hcfg.get("hefiles_dir") or hcfg.DEFAULTS.get("hefiles_dir", "")
+    d = _resolve_date(date)
+    img_path = Path(hefiles_dir) / f"INFL_{d.isoformat()}.png"
+    if not img_path.exists():
+        raise HTTPException(status_code=404, detail="Inflation Nowcast image not found")
     return FileResponse(str(img_path), media_type="image/png")
 
 

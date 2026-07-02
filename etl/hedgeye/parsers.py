@@ -388,48 +388,53 @@ def parse_real_time_alert(email: Email) -> Parsed:
 # 3) Investing Ideas Add/Remove -> hist_iichg (+ hist_ii state)
 # ---------------------------------------------------------------------------
 
-_II_SUBJ = re.compile(r"^(Add|Remove)\b.*?\bto?\s*(LONG|SHORT)\s*Side", re.I)
+_II_BLOCK_RE = re.compile(r"\b(ADDING|REMOVED|REMOVING)\b", re.I)
+_II_SIDE_LINE_RE = re.compile(r"^(Long|Short)\s*:\s*$", re.I)
+_II_STOP_RE = re.compile(r"Commentary from Real[- ]?Time[- ]?Alerts|Coaching Notes\s*:|How to Use", re.I)
+_II_TICKER_LINE_RE = re.compile(r"^([A-Z][A-Z0-9.\-]{0,9})(?:\s*\([^)]*\))?$")
+_II_DESC_RE = re.compile(r"(?:Add|Remove)\s+(.+?)\s*\(([A-Z][A-Z0-9.\-]{0,9})\)", re.I)
 
 
 def parse_investing_ideas(email: Email) -> Parsed:
+    """Body-driven, mirrors parse_etf_changes: tracks the current ADDING/REMOVED(ING)
+    + Long/Short block state per line, so multi-symbol/multi-action emails (e.g.
+    "3 Changes: Remove ROP, RBLX, Add Short PSKY") get each symbol's own action/side
+    instead of one subject-derived action applied to every symbol in the email."""
     p = Parsed("investing_ideas")
-    subj = email.subject
-    action = side = None
-    ms = _II_SUBJ.search(subj)
-    if ms:
-        action = ms.group(1).lower()
-        side = ms.group(2).lower()
-    else:
-        if re.match(r"^\s*Remove", subj, re.I):
-            action = "remove"
-        elif re.match(r"^\s*Add", subj, re.I):
-            action = "add"
-        m2 = re.search(r"\b(LONG|SHORT)\b", subj, re.I)
-        if m2:
-            side = m2.group(1).lower()
+    rows: list[dict] = []
+    cur_action = cur_side = None
+    for ln in _body_lines(email.plaintext):
+        if _II_STOP_RE.search(ln):
+            cur_action = cur_side = None
+            continue
+        mb = _II_BLOCK_RE.search(ln)
+        if mb:
+            cur_action = "add" if mb.group(1).upper() == "ADDING" else "remove"
+            cur_side = None
+            continue
+        ms = _II_SIDE_LINE_RE.match(ln)
+        if ms:
+            cur_side = ms.group(1).lower()
+            continue
+        if cur_action and cur_side:
+            mt = _II_TICKER_LINE_RE.match(ln)
+            if mt:
+                sym = mt.group(1)
+                rows.append({
+                    "snapshot_date": email.edt_date, "message_id": email.message_id,
+                    "action": cur_action, "side": cur_side,
+                    "symbol": sym, "tos_symbol": sym,
+                    "description": None,
+                })
 
-    # body confirms side via "Short:" / "Long:" headers; ticker from meta or subject
-    if side is None:
-        if re.search(r"\bShort:\b", email.plaintext):
-            side = "short"
-        elif re.search(r"\bLong:\b", email.plaintext):
-            side = "long"
+    # Single-symbol emails carry a clean company name in the subject between
+    # Add/Remove and (TICKER) — attach it. Skipped for multi-symbol emails
+    # since one subject line can't describe several different tickers.
+    if len(rows) == 1:
+        m_desc = _II_DESC_RE.search(email.subject)
+        if m_desc:
+            rows[0]["description"] = m_desc.group(1).strip() or None
 
-    symbols = email.meta_symbols
-    if not symbols:
-        m = re.search(r"\(([A-Z][A-Z0-9.\-]{0,9})\)", subj)
-        if m:
-            symbols = [m.group(1)]
-    # Extract description: text between Add/Remove and (TICKER) in subject
-    desc = None
-    m_desc = re.search(r"(?:Add|Remove)\s+(.+?)\s*\(([A-Z][A-Z0-9.\-]{0,9})\)", subj, re.I)
-    if m_desc:
-        desc = m_desc.group(1).strip() or None
-    rows = [{
-        "snapshot_date": email.edt_date, "message_id": email.message_id,
-        "action": action, "side": side, "symbol": s, "tos_symbol": s,
-        "description": desc,
-    } for s in symbols]
     p.add_rows("hist_iichg", rows)
     return p
 
@@ -926,7 +931,13 @@ def parse_early_look(email: Email) -> Parsed:
     take = ""
     m = re.search(r"Key Takeaways\s*(.+?)(?:The Big Picture|$)", text, re.S)
     if m:
-        take = re.sub(r"\s+", " ", m.group(1)).strip()[:2000]
+        # Each takeaway is its own blank-line-separated paragraph in the source
+        # email. Collapse whitespace *within* a paragraph but keep paragraph
+        # breaks as an explicit "\n• " bullet delimiter so the UI can
+        # render the original bullet list instead of one run-on paragraph.
+        paras = [re.sub(r"\s+", " ", para).strip()
+                 for para in re.split(r"\n\s*\n", m.group(1).strip())]
+        take = "\n• ".join(para for para in paras if para)[:2000]
     tickers = sorted(set(_TICKER_PAREN.findall(text)))[:20] or email.meta_symbols
     q = _quad(email.subject + " " + text)
     p.notes.append(_note(email, "early_look", take or email.subject, tickers=tickers, quad=q))
@@ -978,6 +989,7 @@ def parse_inflation_nowcast(email: Email) -> Parsed:
     p.notes.append(_note(
         email, "inflation", f"CPI nowcast {value}% y/y, {seq_bp} bp ({direction}); "
         f"CPI release {cpi.group(1) if cpi else '?'}", theme_tags=["inflation", direction or ""]))
+    p.images = _chart_image_urls(email.html)
     return p
 
 
@@ -992,6 +1004,35 @@ def parse_quarterly_outlook(email: Email) -> Parsed:
     p.notes.append(_note(email, "quarterly_outlook",
                          email.subject, quad=_quad(email.subject + " " + email.plaintext),
                          theme_tags=["quad", "regime"]))
+    return p
+
+
+# ---------------------------------------------------------------------------
+# 12) Macro Show — Access/Top 3 Things -> note_repo
+# ---------------------------------------------------------------------------
+
+# "1) KOSPI – text..." — number, a short label, an en-dash/em-dash/hyphen
+# separator, then the takeaway itself (up to the next numbered item).
+_TOP3_ITEM = re.compile(
+    r"(\d)\)\s*([^\n–—-]+?)\s*[–—-]\s*(.+?)(?=\n\s*\d\)|\Z)", re.S)
+
+
+def parse_macro_show_top3(email: Email) -> Parsed:
+    p = Parsed("macro_show_top3")
+    text = email.plaintext
+    lines: list[str] = []
+    m = re.search(r"Hedgeye's top 3 things\s*(.+?)(?:Please visit|$)", text, re.S | re.I)
+    if m:
+        for num, label, body in _TOP3_ITEM.findall(m.group(1)):
+            label = label.strip()
+            body = re.sub(r"\s+", " ", body).strip()
+            if label and body:
+                lines.append(f"{num}) {label} – {body}")
+    take = "\n".join(lines)[:4000]
+    tickers = sorted(set(_TICKER_PAREN.findall(text)))[:20] or email.meta_symbols
+    q = _quad(email.subject + " " + text)
+    p.notes.append(_note(email, "macro_show_top3", take or email.subject,
+                         tickers=tickers, quad=q))
     return p
 
 
@@ -1014,4 +1055,5 @@ PARSERS: dict[str, Callable[[Email], Parsed]] = {
     "market_situation": parse_market_situation,
     "inflation_nowcast": parse_inflation_nowcast,
     "quarterly_outlook": parse_quarterly_outlook,
+    "macro_show_top3": parse_macro_show_top3,
 }

@@ -771,28 +771,6 @@ function _renderQuadOutlookPanel(data) {
   const months = data.months || [];
   const cq = data.current_quarter, nq = data.next_quarter;
 
-  // ── Header summary ───────────────────────────────────────────────────────
-  const hdrEl = $('quadOutlookHdr');
-  if (hdrEl) {
-    const cm = months[0];
-    const qQuad = _effectiveQuad(cq);
-    const mQuad = _effectiveQuad(cm);
-    const qPart = qQuad
-      ? `Q→<span style="color:${_quadColor(qQuad)};font-weight:700;">${_qLbl(qQuad)}</span>`
-      : 'Q→—';
-    const mDist = cm
-      ? [1,2,3,4].map(i => {
-          const pct = Math.round(cm[`quad${i}_pct`] || 0);
-          const col = _quadColor(`Quad ${i}`);
-          return `<span style="color:${col};">Q${i}:${pct}</span>`;
-        }).join('<span style="color:#cbd5e1;">,</span>')
-      : '—';
-    const mPart = mQuad
-      ? `M(<span style="color:${_quadColor(mQuad)};font-weight:700;">${_qLbl(mQuad)}</span>)→${mDist}`
-      : '—';
-    hdrEl.innerHTML = `${qPart}&nbsp;&nbsp;${mPart}`;
-  }
-
   const _segBar = (p, width) => {
     if (!p) return '';
     const segs = [
@@ -808,6 +786,10 @@ function _renderQuadOutlookPanel(data) {
     }).join('');
     return `<div style="display:flex;width:${width}px;height:14px;border-radius:3px;overflow:hidden;border:1px solid #e2e8f0;">${bars}</div>`;
   };
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  const hdrEl = $('quadOutlookHdr');
+  if (hdrEl) hdrEl.textContent = 'Quads';
 
   let h = '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
 
@@ -2845,8 +2827,9 @@ function renderGrid() {
     const _idyTime = _idyRaw.length >= 4 ? ' @ ' + _idyRaw.slice(0,2) + ':' + _idyRaw.slice(2,4) : '';
     const _idyHHMM = _idyRaw.length >= 4 ? parseInt(_idyRaw.slice(0,4)) : null;
     const _inMktHours = _idyHHMM != null && _idyHHMM >= 930 && _idyHHMM < 1600;
+    const _idySourceLabel = { TL: 'TOS Level', TD: 'TOS Daily', Y: 'Yahoo', CACHE: 'Yahoo (cached)' }[r.quote_source] || r.quote_source || 'unknown';
     const intradayTag = r.quote_is_intraday && _inMktHours
-      ? `<span title="Intraday price${escapeHtml(_idyTime)} — pct_brr/zone computed against live quote" style="font-size:8px;color:#0a84ff;font-weight:700;margin-left:2px;">IDY</span>`
+      ? `<span title="Source: ${escapeHtml(_idySourceLabel)}${escapeHtml(_idyTime)} — pct_brr/zone computed against live quote" style="font-size:8px;color:#0a84ff;font-weight:700;margin-left:2px;">IDY</span>`
       : '';
     const isChecked = state.selected.has(r.tos_symbol);
 

@@ -132,24 +132,26 @@
     var isVol = area.area_key === 'volatility';
 
     if (isVol) {
-      /* Volatility: gauge text only */
-      var vix_m   = (area.members || []).find(function (m) { return m.role === 'gauge'; });
-      var zone    = vix_m ? (vix_m.zone || '—') : '—';
-      var vixVal  = vix_m ? (vix_m.last !== null && vix_m.last !== undefined ? fmt1(vix_m.last) : null) : null;
-      var gaugeClass = zone === 'investable' ? 'msr-gauge-g'
-                     : zone === 'elevated'   ? 'msr-gauge-r'
-                     : 'msr-gauge-a';
-      var vixSpan = vixVal !== null
-        ? '<span class="msr-gauge-vix">VIX ' + esc(vixVal) + '</span>'
-        : '';
-      return (
-        '<div class="msr-row" data-tooltip="' + esc(buildTooltip(area)) + '">' +
-          SVG_NEUT +
-          '<span class="msr-name">' + esc(area.label) + '</span>' +
-          '<span class="msr-gauge ' + gaugeClass + '">' + esc(zone) + '</span>' +
-          vixSpan +
-        '</div>'
-      );
+      /* Volatility: one gauge-text row per index (VIX/VXN/VXD/RVX) */
+      var gauges = (area.members || []).filter(function (m) { return m.role === 'gauge'; });
+      return gauges.map(function (m) {
+        var zone = m.zone || '—';
+        var val  = (m.last !== null && m.last !== undefined) ? fmt1(m.last) : null;
+        var gaugeClass = zone === 'investable' ? 'msr-gauge-g'
+                       : zone === 'elevated'   ? 'msr-gauge-r'
+                       : 'msr-gauge-a';
+        var valSpan = val !== null
+          ? '<span class="msr-gauge-vix">' + esc(val) + '</span>'
+          : '';
+        return (
+          '<div class="msr-row">' +
+            SVG_NEUT +
+            '<span class="msr-name">' + esc(m.label || area.label) + '</span>' +
+            '<span class="msr-gauge ' + gaugeClass + '">' + esc(zone) + '</span>' +
+            valSpan +
+          '</div>'
+        );
+      }).join('');
     }
 
     return (
@@ -163,19 +165,19 @@
     );
   }
 
-  /* ── sectors compact row ────────────────────────────────────────────── */
-  function railSectorsRow(sectors) {
-    if (!sectors) return '';
-    var leaders   = (sectors.leaders   || []).map(esc).join(' · ');
+  /* ── sectors panel (own side-rail section) ────────────────────────── */
+  function renderSectorsPanel(sectors) {
+    var container = document.getElementById('macroRailSectors');
+    if (!container) return;
+    if (!sectors) { container.innerHTML = '<div class="msr-loading">No sector data.</div>'; return; }
+
     var laggards  = (sectors.laggards  || []).map(esc).join(' · ');
     var rotateIn  = (sectors.rotate_in || []).map(esc).join(' · ');
     var subrows = '';
-    if (leaders)  subrows += '<div class="msr-sec-subrow"><span class="msr-sec-up">&#9650;</span> <span class="msr-sec-lbl">Leaders:</span> ' + leaders + '</div>';
     if (laggards) subrows += '<div class="msr-sec-subrow"><span class="msr-sec-down">&#9660;</span> <span class="msr-sec-lbl">Laggards:</span> ' + laggards + '</div>';
     if (rotateIn) subrows += '<div class="msr-sec-subrow"><span class="msr-sec-rotate">&#8635;</span> <span class="msr-sec-lbl">Rotate in:</span> ' + rotateIn + '</div>';
-    if (!subrows) subrows = '<span class="mra-muted">—</span>';
 
-    // All-sectors collapsible sub-panel — same row format as area rows
+    // Full per-sector list — always visible, no collapse toggle
     var all = sectors.all || [];
     var allRows = all.map(function (s) {
       var score     = s.score != null ? s.score : 0;
@@ -191,21 +193,9 @@
       '</div>';
     }).join('');
 
-    var allDetail = all.length
-      ? '<details class="msr-all-sectors"><summary class="msr-all-summary">All sectors (' + all.length + ')</summary>' +
-          '<div class="msr-all-body">' + (allRows || '<span class="mra-muted">No data</span>') + '</div>' +
-        '</details>'
-      : '';
+    if (!subrows && !allRows) subrows = '<span class="mra-muted">—</span>';
 
-    return (
-      '<div class="msr-row msr-sectors-block">' +
-        '<div class="msr-sec-block">' +
-          '<div class="msr-sec-title">Sectors</div>' +
-          subrows +
-          allDetail +
-        '</div>' +
-      '</div>'
-    );
+    container.innerHTML = '<div class="msr-sec-block">' + subrows + allRows + '</div>';
   }
 
   /* ── render into side rail ──────────────────────────────────────────── */
@@ -213,11 +203,8 @@
     var container = document.getElementById('macroRailAreas');
     if (!container) return;
 
-    var areas   = (data && data.areas) || [];
-    var sectors = data && data.sectors;
-
-    var html = areas.map(railAreaRow).join('');
-    html += railSectorsRow(sectors);
+    var areas = (data && data.areas) || [];
+    var html  = areas.map(railAreaRow).join('');
 
     if (!html) {
       container.innerHTML = '<div class="msr-loading">No macro data.</div>';
@@ -459,6 +446,7 @@
 
       /* Primary: render side rail */
       renderRail(data);
+      renderSectorsPanel(data && data.sectors);
 
       /* Legacy full-width card (only if the old wrapper was injected by another path) */
       if (document.getElementById('macroReadCard')) {

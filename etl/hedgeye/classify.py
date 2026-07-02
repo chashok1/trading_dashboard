@@ -40,7 +40,7 @@ EMAIL_TYPES: list[EmailType] = [
               subject_re=r"^The Call @ Hedgeye \| Access Here"),
     EmailType("momo_tracker", "DROP", "daily", subject_re=r"^MOMO Tracker"),
     EmailType("macro_show_access", "ANALYSIS", "daily",
-              subject_re=r"^THE MACRO SHOW:.*Access Show", parser=None),  # note-only
+              subject_re=r"^THE MACRO SHOW:.*Access Show", parser="macro_show_top3"),
 
     # ---- DATA ---------------------------------------------------------------
     EmailType("risk_range", "DATA", "daily",

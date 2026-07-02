@@ -441,7 +441,7 @@ def get_actionable(
                q.last_price, q.net_chng, q.pct_change, q.export_date, q.export_time, q.loaded_at,
                q.open_price, q.high_price, q.low_price, q.imp_volatility, q.iv_to_hv_discount,
                q.pct_brr AS quote_pct_brr, q.zone_signal AS quote_zone,
-               q.is_intraday AS quote_is_intraday,
+               q.is_intraday AS quote_is_intraday, q.source AS quote_source,
                u.user_action AS last_user_action,
                u.snooze_until AS snooze_until,
                rr.td_tn_bb_action_desc AS rr_action,

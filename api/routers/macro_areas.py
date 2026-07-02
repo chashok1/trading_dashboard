@@ -55,10 +55,11 @@ _GICS_DISPLAY = {
     "utilities": "Utilities",
 }
 
-# Canonical ordering for areas
+# Canonical ordering for areas — volatility last (rendered at the bottom
+# of the Macro panel; it's 4 separate gauge rows, not a stance area).
 _AREA_ORDER = [
-    "usd", "us_equities", "volatility", "rates",
-    "credit", "commodities", "crypto", "global",
+    "usd", "us_equities", "rates",
+    "credit", "commodities", "crypto", "global", "volatility",
 ]
 
 # Symbols that are yield-curve members — skip rr_pos
@@ -272,6 +273,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 member_details.append({
                     "symbol": sym,
                     "role": role,
+                    "label": mc.get("label"),
                     "last": _maybe_float(last),
                     "pct_change": _maybe_float(pct_chg),
                     "zone": zone,

@@ -41,6 +41,20 @@
       'font-weight:700; color:#fff; background:' + color + '; margin-left:4px;">' + esc(text) + '</span>';
   }
 
+  // Rich tooltips (reuses actionable.js's #sourcePop / _showDataPop / hideSourcePop,
+  // globals since actionable.js loads un-deferred before this deferred script runs).
+  // Each hoverable element gets data-hetip="<index>" instead of a plain title=;
+  // _tipHtml is rebuilt every render() so indices always match the current DOM.
+  var _tipHtml = [];
+  function _richTip(html) {
+    _tipHtml.push(html);
+    return _tipHtml.length - 1;
+  }
+  function _popBox(titleHtml, body) {
+    return '<div class="sp-title">' + titleHtml + '</div>' +
+      '<div style="max-width:320px; white-space:pre-wrap;">' + esc(body || '') + '</div>';
+  }
+
   // mm/dd from YYYY-MM-DD
   function fmtMD(iso) {
     if (!iso) return '';
@@ -76,9 +90,12 @@
   function top5Html(rows) {
     if (!rows || !rows.length) return '';
     return rows.map(function (r) {
-      return '<div title="' + esc(r.rationale || '') + '" style="font-size:11px; line-height:1.55;">' +
+      var idx = _richTip(_popBox(
+        '#' + esc(r.rank) + ' &middot; ' + esc(r.symbol) + ' &middot; ' + esc(r.side || ''),
+        r.rationale));
+      return '<div data-hetip="' + idx + '" style="font-size:11px; line-height:1.55;">' +
         '<span style="color:#bbb; font-size:9px;">#' + esc(r.rank) + '</span> ' +
-        '<strong>' + symLink(r.symbol) + '</strong>' +
+        '<strong style="font-size:9px;">' + symLink(r.symbol) + '</strong>' +
         '<span style="color:' + sideColor(r.side) + '; font-size:10px;"> ' + esc(r.side || '') + '</span>' +
         '</div>';
     }).join('');
@@ -100,56 +117,133 @@
       var px = (a.price != null) ? ' <span style="color:#888; font-size:10px;">@ ' + esc(a.price) + '</span>' : '';
       var tm = fmtTime(a.ts);
       var tmHtml = tm ? ' <span style="color:#bbb; font-size:9px;">' + esc(tm) + '</span>' : '';
-      return '<div title="' + esc(a.notes || '') + '" style="font-size:9px; line-height:1.6;">' +
+      var idx = _richTip(_popBox(
+        esc(a.symbol) + ' &middot; RTA' + (tm ? ' &middot; ' + esc(tm) : ''),
+        a.notes));
+      return '<div data-hetip="' + idx + '" style="font-size:9px; line-height:1.6;">' +
         '<strong style="color:' + sc + ';">' + esc(a.action || a.side || '') + '</strong> ' +
         '<strong>' + symLink(a.symbol) + '</strong>' + px + tmHtml + durs + corr +
         '</div>';
     }).join('');
   }
 
+  // "BULLISH" -> "Bullish" for display only; sideColor()/comparisons upstream
+  // still see the raw uppercase value.
+  function titleCase(s) {
+    s = String(s || '');
+    return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  }
+
   function flipsHtml(rows) {
     if (!rows || !rows.length) return '';
     return rows.map(function (f) {
-      return '<div style="font-size:11px; line-height:1.55;">' +
-        '<strong>' + symLink(f.symbol) + '</strong> ' +
-        '<span style="color:' + sideColor(f.from) + '; font-size:10px;">' + esc(f.from) + '</span>' +
-        ' <span style="color:#ccc;">&rarr;</span> ' +
-        '<span style="color:' + sideColor(f.to) + '; font-size:10px;">' + esc(f.to) + '</span>' +
+      return '<div style="display:flex; align-items:center; gap:3px; font-size:9px; line-height:1.55; margin-bottom:3px;">' +
+        '<strong style="display:inline-block; width:38px; flex:0 0 auto; overflow:hidden;">' + symLink(f.symbol) + '</strong>' +
+        '<span style="display:inline-block; width:46px; flex:0 0 auto; text-align:right; font-size:8px; font-weight:700; color:' + sideColor(f.from) + ';">' + esc(titleCase(f.from)) + '</span>' +
+        '<span style="flex:0 0 auto; color:#ccc;">&rarr;</span>' +
+        '<span style="display:inline-block; width:46px; flex:0 0 auto; font-size:8px; font-weight:700; color:' + sideColor(f.to) + ';">' + esc(titleCase(f.to)) + '</span>' +
         '</div>';
     }).join('');
   }
 
   function earlyLookHtml(el) {
     if (!el || !el.takeaways) return '';
-    var bullets = el.takeaways.split(/[•••�]+/).map(function (s) {
+    // Current parser joins takeaway paragraphs with "\n• "; older stored
+    // notes instead used a bare bullet/replacement-char between items with no
+    // newline. Split on either convention.
+    var bullets = el.takeaways.split(/\n+\s*[•�]+\s*|[•�]+/).map(function (s) {
       return s.replace(/\s+/g, ' ').trim();
     }).filter(function (s) { return s.length > 10; });
-    if (!bullets.length) bullets = [el.takeaways.slice(0, 600)];
+    // A handful of older notes carry no bullet/replacement-char markers at
+    // all — the "Key Takeaways" section arrives as one continuous paragraph.
+    // Split that into one bullet per sentence so it still reads as a list.
+    if (bullets.length <= 1) {
+      var whole = (bullets[0] || el.takeaways).replace(/\s+/g, ' ').trim();
+      var sentences = (whole.match(/[^.!?]+[.!?]+(?=\s|$)/g) || [whole])
+        .map(function (s) { return s.trim(); })
+        .filter(function (s) { return s.length > 10; });
+      bullets = sentences.length ? sentences : [whole];
+    }
+    // No per-bullet truncation and no cap on bullet count — CARD_BODY scrolls
+    // (overflow-y:auto), so showing everything relies on scroll, not cutoff.
     return bullets.map(function (b) {
       return '<div style="font-size:11px; line-height:1.5; margin-bottom:3px;' +
         'padding-left:9px; text-indent:-9px;">' +
         '<span style="color:#534ab7; font-weight:700;">&#8226;</span> ' +
-        esc(b.slice(0, 200)) + (b.length > 200 ? '…' : '') + '</div>';
-    }).slice(0, 5).join('');
+        esc(b) + '</div>';
+    }).join('');
   }
 
+  // "Hedgeye's Top 3 Things" from THE MACRO SHOW — note_text is 1-3 lines,
+  // each pre-formatted by parse_macro_show_top3 as "N) LABEL – takeaway".
+  function top3Html(t3) {
+    if (!t3 || !t3.note_text) return '';
+    var lines = t3.note_text.split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean);
+    return lines.map(function (line) {
+      var m = line.match(/^(\d\)\s*[^–—-]+?)\s*([–—-])\s*(.+)$/);
+      var head = m ? m[1] : '';
+      var body = m ? m[3] : line;
+      return '<div style="font-size:11px; line-height:1.5; margin-bottom:4px;' +
+        'padding-left:9px; text-indent:-9px;">' +
+        (head ? '<strong style="color:#534ab7;">' + esc(head) + '</strong> – ' : '') +
+        boldTickers(body) + '</div>';
+    }).join('');
+  }
+
+  // Click-to-enlarge overlay, shared by any panel image (built lazily, reused
+  // across calls). Exposed on window since inline onclick="" runs outside
+  // this IIFE's closure.
+  function _showImagePopup(url) {
+    var modal = document.getElementById('heImgModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'heImgModal';
+      modal.style.cssText = 'display:none; position:fixed; inset:0; z-index:2000; ' +
+        'background:rgba(15,15,20,0.82); cursor:zoom-out; align-items:center; justify-content:center;';
+      modal.innerHTML = '<img id="heImgModalImg" style="max-width:92vw; max-height:92vh; ' +
+        'border-radius:6px; box-shadow:0 8px 40px rgba(0,0,0,0.5);">';
+      modal.addEventListener('click', function () { modal.style.display = 'none'; });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') modal.style.display = 'none';
+      });
+      document.body.appendChild(modal);
+    }
+    document.getElementById('heImgModalImg').src = url;
+    modal.style.display = 'flex';
+  }
+  window._heShowImagePopup = _showImagePopup;
+
   function msrCardHtml(msr, asOf, loadedAt) {
-    var metrics = '';
+    var msrMetricsHtml = '';
     if (msr) {
+      var metricParts = [];
+      var _metricLabel = function (label, val) {
+        var color = val >= 0 ? '#1d9e75' : '#d4537e';
+        return '<span style="text-transform:none;">' + label + '</span> ' +
+          '<strong style="color:' + color + '; font-size:11px;">' + esc(val.toFixed(2)) + '</strong>';
+      };
       if (msr.gamma_throttle != null)
-        metrics += '<div style="font-size:10px; line-height:1.8;">' +
-          '<span style="color:#888;">Gamma Throttle</span> ' +
-          '<strong>' + esc(msr.gamma_throttle.toFixed(2)) + '</strong></div>';
+        metricParts.push(_metricLabel('Gamma Throttle', msr.gamma_throttle));
       if (msr.rvol_10day != null)
-        metrics += '<div style="font-size:10px; line-height:1.8;">' +
-          '<span style="color:#888;">Realized Volatility</span> ' +
-          '<strong>' + esc(msr.rvol_10day.toFixed(2)) + '</strong></div>';
+        metricParts.push(_metricLabel('Realized Vol', msr.rvol_10day));
+      if (metricParts.length) {
+        msrMetricsHtml = ' <span style="font-size:8px; color:#888; font-weight:400;">&middot; ' +
+          metricParts.join(' &middot; ') + '</span>';
+      }
     }
     var img = (msr && msr.image_url)
-      ? '<img src="' + esc(msr.image_url) + '" ' +
-        'style="height:90px; width:auto; border-radius:3px; display:block; cursor:pointer;" ' +
-        'title="MSR ' + esc((msr && msr.date) || '') + '" ' +
-        'onerror="this.style.display=\'none\'">'
+      ? (function () {
+          var titleHtml = 'Market Situation Report' + (msr.date ? ' &middot; ' + esc(msr.date) : '');
+          var bodyParts = [];
+          if (msr.received_at) bodyParts.push('Received: ' + fmtRecv(msr.received_at));
+          if (msr.gamma_throttle != null) bodyParts.push('Gamma Throttle: ' + msr.gamma_throttle.toFixed(2));
+          if (msr.rvol_10day != null) bodyParts.push('Realized Vol: ' + msr.rvol_10day.toFixed(2));
+          var idx = _richTip(_popBox(titleHtml, bodyParts.join('\n')));
+          return '<img src="' + esc(msr.image_url) + '" ' +
+            'style="height:90px; width:auto; border-radius:3px; display:block; cursor:pointer;" ' +
+            'data-hetip="' + idx + '" ' +
+            'onerror="this.style.display=\'none\'">';
+        })()
       : '';
     var msrLabel = (msr && msr.received_at) ? fmtRecv(msr.received_at)
                  : (msr && msr.date)        ? fmtMD(msr.date) : '';
@@ -162,14 +256,13 @@
       '<span>Hedgeye' +
       (loadedAt ? ' <span style="color:#bbb; font-weight:400; font-size:8px;">· ' + esc(loadedAt) + '</span>' : '') +
       '</span>' +
-      '<span>' + linked('Mkt Situation', 'mkt_situation') + msrTileTs + '</span>' +
+      '<span>' + linked('Mkt Situation', 'mkt_situation') + msrTileTs + msrMetricsHtml + '</span>' +
       '</div>';
     return '<div style="background:#fff; border:1px solid #e0daf5; border-radius:5px; ' +
       'padding:7px 10px; flex:0 0 340px; ' +
       'box-shadow:0 1px 4px rgba(83,74,183,0.07); display:flex; flex-direction:column;">' +
       panelTitle +
       '<div style="display:flex; gap:0; align-items:flex-start; flex-wrap:nowrap; flex:1; min-height:0; overflow-y:auto;">' +
-      '<div style="flex:0 0 130px; min-width:0;">' + metrics + '</div>' +
       (img ? '<div style="flex-shrink:0;">' + img + '</div>' : '') +
       '</div></div>';
   }
@@ -190,6 +283,30 @@
     return line('ADD', adds, '#1d9e75') + line('REM', removes, '#c0392b');
   }
 
+  function iiChangesHtml(ii) {
+    if (!ii || !ii.changes || !ii.changes.length) return '';
+    var adds = ii.changes.filter(function (c) { return c.action === 'add'; });
+    var removes = ii.changes.filter(function (c) { return c.action === 'remove'; });
+    var line = function (label, arr, color) {
+      if (!arr.length) return '';
+      return '<div style="font-size:10px; line-height:1.7;">' +
+        '<span style="font-weight:700; color:' + color + '; font-size:9px;">' + label + '</span> ' +
+        arr.map(function (c) {
+          var sc = c.side === 'long' ? '#1d9e75' : '#d4537e';
+          return '<span style="color:' + sc + ';">' + symLink(c.sym) + '</span>';
+        }).join(' ') + '</div>';
+    };
+    return line('ADD', adds, '#1d9e75') + line('REM', removes, '#c0392b');
+  }
+
+  function inflationNowcastHtml(infl) {
+    if (!infl || !infl.image_url) return '';
+    return '<img src="' + esc(infl.image_url) + '" ' +
+      'style="max-height:96px; max-width:100%; width:auto; border-radius:3px; display:block; cursor:zoom-in;" ' +
+      'onclick="window._heShowImagePopup(\'' + esc(infl.image_url) + '\')" ' +
+      'onerror="this.style.display=\'none\'">';
+  }
+
   function sssChangesHtml(sss) {
     if (!sss || !sss.changes || !sss.changes.length) return '';
     var adds = sss.changes.filter(function (c) { return c.action === 'add'; });
@@ -207,9 +324,14 @@
     if (!pos || (!pos.longs.length && !pos.shorts.length)) return '';
     var symHtml = function (p, color) {
       var s = symLink(p.sym);
+      var body = p.commentary || p.modifier || '';
+      var titleHtml = pos.date
+        ? esc(pos.date) + ' &middot; the_call_commentary &middot; ' + esc(p.sym)
+        : esc(p.sym);
+      var t = body ? ' data-hetip="' + _richTip(_popBox(titleHtml, body)) + '"' : '';
       return p.best
-        ? '<strong style="color:' + color + ';">' + s + '*</strong>'
-        : '<span style="color:' + color + ';">' + s + '</span>';
+        ? '<strong' + t + ' style="color:' + color + ';">' + s + '*</strong>'
+        : '<span' + t + ' style="color:' + color + ';">' + s + '</span>';
     };
     var line = function (label, arr, color) {
       if (!arr.length) return '';
@@ -221,24 +343,31 @@
     var n = (pos.neutral || []);
     var neutralLine = n.length
       ? '<div style="font-size:10px; line-height:1.5; color:#999; margin-top:1px;">N ' +
-        n.map(function (p) { return esc(p.sym); }).join(' ') + '</div>'
+        n.map(function (p) { return symHtml(p, '#999'); }).join(' ') + '</div>'
       : '';
     return line('L', pos.longs, '#1d9e75') +
            line('S', pos.shorts, '#d4537e') +
            neutralLine;
   }
 
-  function stanceHtml(stance) {
+  function stanceHtml(stance, stanceDate) {
     stance = stance || {};
     var bull = (stance.bullish || []);
     var bear = (stance.bearish || []);
     if (!bull.length && !bear.length) return '';
     var line = function (label, arr, color) {
       if (!arr.length) return '';
+      var shown = arr.slice(0, 12);
       return '<div style="font-size:10px; line-height:1.7;">' +
         '<span style="font-weight:700; color:' + color + '; font-size:9px;">' +
         label + '(' + arr.length + ')</span> ' +
-        esc(arr.slice(0, 12).join(' ')) + (arr.length > 12 ? ' …' : '') + '</div>';
+        shown.map(function (p) {
+          var titleHtml = stanceDate
+            ? esc(stanceDate) + ' &middot; macro_show &middot; ' + esc(p.sym || '')
+            : esc(p.sym || '');
+          var t = p.label ? ' data-hetip="' + _richTip(_popBox(titleHtml, p.label)) + '"' : '';
+          return '<span' + t + '>' + esc(p.sym || '') + '</span>';
+        }).join(' ') + (arr.length > 12 ? ' …' : '') + '</div>';
     };
     return line('L', bull, '#1d9e75') + line('S', bear, '#d4537e');
   }
@@ -246,6 +375,7 @@
   function render(data, loadedAt) {
     var el = document.getElementById('hedgeyePanel');
     if (!el) return;
+    _tipHtml = [];  // reset so data-hetip indices match this render's DOM
 
     var hasAny = (data.top5 && data.top5.length) ||
       (data.alerts && data.alerts.length) ||
@@ -255,12 +385,16 @@
       (data.early_look && data.early_look.takeaways) ||
       (data.positions && (data.positions.longs.length || data.positions.shorts.length)) ||
       (data.etf_changes && data.etf_changes.changes && data.etf_changes.changes.length) ||
+      (data.ii_changes && data.ii_changes.changes && data.ii_changes.changes.length) ||
       (data.sss_changes && data.sss_changes.changes && data.sss_changes.changes.length) ||
-      (data.call_macro && data.call_macro.note_text);
+      (data.call_macro && data.call_macro.note_text) ||
+      (data.top3_things && data.top3_things.note_text) ||
+      (data.inflation_nowcast && data.inflation_nowcast.image_url);
     if (!hasAny) { el.style.display = 'none'; return; }
 
     var collapsed = localStorage.getItem('hePanel_collapsed') === '1';
     var etfTitle = 'ETF CHG';
+    var iiTitle = 'II CHG';
     var sssTitle = 'SSS CHG';
 
     // Show email received time (mm/dd H:MM AM/PM) when available, else date only (mm/dd).
@@ -277,13 +411,13 @@
       'border-bottom:1px solid #edeafb; flex-shrink:0;';
     var CARD_BODY = 'overflow-y:auto; flex:1; min-height:0;';
 
-    var row1 = (data.early_look || data.msr || (data.top5 && data.top5.length))
+    var row1 = (data.early_look || data.msr || (data.trend_flips && data.trend_flips.length))
       ? '<div style="display:flex; gap:3px; flex-wrap:nowrap; align-items:stretch; height:125px;">' +
         msrCardHtml(data.msr, data.as_of || data.date, loadedAt) +
-        '<div style="' + CARD_BASE + 'flex:0 0 calc(15ch + 20px);">' +
-        '<div style="' + CARD_HDR + '">' + linked('Top-5', 'top5') + td(data.top5_received_at, data.top5_date) + '</div>' +
+        '<div style="' + CARD_BASE + 'flex:0 0 calc(22.5ch + 18px);">' +
+        '<div style="' + CARD_HDR + '">' + linked('Risk Range', 'trend_change') + td(data.trend_flips_received_at, data.trend_flips_date) + '</div>' +
         '<div style="' + CARD_BODY + '">' +
-        (top5Html(data.top5) || '<span style="color:#bbb; font-size:10px;">none</span>') +
+        (flipsHtml(data.trend_flips) || '<span style="color:#bbb; font-size:10px;">none</span>') +
         '</div></div>' +
         (data.early_look
           ? '<div style="' + CARD_BASE + 'flex:1 1 0;">' +
@@ -300,29 +434,78 @@
         (body || '<span style="color:#bbb; font-size:10px;">none</span>') +
         '</div></div>';
     };
-    var rowMacro = data.call_macro
-      ? '<div style="display:flex; gap:3px; flex-wrap:nowrap; align-items:stretch; margin-top:3px;">' +
-        '<div style="' + CARD_BASE + 'flex:1;">' +
-        '<div style="font-size:11px; line-height:1.6;">' +
-        '<span style="font-weight:700; font-size:8.5px; text-transform:uppercase; ' +
-        'letter-spacing:0.55px; color:#534ab7;">' + linked('Macro Commentary', 'call_macro') + '</span>' +
-        td(data.call_macro.received_at, data.call_macro.date) + ' ' +
-        boldTickers(data.call_macro.note_text) +
-        '</div></div></div>'
+    // Macro Commentary (fixed width, matching the Hedgeye/Mkt Situation card)
+    // + Hedgeye's Top 3 Things (fills the rest) share one row.
+    // NB: the Hedgeye/Mkt Situation card's own "flex:0 0 340px" is only its
+    // flex-basis — that card has no min-width:0, so its embedded MSR image
+    // (height:90px, width:auto) forces it wider than 340px to fit the image's
+    // natural aspect ratio. Match that actual rendered width (~506px), not
+    // the nominal flex-basis, so the two cards line up on screen.
+    var rowMacroTop3 = (data.call_macro || (data.top3_things && data.top3_things.note_text))
+      ? '<div style="display:flex; gap:3px; flex-wrap:nowrap; align-items:stretch; height:105px; margin-top:3px;">' +
+        (data.call_macro
+          ? _card(linked('Macro Commentary', 'call_macro'),
+                  '<div style="font-size:11px; line-height:1.5;">' + boldTickers(data.call_macro.note_text) + '</div>',
+                  'flex:0 0 506px', td(data.call_macro.received_at, data.call_macro.date))
+          : '') +
+        ((data.top3_things && data.top3_things.note_text)
+          ? _card(linked("Hedgeye's Top 3 Things", 'macro_show'), top3Html(data.top3_things),
+                  'flex:1', td(data.top3_things.received_at, data.top3_things.date))
+          : '') +
+        '</div>'
       : '';
+    // INFL is a fixed width in both states. Macro Show and Call both use
+    // flex-basis:0% (the bare "flex:N" shorthand), so when the side panel
+    // narrows the row's available space, native flexbox math shrinks both of
+    // them by the exact same percentage automatically (each one's resolved
+    // width = its own grow / sum-of-grow * available space -- a pure ratio,
+    // so if available space scales by k, every basis:0 item scales by k too)
+    // -- no JS-computed percentage needed, and everything else stays fixed.
+    var _inflFlex = 'flex:0 0 210px; padding:4px 3px;';
+    var _callFlex = 'flex:0.975';
+    var _inflValueHtml = '';
+    var _inflMonth = '';
+    if (data.inflation_nowcast) {
+      var _infl = data.inflation_nowcast;
+      if (_infl.date) {
+        var _monAbbr = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        var _inflD = new Date(_infl.date + 'T00:00:00');
+        if (!isNaN(_inflD.getTime())) _inflMonth = _monAbbr[_inflD.getMonth()];
+      }
+      if (_infl.value != null) {
+        var _valParts = esc(_infl.value.toFixed(2)) + '%' +
+          '<span style="font-size:8px; font-weight:400;"> y/y</span>';
+        if (_infl.seq_bp != null) {
+          _valParts += ' <span style="font-size:8px; font-weight:400;">' +
+            esc(_infl.seq_bp.toFixed(1)) + ' bp</span>';
+        }
+        _inflValueHtml = ' <strong style="color:#534ab7;">' + _valParts + '</strong>';
+      }
+    }
+    var _inflDateHtml = data.inflation_nowcast
+      ? td(data.inflation_nowcast.received_at, data.inflation_nowcast.date) : '';
+    var _inflRight = (_inflMonth ? '<span style="text-transform:none; color:#888;">' + esc(_inflMonth) + '</span>' : '') +
+      _inflValueHtml;
+    var _inflTitle = '<span style="display:flex; justify-content:space-between; align-items:baseline; width:100%;">' +
+      '<span>' + linked('INFL', 'inflation_nowcast') + _inflDateHtml + '</span>' +
+      '<span>' + _inflRight + '</span>' +
+      '</span>';
+
     var row2 =
-      '<div style="display:flex; gap:3px; flex-wrap:nowrap; align-items:stretch; height:110px; margin-top:3px;">' +
-      _card(linked('Call', 'call'),                  positionsHtml(data.positions),    'flex:2',                       td(data.positions && data.positions.received_at, data.positions && data.positions.date)) +
+      '<div style="display:flex; gap:3px; flex-wrap:nowrap; align-items:stretch; height:125px; margin-top:3px;">' +
+      _card(linked('Top-5', 'top5'),                 top5Html(data.top5),              'flex:0 0 calc(15ch + 20px)',   td(data.top5_received_at, data.top5_date)) +
+      _card(linked('Macro Show', 'macro_show'),      stanceHtml(data.stance, data.stance_date), 'flex:1.5',             td(data.stance_received_at, data.stance_date)) +
       _card(linked('RTA', 'alerts'),                 alertsHtml(data.alerts),          'flex:0 0 calc(35ch + 20px)',   td(data.rta_received_at, data.rta_date)) +
-      _card(linked(etfTitle, 'etf_pro'),             etfChangesHtml(data.etf_changes), 'flex:1',                       td(data.etf_changes && data.etf_changes.received_at, data.etf_changes && data.etf_changes.date)) +
-      _card(linked(sssTitle, 'sss'),                 sssChangesHtml(data.sss_changes), 'flex:1',                       td(data.sss_changes && data.sss_changes.received_at, data.sss_changes && data.sss_changes.date)) +
-      _card(linked('Risk Range', 'trend_change'),    flipsHtml(data.trend_flips),      'flex:0 0 calc(22.5ch + 18px)', td(data.trend_flips_received_at, data.trend_flips_date)) +
-      _card(linked('Macro Show', 'macro_show'),      stanceHtml(data.stance),          'flex:2',                       td(data.stance_received_at, data.stance_date)) +
+      _card(linked(etfTitle, 'etf_pro'),             etfChangesHtml(data.etf_changes), 'flex:0 0 calc(15ch + 20px)',   td(data.etf_changes && data.etf_changes.received_at, data.etf_changes && data.etf_changes.date)) +
+      _card(linked(iiTitle, 'investing_ideas'),      iiChangesHtml(data.ii_changes),   'flex:0 0 calc(15ch + 20px)',   td(data.ii_changes && data.ii_changes.received_at, data.ii_changes && data.ii_changes.date)) +
+      _card(linked(sssTitle, 'sss'),                 sssChangesHtml(data.sss_changes), 'flex:0 0 calc(15ch + 20px)',   td(data.sss_changes && data.sss_changes.received_at, data.sss_changes && data.sss_changes.date)) +
+      _card(linked('Call', 'call'),                  positionsHtml(data.positions),    _callFlex,                      td(data.positions && data.positions.received_at, data.positions && data.positions.date)) +
+      _card(_inflTitle, inflationNowcastHtml(data.inflation_nowcast), _inflFlex, '') +
       '</div>';
 
     var bodyHtml =
       '<div id="hePanelBody" style="display:' + (collapsed ? 'none' : 'block') + '; margin-top:2px;">' +
-      row1 + rowMacro + row2 + '</div>';
+      row1 + rowMacroTop3 + row2 + '</div>';
 
     el.innerHTML =
       '<div style="padding:2px 4px; background:#f0eefb; border:1px solid #d5d0f0; ' +
@@ -402,6 +585,21 @@
     } catch (e) { /* non-critical, ignore */ }
   }
 
+  // Rich tooltips: delegated hover on the panel, reusing actionable.js's
+  // #sourcePop/_showDataPop/hideSourcePop globals (see _richTip/_popBox above).
+  function _wireRichTips() {
+    var panel = document.getElementById('hedgeyePanel');
+    if (!panel || typeof _showDataPop !== 'function') return;
+    panel.addEventListener('mouseover', function (e) {
+      var el = e.target.closest('[data-hetip]');
+      if (el) _showDataPop(el, _tipHtml[+el.getAttribute('data-hetip')] || '');
+    });
+    panel.addEventListener('mouseout', function (e) {
+      if (e.relatedTarget && e.relatedTarget.closest('[data-hetip]')) return;
+      if (typeof hideSourcePop === 'function') hideSourcePop();
+    });
+  }
+
   function init() {
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);
@@ -410,6 +608,7 @@
     setTimeout(load, 600);
     setTimeout(checkForNewEmail, 1000);
     setInterval(checkForNewEmail, 30000);
+    _wireRichTips();
   }
 
   if (document.readyState === 'loading') {

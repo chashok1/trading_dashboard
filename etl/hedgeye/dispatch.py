@@ -213,6 +213,12 @@ def dispatch(session, email, email_type: str, parsed, cfg) -> dict:
                 f"SSS_{feed_date.isoformat()}.png",
             )
             summary["images"] = 1
+        elif email_type == "inflation_nowcast" and parsed.images:
+            _save_hefiles_image(
+                parsed.images[0], cfg.hefiles_dir,
+                f"INFL_{feed_date.isoformat()}.png",
+            )
+            summary["images"] = 1
         else:
             media = archive_images(parsed.images, cfg.image_dir, email)
             if media:

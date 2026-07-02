@@ -97,24 +97,6 @@
     return '<table class="msr-ucr-table">' + hdr + body + '</table>';
   }
 
-  /* ── sidebar panel header summary (15D values) ───────────────────── */
-  function sideHdrSummary(data) {
-    var rows = data.rows || [];
-    function find(key) { return rows.find(function (r) { return r.asset_key === key; }); }
-    var items = [
-      { lbl: 'S',  row: find('spx') },
-      { lbl: 'O',  row: find('brent') },
-      { lbl: 'G',  row: find('gold') },
-      { lbl: 'B',  row: find('bitcoin') },
-      { lbl: 'C',  row: find('crb') }
-    ];
-    return items.map(function (x) {
-      var v = x.row && x.row.w15;
-      var vs = v != null ? (v >= 0 ? '+' : '') + Number(v).toFixed(2) : '—';
-      return (x.lbl ? x.lbl + '&nbsp;' : '') + '<span class="' + corrClass(v) + '">' + vs + '</span>';
-    }).join(' ');
-  }
-
   /* ── render into side rail ─────────────────────────────────────────── */
   function renderRail(data) {
     var container = document.getElementById('macroRailCorr');
@@ -128,7 +110,7 @@
     }
 
     var sideHdr = document.getElementById('usdCorrSideHdr');
-    if (sideHdr) sideHdr.innerHTML = sideHdrSummary(data);
+    if (sideHdr) sideHdr.textContent = 'Dollar Correlation';
 
     container.innerHTML = railHeatmapHtml(data);
 
@@ -296,7 +278,7 @@
 
   function renderError(msg) {
     var sideHdr = document.getElementById('usdCorrSideHdr');
-    if (sideHdr) sideHdr.textContent = 'USD Corr';
+    if (sideHdr) sideHdr.textContent = 'Dollar Correlation';
     var rail = document.getElementById('macroRailCorr');
     if (rail) rail.innerHTML = '<div class="msr-err">USD corr unavailable: ' + esc(msg) + '</div>';
     var card = document.getElementById('usdCorrCard');

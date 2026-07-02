@@ -1691,7 +1691,7 @@ svg.rr-candle {
 /* Per-area row */
 .msr-row {
   display: flex; align-items: center; gap: 5px;
-  padding: 3px 8px; border-bottom: 1px solid var(--border, #f0f0f0);
+  padding: 1px 8px; border-bottom: 1px solid var(--border, #f0f0f0);
   font-size: 11px; cursor: default;
   position: relative;
 }

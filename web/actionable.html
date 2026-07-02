@@ -814,10 +814,6 @@
         <section id="macroRailSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
           <div class="msr-section-hdr sp-hdr" data-panel="macroRail">
             Macro
-            <span class="msr-legend">
-              <span class="msr-legend-up">▲</span> Long &nbsp;
-              <span class="msr-legend-down">▼</span> Short
-            </span>
             <span class="sp-chevron">▾</span>
           </div>
           <div class="sp-body">
@@ -825,10 +821,21 @@
           </div>
         </section>
 
+        <!-- Sectors — split out of Macro Rail -->
+        <section id="sectorsSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="sectors">
+            Sectors
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div id="macroRailSectors"><div class="msr-loading">Loading…</div></div>
+          </div>
+        </section>
+
         <!-- USD Correlations — own collapsible panel -->
         <section id="usdCorrSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
           <div class="msr-section-hdr sp-hdr" data-panel="usdCorr">
-            <span id="usdCorrSideHdr" style="font-size:10px;font-weight:600;">USD Corr</span>
+            <span id="usdCorrSideHdr" style="font-size:10px;font-weight:600;">Dollar Correlation</span>
             <span class="sp-chevron">▾</span>
           </div>
           <div class="sp-body">
@@ -839,7 +846,7 @@
         <!-- Quad Outlook — monthly distributions + quarterly quads -->
         <section id="quadOutlookSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
           <div class="msr-section-hdr sp-hdr" data-panel="quadOutlook">
-            <span id="quadOutlookHdr" style="font-size:10px;font-weight:700;">Quad Outlook</span>
+            <span id="quadOutlookHdr">Quads</span>
             <span class="sp-chevron">▾</span>
           </div>
           <div class="sp-body">
