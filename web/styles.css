@@ -987,60 +987,17 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 }
 .market-tape::-webkit-scrollbar { display: none; }
 
-/* RR tape — bar 2, stacked below bar 1 */
-.rr-tape {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  height: 30px;
-  background: var(--card-bg);
-  border-bottom: none;
-  margin-top: 2px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  white-space: nowrap;
-  scrollbar-width: none;
-  padding: 0 6px;
-  font-size: 11px;
-  position: sticky;
-  top: 30px;
-  z-index: 89;
-  flex-shrink: 0;
-}
-.rr-tape::-webkit-scrollbar { display: none; }
-
-/* Bar 3 — sticky below bar 2, retains bottom border for content separation */
-#rrTape3 { top: 60px; z-index: 88; border-bottom: 1px solid var(--border); }
-
-/* Group box — wraps chips for each category */
-.rr-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-  align-self: stretch;
-  border-right: 1px solid var(--border);
-  padding-right: 1px;
-}
-.rr-group:last-child { border-right: none; padding-right: 0; }
-.rr-group .rr-chip { border-right: none; align-self: center; }
-.rr-group .rr-chip + .rr-chip { border-left: none; }
-
-.rr-cat {
-  padding: 0 3px 0 1px;
-  border-right: 1px solid var(--border);
-  align-self: stretch;
-  display: inline-flex;
-  align-items: center;
-  color: var(--text-3);
+/* Right-aligned as-of time on the mini-tape (TASK_116) */
+.mt-asof {
+  margin-left: auto;
+  padding: 0 8px;
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
   flex-shrink: 0;
 }
 
-/* Per-symbol chip inside rr-tape */
+/* Per-symbol chip inside the mini-tape / symbol tape */
 .rr-chip {
   display: inline-flex;
   flex-direction: column;
@@ -1055,8 +1012,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 }
 
 /* Toolbar chips: make room on the right for the candle-as-separator */
-.market-tape .rr-chip,
-.rr-tape .rr-chip {
+.market-tape .rr-chip {
   position: relative;
   padding-right: 10px;
 }
@@ -1077,7 +1033,7 @@ svg.rr-candle {
   gap: 3px;
 }
 
-/* rrTape1 / rrTape2 / rrTape3 chip body — sym col left, pct button right */
+/* rrTape1 (mini-tape) chip body — sym col left, pct button right */
 .rr-chip-body {
   display: flex;
   flex-direction: row;
@@ -1102,7 +1058,6 @@ svg.rr-candle {
 }
 /* Smaller font on all tapes */
 .market-tape .rr-sym,
-.rr-tape .rr-sym,
 #symTapeTrack .rr-sym { font-size: 8px; }
 
 /* Range bar */
@@ -1132,7 +1087,6 @@ svg.rr-candle {
 }
 /* Sphere marker on all tape range bars */
 .market-tape .rr-rb .rr-rb-tick,
-.rr-tape .rr-rb .rr-rb-tick,
 #symTapeTrack .rr-rb .rr-rb-tick {
   width: 4px;
   height: 4px;
@@ -1688,15 +1642,27 @@ svg.rr-candle {
               letter-spacing: 0; color: #888; margin-left: auto; }
 .msr-legend-up   { color: #166534; }
 .msr-legend-down { color: #991b1b; }
-/* Per-area row */
+/* Section-header breadth summary (↑n ↓n) — TASK_116 */
+.msr-breadth { font-size: 9px; font-weight: 400; text-transform: none;
+               letter-spacing: 0; margin-left: auto; white-space: nowrap; }
+.msr-breadth-up   { color: #166534; }
+.msr-breadth-down { color: #991b1b; }
+/* Per-area row — ~18px target height (TASK_116: candle + Td/Tn + range bar
+   + %chg chip anatomy) */
 .msr-row {
   display: flex; align-items: center; gap: 2px;
-  padding: 1px 8px; border-bottom: 1px solid var(--border, #f0f0f0);
+  padding: 2px 8px; border-bottom: 1px solid var(--border, #f0f0f0);
   font-size: 11px; cursor: default;
   position: relative;
 }
 .msr-row:hover { background: var(--surface-hover, #f0f6ff); }
 .msr-row:last-child { border-bottom: none; }
+/* Candle inside a rail row: static flow (not the tape's absolutely
+   positioned overlay) since .msr-row is a flat flex row, not a boxed chip. */
+.msr-row svg.rr-candle {
+  position: static; top: auto; right: auto;
+  width: 7px; height: 14px; flex-shrink: 0; display: block;
+}
 /* Stance arrowhead SVG */
 .msr-arrow { width: 14px; height: 14px; flex-shrink: 0; display: inline-block; }
 .msr-arrow-long  { color: #166534; }
@@ -1722,10 +1688,17 @@ svg.rr-candle {
 .msr-price-chg-up   { color: #166534; }
 .msr-price-chg-down { color: #991b1b; }
 .msr-price-chg-flat { color: var(--text-3, #94a3b8); }
+/* Solid %chg chip (tape convention) — TASK_116, replaces .msr-price-chg in
+   railAreaRow (etfProxyRowHtml/sector rows still use the plain-text variant
+   above, unchanged). */
+.msr-chg { font-size: 10px; font-weight: 700; padding: 0 4px;
+           border-radius: 3px; min-width: 30px; text-align: center;
+           white-space: nowrap; box-sizing: border-box; display: inline-block;
+           color: #fff; flex-shrink: 0; }
 /* Td/Tn diagonal labels — fixed width so the range bar that follows lines
    up at the same x-position on every row (arrow glyphs render at slightly
    different widths than the flat dash otherwise). */
-.msr-dur { font-size: 9px; white-space: nowrap; display: inline-flex;
+.msr-dur { font-size: 10px; white-space: nowrap; display: inline-flex;
            align-items: center; justify-content: flex-end; gap: 1px;
            flex: 0 0 22px; }
 .msr-dur-up   { color: #166534; }
@@ -1746,7 +1719,7 @@ svg.rr-candle {
   background: var(--text-1, #111); transform: translateX(-1px); border-radius: 1px;
 }
 .msr-rb-tick.extreme { background: #ef4444; }
-.msr-pct { font-size: 9px; color: var(--text-2, #666);
+.msr-pct { font-size: 10px; color: var(--text-2, #666);
            font-variant-numeric: tabular-nums; min-width: 18px; text-align: right; }
 /* Volatility gauge text — pushed to the far right of the row (nothing
    follows it, unlike stance rows which have Td/Tn/bar after the price). */

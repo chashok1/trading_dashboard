@@ -1,9 +1,11 @@
-/* Trading Dashboard — global market tape
+/* Trading Dashboard — global mini market tape (TASK_116 consolidation)
  *
- * Self-mounting widget. Injects three sticky ribbons below the topbar:
- *   Bar 1 (#rrTape1)  — index/vol pairs + rates + commodities + bonds
- *   Bar 2 (#rrTape2) — ETFs + Commodities  (curated, with group labels)
- *   Bar 3 (#rrTape3)     — Tech + FX + Indexes (curated, with group labels)
+ * Self-mounting widget. Injects a single sticky ribbon (#rrTape1) below the
+ * topbar with a curated 8-instrument pulse: SPX · VIX · DXY · GC · WTI · 10Y
+ * · HY · BTC. The full market breadth (ETFs, sectors, tech, FX, indexes,
+ * credit, crypto, ...) now lives in the Actionable side rail
+ * (web/macro_areas.js, /api/macro-areas) — bars 2/3 (#rrTape2/#rrTape3) were
+ * retired in favor of that rail. See docs/market_panel_consolidation_design.md.
  *
  * The Econ panel (#econPanel) is a static div in the page HTML (actionable.html).
  * It is toggled by #econBtn and lazily loaded from GET /api/macro.
@@ -17,11 +19,6 @@
   const REFRESH_MS = 60 * 1000;
 
   const INVERTED = new Set(['HY', 'HYSPRD']);
-
-  const LABEL_SHORT = {
-    'Shanghai': 'SSE',  'Nikkei': 'NIKK',  'HY Bond': 'HY',
-    'IG Bond':  'IG',   'Dollar': 'USD',    'Bitcoin': 'BTC',
-  };
 
   // ---- formatting helpers -----------------------------------------------
   function fmtValue(v, fmt) {
@@ -338,82 +335,86 @@
       `</div>`;
   }
 
-  // ---- build tape row (bar 1) — explicit labeled groups -----------------
-  const BAR1_GROUPS = [
-    { label: 'Eq',    keys: ['SPX', 'VIX', 'COMP', 'VXN', 'DJI', 'VXD', 'RUT', 'RVX'] },
-    { label: 'FX',    keys: ['DXY'] },
-    { label: 'Gold',  keys: ['GC', 'GVZ'] },
-    { label: 'Oil',   keys: ['WTI', 'BZ', 'OVX'] },
+  // ---- build mini-tape row (#rrTape1) — curated 8-instrument pulse -------
+  // SPX/VIX/DXY/GC/WTI resolve from /api/marketbar (metric_key); 10Y/HY/BTC
+  // resolve from /api/rr-bar groups. Identifiers verbatim from TASK_115's
+  // preflight (DEV_HANDOFF AGENT_WORK_24) — do not re-derive.
+  const BAR_MINI = [
+    { label: 'SPX', source: 'mkt', key: 'SPX' },
+    { label: 'VIX', source: 'mkt', key: 'VIX' },
+    { label: 'DXY', source: 'mkt', key: 'DXY' },
+    { label: 'GC',  source: 'mkt', key: 'GC' },
+    { label: 'WTI', source: 'mkt', key: 'WTI' },
+    { label: '10Y', source: 'rr',  group: 'Rates',  symbol: 'TNX:CGI' },
+    { label: 'HY',  source: 'rr',  group: 'Credit', symbol: 'HYG' },
+    { label: 'BTC', source: 'rr',  group: 'Crypto', symbol: '/BTC' },
   ];
 
-  function buildTapeHtml(data) {
-    const items = data.items || [];
-    const byKey = Object.fromEntries(items.map(it => [it.metric_key, it]));
+  function _miniChipFromMkt(spec, item) {
+    const volThresh = item.vol_low != null
+      ? { low: item.vol_low, high: item.vol_high, value: item.value,
+          zone: volZoneCls(item.value, item.vol_low, item.vol_high) } : null;
+    const cls    = dirClass(item.chg_pct, item.metric_key);
+    const chgStr = fmtChgPct(item.chg_pct);
+    const arrow  = dirArrow(item.chg_pct);
+    const valStr = fmtValue(item.value, item.value_format);
+    const pctStr = volThresh ? valStr : (chgStr || valStr);
+    const tipObj = itemTipObj(item, spec.label, valStr, chgStr, arrow, cls);
+    const ohlc   = (item.open != null && item.high != null && item.low != null)
+      ? { o: item.open, h: item.high, l: item.low, c: item.value } : null;
+    return chipHtml(spec.label, item.rr_outlook, pctStr, cls,
+                     item.rr_buy, item.rr_sell, item.value, tipObj, item.stale, ohlc, volThresh,
+                     item.monthly_score ?? null);
+  }
+
+  function _miniChipFromRr(spec, item) {
+    const volThresh = item.vol_low != null
+      ? { low: item.vol_low, high: item.vol_high, value: item.bar_price,
+          zone: volZoneCls(item.bar_price, item.vol_low, item.vol_high) } : null;
+    const pct    = item.pct != null ? Number(item.pct) : null;
+    // Pass the mini-tape label (not null) so INVERTED (HY) actually applies —
+    // pre-existing bug in the retired bar2/3 path always passed null here.
+    const cls    = dirClass(pct, spec.label);
+    const chgStr = volThresh
+      ? (item.bar_price != null ? Number(item.bar_price).toFixed(2) : '—')
+      : (pct != null ? Math.abs(pct).toFixed(2) + '%' : '—');
+    const tipObj = rrItemTipObj(spec.label, item, chgStr, cls, pct);
+    const ohlc   = (item.open != null && item.high != null && item.low != null && item.bar_price != null)
+      ? { o: item.open, h: item.high, l: item.low, c: item.bar_price } : null;
+    return chipHtml(spec.label, item.outlook, chgStr, cls,
+                     item.buy, item.sell, item.bar_price, tipObj, false, ohlc, volThresh,
+                     item.monthly_score);
+  }
+
+  function buildMiniTapeHtml(mktData, rrData) {
+    const mktItems = (mktData && mktData.items) || [];
+    const byKey    = Object.fromEntries(mktItems.map(it => [it.metric_key, it]));
+    const rrGroups = (rrData && rrData.groups) || {};
     const cells = [];
-
-    for (const grp of BAR1_GROUPS) {
-      const grpCells = [];
-      for (const key of grp.keys) {
-        const item = byKey[key];
+    for (const spec of BAR_MINI) {
+      if (spec.source === 'mkt') {
+        const item = byKey[spec.key];
         if (!item) continue;
-        const volThresh = item.vol_low != null
-          ? { low: item.vol_low, high: item.vol_high, value: item.value,
-              zone: volZoneCls(item.value, item.vol_low, item.vol_high) } : null;
-        const cls       = dirClass(item.chg_pct, item.metric_key);
-        const chgStr    = fmtChgPct(item.chg_pct);
-        const arrow     = dirArrow(item.chg_pct);
-        const valStr    = fmtValue(item.value, item.value_format);
-        const pctStr    = volThresh ? valStr : (chgStr || valStr);
-        const chipLabel = LABEL_SHORT[item.label] || item.label || item.metric_key;
-        const tipObj    = itemTipObj(item, chipLabel, valStr, chgStr, arrow, cls);
-        const ohlc1     = (item.open != null && item.high != null && item.low != null)
-          ? { o: item.open, h: item.high, l: item.low, c: item.value } : null;
-        grpCells.push(chipHtml(chipLabel, item.rr_outlook, pctStr, cls,
-                               item.rr_buy, item.rr_sell, item.value, tipObj, item.stale, ohlc1, volThresh,
-                               item.monthly_score ?? null));
+        cells.push(_miniChipFromMkt(spec, item));
+      } else {
+        const items = rrGroups[spec.group] || [];
+        const item  = items.find(it => it.symbol === spec.symbol);
+        if (!item) continue;
+        cells.push(_miniChipFromRr(spec, item));
       }
-      if (!grpCells.length) continue;
-      cells.push(`<div class="rr-group">${grpCells.join('')}</div>`);
     }
-
     return cells.join('');
   }
 
-  // ---- build RR bar (bar 2 or 3) — chips with inline group headings ----
-  const BAR2_CATS = ['Sectors', 'FX', 'Indexes', 'Rates'];
-  const BAR3_CATS = ['Tech', 'ETFs', 'Credit'];
-  const CAT_SHORT  = {
-    'ETFs': 'ETF', 'Sectors': 'Sect', 'Commodities': 'Cmdty', 'Credit': 'Crd',
-    'Rates': 'Rates', 'Tech': 'Tech', 'FX': 'FX', 'Indexes': 'Idx', 'Crypto': 'Crypt', 'MOVE': 'MOVE',
-  };
-
-  function buildRrBarHtml(data, cats) {
-    const groups = data.groups || {};
-    const cells = [];
-    for (const cat of cats) {
-      const items = groups[cat];
-      if (!items || !items.length) continue;
-      const chips = [];
-      for (const item of items) {
-        const volThresh = item.vol_low != null
-          ? { low: item.vol_low, high: item.vol_high, value: item.bar_price,
-              zone: volZoneCls(item.bar_price, item.vol_low, item.vol_high) } : null;
-        const pct    = item.pct != null ? Number(item.pct) : null;
-        const cls    = dirClass(pct, null);
-        const chgStr = volThresh
-          ? (item.bar_price != null ? Number(item.bar_price).toFixed(2) : '—')
-          : (pct != null ? Math.abs(pct).toFixed(2) + '%' : '—');
-        const name   = LABEL_SHORT[item.label] || item.label || (item.symbol || '').replace(/^\//, '') || '?';
-        const tipObj = rrItemTipObj(name, item, chgStr, cls, pct);
-        const ohlc2  = (item.open != null && item.high != null && item.low != null && item.bar_price != null)
-          ? { o: item.open, h: item.high, l: item.low, c: item.bar_price } : null;
-        chips.push(chipHtml(name, item.outlook, chgStr, cls,
-                            item.buy, item.sell, item.bar_price, tipObj, false, ohlc2, volThresh,
-                            item.monthly_score));
-      }
-      cells.push(`<div class="rr-group">${chips.join('')}</div>`);
-    }
-    return cells.join('');
+  // ---- right-aligned as-of timestamp --------------------------------------
+  function _tapeAsOfHtml(mktData) {
+    const asOfDate = mktData && mktData.as_of;
+    if (!asOfDate) return '';
+    const items    = (mktData && mktData.items) || [];
+    const withTime = items.find(it => it.quote_time);
+    const timeStr  = withTime ? String(withTime.quote_time).slice(0, 5) : '';
+    const label    = timeStr ? `${asOfDate} ${timeStr}` : asOfDate;
+    return `<span class="mt-asof">as of ${escHtml(label)}</span>`;
   }
 
   // ---- build econ expander panel ----------------------------------------
@@ -467,9 +468,7 @@
   }
 
   // ---- DOM mount --------------------------------------------------------
-  let tapeEl    = null;
-  let rrTape2El = null;
-  let rrTape3El = null;
+  let tapeEl = null;
 
   const TAPE_PAGES = new Set(['/', '/actionable', '/portfolio']);
 
@@ -482,31 +481,15 @@
     const topbar = document.querySelector('header.topbar');
     if (!topbar) return;
 
-    // Bar 1 — market pairs tape
+    // Single mini-tape row — curated 8-instrument pulse
     tapeEl = document.createElement('div');
     tapeEl.id = 'rrTape1';
     tapeEl.className = 'market-tape';
     tapeEl.innerHTML = '<span style="color:var(--text-3);padding:0 8px;font-size:11px;">Loading market data…</span>';
     topbar.insertAdjacentElement('afterend', tapeEl);
 
-    // Bar 2 — ETFs + Commodities
-    rrTape2El = document.createElement('div');
-    rrTape2El.id = 'rrTape2';
-    rrTape2El.className = 'rr-tape';
-    rrTape2El.innerHTML = '<span style="color:var(--text-3);padding:0 8px;font-size:11px;">Loading…</span>';
-    tapeEl.insertAdjacentElement('afterend', rrTape2El);
-
-    // Bar 3 — Tech + FX + Indexes
-    rrTape3El = document.createElement('div');
-    rrTape3El.id = 'rrTape3';
-    rrTape3El.className = 'rr-tape';
-    rrTape3El.innerHTML = '<span style="color:var(--text-3);padding:0 8px;font-size:11px;">Loading…</span>';
-    rrTape2El.insertAdjacentElement('afterend', rrTape3El);
-
-    // Attach rich tooltip to all three tape containers (event delegation — once only)
+    // Attach rich tooltip (event delegation — once only)
     _attachTooltip(tapeEl);
-    _attachTooltip(rrTape2El);
-    _attachTooltip(rrTape3El);
 
     // Wire [data-econ-toggle] buttons → #econPanel (any button with the attribute)
     document.addEventListener('click', (e) => {
@@ -528,9 +511,7 @@
 
   function _renderAll() {
     if (_lastMktData && tapeEl)
-      tapeEl.innerHTML = buildTapeHtml(_lastMktData) + buildRrBarHtml(_lastRrData || {}, ['Commodities', 'Crypto']);
-    if (_lastRrData && rrTape2El) rrTape2El.innerHTML = buildRrBarHtml(_lastRrData, BAR2_CATS);
-    if (_lastRrData && rrTape3El) rrTape3El.innerHTML = buildRrBarHtml(_lastRrData, BAR3_CATS);
+      tapeEl.innerHTML = buildMiniTapeHtml(_lastMktData, _lastRrData || {}) + _tapeAsOfHtml(_lastMktData);
   }
   window._refreshTapeGlyphs = _renderAll;
 
@@ -555,22 +536,6 @@
     }
   }
 
-  async function loadRrBar() {
-    ensureMount();
-    if (!rrTape2El || !rrTape3El) return;
-    try {
-      const r = await fetch('/api/rr-bar');
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      _lastRrData = await r.json();
-      rrTape2El.innerHTML = buildRrBarHtml(_lastRrData, BAR2_CATS);
-      rrTape3El.innerHTML = buildRrBarHtml(_lastRrData, BAR3_CATS);
-    } catch (err) {
-      const msg = '<span style="color:var(--bear,#b91c1c);padding:0 8px;font-size:11px;">RR data unavailable</span>';
-      if (rrTape2El)  rrTape2El.innerHTML  = msg;
-      if (rrTape3El) rrTape3El.innerHTML = msg;
-    }
-  }
-
   async function loadEcon() {
     const panel = document.getElementById('econPanel');
     if (!panel) return;
@@ -591,8 +556,7 @@
   // ---- entry ------------------------------------------------------------
   function init() {
     loadTape();
-    loadRrBar();
-    setInterval(() => { loadTape(); loadRrBar(); }, REFRESH_MS);
+    setInterval(loadTape, REFRESH_MS);
   }
 
   if (document.readyState === 'loading') {
@@ -601,7 +565,9 @@
     init();
   }
 
-  // Public tooltip API — lets other scripts (actionable.js) reuse the same tooltip + candle
+  // Public tooltip API — lets other scripts (actionable.js, macro_areas.js) reuse
+  // the same tooltip + candle + volatility 3-zone range bar (TASK_116: macro_areas.js
+  // rail rows port volRangeBar from here instead of duplicating it).
   window.mtTip = {
     showObj: function(e, obj) {
       const el = _ensureTip();
@@ -612,5 +578,6 @@
     move: _posTip,
     hide: _hideTip,
     candleSvg: _candleSvg,
+    volRangeBar: volRangeBar,
   };
 })();

@@ -267,6 +267,7 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Unused/cruft code files audit | `docs/audit/unused_code_report.md` |
 | Macro feed (FRED) — econ data + EOD index levels | `docs/macro_feed_logic.md`; `etl/fetch_macro.py`; `ref_macro_series`/`hist_macro`/`v_macro_latest`; `/api/macro` |
 | Actionable Econ panel (FRED macro tiles) | `web/market_bar.js` (`#econPanel`, `[data-econ-toggle]` button); reads `/api/macro`; `/cockpit` 301-redirects to `/actionable` (macro_band.js/cockpit.html deleted, TASK_109) |
+| Market panel consolidation (mini-tape + enriched side rail; tape bars 2/3 retired) | `docs/market_panel_consolidation_design.md`; mini-tape `#rrTape1` = `web/market_bar.js` (`BAR_MINI` curated list: SPX/VIX/DXY/GC/WTI/10Y/HY/BTC, reads `/api/marketbar`+`/api/rr-bar`); full breadth (candle+Td/Tn+range bar+%chg chip per member, Credit section, breadth counts) = `web/macro_areas.js` `railAreaRow()`/`renderRail()` on `/actionable`, reads `/api/macro-areas` (TASK_115/116) |
 | Actionable bulk action + lazy MACRO detail + settings | `POST /api/actionable/bulk-action`, `GET /api/actionable/macro-detail`, `GET /api/actionable/settings` (api/routers/dash.py, TASK_106) |
 | Quad regime → MACRO overlay (design, diagrams, MacroNet, band, precedence, single MACRO column) | `docs/quad_design.md` (+ `docs/diagrams/quad_*.svg`); spec `agent-tasks/TASK_74_quad_macro_overlay.md` |
 | Full command reference + web endpoints + troubleshooting table | `COMMANDS.md` |

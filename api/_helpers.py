@@ -128,6 +128,56 @@ def expected_market_close_date(now: Optional[datetime] = None) -> date:
     return d
 
 
+# -----------------------------------------------------------------------------
+# Shared market-data source helpers — TASK_115.
+# Same source queries used by /api/rr-bar (api/routers/marketbar.py) and now
+# /api/macro-areas, factored here so neither router hand-copies the SQL.
+# -----------------------------------------------------------------------------
+
+def load_quote_ohlc(session, as_of_date: Optional[date] = None) -> dict:
+    """tos_symbol -> {open, high, low, last, pct_change} from drv_quote.
+
+    as_of_date=None (marketbar/rr-bar usage): latest date in drv_quote.
+    as_of_date=<D> (macro-areas usage): that specific anchor date, so OHLC
+    stays consistent with the last/pct_change already resolved at that date.
+    """
+    if as_of_date is None:
+        rows = session.execute(text(
+            "SELECT tos_symbol, open_price, high_price, low_price, "
+            "last_price, pct_change FROM drv_quote "
+            "WHERE as_of_date = (SELECT MAX(as_of_date) FROM drv_quote)"
+        )).mappings().all()
+    else:
+        rows = session.execute(text(
+            "SELECT tos_symbol, open_price, high_price, low_price, "
+            "last_price, pct_change FROM drv_quote WHERE as_of_date = :d"
+        ), {"d": as_of_date}).mappings().all()
+    out: dict = {}
+    for r in rows:
+        out[r["tos_symbol"]] = {
+            "open":  float(r["open_price"])  if r["open_price"]  is not None else None,
+            "high":  float(r["high_price"])  if r["high_price"]  is not None else None,
+            "low":   float(r["low_price"])   if r["low_price"]   is not None else None,
+            "last":  float(r["last_price"])  if r["last_price"]  is not None else None,
+            "pct_change": float(r["pct_change"]) if r["pct_change"] is not None else None,
+        }
+    return out
+
+
+def load_vol_thresholds(session) -> dict:
+    """tos_symbol -> {low, high} from ref_vol_threshold (volatility regime bands).
+
+    Same query as api/routers/marketbar.py's _load_vol_thresh / get_marketbar's
+    inline vol_thresh dict — factored here so /api/macro-areas doesn't
+    copy-paste it a third time."""
+    return {
+        r["tos_symbol"]: {"low": float(r["low"]), "high": float(r["high"])}
+        for r in session.execute(text(
+            "SELECT tos_symbol, low, high FROM ref_vol_threshold"
+        )).mappings().all()
+    }
+
+
 def eod_feed_status(as_of_date) -> dict:
     """Check whether the EOD price feed (hist_tl) has rows for `as_of_date`.
 

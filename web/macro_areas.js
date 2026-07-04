@@ -1,4 +1,4 @@
-/* macro_areas.js — Macro read card for /actionable (TASK_78/TASK_85).
+/* macro_areas.js — Macro read card for /actionable (TASK_78/TASK_85/TASK_116).
  *
  * Self-contained; reads GET /api/macro-areas?date=<D>.
  *
@@ -6,11 +6,14 @@
  *   - Compact side-rail rows into #macroRailAreas (TASK_85 primary display)
  *   - Full-width collapsible card into #macroReadCard if present (legacy)
  *
- * Per-row compact layout (side rail):
- *   [stance arrowhead SVG] [name] [Td] [Tn] [range bar] [%]
+ * Per-row compact layout (side rail, TASK_116 consolidation — see
+ * docs/market_panel_consolidation_design.md):
+ *   [quad glyph] [SYM] [candle] [Td] [Tn] [range bar+tick] [%chg chip]
  *
- * Volatility row: gauge text only (zone · VIX value)
- * Sectors row: leaders/laggard summary
+ * Volatility row: SYM colored by zone (not outlook); 3-zone volRangeBar
+ *   (ported from market_bar.js via window.mtTip.volRangeBar) instead of
+ *   Td/Tn+range bar; trailing zone badge kept.
+ * Sectors row: unchanged — leaders/laggard summary + per-sector ETF proxy.
  */
 (function () {
   'use strict';
@@ -73,6 +76,53 @@
     if (!outlook) return '#888';
     var c = window.outlookColor ? window.outlookColor(outlook) : 'inherit';
     return (c && c !== 'inherit') ? c : '#888';
+  }
+
+  // Zone color for Volatility members (TASK_116) — same palette as rrTape's
+  // chipHtml zoneColor: investable=green, chop=amber, elevated=red. Used to
+  // color the volatility SYMBOL name (not outlook) so an investable VIX
+  // reads green on the rail the same way it does on the mini-tape.
+  function _zoneColor(zone) {
+    if (zone === 'investable') return '#1d9e75';
+    if (zone === 'chop')       return '#eab308';
+    if (zone === 'elevated')   return '#d4537e';
+    return '#888';
+  }
+
+  // 7×14 mini candle, reusing market_bar.js's SVG builder via the shared
+  // mtTip API (window.mtTip.candleSvg) — no duplicate candle-drawing code.
+  function _candleHtml(m) {
+    if (!window.mtTip || !window.mtTip.candleSvg) return '';
+    return window.mtTip.candleSvg(m.open, m.high, m.low, m.last) || '';
+  }
+
+  // Solid %chg chip (tape convention, TASK_116) — replaces the plain colored
+  // % text. Honors the member `inverted` flag (HY/HYSPRD: rising = risk-off
+  // = red), same convention as market_bar.js's dirClass/INVERTED.
+  function _chgChipHtml(pct, inverted) {
+    if (pct === null || pct === undefined) return '<span class="msr-chg"></span>';
+    var n = Number(pct);
+    var flat = Math.abs(n) < 0.001;
+    var up = !flat && (inverted ? n < 0 : n > 0);
+    var down = !flat && (inverted ? n > 0 : n < 0);
+    var bg = up ? '#1d9e75' : down ? '#d4537e' : '#888';
+    var txt = flat ? '0.00%' : (n > 0 ? '+' : '') + n.toFixed(2) + '%';
+    return '<span class="msr-chg" style="background:' + bg + ';">' + esc(txt) + '</span>';
+  }
+
+  // Native title-attribute tooltip for the compact row (symbol/price/%chg/
+  // outlook) — the anatomy no longer shows a separate price column (tape
+  // convention: price lives in the hover, only %chg is a visible chip).
+  function _rowTitle(m) {
+    var parts = [];
+    if (m.symbol) parts.push(m.symbol);
+    var priceTxt = _fmtPrice(m.last);
+    if (priceTxt !== null) parts.push(priceTxt);
+    if (m.pct_change !== null && m.pct_change !== undefined) {
+      parts.push((m.pct_change > 0 ? '+' : '') + Number(m.pct_change).toFixed(2) + '%');
+    }
+    if (m.outlook) parts.push(m.outlook);
+    return parts.join(' — ');
   }
 
   // Small Quad-score glyph shown before the symbol, same convention as
@@ -157,6 +207,10 @@
            '<span class="msr-price-chg ' + chgCls + '">' + esc(chgTxt) + '</span>';
   }
 
+  // Row anatomy (TASK_116): [quad glyph][SYM][candle][Td/Tn][range bar+tick]
+  // [%chg chip]. Volatility (gauge) swaps Td/Tn+range-bar for the 3-zone
+  // volRangeBar and colors SYM by zone instead of outlook; the trailing zone
+  // badge stays.
   function railAreaRow(area) {
     var members = area.members || [];
     return members.map(function (m) {
@@ -165,25 +219,31 @@
         var gaugeClass = zone === 'investable' ? 'msr-gauge-g'
                        : zone === 'elevated'   ? 'msr-gauge-r'
                        : 'msr-gauge-a';
+        var volBar = (window.mtTip && window.mtTip.volRangeBar)
+          ? window.mtTip.volRangeBar(m.last, m.vol_low, m.vol_high)
+          : '<div class="rr-rb"></div>';
         return (
-          '<div class="msr-row">' +
-            '<span class="msr-name msr-name-tick" style="color:' + _nameColor(m.outlook) + ';">' +
+          '<div class="msr-row" title="' + esc(_rowTitle(m)) + '">' +
+            '<span class="msr-name msr-name-tick" style="color:' + _zoneColor(zone) + ';">' +
               _msGlyph(m.monthly_score) + esc(m.label || area.label) +
             '</span>' +
-            _priceChgSpan(m) +
+            _candleHtml(m) +
+            volBar +
+            _chgChipHtml(m.pct_change, m.inverted) +
             '<span class="msr-gauge ' + gaugeClass + '">' + esc(zone) + '</span>' +
           '</div>'
         );
       }
       return (
-        '<div class="msr-row" title="' + esc(m.symbol) + (m.outlook ? ' — ' + esc(m.outlook) : '') + '">' +
+        '<div class="msr-row" title="' + esc(_rowTitle(m)) + '">' +
           '<span class="msr-name msr-name-tick" style="color:' + _nameColor(m.outlook) + ';">' +
             _msGlyph(m.monthly_score) + esc(m.symbol) +
           '</span>' +
-          _priceChgSpan(m) +
+          _candleHtml(m) +
           durArrow(m.trade, 'Td') +
           durArrow(m.trend, 'Tn') +
           railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct) +
+          _chgChipHtml(m.pct_change, m.inverted) +
         '</div>'
       );
     }).join('');
@@ -229,12 +289,42 @@
     volatility:          'macroRailVolatility',
     top9:                'macroRailTop9',
     rates_duration:      'macroRailRates',
+    credit:              'macroRailCredit',
     commodities_credit:  'macroRailCommodities',
     usd_currency:        'macroRailUsd',
     country_etfs:        'macroRailCountry',
     crypto:               'macroRailCrypto',
     remaining:           'macroRailRemaining',
   };
+
+  // Section-header breadth summary (↑n ↓n), TASK_116 — one id per area_key
+  // that has a rail container (Sectors excluded; it keeps its own
+  // leaders/laggards summary instead).
+  var _AREA_BREADTH_ID = {
+    volatility:          'macroBreadthVolatility',
+    top9:                'macroBreadthTop9',
+    rates_duration:      'macroBreadthRates',
+    credit:              'macroBreadthCredit',
+    commodities_credit:  'macroBreadthCommodities',
+    usd_currency:        'macroBreadthUsd',
+    country_etfs:        'macroBreadthCountry',
+    crypto:               'macroBreadthCrypto',
+    remaining:           'macroBreadthRemaining',
+  };
+
+  function _breadthHtml(area) {
+    var members = area.members || [];
+    var up = 0, down = 0;
+    members.forEach(function (m) {
+      if (m.pct_change === null || m.pct_change === undefined) return;
+      var n = Number(m.pct_change);
+      if (n > 0) up++;
+      else if (n < 0) down++;
+    });
+    if (!up && !down) return '';
+    return '<span class="msr-breadth-up">&#8593;' + up + '</span> ' +
+           '<span class="msr-breadth-down">&#8595;' + down + '</span>';
+  }
 
   function renderRail(data) {
     var areas = (data && data.areas) || [];
@@ -243,6 +333,10 @@
       var containerId = _AREA_CONTAINER_ID[area.area_key];
       if (!containerId) return;
       byContainer[containerId] = (byContainer[containerId] || '') + railAreaRow(area);
+
+      var breadthId = _AREA_BREADTH_ID[area.area_key];
+      var breadthEl = breadthId && document.getElementById(breadthId);
+      if (breadthEl) breadthEl.innerHTML = _breadthHtml(area);
     });
 
     Object.keys(_AREA_CONTAINER_ID).forEach(function (key) {

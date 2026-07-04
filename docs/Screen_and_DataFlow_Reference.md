@@ -50,6 +50,17 @@ summary chips by category (remove / reduce / increase / add / hold), plus toggle
 final decision, per-source actions (F/CS split), and the rules-engine fires. "My work
 queue — what the engine says I should *do* today."
 
+Market context on this screen is a **mini-tape + enriched side rail** (consolidated
+TASK_115/116, see `docs/market_panel_consolidation_design.md`): a single sticky pulse
+row (`#rrTape1`, `web/market_bar.js`, curated 8-instrument `BAR_MINI` list) plus the
+side panel's macro rail (`web/macro_areas.js`, reads `/api/macro-areas`) which carries
+the full breadth — one row per member with quad glyph, candle, Td/Tn, range bar, and a
+solid %chg chip, grouped into Volatility/Major Markets/Sectors/Rates & Duration/
+Credit/USD & Currency/Commodities/Tech & ETFs/Crypto/Country sections with breadth
+(↑n ↓n) counts. The side panel is pinned by default (`actSidePinned` localStorage key)
+and auto-unpins below 1200px viewport width. Tape bars 2/3 (`#rrTape2`/`#rrTape3`) were
+retired — their content now lives only in the rail.
+
 ### How they differ
 
 | | Backing data | Granularity | Purpose |

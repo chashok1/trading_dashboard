@@ -2582,7 +2582,7 @@ function _initSidePanels() {
 }
 
 function initEcoBarClick() {
-  ['rrTape1','rrTape2','rrTape3'].forEach(id => {
+  ['rrTape1'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('click', (e) => {
@@ -4244,19 +4244,38 @@ const _closeModal = () => {
   $('closePop').addEventListener('click', () => closeAtomicPopover());
 
   // ── Side panel toggle ─────────────────────────────────────────────────────
+  // Pinned by default (TASK_116): missing actSidePinned key => pinned;
+  // explicit '0' stays unpinned. Auto-unpin below 1200px viewport width on
+  // load and resize; a manual toggle wins for the rest of the session.
   const _sideEl  = $('actSidePanel');
   const _sideBtn = $('sidePanelBtn');
   if (_sideEl && _sideBtn) {
-    if (localStorage.getItem('actSidePinned') === '1') {
-      _sideEl.classList.add('pinned');
-      _sideBtn.classList.add('sp-active');
-      loadSidePanels();
-    }
+    let _sideManualOverride = false;
+
+    const _applyPinned = (pinned) => {
+      _sideEl.classList.toggle('pinned', pinned);
+      _sideBtn.classList.toggle('sp-active', pinned);
+      if (pinned) loadSidePanels();
+    };
+
+    const _autoPinWanted = () => {
+      if (window.innerWidth < 1200) return false;
+      return localStorage.getItem('actSidePinned') !== '0';
+    };
+
+    _applyPinned(_autoPinWanted());
+
     _sideBtn.addEventListener('click', () => {
       const pinned = _sideEl.classList.toggle('pinned');
+      _sideManualOverride = true;
       _sideBtn.classList.toggle('sp-active', pinned);
       localStorage.setItem('actSidePinned', pinned ? '1' : '0');
       if (pinned) loadSidePanels();
+    });
+
+    window.addEventListener('resize', () => {
+      if (_sideManualOverride) return;
+      _applyPinned(_autoPinWanted());
     });
   }
 

@@ -474,9 +474,7 @@
     .act-side.pinned { display: flex; position: fixed; top: 0; right: 0; bottom: 0; z-index: 100; background: var(--surface, #fafafa); box-shadow: -2px 0 8px rgba(0,0,0,0.07); }
     body:has(#actSidePanel.pinned) .act-main-col { padding-right: 264px; }
     body:has(#actSidePanel.pinned) .topbar { padding-right: 264px; }
-    body:has(#actSidePanel.pinned) #rrTape1,
-    body:has(#actSidePanel.pinned) #rrTape2,
-    body:has(#actSidePanel.pinned) #rrTape3 { padding-right: 264px; }
+    body:has(#actSidePanel.pinned) #rrTape1 { padding-right: 264px; }
     /* Collapsible panels */
     .sp-panel .sp-hdr { cursor: pointer; user-select: none; display: flex; align-items: center; }
     .sp-panel .sp-hdr:hover { background: rgba(0,0,0,0.04); }
@@ -823,9 +821,13 @@
       <aside class="side-stack act-side" id="actSidePanel">
         <!-- Macro Rail: split into one panel per area_key (each renders one row
              per member symbol, same as Volatility always did) -->
+        <!-- Section order = tape priority (docs/market_panel_consolidation_design.md):
+             Volatility · Major Markets · Sectors · Rates & Duration · Credit ·
+             USD & Currency · Commodities · Tech & ETFs · Crypto · Country. -->
         <section id="macroVolatilitySection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
           <div class="msr-section-hdr sp-hdr" data-panel="macroVolatility">
             Volatility
+            <span class="msr-breadth" id="macroBreadthVolatility"></span>
             <span class="sp-chevron">▾</span>
           </div>
           <div class="sp-body">
@@ -836,6 +838,7 @@
         <section id="macroTop9Section" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
           <div class="msr-section-hdr sp-hdr" data-panel="macroTop9">
             Major Markets
+            <span class="msr-breadth" id="macroBreadthTop9"></span>
             <span class="sp-chevron">▾</span>
           </div>
           <div class="sp-body">
@@ -857,6 +860,7 @@
         <section id="macroRatesSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
           <div class="msr-section-hdr sp-hdr" data-panel="macroRates">
             Rates &amp; Duration
+            <span class="msr-breadth" id="macroBreadthRates"></span>
             <span class="sp-chevron">▾</span>
           </div>
           <div class="sp-body">
@@ -864,19 +868,21 @@
           </div>
         </section>
 
-        <section id="macroCommoditiesSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="macroCommodities">
-            Commodities
+        <section id="macroCreditSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="macroCredit">
+            Credit
+            <span class="msr-breadth" id="macroBreadthCredit"></span>
             <span class="sp-chevron">▾</span>
           </div>
           <div class="sp-body">
-            <div id="macroRailCommodities"><div class="msr-loading">Loading…</div></div>
+            <div id="macroRailCredit"><div class="msr-loading">Loading…</div></div>
           </div>
         </section>
 
         <section id="macroUsdSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
           <div class="msr-section-hdr sp-hdr" data-panel="macroUsd">
             USD &amp; Currency
+            <span class="msr-breadth" id="macroBreadthUsd"></span>
             <span class="sp-chevron">▾</span>
           </div>
           <div class="sp-body">
@@ -884,19 +890,32 @@
           </div>
         </section>
 
-        <section id="macroCountrySection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="macroCountry">
-            Country ETFs
+        <section id="macroCommoditiesSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="macroCommodities">
+            Commodities
+            <span class="msr-breadth" id="macroBreadthCommodities"></span>
             <span class="sp-chevron">▾</span>
           </div>
           <div class="sp-body">
-            <div id="macroRailCountry"><div class="msr-loading">Loading…</div></div>
+            <div id="macroRailCommodities"><div class="msr-loading">Loading…</div></div>
+          </div>
+        </section>
+
+        <section id="macroRemainingSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="macroRemaining">
+            Tech &amp; ETFs
+            <span class="msr-breadth" id="macroBreadthRemaining"></span>
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div id="macroRailRemaining"><div class="msr-loading">Loading…</div></div>
           </div>
         </section>
 
         <section id="macroCryptoSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
           <div class="msr-section-hdr sp-hdr" data-panel="macroCrypto">
             Crypto
+            <span class="msr-breadth" id="macroBreadthCrypto"></span>
             <span class="sp-chevron">▾</span>
           </div>
           <div class="sp-body">
@@ -904,13 +923,14 @@
           </div>
         </section>
 
-        <section id="macroRemainingSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="macroRemaining">
-            Tech &amp; ETFs
+        <section id="macroCountrySection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="macroCountry">
+            Country ETFs
+            <span class="msr-breadth" id="macroBreadthCountry"></span>
             <span class="sp-chevron">▾</span>
           </div>
           <div class="sp-body">
-            <div id="macroRailRemaining"><div class="msr-loading">Loading…</div></div>
+            <div id="macroRailCountry"><div class="msr-loading">Loading…</div></div>
           </div>
         </section>
 

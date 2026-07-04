@@ -46,15 +46,37 @@ VALUES
   ('top9', 'Major Markets', 'LQD',   'dual',    220)
 ON CONFLICT (area_key, member_symbol) DO NOTHING;
 
+-- TASK_115: fix a pre-existing typo found during the tape-coverage audit —
+-- drv_rr/hist_rr's actual tos_symbol for the 2Y yield is 'DGS2:FRED' (matches
+-- /api/rr-bar's Rates group), not 'DGS2'. The bare 'DGS2' row never resolved
+-- any rr/technicals data. Must run BEFORE the INSERT below (which seeds
+-- 'DGS2:FRED' directly on fresh installs); NOT EXISTS guard + WHERE make
+-- re-running this UPDATE a clean no-op once the rename has happened once.
+UPDATE ref_macro_area SET member_symbol = 'DGS2:FRED'
+WHERE area_key = 'rates_duration' AND member_symbol = 'DGS2'
+  AND NOT EXISTS (
+    SELECT 1 FROM ref_macro_area
+    WHERE area_key = 'rates_duration' AND member_symbol = 'DGS2:FRED'
+  );
+
 -- Rates & Duration (MOVE moved out to Volatility, HYG/LQD moved out to
 -- Major Markets per request; area_key kept as 'rates_duration' internally) --
 INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order)
 VALUES
-  ('rates_duration', 'Rates & Duration', 'DGS2',     'curve', 10),
+  ('rates_duration', 'Rates & Duration', 'DGS2:FRED','curve', 10),
   ('rates_duration', 'Rates & Duration', 'TNX:CGI',  'curve', 20),
   ('rates_duration', 'Rates & Duration', 'TYX:CGI',  'curve', 30),
   ('rates_duration', 'Rates & Duration', 'TLT',      'dual',  40),
   ('rates_duration', 'Rates & Duration', 'IEF',      'dual',  50)
+ON CONFLICT (area_key, member_symbol) DO NOTHING;
+
+-- Credit (TASK_115: dedicated rail section — HYG/LQD also stay duplicated in
+-- Major Markets/top9 above, same duplication precedent as $DXY/UUP in
+-- top9+usd_currency). Matches /api/rr-bar's 'Credit' group exactly.
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order)
+VALUES
+  ('credit', 'Credit', 'HYG', 'dual', 10),
+  ('credit', 'Credit', 'LQD', 'dual', 20)
 ON CONFLICT (area_key, member_symbol) DO NOTHING;
 
 -- Commodities (Credit moved out to Rates & Credit per request) ----------

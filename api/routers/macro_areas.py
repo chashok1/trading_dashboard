@@ -17,7 +17,9 @@ from typing import Optional
 from fastapi import APIRouter, Query
 from sqlalchemy import text
 
-from api._helpers import _resolve_date, _get_ref_setting
+from api._helpers import (
+    _resolve_date, _get_ref_setting, load_quote_ohlc, load_vol_thresholds,
+)
 from etl.db import session_scope
 
 router = APIRouter(tags=["macro_areas"])
@@ -76,12 +78,19 @@ _SECTOR_ETF = {
 # section (broken out one row per member); frontend routes each area_key to
 # its own container based on this same set of keys.
 _AREA_ORDER = [
-    "volatility", "top9", "rates_duration", "commodities_credit",
+    "volatility", "top9", "rates_duration", "credit", "commodities_credit",
     "usd_currency", "country_etfs", "crypto", "remaining",
 ]
 
 # Symbols that are yield-curve members — skip rr_pos
-_CURVE_SYMS = {"DGS2", "TNX:CGI", "TYX:CGI"}
+_CURVE_SYMS = {"DGS2:FRED", "TNX:CGI", "TYX:CGI"}
+
+# Symbols whose color convention flips vs. plain price direction (HY credit —
+# rising spread = risk-off = red), mirroring web/market_bar.js's INVERTED
+# set (keyed there by chip short-label 'HY'/'HYSPRD'; keyed here by
+# tos_symbol so the frontend consolidation (TASK_116) can read it straight
+# off each member instead of keeping its own list).
+_INVERTED_SYMBOLS = {"HYG"}
 
 
 def _sign(x: Optional[float]) -> int:
@@ -203,11 +212,12 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         """), {"d": anchor}).mappings().all()
         q_map = {r["tos_symbol"]: dict(r) for r in q_rows}
 
-        # Load ref_vol_threshold for VIX zone
-        vt_rows = s.execute(text(
-            "SELECT tos_symbol, low, high FROM ref_vol_threshold"
-        )).mappings().all()
-        vt_map = {r["tos_symbol"]: dict(r) for r in vt_rows}
+        # OHLC (candle) at the same anchor date, and vol thresholds — shared
+        # helpers, same source query /api/rr-bar uses (api/_helpers.py
+        # ::load_quote_ohlc / load_vol_thresholds), factored out so this
+        # router doesn't copy-paste the SQL a third time.
+        ohlc_map = load_quote_ohlc(s, anchor)
+        vt_map = load_vol_thresholds(s)
 
         # Load drv_macro_score (Quad-calendar-derived monthly_score) — same
         # source as rrTape's tile glyph (api/routers/marketbar.py::_RR_SQL).
@@ -283,6 +293,8 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
 
             rr = rr_map.get(sym, {})
             tech = tech_map.get(sym, {})
+            ohlc = ohlc_map.get(sym, {})
+            inverted = sym in _INVERTED_SYMBOLS
 
             # Gauge (VIX): compute zone from ref_vol_threshold
             if role == "gauge":
@@ -303,9 +315,15 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     "label": mc.get("label"),
                     "last": _maybe_float(last),
                     "pct_change": _maybe_float(pct_chg),
+                    "open": ohlc.get("open"),
+                    "high": ohlc.get("high"),
+                    "low": ohlc.get("low"),
+                    "vol_low": vt.get("low"),
+                    "vol_high": vt.get("high"),
                     "zone": zone,
                     "outlook": rr.get("outlook"),
                     "monthly_score": _maybe_float(ms_map.get(sym)),
+                    "inverted": inverted,
                 })
                 continue
 
@@ -320,12 +338,16 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     "role": role,
                     "last": _maybe_float(last),
                     "pct_change": _maybe_float(pct_chg),
+                    "open": ohlc.get("open"),
+                    "high": ohlc.get("high"),
+                    "low": ohlc.get("low"),
                     "outlook": rr.get("outlook"),
                     "rr_pos": None,
                     "trade": None,
                     "trend": None,
                     "wow_pct": wow_pct,
                     "monthly_score": _maybe_float(ms_map.get(sym)),
+                    "inverted": inverted,
                 })
                 continue
 
@@ -368,6 +390,9 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 "role": role,
                 "last": _maybe_float(last),
                 "pct_change": _maybe_float(pct_chg),
+                "open": ohlc.get("open"),
+                "high": ohlc.get("high"),
+                "low": ohlc.get("low"),
                 "outlook": rr.get("outlook"),
                 "rr_pos": _pct(rr_pos),
                 "trade": trade_sig,
@@ -376,6 +401,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 "is_cold": rr_pos is not None and rr_pos <= cold_pct,
                 "wow_pct": wow_pct,
                 "monthly_score": _maybe_float(ms_map.get(sym)),
+                "inverted": inverted,
             })
 
         # Area roll-up

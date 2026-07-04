@@ -4,6 +4,26 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ---
 
+## 2026-07-04
+
+- **Market panel consolidation, frontend (TASK_116).** Hybrid consolidation of the three
+  market tapes into one mini-tape + the Actionable side rail (design:
+  `docs/market_panel_consolidation_design.md`; backend superset payload was TASK_115).
+  `web/market_bar.js`: `#rrTape2`/`#rrTape3` mounts deleted; `#rrTape1` now renders a
+  curated `BAR_MINI` list (SPX/VIX/DXY/GC/WTI from `/api/marketbar`; 10Y/HY/BTC from
+  `/api/rr-bar` Rates/Credit/Crypto groups) plus a right-aligned as-of time. `/api/marketbar`
+  + `/api/rr-bar` calls unchanged server-side; mini-tape trims client-side. `web/macro_areas.js`:
+  rail member rows gained a candle (`window.mtTip.candleSvg`, now exposed alongside
+  `volRangeBar`) and a solid tape-style %chg chip (honors `member.inverted`); Volatility
+  rows color the symbol name by zone (not outlook) and keep the 3-zone `volRangeBar` +
+  trailing zone badge; new **Credit** rail section (HYG/LQD); section headers gained
+  breadth (↑n/↓n) counts. `web/actionable.js`: side panel now pinned by default (missing
+  `actSidePinned` key ⇒ pinned; explicit `'0'` stays unpinned) and auto-unpins below
+  1200px viewport width (manual toggle wins for the session). No schema change; no
+  server restart needed (frontend-only — static assets hot-reload).
+
+---
+
 ## 2026-06-10
 
 - **Cockpit retired (Task 7).** `/cockpit` now returns `301 Redirect → /actionable`. All nav menus updated (removed Cockpit link). `web/macro_band.js` Market-context band moved to `web/actionable.html` as a collapsible card above the toolbar (collapse state persists in `localStorage['macroCardOpen']`). `docs/macro_feed_logic.md` and `CLAUDE.md` lookup table updated.
