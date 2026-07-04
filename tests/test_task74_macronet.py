@@ -188,10 +188,12 @@ class TestHTMLColumns:
         assert "MACRO" in html, "actionable.html must have a MACRO <th>"
 
     def test_macro_th_has_data_key(self):
-        """MACRO th should have data-key='macro_value' for sort."""
+        """MACRO th should have data-key='macronet' data-type='num' for numeric sort (TASK_105)."""
         html = _html()
-        assert 'data-key="macro_value"' in html, \
-            "MACRO <th> must have data-key='macro_value' for sort to work"
+        assert 'data-key="macronet"' in html, \
+            "MACRO <th> must have data-key='macronet' for sort to work"
+        assert 'data-type="num"' in html, \
+            "MACRO <th> must have data-type='num' for numeric sort"
 
     def test_quad_m_th_removed(self):
         html = _html()

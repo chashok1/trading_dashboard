@@ -239,8 +239,13 @@
           if (msr.gamma_throttle != null) bodyParts.push('Gamma Throttle: ' + msr.gamma_throttle.toFixed(2));
           if (msr.rvol_10day != null) bodyParts.push('Realized Vol: ' + msr.rvol_10day.toFixed(2));
           var idx = _richTip(_popBox(titleHtml, bodyParts.join('\n')));
+          // max-height + max-width (not a fixed height) lets the image scale
+          // down to fit whatever width the grid column actually resolves to,
+          // instead of forcing the card wider than its track (same pattern
+          // as the INFL image below).
           return '<img src="' + esc(msr.image_url) + '" ' +
-            'style="height:90px; width:auto; border-radius:3px; display:block; cursor:pointer;" ' +
+            'style="max-height:90px; max-width:100%; width:auto; height:auto; ' +
+            'border-radius:3px; display:block; cursor:pointer;" ' +
             'data-hetip="' + idx + '" ' +
             'onerror="this.style.display=\'none\'">';
         })()
@@ -258,12 +263,17 @@
       '</span>' +
       '<span>' + linked('Mkt Situation', 'mkt_situation') + msrTileTs + msrMetricsHtml + '</span>' +
       '</div>';
+    // No fixed/flex width here — sizing comes entirely from the parent
+    // row's CSS-grid column (see render()'s GRID_ROW1). min-width:0 lets
+    // this card actually shrink to that column's track instead of the
+    // image forcing it wider (that's what used to require the Macro
+    // Commentary card's width to be reverse-engineered to match).
     return '<div style="background:#fff; border:1px solid #e0daf5; border-radius:5px; ' +
-      'padding:7px 10px; flex:0 0 340px; ' +
+      'padding:7px 10px; min-width:0; max-height:125px; ' +
       'box-shadow:0 1px 4px rgba(83,74,183,0.07); display:flex; flex-direction:column;">' +
       panelTitle +
-      '<div style="display:flex; gap:0; align-items:flex-start; flex-wrap:nowrap; flex:1; min-height:0; overflow-y:auto;">' +
-      (img ? '<div style="flex-shrink:0;">' + img + '</div>' : '') +
+      '<div style="display:flex; gap:0; align-items:flex-start; flex-wrap:nowrap; flex:1; min-height:0; min-width:0; overflow-y:auto; overflow-x:hidden;">' +
+      (img ? '<div style="min-width:0;">' + img + '</div>' : '') +
       '</div></div>';
   }
 
@@ -403,6 +413,10 @@
       return label ? ' <span style="font-size:8px; color:#bbb; font-weight:400;">' + esc(label) + '</span>' : '';
     };
 
+    // Card chrome shared by every row via _card(). Sizing (width) now comes
+    // entirely from each row's CSS-grid grid-template-columns — cards never
+    // set their own width/flex-basis, so a narrower window or an added card
+    // just changes the grid track math, nothing hand-tuned per card.
     var CARD_BASE = 'background:#fff; border:1px solid #e0daf5; border-radius:5px; ' +
       'padding:7px 10px; min-width:0; box-shadow:0 1px 4px rgba(83,74,183,0.07); ' +
       'display:flex; flex-direction:column;';
@@ -411,58 +425,53 @@
       'border-bottom:1px solid #edeafb; flex-shrink:0;';
     var CARD_BODY = 'overflow-y:auto; flex:1; min-height:0;';
 
-    var row1 = (data.early_look || data.msr || (data.trend_flips && data.trend_flips.length))
-      ? '<div style="display:flex; gap:3px; flex-wrap:nowrap; align-items:stretch; height:125px;">' +
-        msrCardHtml(data.msr, data.as_of || data.date, loadedAt) +
-        '<div style="' + CARD_BASE + 'flex:0 0 calc(22.5ch + 18px);">' +
-        '<div style="' + CARD_HDR + '">' + linked('Risk Range', 'trend_change') + td(data.trend_flips_received_at, data.trend_flips_date) + '</div>' +
-        '<div style="' + CARD_BODY + '">' +
-        (flipsHtml(data.trend_flips) || '<span style="color:#bbb; font-size:10px;">none</span>') +
-        '</div></div>' +
-        (data.early_look
-          ? '<div style="' + CARD_BASE + 'flex:1 1 0;">' +
-            '<div style="' + CARD_HDR + '">' + linked('Early Look', 'early_look') + td(data.early_look.received_at, data.early_look.date) + '</div>' +
-            '<div style="' + CARD_BODY + '">' + earlyLookHtml(data.early_look) + '</div></div>'
-          : '') +
-        '</div>'
-      : '';
-
-    var _card = function (title, body, flex, dateHtml) {
-      return '<div style="' + CARD_BASE + flex + ';">' +
+    // Cards size to content, capped at maxH (default 125, rowMacroTop3 uses
+    // 105) with internal scroll past that — never a fixed row height, so a
+    // row with only short content doesn't force every sibling to stretch to
+    // an arbitrary pixel number.
+    var _card = function (title, body, dateHtml, opts) {
+      opts = opts || {};
+      var maxH = opts.maxH || 125;
+      var extra = opts.extra || '';
+      return '<div style="' + CARD_BASE + 'max-height:' + maxH + 'px;' + extra + '">' +
         '<div style="' + CARD_HDR + '">' + title + (dateHtml || '') + '</div>' +
         '<div style="' + CARD_BODY + '">' +
         (body || '<span style="color:#bbb; font-size:10px;">none</span>') +
         '</div></div>';
     };
-    // Macro Commentary (fixed width, matching the Hedgeye/Mkt Situation card)
-    // + Hedgeye's Top 3 Things (fills the rest) share one row.
-    // NB: the Hedgeye/Mkt Situation card's own "flex:0 0 340px" is only its
-    // flex-basis — that card has no min-width:0, so its embedded MSR image
-    // (height:90px, width:auto) forces it wider than 340px to fit the image's
-    // natural aspect ratio. Match that actual rendered width (~506px), not
-    // the nominal flex-basis, so the two cards line up on screen.
-    var rowMacroTop3 = (data.call_macro || (data.top3_things && data.top3_things.note_text))
-      ? '<div style="display:flex; gap:3px; flex-wrap:nowrap; align-items:stretch; height:105px; margin-top:3px;">' +
-        (data.call_macro
-          ? _card(linked('Macro Commentary', 'call_macro'),
-                  '<div style="font-size:11px; line-height:1.5;">' + boldTickers(data.call_macro.note_text) + '</div>',
-                  'flex:0 0 506px', td(data.call_macro.received_at, data.call_macro.date))
-          : '') +
-        ((data.top3_things && data.top3_things.note_text)
-          ? _card(linked("Hedgeye's Top 3 Things", 'macro_show'), top3Html(data.top3_things),
-                  'flex:1', td(data.top3_things.received_at, data.top3_things.date))
-          : '') +
+
+    // Row 1: MSR/Mkt Situation | Risk Range | Early Look. Fixed-ish tracks
+    // for MSR + Risk Range, 1fr for Early Look. Cards always render (with a
+    // "none" fallback) once the row itself has something worth showing, so
+    // a sparse day doesn't leave a blank grid cell.
+    var GRID_ROW1 = 'display:grid; grid-template-columns: minmax(300px, 360px) ' +
+      'minmax(160px, calc(22.5ch + 18px)) minmax(220px, 1fr); gap:3px; align-items:stretch;';
+    var row1 = (data.early_look || data.msr || (data.trend_flips && data.trend_flips.length))
+      ? '<div style="' + GRID_ROW1 + '">' +
+        msrCardHtml(data.msr, data.as_of || data.date, loadedAt) +
+        _card(linked('Risk Range', 'trend_change'), flipsHtml(data.trend_flips),
+              td(data.trend_flips_received_at, data.trend_flips_date)) +
+        _card(linked('Early Look', 'early_look'),
+              data.early_look ? earlyLookHtml(data.early_look) : '',
+              td(data.early_look && data.early_look.received_at, data.early_look && data.early_look.date)) +
         '</div>'
       : '';
-    // INFL is a fixed width in both states. Macro Show and Call both use
-    // flex-basis:0% (the bare "flex:N" shorthand), so when the side panel
-    // narrows the row's available space, native flexbox math shrinks both of
-    // them by the exact same percentage automatically (each one's resolved
-    // width = its own grow / sum-of-grow * available space -- a pure ratio,
-    // so if available space scales by k, every basis:0 item scales by k too)
-    // -- no JS-computed percentage needed, and everything else stays fixed.
-    var _inflFlex = 'flex:0 0 210px; padding:4px 3px;';
-    var _callFlex = 'flex:0.975';
+
+    // Row: Macro Commentary (fixed-ish) | Hedgeye's Top 3 Things (1fr).
+    var GRID_ROW_MACRO = 'display:grid; grid-template-columns: minmax(300px, 360px) ' +
+      'minmax(220px, 1fr); gap:3px; align-items:stretch; margin-top:3px;';
+    var rowMacroTop3 = (data.call_macro || (data.top3_things && data.top3_things.note_text))
+      ? '<div style="' + GRID_ROW_MACRO + '">' +
+        _card(linked('Macro Commentary', 'call_macro'),
+              data.call_macro ? '<div style="font-size:11px; line-height:1.5;">' + boldTickers(data.call_macro.note_text) + '</div>' : '',
+              td(data.call_macro && data.call_macro.received_at, data.call_macro && data.call_macro.date),
+              { maxH: 105 }) +
+        _card(linked("Hedgeye's Top 3 Things", 'macro_show'), top3Html(data.top3_things),
+              td(data.top3_things && data.top3_things.received_at, data.top3_things && data.top3_things.date),
+              { maxH: 105 }) +
+        '</div>'
+      : '';
+
     var _inflValueHtml = '';
     var _inflMonth = '';
     if (data.inflation_nowcast) {
@@ -491,16 +500,23 @@
       '<span>' + _inflRight + '</span>' +
       '</span>';
 
+    // Row 2: Top-5 | Macro Show | RTA | ETF | II | SSS | Call | INFL.
+    // Fixed-ish chip tracks for Top-5/RTA/ETF/II/SSS/INFL, 1fr for the two
+    // prose-ish cards (Macro Show, Call) so they split any leftover space.
+    var GRID_ROW2 = 'display:grid; grid-template-columns: ' +
+      'minmax(120px, calc(15ch + 20px)) minmax(200px, 1fr) minmax(220px, calc(35ch + 20px)) ' +
+      'minmax(120px, calc(15ch + 20px)) minmax(120px, calc(15ch + 20px)) minmax(120px, calc(15ch + 20px)) ' +
+      'minmax(200px, 1fr) minmax(150px, 210px); gap:3px; align-items:stretch; margin-top:3px;';
     var row2 =
-      '<div style="display:flex; gap:3px; flex-wrap:nowrap; align-items:stretch; height:125px; margin-top:3px;">' +
-      _card(linked('Top-5', 'top5'),                 top5Html(data.top5),              'flex:0 0 calc(15ch + 20px)',   td(data.top5_received_at, data.top5_date)) +
-      _card(linked('Macro Show', 'macro_show'),      stanceHtml(data.stance, data.stance_date), 'flex:1.5',             td(data.stance_received_at, data.stance_date)) +
-      _card(linked('RTA', 'alerts'),                 alertsHtml(data.alerts),          'flex:0 0 calc(35ch + 20px)',   td(data.rta_received_at, data.rta_date)) +
-      _card(linked(etfTitle, 'etf_pro'),             etfChangesHtml(data.etf_changes), 'flex:0 0 calc(15ch + 20px)',   td(data.etf_changes && data.etf_changes.received_at, data.etf_changes && data.etf_changes.date)) +
-      _card(linked(iiTitle, 'investing_ideas'),      iiChangesHtml(data.ii_changes),   'flex:0 0 calc(15ch + 20px)',   td(data.ii_changes && data.ii_changes.received_at, data.ii_changes && data.ii_changes.date)) +
-      _card(linked(sssTitle, 'sss'),                 sssChangesHtml(data.sss_changes), 'flex:0 0 calc(15ch + 20px)',   td(data.sss_changes && data.sss_changes.received_at, data.sss_changes && data.sss_changes.date)) +
-      _card(linked('Call', 'call'),                  positionsHtml(data.positions),    _callFlex,                      td(data.positions && data.positions.received_at, data.positions && data.positions.date)) +
-      _card(_inflTitle, inflationNowcastHtml(data.inflation_nowcast), _inflFlex, '') +
+      '<div style="' + GRID_ROW2 + '">' +
+      _card(linked('Top-5', 'top5'),                 top5Html(data.top5),              td(data.top5_received_at, data.top5_date)) +
+      _card(linked('Macro Show', 'macro_show'),      stanceHtml(data.stance, data.stance_date), td(data.stance_received_at, data.stance_date)) +
+      _card(linked('RTA', 'alerts'),                 alertsHtml(data.alerts),          td(data.rta_received_at, data.rta_date)) +
+      _card(linked(etfTitle, 'etf_pro'),             etfChangesHtml(data.etf_changes), td(data.etf_changes && data.etf_changes.received_at, data.etf_changes && data.etf_changes.date)) +
+      _card(linked(iiTitle, 'investing_ideas'),      iiChangesHtml(data.ii_changes),   td(data.ii_changes && data.ii_changes.received_at, data.ii_changes && data.ii_changes.date)) +
+      _card(linked(sssTitle, 'sss'),                 sssChangesHtml(data.sss_changes), td(data.sss_changes && data.sss_changes.received_at, data.sss_changes && data.sss_changes.date)) +
+      _card(linked('Call', 'call'),                  positionsHtml(data.positions),    td(data.positions && data.positions.received_at, data.positions && data.positions.date)) +
+      _card(_inflTitle, inflationNowcastHtml(data.inflation_nowcast), '', { extra: 'padding:4px 3px;' }) +
       '</div>';
 
     var bodyHtml =
@@ -511,6 +527,15 @@
       '<div style="padding:2px 4px; background:#f0eefb; border:1px solid #d5d0f0; ' +
       'border-radius:6px;">' + bodyHtml + '</div>';
     el.style.display = 'block';
+
+    // U15: sync the toggle button's chevron to the persisted collapsed
+    // state on every render (covers page reload — clicking already syncs
+    // this via _hePanelToggle below, but that only runs on click).
+    var toggleBtn = document.getElementById('hePanelToggle');
+    if (toggleBtn) {
+      toggleBtn.classList.toggle('icon-on', !collapsed);
+      toggleBtn.classList.toggle('icon-off', collapsed);
+    }
 
     window._hePanelToggle = function () {
       var body = document.getElementById('hePanelBody');

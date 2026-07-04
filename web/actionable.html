@@ -431,6 +431,13 @@
     .btn-icon.active    .icon-off { display: none; }
     .btn-icon.sp-active .icon-on  { display: block; }
     .btn-icon.sp-active .icon-off { display: none; }
+    /* #hePanelToggle (TASK_108 U15) drives its chevron via icon-on/icon-off
+       classes on the button itself (set in hedgeye_panel.js render() and
+       _hePanelToggle), rather than .active/.sp-active. */
+    .btn-icon.icon-on  .icon-on  { display: block; }
+    .btn-icon.icon-on  .icon-off { display: none; }
+    .btn-icon.icon-off .icon-on  { display: none; }
+    .btn-icon.icon-off .icon-off { display: block; }
     /* Styled tooltips via data-tip attribute */
     .btn-icon[data-tip]::after {
       content: attr(data-tip);
@@ -613,6 +620,7 @@
           <!-- Action chips -->
           <div class="act-summary" id="summaryChips"></div>
           <!-- Conviction -->
+          <label style="font-size:11px; color:var(--text-2,#666); margin-right:2px; white-space:nowrap;">Conv</label>
           <div class="seg-ctrl" id="convictionCtrl" title="Conviction filter">
             <button class="seg-active" data-conv="any">Any</button>
             <button data-conv="multi">Multi</button>
@@ -694,6 +702,21 @@
           <div style="margin-left:auto; display:flex; align-items:center; gap:4px; flex-shrink:0;">
             <span id="loadedAt" style="font-size:9px; color:var(--text-2,#999); white-space:nowrap;"></span>
             <span style="font-size:11px; color:var(--text-2,#666);" id="rowCount"></span>
+            <!-- Column show/hide manager (TASK_105 U1) -->
+            <button id="columnsBtn" class="btn-icon btn-icon-sm" data-tip="Columns" title="Show/hide columns">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+            <!-- Legend popover (TASK_105 U5) -->
+            <button id="legendBtn" class="btn-icon btn-icon-sm" data-tip="Legend" title="Screen legend">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </button>
             <!-- Hedgeye panel toggle -->
             <button id="hePanelToggle" class="btn-icon btn-icon-sm icon-on" data-tip="Hedgeye Panel" title="Toggle Hedgeye panel"
               onclick="window._hePanelToggle && window._hePanelToggle()">
@@ -766,30 +789,33 @@
         <table class="act-grid" id="actGrid">
           <thead>
             <tr>
-              <th style="width:28px;"><input type="checkbox" id="bulkSelectAll" title="Select all"></th>
-              <th style="width:18px;" title="H = row is hidden by the default filter (hover cell for reason)">H</th>
-              <th class="num sortable" data-key="current_position_dollar" data-type="num" title="Current position $ held" style="width:58px;">POS$</th>
-              <th class="num sortable" data-key="_amt" data-type="num" style="width:58px;">AMT$</th>
-              <th class="num sortable" data-key="pct_change" data-type="num" style="width:62px;">%CHG</th>
-              <th class="sortable" data-key="tos_symbol" data-type="str" style="width:68px;">Symbol</th>
-              <th class="sortable" data-key="_fc_strength" data-type="num" title="Final Call: reconciled action with confidence badge (drives ranking + default Act)" style="width:90px;">ACTION</th>
-              <th class="sortable" data-key="macro_value" data-type="str" title="MACRO regime stance: MacroNet of sector+asset+style factors under current+next month/quarter quads → SA/STM/HOLD/BS/BM. Hover for breakdown." style="width:64px;">MACRO</th>
-              <th class="sortable" data-key="fc_strength_cal" data-type="num" title="Final Call (cal): calibrated call from bull_prob probability bands. Evaluation-only — compare vs Final Call to assess the model. NULL when no active model." style="width:90px;">CALC</th>
-              <th class="sortable" data-key="consolidated_action" data-type="str" data-label="Sources" title="Consolidated from RR/CALL/ETF/II/SSS/PS (most-aggressive-wins), then sized to your min/max/holdings." style="width:41px;">Sources</th>
-              <th class="sortable" data-key="rr_action" data-type="str" data-label="Technical" title="Trend-vs-Trade crossover + Bollinger range streak + Risk-Range position." style="width:200px;">Technical</th>
-              <th class="num sortable" data-key="rvol" data-type="num" title="Relative Volume (today÷10d avg). Hollow = below avg; solid gray = ~avg; amber/green = above avg. Caret = vs yesterday." style="width:36px;">Vlm</th>
-              <th class="num" title="IV Glyph: IVP (blue) · HV (slate) · IV (dark). Background = IV/HV discount shade." style="width:44px;">IV</th>
-              <th class="num sortable" data-key="a_macd_brr" data-type="num" title="MACD Bull-Run-Risk score" style="width:52px;">MACD</th>
-              <th class="num sortable" data-key="a_macdh_d_brr" data-type="num" title="MACD Histogram direction BRR" style="width:52px;">MACDH</th>
-              <th class="num sortable" data-key="rsi" data-type="num" title="Relative Strength Index (0–100)" style="width:44px;">RSI</th>
-              <th style="width:720px;">Rules (edge)</th>
-              <th class="num sortable" data-key="bull_prob" data-type="num" title="Bull Prob: P(up 20d) from calibrated logistic model (TASK_66). Sortable — rank by probability. Agreement badge = share of signals pointing bullish." style="width:72px;">P(↑20d)</th>
-              <th class="sortable" data-key="agreement_class" data-type="str" title="Agreement class (TASK_69): agree_bull / agree_bear / split_tech_bull / split_tech_bear / neutral — bull_prob direction vs consolidated action direction." style="width:100px;">Agree</th>
-              <th>Act</th>
+              <th data-col="bulk" style="width:28px;"><input type="checkbox" id="bulkSelectAll" title="Select all"></th>
+              <th data-col="h" style="width:18px;" title="H = row is hidden by the default filter (hover cell for reason)">H</th>
+              <th data-col="pos" class="num sortable" data-key="current_position_dollar" data-type="num" title="Current position $ held" style="width:58px;">POS$</th>
+              <th data-col="amt" class="num sortable" data-key="_amt" data-type="num" style="width:58px;">AMT$</th>
+              <th data-col="chg" class="num sortable" data-key="pct_change" data-type="num" style="width:62px;">%CHG</th>
+              <th data-col="sym" class="sortable" data-key="tos_symbol" data-type="str" style="width:68px;">Symbol</th>
+              <th data-col="action" class="sortable" data-key="_fc_strength" data-type="num" title="Final Call: reconciled action with confidence badge (drives ranking + default Act)" style="width:90px;">ACTION</th>
+              <th data-col="macro" class="sortable" data-key="macronet" data-type="num" title="MACRO regime stance: MacroNet of sector+asset+style factors under current+next month/quarter quads → SA/STM/HOLD/BS/BM. Hover for breakdown." style="width:64px;">MACRO</th>
+              <th data-col="calc" class="sortable" data-key="fc_strength_cal" data-type="num" title="Final Call (cal): calibrated call from bull_prob probability bands. Evaluation-only — compare vs Final Call to assess the model. NULL when no active model." style="width:90px;">CALC</th>
+              <th data-col="sources" class="sortable" data-key="consolidated_action" data-type="str" data-label="Sources" title="Consolidated from RR/CALL/ETF/II/SSS/PS (most-aggressive-wins), then sized to your min/max/holdings." style="width:41px;">Sources</th>
+              <th data-col="technical" class="sortable" data-key="rr_action" data-type="str" data-label="Technical" title="Trend-vs-Trade crossover + Bollinger range streak + Risk-Range position." style="width:200px;">Technical</th>
+              <th data-col="vlm" class="num sortable" data-key="rvol" data-type="num" title="Relative Volume (today÷10d avg). Hollow = below avg; solid gray = ~avg; amber/green = above avg. Caret = vs yesterday." style="width:36px;">Vlm</th>
+              <th data-col="iv" class="num" title="IV Glyph: IVP (blue) · HV (slate) · IV (dark). Background = IV/HV discount shade." style="width:44px;">IV</th>
+              <th data-col="macd" class="num sortable" data-key="a_macd_brr" data-type="num" title="MACD Bull-Run-Risk score" style="width:52px;">MACD</th>
+              <th data-col="macdh" class="num sortable" data-key="a_macdh_d_brr" data-type="num" title="MACD Histogram direction BRR" style="width:52px;">MACDH</th>
+              <th data-col="rsi" class="num sortable" data-key="rsi" data-type="num" title="Relative Strength Index (0–100)" style="width:44px;">RSI</th>
+              <th data-col="rules" style="max-width:340px;">Rules (edge)</th>
+              <th data-col="bullprob" class="num sortable" data-key="bull_prob" data-type="num" title="Bull Prob: P(up 20d) from calibrated logistic model (TASK_66). Sortable — rank by probability. Agreement badge = share of signals pointing bullish." style="width:72px;">P(↑20d)</th>
+              <th data-col="agree" class="sortable" data-key="agreement_class" data-type="str" title="Agreement class (TASK_69): agree_bull / agree_bear / split_tech_bull / split_tech_bear / neutral — bull_prob direction vs consolidated action direction." style="width:100px;">Agree</th>
+              <th data-col="act">Act</th>
             </tr>
           </thead>
           <tbody id="actBody"></tbody>
         </table>
+        <div class="show-all-bar" id="showAllBar" style="display:none;">
+          <button type="button" id="showAllBtn"></button>
+        </div>
         <div class="empty-state" id="emptyState" style="display:none;">No actionable rows match these filters.</div>
       </div><!-- end .act-table-wrap -->
       </div><!-- end .act-content-row -->
@@ -944,6 +970,8 @@
     </div><!-- end .card -->
   <div id="sourcePop" class="source-pop"></div>
   <div id="symTilePop" class="sym-tile-pop" style="display:none;"></div>
+  <div id="colMenuPop" class="source-pop" style="display:none; pointer-events:auto;"></div>
+  <div id="legendPop" class="source-pop" style="display:none; pointer-events:auto; max-width:420px;"></div>
 
   </main>
 
@@ -960,8 +988,8 @@
         <button class="fc-btn-skip" id="fcSkipBtn">&#10007; Skip</button>
         <button class="fc-btn-snz"  id="fcSnzBtn">&#128164; Snooze</button>
       </div>
-      <div><button class="fc-btn-next" id="fcNextBtn">Next &#8250;</button></div>
-      <div class="fc-esc">Esc or <button class="fc-btn-next" id="fcCloseBtn">&#8592; Back to grid</button></div>
+      <div><button class="fc-btn-next" id="fcPrevBtn">&#8249; Prev</button> <button class="fc-btn-next" id="fcNextBtn">Next &#8250;</button> <button class="fc-btn-next" id="fcCloseBtn">&#8592; Back to grid</button></div>
+      <div class="fc-esc">Enter Done &middot; S Skip &middot; Z Snooze &middot; &#8592;/&#8594; Prev/Next &middot; Esc Close</div>
     </div>
   </div>
 

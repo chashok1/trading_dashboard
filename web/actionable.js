@@ -1,5 +1,40 @@
 /* Actionable Stocks page logic */
 
+// ── Column show/hide manager (TASK_105 U1) ──────────────────────────────────
+// Toggleable columns (everything except the non-toggleable core: bulk
+// checkbox, H, Symbol, ACTION, AMT$, Act). `id` matches each th/td's
+// data-col attribute; visibility is applied via a single dynamic <style>
+// rule (see applyColumnVisibility()) rather than per-cell DOM edits.
+const COL_STORAGE_KEY = 'act_cols_v1';
+const TOGGLEABLE_COLS = [
+  { id: 'pos',       label: 'POS$' },
+  { id: 'chg',       label: '%CHG' },
+  { id: 'macro',     label: 'MACRO' },
+  { id: 'calc',      label: 'CALC' },
+  { id: 'sources',   label: 'Sources' },
+  { id: 'technical', label: 'Technical' },
+  { id: 'vlm',       label: 'Vlm' },
+  { id: 'iv',        label: 'IV' },
+  { id: 'macd',      label: 'MACD' },
+  { id: 'macdh',     label: 'MACDH' },
+  { id: 'rsi',       label: 'RSI' },
+  { id: 'rules',     label: 'Rules (edge)' },
+  { id: 'bullprob',  label: 'P(↑ 20d)' },
+  { id: 'agree',     label: 'Agree' },
+];
+// Default-hidden: model-diagnostic columns not needed for day-to-day workflow.
+const DEFAULT_HIDDEN_COLS = ['calc', 'bullprob', 'agree'];
+function _loadHiddenCols() {
+  try {
+    const raw = localStorage.getItem(COL_STORAGE_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return new Set(arr);
+    }
+  } catch (_) {}
+  return new Set(DEFAULT_HIDDEN_COLS);
+}
+
 const state = {
   date: null,
   anchorDate: null,  // latest available date (dates[0]) -- "viewing live" reference
@@ -33,6 +68,9 @@ const state = {
   selected: new Set(),
   // Pass 3: focus mode
   focusIdx: 0,
+  // TASK_105: column visibility (set of hidden column ids, incl. 'h' when
+  // show_hidden is off — see applyColumnVisibility()).
+  hiddenCols: _loadHiddenCols(),
 };
 
 const $ = (id) => document.getElementById(id);
@@ -215,7 +253,10 @@ function _macroTooltip(r) {
 }
 
 // Rich HTML popover for a MACRO cell — reuses #sourcePop / _showDataPop.
-function _buildMacroPopHtml(r) {
+// F2: macro_detail/macro_howto are no longer shipped with every grid row —
+// they're lazy-fetched (see showMacroPop / _macroDetailCache below). `loading`
+// renders a "Loading…" placeholder on first hover, before the fetch resolves.
+function _buildMacroPopHtml(r, loading) {
   let det = r.macro_detail;
   if (typeof det === 'string') { try { det = JSON.parse(det); } catch (_) { det = null; } }
   const mv   = r.macro_value || '—';
@@ -252,7 +293,9 @@ function _buildMacroPopHtml(r) {
   let h = `<div class="sp-title">${escapeHtml(sym)} &mdash; <span style="color:${mvColor};font-weight:700;">${escapeHtml(mv)}</span>${turn ? ' <span style="color:#f97316;">' + escapeHtml(turn) + '</span>' : ''}</div>`;
 
   if (!det) {
-    h += `<div style="color:#94a3b8;font-size:10px;">No detail available.</div>`;
+    h += loading
+      ? `<div style="color:#94a3b8;font-size:10px;">Loading&hellip;</div>`
+      : `<div style="color:#94a3b8;font-size:10px;">No detail available.</div>`;
     return h;
   }
 
@@ -931,6 +974,131 @@ function showStatus(msg, kind = 'info', timeout = 4000) {
   if (timeout) setTimeout(() => { el.style.display = 'none'; }, timeout);
 }
 
+// ── Column visibility (TASK_105 U1/U4) ──────────────────────────────────────
+// Single dynamic <style> tag drives visibility for every data-col cell —
+// cheaper than looping every row/cell on toggle, and works for the H column
+// too (folded in here as 'h', shown only when show_hidden is on — U4).
+function applyColumnVisibility() {
+  let styleEl = document.getElementById('colVisibilityStyle');
+  if (!styleEl) {
+    styleEl = document.createElement('style');
+    styleEl.id = 'colVisibilityStyle';
+    document.head.appendChild(styleEl);
+  }
+  const hidden = new Set(state.hiddenCols);
+  if (!state.filters.show_hidden) hidden.add('h');
+  const sel = Array.from(hidden).map(id => `.act-grid [data-col="${id}"]`).join(', ');
+  styleEl.textContent = sel ? `${sel} { display: none; }` : '';
+}
+
+function _renderColMenu() {
+  const pop = $('colMenuPop');
+  if (!pop) return;
+  let html = '<div class="sp-title">Columns</div>'
+    + '<div style="display:flex;flex-direction:column;gap:1px;max-height:320px;overflow-y:auto;">';
+  for (const c of TOGGLEABLE_COLS) {
+    const checked = state.hiddenCols.has(c.id) ? '' : ' checked';
+    html += `<label style="display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 4px;cursor:pointer;white-space:nowrap;">`
+          + `<input type="checkbox" data-col-toggle="${c.id}"${checked}> ${escapeHtml(c.label)}</label>`;
+  }
+  html += '</div>';
+  pop.innerHTML = html;
+}
+
+// Shared positioning for click-toggled popovers (columns manager, legend) —
+// same fixed-position-below-anchor logic as the hover popovers, but these
+// stay open until dismissed (pointer-events: auto).
+function _positionClickPop(pop, anchorEl) {
+  pop.style.display = 'block';
+  const rect = anchorEl.getBoundingClientRect();
+  let top = rect.bottom + 4;
+  if (top + pop.offsetHeight > window.innerHeight - 8) top = Math.max(8, rect.top - pop.offsetHeight - 4);
+  let left = rect.left;
+  if (left + pop.offsetWidth > window.innerWidth - 8) left = Math.max(8, window.innerWidth - pop.offsetWidth - 8);
+  pop.style.top = top + 'px';
+  pop.style.left = left + 'px';
+}
+
+function _closeClickPops() {
+  const colPop = $('colMenuPop'); if (colPop) colPop.style.display = 'none';
+  const legPop = $('legendPop');  if (legPop)  legPop.style.display  = 'none';
+}
+
+function _initColMenu() {
+  const btn = $('columnsBtn');
+  const pop = $('colMenuPop');
+  if (!btn || !pop) return;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const wasOpen = pop.style.display === 'block';
+    _closeClickPops();
+    if (!wasOpen) { _renderColMenu(); _positionClickPop(pop, btn); }
+  });
+  pop.addEventListener('click', (e) => e.stopPropagation());
+  pop.addEventListener('change', (e) => {
+    const chk = e.target.closest('[data-col-toggle]');
+    if (!chk) return;
+    const id = chk.dataset.colToggle;
+    if (chk.checked) state.hiddenCols.delete(id); else state.hiddenCols.add(id);
+    try { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(Array.from(state.hiddenCols))); } catch (_) {}
+    applyColumnVisibility();
+  });
+}
+
+// ── Legend popover (TASK_105 U5) ─────────────────────────────────────────────
+function _legendHtml() {
+  const row = (a, b) => `<div style="display:flex;gap:14px;margin-bottom:2px;">
+      <span style="min-width:70px;font-weight:700;color:#0f172a;">${a}</span>
+      <span style="color:#475569;">${b}</span>
+    </div>`;
+  return `
+    <div class="sp-title">Screen Legend</div>
+    <div style="font-size:11px;line-height:1.5;max-width:380px;">
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:4px 0 3px;">Action codes</div>
+      ${row('SA', 'Sell All')}
+      ${row('STM', 'Sell Trim (partial)')}
+      ${row('SS', 'Sell Some')}
+      ${row('SO', 'Sell Overage — trim back to category Max')}
+      ${row('BMN', 'Buy to Min — establish a starter position')}
+      ${row('BS', 'Buy Some')}
+      ${row('BM', 'Buy More')}
+      ${row('HOLD', 'No change recommended')}
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Chips</div>
+      <div style="color:#475569;">REMOVE / OVER_MAX / REDUCE / INCREASE / ADD / HOLD / NONE group rows by
+        consolidated_action; click a chip to filter, click ALL to clear.</div>
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Confidence badges (Final Call)</div>
+      ${row('High', 'Sources and Technical agree')}
+      ${row('Gate', 'Deterministic gate — Technical not evaluated (e.g. exit signal, at Max, not held)')}
+      ${row('Mixed', 'Sources and Technical conflict — cross-check the Rules column')}
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Conviction filter</div>
+      ${row('Any', 'No filter')}
+      ${row('Multi', '2+ sources agree on this row')}
+      ${row('Proven', 'A fired rule has a positive historical edge')}
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Rules (edge) column</div>
+      <div style="color:#475569;">Fired rules, winning-first. Edge = historical forward 20-day return
+        when the rule fires (+n.n%), with win-rate and ✓ once proven (adequate sample, CI excludes 0);
+        muted/greyed = unproven (n too small or CI straddles 0). Click a rule to open its Rule Flow trace.</div>
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Other markers</div>
+      ${row('IDY', 'Quote is intraday — fresher than the EOD anchor, within market hours')}
+      ${row('RVOL', 'Relative volume dot vs 10d avg — hollow=below, gray=~avg, amber/green=above; caret=vs yesterday')}
+      ${row('IV', 'IVP (blue) · HV (slate) · IV (dark) glyph; background shade = IV/HV discount')}
+      ${row('MACRO', '▲▼ dots = Cur month / Nxt month / Cur quarter direction; sparkline = forward monthly scores')}
+    </div>`;
+}
+
+function _initLegendPopover() {
+  const btn = $('legendBtn');
+  const pop = $('legendPop');
+  if (!btn || !pop) return;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const wasOpen = pop.style.display === 'block';
+    _closeClickPops();
+    if (!wasOpen) { pop.innerHTML = _legendHtml(); _positionClickPop(pop, btn); }
+  });
+  pop.addEventListener('click', (e) => e.stopPropagation());
+}
+
 // ---- date picker ----
 async function loadDates() {
   const dates = await fetchJson('/api/actionable/dates');
@@ -971,6 +1139,13 @@ async function loadSources() {
   try {
     state.buysellSeq = await fetchJson('/api/ref/buysell');
   } catch (_) { state.buysellSeq = {}; }
+  // TASK_106/F5: tunable conviction-proven-edge threshold (ref_settings),
+  // instead of hardcoding 0.5 in _hasPositiveEdge.
+  try {
+    const settings = await fetchJson('/api/actionable/settings');
+    state.convictionProvenEdgeMin = Number(settings.conviction_proven_edge_min);
+    if (!isFinite(state.convictionProvenEdgeMin)) state.convictionProvenEdgeMin = 0.5;
+  } catch (_) { state.convictionProvenEdgeMin = 0.5; }
   // TASK_69: agreement scorecard — keyed by agreement_class -> avg_fwd_20d.
   try {
     const asc = await fetchJson('/api/rules/agreement-scorecard');
@@ -1027,7 +1202,11 @@ function ruleEdgeBadge(code) {
 // historical edge. Hue = Final Call action side (all pills match row's action);
 // fill = edge emphasis (bold border=positive edge, light border=non-positive).
 // Unproven rules (n<30 or CI straddles 0) render muted regardless of edge sign.
-function firesCellHtml(r) {
+// maxCount (U1b): caps the grid cell to N pills + a "+n" suffix so the Rules
+// column doesn't force the whole grid wide. The drilldown modal and symbol
+// tile popover call this with no limit (full list); the grid cell click
+// still opens /rule-flow for the complete trace.
+function firesCellHtml(r, maxCount) {
   let fires = r.rules_engine_fires;
   if (typeof fires === 'string') { try { fires = JSON.parse(fires); } catch (_) { fires = []; } }
   if (!Array.isArray(fires) || !fires.length) return '<span style="color:#cbd5e1">—</span>';
@@ -1043,6 +1222,8 @@ function firesCellHtml(r) {
   });
   // winning first: highest fired score, then strongest edge
   items.sort((a, b) => (b.score - a.score) || ((b.e ?? -99) - (a.e ?? -99)));
+  const extra = (maxCount && items.length > maxCount) ? items.length - maxCount : 0;
+  const shown = extra ? items.slice(0, maxCount) : items;
   const _RULE_CLR = {
     'act-sell-strong': '#991b1b', 'act-sell': '#ef4444', 'act-sell-weak': '#f97316',
     'act-buy-strong':  '#14532d', 'act-buy':  '#22c55e', 'act-buy-weak':  '#86efac',
@@ -1056,7 +1237,7 @@ function firesCellHtml(r) {
     }
     return '#94a3b8';
   };
-  return items.map(it => {
+  const pills = shown.map(it => {
     const color = _ruleColor(it.id);
     if (it.conf === 'unproven') {
       const nLabel = it.n != null ? `n=${it.n}` : '';
@@ -1067,7 +1248,12 @@ function firesCellHtml(r) {
     const weight = (it.e != null && it.e > 0) ? '700' : '400';
     const edge = it.e == null ? '' : ` <b>${it.e >= 0 ? '+' : ''}${it.e.toFixed(1)}</b>`;
     return `<span style="white-space:nowrap;font-size:11px;font-weight:${weight};color:${color};">${escapeHtml(it.id)}${edge}</span>`;
-  }).join(' ');
+  });
+  if (extra) {
+    const moreIds = items.slice(maxCount).map(it => it.id).join(', ');
+    pills.push(`<span style="white-space:nowrap;font-size:11px;color:#94a3b8;" title="${escapeHtml(moreIds)}">+${extra}</span>`);
+  }
+  return pills.join(' ');
 }
 
 // SSS-style metrics (base_weight_method = rank_pct_delta) are percentages.
@@ -1594,6 +1780,9 @@ function clearAllFilters() {
 // ---- source-data hover popover ----
 const _srcDataCache = new Map();   // symbol -> { RR:{...}, ETF:{...}, ... }
 let _srcPopEl = null;
+// F2: lazy MACRO detail cache, keyed "sym@date" (macro_detail/macro_howto are
+// no longer shipped with every /api/actionable row — see showMacroPop below).
+const _macroDetailCache = new Map();
 const _FEED_SRC = ['RR', 'ETF', 'PS', 'SSS'];
 
 function _saFor(row, src) {
@@ -1743,9 +1932,11 @@ function _hasPositiveEdge(row) {
   if (typeof fires === 'string') { try { fires = JSON.parse(fires); } catch (_) { fires = []; } }
   if (!Array.isArray(fires) || !fires.length) return false;
   const sc = state.scorecard || {};
+  const threshold = (state.convictionProvenEdgeMin != null)
+    ? state.convictionProvenEdgeMin : 0.5;
   for (const f of fires) {
     const id = String(f.rule_id || f.id || f);
-    if (sc[id] && sc[id].edge_20d != null && Number(sc[id].edge_20d) > 0.5) return true;
+    if (sc[id] && sc[id].edge_20d != null && Number(sc[id].edge_20d) > threshold) return true;
   }
   return false;
 }
@@ -2026,11 +2217,12 @@ function _finalCallHtml(row) {
 //
 // Codes not present in the buysell map (HOLD, OVER_MAX, none) also receive
 // seq = -1 and sort to the bottom. Dollars at stake break ties within the
-// same seq tier (×1e12 keeps tiers from crossing).
+// same seq tier (×1e6 — matches server scale so rows can't cross tiers).
 function _computePriority(row) {
   // TASK_53: use server-computed priority_rank when available (uses same formula).
-  // Server uses seq * 1e6 + |amt|; client uses seq * 1e12 + |amt|.
-  // We still add |_amt| at the client scale so ties break on dollars at stake.
+  // TASK_106/F7: both branches use the same seq*1e6 + |amt| scale as the
+  // server (etl/derive_actionable.py) so server- and client-ranked rows
+  // can never cross tiers, even when amt >= $1M.
   var amt = Math.abs(Number(row._amt) || 0);
   if (row.priority_rank !== undefined && row.priority_rank !== null) {
     var pr = Number(row.priority_rank);
@@ -2039,14 +2231,14 @@ function _computePriority(row) {
   var fc = finalCall(row);
   if (!fc.feasible) {
     // Infeasible: sink to bottom (seq = -1 < all real codes).
-    return -1 * 1e12 + amt;
+    return -1 * 1e6 + amt;
   }
   var code = (fc.code || '').toUpperCase();
   var seqMap = state.buysellSeq || {};
   // OVER_MAX is a synthetic code; map it to SO (SellOverage, seq=12) for sorting.
   if (code === 'OVER_MAX') code = 'SO';
   var seq = (seqMap[code] !== undefined) ? seqMap[code] : -1;
-  return seq * 1e12 + amt;
+  return seq * 1e6 + amt;
 }
 
 // True if `src` drove this row OR appears among its other sources.
@@ -2142,6 +2334,27 @@ async function showSourcePop(el) {
     _srcDataCache.set(sym, data);
     _renderSourcePop(el, sym, src, data, false);
   }
+}
+
+// F2: lazy-fetch the heavy MACRO detail/how-to on first hover, cached by
+// "sym@date" (same pattern as showSourcePop/_srcDataCache above).
+async function showMacroPop(el, r) {
+  const sym = r.tos_symbol || '';
+  const key = sym + '@' + (state.date || '');
+  if (_macroDetailCache.has(key)) {
+    _showDataPop(el, _buildMacroPopHtml(Object.assign({}, r, _macroDetailCache.get(key))));
+    return;
+  }
+  _showDataPop(el, _buildMacroPopHtml(r, true)); // "Loading…" placeholder
+  let detail;
+  try {
+    detail = await fetchJson('/api/actionable/macro-detail?symbol=' +
+      encodeURIComponent(sym) + '&date=' + encodeURIComponent(state.date || ''));
+  } catch (_) {
+    detail = { macro_detail: null, macro_howto: null };
+  }
+  _macroDetailCache.set(key, detail);
+  _showDataPop(el, _buildMacroPopHtml(Object.assign({}, r, detail)));
 }
 
 function hideSourcePop() {
@@ -2532,7 +2745,7 @@ function initSourcePopover() {
     const macroEl = e.target.closest('[data-macropop]');
     if (macroEl) {
       const r = state.rows.find(x => x.tos_symbol === macroEl.dataset.macropop);
-      if (r) _showDataPop(macroEl, _buildMacroPopHtml(r));
+      if (r) showMacroPop(macroEl, r);
     }
   };
   const _onOut = (e) => {
@@ -2689,6 +2902,21 @@ function initSorting() {
   });
 }
 
+// Empty-state message (U11). Distinguishes "nothing left to do" (everything
+// acted/snoozed — matchesBaseFilters excluded every row) from "your filters
+// hid everything" (action chip / actionable-only filtered a non-empty
+// baseRows down to zero), each with the right message + affordance.
+function _emptyStateHtml() {
+  if (state.allRows.length > 0 && state.baseRows.length === 0) {
+    return `All caught up for ${escapeHtml(state.date || '')}.`;
+  }
+  if (state.allRows.length > 0 && state.rows.length === 0) {
+    return 'No rows match these filters. '
+      + '<button type="button" id="emptyClearFiltersBtn" class="btn" style="margin-left:6px;">Clear Filters</button>';
+  }
+  return 'No actionable rows match these filters.';
+}
+
 function renderGrid() {
   for (const r of state.rows) {
     r._snapshot = _winningSnapshot(r);
@@ -2706,9 +2934,28 @@ function renderGrid() {
   tb.innerHTML = '';
   const total = state.rows.length;
   $('rowCount').textContent = `${total} row${total === 1 ? '' : 's'}`;
-  $('emptyState').style.display = total === 0 ? 'block' : 'none';
+  const emptyEl = $('emptyState');
+  if (emptyEl) {
+    emptyEl.style.display = total === 0 ? 'block' : 'none';
+    if (total === 0) emptyEl.innerHTML = _emptyStateHtml();
+  }
 
-  const visibleRows = state.rows;
+  // Top-N collapse (U2): default view (no action-chip filter, default priority
+  // sort) shows only the top TOP_N rows + a "Show all N rows" bar. Any chip
+  // filter or non-default sort shows the full filtered set.
+  const collapseActive = !state.showAll && !state.filters.action && state.sort.key === '_priority';
+  const visibleRows = collapseActive ? state.rows.slice(0, state.TOP_N) : state.rows;
+  const showAllBar = $('showAllBar');
+  if (showAllBar) {
+    const hiddenCount = state.rows.length - visibleRows.length;
+    if (collapseActive && hiddenCount > 0) {
+      showAllBar.style.display = 'block';
+      const btn = $('showAllBtn');
+      if (btn) btn.textContent = `Show all ${state.rows.length} rows`;
+    } else {
+      showAllBar.style.display = 'none';
+    }
+  }
 
   for (const r of visibleRows) {
     const tr = document.createElement('tr');
@@ -2756,26 +3003,30 @@ function renderGrid() {
     const posStr = fmtCompact(r.current_position_dollar);
     const _hReason = _hiddenReason(r);
     tr.innerHTML = `
-      <td style="padding:4px 6px; text-align:center;">
+      <td data-col="bulk" style="padding:4px 6px; text-align:center;">
         <input type="checkbox" class="row-check" data-sym="${escapeHtml(r.tos_symbol)}"${isChecked ? ' checked' : ''}>
       </td>
-      <td class="num" style="font-size:10px;color:#f59e0b;font-weight:700;text-align:center;">${_hReason ? `<span title="${escapeHtml(_hReason)}">Y</span>` : ''}</td>
-      <td class="num" style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="Held in: ${escapeHtml(_heldAccountsDisplay(r.held_accounts))}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}</td>
-      <td class="num">
+      <td data-col="h" class="num" style="font-size:10px;color:#f59e0b;font-weight:700;text-align:center;">${_hReason ? `<span title="${escapeHtml(_hReason)}">Y</span>` : ''}</td>
+      <td data-col="pos" class="num" style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="Held in: ${escapeHtml(_heldAccountsDisplay(r.held_accounts))}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}</td>
+      <td data-col="amt" class="num">
         <span class="amt-primary">${fmtUsd(r._amt)}</span>
-        ${r.stop_level != null ? `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;" title="Stop / exit-below level (task 8)">stop ${fmtUsd(r.stop_level)}</div>` : ''}
+        ${r.stop_level != null ? (
+          (r.last_price != null && Number(r.last_price) < Number(r.stop_level))
+            ? `<div style="font-size:9px;color:#dc2626;font-weight:700;white-space:nowrap;" title="Price below stop level">stop ${fmtUsd(r.stop_level)}</div>`
+            : `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;" title="Stop / exit-below level (task 8)">stop ${fmtUsd(r.stop_level)}</div>`
+        ) : ''}
       </td>
-      <td class="num">
+      <td data-col="chg" class="num">
         <span class="${pctCls}" style="font-weight:700;">${pctStr}${intradayTag}</span>
         ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
       </td>
-      <td data-sym-cell="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer;" title="Click for chart">
+      <td data-col="sym" data-sym-cell="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer;" title="Click for chart">
         <strong class="tv-sym-link" style="font-size:11px;">${escapeHtml(r.tos_symbol || '')}</strong>
       </td>
-      <td style="padding:6px 4px;">${fcHtml}</td>
-      <td style="padding:4px 6px; text-align:center;">${macroCellHtml(r)}</td>
-      <td style="padding:6px 4px;">${_finalCallCalHtml(r)}</td>
-      <td class="act-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:help;">
+      <td data-col="action" style="padding:6px 4px;">${fcHtml}</td>
+      <td data-col="macro" style="padding:4px 6px; text-align:center;">${macroCellHtml(r)}</td>
+      <td data-col="calc" style="padding:6px 4px;">${_finalCallCalHtml(r)}</td>
+      <td data-col="sources" class="act-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:help;">
         <div style="display:flex;align-items:flex-start;gap:8px;">
           <div style="width:38px;flex-shrink:0;align-self:center;text-align:center;">
             ${(()=>{ const _ic=actionIcon(_badgeAction(r)); return `<span class="act-main-ic" style="font-family:ui-monospace,monospace;font-size:24px;font-weight:700;color:${_ic.color};cursor:help;">${_ic.glyph}</span>`; })()}
@@ -2784,21 +3035,21 @@ function renderGrid() {
           ${_srcReasonsHtml(r)}
         </div>
       </td>
-      <td class="rr-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-date="${escapeHtml(r.as_of_date || state.date || '')}" style="padding:6px 4px;">
+      <td data-col="technical" class="rr-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-date="${escapeHtml(r.as_of_date || state.date || '')}" style="padding:6px 4px;">
         <div style="display:flex;align-items:flex-start;gap:6px;">
           ${rrHtml}
           ${_rrSubLineHtml}
         </div>
       </td>
-      <td class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}${r.vlm_action ? `<span style="display:inline-block;margin-left:3px;font-size:9px;padding:1px 3px;border-radius:3px;background:${r.vlm_action==='Accumulate'?'#bbf7d0':r.vlm_action==='Avoid'?'#fecaca':'#e5e7eb'};color:#374151;font-weight:600;text-decoration:none;vertical-align:middle;">${escapeHtml(r.vlm_action === 'Accumulate' ? 'Accum' : r.vlm_action)}</span>` : ''}</td>
-      <td class="num" data-sym="${escapeHtml(r.tos_symbol)}" data-ivpop style="padding:3px 4px;cursor:default;">${window.ivGlyph ? window.ivGlyph(r.iv_percentile, r.imp_volatility != null ? r.imp_volatility * 100 : null, r.hv != null ? r.hv * 100 : null, r.iv_to_hv_discount) : ''}</td>
-      <td class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macd_brr)}">${r.a_macd_brr != null ? Number(r.a_macd_brr).toFixed(2) : ''}</td>
-      <td class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macdh_d_brr)}">${r.a_macdh_d_brr != null ? Number(r.a_macdh_d_brr).toFixed(2) : ''}</td>
-      <td class="num" style="font-size:11px;font-weight:600;color:${_rsiColor(r.rsi)}">${r.rsi != null ? Number(r.rsi).toFixed(1) : ''}</td>
-      <td class="rules-link-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:4px 6px; max-width:720px; overflow:hidden; cursor:pointer;" title="Open Rule Flow for ${escapeHtml(r.tos_symbol)}">${firesCellHtml(r)}</td>
-      <td class="num" style="padding:4px 6px; white-space:nowrap;">${_bullProbCellHtml(r)}</td>
-      <td style="padding:4px 6px; white-space:nowrap;">${_agreementCellHtml(r)}</td>
-      <td style="padding:4px 6px;">
+      <td data-col="vlm" class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}${r.vlm_action ? `<span style="display:inline-block;margin-left:3px;font-size:9px;padding:1px 3px;border-radius:3px;background:${r.vlm_action==='Accumulate'?'#bbf7d0':r.vlm_action==='Avoid'?'#fecaca':'#e5e7eb'};color:#374151;font-weight:600;text-decoration:none;vertical-align:middle;">${escapeHtml(r.vlm_action === 'Accumulate' ? 'Accum' : r.vlm_action)}</span>` : ''}</td>
+      <td data-col="iv" class="num" data-sym="${escapeHtml(r.tos_symbol)}" data-ivpop style="padding:3px 4px;cursor:default;">${window.ivGlyph ? window.ivGlyph(r.iv_percentile, r.imp_volatility != null ? r.imp_volatility * 100 : null, r.hv != null ? r.hv * 100 : null, r.iv_to_hv_discount) : ''}</td>
+      <td data-col="macd" class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macd_brr)}">${r.a_macd_brr != null ? Number(r.a_macd_brr).toFixed(2) : ''}</td>
+      <td data-col="macdh" class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macdh_d_brr)}">${r.a_macdh_d_brr != null ? Number(r.a_macdh_d_brr).toFixed(2) : ''}</td>
+      <td data-col="rsi" class="num" style="font-size:11px;font-weight:600;color:${_rsiColor(r.rsi)}">${r.rsi != null ? Number(r.rsi).toFixed(1) : ''}</td>
+      <td data-col="rules" class="rules-link-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:4px 6px; max-width:340px; overflow:hidden; cursor:pointer;" title="Open Rule Flow for ${escapeHtml(r.tos_symbol)}">${firesCellHtml(r, 4)}</td>
+      <td data-col="bullprob" class="num" style="padding:4px 6px; white-space:nowrap;">${_bullProbCellHtml(r)}</td>
+      <td data-col="agree" style="padding:4px 6px; white-space:nowrap;">${_agreementCellHtml(r)}</td>
+      <td data-col="act" style="padding:4px 6px;">
         <div class="act-inline-btns">
           <button type="button" class="btn-done btn-inline-done" data-sym="${escapeHtml(r.tos_symbol)}" data-fc="${escapeHtml(fcActCode)}" title="Act: log final call action">&#10003; ${escapeHtml(fcActCode)}</button>
           <button type="button" class="btn-skip btn-inline-skip" data-sym="${escapeHtml(r.tos_symbol)}" title="Skip">&#10007;</button>
@@ -2868,10 +3119,36 @@ async function inlineAction(sym, action) {
   }
 }
 
+// F1: one round-trip for bulk-selected rows (was a sequential inlineAction
+// loop — N POSTs). Server loops the same forensic-snapshot insert in one
+// transaction (POST /api/actionable/bulk-action).
 async function bulkAction(action) {
   const syms = Array.from(state.selected);
   if (!syms.length) return;
-  for (const sym of syms) await inlineAction(sym, action);
+  const isLegacyAction = ['DONE','SKIPPED','SNOOZED','OVERRIDDEN'].includes((action||'').toUpperCase());
+  const userAction = isLegacyAction ? action.toUpperCase() : 'DONE';
+  const actionCode = isLegacyAction ? null : action;
+  const payload = {
+    symbols: syms, as_of_date: state.date, user_action: userAction,
+    action_code: actionCode, user_notes: 'bulk',
+  };
+  try {
+    const resp = await fetchJson('/api/actionable/bulk-action', {
+      method: 'POST', body: JSON.stringify(payload),
+    });
+    let okCount = 0;
+    for (const r of (resp.results || [])) {
+      if (r.error) continue;
+      okCount++;
+      const row = state.allRows.find(rr => rr.tos_symbol === r.symbol);
+      if (row) row._rowActed = true;
+      const tr = document.querySelector(`#actBody tr[data-sym="${CSS.escape(r.symbol)}"]`);
+      if (tr) tr.classList.add('row-acted');
+    }
+    showStatus(`${action}: ${okCount} of ${syms.length} symbol(s)`, 'success', 2500);
+  } catch (e) {
+    showStatus(`${action} failed: ${e.message}`, 'error');
+  }
   state.selected.clear();
   renderBulkBar();
   renderGrid();
@@ -2932,7 +3209,11 @@ function focusAdvance(action) {
   if (!rows.length) return;
   const r = rows[state.focusIdx];
   if (action) {
-    inlineAction(r.tos_symbol, action).then(() => {
+    // 'DONE' logs the row's Final Call code (matches the grid's inline Done
+    // button, doneBtn.dataset.fc || 'DONE') so both entry points record the
+    // same action_code (addendum, carried forward from TASK_107 review).
+    const actCode = action === 'DONE' ? (r._fc_code || 'DONE') : action;
+    inlineAction(r.tos_symbol, actCode).then(() => {
       state.focusIdx = Math.min(state.focusIdx, _focusRows().length - 1);
       _renderFocusCard();
     });
@@ -2940,6 +3221,12 @@ function focusAdvance(action) {
     state.focusIdx = Math.min(state.focusIdx + 1, _focusRows().length - 1);
     _renderFocusCard();
   }
+}
+
+function focusPrev() {
+  if (!_focusRows().length) return;
+  state.focusIdx = Math.max(0, state.focusIdx - 1);
+  _renderFocusCard();
 }
 
 // ---- CSV export (current filtered + sorted view) ----
@@ -2957,19 +3244,52 @@ function otherSourcesText(r) {
 }
 
 function exportCsv() {
+  // Column-visibility (TASK_105): mirror the grid — a column hidden via the
+  // gear menu (or the 'H' column when "show hidden" is off) is excluded here.
+  const hidden = new Set(state.hiddenCols);
+  if (!state.filters.show_hidden) hidden.add('h');
+  const shown = id => !hidden.has(id);
+
   const cols = [
     ['Symbol',        r => r.tos_symbol],
     ['Change %',      r => r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''],
     ['AMT$',          r => r._amt],
+    ['Stop Level',    r => r.stop_level],
     ['Action',        r => r.consolidated_action ? actionText(actionDisplay(r.consolidated_action)) : ''],
+    ['Final Call',    r => { const fc = finalCall(r); return (fc.feasible && fc.confidence !== 'none') ? (fc.label || fc.code || '') : ''; }],
+    ['Final Call Confidence', r => { const fc = finalCall(r); return (fc.feasible && fc.confidence !== 'none') ? fc.confidence : ''; }],
     ['TrTnBBRskRng',  r => r.rr_action || ''],
-    ['Trig',          r => r.trig_action ? actionText(actionDisplay(r.trig_action)) : ''],
     ['Source',        r => r.winning_source || ''],
     ['Reason',        r => _winningReason(r)],
     ['Other Sources', r => otherSourcesText(r)],
     ['Sector',        r => r.sector || ''],
     ['Real Asset Class', r => r.real_asset_class || ''],
-    ['MACRO',          r => r.macro_value ? (r.macro_value + (r.macro_turn ? ' ' + r.macro_turn : '')) : ''],
+  ];
+  // Trig column: trig_action is no longer surfaced anywhere else on this
+  // screen (TASK_109) — drop it from the export too.
+  if (shown('macro'))
+    cols.push(['MACRO', r => r.macro_value ? (r.macro_value + (r.macro_turn ? ' ' + r.macro_turn : '')) : '']);
+  if (shown('calc'))
+    cols.push(['CALC', r => r.final_action_cal || r.final_code_cal || '']);
+  if (shown('bullprob'))
+    cols.push(['P(↑ 20d)', r => r.bull_prob != null ? Math.round(Number(r.bull_prob) * 100) + '%' : '']);
+  if (shown('agree'))
+    cols.push(['Agree', r => r.agreement_class ? (_AGR_LABEL[r.agreement_class] || r.agreement_class) : '']);
+  if (shown('vlm'))
+    cols.push(['RVOL', r => r.rvol != null ? Number(r.rvol).toFixed(2) : '']);
+  if (shown('iv')) {
+    cols.push(['IVP', r => r.iv_percentile != null ? r.iv_percentile : '']);
+    cols.push(['IV',  r => r.imp_volatility != null ? (Number(r.imp_volatility) * 100).toFixed(1) + '%' : '']);
+    cols.push(['HV',  r => r.hv != null ? (Number(r.hv) * 100).toFixed(1) + '%' : '']);
+  }
+  if (shown('macd'))
+    cols.push(['MACD', r => r.a_macd_brr != null ? Number(r.a_macd_brr).toFixed(2) : '']);
+  if (shown('macdh'))
+    cols.push(['MACDH', r => r.a_macdh_d_brr != null ? Number(r.a_macdh_d_brr).toFixed(2) : '']);
+  if (shown('rsi'))
+    cols.push(['RSI', r => r.rsi != null ? Number(r.rsi).toFixed(1) : '']);
+
+  cols.push(
     // kept in CSV even though removed from table
     ['POS$',          r => r.current_position_dollar],
     ['Price',         r => r.last_price],
@@ -2978,7 +3298,7 @@ function exportCsv() {
     ['Held',          r => r.held_today ? 'Y' : 'N'],
     ['In My List',    r => r.in_my_list ? 'Y' : 'N'],
     ['Suppressed',    r => r.suppressed_reason || ''],
-  ];
+  );
   const esc = (v) => {
     if (v === null || v === undefined) return '';
     const s = String(v);
@@ -3020,8 +3340,10 @@ async function copySymbols() {
       document.execCommand('copy');
       document.body.removeChild(ta);
     }
+    showStatus(`Copied ${symbols.length} symbols`, 'success');
   } catch (e) {
     console.error('Copy symbols failed:', e);
+    showStatus('Copy symbols failed: ' + e.message, 'error');
   }
 }
 
@@ -3559,31 +3881,6 @@ async function dismissUserAction() {
   }
 }
 
-// ---- per-row snooze toggle ----
-// The row "Snooze" button logs a SKIPPED user action for (snapshot date,
-// symbol); "Un-snooze" clears it. Snoozed rows are hidden unless "Show
-// acted/snoozed" is on. The action is keyed to the snapshot date, so the next
-// data load (a new snapshot date) surfaces the row again.
-async function toggleSuppress(symbol, isSuppressed) {
-  if (!symbol || !state.date) return;
-  try {
-    if (isSuppressed) {
-      await fetchJson('/api/actionable/' + encodeURIComponent(symbol) +
-        '/action?date=' + encodeURIComponent(state.date), { method: 'DELETE' });
-    } else {
-      await fetchJson('/api/actionable/' + encodeURIComponent(symbol) + '/action', {
-        method: 'POST',
-        body: JSON.stringify({ as_of_date: state.date,
-                               user_action: 'SKIPPED',
-                               user_notes: 'suppressed' }),
-      });
-    }
-    await loadActionable();
-  } catch (e) {
-    showStatus('Snooze toggle failed: ' + e.message, 'error');
-  }
-}
-
 // ---- TradingView tape toggle --------------------------------------------------
 const _TV_LS_KEY = 'act_tv_tape';
 
@@ -3726,6 +4023,60 @@ document.addEventListener('DOMContentLoaded', async () => {
   initGridSymClick();
   initEcoBarClick();
   _initSidePanels();
+  _initColMenu();
+  _initLegendPopover();
+  applyColumnVisibility();
+  document.addEventListener('click', () => _closeClickPops());
+  // ── Global keyboard handling: Esc layering (atomic popover → modal →
+  // focus card → click-popovers) + focus-mode rapid-triage keys (U8). A
+  // single delegated listener — no per-open/close attach/detach.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      _closeClickPops();
+      const atomicPop = $('atomicPopover');
+      const modalBackdrop = $('modalBackdrop');
+      const focusBackdrop = $('focusBackdrop');
+      // Topmost layer only: atomic popover → modal → focus card.
+      if (atomicPop && atomicPop.classList.contains('open')) {
+        closeAtomicPopover();
+      } else if (modalBackdrop && modalBackdrop.classList.contains('open')) {
+        _closeModal();
+      } else if (focusBackdrop && focusBackdrop.classList.contains('open')) {
+        focusBackdrop.classList.remove('open');
+      }
+      return;
+    }
+
+    // Focus-mode rapid-triage keys — active only while the focus card is
+    // open, and ignored while typing in a filter/input field.
+    const focusBackdrop = $('focusBackdrop');
+    if (!focusBackdrop || !focusBackdrop.classList.contains('open')) return;
+    const tag = e.target && e.target.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
+    if (e.key === 'Enter' || e.key === 'd' || e.key === 'D') {
+      e.preventDefault();
+      focusAdvance('DONE');
+    } else if (e.key === 's' || e.key === 'S') {
+      e.preventDefault();
+      focusAdvance('SKIPPED');
+    } else if (e.key === 'z' || e.key === 'Z') {
+      e.preventDefault();
+      focusAdvance('SNOOZED');
+    } else if (e.key === 'ArrowRight' || e.key === 'n' || e.key === 'N') {
+      e.preventDefault();
+      focusAdvance(null);
+    } else if (e.key === 'ArrowLeft' || e.key === 'p' || e.key === 'P') {
+      e.preventDefault();
+      focusPrev();
+    }
+  });
+  const showAllBtnEl = $('showAllBtn');
+  if (showAllBtnEl) showAllBtnEl.addEventListener('click', () => { state.showAll = true; renderGrid(); });
+  const emptyStateEl = $('emptyState');
+  if (emptyStateEl) emptyStateEl.addEventListener('click', (e) => {
+    if (e.target.closest('#emptyClearFiltersBtn')) clearAllFilters();
+  });
 
   await loadSources();
   await loadDates();
@@ -3801,12 +4152,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('fcSkipBtn').addEventListener('click', () => focusAdvance('SKIPPED'));
   $('fcSnzBtn').addEventListener('click',  () => focusAdvance('SNOOZED'));
   $('fcNextBtn').addEventListener('click', () => focusAdvance(null));
+  $('fcPrevBtn').addEventListener('click', focusPrev);
   $('fcCloseBtn').addEventListener('click', () => $('focusBackdrop').classList.remove('open'));
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && $('focusBackdrop').classList.contains('open')) {
-      $('focusBackdrop').classList.remove('open');
-    }
-  });
 
   // ── Filter zone wire-ups ────────────────────────────────────────────────────
   $('sourceFilter').addEventListener('change', (e) => {
@@ -3827,6 +4174,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.filters.show_hidden = !state.filters.show_hidden;
     $('showHidden').classList.toggle('active', state.filters.show_hidden);
     $('showHidden').setAttribute('data-tip', state.filters.show_hidden ? 'Show Hidden  →  Active Only' : 'Active Only  →  Show Hidden');
+    // H column (U4) only renders when show_hidden is on.
+    applyColumnVisibility();
     // show_hidden also controls whether acted/suppressed rows are fetched from the API
     loadActionable();
   });

@@ -385,155 +385,29 @@ def list_actionable_sources():
     return [{"source_code": r[0], "base_weight_method": r[1]} for r in rows]
 
 
-@router.get("/api/actionable")
-def get_actionable(
-    date: Optional[str] = Query(None),
-    action: Optional[str] = Query(None, description="Filter to one action"),
-    category: Optional[str] = Query(None),
-    my_list_only: bool = Query(False),
-    show_acted: bool = Query(False),
-    show_suppressed: bool = Query(False),
-):
-    d = _resolve_date(date)
-    where = ["a.as_of_date = :d"]
-    params: dict = {"d": d}
-    if action:
-        where.append("a.consolidated_action = :action")
-        params["action"] = action.upper()
-    if category:
-        where.append("a.position_category = :cat")
-        params["cat"] = category
-    if my_list_only:
-        where.append("a.in_my_list IS TRUE")
-    if not show_suppressed:
-        # Over-Max rows must remain visible — the frontend overlays SELL→MAX
-        # on them. Only suppress rows that aren't over their category ceiling.
-        where.append(
-            "(a.suppressed_reason IS NULL OR "
-            " (a.held_today = TRUE AND a.target_max_dollar > 0 "
-            "  AND a.current_position_dollar > a.target_max_dollar))"
-        )
-
-    # Pre-compute max position snapshot dates (two fast date lookups)
-    with session_scope() as _s:
-        max_f_snap = _s.execute(
-            text("SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d"),
-            {"d": d},
-        ).scalar()
-        max_cs_snap = _s.execute(
-            text("SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d"),
-            {"d": d},
-        ).scalar()
-    params["max_f_snap"] = max_f_snap
-    params["max_cs_snap"] = max_cs_snap
-
-    # Use drv_technicals/drv_outlooks directly instead of drv_ma VIEW (which
-    # expands to 5 tables) to keep join count below GEQO threshold (12).
-    # drv_cat_atomic_input is also dropped — no columns from it are selected.
-    sql = f"""
-        SELECT a.*,
-               COALESCE(a.source_asset_class, mt.asset_class) AS real_asset_class,
-               mt.iv_percentile, mt.hv_percentile, mt.range_compression, mt.d_iv_to_hv,
-               mt.volume, mt.vlm_projected,
-               mt.a_macd_brr, mt.a_macdh_d_brr, mt.rsi,
-               mo.pct_brr AS ma_pct_brr,
-               dr.lrr, dr.mrr, dr.trr, dr.outlook AS rr_outlook,
-               q.last_price, q.net_chng, q.pct_change, q.export_date, q.export_time, q.loaded_at,
-               q.open_price, q.high_price, q.low_price, q.imp_volatility, q.iv_to_hv_discount,
-               q.pct_brr AS quote_pct_brr, q.zone_signal AS quote_zone,
-               q.is_intraday AS quote_is_intraday, q.source AS quote_source,
-               u.user_action AS last_user_action,
-               u.snooze_until AS snooze_until,
-               rr.td_tn_bb_action_desc AS rr_action,
-               rr.tn_td_rule_desc AS tn_td_desc,
-               rr.bb_rng_strk_desc AS bb_desc,
-               rr.rr_desc,
-               rr.rr_bull_bear,
-               _ha.held_accounts,
-               hy.company_name,
-               tw.rvol, tw.rvol_prior, tw.w_volume,
-               tw.avg_vlm_10d_d AS volume_avg_10d,
-               tw.avg_vlm_3m_d  AS volume_avg_3m,
-               tw.vlm_rate_change_d AS volume_rate_change,
-               tw.vlm_3m_pct, tw.vlm_desc, tw.vlm_action,
-               hv_td.historical_vol AS hv,
-               htw.a_volume_spike,
-               ms.macronet, ms.macro_action,
-               ms.monthly_score, ms.quarterly_score,
-               ms.month_now_net, ms.month_next_net, ms.month_weight,
-               ms.qtr_now_net, ms.qtr_next_net, ms.qtr_weight,
-               ms.monthly_scores_json
-        FROM drv_actionable a
-        LEFT JOIN drv_tn_td_bb_rr rr
-               ON rr.tos_symbol = a.tos_symbol AND rr.as_of_date = a.as_of_date
-        LEFT JOIN drv_rr dr
-               ON dr.tos_symbol = a.tos_symbol AND dr.as_of_date = a.as_of_date
-        LEFT JOIN drv_technicals mt
-               ON mt.tos_symbol = a.tos_symbol AND mt.as_of_date = a.as_of_date
-        LEFT JOIN drv_outlooks mo
-               ON mo.tos_symbol = a.tos_symbol AND mo.as_of_date = a.as_of_date
-        LEFT JOIN drv_quote q
-               ON q.tos_symbol = a.tos_symbol AND q.as_of_date = a.as_of_date
-        LEFT JOIN LATERAL (
-            SELECT company_name FROM hist_y
-            WHERE tos_symbol = a.tos_symbol
-            ORDER BY snapshot_date DESC LIMIT 1
-        ) hy ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT user_action, snooze_until
-            FROM user_action_log
-            WHERE user_action_log.as_of_date = a.as_of_date
-              AND user_action_log.tos_symbol = a.tos_symbol
-            ORDER BY acted_at DESC LIMIT 1
-        ) u ON TRUE
-        LEFT JOIN (
-            SELECT tos_symbol,
-                   STRING_AGG(DISTINCT acct, ', ' ORDER BY acct) AS held_accounts
-            FROM (
-                SELECT f.tos_symbol,
-                       f.account_number AS acct
-                FROM hist_f f
-                WHERE f.snapshot_date = :max_f_snap AND f.qty > 0
-                  AND f.tos_symbol IS NOT NULL
-                UNION ALL
-                SELECT c.tos_symbol, c.account AS acct
-                FROM hist_cs c
-                WHERE c.snapshot_date = :max_cs_snap AND c.qty > 0
-                  AND c.tos_symbol IS NOT NULL
-            ) _pos
-            GROUP BY tos_symbol
-        ) _ha ON _ha.tos_symbol = a.tos_symbol
-        LEFT JOIN LATERAL (
-            SELECT w_vlm_expn_ratio AS rvol,
-                   w_prior_day_vlm_expn_ratio AS rvol_prior,
-                   w_volume, avg_vlm_10d_d, avg_vlm_3m_d, vlm_rate_change_d,
-                   vlm_3m_pct, vlm_desc, vlm_action
-            FROM drv_tw
-            WHERE tos_symbol = a.tos_symbol
-              AND snapshot_date = a.as_of_date
-            ORDER BY sequence DESC LIMIT 1
-        ) tw ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT historical_vol
-            FROM hist_td
-            WHERE tos_symbol = a.tos_symbol
-              AND snapshot_date <= a.as_of_date
-            ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
-        ) hv_td ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT a_volume_spike
-            FROM hist_tw
-            WHERE tos_symbol = a.tos_symbol
-              AND snapshot_date <= a.as_of_date
-            ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
-        ) htw ON TRUE
-        LEFT JOIN drv_macro_score ms
-               ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = a.as_of_date
-        WHERE {' AND '.join(where)}
-    """
+@router.get("/api/actionable/settings")
+def get_actionable_settings():
+    """Tunable Actionable-screen settings (F5), fetched once at client
+    bootstrap instead of hardcoding thresholds in JS. Currently just
+    conviction_proven_edge_min (ref_settings, default 0.5)."""
     with session_scope() as s:
-        rows = s.execute(text(sql), params).mappings().all()
+        rows = s.execute(text(
+            "SELECT setting_name, setting_value FROM ref_settings"
+            " WHERE setting_name IN ('conviction_proven_edge_min')"
+        )).fetchall()
+    settings = {r[0]: r[1] for r in rows}
+    return {
+        "conviction_proven_edge_min": float(
+            settings.get("conviction_proven_edge_min", 0.5)),
+    }
 
+
+def _build_macro_engine(d):
+    """Build the per-date MacroNet quad engine: loads ref_settings/quad-outlook
+    lookups and returns (compute_macro, quad_m_label, quad_q_label). Shared by
+    get_actionable() (grid rows, include_detail=False -> cheap) and the lazy
+    /api/actionable/macro-detail endpoint (include_detail=True -> full detail).
+    """
     # --- Macro quad enrichment + MacroNet (separate queries, no extra join) ---
     # Phase 1: join fix + period truth + monthly-weight schema
     # Phase 2: style-factor classification
@@ -939,6 +813,7 @@ def get_actionable(
         sym: str,
         real_asset_class: str | None,
         sector: str | None,
+        include_detail: bool = True,
     ) -> dict:
         """Full MacroNet computation per symbol.
 
@@ -1013,98 +888,256 @@ def get_actionable(
                 if _qp_nxt:
                     turn_extra = f" {_qp_nxt.quad} (Qtr)"
 
-        # ── Structured detail for tooltip ────────────────────────────────────
-        # Month distribution block
-        m_dist_now: list[dict] = []
-        if _mp_cur and _mp_cur.pcts:
-            for qk in ("quad1", "quad2", "quad3", "quad4"):
-                pv = _mp_cur.pcts.get(qk, 0.0)
-                if pv > 0:
-                    m_dist_now.append({"quad": qk.replace("quad", "Quad "),
-                                        "pct": pv})
-        m_dist_nxt: list[dict] = []
-        if _mp_nxt and _mp_nxt.pcts:
-            for qk in ("quad1", "quad2", "quad3", "quad4"):
-                pv = _mp_nxt.pcts.get(qk, 0.0)
-                if pv > 0:
-                    m_dist_nxt.append({"quad": qk.replace("quad", "Quad "),
-                                        "pct": pv})
+        detail = None
+        howto_str = None
+        if include_detail:
+            # ── Structured detail for tooltip ────────────────────────────────────
+            # Month distribution block
+            m_dist_now: list[dict] = []
+            if _mp_cur and _mp_cur.pcts:
+                for qk in ("quad1", "quad2", "quad3", "quad4"):
+                    pv = _mp_cur.pcts.get(qk, 0.0)
+                    if pv > 0:
+                        m_dist_now.append({"quad": qk.replace("quad", "Quad "),
+                                            "pct": pv})
+            m_dist_nxt: list[dict] = []
+            if _mp_nxt and _mp_nxt.pcts:
+                for qk in ("quad1", "quad2", "quad3", "quad4"):
+                    pv = _mp_nxt.pcts.get(qk, 0.0)
+                    if pv > 0:
+                        m_dist_nxt.append({"quad": qk.replace("quad", "Quad "),
+                                            "pct": pv})
 
-        # Per-membership outlook — include per-period stances for tooltip sections
-        mem_detail: list[dict] = []
-        for mb in memberships:
-            out_cur = mb.get(m_eff_q or "quad1")
-            out_nxt = mb.get(m_nxt_eff) if m_nxt_eff else None
-            out_qtr = mb.get(q_eff_q) if q_eff_q else None
-            mem_detail.append({
-                "label": mb["label"],
-                "category": mb.get("category", ""),
-                "sub_cat": mb.get("sub_cat", ""),
-                "weight": mb["weight"],
-                "outlook": out_cur,
-                "nxt_outlook": out_nxt,
-                "qtr_outlook": out_qtr,
-                "stance": _outlook_stance(out_cur),
-            })
+            # Per-membership outlook — include per-period stances for tooltip sections
+            mem_detail: list[dict] = []
+            for mb in memberships:
+                out_cur = mb.get(m_eff_q or "quad1")
+                out_nxt = mb.get(m_nxt_eff) if m_nxt_eff else None
+                out_qtr = mb.get(q_eff_q) if q_eff_q else None
+                mem_detail.append({
+                    "label": mb["label"],
+                    "category": mb.get("category", ""),
+                    "sub_cat": mb.get("sub_cat", ""),
+                    "weight": mb["weight"],
+                    "outlook": out_cur,
+                    "nxt_outlook": out_nxt,
+                    "qtr_outlook": out_qtr,
+                    "stance": _outlook_stance(out_cur),
+                })
 
-        detail = {
-            "month": {
-                "now": {
-                    "quad": _col_to_quad_name(m_eff_q),
-                    "dist": m_dist_now,
-                    "net": round(S_m_cur, 3),
-                    "dtb": dtb_m,
+            detail = {
+                "month": {
+                    "now": {
+                        "quad": _col_to_quad_name(m_eff_q),
+                        "dist": m_dist_now,
+                        "net": round(S_m_cur, 3),
+                        "dtb": dtb_m,
+                    },
+                    "next": {
+                        "quad": _col_to_quad_name(m_nxt_eff),
+                        "dist": m_dist_nxt,
+                        "net": round(S_m_nxt, 3),
+                    } if m_nxt_eff else None,
+                    "blend_now_pct": round((1.0 - nw) * 100),
+                    "blend_nxt_pct": round(nw * 100),
+                    "M": round(M, 3),
                 },
-                "next": {
-                    "quad": _col_to_quad_name(m_nxt_eff),
-                    "dist": m_dist_nxt,
-                    "net": round(S_m_nxt, 3),
-                } if m_nxt_eff else None,
-                "blend_now_pct": round((1.0 - nw) * 100),
-                "blend_nxt_pct": round(nw * 100),
-                "M": round(M, 3),
-            },
-            "quarter": {
-                "now": _col_to_quad_name(q_eff_q),
-                "quad_label": _col_to_quad_name(_qp_cur_label),
-                "Qtr": Qtr,
-                "dtb": _qp_cur.dtb if _qp_cur else None,
-                "next": _col_to_quad_name(q_nxt_eff),
-                "turn_alert": (turn == "↘" or turn == "↗") and bool(turn_extra and "(Qtr)" in turn_extra),
-            },
-            "macro_net": macro_net,
-            "a": _a, "b": _b,
-            "conf": conf,
-            "vocab": vocab,
-            "memberships": mem_detail,
-        }
+                "quarter": {
+                    "now": _col_to_quad_name(q_eff_q),
+                    "quad_label": _col_to_quad_name(_qp_cur_label),
+                    "Qtr": Qtr,
+                    "dtb": _qp_cur.dtb if _qp_cur else None,
+                    "next": _col_to_quad_name(q_nxt_eff),
+                    "turn_alert": (turn == "↘" or turn == "↗") and bool(turn_extra and "(Qtr)" in turn_extra),
+                },
+                "macro_net": macro_net,
+                "a": _a, "b": _b,
+                "conf": conf,
+                "vocab": vocab,
+                "memberships": mem_detail,
+            }
 
-        # ── How-to directive ─────────────────────────────────────────────────
-        conf_str = f"{int((conf or 0) * 100)}%" if conf is not None else "?"
-        howto_parts: list[str] = []
-        if vocab in ("BM", "BS"):
-            howto_parts.append(f"Macro favors LONG ({vocab}). "
-                                f"Press bottom-up BUY calls at {conf_str} confidence.")
-        elif vocab in ("SA", "STM"):
-            howto_parts.append(f"Macro favors SHORT/TRIM ({vocab}). "
-                                f"Back off BUY calls at {conf_str} confidence.")
-        else:
-            howto_parts.append(f"Macro neutral (HOLD). "
-                                f"No conviction adjustment ({conf_str}).")
-        if turn:
+            # ── How-to directive ─────────────────────────────────────────────────
+            conf_str = f"{int((conf or 0) * 100)}%" if conf is not None else "?"
+            howto_parts: list[str] = []
+            if vocab in ("BM", "BS"):
+                howto_parts.append(f"Macro favors LONG ({vocab}). "
+                                    f"Press bottom-up BUY calls at {conf_str} confidence.")
+            elif vocab in ("SA", "STM"):
+                howto_parts.append(f"Macro favors SHORT/TRIM ({vocab}). "
+                                    f"Back off BUY calls at {conf_str} confidence.")
+            else:
+                howto_parts.append(f"Macro neutral (HOLD). "
+                                    f"No conviction adjustment ({conf_str}).")
+            if turn:
+                howto_parts.append(
+                    f"Turn signal {turn}{turn_extra}: next period diverges — watch for regime shift.")
             howto_parts.append(
-                f"Turn signal {turn}{turn_extra}: next period diverges — watch for regime shift.")
-        howto_parts.append(
-            "Technical/Sources is always master — MACRO adjusts conviction only.")
+                "Technical/Sources is always master — MACRO adjusts conviction only.")
+            howto_str = " ".join(howto_parts)
 
         return {
             "macro_value": vocab,
             "macro_conf": conf,
             "macro_turn": (turn + turn_extra) if turn else None,
             "macro_detail": detail,
-            "macro_howto": " ".join(howto_parts),
+            "macro_howto": howto_str,
             "macronet": macro_net,
         }
+
+    return _compute_macro, (_mp_cur.quad if _mp_cur else None), (_qp_cur.quad if _qp_cur else None)
+
+
+@router.get("/api/actionable")
+def get_actionable(
+    date: Optional[str] = Query(None),
+    action: Optional[str] = Query(None, description="Filter to one action"),
+    category: Optional[str] = Query(None),
+    my_list_only: bool = Query(False),
+    show_acted: bool = Query(False),
+    show_suppressed: bool = Query(False),
+):
+    d = _resolve_date(date)
+    where = ["a.as_of_date = :d"]
+    params: dict = {"d": d}
+    if action:
+        where.append("a.consolidated_action = :action")
+        params["action"] = action.upper()
+    if category:
+        where.append("a.position_category = :cat")
+        params["cat"] = category
+    if my_list_only:
+        where.append("a.in_my_list IS TRUE")
+    if not show_suppressed:
+        # Over-Max rows must remain visible — the frontend overlays SELL→MAX
+        # on them. Only suppress rows that aren't over their category ceiling.
+        where.append(
+            "(a.suppressed_reason IS NULL OR "
+            " (a.held_today = TRUE AND a.target_max_dollar > 0 "
+            "  AND a.current_position_dollar > a.target_max_dollar))"
+        )
+
+    # Pre-compute max position snapshot dates (two fast date lookups)
+    with session_scope() as _s:
+        max_f_snap = _s.execute(
+            text("SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d"),
+            {"d": d},
+        ).scalar()
+        max_cs_snap = _s.execute(
+            text("SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d"),
+            {"d": d},
+        ).scalar()
+    params["max_f_snap"] = max_f_snap
+    params["max_cs_snap"] = max_cs_snap
+
+    # Use drv_technicals/drv_outlooks directly instead of drv_ma VIEW (which
+    # expands to 5 tables) to keep join count below GEQO threshold (12).
+    # drv_cat_atomic_input is also dropped — no columns from it are selected.
+    sql = f"""
+        SELECT a.*,
+               COALESCE(a.source_asset_class, mt.asset_class) AS real_asset_class,
+               mt.iv_percentile, mt.hv_percentile, mt.range_compression, mt.d_iv_to_hv,
+               mt.volume, mt.vlm_projected,
+               mt.a_macd_brr, mt.a_macdh_d_brr, mt.rsi,
+               mo.pct_brr AS ma_pct_brr,
+               dr.lrr, dr.mrr, dr.trr, dr.outlook AS rr_outlook,
+               q.last_price, q.net_chng, q.pct_change, q.export_date, q.export_time, q.loaded_at,
+               q.open_price, q.high_price, q.low_price, q.imp_volatility, q.iv_to_hv_discount,
+               q.pct_brr AS quote_pct_brr, q.zone_signal AS quote_zone,
+               q.is_intraday AS quote_is_intraday, q.source AS quote_source,
+               u.user_action AS last_user_action,
+               u.snooze_until AS snooze_until,
+               rr.td_tn_bb_action_desc AS rr_action,
+               rr.tn_td_rule_desc AS tn_td_desc,
+               rr.bb_rng_strk_desc AS bb_desc,
+               rr.rr_desc,
+               rr.rr_bull_bear,
+               _ha.held_accounts,
+               hy.company_name,
+               tw.rvol, tw.rvol_prior, tw.w_volume,
+               tw.avg_vlm_10d_d AS volume_avg_10d,
+               tw.avg_vlm_3m_d  AS volume_avg_3m,
+               tw.vlm_rate_change_d AS volume_rate_change,
+               tw.vlm_3m_pct, tw.vlm_desc, tw.vlm_action,
+               hv_td.historical_vol AS hv,
+               htw.a_volume_spike,
+               ms.macronet, ms.macro_action,
+               ms.monthly_score, ms.quarterly_score,
+               ms.month_now_net, ms.month_next_net, ms.month_weight,
+               ms.qtr_now_net, ms.qtr_next_net, ms.qtr_weight,
+               ms.monthly_scores_json
+        FROM drv_actionable a
+        LEFT JOIN drv_tn_td_bb_rr rr
+               ON rr.tos_symbol = a.tos_symbol AND rr.as_of_date = a.as_of_date
+        LEFT JOIN drv_rr dr
+               ON dr.tos_symbol = a.tos_symbol AND dr.as_of_date = a.as_of_date
+        LEFT JOIN drv_technicals mt
+               ON mt.tos_symbol = a.tos_symbol AND mt.as_of_date = a.as_of_date
+        LEFT JOIN drv_outlooks mo
+               ON mo.tos_symbol = a.tos_symbol AND mo.as_of_date = a.as_of_date
+        LEFT JOIN drv_quote q
+               ON q.tos_symbol = a.tos_symbol AND q.as_of_date = a.as_of_date
+        LEFT JOIN LATERAL (
+            SELECT company_name FROM hist_y
+            WHERE tos_symbol = a.tos_symbol
+            ORDER BY snapshot_date DESC LIMIT 1
+        ) hy ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT user_action, snooze_until
+            FROM user_action_log
+            WHERE user_action_log.as_of_date = a.as_of_date
+              AND user_action_log.tos_symbol = a.tos_symbol
+            ORDER BY acted_at DESC LIMIT 1
+        ) u ON TRUE
+        LEFT JOIN (
+            SELECT tos_symbol,
+                   STRING_AGG(DISTINCT acct, ', ' ORDER BY acct) AS held_accounts
+            FROM (
+                SELECT f.tos_symbol,
+                       f.account_number AS acct
+                FROM hist_f f
+                WHERE f.snapshot_date = :max_f_snap AND f.qty > 0
+                  AND f.tos_symbol IS NOT NULL
+                UNION ALL
+                SELECT c.tos_symbol, c.account AS acct
+                FROM hist_cs c
+                WHERE c.snapshot_date = :max_cs_snap AND c.qty > 0
+                  AND c.tos_symbol IS NOT NULL
+            ) _pos
+            GROUP BY tos_symbol
+        ) _ha ON _ha.tos_symbol = a.tos_symbol
+        LEFT JOIN LATERAL (
+            SELECT w_vlm_expn_ratio AS rvol,
+                   w_prior_day_vlm_expn_ratio AS rvol_prior,
+                   w_volume, avg_vlm_10d_d, avg_vlm_3m_d, vlm_rate_change_d,
+                   vlm_3m_pct, vlm_desc, vlm_action
+            FROM drv_tw
+            WHERE tos_symbol = a.tos_symbol
+              AND snapshot_date = a.as_of_date
+            ORDER BY sequence DESC LIMIT 1
+        ) tw ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT historical_vol
+            FROM hist_td
+            WHERE tos_symbol = a.tos_symbol
+              AND snapshot_date <= a.as_of_date
+            ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
+        ) hv_td ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT a_volume_spike
+            FROM hist_tw
+            WHERE tos_symbol = a.tos_symbol
+              AND snapshot_date <= a.as_of_date
+            ORDER BY snapshot_date DESC, sequence DESC LIMIT 1
+        ) htw ON TRUE
+        LEFT JOIN drv_macro_score ms
+               ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = a.as_of_date
+        WHERE {' AND '.join(where)}
+    """
+    with session_scope() as s:
+        rows = s.execute(text(sql), params).mappings().all()
+
+    _compute_macro, _quad_m_label, _quad_q_label = _build_macro_engine(d)
 
     out = []
     for r in rows:
@@ -1118,11 +1151,13 @@ def get_actionable(
         rac = d_.get("real_asset_class")
         sec = d_.get("sector")
         # backward-compat quad labels
-        d_["quad_m"] = _mp_cur.quad if _mp_cur else None
-        d_["quad_q"] = _qp_cur.quad if _qp_cur else None
-        # Always compute full detail for rich tooltip; prefer derive-time action/score if available
+        d_["quad_m"] = _quad_m_label
+        d_["quad_q"] = _quad_q_label
+        # F2: only the cheap fields (macro_value/conf/turn/macronet) are needed
+        # per row for the grid; the heavy macro_detail/macro_howto payload is
+        # now lazy-loaded on hover via GET /api/actionable/macro-detail.
         try:
-            macro = _compute_macro(sym, rac, sec)
+            macro = _compute_macro(sym, rac, sec, include_detail=False)
         except Exception:
             macro = {
                 "macro_value": None, "macro_conf": None,
@@ -1133,8 +1168,42 @@ def get_actionable(
             macro["macro_value"] = d_["macro_action"]
             macro["macronet"] = d_.get("macronet")
         d_.update(macro)
+        # F2: drop the (always-None here) heavy keys entirely rather than
+        # shipping null placeholders — keeps the per-row payload measurably
+        # smaller. Full detail is lazy-loaded via /api/actionable/macro-detail.
+        d_.pop("macro_detail", None)
+        d_.pop("macro_howto", None)
         out.append(d_)
     return out
+
+
+@router.get("/api/actionable/macro-detail")
+def get_actionable_macro_detail(
+    symbol: str = Query(...),
+    date: Optional[str] = Query(None),
+):
+    """Lazy-load the full MacroNet breakdown for one symbol (F2). The grid
+    payload only carries macro_value/conf/turn/macronet — this endpoint
+    computes the heavy detail/how-to text on demand (hover popover)."""
+    d = _resolve_date(date)
+    sym = symbol.strip().upper()
+    with session_scope() as s:
+        row = s.execute(text("""
+            SELECT COALESCE(a.source_asset_class, mt.asset_class) AS real_asset_class,
+                   a.sector
+            FROM drv_actionable a
+            LEFT JOIN drv_technicals mt
+                   ON mt.tos_symbol = a.tos_symbol AND mt.as_of_date = a.as_of_date
+            WHERE a.tos_symbol = :sym AND a.as_of_date = :d
+        """), {"sym": sym, "d": d}).mappings().first()
+    if not row:
+        raise HTTPException(404, f"no drv_actionable row for {sym} on {d}")
+    _compute_macro, _quad_m_label, _quad_q_label = _build_macro_engine(d)
+    try:
+        macro = _compute_macro(sym, row["real_asset_class"], row["sector"], include_detail=True)
+    except Exception:
+        macro = {"macro_detail": None, "macro_howto": None}
+    return {"macro_detail": macro.get("macro_detail"), "macro_howto": macro.get("macro_howto")}
 
 
 @router.get("/api/actionable/source-data")
@@ -1371,10 +1440,106 @@ def get_actionable_comparison(
     return out
 
 
-@router.post("/api/actionable/{symbol}/action", response_model=dict)
-def post_actionable_action(symbol: str, payload: dict):
-    """Capture user decision with full forensic snapshot."""
-    sym_u = symbol.upper().strip()
+def _log_actionable_action(s, sym_u: str, as_of, user_action: str, payload: dict) -> Optional[int]:
+    """Snapshot the drv_actionable row + raw hist_* rows for forensic replay and
+    insert one user_action_log row. Runs on the caller's session (caller owns
+    the transaction/commit) so it can be looped for bulk actions without
+    re-opening a session per symbol. Raises ValueError if no drv_actionable
+    row exists for (sym_u, as_of). Shared by post_actionable_action (single
+    row) and post_actionable_bulk_action (F1, one transaction for N rows)."""
+    # Snapshot drv_actionable row
+    act_row = s.execute(text("""
+        SELECT * FROM drv_actionable
+        WHERE as_of_date = :d AND tos_symbol = :sym
+    """), {"d": as_of, "sym": sym_u}).mappings().first()
+    if not act_row:
+        raise ValueError(f"no drv_actionable row for {sym_u} on {as_of}")
+    a = dict(act_row)
+
+    # Snapshot raw hist_* rows from each source for forensic replay
+    raw_snapshot: dict = {}
+    sources = s.execute(text("""
+        SELECT source_code, source_table FROM ref_outlook_source
+        WHERE deprecated_at IS NULL
+    """)).fetchall()
+    for sc, tbl in sources:
+        date_col = "event_date" if tbl in ("hist_etfchg", "hist_iichg") else "snapshot_date"
+        key_col  = "ticker"    if tbl in ("hist_ps",) else "symbol"
+        try:
+            r = s.execute(text(f"""
+                SELECT * FROM {tbl}
+                WHERE {key_col} = :sym AND {date_col} <= :d
+                ORDER BY {date_col} DESC LIMIT 1
+            """), {"sym": sym_u, "d": as_of}).mappings().first()
+            if r:
+                safe = {}
+                for k, v in dict(r).items():
+                    try:
+                        json.dumps(v)
+                        safe[k] = v
+                    except (TypeError, ValueError):
+                        safe[k] = str(v) if v is not None else None
+                raw_snapshot[sc] = safe
+        except Exception:
+            continue
+
+    snooze_until = payload.get("snooze_until")
+    if snooze_until:
+        try:
+            snooze_until = datetime.strptime(snooze_until, "%Y-%m-%d").date()
+        except ValueError:
+            snooze_until = None
+
+    ret = s.execute(text("""
+        INSERT INTO user_action_log (
+            user_id, as_of_date, tos_symbol,
+            action_code, user_action, user_action_target,
+            snooze_until, user_notes,
+            consolidated_action, winning_source, winning_priority,
+            position_category, target_min_dollar, target_max_dollar,
+            units_dollar, maintain_min, suggested_target_dollar,
+            held_at_action, position_dollar_at_action, in_my_list,
+            source_actions, rules_engine_fires, source_raw_snapshot
+        ) VALUES (
+            :uid, :d, :sym,
+            :ac, :ua, :target,
+            :snooze, :notes,
+            :ca, :ws, :wp,
+            :cat, :tmin, :tmax,
+            :unit, :mm, :stgt,
+            :held, :pos, :iml,
+            CAST(:srca AS JSONB), CAST(:fires AS JSONB), CAST(:raw AS JSONB)
+        ) RETURNING id
+    """), {
+        "uid":    payload.get("user_id", "default"),
+        "d":      as_of, "sym": sym_u,
+        "ac":     payload.get("action_code"),
+        "ua":     user_action,
+        "target": payload.get("user_action_target"),
+        "snooze": snooze_until,
+        "notes":  payload.get("user_notes"),
+        "ca":     a.get("consolidated_action"),
+        "ws":     a.get("winning_source"),
+        "wp":     a.get("winning_priority"),
+        "cat":    a.get("position_category"),
+        "tmin":   a.get("target_min_dollar"),
+        "tmax":   a.get("target_max_dollar"),
+        "unit":   a.get("units_dollar"),
+        "mm":     a.get("maintain_min"),
+        "stgt":   a.get("suggested_target_dollar"),
+        "held":   a.get("held_today"),
+        "pos":    a.get("current_position_dollar"),
+        "iml":    a.get("in_my_list"),
+        "srca":   json.dumps(a.get("source_actions") or []),
+        "fires":  json.dumps(a.get("rules_engine_fires") or []),
+        "raw":    json.dumps(raw_snapshot),
+    }).first()
+    return ret[0] if ret else None
+
+
+def _parse_action_payload(payload: dict) -> tuple:
+    """Validate + parse the common bits of an action payload (as_of_date,
+    user_action). Shared by single-row and bulk endpoints."""
     as_of_str = payload.get("as_of_date")
     if not as_of_str:
         raise HTTPException(400, "as_of_date required")
@@ -1385,97 +1550,45 @@ def post_actionable_action(symbol: str, payload: dict):
     user_action = (payload.get("user_action") or "").upper()
     if user_action not in ("DONE", "SKIPPED", "SNOOZED", "OVERRIDDEN"):
         raise HTTPException(400, "user_action must be DONE/SKIPPED/SNOOZED/OVERRIDDEN")
+    return as_of, user_action
 
+
+@router.post("/api/actionable/{symbol}/action", response_model=dict)
+def post_actionable_action(symbol: str, payload: dict):
+    """Capture user decision with full forensic snapshot."""
+    sym_u = symbol.upper().strip()
+    as_of, user_action = _parse_action_payload(payload)
     with session_scope() as s:
-        # Snapshot drv_actionable row
-        act_row = s.execute(text("""
-            SELECT * FROM drv_actionable
-            WHERE as_of_date = :d AND tos_symbol = :sym
-        """), {"d": as_of, "sym": sym_u}).mappings().first()
-        if not act_row:
-            raise HTTPException(404, f"no drv_actionable row for {sym_u} on {as_of}")
-        a = dict(act_row)
+        try:
+            log_id = _log_actionable_action(s, sym_u, as_of, user_action, payload)
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+    return {"ok": True, "log_id": log_id}
 
-        # Snapshot raw hist_* rows from each source for forensic replay
-        raw_snapshot: dict = {}
-        sources = s.execute(text("""
-            SELECT source_code, source_table FROM ref_outlook_source
-            WHERE deprecated_at IS NULL
-        """)).fetchall()
-        for sc, tbl in sources:
-            date_col = "event_date" if tbl in ("hist_etfchg", "hist_iichg") else "snapshot_date"
-            key_col  = "ticker"    if tbl in ("hist_ps",) else "symbol"
-            try:
-                r = s.execute(text(f"""
-                    SELECT * FROM {tbl}
-                    WHERE {key_col} = :sym AND {date_col} <= :d
-                    ORDER BY {date_col} DESC LIMIT 1
-                """), {"sym": sym_u, "d": as_of}).mappings().first()
-                if r:
-                    safe = {}
-                    for k, v in dict(r).items():
-                        try:
-                            json.dumps(v)
-                            safe[k] = v
-                        except (TypeError, ValueError):
-                            safe[k] = str(v) if v is not None else None
-                    raw_snapshot[sc] = safe
-            except Exception:
+
+@router.post("/api/actionable/bulk-action")
+def post_actionable_bulk_action(payload: dict):
+    """F1: bulk-select action in one round-trip. Loops the same forensic-
+    snapshot insert as post_actionable_action, one parametrized INSERT per
+    symbol (convention #7 — no giant multi-row statement), all in a single
+    transaction (one session_scope)."""
+    symbols = payload.get("symbols") or []
+    if not isinstance(symbols, list) or not symbols:
+        raise HTTPException(400, "symbols (non-empty list) required")
+    as_of, user_action = _parse_action_payload(payload)
+
+    results = []
+    with session_scope() as s:
+        for raw_sym in symbols:
+            sym_u = str(raw_sym).upper().strip()
+            if not sym_u:
                 continue
-
-        snooze_until = payload.get("snooze_until")
-        if snooze_until:
             try:
-                snooze_until = datetime.strptime(snooze_until, "%Y-%m-%d").date()
-            except ValueError:
-                snooze_until = None
-
-        ret = s.execute(text("""
-            INSERT INTO user_action_log (
-                user_id, as_of_date, symbol, tos_symbol,
-                action_code, user_action, user_action_target,
-                snooze_until, user_notes,
-                consolidated_action, winning_source, winning_priority,
-                position_category, target_min_dollar, target_max_dollar,
-                units_dollar, maintain_min, suggested_target_dollar,
-                held_at_action, position_dollar_at_action, in_my_list,
-                source_actions, rules_engine_fires, source_raw_snapshot
-            ) VALUES (
-                :uid, :d, :sym, :sym,
-                :ac, :ua, :target,
-                :snooze, :notes,
-                :ca, :ws, :wp,
-                :cat, :tmin, :tmax,
-                :unit, :mm, :stgt,
-                :held, :pos, :iml,
-                CAST(:srca AS JSONB), CAST(:fires AS JSONB), CAST(:raw AS JSONB)
-            ) RETURNING id
-        """), {
-            "uid":    payload.get("user_id", "default"),
-            "d":      as_of, "sym": sym_u,
-            "ac":     payload.get("action_code"),
-            "ua":     user_action,
-            "target": payload.get("user_action_target"),
-            "snooze": snooze_until,
-            "notes":  payload.get("user_notes"),
-            "ca":     a.get("consolidated_action"),
-            "ws":     a.get("winning_source"),
-            "wp":     a.get("winning_priority"),
-            "cat":    a.get("position_category"),
-            "tmin":   a.get("target_min_dollar"),
-            "tmax":   a.get("target_max_dollar"),
-            "unit":   a.get("units_dollar"),
-            "mm":     a.get("maintain_min"),
-            "stgt":   a.get("suggested_target_dollar"),
-            "held":   a.get("held_today"),
-            "pos":    a.get("current_position_dollar"),
-            "iml":    a.get("in_my_list"),
-            "srca":   json.dumps(a.get("source_actions") or []),
-            "fires":  json.dumps(a.get("rules_engine_fires") or []),
-            "raw":    json.dumps(raw_snapshot),
-        }).first()
-        s.commit()
-    return {"ok": True, "log_id": ret[0] if ret else None}
+                log_id = _log_actionable_action(s, sym_u, as_of, user_action, payload)
+                results.append({"symbol": sym_u, "log_id": log_id})
+            except ValueError as e:
+                results.append({"symbol": sym_u, "log_id": None, "error": str(e)})
+    return {"ok": True, "results": results}
 
 
 @router.delete("/api/actionable/{symbol}/action")
