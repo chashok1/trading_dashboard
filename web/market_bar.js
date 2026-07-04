@@ -484,24 +484,37 @@
                      item.monthly_score, spec.pairLead);
   }
 
+  // Cluster consecutive pairLead-chained tiles into one <div
+  // class="mt-group"> so CSS can give each group a shared background box
+  // (2026-07-04, kept after an A/B compare against a font-only tweak) --
+  // makes grouping an explicit visual cue instead of relying on the mere
+  // absence of a border to imply it. A tile with pairLead:true continues
+  // the current group; a tile without it closes the group.
   function buildMiniTapeHtml(mktData, rrData) {
     const mktItems = (mktData && mktData.items) || [];
     const byKey    = Object.fromEntries(mktItems.map(it => [it.metric_key, it]));
     const rrGroups = (rrData && rrData.groups) || {};
-    const cells = [];
+    const groups = [];
+    let current = [];
     for (const spec of BAR_MINI) {
+      let cellHtml = null;
       if (spec.source === 'mkt') {
         const item = byKey[spec.key];
-        if (!item) continue;
-        cells.push(_miniChipFromMkt(spec, item));
+        if (item) cellHtml = _miniChipFromMkt(spec, item);
       } else {
         const items = rrGroups[spec.group] || [];
         const item  = items.find(it => it.symbol === spec.symbol);
-        if (!item) continue;
-        cells.push(_miniChipFromRr(spec, item));
+        if (item) cellHtml = _miniChipFromRr(spec, item);
+      }
+      if (cellHtml == null) continue;
+      current.push(cellHtml);
+      if (!spec.pairLead) {
+        groups.push(current);
+        current = [];
       }
     }
-    return cells.join('');
+    if (current.length) groups.push(current);
+    return groups.map(g => `<div class="mt-group">${g.join('')}</div>`).join('');
   }
 
   // ---- right-aligned as-of timestamp --------------------------------------
@@ -511,7 +524,12 @@
     const items    = (mktData && mktData.items) || [];
     const withTime = items.find(it => it.quote_time);
     const timeStr  = withTime ? String(withTime.quote_time).slice(0, 5) : '';
-    const label    = timeStr ? `${asOfDate} ${timeStr}` : asOfDate;
+    // mm/dd (2026-07-04) instead of the raw YYYY-MM-DD -- same date-shortening
+    // convention already used for the econ-panel rows below.
+    const dateStr  = /^\d{4}-\d{2}-\d{2}$/.test(asOfDate)
+      ? asOfDate.slice(5, 7) + '/' + asOfDate.slice(8, 10)
+      : asOfDate;
+    const label    = timeStr ? `${dateStr} ${timeStr}` : dateStr;
     return `<span class="mt-asof">as of ${escHtml(label)}</span>`;
   }
 

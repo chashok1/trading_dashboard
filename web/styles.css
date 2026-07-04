@@ -1021,6 +1021,31 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   padding-right: 4px;
 }
 
+/* Group box instead of a border-line separator (2026-07-04, kept after A/B
+   compare). Each .mt-group (built in market_bar.js's buildMiniTapeHtml)
+   gets a shared background + border + rounded corners, so "these tiles
+   belong together" is an explicit visual container instead of an
+   absence-of-border inference. Same background/border/radius as the
+   Regime Band (#macroBand in actionable.html) for visual consistency with
+   an existing "light box" convention already used elsewhere on this
+   screen. Per-chip border-right removed inside the mini-tape since the
+   group box now carries the separation between groups. */
+.market-tape .mt-group {
+  display: inline-flex;
+  align-items: stretch;
+  background: #f8f8fc;
+  border: 1px solid #e0e0f0;
+  border-radius: 5px;
+  margin: 1px 2px;
+  padding: 3px 4px;
+}
+.market-tape .rr-chip {
+  border-right: none;
+}
+.market-tape .mt-group + .mt-group {
+  margin-left: 3px;
+}
+
 /* Mini-tape (2026-07-04): no separator between a value tile and its paired
    vol-gauge tile (SPX+VIX, Nasdaq+VXN, Dow+VXD, Russell+RVX, Gold+GVZ,
    Oil+OVX, Bond+MOVE) -- .rr-chip-pair-lead is set in market_bar.js's
@@ -1038,12 +1063,14 @@ tbody td.num { font-variant-numeric: tabular-nums; }
      keep its inner side tight so the pair still reads as one unit. */
   padding-left: 0;
 }
-/* LQD and Yen (2026-07-04, newly added tiles) follow a pairLead (HY, Dolr)
-   too, so the rule above zeroes their left padding by default -- give them
-   a little room at the beginning instead of being completely flush. Same
-   specificity as the rule above (3 selectors each), so source order wins. */
+/* LQD, Yen, and 10Y (2026-07-04, tiles following a pairLead within a group
+   box) -- the rule above zeroes their left padding by default, give them a
+   little room instead of being completely flush against the previous tile
+   in the same group. Same specificity as the rule above (3 selectors
+   each), so source order wins. */
 .market-tape .rr-chip[data-sym="LQD"],
-.market-tape .rr-chip[data-sym="Yen"] {
+.market-tape .rr-chip[data-sym="Yen"],
+.market-tape .rr-chip[data-sym="10Y"] {
   padding-left: 3px;
 }
 
@@ -1121,6 +1148,14 @@ svg.rr-candle {
 /* Smaller font on all tapes */
 .market-tape .rr-sym,
 #symTapeTrack .rr-sym { font-size: 8px; }
+/* Mini-tape only (not #symTapeTrack), 2026-07-04, kept alongside the group
+   boxes above -- a touch bigger and more spaced out than the shared 8px
+   rule, now that the group box's own padding gives a little extra room to
+   work with. */
+.market-tape .rr-sym {
+  font-size: 9px;
+  letter-spacing: 0.05em;
+}
 
 /* Range bar */
 .rr-rb {
