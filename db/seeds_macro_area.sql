@@ -30,7 +30,7 @@ VALUES
   ('volatility', 'Bond Vol',   'MOVE:GIF','gauge', 70)
 ON CONFLICT (area_key, member_symbol) DO NOTHING;
 
--- Top 9 / Major Markets (HYG/LQD moved in from Rates & Credit per request) --
+-- Top 9 / Major Markets --
 INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order)
 VALUES
   ('top9', 'Major Markets', '$DXY',  'rr_only', 5),
@@ -41,10 +41,15 @@ VALUES
   ('top9', 'Major Markets', '$DJI',  'rr_only', 35),
   ('top9', 'Major Markets', 'SPY',   'dual',    40),
   ('top9', 'Major Markets', 'QQQ',   'dual',    50),
-  ('top9', 'Major Markets', 'IWM',   'dual',    60),
-  ('top9', 'Major Markets', 'HYG',   'dual',    210),
-  ('top9', 'Major Markets', 'LQD',   'dual',    220)
+  ('top9', 'Major Markets', 'IWM',   'dual',    60)
 ON CONFLICT (area_key, member_symbol) DO NOTHING;
+
+-- 2026-07-04: HYG/LQD removed from Major Markets/top9 (per request) -- they
+-- now live only in Credit below, not duplicated. DELETE (not just dropping
+-- the INSERT above) so this also cleans up rows a prior init_db run already
+-- seeded; safe to re-run (no-op once the rows are gone).
+DELETE FROM ref_macro_area
+WHERE area_key = 'top9' AND member_symbol IN ('HYG', 'LQD');
 
 -- TASK_115: fix a pre-existing typo found during the tape-coverage audit —
 -- drv_rr/hist_rr's actual tos_symbol for the 2Y yield is 'DGS2:FRED' (matches
@@ -70,9 +75,10 @@ VALUES
   ('rates_duration', 'Rates & Duration', 'IEF',      'dual',  50)
 ON CONFLICT (area_key, member_symbol) DO NOTHING;
 
--- Credit (TASK_115: dedicated rail section — HYG/LQD also stay duplicated in
--- Major Markets/top9 above, same duplication precedent as $DXY/UUP in
--- top9+usd_currency). Matches /api/rr-bar's 'Credit' group exactly.
+-- Credit (TASK_115: dedicated rail section. HYG/LQD were briefly duplicated
+-- in Major Markets/top9 too -- same precedent as $DXY/UUP in top9+usd_
+-- currency -- but removed from top9 on 2026-07-04 per request, so Credit is
+-- now their only home). Matches /api/rr-bar's 'Credit' group exactly.
 INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order)
 VALUES
   ('credit', 'Credit', 'HYG', 'dual', 10),

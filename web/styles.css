@@ -1017,6 +1017,13 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   padding-right: 10px;
 }
 
+/* Mini-tape (2026-07-04): no separator between SPX and VIX specifically —
+   SPX is always the first BAR_MINI chip, so :first-child targets exactly
+   that border without touching the separators between any other tiles. */
+#rrTape1 .rr-chip:first-child {
+  border-right: none;
+}
+
 /* Candle SVG: fixed 7×20px (no CSS resizing — SVG height attribute controls size, no scaling). */
 svg.rr-candle {
   position: absolute;
@@ -1675,6 +1682,13 @@ svg.rr-candle {
    fixed width instead of flex:1 so the price column that follows lines up
    at the same x-position on every row, regardless of symbol length. */
 .msr-name-tick { flex: 0 0 44px; }
+/* Sectors ETF-proxy sub-row (2026-07-04): range-bar % label removed here
+   (railRangeBar's showPct=false) -- let the symbol column grow into that
+   freed space instead of leaving it blank, same as the per-sector row's
+   plain .msr-name (already flex:1). Overrides the fixed-width default
+   above; scoped to .msr-etf-row only, so railAreaRow's rows (which need
+   the fixed 44px for column alignment across areas) are unaffected. */
+.msr-etf-row .msr-name-tick { flex: 1 1 auto; min-width: 0; }
 .msr-price { font-size: 8px; color: var(--text-3, #94a3b8); white-space: nowrap;
              flex: 0 0 34px; overflow: hidden; text-overflow: ellipsis;
              font-variant-numeric: tabular-nums; text-align: right; }
@@ -1690,11 +1704,26 @@ svg.rr-candle {
 .msr-price-chg-flat { color: var(--text-3, #94a3b8); }
 /* Solid %chg chip (tape convention) — TASK_116, replaces .msr-price-chg in
    railAreaRow (etfProxyRowHtml/sector rows still use the plain-text variant
-   above, unchanged). */
+   above, unchanged). One decimal place (2026-07-04); fixed flex-basis sized
+   to always fit the worst case "-99.9%" (6 chars incl. sign+percent) with
+   room to spare, regardless of the actual value's digit count — plus
+   tabular-nums so the digits themselves don't jitter in width from row to
+   row. */
 .msr-chg { font-size: 10px; font-weight: 700; padding: 0 4px;
-           border-radius: 3px; min-width: 30px; text-align: center;
+           border-radius: 3px; text-align: center;
+           font-variant-numeric: tabular-nums;
            white-space: nowrap; box-sizing: border-box; display: inline-block;
-           color: #fff; flex-shrink: 0; }
+           color: #fff; flex: 0 0 46px; }
+/* Data cluster (non-gauge rail row, 2026-07-04): Td/Tn/range-bar/candle/
+   %chg chip grouped into one flex unit so they stay tightly packed next to
+   each other, with margin-left:auto on the WHOLE cluster (not just the
+   chip) pushing the entire group flush to the row's right edge — the gap
+   from filling leftover space now falls between SYM and the cluster, not
+   inside it. Not used by the Volatility/gauge row, which keeps its own
+   layout (chg sits before the trailing .msr-gauge badge, already adjacent
+   to the candle with no gap to close). */
+.msr-data-cluster { display: flex; align-items: center; gap: 2px;
+                     margin-left: auto; flex-shrink: 0; }
 /* Td/Tn diagonal labels — fixed width so the range bar that follows lines
    up at the same x-position on every row (arrow glyphs render at slightly
    different widths than the flat dash otherwise). */
@@ -1721,15 +1750,27 @@ svg.rr-candle {
 .msr-rb-tick.extreme { background: #ef4444; }
 .msr-pct { font-size: 10px; color: var(--text-2, #666);
            font-variant-numeric: tabular-nums; min-width: 18px; text-align: right; }
-/* Volatility gauge text — pushed to the far right of the row (nothing
-   follows it, unlike stance rows which have Td/Tn/bar after the price). */
+/* Volatility gauge text (investable/chop/elevated) — centered in the row
+   (2026-07-04), not pushed to the far right anymore. .msr-gauge-wrap is the
+   flexible middle section between SYM and the trailing volBar/candle/%chg
+   cluster (.msr-vol-cluster): flex:1 lets it absorb all the row's leftover
+   space, and justify-content:center centers the fixed-width badge inside
+   that space — the badge itself no longer needs its own margin-left:auto. */
+.msr-gauge-wrap { flex: 1 1 auto; display: flex; justify-content: center; min-width: 0; }
 .msr-gauge { font-size: 10px; font-weight: 700; padding: 1px 6px;
-             border-radius: 8px; margin-left: auto; width: 62px;
-             text-align: center; }
+             border-radius: 8px; width: 62px;
+             text-align: center; flex-shrink: 0; }
 .msr-gauge-g { background: #dcfce7; color: #166534; }
 .msr-gauge-a { background: #fef9c3; color: #854d0e; }
 .msr-gauge-r { background: #fee2e2; color: #991b1b; }
 .msr-gauge-vix { font-size: 9px; font-weight: 400; color: #6b7280; margin-left: 3px; }
+/* Trailing volBar/candle/%chg group for the Volatility row (2026-07-04) —
+   same tight-packing idea as .msr-data-cluster, but WITHOUT its own
+   margin-left:auto: .msr-gauge-wrap (flex:1, above) already consumes all
+   the row's free space, so this cluster naturally lands flush at the row's
+   right edge, matching the other panels' alignment, without competing with
+   the wrap for the same leftover space. */
+.msr-vol-cluster { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 /* Sectors multi-line block */
 .msr-sectors-block { align-items: flex-start; }
 .msr-sec-block { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 1px 0; }

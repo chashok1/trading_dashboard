@@ -6,14 +6,34 @@
  *   - Compact side-rail rows into #macroRailAreas (TASK_85 primary display)
  *   - Full-width collapsible card into #macroReadCard if present (legacy)
  *
- * Per-row compact layout (side rail, TASK_116 consolidation — see
+ * Per-row compact layout (side rail, TASK_116 consolidation, refined by
+ * several user requests through 2026-07-04 — see
  * docs/market_panel_consolidation_design.md):
- *   [quad glyph] [SYM] [candle] [Td] [Tn] [range bar+tick] [%chg chip]
  *
- * Volatility row: SYM colored by zone (not outlook); 3-zone volRangeBar
- *   (ported from market_bar.js via window.mtTip.volRangeBar) instead of
- *   Td/Tn+range bar; trailing zone badge kept.
- * Sectors row: unchanged — leaders/laggard summary + per-sector ETF proxy.
+ *   Regular area row:
+ *     [quad glyph][SYM] ... [Td][Tn][range bar+tick][candle][%chg chip]
+ *   Td/Tn/range-bar/candle/%chg are grouped into one `.msr-data-cluster`
+ *   flex unit (tight 2px internal gap) with `margin-left:auto` on the
+ *   WHOLE cluster, not the chip alone — so the group stays packed together
+ *   and is pushed flush to the row's right edge as a unit; the free space
+ *   lands between SYM and the cluster, not inside it.
+ *
+ *   Volatility (gauge) row:
+ *     [quad glyph][SYM zone-colored] ... [gauge badge, centered]
+ *       ... [volBar][candle][%chg chip] (flush right)
+ *   `.msr-gauge-wrap` (flex:1, justify-content:center) sits between SYM and
+ *   the trailing `.msr-vol-cluster` (volBar+candle+%chg, no auto-margin of
+ *   its own) — the wrap absorbs all the row's free space and centers the
+ *   badge inside it, which also has the side effect of pushing the
+ *   vol-cluster flush right (matching the other panels), since nothing
+ *   else in the row competes for that leftover space.
+ *
+ *   Sectors row (own rail section) — different anatomy, only change here is
+ *   railRangeBar(..., showPct=false): the trailing "NN%" range-bar label is
+ *   suppressed and the symbol/sector name column grows to fill that freed
+ *   space instead (`.msr-name` is already flex:1; `.msr-etf-row .msr-name-
+ *   tick` gets a scoped override for the same effect in the ETF sub-row,
+ *   which otherwise uses the fixed-width `.msr-name-tick`).
  */
 (function () {
   'use strict';
@@ -106,7 +126,7 @@
     var up = !flat && (inverted ? n < 0 : n > 0);
     var down = !flat && (inverted ? n > 0 : n < 0);
     var bg = up ? '#1d9e75' : down ? '#d4537e' : '#888';
-    var txt = flat ? '0.00%' : (n > 0 ? '+' : '') + n.toFixed(2) + '%';
+    var txt = flat ? '0.0%' : (n > 0 ? '+' : '') + n.toFixed(1) + '%';
     return '<span class="msr-chg" style="background:' + bg + ';">' + esc(txt) + '</span>';
   }
 
@@ -151,15 +171,21 @@
       _priceChgSpan({ last: etf.last, pct_change: etf.pct_change }) +
       durArrow(tradeDir, 'Td') +
       durArrow(trendDir, 'Tn') +
-      railRangeBar(etf.rr_pos, 0.8, 0.2) +
+      railRangeBar(etf.rr_pos, 0.8, 0.2, false) +
     '</div>';
   }
 
   /* ── range bar (compact rail version) ──────────────────────────────── */
-  function railRangeBar(rr_pos, hot_pct, cold_pct) {
+  // showPct (default true): the trailing "42%"-style label. railAreaRow's
+  // regular rows (2026-07-04) pass false since the row is already dense with
+  // the candle + Td/Tn + %chg chip; the tick + hover title (still present)
+  // carry the same info. Sectors call sites (etfProxyRowHtml, renderSectors-
+  // Panel) don't pass it, so they keep the label unchanged.
+  function railRangeBar(rr_pos, hot_pct, cold_pct, showPct) {
     if (rr_pos === null || rr_pos === undefined) {
       return '<span class="mra-muted" style="font-size:9px;">n/a</span>';
     }
+    if (showPct === undefined) showPct = true;
     var actualPct = Math.round(rr_pos * 100);   // unclamped, for the label
     var pct    = Math.max(0, Math.min(1, rr_pos));
     var tickPx = Math.round(pct * 100);          // clamped, for bar positioning
@@ -173,7 +199,7 @@
           '<div class="msr-rb-tick' + (extreme ? ' extreme' : '') +
                '" style="left:' + tickPx + '%"></div>' +
         '</div>' +
-        '<span class="msr-pct">' + actualPct + '%</span>' +
+        (showPct ? '<span class="msr-pct">' + actualPct + '%</span>' : '') +
       '</div>'
     );
   }
@@ -227,10 +253,14 @@
             '<span class="msr-name msr-name-tick" style="color:' + _zoneColor(zone) + ';">' +
               _msGlyph(m.monthly_score) + esc(m.label || area.label) +
             '</span>' +
-            _candleHtml(m) +
-            volBar +
-            _chgChipHtml(m.pct_change, m.inverted) +
-            '<span class="msr-gauge ' + gaugeClass + '">' + esc(zone) + '</span>' +
+            '<div class="msr-gauge-wrap">' +
+              '<span class="msr-gauge ' + gaugeClass + '">' + esc(zone) + '</span>' +
+            '</div>' +
+            '<div class="msr-vol-cluster">' +
+              volBar +
+              _candleHtml(m) +
+              _chgChipHtml(m.pct_change, m.inverted) +
+            '</div>' +
           '</div>'
         );
       }
@@ -239,11 +269,13 @@
           '<span class="msr-name msr-name-tick" style="color:' + _nameColor(m.outlook) + ';">' +
             _msGlyph(m.monthly_score) + esc(m.symbol) +
           '</span>' +
-          _candleHtml(m) +
-          durArrow(m.trade, 'Td') +
-          durArrow(m.trend, 'Tn') +
-          railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct) +
-          _chgChipHtml(m.pct_change, m.inverted) +
+          '<div class="msr-data-cluster">' +
+            durArrow(m.trade, 'Td') +
+            durArrow(m.trend, 'Tn') +
+            railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct, false) +
+            _candleHtml(m) +
+            _chgChipHtml(m.pct_change, m.inverted) +
+          '</div>' +
         '</div>'
       );
     }).join('');
@@ -273,7 +305,7 @@
         '<span class="msr-name">' + esc(s.sector) + '</span>' +
         durArrow(tradeDir,  'Td') +
         durArrow(trendDir,  'Tn') +
-        railRangeBar(score, 0.7, 0.3) +
+        railRangeBar(score, 0.7, 0.3, false) +
       '</div>' + etfProxyRowHtml(s.etf);
     }).join('');
 

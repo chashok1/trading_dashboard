@@ -68,6 +68,26 @@
     return 'mt-down';                     // red = elevated vol
   }
 
+  // Zone label shown in place of the symbol name on a volatility-gauge mini-
+  // tape chip (2026-07-04, user-specified strings, not abbreviations of the
+  // zone name) — mirrors volZoneCls's classes.
+  function _volZoneLabel(zoneCls) {
+    if (zoneCls === 'mt-up')   return 'Invst';
+    if (zoneCls === 'mt-chop') return 'Chop';
+    if (zoneCls === 'mt-down') return 'Fck';
+    return 'None';
+  }
+
+  // Solid background+text pill for the zone label (2026-07-04) — same
+  // colors as the side panel's .msr-gauge-g/-a/-r badge (macro_areas.js /
+  // styles.css), not just colored text.
+  function _volZoneBadgeStyle(zoneCls) {
+    if (zoneCls === 'mt-up')   return { bg: '#dcfce7', fg: '#166534' };
+    if (zoneCls === 'mt-chop') return { bg: '#fef9c3', fg: '#854d0e' };
+    if (zoneCls === 'mt-down') return { bg: '#fee2e2', fg: '#991b1b' };
+    return { bg: '#f3f4f6', fg: '#6b7280' };
+  }
+
   function escHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -313,23 +333,35 @@
     const staleCls = stale ? ' mt-stale' : '';
     const pctBg = pctCls === 'mt-up' ? '#1d9e75' : pctCls === 'mt-down' ? '#d4537e' : '#888';
     const pctBoxStyle = `background:${pctBg};color:#fff;`;
-    const zoneColor = volThresh
-      ? (volThresh.zone === 'mt-up' ? '#1d9e75' : volThresh.zone === 'mt-chop' ? '#eab308' : '#d4537e')
-      : null;
-    const symColor = zoneColor || outlookBg(ol);
+    const symColor = outlookBg(ol);
     const dataTip = tipObj ? ` data-tip="${escHtml(JSON.stringify(tipObj))}"` : '';
     const candle = ohlc ? _candleSvg(ohlc.o, ohlc.h, ohlc.l, ohlc.c) : '';
     const rb = volThresh
       ? volRangeBar(volThresh.value, volThresh.low, volThresh.high)
       : rangeBar(buy, sell, cur);
     const _pg = _msGlyphTape(scoreSym);
+    // Volatility-gauge tile (VIX, currently the only BAR_MINI item carrying a
+    // volThresh): show the zone label instead of the symbol name, styled as
+    // a solid background+text pill matching the side panel's .msr-gauge
+    // badge convention (not just colored text like other tiles), and drop
+    // the price chip entirely (2026-07-04, user request) -- data-sym stays
+    // the real instrument name for tooltip/click purposes, only the visible
+    // text changes.
+    const dispName = volThresh ? _volZoneLabel(volThresh.zone) : name;
+    const symStyle = volThresh
+      ? (function () {
+          const b = _volZoneBadgeStyle(volThresh.zone);
+          return `background:${b.bg}; color:${b.fg}; padding:0 2px; border-radius:3px; display:inline-block;`;
+        })()
+      : `color:${symColor};`;
+    const chgChip = volThresh ? '' : `<span class="mt-chg" style="${pctBoxStyle}">${pctStr}</span>`;
     return `<div class="rr-chip${staleCls}" data-sym="${escHtml(name)}"${dataTip} style="cursor:pointer;">` +
       `<div class="rr-chip-body">` +
       `<div class="rr-chip-sym-col">` +
-      `<span class="rr-sym" style="color:${symColor};">${_pg}${escHtml(name)}</span>` +
+      `<span class="rr-sym" style="${symStyle}">${_pg}${escHtml(dispName)}</span>` +
       rb +
       `</div>` +
-      `<span class="mt-chg" style="${pctBoxStyle}">${pctStr}</span>` +
+      chgChip +
       `</div>` +
       candle +
       `</div>`;
