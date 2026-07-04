@@ -8,9 +8,18 @@ Verifies that after running etl.fetch_quotes and re-deriving:
 4. 6/09 gap filled by yfinance
 5. Re-derive is idempotent (same values after second run)
 6. All five assets present for 6/23
+
+MOVED (TASK_114, 2026-07-04): relocated to tests/acceptance/ and marked
+@pytest.mark.acceptance — this is a one-time acceptance proof that a
+specific historical re-derive (as of 2026-06-23) produced specific
+correlation values, not a durable regression test (every later date makes
+the exact anchor/value pins fail by construction). See
+docs/audit/test_debt_review.md §2 and CLAUDE.md's Conventions list.
 """
 import pytest
 from datetime import date
+
+pytestmark = pytest.mark.acceptance
 
 ANCHOR_DATE = "2026-06-23"
 ANCHOR_DATE_OBJ = date(2026, 6, 23)

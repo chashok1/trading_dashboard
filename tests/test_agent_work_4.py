@@ -168,19 +168,17 @@ class TestPartA_API:
 class TestPartB_CommonJs:
     """B: ivGlyph SVG helper in web/_common.js."""
 
-    def test_B1_color_constants_defined(self):
-        src = _read(COMMON_JS)
-        for const in ("_IV_COLOR_IVP", "_IV_COLOR_HV", "_IV_COLOR_IV",
-                      "_IV_COLOR_UP", "_IV_COLOR_DOWN", "_IV_COLOR_PAR"):
-            assert const in src, \
-                f"_common.js must define color constant {const}"
-
-    def test_B2_iv_color_ivp_is_blue(self):
-        src = _read(COMMON_JS)
-        assert re.search(r"_IV_COLOR_IVP\s*=\s*'#185FA5'", src, re.IGNORECASE) or \
-               "_IV_COLOR_IVP  = '#185FA5'" in src or \
-               "_IV_COLOR_IVP = '#185FA5'" in src, \
-            "_IV_COLOR_IVP must be '#185FA5' (blue)"
+    # test_B1_color_constants_defined / test_B2_iv_color_ivp_is_blue —
+    # RETIRED (TASK_112 test-debt cleanup, 2026-07-04). The IVP bar is no
+    # longer a single flat color constant — it's a percentile-graduated
+    # gradient computed by a `_ivpBarColor(ivp)` helper (bright green <50,
+    # green-shading 50-70, red-shading 70-90, bright red >=90), a deliberate
+    # visual upgrade over the flat-blue original. `_IV_COLOR_IVP` no longer
+    # exists (0 matches). This is a superseded implementation (Cat B), not a
+    # renamed one — there's no single "current hex" to rewrite B2 against
+    # without re-pinning a fresh, equally-fragile snapshot (forbidden by the
+    # rewrite rules). `_ivpBarColor` existing/being used is implicitly
+    # covered by TestPartB_CommonJs's other passing structural checks below.
 
     def test_B3_iv_color_hv_is_light_gray(self):
         src = _read(COMMON_JS)
@@ -188,11 +186,11 @@ class TestPartB_CommonJs:
                "#B4B2A9" in src, \
             "_IV_COLOR_HV must be '#B4B2A9' (light gray)"
 
-    def test_B4_iv_color_iv_is_dark_gray(self):
-        src = _read(COMMON_JS)
-        assert re.search(r"_IV_COLOR_IV\s*=\s*'#5F5E5A'", src, re.IGNORECASE) or \
-               "#5F5E5A" in src, \
-            "_IV_COLOR_IV must be '#5F5E5A' (dark gray)"
+    # test_B4_iv_color_iv_is_dark_gray — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). `_IV_COLOR_IV` is now '#000000' (pure black) rather than
+    # '#5F5E5A' — a deliberate palette tweak as part of the same IV-bar
+    # redesign noted above. Cat A (fresh-palette-pin risk) per
+    # docs/audit/test_debt_review.md — not re-pinning the new hex here.
 
     def test_B5_iv_color_up_is_green(self):
         src = _read(COMMON_JS)
@@ -237,36 +235,18 @@ class TestPartB_CommonJs:
         assert "ivGlyph" in td_block.group(1), \
             "ivGlyph must be included in window.td_common"
 
-    def test_B11_bars_at_correct_x_positions(self):
-        """IVP at x=3, HV at x=10, IV at x=13.5 per spec."""
-        src = _read(COMMON_JS)
-        # Check the bar() calls inside ivGlyph use correct x positions
-        assert 'bar(3,' in src or 'bar(3 ,' in src, \
-            "ivGlyph must render IVP bar at x=3"
-        assert 'bar(10,' in src or 'bar(10 ,' in src, \
-            "ivGlyph must render HV bar at x=10"
-        assert 'bar(13.5,' in src or 'bar(13.5 ,' in src, \
-            "ivGlyph must render IV bar at x=13.5"
-
-    def test_B12_bracket_path_starts_at_M11_5(self):
-        """Bracket path must start at x=11.5 (HV bar right edge)."""
-        src = _read(COMMON_JS)
-        # Check for the bracket path tag
-        assert re.search(r'M11\.5\s', src), \
-            "ivGlyph bracket <path> must start at M11.5"
-
-    def test_B13_bracket_color_logic_uses_color_constants(self):
-        """discount > 2 -> IV cheap -> _IV_COLOR_UP; < -2 -> _IV_COLOR_DOWN."""
-        src = _read(COMMON_JS)
-        # The color-selection logic should reference > 2 and < -2
-        assert re.search(r'dc\s*>\s*2', src), \
-            "ivGlyph bracket color logic must test dc > 2 for cheap (green)"
-        assert re.search(r'dc\s*<\s*-2', src), \
-            "ivGlyph bracket color logic must test dc < -2 for rich (red)"
-        assert "_IV_COLOR_UP" in src, \
-            "ivGlyph bracket must reference _IV_COLOR_UP for cheap case"
-        assert "_IV_COLOR_DOWN" in src, \
-            "ivGlyph bracket must reference _IV_COLOR_DOWN for rich case"
+    # test_B11_bars_at_correct_x_positions / test_B12_bracket_path_starts_at_
+    # M11_5 / test_B13_bracket_color_logic_uses_color_constants — RETIRED
+    # (TASK_112 test-debt cleanup, 2026-07-04). ivGlyph's layout was
+    # redesigned along with the color scheme above: bars moved from
+    # x=3/10/13.5 to x=2/17/23 (wider VW=28 frame), the HV/IV "bracket"
+    # <path> tying their tops was removed entirely (0 matches for any M<n>
+    # bracket path), and the discrete dc>2/dc<-2 threshold was replaced by a
+    # continuous magnitude-scaled opacity (dc>0 green / dc<=0 red, alpha
+    # scaled by min(|dc|/30, 1)). This is a superseded visual implementation
+    # (Cat B/A — pixel-position and threshold pins), not a rename; rewriting
+    # against the new pixel positions/thresholds would just re-pin an
+    # equally fragile fresh snapshot, which the rewrite rules forbid.
 
     def test_B14_svg_has_role_img_and_aria_label(self):
         src = _read(COMMON_JS)
@@ -317,9 +297,23 @@ class TestPartC_ActionableJs:
             "actionable.js must NOT contain old local 'ivToHv'"
 
     def test_C1c_old_ivpColor_local_removed(self):
+        """REWRITTEN (TASK_112, 2026-07-04): a local named `ivpColor` exists
+        again in actionable.js (line ~2686), but it is no longer a duplicated
+        inline color computation — it delegates to the shared
+        `window._ivpBarColor()` helper in _common.js (the same single
+        source of truth ivGlyph itself uses). The original intent (no
+        duplicated color-computation logic in actionable.js) still holds;
+        only the "the literal string 'ivpColor' must be absent" assertion
+        was too strict for a same-named delegating variable. Assert the
+        actual intent: no *independent* color-math duplication.
+        """
         src = _read(ACTIONABLE_JS)
-        assert "ivpColor" not in src, \
-            "actionable.js must NOT contain old local 'ivpColor'"
+        assert "window._ivpBarColor" in src, \
+            "actionable.js's ivpColor local must delegate to the shared window._ivpBarColor() helper"
+        # Guard against regressing to a duplicated inline gradient (e.g. a
+        # local re-implementation with its own lp()/hx() color-lerp helpers).
+        assert "function _ivpBarColor" not in src, \
+            "actionable.js must not duplicate _ivpBarColor()'s implementation locally"
 
     def test_C1d_old_ivPctRing_local_removed(self):
         src = _read(ACTIONABLE_JS)
@@ -464,27 +458,12 @@ class TestDevHandoff:
         assert lines and lines[-1] == "ALL_DONE", \
             f"DEV_HANDOFF.md last non-blank line must be ALL_DONE, got {lines[-1]!r}"
 
-    def test_E2_references_agent_work_4(self):
-        content = _read(DEV_HANDOFF)
-        assert "AGENT_WORK_4" in content, \
-            "DEV_HANDOFF.md must reference AGENT_WORK_4"
-
-    def test_E3_documents_fraction_to_percent_conversion(self):
-        """Handoff must record that iv/hv are fractions and are multiplied by 100."""
-        content = _read(DEV_HANDOFF)
-        has_fraction = re.search(r'fraction|×100|\*100|multiply.*100|100.*fraction', content, re.IGNORECASE)
-        assert has_fraction is not None, \
-            "DEV_HANDOFF.md must document that iv/hv are stored as fractions (×100 applied)"
-
-    def test_E4_mentions_hv_or_historical_vol(self):
-        content = _read(DEV_HANDOFF)
-        assert "hv" in content or "historical_vol" in content, \
-            "DEV_HANDOFF.md must mention hv or historical_vol"
-
-    def test_E5_mentions_ivGlyph(self):
-        content = _read(DEV_HANDOFF)
-        assert "ivGlyph" in content, \
-            "DEV_HANDOFF.md must mention ivGlyph"
+    # test_E2_references_agent_work_4 / test_E3_documents_fraction_to_percent_
+    # conversion / test_E4_mentions_hv_or_historical_vol / test_E5_mentions_
+    # ivGlyph — RETIRED (TASK_112 test-debt cleanup, 2026-07-04). Same
+    # rolling DEV_HANDOFF.md content-pin pattern retired in
+    # test_agent_work_3.py / test_agent_work_1.py. Cat A per
+    # docs/audit/test_debt_review.md.
 
     def test_E6_status_is_all_done(self):
         content = _read(DEV_HANDOFF)

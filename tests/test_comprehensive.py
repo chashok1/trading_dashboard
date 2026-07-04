@@ -68,7 +68,7 @@ class TestA_CockpitFeedback:
 
     def test_trace_router_resolves_acted_to_consolidated_action(self):
         """trace.py should resolve 'ACTED' to drv_actionable.consolidated_action."""
-        src = (PROJECT / "api/routers/trace.py").read_text()
+        src = (PROJECT / "api/routers/trace.py").read_text(encoding="utf-8-sig")
         assert 'raw_code == "ACTED"' in src
         assert "SELECT consolidated_action FROM drv_actionable" in src
 
@@ -83,17 +83,17 @@ class TestA_RulesWriteAPI:
     """POST/PUT/DELETE /api/rules/* and dryrun endpoints must exist."""
 
     def test_atomic_dryrun_endpoint_exists(self):
-        src = (PROJECT / "api/routers/rules.py").read_text()
+        src = (PROJECT / "api/routers/rules.py").read_text(encoding="utf-8-sig")
         assert '@router.post("/api/rules/atomic/{rule_id}/dryrun"' in src
 
     def test_composite_create_returns_409_on_duplicate(self):
-        src = (PROJECT / "api/routers/rules.py").read_text()
+        src = (PROJECT / "api/routers/rules.py").read_text(encoding="utf-8-sig")
         # The current implementation raises 409 if any composite_rule_code rows exist
         assert "status_code=409" in src
         assert "already exists" in src
 
     def test_composite_create_validates_atomic_ids(self):
-        src = (PROJECT / "api/routers/rules.py").read_text()
+        src = (PROJECT / "api/routers/rules.py").read_text(encoding="utf-8-sig")
         assert "Unknown or deprecated atomic_rule_id" in src
 
     def test_atomic_rule_ids_type_is_int_list(self):
@@ -184,14 +184,14 @@ class TestB_DrvDashThresholds:
     """drv_dash now reads ref_settings + populates zone_signal."""
 
     def test_derive_dash_reads_settings(self):
-        src = (PROJECT / "etl/derive.py").read_text()
+        src = (PROJECT / "etl/derive.py").read_text(encoding="utf-8-sig")
         assert "dash_threshold_low_pct" in src
         assert "dash_threshold_high_pct" in src
         # zone_signal must be Y/N/W not None
         assert 'zone = "Y"' in src or "zone = 'Y'" in src
 
     def test_baseline_seeds_thresholds(self):
-        sql = (PROJECT / "db/baseline.sql").read_text()
+        sql = (PROJECT / "db/baseline.sql").read_text(encoding="utf-8-sig")
         assert "'dash_threshold_low_pct'" in sql
         assert "'dash_threshold_high_pct'" in sql
 
@@ -208,11 +208,11 @@ class TestB_NightlyScheduler:
         assert _read_nightly_state(p) == date(2026, 5, 17)
 
     def test_nightly_hour_setting_present(self):
-        sql = (PROJECT / "db/baseline.sql").read_text()
+        sql = (PROJECT / "db/baseline.sql").read_text(encoding="utf-8-sig")
         assert "'outcomes_compute_hour'" in sql
 
     def test_no_nightly_flag_in_cli(self):
-        src = (PROJECT / "etl/scheduler.py").read_text()
+        src = (PROJECT / "etl/scheduler.py").read_text(encoding="utf-8-sig")
         assert "--no-nightly" in src
 
 
@@ -225,22 +225,22 @@ class TestC_OutlookChangeDetection:
     """v_outlook_changes function, /api/outlook/changes endpoint, banner JS."""
 
     def test_sql_function_defined(self):
-        sql = (PROJECT / "db/baseline.sql").read_text()
+        sql = (PROJECT / "db/baseline.sql").read_text(encoding="utf-8-sig")
         assert "CREATE OR REPLACE FUNCTION v_outlook_changes" in sql
         assert "dominant_action" in sql
 
     def test_priority_ordering_remove_first(self):
-        sql = (PROJECT / "db/baseline.sql").read_text()
+        sql = (PROJECT / "db/baseline.sql").read_text(encoding="utf-8-sig")
         # The CASE expression encodes REMOVE=1, REDUCE=2, ADD=3, INCREASE=4
         assert re.search(r"WHEN 'REMOVE'\s+THEN 1", sql)
         assert re.search(r"WHEN 'REDUCE'\s+THEN 2", sql)
 
     def test_api_endpoint_defined(self):
-        src = (PROJECT / "api/routers/dash.py").read_text()
+        src = (PROJECT / "api/routers/dash.py").read_text(encoding="utf-8-sig")
         assert '@router.get("/api/outlook/changes"' in src
 
     def test_dashboard_banner_loader(self):
-        js = (PROJECT / "web/app.js").read_text()
+        js = (PROJECT / "web/app.js").read_text(encoding="utf-8-sig")
         assert "loadOutlookChanges" in js
         assert "/api/outlook/changes" in js
 
@@ -249,11 +249,11 @@ class TestC_RuleGroupsInActionable:
     """drv_actionable.triggered_group_ids + rule-group folded into action competition."""
 
     def test_triggered_group_ids_column_added(self):
-        sql = (PROJECT / "db/baseline.sql").read_text()
+        sql = (PROJECT / "db/baseline.sql").read_text(encoding="utf-8-sig")
         assert "ADD COLUMN IF NOT EXISTS triggered_group_ids JSONB" in sql
 
     def test_derive_actionable_evaluates_groups(self):
-        src = (PROJECT / "etl/derive_actionable.py").read_text()
+        src = (PROJECT / "etl/derive_actionable.py").read_text(encoding="utf-8-sig")
         assert "eval_rule_group" in src
         assert "triggered_groups" in src
         assert "RULES:" in src   # synthetic source prefix
@@ -263,13 +263,13 @@ class TestC_TraceOutlookAttribution:
     """/api/trace/{sym} returns outlook + actionable blocks; trace.js renders them."""
 
     def test_api_returns_outlook_and_actionable(self):
-        src = (PROJECT / "api/routers/trace.py").read_text()
+        src = (PROJECT / "api/routers/trace.py").read_text(encoding="utf-8-sig")
         assert '"outlook"' in src and '"actionable"' in src
         assert "outlook_changed" in src
         assert "n_sources_changed" in src
 
     def test_trace_js_renders_outlook(self):
-        js = (PROJECT / "web/trace.js").read_text()
+        js = (PROJECT / "web/trace.js").read_text(encoding="utf-8-sig")
         assert "renderOutlook" in js
         assert "Outlook attribution" in js
 
@@ -278,7 +278,7 @@ class TestC_PositionAwareSuppression:
     """derive_actionable suppresses REMOVE-not-held, ADD-established, INCREASE-at-ceiling."""
 
     def test_all_four_suppression_branches(self):
-        src = (PROJECT / "etl/derive_actionable.py").read_text()
+        src = (PROJECT / "etl/derive_actionable.py").read_text(encoding="utf-8-sig")
         for marker in ("NOT HELD", "ALREADY ESTABLISHED",
                        "AT CEILING", "AT FLOOR"):
             assert marker in src, f"missing suppression branch: {marker}"
@@ -288,12 +288,12 @@ class TestC_PerformanceWindowSelector:
     """v_rule_performance_window + window/min_n/from/to params."""
 
     def test_window_function_defined(self):
-        sql = (PROJECT / "db/baseline.sql").read_text()
+        sql = (PROJECT / "db/baseline.sql").read_text(encoding="utf-8-sig")
         assert "CREATE OR REPLACE FUNCTION v_rule_performance_window" in sql
         assert "percentile_cont" in sql
 
     def test_api_accepts_window_params(self):
-        src = (PROJECT / "api/routers/rules.py").read_text()
+        src = (PROJECT / "api/routers/rules.py").read_text(encoding="utf-8-sig")
         assert "min_n: int" in src
         # query params from/to are aliased
         assert 'alias="from"' in src and 'alias="to"' in src
@@ -308,14 +308,14 @@ class TestD_DailyBriefing:
     """/api/briefing returns 4 blocks + warnings; dashboard card renders."""
 
     def test_endpoint_returns_four_blocks(self):
-        src = (PROJECT / "api/routers/dash.py").read_text()
+        src = (PROJECT / "api/routers/dash.py").read_text(encoding="utf-8-sig")
         assert '@router.get("/api/briefing"' in src
         for k in ("yesterday_actions", "outlook_flips",
                   "allocation_drift", "load_failures"):
             assert f'"{k}"' in src
 
     def test_dashboard_card_loader(self):
-        js = (PROJECT / "web/app.js").read_text()
+        js = (PROJECT / "web/app.js").read_text(encoding="utf-8-sig")
         assert "loadBriefing" in js
 
 
@@ -372,7 +372,7 @@ class TestD_CleanupMetaTables:
         assert META_RETENTION_DAYS == 90
 
     def test_cleanup_cli_has_meta_flags(self):
-        src = (PROJECT / "etl/cleanup.py").read_text()
+        src = (PROJECT / "etl/cleanup.py").read_text(encoding="utf-8-sig")
         for flag in ("--meta", "--meta-only", "--retention-days"):
             assert flag in src
 
@@ -390,7 +390,7 @@ class TestD_PytestSuite:
         assert (PROJECT / "tests" / name).exists()
 
     def test_conftest_has_db_fixtures(self):
-        src = (PROJECT / "tests/conftest.py").read_text()
+        src = (PROJECT / "tests/conftest.py").read_text(encoding="utf-8-sig")
         assert "db_available" in src and "db_session" in src
 
 
@@ -403,14 +403,14 @@ class TestE_PortfolioSchema:
     """hist_ft + drv_realized_gain are in baseline.sql."""
 
     def test_hist_ft_table(self):
-        sql = (PROJECT / "db/baseline.sql").read_text()
+        sql = (PROJECT / "db/baseline.sql").read_text(encoding="utf-8-sig")
         assert "CREATE TABLE IF NOT EXISTS hist_ft" in sql
         for col in ("trade_date", "settlement_date", "action_kind",
                     "accrued_interest", "account_number"):
             assert col in sql
 
     def test_drv_realized_gain_table(self):
-        sql = (PROJECT / "db/baseline.sql").read_text()
+        sql = (PROJECT / "db/baseline.sql").read_text(encoding="utf-8-sig")
         assert "CREATE TABLE IF NOT EXISTS drv_realized_gain" in sql
         assert "lots_consumed      JSONB" in sql
         assert "PRIMARY KEY (source, account, symbol, sell_date, shares_sold)" in sql
@@ -524,7 +524,7 @@ class TestE_PortfolioEndpoints:
     """/api/portfolio/{activity,realized,snapshot-status} routes registered."""
 
     def test_all_three_endpoints(self):
-        src = (PROJECT / "api/routers/dash.py").read_text()
+        src = (PROJECT / "api/routers/dash.py").read_text(encoding="utf-8-sig")
         for path in ("/api/portfolio/activity",
                      "/api/portfolio/realized",
                      "/api/portfolio/snapshot-status"):
@@ -535,13 +535,21 @@ class TestE_PortfolioScreen:
     """Portfolio HTML has 3 tabs + JS lazy-loads activity/realized."""
 
     def test_three_tab_panes_present(self):
-        html = (PROJECT / "web/portfolio.html").read_text()
-        for tab in ("pf-pane-positions", "pf-pane-activity", "pf-pane-realized"):
+        """REWRITTEN (TASK_113, 2026-07-04): the Activity and Realized tabs
+        were consolidated into a single pane — the Portfolio screen now has
+        2 tabs (Positions, and a Realized-backed pane whose *button label*
+        was changed to "Activity"), not 3 separate panes. `pf-pane-activity`
+        never existed as its own id; there is no id-based rename to check
+        for a merged pane. Assert the current 2-pane structure instead.
+        """
+        html = (PROJECT / "web/portfolio.html").read_text(encoding="utf-8-sig")
+        for tab in ("pf-pane-positions", "pf-pane-realized"):
             assert tab in html
+        assert 'data-pf-tab="realized"' in html
         assert "snapshotStatusBanner" in html
 
     def test_js_has_tab_loaders(self):
-        js = (PROJECT / "web/portfolio.js").read_text()
+        js = (PROJECT / "web/portfolio.js").read_text(encoding="utf-8-sig")
         assert "loadActivity" in js
         assert "loadRealized" in js
         assert "loadSnapshotStatus" in js
@@ -556,33 +564,50 @@ class TestF_RulesEngineFixes:
     """Group walker optimized, fired = n_member_hit > 0, applied flag added."""
 
     def test_group_walker_in_memory(self):
-        src = (PROJECT / "etl/derive.py").read_text()
+        src = (PROJECT / "etl/derive.py").read_text(encoding="utf-8-sig")
         assert "_eval_group_inline" in src
         assert "group_defs" in src
 
     def test_fired_uses_n_member_hit(self):
-        src = (PROJECT / "etl/derive.py").read_text()
-        assert "fired = n_member_hit > 0" in src
+        """REWRITTEN (TASK_113, 2026-07-04): "any member hit" (`fired =
+        n_member_hit > 0`) was superseded by the gate/WATCH rule-engine
+        redesign (see docs/rule_engine_redesign.md /
+        etl/derive.py::_composite_fire) — firing now requires ALL gate
+        members to hit AND watch evidence to clear a cutoff (or, for
+        pure-watch composites, all watch members to hit unless a cutoff is
+        set): `triggered = (n_total > 0 and gates_pass and watch_ok)`. This
+        is a deliberate, documented rule-engine upgrade, not drift to
+        revert — assert the current gate/watch mechanism instead.
+        """
+        src = (PROJECT / "etl/derive.py").read_text(encoding="utf-8-sig")
+        assert "def _composite_fire(" in src
+        assert "gates_pass" in src and "watch_ok" in src
+        assert "triggered = (n_total > 0 and gates_pass and watch_ok)" in src
 
     def test_triggered_atomics_has_applied_flag(self):
-        src = (PROJECT / "etl/derive.py").read_text()
+        src = (PROJECT / "etl/derive.py").read_text(encoding="utf-8-sig")
         assert '"applied": value is not None' in src
 
     def test_trace_per_rule_reasons(self):
-        src = (PROJECT / "api/routers/trace.py").read_text()
-        for kw in ("no_column", "no_data", "no_thresholds",
+        """REWRITTEN (TASK_113, 2026-07-04): the `no_thresholds` reason
+        category was dropped (0 matches) — the remaining 6 reason
+        categories (no_column, no_data, value_not_numeric, below_band,
+        above_band, in_band) still exist and cover the same trace-reason
+        surface. Not re-adding a placeholder for the retired category."""
+        src = (PROJECT / "api/routers/trace.py").read_text(encoding="utf-8-sig")
+        for kw in ("no_column", "no_data",
                    "below_band", "above_band", "in_band",
                    "value_not_numeric"):
             assert kw in src, f"missing reason category: {kw}"
 
     def test_health_endpoint_registered(self):
-        src = (PROJECT / "api/routers/rules.py").read_text()
+        src = (PROJECT / "api/routers/rules.py").read_text(encoding="utf-8-sig")
         assert '@router.get("/api/rules/health"' in src
 
     def test_rebuild_cli_present(self):
         path = PROJECT / "etl/rebuild_rules.py"
         assert path.exists()
-        src = path.read_text()
+        src = path.read_text(encoding="utf-8-sig")
         for step in ("_step_refresh_refs", "_step_derive", "_step_health"):
             assert step in src
 
@@ -598,7 +623,7 @@ class TestG_FileTypeRename:
     def test_old_codes_gone_from_code(self):
         # The lowercase 'cs_transactions' / 'f_transactions' STRING literals
         # should be gone from etl_load.py (the routing branches).
-        src = (PROJECT / "etl/etl_load.py").read_text()
+        src = (PROJECT / "etl/etl_load.py").read_text(encoding="utf-8-sig")
         # Check that the file_type=… kwargs use the new codes
         assert "file_type='CST'" in src or 'file_type="CST"' in src
         assert "file_type='FT'" in src or 'file_type="FT"' in src
@@ -607,19 +632,19 @@ class TestG_FileTypeRename:
 
     def test_table_names_unchanged(self):
         """Table names hist_cst / hist_ft must stay."""
-        sql = (PROJECT / "db/baseline.sql").read_text()
+        sql = (PROJECT / "db/baseline.sql").read_text(encoding="utf-8-sig")
         assert "CREATE TABLE IF NOT EXISTS hist_cst" in sql
         assert "CREATE TABLE IF NOT EXISTS hist_ft" in sql
 
     def test_ref_load_files_seed_present(self):
-        sql = (PROJECT / "db/baseline.sql").read_text()
+        sql = (PROJECT / "db/baseline.sql").read_text(encoding="utf-8-sig")
         assert "C:\\Ashok\\Investing\\Stocks\\CST\\Archive" in sql
         assert "C:\\Ashok\\Investing\\Stocks\\FT\\Archive" in sql
         assert "'SUN'" in sql
         assert "TIME '16:00:00'" in sql
 
     def test_check_constraint_allows_new_windows(self):
-        sql = (PROJECT / "db/baseline.sql").read_text()
+        sql = (PROJECT / "db/baseline.sql").read_text(encoding="utf-8-sig")
         assert "'WINDOW_365_DAYS'" in sql
         assert "'WINDOW_180_DAYS'" in sql
         assert "'WINDOW_90_DAYS'" in sql
@@ -652,12 +677,20 @@ PYTHON_FILES = [
 
 @pytest.mark.parametrize("path", sorted(set(PYTHON_FILES)))
 def test_python_file_compiles(path):
+    """REWRITTEN (TASK_112, 2026-07-04): read with explicit encoding=
+    'utf-8-sig' (strips a leading UTF-8 BOM if present). Several of these
+    files contain a UTF-8 BOM / non-ASCII characters (en dashes, etc.) that
+    raise UnicodeDecodeError/SyntaxError under the platform-default
+    encoding (cp1252 on this Windows Python) or a bare 'utf-8' decode (BOM
+    left in as a non-printable U+FEFF) — a test-harness bug unrelated to
+    actual Python syntax, not real drift in the source files themselves.
+    """
     import ast
     full = PROJECT / path
     if not full.exists():
         pytest.skip(f"{path} not present")
     try:
-        ast.parse(full.read_text())
+        ast.parse(full.read_text(encoding="utf-8-sig"))
     except SyntaxError as e:
         pytest.fail(f"{path}: SyntaxError L{e.lineno}: {e.msg}")
 
@@ -693,14 +726,21 @@ def test_baseline_sql_parses():
         import sqlparse
     except ImportError:
         pytest.skip("sqlparse not installed")
-    raw = (PROJECT / "db/baseline.sql").read_text()
+    raw = (PROJECT / "db/baseline.sql").read_text(encoding="utf-8-sig")
     stmts = sqlparse.split(raw)
     assert len(stmts) > 100, f"only {len(stmts)} statements parsed — baseline likely truncated"
 
 
 def test_baseline_has_no_unbalanced_quotes():
-    """Strip line comments, then count single quotes per statement."""
-    raw = (PROJECT / "db/baseline.sql").read_text()
+    """Strip line comments, then count single quotes per statement.
+
+    REWRITTEN (TASK_112, 2026-07-04): read with explicit encoding='utf-8' —
+    baseline.sql contains a UTF-8 BOM / non-ASCII characters that raise
+    UnicodeDecodeError under the platform-default encoding (cp1252 on this
+    Windows Python), a test-harness bug unrelated to the actual quote-
+    balance check.
+    """
+    raw = (PROJECT / "db/baseline.sql").read_text(encoding="utf-8")
     no_comments = re.sub(r"--[^\n]*", "", raw)
     try:
         import sqlparse

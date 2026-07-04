@@ -105,32 +105,36 @@ ACTIONABLE_JS = (ROOT / "web" / "actionable.js").read_text(encoding="utf-8")
 # ---------------------------------------------------------------------------
 # 9. No layout/markup changes — structural elements not touched
 # ---------------------------------------------------------------------------
-# NOTE (TASK_111, 2026-07-04): TestNoLayoutChanges kept per task spec — it
-# does not currently pass in full (test_all_column_headers_present fails on
-# 'Pos $') and is not a pure palette/hex snapshot, so it is deferred to
-# TASK_112 rather than retired here (see docs/audit/test_debt_review.md
-# Cat C — drifted behavioral test, judgment call).
+# REWRITTEN (TASK_112, 2026-07-04): TestNoLayoutChanges::test_all_column_
+# headers_present drifted because the header *captions* were re-cased/
+# reworded since June 2026 ('Pos $' -> 'POS$', '%chg / Price' -> '%CHG', the
+# 'Final Call' column is now captioned 'ACTION'). The feature (the grid has a
+# fixed, identifiable set of columns) is unchanged — only the display text
+# did. Rewritten to assert the durable `data-col="..."` schema identifiers on
+# the <th> elements instead of the cosmetic caption strings, so future
+# re-captioning doesn't re-break this test the same way.
 
 class TestNoLayoutChanges:
     """Confirm that markup/column/structural elements were not modified."""
 
-    REQUIRED_COLUMNS = [
-        "Pos $",
-        "%chg / Price",
-        "Pri",
-        "Symbol",
-        "Final Call",
-        "AMT$",
-        "Sources",
-        "Technical",
-        "Rules (edge)",
-        "Act",
+    # data-col identifiers on the act-grid <th> elements — the stable schema
+    # identity of each column, independent of its (cosmetic) display caption.
+    REQUIRED_DATA_COLS = [
+        "pos",
+        "amt",
+        "chg",
+        "sym",
+        "action",
+        "sources",
+        "technical",
+        "rules",
+        "act",
     ]
 
     def test_all_column_headers_present(self):
-        for col in self.REQUIRED_COLUMNS:
-            assert col in ACTIONABLE_HTML, \
-                f"Expected column header '{col}' missing from actionable.html"
+        for col in self.REQUIRED_DATA_COLS:
+            assert f'data-col="{col}"' in ACTIONABLE_HTML, \
+                f"Expected column data-col='{col}' missing from actionable.html"
 
     def test_act_grid_table_present(self):
         assert 'class="act-grid"' in ACTIONABLE_HTML or \
@@ -165,12 +169,14 @@ class TestNoLayoutChanges:
 # ---------------------------------------------------------------------------
 # 10. File integrity — last lines are not truncated
 # ---------------------------------------------------------------------------
-# NOTE (TASK_111, 2026-07-04): TestFileTails kept per task spec — it does not
-# currently pass in full (test_actionable_html_has_tradingview_widget fails,
-# the TV widget string is absent from actionable.html) and is not a pure
-# palette/hex snapshot, so it is deferred to TASK_112 rather than retired
-# here (see docs/audit/test_debt_review.md Cat C — drifted behavioral test,
-# judgment call).
+# REWRITTEN (TASK_112, 2026-07-04): test_actionable_html_has_tradingview_
+# widget drifted because the TV tape markup moved from static HTML to a
+# dynamic injection by `_initTvToggle()` in actionable.js (confirmed via grep
+# — actionable.html tail now has a `#tv-tape-wrapper` placeholder + comment
+# pointing at the JS; the `tradingview-widget-container` class literal now
+# lives in actionable.js, built at runtime). The feature still exists, just
+# relocated — rewritten to check each file for its own current tail marker
+# rather than re-pinning a snapshot.
 
 class TestFileTails:
     """Verify file tails are not truncated (CLAUDE.md file-truncation warning)."""
@@ -191,7 +197,15 @@ class TestFileTails:
         assert ".act-src-label" in STYLES_CSS, \
             "styles.css appears truncated — .act-src-label block missing"
 
-    def test_actionable_html_has_tradingview_widget(self):
-        """TV tape at bottom of file should be present."""
-        assert "tradingview-widget-container" in ACTIONABLE_HTML, \
-            "actionable.html appears truncated — TradingView widget missing"
+    def test_actionable_html_has_tv_tape_placeholder(self):
+        """TV tape placeholder (filled in at runtime by actionable.js) should be present."""
+        assert 'id="tv-tape-wrapper"' in ACTIONABLE_HTML, \
+            "actionable.html appears truncated — #tv-tape-wrapper placeholder missing"
+
+    def test_actionable_js_has_tradingview_widget_builder(self):
+        """The TV widget-building code that fills the placeholder should be present
+        (not truncated) in actionable.js, where it now lives at runtime."""
+        assert "tradingview-widget-container" in ACTIONABLE_JS, \
+            "actionable.js appears truncated — TradingView widget builder missing"
+        assert "_initTvToggle" in ACTIONABLE_JS, \
+            "actionable.js appears truncated — _initTvToggle() missing"

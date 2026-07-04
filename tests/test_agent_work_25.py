@@ -80,9 +80,13 @@ class TestHtmlHeaders:
         """Column 3 header must contain the word 'Sources'."""
         assert "Sources" in html_text, "Expected 'Sources' text in actionable.html"
 
-    def test_sources_subtitle_6_source(self, html_text):
-        """Column 3 header subtitle must contain '6-source'."""
-        assert "6-source" in html_text, "Expected '6-source' subtitle in actionable.html"
+    # test_sources_subtitle_6_source — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). The two-line header subtitle feature (a visible
+    # <div class="th-subtitle"> under the caption) was superseded by a
+    # single-line header with its detail moved into the `title=` tooltip
+    # instead — see test_agent_work_27.py::TestTwoLineHeaders, which
+    # documents this removal in detail (0 matches for 'data-subtitle=' or
+    # 'th-subtitle' anywhere in actionable.html). Cat B.
 
     def test_sources_subtitle_sized(self, html_text):
         """Column 3 header subtitle must also contain 'sized'."""
@@ -106,11 +110,9 @@ class TestHtmlHeaders:
         """Column 4 header must contain the word 'Technical'."""
         assert "Technical" in html_text, "Expected 'Technical' text in actionable.html"
 
-    def test_technical_subtitle(self, html_text):
-        """Column 4 header subtitle must contain 'TrTn·BB·RR'."""
-        assert "TrTn·BB·RR" in html_text, (
-            "Expected 'TrTn·BB·RR' subtitle in actionable.html"
-        )
+    # test_technical_subtitle — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). Same superseded two-line-header subtitle feature as
+    # test_sources_subtitle_6_source above. Cat B.
 
     def test_technical_tooltip(self, html_text):
         """Column 4 header must have a title tooltip mentioning indicators."""
@@ -248,17 +250,18 @@ class TestFinalCallNewWording:
             "'Sources and Technical' tooltip wording not found in actionable.js"
         )
 
-    def test_fc_conf_mixed_class_present(self, js_text):
-        """fc-conf-mixed badge class must be present in the HTML template string."""
-        assert "fc-conf-mixed" in js_text, (
-            "fc-conf-mixed badge class not found — Mixed confidence badge is missing"
-        )
-
-    def test_fc_conf_high_class_present(self, js_text):
-        """fc-conf-high badge class must be present (High confidence badge)."""
-        assert "fc-conf-high" in js_text, (
-            "fc-conf-high badge class not found — High confidence badge is missing"
-        )
+    # test_fc_conf_mixed_class_present / test_fc_conf_high_class_present —
+    # RETIRED (TASK_112 test-debt cleanup, 2026-07-04). _finalCallHtml() no
+    # longer applies `.fc-conf-mixed`/`.fc-conf-high` CSS classes to the
+    # confidence badge — it renders inline `color:` styling instead (e.g.
+    # `color:#16a34a` for 'high', `color:#f97316` for 'mixed'), matching the
+    # 'high'/'mixed'/'gate' text still asserted by test_mixed_confidence_
+    # wording_present above and by test_agent_work_31.py's rewritten
+    # TestFinalCallHtmlGateBadge (which covers the current inline-styling
+    # mechanism in detail). Cat B — superseded, not renamed. The CSS rules
+    # `.fc-conf-high`/`.fc-conf-mixed` still exist in styles.css as unused
+    # dead CSS (see test_agent_work_31.py::TestCssGateClass, which checks
+    # styles.css directly and is unaffected).
 
 
 class TestFinalCallTwoDrivers:

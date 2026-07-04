@@ -170,7 +170,11 @@ class TestEndpointReadsCorrectTables:
     def setup_method(self):
         func_start = _read(HEALTH_PY).find("def get_quad_band_factors(")
         assert func_start != -1
-        self.func_body = _read(HEALTH_PY)[func_start: func_start + 3000]
+        # REWRITTEN (TASK_112, 2026-07-04): widened from 3000 to 6000 chars —
+        # get_quad_band_factors() grew (added _argmax_quad/_eff_quad/_quad_col
+        # helpers + extra SQL queries) past the original window, pushing
+        # monthly_score/qtr_dir/category strings out of it.
+        self.func_body = _read(HEALTH_PY)[func_start: func_start + 6000]
 
     def test_reads_ref_quad_periods(self):
         """Endpoint must query ref_quad_periods."""
@@ -194,12 +198,18 @@ class TestEndpointReadsCorrectTables:
         )
 
     def test_filters_style_sector_categories(self):
-        """Endpoint must filter ref_quad_outlook by category IN ('style','sector')."""
-        assert "'style'" in self.func_body or '"style"' in self.func_body, (
-            "get_quad_band_factors() does not filter by category 'style'"
+        """Endpoint must filter ref_quad_outlook by the style/sector categories.
+
+        REWRITTEN (TASK_112, 2026-07-04): the literal category values are
+        now 'Equity Style' / 'Equity Sectors' (matching ref_quad_outlook's
+        actual category column values), not the lowercase 'style'/'sector'
+        placeholders this test originally checked for.
+        """
+        assert "Equity Style" in self.func_body, (
+            "get_quad_band_factors() does not filter by category 'Equity Style'"
         )
-        assert "'sector'" in self.func_body or '"sector"' in self.func_body, (
-            "get_quad_band_factors() does not filter by category 'sector'"
+        assert "Equity Sectors" in self.func_body, (
+            "get_quad_band_factors() does not filter by category 'Equity Sectors'"
         )
 
 
@@ -209,7 +219,11 @@ class TestPythonSideComputation:
     def setup_method(self):
         func_start = _read(HEALTH_PY).find("def get_quad_band_factors(")
         assert func_start != -1
-        self.func_body = _read(HEALTH_PY)[func_start: func_start + 3000]
+        # REWRITTEN (TASK_112, 2026-07-04): widened from 3000 to 6000 chars —
+        # get_quad_band_factors() grew (added _argmax_quad/_eff_quad/_quad_col
+        # helpers + extra SQL queries) past the original window, pushing
+        # monthly_score/qtr_dir/category strings out of it.
+        self.func_body = _read(HEALTH_PY)[func_start: func_start + 6000]
 
     def test_stance_dict_defined_in_python(self):
         """STANCE dict must be defined in Python (not in SQL)."""
@@ -263,119 +277,29 @@ class TestPythonSideComputation:
                 )
 
 
-# ─── Criterion 6: #macroBandFactors span in HTML ─────────────────────────────
+# TestHtmlMacroBandFactors / TestJsFunctions — RETIRED (TASK_112 test-debt
+# cleanup, 2026-07-04). The dedicated pill-strip rendering of bull/bear
+# factors in the #macroBand regime strip (#macroBandFactors span,
+# _renderBandFactors(), .qf-group/.qf-pill-*/.qf-arrow-* classes) was
+# removed from the UI entirely (confirmed 0 matches for
+# 'macroBandFactors'/'_renderBandFactors' anywhere in web/). The backend
+# endpoint (/api/quad/band-factors) is NOT dead, though — loadMacroBand()
+# still fetches it and caches the result as `state.quadFactors` (see its own
+# comment: "cached from /api/quad/band-factors for MACRO tooltip"). The
+# bull/bear factor data was repurposed into the per-symbol MACRO column's
+# hover tooltip (see docs/quad_design.md's "single MACRO column" design)
+# instead of a dedicated pill strip in the regime band. Cat B — superseded
+# UI presentation, not a renamed function/element; the underlying data flow
+# survives in a different place.
+
 
 class TestHtmlMacroBandFactors:
-    def setup_method(self):
-        self.html = _read(ACTIONABLE_HTML)
+    pass
 
-    def test_macro_band_factors_span_exists(self):
-        """#macroBandFactors span must exist in actionable.html."""
-        assert 'id="macroBandFactors"' in self.html, (
-            "#macroBandFactors span not found in actionable.html"
-        )
-
-    def test_macro_band_factors_inside_macro_band_div(self):
-        """#macroBandFactors must appear inside #macroBand div."""
-        band_start = self.html.find('id="macroBand"')
-        assert band_start != -1, "#macroBand div not found in actionable.html"
-        # Find the closing </div> for macroBand (look for macroBandFactors after band_start)
-        factors_pos = self.html.find('id="macroBandFactors"')
-        assert factors_pos != -1
-        assert factors_pos > band_start, (
-            "#macroBandFactors appears before #macroBand — must be nested inside it"
-        )
-        # Check that macroBandFactors appears before the next closing div after macroBand
-        next_outer_close = self.html.find("<!-- MACRO", band_start)  # comment after block
-        if next_outer_close == -1:
-            # Fall back: just verify order (band before factors before end of page)
-            assert factors_pos > band_start
-
-    def test_pipe_separator_before_macro_band_factors(self):
-        """A | separator must appear between Favoring and macroBandFactors spans."""
-        # Check that there's a separator span between macroBandFavoring and macroBandFactors
-        favoring_pos = self.html.find('id="macroBandFavoring"')
-        factors_pos = self.html.find('id="macroBandFactors"')
-        assert favoring_pos != -1, "macroBandFavoring span not found"
-        assert factors_pos != -1, "macroBandFactors span not found"
-        between = self.html[favoring_pos: factors_pos]
-        # Expect a | separator between the two spans
-        assert "|" in between, (
-            "No | separator found between #macroBandFavoring and #macroBandFactors "
-            "in actionable.html (expected per DEV_HANDOFF)"
-        )
-
-
-# ─── Criteria 7-10: _renderBandFactors() and loadMacroBand() in JS ───────────
 
 class TestJsFunctions:
     def setup_method(self):
         self.src = _read(ACTIONABLE_JS)
-
-    def test_render_band_factors_function_exists(self):
-        """_renderBandFactors() must be defined in actionable.js."""
-        assert "_renderBandFactors" in self.src, (
-            "_renderBandFactors() not found in actionable.js"
-        )
-
-    def test_render_band_factors_reads_macroBandFactors_element(self):
-        """_renderBandFactors() must reference the #macroBandFactors DOM element."""
-        body = _func_body(self.src, "_renderBandFactors", max_len=2000)
-        assert "macroBandFactors" in body, (
-            "_renderBandFactors() does not reference #macroBandFactors element"
-        )
-
-    def test_render_band_factors_uses_bull_group_label(self):
-        """_renderBandFactors() must render a Bull group label."""
-        body = _func_body(self.src, "_renderBandFactors", max_len=2000)
-        assert "qf-label-bull" in body or "Bull" in body, (
-            "_renderBandFactors() does not render a Bull group label"
-        )
-
-    def test_render_band_factors_uses_bear_group_label(self):
-        """_renderBandFactors() must render a Bear group label."""
-        body = _func_body(self.src, "_renderBandFactors", max_len=2000)
-        assert "qf-label-bear" in body or "Bear" in body, (
-            "_renderBandFactors() does not render a Bear group label"
-        )
-
-    def test_render_band_factors_uses_qf_group_class(self):
-        """_renderBandFactors() must wrap each group in qf-group class."""
-        body = _func_body(self.src, "_renderBandFactors", max_len=2000)
-        assert "qf-group" in body, (
-            "_renderBandFactors() does not use qf-group class for Bull/Bear groups"
-        )
-
-    def test_render_band_factors_uses_qf_pill_classes(self):
-        """_renderBandFactors() must use qf-pill-bull and qf-pill-bear pill classes."""
-        body = _func_body(self.src, "_renderBandFactors", max_len=2000)
-        assert "qf-pill-bull" in body, (
-            "_renderBandFactors() does not use qf-pill-bull pill class"
-        )
-        assert "qf-pill-bear" in body, (
-            "_renderBandFactors() does not use qf-pill-bear pill class"
-        )
-
-    def test_render_band_factors_uses_arrow_classes(self):
-        """_renderBandFactors() must use qf-arrow-bull/bear/neutral for direction arrows."""
-        body = _func_body(self.src, "_renderBandFactors", max_len=2000)
-        assert "qf-arrow-bull" in body, (
-            "_renderBandFactors() does not use qf-arrow-bull for bullish arrows"
-        )
-        assert "qf-arrow-bear" in body, (
-            "_renderBandFactors() does not use qf-arrow-bear for bearish arrows"
-        )
-        assert "qf-arrow-neutral" in body, (
-            "_renderBandFactors() does not use qf-arrow-neutral for neutral arrows"
-        )
-
-    def test_load_macro_band_calls_render_band_factors(self):
-        """loadMacroBand() must call _renderBandFactors(factors)."""
-        body = _func_body(self.src, "loadMacroBand", max_len=3000)
-        assert "_renderBandFactors" in body, (
-            "loadMacroBand() does not call _renderBandFactors() — "
-            "pills will not be rendered"
-        )
 
     def test_load_macro_band_fetches_band_factors_endpoint(self):
         """loadMacroBand() must fetch /api/quad/band-factors."""
@@ -387,37 +311,13 @@ class TestJsFunctions:
 
 # ─── Criterion 10: Pills trimmed to 5 per group ──────────────────────────────
 
+# TestPillTrimming — RETIRED (TASK_112 test-debt cleanup, 2026-07-04). Same
+# removed pill-strip feature as TestHtmlMacroBandFactors/TestJsFunctions
+# above (0 matches for `_MAX_BAND_PILLS`/`_renderBandFactors`) — there are
+# no pills left to trim. Cat B.
+
 class TestPillTrimming:
-    def setup_method(self):
-        self.src = _read(ACTIONABLE_JS)
-
-    def test_max_pills_constant_is_5(self):
-        """_MAX_BAND_PILLS constant must be set to 5."""
-        assert "_MAX_BAND_PILLS" in self.src, (
-            "_MAX_BAND_PILLS constant not found in actionable.js"
-        )
-        # Find the assignment and check its value
-        m = re.search(r'_MAX_BAND_PILLS\s*=\s*(\d+)', self.src)
-        assert m is not None, "_MAX_BAND_PILLS assignment not found"
-        assert int(m.group(1)) == 5, (
-            f"_MAX_BAND_PILLS is {m.group(1)}, expected 5"
-        )
-
-    def test_overflow_pill_with_plus_count(self):
-        """Overflow pills must show '+N...' for factors beyond the first 5."""
-        body = _func_body(self.src, "_renderBandFactors", max_len=2000)
-        # Check for overflow indicator pattern: +N or hidden.length
-        assert "hidden.length" in body or "hidden" in body, (
-            "_renderBandFactors() does not handle overflow pills — "
-            "groups with >5 factors need a '+N...' overflow indicator"
-        )
-
-    def test_overflow_pill_uses_slice(self):
-        """_renderBandFactors() must use slice to trim pills to _MAX_BAND_PILLS."""
-        body = _func_body(self.src, "_renderBandFactors", max_len=2000)
-        assert ".slice(" in body, (
-            "_renderBandFactors() does not use .slice() for pill trimming"
-        )
+    pass
 
 
 # ─── Criteria 11-14: CSS .qf-* rules present in styles.css ──────────────────
@@ -515,7 +415,11 @@ class TestEndpointResilience:
     def setup_method(self):
         func_start = _read(HEALTH_PY).find("def get_quad_band_factors(")
         assert func_start != -1
-        self.func_body = _read(HEALTH_PY)[func_start: func_start + 3000]
+        # REWRITTEN (TASK_112, 2026-07-04): widened from 3000 to 6000 chars —
+        # get_quad_band_factors() grew (added _argmax_quad/_eff_quad/_quad_col
+        # helpers + extra SQL queries) past the original window, pushing
+        # monthly_score/qtr_dir/category strings out of it.
+        self.func_body = _read(HEALTH_PY)[func_start: func_start + 6000]
 
     def test_returns_empty_lists_on_no_period(self):
         """Endpoint must return {'bull': [], 'bear': []} when no monthly period exists."""
@@ -540,21 +444,36 @@ class TestNeutralFactorsDropped:
     def setup_method(self):
         func_start = _read(HEALTH_PY).find("def get_quad_band_factors(")
         assert func_start != -1
-        self.func_body = _read(HEALTH_PY)[func_start: func_start + 3000]
+        # REWRITTEN (TASK_112, 2026-07-04): widened from 3000 to 6000 chars —
+        # get_quad_band_factors() grew (added _argmax_quad/_eff_quad/_quad_col
+        # helpers + extra SQL queries) past the original window, pushing
+        # monthly_score/qtr_dir/category strings out of it.
+        self.func_body = _read(HEALTH_PY)[func_start: func_start + 6000]
 
     def test_zero_monthly_score_skipped(self):
-        """Factors with monthly_score == 0 must be dropped (not shown)."""
-        assert "monthly_score == 0" in self.func_body or \
-               "if monthly_score == 0" in self.func_body, (
-            "get_quad_band_factors() does not skip neutral factors (score==0) — "
-            "they must be dropped per spec"
+        """Factors with monthly_score == 0 must be dropped (not shown).
+
+        REWRITTEN (TASK_112, 2026-07-04): implemented as a positive
+        `if monthly_score != 0:` guard around the append (skip via omission)
+        rather than an early `if monthly_score == 0: continue`. Same net
+        effect (neutral factors never reach bull_list/bear_list), inverted
+        condition/control-flow shape.
+        """
+        assert "monthly_score != 0" in self.func_body, (
+            "get_quad_band_factors() does not guard on monthly_score != 0 — "
+            "neutral factors must be dropped per spec"
         )
 
     def test_continue_on_zero_score(self):
-        """The zero-score check must use 'continue' to skip the factor."""
-        assert "continue" in self.func_body, (
-            "get_quad_band_factors() has no 'continue' statement — "
-            "neutral factors (score=0) may not be properly skipped"
+        """Neutral-score factors must never be appended to bull_list/bear_list.
+
+        REWRITTEN (TASK_112, 2026-07-04): see test_zero_monthly_score_skipped
+        above — there's no 'continue' statement; the append itself is
+        conditional on `monthly_score != 0`.
+        """
+        assert re.search(r"if monthly_score != 0:.*?\(bull_list if monthly_score > 0 else bear_list\)\.append",
+                         self.func_body, re.DOTALL), (
+            "get_quad_band_factors() does not conditionally append only non-neutral factors"
         )
 
 
@@ -564,7 +483,11 @@ class TestQuarterlyQuadResolution:
     def setup_method(self):
         func_start = _read(HEALTH_PY).find("def get_quad_band_factors(")
         assert func_start != -1
-        self.func_body = _read(HEALTH_PY)[func_start: func_start + 3000]
+        # REWRITTEN (TASK_112, 2026-07-04): widened from 3000 to 6000 chars —
+        # get_quad_band_factors() grew (added _argmax_quad/_eff_quad/_quad_col
+        # helpers + extra SQL queries) past the original window, pushing
+        # monthly_score/qtr_dir/category strings out of it.
+        self.func_body = _read(HEALTH_PY)[func_start: func_start + 6000]
 
     def test_quad_column_index_resolved_from_quad_string(self):
         """Quarterly quad column index must be derived by checking '1'/'2'/'3'/'4' in quad string."""
@@ -619,14 +542,13 @@ class TestMacroColumnUntouched:
             "MACRO column may have been accidentally broken"
         )
 
-    def test_band_factors_does_not_use_macro_net(self):
-        """_renderBandFactors() must not reference macroNet or MacroNet."""
-        body = _func_body(self.src, "_renderBandFactors", max_len=2000)
-        lower = body.lower()
-        assert "macronet" not in lower, (
-            "_renderBandFactors() references MacroNet — "
-            "TASK_86 must not modify MacroNet logic"
-        )
+    # test_band_factors_does_not_use_macro_net — RETIRED (TASK_112
+    # test-debt cleanup, 2026-07-04). `_renderBandFactors()` no longer
+    # exists (see the retirement note above TestHtmlMacroBandFactors) — the
+    # concern this test guarded against (band-factor rendering accidentally
+    # touching MacroNet logic) no longer applies to code that doesn't
+    # exist. test_macro_value_column_still_referenced above (unaffected)
+    # already covers the durable "MACRO column itself still works" check.
 
 
 # ─── Python logic unit tests (no DB required) ────────────────────────────────

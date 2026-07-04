@@ -53,17 +53,14 @@ class TestHandoff:
         content = HANDOFF.read_text(encoding="utf-8")
         assert "ALL_DONE" in content, "DEV_HANDOFF.md Status is not ALL_DONE"
 
-    def test_mentions_drop_view_fix(self):
-        content = HANDOFF.read_text(encoding="utf-8")
-        assert "DROP VIEW IF EXISTS" in content, (
-            "DEV_HANDOFF.md does not mention the DROP VIEW fix"
-        )
-
-    def test_mentions_colspan_fix(self):
-        content = HANDOFF.read_text(encoding="utf-8")
-        assert 'colspan' in content.lower(), (
-            "DEV_HANDOFF.md does not mention the colspan fix"
-        )
+    # test_mentions_drop_view_fix / test_mentions_colspan_fix — RETIRED
+    # (TASK_112 test-debt cleanup, 2026-07-04). DEV_HANDOFF.md is a rolling
+    # file, overwritten fresh by every task's developer pass — pinning it
+    # to this task's specific fix descriptions is permanently stale by
+    # design. Cat A per docs/audit/test_debt_review.md. The durable
+    # behavior (DROP VIEW IF EXISTS in baseline.sql, colspan fix in the HTML)
+    # is covered by the schema/markup tests below, which test the actual
+    # code rather than a point-in-time handoff document.
 
 
 # ---------------------------------------------------------------------------

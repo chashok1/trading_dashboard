@@ -53,53 +53,21 @@ class TestDevHandoff:
             f"DEV_HANDOFF.md last non-blank line must be ALL_DONE, got {lines[-1]!r}"
         )
 
-    def test_handoff_references_agent_work_5(self):
-        content = _read(HANDOFF_FILE)
-        assert "AGENT_WORK_5" in content, (
-            "DEV_HANDOFF.md must reference AGENT_WORK_5"
-        )
-
-    def test_handoff_mentions_task_63(self):
-        content = _read(HANDOFF_FILE)
-        # Either as TASK_63 or TASK_63_pvv_live_validation
-        assert "TASK_63" in content or "pvv_validation" in content.lower(), (
-            "DEV_HANDOFF.md should reference TASK_63 or the PVV validation task"
-        )
-
-    def test_handoff_reports_q7_q8_findings(self):
-        """DEV_HANDOFF must include Q7/Q8 quantification of F1/F2 exposure."""
-        content = _read(HANDOFF_FILE)
-        assert "Q7" in content and "Q8" in content, (
-            "DEV_HANDOFF.md must discuss Q7 and Q8 results (F1/F2 sizing)"
-        )
-
-    def test_handoff_reports_q15_findings(self):
-        """DEV_HANDOFF must include Q15 (VolumeSpike F3 exposure)."""
-        content = _read(HANDOFF_FILE)
-        assert "Q15" in content, (
-            "DEV_HANDOFF.md must discuss Q15 (F3 VolumeSpike padding exposure)"
-        )
-
-    def test_handoff_reports_q4_q10(self):
-        """DEV_HANDOFF must include Q4/Q10 (OHLC and RR bound violations)."""
-        content = _read(HANDOFF_FILE)
-        assert "Q4" in content and "Q10" in content, (
-            "DEV_HANDOFF.md must discuss Q4 and Q10 (OHLC and RR violations)"
-        )
-
-    def test_handoff_reports_q17_q19(self):
-        """DEV_HANDOFF must include Q17/Q19 (TW staleness + missing TOSD)."""
-        content = _read(HANDOFF_FILE)
-        assert "Q17" in content and "Q19" in content, (
-            "DEV_HANDOFF.md must discuss Q17 and Q19 (staleness)"
-        )
-
-    def test_handoff_confirms_read_only(self):
-        """DEV_HANDOFF must state no code changes were made."""
-        content = _read(HANDOFF_FILE).lower()
-        assert "no code" in content or "read-only" in content or "read only" in content, (
-            "DEV_HANDOFF.md must confirm this was a read-only validation (no code changes)"
-        )
+    # test_handoff_references_agent_work_5 / test_handoff_mentions_task_63 /
+    # test_handoff_reports_q7_q8_findings / test_handoff_reports_q15_findings /
+    # test_handoff_reports_q4_q10 / test_handoff_reports_q17_q19 /
+    # test_handoff_confirms_read_only — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). DEV_HANDOFF.md is a rolling file, overwritten fresh by
+    # every task's developer pass (per docs/agent_handoff_workflow.md) —
+    # pinning it to AGENT_WORK_5's specific Q-number findings is permanently
+    # stale by design once any later task's handoff lands. Cat A per
+    # docs/audit/test_debt_review.md. The durable record of these findings
+    # is docs/audit/price_volume_volatility_analysis.md itself (a permanent
+    # docs/ file, not rolling), which TestSection6Structure below still
+    # validates. NOTE for TASK_114: this whole file is a one-time
+    # acceptance check for a single historical audit deliverable + the
+    # rolling handoff — a strong candidate to move to tests/acceptance/
+    # wholesale rather than pick further at individual assertions.
 
 
 # ---------------------------------------------------------------------------
@@ -198,21 +166,25 @@ class TestSection6Structure:
 
 class TestFindingValues:
     def test_f1_f2_material_finding_recorded(self):
-        """F1/F2 divergence rate should be recorded as > 50% in both files."""
+        """F1/F2 divergence rate should be recorded as > 50%.
+
+        REWRITTEN (TASK_112, 2026-07-04): narrowed from "both files" to just
+        the permanent docs/audit file — DEV_HANDOFF.md is a rolling file
+        overwritten fresh by every later task's developer pass, so it no
+        longer carries AGENT_WORK_5-specific findings (Cat A pin, same
+        pattern as TestDevHandoff above). The durable record is
+        docs/audit/price_volume_volatility_analysis.md itself.
+        """
         analysis = _read(ANALYSIS_FILE)
-        handoff = _read(HANDOFF_FILE)
-        # Q7 shows 543/966 = 56%, Q8 shows 505/882 = 57%
-        # Either file should mention >50% or a specific large fraction
-        for content, fname in [(analysis, "analysis"), (handoff, "handoff")]:
-            has_majority = (
-                "56%" in content or "57%" in content
-                or "543" in content or "505" in content
-                or "majority" in content.lower()
-                or "more than half" in content.lower()
-            )
-            assert has_majority, (
-                f"The {fname} file should record that F1/F2 affects >50% of symbols"
-            )
+        has_majority = (
+            "56%" in analysis or "57%" in analysis
+            or "543" in analysis or "505" in analysis
+            or "majority" in analysis.lower()
+            or "more than half" in analysis.lower()
+        )
+        assert has_majority, (
+            "The analysis file should record that F1/F2 affects >50% of symbols"
+        )
 
     def test_f3_zero_exposure_recorded(self):
         """Q15 result of zero at-risk rows must appear in at least one of the files."""
@@ -303,19 +275,15 @@ class TestDocumentCompleteness:
             "Section 7 must include F1/F2 fix recommendations"
         )
 
-    def test_anchor_date_consistent(self):
-        """Anchor date in §6 should match anchor date mentioned in DEV_HANDOFF."""
-        analysis = _read(ANALYSIS_FILE)
-        handoff = _read(HANDOFF_FILE)
-        # Extract all dates from both
-        analysis_dates = set(re.findall(r'202\d-\d{2}-\d{2}', analysis))
-        handoff_dates = set(re.findall(r'202\d-\d{2}-\d{2}', handoff))
-        # The anchor date (2026-06-18) should appear in both
-        overlap = analysis_dates & handoff_dates
-        assert overlap, (
-            f"No common date found between analysis ({analysis_dates}) "
-            f"and handoff ({handoff_dates}) — anchor date should appear in both"
-        )
+    # test_anchor_date_consistent — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). Compared dates in the permanent analysis file against
+    # DEV_HANDOFF.md, a rolling file overwritten by every later task's
+    # developer pass — there is no reason today's handoff (about a
+    # completely different task) would share a date with AGENT_WORK_5's
+    # anchor date. Cat A per docs/audit/test_debt_review.md.
+    # test_anchor_date_stated (TestSection6Structure, above) still covers
+    # the durable half of this check — the analysis file itself states its
+    # anchor date.
 
 
 # ---------------------------------------------------------------------------
@@ -334,22 +302,13 @@ class TestNoProductionCodeModified:
     in DEV_HANDOFF.md > "Files changed" do NOT include any production source files.
     """
 
-    def test_handoff_files_changed_only_docs(self):
-        """Files changed listed in DEV_HANDOFF.md must only reference docs/ paths."""
-        content = _read(HANDOFF_FILE)
-        # Find the "Files changed" section
-        match = re.search(r'## Files changed(.*?)(?=\n## |\Z)', content, re.DOTALL)
-        if not match:
-            # Section may not exist — that's fine for a read-only task
-            return
-        files_section = match.group(1)
-        # Extract any file paths mentioned
-        paths = re.findall(r'`([^`]+\.(?:md|sql|py|js|html|css))`', files_section)
-        for path in paths:
-            assert path.startswith("docs/") or path.startswith("DEV_HANDOFF"), (
-                f"DEV_HANDOFF 'Files changed' mentions non-docs file: {path}. "
-                "AGENT_WORK_5 is read-only — only docs/ files should be changed."
-            )
+    # test_handoff_files_changed_only_docs — RETIRED (TASK_112 test-debt
+    # cleanup, 2026-07-04). DEV_HANDOFF.md is a rolling file, overwritten
+    # fresh by every later task's developer pass — its current "Files
+    # changed" section describes whatever task is running today, not
+    # AGENT_WORK_5's read-only scope, so this assertion is meaningless
+    # against any handoff but AGENT_WORK_5's own. Cat A per
+    # docs/audit/test_debt_review.md.
 
     def test_analysis_file_is_new_not_core_production(self):
         """The analysis file is a docs artifact, not a production code file."""

@@ -465,19 +465,15 @@ class TestDevHandoff:
         content = DEV_HANDOFF.read_text(encoding="utf-8")
         assert "ALL_DONE" in content
 
-    def test_handoff_mentions_agent_work_49(self):
-        content = DEV_HANDOFF.read_text(encoding="utf-8")
-        assert "49" in content or "AGENT_WORK_49" in content
-
-    def test_handoff_mentions_source_order(self):
-        content = DEV_HANDOFF.read_text(encoding="utf-8")
-        assert "SOURCE_ORDER" in content, "DEV_HANDOFF.md must mention SOURCE_ORDER"
-
-    def test_handoff_mentions_removed_behaviors(self):
-        content = DEV_HANDOFF.read_text(encoding="utf-8")
-        assert "Removed" in content or "removed" in content, (
-            "DEV_HANDOFF.md must describe removed behaviors"
-        )
+    # test_handoff_mentions_agent_work_49 / test_handoff_mentions_source_order /
+    # test_handoff_mentions_removed_behaviors — RETIRED (TASK_112 test-debt
+    # cleanup, 2026-07-04). DEV_HANDOFF.md is a rolling file, overwritten
+    # fresh by every task's developer pass — pinning it to AGENT_WORK_49-
+    # specific content is permanently stale by design. Cat A per
+    # docs/audit/test_debt_review.md. The durable record of SOURCE_ORDER /
+    # the removed behaviors is docs/actionable_logic.md itself (a permanent
+    # docs/ file, not rolling) — see test_agent_work_48.py::
+    # TestDocsRecencyFirst, which covers it directly.
 
 
 # ---------------------------------------------------------------------------

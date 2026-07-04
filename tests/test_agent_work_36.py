@@ -61,66 +61,62 @@ def test_check1_node_syntax():
 # Check 2 — Sources cell flex row: display:flex;align-items:center;gap:6px
 # ---------------------------------------------------------------------------
 def test_check2_sources_cell_flex_row_style():
-    """act-action-cell td must contain a div with display:flex;align-items:center;gap:6px."""
+    """act-action-cell td must contain a flex row wrapping the badge + reasons.
+
+    REWRITTEN (TASK_112, 2026-07-04): the exact inline style narrowed from
+    'display:flex;align-items:center;gap:6px' to
+    'display:flex;align-items:flex-start;gap:8px' as part of the later
+    Sources-column redesign (badge/glyph column + always-visible per-source
+    reason lines — see test_agent_work_27.py::TestSrcReasonsHtml). The
+    durable structural fact — the cell wraps its content in a flex row — is
+    unchanged; asserting the exact align-items/gap values would just re-pin
+    a fresh inline-style snapshot (forbidden by the rewrite rules). Assert
+    the structural presence of a flex row instead.
+    """
     src = _read_js()
-    # The flex row wrapping the Sources badge + sub-line must exist
     assert re.search(
-        r'act-action-cell.*?display:flex;align-items:center;gap:6px',
+        r'act-action-cell.*?display:\s*flex',
         src, re.DOTALL
-    ), "Sources (act-action-cell) does not have a flex row with display:flex;align-items:center;gap:6px"
+    ), "Sources (act-action-cell) does not wrap its content in a flex row"
+
+
+# test_check3_sources_flex_wrap — RETIRED (TASK_112 test-debt cleanup,
+# 2026-07-04). `flex-wrap:wrap` was dropped from the Sources cell's flex row
+# entirely as part of the same redesign noted in test_check2 above (0
+# matches near act-action-cell). Cat B — property removed, not renamed.
 
 
 # ---------------------------------------------------------------------------
-# Check 3 — Sources flex row has flex-wrap:wrap
-# ---------------------------------------------------------------------------
-def test_check3_sources_flex_wrap():
-    """The Sources flex row div must include flex-wrap:wrap."""
-    src = _read_js()
-    # Look for the pattern within the act-action-cell block
-    pattern = r'act-action-cell.*?display:flex;align-items:center;gap:6px;flex-wrap:wrap'
-    assert re.search(pattern, src, re.DOTALL), (
-        "Sources (act-action-cell) flex row is missing flex-wrap:wrap"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Check 4 — _srcSubLineHtml inside the Sources flex row
+# Check 4 — the Sources reason lines are inside the flex row
 # ---------------------------------------------------------------------------
 def test_check4_srcsub_inside_flex_row():
-    """_srcSubLineHtml(r) must appear inside the flex row div in Sources cell."""
+    """The Sources column's per-source display must appear inside the flex row.
+
+    REWRITTEN (TASK_112, 2026-07-04): `_srcSubLineHtml(r)` was replaced by
+    `_srcReasonsHtml(r)` (see test_agent_work_27.py::TestSrcReasonsHtml),
+    and the exact flex-row style narrowed (see test_check2 above). Assert
+    the current function is called within a flex-row div, without pinning
+    the exact style string.
+    """
     src = _read_js()
-    # Find the act-action-cell block; verify _srcSubLineHtml is inside the flex div
-    # (before the closing </div> of the flex row, which is before the OVER_MAX check)
     pattern = (
-        r'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+        r'<div style="display:\s*flex[^"]*">'
         r'.*?'
-        r'\$\{_srcSubLineHtml\(r\)\}'
+        r'\$\{_srcReasonsHtml\(r\)\}'
         r'.*?'
         r'</div>'
     )
     assert re.search(pattern, src, re.DOTALL), (
-        "_srcSubLineHtml(r) is not inside the flex row div of the Sources cell"
+        "_srcReasonsHtml(r) is not inside a flex row div of the Sources cell"
     )
 
 
-# ---------------------------------------------------------------------------
-# Check 5 — OVER_MAX annotation outside/after the flex row
-# ---------------------------------------------------------------------------
-def test_check5_overmax_outside_flex_row():
-    """The 'was X' OVER_MAX annotation must appear after/outside the flex row."""
-    src = _read_js()
-    # The pattern: flex row closes, THEN the OVER_MAX conditional
-    pattern = (
-        r'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
-        r'.*?'
-        r'</div>'           # closes the flex row
-        r'.*?'
-        r'\$\{_isOverMaxOverlay\(r\)'  # OVER_MAX check comes after
-    )
-    assert re.search(pattern, src, re.DOTALL), (
-        "OVER_MAX 'was X' annotation appears to be INSIDE or BEFORE the flex row; "
-        "it should be outside (after the closing </div> of the flex row)"
-    )
+# test_check5_overmax_outside_flex_row — RETIRED (TASK_112 test-debt
+# cleanup, 2026-07-04). The layout was redesigned: the OVER_MAX "was X"
+# annotation now sits inside a narrow fixed-width sub-column alongside the
+# main glyph, which is itself nested *inside* the same outer flex row as the
+# reason lines (not after/outside it as originally specified) — a
+# deliberate visual rearrangement, not a regression. Cat B.
 
 
 # ---------------------------------------------------------------------------
@@ -129,35 +125,38 @@ def test_check5_overmax_outside_flex_row():
 def test_check6_technical_cell_flex_row_style():
     """rr-action-cell td must contain a div with display:flex;align-items:center;gap:6px."""
     src = _read_js()
+    # REWRITTEN (TASK_112, 2026-07-04): same align-items/gap narrowing as
+    # the Sources cell (see test_check2_sources_cell_flex_row_style above) —
+    # asserting structural flex-row presence, not the exact inline style.
     assert re.search(
-        r'rr-action-cell.*?display:flex;align-items:center;gap:6px',
+        r'rr-action-cell.*?display:\s*flex',
         src, re.DOTALL
-    ), "Technical (rr-action-cell) does not have a flex row with display:flex;align-items:center;gap:6px"
+    ), "Technical (rr-action-cell) does not wrap its content in a flex row"
+
+
+# test_check7_technical_flex_wrap — RETIRED (TASK_112 test-debt cleanup,
+# 2026-07-04). `flex-wrap:wrap` was dropped from the Technical cell's flex
+# row too (same redesign as the Sources cell — see
+# test_check3_sources_flex_wrap retirement note above). Cat B.
 
 
 # ---------------------------------------------------------------------------
-# Check 7 — Technical flex row has flex-wrap:wrap
-# ---------------------------------------------------------------------------
-def test_check7_technical_flex_wrap():
-    """The Technical flex row div must include flex-wrap:wrap."""
-    src = _read_js()
-    pattern = r'rr-action-cell.*?display:flex;align-items:center;gap:6px;flex-wrap:wrap'
-    assert re.search(pattern, src, re.DOTALL), (
-        "Technical (rr-action-cell) flex row is missing flex-wrap:wrap"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Check 8 — _rrSubLineHtml inside the Technical flex row
+# Check 8 — rrHtml + rr sub-line are inside the Technical flex row
 # ---------------------------------------------------------------------------
 def test_check8_rrsub_inside_flex_row():
-    """_rrSubLineHtml must appear inside the flex row div of the Technical cell."""
+    """rrHtml + the rr sub-line must appear inside the flex row div of the
+    Technical cell.
+
+    REWRITTEN (TASK_112, 2026-07-04): the sub-line variable was renamed
+    `_rrSubLineHtml` -> `_rrSubLineHtml` is now a locally-scoped `const`
+    (still the same name) built via an IIFE, and the exact flex-row style
+    narrowed (see test_check6 above). Assert structure without pinning the
+    exact style string.
+    """
     src = _read_js()
-    # The rr-action-cell section has rrHtml + _rrSubLineHtml inside a flex div
-    # They must both be children of the same flex container
     pattern = (
         r'rr-action-cell.*?'
-        r'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+        r'<div style="display:\s*flex[^"]*">'
         r'.*?'
         r'\$\{rrHtml\}'
         r'.*?'
@@ -246,11 +245,15 @@ def test_check12_actsrcsub_has_display_flex():
 # Check 13 — Core logic functions still present (no accidental deletion)
 # ---------------------------------------------------------------------------
 def test_check13_core_functions_present():
-    """Key logic functions must still be present in actionable.js."""
+    """Key logic functions must still be present in actionable.js.
+
+    REWRITTEN (TASK_112, 2026-07-04): `_srcSubLineHtml` -> `_srcReasonsHtml`
+    (see test_agent_work_27.py::TestSrcReasonsHtml).
+    """
     src = _read_js()
     functions = [
         'actionLabel',
-        '_srcSubLineHtml',
+        '_srcReasonsHtml',
         'firesCellHtml',
         'sortRows',
         '_badgeAction',
@@ -279,11 +282,23 @@ def test_check14_badge_colorCls_unchanged():
 # Check 15 — Tooltips: title attr uses actionDisplay(_badgeAction(r)).label
 # ---------------------------------------------------------------------------
 def test_check15_badge_title_uses_label():
-    """act-badge title must still use actionDisplay(_badgeAction(r)).label."""
+    """The Sources cell's action label must still be derived correctly.
+
+    REWRITTEN (TASK_112, 2026-07-04): the Sources badge glyph no longer
+    carries a static `title=` attribute at all — the tooltip mechanism
+    moved to a dynamic hover popup (`setupActionCol()` -> `_actionPopHtml()`,
+    see test_agent_work_22.py). `actionLabel(r)` (which itself calls
+    `actionDisplay(_badgeAction(r))` internally) is used instead, e.g. in
+    the OVER_MAX "was X" annotation and the modal/popup headers. Assert the
+    current mechanism rather than the retired inline title= expression.
+    """
     src = _read_js()
-    assert "actionDisplay(_badgeAction(r)).label" in src, (
-        "Sources badge title expression has changed — "
-        "expected actionDisplay(_badgeAction(r)).label"
+    assert "actionLabel(row)" in src or "actionLabel(r)" in src, (
+        "actionLabel() (which derives from actionDisplay(_badgeAction(...))) "
+        "not found — action label derivation may be broken"
+    )
+    assert "_badgeAction(r)" in src, (
+        "_badgeAction(r) not found — badge action-code resolution may be broken"
     )
 
 

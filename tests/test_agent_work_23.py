@@ -53,13 +53,32 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _func_body(src: str, func_name: str, max_len: int = 6000) -> str:
-    """Return the source text from 'function func_name' up to max_len chars."""
+def _func_body(src: str, func_name: str, max_len: int = None) -> str:
+    """Return the full source text of a named function (brace-matched).
+
+    REWRITTEN (TASK_112, 2026-07-04): the original fixed-`max_len` slice
+    (default 6000 chars) silently truncated mid-function once renderGrid()
+    (10 951 chars) grew past the window used by some call sites here,
+    producing false "X missing from renderGrid()" failures for content that
+    was simply beyond the slice. Brace-matching finds the real closing
+    brace regardless of size. `max_len`, if given, still caps the returned
+    text (kept for callers that want a bounded excerpt).
+    """
     idx = src.find(f"function {func_name}(")
     if idx == -1:
         idx = src.find(f"async function {func_name}(")
     assert idx != -1, f"{func_name}() not found in source"
-    return src[idx: idx + max_len]
+    brace_start = src.index("{", idx)
+    depth = 0
+    for i, ch in enumerate(src[brace_start:], start=brace_start):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                body = src[idx: i + 1]
+                return body[:max_len] if max_len else body
+    raise AssertionError(f"Could not find closing brace of {func_name}()")
 
 
 # ─── Criterion 1: Syntax check ───────────────────────────────────────────────
@@ -136,23 +155,31 @@ class TestActBadgeCallSites:
         self.src = _read(ACTIONABLE_JS)
 
     def test_act_badge_in_render_grid_action_cell(self):
-        """renderGrid() Action column cell must use act-badge."""
-        render_body = _func_body(self.src, "renderGrid", max_len=8000)
-        assert "act-badge" in render_body, (
-            "renderGrid() Action cell must use .act-badge"
+        """renderGrid() Action column cell must render via act-badge.
+
+        REWRITTEN (TASK_112, 2026-07-04): the Action cell's badge markup was
+        extracted out of renderGrid() into a dedicated `_finalCallHtml(r)`
+        helper (renderGrid just calls it: `<td data-col="action">${fcHtml}</td>`
+        where `fcHtml = _finalCallHtml(r)`), so the literal string
+        'act-badge' no longer appears inside renderGrid()'s own source. The
+        badge itself still uses .act-badge — see test_act_badge_in_final_
+        call_html below, unaffected. Assert the call chain instead of the
+        (now relocated) literal class string.
+        """
+        render_body = _func_body(self.src, "renderGrid")
+        assert '<td data-col="action"' in render_body and "_finalCallHtml(r)" in render_body, (
+            "renderGrid() Action cell must render via _finalCallHtml(r), "
+            "which itself uses .act-badge"
         )
 
-    def test_act_badge_in_render_grid_trtnsbb_cell(self):
-        """renderGrid() TrTnBBRskRng cell (rrHtml) must use act-badge."""
-        # The TrTnBBRskRng cell is built immediately before tr.innerHTML in renderGrid.
-        render_body = _func_body(self.src, "renderGrid", max_len=8000)
-        # Look for act-badge in the context of rrHtml construction
-        rr_idx = render_body.find("rrHtml")
-        assert rr_idx != -1, "rrHtml variable not found in renderGrid()"
-        surrounding = render_body[rr_idx: rr_idx + 400]
-        assert "act-badge" in surrounding, (
-            "TrTnBBRskRng rrHtml in renderGrid() must use .act-badge"
-        )
+    # test_act_badge_in_render_grid_trtnsbb_cell — RETIRED (TASK_112
+    # test-debt cleanup, 2026-07-04). The Technical (formerly TrTnBBRskRng)
+    # cell's rrHtml no longer uses .act-badge at all — it renders a
+    # dedicated `rr-main-ic` span with inline `color:` styling instead (a
+    # different visual treatment than the shared badge component; confirmed
+    # 0 matches for 'act-badge' inside renderGrid()'s full brace-matched
+    # body). Cat B — this cell's badge unification was reversed/diverged,
+    # not renamed.
 
     def test_act_badge_in_final_call_html(self):
         """_finalCallHtml() must use act-badge for the Final Call pill."""
@@ -161,19 +188,21 @@ class TestActBadgeCallSites:
             "_finalCallHtml() must render the Final Call pill with .act-badge"
         )
 
-    def test_act_badge_in_fires_cell_html(self):
-        """firesCellHtml() must use act-badge for Rules/edge pill spans."""
-        fires_body = _func_body(self.src, "firesCellHtml", max_len=1500)
-        assert "act-badge" in fires_body, (
-            "firesCellHtml() must use .act-badge for the Rules(edge) pills"
-        )
+    # test_act_badge_in_fires_cell_html — RETIRED (TASK_112 test-debt
+    # cleanup, 2026-07-04). firesCellHtml() moved from CSS-class-based
+    # coloring (act-badge + colorCls) to an inline hex color resolved via a
+    # local `_ruleColor()` helper (still routes through actionDisplay() for
+    # direction — see test_agent_work_18.py's rewritten
+    # TestFiresCellHtmlStructure, which covers the current mechanism in
+    # detail). Cat B — superseded, not renamed.
 
-    def test_act_badge_in_render_other_sources(self):
-        """_renderOtherSources() must use act-badge for other-source pills."""
-        os_body = _func_body(self.src, "_renderOtherSources", max_len=1500)
-        assert "act-badge" in os_body, (
-            "_renderOtherSources() must use .act-badge for other-source pills"
-        )
+    # test_act_badge_in_render_other_sources — RETIRED (TASK_112 test-debt
+    # cleanup, 2026-07-04). `_renderOtherSources()` no longer exists — its
+    # responsibility was folded into `_srcReasonsHtml()` on the Sources
+    # column, which also does not use .act-badge (renders per-source reason
+    # lines with `actionIcon()`-colored glyphs instead — see
+    # test_agent_work_27.py's rewritten TestSrcReasonsHtml and
+    # test_agent_work_24.py's wholesale retirement note). Cat B.
 
     def test_act_badge_in_open_drilldown_action_field(self):
         """openDrilldown() modal Action KV field must use act-badge."""
@@ -227,26 +256,16 @@ class TestActBadgeSmCallSites:
     def setup_method(self):
         self.src = _read(ACTIONABLE_JS)
 
-    def test_act_badge_sm_in_fires_cell_html(self):
-        """firesCellHtml() must use act-badge-sm for compact Rules/edge pills."""
-        fires_body = _func_body(self.src, "firesCellHtml", max_len=1500)
-        assert "act-badge-sm" in fires_body, (
-            "firesCellHtml() must use .act-badge-sm for compact Rule badges"
-        )
-
-    def test_act_badge_sm_in_render_other_sources(self):
-        """_renderOtherSources() must use act-badge-sm for other-source pills."""
-        os_body = _func_body(self.src, "_renderOtherSources", max_len=1500)
-        assert "act-badge-sm" in os_body, (
-            "_renderOtherSources() must use .act-badge-sm for compact other-source pills"
-        )
-
-    def test_act_badge_sm_in_action_pop_html_all_sources(self):
-        """_actionPopHtml() All Sources list must use act-badge-sm."""
-        pop_body = _func_body(self.src, "_actionPopHtml", max_len=5000)
-        assert "act-badge-sm" in pop_body, (
-            "_actionPopHtml() All Sources list must use .act-badge-sm for per-source pills"
-        )
+    # test_act_badge_sm_in_fires_cell_html / test_act_badge_sm_in_render_
+    # other_sources / test_act_badge_sm_in_action_pop_html_all_sources —
+    # RETIRED (TASK_112 test-debt cleanup, 2026-07-04). Same underlying
+    # causes as TestActBadgeCallSites above: firesCellHtml() uses inline hex
+    # colors (not act-badge-sm), _renderOtherSources() no longer exists
+    # (folded into _srcReasonsHtml(), also not act-badge-sm-based), and
+    # _actionPopHtml()'s "All Sources" list renders each row as a plain
+    # inline-styled <div>/<span> (color/font-weight inline, via
+    # actionIcon()/actionText()), not an .act-badge-sm pill. Cat B —
+    # superseded across the board, not renamed.
 
     def test_act_badge_sm_in_modal_fires_pills(self):
         """Modal fires pills in openDrilldown() must use act-badge-sm."""

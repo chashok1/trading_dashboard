@@ -35,6 +35,18 @@ def pytest_configure(config):
         "network: test hits a live external API/service — may be slow or "
         "offline-flaky (TASK_111 Cat E guard).",
     )
+    config.addinivalue_line(
+        "markers",
+        "acceptance: one-time task-acceptance check (tests/acceptance/) — "
+        "excluded from the default run via pytest.ini's addopts, deletable "
+        "after the task's commit (TASK_114). Run explicitly with "
+        "`pytest -m acceptance`.",
+    )
+    config.addinivalue_line(
+        "markers",
+        "db: test requires a live Postgres connection (informational; "
+        "actual skipping is done via the db_available/db_session fixtures).",
+    )
 
 
 def node_available() -> bool:
@@ -118,10 +130,16 @@ def db_session(db_available):
     """
     if not db_available:
         pytest.skip("No Postgres available — set PG_PASSWORD in .env to run DB tests")
-    from etl.db import _engine  # noqa: WPS437 (intentional — we need raw engine)
+    # FIXED (TASK_113, 2026-07-04): etl.db._engine is a module-level cache
+    # variable (Engine | None), not a callable — calling it as `_engine()`
+    # raised "TypeError: 'Engine' object is not callable" once it had been
+    # lazily populated by an earlier get_engine() call in the same session
+    # (which every DB-touching test triggers). Use the public get_engine()
+    # accessor instead, which is the intended way to obtain the raw engine.
+    from etl.db import get_engine
     from sqlalchemy.orm import Session
 
-    conn = _engine().connect()
+    conn = get_engine().connect()
     trans = conn.begin()
     s = Session(bind=conn)
     try:

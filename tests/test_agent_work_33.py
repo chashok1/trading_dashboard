@@ -266,9 +266,15 @@ class TestDatabaseSchema:
 
 class TestOtherColumnsIntact:
     def test_src_sub_line_still_present(self, js_text):
-        """Check 22a — Source sub-line (_srcSubLineHtml) is still present."""
-        assert "_srcSubLineHtml" in js_text, (
-            "Source sub-line function _srcSubLineHtml was removed — regression"
+        """Check 22a — the Sources column's per-source display is still present.
+
+        REWRITTEN (TASK_112, 2026-07-04): `_srcSubLineHtml()` was replaced
+        by `_srcReasonsHtml()` — see test_agent_work_27.py::
+        TestSrcReasonsHtml and test_agent_work_24.py's retirement note for
+        the full history.
+        """
+        assert "_srcReasonsHtml" in js_text, (
+            "Source display function _srcReasonsHtml was removed — regression"
         )
 
     def test_final_call_html_still_present(self, js_text):
@@ -284,9 +290,20 @@ class TestOtherColumnsIntact:
         )
 
     def test_conviction_html_still_present(self, js_text):
-        """Check 22d — _convictionHtml is still present."""
-        assert "_convictionHtml" in js_text, (
-            "_convictionHtml function was removed — regression"
+        """Check 22d — the per-row conviction/agreement badge is still present.
+
+        REWRITTEN (TASK_112, 2026-07-04): `_convictionHtml()` (and its
+        `.conviction-badge` CSS class) was removed — 0 matches for either in
+        actionable.js. The per-row "how much do the signals agree" concept
+        was superseded by the Agree column (TASK_69), rendered by
+        `_agreementCellHtml()` and backed by `agreement_class`. The
+        `conviction` *filter* (segmented `any`/`multi`/`proven` control,
+        `state.filters.conviction`, `_agreeingSources()`) is unrelated and
+        still intact. Cat B — the per-row badge display was superseded, not
+        renamed.
+        """
+        assert "_agreementCellHtml" in js_text, (
+            "_agreementCellHtml (successor to _convictionHtml) was removed — regression"
         )
 
     def test_existing_rr_action_alias_intact(self, py_text):

@@ -79,11 +79,18 @@ def test_show_hidden_toggle_present_in_html():
 
 
 def test_show_hidden_toggle_is_checkbox():
-    """The showHidden input must be type=checkbox."""
-    m = re.search(r'<input[^>]*id="showHidden"[^>]*>', HTML)
-    assert m, "No <input id='showHidden'> element found in actionable.html."
-    assert 'type="checkbox"' in m.group(0) or "checkbox" in m.group(0), (
-        "showHidden input is not type=checkbox."
+    """The showHidden toggle control must exist and be interactive.
+
+    REWRITTEN (TASK_112, 2026-07-04): showHidden was redesigned from an
+    `<input type="checkbox">` to an icon `<button>` (toggled via
+    `classList.toggle('active', ...)` in actionable.js, with a `data-tip`
+    that flips between 'Active Only -> Show Hidden' / 'Show Hidden ->
+    Active Only'). Same on/off toggle behavior, different control type.
+    """
+    m = re.search(r'<button[^>]*id="showHidden"[^>]*>', HTML)
+    assert m, "No <button id='showHidden'> element found in actionable.html."
+    assert 'data-tip=' in m.group(0), (
+        "showHidden button is missing its data-tip toggle-state label"
     )
 
 
@@ -95,12 +102,22 @@ def test_show_hidden_label_text():
 
 
 def test_show_hidden_no_checked_attribute():
-    """showHidden checkbox must not have 'checked' attribute (default off)."""
-    m = re.search(r'<input[^>]*id="showHidden"[^>]*>', HTML)
-    assert m, "No <input id='showHidden'> element found."
+    """showHidden control must default to OFF (Active Only).
+
+    REWRITTEN (TASK_112, 2026-07-04): same button redesign as
+    test_show_hidden_toggle_is_checkbox above — there's no 'checked'
+    attribute on a button; the equivalent default-off state is the absence
+    of the 'active' class and the data-tip reading 'Active Only -> Show
+    Hidden' (i.e. clicking it *would* turn Show Hidden on — it isn't on yet).
+    """
+    m = re.search(r'<button[^>]*id="showHidden"[^>]*>', HTML)
+    assert m, "No <button id='showHidden'> element found."
     elem = m.group(0)
-    assert "checked" not in elem, (
-        "showHidden has 'checked' attribute — default must be OFF (unchecked)."
+    assert '"active"' not in elem and "'active'" not in elem, (
+        "showHidden button appears to default to the 'active' (Show Hidden) state"
+    )
+    assert 'data-tip="Active Only' in elem, (
+        "showHidden button's default data-tip does not read 'Active Only -> Show Hidden'"
     )
 
 
@@ -246,22 +263,16 @@ def test_load_actionable_gates_show_suppressed_on_show_hidden():
 # Criterion 7 (JS): localStorage key bumped to act_filters_v3
 # ---------------------------------------------------------------------------
 
-def test_ls_key_is_v3():
-    """localStorage key must be 'act_filters_v3'."""
-    assert "act_filters_v3" in JS, (
-        "localStorage key not bumped to act_filters_v3 in actionable.js."
-    )
-
-
-def test_ls_key_not_v2():
-    """Old localStorage key 'act_filters_v2' must not appear as the active key assignment."""
-    # It's OK if it appears in a comment or as a stale-key ignore-list reference.
-    # But the const LS_KEY assignment must not point to v2.
-    m = re.search(r"const\s+LS_KEY\s*=\s*['\"]([^'\"]+)['\"]", JS)
-    assert m, "Could not find LS_KEY constant in actionable.js."
-    assert m.group(1) == "act_filters_v3", (
-        f"LS_KEY is '{m.group(1)}' — expected 'act_filters_v3'."
-    )
+# test_ls_key_is_v3 / test_ls_key_not_v2 — RETIRED (TASK_112 test-debt
+# cleanup, 2026-07-04). The whole `state.filters` localStorage-persistence
+# subsystem (LS_KEY / 'act_filters_v2' / 'act_filters_v3' /
+# saveFiltersToStorage / loadFiltersFromStorage) was removed entirely — 0
+# matches for any of those identifiers in actionable.js. Filters now reset
+# to defaults on every page load; only column visibility (COL_STORAGE_KEY),
+# TV-tape visibility (_TV_LS_KEY) and side-panel collapse state are still
+# persisted to localStorage. Cat B — feature dropped, not renamed.
+# test_save_filters_to_storage_saves_show_hidden below (same removal) is
+# also retired.
 
 
 # ---------------------------------------------------------------------------
@@ -362,18 +373,10 @@ def test_sync_filter_ui_handles_show_hidden():
 # Criterion 13 (JS): saveFiltersToStorage saves show_hidden; removed keys absent
 # ---------------------------------------------------------------------------
 
-def test_save_filters_to_storage_saves_show_hidden():
-    """saveFiltersToStorage must persist show_hidden."""
-    m = re.search(
-        r"function saveFiltersToStorage\(\).*?\{(.*?)^}",
-        JS,
-        re.DOTALL | re.MULTILINE,
-    )
-    assert m, "Could not locate saveFiltersToStorage function body."
-    body = m.group(1)
-    assert "show_hidden" in body, (
-        "saveFiltersToStorage does not include show_hidden."
-    )
+# test_save_filters_to_storage_saves_show_hidden — RETIRED (TASK_112
+# test-debt cleanup, 2026-07-04). `saveFiltersToStorage()` and the whole
+# filter-persistence subsystem no longer exist — see the retirement note
+# above test_ls_key_is_v3. Cat B.
 
 
 def test_save_filters_does_not_save_removed_keys():

@@ -25,7 +25,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = PROJECT_ROOT / "web"
 
 NEWLY_PATCHED = ["param_sets.html", "rules_health.html", "test_results.html"]
-EXPECTED_HTML_COUNT = 18
+# REWRITTEN (TASK_112, 2026-07-04): the page set has grown past 18 web/*.html
+# files (21 today) as new screens were added over time — an exact frozen
+# count is the wrong invariant here; it breaks on every legitimate new page.
+# MIN_HTML_COUNT is a floor (regression guard against pages disappearing),
+# not a pin.
+MIN_HTML_COUNT = 18
 
 
 # ---------------------------------------------------------------------------
@@ -55,39 +60,52 @@ def _files_with_pattern(pattern: str) -> set[str]:
 class TestScriptCoverage:
     """All 18 web/*.html files must include both market_bar.js and warning_badge.js."""
 
-    def test_total_html_file_count_is_18(self):
+    def test_total_html_file_count_at_least_18(self):
+        """Page count floor (not a pin) — regression guard against pages
+        disappearing. See MIN_HTML_COUNT comment above for why this is a
+        floor, not an exact count."""
         files = _all_html_files()
-        assert len(files) == EXPECTED_HTML_COUNT, (
-            f"Expected {EXPECTED_HTML_COUNT} HTML files, found {len(files)}: "
+        assert len(files) >= MIN_HTML_COUNT, (
+            f"Expected at least {MIN_HTML_COUNT} HTML files, found {len(files)}: "
             f"{[f.name for f in files]}"
         )
 
-    def test_all_18_pages_have_market_bar_js(self):
+    def test_all_pages_have_market_bar_js(self):
+        """REAL BUG, MINOR (not test debt — do not weaken): ingest_log.html
+        has neither market_bar.js nor warning_badge.js (never retrofitted,
+        unlike every other page). NOTE: 8 OTHER pages (dbstats/explore/
+        groups/param_sets/ref/rule_performance/rules/trace) were previously
+        truncated on disk mid-<script> tag — that larger bug has since been
+        fixed externally (commit 7d7f692, "restore truncated closing tags
+        on 8 page templates"), leaving only this one pre-existing gap."""
         files_with_mb = _files_with_pattern("market_bar.js")
         all_html = {p.name for p in _all_html_files()}
         missing = all_html - files_with_mb
         assert not missing, (
             f"{len(missing)} pages missing market_bar.js: {sorted(missing)}"
         )
-        assert len(files_with_mb) == EXPECTED_HTML_COUNT, (
-            f"Expected {EXPECTED_HTML_COUNT} pages with market_bar.js, "
-            f"found {len(files_with_mb)}"
-        )
 
-    def test_all_18_pages_have_warning_badge_js(self):
+    def test_all_pages_have_warning_badge_js(self):
+        """REAL BUG, MINOR (not test debt — do not weaken): ingest_log.html
+        is cleanly-formed but was simply never retrofitted with either
+        script. The larger truncation bug (8 other pages cut off mid-
+        <script> tag) has since been fixed externally (commit 7d7f692) —
+        see test_all_pages_have_market_bar_js docstring."""
         files_with_wb = _files_with_pattern("warning_badge.js")
         all_html = {p.name for p in _all_html_files()}
         missing = all_html - files_with_wb
         assert not missing, (
             f"{len(missing)} pages missing warning_badge.js: {sorted(missing)}"
         )
-        assert len(files_with_wb) == EXPECTED_HTML_COUNT, (
-            f"Expected {EXPECTED_HTML_COUNT} pages with warning_badge.js, "
-            f"found {len(files_with_wb)}"
-        )
 
     def test_market_bar_and_warning_badge_exact_parity(self):
-        """Same set of files must have both scripts — no asymmetry."""
+        """Same set of files must have both scripts — no asymmetry.
+
+        REAL BUG, MINOR (not test debt): currently red only because of the
+        one pre-existing ingest_log.html gap (see
+        test_all_pages_have_warning_badge_js docstring) — the larger
+        8-file truncation bug is fixed (commit 7d7f692).
+        """
         mb_files = _files_with_pattern("market_bar.js")
         wb_files = _files_with_pattern("warning_badge.js")
         assert mb_files == wb_files, (
@@ -103,7 +121,13 @@ class TestScriptCoverage:
 
 class TestNewlyPatchedPages:
     """param_sets.html, rules_health.html, test_results.html must each have
-    both script tags placed before </body>."""
+    both script tags placed before </body>.
+
+    NOTE: param_sets.html was previously truncated on disk mid-<script>
+    tag (part of the 8-file truncation bug found during TASK_113); that has
+    since been fixed externally (commit 7d7f692, "restore truncated
+    closing tags on 8 page templates"), so all cases here now pass.
+    """
 
     @pytest.mark.parametrize("filename", NEWLY_PATCHED)
     def test_market_bar_present(self, filename: str):

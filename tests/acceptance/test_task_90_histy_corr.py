@@ -10,11 +10,19 @@ Verifies:
 6. derive is idempotent — two runs produce identical rows
 7. SPX values improved over post-TASK_89 baseline (-0.4315/-0.2049)
 8. All five correlation assets present for 2026-06-23
+
+MOVED (TASK_114, 2026-07-04): relocated to tests/acceptance/ and marked
+@pytest.mark.acceptance — this is a one-time acceptance proof that a
+specific historical re-plumb (as of 2026-06-23) hit specific provider-target
+correlation values, not a durable regression test. See
+docs/audit/test_debt_review.md §2 and CLAUDE.md's Conventions list.
 """
 
 import hashlib
 import pytest
 from datetime import date
+
+pytestmark = pytest.mark.acceptance
 
 ANCHOR_DATE = date(2026, 6, 23)
 ANCHOR_DATE_STR = "2026-06-23"

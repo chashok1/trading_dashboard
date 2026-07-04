@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 from openpyxl.utils import column_index_from_string
-from sqlalchemy import text
+from sqlalchemy import text, bindparam
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from etl.db import session_scope
@@ -104,16 +104,25 @@ def ma_rows_by_symbol(workbook):
 
 @pytest.fixture(scope="session")
 def registry():
-    """List of registry rows for columns we want to parity-check."""
+    """List of registry rows for columns we want to parity-check.
+
+    FIXED (TASK_113, 2026-07-04): a plain `text()` clause with `NOT IN
+    :skip` binds the whole tuple as a single parameter, which psycopg
+    rejects for an IN/NOT IN list ("syntax error at or near $1" — this was
+    the root cause of all 15 test_cat_parity.py errors, a fixture bug, not
+    a real parity mismatch). Use `bindparam(..., expanding=True)` so
+    SQLAlchemy expands the tuple into one placeholder per element.
+    """
     with session_scope() as s:
-        rows = s.execute(text("""
+        stmt = text("""
             SELECT column_name, excel_header, excel_col_idx, excel_col_letter,
                    pg_type, drv_cat_table, source_expr
             FROM ref_ma_columns
             WHERE drv_cat_table NOT IN ('drv_cat_separator')
               AND column_name NOT IN :skip
             ORDER BY excel_col_idx
-        """), {"skip": tuple(SKIP_COL_NAMES)}).mappings().all()
+        """).bindparams(bindparam("skip", expanding=True))
+        rows = s.execute(stmt, {"skip": tuple(SKIP_COL_NAMES)}).mappings().all()
     return [dict(r) for r in rows]
 
 
@@ -134,13 +143,21 @@ def db_rows_by_symbol(registry):
                 for c in cols_in_cat
             )
             try:
+                # FIXED (TASK_113, 2026-07-04): drv_cat_* tables use tos_symbol,
+                # not symbol (CLAUDE.md convention #15 — "tos_symbol in all
+                # drv_*"; symbol only exists on hist_* tables). Querying
+                # `SELECT symbol` against drv_cat_atomic_input raised
+                # "column 'symbol' does not exist", which the except/skip
+                # below masked as "Cat-table not loaded" for all 12
+                # categories — the real cause was this fixture bug, not
+                # missing data.
                 rs = s.execute(
-                    text(f"SELECT symbol, {select_cols} FROM {cat} WHERE as_of_date = :d"),
+                    text(f"SELECT tos_symbol, {select_cols} FROM {cat} WHERE as_of_date = :d"),
                     {"d": snap},
                 ).mappings().all()
             except Exception as e:
                 pytest.skip(f"Cat-table {cat} not loaded for {snap}: {e}")
-            out[cat] = {row["symbol"].upper(): dict(row) for row in rs}
+            out[cat] = {row["tos_symbol"].upper(): dict(row) for row in rs}
     return out
 
 
@@ -256,10 +273,10 @@ def test_no_silent_null_columns(registry, db_rows_by_symbol):
     for cat, rows in db_rows_by_symbol.items():
         if not rows:
             continue
-        # Pull column names (excluding symbol)
+        # Pull column names (excluding tos_symbol)
         any_row = next(iter(rows.values()))
         for col in any_row.keys():
-            if col == "symbol":
+            if col == "tos_symbol":
                 continue
             non_null = sum(1 for r in rows.values() if r.get(col) is not None)
             if non_null == 0:

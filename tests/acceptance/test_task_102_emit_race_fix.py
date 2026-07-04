@@ -10,6 +10,13 @@ Covers:
 6. DB: source_kind='email' for the 3 generated files (race-fix proof).
 7. DB: hist row counts match DEV_HANDOFF expected values.
 8. DB: ledger repopulated for all 5 feed types (status=ok).
+
+MOVED (TASK_114, 2026-07-04): relocated to tests/acceptance/ and marked
+@pytest.mark.acceptance — this is a one-time acceptance proof for a single
+historical incident recovery (hardcoded external archive/backup paths under
+C:\\Ashok\\Investing\\Stocks\\..., byte-exact file sizes, a specific
+2026-06-24 snapshot), not a durable regression test. See
+docs/audit/test_debt_review.md §2 and CLAUDE.md's Conventions list.
 """
 from __future__ import annotations
 
@@ -20,10 +27,12 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.acceptance
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 ARCHIVE_FILES = {
     "IIChange": Path(r"C:\Ashok\Investing\Stocks\IIChange\Archive\IIChange 2026-06-24.xlsx"),

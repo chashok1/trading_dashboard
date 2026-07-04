@@ -697,9 +697,16 @@ class TestApiEndpoint:
 class TestActionableHtml:
 
     def test_check43_fc_cal_th_present(self, html_src):
-        """Check 43 — <th> with FC (cal) text present in actionable.html."""
-        assert "FC (cal)" in html_src, (
-            "'FC (cal)' column header not found in actionable.html"
+        """Check 43 — <th> for the calibrated Final Call is present.
+
+        REWRITTEN (TASK_112, 2026-07-04): the caption was re-worded from
+        'FC (cal)' to 'CALC' (0 matches for the old text) — same column,
+        same data-key='fc_strength_cal' (still covered by
+        test_check44_th_data_key_fc_strength_cal, unaffected), cosmetic
+        rename only.
+        """
+        assert ">CALC<" in html_src, (
+            "'CALC' column header not found in actionable.html"
         )
 
     def test_check44_th_data_key_fc_strength_cal(self, html_src):
@@ -711,33 +718,37 @@ class TestActionableHtml:
         )
 
     def test_check45_fc_cal_th_after_final_call_th(self, html_src):
-        """Check 45 — FC (cal) <th> immediately follows the Final Call <th>."""
+        """Check 45 — CALC <th> follows the Final Call (ACTION) <th>.
+
+        REWRITTEN (TASK_112, 2026-07-04): caption 'FC (cal)' -> 'CALC' (see
+        check 43). Adjacency also loosened — TASK_74's MACRO column was
+        inserted between Final Call and CALC (quad/MacroNet overlay), so
+        they're no longer immediately adjacent (~558 chars apart, with the
+        MACRO <th> in between). The still-durable invariant is ordering
+        (CALC after Final Call), not tight adjacency.
+        """
         pos_final_call = html_src.find('"Final Call"') if '"Final Call"' in html_src \
             else html_src.find("Final Call")
-        pos_fc_cal = html_src.find("FC (cal)")
+        pos_calc = html_src.find(">CALC<")
         assert pos_final_call >= 0, "'Final Call' column header not found"
-        assert pos_fc_cal >= 0, "'FC (cal)' column header not found"
-        # FC (cal) must come AFTER Final Call
-        assert pos_final_call < pos_fc_cal, (
-            "'FC (cal)' column header appears BEFORE 'Final Call' in actionable.html — "
-            "must be positioned immediately after"
-        )
-        # They should be close (within 500 chars of each other)
-        assert pos_fc_cal - pos_final_call < 500, (
-            f"'FC (cal)' is {pos_fc_cal - pos_final_call} chars after 'Final Call' — "
-            "should be immediately adjacent"
+        assert pos_calc >= 0, "'CALC' column header not found"
+        assert pos_final_call < pos_calc, (
+            "'CALC' column header appears BEFORE 'Final Call' in actionable.html — "
+            "must be positioned after"
         )
 
     def test_check46_title_mentions_bull_prob(self, html_src):
-        """Check 46 — The FC (cal) <th> title attribute mentions bull_prob."""
-        # Find the <th> containing FC (cal)
-        idx = html_src.find("FC (cal)")
+        """Check 46 — The CALC <th> title attribute mentions bull_prob.
+
+        REWRITTEN (TASK_112, 2026-07-04): caption 'FC (cal)' -> 'CALC'
+        (see check 43)."""
+        idx = html_src.find(">CALC<")
         assert idx >= 0
         # Look at the surrounding <th> element
         block_start = max(0, idx - 300)
         block = html_src[block_start:idx + 200]
         assert "bull_prob" in block, (
-            "title attribute of FC (cal) <th> does not mention bull_prob"
+            "title attribute of CALC <th> does not mention bull_prob"
         )
 
 
@@ -806,13 +817,14 @@ class TestActionableJs:
             "_finalCallCalHtml(r) not called in row template of actionable.js"
         )
 
-    def test_check54_no_existing_js_functions_deleted(self):
-        """Check 54 — No existing JS functions removed (zero deleted lines in actionable.js)."""
-        removed = _git_diff_lines(ACTIONABLE_JS, kind="-")
-        assert not removed, (
-            f"git diff shows {len(removed)} deleted line(s) in actionable.js — "
-            f"existing functions must not be modified.\nRemoved: {removed[:5]}"
-        )
+    # test_check54_no_existing_js_functions_deleted — RETIRED (TASK_113
+    # test-debt cleanup, 2026-07-04). Asserted a `git diff` working-tree
+    # snapshot from the moment AGENT_WORK_8 was authored (actionable.js
+    # must show zero deleted lines vs HEAD); any later, legitimate commit
+    # to actionable.js makes this fail unpredictably depending on what's
+    # currently staged/modified when the suite runs. Same Cat A git-status
+    # pattern as `TestNoGitCommit`, already retired in test_agent_work_18.py
+    # (TASK_111).
 
 
 # ===========================================================================
@@ -912,11 +924,11 @@ class TestProbabilityBandMapping:
 
 class TestDevHandoffStatus:
 
-    def test_check66_handoff_references_agent_work_8(self, handoff_src):
-        """Check 66 — DEV_HANDOFF.md references AGENT_WORK_8."""
-        assert "AGENT_WORK_8" in handoff_src, (
-            "DEV_HANDOFF.md does not reference AGENT_WORK_8"
-        )
+    # test_check66_handoff_references_agent_work_8 — RETIRED (TASK_112
+    # test-debt cleanup, 2026-07-04). DEV_HANDOFF.md is a rolling file,
+    # overwritten fresh by every task's developer pass — pinning it to
+    # AGENT_WORK_8-specific content is permanently stale by design. Cat A
+    # per docs/audit/test_debt_review.md.
 
     def test_check67_handoff_status_all_done(self, handoff_src):
         """Check 67 — DEV_HANDOFF.md ends with Status: ALL_DONE."""
@@ -926,32 +938,17 @@ class TestDevHandoffStatus:
             f"DEV_HANDOFF.md last non-blank line is '{lines[-1]}', expected 'ALL_DONE'"
         )
 
-    def test_check68_handoff_lists_derive_cal(self, handoff_src):
-        """Check 68 — DEV_HANDOFF.md lists derive_final_call_cal.py as changed."""
-        assert "derive_final_call_cal" in handoff_src, (
-            "derive_final_call_cal.py not listed in DEV_HANDOFF.md changed files"
-        )
+    # test_check68_handoff_lists_derive_cal / test_check70_handoff_lists_
+    # rules_py / test_check71_handoff_lists_actionable_html /
+    # test_check72_handoff_lists_actionable_js — RETIRED (TASK_112 test-debt
+    # cleanup, 2026-07-04). Same rolling-file content-pin pattern as
+    # test_check66 above. test_check69_handoff_lists_baseline_sql is left
+    # untouched (still coincidentally passing; not this task's concern).
 
-    def test_check69_handoff_lists_baseline_sql(self, handoff_src):
-        """Check 69 — DEV_HANDOFF.md lists db/baseline.sql as changed."""
-        assert "db/baseline.sql" in handoff_src or "baseline.sql" in handoff_src, (
-            "db/baseline.sql not listed in DEV_HANDOFF.md changed files"
-        )
-
-    def test_check70_handoff_lists_rules_py(self, handoff_src):
-        """Check 70 — DEV_HANDOFF.md lists api/routers/rules.py as changed."""
-        assert "rules.py" in handoff_src, (
-            "api/routers/rules.py not listed in DEV_HANDOFF.md changed files"
-        )
-
-    def test_check71_handoff_lists_actionable_html(self, handoff_src):
-        """Check 71 — DEV_HANDOFF.md lists web/actionable.html as changed."""
-        assert "actionable.html" in handoff_src, (
-            "web/actionable.html not listed in DEV_HANDOFF.md changed files"
-        )
-
-    def test_check72_handoff_lists_actionable_js(self, handoff_src):
-        """Check 72 — DEV_HANDOFF.md lists web/actionable.js as changed."""
-        assert "actionable.js" in handoff_src, (
-            "web/actionable.js not listed in DEV_HANDOFF.md changed files"
-        )
+    # test_check69_handoff_lists_baseline_sql — RETIRED (TASK_113 test-debt
+    # cleanup, 2026-07-04). DEV_HANDOFF.md is a rolling file, overwritten
+    # fresh by every task's developer pass — pinning it to AGENT_WORK_8-
+    # specific content is permanently stale by design (it happened to
+    # coincidentally pass at TASK_112 time but broke once a later,
+    # unrelated task's handoff landed). Cat A per
+    # docs/audit/test_debt_review.md.

@@ -389,11 +389,19 @@ class TestRenderTheCall:
 # ── FILE_LANES constant ───────────────────────────────────────────────────────
 
 def test_file_lanes_contains_all_5():
+    """REWRITTEN (TASK_112, 2026-07-04): two more lanes were added later —
+    `etf_weekly` -> hist_etf and `ii_weekly` -> hist_ii (weekly-cadence
+    feeds, distinct from the existing etf_changes/investing_ideas *change*
+    tables) — growing FILE_LANES from 5 to 7 entries. Legitimate feed-set
+    growth, not drift; updated the expected set rather than re-pinning the
+    stale count."""
     from etl.hedgeye.emit import FILE_LANES
     expected = {
         ("risk_range", "hist_rr"),
         ("investing_ideas", "hist_iichg"),
         ("etf_changes", "hist_etfchg"),
+        ("etf_weekly", "hist_etf"),
+        ("ii_weekly", "hist_ii"),
         ("portfolio_solutions", "hist_ps"),
         ("the_call", "hist_call"),
     }

@@ -190,9 +190,15 @@ class TestDefaultSort:
         assert len(matches) >= 1, "loadActionable() must reset sort to _priority DESC"
 
     def test_load_actionable_sort_inside_function(self):
-        """Verify the sort reset is inside loadActionable(), not just somewhere else."""
+        """Verify the sort reset is inside loadActionable(), not just somewhere else.
+
+        REWRITTEN (TASK_112, 2026-07-04): loadActionable() now takes an
+        `opts` parameter (`async function loadActionable(opts)`), so the
+        exact zero-arg signature string no longer matches. Search for the
+        function name with an open paren instead of the exact signature.
+        """
         # Check that the sort reset appears in loadActionable context
-        load_func_start = self.src.find("async function loadActionable()")
+        load_func_start = self.src.find("async function loadActionable(")
         assert load_func_start != -1, "loadActionable() not found"
         # Find the next occurrence of state.sort = {key: '_priority' after loadActionable
         sort_pattern = "state.sort = { key: '_priority', dir: -1, type: 'num' }"
@@ -204,12 +210,18 @@ class TestDefaultSort:
         assert first_reset < fetch_call, "Sort reset should precede fetchJson in loadActionable"
 
     def test_clear_all_filters_resets_sort(self):
-        """clearAllFilters() must also reset sort to _priority DESC."""
+        """clearAllFilters() must also reset sort to _priority DESC.
+
+        REWRITTEN (TASK_112, 2026-07-04): widened the search window — more
+        filter fields (bull_prob_min, agreement_class + their UI resets)
+        were added ahead of the sort reset, pushing it to ~513 chars in
+        (was within 500). Same assertion, wider window to tolerate growth.
+        """
         clear_func_start = self.src.find("function clearAllFilters()")
         assert clear_func_start != -1, "clearAllFilters() not found"
         # Find the end of clearAllFilters (next function declaration)
-        # Look for state.sort reset within the next ~20 lines
-        snippet = self.src[clear_func_start:clear_func_start + 500]
+        # Look for state.sort reset within the next ~30 lines
+        snippet = self.src[clear_func_start:clear_func_start + 800]
         assert "_priority" in snippet, "clearAllFilters() must reset sort to _priority"
         assert "dir: -1" in snippet, "clearAllFilters() must set dir: -1"
 
@@ -223,10 +235,16 @@ class TestDefaultSort:
             "renderGrid() must call updateSortIndicators()"
 
     def test_init_sorting_runs_before_load_dates(self):
-        """initSorting() must be called before loadDates() in DOMContentLoaded."""
+        """initSorting() must be called before loadDates() in DOMContentLoaded.
+
+        REWRITTEN (TASK_112, 2026-07-04): widened the search window —
+        loadDates() now sits ~2670 chars into the (larger) DOMContentLoaded
+        handler, past the original 1000-char snippet. Same ordering
+        assertion, wider window to tolerate growth.
+        """
         dom_start = self.src.find("document.addEventListener('DOMContentLoaded'")
         assert dom_start != -1
-        snippet = self.src[dom_start:dom_start + 1000]
+        snippet = self.src[dom_start:dom_start + 4000]
         init_pos  = snippet.find("initSorting()")
         dates_pos = snippet.find("loadDates()")
         assert init_pos != -1, "initSorting() not found in DOMContentLoaded"
@@ -241,41 +259,29 @@ class TestAndFilterCoordination:
     def setup_method(self):
         self.src = _read(ACTIONABLE_JS)
 
-    def test_matches_base_filters_contains_buys_sells(self):
-        """matchesBaseFilters() must check state.filters.buys_sells."""
-        func_start = self.src.find("function matchesBaseFilters(")
-        assert func_start != -1, "matchesBaseFilters() not found"
-        # Find the function body (until the next top-level 'function ')
-        # Use a generous slice
-        snippet = self.src[func_start:func_start + 2000]
-        assert "buys_sells" in snippet, \
-            "matchesBaseFilters() must include buys_sells filter logic"
-
-    def test_buys_sells_check_inside_matches_base_filters(self):
-        """buys_sells filter logic (buy/sell branch) must be inside matchesBaseFilters."""
-        func_start = self.src.find("function matchesBaseFilters(")
-        # Find closing brace of matchesBaseFilters by counting braces
-        depth = 0
-        func_end = func_start
-        for i, ch in enumerate(self.src[func_start:], start=func_start):
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    func_end = i
-                    break
-        body = self.src[func_start:func_end + 1]
-        assert "buys_sells === 'buy'" in body or "buys_sells ==='buy'" in body or \
-               "buys_sells == 'buy'" in body, \
-            "buys_sells buy-branch must be inside matchesBaseFilters"
-        assert "buys_sells === 'sell'" in body or \
-               "buys_sells == 'sell'" in body, \
-            "buys_sells sell-branch must be inside matchesBaseFilters"
+    # test_matches_base_filters_contains_buys_sells /
+    # test_buys_sells_check_inside_matches_base_filters — RETIRED (TASK_112
+    # test-debt cleanup, 2026-07-04). The `buys_sells` toggle filter no
+    # longer exists anywhere in actionable.js (0 matches) — matchesBaseFilters()
+    # was superseded by a richer, differently-shaped filter set (source,
+    # account, held_only, conviction, symbol_search, bull_prob_min,
+    # agreement_class), none of which is a direct buy/sell toggle. Cat B —
+    # superseded filter architecture, not a rename. The AND-combination
+    # *principle* this class is really about (baseRows applies every filter
+    # except the action chip, so chip counts reflect all other active
+    # filters) is still directly covered by test_apply_client_filter_uses_
+    # base_rows and test_chip_counts_from_base_rows below, unaffected.
 
     def test_apply_client_filter_uses_base_rows(self):
-        """applyClientFilter() must filter baseRows with only action chip."""
-        func_start = self.src.find("\nfunction applyClientFilter()")
+        """applyClientFilter() must filter baseRows with only action chip.
+
+        REWRITTEN (TASK_112, 2026-07-04): applyClientFilter() now takes an
+        `opts` parameter (`function applyClientFilter(opts)` — supports
+        preserveSelection for the auto-poll refresh path), so the exact
+        zero-arg signature string no longer matches. Search for the function
+        name with an open paren instead.
+        """
+        func_start = self.src.find("\nfunction applyClientFilter(")
         assert func_start != -1, "applyClientFilter() not found"
         snippet = self.src[func_start:func_start + 800]
         assert "state.baseRows" in snippet, \
@@ -326,18 +332,34 @@ class TestAndFilterCoordination:
 # ─── Test 13-15: Tooltip coverage ───────────────────────────────────────────
 
 class TestTooltipCoverage:
+    """Grid cells must surface a plain-English tooltip on hover.
+
+    REWRITTEN/RETIRED (TASK_112, 2026-07-04) — see per-test notes below.
+    Across the board, static `title=` attributes were superseded by
+    dynamic, JS-driven hover popovers (the same evolutionary pattern
+    followed by the Sources-column and IV/RR popovers elsewhere in this
+    file): `.badge-action-*` classes are gone entirely (superseded by
+    `.act-action-cell` + `setupActionCol()` -> `_actionPopHtml()`, already
+    covered by test_agent_work_22.py::TestSetupActionCol /
+    TestActionPopHtmlContent), and the Technical (rr) cell's tooltip moved
+    from a static `title=` to a `#rrDetailTip` popover built dynamically on
+    `.rr-action-cell` mouseover.
+    """
+
     def setup_method(self):
         self.src = _read(ACTIONABLE_JS)
 
     def test_action_badge_has_title(self):
-        """The action badge in the grid row must have a title= attribute."""
-        # The pattern from renderGrid: badge-action-... title="..."
-        assert 'badge-action-' in self.src and 'title=' in self.src, \
-            "action badge must have a title= attribute"
-        # Specifically check the grid cell badge uses title= with a label
-        pattern = r'badge-action-\$\{[^}]+\}[^>]*title='
-        assert re.search(pattern, self.src), \
-            "Action badge in grid cell must have title= attribute"
+        """REWRITTEN (TASK_112, 2026-07-04): the action badge no longer uses
+        a static title= — it's covered by a hover popover instead (see class
+        docstring). Assert the current mechanism (act-action-cell + the
+        setupActionCol/hover-popup wiring) is present, rather than the
+        retired title= pattern (already thoroughly covered by
+        test_agent_work_22.py, so just a presence check here)."""
+        assert 'act-action-cell' in self.src, \
+            "action badge cell (act-action-cell) not found in actionable.js"
+        assert 'setupActionCol' in self.src, \
+            "setupActionCol() hover-tooltip wiring not found in actionable.js"
 
     def test_final_call_badge_has_title(self):
         """_finalCallHtml() must include title= with the plain-English label."""
@@ -352,17 +374,25 @@ class TestTooltipCoverage:
             "_finalCallHtml() title= should reference fc.label for the plain-English name"
 
     def test_rr_cell_has_title(self):
-        """TrTnBBRskRng cell span must have a title= attribute."""
-        # Look for rrHtml construction with title=
-        pattern = r'title=.*rrDisp\.label'
-        assert re.search(pattern, self.src), \
-            "TrTnBBRskRng cell span must have title= with rrDisp.label"
+        """Technical (formerly TrTnBBRskRng) cell must surface a tooltip.
 
-    def test_trig_cell_has_title(self):
-        """Trig cell span must have a title= attribute."""
-        pattern = r'title=.*trigDisp\.label'
-        assert re.search(pattern, self.src), \
-            "Trig cell span must have title= with trigDisp.label"
+        REWRITTEN (TASK_112, 2026-07-04): `rrDisp` is still computed but its
+        title= usage was dropped — the tooltip moved to a dynamic
+        `#rrDetailTip` popover built on `.rr-action-cell` mouseover (see
+        class docstring). Assert the current hover-popover mechanism is
+        wired, rather than the retired static title=/rrDisp.label pattern.
+        """
+        assert "rrDetailTip" in self.src, \
+            "rr-action-cell hover popover (#rrDetailTip) not found in actionable.js"
+        assert "rr-action-cell" in self.src, \
+            "rr-action-cell class not found in actionable.js"
+
+    # test_trig_cell_has_title — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). The Trig column was removed entirely from the grid
+    # (TASK_109 — trig_action is no longer surfaced anywhere on the
+    # Actionable screen); see test_agent_work_22.py::
+    # TestTrigColumnRemovedHtml, where this removal is itself under test.
+    # Cat B — there is no Trig cell left to have a tooltip on.
 
 
 # ─── Test 16: Production-code changes scope ──────────────────────────────────
@@ -378,42 +408,11 @@ class TestProductionCodeScope:
         """web/actionable.js must exist."""
         assert ACTIONABLE_JS.exists(), "web/actionable.js must exist"
 
-    def test_no_py_files_in_core_etl_changed(self):
-        """Core ETL Python files must not have been touched.
-
-        api/routers/dash.py HAS been modified (action_code column addition for
-        inline action logging).  This is a concern because the handoff says
-        'FRONTEND ONLY', but the change is narrowly scoped to adding an
-        action_code parameter to the INSERT — it should not break existing
-        behaviour.  We flag it rather than fail hard.
-        """
-        result = subprocess.run(
-            ["git", "diff", "--name-only", "HEAD"],
-            capture_output=True, text=True,
-            cwd=str(PROJECT_ROOT)
-        )
-        changed = result.stdout.strip().splitlines()
-        py_changes = [f for f in changed if f.endswith(".py")]
-        # api/routers/dash.py is the only expected .py change (action_code column)
-        unexpected_py = [f for f in py_changes if f != "api/routers/dash.py"]
-        assert not unexpected_py, \
-            f"Unexpected Python files changed: {unexpected_py}"
-
-    def test_actionable_html_and_styles_are_also_changed(self):
-        """web/actionable.html and web/styles.css ARE modified (contrary to
-        handoff claim of 'No changes').  This test documents the discrepancy.
-        """
-        result = subprocess.run(
-            ["git", "diff", "--name-only", "HEAD"],
-            capture_output=True, text=True,
-            cwd=str(PROJECT_ROOT)
-        )
-        changed = result.stdout.strip().splitlines()
-        html_changed = "web/actionable.html" in changed
-        css_changed   = "web/styles.css" in changed
-        # Both are changed; this is a concern since handoff said no changes.
-        # We assert they exist as modified rather than passing blind.
-        assert html_changed, \
-            "web/actionable.html shows as modified — handoff says unchanged"
-        assert css_changed, \
-            "web/styles.css shows as modified — handoff says unchanged"
+    # test_no_py_files_in_core_etl_changed / test_actionable_html_and_styles_
+    # are_also_changed — RETIRED (TASK_112 test-debt cleanup, 2026-07-04).
+    # Both asserted a `git diff --name-only HEAD` working-tree snapshot from
+    # the moment AGENT_WORK_21 was authored; every file involved has long
+    # since been committed and the working tree reflects whatever unrelated
+    # task is running today, not AGENT_WORK_21's scope. Same Cat A
+    # git-status pattern as `TestNoGitCommit`, already retired in
+    # test_agent_work_18.py (TASK_111).

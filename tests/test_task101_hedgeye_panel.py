@@ -108,12 +108,20 @@ class TestActionableHtmlComplete:
         )
 
     def test_hedgeye_panel_js_comes_after_body_content(self):
-        """hedgeye_panel.js script tag must appear after the main page content."""
+        """hedgeye_panel.js script tag must appear after the main page content.
+
+        REWRITTEN (TASK_112, 2026-07-04): a later code comment (near line
+        435, documenting where render() sets classes) now mentions the bare
+        text "hedgeye_panel.js" earlier in the file than the actual
+        <script> tag, so a plain substring search on the filename matches
+        the comment first instead of the tag. Anchor on the actual
+        `src="...hedgeye_panel.js"` attribute instead.
+        """
         html = _html()
-        hedgeye_panel_pos = html.find("hedgeye_panel.js")
+        hedgeye_panel_pos = html.find('src="/static/hedgeye_panel.js"')
         hedgeye_div_pos   = html.find('id="hedgeyePanel"')
         assert hedgeye_div_pos != -1, 'id="hedgeyePanel" div not found'
-        assert hedgeye_panel_pos != -1, "hedgeye_panel.js script not found"
+        assert hedgeye_panel_pos != -1, "hedgeye_panel.js script tag not found"
         assert hedgeye_div_pos < hedgeye_panel_pos, (
             "hedgeye_panel.js script must come after the #hedgeyePanel div"
         )
@@ -149,15 +157,15 @@ class TestHedgeyeEffectiveDateLogic:
             "effective_date clamping 'effective_date = max(...)' not found in hedgeye.py"
         )
 
-    def test_alerts_uses_lte_effective_date(self):
-        """hist_rta query must use <= :eff (not = :d exact date) for date alignment."""
-        src = _py()
-        # Find the rta_date lookup that feeds the alerts section
-        rta_block_pos = src.find("hist_rta WHERE snapshot_date <=")
-        assert rta_block_pos != -1, (
-            "hist_rta date filter must use '<= :eff' (not exact-date '= :d'). "
-            "Pattern 'hist_rta WHERE snapshot_date <=' not found in hedgeye.py"
-        )
+    # test_alerts_uses_lte_effective_date — RETIRED (TASK_112 test-debt
+    # cleanup, 2026-07-04). Real-Time Alerts deliberately use an *exact*
+    # `snapshot_date = :eff` match, not `<=` carry-forward — the code's own
+    # comment states why: "Real-Time Alerts — only if received exactly on
+    # effective_date, non-superseded." Stale RTAs from a prior day are
+    # intentionally NOT shown (unlike trend flips / top5, which do use `<=`
+    # carry-forward and are unaffected — see test_trend_flips_uses_lte_
+    # effective_date below). Cat B — a deliberate, documented exception for
+    # this specific intraday feed, not test debt to paper over.
 
     def test_trend_flips_uses_lte_effective_date(self):
         """drv_rr_trend_change query must use <= :eff for date alignment."""
@@ -373,29 +381,13 @@ class TestDbDataAvailability:
             f"hist_call_top5 for {self.ANCHOR}: expected 5 rows (one per rank), got {count}"
         )
 
-    def test_effective_date_clamping_not_needed_for_anchor(self):
-        """For 2026-06-26, Hedgeye data date should match the anchor (no clamping needed).
-        This validates the current DB state matches what the DEV_HANDOFF recorded."""
-        from datetime import date
-        from sqlalchemy import text
-        from dotenv import load_dotenv
-        load_dotenv(str(PROJECT_ROOT / ".env"))
-        from etl.db import session_scope
-        with session_scope() as s:
-            latest_rta = s.execute(text(
-                "SELECT MAX(snapshot_date) FROM hist_rta"
-            )).scalar()
-            latest_top5 = s.execute(text(
-                "SELECT MAX(snapshot_date) FROM hist_call_top5"
-            )).scalar()
-        anchor = date(2026, 6, 26)
-        if latest_rta is not None:
-            assert latest_rta <= anchor or latest_rta == anchor, (
-                f"hist_rta max date {latest_rta} is after anchor {anchor} — "
-                "clamping code is essential (good it exists)"
-            )
-        if latest_top5 is not None:
-            assert latest_top5 <= anchor or latest_top5 == anchor, (
-                f"hist_call_top5 max date {latest_top5} is after anchor {anchor} — "
-                "clamping code is essential (good it exists)"
-            )
+    # test_effective_date_clamping_not_needed_for_anchor — RETIRED (TASK_113
+    # test-debt cleanup, 2026-07-04). Pinned `hist_rta`/`hist_call_top5` max
+    # snapshot_date to be <= the frozen anchor 2026-06-26 — every later
+    # load pushes those max dates forward, so this fails on every date past
+    # that one by construction; it was validating "the DB state as of one
+    # specific historical moment matched a DEV_HANDOFF snapshot", not an
+    # ongoing invariant. There is no durable "clamping" behavior to
+    # de-pin this into (the effective-date clamping logic itself is
+    # exercised by the other tests in this class using `<=` comparisons,
+    # which remain unaffected). Cat D per docs/audit/test_debt_review.md.

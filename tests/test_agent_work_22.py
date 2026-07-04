@@ -57,13 +57,33 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _func_body(src: str, func_name: str, max_len: int = 6000) -> str:
-    """Return the source text from 'function func_name' up to max_len chars."""
+def _func_body(src: str, func_name: str, max_len: int = None) -> str:
+    """Return the full source text of a named function (brace-matched).
+
+    REWRITTEN (TASK_112, 2026-07-04): the original implementation sliced a
+    fixed `max_len` (default 6000) chars from the function's start, which
+    silently truncated mid-function once renderGrid() (10 951 chars) grew
+    past that window — causing false "X removed from renderGrid()" failures
+    for content that was simply beyond the slice, not actually missing.
+    Brace-matching finds the function's real closing brace regardless of
+    size, so growth no longer breaks these tests. `max_len`, if given, still
+    caps the returned text (kept for callers that want a bounded excerpt).
+    """
     idx = src.find(f"function {func_name}(")
     if idx == -1:
         idx = src.find(f"async function {func_name}(")
     assert idx != -1, f"{func_name}() not found in source"
-    return src[idx: idx + max_len]
+    brace_start = src.index("{", idx)
+    depth = 0
+    for i, ch in enumerate(src[brace_start:], start=brace_start):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                body = src[idx: i + 1]
+                return body[:max_len] if max_len else body
+    raise AssertionError(f"Could not find closing brace of {func_name}()")
 
 
 # ─── Criterion 1: Syntax check ───────────────────────────────────────────────
@@ -226,12 +246,18 @@ class TestActionPopHtmlContent:
         self.body = _func_body(self.src, "_actionPopHtml")
 
     def test_header_symbol_and_badge(self):
-        """Popup header includes the symbol and action badge."""
+        """Popup header includes the symbol and action badge.
+
+        REWRITTEN (TASK_112, 2026-07-04): the badge class is 'act-badge'
+        (the standardized actions.js token class, with a colorCls + '-tint'
+        modifier) — 'badge-action' was never the real class name in the
+        current implementation.
+        """
         # Symbol is rendered with escapeHtml(sym) and badge-action class
         assert 'escapeHtml(sym)' in self.body or 'sym' in self.body, \
             "Header must reference the symbol"
-        assert 'badge-action' in self.body, \
-            "Header must include an action badge (badge-action class)"
+        assert 'act-badge' in self.body, \
+            "Header must include an action badge (act-badge class)"
 
     def test_suppressed_reason_banner(self):
         """suppressed_reason causes a warning banner to render."""
@@ -423,9 +449,22 @@ class TestOtherColumnsIntact:
             "Action column header missing from grid"
 
     def test_trtbn_column_header_present(self):
-        """TrTnBBRskRng column header must still be in the grid."""
-        assert 'TrTnBBRskRng' in self.html, \
-            "TrTnBBRskRng column header missing from grid"
+        """TrTnBBRskRng column (Trend/Trade/Bollinger/Risk-Range) must still
+        be in the grid.
+
+        REWRITTEN (TASK_112, 2026-07-04): the <th> caption was re-worded
+        from the literal 'TrTnBBRskRng' abbreviation to 'Technical' (0
+        matches for the old string in actionable.html) — but the same
+        column/data-key (rr_action) and concept are unchanged, and the old
+        name still lives on as the CSV-export column label in
+        actionable.js. Assert the current column identity instead of the
+        retired caption string.
+        """
+        assert 'data-key="rr_action"' in self.html, \
+            "Technical column (data-key='rr_action', formerly captioned "\
+            "'TrTnBBRskRng') missing from grid"
+        assert 'TrTnBBRskRng' in self.js, \
+            "TrTnBBRskRng label should still survive as the CSV-export column name"
 
     def test_final_call_column_header_present(self):
         """Final Call column header must still be in the grid."""

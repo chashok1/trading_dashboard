@@ -442,11 +442,17 @@ class TestPositionCeilingImported:
 
     @pytest.mark.parametrize("path,func_name", CALLERS, ids=lambda x: x if isinstance(x, str) else x.name)
     def test_import_present(self, path, func_name):
+        """REWRITTEN (TASK_112, 2026-07-04): both derive.py and
+        derive_outlook_action.py now import position_ceiling via a
+        multi-line parenthesized `from etl._derive_common import (...)`
+        block, which a `.`-based (no-DOTALL) regex can't span. Added
+        re.DOTALL — same import, same source, just a multi-line statement.
+        """
         src = path.read_text(encoding="utf-8")
         assert "position_ceiling" in src, (
             f"position_ceiling not found in {path.name}"
         )
-        assert re.search(r"from etl\._derive_common import.*position_ceiling", src), (
+        assert re.search(r"from etl\._derive_common import.*position_ceiling", src, re.DOTALL), (
             f"position_ceiling not imported from etl._derive_common in {path.name}"
         )
 
@@ -779,17 +785,11 @@ class TestDevHandoff:
         content = (PROJECT_ROOT / "DEV_HANDOFF.md").read_text(encoding="utf-8")
         assert "ALL_DONE" in content, "DEV_HANDOFF.md does not contain ALL_DONE"
 
-    def test_handoff_mentions_task_47(self):
-        content = (PROJECT_ROOT / "DEV_HANDOFF.md").read_text(encoding="utf-8")
-        assert "47" in content or "drv_quote" in content.lower(), (
-            "DEV_HANDOFF.md doesn't reference TASK 47 / drv_quote"
-        )
-
-    def test_handoff_mentions_task_48(self):
-        content = (PROJECT_ROOT / "DEV_HANDOFF.md").read_text(encoding="utf-8")
-        assert "48" in content or "position_ceiling" in content.lower() or "ceiling" in content.lower(), (
-            "DEV_HANDOFF.md doesn't reference TASK 48 / position ceiling"
-        )
+    # test_handoff_mentions_task_47 / test_handoff_mentions_task_48 —
+    # RETIRED (TASK_112 test-debt cleanup, 2026-07-04). DEV_HANDOFF.md is a
+    # rolling file, overwritten fresh by every task's developer pass —
+    # pinning it to AGENT_WORK_47/48-specific content is permanently stale
+    # by design. Cat A per docs/audit/test_debt_review.md.
 
 
 # ---------------------------------------------------------------------------
@@ -868,7 +868,12 @@ class TestLiveDB:
                 assert "source" in item, (
                     f"Synthetic item {item.get('metric_key')!r} missing 'source' field"
                 )
-                assert item["source"] in ("drv_quote", "hist_rr"), (
-                    f"Synthetic item source must be 'drv_quote' or 'hist_rr', "
+                # REWRITTEN (TASK_113, 2026-07-04): 'fred' added as a
+                # legitimate source alongside drv_quote/hist_rr — later
+                # synthetic items (macro/rate series) are sourced from FRED
+                # rather than TOS quotes/RR. Legitimate new data-source
+                # integration, not drift to revert.
+                assert item["source"] in ("drv_quote", "hist_rr", "fred"), (
+                    f"Synthetic item source must be 'drv_quote', 'hist_rr' or 'fred', "
                     f"got {item['source']!r}"
                 )

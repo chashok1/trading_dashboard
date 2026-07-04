@@ -143,18 +143,15 @@ class TestHtmlColumnPresent:
             "Final Call <th> must have data-type=\"num\""
         )
 
-    def test_final_call_between_trig_and_pos(self):
-        """Final Call column must appear between Trig and Pos $ columns."""
-        html = _html()
-        trig_pos = html.find(">Trig<")
-        final_call_pos = html.find("Final Call")
-        pos_dollar_pos = html.find(">Pos $<")
-        assert trig_pos != -1, "Trig column header not found"
-        assert final_call_pos != -1, "Final Call column header not found"
-        assert pos_dollar_pos != -1, "Pos $ column header not found"
-        assert trig_pos < final_call_pos < pos_dollar_pos, (
-            "Final Call column must appear between Trig and Pos $ in the header row"
-        )
+    # test_final_call_between_trig_and_pos — RETIRED (TASK_112 test-debt
+    # cleanup, 2026-07-04). Both anchor columns are gone: the Trig column was
+    # removed entirely from the grid (TASK_109 — trig_action is no longer
+    # surfaced anywhere on the screen, confirmed in test_agent_work_22.py's
+    # TestTrigColumnRemovedHtml), and the column caption is now 'POS$' not
+    # 'Pos $' (see test_agent_work_38.py::TestNoLayoutChanges, rewritten to
+    # check data-col identifiers instead of caption text). With both
+    # reference points gone, there's no meaningful "is Final Call between
+    # them" check left to perform. Cat B.
 
 
 # ---------------------------------------------------------------------------
@@ -277,9 +274,17 @@ class TestFinalCallFeasiblePath:
     """finalCall() must compute a strength and code when consolidated_action is set."""
 
     def test_fcstrength_function_present(self):
+        """REWRITTEN (TASK_112, 2026-07-04): `_fcStrengthToAction()` no
+        longer exists — finalCall() was redesigned (documented in its own
+        header comment as a 'D6' change) from a strength-scored/clamped
+        model to a two-lens hierarchical gate (Sources=strategic,
+        Technical=tactical) that picks an explicit actionDisplay() code per
+        branch instead of mapping a continuous strength back to an action.
+        `_fcStrength()` (code -> numeric strength via `_FC_SCALE`) still
+        exists and is still used. Cat B for the reverse-mapping half.
+        """
         js = _js()
         assert "_fcStrength" in js, "_fcStrength function must be defined"
-        assert "_fcStrengthToAction" in js, "_fcStrengthToAction function must be defined"
 
     def test_final_call_returns_feasible_true(self):
         js = _js()
@@ -288,16 +293,14 @@ class TestFinalCallFeasiblePath:
             "finalCall() must return feasible: true for the successful path"
         )
 
-    def test_strength_clamped_to_feasible_range(self):
-        """Strength must be clamped to the feasible range via Math.max/Math.min."""
-        js = _js()
-        body = _extract_function(js, "finalCall")
-        assert "Math.max" in body and "Math.min" in body, (
-            "finalCall() must clamp the final strength via Math.max/Math.min"
-        )
-        assert "fcMin" in body and "fcMax" in body, (
-            "finalCall() must define fcMin/fcMax feasibility bounds"
-        )
+    # test_strength_clamped_to_feasible_range — RETIRED (TASK_112 test-debt
+    # cleanup, 2026-07-04). finalCall()'s continuous-strength clamping
+    # (fcMin/fcMax + Math.max/Math.min) was replaced by the same D6
+    # hierarchical-gate redesign noted in test_fcstrength_function_present
+    # above — each branch now returns one of a small set of exact
+    # actionDisplay() codes (SA/SS/BM/BS/BMN/HOLD) with its exact
+    # `_FC_SCALE` value, so there is no continuous range left to clamp.
+    # Feasibility is now a boolean gate per branch, not a numeric clamp. Cat B.
 
 
 # ---------------------------------------------------------------------------
@@ -305,29 +308,23 @@ class TestFinalCallFeasiblePath:
 # ---------------------------------------------------------------------------
 
 class TestRiskOffBias:
-    """When sell and buy signals conflict, risk-off must pull toward bearish."""
+    """When sell and buy signals conflict, risk-off must pull toward bearish.
 
-    def test_risk_off_logic_present(self):
-        js = _js()
-        body = _extract_function(js, "finalCall")
-        # The risk-off block: if ANY bearish AND ANY bullish → pull to bearish
-        assert "sellVotes" in body, "finalCall() must tally sellVotes"
-        assert "buyVotes" in body, "finalCall() must tally buyVotes"
-        assert ("sellVotes > 0 && buyVotes > 0" in body or
-                "sellVotes>0 && buyVotes>0" in body), (
-            "finalCall() must check sellVotes > 0 && buyVotes > 0 for conflict detection"
-        )
+    RETIRED both tests below (TASK_112 test-debt cleanup, 2026-07-04). The
+    vote-tallying risk-off mechanism (sellVotes/buyVotes conflict detection,
+    mostBearish * 0.5 pull) was replaced by the D6 hierarchical-gate
+    redesign (see test_fcstrength_function_present above): Sources
+    (consolidated_action) now acts as a strategic gate that Technical
+    (rr_action) can only tactically adjust within, rather than three lenses
+    voting and being pulled toward the most-bearish score. The equivalent
+    "never let a sell signal get overridden into a buy" behavior is now
+    covered directly by test_agent_work_31.py's finalCall() gate/guard
+    tests (e.g. the exit-gate / infeasible-sell tests) rather than a
+    vote-count mechanism. Cat B — superseded architecture, not a rename.
+    """
 
-    def test_most_bearish_used_in_conflict(self):
-        """On conflict, strength must lean toward mostBearish * 0.5."""
-        js = _js()
-        body = _extract_function(js, "finalCall")
-        assert "mostBearish" in body, (
-            "finalCall() must compute mostBearish signal on conflict"
-        )
-        assert "Math.min(rawScore, mostBearish" in body, (
-            "finalCall() must pull adjustedScore toward mostBearish on conflict"
-        )
+    # test_risk_off_logic_present / test_most_bearish_used_in_conflict —
+    # see class docstring above.
 
 
 # ---------------------------------------------------------------------------
@@ -335,28 +332,28 @@ class TestRiskOffBias:
 # ---------------------------------------------------------------------------
 
 class TestConfidenceBadge:
-    """3 agree → high; 2 → med; conflict → mixed."""
+    """Confidence badge logic.
 
-    def test_agrees_counter_present(self):
-        js = _js()
-        body = _extract_function(js, "finalCall")
-        assert "agrees" in body, "finalCall() must count agreeing lenses"
+    REWRITTEN (TASK_112, 2026-07-04): the original 3-lens "agrees" counter
+    (3 agree -> high; 2 -> med; conflict -> mixed) was replaced by the D6
+    hierarchical-gate redesign — confidence is now one of 'gate' (a
+    deterministic branch fired, Technical not meaningfully consulted),
+    'high' (Sources and Technical genuinely align), 'mixed' (they
+    conflict), or 'none' (infeasible/no signal). There is no 'agrees'
+    counter and no 'med' tier at all anymore (0 matches for either). The
+    current confidence-tier behavior (gate/high/mixed) is already covered
+    by test_agent_work_31.py's TestGateBranchesUseGateConfidence /
+    TestHighPreservedOnGenuineAlignBranches, and _finalCallHtml()'s current
+    badge rendering (inline-styled, not CSS-classed — see
+    test_agent_work_31.py::TestFinalCallHtmlGateBadge, also rewritten in
+    this same task) by TestFinalCallHtmlGateBadge there. Cat B — superseded
+    architecture, not a rename; retiring here rather than duplicating that
+    existing coverage.
+    """
 
-    def test_high_confidence_at_three(self):
-        js = _js()
-        body = _extract_function(js, "finalCall")
-        assert ("agrees === 3" in body and
-                ("'high'" in body or '"high"' in body)), (
-            "finalCall() must assign confidence='high' when all 3 lenses agree"
-        )
-
-    def test_med_confidence_at_two(self):
-        js = _js()
-        body = _extract_function(js, "finalCall")
-        assert ("agrees === 2" in body and
-                ("'med'" in body or '"med"' in body)), (
-            "finalCall() must assign confidence='med' when 2 lenses agree"
-        )
+    # test_agrees_counter_present / test_high_confidence_at_three /
+    # test_med_confidence_at_two / test_html_badge_uses_correct_classes —
+    # see class docstring above.
 
     def test_mixed_confidence_otherwise(self):
         js = _js()
@@ -364,13 +361,6 @@ class TestConfidenceBadge:
         assert ("'mixed'" in body or '"mixed"' in body), (
             "finalCall() must assign confidence='mixed' when lenses conflict"
         )
-
-    def test_html_badge_uses_correct_classes(self):
-        js = _js()
-        body = _extract_function(js, "_finalCallHtml")
-        assert "fc-conf-high" in body, "_finalCallHtml must use fc-conf-high CSS class"
-        assert "fc-conf-med" in body, "_finalCallHtml must use fc-conf-med CSS class"
-        assert "fc-conf-mixed" in body, "_finalCallHtml must use fc-conf-mixed CSS class"
 
 
 # ---------------------------------------------------------------------------
@@ -399,20 +389,42 @@ class TestComputePriority:
         )
 
     def test_priority_formula_strength_times_amt(self):
-        """The formula must multiply |strength| by amt."""
+        """The priority formula must combine an action-severity rank with |AMT$|.
+
+        REWRITTEN (TASK_112, 2026-07-04): the formula no longer multiplies
+        `fc.strength` by amt — it now prefers the server-computed
+        `priority_rank` when present (TASK_53/106), falling back to a
+        `state.buysellSeq` severity-rank lookup by `fc.code`, scaled by
+        1e6 and offset by |AMT$| (`seq * 1e6 + amt`) so tiers never cross.
+        Same conceptual formula (severity-rank combined with dollar size to
+        break ties within a tier), different exact terms.
+        """
         js = _js()
         body = _extract_function(js, "_computePriority")
-        # Check for the multiplication of strength and amt
-        assert ("fc.strength" in body and "amt" in body), (
-            "_computePriority must multiply final-call strength by |AMT$|"
+        assert "buysellSeq" in body, (
+            "_computePriority must rank by state.buysellSeq severity"
+        )
+        assert "1e6" in body and "amt" in body, (
+            "_computePriority must combine the severity rank with |AMT$| (seq * 1e6 + amt)"
         )
 
     def test_priority_fallback_to_conviction(self):
-        """When finalCall is infeasible/zero, must fall back to conviction scoring."""
+        """When finalCall is infeasible, priority must sink to the bottom.
+
+        REWRITTEN (TASK_112, 2026-07-04): the fallback is no longer
+        `_agreeingSources` conviction scoring — infeasible/unranked rows now
+        get seq = -1 (sinks below all real severity tiers), and the server-
+        computed `priority_rank` is preferred over any client fallback when
+        present. Same intent (infeasible rows never outrank real actions),
+        different mechanism.
+        """
         js = _js()
         body = _extract_function(js, "_computePriority")
-        assert "_agreeingSources" in body, (
-            "_computePriority must fall back to _agreeingSources when final call is zero"
+        assert "priority_rank" in body, (
+            "_computePriority must prefer the server-computed priority_rank when available"
+        )
+        assert re.search(r"-1\s*\*\s*1e6", body), (
+            "_computePriority must sink infeasible rows to the bottom via seq = -1"
         )
 
 
@@ -511,12 +523,21 @@ class TestNoRegression:
         assert ">Action<" in html, "Action column header must still be present"
 
     def test_tr_tn_bb_column_present(self):
+        """REWRITTEN (TASK_112, 2026-07-04): caption re-worded 'TrTnBBRskRng'
+        -> 'Technical' (same data-key='rr_action' column) — see
+        test_agent_work_22.py::TestOtherColumnsIntact::test_trtbn_column_
+        header_present, which already covers this rename in detail."""
         html = _html()
-        assert "TrTnBBRskRng" in html, "TrTnBBRskRng column header must still be present"
+        assert 'data-key="rr_action"' in html, (
+            "Technical column (formerly captioned TrTnBBRskRng) header must still be present"
+        )
 
-    def test_trig_column_present(self):
-        html = _html()
-        assert ">Trig<" in html, "Trig column header must still be present"
+    # test_trig_column_present — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). The Trig column was removed entirely from the grid
+    # (TASK_109 — trig_action is no longer surfaced anywhere on the
+    # Actionable screen); see test_agent_work_22.py::
+    # TestTrigColumnRemovedHtml (this removal is itself under test there).
+    # Cat B.
 
     def test_amt_column_present(self):
         html = _html()
@@ -529,11 +550,13 @@ class TestNoRegression:
             "Pri column header must be present (renamed from Conv)"
         )
 
-    def test_pri_uses_priority_key(self):
-        html = _html()
-        assert 'data-key="_priority"' in html, (
-            "Pri column must have data-key=\"_priority\""
-        )
+    # test_pri_uses_priority_key — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). There is no longer a dedicated, clickable "Pri" <th> in
+    # the grid (0 matches for data-key="_priority" in actionable.html) — the
+    # `_priority` value survives only as the grid's internal default sort
+    # key (`state.sort = { key: '_priority', ... }` in actionable.js), not a
+    # visible/sortable column. Cat B — the standalone Priority column was
+    # dropped, not renamed.
 
     def test_rules_edge_column_present(self):
         html = _html()

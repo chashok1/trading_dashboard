@@ -591,17 +591,11 @@ class TestNoRuleLogicChanged:
             "should be read-only task"
         )
 
-    def test_check51b_four_files_only(self):
-        """Check 51b — DEV_HANDOFF lists exactly the 4 expected changed files."""
-        handoff = _read(DEV_HANDOFF)
-        expected_files = [
-            "db/baseline.sql",
-            "api/routers/rules.py",
-            "web/rule_performance.html",
-            "web/rule_performance.js",
-        ]
-        for f in expected_files:
-            assert f in handoff, f"Expected changed file '{f}' not listed in DEV_HANDOFF"
+    # test_check51b_four_files_only — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). DEV_HANDOFF.md is a rolling file, overwritten fresh by
+    # every task's developer pass — pinning it to AGENT_WORK_7's specific
+    # changed-files list is permanently stale by design. Cat A per
+    # docs/audit/test_debt_review.md.
 
 
 # ===========================================================================
@@ -610,11 +604,9 @@ class TestNoRuleLogicChanged:
 
 class TestDevHandoffStatus:
 
-    def test_check53_handoff_references_agent_work_7(self, handoff_src):
-        """Check 53 — DEV_HANDOFF.md references AGENT_WORK_7."""
-        assert "AGENT_WORK_7" in handoff_src or "TASK_65" in handoff_src, (
-            "DEV_HANDOFF.md does not reference AGENT_WORK_7 or TASK_65"
-        )
+    # test_check53_handoff_references_agent_work_7 — RETIRED (TASK_112
+    # test-debt cleanup, 2026-07-04). Same rolling-file content-pin pattern
+    # as test_check51b_four_files_only above. Cat A.
 
     def test_check54_handoff_status_all_done(self, handoff_src):
         """Check 54 — DEV_HANDOFF.md ends with Status: ALL_DONE."""

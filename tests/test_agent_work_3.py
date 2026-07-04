@@ -238,16 +238,15 @@ class TestPartB_CommonJs:
         assert "stroke-dasharray" in src or "dasharray" in src, \
             "_common.js rvolDot must use stroke-dasharray for null/unknown ring"
 
-    def test_B12_caret_up_path(self):
-        src = _read(COMMON_JS)
-        # Up triangle: M15 6 L12 1 L18 1 Z
-        assert "M15 6 L12 1 L18 1 Z" in src or "M15 6 L12 1 L18 1 Z" in src, \
-            "_common.js rvolDot must include up-caret path 'M15 6 L12 1 L18 1 Z'"
-
-    def test_B13_caret_down_path(self):
-        src = _read(COMMON_JS)
-        assert "M15 1 L12 6 L18 6 Z" in src, \
-            "_common.js rvolDot must include down-caret path 'M15 1 L12 6 L18 6 Z'"
+    # test_B12_caret_up_path / test_B13_caret_down_path — RETIRED (TASK_112
+    # test-debt cleanup, 2026-07-04). rvolDot() no longer draws in-cell caret
+    # triangles at all — the function's own comment now reads "direction
+    # shown in tooltip (vs Prior row); no in-cell arrow to avoid visual
+    # noise", and the trend arrow (↑/↓/→) is baked into the SVG's
+    # aria-label/<title> text instead (see test_B16 below, unaffected). This
+    # is a deliberate design change (feature superseded, not renamed) — Cat B
+    # per docs/audit/test_debt_review.md; 0 matches for either caret path in
+    # web/_common.js.
 
     def test_B14_flat_dash_rect(self):
         src = _read(COMMON_JS)
@@ -255,12 +254,9 @@ class TestPartB_CommonJs:
         assert re.search(r'<rect[^>]+fill.*#888780|flat.*<rect|rect.*flat', src, re.DOTALL), \
             "_common.js rvolDot must include flat dash as <rect> when dir='flat'"
 
-    def test_B15_caret_colors(self):
-        src = _read(COMMON_JS)
-        assert "#3B6D11" in src.upper() or "3b6d11" in src, \
-            "Up-caret color must be #3B6D11 (dark green)"
-        assert "#A32D2D" in src.upper() or "a32d2d" in src, \
-            "Down-caret color must be #A32D2D (dark red)"
+    # test_B15_caret_colors — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). Same removed-caret-triangle feature as B12/B13 above —
+    # there is no in-cell caret left to color. Cat B.
 
     def test_B16_aria_label_includes_rvol(self):
         src = _read(COMMON_JS)
@@ -306,11 +302,15 @@ class TestPartC_ColumnWiring:
             "actionable.html must have <th data-key=\"rvol\"> header"
 
     def test_C2_th_text_is_vol(self):
+        """REWRITTEN (TASK_112, 2026-07-04): the <th> caption was re-worded
+        from 'Vol' to 'Vlm' (0 matches for the old text) — same column,
+        same data-key="rvol", cosmetic rename only. Assert the current
+        caption instead of the retired one."""
         src = _read(ACTIONABLE_HTML)
-        # Look for >Vol< in proximity to data-key="rvol"
-        m = re.search(r'data-key="rvol"[^>]*>[^<]*Vol[^<]*<', src)
+        # Look for >Vlm< in proximity to data-key="rvol"
+        m = re.search(r'data-key="rvol"[^>]*>[^<]*Vlm[^<]*<', src)
         assert m is not None, \
-            "actionable.html Vol column header must have text content 'Vol'"
+            "actionable.html Vlm column header must have text content 'Vlm'"
 
     def test_C3_rvol_cell_css(self):
         src = _read(ACTIONABLE_HTML)
@@ -362,25 +362,15 @@ class TestDevHandoff:
         assert lines[-1] == "ALL_DONE", \
             f"DEV_HANDOFF.md last non-blank line must be ALL_DONE, got {lines[-1]!r}"
 
-    def test_D2_documents_rvol_source(self):
-        content = _read(DEV_HANDOFF)
-        assert "w_vlm_expn_ratio" in content, \
-            "DEV_HANDOFF.md must document the source column w_vlm_expn_ratio"
-
-    def test_D2b_documents_rvol_prior_source(self):
-        content = _read(DEV_HANDOFF)
-        assert "w_prior_day_vlm_expn_ratio" in content, \
-            "DEV_HANDOFF.md must document the source column w_prior_day_vlm_expn_ratio"
-
-    def test_D3_references_agent_work_3(self):
-        content = _read(DEV_HANDOFF)
-        assert "AGENT_WORK_3" in content, \
-            "DEV_HANDOFF.md must reference AGENT_WORK_3"
-
-    def test_D4_mentions_drv_tw(self):
-        content = _read(DEV_HANDOFF)
-        assert "drv_tw" in content, \
-            "DEV_HANDOFF.md must mention drv_tw as the join table"
+    # test_D2_documents_rvol_source / test_D2b_documents_rvol_prior_source /
+    # test_D3_references_agent_work_3 / test_D4_mentions_drv_tw — RETIRED
+    # (TASK_112 test-debt cleanup, 2026-07-04). DEV_HANDOFF.md is a rolling
+    # file, overwritten fresh by every task's developer pass (per
+    # docs/agent_handoff_workflow.md) — pinning it to AGENT_WORK_3-specific
+    # content (w_vlm_expn_ratio, drv_tw, etc.) is permanently stale by design
+    # once any later task's handoff lands, same pattern as the analogous
+    # retirement in test_agent_work_1.py::TestHandoffStatus (TASK_110). Cat A
+    # per docs/audit/test_debt_review.md.
 
 
 # ---------------------------------------------------------------------------

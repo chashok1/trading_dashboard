@@ -215,7 +215,16 @@ class TestTheCallOutlook:
             )
 
     def test_outlook_modifier_long_bench(self):
-        """'long bench' keyword in body line with (SYM): triggers modifier."""
+        """'long bench' keyword in body line with (SYM): triggers modifier.
+
+        REWRITTEN (TASK_112, 2026-07-04): `outlook_modifier` is no longer
+        None when a symbol has no special keyword — parse_the_call() now
+        falls back to the plain side (`modifier_map.get(sym) or
+        _CALL_SIDE[label]`), so a LONGS-list symbol without a "long bench"/
+        "best idea long" keyword gets outlook_modifier='long' (its plain
+        side), not None. Same "special keyword wins, otherwise fall back"
+        behavior, different fallback value.
+        """
         pt = (
             "HEDGEYE POSITIONS\n"
             "LONGS: AAPL, MSFT\n"
@@ -225,7 +234,7 @@ class TestTheCallOutlook:
         )
         rows = self._call_rows(pt)
         assert rows["MSFT"]["outlook_modifier"] == "long bench"
-        assert rows["AAPL"]["outlook_modifier"] is None  # no keyword for AAPL
+        assert rows["AAPL"]["outlook_modifier"] == "long"  # plain side, no special keyword
 
     def test_outlook_modifier_short_bench(self):
         """'short bench' keyword is correctly detected."""

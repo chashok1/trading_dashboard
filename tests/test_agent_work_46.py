@@ -433,11 +433,19 @@ class TestMarketBarJS:
         )
 
     def test_outlookBg_bullish_green(self):
-        """outlookBg must map 'Bullish' → '#15803d'."""
+        """outlookBg must resolve a bullish-outlook color.
+
+        REWRITTEN (TASK_112, 2026-07-04): outlookBg() no longer hardcodes
+        its own bullish->hex mapping — it now delegates entirely to the
+        canonical `window.outlookColor()` in _common.js (comment: "D3:
+        delegate entirely to canonical outlookColor... No duplicate
+        palette"), which maps 'bullish' to a different hex (#16a34a, not
+        the old #15803d). Assert the delegation mechanism rather than
+        re-pinning a fresh hex value (forbidden by the rewrite rules).
+        """
         js = self._get_js()
-        assert "'bullish' ? '#15803d'" in js or "=== 'bullish' ? '#15803d'" in js or \
-               "bullish" in js and "#15803d" in js, (
-            "outlookBg must map bullish → #15803d"
+        assert "window.outlookColor" in js, (
+            "outlookBg must delegate to the shared window.outlookColor() helper"
         )
 
     def test_outlookBg_bearish_red(self):
@@ -446,17 +454,22 @@ class TestMarketBarJS:
         assert "#b91c1c" in js, "outlookBg must map bearish → #b91c1c"
 
     def test_candleSvg_function_present(self):
+        """REWRITTEN (TASK_112, 2026-07-04): the function is `_candleSvg`
+        (underscore-prefixed, internal helper), not the public `candleSvg`
+        this test originally checked for. Same responsibility (a compact
+        OHLC candle SVG glyph, exposed on the module's public API as
+        `candleSvg: _candleSvg`), different internal name."""
         js = self._get_js()
-        assert "function candleSvg" in js, (
-            "market_bar.js missing candleSvg() helper"
+        assert "function _candleSvg" in js, (
+            "market_bar.js missing _candleSvg() helper"
         )
 
     def test_candleSvg_has_wicks(self):
-        """candleSvg must draw wick lines (upper = high→bodyTop, lower = bodyBot→low)."""
+        """_candleSvg must draw a wick line (high-to-low range indicator)."""
         js = self._get_js()
-        # Should have two <line> elements for the wicks
-        assert js.count("<line") >= 2 or 'x1="8"' in js, (
-            "candleSvg must draw wick lines (SVG <line> elements)"
+        # Should have at least one <line> element for the wick
+        assert js.count("<line") >= 1, (
+            "_candleSvg must draw a wick line (SVG <line> element)"
         )
 
     def test_candleSvg_has_rect_body(self):
@@ -471,37 +484,19 @@ class TestMarketBarJS:
             "candleSvg must guard against h<=l and null values"
         )
 
-    def test_rangeBarTick_function_present(self):
-        js = self._get_js()
-        assert "function rangeBarTick" in js, (
-            "market_bar.js missing rangeBarTick() helper"
-        )
-
-    def test_rangeBarTick_uses_mt_rb_tick(self):
-        """rangeBarTick must emit the .mt-rb-tick span."""
-        js = self._get_js()
-        assert "mt-rb-tick" in js, (
-            "rangeBarTick must emit .mt-rb-tick span"
-        )
-
-    def test_tileHtml_function_present(self):
-        js = self._get_js()
-        assert "function tileHtml" in js, (
-            "market_bar.js missing tileHtml() helper"
-        )
-
-    def test_tileHtml_uses_mt_tile(self):
-        js = self._get_js()
-        assert "mt-tile" in js, (
-            "tileHtml must use .mt-tile CSS class"
-        )
-
-    def test_renderOneItemTile_present(self):
-        """renderOneItemTile must replace old renderOnePair."""
-        js = self._get_js()
-        assert "renderOneItemTile" in js, (
-            "market_bar.js must have renderOneItemTile() (replaced renderOnePair)"
-        )
+    # test_rangeBarTick_function_present / test_rangeBarTick_uses_mt_rb_tick /
+    # test_tileHtml_function_present / test_tileHtml_uses_mt_tile /
+    # test_renderOneItemTile_present — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). This is the JS-side half of the same never-implemented
+    # "tile" redesign whose CSS half (`.mt-tile*` classes) TASK_111 already
+    # retired as `TestTileCSS` (0 matches confirmed in styles.css). The
+    # actual, current implementation is a different, "chip"-based design:
+    # `chipHtml()` builds `.rr-chip` elements using `rangeBar()`/
+    # `volRangeBar()` (not `rangeBarTick()`/`.mt-rb-tick`) and `_candleSvg()`
+    # (not `tileHtml()`/`.mt-tile`); items are pushed via inline
+    # `chipHtml(...)` calls, not a dedicated `renderOneItemTile()`. Cat B —
+    # aspirational spec with nothing to map onto, same disposition as
+    # TestTileCSS.
 
     def test_renderOnePair_removed(self):
         """renderOnePair is the old function and should not exist."""
@@ -510,11 +505,11 @@ class TestMarketBarJS:
             "renderOnePair() still present — should be removed or replaced by renderOneItemTile"
         )
 
-    def test_buildRrHtml_uses_tileHtml(self):
-        """buildRrHtml (bar 2) must call tileHtml for each item."""
-        js = self._get_js()
-        assert "buildRrHtml" in js, "market_bar.js missing buildRrHtml()"
-        assert "tileHtml" in js,    "buildRrHtml must call tileHtml()"
+    # test_buildRrHtml_uses_tileHtml — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). Same never-implemented "tile" redesign (see the
+    # retirement note above test_renderOnePair_removed) — 0 matches for
+    # either `buildRrHtml` or `tileHtml`. The bar-2 RR row is built inline
+    # via `chipHtml(...)` calls instead. Cat B.
 
     def test_fetches_rr_bar_endpoint(self):
         js = self._get_js()
@@ -523,10 +518,19 @@ class TestMarketBarJS:
         )
 
     def test_econ_expander_preserved(self):
-        """Econ ▾ expander button must still be present."""
+        """The Econ expander panel must still be present.
+
+        REWRITTEN (TASK_112, 2026-07-04): the toggle is no longer a
+        dedicated `#mtExpandBtn` built by market_bar.js — the Econ panel
+        (`#econPanel`) is now a static div in actionable.html, and
+        market_bar.js's `loadEcon()` populates it lazily on open (see the
+        file's own header comment: "The Econ panel (#econPanel) is a static
+        div in the page HTML"). Same feature (expandable econ-data panel),
+        different toggle mechanism.
+        """
         js = self._get_js()
-        assert "Econ" in js and "mtExpandBtn" in js, (
-            "Econ expander button was removed; it must be preserved"
+        assert "loadEcon" in js and "econPanel" in js, (
+            "Econ panel loader (loadEcon/#econPanel) was removed; it must be preserved"
         )
 
     def test_inverted_vix_logic_preserved(self):
@@ -543,20 +547,30 @@ class TestMarketBarJS:
             "dirClass() helper must still be present"
         )
 
-    def test_mtBarTrack_kept_for_compat(self):
-        """mtBarTrack must still be defined (backwards compat, per handoff)."""
-        js = self._get_js()
-        assert "mtBarTrack" in js, (
-            "mtBarTrack must still be defined for backwards compat (per DEV_HANDOFF)"
-        )
+    # test_mtBarTrack_kept_for_compat — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). `mtBarTrack` never existed as a backwards-compat shim in
+    # the current "chip"-based implementation (0 matches) — same
+    # never-implemented redesign as the other retirements in this class.
+    # Cat B.
 
     def test_open_high_low_close_keys_referenced(self):
-        """JS must read item.open, item.high, item.low, item.close from API response."""
+        """JS must read item.open, item.high, item.low and a close-equivalent
+        price from the API response.
+
+        REWRITTEN (TASK_112, 2026-07-04): `item.open`/`item.high`/`item.low`
+        are still read verbatim, but there is no `item.close` field — the
+        "close" side of the OHLC candle is supplied by `item.value` (bar 1)
+        or `item.bar_price` (bar 2) instead, per
+        `{ o: item.open, h: item.high, l: item.low, c: item.value }`. Same
+        OHLC-candle data flow, different close-price field name.
+        """
         js = self._get_js()
         assert "item.open"  in js, "JS must reference item.open"
         assert "item.high"  in js, "JS must reference item.high"
         assert "item.low"   in js, "JS must reference item.low"
-        assert "item.close" in js, "JS must reference item.close"
+        assert "item.value" in js or "item.bar_price" in js, (
+            "JS must reference a close-equivalent price field (item.value or item.bar_price)"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -637,9 +651,8 @@ class TestDevHandoff:
             "DEV_HANDOFF.md does not contain ALL_DONE status marker"
         )
 
-    def test_handoff_mentions_task_46(self):
-        handoff = PROJECT_ROOT / "DEV_HANDOFF.md"
-        content = handoff.read_text(encoding="utf-8")
-        assert "46" in content or "market bar" in content.lower(), (
-            "DEV_HANDOFF.md doesn't reference AGENT_WORK_46"
-        )
+    # test_handoff_mentions_task_46 — RETIRED (TASK_113 test-debt cleanup,
+    # 2026-07-04). DEV_HANDOFF.md is a rolling file, overwritten fresh by
+    # every task's developer pass — pinning it to AGENT_WORK_46-specific
+    # content is permanently stale by design. Cat A per
+    # docs/audit/test_debt_review.md.

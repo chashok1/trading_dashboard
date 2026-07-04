@@ -86,106 +86,74 @@ class TestSyntax:
         )
 
 
-# ── Check A: _srcSubLineHtml routes action through actionText(actionDisplay(act)) ─
+# ── Check A (REWRITTEN, TASK_112, 2026-07-04): Sources cell rendering ─────────
+# _srcSubLineHtml() and _renderOtherSources() no longer exist in
+# actionable.js (confirmed via grep — 0 matches for either name). The
+# feature they implemented — colored, standardized per-source display in
+# the Sources column — still exists, just consolidated into a single
+# function, _srcReasonsHtml(r): it renders one always-visible reason line
+# per source (winning source first, others by severity), each colored via
+# actionIcon() rather than a compact actionText(actionDisplay()) subline +
+# separate hover-triggered "other sources" pills. Rewritten against the
+# current function/call site rather than retired, since the underlying
+# behavior (standardized, colored, winner-first source breakdown in the
+# Sources column) is unchanged — only the implementation shape moved.
 
-class TestSrcSubLineHtml:
+class TestSrcReasonsHtml:
     def test_function_exists(self, js_text):
-        """_srcSubLineHtml must be defined in actionable.js."""
-        assert "function _srcSubLineHtml(" in js_text, (
-            "_srcSubLineHtml function not found in actionable.js"
+        """_srcReasonsHtml must be defined in actionable.js."""
+        assert "function _srcReasonsHtml(" in js_text, (
+            "_srcReasonsHtml function not found in actionable.js"
         )
 
-    def test_uses_actionDisplay(self, js_text):
-        """_srcSubLineHtml body must call actionDisplay() to normalize the action code."""
-        body = extract_function_body(js_text, "_srcSubLineHtml")
-        assert "actionDisplay(" in body, (
-            "_srcSubLineHtml() does not call actionDisplay() — raw action strings may reach the DOM"
-        )
-
-    def test_uses_actionText(self, js_text):
-        """_srcSubLineHtml body must call actionText() for the display text."""
-        body = extract_function_body(js_text, "_srcSubLineHtml")
-        assert "actionText(" in body, (
-            "_srcSubLineHtml() does not call actionText() — action codes may not be standardized"
-        )
-
-    def test_no_raw_increase_string(self, js_text):
-        """_srcSubLineHtml body must not output the raw literal 'INCREASE'."""
-        body = extract_function_body(js_text, "_srcSubLineHtml")
-        # 'INCREASE' may appear as a key in ACTION_RANK lookup but should not
-        # be what gets written to the DOM as display text.
-        # Check that it's not used in a template literal that directly inserts text.
-        # We allow 'INCREASE' in an object key context (.INCREASE or 'INCREASE': )
-        # but not as a display label fallback.
-        # The simplest heuristic: if actionText/actionDisplay wraps it, it's fine.
-        # This test just confirms actionText() is present (already above).
-        # Extra guard: raw 'INCREASE' not used as a fallback label after actionText call.
-        assert "actionText(" in body, (
-            "_srcSubLineHtml does not use actionText — raw INCREASE/ADD may appear as display text"
-        )
-
-    def test_no_raw_add_string_as_display(self, js_text):
-        """_srcSubLineHtml body must not use raw 'ADD' as a display label."""
-        body = extract_function_body(js_text, "_srcSubLineHtml")
-        # The function should route through actionText; as long as actionText is called
-        # the actual output will be standardized codes.
-        assert "actionText(" in body, (
-            "_srcSubLineHtml does not use actionText — raw ADD/INCREASE may appear as display text"
-        )
-
-
-# ── Check B: _renderOtherSources(r) is called in renderGrid() ─────────────────
-
-class TestRenderOtherSourcesCalled:
-    def test_render_other_sources_defined(self, js_text):
-        """_renderOtherSources must be defined in actionable.js."""
-        assert "function _renderOtherSources(" in js_text, (
-            "_renderOtherSources function not found in actionable.js"
-        )
-
-    def test_render_other_sources_called_in_render_grid(self, js_text):
-        """_renderOtherSources(r) must be called inside renderGrid() — the fix for dead code."""
+    def test_called_in_render_grid_sources_cell(self, js_text):
+        """_srcReasonsHtml(r) must be called inside renderGrid()'s Sources cell."""
         body = extract_function_body(js_text, "renderGrid")
-        assert "_renderOtherSources(r)" in body, (
-            "_renderOtherSources(r) is not called in renderGrid() — "
-            "[data-srcpop] pills will never be emitted into the DOM"
+        assert "_srcReasonsHtml(r)" in body, (
+            "_srcReasonsHtml(r) is not called in renderGrid() — "
+            "the Sources cell reason lines will never render"
         )
 
-    def test_render_other_sources_after_src_sub_line(self, js_text):
-        """_renderOtherSources(r) must appear after _srcSubLineHtml(r) in renderGrid()."""
-        body = extract_function_body(js_text, "renderGrid")
-        pos_sub = body.find("_srcSubLineHtml(r)")
-        pos_other = body.find("_renderOtherSources(r)")
-        assert pos_sub != -1, "_srcSubLineHtml(r) not found in renderGrid()"
-        assert pos_other != -1, "_renderOtherSources(r) not found in renderGrid()"
-        assert pos_other > pos_sub, (
-            "_renderOtherSources(r) must appear after _srcSubLineHtml(r) in renderGrid(), "
-            f"but found at positions {pos_other} vs {pos_sub}"
+    def test_uses_sourcesOf(self, js_text):
+        """_srcReasonsHtml must pull the row's parsed sources via _sourcesOf()."""
+        body = extract_function_body(js_text, "_srcReasonsHtml")
+        assert "_sourcesOf(" in body, (
+            "_srcReasonsHtml() does not call _sourcesOf() — source_actions may not be parsed"
         )
 
-
-# ── Check C: _renderOtherSources badge label uses actionText(actDisp) ─────────
-
-class TestRenderOtherSourcesBadge:
-    def test_uses_actionDisplay(self, js_text):
-        """_renderOtherSources body must call actionDisplay() for badge labels."""
-        body = extract_function_body(js_text, "_renderOtherSources")
-        assert "actionDisplay(" in body, (
-            "_renderOtherSources() does not call actionDisplay() — raw codes reach badge pills"
+    def test_winning_source_first(self, js_text):
+        """The winning source must be placed first, others appended after (severity-sorted)."""
+        body = extract_function_body(js_text, "_srcReasonsHtml")
+        assert "winner.concat(others)" in body, (
+            "_srcReasonsHtml() does not place the winning source first via winner.concat(others)"
         )
 
-    def test_uses_actionText(self, js_text):
-        """_renderOtherSources body must call actionText() for badge label text."""
-        body = extract_function_body(js_text, "_renderOtherSources")
-        assert "actionText(" in body, (
-            "_renderOtherSources() does not call actionText() — badge labels are not standardized"
+    def test_uses_actionIcon_for_color(self, js_text):
+        """Each source's icon/color must come from actionIcon() (standardized palette)."""
+        body = extract_function_body(js_text, "_srcReasonsHtml")
+        assert "actionIcon(" in body, (
+            "_srcReasonsHtml() does not call actionIcon() — source rows won't be color-coded"
         )
 
-    def test_emits_data_srcpop(self, js_text):
-        """_renderOtherSources must emit [data-srcpop] attribute on span elements."""
-        body = extract_function_body(js_text, "_renderOtherSources")
-        assert "data-srcpop" in body, (
-            "_renderOtherSources() does not emit [data-srcpop] — hover popover cannot trigger"
+    def test_escapes_html(self, js_text):
+        """Source tag and reason text must be escaped before insertion into the DOM."""
+        body = extract_function_body(js_text, "_srcReasonsHtml")
+        assert "escapeHtml(" in body, (
+            "_srcReasonsHtml() does not escape source/reason text — XSS risk"
+        )
+
+    def test_returns_empty_string_when_no_sources(self, js_text):
+        """No sources on the row -> the cell renders nothing."""
+        body = extract_function_body(js_text, "_srcReasonsHtml")
+        assert "if (!sources.length) return ''" in body, (
+            "_srcReasonsHtml() does not short-circuit to '' when there are no sources"
+        )
+
+    def test_wraps_output_in_src_reasons_container(self, js_text):
+        """Output must be wrapped in a .src-reasons container (styling hook)."""
+        body = extract_function_body(js_text, "_srcReasonsHtml")
+        assert 'class="src-reasons"' in body, (
+            "_srcReasonsHtml() does not wrap its output in a .src-reasons container"
         )
 
 
@@ -219,11 +187,13 @@ class TestRenderSourcePopColored:
             "_renderSourcePop() does not emit an act-badge span — Action row has no color chip"
         )
 
-    def test_action_row_uses_fill_suffix(self, js_text):
-        """_renderSourcePop must append '-fill' to colorCls for the badge background."""
+    def test_action_row_uses_tint_suffix(self, js_text):
+        """_renderSourcePop must append a color-modifier suffix to colorCls for the badge
+        background. REWRITTEN (TASK_112, 2026-07-04): the suffix is now '-tint' (was
+        '-fill') — same standardized-badge-coloring behavior, different CSS naming."""
         body = extract_function_body(js_text, "_renderSourcePop")
-        assert "-fill" in body, (
-            "_renderSourcePop() does not use '-fill' suffix on colorCls — badge may be uncolored"
+        assert "-tint" in body, (
+            "_renderSourcePop() does not use '-tint' suffix on colorCls — badge may be uncolored"
         )
 
 
@@ -236,20 +206,14 @@ class TestTwoLineHeaders:
             "Sources <th> is missing data-label='Sources'"
         )
 
-    def test_sources_th_has_data_subtitle(self, html_text):
-        """Sources <th> must have data-subtitle containing the subtitle text."""
-        # Match data-subtitle on the Sources th
-        pattern = r'data-key="consolidated_action"[^>]*data-subtitle="([^"]+)"'
-        m = re.search(pattern, html_text)
-        if not m:
-            # Try reversed attribute order
-            pattern2 = r'data-subtitle="([^"]+)"[^>]*data-key="consolidated_action"'
-            m = re.search(pattern2, html_text)
-        assert m is not None, (
-            "Sources <th> (data-key='consolidated_action') is missing data-subtitle attribute"
-        )
-        subtitle = m.group(1)
-        assert subtitle, "Sources <th> data-subtitle is empty"
+    # test_sources_th_has_data_subtitle — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). The two-line header (data-subtitle + a visible
+    # <div class="th-subtitle">) was superseded by a single-line header with
+    # its detail moved into the `title=` tooltip instead (confirmed via grep:
+    # 0 matches for `data-subtitle=` anywhere in actionable.html). Cat B —
+    # superseded feature, not a renamed one; no data-subtitle to rewrite
+    # against. test_sources_th_has_title below covers the tooltip that
+    # replaced it.
 
     def test_sources_th_has_title(self, html_text):
         """Sources <th> must have a title= tooltip."""
@@ -262,16 +226,10 @@ class TestTwoLineHeaders:
             "Sources <th> (data-key='consolidated_action') is missing title= tooltip"
         )
 
-    def test_sources_th_has_subtitle_div(self, html_text):
-        """Sources <th> must contain a <div class='th-subtitle'> child element."""
-        # Look for th-subtitle div near the Sources th
-        sources_th_pattern = r'(<th[^>]*data-key="consolidated_action"[^>]*>)(.*?)(</th>)'
-        m = re.search(sources_th_pattern, html_text, re.DOTALL)
-        assert m is not None, "Could not find Sources <th> block in actionable.html"
-        th_content = m.group(0)
-        assert 'class="th-subtitle"' in th_content, (
-            "Sources <th> does not contain a <div class='th-subtitle'> child"
-        )
+    # test_sources_th_has_subtitle_div — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). Same superseded two-line-header feature as
+    # test_sources_th_has_data_subtitle above — no <div class="th-subtitle">
+    # is emitted anywhere in actionable.html anymore. Cat B.
 
     def test_technical_th_has_data_label(self, html_text):
         """Technical <th> must have data-label='Technical'."""
@@ -279,16 +237,9 @@ class TestTwoLineHeaders:
             "Technical <th> is missing data-label='Technical'"
         )
 
-    def test_technical_th_has_data_subtitle(self, html_text):
-        """Technical <th> must have data-subtitle attribute."""
-        pattern = r'data-key="rr_action"[^>]*data-subtitle="([^"]+)"'
-        m = re.search(pattern, html_text)
-        if not m:
-            pattern2 = r'data-subtitle="([^"]+)"[^>]*data-key="rr_action"'
-            m = re.search(pattern2, html_text)
-        assert m is not None, (
-            "Technical <th> (data-key='rr_action') is missing data-subtitle attribute"
-        )
+    # test_technical_th_has_data_subtitle — RETIRED (TASK_112 test-debt
+    # cleanup, 2026-07-04). Same superseded two-line-header feature — see
+    # test_sources_th_has_data_subtitle above. Cat B.
 
     def test_technical_th_has_title(self, html_text):
         """Technical <th> must have a title= tooltip."""
@@ -301,42 +252,22 @@ class TestTwoLineHeaders:
             "Technical <th> (data-key='rr_action') is missing title= tooltip"
         )
 
-    def test_technical_th_has_subtitle_div(self, html_text):
-        """Technical <th> must contain a <div class='th-subtitle'> child element."""
-        technical_th_pattern = r'(<th[^>]*data-key="rr_action"[^>]*>)(.*?)(</th>)'
-        m = re.search(technical_th_pattern, html_text, re.DOTALL)
-        assert m is not None, "Could not find Technical <th> block in actionable.html"
-        th_content = m.group(0)
-        assert 'class="th-subtitle"' in th_content, (
-            "Technical <th> does not contain a <div class='th-subtitle'> child"
-        )
+    # test_technical_th_has_subtitle_div — RETIRED (TASK_112 test-debt
+    # cleanup, 2026-07-04). Same superseded two-line-header feature — see
+    # test_sources_th_has_subtitle_div above. Cat B.
 
-    def test_subtitle_text_sources(self, html_text):
-        """Sources subtitle must contain 'source' and 'sized'."""
-        pattern = r'data-key="consolidated_action"[^>]*data-subtitle="([^"]+)"'
-        m = re.search(pattern, html_text)
-        if not m:
-            pattern2 = r'data-subtitle="([^"]+)"[^>]*data-key="consolidated_action"'
-            m = re.search(pattern2, html_text)
-        assert m is not None, "Sources <th> data-subtitle not found"
-        subtitle = m.group(1).lower()
-        assert "source" in subtitle and "sized" in subtitle, (
-            f"Sources subtitle '{m.group(1)}' does not contain both 'source' and 'sized'"
-        )
-
-    def test_subtitle_text_technical(self, html_text):
-        """Technical subtitle must contain some indicator abbreviation."""
-        pattern = r'data-key="rr_action"[^>]*data-subtitle="([^"]+)"'
-        m = re.search(pattern, html_text)
-        if not m:
-            pattern2 = r'data-subtitle="([^"]+)"[^>]*data-key="rr_action"'
-            m = re.search(pattern2, html_text)
-        assert m is not None, "Technical <th> data-subtitle not found"
-        subtitle = m.group(1)
-        # Must contain at least one of TN, BB, RR (or similar)
-        assert any(indicator in subtitle for indicator in ["TN", "BB", "RR"]), (
-            f"Technical subtitle '{subtitle}' does not contain expected indicators (TN, BB, or RR)"
-        )
+    # test_subtitle_text_sources / test_subtitle_text_technical — RETIRED
+    # (TASK_112 test-debt cleanup, 2026-07-04). Both asserted content of the
+    # now-nonexistent data-subtitle attribute. The Sources tooltip text does
+    # still convey the same "sourced + sized" meaning (see
+    # test_sources_th_has_title / actual title text, which contains
+    # "then sized to your min/max/holdings"), but the Technical tooltip's
+    # replacement wording ("Trend-vs-Trade crossover + Bollinger range streak
+    # + Risk-Range position") does not literally contain the TN/BB/RR
+    # abbreviations the old subtitle used — those abbreviations now only
+    # appear in the separate in-cell Technical sub-line (_rrSubLineHtml,
+    # 'TnTd: '/'BB: '/'RR: ' prefixes), not the header. No clean 1:1 rewrite
+    # target in the header text itself. Cat B.
 
 
 # ── Check F: .th-subtitle CSS rule ────────────────────────────────────────────
@@ -436,20 +367,11 @@ class TestUpdateSortIndicators:
             "updateSortIndicators() assigns to .textContent — this wipes the .th-subtitle div"
         )
 
-    def test_emits_th_subtitle_div(self, js_text):
-        """updateSortIndicators must emit the .th-subtitle div in its innerHTML template."""
-        body = extract_function_body(js_text, "updateSortIndicators")
-        assert "th-subtitle" in body, (
-            "updateSortIndicators() does not include 'th-subtitle' in its innerHTML — "
-            "subtitle disappears after the first sort click"
-        )
-
-    def test_reads_data_subtitle(self, js_text):
-        """updateSortIndicators must read th.dataset.subtitle to get the subtitle text."""
-        body = extract_function_body(js_text, "updateSortIndicators")
-        assert "dataset.subtitle" in body or "data-subtitle" in body.lower(), (
-            "updateSortIndicators() does not read dataset.subtitle — subtitle is hardcoded or missing"
-        )
+    # test_emits_th_subtitle_div / test_reads_data_subtitle — RETIRED
+    # (TASK_112 test-debt cleanup, 2026-07-04). Both asserted the two-line
+    # header subtitle feature that TestTwoLineHeaders documents as
+    # superseded above (0 matches for 'th-subtitle'/'data-subtitle' in
+    # updateSortIndicators() or anywhere in actionable.html/js). Cat B.
 
     def test_uses_escapeHtml_on_label(self, js_text):
         """updateSortIndicators must apply escapeHtml() to the base label text."""

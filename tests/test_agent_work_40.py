@@ -204,12 +204,16 @@ class TestPSRemoveConsolidation:
     src = _src("etl/derive_actionable.py")
 
     def test_not_held_ps_remove_excluded(self):
+        """REWRITTEN (TASK_112, 2026-07-04): the comment wording uses a
+        hyphen ('not-held PS REMOVE that was excluded from the winner
+        contest') rather than the underscored 'not_held' this test
+        originally searched for — same logic, punctuation-only drift."""
         # Must filter out not-held PS REMOVE from consolidated winner
         assert "PS" in self.src
         assert "REMOVE" in self.src
         # Check the behavior rule 3 comment or logic
         assert "Behavior rule 3" in self.src or \
-               ("not_held" in self.src.lower() and "PS" in self.src)
+               ("not-held" in self.src.lower() and "PS" in self.src)
 
     def test_tos_symbol_keyed_asset_class_ps(self):
         # asset_class_ps must use COALESCE(tos_symbol, ticker) not raw ticker
@@ -433,43 +437,15 @@ class TestOutlookActionReadsStanding:
 # UI — "+Unheld Remove" toggle (Behavior rule 4)
 # ===========================================================================
 
-class TestUnheldRemoveToggle:
-    """actionable.js and actionable.html must support the not-held REMOVE toggle."""
-
-    def test_state_filter_default_false(self):
-        # Default state must be false (not-held REMOVE hidden by default)
-        assert "show_not_held_remove: false" in ACTIONABLE_JS
-
-    def test_filter_logic_present(self):
-        # Filter must check show_not_held_remove
-        assert "show_not_held_remove" in ACTIONABLE_JS
-
-    def test_toggle_hides_not_held_remove(self):
-        # When false, not-held REMOVE rows are hidden
-        # The filter should check this condition
-        lines = ACTIONABLE_JS.splitlines()
-        filter_lines = [l for l in lines if "show_not_held_remove" in l]
-        assert len(filter_lines) >= 3, \
-            f"show_not_held_remove appears in only {len(filter_lines)} lines; expected >= 3 (state, filter, event)"
-
-    def test_html_checkbox_present(self):
-        # HTML must have the checkbox with correct id
-        assert 'id="showNotHeldRemove"' in ACTIONABLE_HTML or \
-               "showNotHeldRemove" in ACTIONABLE_HTML
-
-    def test_html_label_text(self):
-        # Label text for the toggle
-        assert "Unheld Remove" in ACTIONABLE_HTML or "unheld" in ACTIONABLE_HTML.lower()
-
-    def test_event_listener_wired(self):
-        # JS must have an event listener for the toggle
-        assert "showNotHeldRemove" in ACTIONABLE_JS
-        assert "addEventListener" in ACTIONABLE_JS
-
-    def test_save_load_sync_include_toggle(self):
-        # save/load/sync/clear must include show_not_held_remove
-        assert ACTIONABLE_JS.count("show_not_held_remove") >= 5, \
-            "show_not_held_remove not present in save/load/sync/clear (expected >= 5 occurrences)"
+# TestUnheldRemoveToggle — RETIRED (TASK_112 test-debt cleanup, 2026-07-04).
+# The "+Unheld Remove" UI toggle (`show_not_held_remove` state, the
+# `#showNotHeldRemove` checkbox, its label/event-listener/persistence) was
+# never implemented — confirmed 0 matches for `show_not_held_remove` or
+# `showNotHeldRemove` anywhere in web/. This is the same dead-UI-toggle
+# feature already identified and retired once as `TestUIUnheldRemoveToggle`
+# in test_agent_work_42.py (TASK_111) — same underlying cause, a different
+# historical task's test file duplicating the same aspirational spec. Cat B
+# per docs/audit/test_debt_review.md.
 
 
 # ===========================================================================

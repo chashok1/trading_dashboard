@@ -339,12 +339,14 @@ class TestWinningReasonPreserved:
 # ---------------------------------------------------------------------------
 
 class TestSrcSubLineHtmlUnused:
-    def test_src_sub_line_html_still_defined(self):
-        """_srcSubLineHtml function definition must still exist (safe dead code)."""
-        js = _read(ACTIONABLE_JS)
-        assert "function _srcSubLineHtml(" in js, (
-            "_srcSubLineHtml was deleted — it should be kept as dead code per handoff notes"
-        )
+    # test_src_sub_line_html_still_defined — RETIRED (TASK_112 test-debt
+    # cleanup, 2026-07-04). AGENT_WORK_50 deliberately kept `_srcSubLineHtml`
+    # as dead code (unused but not deleted). A later cleanup removed it
+    # outright, replacing its responsibility with `_srcReasonsHtml()` (see
+    # test_agent_work_27.py::TestSrcReasonsHtml and the wholesale
+    # retirement note in test_agent_work_24.py). Cat B — the "kept as dead
+    # code" premise no longer holds; it was deleted in a later, legitimate
+    # cleanup, not a regression.
 
     def test_src_sub_line_html_not_called_in_web(self):
         """_srcSubLineHtml must not be called from any web/ JS or HTML file."""

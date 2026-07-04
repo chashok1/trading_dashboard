@@ -318,11 +318,20 @@ class TestComputePriorityFormula:
         )
 
     def test_seq_times_1e12_formula(self):
-        """Priority formula must be seq * 1e12 + amt."""
+        """Priority formula must be seq * <scale> + amt.
+
+        REWRITTEN (TASK_112, 2026-07-04): the multiplier was narrowed from
+        1e12 to 1e6 (see the code's own comment: "TASK_106/F7: both branches
+        use the same seq*1e6 + |amt| scale as the server (etl/derive_
+        actionable.py) so client- and server-ranked rows can never cross
+        tiers, even when amt >= $1M") — a deliberate later change to match
+        the server-side ranking scale exactly, not drift to paper over.
+        Same conceptual formula, narrower scale.
+        """
         js = _js()
         body = _extract_function(js, "_computePriority")
-        assert "1e12" in body, (
-            "_computePriority formula must use 1e12 multiplier (seq * 1e12 + amt)"
+        assert "1e6" in body, (
+            "_computePriority formula must use the 1e6 multiplier (seq * 1e6 + amt)"
         )
         assert "seq" in body, (
             "_computePriority must use a seq variable in its formula"

@@ -213,17 +213,25 @@ class TestNoInlineColorInBadgeFunctions:
             "ruleEdgeBadge() must use an emphCls variable for emphasis class"
         )
 
-    def test_fires_cell_html_no_inline_color_on_pills(self):
-        """firesCellHtml pill spans must not carry style=color for direction."""
+    def test_fires_cell_html_resolves_color_via_action_display(self):
+        """firesCellHtml pill direction color must still route through actionDisplay().
+
+        REWRITTEN (TASK_112, 2026-07-04): firesCellHtml() no longer builds
+        sideCls/emphCls CSS-class variables for its pills — it now resolves
+        an inline hex color per rule via a local `_ruleColor()` helper, which
+        still calls actionDisplay() internally (single source of truth for
+        direction is unchanged; only the CSS-class-vs-inline-style mechanism
+        moved). ruleEdgeBadge() — the other badge renderer covered by this
+        file — still uses the original sideCls/emphCls/CSS-class approach
+        (see TestRuleEdgeBadgeStructure below, unaffected).
+        """
         js = _js()
         body = _extract_function(js, "firesCellHtml")
-        # The pills must use CSS class attributes for direction, not inline color.
-        # We verify sideCls is applied on the pill span.
-        assert "sideCls" in body, (
-            "firesCellHtml() must use sideCls variable on pill spans"
+        assert "_ruleColor(" in body, (
+            "firesCellHtml() must resolve pill color via a _ruleColor() helper"
         )
-        assert "emphCls" in body, (
-            "firesCellHtml() must use emphCls variable on pill spans"
+        assert "actionDisplay(" in body, (
+            "firesCellHtml()'s color resolution must still route through actionDisplay()"
         )
 
 
@@ -400,43 +408,59 @@ class TestRuleEdgeBadgeStructure:
 # ---------------------------------------------------------------------------
 
 class TestFiresCellHtmlStructure:
-    """firesCellHtml must use sideCls/emphCls on each pill span."""
+    """firesCellHtml must color-code and emphasis-code each pill span.
 
-    def test_pill_rule_class_present(self):
+    REWRITTEN (TASK_112, 2026-07-04): the original CSS-class mechanism
+    (pill-rule / rule-buy / rule-sell / rule-neutral / rule-strong /
+    rule-weak, resolved via _ruleSide()) was replaced by an inline-style
+    mechanism: `_ruleColor(id)` resolves a hex color by mapping
+    actionDisplay(id).colorCls (e.g. 'act-buy-strong', 'act-sell') through a
+    local `_RULE_CLR` lookup, and edge sign drives an inline bold/normal
+    font-weight instead of a rule-strong/rule-weak class. Behavior is
+    unchanged (winning-first pills, colored by direction, emphasized when
+    edge is positive, muted when unproven) — only the CSS-class-vs-inline
+    mechanism moved. Rewritten against the current mechanism rather than
+    retired, since the underlying behavior still exists and is tested here.
+    """
+
+    def test_ruleColor_helper_present(self):
         js = _js()
         body = _extract_function(js, "firesCellHtml")
-        assert "pill-rule" in body, (
-            "firesCellHtml() must use the pill-rule CSS class on each badge span"
+        assert "_ruleColor" in body, (
+            "firesCellHtml() must define/use a _ruleColor() helper for pill color"
         )
 
-    def test_rule_buy_sell_neutral_in_fires_cell(self):
+    def test_ruleColor_maps_via_action_display_colorCls(self):
         js = _js()
         body = _extract_function(js, "firesCellHtml")
-        assert "rule-buy" in body, (
-            "firesCellHtml() must reference rule-buy CSS class"
+        assert "colorCls" in body, (
+            "firesCellHtml()'s _ruleColor() must resolve color via actionDisplay().colorCls"
         )
-        assert "rule-sell" in body, (
-            "firesCellHtml() must reference rule-sell CSS class"
-        )
-        assert "rule-neutral" in body, (
-            "firesCellHtml() must reference rule-neutral CSS class"
+        # Direction tokens (from actions.js's standardized _MAP) must still
+        # be present, keying the _RULE_CLR color lookup.
+        assert "act-buy" in body, "firesCellHtml() color map missing a buy-direction token"
+        assert "act-sell" in body, "firesCellHtml() color map missing a sell-direction token"
+
+    def test_unproven_pills_are_muted(self):
+        """Unproven rules must render visually muted (opacity), same intent
+        as the old rule-weak class."""
+        js = _js()
+        body = _extract_function(js, "firesCellHtml")
+        assert "unproven" in body and "opacity" in body, (
+            "firesCellHtml() must visually mute unproven-confidence pills"
         )
 
-    def test_strong_weak_in_fires_cell(self):
+    def test_positive_edge_pills_are_bold(self):
+        """Positive-edge pills must render with heavier font-weight, same
+        intent as the old rule-strong class."""
         js = _js()
         body = _extract_function(js, "firesCellHtml")
-        assert "rule-strong" in body, (
-            "firesCellHtml() must reference rule-strong CSS class"
+        assert re.search(r"it\.e\s*!=\s*null\s*&&\s*it\.e\s*>\s*0", body) or \
+               re.search(r"e\s*>\s*0", body), (
+            "firesCellHtml() must give positive-edge pills a distinct (bold) weight"
         )
-        assert "rule-weak" in body, (
-            "firesCellHtml() must reference rule-weak CSS class"
-        )
-
-    def test_rule_side_called_from_fires_cell(self):
-        js = _js()
-        body = _extract_function(js, "firesCellHtml")
-        assert "_ruleSide(" in body, (
-            "firesCellHtml() must call _ruleSide() to resolve direction for each pill"
+        assert "700" in body and "400" in body, (
+            "firesCellHtml() must switch font-weight between bold (700) and normal (400)"
         )
 
     def test_no_inline_color_on_pills(self):

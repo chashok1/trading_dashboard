@@ -135,13 +135,22 @@ def test_S4_drv_usd_correlation_in_baseline():
 
 
 def test_S5_seeds_macro_area_has_8_areas():
+    """REWRITTEN (TASK_113, 2026-07-04): the macro-area categorization was
+    reorganized — each area_key now renders as its own side-panel section
+    (see the seed file's own header comment). Renamed: usd->usd_currency,
+    rates->rates_duration, us_equities/global replaced by country_etfs +
+    remaining, plus a new commodities_credit area alongside the pre-existing
+    credit area (still 8 areas total, different names). Legitimate seed-data
+    evolution, not drift to revert — updated the expected set rather than
+    re-pinning the stale names.
+    """
     seed = _read("db/seeds_macro_area.sql")
     # Extract first positional argument to INSERT VALUES (the area_key)
     area_keys = set(re.findall(r"'([a-z_]+)',\s*'[^']*',\s*'", seed))
     assert len(area_keys) == 8, \
         f"Expected 8 distinct area_keys, got {len(area_keys)}: {sorted(area_keys)}"
-    expected = {"usd", "us_equities", "volatility", "rates",
-                "credit", "commodities", "crypto", "global"}
+    expected = {"usd_currency", "country_etfs", "volatility", "rates_duration",
+                "credit", "commodities_credit", "crypto", "remaining"}
     assert area_keys == expected, \
         f"area_keys mismatch: got {sorted(area_keys)} expected {sorted(expected)}"
 

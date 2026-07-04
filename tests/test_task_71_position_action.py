@@ -166,26 +166,15 @@ class TestHandoff:
         content = _read(HANDOFF_FILE)
         assert "ALL_DONE" in content, "DEV_HANDOFF.md Status is not ALL_DONE"
 
-    def test_02_source_real_transactions(self):
-        content = _read(HANDOFF_FILE)
-        # Must document real transactions, not snapshot diffs
-        assert "hist_cst" in content or "hist_ft" in content, (
-            "DEV_HANDOFF.md does not document hist_cst/hist_ft as the transaction source"
-        )
-        assert "snapshot" in content.lower() or "transaction" in content.lower(), (
-            "DEV_HANDOFF.md does not discuss transaction vs snapshot source choice"
-        )
-        # The handoff should say real transactions used
-        assert "Real transactions used" in content or "real transactions" in content.lower(), (
-            "DEV_HANDOFF.md does not confirm real transactions are used"
-        )
-
-    def test_03_shares_not_dollar_detection(self):
-        content = _read(HANDOFF_FILE)
-        # Must mention quantity-based detection
-        assert "quantity" in content.lower() or "shares" in content.lower(), (
-            "DEV_HANDOFF.md does not mention share/quantity-based detection"
-        )
+    # test_02_source_real_transactions / test_03_shares_not_dollar_detection —
+    # RETIRED (TASK_112 test-debt cleanup, 2026-07-04). DEV_HANDOFF.md is a
+    # rolling file, overwritten fresh by every task's developer pass —
+    # pinning it to TASK_71-specific content (hist_cst/hist_ft sourcing,
+    # quantity-based detection) is permanently stale by design. Cat A per
+    # docs/audit/test_debt_review.md. The durable behavior (hist_cst/hist_ft
+    # as the transaction source, quantity-based detection) is covered by
+    # the schema/logic tests below (Check 04-15+), which test the actual
+    # code rather than a point-in-time handoff document.
 
 
 # ---------------------------------------------------------------------------

@@ -9,10 +9,18 @@ Verifies:
 5. Independent Pearson hand-check on DXY vs SPX
 6. Idempotent re-derive (two runs produce identical rows)
 7. seeds_corr.sql and derive_usd_correlation.py are unchanged from git HEAD
+
+MOVED (TASK_114, 2026-07-04): relocated to tests/acceptance/ and marked
+@pytest.mark.acceptance — this is a one-time acceptance proof that a
+specific historical re-match (as of 2026-06-18) hit specific provider-target
+correlation values, not a durable regression test. See
+docs/audit/test_debt_review.md §2 and CLAUDE.md's Conventions list.
 """
 import subprocess
 import hashlib
 import pytest
+
+pytestmark = pytest.mark.acceptance
 
 # Provider target values (from TASK_87)
 PROVIDER_TARGET = {

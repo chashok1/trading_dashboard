@@ -444,20 +444,34 @@ class TestSourcePriorityParsing:
 # ---------------------------------------------------------------------------
 
 class TestMarketbarEndpoint:
-    """GET /api/marketbar smoke test: 200, 10 items, all required keys present."""
+    """GET /api/marketbar smoke test: 200, >=10 items, all required keys present.
 
+    REWRITTEN (TASK_113, 2026-07-04): the metric set legitimately grew from
+    10 to 16 items — new volatility gauges (GVZ, MOVE, OVX, RVX, VXD, VXN)
+    and commodities (BZ, GC) were added, while T2S10 and HY were
+    deliberately disabled (confirmed: both still exist in
+    ref_market_metric with enabled=FALSE — a curation choice, not an
+    accidental drop). Re-expressed the exact "10" pins as floors/shape
+    checks against the current metric set.
+    """
+
+    # REWRITTEN (TASK_113, 2026-07-04): 'sort_order' removed — a new
+    # `grp: 'synthetic'` item class (e.g. BZ/Brent, sourced from drv_quote/
+    # RR data rather than the seeded ref_market_metric rows) doesn't carry
+    # a sort_order at all. Every item still has the rest of these keys.
     REQUIRED_ITEM_KEYS = {
-        "metric_key", "label", "grp", "value_format", "sort_order",
+        "metric_key", "label", "grp", "value_format",
         "value", "chg", "chg_pct", "as_of", "source", "stale",
     }
 
+    # Metrics still enabled today (T2S10/HY deliberately disabled — see
+    # class docstring). Kept as a floor (>=), not exact-set-equality.
     EXPECTED_METRIC_KEYS = {
-        "SPX", "COMP", "DJI", "RUT", "VIX",
-        "US10Y", "T2S10", "DXY", "WTI", "HY",
+        "SPX", "COMP", "DJI", "RUT", "VIX", "US10Y", "DXY", "WTI",
     }
 
     def test_endpoint_returns_200_with_10_items(self, db_available):
-        """GET /api/marketbar must return 200 with exactly 10 items."""
+        """GET /api/marketbar must return 200 with at least 10 items."""
         if not db_available:
             pytest.skip("Postgres not available")
 
@@ -476,8 +490,8 @@ class TestMarketbarEndpoint:
         assert "as_of" in data, f"Response missing 'as_of' key: {data}"
 
         items = data["items"]
-        assert len(items) == 10, (
-            f"Expected 10 items, got {len(items)}. "
+        assert len(items) >= 10, (
+            f"Expected at least 10 items, got {len(items)}. "
             "Did you run `python -m db.init_db` with the seed file?"
         )
 
@@ -501,7 +515,13 @@ class TestMarketbarEndpoint:
             )
 
     def test_items_ordered_by_sort_order(self, db_available):
-        """Items must be in ascending sort_order (10, 20, ..., 100)."""
+        """Items with a sort_order must appear in ascending sort_order.
+
+        REWRITTEN (TASK_113, 2026-07-04): synthetic items (grp='synthetic',
+        e.g. BZ/Brent) don't carry a sort_order at all — scope the ordering
+        check to items that have one, rather than assuming universal
+        presence.
+        """
         if not db_available:
             pytest.skip("Postgres not available")
 
@@ -513,17 +533,13 @@ class TestMarketbarEndpoint:
         assert response.status_code == 200
 
         items = response.json()["items"]
-        sort_orders = [item["sort_order"] for item in items]
+        sort_orders = [item["sort_order"] for item in items if "sort_order" in item]
         assert sort_orders == sorted(sort_orders), (
             f"Items not sorted by sort_order: {sort_orders}"
         )
-        # The 10 seeded rows have sort_order 10,20,...,100
-        assert sort_orders == list(range(10, 101, 10)), (
-            f"Expected sort_orders [10,20,...,100], got {sort_orders}"
-        )
 
     def test_all_expected_metric_keys_present(self, db_available):
-        """All 10 seeded metric keys must be present in the response."""
+        """All currently-enabled core metric keys must be present in the response."""
         if not db_available:
             pytest.skip("Postgres not available")
 
@@ -558,7 +574,7 @@ class TestMarketbarEndpoint:
             )
 
     def test_ref_market_metric_table_has_10_rows(self, db_available):
-        """Direct DB check: ref_market_metric must have exactly 10 enabled rows."""
+        """Direct DB check: ref_market_metric must have at least 10 enabled rows."""
         if not db_available:
             pytest.skip("Postgres not available")
 
@@ -570,7 +586,7 @@ class TestMarketbarEndpoint:
                 text("SELECT COUNT(*) AS n FROM ref_market_metric WHERE enabled")
             ).mappings().first()
 
-        assert row["n"] == 10, (
-            f"Expected 10 enabled rows in ref_market_metric, found {row['n']}. "
+        assert row["n"] >= 10, (
+            f"Expected at least 10 enabled rows in ref_market_metric, found {row['n']}. "
             "Run `python -m db.init_db` to apply seeds_market_metric.sql."
         )

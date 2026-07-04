@@ -164,29 +164,22 @@ class TestFinalCallMixedConfidence:
 
 # ── Check 3: techIsBuy && atMax branch still returns 'high' (unchanged) ───────
 
-class TestFinalCallAtMaxBranchUnchanged:
-    def test_tech_buy_at_max_confidence_still_high(self, js_text):
-        """
-        techIsBuy && atMax should still return confidence = 'high'.
-        Directions agree (both want to add) but can't because of position limit.
-        This branch was explicitly listed as unchanged in DEV_HANDOFF.md.
-        """
-        body = extract_function_body(js_text, "finalCall")
-
-        # Find the atMax branch inside the techIsBuy block
-        tech_buy_idx = body.find("} else if (techIsBuy || techIsBuyMin)")
-        assert tech_buy_idx != -1, "techIsBuy || techIsBuyMin branch not found in finalCall()"
-
-        tech_buy_block = body[tech_buy_idx : tech_buy_idx + 800]
-        at_max_idx = tech_buy_block.find("} else if (atMax)")
-        assert at_max_idx != -1, "atMax branch not found inside techIsBuy block"
-
-        at_max_branch = tech_buy_block[at_max_idx : at_max_idx + 200]
-        assert "'high'" in at_max_branch or '"high"' in at_max_branch, (
-            "finalCall() techIsBuy && atMax branch no longer sets confidence = 'high' — "
-            "this branch should be unchanged. "
-            f"Branch text: {at_max_branch!r}"
-        )
+# TestFinalCallAtMaxBranchUnchanged — RETIRED (TASK_112 test-debt cleanup,
+# 2026-07-04). This test pinned the techIsBuy && atMax branch to
+# confidence='high' because DEV_HANDOFF.md (as of AGENT_WORK_29) explicitly
+# listed it as "unchanged". A later, deliberate task (AGENT_WORK_31 /
+# TASK_31, "gate/guard branches wrongly said confidence:'high'") intentionally
+# changed exactly this branch to confidence='gate' with
+# gateReason='At/over category Max — cannot add more' — the popover was
+# falsely claiming "Sources and Technical align" when Technical's buy signal
+# was actually blocked by the position cap, not genuinely agreeing. This is a
+# later, correct product decision superseding an earlier "don't touch this"
+# note — not test debt to paper over. The current behavior is already
+# correctly tested by test_agent_work_31.py::TestGateBranchesUseGateConfidence
+# ::test_at_max_cap_uses_gate / test_at_max_gatereason_mentions_max, and by
+# test_agent_work_31.py::TestNoFalseHighOnGateBranches::test_at_max_branch_no_high
+# (which explicitly asserts confidence='high' is now ABSENT from this exact
+# branch). Cat B — superseded by an intentional later fix.
 
 
 # ── Check 4: srcIsReduce && techIsSell returns 'high' (genuine align) ─────────

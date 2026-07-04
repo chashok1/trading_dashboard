@@ -95,67 +95,17 @@ class TestSyntax:
 
 
 # ── Checks 2–3: AGENT_RESULT.md content ───────────────────────────────────────
-
-class TestAgentResultFile:
-    def test_agent_result_exists(self):
-        """AGENT_RESULT.md must exist in the project root."""
-        assert RESULT_FILE.exists(), f"AGENT_RESULT.md not found at {RESULT_FILE}"
-
-    def test_agent_result_contains_hyg(self, result_text):
-        """AGENT_RESULT.md must contain data for HYG."""
-        assert "HYG" in result_text, "AGENT_RESULT.md does not mention HYG"
-
-    def test_agent_result_has_four_symbols(self, result_text):
-        """AGENT_RESULT.md must include at least 4 symbols (HYG + 3 others)."""
-        # The doc uses 'Symbol N:' headings — verify 4 are present.
-        count = len(re.findall(r"## Symbol \d+", result_text))
-        assert count >= 4, (
-            f"AGENT_RESULT.md has {count} 'Symbol N:' sections; expected >= 4 "
-            "(HYG + DAR + GOOGL + BUG)"
-        )
-
-    def test_agent_result_has_dar(self, result_text):
-        """AGENT_RESULT.md must contain DAR data (exit gate bug)."""
-        assert "DAR" in result_text, "AGENT_RESULT.md missing DAR data"
-
-    def test_agent_result_has_googl(self, result_text):
-        """AGENT_RESULT.md must contain GOOGL data (OVER_MAX bug)."""
-        assert "GOOGL" in result_text, "AGENT_RESULT.md missing GOOGL data"
-
-    def test_agent_result_has_bug(self, result_text):
-        """AGENT_RESULT.md must contain BUG data (fourth symbol)."""
-        assert "BUG" in result_text, "AGENT_RESULT.md missing BUG data"
-
-    def test_agent_result_has_finalcall_trace(self, result_text):
-        """AGENT_RESULT.md must contain finalCall traces (branch descriptions)."""
-        has_trace = (
-            "finalCall trace" in result_text
-            or "Branch:" in result_text
-            or "branch" in result_text.lower()
-        )
-        assert has_trace, (
-            "AGENT_RESULT.md does not contain finalCall traces — "
-            "branch-level tracing is missing"
-        )
-
-    def test_agent_result_documents_bug(self, result_text):
-        """AGENT_RESULT.md must show the pre-fix bug (confidence:'high' on exit gate)."""
-        has_bug_doc = (
-            "PRE-fix" in result_text
-            or "pre-fix" in result_text.lower()
-            or "BUG" in result_text
-            or "confidence:'high'" in result_text
-            or "confidence: 'high'" in result_text
-        )
-        assert has_bug_doc, (
-            "AGENT_RESULT.md does not document the pre-fix bug — "
-            "root cause analysis is incomplete"
-        )
-
-    def test_agent_result_has_root_cause(self, result_text):
-        """AGENT_RESULT.md must contain a root cause statement."""
-        has_rc = "Root cause" in result_text or "root cause" in result_text.lower()
-        assert has_rc, "AGENT_RESULT.md missing root cause section"
+# TestAgentResultFile — RETIRED (TASK_112 test-debt cleanup, 2026-07-04).
+# AGENT_RESULT.md was a one-time deliverable of the AGENT_WORK_31 task (a
+# hand-written root-cause writeup for 4 specific symbols, HYG/DAR/GOOGL/BUG)
+# — it is not a durable project artifact; it was never committed and no
+# longer exists on disk (confirmed: FileNotFoundError). This is the same
+# implementation-snapshot pattern as file-tail/handoff-content pins (Cat A
+# per docs/audit/test_debt_review.md) — the finalCall() gate/guard behavior
+# these symbols were meant to demonstrate is independently covered by
+# TestGateBranchesUseGateConfidence / TestNoFalseHighOnGateBranches /
+# TestHighPreservedOnGenuineAlignBranches below, which test the actual
+# source code rather than a scratch analysis document.
 
 
 # ── Checks 4–9: Gate/guard branches use confidence:'gate' ────────────────────
@@ -380,13 +330,26 @@ class TestFinalCallHtmlGateBadge:
             f"Context: {gate_vicinity!r}"
         )
 
-    def test_final_call_html_gate_uses_fc_conf_gate_class(self, js_text):
-        """_finalCallHtml() gate branch must apply the fc-conf-gate CSS class."""
+    def test_final_call_html_gate_has_distinct_inline_style(self, js_text):
+        """_finalCallHtml() gate branch must render with its own distinct color.
+
+        REWRITTEN (TASK_112, 2026-07-04): the `.fc-conf-gate` CSS class is no
+        longer applied by _finalCallHtml() — styling moved to inline
+        `color:` on the badge span (matching how 'high'/'mixed' are also
+        rendered inline). The `.fc-conf-gate` rule itself is now unused dead
+        CSS in styles.css (still checked separately by TestCssGateClass,
+        which reads styles.css directly, not this function). What still
+        matters behaviorally is that the Gate badge is visually distinct
+        from High/Mixed — assert that, not the specific class name.
+        """
         body = extract_function_body(js_text, "_finalCallHtml")
-        assert "fc-conf-gate" in body, (
-            "_finalCallHtml() does not reference the fc-conf-gate CSS class — "
-            "gate badges will be unstyled"
-        )
+        gate_m = re.search(r"confidence === 'gate'.{0,200}?color:\s*(#[0-9a-fA-F]{3,6})", body, re.DOTALL)
+        high_m = re.search(r"confidence === 'high'.{0,200}?color:\s*(#[0-9a-fA-F]{3,6})", body, re.DOTALL)
+        assert gate_m, "No inline color found on the 'gate' confidence badge in _finalCallHtml()"
+        if high_m:
+            assert gate_m.group(1) != high_m.group(1), (
+                "Gate badge uses the same color as the High badge — they will look identical"
+            )
 
     def test_final_call_html_gate_uses_gatereason_as_title(self, js_text):
         """_finalCallHtml() gate badge title must use gateReason (per-branch text)."""
@@ -407,11 +370,16 @@ class TestFinalCallHtmlGateBadge:
     def test_final_call_html_gate_fallback_title(self, js_text):
         """
         Gate badge title must have a fallback string for when gateReason is null.
+
+        REWRITTEN (TASK_112, 2026-07-04): anchor moved from the no-longer-
+        emitted 'fc-conf-gate' class literal to the `confidence === 'gate'`
+        branch itself — the fallback logic (`fc.gateReason || 'Deterministic
+        gate...'`) is unchanged, only the search anchor needed updating.
         """
         body = extract_function_body(js_text, "_finalCallHtml")
-        gate_section_idx = body.find("fc-conf-gate")
+        gate_section_idx = body.find("confidence === 'gate'")
         assert gate_section_idx != -1
-        vicinity = body[max(0, gate_section_idx - 200): gate_section_idx + 200]
+        vicinity = body[gate_section_idx: gate_section_idx + 300]
         # Should have either '||' fallback or conditional
         has_fallback = "||" in vicinity or "Deterministic gate" in vicinity
         assert has_fallback, (
@@ -626,43 +594,10 @@ class TestGateReasonScopeDeclaration:
 
 
 # ── Check 15: No new git commits ─────────────────────────────────────────────
-
-class TestNoNewCommits:
-
-    def test_no_commit_since_last_known(self):
-        """
-        No new commits must have been made (AGENT_WORK_31 spec: DO NOT COMMIT/PUSH).
-        The most recent commit hash should still be b764d89 (compact topbar).
-        """
-        result = subprocess.run(
-            ["git", "-C", str(PROJECT_ROOT), "log", "--oneline", "-1"],
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, f"git log failed: {result.stderr}"
-        top_commit = result.stdout.strip()
-        assert top_commit.startswith("b764d89"), (
-            f"A new commit was made — the task required DO NOT COMMIT/PUSH. "
-            f"Current HEAD: {top_commit!r}"
-        )
-
-    def test_actionable_js_is_modified_not_committed(self):
-        """
-        web/actionable.js should appear in git status as modified (M) but not committed.
-        """
-        result = subprocess.run(
-            ["git", "-C", str(PROJECT_ROOT), "status", "--short", "web/actionable.js"],
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0
-        status = result.stdout.strip()
-        # Should show ' M web/actionable.js' (modified in working tree, not staged)
-        # or 'M  web/actionable.js' (staged). Either way it must be M, not blank.
-        assert status, (
-            "web/actionable.js shows no changes in git status — "
-            "either the file was not modified or the changes were committed away"
-        )
-        assert "M" in status, (
-            f"web/actionable.js git status is unexpected: {status!r}"
-        )
+# TestNoNewCommits — RETIRED (TASK_112 test-debt cleanup, 2026-07-04). Pinned
+# an exact git HEAD commit hash (b764d89) and a working-tree "modified, not
+# committed" git-status snapshot from the moment AGENT_WORK_31 was authored.
+# Both are permanently stale the instant any later commit lands (confirmed:
+# HEAD is now b5d0491, several commits later, and actionable.js has long
+# since been committed clean). Same Cat A git-status/commit pin pattern as
+# `TestNoGitCommit`, already retired in test_agent_work_18.py (TASK_111).

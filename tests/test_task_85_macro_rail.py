@@ -113,56 +113,24 @@ class TestHtmlStructure:
         assert 'id="actSidePanel"' in self.html or "id='actSidePanel'" in self.html, \
             "#actSidePanel not found in actionable.html"
 
-    def test_macroRailSection_inside_actSidePanel(self):
-        """#macroRailSection must appear after #actSidePanel (inside it)."""
-        side_idx = self.html.find('id="actSidePanel"')
-        assert side_idx != -1, "#actSidePanel not found"
-        rail_idx = self.html.find('id="macroRailSection"')
-        assert rail_idx != -1, "#macroRailSection not found in actionable.html"
-        assert rail_idx > side_idx, \
-            "#macroRailSection must appear after (inside) #actSidePanel"
-
-    def test_macroRailAreas_inside_macroRailSection(self):
-        """#macroRailAreas must exist inside #macroRailSection."""
-        section_idx = self.html.find('id="macroRailSection"')
-        assert section_idx != -1, "#macroRailSection not found"
-        areas_idx = self.html.find('id="macroRailAreas"')
-        assert areas_idx != -1, "#macroRailAreas not found in actionable.html"
-        assert areas_idx > section_idx, \
-            "#macroRailAreas must appear after (inside) #macroRailSection"
-
-    def test_macroRailCorr_inside_macroRailSection(self):
-        """#macroRailCorr must exist inside #macroRailSection."""
-        section_idx = self.html.find('id="macroRailSection"')
-        assert section_idx != -1, "#macroRailSection not found"
-        corr_idx = self.html.find('id="macroRailCorr"')
-        assert corr_idx != -1, "#macroRailCorr not found in actionable.html"
-        assert corr_idx > section_idx, \
-            "#macroRailCorr must appear after (inside) #macroRailSection"
-
-    def test_macroRailSection_is_first_section_in_actSidePanel(self):
-        """#macroRailSection must be the first <section> inside #actSidePanel."""
-        side_idx = self.html.find('id="actSidePanel"')
-        assert side_idx != -1, "#actSidePanel not found"
-        # Find the first <section inside actSidePanel
-        first_section = self.html.find('<section', side_idx)
-        assert first_section != -1, "No <section> found inside #actSidePanel"
-        macro_section_idx = self.html.find('id="macroRailSection"')
-        # The first section tag must contain macroRailSection within ~50 chars
-        surrounding = self.html[first_section: first_section + 100]
-        assert 'macroRailSection' in surrounding, (
-            "#macroRailSection must be the first <section> inside #actSidePanel; "
-            f"first section found at char {first_section}: {surrounding!r}"
-        )
-
-    def test_macroRailAreas_before_macroRailCorr(self):
-        """#macroRailAreas must appear before #macroRailCorr (areas above correlations)."""
-        areas_idx = self.html.find('id="macroRailAreas"')
-        corr_idx = self.html.find('id="macroRailCorr"')
-        assert areas_idx != -1, "#macroRailAreas not found"
-        assert corr_idx != -1, "#macroRailCorr not found"
-        assert areas_idx < corr_idx, \
-            "#macroRailAreas must appear before #macroRailCorr in HTML"
+    # test_macroRailSection_inside_actSidePanel /
+    # test_macroRailAreas_inside_macroRailSection /
+    # test_macroRailCorr_inside_macroRailSection /
+    # test_macroRailSection_is_first_section_in_actSidePanel /
+    # test_macroRailAreas_before_macroRailCorr — RETIRED (TASK_112 test-debt
+    # cleanup, 2026-07-04). The macro rail was restructured from one
+    # `#macroRailSection` containing an ordered `#macroRailAreas` then
+    # `#macroRailCorr` subsection, into multiple independent, individually
+    # collapsible `.sp-panel <section>` elements inside `#actSidePanel`
+    # (Crypto, Tech & ETFs, USD Correlations, Quad Outlook, etc. — see
+    # `macroCryptoSection`/`macroRemainingSection`/`usdCorrSection`/
+    # `quadOutlookSection`). `#macroRailSection` and `#macroRailAreas` no
+    # longer exist (0 matches); `renderRail()` in macro_areas.js now fans
+    # area rows out to per-category containers via an `_AREA_CONTAINER_ID`
+    # map instead of one `#macroRailAreas` target (see
+    # test_renders_into_macroRailAreas, rewritten below). Cat B —
+    # superseded architecture (independent user-collapsible panels), not a
+    # renamed single section.
 
     def test_econ_panel_still_present(self):
         """Existing Econ Indicators panel must still be present (no regression)."""
@@ -261,49 +229,51 @@ class TestMacroAreasJs:
         assert 'volatility' in rail_row_body or 'isVol' in rail_row_body, \
             "railAreaRow() must have a volatility-specific branch"
 
-    def test_volatility_vix_value_shown(self):
-        """Volatility row must show VIX value."""
-        body = _func_body(self.src, 'railAreaRow')
-        assert 'VIX' in body or 'vixVal' in body, \
-            "Volatility rail row must show VIX value"
+    # test_volatility_vix_value_shown — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). railAreaRow()'s gauge branch (role === 'gauge') is now
+    # fully generic/data-driven — it renders whatever `m.label || area.label`
+    # the API returns, with no hardcoded 'VIX' string or `vixVal` variable
+    # (confirmed 0 matches). Cat B — generalized, not renamed.
 
     def test_sectors_row_renders_leaders(self):
-        """railSectorsRow() must render leaders in the summary line."""
-        body = _func_body(self.src, 'railSectorsRow')
-        assert 'leaders' in body, \
-            "railSectorsRow() must render leaders"
-        assert 'msr-sec-line' in body, \
-            "railSectorsRow() must use .msr-sec-line for the summary"
+        """The sectors panel must render a full ranked per-sector list.
+
+        REWRITTEN (TASK_112, 2026-07-04): `railSectorsRow()` was renamed
+        `renderSectorsPanel()`, the summary-line class changed from
+        `.msr-sec-line` to `.msr-sec-subrow` (see test_msr_sec_line_defined
+        in TestStylesCss, also rewritten), and the "leaders" concept itself
+        was replaced by an always-visible, fully-ranked per-sector list
+        (`sectors.all`) rather than a separate leaders-only summary line —
+        leadership is conveyed by rank position in that list, with
+        "Laggards"/"Rotate in" as explicit call-out subrows instead. Assert
+        the current rendering (the ranked list + subrows), not the retired
+        'leaders' summary concept.
+        """
+        body = _func_body(self.src, 'renderSectorsPanel')
+        assert 'sectors.all' in body, \
+            "renderSectorsPanel() must render the full ranked per-sector list (sectors.all)"
+        assert 'msr-sec-subrow' in body, \
+            "renderSectorsPanel() must use .msr-sec-subrow for the Laggards/Rotate-in summary"
 
     def test_sectors_row_renders_laggards(self):
-        """railSectorsRow() must render laggards in the summary line."""
-        body = _func_body(self.src, 'railSectorsRow')
+        """renderSectorsPanel() must render laggards in the summary line.
+
+        REWRITTEN (TASK_112, 2026-07-04): `railSectorsRow()` -> `renderSectorsPanel()`.
+        """
+        body = _func_body(self.src, 'renderSectorsPanel')
         assert 'laggards' in body, \
-            "railSectorsRow() must render laggards"
+            "renderSectorsPanel() must render laggards"
 
-    def test_tooltip_builds_stance(self):
-        """buildTooltip() must include stance field."""
-        body = _func_body(self.src, 'buildTooltip')
-        assert 'Stance' in body or 'stance' in body, \
-            "buildTooltip() must include the stance field"
-
-    def test_tooltip_builds_conviction(self):
-        """buildTooltip() must include conviction field."""
-        body = _func_body(self.src, 'buildTooltip')
-        assert 'conviction' in body or 'Conviction' in body, \
-            "buildTooltip() must include conviction"
-
-    def test_tooltip_builds_rr_pos(self):
-        """buildTooltip() must include RR pos field."""
-        body = _func_body(self.src, 'buildTooltip')
-        assert 'rr_pos' in body or 'RR pos' in body, \
-            "buildTooltip() must include RR pos"
-
-    def test_tooltip_builds_members(self):
-        """buildTooltip() must include members list."""
-        body = _func_body(self.src, 'buildTooltip')
-        assert 'members' in body or 'Members' in body, \
-            "buildTooltip() must include the members list"
+    # test_tooltip_builds_stance / test_tooltip_builds_conviction /
+    # test_tooltip_builds_rr_pos / test_tooltip_builds_members — RETIRED
+    # (TASK_112 test-debt cleanup, 2026-07-04). There is no centralized
+    # `buildTooltip()` function anymore (0 matches) — tooltip content is
+    # now built inline as `title="..."` attributes directly on each
+    # rendered element, scattered across the functions that own that data
+    # (e.g. `railRangeBar()` builds its own rr_pos title, each member row
+    # builds its own symbol/outlook title, `stancePillHtml()` renders
+    # stance+conviction inline in the legacy full-width fallback card). Cat
+    # B — decentralized, not a renamed single function.
 
     def test_reads_api_macro_areas(self):
         """load() must fetch from /api/macro-areas."""
@@ -316,10 +286,21 @@ class TestMacroAreasJs:
             "macro_areas.js must dispatch macroReadReady event for USD-corr to follow"
 
     def test_renders_into_macroRailAreas(self):
-        """renderRail() must target the #macroRailAreas container."""
+        """renderRail() must target the per-category containers.
+
+        REWRITTEN (TASK_112, 2026-07-04): renderRail() no longer targets a
+        single `#macroRailAreas` container — the macro rail was split into
+        multiple independent, collapsible per-category panels (see
+        TestHtmlStructure's retirement note above), so renderRail() now
+        fans each area's rows out to its own container via an
+        `_AREA_CONTAINER_ID` map (`area.area_key` -> container element id)
+        and writes each container's `innerHTML` individually.
+        """
         body = _func_body(self.src, 'renderRail')
-        assert 'macroRailAreas' in body, \
-            "renderRail() must render into #macroRailAreas"
+        assert '_AREA_CONTAINER_ID' in body, \
+            "renderRail() must route rows via the _AREA_CONTAINER_ID per-category map"
+        assert 'getElementById(containerId)' in body or 'containerId' in body, \
+            "renderRail() must resolve each area's container id before rendering"
 
     def test_datePicker_change_triggers_reload(self):
         """Date picker change event must trigger reload."""
@@ -528,14 +509,20 @@ class TestStylesCss:
             ".msr-rb (range bar) not defined in styles.css"
 
     def test_msr_rb_width_44px(self):
-        """.msr-rb track width must be 44px (spec requirement)."""
+        """.msr-rb track must define a fixed width.
+
+        REWRITTEN (TASK_112, 2026-07-04): the width was narrowed from 44px
+        to 32px in a later layout pass (a cosmetic sizing tweak, not a
+        removed feature). Assert a width is still set rather than re-pin
+        the specific new pixel value (which the rewrite rules discourage).
+        """
         idx = self.css.find('.msr-rb {')
         if idx == -1:
             idx = self.css.find('.msr-rb\n')
         assert idx != -1, ".msr-rb rule not found in CSS"
         block = self.css[idx: idx + 200]
-        assert '44px' in block, \
-            ".msr-rb must have width: 44px per spec"
+        assert 'width:' in block, \
+            ".msr-rb must define a fixed width"
 
     def test_msr_rb_tick_extreme_red(self):
         """.msr-rb-tick.extreme must use red (#ef4444)."""
@@ -557,9 +544,15 @@ class TestStylesCss:
             assert cls in self.css, f"{cls} not defined in styles.css"
 
     def test_msr_sec_line_defined(self):
-        """.msr-sec-line must be defined."""
-        assert '.msr-sec-line' in self.css, \
-            ".msr-sec-line (sectors summary line) not defined in styles.css"
+        """The sectors summary line's CSS class must be defined.
+
+        REWRITTEN (TASK_112, 2026-07-04): `.msr-sec-line` was renamed
+        `.msr-sec-subrow` alongside the `railSectorsRow()` ->
+        `renderSectorsPanel()` rename (see TestMacroAreasJs::
+        test_sectors_row_renders_leaders, also rewritten).
+        """
+        assert '.msr-sec-subrow' in self.css, \
+            ".msr-sec-subrow (sectors summary line) not defined in styles.css"
 
     def test_msr_tooltip_defined(self):
         """.msr-tooltip must be defined and use position:fixed."""
@@ -656,10 +649,12 @@ class TestCrossFileConsistency:
         assert '.ucr-neg-m' in self.css, \
             ".ucr-neg-m class missing from styles.css"
 
-    def test_msr_divider_in_html_and_css(self):
-        """#macroRailSection must use .msr-divider, which is defined in CSS."""
-        html = _read(ACTIONABLE_HTML)
-        assert 'msr-divider' in html, \
-            ".msr-divider not used in actionable.html"
-        assert '.msr-divider' in self.css, \
-            ".msr-divider not defined in styles.css"
+    # test_msr_divider_in_html_and_css — RETIRED (TASK_112 test-debt
+    # cleanup, 2026-07-04). `.msr-divider` was used to visually separate the
+    # Areas and Correlations subsections *within* the single
+    # `#macroRailSection`. Since the macro rail was restructured into fully
+    # independent, individually-bordered `.sp-panel <section>` elements (see
+    # TestHtmlStructure's retirement note), there's no shared section to
+    # divide anymore — each panel already has its own border. `.msr-divider`
+    # is still defined in styles.css (dead CSS, 0 uses in actionable.html).
+    # Cat B — superseded layout, not a renamed class.

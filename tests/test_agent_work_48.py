@@ -168,16 +168,23 @@ class TestSortKeyRecencyFirst:
         )
 
     def test_action_rank_is_second_sort_key(self):
+        """REWRITTEN (TASK_112, 2026-07-04): the tiebreaker after
+        -_upd_ord(a) is no longer -ACTION_RANK[a['action']] directly — it's
+        a dedicated `_order(a)` helper (rule-group candidates keep their
+        `_group_prio`; everything else falls back to a `SOURCE_ORDER` lookup
+        by source_code). This is a later, deliberate source-order-based
+        tiebreak refinement (see the DEV_HANDOFF-referenced SOURCE_ORDER
+        change), not test debt to paper over."""
         block = self._sort_line()
-        assert "-ACTION_RANK" in block, (
-            "candidates.sort key must include -ACTION_RANK[a['action']] as the secondary key"
+        assert "_order(a)" in block, (
+            "candidates.sort key must include _order(a) as the tiebreaker after recency"
         )
 
-    def test_prio_is_third_sort_key(self):
-        block = self._sort_line()
-        assert "_prio(a)" in block, (
-            "candidates.sort key must include _prio(a) as the tertiary key"
-        )
+    # test_prio_is_third_sort_key — RETIRED (TASK_112 test-debt cleanup,
+    # 2026-07-04). The sort key is now a 2-tuple `(-_upd_ord(a), _order(a))`
+    # — there is no third `_prio(a)` key at all; `_order(a)` alone (source
+    # priority / rule-group priority) is the sole tiebreaker after recency.
+    # Cat B — superseded by the same later redesign noted above.
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +208,16 @@ class TestGroupCandidatesStamped:
 # ---------------------------------------------------------------------------
 
 class TestCallDemotionPreserved:
-    """CALL demotion gate must still exist in the winner-pick block."""
+    """CALL demotion gate must still exist in the winner-pick block.
+
+    REWRITTEN (TASK_112, 2026-07-04): the winner-pick logic was redesigned
+    from an explicit "exclude CALL when other_sources_present" filter to a
+    fixed `SOURCE_ORDER` priority table (`{"PS": 1, "ETF": 2, "RR": 3,
+    "SSS": 4, "II": 5, "CALL": 6}`) consulted via an `_order(a)` helper —
+    CALL structurally has the lowest priority, so it only ever wins when no
+    other source is present, same intent as the old explicit filter. There
+    is no `other_sources_present` variable or `!= "CALL"` literal anymore.
+    """
 
     def _winner_block(self) -> str:
         src = DERIVE_ACT.read_text(encoding="utf-8")
@@ -212,18 +228,14 @@ class TestCallDemotionPreserved:
 
     def test_other_sources_present_check(self):
         block = self._winner_block()
-        assert "other_sources_present" in block, (
-            "other_sources_present variable missing from winner-pick block"
+        assert "SOURCE_ORDER" in block and "_order(a)" in block, (
+            "SOURCE_ORDER-based priority tiebreaker (successor to "
+            "other_sources_present) missing from winner-pick block"
         )
 
     def test_call_demotion_filter(self):
-        block = self._winner_block()
-        # The actual code uses double-quoted strings in the list comprehension
-        assert re.search(
-            r"""source_code['"]\s*!=\s*['"]CALL['"]""",
-            block,
-        ) or '!= "CALL"' in block or "!= 'CALL'" in block, (
-            "CALL demotion filter (source_code != 'CALL') missing from winner-pick block"
+        assert re.search(r'SOURCE_ORDER\s*=\s*\{[^}]*"CALL":\s*6', DERIVE_ACT.read_text(encoding="utf-8")), (
+            "CALL demotion (SOURCE_ORDER['CALL'] must be the lowest/last priority) missing"
         )
 
 
@@ -234,15 +246,17 @@ class TestCallDemotionPreserved:
 class TestPSRemoveExclusionPreserved:
     """PS not-held REMOVE exclusion (behavior rule 3) must still be in outlook_candidates."""
 
-    def test_ps_remove_exclusion_present(self):
-        src = DERIVE_ACT.read_text(encoding="utf-8")
-        # Must have the PS / REMOVE / not _held_now clause somewhere in the file
-        # (it's in the outlook_candidates list comprehension)
-        assert re.search(
-            r"""source_code.*==.*['"]PS['"].*action.*==.*['"]REMOVE['"]""",
-            src,
-            re.DOTALL,
-        ), "PS REMOVE exclusion not found in derive_actionable.py"
+    # test_ps_remove_exclusion_present — RETIRED (TASK_112 test-debt
+    # cleanup, 2026-07-04). The PS-specific "not-held REMOVE excluded from
+    # winner contest" special case was generalized away — there is no
+    # explicit `source_code == "PS"` + `action == "REMOVE"` filter anymore.
+    # The behavior is now subsumed by the generic recency-first winner sort
+    # (`_upd_ord`/`_order`, see TestCallDemotionPreserved above) plus the
+    # `has_other_signal` suppression check (any source with a real
+    # ADD/REMOVE/INCREASE/REDUCE action keeps the row even if it didn't
+    # win) — PS isn't special-cased, every source goes through the same
+    # path. Cat B — behavior generalized, not literally present as PS-only
+    # code anymore.
 
     def test_held_now_check_present(self):
         src = DERIVE_ACT.read_text(encoding="utf-8")
@@ -323,10 +337,21 @@ class TestDocsRecencyFirst:
         ), "Stage-2 winner paragraph must describe latest update / recency-first rule"
 
     def test_sort_order_described(self):
+        """REWRITTEN (TASK_112, 2026-07-04): docs/actionable_logic.md itself
+        documents that the REMOVE>REDUCE>INCREASE>ADD>HOLD aggression-order
+        tiebreak was replaced (its own "Removed behaviors (as of
+        2026-06-17)" note lists the CALL-only-source carve-out and PS-REMOVE
+        exclusion as gone) — the winner now ranks by SOURCE_ORDER
+        (PS=1..CALL=6) on the held path, or recency-then-SOURCE_ORDER on the
+        not-held path. Assert the current documented ordering instead of
+        the retired aggression order.
+        """
         block = self._stage2_block()
-        # Should mention the REMOVE>REDUCE>INCREASE>ADD>HOLD ordering
-        assert re.search(r"REMOVE.*REDUCE.*INCREASE.*ADD.*HOLD", block, re.IGNORECASE), (
-            "Stage-2 must describe the aggression sort REMOVE>REDUCE>INCREASE>ADD>HOLD"
+        assert re.search(r"SOURCE_ORDER", block), (
+            "Stage-2 must describe the SOURCE_ORDER-based tiebreak"
+        )
+        assert re.search(r"PS.*=.*1", block) and re.search(r"CALL.*=.*6", block), (
+            "Stage-2 must document the PS=1..CALL=6 SOURCE_ORDER priority"
         )
 
     def test_call_demotion_still_documented(self):
@@ -365,17 +390,14 @@ class TestDevHandoff:
         content = DEV_HANDOFF.read_text(encoding="utf-8")
         assert "ALL_DONE" in content, "DEV_HANDOFF.md does not contain ALL_DONE"
 
-    def test_handoff_mentions_task_49_or_recency(self):
-        content = DEV_HANDOFF.read_text(encoding="utf-8")
-        assert (
-            "49" in content
-            or "recency" in content.lower()
-            or "winning_source" in content.lower()
-        ), "DEV_HANDOFF.md doesn't reference TASK 49 / recency-first / winning_source"
-
-    def test_handoff_mentions_sss(self):
-        content = DEV_HANDOFF.read_text(encoding="utf-8")
-        assert "SSS" in content, "DEV_HANDOFF.md should mention SSS demotion removal"
+    # test_handoff_mentions_task_49_or_recency / test_handoff_mentions_sss —
+    # RETIRED (TASK_112 test-debt cleanup, 2026-07-04). DEV_HANDOFF.md is a
+    # rolling file, overwritten fresh by every task's developer pass —
+    # pinning it to AGENT_WORK_48/49-specific content is permanently stale
+    # by design once any later task's handoff lands. Cat A per
+    # docs/audit/test_debt_review.md. The durable record of these changes is
+    # docs/actionable_logic.md itself (a permanent docs/ file, not rolling),
+    # already covered by TestDocsRecencyFirst above.
 
 
 # ---------------------------------------------------------------------------

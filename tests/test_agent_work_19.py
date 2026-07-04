@@ -208,8 +208,26 @@ def test_actions_js_fallback_has_colorCls():
 
 @pytest.mark.parametrize("hex_val", STRAY_HEX)
 def test_actionable_js_no_stray_hex(hex_val: str):
-    """actionable.js must not contain old action-color hex values."""
+    """actionable.js must not contain old action-color hex values in the
+    action/direction color pipeline.
+
+    REWRITTEN (TASK_112, 2026-07-04): the blind whole-file substring scan
+    now also matches `_quadColor(q)`, a later, unrelated feature (MacroNet
+    Quad-regime coloring — see docs/quad_design.md) that legitimately reuses
+    the same green/amber/red hex tones for a completely different semantic
+    domain (Quad 1-4 macro regime, not buy/sell action direction). Excluding
+    that function's body from the scan restores the original, narrower
+    intent: no stray hex in the *action-color* pipeline specifically. This
+    correctly still catches the genuine (if currently dead-code) reintroduction
+    of these hex values via `ACTION_CODE_COLOR`/`_actionCodeColor()` — see
+    `## Real bugs found` in DEV_HANDOFF.md; that finding is intentionally
+    left red, not papered over.
+    """
     js = _read(ACTIONABLE_JS)
+    quad_start = js.find("function _quadColor(")
+    if quad_start != -1:
+        quad_end = js.find("\n}\n", quad_start) + len("\n}\n")
+        js = js[:quad_start] + js[quad_end:]
     assert hex_val.lower() not in js.lower(), (
         f"Stray action hex '{hex_val}' found in actionable.js"
     )
@@ -259,14 +277,20 @@ def test_actionable_html_chips_use_tokens():
     )
 
 
-def test_actionable_html_badge_action_use_tokens():
-    """actionable.html .badge-action-* classes must use var(--act-*) for background."""
-    html = _read(ACTIONABLE_HTML)
-    badge_remove = re.search(r"\.badge-action-REMOVE\s*\{[^}]+\}", html)
-    assert badge_remove, ".badge-action-REMOVE class not found in actionable.html"
-    assert "var(--act-" in badge_remove.group(), (
-        f".badge-action-REMOVE does not use var(--act-*): {badge_remove.group()}"
-    )
+# test_actionable_html_badge_action_use_tokens — RETIRED (TASK_112 test-debt
+# cleanup, 2026-07-04). `.badge-action-*` classes were removed outright — a
+# comment in actionable.html's own <style> block explicitly documents this:
+# "/* .badge-action and .badge-action-* removed — superseded by .act-badge
+# in styles.css */". Cat B — superseded, not renamed. NOTE (worth
+# reconsidering, not a bug to fix here): the current `.act-badge.*-fill`
+# rules in styles.css (the successor) use hardcoded hex per selector
+# (#d83a3a, #e07c1a, #2f9e2f — the exact "stray hex" values this task's
+# STRAY_HEX list bans) rather than `var(--act-*)`, even though the
+# `--act-*` custom properties still exist in :root with *different* current
+# values (#9e3636 etc., used by the separate `.act-sell-strong` text-color
+# classes). This is a real, if cosmetic, inconsistency between the two
+# color mechanisms — not fixed here (no production code changes in this
+# task); flagged in DEV_HANDOFF.md for follow-up consideration.
 
 
 # ── Test 8-9: rule_flow.js uses var(--act-*), no stray action hex ─────────
@@ -491,23 +515,10 @@ def test_actions_js_has_buy_strength_cls():
 
 # ── Test 19: No git commit was made ───────────────────────────────────────
 
-def test_no_git_commit_for_these_files():
-    """Files must remain as uncommitted modifications (not committed)."""
-    result = subprocess.run(
-        ["git", "status", "--short"],
-        capture_output=True, text=True, cwd=str(PROJECT_ROOT)
-    )
-    status = result.stdout
-    # The changed web files should appear as modified (M prefix) or untracked,
-    # NOT as clean (absent from status). At minimum styles.css and actions.js
-    # should show up as modified.
-    modified_files = [line.strip() for line in status.splitlines() if line.strip()]
-    file_names = [line.split()[-1] for line in modified_files]
-    # At least one of the changed files should be in modified state
-    changed = {"web/styles.css", "web/actions.js", "web/actionable.js",
-               "web/rule_flow.js", "web/rule_performance.js"}
-    found = changed & set(file_names)
-    assert found, (
-        f"None of the expected changed files appear in git status. "
-        f"Status:\n{status}\nExpected one of: {changed}"
-    )
+# test_no_git_commit_for_these_files — RETIRED (TASK_112 test-debt cleanup,
+# 2026-07-04). Asserted a `git status --short` staging snapshot from the
+# moment AGENT_WORK_19 was authored (files must appear "modified"); those
+# files have long since been committed and are clean today, and any later
+# unrelated edit could make this pass/fail unpredictably. Same Cat A
+# git-status pattern as `TestNoGitCommit`, already retired in
+# test_agent_work_18.py (TASK_111).

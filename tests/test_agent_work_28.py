@@ -406,9 +406,17 @@ class TestOtherColumnsUnchanged:
         )
 
     def test_src_sub_line_html_still_present(self, js_text):
-        """_srcSubLineHtml() must still be defined (Sources column unchanged)."""
-        assert "function _srcSubLineHtml(" in js_text, (
-            "_srcSubLineHtml() function is missing — Sources column sub-line may be broken"
+        """The Sources column's per-source display helper must still be defined.
+
+        REWRITTEN (TASK_112, 2026-07-04): `_srcSubLineHtml()` was replaced by
+        `_srcReasonsHtml()` — same responsibility (colored, standardized
+        per-source display in the Sources column), reimplemented as
+        always-visible reason lines instead of a compact hover subline. See
+        test_agent_work_27.py::TestSrcReasonsHtml and the wholesale
+        retirement note in test_agent_work_24.py for the full history.
+        """
+        assert "function _srcReasonsHtml(" in js_text, (
+            "_srcReasonsHtml() function is missing — Sources column display may be broken"
         )
 
     def test_render_source_pop_still_present(self, js_text):

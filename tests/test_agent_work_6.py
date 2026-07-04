@@ -515,9 +515,15 @@ class TestF6VolumeFields:
         )
 
     def test_check29_vol_popover_vol_signal(self, js_src):
-        """Check 29 — _buildVolPopHtml includes 'Vol Signal' row."""
-        assert "Vol Signal" in js_src, (
-            "'Vol Signal' row missing from _buildVolPopHtml in actionable.js"
+        """Check 29 — _buildVolPopHtml includes the volume-signal row.
+
+        REWRITTEN (TASK_112, 2026-07-04): the row label was re-worded from
+        'Vol Signal' to 'Vlm Signal' (consistent with the 'Vol'->'Vlm'
+        rename used elsewhere on the grid, e.g. the Vlm column header) — 0
+        matches for the old label, same row/field otherwise unchanged.
+        """
+        assert "Vlm Signal" in js_src, (
+            "'Vlm Signal' row missing from _buildVolPopHtml in actionable.js"
         )
 
     def test_check30_rvol_cell_vlm_action_badge(self, js_src):
@@ -636,8 +642,8 @@ class TestDevHandoffStatus:
             f"DEV_HANDOFF.md last line is '{lines[-1]}', expected 'ALL_DONE'"
         )
 
-    def test_check40_handoff_references_agent_work_6(self, handoff_src):
-        """Check 40 — DEV_HANDOFF.md references AGENT_WORK_6."""
-        assert "AGENT_WORK_6" in handoff_src or "TASK_64" in handoff_src, (
-            "DEV_HANDOFF.md does not reference AGENT_WORK_6 or TASK_64"
-        )
+    # test_check40_handoff_references_agent_work_6 — RETIRED (TASK_112
+    # test-debt cleanup, 2026-07-04). DEV_HANDOFF.md is a rolling file,
+    # overwritten fresh by every task's developer pass — pinning it to
+    # AGENT_WORK_6-specific content is permanently stale by design. Cat A
+    # per docs/audit/test_debt_review.md.

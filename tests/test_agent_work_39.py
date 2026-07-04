@@ -22,7 +22,13 @@ class TestBlockA_ScorecardView:
     SQL = (PROJECT / "db" / "baseline.sql").read_text(encoding="utf-8-sig")
 
     def test_view_exists(self):
-        assert "CREATE OR REPLACE VIEW v_rule_scorecard" in self.SQL
+        # REWRITTEN (TASK_112, 2026-07-04): baseline.sql defines the view as
+        # `CREATE VIEW v_rule_scorecard` (no `OR REPLACE` keyword) — the view
+        # itself was never renamed/dropped, only the exact DDL prefix drifted.
+        # Assert the view's existence/shape (any CREATE [OR REPLACE] VIEW
+        # form), not the literal keyword combination.
+        assert re.search(r"CREATE\s+(OR\s+REPLACE\s+)?VIEW\s+v_rule_scorecard\b", self.SQL), \
+            "v_rule_scorecard view definition not found in baseline.sql"
 
     def test_n_fires_column(self):
         assert "n_fires" in self.SQL

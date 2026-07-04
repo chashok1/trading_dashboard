@@ -75,8 +75,16 @@ def test_no_act_badge_fill_in_actionable_js():
 
 def test_tint_count_in_actionable_js():
     """
-    DEV_HANDOFF documents 11 badge usages changed to -tint (plus 1 comment update).
-    We expect at least 11 occurrences of '-tint' in actionable.js.
+    REWRITTEN (TASK_112, 2026-07-04): the exact "at least 11" count from
+    AGENT_WORK_34 no longer holds — a later, deliberate commit
+    ("match HEDGEYE panel red/green in rrTape/symTape/ACTION") intentionally
+    reverted the Final Call badge (_finalCallHtml) and the calibrated Final
+    Call badge (_finalCallCalHtml) from -tint back to -fill, to visually
+    match the Hedgeye panel's solid red/green treatment — while every other
+    action badge in the app correctly stayed on -tint. This is a real,
+    intentional design decision (not a regression), so the total `-tint`
+    count naturally dropped. Assert a lower, still-meaningful floor instead
+    of the stale count, and that -tint is still the dominant convention.
     """
     src = _read(ACTIONABLE_JS)
     tint_lines = [
@@ -84,29 +92,34 @@ def test_tint_count_in_actionable_js():
         for i, line in enumerate(src.splitlines(), 1)
         if "-tint" in line
     ]
-    # 11 badge usages + 1 comment = 12 expected; assert at least 11
-    assert len(tint_lines) >= 11, (
-        f"Expected >= 11 lines with '-tint', found {len(tint_lines)}: {tint_lines}"
+    assert len(tint_lines) >= 8, (
+        f"Expected >= 8 lines with '-tint' (soft-badge is still the dominant "
+        f"convention outside the Final-Call exception), found {len(tint_lines)}: {tint_lines}"
     )
 
 
 def test_tint_at_badge_locations():
     """
-    Each act-badge construction must resolve to a -tint class.
+    Each act-badge construction must resolve to -tint OR be one of the
+    documented Final-Call -fill exceptions.
 
-    Two valid patterns in actionable.js:
-    (A) Inline: class="act-badge ... ${(expr.colorCls || 'act-neutral') + '-tint'}"
-        -- '-tint' appears on the same line as 'act-badge'.
-    (B) Variable: colorCls = (expr.colorCls || 'act-neutral') + '-tint'  [line N]
-        then:      class="act-badge ... ${colorCls}"   (template) or
-                   '"act-badge " + colorCls + ...'     (concat)   [line N+few]
-        -- '-tint' is baked into the variable at assignment.
-
-    The DEV_HANDOFF notes that _srcSubLineHtml (~line 723) uses bare colorCls on a
-    NON-act-badge span (intentional text-color-only for compact density) -- out of scope.
+    REWRITTEN (TASK_112, 2026-07-04): a later commit intentionally reverted
+    _finalCallHtml() and _finalCallCalHtml() to -fill (HEDGEYE-panel-match
+    styling — see test_tint_count_in_actionable_js docstring); every other
+    act-badge location must still resolve to -tint. Same detection logic as
+    before, with those two functions carved out as known, intentional
+    exceptions rather than flagged as violations.
     """
     src = _read(ACTIONABLE_JS)
     lines = src.splitlines()
+    KNOWN_FILL_EXCEPTIONS = {"_finalCallHtml", "_finalCallCalHtml"}
+
+    def _enclosing_function(idx: int) -> str:
+        for back in range(idx, -1, -1):
+            m = re.search(r"function\s+(\w+)\s*\(", lines[back])
+            if m:
+                return m.group(1)
+        return ""
 
     violations = []
     for i, line in enumerate(lines):
@@ -122,14 +135,17 @@ def test_tint_at_badge_locations():
         if "-tint" in line:
             continue
 
-        # -fill is explicitly disallowed on act-badge
         if "-fill" in line:
+            if _enclosing_function(i) in KNOWN_FILL_EXCEPTIONS:
+                continue  # documented Final-Call exception
             violations.append(f"  line {lineno}: act-badge uses -fill (not -tint): {stripped}")
             continue
 
         # Pattern B: line uses a colorCls variable (template or concat)
         # Verify by scanning backwards up to 10 lines for the assignment with '-tint'
         if _uses_colorCls_var(line):
+            if _enclosing_function(i) in KNOWN_FILL_EXCEPTIONS:
+                continue  # documented Final-Call -fill exception -- OK regardless of distance
             found_tint_assign = False
             for back in range(1, 11):
                 if i - back < 0:
@@ -160,43 +176,23 @@ def test_tint_at_badge_locations():
             )
 
     assert not violations, (
-        "Found act-badge elements NOT using -tint:\n" + "\n".join(violations)
+        "Found act-badge elements NOT using -tint (and not a documented exception):\n"
+        + "\n".join(violations)
     )
 
 
-def test_specific_badge_lines_use_tint():
-    """
-    Spot-check the specific lines documented in DEV_HANDOFF.
-    Each should have '-tint' in a window of the documented line number +/- 5.
-    """
-    src = _read(ACTIONABLE_JS)
-    lines = src.splitlines()
-
-    check_points = [
-        (647,  "colorCls variable assignment for source pills"),
-        (1017, "_finalCallHtml colorCls assignment"),
-        (1066, "_renderSourcePop saCls assignment"),
-        (1252, "rrHtml TrTnBBRskRng badge"),
-        (1277, "renderGrid Action cell main badge"),
-        (1405, "_renderFocusCard action badge"),
-        (1586, "Modal drilldown Action KV badge"),
-        (1632, "Per-source table action column badge"),
-        (1780, "Comparison panel action badge"),
-        (2241, "Action hover popup header badge"),
-        (2282, "Action hover popup All Sources list badge"),
-    ]
-
-    failures = []
-    for target_line, desc in check_points:
-        window_start = max(0, target_line - 6)
-        window_end = min(len(lines), target_line + 5)
-        window = "\n".join(lines[window_start:window_end])
-        if "-tint" not in window:
-            failures.append(
-                f"  line ~{target_line} ({desc}): no '-tint' found in +-5 line window"
-            )
-
-    assert not failures, "Missing -tint at expected badge locations:\n" + "\n".join(failures)
+# test_specific_badge_lines_use_tint — RETIRED (TASK_112 test-debt cleanup,
+# 2026-07-04). Pinned exact line numbers (647, 1017, 1066, ... 2282) from the
+# moment AGENT_WORK_34 was authored; actionable.js has grown substantially
+# since (it's now 4000+ lines vs. the ~2300 lines these numbers assumed), so
+# every one of these line-number anchors is stale. Same
+# implementation-snapshot-pin pattern as file-tail/palette pins (Cat A per
+# docs/audit/test_debt_review.md) — a line-number spot-check is exactly the
+# kind of fragile-by-construction assertion that breaks on any legitimate
+# code growth. The underlying intent (every act-badge location resolves to
+# -tint, or a documented -fill exception) is already covered exhaustively
+# by test_tint_at_badge_locations above, which scans the whole file rather
+# than pinned offsets.
 
 
 # ---------------------------------------------------------------------------
@@ -284,16 +280,28 @@ def test_no_fill_anywhere_in_actionable():
 def test_colorCls_variable_bare_assignment_not_used_on_act_badge():
     """
     Every colorCls variable assigned WITHOUT '-tint' must NOT subsequently be used
-    on an .act-badge element.
+    on an .act-badge element — UNLESS it's a documented -fill exception.
 
-    The known legitimate bare assignment is _srcSubLineHtml (~line 723), which uses
-    colorCls on a plain <span class="${colorCls}"> (not an act-badge) for compact
-    density sub-lines -- intentionally text-color-only per DEV_HANDOFF.
+    REWRITTEN (TASK_112, 2026-07-04): `_finalCallHtml()` and
+    `_finalCallCalHtml()` deliberately assign `colorCls = ... + '-fill'` and
+    use it on an act-badge (a later, intentional HEDGEYE-panel-match commit
+    — see test_tint_count_in_actionable_js docstring for the full history).
+    That's now a second known/legitimate bare assignment alongside the
+    original _srcSubLineHtml-successor (_srcReasonsHtml) case, which uses
+    colorCls on a plain, non-act-badge span for compact density sub-lines.
     """
     src = _read(ACTIONABLE_JS)
     lines = src.splitlines()
     assign_pattern = re.compile(r"(?:const|var|let)\s+colorCls\s*=\s*(.+)$")
     fn_boundary = re.compile(r"^\s*(?:function\s|class\s)")
+    KNOWN_FILL_EXCEPTIONS = {"_finalCallHtml", "_finalCallCalHtml"}
+
+    def _enclosing_function(idx: int) -> str:
+        for back in range(idx, -1, -1):
+            m = re.search(r"function\s+(\w+)\s*\(", lines[back])
+            if m:
+                return m.group(1)
+        return ""
 
     violations = []
     for i, line in enumerate(lines):
@@ -303,6 +311,8 @@ def test_colorCls_variable_bare_assignment_not_used_on_act_badge():
         rhs = m.group(1).strip()
         if re.search(r"'-tint'[\s;]*$", rhs):
             continue  # Bakes in -tint -- fine
+        if re.search(r"'-fill'[\s;]*$", rhs) and _enclosing_function(i) in KNOWN_FILL_EXCEPTIONS:
+            continue  # documented Final-Call -fill exception -- fine
 
         # Bare colorCls: scan forward to see if it reaches an act-badge
         for j in range(i + 1, min(i + 20, len(lines))):
@@ -318,8 +328,8 @@ def test_colorCls_variable_bare_assignment_not_used_on_act_badge():
                 break
 
     assert not violations, (
-        "colorCls variable assigned without '-tint' but used on act-badge:\n"
-        + "\n".join(violations)
+        "colorCls variable assigned without '-tint' but used on act-badge "
+        "(and not a documented exception):\n" + "\n".join(violations)
     )
 
 
