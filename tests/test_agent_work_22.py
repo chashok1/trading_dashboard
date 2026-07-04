@@ -6,8 +6,12 @@ Acceptance criteria:
   1. node --check web/actionable.js passes (no output, exit 0).
   2. No <th> with data-key="trig_action" in web/actionable.html (Trig header removed).
   3. No <td> rendering r.trig_action directly in renderGrid() body of actionable.js.
-  4. trig_action is still consumed by finalCall() (data not stripped from JS).
-  5. Trig column is still exported in exportCsv() (kept per spec).
+  4. [UPDATED — TASK_110] finalCall() no longer references trig_action at
+     all — its client-side fallback path now reads row.rr_action and
+     _FC_SCALE instead (trig_action is no longer surfaced anywhere on the
+     screen, per TASK_109).
+  5. [UPDATED — TASK_110] Trig column is NOT exported in exportCsv() —
+     TASK_109 dropped it (superseding the original "kept per spec" note).
   6. class="act-action-cell" on the Action <td> in renderGrid().
   7. data-sym attribute on the act-action-cell <td>.
   8. cursor:help style on act-action-cell.
@@ -120,43 +124,54 @@ class TestTrigTdRemovedJs:
             "Old purple Trig <td> (color:#7c3aed) still present in renderGrid()"
 
 
-# ─── Criterion 4: trig_action still in finalCall() ───────────────────────────
+# ─── Criterion 4: finalCall() no longer consumes trig_action (TASK_109) ──────
+# Updated for TASK_110 test cleanup: the original criterion ("trig_action
+# still consumed by finalCall()") is now stale — finalCall()'s client-side
+# fallback path (for pre-migration rows without server-computed final_code)
+# was refactored to read row.rr_action instead of row.trig_action, and to
+# read strength from the _FC_SCALE table directly rather than via a
+# _fcStrength(trig_action) call. This matches the task's stated root cause:
+# "trig_action is no longer surfaced anywhere else on the screen."
 
-class TestTrigActionStillConsumed:
+class TestTrigActionNoLongerConsumed:
     def setup_method(self):
         self.src = _read(ACTIONABLE_JS)
 
-    def test_trig_action_in_final_call(self):
-        """finalCall() must still reference row.trig_action (data not stripped)."""
+    def test_trig_action_not_in_final_call(self):
+        """finalCall() must NOT reference row.trig_action any more."""
         fc_body = _func_body(self.src, "finalCall")
-        assert 'trig_action' in fc_body, \
-            "finalCall() no longer references trig_action — data was incorrectly removed"
+        assert 'trig_action' not in fc_body, \
+            "finalCall() still references trig_action — TASK_109 was supposed to drop this"
 
-    def test_trig_action_mapped_to_strength(self):
-        """finalCall() must still call _fcStrength on trig_action value."""
+    def test_final_call_uses_rr_action_fallback(self):
+        """finalCall()'s client-side fallback path reads row.rr_action instead."""
         fc_body = _func_body(self.src, "finalCall")
-        assert '_fcStrength' in fc_body, \
-            "finalCall() should call _fcStrength to evaluate trig_action strength"
+        assert 'row.rr_action' in fc_body, \
+            "finalCall() fallback path should read row.rr_action"
+
+    def test_final_call_uses_fc_scale_for_strength(self):
+        """finalCall() looks up strength via the _FC_SCALE table."""
+        fc_body = _func_body(self.src, "finalCall")
+        assert '_FC_SCALE' in fc_body, \
+            "finalCall() should reference _FC_SCALE to evaluate strength"
 
 
-# ─── Criterion 5: Trig still in CSV export ───────────────────────────────────
+# ─── Criterion 5: Trig no longer in CSV export (TASK_109) ────────────────────
+# Updated for TASK_110 test cleanup: TASK_109 deliberately dropped the Trig
+# column from exportCsv() too, since trig_action is no longer surfaced
+# anywhere else on the Actionable screen (see the comment left in-place at
+# actionable.js::exportCsv()). The original spec here ("kept per spec") was
+# superseded by that later decision.
 
-class TestTrigInCsvExport:
+class TestTrigNotInCsvExport:
     def setup_method(self):
         self.src = _read(ACTIONABLE_JS)
 
-    def test_trig_column_in_export_csv(self):
-        """exportCsv() must still include a 'Trig' column (per spec)."""
+    def test_trig_column_not_in_export_csv(self):
+        """exportCsv() must NOT include a 'Trig' column — TASK_109 dropped it."""
         export_body = _func_body(self.src, "exportCsv", max_len=3000)
-        assert "'Trig'" in export_body or '"Trig"' in export_body, \
-            "exportCsv() should still export a Trig column (kept intentionally)"
-
-    def test_trig_action_exported_value(self):
-        """The Trig CSV column exports trig_action field."""
-        # Look for trig_action in the csv column list context
-        export_body = _func_body(self.src, "exportCsv", max_len=3000)
-        assert "trig_action" in export_body, \
-            "exportCsv() trig_action value not found — CSV export broken"
+        assert "'Trig'" not in export_body and '"Trig"' not in export_body, \
+            "exportCsv() should not export a Trig column (removed by TASK_109)"
 
 
 # ─── Criteria 6-8: act-action-cell class / attributes ────────────────────────

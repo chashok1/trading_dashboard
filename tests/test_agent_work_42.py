@@ -648,38 +648,11 @@ class TestJSSyntax:
 # ===========================================================================
 
 
-class TestUIUnheldRemoveToggle:
-    """Verify the +Unheld Remove toggle is present and wired correctly."""
-
-    ACTIONABLE_JS = (PROJECT / "web" / "actionable.js").read_text(encoding="utf-8-sig")
-    ACTIONABLE_HTML = (PROJECT / "web" / "actionable.html").read_text(encoding="utf-8-sig")
-
-    def test_2d_show_not_held_remove_default_false(self):
-        """Default state for show_not_held_remove must be false."""
-        assert "show_not_held_remove: false" in self.ACTIONABLE_JS, (
-            "show_not_held_remove default is not 'false' in actionable.js"
-        )
-
-    def test_2d_show_not_held_remove_multiple_occurrences(self):
-        """show_not_held_remove must appear in state, filter, and event code (>=3 occurrences)."""
-        count = self.ACTIONABLE_JS.count("show_not_held_remove")
-        assert count >= 3, f"show_not_held_remove appears {count} times; expected >=3"
-
-    def test_2d_html_checkbox_present(self):
-        """HTML must have showNotHeldRemove checkbox."""
-        assert "showNotHeldRemove" in self.ACTIONABLE_HTML, (
-            "showNotHeldRemove checkbox not found in actionable.html"
-        )
-
-    def test_2d_unheld_remove_label_text(self):
-        """Label text for the toggle must mention 'Unheld Remove' or similar."""
-        assert "Unheld Remove" in self.ACTIONABLE_HTML or "unheld" in self.ACTIONABLE_HTML.lower()
-
-    def test_2d_event_listener_wired(self):
-        """addEventListener must be present for the toggle."""
-        assert "addEventListener" in self.ACTIONABLE_JS, (
-            "No addEventListener in actionable.js (toggle may not be wired)"
-        )
+# TestUIUnheldRemoveToggle — RETIRED (TASK_111 test-debt cleanup,
+# 2026-07-04). Asserted a "+Unheld Remove" toggle (show_not_held_remove
+# state, showNotHeldRemove checkbox) — confirmed zero matches for
+# "show_not_held_remove" anywhere in web/. Feature never implemented (or
+# removed since). Cat B per docs/audit/test_debt_review.md.
 
 
 # ===========================================================================
@@ -687,19 +660,8 @@ class TestUIUnheldRemoveToggle:
 # ===========================================================================
 
 
-class TestAnchorDate:
-    """The anchor date must be 2026-06-12 as stated in DEV_HANDOFF.md."""
-
-    EXPECTED_ANCHOR = "2026-06-12"
-
-    def test_anchor_matches_handoff(self, db_engine):
-        """MAX(export_date) FROM hist_td must equal the expected anchor date."""
-        from sqlalchemy import text
-
-        with db_engine.connect() as c:
-            d = c.execute(text("SELECT MAX(export_date) FROM hist_td")).scalar()
-
-        assert str(d) == self.EXPECTED_ANCHOR, (
-            f"Anchor date={d}, expected {self.EXPECTED_ANCHOR}. "
-            "DB may have advanced since DEV_HANDOFF was written."
-        )
+# TestAnchorDate — RETIRED (TASK_111 test-debt cleanup, 2026-07-04).
+# Asserted MAX(export_date) FROM hist_td == a hardcoded point-in-time anchor
+# ('2026-06-12'); the anchor advances with every new TOSD load (per
+# docs/derive_date_logic.md), so this has been wrong every day since it was
+# written. Cat B point-in-time-data pin per docs/audit/test_debt_review.md.

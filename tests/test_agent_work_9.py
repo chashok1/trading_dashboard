@@ -6,8 +6,10 @@ Acceptance criteria:
   2. All 18 HTML pages in web/ include warning_badge.js (parity).
   3. The 3 newly added pages (param_sets.html, rules_health.html,
      test_results.html) each have both script tags placed before </body>.
-  4. cockpit.html has no <script> tag referencing macro_band.js
-     (only a CSS comment is allowed).
+  4. [RETIRED — TASK_110] cockpit.html has no <script> tag referencing
+     macro_band.js (only a CSS comment is allowed). cockpit.html was deleted
+     outright in TASK_109 (/cockpit is now a bare 301 redirect); see the
+     retirement note below.
   5. web/market_bar.js passes node --check (syntax clean).
   6. GET /api/marketbar returns HTTP 200 (regression; skips if DB absent).
 """
@@ -154,47 +156,16 @@ class TestNewlyPatchedPages:
 
 
 # ---------------------------------------------------------------------------
-# 4. cockpit.html — no live <script> tag for macro_band.js
+# 4. cockpit.html — RETIRED (TASK_110 test cleanup)
 # ---------------------------------------------------------------------------
-
-class TestCockpitMacroBand:
-    """cockpit.html must not load macro_band.js via a <script> tag.
-    A CSS comment mentioning macro_band.js is acceptable."""
-
-    def test_no_macro_band_script_tag(self):
-        content = _read("cockpit.html")
-        match = re.search(r'<script[^>]*macro_band', content, re.IGNORECASE)
-        assert match is None, (
-            f"cockpit.html has a live <script> tag for macro_band.js: "
-            f"{match.group()!r}"
-        )
-
-    def test_only_css_comment_reference_allowed(self):
-        """Any macro_band.js mention must be inside a CSS comment /* … */."""
-        content = _read("cockpit.html")
-        for line_no, line in enumerate(content.splitlines(), start=1):
-            if "macro_band" not in line:
-                continue
-            # Allow CSS comment lines (inside /* ... */ style blocks)
-            stripped = line.strip()
-            is_css_comment = stripped.startswith("/*") or stripped.startswith("*")
-            is_html_comment = stripped.startswith("<!--")
-            assert is_css_comment or is_html_comment, (
-                f"cockpit.html line {line_no} references macro_band outside a "
-                f"comment: {line!r}"
-            )
-
-    def test_cockpit_still_has_market_bar(self):
-        content = _read("cockpit.html")
-        assert "market_bar.js" in content, (
-            "cockpit.html must include market_bar.js"
-        )
-
-    def test_cockpit_still_has_warning_badge(self):
-        content = _read("cockpit.html")
-        assert "warning_badge.js" in content, (
-            "cockpit.html must include warning_badge.js"
-        )
+# TASK_109 deleted web/cockpit.html outright — /cockpit is now a bare 301
+# redirect to /actionable (api/routers/pages.py::page_cockpit). There is no
+# cockpit.html left to read, so every assertion below that opened the file
+# raised FileNotFoundError. Since the whole page is gone (not just its
+# macro_band.js script tag), there's nothing left to check here, and no clean
+# /actionable equivalent — /actionable's own macro-band wiring is already
+# covered by test_agent_work_39.py::TestTask7_CockpitRetirement. Retired
+# rather than rewritten.
 
 
 # ---------------------------------------------------------------------------

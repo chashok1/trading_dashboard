@@ -88,46 +88,10 @@ class TestBlockA_RulePerformanceJS:
 # Block B — Palette restyle (AGENT_WORK_38 acceptance criteria)
 # ---------------------------------------------------------------------------
 
-class TestBlockB_PaletteVars:
-    """styles.css must have new palette hex values."""
-
-    CSS = (PROJECT / "web" / "styles.css").read_text(encoding="utf-8-sig")
-
-    def test_sell_text_color(self):
-        assert "#791F1F" in self.CSS
-
-    def test_sell_bg_color(self):
-        assert "#FCEBEB" in self.CSS
-
-    def test_buy_text_color(self):
-        assert "#27500A" in self.CSS
-
-    def test_buy_bg_color(self):
-        assert "#EAF3DE" in self.CSS
-
-    def test_hold_text_color(self):
-        assert "#444441" in self.CSS
-
-    def test_hold_bg_color(self):
-        assert "#F1EFE8" in self.CSS
-
-    def test_snooze_text_color(self):
-        assert "#633806" in self.CSS
-
-    def test_snooze_bg_color(self):
-        assert "#FAEEDA" in self.CSS
-
-    def test_act_sell_var(self):
-        assert "--act-sell-strong" in self.CSS
-
-    def test_act_buy_var(self):
-        assert "--act-buy-strong" in self.CSS
-
-    def test_act_neutral_var(self):
-        assert "--act-neutral" in self.CSS
-
-    def test_act_mixed_var(self):
-        assert "--act-mixed" in self.CSS
+# TestBlockB_PaletteVars — RETIRED (TASK_111 test-debt cleanup, 2026-07-04).
+# Pinned exact June-2026 palette hex values (--act-sell-strong etc.) in
+# styles.css; palette has since changed, breaking this by design. Cat A
+# implementation-snapshot pin per docs/audit/test_debt_review.md.
 
 
 class TestBlockB_ActionableHTML:
@@ -383,13 +347,23 @@ class TestTask7_CockpitRetirement:
         html = (PROJECT / "web" / "actionable.html").read_text(encoding="utf-8-sig")
         assert "macroBand" in html
 
-    def test_actionable_html_has_macro_refresh_btn(self):
-        html = (PROJECT / "web" / "actionable.html").read_text(encoding="utf-8-sig")
-        assert "macroRefreshBtn" in html
+    # test_actionable_html_has_macro_refresh_btn — RETIRED (TASK_110 test
+    # cleanup). #macroRefreshBtn never existed; actionable.html now has only
+    # a page-wide #refreshBtn, not a macro-band-specific refresh control. No
+    # equivalent to rewrite against — the dedicated macro refresh action was
+    # dropped, not renamed.
 
-    def test_actionable_html_has_macro_band_script(self):
-        html = (PROJECT / "web" / "actionable.html").read_text(encoding="utf-8-sig")
-        assert "macro_band.js" in html
+    def test_actionable_html_loads_macro_band_logic(self):
+        """Replaces the old 'macro_band.js is loaded' check (TASK_110).
+        TASK_109 folded the macro-band loader into actionable.js itself
+        (loadMacroBand()) instead of a standalone macro_band.js file, so the
+        one-to-one equivalent is: actionable.js defines and calls
+        loadMacroBand()."""
+        js = (PROJECT / "web" / "actionable.js").read_text(encoding="utf-8-sig")
+        assert "function loadMacroBand(" in js, \
+            "actionable.js must define loadMacroBand() (macro_band.js's successor)"
+        assert js.count("loadMacroBand()") >= 2, \
+            "loadMacroBand() must both be defined and invoked in actionable.js"
 
     def test_actionable_html_no_cockpit_nav_link(self):
         html = (PROJECT / "web" / "actionable.html").read_text(encoding="utf-8-sig")
@@ -410,10 +384,14 @@ class TestTask7_CockpitRetirement:
                 offenders.append(f.name)
         assert offenders == [], f"Cockpit nav links still in: {offenders}"
 
-    def test_macro_collapse_toggle_in_actionable_html(self):
-        html = (PROJECT / "web" / "actionable.html").read_text(encoding="utf-8-sig")
-        assert "localStorage" in html
-        assert "macroCardOpen" in html or "macro" in html
+    # test_macro_collapse_toggle_in_actionable_html — RETIRED (TASK_110 test
+    # cleanup). The 'macroCardOpen' localStorage key never existed; the old
+    # cockpit macro-card collapse toggle was dropped, not renamed. Panel
+    # collapse/expand persistence today is a *generic* mechanism in
+    # actionable.js (_initSidePanels(), keyed 'sp_' + panel id) that covers
+    # every #actSidePanel section including the macro-rail panels — but it
+    # lives in actionable.js, not actionable.html, and isn't macro-specific,
+    # so there's no clean one-to-one HTML-level assertion to rewrite this as.
 
     def test_trace_html_cockpit_link_updated(self):
         html = (PROJECT / "web" / "trace.html").read_text(encoding="utf-8-sig")
@@ -712,14 +690,12 @@ class TestBlockD_FileTails:
             f"Last 200 chars: {tail!r}"
         )
 
-    def test_baseline_sql_tail(self):
-        # The file legitimately ends with the cascade_status ALTER statement
-        self._check_tail("db/baseline.sql", [
-            "cascade_status TEXT;",
-            "ON CONFLICT",
-            "DO NOTHING;",
-            "ADD COLUMN IF NOT EXISTS",
-        ])
+    # test_baseline_sql_tail — RETIRED (TASK_111 test-debt cleanup,
+    # 2026-07-04). Pinned the exact tail-of-file snippet of db/baseline.sql
+    # as of AGENT_WORK_39; baseline.sql has grown substantially since (it is
+    # a rolling consolidated-migrations file per CLAUDE.md), so this pin is
+    # permanently stale by design. Cat A implementation-snapshot pin per
+    # docs/audit/test_debt_review.md.
 
     def test_derive_py_tail(self):
         self._check_tail("etl/derive.py", ["return counts", "if __name__", "log.info"])

@@ -5,7 +5,9 @@ Acceptance criteria (AGENT_WORK_8):
   1. web/market_bar.js exists and is valid JS (no syntax errors).
   2. Every HTML page that loads warning_badge.js also loads market_bar.js
      (script tag parity — same 15 files).
-  3. web/cockpit.html no longer loads macro_band.js and has no macroCard div.
+  3. [RETIRED — TASK_110] web/cockpit.html no longer loads macro_band.js and
+     has no macroCard div. cockpit.html was deleted outright in TASK_109
+     (/cockpit is now a bare 301 redirect); see the retirement note below.
   4. web/styles.css contains the tape CSS classes (.market-tape, .mt-cell,
      .mt-up, .mt-down, .mt-stale, etc.).
   5. market_bar.js injection pattern mirrors warning_badge.js
@@ -146,38 +148,17 @@ class TestScriptTagParity:
 
 
 # ---------------------------------------------------------------------------
-# 3. Macro band retired from cockpit
+# 3. Macro band retired from cockpit — RETIRED (TASK_110 test cleanup)
 # ---------------------------------------------------------------------------
-
-class TestMacroBandRetired:
-    """web/cockpit.html must not load macro_band.js and must not have macroCard div."""
-
-    def test_macro_band_script_tag_removed(self):
-        content = _read_html("cockpit.html")
-        # Must not have a <script> tag referencing macro_band
-        match = re.search(r'<script[^>]*macro_band', content)
-        assert match is None, (
-            f"cockpit.html still loads macro_band.js: {match.group()!r}"
-        )
-
-    def test_macro_card_div_removed(self):
-        content = _read_html("cockpit.html")
-        assert 'id="macroCard"' not in content, (
-            'cockpit.html still has the macroCard div (id="macroCard" found)'
-        )
-
-    def test_market_bar_js_added_to_cockpit(self):
-        content = _read_html("cockpit.html")
-        assert "market_bar.js" in content, (
-            "cockpit.html must include market_bar.js"
-        )
-
-    def test_warning_badge_still_on_cockpit(self):
-        """warning_badge.js must still be present — we only removed macro_band."""
-        content = _read_html("cockpit.html")
-        assert "warning_badge.js" in content, (
-            "cockpit.html is missing warning_badge.js — was it accidentally removed?"
-        )
+# TASK_109 deleted web/cockpit.html outright (the route is now a bare 301
+# redirect to /actionable — see api/routers/pages.py::page_cockpit). There is
+# no cockpit.html left to read, so every assertion below that opened the file
+# raised FileNotFoundError. Since the whole page (not just the macro_band.js
+# script tag) is gone, there is no meaningful "did cockpit.html drop
+# macro_band.js" check left to perform, and no clean /actionable equivalent —
+# /actionable's own macro-band wiring is already covered by
+# test_agent_work_39.py::TestTask7_CockpitRetirement. Retired rather than
+# rewritten.
 
 
 # ---------------------------------------------------------------------------

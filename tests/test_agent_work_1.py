@@ -465,10 +465,10 @@ class TestHandoffStatus:
             f"DEV_HANDOFF.md last non-blank line must be ALL_DONE, got {lines[-1]!r}"
         )
 
-    def test_dev_handoff_covers_task_53_through_59(self):
-        hf = PROJECT / "DEV_HANDOFF.md"
-        content = _read(hf)
-        for n in range(53, 60):
-            assert f"TASK_{n}" in content or f"TASK_{n}" in content, (
-                f"DEV_HANDOFF.md must mention TASK_{n}"
-            )
+    # test_dev_handoff_covers_task_53_through_59 — RETIRED (TASK_110 test
+    # cleanup). DEV_HANDOFF.md is a rolling file, overwritten fresh by every
+    # task's developer pass (per docs/agent_handoff_workflow.md), so an
+    # assertion pinned to one historical task's content (TASK_53-59) is
+    # permanently stale by design — it will fail against any later task's
+    # handoff, including this one. Retired rather than rewritten since there
+    # is no current-task-agnostic equivalent to assert.

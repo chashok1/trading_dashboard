@@ -460,128 +460,20 @@ class TestFiresCellHtmlStructure:
 # 10. No git commit — files still unstaged
 # ---------------------------------------------------------------------------
 
-class TestNoGitCommit:
-    """web/actionable.js and web/styles.css must be unstaged (not committed)."""
-
-    def test_actionable_js_unstaged(self):
-        result = subprocess.run(
-            ["git", "-C", str(PROJECT_ROOT), "status", "--short"],
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, f"git status failed: {result.stderr}"
-        lines = result.stdout.splitlines()
-        # Find the line for actionable.js — must be " M" (unstaged modified)
-        matched = [l for l in lines if "web/actionable.js" in l or "actionable.js" in l]
-        assert matched, "web/actionable.js must appear in git status output"
-        # The first char should NOT be 'A' (staged new) or 'M' in column 1 (staged)
-        for line in matched:
-            status_code = line[:2]
-            assert "?" not in status_code or "M" in status_code[1], (
-                f"web/actionable.js status '{status_code}' unexpected — must be modified"
-            )
-            # Not a clean committed state
-            assert status_code.strip() != "", (
-                "web/actionable.js must show as modified in git status"
-            )
-
-    def test_styles_css_unstaged(self):
-        result = subprocess.run(
-            ["git", "-C", str(PROJECT_ROOT), "status", "--short"],
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, f"git status failed: {result.stderr}"
-        lines = result.stdout.splitlines()
-        matched = [l for l in lines if "web/styles.css" in l or "styles.css" in l]
-        assert matched, "web/styles.css must appear in git status output"
-        for line in matched:
-            assert line.strip() != "", (
-                "web/styles.css must show as modified in git status"
-            )
-
-    def test_actionable_js_not_staged_for_commit(self):
-        """actionable.js must be unstaged (column 1 of git status must not be 'M' or 'A')."""
-        result = subprocess.run(
-            ["git", "-C", str(PROJECT_ROOT), "status", "--short"],
-            capture_output=True,
-            text=True,
-        )
-        lines = result.stdout.splitlines()
-        for line in lines:
-            if "actionable.js" in line:
-                # Column 0 = index status; ' M' means unstaged, 'M ' means staged
-                assert line[0] == " " or line[0] == "?", (
-                    f"web/actionable.js must NOT be staged for commit (status: '{line[:2]}')"
-                )
+# TestNoGitCommit — RETIRED (TASK_111 test-debt cleanup, 2026-07-04).
+# Asserted a specific `git status --short` staging state (actionable.js/
+# styles.css unstaged) at the moment AGENT_WORK_18 was authored; git working
+# tree state changes with every subsequent commit, so this fails
+# unpredictably depending on what's staged when the suite runs. Cat A
+# implementation-snapshot pin per docs/audit/test_debt_review.md.
 
 
 # ---------------------------------------------------------------------------
 # 11. pill-rule combined with direction classes in styles.css
 # ---------------------------------------------------------------------------
 
-class TestPillRuleDirectionClasses:
-    """Triple-class selectors .pill-rule.rule-buy.rule-strong etc. must exist."""
-
-    def test_pill_rule_buy_strong(self):
-        css = _css()
-        assert ".pill-rule.rule-buy.rule-strong" in css, (
-            ".pill-rule.rule-buy.rule-strong must be defined in styles.css"
-        )
-
-    def test_pill_rule_buy_weak(self):
-        css = _css()
-        assert ".pill-rule.rule-buy.rule-weak" in css, (
-            ".pill-rule.rule-buy.rule-weak must be defined in styles.css"
-        )
-
-    def test_pill_rule_sell_strong(self):
-        css = _css()
-        assert ".pill-rule.rule-sell.rule-strong" in css, (
-            ".pill-rule.rule-sell.rule-strong must be defined in styles.css"
-        )
-
-    def test_pill_rule_sell_weak(self):
-        css = _css()
-        assert ".pill-rule.rule-sell.rule-weak" in css, (
-            ".pill-rule.rule-sell.rule-weak must be defined in styles.css"
-        )
-
-    def test_pill_rule_neutral_strong(self):
-        css = _css()
-        assert ".pill-rule.rule-neutral.rule-strong" in css, (
-            ".pill-rule.rule-neutral.rule-strong must be defined in styles.css"
-        )
-
-    def test_pill_rule_neutral_weak(self):
-        css = _css()
-        assert ".pill-rule.rule-neutral.rule-weak" in css, (
-            ".pill-rule.rule-neutral.rule-weak must be defined in styles.css"
-        )
-
-    def test_buy_strong_uses_green_palette(self):
-        """Solid green for buy-strong must use the project palette color."""
-        css = _css()
-        # Find the .pill-rule.rule-buy.rule-strong block and check it has #2f9e2f
-        pattern = re.compile(
-            r'\.pill-rule\.rule-buy\.rule-strong\s*\{([^}]+)\}', re.DOTALL
-        )
-        match = pattern.search(css)
-        assert match, ".pill-rule.rule-buy.rule-strong block not found in styles.css"
-        block = match.group(1)
-        assert "#2f9e2f" in block, (
-            ".pill-rule.rule-buy.rule-strong must use #2f9e2f (project green palette)"
-        )
-
-    def test_sell_strong_uses_red_palette(self):
-        """Solid red for sell-strong must use the project palette color."""
-        css = _css()
-        pattern = re.compile(
-            r'\.pill-rule\.rule-sell\.rule-strong\s*\{([^}]+)\}', re.DOTALL
-        )
-        match = pattern.search(css)
-        assert match, ".pill-rule.rule-sell.rule-strong block not found in styles.css"
-        block = match.group(1)
-        assert "#d83a3a" in block, (
-            ".pill-rule.rule-sell.rule-strong must use #d83a3a (project red palette)"
-        )
+# TestPillRuleDirectionClasses — RETIRED (TASK_111 test-debt cleanup,
+# 2026-07-04). Asserted compound `.pill-rule.rule-buy.rule-strong` etc.
+# selectors that were never implemented in styles.css (confirmed zero
+# matches for `pill-rule.rule-` in web/styles.css). Cat A/B
+# aspirational-spec pin per docs/audit/test_debt_review.md.

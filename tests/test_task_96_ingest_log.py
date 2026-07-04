@@ -423,11 +423,13 @@ class TestClaudeMdLookup:
 
 class TestDevHandoffStatus:
 
-    def test_check36_handoff_references_agent_work_7(self, handoff_src):
-        """Check 36 — DEV_HANDOFF.md references AGENT_WORK_7."""
-        assert "AGENT_WORK_7" in handoff_src, (
-            "DEV_HANDOFF.md does not reference AGENT_WORK_7"
-        )
+    # test_check36_handoff_references_agent_work_7 — RETIRED (TASK_111
+    # test-debt cleanup, 2026-07-04). DEV_HANDOFF.md is a rolling file,
+    # overwritten fresh by every task's developer pass (per
+    # docs/agent_handoff_workflow.md), so an assertion pinned to one
+    # historical task's content (AGENT_WORK_7) is permanently stale by
+    # design — same pattern retired for AGENT_WORK_1 in TASK_110. Cat A
+    # per docs/audit/test_debt_review.md.
 
     def test_check37_handoff_status_all_done(self, handoff_src):
         """Check 37 — DEV_HANDOFF.md Status is ALL_DONE."""
