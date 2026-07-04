@@ -1011,17 +1011,32 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   box-sizing: border-box;
 }
 
-/* Toolbar chips: make room on the right for the candle-as-separator */
+/* Mini-tape (2026-07-04): space on both sides of the vertical separator —
+   padding-right is the space before it (inside this chip), padding-left is
+   the space after it (inside the next chip). Base rule above only gave
+   1px on the left, which read as cramped right after each border. */
 .market-tape .rr-chip {
   position: relative;
-  padding-right: 10px;
+  padding-left: 4px;
+  padding-right: 4px;
 }
 
-/* Mini-tape (2026-07-04): no separator between SPX and VIX specifically —
-   SPX is always the first BAR_MINI chip, so :first-child targets exactly
-   that border without touching the separators between any other tiles. */
-#rrTape1 .rr-chip:first-child {
+/* Mini-tape (2026-07-04): no separator between a value tile and its paired
+   vol-gauge tile (SPX+VIX, Nasdaq+VXN, Dow+VXD, Russell+RVX, Gold+GVZ,
+   Oil+OVX, Bond+MOVE) -- .rr-chip-pair-lead is set in market_bar.js's
+   chipHtml() on the "value" half of each pair via BAR_MINI's pairLead flag,
+   so this targets exactly those borders without touching the separators
+   between pairs or the unpaired DXY/HY/BTC tiles at the end. */
+.market-tape .rr-chip-pair-lead {
   border-right: none;
+  /* No border here, so the general left/right padding above would just
+     reopen a gap between the pair -- keep this side tight. */
+  padding-right: 0;
+}
+.market-tape .rr-chip-pair-lead + .rr-chip {
+  /* The paired vol-gauge tile immediately after a pair-lead -- same reason,
+     keep its inner side tight so the pair still reads as one unit. */
+  padding-left: 0;
 }
 
 /* Candle SVG: fixed 7×20px (no CSS resizing — SVG height attribute controls size, no scaling). */
@@ -1031,6 +1046,25 @@ svg.rr-candle {
   top: 2px;
   width: 7px;
   display: block;
+}
+
+/* Mini-tape (2026-07-04): candle now sits inline in the chip's flex flow
+   (between sym-col and the trailing %chg/zone-label chip), not the
+   absolutely-positioned corner overlay the base rule above is for. */
+#rrTape1 svg.rr-candle {
+  position: static;
+  right: auto;
+  top: auto;
+  flex-shrink: 0;
+}
+/* Regular tiles (2026-07-04): sym-col's fixed 28px width is wider than its
+   18px range bar, leaving unused space on the bar's right before the
+   candle -- pull the candle into that space to close most of the visual
+   gap, but leave a little breathing room (not flush) between the bar and
+   candle. Only targets the trailing candle (mt-candle-trail), not the VIX
+   tile's leading one, which has no such gap to close. */
+.market-tape .mt-candle-trail {
+  margin-left: -4px;
 }
 
 /* symTapeTrack chips (rr-chip-top = old full-width row layout, unchanged) */
@@ -1046,6 +1080,12 @@ svg.rr-candle {
   flex-direction: row;
   align-items: stretch;
   gap: 2px;
+}
+/* Mini-tape (2026-07-04): tighter than the symbol tape's shared default —
+   less space between sym-col and the now-inline candle. Scoped to
+   .market-tape (unique to #rrTape1) so #symTapeTrack keeps its own gap. */
+.market-tape .rr-chip-body {
+  gap: 0;
 }
 /* Fixed-width column: sym on top, range bar on bottom */
 .rr-chip-sym-col {
@@ -1075,6 +1115,13 @@ svg.rr-candle {
   border-radius: 2px;
   min-width: 20px;
 }
+/* Mini-tape (2026-07-04): narrower than the 28px sym-col it sits in (the
+   column's own width stays 28px for the zone-label pill's sake) -- an
+   explicit width overrides the column's default align-items:stretch. */
+.market-tape .rr-chip-sym-col .rr-rb {
+  width: 18px;
+  min-width: 0;
+}
 .rr-rb-fill {
   position: absolute;
   left: 0; top: 0;
@@ -1103,7 +1150,9 @@ svg.rr-candle {
   transform: translateX(-50%);
 }
 
-/* Volatility range bar — 3-zone (green/amber/red) with threshold dots */
+/* Volatility range bar — 3-zone (green/amber/red), colors + tick mark only
+   (2026-07-04): no boundary dots (removed from volRangeBar() in
+   market_bar.js). */
 .vol-rb { background: transparent; }
 .vol-z {
   position: absolute;
@@ -1112,15 +1161,14 @@ svg.rr-candle {
 .vol-z-g { left: 0;   width: 33%; background: rgba(47,158,47,0.35); border-radius: 2px 0 0 2px; }
 .vol-z-a { left: 33%; width: 34%; background: #eab308; }
 .vol-z-r { left: 67%; width: 33%; background: rgba(216,58,58,0.30); border-radius: 0 2px 2px 0; }
-.vol-dot {
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 4px; height: 4px;
-  border-radius: 50%;
-  background: #334155;
-  border: 1px solid #fff;
-  z-index: 2;
+/* VIX mini-tape bar (2026-07-04): bigger than the other tiles' range bars
+   (3 color zones need more room to read). Tick mark uses the same sphere
+   marker as every other mini-tape chip (e.g. SPX) -- .vol-rb also carries
+   the plain .rr-rb class, so it already matches ".market-tape .rr-rb
+   .rr-rb-tick" above with no extra rule needed. */
+.market-tape .rr-chip-sym-col .vol-rb {
+  width: 26px;
+  height: 2px;
 }
 
 /* Symbol tape chip: action label + IV row */

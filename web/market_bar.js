@@ -1,11 +1,14 @@
 /* Trading Dashboard — global mini market tape (TASK_116 consolidation)
  *
  * Self-mounting widget. Injects a single sticky ribbon (#rrTape1) below the
- * topbar with a curated 8-instrument pulse: SPX · VIX · DXY · GC · WTI · 10Y
- * · HY · BTC. The full market breadth (ETFs, sectors, tech, FX, indexes,
- * credit, crypto, ...) now lives in the Actionable side rail
- * (web/macro_areas.js, /api/macro-areas) — bars 2/3 (#rrTape2/#rrTape3) were
- * retired in favor of that rail. See docs/market_panel_consolidation_design.md.
+ * topbar with a curated pulse: SPX · VIX · [Nasdaq/Dow/Russell/Gold/Oil/Bond
+ * Vol] · DXY · GC · WTI · 10Y · HY · BTC (2026-07-04: the 6 bracketed vol
+ * gauges were added after VIX, mirroring every entry in the side rail's
+ * Volatility area one-for-one). The full market breadth (ETFs, sectors,
+ * tech, FX, indexes, credit, crypto, ...) still lives in the Actionable side
+ * rail (web/macro_areas.js, /api/macro-areas) — bars 2/3 (#rrTape2/#rrTape3)
+ * were retired in favor of that rail. See
+ * docs/market_panel_consolidation_design.md.
  *
  * The Econ panel (#econPanel) is a static div in the page HTML (actionable.html).
  * It is toggled by #econBtn and lazily loaded from GET /api/macro.
@@ -40,7 +43,7 @@
 
   function fmtChgPct(chg_pct) {
     if (chg_pct === null || chg_pct === undefined) return '';
-    return Math.abs(Number(chg_pct)).toFixed(2) + '%';
+    return Math.abs(Number(chg_pct)).toFixed(1) + '%';
   }
 
   function dirClass(chg_pct, metric_key) {
@@ -311,12 +314,13 @@
     } else {
       valPct = Math.min(100, Math.round(67 + (value - high) / (high * 0.5) * 33));
     }
+    // Colors + tick mark only (2026-07-04) -- the two zone-boundary dot
+    // markers are intentionally gone; the colored zones already show the
+    // boundaries without them.
     return `<div class="rr-rb vol-rb">` +
       `<div class="vol-z vol-z-g"></div>` +
       `<div class="vol-z vol-z-a"></div>` +
       `<div class="vol-z vol-z-r"></div>` +
-      `<div class="vol-dot" style="left:33%;"></div>` +
-      `<div class="vol-dot" style="left:67%;"></div>` +
       `<div class="rr-rb-tick" style="left:${valPct}%;"></div>` +
       `</div>`;
   }
@@ -329,57 +333,97 @@
     return '';
   }
 
-  function chipHtml(name, ol, pctStr, pctCls, buy, sell, cur, tipObj, stale, ohlc, volThresh, scoreSym) {
+  function chipHtml(name, ol, pctStr, pctCls, buy, sell, cur, tipObj, stale, ohlc, volThresh, scoreSym, pairLead) {
     const staleCls = stale ? ' mt-stale' : '';
+    // pairLead (2026-07-04): this tile is the "value" half of a value/vol-
+    // gauge pair (e.g. SPX before VIX) -- suppress the separator before its
+    // paired gauge so the pair reads as one visual unit.
+    const pairCls = pairLead ? ' rr-chip-pair-lead' : '';
     const pctBg = pctCls === 'mt-up' ? '#1d9e75' : pctCls === 'mt-down' ? '#d4537e' : '#888';
     const pctBoxStyle = `background:${pctBg};color:#fff;`;
     const symColor = outlookBg(ol);
     const dataTip = tipObj ? ` data-tip="${escHtml(JSON.stringify(tipObj))}"` : '';
+    // Inline now (2026-07-04), not the absolutely-positioned corner overlay
+    // it used to be -- sits between sym-col and the trailing chip, same as
+    // the layout below. #rrTape1 svg.rr-candle in styles.css cancels the
+    // base absolute positioning for this context.
     const candle = ohlc ? _candleSvg(ohlc.o, ohlc.h, ohlc.l, ohlc.c) : '';
     const rb = volThresh
       ? volRangeBar(volThresh.value, volThresh.low, volThresh.high)
       : rangeBar(buy, sell, cur);
     const _pg = _msGlyphTape(scoreSym);
-    // Volatility-gauge tile (VIX, currently the only BAR_MINI item carrying a
-    // volThresh): show the zone label instead of the symbol name, styled as
-    // a solid background+text pill matching the side panel's .msr-gauge
-    // badge convention (not just colored text like other tiles), and drop
-    // the price chip entirely (2026-07-04, user request) -- data-sym stays
-    // the real instrument name for tooltip/click purposes, only the visible
-    // text changes.
-    const dispName = volThresh ? _volZoneLabel(volThresh.zone) : name;
-    const symStyle = volThresh
+    // Volatility-gauge tile (VIX, currently the only BAR_MINI item carrying
+    // a volThresh): badge and range bar stay stacked together in rr-chip-
+    // sym-col (badge on top, bar below it, 2026-07-04) -- the candle sits
+    // BEFORE that whole stack instead of before a trailing chip, since there
+    // is no price chip for this tile anymore. Styled as a solid background+
+    // text pill matching the side panel's .msr-gauge badge convention, not
+    // just colored text. Regular tiles keep their existing order: sym-col
+    // (name/bar), then candle, then the trailing %chg chip. data-sym stays
+    // the real instrument name for tooltip/click purposes throughout.
+    const symHtml = volThresh
       ? (function () {
           const b = _volZoneBadgeStyle(volThresh.zone);
-          return `background:${b.bg}; color:${b.fg}; padding:0 2px; border-radius:3px; display:inline-block;`;
+          const badgeStyle = `background:${b.bg}; color:${b.fg}; padding:0 2px; border-radius:3px; display:inline-block; line-height:1.1;`;
+          return `<span class="rr-sym" style="${badgeStyle}">${_pg}${escHtml(_volZoneLabel(volThresh.zone))}</span>`;
         })()
-      : `color:${symColor};`;
-    const chgChip = volThresh ? '' : `<span class="mt-chg" style="${pctBoxStyle}">${pctStr}</span>`;
-    return `<div class="rr-chip${staleCls}" data-sym="${escHtml(name)}"${dataTip} style="cursor:pointer;">` +
+      : `<span class="rr-sym" style="color:${symColor};">${_pg}${escHtml(name)}</span>`;
+    const symCol = `<div class="rr-chip-sym-col">${symHtml}${rb}</div>`;
+    const trailChip = volThresh ? '' : `<span class="mt-chg" style="${pctBoxStyle}">${pctStr}</span>`;
+    // mt-candle-trail marks the candle only when it follows sym-col (regular
+    // tiles) so CSS can pull it closer to the bar without also affecting the
+    // VIX tile, where the candle instead LEADS sym-col (2026-07-04).
+    const body = volThresh
+      ? candle + symCol
+      : symCol + `<span class="mt-candle-trail">${candle}</span>` + trailChip;
+    return `<div class="rr-chip${staleCls}${pairCls}" data-sym="${escHtml(name)}"${dataTip} style="cursor:pointer;">` +
       `<div class="rr-chip-body">` +
-      `<div class="rr-chip-sym-col">` +
-      `<span class="rr-sym" style="${symStyle}">${_pg}${escHtml(dispName)}</span>` +
-      rb +
+      body +
       `</div>` +
-      chgChip +
-      `</div>` +
-      candle +
       `</div>`;
   }
 
-  // ---- build mini-tape row (#rrTape1) — curated 8-instrument pulse -------
-  // SPX/VIX/DXY/GC/WTI resolve from /api/marketbar (metric_key); 10Y/HY/BTC
-  // resolve from /api/rr-bar groups. Identifiers verbatim from TASK_115's
-  // preflight (DEV_HANDOFF AGENT_WORK_24) — do not re-derive.
+  // ---- build mini-tape row (#rrTape1) -------------------------------------
+  // Index/vol-gauge PAIRS (2026-07-04, user request) -- each underlying
+  // index sits immediately before its volatility gauge, one pair per
+  // Volatility-area entry in db/seeds_macro_area.sql (area_key='volatility'):
+  // SPX+VIX, Nasdaq(COMP)+VXN, Dow(DJI)+VXD, Russell(RUT)+RVX, Gold(GC)+GVZ,
+  // Oil(WTI)+OVX, Bond(10Y)+MOVE. GC/WTI/10Y are reused in their pair slot,
+  // not duplicated, from TASK_115's original 8-instrument preflight
+  // (DEV_HANDOFF AGENT_WORK_24) -- SPX/VIX/DXY/GC/WTI/10Y/HY/BTC identifiers
+  // are verbatim from that preflight; COMP/DJI/RUT/VXN/VXD/RVX/GVZ/OVX/MOVE
+  // were confirmed later directly against ref_market_metric/live
+  // /api/marketbar. DXY, HY, and BTC have no vol-gauge counterpart and stay
+  // unpaired at the end, as before. All 'mkt' entries resolve from
+  // /api/marketbar (metric_key); 10Y/HY/BTC ('rr') resolve from
+  // /api/rr-bar groups.
+  // pairLead: true marks the "value" half of a value/vol-gauge pair, so
+  // buildMiniTapeHtml can suppress the separator before its paired gauge
+  // (2026-07-04) -- not just SPX, every pair below.
   const BAR_MINI = [
-    { label: 'SPX', source: 'mkt', key: 'SPX' },
-    { label: 'VIX', source: 'mkt', key: 'VIX' },
-    { label: 'DXY', source: 'mkt', key: 'DXY' },
-    { label: 'GC',  source: 'mkt', key: 'GC' },
-    { label: 'WTI', source: 'mkt', key: 'WTI' },
-    { label: '10Y', source: 'rr',  group: 'Rates',  symbol: 'TNX:CGI' },
-    { label: 'HY',  source: 'rr',  group: 'Credit', symbol: 'HYG' },
-    { label: 'BTC', source: 'rr',  group: 'Crypto', symbol: '/BTC' },
+    { label: 'SPX',  source: 'mkt', key: 'SPX',  pairLead: true },   // S&P 500
+    { label: 'VIX',  source: 'mkt', key: 'VIX' },   // S&P Vol
+    { label: 'COMP', source: 'mkt', key: 'COMP', pairLead: true },  // Nasdaq Composite
+    { label: 'VXN',  source: 'mkt', key: 'VXN' },   // Nasdaq Vol
+    { label: 'DJI',  source: 'mkt', key: 'DJI',  pairLead: true },   // Dow
+    { label: 'VXD',  source: 'mkt', key: 'VXD' },   // Dow Vol
+    { label: 'RUT',  source: 'mkt', key: 'RUT',  pairLead: true },   // Russell 2000
+    { label: 'RVX',  source: 'mkt', key: 'RVX' },   // Russell Vol
+    { label: 'GC',   source: 'mkt', key: 'GC',   pairLead: true },    // Gold
+    { label: 'GVZ',  source: 'mkt', key: 'GVZ' },   // Gold Vol
+    { label: 'WTI',  source: 'mkt', key: 'WTI',  pairLead: true },   // Oil
+    { label: 'OVX',  source: 'mkt', key: 'OVX' },   // Oil Vol
+    { label: '10Y',  source: 'rr',  group: 'Rates',  symbol: 'TNX:CGI', pairLead: true }, // Bond/Treasury
+    // MOVE: /api/marketbar currently returns vol_low/vol_high = null for
+    // this metric_key even though ref_vol_threshold has a row for the
+    // underlying MOVE:GIF symbol (the side rail's Bond Vol gauge works) —
+    // a lookup-key mismatch in the marketbar endpoint, not a missing
+    // threshold. Until that's fixed this tile will show the "None" zone
+    // badge; not blocking, flagged for a follow-up.
+    { label: 'MOVE', source: 'mkt', key: 'MOVE' },  // Bond Vol
+    { label: 'DXY',  source: 'mkt', key: 'DXY' },
+    { label: 'HY',   source: 'rr',  group: 'Credit', symbol: 'HYG' },
+    { label: 'BTC',  source: 'rr',  group: 'Crypto', symbol: '/BTC' },
   ];
 
   function _miniChipFromMkt(spec, item) {
@@ -396,7 +440,7 @@
       ? { o: item.open, h: item.high, l: item.low, c: item.value } : null;
     return chipHtml(spec.label, item.rr_outlook, pctStr, cls,
                      item.rr_buy, item.rr_sell, item.value, tipObj, item.stale, ohlc, volThresh,
-                     item.monthly_score ?? null);
+                     item.monthly_score ?? null, spec.pairLead);
   }
 
   function _miniChipFromRr(spec, item) {
@@ -409,13 +453,13 @@
     const cls    = dirClass(pct, spec.label);
     const chgStr = volThresh
       ? (item.bar_price != null ? Number(item.bar_price).toFixed(2) : '—')
-      : (pct != null ? Math.abs(pct).toFixed(2) + '%' : '—');
+      : (pct != null ? Math.abs(pct).toFixed(1) + '%' : '—');
     const tipObj = rrItemTipObj(spec.label, item, chgStr, cls, pct);
     const ohlc   = (item.open != null && item.high != null && item.low != null && item.bar_price != null)
       ? { o: item.open, h: item.high, l: item.low, c: item.bar_price } : null;
     return chipHtml(spec.label, item.outlook, chgStr, cls,
                      item.buy, item.sell, item.bar_price, tipObj, false, ohlc, volThresh,
-                     item.monthly_score);
+                     item.monthly_score, spec.pairLead);
   }
 
   function buildMiniTapeHtml(mktData, rrData) {

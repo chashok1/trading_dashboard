@@ -48,14 +48,26 @@ _METRIC_TO_VOL_SYM: dict[str, str] = {
     'VXD':  'VXD',
     'GVZ':  'GVZ:CGI',
     'OVX':  'OVX:CGI',
+    'MOVE': 'MOVE:GIF',
 }
 
-# Maps marketbar metric_key → hist_rr tos_symbol (for range bar enrichment)
+# Maps marketbar metric_key → hist_rr/drv_quote tos_symbol (for range bar
+# enrichment + OHLC/candle lookup). 2026-07-04: added DJI + the 6 volatility
+# gauges (RVX/VXN/VXD/GVZ/OVX/MOVE) -- confirmed live these all have real
+# drv_quote rows under the tos_symbol values below; the missing mapping
+# entries, not missing data, were why their candles were blank.
 _METRIC_TO_RR_SYMBOL: dict[str, str] = {
     'SPX':  'SPX',
     'COMP': '$COMP',
+    'DJI':  '$DJI',
     'RUT':  'RUT',
     'VIX':  'VIX',
+    'RVX':  'RVX',
+    'VXN':  'VXN:CGI',
+    'VXD':  'VXD',
+    'GVZ':  'GVZ:CGI',
+    'OVX':  'OVX:CGI',
+    'MOVE': 'MOVE:GIF',
     'WTI':  '/CL',
     'GC':   '/GC',
     'HY':   'HYG',
