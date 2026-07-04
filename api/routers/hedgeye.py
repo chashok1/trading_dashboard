@@ -392,12 +392,14 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                     "image_url": f"/api/msr/image?date={msr_date.isoformat()}",
                 }
 
-        # Hedgeye Monthly Inflation Nowcast image — only if received exactly on effective_date.
+        # Hedgeye Monthly Inflation Nowcast image — monthly cadence, so show the
+        # latest one received on or before effective_date (not an exact-date
+        # match, which would blank the card on every non-arrival day).
         infl_row = s.execute(text(
             "SELECT (received_at AT TIME ZONE 'America/New_York')::date AS d, received_at"
             " FROM meta_hedgeye_msg WHERE email_type='inflation_nowcast'"
             " AND received_at IS NOT NULL"
-            " AND (received_at AT TIME ZONE 'America/New_York')::date = :eff"
+            " AND (received_at AT TIME ZONE 'America/New_York')::date <= :eff"
             " ORDER BY received_at DESC LIMIT 1"
         ), {"eff": effective_date}).first()
         if infl_row is not None:
