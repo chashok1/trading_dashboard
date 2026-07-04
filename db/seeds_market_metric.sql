@@ -25,7 +25,11 @@ VALUES
     ('OVX',   'OVX',        'risk',   '["tos:OVX:CGI"]'::JSONB,                 'level', 92,  TRUE),
     ('GC',    'GOLD',       'cmdty',  '["tos:/GC"]'::JSONB,                     'price', 94,  TRUE),
     ('GVZ',   'GVZ',        'risk',   '["tos:GVZ:CGI"]'::JSONB,                 'level', 96,  TRUE),
-    ('HY',    'HY spread',  'credit', '["fred:BAMLH0A0HYM2"]'::JSONB,           'pct',   100, FALSE)
+    ('HY',    'HY spread',  'credit', '["fred:BAMLH0A0HYM2"]'::JSONB,           'pct',   100, FALSE),
+    -- 2026-07-04: mini-tape QQQ tile (added after BTC) had no existing
+    -- marketbar/rr-bar row despite drv_quote already carrying real data for
+    -- it (same 'dual' role as SPY/IWM in the side rail's top9 area).
+    ('QQQ',   'QQQ',        'index',  '["tos:QQQ"]'::JSONB,                     'price', 45,  TRUE)
 ON CONFLICT (metric_key) DO UPDATE SET
     label           = EXCLUDED.label,
     grp             = EXCLUDED.grp,

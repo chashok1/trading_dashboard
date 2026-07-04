@@ -72,6 +72,7 @@ _METRIC_TO_RR_SYMBOL: dict[str, str] = {
     'GC':   '/GC',
     'HY':   'HYG',
     'DXY':  '$DXY',
+    'QQQ':  'QQQ',
 }
 
 # Synthetic bar-1 items sourced directly from hist_rr

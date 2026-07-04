@@ -1038,6 +1038,14 @@ tbody td.num { font-variant-numeric: tabular-nums; }
      keep its inner side tight so the pair still reads as one unit. */
   padding-left: 0;
 }
+/* LQD and Yen (2026-07-04, newly added tiles) follow a pairLead (HY, Dolr)
+   too, so the rule above zeroes their left padding by default -- give them
+   a little room at the beginning instead of being completely flush. Same
+   specificity as the rule above (3 selectors each), so source order wins. */
+.market-tape .rr-chip[data-sym="LQD"],
+.market-tape .rr-chip[data-sym="Yen"] {
+  padding-left: 3px;
+}
 
 /* Candle SVG: fixed 7×20px (no CSS resizing — SVG height attribute controls size, no scaling). */
 svg.rr-candle {
@@ -1065,6 +1073,13 @@ svg.rr-candle {
    tile's leading one, which has no such gap to close. */
 .market-tape .mt-candle-trail {
   margin-left: -4px;
+}
+/* Volatility-gauge tiles (2026-07-04): the leading candle sits right at the
+   chip's left edge (its padding-left is zeroed for tight pairing with the
+   value tile before it -- .rr-chip-pair-lead + .rr-chip rule above), so add
+   a little space here specifically instead of leaving it flush. */
+.market-tape .mt-candle-lead {
+  margin-left: 3px;
 }
 
 /* symTapeTrack chips (rr-chip-top = old full-width row layout, unchanged) */

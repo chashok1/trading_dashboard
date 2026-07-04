@@ -370,11 +370,13 @@
       : `<span class="rr-sym" style="color:${symColor};">${_pg}${escHtml(name)}</span>`;
     const symCol = `<div class="rr-chip-sym-col">${symHtml}${rb}</div>`;
     const trailChip = volThresh ? '' : `<span class="mt-chg" style="${pctBoxStyle}">${pctStr}</span>`;
-    // mt-candle-trail marks the candle only when it follows sym-col (regular
-    // tiles) so CSS can pull it closer to the bar without also affecting the
-    // VIX tile, where the candle instead LEADS sym-col (2026-07-04).
+    // mt-candle-trail/mt-candle-lead mark the candle depending on which side
+    // of sym-col it's on (2026-07-04) -- trail for regular tiles (candle
+    // after sym-col), lead for volatility-gauge tiles (candle before the
+    // badge+bar stack, whose chip has padding-left:0 for tight pairing with
+    // its value tile) -- so CSS can tune the space on each side separately.
     const body = volThresh
-      ? candle + symCol
+      ? `<span class="mt-candle-lead">${candle}</span>` + symCol
       : symCol + `<span class="mt-candle-trail">${candle}</span>` + trailChip;
     return `<div class="rr-chip${staleCls}${pairCls}" data-sym="${escHtml(name)}"${dataTip} style="cursor:pointer;">` +
       `<div class="rr-chip-body">` +
@@ -384,35 +386,43 @@
   }
 
   // ---- build mini-tape row (#rrTape1) -------------------------------------
-  // Index/vol-gauge PAIRS (2026-07-04, user request) -- each underlying
-  // index sits immediately before its volatility gauge, one pair per
-  // Volatility-area entry in db/seeds_macro_area.sql (area_key='volatility'):
-  // SPX+VIX, Nasdaq(COMP)+VXN, Dow(DJI)+VXD, Russell(RUT)+RVX, Gold(GC)+GVZ,
-  // Oil(WTI)+OVX, Bond(10Y)+MOVE. GC/WTI/10Y are reused in their pair slot,
-  // not duplicated, from TASK_115's original 8-instrument preflight
-  // (DEV_HANDOFF AGENT_WORK_24) -- SPX/VIX/DXY/GC/WTI/10Y/HY/BTC identifiers
-  // are verbatim from that preflight; COMP/DJI/RUT/VXN/VXD/RVX/GVZ/OVX/MOVE
-  // were confirmed later directly against ref_market_metric/live
-  // /api/marketbar. DXY, HY, and BTC have no vol-gauge counterpart and stay
-  // unpaired at the end, as before. All 'mkt' entries resolve from
-  // /api/marketbar (metric_key); 10Y/HY/BTC ('rr') resolve from
+  // Grouped PAIRS (2026-07-04, user requests) -- pairLead:true on the first
+  // tile of a group suppresses the separator before the next tile, so
+  // buildMiniTapeHtml renders the group as one visual unit:
+  //   S&P(SPX)+VIX, Nasdaq(COMP)+VXN, Dow(DJI)+VXD, Russell(RUT)+RVX,
+  //   Gold(GC)+GVZ, Oil(WTI)+OVX  -- one pair per Volatility-area entry in
+  //     db/seeds_macro_area.sql (area_key='volatility')
+  //   2Y+10Y+MOVE  -- 3-tile group (2Y in front of 10Y, both paired via
+  //     chained pairLead flags)
+  //   HY+LQD  -- Credit group
+  //   BTC, QQQ  -- unpaired, QQQ added after BTC
+  //   Dolr(DXY)+Yen(USD/JPY)  -- moved to the very end, now paired
+  // GC/WTI/10Y/DXY/HY/BTC identifiers are verbatim from TASK_115's original
+  // preflight (DEV_HANDOFF AGENT_WORK_24); COMP/DJI/RUT/VXN/VXD/RVX/GVZ/
+  // OVX/MOVE/2Y/LQD/QQQ/Yen(/6J) were confirmed later directly against
+  // ref_market_metric/live /api/marketbar/rr-bar. All 'mkt' entries resolve
+  // from /api/marketbar (metric_key); 'rr' entries resolve from
   // /api/rr-bar groups.
-  // pairLead: true marks the "value" half of a value/vol-gauge pair, so
-  // buildMiniTapeHtml can suppress the separator before its paired gauge
-  // (2026-07-04) -- not just SPX, every pair below.
   const BAR_MINI = [
-    { label: 'SPX',  source: 'mkt', key: 'SPX',  pairLead: true },   // S&P 500
+    // Display labels renamed 2026-07-04 (S&P/Nas/Rus/Gold/Dolr) -- `key` is
+    // still the real metric_key used for the /api/marketbar lookup, only
+    // the on-tile text changed.
+    { label: 'S&P',  source: 'mkt', key: 'SPX',  pairLead: true },   // S&P 500
     { label: 'VIX',  source: 'mkt', key: 'VIX' },   // S&P Vol
-    { label: 'COMP', source: 'mkt', key: 'COMP', pairLead: true },  // Nasdaq Composite
+    { label: 'Nas',  source: 'mkt', key: 'COMP', pairLead: true },  // Nasdaq Composite
     { label: 'VXN',  source: 'mkt', key: 'VXN' },   // Nasdaq Vol
     { label: 'DJI',  source: 'mkt', key: 'DJI',  pairLead: true },   // Dow
     { label: 'VXD',  source: 'mkt', key: 'VXD' },   // Dow Vol
-    { label: 'RUT',  source: 'mkt', key: 'RUT',  pairLead: true },   // Russell 2000
+    { label: 'Rus',  source: 'mkt', key: 'RUT',  pairLead: true },   // Russell 2000
     { label: 'RVX',  source: 'mkt', key: 'RVX' },   // Russell Vol
-    { label: 'GC',   source: 'mkt', key: 'GC',   pairLead: true },    // Gold
+    { label: 'Gold', source: 'mkt', key: 'GC',   pairLead: true },    // Gold
     { label: 'GVZ',  source: 'mkt', key: 'GVZ' },   // Gold Vol
     { label: 'WTI',  source: 'mkt', key: 'WTI',  pairLead: true },   // Oil
     { label: 'OVX',  source: 'mkt', key: 'OVX' },   // Oil Vol
+    // Rates group (2026-07-04): 2Y in front of 10Y, both grouped with MOVE
+    // as one 3-tile unit (2Y pairLead removes its border to 10Y; 10Y's
+    // existing pairLead removes its border to MOVE).
+    { label: '2Y',   source: 'rr',  group: 'Rates',  symbol: 'DGS2:FRED', pairLead: true }, // 2Y Treasury
     { label: '10Y',  source: 'rr',  group: 'Rates',  symbol: 'TNX:CGI', pairLead: true }, // Bond/Treasury
     // MOVE: /api/marketbar currently returns vol_low/vol_high = null for
     // this metric_key even though ref_vol_threshold has a row for the
@@ -421,9 +431,21 @@
     // threshold. Until that's fixed this tile will show the "None" zone
     // badge; not blocking, flagged for a follow-up.
     { label: 'MOVE', source: 'mkt', key: 'MOVE' },  // Bond Vol
-    { label: 'DXY',  source: 'mkt', key: 'DXY' },
-    { label: 'HY',   source: 'rr',  group: 'Credit', symbol: 'HYG' },
+    // Credit group (2026-07-04): LQD grouped with HY (HY pairLead removes
+    // the border to LQD).
+    { label: 'HY',   source: 'rr',  group: 'Credit', symbol: 'HYG', pairLead: true },
+    { label: 'LQD',  source: 'rr',  group: 'Credit', symbol: 'LQD' },
     { label: 'BTC',  source: 'rr',  group: 'Crypto', symbol: '/BTC' },
+    // QQQ (2026-07-04): added after BTC. Needed a new ref_market_metric seed
+    // row (db/seeds_market_metric.sql) + _METRIC_TO_RR_SYMBOL entry
+    // (api/routers/marketbar.py) since it wasn't exposed by either endpoint
+    // before, despite drv_quote already having real data for it.
+    { label: 'QQQ',  source: 'mkt', key: 'QQQ' },
+    // Dollar group (2026-07-04): moved to the very end, now grouped with
+    // USD/JPY (Dolr pairLead removes the border to it). /6J is the FX
+    // group's dollar-yen futures entry (label "$JPY" in /api/rr-bar).
+    { label: 'Dolr', source: 'mkt', key: 'DXY', pairLead: true },
+    { label: 'Yen',  source: 'rr',  group: 'FX', symbol: '/6J' },
   ];
 
   function _miniChipFromMkt(spec, item) {
