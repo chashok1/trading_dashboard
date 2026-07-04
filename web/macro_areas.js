@@ -24,11 +24,6 @@
       });
   }
 
-  function fmt1(v) {
-    if (v === null || v === undefined) return '—';
-    return (Math.round(v * 10) / 10).toFixed(1);
-  }
-
   function fmtPct(v, digits) {
     if (v === null || v === undefined) return '—';
     return (v * 100).toFixed(digits === undefined ? 0 : digits) + '%';
@@ -70,99 +65,128 @@
     return '<span class="msr-dur msr-dur-flat">' + esc(label) + '&ndash;</span>';
   }
 
+  /* ── ETF proxy sub-row (single sector ETF: price/%chg/Td/Tn/Risk Range) ── */
+  // Symbol-name color, same convention as rrTape's chips (market_bar.js
+  // outlookBg): color by RR outlook, falling back to muted gray when there
+  // isn't one.
+  function _nameColor(outlook) {
+    if (!outlook) return '#888';
+    var c = window.outlookColor ? window.outlookColor(outlook) : 'inherit';
+    return (c && c !== 'inherit') ? c : '#888';
+  }
+
+  // Small Quad-score glyph shown before the symbol, same convention as
+  // rrTape's chips (market_bar.js _msGlyphTape): green ▲ / red ▼ from
+  // drv_macro_score.monthly_score (Hedgeye Quad-calendar-derived), not price.
+  function _msGlyph(score) {
+    var glyph = '', color = '#888';
+    if (score !== null && score !== undefined) {
+      var s = Number(score);
+      if (s > 0) { glyph = '&#9650;'; color = '#16a34a'; }
+      else if (s < 0) { glyph = '&#9660;'; color = '#dc2626'; }
+    }
+    // Fixed-width slot even when empty, so the symbol text starts at the
+    // same x-position on every row regardless of whether it has a score.
+    return '<span style="display:inline-block; width:8px; font-size:7px; color:' + color + '; vertical-align:middle;">' + glyph + '</span>';
+  }
+
+  function etfProxyRowHtml(etf) {
+    if (!etf || etf.last == null) return '';
+    var tradeDir = etf.td === 'up' ? 1 : etf.td === 'down' ? -1 : null;
+    var trendDir = etf.tn === 'up' ? 1 : etf.tn === 'down' ? -1 : null;
+    return '<div class="msr-row msr-etf-row" style="padding-left:16px;">' +
+      '<span class="msr-name msr-name-tick" style="color:' + _nameColor(etf.outlook) + '; font-weight:400;" title="' + esc(etf.symbol) + ' sector ETF proxy">' +
+        _msGlyph(etf.monthly_score) + esc(etf.symbol) +
+      '</span>' +
+      _priceChgSpan({ last: etf.last, pct_change: etf.pct_change }) +
+      durArrow(tradeDir, 'Td') +
+      durArrow(trendDir, 'Tn') +
+      railRangeBar(etf.rr_pos, 0.8, 0.2) +
+    '</div>';
+  }
+
   /* ── range bar (compact rail version) ──────────────────────────────── */
   function railRangeBar(rr_pos, hot_pct, cold_pct) {
     if (rr_pos === null || rr_pos === undefined) {
       return '<span class="mra-muted" style="font-size:9px;">n/a</span>';
     }
+    var actualPct = Math.round(rr_pos * 100);   // unclamped, for the label
     var pct    = Math.max(0, Math.min(1, rr_pos));
-    var tickPx = Math.round(pct * 100);
+    var tickPx = Math.round(pct * 100);          // clamped, for bar positioning
     var isHot  = (hot_pct  !== null && hot_pct  !== undefined) ? (rr_pos >= hot_pct)  : (rr_pos >= 0.80);
     var isCold = (cold_pct !== null && cold_pct !== undefined) ? (rr_pos <= cold_pct) : (rr_pos <= 0.20);
     var extreme = isHot || isCold;
     return (
       '<div class="msr-rb-wrap">' +
-        '<div class="msr-rb" title="' + tickPx + '% of range">' +
+        '<div class="msr-rb" title="' + actualPct + '% of range">' +
           '<div class="msr-rb-fill" style="width:' + tickPx + '%"></div>' +
           '<div class="msr-rb-tick' + (extreme ? ' extreme' : '') +
                '" style="left:' + tickPx + '%"></div>' +
         '</div>' +
-        '<span class="msr-pct">' + tickPx + '%</span>' +
+        '<span class="msr-pct">' + actualPct + '%</span>' +
       '</div>'
     );
   }
 
-  /* ── tooltip HTML for hover ─────────────────────────────────────────── */
-  function buildTooltip(area) {
-    var rows = '';
-    if (area.stance) {
-      rows += '<div class="msr-tooltip-row"><span class="msr-tooltip-k">Stance</span>' +
-              '<span class="msr-tooltip-v">' + esc(area.stance) + '</span></div>';
-    }
-    if (area.conviction !== null && area.conviction !== undefined) {
-      rows += '<div class="msr-tooltip-row"><span class="msr-tooltip-k">Conviction</span>' +
-              '<span class="msr-tooltip-v">' + Math.round(area.conviction * 100) + '%</span></div>';
-    }
-    if (area.rr_pos !== null && area.rr_pos !== undefined) {
-      rows += '<div class="msr-tooltip-row"><span class="msr-tooltip-k">RR pos</span>' +
-              '<span class="msr-tooltip-v">' + Math.round(area.rr_pos * 100) + '%</span></div>';
-    }
-    var hot = (area.extremes_hot || []);
-    var cold = (area.extremes_cold || []);
-    if (hot.length) {
-      rows += '<div class="msr-tooltip-row"><span class="msr-tooltip-k">Overbought</span>' +
-              '<span class="msr-tooltip-v" style="color:#b91c1c;">' + hot.map(esc).join(', ') + '</span></div>';
-    }
-    if (cold.length) {
-      rows += '<div class="msr-tooltip-row"><span class="msr-tooltip-k">Oversold</span>' +
-              '<span class="msr-tooltip-v" style="color:#1d4ed8;">' + cold.map(esc).join(', ') + '</span></div>';
-    }
-    var members = (area.members || []);
-    if (members.length) {
-      rows += '<div class="msr-tooltip-row" style="margin-top:3px;"><span class="msr-tooltip-k">Members</span>' +
-              '<span class="msr-tooltip-v" style="font-size:10px;">' +
-              members.slice(0, 8).map(function (m) { return esc(m.tos_symbol || m.symbol || ''); }).join(', ') +
-              (members.length > 8 ? '…' : '') + '</span></div>';
-    }
-    return '<div class="msr-tooltip-title">' + esc(area.label) + '</div>' + rows;
-  }
 
   /* ── compact area row for side rail ────────────────────────────────── */
-  function railAreaRow(area) {
-    var isVol = area.area_key === 'volatility';
+  // One row per member symbol, for every area (Volatility already worked this
+  // way; every other area used to collapse to a single aggregate row — now
+  // all of them break out individually, using the same per-member fields the
+  // API already computes (member.trade/trend are already signed ints
+  // matching durArrow; member.rr_pos is already a 0-1 fraction matching
+  // railRangeBar), so no backend change was needed for this.
+  function _fmtPrice(v) {
+    if (v === null || v === undefined) return null;
+    return v.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  }
 
-    if (isVol) {
-      /* Volatility: one gauge-text row per index (VIX/VXN/VXD/RVX) */
-      var gauges = (area.members || []).filter(function (m) { return m.role === 'gauge'; });
-      return gauges.map(function (m) {
+  // Standalone, fixed-width price and %chg columns — siblings of
+  // .msr-name-tick (not nested inside it, and not nested inside each other),
+  // so both line up at the same x-position on every row regardless of
+  // symbol length or how many digits the price/chg happen to have.
+  function _priceChgSpan(m) {
+    var priceTxt = _fmtPrice(m.last);
+    if (priceTxt === null) return '<span class="msr-price"></span><span class="msr-price-chg"></span>';
+    var chg = m.pct_change;
+    var chgCls = chg > 0 ? 'msr-price-chg-up' : chg < 0 ? 'msr-price-chg-down' : 'msr-price-chg-flat';
+    var chgTxt = (chg !== null && chg !== undefined)
+      ? (chg > 0 ? '+' : '') + chg.toFixed(2) + '%'
+      : '';
+    return '<span class="msr-price">' + esc(priceTxt) + '</span>' +
+           '<span class="msr-price-chg ' + chgCls + '">' + esc(chgTxt) + '</span>';
+  }
+
+  function railAreaRow(area) {
+    var members = area.members || [];
+    return members.map(function (m) {
+      if (m.role === 'gauge') {
         var zone = m.zone || '—';
-        var val  = (m.last !== null && m.last !== undefined) ? fmt1(m.last) : null;
         var gaugeClass = zone === 'investable' ? 'msr-gauge-g'
                        : zone === 'elevated'   ? 'msr-gauge-r'
                        : 'msr-gauge-a';
-        var valSpan = val !== null
-          ? '<span class="msr-gauge-vix">' + esc(val) + '</span>'
-          : '';
         return (
           '<div class="msr-row">' +
-            SVG_NEUT +
-            '<span class="msr-name">' + esc(m.label || area.label) + '</span>' +
+            '<span class="msr-name msr-name-tick" style="color:' + _nameColor(m.outlook) + ';">' +
+              _msGlyph(m.monthly_score) + esc(m.label || area.label) +
+            '</span>' +
+            _priceChgSpan(m) +
             '<span class="msr-gauge ' + gaugeClass + '">' + esc(zone) + '</span>' +
-            valSpan +
           '</div>'
         );
-      }).join('');
-    }
-
-    return (
-      '<div class="msr-row" data-tooltip="' + esc(buildTooltip(area)) + '">' +
-        stanceArrow(area.stance) +
-        '<span class="msr-name">' + esc(area.label) + '</span>' +
-        durArrow(area.trade, 'Td') +
-        durArrow(area.trend, 'Tn') +
-        railRangeBar(area.rr_pos, area.hot_pct, area.cold_pct) +
-      '</div>'
-    );
+      }
+      return (
+        '<div class="msr-row" title="' + esc(m.symbol) + (m.outlook ? ' — ' + esc(m.outlook) : '') + '">' +
+          '<span class="msr-name msr-name-tick" style="color:' + _nameColor(m.outlook) + ';">' +
+            _msGlyph(m.monthly_score) + esc(m.symbol) +
+          '</span>' +
+          _priceChgSpan(m) +
+          durArrow(m.trade, 'Td') +
+          durArrow(m.trend, 'Tn') +
+          railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct) +
+        '</div>'
+      );
+    }).join('');
   }
 
   /* ── sectors panel (own side-rail section) ────────────────────────── */
@@ -190,7 +214,7 @@
         durArrow(tradeDir,  'Td') +
         durArrow(trendDir,  'Tn') +
         railRangeBar(score, 0.7, 0.3) +
-      '</div>';
+      '</div>' + etfProxyRowHtml(s.etf);
     }).join('');
 
     if (!subrows && !allRows) subrows = '<span class="mra-muted">—</span>';
@@ -199,46 +223,34 @@
   }
 
   /* ── render into side rail ──────────────────────────────────────────── */
+  // Each area_key now has its own side-panel section/container (was one
+  // blob container for every area concatenated together).
+  var _AREA_CONTAINER_ID = {
+    volatility:          'macroRailVolatility',
+    top9:                'macroRailTop9',
+    rates_duration:      'macroRailRates',
+    commodities_credit:  'macroRailCommodities',
+    usd_currency:        'macroRailUsd',
+    country_etfs:        'macroRailCountry',
+    crypto:               'macroRailCrypto',
+    remaining:           'macroRailRemaining',
+  };
+
   function renderRail(data) {
-    var container = document.getElementById('macroRailAreas');
-    if (!container) return;
-
     var areas = (data && data.areas) || [];
-    var html  = areas.map(railAreaRow).join('');
-
-    if (!html) {
-      container.innerHTML = '<div class="msr-loading">No macro data.</div>';
-      return;
-    }
-    container.innerHTML = html;
-
-    /* Wire tooltip on hover */
-    var tooltip = document.getElementById('msrTooltip');
-    if (!tooltip) {
-      tooltip = document.createElement('div');
-      tooltip.id = 'msrTooltip';
-      tooltip.className = 'msr-tooltip';
-      document.body.appendChild(tooltip);
-    }
-
-    container.querySelectorAll('.msr-row[data-tooltip]').forEach(function (row) {
-      row.addEventListener('mouseenter', function (e) {
-        tooltip.innerHTML = row.dataset.tooltip || '';
-        tooltip.style.display = 'block';
-        _positionTooltip(tooltip, e);
-      });
-      row.addEventListener('mousemove', function (e) { _positionTooltip(tooltip, e); });
-      row.addEventListener('mouseleave', function () { tooltip.style.display = 'none'; });
+    var byContainer = {};
+    areas.forEach(function (area) {
+      var containerId = _AREA_CONTAINER_ID[area.area_key];
+      if (!containerId) return;
+      byContainer[containerId] = (byContainer[containerId] || '') + railAreaRow(area);
     });
-  }
 
-  function _positionTooltip(el, e) {
-    var x = e.clientX + 12, y = e.clientY + 12;
-    var vw = window.innerWidth, vh = window.innerHeight;
-    if (x + 260 > vw) x = e.clientX - 264;
-    if (y + 140 > vh) y = e.clientY - 144;
-    el.style.left = x + 'px';
-    el.style.top  = y + 'px';
+    Object.keys(_AREA_CONTAINER_ID).forEach(function (key) {
+      var containerId = _AREA_CONTAINER_ID[key];
+      var container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = byContainer[containerId] || '<div class="msr-loading">No data.</div>';
+    });
   }
 
   /* ── legacy full-width card (kept for backward-compat) ─────────────── */

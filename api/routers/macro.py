@@ -18,6 +18,8 @@ GET /api/macro
 """
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter
 from sqlalchemy import text
 
@@ -103,3 +105,87 @@ def refresh_macro() -> dict:
     # Imported lazily so the API starts even if the etl module has an issue.
     from etl.fetch_macro import fetch_macro
     return fetch_macro(trigger="api")
+
+
+_STALE_WINDOW_DAYS = 60  # flag a category if its coverage doesn't reach this far out
+
+
+@router.get("/api/econ-calendar-fetch/status")
+def econ_calendar_fetch_status() -> dict:
+    """Last run + row count + category coverage, for the File Monitor Econ
+    Calendar panel — which ref_calendar_event categories come from the FRED
+    auto-fetch (ref_econ_release) vs. which are still workbook-only, and
+    whether each one's coverage runs out within _STALE_WINDOW_DAYS (i.e. its
+    farthest-future event_date is closer than that). This is a forward-
+    looking early warning, not a "missing right now" check: FRED-fetched
+    categories replenish automatically via the daily fetch and should stay
+    covered indefinitely, but workbook-only ("Manual") categories only get
+    new dates when the workbook is re-uploaded — so as time passes without a
+    re-upload, a manual category's remaining coverage shrinks and eventually
+    crosses this threshold, flagging that it needs a fresh upload."""
+    with session_scope() as s:
+        row = s.execute(text("""
+            SELECT started_at, finished_at, status, rows_inserted,
+                   releases_ok, releases_failed, note
+            FROM meta_econ_calendar_fetch
+            ORDER BY started_at DESC
+            LIMIT 1
+        """)).mappings().first()
+        total = s.execute(text("SELECT COUNT(*) FROM ref_calendar_event")).scalar()
+
+        # Every known category (fetched ∪ manual) + its farthest-future date, if any.
+        cat_rows = s.execute(text("""
+            WITH cats AS (
+                SELECT DISTINCT category, TRUE AS fetched
+                FROM ref_econ_release WHERE enabled
+                UNION
+                SELECT DISTINCT category, FALSE
+                FROM ref_calendar_event
+                WHERE category NOT IN (SELECT category FROM ref_econ_release WHERE enabled)
+            )
+            SELECT c.category, c.fetched,
+                   MAX(e.event_date) FILTER (WHERE e.event_date >= CURRENT_DATE) AS last_date
+            FROM cats c
+            LEFT JOIN ref_calendar_event e ON e.category = c.category
+            GROUP BY c.category, c.fetched
+            ORDER BY c.category
+        """)).mappings().all()
+
+    last = None
+    if row:
+        last = dict(row)
+        for k in ("started_at", "finished_at"):
+            last[k] = last[k].isoformat() if last[k] else None
+
+    today = date.today()
+    fetched_categories, manual_categories = [], []
+    for r in cat_rows:
+        last_date = r["last_date"]
+        stale = last_date is None or (last_date - today).days < _STALE_WINDOW_DAYS
+        item = {
+            "category": r["category"],
+            "last_date": last_date.isoformat() if last_date else None,
+            "stale": stale,
+        }
+        (fetched_categories if r["fetched"] else manual_categories).append(item)
+
+    return {
+        "last_fetch": last,
+        "total_events": total,
+        "stale_window_days": _STALE_WINDOW_DAYS,
+        "fetched_categories": fetched_categories,
+        "manual_categories": manual_categories,
+    }
+
+
+@router.post("/api/econ-calendar-fetch/run")
+def run_econ_calendar_fetch() -> dict:
+    """Trigger a FRED release-calendar fetch for the manual Fetch button.
+
+    Throttled (respects ref_settings.econ_calendar_fetch_min_interval_min):
+    if a real fetch ran within the window this is a no-op and returns
+    {"skipped": true, "reason": "throttled", "age_min": N, ...}. Use the CLI
+    with --force for a forced refresh. Runs synchronously (a few seconds).
+    """
+    from etl.fetch_econ_calendar import fetch_econ_calendar
+    return fetch_econ_calendar(trigger="api")

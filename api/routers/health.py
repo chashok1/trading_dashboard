@@ -138,36 +138,99 @@ def list_sectors():
 # Dashboard side panels: economic indicators, earnings/calendar events, quads
 # -----------------------------------------------------------------------------
 
+def _last_business_day(d):
+    """Most recent Mon-Fri on or before d (Sat/Sun roll back to that Friday)."""
+    wd = d.weekday()  # Mon=0 .. Sun=6
+    if wd == 5:
+        return d - timedelta(days=1)
+    if wd == 6:
+        return d - timedelta(days=2)
+    return d
+
+
 @router.get("/api/dashboard/econ-indicators")
 def get_dashboard_econ_indicators(
     date: Optional[str] = Query(None, description="As-of date (defaults to today)"),
-    limit: int = Query(30, ge=1, le=200),
+    limit: int = Query(60, ge=1, le=200),
 ):
     """
-    Active economic indicators for the dashboard side panel.
-    Mirrors Dash A-J: filters ref_econ_indicator where show_on_dashboard='Y'
-    (or incl='Y' as fallback), sorted by days ascending (soonest first).
+    Economic/macro calendar for the dashboard side panel -- releases (CPI,
+    PPI, NFP, ...) AND market-structure dates (Fed Meeting, FOMC Minutes,
+    Beige Book, options/futures expiration, Jackson Hole) in one combined,
+    date-sorted list.
+
+    ref_calendar_event is the primary source: it's kept current (unlike
+    ref_econ_indicator, which is only hand-flagged show_on_dashboard='Y' on a
+    handful of rows and can go stale for months). Any ref_econ_indicator row
+    that IS flagged and current gets folded in too — e.g. one-off items like
+    a buyback-blackout note that ref_calendar_event doesn't carry — and where
+    a ref_econ_indicator row's (name, date) lines up with a ref_calendar_event
+    row, its outlook (bullish/bearish) is attached as that row's signal.
+    Name matching is whitespace-normalized only, so it only catches exact
+    matches (e.g. "JOLTS" == "JOLTS") — ref_econ_indicator's long-form names
+    ("Consumer Price Index - CPI YoY") won't match ref_calendar_event's short
+    codes ("CPI YOY"); that's fine, it's a bonus signal, not the primary date.
+
+    Floor of the window is the last business day on/before the as-of date
+    (not a flat 7-day lookback) — so a Monday view still shows Friday's
+    releases, but nothing older.
     """
     d = datetime.strptime(date, "%Y-%m-%d").date() if date else datetime.now().date()
+    floor = _last_business_day(d)
     with session_scope() as s:
         rows = s.execute(text("""
-            SELECT
-                indicator,
-                indicator_date,
-                (indicator_date - :d) AS days,
-                ol AS signal,
-                from_date,
-                to_date,
-                effective_today,
-                expected,
-                url
-            FROM ref_econ_indicator
-            WHERE COALESCE(show_on_dashboard, incl) = 'Y'
-              AND indicator_date >= :d - INTERVAL '7 days'
-            ORDER BY indicator_date ASC, days ASC
+            WITH cal AS (
+                SELECT category AS indicator, event_date AS indicator_date
+                FROM ref_calendar_event
+                WHERE event_date >= :floor
+            ),
+            econ AS (
+                SELECT indicator, indicator_date, ol AS signal
+                FROM ref_econ_indicator
+                WHERE COALESCE(show_on_dashboard, incl) = 'Y'
+                  AND indicator_date >= :floor
+            )
+            SELECT c.indicator, c.indicator_date, e.signal
+            FROM cal c
+            LEFT JOIN econ e
+              ON LOWER(REGEXP_REPLACE(e.indicator, '\\s+', '', 'g'))
+                 = LOWER(REGEXP_REPLACE(c.indicator, '\\s+', '', 'g'))
+             AND e.indicator_date = c.indicator_date
+            UNION ALL
+            SELECT e.indicator, e.indicator_date, e.signal
+            FROM econ e
+            WHERE NOT EXISTS (
+                SELECT 1 FROM cal c
+                WHERE LOWER(REGEXP_REPLACE(c.indicator, '\\s+', '', 'g'))
+                      = LOWER(REGEXP_REPLACE(e.indicator, '\\s+', '', 'g'))
+                  AND c.indicator_date = e.indicator_date
+            )
+            ORDER BY indicator_date ASC
             LIMIT :lim
-        """), {"d": d, "lim": limit}).mappings().all()
-    return [dict(r) for r in rows]
+        """), {"floor": floor, "lim": limit}).mappings().all()
+    return [
+        {
+            "indicator": r["indicator"],
+            "indicator_date": r["indicator_date"].isoformat() if r["indicator_date"] else None,
+            "days": (r["indicator_date"] - d).days if r["indicator_date"] else None,
+            "signal": r["signal"],
+        }
+        for r in rows
+    ]
+
+
+# ref_calendar_event holds ONLY macro-release names (CPI, PPI, NFP, GDP, ...)
+# plus these genuine market-structure dates -- there is no per-ticker earnings
+# data in that table. Whitelisting the market-structure names (rather than
+# trying to exclude econ-release names by fuzzy match against
+# ref_econ_indicator.indicator, whose long-form names like "Consumer Price
+# Index - CPI YoY" never match ref_calendar_event's short codes like
+# "CPI YOY") is what actually keeps econ releases out of this panel.
+_MARKET_STRUCTURE_EVENTS = (
+    "vix expiration", "monthly exp", "qtly exp",
+    "fed meeting", "fmoc minutes", "fomc minutes",
+    "beige book", "jackson hole fed speech",
+)
 
 
 @router.get("/api/dashboard/earnings")
@@ -177,14 +240,12 @@ def get_dashboard_earnings(
     limit: int = Query(100, ge=1, le=500),
 ):
     """
-    Earnings & market-structure events for the dashboard side panel.
-    Pulls from ref_calendar_event but EXCLUDES any category that already appears
-    in ref_econ_indicator (CPI, PPI, PCE, GDP, NFP, etc.) â€” those belong to the
-    Economic Indicators panel, so showing them here would duplicate the data.
-    What remains: VIX Expiration, Fed Meeting, FOMC Minutes, Beige Book,
-    Monthly/Qtly Exp, Jackson Hole, and any future per-ticker 'Earnings' rows.
-    Match is case- and whitespace-insensitive to tolerate naming drift between
-    the two source tabs (e.g., 'CPI YOY' vs 'CPI YoY').
+    Market-structure events (options/futures expiration, Fed meetings, FOMC
+    minutes, Beige Book, Jackson Hole) for the dashboard side panel.
+    Pulls from ref_calendar_event, restricted to the known non-econ category
+    names -- see _MARKET_STRUCTURE_EVENTS. Per-symbol earnings live in
+    GET /api/dashboard/symbol-earnings instead; ref_calendar_event has no
+    per-ticker data.
     """
     d = datetime.strptime(date, "%Y-%m-%d").date() if date else datetime.now().date()
     with session_scope() as s:
@@ -196,15 +257,53 @@ def get_dashboard_earnings(
             FROM ref_calendar_event
             WHERE event_date >= :d
               AND event_date <= :d + (:days_ahead || ' days')::INTERVAL
-              AND LOWER(REGEXP_REPLACE(category, '\\s+', '', 'g')) NOT IN (
-                  SELECT LOWER(REGEXP_REPLACE(indicator, '\\s+', '', 'g'))
-                  FROM ref_econ_indicator
-                  WHERE COALESCE(show_on_dashboard, incl) = 'Y'
-              )
+              AND LOWER(TRIM(category)) = ANY(:names)
             ORDER BY event_date ASC, category ASC
             LIMIT :lim
-        """), {"d": d, "days_ahead": days_ahead, "lim": limit}).mappings().all()
+        """), {"d": d, "days_ahead": days_ahead, "lim": limit,
+               "names": list(_MARKET_STRUCTURE_EVENTS)}).mappings().all()
     return [dict(r) for r in rows]
+
+
+@router.get("/api/dashboard/symbol-earnings")
+def get_dashboard_symbol_earnings(
+    date: Optional[str] = Query(None, description="As-of date (defaults to the current anchor)"),
+    days_ahead: int = Query(30, ge=1, le=365),
+    limit: int = Query(50, ge=1, le=500),
+):
+    """
+    Upcoming per-symbol earnings dates for the dashboard side panel, scoped to
+    the user's tracked universe (ref_my_stocks, active='Y') rather than just
+    currently-held positions. Sourced from drv_technicals.earnings_days (TOS
+    feed; already used by the rules engine) -- ref_calendar_event has no
+    per-ticker earnings data at all.
+    """
+    with session_scope() as s:
+        if date:
+            d = datetime.strptime(date, "%Y-%m-%d").date()
+        else:
+            d = s.execute(text("SELECT MAX(as_of_date) FROM drv_technicals")).scalar()
+        if d is None:
+            return []
+        rows = s.execute(text("""
+            SELECT t.tos_symbol, t.earnings_days,
+                   (:d + (t.earnings_days || ' days')::INTERVAL)::date AS event_date
+            FROM drv_technicals t
+            WHERE t.as_of_date = :d
+              AND t.earnings_days IS NOT NULL
+              AND t.earnings_days BETWEEN 0 AND :days_ahead
+              AND EXISTS (
+                  SELECT 1 FROM ref_my_stocks m
+                  WHERE m.tos_symbol = t.tos_symbol AND m.active = 'Y'
+              )
+            ORDER BY t.earnings_days ASC, t.tos_symbol ASC
+            LIMIT :lim
+        """), {"d": d, "days_ahead": days_ahead, "lim": limit}).mappings().all()
+    return [
+        {"symbol": r["tos_symbol"], "days_until": r["earnings_days"],
+         "event_date": r["event_date"].isoformat()}
+        for r in rows
+    ]
 
 
 @router.get("/api/quad/band-factors")

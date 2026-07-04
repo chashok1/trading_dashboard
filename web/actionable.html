@@ -367,24 +367,6 @@
     }
     .btn-dismiss:hover { background: #e8e8ec; }
 
-    /* Per-row suppress toggle (first grid column) */
-    .btn-suppress {
-      font-size: 9px;
-      padding: 2px 6px;
-      border: 1px solid var(--border, #ddd);
-      border-radius: 4px;
-      background: #f4f4f7;
-      color: #555;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-    .btn-suppress:hover { background: #e8e8ec; }
-    .btn-suppress[data-suppressed="1"] {
-      background: #fbeaea;
-      color: #8c1d1d;
-      border-color: #e3b9b9;
-    }
-
     /* Inline current-vs-prev comparison (per-source row expand) */
     #modalSources tbody tr.cmp-src-row { cursor: pointer; }
     #modalSources tbody tr.cmp-src-row:hover { background: var(--surface-hover, #f0f6ff); }
@@ -617,12 +599,9 @@
         <span id="macroBandMonth" style="white-space:nowrap;"></span>
         <span style="color:#ddd;">|</span>
         <span id="macroBandQtr" style="white-space:nowrap;"></span>
-        <span style="color:#ddd;">|</span>
-        <span id="macroBandFavoring" style="white-space:nowrap; color:#475569;"></span>
-        <span style="color:#ddd;">|</span>
-        <span id="macroBandBreadth" style="white-space:nowrap;"></span>
-        <span style="color:#ddd;">|</span>
-        <span id="macroBandSplit" style="white-space:nowrap;"></span>
+        <span id="macroBandFavoring" style="white-space:nowrap; color:#475569; display:none;"></span>
+        <span id="macroBandBreadth" style="white-space:nowrap; display:none;"></span>
+        <span id="macroBandSplit" style="white-space:nowrap; display:none;"></span>
       </div>
 
       <!-- Hedgeye action panel (TASK_100) — Top-5 / Real-Time Alerts / RR trend flips / stance -->
@@ -691,6 +670,12 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="3"/>
               <path d="M2 12C4.5 6.5 9 3 12 3s7.5 3.5 10 9c-2.5 5.5-7 9-10 9S4.5 17.5 2 12z"/>
+            </svg>
+          </button>
+          <button id="copySymbolsBtn" class="btn-icon btn-icon-sm" data-tip="Copy Symbols" title="Copy visible symbols (comma-separated)">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
             </svg>
           </button>
           <button id="exportCsvBtn" class="btn-icon btn-icon-sm" data-tip="Export CSV" title="Export CSV">
@@ -810,14 +795,25 @@
       </div><!-- end .act-content-row -->
       </div><!-- end .act-main-col -->
       <aside class="side-stack act-side" id="actSidePanel">
-        <!-- Macro Rail (TASK_85): areas -->
-        <section id="macroRailSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="macroRail">
-            Macro
+        <!-- Macro Rail: split into one panel per area_key (each renders one row
+             per member symbol, same as Volatility always did) -->
+        <section id="macroVolatilitySection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="macroVolatility">
+            Volatility
             <span class="sp-chevron">▾</span>
           </div>
           <div class="sp-body">
-            <div id="macroRailAreas"><div class="msr-loading">Loading…</div></div>
+            <div id="macroRailVolatility"><div class="msr-loading">Loading…</div></div>
+          </div>
+        </section>
+
+        <section id="macroTop9Section" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="macroTop9">
+            Major Markets
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div id="macroRailTop9"><div class="msr-loading">Loading…</div></div>
           </div>
         </section>
 
@@ -829,6 +825,66 @@
           </div>
           <div class="sp-body">
             <div id="macroRailSectors"><div class="msr-loading">Loading…</div></div>
+          </div>
+        </section>
+
+        <section id="macroRatesSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="macroRates">
+            Rates &amp; Duration
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div id="macroRailRates"><div class="msr-loading">Loading…</div></div>
+          </div>
+        </section>
+
+        <section id="macroCommoditiesSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="macroCommodities">
+            Commodities
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div id="macroRailCommodities"><div class="msr-loading">Loading…</div></div>
+          </div>
+        </section>
+
+        <section id="macroUsdSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="macroUsd">
+            USD &amp; Currency
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div id="macroRailUsd"><div class="msr-loading">Loading…</div></div>
+          </div>
+        </section>
+
+        <section id="macroCountrySection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="macroCountry">
+            Country ETFs
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div id="macroRailCountry"><div class="msr-loading">Loading…</div></div>
+          </div>
+        </section>
+
+        <section id="macroCryptoSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="macroCrypto">
+            Crypto
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div id="macroRailCrypto"><div class="msr-loading">Loading…</div></div>
+          </div>
+        </section>
+
+        <section id="macroRemainingSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="macroRemaining">
+            Tech &amp; ETFs
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div id="macroRailRemaining"><div class="msr-loading">Loading…</div></div>
           </div>
         </section>
 
@@ -862,7 +918,7 @@
           <div class="sp-body">
             <div class="side-scroll">
               <table class="mini-grid">
-                <thead><tr><th>Indicator</th><th>Date</th><th>Days</th><th>Signal</th></tr></thead>
+                <thead><tr><th>Indicator</th><th>Date</th><th>Days</th></tr></thead>
                 <tbody id="econBody"></tbody>
               </table>
               <div class="empty-note" id="econEmpty" hidden>No data.</div>
@@ -870,17 +926,17 @@
           </div>
         </section>
         <section class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="earningsEvents">
-            Earnings / Events
+          <div class="msr-section-hdr sp-hdr" data-panel="symbolEarnings">
+            Earnings
             <span class="sp-chevron">▾</span>
           </div>
           <div class="sp-body">
             <div class="side-scroll">
               <table class="mini-grid">
-                <thead><tr><th>Event</th><th>Date</th><th>In</th></tr></thead>
-                <tbody id="earningsBody"></tbody>
+                <thead><tr><th>Symbol</th><th>Date</th><th>In</th></tr></thead>
+                <tbody id="symEarningsBody"></tbody>
               </table>
-              <div class="empty-note" id="earningsEmpty" hidden>No data.</div>
+              <div class="empty-note" id="symEarningsEmpty" hidden>No upcoming earnings.</div>
             </div>
           </div>
         </section>

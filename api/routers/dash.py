@@ -1112,7 +1112,7 @@ def get_actionable(
         if not show_acted and d_.get("last_user_action") in ("DONE", "SKIPPED", "OVERRIDDEN"):
             continue
         snooze = d_.get("snooze_until")
-        if not show_acted and snooze and snooze >= d:
+        if not show_acted and d_.get("last_user_action") == "SNOOZED" and (snooze is None or snooze >= d):
             continue
         sym = d_.get("tos_symbol", "")
         rac = d_.get("real_asset_class")
@@ -1480,9 +1480,9 @@ def post_actionable_action(symbol: str, payload: dict):
 
 @router.delete("/api/actionable/{symbol}/action")
 def clear_actionable_action(symbol: str, date: str = Query(...)):
-    """Un-suppress: remove SKIPPED user_action_log rows for (date, symbol) so
-    the action reappears on the Actionable screen. Backs the grid's
-    Suppress/Un-suppress toggle."""
+    """Un-suppress: remove SKIPPED/SNOOZED user_action_log rows for (date, symbol)
+    so the action reappears on the Actionable screen. Backs the grid's
+    Suppress/Un-suppress and un-snooze toggles."""
     sym = symbol.upper().strip()
     try:
         as_of = datetime.strptime(date, "%Y-%m-%d").date()
@@ -1491,7 +1491,7 @@ def clear_actionable_action(symbol: str, date: str = Query(...)):
     with session_scope() as s:
         res = s.execute(text("""
             DELETE FROM user_action_log
-            WHERE as_of_date = :d AND tos_symbol = :sym AND user_action = 'SKIPPED'
+            WHERE as_of_date = :d AND tos_symbol = :sym AND user_action IN ('SKIPPED', 'SNOOZED')
         """), {"d": as_of, "sym": sym})
     return {"cleared": res.rowcount or 0}
 

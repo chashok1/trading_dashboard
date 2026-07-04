@@ -1690,7 +1690,7 @@ svg.rr-candle {
 .msr-legend-down { color: #991b1b; }
 /* Per-area row */
 .msr-row {
-  display: flex; align-items: center; gap: 5px;
+  display: flex; align-items: center; gap: 2px;
   padding: 1px 8px; border-bottom: 1px solid var(--border, #f0f0f0);
   font-size: 11px; cursor: default;
   position: relative;
@@ -1705,16 +1705,36 @@ svg.rr-candle {
 /* Area name */
 .msr-name { font-size: 10px; font-weight: 600; flex: 1; white-space: nowrap;
             overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-/* Td/Tn diagonal labels */
+/* Ticker-row variant (macro-area/ETF-proxy rows with a price column):
+   fixed width instead of flex:1 so the price column that follows lines up
+   at the same x-position on every row, regardless of symbol length. */
+.msr-name-tick { flex: 0 0 44px; }
+.msr-price { font-size: 8px; color: var(--text-3, #94a3b8); white-space: nowrap;
+             flex: 0 0 34px; overflow: hidden; text-overflow: ellipsis;
+             font-variant-numeric: tabular-nums; text-align: right; }
+/* %chg — own fixed-width column (sibling of .msr-price, not nested inside
+   it) so it lines up at the same x-position regardless of the price's or
+   the %chg's own digit count. Both right-aligned so the digits themselves
+   line up in a column, not just the column boundaries. */
+.msr-price-chg { font-size: 8px; white-space: nowrap;
+                  flex: 0 0 32px; overflow: hidden; text-overflow: ellipsis;
+                  font-variant-numeric: tabular-nums; text-align: right; }
+.msr-price-chg-up   { color: #166534; }
+.msr-price-chg-down { color: #991b1b; }
+.msr-price-chg-flat { color: var(--text-3, #94a3b8); }
+/* Td/Tn diagonal labels — fixed width so the range bar that follows lines
+   up at the same x-position on every row (arrow glyphs render at slightly
+   different widths than the flat dash otherwise). */
 .msr-dur { font-size: 9px; white-space: nowrap; display: inline-flex;
-           align-items: center; gap: 1px; }
+           align-items: center; justify-content: flex-end; gap: 1px;
+           flex: 0 0 22px; }
 .msr-dur-up   { color: #166534; }
 .msr-dur-down { color: #991b1b; }
 .msr-dur-flat { color: #9ca3af; }
 /* Range bar in rail (narrower than grid version) */
 .msr-rb-wrap { display: flex; align-items: center; gap: 3px; }
 .msr-rb {
-  position: relative; height: 3px; width: 44px;
+  position: relative; height: 3px; width: 32px;
   background: var(--border, #e5e7eb); border-radius: 2px; flex-shrink: 0;
 }
 .msr-rb-fill {
@@ -1727,10 +1747,12 @@ svg.rr-candle {
 }
 .msr-rb-tick.extreme { background: #ef4444; }
 .msr-pct { font-size: 9px; color: var(--text-2, #666);
-           font-variant-numeric: tabular-nums; min-width: 22px; text-align: right; }
-/* Volatility gauge text */
+           font-variant-numeric: tabular-nums; min-width: 18px; text-align: right; }
+/* Volatility gauge text — pushed to the far right of the row (nothing
+   follows it, unlike stance rows which have Td/Tn/bar after the price). */
 .msr-gauge { font-size: 10px; font-weight: 700; padding: 1px 6px;
-             border-radius: 8px; }
+             border-radius: 8px; margin-left: auto; width: 62px;
+             text-align: center; }
 .msr-gauge-g { background: #dcfce7; color: #166534; }
 .msr-gauge-a { background: #fef9c3; color: #854d0e; }
 .msr-gauge-r { background: #fee2e2; color: #991b1b; }
@@ -1799,6 +1821,9 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .act-side .mini-grid { font-size: 10px; }
 .act-side .mini-grid th { font-size: 9px; padding: 2px 5px; background: #fff; }
 .act-side .mini-grid td { padding: 2px 5px; }
+/* Econ Indicators / Earnings — cap to ~10 visible rows instead of the
+   viewport-relative height shared with the Dashboard screen's econ panel. */
+.act-side .side-scroll { max-height: 200px; }
 
 /* ── TASK_86: Regime band — Bull/Bear factor pills ────────────────────────── */
 .qf-group    { display: inline-flex; align-items: center; gap: 4px; }

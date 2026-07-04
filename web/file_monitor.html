@@ -218,7 +218,7 @@
     <!-- Left column: Schedule (top) + Recent ETL Loads (bottom) -->
     <div class="fm-col" style="flex: 1.6;">
 
-      <div class="fm-section" style="flex:1.65;">
+      <div class="fm-section" style="flex:1.24532147034405;">
         <div class="fm-section-header">
           <h2>Today's Schedule <span id="scheduleDate" style="font-weight:400;color:var(--text-3);text-transform:none;letter-spacing:0;font-size:11px;"></span></h2>
         </div>
@@ -287,17 +287,17 @@
     <div class="fm-col" style="flex: 1.8;">
 
       <!-- Scheduler Output Grid -->
-      <div class="fm-section" style="flex:1.65;">
+      <div class="fm-section" style="flex:1.24532147034405;">
         <div class="fm-section-header">
           <h2>Scheduler Output</h2>
           <div style="display:flex;gap:12px;align-items:center;margin-left:auto;">
-            <select id="schedulerLevelFilter" class="btn" style="padding:3px 8px;">
+            <select id="schedulerLevelFilter" class="btn" style="height:16px;padding:0 6px;font-size:10px;">
               <option value="">All levels</option>
               <option value="ERROR">Errors</option>
               <option value="WARNING">Warnings</option>
               <option value="INFO">Info</option>
             </select>
-            <select id="schedulerFileFilter" class="btn" style="padding:3px 8px;">
+            <select id="schedulerFileFilter" class="btn" style="height:16px;padding:0 6px;font-size:10px;">
               <option value="">All files</option>
             </select>
             <span id="refreshCountdown" style="font-size:11px;color:var(--text-3);"></span>
@@ -336,37 +336,70 @@
           </div>
         </div>
 
-        <!-- Yahoo Finance Panel -->
-        <div class="fm-section" style="flex:0 0 200px;">
-          <div class="fm-section-header">
-            <h2>Yahoo</h2>
-            <span style="font-size:10px;color:var(--text-3);margin-left:6px;flex:1;">4:15/4:30 ET</span>
-            <button class="btn btn-sm" id="yahooYLoadBtn" onclick="yahooFetch('y-load')" style="font-size:11px;padding:1px 7px;">Fetch Y</button>
-            <span id="yahooFetchStatus" style="font-size:10px;color:var(--text-2);margin-left:4px;white-space:nowrap;"></span>
+        <!-- Yahoo Finance Panel + Gmail Panel, stacked -->
+        <div style="flex:0 0 200px;display:flex;flex-direction:column;gap:2px;min-height:0;">
+          <div class="fm-section" style="flex:1;min-height:0;">
+            <div class="fm-section-header">
+              <h2>Yahoo</h2>
+              <span style="font-size:10px;color:var(--text-3);margin-left:6px;flex:1;">4:15/4:30 ET</span>
+              <button class="btn btn-sm" id="yahooYLoadBtn" onclick="yahooFetch('y-load')" style="font-size:11px;padding:1px 7px;">Fetch Y</button>
+              <span id="yahooFetchStatus" style="font-size:10px;color:var(--text-2);margin-left:4px;white-space:nowrap;"></span>
+            </div>
+            <div style="padding:6px 8px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1;min-height:0;">
+              <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:11px;">
+                <span style="color:var(--text-3);">OHLCV</span>
+                <span id="yf-ohlcv" style="color:var(--text-2);">-</span>
+                <span style="color:var(--text-3);">Detail</span>
+                <span id="yf-detail" style="color:var(--text-2);">-</span>
+                <span style="color:var(--text-3);">Auto</span>
+                <span id="yf-auto" style="color:var(--text-2);">-</span>
+              </div>
+            </div>
           </div>
-          <div style="padding:6px 8px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1;min-height:0;">
-            <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:11px;">
-              <span style="color:var(--text-3);">OHLCV</span>
-              <span id="yf-ohlcv" style="color:var(--text-2);">-</span>
-              <span style="color:var(--text-3);">Detail</span>
-              <span id="yf-detail" style="color:var(--text-2);">-</span>
-              <span style="color:var(--text-3);">Auto</span>
-              <span id="yf-auto" style="color:var(--text-2);">-</span>
+
+          <!-- Gmail Panel -->
+          <div class="fm-section" style="flex:1;min-height:0;">
+            <div class="fm-section-header">
+              <h2>Gmail</h2>
+              <span id="gmailDot" style="width:8px;height:8px;border-radius:50%;background:var(--text-3);flex-shrink:0;margin-left:6px;"></span>
+              <span id="gmailState" style="font-size:10px;color:var(--text-3);margin-left:4px;flex:1;"></span>
+              <button class="btn btn-sm" id="gmailFetchBtn" onclick="gmailFetchNow()" style="font-size:11px;padding:1px 7px;">Fetch</button>
+              <span id="gmailFetchResult" style="font-size:10px;color:var(--text-2);margin-left:4px;white-space:nowrap;"></span>
+            </div>
+            <div style="padding:6px 8px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1;min-height:0;">
+              <div id="gmailTypeList" style="font-size:10px;color:var(--text-3);line-height:1.8;overflow-y:auto;flex:1;min-height:0;"></div>
             </div>
           </div>
         </div>
 
-        <!-- Gmail Panel -->
+        <!-- Econ Calendar Panel (FRED release/dates -> ref_calendar_event) -->
         <div class="fm-section" style="flex:0 0 220px;">
           <div class="fm-section-header">
-            <h2>Gmail</h2>
-            <span id="gmailDot" style="width:8px;height:8px;border-radius:50%;background:var(--text-3);flex-shrink:0;margin-left:6px;"></span>
-            <span id="gmailState" style="font-size:10px;color:var(--text-3);margin-left:4px;flex:1;"></span>
-            <button class="btn btn-sm" id="gmailFetchBtn" onclick="gmailFetchNow()" style="font-size:11px;padding:1px 7px;">Fetch</button>
-            <span id="gmailFetchResult" style="font-size:10px;color:var(--text-2);margin-left:4px;white-space:nowrap;"></span>
+            <h2>Econ Calendar</h2>
+            <span style="font-size:10px;color:var(--text-3);margin-left:6px;flex:1;">daily</span>
+            <button class="btn btn-sm" id="econCalFetchBtn" onclick="econCalFetch()" style="font-size:11px;padding:1px 7px;">Fetch</button>
+            <span id="econCalFetchStatus" style="font-size:10px;color:var(--text-2);margin-left:4px;white-space:nowrap;"></span>
           </div>
           <div style="padding:6px 8px;display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1;min-height:0;">
-            <div id="gmailTypeList" style="font-size:10px;color:var(--text-3);line-height:1.8;overflow-y:auto;flex:1;min-height:0;"></div>
+            <div style="font-size:11px;flex-shrink:0;">
+              <div style="white-space:nowrap;">
+                <span style="color:var(--text-3);">Last run</span> <span id="ec-last" style="color:var(--text-2);">-</span>
+                <span style="color:var(--text-3);"> &middot; Status</span> <span id="ec-status" style="color:var(--text-2);">-</span>
+              </div>
+              <div style="white-space:nowrap;">
+                <span style="color:var(--text-3);">New rows</span> <span id="ec-inserted" style="color:var(--text-2);">-</span>
+                <span style="color:var(--text-3);"> &middot; Total events</span> <span id="ec-total" style="color:var(--text-2);">-</span>
+              </div>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:10px;">
+              <thead>
+                <tr style="border-bottom:1px solid var(--border,#e5e5e0);">
+                  <th style="text-align:left;padding:2px 4px;color:var(--text-3);font-weight:600;">Category</th>
+                  <th style="text-align:left;padding:2px 4px;color:var(--text-3);font-weight:600;">Source</th>
+                </tr>
+              </thead>
+              <tbody id="ec-categories"></tbody>
+            </table>
           </div>
         </div>
 
@@ -501,6 +534,78 @@ function yahooFetch(mode) {
 yahooLoadStatus();
 yahooAutoStatus();
 setInterval(() => { yahooLoadStatus(); yahooAutoStatus(); }, 30000);
+
+function _fmtEcAge(iso) {
+  if (!iso) return 'never';
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 60) return mins + 'm ago';
+  if (mins < 1440) return Math.round(mins / 60) + 'h ago';
+  return Math.round(mins / 1440) + 'd ago';
+}
+
+function econCalStatus() {
+  fetch('/api/econ-calendar-fetch/status')
+    .then(r => r.json())
+    .then(d => {
+      const lf = d.last_fetch;
+      document.getElementById('ec-last').textContent = lf ? _fmtEcAge(lf.started_at) : 'never';
+      const statusEl = document.getElementById('ec-status');
+      statusEl.textContent = lf ? lf.status : '-';
+      statusEl.style.color = !lf ? 'var(--text-2)'
+        : lf.status === 'ok' ? '#166534'
+        : lf.status === 'partial' ? '#b45309' : '#b91c1c';
+      document.getElementById('ec-inserted').textContent = lf ? lf.rows_inserted : '-';
+      document.getElementById('ec-total').textContent = d.total_events ?? '-';
+
+      const windowDays = d.stale_window_days ?? 60;
+      const fetched = (d.fetched_categories || []).map(c => ({ ...c, src: 'Fetched', color: '#166534' }));
+      const manual  = (d.manual_categories  || []).map(c => ({ ...c, src: 'Manual',  color: 'var(--text-3)' }));
+      const rows = [...fetched, ...manual].sort((a, b) => a.category.localeCompare(b.category));
+      document.getElementById('ec-categories').innerHTML = rows.map(r => {
+        const staleTitle = r.last_date
+          ? `Coverage ends ${r.last_date} — less than ${windowDays}d out. Needs a fresh upload/fetch.`
+          : `No dates at all — needs a fresh upload/fetch.`;
+        return `<tr style="border-bottom:1px solid #f1f1ec;${r.stale ? 'background:#fef2f2;' : ''}">` +
+          `<td style="padding:2px 4px;${r.stale ? 'color:#b91c1c;' : ''}">${r.category}` +
+          (r.stale ? ` <span title="${staleTitle}" style="color:#b91c1c;font-weight:700;cursor:help;">&#9888;</span>` : '') +
+          `</td>` +
+          `<td style="padding:2px 4px;color:${r.color};">${r.src}</td>` +
+        `</tr>`;
+      }).join('');
+    })
+    .catch(() => {});
+}
+
+function econCalFetch() {
+  const btn    = document.getElementById('econCalFetchBtn');
+  const status = document.getElementById('econCalFetchStatus');
+  btn.disabled = true;
+  status.style.color = 'var(--text-2)';
+  status.textContent = 'Fetching...';
+  fetch('/api/econ-calendar-fetch/run', {method:'POST'})
+    .then(r => r.json())
+    .then(d => {
+      if (d.skipped) {
+        status.style.color = '#b45309';
+        status.textContent = 'Throttled (' + d.age_min + 'm ago)';
+      } else if (d.failed && d.failed.length) {
+        status.style.color = '#b91c1c';
+        status.textContent = d.inserted + ' new, ' + d.failed.length + ' failed';
+      } else {
+        status.style.color = '#166534';
+        status.textContent = d.inserted + ' new rows';
+      }
+      econCalStatus();
+    })
+    .catch(e => {
+      status.style.color = '#b91c1c';
+      status.textContent = 'Error: ' + e;
+    })
+    .finally(() => { btn.disabled = false; });
+}
+
+econCalStatus();
+setInterval(econCalStatus, 30000);
 
 function _typeLabel(t) {
   const map = {

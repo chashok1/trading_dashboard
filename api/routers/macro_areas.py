@@ -55,11 +55,29 @@ _GICS_DISPLAY = {
     "utilities": "Utilities",
 }
 
-# Canonical ordering for areas — volatility last (rendered at the bottom
-# of the Macro panel; it's 4 separate gauge rows, not a stance area).
+# SPDR sector ETF proxy per GICS-11 sector — a single-symbol read (price,
+# %chg, Trade/Trend direction, Risk Range position) shown alongside the
+# breadth score, which averages across every symbol tagged with that sector.
+_SECTOR_ETF = {
+    "Communication Services": "XLC",
+    "Consumer Discretionary": "XLY",
+    "Consumer Staples":       "XLP",
+    "Energy":                 "XLE",
+    "Financials":              "XLF",
+    "Health Care":             "XLV",
+    "Industrials":             "XLI",
+    "Information Technology": "XLK",
+    "Materials":               "XLB",
+    "Real Estate":             "XLRE",
+    "Utilities":               "XLU",
+}
+
+# Canonical ordering for areas — each of these is now its own side-panel
+# section (broken out one row per member); frontend routes each area_key to
+# its own container based on this same set of keys.
 _AREA_ORDER = [
-    "usd", "us_equities", "rates",
-    "credit", "commodities", "crypto", "global", "volatility",
+    "volatility", "top9", "rates_duration", "commodities_credit",
+    "usd_currency", "country_etfs", "crypto", "remaining",
 ]
 
 # Symbols that are yield-curve members — skip rr_pos
@@ -191,6 +209,15 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         )).mappings().all()
         vt_map = {r["tos_symbol"]: dict(r) for r in vt_rows}
 
+        # Load drv_macro_score (Quad-calendar-derived monthly_score) — same
+        # source as rrTape's tile glyph (api/routers/marketbar.py::_RR_SQL).
+        ms_rows = s.execute(text("""
+            SELECT tos_symbol, monthly_score
+            FROM drv_macro_score
+            WHERE as_of_date = (SELECT MAX(as_of_date) FROM drv_macro_score)
+        """)).mappings().all()
+        ms_map = {r["tos_symbol"]: r["monthly_score"] for r in ms_rows}
+
         # WoW: quote 5 trading days ago (best effort)
         # Use the 5th-most-recent as_of_date in drv_quote before anchor
         wow_row = s.execute(text("""
@@ -277,6 +304,8 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     "last": _maybe_float(last),
                     "pct_change": _maybe_float(pct_chg),
                     "zone": zone,
+                    "outlook": rr.get("outlook"),
+                    "monthly_score": _maybe_float(ms_map.get(sym)),
                 })
                 continue
 
@@ -296,6 +325,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     "trade": None,
                     "trend": None,
                     "wow_pct": wow_pct,
+                    "monthly_score": _maybe_float(ms_map.get(sym)),
                 })
                 continue
 
@@ -345,6 +375,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 "is_hot": rr_pos is not None and rr_pos >= hot_pct,
                 "is_cold": rr_pos is not None and rr_pos <= cold_pct,
                 "wow_pct": wow_pct,
+                "monthly_score": _maybe_float(ms_map.get(sym)),
             })
 
         # Area roll-up
@@ -410,12 +441,15 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         pct_trade = sum(1 for x in syms if x["above_trade"]) / n
         pct_trend = sum(1 for x in syms if x["above_trend"]) / n
         score = (pct_trade + pct_trend) / 2
+        etf_symbol = _SECTOR_ETF.get(sec)
+        etf = _sector_etf_proxy(etf_symbol, q_map, tech_map, rr_map, ms_map) if etf_symbol else None
         sector_scores.append({
             "sector": sec,
             "n": n,
             "pct_above_trade": round(pct_trade, 2),
             "pct_above_trend": round(pct_trend, 2),
             "score": round(score, 2),
+            "etf": etf,
         })
     sector_scores.sort(key=lambda x: -x["score"])
 
@@ -457,6 +491,38 @@ def _pct(v: Optional[float]) -> Optional[float]:
     if v is None:
         return None
     return round(v, 3)
+
+
+def _sector_etf_proxy(symbol: str, q_map: dict, tech_map: dict, rr_map: dict, ms_map: dict) -> Optional[dict]:
+    """Single-symbol ETF read for a sector row: price/%chg (drv_quote, so it
+    reflects the latest intraday quote on the anchor date), Trade/Trend
+    direction (drv_technicals), and Risk Range position (drv_rr) — same
+    fields/formula as the area rows above (rr_pos = (last-lrr)/(trr-lrr))."""
+    q = q_map.get(symbol, {})
+    t = tech_map.get(symbol, {})
+    r = rr_map.get(symbol, {})
+    last = _maybe_float(q.get("last_price"))
+    if last is None:
+        last = _maybe_float(t.get("last_price"))
+    if last is None:
+        return None
+    tv = _maybe_float(t.get("a_trade_value"))
+    trv = _maybe_float(t.get("a_trend_value"))
+    lrr = _maybe_float(r.get("lrr"))
+    trr = _maybe_float(r.get("trr"))
+    rr_pos = None
+    if lrr is not None and trr is not None and trr != lrr:
+        rr_pos = (last - lrr) / (trr - lrr)
+    return {
+        "symbol": symbol,
+        "last": last,
+        "pct_change": _maybe_float(q.get("pct_change")),
+        "td": "up" if tv is not None and last > tv else ("down" if tv is not None else None),
+        "tn": "up" if trv is not None and last > trv else ("down" if trv is not None else None),
+        "rr_pos": _pct(rr_pos),
+        "outlook": r.get("outlook"),
+        "monthly_score": _maybe_float(ms_map.get(symbol)),
+    }
 
 
 def _wow_pct(

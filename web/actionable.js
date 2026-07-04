@@ -57,10 +57,6 @@ function fmtCompact(v) {
   if (abs >= 1e3) return sign + '$' + Math.round(abs / 1e3) + 'k';
   return sign + '$' + Math.round(abs);
 }
-function fmtDate(d) {
-  if (!d) return '—';
-  return d.toString().slice(0, 10);
-}
 function fmtDateMD(d) {
   if (!d) return '—';
   const s = d.toString().slice(0, 10); // YYYY-MM-DD
@@ -68,15 +64,6 @@ function fmtDateMD(d) {
 }
 
 // ---------- Side panel helpers + MACRO band (TASK_74) ----------
-
-function _normSignal(v) {
-  if (!v) return { cls: '', label: '' };
-  const u = String(v).trim().toUpperCase();
-  if (u === '0' || u === 'N' || u === 'NEUTRAL' || u === 'NEU') return { cls: 'NEUTRAL', label: 'NEUTRAL' };
-  if (u.startsWith('BULL') || u === '+' || u === 'POS' || u === 'POSITIVE' || u === 'UP') return { cls: 'BULLISH', label: 'BULLISH' };
-  if (u.startsWith('BEAR') || u === '-' || u === 'NEG' || u === 'NEGATIVE' || u === 'DN' || u === 'DOWN') return { cls: 'BEARISH', label: 'BEARISH' };
-  return { cls: u.replace(/[^A-Z0-9]/g, ''), label: String(v).trim() };
-}
 
 // ── MACRO column cell renderer (TASK_74) ────────────────────────────────────
 // Renders a single cell for the MACRO column using the existing actionDisplay()
@@ -831,37 +818,41 @@ function _renderQuadOutlookPanel(data) {
   el.innerHTML = h;
 }
 
+// Combined econ-release + market-structure calendar (Events folded in server
+// side -- see /api/dashboard/econ-indicators).
 async function loadSideEcon() {
   const tbody = $('econBody'), empty = $('econEmpty'); if (!tbody) return;
   tbody.innerHTML = '';
   try {
-    const rows = await fetchJson(state.date ? `/api/dashboard/econ-indicators?date=${encodeURIComponent(state.date)}&limit=20` : '/api/dashboard/econ-indicators?limit=20');
-    if (!rows?.length) { empty.hidden = false; return; }
-    empty.hidden = true;
-    for (const r of rows) {
-      const tr = document.createElement('tr'), sig = _normSignal(r.signal);
-      tr.innerHTML = `<td class="text">${r.indicator||''}</td><td>${fmtDate(r.indicator_date)}</td><td class="num">${r.days??''}</td><td class="text">${sig.label?`<span class="signal-${sig.cls}">${sig.label}</span>`:''}</td>`;
-      tbody.appendChild(tr);
-    }
-  } catch(e) { console.error('Side econ:', e); empty.hidden = false; }
-}
-async function loadSideEarnings() {
-  const tbody = $('earningsBody'), empty = $('earningsEmpty'); if (!tbody) return;
-  tbody.innerHTML = '';
-  try {
-    const rows = await fetchJson(state.date ? `/api/dashboard/earnings?date=${encodeURIComponent(state.date)}&days_ahead=60&limit=50` : '/api/dashboard/earnings?days_ahead=60&limit=50');
+    const rows = await fetchJson(state.date ? `/api/dashboard/econ-indicators?date=${encodeURIComponent(state.date)}&limit=60` : '/api/dashboard/econ-indicators?limit=60');
     if (!rows?.length) { empty.hidden = false; return; }
     empty.hidden = true;
     for (const r of rows) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td class="text">${r.category||''}</td><td>${fmtDateMD(r.event_date)}</td><td class="num">${r.days_until!=null?r.days_until+'d':''}</td>`;
+      tr.innerHTML = `<td class="text">${r.indicator||''}</td><td>${fmtDateMD(r.indicator_date)}</td><td class="num">${r.days??''}</td>`;
       tbody.appendChild(tr);
     }
-  } catch(e) { console.error('Side earnings:', e); empty.hidden = false; }
+  } catch(e) { console.error('Side econ:', e); empty.hidden = false; }
+}
+// Real per-symbol earnings dates (held positions), separate from the
+// econ/market-structure calendar above -- see /api/dashboard/symbol-earnings.
+async function loadSideSymbolEarnings() {
+  const tbody = $('symEarningsBody'), empty = $('symEarningsEmpty'); if (!tbody) return;
+  tbody.innerHTML = '';
+  try {
+    const rows = await fetchJson(state.date ? `/api/dashboard/symbol-earnings?date=${encodeURIComponent(state.date)}` : '/api/dashboard/symbol-earnings');
+    if (!rows?.length) { empty.hidden = false; return; }
+    empty.hidden = true;
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td class="text">${r.symbol||''}</td><td>${fmtDateMD(r.event_date)}</td><td class="num">${r.days_until!=null?r.days_until+'d':''}</td>`;
+      tbody.appendChild(tr);
+    }
+  } catch(e) { console.error('Side symbol earnings:', e); empty.hidden = false; }
 }
 function loadSidePanels() {
   if (!$('actSidePanel')?.classList.contains('pinned')) return;
-  Promise.all([loadSideEcon(), loadSideEarnings()]);
+  Promise.all([loadSideEcon(), loadSideSymbolEarnings()]);
 }
 // Short MM/DD date for snapshot columns (no year). '' for empty.
 function fmtMD(d) {
@@ -1079,21 +1070,6 @@ function firesCellHtml(r) {
   }).join(' ');
 }
 
-// Best-first Metric direction: rank ascending (rank 1 best), else descending.
-function _metricAscending(src) {
-  return (state.sourceMethods || {})[src] === 'rank';
-}
-
-// The selected source's driver metric for a row (rank for PS, weight for
-// outlook sources) - read from that source's source_actions entry.
-function _rowMetric(row, src) {
-  if (!src) return null;
-  const e = _sourcesOf(row).find(s => (s.source || s.source_code || '') === src);
-  if (!e || e.weight == null) return null;
-  const n = Number(e.weight);
-  return isFinite(n) ? n : null;
-}
-
 // SSS-style metrics (base_weight_method = rank_pct_delta) are percentages.
 function _isPctSource(src) {
   return (state.sourceMethods || {})[src] === 'rank_pct_delta';
@@ -1109,11 +1085,18 @@ function fmtPct(v) {
 }
 
 // ---- core load ----
-async function loadActionable() {
+// opts.preserveState: when true (auto-poll path only), keep the user's current
+// column sort and bulk selection instead of resetting them. Manual Refresh /
+// date-picker change call loadActionable() with no opts (default reset behavior).
+async function loadActionable(opts) {
+  const preserveState = !!(opts && opts.preserveState);
   if (!state.date) return;
   // Reset to default actionability sort on every fresh data load (date change / refresh).
   // Column-header clicks override this until the next load or Clear.
-  state.sort = { key: '_priority', dir: -1, type: 'num' };
+  // Skipped when preserveState is true (background auto-refresh) so the user's sort sticks.
+  if (!preserveState) {
+    state.sort = { key: '_priority', dir: -1, type: 'num' };
+  }
   // Always fetch all rows -- action/category filters applied client-side so chip counts stay accurate
   // When show_hidden is on, also fetch acted/suppressed rows from the API.
   const params = new URLSearchParams({ date: state.date });
@@ -1169,7 +1152,7 @@ async function loadActionable() {
       state.allRows.map(r => [r.tos_symbol, r.monthly_score ?? null])
     );
     if (window._refreshTapeGlyphs) window._refreshTapeGlyphs();
-    applyClientFilter();
+    applyClientFilter(preserveState ? { preserveSelection: true } : undefined);
     loadSidePanels();
     loadMacroBand();
     if (window.reloadMacroAreas) window.reloadMacroAreas();
@@ -1195,6 +1178,7 @@ function matchesBaseFilters(r) {
     if (r.suppressed_reason) return false;
     const ua = (r.last_user_action || '').toUpperCase();
     if (ua === 'DONE' || ua === 'SKIPPED' || ua === 'OVERRIDDEN') return false;
+    if (ua === 'SNOOZED' && (!r.snooze_until || r.snooze_until >= state.date)) return false;
     if (!r.consolidated_action) return false;
     if (!r._amt) return false;
     const ca = (r.consolidated_action || '').toUpperCase();
@@ -1232,7 +1216,10 @@ function matchesBaseFilters(r) {
   return true;
 }
 
-function applyClientFilter() {
+// opts.preserveSelection: when true (auto-poll path via loadActionable({preserveState:true})),
+// keep state.selected intersected with the new symbol set instead of clearing it outright.
+function applyClientFilter(opts) {
+  const preserveSelection = !!(opts && opts.preserveSelection);
   if (state.filters.source && !_availableSources().has(state.filters.source)) {
     state.filters.source = '';
   }
@@ -1250,12 +1237,19 @@ function applyClientFilter() {
   });
   // Reset collapse and selection on filter change.
   state.showAll = false;
-  state.selected.clear();
+  if (preserveSelection) {
+    // Auto-refresh: keep the user's selection, dropping symbols no longer present.
+    const symSet = new Set(state.rows.map(r => r.tos_symbol));
+    for (const s of Array.from(state.selected)) {
+      if (!symSet.has(s)) state.selected.delete(s);
+    }
+  } else {
+    state.selected.clear();
+  }
   renderBulkBar();
   renderSummary();
   renderSourceFilter();
   renderAccountFilter();
-  saveFiltersToStorage();
   renderGrid();
   _symTapeStart = 0;
   renderSymTape();
@@ -1420,7 +1414,7 @@ async function checkForNewData() {
     const status = await fetchJson('/api/actionable/data-status');
     const sig = (status && status.last_at) || '';
     if (_lastDataSignal !== null && sig !== _lastDataSignal) {
-      loadActionable();
+      loadActionable({ preserveState: true });
       checkFreshness();
       checkEodFeed();
     }
@@ -1550,31 +1544,6 @@ function renderAccountFilter() {
 }
 
 
-// localStorage persistence
-const LS_KEY = 'act_filters_v3';
-function saveFiltersToStorage() {
-  try {
-    const f = state.filters;
-    const toSave = {
-      source: f.source, account: f.account, held_only: f.held_only, show_hidden: f.show_hidden,
-      symbol_search: f.symbol_search, conviction: f.conviction,
-      actionable_only: f.actionable_only,
-    };
-    localStorage.setItem(LS_KEY, JSON.stringify(toSave));
-  } catch (_) {}
-}
-
-function loadFiltersFromStorage() {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return;
-    const saved = JSON.parse(raw);
-    const f = state.filters;
-    // Only load keys that exist in the current schema; ignore stale keys gracefully.
-    // all filters reset to defaults on page open — nothing restored from storage
-  } catch (_) {}
-}
-
 function syncFilterUi() {
   // Sync all UI elements to current state.filters
   const f = state.filters;
@@ -1622,35 +1591,6 @@ function clearAllFilters() {
 
 // ---- grid ----
 // Helper: render other (non-winning) source actions as inline pills
-function _renderOtherSources(r) {
-  let sources = r.source_actions;
-  if (typeof sources === 'string') {
-    try { sources = JSON.parse(sources); } catch (_) { sources = []; }
-  }
-  if (!Array.isArray(sources) || sources.length === 0) return '';
-  
-  const winning = (r.winning_source || '').toString();
-  const others = sources.filter(s => (s.source || s.source_code || '') !== winning);
-  
-  if (others.length === 0) return '';
-
-  // Strongest action first — same severity order as the consolidation sort.
-  others.sort((a, b) =>
-    (ACTION_RANK[(b.action || '').toUpperCase()] || 0) -
-    (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
-  
-  // colorCls from actions.js (single source of truth)
-  return others.map(s => {
-    const srcCode = (s.source || s.source_code || '?');
-    const src = srcCode.toLowerCase();
-    const action = (s.action || '').toUpperCase() || '?';
-    const actDisp = actionDisplay(action);
-    const colorCls = (actDisp.colorCls || 'act-neutral') + '-tint';
-    const actLabel = actionText(actDisp) || action;
-    return `<span data-srcpop data-sym="${escapeHtml(r.tos_symbol)}" data-src="${escapeHtml(srcCode)}" class="act-badge act-badge-sm ${colorCls}" style="margin-right:4px; cursor:help;" title="${escapeHtml(srcCode)}">${escapeHtml(actLabel)} <span style="font-size:8px; opacity:0.8;">(${src})</span></span>`;
-  }).join('');
-}
-
 // ---- source-data hover popover ----
 const _srcDataCache = new Map();   // symbol -> { RR:{...}, ETF:{...}, ... }
 let _srcPopEl = null;
@@ -1733,28 +1673,6 @@ function _sourcesOf(row) {
 // ── Source sub-line (Action cell second line) ──────────────────────────────
 // Returns compact HTML like: RR·<colored>BS</colored>  II·<colored>BM</colored>
 // Winning source first, then others sorted by severity.  Empty → ''.
-function _srcSubLineHtml(r) {
-  const sources = _sourcesOf(r);
-  if (!sources.length) return '';
-  const winning = (r.winning_source || '').toString();
-  // Put winning source first, then sort remainder by severity.
-  const winner = sources.filter(s => (s.source || s.source_code || '') === winning);
-  const others = sources.filter(s => (s.source || s.source_code || '') !== winning);
-  others.sort((a, b) =>
-    (ACTION_RANK[(b.action || '').toUpperCase()] || 0) -
-    (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
-  const ordered = winner.concat(others);
-  const tokens = ordered.map(s => {
-    const srcCode = escapeHtml(s.source || s.source_code || '?');
-    const act = (s.action || '').toUpperCase();
-    const disp = actionDisplay(act);
-    const code = escapeHtml(disp.code || act || '?');
-    const colorCls = disp.colorCls || 'act-neutral';
-    return `<span class="act-src-token"><span class="${colorCls}" style="font-size:9px;">${srcCode}-${code}</span></span>`;
-  });
-  return `<div class="act-src-sub">${tokens.join(' ')}</div>`;
-}
-
 // Per-source reason lines for the Sources column: "SRC <icon> reason".
 function _srcReasonsHtml(r) {
   const sources = _sourcesOf(r);
@@ -1837,6 +1755,7 @@ function _hiddenReason(r) {
   if (r.suppressed_reason) return 'Snoozed: ' + r.suppressed_reason;
   const ua = (r.last_user_action || '').toUpperCase();
   if (ua === 'DONE' || ua === 'SKIPPED' || ua === 'OVERRIDDEN') return 'Acted: ' + ua;
+  if (ua === 'SNOOZED' && (!r.snooze_until || r.snooze_until >= state.date)) return 'Acted: SNOOZED';
   if (!r.consolidated_action) return 'No action';
   if (!r._amt) return 'AMT$ = 0';
   const ca = (r.consolidated_action || '').toUpperCase();
@@ -1845,25 +1764,6 @@ function _hiddenReason(r) {
 }
 
 // Conviction badge HTML for grid cell.
-function _convictionHtml(row) {
-  const n = _agreeingSources(row);
-  const edge = _hasPositiveEdge(row);
-  const cls = edge ? 'conviction-badge edge-positive' : 'conviction-badge edge-none';
-  const sources = _sourcesOf(row);
-  const labels = sources
-    .filter(s => {
-      const ca = (row.consolidated_action || '').toUpperCase();
-      const sa = (s.action || '').toUpperCase();
-      const isSell = ca === 'REMOVE' || ca === 'REDUCE';
-      const isBuy  = ca === 'INCREASE' || ca === 'ADD';
-      return (isSell && (sa === 'REMOVE' || sa === 'REDUCE')) || (isBuy && (sa === 'INCREASE' || sa === 'ADD'));
-    })
-    .map(s => s.source || s.source_code || '?')
-    .join(', ');
-  const tip = labels || 'no agreeing sources';
-  return `<span class="${cls}" title="${escapeHtml(tip)}">${n}&#10003;${edge ? ' &#9650;' : ''}</span>`;
-}
-
 // ── Final Call — reconcile three action lenses into one decision ────────────
 //
 // Scale: sell-all=-3, sell-some=-2, sell-overage=-1, hold=0,
@@ -1885,23 +1785,6 @@ function _fcStrength(code) {
 
 // Best-matching action display for a numeric strength (pick the canonical code
 // that sits nearest to the target strength, honouring sign).
-function _fcStrengthToAction(strength, consolidated) {
-  // Round to nearest integer for lookup
-  var s = Math.round(strength);
-  if (s <= -3) return actionDisplay('SA');
-  if (s === -2) return actionDisplay('SS');
-  if (s === -1) return actionDisplay('OVER_MAX');
-  if (s === 0)  return actionDisplay('HOLD');
-  // positive: prefer what consolidated_action says if same side
-  var ca = (consolidated || '').toUpperCase();
-  if (s >= 2) {
-    if (ca === 'ADD' || ca === 'BMN') return actionDisplay('ADD');
-    if (ca === 'BM')  return actionDisplay('BM');
-    return actionDisplay('INCREASE');
-  }
-  return actionDisplay('HOLD');
-}
-
 /**
  * finalCall(row) -> {label, code, side, strength, confidence, feasible}
  *
@@ -2174,13 +2057,6 @@ function _rowHasSource(row, src) {
 }
 
 // Normalized weight delta for `src` on this row — per-source default sort key.
-function _sourceWeightDelta(row, src) {
-  const e = _sourcesOf(row).find(s => (s.source || s.source_code || '') === src);
-  if (!e || e.weight_delta == null) return NaN;
-  const n = Number(e.weight_delta);
-  return isFinite(n) ? n : NaN;
-}
-
 function _renderSourcePop(el, sym, src, feed, loading) {
   if (_srcPopEl !== el) return;
   const pop = $('sourcePop');
@@ -2802,7 +2678,7 @@ function initSorting() {
         state.sort.dir = -state.sort.dir;
       } else {
         state.sort.key = key;
-        state.sort.dir = (key === '_metric' && !_metricAscending(state.filters.source)) ? -1 : 1;
+        state.sort.dir = 1;
         state.sort.type = th.dataset.type || 'str';
       }
       updateSortIndicators();
@@ -3023,7 +2899,18 @@ function _renderFocusCard() {
   const r = rows[state.focusIdx];
   $('fcProg').textContent = `${state.focusIdx + 1} of ${rows.length}`;
   $('fcSym').textContent = r.tos_symbol || '';
-  $('fcAction').innerHTML = `<span class="act-badge ${(actionDisplay(_badgeAction(r)).colorCls || 'act-neutral') + '-tint'}" style="font-size:16px;padding:4px 14px;">${actionLabel(r)}</span>`;
+  // Final Call badge (same source as the grid's ACTION column and the Done
+  // button's logged code) so the card matches what gets recorded.
+  const fc = finalCall(r);
+  if (!fc.feasible || fc.confidence === 'none') {
+    $('fcAction').innerHTML = '<span style="color:#cbd5e1;font-size:16px;">—</span>';
+  } else {
+    const fcText = fc.label || actionText(fc);
+    const fcDisp = actionDisplay(fc.code || (fc.side === 'sell' ? 'SA' : fc.side === 'buy' ? 'BS' : 'HOLD'));
+    const fcColorCls = (fcDisp.colorCls || 'act-neutral') + '-fill';
+    const fcHedgeyeStyle = fcDisp.code === 'SA' ? 'background:#d4537e;' : fcDisp.code === 'BM' ? 'background:#1d9e75;' : '';
+    $('fcAction').innerHTML = `<span class="act-badge ${fcColorCls}" style="${fcHedgeyeStyle}font-size:16px;padding:4px 14px;" title="${escapeHtml(fc.label || fcText)}">${escapeHtml(fcText)}</span>`;
+  }
   $('fcAmt').textContent = fmtUsd(r._amt) || '—';
   // "Why": top fired rule or winning source + reason snippet.
   let why = '';
@@ -3078,7 +2965,6 @@ function exportCsv() {
     ['TrTnBBRskRng',  r => r.rr_action || ''],
     ['Trig',          r => r.trig_action ? actionText(actionDisplay(r.trig_action)) : ''],
     ['Source',        r => r.winning_source || ''],
-    ['Metric',        r => r._metric],
     ['Reason',        r => _winningReason(r)],
     ['Other Sources', r => otherSourcesText(r)],
     ['Sector',        r => r.sector || ''],
@@ -3114,6 +3000,31 @@ function exportCsv() {
   URL.revokeObjectURL(url);
 }
 
+// Copy the currently visible (filtered) symbols as a comma-separated list —
+// same row scope as exportCsv (state.rows).
+async function copySymbols() {
+  const symbols = state.rows.map(r => r.tos_symbol).filter(Boolean);
+  if (!symbols.length) return;
+  const text = symbols.join(',');
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      // Fallback for non-secure contexts without the async Clipboard API.
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+  } catch (e) {
+    console.error('Copy symbols failed:', e);
+  }
+}
+
 // Map a numeric weight back to an {outlook, modifier} label pair.
 // Standard convention: BULLISH=3, BEARISH=-3, NEUTRAL=0; "Bench" modifier
 // divides the magnitude by 3 → fractional. We infer from magnitude.
@@ -3127,18 +3038,6 @@ function _weightToOutlook(w) {
   if (n > -0.5 && n < 0.5) return { label: 'NEUTRAL', cls: 'ol-neutral', modifier: '' };
   if (n >= -2)     return { label: 'BEARISH', cls: 'ol-bearish', modifier: 'Bench' };
   return { label: 'BEARISH', cls: 'ol-bearish', modifier: '' };
-}
-
-// Render a two-line chip cell. `base` = today's weight, `prev` = yesterday's.
-function _outlookChip(base, prev) {
-  const a = _weightToOutlook(base);
-  const b = _weightToOutlook(prev);
-  const aMod = a.modifier ? `<span class="ol-mod">${a.modifier}</span>` : '';
-  const bMod = b.modifier ? `<span class="ol-mod">${b.modifier}</span>` : '';
-  return `<div class="outlook-cell">
-    <div class="ol-today ${a.cls}">${a.label}${aMod}</div>
-    <div class="ol-was">was <span class="${b.cls}">${b.label}</span>${bMod}</div>
-  </div>`;
 }
 
 // Find the winning source's entry inside the source_actions JSONB.
@@ -3171,16 +3070,6 @@ function _winningReason(row) {
   const want = (row.winning_source || '').toString();
   const hit = sa.find(s => (s.source || s.source_code || '') === want);
   return hit ? (hit.reason || hit.action_reason || '') : '';
-}
-
-// Asset class for the grid/CSV. drv_stks.asset_class is only populated for
-// TL-master stocks; ETF-feed / PS symbols (e.g. EQRR) carry the same value in
-// position_category. Fall back to it only for those sources.
-function _assetClass(r) {
-  if (r.asset_class) return r.asset_class;
-  const ws = (r.winning_source || '').toUpperCase();
-  if (ws === 'ETF' || ws === 'ETFCHG' || ws === 'PS') return r.position_category || '';
-  return '';
 }
 
 // ---- drilldown TV chart ----
@@ -3829,8 +3718,6 @@ function _initTvToggle() {
 
 // ---- wire up ----
 document.addEventListener('DOMContentLoaded', async () => {
-  // Restore filters before loading data
-  loadFiltersFromStorage();
   // initSorting must run before loadDates/renderGrid so th.dataset.label is
   // captured from the clean header text (before sort indicators are injected).
   initSorting();
@@ -3862,6 +3749,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   $('staleRederiveBtn').addEventListener('click', rederiveStale);
   $('exportCsvBtn').addEventListener('click', exportCsv);
+  $('copySymbolsBtn').addEventListener('click', copySymbols);
   initSourcePopover();
   // Inline action buttons (Pass 3)
   $('actBody').addEventListener('click', (e) => {
@@ -3891,10 +3779,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       return;
     }
-    const btn = e.target.closest('.btn-suppress');
-    if (!btn) return;
-    e.stopPropagation();
-    toggleSuppress(btn.dataset.sym, btn.dataset.suppressed === '1');
   });
 
   // Bulk select-all
@@ -3946,9 +3830,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     // show_hidden also controls whether acted/suppressed rows are fetched from the API
     loadActionable();
   });
+  // Debounced ~150ms trailing: typing a symbol shouldn't re-render the full grid + tape on every keystroke.
+  let _symbolSearchTimer = null;
   $('symbolSearch').addEventListener('input', (e) => {
-    state.filters.symbol_search = e.target.value;
-    applyClientFilter();
+    const val = e.target.value;
+    clearTimeout(_symbolSearchTimer);
+    _symbolSearchTimer = setTimeout(() => {
+      state.filters.symbol_search = val;
+      applyClientFilter();
+    }, 150);
   });
 
   // TASK_66: Bull Prob minimum filter
@@ -4002,7 +3892,7 @@ const _closeModal = () => {
   });
   $('saveActionBtn').addEventListener('click', saveUserAction);
   $('dismissActionBtn').addEventListener('click', dismissUserAction);
-  $('closePop').addEventListener('click', () => $('detailPop')?.classList.remove('open'));
+  $('closePop').addEventListener('click', () => closeAtomicPopover());
 
   // ── Side panel toggle ─────────────────────────────────────────────────────
   const _sideEl  = $('actSidePanel');
@@ -4024,7 +3914,6 @@ const _closeModal = () => {
   // ── Action column hover popup ──────────────────────────────────────────────
   setupActionCol();
   // ── TrTnBBRskRng column: lazy-load action + hover tooltip ─────────────────
-  document.addEventListener('DOMContentLoaded', setupRRActionCol);
   setupRRActionCol();
 });
 

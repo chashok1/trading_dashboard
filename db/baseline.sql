@@ -5900,6 +5900,50 @@ CREATE INDEX IF NOT EXISTS ix_meta_macro_fetch_started
     ON meta_macro_fetch(started_at DESC);
 
 -- =====================================================
+-- ECON CALENDAR FEED (FRED release/dates) — 2026-07-02
+-- Upcoming economic release *dates* pulled from FRED's release/dates API
+-- (etl/fetch_econ_calendar.py). Complements the FRED value pull above (this
+-- is *when*, not *what value*) and the workbook-sourced ref_calendar_event /
+-- ref_econ_indicator loaders (etl/load_raw.py) — writes into the SAME
+-- ref_calendar_event table (ON CONFLICT DO NOTHING on its (category,
+-- event_date) PK), so both sources coexist harmlessly. Not every category in
+-- ref_calendar_event has a FRED release_id (e.g. ISM, Michigan Consumer
+-- Sentiment, NAHB, Fed Meeting/FOMC/Beige Book aren't in FRED's release
+-- catalog) — those stay workbook-only. See ref_econ_release for the mapping.
+-- =====================================================
+
+-- ref_econ_release — tunable catalog: which FRED release_id maps to which
+-- ref_calendar_event.category name(s). One release_id can cover several
+-- categories that publish on the same date (e.g. release_id 10 = Consumer
+-- Price Index covers "CPI YOY", "CPI MoM", "CPI Core YoY", "CPI Core MoM").
+-- Add/remove rows here + `python -m db.init_db` — no code change needed.
+CREATE TABLE IF NOT EXISTS ref_econ_release (
+    release_id    INTEGER NOT NULL,        -- FRED release_id, e.g. 10 = Consumer Price Index
+    category      TEXT NOT NULL,           -- ref_calendar_event.category to write
+    release_name  TEXT,                    -- FRED release name, for reference/debugging
+    enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+    loaded_at     TIMESTAMP NOT NULL DEFAULT now(),
+    PRIMARY KEY (release_id, category)
+);
+
+-- meta_econ_calendar_fetch — one row per real FRED release/dates fetch run
+-- (skipped/throttled runs are NOT logged). Drives the fetch throttle
+-- (etl/fetch_econ_calendar.py) and the "last fetched" stamp in File Monitor.
+CREATE TABLE IF NOT EXISTS meta_econ_calendar_fetch (
+    id              BIGSERIAL PRIMARY KEY,
+    started_at      TIMESTAMP NOT NULL DEFAULT now(),
+    finished_at     TIMESTAMP,
+    trigger         TEXT NOT NULL DEFAULT 'cli',   -- cli | api | scheduler
+    status          TEXT NOT NULL,                 -- ok | partial | error
+    releases_ok     INTEGER NOT NULL DEFAULT 0,
+    releases_failed INTEGER NOT NULL DEFAULT 0,
+    rows_inserted   INTEGER NOT NULL DEFAULT 0,
+    note            TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_meta_econ_calendar_fetch_started
+    ON meta_econ_calendar_fetch(started_at DESC);
+
+-- =====================================================
 -- ref_market_metric — metric registry for the market tape
 -- Source-agnostic: each row carries an ordered source_priority JSONB array
 -- ("adapter:symbol" strings) so the resolver tries each left-to-right.
