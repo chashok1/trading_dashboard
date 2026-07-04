@@ -125,6 +125,27 @@ still sees what the system would have recommended.
 
 ## Display (`web/actionable.js`)
 
+**Grid & Final Call (current as of TASK_103–110, 2026-07).** Column order:
+bulk-select checkbox · H (only when Show Hidden is on) · POS$ · AMT$ · %CHG ·
+Symbol · ACTION · MACRO · CALC · Sources · Technical · Vlm · IV · MACD ·
+MACDH · RSI · Rules (edge, capped at 4 pills + `+n`) · P(↑20d) · Agree · Act.
+ACTION is the server-computed **Final Call** (`drv_actionable.final_code`,
+D6) with a High/Gate/Mixed confidence badge; summary/filter chips bucket rows
+by `finalCall()` so chips always match the ACTION column. A gear menu
+toggles column visibility (persisted as `act_cols_v1`; CALC, P(↑20d), Agree
+hidden by default) and a "?" button opens a static legend of all codes and
+glyphs. Default view collapses to the top 15 priority rows with a
+"Show all N" bar (active only under the default `_priority` sort with no
+action chip). MACRO sorts numerically on `macronet`.
+
+**Refresh & data volume.** The 30-second auto-poll reloads rows with
+`loadActionable({preserveState:true})` — user sort and bulk selection
+survive; manual Refresh/date change still reset. Symbol search is debounced
+(~150 ms). The row payload excludes `macro_detail`/`macro_howto`; the MACRO
+hover popover lazy-loads them from `GET /api/actionable/macro-detail`
+(client-cached per symbol@date). Bulk Done/Skip/Snooze posts once to
+`POST /api/actionable/bulk-action`.
+
 **Action labels.** The Action badge shows an instructional label, not the
 raw code: ADD → `BUY→MIN`, INCREASE → `BUY SOME`, REDUCE → `SELL SOME`,
 REMOVE → `SELL ALL`, HOLD → `HOLD`. When the held position exceeds the
@@ -147,42 +168,29 @@ When the position exceeds the category Max (REMOVE excepted), AMT$
 overrides to `position − Max` — the trim back to the ceiling — paired with
 the `SELL→MAX` badge overlay.
 
-**Metric column.** A generic, sortable column showing the *selected*
-source's decision metric — rank for PS, `pct_delta` for SSS, the outlook
-weight for RR / ETF / II / CALL. The value is read from the row's
-`source_actions[source]` entry and is blank when the Source filter is "All".
-`/api/actionable/sources` supplies each source's `base_weight_method` so the
-screen knows the metric's natural sort direction.
+**Snapshot dates.** The winning source's effective snapshot date — the date
+the underlying data record is for (`drv_outlook_action.as_of_date`, carried
+into `source_actions.snapshot_date` by `derive_actionable.py`) — is shown in
+the Sources cell's per-source reason lines and in the drilldown's per-source
+table / comparison panel. All snapshot dates render as MM/DD (no year).
+`/api/actionable/sources` supplies each source's `base_weight_method`
+(used for percent formatting of SSS metrics). The Source filter matches a
+row when the chosen source is its winning source **or** appears among its
+other sources.
 
-**Snapshot column.** Shows the winning source's effective snapshot date —
-the date the underlying data record is for (`drv_outlook_action.as_of_date`,
-carried into `source_actions.snapshot_date` by `derive_actionable.py`). The
-per-source table and the comparison panel show the same date per source. All
-snapshot dates render as MM/DD (no year). Grid column order: Metric, Symbol,
-Action, AMT$, Source, Reason, Snapshot, Other Sources, then the sizing
-columns.
-
-**Per-source sort.** When a source is chosen in the Source filter:
-
-- *Way 1 (default):* sort by action severity (REMOVE → HOLD), then by the
-  Metric in its best-first direction — rank ascending (rank 1 tops each
-  action group); outlook weight / pct descending.
-- *Way 2:* clicking the Metric column header sorts purely by the Metric,
-  first click in the best-first direction (rank 1 at the very top for PS).
-
-Choosing a source clears any active column sort so Way 1 applies. The Source
-filter matches a row when the chosen source is its winning source **or**
-appears among its other sources; other-source pills are ordered by action
-severity.
-
-**Snooze toggle.** The first grid column is a per-row Snooze button. It
-logs a `SKIPPED` user action for (snapshot date, symbol) via
-`POST /api/actionable/{symbol}/action`; snoozed rows are hidden unless
-"Show acted/snoozed" is on. The action is keyed to the snapshot date, so a
-snooze applies only to that date — the next data load creates a new
-snapshot date and the action shows again. When a snoozed row is visible
-the button reads "Un-snooze" and clears the `SKIPPED` row (`DELETE` on the
-same endpoint).
+**Snooze / skip semantics (TASK_103).** The Act column's Done/Skip/Snooze
+buttons (and Focus mode, and the bulk bar) log user actions via
+`POST /api/actionable/{symbol}/action` (bulk:
+`POST /api/actionable/bulk-action`). Done logs the row's Final Call code as
+`action_code` from every entry point. A **date-less SNOOZED** action means
+"hidden for this as_of_date" (same lifetime as SKIPPED); a SNOOZED with
+`snooze_until` stays hidden until that date. Hidden rows reappear under
+"Show Hidden" with an H-column reason; `DELETE /api/actionable/{symbol}/action`
+clears both SKIPPED and SNOOZED rows (un-snooze). A new anchor date
+re-surfaces everything. Focus-mode keys: Enter/D Done · S Skip · Z Snooze ·
+←/→ Prev/Next · Esc close (Esc also closes the drilldown modal, topmost
+layer first). When `last_price < stop_level` the AMT$ cell's stop sub-text
+renders bold red.
 
 **Per-source inline comparison.** Each row of the drilldown's "Per-source
 actions" table expands on click to a current-vs-previous record comparison
@@ -195,8 +203,8 @@ SSS, `rank` for PS, `outlook` (+ `outlook_modifier`) for the outlook
 sources — keyed off `base_weight_method`.
 
 **Percentages.** `pct_delta` (SSS) is stored as a fraction and shown as a
-percentage (× 100, `%` suffix) everywhere it surfaces — the Metric column,
-comparison panel, per-source table and hover popover format it client-side;
+percentage (× 100, `%` suffix) everywhere it surfaces — the comparison
+panel, per-source table and hover popover format it client-side;
 the SSS action `reason` text (e.g. `pct_delta +5% -> +6.1% (rising)`) is
 percentage-formatted in `_action_sss_pct_delta` via `_pct_str`. The stored
 `hist_sss` value is never changed and the classifier keeps comparing the raw

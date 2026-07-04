@@ -1,5 +1,16 @@
 # Actionable Screen Review — 2026-07-03
 
+> **Status (2026-07-04, post TASK_103–110):** implemented — do not treat the
+> findings below as open. TASK_103: B1–B4, B6 + dead code. TASK_104: B5, U9.
+> TASK_105: U1, U2, U4, U5, U6, U10, U11, U13. TASK_106: F1, F2, F5, F7 (+
+> found/fixed a pre-existing 500 in POST /{symbol}/action). TASK_107: U8.
+> TASK_108: U14, U15 (+ fixed never-working chevron CSS). TASK_109: F4, F6,
+> orphan deletions, focus-Done reconciliation. TASK_110: doc sync + stale-test
+> cleanup. **Still open (deliberately):** U3 legibility floor, U12 tooltip
+> consolidation (both assessed and deferred in TASK_109), and the §5 items not
+> listed above (U7 toggle labeling, U14 side-panel auto-unpin, F3 snooze
+> default-date UX).
+
 Full feature/function/design review of `/actionable`. Sources read:
 `web/actionable.html`, `web/actionable.js` (4,371 lines), `web/hedgeye_panel.js`,
 `web/macro_band.js`, `web/warning_badge.js`, `api/routers/dash.py`
