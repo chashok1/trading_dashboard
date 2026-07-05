@@ -166,12 +166,15 @@
     }
     // No per-bullet truncation and no cap on bullet count — CARD_BODY scrolls
     // (overflow-y:auto), so showing everything relies on scroll, not cutoff.
-    return bullets.map(function (b) {
-      return '<div style="font-size:11px; line-height:1.5; margin-bottom:3px;' +
-        'padding-left:9px; text-indent:-9px;">' +
-        '<span style="color:#534ab7; font-weight:700;">&#8226;</span> ' +
-        esc(b) + '</div>';
-    }).join('');
+    // Numbered "1) 2) 3) ..." instead of bullet points, all flowing in one
+    // continuous inline span (2026-07-04) -- rendered via _inlineHdrCard, so
+    // this text itself starts right where the card's title span ends (no
+    // separate header row/indent needed here).
+    return '<span style="font-size:11px; line-height:1.5;">' +
+      bullets.map(function (b, i) {
+        return '<span style="color:#534ab7; font-weight:700;">' + (i + 1) + ')</span> ' + esc(b);
+      }).join(' ') +
+      '</span>';
   }
 
   // "Hedgeye's Top 3 Things" from THE MACRO SHOW — note_text is 1-3 lines,
@@ -179,15 +182,20 @@
   function top3Html(t3) {
     if (!t3 || !t3.note_text) return '';
     var lines = t3.note_text.split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean);
-    return lines.map(function (line) {
-      var m = line.match(/^(\d\)\s*[^–—-]+?)\s*([–—-])\s*(.+)$/);
-      var head = m ? m[1] : '';
-      var body = m ? m[3] : line;
-      return '<div style="font-size:11px; line-height:1.5; margin-bottom:4px;' +
-        'padding-left:9px; text-indent:-9px;">' +
-        (head ? '<strong style="color:#534ab7;">' + esc(head) + '</strong> – ' : '') +
-        boldTickers(body) + '</div>';
-    }).join('');
+    // All items flowing in one continuous inline span (2026-07-04, same
+    // treatment as earlyLookHtml) -- "N)" numbering is already in the
+    // source text (parse_macro_show_top3), kept as-is. Rendered via
+    // _inlineHdrCard, so this text starts right where the card's title
+    // span ends.
+    return '<span style="font-size:11px; line-height:1.5;">' +
+      lines.map(function (line) {
+        var m = line.match(/^(\d\)\s*[^–—-]+?)\s*([–—-])\s*(.+)$/);
+        var head = m ? m[1] : '';
+        var body = m ? m[3] : line;
+        return (head ? '<strong style="color:#534ab7;">' + esc(head) + '</strong> – ' : '') +
+          boldTickers(body);
+      }).join(' ') +
+      '</span>';
   }
 
   // Click-to-enlarge overlay, shared by any panel image (built lazily, reused
@@ -269,7 +277,7 @@
     // image forcing it wider (that's what used to require the Macro
     // Commentary card's width to be reverse-engineered to match).
     return '<div style="background:#fff; border:1px solid #e0daf5; border-radius:5px; ' +
-      'padding:7px 10px; min-width:0; max-height:125px; ' +
+      'padding:7px 10px; min-width:0; max-height:110px; ' +
       'box-shadow:0 1px 4px rgba(83,74,183,0.07); display:flex; flex-direction:column;">' +
       panelTitle +
       '<div style="display:flex; gap:0; align-items:flex-start; flex-wrap:nowrap; flex:1; min-height:0; min-width:0; overflow-y:auto; overflow-x:hidden;">' +
@@ -431,11 +439,38 @@
     // an arbitrary pixel number.
     var _card = function (title, body, dateHtml, opts) {
       opts = opts || {};
-      var maxH = opts.maxH || 125;
+      var maxH = opts.maxH || 126;
       var extra = opts.extra || '';
       return '<div style="' + CARD_BASE + 'max-height:' + maxH + 'px;' + extra + '">' +
         '<div style="' + CARD_HDR + '">' + title + (dateHtml || '') + '</div>' +
         '<div style="' + CARD_BODY + '">' +
+        (body || '<span style="color:#bbb; font-size:10px;">none</span>') +
+        '</div></div>';
+    };
+
+    // Variant of _card (2026-07-04, Early Look / Top 3 Things): no separate
+    // header bar -- title, date, and body all share one flowing block
+    // instead of the header's row going mostly empty above a body that
+    // starts fresh below it. Date sits right after the title (its original
+    // position in the old header bar), then a fixed gap, then the body text
+    // begins on the same line, reclaiming the space that would otherwise
+    // sit empty next to a short title+date.
+    var _inlineHdrCard = function (title, body, dateHtml, opts) {
+      opts = opts || {};
+      var maxH = opts.maxH || 125;
+      var extra = opts.extra || '';
+      var titleStyle = 'font-weight:700; font-size:8.5px; text-transform:uppercase; ' +
+        'letter-spacing:0.55px; color:#534ab7;';
+      // Same CARD_BASE as every other card, but padding trimmed to match --
+      // no separate header row/divider here means less vertical space is
+      // needed before content starts than the other cards use. Top padding
+      // cut further than bottom/sides since there's no header row above the
+      // text to justify the same top gap the other cards have.
+      return '<div style="' + CARD_BASE + 'max-height:' + maxH + 'px; padding:2px 8px 5px 8px;' + extra + '">' +
+        '<div style="' + CARD_BODY + '">' +
+        '<span style="' + titleStyle + '">' + title + '</span>' +
+        (dateHtml || '') +
+        '<span style="display:inline-block; width:6px;"></span>' +
         (body || '<span style="color:#bbb; font-size:10px;">none</span>') +
         '</div></div>';
     };
@@ -450,25 +485,39 @@
       ? '<div style="' + GRID_ROW1 + '">' +
         msrCardHtml(data.msr, data.as_of || data.date, loadedAt) +
         _card(linked('Risk Range', 'trend_change'), flipsHtml(data.trend_flips),
-              td(data.trend_flips_received_at, data.trend_flips_date)) +
-        _card(linked('Early Look', 'early_look'),
+              td(data.trend_flips_received_at, data.trend_flips_date),
+              { maxH: 110 }) +
+        _inlineHdrCard(linked('Early Look', 'early_look'),
               data.early_look ? earlyLookHtml(data.early_look) : '',
-              td(data.early_look && data.early_look.received_at, data.early_look && data.early_look.date)) +
+              td(data.early_look && data.early_look.received_at, data.early_look && data.early_look.date),
+              { maxH: 110 }) +
         '</div>'
       : '';
 
     // Row: Macro Commentary (fixed-ish) | Hedgeye's Top 3 Things (1fr).
-    var GRID_ROW_MACRO = 'display:grid; grid-template-columns: minmax(300px, 360px) ' +
+    // Macro Commentary's max widened 360->460px (2026-07-05) so its right
+    // edge approximates where Row 2's "Macro Show" card ends (Top-5's
+    // calc(15ch+20px) column + Macro Show's own minmax(200px,1fr) column).
+    // This is an approximation, not an exact match: Row 2 and this row are
+    // two independently-sized CSS grids, and Macro Show's own column is a
+    // flexible 1fr track that shares leftover space with the Call column --
+    // its resolved width (and therefore its right edge) shifts with the
+    // panel's overall rendered width, so this alignment can drift at
+    // different window sizes. Exact, width-independent alignment would
+    // need both rows merged into one shared grid (CSS subgrid) instead of
+    // two separate ones -- a bigger change, only worth it if this
+    // approximation isn't close enough in practice.
+    var GRID_ROW_MACRO = 'display:grid; grid-template-columns: minmax(300px, 418px) ' +
       'minmax(220px, 1fr); gap:3px; align-items:stretch; margin-top:3px;';
     var rowMacroTop3 = (data.call_macro || (data.top3_things && data.top3_things.note_text))
       ? '<div style="' + GRID_ROW_MACRO + '">' +
-        _card(linked('Macro Commentary', 'call_macro'),
-              data.call_macro ? '<div style="font-size:11px; line-height:1.5;">' + boldTickers(data.call_macro.note_text) + '</div>' : '',
+        _inlineHdrCard(linked('Macro Commentary', 'call_macro'),
+              data.call_macro ? '<span style="font-size:11px; line-height:1.5;">' + boldTickers(data.call_macro.note_text) + '</span>' : '',
               td(data.call_macro && data.call_macro.received_at, data.call_macro && data.call_macro.date),
-              { maxH: 105 }) +
-        _card(linked("Hedgeye's Top 3 Things", 'macro_show'), top3Html(data.top3_things),
+              { maxH: 130 }) +
+        _inlineHdrCard(linked("Hedgeye's Top 3 Things", 'macro_show'), top3Html(data.top3_things),
               td(data.top3_things && data.top3_things.received_at, data.top3_things && data.top3_things.date),
-              { maxH: 105 }) +
+              { maxH: 130 }) +
         '</div>'
       : '';
 
