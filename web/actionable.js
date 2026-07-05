@@ -642,9 +642,14 @@ async function loadMacroBand() {
     // Viewing an explicit historical date still passes it through (no look-ahead).
     const viewingLive = !state.date || state.date === state.anchorDate;
     const dateParam = viewingLive ? '' : `?date=${encodeURIComponent(state.date)}`;
-    const [data, factors] = await Promise.all([
+    // sectorsData (2026-07-05): only fetched for the Regime Band's
+    // quad-bullish-sector cross-reference below -- the Sectors side-rail
+    // panel (macro_areas.js) fetches this independently and doesn't expose
+    // it globally, so this is its own request, not a shared cache.
+    const [data, factors, sectorsData] = await Promise.all([
       fetchJson(`/api/dashboard/quads${dateParam}`),
       fetchJson(`/api/quad/band-factors${dateParam}`).catch(() => ({ bull: [], bear: [] })),
+      fetchJson(`/api/macro-areas${dateParam}`).catch(() => null),
     ]);
     const cq = data.current_quarter, nq = data.next_quarter;
     const months = data.months || [];
@@ -681,6 +686,31 @@ async function loadMacroBand() {
       return `<span style="display:inline-flex;width:40px;height:5px;border-radius:2px;overflow:hidden;border:1px solid #e2e8f0;vertical-align:middle;margin-left:3px;">${bars}</span>`;
     };
 
+    // Quad-bullish sectors also currently bullish on the Sectors panel
+    // (2026-07-05): intersect ref_quad_outlook's "Equity Sectors" rows
+    // (ticker + per-period BULLISH/BEARISH/Neutral outlook, from
+    // /api/quad/band-factors) with the Sectors panel's own live stance
+    // (/api/macro-areas sectors.all[], score>=0.5 = bullish, same 0.5
+    // threshold renderSectorsPanel in macro_areas.js uses for Long/Short).
+    // Rendered inline next to each month's distribution bar below, no
+    // separate header text -- just the ticker list itself.
+    const sectorsAll = (sectorsData && sectorsData.sectors && sectorsData.sectors.all) || [];
+    const panelBullishTickers = new Set(
+      sectorsAll.filter(s => s.score >= 0.5 && s.etf && s.etf.symbol).map(s => s.etf.symbol)
+    );
+    const _quadBullishSectorTickers = periodKey => (factors.factors || [])
+      .filter(f => f.category === 'Equity Sectors' && f.ticker
+                   && /^bullish$/i.test((f[periodKey] || '').trim())
+                   && panelBullishTickers.has(f.ticker))
+      .map(f => f.ticker);
+    const _sectorListHtml = list => list.length
+      ? ` <span style="color:#166534;font-size:9px;">${list.map(t => escapeHtml(t)).join(', ')}</span>`
+      : '';
+    const curSectorsHtml = _sectorListHtml(_quadBullishSectorTickers('cur_month'));
+    const nextSectorsHtml = _sectorListHtml(_quadBullishSectorTickers('next_month'));
+    const curQtrSectorsHtml = _sectorListHtml(_quadBullishSectorTickers('cur_qtr'));
+    const nextQtrSectorsHtml = _sectorListHtml(_quadBullishSectorTickers('next_qtr'));
+
     // Month span — data-quadbandpop triggers rich popover
     const mCur = _effectiveQuad(cm) || '—';
     const mNxt = _effectiveQuad(nm);
@@ -689,7 +719,8 @@ async function loadMacroBand() {
       + `<strong style="color:${_quadColor(mCur)};cursor:help;" data-quadbandpop="cur_month">${escapeHtml(_qdLbl(mCur))}</strong>`
       + _distBarMonth(cm)
       + (mDtb != null ? ` <span style="color:#94a3b8;font-size:10px;">(${mDtb}d left)</span>` : '')
-      + (mNxt ? ` → <strong style="color:${_quadColor(mNxt)};opacity:0.7;cursor:help;" data-quadbandpop="next_month">${escapeHtml(_qdLbl(mNxt))}</strong>${_distBarMonth(nm)}` : '');
+      + curSectorsHtml
+      + (mNxt ? ` → <strong style="color:${_quadColor(mNxt)};opacity:0.7;cursor:help;" data-quadbandpop="next_month">${escapeHtml(_qdLbl(mNxt))}</strong>${_distBarMonth(nm)}${nextSectorsHtml}` : '');
 
     // Quarter span
     const qCur = _effectiveQuad(cq) || '—';
@@ -699,7 +730,8 @@ async function loadMacroBand() {
       + `<strong style="color:${_quadColor(qCur)};cursor:help;" data-quadbandpop="cur_qtr">${escapeHtml(_qdLbl(qCur))}</strong>`
       + _distBarQtr(cq)
       + (qDtb != null ? ` <span style="color:#94a3b8;font-size:10px;">(${qDtb}d left)</span>` : '')
-      + (qNxt ? ` → <strong style="color:${_quadColor(qNxt)};opacity:0.7;cursor:help;" data-quadbandpop="next_qtr">${escapeHtml(_qdLbl(qNxt))}</strong>${_distBarQtr(nq)}` : '');
+      + curQtrSectorsHtml
+      + (qNxt ? ` → <strong style="color:${_quadColor(qNxt)};opacity:0.7;cursor:help;" data-quadbandpop="next_qtr">${escapeHtml(_qdLbl(qNxt))}</strong>${_distBarQtr(nq)}${nextQtrSectorsHtml}` : '');
 
     // Macro distribution — same universe as action split below
     if (elF) elF.innerHTML = '';

@@ -385,9 +385,11 @@ def get_quad_band_factors(
             " WHERE period_type='quarterly' AND year=:ny AND period_num=:nq"
         ), {"ny": _nxt_qtr_y, "nq": _nxt_qtr_n}).mappings().first()
 
-        # 4. Style/sector factors with category
+        # 4. Style/sector factors with category. ticker added 2026-07-05 for
+        # the Regime Band's quad-bullish-sector cross-reference against the
+        # Sectors panel (Equity Style rows have no ticker, stays null there).
         factors = s.execute(text(
-            "SELECT category,sub_category,quad1,quad2,quad3,quad4"
+            "SELECT category,sub_category,ticker,quad1,quad2,quad3,quad4"
             " FROM ref_quad_outlook"
             " WHERE category IN ('Equity Sectors','Equity Style')"
             " ORDER BY category,sub_category"
@@ -429,6 +431,7 @@ def get_quad_band_factors(
         factor_list.append({
             "category": row["category"],
             "factor": row["sub_category"],
+            "ticker": row["ticker"],
             "cur_month": row[cur_col] if cur_col else None,
             "next_month": row[nxt_col] if nxt_col else None,
             "cur_qtr": row[qtr_col] if qtr_col else None,
