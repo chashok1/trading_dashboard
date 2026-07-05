@@ -75,10 +75,10 @@
   // tape chip (2026-07-04, user-specified strings, not abbreviations of the
   // zone name) — mirrors volZoneCls's classes.
   function _volZoneLabel(zoneCls) {
-    if (zoneCls === 'mt-up')   return 'Invst';
-    if (zoneCls === 'mt-chop') return 'Chop';
-    if (zoneCls === 'mt-down') return 'Fck';
-    return 'None';
+    if (zoneCls === 'mt-up')   return 'invst';
+    if (zoneCls === 'mt-chop') return 'chop';
+    if (zoneCls === 'mt-down') return 'fck';
+    return 'none';
   }
 
   // Solid background+text pill for the zone label (2026-07-04) — same

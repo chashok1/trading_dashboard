@@ -118,7 +118,7 @@ html, body {
   padding: 0;
   border-bottom: 1px solid var(--border);
   background: var(--card-bg);
-  height: 28px;
+  height: 36px;
 }
 
 #hbBanner { display: none !important; }
@@ -971,7 +971,11 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   align-items: center;
   gap: 0;
   height: 30px;
-  background: var(--card-bg);
+  /* Hedgeye panel's wrapper background (2026-07-04) -- same light-lavender
+     shade as its outer panel wrapper in hedgeye_panel.js
+     (background:#f0eefb; border:1px solid #d5d0f0;), for a matching look.
+     Was var(--card-bg) before. */
+  background: #f0eefb;
   border-bottom: none;
   margin-top: 2px;
   overflow-x: auto;
@@ -1025,17 +1029,20 @@ tbody td.num { font-variant-numeric: tabular-nums; }
    compare). Each .mt-group (built in market_bar.js's buildMiniTapeHtml)
    gets a shared background + border + rounded corners, so "these tiles
    belong together" is an explicit visual container instead of an
-   absence-of-border inference. Same background/border/radius as the
-   Regime Band (#macroBand in actionable.html) for visual consistency with
-   an existing "light box" convention already used elsewhere on this
-   screen. Per-chip border-right removed inside the mini-tape since the
-   group box now carries the separation between groups. */
+   absence-of-border inference. EXPERIMENT: swapped to the Hedgeye panel's
+   card style (CARD_BASE in hedgeye_panel.js: white + light-purple border +
+   purple-tinted shadow) for comparison against the Regime Band look this
+   previously used (background:#f8f8fc; border:1px solid #e0e0f0; no
+   shadow) -- revert to those three values if this isn't the one to keep.
+   Per-chip border-right removed inside the mini-tape since the group box
+   now carries the separation between groups. */
 .market-tape .mt-group {
   display: inline-flex;
   align-items: stretch;
-  background: #f8f8fc;
-  border: 1px solid #e0e0f0;
+  background: #fff;
+  border: 1px solid #e0daf5;
   border-radius: 5px;
+  box-shadow: 0 1px 4px rgba(83, 74, 183, 0.07);
   margin: 1px 2px;
   padding: 3px 4px;
 }
