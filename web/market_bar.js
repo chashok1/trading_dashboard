@@ -530,7 +530,7 @@
       ? asOfDate.slice(5, 7) + '/' + asOfDate.slice(8, 10)
       : asOfDate;
     const label    = timeStr ? `${dateStr} ${timeStr}` : dateStr;
-    return `<span class="mt-asof">as of ${escHtml(label)}</span>`;
+    return `<span class="mt-asof">${escHtml(label)}</span>`;
   }
 
   // ---- build econ expander panel ----------------------------------------

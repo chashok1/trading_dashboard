@@ -1078,7 +1078,7 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 .market-tape .rr-chip[data-sym="LQD"],
 .market-tape .rr-chip[data-sym="Yen"],
 .market-tape .rr-chip[data-sym="10Y"] {
-  padding-left: 3px;
+  padding-left: 8px;
 }
 
 /* Candle SVG: fixed 7×20px (no CSS resizing — SVG height attribute controls size, no scaling). */
