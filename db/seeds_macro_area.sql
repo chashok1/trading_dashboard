@@ -151,3 +151,41 @@ VALUES
   ('remaining', 'Tech & ETFs', 'SPMO',  'dual', 150),
   ('remaining', 'Tech & ETFs', 'URA',   'dual', 160)
 ON CONFLICT (area_key, member_symbol) DO NOTHING;
+
+-- 2026-07-04: friendly per-member labels for the cryptic (non-stock/ETF)
+-- symbols only -- futures (/XX), $-prefixed index tickers, FRED/CGI-suffixed
+-- treasury yields, and foreign indices. Stock/ETF rows above keep their
+-- label = the area name (repeated), same as before -- macro_areas.js only
+-- treats a member's label as a real override when it differs from the
+-- area's own label (member.label !== area.label), so those rows still fall
+-- back to displaying their own ticker (already readable). UPDATE, not
+-- re-INSERT with DO UPDATE, so this file's existing "DO NOTHING preserves
+-- hand customisations" convention for the INSERTs above stays intact.
+UPDATE ref_macro_area SET label = 'Dollar'          WHERE area_key = 'top9' AND member_symbol = '$DXY';
+UPDATE ref_macro_area SET label = 'S&P 500'         WHERE area_key = 'top9' AND member_symbol = 'SPX';
+UPDATE ref_macro_area SET label = 'Nasdaq'          WHERE area_key = 'top9' AND member_symbol = '$COMP';
+UPDATE ref_macro_area SET label = 'Russell 2000'    WHERE area_key = 'top9' AND member_symbol = 'RUT';
+UPDATE ref_macro_area SET label = 'Dow'             WHERE area_key = 'top9' AND member_symbol = '$DJI';
+
+UPDATE ref_macro_area SET label = '2Y Treasury'     WHERE area_key = 'rates_duration' AND member_symbol = 'DGS2:FRED';
+UPDATE ref_macro_area SET label = '10Y Treasury'    WHERE area_key = 'rates_duration' AND member_symbol = 'TNX:CGI';
+UPDATE ref_macro_area SET label = '30Y Treasury'    WHERE area_key = 'rates_duration' AND member_symbol = 'TYX:CGI';
+
+UPDATE ref_macro_area SET label = 'Oil (WTI)'       WHERE area_key = 'commodities_credit' AND member_symbol = '/CL';
+UPDATE ref_macro_area SET label = 'Oil (Brent)'     WHERE area_key = 'commodities_credit' AND member_symbol = '/BZ';
+UPDATE ref_macro_area SET label = 'Gold'            WHERE area_key = 'commodities_credit' AND member_symbol = '/GC';
+UPDATE ref_macro_area SET label = 'Copper'          WHERE area_key = 'commodities_credit' AND member_symbol = '/HG';
+UPDATE ref_macro_area SET label = 'Nat Gas'         WHERE area_key = 'commodities_credit' AND member_symbol = '/NG';
+UPDATE ref_macro_area SET label = 'Silver'          WHERE area_key = 'commodities_credit' AND member_symbol = '/SI';
+
+UPDATE ref_macro_area SET label = 'Dollar'          WHERE area_key = 'usd_currency' AND member_symbol = '$DXY';
+UPDATE ref_macro_area SET label = 'British Pound'   WHERE area_key = 'usd_currency' AND member_symbol = '/6B';
+UPDATE ref_macro_area SET label = 'Canadian Dollar' WHERE area_key = 'usd_currency' AND member_symbol = '/6C';
+UPDATE ref_macro_area SET label = 'Euro'            WHERE area_key = 'usd_currency' AND member_symbol = '/6E';
+UPDATE ref_macro_area SET label = 'Japanese Yen'    WHERE area_key = 'usd_currency' AND member_symbol = '/6J';
+
+UPDATE ref_macro_area SET label = 'Shanghai'        WHERE area_key = 'country_etfs' AND member_symbol = '$SSEC';
+UPDATE ref_macro_area SET label = 'Germany'         WHERE area_key = 'country_etfs' AND member_symbol = 'GDAXI:DE';
+UPDATE ref_macro_area SET label = 'Japan'           WHERE area_key = 'country_etfs' AND member_symbol = 'N225:JP';
+
+UPDATE ref_macro_area SET label = 'Bitcoin'         WHERE area_key = 'crypto' AND member_symbol = '/BTC';

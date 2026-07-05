@@ -130,12 +130,29 @@
     return '<span class="msr-chg" style="background:' + bg + ';">' + esc(txt) + '</span>';
   }
 
+  // Friendly display name for a non-gauge member (2026-07-04) — ref_macro_
+  // area.label is a per-row column that's the AREA's own label repeated for
+  // most members (stocks/ETFs: already-readable tickers, left alone) but a
+  // genuine override for cryptic ones (futures /XX, $-index tickers, FRED/
+  // CGI-suffixed yields, foreign indices — e.g. '/GC' -> 'Gold'). Detect a
+  // real override by checking it differs from the area's own label; only
+  // then prefer it over the raw symbol.
+  function _memberDisplayName(m, area) {
+    return (m.label && m.label !== area.label) ? m.label : m.symbol;
+  }
+
   // Native title-attribute tooltip for the compact row (symbol/price/%chg/
   // outlook) — the anatomy no longer shows a separate price column (tape
   // convention: price lives in the hover, only %chg is a visible chip).
-  function _rowTitle(m) {
+  // Includes both the friendly name (if the row is showing one) and the raw
+  // symbol, so a renamed row like "Gold" doesn't lose its "/GC" identity.
+  function _rowTitle(m, displayName) {
     var parts = [];
-    if (m.symbol) parts.push(m.symbol);
+    if (displayName && m.symbol && displayName !== m.symbol) {
+      parts.push(displayName + ' (' + m.symbol + ')');
+    } else if (m.symbol) {
+      parts.push(m.symbol);
+    }
     var priceTxt = _fmtPrice(m.last);
     if (priceTxt !== null) parts.push(priceTxt);
     if (m.pct_change !== null && m.pct_change !== undefined) {
@@ -264,10 +281,11 @@
           '</div>'
         );
       }
+      var dispName = _memberDisplayName(m, area);
       return (
-        '<div class="msr-row" title="' + esc(_rowTitle(m)) + '">' +
+        '<div class="msr-row" title="' + esc(_rowTitle(m, dispName)) + '">' +
           '<span class="msr-name msr-name-tick" style="color:' + _nameColor(m.outlook) + ';">' +
-            _msGlyph(m.monthly_score) + esc(m.symbol) +
+            _msGlyph(m.monthly_score) + esc(dispName) +
           '</span>' +
           '<div class="msr-data-cluster">' +
             durArrow(m.trade, 'Td') +

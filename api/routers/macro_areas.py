@@ -82,6 +82,25 @@ _AREA_ORDER = [
     "usd_currency", "country_etfs", "crypto", "remaining",
 ]
 
+# Canonical area display name, matching the side-rail section headers in
+# actionable.html exactly (2026-07-04). Hardcoded here rather than derived
+# from ref_macro_area.label: that column is reused per-member for two
+# different things (the area's own name, repeated on most rows, vs. a
+# genuine per-member override like '/GC' -> 'Gold' on a few) -- once enough
+# members in an area carry a real override, neither "last row" nor "most
+# common" reliably recovers the true area name from that column anymore.
+_AREA_DISPLAY_NAME = {
+    "volatility":          "Volatility",
+    "top9":                "Major Markets",
+    "rates_duration":      "Rates & Duration",
+    "credit":              "Credit",
+    "commodities_credit":  "Commodities",
+    "usd_currency":        "USD & Currency",
+    "country_etfs":        "Country ETFs",
+    "crypto":              "Crypto",
+    "remaining":           "Tech & ETFs",
+}
+
 # Symbols that are yield-curve members — skip rr_pos
 _CURVE_SYMS = {"DGS2:FRED", "TNX:CGI", "TYX:CGI"}
 
@@ -260,17 +279,15 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
     # Group members by area
     from collections import defaultdict
     area_members: dict[str, list] = defaultdict(list)
-    area_label: dict[str, str] = {}
     for r in members_rows:
         area_members[r["area_key"]].append(dict(r))
-        area_label[r["area_key"]] = r["label"]
 
     areas_out: list[dict] = []
     for area_key in _AREA_ORDER:
         if area_key not in area_members:
             continue
         members_cfg = area_members[area_key]
-        label = area_label.get(area_key, area_key)
+        label = _AREA_DISPLAY_NAME.get(area_key, area_key)
 
         member_details: list[dict] = []
         sigs: list[int] = []
@@ -336,6 +353,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 member_details.append({
                     "symbol": sym,
                     "role": role,
+                    "label": mc.get("label"),
                     "last": _maybe_float(last),
                     "pct_change": _maybe_float(pct_chg),
                     "open": ohlc.get("open"),
@@ -388,6 +406,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             member_details.append({
                 "symbol": sym,
                 "role": role,
+                "label": mc.get("label"),
                 "last": _maybe_float(last),
                 "pct_change": _maybe_float(pct_chg),
                 "open": ohlc.get("open"),
