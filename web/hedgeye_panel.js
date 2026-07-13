@@ -253,8 +253,9 @@
           // as the INFL image below).
           return '<img src="' + esc(msr.image_url) + '" ' +
             'style="max-height:90px; max-width:100%; width:auto; height:auto; ' +
-            'border-radius:3px; display:block; cursor:pointer;" ' +
+            'border-radius:3px; display:block; cursor:zoom-in;" ' +
             'data-hetip="' + idx + '" ' +
+            'onclick="window._heShowImagePopup(\'' + esc(msr.image_url) + '\')" ' +
             'onerror="this.style.display=\'none\'">';
         })()
       : '';
@@ -507,7 +508,7 @@
     // need both rows merged into one shared grid (CSS subgrid) instead of
     // two separate ones -- a bigger change, only worth it if this
     // approximation isn't close enough in practice.
-    var GRID_ROW_MACRO = 'display:grid; grid-template-columns: minmax(300px, 418px) ' +
+    var GRID_ROW_MACRO = 'display:grid; grid-template-columns: minmax(433px, 551px) ' +
       'minmax(220px, 1fr); gap:3px; align-items:stretch; margin-top:3px;';
     var rowMacroTop3 = (data.call_macro || (data.top3_things && data.top3_things.note_text))
       ? '<div style="' + GRID_ROW_MACRO + '">' +

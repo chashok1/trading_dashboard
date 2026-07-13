@@ -89,6 +89,20 @@ def _norm_pcts(p):
     return [x / total for x in pcts]
 
 
+def _effective_quad_label(p) -> str | None:
+    """Argmax of quad1_pct..quad4_pct, falling back to the declared `quad`
+    column when the distribution is missing/all-zero. Mirrors
+    api/routers/dash.py::_effective_quad_col so the sparkline popup never
+    disagrees with the MACRO tooltip about which quad a month's own
+    distribution actually favors (ref_quad_periods.quad can be stale/
+    inconsistent with its own quad1_pct..quad4_pct — the distribution wins)."""
+    raw = [float(getattr(p, f'quad{i+1}_pct') or 0) for i in range(4)]
+    if any(raw):
+        best = max(range(4), key=lambda i: raw[i])
+        return f"Quad {best + 1}"
+    return p.quad
+
+
 def _classify_style(beta, pe_ratio, div_yield, rsi, market_cap_str, sector):
     """Return list of (category, sub_category, weight) style memberships."""
     tags = []
@@ -167,7 +181,18 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
     thr_stm = _float('macro_thr_stm', _float('macronet_threshold_stm', -0.5))
     thr_sa  = _float('macro_thr_sa',  _float('macronet_threshold_ss',  -1.5))
 
-    def to_action(v):
+    def to_action(v, m, q):
+        # When month and quarter agree on direction, never land in HOLD.
+        # Positive side: floor to BS, still reaching BM if the blend clears
+        # that bar (score-driven, symmetric with the disagreement case below).
+        # Negative side: agreement alone is decisive -> always SA, not a
+        # score-gated STM/SA split (2026-07-06; asymmetric by design — the
+        # user wants any negative agreement treated as a full sell signal,
+        # not scaled by how mild either component is).
+        if m > 0 and q > 0:
+            return 'BM' if v >= thr_bm else 'BS'
+        if m < 0 and q < 0:
+            return 'SA'
         if v >= thr_bm:   return 'BM'
         if v >= thr_bs:   return 'BS'
         if v <= thr_sa:   return 'SA'
@@ -293,7 +318,7 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
                 'label':      _lbl,
                 'year':       p.year,
                 'period_num': p.period_num,
-                'quad':       p.quad,
+                'quad':       _effective_quad_label(p),
                 'score':      round(net_m, 4),
                 'is_current': (p.year == cur_mo_y and p.period_num == cur_mo_n),
                 'q1': float(p.quad1_pct or 0),
@@ -314,7 +339,7 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
             'qtr_weight':    round(qtr_w, 4),
             'quarterly_score': round(Q, 4),
             'macronet':           round(macronet, 4),
-            'macro_action':       to_action(macronet),
+            'macro_action':       to_action(macronet, M, Q),
             'monthly_scores_json': json.dumps(monthly_scores),
         })
 

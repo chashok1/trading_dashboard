@@ -190,6 +190,11 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
                 from datetime import datetime as dt_
                 file_dt_str = dt_.fromtimestamp(file_mtime).strftime('%Y-%m-%d')
             run_id = open_run(s, file_path=str(p), file_type='CST', target_tab='hist_cst')
+            # Commit now so the run record survives a later rollback in the
+            # except block below (Postgres aborted-txn recovery would
+            # otherwise silently discard this uncommitted INSERT too,
+            # leaving close_run's error UPDATE matching zero rows).
+            s.commit()
             try:
                 read, ins, skp = load_cs_transactions(s, str(p), p.name)
                 close_run(s, run_id, rows_read=read, rows_inserted=ins, rows_skipped=skp)
@@ -266,6 +271,9 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
                 file_dt_str = dt_.fromtimestamp(file_mtime).strftime('%Y-%m-%d')
             run_id = open_run(s, file_path=str(p), file_type='FT',
                               target_tab='hist_ft')
+            # Commit now so the run record survives a later rollback in the
+            # except block below (see CST branch above for why).
+            s.commit()
             try:
                 read, ins, skp = load_f_transactions(s, str(p), p.name)
                 close_run(s, run_id, rows_read=read, rows_inserted=ins, rows_skipped=skp)
@@ -319,6 +327,9 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
                 return {"status": "skipped", "file_type": "CS", "target_tab": "hist_cs"}
 
             run_id = open_run(s, file_path=str(p), file_type='CS', target_tab='hist_cs')
+            # Commit now so the run record survives a later rollback in the
+            # except block below (see CST branch earlier for why).
+            s.commit()
             try:
                 read, ins, skp = load_cs_positions_csv(s, str(p), p.name)
                 close_run(s, run_id, rows_read=read, rows_inserted=ins, rows_skipped=skp)
@@ -385,6 +396,9 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
 
     with session_scope() as s:
         run_id = open_run(s, file_path=str(p), file_type=ft, target_tab=target_tab)
+        # Commit now so the run record survives a later rollback in the
+        # except block below (see CST branch earlier for why).
+        s.commit()
         all_rows_skipped = False
         try:
             wb = open_workbook(work_path)

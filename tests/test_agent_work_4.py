@@ -330,10 +330,14 @@ class TestPartC_ActionableJs:
         assert "hvRing" not in src, \
             "actionable.js must NOT contain old local 'hvRing'"
 
-    def test_C2_ivGlyphHtml_local_defined(self):
+    def test_C2_iv_column_calls_window_ivGlyph(self):
+        # 2026-07-06: the symTape chip renderer (which used a local
+        # 'ivGlyphHtml' variable) was removed along with the tape itself;
+        # the main grid's own IV column has always called window.ivGlyph
+        # inline (no intermediate local) and is the sole remaining call site.
         src = _read(ACTIONABLE_JS)
-        assert "ivGlyphHtml" in src, \
-            "actionable.js must define local 'ivGlyphHtml' calling window.ivGlyph"
+        assert 'data-col="iv"' in src and "window.ivGlyph(r.iv_percentile" in src, \
+            "actionable.js's IV column must call window.ivGlyph(r.iv_percentile, ...)"
 
     def test_C2b_calls_window_ivGlyph(self):
         src = _read(ACTIONABLE_JS)

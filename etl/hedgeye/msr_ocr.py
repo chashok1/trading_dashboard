@@ -117,4 +117,29 @@ def process_msr_images(
         if spx_saved and gt_done:
             break
 
+    # Some MSR emails omit the Gamma Throttle chart entirely (Hedgeye varies
+    # which charts it includes day to day) — OCR retry can't recover a number
+    # that was never sent. Still record a stub row keyed to the SPX Gamma
+    # chart we DID save, so the Actionable panel's exact-date lookup finds a
+    # row and renders the image instead of going blank. ON CONFLICT DO
+    # NOTHING so this never clobbers a real gamma_throttle row from a
+    # previous or later pass.
+    if spx_saved and not gt_done:
+        try:
+            session.execute(
+                text(
+                    "INSERT INTO hist_msr "
+                    "(snapshot_date, gamma_throttle, rvol_10day, message_id) "
+                    "VALUES (:sd, NULL, NULL, :mid) "
+                    "ON CONFLICT (snapshot_date) DO NOTHING"
+                ),
+                {"sd": email_date, "mid": message_id},
+            )
+            log.info(
+                "msr_ocr: hist_msr stub row inserted date=%s (no Gamma Throttle chart in this email)",
+                email_date,
+            )
+        except Exception as e:
+            log.warning("msr_ocr: hist_msr stub insert failed: %s", e)
+
     return summary

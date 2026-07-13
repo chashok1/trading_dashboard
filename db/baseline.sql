@@ -6848,3 +6848,80 @@ CREATE TABLE IF NOT EXISTS hist_msr (
     rvol_10day      NUMERIC(10,4),
     message_id      TEXT
 );
+
+-- =====================================================
+-- 2026-07-12 TASK_119: stop_breached flag on drv_actionable.
+-- TRUE when a held position's latest price is below its stop_level
+-- (etl/derive_actionable.py::_compute_stop). ADD/INCREASE rows with this
+-- flag are downgraded to an effective HOLD (suppressed_reason =
+-- 'STOP BREACHED') so the surface never recommends adding below a stop.
+-- REMOVE/REDUCE/HOLD rows keep their action, just flagged.
+-- =====================================================
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS stop_breached BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS ix_drv_actionable_stop_breached
+    ON drv_actionable(as_of_date) WHERE stop_breached IS TRUE;
+
+-- =====================================================
+-- 2026-07-12 TASK_118 Part A: SELL-side signal-quality annotation.
+-- v_unproven_sell_rules self-updates from the direction-adjusted rule
+-- scorecard — a SELL composite with a large sample (fires>=500) whose
+-- historical edge is negative (price recovers after it fires). No
+-- hardcoded rule list; BUY-side rules/thresholds are untouched.
+-- low_confidence: TRUE when a symbol's only sell-side evidence comes from
+-- these unproven rules (no source-driven REMOVE/REDUCE, no proven rule).
+-- Annotation only — consolidated_action is never changed by this flag.
+-- =====================================================
+CREATE OR REPLACE VIEW v_unproven_sell_rules AS
+SELECT rule_id, fires, edge_20d, win_rate, confidence
+FROM v_rule_scorecard
+WHERE direction = 'SELL' AND fires >= 500 AND edge_20d < 0;
+
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS low_confidence BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- =====================================================
+-- 2026-07-12 TASK_121: drv_inferred_action — trades inferred from CS/F
+-- position-snapshot deltas (qty_delta), NOT manual logging. Diffed by
+-- etl/derive_inferred_actions.py per consecutive (account, tos_symbol)
+-- snapshot pair. stance compares the inferred direction against that
+-- date's drv_actionable.consolidated_action family.
+-- Idempotent per date range: DELETE WHERE as_of_date BETWEEN ... THEN INSERT.
+-- =====================================================
+CREATE TABLE IF NOT EXISTS drv_inferred_action (
+    as_of_date      DATE    NOT NULL,
+    tos_symbol      TEXT    NOT NULL,
+    account         TEXT    NOT NULL,
+    source_feed     TEXT    NOT NULL CHECK (source_feed IN ('CS','F')),
+    qty_delta       NUMERIC NOT NULL,
+    est_dollar      NUMERIC,
+    inferred_action TEXT    NOT NULL CHECK (inferred_action IN ('BUY','SELL')),
+    rec_action      TEXT,
+    stance          TEXT    NOT NULL
+        CHECK (stance IN ('FOLLOWED','CONTRADICTED','NO_SIGNAL')),
+    fwd_5d_pct      NUMERIC,
+    fwd_20d_pct     NUMERIC,
+    computed_at     TIMESTAMP NOT NULL DEFAULT now(),
+    PRIMARY KEY (as_of_date, tos_symbol, account)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_inferred_action_date
+    ON drv_inferred_action(as_of_date);
+CREATE INDEX IF NOT EXISTS ix_drv_inferred_action_stance
+    ON drv_inferred_action(stance);
+CREATE INDEX IF NOT EXISTS ix_drv_inferred_action_sym
+    ON drv_inferred_action(tos_symbol, as_of_date);
+
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('inferred_action_min_dollar', '100',
+     'Minimum est_dollar for a CS/F qty delta to count as an inferred trade (filters dividend-reinvest noise)')
+ON CONFLICT (setting_name) DO NOTHING;
+
+-- Read path for /api/rules/my-actions (TASK_121). Kept as a thin passthrough
+-- so it can be extended without touching the base table; the older
+-- v_user_action_performance (transaction-log based, TASK_71) is left intact
+-- for comparison.
+CREATE OR REPLACE VIEW v_inferred_action_performance AS
+SELECT as_of_date, tos_symbol, account, source_feed, qty_delta, est_dollar,
+       inferred_action, rec_action, stance, fwd_5d_pct, fwd_20d_pct
+FROM drv_inferred_action;
+

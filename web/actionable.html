@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Actionable Stocks — Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/styles.css?v=20260706a">
   <style>
     .act-toolbar {
       background: var(--surface, #fafafa);
@@ -55,6 +56,37 @@
     .act-chip-hold     { border-left: 4px solid var(--act-neutral); }
     .act-chip-none     { border-left: 4px solid #c4c4c4; }
     .act-chip-over_max { border-left: 4px solid var(--act-sell-weak); }
+    .act-chip-stop     { border-left: 4px solid #dc2626; }
+
+    /* TASK_119: stop-breach row + pill */
+    tr.row-stop-breach { border-left: 3px solid #dc2626; }
+    .stop-pill {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 1px 5px;
+      border-radius: 8px;
+      background: #fee2e2;
+      color: #dc2626;
+      border: 1px solid #dc2626;
+      font-size: 9px;
+      font-weight: 700;
+      vertical-align: middle;
+    }
+
+    /* TASK_122: "NEW" pill — Watchlist band only, same shape as .stop-pill,
+       blue tint so it never reads as a warning. */
+    .new-pill {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 1px 5px;
+      border-radius: 8px;
+      background: #dbeafe;
+      color: #0a58ca;
+      border: 1px solid #0a58ca;
+      font-size: 9px;
+      font-weight: 700;
+      vertical-align: middle;
+    }
 
     .src-reasons { margin-top: 0; }
     .src-reason-line { display:flex; align-items:baseline; gap:2px; line-height:1.25;
@@ -154,27 +186,6 @@
     .source-pop td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; word-break: break-word; }
     .source-pop .sp-sec { color: #94a3b8; font-size: 9px;
                           text-transform: uppercase; letter-spacing: 0.5px; padding-top: 5px; }
-    .sym-tile-pop {
-      position: fixed; z-index: 1001;
-      background: #fff; color: #1e293b;
-      border: 1px solid #e2e8f0; border-radius: 8px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.14);
-      padding: 8px 12px; font-size: 11px; line-height: 1.5;
-      min-width: 200px; max-width: 280px; pointer-events: none;
-    }
-    .stp-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
-                  padding-bottom: 5px; border-bottom: 1px solid #e2e8f0; }
-    .stp-sym { font-weight: 700; font-size: 12px; }
-    .stp-price { margin-left: auto; font-size: 10px; color: #475569; }
-    .stp-section { margin-top: 5px; }
-    .stp-label { font-size: 9px; font-weight: 700; text-transform: uppercase;
-                 letter-spacing: 0.5px; color: #94a3b8; margin-bottom: 3px; }
-    .stp-row { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
-    .stp-key { color: #64748b; min-width: 44px; flex-shrink: 0; }
-    .stp-val { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
-    .stp-desc { font-size: 10px; color: #64748b; margin-top: 2px; }
-    .stp-rules { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
-
     /* .badge-action and .badge-action-* removed — superseded by .act-badge in styles.css */
 
     .pill {
@@ -406,6 +417,21 @@
     .cmp-delta-changed { color: #8c1d1d; }
     .cmp-delta-none { color: var(--text-2, #aaa); }
     .cmp-empty { font-size: 10px; color: var(--text-2, #888); padding: 6px 2px; }
+    .cmp-call-note { margin-top: 8px; font-size: 11px; }
+    .cmp-call-note-group + .cmp-call-note-group { margin-top: 10px; }
+    .cmp-call-note-group-head {
+      font-size: 10px; font-weight: 700; color: var(--text-2, #555);
+      margin-bottom: 4px;
+    }
+    .cmp-call-note-block {
+      padding: 8px 10px; border-left: 3px solid #1f7af2; background: #f4f8ff;
+    }
+    .cmp-call-note-block + .cmp-call-note-block { margin-top: 6px; }
+    .cmp-call-note-head {
+      font-size: 9px; text-transform: uppercase; letter-spacing: 0.4px;
+      color: var(--text-2, #666); margin-bottom: 4px;
+    }
+    .cmp-call-note-body { white-space: pre-wrap; line-height: 1.4; }
 
     /* Icon-only toolbar buttons (Focus, Export CSV) — match topbar .btn height/padding */
     .btn-icon {
@@ -494,18 +520,6 @@
 
     /* ── Pass 1: AMT$ prominent cell ─────────────────────────────────────── */
     .amt-primary { font-size: 11px; font-weight: 800; }
-
-    /* ── Pass 2: Show-all bar ─────────────────────────────────────────────── */
-    .show-all-bar {
-      text-align: center; padding: 8px;
-      border-top: 1px solid var(--border, #ececec);
-    }
-    .show-all-bar button {
-      padding: 4px 16px; font-size: 11px;
-      border: 1px solid var(--border, #ddd); border-radius: 6px;
-      background: #f5f5f7; cursor: pointer;
-    }
-    .show-all-bar button:hover { background: #e8e8ec; }
 
     /* ── Pass 3: Inline action buttons ──────────────────────────────────── */
     .act-inline-btns { display: flex; gap: 4px; align-items: center; white-space: nowrap; }
@@ -774,14 +788,6 @@
         <button class="btn-dismiss" id="bulkClearBtn" style="margin-left:auto;">Clear</button>
       </div>
 
-      <!-- Symbol tape: filterable chip bar, directly above the grid -->
-      <div id="symTape" class="sym-tape-bar">
-        <button id="symTapePrev" class="sym-tape-nav" title="Previous batch">&#9664;</button>
-        <div id="symTapeTrack" class="sym-tape-track"></div>
-        <button id="symTapeNext" class="sym-tape-nav" title="Next batch">&#9654;</button>
-        <span id="symTapeBadge" class="sym-tape-badge"></span>
-      </div>
-
       <div class="act-content-row">
       <div class="act-table-wrap">
         <table class="act-grid" id="actGrid">
@@ -798,6 +804,7 @@
               <th data-col="calc" class="sortable" data-key="fc_strength_cal" data-type="num" title="Final Call (cal): calibrated call from bull_prob probability bands. Evaluation-only — compare vs Final Call to assess the model. NULL when no active model." style="width:90px;">CALC</th>
               <th data-col="sources" class="sortable" data-key="consolidated_action" data-type="str" data-label="Sources" title="Consolidated from RR/CALL/ETF/II/SSS/PS (most-aggressive-wins), then sized to your min/max/holdings." style="width:41px;">Sources</th>
               <th data-col="technical" class="sortable" data-key="rr_action" data-type="str" data-label="Technical" title="Trend-vs-Trade crossover + Bollinger range streak + Risk-Range position." style="width:200px;">Technical</th>
+              <th data-col="rr" title="Risk Range position: where the last price sits between LRR (Low, left) and TRR (Top, right)." style="width:44px;">RR</th>
               <th data-col="vlm" class="num sortable" data-key="rvol" data-type="num" title="Relative Volume (today÷10d avg). Hollow = below avg; solid gray = ~avg; amber/green = above avg. Caret = vs yesterday." style="width:36px;">Vlm</th>
               <th data-col="iv" class="num" title="IV Glyph: IVP (blue) · HV (slate) · IV (dark). Background = IV/HV discount shade." style="width:44px;">IV</th>
               <th data-col="macd" class="num sortable" data-key="a_macd_brr" data-type="num" title="MACD Bull-Run-Risk score" style="width:52px;">MACD</th>
@@ -811,9 +818,6 @@
           </thead>
           <tbody id="actBody"></tbody>
         </table>
-        <div class="show-all-bar" id="showAllBar" style="display:none;">
-          <button type="button" id="showAllBtn"></button>
-        </div>
         <div class="empty-state" id="emptyState" style="display:none;">No actionable rows match these filters.</div>
       </div><!-- end .act-table-wrap -->
       </div><!-- end .act-content-row -->
@@ -843,6 +847,61 @@
           </div>
           <div class="sp-body">
             <div id="macroRailTop9"><div class="msr-loading">Loading…</div></div>
+          </div>
+        </section>
+
+        <!-- Econ Indicators / Earnings / Quads / Dollar Correlation — pulled up
+             to sit directly below Major Markets, ahead of the Macro Rail panels. -->
+        <section class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="econIndicators">
+            Econ Indicators
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div class="side-scroll">
+              <table class="mini-grid">
+                <thead><tr><th>Indicator</th><th>Date</th><th>Days</th></tr></thead>
+                <tbody id="econBody"></tbody>
+              </table>
+              <div class="empty-note" id="econEmpty" hidden>No data.</div>
+            </div>
+          </div>
+        </section>
+        <section class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="symbolEarnings">
+            Earnings
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div class="side-scroll">
+              <table class="mini-grid">
+                <thead><tr><th>Symbol</th><th>Date</th><th>In</th></tr></thead>
+                <tbody id="symEarningsBody"></tbody>
+              </table>
+              <div class="empty-note" id="symEarningsEmpty" hidden>No upcoming earnings.</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Quad Outlook — monthly distributions + quarterly quads -->
+        <section id="quadOutlookSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="quadOutlook">
+            <span id="quadOutlookHdr">Quads</span>
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div id="quadOutlookBody"><div class="msr-loading">Loading…</div></div>
+          </div>
+        </section>
+
+        <!-- USD Correlations — own collapsible panel -->
+        <section id="usdCorrSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="usdCorr">
+            <span id="usdCorrSideHdr" style="font-size:10px;font-weight:600;">Dollar Correlation</span>
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div id="macroRailCorr"><div class="msr-loading">Loading…</div></div>
           </div>
         </section>
 
@@ -933,63 +992,9 @@
             <div id="macroRailCountry"><div class="msr-loading">Loading…</div></div>
           </div>
         </section>
-
-        <!-- USD Correlations — own collapsible panel -->
-        <section id="usdCorrSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="usdCorr">
-            <span id="usdCorrSideHdr" style="font-size:10px;font-weight:600;">Dollar Correlation</span>
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div id="macroRailCorr"><div class="msr-loading">Loading…</div></div>
-          </div>
-        </section>
-
-        <!-- Quad Outlook — monthly distributions + quarterly quads -->
-        <section id="quadOutlookSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="quadOutlook">
-            <span id="quadOutlookHdr">Quads</span>
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div id="quadOutlookBody"><div class="msr-loading">Loading…</div></div>
-          </div>
-        </section>
-
-        <section class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="econIndicators">
-            Econ Indicators
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div class="side-scroll">
-              <table class="mini-grid">
-                <thead><tr><th>Indicator</th><th>Date</th><th>Days</th></tr></thead>
-                <tbody id="econBody"></tbody>
-              </table>
-              <div class="empty-note" id="econEmpty" hidden>No data.</div>
-            </div>
-          </div>
-        </section>
-        <section class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="symbolEarnings">
-            Earnings
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div class="side-scroll">
-              <table class="mini-grid">
-                <thead><tr><th>Symbol</th><th>Date</th><th>In</th></tr></thead>
-                <tbody id="symEarningsBody"></tbody>
-              </table>
-              <div class="empty-note" id="symEarningsEmpty" hidden>No upcoming earnings.</div>
-            </div>
-          </div>
-        </section>
       </aside>
     </div><!-- end .card -->
   <div id="sourcePop" class="source-pop"></div>
-  <div id="symTilePop" class="sym-tile-pop" style="display:none;"></div>
   <div id="colMenuPop" class="source-pop" style="display:none; pointer-events:auto;"></div>
   <div id="legendPop" class="source-pop" style="display:none; pointer-events:auto; max-width:420px;"></div>
 
@@ -1073,7 +1078,16 @@
       <div class="modal-section">
         <div style="display:flex;align-items:flex-start;gap:12px;">
           <h3 style="margin:0;white-space:nowrap;min-width:110px;">Chart</h3>
-          <div id="modalTvChart" style="flex:1;height:320px;border-radius:6px;overflow:hidden;"></div>
+          <div style="flex:1;display:flex;gap:10px;min-width:0;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-2,#888);margin-bottom:4px;">Daily</div>
+              <div id="modalTvChart" style="height:320px;border-radius:6px;overflow:hidden;"></div>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.4px;color:var(--text-2,#888);margin-bottom:4px;">Today &middot; 5m</div>
+              <div id="modalTvChartIntraday" style="height:320px;border-radius:6px;overflow:hidden;"></div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1131,7 +1145,7 @@
   <script src="/static/_common.js"></script>
   <script src="/static/chart_modal.js"></script>
   <script src="/static/actions.js"></script>
-  <script src="/static/actionable.js"></script>
+  <script src="/static/actionable.js?v=20260706h"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
   <script src="/static/macro_areas.js" defer></script>

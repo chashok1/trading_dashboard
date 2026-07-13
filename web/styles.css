@@ -1116,7 +1116,7 @@ svg.rr-candle {
   margin-left: 3px;
 }
 
-/* symTapeTrack chips (rr-chip-top = old full-width row layout, unchanged) */
+/* rr-chip-top = old full-width row layout, unchanged; currently unused */
 .rr-chip-top {
   display: flex;
   align-items: center;
@@ -1130,9 +1130,10 @@ svg.rr-candle {
   align-items: stretch;
   gap: 2px;
 }
-/* Mini-tape (2026-07-04): tighter than the symbol tape's shared default —
-   less space between sym-col and the now-inline candle. Scoped to
-   .market-tape (unique to #rrTape1) so #symTapeTrack keeps its own gap. */
+/* Mini-tape (2026-07-04): tighter than the shared default — less space
+   between sym-col and the now-inline candle. Scoped to .market-tape
+   (unique to #rrTape1) so other consumers of .rr-chip-body keep the
+   default gap. */
 .market-tape .rr-chip-body {
   gap: 0;
 }
@@ -1152,13 +1153,7 @@ svg.rr-candle {
   letter-spacing: 0.03em;
   white-space: nowrap;
 }
-/* Smaller font on all tapes */
-.market-tape .rr-sym,
-#symTapeTrack .rr-sym { font-size: 8px; }
-/* Mini-tape only (not #symTapeTrack), 2026-07-04, kept alongside the group
-   boxes above -- a touch bigger and more spaced out than the shared 8px
-   rule, now that the group box's own padding gives a little extra room to
-   work with. */
+/* Smaller font on the mini-tape (2026-07-04) */
 .market-tape .rr-sym {
   font-size: 9px;
   letter-spacing: 0.05em;
@@ -1197,8 +1192,7 @@ svg.rr-candle {
   border-radius: 1px;
 }
 /* Sphere marker on all tape range bars */
-.market-tape .rr-rb .rr-rb-tick,
-#symTapeTrack .rr-rb .rr-rb-tick {
+.market-tape .rr-rb .rr-rb-tick {
   width: 4px;
   height: 4px;
   border-radius: 50%;
@@ -1228,95 +1222,6 @@ svg.rr-candle {
   height: 2px;
 }
 
-/* Symbol tape chip: action label + IV row */
-.sym-tile-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  overflow: visible;
-}
-.sym-act-lbl {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1;
-  flex-shrink: 0;
-}
-.sym-rvol {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  flex-shrink: 0;
-}
-.sym-iv {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-
-/* Symbol tape — filterable, below the actionable filter bar */
-.sym-tape-bar {
-  display: flex;
-  align-items: center;
-  height: 55px;
-  background: var(--card-bg);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.sym-tape-track {
-  flex: 1;
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
-  overflow: hidden;
-  height: 100%;
-  padding: 0 2px;
-}
-#symTapeTrack .rr-chip {
-  height: 100%;
-  overflow: visible;
-  border-right: none;
-  padding-right: 3px;
-}
-/* ::before separator replaced by candle SVG */
-#symTapeTrack .rr-chip + .rr-chip::before { display: none; }
-/* Candle inline in icons row — static, pushed right to align with button edge */
-#symTapeTrack .sym-tile-meta svg.rr-candle {
-  position: static;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-.sym-tape-nav {
-  flex-shrink: 0;
-  width: 28px;
-  height: 100%;
-  border: none;
-  border-right: 1px solid var(--border);
-  background: var(--card-bg);
-  cursor: pointer;
-  font-size: 11px;
-  color: var(--text-2);
-}
-.sym-tape-nav:last-of-type { border-right: none; border-left: 1px solid var(--border); }
-.sym-tape-nav:disabled { opacity: 0.25; cursor: default; }
-.sym-tape-nav:not(:disabled):hover { background: rgba(0,0,0,0.04); }
-.sym-tape-badge {
-  flex-shrink: 0;
-  font-size: 10px;
-  color: var(--text-3);
-  padding: 0 8px;
-  border-left: 1px solid var(--border);
-  height: 100%;
-  display: flex;
-  align-items: center;
-  white-space: nowrap;
-}
 
 /* Toolbar toggle buttons (Actionable, TV) — default + active states */
 #actionableOnlyBtn, #tvToggleBtn {
@@ -1775,6 +1680,16 @@ svg.rr-candle {
   position: static; top: auto; right: auto;
   width: 7px; height: 14px; flex-shrink: 0; display: block;
 }
+/* Candle in the Actionable grid's %CHG cell (2026-07-06): same fix as
+   .msr-row above — the base svg.rr-candle rule is position:absolute for
+   the tape's corner-overlay use case, which has no meaning inside this
+   cell's flex row and just flies the SVG out to whatever positioned
+   ancestor happens to exist, so it never actually renders next to the
+   %CHG text without this override. */
+.chg-candle-row svg.rr-candle {
+  position: static; top: auto; right: auto;
+  width: 7px; height: 14px; flex-shrink: 0; display: block;
+}
 /* Stance arrowhead SVG */
 .msr-arrow { width: 14px; height: 14px; flex-shrink: 0; display: inline-block; }
 .msr-arrow-long  { color: #166534; }
@@ -1940,9 +1855,9 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .act-side .mini-grid { font-size: 10px; }
 .act-side .mini-grid th { font-size: 9px; padding: 2px 5px; background: #fff; }
 .act-side .mini-grid td { padding: 2px 5px; }
-/* Econ Indicators / Earnings — cap to ~10 visible rows instead of the
+/* Econ Indicators / Earnings — cap to ~6 visible rows instead of the
    viewport-relative height shared with the Dashboard screen's econ panel. */
-.act-side .side-scroll { max-height: 200px; }
+.act-side .side-scroll { max-height: 120px; }
 
 /* ── TASK_86: Regime band — Bull/Bear factor pills ────────────────────────── */
 .qf-group    { display: inline-flex; align-items: center; gap: 4px; }

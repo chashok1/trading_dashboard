@@ -13,6 +13,7 @@ const TOGGLEABLE_COLS = [
   { id: 'calc',      label: 'CALC' },
   { id: 'sources',   label: 'Sources' },
   { id: 'technical', label: 'Technical' },
+  { id: 'rr',        label: 'RR' },
   { id: 'vlm',       label: 'Vlm' },
   { id: 'iv',        label: 'IV' },
   { id: 'macd',      label: 'MACD' },
@@ -53,7 +54,12 @@ const state = {
     actionable_only: true, // hides HOLD and NONE rows by default
     bull_prob_min: 0,    // TASK_66: minimum bull_prob (0 = no filter)
     agreement_class: '', // TASK_69: '' = all; else exact match on agreement_class
+    stopOnly: false,     // TASK_119: STOP chip — filter to stop_breached rows
   },
+  // TASK_120 buy-noise gate: manual expand/collapse for the "Watchlist (n)"
+  // band (gated unheld ADD/BMN rows). Auto-expands (without flipping this
+  // flag) whenever an active filter/search matches a row inside the band.
+  watchlistExpanded: false,
   current: null,
   sourceMethods: {},   // source_code -> base_weight_method (Metric-column sort)
   buysellSeq: {},      // buysell code -> seq from ref_param_lookup (priority sort)
@@ -61,9 +67,6 @@ const state = {
   quadFactors: null,        // cached from /api/quad/band-factors for MACRO tooltip
   quadData: null,           // cached from /api/dashboard/quads (period dates for dtb)
   allAccounts: [],          // [{account_number, display_name, short_name, custom_name}] from /api/actionable/accounts
-  // Pass 2: top-N collapse
-  showAll: false,
-  TOP_N: 15,
   // Pass 3: bulk select
   selected: new Set(),
   // Pass 3: focus mode
@@ -123,15 +126,15 @@ function macroCellHtml(r) {
     return `<span style="color:${col};font-size:7px;" title="${title}: ${n > 0 ? '+' : ''}${n.toFixed(2)}">${g}</span>`;
   };
   const _dotQ = (net, title) => {
-    if (net == null) return `<span style="color:#d1d5db;font-size:7px;" title="${title}">—</span>`;
+    if (net == null) return `<span style="color:#d1d5db;font-size:9px;" title="${title}">—</span>`;
     const n = Number(net);
     const col = n > 0 ? '#16a34a' : n < 0 ? '#dc2626' : '#9ca3af';
     const g   = n > 0 ? '↑' : n < 0 ? '↓' : '—';
-    return `<span style="color:${col};font-size:7px;" title="${title}: ${n > 0 ? '+' : ''}${n.toFixed(2)}">${g}</span>`;
+    return `<span style="color:${col};font-size:11px;font-weight:700;" title="${title}: ${n > 0 ? '+' : ''}${n.toFixed(2)}">${g}</span>`;
   };
   const hasDots = r.month_now_net != null || r.month_next_net != null || r.qtr_now_net != null;
   const dotsLine = hasDots
-    ? `<div style="display:flex;justify-content:center;gap:4px;line-height:1;margin-top:2px;">`
+    ? `<div style="display:flex;justify-content:center;align-items:center;gap:4px;line-height:1;margin-top:2px;">`
       + _dot(r.month_now_net,  'Cur month')
       + _dot(r.month_next_net, 'Nxt month')
       + _dotQ(r.qtr_now_net,   'Cur quarter')
@@ -622,6 +625,18 @@ function _msGlyph(score) {
   if (s < 0) return '<span style="font-size:6px;color:#dc2626;line-height:1;vertical-align:middle;">▼</span>';
   return '';
 }
+// Symbol-name color: rr_outlook (BULLISH/BEARISH/NEUTRAL) when available,
+// else falls back to today's pct_change direction.
+function _symOutlookColor(row) {
+  if (row.rr_outlook && window.outlookColor) {
+    const c = window.outlookColor(row.rr_outlook);
+    if (c && c !== 'inherit') return c;
+  }
+  const pct = row.pct_change != null ? Number(row.pct_change) : null;
+  if (pct != null && pct > 0.001)  return '#1d9e75';
+  if (pct != null && pct < -0.001) return '#d4537e';
+  return 'inherit';
+}
 function _quadColor(q) {
   if (!q) return '#9ca3af';
   if (/1/.test(q)) return '#2f9e2f'; // Q1 = bullish/growth
@@ -1102,6 +1117,11 @@ function _legendHtml() {
       ${row('High', 'Sources and Technical agree')}
       ${row('Gate', 'Deterministic gate — Technical not evaluated (e.g. exit signal, at Max, not held)')}
       ${row('Mixed', 'Sources and Technical conflict — cross-check the Rules column')}
+      ${row('Low', 'LOW CONF — the only sell evidence is a rule with a demonstrated negative historical edge (v_unproven_sell_rules); consolidated_action is unchanged, this is a confidence flag')}
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">STOP pill / chip</div>
+      <div style="color:#475569;">A held position trading below its stop level (red left edge + STOP pill next to ACTION).
+        An effective ADD/INCREASE on a breached row is downgraded to HOLD (suppressed_reason = "STOP BREACHED") —
+        breach never auto-forces a sell. Click the STOP chip to filter to these rows.</div>
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Conviction filter</div>
       ${row('Any', 'No filter')}
       ${row('Multi', '2+ sources agree on this row')}
@@ -1115,6 +1135,22 @@ function _legendHtml() {
       ${row('RVOL', 'Relative volume dot vs 10d avg — hollow=below, gray=~avg, amber/green=above; caret=vs yesterday')}
       ${row('IV', 'IVP (blue) · HV (slate) · IV (dark) glyph; background shade = IV/HV discount')}
       ${row('MACRO', '▲▼ dots = Cur month / Nxt month / Cur quarter direction; sparkline = forward monthly scores')}
+      ${row('▼3 / ▲3', 'Symbol: 2 of 3 of MACRO/Sources/Technical agree sell / buy with none opposing. Display-only — no longer drives the default sort.')}
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Default sort (TASK_120)</div>
+      <div style="color:#475569;">Tier 0 — held rows trading below stop (STOP pill), by position $ desc.
+        Tier 1 — everything else, by dollar-weighted edge desc: the sum of the row's fired rules'
+        historical edge_20d (Rules column), weighted by dollars at stake (log-scaled). Rows with no
+        scored fired rules fall back to Final Call severity, scaled to sit near the middle of the pack.
+        Watchlist — buy-noise gate: Technical decides WHEN, Sources decide WHAT. An UNHELD row whose
+        effective action is ADD (source ADD or Final Call code BMN) only stays in Tier 1 when Technical
+        (the QS code) is BS or BM — the entry-ripe codes near LRR with momentum/pullback confirmation.
+        Everything else (BMN, N, watch/sell codes, or no Technical) collapses into the "Watchlist (n)"
+        band above Bottom, collapsed by default — click it to expand. A source listing alone never
+        promotes an unheld buy; rows whose winning source just landed for this date show a NEW pill
+        inside the band instead. Held rows are never gated. Chip filters and symbol search still match
+        rows inside the band and auto-expand it on a match — nothing is ever permanently hidden.
+        Bottom — LOW CONF sells, infeasible, or suppressed rows sink last regardless of dollars.
+        Click a column header to sort by that column instead; Refresh/date-change restores this default.</div>
     </div>`;
 }
 
@@ -1363,6 +1399,7 @@ async function loadActionable(opts) {
       r._fc_strength = fc.strength;
       r._fc_code     = fc.code;
       r._fc_side     = fc.side;
+      r._watchlisted = _buyNoiseGated(r);
       r._priority = _computePriority(r);
     });
     // Expose monthly score map for market_bar.js tape chips
@@ -1446,6 +1483,7 @@ function applyClientFilter(opts) {
   state.baseRows = state.allRows.filter(matchesBaseFilters);
   // rows: baseRows + action chip filter + actionable_only (AND combined)
   state.rows = state.baseRows.filter(r => {
+    if (state.filters.stopOnly && !r.stop_breached) return false;
     if (state.filters.action) return _chipAction(r) === state.filters.action;
     if (state.filters.actionable_only) {
       const a = _chipAction(r);
@@ -1453,8 +1491,7 @@ function applyClientFilter(opts) {
     }
     return true;
   });
-  // Reset collapse and selection on filter change.
-  state.showAll = false;
+  // Reset selection on filter change.
   if (preserveSelection) {
     // Auto-refresh: keep the user's selection, dropping symbols no longer present.
     const symSet = new Set(state.rows.map(r => r.tos_symbol));
@@ -1469,111 +1506,6 @@ function applyClientFilter(opts) {
   renderSourceFilter();
   renderAccountFilter();
   renderGrid();
-  _symTapeStart = 0;
-  renderSymTape();
-}
-
-// ---- symbol tape (filterable chip bar) ------------------------------------
-const _SYM_BATCH = 20;
-let _symTapeStart = 0;
-
-function _symTapeBg(row) {
-  if (row.rr_outlook && window.outlookColor) {
-    const c = window.outlookColor(row.rr_outlook);
-    if (c && c !== 'inherit') return c;
-  }
-  // No outlook — fall back to pct_change direction
-  const pct = row.pct_change != null ? Number(row.pct_change) : null;
-  if (pct != null && pct > 0.001)  return '#1d9e75';
-  if (pct != null && pct < -0.001) return '#d4537e';
-  return '#888';
-}
-
-function renderSymTape() {
-  const track = document.getElementById('symTapeTrack');
-  const prevBtn = document.getElementById('symTapePrev');
-  const nextBtn = document.getElementById('symTapeNext');
-  const badge   = document.getElementById('symTapeBadge');
-  if (!track) return;
-
-  const rows  = state.rows;
-  const total = rows.length;
-  const start = Math.max(0, Math.min(_symTapeStart, total - 1));
-  _symTapeStart = start;
-  const end   = Math.min(start + _SYM_BATCH, total);
-  const batch = rows.slice(start, end);
-
-  track.innerHTML = batch.map(r => {
-    const pct    = r.pct_change != null ? Number(r.pct_change) : null;
-    const pctStr = pct != null ? Math.abs(pct).toFixed(2) + '%' : '—';
-    const pctBg  = pct == null ? null : pct > 0.001 ? '#1d9e75' : pct < -0.001 ? '#d4537e' : '#888';
-    const pctBoxStyle = pctBg ? `background:${pctBg};color:#fff;` : 'color:#94a3b8;';
-    const bg     = _symTapeBg(r);
-    const action = r.consolidated_action || '';
-    const fmt2   = v => v != null ? Number(v).toFixed(2) : '—';
-    const lrrStr = r.lrr != null ? `LRR ${fmt2(r.lrr)}` : '';
-    const mrrStr = r.mrr != null ? `MRR ${fmt2(r.mrr)}` : '';
-    const trrStr = r.trr != null ? `TRR ${fmt2(r.trr)}` : '';
-
-    // Range bar fill — pct_brr is 0–100 (position within buy–sell range)
-    const pctBrr = r.quote_pct_brr != null ? Number(r.quote_pct_brr)
-                 : r.ma_pct_brr   != null ? Number(r.ma_pct_brr) : null;
-    const rbW    = pctBrr != null ? Math.round(Math.max(0, Math.min(100, pctBrr))) : null;
-    const rbHtml = rbW != null
-      ? `<div class="rr-rb"><div class="rr-rb-tick" style="left:${rbW}%;"></div></div>`
-      : `<div class="rr-rb"></div>`;
-
-    // Action icon (glyph via actions.js) and IV bar glyph (TASK 62)
-    const disp     = actionDisplay(r.consolidated_action);
-    const actIc    = actionIcon(r.consolidated_action);
-    const actGlyph = actIc.glyph !== '·' ? actIc.glyph : '';
-    const actColor = actIc.color;
-    // iv/hv stored as fractions (0.35 = 35%) → multiply by 100 for glyph percent units
-    const _ivPct = r.imp_volatility != null ? Number(r.imp_volatility) * 100 : null;
-    const _hvPct = r.hv            != null ? Number(r.hv)            * 100 : null;
-    const ivGlyphHtml = window.ivGlyph
-      ? window.ivGlyph(r.iv_percentile, _ivPct, _hvPct, r.iv_to_hv_discount, { size: 16, width: 24 })
-      : '';
-    const rvolHtml = typeof rvolDot === 'function'
-      ? rvolDot(r.rvol, r.rvol_prior, { size: 16 }) : '';
-    const candle = window.mtTip?.candleSvg(r.open_price, r.high_price, r.low_price, r.last_price) || '';
-    const metaHtml = (actGlyph || rvolHtml || ivGlyphHtml || candle)
-      ? `<div class="sym-tile-meta">` +
-        (actGlyph    ? `<span class="sym-act-lbl" style="color:${actColor};font-family:ui-monospace,monospace;">${actGlyph}</span>` : '') +
-        (rvolHtml    ? `<span class="sym-rvol" data-volpop data-sym="${escapeHtml(r.tos_symbol)}" style="cursor:default;">${rvolHtml}</span>` : '') +
-        (ivGlyphHtml ? `<span class="sym-iv" data-ivpop data-sym="${escapeHtml(r.tos_symbol)}" style="cursor:default;">${ivGlyphHtml}</span>` : '') +
-        candle +
-        `</div>`
-      : '';
-
-    return `<div class="rr-chip" data-sym="${escapeHtml(r.tos_symbol)}">` +
-      `<div class="rr-chip-body">` +
-      `<div class="rr-chip-sym-col">` +
-      `<span class="rr-sym" style="color:${bg};">${_msGlyph(r.monthly_score)}${escapeHtml(r.tos_symbol)}</span>` +
-      rbHtml +
-      `</div>` +
-      `<span class="mt-chg" style="${pctBoxStyle}">${pctStr}</span>` +
-      `</div>` +
-      metaHtml +
-      `</div>`;
-  }).join('');
-
-  if (prevBtn) prevBtn.disabled = start === 0;
-  if (nextBtn) nextBtn.disabled = end >= total;
-  if (badge)   badge.textContent = total === 0 ? 'No symbols' : `${start + 1}–${end} of ${total}`;
-}
-
-function _initSymTape() {
-  const prev = document.getElementById('symTapePrev');
-  const next = document.getElementById('symTapeNext');
-  if (prev) prev.addEventListener('click', () => {
-    _symTapeStart = Math.max(0, _symTapeStart - _SYM_BATCH);
-    renderSymTape();
-  });
-  if (next) next.addEventListener('click', () => {
-    _symTapeStart = Math.min(state.rows.length - 1, _symTapeStart + _SYM_BATCH);
-    renderSymTape();
-  });
 }
 
 // ---- staleness banner ----
@@ -1654,9 +1586,11 @@ async function rederiveStale() {
 // ---- summary chips (act as quick action filters) ----
 function renderSummary() {
   const counts = { REMOVE: 0, OVER_MAX: 0, REDUCE: 0, INCREASE: 0, ADD: 0, HOLD: 0, NONE: 0 };
+  let stopCount = 0;
   for (const r of state.baseRows) {
     const a = _chipAction(r);
     if (counts[a] !== undefined) counts[a] += 1;
+    if (r.stop_breached) stopCount += 1;
   }
   const wrap = $('summaryChips');
   wrap.innerHTML = '';
@@ -1682,6 +1616,18 @@ function renderSummary() {
     };
     wrap.appendChild(chip);
   }
+  // TASK_119: STOP chip — orthogonal to the action buckets above (a REDUCE
+  // row can also be stop_breached), so it toggles independently rather than
+  // joining the mutually-exclusive action-chip set.
+  const stopChip = document.createElement('div');
+  stopChip.className = 'act-chip act-chip-stop' + (state.filters.stopOnly ? ' active' : '');
+  stopChip.title = 'Held positions trading below their stop level';
+  stopChip.innerHTML = `<span>STOP</span><span class="count">${stopCount}</span>`;
+  stopChip.onclick = () => {
+    state.filters.stopOnly = !state.filters.stopOnly;
+    applyClientFilter();
+  };
+  wrap.appendChild(stopChip);
 }
 
 // Set of every source code present in the current dataset (winning + other).
@@ -2216,9 +2162,15 @@ function _finalCallHtml(row) {
     return '<span style="color:#cbd5e1;">—</span>';
   }
   var text = fc.label || actionText(fc);  // plain-English label (e.g. "SELL ALL")
+  // TASK_118: low_confidence — sell evidence comes only from rules with a
+  // proven-negative historical edge (v_unproven_sell_rules). Annotation only;
+  // consolidated_action / final_code are unchanged server-side.
+  var isLowConf = !!row.low_confidence;
   // Badge
   var badgeHtml;
-  if (fc.confidence === 'high') {
+  if (isLowConf) {
+    badgeHtml = '<span style="font-size:9px;color:#b45309;font-weight:700;" title="Sell evidence comes only from rules with a demonstrated negative historical edge — cross-check before acting">Low</span>';
+  } else if (fc.confidence === 'high') {
     badgeHtml = '<span style="font-size:9px;color:#16a34a;" title="Sources and Technical align">High</span>';
   } else if (fc.confidence === 'gate') {
     var gateTitle = fc.gateReason || 'Deterministic gate — Technical not evaluated';
@@ -2228,49 +2180,203 @@ function _finalCallHtml(row) {
   }
   // Color via actions.js token (act-*-fill gives solid fill + white text, matching Portfolio Action column)
   var fcDisp = actionDisplay(fc.code || (fc.side === 'sell' ? 'SA' : fc.side === 'buy' ? 'BS' : 'HOLD'));
-  var colorCls = (fcDisp.colorCls || 'act-neutral') + '-fill';
+  // low_confidence rows render muted/outline (-tint) instead of the solid -fill
+  // so a shaky sell doesn't headline with the same visual weight as a real one.
+  var colorCls = (fcDisp.colorCls || 'act-neutral') + (isLowConf ? '-tint' : '-fill');
   // SA (SELL ALL) / BM (BUY MORE) match the HEDGEYE panel's red/green exactly;
   // weaker tiers (SS/STM/SO/SW, BS/BMN/BW) and neutral keep the standard palette.
-  var hedgeyeStyle = fcDisp.code === 'SA' ? 'background:#d4537e;'
+  var hedgeyeStyle = isLowConf ? 'opacity:0.8;'
+                    : fcDisp.code === 'SA' ? 'background:#d4537e;'
                     : fcDisp.code === 'BM' ? 'background:#1d9e75;'
                     : '';
-  var subIcon = '<div style="font-size:9px;line-height:1.4;">' + badgeHtml + '</div>';
+  var lowConfSub = isLowConf
+    ? '<div style="font-size:8px;font-weight:700;color:#b45309;letter-spacing:0.3px;">LOW CONF</div>' : '';
+  // TASK_119: STOP pill — held position trading below its stop level.
+  var stopPill = row.stop_breached
+    ? ' <span class="stop-pill" title="Held below stop level — an effective ADD/INCREASE here is downgraded to HOLD">STOP</span>'
+    : '';
+  var subIcon = '<div style="font-size:9px;line-height:1.4;">' + badgeHtml + '</div>' + lowConfSub;
   return '<span class="act-badge act-badge-sm ' + colorCls + '" style="' + hedgeyeStyle + '" title="' +
          escapeHtml(fc.label || text) + '">' +
-         escapeHtml(text) + '</span>' + subIcon;
+         escapeHtml(text) + '</span>' + stopPill + subIcon;
 }
 
-// ── Pass 2: Priority score ──────────────────────────────────────────────────
-// Priority = buysell SEQ of the Final Call action code (from ref_param_lookup).
-// Sort direction is DESCENDING so the highest seq (SA=21) appears at the top.
+// ── Pass 2: Priority score (TASK_120 — dollar-weighted-edge default sort) ──
+// Replaces the old "3-way agreement tier + buysell SEQ" scheme. New tiers,
+// top to bottom (DESCENDING — state.sort = {_priority, -1}):
 //
-// Feasibility gate: infeasible Final Call (e.g. unheld SELL ALL → HOLD)
-// receives seq = -1 so it sinks below all real codes (lowest seqs start at 3).
+//   Tier 0     — stop_breached held rows (TASK_119)   → position $ desc
+//   Tier 1     — everything else                      → dollar-weighted edge desc
+//   Watchlist  — gated unheld ADD/BMN rows, Technical  → collapsed band, dollar-weighted
+//                not entry-ripe (see _buyNoiseGated)     edge desc inside; below Tier 1,
+//                                                         above Bottom
+//   Bottom     — low_confidence-only sells (TASK_118),
+//                infeasible, or suppressed rows        → always last
 //
-// Codes not present in the buysell map (HOLD, OVER_MAX, none) also receive
-// seq = -1 and sort to the bottom. Dollars at stake break ties within the
-// same seq tier (×1e6 — matches server scale so rows can't cross tiers).
-function _computePriority(row) {
-  // TASK_53: use server-computed priority_rank when available (uses same formula).
-  // TASK_106/F7: both branches use the same seq*1e6 + |amt| scale as the
-  // server (etl/derive_actionable.py) so server- and client-ranked rows
-  // can never cross tiers, even when amt >= $1M.
-  var amt = Math.abs(Number(row._amt) || 0);
-  if (row.priority_rank !== undefined && row.priority_rank !== null) {
-    var pr = Number(row.priority_rank);
-    if (isFinite(pr)) return pr * 1e6 + amt;
+// Dollar-weighted edge: netEdge = sum of edge_20d (state.scorecard, already
+// direction-adjusted per rule — a SELL rule's edge_20d is negative when the
+// rule fires and price then recovers) across the row's fired composites, so
+// a SELL row's negative-edge rules subtract net confidence with no extra
+// sign flip needed. score = netEdge * log10(1 + dollarsAtStake), where
+// dollarsAtStake is |_amt| for an actionable (non-HOLD/NONE) row or the
+// current position $ for a HOLD row. Rows with no fired/scored composites
+// use _fallbackEdge() — the old buysell-SEQ ordering squashed into
+// [-0.5, +0.5] — so "no evidence" lands inside the scored cluster near 0
+// instead of dominating either extreme.
+const _MACRO_BUY = new Set(['BM', 'BS']), _MACRO_SELL = new Set(['STM', 'SA']);
+const _SRC_BUY   = new Set(['ADD', 'INCREASE']), _SRC_SELL = new Set(['REDUCE', 'REMOVE']);
+const _TECH_BUY  = new Set(['BM', 'BS', 'BMN', 'BR']), _TECH_SELL = new Set(['SA', 'STM', 'SS', 'SO']);
+
+// 'sell' | 'buy' | null. Renamed from _agreementDir (TASK_120): the old name
+// implied 2-of-3 agreement but the logic was really "no dissent" — a single
+// signal with the other two silent/neutral qualified. Now requires >= 2 of
+// the 3 columns (MACRO / Sources / Technical) to point the same way AND zero
+// columns opposing before calling it agreement. Display-only (▼3/▲3 marker
+// next to Symbol, and the legend entry) — no longer drives the default sort
+// (see _computePriority below).
+function _threeWayAgreement(row) {
+  const m = (row.macro_value || '').toUpperCase();
+  const s = (row.consolidated_action || '').toUpperCase();
+  const t = (row.rr_action || '').toUpperCase();
+  const sellVotes = (_MACRO_SELL.has(m) ? 1 : 0) + (_SRC_SELL.has(s) ? 1 : 0) + (_TECH_SELL.has(t) ? 1 : 0);
+  const buyVotes  = (_MACRO_BUY.has(m)  ? 1 : 0) + (_SRC_BUY.has(s)  ? 1 : 0) + (_TECH_BUY.has(t)  ? 1 : 0);
+  if (sellVotes >= 2 && buyVotes === 0) return 'sell';
+  if (buyVotes  >= 2 && sellVotes === 0) return 'buy';
+  return null;
+}
+// Back-compat: other call sites in this file still say "Dir" for brevity.
+const _agreementDir = _threeWayAgreement;
+
+// Fired composite rule ids from rules_engine_fires (same parsing as
+// firesCellHtml, kept separate so the sort path doesn't depend on rendering).
+function _firedRuleIds(row) {
+  let fires = row.rules_engine_fires;
+  if (typeof fires === 'string') { try { fires = JSON.parse(fires); } catch (_) { fires = []; } }
+  if (!Array.isArray(fires)) return [];
+  return fires.map(f => String((f && (f.rule_id || f.id)) || f));
+}
+
+// Sum of edge_20d across fired composites present in state.scorecard, or
+// null when none of the row's fired rules have a scorecard entry yet.
+function _netEdge(row) {
+  const sc = state.scorecard || {};
+  let sum = 0, any = false;
+  for (const id of _firedRuleIds(row)) {
+    const s = sc[id];
+    if (s && s.edge_20d != null) { sum += Number(s.edge_20d); any = true; }
   }
+  return any ? sum : null;
+}
+
+// |_amt| for actionable rows, current position $ for HOLD/NONE rows.
+function _dollarsAtStake(row) {
+  const a = _chipAction(row);
+  const isActionable = a !== 'HOLD' && a !== 'NONE';
+  return Math.abs(Number(isActionable ? row._amt : row.current_position_dollar) || 0);
+}
+
+// Fallback "edge" for rows with no scored fired composites: the buysell SEQ
+// (same vocabulary the old tier-3 sort used) normalized to [-1, 1] against
+// its observed range (SA=21 highest, -1 = infeasible/none) then halved to
+// [-0.5, +0.5] — deliberately smaller than a single real proven rule's edge
+// (typically |edge_20d| >= 1) so unscored rows sit inside the scored cluster
+// near 0 rather than out-ranking or under-ranking genuinely scored rows.
+function _fallbackEdge(row) {
   var fc = finalCall(row);
-  if (!fc.feasible) {
-    // Infeasible: sink to bottom (seq = -1 < all real codes).
-    return -1 * 1e6 + amt;
-  }
   var code = (fc.code || '').toUpperCase();
-  var seqMap = state.buysellSeq || {};
-  // OVER_MAX is a synthetic code; map it to SO (SellOverage, seq=12) for sorting.
   if (code === 'OVER_MAX') code = 'SO';
+  var seqMap = state.buysellSeq || {};
   var seq = (seqMap[code] !== undefined) ? seqMap[code] : -1;
-  return seq * 1e6 + amt;
+  var norm = Math.max(-1, Math.min(1, seq / 21));
+  return norm * 0.5;
+}
+
+function _dollarWeightedScore(row) {
+  const dollars = _dollarsAtStake(row);
+  const netEdge = _netEdge(row);
+  const edge = netEdge != null ? netEdge : _fallbackEdge(row);
+  return edge * Math.log10(1 + dollars);
+}
+
+// ── Buy-noise gate (TASK_120 "Buy-noise gate" section) ──────────────────────
+// Diagnosis E.3: ~4,635 ADD recs over 40 anchors (~116/day), 93% unheld —
+// standing-list sources re-emit ADD daily and BMN is the default bull
+// outcome, burying the few rows that matter. Gate: an UNHELD row whose
+// effective (reconciled) action is ADD — which covers both a raw source ADD
+// and a Final Call code of BMN, since _chipAction() already maps BMN → ADD —
+// ranks in Tier 1 only when its Technical value (rr_action, the QS code from
+// drv_cat_atomic_input.td_tn_bb_action_desc) is one of the strong-buy codes
+// Tables 2–3 emit only near LRR with momentum/pullback confirmation
+// (mirrors the proven 52-BS-BRR entry). BMN, N, watch codes, sell codes, or
+// missing Technical are "not ripe" and park in the Watchlist band instead.
+// Deliberately does NOT use raw LRR proximity — QS already encodes it plus
+// Trend/Trade, BB-streak and MACDH context (a falling knife near LRR shows
+// SA/STM and stays gated).
+const _ENTRY_RIPE_TECH = ['BS', 'BM'];
+
+// True when a row should be parked in the Watchlist band instead of Tier 1.
+// Held rows are never gated — this only governs *initiating* new positions.
+// TASK_122: Technical decides WHEN (entry timing), Sources decide WHAT
+// (conviction) — a source listing alone (however fresh) never promotes an
+// unheld buy out of the gate. The former "new arrival" bypass (any row whose
+// winning source's snapshot_date == the row's own as_of_date skipped the
+// gate once) leaked daily-refreshing sources like RR/CALL, which re-stamp
+// snapshot_date every day, permanently out of the Watchlist band even with
+// blank Technical (confirmed case: FAB). Removed — see _isNewSnapshot() for
+// the display-only "NEW" pill that replaces it inside the band.
+function _buyNoiseGated(row) {
+  if (row.held_today) return false;
+  if (_chipAction(row) !== 'ADD') return false;
+  const tech = (row.rr_action || '').toUpperCase();
+  return _ENTRY_RIPE_TECH.indexOf(tech) === -1;
+}
+
+// TASK_122: display-only "NEW" pill inside the Watchlist band — never used
+// to gate/promote a row. True when the winning source's underlying
+// snapshot_date equals the current anchor date (the source data just landed
+// for the date being viewed).
+function _isNewSnapshot(row) {
+  const snap = _winningSnapshot(row);
+  const anchor = state.anchorDate || state.date;
+  return !!snap && !!anchor && snap === anchor;
+}
+
+// "Near-equal score" threshold for the Watchlist band's NEW-first tiebreak
+// (see renderGrid's watchRows sort) — roughly half a buysell-SEQ step at a
+// typical $10k-$50k position, per _fallbackEdge/_dollarWeightedScore's scale.
+const _NEW_TIEBREAK_EPS = 0.15;
+
+const _TIER_STOP      = 1e10;  // Tier 0: stop_breached held rows, by position $
+const _TIER_SCORED    = 1e6;   // Tier 1: dollar-weighted edge (scaled x1e3 for granularity)
+const _TIER_WATCHLIST = 0;     // Watchlist band: gated unheld ADD/BMN rows, dollar-weighted
+                                // edge UNscaled — deliberately sits in a narrow band around 0,
+                                // well clear of Tier 1 (1e6 ± ~2e4) and Bottom (-1e6 ± ~20) so
+                                // gated rows stay contiguous in the sorted list with no overlap.
+const _TIER_BOTTOM    = -1e6;  // Bottom: low_confidence-only sells / infeasible / suppressed
+
+function _computePriority(row) {
+  // Tier 0 (TASK_119): held + trading below stop — position $ desc, always
+  // above every Tier-1 row regardless of edge/dollars.
+  if (row.stop_breached && row.held_today) {
+    return _TIER_STOP + Math.abs(Number(row.current_position_dollar) || 0);
+  }
+
+  var fc = finalCall(row);
+  // Bottom: a low_confidence sell (TASK_118), an infeasible Final Call, or a
+  // suppressed row sinks below every real Tier-1 row regardless of dollars —
+  // still ordered internally by dollar-weighted score.
+  if (row.low_confidence || !fc.feasible || row.suppressed_reason) {
+    return _TIER_BOTTOM + _dollarWeightedScore(row);
+  }
+
+  // Watchlist band: unheld ADD/BMN rows whose Technical isn't entry-ripe
+  // (row._watchlisted, set by the caller via _buyNoiseGated before this runs)
+  // collapse below Tier 1 instead of flooding it.
+  if (row._watchlisted) {
+    return _TIER_WATCHLIST + _dollarWeightedScore(row);
+  }
+
+  return _TIER_SCORED + _dollarWeightedScore(row) * 1e3;
 }
 
 // True if `src` drove this row OR appears among its other sources.
@@ -2395,188 +2501,6 @@ function hideSourcePop() {
   if (pop) pop.style.display = 'none';
 }
 
-// ---- sym tape rich hover popover ----------------------------------------
-function _buildSymTilePopHtml(r) {
-  if (!r) return '';
-  const fmt2 = v => v != null ? Number(v).toFixed(2) : '—';
-
-  // Header
-  const disp    = actionDisplay(r.consolidated_action);
-  const actCode = actionText(disp);
-  const actCls  = (disp.colorCls || 'act-neutral') + '-tint';
-  const pct     = r.pct_change != null ? Number(r.pct_change) : null;
-  const pctStr  = pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—';
-  const pctCls  = pct == null ? '' : pct > 0.001 ? 'mt-up' : pct < -0.001 ? 'mt-down' : 'mt-flat';
-  let html = `<div class="stp-header">` +
-    `<span class="stp-sym">${escapeHtml(r.tos_symbol)}</span>` +
-    (actCode && actCode !== '--' ? `<span class="act-badge act-badge-sm ${actCls}">${escapeHtml(actCode)}</span>` : '') +
-    `<span class="stp-price">${r.last_price != null ? '$' + Number(r.last_price).toFixed(2) : ''}` +
-    (pctStr ? ` <span class="${pctCls}">${pctStr}</span>` : '') +
-    `</span></div>`;
-
-  // Outlook — driven by drv_rr rr_outlook (same field that colors the symbol text)
-  const _olColor = lbl => {
-    if (window.outlookColor) {
-      const c = window.outlookColor(lbl);
-      if (c && c !== 'inherit') return c;
-    }
-    const u = (lbl || '').toUpperCase();
-    return u.includes('BULL') ? '#16a34a' : u.includes('BEAR') ? '#dc2626' : '#64748b';
-  };
-  const rrOutlook = r.rr_outlook ? String(r.rr_outlook).charAt(0).toUpperCase() + String(r.rr_outlook).slice(1).toLowerCase() : null;
-  if (rrOutlook) {
-    html += `<div class="stp-section"><div class="stp-label">Outlook</div>` +
-      `<div class="stp-row"><span class="stp-key">RR</span><span class="stp-val" style="font-weight:700;color:${_olColor(rrOutlook)};">${escapeHtml(rrOutlook)}</span></div>` +
-      `</div>`;
-  }
-
-  // Sources
-  const sources = _sourcesOf(r);
-  if (sources.length) {
-    html += `<div class="stp-section"><div class="stp-label">Sources</div>`;
-    sources.forEach(s => {
-      const sc   = s.source_code || s.source || '';
-      const sa   = (s.action || '').toUpperCase();
-      const sd   = actionDisplay(sa);
-      const sCls = (sd.colorCls || 'act-neutral') + '-tint';
-      const sTxt = actionText(sd) || sa || '—';
-      const wt   = s.weight != null ? Number(s.weight).toFixed(2) : null;
-      html += `<div class="stp-row">` +
-        `<span class="stp-key">${escapeHtml(sc)}</span>` +
-        `<span class="act-badge act-badge-sm ${sCls}">${escapeHtml(sTxt)}</span>` +
-        (wt ? `<span class="stp-val">${wt}</span>` : '') +
-        `</div>`;
-    });
-    html += `</div>`;
-  }
-
-  // Technical
-  const pctBrr   = r.quote_pct_brr != null ? r.quote_pct_brr : r.ma_pct_brr;
-  const hasTech  = r.lrr != null || r.mrr != null || r.trr != null ||
-                   pctBrr != null || r.quote_zone || r.rr_desc ||
-                   r.tn_td_desc || r.bb_desc;
-  if (hasTech) {
-    html += `<div class="stp-section"><div class="stp-label">Technical</div>`;
-    if (r.tn_td_desc) html += `<div class="stp-row"><span class="stp-key">TnTd</span><span class="stp-val">${escapeHtml(r.tn_td_desc)}</span></div>`;
-    if (r.bb_desc)    html += `<div class="stp-row"><span class="stp-key">BB</span><span class="stp-val">${escapeHtml(r.bb_desc)}</span></div>`;
-    if (r.lrr  != null) html += `<div class="stp-row"><span class="stp-key">LRR</span><span class="stp-val">${fmt2(r.lrr)}</span></div>`;
-    if (r.mrr  != null) html += `<div class="stp-row"><span class="stp-key">MRR</span><span class="stp-val">${fmt2(r.mrr)}</span></div>`;
-    if (r.trr  != null) html += `<div class="stp-row"><span class="stp-key">TRR</span><span class="stp-val">${fmt2(r.trr)}</span></div>`;
-    if (pctBrr != null) html += `<div class="stp-row"><span class="stp-key">BRR%</span><span class="stp-val">${Math.round(Number(pctBrr))}%</span></div>`;
-    if (r.quote_zone) html += `<div class="stp-row"><span class="stp-key">Zone</span><span class="stp-val">${escapeHtml(r.quote_zone)}</span></div>`;
-    if (r.rr_desc)    html += `<div class="stp-desc">${escapeHtml(r.rr_desc)}</div>`;
-    html += `</div>`;
-  }
-
-  // Rules
-  let fires = r.rules_engine_fires;
-  if (typeof fires === 'string') { try { fires = JSON.parse(fires); } catch (_) { fires = []; } }
-  if (Array.isArray(fires) && fires.length) {
-    html += `<div class="stp-section"><div class="stp-label">Rules</div>` +
-      `<div class="stp-rules">${firesCellHtml(r)}</div></div>`;
-  }
-
-  return html;
-}
-
-function _showSymTilePop(chipEl) {
-  const sym = chipEl.dataset.sym;
-  if (!sym) return;
-  const r   = state.rows.find(row => row.tos_symbol === sym);
-  const pop = $('symTilePop');
-  if (!pop || !r) return;
-  pop.innerHTML    = _buildSymTilePopHtml(r);
-  pop.style.display = 'block';
-  const rect = chipEl.getBoundingClientRect();
-  const popH = pop.offsetHeight;
-  let top  = rect.top - popH - 8;
-  if (top < 4) top = rect.bottom + 8;
-  const left = Math.max(4, Math.min(window.innerWidth - 260, rect.left));
-  pop.style.top  = top  + 'px';
-  pop.style.left = left + 'px';
-}
-
-function _hideSymTilePop() {
-  const pop = $('symTilePop');
-  if (pop) pop.style.display = 'none';
-}
-
-function _showSymRichTip(e, chipEl) {
-  if (!window.mtTip) return;
-  const sym = chipEl.dataset.sym;
-  const r   = state.rows.find(row => row.tos_symbol === sym);
-  if (!r) return;
-  const pct    = r.pct_change != null ? Number(r.pct_change) : null;
-  const pctStr = pct != null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—';
-  const pctCls = pct == null ? 'mt-flat' : pct > 0.001 ? 'mt-up' : pct < -0.001 ? 'mt-down' : 'mt-flat';
-  const arrow  = pct == null ? '' : pct > 0.001 ? '▲' : pct < -0.001 ? '▼' : '';
-  const fmtN   = v => v != null ? Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null;
-  window.mtTip.showObj(e, {
-    dname:        r.tos_symbol,
-    sym:          r.tos_symbol,
-    price:        fmtN(r.last_price),
-    pct:          pctStr,
-    arrow:        arrow,
-    pctCls:       pctCls,
-    outlook:      r.rr_outlook || '',
-    price_source: r.last_price != null ? 'drv_quote' : '',
-    rr_source:    (r.lrr != null && r.trr != null) ? 'hist_rr' : '',
-    asof:         r.export_date ? String(r.export_date).slice(0, 10) : '',
-    quote_time:   r.export_time ? String(r.export_time).slice(0, 5) : '',
-    buy:          r.lrr != null ? Number(r.lrr).toFixed(2) : null,
-    sell:         r.trr != null ? Number(r.trr).toFixed(2) : null,
-    open:         fmtN(r.open_price),
-    high:         fmtN(r.high_price),
-    low:          fmtN(r.low_price),
-    iv_pct:       r.imp_volatility    != null ? Math.round(Number(r.imp_volatility) * 100) : null,
-    iv_pctile:    r.iv_percentile     != null ? Math.round(Number(r.iv_percentile))        : null,
-    iv_to_hv:     r.iv_to_hv_discount != null ? Number(r.iv_to_hv_discount)               : null,
-    stale:        false,
-  });
-}
-
-function initSymTilePop() {
-  const track = $('symTapeTrack');
-  if (!track) return;
-
-  track.addEventListener('mouseover', (e) => {
-    const chip = e.target.closest('.rr-chip[data-sym]');
-    if (!chip) { _hideSymTilePop(); window.mtTip?.hide(); return; }
-    if (e.target.closest('[data-volpop],[data-ivpop]')) {
-      // Vol/IV icons → handled by initSourcePopover; suppress symTilePop
-      _hideSymTilePop();
-      window.mtTip?.hide();
-    } else if (e.target.closest('.sym-tile-meta')) {
-      // Action label area → existing symTilePop
-      window.mtTip?.hide();
-      _showSymTilePop(chip);
-    } else {
-      // Symbol / price / range bar area → rich market tooltip
-      _hideSymTilePop();
-      _showSymRichTip(e, chip);
-    }
-  });
-  track.addEventListener('mousemove', (e) => {
-    if (e.target.closest('.rr-chip[data-sym]') && !e.target.closest('.sym-tile-meta')) {
-      window.mtTip?.move(e);
-    }
-  });
-  track.addEventListener('mouseout', (e) => {
-    if (!e.relatedTarget || !e.relatedTarget.closest('.rr-chip[data-sym]')) {
-      _hideSymTilePop();
-      window.mtTip?.hide();
-    }
-  });
-  track.addEventListener('click', (e) => {
-    const chip = e.target.closest('.rr-chip[data-sym]');
-    if (!chip) return;
-    _hideSymTilePop();
-    window.mtTip?.hide();
-    const sym = chip.dataset.sym;
-    const r   = state.rows.find(row => row.tos_symbol === sym);
-    if (r) openDrilldown(r);
-  });
-}
 
 function initGridSymClick() {
   const body = $('actBody');
@@ -2786,11 +2710,6 @@ function initSourcePopover() {
   };
   body.addEventListener('mouseover', _onOver);
   body.addEventListener('mouseout', _onOut);
-  const tape = $('symTapeTrack');
-  if (tape) {
-    tape.addEventListener('mouseover', _onOver);
-    tape.addEventListener('mouseout', _onOut);
-  }
 }
 
 // ---- TASK_66: bull_prob cell renderer ----
@@ -2928,8 +2847,6 @@ function initSorting() {
       }
       updateSortIndicators();
       renderGrid();
-      _symTapeStart = 0;
-      renderSymTape();
     });
   });
 }
@@ -2952,11 +2869,13 @@ function _emptyStateHtml() {
 function renderGrid() {
   for (const r of state.rows) {
     r._snapshot = _winningSnapshot(r);
+    r._isNew = _isNewSnapshot(r);
     // Re-compute priority and final call here in case scorecard loaded after allRows.
     var fc = finalCall(r);
     r._fc_strength = fc.strength;
     r._fc_code     = fc.code;
     r._fc_side     = fc.side;
+    r._watchlisted = _buyNoiseGated(r);
     r._priority = _computePriority(r);
   }
   hideSourcePop();
@@ -2972,34 +2891,110 @@ function renderGrid() {
     if (total === 0) emptyEl.innerHTML = _emptyStateHtml();
   }
 
-  // Top-N collapse (U2): default view (no action-chip filter, default priority
-  // sort) shows only the top TOP_N rows + a "Show all N rows" bar. Any chip
-  // filter or non-default sort shows the full filtered set.
-  const collapseActive = !state.showAll && !state.filters.action && state.sort.key === '_priority';
-  const visibleRows = collapseActive ? state.rows.slice(0, state.TOP_N) : state.rows;
-  const showAllBar = $('showAllBar');
-  if (showAllBar) {
-    const hiddenCount = state.rows.length - visibleRows.length;
-    if (collapseActive && hiddenCount > 0) {
-      showAllBar.style.display = 'block';
-      const btn = $('showAllBtn');
-      if (btn) btn.textContent = `Show all ${state.rows.length} rows`;
-    } else {
-      showAllBar.style.display = 'none';
+  // TASK_120 buy-noise gate: split watchlisted rows (unheld ADD/BMN, Technical
+  // not in _ENTRY_RIPE_TECH) out of the main sequence into a collapsed
+  // "Watchlist (n)" band, regardless of the active column sort — a custom
+  // header-sort shouldn't resurface the buy-noise flood the gate exists to
+  // hide. Within the band, always ordered by dollar-weighted edge desc (same
+  // scoring as Tier 1) so the best-of-the-rest rises to the band's top.
+  const mainRows  = state.rows.filter(r => !r._watchlisted);
+  // TASK_122: within a group of equal/near-equal score (|diff| < _NEW_TIEBREAK_EPS),
+  // a NEW-pilled row (winning source's snapshot just landed for this anchor —
+  // see _isNewSnapshot()) sorts first so fresh list arrivals surface near the
+  // band's top instead of being buried under older gated rows with a
+  // marginally higher score. Never changes which band a row is in — display
+  // order only.
+  const watchRows = state.rows.filter(r => r._watchlisted)
+    .sort((a, b) => {
+      const diff = _dollarWeightedScore(b) - _dollarWeightedScore(a);
+      if (Math.abs(diff) < _NEW_TIEBREAK_EPS && a._isNew !== b._isNew) {
+        return a._isNew ? -1 : 1;
+      }
+      return diff;
+    });
+  // Auto-expand (without flipping the sticky manual toggle) whenever an
+  // active filter/search narrows the grid and could have a match inside the
+  // band — nothing filters/search touch is ever permanently hidden.
+  const filtersActive = !!(state.filters.symbol_search || state.filters.action ||
+    state.filters.source || state.filters.account || state.filters.held_only ||
+    state.filters.conviction !== 'any' || state.filters.bull_prob_min > 0 ||
+    state.filters.agreement_class || state.filters.stopOnly);
+  const bandExpanded = state.watchlistExpanded || (filtersActive && watchRows.length > 0);
+
+  // Cached so copySymbols() can copy exactly what's on screen right now.
+  const visibleRows = bandExpanded ? state.rows : mainRows;
+  state.visibleRows = visibleRows;
+
+  for (const r of mainRows) {
+    tb.appendChild(_buildRowEl(r));
+  }
+
+  if (watchRows.length > 0) {
+    tb.appendChild(_watchlistBandRowEl(watchRows.length, bandExpanded));
+    if (bandExpanded) {
+      for (const r of watchRows) {
+        const tr = _buildRowEl(r);
+        tr.classList.add('row-watchlisted');
+        // No dedicated stylesheet rule for .row-watchlisted (display-layer-only
+        // change, actionable.js only) — mute inline, matching the low_confidence
+        // row treatment used elsewhere in this file.
+        tr.style.opacity = '0.75';
+        tb.appendChild(tr);
+      }
     }
   }
 
-  for (const r of visibleRows) {
+  // Sync select-all checkbox
+  const allChk = $('bulkSelectAll');
+  if (allChk) {
+    allChk.checked = state.selected.size > 0 && state.selected.size >= visibleRows.length;
+    allChk.indeterminate = state.selected.size > 0 && state.selected.size < visibleRows.length;
+  }
+}
+
+// Collapsed/expand toggle row for the Watchlist band (TASK_120 buy-noise
+// gate). One <tr><td colspan> spanning every grid column (21 — keep in sync
+// with the <th data-col> count in actionable.html); clicking toggles
+// state.watchlistExpanded and re-renders.
+function _watchlistBandRowEl(count, expanded) {
+  const tr = document.createElement('tr');
+  tr.className = 'watchlist-band-row';
+  const td = document.createElement('td');
+  td.colSpan = 21;
+  td.style.cssText = 'padding:6px 10px;background:#f8fafc;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.style.cssText = 'display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;'
+    + 'font-size:11px;font-weight:600;color:#64748b;padding:2px 0;width:100%;text-align:left;';
+  btn.title = 'Unheld ADD/BMN rows where Technical (rr_action) is not BS or BM — parked here instead '
+    + 'of Tier 1 until entry timing improves. Click to expand/collapse.';
+  btn.innerHTML = `<span style="display:inline-block;width:10px;">${expanded ? '&#9660;' : '&#9654;'}</span>`
+    + `<span>Watchlist (${count})</span>`
+    + `<span style="font-weight:400;color:#94a3b8;">— unheld buys, entry not yet ripe (Technical not BS/BM)</span>`;
+  btn.addEventListener('click', () => {
+    state.watchlistExpanded = !state.watchlistExpanded;
+    renderGrid();
+  });
+  td.appendChild(btn);
+  tr.appendChild(td);
+  return tr;
+}
+
+// Builds one <tr> for the main grid or an expanded Watchlist band row.
+// Extracted from renderGrid (TASK_120) so both share identical row markup.
+function _buildRowEl(r) {
     const tr = document.createElement('tr');
     const action = (r.consolidated_action || 'NONE').toUpperCase();
     const _ua = (r.last_user_action || '').toUpperCase();
     const isActed = r._rowActed || _ua === 'DONE' || _ua === 'SKIPPED' || _ua === 'OVERRIDDEN';
     if (isActed) tr.classList.add('row-acted');
+    if (r.stop_breached) tr.classList.add('row-stop-breach');
     tr.dataset.sym = r.tos_symbol;
 
     const pctCls = r.pct_change != null ? (Number(r.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : '';
     const pctStr = r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : '';
     const priceStr = r.last_price != null ? fmtUsd(r.last_price) : '';
+    const candleHtml = window.mtTip?.candleSvg(r.open_price, r.high_price, r.low_price, r.last_price) || '';
     // Task 4: intraday marker — shown only when quote is fresher than EOD anchor
     //         AND export_time falls within regular market hours (0930–1559 ET).
     const _idyRaw = String(r.export_time || '').replace(/:/g, '');
@@ -3027,6 +3022,31 @@ function renderGrid() {
       return `<div class="rr-sub-line" style="font-size:9px;color:#94a3b8;line-height:1.4;" data-filled="1">${td ? line('TnTd: ' + td) : ''}${bb ? line('BB: ' + bb) : ''}${rr ? line('RR: ' + rr) : ''}</div>`;
     })();
 
+    // RR column: reuses the shared .rr-rb/.rr-rb-tick bar (also used by
+    // market_bar.js's mini-tape) — a tick showing where last price sits
+    // between LRR (0%, left) and TRR (100%, right). Computed directly from
+    // lrr/trr/last_price — NOT quote_pct_brr/ma_pct_brr, which position price
+    // between the Trend/Trade technical lines (a different reference frame;
+    // see etl/derive.py's pct_brr formula), not the Risk Range at all.
+    const _lrrNum = r.lrr != null ? Number(r.lrr) : null;
+    const _trrNum = r.trr != null ? Number(r.trr) : null;
+    const _lastNum = r.last_price != null ? Number(r.last_price) : null;
+    const _rrBarW = (_lrrNum != null && _trrNum != null && _lastNum != null && _trrNum !== _lrrNum)
+      ? Math.round(Math.max(0, Math.min(100, (_lastNum - _lrrNum) / (_trrNum - _lrrNum) * 100)))
+      : null;
+    // Compact number format so LRR/TRR labels fit the narrow 44px column
+    // without wrapping: fewer decimals as magnitude grows.
+    const _fmtRR = v => Math.abs(v) >= 100 ? Math.round(v).toString()
+                       : Math.abs(v) >= 10  ? v.toFixed(1)
+                       : v.toFixed(2);
+    const rrBarHtml = _rrBarW != null
+      ? `<div style="display:flex;flex-direction:column;align-items:stretch;gap:4px;">
+           <div style="font-size:8px;line-height:1;color:#94a3b8;text-align:left;" title="LRR ${_lrrNum.toFixed(2)}">${_fmtRR(_lrrNum)}</div>
+           <div class="rr-rb" title="Risk Range position: ${_rrBarW}% (LRR ${_lrrNum.toFixed(2)} – TRR ${_trrNum.toFixed(2)})"><div class="rr-rb-tick" style="left:${_rrBarW}%;"></div></div>
+           <div style="font-size:8px;line-height:1;color:#94a3b8;text-align:right;" title="TRR ${_trrNum.toFixed(2)}">${_fmtRR(_trrNum)}</div>
+         </div>`
+      : '';
+
     // Final Call cell — reconciled action + confidence badge
     const fcHtml = _finalCallHtml(r);
     // Default Act action: use final call code when available, else 'DONE'
@@ -3049,11 +3069,23 @@ function renderGrid() {
         ) : ''}
       </td>
       <td data-col="chg" class="num">
-        <span class="${pctCls}" style="font-weight:700;">${pctStr}${intradayTag}</span>
+        <div class="chg-candle-row" style="display:flex;align-items:center;justify-content:flex-end;gap:4px;">
+          ${candleHtml}
+          <span class="${pctCls}" style="font-weight:700;">${pctStr}${intradayTag}</span>
+        </div>
         ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
       </td>
       <td data-col="sym" data-sym-cell="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer;" title="Click for chart">
-        <strong class="tv-sym-link" style="font-size:11px;">${escapeHtml(r.tos_symbol || '')}</strong>
+        <strong class="tv-sym-link" style="font-size:11px;color:${_symOutlookColor(r)};">${escapeHtml(r.tos_symbol || '')}</strong>
+        ${r._watchlisted && r._isNew
+          ? '<span class="new-pill" title="Winning source data just landed for this date — Technical isn\'t entry-ripe yet, so it waits here rather than promoting to Tier 1">NEW</span>'
+          : ''}
+        ${(() => {
+          const dir = _agreementDir(r);
+          if (dir === 'sell') return `<span title="2 of 3 (MACRO/Sources/Technical) agree sell, none opposing" style="color:#dc2626;font-size:9px;font-weight:700;margin-left:2px;">&#9660;3</span>`;
+          if (dir === 'buy')  return `<span title="2 of 3 (MACRO/Sources/Technical) agree buy, none opposing" style="color:#16a34a;font-size:9px;font-weight:700;margin-left:2px;">&#9650;3</span>`;
+          return '';
+        })()}
       </td>
       <td data-col="action" style="padding:6px 4px;">${fcHtml}</td>
       <td data-col="macro" style="padding:4px 6px; text-align:center;">${macroCellHtml(r)}</td>
@@ -3073,6 +3105,7 @@ function renderGrid() {
           ${_rrSubLineHtml}
         </div>
       </td>
+      <td data-col="rr" style="padding:6px 4px;">${rrBarHtml}</td>
       <td data-col="vlm" class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}${r.vlm_action ? `<span style="display:inline-block;margin-left:3px;font-size:9px;padding:1px 3px;border-radius:3px;background:${r.vlm_action==='Accumulate'?'#bbf7d0':r.vlm_action==='Avoid'?'#fecaca':'#e5e7eb'};color:#374151;font-weight:600;text-decoration:none;vertical-align:middle;">${escapeHtml(r.vlm_action === 'Accumulate' ? 'Accum' : r.vlm_action)}</span>` : ''}</td>
       <td data-col="iv" class="num" data-sym="${escapeHtml(r.tos_symbol)}" data-ivpop style="padding:3px 4px;cursor:default;">${window.ivGlyph ? window.ivGlyph(r.iv_percentile, r.imp_volatility != null ? r.imp_volatility * 100 : null, r.hv != null ? r.hv * 100 : null, r.iv_to_hv_discount) : ''}</td>
       <td data-col="macd" class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macd_brr)}">${r.a_macd_brr != null ? Number(r.a_macd_brr).toFixed(2) : ''}</td>
@@ -3099,15 +3132,7 @@ function renderGrid() {
       }
       openDrilldown(r);
     };
-    tb.appendChild(tr);
-  }
-
-  // Sync select-all checkbox
-  const allChk = $('bulkSelectAll');
-  if (allChk) {
-    allChk.checked = state.selected.size > 0 && state.selected.size >= visibleRows.length;
-    allChk.indeterminate = state.selected.size > 0 && state.selected.size < visibleRows.length;
-  }
+    return tr;
 }
 
 // escapeHtml is provided by _common.js (window.escapeHtml).
@@ -3307,6 +3332,14 @@ function exportCsv() {
     cols.push(['P(↑ 20d)', r => r.bull_prob != null ? Math.round(Number(r.bull_prob) * 100) + '%' : '']);
   if (shown('agree'))
     cols.push(['Agree', r => r.agreement_class ? (_AGR_LABEL[r.agreement_class] || r.agreement_class) : '']);
+  if (shown('rr'))
+    cols.push(['RR%', r => {
+      const lo = r.lrr != null ? Number(r.lrr) : null;
+      const hi = r.trr != null ? Number(r.trr) : null;
+      const last = r.last_price != null ? Number(r.last_price) : null;
+      if (lo == null || hi == null || last == null || hi === lo) return '';
+      return Math.round(Math.max(0, Math.min(100, (last - lo) / (hi - lo) * 100))) + '%';
+    }]);
   if (shown('vlm'))
     cols.push(['RVOL', r => r.rvol != null ? Number(r.rvol).toFixed(2) : '']);
   if (shown('iv')) {
@@ -3352,10 +3385,15 @@ function exportCsv() {
   URL.revokeObjectURL(url);
 }
 
-// Copy the currently visible (filtered) symbols as a comma-separated list —
-// same row scope as exportCsv (state.rows).
+// Copy the symbols actually on screen right now as a comma-separated list
+// (2026-07-05): state.visibleRows (cached by renderGrid) reflects the
+// Top-N collapse when active, unlike state.rows (the full filtered set,
+// which is what exportCsv still uses -- CSV export intentionally exports
+// everything matching the filter, not just what's currently paginated
+// into view).
 async function copySymbols() {
-  const symbols = state.rows.map(r => r.tos_symbol).filter(Boolean);
+  const rows = state.visibleRows || state.rows;
+  const symbols = rows.map(r => r.tos_symbol).filter(Boolean);
   if (!symbols.length) return;
   const text = symbols.join(',');
   try {
@@ -3437,40 +3475,49 @@ const _DD_TV_MAP = {
 };
 let _ddTvSeq = 0;
 function _loadDrilldownChart(sym) {
-  const el = $('modalTvChart');
-  if (!el) return;
-  el.innerHTML = '';
+  const dailyEl = $('modalTvChart');
+  const intradayEl = $('modalTvChartIntraday');
+  if (!dailyEl || !intradayEl) return;
+  dailyEl.innerHTML = '';
+  intradayEl.innerHTML = '';
   if (!sym || sym.startsWith('$_CASH')) {
-    el.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;">No chart</div>';
+    const noChart = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px;">No chart</div>';
+    dailyEl.innerHTML = noChart;
+    intradayEl.innerHTML = noChart;
     return;
   }
   let tvSym = _DD_TV_MAP[sym] || (sym.startsWith('$') ? sym.slice(1) : sym.startsWith('/') ? sym.slice(1)+'1!' : sym);
-  const id = 'dd_tv_' + (++_ddTvSeq);
-  const wrap = document.createElement('div');
-  wrap.id = id;
-  wrap.style.cssText = 'width:100%;height:100%;';
-  el.appendChild(wrap);
-  const s = document.createElement('script');
-  s.src = 'https://s3.tradingview.com/tv.js';
-  s.onload = () => {
+  const dailyId = 'dd_tv_' + (++_ddTvSeq);
+  const intradayId = 'dd_tv_' + (++_ddTvSeq);
+  const dailyWrap = document.createElement('div');
+  dailyWrap.id = dailyId;
+  dailyWrap.style.cssText = 'width:100%;height:100%;';
+  dailyEl.appendChild(dailyWrap);
+  const intradayWrap = document.createElement('div');
+  intradayWrap.id = intradayId;
+  intradayWrap.style.cssText = 'width:100%;height:100%;';
+  intradayEl.appendChild(intradayWrap);
+  const _render = () => {
     new TradingView.widget({
       autosize:true, symbol:tvSym, interval:'D',
       timezone:'America/New_York', theme:'light', style:'1', locale:'en',
       enable_publishing:false, allow_symbol_change:true, save_image:false,
       studies:['BB@tv-basicstudies','RSI@tv-basicstudies'],
-      container_id:id,
+      container_id:dailyId,
+    });
+    new TradingView.widget({
+      autosize:true, symbol:tvSym, interval:'5', range:'1D',
+      timezone:'America/New_York', theme:'light', style:'1', locale:'en',
+      enable_publishing:false, allow_symbol_change:true, save_image:false,
+      container_id:intradayId,
     });
   };
   if (window.TradingView) {
-    // already loaded
-    new TradingView.widget({
-      autosize:true, symbol:tvSym, interval:'D',
-      timezone:'America/New_York', theme:'light', style:'1', locale:'en',
-      enable_publishing:false, allow_symbol_change:true, save_image:false,
-      studies:['BB@tv-basicstudies','RSI@tv-basicstudies'],
-      container_id:id,
-    });
+    _render();
   } else {
+    const s = document.createElement('script');
+    s.src = 'https://s3.tradingview.com/tv.js';
+    s.onload = _render;
     document.head.appendChild(s);
   }
 }
@@ -3635,6 +3682,57 @@ function toggleCmpRow(tr, srcCode) {
   exp.appendChild(td);
   tr.after(exp);
   tr.classList.add('expanded');
+  if (srcCode === 'CALL') _loadCallNote(td);
+}
+
+// CALL source only: fetch every analyst commentary paragraph for this symbol
+// from the CALL email (note_repo) - a symbol can have both a Top-5 blurb and
+// a separate fuller write-up in the same email - and fill in the placeholder
+// left by _comparisonPanelHtml. Joined on snapshot_date (not message_id -
+// hist_call's message_id column is always NULL, since hist_call is populated
+// via the file-loader round-trip which drops it). The comparison record's
+// current and previous snapshot_date are usually two different CALL emails
+// (e.g. this week's vs. last week's) - fetch and show notes for both, since
+// showing only "current" hides the previous email's notes entirely.
+async function _loadCallNote(container) {
+  const el = container.querySelector('#cmpCallNote');
+  if (!el) return;
+  const c = _cmpData.get('CALL');
+  const curD = (c && c.current && !c.current.dropped) ? c.current.snapshot_date : null;
+  const prvD = (c && c.previous && !c.previous.dropped) ? c.previous.snapshot_date : null;
+  const sym = state.current && state.current.tos_symbol;
+  const dateGroups = [];
+  if (curD) dateGroups.push({ label: 'Current', date: curD });
+  if (prvD && prvD !== curD) dateGroups.push({ label: 'Previous', date: prvD });
+  if (!dateGroups.length || !sym) { el.textContent = 'No analyst comment available.'; return; }
+
+  const _label = st => st === 'the_call_top5' ? 'Top 5 idea' : 'Commentary';
+  try {
+    const groups = await Promise.all(dateGroups.map(async g => {
+      const data = await fetchJson('/api/actionable/call-note?symbol=' + encodeURIComponent(sym) +
+        '&date=' + encodeURIComponent(g.date));
+      const notes = (data && Array.isArray(data.notes)) ? data.notes.filter(n => n && n.note_text) : [];
+      return { label: g.label, date: g.date, notes };
+    }));
+    const nonEmpty = groups.filter(g => g.notes.length);
+    if (!nonEmpty.length) { el.textContent = 'No analyst comment available.'; return; }
+    el.innerHTML = nonEmpty.map(g => {
+      const body = g.notes.map(note => {
+        const link = note.gmail_link
+          ? ` &middot; <a href="${escapeHtml(note.gmail_link)}" target="_blank" rel="noopener">open email</a>` : '';
+        return '<div class="cmp-call-note-block">' +
+          '<div class="cmp-call-note-head">' + _label(note.source_type) + link + '</div>' +
+          '<div class="cmp-call-note-body">' + escapeHtml(note.note_text) + '</div>' +
+        '</div>';
+      }).join('');
+      return '<div class="cmp-call-note-group">' +
+        '<div class="cmp-call-note-group-head">' + g.label + ' &middot; ' + fmtMD(g.date) + '</div>' +
+        body +
+      '</div>';
+    }).join('');
+  } catch (_) {
+    el.textContent = 'No analyst comment available.';
+  }
 }
 
 // Build the Field / Current / Previous / Delta table for one source.
@@ -3694,6 +3792,8 @@ function _comparisonPanelHtml(srcCode) {
   const act = _actCode ? '<span class="act-badge ' +
               escapeHtml((actionDisplay(_actCode).colorCls || 'act-neutral') + '-tint') + '">' +
               escapeHtml(actionText(actionDisplay(_actCode)) || _actCode) + '</span> ' : '';
+  const callNoteBlock = (srcCode === 'CALL')
+    ? '<div class="cmp-call-note" id="cmpCallNote">Loading analyst comment&hellip;</div>' : '';
   return '<div class="cmp-panel">' +
     '<div class="cmp-panel-head">' +
       '<span class="cmp-src">' + act + escapeHtml(srcCode) + ' &middot; record comparison</span>' +
@@ -3705,6 +3805,7 @@ function _comparisonPanelHtml(srcCode) {
       '<tbody>' + body + '</tbody>' +
     '</table>' +
     '<div class="cmp-empty">Highlighted = the field(s) that drive ' + escapeHtml(srcCode) + '&#39;s action. Other rows may differ but are informational.</div>' +
+    callNoteBlock +
   '</div>';
 }
 
@@ -4050,8 +4151,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // initSorting must run before loadDates/renderGrid so th.dataset.label is
   // captured from the clean header text (before sort indicators are injected).
   initSorting();
-  _initSymTape();
-  initSymTilePop();
   initGridSymClick();
   initEcoBarClick();
   _initSidePanels();
@@ -4103,8 +4202,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       focusPrev();
     }
   });
-  const showAllBtnEl = $('showAllBtn');
-  if (showAllBtnEl) showAllBtnEl.addEventListener('click', () => { state.showAll = true; renderGrid(); });
   const emptyStateEl = $('emptyState');
   if (emptyStateEl) emptyStateEl.addEventListener('click', (e) => {
     if (e.target.closest('#emptyClearFiltersBtn')) clearAllFilters();

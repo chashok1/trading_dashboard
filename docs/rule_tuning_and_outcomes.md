@@ -186,9 +186,16 @@ python agent_rederive_all.py
 
 - **Performance screen** (`/rule-performance`): two panels. "Rule scorecard" =
   `v_rule_scorecard` ranked by `edge_20d` (which rules predict the right move).
-  "Your actions" = `v_user_action_performance` (`GET /api/rules/my-actions`): the
-  recommendations you marked DONE on the Actionable screen, joined to the stock's
-  forward return — your personal track record. Empty until you log actions.
+  "Your actions" (TASK_121, 2026-07-12) = `v_inferred_action_performance` /
+  `drv_inferred_action` (`GET /api/rules/my-actions`): trades INFERRED from
+  `hist_cs`/`hist_f` position-snapshot deltas (`etl/derive_inferred_actions.py`)
+  — **not** manual ACT-button logging, which is effectively empty
+  (`user_action_log`) — joined to the stock's forward return and a
+  FOLLOWED/CONTRADICTED/NO_SIGNAL stance vs that date's recommendation. The
+  panel shows a FOLLOWED-vs-CONTRADICTED headline above the table. The older
+  transaction-log-based `v_user_action_performance`/`drv_position_action`
+  (TASK_71, `hist_cst`/`hist_ft`) is left in the schema for comparison but no
+  longer served by this endpoint.
 - **Actionable screen** (`/actionable`): the action surface. The grid has a
   **"Rules (edge)"** column (after "Trig") listing each row's fired rules
   winning-first (highest firing score), each chip showing its historical edge
@@ -196,8 +203,8 @@ python agent_rederive_all.py
   symbol's detail for the full per-rule breakdown, where each fired-rule pill also
   shows the edge badge (`+1.9% · 50%`). Both read `/api/rules/scorecard` (cached in
   `state.scorecard`, loaded in `loadSources`; cell builder `firesCellHtml`).
-  Act/Skip/Snooze logs to `user_action_log` (with `rules_engine_fires`), which
-  feeds "Your actions".
+  The default row sort (TASK_120) is dollar-weighted edge, not this raw firing
+  score — see `web/actionable.js::_computePriority`.
 - **Rule Flow** (`/rule-flow`): per-symbol firing chain; each composite shows the
   same edge badge.
 - **Param Sets** (`/param-sets`): activate/deactivate profiles (Baseline / Sigmoid /

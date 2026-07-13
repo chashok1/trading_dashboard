@@ -422,33 +422,54 @@ def get_atomic_rule_scorecard(
 
 @router.get("/api/rules/my-actions", response_model=dict)
 def get_my_actions(limit: int = Query(200, ge=1, le=2000)):
-    """Personal action track record (TASK_71): unified manual + inferred-from-
-    positions actions joined to forward returns (v_user_action_performance).
-    source_kind='manual' rows come from user_action_log (ACT button).
-    source_kind='inferred' rows come from drv_position_action (auto-detected).
-    attribution='rule'|'discretionary' present on all rows.
-    Returns {summary, recent[]}.
+    """Personal action track record (TASK_121): trades INFERRED from CS/F
+    position-snapshot deltas (drv_inferred_action / v_inferred_action_performance)
+    — the official track record; no manual ACT-button logging involved.
+    stance='FOLLOWED'|'CONTRADICTED'|'NO_SIGNAL' vs that date's
+    drv_actionable.consolidated_action. Returns
+    {summary, by_stance[], by_action_family[], recent[]}.
+    The older transaction-log-based v_user_action_performance (TASK_71) is
+    left intact in the schema for comparison but no longer served here.
     """
     with session_scope() as s:
         recent = s.execute(text("""
-            SELECT id, acted_at, as_of_date, tos_symbol, user_action,
-                   consolidated_action, change_type, shares_delta,
-                   attribution, source_kind, attributed_rule_ids,
+            SELECT as_of_date, tos_symbol, account, source_feed, qty_delta,
+                   est_dollar, inferred_action, rec_action, stance,
                    fwd_5d_pct, fwd_20d_pct
-            FROM v_user_action_performance
-            ORDER BY acted_at DESC NULLS LAST
+            FROM v_inferred_action_performance
+            ORDER BY as_of_date DESC
             LIMIT :lim
         """), {"lim": limit}).mappings().all()
         summ = s.execute(text("""
-            SELECT COUNT(*)                                          AS n_actions,
-                   COUNT(*) FILTER (WHERE source_kind = 'inferred') AS n_inferred,
-                   COUNT(*) FILTER (WHERE source_kind = 'manual')   AS n_manual,
-                   COUNT(*) FILTER (WHERE fwd_20d_pct IS NOT NULL)  AS n_scored,
-                   ROUND(AVG(fwd_20d_pct)::numeric, 2)              AS avg_fwd_20d,
-                   ROUND(AVG(fwd_5d_pct)::numeric, 2)               AS avg_fwd_5d
-            FROM v_user_action_performance
+            SELECT COUNT(*)                                            AS n_actions,
+                   COUNT(*) FILTER (WHERE fwd_20d_pct IS NOT NULL)      AS n_scored,
+                   ROUND(AVG(fwd_20d_pct)::numeric, 2)                  AS avg_fwd_20d,
+                   ROUND(AVG(fwd_5d_pct)::numeric, 2)                   AS avg_fwd_5d,
+                   ROUND(SUM(ABS(est_dollar))::numeric, 2)              AS total_est_dollar
+            FROM v_inferred_action_performance
         """)).mappings().first()
-        return {"summary": dict(summ) if summ else {}, "recent": [dict(r) for r in recent]}
+        by_stance = s.execute(text("""
+            SELECT stance, COUNT(*)                                    AS n,
+                   ROUND(AVG(fwd_5d_pct)::numeric, 2)                   AS avg_fwd_5d,
+                   ROUND(AVG(fwd_20d_pct)::numeric, 2)                  AS avg_fwd_20d,
+                   ROUND(SUM(ABS(est_dollar))::numeric, 2)              AS total_est_dollar
+            FROM v_inferred_action_performance
+            GROUP BY stance ORDER BY stance
+        """)).mappings().all()
+        by_family = s.execute(text("""
+            SELECT inferred_action AS family, COUNT(*)                 AS n,
+                   ROUND(AVG(fwd_5d_pct)::numeric, 2)                   AS avg_fwd_5d,
+                   ROUND(AVG(fwd_20d_pct)::numeric, 2)                  AS avg_fwd_20d,
+                   ROUND(SUM(ABS(est_dollar))::numeric, 2)              AS total_est_dollar
+            FROM v_inferred_action_performance
+            GROUP BY inferred_action ORDER BY inferred_action
+        """)).mappings().all()
+        return {
+            "summary": dict(summ) if summ else {},
+            "by_stance": [dict(r) for r in by_stance],
+            "by_action_family": [dict(r) for r in by_family],
+            "recent": [dict(r) for r in recent],
+        }
 
 
 @router.get("/api/rules/bull-model", response_model=dict)

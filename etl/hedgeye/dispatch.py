@@ -210,7 +210,7 @@ def dispatch(session, email, email_type: str, parsed, cfg) -> dict:
         elif email_type == "signal_strength" and parsed.images:
             _save_hefiles_image(
                 parsed.images[0], cfg.hefiles_dir,
-                f"SSS_{feed_date.isoformat()}.png",
+                f"SSS {feed_date.isoformat()}.png",
             )
             summary["images"] = 1
         elif email_type == "inflation_nowcast" and parsed.images:

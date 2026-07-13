@@ -64,6 +64,7 @@ def _compute_final_call(
     held_today: bool,
     current_position_dollar: float,
     target_max_dollar: Optional[float],
+    stop_breached: bool = False,
 ) -> dict:
     """Python port of JS finalCall() in web/actionable.js.
 
@@ -79,6 +80,21 @@ def _compute_final_call(
         return {
             "final_action": lbl, "final_code": code, "final_side": side,
             "fc_strength": 0, "fc_confidence": "none", "fc_feasible": False,
+        }
+
+    # ── TASK_119: stop breach downgrade ──────────────────────────────────
+    # A held position trading below its stop can never headline as an
+    # effective ADD/INCREASE — downgrade to HOLD (caller sets
+    # suppressed_reason='STOP BREACHED'; the original stays in
+    # source_actions so the user still sees what the system would have
+    # said). Takes priority over the at-Max / gate checks below. Breach ≠
+    # auto-sell — REMOVE/REDUCE/HOLD rows are left untouched here, just
+    # flagged via drv_actionable.stop_breached.
+    if stop_breached and ca in ("ADD", "INCREASE"):
+        lbl, code, side = _action_display("HOLD")
+        return {
+            "final_action": lbl, "final_code": code, "final_side": side,
+            "fc_strength": 0, "fc_confidence": "gate", "fc_feasible": True,
         }
 
     # ── Helper classifiers ──────────────────────────────────────────────
@@ -357,6 +373,31 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     except Exception:
         pass
 
+    # TASK_118 Part A: rule-scorecard direction/confidence per composite id, +
+    # the self-updating "unproven sell rule" set (v_unproven_sell_rules:
+    # SELL, fires>=500, edge_20d<0). Used to flag low_confidence rows whose
+    # only sell-side evidence is a rule with a demonstrated negative edge —
+    # BUY-side scoring/thresholds are untouched, this is read-only annotation.
+    rule_scorecard: dict[str, dict] = {}
+    try:
+        for r in session.execute(text(
+            "SELECT rule_id, direction, confidence FROM v_rule_scorecard"
+        )).mappings().all():
+            rule_scorecard[r["rule_id"]] = {
+                "direction": r["direction"], "confidence": r["confidence"],
+            }
+    except Exception:
+        log.warning("v_rule_scorecard load failed (low_confidence stays False)", exc_info=True)
+
+    unproven_sell_ids: set[str] = set()
+    try:
+        for r in session.execute(text(
+            "SELECT rule_id FROM v_unproven_sell_rules"
+        )).fetchall():
+            unproven_sell_ids.add(r[0])
+    except Exception:
+        log.warning("v_unproven_sell_rules load failed (low_confidence stays False)", exc_info=True)
+
     # Load td_tn_bb_action_desc (the rr_action for finalCall) from drv_tn_td_bb_rr.
     rr_action_map: dict[str, str] = {}
     try:
@@ -542,7 +583,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            triggered_group_ids, trig_action,
            stop_level, source_run_id,
            final_action, final_code, final_side,
-           fc_strength, fc_confidence, fc_feasible, priority_rank)
+           fc_strength, fc_confidence, fc_feasible, priority_rank,
+           stop_breached, low_confidence)
         VALUES
           (:d, :sym, :desc, :sect,
            :ca, :ws, :wp,
@@ -553,7 +595,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            CAST(:groups AS JSONB), :trig,
            :stop, :rid,
            :f_action, :f_code, :f_side,
-           :f_strength, :f_confidence, :f_feasible, :f_priority)
+           :f_strength, :f_confidence, :f_feasible, :f_priority,
+           :stop_breached, :low_confidence)
     """)
 
     rows_written = 0
@@ -569,6 +612,25 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                 if cid:
                     fired_composites.add(cid)
         composite_results = {c: True for c in fired_composites}
+
+        # ─── TASK_118 Part A: low_confidence annotation ────────────────────
+        # True when this symbol's ONLY sell-side evidence is a fired composite
+        # in v_unproven_sell_rules — no source (PS/ETF/RR/SSS/II/CALL) emitted
+        # a REMOVE/REDUCE, and no fired SELL composite is proven. Diagnostic
+        # flag only; does not touch consolidated_action or any BUY-side logic.
+        fired_sell_composites = [
+            c for c in fired_composites
+            if rule_scorecard.get(c, {}).get("direction") == "SELL"
+        ]
+        has_proven_sell = any(
+            rule_scorecard.get(c, {}).get("confidence") == "proven"
+            for c in fired_sell_composites
+        )
+        has_unproven_sell = any(c in unproven_sell_ids for c in fired_sell_composites)
+        source_driven_sell = any(
+            a["action"] in ("REMOVE", "REDUCE") for a in src_actions
+        )
+        low_confidence = has_unproven_sell and not has_proven_sell and not source_driven_sell
 
         triggered_groups: list[dict] = []  # for the JSONB column + trig_action
         group_candidates: list[dict] = []  # synthetic actions for consolidated_action
@@ -771,6 +833,18 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         )
         stop_level_val = _compute_stop(sym, consolidated) if _show_stop else None
 
+        # ─── TASK_119: stop-consistency flag ───────────────────────────────
+        # A held position whose latest price is below stop_level is always
+        # flagged. ADD/INCREASE also get suppressed_reason overridden so the
+        # user sees why the effective action was downgraded to HOLD.
+        stop_breached = False
+        if held_today and stop_level_val is not None:
+            _price_now = _last_price.get(sym)
+            if _price_now is not None and float(_price_now) < float(stop_level_val):
+                stop_breached = True
+                if consolidated in ("ADD", "INCREASE"):
+                    suppressed = "STOP BREACHED"
+
         # ─── TASK_53: Compute final_call + priority_rank at derive time ───
         rr_act = rr_action_map.get(sym)
         fc = _compute_final_call(
@@ -779,6 +853,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             held_today=held_today,
             current_position_dollar=held_dollar,
             target_max_dollar=target_max,
+            stop_breached=stop_breached,
         )
         # priority_rank mirrors JS _computePriority: seq * 1e6 + |amt|.
         # amt = suggested - held for buys; held for sells; 0 otherwise.
@@ -828,6 +903,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "f_confidence": fc["fc_confidence"],
             "f_feasible":   fc["fc_feasible"],
             "f_priority":   priority_rank,
+            "stop_breached":   stop_breached,
+            "low_confidence":  low_confidence,
         })
         rows_written += 1
 

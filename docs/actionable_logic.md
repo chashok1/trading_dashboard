@@ -127,16 +127,24 @@ still sees what the system would have recommended.
 
 **Grid & Final Call (current as of TASK_103–110, 2026-07).** Column order:
 bulk-select checkbox · H (only when Show Hidden is on) · POS$ · AMT$ · %CHG ·
-Symbol · ACTION · MACRO · CALC · Sources · Technical · Vlm · IV · MACD ·
+Symbol · ACTION · MACRO · CALC · Sources · Technical · RR · Vlm · IV · MACD ·
 MACDH · RSI · Rules (edge, capped at 4 pills + `+n`) · P(↑20d) · Agree · Act.
+%CHG carries a small candle icon (open/high/low/last, via `window.mtTip.candleSvg`)
+next to the change badge; Symbol's text is colored by `rr_outlook`
+(Bullish/Bearish/Neutral), falling back to today's `pct_change` direction
+when no outlook is set. RR is a small range-bar + tick (`.rr-rb`/`.rr-rb-tick`,
+shared with `market_bar.js`'s mini-tape) showing where the last price sits
+between LRR and TRR. (2026-07-06: these three replace the removed
+symbol-tape chip bar that used to sit above the grid — same underlying
+data, now inline in the grid instead of a separate scrollable strip.)
 ACTION is the server-computed **Final Call** (`drv_actionable.final_code`,
 D6) with a High/Gate/Mixed confidence badge; summary/filter chips bucket rows
 by `finalCall()` so chips always match the ACTION column. A gear menu
 toggles column visibility (persisted as `act_cols_v1`; CALC, P(↑20d), Agree
 hidden by default) and a "?" button opens a static legend of all codes and
-glyphs. Default view collapses to the top 15 priority rows with a
-"Show all N" bar (active only under the default `_priority` sort with no
-action chip). MACRO sorts numerically on `macronet`.
+glyphs. All rows render by default (the earlier Top-15-row collapse +
+"Show all N" bar was removed 2026-07-06 — the user preferred scrolling the
+full list). MACRO sorts numerically on `macronet`.
 
 **Refresh & data volume.** The 30-second auto-poll reloads rows with
 `loadActionable({preserveState:true})` — user sort and bulk selection
@@ -428,3 +436,30 @@ If no price data is available, `stop_level` is NULL.
 
 To change: `UPDATE ref_settings SET setting_value = '0.05' WHERE setting_name = 'stop_pct';`
 then re-derive (`python -m etl.scheduler` or File Monitor → Force Re-derive).
+
+**`stop_breached` (TASK_119, 2026-07-12).** `BOOLEAN NOT NULL DEFAULT FALSE`
+on `drv_actionable`. Set TRUE for held rows where `last_price < stop_level`.
+If `consolidated_action` is ADD or INCREASE, `_compute_final_call()` downgrades
+the *effective* Final Call to HOLD (`fc_confidence='gate'`) while
+`consolidated_action`/`source_actions` keep the original recommendation and
+`suppressed_reason` is set to `'STOP BREACHED'` — the user still sees what the
+system would have said. REMOVE/REDUCE/HOLD rows are just flagged, never
+force-upgraded to REMOVE (bond ETFs can sit pennies below a tight stop
+without being "losers"). Non-held rows are never flagged. Surfaced on
+`/actionable` as a red "STOP" pill next to the ACTION badge, a red left-edge
+row tint, and a "STOP n" summary chip (`web/actionable.js`).
+
+## SELL-side confidence (`drv_actionable.low_confidence`, TASK_118)
+
+`v_unproven_sell_rules` (`db/baseline.sql`) self-updates from
+`v_rule_scorecard`: any composite with `direction='SELL'`, `fires>=500`, and
+`edge_20d<0` (price recovers, on average, after the rule fires) — no
+hardcoded rule list. In `etl/derive_actionable.py`, a symbol's
+`low_confidence` flag is TRUE when its only sell-side evidence is a fired
+composite in that set — i.e. no per-source REMOVE/REDUCE and no *proven*
+SELL composite also fired. **Annotation only** — `consolidated_action` is
+never changed by this flag; BUY-side rules/thresholds/weights are untouched.
+`/actionable` renders a muted/outline ACTION badge with a "LOW CONF"
+sub-label and a "Low" confidence badge on flagged rows. See
+`docs/audit/sell_candidates_2026-07.md` for the related sell-into-strength
+backtest (S1–S3, none recommended for activation).

@@ -3386,6 +3386,24 @@ def derive_all(session: Session, as_of_date: date,
         try: session.rollback()
         except Exception: pass
 
+    # TASK_121: infer BUY/SELL trades from hist_cs/hist_f position-snapshot
+    # deltas (NOT hist_cst/hist_ft transactions — see docs memory: the
+    # feedback loop must use position diffs, never manual ACT-button
+    # logging). Incremental — diffs only the newest 2 snapshots per source
+    # each run; the full-history backfill is a one-time
+    # `python -m etl.derive_inferred_actions --full`. Runs after
+    # drv_actionable (needs it for stance attribution). Non-critical.
+    try:
+        from etl.derive_inferred_actions import derive_inferred_actions
+        counts["drv_inferred_action"] = _safe(
+            "drv_inferred_action", derive_inferred_actions
+        )
+    except Exception:
+        log.exception("derive_inferred_actions import failed (non-fatal)")
+        counts["drv_inferred_action"] = 0
+        try: session.rollback()
+        except Exception: pass
+
     counts["drv_missing_symbols"] = _safe("drv_missing_symbols", derive_missing_symbols)
     counts["drv_trig"]            = _safe("drv_trig",            derive_trig)
 

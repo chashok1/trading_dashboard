@@ -13,6 +13,7 @@ from etl.hedgeye.parsers import (
     parse_etf_changes, parse_signal_strength, parse_portfolio_solutions,
     parse_macro_show_summary, parse_the_call, parse_early_look,
     parse_market_situation, parse_inflation_nowcast, parse_quarterly_outlook,
+    parse_macro_show_top3,
 )
 
 TS = datetime(2026, 6, 26, 15, 0, tzinfo=timezone.utc)
@@ -55,8 +56,33 @@ def test_rta_action():
     assert r["action"] == "SHORT" and r["symbol"] == "ROP" and r["price"] == 339.80
     assert r["side"] == "short" and r["analyst"] == "Van Sciver" and r["signal_kind"] == "Sell"
     assert r["dur_trade"] and r["dur_trend"] and r["dur_tail"]
+    # intro prose before "Coaching Notes:" is captured too, company-name line dropped
+    assert r["coaching_notes"].startswith("Been waiting to start adding #Quad4 Shorts...")
+    assert "Roper Technologies Inc." not in r["coaching_notes"]
     assert "greenlight" in (r["coaching_notes"] or "")
     assert p.notes and p.notes[0]["source_type"] == "rta_coaching"
+
+
+def test_rta_intro_text_no_coaching_list():
+    # Real Jul-6-2026 URI alert shape: intro question, then a "Coaching
+    # Notes:" ordered list with no numbering markers in plaintext.
+    subj = "**Real-Time Alert: Van Sciver Buy Signal (Investable Bucket): United Rentals (URI) -KM"
+    pt = (
+        "07/06/2026 10:51 AM EDT\nlong   BUY SIGNAL URI $1,089.81\n\n"
+        "United Rentals Inc.\n"
+        "Looking for Longs with the VIX back in what we call The Investable Bucket?\n\n"
+        "Coaching Notes:\n\n"
+        "I'll I've sent you today are cover and buy signals, so directionally I am\n\n"
+        "This \"bucket\" or regime for US stock market volatility is not friendly to bears\n\n"
+        "We have 83 Signal Strength Longs on that product list to pick from don't forget,\n\nKM\n\n"
+        "Durations\ntrade trend tail\n"
+    )
+    p = parse_real_time_alert(_email(subj, pt))
+    r = p.tables["hist_rta"][0]
+    assert r["symbol"] == "URI" and r["action"] == "BUY" and r["price"] == 1089.81
+    assert r["coaching_notes"].startswith(
+        "Looking for Longs with the VIX back in what we call The Investable Bucket?")
+    assert "Signal Strength Longs" in r["coaching_notes"]
 
 
 def test_rta_correction():
@@ -144,6 +170,34 @@ def test_the_call():
     assert "acceleration" in top[0]["rationale_snippet"]
 
 
+def test_the_call_grouped_ticker_commentary():
+    # Commentary paragraphs sometimes group two+ names under one colon, e.g.
+    # "Conagra Brands, Inc. (CAG) / Campbell Soup Company (CPB): text…" — each
+    # ticker in the header must still get the shared commentary, not be dropped.
+    pt = (
+        "HEDGEYE POSITIONS\n"
+        "LONGS: BJRI, MGM, HLT, EAT, SJM\nSHORTS: CAG, CPB\nNEUTRAL: FDXF\n\n"
+        "Top 5 Most Actionable Stock Ideas\n\n"
+        "(Positioning based on Hedgeye Macro Signals and Signal Strength)\n\n"
+        "BJ's Restaurants, Inc. (BJRI): One of the few showing comp acceleration.\n\n"
+        "MGM Resorts International (MGM): Favorable transaction math.\n\n"
+        "Hilton Worldwide Holdings Inc. (HLT): Solid RevPAR setup.\n\n"
+        "Brinker International, Inc. (EAT): Accelerating comp on the quarter.\n\n"
+        "The J. M. Smucker Company (SJM): Newest long idea in Staples.\n\n"
+        "Conagra Brands, Inc. (CAG) / Campbell Soup Company (CPB): Stated as moved off "
+        "the short list due to pods and quads; respond better to lower interest rates; "
+        "note: the position monitor still lists both on the Short Bench.\n\n"
+        "Moody’s Corporation (MCO), S&P Global Inc. (SPGI), TransUnion (TRU): Rotated "
+        "more favorably toward the bench / long-bench side; long.\n"
+    )
+    p = parse_the_call(_email("The Call @ Hedgeye | Replay & Summary | 7/6/2026", pt))
+    commentary = [n for n in p.notes if n["source_type"] == "the_call_commentary"]
+    cag_cpb = next(n for n in commentary if set(n["tickers"]) == {"CAG", "CPB"})
+    assert "pods and quads" in cag_cpb["note_text"]
+    mco_group = next(n for n in commentary if set(n["tickers"]) == {"MCO", "SPGI", "TRU"})
+    assert "Rotated more favorably" in mco_group["note_text"]
+
+
 def test_early_look():
     pt = (
         "06/26/2026 07:49 AM EDT #Bag7 Getting #Quad4'd\n\n"
@@ -155,6 +209,61 @@ def test_early_look():
     note = p.notes[0]
     assert note["source_type"] == "early_look" and note["quad"] == 4
     assert "Retail-favorite" in note["note_text"]
+
+
+def test_macro_show_top3_numbered():
+    pt = (
+        "07/02/2026 08:42 AM EDT THE MACRO SHOW: July 2nd - Access Show, Slide Deck & Top 3 Things\n\n"
+        "click here to access today's show\n\n"
+        "Hedgeye's top 3 things\n\n"
+        "1) KOSPI – The Doctor is prescribing meds for the Levered Longs (SOXL)\n\n"
+        "2) RATES – To be clear, the catalyst for Bond Yields to go up is that they went straight down\n\n"
+        "3) QQQ – Like the KOSPI, QQQ bounced to lower-Cycle-highs #Quad4\n\n"
+        "Immediate-term @Hedgeye Risk Ranges : SP500 = 7300-7553; UST 10yr Yield = 4.31-4.51%\n\nKM\n\n"
+        "Please visit https://app.hedgeye.com/feed_items/184257 for more information.\n"
+    )
+    p = parse_macro_show_top3(_email(
+        "THE MACRO SHOW: July 2nd - Access Show, Slide Deck & Top 3 Things", pt))
+    note = p.notes[0]
+    assert note["source_type"] == "macro_show_top3"
+    assert note["note_text"].startswith("1) KOSPI –")
+    assert "2) RATES –" in note["note_text"] and "3) QQQ –" in note["note_text"]
+    assert "Immediate-term" not in note["note_text"]
+    assert not p.warnings
+
+
+def test_macro_show_top3_unnumbered():
+    # Hedgeye doesn't always number the <ol><li> items in plaintext — bare
+    # "LABEL – text" paragraphs must still parse (not fall back to subject).
+    pt = (
+        "07/06/2026 08:40 AM EDT THE MACRO SHOW: July 6th - Access Show, Slide Deck & Top 3 Things\n\n"
+        "click here to access today's show\n\n"
+        "Hedgeye's top 3 things\n\n"
+        "Was that already it for #Quad4 in July? Definitely not for some big Macro things…\n\n"
+        "USD – Post a Counter @Hedgeye TREND correction of -0.5% week-over-week\n\n"
+        "GOLD – Lots of client questions on why I haven't gone back to Long Gold\n\n"
+        "QQQ – Down KOSPI, up QQQ futures is interesting, KOSPI's immediate-term TRADE Signal Level 8321\n\n"
+        "Immediate-term @Hedgeye Risk Ranges : SP500 = 7300-7553; UST 10yr Yield = 4.31-4.51%\n\nKM\n\n"
+        "Please visit https://app.hedgeye.com/feed_items/184257 for more information.\n"
+    )
+    p = parse_macro_show_top3(_email(
+        "THE MACRO SHOW: July 6th - Access Show, Slide Deck & Top 3 Things", pt))
+    note = p.notes[0]
+    assert note["source_type"] == "macro_show_top3"
+    assert note["note_text"] != note["subject"]
+    assert note["note_text"].startswith("1) USD –")
+    assert "2) GOLD –" in note["note_text"]
+    assert "3) QQQ –" in note["note_text"]
+    assert "immediate-term TRADE Signal Level 8321" in note["note_text"]  # not truncated
+    assert not p.warnings
+
+
+def test_macro_show_top3_falls_back_with_warning():
+    pt = "07/06/2026 08:40 AM EDT THE MACRO SHOW: no top-3 section here at all\n"
+    p = parse_macro_show_top3(_email("THE MACRO SHOW: no top-3 section here at all", pt))
+    note = p.notes[0]
+    assert note["note_text"] == note["subject"]
+    assert any("falling back to subject" in w for w in p.warnings)
 
 
 def test_market_situation_images():

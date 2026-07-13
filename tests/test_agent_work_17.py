@@ -620,6 +620,9 @@ class TestFinalCallJsLogic:
             "_finalCallHtml", "_computePriority",
             "_isOverMaxOverlay", "_hasPositiveEdge", "_sourcesOf",
             "_agreeingSources",
+            # 2026-07-06: _computePriority's tier 1/2 (agreed SELL/BUY) calls
+            # these — must be present in the harness or the Node eval throws.
+            "_colSev", "_threeWaySeverity", "_agreementDir",
         ]
         func_bodies = []
         for name in func_names:
@@ -641,10 +644,23 @@ class TestFinalCallJsLogic:
         else:
             fc_scale_def = ""
 
+        # 2026-07-06: grab the _MACRO_SEV.._TECH_SELL const block (severity
+        # maps + buy/sell code Sets, split across two statement groups
+        # around the _colSev/_threeWaySeverity function defs) that
+        # _agreementDir closes over — same raw-slice technique as _FC_SCALE.
+        # Slicing all the way to _computePriority's own definition captures
+        # both const groups (and duplicates the func_names extraction above,
+        # harmlessly — JS allows function redeclaration).
+        sev_idx = js.find("const _MACRO_SEV")
+        sev_end_marker = js.find("function _computePriority(")
+        sev_consts = js[sev_idx:sev_end_marker] if sev_idx != -1 and sev_end_marker != -1 else ""
+
         harness = (
             self._ACTIONS_STUB
             + "\n"
             + fc_scale_def
+            + "\n"
+            + sev_consts
             + "\n"
             + "\n".join(func_bodies)
             + "\n"

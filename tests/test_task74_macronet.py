@@ -387,9 +387,21 @@ class TestMacroNetMath:
         return w_max * (1.0 - dtb / N)
 
     def _macronet_to_vocab(
-        self, mn: float,
+        self, mn: float, m: float | None = None, q: float | None = None,
         thr_bm=1.5, thr_bs=0.5, thr_sa=-1.5, thr_stm=-0.5
     ) -> str:
+        """Mirror of etl/derive_macro.py::to_action /
+        api/routers/dash.py::_macronet_to_vocab, including the 2026-07-06
+        sign-agreement override: when month (m) and quarter (q) agree on
+        direction, never return HOLD. Positive side floors to BS, still
+        reaching BM if the blend clears that bar (score-driven). Negative
+        side is asymmetric by design: any negative agreement is always SA,
+        not scaled by magnitude."""
+        if m is not None and q is not None:
+            if m > 0 and q > 0:
+                return "BM" if mn >= thr_bm else "BS"
+            if m < 0 and q < 0:
+                return "SA"
         if mn >= thr_bm:
             return "BM"
         if mn >= thr_bs:
@@ -462,6 +474,41 @@ class TestMacroNetMath:
 
     def test_vocab_sa_below_threshold(self):
         assert self._macronet_to_vocab(-2.0) == "SA"
+
+    # sign-agreement override tests (2026-07-06) — real SNAP/XLRE cases
+    def test_both_negative_is_always_sa(self):
+        # Real SNAP case: month/quarter both negative -> SA regardless of
+        # the blended magnitude (-0.456 wouldn't even clear thr_sa=-0.88,
+        # but the negative side is asymmetric by design, see docstring).
+        assert self._macronet_to_vocab(-0.456, m=-0.195, q=-1.5,
+                                        thr_stm=-0.736, thr_sa=-0.88) == "SA"
+
+    def test_both_negative_is_sa_even_when_very_mild(self):
+        # Asymmetry vs. the positive side: unlike BM/BS (score-gated), any
+        # negative agreement is treated as a full sell signal.
+        assert self._macronet_to_vocab(-0.05, m=-0.01, q=-0.1,
+                                        thr_stm=-0.736, thr_sa=-0.88) == "SA"
+
+    def test_both_positive_floors_to_bs_not_hold(self):
+        assert self._macronet_to_vocab(0.2, m=0.1, q=0.5,
+                                        thr_bm=0.86, thr_bs=0.276) == "BS"
+
+    def test_both_positive_still_reaches_bm_if_blend_clears_it(self):
+        assert self._macronet_to_vocab(1.0, m=0.9, q=1.5,
+                                        thr_bm=0.86, thr_bs=0.276) == "BM"
+
+    def test_disagreement_still_allows_hold(self):
+        # XLRE-shaped case: month positive, quarter negative -> genuine
+        # disagreement, override does not apply, normal thresholds decide.
+        assert self._macronet_to_vocab(0.144, m=0.555, q=-1.5,
+                                        thr_bs=0.276, thr_stm=-0.736) == "HOLD"
+
+    def test_zero_component_does_not_trigger_override(self):
+        assert self._macronet_to_vocab(0.0, m=0.0, q=-1.0,
+                                        thr_stm=-0.736) == "HOLD"
+
+    def test_no_m_q_supplied_uses_plain_thresholds(self):
+        assert self._macronet_to_vocab(0.3) == "HOLD"
 
     # stance map tests
     def test_stance_bullish(self):

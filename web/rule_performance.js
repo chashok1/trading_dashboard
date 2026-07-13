@@ -38,50 +38,64 @@ document.addEventListener('DOMContentLoaded', () => {
 async function loadMyActions() {
     const body = document.getElementById('myActionsBody');
     const summ = document.getElementById('myActionsSummary');
+    const stanceEl = document.getElementById('myActionsStance');
     try {
         const data = await fetch('/api/rules/my-actions?limit=200').then(r => r.json());
         const recent = data.recent || [];
         const s = data.summary || {};
         if (s.n_actions) {
             const avg = s.avg_fwd_20d != null ? `${Number(s.avg_fwd_20d).toFixed(2)}%` : '—';
-            const inferred = s.n_inferred ? ` · ${s.n_inferred} inferred` : '';
-            summ.textContent = `${s.n_actions} actions${inferred} · ${s.n_scored || 0} scored · avg 20d ${avg}`;
+            const dollars = s.total_est_dollar != null ? ` · $${Number(s.total_est_dollar).toLocaleString(undefined, {maximumFractionDigits:0})} at stake` : '';
+            summ.textContent = `${s.n_actions} inferred trades · ${s.n_scored || 0} scored · avg 20d ${avg}${dollars}`;
         } else {
             summ.textContent = '';
         }
+        // TASK_121: FOLLOWED vs CONTRADICTED headline, above the table.
+        if (stanceEl) {
+            const byStance = data.by_stance || [];
+            const find = st => byStance.find(r => r.stance === st);
+            const followed = find('FOLLOWED');
+            const contradicted = find('CONTRADICTED');
+            const fmt = r => r && r.n
+                ? `<strong>${r.n}</strong> (avg 20d ${r.avg_fwd_20d != null ? Number(r.avg_fwd_20d).toFixed(2) + '%' : '—'})`
+                : '<strong>0</strong>';
+            if (followed || contradicted) {
+                stanceEl.innerHTML = `<span style="color:#166534;">When you FOLLOWED the system:</span> ${fmt(followed)}`
+                    + `<span style="margin:0 10px;color:var(--text-3);">·</span>`
+                    + `<span style="color:#991b1b;">when you CONTRADICTED it:</span> ${fmt(contradicted)}`;
+            } else {
+                stanceEl.innerHTML = '';
+            }
+        }
         if (!recent.length) {
             body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:14px;color:var(--text-3);">'
-                + 'No actions logged yet. Real position changes will appear here automatically once the derive runs.</td></tr>';
+                + 'No inferred trades yet. Real position changes (CS/F snapshot deltas) will appear here automatically once the derive runs.</td></tr>';
             return;
         }
         const num = v => (v === null || v === undefined) ? '—'
             : `<span class="${v >= 0 ? 'act-buy-strong' : 'act-sell-strong'}">${Number(v).toFixed(2)}%</span>`;
-        // Attribution badge: rule = green, discretionary = grey
-        const attrBadge = r => {
-            if (r.attribution === 'rule') {
-                return '<span style="font-size:9px;background:#dcfce7;color:#166534;border-radius:3px;padding:1px 4px;font-weight:700;">rule</span>';
-            }
-            return '<span style="font-size:9px;background:#f1f5f9;color:#64748b;border-radius:3px;padding:1px 4px;">discr.</span>';
+        // Stance badge: FOLLOWED = green, CONTRADICTED = red, NO_SIGNAL = grey
+        const stanceBadge = r => {
+            const st = r.stance || 'NO_SIGNAL';
+            const style = st === 'FOLLOWED'
+                ? 'background:#dcfce7;color:#166534;'
+                : st === 'CONTRADICTED'
+                ? 'background:#fee2e2;color:#991b1b;'
+                : 'background:#f1f5f9;color:#64748b;';
+            return `<span style="font-size:9px;${style}border-radius:3px;padding:1px 4px;font-weight:700;">${st}</span>`;
         };
-        // Source badge: manual = blue, inferred = purple
-        const srcBadge = r => {
-            if (r.source_kind === 'manual') {
-                return '<span style="font-size:9px;background:#dbeafe;color:#1d4ed8;border-radius:3px;padding:1px 4px;">manual</span>';
-            }
-            return '<span style="font-size:9px;background:#ede9fe;color:#6d28d9;border-radius:3px;padding:1px 4px;">auto</span>';
-        };
-        const actionLabel = r => {
-            if (r.consolidated_action) return actionText(actionDisplay(r.consolidated_action));
-            if (r.change_type) return r.change_type.replace('_', ' ');
-            return '—';
+        const tradeBadge = r => {
+            const disp = actionDisplay(r.inferred_action === 'BUY' ? 'BM' : 'SA');
+            const cls = (disp.colorCls || 'act-neutral') + '-tint';
+            return `<span class="act-badge act-badge-sm ${cls}" style="font-size:10px;">${r.inferred_action || ''}</span>`;
         };
         body.innerHTML = recent.map(r => `
             <tr>
-                <td style="font-size:11px;">${(r.acted_at || r.as_of_date || '').toString().slice(0,10)}</td>
+                <td style="font-size:11px;">${(r.as_of_date || '').toString().slice(0,10)}</td>
                 <td><strong>${r.tos_symbol || ''}</strong></td>
-                <td title="${r.consolidated_action || r.change_type || ''}">${actionLabel(r)}</td>
-                <td>${srcBadge(r)}</td>
-                <td>${attrBadge(r)}</td>
+                <td title="qty ${r.qty_delta ?? ''} · $${r.est_dollar ?? ''}">${tradeBadge(r)}</td>
+                <td>${r.rec_action ? actionText(actionDisplay(r.rec_action)) : '—'}</td>
+                <td>${stanceBadge(r)}</td>
                 <td>${num(r.fwd_5d_pct)}</td>
                 <td>${num(r.fwd_20d_pct)}</td>
             </tr>`).join('');

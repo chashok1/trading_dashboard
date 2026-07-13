@@ -302,6 +302,8 @@ _RTA_HEAD = re.compile(
 _RTA_SUBJ = re.compile(
     r"Real-Time Alert:\s*(?P<rest>.*)", re.I)
 _CORRECTION_HINTS = ("fat finger", "my mistake", "read the next", "disregard", "ignore the")
+_COMPANY_SUFFIX_RE = re.compile(
+    r"\b(Inc|Incorporated|Corp|Corporation|Co|Company|Ltd|LLC|L\.P\.|LP|plc|N\.V\.|SA|AG)\.?$", re.I)
 
 
 def parse_real_time_alert(email: Email) -> Parsed:
@@ -331,10 +333,13 @@ def parse_real_time_alert(email: Email) -> Parsed:
             signal_kind = mk.group("kind").strip()
 
     # body headline: e.g. "SELL SIGNAL - SHORTING ROP $339.80"
+    bl = _body_lines(email.plaintext)
     head_line = ""
-    for ln in _body_lines(email.plaintext):
+    head_idx = -1
+    for idx, ln in enumerate(bl):
         if "SIGNAL" in ln.upper() and "$" in ln:
             head_line = ln
+            head_idx = idx
             break
     action = side = symbol = price = None
     mh = _RTA_HEAD.search(head_line.upper())
@@ -348,11 +353,23 @@ def parse_real_time_alert(email: Email) -> Parsed:
 
     # durations row: "trade trend tail" (active = present in body durations line)
     durations = {"trade": False, "trend": False, "tail": False}
-    bl = _body_lines(email.plaintext)
     for idx, ln in enumerate(bl):
         if ln.lower() == "durations" and idx + 1 < len(bl):
             for k in durations:
                 durations[k] = k in bl[idx + 1].lower()
+
+    # intro prose between the headline and "Coaching Notes:", e.g.
+    # "Looking for Longs with the VIX back in what we call The Investable
+    # Bucket?" — skip a leading company-name line ("United Rentals Inc.").
+    intro = []
+    if head_idx >= 0:
+        for ln in bl[head_idx + 1:]:
+            if ln.lower().startswith("coaching notes"):
+                break
+            intro.append(ln)
+        if intro and _COMPANY_SUFFIX_RE.search(intro[0]):
+            intro = intro[1:]
+    intro_text = " ".join(intro)
 
     # coaching notes (ordered list after "Coaching Notes:")
     coaching = []
@@ -365,7 +382,7 @@ def parse_real_time_alert(email: Email) -> Parsed:
             if ln in ("KM", "-KM") or ln.lower().startswith("please visit"):
                 break
             coaching.append(ln)
-    coaching_text = " | ".join(coaching)
+    coaching_text = " | ".join(([intro_text] if intro_text else []) + coaching)
 
     p.add_rows("hist_rta", [{
         "message_id": email.message_id, "alert_ts": email.received,
@@ -888,6 +905,12 @@ def parse_the_call(email: Email) -> Parsed:
     # on paragraph boundaries (rather than up to the next ticker match) keeps
     # a paragraph's block from swallowing the next paragraph's section-header/
     # analyst-attribution line and the start of the following company name.
+    # Some commentary paragraphs group two or more names before the colon,
+    # e.g. "Conagra Brands, Inc. (CAG) / Campbell Soup Company (CPB): text…"
+    # or "Moody's (MCO), S&P Global (SPGI), TransUnion (TRU): text…" — the
+    # header (everything up to the first colon) is scanned for every
+    # "(TICKER)" it contains, and the shared commentary is filed under all of
+    # them, rather than requiring exactly one ticker immediately before ":".
     # The first 5 matched paragraphs are the Top-5 list; the rest is commentary.
     top_rows = []
     m = re.search(r"Top 5 Most Actionable(?: Stock Ideas)?(.+)", text, re.S)
@@ -896,26 +919,31 @@ def parse_the_call(email: Email) -> Parsed:
         entries = []
         for para in re.split(r"(?:\r?\n){2,}", seg):
             para = para.strip()
-            pm = re.match(r"[^\n(]*\(([A-Z][A-Z0-9.\-]{0,9})\):\s*(.+)", para, re.S) if para else None
+            pm = re.match(r"([^\n:]*\([A-Z][A-Z0-9.\-/]{0,9}\)[^\n:]*):\s*(.+)",
+                          para, re.S) if para else None
             if not pm:
+                continue
+            syms = [s.upper() for s in _TICKER_PAREN.findall(pm.group(1))]
+            if not syms:
                 continue
             block = re.sub(r"\s+", " ", pm.group(2)).strip()
             full_text = re.sub(r"\s+", " ", para).strip()
             if block and full_text:
-                entries.append((pm.group(1).upper(), block, full_text))
-        for i, (sym, block, full_text) in enumerate(entries):
+                entries.append((syms, block, full_text))
+        for i, (syms, block, full_text) in enumerate(entries):
             tail_m = _TOP5_SIDE_TAIL_RE.search(block.rstrip())
-            side = tail_m.group(1).lower() if tail_m else side_for.get(sym, "long")
+            side = tail_m.group(1).lower() if tail_m else side_for.get(syms[0], "long")
             if i < 5:
-                top_rows.append({
-                    "snapshot_date": email.edt_date, "message_id": email.message_id,
-                    "rank": i + 1, "symbol": sym, "tos_symbol": sym,
-                    "side": side,
-                    "rationale_snippet": block[:400],
-                })
-                p.notes.append(_note(email, "the_call_top5", full_text, tickers=[sym], signal_kind=side))
+                for sym in syms:
+                    top_rows.append({
+                        "snapshot_date": email.edt_date, "message_id": email.message_id,
+                        "rank": i + 1, "symbol": sym, "tos_symbol": sym,
+                        "side": side,
+                        "rationale_snippet": block[:400],
+                    })
+                p.notes.append(_note(email, "the_call_top5", full_text, tickers=syms, signal_kind=side))
             else:
-                p.notes.append(_note(email, "the_call_commentary", full_text, tickers=[sym], signal_kind=side))
+                p.notes.append(_note(email, "the_call_commentary", full_text, tickers=syms, signal_kind=side))
     p.add_rows("hist_call_top5", top_rows)
     return p
 
@@ -1016,19 +1044,40 @@ def parse_quarterly_outlook(email: Email) -> Parsed:
 _TOP3_ITEM = re.compile(
     r"(\d)\)\s*([^\n–—-]+?)\s*[–—-]\s*(.+?)(?=\n\s*\d\)|\Z)", re.S)
 
+# Fallback for emails where Hedgeye's <ol><li> renders as bare paragraphs with
+# no visible numbering (e.g. "USD – Post a Counter...\n\nGOLD – ..."). Each
+# item is its own blank-line-separated paragraph starting with a short
+# ALL-CAPS label — this excludes the trailing "Immediate-term @Hedgeye Risk
+# Ranges..." and "KM" sign-off lines, which aren't short/all-caps.
+_TOP3_ITEM_UNNUMBERED = re.compile(
+    r"^\s*([A-Z][A-Z0-9 &/]{0,20})\s*[–—-]\s*(.+?)\s*$", re.S | re.M)
+
 
 def parse_macro_show_top3(email: Email) -> Parsed:
     p = Parsed("macro_show_top3")
     text = email.plaintext
     lines: list[str] = []
-    m = re.search(r"Hedgeye's top 3 things\s*(.+?)(?:Please visit|$)", text, re.S | re.I)
+    m = re.search(r"Hedgeye's top 3 things\s*(.+?)(?:Immediate-term\s*@Hedgeye Risk Ranges|Please visit|$)",
+                  text, re.S | re.I)
     if m:
-        for num, label, body in _TOP3_ITEM.findall(m.group(1)):
+        section = m.group(1)
+        for num, label, body in _TOP3_ITEM.findall(section):
             label = label.strip()
             body = re.sub(r"\s+", " ", body).strip()
             if label and body:
                 lines.append(f"{num}) {label} – {body}")
+        if not lines:
+            for para in re.split(r"\n\s*\n", section.strip()):
+                im = _TOP3_ITEM_UNNUMBERED.match(para.strip())
+                if not im:
+                    continue
+                label = im.group(1).strip()
+                body = re.sub(r"\s+", " ", im.group(2)).strip()
+                if label and body:
+                    lines.append(f"{len(lines) + 1}) {label} – {body}")
     take = "\n".join(lines)[:4000]
+    if not take:
+        p.warnings.append("macro_show_top3: no items parsed, falling back to subject")
     tickers = sorted(set(_TICKER_PAREN.findall(text)))[:20] or email.meta_symbols
     q = _quad(email.subject + " " + text)
     p.notes.append(_note(email, "macro_show_top3", take or email.subject,

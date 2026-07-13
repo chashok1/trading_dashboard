@@ -116,8 +116,17 @@ market pricing the next period before the boundary).
 ### Combine
 
 ```
-MacroNet = 0.65 · M  +  0.35 · Q
+MacroNet = 0.80 · M  +  0.20 · Qtr
 ```
+
+(`quad_horizon_weight_mo` / `quad_horizon_weight_qtr` — reweighted from the
+original 0.65/0.35 on 2026-07-06. Quarterly is a pure one-hot score with no
+distribution smoothing, so its raw variance runs ~2x monthly's; at 0.65/0.35
+quarterly's *effective* pull on the blend actually exceeded monthly's despite
+its smaller nominal weight, contradicting this section's own stated intent.
+0.80/0.20 restores monthly as the dominant signal in practice, not just in
+name — re-derive both this ratio and the Stage 4 thresholds together if either
+changes, since they're calibrated against each other's output distribution.)
 
 Monthly overweights quarterly because it carries full probability distribution +
 anticipation ramp. Quarterly is the same calc but with cruder one-hot input.
@@ -126,18 +135,38 @@ anticipation ramp. Quarterly is the same calc but with cruder one-hot input.
 
 ## Stage 4 — threshold map → action
 
-`MacroNet` is mapped to the standard action vocabulary via `ref_settings` keys:
+`MacroNet` is mapped to the standard action vocabulary via `ref_settings` keys
+(`macro_thr_*`; legacy `macronet_threshold_*` names still work as a fallback):
 
-| Key | Default | Action |
+| Key | Current value | Action |
 |---|---|---|
-| `macronet_threshold_sa` | 1.5 | ≥ → **SA** |
-| `macronet_threshold_bm` | 0.5 | ≥ → **BM** |
-| `macronet_threshold_stm` | −0.5 | ≥ → **HOLD** (else STM) |
-| `macronet_threshold_ss` | −1.5 | ≥ → **STM** (else SS) |
+| `macro_thr_bm` | 0.62 | MacroNet ≥ → **BM** |
+| `macro_thr_bs` | 0.276 | MacroNet ≥ → **BS** |
+| `macro_thr_stm` | −0.736 | MacroNet ≤ → **STM** |
+| `macro_thr_sa` | −0.88 | MacroNet ≤ → **SA** |
 
-Thresholds are deliberately uncalibrated until `ref_quad_periods` is seeded and
-the distribution of scores across the live universe can be inspected. Tune so that
-~10% of symbols score SA, ~30% BM, etc.
+Recalibrated 2026-07-06 by percentile against the live `drv_macro_score`
+distribution (target ~3% BM, ~12% BS, ~70% HOLD, ~12% STM, ~3% SA) — re-check
+after any change to the monthly/quarterly weights below, since re-weighting
+shifts the whole distribution and the percentile targets need re-deriving
+against it (see `etl/derive_macro.py::to_action` / `api/routers/dash.py::_macronet_to_vocab`).
+
+**Sign-agreement override (2026-07-06, asymmetric by design):** when the
+month (`M`) and quarter (`Qtr`) components agree on direction, the result
+never lands in HOLD:
+
+- **Both positive** → floored to BS, still reaching BM if the blend clears
+  `macro_thr_bm` (score-driven, same as the disagreement case below).
+- **Both negative** → always **SA**, regardless of magnitude. Any negative
+  agreement between the two independent horizons is treated as a full sell
+  signal — deliberately not scaled down to STM even when both components
+  are only mildly negative. This is an intentional asymmetry (confirmed with
+  the user 2026-07-06): the buy side stays score-gated, the sell side does
+  not.
+
+HOLD stays reachable only when the two horizons disagree (e.g. a
+mildly-bullish month against a bearish quarter, as with XLRE) or when a
+component is exactly zero.
 
 ---
 
@@ -160,9 +189,12 @@ MACRO is an overlay — it never overrides the Technical action.
   `web/actionable.js`. Sortable via `data-key="macro_value"`.
 - **Regime band** (`#macroBand`): Month | Quarter | Favoring | ↑↓ breadth | action split.
   Loaded by `loadMacroBand()` in `web/actionable.js`.
-- **Tooltip** on MACRO cell: shows `macronet` score + breakdown (when `macro_detail`
-  is populated). Currently shows raw score only; full breakdown pending richer
-  `macro_detail` payload.
+- **Tooltip** on MACRO cell (`_macroTooltip()` in `web/actionable.js`, lazy-loaded
+  via `GET /api/actionable/macro-detail`): full breakdown — "How to act" directive,
+  Month (current/next quad + probability distribution + blended net), Category
+  Drivers (every sector/asset-class/style membership with its weight and
+  Bullish/Bearish/Neutral outlook), Quarter (locked-in quad + score), and the
+  `MacroNet = a×Qtr + b×M = ... → vocab` formula line.
 
 ---
 
@@ -174,12 +206,12 @@ MACRO is an overlay — it never overrides the Technical action.
 | `quad_month_lead_days` | 5 | days before month-end weight hits 100% next |
 | `quad_qtr_ramp_begin_days` | 20 | days before quarter-end ramp starts |
 | `quad_qtr_lead_days` | 10 | days before quarter-end weight hits 100% next |
-| `quad_horizon_weight_mo` | 0.65 | Monthly weight in MacroNet |
-| `quad_horizon_weight_qtr` | 0.35 | Quarterly weight in MacroNet |
-| `macronet_threshold_sa` | 1.5 | MacroNet ≥ → SA |
-| `macronet_threshold_bm` | 0.5 | MacroNet ≥ → BM |
-| `macronet_threshold_stm` | −0.5 | MacroNet ≥ → HOLD (else STM) |
-| `macronet_threshold_ss` | −1.5 | MacroNet ≥ → STM (else SS) |
+| `quad_horizon_weight_mo` | 0.80 | Monthly weight in MacroNet |
+| `quad_horizon_weight_qtr` | 0.20 | Quarterly weight in MacroNet |
+| `macro_thr_bm` | 0.62 | MacroNet ≥ → BM |
+| `macro_thr_bs` | 0.276 | MacroNet ≥ → BS |
+| `macro_thr_stm` | −0.736 | MacroNet ≤ → STM |
+| `macro_thr_sa` | −0.88 | MacroNet ≤ → SA |
 
 Stance map: Bullish +1 · Neutral 0 · Bearish −1.
 

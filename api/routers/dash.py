@@ -802,7 +802,19 @@ def _build_macro_engine(d):
         raw = (rb - dtb) / denom
         return max(0.0, min(1.0, raw))
 
-    def _macronet_to_vocab(mn: float) -> str:
+    def _macronet_to_vocab(mn: float, m: float | None = None, q: float | None = None) -> str:
+        # Mirrors etl/derive_macro.py::to_action — when month (m) and quarter
+        # (q) agree on direction, never land in HOLD. Positive side floors to
+        # BS, still reaching BM if the blend clears that bar (score-driven).
+        # Negative side is asymmetric by design: any negative agreement is
+        # treated as a full sell signal (always SA), not scaled by magnitude
+        # (2026-07-06). HOLD stays possible on disagreement, a near-zero
+        # component, or when m/q aren't supplied.
+        if m is not None and q is not None:
+            if m > 0 and q > 0:
+                return "BM" if mn >= _THR_BM else "BS"
+            if m < 0 and q < 0:
+                return "SA"
         if mn >= _THR_BM:  return "BM"
         if mn >= _THR_BS:  return "BS"
         if mn <= _THR_SA:  return "SA"
@@ -869,7 +881,7 @@ def _build_macro_engine(d):
 
         # ── Combine ──────────────────────────────────────────────────────────
         macro_net = round(_a * Qtr + _b * M, 4)
-        vocab = _macronet_to_vocab(macro_net)
+        vocab = _macronet_to_vocab(macro_net, M, Qtr)
 
         # ── Turn signal ──────────────────────────────────────────────────────
         # Monthly divergence near month-end
@@ -1438,6 +1450,42 @@ def get_actionable_comparison(
                 "previous": _side(prv, prev_w, prev_d, prev_dropped),
             })
     return out
+
+
+@router.get("/api/actionable/call-note")
+def get_call_note(
+    symbol: str = Query(...),
+    date: str = Query(...),
+):
+    """All analyst commentary paragraphs for one symbol from a CALL
+    (the_call) email: note_repo rows tagged the_call_top5/the_call_commentary,
+    matched by note_date == the CALL record's snapshot_date (both derive from
+    the same email's date) and this symbol. A symbol can legitimately have
+    both a Top-5 blurb AND a separate fuller commentary paragraph in the same
+    email - return every match, not just one.
+
+    hist_call.message_id is NOT usable for this join - it's always NULL,
+    since hist_call is populated via the file-loader round-trip
+    (render_the_call -> plain CSV with no message_id column), unlike
+    hist_call_top5 which is inserted directly. Drives the drilldown modal's
+    per-source expand panel for the CALL source."""
+    sym = symbol.strip().upper()
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT note_date, source_type, subject, note_text, signal_kind, gmail_link
+            FROM note_repo
+            WHERE note_date = :d
+              AND source_type IN ('the_call_top5', 'the_call_commentary')
+              AND :sym = ANY(tickers)
+            ORDER BY (source_type = 'the_call_top5') DESC, note_date
+        """), {"d": date, "sym": sym}).mappings().all()
+    notes = []
+    for r in rows:
+        n = dict(r)
+        if n.get("note_date"):
+            n["note_date"] = n["note_date"].isoformat()
+        notes.append(n)
+    return {"notes": notes}
 
 
 def _log_actionable_action(s, sym_u: str, as_of, user_action: str, payload: dict) -> Optional[int]:
