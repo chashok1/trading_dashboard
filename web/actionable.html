@@ -88,6 +88,33 @@
       vertical-align: middle;
     }
 
+    /* TASK_124: "WEAK SRC" pill — qualifying Trade Mode buy whose winning
+       source measured negative buy-edge (ref_settings.trade_mode_weak_buy_sources).
+       Same shape as .stop-pill/.new-pill, amber tint (caution, not blocking). */
+    .weak-src-pill {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 1px 5px;
+      border-radius: 8px;
+      background: #fef3c7;
+      color: #b45309;
+      border: 1px solid #b45309;
+      font-size: 9px;
+      font-weight: 700;
+      vertical-align: middle;
+    }
+
+    /* TASK_124: Trade Mode toggle — icon-only, same footprint + icon-on/icon-off
+       dual-state convention as the other row-filter toggles (showHidden/
+       heldOnly/actionableOnlyBtn: base .btn-icon.btn-icon-sm + .icon-on/.icon-off
+       swap). The active state additionally keeps a distinct green fill since
+       this one collapses the whole grid, not just hides some rows. */
+    #tradeModeBtn.active {
+      background: #16a34a;
+      color: #fff;
+      border-color: #16a34a;
+    }
+
     .src-reasons { margin-top: 0; }
     .src-reason-line { display:flex; align-items:baseline; gap:2px; line-height:1.25;
       white-space:nowrap; overflow:hidden; }
@@ -621,6 +648,10 @@
         <span id="macroBandFavoring" style="white-space:nowrap; color:#475569; display:none;"></span>
         <span id="macroBandBreadth" style="white-space:nowrap; display:none;"></span>
         <span id="macroBandSplit" style="white-space:nowrap; display:none;"></span>
+        <!-- Held $ by asset class (Equities/Fixed Income/Commodities/...), filtered
+             by whatever else is active (Source/Acct/Trade Mode/etc.) — also doubles
+             as the asset-class filter; click a chip to toggle. -->
+        <div class="act-summary" id="assetClassSummary" style="padding-left:8px; border-left:1px solid var(--border,#e0e0e0);"></div>
       </div>
 
       <!-- Hedgeye action panel (TASK_100) — Top-5 / Real-Time Alerts / RR trend flips / stance -->
@@ -663,9 +694,18 @@
               <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
             </svg>
           </button>
+          <!-- TASK_124: Trade Mode — collapse the grid to just qualifying buys +
+               held SA sells + stop breaches. Persisted in localStorage. -->
+          <button id="tradeModeBtn" class="btn-icon btn-icon-sm" data-tip="Trade Mode: only qualifying buys, SA sells, stop breaches" title="Trade Mode: show only rows that need action">
+            <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="1" y1="1" x2="23" y2="23"/>
+            </svg>
+            <svg class="icon-on" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
+            </svg>
+          </button>
           <!-- Source filter -->
-          <label style="font-size:11px; color:var(--text-2,#666); margin-right:2px; white-space:nowrap;">Source</label>
-          <select id="sourceFilter"><option value="">All</option></select>
+          <select id="sourceFilter" title="Source filter"><option value="">All</option></select>
           <!-- Account filter -->
           <label style="font-size:11px; color:var(--text-2,#666); margin-right:2px; white-space:nowrap;">Acct</label>
           <select id="accountFilter" style="max-width:8em;"><option value="">All</option></select>
@@ -799,6 +839,7 @@
               <th data-col="amt" class="num sortable" data-key="_amt" data-type="num" style="width:58px;">AMT$</th>
               <th data-col="chg" class="num sortable" data-key="pct_change" data-type="num" style="width:62px;">%CHG</th>
               <th data-col="sym" class="sortable" data-key="tos_symbol" data-type="str" style="width:68px;">Symbol</th>
+              <th data-col="agree3" class="sortable" data-key="_agree3" data-type="num" title="3-Way Agreement: MACRO + Sources + Technical all point the same way with none opposing. Sort descending to bring sell-agreement (negatives) to the top, ahead of buy-agreement." style="width:36px;">3W</th>
               <th data-col="action" class="sortable" data-key="_fc_strength" data-type="num" title="Final Call: reconciled action with confidence badge (drives ranking + default Act)" style="width:90px;">ACTION</th>
               <th data-col="macro" class="sortable" data-key="macronet" data-type="num" title="MACRO regime stance: MacroNet of sector+asset+style factors under current+next month/quarter quads → SA/STM/HOLD/BS/BM. Hover for breakdown." style="width:64px;">MACRO</th>
               <th data-col="calc" class="sortable" data-key="fc_strength_cal" data-type="num" title="Final Call (cal): calibrated call from bull_prob probability bands. Evaluation-only — compare vs Final Call to assess the model. NULL when no active model." style="width:90px;">CALC</th>
@@ -806,7 +847,7 @@
               <th data-col="technical" class="sortable" data-key="rr_action" data-type="str" data-label="Technical" title="Trend-vs-Trade crossover + Bollinger range streak + Risk-Range position." style="width:200px;">Technical</th>
               <th data-col="rr" title="Risk Range position: where the last price sits between LRR (Low, left) and TRR (Top, right)." style="width:44px;">RR</th>
               <th data-col="vlm" class="num sortable" data-key="rvol" data-type="num" title="Relative Volume (today÷10d avg). Hollow = below avg; solid gray = ~avg; amber/green = above avg. Caret = vs yesterday." style="width:36px;">Vlm</th>
-              <th data-col="iv" class="num" title="IV Glyph: IVP (blue) · HV (slate) · IV (dark). Background = IV/HV discount shade." style="width:44px;">IV</th>
+              <th data-col="iv" class="num" title="IV Glyph: IVP (blue) · HV (slate) · IV (dark). Background = IV/HV discount shade. Numbers below: IVP / HV / IV." style="width:54px;">IV</th>
               <th data-col="macd" class="num sortable" data-key="a_macd_brr" data-type="num" title="MACD Bull-Run-Risk score" style="width:52px;">MACD</th>
               <th data-col="macdh" class="num sortable" data-key="a_macdh_d_brr" data-type="num" title="MACD Histogram direction BRR" style="width:52px;">MACDH</th>
               <th data-col="rsi" class="num sortable" data-key="rsi" data-type="num" title="Relative Strength Index (0–100)" style="width:44px;">RSI</th>

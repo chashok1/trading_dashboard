@@ -27,9 +27,32 @@ unheld buy.
 3. Band internal order: keep dollar-weighted edge, but NEW rows first within
    equal-score groups (stable tiebreak) so fresh arrivals are on top when the
    band is expanded.
-4. Update the "?" legend: describe the technical-first rule in one sentence
-   ("Unheld buys surface only when Technical shows BS/BM; new list arrivals
-   wait in the Watchlist with a NEW tag").
+4. **Tier restructure — credible sells first, agreement-ranked buys**
+   (`_computePriority`). New descending order:
+
+   ```
+   Tier 0   stop_breached held rows            → by position $ desc
+   Tier 1   credible SELLs on HELD positions   → by $ at stake desc
+            (effective REDUCE/REMOVE/sell-family final codes;
+             low_confidence rows are NOT credible — they stay in Bottom)
+   Tier 2   BUYs that passed the technical gate, sub-ranked by agreement:
+            2a  Technical + Sources + MACRO all buy-side (3/3)
+            2b  Technical + one other buy-side, none opposing (2/3)
+            2c  Technical ripe only
+            within each sub-tier: dollar-weighted edge desc
+   Tier 3   HOLD / mixed / no-action           → dollar-weighted edge
+   Watch    gated unheld buys (collapsed band, unchanged from #1–3)
+   Bottom   low_confidence sells, infeasible, suppressed
+   ```
+
+   Reuse the fixed `_threeWayAgreement` buy/sell sets (`_MACRO_BUY`,
+   `_SRC_BUY`, `_TECH_BUY` minus BMN for the Technical leg — ripeness is
+   BS/BM per `_ENTRY_RIPE_TECH`) to count agreeing legs. Agreement RANKS
+   buys; it never hides them — a technical-only buy still shows in 2c.
+5. Update the "?" legend: one short block describing the tier order
+   ("Stops → credible sells → buys ranked by how many signals agree
+   (Tech+Sources+Macro) → holds; unheld buys without a ripe Technical wait
+   in the Watchlist; NEW = fresh list arrival").
 
 ## Files expected to change
 
@@ -44,6 +67,10 @@ unheld buy.
 3. A held row → never in the band (unchanged).
 4. Expand the band: NEW-pilled rows are visible near the top of their score
    group; searching a banded symbol still auto-expands.
-5. `node --check web/actionable.js` passes; report the new Watchlist count vs
+5. Tier order on the live anchor: a held credible REDUCE/REMOVE row ranks
+   above every buy; a 3/3-agreement buy (Tech BS/BM + source buy + MACRO
+   BS/BM) ranks above a technical-only buy; a low_confidence sell sits below
+   HOLD rows.
+6. `node --check web/actionable.js` passes; report the new Watchlist count vs
    the previous round's (expected to grow, since bypassed rows now land in
    the band).

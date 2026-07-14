@@ -881,10 +881,11 @@
   }
 
   // ── RVOL Dot (TASK 61) ───────────────────────────────────────────────────
-  // rvolDot(value, prior, opts) -> SVG string.
+  // rvolDot(value, prior, opts) -> SVG string + trailing trend-arrow span.
   //   value = today's RVOL in x-units (1.0 = average volume). null -> dotted ring.
   //   prior = yesterday's RVOL (for the trend caret); null -> no caret.
-  // Fill = magnitude band; corner caret = day-over-day trend (±10% = flat dash).
+  // Fill = magnitude band; caret (▲/▼/→) rendered next to the dot = day-over-day
+  // trend (±10% = flat →).
   var _RVOL_BANDS = [
     // [maxExclusive, filled?, color]
     [0.5,      false, '#B4B2A9'],
@@ -923,8 +924,15 @@
         : '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + band[2] +
           '" stroke-width="' + sw + '"/>';
     }
-    // direction shown in tooltip (vs Prior row); no in-cell arrow to avoid visual noise
-    return svg + '</svg>';
+    svg += '</svg>';
+    // Trend arrow rendered next to the dot (not overlaid on it — a corner
+    // caret on an 18px dot was tried and dropped as too cramped to read).
+    if (arrow) {
+      var arrowColor = dir === 'up' ? '#16a34a' : dir === 'down' ? '#dc2626' : '#9ca3af';
+      svg += '<span style="color:' + arrowColor + ';font-size:9px;font-weight:700;' +
+             'margin-left:2px;vertical-align:middle;" title="' + label + '">' + arrow + '</span>';
+    }
+    return svg;
   }
 
   // ── IV Bar Glyph (TASK 62) ──────────────────────────────────────────────────

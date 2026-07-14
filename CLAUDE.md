@@ -221,6 +221,7 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Section classifier | `etl/derive.py::_classify_section` (JS classifySymbolSection no longer exists) |
 | Cash detection rules | `db/baseline.sql` `is_cash()` DB function (TASK_54); `api/routers/dash.py` for query usage |
 | Actionable / outlook-action logic | `docs/actionable_logic.md` |
+| Actionable daily trading playbook + design-validation status (A1–A6) | `docs/actionable_playbook.md` |
 | Actionable screen 3 action columns | `docs/actionable_logic.md` (consolidated_action, TrTnBBRskRng, Trig) |
 | trig_action computation (BuySell vocab) | `etl/derive_actionable.py::_derive_actionable_impl` (buysell_scores block) |
 | Atomic-input column derivation (JF..NP + QE..QT) | `docs/drv_cat_atomic_input_logic.md` |

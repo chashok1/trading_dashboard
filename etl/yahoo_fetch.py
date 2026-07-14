@@ -466,22 +466,34 @@ def fetch_y_detail(delay_sec: float = 1.5) -> dict:
             short_ratio   = info.get("shortRatio")
             float_shares  = info.get("floatShares")
             shares_out    = info.get("sharesOutstanding")
+            # Same .info payload also carries quoteType/sector/industry — no
+            # extra API cost. Used only as *suggested* ref_sector values (see
+            # api/routers/ref_audit.py); never auto-written into ref_sector,
+            # whose source of truth is the Sctr tab of the Tickers workbook.
+            quote_type    = info.get("quoteType")
+            y_sector      = info.get("sector")
+            y_industry    = info.get("industry")
 
             with session_scope() as s:
                 s.execute(text("""
                     INSERT INTO cache_yahoo_quote
                         (tos_symbol, y_ticker, detail_fetched_at,
-                         company_name, short_ratio, float_shares, shares_outstanding)
-                    VALUES (:sym, :ytk, :dat, :cn, :sr, :fs, :so)
+                         company_name, short_ratio, float_shares, shares_outstanding,
+                         quote_type, y_sector, y_industry)
+                    VALUES (:sym, :ytk, :dat, :cn, :sr, :fs, :so, :qt, :ys, :yi)
                     ON CONFLICT (tos_symbol) DO UPDATE SET
                         detail_fetched_at  = EXCLUDED.detail_fetched_at,
                         company_name       = EXCLUDED.company_name,
                         short_ratio        = EXCLUDED.short_ratio,
                         float_shares       = EXCLUDED.float_shares,
-                        shares_outstanding = EXCLUDED.shares_outstanding
+                        shares_outstanding = EXCLUDED.shares_outstanding,
+                        quote_type         = EXCLUDED.quote_type,
+                        y_sector           = EXCLUDED.y_sector,
+                        y_industry         = EXCLUDED.y_industry
                 """), dict(sym=tos_symbol, ytk=y_ticker, dat=detail_fetched_at,
                            cn=company_name, sr=short_ratio,
-                           fs=float_shares, so=shares_out))
+                           fs=float_shares, so=shares_out,
+                           qt=quote_type, ys=y_sector, yi=y_industry))
             updated += 1
         except Exception as ex:
             logger.warning("Y detail error %s: %s", y_ticker, ex)

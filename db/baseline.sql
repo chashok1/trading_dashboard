@@ -5969,6 +5969,12 @@ CREATE TABLE IF NOT EXISTS cache_yahoo_quote (
     float_shares       BIGINT,
     shares_outstanding BIGINT,
     detail_fetched_at  TIMESTAMPTZ,
+    -- ref_sector gap-filling (TASK: quad-factor data-completeness audit) —
+    -- same .info payload fetch_y_detail() already makes; just reading 3 more
+    -- fields off it. Suggested values only — never auto-written to ref_sector.
+    quote_type         TEXT,  -- Yahoo quoteType: EQUITY/ETF/INDEX/MUTUALFUND/...
+    y_sector           TEXT,  -- Yahoo's own sector taxonomy (not ref_quad_outlook's)
+    y_industry         TEXT,
     PRIMARY KEY (tos_symbol)
 );
 ALTER TABLE cache_yahoo_quote ADD COLUMN IF NOT EXISTS company_name TEXT;
@@ -5976,6 +5982,9 @@ ALTER TABLE cache_yahoo_quote ADD COLUMN IF NOT EXISTS short_ratio NUMERIC;
 ALTER TABLE cache_yahoo_quote ADD COLUMN IF NOT EXISTS float_shares BIGINT;
 ALTER TABLE cache_yahoo_quote ADD COLUMN IF NOT EXISTS shares_outstanding BIGINT;
 ALTER TABLE cache_yahoo_quote ADD COLUMN IF NOT EXISTS detail_fetched_at TIMESTAMPTZ;
+ALTER TABLE cache_yahoo_quote ADD COLUMN IF NOT EXISTS quote_type TEXT;
+ALTER TABLE cache_yahoo_quote ADD COLUMN IF NOT EXISTS y_sector TEXT;
+ALTER TABLE cache_yahoo_quote ADD COLUMN IF NOT EXISTS y_industry TEXT;
 
 INSERT INTO ref_settings (setting_name, setting_value)
 VALUES ('yahoo_fetch_interval_sec', '300')
@@ -6924,4 +6933,168 @@ CREATE OR REPLACE VIEW v_inferred_action_performance AS
 SELECT as_of_date, tos_symbol, account, source_feed, qty_delta, est_dollar,
        inferred_action, rec_action, stance, fwd_5d_pct, fwd_20d_pct
 FROM drv_inferred_action;
+
+-- =====================================================
+-- 2026-07-13 TASK_123: signal validation scorecards (read-only + additive).
+-- Measures the unvalidated calibration assumptions from
+-- docs/actionable_playbook.md §5 (A1 bull-gate ladder, A2/A3 Final Call
+-- strength, A4 source precedence). Forward-return mechanism: LEAD(last_price,
+-- 5/20) over drv_ma per tos_symbol, same row-offset convention as
+-- etl/compute_firing_outcomes.py / v_user_action_performance above (NOT a
+-- join to drv_rule_outcome, so every symbol/date with a bucketed value is
+-- covered — not only symbols where some rule happened to fire that day).
+-- Analyst views only; never joined into /api/actionable.
+-- =====================================================
+
+-- v_bull_gate_scorecard (assumption A1): two independent bucket breakdowns
+-- unioned under a `dimension` discriminator — 'bull_ladder' buckets
+-- drv_cat_atomic_input.bull (MQ ladder, -3..+3); 'rr_bull_bear' buckets
+-- drv_tn_td_bb_rr.rr_bull_bear (QP, 'B'/'!B'). win_rate_20d = fraction with
+-- fwd_20d_pct > 0 (no direction adjustment — bull is not itself a buy/sell
+-- code, just a bullishness score).
+DROP VIEW IF EXISTS v_bull_gate_scorecard CASCADE;
+CREATE VIEW v_bull_gate_scorecard AS
+WITH px AS (
+    SELECT tos_symbol, as_of_date, last_price,
+           LEAD(last_price, 5)  OVER w AS p5,
+           LEAD(last_price, 20) OVER w AS p20
+    FROM drv_ma
+    WHERE last_price IS NOT NULL
+    WINDOW w AS (PARTITION BY tos_symbol ORDER BY as_of_date)
+),
+fwd AS (
+    SELECT tos_symbol, as_of_date,
+           CASE WHEN last_price > 0 AND p5  IS NOT NULL
+                THEN (p5  - last_price) / last_price * 100 END AS fwd5,
+           CASE WHEN last_price > 0 AND p20 IS NOT NULL
+                THEN (p20 - last_price) / last_price * 100 END AS fwd20
+    FROM px
+),
+bull_b AS (
+    SELECT 'bull_ladder'::text AS dimension, ci.bull::text AS bucket_value,
+           f.fwd5, f.fwd20
+    FROM drv_cat_atomic_input ci
+    JOIN fwd f ON f.tos_symbol = ci.tos_symbol AND f.as_of_date = ci.as_of_date
+    WHERE ci.bull IS NOT NULL AND f.fwd20 IS NOT NULL
+),
+rr_b AS (
+    SELECT 'rr_bull_bear'::text AS dimension, r.rr_bull_bear AS bucket_value,
+           f.fwd5, f.fwd20
+    FROM drv_tn_td_bb_rr r
+    JOIN fwd f ON f.tos_symbol = r.tos_symbol AND f.as_of_date = r.as_of_date
+    WHERE r.rr_bull_bear IS NOT NULL AND f.fwd20 IS NOT NULL
+),
+u AS (SELECT * FROM bull_b UNION ALL SELECT * FROM rr_b)
+SELECT dimension,
+       bucket_value AS bull_bucket,
+       COUNT(*)                                            AS n,
+       ROUND(AVG(fwd5)::numeric, 3)                        AS avg_fwd_5d,
+       ROUND(AVG(fwd20)::numeric, 3)                       AS avg_fwd_20d,
+       ROUND((PERCENTILE_CONT(0.5)
+              WITHIN GROUP (ORDER BY fwd20))::numeric, 3)  AS median_fwd_20d,
+       ROUND(AVG((fwd20 > 0)::int)::numeric, 3)            AS win_rate_20d
+FROM u
+GROUP BY dimension, bucket_value;
+
+-- v_final_call_scorecard (assumptions A2/A3): buckets drv_actionable's
+-- final_code x fc_confidence. Direction-adjust via final_side (already
+-- classified server-side by _compute_final_call — no regex needed): a sell
+-- final call wants a negative fwd_20d, so edge_20d flips the sign; neutral
+-- (HOLD/gate) rows are left unadjusted. raw_avg_fwd_20d is the un-flipped
+-- mean for comparison, mirroring v_rule_scorecard's raw_avg_fwd20/edge_20d pair.
+DROP VIEW IF EXISTS v_final_call_scorecard CASCADE;
+CREATE VIEW v_final_call_scorecard AS
+WITH px AS (
+    SELECT tos_symbol, as_of_date, last_price,
+           LEAD(last_price, 5)  OVER w AS p5,
+           LEAD(last_price, 20) OVER w AS p20
+    FROM drv_ma
+    WHERE last_price IS NOT NULL
+    WINDOW w AS (PARTITION BY tos_symbol ORDER BY as_of_date)
+),
+fwd AS (
+    SELECT tos_symbol, as_of_date,
+           CASE WHEN last_price > 0 AND p5  IS NOT NULL
+                THEN (p5  - last_price) / last_price * 100 END AS fwd5,
+           CASE WHEN last_price > 0 AND p20 IS NOT NULL
+                THEN (p20 - last_price) / last_price * 100 END AS fwd20
+    FROM px
+),
+b AS (
+    SELECT a.final_code, a.fc_confidence, a.final_side, f.fwd5, f.fwd20,
+           CASE WHEN a.final_side = 'sell' THEN -f.fwd20 ELSE f.fwd20 END AS da,
+           CASE WHEN a.final_side = 'sell' THEN (f.fwd20 < 0)
+                WHEN a.final_side = 'buy'  THEN (f.fwd20 > 0)
+                ELSE (f.fwd20 > 0) END AS hit
+    FROM drv_actionable a
+    JOIN fwd f ON f.tos_symbol = a.tos_symbol AND f.as_of_date = a.as_of_date
+    WHERE a.final_code IS NOT NULL AND f.fwd20 IS NOT NULL
+)
+SELECT final_code, fc_confidence,
+       COUNT(*)                                     AS n,
+       ROUND(AVG(fwd5)::numeric, 3)                 AS avg_fwd_5d,
+       ROUND(AVG(fwd20)::numeric, 3)                AS raw_avg_fwd_20d,
+       ROUND(AVG(da)::numeric, 3)                   AS edge_20d,
+       ROUND((PERCENTILE_CONT(0.5)
+              WITHIN GROUP (ORDER BY fwd20))::numeric, 3) AS median_fwd_20d,
+       ROUND(AVG(hit::int)::numeric, 3)              AS win_rate_20d
+FROM b
+GROUP BY final_code, fc_confidence;
+
+-- v_source_edge_scorecard (assumption A4): per-source-per-action forward
+-- edge from drv_outlook_action. Buy-family (ADD/INCREASE) wants fwd up;
+-- sell-family (REDUCE/REMOVE) wants fwd down; HOLD is left unadjusted.
+-- Used to check the empirical ordering against the fixed SOURCE_ORDER
+-- (PS=1, ETF=2, RR=3, SSS=4, II=5, CALL=6).
+DROP VIEW IF EXISTS v_source_edge_scorecard CASCADE;
+CREATE VIEW v_source_edge_scorecard AS
+WITH px AS (
+    SELECT tos_symbol, as_of_date, last_price,
+           LEAD(last_price, 5)  OVER w AS p5,
+           LEAD(last_price, 20) OVER w AS p20
+    FROM drv_ma
+    WHERE last_price IS NOT NULL
+    WINDOW w AS (PARTITION BY tos_symbol ORDER BY as_of_date)
+),
+fwd AS (
+    SELECT tos_symbol, as_of_date,
+           CASE WHEN last_price > 0 AND p5  IS NOT NULL
+                THEN (p5  - last_price) / last_price * 100 END AS fwd5,
+           CASE WHEN last_price > 0 AND p20 IS NOT NULL
+                THEN (p20 - last_price) / last_price * 100 END AS fwd20
+    FROM px
+),
+b AS (
+    SELECT oa.source_code, oa.action,
+           CASE WHEN oa.action IN ('ADD','INCREASE') THEN f.fwd5
+                WHEN oa.action IN ('REDUCE','REMOVE') THEN -f.fwd5
+                ELSE f.fwd5 END AS da5,
+           CASE WHEN oa.action IN ('ADD','INCREASE') THEN f.fwd20
+                WHEN oa.action IN ('REDUCE','REMOVE') THEN -f.fwd20
+                ELSE f.fwd20 END AS da20,
+           CASE WHEN oa.action IN ('ADD','INCREASE') THEN (f.fwd20 > 0)
+                WHEN oa.action IN ('REDUCE','REMOVE') THEN (f.fwd20 < 0)
+                ELSE (f.fwd20 > 0) END AS hit
+    FROM drv_outlook_action oa
+    JOIN fwd f ON f.tos_symbol = oa.tos_symbol AND f.as_of_date = oa.as_of_date
+    WHERE oa.action IS NOT NULL AND f.fwd20 IS NOT NULL
+)
+SELECT source_code, action,
+       COUNT(*)                          AS n,
+       ROUND(AVG(da5)::numeric, 3)       AS edge_5d,
+       ROUND(AVG(da20)::numeric, 3)      AS edge_20d,
+       ROUND(AVG(hit::int)::numeric, 3)  AS win_rate_20d
+FROM b
+GROUP BY source_code, action;
+
+-- =====================================================
+-- 2026-07-13 TASK_124: Trade Mode weak-source list (tunable, not hardcoded).
+-- Sources that measured negative buy-edge in the TASK_123 signal validation
+-- (docs/audit/signal_validation_2026-07.md) — a qualifying buy backed only by
+-- one of these gets a "WEAK SRC" pill on the Actionable Trade Mode view
+-- instead of being hidden. Comma-separated source_code list.
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('trade_mode_weak_buy_sources', 'PS,ETF,II',
+     'Trade Mode: comma-separated source_code list that measured negative buy-edge — tagged WEAK SRC instead of hidden')
+ON CONFLICT (setting_name) DO NOTHING;
 

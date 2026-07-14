@@ -114,6 +114,77 @@ def get_missing_symbols(exclude_non_equity: bool = True):
     return [dict(r) for r in rows]
 
 
+@router.get("/api/admin/quad-data-gaps", response_model=dict)
+def get_quad_data_gaps():
+    """Two-layer data-completeness audit for the MACRO/quad-factor engine.
+
+    Layer 1 (missing_sector) — symbol shows up on the Actionable screen
+    (present in drv_actionable, which is the actual MACRO-scored universe —
+    broader than drv_symbols/hist_td since it's also augmented with held/
+    watched ref_my_stocks symbols) but has no ref_sector row, so
+    _resolve_memberships() in _build_macro_engine (api/routers/dash.py) can't
+    add a Sector/vehicle_type membership; MACRO score for that row rests on
+    Asset Class + style factors only. Using drv_actionable rather than the
+    raw TOS universe also keeps benchmark/index/FX/crypto reference tickers
+    (which never appear as actionable rows and legitimately have no equity
+    sector) out of this list. Includes quote_type/y_sector/y_industry from
+    cache_yahoo_quote (populated by etl/yahoo_fetch.py::fetch_y_detail, same
+    nightly Yahoo call already made for every symbol) as a *suggested* value
+    to paste into the Sctr tab — never auto-written to ref_sector, whose
+    source of truth is that workbook tab.
+
+    Layer 2 (missing_from_universe) — a watched/held symbol (ref_my_stocks,
+    active='Y') that isn't in today's TOS export (hist_td) at all, so it's
+    silently absent from drv_symbols -> drv_actionable -> the whole
+    Actionable screen for the day. More severe than layer 1: nothing to flag
+    on a row, because the row doesn't exist.
+    """
+    # Non-equity reference tickers that legitimately have no ref_sector row —
+    # same exclusion intent as /api/admin/missing-symbols' exclude_non_equity,
+    # extended with this dataset's own conventions: '$' = Hedgeye foreign/OTC
+    # reference tickers (never TOS-tradeable), '/' = futures contracts.
+    _NON_EQUITY_EXCLUSION = """
+          AND tos_symbol NOT LIKE '$%'
+          AND tos_symbol NOT LIKE '/%'
+          AND tos_symbol NOT LIKE '^%'
+          AND tos_symbol NOT LIKE '%=F'
+          AND tos_symbol NOT LIKE '%=X'
+    """
+
+    with session_scope() as s:
+        anchor = s.execute(text("SELECT MAX(export_date) FROM hist_td")).scalar()
+
+        missing_sector = [dict(r) for r in s.execute(text(f"""
+            SELECT da.tos_symbol,
+                   cy.quote_type  AS suggested_vehicle_type,
+                   cy.y_sector    AS suggested_sector,
+                   cy.y_industry  AS suggested_industry
+            FROM drv_actionable da
+            LEFT JOIN ref_sector rs ON rs.ticker = da.tos_symbol
+            LEFT JOIN cache_yahoo_quote cy ON cy.tos_symbol = da.tos_symbol
+            WHERE da.as_of_date = :d AND rs.ticker IS NULL
+              {_NON_EQUITY_EXCLUSION.replace("tos_symbol", "da.tos_symbol")}
+            ORDER BY da.tos_symbol
+        """), {"d": anchor}).mappings().all()]
+
+        missing_from_universe = [dict(r) for r in s.execute(text(f"""
+            SELECT ms.tos_symbol
+            FROM ref_my_stocks ms
+            LEFT JOIN hist_td td
+                   ON td.tos_symbol = ms.tos_symbol AND td.export_date = :d
+            WHERE ms.active = 'Y' AND td.tos_symbol IS NULL
+              {_NON_EQUITY_EXCLUSION.replace("tos_symbol", "ms.tos_symbol")}
+            ORDER BY ms.tos_symbol
+        """), {"d": anchor}).mappings().all()]
+
+    return {
+        "anchor_date": anchor.isoformat() if anchor else None,
+        "missing_sector": missing_sector,
+        "missing_sector_count": len(missing_sector),
+        "missing_from_universe": missing_from_universe,
+        "missing_from_universe_count": len(missing_from_universe),
+    }
+
 
 # =============================================================================
 # Pydantic models — API contracts

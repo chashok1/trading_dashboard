@@ -883,7 +883,7 @@ def parse_the_call(email: Email) -> Parsed:
             line = m.group(1).splitlines()[0].strip()
             syms = []
             for sym in re.split(r"[,\s]+", line):
-                sym = sym.strip().upper()
+                sym = sym.strip().lstrip("$").upper()
                 if re.match(r"^[A-Z][A-Z0-9.\-]{0,9}$", sym):
                     pos_rows.append({
                         "snapshot_date": email.edt_date, "message_id": email.message_id,
@@ -919,9 +919,23 @@ def parse_the_call(email: Email) -> Parsed:
         entries = []
         for para in re.split(r"(?:\r?\n){2,}", seg):
             para = para.strip()
+            if not para:
+                continue
             pm = re.match(r"([^\n:]*\([A-Z][A-Z0-9.\-/]{0,9}\)[^\n:]*):\s*(.+)",
-                          para, re.S) if para else None
+                          para, re.S)
             if not pm:
+                # Prose paragraphs where the tickers appear only after the
+                # lead-in colon (e.g. "Position monitor tilted ...: Mastercard
+                # (MA), Global Payments (GPN) ...") don't fit the "Company
+                # (TICK): commentary" shape but still carry real tickers worth
+                # keeping — file the whole paragraph as commentary.
+                fallback_syms = sorted(set(s.upper() for s in _TICKER_PAREN.findall(para)))
+                if fallback_syms:
+                    full_text = re.sub(r"\s+", " ", para).strip()
+                    tail_m = _TOP5_SIDE_TAIL_RE.search(full_text.rstrip())
+                    side = tail_m.group(1).lower() if tail_m else side_for.get(fallback_syms[0], "long")
+                    p.notes.append(_note(email, "the_call_commentary", full_text,
+                                         tickers=fallback_syms, signal_kind=side))
                 continue
             syms = [s.upper() for s in _TICKER_PAREN.findall(pm.group(1))]
             if not syms:

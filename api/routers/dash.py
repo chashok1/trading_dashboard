@@ -388,17 +388,22 @@ def list_actionable_sources():
 @router.get("/api/actionable/settings")
 def get_actionable_settings():
     """Tunable Actionable-screen settings (F5), fetched once at client
-    bootstrap instead of hardcoding thresholds in JS. Currently just
-    conviction_proven_edge_min (ref_settings, default 0.5)."""
+    bootstrap instead of hardcoding thresholds in JS.
+    conviction_proven_edge_min (ref_settings, default 0.5); TASK_124 adds
+    trade_mode_weak_buy_sources (default 'PS,ETF,II') for the Trade Mode
+    WEAK SRC pill."""
     with session_scope() as s:
         rows = s.execute(text(
             "SELECT setting_name, setting_value FROM ref_settings"
-            " WHERE setting_name IN ('conviction_proven_edge_min')"
+            " WHERE setting_name IN ('conviction_proven_edge_min',"
+            " 'trade_mode_weak_buy_sources')"
         )).fetchall()
     settings = {r[0]: r[1] for r in rows}
     return {
         "conviction_proven_edge_min": float(
             settings.get("conviction_proven_edge_min", 0.5)),
+        "trade_mode_weak_buy_sources": settings.get(
+            "trade_mode_weak_buy_sources", "PS,ETF,II"),
     }
 
 
@@ -461,6 +466,7 @@ def _build_macro_engine(d):
     # style/fund lookups (set inside try; defaults here guard against early raise)
     _style_lookup: dict[str, dict[str, str | None]] = {}
     _fund: dict[str, dict] = {}
+    _vehicle: dict[str, str] = {}  # ref_sector.ticker (upper) -> vehicle_type
 
     # Tunable params — new naming (TASK_74 Phase 1).
     # Legacy names (macro_N_m, macro_N_q, macro_wm_max, macro_wq_max,
@@ -626,6 +632,14 @@ def _build_macro_engine(d):
             for fr in _fund_rows:
                 _fund[fr["tos_symbol"]] = dict(fr)
 
+            # Vehicle type (Stock vs ETF/ETN/CEF/...) — gates which style
+            # factors are meaningful (see _resolve_memberships is_etf below).
+            for vr in _qs.execute(text(
+                "SELECT ticker, vehicle_type FROM ref_sector"
+            )).mappings().all():
+                if vr["ticker"] and vr["vehicle_type"]:
+                    _vehicle[vr["ticker"].upper()] = vr["vehicle_type"]
+
     except Exception as _exc:
         import logging
         logging.getLogger("dash").warning("quad enrichment load failed: %s", _exc)
@@ -761,6 +775,13 @@ def _build_macro_engine(d):
 
         cap_v = _parse_cap(fund.get("market_cap_str"))
 
+        # ETFs/ETNs/CEFs: "market cap" in drv_fundamentals is really AUM/net
+        # assets (no relation to company size), and P/E only means anything
+        # as a holdings-weighted average across the basket — not computed
+        # here. Size and Value/Momentum tags are suppressed for these vehicles;
+        # Beta and Dividend Yield are real fund-level stats and stay eligible.
+        is_etf = (_vehicle.get(sym.upper()) or "").upper().startswith("ETF")
+
         def _style(sub: str) -> None:
             row = _style_lookup.get(sub.lower())
             if row:
@@ -772,7 +793,7 @@ def _build_macro_engine(d):
                     "_match": "style",
                 })
 
-        if cap_v is not None and cap_v > 0:
+        if not is_etf and cap_v is not None and cap_v > 0:
             if   cap_v >= 10e9: _style("Secular")
             elif cap_v >= 2e9:  _style("Mid Caps")
             else:               _style("Small Caps")
@@ -784,7 +805,7 @@ def _build_macro_engine(d):
         if dy_v is not None and dy_v > 1.5:
             _style("Dividend")
 
-        if pe_v is not None and pe_v > 0:
+        if not is_etf and pe_v is not None and pe_v > 0:
             if   pe_v < 15:  _style("Value")
             elif pe_v > 30:  _style("Momentum")
 

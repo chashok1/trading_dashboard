@@ -55,6 +55,9 @@ const state = {
     bull_prob_min: 0,    // TASK_66: minimum bull_prob (0 = no filter)
     agreement_class: '', // TASK_69: '' = all; else exact match on agreement_class
     stopOnly: false,     // TASK_119: STOP chip — filter to stop_breached rows
+    trade_mode: true,    // TASK_124: show only qualifying buys / SA sells / stop breaches
+                         // (always starts ON, not persisted — reset near page init)
+    asset_class: '',     // '' = all; else exact match on r._assetClass (normalized real_asset_class)
   },
   // TASK_120 buy-noise gate: manual expand/collapse for the "Watchlist (n)"
   // band (gated unheld ADD/BMN rows). Auto-expands (without flipping this
@@ -111,6 +114,15 @@ function fmtDateMD(d) {
 // colors/vocabulary. The turn arrow (↗/↘ + next quad/%) is appended when present.
 // Confidence cue: faded badge at < 60% confidence.
 // On hover, a tooltip shows the full MacroNet breakdown from macro_detail.
+// Data-completeness flag: no ref_sector row for this symbol means
+// _resolve_memberships() (api/routers/dash.py) couldn't add a Sector
+// membership, so the MACRO score here rests on Asset Class + style factors
+// only — same signal the quad-data-gaps audit checks. See /api/admin/quad-data-gaps.
+function _macroGapMark(r) {
+  if (r.sector) return '';
+  return `<span style="color:#f59e0b;font-size:8px;font-weight:700;vertical-align:super;margin-left:1px;" title="No sector classification (ref_sector) for this symbol — MACRO score is based on Asset Class + style factors only. Hover the badge for detail.">!</span>`;
+}
+
 function macroCellHtml(r) {
   const mv = r.macro_value;
   const turn = r.macro_turn || '';
@@ -165,12 +177,13 @@ function macroCellHtml(r) {
   if (!mv || mv === 'HOLD') {
     const holdCls = mv ? 'color:#9ca3af' : 'color:#cbd5e1';
     const lbl = mv ? 'HOLD' : '—';
-    return `<div style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};cursor:help;text-align:center;" data-macropop="${escapeHtml(sym)}">${escapeHtml(lbl)}${dotsLine}${sparkLine}</div>`;
+    return `<div style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};cursor:help;text-align:center;" data-macropop="${escapeHtml(sym)}">${escapeHtml(lbl)}${_macroGapMark(r)}${dotsLine}${sparkLine}</div>`;
   }
   const d = actionDisplay(mv);
   const cls = d.colorCls || 'act-neutral';
   return `<div style="text-align:center;cursor:help;opacity:${opacity.toFixed(2)};" data-macropop="${escapeHtml(sym)}">`
        + `<span class="act-badge ${cls}-tint" style="font-size:10px;padding:1px 5px;">${escapeHtml(d.code || mv)}</span>`
+       + _macroGapMark(r)
        + dotsLine
        + sparkLine
        + `</div>`;
@@ -294,6 +307,14 @@ function _buildMacroPopHtml(r, loading) {
 
   const mvColor = _vocabColor(mv !== '—' ? mv : null);
   let h = `<div class="sp-title">${escapeHtml(sym)} &mdash; <span style="color:${mvColor};font-weight:700;">${escapeHtml(mv)}</span>${turn ? ' <span style="color:#f97316;">' + escapeHtml(turn) + '</span>' : ''}</div>`;
+
+  if (!r.sector) {
+    h += `<div style="color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;`
+       + `padding:3px 6px;font-size:9.5px;margin-bottom:6px;">`
+       + `&#9888; No sector classification for ${escapeHtml(sym)} in ref_sector — this score reflects `
+       + `Asset Class + style factors only. See Ref &rarr; ref_sector, or GET /api/admin/quad-data-gaps.`
+       + `</div>`;
+  }
 
   if (!det) {
     h += loading
@@ -1122,6 +1143,14 @@ function _legendHtml() {
       <div style="color:#475569;">A held position trading below its stop level (red left edge + STOP pill next to ACTION).
         An effective ADD/INCREASE on a breached row is downgraded to HOLD (suppressed_reason = "STOP BREACHED") —
         breach never auto-forces a sell. Click the STOP chip to filter to these rows.</div>
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Trade Mode</div>
+      <div style="color:#475569;">Toggle in the toolbar collapses the grid to only rows with measured
+        positive edge (docs/actionable_playbook.md §3.3): (1) qualifying buys — BM/BMN, feasible, Risk
+        Range bullish, no stop breach, MACRO not SA/STM, any winning source; (2) held SA sells;
+        (3) held stop breaches, whatever the action. Everything else (Watchlist band, HOLD/no-action
+        rows) is hidden. <strong>WEAK SRC</strong> pill = the qualifying buy's winning source measured
+        negative buy-edge in the last validation — size down or skip; see
+        docs/audit/signal_validation_2026-07.md. Persisted across reloads.</div>
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Conviction filter</div>
       ${row('Any', 'No filter')}
       ${row('Multi', '2+ sources agree on this row')}
@@ -1136,13 +1165,20 @@ function _legendHtml() {
       ${row('IV', 'IVP (blue) · HV (slate) · IV (dark) glyph; background shade = IV/HV discount')}
       ${row('MACRO', '▲▼ dots = Cur month / Nxt month / Cur quarter direction; sparkline = forward monthly scores')}
       ${row('▼3 / ▲3', 'Symbol: 2 of 3 of MACRO/Sources/Technical agree sell / buy with none opposing. Display-only — no longer drives the default sort.')}
-      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Default sort (TASK_120)</div>
-      <div style="color:#475569;">Tier 0 — held rows trading below stop (STOP pill), by position $ desc.
-        Tier 1 — everything else, by dollar-weighted edge desc: the sum of the row's fired rules'
-        historical edge_20d (Rules column), weighted by dollars at stake (log-scaled). Rows with no
-        scored fired rules fall back to Final Call severity, scaled to sit near the middle of the pack.
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Default sort (TASK_120/122)</div>
+      <div style="color:#475569;">Stops → credible sells → buys ranked by how many signals agree
+        (Tech+Sources+Macro) → holds; unheld buys without a ripe Technical wait in the Watchlist.
+        Tier 0 — held rows trading below stop (STOP pill), by position $ desc.
+        Tier 1 — credible SELLs on held positions (Sources+Technical both sell, or a source-driven
+        exit), by $ at stake desc. LOW CONF sells are never "credible" — they sink to Bottom instead.
+        Tier 2 — BUYs that passed the technical gate, sub-ranked by agreement: 2a = Technical + Sources
+        + MACRO all buy-side, 2b = Technical + one other buy-side with nothing opposing, 2c = Technical
+        ripe only; each sub-tier ordered by dollar-weighted edge desc (sum of the row's fired rules'
+        historical edge_20d, weighted by dollars at stake, log-scaled). Tier 3 — HOLD / mixed /
+        no-action, by dollar-weighted edge desc. Rows with no scored fired rules fall back to Final
+        Call severity, scaled to sit near the middle of the pack.
         Watchlist — buy-noise gate: Technical decides WHEN, Sources decide WHAT. An UNHELD row whose
-        effective action is ADD (source ADD or Final Call code BMN) only stays in Tier 1 when Technical
+        effective action is ADD (source ADD or Final Call code BMN) only reaches Tier 2 when Technical
         (the QS code) is BS or BM — the entry-ripe codes near LRR with momentum/pullback confirmation.
         Everything else (BMN, N, watch/sell codes, or no Technical) collapses into the "Watchlist (n)"
         band above Bottom, collapsed by default — click it to expand. A source listing alone never
@@ -1213,7 +1249,14 @@ async function loadSources() {
     const settings = await fetchJson('/api/actionable/settings');
     state.convictionProvenEdgeMin = Number(settings.conviction_proven_edge_min);
     if (!isFinite(state.convictionProvenEdgeMin)) state.convictionProvenEdgeMin = 0.5;
-  } catch (_) { state.convictionProvenEdgeMin = 0.5; }
+    // TASK_124: Trade Mode weak-source list — tunable via ref_settings, not hardcoded.
+    const weakStr = settings.trade_mode_weak_buy_sources || 'PS,ETF,II';
+    state.tradeModeWeakSources = new Set(
+      weakStr.split(',').map(s => s.trim().toUpperCase()).filter(Boolean));
+  } catch (_) {
+    state.convictionProvenEdgeMin = 0.5;
+    state.tradeModeWeakSources = new Set(['PS', 'ETF', 'II']);
+  }
   // TASK_69: agreement scorecard — keyed by agreement_class -> avg_fwd_20d.
   try {
     const asc = await fetchJson('/api/rules/agreement-scorecard');
@@ -1338,6 +1381,31 @@ function fmtPct(v) {
   return isFinite(n) ? (formatNum(n * 100) + '%') : '';
 }
 
+// Normalize real_asset_class into a small set of display/filter buckets —
+// the raw values (from ref_asset_allocation/drv_technicals) carry near-
+// synonym variants for the same bucket (e.g. "Domestic Equities" / "Global
+// Equities" / "Emerging Markets Equities" all just mean equities exposure).
+// Unmapped-but-present values pass through as-is rather than collapsing to
+// "Unclassified", so a real category we haven't seen yet is still visible
+// and filterable, not hidden inside a generic bucket.
+const _ASSET_CLASS_ALIAS = {
+  'domestic equities': 'Equities', 'global equities': 'Equities',
+  'international equities': 'Equities', 'emerging markets equities': 'Equities',
+  'equities': 'Equities',
+  'us fixed income': 'Fixed Income', 'domestic fixed income': 'Fixed Income',
+  'fixed income': 'Fixed Income',
+  'foreign currencies': 'FX', 'foreign currency': 'FX', 'fx': 'FX',
+  'commodities': 'Commodities',
+  'crypto': 'Crypto',
+  'gold': 'Gold',
+  'cash': 'Cash',
+};
+function _normAssetClass(raw) {
+  if (!raw) return 'Unclassified';
+  const key = String(raw).trim().toLowerCase();
+  return _ASSET_CLASS_ALIAS[key] || raw;
+}
+
 // ---- core load ----
 // opts.preserveState: when true (auto-poll path only), keep the user's current
 // column sort and bulk selection instead of resetting them. Manual Refresh /
@@ -1358,6 +1426,12 @@ async function loadActionable(opts) {
     params.append('show_acted', 'true');
     params.append('show_suppressed', 'true');
   }
+  // TASK_124: Trade Mode's stop-breach category needs suppressed rows too —
+  // a held ADD/INCREASE downgraded to HOLD by a stop breach carries
+  // suppressed_reason='STOP BREACHED' and would otherwise be excluded server-side.
+  if (state.filters.trade_mode && !state.filters.show_hidden) {
+    params.append('show_suppressed', 'true');
+  }
   try {
     const dateParam = state.date ? `?date=${encodeURIComponent(state.date)}` : '';
     const [rows, accts] = await Promise.all([
@@ -1367,6 +1441,7 @@ async function loadActionable(opts) {
     state.allAccounts = Array.isArray(accts) ? accts : [];
     state.allRows = Array.isArray(rows) ? rows : [];
     state.allRows.forEach(r => {
+      r._assetClass = _normAssetClass(r.real_asset_class);
       const act = (r.consolidated_action || '').toUpperCase();
       if (_isOverMaxOverlay(r)) {
         // Over-allocation overlay — AMT$ = trim back to the category Max.
@@ -1401,6 +1476,7 @@ async function loadActionable(opts) {
       r._fc_side     = fc.side;
       r._watchlisted = _buyNoiseGated(r);
       r._priority = _computePriority(r);
+      r._agree3 = _agree3Score(r);
     });
     // Expose monthly score map for market_bar.js tape chips
     window._macroScoreMap = Object.fromEntries(
@@ -1424,12 +1500,49 @@ async function loadActionable(opts) {
   }
 }
 
+// TASK_124: Trade Mode — narrow the grid to the three categories measured
+// to have positive edge in docs/actionable_playbook.md §3.3. Everything else
+// (including the Watchlist band and HOLD/no-action rows) is hidden. Buys from
+// ANY source qualify; a buy whose winning source measured negative buy-edge
+// (ref_settings.trade_mode_weak_buy_sources) is tagged WEAK SRC instead.
+function _isTradeModeQualifyingBuy(r) {
+  const code = (r.final_code || '').toUpperCase();
+  if (code !== 'BM' && code !== 'BMN') return false;
+  if (!(r.fc_feasible === true || r.fc_feasible === 'true')) return false;
+  if (r.rr_bull_bear !== 'B') return false;
+  if (r.stop_breached) return false;
+  const mv = (r.macro_value || '').toUpperCase();
+  if (mv === 'SA' || mv === 'STM') return false;
+  return true;
+}
+function _isTradeModeHeldSaSell(r) {
+  return !!r.held_today && (r.final_code || '').toUpperCase() === 'SA';
+}
+function _isTradeModeStopBreach(r) {
+  return !!r.held_today && !!r.stop_breached;
+}
+function _matchesTradeMode(r) {
+  return _isTradeModeQualifyingBuy(r) || _isTradeModeHeldSaSell(r) || _isTradeModeStopBreach(r);
+}
+// A qualifying buy whose winning source measured negative buy-edge — shown
+// with a WEAK SRC pill rather than hidden (source list is tunable, TASK_124).
+function _isWeakSourceBuy(r) {
+  if (!_isTradeModeQualifyingBuy(r)) return false;
+  const src = (r.winning_source || '').toString().toUpperCase();
+  return !!(state.tradeModeWeakSources && state.tradeModeWeakSources.has(src));
+}
+
 // Client filters EXCEPT the action chip. Kept separate so the action-chip
 // counts can reflect every other active filter.
 // All active filters combine with AND.
 function matchesBaseFilters(r) {
-  // When show_hidden is OFF, hide suppressed/$0 AMT/no-action/acted/unheld-remove rows.
-  if (!state.filters.show_hidden) {
+  // TASK_124: Trade Mode replaces the default show_hidden suppression logic
+  // outright — its own criteria are the complete gate. Toggle OFF (default)
+  // leaves this whole block unreached, keeping OFF pixel-identical to before.
+  if (state.filters.trade_mode) {
+    if (!_matchesTradeMode(r)) return false;
+  } else if (!state.filters.show_hidden) {
+    // When show_hidden is OFF, hide suppressed/$0 AMT/no-action/acted/unheld-remove rows.
     if (r.suppressed_reason) return false;
     const ua = (r.last_user_action || '').toUpperCase();
     if (ua === 'DONE' || ua === 'SKIPPED' || ua === 'OVERRIDDEN') return false;
@@ -1483,6 +1596,11 @@ function applyClientFilter(opts) {
   state.baseRows = state.allRows.filter(matchesBaseFilters);
   // rows: baseRows + action chip filter + actionable_only (AND combined)
   state.rows = state.baseRows.filter(r => {
+    // Asset class filter lives here (not in matchesBaseFilters) so baseRows —
+    // and the asset-class chip $ amounts computed from it — stay unrestricted
+    // by this specific filter, same reasoning as action/stopOnly below: you
+    // can see every category's total while one is selected, not just the one.
+    if (state.filters.asset_class && r._assetClass !== state.filters.asset_class) return false;
     if (state.filters.stopOnly && !r.stop_breached) return false;
     if (state.filters.action) return _chipAction(r) === state.filters.action;
     if (state.filters.actionable_only) {
@@ -1503,6 +1621,7 @@ function applyClientFilter(opts) {
   }
   renderBulkBar();
   renderSummary();
+  renderAssetClassSummary();
   renderSourceFilter();
   renderAccountFilter();
   renderGrid();
@@ -1630,6 +1749,40 @@ function renderSummary() {
   wrap.appendChild(stopChip);
 }
 
+// Portfolio-composition chips: held $ grouped by normalized asset class
+// (r._assetClass — see _normAssetClass). Computed from state.baseRows (every
+// active filter EXCEPT this one's own selection — see the asset_class check
+// in applyClientFilter's second stage) so the amounts reflect whatever else
+// is filtered (Source/Acct/Trade Mode/Conviction/...), same "filtered but not
+// self-restricted" reasoning as the action-chip counts in renderSummary().
+// Doubles as the filter UI — clicking a chip toggles state.filters.asset_class.
+function renderAssetClassSummary() {
+  const wrap = $('assetClassSummary');
+  if (!wrap) return;
+  const byClass = new Map();  // class -> dollars
+  for (const r of state.baseRows) {
+    if (!r.held_today) continue;
+    const cls = r._assetClass || 'Unclassified';
+    const amt = Math.abs(Number(r.current_position_dollar) || 0);
+    byClass.set(cls, (byClass.get(cls) || 0) + amt);
+  }
+  wrap.innerHTML = '';
+  if (byClass.size === 0) return;
+  const entries = Array.from(byClass.entries()).sort((a, b) => b[1] - a[1]);
+  for (const [cls, dollars] of entries) {
+    const chip = document.createElement('div');
+    chip.className = 'act-chip' + (state.filters.asset_class === cls ? ' active' : '');
+    chip.title = `${cls}: ${window.fmtUsd ? window.fmtUsd(dollars) : dollars} held — click to filter`;
+    chip.innerHTML = `<span>${escapeHtml(cls)}</span><span class="count">`
+                    + `${window.fmtUsd ? window.fmtUsd(dollars, { compact: true }) : Math.round(dollars)}</span>`;
+    chip.onclick = () => {
+      state.filters.asset_class = (state.filters.asset_class === cls) ? '' : cls;
+      applyClientFilter();
+    };
+    wrap.appendChild(chip);
+  }
+}
+
 // Set of every source code present in the current dataset (winning + other).
 function _availableSources() {
   const have = new Set();
@@ -1722,6 +1875,8 @@ function syncFilterUi() {
     showHidden.classList.toggle('active', !!f.show_hidden);
     showHidden.setAttribute('data-tip', f.show_hidden ? 'Show Hidden  →  Active Only' : 'Active Only  →  Show Hidden');
   }
+  const tradeModeBtn = $('tradeModeBtn');
+  if (tradeModeBtn) tradeModeBtn.classList.toggle('active', !!f.trade_mode);
   const sym = $('symbolSearch');        if (sym) sym.value = f.symbol_search || '';
   const bp = $('bullProbFilter');       if (bp) bp.value = f.bull_prob_min || 0;
   const ag = $('agreementFilter');      if (ag) ag.value = f.agreement_class || '';
@@ -2201,14 +2356,23 @@ function _finalCallHtml(row) {
          escapeHtml(text) + '</span>' + stopPill + subIcon;
 }
 
-// ── Pass 2: Priority score (TASK_120 — dollar-weighted-edge default sort) ──
-// Replaces the old "3-way agreement tier + buysell SEQ" scheme. New tiers,
-// top to bottom (DESCENDING — state.sort = {_priority, -1}):
+// ── Pass 2: Priority score (TASK_120 — dollar-weighted-edge default sort;
+// TASK_122 — credible-sells-first / agreement-ranked-buys tier restructure) ──
+// New tiers, top to bottom (DESCENDING — state.sort = {_priority, -1}):
 //
 //   Tier 0     — stop_breached held rows (TASK_119)   → position $ desc
-//   Tier 1     — everything else                      → dollar-weighted edge desc
+//   Tier 1     — credible SELLs on HELD positions     → $ at stake desc
+//                (fc.side === 'sell' AND held_today;
+//                 low_confidence rows are never "credible" — they were
+//                 already routed to Bottom above this check)
+//   Tier 2     — BUYs that passed the technical gate  → sub-ranked by
+//                (fc.side === 'buy', not watchlisted)   agreement (2a/2b/2c,
+//                                                        see _buyAgreementSubTier),
+//                                                        dollar-weighted edge
+//                                                        desc within each
+//   Tier 3     — HOLD / mixed / no-action              → dollar-weighted edge desc
 //   Watchlist  — gated unheld ADD/BMN rows, Technical  → collapsed band, dollar-weighted
-//                not entry-ripe (see _buyNoiseGated)     edge desc inside; below Tier 1,
+//                not entry-ripe (see _buyNoiseGated)     edge desc inside; below Tier 3,
 //                                                         above Bottom
 //   Bottom     — low_confidence-only sells (TASK_118),
 //                infeasible, or suppressed rows        → always last
@@ -2244,8 +2408,37 @@ function _threeWayAgreement(row) {
   if (buyVotes  >= 2 && sellVotes === 0) return 'buy';
   return null;
 }
+// Sort key for the "3W" column: sell-agreement ranks above buy-agreement
+// above no-agreement, so sorting descending surfaces negatives (sells) first.
+function _agree3Score(row) {
+  const dir = _threeWayAgreement(row);
+  return dir === 'sell' ? 2 : dir === 'buy' ? 1 : 0;
+}
 // Back-compat: other call sites in this file still say "Dir" for brevity.
 const _agreementDir = _threeWayAgreement;
+
+// TASK_122 Tier 2 sub-ranking: 2 = 2a (Technical + Sources + MACRO all
+// buy-side, 3/3), 1 = 2b (Technical + one other buy-side, none opposing,
+// 2/3), 0 = 2c (Technical ripe only / partial agreement with opposition).
+// Unlike _threeWayAgreement (display-only ▼3/▲3 marker, uses the full
+// _TECH_BUY set including BMN/BR), the Technical leg here is deliberately
+// the entry-ripe set only (_ENTRY_RIPE_TECH = BS/BM) — this only runs on
+// rows already classified fc.side === 'buy', so "Technical" here means
+// "did the entry actually get ripe," matching the buy-noise gate's own
+// definition of readiness.
+function _buyAgreementSubTier(row) {
+  const m = (row.macro_value || '').toUpperCase();
+  const s = (row.consolidated_action || '').toUpperCase();
+  const t = (row.rr_action || '').toUpperCase();
+  const techBuy   = _ENTRY_RIPE_TECH.indexOf(t) !== -1;
+  const srcBuy    = _SRC_BUY.has(s);
+  const macroBuy  = _MACRO_BUY.has(m);
+  const anySell   = _TECH_SELL.has(t) || _SRC_SELL.has(s) || _MACRO_SELL.has(m);
+  const buyVotes  = (techBuy ? 1 : 0) + (srcBuy ? 1 : 0) + (macroBuy ? 1 : 0);
+  if (buyVotes === 3) return 2;                       // 2a
+  if (buyVotes === 2 && !anySell) return 1;            // 2b
+  return 0;                                            // 2c
+}
 
 // Fired composite rule ids from rules_engine_fires (same parsing as
 // firesCellHtml, kept separate so the sort path doesn't depend on rendering).
@@ -2347,36 +2540,62 @@ function _isNewSnapshot(row) {
 const _NEW_TIEBREAK_EPS = 0.15;
 
 const _TIER_STOP      = 1e10;  // Tier 0: stop_breached held rows, by position $
-const _TIER_SCORED    = 1e6;   // Tier 1: dollar-weighted edge (scaled x1e3 for granularity)
+const _TIER_SELL      = 1e8;   // Tier 1: credible SELLs on held positions, by $ at stake
+const _TIER_BUY       = 1e6;   // Tier 2: buys past the gate, sub-ranked by agreement (2a/2b/2c)
+const _TIER_HOLD      = 1e4;   // Tier 3: HOLD / mixed / no-action, dollar-weighted edge
 const _TIER_WATCHLIST = 0;     // Watchlist band: gated unheld ADD/BMN rows, dollar-weighted
                                 // edge UNscaled — deliberately sits in a narrow band around 0,
-                                // well clear of Tier 1 (1e6 ± ~2e4) and Bottom (-1e6 ± ~20) so
+                                // well clear of Tier 3 (1e4 ± ~150) and Bottom (-1e6 ± ~20) so
                                 // gated rows stay contiguous in the sorted list with no overlap.
 const _TIER_BOTTOM    = -1e6;  // Bottom: low_confidence-only sells / infeasible / suppressed
+// Tier 2 sub-tier offsets (2a > 2b > 2c), each internally ranked by
+// dollar-weighted edge (unscaled — realistically well under a few hundred,
+// same scale used unscaled elsewhere e.g. the Watchlist band) — comfortably
+// clear of the 2000-wide gap between sub-tiers and the 9.9e7-wide gap up to
+// Tier 1 / down to Tier 3.
+const _BUY_SUBTIER_STEP = 2000;
 
 function _computePriority(row) {
   // Tier 0 (TASK_119): held + trading below stop — position $ desc, always
-  // above every Tier-1 row regardless of edge/dollars.
+  // above every other tier regardless of edge/dollars.
   if (row.stop_breached && row.held_today) {
     return _TIER_STOP + Math.abs(Number(row.current_position_dollar) || 0);
   }
 
   var fc = finalCall(row);
   // Bottom: a low_confidence sell (TASK_118), an infeasible Final Call, or a
-  // suppressed row sinks below every real Tier-1 row regardless of dollars —
-  // still ordered internally by dollar-weighted score.
+  // suppressed row sinks below every real tier regardless of dollars — still
+  // ordered internally by dollar-weighted score. low_confidence sells are
+  // never "credible" (Tier 1) — this check runs first so they land here
+  // instead.
   if (row.low_confidence || !fc.feasible || row.suppressed_reason) {
     return _TIER_BOTTOM + _dollarWeightedScore(row);
   }
 
   // Watchlist band: unheld ADD/BMN rows whose Technical isn't entry-ripe
   // (row._watchlisted, set by the caller via _buyNoiseGated before this runs)
-  // collapse below Tier 1 instead of flooding it.
+  // collapse below Tier 3 instead of flooding Tier 2.
   if (row._watchlisted) {
     return _TIER_WATCHLIST + _dollarWeightedScore(row);
   }
 
-  return _TIER_SCORED + _dollarWeightedScore(row) * 1e3;
+  // TASK_122 Tier 1: a credible SELL on a HELD position — by $ at stake desc.
+  // (low_confidence sells already routed to Bottom above, so every sell that
+  // reaches here is "credible" per the spec's definition.)
+  if (row.held_today && fc.side === 'sell') {
+    return _TIER_SELL + _dollarsAtStake(row);
+  }
+
+  // TASK_122 Tier 2: a BUY that passed the technical gate (never watchlisted
+  // — held buys are never gated; unheld buys only reach here when
+  // _buyNoiseGated already said no), sub-ranked 2a/2b/2c by how many of
+  // Technical/Sources/MACRO agree.
+  if (fc.side === 'buy') {
+    return _TIER_BUY + _buyAgreementSubTier(row) * _BUY_SUBTIER_STEP + _dollarWeightedScore(row);
+  }
+
+  // TASK_122 Tier 3: HOLD / mixed / no-action — dollar-weighted edge desc.
+  return _TIER_HOLD + _dollarWeightedScore(row);
 }
 
 // True if `src` drove this row OR appears among its other sources.
@@ -2493,6 +2712,66 @@ async function showMacroPop(el, r) {
   }
   _macroDetailCache.set(key, detail);
   _showDataPop(el, _buildMacroPopHtml(Object.assign({}, r, detail)));
+}
+
+// Symbol-column notes popover — all note_repo comments tagged with this
+// ticker (Hedgeye Call/Position Monitor/RTA/etc.), lazy-fetched + cached per
+// symbol (same pattern as showMacroPop above).
+const _notesCache = new Map();   // symbol -> notes array
+
+function _buildNotesPopHtml(sym, notes) {
+  let h = `<div class="sp-title">${escapeHtml(sym)} &mdash; Comments</div>`;
+  if (!notes || !notes.length)
+    return h + '<div style="color:#94a3b8;font-size:10px;">No comments found.</div>';
+
+  const _srcColor = t => {
+    const u = (t || '').toLowerCase();
+    if (u.includes('call'))            return '#7c3aed';
+    if (u.includes('position'))        return '#2563eb';
+    if (u.includes('rta') || u.includes('alert')) return '#dc2626';
+    if (u.includes('sss') || u.includes('stance')) return '#0891b2';
+    return '#64748b';
+  };
+  const _sideColor = sk => {
+    const u = (sk || '').toLowerCase();
+    if (u === 'long' || u === 'bullish')  return '#16a34a';
+    if (u === 'short' || u === 'bearish') return '#dc2626';
+    return '#94a3b8';
+  };
+
+  h += '<div style="max-width:420px;">';
+  for (const n of notes.slice(0, 10)) {
+    const dt  = fmtMD(n.note_date) || '';
+    const src = (n.source_type || '').replace(/_/g, ' ');
+    const sk  = n.signal_kind
+      ? `<span style="color:${_sideColor(n.signal_kind)};font-weight:600;text-transform:uppercase;font-size:9px;"> ${escapeHtml(n.signal_kind)}</span>`
+      : '';
+    let txt = (n.note_text || '').trim();
+    if (txt.length > 220) txt = txt.slice(0, 220).replace(/\s+\S*$/, '') + '…';
+    h += `<div style="margin-bottom:7px;padding-bottom:7px;border-bottom:1px solid #f1f5f9;">`
+       + `<div style="font-size:9px;color:${_srcColor(src)};font-weight:700;text-transform:uppercase;letter-spacing:0.3px;">`
+       + `${escapeHtml(src)}${sk} <span style="color:#94a3b8;font-weight:400;text-transform:none;">${dt}</span></div>`
+       + `<div style="font-size:10.5px;color:#334155;margin-top:2px;">${escapeHtml(txt)}</div>`
+       + `</div>`;
+  }
+  h += '</div>';
+  return h;
+}
+
+async function showNotesPop(el, sym) {
+  if (_notesCache.has(sym)) {
+    _showDataPop(el, _buildNotesPopHtml(sym, _notesCache.get(sym)));
+    return;
+  }
+  _showDataPop(el, `<div class="sp-title">${escapeHtml(sym)} &mdash; Comments</div><div style="color:#94a3b8;font-size:10px;">Loading&hellip;</div>`);
+  let notes;
+  try {
+    notes = await fetchJson('/api/notes?ticker=' + encodeURIComponent(sym) + '&limit=15');
+  } catch (_) {
+    notes = [];
+  }
+  _notesCache.set(sym, notes);
+  _showDataPop(el, _buildNotesPopHtml(sym, notes));
 }
 
 function hideSourcePop() {
@@ -2645,8 +2924,8 @@ function _buildIvPopHtml(r) {
     : '—';
   const rows = [
     ['IVP (IV Rank)',    ivpHtml],
-    ['IV (Impl Vol)',    fmtP(iv)],
     ['HV (Hist Vol)',    fmtP(hv)],
+    ['IV (Impl Vol)',    fmtP(iv)],
     ['IV/HV Status',    dcStr],
     ['HV Percentile',   fmtN(r.hv_percentile)],
     ['Range Compress',  fmtN(r.range_compression)],
@@ -2702,10 +2981,15 @@ function initSourcePopover() {
     if (macroEl) {
       const r = state.rows.find(x => x.tos_symbol === macroEl.dataset.macropop);
       if (r) showMacroPop(macroEl, r);
+      return;
+    }
+    const notesEl = e.target.closest('[data-notespop]');
+    if (notesEl && notesEl.dataset.notespop) {
+      showNotesPop(notesEl, notesEl.dataset.notespop);
     }
   };
   const _onOut = (e) => {
-    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop],[data-macropop],[data-scorespop]')) return;
+    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop],[data-macropop],[data-scorespop],[data-notespop]')) return;
     hideSourcePop();
   };
   body.addEventListener('mouseover', _onOver);
@@ -2832,6 +3116,12 @@ function updateSortIndicators() {
   });
 }
 
+// Columns whose most useful first-click order is descending, not the
+// generic ascending default — currently just "3W" (_agree3: sell=2 > buy=1
+// > none=0), so one click surfaces sell-agreement rows immediately instead
+// of requiring a second click to flip direction.
+const _DEFAULT_DESC_SORT_KEYS = new Set(['_agree3']);
+
 function initSorting() {
   document.querySelectorAll('#actGrid th.sortable').forEach(th => {
     // Preserve data-label if already set in HTML (e.g. for multi-line headers)
@@ -2842,7 +3132,7 @@ function initSorting() {
         state.sort.dir = -state.sort.dir;
       } else {
         state.sort.key = key;
-        state.sort.dir = 1;
+        state.sort.dir = _DEFAULT_DESC_SORT_KEYS.has(key) ? -1 : 1;
         state.sort.type = th.dataset.type || 'str';
       }
       updateSortIndicators();
@@ -2856,6 +3146,11 @@ function initSorting() {
 // hid everything" (action chip / actionable-only filtered a non-empty
 // baseRows down to zero), each with the right message + affordance.
 function _emptyStateHtml() {
+  // TASK_124: Trade Mode empty state — positive framing, distinct from the
+  // "all caught up" / "filters hid everything" messages below.
+  if (state.filters.trade_mode && state.rows.length === 0) {
+    return 'No trades today — nothing passed the playbook checks.';
+  }
   if (state.allRows.length > 0 && state.baseRows.length === 0) {
     return `All caught up for ${escapeHtml(state.date || '')}.`;
   }
@@ -2875,8 +3170,11 @@ function renderGrid() {
     r._fc_strength = fc.strength;
     r._fc_code     = fc.code;
     r._fc_side     = fc.side;
-    r._watchlisted = _buyNoiseGated(r);
+    // TASK_124: Trade Mode's own criteria already narrows to entry-ripe
+    // qualifying buys — never band these into the collapsed Watchlist.
+    r._watchlisted = state.filters.trade_mode ? false : _buyNoiseGated(r);
     r._priority = _computePriority(r);
+    r._agree3 = _agree3Score(r);
   }
   hideSourcePop();
   sortRows();
@@ -2896,7 +3194,8 @@ function renderGrid() {
   // "Watchlist (n)" band, regardless of the active column sort — a custom
   // header-sort shouldn't resurface the buy-noise flood the gate exists to
   // hide. Within the band, always ordered by dollar-weighted edge desc (same
-  // scoring as Tier 1) so the best-of-the-rest rises to the band's top.
+  // scoring used across the ranked tiers) so the best-of-the-rest rises to
+  // the band's top.
   const mainRows  = state.rows.filter(r => !r._watchlisted);
   // TASK_122: within a group of equal/near-equal score (|diff| < _NEW_TIEBREAK_EPS),
   // a NEW-pilled row (winning source's snapshot just landed for this anchor —
@@ -3075,18 +3374,21 @@ function _buildRowEl(r) {
         </div>
         ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
       </td>
-      <td data-col="sym" data-sym-cell="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer;" title="Click for chart">
+      <td data-col="sym" data-sym-cell="${escapeHtml(r.tos_symbol)}" data-notespop="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer;" title="Click for chart · Hover for comments">
         <strong class="tv-sym-link" style="font-size:11px;color:${_symOutlookColor(r)};">${escapeHtml(r.tos_symbol || '')}</strong>
         ${r._watchlisted && r._isNew
           ? '<span class="new-pill" title="Winning source data just landed for this date — Technical isn\'t entry-ripe yet, so it waits here rather than promoting to Tier 1">NEW</span>'
           : ''}
-        ${(() => {
-          const dir = _agreementDir(r);
-          if (dir === 'sell') return `<span title="2 of 3 (MACRO/Sources/Technical) agree sell, none opposing" style="color:#dc2626;font-size:9px;font-weight:700;margin-left:2px;">&#9660;3</span>`;
-          if (dir === 'buy')  return `<span title="2 of 3 (MACRO/Sources/Technical) agree buy, none opposing" style="color:#16a34a;font-size:9px;font-weight:700;margin-left:2px;">&#9650;3</span>`;
-          return '';
-        })()}
+        ${state.filters.trade_mode && _isWeakSourceBuy(r)
+          ? '<span class="weak-src-pill" title="Winning source (' + escapeHtml((r.winning_source || '').toString()) + ') measured negative buy-edge in the last validation — size down or skip; see docs/audit/signal_validation_2026-07.md">WEAK SRC</span>'
+          : ''}
       </td>
+      <td data-col="agree3" style="padding:6px 4px; text-align:center;">${(() => {
+        const dir = _agreementDir(r);
+        if (dir === 'sell') return `<span title="3-Way Agreement: MACRO/Sources/Technical agree sell, none opposing" style="color:#dc2626;font-size:12px;font-weight:700;">&#9660;3</span>`;
+        if (dir === 'buy')  return `<span title="3-Way Agreement: MACRO/Sources/Technical agree buy, none opposing" style="color:#16a34a;font-size:12px;font-weight:700;">&#9650;3</span>`;
+        return '<span style="color:#cbd5e1;font-size:10px;">—</span>';
+      })()}</td>
       <td data-col="action" style="padding:6px 4px;">${fcHtml}</td>
       <td data-col="macro" style="padding:4px 6px; text-align:center;">${macroCellHtml(r)}</td>
       <td data-col="calc" style="padding:6px 4px;">${_finalCallCalHtml(r)}</td>
@@ -3107,7 +3409,22 @@ function _buildRowEl(r) {
       </td>
       <td data-col="rr" style="padding:6px 4px;">${rrBarHtml}</td>
       <td data-col="vlm" class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}${r.vlm_action ? `<span style="display:inline-block;margin-left:3px;font-size:9px;padding:1px 3px;border-radius:3px;background:${r.vlm_action==='Accumulate'?'#bbf7d0':r.vlm_action==='Avoid'?'#fecaca':'#e5e7eb'};color:#374151;font-weight:600;text-decoration:none;vertical-align:middle;">${escapeHtml(r.vlm_action === 'Accumulate' ? 'Accum' : r.vlm_action)}</span>` : ''}</td>
-      <td data-col="iv" class="num" data-sym="${escapeHtml(r.tos_symbol)}" data-ivpop style="padding:3px 4px;cursor:default;">${window.ivGlyph ? window.ivGlyph(r.iv_percentile, r.imp_volatility != null ? r.imp_volatility * 100 : null, r.hv != null ? r.hv * 100 : null, r.iv_to_hv_discount) : ''}</td>
+      <td data-col="iv" class="num" data-sym="${escapeHtml(r.tos_symbol)}" data-ivpop style="padding:3px 4px;cursor:default;text-align:center;">${(() => {
+        const ivpVal = r.iv_percentile != null ? Math.round(Number(r.iv_percentile)) : null;
+        const hvVal  = r.hv != null ? Number(r.hv) * 100 : null;
+        const ivVal  = r.imp_volatility != null ? Number(r.imp_volatility) * 100 : null;
+        const glyph  = window.ivGlyph ? window.ivGlyph(ivpVal, ivVal, hvVal, r.iv_to_hv_discount) : '';
+        const ivpCol = window._ivpBarColor ? window._ivpBarColor(ivpVal) : '#7c3aed';
+        const fmt = v => v != null ? Math.round(v) : '—';
+        return glyph
+          + `<div style="font-size:8px;line-height:1.2;white-space:nowrap;font-variant-numeric:tabular-nums;">`
+          + `<span style="color:${ivpCol};font-weight:700;">${fmt(ivpVal)}</span>`
+          + `<span style="color:#cbd5e1;">/</span>`
+          + `<span style="color:#374151;">${fmt(hvVal)}</span>`
+          + `<span style="color:#cbd5e1;">/</span>`
+          + `<span style="color:#000;">${fmt(ivVal)}</span>`
+          + `</div>`;
+      })()}</td>
       <td data-col="macd" class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macd_brr)}">${r.a_macd_brr != null ? Number(r.a_macd_brr).toFixed(2) : ''}</td>
       <td data-col="macdh" class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macdh_d_brr)}">${r.a_macdh_d_brr != null ? Number(r.a_macdh_d_brr).toFixed(2) : ''}</td>
       <td data-col="rsi" class="num" style="font-size:11px;font-weight:600;color:${_rsiColor(r.rsi)}">${r.rsi != null ? Number(r.rsi).toFixed(1) : ''}</td>
@@ -4207,6 +4524,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.target.closest('#emptyClearFiltersBtn')) clearAllFilters();
   });
 
+  // TASK_124: Trade Mode always starts ON on entering the screen — not
+  // persisted across visits (the user explicitly wants it re-armed every
+  // time, not remembered from a prior session).
+  state.filters.trade_mode = true;
+
   await loadSources();
   await loadDates();
   checkFreshness();
@@ -4308,6 +4630,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     // show_hidden also controls whether acted/suppressed rows are fetched from the API
     loadActionable();
   });
+  // TASK_124: Trade Mode toggle — always starts ON (see above); not persisted,
+  // so toggling off only lasts for the current page session.
+  const tradeModeBtn = $('tradeModeBtn');
+  if (tradeModeBtn) {
+    tradeModeBtn.addEventListener('click', () => {
+      state.filters.trade_mode = !state.filters.trade_mode;
+      tradeModeBtn.classList.toggle('active', state.filters.trade_mode);
+      // Trade Mode also controls whether suppressed rows (e.g. STOP BREACHED)
+      // are fetched from the API — needs a full reload, not just a re-filter.
+      loadActionable();
+    });
+  }
   // Debounced ~150ms trailing: typing a symbol shouldn't re-render the full grid + tape on every keystroke.
   let _symbolSearchTimer = null;
   $('symbolSearch').addEventListener('input', (e) => {
