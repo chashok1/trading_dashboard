@@ -4,6 +4,49 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ---
 
+## 2026-07-15
+
+- **MACRO: sliding look-ahead window over the monthly quad calendar
+  (TASK_126).** Replaces the month now/next ramp + quarterly one-hot blend
+  in `etl/derive_macro.py` with a sliding window `[D, D+H)` (`H` =
+  `quad_lookahead_days`, default 60 calendar days) projected onto
+  `ref_quad_periods` monthly rows; overlap-day weights (optional decay via
+  `quad_lookahead_decay_hl`) blend the months' distributions into one
+  effective distribution feeding the unchanged Stage 1–2 membership calc.
+  Quarterly leg simplifies to current-quarter-only (no next-quarter blend)
+  and its combine weight drops 0.20 → **0.05** (`quad_horizon_weight_qtr`).
+  `quad_month_ramp_begin_days` / `quad_month_lead_days` /
+  `quad_qtr_ramp_begin_days` / `quad_qtr_lead_days` / `quad_horizon_weight_mo`
+  retired (reads deleted; rows left in `ref_settings` harmless). Sign-agreement
+  override redefined on **near** (nearest window month's stance) vs **far**
+  (weight-renormalized stance of the rest of the window) instead of
+  month/quarter. Thresholds recalibrated: `macro_thr_bm` 0.62→1.25,
+  `macro_thr_bs` 0.276→1.05, `macro_thr_stm` -0.736→-0.15, `macro_thr_sa`
+  -0.88→-0.6 (live split: BM 2.4% / BS 17.3% / HOLD 65.0% / STM 8.3% / SA
+  6.9%, n=1152 on 2026-07-14). `drv_macro_score` gained `detail JSONB`
+  (`{h, coverage_pct, fallback, months[], eff{}, near_vs_far{}, tracking}`);
+  `month_now_net`/`month_next_net`/`month_weight`/`qtr_next_net`/`qtr_weight`
+  deprecated (columns kept, NULL going forward); `monthly_score` now stores
+  `M_window`. This UPDATE also folds in a pre-existing drift fix: the
+  2026-07-06 threshold/weight recalibration (0.65/0.35→0.80/0.20,
+  thresholds 1.5/0.5/-0.5/-1.5→0.62/0.276/-0.736/-0.88) had only ever been
+  applied by hand to the live DB, never migrated into `db/baseline.sql` — a
+  fresh `db/init_db` before this change would silently get the stale 2026
+  values. New API: `GET /api/quad-window` (aggregate, symbol-independent
+  window mix for the regime band). `GET /api/actionable/macro-detail`
+  layers `drv_macro_score.detail` onto the still-live Stage 1–2 membership
+  resolution instead of recomputing the ramp/blend. `web/actionable.js`:
+  `loadMacroBand()` regime band shows the window mix + dominant forward
+  quad (was Month) with Quarter shown small/de-emphasized;
+  `_macroTooltip()`/`_buildMacroPopHtml()` show the per-month window table +
+  tracking tag instead of Month/Quarter ramp blocks; `macro_turn` (ramp
+  alert) retired, `macro_conf` now the nearest window month's weight. Apply:
+  `python -m db.init_db` then re-derive (restart the app first if it was
+  already running — `etl/` changes need a fresh process, see CLAUDE.md).
+  Full design: `docs/quad_design.md` (Stage 3).
+
+---
+
 ## 2026-07-04
 
 - **Market panel consolidation, frontend (TASK_116).** Hybrid consolidation of the three

@@ -223,6 +223,7 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Actionable / outlook-action logic | `docs/actionable_logic.md` |
 | Actionable daily trading playbook + design-validation status (A1–A6) | `docs/actionable_playbook.md` |
 | Actionable screen 3 action columns | `docs/actionable_logic.md` (consolidated_action, TrTnBBRskRng, Trig) |
+| PVV column (Price/Volume/Volatility multi-bucket signal + decision, informational v1) | `docs/pvv_logic.md`; `etl/derive_pvv.py`; `drv_pvv` |
 | trig_action computation (BuySell vocab) | `etl/derive_actionable.py::_derive_actionable_impl` (buysell_scores block) |
 | Atomic-input column derivation (JF..NP + QE..QT) | `docs/drv_cat_atomic_input_logic.md` |
 | Dashboard single-cell scalars (Dash!$X$Y) | `ref_param sheet='dash'`; `etl/derive_cat_atomic_input.py::get_dash_scalar` |

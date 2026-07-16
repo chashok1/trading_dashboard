@@ -22,6 +22,7 @@ const TOGGLEABLE_COLS = [
   { id: 'rules',     label: 'Rules (edge)' },
   { id: 'bullprob',  label: 'P(↑ 20d)' },
   { id: 'agree',     label: 'Agree' },
+  { id: 'pvv',       label: 'PVV' },
 ];
 // Default-hidden: model-diagnostic columns not needed for day-to-day workflow.
 const DEFAULT_HIDDEN_COLS = ['calc', 'bullprob', 'agree'];
@@ -58,6 +59,7 @@ const state = {
     trade_mode: true,    // TASK_124: show only qualifying buys / SA sells / stop breaches
                          // (always starts ON, not persisted — reset near page init)
     asset_class: '',     // '' = all; else exact match on r._assetClass (normalized real_asset_class)
+    symbols_multi: [],   // multi-symbol filter popup — exact-match list, empty = no filter
   },
   // TASK_120 buy-noise gate: manual expand/collapse for the "Watchlist (n)"
   // band (gated unheld ADD/BMN rows). Auto-expands (without flipping this
@@ -125,33 +127,16 @@ function _macroGapMark(r) {
 
 function macroCellHtml(r) {
   const mv = r.macro_value;
-  const turn = r.macro_turn || '';
+  // macro_turn (ramp-proximity alert) is retired (TASK_126) — the sliding
+  // window is continuous by construction, so there's no discrete "turn"
+  // event to flag anymore.
   const conf = r.macro_conf != null ? r.macro_conf : null;
   const opacity = conf != null && conf < 0.6 ? Math.max(0.45, conf / 0.6) : 1.0;
   const sym = r.tos_symbol || '';
-  // Three-period alignment: cur-month / next-month / cur-quarter
-  const _dot = (net, title) => {
-    if (net == null) return `<span style="color:#d1d5db;font-size:7px;" title="${title}">—</span>`;
-    const n = Number(net);
-    const col = n > 0 ? '#16a34a' : n < 0 ? '#dc2626' : '#9ca3af';
-    const g   = n > 0 ? '▲' : n < 0 ? '▼' : '—';
-    return `<span style="color:${col};font-size:7px;" title="${title}: ${n > 0 ? '+' : ''}${n.toFixed(2)}">${g}</span>`;
-  };
-  const _dotQ = (net, title) => {
-    if (net == null) return `<span style="color:#d1d5db;font-size:9px;" title="${title}">—</span>`;
-    const n = Number(net);
-    const col = n > 0 ? '#16a34a' : n < 0 ? '#dc2626' : '#9ca3af';
-    const g   = n > 0 ? '↑' : n < 0 ? '↓' : '—';
-    return `<span style="color:${col};font-size:11px;font-weight:700;" title="${title}: ${n > 0 ? '+' : ''}${n.toFixed(2)}">${g}</span>`;
-  };
-  const hasDots = r.month_now_net != null || r.month_next_net != null || r.qtr_now_net != null;
-  const dotsLine = hasDots
-    ? `<div style="display:flex;justify-content:center;align-items:center;gap:4px;line-height:1;margin-top:2px;">`
-      + _dot(r.month_now_net,  'Cur month')
-      + _dot(r.month_next_net, 'Nxt month')
-      + _dotQ(r.qtr_now_net,   'Cur quarter')
-      + `</div>`
-    : '';
+  // TASK_126: the old cur-month/next-month/cur-quarter 3-dot ramp indicator
+  // is retired (month_now_net/month_next_net are no longer populated —
+  // superseded by the sliding window shown in the hover tooltip/popover).
+  const dotsLine = '';
   // Sparkline: one bar per available month, height ∝ |score|, color = direction
   const _sparksRaw = r.monthly_scores_json;
   const _sparks = Array.isArray(_sparksRaw) ? _sparksRaw
@@ -190,8 +175,10 @@ function macroCellHtml(r) {
 }
 
 // Build tooltip text for a MACRO cell from macro_detail + macro_howto.
-// Layout: How to act → Month distribution + Category/Subcategory drivers
-//         → Quarter → MacroNet
+// TASK_126: Month/Quarter ramp sections replaced by the sliding look-ahead
+// window mix (effective blend line + per-month table + tracking tag).
+// Layout: How to act → Window mix + per-month table → Category drivers
+//         → Quarter (unchanged one-hot leg) → MacroNet
 function _macroTooltip(r) {
   let det = r.macro_detail;
   if (typeof det === 'string') { try { det = JSON.parse(det); } catch (_) { det = null; } }
@@ -205,27 +192,29 @@ function _macroTooltip(r) {
     lines.push('');
   }
 
-  // ── Month distribution ────────────────────────────────────────────────────
-  const mo = det.month || {};
-  const moNow = mo.now || {};
-  const moNxt = mo.next;
-  const distNow = moNow.dist || [];
-  lines.push('MONTH');
-  if (moNow.quad) {
-    const distStr = distNow.length
-      ? distNow.map(x => `${x.quad} ${x.pct}%`).join(' · ')
-      : `${moNow.quad} (no dist)`;
-    lines.push(`  Now (${moNow.quad}): ${distStr}  [dtb ${moNow.dtb}d, net=${moNow.net}]`);
-  }
-  if (moNxt && moNxt.quad) {
-    const distNxtArr = moNxt.dist || [];
-    const distNxtStr = distNxtArr.length
-      ? distNxtArr.map(x => `${x.quad} ${x.pct}%`).join(' · ')
-      : `${moNxt.quad}`;
-    lines.push(`  Next (${moNxt.quad}): ${distNxtStr}  [net=${moNxt.net}]`);
-    lines.push(`  Blend: now ${mo.blend_now_pct}% / next ${mo.blend_nxt_pct}%  →  M=${mo.M}`);
-  } else {
-    lines.push(`  M=${mo.M}`);
+  // ── Window mix ─────────────────────────────────────────────────────────────
+  const win = det.window || {};
+  const months = win.months || [];
+  if (months.length) {
+    lines.push(`WINDOW (${win.h ?? '?'}d look-ahead, coverage ${win.coverage_pct ?? '?'}%${win.fallback ? ' — FALLBACK' : ''})`);
+    const mixStr = months.map(m => `${m.m} ${Math.round(m.w * 100)}%`).join(' · ');
+    lines.push(`  ${mixStr}`);
+    months.forEach(m => {
+      lines.push(`  ${m.m} (Quad ${m.quad ?? '?'})  w=${(m.w * 100).toFixed(1)}%  stance=${m.stance}`);
+    });
+    const eff = win.eff || {};
+    const effStr = ['q1', 'q2', 'q3', 'q4']
+      .map(k => `${k.toUpperCase()} ${eff[k] ?? 0}%`).join(' · ');
+    lines.push(`  Effective mix: ${effStr}`);
+    if (win.tracking) {
+      lines.push(`  Tracking: ${win.tracking}`);
+    } else {
+      lines.push('  Tracking: fighting the quad path (no forward month confirms it)');
+    }
+    const nv = win.near_vs_far || {};
+    if (nv.override && nv.override !== 'none') {
+      lines.push(`  Near/far agreement → ${nv.override} (near=${nv.near}, far=${nv.far})`);
+    }
   }
 
   // ── Category / Subcategory / Outlook drivers ──────────────────────────────
@@ -248,22 +237,11 @@ function _macroTooltip(r) {
     const qtrLine = `  ${qtr.now}  →  Qtr=${qtr.Qtr}`;
     const dtbStr = qtr.dtb != null ? `  (${qtr.dtb}d left)` : '';
     lines.push(qtrLine + dtbStr);
-    if (qtr.next && qtr.turn_alert) {
-      lines.push(`  → ${qtr.next} next quarter (near-end alert)`);
-    }
   }
 
   // ── MacroNet ──────────────────────────────────────────────────────────────
   lines.push('');
-  lines.push(`MacroNet = ${det.a}×Qtr(${det.quarter?.Qtr ?? '?'}) + ${det.b}×M(${det.month?.M ?? '?'}) = ${det.macro_net}  →  ${det.vocab}`);
-  if (det.conf != null) {
-    lines.push(`Confidence: ${Math.round(det.conf * 100)}%`);
-  }
-
-  // ── Turn ──────────────────────────────────────────────────────────────────
-  if (r.macro_turn) {
-    lines.push(`Turn signal: ${r.macro_turn}`);
-  }
+  lines.push(`MacroNet = ${det.a}×Qtr(${det.quarter?.Qtr ?? '?'}) + ${det.b}×M_window(${det.monthly_score ?? '?'}) = ${det.macro_net}  →  ${det.vocab}`);
 
   return lines.join('\n');
 }
@@ -272,12 +250,13 @@ function _macroTooltip(r) {
 // F2: macro_detail/macro_howto are no longer shipped with every grid row —
 // they're lazy-fetched (see showMacroPop / _macroDetailCache below). `loading`
 // renders a "Loading…" placeholder on first hover, before the fetch resolves.
+// TASK_126: Cur/Nxt Month + ramp-blend cards replaced by the sliding
+// look-ahead window's per-month table + effective mix + tracking tag.
 function _buildMacroPopHtml(r, loading) {
   let det = r.macro_detail;
   if (typeof det === 'string') { try { det = JSON.parse(det); } catch (_) { det = null; } }
   const mv   = r.macro_value || '—';
   const conf = r.macro_conf != null ? Math.round(r.macro_conf * 100) : null;
-  const turn = r.macro_turn || null;
   const sym  = r.tos_symbol || '—';
 
   const _quadDistBar = dist => {
@@ -291,6 +270,10 @@ function _buildMacroPopHtml(r, loading) {
     (dist || []).map(x =>
       `<span style="color:${_quadColor(x.quad)};font-weight:600;">${escapeHtml(x.quad)}</span> ${x.pct}%`
     ).join(' &nbsp;·&nbsp; ');
+  // {q1:58,q2:10,...} -> [{quad:'Quad 1',pct:58}, ...] (zero legs dropped)
+  const _effToDistArr = eff => !eff ? [] : ['q1', 'q2', 'q3', 'q4']
+    .map((k, i) => ({ quad: `Quad ${i + 1}`, pct: eff[k] || 0 }))
+    .filter(x => x.pct > 0);
 
   const _vocabColor = v => {
     if (!v) return '#9ca3af';
@@ -306,7 +289,7 @@ function _buildMacroPopHtml(r, loading) {
   const _coloredVocab = v => v ? `<span style="color:${_vocabColor(v)};font-weight:700;">${escapeHtml(v)}</span>` : '—';
 
   const mvColor = _vocabColor(mv !== '—' ? mv : null);
-  let h = `<div class="sp-title">${escapeHtml(sym)} &mdash; <span style="color:${mvColor};font-weight:700;">${escapeHtml(mv)}</span>${turn ? ' <span style="color:#f97316;">' + escapeHtml(turn) + '</span>' : ''}</div>`;
+  let h = `<div class="sp-title">${escapeHtml(sym)} &mdash; <span style="color:${mvColor};font-weight:700;">${escapeHtml(mv)}</span></div>`;
 
   if (!r.sector) {
     h += `<div style="color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;`
@@ -323,118 +306,69 @@ function _buildMacroPopHtml(r, loading) {
     return h;
   }
 
-  const mems  = det.memberships || [];
-  const mo    = det.month || {};
-  const moNow = mo.now || {};
-  const moNxt = mo.next;
-  const qtr   = det.quarter || {};
+  const mems = det.memberships || [];
+  const win  = det.window || {};
+  const wmonths = win.months || [];
+  const qtr  = det.quarter || {};
+  const qQuad = qtr.quad_label || qtr.now;
+  const qDtb  = qtr.dtb;
 
-  const _qfMap = {};
-  if (state.quadFactors && state.quadFactors.factors) {
-    for (const f of state.quadFactors.factors)
-      _qfMap[`${f.category}|${(f.factor || '').toLowerCase()}`] = f;
-  }
-  const _qds  = (state.quadFactors || {}).quads || {};
-  const cmQuad = _qds.cur_month  || moNow.quad;
-  const nmQuad = _qds.next_month || (moNxt && moNxt.quad);
-  const qQuad  = qtr.quad_label || _qds.cur_qtr || qtr.now;
-  const cmDtb  = moNow.dtb;
-  const qDtb   = qtr.dtb;
-
-  const hasDeriveTime = r.macronet != null && r.monthly_score != null;
-  let mBlendHtml = null, qBlendHtml = null, macroFormulaHtml;
-  if (hasDeriveTime) {
-    const Mv    = Number(r.monthly_score);
-    const Qv    = Number(r.quarterly_score ?? 0);
-    const net   = Number(r.macronet);
-    const wMo   = det.b ?? 0.65, wQtr = det.a ?? 0.35;
-    const mo_w  = r.month_weight != null ? Number(r.month_weight) : 0;
-    const qtr_w = r.qtr_weight   != null ? Number(r.qtr_weight)   : 0;
-    const moNow = r.month_now_net  != null ? Number(r.month_now_net)  : null;
-    const moNxt = r.month_next_net != null ? Number(r.month_next_net) : null;
-    const qNow  = r.qtr_now_net   != null ? Number(r.qtr_now_net)   : null;
-    const qNxt  = r.qtr_next_net  != null ? Number(r.qtr_next_net)  : null;
-    const _sv = v => v != null
-      ? `<span style="color:${_sigColor(v)};font-weight:600;">${v >= 0 ? '+' : ''}${v.toFixed(2)}</span>`
-      : '?';
-    const _wLabel = (w, rB, lD) => {
-      const den = rB - lD;
-      if (w > 0.005 && w < 0.995) {
-        const days = Math.round(rB - w * den);
-        return `clamp((${rB}&#8722;${days})/${den},0,1)=${w.toFixed(2)}`;
-      }
-      return w.toFixed(2);
-    };
-    if (moNow != null) {
-      const w1m = mo_w.toFixed(2);
-      const bM = moNxt != null
-        ? `(1&#8722;${w1m})&#xB7;cur(${_sv(moNow)}) + ${w1m}&#xB7;nxt(${_sv(moNxt)})`
-        : `1.00&#xB7;cur(${_sv(moNow)})`;
-      mBlendHtml = `w=${_wLabel(mo_w, 12, 5)} &nbsp;&#8594;&nbsp; ${bM}`
-                 + ` = <span style="color:${_sigColor(Mv)};font-weight:700;">${Mv >= 0 ? '+' : ''}${Mv.toFixed(2)}</span>`;
-    }
-    if (qNow != null) {
-      const w1q = qtr_w.toFixed(2);
-      const bQ = qNxt != null
-        ? `(1&#8722;${w1q})&#xB7;cur(${_sv(qNow)}) + ${w1q}&#xB7;nxt(${_sv(qNxt)})`
-        : `1.00&#xB7;cur(${_sv(qNow)})`;
-      qBlendHtml = `w=${_wLabel(qtr_w, 20, 10)} &nbsp;&#8594;&nbsp; ${bQ}`
-                 + ` = <span style="color:${_sigColor(Qv)};font-weight:700;">${Qv >= 0 ? '+' : ''}${Qv.toFixed(2)}</span>`;
-    }
-    macroFormulaHtml =
-      `${wMo}×M(<span style="color:${_sigColor(Mv)};font-weight:600;">${Mv >= 0 ? '+' : ''}${Mv.toFixed(3)}</span>) `
-      + `+ ${wQtr}×Q(<span style="color:${_sigColor(Qv)};font-weight:600;">${Qv >= 0 ? '+' : ''}${Qv.toFixed(3)}</span>) `
-      + `= <span style="color:${_sigColor(net)};font-weight:700;">${net.toFixed(4)}</span>`;
-  } else {
-    const netVal = det.macro_net != null ? Number(det.macro_net) : null;
-    const qV = det.quarter?.Qtr ?? '?', mV = det.month?.M ?? '?';
-    macroFormulaHtml =
-      `${det.a}×Qtr(<span style="color:${_sigColor(Number(qV))}">${qV}</span>) `
-      + `+ ${det.b}×M(<span style="color:${_sigColor(Number(mV))}">${mV}</span>) `
-      + `= <span style="color:${netVal != null ? _sigColor(netVal) : '#475569'};font-weight:700;">${netVal ?? '?'}</span>`;
-  }
+  const netVal = det.macro_net != null ? Number(det.macro_net) : (r.macronet != null ? Number(r.macronet) : null);
+  const Mv = det.monthly_score != null ? Number(det.monthly_score) : (r.monthly_score != null ? Number(r.monthly_score) : null);
+  const Qv = det.quarterly_score != null ? Number(det.quarterly_score) : (r.quarterly_score != null ? Number(r.quarterly_score) : null);
+  const wQtr = det.a ?? 0.05, wMo = det.b ?? 0.95;
+  const macroFormulaHtml =
+    `${wQtr}×Qtr(<span style="color:${Qv != null ? _sigColor(Qv) : '#475569'}">${Qv != null ? Qv.toFixed(2) : '?'}</span>) `
+    + `+ ${wMo}×M_window(<span style="color:${Mv != null ? _sigColor(Mv) : '#475569'}">${Mv != null ? Mv.toFixed(3) : '?'}</span>) `
+    + `= <span style="color:${netVal != null ? _sigColor(netVal) : '#475569'};font-weight:700;">${netVal != null ? netVal.toFixed(4) : '?'}</span>`;
 
   h += '<table>';
-  const _card = (label, quad, net, dtbLabel) => {
-    const hasNet = net != null;
-    const n = hasNet ? Number(net) : null;
-    const gCol  = !hasNet ? '#d1d5db' : n > 0 ? '#16a34a' : n < 0 ? '#dc2626' : '#9ca3af';
-    const glyph = !hasNet ? '—' : n > 0 ? '▲' : n < 0 ? '▼' : '—';
-    const netLbl = hasNet ? `<div style="font-size:8px;color:${gCol};font-weight:600;">${n > 0 ? '+' : ''}${n.toFixed(2)}</div>` : '';
-    const qLbl  = quad ? `<div style="color:${_quadColor(quad)};font-weight:700;font-size:9px;white-space:nowrap;">${escapeHtml(quad)}</div>` : '';
-    return `<td style="text-align:center;padding:4px 6px;border-right:1px solid #e2e8f0;vertical-align:top;">`
-         + `<div style="font-size:8px;color:#94a3b8;margin-bottom:2px;">${escapeHtml(label)}</div>`
-         + qLbl
-         + `<div style="font-size:13px;color:${gCol};line-height:1.2;">${glyph}</div>`
-         + netLbl
-         + (dtbLabel ? `<div style="font-size:8px;color:#94a3b8;">${escapeHtml(dtbLabel)}</div>` : '')
-         + `</td>`;
-  };
-  h += `<tr><td colspan="2" style="padding:4px 0 6px;">`
-     + `<table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:4px;"><tr>`
-     + _card('Cur Month', cmQuad, r.month_now_net,  cmDtb != null ? `${cmDtb}d left` : null)
-     + _card('Nxt Month', nmQuad, r.month_next_net, cmDtb != null ? `in ${cmDtb}d`   : null)
-     + `<td style="text-align:center;padding:4px 6px;vertical-align:top;">`
-     + `<div style="font-size:8px;color:#94a3b8;margin-bottom:2px;">Quarter</div>`
-     + (qQuad ? `<div style="color:${_quadColor(qQuad)};font-weight:700;font-size:9px;">${escapeHtml(qQuad)}</div>` : '')
-     + (() => { const n = r.qtr_now_net != null ? Number(r.qtr_now_net) : null;
-                const gc = n == null ? '#d1d5db' : n > 0 ? '#16a34a' : n < 0 ? '#dc2626' : '#9ca3af';
-                const g  = n == null ? '—' : n > 0 ? '▲' : n < 0 ? '▼' : '—';
-                const nl = n != null ? `<div style="font-size:8px;color:${gc};font-weight:600;">${n > 0 ? '+' : ''}${n.toFixed(2)}</div>` : '';
-                return `<div style="font-size:13px;color:${gc};line-height:1.2;">${g}</div>${nl}`; })()
-     + (qDtb != null ? `<div style="font-size:8px;color:#94a3b8;">${qDtb}d left</div>` : '')
-     + `</td>`
-     + `</tr></table></td></tr>`;
 
-  if (mBlendHtml) h += `<tr><td class="k" style="font-size:9px;color:#64748b;">M (monthly)</td><td class="v" style="font-size:9px;">${mBlendHtml}</td></tr>`;
-  if (qBlendHtml) h += `<tr><td class="k" style="font-size:9px;color:#64748b;">Q (quarter)</td><td class="v" style="font-size:9px;">${qBlendHtml}</td></tr>`;
+  // ── Window per-month table (nearest-first) ──────────────────────────────
+  if (wmonths.length) {
+    h += `<tr><td class="sp-sec" colspan="2">Window (${win.h ?? '?'}d look-ahead`
+       + (win.coverage_pct != null ? `, coverage ${win.coverage_pct}%` : '')
+       + (win.fallback ? ' — <span style="color:#f97316;">fallback</span>' : '') + ')</td></tr>';
+    h += `<tr><td colspan="2" style="padding:2px 0 4px;">`;
+    wmonths.forEach(m => {
+      const s = m.stance;
+      const gc = s > 0 ? '#16a34a' : s < 0 ? '#dc2626' : '#9ca3af';
+      const gl = s > 0 ? '▲' : s < 0 ? '▼' : '—';
+      h += `<div style="display:flex;align-items:center;gap:5px;font-size:9px;padding:1px 0;">`
+         + `<span style="color:${_quadColor('Quad ' + m.quad)};font-weight:700;width:70px;">${escapeHtml(m.m)} (Q${m.quad ?? '?'})</span>`
+         + `<span style="color:#64748b;width:44px;">w=${(m.w * 100).toFixed(0)}%</span>`
+         + `<span style="color:${gc};">${gl} ${s != null ? s.toFixed(2) : '?'}</span>`
+         + `</div>`;
+    });
+    h += `</td></tr>`;
+    const effArr = _effToDistArr(win.eff);
+    if (effArr.length) {
+      h += `<tr><td colspan="2" style="padding:2px 0 4px;">`
+         + `<span style="font-size:8px;color:#94a3b8;">Effective mix&nbsp;</span>`
+         + `${_quadDistBar(effArr)}<span style="font-size:9px;color:#475569;">${_quadDistBreakdown(effArr)}</span>`
+         + `</td></tr>`;
+    }
+    h += `<tr><td class="k" style="font-size:9px;color:#475569;">Tracking</td>`
+       + `<td class="v" style="font-size:9px;">`
+       + (win.tracking
+           ? `<span style="color:#16a34a;">${escapeHtml(win.tracking)}</span>`
+           : `<span style="color:#d97706;">fighting the quad path</span>`)
+       + `</td></tr>`;
+    const nv = win.near_vs_far || {};
+    if (nv.override && nv.override !== 'none') {
+      h += `<tr><td class="k" style="font-size:9px;color:#475569;">Near/far</td>`
+         + `<td class="v" style="font-size:9px;">agree &rarr; <b>${escapeHtml(nv.override)}</b> `
+         + `(near ${nv.near != null ? nv.near.toFixed(2) : '?'}, far ${nv.far != null ? nv.far.toFixed(2) : '?'})</td></tr>`;
+    }
+  }
+
   h += `<tr><td class="k">MacroNet</td><td class="v" style="font-size:9px;">${macroFormulaHtml} → ${_coloredVocab(mv)}</td></tr>`;
   if (conf != null) {
     const confNum = r.macro_conf != null ? Number(r.macro_conf) : 0;
     const confColor = confNum >= 0.7 ? '#16a34a' : confNum >= 0.4 ? '#d97706' : '#dc2626';
-    h += `<tr><td class="k">Confidence</td><td class="v" style="color:${confColor};font-weight:700;">${conf}%</td></tr>`;
+    h += `<tr><td class="k">Confidence</td><td class="v" style="color:${confColor};font-weight:700;">${conf}%`
+       + `<span style="color:#94a3b8;font-weight:400;font-size:8px;"> (nearest-month window weight)</span></td></tr>`;
   }
-  if (turn) h += `<tr><td class="k">Turn signal</td><td class="v" style="color:#f97316;font-weight:700;">${escapeHtml(turn)}</td></tr>`;
 
   if (r.macro_howto) {
     const howtoTrimmed = r.macro_howto.replace(/\s*Technical\/Sources.*$/i, '').trim();
@@ -444,66 +378,58 @@ function _buildMacroPopHtml(r, loading) {
     }
   }
 
+  // ── Category drivers — nearest-month outlook (Stage 1-2, unaffected by
+  // the window change) ─────────────────────────────────────────────────────
   if (mems.length) {
-    const _stOf  = v => { const u = (v || '').toUpperCase(); return u === 'BULLISH' ? 1 : u === 'BEARISH' ? -1 : 0; };
     const _ocOf  = v => { const u = (v || '').toUpperCase(); return u === 'BULLISH' ? '#1c6c30' : u === 'BEARISH' ? '#8c1d1d' : u ? '#5b4900' : '#9ca3af'; };
     const _olLbl = v => { if (!v) return '—'; const u = v.toUpperCase(); return u === 'BULLISH' ? 'Bullish' : u === 'BEARISH' ? 'Bearish' : v; };
+    const _stOf  = v => { const u = (v || '').toUpperCase(); return u === 'BULLISH' ? 1 : u === 'BEARISH' ? -1 : 0; };
 
-    const _memberBlock = qfKey => {
-      let score = 0, rows = '';
-      for (const m of mems) {
-        const qf = _qfMap[`${m.category}|${(m.sub_cat || m.label || '').toLowerCase()}`];
-        let ol;
-        if (qfKey === 'cur_qtr')     ol = m.qtr_outlook ?? (qf ? qf[qfKey] : null);
-        else if (qfKey === 'next_month') ol = m.nxt_outlook ?? (qf ? qf[qfKey] : null);
-        else ol = qf ? qf[qfKey] : (qfKey === 'cur_month' ? m.outlook : null);
-        const st = _stOf(ol);
-        score += st * (m.weight || 1);
-        const stSym   = st > 0 ? '▲' : st < 0 ? '▼' : '→';
-        const stColor = st > 0 ? '#16a34a' : st < 0 ? '#dc2626' : '#9ca3af';
-        const cat = m.category
-          ? `${escapeHtml(m.category)} / ${escapeHtml(m.sub_cat || m.label || '')}`
-          : escapeHtml(m.label || '');
-        rows += `<tr><td class="k" style="font-size:9px;max-width:140px;white-space:normal;word-break:break-word;">${cat}</td>`
-              + `<td class="v" style="font-size:9px;white-space:nowrap;">`
-              + `<span style="color:${stColor}">${stSym}</span> `
-              + `<span style="color:${_ocOf(ol)};font-weight:600;">${escapeHtml(_olLbl(ol))}</span>`
-              + ` <span style="color:#94a3b8;">(×${m.weight})</span></td></tr>`;
-      }
-      const scColor = score > 0 ? '#16a34a' : score < 0 ? '#dc2626' : '#9ca3af';
-      rows += `<tr><td class="k" style="font-size:9px;color:#475569;">Score</td>`
-            + `<td class="v" style="color:${scColor};font-weight:700;font-size:11px;">${score > 0 ? '+' : ''}${score.toFixed(1)}</td></tr>`;
-      return rows;
-    };
-
-    const _secHdr = (title, quad, dtbLabel) => {
-      const qLbl = quad ? ` <span style="color:${_quadColor(quad)};font-size:9px;font-weight:400;">${escapeHtml(quad)}</span>` : '';
-      const dLbl = dtbLabel ? ` <span style="color:#94a3b8;font-size:9px;">${escapeHtml(dtbLabel)}</span>` : '';
-      return `<tr><td class="sp-sec" colspan="2">${escapeHtml(title)}${qLbl}${dLbl}</td></tr>`;
-    };
-
-    h += _secHdr('Current Month', cmQuad, cmDtb != null ? `(${cmDtb}d left)` : null);
-    if (moNow.dist && moNow.dist.length)
-      h += `<tr><td colspan="2" style="padding:2px 0 4px;">${_quadDistBar(moNow.dist)}<span style="font-size:9px;color:#475569;">${_quadDistBreakdown(moNow.dist)}</span></td></tr>`;
-    h += _memberBlock('cur_month');
-
-    h += _secHdr('Next Month', nmQuad, cmDtb != null ? `(in ${cmDtb}d)` : null);
-    if (moNxt && moNxt.dist && moNxt.dist.length)
-      h += `<tr><td colspan="2" style="padding:2px 0 4px;">${_quadDistBar(moNxt.dist)}<span style="font-size:9px;color:#475569;">${_quadDistBreakdown(moNxt.dist)}</span></td></tr>`;
-    h += _memberBlock('next_month');
-
-    h += _secHdr('Quarter', qQuad, qDtb != null ? `(${qDtb}d left)` : null);
-    if (qQuad) {
-      const qDist = [{ quad: qQuad, pct: 100 }];
-      h += `<tr><td colspan="2" style="padding:2px 0 4px;">${_quadDistBar(qDist)}<span style="font-size:9px;color:#475569;">${_quadDistBreakdown(qDist)}</span></td></tr>`;
+    const nearestQuad = wmonths.length ? `Quad ${wmonths[0].quad ?? '?'}` : null;
+    h += `<tr><td class="sp-sec" colspan="2">Category Drivers`
+       + (nearestQuad ? ` <span style="color:${_quadColor(nearestQuad)};font-size:9px;font-weight:400;">${escapeHtml(nearestQuad)}</span>` : '')
+       + `</td></tr>`;
+    let score = 0;
+    for (const m of mems) {
+      const ol = m.outlook;
+      const st = _stOf(ol);
+      score += st * (m.weight || 1);
+      const stSym   = st > 0 ? '▲' : st < 0 ? '▼' : '→';
+      const stColor = st > 0 ? '#16a34a' : st < 0 ? '#dc2626' : '#9ca3af';
+      const cat = m.category
+        ? `${escapeHtml(m.category)} / ${escapeHtml(m.sub_cat || m.label || '')}`
+        : escapeHtml(m.label || '');
+      h += `<tr><td class="k" style="font-size:9px;max-width:140px;white-space:normal;word-break:break-word;">${cat}</td>`
+         + `<td class="v" style="font-size:9px;white-space:nowrap;">`
+         + `<span style="color:${stColor}">${stSym}</span> `
+         + `<span style="color:${_ocOf(ol)};font-weight:600;">${escapeHtml(_olLbl(ol))}</span>`
+         + ` <span style="color:#94a3b8;">(×${m.weight})</span></td></tr>`;
     }
-    h += _memberBlock('cur_qtr');
-    if (qtr.next) {
-      const nc = qtr.turn_alert ? '#f97316' : '#94a3b8';
-      const ns = qtr.turn_alert ? ' <span style="color:#f97316;">(near-end!)</span>' : '';
-      h += `<tr><td class="k" style="font-size:9px;color:#475569;">Next quarter</td>`
-         + `<td class="v" style="color:${nc};">${_coloredQuad(qtr.next)}${ns}</td></tr>`;
+    const scColor = score > 0 ? '#16a34a' : score < 0 ? '#dc2626' : '#9ca3af';
+    h += `<tr><td class="k" style="font-size:9px;color:#475569;">Score</td>`
+       + `<td class="v" style="color:${scColor};font-weight:700;font-size:11px;">${score > 0 ? '+' : ''}${score.toFixed(1)}</td></tr>`;
+
+    h += `<tr><td class="sp-sec" colspan="2">Quarter${qQuad ? ` <span style="color:${_quadColor(qQuad)};font-size:9px;font-weight:400;">${escapeHtml(qQuad)}</span>` : ''}`
+       + `${qDtb != null ? ` <span style="color:#94a3b8;font-size:9px;">(${qDtb}d left)</span>` : ''}</td></tr>`;
+    let qScore = 0;
+    for (const m of mems) {
+      const ol = m.qtr_outlook;
+      const st = _stOf(ol);
+      qScore += st * (m.weight || 1);
+      const stSym   = st > 0 ? '▲' : st < 0 ? '▼' : '→';
+      const stColor = st > 0 ? '#16a34a' : st < 0 ? '#dc2626' : '#9ca3af';
+      const cat = m.category
+        ? `${escapeHtml(m.category)} / ${escapeHtml(m.sub_cat || m.label || '')}`
+        : escapeHtml(m.label || '');
+      h += `<tr><td class="k" style="font-size:9px;max-width:140px;white-space:normal;word-break:break-word;">${cat}</td>`
+         + `<td class="v" style="font-size:9px;white-space:nowrap;">`
+         + `<span style="color:${stColor}">${stSym}</span> `
+         + `<span style="color:${_ocOf(ol)};font-weight:600;">${escapeHtml(_olLbl(ol))}</span>`
+         + ` <span style="color:#94a3b8;">(×${m.weight})</span></td></tr>`;
     }
+    const qScColor = qScore > 0 ? '#16a34a' : qScore < 0 ? '#dc2626' : '#9ca3af';
+    h += `<tr><td class="k" style="font-size:9px;color:#475569;">Score</td>`
+       + `<td class="v" style="color:${qScColor};font-weight:700;font-size:11px;">${qScore > 0 ? '+' : ''}${qScore.toFixed(1)}</td></tr>`;
   }
 
   h += '</table>';
@@ -682,34 +608,17 @@ async function loadMacroBand() {
     // quad-bullish-sector cross-reference below -- the Sectors side-rail
     // panel (macro_areas.js) fetches this independently and doesn't expose
     // it globally, so this is its own request, not a shared cache.
-    const [data, factors, sectorsData] = await Promise.all([
+    const [data, factors, sectorsData, windowData] = await Promise.all([
       fetchJson(`/api/dashboard/quads${dateParam}`),
       fetchJson(`/api/quad/band-factors${dateParam}`).catch(() => ({ bull: [], bear: [] })),
       fetchJson(`/api/macro-areas${dateParam}`).catch(() => null),
+      fetchJson(`/api/quad-window${dateParam}`).catch(() => null),
     ]);
-    const cq = data.current_quarter, nq = data.next_quarter;
-    const months = data.months || [];
-    const cm = months[0], nm = months[1];
+    const cq = data.current_quarter;
     const elM = $('macroBandMonth'), elQ = $('macroBandQtr'), elF = $('macroBandFavoring');
     if (!elM) return;
 
     // _qdLbl defined at module scope below
-    // Segmented distribution bar with Q1 50% labels inside each segment (monthly)
-    const _distBarMonth = p => {
-      if (!p) return '';
-      const segs = [
-        {q:'Quad 1',pct:p.quad1_pct||0},{q:'Quad 2',pct:p.quad2_pct||0},
-        {q:'Quad 3',pct:p.quad3_pct||0},{q:'Quad 4',pct:p.quad4_pct||0},
-      ].filter(s=>s.pct>0);
-      if (!segs.length) return '';
-      const bars = segs.map(s => {
-        const lbl = s.pct >= 15
-          ? `<span style="font-size:8px;color:#fff;font-weight:600;line-height:1;pointer-events:none;">Q${s.q.slice(-1)} ${Math.round(s.pct)}</span>`
-          : '';
-        return `<div style="width:${s.pct}%;background:${_quadColor(s.q)};height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;" title="${escapeHtml(s.q)} ${s.pct}%">${lbl}</div>`;
-      }).join('');
-      return `<span style="display:inline-flex;width:120px;height:14px;border-radius:3px;overflow:hidden;border:1px solid #e2e8f0;vertical-align:middle;margin-left:5px;">${bars}</span>`;
-    };
     // Thin solid bar for quarterly
     const _distBarQtr = p => {
       if (!p) return '';
@@ -742,32 +651,35 @@ async function loadMacroBand() {
     const _sectorListHtml = list => list.length
       ? ` <span style="color:#166534;font-size:9px;">${list.map(t => escapeHtml(t)).join(', ')}</span>`
       : '';
-    const curSectorsHtml = _sectorListHtml(_quadBullishSectorTickers('cur_month'));
-    const nextSectorsHtml = _sectorListHtml(_quadBullishSectorTickers('next_month'));
     const curQtrSectorsHtml = _sectorListHtml(_quadBullishSectorTickers('cur_qtr'));
-    const nextQtrSectorsHtml = _sectorListHtml(_quadBullishSectorTickers('next_qtr'));
 
-    // Month span — data-quadbandpop triggers rich popover
-    const mCur = _effectiveQuad(cm) || '—';
-    const mNxt = _effectiveQuad(nm);
-    const mDtb = cm?.end_date ? Math.max(0, Math.round((new Date(cm.end_date) - new Date(data.as_of_date)) / 864e5)) : null;
-    elM.innerHTML = `<span style="color:#64748b;font-size:10px;cursor:help;text-decoration:underline dotted;" data-quadbandpop="all_periods">Month</span> `
-      + `<strong style="color:${_quadColor(mCur)};cursor:help;" data-quadbandpop="cur_month">${escapeHtml(_qdLbl(mCur))}</strong>`
-      + _distBarMonth(cm)
-      + (mDtb != null ? ` <span style="color:#94a3b8;font-size:10px;">(${mDtb}d left)</span>` : '')
-      + curSectorsHtml
-      + (mNxt ? ` → <strong style="color:${_quadColor(mNxt)};opacity:0.7;cursor:help;" data-quadbandpop="next_month">${escapeHtml(_qdLbl(mNxt))}</strong>${_distBarMonth(nm)}${nextSectorsHtml}` : '');
+    // TASK_126: "Month | Quarter" ramp headline replaced by the sliding
+    // look-ahead window mix + dominant forward quad. Quarterly leg is
+    // minimized (weight 0.05) — shown small/de-emphasized beside it rather
+    // than as its own headline span.
+    const wMonths = (windowData && windowData.months) || [];
+    const wDominant = windowData && windowData.dominant_quad ? `Quad ${windowData.dominant_quad}` : '—';
+    const wMixStr = wMonths.map(m => `${m.m.slice(5)} ${Math.round(m.w * 100)}%`).join(' · ');
+    const wTitle = wMonths.map(m => `${m.m} (Quad ${m.quad ?? '?'}) w=${Math.round(m.w * 100)}%`).join('\n');
+    const wSectorsHtml = wMonths.length
+      ? _sectorListHtml(_quadBullishSectorTickers('cur_month'))
+      : '';
+    elM.innerHTML = `<span style="color:#64748b;font-size:10px;" title="${escapeHtml(wTitle)}">Window (${windowData?.h ?? 60}d)</span> `
+      + `<strong style="color:${_quadColor(wDominant)};cursor:help;" data-quadbandpop="cur_month">${escapeHtml(_qdLbl(wDominant))}</strong>`
+      + (wMixStr ? ` <span style="color:#94a3b8;font-size:10px;" title="${escapeHtml(wTitle)}">${escapeHtml(wMixStr)}</span>` : '')
+      + wSectorsHtml
+      + (windowData && windowData.fallback
+          ? ` <span style="color:#f97316;font-size:9px;">(fallback, coverage ${windowData.coverage_pct}%)</span>`
+          : '');
 
-    // Quarter span
+    // Quarter — minimized (0.05 weight), shown small/gray beside the window
     const qCur = _effectiveQuad(cq) || '—';
-    const qNxt = _effectiveQuad(nq);
     const qDtb = cq?.end_date ? Math.max(0, Math.round((new Date(cq.end_date) - new Date(data.as_of_date)) / 864e5)) : null;
-    elQ.innerHTML = `<span style="color:#64748b;font-size:10px;">Qtr</span> `
-      + `<strong style="color:${_quadColor(qCur)};cursor:help;" data-quadbandpop="cur_qtr">${escapeHtml(_qdLbl(qCur))}</strong>`
+    elQ.innerHTML = `<span style="color:#94a3b8;font-size:9px;">Qtr (min wt)</span> `
+      + `<span style="color:${_quadColor(qCur)};cursor:help;font-size:10px;" data-quadbandpop="cur_qtr">${escapeHtml(_qdLbl(qCur))}</span>`
       + _distBarQtr(cq)
-      + (qDtb != null ? ` <span style="color:#94a3b8;font-size:10px;">(${qDtb}d left)</span>` : '')
-      + curQtrSectorsHtml
-      + (qNxt ? ` → <strong style="color:${_quadColor(qNxt)};opacity:0.7;cursor:help;" data-quadbandpop="next_qtr">${escapeHtml(_qdLbl(qNxt))}</strong>${_distBarQtr(nq)}${nextQtrSectorsHtml}` : '');
+      + (qDtb != null ? ` <span style="color:#94a3b8;font-size:9px;">(${qDtb}d left)</span>` : '')
+      + curQtrSectorsHtml;
 
     // Macro distribution — same universe as action split below
     if (elF) elF.innerHTML = '';
@@ -1090,6 +1002,7 @@ function _positionClickPop(pop, anchorEl) {
 function _closeClickPops() {
   const colPop = $('colMenuPop'); if (colPop) colPop.style.display = 'none';
   const legPop = $('legendPop');  if (legPop)  legPop.style.display  = 'none';
+  const msPop  = $('multiSymPop'); if (msPop)  msPop.style.display  = 'none';
 }
 
 function _initColMenu() {
@@ -1110,6 +1023,52 @@ function _initColMenu() {
     if (chk.checked) state.hiddenCols.delete(id); else state.hiddenCols.add(id);
     try { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(Array.from(state.hiddenCols))); } catch (_) {}
     applyColumnVisibility();
+  });
+}
+
+// ── Multi-symbol filter popover ──────────────────────────────────────────────
+// Comma-separated symbol list -> exact-match filter (state.filters.symbols_multi),
+// combined with every other active filter via AND (matchesBaseFilters).
+function _renderMultiSymPop() {
+  const pop = $('multiSymPop');
+  if (!pop) return;
+  const cur = (state.filters.symbols_multi || []).join(', ');
+  pop.innerHTML = `
+    <div class="sp-title">Filter by symbols</div>
+    <div style="font-size:10px;color:#94a3b8;margin-bottom:4px;">Comma-separated, e.g. AAPL, MSFT, NVDA</div>
+    <textarea id="multiSymInput" rows="4" style="width:260px;font-size:11px;padding:4px;border:1px solid var(--border);border-radius:4px;resize:vertical;">${escapeHtml(cur)}</textarea>
+    <div style="display:flex;gap:6px;margin-top:6px;justify-content:flex-end;">
+      <button type="button" id="multiSymClearBtn" class="btn" style="font-size:11px;">Clear</button>
+      <button type="button" id="multiSymApplyBtn" class="btn" style="font-size:11px;">Apply</button>
+    </div>`;
+}
+
+function _initMultiSymPop() {
+  const btn = $('multiSymBtn');
+  const pop = $('multiSymPop');
+  if (!btn || !pop) return;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const wasOpen = pop.style.display === 'block';
+    _closeClickPops();
+    if (!wasOpen) { _renderMultiSymPop(); _positionClickPop(pop, btn); $('multiSymInput').focus(); }
+  });
+  pop.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (e.target.id === 'multiSymApplyBtn') {
+      const raw = ($('multiSymInput').value || '');
+      const list = raw.split(/[,\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+      state.filters.symbols_multi = list;
+      pop.style.display = 'none';
+      btn.classList.toggle('active', list.length > 0);
+      if (list.length) { _resetToggleFiltersForLookup(); loadActionable(); }
+      else applyClientFilter();
+    } else if (e.target.id === 'multiSymClearBtn') {
+      state.filters.symbols_multi = [];
+      pop.style.display = 'none';
+      btn.classList.remove('active');
+      applyClientFilter();
+    }
   });
 }
 
@@ -1477,6 +1436,7 @@ async function loadActionable(opts) {
       r._watchlisted = _buyNoiseGated(r);
       r._priority = _computePriority(r);
       r._agree3 = _agree3Score(r);
+      r._pvv_rank = _pvvRank(r.pvv_decision);
     });
     // Expose monthly score map for market_bar.js tape chips
     window._macroScoreMap = Object.fromEntries(
@@ -1505,11 +1465,15 @@ async function loadActionable(opts) {
 // (including the Watchlist band and HOLD/no-action rows) is hidden. Buys from
 // ANY source qualify; a buy whose winning source measured negative buy-edge
 // (ref_settings.trade_mode_weak_buy_sources) is tagged WEAK SRC instead.
+// RTA (Real-Time Alert) is exempt from the rr_bull_bear Technical check —
+// same rationale as the server-side bypass_technical in _compute_final_call:
+// a same-day live trigger doesn't need the deep-TA stack to also confirm.
 function _isTradeModeQualifyingBuy(r) {
   const code = (r.final_code || '').toUpperCase();
   if (code !== 'BM' && code !== 'BMN') return false;
   if (!(r.fc_feasible === true || r.fc_feasible === 'true')) return false;
-  if (r.rr_bull_bear !== 'B') return false;
+  const src = (r.winning_source || '').toString().toUpperCase();
+  if (src !== 'RTA' && r.rr_bull_bear !== 'B') return false;
   if (r.stop_breached) return false;
   const mv = (r.macro_value || '').toUpperCase();
   if (mv === 'SA' || mv === 'STM') return false;
@@ -1572,6 +1536,10 @@ function matchesBaseFilters(r) {
   if (symSearch) {
     const search = symSearch.toUpperCase();
     if (!r.tos_symbol || !r.tos_symbol.toUpperCase().includes(search)) return false;
+  }
+  const symList = state.filters.symbols_multi;
+  if (symList && symList.length) {
+    if (!r.tos_symbol || !symList.includes(r.tos_symbol.toUpperCase())) return false;
   }
   // TASK_66: bull_prob minimum filter
   const bpMin = Number(state.filters.bull_prob_min) || 0;
@@ -1877,6 +1845,8 @@ function syncFilterUi() {
   }
   const tradeModeBtn = $('tradeModeBtn');
   if (tradeModeBtn) tradeModeBtn.classList.toggle('active', !!f.trade_mode);
+  const multiSymBtn = $('multiSymBtn');
+  if (multiSymBtn) multiSymBtn.classList.toggle('active', !!(f.symbols_multi && f.symbols_multi.length));
   const sym = $('symbolSearch');        if (sym) sym.value = f.symbol_search || '';
   const bp = $('bullProbFilter');       if (bp) bp.value = f.bull_prob_min || 0;
   const ag = $('agreementFilter');      if (ag) ag.value = f.agreement_class || '';
@@ -1892,6 +1862,20 @@ function syncFilterUi() {
   }
 }
 
+// A Source/Account/Symbol/P(up) lookup is a targeted search — the row(s) it
+// names shouldn't be silently swallowed by an unrelated toggle (Positions
+// Only / Active Only / Actionable Only / Trade Mode) left on from earlier
+// browsing. Reset those four to their "show everything" state whenever one
+// of the lookup filters is actively set to a non-empty value.
+function _resetToggleFiltersForLookup() {
+  const f = state.filters;
+  f.held_only = false;
+  f.show_hidden = true;
+  f.actionable_only = false;
+  f.trade_mode = false;
+  syncFilterUi();
+}
+
 function clearAllFilters() {
   const f = state.filters;
   f.action = ''; f.source = ''; f.account = ''; f.held_only = false;
@@ -1899,6 +1883,7 @@ function clearAllFilters() {
   f.symbol_search = ''; f.conviction = 'any';
   f.bull_prob_min = 0;
   f.agreement_class = '';
+  f.symbols_multi = [];
   const bpEl = $('bullProbFilter'); if (bpEl) bpEl.value = '0';
   const agEl = $('agreementFilter'); if (agEl) agEl.value = '';
   // Reset sort to default actionability order (updateSortIndicators called in renderGrid)
@@ -2719,8 +2704,8 @@ async function showMacroPop(el, r) {
 // symbol (same pattern as showMacroPop above).
 const _notesCache = new Map();   // symbol -> notes array
 
-function _buildNotesPopHtml(sym, notes) {
-  let h = `<div class="sp-title">${escapeHtml(sym)} &mdash; Comments</div>`;
+function _buildNotesPopHtml(sym, notes, desc) {
+  let h = `<div class="sp-title">${escapeHtml(sym)} &mdash; ${escapeHtml(desc || 'Comments')}</div>`;
   if (!notes || !notes.length)
     return h + '<div style="color:#94a3b8;font-size:10px;">No comments found.</div>';
 
@@ -2758,12 +2743,12 @@ function _buildNotesPopHtml(sym, notes) {
   return h;
 }
 
-async function showNotesPop(el, sym) {
+async function showNotesPop(el, sym, desc) {
   if (_notesCache.has(sym)) {
-    _showDataPop(el, _buildNotesPopHtml(sym, _notesCache.get(sym)));
+    _showDataPop(el, _buildNotesPopHtml(sym, _notesCache.get(sym), desc));
     return;
   }
-  _showDataPop(el, `<div class="sp-title">${escapeHtml(sym)} &mdash; Comments</div><div style="color:#94a3b8;font-size:10px;">Loading&hellip;</div>`);
+  _showDataPop(el, `<div class="sp-title">${escapeHtml(sym)} &mdash; ${escapeHtml(desc || 'Comments')}</div><div style="color:#94a3b8;font-size:10px;">Loading&hellip;</div>`);
   let notes;
   try {
     notes = await fetchJson('/api/notes?ticker=' + encodeURIComponent(sym) + '&limit=15');
@@ -2771,7 +2756,7 @@ async function showNotesPop(el, sym) {
     notes = [];
   }
   _notesCache.set(sym, notes);
-  _showDataPop(el, _buildNotesPopHtml(sym, notes));
+  _showDataPop(el, _buildNotesPopHtml(sym, notes, desc));
 }
 
 function hideSourcePop() {
@@ -2985,11 +2970,18 @@ function initSourcePopover() {
     }
     const notesEl = e.target.closest('[data-notespop]');
     if (notesEl && notesEl.dataset.notespop) {
-      showNotesPop(notesEl, notesEl.dataset.notespop);
+      const nr = state.rows.find(x => x.tos_symbol === notesEl.dataset.notespop);
+      showNotesPop(notesEl, notesEl.dataset.notespop, nr && nr.company_name);
+      return;
+    }
+    const pvvEl = e.target.closest('[data-pvvpop]');
+    if (pvvEl) {
+      const r = state.rows.find(x => x.tos_symbol === pvvEl.dataset.pvvpop);
+      if (r) _showDataPop(pvvEl, _buildPvvPopHtml(r));
     }
   };
   const _onOut = (e) => {
-    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop],[data-macropop],[data-scorespop],[data-notespop]')) return;
+    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop],[data-macropop],[data-scorespop],[data-notespop],[data-pvvpop]')) return;
     hideSourcePop();
   };
   body.addEventListener('mouseover', _onOver);
@@ -3046,6 +3038,154 @@ function _agreementCellHtml(r) {
     edgeBadge = `<span style="font-size:9px;color:${eColor};margin-left:3px;" title="Avg fwd 20d for ${cls}: ${eSign}${e.toFixed(2)}%">${eSign}${e.toFixed(1)}</span>`;
   }
   return `<span style="font-size:10px;font-weight:700;color:${color};" title="${cls}">${lbl}</span>${edgeBadge}`;
+}
+
+// ---- TASK_125: PVV (Price/Volume/Volatility) cell renderer ----
+// Informational-only decision badge; hover shows the 4-bucket detail table
+// (same data-XXXpop / _showDataPop mechanism as MACRO/Vol/Scores popovers).
+// Sort order (ascending = most-actionable first): BUY_DIP, BUY, SELL,
+// REDUCE, TRIM, AVOID, WATCH, then no-row last.
+const _PVV_RANK = {
+  BUY_DIP: 0, BUY: 1, SELL: 2, REDUCE: 3, TRIM: 4, AVOID: 5, WATCH: 6,
+};
+function _pvvRank(decision) {
+  return (decision != null && _PVV_RANK[decision] != null) ? _PVV_RANK[decision] : 7;
+}
+// Reuses the existing act-badge tint classes rather than inventing new CSS.
+const _PVV_CLASS = {
+  BUY:      'act-buy-strong-tint',
+  BUY_DIP:  'act-buy-tint',
+  SELL:     'act-sell-strong-tint',
+  REDUCE:   'act-sell-tint',
+  TRIM:     'act-sell-weak-tint',
+  AVOID:    'act-sell-weak-tint',
+  WATCH:    'act-neutral-tint',
+};
+function _pvvCellHtml(r) {
+  const decision = r.pvv_decision;
+  if (!decision) return '<span style="color:#cbd5e1;font-size:10px;">—</span>';
+  const cls = _PVV_CLASS[decision] || 'act-neutral-tint';
+  return `<span class="act-badge ${cls}" data-pvvpop="${escapeHtml(r.tos_symbol)}" `
+       + `style="font-size:10px;padding:1px 5px;cursor:help;">${escapeHtml(decision)}</span>`;
+}
+// Small arrow glyph for a bucket leg direction ('up'/'down'/'flat'/null).
+function _pvvArrow(dir) {
+  if (dir === 'up')   return '<span style="color:#16a34a;">&#9650;</span>';
+  if (dir === 'down') return '<span style="color:#dc2626;">&#9660;</span>';
+  if (dir === 'flat') return '<span style="color:#94a3b8;">&#8212;</span>';
+  return '<span style="color:#cbd5e1;">?</span>';
+}
+function _pvvSigColor(sig) {
+  if (!sig) return '#94a3b8';
+  if (['STRONG_BULL', 'OVEREXT_BULL', 'WEAK_BULL'].includes(sig)) return '#16a34a';
+  if (['STRONG_BEAR', 'MILD_BEAR', 'BEAR_LEAN', 'BEAR_DIV'].includes(sig)) return '#dc2626';
+  if (sig === 'NA') return '#cbd5e1';
+  return '#94a3b8';
+}
+function _pvvPct(v) {
+  if (v == null) return '—';
+  const color = Number(v) >= 0 ? '#16a34a' : '#dc2626';
+  return `<span style="color:${color};">${v >= 0 ? '+' : ''}${(Number(v) * 100).toFixed(2)}%</span>`;
+}
+// Ratio version for the 3m bucket's P/50 and 50/200 (centered on 1.0, not 0 --
+// "positive" there means above the reference average, not a positive sign).
+function _pvvRatio(v) {
+  if (v == null) return '—';
+  const n = Number(v);
+  const color = n > 1 ? '#16a34a' : (n < 1 ? '#dc2626' : '#94a3b8');
+  return `<span style="color:${color};">${n.toFixed(2)}</span>`;
+}
+// Decision matrix reference (docs/pvv_logic.md §4, TASK_127) -- condition +
+// meaning shown in the hover tooltip header so the badge is self-explanatory.
+// decide_pvv(sig_today, outlook): RR outlook decides WHAT, sig_today decides
+// WHEN. TRIM and WATCH each cover more than one matrix cell (see condition
+// text); BUY/BUY_DIP are Bullish-outlook-only, SELL/REDUCE/AVOID are
+// Bearish-outlook-only.
+const _PVV_DECISION_INFO = {
+  BUY:      { condition: 'outlook=Bullish, today=STRONG_BULL/WEAK_BULL',
+              meaning: "RR outlook is bullish and today's tape confirms strength — buy now." },
+  BUY_DIP:  { condition: 'outlook=Bullish, today=DRIFT/MILD_BEAR/BEAR_LEAN',
+              meaning: "Bullish outlook intact; today's soft tape is a dip to buy, not a reversal." },
+  TRIM:     { condition: 'outlook=Bullish & today=OVEREXT_BULL, or outlook=Bearish & today=STRONG_BULL/WEAK_BULL/OVEREXT_BULL/BEAR_DIV',
+              meaning: 'Either an overbought pop in a bullish name, or a rip in a bearish one ("sell the rip") — take some off either way.' },
+  REDUCE:   { condition: 'outlook=Bearish, today=MILD_BEAR/BEAR_LEAN',
+              meaning: 'Bearish outlook with the tape confirming the down move — lighten up.' },
+  SELL:     { condition: 'outlook=Bearish, today=STRONG_BEAR',
+              meaning: "Bearish outlook and today's heavy-volume selloff both confirm — exit." },
+  AVOID:    { condition: 'outlook=Bearish, today=NEUTRAL/NA/DRIFT',
+              meaning: "Bearish outlook, no confirming setup yet — don't initiate." },
+  WATCH:    { condition: 'outlook=Neutral/none (any today), or outlook=Bullish & today=BEAR_DIV/NEUTRAL/NA/STRONG_BEAR',
+              meaning: 'No outlook conviction, or (bullish outlook) today is too weak/volatile to act — includes the deliberate STRONG_BEAR "knife guard" that blocks BUY_DIP during a heavy-volume selloff.' },
+};
+// Rich hover tooltip: 4-row table (Today / 5d / 3w / 3m), signal + P/V/Vol
+// arrows + ROC values, gated/vol-src annotations. Reuses _showDataPop/#sourcePop.
+function _buildPvvPopHtml(r) {
+  const sym = r.tos_symbol || '—';
+  let det = r.pvv_detail;
+  if (typeof det === 'string') { try { det = JSON.parse(det); } catch (_) { det = null; } }
+  const decision = r.pvv_decision || '—';
+  const dColor = _PVV_CLASS[r.pvv_decision] ? _pvvSigColor(
+    r.pvv_decision === 'SELL' || r.pvv_decision === 'REDUCE' ? 'STRONG_BEAR'
+      : (r.pvv_decision === 'WATCH' ? null : 'STRONG_BULL')) : '#94a3b8';
+  const info = _PVV_DECISION_INFO[r.pvv_decision] || null;
+  let h = `<div class="sp-title">${escapeHtml(sym)} PVV &mdash; `
+        + `<span style="color:${dColor};font-weight:700;">${escapeHtml(decision)}</span>`
+        + (info ? ` <span style="color:#94a3b8;font-weight:400;font-size:9px;">(${escapeHtml(info.condition)})</span>` : '')
+        + `</div>`;
+  if (info) {
+    h += `<div style="color:#64748b;font-size:10px;margin:2px 0 6px;">${escapeHtml(info.meaning)}</div>`;
+  }
+  if (!det) {
+    h += `<div style="color:#94a3b8;font-size:10px;">No PVV detail available.</div>`;
+    return h;
+  }
+  // TASK_127: outlook line + decision-formula line, above the bucket table.
+  const outlookInfo = det.outlook || null;
+  const outlookVal = outlookInfo ? outlookInfo.value : null;
+  const outlookSrc = outlookInfo ? outlookInfo.source : null;
+  const outlookColor = outlookVal === 'Bullish' ? '#16a34a' : (outlookVal === 'Bearish' ? '#dc2626' : '#94a3b8');
+  const outlookLabel = outlookVal
+    ? `${outlookVal} (${outlookSrc || 'RR'})`
+    : 'no outlook — BB fallback';
+  const sigTodayForFormula = (det.today && det.today.sig) ? det.today.sig : '—';
+  h += `<div style="font-size:10px;margin:0 0 2px;">Outlook: `
+     + `<span style="color:${outlookColor};font-weight:700;">${escapeHtml(outlookLabel)}</span></div>`;
+  h += `<div style="color:#94a3b8;font-size:9px;margin:0 0 6px;">decision = outlook &times; today `
+     + `= ${escapeHtml(outlookVal || 'none')} &times; ${escapeHtml(sigTodayForFormula)}</div>`;
+  const rowsDef = [
+    ['Today', det.today],
+    ['5d',    det.d5],
+    ['3w',    det.w3],
+    ['3m',    det.m3],
+  ];
+  h += '<table class="pvv-tbl"><colgroup>'
+     + '<col class="pvv-col-k"><col class="pvv-col-v"><col class="pvv-col-v"><col class="pvv-col-v"><col class="pvv-col-v">'
+     + '</colgroup>';
+  h += `<tr class="pvv-hdr"><td class="k"></td><td class="v">Signal</td><td class="v">Price</td>`
+     + `<td class="v">Volume</td><td class="v">Vol</td></tr>`;
+  for (const [label, b] of rowsDef) {
+    if (!b) { h += `<tr><td class="k">${label}</td><td colspan="4" class="v">—</td></tr>`; continue; }
+    const sig = b.sig || 'NA';
+    const sigColor = _pvvSigColor(sig);
+    const gatedMark = b.gated ? ' <span style="color:#f59e0b;" title="Demoted by the 3w trend-value gate">(gated)</span>' : '';
+    const srcMark = b.vol_src === 'hv' ? ' <span style="color:#94a3b8;" title="IV unavailable — using historical_vol">[hv]</span>' : '';
+    if (label === '3m') {
+      h += `<tr><td class="k">${label}</td>`
+         + `<td class="v" style="color:${sigColor};font-weight:700;">${escapeHtml(sig)}</td>`
+         + `<td class="v" style="white-space:normal;" title="Price/SMA50 &middot; SMA50/SMA200 (ratio, >1 = above)">`
+         +   `P/50 ${_pvvRatio(b.price_vs_sma50)}<br>50/200 ${_pvvRatio(b.sma50_vs_sma200)}</td>`
+         + `<td class="v" style="color:#94a3b8;" title="3m bucket has no volume leg (price-structure + IV only, per spec)">n/a</td>`
+         + `<td class="v" title="IV percentile">IVp ${b.iv_pctile != null ? Number(b.iv_pctile).toFixed(0) : '—'}${srcMark}</td></tr>`;
+      continue;
+    }
+    h += `<tr><td class="k">${label}${gatedMark}</td>`
+       + `<td class="v" style="color:${sigColor};font-weight:700;">${escapeHtml(sig)}</td>`
+       + `<td class="v">${_pvvArrow(b.p_dir)} ${_pvvPct(b.p_roc)}</td>`
+       + `<td class="v">${_pvvArrow(b.v_dir)} ${_pvvPct(b.v_roc)}</td>`
+       + `<td class="v">${_pvvArrow(b.vol_dir)} ${_pvvPct(b.vol_roc)}${srcMark}</td></tr>`;
+  }
+  h += '</table>';
+  return h;
 }
 
 // ---- TASK_70: Final Call (cal) cell renderer ----
@@ -3175,6 +3315,7 @@ function renderGrid() {
     r._watchlisted = state.filters.trade_mode ? false : _buyNoiseGated(r);
     r._priority = _computePriority(r);
     r._agree3 = _agree3Score(r);
+    r._pvv_rank = _pvvRank(r.pvv_decision);
   }
   hideSourcePop();
   sortRows();
@@ -3217,11 +3358,15 @@ function renderGrid() {
   const filtersActive = !!(state.filters.symbol_search || state.filters.action ||
     state.filters.source || state.filters.account || state.filters.held_only ||
     state.filters.conviction !== 'any' || state.filters.bull_prob_min > 0 ||
-    state.filters.agreement_class || state.filters.stopOnly);
+    state.filters.agreement_class || state.filters.stopOnly ||
+    (state.filters.symbols_multi && state.filters.symbols_multi.length));
   const bandExpanded = state.watchlistExpanded || (filtersActive && watchRows.length > 0);
 
   // Cached so copySymbols() can copy exactly what's on screen right now.
-  const visibleRows = bandExpanded ? state.rows : mainRows;
+  // Must match DOM append order below (mainRows, then watchRows when the
+  // band is expanded) -- state.rows alone is sorted by the active column
+  // sort, which is a different order once the watchlist band is expanded.
+  const visibleRows = bandExpanded ? mainRows.concat(watchRows) : mainRows;
   state.visibleRows = visibleRows;
 
   for (const r of mainRows) {
@@ -3431,6 +3576,7 @@ function _buildRowEl(r) {
       <td data-col="rules" class="rules-link-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:4px 6px; max-width:340px; overflow:hidden; cursor:pointer;" title="Open Rule Flow for ${escapeHtml(r.tos_symbol)}">${firesCellHtml(r, 4)}</td>
       <td data-col="bullprob" class="num" style="padding:4px 6px; white-space:nowrap;">${_bullProbCellHtml(r)}</td>
       <td data-col="agree" style="padding:4px 6px; white-space:nowrap;">${_agreementCellHtml(r)}</td>
+      <td data-col="pvv" style="padding:4px 6px; text-align:center; white-space:nowrap;">${_pvvCellHtml(r)}</td>
       <td data-col="act" style="padding:4px 6px;">
         <div class="act-inline-btns">
           <button type="button" class="btn-done btn-inline-done" data-sym="${escapeHtml(r.tos_symbol)}" data-fc="${escapeHtml(fcActCode)}" title="Act: log final call action">&#10003; ${escapeHtml(fcActCode)}</button>
@@ -4472,6 +4618,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initEcoBarClick();
   _initSidePanels();
   _initColMenu();
+  _initMultiSymPop();
   _initLegendPopover();
   applyColumnVisibility();
   document.addEventListener('click', () => _closeClickPops());
@@ -4609,10 +4756,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Filter zone wire-ups ────────────────────────────────────────────────────
   $('sourceFilter').addEventListener('change', (e) => {
     state.filters.source = e.target.value;
+    if (state.filters.source) { _resetToggleFiltersForLookup(); loadActionable(); return; }
     applyClientFilter();
   });
   $('accountFilter').addEventListener('change', (e) => {
     state.filters.account = e.target.value;
+    if (state.filters.account) { _resetToggleFiltersForLookup(); loadActionable(); return; }
     applyClientFilter();
   });
   $('heldOnly').addEventListener('click', () => {
@@ -4649,6 +4798,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     clearTimeout(_symbolSearchTimer);
     _symbolSearchTimer = setTimeout(() => {
       state.filters.symbol_search = val;
+      if (val) { _resetToggleFiltersForLookup(); loadActionable(); return; }
       applyClientFilter();
     }, 150);
   });
@@ -4658,6 +4808,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (bullProbFilterEl) {
     bullProbFilterEl.addEventListener('input', (e) => {
       state.filters.bull_prob_min = parseFloat(e.target.value) || 0;
+      if (state.filters.bull_prob_min > 0) { _resetToggleFiltersForLookup(); loadActionable(); return; }
       applyClientFilter();
     });
   }

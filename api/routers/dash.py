@@ -1098,7 +1098,8 @@ def get_actionable(
                ms.monthly_score, ms.quarterly_score,
                ms.month_now_net, ms.month_next_net, ms.month_weight,
                ms.qtr_now_net, ms.qtr_next_net, ms.qtr_weight,
-               ms.monthly_scores_json
+               ms.monthly_scores_json, ms.detail AS macro_window,
+               pv.decision AS pvv_decision, pv.detail AS pvv_detail
         FROM drv_actionable a
         LEFT JOIN drv_tn_td_bb_rr rr
                ON rr.tos_symbol = a.tos_symbol AND rr.as_of_date = a.as_of_date
@@ -1165,6 +1166,8 @@ def get_actionable(
         ) htw ON TRUE
         LEFT JOIN drv_macro_score ms
                ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = a.as_of_date
+        LEFT JOIN drv_pvv pv
+               ON pv.tos_symbol = a.tos_symbol AND pv.as_of_date = a.as_of_date
         WHERE {' AND '.join(where)}
     """
     with session_scope() as s:
@@ -1186,28 +1189,81 @@ def get_actionable(
         # backward-compat quad labels
         d_["quad_m"] = _quad_m_label
         d_["quad_q"] = _quad_q_label
-        # F2: only the cheap fields (macro_value/conf/turn/macronet) are needed
-        # per row for the grid; the heavy macro_detail/macro_howto payload is
-        # now lazy-loaded on hover via GET /api/actionable/macro-detail.
-        try:
-            macro = _compute_macro(sym, rac, sec, include_detail=False)
-        except Exception:
-            macro = {
-                "macro_value": None, "macro_conf": None,
-                "macro_turn": None, "macro_detail": None, "macro_howto": None,
-                "macronet": None,
-            }
+        # TASK_126: drv_macro_score.macro_action (sliding-window derive) is
+        # now the sole source of truth for the grid row — no more per-row
+        # live recompute via the old ramp/lead engine when a derived row
+        # exists (perf win + avoids showing a stale ramp-based confidence/
+        # turn that would disagree with the window-based badge). `macro_conf`
+        # is approximated from the nearest window month's weight (how
+        # concentrated the window is on the near term) instead of the old
+        # "max quad% of current month" measure; `macro_turn` (discrete ramp-
+        # proximity alert) is retired -- the sliding window is continuous by
+        # construction, so there's no discrete "turn" event left to flag.
+        win = d_.get("macro_window")
+        if isinstance(win, str):
+            try: win = json.loads(win)
+            except Exception: win = None
         if d_.get("macro_action"):
-            macro["macro_value"] = d_["macro_action"]
-            macro["macronet"] = d_.get("macronet")
+            near_w = None
+            if isinstance(win, dict):
+                months = win.get("months") or []
+                if months:
+                    near_w = months[0].get("w")
+            macro = {
+                "macro_value": d_["macro_action"], "macro_conf": near_w,
+                "macro_turn": None, "macro_detail": None, "macro_howto": None,
+                "macronet": d_.get("macronet"),
+            }
+        else:
+            # Fallback path (derive hasn't populated a row yet): old
+            # per-row live engine, unchanged.
+            try:
+                macro = _compute_macro(sym, rac, sec, include_detail=False)
+            except Exception:
+                macro = {
+                    "macro_value": None, "macro_conf": None,
+                    "macro_turn": None, "macro_detail": None, "macro_howto": None,
+                    "macronet": None,
+                }
         d_.update(macro)
         # F2: drop the (always-None here) heavy keys entirely rather than
         # shipping null placeholders — keeps the per-row payload measurably
         # smaller. Full detail is lazy-loaded via /api/actionable/macro-detail.
         d_.pop("macro_detail", None)
         d_.pop("macro_howto", None)
+        d_.pop("macro_window", None)
         out.append(d_)
     return out
+
+
+def _window_howto(macro_action: str | None, window: dict | None) -> str:
+    """How-to directive for the window-based MacroNet (TASK_126). Mirrors the
+    style of the old ramp-based howto text in _compute_macro(), but speaks to
+    the sliding window + near/far override instead of month/quarter ramps."""
+    parts: list[str] = []
+    if macro_action in ("BM", "BS"):
+        parts.append(f"Macro favors LONG ({macro_action}). Press bottom-up BUY calls.")
+    elif macro_action in ("SA", "STM"):
+        parts.append(f"Macro favors SHORT/TRIM ({macro_action}). Back off BUY calls.")
+    else:
+        parts.append("Macro neutral (HOLD). No conviction adjustment.")
+    if window:
+        h = window.get("h")
+        tracking = window.get("tracking")
+        if tracking:
+            parts.append(f"Technical direction tracks {tracking} within the {h}-day window.")
+        else:
+            parts.append("Technical direction is fighting the quad path — no forward "
+                          "month in the window confirms it.")
+        nv = window.get("near_vs_far") or {}
+        override = nv.get("override")
+        if override and override != "none":
+            parts.append(f"Near-term and the rest of the window agree ({override}).")
+        if window.get("fallback"):
+            parts.append(f"Low calendar coverage ({window.get('coverage_pct')}%) — "
+                          "fell back to a current-month one-hot read.")
+    parts.append("Technical/Sources is always master — MACRO adjusts conviction only.")
+    return " ".join(parts)
 
 
 @router.get("/api/actionable/macro-detail")
@@ -1217,7 +1273,15 @@ def get_actionable_macro_detail(
 ):
     """Lazy-load the full MacroNet breakdown for one symbol (F2). The grid
     payload only carries macro_value/conf/turn/macronet — this endpoint
-    computes the heavy detail/how-to text on demand (hover popover)."""
+    computes the heavy detail/how-to text on demand (hover popover).
+
+    TASK_126: the authoritative window mix/eff-distribution/near-far/
+    tracking data comes straight from drv_macro_score.detail (computed once
+    at derive time) — added under `macro_detail.window`. The Category
+    Drivers membership list (Stage 1-2, unaffected by the window change) is
+    still resolved live via the pre-existing engine and layered in
+    unchanged; its stale ramp-based "next month"/blend fields are dropped
+    since that ramp model is retired (see docs/quad_design.md)."""
     d = _resolve_date(date)
     sym = symbol.strip().upper()
     with session_scope() as s:
@@ -1229,14 +1293,127 @@ def get_actionable_macro_detail(
                    ON mt.tos_symbol = a.tos_symbol AND mt.as_of_date = a.as_of_date
             WHERE a.tos_symbol = :sym AND a.as_of_date = :d
         """), {"sym": sym, "d": d}).mappings().first()
+        ms_row = s.execute(text("""
+            SELECT detail, macronet, macro_action, monthly_score, quarterly_score
+            FROM drv_macro_score WHERE tos_symbol = :sym AND as_of_date = :d
+        """), {"sym": sym, "d": d}).mappings().first()
+        q_weight = s.execute(text(
+            "SELECT setting_value FROM ref_settings WHERE setting_name = 'quad_horizon_weight_qtr'"
+        )).scalar()
     if not row:
         raise HTTPException(404, f"no drv_actionable row for {sym} on {d}")
+
     _compute_macro, _quad_m_label, _quad_q_label = _build_macro_engine(d)
     try:
         macro = _compute_macro(sym, row["real_asset_class"], row["sector"], include_detail=True)
     except Exception:
         macro = {"macro_detail": None, "macro_howto": None}
-    return {"macro_detail": macro.get("macro_detail"), "macro_howto": macro.get("macro_howto")}
+    detail = macro.get("macro_detail") or {}
+
+    window = None
+    if ms_row and ms_row["detail"] is not None:
+        window = ms_row["detail"]
+        if isinstance(window, str):
+            try: window = json.loads(window)
+            except Exception: window = None
+
+    if window is not None:
+        detail["window"] = window
+        if ms_row["macronet"] is not None:
+            detail["macro_net"] = float(ms_row["macronet"])
+        if ms_row["macro_action"]:
+            detail["vocab"] = ms_row["macro_action"]
+        detail["monthly_score"] = (
+            float(ms_row["monthly_score"]) if ms_row["monthly_score"] is not None else None)
+        detail["quarterly_score"] = (
+            float(ms_row["quarterly_score"]) if ms_row["quarterly_score"] is not None else None)
+        # Ramp-based "next month"/blend display is retired (TASK_126) —
+        # the window itself supersedes it. Current-month dist/net stays for
+        # Category Drivers context (Stage 1-2, unaffected by the change).
+        if isinstance(detail.get("month"), dict):
+            detail["month"].pop("next", None)
+            detail["month"].pop("blend_now_pct", None)
+            detail["month"].pop("blend_nxt_pct", None)
+            detail["month"].pop("M", None)
+        # a/b now mean quarter/window weight in the new combine (was
+        # quad_horizon_weight_qtr/mo under the retired ramp model).
+        try:
+            q = float(q_weight) if q_weight is not None else 0.05
+        except (TypeError, ValueError):
+            q = 0.05
+        detail["a"], detail["b"] = q, round(1.0 - q, 4)
+        howto = _window_howto(ms_row["macro_action"], window)
+    else:
+        howto = macro.get("macro_howto")
+
+    return {"macro_detail": detail or None, "macro_howto": howto}
+
+
+@router.get("/api/quad-window")
+def get_quad_window(date: Optional[str] = Query(None, description="As-of date (defaults to today)")):
+    """Aggregate (symbol-independent) sliding look-ahead window mix (TASK_126)
+    — the calendar-level month overlap/weights + blended quad distribution,
+    with no per-symbol membership scoring. Powers the Regime Band's window
+    summary (replaces the old Month | Quarter ramp display). Quad regime is
+    calendar-based, not tied to the trading anchor — defaults to real today,
+    same convention as GET /api/dashboard/quads."""
+    from datetime import datetime as _dt
+    from etl.derive_macro import window_weights, build_effective_distribution, _dominant_quad_num
+
+    d = _dt.strptime(date, "%Y-%m-%d").date() if date else _dt.now().date()
+    with session_scope() as s:
+        h = 60
+        decay_hl = 0.0
+        rows = s.execute(text(
+            "SELECT setting_name, setting_value FROM ref_settings"
+            " WHERE setting_name IN ('quad_lookahead_days','quad_lookahead_decay_hl')"
+        )).fetchall()
+        cfg = {r[0]: r[1] for r in rows}
+        try: h = int(cfg.get('quad_lookahead_days', h))
+        except (TypeError, ValueError): pass
+        try: decay_hl = float(cfg.get('quad_lookahead_decay_hl', decay_hl))
+        except (TypeError, ValueError): pass
+
+        all_monthly = s.execute(text(
+            "SELECT year, period_num, quad, label,"
+            " quad1_pct, quad2_pct, quad3_pct, quad4_pct"
+            " FROM ref_quad_periods WHERE period_type='monthly'"
+            " AND (quad1_pct IS NOT NULL OR quad2_pct IS NOT NULL"
+            "   OR quad3_pct IS NOT NULL OR quad4_pct IS NOT NULL)"
+            " ORDER BY year, period_num"
+        )).mappings().all()
+
+    def _frac(p):
+        v = [p["quad1_pct"], p["quad2_pct"], p["quad3_pct"], p["quad4_pct"]]
+        total = sum(float(x or 0) for x in v) or 1.0
+        return [float(x or 0) / total for x in v]
+
+    pcts_by_month = {(p["year"], p["period_num"]): _frac(p) for p in all_monthly}
+    quad_by_month = {(p["year"], p["period_num"]): _dominant_quad_num(_frac(p), p["quad"])
+                      for p in all_monthly}
+    weighted, coverage_pct = window_weights(d, list(pcts_by_month.keys()), h, decay_hl)
+
+    months_out = [{
+        "m": f"{ym[0]:04d}-{ym[1]:02d}",
+        "quad": quad_by_month.get(ym),
+        "w": round(w, 4),
+        "dist": {f"q{i+1}": round(pcts_by_month[ym][i] * 100, 1) for i in range(4)},
+    } for ym, w in weighted]
+
+    eff_frac = build_effective_distribution(weighted, pcts_by_month)
+    eff = {f"q{i+1}": round(eff_frac[i] * 100, 1) for i in range(4)}
+    dominant = (max(range(4), key=lambda i: eff_frac[i]) + 1) if any(eff_frac) else None
+
+    return {
+        "as_of_date": d.isoformat(),
+        "h": h,
+        "decay_hl": decay_hl,
+        "coverage_pct": coverage_pct,
+        "fallback": coverage_pct < 50.0,
+        "months": months_out,
+        "eff": eff,
+        "dominant_quad": dominant,
+    }
 
 
 @router.get("/api/actionable/source-data")
@@ -1368,6 +1545,7 @@ def get_actionable_comparison(
         "outlook_modifier": ["outlook", "outlook_modifier"],
         "rank":             ["rank"],
         "rank_pct_delta":   ["pct_delta"],
+        "rta_alert":        ["side", "signal_kind"],
     }
 
     def _jsonable(v):

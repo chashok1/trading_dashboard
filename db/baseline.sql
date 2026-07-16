@@ -3770,7 +3770,7 @@ CREATE TABLE IF NOT EXISTS ref_outlook_source (
 
     investment_priority  INTEGER     NOT NULL,
 
-    base_weight_method   TEXT        NOT NULL CHECK (base_weight_method IN ('outlook_modifier','rank','rank_pct_delta')),
+    base_weight_method   TEXT        NOT NULL CHECK (base_weight_method IN ('outlook_modifier','rank','rank_pct_delta','rta_alert')),
 
     base_weight_param    NUMERIC,
 
@@ -7097,4 +7097,97 @@ INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
     ('trade_mode_weak_buy_sources', 'PS,ETF,II',
      'Trade Mode: comma-separated source_code list that measured negative buy-edge — tagged WEAK SRC instead of hidden')
 ON CONFLICT (setting_name) DO NOTHING;
+
+-- =====================================================
+-- 2026-07-15 TASK_125: drv_pvv — Price/Volume/Volatility (Hedgeye-style ROC)
+-- signal computed in 4 time buckets (today/5d/3w/3m), consolidated into one
+-- decision (BUY/BUY_DIP/REDUCE/AVOID/SELL/TRIM/WATCH). Informational v1 —
+-- NOT wired into drv_actionable/consolidated_action. See docs/pvv_logic.md.
+-- Idempotent: DELETE WHERE as_of_date=D then INSERT (etl/derive_pvv.py).
+-- =====================================================
+CREATE TABLE IF NOT EXISTS drv_pvv (
+    as_of_date  DATE NOT NULL,
+    tos_symbol  TEXT NOT NULL,
+    sig_today   TEXT,        -- signal code per bucket (see docs/pvv_logic.md §3)
+    sig_5d      TEXT,
+    sig_3w      TEXT,
+    sig_3m      TEXT,
+    decision    TEXT,        -- consolidated decision (see docs/pvv_logic.md §4)
+    detail      JSONB,       -- per-bucket inputs for the UI tooltip (§5)
+    derived_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (as_of_date, tos_symbol)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_pvv_tos_symbol
+    ON drv_pvv(tos_symbol, as_of_date);
+CREATE INDEX IF NOT EXISTS ix_drv_pvv_decision
+    ON drv_pvv(as_of_date, decision);
+
+-- =====================================================
+-- 2026-07-15 TASK_126: sliding look-ahead window over the monthly quad
+-- calendar, replacing the month now/next ramp + quarterly one-hot blend in
+-- etl/derive_macro.py. See docs/quad_design.md (Stage 3) +
+-- agent-tasks/TASK_126_quad_lookahead_window.md.
+-- =====================================================
+
+-- `detail` JSONB: {h, coverage_pct, fallback, months:[{m,quad,w,stance}],
+-- eff:{q1..q4}, near_vs_far:{near,far,override}, tracking}. Replaces the
+-- month/quarter ramp breakdown previously recomputed live in dash.py.
+ALTER TABLE drv_macro_score ADD COLUMN IF NOT EXISTS detail JSONB;
+
+-- Deprecated (TASK_126): the ramp/lead blend these columns described is
+-- retired — etl/derive_macro.py no longer populates them (INSERTs NULL).
+-- Columns kept for backward compat (old rows, any external readers).
+-- month_now_net / month_next_net / month_weight / qtr_next_net / qtr_weight
+-- monthly_score now stores M_window; qtr_now_net == quarterly_score
+-- (quarterly leg is a plain current-quarter one-hot, no next-quarter blend).
+COMMENT ON COLUMN drv_macro_score.month_now_net IS
+    'Deprecated (TASK_126) — ramp blend retired; NULL going forward.';
+COMMENT ON COLUMN drv_macro_score.month_next_net IS
+    'Deprecated (TASK_126) — ramp blend retired; NULL going forward.';
+COMMENT ON COLUMN drv_macro_score.month_weight IS
+    'Deprecated (TASK_126) — ramp blend retired; NULL going forward.';
+COMMENT ON COLUMN drv_macro_score.qtr_next_net IS
+    'Deprecated (TASK_126) — quarterly ramp blend retired; NULL going forward.';
+COMMENT ON COLUMN drv_macro_score.qtr_weight IS
+    'Deprecated (TASK_126) — quarterly ramp blend retired; NULL going forward.';
+COMMENT ON COLUMN drv_macro_score.monthly_score IS
+    'M_window (TASK_126) — sliding look-ahead window blend, was month now/next ramp.';
+
+-- New tunables: look-ahead window length + optional decay half-life.
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('quad_lookahead_days', '60',
+   'MacroNet: sliding look-ahead window length H in calendar days from anchor D')
+ON CONFLICT (setting_name) DO NOTHING;
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('quad_lookahead_decay_hl', '0',
+   'MacroNet: within-window day-weight decay half-life in days; 0 = flat/off')
+ON CONFLICT (setting_name) DO NOTHING;
+
+-- Quarterly weight minimized (was 0.20 pre-TASK_126, 0.35/0.65 before that);
+-- monthly weight is now implicitly (1 - quad_horizon_weight_qtr) inside
+-- etl/derive_macro.py — quad_horizon_weight_mo is no longer read there.
+UPDATE ref_settings SET setting_value = '0.05'
+    WHERE setting_name = 'quad_horizon_weight_qtr';
+
+-- Threshold recalibration (TASK_126) — the window blend shifts the MacroNet
+-- distribution vs the old ramp; re-percentiled against the live
+-- drv_macro_score output the same way as the 2026-07-06 pass (target ~3%
+-- BM, ~12% BS, ~70% HOLD, ~12% STM, ~3% SA). The near/far sign-agreement
+-- override puts a structural floor under SA (~6.9% live — any month whose
+-- nearest + weighted-rest both go negative forces SA regardless of the raw
+-- score, same asymmetric-by-design rule as 2026-07-06); achieved live split
+-- at these values: BM 2.4% / BS 17.3% / HOLD 65.0% / STM 8.3% / SA 6.9%
+-- (see DEV_HANDOFF for the calibration run). Values below also correct
+-- baseline.sql drift vs the live DB (the 2026-07-06 recalibration had only
+-- ever been applied by hand, never migrated here — this UPDATE folds both
+-- fixes into one idempotent step). See docs/quad_design.md.
+UPDATE ref_settings SET setting_value = '1.25'  WHERE setting_name = 'macro_thr_bm';
+UPDATE ref_settings SET setting_value = '1.05'  WHERE setting_name = 'macro_thr_bs';
+UPDATE ref_settings SET setting_value = '-0.15' WHERE setting_name = 'macro_thr_stm';
+UPDATE ref_settings SET setting_value = '-0.6'  WHERE setting_name = 'macro_thr_sa';
+
+-- Retired (TASK_126): quad_month_ramp_begin_days / quad_month_lead_days /
+-- quad_qtr_ramp_begin_days / quad_qtr_lead_days are no longer read by
+-- etl/derive_macro.py (the sliding window supersedes the ramp/lead model).
+-- Rows left in ref_settings — harmless, kept for audit/rollback reference.
 

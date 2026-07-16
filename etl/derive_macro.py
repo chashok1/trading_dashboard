@@ -1,22 +1,32 @@
 """
-MacroNet per-symbol score: MacroNet = wt_mo*M + wt_qtr*Q
+MacroNet per-symbol score: MacroNet = (1 - q)*M_window + q*Qtr
 
-M = monthly score  — distribution-weighted stance, ramp/lead blended (now→next month)
-Q = quarterly score — one-hot stance,              ramp/lead blended (now→next quarter)
+M_window = sliding look-ahead window over the monthly quad calendar. The
+window [D, D+H) (H = quad_lookahead_days, default 60 calendar days) is
+projected onto ref_quad_periods' monthly rows; overlap-day fractions (with
+optional exponential decay) produce a normalized weight per month. Each
+month's own quad distribution feeds the standard Stage 1-2 membership
+aggregation (sector x2 + asset_class x1 + styles x0.5); the per-month
+stances are then weight-blended into one M_window per symbol. This replaces
+the old month now/next ramp blend entirely -- the window itself is the
+"days passed in month" ramp, sliding one day at a time (TASK_126).
 
-Both horizons use the same membership aggregation:
+Qtr = one-hot stance for the *current* quarter only (no next-quarter ramp
+blend -- the quarterly ramp/lead params are retired alongside the monthly
+ones; see window_weights()/_derive_macro_impl() and TASK_126 spec section 3).
+
+Both legs use the same membership aggregation:
     net = sector×2 + asset_class×1 + Σ(style×0.5)
 
-Results written to drv_macro_score (idempotent DELETE+INSERT).
+Results written to drv_macro_score (idempotent DELETE+INSERT). Full design:
+docs/quad_design.md (Stage 3), agent-tasks/TASK_126_quad_lookahead_window.md.
 """
 
 import calendar as _cal
 import json
 import logging
-import math
-from datetime import date
+from datetime import date, timedelta
 
-import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -41,7 +51,8 @@ def _stance(v):
 
 
 def _membership_net(memberships, outlook_map, quad_pcts):
-    """Score one symbol's membership bundle against a quad distribution."""
+    """Score one symbol's membership bundle against a quad distribution
+    (quad_pcts = fractions 0..1, index 0..3 = quad1..quad4)."""
     total = 0.0
     for cat, sub, wt in memberships:
         texts = outlook_map.get((cat, sub))
@@ -52,24 +63,9 @@ def _membership_net(memberships, outlook_map, quad_pcts):
     return total
 
 
-def _ramp_weight(days_to_end, ramp_begin, lead_days):
-    if days_to_end > ramp_begin:
-        return 0.0
-    if days_to_end <= lead_days:
-        return 1.0
-    return (ramp_begin - days_to_end) / max(ramp_begin - lead_days, 1)
-
-
-def _bdays_to(anchor, end_dt):
-    if end_dt <= anchor:
-        return 0
-    return max(0, len(pd.bdate_range(anchor, end_dt)) - 1)
-
-
 def _onehot(quad_val):
     """Convert 'Quad N' or bare int/str N to one-hot [q1,q2,q3,q4]."""
     s = str(quad_val).strip()
-    # Handle 'Quad 3', 'QUAD3', 'Q3', bare '3'
     for tok in s.split():
         try:
             q = int(tok)
@@ -84,9 +80,29 @@ def _onehot(quad_val):
 
 
 def _norm_pcts(p):
+    """p: a row/object with quad1_pct..quad4_pct. Returns fractions 0..1."""
     pcts = [float(getattr(p, f'quad{i+1}_pct') or 0) for i in range(4)]
     total = sum(pcts) or 1.0
     return [x / total for x in pcts]
+
+
+def _dominant_quad_num(pcts_frac, declared_quad=None):
+    """Argmax quad number (1-4) from fractions, falling back to the declared
+    'Quad N' string when the distribution is missing/all-zero."""
+    if pcts_frac and any(pcts_frac):
+        return max(range(4), key=lambda i: pcts_frac[i]) + 1
+    if declared_quad:
+        s = str(declared_quad).strip()
+        for tok in s.split():
+            try:
+                return int(tok)
+            except ValueError:
+                continue
+        try:
+            return int(s[-1])
+        except (ValueError, IndexError):
+            pass
+    return None
 
 
 def _effective_quad_label(p) -> str | None:
@@ -147,6 +163,148 @@ def _classify_style(beta, pe_ratio, div_yield, rsi, market_cap_str, sector):
     return tags
 
 
+# =============================================================================
+# Sliding look-ahead window — pure functions (TASK_126, unit-testable w/o DB)
+# =============================================================================
+
+def _day_weight(days_from_d: int, decay_hl: float) -> float:
+    """Per-day weight inside the window. No decay (decay_hl<=0/None) -> 1.0
+    for every day (flat window). Otherwise exponential half-life decay."""
+    if not decay_hl or decay_hl <= 0:
+        return 1.0
+    return 0.5 ** (days_from_d / decay_hl)
+
+
+def window_weights(d: date, months: list, h: int, decay_hl: float = 0):
+    """Sliding look-ahead window [d, d+h) projected onto monthly periods.
+
+    `months`: iterable of (year, period_num) tuples the caller has quad data
+    for (may be a superset of the window -- non-overlapping months are
+    dropped). `h`: window length in calendar days. `decay_hl`: optional
+    half-life (days) for within-window day weighting; 0/None = flat (no
+    decay, matches the spec's default-off behavior).
+
+    Returns (weighted, coverage_pct):
+      - weighted: [((year, period_num), weight), ...] sorted nearest-month
+        first, weights normalized to sum to 1.0 over the *covered* portion
+        of the window (empty list if zero coverage).
+      - coverage_pct: % of the window's day-weight mass actually covered by
+        `months`, out of 100. < 50 signals the caller should fall back to a
+        current-month one-hot (see _derive_macro_impl).
+    """
+    window_end = d + timedelta(days=h)
+    full_mass = sum(_day_weight(t, decay_hl) for t in range(h)) or 1.0
+
+    raw = []  # (year, period_num, mass, dist_days_from_d)
+    for (yr, pnum) in months:
+        m_start = date(yr, pnum, 1)
+        m_end = date(yr, pnum, _cal.monthrange(yr, pnum)[1]) + timedelta(days=1)  # exclusive
+        ov_start = max(d, m_start)
+        ov_end = min(window_end, m_end)
+        if ov_end <= ov_start:
+            continue
+        mass = 0.0
+        day = ov_start
+        while day < ov_end:
+            mass += _day_weight((day - d).days, decay_hl)
+            day += timedelta(days=1)
+        if mass > 0:
+            raw.append((yr, pnum, mass, (m_start - d).days))
+
+    covered_mass = sum(r[2] for r in raw)
+    coverage_pct = round(min(100.0, covered_mass / full_mass * 100.0), 2)
+    if covered_mass <= 0:
+        return [], 0.0
+
+    raw.sort(key=lambda r: r[3])
+    weighted = [((r[0], r[1]), r[2] / covered_mass) for r in raw]
+    return weighted, coverage_pct
+
+
+def _month_key_label(ym: tuple) -> str:
+    return f"{ym[0]:04d}-{ym[1]:02d}"
+
+
+_SIGN_EPS = 1e-6  # treat stances smaller than this as exact zero (float noise
+                   # from summing bullish/bearish membership legs that should
+                   # cancel exactly, e.g. 5.5e-17, not a real "positive" tilt)
+
+
+def _sign(v, eps: float = _SIGN_EPS) -> int:
+    if v is None or abs(v) < eps:
+        return 0
+    return 1 if v > 0 else -1
+
+
+def build_effective_distribution(weighted: list, pcts_by_month: dict) -> list:
+    """eff_quad_k = Σ_m w_m × quad_k_pct(m) (fraction, index 0..3 = quad1..4).
+    Months missing from `pcts_by_month` (shouldn't happen -- window_weights
+    only returns months the caller supplied pcts for) contribute 0."""
+    eff = [0.0, 0.0, 0.0, 0.0]
+    for ym, w in weighted:
+        pcts = pcts_by_month.get(ym)
+        if not pcts:
+            continue
+        for i in range(4):
+            eff[i] += w * pcts[i]
+    return eff
+
+
+def tracking_tag(technical_dir: float | None, weighted: list,
+                  stance_by_month: dict, quad_by_month: dict) -> str | None:
+    """First month (nearest-first) whose stance sign matches the symbol's
+    current technical direction. None if no technical direction (neutral) or
+    no month in the window agrees (UI shows a "fighting the quad path" cue)."""
+    tdir = _sign(technical_dir)
+    if tdir == 0:
+        return None
+    for ym, _w in weighted:
+        sdir = _sign(stance_by_month.get(ym))
+        if sdir == 0:
+            continue
+        if sdir == tdir:
+            q = quad_by_month.get(ym)
+            qlabel = f" (Quad {q})" if q else ""
+            return f"{_month_key_label(ym)}{qlabel}"
+    return None
+
+
+def near_far_split(weighted: list, stance_by_month: dict):
+    """Nearest month's own stance vs the weight-renormalized stance of the
+    rest of the window. `far` is None when the window has only one month."""
+    if not weighted:
+        return None, None
+    near_ym = weighted[0][0]
+    near = stance_by_month.get(near_ym)
+    rest = weighted[1:]
+    rest_mass = sum(w for _ym, w in rest)
+    if not rest or rest_mass <= 0:
+        return near, None
+    far = sum(w * stance_by_month.get(ym, 0.0) for ym, w in rest) / rest_mass
+    return near, far
+
+
+def to_action(macronet: float, near: float | None, far: float | None,
+              thr_bm: float, thr_bs: float, thr_stm: float, thr_sa: float):
+    """MacroNet -> vocab, with the sign-agreement override redefined on the
+    window (near vs weighted-far). Returns (vocab, override_tag)."""
+    if near is not None and far is not None:
+        ns, fs = _sign(near), _sign(far)
+        if ns > 0 and fs > 0:
+            return ('BM' if macronet >= thr_bm else 'BS'), 'BS'
+        if ns < 0 and fs < 0:
+            return 'SA', 'SA'
+    if macronet >= thr_bm:
+        return 'BM', 'none'
+    if macronet >= thr_bs:
+        return 'BS', 'none'
+    if macronet <= thr_sa:
+        return 'SA', 'none'
+    if macronet <= thr_stm:
+        return 'STM', 'none'
+    return 'HOLD', 'none'
+
+
 def _load_settings(session):
     rows = session.execute(text(
         "SELECT setting_name, setting_value FROM ref_settings"
@@ -168,12 +326,9 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         try: return float(cfg[k])
         except (KeyError, ValueError, TypeError): return default
 
-    ramp_mo_begin = _int('quad_month_ramp_begin_days', 12)
-    lead_mo       = _int('quad_month_lead_days', 5)
-    ramp_qtr_begin = _int('quad_qtr_ramp_begin_days', 20)
-    lead_qtr       = _int('quad_qtr_lead_days', 10)
-    wt_mo          = _float('quad_horizon_weight_mo', 0.65)
-    wt_qtr         = _float('quad_horizon_weight_qtr', 0.35)
+    h = _int('quad_lookahead_days', 60)
+    decay_hl = _float('quad_lookahead_decay_hl', 0)
+    q = _float('quad_horizon_weight_qtr', 0.05)
     # Thresholds — use same setting names as API _macronet_to_vocab (macro_thr_*)
     # with fallback to legacy macronet_threshold_* settings.
     thr_bm  = _float('macro_thr_bm',  _float('macronet_threshold_sa',  1.5))
@@ -181,80 +336,53 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
     thr_stm = _float('macro_thr_stm', _float('macronet_threshold_stm', -0.5))
     thr_sa  = _float('macro_thr_sa',  _float('macronet_threshold_ss',  -1.5))
 
-    def to_action(v, m, q):
-        # When month and quarter agree on direction, never land in HOLD.
-        # Positive side: floor to BS, still reaching BM if the blend clears
-        # that bar (score-driven, symmetric with the disagreement case below).
-        # Negative side: agreement alone is decisive -> always SA, not a
-        # score-gated STM/SA split (2026-07-06; asymmetric by design — the
-        # user wants any negative agreement treated as a full sell signal,
-        # not scaled by how mild either component is).
-        if m > 0 and q > 0:
-            return 'BM' if v >= thr_bm else 'BS'
-        if m < 0 and q < 0:
-            return 'SA'
-        if v >= thr_bm:   return 'BM'
-        if v >= thr_bs:   return 'BS'
-        if v <= thr_sa:   return 'SA'
-        if v <= thr_stm:  return 'STM'
-        return 'HOLD'
-
-    # Derive current and next calendar periods from anchor date
     cur_mo_y, cur_mo_n = as_of_date.year, as_of_date.month
     cur_qtr_y, cur_qtr_n = as_of_date.year, (as_of_date.month - 1) // 3 + 1
-    nxt_mo_n = cur_mo_n + 1 if cur_mo_n < 12 else 1
-    nxt_mo_y = cur_mo_y if cur_mo_n < 12 else cur_mo_y + 1
-    nxt_qtr_n = cur_qtr_n + 1 if cur_qtr_n < 4 else 1
-    nxt_qtr_y = cur_qtr_y if cur_qtr_n < 4 else cur_qtr_y + 1
 
-    def _period_end(ptype, yr, pnum):
-        end_m = pnum if ptype == 'monthly' else pnum * 3
-        return date(yr, end_m, _cal.monthrange(yr, end_m)[1])
-
-    periods = session.execute(text(
+    qtr_now = session.execute(text(
         "SELECT period_type, year, period_num, quad,"
         " quad1_pct, quad2_pct, quad3_pct, quad4_pct"
         " FROM ref_quad_periods"
-        " WHERE (period_type='monthly' AND year=:cmy AND period_num=:cmn)"
-        " OR (period_type='monthly' AND year=:nmy AND period_num=:nmn)"
-        " OR (period_type='quarterly' AND year=:cqy AND period_num=:cqn)"
-        " OR (period_type='quarterly' AND year=:nqy AND period_num=:nqn)"
-    ), {
-        'cmy': cur_mo_y,  'cmn': cur_mo_n,
-        'nmy': nxt_mo_y,  'nmn': nxt_mo_n,
-        'cqy': cur_qtr_y, 'cqn': cur_qtr_n,
-        'nqy': nxt_qtr_y, 'nqn': nxt_qtr_n,
-    }).fetchall()
+        " WHERE period_type='quarterly' AND year=:y AND period_num=:n"
+    ), {'y': cur_qtr_y, 'n': cur_qtr_n}).fetchone()
 
-    def _fp(ptype, yr, pnum):
-        for p in periods:
-            if p.period_type == ptype and p.year == yr and p.period_num == pnum:
-                return p
-        return None
+    # All monthly rows with distribution data — used both for the window
+    # calc and the per-month sparkline (monthly_scores_json), unchanged.
+    all_monthly = session.execute(text(
+        "SELECT year, period_num, quad, label,"
+        " quad1_pct, quad2_pct, quad3_pct, quad4_pct"
+        " FROM ref_quad_periods WHERE period_type='monthly'"
+        " AND (quad1_pct IS NOT NULL OR quad2_pct IS NOT NULL"
+        "   OR quad3_pct IS NOT NULL OR quad4_pct IS NOT NULL)"
+        " ORDER BY year, period_num"
+    )).fetchall()
 
-    mo_now   = _fp('monthly',   cur_mo_y,  cur_mo_n)
-    mo_next  = _fp('monthly',   nxt_mo_y,  nxt_mo_n)
-    qtr_now  = _fp('quarterly', cur_qtr_y, cur_qtr_n)
-    qtr_next = _fp('quarterly', nxt_qtr_y, nxt_qtr_n)
-
-    if not mo_now or not qtr_now:
+    if not all_monthly or not qtr_now:
         log.info("derive_macronet: no quad period rows for %s — skipping", as_of_date)
         return 0
 
-    if mo_next is None:
-        mo_next = mo_now
-    if qtr_next is None:
-        qtr_next = qtr_now
+    _all_monthly_pcts = [_norm_pcts(p) for p in all_monthly]
+    pcts_by_month = {(p.year, p.period_num): pcts
+                      for p, pcts in zip(all_monthly, _all_monthly_pcts)}
+    quad_by_month = {(p.year, p.period_num): _dominant_quad_num(pcts, p.quad)
+                      for p, pcts in zip(all_monthly, _all_monthly_pcts)}
+    months_available = list(pcts_by_month.keys())
 
-    mo_now_pcts   = _norm_pcts(mo_now)
-    mo_next_pcts  = _norm_pcts(mo_next)
-    qtr_now_pcts  = _onehot(qtr_now.quad)
-    qtr_next_pcts = _onehot(qtr_next.quad)
+    weighted, coverage_pct = window_weights(as_of_date, months_available, h, decay_hl)
+    fallback = False
+    if coverage_pct < 50.0:
+        fallback = True
+        cur_key = (cur_mo_y, cur_mo_n)
+        if cur_key in pcts_by_month:
+            weighted = [(cur_key, 1.0)]
+        elif weighted:
+            # keep whatever little coverage exists rather than nothing
+            weighted = [(weighted[0][0], 1.0)]
+        else:
+            log.info("derive_macronet: zero window coverage for %s — skipping", as_of_date)
+            return 0
 
-    mo_days  = _bdays_to(as_of_date, _period_end('monthly',   cur_mo_y,  cur_mo_n))
-    qtr_days = _bdays_to(as_of_date, _period_end('quarterly', cur_qtr_y, cur_qtr_n))
-    mo_w     = _ramp_weight(mo_days, ramp_mo_begin, lead_mo)
-    qtr_w    = _ramp_weight(qtr_days, ramp_qtr_begin, lead_qtr)
+    qtr_now_pcts = _onehot(qtr_now.quad)
 
     # Outlook lookup map
     outlook_map = {
@@ -269,21 +397,11 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         log.info("derive_macronet: ref_quad_outlook is empty — skipping")
         return 0
 
-    # All monthly rows that have distribution data (for per-month score array)
-    all_monthly = session.execute(text(
-        "SELECT year, period_num, quad, label,"
-        " quad1_pct, quad2_pct, quad3_pct, quad4_pct"
-        " FROM ref_quad_periods WHERE period_type='monthly'"
-        " AND (quad1_pct IS NOT NULL OR quad2_pct IS NOT NULL"
-        "   OR quad3_pct IS NOT NULL OR quad4_pct IS NOT NULL)"
-        " ORDER BY year, period_num"
-    )).fetchall()
-    _all_monthly_pcts = [_norm_pcts(p) for p in all_monthly]
-
-    # Load symbols with fundamentals via drv_ma view
+    # Load symbols with fundamentals + technical-direction fields via drv_ma
     sym_rows = session.execute(text("""
         SELECT tos_symbol, sector, asset_class,
-               beta, pe_ratio, eps, div_yield, market_cap_str, rsi
+               beta, pe_ratio, eps, div_yield, market_cap_str, rsi,
+               last_price, sma_50
         FROM drv_ma
         WHERE as_of_date = :d
     """), {'d': as_of_date}).fetchall()
@@ -299,16 +417,61 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
                               r.rsi, r.market_cap_str, sector)
         )
 
-        mo_now_net  = _membership_net(memberships, outlook_map, mo_now_pcts)
-        mo_next_net = _membership_net(memberships, outlook_map, mo_next_pcts)
-        qtr_now_net  = _membership_net(memberships, outlook_map, qtr_now_pcts)
-        qtr_next_net = _membership_net(memberships, outlook_map, qtr_next_pcts)
+        # Per-month stances for every month in the window (§2)
+        stance_by_month = {
+            ym: _membership_net(memberships, outlook_map, pcts_by_month[ym])
+            for ym, _w in weighted
+        }
+        M_window = sum(w * stance_by_month[ym] for ym, w in weighted)
 
-        M = (1 - mo_w) * mo_now_net + mo_w * mo_next_net
-        Q = (1 - qtr_w) * qtr_now_net + qtr_w * qtr_next_net
-        macronet = wt_mo * M + wt_qtr * Q
+        Qtr = _membership_net(memberships, outlook_map, qtr_now_pcts)
 
-        # Per-month scores for all available periods (sparkline data)
+        macronet = round((1.0 - q) * M_window + q * Qtr, 4)
+
+        near, far = near_far_split(weighted, stance_by_month)
+        vocab, override_tag = to_action(macronet, near, far, thr_bm, thr_bs, thr_stm, thr_sa)
+
+        # Technical direction: sign(last_price - sma_50) — simplest existing
+        # trend field already exposed via drv_ma at this point in the derive
+        # cascade (drv_actionable/trig_action don't exist yet here). See
+        # docs/quad_design.md / DEV_HANDOFF for the choice rationale.
+        tech_dir = None
+        try:
+            if r.last_price is not None and r.sma_50 not in (None, 0):
+                tech_dir = float(r.last_price) - float(r.sma_50)
+        except (TypeError, ValueError):
+            tech_dir = None
+        tracking = tracking_tag(tech_dir, weighted, stance_by_month, quad_by_month)
+
+        eff_frac = build_effective_distribution(weighted, pcts_by_month)
+        eff_pct = {f"q{i+1}": round(eff_frac[i] * 100, 1) for i in range(4)}
+
+        months_detail = [
+            {
+                "m": _month_key_label(ym),
+                "quad": quad_by_month.get(ym),
+                "w": round(w, 4),
+                "stance": round(stance_by_month[ym], 4),
+            }
+            for ym, w in weighted
+        ]
+
+        detail = {
+            "h": h,
+            "coverage_pct": coverage_pct,
+            "fallback": fallback,
+            "months": months_detail,
+            "eff": eff_pct,
+            "near_vs_far": {
+                "near": round(near, 4) if near is not None else None,
+                "far": round(far, 4) if far is not None else None,
+                "override": override_tag,
+            },
+            "tracking": tracking,
+        }
+
+        # Per-month scores for all available periods (sparkline data) —
+        # unchanged, still Stage 1-2 stance vs each individual month.
         monthly_scores = []
         for p, pcts in zip(all_monthly, _all_monthly_pcts):
             net_m = _membership_net(memberships, outlook_map, pcts)
@@ -330,17 +493,18 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         out.append({
             'as_of_date':    as_of_date,
             'tos_symbol':    r.tos_symbol,
-            'month_now_net': round(mo_now_net, 4),
-            'month_next_net': round(mo_next_net, 4),
-            'month_weight':  round(mo_w, 4),
-            'monthly_score': round(M, 4),
-            'qtr_now_net':   round(qtr_now_net, 4),
-            'qtr_next_net':  round(qtr_next_net, 4),
-            'qtr_weight':    round(qtr_w, 4),
-            'quarterly_score': round(Q, 4),
-            'macronet':           round(macronet, 4),
-            'macro_action':       to_action(macronet, M, Q),
+            'month_now_net': None,
+            'month_next_net': None,
+            'month_weight':  None,
+            'monthly_score': round(M_window, 4),
+            'qtr_now_net':   round(Qtr, 4),
+            'qtr_next_net':  None,
+            'qtr_weight':    None,
+            'quarterly_score': round(Qtr, 4),
+            'macronet':           macronet,
+            'macro_action':       vocab,
             'monthly_scores_json': json.dumps(monthly_scores),
+            'detail':             json.dumps(detail),
         })
 
     if not out:
@@ -354,13 +518,14 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
           (as_of_date, tos_symbol, month_now_net, month_next_net,
            month_weight, monthly_score, qtr_now_net, qtr_next_net,
            qtr_weight, quarterly_score, macronet, macro_action,
-           monthly_scores_json)
+           monthly_scores_json, detail)
         VALUES
           (:as_of_date, :tos_symbol, :month_now_net, :month_next_net,
            :month_weight, :monthly_score, :qtr_now_net, :qtr_next_net,
            :qtr_weight, :quarterly_score, :macronet, :macro_action,
-           :monthly_scores_json)
+           :monthly_scores_json, :detail)
     """), out)
     session.commit()
-    log.info("derive_macronet: %d symbols scored for %s", len(out), as_of_date)
+    log.info("derive_macronet: %d symbols scored for %s (window h=%d, coverage=%.1f%%)",
+              len(out), as_of_date, h, coverage_pct)
     return len(out)

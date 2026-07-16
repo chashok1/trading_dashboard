@@ -114,6 +114,11 @@
       color: #fff;
       border-color: #16a34a;
     }
+    #multiSymBtn.active {
+      background: #1f7af2;
+      color: #fff;
+      border-color: #1f7af2;
+    }
 
     .src-reasons { margin-top: 0; }
     .src-reason-line { display:flex; align-items:baseline; gap:2px; line-height:1.25;
@@ -213,6 +218,18 @@
     .source-pop td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; word-break: break-word; }
     .source-pop .sp-sec { color: #94a3b8; font-size: 9px;
                           text-transform: uppercase; letter-spacing: 0.5px; padding-top: 5px; }
+    /* PVV hover tooltip: 5-column table (label + Signal/Price/Volume/Vol) --
+       the shared .k/.v rule above has zero horizontal gap between .v cells,
+       fine for a 2-col key/value layout but cramped once there are 4 value
+       columns side by side. Fixed layout keeps every row's columns aligned,
+       including the differently-shaped 3m row (px/sma50 · sma50/200 · ivp). */
+    .source-pop table.pvv-tbl { table-layout: fixed; min-width: 300px; }
+    .source-pop table.pvv-tbl td { padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .source-pop table.pvv-tbl col.pvv-col-k { width: 15%; }
+    .source-pop table.pvv-tbl col.pvv-col-v { width: 21.25%; }
+    .source-pop table.pvv-tbl td.v { padding-left: 8px; }
+    .source-pop table.pvv-tbl tr.pvv-hdr td.v { color: #94a3b8; font-size: 9px; font-weight: 700;
+                          text-transform: uppercase; letter-spacing: 0.3px; }
     /* .badge-action and .badge-action-* removed — superseded by .act-badge in styles.css */
 
     .pill {
@@ -710,7 +727,14 @@
           <label style="font-size:11px; color:var(--text-2,#666); margin-right:2px; white-space:nowrap;">Acct</label>
           <select id="accountFilter" style="max-width:8em;"><option value="">All</option></select>
           <!-- Symbol search -->
-          <input type="text" id="symbolSearch" placeholder="Symbol…" style="padding:3px 8px; border:1px solid var(--border); border-radius:4px; font-size:11px; width:80px;">
+          <input type="text" id="symbolSearch" placeholder="Symbol…" style="padding:3px 8px; border:1px solid var(--border); border-radius:4px; font-size:11px; width:64px;">
+          <!-- Multi-symbol filter -->
+          <button id="multiSymBtn" class="btn-icon btn-icon-sm" data-tip="Filter Symbols" title="Filter by multiple symbols (comma-separated)">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+              <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+            </svg>
+          </button>
           <!-- Bull Prob filter (TASK_66) -->
           <label style="font-size:11px; color:var(--text-2,#666); white-space:nowrap;" title="P(↑20d) minimum — only show rows where bull_prob ≥ this value. 0 = show all.">P(↑20d) ≥</label>
           <input type="number" id="bullProbFilter" min="0" max="1" step="0.05" value="0"
@@ -854,6 +878,7 @@
               <th data-col="rules" style="max-width:340px;">Rules (edge)</th>
               <th data-col="bullprob" class="num sortable" data-key="bull_prob" data-type="num" title="Bull Prob: P(up 20d) from calibrated logistic model (TASK_66). Sortable — rank by probability. Agreement badge = share of signals pointing bullish." style="width:72px;">P(↑20d)</th>
               <th data-col="agree" class="sortable" data-key="agreement_class" data-type="str" title="Agreement class (TASK_69): agree_bull / agree_bear / split_tech_bull / split_tech_bear / neutral — bull_prob direction vs consolidated action direction." style="width:100px;">Agree</th>
+              <th data-col="pvv" class="sortable" data-key="_pvv_rank" data-type="num" title="PVV: Price/Volume/Volatility ROC signal in 4 time buckets (Today/5d/3w/3m), consolidated into one decision. Informational only — not part of consolidated_action. Hover for per-bucket detail." style="width:64px;">PVV</th>
               <th data-col="act">Act</th>
             </tr>
           </thead>
@@ -1038,6 +1063,7 @@
   <div id="sourcePop" class="source-pop"></div>
   <div id="colMenuPop" class="source-pop" style="display:none; pointer-events:auto;"></div>
   <div id="legendPop" class="source-pop" style="display:none; pointer-events:auto; max-width:420px;"></div>
+  <div id="multiSymPop" class="source-pop" style="display:none; pointer-events:auto;"></div>
 
   </main>
 

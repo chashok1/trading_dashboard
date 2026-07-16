@@ -3293,6 +3293,14 @@ def derive_all(session: Session, as_of_date: date,
     counts["drv_fundamentals"] = _safe("drv_fundamentals", derive_fundamentals)
     counts["drv_outlooks"]     = _safe("drv_outlooks",     derive_outlooks)
     counts["drv_portfolio"]    = _safe("drv_portfolio",    derive_portfolio)
+    # drv_pvv (TASK_125): Price/Volume/Volatility multi-bucket signal +
+    # consolidated decision. Informational v1 — not wired into
+    # consolidated_action. Needs drv_technicals (vlm_projected/SMAs), so runs
+    # after the component tables and before drv_dash. See docs/pvv_logic.md.
+    def _drv_pvv_runner(session, as_of_date, parent_run_id=None):
+        from etl.derive_pvv import derive_pvv
+        return derive_pvv(session, as_of_date, parent_run_id)
+    counts["drv_pvv"] = _safe("drv_pvv", _drv_pvv_runner)
     # Surface any daily-EOD source (TOSL/TOSD/TOSW/Y) missing at export_date = D
     # on the dashboard / actionable toolbars. Non-fatal; derivation still ran.
     try:
