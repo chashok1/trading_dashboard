@@ -1567,6 +1567,7 @@ def load_401k_contributions(session: Session, csv_path: str, source_file: str) -
     Returns (rows_read, rows_inserted, rows_skipped_as_duplicates).
     """
     import csv
+    import html
     import re
 
     def _parse_num(s) -> float | None:
@@ -1600,9 +1601,12 @@ def load_401k_contributions(session: Session, csv_path: str, source_file: str) -
 
     plan_name = None
     for ln in lines[:5]:
-        m = re.match(r"^\s*Plan\s*name\s*:?\s*(.+?)\s*$", ln, re.IGNORECASE)
+        # Label is followed by ':', then a field delimiter (comma or tab —
+        # this line is itself a CSV/TSV row like "Plan name:,BOEING 401(K)"),
+        # then the value. Strip both, not just whitespace.
+        m = re.match(r"^\s*Plan\s*name\s*:?\s*[,\t]?\s*(.+?)\s*$", ln, re.IGNORECASE)
         if m:
-            plan_name = m.group(1).strip()
+            plan_name = html.unescape(m.group(1).strip())
             break
 
     header_idx = next(
@@ -1643,8 +1647,8 @@ def load_401k_contributions(session: Session, csv_path: str, source_file: str) -
             "plan_name":        to_text(plan_name or ""),
             "account_number":   account_number,
             "trade_date":       _parse_date_mdy(date_val),
-            "investment":       to_text(row.get("Investment") or ""),
-            "transaction_type": to_text(row.get("Transaction Type") or ""),
+            "investment":       to_text(html.unescape((row.get("Investment") or "").strip())),
+            "transaction_type": to_text(html.unescape((row.get("Transaction Type") or "").strip())),
             "amount":           _parse_num(row.get("Amount")),
             "shares":           _parse_num(row.get("Shares/Unit")),
             "source_file":      source_file,
