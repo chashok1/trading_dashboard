@@ -356,6 +356,28 @@ CREATE TABLE IF NOT EXISTS ref_account_baseline (
 );
 
 -- -----------------------------------------------------
+-- ref_account_cashflow — manually-recorded external cash flows (deposits/
+-- withdrawals), for accounts where we have no automated transaction/transfer
+-- feed to detect these (Schwab's hist_cst doesn't capture deposits/
+-- transfers, only trades — same gap documented for hist_401k_contrib).
+-- Positive amount = deposit, negative = withdrawal. `account` matches
+-- hist_cs.account directly (CS) or hist_f.account_number (F) — the same key
+-- convention used elsewhere for this account/source pair.
+-- 2026-07-18: added Designated_Bene_Individual ...254 (C2) $2,500 deposit
+-- 2025-01-23, the account's stated starting amount (predates all tracked
+-- hist_cs snapshots, which begin 2025-09-26).
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS ref_account_cashflow (
+    source        TEXT    NOT NULL,        -- 'CS' or 'F'
+    account       TEXT    NOT NULL,
+    flow_date     DATE    NOT NULL,
+    amount        NUMERIC NOT NULL,
+    note          TEXT,
+    created_at    TIMESTAMP NOT NULL DEFAULT now(),
+    PRIMARY KEY (source, account, flow_date, amount)
+);
+
+-- -----------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS ref_param (
 
