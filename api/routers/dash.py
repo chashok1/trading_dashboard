@@ -3452,6 +3452,15 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
         baseline_overrides = s.execute(text(
             "SELECT account_number, as_of_date, total_value FROM ref_account_baseline"
         )).mappings().all()
+        # Labels whose ONLY YTD baseline is the manual override (no real
+        # hist_f/hist_cs snapshot before ytd_start at all). For these, we have
+        # zero verified visibility before the baseline date — Fidelity's own
+        # cost_basis_total reflects the true account-lifetime cost basis
+        # (years of contributions we've never seen), but showing a separate
+        # "lifetime Total Gain" next to YTD would compare a number we can't
+        # verify against one we can. Collapse Total Gain to equal YTD for
+        # these accounts (see per-account loop below).
+        manual_baseline_only_labels: set = set()
         for r in baseline_overrides:
             label = s.execute(text("""
                 SELECT COALESCE(hist_f.account_name, hist_f.account_number)
@@ -3469,6 +3478,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
             # would show a "MTD" figure actually spanning many months.
             if r["as_of_date"] < ytd_start and label not in ytd_total_acct:
                 ytd_total_acct[label] = float(r["total_value"])
+                manual_baseline_only_labels.add(label)
 
         # Contributions since each baseline date (hist_401k_contrib), netted
         # out of the Total-delta below — Total(end)-Total(start) otherwise
@@ -3614,6 +3624,15 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
         mtd_gain = (tot - mtd_total_acct[r["account"]] - mtd_contrib_acct.get(r["account"], 0)) \
             if r["account"] in mtd_total_acct else None
 
+        # For accounts with NO real snapshot before ytd_start (only a manual
+        # ref_account_baseline estimate), we have zero verified visibility
+        # before that date. Fidelity's own cost_basis_total reflects the true
+        # account-lifetime cost basis (years of contributions we've never
+        # seen) — showing a separate "lifetime Total Gain" next to YTD would
+        # compare a number we can't verify against one we can. Collapse
+        # Total Gain to equal YTD for these accounts.
+        display_gain = ytd_gain if r["account"] in manual_baseline_only_labels else sgd
+
         dcd = float(r["day_change_dollar"] or 0)
         rtd = float(r["realized_today_dollar"] or 0)
         d2["by_account"].append({
@@ -3625,11 +3644,11 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
             "today_gain_pct":      (tgd / tgp_denom * 100) if tgp_denom else None,
             "day_change_dollar":   dcd,
             "realized_today_dollar": rtd,
-            "total_gain_dollar":   sgd,
+            "total_gain_dollar":   display_gain,
             # gain$ / current cost basis — same simplified convention as the
             # global "Total Gain %" tile above (not a money-weighted return;
             # cost basis can shift within a period from buys/sells).
-            "total_gain_pct":      (sgd / cb * 100) if cb else None,
+            "total_gain_pct":      (display_gain / cb * 100) if (cb and display_gain is not None) else None,
             "ytd_gain_dollar":     ytd_gain,
             "ytd_gain_pct":        (ytd_gain / cb * 100) if (cb and ytd_gain is not None) else None,
             "mtd_gain_dollar":     mtd_gain,
@@ -3646,6 +3665,15 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
     # if its entire current value were gained this period.
     d2["ytd_gain_dollar"] = sum(a["ytd_gain_dollar"] for a in d2["by_account"] if a["ytd_gain_dollar"] is not None)
     d2["mtd_gain_dollar"] = sum(a["mtd_gain_dollar"] for a in d2["by_account"] if a["mtd_gain_dollar"] is not None)
+    # Global Total Gain = sum of the (possibly YTD-collapsed) per-account
+    # figures above, for consistency with accounts like Boeing 401(k) where
+    # the raw lifetime figure isn't something we can verify (see
+    # manual_baseline_only_labels above). global_cb is recomputed from d2's
+    # original value rather than reusing the loop-local `cb` (shadowed by the
+    # per-account variable of the same name above).
+    global_cb = float(d2.get("cost_basis") or 0)
+    d2["total_gain_dollar"] = sum(a["total_gain_dollar"] for a in d2["by_account"])
+    d2["total_gain_pct"] = (d2["total_gain_dollar"] / global_cb * 100) if global_cb else None
     return d2
 
 
