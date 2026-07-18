@@ -8,7 +8,9 @@ const state = {
   accountList: [],
   accountExpanded: false,
   summary: null,  // Cache summary response so filters can re-render tiles without re-fetching
+  groups: {},     // { groupName: [accountTag, ...] } from /api/portfolio/groups
   filters: {
+    group: '',
     source: '',
     account: '',
     consolidated: false,
@@ -422,6 +424,32 @@ function exportPositionsCsv() {
 
 // escapeHtml is provided by _common.js (window.escapeHtml).
 
+// ---- account groups (Group filter) ----
+// Fetches once on load: which accounts (by short_name/tag) belong to each
+// group, and which group should be pre-selected. Filtering itself happens
+// client-side against the tag, same as every other filter on this screen —
+// no backend query changes needed since account_tag is already on every row.
+async function loadGroups() {
+  try {
+    const resp = await fetchJson('/api/portfolio/groups');
+    state.groups = resp.groups || {};
+    const sel = $('groupFilter');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">All groups</option>';
+    for (const g of Object.keys(state.groups).sort()) {
+      const o = document.createElement('option');
+      o.value = g; o.textContent = g;
+      sel.appendChild(o);
+    }
+    if (resp.default && state.groups[resp.default]) {
+      state.filters.group = resp.default;
+      sel.value = resp.default;
+    }
+  } catch (e) {
+    console.warn('loadGroups failed:', e);
+  }
+}
+
 // ---- date picker ----
 async function loadDates() {
   try {
@@ -626,6 +654,8 @@ function updateKpiTiles() {
 
   const selectedAcct = state.filters.account;
   const selectedSrc  = state.filters.source;
+  const selectedGroup = state.filters.group;
+  const groupTags = selectedGroup ? (state.groups[selectedGroup] || []) : null;
 
   // Apply latestSummary override to the global before dispatching
   const s_eff = effectiveSummary(s);
@@ -653,11 +683,14 @@ function updateKpiTiles() {
     };
     const entry = (s.by_account || []).find(matchAcct);
     renderKpiTiles(entry || s);
-  } else if (selectedSrc) {
-    // Source selected but no specific account: aggregate all accounts for that source
-    const matching = (s.by_account || []).filter(a =>
-      (a.source || '').toUpperCase() === selectedSrc.toUpperCase()
-    );
+  } else if (selectedGroup || selectedSrc) {
+    // Group and/or source selected (no specific account): aggregate every
+    // by_account entry matching BOTH active filters.
+    const matching = (s.by_account || []).filter(a => {
+      if (groupTags && !groupTags.includes(a.account_tag)) return false;
+      if (selectedSrc && (a.source || '').toUpperCase() !== selectedSrc.toUpperCase()) return false;
+      return true;
+    });
     if (matching.length) {
       // Compute aggregate from by_account entries
       const agg = matching.reduce((acc, a) => {
@@ -718,8 +751,23 @@ async function loadSummary() {
     renderLimitChips(s);
     window.warnBadge?.clearPage();
 
-    // By-account breakdown table (always shows all accounts, independent of filters)
-    const byAcct = Array.isArray(s.by_account) ? s.by_account : [];
+    renderByAccountTable(s);
+  } catch (e) {
+    showStatus('Failed to load summary: ' + e.message, 'error');
+  }
+}
+
+// Renders the By-Account breakdown table from a cached/fresh summary object.
+// Split out from loadSummary() so the Group filter can re-render it without
+// an unnecessary re-fetch (nothing server-side changes when only the group
+// filter changes — state.summary already has every account's data).
+function renderByAccountTable(s) {
+    // Shows all accounts, except respects the Group filter (source/account
+    // filters are intentionally ignored here — this table's whole purpose
+    // is comparing across accounts).
+    const groupTagsForTable = state.filters.group ? (state.groups[state.filters.group] || []) : null;
+    const byAcct = (Array.isArray(s.by_account) ? s.by_account : [])
+      .filter(a => !groupTagsForTable || groupTagsForTable.includes(a.account_tag));
     const acctWrap = $('kpiByAccount');
     const acctBody = $('kpiByAccountBody');
     const acctToggle = $('acctToggle');
@@ -768,9 +816,6 @@ async function loadSummary() {
       acctWrap.style.display = 'none';
       acctToggle.style.display = 'none';
     }
-  } catch (e) {
-    showStatus('Failed to load summary: ' + e.message, 'error');
-  }
 }
 
 // ---- main portfolio load ----
@@ -797,8 +842,10 @@ async function loadPortfolio() {
 function refreshAccountFilter() {
   const sel = $('acctFilter');
   const cur = sel.value;
+  const groupTags = state.filters.group ? (state.groups[state.filters.group] || []) : null;
   const opts = new Set();
   for (const r of state.rows) {
+    if (groupTags && !groupTags.includes(r.account_tag)) continue;
     if (r.account && r.account !== 'ALL') opts.add(r.account);
   }
   sel.innerHTML = '<option value="">All</option>';
@@ -887,8 +934,10 @@ function buildAccountMap() {
 
 function applyClientFilter() {
   const q = (state.filters.search || '').toLowerCase().trim();
+  const groupTags = state.filters.group ? (state.groups[state.filters.group] || []) : null;
   state.filtered = state.rows.filter(r => {
     if (q && !(`${r.symbol || ''} ${r.description || ''}`).toLowerCase().includes(q)) return false;
+    if (groupTags && !groupTags.includes(r.account_tag)) return false;
     if (state.filters.account && r.account !== state.filters.account) return false;
     if (state.filters.limitStatus && r.limit_status !== state.filters.limitStatus) return false;
     return true;
@@ -1160,6 +1209,7 @@ function renderTimeline(legs, actions, recs) {
 console.log('Portfolio.js loaded');
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('DOMContentLoaded fired');
+  await loadGroups();   // sets state.filters.group to the default BEFORE the first load
   await loadDates();
 
   $('datePicker').addEventListener('change', async (e) => {
@@ -1172,6 +1222,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadTrends();
   });
 
+  $('groupFilter').addEventListener('change', e => {
+    state.filters.group = e.target.value;
+    state.filters.account = '';  // Reset account selection when group changes
+    refreshAccountFilter();
+    updateKpiTiles();
+    applyClientFilter();
+    if (state.summary) renderByAccountTable(state.summary);  // re-render, no re-fetch
+    loadTrends();
+  });
   $('srcFilter').addEventListener('change', e => {
     state.filters.source = e.target.value;
     state.filters.account = '';  // Reset account selection when source changes

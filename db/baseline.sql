@@ -334,6 +334,30 @@ CREATE TABLE IF NOT EXISTS ref_accounts (
     notes            TEXT
 );
 
+-- 2026-07-18: Portfolio screen account grouping (one group per account) —
+-- lets the screen default to one group's accounts and switch to others,
+-- instead of always aggregating everyone together.
+ALTER TABLE IF EXISTS ref_accounts ADD COLUMN IF NOT EXISTS group_name TEXT;
+
+INSERT INTO ref_accounts (account_number, source, group_name) VALUES
+    ('85911', 'F', 'A2')
+ON CONFLICT (account_number) DO UPDATE SET group_name = EXCLUDED.group_name;
+
+UPDATE ref_accounts SET group_name = v.grp
+  FROM (VALUES
+    ('Designated_Bene_Individual ...100', 'A1'),
+    ('Designated_Bene_Individual ...254', 'A4'),
+    ('Rollover_IRA ...892',               'A1'),
+    ('HSA_Brokerage ...311',              'A1'),
+    ('249118149',                         'A1'),
+    ('261408079',                         'A3')
+  ) AS v(account_number, grp)
+ WHERE ref_accounts.account_number = v.account_number;
+
+INSERT INTO ref_settings (setting_name, setting_value, description)
+VALUES ('default_portfolio_group', 'A1', 'Portfolio screen: account group shown by default on load')
+ON CONFLICT (setting_name) DO NOTHING;
+
 -- -----------------------------------------------------
 -- ref_account_baseline — manual Total-value overrides used as a YTD/MTD
 -- baseline fallback ONLY for accounts with no real hist_f/hist_cs snapshot
