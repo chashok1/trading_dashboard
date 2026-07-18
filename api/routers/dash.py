@@ -3101,8 +3101,67 @@ def get_portfolio_trends(
     sql = "SELECT d, acct, mv, cash, dc FROM (" + " UNION ALL ".join(unions) + \
           ") u ORDER BY d, acct"
 
+    # Catch-up adjustment for day_change/cumulative_pl: day_chng_dollar/
+    # today_gl_dollar only capture INCREMENTAL price movement while a
+    # position is held. Two gaps that leaves:
+    #   1. A position's gain/loss embedded BEFORE its first tracked date
+    #      (e.g. bought before :start, or before we started tracking at
+    #      all) is invisible — there's no "yesterday" to diff against.
+    #   2. When a position is later sold and disappears from the snapshots,
+    #      whatever unrealized gain/loss it was carrying vanishes from the
+    #      running sum entirely — never "realized" in this calculation.
+    # Fix: on each (account, symbol)'s FIRST tracked date within the window,
+    # add catchup = (market_value - cost_basis) - day_chng_dollar_that_day.
+    # Brokers already report day_chng_dollar = market_value - cost_basis on a
+    # position's TRUE purchase date (confirmed empirically: no prior-day
+    # baseline to diff against, so it shows the full gain-since-purchase as
+    # "today's change") — for those, this formula correctly adds $0, since
+    # day_chng already got it right. It's only nonzero when the position
+    # PREDATES our tracking window (day_chng that day is a normal price
+    # tick, not a purchase event) — exactly the gap that's otherwise
+    # invisible. This makes the running sum telescope correctly to
+    # market_value - cost_basis at ANY later date, without ever double-
+    # counting a broker-reported purchase-day gain.
+    catchup_unions = []
+    if inc_cs:
+        catchup_unions.append(f"""
+            SELECT hist_cs.snapshot_date AS d, hist_cs.account AS acct,
+                   SUM((COALESCE(hist_cs.market_value,0) - COALESCE(hist_cs.cost_basis,0))
+                       - COALESCE(hist_cs.day_chng_dollar,0)) AS catchup
+              FROM hist_cs
+              JOIN (
+                SELECT account, symbol, MIN(snapshot_date) AS first_date
+                  FROM hist_cs
+                 WHERE snapshot_date BETWEEN :start AND :end AND {CS_IS_NOT_CASH} {cs_acct_clause}
+                 GROUP BY account, symbol
+              ) fs ON fs.account = hist_cs.account AND fs.symbol = hist_cs.symbol
+                  AND fs.first_date = hist_cs.snapshot_date
+             GROUP BY hist_cs.snapshot_date, hist_cs.account
+        """)
+    if inc_f:
+        catchup_unions.append(f"""
+            SELECT hist_f.snapshot_date AS d, {f_acct_expr} AS acct,
+                   SUM((COALESCE(hist_f.current_value,0) - COALESCE(hist_f.cost_basis_total,0))
+                       - COALESCE(hist_f.today_gl_dollar,0)) AS catchup
+              FROM hist_f
+              LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+              JOIN (
+                SELECT hist_f.account_number, hist_f.symbol, MIN(hist_f.snapshot_date) AS first_date
+                  FROM hist_f
+                  LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+                 WHERE hist_f.snapshot_date BETWEEN :start AND :end AND {F_IS_NOT_CASH} {f_acct_clause}
+                 GROUP BY hist_f.account_number, hist_f.symbol
+              ) fs ON fs.account_number = hist_f.account_number AND fs.symbol = hist_f.symbol
+                  AND fs.first_date = hist_f.snapshot_date
+             GROUP BY hist_f.snapshot_date, hist_f.account_number, hist_f.account_name, ra.short_name
+        """)
+
     with session_scope() as s:
         rows = s.execute(text(sql), params).all()
+        catchup_rows = []
+        if catchup_unions:
+            catchup_sql = "SELECT d, acct, catchup FROM (" + " UNION ALL ".join(catchup_unions) + ") u"
+            catchup_rows = s.execute(text(catchup_sql), params).all()
 
     # Aggregate by date for the headline series, and build per-account series.
     # account_value/per_account represent Total (market value + cash), matching
@@ -3117,6 +3176,8 @@ def get_portfolio_trends(
         by_date[d]["dc"] += float(dc or 0)
         acct_series[acct][d] = total_value
         acct_dates[acct].add(d)
+    for d, acct, catchup in catchup_rows:
+        by_date[d]["dc"] += float(catchup or 0)
 
     dates_sorted = sorted(by_date.keys())
     account_value = [round(by_date[d]["mv"], 2) for d in dates_sorted]
