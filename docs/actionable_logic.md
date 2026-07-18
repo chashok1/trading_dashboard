@@ -31,9 +31,10 @@ Keep both diagrams in sync whenever this logic changes.
 
 ## Stage 1 — per-source action
 
-`ref_outlook_source` (6 active: RR, CALL, ETF, II, SSS, PS) drives the loop.
-`base_weight_method` selects the comparison window + classifier. Each source
-runs inside its own SAVEPOINT so one failure doesn't abort the rest.
+`ref_outlook_source` (8 active: RR, CALL, ETF, II, SSS, PS, RTA, RTAINFO)
+drives the loop. `base_weight_method` selects the comparison window +
+classifier. Each source runs inside its own SAVEPOINT so one failure
+doesn't abort the rest.
 
 | Source | Method | Cadence / window | Classifier | Notes |
 |---|---|---|---|---|
@@ -43,6 +44,8 @@ runs inside its own SAVEPOINT so one failure doesn't abort the rest.
 | CALL | outlook_modifier | Standing model — 30-day sparse window | `_action_call_standing` | see below |
 | PS | rank | Weekly, FRI anchor; lower rank number = better | `_action_rank` | |
 | SSS | rank_pct_delta | Weekly, MON anchor; driven by `pct_delta` | `_action_sss_pct_delta` | |
+| RTA | rta_alert | Event-based — 5-day sparse window, most recent alert wins | `_action_rta` (side='long') | Real-time trigger; see below |
+| RTAINFO | rta_alert | Event-based — 5-day sparse window, most recent alert wins | `_action_rta` (side='short') | Informational only; see below |
 
 ### Classifier rules
 
@@ -70,6 +73,33 @@ It never emits INCREASE / REDUCE / HOLD — only ADD, REMOVE, or silent.
   call is a standing ADD until acted on
 - no CALL row in the 30-day window → silent
 
+**`_action_rta`** (RTA / RTAINFO) — event-based classifier, not a standing
+list; each hist_rta row is itself a directive (Buy/Sell/Sell-SOME on
+`side='long'`, or Short/Cover/Cover-SOME on `side='short'`). Only the most
+recent non-corrected, non-superseded alert per symbol within the 5-day
+window is considered:
+
+- `side='long'` (source RTA — real trigger): Buy → INCREASE (held) / ADD
+  (not held); Sell → REMOVE if held, else silent; Sell-SOME → REDUCE if
+  held, else silent.
+- `side='short'` (source RTAINFO — Hedgeye's own short book; this
+  portfolio is long-only): always HOLD, tagged with sentiment direction
+  only (Sell = mild bearish, Cover/Cover-SOME = mild bullish). Never
+  produces ADD/REMOVE — RTAINFO sits at the bottom of `SOURCE_ORDER` so an
+  informational HOLD never masks a real signal from another source.
+
+**RTA bypasses the Technical gate on the buy side** (`_compute_final_call(...,
+bypass_technical=(winning_source=="RTA"))`, `etl/derive_actionable.py`). A
+Real-Time Alert is itself a live, same-day trigger — an ADD/INCREASE from RTA
+resolves straight to BMN/BM at `fc_confidence='high'` without requiring
+`rr_action` (Technical) to also confirm the entry, unlike every other source.
+Sells are unaffected: REMOVE still exits via the Technical-agnostic step-1
+gate (unchanged, pre-existing for all sources) and REDUCE still needs normal
+Technical confirmation. Trade Mode's client-side `rr_bull_bear==='B'` check
+(`web/actionable.js::_isTradeModeQualifyingBuy`) has the same RTA exemption,
+so an RTA-sourced BM/BMN can qualify for Trade Mode even when the deep-TA
+stack (`drv_tn_td_bb_rr.rr_bull_bear`) hasn't independently turned bullish.
+
 **`_action_rank`** (PS) — lower rank number is better:
 
 - new → ADD; dropped → REMOVE if held, else silent
@@ -91,8 +121,12 @@ Initial); analyst rank is display-only:
 rule groups (synthetic `RULES:<code>` candidates), compete via a
 **held/not-held branch**:
 
-- **Held symbol** — fixed `SOURCE_ORDER` (PS=1 · ETF=2 · RR=3 · SSS=4 · II=5 · CALL=6).
-  The highest-precedence source present sets the headline, whatever its action.
+- **Held symbol** — fixed `SOURCE_ORDER` (RTA=1 · PS=2 · ETF=3 · RR=4 · SSS=5 ·
+  II=6 · CALL=7 · RTAINFO=8). The highest-precedence source present sets the
+  headline, whatever its action. RTA (same-day real-time trigger) ranks
+  highest deliberately; RTAINFO (informational short-book sentiment, always
+  HOLD) ranks lowest so it can only "win" when no other source fired that
+  day — it never buries a real signal.
 - **Not-held symbol** — the most-recently-updated source wins (recency of
   `source_snapshot_date`); ties on date break by `SOURCE_ORDER`.
 

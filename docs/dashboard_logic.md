@@ -193,13 +193,26 @@ the endpoint with `latest_prices=true` vs. `false`.
 across Fidelity (`hist_f`) and Schwab (`hist_cs`) using
 `MAX(snapshot_date) <= D` for each source.
 
+**Pending Activity.** Fidelity exports now include a `Pending activity` row
+per account (unsettled trades/transfers in transit) alongside real positions
+in `hist_f`. It carries a dollar amount (positive or negative) in
+`current_value` but no ticker/qty. `is_cash()` (`db/baseline.sql`) and
+`F_IS_CASH` (`api/routers/dash.py`) match it case-insensitively (Fidelity's
+own casing varies) and fold it into the Cash bucket — same pattern as
+`SPAXX**` and Schwab's `Cash & Cash Investments` — so Total (`market_value +
+cash_value`) always reconciles to Market + Cash with no separate bucket or
+adjustment needed.
+
 Additional decorations applied server-side after the base UNION:
 - `sector` from `drv_dash` (latest as_of_date <= D)
 - `consolidated_action`, `winning_source`, `suggested_target_dollar`, `in_my_list`
   from `drv_actionable` (latest as_of_date <= D)
 - `ytd_gain_dollar`, `mtd_gain_dollar` (total_gain_dollar minus the baseline at
   Jan 1 / 1st-of-month snapshots)
-- `pct_of_tp` = `market_value / ref_param['Tot Amt'] * 100`
+- `pct_of_tp` = `market_value / tot_amt * 100`, where `tot_amt` is the live
+  sum of everything imported for date D (`SUM(hist_f.current_value)` +
+  `SUM(hist_cs.market_value)`, both including cash rows) — not a stored
+  parameter, so it always tracks the actual portfolio size at that date.
 - Position-limit decoration from `ref_asset_allocation` (category resolved via
   `hist_ps.asset_class` for PS winner, `hist_etf.asset_class` for ETF/ETFCHG
   winner, or `ref_outlook_source.position_category` otherwise): `limit_min`,

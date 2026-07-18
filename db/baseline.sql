@@ -1568,6 +1568,21 @@ CREATE INDEX IF NOT EXISTS ix_hist_ft_sym  ON hist_ft(symbol, trade_date);
 
 CREATE INDEX IF NOT EXISTS ix_hist_ft_kind ON hist_ft(action_kind, trade_date);
 
+-- 2026-07-18: hist_ft's natural-key dedup constraint keyed on `account`
+-- (raw Fidelity text — "Rollover IRA" from one export, "249118149" from
+-- another, for the SAME physical account), so the same trade loaded from two
+-- overlapping Fidelity export files ("Accounts_History" vs
+-- "History_for_Account_*") wasn't recognized as a duplicate and both copies
+-- were inserted (188 duplicated trades found + removed, keeping the earliest
+-- load of each). account_number is reliably populated and consistent across
+-- exports — re-key the dedup constraint on that instead so this can't
+-- recur. (The live table's PK was previously migrated to a surrogate `id`
+-- BIGSERIAL with this as a plain UNIQUE constraint; DROP/CREATE here is
+-- idempotent regardless of what the constraint was named.)
+ALTER TABLE IF EXISTS hist_ft DROP CONSTRAINT IF EXISTS uq_hist_f_transactions_natural;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_hist_ft_natural_key
+    ON hist_ft (account_number, trade_date, action, symbol, quantity, price);
+
 
 
 -- -----------------------------------------------------
@@ -4546,6 +4561,18 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS ix_drv_realized_gain_tos_sym ON drv_realized_gain(tos_symbol, sell_date);
 
+-- 2026-07-18: restore the natural-key unique constraint on drv_realized_gain
+-- lost when `symbol` was renamed to `tos_symbol` (the DROP COLUMN ... CASCADE
+-- above dropped the original PRIMARY KEY along with it; only a plain index
+-- was ever recreated). derive_realized_gain()'s INSERT ... ON CONFLICT
+-- (source, account, tos_symbol, sell_date, shares_sold) requires a matching
+-- unique index/constraint to target — without one, every insert has failed
+-- with "no unique or exclusion constraint matching the ON CONFLICT
+-- specification", which is why this table has been silently empty (0 rows)
+-- since the rename.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_drv_realized_gain_natural_key
+    ON drv_realized_gain (source, account, tos_symbol, sell_date, shares_sold);
+
 CREATE INDEX IF NOT EXISTS ix_drv_td_tos_symbol         ON drv_td(tos_symbol, snapshot_date);
 
 CREATE INDEX IF NOT EXISTS ix_drv_tw_tos_symbol         ON drv_tw(tos_symbol, snapshot_date);
@@ -6068,6 +6095,7 @@ CREATE OR REPLACE FUNCTION is_cash(
 LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
     SELECT (
         COALESCE(p_symbol, '') = 'SPAXX**'
+        OR UPPER(COALESCE(p_symbol, '')) = 'PENDING ACTIVITY'
         OR UPPER(COALESCE(p_description, '')) LIKE '%HELD IN MONEY MARKET%'
         OR COALESCE(p_symbol, '') = 'Cash & Cash Investments'
         OR COALESCE(p_security_type, '') = 'Cash and Money Market'

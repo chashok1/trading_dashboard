@@ -157,15 +157,19 @@ def update_run_progress(session: Session, run_id: int, rows_inserted: int, rows_
 # =============================================================================
 
 def _get_raw_value(raw_row: dict, primary_col: str, alternatives: list[str] | None = None) -> str | None:
-    """Try to get a value from raw_row, trying alternatives if primary is not found."""
-    val = raw_row.get(primary_col)
-    if val is not None:
-        return val
-    if alternatives:
-        for alt_col in alternatives:
-            val = raw_row.get(alt_col)
-            if val is not None:
-                return val
+    """Try to get a value from raw_row, trying alternatives if primary is not found.
+    Falls back to a case-insensitive match so a source export switching e.g.
+    "Account Number" -> "Account number" doesn't silently drop every row."""
+    candidates = [primary_col] + (alternatives or [])
+    for col in candidates:
+        val = raw_row.get(col)
+        if val is not None:
+            return val
+    ci_row = {k.strip().lower(): v for k, v in raw_row.items() if isinstance(k, str)}
+    for col in candidates:
+        val = ci_row.get(col.strip().lower())
+        if val is not None:
+            return val
     return None
 
 
@@ -177,10 +181,17 @@ def _row_to_record(raw_row: dict, mapping: dict, source_file: str) -> tuple[Opti
     rec: dict = {}
     cols = mapping["columns"]
 
+    # Source exports occasionally drift header casing between runs (e.g. a
+    # provider switching "Account Number" -> "Account number"); fall back to
+    # a case-insensitive match so that alone doesn't silently skip every row.
+    ci_row = {k.strip().lower(): v for k, v in raw_row.items() if isinstance(k, str)}
+
     # Apply column mappings (later columns of same db_name override earlier;
     # works for the duplicate-headers cases since the right-most has the value).
     for excel_name, db_name, caster in cols:
         v = raw_row.get(excel_name)
+        if v is None:
+            v = ci_row.get(excel_name.strip().lower())
         if caster is not None:
             v = caster(v)
         if v is not None:

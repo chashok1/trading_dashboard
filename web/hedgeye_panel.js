@@ -296,7 +296,11 @@
         '<span style="font-weight:700; color:' + color + '; font-size:9px;">' + label + '</span> ' +
         arr.map(function (c) {
           var sc = c.side === 'long' ? '#1d9e75' : '#d4537e';
-          return '<span style="color:' + sc + ';">' + symLink(c.sym) + '</span>';
+          var titleHtml = etf.date
+            ? esc(etf.date) + ' &middot; etf_changes &middot; ' + esc(c.sym)
+            : esc(c.sym);
+          var t = c.desc ? ' data-hetip="' + _richTip(_popBox(titleHtml, c.desc)) + '"' : '';
+          return '<span' + t + ' style="color:' + sc + ';">' + symLink(c.sym) + '</span>';
         }).join(' ') + '</div>';
     };
     return line('ADD', adds, '#1d9e75') + line('REM', removes, '#c0392b');

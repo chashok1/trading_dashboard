@@ -242,6 +242,18 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                     if t not in commentary_by_sym:
                         commentary_by_sym[t] = _strip_name_prefix(note_text)
 
+            # Fallback: symbols with no separate commentary paragraph today
+            # (e.g. only covered in the Top-5 write-up) still get their
+            # Top-5 rationale text as the tooltip, instead of nothing.
+            top5_note_rows = s.execute(text(
+                "SELECT tickers, note_text FROM note_repo"
+                " WHERE source_type='the_call_top5' AND note_date = :cd"
+            ), {"cd": call_date}).fetchall()
+            for tickers, note_text in top5_note_rows:
+                for t in (tickers or []):
+                    if t not in commentary_by_sym:
+                        commentary_by_sym[t] = _strip_name_prefix(note_text)
+
             out["positions"] = {
                 "date": call_date.isoformat(),
                 "received_at": _recv_by_type(s, "the_call", call_date),
@@ -267,7 +279,7 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
         ), {"eff": effective_date}).scalar()
         if etf_date is not None:
             etf_rows = s.execute(text(
-                "SELECT COALESCE(tos_symbol,symbol) sym, outlook, change_str"
+                "SELECT COALESCE(tos_symbol,symbol) sym, outlook, change_str, description"
                 " FROM hist_etfchg WHERE event_date = :ed"
                 " ORDER BY change_str, sym"
             ), {"ed": etf_date}).fetchall()
@@ -275,7 +287,7 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                 "date": etf_date.isoformat(),
                 "received_at": _recv_by_type(s, "etf_changes", etf_date),
                 "changes": [
-                    {"sym": r[0], "side": r[1], "action": r[2]}
+                    {"sym": r[0], "side": r[1], "action": r[2], "desc": r[3]}
                     for r in etf_rows
                 ],
             }

@@ -19,7 +19,12 @@ from etl._derive_common import position_ceiling
 log = logging.getLogger("etl.derive_actionable")
 
 ACTION_RANK  = {"REMOVE": 4, "REDUCE": 3, "INCREASE": 2, "ADD": 1, "HOLD": 0}
-SOURCE_ORDER = {"PS": 1, "ETF": 2, "RR": 3, "SSS": 4, "II": 5, "CALL": 6}
+# RTA (long-book, same-day trigger) ranks highest — a real-time alert on a
+# held position should always headline over a standing weekly/monthly list.
+# RTAINFO (short-book, informational-only HOLD) ranks lowest so it never
+# masks a real signal from another source.
+SOURCE_ORDER = {"RTA": 1, "PS": 2, "ETF": 3, "RR": 4, "SSS": 5, "II": 6,
+                "CALL": 7, "RTAINFO": 8}
 
 # Final-call strength scale (mirrors JS _FC_SCALE in actionable.js).
 _FC_SCALE: dict[str, int] = {
@@ -65,8 +70,16 @@ def _compute_final_call(
     current_position_dollar: float,
     target_max_dollar: Optional[float],
     stop_breached: bool = False,
+    bypass_technical: bool = False,
 ) -> dict:
     """Python port of JS finalCall() in web/actionable.js.
+
+    bypass_technical (winning_source == 'RTA'): a Real-Time Alert is itself
+    a live, same-day trigger — it doesn't need Technical (rr_action) to also
+    confirm the entry point the way a standing weekly/monthly source does.
+    Only applies to the buy side (src_is_buy); RTA sells still go through
+    REMOVE's existing Technical-agnostic exit gate (step 1) or REDUCE's
+    normal Technical-confirmation path, unchanged.
 
     Returns dict with keys: final_action, final_code, final_side,
     fc_strength, fc_confidence, fc_feasible.
@@ -146,6 +159,21 @@ def _compute_final_call(
     fc_side: str
     fc_strength: int
     confidence: str
+
+    # ── RTA bypass: a live trigger resolves the buy on its own, no Technical
+    # confirmation required. Only reached when src_is_buy (sells are exempt).
+    if bypass_technical and src_is_buy:
+        if not is_held and src_is_add:
+            fc_lbl, fc_code, fc_side = _action_display("BMN")
+            fc_strength = _FC_SCALE.get("BMN", 2)
+        else:
+            buy_code = "BM" if ca in ("BM", "INCREASE", "BS") else "BS"
+            fc_lbl, fc_code, fc_side = _action_display(buy_code)
+            fc_strength = _FC_SCALE.get(buy_code, 2)
+        return {
+            "final_action": fc_lbl, "final_code": fc_code, "final_side": fc_side,
+            "fc_strength": fc_strength, "fc_confidence": "high", "fc_feasible": True,
+        }
 
     if tech_is_sell:
         if not is_held:
@@ -854,6 +882,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             current_position_dollar=held_dollar,
             target_max_dollar=target_max,
             stop_breached=stop_breached,
+            bypass_technical=(winning_source == "RTA"),
         )
         # priority_rank mirrors JS _computePriority: seq * 1e6 + |amt|.
         # amt = suggested - held for buys; held for sells; 0 otherwise.

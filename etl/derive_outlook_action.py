@@ -708,6 +708,56 @@ def _action_call_standing(current_w, prior_diff_w,
     return "ADD", f"CALL standing weight {cw:+g}"
 
 
+_RTA_WEIGHT = {
+    ("long", "buy"): 1.0,
+    ("long", "sell"): -1.0,
+    ("long", "sell-some"): -0.5,
+    ("short", "sell"): -0.25,        # new short init — informational, mild bearish
+    ("short", "cover"): 0.25,        # full cover — informational, mild bullish
+    ("short", "cover-some"): 0.15,   # partial cover — informational, mild bullish
+}
+
+
+def _action_rta(side: Optional[str], kind: Optional[str],
+                held: bool) -> tuple[Optional[str], str]:
+    """RTA (Real-Time Alert) classifier — event-based, not a standing list.
+
+    side='long' — the actual (long-only) book: a real, same-day trigger.
+      Buy       -> INCREASE (held) / ADD (not held)
+      Sell      -> REMOVE if held, else silent (nothing to sell)
+      Sell-SOME -> REDUCE if held, else silent
+
+    side='short' — Hedgeye's own short book. This portfolio is long-only,
+    so these can never be a buy/sell trigger here — always HOLD, tagged
+    with the sentiment direction for display only. Filed under source_code
+    RTAINFO, which sits at the bottom of SOURCE_ORDER so it never masks a
+    real signal from another source.
+      Sell (new short)   -> HOLD, mild bearish
+      Cover / Cover-SOME -> HOLD, mild bullish
+    """
+    k = (kind or "").strip().lower()
+    if side == "long":
+        if k == "buy":
+            return ("INCREASE" if held else "ADD"), \
+                   f"RTA Buy signal{' (held)' if held else ', establishing'}"
+        if k == "sell":
+            if held:
+                return "REMOVE", "RTA Sell signal (full exit)"
+            return None, "RTA Sell signal, not held"
+        if k == "sell-some":
+            if held:
+                return "REDUCE", "RTA Sell-SOME signal (partial)"
+            return None, "RTA Sell-SOME signal, not held"
+        return None, f"unrecognized RTA long-side kind {kind!r}"
+    if side == "short":
+        if k == "sell":
+            return "HOLD", "RTA Short signal (short book) — informational, mild bearish"
+        if k in ("cover", "cover-some"):
+            return "HOLD", f"RTA {kind} signal (short book) — informational, mild bullish"
+        return None, f"unrecognized RTA short-side kind {kind!r}"
+    return None, "unrecognized RTA side"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Main derive function
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1084,6 +1134,63 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                     for row in batch:
                         session.execute(insert_sql, row)
                     total_rows += len(batch)
+
+            elif method == "rta_alert":
+                # RTA (Real-Time Alert) — sparse, event-based (one row per
+                # alert, not a periodic snapshot). RTA (side='long') and
+                # RTAINFO (side='short') are two ref_outlook_source rows
+                # over the same hist_rta table, split by side. Window =
+                # lookback_days calendar days; the most recent
+                # non-corrected, non-superseded alert per symbol wins.
+                side_filter = "long" if sc == "RTA" else "short"
+                lb = int(s.get("lookback_days") or 5)
+                # On the LIVE anchor, ceiling is real "today" so an RTA alert
+                # that landed intraday (before today's TOSD/EOD load has
+                # advanced the anchor) is still visible same-day — RTA's
+                # whole point is a live trigger, not a next-derive surprise.
+                # On a historical re-derive as_of_date < anchor, so this stays
+                # as_of_date and no look-ahead is introduced. Same pattern as
+                # position_ceiling() for F/CS carry-forward.
+                rta_ceil = position_ceiling(session, as_of_date)
+                rta_rows = session.execute(text(f"""
+                    WITH ranked AS (
+                        SELECT COALESCE(tos_symbol, symbol) AS sym,
+                               side, signal_kind, alert_ts, snapshot_date,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY COALESCE(tos_symbol, symbol)
+                                   ORDER BY alert_ts DESC
+                               ) AS rk
+                          FROM hist_rta
+                         WHERE snapshot_date <= '{rta_ceil}'
+                           AND snapshot_date >= ('{as_of_date}'::date - ('{lb}' || ' days')::interval)::date
+                           AND side = '{side_filter}'
+                           AND is_correction = FALSE
+                           AND superseded = FALSE
+                           AND COALESCE(tos_symbol, symbol) IS NOT NULL
+                    )
+                    SELECT sym, side, signal_kind, alert_ts, snapshot_date
+                      FROM ranked WHERE rk = 1
+                """)).fetchall()
+
+                rta_batch = []
+                for rsym, rside, rkind, ralert_ts, rsnap in rta_rows:
+                    rheld = rsym in holdings
+                    ract, rreason = _action_rta(rside, rkind, rheld)
+                    if ract is None:
+                        continue
+                    rweight = _RTA_WEIGHT.get((rside, (rkind or "").strip().lower()), 0)
+                    rta_batch.append({
+                        "d": as_of_date, "sym": rsym, "sc": sc,
+                        "base": rweight, "prev": None, "prev_d": None,
+                        "delta": None, "held": rheld, "act": ract,
+                        "reason": rreason, "cat": category, "rid": run_id,
+                        "analyst_rank": None,
+                        "source_snap": rsnap,
+                    })
+                for rrow in rta_batch:
+                    session.execute(insert_sql, rrow)
+                total_rows += len(rta_batch)
+
             else:
                 log.warning("unknown base_weight_method for %s: %s", sc, method)
             session.execute(text("RELEASE SAVEPOINT sp_source"))

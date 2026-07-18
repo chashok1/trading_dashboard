@@ -446,12 +446,21 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         eff_frac = build_effective_distribution(weighted, pcts_by_month)
         eff_pct = {f"q{i+1}": round(eff_frac[i] * 100, 1) for i in range(4)}
 
+        # Per-month agreement flag (same sign-comparison tracking_tag() uses
+        # internally, but exposed for every month in the window instead of
+        # just the first match) -- lets the UI show a checkmark/x per month
+        # rather than only naming the single nearest confirming one.
+        # None = no technical direction to compare against at all (not a
+        # disagreement, just nothing to check); True/False = that month's
+        # stance does/doesn't share the technical direction's sign.
+        tdir_sign = _sign(tech_dir)
         months_detail = [
             {
                 "m": _month_key_label(ym),
                 "quad": quad_by_month.get(ym),
                 "w": round(w, 4),
                 "stance": round(stance_by_month[ym], 4),
+                "agrees": (_sign(stance_by_month[ym]) == tdir_sign) if tdir_sign != 0 else None,
             }
             for ym, w in weighted
         ]

@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 
 from etl.db import session_scope
+from etl.derive_macro import _classify_style, _STANCE
 
 from api.models import (
     DashRow, DashSummary, StksRow, SymbolHistoryRow,
@@ -34,9 +35,21 @@ from api._helpers import _resolve_date
 # parameter placeholder.
 F_IS_CASH = """(
     COALESCE(symbol,'') = 'SPAXX**'
+    OR UPPER(COALESCE(symbol,'')) = 'PENDING ACTIVITY'
     OR UPPER(COALESCE(description,'')) LIKE '%HELD IN MONEY MARKET%'
 )"""
 F_IS_NOT_CASH = "NOT " + F_IS_CASH
+
+# Fidelity's own export leaves total_gl_dollar/total_gl_pct blank ('--') for
+# some lots even though current_value/cost_basis_total are populated (seen on
+# recently-adjusted lots). Backfill from those two columns wherever Fidelity
+# doesn't provide a confident number, so Tot $/Tot % aren't blank when we
+# could compute them ourselves.
+F_TOTAL_GAIN_DOLLAR = "COALESCE(total_gl_dollar, current_value - cost_basis_total)"
+F_TOTAL_GAIN_PCT = """COALESCE(total_gl_pct,
+    CASE WHEN cost_basis_total IS NOT NULL AND cost_basis_total <> 0
+         THEN (current_value - cost_basis_total) / cost_basis_total * 100
+    END)"""
 
 CS_IS_CASH = """(
     COALESCE(symbol,'') = 'Cash & Cash Investments'
@@ -463,10 +476,8 @@ def _build_macro_engine(d):
     # top-level quarterly stance: "Asset Class" → "Equities" per quad col
     _qtr_top: dict[str, int] = {}  # "quad1"..4 → stance (+1/0/-1)
 
-    # style/fund lookups (set inside try; defaults here guard against early raise)
-    _style_lookup: dict[str, dict[str, str | None]] = {}
+    # fund lookup (set inside try; default here guards against early raise)
     _fund: dict[str, dict] = {}
-    _vehicle: dict[str, str] = {}  # ref_sector.ticker (upper) -> vehicle_type
 
     # Tunable params — new naming (TASK_74 Phase 1).
     # Legacy names (macro_N_m, macro_N_q, macro_wm_max, macro_wq_max,
@@ -616,29 +627,17 @@ def _build_macro_engine(d):
                 _qtr_top[_qk] = _STANCE.get(
                     (_eq_row.get(_qk) or "").strip().lower(), 0)
 
-            # Load style outlook (Equity Style block)
-            for qr in _qrows:
-                if qr["category"] == "Equity Style":
-                    _style_lookup[(qr["sub_category"] or "").lower()] = {
-                        "quad1": qr["quad1"], "quad2": qr["quad2"],
-                        "quad3": qr["quad3"], "quad4": qr["quad4"],
-                    }
-
-            # Load fundamentals for style classification
+            # Load fundamentals for style classification -- from drv_ma (not
+            # drv_fundamentals directly) so this matches exactly what
+            # etl/derive_macro.py::_derive_macro_impl queries, since the
+            # style tags below are computed via that module's own
+            # _classify_style() (same inputs in -> same tags out).
             _fund_rows = _qs.execute(text(
-                "SELECT tos_symbol, market_cap_str, beta, pe_ratio, eps, div_yield"
-                " FROM drv_fundamentals WHERE as_of_date = :d"
+                "SELECT tos_symbol, market_cap_str, beta, pe_ratio, eps, div_yield, rsi"
+                " FROM drv_ma WHERE as_of_date = :d"
             ), {"d": d}).mappings().all()
             for fr in _fund_rows:
                 _fund[fr["tos_symbol"]] = dict(fr)
-
-            # Vehicle type (Stock vs ETF/ETN/CEF/...) — gates which style
-            # factors are meaningful (see _resolve_memberships is_etf below).
-            for vr in _qs.execute(text(
-                "SELECT ticker, vehicle_type FROM ref_sector"
-            )).mappings().all():
-                if vr["ticker"] and vr["vehicle_type"]:
-                    _vehicle[vr["ticker"].upper()] = vr["vehicle_type"]
 
     except Exception as _exc:
         import logging
@@ -757,57 +756,30 @@ def _build_macro_engine(d):
             _add(f"asset={rac}", "Asset Class", rac,
                  ("Asset Class", ac_key), 1.0)
 
-        # ── Style-factor classification (Phase 2) ───────────────────────────
+        # ── Style-factor classification ──────────────────────────────────────
+        # Delegates to etl.derive_macro._classify_style -- the exact same
+        # function _derive_macro_impl uses to compute the real
+        # quarterly_score/monthly_score -- so this tooltip's Category
+        # Drivers / Quarter breakdown always reconciles with the numbers
+        # shown in the MacroNet formula. Previously this was a hand-rolled
+        # duplicate that had silently drifted from it: different beta
+        # threshold (>1.3 vs >=1.5), a conflicting label for high P/E
+        # ("Momentum" here vs "Secular" in the real derive), an RSI-based
+        # Momentum tag the real derive has and this never did, an ETF/AUM
+        # size-tag exclusion the real derive doesn't apply, and no
+        # Cyclical/Defensive sector tag at all -- any symbol picking up one
+        # of those differences would show a tooltip Score that didn't match
+        # its real quarterly_score/monthly_score (found via a user report
+        # on LQD, 2026-07-16).
         fund = _fund.get(sym, {})
-        beta_v = float(fund["beta"])  if fund.get("beta")     is not None else None
-        pe_v   = float(fund["pe_ratio"]) if fund.get("pe_ratio") is not None else None
+        beta_v = float(fund["beta"])      if fund.get("beta")      is not None else None
+        pe_v   = float(fund["pe_ratio"])  if fund.get("pe_ratio")  is not None else None
         dy_v   = float(fund["div_yield"]) if fund.get("div_yield") is not None else None
+        rsi_v  = float(fund["rsi"])       if fund.get("rsi")       is not None else None
+        mc_v   = fund.get("market_cap_str")
 
-        def _parse_cap(s):
-            if not s:
-                return None
-            s = str(s).replace(",", "").strip()
-            if s.endswith(" M"):
-                try: return float(s[:-2]) * 1e6
-                except ValueError: return None
-            try: return float(s)
-            except ValueError: return None
-
-        cap_v = _parse_cap(fund.get("market_cap_str"))
-
-        # ETFs/ETNs/CEFs: "market cap" in drv_fundamentals is really AUM/net
-        # assets (no relation to company size), and P/E only means anything
-        # as a holdings-weighted average across the basket — not computed
-        # here. Size and Value/Momentum tags are suppressed for these vehicles;
-        # Beta and Dividend Yield are real fund-level stats and stay eligible.
-        is_etf = (_vehicle.get(sym.upper()) or "").upper().startswith("ETF")
-
-        def _style(sub: str) -> None:
-            row = _style_lookup.get(sub.lower())
-            if row:
-                memberships.append({
-                    "label": f"style={sub}", "category": "Equity Style",
-                    "sub_cat": sub, "weight": 0.5,
-                    "quad1": row["quad1"], "quad2": row["quad2"],
-                    "quad3": row["quad3"], "quad4": row["quad4"],
-                    "_match": "style",
-                })
-
-        if not is_etf and cap_v is not None and cap_v > 0:
-            if   cap_v >= 10e9: _style("Secular")
-            elif cap_v >= 2e9:  _style("Mid Caps")
-            else:               _style("Small Caps")
-
-        if beta_v is not None:
-            if   beta_v > 1.3: _style("High Beta")
-            elif beta_v < 0.7: _style("Low Beta")
-
-        if dy_v is not None and dy_v > 1.5:
-            _style("Dividend")
-
-        if not is_etf and pe_v is not None and pe_v > 0:
-            if   pe_v < 15:  _style("Value")
-            elif pe_v > 30:  _style("Momentum")
+        for cat, sub, wt in _classify_style(beta_v, pe_v, dy_v, rsi_v, mc_v, sec):
+            _add(f"style={sub}", cat, sub, (cat, sub.lower()), wt)
 
         return memberships
 
@@ -956,6 +928,16 @@ def _build_macro_engine(d):
                     "nxt_outlook": out_nxt,
                     "qtr_outlook": out_qtr,
                     "stance": _outlook_stance(out_cur),
+                    # Full quad1..4 outlook texts (not just the single
+                    # nearest-month/qtr reads above) -- lets callers recompute
+                    # a per-window-month breakdown without re-resolving the
+                    # asset-class alias (mb["sub_cat"] is a display label,
+                    # e.g. "Domestic Fixed Income", that only matches
+                    # ref_quad_outlook after _AC_ALIAS translation -- these
+                    # texts are already resolved through that, so re-lookup
+                    # by sub_cat elsewhere would silently miss).
+                    "quad1": mb.get("quad1"), "quad2": mb.get("quad2"),
+                    "quad3": mb.get("quad3"), "quad4": mb.get("quad4"),
                 })
 
             detail = {
@@ -1342,6 +1324,51 @@ def get_actionable_macro_detail(
         except (TypeError, ValueError):
             q = 0.05
         detail["a"], detail["b"] = q, round(1.0 - q, 4)
+
+        # Per-membership x per-window-month breakdown -- same _membership_net
+        # math as the real derive (etl/derive_macro.py), exposed per
+        # membership instead of only pre-summed, so the Category Drivers
+        # table can show its own work and reconcile exactly to
+        # window.months[].stance. Reuses detail["memberships"]'s quad1..4
+        # fields (already resolved via _classify_style + the asset-class
+        # alias table above) rather than re-looking those up by sub_cat,
+        # which would miss on display-aliased categories like Asset Class.
+        wmonths = window.get("months") or []
+        mem_list = detail.get("memberships") or []
+        if wmonths and mem_list:
+            with session_scope() as s2:
+                _period_rows = s2.execute(text(
+                    "SELECT year, period_num, quad1_pct, quad2_pct, quad3_pct, quad4_pct"
+                    " FROM ref_quad_periods WHERE period_type='monthly'"
+                )).mappings().all()
+            _pcts_by_key: dict[str, list[float]] = {}
+            for p in _period_rows:
+                vals = [float(p[f"quad{i+1}_pct"] or 0) for i in range(4)]
+                tot = sum(vals) or 1.0
+                _pcts_by_key[f"{p['year']:04d}-{p['period_num']:02d}"] = [v / tot for v in vals]
+
+            rows_out = []
+            for m in mem_list:
+                texts = [m.get("quad1"), m.get("quad2"), m.get("quad3"), m.get("quad4")]
+                wt = m.get("weight") or 0
+                cells = []
+                for wm in wmonths:
+                    pcts = _pcts_by_key.get(wm.get("m"))
+                    if any(t is not None for t in texts) and pcts:
+                        stance_val = sum(pcts[i] * _STANCE.get((texts[i] or "").strip(), 0)
+                                          for i in range(4))
+                        cells.append(round(wt * stance_val, 4))
+                    else:
+                        cells.append(None)
+                rows_out.append({
+                    "label": m.get("label"), "category": m.get("category"),
+                    "sub_cat": m.get("sub_cat"), "weight": wt, "cells": cells,
+                })
+            detail["month_breakdown"] = {
+                "months": [wm.get("m") for wm in wmonths],
+                "rows": rows_out,
+            }
+
         howto = _window_howto(ms_row["macro_action"], window)
     else:
         howto = macro.get("macro_howto")
@@ -2207,11 +2234,16 @@ def get_portfolio(
     parts = []
     params: dict = {"d": d}
     if src_f:
-        parts.append("""
+        parts.append(f"""
+          (
+          -- Real positions (one row per symbol, as exported)
           SELECT
             'F'                                       AS source,
-            COALESCE(account_name, account_number)    AS account,
-            account_number                            AS account_id,
+            COALESCE(hist_f.account_name, hist_f.account_number)
+              || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
+                                                        AS account,
+            hist_f.account_number                     AS account_id,
+            ra.short_name                              AS account_tag,
             tos_symbol                                AS symbol,
             description,
             type                                      AS security_type,
@@ -2221,15 +2253,58 @@ def get_portfolio(
             current_value                             AS market_value,
             today_gl_dollar                           AS today_gain_dollar,
             today_gl_pct                              AS today_gain_pct,
-            total_gl_dollar                           AS total_gain_dollar,
-            total_gl_pct                              AS total_gain_pct,
+            {F_TOTAL_GAIN_DOLLAR}                     AS total_gain_dollar,
+            {F_TOTAL_GAIN_PCT}                        AS total_gain_pct,
             cost_basis_total                          AS cost_basis,
             pct_of_account,
             snapshot_date,
-            is_cash(tos_symbol, type, description)    AS is_cash
+            FALSE                                     AS is_cash
           FROM hist_f
+          LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
           WHERE TRUE
             AND snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+            AND NOT is_cash(tos_symbol, type, description)
+          )
+          UNION ALL
+          (
+          -- Cash rows (SPAXX + Pending activity) merged into one CASH line per
+          -- account. Fidelity exports these as separate rows whose own
+          -- "Percent of account" only covers that one row (e.g. SPAXX alone);
+          -- pct_of_account here is recomputed on the combined cash amount so
+          -- it (and the downstream % of TP) reflects total cash, not just SPAXX.
+          SELECT
+            'F'                                       AS source,
+            COALESCE(hist_f.account_name, hist_f.account_number)
+              || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
+                                                        AS account,
+            hist_f.account_number                     AS account_id,
+            ra.short_name                              AS account_tag,
+            'CASH'                                    AS symbol,
+            'SPAXX + Pending Activity (combined)'     AS description,
+            'Cash'                                    AS security_type,
+            NULL::NUMERIC                             AS qty,
+            NULL::NUMERIC                             AS avg_cost,
+            NULL::NUMERIC                             AS last_price,
+            SUM(current_value)                        AS market_value,
+            NULL::NUMERIC                             AS today_gain_dollar,
+            NULL::NUMERIC                             AS today_gain_pct,
+            NULL::NUMERIC                             AS total_gain_dollar,
+            NULL::NUMERIC                             AS total_gain_pct,
+            NULL::NUMERIC                             AS cost_basis,
+            (SUM(current_value) / NULLIF((
+                SELECT SUM(h2.current_value) FROM hist_f h2
+                WHERE h2.account_number = hist_f.account_number
+                  AND h2.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+            ), 0) * 100)                               AS pct_of_account,
+            MAX(snapshot_date)                        AS snapshot_date,
+            TRUE                                      AS is_cash
+          FROM hist_f
+          LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+          WHERE TRUE
+            AND snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+            AND is_cash(tos_symbol, type, description)
+          GROUP BY hist_f.account_number, hist_f.account_name, ra.short_name
+          )
         """)
     if src_cs:
         parts.append("""
@@ -2239,6 +2314,7 @@ def get_portfolio(
             'CS'                                      AS source,
             c.account                                   AS account,
             c.account                                   AS account_id,
+            ra.short_name                               AS account_tag,
             c.tos_symbol                                AS symbol,
             c.description,
             c.security_type,
@@ -2255,6 +2331,7 @@ def get_portfolio(
             c.snapshot_date,
             is_cash(c.tos_symbol, c.security_type, c.description) AS is_cash
           FROM hist_cs c
+          LEFT JOIN ref_accounts ra ON ra.account_number = c.account
           LEFT JOIN drv_cs_realized_gain rg
                ON rg.account = c.account
               AND rg.tos_symbol = c.tos_symbol
@@ -2269,6 +2346,7 @@ def get_portfolio(
             'CS'                                      AS source,
             rg.account                                  AS account,
             rg.account                                  AS account_id,
+            ra.short_name                               AS account_tag,
             rg.tos_symbol                              AS symbol,
             NULL::TEXT                                AS description,
             NULL::TEXT                                AS security_type,
@@ -2285,6 +2363,7 @@ def get_portfolio(
             (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)  AS snapshot_date,
             FALSE                                     AS is_cash
           FROM drv_cs_realized_gain rg
+          LEFT JOIN ref_accounts ra ON ra.account_number = rg.account
           WHERE rg.as_of_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
             AND NOT EXISTS (
               SELECT 1 FROM hist_cs c
@@ -2481,11 +2560,16 @@ def get_portfolio(
                 **_build_gain_map("hist_cs", "snapshot_date", mtd_cs, "symbol", "account",         "gain_dollar",     "CS"),
             }
 
-            # Fetch Tot Amt parameter for % of TP calculation
+            # Tot Amt for % of TP: live total of everything actually imported
+            # (hist_f + hist_cs, including cash rows) as of date d, rather than
+            # a hand-maintained ref_param that drifts from the real portfolio size.
             tot_amt_row = s.execute(text("""
-                SELECT CAST(value AS NUMERIC) FROM ref_param
-                WHERE sheet = '_param' AND param_name = 'Tot Amt'
-            """)).scalar()
+                SELECT
+                    COALESCE((SELECT SUM(current_value) FROM hist_f
+                               WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)), 0)
+                  + COALESCE((SELECT SUM(market_value) FROM hist_cs
+                               WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)), 0)
+            """), {"d": d}).scalar()
             tot_amt = float(tot_amt_row) if tot_amt_row else None
 
             for r in out:
@@ -2748,7 +2832,12 @@ def get_portfolio_accounts(
         # Union of every account known anywhere
         sql = """
             SELECT DISTINCT account, source FROM (
-              SELECT COALESCE(account_name, account_number) AS account, 'F'  AS source FROM hist_f
+              SELECT COALESCE(hf.account_name, hf.account_number)
+                       || COALESCE(' (' || ra.short_name || ')', ' (' || hf.account_number || ')')
+                                                      AS account,
+                     'F'                              AS source
+                FROM hist_f hf
+                LEFT JOIN ref_accounts ra ON ra.account_number = hf.account_number
               UNION  SELECT account, 'CS'    FROM hist_cs
               UNION  SELECT COALESCE(account, account_number) AS account, 'F'     FROM hist_ft
               UNION  SELECT account, 'CS'    FROM hist_cst
@@ -2877,9 +2966,13 @@ def get_portfolio_snapshot_status():
         ),
         f AS (
           SELECT 'F' AS source,
-                 COALESCE(account_name, account_number) AS account,
+                 COALESCE(hist_f.account_name, hist_f.account_number)
+                   || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
+                                                        AS account,
                  MAX(snapshot_date) AS last_snapshot
-          FROM hist_f GROUP BY COALESCE(account_name, account_number)
+          FROM hist_f
+          LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+          GROUP BY hist_f.account_number, hist_f.account_name, ra.short_name
         )
         SELECT source, account, last_snapshot,
                (CURRENT_DATE - last_snapshot) AS days_stale
@@ -2922,16 +3015,26 @@ def get_portfolio_trends(
 
     Returns time-series arrays suitable for Chart.js:
       - dates[]            -- one entry per snapshot date in window
-      - account_value[]    -- total market value (held positions) per date
-      - day_change[]       -- daily P&L per date
+      - account_value[]    -- Total (market value + cash) per date, matching
+                               the "Total" figure in the Account Value card header
+      - day_change[]       -- daily P&L per date (held positions only, excludes cash)
       - cumulative_pl[]    -- running sum of day_change
-      - per_account[acct]  -- per-account market value series for sparklines
+      - per_account[acct]  -- per-account Total (market value + cash) series for sparklines
 
     Period maps to a start-date relative to today:
       mtd = 1st of current month, ytd = Jan 1, 1y = 365 days back, 5y = 5*365 back
     """
     from datetime import datetime as _dt, timedelta as _td
     today = _dt.now().date()
+    # Cap the query's upper date bound at the derive anchor (D = MAX(export_date)
+    # FROM hist_td), not literal calendar "today". Sources carry-forward to the
+    # anchor at different times (e.g. Schwab may have an intraday snapshot for a
+    # date Fidelity hasn't loaded yet) — including a date beyond the anchor lets
+    # in a partial, single-source snapshot that reads as a bogus one-day plunge
+    # in the chart. See docs/derive_date_logic.md.
+    with session_scope() as s:
+        anchor = s.execute(text("SELECT MAX(as_of_date) FROM v_available_dates")).scalar()
+    end = min(today, anchor) if anchor else today
     if period == "ytd":
         start = today.replace(month=1, day=1)
     elif period == "1y":
@@ -2951,12 +3054,21 @@ def get_portfolio_trends(
     inc_cs = src_u in ("", "CS")
     inc_f  = src_u in ("", "F")
 
-    params: dict = {"start": start, "end": today}
+    params: dict = {"start": start, "end": end}
     if account:
         params["acct"] = account
 
+    # F account labels are disambiguated with a " (F2)"/" (F3)" suffix (see
+    # /api/portfolio) because account_name alone collides across Fidelity
+    # accounts. The filter/grouping expression here must match that exact
+    # string, otherwise selecting a disambiguated account from the dropdown
+    # returns zero rows.
+    f_acct_expr = (
+        "COALESCE(hist_f.account_name, hist_f.account_number) "
+        "|| COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')"
+    )
     cs_acct_clause = " AND account = :acct" if account else ""
-    f_acct_clause  = " AND COALESCE(account_name, account_number) = :acct" if account else ""
+    f_acct_clause  = f" AND ({f_acct_expr}) = :acct" if account else ""
 
     unions = []
     if inc_cs:
@@ -2964,6 +3076,7 @@ def get_portfolio_trends(
             SELECT snapshot_date AS d,
                    account       AS acct,
                    SUM(CASE WHEN {CS_IS_NOT_CASH} THEN market_value ELSE 0 END)        AS mv,
+                   SUM(CASE WHEN {CS_IS_CASH}     THEN market_value ELSE 0 END)        AS cash,
                    SUM(CASE WHEN {CS_IS_NOT_CASH} THEN COALESCE(day_chng_dollar,0) ELSE 0 END) AS dc
               FROM hist_cs
              WHERE snapshot_date BETWEEN :start AND :end {cs_acct_clause}
@@ -2972,32 +3085,37 @@ def get_portfolio_trends(
     if inc_f:
         unions.append(f"""
             SELECT snapshot_date AS d,
-                   COALESCE(account_name, account_number) AS acct,
+                   {f_acct_expr} AS acct,
                    SUM(CASE WHEN {F_IS_NOT_CASH} THEN current_value ELSE 0 END)    AS mv,
+                   SUM(CASE WHEN {F_IS_CASH}     THEN current_value ELSE 0 END)    AS cash,
                    SUM(CASE WHEN {F_IS_NOT_CASH} THEN today_gl_dollar  ELSE 0 END) AS dc
               FROM hist_f
+              LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
              WHERE snapshot_date BETWEEN :start AND :end {f_acct_clause}
-             GROUP BY snapshot_date, COALESCE(account_name, account_number)
+             GROUP BY snapshot_date, hist_f.account_number, hist_f.account_name, ra.short_name
         """)
     if not unions:
         return {"dates": [], "account_value": [], "day_change": [],
                 "cumulative_pl": [], "per_account": {}}
 
-    sql = "SELECT d, acct, mv, dc FROM (" + " UNION ALL ".join(unions) + \
+    sql = "SELECT d, acct, mv, cash, dc FROM (" + " UNION ALL ".join(unions) + \
           ") u ORDER BY d, acct"
 
     with session_scope() as s:
         rows = s.execute(text(sql), params).all()
 
     # Aggregate by date for the headline series, and build per-account series.
+    # account_value/per_account represent Total (market value + cash), matching
+    # the "Total" figure in the Account Value card header — not market value alone.
     from collections import defaultdict
     by_date: dict = defaultdict(lambda: {"mv": 0.0, "dc": 0.0})
     acct_dates: dict = defaultdict(set)
-    acct_series: dict = defaultdict(dict)   # acct -> {date: mv}
-    for d, acct, mv, dc in rows:
-        by_date[d]["mv"] += float(mv or 0)
+    acct_series: dict = defaultdict(dict)   # acct -> {date: total_value}
+    for d, acct, mv, cash, dc in rows:
+        total_value = float(mv or 0) + float(cash or 0)
+        by_date[d]["mv"] += total_value
         by_date[d]["dc"] += float(dc or 0)
-        acct_series[acct][d] = float(mv or 0)
+        acct_series[acct][d] = total_value
         acct_dates[acct].add(d)
 
     dates_sorted = sorted(by_date.keys())
@@ -3024,7 +3142,7 @@ def get_portfolio_trends(
     return {
         "period":        period,
         "start":         start.isoformat(),
-        "end":           today.isoformat(),
+        "end":           end.isoformat(),
         "dates":         [d.isoformat() for d in dates_sorted],
         "account_value": account_value,
         "day_change":    day_change,
@@ -3084,7 +3202,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                      CASE WHEN {F_IS_NOT_CASH} THEN today_gl_dollar ELSE 0 END AS tg,
                      CASE WHEN {F_IS_NOT_CASH} THEN today_gl_dollar ELSE 0 END AS dc,
                      0::NUMERIC AS rt,
-                     CASE WHEN {F_IS_NOT_CASH} THEN total_gl_dollar ELSE 0 END AS sg,
+                     CASE WHEN {F_IS_NOT_CASH} THEN {F_TOTAL_GAIN_DOLLAR} ELSE 0 END AS sg,
                      CASE WHEN {F_IS_NOT_CASH} THEN cost_basis_total ELSE 0 END AS cb,
                      CASE WHEN {F_IS_NOT_CASH} THEN 1 ELSE 0 END AS leg_count,
                      CASE WHEN {F_IS_CASH} THEN current_value ELSE 0 END AS cash_mv
@@ -3138,18 +3256,22 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
         acct_rows = list(s.execute(text(f"""
             WITH f_accts AS (
               SELECT 'F' AS source,
-                     COALESCE(account_name, account_number) AS account,
+                     COALESCE(hist_f.account_name, hist_f.account_number)
+                       || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
+                                                                          AS account,
+                     ra.short_name AS account_tag,
                      SUM(CASE WHEN {F_IS_NOT_CASH} THEN current_value ELSE 0 END) AS market_value,
                      SUM(CASE WHEN {F_IS_NOT_CASH} THEN today_gl_dollar ELSE 0 END) AS today_gain_dollar,
                      SUM(CASE WHEN {F_IS_NOT_CASH} THEN today_gl_dollar ELSE 0 END) AS day_change_dollar,
                      0::NUMERIC AS realized_today_dollar,
-                     SUM(CASE WHEN {F_IS_NOT_CASH} THEN total_gl_dollar ELSE 0 END) AS total_gain_dollar,
+                     SUM(CASE WHEN {F_IS_NOT_CASH} THEN {F_TOTAL_GAIN_DOLLAR} ELSE 0 END) AS total_gain_dollar,
                      SUM(CASE WHEN {F_IS_NOT_CASH} THEN cost_basis_total ELSE 0 END) AS cost_basis,
                      COUNT(DISTINCT CASE WHEN {F_IS_NOT_CASH} THEN symbol END) AS positions,
                      SUM(CASE WHEN {F_IS_CASH} THEN current_value ELSE 0 END) AS cash_value
               FROM hist_f
+              LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
               WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
-              GROUP BY COALESCE(account_name, account_number)
+              GROUP BY hist_f.account_number, hist_f.account_name, ra.short_name
             ),
             latest_cs AS (
               SELECT MAX(snapshot_date) AS d FROM hist_cs WHERE snapshot_date <= :d
@@ -3195,6 +3317,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
             cs_accts AS (
               SELECT 'CS' AS source,
                      c.account,
+                     ra.short_name AS account_tag,
                      SUM(CASE WHEN {CS_IS_NOT_CASH_C} THEN c.market_value ELSE 0 END) AS market_value,
                      -- Schwab-style Today's Gain per account (day_chng + sold-intraday + DIV/INT)
                      SUM(CASE WHEN {CS_IS_NOT_CASH_C}
@@ -3213,6 +3336,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                      COUNT(DISTINCT CASE WHEN {CS_IS_NOT_CASH_C} THEN c.symbol END) AS positions,
                      SUM(CASE WHEN {CS_IS_CASH_C} THEN c.market_value ELSE 0 END) AS cash_value
               FROM hist_cs c
+              LEFT JOIN ref_accounts ra ON ra.account_number = c.account
               LEFT JOIN drv_cs_realized_gain rg
                    ON rg.account = c.account
                   AND rg.tos_symbol = c.tos_symbol
@@ -3221,7 +3345,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
               LEFT JOIN cs_div_int   di ON di.account = c.account
               LEFT JOIN cs_realized_by_acct rt2 ON rt2.account = c.account
               WHERE c.snapshot_date = (SELECT d FROM latest_cs)
-              GROUP BY c.account
+              GROUP BY c.account, ra.short_name
             )
             SELECT * FROM f_accts
             UNION ALL
@@ -3229,68 +3353,106 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
             ORDER BY source, account
         """), {"d": d}).mappings().all())
 
-        # YTD/MTD per-account baselines
-        ytd_cs_acct = {}
-        mtd_cs_acct = {}
+        # YTD/MTD per-account baselines: Total (market value + cash), ALL rows
+        # at the baseline snapshot — NOT a gain$ delta. Comparing Total(today)
+        # to Total(baseline) captures the true change in account value,
+        # including any trading activity in between, without needing FIFO
+        # transaction matching (buys/sells net to zero in Total; only the
+        # ending mark-to-market matters). See discussion 2026-07-18: the old
+        # gain$-delta approach silently missed realized P&L from positions
+        # fully turned over within the period (bought AND sold, never
+        # appearing in either snapshot); FIFO realized-gain matching fixes
+        # that but requires trusting hist_ft/hist_cst transaction-history
+        # completeness, which has proven unreliable (found + fixed 3 separate
+        # data-integrity bugs there this session) — Total-delta needs neither.
+        # CAVEAT: this assumes no deposits/withdrawals during the period. A
+        # deposit will read as a gain, a withdrawal as a loss. We have no
+        # reliable way to detect external cash flows in the current data
+        # (hist_ft/hist_cst don't distinguish deposits/transfers from trades
+        # for this dataset), so it's left as a known limitation.
+        ytd_total_acct = {}
+        mtd_total_acct = {}
+        # Same disambiguated account-label expression as f_accts above (must
+        # match exactly — it's the join key into ytd_total_acct/mtd_total_acct).
+        f_acct_expr_summary = (
+            "COALESCE(hist_f.account_name, hist_f.account_number) "
+            "|| COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')"
+        )
 
         # Get YTD baseline (last snapshot before Jan 1)
         ytd_snap = s.execute(text(
             "SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date < :s"
         ), {"s": ytd_start}).scalar()
         if ytd_snap:
-            ytd_rows = s.execute(text(f"""
-                SELECT account, COALESCE(SUM(gain_dollar),0) AS total_gain_dollar
+            ytd_rows = s.execute(text("""
+                SELECT account, COALESCE(SUM(market_value),0) AS total_value
                 FROM hist_cs
-                WHERE snapshot_date = :s AND {CS_IS_NOT_CASH}
+                WHERE snapshot_date = :s
                 GROUP BY account
             """), {"s": ytd_snap}).mappings().all()
             for r in ytd_rows:
-                ytd_cs_acct[r["account"]] = float(r["total_gain_dollar"] or 0)
+                ytd_total_acct[r["account"]] = float(r["total_value"] or 0)
 
         # Get MTD baseline (last snapshot before 1st of this month)
         mtd_snap = s.execute(text(
             "SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date < :s"
         ), {"s": mtd_start}).scalar()
         if mtd_snap:
-            mtd_rows = s.execute(text(f"""
-                SELECT account, COALESCE(SUM(gain_dollar),0) AS total_gain_dollar
+            mtd_rows = s.execute(text("""
+                SELECT account, COALESCE(SUM(market_value),0) AS total_value
                 FROM hist_cs
-                WHERE snapshot_date = :s AND {CS_IS_NOT_CASH}
+                WHERE snapshot_date = :s
                 GROUP BY account
             """), {"s": mtd_snap}).mappings().all()
             for r in mtd_rows:
-                mtd_cs_acct[r["account"]] = float(r["total_gain_dollar"] or 0)
+                mtd_total_acct[r["account"]] = float(r["total_value"] or 0)
 
-        # Global YTD/MTD (for KPI strip)
-        ytd_f = s.execute(text(
+        # Fidelity per-account YTD/MTD baselines. Keyed into the SAME dicts as
+        # CS above (disambiguated "Name (F2)" label matches r["account"] for F
+        # rows in acct_rows) so the single ytd_total_acct.get(r["account"])
+        # lookup below transparently covers both sources.
+        ytd_snap_f = s.execute(text(
             "SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date < :s"
         ), {"s": ytd_start}).scalar()
-        ytd_cs_global = s.execute(text(
-            "SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date < :s"
-        ), {"s": ytd_start}).scalar()
+        if ytd_snap_f:
+            ytd_rows_f = s.execute(text("""
+                SELECT COALESCE(hist_f.account_name, hist_f.account_number)
+                         || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
+                                                                          AS account,
+                       COALESCE(SUM(current_value),0) AS total_value
+                FROM hist_f
+                LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+                WHERE snapshot_date = :s
+                GROUP BY hist_f.account_number, hist_f.account_name, ra.short_name
+            """), {"s": ytd_snap_f}).mappings().all()
+            for r in ytd_rows_f:
+                ytd_total_acct[r["account"]] = float(r["total_value"] or 0)
 
-        def _gain_sum(tbl, date_col, snap):
-            if not snap:
-                return 0.0
-            gain_col = "total_gl_dollar" if tbl == "hist_f" else "gain_dollar"
-            symbol_filter = f"AND {F_IS_NOT_CASH}" if tbl == "hist_f" \
-                          else f"AND {CS_IS_NOT_CASH}"
-            v = s.execute(text(
-                f"SELECT COALESCE(SUM({gain_col}),0) FROM {tbl} "
-                f"WHERE TRUE AND {date_col} = :s {symbol_filter}"
-            ), {"s": snap}).scalar()
-            return float(v or 0)
-
-        ytd_base = _gain_sum("hist_f", "snapshot_date", ytd_f) + _gain_sum("hist_cs", "snapshot_date", ytd_cs_global)
-
-        # MTD baseline: last snapshot before 1st of this month
-        mtd_f  = s.execute(text(
+        mtd_snap_f = s.execute(text(
             "SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date < :s"
         ), {"s": mtd_start}).scalar()
-        mtd_cs_global = s.execute(text(
-            "SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date < :s"
-        ), {"s": mtd_start}).scalar()
-        mtd_base = _gain_sum("hist_f", "snapshot_date", mtd_f) + _gain_sum("hist_cs", "snapshot_date", mtd_cs_global)
+        if mtd_snap_f:
+            mtd_rows_f = s.execute(text("""
+                SELECT COALESCE(hist_f.account_name, hist_f.account_number)
+                         || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
+                                                                          AS account,
+                       COALESCE(SUM(current_value),0) AS total_value
+                FROM hist_f
+                LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+                WHERE snapshot_date = :s
+                GROUP BY hist_f.account_number, hist_f.account_name, ra.short_name
+            """), {"s": mtd_snap_f}).mappings().all()
+            for r in mtd_rows_f:
+                mtd_total_acct[r["account"]] = float(r["total_value"] or 0)
+
+        # NOTE: no separate global YTD/MTD baseline query here — the global
+        # figure is summed from the per-account values below (each of which
+        # already has correct per-account fallback for accounts with no
+        # baseline snapshot, e.g. Boeing 401(k)). A naive global
+        # Total(today)-Total(baseline) double-counts any account that wasn't
+        # yet tracked at the baseline date as if its ENTIRE current value
+        # were "gained" during the period — found this exact bug while
+        # implementing (global YTD came out to $890k on a $1.47M portfolio).
 
         pos_count = s.execute(text(f"""
             WITH u AS (
@@ -3363,8 +3525,6 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
     tg = float(d2.get("today_gain_dollar") or 0)
     d2["total_gain_pct"]  = (sg / cb * 100) if cb else None
     d2["today_gain_pct"]  = (tg / (mv - tg) * 100) if (mv - tg) else None
-    d2["ytd_gain_dollar"] = sg - ytd_base
-    d2["mtd_gain_dollar"] = sg - mtd_base
     d2["accounts"]        = sum(1 for _ in acct_rows)
     d2["positions"]       = int(pos_count)
     d2["as_of_date"]      = d.isoformat()
@@ -3378,25 +3538,54 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
         tgp_denom = mv - tgd
         sgd = float(r["total_gain_dollar"] or 0)
         cb = float(r["cost_basis"] or 0)
-        ytd_gain = sgd - ytd_cs_acct.get(r["account"], 0)
-        mtd_gain = sgd - mtd_cs_acct.get(r["account"], 0)
+        # Total-delta (see comment above ytd_total_acct). Falls back to the
+        # gain$ delta (sgd, vs. an implicit 0 baseline) when this account has
+        # no snapshot before the baseline date — e.g. a newly-tracked account
+        # like Boeing 401(k) here, where "Total(baseline)" doesn't exist yet
+        # and defaulting to it would read as a 100% loss instead of no data.
+        tot = float(r["market_value"] or 0) + float(r["cash_value"] or 0)
+        # None (not a fallback to lifetime gain) when this account has no
+        # snapshot before the baseline date — e.g. a newly-tracked account
+        # like Boeing 401(k), which has exactly one snapshot ever and no
+        # earlier data to compute a real period-over-period change from.
+        # gain$/cost_basis for a account with ongoing contributions (401k
+        # payroll deductions) isn't a real return anyway — showing it as
+        # "YTD" was actively misleading, not just approximate.
+        ytd_gain = (tot - ytd_total_acct[r["account"]]) if r["account"] in ytd_total_acct else None
+        mtd_gain = (tot - mtd_total_acct[r["account"]]) if r["account"] in mtd_total_acct else None
 
         dcd = float(r["day_change_dollar"] or 0)
         rtd = float(r["realized_today_dollar"] or 0)
         d2["by_account"].append({
             "source":              r["source"],
             "account":             r["account"],
+            "account_tag":         r["account_tag"],
             "market_value":        mv,
             "today_gain_dollar":   tgd,
             "today_gain_pct":      (tgd / tgp_denom * 100) if tgp_denom else None,
             "day_change_dollar":   dcd,
             "realized_today_dollar": rtd,
+            "total_gain_dollar":   sgd,
+            # gain$ / current cost basis — same simplified convention as the
+            # global "Total Gain %" tile above (not a money-weighted return;
+            # cost basis can shift within a period from buys/sells).
+            "total_gain_pct":      (sgd / cb * 100) if cb else None,
             "ytd_gain_dollar":     ytd_gain,
+            "ytd_gain_pct":        (ytd_gain / cb * 100) if (cb and ytd_gain is not None) else None,
             "mtd_gain_dollar":     mtd_gain,
+            "mtd_gain_pct":        (mtd_gain / cb * 100) if (cb and mtd_gain is not None) else None,
             "cost_basis":          cb,
             "cash_value":          float(r["cash_value"] or 0),
             "positions":           int(r["positions"] or 0),
         })
+    # Global YTD/MTD = sum of the per-account figures above (skipping accounts
+    # with no baseline — None, not 0 — so a newly-tracked account doesn't
+    # silently contribute nothing while also not being flagged as excluded).
+    # NOT a separate Total(today)-Total(baseline) computed globally, which
+    # would double-count any account not yet tracked at the baseline date as
+    # if its entire current value were gained this period.
+    d2["ytd_gain_dollar"] = sum(a["ytd_gain_dollar"] for a in d2["by_account"] if a["ytd_gain_dollar"] is not None)
+    d2["mtd_gain_dollar"] = sum(a["mtd_gain_dollar"] for a in d2["by_account"] if a["mtd_gain_dollar"] is not None)
     return d2
 
 
@@ -3429,7 +3618,7 @@ def get_portfolio_symbol(
         # Snapshot time series (consolidated across sources & accounts)
         ts = s.execute(text(f"""
           WITH u AS (
-            SELECT snapshot_date, qty, current_value AS mv, total_gl_dollar AS tg
+            SELECT snapshot_date, qty, current_value AS mv, {F_TOTAL_GAIN_DOLLAR} AS tg
             FROM hist_f
             WHERE symbol = :sym {where_extra}
             UNION ALL
@@ -3459,7 +3648,7 @@ def get_portfolio_symbol(
                  winning_priority, position_category, suggested_target_dollar,
                  position_dollar_at_action
           FROM user_action_log
-          WHERE symbol = :sym
+          WHERE tos_symbol = :sym
           ORDER BY acted_at DESC
           LIMIT 100
         """), {"sym": sym}).mappings().all()
@@ -3471,7 +3660,7 @@ def get_portfolio_symbol(
               SELECT as_of_date, consolidated_action, winning_source, winning_priority,
                      suggested_target_dollar, suppressed_reason, in_my_list
               FROM drv_actionable
-              WHERE symbol = :sym
+              WHERE tos_symbol = :sym
               ORDER BY as_of_date DESC
               LIMIT :lim
             """), {"sym": sym, "lim": limit_days}).mappings().all()
@@ -3523,11 +3712,11 @@ def get_portfolio_detail(symbol: str, date: Optional[str] = Query(None)):
         # 2-year timeseries anchored to latest available data for this symbol
         anchor = max(x for x in [latest_f, latest_cs] if x is not None)
         cutoff = anchor - timedelta(days=730)
-        ts_sql = """
+        ts_sql = f"""
             SELECT snapshot_date, SUM(qty) as qty, SUM(mv) as market_value,
                    SUM(tg) as total_gain_dollar
             FROM (
-                SELECT snapshot_date, qty, current_value as mv, total_gl_dollar as tg
+                SELECT snapshot_date, qty, current_value as mv, {F_TOTAL_GAIN_DOLLAR} as tg
                 FROM hist_f WHERE symbol = :sym AND snapshot_date <= :anchor
                 UNION ALL
                 SELECT snapshot_date, qty, market_value as mv, gain_dollar as tg
@@ -3584,7 +3773,7 @@ def get_portfolio_detail(symbol: str, date: Optional[str] = Query(None)):
 
         # Get current position from absolute latest snapshots (not latest for this symbol)
         # If symbol is missing from latest snapshot, qty = 0 (it was sold)
-        current_sql = """
+        current_sql = f"""
             SELECT COALESCE(f.desc, c.desc)               AS description,
                    COALESCE(f.qty,  0) + COALESCE(c.qty,  0) AS qty,
                    COALESCE(f.mv,   0) + COALESCE(c.mv,   0) AS market_value,
@@ -3593,8 +3782,8 @@ def get_portfolio_detail(symbol: str, date: Optional[str] = Query(None)):
                    COALESCE(f.price, c.price)              AS last_price
             FROM (
                 SELECT MAX(description) AS desc, SUM(qty) AS qty,
-                       SUM(current_value) AS mv, SUM(total_gl_dollar) AS gain,
-                       AVG(total_gl_pct) AS gain_pct, MAX(last_price) AS price
+                       SUM(current_value) AS mv, SUM({F_TOTAL_GAIN_DOLLAR}) AS gain,
+                       AVG({F_TOTAL_GAIN_PCT}) AS gain_pct, MAX(last_price) AS price
                 FROM hist_f WHERE symbol = :sym AND snapshot_date = :abs_latest_f
             ) f
             FULL OUTER JOIN (

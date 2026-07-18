@@ -322,14 +322,17 @@ def parse_real_time_alert(email: Email) -> Parsed:
         return p
 
     # subject: **Real-Time Alert: <Analyst> <Kind> Signal (<note>): <Name> (TICKER) -KM
+    # Analyst prefix is optional — some subjects go straight to "<Kind> Signal"
+    # with no analyst name (e.g. "Cover-SOME Signal (...): WING"); without the
+    # `(?:...)?` wrapper the whole match failed and signal_kind stayed NULL.
     analyst = signal_kind = None
     ms = _RTA_SUBJ.search(subj)
     if ms:
         rest = ms.group("rest")
-        mk = re.match(r"(?P<analyst>[A-Za-z .'/-]+?)\s+(?P<kind>(Buy|Sell|Cover|Sell-SOME|"
+        mk = re.match(r"(?:(?P<analyst>[A-Za-z .'/-]+?)\s+)?(?P<kind>(Buy|Sell|Cover|Sell-SOME|"
                       r"Cover-SOME|Macro[\w\- ]*))\s+Signal", rest, re.I)
         if mk:
-            analyst = mk.group("analyst").strip()
+            analyst = mk.group("analyst").strip() if mk.group("analyst") else None
             signal_kind = mk.group("kind").strip()
 
     # body headline: e.g. "SELL SIGNAL - SHORTING ROP $339.80"

@@ -213,7 +213,7 @@ function _macroTooltip(r) {
     }
     const nv = win.near_vs_far || {};
     if (nv.override && nv.override !== 'none') {
-      lines.push(`  Near/far agreement → ${nv.override} (near=${nv.near}, far=${nv.far})`);
+      lines.push(`  Near/far agreement → ${nv.override} (near month=${nv.near}, far-other months=${nv.far})`);
     }
   }
 
@@ -230,18 +230,27 @@ function _macroTooltip(r) {
   }
 
   // ── Quarter ────────────────────────────────────────────────────────────────
+  // Qtr shown here is det.quarterly_score (the real per-symbol weighted
+  // membership blend, same value the MacroNet formula below uses) -- NOT
+  // qtr.Qtr, which is a single symbol-independent "Equities" anchor shared
+  // by every symbol on this date (see _qtr_top in api/routers/dash.py) and
+  // was never what actually feeds a symbol's own MacroNet.
   const qtr = det.quarter || {};
   if (qtr.now) {
     lines.push('');
     lines.push('QUARTER (fixed top-level anchor, no blend)');
-    const qtrLine = `  ${qtr.now}  →  Qtr=${qtr.Qtr}`;
+    const qtrLine = `  ${qtr.now}  →  Qtr=${det.quarterly_score ?? '?'}`;
     const dtbStr = qtr.dtb != null ? `  (${qtr.dtb}d left)` : '';
     lines.push(qtrLine + dtbStr);
   }
 
   // ── MacroNet ──────────────────────────────────────────────────────────────
+  // Uses quarterly_score/monthly_score (the values actually fed into
+  // macro_net, from drv_macro_score) -- NOT det.quarter.Qtr, which is a
+  // separate, differently-scaled "Equities outlook" indicator computed by
+  // the older live engine and no longer what drives the real combine.
   lines.push('');
-  lines.push(`MacroNet = ${det.a}×Qtr(${det.quarter?.Qtr ?? '?'}) + ${det.b}×M_window(${det.monthly_score ?? '?'}) = ${det.macro_net}  →  ${det.vocab}`);
+  lines.push(`MacroNet = ${det.a}×Qtr(${det.quarterly_score ?? '?'}) + ${det.b}×M_window(${det.monthly_score ?? '?'}) = ${det.macro_net}  →  ${det.vocab}`);
 
   return lines.join('\n');
 }
@@ -317,74 +326,178 @@ function _buildMacroPopHtml(r, loading) {
   const Mv = det.monthly_score != null ? Number(det.monthly_score) : (r.monthly_score != null ? Number(r.monthly_score) : null);
   const Qv = det.quarterly_score != null ? Number(det.quarterly_score) : (r.quarterly_score != null ? Number(r.quarterly_score) : null);
   const wQtr = det.a ?? 0.05, wMo = det.b ?? 0.95;
+  const qtrContrib = Qv != null ? wQtr * Qv : null;
+  const moContrib  = Mv != null ? wMo * Mv : null;
   const macroFormulaHtml =
     `${wQtr}×Qtr(<span style="color:${Qv != null ? _sigColor(Qv) : '#475569'}">${Qv != null ? Qv.toFixed(2) : '?'}</span>) `
+    + (qtrContrib != null ? `<span style="color:#94a3b8;">=${qtrContrib >= 0 ? '+' : ''}${qtrContrib.toFixed(4)}</span> ` : '')
     + `+ ${wMo}×M_window(<span style="color:${Mv != null ? _sigColor(Mv) : '#475569'}">${Mv != null ? Mv.toFixed(3) : '?'}</span>) `
+    + (moContrib != null ? `<span style="color:#94a3b8;">=${moContrib >= 0 ? '+' : ''}${moContrib.toFixed(4)}</span> ` : '')
     + `= <span style="color:${netVal != null ? _sigColor(netVal) : '#475569'};font-weight:700;">${netVal != null ? netVal.toFixed(4) : '?'}</span>`;
 
   h += '<table>';
 
-  // ── Window per-month table (nearest-first) ──────────────────────────────
+  // ── Window per-month table (nearest-first) -- built here but inserted
+  // BELOW the Category Drivers (monthly) table and ABOVE the Quarter table,
+  // per user request, rather than appended immediately.
+  let windowHtml = '';
   if (wmonths.length) {
-    h += `<tr><td class="sp-sec" colspan="2">Window (${win.h ?? '?'}d look-ahead`
+    windowHtml += `<tr><td class="sp-sec" colspan="2">Window (${win.h ?? '?'}d look-ahead`
        + (win.coverage_pct != null ? `, coverage ${win.coverage_pct}%` : '')
        + (win.fallback ? ' — <span style="color:#f97316;">fallback</span>' : '') + ')</td></tr>';
-    h += `<tr><td colspan="2" style="padding:2px 0 4px;">`;
+    windowHtml += `<tr><td colspan="2" style="padding:2px 0 4px;">`;
+    let _mSum = 0;
+    let _mSumKnown = true;
     wmonths.forEach(m => {
       const s = m.stance;
       const gc = s > 0 ? '#16a34a' : s < 0 ? '#dc2626' : '#9ca3af';
       const gl = s > 0 ? '▲' : s < 0 ? '▼' : '—';
-      h += `<div style="display:flex;align-items:center;gap:5px;font-size:9px;padding:1px 0;">`
-         + `<span style="color:${_quadColor('Quad ' + m.quad)};font-weight:700;width:70px;">${escapeHtml(m.m)} (Q${m.quad ?? '?'})</span>`
-         + `<span style="color:#64748b;width:44px;">w=${(m.w * 100).toFixed(0)}%</span>`
-         + `<span style="color:${gc};">${gl} ${s != null ? s.toFixed(2) : '?'}</span>`
+      let contribHtml = '';
+      if (s != null && m.w != null) {
+        const contrib = m.w * s;
+        _mSum += contrib;
+        const cc = contrib > 0 ? '#16a34a' : contrib < 0 ? '#dc2626' : '#9ca3af';
+        contribHtml = `<span style="color:#94a3b8;"> &times; </span>`
+          + `<span style="color:${cc};font-weight:700;width:56px;display:inline-block;">`
+          + `${contrib >= 0 ? '+' : ''}${contrib.toFixed(4)}</span>`;
+      } else {
+        _mSumKnown = false;
+      }
+      windowHtml += `<div style="display:flex;align-items:center;gap:5px;font-size:9px;padding:1px 0;">`
+         + `<span style="color:${_quadColor('Quad ' + m.quad)};font-weight:700;width:70px;">${escapeHtml(_shortMonth(m.m))} (Q${m.quad ?? '?'})</span>`
+         + `<span style="color:#64748b;width:44px;">w=${(m.w * 100).toFixed(1)}%</span>`
+         + `<span style="color:${gc};width:56px;">${gl} ${s != null ? s.toFixed(4) : '?'}</span>`
+         + contribHtml
          + `</div>`;
     });
-    h += `</td></tr>`;
+    if (wmonths.length > 1 && _mSumKnown) {
+      windowHtml += `<div style="display:flex;align-items:center;gap:5px;font-size:9px;padding:2px 0 0;border-top:1px solid #e2e8f0;margin-top:2px;">`
+         + `<span style="width:70px;"></span><span style="width:44px;"></span><span style="width:56px;"></span>`
+         + `<span style="color:#94a3b8;"> &Sigma; = </span>`
+         + `<span style="color:${_sigColor(_mSum)};font-weight:700;">M_window = ${_mSum >= 0 ? '+' : ''}${_mSum.toFixed(4)}</span>`
+         + `</div>`;
+    }
+    windowHtml += `</td></tr>`;
+  }
+
+  // ── Window mix tail (effective distribution / tracking / near-far) and
+  // the MacroNet formula / confidence / how-to-act -- built here but
+  // appended at the BOTTOM of the popup (after Category Drivers/Quarter),
+  // per user request, so the per-month math and driver tables read first.
+  let mixTailHtml = '';
+  if (wmonths.length) {
     const effArr = _effToDistArr(win.eff);
     if (effArr.length) {
-      h += `<tr><td colspan="2" style="padding:2px 0 4px;">`
+      mixTailHtml += `<tr><td colspan="2" style="padding:2px 0 4px;">`
          + `<span style="font-size:8px;color:#94a3b8;">Effective mix&nbsp;</span>`
          + `${_quadDistBar(effArr)}<span style="font-size:9px;color:#475569;">${_quadDistBreakdown(effArr)}</span>`
          + `</td></tr>`;
     }
-    h += `<tr><td class="k" style="font-size:9px;color:#475569;">Tracking</td>`
-       + `<td class="v" style="font-size:9px;">`
-       + (win.tracking
-           ? `<span style="color:#16a34a;">${escapeHtml(win.tracking)}</span>`
-           : `<span style="color:#d97706;">fighting the quad path</span>`)
-       + `</td></tr>`;
+    // One checkmark/x per window month (m.agrees, from etl/derive_macro.py)
+    // instead of naming only the single nearest confirming month -- lets you
+    // see at a glance which months back up the current technical direction
+    // and which don't. Month/quad text keeps the usual quad palette; the
+    // mark itself is always green (agrees) / red (disagrees) / gray (no
+    // technical direction to compare against).
+    let trackingHtml;
+    const _anyDir = wmonths.some(m => m.agrees != null);
+    if (!_anyDir) {
+      trackingHtml = `<span style="color:#94a3b8;">&#8212; no clear technical direction to compare</span>`;
+    } else {
+      trackingHtml = wmonths.map(m => {
+        const qColor = _quadColor('Quad ' + (m.quad ?? '?'));
+        const mark = m.agrees === true  ? `<span style="color:#16a34a;">&#10003;</span>`
+                   : m.agrees === false ? `<span style="color:#dc2626;">&#10007;</span>`
+                   : `<span style="color:#94a3b8;">&#8212;</span>`;
+        return `<span style="display:inline-flex;align-items:center;gap:2px;margin-right:8px;white-space:nowrap;">`
+          + `${mark} <span style="color:${qColor};font-weight:700;">${escapeHtml(_shortMonth(m.m))} (Q${m.quad ?? '?'})</span></span>`;
+      }).join('');
+      if (!win.tracking) {
+        trackingHtml += `<div style="color:#d97706;font-size:8px;margin-top:1px;">`
+          + `&#9888; fighting the quad path — no month confirms the current technical direction</div>`;
+      }
+    }
+    mixTailHtml += `<tr><td class="k" style="font-size:9px;color:#475569;white-space:nowrap;">Tracking`
+       + `<span style="font-size:7.5px;color:#94a3b8;font-weight:400;"> (checked price against 50 DMA)</span></td>`
+       + `<td class="v" style="font-size:9px;">${trackingHtml}</td></tr>`;
     const nv = win.near_vs_far || {};
     if (nv.override && nv.override !== 'none') {
-      h += `<tr><td class="k" style="font-size:9px;color:#475569;">Near/far</td>`
-         + `<td class="v" style="font-size:9px;">agree &rarr; <b>${escapeHtml(nv.override)}</b> `
-         + `(near ${nv.near != null ? nv.near.toFixed(2) : '?'}, far ${nv.far != null ? nv.far.toFixed(2) : '?'})</td></tr>`;
+      mixTailHtml += `<tr><td class="k" style="font-size:9px;color:#475569;">Near/far</td>`
+         + `<td class="v" style="font-size:9px;">agree &rarr; ${_coloredVocab(nv.override)} `
+         + `(near month ${nv.near != null ? nv.near.toFixed(2) : '?'}, far-other months ${nv.far != null ? nv.far.toFixed(2) : '?'})</td></tr>`;
     }
   }
 
-  h += `<tr><td class="k">MacroNet</td><td class="v" style="font-size:9px;">${macroFormulaHtml} → ${_coloredVocab(mv)}</td></tr>`;
+  let macroFooterHtml = `<tr><td class="k">MacroNet</td><td class="v" style="font-size:9px;">${macroFormulaHtml} → ${_coloredVocab(mv)}</td></tr>`;
   if (conf != null) {
     const confNum = r.macro_conf != null ? Number(r.macro_conf) : 0;
     const confColor = confNum >= 0.7 ? '#16a34a' : confNum >= 0.4 ? '#d97706' : '#dc2626';
-    h += `<tr><td class="k">Confidence</td><td class="v" style="color:${confColor};font-weight:700;">${conf}%`
+    macroFooterHtml += `<tr><td class="k">Confidence</td><td class="v" style="color:${confColor};font-weight:700;">${conf}%`
        + `<span style="color:#94a3b8;font-weight:400;font-size:8px;"> (nearest-month window weight)</span></td></tr>`;
   }
 
   if (r.macro_howto) {
     const howtoTrimmed = r.macro_howto.replace(/\s*Technical\/Sources.*$/i, '').trim();
     if (howtoTrimmed) {
-      h += `<tr><td class="sp-sec" colspan="2">How to Act</td></tr>`;
-      h += `<tr><td colspan="2" style="font-size:10px;color:#374151;padding:2px 0 5px;">${escapeHtml(howtoTrimmed)}</td></tr>`;
+      // Color the two structured tokens embedded in the free-text howto:
+      // "(Quad N)" via the usual quad palette, and action codes "(SA)" /
+      // "(STM)" / "(BS)" / "(BM)" / "(HOLD)" via the same vocab colors used
+      // for the ACTION badge elsewhere in this popup.
+      const howtoHtml = escapeHtml(howtoTrimmed)
+        .replace(/\(Quad (\d)\)/g, (_m, q) =>
+          `(<span style="color:${_quadColor('Quad ' + q)};font-weight:700;">Quad ${q}</span>)`)
+        .replace(/\((SA|STM|BS|BM|HOLD)\)/g, (_m, code) => `(${_coloredVocab(code)})`);
+      macroFooterHtml += `<tr><td class="sp-sec" colspan="2">How to Act</td></tr>`;
+      macroFooterHtml += `<tr><td colspan="2" style="font-size:10px;color:#374151;padding:2px 0 5px;">${howtoHtml}</td></tr>`;
     }
   }
 
-  // ── Category drivers — nearest-month outlook (Stage 1-2, unaffected by
-  // the window change) ─────────────────────────────────────────────────────
-  if (mems.length) {
-    const _ocOf  = v => { const u = (v || '').toUpperCase(); return u === 'BULLISH' ? '#1c6c30' : u === 'BEARISH' ? '#8c1d1d' : u ? '#5b4900' : '#9ca3af'; };
-    const _olLbl = v => { if (!v) return '—'; const u = v.toUpperCase(); return u === 'BULLISH' ? 'Bullish' : u === 'BEARISH' ? 'Bearish' : v; };
-    const _stOf  = v => { const u = (v || '').toUpperCase(); return u === 'BULLISH' ? 1 : u === 'BEARISH' ? -1 : 0; };
+  // ── Category drivers — full per-window-month breakdown (TASK_126 follow-
+  // up): one column per window month instead of just the nearest one, so
+  // the visible per-membership math reconciles exactly with each month's
+  // stance shown in the Window section above (det.month_breakdown, same
+  // _membership_net math as the real derive). Falls back to the old
+  // nearest-month-only view if month_breakdown isn't present (e.g. a stale
+  // cached API response).
+  const _ocOf  = v => { const u = (v || '').toUpperCase(); return u === 'BULLISH' ? '#1c6c30' : u === 'BEARISH' ? '#8c1d1d' : u ? '#5b4900' : '#9ca3af'; };
+  const _olLbl = v => { if (!v) return '—'; const u = v.toUpperCase(); return u === 'BULLISH' ? 'Bullish' : u === 'BEARISH' ? 'Bearish' : v; };
+  const _stOf  = v => { const u = (v || '').toUpperCase(); return u === 'BULLISH' ? 1 : u === 'BEARISH' ? -1 : 0; };
 
+  const mb = det.month_breakdown;
+  if (mb && mb.rows && mb.rows.length && mb.months && mb.months.length) {
+    h += `<tr><td class="sp-sec" colspan="2">Category Drivers</td></tr>`;
+    h += `<tr><td colspan="2" style="padding:2px 0 4px;overflow-x:auto;">`;
+    h += `<table style="border-collapse:collapse;font-size:8.5px;width:100%;">`;
+    h += '<tr><td></td>' + mb.months.map((mk, i) => {
+      const wm = wmonths[i] || {};
+      const q = wm.quad ?? '?';
+      return `<td style="padding:1px 4px;text-align:right;white-space:nowrap;">`
+           + `<span style="color:${_quadColor('Quad ' + q)};font-weight:700;">${escapeHtml(_shortMonth(mk))}</span>`
+           + `<br><span style="color:#94a3b8;">(Q${q})</span></td>`;
+    }).join('') + '</tr>';
+    const colTotals = new Array(mb.months.length).fill(0);
+    const colKnown = new Array(mb.months.length).fill(true);
+    mb.rows.forEach(r => {
+      const cat = r.category
+        ? `${escapeHtml(r.category)} / ${escapeHtml(r.sub_cat || r.label || '')}`
+        : escapeHtml(r.label || '');
+      h += `<tr><td style="padding:1px 4px 1px 0;max-width:110px;white-space:normal;word-break:break-word;color:#475569;">`
+         + `${cat} <span style="color:#94a3b8;">(&times;${r.weight})</span></td>`
+         + r.cells.map((c, i) => {
+             if (c != null) colTotals[i] += c; else colKnown[i] = false;
+             const cc = c > 0 ? '#16a34a' : c < 0 ? '#dc2626' : '#9ca3af';
+             return `<td style="padding:1px 4px;text-align:right;color:${cc};">`
+                  + `${c != null ? (c >= 0 ? '+' : '') + c.toFixed(2) : '—'}</td>`;
+           }).join('') + '</tr>';
+    });
+    h += '<tr style="border-top:1px solid #e2e8f0;"><td style="padding:2px 4px 0 0;color:#94a3b8;">&Sigma;</td>'
+       + colTotals.map((t, i) => {
+           const tc = t > 0 ? '#16a34a' : t < 0 ? '#dc2626' : '#9ca3af';
+           return `<td style="padding:2px 4px 0;text-align:right;font-weight:700;color:${tc};">`
+                + `${colKnown[i] ? (t >= 0 ? '+' : '') + t.toFixed(4) : '?'}</td>`;
+         }).join('') + '</tr>';
+    h += '</table></td></tr>';
+  } else if (mems.length) {
     const nearestQuad = wmonths.length ? `Quad ${wmonths[0].quad ?? '?'}` : null;
     h += `<tr><td class="sp-sec" colspan="2">Category Drivers`
        + (nearestQuad ? ` <span style="color:${_quadColor(nearestQuad)};font-size:9px;font-weight:400;">${escapeHtml(nearestQuad)}</span>` : '')
@@ -407,8 +520,15 @@ function _buildMacroPopHtml(r, loading) {
     }
     const scColor = score > 0 ? '#16a34a' : score < 0 ? '#dc2626' : '#9ca3af';
     h += `<tr><td class="k" style="font-size:9px;color:#475569;">Score</td>`
-       + `<td class="v" style="color:${scColor};font-weight:700;font-size:11px;">${score > 0 ? '+' : ''}${score.toFixed(1)}</td></tr>`;
+       + `<td class="v" style="color:${scColor};font-weight:700;font-size:11px;">${score > 0 ? '+' : ''}${score.toFixed(2)}</td></tr>`;
+  }
 
+  h += windowHtml;
+
+  // Quarter section — always shown when there are memberships, regardless
+  // of which Category Drivers view rendered above (quarterly has only one
+  // period, so no multi-month table is needed here).
+  if (mems.length) {
     h += `<tr><td class="sp-sec" colspan="2">Quarter${qQuad ? ` <span style="color:${_quadColor(qQuad)};font-size:9px;font-weight:400;">${escapeHtml(qQuad)}</span>` : ''}`
        + `${qDtb != null ? ` <span style="color:#94a3b8;font-size:9px;">(${qDtb}d left)</span>` : ''}</td></tr>`;
     let qScore = 0;
@@ -429,9 +549,10 @@ function _buildMacroPopHtml(r, loading) {
     }
     const qScColor = qScore > 0 ? '#16a34a' : qScore < 0 ? '#dc2626' : '#9ca3af';
     h += `<tr><td class="k" style="font-size:9px;color:#475569;">Score</td>`
-       + `<td class="v" style="color:${qScColor};font-weight:700;font-size:11px;">${qScore > 0 ? '+' : ''}${qScore.toFixed(1)}</td></tr>`;
+       + `<td class="v" style="color:${qScColor};font-weight:700;font-size:11px;">${qScore > 0 ? '+' : ''}${qScore.toFixed(2)}</td></tr>`;
   }
 
+  h += mixTailHtml + macroFooterHtml;
   h += '</table>';
   return h;
 }
@@ -583,6 +704,17 @@ function _symOutlookColor(row) {
   if (pct != null && pct > 0.001)  return '#1d9e75';
   if (pct != null && pct < -0.001) return '#d4537e';
   return 'inherit';
+}
+// "2026-07" -> "Jul" -- short label for month-keyed values in the MACRO
+// popup (Window table, Category Drivers header, Tracking checklist).
+const _MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function _shortMonth(ym) {
+  if (!ym) return ym;
+  const parts = String(ym).split('-');
+  if (parts.length !== 2) return ym;
+  const idx = parseInt(parts[1], 10) - 1;
+  return _MONTH_ABBR[idx] || ym;
 }
 function _quadColor(q) {
   if (!q) return '#9ca3af';

@@ -366,14 +366,14 @@ function exportPositionsCsv() {
     'Account','Source','Symbol','Description','Qty',
     'AvgCost','LastPrice','MarketValue','CostBasis',
     'TodayGain$','TodayGain%','TotalGain$','TotalGain%',
-    'PctOfTP','Sector','Action','LimitStatus','InMyList',
+    'PctOfAccount','PctOfTP','Sector','Action','LimitStatus','InMyList',
     'YTDGain$','MTDGain$',
   ];
   const fields = [
     'account','source','symbol','description','qty',
     'avg_cost','last_price','market_value','cost_basis',
     'today_gain_dollar','today_gain_pct','total_gain_dollar','total_gain_pct',
-    'pct_of_tp','sector','consolidated_action','limit_status','in_my_list',
+    'pct_of_account','pct_of_tp','sector','consolidated_action','limit_status','in_my_list',
     'ytd_gain_dollar','mtd_gain_dollar',
   ];
   // RFC 4180-style CSV escape: wrap every field in double quotes and
@@ -511,6 +511,19 @@ function renderKpiTiles(data) {
   const ytd = data.ytd_gain_dollar != null ? Number(data.ytd_gain_dollar) : null;
   const mtd = data.mtd_gain_dollar != null ? Number(data.mtd_gain_dollar) : null;
 
+  // Total's "(%)" is % of TP (Total Portfolio) — measured against the
+  // *global* unfiltered total (state.summary, unaffected by the current
+  // account/source filter), e.g. filtering to one account shows that
+  // account's share of the whole portfolio.
+  const globalTotal = state.summary
+    ? Number(state.summary.market_value || 0) + Number(state.summary.cash_value || 0)
+    : 0;
+  const pctOfTp = (v) => (globalTotal > 0) ? ` (${(v / globalTotal * 100).toFixed(1)}%)` : '';
+  // Cash/Market's "(%)" is the local composition of what's currently shown —
+  // % of *this filter's* Total (cash + market), not the global portfolio.
+  const filteredTotal = mv + Number(data.cash_value || 0);
+  const pctOfFiltered = (v) => (filteredTotal > 0) ? ` (${(v / filteredTotal * 100).toFixed(1)}%)` : '';
+
   safeSet('kpiMV', fmtUsd(mv));
   safeSet('kpiMVsub', cb ? 'cost ' + fmtUsd(cb, { compact: true }) : '');
 
@@ -537,7 +550,7 @@ function renderKpiTiles(data) {
   //     hidden; we keep the IDs (safeSet above) for any other callers.
   const ovMarket = $('ovMarket');
   if (ovMarket) {
-    ovMarket.textContent = fmtUsd(mv);
+    ovMarket.textContent = fmtUsd(mv) + pctOfFiltered(mv);
     ovMarket.className   = gainClass(mv);
   }
   const ovCost = $('ovCost');
@@ -570,12 +583,12 @@ function renderKpiTiles(data) {
   // Mirror Cash + Total into the Account Value chart header
   const ovCashEl = $('ovCash');
   if (ovCashEl) {
-    ovCashEl.textContent = fmtUsd(cash);
+    ovCashEl.textContent = fmtUsd(cash) + pctOfFiltered(cash);
     ovCashEl.className   = 'gain-zero';
   }
   const ovTotalEl = $('ovTotal');
   if (ovTotalEl) {
-    ovTotalEl.textContent = fmtUsd(total);
+    ovTotalEl.textContent = fmtUsd(total) + pctOfTp(total);
     ovTotalEl.className   = 'gain-zero';
   }
 }
@@ -688,26 +701,40 @@ async function loadSummary() {
     const acctBody = $('kpiByAccountBody');
     const acctToggle = $('acctToggle');
     if (byAcct.length) {
+      // Total's "(%)" is % of TP (whole portfolio); Cash/Market's "(%)" is
+      // the local composition of that account's own Total — same convention
+      // as the Account Value header above.
+      const globalTotal = Number(s.market_value || 0) + Number(s.cash_value || 0);
       acctBody.innerHTML = byAcct.map(a => {
-        const ytdA = Number(a.ytd_gain_dollar || 0);
-        const mtdA = Number(a.mtd_gain_dollar || 0);
+        const gainA = Number(a.total_gain_dollar || 0);
+        const gainPct = a.total_gain_pct != null ? Number(a.total_gain_pct) : null;
+        const ytdA = a.ytd_gain_dollar != null ? Number(a.ytd_gain_dollar) : null;
+        const ytdPct = a.ytd_gain_pct != null ? Number(a.ytd_gain_pct) : null;
+        const mtdA = a.mtd_gain_dollar != null ? Number(a.mtd_gain_dollar) : null;
+        const mtdPct = a.mtd_gain_pct != null ? Number(a.mtd_gain_pct) : null;
         const tdA = Number(a.today_gain_dollar || 0);
         const tdPct = Number(a.today_gain_pct || 0);
         const mv = Number(a.market_value || 0);
         const cash = Number(a.cash_value || 0);
         const tot = mv + cash;
-        const acctInfo = state.accountMap[a.account] || null;
-        const acctTag = acctInfo ? getAccountTag(acctInfo.num, acctInfo.source) : getAccountTag('?', '?');
+        const tpPct  = globalTotal > 0 ? ` (${(tot / globalTotal * 100).toFixed(1)}%)` : '';
+        const cashPct = tot > 0 ? ` (${(cash / tot * 100).toFixed(1)}%)` : '';
+        const mvPct   = tot > 0 ? ` (${(mv / tot * 100).toFixed(1)}%)` : '';
+        const acctTag = getAccountTag(a.account_tag || state.accountMap[a.account]);
         return `<tr style="border-top:1px solid #eee;">
           <td style="padding:4px 8px;"><span style="display:inline-block; padding:4px 8px; border-radius:4px; background:${acctTag.bgColor}; color:${acctTag.fgColor}; font-weight:600; font-size:11px;">${acctTag.tag}</span> ${escapeHtml(a.account || '').slice(0, 35)}</td>
           <td style="padding:4px 8px; text-align:center;"><div style="height:24px; width:80px; display:inline-block; position:relative;"><canvas data-spark-acct="${escapeHtml(a.account || '')}"></canvas></div></td>
-          <td style="padding:4px 8px; text-align:right;">${fmtUsd(tot)}</td>
-          <td style="padding:4px 8px; text-align:right;">${fmtUsd(cash)}</td>
-          <td style="padding:4px 8px; text-align:right;">${fmtUsd(mv)}</td>
+          <td style="padding:4px 8px; text-align:right;">${fmtUsd(tot)}${tpPct}</td>
+          <td style="padding:4px 8px; text-align:right;">${fmtUsd(cash)}${cashPct}</td>
+          <td style="padding:4px 8px; text-align:right;">${fmtUsd(mv)}${mvPct}</td>
           <td style="padding:4px 8px; text-align:right;" class="${gainClass(tdA)}">${tdA >= 0 ? '+$' : '-$'}${Math.abs(tdA).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
           <td style="padding:4px 8px; text-align:right;" class="${gainClass(tdPct)}">${tdPct != null ? fmtPct(tdPct) : ''}</td>
-          <td style="padding:4px 8px; text-align:right;" class="${gainClass(ytdA)}">${ytdA >= 0 ? '+' : ''}${fmtUsd(ytdA)}</td>
-          <td style="padding:4px 8px; text-align:right;" class="${gainClass(mtdA)}">${mtdA >= 0 ? '+' : ''}${fmtUsd(mtdA)}</td>
+          <td style="padding:4px 8px; text-align:right;" class="${gainClass(gainA)}">${gainA >= 0 ? '+' : ''}${fmtUsd(gainA)}</td>
+          <td style="padding:4px 8px; text-align:right;" class="${gainClass(gainPct)}">${gainPct != null ? fmtPct(gainPct) : ''}</td>
+          <td style="padding:4px 8px; text-align:right;" class="${gainClass(ytdA)}">${ytdA != null ? (ytdA >= 0 ? '+' : '') + fmtUsd(ytdA) : ''}</td>
+          <td style="padding:4px 8px; text-align:right;" class="${gainClass(ytdPct)}">${ytdPct != null ? fmtPct(ytdPct) : ''}</td>
+          <td style="padding:4px 8px; text-align:right;" class="${gainClass(mtdA)}">${mtdA != null ? (mtdA >= 0 ? '+' : '') + fmtUsd(mtdA) : ''}</td>
+          <td style="padding:4px 8px; text-align:right;" class="${gainClass(mtdPct)}">${mtdPct != null ? fmtPct(mtdPct) : ''}</td>
           <td style="padding:4px 8px; text-align:right;">${fmtUsd(a.cost_basis)}</td>
           <td style="padding:4px 8px; text-align:right;">${a.positions || 0}</td>
         </tr>`;
@@ -807,28 +834,31 @@ function buildAccountMap() {
   state.accountList = list;
   state.accountMap = {};
 
-  // Build per-source numbering (C1, C2, C3, C4 for CS; F1 for F)
+  // Prefer the canonical tag from the server (ref_accounts.short_name, e.g.
+  // "F2", "C3") so tags stay consistent with the Actionable screen. Fall
+  // back to alphabetical per-source numbering only for accounts not yet
+  // registered in ref_accounts.
   const csList = [];
   const fList = [];
   for (const acc of list) {
-    // Find source by checking rows
     const row = state.rows.find(r => r.account === acc);
-    if (row) {
-      const src = (row.source || '').toUpperCase();
-      if (src === 'CS' || src.includes('SCHWAB') || src.includes('CHARLES')) {
-        csList.push(acc);
-      } else if (src === 'F' || src.includes('FIDELITY')) {
-        fList.push(acc);
-      }
+    if (!row) continue;
+    if (row.account_tag) {
+      state.accountMap[acc] = row.account_tag;
+      continue;
+    }
+    const src = (row.source || '').toUpperCase();
+    if (src === 'CS' || src.includes('SCHWAB') || src.includes('CHARLES')) {
+      csList.push(acc);
+    } else if (src === 'F' || src.includes('FIDELITY')) {
+      fList.push(acc);
     }
   }
-
-  // Map accounts to per-source numbers
   for (let i = 0; i < csList.length; i++) {
-    state.accountMap[csList[i]] = { source: 'CS', num: i + 1 };
+    state.accountMap[csList[i]] = 'C' + (i + 1);
   }
   for (let i = 0; i < fList.length; i++) {
-    state.accountMap[fList[i]] = { source: 'F', num: i + 1 };
+    state.accountMap[fList[i]] = 'F' + (i + 1);
   }
 }
 
@@ -851,31 +881,17 @@ function applyClientFilter() {
   }
 }
 
-function getAccountTag(accountNum, source) {
+function getAccountTag(tag) {
   const tagColors = {
     'C1-bg': '#d9e8f5',
     'C2-bg': '#e8d9f5',
     'C3-bg': '#f5f0d9',
     'C4-bg': '#f5d9e8',
-    'F1-bg': '#d9f0f5'
+    'F1-bg': '#d9f0f5',
+    'F2-bg': '#d9f5e0',
+    'F3-bg': '#f5e8d9',
   };
-
-  const src = (source || '').trim().toUpperCase();
-  let tag = '?';
-
-  // Determine prefix based on source
-  let prefix = '?';
-  if (src === 'CS' || src === 'C' || src.includes('SCHWAB') || src.includes('CHARLES')) {
-    prefix = 'C';
-  } else if (src === 'F' || src.includes('FIDELITY')) {
-    prefix = 'F';
-  }
-
-  // Create tag: e.g., "C1", "C2", "F1"
-  if (prefix !== '?') {
-    tag = prefix + accountNum;
-  }
-
+  tag = tag || '?';
   const bgColor = tagColors[tag + '-bg'] || '#e8e8e8';
   const fgColor = '#333';
   return { tag, bgColor, fgColor };
@@ -955,8 +971,7 @@ function renderGrid() {
 
     const ytdCls  = gainClass(r.ytd_gain_dollar);
     const mtdCls  = gainClass(r.mtd_gain_dollar);
-    const acctInfo = r.account ? state.accountMap[r.account] : null;
-    const acctTag = acctInfo ? getAccountTag(acctInfo.num, acctInfo.source) : getAccountTag('?', '?');
+    const acctTag = getAccountTag(r.account ? state.accountMap[r.account] : null);
     tr.innerHTML = `
       <td style="text-align:center; padding:8px 4px;"><span style="display:inline-block; padding:4px 8px; border-radius:4px; background:${acctTag.bgColor}; color:${acctTag.fgColor}; font-weight:600; font-size:12px;">${acctTag.tag}</span></td>
       <td>${typeof yahooLink === 'function' ? yahooLink(r.symbol) : ''}<strong><span class="tv-sym-link" data-sym="${escapeHtml(r.symbol)}" data-desc="${(r.description||'').replace(/"/g,'&quot;')}" onclick="event.stopPropagation(); _portSymClick(this)">${escapeHtml(r.symbol)}</span></strong> <button onclick="event.stopPropagation(); openPortfolioModal('${r.symbol}')" style="background:none; border:none; color:var(--text-3); cursor:pointer; font-size:11px; padding:0 2px;" title="Detail">☰</button></td>
@@ -973,6 +988,7 @@ function renderGrid() {
         <div class="pct-bar" style="width:${barW}%"></div>
         <span class="val ${totalCls}">${fmtPct(r.total_gain_pct)}</span>
       </td>
+      <td class="num">${r.pct_of_account != null ? Number(r.pct_of_account).toFixed(1) + '%' : ''}</td>
       <td class="num">${r.pct_of_tp != null ? Number(r.pct_of_tp).toFixed(1) + '%' : ''}</td>
       <td>${escapeHtml(r.sector || '')}</td>
       <td>${action ? `<span class="badge-action badge-action-${action}">${action}</span>` : ''}</td>

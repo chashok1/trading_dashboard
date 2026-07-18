@@ -56,9 +56,16 @@ log = logging.getLogger("etl.derive_realized")
 
 # Sources we know about and how to read them.
 # Each tuple: (source_code, table_name, account_column)
+# F uses account_number (not account) as the FIFO grouping/output key:
+# hist_ft.account is inconsistently populated for the same physical account
+# across load batches (sometimes the raw account number, sometimes the
+# account name like "Rollover IRA") — grouping by that string fragments one
+# account's lot history into two, so SELLs can't find their matching BUY
+# lots and fall back to cost_basis=0 (spurious ~100%-of-proceeds "gains").
+# account_number is reliably populated for every hist_ft row.
 _SOURCES = [
     ("CS", "hist_cst", "account"),
-    ("F",  "hist_ft",  "account"),
+    ("F",  "hist_ft",  "account_number"),
 ]
 
 

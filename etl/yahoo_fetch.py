@@ -467,9 +467,8 @@ def fetch_y_detail(delay_sec: float = 1.5) -> dict:
             float_shares  = info.get("floatShares")
             shares_out    = info.get("sharesOutstanding")
             # Same .info payload also carries quoteType/sector/industry — no
-            # extra API cost. Used only as *suggested* ref_sector values (see
-            # api/routers/ref_audit.py); never auto-written into ref_sector,
-            # whose source of truth is the Sctr tab of the Tickers workbook.
+            # extra API cost. Cached here, then fill_ref_sector_gaps() (below)
+            # uses it to backfill ref_sector for tickers missing a row entirely.
             quote_type    = info.get("quoteType")
             y_sector      = info.get("sector")
             y_industry    = info.get("industry")
@@ -503,6 +502,91 @@ def fetch_y_detail(delay_sec: float = 1.5) -> dict:
 
     logger.info("Y detail fetch done: %d updated, %d errors", updated, errors)
     return {"total": len(symbols), "updated": updated, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# Phase 2b: backfill ref_sector gaps from cached Yahoo detail
+# ---------------------------------------------------------------------------
+
+# Yahoo quoteType -> ref_sector.vehicle_type (matches the existing values
+# refresh_sctr() writes from the Sctr tab, e.g. 'Stock', 'ETF').
+_YF_VEHICLE_MAP = {
+    "EQUITY": "Stock",
+    "ETF": "ETF",
+    "MUTUALFUND": "Fund",
+    "INDEX": "Index",
+    "CURRENCY": "Currency",
+    "CRYPTOCURRENCY": "Crypto",
+}
+
+# Yahoo's own sector taxonomy -> this system's ref_quad_outlook "Equity
+# Sectors" categories (see api/routers/dash.py's _AC_ALIAS for the analogous
+# asset-class mapping). Yahoo returns no sector/industry for ETFs/funds —
+# those stay unmapped here, same gap as before.
+_YF_SECTOR_MAP = {
+    "consumer cyclical": "Consumer Discretionary",
+    "consumer defensive": "Consumer Staples",
+    "financial services": "Financials",
+    "healthcare": "Health care",
+    "technology": "Information Technology",
+    "communication services": "Communication Services",
+    "basic materials": "Materials",
+    "real estate": "Real Estate",
+    "energy": "Energy",
+    "industrials": "Industrials",
+    "utilities": "Utilities",
+}
+
+
+def fill_ref_sector_gaps() -> dict:
+    """Insert a ref_sector row for any ticker with cached Yahoo detail
+    (quote_type) but no ref_sector row at all yet — INSERT ... ON CONFLICT
+    (ticker) DO NOTHING, so this never touches a ticker that already has a
+    row (Sctr-tab-sourced or otherwise placeholder).
+
+    Safe by construction: etl/refresh_ref.py::upsert_rows() (what the Sctr
+    tab refresh uses) only inserts/updates tickers PRESENT in the workbook —
+    it never deletes or touches rows for tickers absent from it. So once a
+    human adds the real row to the Sctr tab, that refresh naturally
+    overwrites this placeholder; until then, the Yahoo-derived guess is
+    better than no classification at all.
+    """
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT c.tos_symbol, c.quote_type, c.y_sector, c.y_industry, c.company_name
+            FROM cache_yahoo_quote c
+            LEFT JOIN ref_sector rs ON rs.ticker = c.tos_symbol
+            WHERE rs.ticker IS NULL AND c.quote_type IS NOT NULL
+        """)).mappings().all()
+
+        inserts = []
+        for r in rows:
+            qt = (r["quote_type"] or "").upper()
+            inserts.append({
+                "ticker":       r["tos_symbol"],
+                "description":  r["company_name"],
+                "industry":     r["y_industry"],
+                "vehicle_type": _YF_VEHICLE_MAP.get(qt, r["quote_type"]),
+                "asset_class":  "Equities" if qt == "EQUITY" else None,
+                "equity_sector": _YF_SECTOR_MAP.get((r["y_sector"] or "").strip().lower()),
+            })
+
+        if not inserts:
+            return {"candidates": 0, "inserted": 0}
+
+        result = s.execute(text("""
+            INSERT INTO ref_sector
+                (ticker, description, industry, vehicle_type, asset_class, equity_sector,
+                 sp500, nasdaq, dow, russell, loaded_at)
+            VALUES
+                (:ticker, :description, :industry, :vehicle_type, :asset_class, :equity_sector,
+                 'N', 'N', 'N', 'N', now())
+            ON CONFLICT (ticker) DO NOTHING
+        """), inserts)
+        n_inserted = result.rowcount if (result.rowcount and result.rowcount > 0) else len(inserts)
+
+    logger.info("ref_sector gap-fill: %d candidates, %d inserted", len(inserts), n_inserted)
+    return {"candidates": len(inserts), "inserted": n_inserted}
 
 
 # ---------------------------------------------------------------------------
@@ -787,6 +871,12 @@ def fetch_y_load_full() -> dict:
         logger.info("Y full fetch phase 2: detail fetch...")
         detail_result = fetch_y_detail()
 
+        logger.info("Y full fetch phase 2b: ref_sector gap-fill...")
+        try:
+            fill_ref_sector_gaps()
+        except Exception:
+            logger.exception("ref_sector gap-fill failed (non-fatal)")
+
         logger.info("Y full fetch phase 3: write CSV (time=1630) and load...")
         yfiles_dir = _get_yfiles_dir()
         if yfiles_dir is not None:
@@ -854,6 +944,12 @@ def fetch_y_smart() -> dict:
 
             logger.info("Y smart (EOD): detail fetch...")
             detail_result = fetch_y_detail()
+
+            logger.info("Y smart (EOD): ref_sector gap-fill...")
+            try:
+                fill_ref_sector_gaps()
+            except Exception:
+                logger.exception("ref_sector gap-fill failed (non-fatal)")
 
             logger.info("Y smart (EOD): writing CSV with time=1630...")
             yfiles_dir = _get_yfiles_dir()
