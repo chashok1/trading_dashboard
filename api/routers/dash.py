@@ -3219,6 +3219,25 @@ def get_portfolio_trends(
             by_date[flow_date]["mv"] += running[label]
             acct_dates[label].add(flow_date)
 
+        # Close the gap between the cashflow-derived starting point and the
+        # first REAL snapshot: position-level day_change/catchup only knows
+        # about the specific positions we can see on that first real date —
+        # it has no way to know the account converted its deposited cash
+        # into positions worth more (or less) than what was put in during
+        # the untracked gap. Add one account-level catchup, on the first
+        # real snapshot date, so cumulative_pl there exactly equals
+        # Total(that date) - net deposits so far — consistent with
+        # account_value's delta. Only safe to compute when a single account
+        # is selected (?account=) — by_date is then unambiguously scoped to
+        # just that account, since the main query already filters by it;
+        # in the unfiltered multi-account view this is left unclosed.
+        if account and account in earliest_real and account in running:
+            fr_date = earliest_real[account]
+            true_total = acct_series[account][fr_date]
+            net_deposits = running[account]
+            already_in_dc = by_date[fr_date]["dc"]
+            by_date[fr_date]["dc"] += (true_total - net_deposits) - already_in_dc
+
     dates_sorted = sorted(by_date.keys())
     account_value = [round(by_date[d]["mv"], 2) for d in dates_sorted]
     day_change    = [round(by_date[d]["dc"], 2) for d in dates_sorted]
