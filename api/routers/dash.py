@@ -3171,7 +3171,7 @@ def get_portfolio_trends(
     # account_value/per_account represent Total (market value + cash), matching
     # the "Total" figure in the Account Value card header — not market value alone.
     from collections import defaultdict
-    by_date: dict = defaultdict(lambda: {"mv": 0.0, "dc": 0.0})
+    by_date: dict = defaultdict(lambda: {"mv": 0.0, "dc": 0.0, "catchup": 0.0})
     acct_dates: dict = defaultdict(set)
     acct_series: dict = defaultdict(dict)   # acct -> {date: total_value}
     for d, acct, mv, cash, dc in rows:
@@ -3180,8 +3180,14 @@ def get_portfolio_trends(
         by_date[d]["dc"] += float(dc or 0)
         acct_series[acct][d] = total_value
         acct_dates[acct].add(d)
+    # Catchups are kept OUT of "dc" (real day-to-day price movement) and only
+    # fold into cumulative_pl below — they represent value we're only now
+    # gaining visibility into, not an actual single-day market move. Mixing
+    # them into "dc" makes the Day Change bar chart show huge fake spikes on
+    # whatever day an account/position first appears (e.g. a brand-new
+    # account's entire lifetime unrealized gain reading as "today's change").
     for d, acct, catchup in catchup_rows:
-        by_date[d]["dc"] += float(catchup or 0)
+        by_date[d]["catchup"] += float(catchup or 0)
 
     # Extend account_value/per_account with cashflow-derived starting points
     # (ref_account_cashflow) for dates BEFORE any real snapshot exists — e.g.
@@ -3254,8 +3260,8 @@ def get_portfolio_trends(
     else:
         cum = 0.0
         cumulative_pl = []
-        for v in day_change:
-            cum += v
+        for d in dates_sorted:
+            cum += by_date[d]["dc"] + by_date[d]["catchup"]
             cumulative_pl.append(round(cum, 2))
 
     # For sparklines: align each account's series to dates_sorted, fill gaps
