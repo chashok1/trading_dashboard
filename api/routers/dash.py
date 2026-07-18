@@ -3190,6 +3190,7 @@ def get_portfolio_trends(
     # that pre-tracking stretch, so we inject it as the value at each flow
     # date (never overwriting a real snapshot date, and only applied where
     # the flow predates that account's earliest real hist_cs/hist_f row).
+    cf_schedule: dict = defaultdict(list)   # acct -> [(flow_date, cumulative_deposits), ...]
     if cashflow_rows:
         earliest_real: dict = {acct: min(dates) for acct, dates in acct_dates.items()}
         running: dict = defaultdict(float)
@@ -3211,6 +3212,7 @@ def get_portfolio_trends(
             if account and label != account:
                 continue  # respect the ?account= filter, same as the main query
             running[label] += float(amount or 0)
+            cf_schedule[label].append((flow_date, running[label]))
             if flow_date in acct_series.get(label, {}):
                 continue  # never overwrite a real snapshot
             if label in earliest_real and flow_date >= earliest_real[label]:
@@ -3219,33 +3221,42 @@ def get_portfolio_trends(
             by_date[flow_date]["mv"] += running[label]
             acct_dates[label].add(flow_date)
 
-        # Close the gap between the cashflow-derived starting point and the
-        # first REAL snapshot: position-level day_change/catchup only knows
-        # about the specific positions we can see on that first real date —
-        # it has no way to know the account converted its deposited cash
-        # into positions worth more (or less) than what was put in during
-        # the untracked gap. Add one account-level catchup, on the first
-        # real snapshot date, so cumulative_pl there exactly equals
-        # Total(that date) - net deposits so far — consistent with
-        # account_value's delta. Only safe to compute when a single account
-        # is selected (?account=) — by_date is then unambiguously scoped to
-        # just that account, since the main query already filters by it;
-        # in the unfiltered multi-account view this is left unclosed.
-        if account and account in earliest_real and account in running:
-            fr_date = earliest_real[account]
-            true_total = acct_series[account][fr_date]
-            net_deposits = running[account]
-            already_in_dc = by_date[fr_date]["dc"]
-            by_date[fr_date]["dc"] += (true_total - net_deposits) - already_in_dc
-
     dates_sorted = sorted(by_date.keys())
     account_value = [round(by_date[d]["mv"], 2) for d in dates_sorted]
     day_change    = [round(by_date[d]["dc"], 2) for d in dates_sorted]
-    cum = 0.0
-    cumulative_pl = []
-    for v in day_change:
-        cum += v
-        cumulative_pl.append(round(cum, 2))
+
+    # Cumulative P&L: normally the running sum of day_change (position-level
+    # price ticks). But for a single selected account where we have COMPLETE
+    # cashflow coverage (the earliest deposit record predates or matches the
+    # series' first date — i.e. we know the account's entire deposit
+    # history, not just a partial gap-filler), use the simpler and more
+    # robust Total(date) - net_deposits(as of date) directly instead.
+    # Day-by-day position tracking silently understates true P&L whenever
+    # our snapshot exports skip a trading day (a gap Schwab/Fidelity's own
+    # day-change field can't retroactively fill) — Total-delta needs only
+    # two point values, so it's immune to that gap, and it's guaranteed
+    # consistent with the lifetime Total Gain figure shown elsewhere.
+    full_cashflow_coverage = (
+        account and account in cf_schedule and dates_sorted
+        and cf_schedule[account][0][0] <= dates_sorted[0]
+    )
+    if full_cashflow_coverage:
+        schedule = cf_schedule[account]  # sorted by flow_date (query ORDER BY)
+        cumulative_pl = []
+        for d, av in zip(dates_sorted, account_value):
+            deposits_as_of = 0.0
+            for fd, cum_dep in schedule:
+                if fd <= d:
+                    deposits_as_of = cum_dep
+                else:
+                    break
+            cumulative_pl.append(round(av - deposits_as_of, 2))
+    else:
+        cum = 0.0
+        cumulative_pl = []
+        for v in day_change:
+            cum += v
+            cumulative_pl.append(round(cum, 2))
 
     # For sparklines: align each account's series to dates_sorted, fill gaps
     # with the previous value (no snapshot that day → carry forward).
