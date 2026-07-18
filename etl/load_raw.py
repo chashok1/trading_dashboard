@@ -1546,6 +1546,118 @@ def _f_action_kind(action_text: str) -> str:
     return "OTHER"
 
 
+def load_401k_contributions(session: Session, csv_path: str, source_file: str) -> tuple[int, int, int]:
+    """
+    401(k) "Contribution History" export -> hist_401k_contrib.
+    Idempotent via natural-key conflict (plan_name, trade_date, investment,
+    transaction_type, amount, shares) — safe to re-export overlapping date
+    ranges repeatedly (e.g. every month, "since Jan 1" each time).
+
+    Expected format (tab- or comma-separated; delimiter auto-detected):
+      Plan name:    BOEING 401(K)
+      Date Range    01/01/2026 - 07/17/2026
+      <blank line(s)>
+      Date    Investment    Transaction Type    Amount    Shares/Unit
+      7/16/2026    TARGET DATE 2035    Contributions    1,448.21    43.882
+      ...
+
+    account_number is resolved from hist_f.account_name matching plan_name
+    (best-effort; NULL if no match found — the row still loads).
+
+    Returns (rows_read, rows_inserted, rows_skipped_as_duplicates).
+    """
+    import csv
+    import re
+
+    def _parse_num(s) -> float | None:
+        if s is None:
+            return None
+        s = str(s).strip()
+        if not s or s in ('--', 'N/A'):
+            return None
+        cleaned = re.sub(r"[\$,]", "", s)
+        try:
+            return float(cleaned)
+        except ValueError:
+            return None
+
+    def _parse_date_mdy(s) -> "date | None":
+        if not s:
+            return None
+        s = str(s).strip()
+        if not s:
+            return None
+        for fmt in ("%m/%d/%Y", "%m-%d-%Y"):
+            try:
+                from datetime import datetime
+                return datetime.strptime(s, fmt).date()
+            except ValueError:
+                continue
+        return to_date(s)
+
+    with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
+        lines = f.readlines()
+
+    plan_name = None
+    for ln in lines[:5]:
+        m = re.match(r"^\s*Plan\s*name\s*:?\s*(.+?)\s*$", ln, re.IGNORECASE)
+        if m:
+            plan_name = m.group(1).strip()
+            break
+
+    header_idx = next(
+        (i for i, ln in enumerate(lines)
+         if ln.strip().lower().startswith("date") and "investment" in ln.lower()),
+        None,
+    )
+    if header_idx is None:
+        log.warning("401k contribution file: no 'Date ... Investment' header found in %s", source_file)
+        return 0, 0, 0
+
+    # Auto-detect delimiter (Fidelity exports this as tab OR comma depending
+    # on how the user saves it from the browser).
+    header_line = lines[header_idx]
+    delimiter = "\t" if "\t" in header_line else ","
+
+    account_number = None
+    if plan_name:
+        acct_row = session.execute(text(
+            "SELECT account_number FROM hist_f WHERE account_name = :n "
+            "AND account_number IS NOT NULL LIMIT 1"
+        ), {"n": plan_name}).first()
+        if acct_row:
+            account_number = acct_row[0]
+        else:
+            log.warning("401k contribution file: no hist_f account matching "
+                        "plan_name %r — loading with account_number=NULL", plan_name)
+
+    reader = csv.DictReader(lines[header_idx:], delimiter=delimiter)
+    records: list[dict] = []
+    rows_read = 0
+    for row in reader:
+        date_val = (row.get("Date") or "").strip()
+        if not date_val:
+            continue
+        rows_read += 1
+        records.append({
+            "plan_name":        to_text(plan_name or ""),
+            "account_number":   account_number,
+            "trade_date":       _parse_date_mdy(date_val),
+            "investment":       to_text(row.get("Investment") or ""),
+            "transaction_type": to_text(row.get("Transaction Type") or ""),
+            "amount":           _parse_num(row.get("Amount")),
+            "shares":           _parse_num(row.get("Shares/Unit")),
+            "source_file":      source_file,
+        })
+
+    n_attempted, n_inserted = insert_upsert(
+        session, "hist_401k_contrib", records,
+        conflict_columns=["plan_name", "trade_date", "investment",
+                          "transaction_type", "amount", "shares"],
+    )
+    return rows_read, n_inserted, n_attempted - n_inserted
+
+
 def load_f_transactions(session: Session, csv_path: str, source_file: str) -> tuple[int, int, int]:
     """
     Fidelity Accounts_History.csv or History_for_Account_*.csv -> hist_ft.

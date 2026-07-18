@@ -245,6 +245,48 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
                 return {"status": "error", "msg": str(e)}
         return {"status": "loaded", "file_type": 'CST', "target_tab": 'hist_cst', "rows_inserted": ins}
 
+    # Handle 401(k) "Contribution History" export (file_type F401K).
+    # File arrives sporadically with overlapping date ranges (user re-exports
+    # "since Jan 1" every month) so the loader is purely additive — natural-key
+    # conflict skips re-runs. Recognized filename pattern: anything starting
+    # with "F401K " (user names the file per the LoadFiles convention).
+    if p.suffix.lower() == '.csv' and p.name.lower().startswith('f401k'):
+        from etl.load_raw import load_401k_contributions
+        file_mtime = p.stat().st_mtime
+        with session_scope() as s:
+            if not force and already_processed(s, str(p), file_mtime):
+                log.info("skipping %s (already processed; mtime unchanged)", p.name)
+                return {"status": "skipped", "file_type": "F401K", "target_tab": "hist_401k_contrib"}
+            file_dt_str = parse_file_date_from_name(p.name)
+            if not file_dt_str and file_mtime:
+                from datetime import datetime as dt_
+                file_dt_str = dt_.fromtimestamp(file_mtime).strftime('%Y-%m-%d')
+            run_id = open_run(s, file_path=str(p), file_type='F401K',
+                              target_tab='hist_401k_contrib')
+            s.commit()
+            try:
+                read, ins, skp = load_401k_contributions(s, str(p), p.name)
+                close_run(s, run_id, rows_read=read, rows_inserted=ins, rows_skipped=skp)
+                mark_processed(s, file_path=str(p), file_mtime=file_mtime,
+                               file_type='F401K', target_tab='hist_401k_contrib',
+                               file_dt=file_dt_str, run_id=run_id)
+                log.info("LOADED hist_401k_contrib: %d read, %d ins, %d skip",
+                         read, ins, skp)
+            except Exception as e:
+                try:
+                    s.rollback()
+                except Exception:
+                    pass
+                try:
+                    close_run(s, run_id, rows_read=0, rows_inserted=0, rows_skipped=0,
+                              status="error", error_msg=str(e)[:500])
+                except Exception:
+                    log.exception("close_run failed for %s (continuing)", p.name)
+                log.exception("load failed for %s", p.name)
+                return {"status": "error", "msg": str(e)}
+        return {"status": "loaded", "file_type": 'F401K',
+                "target_tab": 'hist_401k_contrib', "rows_inserted": ins}
+
     # Handle Fidelity Accounts_History.csv (transaction activity export).
     # File arrives sporadically (user downloads 6m or 1y at a time) so the
     # loader is purely additive — PK conflict skips re-runs.

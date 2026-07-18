@@ -1583,6 +1583,41 @@ ALTER TABLE IF EXISTS hist_ft DROP CONSTRAINT IF EXISTS uq_hist_f_transactions_n
 CREATE UNIQUE INDEX IF NOT EXISTS ux_hist_ft_natural_key
     ON hist_ft (account_number, trade_date, action, symbol, quantity, price);
 
+-- -----------------------------------------------------
+-- hist_401k_contrib  <- 401(k) "Contribution History" export (file_type F401K)
+-- One row per (fund, transaction) line. Distinct from hist_ft: this report
+-- has no ticker/price/account-number columns, just plan name + fund name +
+-- transaction type + dollar amount + units. Exported ad hoc with overlapping
+-- date ranges (e.g. re-exporting "since Jan 1" every month), so dedup is via
+-- a natural-key unique index + ON CONFLICT, same pattern as hist_ft.
+-- 2026-07-18: added to let YTD/MTD net out 401(k) contributions from the
+-- Total-delta gain calc (currently misattributes contributions as gain).
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS hist_401k_contrib (
+    id                 BIGSERIAL PRIMARY KEY,
+    plan_name          TEXT    NOT NULL,        -- "Plan name:" header line, e.g. "BOEING 401(K)"
+    account_number     TEXT,                    -- resolved from hist_f.account_name at load time
+    trade_date         DATE    NOT NULL,         -- "Date" column
+    investment         TEXT    NOT NULL,         -- fund name, e.g. "TARGET DATE 2035"
+    transaction_type   TEXT    NOT NULL,         -- "Contributions", etc.
+    amount             NUMERIC,
+    shares              NUMERIC,                 -- "Shares/Unit" column
+    source_file        TEXT,
+    loaded_at          TIMESTAMP NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_hist_401k_contrib_natural_key
+    ON hist_401k_contrib (plan_name, trade_date, investment, transaction_type, amount, shares);
+CREATE INDEX IF NOT EXISTS ix_hist_401k_contrib_acct ON hist_401k_contrib(account_number, trade_date);
+
+INSERT INTO ref_load_files
+    (source_dir, file_type, target_tab, week_day, file_time,
+     enabled, optional, rows_should_match, target_table)
+VALUES
+    ('C:\Ashok\Investing\Stocks\F401K\Archive', 'F401K',
+     '401k_contrib', 'SUN', TIME '16:00:00',
+     TRUE, TRUE, FALSE, 'hist_401k_contrib')
+ON CONFLICT (file_type, week_day, file_time) DO NOTHING;
+
 
 
 -- -----------------------------------------------------
