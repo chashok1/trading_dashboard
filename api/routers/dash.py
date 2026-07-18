@@ -3162,6 +3162,10 @@ def get_portfolio_trends(
         if catchup_unions:
             catchup_sql = "SELECT d, acct, catchup FROM (" + " UNION ALL ".join(catchup_unions) + ") u"
             catchup_rows = s.execute(text(catchup_sql), params).all()
+        cashflow_rows = s.execute(text(
+            "SELECT source, account, flow_date, amount FROM ref_account_cashflow "
+            "WHERE flow_date BETWEEN :start AND :end ORDER BY source, account, flow_date"
+        ), {"start": start, "end": end}).all()
 
     # Aggregate by date for the headline series, and build per-account series.
     # account_value/per_account represent Total (market value + cash), matching
@@ -3178,6 +3182,42 @@ def get_portfolio_trends(
         acct_dates[acct].add(d)
     for d, acct, catchup in catchup_rows:
         by_date[d]["dc"] += float(catchup or 0)
+
+    # Extend account_value/per_account with cashflow-derived starting points
+    # (ref_account_cashflow) for dates BEFORE any real snapshot exists — e.g.
+    # a $2,500 deposit recorded months before our first tracked snapshot.
+    # Cumulative-deposits-so-far is our only knowledge of account value for
+    # that pre-tracking stretch, so we inject it as the value at each flow
+    # date (never overwriting a real snapshot date, and only applied where
+    # the flow predates that account's earliest real hist_cs/hist_f row).
+    if cashflow_rows:
+        earliest_real: dict = {acct: min(dates) for acct, dates in acct_dates.items()}
+        running: dict = defaultdict(float)
+        for source, raw_acct, flow_date, amount in cashflow_rows:
+            if source == "CS":
+                label = raw_acct
+            else:
+                with session_scope() as s:
+                    label = s.execute(text("""
+                        SELECT COALESCE(hist_f.account_name, hist_f.account_number)
+                                 || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
+                        FROM hist_f
+                        LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+                        WHERE hist_f.account_number = :an
+                        ORDER BY hist_f.snapshot_date DESC LIMIT 1
+                    """), {"an": raw_acct}).scalar()
+                if not label:
+                    continue
+            if account and label != account:
+                continue  # respect the ?account= filter, same as the main query
+            running[label] += float(amount or 0)
+            if flow_date in acct_series.get(label, {}):
+                continue  # never overwrite a real snapshot
+            if label in earliest_real and flow_date >= earliest_real[label]:
+                continue  # only fills the pre-tracking gap, not alongside real data
+            acct_series[label][flow_date] = running[label]
+            by_date[flow_date]["mv"] += running[label]
+            acct_dates[label].add(flow_date)
 
     dates_sorted = sorted(by_date.keys())
     account_value = [round(by_date[d]["mv"], 2) for d in dates_sorted]
@@ -3541,6 +3581,36 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                 ytd_total_acct[label] = float(r["total_value"])
                 manual_baseline_only_labels.add(label)
 
+        # All-time net deposits (ref_account_cashflow) — when known, this is
+        # a MORE authoritative "lifetime starting basis" than Fidelity/
+        # Schwab's own cost_basis_total, which only reflects currently-HELD
+        # positions' cost (fully-sold-and-repurchased history, or an account
+        # opened with cash that sat uninvested for a while, isn't captured by
+        # cost_basis at all). Where present, Total Gain (lifetime) becomes
+        # Total(today) - net deposits, overriding the cost_basis-based figure
+        # — same principle as collapsing Boeing's Total Gain to YTD above,
+        # just driven by a user-confirmed deposit instead of an absent
+        # baseline snapshot.
+        lifetime_net_deposit_acct: dict = {}
+        cashflow_totals = s.execute(text(
+            "SELECT source, account, SUM(amount) AS net FROM ref_account_cashflow GROUP BY source, account"
+        )).mappings().all()
+        for r in cashflow_totals:
+            if r["source"] == "CS":
+                label = r["account"]
+            else:
+                label = s.execute(text("""
+                    SELECT COALESCE(hist_f.account_name, hist_f.account_number)
+                             || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
+                    FROM hist_f
+                    LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+                    WHERE hist_f.account_number = :an
+                    ORDER BY hist_f.snapshot_date DESC LIMIT 1
+                """), {"an": r["account"]}).scalar()
+            if not label:
+                continue
+            lifetime_net_deposit_acct[label] = float(r["net"] or 0)
+
         # Contributions since each baseline date (hist_401k_contrib), netted
         # out of the Total-delta below — Total(end)-Total(start) otherwise
         # counts money added to the account as if it were investment gain
@@ -3692,7 +3762,12 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
         # seen) — showing a separate "lifetime Total Gain" next to YTD would
         # compare a number we can't verify against one we can. Collapse
         # Total Gain to equal YTD for these accounts.
-        display_gain = ytd_gain if r["account"] in manual_baseline_only_labels else sgd
+        if r["account"] in lifetime_net_deposit_acct:
+            display_gain = tot - lifetime_net_deposit_acct[r["account"]]
+        elif r["account"] in manual_baseline_only_labels:
+            display_gain = ytd_gain
+        else:
+            display_gain = sgd
 
         dcd = float(r["day_change_dollar"] or 0)
         rtd = float(r["realized_today_dollar"] or 0)
