@@ -201,6 +201,29 @@ function renderSparklines(data) {
     document.querySelectorAll('canvas[data-spark-acct]').forEach(c => {
         const acct = c.getAttribute('data-spark-acct');
         const series = (data.per_account || {})[acct] || [];
+        const nonNullCount = series.filter(v => v != null).length;
+        // A line needs 2+ points to draw a segment. An account newly added
+        // to tracking (e.g. one snapshot ever) has 0-1 real points in most
+        // date ranges — Chart.js silently renders nothing, which reads as a
+        // bug rather than "not enough history yet". Show an explicit
+        // placeholder instead of a blank canvas.
+        const wrap = c.closest('div');
+        if (nonNullCount < 2) {
+            c.style.display = 'none';
+            if (wrap && !wrap.querySelector('.spark-no-data')) {
+                const note = document.createElement('span');
+                note.className = 'spark-no-data';
+                note.title = 'Not enough tracked history yet to chart a trend for this account';
+                note.style.cssText = 'font-size:10px; color:var(--text-3,#999); cursor:help;';
+                note.textContent = 'too new';
+                wrap.appendChild(note);
+            }
+            return;
+        } else {
+            c.style.display = '';
+            const note = wrap && wrap.querySelector('.spark-no-data');
+            if (note) note.remove();
+        }
         const last = series.length ? series[series.length - 1] : null;
         const first = series.length ? series[0] : null;
         const trendUp = (last != null && first != null) ? (last >= first) : true;
