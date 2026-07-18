@@ -3445,6 +3445,62 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
             for r in mtd_rows_f:
                 mtd_total_acct[r["account"]] = float(r["total_value"] or 0)
 
+        # Manual baseline overrides (ref_account_baseline) — fallback ONLY
+        # for accounts with no real snapshot before the period start (e.g. a
+        # newly-tracked 401(k) with no Jan-1 position export). Never
+        # overrides a real hist_f/hist_cs-derived baseline above.
+        baseline_overrides = s.execute(text(
+            "SELECT account_number, as_of_date, total_value FROM ref_account_baseline"
+        )).mappings().all()
+        for r in baseline_overrides:
+            label = s.execute(text("""
+                SELECT COALESCE(hist_f.account_name, hist_f.account_number)
+                         || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
+                FROM hist_f
+                LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+                WHERE hist_f.account_number = :an
+                ORDER BY hist_f.snapshot_date DESC LIMIT 1
+            """), {"an": r["account_number"]}).scalar()
+            if not label:
+                continue
+            # YTD only — a manually-estimated baseline this stale (typically
+            # a prior year-end value) isn't a meaningful MTD anchor even when
+            # it technically predates the 1st of this month; using it there
+            # would show a "MTD" figure actually spanning many months.
+            if r["as_of_date"] < ytd_start and label not in ytd_total_acct:
+                ytd_total_acct[label] = float(r["total_value"])
+
+        # Contributions since each baseline date (hist_401k_contrib), netted
+        # out of the Total-delta below — Total(end)-Total(start) otherwise
+        # counts money added to the account as if it were investment gain
+        # (confirmed concretely: Boeing 401(k) Total-delta came out to
+        # $31,977.96 — its $28,634.58 in 2026 contributions PLUS the real
+        # ~$3,343 gain, conflated together). Keyed by account_number, resolved
+        # to the same disambiguated label via the account's latest hist_f row.
+        ytd_contrib_acct: dict = {}
+        mtd_contrib_acct: dict = {}
+        contrib_rows = s.execute(text("""
+            SELECT account_number,
+                   COALESCE(SUM(amount) FILTER (WHERE trade_date >= :ytd_s), 0) AS ytd_contrib,
+                   COALESCE(SUM(amount) FILTER (WHERE trade_date >= :mtd_s), 0) AS mtd_contrib
+            FROM hist_401k_contrib
+            WHERE transaction_type = 'Contributions' AND account_number IS NOT NULL
+            GROUP BY account_number
+        """), {"ytd_s": ytd_start, "mtd_s": mtd_start}).mappings().all()
+        for r in contrib_rows:
+            label = s.execute(text("""
+                SELECT COALESCE(hist_f.account_name, hist_f.account_number)
+                         || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
+                FROM hist_f
+                LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+                WHERE hist_f.account_number = :an
+                ORDER BY hist_f.snapshot_date DESC LIMIT 1
+            """), {"an": r["account_number"]}).scalar()
+            if not label:
+                continue
+            ytd_contrib_acct[label] = float(r["ytd_contrib"] or 0)
+            mtd_contrib_acct[label] = float(r["mtd_contrib"] or 0)
+
         # NOTE: no separate global YTD/MTD baseline query here — the global
         # figure is summed from the per-account values below (each of which
         # already has correct per-account fallback for accounts with no
@@ -3551,8 +3607,12 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
         # gain$/cost_basis for a account with ongoing contributions (401k
         # payroll deductions) isn't a real return anyway — showing it as
         # "YTD" was actively misleading, not just approximate.
-        ytd_gain = (tot - ytd_total_acct[r["account"]]) if r["account"] in ytd_total_acct else None
-        mtd_gain = (tot - mtd_total_acct[r["account"]]) if r["account"] in mtd_total_acct else None
+        # Net out contributions since the baseline (hist_401k_contrib) where
+        # we have that data — Total-delta alone counts money added as gain.
+        ytd_gain = (tot - ytd_total_acct[r["account"]] - ytd_contrib_acct.get(r["account"], 0)) \
+            if r["account"] in ytd_total_acct else None
+        mtd_gain = (tot - mtd_total_acct[r["account"]] - mtd_contrib_acct.get(r["account"], 0)) \
+            if r["account"] in mtd_total_acct else None
 
         dcd = float(r["day_change_dollar"] or 0)
         rtd = float(r["realized_today_dollar"] or 0)

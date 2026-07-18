@@ -335,6 +335,27 @@ CREATE TABLE IF NOT EXISTS ref_accounts (
 );
 
 -- -----------------------------------------------------
+-- ref_account_baseline — manual Total-value overrides used as a YTD/MTD
+-- baseline fallback ONLY for accounts with no real hist_f/hist_cs snapshot
+-- before the period start (e.g. a newly-tracked 401(k) with no Jan 1
+-- position export). Never overrides a real snapshot delta — the API only
+-- consults this when the account is otherwise missing from the baseline.
+-- Values here are estimates (e.g. back-solved from a brokerage-reported
+-- YTD% + known contributions), not real broker exports — do not treat as
+-- authoritative history the way hist_* tables are.
+-- 2026-07-18: added for Boeing 401(k) (85911), Jan 1 2026 value back-solved
+-- from Fidelity's reported YTD 0.8% + $28,634.58 in 2026 contributions.
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS ref_account_baseline (
+    account_number   TEXT    NOT NULL,
+    as_of_date       DATE    NOT NULL,
+    total_value      NUMERIC NOT NULL,
+    note             TEXT,
+    created_at       TIMESTAMP NOT NULL DEFAULT now(),
+    PRIMARY KEY (account_number, as_of_date)
+);
+
+-- -----------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS ref_param (
 
