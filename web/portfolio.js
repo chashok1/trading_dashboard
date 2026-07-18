@@ -9,6 +9,7 @@ const state = {
   accountExpanded: false,
   summary: null,  // Cache summary response so filters can re-render tiles without re-fetching
   groups: {},     // { groupName: [accountTag, ...] } from /api/portfolio/groups
+  groupDescriptions: {},  // { groupName: group_desc } — display label wherever a group code is shown
   filters: {
     group: '',
     source: '',
@@ -434,12 +435,13 @@ async function loadGroups() {
   try {
     const resp = await fetchJson('/api/portfolio/groups');
     state.groups = resp.groups || {};
+    state.groupDescriptions = resp.descriptions || {};  // group_name -> group_desc, for display anywhere the group code shows
     const sel = $('groupFilter');
     if (!sel) return;
     sel.innerHTML = '<option value="">All groups</option>';
     for (const g of Object.keys(state.groups).sort()) {
       const o = document.createElement('option');
-      o.value = g; o.textContent = g;
+      o.value = g; o.textContent = state.groupDescriptions[g] || g;
       sel.appendChild(o);
     }
     if (resp.default && state.groups[resp.default]) {

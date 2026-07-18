@@ -338,6 +338,11 @@ CREATE TABLE IF NOT EXISTS ref_accounts (
 -- lets the screen default to one group's accounts and switch to others,
 -- instead of always aggregating everyone together.
 ALTER TABLE IF EXISTS ref_accounts ADD COLUMN IF NOT EXISTS group_name TEXT;
+-- Human-readable label for group_name, shown in the UI wherever the group
+-- code (A1/A2/...) is displayed. group_name stays the stable join/filter
+-- key; group_desc is free-text and can change without breaking anything.
+ALTER TABLE IF EXISTS ref_accounts ADD COLUMN IF NOT EXISTS group_desc TEXT;
+UPDATE ref_accounts SET group_desc = group_name || '-Desc' WHERE group_name IS NOT NULL;
 
 INSERT INTO ref_accounts (account_number, source, group_name) VALUES
     ('85911', 'F', 'A2')

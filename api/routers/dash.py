@@ -2958,11 +2958,12 @@ def get_portfolio_realized(
 def get_portfolio_groups():
     """Account grouping (ref_accounts.group_name) for the Portfolio screen's
     Group filter — which accounts (by short_name/tag) belong to each group,
-    and which group loads by default (ref_settings.default_portfolio_group).
+    each group's display description (group_desc), and which group loads by
+    default (ref_settings.default_portfolio_group).
     """
     with session_scope() as s:
         rows = s.execute(text("""
-            SELECT group_name, short_name
+            SELECT group_name, group_desc, short_name
             FROM ref_accounts
             WHERE group_name IS NOT NULL AND short_name IS NOT NULL
             ORDER BY group_name, short_name
@@ -2971,9 +2972,12 @@ def get_portfolio_groups():
             "SELECT setting_value FROM ref_settings WHERE setting_name = 'default_portfolio_group'"
         )).scalar()
     groups: dict = {}
+    descriptions: dict = {}
     for r in rows:
         groups.setdefault(r["group_name"], []).append(r["short_name"])
-    return {"groups": groups, "default": default}
+        if r["group_desc"]:
+            descriptions[r["group_name"]] = r["group_desc"]
+    return {"groups": groups, "descriptions": descriptions, "default": default}
 
 
 @router.get("/api/portfolio/snapshot-status")
