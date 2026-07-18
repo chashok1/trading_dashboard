@@ -38,6 +38,7 @@ async function loadTrends() {
     const params = new URLSearchParams({ period });
     if (state.filters.account) params.set('account', state.filters.account);
     if (state.filters.source)  params.set('source',  state.filters.source);
+    if (state.filters.group && !state.filters.account) params.set('group', state.filters.group);
     let data;
     try {
         data = await fetchJson('/api/portfolio/trends?' + params.toString());

@@ -3032,6 +3032,7 @@ def get_portfolio_trends(
     period:  str           = Query("mtd", description="mtd | ytd | 1y | 5y"),
     account: Optional[str] = Query(None),
     source:  Optional[str] = Query(None, description="CS | F | (none = both)"),
+    group:   Optional[str] = Query(None, description="Group name (ref_accounts.group_name) — ignored if account is set"),
 ):
     """Portfolio trend data for the Trends panel on the Positions tab.
 
@@ -3080,6 +3081,23 @@ def get_portfolio_trends(
     if account:
         params["acct"] = account
 
+    # Group filter (ref_accounts.group_name) — resolves to a list of raw
+    # account identifiers (account_number, which for CS IS hist_cs.account
+    # directly and for F is hist_f.account_number) and filters both sources
+    # against that list. Ignored when a specific account is already selected
+    # (account takes precedence, same as the client-side Group+Account
+    # filter interaction on the Portfolio screen).
+    group_accts: list = []
+    if group and not account:
+        with session_scope() as s:
+            group_accts = [r[0] for r in s.execute(text(
+                "SELECT account_number FROM ref_accounts WHERE group_name = :g"
+            ), {"g": group}).fetchall()]
+        if not group_accts:
+            return {"dates": [], "account_value": [], "day_change": [],
+                    "cumulative_pl": [], "per_account": {}}
+        params["group_accts"] = group_accts
+
     # F account labels are disambiguated with a " (F2)"/" (F3)" suffix (see
     # /api/portfolio) because account_name alone collides across Fidelity
     # accounts. The filter/grouping expression here must match that exact
@@ -3089,8 +3107,15 @@ def get_portfolio_trends(
         "COALESCE(hist_f.account_name, hist_f.account_number) "
         "|| COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')"
     )
-    cs_acct_clause = " AND account = :acct" if account else ""
-    f_acct_clause  = f" AND ({f_acct_expr}) = :acct" if account else ""
+    if account:
+        cs_acct_clause = " AND account = :acct"
+        f_acct_clause  = f" AND ({f_acct_expr}) = :acct"
+    elif group_accts:
+        cs_acct_clause = " AND account = ANY(:group_accts)"
+        f_acct_clause  = " AND hist_f.account_number = ANY(:group_accts)"
+    else:
+        cs_acct_clause = ""
+        f_acct_clause  = ""
 
     unions = []
     if inc_cs:
@@ -3239,6 +3264,8 @@ def get_portfolio_trends(
                     continue
             if account and label != account:
                 continue  # respect the ?account= filter, same as the main query
+            if group_accts and raw_acct not in group_accts:
+                continue  # respect the ?group= filter, same as the main query
             running[label] += float(amount or 0)
             cf_schedule[label].append((flow_date, running[label]))
             if flow_date in acct_series.get(label, {}):
