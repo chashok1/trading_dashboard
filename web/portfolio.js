@@ -7,6 +7,7 @@ const state = {
   accountMap: {},
   accountList: [],
   accountExpanded: false,
+  graphsExpanded: true,   // #trendsPanel is visible by default (no inline display:none in HTML)
   summary: null,  // Cache summary response so filters can re-render tiles without re-fetching
   groups: {},     // { groupName: [accountTag, ...] } from /api/portfolio/groups
   groupDescriptions: {},  // { groupName: group_desc } — display label wherever a group code is shown
@@ -1266,7 +1267,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('acctToggle').addEventListener('click', () => {
     state.accountExpanded = !state.accountExpanded;
     $('kpiByAccount').style.display = state.accountExpanded ? 'block' : 'none';
-    $('acctToggle').textContent = (state.accountExpanded ? '▼' : '▶') + ' Account breakdown';
+    $('acctToggle').textContent = state.accountExpanded ? '▼' : '▶';
+  });
+
+  $('graphsToggle').addEventListener('click', () => {
+    state.graphsExpanded = !state.graphsExpanded;
+    $('trendsPanel').style.display = state.graphsExpanded ? '' : 'none';
+    $('graphsToggle').textContent = state.graphsExpanded ? '▾' : '▸';
   });
 
   $('modalClose').addEventListener('click', () => $('modalBackdrop').classList.remove('open'));

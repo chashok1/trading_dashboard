@@ -46,19 +46,20 @@
     .gain-zero { color: var(--text-2, #666); }
 
     .pf-filter-bar {
-      display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
-      padding: 6px 12px;
+      display: flex; gap: 6px; align-items: center; flex-wrap: nowrap;
+      padding: 4px 8px;
       background: var(--surface, #fafafa);
       border: 1px solid var(--border, #e0e0e0);
       border-radius: 6px;
       margin-bottom: 6px;
+      overflow-x: auto;
     }
-    .pf-filter-bar label { font-size: 12px; color: var(--text-2, #666); margin-right: 4px; }
+    .pf-filter-bar label { font-size: 12px; color: var(--text-2, #666); margin-right: 2px; }
     .pf-filter-bar select, .pf-filter-bar input[type="search"] {
-      padding: 5px 9px; font-size: 12px;
+      padding: 3px 6px; font-size: 12px;
       border: 1px solid var(--border, #e0e0e0); border-radius: 4px; background: #fff;
     }
-    .pf-filter-bar .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+    .pf-filter-bar .toggle { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; cursor: pointer; white-space: nowrap; }
 
     table.pf-grid { width: 100%; min-width: 100%; border-collapse: collapse; font-size: 11px; }
     table.pf-grid th, table.pf-grid td {
@@ -282,9 +283,9 @@
         <div id="limitChips" style="display:contents;"></div>
         <span style="margin-left:auto; font-size:11px; color:var(--text-2,#666);" id="rowCount"></span>
         <span style="color:var(--border,#ddd); font-size:16px;">|</span>
-        <button id="exportCsvBtn" class="btn" title="Export current view to CSV"
-                style="font-size:11px; padding:3px 10px;">Export CSV</button>
-        <button id="acctToggle" class="btn" style="font-size:11px; padding:3px 10px;">▶ Acct</button>
+        <button id="graphsToggle" class="btn" title="Hide/show graphs" style="font-size:13px; padding:3px 8px;">▾</button>
+        <button id="exportCsvBtn" class="btn" title="Export current view to CSV" style="font-size:13px; padding:3px 8px;">⬇</button>
+        <button id="acctToggle" class="btn" title="Account breakdown" style="font-size:13px; padding:3px 8px;">▶</button>
         <div style="font-size:11px; color:var(--text-2,#666);" id="snapshotLabel"></div>
       </div>
 
