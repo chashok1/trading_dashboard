@@ -7326,3 +7326,12 @@ UPDATE ref_settings SET setting_value = '-0.6'  WHERE setting_name = 'macro_thr_
 -- etl/derive_macro.py (the sliding window supersedes the ramp/lead model).
 -- Rows left in ref_settings — harmless, kept for audit/rollback reference.
 
+-- ref_rrt.tos_ticker is not unique -- some TOS tickers have multiple RRT
+-- rows (e.g. $DXY: 'USD'/'NYICDX', /BTC: 'BITCOIN'/'BTCUSD'/'BTC'). The
+-- actionable Symbol column joins on tos_ticker to show rr_name in place of
+-- tos_symbol; without a tiebreaker that join fans out into duplicate grid
+-- rows. `preferred_display` marks which row wins when a tos_ticker has more
+-- than one. Editable via the generic /ref UI (single-col PK, no code change
+-- needed there).
+ALTER TABLE ref_rrt ADD COLUMN IF NOT EXISTS preferred_display BOOLEAN NOT NULL DEFAULT FALSE;
+

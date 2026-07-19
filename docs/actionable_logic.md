@@ -95,10 +95,17 @@ resolves straight to BMN/BM at `fc_confidence='high'` without requiring
 `rr_action` (Technical) to also confirm the entry, unlike every other source.
 Sells are unaffected: REMOVE still exits via the Technical-agnostic step-1
 gate (unchanged, pre-existing for all sources) and REDUCE still needs normal
-Technical confirmation. Trade Mode's client-side `rr_bull_bear==='B'` check
+Technical confirmation. Trade Mode's client-side check
 (`web/actionable.js::_isTradeModeQualifyingBuy`) has the same RTA exemption,
-so an RTA-sourced BM/BMN can qualify for Trade Mode even when the deep-TA
-stack (`drv_tn_td_bb_rr.rr_bull_bear`) hasn't independently turned bullish.
+so an RTA-sourced BM/BMN can qualify for Trade Mode even when `rr_action`
+(Technical) hasn't independently confirmed.
+
+Trade Mode's non-RTA leg checks `rr_action` (Technical) is in the buy family
+`{BS, BM, BMN}` — same set as the Watchlist gate's `_ENTRY_RIPE_TECH`
+(2026-07-19, swapped from `rr_bull_bear==='B'`). `rr_bull_bear` only reflects
+which RR band-position table (`bull_rr_rule` vs `nbull_rr_rule`) computed the
+QO leg of `rr_action`, not whether `rr_action` actually confirmed a buy on
+this snapshot — `rr_action` is the more direct check.
 
 **`_action_rank`** (PS) — lower rank number is better:
 

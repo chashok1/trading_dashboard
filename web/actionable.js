@@ -1606,15 +1606,20 @@ async function loadActionable(opts) {
 // (including the Watchlist band and HOLD/no-action rows) is hidden. Buys from
 // ANY source qualify; a buy whose winning source measured negative buy-edge
 // (ref_settings.trade_mode_weak_buy_sources) is tagged WEAK SRC instead.
-// RTA (Real-Time Alert) is exempt from the rr_bull_bear Technical check —
-// same rationale as the server-side bypass_technical in _compute_final_call:
-// a same-day live trigger doesn't need the deep-TA stack to also confirm.
+// RTA (Real-Time Alert) is exempt from the Technical check — same rationale
+// as the server-side bypass_technical in _compute_final_call: a same-day
+// live trigger doesn't need the deep-TA stack to also confirm.
+// Swapped rr_bull_bear -> rr_action (Technical, same buy-family set as the
+// Watchlist gate's _ENTRY_RIPE_TECH): rr_bull_bear only reflects whether the
+// RR band-position leg (QO) used the bull_rr_rule or nbull_rr_rule table,
+// not whether Technical actually confirmed a buy on this snapshot.
 function _isTradeModeQualifyingBuy(r) {
   const code = (r.final_code || '').toUpperCase();
   if (code !== 'BM' && code !== 'BMN') return false;
   if (!(r.fc_feasible === true || r.fc_feasible === 'true')) return false;
   const src = (r.winning_source || '').toString().toUpperCase();
-  if (src !== 'RTA' && r.rr_bull_bear !== 'B') return false;
+  const tech = (r.rr_action || '').toUpperCase();
+  if (src !== 'RTA' && _ENTRY_RIPE_TECH.indexOf(tech) === -1) return false;
   if (r.stop_breached) return false;
   const mv = (r.macro_value || '').toUpperCase();
   if (mv === 'SA' || mv === 'STM') return false;
@@ -1644,7 +1649,7 @@ function _sourceHitRateBadge(r) {
   const edgeStr = sc.edge_20d != null ? (sc.edge_20d >= 0 ? '+' : '') + sc.edge_20d.toFixed(2) + '%' : 'n/a';
   const title = `${src} buy hit rate: ${pct}% of ${sc.n} historical buys were positive at 20d ` +
     `(avg edge ${edgeStr}). See v_source_edge_scorecard.`;
-  return ` <span class="hit-rate-pill ${cls}" title="${escapeHtml(title)}">${pct}%</span>`;
+  return `<span class="hit-rate-pill ${cls}" title="${escapeHtml(title)}">${pct}%</span>`;
 }
 
 // Client filters EXCEPT the action chip. Kept separate so the action-chip
@@ -2894,7 +2899,7 @@ function _dollarWeightedScore(row) {
 // Deliberately does NOT use raw LRR proximity — QS already encodes it plus
 // Trend/Trade, BB-streak and MACDH context (a falling knife near LRR shows
 // SA/STM and stays gated).
-const _ENTRY_RIPE_TECH = ['BS', 'BM'];
+const _ENTRY_RIPE_TECH = ['BS', 'BM', 'BMN'];
 
 // True when a row should be parked in the Watchlist band instead of Tier 1.
 // Held rows are never gated — this only governs *initiating* new positions.
@@ -3842,6 +3847,7 @@ function _buildRowEl(r) {
     const pctCls = r.pct_change != null ? (Number(r.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : '';
     const pctStr = r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : '';
     const priceStr = r.last_price != null ? fmtUsd(r.last_price) : '';
+    const hitRateBadge = state.filters.trade_mode ? _sourceHitRateBadge(r) : '';
     const candleHtml = window.mtTip?.candleSvg(r.open_price, r.high_price, r.low_price, r.last_price) || '';
     // Task 4: intraday marker — shown only when quote is fresher than EOD anchor
     //         AND export_time falls within regular market hours (0930–1559 ET).
@@ -3923,12 +3929,12 @@ function _buildRowEl(r) {
         </div>
         ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
       </td>
-      <td data-col="sym" data-sym-cell="${escapeHtml(r.tos_symbol)}" data-notespop="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer;" title="Click for chart · Hover for comments">
-        <strong class="tv-sym-link" style="font-size:11px;color:${_symOutlookColor(r)};">${escapeHtml(r.tos_symbol || '')}</strong>
+      <td data-col="sym" data-sym-cell="${escapeHtml(r.tos_symbol)}" data-notespop="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer;" title="${r.rr_name && r.rr_name !== r.tos_symbol ? escapeHtml(r.tos_symbol) + ' · ' : ''}Click for chart · Hover for comments">
+        <strong class="tv-sym-link" style="font-size:11px;color:${_symOutlookColor(r)};">${escapeHtml(r.rr_name || r.tos_symbol || '')}</strong>
         ${r._watchlisted && r._isNew
           ? '<span class="new-pill" title="Winning source data just landed for this date — Technical isn\'t entry-ripe yet, so it waits here rather than promoting to Tier 1">NEW</span>'
           : ''}
-        ${state.filters.trade_mode ? _sourceHitRateBadge(r) : ''}
+        ${hitRateBadge ? '<div style="margin-top:1px;">' + hitRateBadge + '</div>' : ''}
       </td>
       <td data-col="agree3" style="padding:6px 4px; text-align:center;">${(() => {
         const dir = _agreementDir(r);

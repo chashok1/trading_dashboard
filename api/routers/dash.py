@@ -1081,7 +1081,8 @@ def get_actionable(
                ms.month_now_net, ms.month_next_net, ms.month_weight,
                ms.qtr_now_net, ms.qtr_next_net, ms.qtr_weight,
                ms.monthly_scores_json, ms.detail AS macro_window,
-               pv.decision AS pvv_decision, pv.detail AS pvv_detail
+               pv.decision AS pvv_decision, pv.detail AS pvv_detail,
+               rrt.rr_name
         FROM drv_actionable a
         LEFT JOIN drv_tn_td_bb_rr rr
                ON rr.tos_symbol = a.tos_symbol AND rr.as_of_date = a.as_of_date
@@ -1150,6 +1151,12 @@ def get_actionable(
                ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = a.as_of_date
         LEFT JOIN drv_pvv pv
                ON pv.tos_symbol = a.tos_symbol AND pv.as_of_date = a.as_of_date
+        LEFT JOIN LATERAL (
+            SELECT rr_name FROM ref_rrt
+            WHERE tos_ticker = a.tos_symbol
+            ORDER BY preferred_display DESC, rr_name
+            LIMIT 1
+        ) rrt ON TRUE
         WHERE {' AND '.join(where)}
     """
     with session_scope() as s:

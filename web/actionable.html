@@ -8,6 +8,10 @@
   <link rel="stylesheet" href="/static/styles.css?v=20260706a">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
+    /* Actionable-only override — the shared .tv-sym-link underline (web/styles.css)
+       reads as noisy in this dense grid; scoped to this page so Portfolio/Cockpit
+       (same class, cascade-later here) keep the underline. */
+    .tv-sym-link { text-decoration: none; }
     .act-toolbar {
       background: var(--surface, #fafafa);
       border: 1px solid var(--border, #e0e0e0);
@@ -64,12 +68,13 @@
     .stop-pill {
       display: inline-block;
       margin-left: 4px;
-      padding: 1px 5px;
-      border-radius: 8px;
+      padding: 0 3px;
+      border-radius: 5px;
       background: #fee2e2;
       color: #dc2626;
       border: 1px solid #dc2626;
-      font-size: 9px;
+      font-size: 7px;
+      line-height: 1.1;
       font-weight: 700;
       vertical-align: middle;
     }
@@ -95,10 +100,10 @@
        colored by tier: <45% caution, 45-55% neutral, >55% good. */
     .hit-rate-pill {
       display: inline-block;
-      margin-left: 4px;
-      padding: 1px 5px;
-      border-radius: 8px;
-      font-size: 9px;
+      padding: 0 3px;
+      border-radius: 6px;
+      font-size: 7px;
+      line-height: 1.4;
       font-weight: 700;
       vertical-align: middle;
     }
@@ -1263,7 +1268,7 @@
   <script src="/static/_common.js"></script>
   <script src="/static/chart_modal.js"></script>
   <script src="/static/actions.js"></script>
-  <script src="/static/actionable.js?v=20260706h"></script>
+  <script src="/static/actionable.js?v=20260719b"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
   <script src="/static/macro_areas.js" defer></script>
