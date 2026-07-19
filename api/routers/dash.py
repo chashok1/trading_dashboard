@@ -1218,6 +1218,21 @@ def get_actionable(
     return out
 
 
+@router.get("/api/portfolio/beta-map")
+def get_portfolio_beta_map(date: Optional[str] = Query(None)):
+    """tos_symbol -> beta for a date, feeding the Actionable Portfolio Mix
+    panel's low/mid/high-beta pie (beta isn't part of the /api/actionable
+    payload -- kept out of that query to stay under the GEQO join threshold)."""
+    d = _resolve_date(date)
+    with session_scope() as s:
+        rows = s.execute(
+            text("SELECT tos_symbol, beta FROM drv_fundamentals "
+                 "WHERE as_of_date = :d AND beta IS NOT NULL"),
+            {"d": d},
+        ).mappings().all()
+    return {r["tos_symbol"]: float(r["beta"]) for r in rows}
+
+
 def _window_howto(macro_action: str | None, window: dict | None) -> str:
     """How-to directive for the window-based MacroNet (TASK_126). Mirrors the
     style of the old ramp-based howto text in _compute_macro(), but speaks to

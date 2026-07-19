@@ -6,6 +6,7 @@
   <title>Actionable Stocks — Trading Dashboard</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/static/styles.css?v=20260706a">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     .act-toolbar {
       background: var(--surface, #fafafa);
@@ -979,6 +980,55 @@
           </div>
           <div class="sp-body">
             <div id="macroRailSectors"><div class="msr-loading">Loading…</div></div>
+          </div>
+        </section>
+
+        <!-- Portfolio Mix — beta/sector/macro-stance/concentration pies over
+             held positions, scoped to whatever filters are currently active
+             on the grid (same state.rows the grid renders from). -->
+        <section id="portfolioMixSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
+          <div class="msr-section-hdr sp-hdr" data-panel="portfolioMix">
+            Portfolio Mix
+            <span class="sp-chevron">▾</span>
+          </div>
+          <div class="sp-body">
+            <div style="padding:6px 8px;display:flex;flex-direction:column;gap:10px;">
+              <div>
+                <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Asset Allocation</div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <canvas id="pmAssetCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
+                  <div id="pmAssetLegend" style="flex:1;min-width:0;"></div>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Beta</div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <canvas id="pmBetaCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
+                  <div id="pmBetaLegend" style="flex:1;min-width:0;"></div>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Sector</div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <canvas id="pmSectorCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
+                  <div id="pmSectorLegend" style="flex:1;min-width:0;"></div>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Macro Stance</div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <canvas id="pmMacroCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
+                  <div id="pmMacroLegend" style="flex:1;min-width:0;"></div>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Concentration</div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <canvas id="pmConcCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
+                  <div id="pmConcLegend" style="flex:1;min-width:0;"></div>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
