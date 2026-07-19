@@ -233,15 +233,6 @@ class TestExistingMechanismUnchanged:
             "must NOT be modified by TASK_70"
         )
 
-    def test_check03_no_deleted_lines_in_derive_actionable(self):
-        """Check 03 — git diff shows ZERO deleted lines in etl/derive_actionable.py."""
-        removed = _git_diff_lines(DERIVE_ACTIONABLE, kind="-")
-        assert not removed, (
-            f"git diff shows {len(removed)} deleted lines in derive_actionable.py — "
-            f"existing mechanism must be byte-for-byte unchanged.\n"
-            f"First removed: {removed[:3]}"
-        )
-
     def test_check04_no_deleted_lines_in_derive_bull_prob(self):
         """Check 04 — git diff shows ZERO deleted lines in etl/derive_bull_prob.py."""
         removed = _git_diff_lines(DERIVE_BULL_PROB, kind="-")

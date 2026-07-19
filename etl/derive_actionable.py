@@ -21,10 +21,11 @@ log = logging.getLogger("etl.derive_actionable")
 ACTION_RANK  = {"REMOVE": 4, "REDUCE": 3, "INCREASE": 2, "ADD": 1, "HOLD": 0}
 # RTA (long-book, same-day trigger) ranks highest — a real-time alert on a
 # held position should always headline over a standing weekly/monthly list.
-# RTAINFO (short-book, informational-only HOLD) ranks lowest so it never
-# masks a real signal from another source.
+# RTAINFO (short-book, informational-only HOLD) and TOP5 (Hedgeye's daily
+# Top-5 list, also informational-only HOLD) rank lowest so they never mask
+# a real signal from another source.
 SOURCE_ORDER = {"RTA": 1, "PS": 2, "ETF": 3, "RR": 4, "SSS": 5, "II": 6,
-                "CALL": 7, "RTAINFO": 8}
+                "CALL": 7, "RTAINFO": 8, "TOP5": 9}
 
 # Final-call strength scale (mirrors JS _FC_SCALE in actionable.js).
 _FC_SCALE: dict[str, int] = {

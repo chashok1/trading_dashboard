@@ -758,6 +758,23 @@ def _action_rta(side: Optional[str], kind: Optional[str],
     return None, "unrecognized RTA side"
 
 
+def _action_top5(side: Optional[str]) -> tuple[Optional[str], str]:
+    """TOP5 (Hedgeye's daily Top-5 most-actionable list) — informational
+    only, same role as RTAINFO. Top-5 is drawn from the same Call email
+    that already feeds the CALL source's own 30-day standing model, so it
+    never drives ADD/REMOVE/REDUCE here (that would risk disagreeing with
+    CALL on the same underlying call) -- always HOLD, tagged with the
+    day's long/short bias so it's visible as a source badge without
+    competing for winning_source. Ranked last in SOURCE_ORDER.
+    """
+    s = (side or "").strip().lower()
+    if s == "long":
+        return "HOLD", "Hedgeye Top 5 (long bias) — informational"
+    if s == "short":
+        return "HOLD", "Hedgeye Top 5 (short bias) — informational"
+    return "HOLD", "Hedgeye Top 5 (neutral) — informational"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Main derive function
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1190,6 +1207,47 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                 for rrow in rta_batch:
                     session.execute(insert_sql, rrow)
                 total_rows += len(rta_batch)
+
+            elif method == "top5_alert":
+                # TOP5 — Hedgeye's daily Top-5 list. lookback_days (default
+                # 10): the most recent Top-5 appearance per symbol in the
+                # trailing window wins, so the badge persists briefly after
+                # a symbol drops off the list rather than vanishing next day.
+                lb = int(s.get("lookback_days") or 10)
+                top5_rows = session.execute(text(f"""
+                    WITH ranked AS (
+                        SELECT COALESCE(tos_symbol, symbol) AS sym,
+                               side, rank, snapshot_date,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY COALESCE(tos_symbol, symbol)
+                                   ORDER BY snapshot_date DESC, rank ASC
+                               ) AS rk
+                          FROM hist_call_top5
+                         WHERE snapshot_date <= '{as_of_date}'
+                           AND snapshot_date >= ('{as_of_date}'::date - ('{lb}' || ' days')::interval)::date
+                           AND COALESCE(tos_symbol, symbol) IS NOT NULL
+                    )
+                    SELECT sym, side, rank, snapshot_date
+                      FROM ranked WHERE rk = 1
+                """)).fetchall()
+
+                top5_batch = []
+                for tsym, tside, trank, tsnap in top5_rows:
+                    theld = tsym in holdings
+                    tact, treason = _action_top5(tside)
+                    if tact is None:
+                        continue
+                    top5_batch.append({
+                        "d": as_of_date, "sym": tsym, "sc": sc,
+                        "base": 0.0, "prev": None, "prev_d": None,
+                        "delta": None, "held": theld, "act": tact,
+                        "reason": treason, "cat": category, "rid": run_id,
+                        "analyst_rank": trank,
+                        "source_snap": tsnap,
+                    })
+                for trow in top5_batch:
+                    session.execute(insert_sql, trow)
+                total_rows += len(top5_batch)
 
             else:
                 log.warning("unknown base_weight_method for %s: %s", sc, method)
