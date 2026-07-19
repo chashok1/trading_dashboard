@@ -1,11 +1,5 @@
 /* Portfolio page logic */
 
-// Shared SVG icon markup for expand/collapse toggle buttons (acctToggle,
-// graphsToggle) — matches the chevron already baked into their initial HTML,
-// so JS-driven swaps on click stay visually identical to the starting icon.
-const ICON_CHEVRON_RIGHT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>';
-const ICON_CHEVRON_DOWN  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
-
 const state = {
   date: null,
   rows: [],
@@ -1273,13 +1267,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('acctToggle').addEventListener('click', () => {
     state.accountExpanded = !state.accountExpanded;
     $('kpiByAccount').style.display = state.accountExpanded ? 'block' : 'none';
-    $('acctToggle').innerHTML = state.accountExpanded ? ICON_CHEVRON_DOWN : ICON_CHEVRON_RIGHT;
+    $('acctToggle').classList.toggle('active', state.accountExpanded);
   });
 
   $('graphsToggle').addEventListener('click', () => {
     state.graphsExpanded = !state.graphsExpanded;
     $('trendsPanel').style.display = state.graphsExpanded ? '' : 'none';
-    $('graphsToggle').innerHTML = state.graphsExpanded ? ICON_CHEVRON_DOWN : ICON_CHEVRON_RIGHT;
+    $('graphsToggle').classList.toggle('active', state.graphsExpanded);
   });
 
   $('modalClose').addEventListener('click', () => $('modalBackdrop').classList.remove('open'));
