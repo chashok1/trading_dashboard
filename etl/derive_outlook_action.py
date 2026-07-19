@@ -758,6 +758,34 @@ def _action_rta(side: Optional[str], kind: Optional[str],
     return None, "unrecognized RTA side"
 
 
+_SSSCHG_WEIGHT = {
+    "add": 1.0,
+    "remove": -1.0,
+}
+
+
+def _action_sss_change(action: Optional[str], held: bool) -> tuple[Optional[str], str]:
+    """SSS Change (hist_sss_change — Gmail "Signal Strength Stocks"
+    Added/Removed lines, etl/hedgeye/parsers.py::parse_signal_strength)
+    classifier. Event-based, same-day trigger, same treatment as RTA
+    (source_code SSSCHG, investment_priority 0, bypass_technical in
+    derive_actionable.py) — user decision 2026-07-19: a same-day Gmail
+    add/remove overrides the file-based weekly SSS source until SSS's own
+    next weekly snapshot catches up (SOURCE_ORDER ranks SSSCHG above SSS).
+      add    -> INCREASE (held) / ADD (not held)
+      remove -> REMOVE if held, else silent (nothing to sell)
+    """
+    a = (action or "").strip().lower()
+    if a == "add":
+        return ("INCREASE" if held else "ADD"), \
+               f"SSS Change: added to list{' (held)' if held else ', establishing'}"
+    if a == "remove":
+        if held:
+            return "REMOVE", "SSS Change: removed from list (full exit)"
+        return None, "SSS Change: removed from list, not held"
+    return None, f"unrecognized SSS Change action {action!r}"
+
+
 def _action_top5(side: Optional[str]) -> tuple[Optional[str], str]:
     """TOP5 (Hedgeye's daily Top-5 most-actionable list) — informational
     only, same role as RTAINFO. Top-5 is drawn from the same Call email
@@ -1207,6 +1235,51 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                 for rrow in rta_batch:
                     session.execute(insert_sql, rrow)
                 total_rows += len(rta_batch)
+
+            elif method == "sss_change_alert":
+                # SSS Change (Gmail "Signal Strength Stocks" Added/Removed) —
+                # sparse, event-based, one row per add/remove. Same live-anchor
+                # ceiling logic as RTA (same-day trigger, visible intraday
+                # before the next TOSD/EOD load advances the anchor). Window =
+                # lookback_days calendar days; most recent event per symbol wins.
+                sss_ceil = position_ceiling(session, as_of_date)
+                lb = int(s.get("lookback_days") or 5)
+                sss_chg_rows = session.execute(text(f"""
+                    WITH ranked AS (
+                        SELECT COALESCE(tos_symbol, symbol) AS sym,
+                               action, snapshot_date,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY COALESCE(tos_symbol, symbol)
+                                   ORDER BY snapshot_date DESC
+                               ) AS rk
+                          FROM hist_sss_change
+                         WHERE snapshot_date <= '{sss_ceil}'
+                           AND snapshot_date >= ('{as_of_date}'::date - ('{lb}' || ' days')::interval)::date
+                           AND COALESCE(tos_symbol, symbol) IS NOT NULL
+                           AND COALESCE(tos_symbol, symbol) != 'NONE'
+                    )
+                    SELECT sym, action, snapshot_date
+                      FROM ranked WHERE rk = 1
+                """)).fetchall()
+
+                sss_chg_batch = []
+                for csym, caction, csnap in sss_chg_rows:
+                    cheld = csym in holdings
+                    cact, creason = _action_sss_change(caction, cheld)
+                    if cact is None:
+                        continue
+                    cweight = _SSSCHG_WEIGHT.get((caction or "").strip().lower(), 0)
+                    sss_chg_batch.append({
+                        "d": as_of_date, "sym": csym, "sc": sc,
+                        "base": cweight, "prev": None, "prev_d": None,
+                        "delta": None, "held": cheld, "act": cact,
+                        "reason": creason, "cat": category, "rid": run_id,
+                        "analyst_rank": None,
+                        "source_snap": csnap,
+                    })
+                for crow in sss_chg_batch:
+                    session.execute(insert_sql, crow)
+                total_rows += len(sss_chg_batch)
 
             elif method == "top5_alert":
                 # TOP5 — Hedgeye's daily Top-5 list. lookback_days (default

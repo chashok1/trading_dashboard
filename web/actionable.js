@@ -1606,20 +1606,22 @@ async function loadActionable(opts) {
 // (including the Watchlist band and HOLD/no-action rows) is hidden. Buys from
 // ANY source qualify; a buy whose winning source measured negative buy-edge
 // (ref_settings.trade_mode_weak_buy_sources) is tagged WEAK SRC instead.
-// RTA (Real-Time Alert) is exempt from the Technical check — same rationale
-// as the server-side bypass_technical in _compute_final_call: a same-day
-// live trigger doesn't need the deep-TA stack to also confirm.
+// RTA (Real-Time Alert) and SSSCHG (Signal Strength Stocks Gmail
+// Added/Removed) are exempt from the Technical check — same rationale as
+// the server-side bypass_technical in _compute_final_call: a same-day live
+// trigger doesn't need the deep-TA stack to also confirm.
 // Swapped rr_bull_bear -> rr_action (Technical, same buy-family set as the
 // Watchlist gate's _ENTRY_RIPE_TECH): rr_bull_bear only reflects whether the
 // RR band-position leg (QO) used the bull_rr_rule or nbull_rr_rule table,
 // not whether Technical actually confirmed a buy on this snapshot.
+const _TECH_GATE_EXEMPT_SRC = ['RTA', 'SSSCHG'];
 function _isTradeModeQualifyingBuy(r) {
   const code = (r.final_code || '').toUpperCase();
   if (code !== 'BM' && code !== 'BMN') return false;
   if (!(r.fc_feasible === true || r.fc_feasible === 'true')) return false;
   const src = (r.winning_source || '').toString().toUpperCase();
   const tech = (r.rr_action || '').toUpperCase();
-  if (src !== 'RTA' && _ENTRY_RIPE_TECH.indexOf(tech) === -1) return false;
+  if (_TECH_GATE_EXEMPT_SRC.indexOf(src) === -1 && _ENTRY_RIPE_TECH.indexOf(tech) === -1) return false;
   if (r.stop_breached) return false;
   const mv = (r.macro_value || '').toUpperCase();
   if (mv === 'SA' || mv === 'STM') return false;
@@ -1726,7 +1728,10 @@ function applyClientFilter(opts) {
     // can see every category's total while one is selected, not just the one.
     if (state.filters.asset_class && r._assetClass !== state.filters.asset_class) return false;
     if (state.filters.stopOnly && !r.stop_breached) return false;
-    if (state.filters.action) return _chipAction(r) === state.filters.action;
+    if (state.filters.action) {
+      const grp = _ACTION_GROUPS[state.filters.action];
+      return grp ? grp.indexOf(_chipAction(r)) !== -1 : _chipAction(r) === state.filters.action;
+    }
     if (state.filters.actionable_only) {
       const a = _chipAction(r);
       return a !== 'HOLD' && a !== 'NONE';
@@ -2097,6 +2102,23 @@ function renderSummary() {
     applyClientFilter();
   };
   wrap.appendChild(all);
+  // S / B group chips — aggregate REMOVE+REDUCE / INCREASE+ADD so the whole
+  // sell or buy side can be isolated in one click without picking a single
+  // granular bucket.
+  const groupChip = (key, label, title) => {
+    const n = _ACTION_GROUPS[key].reduce((sum, a) => sum + (counts[a] || 0), 0);
+    const chip = document.createElement('div');
+    chip.className = 'act-chip act-chip-group-' + key.toLowerCase()
+                   + (state.filters.action === key ? ' active' : '');
+    chip.title = title;
+    chip.innerHTML = `<span>${label}</span><span class="count">${n}</span>`;
+    chip.onclick = () => {
+      state.filters.action = (state.filters.action === key) ? '' : key;
+      applyClientFilter();
+    };
+    return chip;
+  };
+  wrap.appendChild(groupChip('SELL', 'S', 'All sells — SELL ALL + SELL SOME (REMOVE + REDUCE)'));
   for (const a of order) {
     const chip = document.createElement('div');
     const disp = actionDisplay(a);
@@ -2109,6 +2131,9 @@ function renderSummary() {
       applyClientFilter();
     };
     wrap.appendChild(chip);
+    if (a === 'REDUCE') {
+      wrap.appendChild(groupChip('BUY', 'B', 'All buys — BUY MORE + BUY TO MIN (INCREASE + ADD)'));
+    }
   }
   // TASK_119: STOP chip — orthogonal to the action buckets above (a REDUCE
   // row can also be stop_breached), so it toggles independently rather than
@@ -2183,6 +2208,17 @@ function renderSourceFilter() {
     if (c === cur) o.selected = true;
     sel.appendChild(o);
   }
+  _syncTriggerSourcePills();
+}
+
+// Keeps the RTA/EC/SC quick-filter pills' active state in sync with
+// state.filters.source, whichever control (pill or dropdown) last changed it.
+function _syncTriggerSourcePills() {
+  const wrap = $('triggerSourcePills');
+  if (!wrap) return;
+  wrap.querySelectorAll('[data-src-pill]').forEach(el => {
+    el.classList.toggle('active', state.filters.source === el.dataset.srcPill);
+  });
 }
 
 // Returns the display name for an account_number using state.allAccounts lookup.
@@ -2344,6 +2380,13 @@ function actionLabel(row) {
   const a = ((row && row.consolidated_action) || 'NONE').toUpperCase();
   return actionText(actionDisplay(a));
 }
+// Aggregate summary-chip groups — S (all sells) / B (all buys) — map onto
+// state.filters.action alongside the individual REMOVE/REDUCE/INCREASE/ADD
+// values; matched in matchesBaseFilters via _chipAction membership.
+const _ACTION_GROUPS = {
+  SELL: ['REMOVE', 'REDUCE'],
+  BUY:  ['INCREASE', 'ADD'],
+};
 // Chip bucket for a row — derived from finalCall() so filter pills match
 // what the Final Call column actually shows.
 // Returns one of: REMOVE | REDUCE | INCREASE | ADD | HOLD | OVER_MAX | NONE
@@ -5164,9 +5207,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Filter zone wire-ups ────────────────────────────────────────────────────
   $('sourceFilter').addEventListener('change', (e) => {
     state.filters.source = e.target.value;
+    _syncTriggerSourcePills();
     if (state.filters.source) { _resetToggleFiltersForLookup(); loadActionable(); return; }
     applyClientFilter();
   });
+  const triggerSourcePillsEl = $('triggerSourcePills');
+  if (triggerSourcePillsEl) {
+    triggerSourcePillsEl.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-src-pill]');
+      if (!el) return;
+      const src = el.dataset.srcPill;
+      state.filters.source = (state.filters.source === src) ? '' : src;
+      _syncTriggerSourcePills();
+      const selEl = $('sourceFilter');
+      if (selEl) selEl.value = state.filters.source;
+      if (state.filters.source) { _resetToggleFiltersForLookup(); loadActionable(); return; }
+      applyClientFilter();
+    });
+  }
   $('accountFilter').addEventListener('change', (e) => {
     state.filters.account = e.target.value;
     if (state.filters.account) { _resetToggleFiltersForLookup(); loadActionable(); return; }
@@ -5252,6 +5310,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Clear all filters
   $('clearFiltersBtn').addEventListener('click', clearAllFilters);
+
+  // More filters panel (Conv / P(↑20d) / Agree) — collapsed by default,
+  // toggle state persisted in localStorage.
+  const moreFiltersBtn = $('moreFiltersBtn');
+  const moreFiltersPanel = $('moreFiltersPanel');
+  if (moreFiltersBtn && moreFiltersPanel) {
+    const _MORE_FILTERS_KEY = 'actMoreFiltersOpen';
+    const _setMoreFiltersOpen = (open) => {
+      moreFiltersPanel.style.display = open ? 'flex' : 'none';
+      moreFiltersBtn.classList.toggle('active', open);
+      moreFiltersBtn.textContent = open ? 'More ▴' : 'More ▾';
+    };
+    _setMoreFiltersOpen(localStorage.getItem(_MORE_FILTERS_KEY) === '1');
+    moreFiltersBtn.addEventListener('click', () => {
+      const open = moreFiltersPanel.style.display === 'none';
+      _setMoreFiltersOpen(open);
+      try { localStorage.setItem(_MORE_FILTERS_KEY, open ? '1' : '0'); } catch (_) {}
+    });
+  }
 
 const _closeModal = () => {
     $('modalBackdrop').classList.remove('open');

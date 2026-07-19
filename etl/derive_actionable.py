@@ -21,11 +21,15 @@ log = logging.getLogger("etl.derive_actionable")
 ACTION_RANK  = {"REMOVE": 4, "REDUCE": 3, "INCREASE": 2, "ADD": 1, "HOLD": 0}
 # RTA (long-book, same-day trigger) ranks highest — a real-time alert on a
 # held position should always headline over a standing weekly/monthly list.
+# SSSCHG (Signal Strength Stocks Gmail Added/Removed, same-day trigger) sits
+# right behind it, same rationale — user decision 2026-07-19: a same-day
+# add/remove overrides the file-based weekly SSS source until SSS's own next
+# snapshot catches up (SSS stays at its own tier, unchanged).
 # RTAINFO (short-book, informational-only HOLD) and TOP5 (Hedgeye's daily
 # Top-5 list, also informational-only HOLD) rank lowest so they never mask
 # a real signal from another source.
-SOURCE_ORDER = {"RTA": 1, "PS": 2, "ETF": 3, "RR": 4, "SSS": 5, "II": 6,
-                "CALL": 7, "RTAINFO": 8, "TOP5": 9}
+SOURCE_ORDER = {"RTA": 1, "SSSCHG": 2, "PS": 3, "ETF": 4, "RR": 5, "SSS": 6,
+                "II": 7, "CALL": 8, "RTAINFO": 9, "TOP5": 10}
 
 # Final-call strength scale (mirrors JS _FC_SCALE in actionable.js).
 _FC_SCALE: dict[str, int] = {
@@ -883,7 +887,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             current_position_dollar=held_dollar,
             target_max_dollar=target_max,
             stop_breached=stop_breached,
-            bypass_technical=(winning_source == "RTA"),
+            bypass_technical=(winning_source in ("RTA", "SSSCHG")),
         )
         # priority_rank mirrors JS _computePriority: seq * 1e6 + |amt|.
         # amt = suggested - held for buys; held for sells; 0 otherwise.

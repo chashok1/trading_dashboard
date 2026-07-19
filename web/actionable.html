@@ -25,6 +25,22 @@
       flex-wrap: wrap;
       gap: 5px;
     }
+    /* Conv / P(up20d) / Agree filters — secondary row, collapsed by default
+       (moreFiltersBtn toggles + persists in localStorage). */
+    .act-toolbar-more {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 4px;
+      padding-top: 4px;
+      border-top: 1px dashed var(--border, #e0e0e0);
+    }
+    #moreFiltersBtn {
+      font-size: 11px;
+      padding: 3px 7px;
+      width: auto;
+    }
     /* act-toolbar-title kept for legacy references but no longer rendered */
     .act-summary {
       display: flex;
@@ -62,6 +78,8 @@
     .act-chip-none     { border-left: 4px solid #c4c4c4; }
     .act-chip-over_max { border-left: 4px solid var(--act-sell-weak); }
     .act-chip-stop     { border-left: 4px solid #dc2626; }
+    .act-chip-group-sell { border-left: 4px solid var(--act-sell-strong); font-weight: 700; }
+    .act-chip-group-buy  { border-left: 4px solid var(--act-buy); font-weight: 700; }
 
     /* TASK_119: stop-breach row + pill */
     tr.row-stop-breach { border-left: 3px solid #dc2626; }
@@ -686,13 +704,6 @@
         <div class="act-toolbar-main">
           <!-- Action chips -->
           <div class="act-summary" id="summaryChips"></div>
-          <!-- Conviction -->
-          <label style="font-size:11px; color:var(--text-2,#666); margin-right:2px; white-space:nowrap;">Conv</label>
-          <div class="seg-ctrl" id="convictionCtrl" title="Conviction filter">
-            <button class="seg-active" data-conv="any">Any</button>
-            <button data-conv="multi">Multi</button>
-            <button data-conv="proven">Proven</button>
-          </div>
           <!-- Row filter toggles: Show Hidden, Positions Only, Actionable Only -->
           <button id="showHidden" class="btn-icon btn-icon-sm" data-tip="Active Only  →  Show Hidden">
             <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -730,6 +741,13 @@
           </button>
           <!-- Source filter -->
           <select id="sourceFilter" title="Source filter"><option value="">All</option></select>
+          <!-- Same-day-trigger source pills: quick access to the three event
+               sources (RTA/ETFCHG/SSSCHG) without opening the dropdown. -->
+          <div class="act-summary" id="triggerSourcePills">
+            <div class="act-chip" data-src-pill="RTA" title="Filter to RTA (Real-Time Alert)"><span>RTA</span></div>
+            <div class="act-chip" data-src-pill="ETFCHG" title="Filter to EC (ETF Change)"><span>EC</span></div>
+            <div class="act-chip" data-src-pill="SSSCHG" title="Filter to SC (Signal Strength Stocks Change)"><span>SC</span></div>
+          </div>
           <!-- Account filter -->
           <label style="font-size:11px; color:var(--text-2,#666); margin-right:2px; white-space:nowrap;">Acct</label>
           <select id="accountFilter" style="max-width:8em;"><option value="">All</option></select>
@@ -742,20 +760,8 @@
               <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
             </svg>
           </button>
-          <!-- Bull Prob filter (TASK_66) -->
-          <label style="font-size:11px; color:var(--text-2,#666); white-space:nowrap;" title="P(↑20d) minimum — only show rows where bull_prob ≥ this value. 0 = show all.">P(↑20d) ≥</label>
-          <input type="number" id="bullProbFilter" min="0" max="1" step="0.05" value="0"
-                 style="width:50px; padding:2px 5px; font-size:11px; border:1px solid var(--border); border-radius:4px;">
-          <!-- Agreement class filter (TASK_69) -->
-          <label style="font-size:11px; color:var(--text-2,#666); white-space:nowrap;" title="Filter by agreement class — agree_bull/agree_bear/split_tech_bull/split_tech_bear/neutral">Agree</label>
-          <select id="agreementFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:110px;" title="Filter by agreement class (TASK_69)">
-            <option value="">All</option>
-            <option value="agree_bull">Agree Bull</option>
-            <option value="agree_bear">Agree Bear</option>
-            <option value="split_tech_bull">Split Tech Bull</option>
-            <option value="split_tech_bear">Split Tech Bear</option>
-            <option value="neutral">Neutral</option>
-          </select>
+          <!-- More filters toggle: Conv / P(up20d) / Agree — see .act-toolbar-more below -->
+          <button id="moreFiltersBtn" class="btn-icon" title="More filters — Conviction, P(up20d) minimum, Agreement class">More ▾</button>
           <!-- Focus + Export CSV + Clear filters — lives with the filters -->
           <button id="focusModeBtn" class="btn-icon btn-icon-sm" data-tip="Focus Mode" title="Focus mode">
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -843,6 +849,28 @@
               </svg>
             </button>
           </div>
+        </div>
+        <!-- More filters panel — Conv / P(up20d) / Agree, collapsed by default,
+             toggled by #moreFiltersBtn above (state persisted in localStorage). -->
+        <div class="act-toolbar-more" id="moreFiltersPanel" style="display:none;">
+          <label style="font-size:11px; color:var(--text-2,#666); margin-right:2px; white-space:nowrap;">Conv</label>
+          <div class="seg-ctrl" id="convictionCtrl" title="Conviction filter">
+            <button class="seg-active" data-conv="any">Any</button>
+            <button data-conv="multi">Multi</button>
+            <button data-conv="proven">Proven</button>
+          </div>
+          <label style="font-size:11px; color:var(--text-2,#666); white-space:nowrap;" title="P(↑20d) minimum — only show rows where bull_prob ≥ this value. 0 = show all.">P(↑20d) ≥</label>
+          <input type="number" id="bullProbFilter" min="0" max="1" step="0.05" value="0"
+                 style="width:50px; padding:2px 5px; font-size:11px; border:1px solid var(--border); border-radius:4px;">
+          <label style="font-size:11px; color:var(--text-2,#666); white-space:nowrap;" title="Filter by agreement class — agree_bull/agree_bear/split_tech_bull/split_tech_bear/neutral">Agree</label>
+          <select id="agreementFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:110px;" title="Filter by agreement class (TASK_69)">
+            <option value="">All</option>
+            <option value="agree_bull">Agree Bull</option>
+            <option value="agree_bear">Agree Bear</option>
+            <option value="split_tech_bull">Split Tech Bull</option>
+            <option value="split_tech_bear">Split Tech Bear</option>
+            <option value="neutral">Neutral</option>
+          </select>
         </div>
       </div>
 
@@ -1268,7 +1296,7 @@
   <script src="/static/_common.js"></script>
   <script src="/static/chart_modal.js"></script>
   <script src="/static/actions.js"></script>
-  <script src="/static/actionable.js?v=20260719b"></script>
+  <script src="/static/actionable.js?v=20260719e"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
   <script src="/static/macro_areas.js" defer></script>

@@ -88,17 +88,25 @@ window is considered:
   produces ADD/REMOVE — RTAINFO sits at the bottom of `SOURCE_ORDER` so an
   informational HOLD never masks a real signal from another source.
 
-**RTA bypasses the Technical gate on the buy side** (`_compute_final_call(...,
-bypass_technical=(winning_source=="RTA"))`, `etl/derive_actionable.py`). A
-Real-Time Alert is itself a live, same-day trigger — an ADD/INCREASE from RTA
-resolves straight to BMN/BM at `fc_confidence='high'` without requiring
-`rr_action` (Technical) to also confirm the entry, unlike every other source.
-Sells are unaffected: REMOVE still exits via the Technical-agnostic step-1
-gate (unchanged, pre-existing for all sources) and REDUCE still needs normal
-Technical confirmation. Trade Mode's client-side check
-(`web/actionable.js::_isTradeModeQualifyingBuy`) has the same RTA exemption,
-so an RTA-sourced BM/BMN can qualify for Trade Mode even when `rr_action`
-(Technical) hasn't independently confirmed.
+**RTA and SSSCHG bypass the Technical gate on the buy side**
+(`_compute_final_call(..., bypass_technical=(winning_source in ("RTA",
+"SSSCHG")))`, `etl/derive_actionable.py`). Both are live, same-day event
+triggers — RTA from Real-Time Alert emails, SSSCHG from the "Signal Strength
+Stocks" Added/Removed lines (`hist_sss_change`, `etl/hedgeye/parsers.py::
+parse_signal_strength`, wired in 2026-07-19 — previously informational-only,
+never reached the rules engine). An ADD/INCREASE from either resolves
+straight to BMN/BM at `fc_confidence='high'` without requiring `rr_action`
+(Technical) to also confirm the entry, unlike every other source. Sells are
+unaffected: REMOVE still exits via the Technical-agnostic step-1 gate
+(unchanged, pre-existing for all sources) and REDUCE still needs normal
+Technical confirmation. `SOURCE_ORDER` ranks SSSCHG right behind RTA (both
+same-day triggers) — a same-day Gmail add/remove overrides the file-based
+weekly `SSS` source (`hist_sss`, unchanged, its own lower tier) until SSS's
+own next snapshot catches up. Trade Mode's client-side check
+(`web/actionable.js::_isTradeModeQualifyingBuy`, `_TECH_GATE_EXEMPT_SRC`) has
+the same RTA/SSSCHG exemption, so an RTA- or SSSCHG-sourced BM/BMN can
+qualify for Trade Mode even when `rr_action` (Technical) hasn't independently
+confirmed.
 
 Trade Mode's non-RTA leg checks `rr_action` (Technical) is in the buy family
 `{BS, BM, BMN}` — same set as the Watchlist gate's `_ENTRY_RIPE_TECH`

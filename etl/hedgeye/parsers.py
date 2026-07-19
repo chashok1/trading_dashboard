@@ -693,7 +693,9 @@ def parse_signal_strength(email: Email) -> Parsed:
             action = "add" if m.group(1).lower() == "added" else "remove"
             for sym in re.split(r"[,\s]+", m.group(2).strip()):
                 sym = sym.strip().upper()
-                if sym:
+                # "Added: None" / "Removed: None" (zero changes that day) is
+                # not a ticker -- would otherwise insert a bogus NONE row.
+                if sym and sym != "NONE":
                     rows.append({
                         "snapshot_date": email.edt_date, "message_id": email.message_id,
                         "action": action, "symbol": sym, "tos_symbol": sym,
