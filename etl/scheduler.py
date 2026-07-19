@@ -488,6 +488,16 @@ def run_nightly_outcomes() -> None:
     except Exception:
         log.exception("nightly: stale-heal crashed")
 
+    log.info("nightly: weak-buy-sources recompute starting")
+    try:
+        from etl.db import session_scope
+        from etl.derive_source_edge import recompute_weak_buy_sources
+        with session_scope() as s:
+            weak = recompute_weak_buy_sources(s)
+        log.info("nightly: weak-buy-sources recompute done: %s", weak or "(none)")
+    except Exception:
+        log.exception("nightly: weak-buy-sources recompute crashed")
+
 
 def _read_nightly_state(state_path: Path):
     """Return the ISO date in the state file, or None if missing/invalid.
