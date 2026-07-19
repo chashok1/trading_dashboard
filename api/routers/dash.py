@@ -1233,6 +1233,33 @@ def get_portfolio_beta_map(date: Optional[str] = Query(None)):
     return {r["tos_symbol"]: float(r["beta"]) for r in rows}
 
 
+@router.get("/api/actionable/source-scorecard")
+def get_actionable_source_scorecard():
+    """source_code -> buy-family (ADD+INCREASE) n-weighted 20d edge/win-rate
+    from v_source_edge_scorecard (TASK_123). Feeds the Trade Mode hit-rate
+    badge (web/actionable.js) -- same view etl/derive_source_edge.py reads
+    to recompute ref_settings.trade_mode_weak_buy_sources nightly, just
+    exposed here as the raw numeric win_rate_20d instead of a binary flag."""
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT source_code,
+                   SUM(n) AS n,
+                   SUM(n * edge_20d) / NULLIF(SUM(n), 0) AS edge_20d,
+                   SUM(n * win_rate_20d) / NULLIF(SUM(n), 0) AS win_rate_20d
+            FROM v_source_edge_scorecard
+            WHERE action IN ('ADD', 'INCREASE')
+            GROUP BY source_code
+        """)).mappings().all()
+    return {
+        r["source_code"]: {
+            "n": int(r["n"]),
+            "edge_20d": float(r["edge_20d"]) if r["edge_20d"] is not None else None,
+            "win_rate_20d": float(r["win_rate_20d"]) if r["win_rate_20d"] is not None else None,
+        }
+        for r in rows
+    }
+
+
 def _window_howto(macro_action: str | None, window: dict | None) -> str:
     """How-to directive for the window-based MacroNet (TASK_126). Mirrors the
     style of the old ramp-based howto text in _compute_macro(), but speaks to

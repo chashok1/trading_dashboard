@@ -1340,14 +1340,16 @@ async function loadSources() {
     const settings = await fetchJson('/api/actionable/settings');
     state.convictionProvenEdgeMin = Number(settings.conviction_proven_edge_min);
     if (!isFinite(state.convictionProvenEdgeMin)) state.convictionProvenEdgeMin = 0.5;
-    // TASK_124: Trade Mode weak-source list — tunable via ref_settings, not hardcoded.
-    const weakStr = settings.trade_mode_weak_buy_sources || 'PS,ETF,II';
-    state.tradeModeWeakSources = new Set(
-      weakStr.split(',').map(s => s.trim().toUpperCase()).filter(Boolean));
   } catch (_) {
     state.convictionProvenEdgeMin = 0.5;
-    state.tradeModeWeakSources = new Set(['PS', 'ETF', 'II']);
   }
+  // Per-source buy-family hit rate (v_source_edge_scorecard, same table
+  // etl/derive_source_edge.py recomputes ref_settings.trade_mode_weak_buy_sources
+  // from nightly) — the Trade Mode Symbol-cell badge shows this number
+  // directly instead of a binary WEAK SRC flag.
+  try {
+    state.sourceScorecard = await fetchJson('/api/actionable/source-scorecard');
+  } catch (_) { state.sourceScorecard = {}; }
   // TASK_69: agreement scorecard — keyed by agreement_class -> avg_fwd_20d.
   try {
     const asc = await fetchJson('/api/rules/agreement-scorecard');
@@ -1627,12 +1629,22 @@ function _isTradeModeStopBreach(r) {
 function _matchesTradeMode(r) {
   return _isTradeModeQualifyingBuy(r) || _isTradeModeHeldSaSell(r) || _isTradeModeStopBreach(r);
 }
-// A qualifying buy whose winning source measured negative buy-edge — shown
-// with a WEAK SRC pill rather than hidden (source list is tunable, TASK_124).
-function _isWeakSourceBuy(r) {
-  if (!_isTradeModeQualifyingBuy(r)) return false;
+// Numeric hit-rate badge for a qualifying Trade Mode buy — the winning
+// source's buy-family (ADD+INCREASE) 20d win rate from
+// state.sourceScorecard, shown in place of the old binary WEAK SRC pill
+// (TASK_124) so every source's track record is visible, not just the
+// three that happened to be below zero at one point in time.
+function _sourceHitRateBadge(r) {
+  if (!_isTradeModeQualifyingBuy(r)) return '';
   const src = (r.winning_source || '').toString().toUpperCase();
-  return !!(state.tradeModeWeakSources && state.tradeModeWeakSources.has(src));
+  const sc = (state.sourceScorecard || {})[src];
+  if (!sc || sc.win_rate_20d == null || sc.n < 5) return '';
+  const pct = Math.round(sc.win_rate_20d * 100);
+  const cls = pct < 45 ? 'hit-rate-pill-low' : pct > 55 ? 'hit-rate-pill-high' : 'hit-rate-pill-mid';
+  const edgeStr = sc.edge_20d != null ? (sc.edge_20d >= 0 ? '+' : '') + sc.edge_20d.toFixed(2) + '%' : 'n/a';
+  const title = `${src} buy hit rate: ${pct}% of ${sc.n} historical buys were positive at 20d ` +
+    `(avg edge ${edgeStr}). See v_source_edge_scorecard.`;
+  return ` <span class="hit-rate-pill ${cls}" title="${escapeHtml(title)}">${pct}%</span>`;
 }
 
 // Client filters EXCEPT the action chip. Kept separate so the action-chip
@@ -2699,7 +2711,9 @@ function _finalCallHtml(row) {
   // Badge
   var badgeHtml;
   if (isLowConf) {
-    badgeHtml = '<span style="font-size:9px;color:#b45309;font-weight:700;" title="Sell evidence comes only from rules with a demonstrated negative historical edge — cross-check before acting">Low</span>';
+    // LOW CONF sub-line below already says this — no need to also duplicate
+    // it in the confidence-tier badge slot.
+    badgeHtml = '';
   } else if (fc.confidence === 'high') {
     badgeHtml = '<span style="font-size:9px;color:#16a34a;" title="Sources and Technical align">High</span>';
   } else if (fc.confidence === 'gate') {
@@ -2720,7 +2734,7 @@ function _finalCallHtml(row) {
                     : fcDisp.code === 'BM' ? 'background:#1d9e75;'
                     : '';
   var lowConfSub = isLowConf
-    ? '<div style="font-size:8px;font-weight:700;color:#b45309;letter-spacing:0.3px;">LOW CONF</div>' : '';
+    ? '<div style="font-size:8px;font-weight:700;color:#b45309;letter-spacing:0.3px;" title="Sell evidence comes only from rules with a demonstrated negative historical edge — cross-check before acting">LOW CONF</div>' : '';
   // TASK_119: STOP pill — held position trading below its stop level.
   var stopPill = row.stop_breached
     ? ' <span class="stop-pill" title="Held below stop level — an effective ADD/INCREASE here is downgraded to HOLD">STOP</span>'
@@ -3914,9 +3928,7 @@ function _buildRowEl(r) {
         ${r._watchlisted && r._isNew
           ? '<span class="new-pill" title="Winning source data just landed for this date — Technical isn\'t entry-ripe yet, so it waits here rather than promoting to Tier 1">NEW</span>'
           : ''}
-        ${state.filters.trade_mode && _isWeakSourceBuy(r)
-          ? '<span class="weak-src-pill" title="Winning source (' + escapeHtml((r.winning_source || '').toString()) + ') measured negative buy-edge in the last validation — size down or skip; see docs/audit/signal_validation_2026-07.md">WEAK SRC</span>'
-          : ''}
+        ${state.filters.trade_mode ? _sourceHitRateBadge(r) : ''}
       </td>
       <td data-col="agree3" style="padding:6px 4px; text-align:center;">${(() => {
         const dir = _agreementDir(r);

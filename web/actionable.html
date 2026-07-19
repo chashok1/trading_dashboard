@@ -89,21 +89,22 @@
       vertical-align: middle;
     }
 
-    /* TASK_124: "WEAK SRC" pill — qualifying Trade Mode buy whose winning
-       source measured negative buy-edge (ref_settings.trade_mode_weak_buy_sources).
-       Same shape as .stop-pill/.new-pill, amber tint (caution, not blocking). */
-    .weak-src-pill {
+    /* Trade Mode hit-rate pill — winning source's buy-family 20d win rate
+       (v_source_edge_scorecard), replacing the old binary "WEAK SRC" flag
+       (TASK_124) with the actual number. Same shape as .stop-pill/.new-pill,
+       colored by tier: <45% caution, 45-55% neutral, >55% good. */
+    .hit-rate-pill {
       display: inline-block;
       margin-left: 4px;
       padding: 1px 5px;
       border-radius: 8px;
-      background: #fef3c7;
-      color: #b45309;
-      border: 1px solid #b45309;
       font-size: 9px;
       font-weight: 700;
       vertical-align: middle;
     }
+    .hit-rate-pill-low  { background: #fef3c7; color: #b45309; border: 1px solid #b45309; }
+    .hit-rate-pill-mid  { background: #f1f5f9; color: #475569; border: 1px solid #94a3b8; }
+    .hit-rate-pill-high { background: #dcfce7; color: #15803d; border: 1px solid #15803d; }
 
     /* TASK_124: Trade Mode toggle — icon-only, same footprint + icon-on/icon-off
        dual-state convention as the other row-filter toggles (showHidden/

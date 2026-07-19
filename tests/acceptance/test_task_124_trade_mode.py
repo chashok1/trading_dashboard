@@ -140,19 +140,6 @@ class TestMatchesTradeMode:
 
 # ── Weak-source pill ─────────────────────────────────────────────────────
 
-class TestWeakSourceBuy:
-    def test_requires_qualifying_buy_first(self, js_text):
-        body = extract_function_body(js_text, "_isWeakSourceBuy")
-        assert "_isTradeModeQualifyingBuy" in body
-
-    def test_keyed_off_tunable_set_not_hardcoded(self, js_text):
-        body = extract_function_body(js_text, "_isWeakSourceBuy")
-        assert "state.tradeModeWeakSources" in body
-        # Should not hardcode the PS/ETF/II list inside the predicate itself
-        # (the tunable list is loaded once in loadSources(), not repeated here).
-        assert "'PS'" not in body and "'ETF'" not in body and "'II'" not in body
-
-
 # ── Toggle-OFF pixel-identical guarantee ───────────────────────────────────
 
 class TestToggleOffUnchanged:
@@ -227,9 +214,6 @@ class TestHtmlToggle:
     def test_toggle_button_exists(self, html_text):
         assert 'id="tradeModeBtn"' in html_text
 
-    def test_weak_src_pill_css_exists(self, html_text):
-        assert ".weak-src-pill" in html_text
-
 
 # ── DB / API source-of-truth ────────────────────────────────────────────
 
@@ -266,7 +250,11 @@ class TestRefSettingsSeed:
             "requires (updating the row to change the WEAK SRC list) will not "
             "work until this seed is applied."
         )
-        assert row[0] == "PS,ETF,II"
+        # etl/derive_source_edge.py recomputes this nightly from
+        # v_source_edge_scorecard, so the exact value is not a fixed point
+        # -- just check it's present and a well-formed source_code list.
+        value = (row[0] or "").strip()
+        assert value == "" or all(part.strip().isalnum() for part in value.split(","))
 
 
 class TestApiSettingsPassthrough:
