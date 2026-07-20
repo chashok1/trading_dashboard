@@ -1,0 +1,8 @@
+def TradeLenLookForward = 3;
+def dayOfExtract=1;
+def TradeLen = 15-dayOfExtract;
+def TradeLastBar = HighestAll(if !IsNaN(close) then BarNumber() else Double.NaN);
+def TradeStart = TradeLastBar - TradeLen;
+def TradeEnd = TradeLastBar - TradeLen +  TradeLenLookForward;
+def TradeVal = if TradeStart <= BarNumber() and TradeEnd >= BarNumber() then low else Double.Nan ; 
+plot TradeValue = LowestAll(TradeVal);

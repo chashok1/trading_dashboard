@@ -1,0 +1,106 @@
+####   BridgeBands_PG
+input trendLength = 67;
+input threshold = .5;
+
+def length = 15;
+def lengthMinus1 = length - 1;
+
+def slope = CompoundValue(length, (close[0] - close[lengthMinus1]) / lengthMinus1, 0);
+
+def min_diff_0 = close[lengthMinus1 - 0] - (close[lengthMinus1] + (slope[0] * 0));
+def min_diff_1 = close[lengthMinus1 - 1] - (close[lengthMinus1] + (slope[0] * 1));
+def min_diff_2 = close[lengthMinus1 - 2] - (close[lengthMinus1] + (slope[0] * 2));
+def min_diff_3 = close[lengthMinus1 - 3] - (close[lengthMinus1] + (slope[0] * 3));
+def min_diff_4 = close[lengthMinus1 - 4] - (close[lengthMinus1] + (slope[0] * 4));
+def min_diff_5 = close[lengthMinus1 - 5] - (close[lengthMinus1] + (slope[0] * 5));
+def min_diff_6 = close[lengthMinus1 - 6] - (close[lengthMinus1] + (slope[0] * 6));
+def min_diff_7 = close[lengthMinus1 - 7] - (close[lengthMinus1] + (slope[0] * 7));
+def min_diff_8 = close[lengthMinus1 - 8] - (close[lengthMinus1] + (slope[0] * 8));
+def min_diff_9 = close[lengthMinus1 - 9] - (close[lengthMinus1] + (slope[0] * 9));
+def min_diff_10 = close[lengthMinus1 - 10] - (close[lengthMinus1] + (slope[0] * 10));
+def min_diff_11 = close[lengthMinus1 - 11] - (close[lengthMinus1] + (slope[0] * 11));
+def min_diff_12 = close[lengthMinus1 - 12] - (close[lengthMinus1] + (slope[0] * 12));
+def min_diff_13 = close[lengthMinus1 - 13] - (close[lengthMinus1] + (slope[0] * 13));
+def min_diff_14 = close[lengthMinus1 - 14] - (close[lengthMinus1] + (slope[0] * 14));
+
+def min_diff = CompoundValue(length,
+    min(min_diff_14,
+    min(min_diff_13,
+    min(min_diff_12,
+    min(min_diff_11,
+    min(min_diff_10,
+    min(min_diff_9,
+    min(min_diff_8,
+    min(min_diff_7,
+    min(min_diff_6,
+    min(min_diff_5,
+    min(min_diff_4,
+    min(min_diff_3,
+    min(min_diff_2,
+    min(min_diff_1,
+    min(min_diff_0, 10000000))))))))))))))), 0);
+
+def max_diff_0 = close[lengthMinus1 - 0] - (close[lengthMinus1] + (slope[0] * 0));
+def max_diff_1 = close[lengthMinus1 - 1] - (close[lengthMinus1] + (slope[0] * 1));
+def max_diff_2 = close[lengthMinus1 - 2] - (close[lengthMinus1] + (slope[0] * 2));
+def max_diff_3 = close[lengthMinus1 - 3] - (close[lengthMinus1] + (slope[0] * 3));
+def max_diff_4 = close[lengthMinus1 - 4] - (close[lengthMinus1] + (slope[0] * 4));
+def max_diff_5 = close[lengthMinus1 - 5] - (close[lengthMinus1] + (slope[0] * 5));
+def max_diff_6 = close[lengthMinus1 - 6] - (close[lengthMinus1] + (slope[0] * 6));
+def max_diff_7 = close[lengthMinus1 - 7] - (close[lengthMinus1] + (slope[0] * 7));
+def max_diff_8 = close[lengthMinus1 - 8] - (close[lengthMinus1] + (slope[0] * 8));
+def max_diff_9 = close[lengthMinus1 - 9] - (close[lengthMinus1] + (slope[0] * 9));
+def max_diff_10 = close[lengthMinus1 - 10] - (close[lengthMinus1] + (slope[0] * 10));
+def max_diff_11 = close[lengthMinus1 - 11] - (close[lengthMinus1] + (slope[0] * 11));
+def max_diff_12 = close[lengthMinus1 - 12] - (close[lengthMinus1] + (slope[0] * 12));
+def max_diff_13 = close[lengthMinus1 - 13] - (close[lengthMinus1] + (slope[0] * 13));
+def max_diff_14 = close[lengthMinus1 - 14] - (close[lengthMinus1] + (slope[0] * 14));
+
+def max_diff = CompoundValue(length,
+    max(max_diff_14,
+    max(max_diff_13,
+    max(max_diff_12,
+    max(max_diff_11,
+    max(max_diff_10,
+    max(max_diff_9,
+    max(max_diff_8,
+    max(max_diff_7,
+    max(max_diff_6,
+    max(max_diff_5,
+    max(max_diff_4,
+    max(max_diff_3,
+    max(max_diff_2,
+    max(max_diff_1,
+    max(max_diff_0, -10000000))))))))))))))), 0);
+
+def bridge_range_bottom = close + min_diff;
+
+def bridge_range_top = close + max_diff;
+
+def tr = CompoundValue(length, TrueRange(high, close, low), 0);
+def atr  = if (IsNaN(atr[1]) or atr[1]==0) then SimpleMovingAvg(tr, length) else (atr[1] * (length - 1) + tr) / length;
+
+def logLength = log(length);
+
+def hurst = (log(highest(high, length) - lowest(low, length)) - log(atr)) / logLength;
+##hurst.SetDefaultColor(Color.LIGHT_GRAY);
+
+script StDev_Sample {
+    input data = close;
+    input length = 12;
+
+    def avgData = Average(data, length);
+
+    plot StDevTS1 = Sqrt( (fold i = 0 to length with SD do SD + Sqr(GetValue(data, i) - avgData) ) / (length - 1));
+    StDevTS1.SetHiding(1 > 0);
+}
+
+def sd = StDev_Sample(close, length);
+
+def WMA = wma(close, length);
+
+def bb_bottom = WMA - (sd * 2);
+
+def bbb =  bb_bottom + ((bridge_range_bottom - bb_bottom) * AbsValue((hurst * 2) - 1));
+
+plot bridge_band_bottom = bbb;

@@ -1,0 +1,8 @@
+def TrendLenLookForward= 5;
+def dayOfExtract=1;
+def TrendLen = 62-dayOfExtract;
+def TrendLastBar = HighestAll(if !IsNaN(close) then BarNumber() else Double.NaN);
+def TrendStart = TrendLastBar - TrendLen ;
+def TrendEnd = TrendLastBar - TrendLen +  TrendLenLookForward;
+def TrendVal = if TrendStart <= BarNumber() and TrendEnd >= BarNumber() then low else Double.Nan; 
+plot TrendValue = LowestAll(TrendVal);
