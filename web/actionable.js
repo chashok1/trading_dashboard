@@ -60,6 +60,8 @@ const state = {
                          // (always starts ON, not persisted — reset near page init)
     asset_class: '',     // '' = all; else exact match on r._assetClass (normalized real_asset_class)
     symbols_multi: [],   // multi-symbol filter popup — exact-match list, empty = no filter
+    etfchg_only: false,  // EC pill — recent ETF Pro Change event (etfchg_date), informational only
+    iichg_only: false,   // IC pill — recent II Pro Change event (iichg_date), informational only
   },
   // TASK_120 buy-noise gate: manual expand/collapse for the "Watchlist (n)"
   // band (gated unheld ADD/BMN rows). Auto-expands (without flipping this
@@ -1707,6 +1709,10 @@ function matchesBaseFilters(r) {
   // TASK_69: agreement_class filter
   const agCls = state.filters.agreement_class || '';
   if (agCls && r.agreement_class !== agCls) return false;
+  // EC / IC pills — recent ETF/II Pro Change event (informational only,
+  // doesn't drive ETF's/II's own action — see docs/actionable_logic.md).
+  if (state.filters.etfchg_only && !r.etfchg_date) return false;
+  if (state.filters.iichg_only && !r.iichg_date) return false;
   return true;
 }
 
@@ -2211,13 +2217,17 @@ function renderSourceFilter() {
   _syncTriggerSourcePills();
 }
 
-// Keeps the RTA/EC/SC quick-filter pills' active state in sync with
-// state.filters.source, whichever control (pill or dropdown) last changed it.
+// Keeps the RTA/EC/SC/IC quick-filter pills' active state in sync with
+// state.filters.source (RTA/SC) or the etfchg_only/iichg_only flags (EC/IC),
+// whichever control (pill or dropdown) last changed it.
 function _syncTriggerSourcePills() {
   const wrap = $('triggerSourcePills');
   if (!wrap) return;
   wrap.querySelectorAll('[data-src-pill]').forEach(el => {
     el.classList.toggle('active', state.filters.source === el.dataset.srcPill);
+  });
+  wrap.querySelectorAll('[data-flag-pill]').forEach(el => {
+    el.classList.toggle('active', !!state.filters[el.dataset.flagPill]);
   });
 }
 
@@ -2327,8 +2337,10 @@ function clearAllFilters() {
   f.bull_prob_min = 0;
   f.agreement_class = '';
   f.symbols_multi = [];
+  f.etfchg_only = false; f.iichg_only = false;
   const bpEl = $('bullProbFilter'); if (bpEl) bpEl.value = '0';
   const agEl = $('agreementFilter'); if (agEl) agEl.value = '';
+  _syncTriggerSourcePills();
   // Reset sort to default actionability order (updateSortIndicators called in renderGrid)
   state.sort = { key: '_priority', dir: -1, type: 'num' };
   // Reset show_hidden -> requires refetch (show_hidden=false excludes acted/suppressed from API)
@@ -3811,6 +3823,7 @@ function renderGrid() {
     state.filters.source || state.filters.account || state.filters.held_only ||
     state.filters.conviction !== 'any' || state.filters.bull_prob_min > 0 ||
     state.filters.agreement_class || state.filters.stopOnly ||
+    state.filters.etfchg_only || state.filters.iichg_only ||
     (state.filters.symbols_multi && state.filters.symbols_multi.length));
   const bandExpanded = state.watchlistExpanded || (filtersActive && watchRows.length > 0);
 
@@ -5214,6 +5227,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   const triggerSourcePillsEl = $('triggerSourcePills');
   if (triggerSourcePillsEl) {
     triggerSourcePillsEl.addEventListener('click', (e) => {
+      const flagEl = e.target.closest('[data-flag-pill]');
+      if (flagEl) {
+        // EC/IC: purely client-side, no server round-trip -- the
+        // etfchg_date/iichg_date lookback flag is already in every loaded row.
+        const key = flagEl.dataset.flagPill;
+        state.filters[key] = !state.filters[key];
+        _syncTriggerSourcePills();
+        applyClientFilter();
+        return;
+      }
       const el = e.target.closest('[data-src-pill]');
       if (!el) return;
       const src = el.dataset.srcPill;

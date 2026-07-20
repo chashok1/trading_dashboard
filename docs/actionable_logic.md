@@ -108,6 +108,24 @@ the same RTA/SSSCHG exemption, so an RTA- or SSSCHG-sourced BM/BMN can
 qualify for Trade Mode even when `rr_action` (Technical) hasn't independently
 confirmed.
 
+**ETFCHG/IICHG remain merged, not split out like SSSCHG** (deprecated as
+standalone `ref_outlook_source` rows since this repo's initial commit —
+`hist_etfchg`/`hist_iichg` events are folded into `ETF`'s/`II`'s own weight
+at derive time and lose their event-vs-file provenance; see
+`etl/derive_outlook_action.py`'s `_ETF_II_CHG` union). User decision
+2026-07-19: rather than un-merging them (which would mean a second
+decision-driving source per the SSSCHG pattern, with its own conflict rule),
+`GET /api/actionable` instead adds two purely informational columns —
+`etfchg_date`/`etfchg_outlook`/`etfchg_desc` and `iichg_date`/`iichg_outlook`/
+`iichg_desc` — a 5-day-lookback LATERAL join straight against `hist_etfchg`/
+`hist_iichg` (`api/routers/dash.py`). These never feed `consolidated_action`/
+`winning_source`/`final_code` — they only answer "did a change event land
+recently" for the EC/IC toolbar pills (`web/actionable.js`,
+`state.filters.etfchg_only`/`iichg_only`, filtered client-side in
+`matchesBaseFilters` since the flag is already in every loaded row — no
+server round-trip, unlike the RTA/SC pills which reload via `state.filters.
+source`).
+
 Trade Mode's non-RTA leg checks `rr_action` (Technical) is in the buy family
 `{BS, BM, BMN}` — same set as the Watchlist gate's `_ENTRY_RIPE_TECH`
 (2026-07-19, swapped from `rr_bull_bear==='B'`). `rr_bull_bear` only reflects

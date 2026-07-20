@@ -741,12 +741,18 @@
           </button>
           <!-- Source filter -->
           <select id="sourceFilter" title="Source filter"><option value="">All</option></select>
-          <!-- Same-day-trigger source pills: quick access to the three event
-               sources (RTA/ETFCHG/SSSCHG) without opening the dropdown. -->
+          <!-- Same-day-trigger quick-filter pills. RTA/SC are real decision-
+               driving source_codes (state.filters.source). EC/IC are
+               informational-only -- ETFCHG/IICHG are merged into ETF/II's
+               own weight at derive time (no separate source_code survives),
+               so they filter on the etfchg_date/iichg_date lookback flag
+               instead (state.filters.etfchg_only/iichg_only), added purely
+               for "did a change event land recently" visibility. -->
           <div class="act-summary" id="triggerSourcePills">
             <div class="act-chip" data-src-pill="RTA" title="Filter to RTA (Real-Time Alert)"><span>RTA</span></div>
-            <div class="act-chip" data-src-pill="ETFCHG" title="Filter to EC (ETF Change)"><span>EC</span></div>
+            <div class="act-chip" data-flag-pill="etfchg_only" title="Filter to symbols with a recent ETF Pro Change event (informational -- does not drive ETF's own action)"><span>EC</span></div>
             <div class="act-chip" data-src-pill="SSSCHG" title="Filter to SC (Signal Strength Stocks Change)"><span>SC</span></div>
+            <div class="act-chip" data-flag-pill="iichg_only" title="Filter to symbols with a recent II Pro Change event (informational -- does not drive II's own action)"><span>IC</span></div>
           </div>
           <!-- Account filter -->
           <label style="font-size:11px; color:var(--text-2,#666); margin-right:2px; white-space:nowrap;">Acct</label>
@@ -1296,7 +1302,7 @@
   <script src="/static/_common.js"></script>
   <script src="/static/chart_modal.js"></script>
   <script src="/static/actions.js"></script>
-  <script src="/static/actionable.js?v=20260719e"></script>
+  <script src="/static/actionable.js?v=20260719f"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
   <script src="/static/macro_areas.js" defer></script>
