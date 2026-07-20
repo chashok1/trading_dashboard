@@ -128,8 +128,29 @@ def _check_derive_health(session) -> dict:
             "ok": not items, "items": items}
 
 
+def _check_bb_rr_drift(session) -> dict:
+    """TASK_132: WARN/ALERT count in drv_bb_rr_gap for the latest derived
+    date. Nonzero ALERT count fails the check (regime shift / recalibration
+    candidate — see docs/tos_rr_calibration.md 'Ongoing monitoring')."""
+    row = session.execute(text("SELECT MAX(as_of_date) FROM drv_bb_rr_gap")).first()
+    d = row[0] if row else None
+    if d is None:
+        return {"id": "bb_rr_drift", "title": "BB/RR band drift (drv_bb_rr_gap)",
+                "ok": True, "detail": "No drv_bb_rr_gap rows yet", "items": []}
+    counts = dict(session.execute(text("""
+        SELECT drift_flag, COUNT(*) FROM drv_bb_rr_gap
+        WHERE as_of_date = :d AND drift_flag IS NOT NULL
+        GROUP BY drift_flag
+    """), {"d": d}).fetchall())
+    warn_n, alert_n = int(counts.get("WARN", 0)), int(counts.get("ALERT", 0))
+    return {"id": "bb_rr_drift", "title": "BB/RR band drift (drv_bb_rr_gap)",
+            "ok": alert_n == 0,
+            "detail": f"{d}: {warn_n} WARN, {alert_n} ALERT",
+            "items": [f"{d}: {warn_n} WARN, {alert_n} ALERT"] if alert_n else []}
+
+
 CHECKS = [_check_hist_gap, _check_stale_ref, _check_source_missing,
-          _check_scheduler_idle, _check_derive_health]
+          _check_scheduler_idle, _check_derive_health, _check_bb_rr_drift]
 
 
 def main() -> int:

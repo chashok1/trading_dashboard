@@ -1,89 +1,67 @@
-####   BridgeBands_PG
-input trendLength = 67;
-input threshold = .5;
+####   BridgeBands_PG — BOTTOM band (TASK_131: continuous PVV price/volume/
+####   vol-ROC composite, replacing TASK_130's discrete classify_pvv skew, on
+####   top of TASK_130's +inverse VIX coupling +vol-level +downside semi-dev
+####   +directional volume, on top of TASK_129's full price+volume+volatility
+####   fit)
+#### Standalone TOS custom column: computable from this symbol's own OHLCV +
+#### imp_volatility() + close("VIX") only -- no DB access.
+#### Fitted by etl/calibrate_tos_rr.py (fit_family_e(), 2-fold walk-forward-CV
+#### gated coordinate descent, warm-started from Family D) against hist_rr
+#### buy_trade. See docs/tos_rr_calibration.md TASK_130/131 sections for the
+#### ablation table (both CV folds) and an honest discussion of the fitted
+#### signs. TWO levers passed the CV gate for BOTTOM -- inverse VIX
+#### coupling (A) and vol-LEVEL width (B); downside semi-dev (C), directional
+#### volume (D), the continuous PVV mid-tilt (F1) and the continuous PVV
+#### width-narrow (F2) all stay inactive below (coefficients 0), kept wired
+#### in for future recalibration. F2 (bullish-low-vol width narrow)
+#### technically cleared the noise-tolerant CV gate at cNarrow=0.3 but moved
+#### the full-history metric by <0.0001pp (zero effective rows) -- deployed
+#### inactive per the spec's complexity-cap guardrail (prefer the simpler
+#### config when within 0.03pp).
+#### NOTE (read before trusting the signs blindly): both accepted coefficients
+#### (cVix, cVolLevel) came out with signs OPPOSITE the naive economic
+#### intuition (VIX upside room WIDENS rather than narrows the bottom; higher
+#### relative vol NARROWS rather than widens the band) -- see docs/
+#### tos_rr_calibration.md for the correlation check and discussion. They are
+#### deployed because they pass the strict 2-fold walk-forward CV gate (real,
+#### out-of-sample, non-overfit gains on this dataset), not because they match
+#### the stated hypothesis -- flagged for monitoring as data accrues.
+####
+#### mid    = EMA(n) + cTilt*RelVol*(close-EMA(n)) + cMom*(EMA(momFast)-EMA(momSlow))
+####            + cSkew*pvvLevel*sigma
+#### sigmaR = (1-cSemiDev)*StDev(n) + cSemiDev*semiDev(n)*Sqrt(2)   [cSemiDev=0 here]
+#### sigma  = wEff*sigmaR + (1-wEff)*close*IV/15.87*Sqrt(horizonDays)  [IV NaN -> wEff=1]
+#### width  = kEff * (1+cVolWidth*(RelVol-1)) * (1+cIvHvWidth*(IV/HV-1))
+####            * (1+cVolLevel*(V/avg(V,m)-1)) * (1+cDirVol*(dnUpVol-1))
+####            * (1-cNarrow*pvvNarrow) * sigma
+#### band   = mid - width - cVix*(vixTop/vixClose - 1)*sigma   [VIX's UPSIDE room -> BOTTOM]
 
-def length = 15;
-def lengthMinus1 = length - 1;
-
-def slope = CompoundValue(length, (close[0] - close[lengthMinus1]) / lengthMinus1, 0);
-
-def min_diff_0 = close[lengthMinus1 - 0] - (close[lengthMinus1] + (slope[0] * 0));
-def min_diff_1 = close[lengthMinus1 - 1] - (close[lengthMinus1] + (slope[0] * 1));
-def min_diff_2 = close[lengthMinus1 - 2] - (close[lengthMinus1] + (slope[0] * 2));
-def min_diff_3 = close[lengthMinus1 - 3] - (close[lengthMinus1] + (slope[0] * 3));
-def min_diff_4 = close[lengthMinus1 - 4] - (close[lengthMinus1] + (slope[0] * 4));
-def min_diff_5 = close[lengthMinus1 - 5] - (close[lengthMinus1] + (slope[0] * 5));
-def min_diff_6 = close[lengthMinus1 - 6] - (close[lengthMinus1] + (slope[0] * 6));
-def min_diff_7 = close[lengthMinus1 - 7] - (close[lengthMinus1] + (slope[0] * 7));
-def min_diff_8 = close[lengthMinus1 - 8] - (close[lengthMinus1] + (slope[0] * 8));
-def min_diff_9 = close[lengthMinus1 - 9] - (close[lengthMinus1] + (slope[0] * 9));
-def min_diff_10 = close[lengthMinus1 - 10] - (close[lengthMinus1] + (slope[0] * 10));
-def min_diff_11 = close[lengthMinus1 - 11] - (close[lengthMinus1] + (slope[0] * 11));
-def min_diff_12 = close[lengthMinus1 - 12] - (close[lengthMinus1] + (slope[0] * 12));
-def min_diff_13 = close[lengthMinus1 - 13] - (close[lengthMinus1] + (slope[0] * 13));
-def min_diff_14 = close[lengthMinus1 - 14] - (close[lengthMinus1] + (slope[0] * 14));
-
-def min_diff = CompoundValue(length,
-    min(min_diff_14,
-    min(min_diff_13,
-    min(min_diff_12,
-    min(min_diff_11,
-    min(min_diff_10,
-    min(min_diff_9,
-    min(min_diff_8,
-    min(min_diff_7,
-    min(min_diff_6,
-    min(min_diff_5,
-    min(min_diff_4,
-    min(min_diff_3,
-    min(min_diff_2,
-    min(min_diff_1,
-    min(min_diff_0, 10000000))))))))))))))), 0);
-
-def max_diff_0 = close[lengthMinus1 - 0] - (close[lengthMinus1] + (slope[0] * 0));
-def max_diff_1 = close[lengthMinus1 - 1] - (close[lengthMinus1] + (slope[0] * 1));
-def max_diff_2 = close[lengthMinus1 - 2] - (close[lengthMinus1] + (slope[0] * 2));
-def max_diff_3 = close[lengthMinus1 - 3] - (close[lengthMinus1] + (slope[0] * 3));
-def max_diff_4 = close[lengthMinus1 - 4] - (close[lengthMinus1] + (slope[0] * 4));
-def max_diff_5 = close[lengthMinus1 - 5] - (close[lengthMinus1] + (slope[0] * 5));
-def max_diff_6 = close[lengthMinus1 - 6] - (close[lengthMinus1] + (slope[0] * 6));
-def max_diff_7 = close[lengthMinus1 - 7] - (close[lengthMinus1] + (slope[0] * 7));
-def max_diff_8 = close[lengthMinus1 - 8] - (close[lengthMinus1] + (slope[0] * 8));
-def max_diff_9 = close[lengthMinus1 - 9] - (close[lengthMinus1] + (slope[0] * 9));
-def max_diff_10 = close[lengthMinus1 - 10] - (close[lengthMinus1] + (slope[0] * 10));
-def max_diff_11 = close[lengthMinus1 - 11] - (close[lengthMinus1] + (slope[0] * 11));
-def max_diff_12 = close[lengthMinus1 - 12] - (close[lengthMinus1] + (slope[0] * 12));
-def max_diff_13 = close[lengthMinus1 - 13] - (close[lengthMinus1] + (slope[0] * 13));
-def max_diff_14 = close[lengthMinus1 - 14] - (close[lengthMinus1] + (slope[0] * 14));
-
-def max_diff = CompoundValue(length,
-    max(max_diff_14,
-    max(max_diff_13,
-    max(max_diff_12,
-    max(max_diff_11,
-    max(max_diff_10,
-    max(max_diff_9,
-    max(max_diff_8,
-    max(max_diff_7,
-    max(max_diff_6,
-    max(max_diff_5,
-    max(max_diff_4,
-    max(max_diff_3,
-    max(max_diff_2,
-    max(max_diff_1,
-    max(max_diff_0, -10000000))))))))))))))), 0);
-
-def bridge_range_bottom = close + min_diff;
-
-def bridge_range_top = close + max_diff;
-
-def tr = CompoundValue(length, TrueRange(high, close, low), 0);
-def atr  = if (IsNaN(atr[1]) or atr[1]==0) then SimpleMovingAvg(tr, length) else (atr[1] * (length - 1) + tr) / length;
-
-def logLength = log(length);
-
-def hurst = (log(highest(high, length) - lowest(low, length)) - log(atr)) / logLength;
-##hurst.SetDefaultColor(Color.LIGHT_GRAY);
+input length = 10;          # EMA/StDev backbone window (n)
+input volFastLen = 3;       # RelVol fast window (f)
+input volSlowLen = 15;      # RelVol slow window (s)
+input momFastLen = 5;       # momentum EMA fast window
+input momSlowLen = 20;      # momentum EMA slow window
+input horizonDays = 3;      # IV-implied-move horizon (h; sqrt(h) scaling)
+input sigmaWeight = 0.75;   # w: realized-vs-IV sigma blend weight
+input cTilt = 0.5;          # c_t: volume-confirmed midpoint tilt (active volume term)
+input cMom = 0.25;          # c_m: trend-momentum midpoint tilt
+input cVolWidth = -0.25;    # c_v: width RelVol multiplier (active volume term)
+input cIvHvWidth = -0.25;   # c_iv: width IV/HV multiplier
+input k = 1.42;              # width scale (base; per-ticker overrides below)
+input cVix = -0.5;          # c_vix: inverse-VIX coupling (TASK_130 lever A, CV-accepted)
+input vixLen = 20;          # nv: VIX's own EMA/StDev window
+input vixWidthMult = 1.0;   # kv: VIX proxy-range width multiplier
+input cVolLevel = -0.25;    # c_lvl: vol-LEVEL width law (TASK_130 lever B, CV-accepted)
+input volLevelLen = 20;     # m: vol-level rolling-average window
+input cSemiDev = 0.0;       # c_sd: downside semi-dev blend (TASK_130 lever C) -- rejected by CV gate
+input semiDevLen = 10;      # n_sd: semi-dev window
+input cDirVol = 0.0;        # c_dv: directional-volume width law (TASK_130 lever D) -- rejected by CV gate
+input dirVolLen = 10;       # w_dv: directional-volume averaging window
+input cSkew = 0.0;          # c_s: continuous PVV mid tilt (TASK_131 lever F1) -- rejected by CV gate
+input cNarrow = 0.0;        # c_narrow: bullish-low-vol width narrow (TASK_131 lever F2) -- deployed inactive (complexity cap)
+input kVixOverride = 1.28;  # per-ticker k override: VIX (worst-ticker search, TASK_130)
+input kOrclOverride = 1.22; # per-ticker k override: ORCL
+input kNflxOverride = 2.04; # per-ticker k override: NFLX
 
 script StDev_Sample {
     input data = close;
@@ -91,16 +69,127 @@ script StDev_Sample {
 
     def avgData = Average(data, length);
 
-    plot StDevTS1 = Sqrt( (fold i = 0 to length with SD do SD + Sqr(GetValue(data, i) - avgData) ) / (length - 1));
+    plot StDevTS1 = Sqrt( (fold i = 0 to length with sumSq do sumSq + Sqr(GetValue(data, i) - avgData) ) / (length - 1));
     StDevTS1.SetHiding(1 > 0);
 }
 
-def sd = StDev_Sample(close, length);
+# --- price leg ----------------------------------------------------------------
+def ema = ExpAverage(close, length);
+def sdev  = StDev_Sample(close, length);
 
-def WMA = wma(close, length);
+# --- volume leg: RelVol = Avg(vol,f)/Avg(vol,s), clamped [0.5,2.0], neutral (1)
+#     when volume is missing/zero (indices etc.) ------------------------------
+def volFast = Average(volume, volFastLen);
+def volSlow = Average(volume, volSlowLen);
+def relVolRaw = if IsNaN(volSlow) or volSlow == 0 then 1 else volFast / volSlow;
+def relVol = Min(2.0, Max(0.5, relVolRaw));
 
-def bb_bottom = WMA - (sd * 2);
+# --- volatility leg: IV/HV ratio, clamped [0.5,2.0], neutral (1) when IV is
+#     missing (indices/futures without options chains). HV is a close-derived
+#     annualized realized-vol proxy (StDev(n) scaled by Sqrt(252)) since a
+#     standalone column can't reference another study's HV output. ------------
+def iv = imp_volatility();
+def hvAnn = if close == 0 then 0 else sdev / close * Sqrt(252);
+def ivHvRaw = if IsNaN(iv) or hvAnn == 0 then 1 else iv / hvAnn;
+def ivHv = Min(2.0, Max(0.5, ivHvRaw));
 
-def bbb =  bb_bottom + ((bridge_range_bottom - bb_bottom) * AbsValue((hurst * 2) - 1));
+# --- TASK_130 lever B: vol-LEVEL ratio -- own IV (fallback hvAnn) vs its own
+#     rolling average over volLevelLen -- level law, distinct from the
+#     ratio-only ivHv term above. CV-accepted for BOTTOM (cVolLevel=-0.25). --
+def vLevelRaw = if IsNaN(iv) then hvAnn else iv;
+def vLevelAvg = Average(vLevelRaw, volLevelLen);
+def vLevelRatioRaw = if vLevelAvg == 0 then 1 else vLevelRaw / vLevelAvg;
+def vLevelRatio = Min(2.0, Max(0.5, vLevelRatioRaw));
+def vLevelMult = Min(2.0, Max(0.5, 1 + (cVolLevel * (vLevelRatio - 1))));
 
-plot bridge_band_bottom = bbb;
+# --- TASK_130 lever C: downside semi-deviation -- sqrt(mean of Min(0,
+#     close-close[1])^2 over semiDevLen) -- targets the asymmetry Hedgeye
+#     bakes into buy_trade. Rejected by the CV gate (cSemiDev=0) -- kept
+#     wired in (see file header). ---------------------------------------------
+def negDiff = Min(0, close - close[1]);
+def semiDev = Sqrt( (fold i = 0 to semiDevLen - 1 with sumSq do sumSq + Sqr(GetValue(negDiff, i))) / semiDevLen);
+
+# --- TASK_130 lever D: directional volume -- up-day vs down-day average volume
+#     over dirVolLen. BOTTOM uses dnup = down/up (down-vol dominance pulls
+#     lower). Rejected by the CV gate (cDirVol=0). -----------------------------
+def isUpDay = close > close[1];
+def isDownDay = close < close[1];
+def upVolSum = Sum(if isUpDay then volume else 0, dirVolLen);
+def upCnt = Sum(if isUpDay then 1 else 0, dirVolLen);
+def downVolSum = Sum(if isDownDay then volume else 0, dirVolLen);
+def downCnt = Sum(if isDownDay then 1 else 0, dirVolLen);
+def upVolAvg = if upCnt == 0 then 0 else upVolSum / upCnt;
+def downVolAvg = if downCnt == 0 then 0 else downVolSum / downCnt;
+def dnupRaw = if upVolAvg == 0 then 1 else downVolAvg / upVolAvg;
+def dnup = Min(2.0, Max(0.5, dnupRaw));
+def dirVolMult = Min(2.0, Max(0.5, 1 + (cDirVol * (dnup - 1))));
+
+# --- midpoint: price EMA + volume-confirmed tilt + momentum tilt (skew added
+#     below, after sigma is known -- it's a sigma-scaled tilt). ---------------
+def emaFastMom = ExpAverage(close, momFastLen);
+def emaSlowMom = ExpAverage(close, momSlowLen);
+def midCore = ema + (cTilt * relVol * (close - ema)) + (cMom * (emaFastMom - emaSlowMom));
+
+# --- sigma: realized/IV-implied blend (IV missing -> pure realized, wEff=1),
+#     realized leg optionally blended toward downside semi-dev (cSemiDev=0
+#     here -> pure StDev). -----------------------------------------------------
+def sigmaR = (1 - cSemiDev) * sdev + (cSemiDev * semiDev * Sqrt(2));
+def ivImplied = if IsNaN(iv) then 0 else close * iv / 15.87 * Sqrt(horizonDays);
+def wEff = if IsNaN(iv) then 1 else sigmaWeight;
+def sigma = (wEff * sigmaR) + ((1 - wEff) * ivImplied);
+
+# --- TASK_131 lever F1/F2 (replaces TASK_130's discrete classify_pvv skew):
+#     continuous price/volume/vol-ROC composite -- each leg z-scored against
+#     its own trailing-20 rolling sigma (0 when sigma/ROC unavailable),
+#     instead of discretizing to up/down/flat via the project's PVV table
+#     (docs/pvv_logic.md Sec.2-3 / etl/derive_pvv.py). F1 = pvvLevel, a
+#     signed mid tilt (price z-score, amplified when volume confirms,
+#     damped when vol is rising). F2 = pvvNarrow, a bullish-AND-volume-
+#     confirmed-AND-vol-contracting width-narrow strength (an AND-gate in
+#     [0,1] -- can only shrink width, cNarrow grid-searched >=0, never
+#     widen it). Both rejected/deployed-inactive by the CV gate -- see
+#     docs/tos_rr_calibration.md TASK_131 section. -----------------------------
+def pRoc = if close[1] == 0 then 0 else (close - close[1]) / close[1];
+def volAvg20 = Average(volume, 20);
+def vRoc = if volAvg20 == 0 then 0 else (volume / volAvg20) - 1;
+def volRocSrc = if IsNaN(iv) then hvAnn else iv;
+def volRoc = if IsNaN(volRocSrc[1]) or volRocSrc[1] == 0 then 0 else (volRocSrc / volRocSrc[1]) - 1;
+def pStd = StDev_Sample(pRoc, 20);
+def vStd = StDev_Sample(vRoc, 20);
+def volStd = StDev_Sample(volRoc, 20);
+def pZ = Min(3.0, Max(-3.0, if pStd == 0 then 0 else pRoc / pStd));
+def vZ = Min(3.0, Max(-3.0, if vStd == 0 then 0 else vRoc / vStd));
+def volZ = Min(3.0, Max(-3.0, if volStd == 0 then 0 else volRoc / volStd));
+def confirmMult = Min(1.6, Max(0.4, 1 + (0.3 * vZ)));
+def volDamp = 1 + (0.3 * Max(0, volZ));
+def pvvLevel = Min(3.0, Max(-3.0, pZ * confirmMult / volDamp));
+def bullStr = Max(0, pZ) / 3.0;
+def vConfStr = Max(0, vZ) / 3.0;
+def lowVolStr = Max(0, -volZ) / 3.0;
+def pvvNarrow = bullStr * vConfStr * lowVolStr;
+
+def mid = midCore + (cSkew * pvvLevel * sigma);
+def narrowMult = Min(1.0, Max(0.3, 1 - (cNarrow * pvvNarrow)));
+
+# --- TASK_130 lever A: inverse VIX coupling -- BOTTOM uses VIX's UPSIDE room
+#     (vixTop/vixClose - 1). CV-accepted for BOTTOM (cVix=-0.5); guarded
+#     against missing VIX data and against coupling VIX to itself. -----------
+def vixClose = close("VIX");
+def vixEma = ExpAverage(vixClose, vixLen);
+def vixStd = StDev_Sample(vixClose, vixLen);
+def vixTop = vixEma + (vixWidthMult * vixStd);
+def isVix = GetSymbol() == "VIX";
+def vixTerm = if IsNaN(vixClose) or isVix or vixClose == 0 then 0 else (vixTop / vixClose - 1);
+
+# --- width: kEff * volume mult * IV/HV mult * vol-level mult * dir-vol mult *
+#     sigma, minus the VIX-coupling additive term. Per-ticker k overrides
+#     (VIX/ORCL/NFLX, worst-ticker search) applied via GetSymbol(). ----------
+def kEff = if isVix then kVixOverride
+           else if GetSymbol() == "ORCL" then kOrclOverride
+           else if GetSymbol() == "NFLX" then kNflxOverride
+           else k;
+def volWidthMult = Min(2.0, Max(0.5, 1 + (cVolWidth * (relVol - 1))));
+def ivHvWidthMult = Min(2.0, Max(0.5, 1 + (cIvHvWidth * (ivHv - 1))));
+
+plot bridge_band_bottom = mid - (kEff * volWidthMult * ivHvWidthMult * vLevelMult * dirVolMult * narrowMult * sigma)
+                               - (cVix * vixTerm * sigma);

@@ -3301,6 +3301,14 @@ def derive_all(session: Session, as_of_date: date,
         from etl.derive_pvv import derive_pvv
         return derive_pvv(session, as_of_date, parent_run_id)
     counts["drv_pvv"] = _safe("drv_pvv", _drv_pvv_runner)
+    # drv_bb_rr_gap (TASK_132): daily BBTop/BBBottom vs hist_rr variance
+    # tracking + drift alert. Needs drv_rr's reverse-scale settings/inputs
+    # already applied above; nothing downstream depends on it, so it runs
+    # late/cheap. See docs/tos_rr_calibration.md "Ongoing monitoring".
+    def _drv_bb_rr_gap_runner(session, as_of_date, parent_run_id=None):
+        from etl.derive_bb_rr_gap import derive_bb_rr_gap
+        return derive_bb_rr_gap(session, as_of_date, parent_run_id)
+    counts["drv_bb_rr_gap"] = _safe("drv_bb_rr_gap", _drv_bb_rr_gap_runner)
     # Surface any daily-EOD source (TOSL/TOSD/TOSW/Y) missing at export_date = D
     # on the dashboard / actionable toolbars. Non-fatal; derivation still ran.
     try:

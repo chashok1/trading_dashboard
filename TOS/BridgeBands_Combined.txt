@@ -1,0 +1,132 @@
+####   BridgeBands_PG — COMBINED study (TOP + BOTTOM bands), LEAN build
+####   Same fitted values as TOS/BBTop.txt / BBBottom.txt (TASK_128–131,
+####   calibrated vs hist_rr — docs/tos_rr_calibration.md), but restructured
+####   to stay under TOS's expression-complexity limit (TooComplexException):
+####     1. Custom fold-based sample-StDev replaced by the built-in StDev()
+####        times Sqrt(n/(n-1)) — numerically IDENTICAL (bias correction from
+####        population to sample stdev), massively cheaper.
+####     2. Inactive levers (coefficient fitted/deployed at 0: downside
+####        semi-dev C, directional volume D, PVV composite F1/F2, TOP-side
+####        VIX coupling & vol-level) are REMOVED here, not just zeroed.
+####        Their formulas remain documented in docs/tos_rr_calibration.md and
+####        etl/calibrate_tos_rr.py for future recalibration.
+####
+#### ===========================  USAGE  =======================================
+#### AS A CHART STUDY: use as-is — both plots draw.
+#### AS A CUSTOM COLUMN (one plot allowed per column):
+####   - TOP column (a_bb_top):    comment out the LAST line (plot bridge_band_bottom).
+####   - BOTTOM column (a_bb_bottom): comment out the plot bridge_band_top line.
+####
+#### Sections: [SHARED] -> [TOP] -> [BOTTOM]
+####
+####   TOP    = topMid + topK*(1+topCIvHvWidth*(IV/HV-1))*sigma
+####   BOTTOM = botMid - botKEff*(1+botCVolWidth*(RelVol-1))*(1+botCIvHvWidth*(IV/HV-1))
+####                      *(1+botCVolLevel*(V/avg(V,m)-1))*sigma
+####                   - botCVix*(vixTop/vixClose-1)*sigma
+#### NOTE: BOTTOM's cVix/cVolLevel signs are empirical CV-gated results
+#### (opposite naive intuition) — see docs before "fixing" them.
+#### ===========================================================================
+
+# ============================ [SHARED] inputs ================================
+input length = 10;          # EMA/StDev backbone window (n)
+input volFastLen = 3;       # RelVol fast window (f)
+input volSlowLen = 15;      # RelVol slow window (s)
+input horizonDays = 3;      # IV-implied-move horizon (h; sqrt(h) scaling)
+input sigmaWeight = 0.75;   # w: realized-vs-IV sigma blend weight
+input vixWidthMult = 1.0;   # kv: VIX proxy-range width multiplier
+
+# ============================ [TOP] inputs ===================================
+input topMomFastLen = 12;    # momentum EMA fast window
+input topMomSlowLen = 26;    # momentum EMA slow window
+input topCTilt = 0.25;       # c_t: volume-confirmed midpoint tilt
+input topCMom = 0.5;         # c_m: trend-momentum midpoint tilt
+input topCIvHvWidth = -0.5;  # c_iv: width IV/HV multiplier
+input topK = 1.3;            # width scale
+input topKVixOverride = 1.44;  # per-ticker k override: VIX
+
+# ============================ [BOTTOM] inputs ================================
+input botMomFastLen = 5;     # momentum EMA fast window
+input botMomSlowLen = 20;    # momentum EMA slow window
+input botCTilt = 0.5;        # c_t: volume-confirmed midpoint tilt
+input botCMom = 0.25;        # c_m: trend-momentum midpoint tilt
+input botCVolWidth = -0.25;  # c_v: width RelVol multiplier (CV-accepted)
+input botCIvHvWidth = -0.25; # c_iv: width IV/HV multiplier
+input botK = 1.42;           # width scale
+input botCVix = -0.5;        # c_vix: inverse-VIX coupling (CV-accepted; empirical sign)
+input botVixLen = 20;        # VIX EMA/StDev window (BOTTOM fit)
+input botCVolLevel = -0.25;  # c_lvl: vol-LEVEL width law (CV-accepted; empirical sign)
+input botVolLevelLen = 20;   # vol-level rolling-average window
+input botKVixOverride = 1.28;  # per-ticker k override: VIX
+input botKOrclOverride = 1.22; # per-ticker k override: ORCL
+input botKNflxOverride = 2.04; # per-ticker k override: NFLX
+
+# ============================ [SHARED] computation ===========================
+# Sample stdev via built-in StDev (population) * bias correction — identical
+# to the old fold-based StDev_Sample, but cheap enough for real-time data.
+def sampleFix = Sqrt(length / (length - 1.0));
+
+# --- price leg ---------------------------------------------------------------
+def ema = ExpAverage(close, length);
+def sdev = StDev(close, length) * sampleFix;
+
+# --- volume leg: RelVol, clamped [0.5,2.0], neutral (1) when volume missing --
+def volFast = Average(volume, volFastLen);
+def volSlow = Average(volume, volSlowLen);
+def relVolRaw = if IsNaN(volSlow) or volSlow == 0 then 1 else volFast / volSlow;
+def relVol = Min(2.0, Max(0.5, relVolRaw));
+
+# --- volatility leg: IV/HV ratio, clamped, neutral (1) when IV missing.
+#     HV = close-derived annualized realized-vol proxy. -----------------------
+def iv = imp_volatility();
+def hvAnn = if close == 0 then 0 else sdev / close * Sqrt(252);
+def ivHvRaw = if IsNaN(iv) or hvAnn == 0 then 1 else iv / hvAnn;
+def ivHv = Min(2.0, Max(0.5, ivHvRaw));
+
+# --- sigma: realized/IV-implied blend (IV missing -> pure realized) ----------
+def ivImplied = if IsNaN(iv) then 0 else close * iv / 15.87 * Sqrt(horizonDays);
+def wEff = if IsNaN(iv) then 1 else sigmaWeight;
+def sigma = (wEff * sdev) + ((1 - wEff) * ivImplied);
+
+def isVix = GetSymbol() == "VIX";
+
+# ============================ [TOP] band =====================================
+# (TOP's VIX-coupling, vol-level, dir-vol, semi-dev, PVV terms were all fitted
+#  inactive — removed in this lean build; see file header.)
+def topEmaFastMom = ExpAverage(close, topMomFastLen);
+def topEmaSlowMom = ExpAverage(close, topMomSlowLen);
+def topMid = ema + (topCTilt * relVol * (close - ema)) + (topCMom * (topEmaFastMom - topEmaSlowMom));
+def topKEff = if isVix then topKVixOverride else topK;
+def topIvHvWidthMult = Min(2.0, Max(0.5, 1 + (topCIvHvWidth * (ivHv - 1))));
+
+plot bridge_band_top = topMid + (topKEff * topIvHvWidthMult * sigma);
+
+# ============================ [BOTTOM] band ==================================
+def botEmaFastMom = ExpAverage(close, botMomFastLen);
+def botEmaSlowMom = ExpAverage(close, botMomSlowLen);
+def botMid = ema + (botCTilt * relVol * (close - ema)) + (botCMom * (botEmaFastMom - botEmaSlowMom));
+
+# Vol-LEVEL width multiplier (CV-accepted): own IV (fallback HV proxy) vs its
+# own rolling average.
+def vLevelRaw = if IsNaN(iv) then hvAnn else iv;
+def botVLevelAvg = Average(vLevelRaw, botVolLevelLen);
+def botVLevelRatioRaw = if botVLevelAvg == 0 then 1 else vLevelRaw / botVLevelAvg;
+def botVLevelRatio = Min(2.0, Max(0.5, botVLevelRatioRaw));
+def botVLevelMult = Min(2.0, Max(0.5, 1 + (botCVolLevel * (botVLevelRatio - 1))));
+
+# Inverse VIX coupling (CV-accepted) — BOTTOM uses VIX's UPSIDE room.
+def vixClose = close("VIX");
+def botVixEma = ExpAverage(vixClose, botVixLen);
+def botVixStd = StDev(vixClose, botVixLen) * Sqrt(botVixLen / (botVixLen - 1.0));
+def botVixTop = botVixEma + (vixWidthMult * botVixStd);
+def botVixTerm = if IsNaN(vixClose) or isVix or vixClose == 0 then 0 else (botVixTop / vixClose - 1);
+
+# Width + band (per-ticker k overrides: VIX / ORCL / NFLX)
+def botKEff = if isVix then botKVixOverride
+              else if GetSymbol() == "ORCL" then botKOrclOverride
+              else if GetSymbol() == "NFLX" then botKNflxOverride
+              else botK;
+def botVolWidthMult = Min(2.0, Max(0.5, 1 + (botCVolWidth * (relVol - 1))));
+def botIvHvWidthMult = Min(2.0, Max(0.5, 1 + (botCIvHvWidth * (ivHv - 1))));
+
+plot bridge_band_bottom = botMid - (botKEff * botVolWidthMult * botIvHvWidthMult * botVLevelMult * sigma)
+                                 - (botCVix * botVixTerm * sigma);

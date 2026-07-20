@@ -7326,6 +7326,34 @@ UPDATE ref_settings SET setting_value = '-0.6'  WHERE setting_name = 'macro_thr_
 -- etl/derive_macro.py (the sliding window supersedes the ramp/lead model).
 -- Rows left in ref_settings — harmless, kept for audit/rollback reference.
 
+-- =====================================================
+-- 2026-07-20 TASK_132: daily TOS-band (BBTop/BBBottom) vs Hedgeye hist_rr
+-- variance tracking + drift alert. See docs/tos_rr_calibration.md
+-- "Ongoing monitoring" section and agent-tasks/TASK_132_bb_rr_variance_
+-- tracking.md. Stored table (not a view) — the daily WARN/ALERT flag
+-- evaluation and rolling medians have to run somewhere anyway; matches the
+-- existing drv_rr pattern of duplicating hist_rr/hist_td for downstream use.
+-- =====================================================
+CREATE TABLE IF NOT EXISTS drv_bb_rr_gap (
+    as_of_date       DATE NOT NULL,
+    tos_symbol       TEXT NOT NULL,
+    bb_top           NUMERIC,   -- hist_td.a_bb_top (latest snapshot < D, EOD seq)
+    bb_bottom        NUMERIC,
+    rr_sell          NUMERIC,   -- hist_rr.sell_trade for D (reverse-scaled)
+    rr_buy           NUMERIC,   -- hist_rr.buy_trade  for D (reverse-scaled)
+    ape_top          NUMERIC,   -- |bb_top - rr_sell| / rr_sell * 100 (NULL if either side missing)
+    ape_bottom       NUMERIC,
+    ape_top_med20    NUMERIC,   -- rolling <=20-trading-day median of ape_top (per symbol, min 5 obs)
+    ape_bottom_med20 NUMERIC,
+    drift_flag       TEXT,      -- NULL | 'WARN' | 'ALERT'
+    source_run_id    BIGINT,
+    derived_at       TIMESTAMP NOT NULL DEFAULT now(),
+    PRIMARY KEY (as_of_date, tos_symbol)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_bb_rr_gap_sym ON drv_bb_rr_gap(tos_symbol, as_of_date);
+CREATE INDEX IF NOT EXISTS ix_drv_bb_rr_gap_flag ON drv_bb_rr_gap(as_of_date, drift_flag)
+    WHERE drift_flag IS NOT NULL;
+
 -- ref_rrt.tos_ticker is not unique -- some TOS tickers have multiple RRT
 -- rows (e.g. $DXY: 'USD'/'NYICDX', /BTC: 'BITCOIN'/'BTCUSD'/'BTC'). The
 -- actionable Symbol column joins on tos_ticker to show rr_name in place of

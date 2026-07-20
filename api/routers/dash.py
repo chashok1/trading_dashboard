@@ -1082,6 +1082,9 @@ def get_actionable(
                ms.qtr_now_net, ms.qtr_next_net, ms.qtr_weight,
                ms.monthly_scores_json, ms.detail AS macro_window,
                pv.decision AS pvv_decision, pv.detail AS pvv_detail,
+               bg.drift_flag AS bb_rr_drift_flag,
+               bg.ape_top_med20 AS bb_rr_ape_top_med20,
+               bg.ape_bottom_med20 AS bb_rr_ape_bottom_med20,
                rrt.rr_name,
                etfchg.event_date AS etfchg_date, etfchg.outlook AS etfchg_outlook,
                etfchg.change_str AS etfchg_desc,
@@ -1155,6 +1158,8 @@ def get_actionable(
                ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = a.as_of_date
         LEFT JOIN drv_pvv pv
                ON pv.tos_symbol = a.tos_symbol AND pv.as_of_date = a.as_of_date
+        LEFT JOIN drv_bb_rr_gap bg
+               ON bg.tos_symbol = a.tos_symbol AND bg.as_of_date = a.as_of_date
         LEFT JOIN LATERAL (
             SELECT rr_name FROM ref_rrt
             WHERE tos_ticker = a.tos_symbol

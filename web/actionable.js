@@ -3924,12 +3924,24 @@ function _buildRowEl(r) {
     const rrHtml = rrRaw
       ? `<span class="rr-main-ic" style="font-family:ui-monospace,monospace;font-size:24px;font-weight:700;color:${_rrIcData.color};cursor:help;flex-shrink:0;display:inline-block;width:36px;text-align:center;">${_rrIcData.glyph}</span>`
       : `<span class="rr-main-ic" style="font-size:12px;color:#cbd5e1;cursor:default;flex-shrink:0;display:inline-block;width:36px;text-align:center;">—</span>`;
+    // TASK_132: BB-vs-RR band drift flag (drv_bb_rr_gap) — shows only when
+    // the rolling 20d median APE has crossed WARN/ALERT; see
+    // docs/tos_rr_calibration.md "Ongoing monitoring".
+    const _bbDrift = r.bb_rr_drift_flag;
+    const _bbDriftLine = (() => {
+      if (!_bbDrift) return '';
+      const fmtPct = v => v != null ? Number(v).toFixed(2) + '%' : 'n/a';
+      const title = `BB vs RR band drift (20d median APE) — Top ${fmtPct(r.bb_rr_ape_top_med20)}, `
+        + `Bottom ${fmtPct(r.bb_rr_ape_bottom_med20)} — recalibrate: python -m etl.calibrate_tos_rr`;
+      const color = _bbDrift === 'ALERT' ? '#ef4444' : '#f59e0b';
+      return `<div style="white-space:nowrap;color:${color};font-weight:700;" title="${escapeHtml(title)}">Drift: ${escapeHtml(_bbDrift)}</div>`;
+    })();
     const _rrSubLineHtml = (() => {
       const td = r.tn_td_desc || '', bb = r.bb_desc || '';
       const rr = r.rr_desc || (rrRaw && r.rr_bull_bear ? (r.rr_bull_bear === 'B' ? 'Bull' : 'Not-Bull') : '');
-      if (!td && !bb && !rr) return '';
+      if (!td && !bb && !rr && !_bbDriftLine) return '';
       const line = t => `<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;">${escapeHtml(t)}</div>`;
-      return `<div class="rr-sub-line" style="font-size:9px;color:#94a3b8;line-height:1.4;" data-filled="1">${td ? line('TnTd: ' + td) : ''}${bb ? line('BB: ' + bb) : ''}${rr ? line('RR: ' + rr) : ''}</div>`;
+      return `<div class="rr-sub-line" style="font-size:9px;color:#94a3b8;line-height:1.4;" data-filled="1">${td ? line('TnTd: ' + td) : ''}${bb ? line('BB: ' + bb) : ''}${rr ? line('RR: ' + rr) : ''}${_bbDriftLine}</div>`;
     })();
 
     // RR column: reuses the shared .rr-rb/.rr-rb-tick bar (also used by
