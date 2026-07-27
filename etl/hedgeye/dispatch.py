@@ -55,8 +55,10 @@ _NEXT_DAY_FEEDS: frozenset = frozenset()
 
 
 def already_processed(session, message_id: str) -> bool:
+    """True only for messages that fully succeeded. A prior status='error' row
+    (see record_ledger) does not count — it must be retried, not skipped."""
     return bool(session.execute(
-        text("SELECT 1 FROM meta_hedgeye_msg WHERE message_id=:m"),
+        text("SELECT 1 FROM meta_hedgeye_msg WHERE message_id=:m AND status='ok'"),
         {"m": message_id}).first())
 
 

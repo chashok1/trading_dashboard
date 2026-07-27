@@ -636,11 +636,10 @@ def maybe_run_hedgeye_poll() -> None:
 
     def _run():
         try:
-            from etl.hedgeye_fetch import _process_pass
+            from etl.hedgeye_fetch import _process_pass, resume_since
             from etl.hedgeye import config as _cfg_mod
-            from datetime import timedelta, timezone as _tz
             cfg = _cfg_mod.load()
-            since = datetime.now(_tz.utc) - timedelta(days=2)
+            since = resume_since()
             n = _process_pass(cfg, since, dry_run=False)
             if n:
                 log.info("hedgeye: poll done — %d emails processed", n)

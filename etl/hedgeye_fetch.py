@@ -73,6 +73,36 @@ def _poll_interval_sec(cfg, holidays: set) -> int:
     return cfg.poll_sec
 
 
+_DEFAULT_LOOKBACK = timedelta(days=2)
+_RESUME_BUFFER = timedelta(hours=1)  # overlap so a message can't fall in the gap between polls
+
+
+def resume_since() -> datetime:
+    """Watermark for the next poll: last processed email's received_at (minus a
+    safety buffer), so a poll after any outage resumes where it left off instead
+    of a fixed rolling window. Falls back to the default lookback if no messages
+    have been processed yet (or the query fails).
+
+    If any message is stuck in status='error' (see record_ledger in a per-email
+    failure), the watermark floors at the OLDEST such message instead of the
+    newest success — otherwise a later message succeeding would push the
+    watermark past the still-unresolved failure and it would stop being retried."""
+    try:
+        from etl.db import session_scope
+        from sqlalchemy import text
+        with session_scope() as s:
+            floor = s.execute(text(
+                "SELECT MIN(received_at) FROM meta_hedgeye_msg WHERE status <> 'ok'")).scalar()
+            if floor is None:
+                floor = s.execute(text(
+                    "SELECT MAX(received_at) FROM meta_hedgeye_msg WHERE status = 'ok'")).scalar()
+        if floor is not None:
+            return floor - _RESUME_BUFFER
+    except Exception:
+        log.exception("resume_since: failed to read meta_hedgeye_msg watermark; using default lookback")
+    return datetime.now(timezone.utc) - _DEFAULT_LOOKBACK
+
+
 def _trigger_derive() -> None:
     """After writing Hedgeye data, re-derive for the current anchor date."""
     try:
@@ -92,32 +122,47 @@ def _trigger_derive() -> None:
 
 def _process_pass(cfg, since, dry_run: bool) -> int:
     from etl.db import session_scope
-    from etl.hedgeye.dispatch import dispatch, already_processed
+    from etl.hedgeye.dispatch import dispatch, already_processed, record_ledger
     n = 0
     # Track whether any email-only (direct-insert) data landed.
     # Tab-backed feeds now derive via the loader — no derive needed here.
     direct_inserts = 0
     with open_source(cfg) as src:
         for email in src.iter_since(since):
-            et = classify(email)
-            if et.destination == "DROP":
-                continue
-            with session_scope() as s:
-                if already_processed(s, email.message_id):
+            try:
+                et = classify(email)
+                if et.destination == "DROP":
                     continue
-                parser = parser_for(et)
-                parsed = parser(email) if parser else _note_only(email, et)
-                if dry_run:
-                    log.info("[dry] %-22s %s", et.name, email.subject[:70])
-                    continue
-                summary = dispatch(s, email, et.name, parsed, cfg)
-                log.info(
-                    "%-22s %s -> tables=%s files=%s",
-                    et.name, email.subject[:60],
-                    summary["tables"], summary.get("files", {}),
-                )
-                direct_inserts += sum(summary.get("tables", {}).values())
-                n += 1
+                with session_scope() as s:
+                    if already_processed(s, email.message_id):
+                        continue
+                    parser = parser_for(et)
+                    parsed = parser(email) if parser else _note_only(email, et)
+                    if dry_run:
+                        log.info("[dry] %-22s %s", et.name, email.subject[:70])
+                        continue
+                    summary = dispatch(s, email, et.name, parsed, cfg)
+                    log.info(
+                        "%-22s %s -> tables=%s files=%s",
+                        et.name, email.subject[:60],
+                        summary["tables"], summary.get("files", {}),
+                    )
+                    direct_inserts += sum(summary.get("tables", {}).values())
+                    n += 1
+            except Exception as e:  # noqa: BLE001
+                # One bad message must not block everything after it in this pass.
+                # Record it as an unresolved failure so resume_since() keeps
+                # retrying it (and doesn't advance the watermark past it) instead
+                # of silently dropping it.
+                log.exception(
+                    "hedgeye: failed processing %s (%s) — will retry next poll",
+                    email.message_id, (email.subject or "")[:60])
+                if not dry_run:
+                    try:
+                        with session_scope() as s2:
+                            record_ledger(s2, email, "error", "error", {"error": str(e)[:500]})
+                    except Exception:
+                        log.exception("hedgeye: failed to record error ledger for %s", email.message_id)
     # Only trigger derive when email-only feeds inserted rows directly.
     # Tab-backed feeds derive via the scheduler after it picks up the file.
     if direct_inserts > 0 and not dry_run:
@@ -155,12 +200,12 @@ def main() -> None:
         _process_pass(cfg, since, args.dry_run)
         return
 
-    since = datetime.now(timezone.utc) - timedelta(days=2)
     if args.loop:
         holidays = _load_holidays()
         next_holiday_refresh = 86400  # refresh holiday set once a day
         while True:
             try:
+                since = resume_since()
                 got = _process_pass(cfg, since, args.dry_run)
                 log.info("pass done: %d processed", got)
             except Exception:  # noqa: BLE001
@@ -173,7 +218,7 @@ def main() -> None:
                 holidays = _load_holidays()
                 next_holiday_refresh = 86400
     else:
-        _process_pass(cfg, since, args.dry_run)
+        _process_pass(cfg, resume_since(), args.dry_run)
 
 
 if __name__ == "__main__":
