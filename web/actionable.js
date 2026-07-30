@@ -793,14 +793,28 @@ async function loadMacroBand() {
     // than as its own headline span.
     const wMonths = (windowData && windowData.months) || [];
     const wDominant = windowData && windowData.dominant_quad ? `Quad ${windowData.dominant_quad}` : '—';
-    const wMixStr = wMonths.map(m => `${m.m.slice(5)} ${Math.round(m.w * 100)}%`).join(' · ');
+    // band-factors only carries cur_month/next_month granularity -- map the
+    // window's first two months onto those keys so hovering a month segment
+    // reuses the same rich bull/bear-factor popover as the big quad label
+    // (data-quadbandpop, wired once in the mouseover listener below); months
+    // further out in the window fall back to a plain title tooltip.
+    const _WINDOW_POP_KEY = ['cur_month', 'next_month'];
+    const wMixHtml = wMonths.map((m, i) => {
+      const qLbl = m.quad != null ? `Q${m.quad}` : '?';
+      const popKey = _WINDOW_POP_KEY[i];
+      const segAttr = popKey
+        ? ` data-quadbandpop="${popKey}"`
+        : ` title="${escapeHtml(`${m.m} (Quad ${m.quad ?? '?'}) w=${Math.round(m.w * 100)}%`)}"`;
+      return `<span${segAttr} style="cursor:help;border-bottom:1px dotted #cbd5e1;">`
+        + `${escapeHtml(m.m.slice(5))} <span style="color:${_quadColor(qLbl)};">(${escapeHtml(qLbl)})</span> ${Math.round(m.w * 100)}%</span>`;
+    }).join(' · ');
     const wTitle = wMonths.map(m => `${m.m} (Quad ${m.quad ?? '?'}) w=${Math.round(m.w * 100)}%`).join('\n');
     const wSectorsHtml = wMonths.length
       ? _sectorListHtml(_quadBullishSectorTickers('cur_month'))
       : '';
     elM.innerHTML = `<span style="color:#64748b;font-size:10px;" title="${escapeHtml(wTitle)}">Window (${windowData?.h ?? 60}d)</span> `
       + `<strong style="color:${_quadColor(wDominant)};cursor:help;" data-quadbandpop="cur_month">${escapeHtml(_qdLbl(wDominant))}</strong>`
-      + (wMixStr ? ` <span style="color:#94a3b8;font-size:10px;" title="${escapeHtml(wTitle)}">${escapeHtml(wMixStr)}</span>` : '')
+      + (wMixHtml ? ` <span style="color:#94a3b8;font-size:10px;">${wMixHtml}</span>` : '')
       + wSectorsHtml
       + (windowData && windowData.fallback
           ? ` <span style="color:#f97316;font-size:9px;">(fallback, coverage ${windowData.coverage_pct}%)</span>`
