@@ -645,10 +645,10 @@ function _buildQuadBandPopHtml(key) {
   // looks up bull/bear factors by the month's own raw quad number instead of
   // a fixed period name, so it works for any window month, not just the
   // cur_month/next_month/cur_qtr periods this endpoint otherwise resolves.
-  const byQuad = /^by_quad:(\d):(\d{4}-\d{2})$/.exec(key);
+  const byQuad = /^by_quad:(\d)(?::(\d{4}-\d{2}))?$/.exec(key);
   const quad = byQuad ? `Quad ${byQuad[1]}` : (quads[key] || '—');
   const periodLabel = byQuad
-    ? `${_shortMonth(byQuad[2])} ${byQuad[2].slice(0, 4)}`
+    ? (byQuad[2] ? `${_shortMonth(byQuad[2])} ${byQuad[2].slice(0, 4)}` : 'Blended window')
     : ({ cur_month: 'Current Month', next_month: 'Next Month', cur_qtr: 'Current Quarter', next_qtr: 'Next Quarter' }[key] || key);
   const factorKey = byQuad ? `quad${byQuad[1]}` : key;
   const bull = facs.filter(f => (f[factorKey] || '').toUpperCase() === 'BULLISH');
@@ -817,8 +817,11 @@ async function loadMacroBand() {
     const wSectorsHtml = wMonths.length
       ? _sectorListHtml(_quadBullishSectorTickers('cur_month'))
       : '';
+    const wDominantAttr = windowData && windowData.dominant_quad != null
+      ? ` data-quadbandpop="by_quad:${windowData.dominant_quad}"`
+      : '';
     elM.innerHTML = `<span style="color:#64748b;font-size:10px;" title="${escapeHtml(wTitle)}">Window (${windowData?.h ?? 60}d)</span> `
-      + `<strong style="color:${_quadColor(wDominant)};cursor:help;" data-quadbandpop="cur_month">${escapeHtml(_qdLbl(wDominant))}</strong>`
+      + `<strong style="color:${_quadColor(wDominant)};cursor:help;"${wDominantAttr}>${escapeHtml(_qdLbl(wDominant))}</strong>`
       + (wMixHtml ? ` <span style="color:#94a3b8;font-size:10px;">${wMixHtml}</span>` : '')
       + wSectorsHtml
       + (windowData && windowData.fallback
