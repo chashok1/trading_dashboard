@@ -148,6 +148,47 @@ def normalize_change_str_sql(col_expr: str) -> str:
     )
 
 
+# =============================================================================
+# D3 (2026-07-30) — ETFCHG/IICHG patch-row outlook resolution.
+#
+# load_raw.py::load_etfchg's "new format" (in use since 2026-06-01) splits the
+# event into two columns: outlook = side (Long/Short), change_str = action
+# (Add/Remove) — unlike the old format, where change_str itself carried the
+# direction (Long/Short/Neutral). normalize_change_str(_sql) alone only covers
+# the old format; every new-format row falls to its ELSE branch and returns
+# the raw "add"/"remove" token, which _outlook_to_weight can't resolve (weight
+# 0, bogus "outlook" string persisted). These wrappers give the correct
+# effective outlook for BOTH formats — single source of truth for the Python
+# (_build_etf_ii) and SQL (_state_etf_ii/_state_etf_ii_tos) patch appliers.
+# =============================================================================
+
+def etf_ii_patch_outlook(change_str: Optional[str], outlook: Optional[str]) -> Optional[str]:
+    """Effective outlook token for one ETFCHG/IICHG patch row.
+
+    New format: REMOVE -> NEUTRAL (drops the symbol, same as an explicit
+    Neutral row); ADD -> normalize the row's own `outlook` (Long/Short).
+    Old format (change_str itself held Long/Short/Neutral): falls through to
+    normalize_change_str(change_str) unchanged.
+    """
+    cs = (change_str or "").strip().upper()
+    if cs == "REMOVE":
+        return "NEUTRAL"
+    if cs == "ADD":
+        return normalize_change_str(outlook)
+    return normalize_change_str(change_str)
+
+
+def etf_ii_patch_outlook_sql(change_col: str = "change_str", outlook_col: str = "outlook") -> str:
+    """SQL CASE equivalent of etf_ii_patch_outlook() — update both together."""
+    return (
+        f"CASE UPPER(COALESCE({change_col},''))"
+        " WHEN 'REMOVE' THEN 'NEUTRAL'"
+        f" WHEN 'ADD' THEN ({normalize_change_str_sql(outlook_col)})"
+        f" ELSE ({normalize_change_str_sql(change_col)})"
+        " END"
+    )
+
+
 def position_ceiling(session: Session, as_of_date: date) -> date:
     """Return the snapshot_date ceiling for F/CS position carry-forward.
 

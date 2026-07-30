@@ -32,6 +32,7 @@ from etl._derive_common import (
     _wrap,
     _clean, _load_outlook_weights, _outlook_to_weight,  # TASK_56: consolidated
     normalize_change_str,  # D1: canonical change_str normalizer
+    etf_ii_patch_outlook,  # D3: ETFCHG/IICHG add/remove-aware patch resolver
 )
 
 log = logging.getLogger("etl.derive_source_standing")
@@ -160,17 +161,17 @@ def _build_etf_ii(session: Session, as_of_date: date,
 
     # Apply intra-period patches (event_date > snap AND <= D)
     patch_rows = session.execute(text(
-        f"SELECT tos_symbol, change_str, event_date "
+        f"SELECT tos_symbol, change_str, outlook, event_date "
         f"FROM {change_table} "
         "WHERE event_date > :snap AND event_date <= :d "
         "  AND tos_symbol IS NOT NULL "
         "ORDER BY event_date ASC"
     ), {"snap": snap, "d": as_of_date}).fetchall()
 
-    for sym, change_str, ev_date in patch_rows:
+    for sym, change_str, patch_outlook, ev_date in patch_rows:
         if not sym:
             continue
-        normalized = normalize_change_str(change_str)
+        normalized = etf_ii_patch_outlook(change_str, patch_outlook)
         if normalized:
             # Patches override base; later patches override earlier
             effective[sym] = (normalized, ev_date)

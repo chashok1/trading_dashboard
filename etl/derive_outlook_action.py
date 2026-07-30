@@ -23,7 +23,7 @@ from etl._derive_common import (
     position_ceiling,
     _open_drv_run, _close_drv_run,          # TASK_56: use canonical parameterized versions
     _load_outlook_weights, _outlook_to_weight,  # TASK_56: consolidated
-    normalize_change_str_sql,               # D1: canonical SQL change_str normalizer
+    etf_ii_patch_outlook_sql,               # D3: ETFCHG/IICHG add/remove-aware patch resolver
 )
 
 log = logging.getLogger("etl.derive_outlook_action")
@@ -223,7 +223,7 @@ def _state_etf_ii(session: Session, base_table: str, change_table: str,
     Returns {symbol: weight}. Symbols whose latest effective outlook is
     NEUTRAL or NULL are excluded (Neutral = removed from list).
     """
-    chg_norm = normalize_change_str_sql("change_str")
+    chg_norm = etf_ii_patch_outlook_sql()
     # BUNDLE-CAP RULE: only consult the LATEST hist_etf snapshot ≤ as_of_date
     # (the current "weekly bundle") plus any etfchg patches that arrived
     # AFTER that snapshot and on/before as_of_date. Rows from older
@@ -287,7 +287,7 @@ def _state_etf_ii_tos(session: Session, base_table: str, change_table: str,
     Used to load the PREVIOUS period's effective state for comparison, so that
     held-detection and action classification use the normalized tos_symbol key.
     """
-    chg_norm = normalize_change_str_sql("change_str")
+    chg_norm = etf_ii_patch_outlook_sql()
     rows = session.execute(
         text(f"""
             WITH latest_snap AS (
