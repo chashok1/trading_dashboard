@@ -436,6 +436,13 @@ def get_quad_band_factors(
             "next_month": row[nxt_col] if nxt_col else None,
             "cur_qtr": row[qtr_col] if qtr_col else None,
             "next_qtr": row[nxt_qtr_col] if nxt_qtr_col else None,
+            # Raw per-quad stance (period-independent) -- lets callers like the
+            # regime band's window-mix popover look up bull/bear factors for
+            # ANY quad number directly, not just the cur/next month|qtr periods
+            # this endpoint otherwise resolves (TASK_126 window can span more
+            # months than cur_month/next_month cover).
+            "quad1": row["quad1"], "quad2": row["quad2"],
+            "quad3": row["quad3"], "quad4": row["quad4"],
         })
 
     return {

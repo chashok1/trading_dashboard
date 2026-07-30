@@ -641,10 +641,18 @@ function _buildQuadBandPopHtml(key) {
     return h + '</table>';
   }
 
-  const quad  = quads[key] || '—';
-  const periodLabel = { cur_month: 'Current Month', next_month: 'Next Month', cur_qtr: 'Current Quarter', next_qtr: 'Next Quarter' }[key] || key;
-  const bull = facs.filter(f => (f[key] || '').toUpperCase() === 'BULLISH');
-  const bear = facs.filter(f => (f[key] || '').toUpperCase() === 'BEARISH');
+  // Window-mix month popover (data-quadbandpop="by_quad:<1-4>:<yyyy-mm>") --
+  // looks up bull/bear factors by the month's own raw quad number instead of
+  // a fixed period name, so it works for any window month, not just the
+  // cur_month/next_month/cur_qtr periods this endpoint otherwise resolves.
+  const byQuad = /^by_quad:(\d):(\d{4}-\d{2})$/.exec(key);
+  const quad = byQuad ? `Quad ${byQuad[1]}` : (quads[key] || '—');
+  const periodLabel = byQuad
+    ? `${_shortMonth(byQuad[2])} ${byQuad[2].slice(0, 4)}`
+    : ({ cur_month: 'Current Month', next_month: 'Next Month', cur_qtr: 'Current Quarter', next_qtr: 'Next Quarter' }[key] || key);
+  const factorKey = byQuad ? `quad${byQuad[1]}` : key;
+  const bull = facs.filter(f => (f[factorKey] || '').toUpperCase() === 'BULLISH');
+  const bear = facs.filter(f => (f[factorKey] || '').toUpperCase() === 'BEARISH');
   let h = `<div class="sp-title" style="color:${_quadColor(quad)}">${escapeHtml(quad)}</div>`;
   h += `<div style="color:#94a3b8;font-size:9px;margin-bottom:4px;padding:0 6px;">${periodLabel}</div>`;
   h += '<table>';
@@ -793,18 +801,15 @@ async function loadMacroBand() {
     // than as its own headline span.
     const wMonths = (windowData && windowData.months) || [];
     const wDominant = windowData && windowData.dominant_quad ? `Quad ${windowData.dominant_quad}` : '—';
-    // band-factors only carries cur_month/next_month granularity -- map the
-    // window's first two months onto those keys so hovering a month segment
-    // reuses the same rich bull/bear-factor popover as the big quad label
-    // (data-quadbandpop, wired once in the mouseover listener below); months
-    // further out in the window fall back to a plain title tooltip.
-    const _WINDOW_POP_KEY = ['cur_month', 'next_month'];
-    const wMixHtml = wMonths.map((m, i) => {
+    // Each month segment hovers the same rich bull/bear-factor popover as the
+    // big quad label (data-quadbandpop, wired once in the mouseover listener
+    // below), keyed by the month's own raw quad number so it works uniformly
+    // for every window month regardless of how many the window spans.
+    const wMixHtml = wMonths.map((m) => {
       const qLbl = m.quad != null ? `Q${m.quad}` : '?';
-      const popKey = _WINDOW_POP_KEY[i];
-      const segAttr = popKey
-        ? ` data-quadbandpop="${popKey}"`
-        : ` title="${escapeHtml(`${m.m} (Quad ${m.quad ?? '?'}) w=${Math.round(m.w * 100)}%`)}"`;
+      const segAttr = m.quad != null
+        ? ` data-quadbandpop="by_quad:${m.quad}:${m.m}"`
+        : ` title="${escapeHtml(`${m.m} w=${Math.round(m.w * 100)}%`)}"`;
       return `<span${segAttr} style="cursor:help;border-bottom:1px dotted #cbd5e1;">`
         + `${escapeHtml(m.m.slice(5))} <span style="color:${_quadColor(qLbl)};">(${escapeHtml(qLbl)})</span> ${Math.round(m.w * 100)}%</span>`;
     }).join(' · ');
