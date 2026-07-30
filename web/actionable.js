@@ -2461,6 +2461,18 @@ function _sourcesOf(row) {
   return Array.isArray(sa) ? sa : [];
 }
 
+// ETF/II source-reason entries carry the shared weekly-bundle snapshot_date
+// (e.g. last Sunday's rotation), not the date an intra-week ETFCHG/IICHG
+// event actually landed. The row already carries that receipt date via the
+// 5-day-lookback etfchg_date/iichg_date fields (api/routers/dash.py) — this
+// looks it up so the source badge can show both.
+function _srcChangeEventDate(row, srcCode) {
+  const sc = (srcCode || '').toUpperCase();
+  if (sc === 'ETF') return row.etfchg_date || null;
+  if (sc === 'II') return row.iichg_date || null;
+  return null;
+}
+
 // ── Source sub-line (Action cell second line) ──────────────────────────────
 // Returns compact HTML like: RR·<colored>BS</colored>  II·<colored>BM</colored>
 // Winning source first, then others sorted by severity.  Empty → ''.
@@ -2475,14 +2487,19 @@ function _srcReasonsHtml(r) {
     (ACTION_RANK[(b.action || '').toUpperCase()] || 0) -
     (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
   const rows = winner.concat(others).map(s => {
-    const src    = escapeHtml((s.source || s.source_code || '?').slice(0, 2));
+    const srcCode = s.source || s.source_code || '?';
+    const src    = escapeHtml(srcCode.slice(0, 2));
     const ic     = actionIcon(s.action);
     const reason = s.reason ? escapeHtml(s.reason) : '';
     const dtRaw  = fmtMD(s.snapshot_date);
     const dt     = dtRaw ? `<span style="font-size:9px;font-weight:400;opacity:0.7;"> (${dtRaw.replace(/^0/, '')})</span>` : '';
+    const chgRaw = fmtMD(_srcChangeEventDate(r, srcCode));
+    const chg    = (chgRaw && chgRaw !== dtRaw)
+      ? `<span style="font-size:9px;font-weight:400;opacity:0.7;"> → ${chgRaw.replace(/^0/, '')}</span>`
+      : '';
     return `<div class="src-reason-line">
       <span class="src-ic" style="color:${ic.color};">${ic.glyph}</span>
-      <span class="src-tag">${src}${dt}</span>
+      <span class="src-tag">${src}${dt}${chg}</span>
       <span class="src-rsn">${reason}</span>
     </div>`;
   });
@@ -2503,7 +2520,9 @@ function _srcTooltip(r) {
     const src   = s.source || s.source_code || '?';
     const ic    = actionIcon(s.action);
     const act   = (s.action || '').toUpperCase();
-    const dt    = fmtMD(s.snapshot_date) || '?';
+    const dtRaw = fmtMD(s.snapshot_date);
+    const chgRaw = fmtMD(_srcChangeEventDate(r, src));
+    const dt    = (dtRaw || '?') + (chgRaw && chgRaw !== dtRaw ? ` → ${chgRaw}` : '');
     const rsn   = s.reason || '';
     return (isWin ? '✓ ' : '  ') + src + '  ' + ic.glyph + '  ' + act + '  ' + dt + '  ' + rsn;
   });
