@@ -498,6 +498,14 @@ def run_nightly_outcomes() -> None:
     except Exception:
         log.exception("nightly: weak-buy-sources recompute crashed")
 
+    log.info("nightly: factor outcomes refresh starting")
+    try:
+        from etl.compute_factor_outcomes import refresh_factor_outcomes
+        result = refresh_factor_outcomes(truncate=False)
+        log.info("nightly: factor outcomes refresh done: %s", result)
+    except Exception:
+        log.exception("nightly: factor outcomes refresh crashed")
+
 
 def _read_nightly_state(state_path: Path):
     """Return the ISO date in the state file, or None if missing/invalid.

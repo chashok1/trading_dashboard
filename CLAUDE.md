@@ -257,6 +257,7 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Rule tuning, profiles (param sets), outcomes & scorecard — USE & FIX guide | `docs/rule_tuning_and_outcomes.md` |
 | Firing-based outcomes ETL (validate rules vs forward returns) | `etl/compute_firing_outcomes.py` (+ `etl/backfill_derives.py`) → `drv_rule_outcome` |
 | Direction-adjusted rule scorecard (which rules predict the right move) | `v_rule_scorecard` (db/baseline.sql); `SELECT * FROM v_rule_scorecard ORDER BY edge_20d DESC` |
+| Factor-driver scorecard (does RSI/MACDH/RVOL+direction/IV%/macro tag/source/sector/style actually predict forward return) | `etl/compute_factor_outcomes.py` → `drv_factor_snapshot` → `v_factor_scorecard`; `/api/rules/factor-scorecard`; UI: `/rule-performance` "Factor scorecard" card; grid tags on Actionable RSI/IV cells (`web/actionable.js::_factorEdgeTag`) |
 | Rule-edge in the UI (badges + Actionable "Rules (edge)" column) | `web/actionable.js` (`firesCellHtml`, `ruleEdgeBadge`), `web/rule_flow.js` (`compEdgeBadge`) ← `/api/rules/scorecard` |
 | Personal action track record ("Your actions" panel) | `v_user_action_performance` (db/baseline.sql) → `/api/rules/my-actions` → `web/rule_performance.*` |
 | Performance screen (scorecard + Your actions panels) | `web/rule_performance.*`; endpoints `/api/rules/scorecard`, `/api/rules/my-actions`, `/api/rules/performance` |

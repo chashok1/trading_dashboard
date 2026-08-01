@@ -236,6 +236,51 @@
                 </table>
             </div>
         </div>
+
+        <div class="card" style="margin-top:12px;">
+            <div class="performance-header">
+                <strong style="font-size:15px;">Factor scorecard</strong>
+                <span style="color:var(--text-3);font-size:12px;">Does RSI/MACDH/RVOL/IV%/macro/source/sector/style actually predict the forward move? (2026-08-01)</span>
+                <span style="flex:1"></span>
+                <label for="factorSel">Factor:</label>
+                <select id="factorSel" onchange="loadFactorScorecard()">
+                    <option value="all" selected>all</option>
+                </select>
+                <label for="factorMinN">Min n:</label>
+                <select id="factorMinN" onchange="loadFactorScorecard()">
+                    <option value="0" selected>all</option>
+                    <option value="30">30</option>
+                    <option value="300">300</option>
+                </select>
+            </div>
+            <div class="caveat-note">
+                Raw (no direction adjustment) — same as Individual rules above. Row order isn't buy/sell aware:
+                for a caution-style factor, a negative avg 20d means the bucket predicted a real decline; for a
+                buy-style bucket, positive means it predicted a real gain. <b>Baseline / All stocks</b> is the
+                average stock over the same days, for comparison. Refresh: <code>python -m etl.compute_factor_outcomes</code>.
+            </div>
+            <div class="scrollable-table-container">
+                <table class="perf-table">
+                    <thead>
+                        <tr>
+                            <th onclick="factorSortBy('factor')">Factor <span class="sort-indicator"></span></th>
+                            <th onclick="factorSortBy('bucket')">Bucket <span class="sort-indicator"></span></th>
+                            <th onclick="factorSortBy('n')">n <span class="sort-indicator"></span></th>
+                            <th onclick="factorSortBy('n_symbols')">Symbols <span class="sort-indicator"></span></th>
+                            <th onclick="factorSortBy('avg_fwd_20d')">Avg 20d <span class="sort-indicator">▾</span></th>
+                            <th onclick="factorSortBy('avg_fwd_5d')">Avg 5d <span class="sort-indicator"></span></th>
+                            <th title="95% confidence interval">95% CI</th>
+                            <th onclick="factorSortBy('win_rate')">Win % <span class="sort-indicator"></span></th>
+                            <th>Confidence</th>
+                            <th>Span</th>
+                        </tr>
+                    </thead>
+                    <tbody id="factorTableBody">
+                        <tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text-3);">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </main>
 
     <script src="/static/_common.js"></script>

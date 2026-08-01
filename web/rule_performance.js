@@ -16,10 +16,17 @@ const atomicState = {
     sortDir: 'desc',
 };
 
+const factorState = {
+    rows: [],
+    sortBy: 'avg_fwd_20d',
+    sortDir: 'desc',
+};
+
 const DOM = {
     perfTableBody: document.getElementById('perfTableBody'),
     atomicTableBody: document.getElementById('atomicTableBody'),
     agreementTableBody: document.getElementById('agreementTableBody'),
+    factorTableBody: document.getElementById('factorTableBody'),
 };
 
 const agreementState = {
@@ -33,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadMyActions();
     loadAtomicScorecard();
     loadAgreementScorecard();
+    loadFactorScorecard();
 });
 
 async function loadMyActions() {
@@ -259,6 +267,120 @@ function atomicSortBy(column) {
 
 window.loadAtomicScorecard = loadAtomicScorecard;
 window.atomicSortBy = atomicSortBy;
+
+// ---- Factor scorecard (2026-08-01) ----
+let _factorSelPopulated = false;
+
+async function loadFactorScorecard() {
+    const minN = document.getElementById('factorMinN')?.value ?? 0;
+    DOM.factorTableBody.innerHTML =
+        '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text-3);">Loading factor scorecard…</td></tr>';
+    try {
+        const data = await fetch(`/api/rules/factor-scorecard?min_n=${minN}&limit=1000`)
+            .then(r => r.json());
+        factorState.rows = Array.isArray(data) ? data : [];
+        if (!_factorSelPopulated) {
+            const sel = document.getElementById('factorSel');
+            const factors = [...new Set(factorState.rows.map(r => r.factor))].sort();
+            for (const f of factors) {
+                if (f === 'Baseline') continue;
+                const opt = document.createElement('option');
+                opt.value = f; opt.textContent = f;
+                sel.appendChild(opt);
+            }
+            _factorSelPopulated = true;
+        }
+        renderFactorTable();
+    } catch (e) {
+        console.error('Failed to load factor scorecard:', e);
+        DOM.factorTableBody.innerHTML =
+            '<tr><td colspan="10" style="text-align:center;color:#b91c1c;">Error loading factor scorecard</td></tr>';
+    }
+}
+
+function renderFactorTable() {
+    if (!factorState.rows.length) {
+        DOM.factorTableBody.innerHTML =
+            '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text-3);">' +
+            'No data. Run the outcome ETL: <code>python -m etl.compute_factor_outcomes --truncate</code></td></tr>';
+        return;
+    }
+
+    const factorFilter = document.getElementById('factorSel')?.value ?? 'all';
+    const baseline = factorState.rows.find(r => r.factor === 'Baseline');
+    const baselineAvg20 = baseline ? Number(baseline.avg_fwd_20d) : null;
+
+    let rows = factorState.rows.filter(r =>
+        factorFilter === 'all' ? r.factor !== 'Baseline' : r.factor === factorFilter);
+    if (factorFilter === 'all' && baseline) rows = [baseline, ...rows];
+
+    const dir = factorState.sortDir === 'asc' ? 1 : -1;
+    rows = [...rows].sort((a, b) => {
+        let va = a[factorState.sortBy], vb = b[factorState.sortBy];
+        if (typeof va === 'string' || typeof vb === 'string') {
+            return ((va || '').localeCompare(vb || '')) * dir;
+        }
+        return ((va ?? 0) - (vb ?? 0)) * dir;
+    });
+
+    const num = (v, d = 2) => (v === null || v === undefined) ? '—' : Number(v).toFixed(d);
+    const edgeCls = v => v > 0.5 ? 'edge-pos' : v < -0.5 ? 'edge-neg' : 'edge-neu';
+
+    DOM.factorTableBody.innerHTML = rows.map(r => {
+        const span = (r.first_seen && r.last_seen)
+            ? `${r.first_seen} → ${r.last_seen}` : '—';
+        const conf = r.confidence || 'unproven';
+        const isBaseline = r.factor === 'Baseline';
+        const unproven = conf === 'unproven' && !isBaseline;
+        const rowStyle = unproven ? ' style="opacity:0.55;"' : (isBaseline ? ' style="font-weight:600;background:var(--bg-2);"' : '');
+        const confBadge = isBaseline ? ''
+            : conf === 'proven'
+            ? `<span style="color:#15803d;font-weight:700;font-size:10px;">proven</span>`
+            : conf === 'promising'
+            ? `<span style="color:#92400e;font-size:10px;">promising</span>`
+            : `<span style="color:#94a3b8;font-size:10px;">unproven</span>`;
+        const ciLow  = r.ci_low  != null ? Number(r.ci_low).toFixed(2)  : '—';
+        const ciHigh = r.ci_high != null ? Number(r.ci_high).toFixed(2) : '—';
+        const ciStr  = (ciLow !== '—' && ciHigh !== '—') ? `[${ciLow}%, ${ciHigh}%]` : '—';
+        // Color by DELTA vs baseline, not raw sign — this data covers a rising
+        // market where the baseline itself is positive (avg 20d +1.27%), so
+        // most buckets are nominally positive even when they underperform the
+        // average stock. Coloring on raw sign made almost every row look
+        // green regardless of whether it actually beat the average; fixed
+        // 2026-08-01 (same fix as the Actionable grid's RSI/IV tags).
+        const delta = (baselineAvg20 != null && r.avg_fwd_20d != null) ? r.avg_fwd_20d - baselineAvg20 : null;
+        const deltaCls = isBaseline ? 'edge-neu' : delta == null ? 'edge-neu' : edgeCls(delta);
+        const deltaStr = (!isBaseline && delta != null)
+            ? ` <span style="font-size:10px;color:var(--text-3);" title="vs baseline avg 20d ${num(baselineAvg20)}%">(${delta >= 0 ? '+' : ''}${num(delta)}pp)</span>`
+            : '';
+        return `
+            <tr${rowStyle}>
+                <td>${r.factor}</td>
+                <td><strong>${r.bucket}</strong></td>
+                <td>${r.n ?? 0}</td>
+                <td>${r.n_symbols ?? 0}</td>
+                <td class="${deltaCls}">${num(r.avg_fwd_20d)}%${deltaStr}</td>
+                <td style="color:var(--text-3)">${num(r.avg_fwd_5d)}%</td>
+                <td style="color:var(--text-3);font-size:11px;" title="95% CI">${ciStr}</td>
+                <td>${num((r.win_rate ?? 0) * 100, 1)}%</td>
+                <td>${confBadge}</td>
+                <td style="color:var(--text-3);font-size:11px;">${span}</td>
+            </tr>`;
+    }).join('');
+}
+
+function factorSortBy(column) {
+    if (factorState.sortBy === column) {
+        factorState.sortDir = factorState.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+        factorState.sortBy = column;
+        factorState.sortDir = (column === 'factor' || column === 'bucket') ? 'asc' : 'desc';
+    }
+    renderFactorTable();
+}
+
+window.loadFactorScorecard = loadFactorScorecard;
+window.factorSortBy = factorSortBy;
 
 // ---- TASK_69: Agreement scorecard ----
 const _AGR_COLOR_PERF = {

@@ -7363,3 +7363,126 @@ CREATE INDEX IF NOT EXISTS ix_drv_bb_rr_gap_flag ON drv_bb_rr_gap(as_of_date, dr
 -- needed there).
 ALTER TABLE ref_rrt ADD COLUMN IF NOT EXISTS preferred_display BOOLEAN NOT NULL DEFAULT FALSE;
 
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+  ('rsi_overbought', '70', 'Actionable don''t-buy warning: RSI >= this is overbought'),
+  ('rsi_oversold',   '30', 'Actionable don''t-buy warning: RSI <= this is oversold'),
+  ('vlm_rvol_avoid_threshold', '1.5',
+   'Actionable don''t-buy warning: VLM flags a caution when rvol (current/10d-avg volume) '
+   '>= this AND price is UP for the day (a "buying climax" — heavy volume on a pop). '
+   'Direction flipped from the original down-day hypothesis 2026-08-01 after a factor '
+   'backtest (v_factor_scorecard) showed high-RVOL-down-day beat baseline at every '
+   'horizon, opposite of the original assumption.')
+ON CONFLICT (setting_name) DO NOTHING;
+
+-- -----------------------------------------------------
+-- drv_factor_snapshot / v_factor_scorecard (2026-08-01) — per-symbol-day
+-- factor bucket + forward return, so "does this factor actually predict the
+-- stock's move" can be checked continuously instead of via one-off queries.
+-- Populated by etl/compute_factor_outcomes.py (mirrors compute_firing_outcomes.py's
+-- LEAD-over-drv_ma.last_price forward-return convention). Idempotent upsert,
+-- one row per (as_of_date, tos_symbol); each factor's bucket column is NULL
+-- when that factor's inputs aren't available for that symbol/day.
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS drv_factor_snapshot (
+    as_of_date      DATE NOT NULL,
+    tos_symbol      TEXT NOT NULL,
+    rsi_bucket      TEXT,
+    macdh_bucket    TEXT,
+    rvol_bucket     TEXT,
+    iv_bucket       TEXT,
+    macro_action    TEXT,
+    winning_source  TEXT,
+    sector          TEXT,
+    growth_style    TEXT,
+    valuation_style TEXT,
+    momentum_style  TEXT,
+    fwd_5d_pct      NUMERIC,
+    fwd_20d_pct     NUMERIC,
+    source_run_id   BIGINT,
+    derived_at      TIMESTAMP NOT NULL DEFAULT now(),
+    PRIMARY KEY (as_of_date, tos_symbol)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_factor_snapshot_date ON drv_factor_snapshot(as_of_date);
+
+-- v_factor_scorecard - unpivots drv_factor_snapshot's per-factor bucket columns
+-- into one (factor, bucket) row per group, with the same raw (non-direction-
+-- adjusted) forward-return efficacy stats as v_atomic_rule_scorecard: avg
+-- fwd 5d/20d, win rate, 95% CI, confidence tier. A synthetic 'Baseline'
+-- factor/'All stocks' bucket (one row per symbol-day, not one per factor) is
+-- included so the UI can show each bucket's delta against it.
+DROP VIEW IF EXISTS v_factor_scorecard CASCADE;
+CREATE VIEW v_factor_scorecard AS
+WITH unpivoted AS (
+    SELECT as_of_date, tos_symbol, 'RSI' AS factor, rsi_bucket AS bucket,
+           fwd_5d_pct, fwd_20d_pct
+    FROM drv_factor_snapshot WHERE rsi_bucket IS NOT NULL
+    UNION ALL
+    SELECT as_of_date, tos_symbol, 'MACDH momentum', macdh_bucket,
+           fwd_5d_pct, fwd_20d_pct
+    FROM drv_factor_snapshot WHERE macdh_bucket IS NOT NULL
+    UNION ALL
+    SELECT as_of_date, tos_symbol, 'RVOL + direction', rvol_bucket,
+           fwd_5d_pct, fwd_20d_pct
+    FROM drv_factor_snapshot WHERE rvol_bucket IS NOT NULL
+    UNION ALL
+    SELECT as_of_date, tos_symbol, 'IV percentile', iv_bucket,
+           fwd_5d_pct, fwd_20d_pct
+    FROM drv_factor_snapshot WHERE iv_bucket IS NOT NULL
+    UNION ALL
+    SELECT as_of_date, tos_symbol, 'Macro quad action', macro_action,
+           fwd_5d_pct, fwd_20d_pct
+    FROM drv_factor_snapshot WHERE macro_action IS NOT NULL
+    UNION ALL
+    SELECT as_of_date, tos_symbol, 'Winning source', winning_source,
+           fwd_5d_pct, fwd_20d_pct
+    FROM drv_factor_snapshot WHERE winning_source IS NOT NULL
+    UNION ALL
+    SELECT as_of_date, tos_symbol, 'Sector', sector,
+           fwd_5d_pct, fwd_20d_pct
+    FROM drv_factor_snapshot WHERE sector IS NOT NULL
+    UNION ALL
+    SELECT as_of_date, tos_symbol, 'Style: growth/cyclical', growth_style,
+           fwd_5d_pct, fwd_20d_pct
+    FROM drv_factor_snapshot WHERE growth_style IS NOT NULL
+    UNION ALL
+    SELECT as_of_date, tos_symbol, 'Style: valuation', valuation_style,
+           fwd_5d_pct, fwd_20d_pct
+    FROM drv_factor_snapshot WHERE valuation_style IS NOT NULL
+    UNION ALL
+    SELECT as_of_date, tos_symbol, 'Style: momentum', momentum_style,
+           fwd_5d_pct, fwd_20d_pct
+    FROM drv_factor_snapshot WHERE momentum_style IS NOT NULL
+    UNION ALL
+    SELECT as_of_date, tos_symbol, 'Baseline', 'All stocks',
+           fwd_5d_pct, fwd_20d_pct
+    FROM drv_factor_snapshot
+),
+agg AS (
+    SELECT factor, bucket,
+           COUNT(*) FILTER (WHERE fwd_20d_pct IS NOT NULL) AS n,
+           COUNT(DISTINCT tos_symbol)                      AS n_symbols,
+           AVG(fwd_5d_pct)                                 AS avg5,
+           AVG(fwd_20d_pct)                                AS avg20,
+           STDDEV_SAMP(fwd_20d_pct)                         AS sd20,
+           AVG((fwd_20d_pct > 0)::int)                     AS win_rate,
+           MIN(as_of_date)                                 AS fs,
+           MAX(as_of_date)                                 AS ls
+    FROM unpivoted
+    WHERE fwd_20d_pct IS NOT NULL
+    GROUP BY factor, bucket
+)
+SELECT
+    factor, bucket, n, n_symbols,
+    ROUND(avg5::numeric, 3)  AS avg_fwd_5d,
+    ROUND(avg20::numeric, 3) AS avg_fwd_20d,
+    ROUND(win_rate::numeric, 3) AS win_rate,
+    ROUND((avg20 - 1.96*sd20/NULLIF(SQRT(n),0))::numeric, 3) AS ci_low,
+    ROUND((avg20 + 1.96*sd20/NULLIF(SQRT(n),0))::numeric, 3) AS ci_high,
+    CASE
+        WHEN n >= 100 AND (avg20 - 1.96*sd20/NULLIF(SQRT(n),0)) > 0 THEN 'proven'
+        WHEN n >= 30 AND avg20 > 0 THEN 'promising'
+        ELSE 'unproven'
+    END AS confidence,
+    fs AS first_seen, ls AS last_seen
+FROM agg;
+

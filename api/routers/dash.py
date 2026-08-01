@@ -404,12 +404,15 @@ def get_actionable_settings():
     bootstrap instead of hardcoding thresholds in JS.
     conviction_proven_edge_min (ref_settings, default 0.5); TASK_124 adds
     trade_mode_weak_buy_sources (default 'PS,ETF,II') for the Trade Mode
-    WEAK SRC pill."""
+    WEAK SRC pill. rsi_overbought/rsi_oversold (default 70/30) and
+    vlm_rvol_avoid_threshold (default 1.5) drive the Action-column
+    don't-buy warning icon's RSI and VLM checks."""
     with session_scope() as s:
         rows = s.execute(text(
             "SELECT setting_name, setting_value FROM ref_settings"
             " WHERE setting_name IN ('conviction_proven_edge_min',"
-            " 'trade_mode_weak_buy_sources')"
+            " 'trade_mode_weak_buy_sources',"
+            " 'rsi_overbought', 'rsi_oversold', 'vlm_rvol_avoid_threshold')"
         )).fetchall()
     settings = {r[0]: r[1] for r in rows}
     return {
@@ -417,6 +420,10 @@ def get_actionable_settings():
             settings.get("conviction_proven_edge_min", 0.5)),
         "trade_mode_weak_buy_sources": settings.get(
             "trade_mode_weak_buy_sources", "PS,ETF,II"),
+        "rsi_overbought": float(settings.get("rsi_overbought", 70)),
+        "rsi_oversold": float(settings.get("rsi_oversold", 30)),
+        "vlm_rvol_avoid_threshold": float(
+            settings.get("vlm_rvol_avoid_threshold", 1.5)),
     }
 
 
@@ -1054,6 +1061,7 @@ def get_actionable(
                mt.iv_percentile, mt.hv_percentile, mt.range_compression, mt.d_iv_to_hv,
                mt.volume, mt.vlm_projected,
                mt.a_macd_brr, mt.a_macdh_d_brr, mt.rsi,
+               mt.earnings_days, mt.d_vlt_caution,
                mo.pct_brr AS ma_pct_brr,
                dr.lrr, dr.mrr, dr.trr, dr.outlook AS rr_outlook,
                q.last_price, q.net_chng, q.pct_change, q.export_date, q.export_time, q.loaded_at,

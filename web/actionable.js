@@ -1364,8 +1364,17 @@ async function loadSources() {
     const settings = await fetchJson('/api/actionable/settings');
     state.convictionProvenEdgeMin = Number(settings.conviction_proven_edge_min);
     if (!isFinite(state.convictionProvenEdgeMin)) state.convictionProvenEdgeMin = 0.5;
+    state.rsiOverbought = Number(settings.rsi_overbought);
+    if (!isFinite(state.rsiOverbought)) state.rsiOverbought = 70;
+    state.rsiOversold = Number(settings.rsi_oversold);
+    if (!isFinite(state.rsiOversold)) state.rsiOversold = 30;
+    state.vlmRvolAvoidThreshold = Number(settings.vlm_rvol_avoid_threshold);
+    if (!isFinite(state.vlmRvolAvoidThreshold)) state.vlmRvolAvoidThreshold = 1.5;
   } catch (_) {
     state.convictionProvenEdgeMin = 0.5;
+    state.rsiOverbought = 70;
+    state.rsiOversold = 30;
+    state.vlmRvolAvoidThreshold = 1.5;
   }
   // Per-source buy-family hit rate (v_source_edge_scorecard, same table
   // etl/derive_source_edge.py recomputes ref_settings.trade_mode_weak_buy_sources
@@ -1384,6 +1393,75 @@ async function loadSources() {
       }
     }
   } catch (_) { state.agreementScorecard = {}; }
+  // 2026-08-01: factor scorecard (v_factor_scorecard) — keyed by "factor|bucket"
+  // for the small track-record tags on the RSI/IV grid cells.
+  try {
+    const fsc = await fetchJson('/api/rules/factor-scorecard?min_n=30');
+    state.factorScorecard = {};
+    for (const r of (fsc || [])) {
+      state.factorScorecard[r.factor + '|' + r.bucket] = r;
+    }
+  } catch (_) { state.factorScorecard = {}; }
+}
+
+// Small track-record tag for a grid cell, reading state.factorScorecard
+// (populated from /api/rules/factor-scorecard). Colored/valued by DELTA vs
+// the 'Baseline'/'All stocks' row, not raw sign — this data covers a rising
+// market where the baseline itself is positive, so most buckets are
+// nominally positive even when they clearly underperform the average stock
+// (e.g. "RSI Neutral" +1.24% vs baseline +1.27% — worse, but raw-positive).
+// Coloring on raw sign made almost every tag show green regardless of
+// whether the bucket was actually good or bad; fixed 2026-08-01.
+// standalone=true renders a <span> for its own line (no vertical-align:super
+// shift); default renders a <sup> for inline placement next to a value.
+// Returns '' if no data for that bucket yet (min_n=30 not met) or the
+// baseline itself isn't loaded — deliberately quiet rather than misleading.
+function _factorEdgeTag(factor, bucket, standalone) {
+  const r = (state.factorScorecard || {})[factor + '|' + bucket];
+  const base = (state.factorScorecard || {})['Baseline|All stocks'];
+  if (!r || r.avg_fwd_20d == null || !base || base.avg_fwd_20d == null) return '';
+  const e = Number(r.avg_fwd_20d);
+  const baseAvg = Number(base.avg_fwd_20d);
+  const delta = e - baseAvg;
+  // Suppress near-zero deltas (rounds to "0.0%") instead of showing a tag
+  // that carries no signal — e.g. RSI's "Neutral" bucket is ~95% of rows on
+  // a given day and sits within 0.03pp of baseline, so showing it on almost
+  // every row was just noise (2026-08-01).
+  if (Math.abs(delta) < 0.05) return '';
+  const color = delta > 0 ? '#15803d' : delta < 0 ? '#b91c1c' : '#64748b';
+  const sign = delta >= 0 ? '+' : '';
+  const conf = r.confidence || 'unproven';
+  const tag = standalone ? 'span' : 'sup';
+  const leadSpace = standalone ? '' : ' ';
+  // No confidence checkmark here — RSI/IV buckets cover ~1000 stocks/day, so
+  // they clear the "proven" sample-size bar almost universally and the mark
+  // stopped being a useful distinction (2026-08-01). Still shown as a real
+  // column on the Performance screen's Factor scorecard, where bucket sizes
+  // vary enough (e.g. Sector, Winning source) for it to mean something.
+  return `${leadSpace}<${tag} style="font-size:8px;font-weight:700;color:${color};cursor:help;" `
+       + `title="${escapeHtml(bucket)}: historically ${e >= 0 ? '+' : ''}${e.toFixed(1)}% avg 20d fwd return `
+       + `vs baseline ${baseAvg >= 0 ? '+' : ''}${baseAvg.toFixed(1)}% (n=${r.n}, ${conf}) `
+       + `— /performance Factor scorecard">${sign}${delta.toFixed(1)}%</${tag}>`;
+}
+
+// RSI/IV bucket helpers — mirror etl/compute_factor_outcomes.py's SQL exactly
+// so the grid tag looks up the same bucket the scorecard was computed on.
+function _rsiBucket(rsi) {
+  if (rsi == null) return null;
+  const rv = Number(rsi);
+  const hi = state.rsiOverbought != null ? state.rsiOverbought : 70;
+  const lo = state.rsiOversold   != null ? state.rsiOversold   : 30;
+  if (rv <= lo) return 'Oversold (<=' + lo + ')';
+  if (rv >= hi) return 'Overbought (>=' + hi + ')';
+  return 'Neutral';
+}
+function _ivBucket(ivPct) {
+  if (ivPct == null) return null;
+  const v = Number(ivPct);
+  if (v >= 90) return 'Extreme (>=90)';
+  if (v >= 70) return 'Elevated (70-90)';
+  if (v <= 30) return 'Low (<=30)';
+  return 'Mid (30-70)';
 }
 
 // Resolve the buy/sell side for a fired rule ID via actions.js (single source
@@ -2798,6 +2876,97 @@ function finalCall(row) {
   };
 }
 
+// Two-way signal reasons for the ACTION column's icon: { warn: [...], buy: [...] }.
+// warn = amber "don't buy" caution reasons; buy = green "buy-supportive" reasons
+// (e.g. oversold, strengthening momentum). A row can only show one icon color —
+// warn takes precedence over buy when both fire (caution wins on conflict).
+// Checks earnings proximity, VLM, IV/vol caution, MACD/MACDH momentum, RSI, and
+// Rules(edge). No-fired-rules is not itself a warning or a buy signal.
+function _signalReasons(row) {
+  const warn = [];
+  const buy = [];
+
+  // Earnings within 3 calendar days (mt.earnings_days: NUMERIC days-until, decremented daily).
+  const ed = row.earnings_days;
+  if (ed != null && Number(ed) >= 0 && Number(ed) <= 3) {
+    warn.push('Earnings in ' + Number(ed) + 'd');
+  }
+
+  // VLM: high relative volume (rvol = current/10d-avg volume) on an UP day —
+  // a "buying climax" pattern (a sharp, heavy-volume pop that's often already
+  // extended and prone to cool off). 2026-08-01 factor backtest (231
+  // factor/bucket/horizon combos, 1wk/3wk/3mo forward returns) found this
+  // beats baseline at every horizon; the opposite pairing (high RVOL + DOWN
+  // day, the original hypothesis) also beat baseline at every horizon —
+  // backwards from the original "distribution" assumption, so the direction
+  // was flipped here rather than removed.
+  if (row.rvol != null && row.pct_change != null) {
+    const rvolHi = state.vlmRvolAvoidThreshold != null ? state.vlmRvolAvoidThreshold : 1.5;
+    if (Number(row.rvol) >= rvolHi && Number(row.pct_change) > 0) {
+      warn.push('VLM: high RVOL (' + Number(row.rvol).toFixed(1) + 'x) on an up day — possible buying climax');
+    }
+  }
+
+  // IV/vol caution (mt.d_vlt_caution) intentionally NOT checked as a warning.
+  // The 2026-08-01 factor backtest found extreme/elevated IV beat baseline at
+  // every horizon (1wk/3wk/3mo) — opposite of the original "elevated IV =
+  // caution" assumption. Not flipped to a buy signal either: plausibly a
+  // confound with this period's growth-stock rally rather than a standalone
+  // edge, so it's dropped from the icon pending a longer, less regime-specific
+  // check.
+
+  // MACD/MACDH momentum: MACDH (a_macdh_d_brr) sign IS the trend direction —
+  // positive = MACD rising above its own signal line (strengthening), <=0 =
+  // falling below it (weakening) — same convention the rules engine already
+  // uses for Buy-Min-vs-Buy-More sizing. Raw MACD level alone doesn't
+  // indicate direction, so it's intentionally not checked separately.
+  const macdh = row.a_macdh_d_brr;
+  if (macdh != null) {
+    const mv = Number(macdh);
+    if (mv <= 0) warn.push('MACD momentum weakening (MACDH ' + mv.toFixed(2) + ')');
+    else buy.push('MACD momentum strengthening (MACDH ' + mv.toFixed(2) + ')');
+  }
+
+  // RSI: two-sided, tunable via ref_settings (rsi_overbought/rsi_oversold).
+  // Overbought = caution (topping risk); oversold = buy-supportive (dip/bounce).
+  if (row.rsi != null) {
+    const rv = Number(row.rsi);
+    const hi = state.rsiOverbought != null ? state.rsiOverbought : 70;
+    const lo = state.rsiOversold   != null ? state.rsiOversold   : 30;
+    if (rv >= hi) warn.push('RSI overbought (' + rv + ')');
+    else if (rv <= lo) buy.push('RSI oversold (' + rv + ')');
+  }
+
+  // Rules (edge): a fired buy-side rule with non-positive or unproven edge,
+  // or a fired sell-side rule with a proven-positive (historically correct)
+  // edge, argues against buying. Mirror case: a fired buy-side rule with a
+  // *proven* positive edge is buy-supportive.
+  let fires = row.rules_engine_fires;
+  if (typeof fires === 'string') { try { fires = JSON.parse(fires); } catch (_) { fires = []; } }
+  if (Array.isArray(fires)) {
+    const sc = state.scorecard || {};
+    for (const f of fires) {
+      const id = String(f.rule_id || f.id || f);
+      const s = sc[id];
+      if (!s || s.edge_20d == null) continue;
+      const e = Number(s.edge_20d);
+      const conf = s.confidence || 'unproven';
+      const side = _ruleSide(id);
+      if (side === 'buy') {
+        if (e <= 0 || conf === 'unproven') {
+          warn.push('Rule ' + id + ' fired buy with ' + (conf === 'unproven' ? 'unproven' : 'negative') + ' edge');
+        } else if (conf === 'proven') {
+          buy.push('Rule ' + id + ' fired buy with proven positive edge (+' + e.toFixed(1) + '%)');
+        }
+      } else if (side === 'sell' && e > 0) {
+        warn.push('Sell rule ' + id + ' historically correct (+' + e.toFixed(1) + '%)');
+      }
+    }
+  }
+
+  return { warn, buy };
+}
+
 // HTML for the Final Call cell (label + confidence badge).
 function _finalCallHtml(row) {
   var fc = finalCall(row);
@@ -2840,10 +3009,17 @@ function _finalCallHtml(row) {
   var stopPill = row.stop_breached
     ? ' <span class="stop-pill" title="Held below stop level — an effective ADD/INCREASE here is downgraded to HOLD">STOP</span>'
     : '';
+  var sig = _signalReasons(row);
+  var signalPill = '';
+  if (sig.warn.length) {
+    signalPill = ' <span class="dontbuy-warn-pill" title="' + escapeHtml(sig.warn.join(' · ')) + '">⚠</span>';
+  } else if (sig.buy.length) {
+    signalPill = ' <span class="buy-signal-pill" title="' + escapeHtml(sig.buy.join(' · ')) + '">▲</span>';
+  }
   var subIcon = '<div style="font-size:9px;line-height:1.4;">' + badgeHtml + '</div>' + lowConfSub;
   return '<span class="act-badge act-badge-sm ' + colorCls + '" style="' + hedgeyeStyle + '" title="' +
          escapeHtml(fc.label || text) + '">' +
-         escapeHtml(text) + '</span>' + stopPill + subIcon;
+         escapeHtml(text) + '</span>' + stopPill + signalPill + subIcon;
 }
 
 // ── Pass 2: Priority score (TASK_120 — dollar-weighted-edge default sort;
@@ -4078,6 +4254,7 @@ function _buildRowEl(r) {
         const glyph  = window.ivGlyph ? window.ivGlyph(ivpVal, ivVal, hvVal, r.iv_to_hv_discount) : '';
         const ivpCol = window._ivpBarColor ? window._ivpBarColor(ivpVal) : '#7c3aed';
         const fmt = v => v != null ? Math.round(v) : '—';
+        const edgeTag = ivpVal != null ? _factorEdgeTag('IV percentile', _ivBucket(ivpVal), true) : '';
         return glyph
           + `<div style="font-size:8px;line-height:1.2;white-space:nowrap;font-variant-numeric:tabular-nums;">`
           + `<span style="color:${ivpCol};font-weight:700;">${fmt(ivpVal)}</span>`
@@ -4085,11 +4262,12 @@ function _buildRowEl(r) {
           + `<span style="color:#374151;">${fmt(hvVal)}</span>`
           + `<span style="color:#cbd5e1;">/</span>`
           + `<span style="color:#000;">${fmt(ivVal)}</span>`
-          + `</div>`;
+          + `</div>`
+          + (edgeTag ? `<div style="line-height:1.2;">${edgeTag}</div>` : '');
       })()}</td>
       <td data-col="macd" class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macd_brr)}">${r.a_macd_brr != null ? Number(r.a_macd_brr).toFixed(2) : ''}</td>
       <td data-col="macdh" class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macdh_d_brr)}">${r.a_macdh_d_brr != null ? Number(r.a_macdh_d_brr).toFixed(2) : ''}</td>
-      <td data-col="rsi" class="num" style="font-size:11px;font-weight:600;color:${_rsiColor(r.rsi)}">${r.rsi != null ? Number(r.rsi).toFixed(1) : ''}</td>
+      <td data-col="rsi" class="num" style="font-size:11px;font-weight:600;color:${_rsiColor(r.rsi)}">${r.rsi != null ? Number(r.rsi).toFixed(1) : ''}${r.rsi != null ? _factorEdgeTag('RSI', _rsiBucket(r.rsi)) : ''}</td>
       <td data-col="rules" class="rules-link-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:4px 6px; max-width:340px; overflow:hidden; cursor:pointer;" title="Open Rule Flow for ${escapeHtml(r.tos_symbol)}">${firesCellHtml(r, 4)}</td>
       <td data-col="bullprob" class="num" style="padding:4px 6px; white-space:nowrap;">${_bullProbCellHtml(r)}</td>
       <td data-col="agree" style="padding:4px 6px; white-space:nowrap;">${_agreementCellHtml(r)}</td>

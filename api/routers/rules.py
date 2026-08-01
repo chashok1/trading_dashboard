@@ -420,6 +420,35 @@ def get_atomic_rule_scorecard(
         return [dict(r) for r in rows]
 
 
+@router.get("/api/rules/factor-scorecard", response_model=list[dict])
+def get_factor_scorecard(
+    min_n: int = Query(0, ge=0, le=100000,
+                       description="Only buckets with at least this many outcomes"),
+    limit: int = Query(500, ge=1, le=5000),
+):
+    """Factor-driver scorecard (2026-08-01): does RSI/MACDH/RVOL+direction/IV%/
+    macro tag/source/sector/style actually predict a stock's forward return?
+
+    Reads v_factor_scorecard (drv_factor_snapshot, refreshed by
+    etl/compute_factor_outcomes.py). Raw (no direction adjustment) — same
+    convention as v_atomic_rule_scorecard. avg_fwd_20d > 0 means that bucket's
+    readings were followed by positive 20d returns on average. Includes a
+    synthetic 'Baseline'/'All stocks' row for delta-vs-baseline comparison in
+    the UI. Sorted by avg_fwd_20d DESC by default.
+    """
+    with session_scope() as s:
+        rows = s.execute(text(
+            "SELECT factor, bucket, n, n_symbols, avg_fwd_5d,"
+            " avg_fwd_20d, win_rate, ci_low, ci_high, confidence,"
+            " first_seen, last_seen"
+            " FROM v_factor_scorecard"
+            " WHERE n >= :mn"
+            " ORDER BY avg_fwd_20d DESC NULLS LAST"
+            " LIMIT :lim"
+        ), {"mn": min_n, "lim": limit}).mappings().all()
+        return [dict(r) for r in rows]
+
+
 @router.get("/api/rules/my-actions", response_model=dict)
 def get_my_actions(limit: int = Query(200, ge=1, le=2000)):
     """Personal action track record (TASK_121): trades INFERRED from CS/F

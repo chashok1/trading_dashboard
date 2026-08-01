@@ -97,6 +97,42 @@
       vertical-align: middle;
     }
 
+    /* Don't-buy warning icon — earnings/VLM/IV/MACD-MACDH/RSI/Rules(edge)
+       caution signals on the ACTION cell. Same shape as .stop-pill; amber
+       (not red) since it's a caution, not a hard stop. */
+    .dontbuy-warn-pill {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 0 3px;
+      border-radius: 5px;
+      background: #fef3c7;
+      color: #b45309;
+      border: 1px solid #b45309;
+      font-size: 9px;
+      line-height: 1.1;
+      font-weight: 700;
+      vertical-align: middle;
+      cursor: help;
+    }
+
+    /* Buy-supportive signal icon — green mirror of .dontbuy-warn-pill (oversold
+       RSI, strengthening MACD momentum, proven-positive-edge buy rule). Only
+       shows when no warn reasons fired (caution wins on conflict). */
+    .buy-signal-pill {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 0 3px;
+      border-radius: 5px;
+      background: #dcfce7;
+      color: #15803d;
+      border: 1px solid #15803d;
+      font-size: 9px;
+      line-height: 1.1;
+      font-weight: 700;
+      vertical-align: middle;
+      cursor: help;
+    }
+
     /* TASK_122: "NEW" pill — Watchlist band only, same shape as .stop-pill,
        blue tint so it never reads as a warning. */
     .new-pill {
