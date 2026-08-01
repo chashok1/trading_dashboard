@@ -775,6 +775,56 @@ function _quadColor(q) {
 }
 
 
+// Same-day risk-gauge verdict (2026-08-01) — "is today a good day to trade,"
+// distinct from the forward-looking Quad regime the rest of the band shows.
+// Reuses /api/macro-areas fields already computed for the Sectors rail —
+// zero new backend work except TLT/HYG/SPX/DXY's existing is_hot/is_cold.
+// Deliberately simple/explainable: count how many of 8 key gauges are
+// flagged today, no hidden weighting. Silent (returns '') on a calm day.
+//   VIX/MOVE/Gold-vol/Oil-vol → zone === 'elevated' (already-thresholded,
+//     ref_vol_threshold, same mechanism proven out for these 4 gauges).
+//   S&P → is_hot OR is_cold (stretched in EITHER direction is "not
+//     investable" — matches how the app already flags rr_pos extremes).
+//   Dollar → is_hot only (user's own example: "dollar is high").
+//   Bonds → TLT is_cold. TLT is a red herring to compute yields directly
+//     (see api/routers/macro_areas.py's reverted attempt — the trading-range
+//     formula produces garbage on a raw yield level); TLT's PRICE moves
+//     inversely to yields, so TLT near the bottom of its own range already
+//     IS "yields near the top of theirs," using an already-correct field.
+//   Credit → HYG is_cold (HYG selling off = credit spreads widening/stress).
+function _regimeVerdictHtml(areasData) {
+  if (!areasData || !Array.isArray(areasData.areas)) return '';
+  const bySym = {};
+  for (const a of areasData.areas) {
+    for (const m of (a.members || [])) {
+      if (!(m.symbol in bySym)) bySym[m.symbol] = m; // first occurrence wins ($DXY appears in 2 areas)
+    }
+  }
+  const flags = [];
+  const VOL_GAUGES = [['VIX', 'VIX'], ['MOVE:GIF', 'MOVE'], ['GVZ:CGI', 'Gold vol'], ['OVX:CGI', 'Oil vol']];
+  for (const [sym, label] of VOL_GAUGES) {
+    const m = bySym[sym];
+    if (m && m.zone === 'elevated') flags.push(label + ' elevated');
+  }
+  const spx = bySym['SPX'] || bySym['$SPX'];
+  if (spx && (spx.is_hot || spx.is_cold)) flags.push('S&P not investable');
+  const dxy = bySym['$DXY'];
+  if (dxy && dxy.is_hot) flags.push('Dollar strong');
+  const tlt = bySym['TLT'];
+  if (tlt && tlt.is_cold) flags.push('Yields elevated');
+  const hyg = bySym['HYG'];
+  if (hyg && hyg.is_cold) flags.push('Credit stress elevated');
+
+  if (!flags.length) return '';
+  const notInvestable = flags.length >= 3;
+  const level = notInvestable ? 'NOT INVESTABLE' : 'CAUTION';
+  const color = notInvestable ? '#b91c1c' : '#b45309';
+  const bg    = notInvestable ? '#fee2e2' : '#fef3c7';
+  return `<span style="background:${bg};color:${color};font-weight:700;padding:1px 6px;border-radius:4px;font-size:10px;cursor:help;" `
+       + `title="Same-day risk gauges (${flags.length} of 8 flagged): ${escapeHtml(flags.join(' · '))}">`
+       + `${level}: ${escapeHtml(flags.join(' · '))}</span>`;
+}
+
 async function loadMacroBand() {
   const band = $('macroBand');
   if (!band) return;
@@ -798,6 +848,13 @@ async function loadMacroBand() {
     const cq = data.current_quarter;
     const elM = $('macroBandMonth'), elQ = $('macroBandQtr'), elF = $('macroBandFavoring');
     if (!elM) return;
+
+    const elVerdict = $('macroBandVerdict');
+    if (elVerdict) {
+      const verdictHtml = _regimeVerdictHtml(sectorsData);
+      elVerdict.innerHTML = verdictHtml;
+      elVerdict.style.display = verdictHtml ? '' : 'none';
+    }
 
     // _qdLbl defined at module scope below
     // Thin solid bar for quarterly

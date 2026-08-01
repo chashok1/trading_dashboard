@@ -344,7 +344,15 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 })
                 continue
 
-            # Curve members: use outlook only; skip rr_pos
+            # Curve members: use outlook only; skip rr_pos. (Tried computing
+            # rr_pos here 2026-08-01 for the Regime bar's yield check —
+            # produced nonsensical values like -34% instead of 0-100%: the
+            # (last-lrr)/(trr-lrr) trading-range formula is calibrated for
+            # equity-style price ranges and doesn't mean anything applied to
+            # a raw yield level. Reverted — the Regime bar reads TLT's
+            # existing is_cold instead: TLT price moves inversely to yields,
+            # so "TLT near the bottom of its range" already IS "yields near
+            # the top of theirs," using a field that's already correct here.)
             if role == "curve":
                 ol_sig = _outlook_sig(rr.get("outlook"))
                 if ol_sig != 0:
