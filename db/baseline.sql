@@ -7410,6 +7410,19 @@ CREATE INDEX IF NOT EXISTS ix_drv_factor_snapshot_date ON drv_factor_snapshot(as
 -- fwd 5d/20d, win rate, 95% CI, confidence tier. A synthetic 'Baseline'
 -- factor/'All stocks' bucket (one row per symbol-day, not one per factor) is
 -- included so the UI can show each bucket's delta against it.
+-- MACRO column sector/asset-class/style dots (2026-08-01) — per-membership
+-- bullish(+1)/bearish(-1)/neutral(0) window-weighted stance, computed
+-- alongside (and with the same weighting as) the combined macronet score in
+-- etl/derive_macro.py, so these always agree with the tooltip's numbers.
+-- style_stances is an array since a symbol can carry several independent
+-- style tags (High/Low Beta, Cyclical/Defensive, Value/Secular, Dividend,
+-- Momentum, Small/Mid Caps) that can disagree with each other — averaging
+-- them into one number would hide a real split, so each is kept separate:
+-- [{"label": "Momentum", "stance": 1.0}, {"label": "Cyclical", "stance": -1.0}, ...]
+ALTER TABLE drv_macro_score ADD COLUMN IF NOT EXISTS sector_stance NUMERIC;
+ALTER TABLE drv_macro_score ADD COLUMN IF NOT EXISTS asset_class_stance NUMERIC;
+ALTER TABLE drv_macro_score ADD COLUMN IF NOT EXISTS style_stances JSONB;
+
 DROP VIEW IF EXISTS v_factor_scorecard CASCADE;
 CREATE VIEW v_factor_scorecard AS
 WITH unpivoted AS (

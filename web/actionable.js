@@ -127,6 +127,43 @@ function _macroGapMark(r) {
   return `<span style="color:#f59e0b;font-size:8px;font-weight:700;vertical-align:super;margin-left:1px;" title="No sector classification (ref_sector) for this symbol — MACRO score is based on Asset Class + style factors only. Hover the badge for detail.">!</span>`;
 }
 
+function _stanceColor(v) {
+  return v > 0 ? '#16a34a' : v < 0 ? '#dc2626' : '#9ca3af';
+}
+
+// Sector/asset-class/style dots (2026-08-01) — one small bar per membership
+// dimension of the quad engine's live regime read, same color/height
+// convention as the monthly sparkline bars. Styles are NOT averaged into one
+// number: a symbol can carry several independent style tags (Momentum,
+// Cyclical, Value, …) that can disagree with each other, so each gets its
+// own bar — an average would hide a real split by canceling it to ~0/grey.
+function _macroMemberBarsHtml(r) {
+  const bars = [];
+  if (r.sector_stance != null) {
+    bars.push({ label: `Sector: ${r.sector || '?'}`, v: Number(r.sector_stance) });
+  }
+  if (r.asset_class_stance != null) {
+    bars.push({ label: `Asset class: ${r.real_asset_class || '?'}`, v: Number(r.asset_class_stance) });
+  }
+  let styles = r.style_stances;
+  if (typeof styles === 'string') { try { styles = JSON.parse(styles); } catch (_) { styles = []; } }
+  if (Array.isArray(styles)) {
+    for (const s of styles) {
+      if (s && s.stance != null) bars.push({ label: `Style: ${s.label}`, v: Number(s.stance) });
+    }
+  }
+  if (!bars.length) return '';
+  const maxAbs = Math.max(...bars.map(b => Math.abs(b.v)), 0.001);
+  const spans = bars.map(b => {
+    const bh = Math.max(2, Math.round(Math.abs(b.v) / maxAbs * 6));
+    const col = _stanceColor(b.v);
+    const ti = `${b.label}: ${b.v >= 0 ? '+' : ''}${b.v.toFixed(2)} (live quad regime)`;
+    return `<span title="${escapeHtml(ti)}" style="display:inline-block;width:2px;height:${bh}px;background:${col};vertical-align:bottom;"></span>`;
+  }).join('<span style="display:inline-block;width:1px;"></span>');
+  return `<div style="display:flex;justify-content:center;align-items:flex-end;gap:1px;height:7px;margin-top:1px;cursor:help;" `
+       + `title="Sector / Asset class / Style — live quad-regime bullish(green)/bearish(red) read per dimension">${spans}</div>`;
+}
+
 function macroCellHtml(r) {
   const mv = r.macro_value;
   // macro_turn (ramp-proximity alert) is retired (TASK_126) — the sliding
@@ -161,10 +198,11 @@ function macroCellHtml(r) {
     }).join('<span style="display:inline-block;width:1px;"></span>');
     sparkLine = `<div data-scorespop="${escapeHtml(sym)}" style="display:flex;justify-content:center;align-items:flex-end;gap:1px;height:9px;margin-top:1px;cursor:help;">${bars}</div>`;
   }
+  const memberBars = _macroMemberBarsHtml(r);
   if (!mv || mv === 'HOLD') {
     const holdCls = mv ? 'color:#9ca3af' : 'color:#cbd5e1';
     const lbl = mv ? 'HOLD' : '—';
-    return `<div style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};cursor:help;text-align:center;" data-macropop="${escapeHtml(sym)}">${escapeHtml(lbl)}${_macroGapMark(r)}${dotsLine}${sparkLine}</div>`;
+    return `<div style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};cursor:help;text-align:center;" data-macropop="${escapeHtml(sym)}">${escapeHtml(lbl)}${_macroGapMark(r)}${dotsLine}${sparkLine}${memberBars}</div>`;
   }
   const d = actionDisplay(mv);
   const cls = d.colorCls || 'act-neutral';
@@ -173,6 +211,7 @@ function macroCellHtml(r) {
        + _macroGapMark(r)
        + dotsLine
        + sparkLine
+       + memberBars
        + `</div>`;
 }
 
@@ -2882,15 +2921,30 @@ function finalCall(row) {
 // warn takes precedence over buy when both fire (caution wins on conflict).
 // Checks earnings proximity, VLM, IV/vol caution, MACD/MACDH momentum, RSI, and
 // Rules(edge). No-fired-rules is not itself a warning or a buy signal.
+// Standalone earnings-proximity check (split out from _signalReasons
+// 2026-08-01) — earnings-date risk is a different kind of caution than
+// technical/rules signals: it's calendar-driven, not resolved by waiting
+// for a better RSI/MACD/IV read, and applies uniformly regardless of the
+// direction of the other signals. Returns the days-until-earnings number,
+// or null if not within the warning window (mt.earnings_days: NUMERIC
+// days-until, decremented daily; -99 sentinel means no data).
+function _earningsWarning(row) {
+  const ed = row.earnings_days;
+  if (ed == null) return null;
+  const n = Number(ed);
+  if (n >= 0 && n <= 3) return n;
+  return null;
+}
+
 function _signalReasons(row) {
   const warn = [];
   const buy = [];
 
-  // Earnings within 3 calendar days (mt.earnings_days: NUMERIC days-until, decremented daily).
-  const ed = row.earnings_days;
-  if (ed != null && Number(ed) >= 0 && Number(ed) <= 3) {
-    warn.push('Earnings in ' + Number(ed) + 'd');
-  }
+  // Earnings proximity has its own dedicated icon (_earningsWarning below) —
+  // split out 2026-08-01 so an earnings-date caution isn't lumped in with
+  // technical/rules signals that mean something different and can be acted
+  // on differently (earnings risk isn't resolved by waiting for a better
+  // RSI/MACD read the way the other warn reasons are).
 
   // VLM: high relative volume (rvol = current/10d-avg volume) on an UP day —
   // a "buying climax" pattern (a sharp, heavy-volume pop that's often already
@@ -3009,6 +3063,10 @@ function _finalCallHtml(row) {
   var stopPill = row.stop_breached
     ? ' <span class="stop-pill" title="Held below stop level — an effective ADD/INCREASE here is downgraded to HOLD">STOP</span>'
     : '';
+  var earningsDays = _earningsWarning(row);
+  var earningsPill = earningsDays != null
+    ? ' <span class="earnings-warn-pill" title="Earnings in ' + earningsDays + 'd — calendar risk, separate from technical/rules signals">📅' + earningsDays + 'd</span>'
+    : '';
   var sig = _signalReasons(row);
   var signalPill = '';
   if (sig.warn.length) {
@@ -3019,7 +3077,7 @@ function _finalCallHtml(row) {
   var subIcon = '<div style="font-size:9px;line-height:1.4;">' + badgeHtml + '</div>' + lowConfSub;
   return '<span class="act-badge act-badge-sm ' + colorCls + '" style="' + hedgeyeStyle + '" title="' +
          escapeHtml(fc.label || text) + '">' +
-         escapeHtml(text) + '</span>' + stopPill + signalPill + subIcon;
+         escapeHtml(text) + '</span>' + stopPill + earningsPill + signalPill + subIcon;
 }
 
 // ── Pass 2: Priority score (TASK_120 — dollar-weighted-edge default sort;

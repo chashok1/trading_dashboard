@@ -115,6 +115,25 @@
       cursor: help;
     }
 
+    /* Earnings-proximity icon — split out from the general don't-buy warning
+       (2026-08-01): calendar-driven risk (earnings in <=3d), a different
+       kind of caution than technical/rules signals, so it gets its own
+       distinct pill rather than being folded into the ⚠ reasons list. */
+    .earnings-warn-pill {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 0 3px;
+      border-radius: 5px;
+      background: #ede9fe;
+      color: #6d28d9;
+      border: 1px solid #6d28d9;
+      font-size: 8px;
+      line-height: 1.2;
+      font-weight: 700;
+      vertical-align: middle;
+      cursor: help;
+    }
+
     /* Buy-supportive signal icon — green mirror of .dontbuy-warn-pill (oversold
        RSI, strengthening MACD momentum, proven-positive-edge buy rule). Only
        shows when no warn reasons fired (caution wins on conflict). */

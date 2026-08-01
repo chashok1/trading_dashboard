@@ -1089,6 +1089,7 @@ def get_actionable(
                ms.month_now_net, ms.month_next_net, ms.month_weight,
                ms.qtr_now_net, ms.qtr_next_net, ms.qtr_weight,
                ms.monthly_scores_json, ms.detail AS macro_window,
+               ms.sector_stance, ms.asset_class_stance, ms.style_stances,
                pv.decision AS pvv_decision, pv.detail AS pvv_detail,
                bg.drift_flag AS bb_rr_drift_flag,
                bg.ape_top_med20 AS bb_rr_ape_top_med20,

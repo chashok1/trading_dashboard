@@ -50,6 +50,23 @@ def _stance(v):
     return _STANCE.get(v, 0.0)
 
 
+def _window_stance_for(cat, sub, outlook_map, weighted, pcts_by_month):
+    """Window-weighted stance for ONE (cat, sub) membership in isolation —
+    same weighting as M_window, but not summed with a symbol's other
+    memberships, so its own bullish(+1)/bearish(-1)/neutral(0) read can be
+    shown separately (2026-08-01, MACRO column sector/asset-class/style
+    dots). Returns None if this (cat, sub) has no ref_quad_outlook row."""
+    texts = outlook_map.get((cat, sub))
+    if not texts:
+        return None
+    total = 0.0
+    for ym, w in weighted:
+        pcts = pcts_by_month[ym]
+        stance = sum(pcts[i] * _stance(texts[i]) for i in range(4))
+        total += w * stance
+    return round(total, 4)
+
+
 def _membership_net(memberships, outlook_map, quad_pcts):
     """Score one symbol's membership bundle against a quad distribution
     (quad_pcts = fractions 0..1, index 0..3 = quad1..quad4)."""
@@ -499,6 +516,24 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
                 'q4': float(p.quad4_pct or 0),
             })
 
+        # Per-membership stances for the MACRO column's sector/asset-class/
+        # style dots (2026-08-01) — same window weighting as M_window, just
+        # not summed together, so each dimension's own bullish/bearish read
+        # is visible instead of only the combined net. memberships[0] is
+        # always the sector tuple, [1] the asset-class tuple (both always
+        # appended above regardless of whether an outlook row exists for
+        # them — _window_stance_for returns None if it doesn't); [2:] are
+        # this symbol's style tags (0 to ~6, from _classify_style).
+        sector_stance = _window_stance_for(
+            'Equity Sectors', sector, outlook_map, weighted, pcts_by_month) if sector else None
+        asset_class_stance = _window_stance_for(
+            'Asset Class', asset_cls, outlook_map, weighted, pcts_by_month) if asset_cls else None
+        style_stances = []
+        for cat, sub, _wt in memberships[2:]:
+            st = _window_stance_for(cat, sub, outlook_map, weighted, pcts_by_month)
+            if st is not None:
+                style_stances.append({'label': sub, 'stance': st})
+
         out.append({
             'as_of_date':    as_of_date,
             'tos_symbol':    r.tos_symbol,
@@ -514,6 +549,9 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
             'macro_action':       vocab,
             'monthly_scores_json': json.dumps(monthly_scores),
             'detail':             json.dumps(detail),
+            'sector_stance':      sector_stance,
+            'asset_class_stance': asset_class_stance,
+            'style_stances':      json.dumps(style_stances),
         })
 
     if not out:
@@ -527,12 +565,14 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
           (as_of_date, tos_symbol, month_now_net, month_next_net,
            month_weight, monthly_score, qtr_now_net, qtr_next_net,
            qtr_weight, quarterly_score, macronet, macro_action,
-           monthly_scores_json, detail)
+           monthly_scores_json, detail,
+           sector_stance, asset_class_stance, style_stances)
         VALUES
           (:as_of_date, :tos_symbol, :month_now_net, :month_next_net,
            :month_weight, :monthly_score, :qtr_now_net, :qtr_next_net,
            :qtr_weight, :quarterly_score, :macronet, :macro_action,
-           :monthly_scores_json, :detail)
+           :monthly_scores_json, :detail,
+           :sector_stance, :asset_class_stance, :style_stances)
     """), out)
     session.commit()
     log.info("derive_macronet: %d symbols scored for %s (window h=%d, coverage=%.1f%%)",
