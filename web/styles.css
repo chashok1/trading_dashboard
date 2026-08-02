@@ -1907,7 +1907,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    sharing one row with the label pill and the size-line; the headline is
    a supporting sentence below the meter, not competing with the number. */
 #riskDialBand[hidden] { display: none; }
-.rd-top-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; margin: 2px 0 0; }
+.rd-top-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 2px 0 0; }
 .rd-budget { font-size: 48px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; color: var(--text-1); }
 .rd-budget.b-clear      { color: var(--ok); }
 .rd-budget.b-caution    { color: var(--warn); }
@@ -1919,19 +1919,21 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 }
 .rd-label.CLEAR { color: var(--ok); } .rd-label.CAUTION { color: var(--warn); }
 .rd-label.DEFENSIVE { color: var(--act-sell); } .rd-label.NOTINVESTABLE { color: var(--bear); }
-/* TASK_136 B.1 -- in a 4-col card the size-line no longer fits beside the
-   number/label on rd-top-row (that used margin-left:auto on a full-width
-   card); it now sits on its own row directly under line 1. */
-.rd-size-row { margin: 2px 0 0; }
-.rd-size-line { font-size: 15px; font-weight: 700; color: var(--text-1); }
+/* Per user request: size line + meter bar sit beside the number/label
+   (pushed right via margin-left:auto) instead of on their own row below --
+   Band 1's column is wide enough for this now that it's a fixed-width 1-of-3
+   row member rather than the narrow 4-col card TASK_136 B.1 was working
+   around. Wraps below on narrow viewports since rd-top-row is flex-wrap. */
+.rd-side { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 280px; }
+.rd-size-line { font-size: 16px; font-weight: 700; color: var(--text-1); white-space: nowrap; }
 .rd-size-line strong { font-variant-numeric: tabular-nums; }
-.rd-meter { height: 14px; border-radius: 7px; background: var(--border); overflow: hidden; margin: 8px 0 6px; max-width: 100%; }
+.rd-meter { height: 20px; border-radius: 10px; background: var(--border); overflow: hidden; width: 280px; max-width: 100%; }
 .rd-meter-fill { height: 100%; background: var(--text-3); }
 .rd-meter-fill.b-clear      { background: var(--ok); }
 .rd-meter-fill.b-caution    { background: var(--warn); }
 .rd-meter-fill.b-defensive  { background: var(--act-sell); }
 .rd-meter-fill.b-notinv     { background: var(--bear); }
-.rd-headline { font-size: 13px; font-weight: 400; color: var(--text-2); margin: 2px 0 10px; }
+.rd-headline { font-size: 13px; font-weight: 400; color: var(--text-2); margin: 8px 0 10px; }
 .rd-gauge-list { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 /* TASK_134 A.4: severity encoded as a coloured left rail + weight chip
    (never colour alone) instead of one flat pink wash for every fired gauge. */
@@ -1985,15 +1987,31 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 #regimeStrip .regime-line { font-size: 13px; cursor: help; border-bottom: 1px dotted var(--border); display: inline-block; }
 
 /* Band 4 — Factor scorecard */
-/* Indicator/Event mini-grids sit beside the scorecard table (moved from
-   Band 6 -- see index.html) as their own columns, all three in one row --
-   fs-main (scorecard) gets the width, the two fs-mini columns (Indicator,
-   Event) share the rest equally. Collapses to a single column on narrow
-   viewports -- same 1100px breakpoint the cockpit grid itself uses. */
-.fs-row { display: flex; gap: 12px; align-items: flex-start; }
-.fs-main { flex: 2 1 0; min-width: 0; }
-.fs-mini { flex: 1 1 0; min-width: 0; }
-@media (max-width: 1100px) { .fs-row { flex-direction: column; } }
+/* Indicator/Event/Housekeeping mini-grids sit beside the scorecard table
+   (moved from Band 6 -- see index.html) as their own columns, all in one
+   row -- fs-main (scorecard) gets the width, the fs-mini columns share the
+   rest equally. This whole band is pinned to a fixed height (originally set
+   to match Band 1's row, then increased per user request) instead of
+   growing to fit its tallest column (the ~20-row Indicator table). Each
+   column scrolls its own overflow independently rather than the band
+   growing -- adjust --fs-row-h directly to change the row's height. */
+#factorScorecardBand {
+  --fs-row-h: 400px;
+  height: var(--fs-row-h);
+  display: flex;
+  flex-direction: column;
+}
+.fs-row { display: flex; gap: 12px; align-items: stretch; flex: 1 1 auto; min-height: 0; }
+.fs-main { flex: 2 1 0; min-width: 0; overflow-y: auto; min-height: 0; }
+.fs-mini { flex: 1 1 0; min-width: 0; overflow-y: auto; min-height: 0; }
+/* fs-mini is now the single scroll container for Indicator/Event -- disable
+   .side-scroll's own max-height/scroll here so there's no nested scrollbar. */
+.fs-mini .side-scroll { max-height: none; overflow-y: visible; }
+@media (max-width: 1100px) {
+  .fs-row { flex-direction: column; }
+  #factorScorecardBand { height: auto; }
+  .fs-main, .fs-mini { overflow-y: visible; max-height: none; }
+}
 .fs-tabs { display: flex; gap: 4px; margin-bottom: 6px; }
 .fs-tab { font-size: 11px; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg); color: var(--text-2); cursor: pointer; }
 .fs-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }

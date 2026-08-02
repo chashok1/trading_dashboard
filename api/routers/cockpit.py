@@ -242,6 +242,13 @@ def get_factor_scorecard(date: Optional[str] = Query(None),
 # ("trust SA/gate sells; distrust SS/high sells"). Implemented as: buys never
 # include fc_confidence IN ('gate','mixed'); sells are SA OR fc_confidence=
 # 'gate'; 'mixed' is excluded on both sides (unambiguous). See DEV_HANDOFF.md.
+# TASK_137: SO ("Sell Overage") is excluded outright, regardless of which OR
+# branch would otherwise admit it. SO/OVER_MAX (etl/derive_actionable.py
+# _FC_MAP) is a position-sizing action -- it fires because a holding drifted
+# above its ref_asset_allocation category ceiling, not because the market
+# signaled anything -- so it is not an edge-validated trade and must never
+# occupy one of the three Shortlist slots. Do not re-admit it via the sell
+# branch below.
 _SHORTLIST_SQL = text("""
     SELECT a.tos_symbol, a.description, a.final_code, a.final_side,
            a.winning_source, a.consolidated_action, a.current_position_dollar,
@@ -251,6 +258,7 @@ _SHORTLIST_SQL = text("""
       ON r.tos_symbol = a.tos_symbol AND r.as_of_date = a.as_of_date
     WHERE a.as_of_date = :d
       AND COALESCE(a.fc_confidence, '') <> 'mixed'
+      AND COALESCE(a.final_code, '') <> 'SO'
       AND (
         (a.final_code IN ('BM', 'BMN') AND a.winning_source IN ('RR', 'SSS')
          AND r.rr_bull_bear = 'B' AND COALESCE(a.stop_breached, FALSE) = FALSE

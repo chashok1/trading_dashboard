@@ -379,10 +379,12 @@ async function loadRiskDial() {
       <div class="rd-top-row">
         <span class="rd-budget ${bandClass}">${r.risk_budget != null ? r.risk_budget : '—'}</span>
         <span class="rd-label ${labelClass}">${escapeHtml(r.risk_label || '')}</span>
+        <div class="rd-side">
+          ${r.suggested_size_multiplier != null
+            ? `<span class="rd-size-line">today's size = AMT$ &times; <strong>${r.suggested_size_multiplier}</strong></span>` : ''}
+          <div class="rd-meter"><div class="rd-meter-fill ${bandClass}" style="width:${budget}%;"></div></div>
+        </div>
       </div>
-      ${r.suggested_size_multiplier != null
-        ? `<div class="rd-size-row"><span class="rd-size-line">today's size = AMT$ &times; <strong>${r.suggested_size_multiplier}</strong></span></div>` : ''}
-      <div class="rd-meter"><div class="rd-meter-fill ${bandClass}" style="width:${budget}%;"></div></div>
       <div class="rd-headline">${escapeHtml(r.headline || '')}</div>
       <div class="rd-gauge-list">${firedHtml}</div>
       <span class="rd-quiet-toggle" onclick="this.nextElementSibling.classList.toggle('open')">Quiet gauges (${(r.quiet || []).length})</span>
