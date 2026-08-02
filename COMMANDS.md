@@ -182,6 +182,7 @@ Lists the 10 most recent snapshot dates available in `drv_ma` (a VIEW since 2026
 | "No atomic rules loaded" | `python -m etl.tickers_initial_load` (populates `ref_trig_atomic_rule`) |
 | Data looks stale | `python -m etl.scheduler` (watches for new files) or manually load a file |
 | Cleanup deleting too much | Edit `meta_cleanup_policy` table directly; defaults are 90-day retention |
+| New endpoints 404 | The running server predates them — `api/` hot-reloads but new routers need a restart, and `etl/` never hot-reloads (see the File-truncation/Gotchas notes in `CLAUDE.md`) |
 
 ---
 

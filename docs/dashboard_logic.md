@@ -7,12 +7,17 @@ Lookup index; keep the detail here.
 
 ## Overview
 
-The Dashboard landing screen (`/`) is the single-page entry point that renders
-the TL master ticker list for a chosen snapshot date, a morning briefing card,
-an outlook-flip banner, plus three side-panel feeds (quads, econ indicators,
-earnings events). All ticker data flows from `drv_dash` via `v_dash(D)`. The
-Portfolio screen (`/portfolio`) is a separate screen that reads from
-`hist_f`/`hist_cs` and the `drv_*` gain tables.
+**TASK_133 (2026-08-01):** the Dashboard landing screen (`/`) was rebuilt from
+a ticker grid + 3 side panels into a **six-band daily risk cockpit** — Risk
+Dial, What changed, Regime, Factor scorecard, Shortlist, Housekeeping. Design
+reference: `docs/dashboard_cockpit_design.md`. The old ticker-grid rendering
+(`#tickerSections`, section chips, `renderTickerGrid`/`loadTickers` in
+`app.js`) was removed; `/api/dash` and `/api/stks` remain live (used
+elsewhere — Trace, Rule Flow, `/api/portfolio`'s decorations) but are no
+longer called by the landing screen itself. The Portfolio screen
+(`/portfolio`) is unaffected — it reads from `hist_f`/`hist_cs` and the
+`drv_*` gain tables independently of this rebuild; its API docs later in this
+file still apply as-is.
 
 ## Diagrams
 
@@ -143,31 +148,27 @@ and D + `days_ahead`, excluding categories that match entries in
 In `api/routers/health.py`. Reads `ref_quad_periods` for: current quarter
 containing D, next quarter, and 4 monthly periods (current + next 3).
 
-## UI sections (index.html + app.js)
+## UI sections (index.html + app.js) — six-band cockpit (TASK_133 Phase 7)
 
-| UI region | ID / element | Data source |
-|---|---|---|
-| Index bar | `#indexBar` | Derived client-side from `state.rows` — locates SPX/VIX, NDX/VXN, RUT/RVX, DJI/VXD by symbol aliases and computes `(last_price − a_trade_value) / a_trade_value` |
-| Outlook banner | `#outlookBar` | `GET /api/outlook/changes` — shows flip counts and up to 10 symbol chips; each chip links to `/trace` for that symbol |
-| Briefing card | `#briefingCard` | `GET /api/briefing` — hidden when all four blocks are empty |
-| Ticker grid | `#tickerSections` | `GET /api/dash` — grouped into section blocks, two-column layout; sections: Index · Treasury · Commodity · FX (left), Volatility · Sector (right), Stock (split A/B when >12 rows) |
-| Quads panel | `#quadsBody` | `GET /api/dashboard/quads` |
-| Econ indicators panel | `#econBody` | `GET /api/dashboard/econ-indicators` |
-| Earnings/events panel | `#earningsBody` | `GET /api/dashboard/earnings` |
+| Band | ID | Data source | Notes |
+|---|---|---|---|
+| ① Risk Dial | `#riskDialBand` / `#riskDialBody` | `GET /api/cockpit/risk-dial` | Budget, label, meter, size-multiplier line, fired-gauge list (with dollar exposure), collapsed quiet list |
+| ② What changed | `#eventsBand` / `#eventsBody` | `GET /api/cockpit/events` | Hidden/muted single line when `quiet:true` |
+| ③ Regime | `#regimeBand` / `#regimeStrip` | `GET /api/quad-window` + `GET /api/quad/band-factors` (unchanged — no new computation) | Hover title carries the bull/bear factor list as plain text (a simplified stand-in for `web/actionable.js::_regimeVerdictHtml()`'s richer interactive popover — see DEV_HANDOFF.md for TASK_133 round 2) |
+| ④ Factor scorecard | `#factorScorecardBand` / `#fsTabs` / `#factorScorecardBody` | `GET /api/cockpit/factor-scorecard?axis=` | 3 tabs (sector/asset_class/style); one "vs Mkt" delta column per window, not raw benchmark; `flows_confidence` badge always visible |
+| ⑤ Shortlist | `#shortlistBand` / `#shortlistBody` | `GET /api/cockpit/shortlist` | Hard cap 3 rows |
+| ⑥ Housekeeping | `#housekeepingBand` / `#housekeepingLine` + `#econBody`/`#earningsBody` | `GET /api/anchor-status` + `GET /api/dashboard/econ-indicators` + `GET /api/dashboard/earnings` | One thin green/red status line; red flips `state.housekeepingOk`, which Band ① reads to show its own stale-data warning |
 
-All six feeds load in parallel via `Promise.all` on page load and on Refresh.
-The date picker populates from `/api/dates`; changing the date re-triggers all
-six loads.
+Outlook-flip banner (`#outlookBar`, `GET /api/outlook/changes`) and the
+morning briefing card (`#briefingCard`, `GET /api/briefing`) were kept as-is
+above the six bands (not part of the six-band spec, not in its removal list
+either — see DEV_HANDOFF.md decision log).
 
-### Ticker grid columns
-
-`Sym · %Chg · HE (rr_outlook) · TrTn (call_outlook) · MQ · QQ · Last ·
-Trend (a_trend_value) · Trade (a_trade_value) · %BRR · Lo (threshold_low) ·
-Hi (threshold_high)`
-
-`%Chg` is computed client-side as
-`(last_price − a_trade_value) / a_trade_value × 100`. Clicking a symbol opens
-the Portfolio Detail modal (via `portfolio-modal.js` → `GET /api/portfolio/{symbol}/detail`).
+All six bands load in parallel via `Promise.all` (`refreshAll()` in
+`app.js`), each in its own try/catch so one endpoint failing doesn't blank
+the page. Band ⑥ (housekeeping) resolves first so Band ① knows whether to
+show its stale-data warning. The date picker (`#datePicker`, `change` event)
+and the Refresh button both call `refreshAll()`, re-triggering all six bands.
 
 ## Latest-prices toggle (Portfolio screen)
 

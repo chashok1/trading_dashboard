@@ -109,52 +109,89 @@
       .outlook-chip:hover { filter: brightness(0.95); }
     </style>
 
-    <div class="dash-grid">
-      <section class="card ticker-grid">
-        <div style="overflow: auto;">
-          <div class="sections-grid" id="tickerSections"></div>
+    <!-- TASK_134: the six-band cockpit's page-specific CSS used to live inline
+         here (TASK_133 Phase 7). It is now in web/styles.css under the
+         "Dashboard cockpit" banner -- moved because it's a whole screen's
+         visual system (not a small page-local tweak like .briefing-card
+         above) and keeping it in styles.css is what makes it share the
+         :root token set instead of drifting into its own palette again. -->
+
+    <div class="cockpit-bands">
+      <section class="cockpit-band" id="riskDialBand">
+        <h2><span class="band-num">1</span>Risk Dial</h2>
+        <div id="riskDialBody">Loading…</div>
+      </section>
+
+      <section class="cockpit-band" id="eventsBand">
+        <h2><span class="band-num">2</span>What changed</h2>
+        <!-- Regime (formerly Band 3, its own full-width strip) combined here
+             per user request -- sits above the events list in the same band.
+             #regimeStrip id unchanged, so app.js needs no edits. -->
+        <div class="fs-note">Regime</div>
+        <div id="regimeStrip">Loading…</div>
+        <div id="eventsBody">Loading…</div>
+      </section>
+
+      <section class="cockpit-band" id="factorScorecardBand">
+        <h2><span class="band-num">4</span>Factor scorecard</h2>
+        <!-- Indicator/Event mini-grids moved here from Band 6 (Housekeeping)
+             per user request -- they sit beside the scorecard table instead
+             of at the bottom of Housekeeping. Element IDs unchanged, so
+             loadEconIndicators()/loadEarnings() in app.js need no edits. -->
+        <div class="fs-row">
+          <div class="fs-main">
+            <div class="fs-tabs" id="fsTabs">
+              <button class="fs-tab active" data-axis="sector">Sector</button>
+              <button class="fs-tab" data-axis="asset_class">Asset class</button>
+              <button class="fs-tab" data-axis="style">Style</button>
+            </div>
+            <div id="factorScorecardBody">Loading…</div>
+          </div>
+          <div class="fs-mini">
+            <div class="side-scroll">
+              <table class="mini-grid">
+                <thead>
+                  <tr>
+                    <th>Indicator</th>
+                    <th>Date</th>
+                    <th class="num">Days</th>
+                    <th>Signal</th>
+                  </tr>
+                </thead>
+                <tbody id="econBody"></tbody>
+              </table>
+              <div id="econEmpty" class="empty-note" hidden>No active indicators.</div>
+            </div>
+          </div>
+          <div class="fs-mini">
+            <div class="side-scroll">
+              <table class="mini-grid">
+                <thead>
+                  <tr>
+                    <th>Event</th>
+                    <th>Date</th>
+                    <th class="num">In</th>
+                  </tr>
+                </thead>
+                <tbody id="earningsBody"></tbody>
+              </table>
+              <div id="earningsEmpty" class="empty-note" hidden>No upcoming events.</div>
+            </div>
+          </div>
+          <div class="fs-mini">
+            <!-- Housekeeping (formerly Band 6, its own full-width band) moved
+                 here per user request -- sits next to the Event grid. -->
+            <div class="fs-note">Housekeeping</div>
+            <div id="housekeepingLine" class="hk-line">Loading…</div>
+            <div id="housekeepingGaps"></div>
+          </div>
         </div>
       </section>
 
-      <aside class="side-stack">
-        <section class="card">
-          <div class="quads-line" id="quadsBody"></div>
-          <div id="quadsEmpty" class="empty-note" hidden>No quad periods loaded.</div>
-        </section>
-
-        <section class="card">
-          <div class="side-scroll">
-            <table class="mini-grid">
-              <thead>
-                <tr>
-                  <th>Indicator</th>
-                  <th>Date</th>
-                  <th class="num">Days</th>
-                  <th>Signal</th>
-                </tr>
-              </thead>
-              <tbody id="econBody"></tbody>
-            </table>
-            <div id="econEmpty" class="empty-note" hidden>No active indicators.</div>
-          </div>
-        </section>
-
-        <section class="card">
-          <div class="side-scroll">
-            <table class="mini-grid">
-              <thead>
-                <tr>
-                  <th>Event</th>
-                  <th>Date</th>
-                  <th class="num">In</th>
-                </tr>
-              </thead>
-              <tbody id="earningsBody"></tbody>
-            </table>
-            <div id="earningsEmpty" class="empty-note" hidden>No upcoming events.</div>
-          </div>
-        </section>
-      </aside>
+      <section class="cockpit-band" id="shortlistBand">
+        <h2><span class="band-num">5</span>Shortlist</h2>
+        <div id="shortlistBody">Loading…</div>
+      </section>
     </div>
   </main>
 
@@ -162,6 +199,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
   <script src="/static/_common.js"></script>
+  <script src="/static/actions.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>

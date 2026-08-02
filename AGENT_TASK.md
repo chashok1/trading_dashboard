@@ -1,30 +1,42 @@
 # AGENT_TASK — tester pointer
 
-## ✅ FINAL BATCH TEST — run after the developer's `DEV_HANDOFF.md` ends `ALL_DONE`.
+## ⏸ NO TEST ROUND IS PENDING.
 
-Ashok deferred all testing to one end-of-project round. Now is that round: verify the
-full Hedgeye enhancement set against the live DB + running app. Write evidence to
-`AGENT_RESULT_final.md`, ending `DONE` or `FAILED: <blocks>`.
+**Do not run anything.** Stop here and report that there is nothing to verify.
 
-Pre-req gate: `DEV_HANDOFF.md` (developer's run/verify pass) must end `ALL_DONE` first.
+The previous contents of this file (the end-of-project Hedgeye batch round covering
+TASK_95/96/98/99 and the Cowork-built work) are **closed and superseded**. Do not run
+that checklist.
 
-### Scope — run every checklist together
+---
 
-1. **TASK_95** — `agent-tasks/TASK_95_verify.md` (unify-on-loader, source_kind,
-   precedence, IIChange = ETFChange format).
-2. **Earlier specs' "How to verify"** — TASK_96 (`v_ingest_log` + `/api/ingest-log`),
-   TASK_98 (Ingest Log screen), TASK_99 (IIChange render).
-3. **Cowork-built work** (see `COWORK_IMPL_LOG.md`):
-   - Feed catalog: `SELECT feed_code,file_type,email_type FROM v_feed_catalog ORDER BY 1;`
-     — 5 overlaps show both recognizers; no NULL feed_code for data-bearing feeds.
-   - Actionable panel: `/api/actionable/hedgeye` returns top5/alerts/trend_flips/stance;
-     panel renders on `/actionable`, date-linked; superseded RTAs excluded.
-   - Notes + rule candidates: `/notes` browses note_repo; create + list rule_candidate works.
-   - Digests: `/digest` pre-open and weekly load with real content.
-   - Quad signal: `/api/macro/hedgeye-quad` returns the latest quad note.
-   - Dossier: `/symbol-hedgeye?sym=AAPL` shows per-symbol Hedgeye data; panel symbols link to it.
-   - LLM read endpoint: `/api/notes/<id>/llm` returns `enriched: []` (or rows if present).
-4. Full `pytest tests/` — no NEW failures vs the known baseline
-   (test_task_86*, test_task_90*, test_agent_work_31*, test_cat_parity*).
+## When a round is next requested
 
-Quote offending rows on any failure.
+The only active task is `agent-tasks/TASK_133_dashboard_cockpit.md`.
+
+Two gates, both required before any verification starts:
+
+1. **The user has explicitly asked for a test round.** Testing never runs by default
+   in this repo (`docs/agent_handoff_workflow.md` §3).
+2. **`DEV_HANDOFF.md` ends with `ALL_DONE`.** If it ends `PHASE_<n>_DONE`, only
+   phases 1…n are eligible — verify those and say so; do not test unbuilt phases.
+
+Then run the **"How to verify"** section of `agent-tasks/TASK_133_dashboard_cockpit.md`,
+plus each phase's own verification block. Write evidence to `AGENT_RESULT_133.md`,
+ending `DONE` or `FAILED: <blocks>`.
+
+### The three checks that matter most
+
+Quote the offending rows on any failure.
+
+1. **Realized-vol units** — `drv_market_stat.rv21` for SPX should sit roughly 8–25 in a
+   normal regime. Three-digit or sub-1 values mean a units bug. Cross-check against
+   `hist_macro` series `RVOL` (source `CBOE`) on the same dates.
+2. **Time-weighted return** — for a category with no trades in the window, TWR must
+   equal `V_end/V_start − 1` **exactly**.
+3. **Portfolio reconciliation** — `drv_category_perf` `asset_class` axis market-value
+   total must reconcile to `/api/portfolio/summary` (market + cash).
+
+Plus: `python -m etl.derive` twice for the anchor date → all new `drv_*` tables
+byte-identical (idempotence is non-negotiable), and `pytest tests/` with no new
+failures against the known baseline.

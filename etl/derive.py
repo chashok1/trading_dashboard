@@ -3309,6 +3309,19 @@ def derive_all(session: Session, as_of_date: date,
         from etl.derive_bb_rr_gap import derive_bb_rr_gap
         return derive_bb_rr_gap(session, as_of_date, parent_run_id)
     counts["drv_bb_rr_gap"] = _safe("drv_bb_rr_gap", _drv_bb_rr_gap_runner)
+    # drv_market_stat (TASK_133 Phase 3): Yang-Zhang realized vol + VRP,
+    # breadth on this system's own universe, participation, and the Risk
+    # Dial (etl/derive_risk_dial.py). Needs drv_technicals/drv_quote/drv_rr,
+    # all already built above. Non-critical: failure must not break the
+    # cascade.
+    try:
+        from etl.derive_market_stat import derive_market_stat
+        counts["drv_market_stat"] = _safe("drv_market_stat", derive_market_stat)
+    except Exception:
+        log.exception("derive_market_stat import failed (non-fatal)")
+        counts["drv_market_stat"] = 0
+        try: session.rollback()
+        except Exception: pass
     # Surface any daily-EOD source (TOSL/TOSD/TOSW/Y) missing at export_date = D
     # on the dashboard / actionable toolbars. Non-fatal; derivation still ran.
     try:
@@ -3444,6 +3457,37 @@ def derive_all(session: Session, as_of_date: date,
     except Exception:
         log.exception("derive_macronet import failed (non-fatal)")
         counts["drv_macro_score"] = 0
+        try: session.rollback()
+        except Exception: pass
+
+    # drv_category_perf (TASK_133 Phase 5): factor scorecard -- time-weighted
+    # returns by sector/asset_class/style vs proxy benchmark vs quad stance.
+    # Runs here (not right after drv_portfolio) because quad_stance needs
+    # drv_macro_score's sector_stance/asset_class_stance/style_stances
+    # (effective 60-day window read, TASK_126), which isn't populated until
+    # just above -- see etl/derive_category_perf.py module docstring /
+    # DEV_HANDOFF.md for this placement decision. Non-critical.
+    try:
+        from etl.derive_category_perf import derive_category_perf
+        counts["drv_category_perf"] = _safe("drv_category_perf", derive_category_perf)
+    except Exception:
+        log.exception("derive_category_perf import failed (non-fatal)")
+        counts["drv_category_perf"] = 0
+        try: session.rollback()
+        except Exception: pass
+
+    # drv_market_event (TASK_133 Phase 6): "what changed" -- range breaks,
+    # trend flips, z-scores, the 8 seeded patterns, calendar/surprise. Runs
+    # AFTER drv_category_perf (not right after drv_market_stat as originally
+    # planned) because its per-event `exposure` block resolves dollar
+    # exposure via ref_gauge_transmission -> drv_category_perf.market_value,
+    # which isn't populated until just above. Non-critical.
+    try:
+        from etl.derive_market_event import derive_market_event
+        counts["drv_market_event"] = _safe("drv_market_event", derive_market_event)
+    except Exception:
+        log.exception("derive_market_event import failed (non-fatal)")
+        counts["drv_market_event"] = 0
         try: session.rollback()
         except Exception: pass
 

@@ -250,6 +250,30 @@ HIST_MAPS = {
         ],
     ),
 
+    # INT tab -> hist_internals (TASK_133 Phase 4.1: ToS market internals --
+    # $ADVN/$DECN/$UVOL/$DVOL/$TRIN. Same TL/TW column pattern. These symbols
+    # must NOT reach drv_symbols/the TL-TD watchlist universe -- see
+    # CLAUDE.md "Adding a new source-file type" + TASK_133 Phase 4.1;
+    # etl/derive.py never treats hist_internals as part of the tracked
+    # universe, only etl/derive_market_stat.py reads it.
+    "INT": dict(
+        sheet="INT",
+        table="hist_internals",
+        skip_first_n=0,
+        pk_columns=["snapshot_date", "symbol", "sequence"],
+        date_source_col="Export Date",
+        seq_source_col="Export Time",
+        symbol_source_col="Symbol",
+        columns=[
+            ("Export Date", "export_date", to_date),
+            ("Date",        "export_date", to_date),  # CSV alt
+            ("Export Time", "export_time", to_text),
+            ("Time",        "export_time", to_text),  # CSV alt
+            ("Symbol",      "symbol",      to_text),
+            ("Last",        "last_value",  to_numeric),
+        ],
+    ),
+
     # TO tab -> hist_to (fundamentals - mostly all raw)
     "TO": dict(
         sheet="TO",
@@ -503,8 +527,11 @@ HIST_MAPS = {
 }
 
 
-# =============================================================================
-# REF table mappings — periodically refreshed reference data (vs append-only
-# history). Currently empty but kept here for future reference loads.
-# =============================================================================
-REF_MAPS: dict = {}
+# TASK_134 C.2: the re-declaration `REF_MAPS: dict = {}` that used to live here
+# (overwriting the populated dict defined at the top of this file) has been
+# removed. It silently no-op'd tickers_initial_load's Sctr/RRT/Desc/Miss loop
+# and would have raised KeyError out of refresh_ref.py's refresh_sctr()/
+# refresh_desc(). Verified before removal: reloading the Tickers workbook
+# through insert_skip_duplicates (ON CONFLICT DO NOTHING) cannot drop or
+# overwrite existing ref_sector/ref_rrt/ref_rule_desc rows -- only add ones
+# missing from the DB. Row counts before/after recorded in DEV_HANDOFF.md.

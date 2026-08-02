@@ -233,6 +233,12 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Rule Flow crossover formulas — Trade(JM) vs Trend(JP) | Trade: `IFS(D>AF AND AF>MIN(EF,J),1, MAX(EF,I)>AF AND AF>D,-1, 0)` — no BZ. Trend: same but `MIN(BZ,EF,J)` / `MAX(BZ,EF,I)` — includes BZ. DMA crossovers: BZ only. |
 | Current Price SD Rule (NK) input scale | Python uses `net_chng/AC`; Excel uses `pct_change(%)×D/AC` (100× larger). Thresholds in `ref_trig_atomic_rule` calibrated at Python scale — do not change formula without also updating thresholds. |
 | Dashboard / snapshot-date logic | `docs/dashboard_logic.md` |
+| Dashboard cockpit design (six-band `/` landing screen, supersedes the Attention panel) | `docs/dashboard_cockpit_design.md` |
+| Risk Dial (14/15 gauges, weight-arithmetic budget, size multiplier) | `etl/derive_risk_dial.py`; `ref_risk_gauge`; `GET /api/cockpit/risk-dial` |
+| Market stats — realized vol (Yang–Zhang), VRP, breadth, participation | `etl/derive_market_stat.py` → `drv_market_stat` |
+| Category performance (factor scorecard: sector/asset_class/style TWR vs benchmark vs quad stance) | `etl/derive_category_perf.py` → `drv_category_perf`; `GET /api/cockpit/factor-scorecard` |
+| Market events ("what changed": range breaks, trend flips, z-scores, patterns, calendar/surprise) | `etl/derive_market_event.py` → `drv_market_event`; `GET /api/cockpit/events` |
+| ToS market internals feed ($ADVN/$DECN/$UVOL/$DVOL/$TRIN) | `hist_internals`; `HIST_MAPS['INT']`; feeds `drv_market_stat.vol_breadth`/`trin` |
 | Derive date / anchor logic (export_date, TOSD, per-source rules) | `docs/derive_date_logic.md`; `etl/derive.py::get_anchor_date` / `ANCHOR_LOCKED_SOURCES` |
 | Default screen date = anchor (capped dates list) | `db/baseline.sql` `v_available_dates`; `api/_helpers.py::_resolve_date`; `/api/actionable/dates` |
 | "Data behind market close" warning + date highlight | `/api/anchor-status`; `api/_helpers.py::expected_market_close_date`; `web/warning_badge.js` (`.date-stale`) |

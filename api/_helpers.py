@@ -164,6 +164,41 @@ def load_quote_ohlc(session, as_of_date: Optional[date] = None) -> dict:
     return out
 
 
+def rr_pos(last_price, lrr, trr) -> Optional[float]:
+    """Position within a Hedgeye risk range, clamped to [0, 1].
+
+    0 = at the low risk range (lrr), 1 = at the top risk range (trr).
+    Shared implementation (TASK_133) for the three duplicate copies of this
+    formula: api/routers/macro_areas.py, web/actionable.js (:4288), and
+    web/market_bar.js::rangeBar. The two JS call sites can't literally import
+    this Python function (different language/runtime) so they keep their own
+    copies of the same formula; this is the single Python-side source of
+    truth used by macro_areas.py and etl/derive_risk_dial.py.
+
+    Defensive scale guard (TASK_133 finding): TNX:CGI's drv_quote last_price
+    is inconsistently scaled day to day -- most days it matches drv_rr's lrr/
+    trr (a x10 index-level convention, e.g. last=46.2 vs lrr/trr~45.9/47.1),
+    but on days sourced from the 'Y' feed it lands in plain percent (e.g.
+    4.62), an order of magnitude off. Rather than silently return a garbage
+    clamped 0 or 1 (falsely reading "at the edge of the range"), detect an
+    order-of-magnitude mismatch against the range midpoint and rescale.
+    """
+    if last_price is None or lrr is None or trr is None:
+        return None
+    last_price, lrr, trr = float(last_price), float(lrr), float(trr)
+    if trr == lrr:
+        return None
+    mid = (lrr + trr) / 2.0
+    if mid != 0 and last_price != 0:
+        ratio = abs(last_price) / abs(mid)
+        if ratio < 0.3:
+            last_price *= 10
+        elif ratio > 3:
+            last_price /= 10
+    pos = (last_price - lrr) / (trr - lrr)
+    return max(0.0, min(1.0, pos))
+
+
 def load_vol_thresholds(session) -> dict:
     """tos_symbol -> {low, high} from ref_vol_threshold (volatility regime bands).
 

@@ -21,7 +21,7 @@
 
   const REFRESH_MS = 60 * 1000;
 
-  const INVERTED = new Set(['HY', 'HYSPRD']);
+  const INVERTED = new Set(['HY', 'HYSPRD', 'HYOAS']);
 
   // ---- formatting helpers -----------------------------------------------
   function fmtValue(v, fmt) {
@@ -424,13 +424,7 @@
     // existing pairLead removes its border to MOVE).
     { label: '2Y',   source: 'rr',  group: 'Rates',  symbol: 'DGS2:FRED', pairLead: true }, // 2Y Treasury
     { label: '10Y',  source: 'rr',  group: 'Rates',  symbol: 'TNX:CGI', pairLead: true }, // Bond/Treasury
-    // MOVE: /api/marketbar currently returns vol_low/vol_high = null for
-    // this metric_key even though ref_vol_threshold has a row for the
-    // underlying MOVE:GIF symbol (the side rail's Bond Vol gauge works) —
-    // a lookup-key mismatch in the marketbar endpoint, not a missing
-    // threshold. Until that's fixed this tile will show the "None" zone
-    // badge; not blocking, flagged for a follow-up.
-    { label: 'MOVE', source: 'mkt', key: 'MOVE' },  // Bond Vol
+    { label: 'MOVE', source: 'mkt', key: 'MOVE' },  // Bond Vol (TASK_133: vol zone fixed — _METRIC_TO_VOL_SYM already maps MOVE -> MOVE:GIF)
     // Credit group (2026-07-04): LQD grouped with HY (HY pairLead removes
     // the border to LQD).
     { label: 'HY',   source: 'rr',  group: 'Credit', symbol: 'HYG', pairLead: true },

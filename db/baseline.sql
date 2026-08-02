@@ -7499,3 +7499,136 @@ SELECT
     fs AS first_seen, ls AS last_seen
 FROM agg;
 
+
+-- =====================================================
+-- 2026-08-01 TASK_133: Dashboard Cockpit — reference tables (Phase 2),
+-- self-computed market stats + Risk Dial (Phase 3), factor scorecard
+-- (Phase 5), and cockpit API support tables (Phase 6). See
+-- docs/dashboard_cockpit_design.md + agent-tasks/TASK_133_dashboard_cockpit.md.
+-- =====================================================
+
+-- Risk-dial gauge registry. Predicate logic is in etl/derive_risk_dial.py::GAUGES;
+-- this table controls weight and on/off only.
+CREATE TABLE IF NOT EXISTS ref_risk_gauge (
+    gauge_key   text PRIMARY KEY,
+    label       text    NOT NULL,
+    weight      numeric NOT NULL DEFAULT 1,
+    is_active   boolean NOT NULL DEFAULT TRUE,
+    category    text,                 -- equity | vol | credit | rates | fx | commodity | breadth | positioning
+    notes       text
+);
+
+-- Round-number price/yield levels the user considers meaningful.
+CREATE TABLE IF NOT EXISTS ref_level_watch (
+    id          serial PRIMARY KEY,
+    tos_symbol  text    NOT NULL,
+    level_value numeric NOT NULL,
+    tolerance   numeric NOT NULL,     -- same units as level_value
+    label       text,
+    is_active   boolean NOT NULL DEFAULT TRUE,
+    UNIQUE (tos_symbol, level_value)
+);
+
+-- Which parts of the book each fired gauge / pattern hits.
+CREATE TABLE IF NOT EXISTS ref_gauge_transmission (
+    id          serial PRIMARY KEY,
+    gauge_key   text NOT NULL,        -- ref_risk_gauge.gauge_key OR ref_market_pattern.pattern_key
+    axis        text NOT NULL,        -- 'sector' | 'asset_class' | 'style'
+    category    text NOT NULL,
+    UNIQUE (gauge_key, axis, category)
+);
+
+-- Named cross-asset co-movement patterns.
+CREATE TABLE IF NOT EXISTS ref_market_pattern (
+    pattern_key text PRIMARY KEY,
+    label       text    NOT NULL,
+    read_text   text    NOT NULL,     -- shown verbatim in the UI
+    severity    text    NOT NULL DEFAULT 'warn',   -- 'severe' | 'warn' | 'info'
+    is_active   boolean NOT NULL DEFAULT TRUE
+);
+
+-- Phase 3: self-computed market stats + Risk Dial. One row per as_of_date.
+CREATE TABLE IF NOT EXISTS drv_market_stat (
+    as_of_date              date PRIMARY KEY,
+    -- realized vol + variance risk premium (SPX)
+    rv10                    numeric,
+    rv21                    numeric,
+    rv63                    numeric,
+    vix                     numeric,
+    vrp                     numeric,
+    vrp_z                   numeric,
+    -- breadth, computed on this system's own universe
+    pct_above_sma50         numeric,
+    pct_above_sma200        numeric,
+    pct_above_sma50_5d_chg  numeric,
+    universe_n              integer,
+    -- participation
+    spy_rvol                numeric,
+    -- market internals (Phase 4; NULL until the INT feed lands)
+    adv_issues              numeric,
+    dec_issues              numeric,
+    up_volume               numeric,
+    down_volume             numeric,
+    trin                    numeric,
+    vol_breadth             numeric,
+    -- risk dial
+    risk_budget             integer,
+    risk_label              text,
+    gauges_fired            jsonb,
+    detail                  jsonb,
+    derived_at              timestamp NOT NULL DEFAULT now()
+);
+
+-- Phase 6: market events (range breaks, trend flips, z-scores, patterns,
+-- calendar/surprise). One row per event, event_seq assigned per as_of_date.
+CREATE TABLE IF NOT EXISTS drv_market_event (
+    as_of_date  date    NOT NULL,
+    event_seq   integer NOT NULL,
+    event_type  text    NOT NULL,   -- range_break | trend_flip | zscore | pattern | calendar | surprise
+    severity    text    NOT NULL,   -- severe | warn | info
+    tos_symbol  text,
+    pattern_key text,
+    title       text    NOT NULL,
+    legs        jsonb,
+    read_text   text,
+    exposure    jsonb,
+    PRIMARY KEY (as_of_date, event_seq)
+);
+
+-- Phase 5: factor scorecard — time-weighted returns by sector / asset class /
+-- style, vs. proxy benchmark, vs. quad stance. One row per (date, axis, category).
+CREATE TABLE IF NOT EXISTS drv_category_perf (
+    as_of_date       date NOT NULL,
+    axis             text NOT NULL,     -- 'sector' | 'asset_class' | 'style'
+    category         text NOT NULL,
+    market_value     numeric,
+    weight_pct       numeric,
+    target_min       numeric,
+    target_max       numeric,
+    twr_1w  numeric, twr_3w  numeric, twr_1m  numeric, twr_2m  numeric, twr_3m numeric,
+    bench_1w numeric, bench_3w numeric, bench_1m numeric, bench_2m numeric, bench_3m numeric,
+    bench_symbol     text,
+    flows_confidence text,              -- 'green' | 'amber' | 'suspect'
+    quad_stance      text,              -- BULLISH | NEUTRAL | BEARISH
+    verdict          text,
+    detail           jsonb,
+    derived_at       timestamp NOT NULL DEFAULT now(),
+    PRIMARY KEY (as_of_date, axis, category)
+);
+
+-- Phase 4.1: ToS market internals (INT tab) — $ADVN/$DECN/$UVOL/$DVOL/$TRIN.
+-- Deliberately NOT part of drv_symbols/hist_td universe (see CLAUDE.md
+-- "Adding a new source-file type" + TASK_133 Phase 4.1) -- these are
+-- market-wide breadth scalars, not tradeable symbols.
+CREATE TABLE IF NOT EXISTS hist_internals (
+    snapshot_date date    NOT NULL,
+    symbol        text    NOT NULL,
+    sequence      integer NOT NULL,
+    export_date   date,
+    export_time   text,
+    last_value    numeric,
+    PRIMARY KEY (snapshot_date, symbol, sequence)
+);
+
+CREATE INDEX IF NOT EXISTS ix_drv_market_event_sym ON drv_market_event(tos_symbol, as_of_date);
+CREATE INDEX IF NOT EXISTS ix_drv_category_perf_axis ON drv_category_perf(axis, as_of_date);

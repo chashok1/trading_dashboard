@@ -4,6 +4,68 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ---
 
+## 2026-08-01
+
+- **Dashboard cockpit (TASK_133, full build).** Replaces the `/` ticker-grid
+  landing screen with a six-band daily risk cockpit. Design:
+  `docs/dashboard_cockpit_design.md` (supersedes and deletes
+  `docs/dashboard_attention_panel_design.md`).
+  - **New tables** (`db/baseline.sql`): `ref_risk_gauge`, `ref_level_watch`,
+    `ref_gauge_transmission`, `ref_market_pattern` (Phase 2 tuning surfaces);
+    `drv_market_stat` (Phase 3: Yang–Zhang realized vol/VRP/breadth/
+    participation + the 14/15-gauge Risk Dial, `etl/derive_risk_dial.py`);
+    `drv_market_event` (Phase 6: range breaks/trend flips/z-scores/8 seeded
+    patterns/calendar, `etl/derive_market_event.py`); `drv_category_perf`
+    (Phase 5: time-weighted sector/asset_class/style returns vs proxy
+    benchmark vs quad stance, `etl/derive_category_perf.py`);
+    `hist_internals` (Phase 4.1: ToS `$ADVN`/`$DECN`/`$UVOL`/`$DVOL`/`$TRIN`,
+    feed not yet flowing pending a user-side watchlist/LoadFiles.xlsx change).
+  - **New feeds**: KOSPI complex (`^KS11`/`005930.KS`/`000660.KS`/`EWY` via
+    Yahoo → `hist_macro`), Cboe VVIX/RVOL free CSVs (`etl/fetch_cboe.py`),
+    `HYOAS` real credit-spread metric (was showing the `HYG` ETF price under
+    a misleading `HY` label — relabeled), `T2S10` (2s10s curve) switched on.
+  - **Bug fixes**: MOVE marketbar zone badge (`MOVE`→`MOVE:GIF` vol-threshold
+    key mismatch); `/api/macro-areas` now sends server-canonical `hot_pct`/
+    `cold_pct` (was silently falling back to a stale JS default).
+  - **New API**: `api/routers/cockpit.py` — `GET /api/cockpit/risk-dial`,
+    `/events`, `/factor-scorecard?axis=`, `/shortlist` (reuses the existing
+    `/api/actionable` high-conviction filter, no new ranking logic).
+  - **`derive_all()` cascade order**: `drv_market_stat` → (existing steps) →
+    `drv_macro_score` → `drv_category_perf` → `drv_market_event`. The last
+    two run later than their Phase headers originally said, because
+    `drv_category_perf.quad_stance` needs `drv_macro_score`'s live
+    per-membership stance and `drv_market_event`'s exposure block needs
+    `drv_category_perf.market_value` — both are non-critical steps (a
+    failure doesn't fail the cascade).
+  - **Round 2 fix (position-swap / flow-gap detection, Part A):**
+    `etl/derive_category_perf.py::_build_series` now detects a symbol's
+    qty changing between two reported snapshots with **zero matching row
+    in hist_cst/hist_ft (any action, not just Buy/Sell)** and forces that
+    day's `r_t=0` + `flows_confidence='suspect'`, with the offending
+    symbols recorded in `detail.windows.<w>.gap_days` — closing a gap the
+    original 25%-magnitude-only guard missed whenever the untracked swap
+    was small relative to the category's total value. Root cause: a Schwab
+    transaction feed (`hist_cst`) for one account stopped loading
+    2026-06-02 while its positions (`hist_cs`) kept updating, and a
+    Fidelity account's positions (`hist_f`) have never had a single
+    matching `hist_ft` row, ever — both real, ongoing feed gaps. See
+    `DEV_HANDOFF.md` (archived as `DEV_HANDOFF.md` at the time, TASK_133
+    round 2) for the full investigation.
+  - **Frontend (Phase 7)**: `web/index.html` + `web/app.js` rebuilt — the
+    `.dash-grid`/`#tickerSections`/section-chip ticker grid and the 3
+    standalone side-stack cards (quads/econ/earnings) retired; six new
+    bands render via `/api/cockpit/*` + the existing `/api/quad-window`,
+    `/api/quad/band-factors`, `/api/anchor-status`. `styles.css`:
+    `.dash-grid`/`.sections-grid`/`.ticker-col`/`.section-block`/
+    `.ticker-grid` removed (verified dashboard-only); `.mini-grid`/
+    `.side-scroll`/`.quad-mini`/`.side-stack` kept (reused by
+    `web/actionable.html`).
+  - **New tests**: `tests/test_yang_zhang.py`, `tests/test_risk_dial.py`,
+    `tests/test_twr.py`, `tests/test_market_patterns.py` (pure-Python, no
+    DB); `tests/acceptance/test_cockpit.py` (marked `@pytest.mark.acceptance`).
+
+---
+
 ## 2026-07-15
 
 - **MACRO: sliding look-ahead window over the monthly quad calendar

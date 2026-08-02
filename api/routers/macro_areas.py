@@ -18,7 +18,7 @@ from fastapi import APIRouter, Query
 from sqlalchemy import text
 
 from api._helpers import (
-    _resolve_date, _get_ref_setting, load_quote_ohlc, load_vol_thresholds,
+    _resolve_date, _get_ref_setting, load_quote_ohlc, load_vol_thresholds, rr_pos,
 )
 from etl.db import session_scope
 
@@ -109,7 +109,7 @@ _CURVE_SYMS = {"DGS2:FRED", "TNX:CGI", "TYX:CGI"}
 # set (keyed there by chip short-label 'HY'/'HYSPRD'; keyed here by
 # tos_symbol so the frontend consolidation (TASK_116) can read it straight
 # off each member instead of keeping its own list).
-_INVERTED_SYMBOLS = {"HYG"}
+_INVERTED_SYMBOLS = {"HYG", "HYOAS"}
 
 
 def _sign(x: Optional[float]) -> int:
@@ -377,13 +377,10 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 })
                 continue
 
-            # RR position (all non-curve, non-gauge)
-            rr_pos = None
+            # RR position (all non-curve, non-gauge) — shared TASK_133 helper
             lrr = _maybe_float(rr.get("lrr"))
             trr = _maybe_float(rr.get("trr"))
-            if (last is not None and lrr is not None and trr is not None
-                    and trr != lrr):
-                rr_pos = (last - lrr) / (trr - lrr)
+            rr_pos_val = rr_pos(last, lrr, trr)
 
             # Dual: technicals available
             trade_sig = None
@@ -407,8 +404,8 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 if ol_sig != 0:
                     sigs.append(ol_sig)
 
-            if rr_pos is not None:
-                rr_positions.append(rr_pos)
+            if rr_pos_val is not None:
+                rr_positions.append(rr_pos_val)
 
             wow_pct = _wow_pct(last, wow_map.get(sym))
             member_details.append({
@@ -421,11 +418,11 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 "high": ohlc.get("high"),
                 "low": ohlc.get("low"),
                 "outlook": rr.get("outlook"),
-                "rr_pos": _pct(rr_pos),
+                "rr_pos": _pct(rr_pos_val),
                 "trade": trade_sig,
                 "trend": trend_sig,
-                "is_hot": rr_pos is not None and rr_pos >= hot_pct,
-                "is_cold": rr_pos is not None and rr_pos <= cold_pct,
+                "is_hot": rr_pos_val is not None and rr_pos_val >= hot_pct,
+                "is_cold": rr_pos_val is not None and rr_pos_val <= cold_pct,
                 "wow_pct": wow_pct,
                 "monthly_score": _maybe_float(ms_map.get(sym)),
                 "inverted": inverted,
@@ -460,6 +457,8 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             "rr_pos": _pct(area_rr_pos),
             "extremes_hot": extremes_hot,
             "extremes_cold": extremes_cold,
+            "hot_pct": hot_pct,
+            "cold_pct": cold_pct,
             "members": member_details,
         })
 
@@ -563,16 +562,14 @@ def _sector_etf_proxy(symbol: str, q_map: dict, tech_map: dict, rr_map: dict, ms
     trv = _maybe_float(t.get("a_trend_value"))
     lrr = _maybe_float(r.get("lrr"))
     trr = _maybe_float(r.get("trr"))
-    rr_pos = None
-    if lrr is not None and trr is not None and trr != lrr:
-        rr_pos = (last - lrr) / (trr - lrr)
+    rr_pos_val = rr_pos(last, lrr, trr)
     return {
         "symbol": symbol,
         "last": last,
         "pct_change": _maybe_float(q.get("pct_change")),
         "td": "up" if tv is not None and last > tv else ("down" if tv is not None else None),
         "tn": "up" if trv is not None and last > trv else ("down" if trv is not None else None),
-        "rr_pos": _pct(rr_pos),
+        "rr_pos": _pct(rr_pos_val),
         "outlook": r.get("outlook"),
         "monthly_score": _maybe_float(ms_map.get(symbol)),
     }

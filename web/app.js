@@ -1,20 +1,18 @@
 /* Trading Dashboard - frontend logic.
-   4-panel layout: Quads banner + Ticker grid + Econ Indicators + Earnings/Calendar. */
-
-const SECTIONS = ['', 'Index', 'Volatility', 'Treasury', 'Commodity', 'Sector', 'FX', 'Stock'];
-// Display order for section grouping inside the ticker grid (excludes the leading 'All').
-const SECTION_ORDER = ['Index', 'Volatility', 'Treasury', 'Commodity', 'Sector', 'FX', 'Stock'];
-const SECTION_RANK = Object.fromEntries(SECTION_ORDER.map((s, i) => [s, i]));
-function sectionRank(s) {
-  const r = SECTION_RANK[s];
-  return r === undefined ? 999 : r;
-}
+   Six-band daily risk cockpit (TASK_133): Risk Dial, What changed, Regime,
+   Factor scorecard, Shortlist, Housekeeping. The old ticker-grid landing
+   screen (SECTIONS/renderTickerGrid/loadTickers/etc.) was retired here --
+   see docs/dashboard_cockpit_design.md. */
 
 const state = {
   date: null,
-  section: '',
-  search: '',
-  rows: [],
+  anchorDate: null,
+  fsAxis: 'sector',
+  housekeepingOk: true,
+  txnFeedGapCount: 0,
+  // TASK_136 C.2 -- populated by loadRiskDial(), read by loadShortlist() so
+  // the shortlist can pre-multiply AMT$ without a second risk-dial fetch.
+  suggestedSizeMultiplier: null,
 };
 
 // ---------- helpers ----------
@@ -114,215 +112,6 @@ async function loadDates() {
   { const _fd = $('footDate'); if (_fd) _fd.textContent = state.date ? fmtDate(state.date) : '—'; }
 }
 
-// ---------- section chips ----------
-
-function renderSectionChips() {
-  const wrap = $('sectionChips');
-  wrap.innerHTML = '';
-  for (const sec of SECTIONS) {
-    const btn = document.createElement('button');
-    btn.className = 'chip' + (state.section === sec ? ' active' : '');
-    btn.dataset.section = sec;
-    btn.textContent = sec || 'All';
-    btn.onclick = () => {
-      state.section = sec;
-      renderSectionChips();
-      renderTickerGrid();
-    };
-    wrap.appendChild(btn);
-  }
-}
-
-// ---------- ticker grid (Dash K-Z) ----------
-
-async function loadTickers() {
-  if (!state.date) return;
-  try {
-    const rows = await fetchJson(`/api/dash?date=${encodeURIComponent(state.date)}`);
-    rows.sort((a, b) => {
-      const ra = sectionRank(a.section), rb = sectionRank(b.section);
-      if (ra !== rb) return ra - rb;
-      return (a.tos_symbol || '').localeCompare(b.tos_symbol || '');
-    });
-    state.rows = rows;
-  } catch (e) {
-    console.error('Failed to load /api/dash:', e);
-    state.rows = [];
-  }
-  renderTickerGrid();
-}
-
-function rowMatches(r) {
-  if (state.section && r.section !== state.section) return false;
-  if (state.search) {
-    const needle = state.search.toLowerCase();
-    const sym = (r.tos_symbol || '').toLowerCase();
-    const desc = (r.description || '').toLowerCase();
-    if (!sym.includes(needle) && !desc.includes(needle)) return false;
-  }
-  return true;
-}
-
-function buildSectionBlock(name, rows) {
-  const div = document.createElement('div');
-  div.className = 'section-block';
-  // Caption row removed per user preference — section identity comes from the data itself.
-
-  const table = document.createElement('table');
-  table.innerHTML = `
-    <thead>
-      <tr>
-        <th>Sym</th>
-        <th class="num">%Chg</th>
-        <th>HE</th>
-        <th>TrTn</th>
-        <th>MQ</th>
-        <th>QQ</th>
-        <th class="num">Last</th>
-        <th class="num">Trend</th>
-        <th class="num">Trade</th>
-        <th class="num">%BRR</th>
-        <th class="num">Lo</th>
-        <th class="num">Hi</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  `;
-  const tbody = table.querySelector('tbody');
-
-  for (const r of rows) {
-    const tr = document.createElement('tr');
-
-    const tdSym = document.createElement('td');
-    if (r.tos_symbol) {
-      const symBtn = document.createElement('button');
-      symBtn.onclick = () => openPortfolioModal(r.tos_symbol);
-      symBtn.style.background = 'none';
-      symBtn.style.border = 'none';
-      symBtn.style.color = 'var(--accent,#1d4ed8)';
-      symBtn.style.cursor = 'pointer';
-      symBtn.style.textDecoration = 'none';
-      symBtn.style.font = 'inherit';
-      symBtn.style.padding = '0';
-      symBtn.textContent = r.tos_symbol;
-      if (r.description) symBtn.title = String(r.description);
-      // Yahoo lookup badge before the symbol (skipped for cash/pseudo).
-      if (window.yahooLink) {
-        tdSym.insertAdjacentHTML('afterbegin', window.yahooLink(r.tos_symbol));
-      }
-      tdSym.appendChild(symBtn);
-    }
-    tr.appendChild(tdSym);
-
-    const pctChg = (r.last_price != null && r.a_trade_value != null && r.a_trade_value !== 0)
-      ? ((Number(r.last_price) - Number(r.a_trade_value)) / Number(r.a_trade_value)) * 100
-      : null;
-    const tdPct = document.createElement('td');
-    tdPct.className = 'num ' + signClass(pctChg);
-    tdPct.textContent = pctChg != null ? fmtPct(pctChg, 2) : '';
-    tr.appendChild(tdPct);
-
-    const tdHeOl = document.createElement('td'); outlookCell(tdHeOl, r.rr_outlook); tr.appendChild(tdHeOl);
-    const tdTrTn = document.createElement('td'); outlookCell(tdTrTn, r.rr_outlook); tr.appendChild(tdTrTn);
-
-    const tdMq = document.createElement('td'); tdMq.textContent = r.mq || ''; tr.appendChild(tdMq);
-    const tdQq = document.createElement('td'); tdQq.textContent = r.qq || ''; tr.appendChild(tdQq);
-
-    const tdLast = document.createElement('td'); tdLast.className = 'num';
-    tdLast.textContent = fmtNum(r.last_price); tr.appendChild(tdLast);
-    const tdTrend = document.createElement('td'); tdTrend.className = 'num';
-    tdTrend.textContent = fmtNum(r.a_trend_value); tr.appendChild(tdTrend);
-    const tdTrade = document.createElement('td'); tdTrade.className = 'num';
-    tdTrade.textContent = fmtNum(r.a_trade_value); tr.appendChild(tdTrade);
-
-    const tdBrr = document.createElement('td'); tdBrr.className = 'num';
-    tdBrr.textContent = r.pct_brr != null ? fmtNum(r.pct_brr, 1) : ''; tr.appendChild(tdBrr);
-
-    const tdLow = document.createElement('td'); tdLow.className = 'num';
-    tdLow.textContent = fmtNum(r.threshold_low); tr.appendChild(tdLow);
-    const tdHigh = document.createElement('td'); tdHigh.className = 'num';
-    tdHigh.textContent = fmtNum(r.threshold_high); tr.appendChild(tdHigh);
-
-    tbody.appendChild(tr);
-  }
-
-  div.appendChild(table);
-  return div;
-}
-
-function renderTickerGrid() {
-  const container = $('tickerSections');
-  if (!container) return;
-  container.innerHTML = '';
-
-  const filtered = state.rows.filter(rowMatches);
-
-  // Group by section
-  const groups = new Map();
-  for (const r of filtered) {
-    const sec = r.section || '(unspecified)';
-    if (!groups.has(sec)) groups.set(sec, []);
-    groups.get(sec).push(r);
-  }
-
-  // Explicit column assignments.
-  // Left:  Index -> Treasury -> Commodity -> FX  (then Stock A-half)
-  // Right: Volatility -> Sector  (then Stock B-half)
-  const LEFT_SECTIONS  = ['Index', 'Treasury', 'Commodity', 'FX'];
-  const RIGHT_SECTIONS = ['Volatility', 'Sector'];
-
-  const leftCol  = document.createElement('div');
-  leftCol.className = 'ticker-col';
-  const rightCol = document.createElement('div');
-  rightCol.className = 'ticker-col';
-
-  let total = 0;
-
-  for (const sec of LEFT_SECTIONS) {
-    const rows = groups.get(sec);
-    if (!rows || rows.length === 0) continue;
-    total += rows.length;
-    leftCol.appendChild(buildSectionBlock(sec, rows));
-  }
-  for (const sec of RIGHT_SECTIONS) {
-    const rows = groups.get(sec);
-    if (!rows || rows.length === 0) continue;
-    total += rows.length;
-    rightCol.appendChild(buildSectionBlock(sec, rows));
-  }
-
-  // Stock - split into A-half (left) and B-half (right) when large
-  const stockRows = groups.get('Stock');
-  if (stockRows && stockRows.length > 0) {
-    total += stockRows.length;
-    if (stockRows.length > 12) {
-      const half = Math.ceil(stockRows.length / 2);
-      const left = stockRows.slice(0, half);
-      const right = stockRows.slice(half);
-      const lLabel = `Stock (${(left[0].tos_symbol || 'A')[0]}-${(left[left.length - 1].tos_symbol || 'M')[0]})`;
-      const rLabel = `Stock (${(right[0].tos_symbol || 'N')[0]}-${(right[right.length - 1].tos_symbol || 'Z')[0]})`;
-      leftCol.appendChild(buildSectionBlock(lLabel, left));
-      rightCol.appendChild(buildSectionBlock(rLabel, right));
-    } else {
-      leftCol.appendChild(buildSectionBlock('Stock', stockRows));
-    }
-  }
-
-  // Anything not in the explicit lists (e.g. '(unspecified)') goes left
-  for (const [sec, rows] of groups) {
-    if (LEFT_SECTIONS.includes(sec) || RIGHT_SECTIONS.includes(sec) || sec === 'Stock') continue;
-    if (rows.length === 0) continue;
-    total += rows.length;
-    leftCol.appendChild(buildSectionBlock(sec, rows));
-  }
-
-  container.appendChild(leftCol);
-  container.appendChild(rightCol);
-
-  const cnt = $('tickerCount');
-  if (cnt) cnt.textContent = `${total} row${total === 1 ? '' : 's'}`;
-}
-
 // ---------- economic indicators ----------
 
 async function loadEconIndicators() {
@@ -387,99 +176,6 @@ async function loadEarnings() {
     console.error('Failed to load earnings:', e);
     empty.hidden = false;
     empty.textContent = 'Failed to load.';
-  }
-}
-
-// ---------- quads banner ----------
-
-function quadColorClass(q) {
-  const s = String(q || '');
-  if (/4/.test(s)) return 'quad-q4';
-  if (/3/.test(s)) return 'quad-q3';
-  if (/2/.test(s)) return 'quad-q2';
-  if (/1/.test(s)) return 'quad-q1';
-  return 'quad-q-unknown';
-}
-
-const MONTH_3CHAR = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-
-function shortMonthLabel(payload) {
-  // Always return 3-char uppercase month (JUN, JUL, AUG) derived from start_date.
-  if (payload.start_date) {
-    const d = new Date(payload.start_date);
-    if (!isNaN(d)) return MONTH_3CHAR[d.getMonth()];
-  }
-  // Fallback: parse YYYY-MM from a label like '2026-06'.
-  if (payload.label) {
-    const m = String(payload.label).match(/^\d{4}-(\d{2})/);
-    if (m) {
-      const idx = parseInt(m[1], 10) - 1;
-      if (idx >= 0 && idx < 12) return MONTH_3CHAR[idx];
-    }
-    return String(payload.label).toUpperCase();
-  }
-  return '—';
-}
-
-function shortQuarterLabel(payload) {
-  if (payload.start_date) {
-    const d = new Date(payload.start_date);
-    if (!isNaN(d)) {
-      const q = Math.floor(d.getMonth() / 3) + 1;
-      return `Q${q} '${String(d.getFullYear()).slice(-2)}`;
-    }
-  }
-  if (payload.label) return String(payload.label);
-  return '—';
-}
-
-function quadMini(periodLabel, quadValue, isCurrent) {
-  const wrap = document.createElement('span');
-  wrap.className = 'quad-mini' + (isCurrent ? ' is-current' : '');
-  const lbl = document.createElement('span');
-  lbl.className = 'qlbl';
-  lbl.textContent = periodLabel;
-  const val = document.createElement('span');
-  val.className = 'qval ' + quadColorClass(quadValue);
-  val.textContent = (quadValue || '—').replace(/^Quad\s*/i, 'Q');
-  wrap.appendChild(lbl);
-  wrap.appendChild(val);
-  return wrap;
-}
-
-// ---------- quads (side panel mini-grid) ----------
-
-async function loadQuads() {
-  const line = $('quadsBody');
-  const empty = $('quadsEmpty');
-  if (!line) return;
-  line.innerHTML = '';
-  empty.hidden = true;
-
-  try {
-    const url = state.date
-      ? `/api/dashboard/quads?date=${encodeURIComponent(state.date)}`
-      : '/api/dashboard/quads';
-    const data = await fetchJson(url);
-
-    if (data.current_quarter) {
-      line.appendChild(quadMini(shortQuarterLabel(data.current_quarter), data.current_quarter.quad, true));
-    }
-    if (data.next_quarter) {
-      line.appendChild(quadMini(shortQuarterLabel(data.next_quarter), data.next_quarter.quad, false));
-    }
-    const months = Array.isArray(data.months) ? data.months : [];
-    months.forEach((m, i) => {
-      line.appendChild(quadMini(shortMonthLabel(m), m.quad, i === 0));
-    });
-
-    if (line.childElementCount === 0) {
-      empty.hidden = false;
-    }
-  } catch (e) {
-    console.error('Failed to load quads:', e);
-    empty.hidden = false;
-    empty.textContent = 'Failed to load quads.';
   }
 }
 
@@ -621,12 +317,367 @@ async function loadBriefing() {
   }
 }
 
+// ---------- Band 1: Risk Dial ----------
+
+function _dateQS() { return state.date ? `?date=${encodeURIComponent(state.date)}` : ''; }
+
+// TASK_134 A.5 -- risk_label -> meter-fill/number band class, tokens only
+// (styles.css owns the actual colors; this just names the band).
+function _riskBandClass(label) {
+  switch (label) {
+    case 'CLEAR': return 'b-clear';
+    case 'CAUTION': return 'b-caution';
+    case 'DEFENSIVE': return 'b-defensive';
+    case 'NOT INVESTABLE': return 'b-notinv';
+    default: return '';
+  }
+}
+
+async function loadRiskDial() {
+  const body = $('riskDialBody');
+  if (!body) return;
+  try {
+    const r = await fetchJson(`/api/cockpit/risk-dial${_dateQS()}`);
+    // TASK_136 C.2 -- shared with loadShortlist() so it can pre-multiply
+    // AMT$ without a second fetch of this same endpoint.
+    state.suggestedSizeMultiplier = r.suggested_size_multiplier != null ? r.suggested_size_multiplier : null;
+    const labelClass = (r.risk_label || '').replace(/\s+/g, '');
+    const bandClass = _riskBandClass(r.risk_label);
+    const budget = r.risk_budget != null ? Math.max(0, Math.min(100, r.risk_budget)) : 0;
+    // Band 6 -> Band 1 warning: a risk dial computed on stale/failed
+    // housekeeping is worse than no risk dial (spec 7.2 Band 6).
+    const staleWarning = !state.housekeepingOk
+      ? `<div class="rd-stale-warning">Housekeeping flagged stale or failed data — this read may be based on incomplete inputs.</div>`
+      : '';
+    // TASK_134 A.4 -- severity encoded as a coloured left rail + weight chip,
+    // never colour alone. loadRiskDial's caller (drv_market_stat.gauges_fired)
+    // already sorts `fired` by weight descending -- kept as-is.
+    const firedHtml = (r.fired || []).map(g => {
+      const exp = g.exposure;
+      const expTxt = (exp && exp.dollar != null)
+        ? `$${Math.round(exp.dollar).toLocaleString()}${exp.pct != null ? ` (${exp.pct.toFixed(1)}%)` : ''}`
+        : '';
+      const wt = Math.round(g.weight || 0);
+      const sev = wt >= 3 ? 3 : wt <= 1 ? 1 : 2;
+      return `<div class="rd-gauge-row sev-${sev}">
+        <span class="rd-rail"></span>
+        <span class="rd-wt">${wt}</span>
+        <span class="rd-gauge-text"><strong>${escapeHtml(g.label || g.key)}</strong> — ${escapeHtml(g.detail || '')}</span>
+        <span class="rd-exp">${expTxt}</span>
+      </div>`;
+    }).join('') || '<div class="ev-quiet">No gauges fired.</div>';
+    const quietHtml = (r.quiet || [])
+      .map(g => `${escapeHtml(g.label || g.key)}: ${escapeHtml(g.detail || '')}`).join('<br>');
+    // TASK_134 A.3 -- number leads: budget + label share one row, the meter
+    // is 14px, and the headline drops below the meter as a plain supporting
+    // sentence (13px, --text-2).
+    // TASK_136 B.1 -- in a 4-col card the size-line no longer fits on the
+    // same row as the number/label (it was pushed off with margin-left:auto
+    // on a full-width card); it now gets its own row directly under line 1.
+    body.innerHTML = `
+      ${staleWarning}
+      <div class="rd-top-row">
+        <span class="rd-budget ${bandClass}">${r.risk_budget != null ? r.risk_budget : '—'}</span>
+        <span class="rd-label ${labelClass}">${escapeHtml(r.risk_label || '')}</span>
+      </div>
+      ${r.suggested_size_multiplier != null
+        ? `<div class="rd-size-row"><span class="rd-size-line">today's size = AMT$ &times; <strong>${r.suggested_size_multiplier}</strong></span></div>` : ''}
+      <div class="rd-meter"><div class="rd-meter-fill ${bandClass}" style="width:${budget}%;"></div></div>
+      <div class="rd-headline">${escapeHtml(r.headline || '')}</div>
+      <div class="rd-gauge-list">${firedHtml}</div>
+      <span class="rd-quiet-toggle" onclick="this.nextElementSibling.classList.toggle('open')">Quiet gauges (${(r.quiet || []).length})</span>
+      <div class="rd-quiet-list">${quietHtml}</div>
+    `;
+  } catch (e) {
+    console.error('risk-dial failed:', e);
+    state.suggestedSizeMultiplier = null;
+    body.innerHTML = '<div class="ev-fail">&#9888; Risk dial unavailable.</div>';
+  }
+}
+
+// ---------- Band 2: What changed ----------
+
+async function loadEventsBand() {
+  const body = $('eventsBody');
+  if (!body) return;
+  try {
+    const r = await fetchJson(`/api/cockpit/events${_dateQS()}`);
+    if (r.quiet) {
+      body.innerHTML = `<div class="ev-quiet">No material market events today`
+        + (r.max_z_symbol ? ` (largest move: ${escapeHtml(r.max_z_symbol)}, z=${r.max_abs_z ?? '—'})` : '')
+        + `.</div>`;
+      return;
+    }
+    body.innerHTML = (r.events || []).map(ev => `
+      <div class="ev-row ev-row-${escapeHtml(ev.severity || 'info')}">
+        <span class="ev-rail"></span>
+        <span class="ev-sev ${escapeHtml(ev.severity || 'info')}">${escapeHtml(ev.severity || '')}</span>
+        <span>${escapeHtml(ev.title || '')}</span>
+        ${ev.read_text ? `<span class="ev-read">— ${escapeHtml(ev.read_text)}</span>` : ''}
+      </div>`).join('') || '<div class="ev-quiet">No events.</div>';
+  } catch (e) {
+    console.error('events band failed:', e);
+    body.innerHTML = '<div class="ev-fail">&#9888; Events unavailable.</div>';
+  }
+}
+
+// ---------- Band 3: Regime ----------
+// No new computation (spec 7.2 Band 3) -- reads the same /api/quad-window +
+// /api/quad/band-factors already powering web/actionable.js's regime band.
+// The hover title carries the same bull/bear factor table as a plain-text
+// popover; actionable.js's richer interactive popover was not duplicated
+// here (documented simplification, see DEV_HANDOFF.md).
+
+async function loadRegimeBand() {
+  const strip = $('regimeStrip');
+  if (!strip) return;
+  try {
+    const viewingLive = !state.date || state.date === state.anchorDate;
+    const qs = viewingLive ? '' : _dateQS();
+    const [windowData, factors] = await Promise.all([
+      fetchJson(`/api/quad-window${qs}`).catch(() => null),
+      fetchJson(`/api/quad/band-factors${qs}`).catch(() => ({ bull: [], bear: [] })),
+    ]);
+    if (!windowData) { strip.innerHTML = '<div class="ev-fail">&#9888; Regime data unavailable.</div>'; return; }
+    const dominant = windowData.dominant_quad != null ? `Quad ${windowData.dominant_quad}` : '—';
+    const months = (windowData.months || [])
+      .map(m => `${escapeHtml(String(m.m).slice(5))} (Q${m.quad ?? '?'}) ${Math.round((m.w || 0) * 100)}%`)
+      .join(' · ');
+    const bull = (factors.bull || []).map(f => f.ticker || f.category).filter(Boolean).slice(0, 8).join(', ');
+    const bear = (factors.bear || []).map(f => f.ticker || f.category).filter(Boolean).slice(0, 8).join(', ');
+    const title = `Bull factors: ${bull || '—'}\nBear factors: ${bear || '—'}`;
+    strip.innerHTML = `<div class="regime-line" title="${escapeHtml(title)}">
+      Window (${windowData.h ?? 60}d): <strong>${escapeHtml(dominant)}</strong> — ${months || 'no window data'}
+    </div>`;
+  } catch (e) {
+    console.error('regime band failed:', e);
+    strip.innerHTML = '<div class="ev-fail">&#9888; Regime data unavailable.</div>';
+  }
+}
+
+// ---------- Band 4: Factor scorecard ----------
+
+function _fsColorCell(v) {
+  if (v == null) return '';
+  const n = Number(v) * 100;
+  if (!Number.isFinite(n)) return '';
+  const cls = n > 0 ? 'pos' : n < 0 ? 'neg' : '';
+  return `<span class="${cls}">${n.toFixed(1)}%</span>`;
+}
+
+// TASK_134 A.6 -- verdict badges through the app's action-color vocabulary.
+// Not a call to window.actionDisplay(): drv_category_perf's verdict codes
+// (ADD/PRESS/HOLD/TRIM/TRIM_HARD/ROTATE) are category-allocation verdicts,
+// a different vocabulary from actionDisplay's per-symbol BuySell codes (its
+// own 'ADD' key means "buy to minimum lot", not this table's "add to this
+// category") -- reusing the lookup by string would mislabel the badge.
+// Spec asks for the *class-name convention* (act-buy*/act-sell*/act-neutral/
+// act-mixed), which this mirrors directly against the token set.
+const _VERDICT_CLS = {
+  ADD: 'act-buy-weak', PRESS: 'act-buy',
+  HOLD: 'act-neutral',
+  TRIM: 'act-sell', TRIM_HARD: 'act-sell-strong',
+  ROTATE: 'act-mixed',
+};
+function _verdictBadge(verdict) {
+  if (!verdict) return '';
+  const cls = _VERDICT_CLS[verdict] || 'act-neutral';
+  return `<span class="fs-verdict ${cls}-tint">${escapeHtml(verdict)}</span>`;
+}
+
+async function loadFactorScorecard() {
+  const body = $('factorScorecardBody');
+  if (!body) return;
+  try {
+    const params = new URLSearchParams({ axis: state.fsAxis });
+    if (state.date) params.set('date', state.date);
+    const r = await fetchJson(`/api/cockpit/factor-scorecard?${params.toString()}`);
+    const note = state.fsAxis === 'style'
+      ? '<div class="fs-note">Overlapping tags — not an allocation.</div>' : '';
+    const degradedNote = state.txnFeedGapCount > 0
+      ? `<div class="fs-degraded">Returns degraded — ${state.txnFeedGapCount} account(s) missing transaction history. See Housekeeping.</div>`
+      : '';
+    const windows = ['1w', '3w', '1m', '2m', '3m'];
+    const rows = (r.rows || []).map(row => {
+      // TASK_136 C.1 -- keep the raw twr_*/bench_* absolute returns reachable
+      // on hover via the row's title, since the cells themselves now show
+      // only the vs-Mkt delta (no new fields -- same twr_*/bench_* the API
+      // already returns, just not dropped from the row).
+      const titleParts = windows
+        .map(w => {
+          const twr = row[`twr_${w}`], bench = row[`bench_${w}`];
+          if (twr == null && bench == null) return null;
+          const fmt = (v) => v != null ? `${(Number(v) * 100).toFixed(1)}%` : '—';
+          return `${w}: you ${fmt(twr)} / mkt ${fmt(bench)}`;
+        })
+        .filter(Boolean)
+        .join('\n');
+      const cells = windows.map(w => {
+        const twr = row[`twr_${w}`], bench = row[`bench_${w}`];
+        const delta = (twr != null && bench != null) ? twr - bench : null;
+        return `<td>${_fsColorCell(delta)}</td>`;
+      }).join('');
+      const weightPct = row.weight_pct != null ? Number(row.weight_pct) : null;
+      return `<tr title="${escapeHtml(titleParts)}">
+        <td>${escapeHtml(row.category)}</td>
+        <td class="fs-weight-cell">
+          ${weightPct != null ? `<span class="fs-weight-bar" style="width:${Math.max(0, Math.min(100, weightPct))}%"></span>` : ''}
+          <span class="fs-weight-text">${weightPct != null ? weightPct.toFixed(1) + '%' : ''}</span>
+        </td>
+        <td><span class="fs-conf ${escapeHtml(row.flows_confidence || '')}">${escapeHtml(row.flows_confidence || '')}</span></td>
+        <td>${_verdictBadge(row.verdict)}</td>
+        ${cells}
+      </tr>`;
+    }).join('');
+    const unmapped = r.unmapped
+      ? `<div class="fs-note">Unmapped: ${escapeHtml(r.unmapped.category)} — ${r.unmapped.weight_pct != null ? Number(r.unmapped.weight_pct).toFixed(1) + '%' : ''} of book not resolved to a category.</div>`
+      : '';
+    // TASK_136 A.3 -- wrapped in overflow-x:auto so the table degrades (its
+    // own scrollbar) at narrow widths instead of forcing the 12-col grid
+    // track wider than its share (the min-width:0 fix on .cockpit-band only
+    // stops the *track*; the table itself still needs somewhere to overflow
+    // to at very narrow viewports).
+    body.innerHTML = `
+      ${degradedNote}
+      ${note}
+      <div style="overflow-x:auto">
+        <table class="fs-table">
+          <thead><tr><th>Category</th><th>Wt%</th><th>Flows</th><th>Verdict</th>
+            <th>vs Mkt 1w</th><th>vs Mkt 3w</th><th>vs Mkt 1m</th><th>vs Mkt 2m</th><th>vs Mkt 3m</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="9">No rows.</td></tr>'}</tbody>
+        </table>
+      </div>
+      ${unmapped}
+    `;
+  } catch (e) {
+    console.error('factor scorecard failed:', e);
+    body.innerHTML = '<div class="ev-fail">&#9888; Factor scorecard unavailable.</div>';
+  }
+}
+
+function _wireFsTabs() {
+  const tabs = $('fsTabs');
+  if (!tabs || tabs.dataset.wired) return;
+  tabs.dataset.wired = '1';
+  tabs.addEventListener('click', (e) => {
+    const btn = e.target.closest('.fs-tab');
+    if (!btn) return;
+    state.fsAxis = btn.dataset.axis;
+    for (const b of tabs.querySelectorAll('.fs-tab')) b.classList.toggle('active', b === btn);
+    loadFactorScorecard();
+  });
+}
+
+// ---------- Band 5: Shortlist ----------
+
+async function loadShortlist() {
+  const body = $('shortlistBody');
+  if (!body) return;
+  try {
+    const r = await fetchJson(`/api/cockpit/shortlist${_dateQS()}`);
+    const rows = r.rows || [];
+    if (!rows.length) {
+      body.innerHTML = '<div class="sl-empty">No high-conviction rows today.</div>';
+      return;
+    }
+    body.innerHTML = rows.map(row => {
+      // TASK_134 A.6 -- final_code is a real BuySell code (unlike Band 4's
+      // category verdicts), so actionDisplay() is directly reusable here.
+      const d = window.actionDisplay ? window.actionDisplay(row.final_code) : null;
+      const actionHtml = d
+        ? `<span class="${d.colorCls || 'act-neutral'}">${escapeHtml(d.code || d.label || '')}</span>`
+        : escapeHtml(row.final_code || '');
+      // TASK_136 C.2 -- pre-multiply AMT$ by the same suggested_size_multiplier
+      // the Risk Dial shows (state.suggestedSizeMultiplier, set by
+      // loadRiskDial()) so the user doesn't do the multiplication by hand
+      // while reading two cards. Presentation only -- AMT$ itself, and what
+      // gets written anywhere, is untouched.
+      const rawAmt = row.current_position_dollar != null ? Number(row.current_position_dollar) : null;
+      const mult = state.suggestedSizeMultiplier;
+      let amtHtml = '';
+      if (rawAmt != null && mult != null) {
+        const adjusted = rawAmt * mult;
+        amtHtml = `<span class="sl-amt${row.stop_breached ? ' sl-stop-breached' : ''}">$${Math.round(adjusted).toLocaleString()}</span>
+        <span class="sl-amt-sub">AMT$ ${Math.round(rawAmt).toLocaleString()} &times; ${mult}</span>`;
+      } else if (rawAmt != null) {
+        amtHtml = `<span class="sl-amt${row.stop_breached ? ' sl-stop-breached' : ''}">$${Math.round(rawAmt).toLocaleString()}</span>`;
+      }
+      const stopFlag = row.stop_breached ? '<span class="sl-stop-flag">stop breached</span>' : '';
+      return `<div class="sl-row">
+        <span class="sl-symbol">${escapeHtml(row.tos_symbol)}</span>
+        <span class="sl-action">${actionHtml}</span>
+        <span class="sl-desc">${escapeHtml(row.description || '')}</span>
+        ${stopFlag}
+        <span class="sl-amt-block">${amtHtml}</span>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    console.error('shortlist failed:', e);
+    body.innerHTML = '<div class="ev-fail">&#9888; Shortlist unavailable.</div>';
+  }
+}
+
+// ---------- Band 6: Housekeeping ----------
+
+async function loadHousekeeping() {
+  const line = $('housekeepingLine');
+  try {
+    const anchor = await fetchJson('/api/anchor-status').catch(() => null);
+    state.anchorDate = anchor ? anchor.anchor_date : null;
+    const ok = !anchor || !anchor.is_stale;
+    state.housekeepingOk = ok;
+    if (line) {
+      line.innerHTML = `<span class="hk-dot ${ok ? 'ok' : 'bad'}"></span>`
+        + (ok ? 'Data current.' : escapeHtml(anchor.message || 'Data behind expected market close.'));
+    }
+  } catch (e) {
+    console.error('housekeeping (anchor-status) failed:', e);
+    state.housekeepingOk = false;
+    if (line) line.innerHTML = '<span class="hk-dot bad"></span>Housekeeping check failed.';
+  }
+  await loadTxnFeedGaps();
+  await Promise.all([loadEconIndicators(), loadEarnings()]);
+}
+
+// TASK_134 C.1 -- per-account transaction-feed staleness (Schwab hist_cst /
+// Fidelity hist_ft falling behind their own hist_cs/hist_f positions).
+async function loadTxnFeedGaps() {
+  const box = $('housekeepingGaps');
+  try {
+    const r = await fetchJson('/api/cockpit/housekeeping').catch(() => null);
+    const gaps = (r && r.txn_feed_gaps) || [];
+    state.txnFeedGapCount = gaps.length;
+    if (!box) return;
+    box.innerHTML = gaps.map(g => {
+      const gapTxt = g.transactions_last
+        ? `${g.gap_trading_days} trading days behind (last transaction ${g.transactions_last})`
+        : 'no transactions ever loaded';
+      return `<div class="hk-line hk-gap-line">
+        <span class="hk-dot bad"></span>${escapeHtml(g.broker)} ${escapeHtml(g.account)} — ${gapTxt}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    console.error('txn feed gaps failed:', e);
+    state.txnFeedGapCount = 0;
+    if (box) box.innerHTML = '';
+  }
+}
+
 async function refreshAll() {
+  // Band 6 (housekeeping) resolves state.housekeepingOk/state.anchorDate
+  // first since Band 1 needs to know whether to show its stale-data warning
+  // (spec 7.2 Band 6: "When it is red, Band 1 must show a warning").
+  await loadHousekeeping();
+  // TASK_136 C.2 -- loadRiskDial() must resolve before loadShortlist() so
+  // state.suggestedSizeMultiplier is populated in time for the shortlist's
+  // pre-multiplied size; sequenced ahead of the rest instead of in the same
+  // Promise.all (order inside Promise.all is not guaranteed).
+  await loadRiskDial();
   await Promise.all([
-    loadTickers(),
-    loadEconIndicators(),
-    loadEarnings(),
-    loadQuads(),
+    loadEventsBand(),
+    loadRegimeBand(),
+    loadFactorScorecard(),
+    loadShortlist(),
     loadOutlookChanges(),
     loadBriefing(),
   ]);
@@ -637,5 +688,13 @@ async function refreshAll() {
 document.addEventListener('DOMContentLoaded', async () => {
   loadHealth();
   await loadDates();
+  _wireFsTabs();
+  const sel = $('datePicker');
+  if (sel) sel.addEventListener('change', () => {
+    state.date = sel.value;
+    refreshAll();
+  });
+  const refreshBtn = $('refreshBtn');
+  if (refreshBtn) refreshBtn.addEventListener('click', () => refreshAll());
   await refreshAll();
 });
