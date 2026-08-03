@@ -44,18 +44,25 @@ _TARGET = "drv_source_standing"
 # SSS builder (Increment 1)
 # ---------------------------------------------------------------------------
 
-def _build_sss(session: Session, as_of_date: date, run_id: int) -> list[dict]:
+def _build_sss(session: Session, as_of_date: date, run_id: int,
+               ceiling: Optional[date] = None) -> list[dict]:
     """Build SSS rows for drv_source_standing.
 
     Rule: latest whole hist_sss snapshot <= D.  The entire load at that date
     is used.  A symbol absent from that load has NO row (no carry-forward).
     Signals are computed from hist_sss columns (same math as derive_v2.py
     _derive_sss_v2_impl).
+
+    ceiling: upper bound for "latest snapshot" lookup, defaults to as_of_date.
+    Callers needing a live-anchor view (see position_ceiling in
+    etl._derive_common) pass a later ceiling; the output rows still stamp
+    as_of_date=D, only the snapshot search window changes.
     """
-    # Latest whole SSS snapshot date <= D
+    ceiling = ceiling or as_of_date
+    # Latest whole SSS snapshot date <= ceiling
     snap_row = session.execute(text(
         "SELECT MAX(snapshot_date) FROM hist_sss WHERE snapshot_date <= :d"
-    ), {"d": as_of_date}).first()
+    ), {"d": ceiling}).first()
     snap = snap_row[0] if snap_row else None
     if not snap:
         return []
@@ -133,16 +140,21 @@ def _build_sss(session: Session, as_of_date: date, run_id: int) -> list[dict]:
 def _build_etf_ii(session: Session, as_of_date: date,
                   base_table: str, change_table: str,
                   source_code: str,
-                  wt_map: dict[str, float], run_id: int) -> list[dict]:
+                  wt_map: dict[str, float], run_id: int,
+                  ceiling: Optional[date] = None) -> list[dict]:
     """Bundle-cap logic: latest hist_etf/hist_ii snapshot <= D + patches.
 
     NEUTRAL or absent = excluded (no row in drv_source_standing).
+
+    ceiling: upper bound for the base snapshot and patch lookups, defaults
+    to as_of_date; see _build_sss docstring for the live-anchor use case.
     """
-    # Latest base snapshot <= D
+    ceiling = ceiling or as_of_date
+    # Latest base snapshot <= ceiling
     snap_row = session.execute(text(
         f"SELECT MAX(snapshot_date) FROM {base_table} "
         "WHERE snapshot_date <= :d"
-    ), {"d": as_of_date}).first()
+    ), {"d": ceiling}).first()
     snap = snap_row[0] if snap_row else None
     if not snap:
         return []
@@ -159,14 +171,14 @@ def _build_etf_ii(session: Session, as_of_date: date,
         if sym:
             effective[sym] = (outlook, snap)
 
-    # Apply intra-period patches (event_date > snap AND <= D)
+    # Apply intra-period patches (event_date > snap AND <= ceiling)
     patch_rows = session.execute(text(
         f"SELECT tos_symbol, change_str, outlook, event_date "
         f"FROM {change_table} "
         "WHERE event_date > :snap AND event_date <= :d "
         "  AND tos_symbol IS NOT NULL "
         "ORDER BY event_date ASC"
-    ), {"snap": snap, "d": as_of_date}).fetchall()
+    ), {"snap": snap, "d": ceiling}).fetchall()
 
     for sym, change_str, patch_outlook, ev_date in patch_rows:
         if not sym:
@@ -207,17 +219,22 @@ def _build_etf_ii(session: Session, as_of_date: date,
 # PS builder (Increment 3)
 # ---------------------------------------------------------------------------
 
-def _build_ps(session: Session, as_of_date: date, run_id: int) -> list[dict]:
+def _build_ps(session: Session, as_of_date: date, run_id: int,
+              ceiling: Optional[date] = None) -> list[dict]:
     """PS: latest whole hist_ps snapshot <= D.
 
     Emits a row for every symbol on that snapshot, including those that
     dropped from it (they will have no row here, so action path sees REMOVE).
     Only on_list=TRUE rows are written — symbols absent from the latest
     snapshot simply have no row.
+
+    ceiling: upper bound for the snapshot lookup, defaults to as_of_date;
+    see _build_sss docstring for the live-anchor use case.
     """
+    ceiling = ceiling or as_of_date
     snap_row = session.execute(text(
         "SELECT MAX(snapshot_date) FROM hist_ps WHERE snapshot_date <= :d"
-    ), {"d": as_of_date}).first()
+    ), {"d": ceiling}).first()
     snap = snap_row[0] if snap_row else None
     if not snap:
         return []
@@ -303,11 +320,17 @@ def _build_rr(session: Session, as_of_date: date,
 
 def _build_call(session: Session, as_of_date: date,
                 lookback_days: int,
-                wt_map: dict[str, float], run_id: int) -> list[dict]:
+                wt_map: dict[str, float], run_id: int,
+                ceiling: Optional[date] = None) -> list[dict]:
     """CALL: 30-day per-symbol window (the only carry-forward exception).
 
     Most recent hist_call row per symbol within [D-lookback_days, D].
+
+    ceiling: upper bound for the window, defaults to as_of_date; the lower
+    bound stays anchored to as_of_date regardless (see _build_sss docstring
+    for the live-anchor use case).
     """
+    ceiling = ceiling or as_of_date
     rows = session.execute(text("""
         WITH ranked AS (
             SELECT tos_symbol, outlook, outlook_modifier, snapshot_date,
@@ -321,7 +344,7 @@ def _build_call(session: Session, as_of_date: date,
         )
         SELECT tos_symbol, outlook, outlook_modifier, snapshot_date
         FROM ranked WHERE rk = 1
-    """), {"d": as_of_date,
+    """), {"d": ceiling,
            "cutoff": as_of_date - timedelta(days=lookback_days)}).fetchall()
 
     out: list[dict] = []

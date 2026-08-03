@@ -25,6 +25,7 @@ from etl._derive_common import (
     _load_outlook_weights, _outlook_to_weight,  # TASK_56: consolidated
     etf_ii_patch_outlook_sql,               # D3: ETFCHG/IICHG add/remove-aware patch resolver
 )
+from etl.derive_source_standing import _build_sss, _build_etf_ii, _build_ps, _build_call
 
 log = logging.getLogger("etl.derive_outlook_action")
 
@@ -857,22 +858,27 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                 _ETF_II_CHG = {"ETF": "hist_etfchg", "II": "hist_iichg"}
 
                 if sc in _ETF_II_CHG:
-                    # ETF/II: read current from drv_source_standing (bundle-cap,
-                    # tos_symbol keyed). Previous from hist_*+chg with tos_symbol.
-                    curr_etf_rows = session.execute(text("""
-                        SELECT tos_symbol, weight, snapshot_date
-                        FROM drv_source_standing
-                        WHERE as_of_date = :d AND source_code = :sc
-                    """), {"d": as_of_date, "sc": sc}).fetchall()
+                    # ETF/II: recompute current state (bundle-cap, tos_symbol
+                    # keyed) via the same builder that feeds drv_source_standing,
+                    # but with a live-anchor ceiling (see position_ceiling) so a
+                    # same-day ETF/II change is visible in the Sources badge
+                    # before tonight's anchor advance. drv_source_standing/
+                    # drv_outlooks/the rules engine are untouched — they still
+                    # call these builders with the strict as_of_date ceiling.
+                    # Previous from hist_*+chg with tos_symbol.
+                    ceil = position_ceiling(session, as_of_date)
+                    curr_etf_built = _build_etf_ii(
+                        session, as_of_date, table, _ETF_II_CHG[sc], sc,
+                        wt_map, run_id, ceiling=ceil)
 
-                    if not curr_etf_rows:
-                        log.warning("source %s: no drv_source_standing rows at "
+                    if not curr_etf_built:
+                        log.warning("source %s: no current-state rows at "
                                     "%s — skipping", sc, as_of_date)
                         session.execute(text("RELEASE SAVEPOINT sp_source"))
                         continue
 
-                    curr_snap = curr_etf_rows[0][2]
-                    today_w = {r[0]: r[1] for r in curr_etf_rows}
+                    curr_snap = curr_etf_built[0]["snapshot_date"]
+                    today_w = {r["tos_symbol"]: r["weight"] for r in curr_etf_built}
 
                     # Previous period: latest hist_etf/hist_ii snapshot before
                     # curr_snap (using tos_symbol for correct keying)
@@ -890,19 +896,25 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                             prev_date, wt_map)
                     suppress = False
                 elif sc == "CALL":
-                    # CALL: read current from drv_source_standing (30-day window,
-                    # tos_symbol keyed). Prior-diff detection via hist_call.
+                    # CALL: recompute current state (30-day window, tos_symbol
+                    # keyed) via the same builder that feeds drv_source_standing,
+                    # but with a live-anchor ceiling (see position_ceiling) so a
+                    # same-day CALL update is visible in the Sources badge before
+                    # tonight's anchor advance. drv_source_standing/drv_outlooks/
+                    # the rules engine are untouched. Prior-diff detection via
+                    # hist_call (unchanged, still strictly anchored at as_of_date).
                     lb = int(s.get("lookback_days") or 30)
-                    # Current CALL state from drv_source_standing
-                    call_rows = session.execute(text("""
-                        SELECT tos_symbol, weight, snapshot_date, modifier
-                        FROM drv_source_standing
-                        WHERE as_of_date = :d AND source_code = 'CALL'
-                    """), {"d": as_of_date}).fetchall()
-                    # Build call states {sym: (cur_w, cur_date, prior_diff_w, prior_diff_date)}
-                    # by re-reading hist_call for the prior-diff detection only
-                    cur_call_by_sym = {r[0]: (r[1], r[2]) for r in call_rows}
-                    # Build prior-diff from hist_call for tos_symbol keyed symbols
+                    ceil = position_ceiling(session, as_of_date)
+                    call_built = _build_call(
+                        session, as_of_date, lb, wt_map, run_id, ceiling=ceil)
+                    cur_call_by_sym = {r["tos_symbol"]: (r["weight"], r["snapshot_date"])
+                                       for r in call_built}
+                    # Build prior-diff from hist_call for tos_symbol keyed symbols.
+                    # Ceiling matches cur_call_by_sym's so "current" and "the most
+                    # recent differing prior weight" are read from the same window
+                    # — using as_of_date here while cur_call_by_sym is live-extended
+                    # would pair a live current value against a strictly-anchored
+                    # comparison base. Lower bound stays anchored to as_of_date.
                     prior_diff: dict = {}
                     if cur_call_by_sym:
                         cutoff = as_of_date - timedelta(days=lb)
@@ -921,7 +933,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                             )
                             SELECT sym, outlook, outlook_modifier, snapshot_date, rk
                             FROM ranked WHERE rk <= 2 ORDER BY sym, rk
-                        """), {"d": as_of_date, "cut": cutoff}).fetchall()
+                        """), {"d": ceil, "cut": cutoff}).fetchall()
                         for sym, outlook, modifier, snap, rk in hcall_rows:
                             w = _resolve_outlook_weight(outlook, modifier, wt_map)
                             if rk == 2:
@@ -1032,23 +1044,26 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                     total_rows += len(batch)
 
             elif method == "rank":
-                # PS (weekly rank). Read current state from drv_source_standing
-                # (whole-snapshot, tos_symbol keyed). Previous from hist_ps
-                # with tos_symbol for correct comparison.
-                curr_ps_rows = session.execute(text("""
-                    SELECT tos_symbol, rank, snapshot_date
-                    FROM drv_source_standing
-                    WHERE as_of_date = :d AND source_code = 'PS'
-                """), {"d": as_of_date}).fetchall()
+                # PS (weekly rank). Recompute current state (whole-snapshot,
+                # tos_symbol keyed) via the same builder that feeds
+                # drv_source_standing, with a live-anchor ceiling so a same-day
+                # PS re-rank is visible in the Sources badge (a PS drop is a
+                # complete, final fact the moment it lands — see position_ceiling)
+                # before tonight's anchor advance. drv_source_standing/
+                # drv_outlooks/the rules engine are untouched. Previous from
+                # hist_ps with tos_symbol for correct comparison.
+                ceil = position_ceiling(session, as_of_date)
+                curr_ps_built = _build_ps(session, as_of_date, run_id, ceiling=ceil)
 
-                if not curr_ps_rows:
-                    log.warning("source %s: no drv_source_standing rows for "
+                if not curr_ps_built:
+                    log.warning("source %s: no current-state rows for "
                                 "PS at %s — skipping", sc, as_of_date)
                     session.execute(text("RELEASE SAVEPOINT sp_source"))
                     continue
 
-                curr_snap = curr_ps_rows[0][2]  # snapshot_date
-                today_r = {r[0]: r[1] for r in curr_ps_rows if r[1] is not None}
+                curr_snap = curr_ps_built[0]["snapshot_date"]
+                today_r = {r["tos_symbol"]: r["rank"] for r in curr_ps_built
+                           if r["rank"] is not None}
 
                 # Previous snapshot: most recent hist_ps snapshot before curr_snap
                 prev_snap_row = session.execute(text(f"""
@@ -1106,24 +1121,23 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
             elif method == "rank_pct_delta":
                 # SSS (weekly). Action is computed from pct_delta only;
                 # anlst_best_idea_rank is display-only.
-                # Reads current state from drv_source_standing (whole-snapshot,
-                # tos_symbol keyed). Previous state from hist_sss with tos_symbol.
-                # Guard: drv_source_standing must have SSS rows for as_of_date.
-                curr_sss_rows = session.execute(text("""
-                    SELECT tos_symbol, raw_value AS pd, rank AS arank,
-                           snapshot_date
-                    FROM drv_source_standing
-                    WHERE as_of_date = :d AND source_code = 'SSS'
-                """), {"d": as_of_date}).fetchall()
+                # Recompute current state (whole-snapshot, tos_symbol keyed) via
+                # the same builder that feeds drv_source_standing, with a
+                # live-anchor ceiling so a same-day SSS re-rank is visible in the
+                # Sources badge before tonight's anchor advance.
+                # drv_source_standing/drv_outlooks/the rules engine are
+                # untouched. Previous state from hist_sss with tos_symbol.
+                ceil = position_ceiling(session, as_of_date)
+                curr_sss_built = _build_sss(session, as_of_date, run_id, ceiling=ceil)
 
-                if not curr_sss_rows:
-                    log.warning("source %s: no drv_source_standing rows for "
+                if not curr_sss_built:
+                    log.warning("source %s: no current-state rows for "
                                 "SSS at %s — skipping", sc, as_of_date)
                     session.execute(text("RELEASE SAVEPOINT sp_source"))
                     continue
 
-                curr_snap = curr_sss_rows[0][3]  # snapshot_date from standing
-                today = {r[0]: (r[1], r[2]) for r in curr_sss_rows}
+                curr_snap = curr_sss_built[0]["snapshot_date"]
+                today = {r["tos_symbol"]: (r["raw_value"], r["rank"]) for r in curr_sss_built}
 
                 # Previous snapshot: most recent hist_sss snapshot before curr_snap
                 prev_snap_row = session.execute(text(f"""
@@ -1286,7 +1300,12 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                 # 10): the most recent Top-5 appearance per symbol in the
                 # trailing window wins, so the badge persists briefly after
                 # a symbol drops off the list rather than vanishing next day.
+                # Same live-anchor ceiling as RTA/SSS-change (see position_ceiling
+                # docstring): always HOLD/informational (_action_top5), so same-day
+                # visibility carries none of CALL's look-ahead risk on a real
+                # ADD/REMOVE recommendation.
                 lb = int(s.get("lookback_days") or 10)
+                top5_ceil = position_ceiling(session, as_of_date)
                 top5_rows = session.execute(text(f"""
                     WITH ranked AS (
                         SELECT COALESCE(tos_symbol, symbol) AS sym,
@@ -1296,7 +1315,7 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                                    ORDER BY snapshot_date DESC, rank ASC
                                ) AS rk
                           FROM hist_call_top5
-                         WHERE snapshot_date <= '{as_of_date}'
+                         WHERE snapshot_date <= '{top5_ceil}'
                            AND snapshot_date >= ('{as_of_date}'::date - ('{lb}' || ' days')::interval)::date
                            AND COALESCE(tos_symbol, symbol) IS NOT NULL
                     )
