@@ -872,7 +872,7 @@ def parse_the_call(email: Email) -> Parsed:
     # Macro Commentary — general market-wide prose (Quad/FX/commodity framing),
     # not tied to one symbol. Stored like Early Look's Key Takeaways: one note,
     # full text, tagged with whatever tickers happen to appear in it.
-    mc = re.search(r"Macro Commentary\s*(.+?)\s*Sector Summary", text, re.S)
+    mc = re.search(r"Macro Commentary\s*(.+?)\s*Sector Summary", text, re.S | re.IGNORECASE)
     if mc:
         commentary = re.sub(r"\s+", " ", mc.group(1)).strip()
         if commentary:
@@ -918,7 +918,7 @@ def parse_the_call(email: Email) -> Parsed:
     # them, rather than requiring exactly one ticker immediately before ":".
     # The first 5 matched paragraphs are the Top-5 list; the rest is commentary.
     top_rows = []
-    m = re.search(r"Top 5 Most Actionable(?: Stock Ideas)?(.+)", text, re.S)
+    m = re.search(r"Top 5 Most Actionable(?: Stock Ideas)?(.+)", text, re.S | re.IGNORECASE)
     if m:
         seg = m.group(1)
         entries = []
