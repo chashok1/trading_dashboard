@@ -807,7 +807,7 @@ function _regimeVerdictHtml(areasData) {
     if (m && m.zone === 'elevated') flags.push(label + ' elevated');
   }
   const spx = bySym['SPX'] || bySym['$SPX'];
-  if (spx && (spx.is_hot || spx.is_cold)) flags.push('S&P not investable');
+  if (spx && (spx.is_hot || spx.is_cold)) flags.push('S&P price stretched');
   const dxy = bySym['$DXY'];
   if (dxy && dxy.is_hot) flags.push('Dollar strong');
   const tlt = bySym['TLT'];
