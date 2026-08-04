@@ -414,8 +414,7 @@ async function loadEventsBand() {
       <div class="ev-row ev-row-${escapeHtml(ev.severity || 'info')}">
         <span class="ev-rail"></span>
         <span class="ev-sev ${escapeHtml(ev.severity || 'info')}">${escapeHtml(ev.severity || '')}</span>
-        <span>${escapeHtml(ev.title || '')}</span>
-        ${ev.read_text ? `<span class="ev-read">— ${escapeHtml(ev.read_text)}</span>` : ''}
+        <span>${escapeHtml(ev.title || '')}${ev.read_text ? ` <span class="ev-read">— ${escapeHtml(ev.read_text)}</span>` : ''}</span>
       </div>`).join('') || '<div class="ev-quiet">No events.</div>';
   } catch (e) {
     console.error('events band failed:', e);

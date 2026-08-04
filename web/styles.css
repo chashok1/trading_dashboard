@@ -957,6 +957,19 @@ tbody td.num { font-variant-numeric: tabular-nums; }
 }
 .market-tape::-webkit-scrollbar { display: none; }
 
+/* Dashboard-only TradingView ticker-tape (web/dashboard_tv_chart_tape.js)
+   -- replaces .market-tape on / only. Single auto-scrolling (marquee)
+   symbol/price/%change widget, no per-symbol chart -- reverted back from
+   the static Single Ticker card row per user request (the scrolling was
+   wanted after all). */
+.tv-chart-tape {
+  padding: 0; background: #f0eefb; margin-top: 2px;
+  position: sticky; top: 0; z-index: 90; flex-shrink: 0;
+  overflow: hidden;
+}
+.tv-chart-tape .tradingview-widget-container,
+.tv-chart-tape .tradingview-widget-container__widget { width: 100%; }
+
 /* Right-aligned as-of time on the mini-tape (TASK_116) */
 .mt-asof {
   margin-left: auto;
@@ -1872,6 +1885,22 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    above the events list (see index.html) per user request. Housekeeping is
    likewise no longer its own band -- moved into the Band 4 fs-row as a 4th
    fs-mini column. Neither has a grid-area left to assign. */
+
+/* Row 1 height cap (dial/events/shortlist): #eventsBody and #shortlistBody
+   render variable-length lists that would otherwise stretch the whole grid
+   row to match whichever band grew tallest. Cap the band and let its list
+   body scroll internally instead. */
+#riskDialBand, #eventsBand, #shortlistBand {
+  max-height: 45vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#riskDialBody, #eventsBody, #shortlistBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
 
 /* TASK_136 A.4 -- <=1500px: two columns, shortlist moves under the dial.
    <=1100px: single column, current (pre-grid) behaviour -- DOM order in
