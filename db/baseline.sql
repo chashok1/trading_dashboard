@@ -7607,6 +7607,11 @@ CREATE TABLE IF NOT EXISTS drv_category_perf (
     target_max       numeric,
     twr_1w  numeric, twr_3w  numeric, twr_1m  numeric, twr_2m  numeric, twr_3m numeric,
     bench_1w numeric, bench_3w numeric, bench_1m numeric, bench_2m numeric, bench_3m numeric,
+    -- TASK_140: single-day columns. twr/bench_today = 1-day return ending D;
+    -- twr/bench_yesterday = the ISOLATED 1-day return ending D-1 (not a
+    -- 2-day cumulative window) -- see etl/derive_category_perf.py::_twr_window.
+    twr_today numeric, twr_yesterday numeric,
+    bench_today numeric, bench_yesterday numeric,
     bench_symbol     text,
     flows_confidence text,              -- 'green' | 'amber' | 'suspect'
     quad_stance      text,              -- BULLISH | NEUTRAL | BEARISH
@@ -7615,6 +7620,10 @@ CREATE TABLE IF NOT EXISTS drv_category_perf (
     derived_at       timestamp NOT NULL DEFAULT now(),
     PRIMARY KEY (as_of_date, axis, category)
 );
+ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS twr_today numeric;
+ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS twr_yesterday numeric;
+ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS bench_today numeric;
+ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS bench_yesterday numeric;
 
 -- Phase 4.1: ToS market internals (INT tab) — $ADVN/$DECN/$UVOL/$DVOL/$TRIN.
 -- Deliberately NOT part of drv_symbols/hist_td universe (see CLAUDE.md

@@ -41,7 +41,6 @@
   </header>
 
   <main>
-    <section class="outlook-banner" id="outlookBar" hidden></section>
     <section class="briefing-card" id="briefingCard" hidden></section>
 
     <style>
@@ -74,41 +73,6 @@
       .briefing-block.ok   { border-color: #86efac; background: #f0fdf4; }
     </style>
 
-    <style>
-      .outlook-banner {
-        padding: 8px 12px;
-        background: #fff8e1;
-        border: 1px solid #f3d27a;
-        border-radius: 6px;
-        margin: 4px 12px 8px;
-        font-size: 12px;
-        line-height: 1.7;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        align-items: center;
-      }
-      .outlook-head { font-weight: 600; color: #5b4400; margin-right: 4px; }
-      .outlook-count {
-        display: inline-block; padding: 2px 8px; border-radius: 10px;
-        font-weight: 600; font-size: 11px; margin-right: 4px;
-      }
-      .outlook-count.outlook-remove   { background: #fee2e2; color: #7f1d1d; }
-      .outlook-count.outlook-reduce   { background: #ffedd5; color: #7c2d12; }
-      .outlook-count.outlook-add      { background: #dbeafe; color: #1e3a8a; }
-      .outlook-count.outlook-increase { background: #dcfce7; color: #14532d; }
-      .outlook-chip {
-        display: inline-block; padding: 1px 8px; border-radius: 4px;
-        font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 11px;
-        text-decoration: none; border: 1px solid transparent;
-      }
-      .outlook-chip.outlook-remove   { background: #fee2e2; color: #7f1d1d; border-color: #fca5a5; }
-      .outlook-chip.outlook-reduce   { background: #ffedd5; color: #7c2d12; border-color: #fdba74; }
-      .outlook-chip.outlook-add      { background: #dbeafe; color: #1e3a8a; border-color: #93c5fd; }
-      .outlook-chip.outlook-increase { background: #dcfce7; color: #14532d; border-color: #86efac; }
-      .outlook-chip:hover { filter: brightness(0.95); }
-    </style>
-
     <!-- TASK_134: the six-band cockpit's page-specific CSS used to live inline
          here (TASK_133 Phase 7). It is now in web/styles.css under the
          "Dashboard cockpit" banner -- moved because it's a whole screen's
@@ -116,85 +80,129 @@
          above) and keeping it in styles.css is what makes it share the
          :root token set instead of drifting into its own palette again. -->
 
+    <!-- TASK_140 relayout -- three columns: dial-changed-col (Risk Dial ->
+         Regime -> What changed -> Housekeeping, all stacked), cat-col
+         (Sector/Asset class/Style stacked -- each renders simultaneously,
+         no tab switcher), and the right-rail (Indicator/Event -- Shortlist
+         removed, Housekeeping moved into dial-changed-col, both per user
+         request). Element IDs are unchanged throughout (econBody/
+         earningsBody/housekeepingLine/housekeepingGaps/regimeStrip) so
+         their loaders in app.js need no edits, only containers moved. -->
     <div class="cockpit-bands">
-      <section class="cockpit-band" id="riskDialBand">
-        <h2><span class="band-num">1</span>Risk Dial</h2>
-        <div id="riskDialBody">Loading…</div>
-      </section>
+      <div class="main-col">
+        <!-- TASK_140 follow-up -- What changed moved below Risk Dial
+             (stacked, was side by side); Sector/Asset class/Style now form
+             their own vertical column in the space that opened up beside
+             them, instead of spanning full-width below both. -->
+        <div class="dial-changed-col">
+          <!-- Regime lives inside the Risk Dial card now, toward the bottom
+               -- #regimeStrip is a sibling of #riskDialBody (NOT nested
+               inside it), since loadRiskDial() replaces #riskDialBody's
+               innerHTML wholesale on every refresh and would wipe out
+               anything nested there. loadRegimeBand() still targets
+               #regimeStrip by id regardless of container, unchanged. -->
+          <section class="cockpit-band" id="riskDialBand">
+            <div id="riskDialBody">Loading…</div>
+            <div id="regimeStrip">Loading…</div>
+          </section>
 
-      <section class="cockpit-band" id="eventsBand">
-        <h2><span class="band-num">2</span>What changed</h2>
-        <!-- Regime (formerly Band 3, its own full-width strip) combined here
-             per user request -- sits above the events list in the same band.
-             #regimeStrip id unchanged, so app.js needs no edits. -->
-        <div class="fs-note">Regime</div>
-        <div id="regimeStrip">Loading…</div>
-        <div id="eventsBody">Loading…</div>
-      </section>
+          <section class="cockpit-band" id="eventsBand">
+            <div id="eventsBody">Loading…</div>
+          </section>
 
-      <section class="cockpit-band" id="factorScorecardBand">
-        <!-- Indicator/Event mini-grids moved here from Band 6 (Housekeeping)
-             per user request -- they sit beside the scorecard table instead
-             of at the bottom of Housekeeping. Element IDs unchanged, so
-             loadEconIndicators()/loadEarnings() in app.js need no edits. -->
-        <div class="fs-row">
-          <div class="fs-main">
-            <div class="fs-tabs" id="fsTabs">
-              <button class="fs-tab active" data-axis="sector">Sector</button>
-              <button class="fs-tab" data-axis="asset_class">Asset class</button>
-              <button class="fs-tab" data-axis="style">Style</button>
-            </div>
-            <div id="factorScorecardBody">Loading…</div>
-          </div>
-          <div class="fs-mini">
-            <div class="side-scroll">
-              <table class="mini-grid">
-                <thead>
-                  <tr>
-                    <th>Indicator</th>
-                    <th>Date</th>
-                    <th class="num">Days</th>
-                    <th>Signal</th>
-                  </tr>
-                </thead>
-                <tbody id="econBody"></tbody>
-              </table>
-              <div id="econEmpty" class="empty-note" hidden>No active indicators.</div>
-            </div>
-          </div>
-          <div class="fs-mini">
-            <div class="side-scroll">
-              <table class="mini-grid">
-                <thead>
-                  <tr>
-                    <th>Event</th>
-                    <th>Date</th>
-                    <th class="num">In</th>
-                  </tr>
-                </thead>
-                <tbody id="earningsBody"></tbody>
-              </table>
-              <div id="earningsEmpty" class="empty-note" hidden>No upcoming events.</div>
-            </div>
-          </div>
-          <div class="fs-mini">
-            <!-- Housekeeping (formerly Band 6, its own full-width band) moved
-                 here per user request -- sits next to the Event grid. -->
-            <div class="fs-note">Housekeeping</div>
+          <!-- Housekeeping moved here from the right rail, below What
+               changed, per user request -- no header text. -->
+          <section class="cockpit-band" id="housekeepingBand">
             <div id="housekeepingLine" class="hk-line">Loading…</div>
             <div id="housekeepingGaps"></div>
-          </div>
+          </section>
         </div>
-      </section>
 
-      <section class="cockpit-band" id="shortlistBand">
-        <h2><span class="band-num">5</span>Shortlist</h2>
-        <div id="shortlistBody">Loading…</div>
-      </section>
+        <div class="cat-col">
+          <!-- TASK_140 follow-up 2/3 -- inline chart replaces the
+               Composition popup: each axis's pie/bar renders directly
+               beside its table, always visible, no click needed. Color
+               legend lives in the table's Category column (a swatch per
+               row, same color as that category's slice/bar) instead of a
+               separate chip list -- see app.js::_catColorMap. Chart is
+               filled in by loadFactorScorecard() itself (same fetch, no
+               second round-trip). -->
+          <!-- TASK_140 follow-up 4 -- axis title moved from its own row
+               above .cat-body into .cat-chart's first line, so it sits at
+               the same height as the table's own grid-header row (both are
+               top-aligned flex children of .cat-body) instead of floating
+               above the whole card. -->
+          <section class="cockpit-band cat-section" id="sectorScorecardBand">
+            <div class="cat-body">
+              <div class="cat-chart">
+                <h3 class="cat-chart-title"><span class="axis-dot axis-sector"></span>Sector</h3>
+                <svg class="chart" id="sectorChart" viewBox="0 0 200 200"></svg>
+              </div>
+              <div class="cat-table-col" id="sectorScorecardBody">Loading…</div>
+            </div>
+          </section>
+
+          <section class="cockpit-band cat-section" id="assetClassScorecardBand">
+            <div class="cat-body">
+              <div class="cat-chart">
+                <h3 class="cat-chart-title"><span class="axis-dot axis-asset-class"></span>Asset class</h3>
+                <svg class="chart" id="assetChart" viewBox="0 0 200 200"></svg>
+              </div>
+              <div class="cat-table-col" id="assetClassScorecardBody">Loading…</div>
+            </div>
+          </section>
+
+          <section class="cockpit-band cat-section" id="styleScorecardBand">
+            <div class="cat-body">
+              <div class="cat-chart">
+                <h3 class="cat-chart-title"><span class="axis-dot axis-style"></span>Style</h3>
+                <svg class="chart" id="styleChart" viewBox="0 0 200 200"></svg>
+                <div class="unmapped-note">Bars, not a pie — style tags overlap, so weights don't sum to 100%.</div>
+              </div>
+              <div class="cat-table-col" id="styleScorecardBody">Loading…</div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="right-rail">
+        <section class="cockpit-band rail-band" id="indicatorBand">
+          <div class="side-scroll">
+            <table class="mini-grid">
+              <thead>
+                <tr>
+                  <th>Indicator</th>
+                  <th>Date</th>
+                  <th class="num">Days</th>
+                  <th>Signal</th>
+                </tr>
+              </thead>
+              <tbody id="econBody"></tbody>
+            </table>
+            <div id="econEmpty" class="empty-note" hidden>No active indicators.</div>
+          </div>
+        </section>
+
+        <section class="cockpit-band rail-band" id="eventBand">
+          <div class="side-scroll">
+            <table class="mini-grid">
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>Date</th>
+                  <th class="num">In</th>
+                </tr>
+              </thead>
+              <tbody id="earningsBody"></tbody>
+            </table>
+            <div id="earningsEmpty" class="empty-note" hidden>No upcoming events.</div>
+          </div>
+        </section>
+      </div>
     </div>
   </main>
 
-
+  <div id="tip"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
   <script src="/static/_common.js"></script>

@@ -32,6 +32,14 @@ from etl.derive_macro import _classify_style
 log = logging.getLogger(__name__)
 
 WINDOWS = {"1w": 5, "3w": 15, "1m": 21, "2m": 42, "3m": 63}
+# TASK_140 -- single-day windows, each (window_days, end_offset). "today" is
+# the 1-day return ending at D (calendar[-1]); "yesterday" is the isolated
+# 1-day return ending at D-1 (calendar[-2]) -- NOT a 2-day cumulative window,
+# see _twr_window's end_offset docstring. Kept separate from WINDOWS (which
+# every other flows_confidence/verdict computation still iterates over
+# unchanged) so CALENDAR_BUFFER and the vs-Mkt trailing-window columns are
+# unaffected by this addition.
+EXTRA_WINDOWS = {"today": (1, 0), "yesterday": (1, 1)}
 CALENDAR_BUFFER = 70          # trading days fetched (>= max window + 1 for the baseline day)
 FLOW_GUARD_PCT = 25.0          # |r_t| > this -> flow-artefact guard (spec 5.2)
 
@@ -359,9 +367,14 @@ def _build_series(positions: list, flows: list, cat_map: dict, cash_keys: set,
     return series
 
 
-def _twr_window(by_date: dict, calendar: list, window_days: int) -> tuple:
+def _twr_window(by_date: dict, calendar: list, window_days: int, end_offset: int = 0) -> tuple:
     """Returns (twr, flows_confidence, detail). calendar is ascending; the
-    window is the last `window_days` steps ending at calendar[-1].
+    window is `window_days` steps ending `end_offset` days back from
+    calendar[-1] -- end_offset=0 (default) ends at calendar[-1] (today, D);
+    end_offset=1 ends at calendar[-2] (yesterday, D-1), used for the
+    "Yesterday" column, an isolated single day, not "today back through
+    yesterday" -- that distinction is why this needs its own offset rather
+    than just window_days=2.
 
     Two independent guards force r_t=0 and mark the window 'suspect': (1) the
     original |r_t| > 25% flow-artefact guard, and (2) (round 2 / Part A) an
@@ -369,9 +382,10 @@ def _twr_window(by_date: dict, calendar: list, window_days: int) -> tuple:
     matching hist_cst/hist_ft row, which the 25% guard alone would miss
     whenever the swap is small relative to the category's total value (see
     _build_series docstring and DEV_HANDOFF.md)."""
-    if len(calendar) <= window_days:
+    if len(calendar) <= window_days + end_offset:
         return None, "amber", {"reason": "insufficient calendar history"}
-    idx_dates = calendar[-(window_days + 1):]  # window_days+1 points -> window_days steps
+    end_idx = len(calendar) - end_offset
+    idx_dates = calendar[end_idx - (window_days + 1):end_idx]  # window_days+1 points -> window_days steps
     product = 1.0
     suspect = False
     day_count = 0
@@ -405,10 +419,12 @@ def _twr_window(by_date: dict, calendar: list, window_days: int) -> tuple:
     return twr, confidence, detail
 
 
-def _bench_return(session: Session, symbol: Optional[str], calendar: list, window_days: int) -> Optional[float]:
-    if not symbol or len(calendar) <= window_days:
+def _bench_return(session: Session, symbol: Optional[str], calendar: list, window_days: int,
+                   end_offset: int = 0) -> Optional[float]:
+    if not symbol or len(calendar) <= window_days + end_offset:
         return None
-    d_start, d_end = calendar[-(window_days + 1)], calendar[-1]
+    end_idx = len(calendar) - end_offset
+    d_start, d_end = calendar[end_idx - (window_days + 1)], calendar[end_idx - 1]
     rows = session.execute(text(
         "SELECT as_of_date, last_price FROM drv_quote WHERE tos_symbol = :s "
         "AND as_of_date IN (:a, :b)"
@@ -567,6 +583,14 @@ def _derive_category_perf_impl(session: Session, as_of_date: date, run_id) -> in
                 bench[f"bench_{wlabel}"] = b
                 window_detail[wlabel] = {"confidence": conf, **detail_w}
                 if len(calendar) > wdays:
+                    confs.append(conf)
+            for wlabel, (wdays, offset) in EXTRA_WINDOWS.items():
+                t, conf, detail_w = _twr_window(by_date, calendar, wdays, offset)
+                twr[f"twr_{wlabel}"] = t
+                b = _bench_return(session, etf_map.get(category), calendar, wdays, offset)
+                bench[f"bench_{wlabel}"] = b
+                window_detail[wlabel] = {"confidence": conf, **detail_w}
+                if len(calendar) > wdays + offset:
                     confs.append(conf)
             # flows_confidence: worst across windows that had data
             flows_confidence = ("suspect" if "suspect" in confs

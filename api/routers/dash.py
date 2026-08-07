@@ -3120,6 +3120,9 @@ def get_portfolio_trends(
     account: Optional[str] = Query(None),
     source:  Optional[str] = Query(None, description="CS | F | (none = both)"),
     group:   Optional[str] = Query(None, description="Group name (ref_accounts.group_name) — ignored if account is set"),
+    symbols: Optional[str] = Query(None, description="TASK_139: comma-separated tos_symbol list "
+                                    "(Portfolio screen's Category filter) -- restricts every series "
+                                    "to just those symbols' positions."),
 ):
     """Portfolio trend data for the Trends panel on the Positions tab.
 
@@ -3130,6 +3133,12 @@ def get_portfolio_trends(
       - day_change[]       -- daily P&L per date (held positions only, excludes cash)
       - cumulative_pl[]    -- running sum of day_change
       - per_account[acct]  -- per-account Total (market value + cash) series for sparklines
+
+    When `symbols` is set, cash contributes nothing (a cash balance doesn't
+    belong to any sector/asset-class/style) and the cashflow-derived
+    pre-tracking-window injection below is skipped entirely -- a deposit/
+    withdrawal is an account-level event, not attributable to one category,
+    so folding it into a category-filtered series would misstate it.
 
     Period maps to a start-date relative to today:
       mtd = 1st of current month, ytd = Jan 1, 1y = 365 days back, 5y = 5*365 back
@@ -3167,6 +3176,12 @@ def get_portfolio_trends(
     params: dict = {"start": start, "end": end}
     if account:
         params["acct"] = account
+
+    symbol_list = [x.strip() for x in symbols.split(",") if x.strip()] if symbols else None
+    if symbol_list:
+        params["symbols"] = symbol_list
+    cs_sym_clause = " AND tos_symbol = ANY(:symbols)" if symbol_list else ""
+    f_sym_clause  = " AND hist_f.tos_symbol = ANY(:symbols)" if symbol_list else ""
 
     # Group filter (ref_accounts.group_name) — resolves to a list of raw
     # account identifiers (account_number, which for CS IS hist_cs.account
@@ -3213,7 +3228,7 @@ def get_portfolio_trends(
                    SUM(CASE WHEN {CS_IS_CASH}     THEN market_value ELSE 0 END)        AS cash,
                    SUM(CASE WHEN {CS_IS_NOT_CASH} THEN COALESCE(day_chng_dollar,0) ELSE 0 END) AS dc
               FROM hist_cs
-             WHERE snapshot_date BETWEEN :start AND :end {cs_acct_clause}
+             WHERE snapshot_date BETWEEN :start AND :end {cs_acct_clause} {cs_sym_clause}
              GROUP BY snapshot_date, account
         """)
     if inc_f:
@@ -3225,7 +3240,7 @@ def get_portfolio_trends(
                    SUM(CASE WHEN {F_IS_NOT_CASH} THEN today_gl_dollar  ELSE 0 END) AS dc
               FROM hist_f
               LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
-             WHERE snapshot_date BETWEEN :start AND :end {f_acct_clause}
+             WHERE snapshot_date BETWEEN :start AND :end {f_acct_clause} {f_sym_clause}
              GROUP BY snapshot_date, hist_f.account_number, hist_f.account_name, ra.short_name
         """)
     if not unions:
@@ -3266,7 +3281,7 @@ def get_portfolio_trends(
               JOIN (
                 SELECT account, symbol, MIN(snapshot_date) AS first_date
                   FROM hist_cs
-                 WHERE snapshot_date BETWEEN :start AND :end AND {CS_IS_NOT_CASH} {cs_acct_clause}
+                 WHERE snapshot_date BETWEEN :start AND :end AND {CS_IS_NOT_CASH} {cs_acct_clause} {cs_sym_clause}
                  GROUP BY account, symbol
               ) fs ON fs.account = hist_cs.account AND fs.symbol = hist_cs.symbol
                   AND fs.first_date = hist_cs.snapshot_date
@@ -3283,7 +3298,7 @@ def get_portfolio_trends(
                 SELECT hist_f.account_number, hist_f.symbol, MIN(hist_f.snapshot_date) AS first_date
                   FROM hist_f
                   LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
-                 WHERE hist_f.snapshot_date BETWEEN :start AND :end AND {F_IS_NOT_CASH} {f_acct_clause}
+                 WHERE hist_f.snapshot_date BETWEEN :start AND :end AND {F_IS_NOT_CASH} {f_acct_clause} {f_sym_clause}
                  GROUP BY hist_f.account_number, hist_f.symbol
               ) fs ON fs.account_number = hist_f.account_number AND fs.symbol = hist_f.symbol
                   AND fs.first_date = hist_f.snapshot_date
@@ -3296,7 +3311,14 @@ def get_portfolio_trends(
         if catchup_unions:
             catchup_sql = "SELECT d, acct, catchup FROM (" + " UNION ALL ".join(catchup_unions) + ") u"
             catchup_rows = s.execute(text(catchup_sql), params).all()
-        cashflow_rows = s.execute(text(
+        # Skipped entirely when symbol_list is set -- see the docstring note:
+        # a deposit/withdrawal is account-level, not attributable to one
+        # category, so injecting it into a category-filtered series would
+        # misstate it. Leaving cashflow_rows empty also makes
+        # full_cashflow_coverage below False automatically (cf_schedule
+        # stays empty), so the simpler day_change-based cumulative_pl path
+        # is used instead.
+        cashflow_rows = [] if symbol_list else s.execute(text(
             "SELECT source, account, flow_date, amount FROM ref_account_cashflow "
             "WHERE flow_date BETWEEN :start AND :end ORDER BY source, account, flow_date"
         ), {"start": start, "end": end}).all()

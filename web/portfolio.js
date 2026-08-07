@@ -50,6 +50,14 @@ async function loadTrends() {
     const params = new URLSearchParams({ period });
     if (state.filters.account) params.set('account', state.filters.account);
     if (state.filters.source)  params.set('source',  state.filters.source);
+    // TASK_139 -- Category filter narrows the Trends charts too, not just
+    // the grid: /api/portfolio/trends?symbols=... restricts every series
+    // (account_value/day_change/cumulative_pl/per_account) to just these
+    // symbols' positions, and drops the cashflow-injection step server-side
+    // (a deposit isn't attributable to one category).
+    if (state.categorySymbols && state.categorySymbols.size) {
+      params.set('symbols', Array.from(state.categorySymbols).join(','));
+    }
     if (state.filters.group && !state.filters.account) params.set('group', state.filters.group);
     let data;
     try {
@@ -658,6 +666,31 @@ function renderKpiTiles(data) {
   }
 }
 
+// TASK_139 -- Sums state.filtered directly (mirrors recomputeLatestSummary's
+// aggregation). Used only when the Category filter is active: none of the
+// account/source/group dispatch paths below know about categorySymbols
+// (they all aggregate from state.summary.by_account, which has no concept
+// of category), but state.filtered already reflects every active filter
+// combined -- category plus whatever else -- so summing it directly is
+// correct regardless of what other filters are simultaneously set.
+function computeFilteredAggregate() {
+  let mv = 0, tg = 0, cb = 0, cash = 0;
+  for (const r of state.filtered || []) {
+    if (isCashRow(r)) {
+      if (r.market_value != null) cash += Number(r.market_value);
+      continue;
+    }
+    if (r.market_value      != null) mv += Number(r.market_value);
+    if (r.today_gain_dollar != null) tg += Number(r.today_gain_dollar);
+    if (r.cost_basis        != null) cb += Number(r.cost_basis);
+  }
+  return {
+    market_value: mv, today_gain_dollar: tg, cost_basis: cb, cash_value: cash,
+    total_gain_dollar: mv - cb,
+    total_gain_pct: cb !== 0 ? ((mv - cb) / cb) * 100 : null,
+  };
+}
+
 function updateKpiTiles() {
   // Dispatch KPI tile rendering based on current filter state.
   // If a specific account is selected, show that account's data.
@@ -665,6 +698,13 @@ function updateKpiTiles() {
   // Otherwise, show global totals.
   const s = state.summary;
   if (!s) return;
+
+  // Category filter takes priority over every branch below -- see
+  // computeFilteredAggregate()'s comment.
+  if (state.filters.catValue) {
+    renderKpiTiles(computeFilteredAggregate());
+    return;
+  }
 
   const selectedAcct = state.filters.account;
   const selectedSrc  = state.filters.source;
@@ -868,6 +908,8 @@ async function loadCategoryExposure() {
     state.categorySymbols = null;
     panel.style.display = 'none';
     applyClientFilter();
+    updateKpiTiles();
+    loadTrends();
     return;
   }
   try {
@@ -880,6 +922,8 @@ async function loadCategoryExposure() {
     renderAcctExposurePanel(data);
     panel.style.display = '';
     applyClientFilter();
+    updateKpiTiles();
+    loadTrends();
   } catch (e) {
     console.error('category exposure failed:', e);
     panel.style.display = 'none';

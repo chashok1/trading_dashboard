@@ -37,6 +37,18 @@
   /* Mixed / watch */
   --act-mixed:             #8a6028;
   --act-mixed-bg:          #f2e8c4;
+
+  /* TASK_140 -- categorical palette for composition pies/bars (Sector/Asset
+     class/Style axis dots + Composition popup slices). Validated with
+     dataviz's palette validator (light mode, all six checks pass): lightness
+     band, chroma floor, CVD adjacent-pair separation, normal-vision floor,
+     contrast vs surface. Order is fixed and assigned by index, never cycled
+     per-chart -- see composition_modal.js. --cat-unmapped is deliberately
+     outside this set (a distinct neutral, not a 10th hue) since "Unmapped"
+     is a real bucket, not a category on par with the rest. */
+  --cat1: #1d4ed8; --cat2: #0f9488; --cat3: #b45309; --cat4: #7c3aed; --cat5: #db2777;
+  --cat6: #15803d; --cat7: #0369a1; --cat8: #c2410c; --cat9: #4f46e5;
+  --cat-unmapped: #a8a29e;
 }
 
 /* ── Action color utility classes (token-driven) ────────────────────────── */
@@ -1860,61 +1872,62 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    tokens (--bull/--bear/--warn/--ok/--accent/--text-1/2/3/--border/--act-*) so
    the cockpit shares the app's palette instead of reading as a different
    product bolted on. See docs/dashboard_cockpit_design.md. */
-/* TASK_136 A.2/A.3 -- 12-col grid: regime strip full width on top, dial/
-   events/shortlist share one row (the morning decision, left to right),
-   scorecard full width (the only band with a genuine width requirement),
-   housekeeping full width and thin. `minmax(0, 1fr)` on the columns AND
-   `min-width: 0` on .cockpit-band below are both load-bearing -- a grid
-   track defaults to min-content, so the scorecard table would otherwise
-   force its column wider than its share and push the whole page sideways. */
+/* TASK_140 relayout (+ follow-up) -- three columns: dial-changed-col (Risk
+   Dial, What changed stacked below it), cat-col (Sector/Asset class/Style
+   stacked -- gets more width since each table runs 12 columns wide with
+   Today/Yesterday added), and a right rail spanning both rows (Shortlist/
+   Indicator/Event/Housekeeping, one vertical column). Replaces the former
+   12-col grid-template-areas layout (dial/events/short across row 1,
+   scorecard full-width row 2) -- see docs/dashboard_cockpit_design.md for
+   the pre-relayout history. `min-width: 0` on .cockpit-band is still load-
+   bearing for the same reason as before: a grid/flex item's automatic min
+   size defaults to its content's min-content size, which would otherwise
+   push a wide table's column wider than its share -- each scorecard table
+   still wraps in its own overflow-x:auto (see app.js) so a narrower cat-col
+   degrades to a per-table scrollbar instead of forcing the column wider. */
 .cockpit-bands {
   display: grid;
   gap: 8px;
   padding: 0 8px 8px;
-  align-content: start;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  grid-template-areas:
-    "dial   dial   dial   dial   events events events events short  short  short  short"
-    "score  score  score  score  score  score  score  score  score  score  score  score";
+  align-items: start;
+  grid-template-columns: 1fr 300px;
 }
-#riskDialBand        { grid-area: dial;   }
-#eventsBand          { grid-area: events; }
-#shortlistBand       { grid-area: short;  }
-#factorScorecardBand { grid-area: score;  }
-/* Regime is no longer its own band -- combined into the "What changed" band
-   above the events list (see index.html) per user request. Housekeeping is
-   likewise no longer its own band -- moved into the Band 4 fs-row as a 4th
-   fs-mini column. Neither has a grid-area left to assign. */
+/* dial-changed-col reduced to 75% of its former share (0.75fr, down from
+   1fr); the freed width goes to cat-col (1.3fr -> 1.55fr) so the now-inline
+   composition charts have room next to each table. */
+.main-col { display: grid; grid-template-columns: 0.75fr 1.55fr; gap: 8px; align-items: start; }
+.dial-changed-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.cat-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.right-rail { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 
-/* Row 1 height cap (dial/events/shortlist): #eventsBody and #shortlistBody
-   render variable-length lists that would otherwise stretch the whole grid
-   row to match whichever band grew tallest. Cap the band and let its list
-   body scroll internally instead. `min-height: 0` here is load-bearing --
-   same reason as `min-width: 0` on .cockpit-band above: a grid item's
-   automatic min size defaults to its content's min-content size, which
-   can exceed max-height and let the row bleed into the track below it. */
-#riskDialBand, #eventsBand, #shortlistBand {
-  max-height: 45vh;
+/* Risk Dial / What changed keep their own height cap + internal scroll
+   (unchanged from the pre-relayout row-1 behavior). What changed's cap
+   reduced 25% below Risk Dial's per user request (45vh -> 33.75vh). */
+#riskDialBand, #eventsBand {
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-#riskDialBody, #eventsBody, #shortlistBody {
+#riskDialBand { max-height: 45vh; }
+#eventsBand { max-height: 33.75vh; }
+#riskDialBody, #eventsBody {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
 }
+/* Indicator/Event override the shared .side-scroll max-height (styles.css's
+   generic rule, still used elsewhere) with a fixed ~6-row window -- header
+   row (~19px) + 6 data rows (~19.3px each) -- so both stay a consistent
+   height in the rail regardless of how many rows they'd otherwise render,
+   scrolling internally past that. */
+#indicatorBand .side-scroll, #eventBand .side-scroll { max-height: 140px; }
 
-/* <=1100px: single column, current (pre-grid) behaviour -- DOM order in
-   index.html is the reading order at this width; do not reorder the HTML.
-   Dial/events/short stay 3-across (see base .cockpit-bands rule above) all
-   the way down to this collapse -- a former <=1500px breakpoint used to pull
-   shortlist out to pair with the scorecard instead; removed per user
-   request so the three bands never split out of their row. */
+/* <=1100px: single column, DOM order becomes the reading order (dial,
+   changed, then the category tables, then the rail). */
 @media (max-width: 1100px) {
-  .cockpit-bands { grid-template-columns: 1fr; grid-template-areas: none; }
-  .cockpit-band  { grid-area: auto !important; }
+  .cockpit-bands { grid-template-columns: 1fr; }
+  .main-col { grid-template-columns: 1fr; }
 }
 
 .cockpit-band {
@@ -1948,13 +1961,11 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 }
 .rd-label.CLEAR { color: var(--ok); } .rd-label.CAUTION { color: var(--warn); }
 .rd-label.DEFENSIVE { color: var(--act-sell); } .rd-label.NOTINVESTABLE { color: var(--bear); }
-/* Per user request: the size-line is a direct rd-top-row flex item next to
-   the budget number/label (was grouped with the meter into one flex-column
-   unit that got dragged below as a whole once the card narrowed) so the
-   number and "today's size" text stay adjacent even at very narrow widths --
-   it wraps individually with rd-top-row's other items instead. The meter
-   bar, which genuinely needs width, now gets its own row below rd-top-row. */
-.rd-meter { height: 20px; border-radius: 10px; background: var(--border); overflow: hidden; width: 280px; max-width: 100%; margin-top: 8px; }
+/* TASK_140 follow-up 5 -- meter bar moved onto the same rd-top-row as the
+   budget number/label (was its own row below) per user request; narrowed
+   from 280px so it actually fits inline, still wraps via rd-top-row's
+   flex-wrap on very narrow cards. */
+.rd-meter { height: 20px; border-radius: 10px; background: var(--border); overflow: hidden; width: 160px; max-width: 100%; flex: 1 1 120px; }
 .rd-meter-fill { height: 100%; background: var(--text-3); }
 .rd-meter-fill.b-clear      { background: var(--ok); }
 .rd-meter-fill.b-caution    { background: var(--warn); }
@@ -1985,16 +1996,21 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .rd-gauge-row.sev-1 .rd-rail { background: var(--act-sell-weak); }
 .rd-gauge-row.sev-1 .rd-wt   { background: var(--act-sell-weak-bg); color: var(--act-sell-weak); }
 .rd-gauge-row .rd-exp { color: var(--text-1); font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
-.rd-quiet-toggle { font-size: 11px; color: var(--accent); cursor: pointer; margin-top: 6px; display: inline-block; }
+/* TASK_140 follow-up 5 -- housekeeping stale-data warning moved from the
+   top of the card to here, beside the Quiet-gauges toggle, per user
+   request. */
+.rd-bottom-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.rd-quiet-toggle { font-size: 11px; color: var(--accent); cursor: pointer; display: inline-block; }
 .rd-quiet-list { display: none; font-size: 11px; color: var(--text-3); margin-top: 4px; }
 .rd-quiet-list.open { display: block; }
-.rd-stale-warning { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); padding: 4px 8px; border-radius: 4px; font-size: 11px; margin-bottom: 6px; }
-.rd-detail-link {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
-  font-size: 12px; font-weight: 600; color: var(--accent); text-decoration: none;
-}
-.rd-detail-link .sub { font-weight: 400; color: var(--text-3); font-size: 11px; }
+/* TASK_140 follow-up 7 -- own line below rd-bottom-row (was sharing that
+   row with the Quiet-gauges toggle / Risk detail link). */
+.rd-stale-warning { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); padding: 4px 8px; border-radius: 4px; font-size: 11px; margin-top: 6px; }
+/* TASK_140 follow-up 6 -- moved onto rd-bottom-row (was its own row below
+   rd-quiet-list, with a border-top divider and a "sub" byline text -- both
+   dropped). margin-left:auto pushes it to the row's right edge regardless
+   of whether the stale-warning is also present between it and the toggle. */
+.rd-detail-link { font-size: 12px; font-weight: 600; color: var(--accent); text-decoration: none; margin-left: auto; }
 .rd-detail-link:hover { text-decoration: underline; }
 
 /* TASK_139 -- Portfolio screen "Exposure by account" panel (Category
@@ -2073,6 +2089,25 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
   .gm-table-wrap { border-right: none; border-bottom: 1px solid var(--border); }
 }
 
+/* TASK_140 follow-up 2/3 -- inline composition chart beside each
+   cat-section's table (replaces the Composition popup). .cat-chart is a
+   fixed-width sidebar; .cat-table-col takes the rest and keeps its own
+   overflow-x:auto (set inline by loadFactorScorecard(), unchanged). Color
+   legend lives in the table's Category column instead of a chip list under
+   the chart -- .cat-swatch, one per row, same color as that category's
+   slice/bar (app.js::_catColorMap/_catColor). .legend-line is still used by
+   /risk-detail (see its own TASK_138 rule further down) -- not needed here. */
+.cat-body { display: flex; gap: 14px; align-items: flex-start; }
+.cat-chart { flex: 0 0 190px; }
+.cat-chart .unmapped-note { font-size: 10px; color: var(--text-3); margin-top: 6px; line-height: 1.4; }
+.cat-table-col { flex: 1; min-width: 0; }
+.cat-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 6px; flex-shrink: 0; vertical-align: middle; }
+.slice-label { font-size: 9.5px; fill: var(--card-bg); font-weight: 700; text-anchor: middle; }
+@media (max-width: 900px) {
+  .cat-body { flex-direction: column; }
+  .cat-chart { flex: none; width: 100%; }
+}
+
 /* TASK_138 -- Risk Detail screen (/risk-detail): structural all-gauge
    exposure + risk-budget history. Chart chrome classes shared by both SVGs
    in web/risk_detail.js. */
@@ -2130,41 +2165,31 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
    divider between successive children. The band's own JS content (quad
    path + window months) is unchanged -- this is presentation only, so it
    degrades to one item with no visible divider. */
-#regimeStrip { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+/* Sits directly below #riskDialBody (sibling, not nested -- see index.html)
+   with no spacing of its own by default; margin/padding/divider added here
+   so it doesn't read as flush against the Risk Dial content above it. */
+#regimeStrip { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
 #regimeStrip > * + * { padding-left: 10px; border-left: 1px solid var(--border); }
 #regimeStrip .regime-line { font-size: 13px; cursor: help; border-bottom: 1px dotted var(--border); display: inline-block; }
 
-/* Band 4 — Factor scorecard */
-/* Indicator/Event/Housekeeping mini-grids sit beside the scorecard table
-   (moved from Band 6 -- see index.html) as their own columns, all in one
-   row -- fs-main (scorecard) gets the width, the fs-mini columns share the
-   rest equally. This whole band is pinned to a fixed height (originally set
-   to match Band 1's row, then increased per user request) instead of
-   growing to fit its tallest column (the ~20-row Indicator table). Each
-   column scrolls its own overflow independently rather than the band
-   growing -- adjust --fs-row-h directly to change the row's height. */
-#factorScorecardBand {
-  --fs-row-h: 400px;
-  height: var(--fs-row-h);
-  display: flex;
-  flex-direction: column;
+/* TASK_140 -- Sector/Asset class/Style scorecards, each its own full-width
+   stacked band (replaces the old tabbed #factorScorecardBand + fs-row/
+   fs-main/fs-mini three-column layout; Indicator/Event/Housekeeping moved
+   into the right rail below instead). */
+.cat-section { display: flex; flex-direction: column; }
+/* TASK_140 follow-up 4 -- padding/border-bottom matched to table.fs-table th
+   (padding: 3px 6px; border-bottom: 1px solid var(--border)) so the title
+   sits at the same height as the table's own grid-header row instead of a
+   separate line above it. */
+.cat-chart-title {
+  font-size: 13px; font-weight: 700; margin: 0 0 4px; display: flex; align-items: center; gap: 8px;
+  color: var(--text-1); padding: 3px 6px; border-bottom: 1px solid var(--border);
 }
-.fs-row { display: flex; gap: 12px; align-items: stretch; flex: 1 1 auto; min-height: 0; }
-.fs-main { flex: 2 1 0; min-width: 0; overflow-y: auto; min-height: 0; }
-.fs-mini { flex: 1 1 0; min-width: 0; overflow-y: auto; min-height: 0; }
-/* fs-mini is now the single scroll container for Indicator/Event -- disable
-   .side-scroll's own max-height/scroll here so there's no nested scrollbar. */
-.fs-mini .side-scroll { max-height: none; overflow-y: visible; }
-@media (max-width: 1100px) {
-  .fs-row { flex-direction: column; }
-  #factorScorecardBand { height: auto; }
-  .fs-main, .fs-mini { overflow-y: visible; max-height: none; }
-}
-.fs-tabs { display: flex; gap: 4px; margin-bottom: 6px; }
-.fs-tab { font-size: 11px; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg); color: var(--text-2); cursor: pointer; }
-.fs-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.axis-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.axis-dot.axis-sector { background: var(--cat1, var(--accent)); }
+.axis-dot.axis-asset-class { background: var(--cat2, #0f9488); }
+.axis-dot.axis-style { background: var(--cat4, #7c3aed); }
 .fs-note { font-size: 10px; color: var(--text-3); margin-bottom: 4px; }
-.fs-degraded { font-size: 11px; color: var(--bear); font-weight: 600; margin-bottom: 6px; }
 table.fs-table { width: 100%; border-collapse: collapse; font-size: 11px; }
 table.fs-table th { text-align: right; padding: 3px 6px; color: var(--text-3); font-weight: 600; border-bottom: 1px solid var(--border); }
 table.fs-table th:first-child, table.fs-table td:first-child { text-align: left; }
@@ -2178,23 +2203,6 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .fs-weight-bar { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); opacity: 0.15; z-index: 0; }
 .fs-weight-text { position: relative; z-index: 1; }
 .fs-verdict { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 700; text-transform: uppercase; }
-.fs-conf { font-size: 9px; padding: 0 4px; border-radius: 3px; text-transform: uppercase; }
-.fs-conf.green   { background: var(--act-buy-weak-bg); color: var(--ok); }
-.fs-conf.amber   { background: var(--act-mixed-bg); color: var(--warn); }
-.fs-conf.suspect { background: var(--act-sell-strong-bg); color: var(--bear); }
-
-/* Band 5 — Shortlist */
-.sl-row { display: flex; align-items: baseline; gap: 10px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
-.sl-symbol { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-weight: 700; color: var(--text-1); }
-.sl-desc { color: var(--text-2); flex: 1; }
-/* TASK_136 C.2 -- pre-multiplied size: the adjusted figure stays the primary
-   number (.sl-amt), the raw AMT$ x multiplier is a small sub-line below it. */
-.sl-amt-block { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; }
-.sl-amt { font-weight: 700; color: var(--text-1); font-variant-numeric: tabular-nums; }
-.sl-amt.sl-stop-breached { color: var(--bear); }
-.sl-amt-sub { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-.sl-stop-flag { color: var(--bear); font-weight: 600; font-size: 10px; text-transform: uppercase; }
-.sl-empty { color: var(--text-3); font-size: 12px; font-style: italic; }
 
 /* Band 6 — Housekeeping */
 .hk-line { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 6px; }

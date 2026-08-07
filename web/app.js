@@ -7,12 +7,8 @@
 const state = {
   date: null,
   anchorDate: null,
-  fsAxis: 'sector',
   housekeepingOk: true,
   txnFeedGapCount: 0,
-  // TASK_136 C.2 -- populated by loadRiskDial(), read by loadShortlist() so
-  // the shortlist can pre-multiply AMT$ without a second risk-dial fetch.
-  suggestedSizeMultiplier: null,
 };
 
 // ---------- helpers ----------
@@ -201,56 +197,6 @@ async function loadHealth() {
 
 // ---------- bootstrap ----------
 
-async function loadOutlookChanges() {
-  // Per-symbol outlook flips for the current snapshot date. Shown as a
-  // compact banner above the ticker grid. Click a chip to deep-link into
-  // Trace for that symbol.
-  const bar = $('outlookBar');
-  if (!bar) return;
-  bar.innerHTML = '';
-  if (!state.date) return;
-  try {
-    const rows = await fetchJson(
-      `/api/outlook/changes?date=${encodeURIComponent(state.date)}&limit=12`
-    );
-    if (!rows || rows.length === 0) {
-      bar.hidden = true;
-      return;
-    }
-    bar.hidden = false;
-    const counts = rows.reduce((m, r) => {
-      m[r.dominant_action] = (m[r.dominant_action] || 0) + 1;
-      return m;
-    }, {});
-    const total = rows.length;
-    const head = document.createElement('span');
-    head.className = 'outlook-head';
-    head.textContent = `${total} outlook flip${total === 1 ? '' : 's'} today: `;
-    bar.appendChild(head);
-    const order = ['REMOVE', 'REDUCE', 'ADD', 'INCREASE'];
-    for (const act of order) {
-      if (!counts[act]) continue;
-      const tag = document.createElement('span');
-      tag.className = `outlook-count outlook-${act.toLowerCase()}`;
-      tag.textContent = `${counts[act]} ${act}`;
-      bar.appendChild(tag);
-    }
-    bar.appendChild(document.createTextNode('  '));
-    for (const r of rows.slice(0, 10)) {
-      const chip = document.createElement('a');
-      chip.href = `/trace?date=${encodeURIComponent(state.date)}#${encodeURIComponent(r.tos_symbol)}`;
-      chip.className = `outlook-chip outlook-${r.dominant_action.toLowerCase()}`;
-      chip.title = `${r.tos_symbol}: ${r.actions.join('/')} from ${r.sources.join(', ')}` +
-                   (r.held_today ? '  (held)' : '');
-      chip.textContent = `${r.tos_symbol}${r.held_today ? '★' : ''}`;
-      bar.appendChild(chip);
-    }
-  } catch (e) {
-    console.error('Failed to load /api/outlook/changes:', e);
-    bar.hidden = true;
-  }
-}
-
 async function loadBriefing() {
   const card = $('briefingCard');
   if (!card) return;
@@ -338,9 +284,6 @@ async function loadRiskDial() {
   if (!body) return;
   try {
     const r = await fetchJson(`/api/cockpit/risk-dial${_dateQS()}`);
-    // TASK_136 C.2 -- shared with loadShortlist() so it can pre-multiply
-    // AMT$ without a second fetch of this same endpoint.
-    state.suggestedSizeMultiplier = r.suggested_size_multiplier != null ? r.suggested_size_multiplier : null;
     const labelClass = (r.risk_label || '').replace(/\s+/g, '');
     const bandClass = _riskBandClass(r.risk_label);
     const budget = r.risk_budget != null ? Math.max(0, Math.min(100, r.risk_budget)) : 0;
@@ -373,34 +316,33 @@ async function loadRiskDial() {
     }).join('') || '<div class="ev-quiet">No gauges fired.</div>';
     const quietHtml = (r.quiet || [])
       .map(g => `${escapeHtml(g.label || g.key)}: ${escapeHtml(g.detail || '')}`).join('<br>');
-    // TASK_134 A.3 -- number leads: budget + label share one row, the meter
-    // is 14px, and the headline drops below the meter as a plain supporting
-    // sentence (13px, --text-2).
-    // TASK_136 B.1 originally grouped the size-line with the meter bar into
-    // one flex-column unit (.rd-side) that wraps below as a whole once the
-    // card narrows. Per user request the size-line now stays a direct
-    // rd-top-row flex item next to the budget number/label -- it wraps with
-    // them individually instead of being dragged down by the wide meter --
-    // and the meter bar gets its own row underneath.
+    // TASK_140 follow-up 5/6/7 -- "Risk Dial" header removed from
+    // index.html (this card is self-explanatory: the number +
+    // CLEAR/CAUTION/etc. label already say what it is). Meter bar moved
+    // onto the same row as the budget number/label instead of its own row
+    // underneath. rd-bottom-row now holds just the Quiet-gauges toggle and
+    // the Risk detail link (pushed to the far right via margin-left:auto),
+    // with the housekeeping stale-data warning on its own line below that
+    // row instead of sharing it -- rdQuietList is still toggled by id (not
+    // this.nextElementSibling) since staleWarning can sit between the
+    // toggle and the list.
     body.innerHTML = `
-      ${staleWarning}
       <div class="rd-top-row">
         <span class="rd-budget ${bandClass}">${r.risk_budget != null ? r.risk_budget : '—'}</span>
         <span class="rd-label ${labelClass}">${escapeHtml(r.risk_label || '')}</span>
+        <div class="rd-meter"><div class="rd-meter-fill ${bandClass}" style="width:${budget}%;"></div></div>
       </div>
-      <div class="rd-meter"><div class="rd-meter-fill ${bandClass}" style="width:${budget}%;"></div></div>
       <div class="rd-headline">${escapeHtml(r.headline || '')}</div>
       <div class="rd-gauge-list">${firedHtml}</div>
-      <span class="rd-quiet-toggle" onclick="this.nextElementSibling.classList.toggle('open')">Quiet gauges (${(r.quiet || []).length})</span>
-      <div class="rd-quiet-list">${quietHtml}</div>
-      <a class="rd-detail-link" href="/risk-detail">
-        <span>&#8594; Risk detail</span>
-        <span class="sub">all gauges &middot; history</span>
-      </a>
+      <div class="rd-bottom-row">
+        <span class="rd-quiet-toggle" onclick="document.getElementById('rdQuietList').classList.toggle('open')">Quiet gauges (${(r.quiet || []).length})</span>
+        <a class="rd-detail-link" href="/risk-detail">&#8594; Risk detail</a>
+      </div>
+      ${staleWarning}
+      <div class="rd-quiet-list" id="rdQuietList">${quietHtml}</div>
     `;
   } catch (e) {
     console.error('risk-dial failed:', e);
-    state.suggestedSizeMultiplier = null;
     body.innerHTML = '<div class="ev-fail">&#9888; Risk dial unavailable.</div>';
   }
 }
@@ -507,35 +449,174 @@ function _verdictBadge(verdict) {
   return `<span class="fs-verdict ${cls}-tint">${escapeHtml(verdict)}</span>`;
 }
 
-async function loadFactorScorecard() {
-  const body = $('factorScorecardBody');
+// TASK_140 follow-up 2 -- inline composition chart beside each scorecard
+// table (replaces the earlier Composition popup entirely -- no click
+// needed, and no second fetch: reuses the same rows loadFactorScorecard()
+// already pulled). Sector/Asset class render a pie (weight%, part of a
+// whole); Style renders a bar list instead of a pie since its tags overlap
+// and don't sum to 100% (a stock can carry several style tags at once).
+const _CAT_VARS = ['--cat1', '--cat2', '--cat3', '--cat4', '--cat5', '--cat6', '--cat7', '--cat8', '--cat9'];
+
+function _svgns(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
+
+// Shared #tip tooltip (same element/pattern as risk_detail.js / risk_gauge_modal.js).
+function _chartShowTip(evt, rows) {
+  const tip = $('tip');
+  if (!tip) return;
+  tip.innerHTML = rows.map(r => `<div class="row"><span class="k">${r.k}</span><b>${r.v}</b></div>`).join('');
+  tip.classList.add('show');
+  tip.style.left = evt.clientX + 'px';
+  tip.style.top = (evt.clientY - 10) + 'px';
+}
+function _chartHideTip() { const tip = $('tip'); if (tip) tip.classList.remove('show'); }
+document.addEventListener('mousemove', e => {
+  const tip = $('tip');
+  if (tip && tip.classList.contains('show')) { tip.style.left = e.clientX + 'px'; tip.style.top = (e.clientY - 10) + 'px'; }
+});
+
+// TASK_140 follow-up 3 -- one color per category, assigned once and shared
+// by the table's row swatch (category column) AND the chart slice/bar, so
+// they're always the same color for the same category -- this replaces the
+// separate legend-chip list under the pie (redundant with the table, which
+// already carries category + weight% and now the color too). 'Unmapped'
+// never gets one of these nine -- it's always --cat-unmapped, everywhere.
+function _catColorMap(rows) {
+  const map = new Map();
+  let i = 0;
+  (rows || []).forEach(r => {
+    if (r.category === 'Unmapped' || map.has(r.category)) return;
+    map.set(r.category, `var(${_CAT_VARS[i % _CAT_VARS.length]})`);
+    i++;
+  });
+  return map;
+}
+function _catColor(colorMap, category) {
+  if (category === 'Unmapped') return 'var(--cat-unmapped)';
+  return colorMap.get(category) || 'var(--text-3)';
+}
+
+function _renderCatPie(svgId, rows, unmapped, colorMap) {
+  const svg = $(svgId);
+  if (!svg) return;
+  svg.innerHTML = '';
+  const items = (rows || []).filter(r => r.weight_pct != null && Number(r.weight_pct) > 0)
+    .map(r => ({ category: r.category, weight_pct: r.weight_pct }));
+  if (unmapped && unmapped.weight_pct != null) items.push({ category: unmapped.category, weight_pct: unmapped.weight_pct });
+  if (!items.length) return;
+  const total = items.reduce((s, r) => s + Number(r.weight_pct), 0);
+  const cx = 95, cy = 90, r = 78;
+  svg.setAttribute('viewBox', '0 0 190 190');
+  let a0 = -Math.PI / 2;
+  items.forEach(d => {
+    const frac = Number(d.weight_pct) / total;
+    const a1 = a0 + frac * Math.PI * 2;
+    const color = _catColor(colorMap, d.category);
+    const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
+    const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+    const large = (a1 - a0) > Math.PI ? 1 : 0;
+    const path = _svgns('path');
+    path.setAttribute('d', `M${cx},${cy} L${x0},${y0} A${r},${r} 0 ${large} 1 ${x1},${y1} Z`);
+    path.setAttribute('fill', color);
+    path.setAttribute('stroke', 'var(--card-bg)'); path.setAttribute('stroke-width', '2');
+    svg.appendChild(path);
+    if (frac > 0.08) {
+      const am = (a0 + a1) / 2, lx = cx + r * 0.65 * Math.cos(am), ly = cy + r * 0.65 * Math.sin(am);
+      const lbl = _svgns('text');
+      lbl.setAttribute('x', lx); lbl.setAttribute('y', ly + 3); lbl.setAttribute('class', 'slice-label');
+      lbl.textContent = (frac * 100 >= 10 ? Math.round(frac * 100) : (frac * 100).toFixed(1)) + '%';
+      svg.appendChild(lbl);
+    }
+    const hit = _svgns('path');
+    hit.setAttribute('d', path.getAttribute('d')); hit.setAttribute('class', 'chart-hit');
+    hit.addEventListener('mousemove', e => _chartShowTip(e, [{ k: d.category, v: (frac * 100).toFixed(1) + '%' }]));
+    hit.addEventListener('mouseleave', _chartHideTip);
+    svg.appendChild(hit);
+    a0 = a1;
+  });
+}
+
+function _renderCatBars(svgId, rows, unmapped, colorMap) {
+  const svg = $(svgId);
+  if (!svg) return;
+  svg.innerHTML = '';
+  const items = (rows || []).filter(r => r.weight_pct != null && Number(r.weight_pct) > 0)
+    .map(r => ({ category: r.category, weight_pct: r.weight_pct }));
+  if (unmapped && unmapped.weight_pct != null) items.push({ category: unmapped.category, weight_pct: unmapped.weight_pct });
+  items.sort((a, b) => Number(b.weight_pct) - Number(a.weight_pct));
+  if (!items.length) return;
+  const W = 190, H = items.length * 22;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const max = Math.max(...items.map(r => Number(r.weight_pct)));
+  const rowH = H / items.length, barH = 15, labelW = 74, plotW = W - labelW - 6;
+  items.forEach((d, i) => {
+    const y = i * rowH + (rowH - barH) / 2;
+    const color = _catColor(colorMap, d.category);
+    const name = _svgns('text');
+    name.setAttribute('x', labelW - 6); name.setAttribute('y', y + barH * 0.75);
+    name.setAttribute('text-anchor', 'end'); name.setAttribute('class', 'bar-name');
+    name.setAttribute('style', 'font-size:9px;');
+    name.textContent = d.category.length > 11 ? d.category.slice(0, 10) + '…' : d.category;
+    svg.appendChild(name);
+    const w = (Number(d.weight_pct) / max) * plotW;
+    const rect = _svgns('rect');
+    rect.setAttribute('x', labelW); rect.setAttribute('y', y); rect.setAttribute('width', Math.max(w, 2));
+    rect.setAttribute('height', barH); rect.setAttribute('rx', 3); rect.setAttribute('fill', color);
+    svg.appendChild(rect);
+    const hit = _svgns('rect');
+    hit.setAttribute('x', 0); hit.setAttribute('y', y - 2); hit.setAttribute('width', W); hit.setAttribute('height', barH + 4);
+    hit.setAttribute('class', 'chart-hit');
+    hit.addEventListener('mousemove', e => _chartShowTip(e, [{ k: d.category, v: Number(d.weight_pct).toFixed(1) + '%' }]));
+    hit.addEventListener('mouseleave', _chartHideTip);
+    svg.appendChild(hit);
+  });
+}
+
+// TASK_140 -- one scorecard per axis, all three rendered simultaneously
+// (relayout replaced the tab switcher -- see index.html/styles.css). Flows
+// column dropped per user request (the "Returns degraded" banner it backed
+// was also removed -- this user doesn't load transaction history often by
+// design, so 'suspect' rows are expected, not actionable noise). Today/
+// Yesterday are new single-day vs-Mkt columns (TASK_140,
+// etl/derive_category_perf.py's EXTRA_WINDOWS), same delta convention as
+// the existing 1w-3m columns.
+const _FS_WINDOWS = [
+  { key: 'today', label: 'Today', full: 'today (1 day)' },
+  { key: 'yesterday', label: 'Yesterday', full: 'yesterday (the single prior trading day, not a 2-day window)' },
+  { key: '1w', label: '1w', full: '1 week' },
+  { key: '3w', label: '3w', full: '3 weeks' },
+  { key: '1m', label: '1m', full: '1 month' },
+  { key: '2m', label: '2m', full: '2 months' },
+  { key: '3m', label: '3m', full: '3 months' },
+];
+
+async function loadFactorScorecard(axis, bodyId, chartId) {
+  const body = $(bodyId);
   if (!body) return;
   try {
-    const params = new URLSearchParams({ axis: state.fsAxis });
+    const params = new URLSearchParams({ axis });
     if (state.date) params.set('date', state.date);
     const r = await fetchJson(`/api/cockpit/factor-scorecard?${params.toString()}`);
-    const note = state.fsAxis === 'style'
+    const note = axis === 'style'
       ? '<div class="fs-note">Overlapping tags — not an allocation.</div>' : '';
-    const degradedNote = state.txnFeedGapCount > 0
-      ? `<div class="fs-degraded">Returns degraded — ${state.txnFeedGapCount} account(s) missing transaction history. See Housekeeping.</div>`
-      : '';
-    const windows = ['1w', '3w', '1m', '2m', '3m'];
+    // TASK_140 follow-up 3 -- same color, category column swatch + chart
+    // slice/bar. Computed once here from the same r.rows order the chart
+    // renderer below also gets, so table and chart never disagree.
+    const colorMap = _catColorMap(r.rows);
     const rows = (r.rows || []).map(row => {
       // TASK_136 C.1 -- keep the raw twr_*/bench_* absolute returns reachable
-      // on hover via the row's title, since the cells themselves now show
-      // only the vs-Mkt delta (no new fields -- same twr_*/bench_* the API
-      // already returns, just not dropped from the row).
-      const titleParts = windows
+      // on hover via the row's title, since the cells themselves only show
+      // the vs-Mkt delta.
+      const titleParts = _FS_WINDOWS
         .map(w => {
-          const twr = row[`twr_${w}`], bench = row[`bench_${w}`];
+          const twr = row[`twr_${w.key}`], bench = row[`bench_${w.key}`];
           if (twr == null && bench == null) return null;
           const fmt = (v) => v != null ? `${(Number(v) * 100).toFixed(1)}%` : '—';
-          return `${w}: you ${fmt(twr)} / mkt ${fmt(bench)}`;
+          return `${w.label}: you ${fmt(twr)} / mkt ${fmt(bench)}`;
         })
         .filter(Boolean)
         .join('\n');
-      const cells = windows.map(w => {
-        const twr = row[`twr_${w}`], bench = row[`bench_${w}`];
+      const cells = _FS_WINDOWS.map(w => {
+        const twr = row[`twr_${w.key}`], bench = row[`bench_${w.key}`];
         const delta = (twr != null && bench != null) ? twr - bench : null;
         return `<td>${_fsColorCell(delta)}</td>`;
       }).join('');
@@ -544,13 +625,12 @@ async function loadFactorScorecard() {
       // Risk Dial's fired gauges (Screen D of the design doc), keyed by
       // (axis, category) instead of gauge_key.
       return `<tr title="${escapeHtml(titleParts)}" class="fs-clickable"
-                   onclick="openFactorExposureModal('${escapeHtml(state.fsAxis)}', '${escapeHtml(row.category).replace(/'/g, "\\'")}')">
-        <td>${escapeHtml(row.category)}</td>
+                   onclick="openFactorExposureModal('${escapeHtml(axis)}', '${escapeHtml(row.category).replace(/'/g, "\\'")}')">
+        <td><span class="cat-swatch" style="background:${_catColor(colorMap, row.category)}"></span>${escapeHtml(row.category)}</td>
         <td class="fs-weight-cell">
           ${weightPct != null ? `<span class="fs-weight-bar" style="width:${Math.max(0, Math.min(100, weightPct))}%"></span>` : ''}
           <span class="fs-weight-text">${weightPct != null ? weightPct.toFixed(1) + '%' : ''}</span>
         </td>
-        <td><span class="fs-conf ${escapeHtml(row.flows_confidence || '')}">${escapeHtml(row.flows_confidence || '')}</span></td>
         <td>${_verdictBadge(row.verdict)}</td>
         ${cells}
       </tr>`;
@@ -558,88 +638,32 @@ async function loadFactorScorecard() {
     const unmapped = r.unmapped
       ? `<div class="fs-note">Unmapped: ${escapeHtml(r.unmapped.category)} — ${r.unmapped.weight_pct != null ? Number(r.unmapped.weight_pct).toFixed(1) + '%' : ''} of book not resolved to a category.</div>`
       : '';
+    const headCells = _FS_WINDOWS
+      .map(w => `<th title="Your time-weighted return in this category vs its benchmark ETF, ${w.full}">${w.label}</th>`)
+      .join('');
     // TASK_136 A.3 -- wrapped in overflow-x:auto so the table degrades (its
-    // own scrollbar) at narrow widths instead of forcing the 12-col grid
-    // track wider than its share (the min-width:0 fix on .cockpit-band only
-    // stops the *track*; the table itself still needs somewhere to overflow
-    // to at very narrow viewports).
+    // own scrollbar) at narrow widths instead of forcing the grid track
+    // wider than its share.
     body.innerHTML = `
-      ${degradedNote}
       ${note}
       <div style="overflow-x:auto">
         <table class="fs-table">
-          <thead><tr><th>Category</th><th>Wt%</th><th>Flows</th><th>Verdict</th>
-            <th>vs Mkt 1w</th><th>vs Mkt 3w</th><th>vs Mkt 1m</th><th>vs Mkt 2m</th><th>vs Mkt 3m</th></tr></thead>
-          <tbody>${rows || '<tr><td colspan="9">No rows.</td></tr>'}</tbody>
+          <thead><tr><th title="Category, sector/asset-class/style">Category</th>
+            <th title="Weight — % of your total portfolio">Wt%</th>
+            <th title="Recommendation from (over/under target-allocation) x (quad regime stance for this category)">Verdict</th>
+            ${headCells}</tr></thead>
+          <tbody>${rows || `<tr><td colspan="${3 + _FS_WINDOWS.length}">No rows.</td></tr>`}</tbody>
         </table>
       </div>
       ${unmapped}
     `;
-  } catch (e) {
-    console.error('factor scorecard failed:', e);
-    body.innerHTML = '<div class="ev-fail">&#9888; Factor scorecard unavailable.</div>';
-  }
-}
-
-function _wireFsTabs() {
-  const tabs = $('fsTabs');
-  if (!tabs || tabs.dataset.wired) return;
-  tabs.dataset.wired = '1';
-  tabs.addEventListener('click', (e) => {
-    const btn = e.target.closest('.fs-tab');
-    if (!btn) return;
-    state.fsAxis = btn.dataset.axis;
-    for (const b of tabs.querySelectorAll('.fs-tab')) b.classList.toggle('active', b === btn);
-    loadFactorScorecard();
-  });
-}
-
-// ---------- Band 5: Shortlist ----------
-
-async function loadShortlist() {
-  const body = $('shortlistBody');
-  if (!body) return;
-  try {
-    const r = await fetchJson(`/api/cockpit/shortlist${_dateQS()}`);
-    const rows = r.rows || [];
-    if (!rows.length) {
-      body.innerHTML = '<div class="sl-empty">No high-conviction rows today.</div>';
-      return;
+    if (chartId) {
+      if (axis === 'style') _renderCatBars(chartId, r.rows, r.unmapped, colorMap);
+      else _renderCatPie(chartId, r.rows, r.unmapped, colorMap);
     }
-    body.innerHTML = rows.map(row => {
-      // TASK_134 A.6 -- final_code is a real BuySell code (unlike Band 4's
-      // category verdicts), so actionDisplay() is directly reusable here.
-      const d = window.actionDisplay ? window.actionDisplay(row.final_code) : null;
-      const actionHtml = d
-        ? `<span class="${d.colorCls || 'act-neutral'}">${escapeHtml(d.code || d.label || '')}</span>`
-        : escapeHtml(row.final_code || '');
-      // TASK_136 C.2 -- pre-multiply AMT$ by the same suggested_size_multiplier
-      // the Risk Dial shows (state.suggestedSizeMultiplier, set by
-      // loadRiskDial()) so the user doesn't do the multiplication by hand
-      // while reading two cards. Presentation only -- AMT$ itself, and what
-      // gets written anywhere, is untouched.
-      const rawAmt = row.current_position_dollar != null ? Number(row.current_position_dollar) : null;
-      const mult = state.suggestedSizeMultiplier;
-      let amtHtml = '';
-      if (rawAmt != null && mult != null) {
-        const adjusted = rawAmt * mult;
-        amtHtml = `<span class="sl-amt${row.stop_breached ? ' sl-stop-breached' : ''}">$${Math.round(adjusted).toLocaleString()}</span>
-        <span class="sl-amt-sub">AMT$ ${Math.round(rawAmt).toLocaleString()} &times; ${mult}</span>`;
-      } else if (rawAmt != null) {
-        amtHtml = `<span class="sl-amt${row.stop_breached ? ' sl-stop-breached' : ''}">$${Math.round(rawAmt).toLocaleString()}</span>`;
-      }
-      const stopFlag = row.stop_breached ? '<span class="sl-stop-flag">stop breached</span>' : '';
-      return `<div class="sl-row">
-        <span class="sl-symbol">${escapeHtml(row.tos_symbol)}</span>
-        <span class="sl-action">${actionHtml}</span>
-        <span class="sl-desc">${escapeHtml(row.description || '')}</span>
-        ${stopFlag}
-        <span class="sl-amt-block">${amtHtml}</span>
-      </div>`;
-    }).join('');
   } catch (e) {
-    console.error('shortlist failed:', e);
-    body.innerHTML = '<div class="ev-fail">&#9888; Shortlist unavailable.</div>';
+    console.error(`factor scorecard (${axis}) failed:`, e);
+    body.innerHTML = '<div class="ev-fail">&#9888; Factor scorecard unavailable.</div>';
   }
 }
 
@@ -694,17 +718,13 @@ async function refreshAll() {
   // first since Band 1 needs to know whether to show its stale-data warning
   // (spec 7.2 Band 6: "When it is red, Band 1 must show a warning").
   await loadHousekeeping();
-  // TASK_136 C.2 -- loadRiskDial() must resolve before loadShortlist() so
-  // state.suggestedSizeMultiplier is populated in time for the shortlist's
-  // pre-multiplied size; sequenced ahead of the rest instead of in the same
-  // Promise.all (order inside Promise.all is not guaranteed).
   await loadRiskDial();
   await Promise.all([
     loadEventsBand(),
     loadRegimeBand(),
-    loadFactorScorecard(),
-    loadShortlist(),
-    loadOutlookChanges(),
+    loadFactorScorecard('sector', 'sectorScorecardBody', 'sectorChart'),
+    loadFactorScorecard('asset_class', 'assetClassScorecardBody', 'assetChart'),
+    loadFactorScorecard('style', 'styleScorecardBody', 'styleChart'),
     loadBriefing(),
   ]);
   { const _fd = $('footDate'); if (_fd) _fd.textContent = state.date ? fmtDate(state.date) : '—'; }
@@ -714,7 +734,6 @@ async function refreshAll() {
 document.addEventListener('DOMContentLoaded', async () => {
   loadHealth();
   await loadDates();
-  _wireFsTabs();
   const sel = $('datePicker');
   if (sel) sel.addEventListener('change', () => {
     state.date = sel.value;
