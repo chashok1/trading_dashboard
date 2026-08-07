@@ -175,6 +175,41 @@ async function loadEarnings() {
   }
 }
 
+// TASK_140 follow-up 10 -- new grid below Event: earnings in the next 7
+// days, scoped to held positions + actionable symbols only (not the whole
+// tracked watchlist -- see api/routers/health.py::get_near_term_earnings).
+async function loadNearTermEarnings() {
+  const tbody = $('nearEarningsBody');
+  const empty = $('nearEarningsEmpty');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  try {
+    const url = state.date
+      ? `/api/dashboard/near-term-earnings?date=${encodeURIComponent(state.date)}&days_ahead=7`
+      : '/api/dashboard/near-term-earnings?days_ahead=7';
+    const rows = await fetchJson(url);
+    if (!rows || rows.length === 0) {
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      const days = r.days_until != null ? `${r.days_until}d` : '';
+      tr.innerHTML = `
+        <td class="text">${escapeHtml(r.symbol || '')}</td>
+        <td>${fmtDate(r.event_date)}</td>
+        <td class="num">${days}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+  } catch (e) {
+    console.error('Failed to load near-term earnings:', e);
+    empty.hidden = false;
+    empty.textContent = 'Failed to load.';
+  }
+}
+
 // ---------- health ----------
 
 async function loadHealth() {
@@ -360,7 +395,14 @@ async function loadEventsBand() {
         + `.</div>`;
       return;
     }
-    body.innerHTML = (r.events || []).map(ev => `
+    // TASK_140 follow-up 9 -- warn severity sorts before info (severe stays
+    // first -- it's the most urgent tier, the user's ask only distinguished
+    // warn vs info). Stable sort: same-severity events keep the API's own
+    // order (event_seq).
+    const _sevRank = { severe: 0, warn: 1, info: 2 };
+    const events = (r.events || []).slice().sort((a, b) =>
+      (_sevRank[a.severity || 'info'] ?? 2) - (_sevRank[b.severity || 'info'] ?? 2));
+    body.innerHTML = events.map(ev => `
       <div class="ev-row ev-row-${escapeHtml(ev.severity || 'info')}">
         <span class="ev-rail"></span>
         <span class="ev-sev ${escapeHtml(ev.severity || 'info')}">${escapeHtml(ev.severity || '')}</span>
@@ -375,9 +417,16 @@ async function loadEventsBand() {
 // ---------- Band 3: Regime ----------
 // No new computation (spec 7.2 Band 3) -- reads the same /api/quad-window +
 // /api/quad/band-factors already powering web/actionable.js's regime band.
-// The hover title carries the same bull/bear factor table as a plain-text
-// popover; actionable.js's richer interactive popover was not duplicated
-// here (documented simplification, see DEV_HANDOFF.md).
+// TASK_140 follow-up 11 -- the hover previously used a plain-text `title`
+// attribute built from f.ticker/f.category, but /api/quad/band-factors'
+// bull/bear items only ever carry a `factor` field (confirmed live) -- both
+// were always undefined, so the tooltip showed the "Bull factors:"/"Bear
+// factors:" labels with nothing after them. Fixed to read f.factor, and
+// upgraded from the native title tooltip to the shared #tip popover
+// (already used by the composition charts) with colored Bull/Bear
+// sections, closer to actionable.js's richer popover without duplicating
+// its full click-positioned table (still a documented simplification,
+// see DEV_HANDOFF.md -- actionable.js itself stays untouched).
 
 // Duplicated from web/actionable.js::_quadColor (same hex values) rather than
 // shared -- actionable.js is off-limits to touch for unrelated work and there
@@ -407,16 +456,42 @@ async function loadRegimeBand() {
     const months = (windowData.months || [])
       .map(m => `${escapeHtml(String(m.m).slice(5))} <span style="color:${_quadColor('Q' + (m.quad ?? '?'))};font-weight:600;">(Q${m.quad ?? '?'})</span> ${Math.round((m.w || 0) * 100)}%`)
       .join(' · ');
-    const bull = (factors.bull || []).map(f => f.ticker || f.category).filter(Boolean).slice(0, 8).join(', ');
-    const bear = (factors.bear || []).map(f => f.ticker || f.category).filter(Boolean).slice(0, 8).join(', ');
-    const title = `Bull factors: ${bull || '—'}\nBear factors: ${bear || '—'}`;
-    strip.innerHTML = `<div class="regime-line" title="${escapeHtml(title)}">
+    // TASK_140 follow-up 11 -- band-factors items only ever carry `factor`
+    // (verified live: {"factor":"Cyclical","qtr":"bull"}), not ticker/
+    // category -- those were always undefined, which is why the tooltip
+    // showed the "Bull factors:"/"Bear factors:" labels with nothing after.
+    const bullNames = (factors.bull || []).map(f => f.factor).filter(Boolean);
+    const bearNames = (factors.bear || []).map(f => f.factor).filter(Boolean);
+    strip.innerHTML = `<div class="regime-line">
       Window (${windowData.h ?? 60}d): <strong style="color:${_quadColor(dominant)};">${escapeHtml(dominant)}</strong> — ${months || 'no window data'}
     </div>`;
+    const line = strip.querySelector('.regime-line');
+    if (line) {
+      line.addEventListener('mousemove', e => _regimeShowTip(e, bullNames, bearNames));
+      line.addEventListener('mouseleave', _chartHideTip);
+    }
   } catch (e) {
     console.error('regime band failed:', e);
     strip.innerHTML = '<div class="ev-fail">&#9888; Regime data unavailable.</div>';
   }
+}
+
+// TASK_140 follow-up 11 -- colored Bull/Bear sections in the shared #tip
+// popover (same element the composition charts hover uses), closer to
+// actionable.js's richer popover than the old plain-text title attribute,
+// without duplicating its full click-positioned table.
+function _regimeShowTip(evt, bullNames, bearNames) {
+  const tip = $('tip');
+  if (!tip) return;
+  const section = (label, color, names) => names.length
+    ? `<div style="font-weight:700;color:${color};margin:4px 0 2px;">${label}</div><div>${names.map(escapeHtml).join(', ')}</div>`
+    : '';
+  tip.innerHTML = section('&#8593; Bull Factors', '#2f9e2f', bullNames)
+    + section('&#8595; Bear Factors', '#d83a3a', bearNames)
+    || '<div>No factor data</div>';
+  tip.classList.add('show');
+  tip.style.left = evt.clientX + 'px';
+  tip.style.top = (evt.clientY - 10) + 'px';
 }
 
 // ---------- Band 4: Factor scorecard ----------
@@ -686,7 +761,7 @@ async function loadHousekeeping() {
     if (line) line.innerHTML = '<span class="hk-dot bad"></span>Housekeeping check failed.';
   }
   await loadTxnFeedGaps();
-  await Promise.all([loadEconIndicators(), loadEarnings()]);
+  await Promise.all([loadEconIndicators(), loadEarnings(), loadNearTermEarnings()]);
 }
 
 // TASK_134 C.1 -- per-account transaction-feed staleness (Schwab hist_cst /

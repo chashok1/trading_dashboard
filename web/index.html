@@ -198,6 +198,25 @@
             <div id="earningsEmpty" class="empty-note" hidden>No upcoming events.</div>
           </div>
         </section>
+
+        <!-- Near-term earnings: symbols currently held OR actionable
+             (drv_actionable, non-null consolidated_action) with earnings in
+             the next 7 days. New grid below Event per user request. -->
+        <section class="cockpit-band rail-band" id="nearEarningsBand">
+          <div class="side-scroll">
+            <table class="mini-grid">
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th>Date</th>
+                  <th class="num">Days</th>
+                </tr>
+              </thead>
+              <tbody id="nearEarningsBody"></tbody>
+            </table>
+            <div id="nearEarningsEmpty" class="empty-note" hidden>No earnings in the next 7 days.</div>
+          </div>
+        </section>
       </div>
     </div>
   </main>

@@ -306,6 +306,56 @@ def get_dashboard_symbol_earnings(
     ]
 
 
+@router.get("/api/dashboard/near-term-earnings")
+def get_near_term_earnings(
+    date: Optional[str] = Query(None, description="As-of date (defaults to the current anchor)"),
+    days_ahead: int = Query(7, ge=1, le=60),
+):
+    """
+    Upcoming per-symbol earnings for the "new grid below Event" cockpit
+    request -- narrower universe than /api/dashboard/symbol-earnings
+    (ref_my_stocks' whole tracked watchlist): only symbols currently HELD
+    (latest hist_cs/hist_f snapshot <= d) or "actionable" on d (drv_actionable
+    has a non-null consolidated_action -- 971 of drv_actionable's 1217 rows
+    on a typical date are NULL there, meaning "not evaluated," so filtering
+    on that instead of every tracked row keeps this to symbols the
+    Actionable screen would actually flag, not the full universe). Same
+    drv_technicals.earnings_days source as symbol-earnings.
+    """
+    with session_scope() as s:
+        if date:
+            d = datetime.strptime(date, "%Y-%m-%d").date()
+        else:
+            d = s.execute(text("SELECT MAX(as_of_date) FROM drv_technicals")).scalar()
+        if d is None:
+            return []
+        rows = s.execute(text("""
+            WITH universe AS (
+              SELECT tos_symbol FROM hist_cs
+              WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
+              UNION
+              SELECT tos_symbol FROM hist_f
+              WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+              UNION
+              SELECT tos_symbol FROM drv_actionable
+              WHERE as_of_date = :d AND consolidated_action IS NOT NULL
+            )
+            SELECT t.tos_symbol, t.earnings_days,
+                   (:d + (t.earnings_days || ' days')::INTERVAL)::date AS event_date
+            FROM drv_technicals t
+            JOIN universe u ON u.tos_symbol = t.tos_symbol
+            WHERE t.as_of_date = :d
+              AND t.earnings_days IS NOT NULL
+              AND t.earnings_days BETWEEN 0 AND :days_ahead
+            ORDER BY t.earnings_days ASC, t.tos_symbol ASC
+        """), {"d": d, "days_ahead": days_ahead}).mappings().all()
+    return [
+        {"symbol": r["tos_symbol"], "days_until": r["earnings_days"],
+         "event_date": r["event_date"].isoformat()}
+        for r in rows
+    ]
+
+
 @router.get("/api/quad/band-factors")
 def get_quad_band_factors(
     date: Optional[str] = Query(None, description="As-of date (defaults to today)"),

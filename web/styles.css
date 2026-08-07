@@ -1921,7 +1921,14 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    row (~19px) + 6 data rows (~19.3px each) -- so both stay a consistent
    height in the rail regardless of how many rows they'd otherwise render,
    scrolling internally past that. */
-#indicatorBand .side-scroll, #eventBand .side-scroll { max-height: 140px; }
+#eventBand .side-scroll { max-height: 140px; }
+/* TASK_140 follow-up 12 -- Indicator and the near-term-earnings ("Symbol")
+   panel grown taller than Event's shared 6-row window per user request. */
+#indicatorBand .side-scroll { max-height: 220px; }
+/* TASK_140 follow-up 13/14 -- +5 rows, then +5 more (315px -> 410px), same
+   .mini-grid ~19px/row CSS estimate as above -- no browser attached to
+   measure the real rendered height. */
+#nearEarningsBand .side-scroll { max-height: 410px; }
 
 /* <=1100px: single column, DOM order becomes the reading order (dial,
    changed, then the category tables, then the rail). */
@@ -2101,6 +2108,18 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .cat-chart { flex: 0 0 190px; }
 .cat-chart .unmapped-note { font-size: 10px; color: var(--text-3); margin-top: 6px; line-height: 1.4; }
 .cat-table-col { flex: 1; min-width: 0; }
+/* TASK_140 follow-up 8/9/10 -- Sector/Asset class reverted to natural
+   auto-height (no cap, matching Style) per prior feedback, then asked to
+   shrink slightly below that: Sector -3%, Asset class -20%. Natural height
+   here is a CSS estimate (row = 6px padding + ~13px line-height + 1px
+   border ~= 20px; Sector 12 rows incl. header + the Unmapped note line
+   ~= 256px; Asset class 8 rows + note ~= 176px) -- there's no browser
+   attached this session to measure the real rendered height, so these
+   percentages are applied to that estimate, not a verified pixel value.
+   overflow-y:auto rather than hidden so shrinking below content is a
+   scrollbar, not a silently clipped row. */
+#sectorScorecardBand .cat-table-col { max-height: 248px; overflow-y: auto; }
+#assetClassScorecardBand .cat-table-col { max-height: 141px; overflow-y: auto; }
 .cat-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 6px; flex-shrink: 0; vertical-align: middle; }
 .slice-label { font-size: 9.5px; fill: var(--card-bg); font-weight: 700; text-anchor: middle; }
 @media (max-width: 900px) {
