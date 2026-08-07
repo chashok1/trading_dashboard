@@ -35,6 +35,20 @@ _RISK_SIZE_PHRASE = {
 }
 
 
+def _lc(xs):
+    """Lowercase a list of category names for case-insensitive SQL matching.
+
+    drv_ma.sector carries real case variants for the same GICS sector (e.g.
+    'Health care' vs 'Health Care' -- confirmed live, TASK_139) that
+    etl/derive_category_perf.py::_canon_sector folds together before
+    aggregating into drv_category_perf. The exposure queries below read
+    drv_ma directly (they need per-position rows, not the pre-aggregated
+    table), so they must fold case themselves or silently miss real
+    positions -- LOWER(TRIM(...)) on both sides of every sector/asset_class
+    comparison, everywhere in this file that joins drv_ma."""
+    return [x.lower() for x in xs]
+
+
 def _jsonb(v):
     """jsonb columns sometimes come back as str depending on driver config."""
     if isinstance(v, str):
@@ -84,11 +98,37 @@ def _gauge_exposure(session, d, gauge_key: str, total_value: Optional[float]) ->
     ), {"k": gauge_key}).all()
     if not trans:
         return None
-    cat_rows = session.execute(text(
-        "SELECT axis, category, market_value FROM drv_category_perf WHERE as_of_date = :d"
-    ), {"d": d}).all()
-    mv_map = {(a, c): float(v or 0) for a, c, v in cat_rows}
-    dollar = sum(mv_map.get((a, c), 0.0) for a, c in trans)
+    # TASK_136-followup: dollar exposure must count each position at most
+    # once even when a gauge transmits into several categories/axes that the
+    # same holding matches (e.g. a stock tagged both 'High Beta' and
+    # 'Momentum' style, or matching a sector AND an asset_class category).
+    # Summing drv_category_perf's per-category totals (the old approach)
+    # double/triple-counted such positions -- this instead resolves the
+    # qualifying position set once (OR across axes, not a per-category sum)
+    # and sums each symbol's market value a single time.
+    sector_cats = [c for a, c in trans if a == "sector"]
+    asset_cats = [c for a, c in trans if a == "asset_class"]
+    style_cats = [c for a, c in trans if a == "style"]
+    dollar_row = session.execute(text("""
+        WITH pos AS (
+          SELECT tos_symbol, market_value AS mv FROM hist_cs
+          WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
+          UNION ALL
+          SELECT tos_symbol, current_value AS mv FROM hist_f
+          WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+        ), agg AS (SELECT tos_symbol, SUM(mv) AS mv FROM pos GROUP BY tos_symbol)
+        SELECT SUM(a.mv) FROM agg a
+        LEFT JOIN drv_ma m ON m.tos_symbol = a.tos_symbol AND m.as_of_date = :d
+        LEFT JOIN drv_macro_score ms ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = :d
+        WHERE LOWER(TRIM(m.sector)) = ANY(:sector_cats)
+           OR LOWER(TRIM(m.asset_class)) = ANY(:asset_cats)
+           OR EXISTS (
+                SELECT 1 FROM jsonb_array_elements(COALESCE(ms.style_stances, '[]'::jsonb)) e
+                WHERE e->>'label' = ANY(:style_cats)
+              )
+    """), {"d": d, "sector_cats": _lc(sector_cats), "asset_cats": _lc(asset_cats),
+           "style_cats": style_cats}).scalar()
+    dollar = float(dollar_row) if dollar_row is not None else 0.0
     categories = sorted({c for _, c in trans})
     top = []
     for axis, cats in (("sector", [c for a, c in trans if a == "sector"]),
@@ -155,6 +195,156 @@ def get_risk_dial(date: Optional[str] = Query(None)):
             "fired_weight": fired_weight,
             "suggested_size_multiplier": round(risk_budget / 100.0, 2) if risk_budget is not None else None,
         }
+
+
+# ---------------------------------------------------------------------------
+# 6.1b GET /api/cockpit/risk-dial/{gauge_key}/exposure-detail
+# GET /api/cockpit/risk-dial/all-exposure
+# GET /api/cockpit/risk-dial/history
+#
+# Risk Detail screen support (drill-down modal + structural/historical
+# charts). All three reuse the same dedup-by-position logic fixed in
+# _gauge_exposure above -- exposure-detail just returns the uncapped row
+# list instead of a top-3 summary, all-exposure runs it for every active
+# gauge (not only fired ones), history reads drv_market_stat's own trailing
+# rows. No new derive logic -- pure reads over what already exists daily.
+# ---------------------------------------------------------------------------
+
+@router.get("/api/cockpit/risk-dial/{gauge_key}/exposure-detail")
+def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None)):
+    d = _resolve_date(date)
+    with session_scope() as s:
+        gauge_row = s.execute(text(
+            "SELECT label FROM ref_risk_gauge WHERE gauge_key = :k"
+        ), {"k": gauge_key}).mappings().first()
+        if not gauge_row:
+            raise HTTPException(status_code=404, detail=f"unknown gauge_key {gauge_key!r}")
+
+        trans = s.execute(text(
+            "SELECT axis, category FROM ref_gauge_transmission WHERE gauge_key = :k"
+        ), {"k": gauge_key}).all()
+        if not trans:
+            return {"as_of": d.isoformat(), "gauge_key": gauge_key, "label": gauge_row["label"],
+                    "dollar": None, "pct": None, "categories": [], "positions": []}
+
+        sector_cats = [c for a, c in trans if a == "sector"]
+        asset_cats = [c for a, c in trans if a == "asset_class"]
+        style_cats = [c for a, c in trans if a == "style"]
+
+        total_value = s.execute(text(
+            "SELECT SUM(market_value) FROM drv_category_perf "
+            "WHERE axis = 'asset_class' AND as_of_date = :d"
+        ), {"d": d}).scalar()
+        total_value = float(total_value) if total_value else None
+
+        rows = s.execute(text("""
+            WITH pos AS (
+              SELECT tos_symbol, account, market_value AS mv FROM hist_cs
+              WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
+              UNION ALL
+              SELECT hist_f.tos_symbol,
+                     COALESCE(hist_f.account_name, hist_f.account_number) ||
+                       COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')') AS account,
+                     hist_f.current_value AS mv
+              FROM hist_f
+              LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+              WHERE hist_f.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+            ), agg AS (SELECT tos_symbol, account, SUM(mv) AS mv FROM pos GROUP BY tos_symbol, account)
+            SELECT a.tos_symbol, a.account, a.mv, m.sector, m.asset_class, ms.style_stances
+            FROM agg a
+            LEFT JOIN drv_ma m ON m.tos_symbol = a.tos_symbol AND m.as_of_date = :d
+            LEFT JOIN drv_macro_score ms ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = :d
+            WHERE LOWER(TRIM(m.sector)) = ANY(:sector_cats)
+               OR LOWER(TRIM(m.asset_class)) = ANY(:asset_cats)
+               OR EXISTS (
+                    SELECT 1 FROM jsonb_array_elements(COALESCE(ms.style_stances, '[]'::jsonb)) e
+                    WHERE e->>'label' = ANY(:style_cats)
+                  )
+            ORDER BY a.mv DESC
+        """), {"d": d, "sector_cats": _lc(sector_cats), "asset_cats": _lc(asset_cats),
+               "style_cats": style_cats}).mappings().all()
+
+        sector_cats_lc, asset_cats_lc = _lc(sector_cats), _lc(asset_cats)
+        positions, dollar = [], 0.0
+        for r in rows:
+            mv = float(r["mv"] or 0)
+            dollar += mv
+            if (r["sector"] or "").strip().lower() in sector_cats_lc:
+                tag = r["sector"]
+            elif (r["asset_class"] or "").strip().lower() in asset_cats_lc:
+                tag = r["asset_class"]
+            else:
+                stances = _jsonb(r["style_stances"]) or []
+                tag = ", ".join(sorted({e["label"] for e in stances if e.get("label") in style_cats}))
+            positions.append({"symbol": r["tos_symbol"], "account": r["account"],
+                               "dollar": round(mv, 2), "tag": tag})
+
+        return {
+            "as_of": d.isoformat(),
+            "gauge_key": gauge_key,
+            "label": gauge_row["label"],
+            "dollar": round(dollar, 2),
+            "pct": round(dollar / total_value * 100.0, 2) if total_value else None,
+            "categories": sorted(set(sector_cats + asset_cats + style_cats)),
+            "positions": positions,
+        }
+
+
+@router.get("/api/cockpit/risk-dial/all-exposure")
+def get_all_gauge_exposure(date: Optional[str] = Query(None)):
+    d = _resolve_date(date)
+    with session_scope() as s:
+        gauges = s.execute(text(
+            "SELECT gauge_key, label, weight FROM ref_risk_gauge "
+            "WHERE is_active ORDER BY weight DESC, label"
+        )).mappings().all()
+
+        row = s.execute(text(
+            "SELECT gauges_fired FROM drv_market_stat WHERE as_of_date = :d"
+        ), {"d": d}).mappings().first()
+        gf = (_jsonb(row["gauges_fired"]) if row else None) or []
+        fired_map = {g["key"]: g.get("fired") for g in gf}
+
+        total_value = s.execute(text(
+            "SELECT SUM(market_value) FROM drv_category_perf "
+            "WHERE axis = 'asset_class' AND as_of_date = :d"
+        ), {"d": d}).scalar()
+        total_value = float(total_value) if total_value else None
+
+        out = []
+        for g in gauges:
+            exp = _gauge_exposure(s, d, g["gauge_key"], total_value)
+            out.append({
+                "gauge_key": g["gauge_key"], "label": g["label"], "weight": float(g["weight"]),
+                "fired": fired_map.get(g["gauge_key"]),
+                "has_mapping": exp is not None,
+                "dollar": exp["dollar"] if exp else None,
+                "pct": exp["pct"] if exp else None,
+            })
+        return {"as_of": d.isoformat(), "gauges": out}
+
+
+@router.get("/api/cockpit/risk-dial/history")
+def get_risk_dial_history(days: int = Query(90, ge=1, le=365), date: Optional[str] = Query(None)):
+    d = _resolve_date(date)
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT as_of_date, risk_budget, risk_label, gauges_fired
+            FROM drv_market_stat WHERE as_of_date <= :d
+            ORDER BY as_of_date DESC LIMIT :n
+        """), {"d": d, "n": days}).mappings().all()
+
+    history = []
+    for r in reversed(rows):
+        gf = _jsonb(r["gauges_fired"]) or []
+        fired_keys = [g["key"] for g in gf if g.get("fired") is True]
+        history.append({
+            "as_of": r["as_of_date"].isoformat(),
+            "risk_budget": r["risk_budget"],
+            "risk_label": r["risk_label"],
+            "fired": fired_keys,
+        })
+    return {"as_of": d.isoformat(), "days": days, "history": history}
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +418,82 @@ def get_factor_scorecard(date: Optional[str] = Query(None),
         "as_of": d.isoformat(), "axis": axis, "risk_budget": risk_budget,
         "rows": out_rows, "unmapped": unmapped,
     }
+
+
+# ---------------------------------------------------------------------------
+# 6.3b GET /api/cockpit/factor-scorecard/{axis}/{category}/exposure-detail
+#
+# TASK_139 -- same drill-down as the Risk Dial's gauge exposure-detail (Screen
+# D of the design doc: a Factor Scorecard row click, not a fired gauge). Only
+# one (axis, category) pair here instead of a gauge's multi-category OR union,
+# so the query is simpler than _gauge_exposure/get_gauge_exposure_detail --
+# no need to fold sector/asset_class/style together, just match the one axis.
+# Reused as-is by the Portfolio screen's Category filter (Screen E) to build
+# both the "Exposure by account" panel and the position-table narrowing --
+# see web/portfolio.js -- so this response's positions list is deliberately
+# generic (symbol/account/dollar), not Dashboard-specific.
+# ---------------------------------------------------------------------------
+
+@router.get("/api/cockpit/factor-scorecard/{axis}/{category}/exposure-detail")
+def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Query(None)):
+    if axis not in ("sector", "asset_class", "style"):
+        raise HTTPException(status_code=400, detail="axis must be sector|asset_class|style")
+    d = _resolve_date(date)
+    with session_scope() as s:
+        total_value = s.execute(text(
+            "SELECT SUM(market_value) FROM drv_category_perf "
+            "WHERE axis = 'asset_class' AND as_of_date = :d"
+        ), {"d": d}).scalar()
+        total_value = float(total_value) if total_value else None
+
+        # sector/asset_class match case-insensitively against drv_ma (see
+        # _lc() docstring -- 'Health care' vs 'Health Care' is a real, live
+        # variant); style labels come from a fixed vocabulary in
+        # etl/derive_macro.py::_classify_style with no known case drift.
+        category_param = category if axis == "style" else category.strip().lower()
+        if axis == "style":
+            where_clause = """
+                EXISTS (
+                    SELECT 1 FROM jsonb_array_elements(COALESCE(ms.style_stances, '[]'::jsonb)) e
+                    WHERE e->>'label' = :category
+                )"""
+        else:
+            col = "m.sector" if axis == "sector" else "m.asset_class"
+            where_clause = f"LOWER(TRIM({col})) = :category"
+
+        rows = s.execute(text(f"""
+            WITH pos AS (
+              SELECT tos_symbol, account, market_value AS mv FROM hist_cs
+              WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
+              UNION ALL
+              SELECT hist_f.tos_symbol,
+                     COALESCE(hist_f.account_name, hist_f.account_number) ||
+                       COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')') AS account,
+                     hist_f.current_value AS mv
+              FROM hist_f
+              LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+              WHERE hist_f.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+            ), agg AS (SELECT tos_symbol, account, SUM(mv) AS mv FROM pos GROUP BY tos_symbol, account)
+            SELECT a.tos_symbol, a.account, a.mv
+            FROM agg a
+            LEFT JOIN drv_ma m ON m.tos_symbol = a.tos_symbol AND m.as_of_date = :d
+            LEFT JOIN drv_macro_score ms ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = :d
+            WHERE {where_clause}
+            ORDER BY a.mv DESC
+        """), {"d": d, "category": category_param}).mappings().all()
+
+        positions = [{"symbol": r["tos_symbol"], "account": r["account"], "dollar": round(float(r["mv"] or 0), 2)}
+                     for r in rows]
+        dollar = sum(p["dollar"] for p in positions)
+
+        return {
+            "as_of": d.isoformat(),
+            "axis": axis,
+            "category": category,
+            "dollar": round(dollar, 2),
+            "pct": round(dollar / total_value * 100.0, 2) if total_value else None,
+            "positions": positions,
+        }
 
 
 # ---------------------------------------------------------------------------

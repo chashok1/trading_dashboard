@@ -143,6 +143,11 @@ def page_portfolio():
     return FileResponse(WEB_DIR / "portfolio.html", media_type="text/html; charset=utf-8")
 
 
+@router.get("/risk-detail")
+def page_risk_detail():
+    return FileResponse(WEB_DIR / "risk_detail.html", media_type="text/html; charset=utf-8")
+
+
 @router.get("/trig")
 def page_trig():
     return FileResponse(WEB_DIR / "trig.html", media_type="text/html; charset=utf-8")

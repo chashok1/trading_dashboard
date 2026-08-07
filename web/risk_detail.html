@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Risk Detail — Trading Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="dash-page">
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>Trading Dashboard</h1>
+    </div>
+    <nav class="nav-menu"></nav>
+    <div class="controls">
+      <span id="health" class="badge badge-ok" title="API health">&#9679;</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="detail-screen">
+      <div class="detail-topbar">
+        <a class="back" href="/">&#8592; Dashboard</a>
+        <h3>Risk Detail</h3>
+        <span class="date mono" id="rdAsOf">as of &mdash;</span>
+      </div>
+      <div class="detail-body">
+
+        <div class="chart-card">
+          <h4>All risk gauges &mdash; structural exposure</h4>
+          <p class="sub">Your $ exposure to every gauge's categories, fired or not. Sorted by dollar, not weight &mdash; a heavily-weighted gauge you hold nothing against matters less than a light one you're loaded on.</p>
+          <svg class="chart" id="allGaugeChart" viewBox="0 0 900 470"></svg>
+          <div class="legend-line" id="allGaugeLegend"></div>
+        </div>
+
+        <div class="chart-card">
+          <h4>Risk budget &mdash; trailing history</h4>
+          <p class="sub">The same 0&ndash;100 number as the cockpit card, over time. Dots mark days any of today's fired gauges also fired &mdash; today is one instance of a pattern, not a one-off.</p>
+          <svg class="chart" id="budgetTrendChart" viewBox="0 0 900 340"></svg>
+          <div class="legend-line">
+            <span class="lk"><span class="sw" style="background:var(--accent);border-radius:50%"></span>Risk budget</span>
+            <span class="lk"><span class="sw" style="background:var(--act-sell-strong);border-radius:50%"></span>Today's fired gauge(s) also fired that day</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <div id="tip"></div>
+
+  <script src="/static/_common.js"></script>
+  <script src="/static/risk_gauge_modal.js"></script>
+  <script src="/static/risk_detail.js"></script>
+</body>
+</html>

@@ -19,12 +19,22 @@ const state = {
     latestPrices: false,
     search: '',
     limitStatus: '',
+    catAxis: 'sector',
+    catValue: '',
   },
   sort: {
     column: 'symbol',
     direction: 'asc',
   },
   chart: null,
+  // TASK_139 -- Set of symbols qualifying for the current Category filter
+  // (catAxis/catValue), or null when no category filter is active. Symbol-
+  // only (not symbol+account) because a symbol's sector/asset_class/style is
+  // the same across every account that holds it -- and because /api/portfolio
+  // formats Fidelity account strings with a " (short_name)" suffix that the
+  // exposure-detail endpoint's raw hist_f.account_name does not, so an exact
+  // symbol+account match would silently miss every Fidelity row.
+  categorySymbols: null,
 };
 const $ = (id) => document.getElementById(id);
 
@@ -822,6 +832,102 @@ function renderByAccountTable(s) {
     }
 }
 
+// ---- TASK_139: Category filter + Exposure-by-account panel ----
+
+// Populates #catValueFilter from the same /api/cockpit/factor-scorecard the
+// Dashboard's Factor Scorecard band reads, for whichever axis is selected.
+// Categories are already sorted by weight_pct desc server-side; 'Unmapped'
+// is excluded from `rows` by that endpoint already.
+async function populateCategoryValues() {
+  const sel = $('catValueFilter');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">All categories</option>';
+  try {
+    const r = await fetchJson(`/api/cockpit/factor-scorecard?axis=${encodeURIComponent(state.filters.catAxis)}`);
+    (r.rows || []).forEach(row => {
+      const opt = document.createElement('option');
+      opt.value = row.category;
+      const wt = row.weight_pct != null ? ` (${Number(row.weight_pct).toFixed(1)}%)` : '';
+      opt.textContent = row.category + wt;
+      sel.appendChild(opt);
+    });
+    // Axis change invalidates the previous value (categories don't carry
+    // across sector/asset_class/style) -- only restore it if still present.
+    if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+    else state.filters.catValue = '';
+  } catch (e) {
+    console.error('category list failed:', e);
+  }
+}
+
+// Fetches the exposure-detail for the selected (catAxis, catValue), builds
+// state.categorySymbols for applyClientFilter, and renders the account panel.
+async function loadCategoryExposure() {
+  const panel = $('acctExposurePanel');
+  if (!state.filters.catValue) {
+    state.categorySymbols = null;
+    panel.style.display = 'none';
+    applyClientFilter();
+    return;
+  }
+  try {
+    const params = new URLSearchParams();
+    if (state.date) params.set('date', state.date);
+    const url = `/api/cockpit/factor-scorecard/${encodeURIComponent(state.filters.catAxis)}/` +
+      `${encodeURIComponent(state.filters.catValue)}/exposure-detail?${params.toString()}`;
+    const data = await fetchJson(url);
+    state.categorySymbols = new Set((data.positions || []).map(p => p.symbol));
+    renderAcctExposurePanel(data);
+    panel.style.display = '';
+    applyClientFilter();
+  } catch (e) {
+    console.error('category exposure failed:', e);
+    panel.style.display = 'none';
+  }
+}
+
+function renderAcctExposurePanel(data) {
+  const axisLabel = state.filters.catAxis === 'asset_class' ? 'Asset class'
+    : state.filters.catAxis === 'style' ? 'Style' : 'Sector';
+  $('aepTitle').textContent = `Exposure by account — ${axisLabel}: ${data.category}`;
+  $('aepTotal').innerHTML = data.dollar != null
+    ? `${fmtUsd(data.dollar)}<span class="pct">${data.pct != null ? data.pct.toFixed(1) + '% of portfolio' : ''}</span>`
+    : '&mdash;';
+
+  const byAcct = {};
+  (data.positions || []).forEach(p => {
+    if (!byAcct[p.account]) byAcct[p.account] = { total: 0, rows: [] };
+    byAcct[p.account].total += p.dollar;
+    byAcct[p.account].rows.push(p);
+  });
+  const accounts = Object.keys(byAcct).map(a => ({ account: a, ...byAcct[a] }))
+    .sort((a, b) => b.total - a.total);
+  const maxAcct = Math.max(1, ...accounts.map(a => a.total));
+  const total = data.dollar || accounts.reduce((s, a) => s + a.total, 0);
+
+  const list = $('acctExpList');
+  list.innerHTML = accounts.map((a, i) => {
+    const rowsHtml = a.rows.sort((x, y) => y.dollar - x.dollar).map(p =>
+      `<tr><td class="sym">${escapeHtml(p.symbol)}</td><td class="d">${fmtUsd(p.dollar)}</td></tr>`
+    ).join('');
+    const pct = total > 0 ? (a.total / total * 100).toFixed(1) : '0.0';
+    return `<div class="acct-row${i === 0 ? ' open' : ''}">
+      <div class="acct-row-head">
+        <span class="chev">&#8250;</span>
+        <span class="name">${escapeHtml(a.account)}</span>
+        <span class="bar"><span class="bar-fill" style="width:${a.total / maxAcct * 100}%"></span></span>
+        <span class="d tabular">${fmtUsd(a.total)}</span>
+        <span class="p">${pct}%</span>
+      </div>
+      <div class="acct-detail"><table>${rowsHtml}</table></div>
+    </div>`;
+  }).join('') || '<div style="padding:12px 16px; color:var(--text-3); font-size:11.5px;">No positions match.</div>';
+
+  list.querySelectorAll('.acct-row-head').forEach(head => {
+    head.addEventListener('click', () => head.closest('.acct-row').classList.toggle('open'));
+  });
+}
+
 // ---- main portfolio load ----
 async function loadPortfolio() {
   if (!state.date) return;
@@ -944,6 +1050,7 @@ function applyClientFilter() {
     if (groupTags && !groupTags.includes(r.account_tag)) return false;
     if (state.filters.account && r.account !== state.filters.account) return false;
     if (state.filters.limitStatus && r.limit_status !== state.filters.limitStatus) return false;
+    if (state.categorySymbols && !state.categorySymbols.has(r.symbol)) return false;
     return true;
   });
   applySort();              // apply current sort so the visible order matches the indicator
@@ -1215,15 +1322,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log('DOMContentLoaded fired');
   await loadGroups();   // sets state.filters.group to the default BEFORE the first load
   await loadDates();
+  populateCategoryValues();   // independent of positions data -- no await needed
 
   $('datePicker').addEventListener('change', async (e) => {
     state.date = e.target.value;
     await Promise.all([loadSummary(), loadPortfolio()]);
     loadTrends();
+    if (state.filters.catValue) loadCategoryExposure();
   });
   $('refreshBtn').addEventListener('click', async () => {
     await Promise.all([loadSummary(), loadPortfolio()]);
     loadTrends();
+    if (state.filters.catValue) loadCategoryExposure();
   });
 
   $('groupFilter').addEventListener('change', e => {
@@ -1247,6 +1357,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateKpiTiles();
     applyClientFilter();
     loadTrends();
+  });
+  $('catAxisFilter').addEventListener('change', async e => {
+    state.filters.catAxis = e.target.value;
+    state.filters.catValue = '';
+    await populateCategoryValues();
+    loadCategoryExposure();
+  });
+  $('catValueFilter').addEventListener('change', e => {
+    state.filters.catValue = e.target.value;
+    loadCategoryExposure();
   });
   $('consolidated').addEventListener('change', e => { state.filters.consolidated = e.target.checked; loadPortfolio(); });
   $('exportCsvBtn')?.addEventListener('click', exportPositionsCsv);

@@ -202,7 +202,11 @@
   <script src="/static/app.js"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>
-  <script src="/static/market_bar.js" defer></script>
+  <script src="/static/risk_gauge_modal.js"></script>
+  <!-- Dashboard-only: TradingView live mini-chart tape replaces the shared
+       market_bar.js text-tile tape (still used as-is on /actionable and
+       /portfolio). See web/dashboard_tv_chart_tape.js. -->
+  <script src="/static/dashboard_tv_chart_tape.js" defer></script>
 <script src="/static/warning_badge.js"></script>
 
   <!-- Portfolio Detail Modal -->

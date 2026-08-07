@@ -359,11 +359,16 @@ async function loadRiskDial() {
         : '';
       const wt = Math.round(g.weight || 0);
       const sev = wt >= 3 ? 3 : wt <= 1 ? 1 : 2;
-      return `<div class="rd-gauge-row sev-${sev}">
+      // TASK_138 -- fired rows open the exposure-detail modal (the card only
+      // ever shows the $/% total; the modal has the full position list).
+      return `<div class="rd-gauge-row sev-${sev}" tabindex="0" role="button"
+                   onclick="openGaugeExposureModal('${escapeHtml(g.key)}')"
+                   onkeydown="if(event.key==='Enter')openGaugeExposureModal('${escapeHtml(g.key)}')">
         <span class="rd-rail"></span>
         <span class="rd-wt">${wt}</span>
         <span class="rd-gauge-text"><strong>${escapeHtml(g.label || g.key)}</strong> — ${escapeHtml(g.detail || '')}</span>
         <span class="rd-exp">${expTxt}</span>
+        <span class="rd-chev">&#8250;</span>
       </div>`;
     }).join('') || '<div class="ev-quiet">No gauges fired.</div>';
     const quietHtml = (r.quiet || [])
@@ -371,24 +376,27 @@ async function loadRiskDial() {
     // TASK_134 A.3 -- number leads: budget + label share one row, the meter
     // is 14px, and the headline drops below the meter as a plain supporting
     // sentence (13px, --text-2).
-    // TASK_136 B.1 -- in a 4-col card the size-line no longer fits on the
-    // same row as the number/label (it was pushed off with margin-left:auto
-    // on a full-width card); it now gets its own row directly under line 1.
+    // TASK_136 B.1 originally grouped the size-line with the meter bar into
+    // one flex-column unit (.rd-side) that wraps below as a whole once the
+    // card narrows. Per user request the size-line now stays a direct
+    // rd-top-row flex item next to the budget number/label -- it wraps with
+    // them individually instead of being dragged down by the wide meter --
+    // and the meter bar gets its own row underneath.
     body.innerHTML = `
       ${staleWarning}
       <div class="rd-top-row">
         <span class="rd-budget ${bandClass}">${r.risk_budget != null ? r.risk_budget : '—'}</span>
         <span class="rd-label ${labelClass}">${escapeHtml(r.risk_label || '')}</span>
-        <div class="rd-side">
-          ${r.suggested_size_multiplier != null
-            ? `<span class="rd-size-line">today's size = AMT$ &times; <strong>${r.suggested_size_multiplier}</strong></span>` : ''}
-          <div class="rd-meter"><div class="rd-meter-fill ${bandClass}" style="width:${budget}%;"></div></div>
-        </div>
       </div>
+      <div class="rd-meter"><div class="rd-meter-fill ${bandClass}" style="width:${budget}%;"></div></div>
       <div class="rd-headline">${escapeHtml(r.headline || '')}</div>
       <div class="rd-gauge-list">${firedHtml}</div>
       <span class="rd-quiet-toggle" onclick="this.nextElementSibling.classList.toggle('open')">Quiet gauges (${(r.quiet || []).length})</span>
       <div class="rd-quiet-list">${quietHtml}</div>
+      <a class="rd-detail-link" href="/risk-detail">
+        <span>&#8594; Risk detail</span>
+        <span class="sub">all gauges &middot; history</span>
+      </a>
     `;
   } catch (e) {
     console.error('risk-dial failed:', e);
@@ -429,6 +437,19 @@ async function loadEventsBand() {
 // popover; actionable.js's richer interactive popover was not duplicated
 // here (documented simplification, see DEV_HANDOFF.md).
 
+// Duplicated from web/actionable.js::_quadColor (same hex values) rather than
+// shared -- actionable.js is off-limits to touch for unrelated work and there
+// is no shared module between the two pages. Keep in sync by eye if the
+// palette there ever changes.
+function _quadColor(q) {
+  if (!q) return '#9ca3af';
+  if (/1/.test(q)) return '#2f9e2f'; // Q1 = bullish/growth
+  if (/2/.test(q)) return '#1f7af2'; // Q2 = neutral/up
+  if (/3/.test(q)) return '#e07c1a'; // Q3 = slowing
+  if (/4/.test(q)) return '#d83a3a'; // Q4 = risk-off
+  return '#9ca3af';
+}
+
 async function loadRegimeBand() {
   const strip = $('regimeStrip');
   if (!strip) return;
@@ -442,13 +463,13 @@ async function loadRegimeBand() {
     if (!windowData) { strip.innerHTML = '<div class="ev-fail">&#9888; Regime data unavailable.</div>'; return; }
     const dominant = windowData.dominant_quad != null ? `Quad ${windowData.dominant_quad}` : '—';
     const months = (windowData.months || [])
-      .map(m => `${escapeHtml(String(m.m).slice(5))} (Q${m.quad ?? '?'}) ${Math.round((m.w || 0) * 100)}%`)
+      .map(m => `${escapeHtml(String(m.m).slice(5))} <span style="color:${_quadColor('Q' + (m.quad ?? '?'))};font-weight:600;">(Q${m.quad ?? '?'})</span> ${Math.round((m.w || 0) * 100)}%`)
       .join(' · ');
     const bull = (factors.bull || []).map(f => f.ticker || f.category).filter(Boolean).slice(0, 8).join(', ');
     const bear = (factors.bear || []).map(f => f.ticker || f.category).filter(Boolean).slice(0, 8).join(', ');
     const title = `Bull factors: ${bull || '—'}\nBear factors: ${bear || '—'}`;
     strip.innerHTML = `<div class="regime-line" title="${escapeHtml(title)}">
-      Window (${windowData.h ?? 60}d): <strong>${escapeHtml(dominant)}</strong> — ${months || 'no window data'}
+      Window (${windowData.h ?? 60}d): <strong style="color:${_quadColor(dominant)};">${escapeHtml(dominant)}</strong> — ${months || 'no window data'}
     </div>`;
   } catch (e) {
     console.error('regime band failed:', e);
@@ -519,7 +540,11 @@ async function loadFactorScorecard() {
         return `<td>${_fsColorCell(delta)}</td>`;
       }).join('');
       const weightPct = row.weight_pct != null ? Number(row.weight_pct) : null;
-      return `<tr title="${escapeHtml(titleParts)}">
+      // TASK_139 -- row click opens the same exposure-detail modal as the
+      // Risk Dial's fired gauges (Screen D of the design doc), keyed by
+      // (axis, category) instead of gauge_key.
+      return `<tr title="${escapeHtml(titleParts)}" class="fs-clickable"
+                   onclick="openFactorExposureModal('${escapeHtml(state.fsAxis)}', '${escapeHtml(row.category).replace(/'/g, "\\'")}')">
         <td>${escapeHtml(row.category)}</td>
         <td class="fs-weight-cell">
           ${weightPct != null ? `<span class="fs-weight-bar" style="width:${Math.max(0, Math.min(100, weightPct))}%"></span>` : ''}

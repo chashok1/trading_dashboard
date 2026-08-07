@@ -1889,9 +1889,13 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 /* Row 1 height cap (dial/events/shortlist): #eventsBody and #shortlistBody
    render variable-length lists that would otherwise stretch the whole grid
    row to match whichever band grew tallest. Cap the band and let its list
-   body scroll internally instead. */
+   body scroll internally instead. `min-height: 0` here is load-bearing --
+   same reason as `min-width: 0` on .cockpit-band above: a grid item's
+   automatic min size defaults to its content's min-content size, which
+   can exceed max-height and let the row bleed into the track below it. */
 #riskDialBand, #eventsBand, #shortlistBand {
   max-height: 45vh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1902,16 +1906,12 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
   overflow-y: auto;
 }
 
-/* TASK_136 A.4 -- <=1500px: two columns, shortlist moves under the dial.
-   <=1100px: single column, current (pre-grid) behaviour -- DOM order in
-   index.html is the reading order at this width; do not reorder the HTML. */
-@media (max-width: 1500px) {
-  .cockpit-bands {
-    grid-template-areas:
-      "dial   dial   dial   dial   dial   dial   events events events events events events"
-      "short  short  short  short  short  short  score  score  score  score  score  score";
-  }
-}
+/* <=1100px: single column, current (pre-grid) behaviour -- DOM order in
+   index.html is the reading order at this width; do not reorder the HTML.
+   Dial/events/short stay 3-across (see base .cockpit-bands rule above) all
+   the way down to this collapse -- a former <=1500px breakpoint used to pull
+   shortlist out to pair with the scorecard instead; removed per user
+   request so the three bands never split out of their row. */
 @media (max-width: 1100px) {
   .cockpit-bands { grid-template-columns: 1fr; grid-template-areas: none; }
   .cockpit-band  { grid-area: auto !important; }
@@ -1948,15 +1948,13 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 }
 .rd-label.CLEAR { color: var(--ok); } .rd-label.CAUTION { color: var(--warn); }
 .rd-label.DEFENSIVE { color: var(--act-sell); } .rd-label.NOTINVESTABLE { color: var(--bear); }
-/* Per user request: size line + meter bar sit beside the number/label
-   (pushed right via margin-left:auto) instead of on their own row below --
-   Band 1's column is wide enough for this now that it's a fixed-width 1-of-3
-   row member rather than the narrow 4-col card TASK_136 B.1 was working
-   around. Wraps below on narrow viewports since rd-top-row is flex-wrap. */
-.rd-side { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 280px; }
-.rd-size-line { font-size: 16px; font-weight: 700; color: var(--text-1); white-space: nowrap; }
-.rd-size-line strong { font-variant-numeric: tabular-nums; }
-.rd-meter { height: 20px; border-radius: 10px; background: var(--border); overflow: hidden; width: 280px; max-width: 100%; }
+/* Per user request: the size-line is a direct rd-top-row flex item next to
+   the budget number/label (was grouped with the meter into one flex-column
+   unit that got dragged below as a whole once the card narrowed) so the
+   number and "today's size" text stay adjacent even at very narrow widths --
+   it wraps individually with rd-top-row's other items instead. The meter
+   bar, which genuinely needs width, now gets its own row below rd-top-row. */
+.rd-meter { height: 20px; border-radius: 10px; background: var(--border); overflow: hidden; width: 280px; max-width: 100%; margin-top: 8px; }
 .rd-meter-fill { height: 100%; background: var(--text-3); }
 .rd-meter-fill.b-clear      { background: var(--ok); }
 .rd-meter-fill.b-caution    { background: var(--warn); }
@@ -1967,10 +1965,13 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 /* TASK_134 A.4: severity encoded as a coloured left rail + weight chip
    (never colour alone) instead of one flat pink wash for every fired gauge. */
 .rd-gauge-row {
-  display: grid; grid-template-columns: 3px 28px 1fr auto; gap: 8px;
+  display: grid; grid-template-columns: 3px 28px 1fr auto auto; gap: 8px;
   align-items: baseline; padding: 5px 8px 5px 0; border-bottom: 1px solid var(--border);
-  background: none;
+  background: none; cursor: pointer; border-radius: 4px;
 }
+.rd-gauge-row:hover, .rd-gauge-row:focus-visible { background: var(--act-sell-bg); outline: none; }
+.rd-gauge-row .rd-chev { color: var(--text-3); font-size: 13px; align-self: center; }
+.rd-gauge-row:hover .rd-chev, .rd-gauge-row:focus-visible .rd-chev { color: var(--accent); }
 .rd-gauge-row .rd-rail { align-self: stretch; border-radius: 2px; }
 .rd-gauge-row .rd-wt {
   font-size: 10px; font-weight: 700; text-align: center;
@@ -1988,6 +1989,124 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .rd-quiet-list { display: none; font-size: 11px; color: var(--text-3); margin-top: 4px; }
 .rd-quiet-list.open { display: block; }
 .rd-stale-warning { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); padding: 4px 8px; border-radius: 4px; font-size: 11px; margin-bottom: 6px; }
+.rd-detail-link {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+  font-size: 12px; font-weight: 600; color: var(--accent); text-decoration: none;
+}
+.rd-detail-link .sub { font-weight: 400; color: var(--text-3); font-size: 11px; }
+.rd-detail-link:hover { text-decoration: underline; }
+
+/* TASK_139 -- Portfolio screen "Exposure by account" panel (Category
+   filter). Accordion: one row per account, click to expand its symbols. */
+.acct-exposure-panel { border: 1px solid var(--border, #e0e0e0); border-top: none; background: var(--card-bg); overflow: hidden; margin-bottom: 8px; }
+.aep-head { display: flex; align-items: baseline; justify-content: space-between; padding: 8px 14px; border-bottom: 1px solid var(--border, #e0e0e0); background: var(--act-sell-bg); }
+.aep-head .t { font-size: 12px; font-weight: 700; color: var(--text-1); }
+.aep-head .n { font-size: 14px; font-weight: 800; color: var(--text-1); }
+.aep-head .n .pct { font-size: 11px; font-weight: 400; color: var(--text-3); margin-left: 6px; }
+.acct-row { border-bottom: 1px solid var(--border, #e0e0e0); }
+.acct-row:last-child { border-bottom: none; }
+.acct-row-head { display: flex; align-items: center; gap: 10px; padding: 7px 14px; cursor: pointer; }
+.acct-row-head:hover { background: var(--bg); }
+.acct-row-head .chev { color: var(--text-3); font-size: 12px; width: 10px; transition: transform .12s; }
+.acct-row.open .acct-row-head .chev { transform: rotate(90deg); }
+.acct-row-head .name { font-weight: 600; font-size: 12px; color: var(--text-1); flex: 1; }
+.acct-row-head .bar { width: 110px; height: 6px; border-radius: 3px; background: var(--border, #e0e0e0); overflow: hidden; }
+.acct-row-head .bar-fill { height: 100%; background: var(--act-sell); }
+.acct-row-head .d { font-variant-numeric: tabular-nums; font-size: 12px; font-weight: 700; color: var(--text-1); width: 85px; text-align: right; }
+.acct-row-head .p { font-variant-numeric: tabular-nums; font-size: 10.5px; color: var(--text-3); width: 44px; text-align: right; }
+.acct-detail { display: none; padding: 0 14px 8px 34px; }
+.acct-row.open .acct-detail { display: block; }
+.acct-detail table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.acct-detail td { padding: 3px 8px; color: var(--text-2); }
+.acct-detail td.sym { font-weight: 600; color: var(--text-1); }
+.acct-detail td.d { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-1); }
+
+/* TASK_138 -- gauge exposure drill-down modal (Risk Dial fired row click).
+   Same overlay/close/Escape mechanics as chart_modal.js's #symChartModal,
+   own class names since this reuses the app's neutral --card-bg/--border
+   tokens rather than the legacy #portfolioModal purple-gradient look. */
+.gauge-modal-backdrop {
+  display: none; position: fixed; inset: 0; z-index: 1000;
+  align-items: flex-start; justify-content: center; overflow-y: auto; padding: 40px 16px;
+}
+.gauge-modal-backdrop.open { display: flex; }
+.gauge-modal-backdrop .gm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); }
+.gauge-modal {
+  position: relative; z-index: 1; width: 100%; max-width: 780px;
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 20px 48px -12px rgba(0,0,0,.35); overflow: hidden;
+}
+.gm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 22px; border-bottom: 1px solid var(--border); }
+.gm-title { font-size: 16px; font-weight: 700; margin: 0 0 4px; color: var(--text-1); }
+.gm-sub { font-size: 12px; color: var(--text-2); }
+.gm-total { text-align: right; flex-shrink: 0; }
+.gm-total .d { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text-1); }
+.gm-total .p { font-size: 12px; color: var(--text-3); }
+.gm-close {
+  width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--border); background: var(--card-bg);
+  color: var(--text-3); font-size: 12px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0;
+}
+.gm-close:hover { color: var(--text-1); border-color: var(--text-3); }
+.gm-body { display: grid; grid-template-columns: 1.15fr 1fr; }
+.gm-table-wrap { border-right: 1px solid var(--border); max-height: 380px; overflow-y: auto; }
+.gm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.gm-table th {
+  position: sticky; top: 0; background: var(--card-bg); text-align: left; font-weight: 600;
+  color: var(--text-3); font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
+  padding: 8px 10px; border-bottom: 1px solid var(--border);
+}
+.gm-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); color: var(--text-1); white-space: nowrap; }
+.gm-table td.sym { font-weight: 700; }
+.gm-table td.acct { color: var(--text-2); font-weight: 400; }
+.gm-table td.dollar { text-align: right; font-variant-numeric: tabular-nums; }
+.gm-table td.tag { font-size: 10.5px; color: var(--text-2); }
+.gm-table td.gm-empty { color: var(--text-3); text-align: center; padding: 20px 10px; }
+.gm-table tr:hover td { background: var(--act-sell-bg); }
+.gm-chart-pane { padding: 16px 18px; }
+.gm-chart-pane h4 { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); margin: 0 0 12px; }
+.gm-chart-pane .bar-name { font-size: 11px; fill: var(--text-1); font-weight: 600; }
+.gm-chart-pane .bar-value { font-size: 10.5px; fill: var(--text-1); font-family: ui-monospace, "SF Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+@media (max-width: 680px) {
+  .gm-body { grid-template-columns: 1fr; }
+  .gm-table-wrap { border-right: none; border-bottom: 1px solid var(--border); }
+}
+
+/* TASK_138 -- Risk Detail screen (/risk-detail): structural all-gauge
+   exposure + risk-budget history. Chart chrome classes shared by both SVGs
+   in web/risk_detail.js. */
+.detail-screen { max-width: 1080px; margin: 20px auto; border: 1px solid var(--border); border-radius: 12px; background: var(--card-bg); overflow: hidden; }
+.detail-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 22px; border-bottom: 1px solid var(--border); }
+.detail-topbar .back { font-size: 12px; color: var(--text-3); text-decoration: none; }
+.detail-topbar .back:hover { color: var(--accent); }
+.detail-topbar h3 { font-size: 16px; font-weight: 700; margin: 0; color: var(--text-1); }
+.detail-topbar .date { font-size: 11.5px; color: var(--text-3); }
+.detail-body { padding: 22px; }
+.chart-card { border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px 14px; margin-bottom: 20px; }
+.chart-card h4 { font-size: 13px; font-weight: 700; margin: 0 0 2px; color: var(--text-1); }
+.chart-card .sub { font-size: 11.5px; color: var(--text-3); margin: 0 0 12px; line-height: 1.5; }
+.legend-line { display: flex; align-items: center; gap: 16px; margin-top: 10px; font-size: 11px; color: var(--text-2); flex-wrap: wrap; }
+.legend-line .lk { display: inline-flex; align-items: center; gap: 5px; }
+.legend-line .sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+
+svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
+.axis-label { font-size: 10px; fill: var(--text-3); font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+.bar-value { font-size: 10.5px; fill: var(--text-1); font-family: ui-monospace, "SF Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+.bar-name { font-size: 11px; fill: var(--text-1); font-weight: 600; }
+.gridline { stroke: var(--border); stroke-width: 1; }
+.fired-dot { fill: var(--act-sell-strong); }
+.chart-hit { fill: transparent; cursor: pointer; }
+
+#tip {
+  position: fixed; pointer-events: none; z-index: 1100; background: var(--text-1); color: var(--card-bg);
+  font-size: 11.5px; padding: 7px 10px; border-radius: 6px; line-height: 1.5; opacity: 0;
+  transform: translate(-50%, -100%); transition: opacity .08s; max-width: 240px; box-shadow: 0 6px 18px rgba(0,0,0,.25);
+}
+#tip.show { opacity: 1; }
+#tip .row { display: flex; justify-content: space-between; gap: 10px; }
+#tip .k { color: var(--text-3); }
+#tip .k2 { opacity: .7; }
 
 /* Band 2 — What changed */
 .ev-row { display: grid; grid-template-columns: 3px auto 1fr; gap: 8px; align-items: baseline; padding: 4px 6px 4px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
@@ -2050,6 +2169,9 @@ table.fs-table { width: 100%; border-collapse: collapse; font-size: 11px; }
 table.fs-table th { text-align: right; padding: 3px 6px; color: var(--text-3); font-weight: 600; border-bottom: 1px solid var(--border); }
 table.fs-table th:first-child, table.fs-table td:first-child { text-align: left; }
 table.fs-table td { padding: 3px 6px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; }
+/* TASK_139 -- row click opens the gauge/factor exposure-detail modal. */
+table.fs-table tr.fs-clickable { cursor: pointer; }
+table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 /* weight% bar behind the Wt% cell -- accent at 15% opacity, applied only to
    the bar layer so the text on top stays full-strength. */
 .fs-weight-cell { position: relative; }

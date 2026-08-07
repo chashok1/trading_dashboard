@@ -269,6 +269,15 @@
           <option value="CS">Charles Schwab (CS)</option>
         </select>
         <select id="acctFilter" title="Account"><option value="">All</option></select>
+        <!-- TASK_139 -- Category filter: narrows the grid to positions in one
+             sector/asset-class/style, and opens the Exposure-by-account panel
+             below the grid. See docs/dashboard_cockpit_design.md Screen E. -->
+        <select id="catAxisFilter" title="Category axis">
+          <option value="sector" selected>Sector</option>
+          <option value="asset_class">Asset class</option>
+          <option value="style">Style</option>
+        </select>
+        <select id="catValueFilter" title="Category value"><option value="">All categories</option></select>
         <label class="toggle"><input type="checkbox" id="consolidated"> Consolidate</label>
         <label class="toggle"><input type="checkbox" id="latestPrices"> Latest</label>
         <input type="search" id="symSearch" placeholder="symbol / desc…" style="min-width:90px;" title="Search">
@@ -290,6 +299,19 @@
         <button id="exportCsvBtn" class="btn icon-btn" title="Export current view to CSV" style="padding:4px 7px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></button>
         <button id="acctToggle" class="btn icon-btn" title="Account breakdown" style="padding:4px 7px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg></button>
         <div style="font-size:11px; color:var(--text-2,#666);" id="snapshotLabel"></div>
+      </div>
+
+      <!-- TASK_139 -- Exposure by account: appears while catValueFilter is
+           set. Grouped $ breakdown for the selected category, expandable per
+           account to the underlying symbols. Separate from #kpiByAccount
+           (acctToggle) below, which is gains/YTD/MTD performance, not
+           category exposure -- different question, deliberately not merged. -->
+      <div class="acct-exposure-panel" id="acctExposurePanel" style="display:none;">
+        <div class="aep-head">
+          <span class="t" id="aepTitle">Exposure by account</span>
+          <span class="n tabular" id="aepTotal"></span>
+        </div>
+        <div id="acctExpList"></div>
       </div>
 
       <!-- KPI strip removed: all values now live inline in the chart headers below.

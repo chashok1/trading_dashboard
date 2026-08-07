@@ -1087,7 +1087,9 @@
     { href: '/test-results',     label: 'Tests' },
   ];
   // Sub-pages not shown in the bar → highlight a parent item instead.
-  var ACTIVE_ALIAS = { '/composite-edit': '/rules' };
+  // /risk-detail is reached via the Risk Dial card's own link (TASK_138),
+  // not the nav bar -- it's a drill-down of the Dashboard, not a peer screen.
+  var ACTIVE_ALIAS = { '/composite-edit': '/rules', '/risk-detail': '/' };
 
   function renderNav() {
     var nav = document.querySelector('nav.nav-menu');
