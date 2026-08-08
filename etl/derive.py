@@ -933,6 +933,9 @@ def _derive_portfolio_impl(session: Session, as_of_date: date, run_id: int) -> i
             SELECT MAX(snapshot_date) FROM hist_f
             WHERE snapshot_date <= :ceil
         )
+        AND account_number NOT IN (
+            SELECT account_number FROM ref_accounts WHERE is_active = FALSE
+        )
         GROUP BY tos_symbol
     """), {"ceil": ceil})
 
@@ -943,6 +946,9 @@ def _derive_portfolio_impl(session: Session, as_of_date: date, run_id: int) -> i
         WHERE snapshot_date = (
             SELECT MAX(snapshot_date) FROM hist_cs
             WHERE snapshot_date <= :ceil
+        )
+        AND account NOT IN (
+            SELECT account_number FROM ref_accounts WHERE is_active = FALSE
         )
         GROUP BY tos_symbol
     """), {"ceil": ceil})
@@ -2401,6 +2407,7 @@ def _derive_cs_realized_gain_impl(session: Session, as_of_date: date, run_id: in
         WHERE t.trade_date = :d
           AND LOWER(t.action) = 'sell'
           AND t.symbol <> ''
+          AND t.account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
     """), {"d": as_of_date, "prior": prior}).fetchall()
 
     records = []

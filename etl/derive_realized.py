@@ -97,6 +97,7 @@ def _fetch_events(session: Session, source: str, table: str,
             FROM {table}
             WHERE symbol IS NOT NULL AND symbol <> ''
               AND {kind_expr} IN ('BUY', 'SELL')
+              AND {account_col} NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
             ORDER BY {account_col}, symbol, trade_date, action
         """
     else:
@@ -110,6 +111,7 @@ def _fetch_events(session: Session, source: str, table: str,
             FROM {table}
             WHERE symbol IS NOT NULL AND symbol <> ''
               AND action_kind IN ('BUY', 'SELL')
+              AND {account_col} NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
             ORDER BY {account_col}, symbol, trade_date, action
         """
     return [dict(r) for r in session.execute(text(sql)).mappings().all()]

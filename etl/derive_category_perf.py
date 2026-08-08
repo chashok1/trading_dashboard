@@ -41,6 +41,15 @@ WINDOWS = {"1w": 5, "3w": 15, "1m": 21, "2m": 42, "3m": 63}
 # unaffected by this addition.
 EXTRA_WINDOWS = {"today": (1, 0), "yesterday": (1, 1)}
 CALENDAR_BUFFER = 70          # trading days fetched (>= max window + 1 for the baseline day)
+# 2026-08-08 -- MTD/QTD/YTD are CALENDAR-boundary windows (first trading day
+# of the month/quarter/year through D), not a fixed trading-day count like
+# WINDOWS -- their day-count varies by as_of_date (YTD in December needs
+# ~250 trading days; in January needs ~1). YTD_CALENDAR_DAYS widens the
+# initial calendar fetch (see _derive_category_perf_impl) so a late-year D
+# still has enough history for a true YTD baseline; early in the dataset's
+# own history (or early in a year) it clamps gracefully to "since inception"
+# via _window_days_since below rather than returning None.
+YTD_CALENDAR_DAYS = 260
 FLOW_GUARD_PCT = 25.0          # |r_t| > this -> flow-artefact guard (spec 5.2)
 
 # GICS "Health care"/"Health Care" case-variant canonicalization (mirrors
@@ -158,10 +167,12 @@ _POSITIONS_SQL = text("""
     SELECT snapshot_date, tos_symbol, symbol, security_type AS sec_type,
            description, market_value AS mv, qty, 'CS' AS src
     FROM hist_cs WHERE snapshot_date BETWEEN :lo AND :hi
+      AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
     UNION ALL
     SELECT snapshot_date, tos_symbol, symbol, type AS sec_type,
            description, current_value AS mv, qty, 'F' AS src
     FROM hist_f WHERE snapshot_date BETWEEN :lo AND :hi
+      AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
 """)
 
 _FLOWS_SQL = text("""
@@ -220,19 +231,116 @@ def _categories_for(symbol_key: str, cat_map: dict, axis: str) -> list:
     with no Unmapped row to catch it. See DEV_HANDOFF.md.). style: 0..N tags
     (overlap by design -- spec 5.1); a mapped symbol with genuinely zero
     qualifying tags is NOT a gap (expected _classify_style behavior) so only
-    truly-unmapped symbols get a style "Unmapped" bucket."""
+    truly-unmapped symbols get a style "Unmapped" bucket.
+
+    2026-08-08 -- sector/style are equity-only axes: GICS sector on a bond/
+    commodity/gold/crypto/FX ETF is a data-vendor artifact of the *issuer*
+    (e.g. bond ETFs EMB/HYG/IEF/JNK/CLOX/CLOZ/BUXX tag sector="Financials",
+    gold/commodity ETFs tag "Materials", crypto ETFs tag "Information
+    Technology"/"Digital Assets") -- not a real equity-sector exposure, and
+    _classify_style's beta/PE/div-yield inputs are equally meaningless for a
+    non-equity instrument. Both axes now require asset_class == "Equities"
+    (an explicitly-known NON-equity asset_class excludes; unknown/NULL
+    asset_class does not -- some real equities have no asset_class tag but
+    a valid sector, see the DESK/IPAY docstring note above, and must keep
+    resolving normally). Sector routes the excluded dollars to a SEPARATE
+    "Non-Equity (excluded)" category, not "Unmapped" (2026-08-08 follow-up:
+    lumping the two made "Unmapped" mostly non-equity noise -- e.g. 75% of
+    one portfolio's sector-Unmapped $ was actually gold/bond ETFs that were
+    never supposed to resolve to a GICS sector, drowning out the small
+    genuine-gap portion. Still exhaustive-partition safe -- same dollar-drop
+    concern as the DESK/IPAY fix above -- just a distinct bucket so
+    "Unmapped" means only genuine classification gaps; the API layer
+    (api/routers/cockpit.py::get_factor_scorecard) drops this category from
+    the response entirely, so it never reaches the grid/chart). Style
+    returns no tags at all for non-equity (same as a mapped equity with
+    genuinely zero qualifying tags -- not a gap, just not counted -- style
+    has no analogous "Non-Equity (excluded)" bucket since it was never
+    lumped into style's Unmapped to begin with)."""
     info = cat_map.get(symbol_key)
     if info is None:
         return ["Unmapped"] if axis != "style" else []
+    non_equity = info["asset_class"] is not None and info["asset_class"] != "Equities"
     if axis == "sector":
+        if non_equity:
+            return ["Non-Equity (excluded)"]
         return [info["sector"]] if info["sector"] else ["Unmapped"]
     if axis == "asset_class":
         return [info["asset_class"]] if info["asset_class"] else ["Unmapped"]
     if axis == "style":
         if info["source"] == "unmapped":
             return ["Unmapped"]
+        if non_equity:
+            return []
         return list(info["styles"])  # empty list = valid "no style tags" (not an Unmapped case)
     return []
+
+
+def _today_marked_to_market(session: Session, positions: list, cat_map: dict,
+                             cash_keys: set, calendar: list) -> dict:
+    """2026-08-08 -- 'Today' twr, computed by marking YESTERDAY's (calendar
+    [-2], the last FINALIZED F/CS position snapshot) share counts to TODAY's
+    (calendar[-1]) LIVE price via drv_quote, instead of diffing two F/CS
+    snapshots the way every other window does. Rationale: Schwab/Fidelity
+    only export F/CS once a day (EOD), so at the time this derive runs
+    (right after the EOD TOSD/TOSW load) today's own F/CS snapshot isn't a
+    finalized capture yet -- diffing against it either gives 0 (no new
+    file) or an unreliable partial read. Freezing yesterday's shares and
+    re-pricing them off drv_quote (which DOES tick intraday from TL loads,
+    same source _bench_return already uses for bench_today) gives real
+    intraday movement during market hours and naturally settles to exactly
+    0 outside them, with no special-casing needed: when drv_quote hasn't
+    ticked past yesterday's close yet, today's price falls back to
+    yesterday's and the marked value is unchanged. User-requested design
+    (2026-08-08): "is today going to be calculated based on loads during
+    market hours?" -> "yes, build it".
+
+    Returns {axis: {category: twr_or_None}}; None when the baseline value
+    is 0 (nothing held) or no price data exists at all."""
+    out = {axis: {} for axis in ("sector", "asset_class", "style")}
+    if len(calendar) < 2:
+        return out
+    d_prev, d_today = calendar[-2], calendar[-1]
+
+    qty_by_symbol: dict = {}
+    for p in positions:
+        if p["snapshot_date"] != d_prev:
+            continue
+        key = p["tos_symbol"] or p["symbol"]
+        if key in cash_keys:
+            continue
+        qty_by_symbol[key] = qty_by_symbol.get(key, 0.0) + float(p["qty"] or 0.0)
+    if not qty_by_symbol:
+        return out
+
+    syms = list(qty_by_symbol.keys())
+    price_rows = session.execute(text(
+        "SELECT tos_symbol, as_of_date, last_price FROM drv_quote "
+        "WHERE tos_symbol = ANY(:syms) AND as_of_date IN (:a, :b)"
+    ), {"syms": syms, "a": d_prev, "b": d_today}).mappings().all()
+    price_map: dict = {}
+    for r in price_rows:
+        price_map.setdefault(r["tos_symbol"], {})[r["as_of_date"]] = float(r["last_price"] or 0.0)
+
+    totals: dict = {axis: {} for axis in ("sector", "asset_class", "style")}
+    for sym, qty in qty_by_symbol.items():
+        prices = price_map.get(sym, {})
+        p_prev = prices.get(d_prev)
+        if p_prev is None:
+            continue  # no baseline price -- can't mark this symbol at all
+        p_today = prices.get(d_today, p_prev)  # no new tick yet -> flat vs yesterday's close
+        v_prev_sym = qty * p_prev
+        v_today_sym = qty * p_today
+        for axis in ("sector", "asset_class", "style"):
+            for cat in _categories_for(sym, cat_map, axis):
+                bucket = totals[axis].setdefault(cat, {"today": 0.0, "prev": 0.0})
+                bucket["today"] += v_today_sym
+                bucket["prev"] += v_prev_sym
+
+    for axis, cats in totals.items():
+        for cat, vals in cats.items():
+            out[axis][cat] = (vals["today"] - vals["prev"]) / vals["prev"] if vals["prev"] else None
+    return out
 
 
 def _build_series(positions: list, flows: list, cat_map: dict, cash_keys: set,
@@ -367,7 +475,8 @@ def _build_series(positions: list, flows: list, cat_map: dict, cash_keys: set,
     return series
 
 
-def _twr_window(by_date: dict, calendar: list, window_days: int, end_offset: int = 0) -> tuple:
+def _twr_window(by_date: dict, calendar: list, window_days: int, end_offset: int = 0,
+                 ignore_gap_guard: bool = False, ignore_swing_guard: bool = False) -> tuple:
     """Returns (twr, flows_confidence, detail). calendar is ascending; the
     window is `window_days` steps ending `end_offset` days back from
     calendar[-1] -- end_offset=0 (default) ends at calendar[-1] (today, D);
@@ -376,18 +485,43 @@ def _twr_window(by_date: dict, calendar: list, window_days: int, end_offset: int
     yesterday" -- that distinction is why this needs its own offset rather
     than just window_days=2.
 
-    Two independent guards force r_t=0 and mark the window 'suspect': (1) the
-    original |r_t| > 25% flow-artefact guard, and (2) (round 2 / Part A) an
-    unexplained symbol-level qty gap on d_cur -- a qty change with zero
-    matching hist_cst/hist_ft row, which the 25% guard alone would miss
-    whenever the swap is small relative to the category's total value (see
-    _build_series docstring and DEV_HANDOFF.md)."""
+    Two independent guards normally force r_t=0 and mark the window
+    'suspect': (1) the original |r_t| > 25% flow-artefact guard, and (2)
+    (round 2 / Part A) an unexplained symbol-level qty gap on d_cur -- a qty
+    change with zero matching hist_cst/hist_ft row, which the 25% guard
+    alone would miss whenever the swap is small relative to the category's
+    total value (see _build_series docstring and DEV_HANDOFF.md).
+
+    2026-08-08 -- ignore_gap_guard=True (Today/Yesterday, by explicit user
+    request): skips guard (2), computing r_t straight off the F/CS snapshot
+    diff (still netting any KNOWN flow amount) instead of forcing r_t=0 when
+    a qty change has no matching CST/FT row. Trade-off knowingly accepted:
+    if that unexplained qty change WAS a real trade, its dollar impact is
+    misattributed as market return rather than netted out as a flow.
+
+    ignore_swing_guard=True (Yesterday only, by explicit follow-up user
+    request after seeing every sector except one zeroed by guard (1)):
+    additionally skips guard (1), showing the raw snapshot-diff return even
+    when it's an implausible single-day swing (traced live to missing
+    snapshot rows for specific symbols on specific days -- e.g. PM absent
+    from the 8/5 hist_cs export -- not real trading activity). Accepted
+    trade-off: an obviously-wrong number (e.g. +878%) now displays as-is
+    instead of being hidden behind a protective 0.
+
+    Either bypass marks the day 'amber' confidence (not 'green') and, for
+    the gap-guard case, records gap_symbols in gap_days (tagged unverified)
+    so the caveat stays visible even though the day is no longer zeroed.
+    Every other window (WINDOWS' 1w-3m, MTD/QTD/YTD, and Today's own guard
+    -- Today is unconditionally forced to 0 by the caller regardless of
+    what this function returns, see EXTRA_WINDOWS loop) keeps both guards
+    as-is."""
     if len(calendar) <= window_days + end_offset:
         return None, "amber", {"reason": "insufficient calendar history"}
     end_idx = len(calendar) - end_offset
     idx_dates = calendar[end_idx - (window_days + 1):end_idx]  # window_days+1 points -> window_days steps
     product = 1.0
     suspect = False
+    unverified = False
     day_count = 0
     netflow_total = 0.0
     gap_days = []
@@ -403,16 +537,23 @@ def _twr_window(by_date: dict, calendar: list, window_days: int, end_offset: int
         else:
             r = (v_cur - v_prev - flow) / v_prev
             if abs(r) > FLOW_GUARD_PCT / 100.0:
+                if ignore_swing_guard:
+                    unverified = True
+                else:
+                    r = 0.0
+                    suspect = True
+        if gap_syms:
+            if ignore_gap_guard:
+                unverified = True
+                gap_days.append({"date": d_cur.isoformat(), "symbols": gap_syms, "unverified": True})
+            else:
                 r = 0.0
                 suspect = True
-        if gap_syms:
-            r = 0.0
-            suspect = True
-            gap_days.append({"date": d_cur.isoformat(), "symbols": gap_syms})
+                gap_days.append({"date": d_cur.isoformat(), "symbols": gap_syms})
         product *= (1.0 + r)
         day_count += 1
     twr = product - 1.0
-    confidence = "suspect" if suspect else "green"
+    confidence = "suspect" if suspect else ("amber" if unverified else "green")
     detail = {"day_count": day_count, "netflow_total": round(netflow_total, 2)}
     if gap_days:
         detail["gap_days"] = gap_days
@@ -433,6 +574,52 @@ def _bench_return(session: Session, symbol: Optional[str], calendar: list, windo
     if d_start not in by_date or d_end not in by_date or by_date[d_start] == 0:
         return None
     return by_date[d_end] / by_date[d_start] - 1.0
+
+
+def _calendar_period_starts(d: date) -> dict:
+    """First-of-month/quarter/year boundaries for `d` -- turns MTD/QTD/YTD
+    into calendar-boundary windows, as opposed to WINDOWS' fixed
+    trading-day counts."""
+    q_start_month = ((d.month - 1) // 3) * 3 + 1
+    return {
+        "mtd": date(d.year, d.month, 1),
+        "qtd": date(d.year, q_start_month, 1),
+        "ytd": date(d.year, 1, 1),
+    }
+
+
+def _window_days_since(calendar: list, as_of_date: date, start_date: date) -> Optional[int]:
+    """Trading-day step count from the baseline (the LAST calendar entry
+    BEFORE start_date -- i.e. the prior period's closing value, e.g. the
+    last trading day of July for MTD in August) through as_of_date
+    (calendar's last entry) -- MTD/QTD/YTD's equivalent of WINDOWS' fixed
+    day-counts, but calendar-boundary-driven instead of a hardcoded count.
+
+    2026-08-08 bug fix: this originally baselined on the first calendar
+    entry ON/AFTER start_date (the first trading day OF the period itself),
+    which made _twr_window's first inter-day step "day 2 of the period vs
+    day 1", silently excluding day 1's own return (prior-period-close ->
+    day-1-close) from the window entirely -- understating the period return,
+    and in a short/volatile window (MTD early in the month) potentially
+    flipping its sign relative to the true period return. Baseline is now
+    the day BEFORE start_date, so day 1's return is included like every
+    other day.
+
+    Clamps to the calendar's earliest available date when start_date (or
+    the day before it) predates it (graceful "since inception" degrade --
+    e.g. YTD is capped to however far hist_td actually goes back, same
+    spirit as _twr_window's existing 'insufficient calendar history' guard,
+    not a hard failure). Returns None if the calendar doesn't actually end
+    on as_of_date, or the period has zero elapsed trading days (e.g. MTD on
+    the 1st trading day of a new month, before any intra-month step exists)."""
+    if not calendar or calendar[-1] != as_of_date:
+        return None
+    start_idx = next((i for i, cd in enumerate(calendar) if cd >= start_date), None)
+    if start_idx is None:
+        return None
+    baseline_idx = max(0, start_idx - 1)
+    window_days = (len(calendar) - 1) - baseline_idx
+    return window_days if window_days > 0 else None
 
 
 def _quad_label(stance: Optional[float]) -> Optional[str]:
@@ -479,10 +666,15 @@ def _verdict(quad: Optional[str], band: Optional[str], twr: dict, bench: dict,
 
 
 def _derive_category_perf_impl(session: Session, as_of_date: date, run_id) -> int:
-    calendar = _trading_calendar(session, as_of_date, CALENDAR_BUFFER)
+    # 2026-08-08 -- widened to cover YTD (see YTD_CALENDAR_DAYS docstring);
+    # harmless when less history exists (_trading_calendar just returns
+    # whatever's available, no error) or as_of_date is early in the year.
+    calendar = _trading_calendar(session, as_of_date, max(CALENDAR_BUFFER, YTD_CALENDAR_DAYS))
     if not calendar:
         return replace_for_date(session, "drv_category_perf", "as_of_date", as_of_date, [])
     lo, hi = calendar[0], calendar[-1]
+    calendar_window_days = {k: _window_days_since(calendar, as_of_date, start)
+                             for k, start in _calendar_period_starts(as_of_date).items()}
 
     positions, flows = _load_positions_and_flows(session, lo, hi)
 
@@ -492,9 +684,11 @@ def _derive_category_perf_impl(session: Session, as_of_date: date, run_id) -> in
         "SELECT DISTINCT COALESCE(tos_symbol, symbol) AS k FROM ("
         "  SELECT tos_symbol, symbol, security_type, description FROM hist_cs "
         "  WHERE snapshot_date BETWEEN :lo AND :hi"
+        "    AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)"
         "  UNION ALL"
         "  SELECT tos_symbol, symbol, type AS security_type, description FROM hist_f "
         "  WHERE snapshot_date BETWEEN :lo AND :hi"
+        "    AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)"
         ") u WHERE is_cash(symbol, security_type, description)"
     ), {"lo": lo, "hi": hi}).scalars().all()
     cash_keys = set(is_cash_rows)
@@ -504,19 +698,30 @@ def _derive_category_perf_impl(session: Session, as_of_date: date, run_id) -> in
 
     any_flow_dates = _load_any_flow_dates(session, lo, hi)
     series = _build_series(positions, flows, cat_map, cash_keys, calendar, any_flow_dates)
+    today_marked = _today_marked_to_market(session, positions, cat_map, cash_keys, calendar)
 
     # Total portfolio value at D (market + cash) for weight_pct -- same
     # universe as /api/portfolio/summary (latest hist_f/hist_cs snapshot <= D
     # each, cash included). Phase 5 mandatory reconciliation check.
     total_row = session.execute(text("""
         WITH f_latest AS (SELECT MAX(snapshot_date) d FROM hist_f WHERE snapshot_date <= :d),
-             cs_latest AS (SELECT MAX(snapshot_date) d FROM hist_cs WHERE snapshot_date <= :d)
+             cs_latest AS (SELECT MAX(snapshot_date) d FROM hist_cs WHERE snapshot_date <= :d),
+             excl AS (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
         SELECT
-          COALESCE((SELECT SUM(current_value) FROM hist_f WHERE snapshot_date=(SELECT d FROM f_latest)),0)
-        + COALESCE((SELECT SUM(market_value) FROM hist_cs WHERE snapshot_date=(SELECT d FROM cs_latest)),0)
+          COALESCE((SELECT SUM(current_value) FROM hist_f WHERE snapshot_date=(SELECT d FROM f_latest)
+                    AND account_number NOT IN (SELECT account_number FROM excl)),0)
+        + COALESCE((SELECT SUM(market_value) FROM hist_cs WHERE snapshot_date=(SELECT d FROM cs_latest)
+                    AND account NOT IN (SELECT account_number FROM excl)),0)
           AS total
     """), {"d": as_of_date}).scalar()
     total_value = float(total_row) if total_row else 0.0
+
+    # 2026-08-08 -- total EQUITY value only (Asset Class axis's own
+    # "Equities" bucket, already built by _build_series/_categories_for's
+    # asset_class=="Equities" resolution), for re-basing Sector/Style
+    # weight_pct against the equity sleeve instead of the whole portfolio
+    # ("are sector percentages calculated based on equities?").
+    total_equity_value = series.get("asset_class", {}).get("Equities", {}).get(hi, {}).get("v", 0.0)
 
     # Quad stance per category via drv_macro_score's live per-membership
     # read (sector_stance/asset_class_stance/style_stances) -- already
@@ -571,6 +776,10 @@ def _derive_category_perf_impl(session: Session, as_of_date: date, run_id) -> in
         for category, by_date in series[axis].items():
             mv = by_date.get(hi, {}).get("v", 0.0)
             weight_pct = (mv / total_value * 100.0) if total_value else None
+            # sector/style only -- asset_class IS the total-portfolio view,
+            # re-basing it against equities would be circular.
+            weight_pct_equities = ((mv / total_equity_value * 100.0) if total_equity_value else None) \
+                if axis in ("sector", "style") else None
 
             twr = {}
             bench = {}
@@ -585,13 +794,59 @@ def _derive_category_perf_impl(session: Session, as_of_date: date, run_id) -> in
                 if len(calendar) > wdays:
                     confs.append(conf)
             for wlabel, (wdays, offset) in EXTRA_WINDOWS.items():
-                t, conf, detail_w = _twr_window(by_date, calendar, wdays, offset)
+                if wlabel == "today":
+                    # 2026-08-08 -- Today's OWN return (twr_today) is no
+                    # longer diffed against today's own F/CS snapshot
+                    # (unreliable -- not a finalized EOD capture yet at
+                    # derive time). Instead: yesterday's shares marked to
+                    # today's LIVE price via _today_marked_to_market -- real
+                    # movement during market hours (as drv_quote ticks from
+                    # TL loads), settling to exactly 0 outside them. User
+                    # request: "is today going to be calculated based on the
+                    # loads during the stock market hours?" -> "yes, build
+                    # it". bench_today is unaffected either way -- it's
+                    # public market price data, not a brokerage snapshot.
+                    twr["twr_today"] = today_marked.get(axis, {}).get(category)
+                    b = _bench_return(session, etf_map.get(category), calendar, wdays, offset)
+                    bench["bench_today"] = b
+                    window_detail["today"] = {"confidence": "amber",
+                                               "reason": "marked-to-market: yesterday's shares at today's live price"}
+                    confs.append("amber")
+                    continue
+                # ignore_gap_guard=True + ignore_swing_guard=True -- Yesterday
+                # comes straight off the F/CS snapshot diff even when a qty
+                # change has no matching CST/FT row, AND even when the swing
+                # exceeds the 25% sanity ceiling (2026-08-08, explicit user
+                # request in two steps: "at least yesterday and today should
+                # come from snapshots", then after seeing every sector but
+                # one zeroed by the swing guard, "this is not correct" ->
+                # confirmed drop it for Yesterday too). See _twr_window's
+                # docstring for the trade-off.
+                t, conf, detail_w = _twr_window(by_date, calendar, wdays, offset,
+                                                 ignore_gap_guard=True, ignore_swing_guard=True)
                 twr[f"twr_{wlabel}"] = t
                 b = _bench_return(session, etf_map.get(category), calendar, wdays, offset)
                 bench[f"bench_{wlabel}"] = b
                 window_detail[wlabel] = {"confidence": conf, **detail_w}
                 if len(calendar) > wdays + offset:
                     confs.append(conf)
+            # 2026-08-08 -- MTD/QTD/YTD (calendar-boundary windows, see
+            # _window_days_since) requested in place of the 1w/3w/1m/2m/3m
+            # display columns. Kept as separate twr_mtd/qtd/ytd columns
+            # rather than replacing WINDOWS -- _verdict()'s PRESS/ROTATE
+            # logic below still reads WINDOWS/twr_1m unchanged.
+            for wlabel, wdays in calendar_window_days.items():
+                if wdays is None:
+                    twr[f"twr_{wlabel}"] = None
+                    bench[f"bench_{wlabel}"] = None
+                    window_detail[wlabel] = {"confidence": "amber", "reason": "insufficient calendar history"}
+                    continue
+                t, conf, detail_w = _twr_window(by_date, calendar, wdays)
+                twr[f"twr_{wlabel}"] = t
+                b = _bench_return(session, etf_map.get(category), calendar, wdays)
+                bench[f"bench_{wlabel}"] = b
+                window_detail[wlabel] = {"confidence": conf, **detail_w}
+                confs.append(conf)
             # flows_confidence: worst across windows that had data
             flows_confidence = ("suspect" if "suspect" in confs
                                else "amber" if any(c == "amber" for c in confs) else
@@ -606,6 +861,10 @@ def _derive_category_perf_impl(session: Session, as_of_date: date, run_id) -> in
                 detail["note"] = "overlapping tags -- not an allocation; no weight-based verdict"
             elif category == "Unmapped":
                 detail["note"] = "holdings that did not resolve to a category (see DEV_HANDOFF.md)"
+            elif category == "Non-Equity (excluded)":
+                detail["note"] = ("non-equity holdings (bond/gold/commodity ETFs) excluded from the "
+                                   "equity sector axis by design -- dropped from the API response, "
+                                   "not shown in the grid")
             else:
                 aa_key = _AC_TO_AA.get(category, category) if axis == "asset_class" else None
                 aa_row = aa_map.get(aa_key) if aa_key else None
@@ -638,6 +897,7 @@ def _derive_category_perf_impl(session: Session, as_of_date: date, run_id) -> in
             rows_out.append({
                 "as_of_date": as_of_date, "axis": axis, "category": category,
                 "market_value": mv, "weight_pct": weight_pct,
+                "weight_pct_equities": weight_pct_equities,
                 "target_min": target_min, "target_max": target_max,
                 **twr, **bench,
                 "bench_symbol": etf_map.get(category),

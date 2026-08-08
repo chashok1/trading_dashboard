@@ -52,6 +52,9 @@ def _load_holdings(session: Session, as_of_date: date) -> set[str]:
             WHERE snapshot_date = (
                 SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :ceil
             )
+            AND account_number NOT IN (
+                SELECT account_number FROM ref_accounts WHERE is_active = FALSE
+            )
             GROUP BY tos_symbol
         ),
         cs AS (
@@ -59,6 +62,9 @@ def _load_holdings(session: Session, as_of_date: date) -> set[str]:
             FROM hist_cs
             WHERE snapshot_date = (
                 SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :ceil
+            )
+            AND account NOT IN (
+                SELECT account_number FROM ref_accounts WHERE is_active = FALSE
             )
             GROUP BY tos_symbol
         )

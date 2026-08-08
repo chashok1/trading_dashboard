@@ -78,10 +78,12 @@ def _top_holdings(session, d, axis: str, categories: list, limit: int = 3) -> li
         WITH pos AS (
           SELECT tos_symbol, SUM(market_value) AS mv FROM hist_cs
           WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
+            AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
           GROUP BY tos_symbol
           UNION ALL
           SELECT tos_symbol, SUM(current_value) FROM hist_f
           WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+            AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
           GROUP BY tos_symbol
         ), agg AS (SELECT tos_symbol, SUM(mv) AS dollar FROM pos GROUP BY tos_symbol)
         SELECT a.tos_symbol, a.dollar FROM agg a
@@ -113,9 +115,11 @@ def _gauge_exposure(session, d, gauge_key: str, total_value: Optional[float]) ->
         WITH pos AS (
           SELECT tos_symbol, market_value AS mv FROM hist_cs
           WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
+            AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
           UNION ALL
           SELECT tos_symbol, current_value AS mv FROM hist_f
           WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+            AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
         ), agg AS (SELECT tos_symbol, SUM(mv) AS mv FROM pos GROUP BY tos_symbol)
         SELECT SUM(a.mv) FROM agg a
         LEFT JOIN drv_ma m ON m.tos_symbol = a.tos_symbol AND m.as_of_date = :d
@@ -237,20 +241,28 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
         ), {"d": d}).scalar()
         total_value = float(total_value) if total_value else None
 
+        # 2026-08-08 -- cost_basis/gain_dollar carried through for the
+        # popup's %gain/loss column, same as get_factor_exposure_detail.
         rows = s.execute(text("""
             WITH pos AS (
-              SELECT tos_symbol, account, market_value AS mv FROM hist_cs
+              SELECT tos_symbol, account, market_value AS mv,
+                     cost_basis AS cb, gain_dollar AS gl
+              FROM hist_cs
               WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
+                AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
               UNION ALL
               SELECT hist_f.tos_symbol,
                      COALESCE(hist_f.account_name, hist_f.account_number) ||
                        COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')') AS account,
-                     hist_f.current_value AS mv
+                     hist_f.current_value AS mv,
+                     hist_f.cost_basis_total AS cb, hist_f.total_gl_dollar AS gl
               FROM hist_f
               LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
               WHERE hist_f.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
-            ), agg AS (SELECT tos_symbol, account, SUM(mv) AS mv FROM pos GROUP BY tos_symbol, account)
-            SELECT a.tos_symbol, a.account, a.mv, m.sector, m.asset_class, ms.style_stances
+                AND COALESCE(ra.is_active, TRUE) = TRUE
+            ), agg AS (SELECT tos_symbol, account, SUM(mv) AS mv, SUM(cb) AS cb, SUM(gl) AS gl
+                       FROM pos GROUP BY tos_symbol, account)
+            SELECT a.tos_symbol, a.account, a.mv, a.cb, a.gl, m.sector, m.asset_class, ms.style_stances
             FROM agg a
             LEFT JOIN drv_ma m ON m.tos_symbol = a.tos_symbol AND m.as_of_date = :d
             LEFT JOIN drv_macro_score ms ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = :d
@@ -276,8 +288,12 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
             else:
                 stances = _jsonb(r["style_stances"]) or []
                 tag = ", ".join(sorted({e["label"] for e in stances if e.get("label") in style_cats}))
+            cb, gl = r["cb"], r["gl"]
+            gain_dollar = round(float(gl), 2) if gl is not None else None
+            gain_pct = round(float(gl) / float(cb) * 100.0, 2) if (cb and gl is not None) else None
             positions.append({"symbol": r["tos_symbol"], "account": r["account"],
-                               "dollar": round(mv, 2), "tag": tag})
+                               "dollar": round(mv, 2), "tag": tag,
+                               "gain_dollar": gain_dollar, "gain_pct": gain_pct})
 
         return {
             "as_of": d.isoformat(),
@@ -411,6 +427,16 @@ def get_factor_scorecard(date: Optional[str] = Query(None),
                 rd[k] = rd[k].isoformat()
         if rd["category"] == "Unmapped":
             unmapped = rd
+        elif rd["category"] == "Non-Equity (excluded)":
+            # 2026-08-08 -- deliberately excluded from the response, not just
+            # from the grid rendering: these dollars (bond/gold/commodity
+            # ETFs) were never supposed to count toward an equity-sector
+            # view. Kept as its own row in drv_category_perf (exhaustive-
+            # partition invariant, auditable via SQL) but the user does not
+            # want it surfaced anywhere in the UI -- not the grid, not a
+            # note line, not the category filter dropdown (portfolio.js
+            # sources its filter list from this same endpoint).
+            continue
         else:
             out_rows.append(rd)
 
@@ -450,31 +476,104 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
         # _lc() docstring -- 'Health care' vs 'Health Care' is a real, live
         # variant); style labels come from a fixed vocabulary in
         # etl/derive_macro.py::_classify_style with no known case drift.
+        # 2026-08-08 -- sector/style are equity-only axes (etl/derive_
+        # category_perf.py::_categories_for excludes any symbol with a
+        # KNOWN non-equity asset_class -- bond/gold/crypto/FX ETFs that
+        # still carry a spurious GICS sector tag or beta/PE-derived style
+        # tag from the data vendor, e.g. CLOX/CLOZ/BUXX tagging sector=
+        # "Financials" despite being Fixed Income). This popup queried
+        # hist_cs/hist_f directly and had no such filter, so a Sector/Style
+        # row's exposure-detail popup could show non-equity holdings the
+        # aggregate card itself had already excluded -- same exclusion
+        # applied here (asset_class NULL/unknown still passes -- some real
+        # equities have no asset_class tag but a valid sector, see
+        # _categories_for's DESK/IPAY/NOBL/VYM docstring note).
+        equity_only_clause = " AND (m.asset_class IS NULL OR m.asset_class = 'Equities')" \
+            if axis in ("sector", "style") else ""
         category_param = category if axis == "style" else category.strip().lower()
-        if axis == "style":
+        # category.strip().lower(), not category_param -- category_param
+        # preserves case for style (real labels like "Low Beta" are
+        # case-sensitive), so comparing IT against a lowercase literal
+        # would never match "Unmapped" for axis=style.
+        category_is_unmapped = category.strip().lower() == "unmapped"
+
+        # 2026-08-08 -- "Unmapped" is a synthetic bucket, not a real
+        # sector/asset_class/style value -- no symbol ever has
+        # m.sector='Unmapped' in drv_ma, so a click on the Unmapped row
+        # ("how can i see what stocks are unmapped?") previously matched
+        # zero rows every time. Mirrors etl/derive_category_perf.py::
+        # _categories_for's OWN routing rules for what lands in Unmapped:
+        # sector -- no drv_ma row or no sector tag, PROVIDED it isn't a
+        # known non-equity asset_class (those route to the separate
+        # "Non-Equity (excluded)" category since 2026-08-08 and are never
+        # shown in the UI -- this where_clause used to fold them back into
+        # Unmapped, which made the popup show 16 mixed positions/$304,680
+        # right after the grid label said 7.3%/$74,816.75; fixed to match
+        # _categories_for exactly); asset_class -- no drv_ma row or no
+        # asset_class tag; style -- no drv_ma row at all (a mapped equity
+        # with zero qualifying style tags is NOT Unmapped, see
+        # _categories_for's docstring -- that case just naturally matches no
+        # style category and never reaches this popup).
+        if category_is_unmapped:
+            if axis == "sector":
+                where_clause = ("(m.tos_symbol IS NULL OR m.sector IS NULL) "
+                                 "AND (m.asset_class IS NULL OR m.asset_class = 'Equities')")
+            elif axis == "asset_class":
+                where_clause = "(m.tos_symbol IS NULL OR m.asset_class IS NULL)"
+            else:  # style
+                where_clause = "m.tos_symbol IS NULL"
+        elif axis == "style":
             where_clause = """
                 EXISTS (
                     SELECT 1 FROM jsonb_array_elements(COALESCE(ms.style_stances, '[]'::jsonb)) e
                     WHERE e->>'label' = :category
-                )"""
+                )""" + equity_only_clause
         else:
             col = "m.sector" if axis == "sector" else "m.asset_class"
-            where_clause = f"LOWER(TRIM({col})) = :category"
+            where_clause = f"LOWER(TRIM({col})) = :category" + equity_only_clause
 
+        # 2026-08-08 -- cost_basis/gain_dollar carried through for the
+        # popup's %gain/loss column (unrealized, current snapshot only --
+        # hist_cs.cost_basis/gain_dollar, hist_f.cost_basis_total/
+        # total_gl_dollar). gain_pct is derived AFTER aggregation
+        # (gain_dollar/cost_basis), not summed/averaged directly, so it's
+        # correct even if a symbol+account somehow spans multiple source
+        # rows (naively averaging two rows' gain_pct would be wrong).
+        # sector/style axes never include cash at all (etl/_build_series
+        # excludes cash_keys from those series entirely -- it only ever
+        # appears in asset_class's own "Cash" bucket, assigned by cash_keys
+        # membership, NOT via drv_ma.asset_class -- cash symbols have no
+        # drv_ma row). This popup queries hist_cs/hist_f directly with no
+        # such filter, so without this a click on Sector/Style's Unmapped
+        # row would list cash lines too, and (since cash's "no drv_ma row"
+        # look identical to a genuinely-unmapped symbol) so would
+        # asset_class's OWN Unmapped row -- excluded in both cases to match
+        # the aggregate's universe; asset_class's real "Cash" category is
+        # unaffected (this only touches the Unmapped special-case).
+        cash_exclude_clause = " AND NOT is_cash(symbol, security_type, description)" \
+            if axis in ("sector", "style") or (axis == "asset_class" and category_is_unmapped) else ""
         rows = s.execute(text(f"""
             WITH pos AS (
-              SELECT tos_symbol, account, market_value AS mv FROM hist_cs
+              SELECT tos_symbol, account, market_value AS mv,
+                     cost_basis AS cb, gain_dollar AS gl
+              FROM hist_cs
               WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
+                AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
+                {cash_exclude_clause}
               UNION ALL
               SELECT hist_f.tos_symbol,
                      COALESCE(hist_f.account_name, hist_f.account_number) ||
                        COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')') AS account,
-                     hist_f.current_value AS mv
+                     hist_f.current_value AS mv,
+                     hist_f.cost_basis_total AS cb, hist_f.total_gl_dollar AS gl
               FROM hist_f
               LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
               WHERE hist_f.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
-            ), agg AS (SELECT tos_symbol, account, SUM(mv) AS mv FROM pos GROUP BY tos_symbol, account)
-            SELECT a.tos_symbol, a.account, a.mv
+                AND COALESCE(ra.is_active, TRUE) = TRUE
+                {cash_exclude_clause.replace('security_type', 'type') if cash_exclude_clause else ''}
+            ), agg AS (SELECT tos_symbol, account, SUM(mv) AS mv, SUM(cb) AS cb, SUM(gl) AS gl
+                       FROM pos GROUP BY tos_symbol, account)
+            SELECT a.tos_symbol, a.account, a.mv, a.cb, a.gl
             FROM agg a
             LEFT JOIN drv_ma m ON m.tos_symbol = a.tos_symbol AND m.as_of_date = :d
             LEFT JOIN drv_macro_score ms ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = :d
@@ -482,8 +581,18 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
             ORDER BY a.mv DESC
         """), {"d": d, "category": category_param}).mappings().all()
 
-        positions = [{"symbol": r["tos_symbol"], "account": r["account"], "dollar": round(float(r["mv"] or 0), 2)}
-                     for r in rows]
+        def _gain_fields(r):
+            cb, gl = r["cb"], r["gl"]
+            gain_dollar = round(float(gl), 2) if gl is not None else None
+            gain_pct = round(float(gl) / float(cb) * 100.0, 2) if (cb and gl is not None) else None
+            return gain_dollar, gain_pct
+
+        positions = []
+        for r in rows:
+            gain_dollar, gain_pct = _gain_fields(r)
+            positions.append({"symbol": r["tos_symbol"], "account": r["account"],
+                               "dollar": round(float(r["mv"] or 0), 2),
+                               "gain_dollar": gain_dollar, "gain_pct": gain_pct})
         dollar = sum(p["dollar"] for p in positions)
 
         return {
@@ -558,10 +667,12 @@ _TXN_GAP_SQL = text("""
     SELECT 'Schwab' AS broker, p.account AS account, p.account AS account_id,
            p.pos_date, t.txn_date
       FROM cs_pos p LEFT JOIN cs_txn t ON t.account = p.account
+     WHERE p.account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
     UNION ALL
     SELECT 'Fidelity' AS broker, COALESCE(p.account_name, p.account_number) AS account,
            p.account_number AS account_id, p.pos_date, t.txn_date
       FROM f_pos p LEFT JOIN f_txn t ON t.account_number = p.account_number
+     WHERE p.account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
 """)
 
 _TXN_GAP_TRADING_DAYS = 10  # spec C.1: flag any account more than this apart

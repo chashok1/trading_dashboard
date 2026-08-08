@@ -31,7 +31,7 @@
       '  <div class="gm-body" id="gmBody">',
       '    <div class="gm-table-wrap">',
       '      <table class="gm-table">',
-      '        <thead><tr><th>Symbol</th><th>Account</th><th style="text-align:right">$</th><th id="gmTagHead">Tag</th></tr></thead>',
+      '        <thead><tr><th>Symbol</th><th>Account</th><th style="text-align:right">$</th><th style="text-align:right" title="Unrealized gain/loss vs cost basis, current snapshot">Gain/Loss</th><th id="gmTagHead">Tag</th></tr></thead>',
       '        <tbody id="gmTableBody"></tbody>',
       '      </table>',
       '    </div>',
@@ -55,6 +55,9 @@
   }
 
   function fmt(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
+  // Signed dollar amount for gain/loss cells -- '+$229' / '-$68', sign
+  // always shown so a glance tells profit vs loss without reading color.
+  function fmtSigned(n) { return (n >= 0 ? '+$' : '-$') + Math.round(Math.abs(n)).toLocaleString('en-US'); }
   function svgns(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
 
   function _renderBars(rows) {
@@ -135,9 +138,33 @@
     document.getElementById('gmSub').textContent =
       prefix + n + ' position' + (n === 1 ? '' : 's') +
       (acctCount ? ' across ' + acctCount + ' account' + (acctCount === 1 ? '' : 's') : '');
+    // Total gain/loss across every position shown -- sum(gain_dollar)
+    // straightforwardly; total % isn't a simple average of per-position %s
+    // (that would over-weight small positions), so it's derived the same
+    // way each row's own % is: gain / cost-basis, with cost-basis backed
+    // out as dollar - gain_dollar (unrealized-gain identity, matches
+    // api/routers/cockpit.py::_gain_fields). User request: "show total sum
+    // of gains or losses in the popups".
+    var totalGain = null, totalGainPct = null;
+    var gainRows = (data.positions || []).filter(function (p) { return p.gain_dollar != null; });
+    if (gainRows.length) {
+      var sumGain = gainRows.reduce(function (s, p) { return s + p.gain_dollar; }, 0);
+      var sumCostBasis = gainRows.reduce(function (s, p) {
+        return s + ((p.dollar != null ? p.dollar : 0) - p.gain_dollar);
+      }, 0);
+      totalGain = sumGain;
+      totalGainPct = sumCostBasis ? (sumGain / sumCostBasis * 100) : null;
+    }
+    var gainHtml = '';
+    if (totalGain != null) {
+      var gainCls = totalGain > 0 ? 'pos' : totalGain < 0 ? 'neg' : '';
+      gainHtml = '<div class="g ' + gainCls + '">' + fmtSigned(totalGain) +
+        (totalGainPct != null ? ' (' + (totalGainPct >= 0 ? '+' : '') + totalGainPct.toFixed(1) + '%)' : '') +
+        ' total</div>';
+    }
     document.getElementById('gmTotal').innerHTML = (data.dollar != null)
-      ? '<div class="d">' + fmt(data.dollar) + '</div><div class="p">' + (data.pct != null ? data.pct.toFixed(1) + '% of portfolio' : '') + '</div>'
-      : '<div class="d">&mdash;</div>';
+      ? '<div class="d">' + fmt(data.dollar) + '</div><div class="p">' + (data.pct != null ? data.pct.toFixed(1) + '% of portfolio' : '') + '</div>' + gainHtml
+      : '<div class="d">&mdash;</div>' + gainHtml;
 
     var tbody = document.getElementById('gmTableBody');
     (data.positions || []).forEach(function (p) {
@@ -145,7 +172,20 @@
       var symTd = document.createElement('td'); symTd.className = 'sym'; symTd.textContent = p.symbol;
       var acctTd = document.createElement('td'); acctTd.className = 'acct'; acctTd.textContent = p.account;
       var dTd = document.createElement('td'); dTd.className = 'dollar'; dTd.textContent = fmt(p.dollar);
-      tr.appendChild(symTd); tr.appendChild(acctTd); tr.appendChild(dTd);
+      var glTd = document.createElement('td'); glTd.className = 'dollar';
+      if (p.gain_pct != null) {
+        glTd.classList.add(p.gain_pct > 0 ? 'pos' : p.gain_pct < 0 ? 'neg' : '');
+        // $ and % shown together now (previously $ was tooltip-only, easy
+        // to miss) -- user request: "add $ loss or gain to these popups
+        // along with %loss/%gain".
+        var glText = (p.gain_pct >= 0 ? '+' : '') + p.gain_pct.toFixed(1) + '%';
+        if (p.gain_dollar != null) glText = fmtSigned(p.gain_dollar) + ' (' + glText + ')';
+        glTd.textContent = glText;
+        glTd.title = (p.gain_dollar != null ? fmt(p.gain_dollar) : '') + ' unrealized';
+      } else {
+        glTd.textContent = '—';
+      }
+      tr.appendChild(symTd); tr.appendChild(acctTd); tr.appendChild(dTd); tr.appendChild(glTd);
       if (hasTag) {
         var tagTd = document.createElement('td'); tagTd.className = 'tag'; tagTd.textContent = p.tag || '';
         tr.appendChild(tagTd);
@@ -154,7 +194,7 @@
     });
     if (!(data.positions || []).length) {
       var tr = document.createElement('tr');
-      var td = document.createElement('td'); td.colSpan = hasTag ? 4 : 3; td.className = 'gm-empty';
+      var td = document.createElement('td'); td.colSpan = hasTag ? 5 : 4; td.className = 'gm-empty';
       td.textContent = 'No positions match.';
       tr.appendChild(td); tbody.appendChild(tr);
     } else {

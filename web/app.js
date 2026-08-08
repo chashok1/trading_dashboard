@@ -441,6 +441,26 @@ function _quadColor(q) {
   return '#9ca3af';
 }
 
+// 2026-08-08 -- per-quad bull/bear factor lists, filtered from band-factors'
+// `factors` array (its quad1..quad4 columns are period-independent raw
+// stance per factor -- see api/routers/health.py::get_quad_band_factors'
+// own docstring: "lets callers like the regime band's window-mix popover
+// look up bull/bear factors for ANY quad number directly, not just the cur/
+// next month|qtr periods" -- this was already built for exactly this, just
+// never wired up on the frontend until now). User: "they should have bull/
+// bear factors tooltip for corresponding quad ... currently is displaying
+// only left side tooltip for every quad".
+function _bullBearForQuadNum(allFactors, quadNum) {
+  const col = 'quad' + quadNum;
+  const bull = [], bear = [];
+  (allFactors || []).forEach(f => {
+    const v = (f[col] || '').trim().toLowerCase();
+    if (v === 'bullish') bull.push({ factor: f.factor });
+    else if (v === 'bearish') bear.push({ factor: f.factor });
+  });
+  return { bull, bear };
+}
+
 async function loadRegimeBand() {
   const strip = $('regimeStrip');
   if (!strip) return;
@@ -449,13 +469,21 @@ async function loadRegimeBand() {
     const qs = viewingLive ? '' : _dateQS();
     const [windowData, factors] = await Promise.all([
       fetchJson(`/api/quad-window${qs}`).catch(() => null),
-      fetchJson(`/api/quad/band-factors${qs}`).catch(() => ({ bull: [], bear: [] })),
+      fetchJson(`/api/quad/band-factors${qs}`).catch(() => ({ bull: [], bear: [], factors: [] })),
     ]);
     if (!windowData) { strip.innerHTML = '<div class="ev-fail">&#9888; Regime data unavailable.</div>'; return; }
     const dominant = windowData.dominant_quad != null ? `Quad ${windowData.dominant_quad}` : '—';
+    const allFactors = factors.factors || [];
     const months = (windowData.months || [])
-      .map(m => `${escapeHtml(String(m.m).slice(5))} <span style="color:${_quadColor('Q' + (m.quad ?? '?'))};font-weight:600;">(Q${m.quad ?? '?'})</span> ${Math.round((m.w || 0) * 100)}%`)
+      .map((m, i) => `<span class="month-entry" data-month-idx="${i}">${escapeHtml(String(m.m).slice(5))} `
+        + `<span style="color:${_quadColor('Q' + (m.quad ?? '?'))};font-weight:600;">(Q${m.quad ?? '?'})</span> ${Math.round((m.w || 0) * 100)}%</span>`)
       .join(' · ');
+    // Qtr entry -- right-justified to the card's own right edge (not just
+    // trailing inline after the months) via .regime-line's flex layout
+    // below. User request: "right justify quarter quad to the grid".
+    const qtrEntry = windowData.qtr_quad != null
+      ? `<span class="qtr-entry">Qtr <span style="color:${_quadColor('Q' + windowData.qtr_quad)};font-weight:600;">(Q${windowData.qtr_quad})</span></span>`
+      : '';
     // TASK_140 follow-up 11 -- band-factors items only ever carry `factor`
     // (verified live: {"factor":"Cyclical","qtr":"bull"}), not ticker/
     // category -- those were always undefined, which is why the tooltip
@@ -463,15 +491,40 @@ async function loadRegimeBand() {
     const bullFactors = (factors.bull || []).filter(f => f.factor);
     const bearFactors = (factors.bear || []).filter(f => f.factor);
     strip.innerHTML = `<div class="regime-line" data-quadbandpop="1">
-      Window (${windowData.h ?? 60}d): <strong style="color:${_quadColor(dominant)};">${escapeHtml(dominant)}</strong> — ${months || 'no window data'}
+      <span class="regime-window-text">Window (${windowData.h ?? 60}d): <strong style="color:${_quadColor(dominant)};">${escapeHtml(dominant)}</strong> — ${months || 'no window data'}</span>${qtrEntry}
     </div>`;
     const line = strip.querySelector('.regime-line');
     if (line) {
+      // Line-level fallback: hovering the "Window (60d): Quad X" summary
+      // text itself (not inside a specific month/Qtr entry) still shows the
+      // blended dominant-quad's factors.
       line.addEventListener('mouseover', () => _showQuadPop(line, dominant, bullFactors, bearFactors));
       line.addEventListener('mouseout', e => {
         if (e.relatedTarget && e.relatedTarget.closest('.regime-line')) return;
         _hideQuadPop();
       });
+      // Each month entry shows Bull/Bear factors for ITS OWN quad (not the
+      // blended dominant one) -- stopPropagation so the line-level listener
+      // above doesn't override it with the generic version.
+      line.querySelectorAll('.month-entry').forEach(el => {
+        const idx = Number(el.dataset.monthIdx);
+        const mo = (windowData.months || [])[idx];
+        if (!mo || mo.quad == null) return;
+        const { bull, bear } = _bullBearForQuadNum(allFactors, mo.quad);
+        el.addEventListener('mouseover', e => {
+          e.stopPropagation();
+          _showQuadPop(el, `${String(mo.m).slice(5)} — Quad ${mo.quad}`, bull, bear);
+        });
+      });
+      // Qtr entry -- same treatment, using the current quarter's own quad.
+      const qtrEl = line.querySelector('.qtr-entry');
+      if (qtrEl && windowData.qtr_quad != null) {
+        const { bull, bear } = _bullBearForQuadNum(allFactors, windowData.qtr_quad);
+        qtrEl.addEventListener('mouseover', e => {
+          e.stopPropagation();
+          _showQuadPop(qtrEl, `${windowData.qtr_label || 'Qtr'} — Quad ${windowData.qtr_quad}`, bull, bear);
+        });
+      }
     }
   } catch (e) {
     console.error('regime band failed:', e);
@@ -559,6 +612,18 @@ function _showCategoryQuadPop(el, stanceRow, windowData) {
   });
   if (!stanceRow.months || !stanceRow.months.length) {
     h += `<tr><td class="k" colspan="2" style="color:#9ca3af;">No window data</td></tr>`;
+  }
+  // 2026-08-08 -- Quarter row (the small 5%-weighted one-hot anchor blended
+  // into macronet, matching the new Quarter caret shown inline) -- user
+  // request: "Popups don't have quarter quad info".
+  h += `<tr><td class="sp-sec" colspan="2">Quarter (min wt)</td></tr>`;
+  if (stanceRow.qtr && stanceRow.qtr.stance != null) {
+    const qv = Number(stanceRow.qtr.stance) || 0;
+    const qc = qv > 0 ? '#1c6c30' : qv < 0 ? '#8c1d1d' : '#6b7280';
+    const qLbl = qv > 0 ? 'Bullish' : qv < 0 ? 'Bearish' : 'Neutral';
+    h += `<tr><td class="k">${escapeHtml(stanceRow.qtr.quad || '—')}</td><td class="v" style="color:${qc};font-weight:600;font-size:10px;">${qLbl}</td></tr>`;
+  } else {
+    h += `<tr><td class="k" colspan="2" style="color:#9ca3af;">No quarterly data</td></tr>`;
   }
   h += `<tr><td class="sp-sec" colspan="2">By Quad (raw outlook)</td></tr>`;
   [1, 2, 3, 4].forEach(n => {
@@ -664,7 +729,7 @@ function _catColor(colorMap, category) {
   return colorMap.get(category) || 'var(--text-3)';
 }
 
-function _renderCatPie(svgId, rows, unmapped, colorMap) {
+function _renderCatPie(svgId, rows, unmapped, colorMap, axis) {
   const svg = $(svgId);
   if (!svg) return;
   svg.innerHTML = '';
@@ -699,12 +764,19 @@ function _renderCatPie(svgId, rows, unmapped, colorMap) {
     hit.setAttribute('d', path.getAttribute('d')); hit.setAttribute('class', 'chart-hit');
     hit.addEventListener('mousemove', e => _chartShowTip(e, [{ k: d.category, v: (frac * 100).toFixed(1) + '%' }]));
     hit.addEventListener('mouseleave', _chartHideTip);
+    // Same exposure-detail popup as clicking the matching table row
+    // (openFactorExposureModal, TASK_139) -- user request: "pie chart
+    // clicks should display the same popups for corresponding pies".
+    if (axis) {
+      hit.style.cursor = 'pointer';
+      hit.addEventListener('click', () => openFactorExposureModal(axis, d.category));
+    }
     svg.appendChild(hit);
     a0 = a1;
   });
 }
 
-function _renderCatBars(svgId, rows, unmapped, colorMap) {
+function _renderCatBars(svgId, rows, unmapped, colorMap, axis) {
   const svg = $(svgId);
   if (!svg) return;
   svg.innerHTML = '';
@@ -736,6 +808,11 @@ function _renderCatBars(svgId, rows, unmapped, colorMap) {
     hit.setAttribute('class', 'chart-hit');
     hit.addEventListener('mousemove', e => _chartShowTip(e, [{ k: d.category, v: Number(d.weight_pct).toFixed(1) + '%' }]));
     hit.addEventListener('mouseleave', _chartHideTip);
+    // Same exposure-detail popup as clicking the matching table row.
+    if (axis) {
+      hit.style.cursor = 'pointer';
+      hit.addEventListener('click', () => openFactorExposureModal(axis, d.category));
+    }
     svg.appendChild(hit);
   });
 }
@@ -748,14 +825,17 @@ function _renderCatBars(svgId, rows, unmapped, colorMap) {
 // Yesterday are new single-day vs-Mkt columns (TASK_140,
 // etl/derive_category_perf.py's EXTRA_WINDOWS), same delta convention as
 // the existing 1w-3m columns.
+// 2026-08-08 -- swapped the 1w/3w/1m/2m/3m fixed-trading-day columns for
+// MTD/QTD/YTD calendar-boundary columns (etl/derive_category_perf.py::
+// _window_days_since) per user request. twr_1w..twr_3m are still computed
+// server-side (drv_category_perf keeps them, _verdict()'s PRESS/ROTATE
+// logic still reads twr_1m/WINDOWS) -- only the display list changed.
 const _FS_WINDOWS = [
   { key: 'today', label: 'Today', full: 'today (1 day)' },
   { key: 'yesterday', label: 'Yesterday', full: 'yesterday (the single prior trading day, not a 2-day window)' },
-  { key: '1w', label: '1w', full: '1 week' },
-  { key: '3w', label: '3w', full: '3 weeks' },
-  { key: '1m', label: '1m', full: '1 month' },
-  { key: '2m', label: '2m', full: '2 months' },
-  { key: '3m', label: '3m', full: '3 months' },
+  { key: 'mtd', label: 'MTD', full: 'month-to-date (first trading day of this month through today)' },
+  { key: 'qtd', label: 'QTD', full: 'quarter-to-date (first trading day of this quarter through today)' },
+  { key: 'ytd', label: 'YTD', full: 'year-to-date (first trading day of this year through today)' },
 ];
 
 async function loadFactorScorecard(axis, bodyId, chartId) {
@@ -793,10 +873,18 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
         })
         .filter(Boolean)
         .join('\n');
+      // 2026-08-08 -- show BOTH "mine" (twr) and "not mine" (bench/mkt)
+      // per user request, instead of just the twr-bench delta -- the delta
+      // alone was misreadable when twr is 0 (currently the case here from
+      // the stale-transaction-feed gap-guard, see loadTxnFeedGaps): a
+      // genuinely-positive benchmark could still show as a negative red
+      // delta with no visibility into WHY. Primary = your return (bold);
+      // secondary = market/benchmark return (smaller, own sign color).
       const cells = _FS_WINDOWS.map(w => {
         const twr = row[`twr_${w.key}`], bench = row[`bench_${w.key}`];
-        const delta = (twr != null && bench != null) ? twr - bench : null;
-        return `<td>${_fsColorCell(delta)}</td>`;
+        const you = _fsColorCell(twr) || '<span class="fs-dash">—</span>';
+        const mkt = bench != null ? `<span class="fs-bench-cell">/ ${_fsColorCell(bench)}</span>` : '';
+        return `<td>${you}${mkt}</td>`;
       }).join('');
       const weightPct = row.weight_pct != null ? Number(row.weight_pct) : null;
       // 2026-08-07 -- quad-stance carets: the MAIN caret is the blended 60D
@@ -813,38 +901,80 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
         const mCol = mv > 0 ? '#16a34a' : mv < 0 ? '#dc2626' : '#9ca3af';
         const mGlyph = mv > 0 ? '&#9650;' : mv < 0 ? '&#9660;' : '&#8211;';
         const mainCaret = `<span style="color:${mCol};font-size:11px;font-weight:700;">${mGlyph}</span>`;
-        const periodCarets = (stanceRow.months || []).map(mo => {
+        // Current-month period caret (months[0] -- window_weights orders
+        // nearest-first) matches the 60D main caret's size/weight, so the
+        // "happening right now" period stands out same as the headline
+        // blend; later-in-window periods stay smaller.
+        const periodCarets = (stanceRow.months || []).map((mo, i) => {
           const v = Number(mo.stance) || 0;
           const sCol = v > 0 ? '#16a34a' : v < 0 ? '#dc2626' : '#9ca3af';
           const glyph = v > 0 ? '&#9650;' : v < 0 ? '&#9660;' : '&#8211;';
-          return `<span style="color:${sCol};">${glyph}</span>`;
+          const sz = i === 0 ? 'font-size:11px;font-weight:700;' : '';
+          return `<span style="color:${sCol};${sz}">${glyph}</span>`;
         }).join('<span style="display:inline-block;width:1px;"></span>');
         const gap = `<span style="display:inline-block;width:6px;"></span>`;
+        // Quarter caret (the 5%-weighted one-hot anchor blended into
+        // macronet, api/routers/dash.py::get_quad_factor_stance's `qtr`
+        // field) -- same size/weight as the blended main caret and the
+        // current-month caret, with a gap span before it, inline at the end
+        // of the caret cluster. 2026-08-08 -- briefly tried float:right (a
+        // separate span anchored to the cell's right edge) per an earlier
+        // request, then reverted back to this inline placement per
+        // follow-up: "quarter caret in the grid column move it back where
+        // it was before".
+        const qtrCaret = (stanceRow.qtr && stanceRow.qtr.stance != null) ? (() => {
+          const qv = Number(stanceRow.qtr.stance) || 0;
+          const qCol = qv > 0 ? '#16a34a' : qv < 0 ? '#dc2626' : '#9ca3af';
+          const qGlyph = qv > 0 ? '&#9650;' : qv < 0 ? '&#9660;' : '&#8211;';
+          return `<span style="color:${qCol};font-size:11px;font-weight:700;">${qGlyph}</span>`;
+        })() : '';
         // title="" breaks inheritance from the <tr>'s own title (the twr/
         // bench tooltip) -- without it, hovering a caret showed BOTH the
         // native browser tooltip (inherited from the row) and the custom
         // #quadPop popover at once, overlapping.
-        return `<span class="cat-quad-stance" title="" style="cursor:help;margin-left:5px;font-size:9px;letter-spacing:1px;">${mainCaret}${gap}${periodCarets}</span>`;
+        return `<span class="cat-quad-stance" title="" style="cursor:help;margin-right:5px;font-size:9px;letter-spacing:1px;">${mainCaret}${gap}${periodCarets}${gap}${qtrCaret}</span>`;
       })() : '';
       // TASK_139 -- row click opens the same exposure-detail modal as the
       // Risk Dial's fired gauges (Screen D of the design doc), keyed by
       // (axis, category) instead of gauge_key.
       return `<tr title="${escapeHtml(titleParts)}" class="fs-clickable" data-cat="${escapeHtml(catKey)}"
                    onclick="openFactorExposureModal('${escapeHtml(axis)}', '${escapeHtml(row.category).replace(/'/g, "\\'")}')">
-        <td><span class="cat-swatch" style="background:${_catColor(colorMap, row.category)}"></span>${escapeHtml(row.category)}${stanceIcon}</td>
-        <td class="fs-weight-cell">
-          ${weightPct != null ? `<span class="fs-weight-bar" style="width:${Math.max(0, Math.min(100, weightPct))}%"></span>` : ''}
-          <span class="fs-weight-text">${weightPct != null ? weightPct.toFixed(1) + '%' : ''}</span>
+        <td>${stanceIcon}${escapeHtml(row.category)}</td>
+        <td class="fs-weight-cell" title="${escapeHtml(
+            row.weight_pct_equities != null
+              ? 'Weight — % of your EQUITIES only (bold) / % of your TOTAL portfolio incl. cash+bonds+etc (small)'
+              : 'Weight — % of your total portfolio'
+          )}">
+          ${(() => {
+            // 2026-08-08 -- equity% is primary (bar + bold figure) for
+            // sector/style, since that's how sector/style allocation is
+            // normally read; total-portfolio% (the old primary) drops to a
+            // muted secondary line. asset_class has no weight_pct_equities
+            // (not applicable -- that axis IS the total-portfolio view) so
+            // it keeps total% as primary, unchanged. The <td>'s own title
+            // (above) breaks inheritance from the <tr>'s twr/bench tooltip,
+            // which was otherwise leaking through here -- same
+            // title-inheritance issue as the caret-cluster overlap fix.
+            const primary = row.weight_pct_equities != null ? Number(row.weight_pct_equities) : weightPct;
+            const bar = primary != null ? `<span class="fs-weight-bar" style="width:${Math.max(0, Math.min(100, primary))}%"></span>` : '';
+            const text = primary != null ? `<span class="fs-weight-text">${primary.toFixed(1)}%</span>` : '';
+            const secondary = (row.weight_pct_equities != null && weightPct != null)
+              ? `<span class="fs-weight-eq">/ ${weightPct.toFixed(1)}%</span>` : '';
+            return bar + text + secondary;
+          })()}
         </td>
         <td>${_verdictBadge(row.verdict)}</td>
         ${cells}
       </tr>`;
     }).join('');
+    // 2026-08-08 -- Unmapped made clickable (same exposure-detail popup as
+    // every other row) so "how can i see what stocks are unmapped?" has an
+    // answer -- previously just an inert note line.
     const unmapped = r.unmapped
-      ? `<div class="fs-note">Unmapped: ${escapeHtml(r.unmapped.category)} — ${r.unmapped.weight_pct != null ? Number(r.unmapped.weight_pct).toFixed(1) + '%' : ''} of book not resolved to a category.</div>`
+      ? `<div class="fs-note fs-clickable" style="cursor:pointer;" onclick="openFactorExposureModal('${escapeHtml(axis)}', 'Unmapped')">Unmapped: ${escapeHtml(r.unmapped.category)} — ${r.unmapped.weight_pct != null ? Number(r.unmapped.weight_pct).toFixed(1) + '%' : ''} of book not resolved to a category. Click to see which holdings.</div>`
       : '';
     const headCells = _FS_WINDOWS
-      .map(w => `<th title="Your time-weighted return in this category vs its benchmark ETF, ${w.full}">${w.label}</th>`)
+      .map(w => `<th title="Top: your time-weighted return, ${w.full}. Bottom (smaller): its benchmark ETF's return over the same period.">${w.label}</th>`)
       .join('');
     // TASK_136 A.3 -- wrapped in overflow-x:auto so the table degrades (its
     // own scrollbar) at narrow widths instead of forcing the grid track
@@ -877,9 +1007,9 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
     }
     if (chartId) {
       if (axis === 'style') {
-        _renderCatBars(chartId, r.rows, r.unmapped, colorMap);
+        _renderCatBars(chartId, r.rows, r.unmapped, colorMap, axis);
       } else {
-        _renderCatPie(chartId, r.rows, r.unmapped, colorMap);
+        _renderCatPie(chartId, r.rows, r.unmapped, colorMap, axis);
         // TASK_140 follow-up 16 -- the chart is a fixed 190px square
         // (.cat-chart's flex-basis); when the table is shorter than that
         // (e.g. Asset class's 7 rows), .cat-body's flex-start row height

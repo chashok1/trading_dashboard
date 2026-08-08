@@ -361,7 +361,9 @@ def list_actionable_accounts(date: Optional[str] = Query(None)):
             " UNION"
             " SELECT account AS acct_num, account AS acct_name FROM hist_cs"
             "  WHERE snapshot_date=:mc"
-            ") _a WHERE acct_num IS NOT NULL ORDER BY acct_num"
+            ") _a WHERE acct_num IS NOT NULL"
+            " AND acct_num NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)"
+            " ORDER BY acct_num"
         ), {"mf": max_f, "mc": max_cs}).fetchall()
         refs = s.execute(text(
             "SELECT account_number, short_name, custom_name"
@@ -1131,11 +1133,13 @@ def get_actionable(
                 FROM hist_f f
                 WHERE f.snapshot_date = :max_f_snap AND f.qty > 0
                   AND f.tos_symbol IS NOT NULL
+                  AND f.account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
                 UNION ALL
                 SELECT c.tos_symbol, c.account AS acct
                 FROM hist_cs c
                 WHERE c.snapshot_date = :max_cs_snap AND c.qty > 0
                   AND c.tos_symbol IS NOT NULL
+                  AND c.account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
             ) _pos
             GROUP BY tos_symbol
         ) _ha ON _ha.tos_symbol = a.tos_symbol
@@ -1509,6 +1513,24 @@ def _compute_quad_window(s, d):
     eff = {f"q{i+1}": round(eff_frac[i] * 100, 1) for i in range(4)}
     dominant = (max(range(4), key=lambda i: eff_frac[i]) + 1) if any(eff_frac) else None
 
+    # 2026-08-08 -- current-quarter one-hot leg (the small 5%-weighted anchor
+    # blended into macronet, etl/derive_macro.py's `Qtr`) -- exposed here too
+    # so the Regime Band line can show it at the end alongside the monthly
+    # window, matching the per-category Quarter caret added earlier. User
+    # request: "REGIME text in risk dial should have quarter entry at the
+    # end Qtr - (Q4) with tooltip/hoverover".
+    cur_qtr_y, cur_qtr_n = d.year, (d.month - 1) // 3 + 1
+    qtr_row = s.execute(text(
+        "SELECT quad FROM ref_quad_periods"
+        " WHERE period_type='quarterly' AND year=:y AND period_num=:n"
+    ), {"y": cur_qtr_y, "n": cur_qtr_n}).scalar()
+    qtr_num = None
+    if qtr_row:
+        for tok in str(qtr_row).split():
+            if tok.isdigit():
+                qtr_num = int(tok)
+                break
+
     return {
         "weighted": weighted,
         "pcts_by_month": pcts_by_month,
@@ -1518,6 +1540,8 @@ def _compute_quad_window(s, d):
         "months_out": months_out,
         "eff": eff,
         "dominant": dominant,
+        "qtr_quad": qtr_num,
+        "qtr_label": f"Q{cur_qtr_n} {cur_qtr_y}",
     }
 
 
@@ -1544,6 +1568,8 @@ def get_quad_window(date: Optional[str] = Query(None, description="As-of date (d
         "months": win["months_out"],
         "eff": win["eff"],
         "dominant_quad": win["dominant"],
+        "qtr_quad": win["qtr_quad"],
+        "qtr_label": win["qtr_label"],
     }
 
 
@@ -1572,7 +1598,7 @@ def get_quad_factor_stance(
     per quad (see the "do you think we can add that many columns?" pushback
     this replaced: the 60d window mix already IS the blend across quads)."""
     from datetime import datetime as _dt
-    from etl.derive_macro import _window_stance_for, _stance as _to_stance_num
+    from etl.derive_macro import _window_stance_for, _stance as _to_stance_num, _onehot
 
     category = _QUAD_OUTLOOK_AXIS_MAP.get(axis)
     if not category:
@@ -1585,6 +1611,18 @@ def get_quad_factor_stance(
             "SELECT sub_category, quad1, quad2, quad3, quad4"
             " FROM ref_quad_outlook WHERE category = :cat"
         ), {"cat": category}).mappings().all()
+        # 2026-08-08 -- current-quarter one-hot leg, same source/shape as
+        # etl/derive_macro.py::_derive_macro_impl's `Qtr` (the small 5%-
+        # weighted anchor blended into macronet) -- exposed per-category here
+        # so the Sector/Asset-class/Style scorecard's caret cluster can show
+        # it alongside the monthly window carets (user request: "show
+        # Quarter Caret ... same size as blended/first month").
+        cur_qtr_y, cur_qtr_n = d.year, (d.month - 1) // 3 + 1
+        qtr_now = s.execute(text(
+            "SELECT quad FROM ref_quad_periods"
+            " WHERE period_type='quarterly' AND year=:y AND period_num=:n"
+        ), {"y": cur_qtr_y, "n": cur_qtr_n}).scalar()
+        qtr_now_pcts = _onehot(qtr_now) if qtr_now else None
 
     outlook_map = {(category, r["sub_category"]): [r["quad1"], r["quad2"], r["quad3"], r["quad4"]]
                    for r in outlook_rows}
@@ -1614,12 +1652,15 @@ def get_quad_factor_stance(
         texts = [r["quad1"], r["quad2"], r["quad3"], r["quad4"]]
         score = _window_stance_for(category, sub, outlook_map, win["weighted"], win["pcts_by_month"])
         stance = "Bullish" if (score or 0) > 0 else "Bearish" if (score or 0) < 0 else "Neutral"
+        qtr_stance = (round(sum(qtr_now_pcts[i] * _to_stance_num(texts[i]) for i in range(4)), 4)
+                      if qtr_now_pcts else None)
         rows_out.append({
             "category": sub,
             "score": score,
             "stance": stance,
             "quad1": r["quad1"], "quad2": r["quad2"], "quad3": r["quad3"], "quad4": r["quad4"],
             "months": _month_stances(texts),
+            "qtr": {"quad": qtr_now, "stance": qtr_stance} if qtr_now else None,
         })
 
     return {
@@ -2454,6 +2495,7 @@ def get_portfolio(
           WHERE TRUE
             AND snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
             AND NOT is_cash(tos_symbol, type, description)
+            AND COALESCE(ra.is_active, TRUE) = TRUE
           )
           UNION ALL
           (
@@ -2493,6 +2535,7 @@ def get_portfolio(
           WHERE TRUE
             AND snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
             AND is_cash(tos_symbol, type, description)
+            AND COALESCE(ra.is_active, TRUE) = TRUE
           GROUP BY hist_f.account_number, hist_f.account_name, ra.short_name
           )
         """)
@@ -2528,6 +2571,7 @@ def get_portfolio(
               AND rg.as_of_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
           WHERE TRUE
             AND c.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
+            AND COALESCE(ra.is_active, TRUE) = TRUE
           )
           UNION ALL
           (
@@ -2555,6 +2599,7 @@ def get_portfolio(
           FROM drv_cs_realized_gain rg
           LEFT JOIN ref_accounts ra ON ra.account_number = rg.account
           WHERE rg.as_of_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
+            AND COALESCE(ra.is_active, TRUE) = TRUE
             AND NOT EXISTS (
               SELECT 1 FROM hist_cs c
               WHERE c.account = rg.account
@@ -2737,7 +2782,8 @@ def get_portfolio(
                     return {}
                 rows2 = s.execute(text(
                     f"SELECT {sym_col}, {acct_col}, COALESCE({gain_col},0) FROM {tbl} "
-                    f"WHERE TRUE AND {date_col} = :s"
+                    f"WHERE TRUE AND {date_col} = :s "
+                    f"AND {acct_col} NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)"
                 ), {"s": snap}).all()
                 return {(src_label, str(r[1]), r[0]): float(r[2]) for r in rows2}
 
@@ -2754,11 +2800,14 @@ def get_portfolio(
             # (hist_f + hist_cs, including cash rows) as of date d, rather than
             # a hand-maintained ref_param that drifts from the real portfolio size.
             tot_amt_row = s.execute(text("""
+                WITH excl AS (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
                 SELECT
                     COALESCE((SELECT SUM(current_value) FROM hist_f
-                               WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)), 0)
+                               WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+                               AND account_number NOT IN (SELECT account_number FROM excl)), 0)
                   + COALESCE((SELECT SUM(market_value) FROM hist_cs
-                               WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)), 0)
+                               WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
+                               AND account NOT IN (SELECT account_number FROM excl)), 0)
             """), {"d": d}).scalar()
             tot_amt = float(tot_amt_row) if tot_amt_row else None
 
@@ -3028,9 +3077,13 @@ def get_portfolio_accounts(
                      'F'                              AS source
                 FROM hist_f hf
                 LEFT JOIN ref_accounts ra ON ra.account_number = hf.account_number
+                WHERE COALESCE(ra.is_active, TRUE) = TRUE
               UNION  SELECT account, 'CS'    FROM hist_cs
+                     WHERE account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
               UNION  SELECT COALESCE(account, account_number) AS account, 'F'     FROM hist_ft
+                     WHERE account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
               UNION  SELECT account, 'CS'    FROM hist_cst
+                     WHERE account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
             ) u
             WHERE account IS NOT NULL
             ORDER BY source, account
@@ -3155,7 +3208,7 @@ def get_portfolio_groups():
         rows = s.execute(text("""
             SELECT group_name, group_desc, short_name
             FROM ref_accounts
-            WHERE group_name IS NOT NULL AND short_name IS NOT NULL
+            WHERE group_name IS NOT NULL AND short_name IS NOT NULL AND is_active = TRUE
             ORDER BY group_name, short_name
         """)).mappings().all()
         default = s.execute(text(
@@ -3178,7 +3231,9 @@ def get_portfolio_snapshot_status():
     sql = """
         WITH cs AS (
           SELECT 'CS' AS source, account AS account, MAX(snapshot_date) AS last_snapshot
-          FROM hist_cs GROUP BY account
+          FROM hist_cs
+          WHERE account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
+          GROUP BY account
         ),
         f AS (
           SELECT 'F' AS source,
@@ -3188,6 +3243,7 @@ def get_portfolio_snapshot_status():
                  MAX(snapshot_date) AS last_snapshot
           FROM hist_f
           LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+          WHERE COALESCE(ra.is_active, TRUE) = TRUE
           GROUP BY hist_f.account_number, hist_f.account_name, ra.short_name
         )
         SELECT source, account, last_snapshot,
@@ -3323,8 +3379,12 @@ def get_portfolio_trends(
         cs_acct_clause = " AND account = ANY(:group_accts)"
         f_acct_clause  = " AND hist_f.account_number = ANY(:group_accts)"
     else:
-        cs_acct_clause = ""
-        f_acct_clause  = ""
+        # No explicit account/group selected — apply the default account
+        # exclusion (ref_accounts.is_active = FALSE, e.g. the 401k). An
+        # explicit account or group pick (e.g. group A2, the 401k's own
+        # isolated group) is a deliberate ask to view it and is left alone.
+        cs_acct_clause = " AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)"
+        f_acct_clause  = " AND hist_f.account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)"
 
     unions = []
     if inc_cs:
@@ -3563,7 +3623,8 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
     with session_scope() as s:
         # Overall totals (MV includes all cash, gains/cost/legs exclude cash)
         row = s.execute(text(f"""
-            WITH latest_cs AS (
+            WITH excl AS (SELECT account_number FROM ref_accounts WHERE is_active = FALSE),
+            latest_cs AS (
                 SELECT MAX(snapshot_date) AS d FROM hist_cs WHERE snapshot_date <= :d
             ),
             prev_cs_snap AS (
@@ -3575,6 +3636,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                 SELECT account, tos_symbol, price
                   FROM hist_cs
                  WHERE snapshot_date = (SELECT d FROM prev_cs_snap)
+                   AND account NOT IN (SELECT account_number FROM excl)
             ),
             cs_sold_move AS (
                 -- For each sell today: (sell_price - yesterday_close) * abs(qty)
@@ -3587,6 +3649,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                    AND UPPER(COALESCE(cst.action, '')) LIKE '%SELL%'
                    AND cst.quantity IS NOT NULL
                    AND cst.price    IS NOT NULL
+                   AND cst.account NOT IN (SELECT account_number FROM excl)
                  GROUP BY cst.account
             ),
             cs_div_int AS (
@@ -3597,6 +3660,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                    AND (UPPER(COALESCE(action, '')) LIKE '%DIVIDEND%'
                         OR UPPER(COALESCE(action, '')) LIKE '%INTEREST%'
                         OR UPPER(COALESCE(action, '')) LIKE '%REINV%')
+                   AND account NOT IN (SELECT account_number FROM excl)
                  GROUP BY account
             ),
             u AS (
@@ -3610,6 +3674,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                      CASE WHEN {F_IS_CASH} THEN current_value ELSE 0 END AS cash_mv
               FROM hist_f
               WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+                AND account_number NOT IN (SELECT account_number FROM excl)
               UNION ALL
               SELECT CASE WHEN {CS_IS_NOT_CASH_C} THEN c.market_value ELSE 0 END,
                      -- CS today_gain row contribution: just day_chng. Per-account intraday-on-sold + DIV/INT added below.
@@ -3629,6 +3694,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                   AND rg.tos_symbol = c.tos_symbol
                   AND rg.as_of_date = (SELECT d FROM latest_cs)
               WHERE c.snapshot_date = (SELECT d FROM latest_cs)
+                AND c.account NOT IN (SELECT account_number FROM excl)
             )
             SELECT COALESCE(SUM(mv),0) AS market_value,
                    -- Schwab-style Today's Gain:
@@ -3656,7 +3722,8 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
 
         # Per-account breakdown (exclude cash positions from totals, but include cash value separately)
         acct_rows = list(s.execute(text(f"""
-            WITH f_accts AS (
+            WITH excl AS (SELECT account_number FROM ref_accounts WHERE is_active = FALSE),
+            f_accts AS (
               SELECT 'F' AS source,
                      COALESCE(hist_f.account_name, hist_f.account_number)
                        || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
@@ -3673,6 +3740,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
               FROM hist_f
               LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
               WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+                AND COALESCE(ra.is_active, TRUE) = TRUE
               GROUP BY hist_f.account_number, hist_f.account_name, ra.short_name
             ),
             latest_cs AS (
@@ -3685,6 +3753,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
             prev_close_cs AS (
               SELECT account, tos_symbol, price FROM hist_cs
                WHERE snapshot_date = (SELECT d FROM prev_cs_snap)
+                 AND account NOT IN (SELECT account_number FROM excl)
             ),
             cs_sold_move AS (
               SELECT cst.account,
@@ -3696,6 +3765,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                  AND UPPER(COALESCE(cst.action, '')) LIKE '%SELL%'
                  AND cst.quantity IS NOT NULL
                  AND cst.price    IS NOT NULL
+                 AND cst.account NOT IN (SELECT account_number FROM excl)
                GROUP BY cst.account
             ),
             cs_div_int AS (
@@ -3705,6 +3775,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                  AND (UPPER(COALESCE(action, '')) LIKE '%DIVIDEND%'
                       OR UPPER(COALESCE(action, '')) LIKE '%INTEREST%'
                       OR UPPER(COALESCE(action, '')) LIKE '%REINV%')
+                 AND account NOT IN (SELECT account_number FROM excl)
                GROUP BY account
             ),
             -- Realized P&L per account, directly from drv_cs_realized_gain.
@@ -3747,6 +3818,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
               LEFT JOIN cs_div_int   di ON di.account = c.account
               LEFT JOIN cs_realized_by_acct rt2 ON rt2.account = c.account
               WHERE c.snapshot_date = (SELECT d FROM latest_cs)
+                AND COALESCE(ra.is_active, TRUE) = TRUE
               GROUP BY c.account, ra.short_name
             )
             SELECT * FROM f_accts
@@ -3790,6 +3862,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                 SELECT account, COALESCE(SUM(market_value),0) AS total_value
                 FROM hist_cs
                 WHERE snapshot_date = :s
+                  AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
                 GROUP BY account
             """), {"s": ytd_snap}).mappings().all()
             for r in ytd_rows:
@@ -3804,6 +3877,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                 SELECT account, COALESCE(SUM(market_value),0) AS total_value
                 FROM hist_cs
                 WHERE snapshot_date = :s
+                  AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
                 GROUP BY account
             """), {"s": mtd_snap}).mappings().all()
             for r in mtd_rows:
@@ -3825,6 +3899,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                 FROM hist_f
                 LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
                 WHERE snapshot_date = :s
+                  AND COALESCE(ra.is_active, TRUE) = TRUE
                 GROUP BY hist_f.account_number, hist_f.account_name, ra.short_name
             """), {"s": ytd_snap_f}).mappings().all()
             for r in ytd_rows_f:
@@ -3842,6 +3917,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
                 FROM hist_f
                 LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
                 WHERE snapshot_date = :s
+                  AND COALESCE(ra.is_active, TRUE) = TRUE
                 GROUP BY hist_f.account_number, hist_f.account_name, ra.short_name
             """), {"s": mtd_snap_f}).mappings().all()
             for r in mtd_rows_f:
@@ -3953,14 +4029,17 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
         # implementing (global YTD came out to $890k on a $1.47M portfolio).
 
         pos_count = s.execute(text(f"""
-            WITH u AS (
+            WITH excl AS (SELECT account_number FROM ref_accounts WHERE is_active = FALSE),
+            u AS (
               SELECT DISTINCT symbol FROM hist_f WHERE TRUE
                 AND snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
                 AND {F_IS_NOT_CASH}
+                AND account_number NOT IN (SELECT account_number FROM excl)
               UNION
               SELECT DISTINCT symbol FROM hist_cs WHERE TRUE
                 AND snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
                 AND {CS_IS_NOT_CASH}
+                AND account NOT IN (SELECT account_number FROM excl)
             ) SELECT COUNT(*) FROM u
         """), {"d": d}).scalar() or 0
 
@@ -3972,17 +4051,20 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
         cnt = None
         try:
             cnt = s.execute(text(f"""
-          WITH pos AS (
+          WITH excl AS (SELECT account_number FROM ref_accounts WHERE is_active = FALSE),
+          pos AS (
             SELECT symbol, SUM(mv) AS mv FROM (
               SELECT symbol, COALESCE(current_value,0) AS mv FROM hist_f
                 WHERE TRUE
                   AND snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
                   AND {F_IS_NOT_CASH}
+                  AND account_number NOT IN (SELECT account_number FROM excl)
               UNION ALL
               SELECT symbol, COALESCE(market_value,0) FROM hist_cs
                 WHERE TRUE
                   AND snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
                   AND {CS_IS_NOT_CASH}
+                  AND account NOT IN (SELECT account_number FROM excl)
             ) u GROUP BY symbol
           ),
           ac_ps AS (
@@ -4142,14 +4224,17 @@ def get_portfolio_symbol(
     with session_scope() as s:
         # Snapshot time series (consolidated across sources & accounts)
         ts = s.execute(text(f"""
-          WITH u AS (
+          WITH excl AS (SELECT account_number FROM ref_accounts WHERE is_active = FALSE),
+          u AS (
             SELECT snapshot_date, qty, current_value AS mv, {F_TOTAL_GAIN_DOLLAR} AS tg
             FROM hist_f
             WHERE symbol = :sym {where_extra}
+              AND account_number NOT IN (SELECT account_number FROM excl)
             UNION ALL
             SELECT snapshot_date, qty, market_value AS mv, gain_dollar AS tg
             FROM hist_cs
             WHERE symbol = :sym {where_extra}
+              AND account NOT IN (SELECT account_number FROM excl)
           )
           SELECT snapshot_date,
                  SUM(qty) AS qty,
@@ -4238,14 +4323,17 @@ def get_portfolio_detail(symbol: str, date: Optional[str] = Query(None)):
         anchor = max(x for x in [latest_f, latest_cs] if x is not None)
         cutoff = anchor - timedelta(days=730)
         ts_sql = f"""
+            WITH excl AS (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
             SELECT snapshot_date, SUM(qty) as qty, SUM(mv) as market_value,
                    SUM(tg) as total_gain_dollar
             FROM (
                 SELECT snapshot_date, qty, current_value as mv, {F_TOTAL_GAIN_DOLLAR} as tg
                 FROM hist_f WHERE symbol = :sym AND snapshot_date <= :anchor
+                  AND account_number NOT IN (SELECT account_number FROM excl)
                 UNION ALL
                 SELECT snapshot_date, qty, market_value as mv, gain_dollar as tg
                 FROM hist_cs WHERE symbol = :sym AND snapshot_date <= :anchor
+                  AND account NOT IN (SELECT account_number FROM excl)
             ) t
             WHERE snapshot_date >= :cutoff
             GROUP BY snapshot_date ORDER BY snapshot_date
@@ -4271,13 +4359,16 @@ def get_portfolio_detail(symbol: str, date: Optional[str] = Query(None)):
 
         # Get account breakdown from absolute latest snapshots
         accounts_sql = """
+            WITH excl AS (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
             SELECT account, SUM(mv) as total_value, SUM(qty) as total_qty
             FROM (
                 SELECT account_number as account, current_value as mv, qty FROM hist_f
                 WHERE symbol = :sym AND snapshot_date = :abs_latest_f
+                  AND account_number NOT IN (SELECT account_number FROM excl)
                 UNION ALL
                 SELECT account, market_value as mv, qty FROM hist_cs
                 WHERE symbol = :sym AND snapshot_date = :abs_latest_cs
+                  AND account NOT IN (SELECT account_number FROM excl)
             ) t
             GROUP BY account ORDER BY total_value DESC
         """
@@ -4299,6 +4390,7 @@ def get_portfolio_detail(symbol: str, date: Optional[str] = Query(None)):
         # Get current position from absolute latest snapshots (not latest for this symbol)
         # If symbol is missing from latest snapshot, qty = 0 (it was sold)
         current_sql = f"""
+            WITH excl AS (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
             SELECT COALESCE(f.desc, c.desc)               AS description,
                    COALESCE(f.qty,  0) + COALESCE(c.qty,  0) AS qty,
                    COALESCE(f.mv,   0) + COALESCE(c.mv,   0) AS market_value,
@@ -4310,12 +4402,14 @@ def get_portfolio_detail(symbol: str, date: Optional[str] = Query(None)):
                        SUM(current_value) AS mv, SUM({F_TOTAL_GAIN_DOLLAR}) AS gain,
                        AVG({F_TOTAL_GAIN_PCT}) AS gain_pct, MAX(last_price) AS price
                 FROM hist_f WHERE symbol = :sym AND snapshot_date = :abs_latest_f
+                  AND account_number NOT IN (SELECT account_number FROM excl)
             ) f
             FULL OUTER JOIN (
                 SELECT MAX(description) AS desc, SUM(qty) AS qty,
                        SUM(market_value) AS mv, SUM(gain_dollar) AS gain,
                        AVG(gain_pct) AS gain_pct, MAX(price) AS price
                 FROM hist_cs WHERE symbol = :sym AND snapshot_date = :abs_latest_cs
+                  AND account NOT IN (SELECT account_number FROM excl)
             ) c ON TRUE
         """
         current = s.execute(text(current_sql), {"sym": sym, "abs_latest_f": abs_latest_f, "abs_latest_cs": abs_latest_cs}).first()
@@ -4327,11 +4421,13 @@ def get_portfolio_detail(symbol: str, date: Optional[str] = Query(None)):
         f_realized = s.execute(text("""
             SELECT COALESCE(SUM(realized_gain_dollar), 0) FROM hist_f
             WHERE symbol = :sym AND realized_gain_dollar IS NOT NULL
+              AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
         """), {"sym": sym}).scalar() or 0.0
 
         cs_realized = s.execute(text("""
             SELECT COALESCE(SUM(realized_gain_dollar), 0) FROM hist_cs
             WHERE symbol = :sym AND realized_gain_dollar IS NOT NULL
+              AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
         """), {"sym": sym}).scalar() or 0.0
 
         realized_gains = float(f_realized) + float(cs_realized)
@@ -4344,11 +4440,13 @@ def get_portfolio_detail(symbol: str, date: Optional[str] = Query(None)):
         ytd_f_realized = s.execute(text("""
             SELECT COALESCE(SUM(realized_gain_dollar), 0) FROM hist_f
             WHERE symbol = :sym AND sold_date >= :ytd_start AND sold_date <= :d
+              AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
         """), {"sym": sym, "ytd_start": ytd_start, "d": d}).scalar() or 0.0
 
         ytd_cs_realized = s.execute(text("""
             SELECT COALESCE(SUM(realized_gain_dollar), 0) FROM hist_cs
             WHERE symbol = :sym AND sold_date >= :ytd_start AND sold_date <= :d
+              AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
         """), {"sym": sym, "ytd_start": ytd_start, "d": d}).scalar() or 0.0
 
         ytd_dollar = float(ytd_f_realized) + float(ytd_cs_realized)
@@ -4357,11 +4455,13 @@ def get_portfolio_detail(symbol: str, date: Optional[str] = Query(None)):
         mtd_f_realized = s.execute(text("""
             SELECT COALESCE(SUM(realized_gain_dollar), 0) FROM hist_f
             WHERE symbol = :sym AND sold_date >= :mtd_start AND sold_date <= :d
+              AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
         """), {"sym": sym, "mtd_start": mtd_start, "d": d}).scalar() or 0.0
 
         mtd_cs_realized = s.execute(text("""
             SELECT COALESCE(SUM(realized_gain_dollar), 0) FROM hist_cs
             WHERE symbol = :sym AND sold_date >= :mtd_start AND sold_date <= :d
+              AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
         """), {"sym": sym, "mtd_start": mtd_start, "d": d}).scalar() or 0.0
 
         mtd_dollar = float(mtd_f_realized) + float(mtd_cs_realized)

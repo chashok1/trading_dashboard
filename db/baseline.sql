@@ -363,6 +363,15 @@ INSERT INTO ref_settings (setting_name, setting_value, description)
 VALUES ('default_portfolio_group', 'A1', 'Portfolio screen: account group shown by default on load')
 ON CONFLICT (setting_name) DO NOTHING;
 
+-- 2026-08-08: default account exclusion. is_active=FALSE means the account
+-- is excluded from every rollup/derive/screen by default (dashboard,
+-- Cockpit exposure/risk, category-perf, realized gains, inferred actions) —
+-- raw hist_f/hist_cs loading and mark_sales processing are NOT affected,
+-- only aggregation/display. Toggle via the /ref admin screen (ref_accounts
+-- row), no code change needed.
+ALTER TABLE IF EXISTS ref_accounts ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+UPDATE ref_accounts SET is_active = FALSE WHERE account_number = '85911';
+
 -- -----------------------------------------------------
 -- ref_account_baseline — manual Total-value overrides used as a YTD/MTD
 -- baseline fallback ONLY for accounts with no real hist_f/hist_cs snapshot
@@ -7603,6 +7612,15 @@ CREATE TABLE IF NOT EXISTS drv_category_perf (
     category         text NOT NULL,
     market_value     numeric,
     weight_pct       numeric,
+    -- 2026-08-08: sector/style are equity-only axes (see _categories_for's
+    -- non-equity exclusion) but weight_pct's denominator stays total
+    -- portfolio value (cash/bonds/etc included) for cross-axis consistency.
+    -- weight_pct_equities re-bases the same market_value against total
+    -- EQUITY value only (Asset Class's own "Equities" bucket) so sector/
+    -- style weights read as a share of the equity sleeve, matching how
+    -- sector allocation is normally quoted. NULL for axis='asset_class'
+    -- (that axis IS the total-portfolio view by design).
+    weight_pct_equities numeric,
     target_min       numeric,
     target_max       numeric,
     twr_1w  numeric, twr_3w  numeric, twr_1m  numeric, twr_2m  numeric, twr_3m numeric,
@@ -7612,6 +7630,11 @@ CREATE TABLE IF NOT EXISTS drv_category_perf (
     -- 2-day cumulative window) -- see etl/derive_category_perf.py::_twr_window.
     twr_today numeric, twr_yesterday numeric,
     bench_today numeric, bench_yesterday numeric,
+    -- 2026-08-08: calendar-boundary windows (first trading day of month/
+    -- quarter/year through D), NOT a fixed trading-day count like twr_1m/etc
+    -- above -- see etl/derive_category_perf.py::_window_days_since.
+    twr_mtd numeric, twr_qtd numeric, twr_ytd numeric,
+    bench_mtd numeric, bench_qtd numeric, bench_ytd numeric,
     bench_symbol     text,
     flows_confidence text,              -- 'green' | 'amber' | 'suspect'
     quad_stance      text,              -- BULLISH | NEUTRAL | BEARISH
@@ -7624,6 +7647,13 @@ ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS twr_today numer
 ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS twr_yesterday numeric;
 ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS bench_today numeric;
 ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS bench_yesterday numeric;
+ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS weight_pct_equities numeric;
+ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS twr_mtd numeric;
+ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS twr_qtd numeric;
+ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS twr_ytd numeric;
+ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS bench_mtd numeric;
+ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS bench_qtd numeric;
+ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS bench_ytd numeric;
 
 -- Phase 4.1: ToS market internals (INT tab) — $ADVN/$DECN/$UVOL/$DVOL/$TRIN.
 -- Deliberately NOT part of drv_symbols/hist_td universe (see CLAUDE.md

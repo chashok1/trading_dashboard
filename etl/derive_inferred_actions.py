@@ -99,11 +99,13 @@ def _diff_pair(session: Session, source_feed: str, prev_d: date, curr_d: date) -
             SELECT {c['acct']} AS account, COALESCE(tos_symbol, symbol) AS sym,
                    {c['qty']} AS qty, {c['val']} AS val, {c['price']} AS price
             FROM {c['table']} WHERE snapshot_date = :prev
+              AND {c['acct']} NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
         ),
         curr AS (
             SELECT {c['acct']} AS account, COALESCE(tos_symbol, symbol) AS sym,
                    {c['qty']} AS qty, {c['val']} AS val, {c['price']} AS price
             FROM {c['table']} WHERE snapshot_date = :curr
+              AND {c['acct']} NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
         )
         SELECT COALESCE(p.account, c.account) AS account,
                COALESCE(p.sym, c.sym)         AS sym,

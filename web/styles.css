@@ -2051,7 +2051,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    tokens rather than the legacy #portfolioModal purple-gradient look. */
 .gauge-modal-backdrop {
   display: none; position: fixed; inset: 0; z-index: 1000;
-  align-items: flex-start; justify-content: center; overflow-y: auto; padding: 40px 16px;
+  align-items: flex-start; justify-content: center; overflow-y: auto; padding: 48px 24px;
 }
 .gauge-modal-backdrop.open { display: flex; }
 .gauge-modal-backdrop .gm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); }
@@ -2066,6 +2066,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .gm-total { text-align: right; flex-shrink: 0; }
 .gm-total .d { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text-1); }
 .gm-total .p { font-size: 12px; color: var(--text-3); }
+.gm-total .g { font-size: 13px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .gm-close {
   width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--border); background: var(--card-bg);
   color: var(--text-3); font-size: 12px; display: flex; align-items: center; justify-content: center;
@@ -2073,10 +2074,17 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 }
 .gm-close:hover { color: var(--text-1); border-color: var(--text-3); }
 .gm-body { display: grid; grid-template-columns: 1.15fr 1fr; }
-.gm-table-wrap { border-right: 1px solid var(--border); max-height: 380px; overflow-y: auto; }
+/* 2026-08-08 -- no max-height/overflow-y here (previously a 380px cap with
+   its own inner scrollbar) -- user request: "make sure no scrollbars
+   appear". The table now grows to its natural height like .cat-table-col
+   was already changed to do (see the "per user request it should just use
+   whitespace instead of scrolling" note above); the page-level backdrop
+   scroll (.gauge-modal-backdrop's own overflow-y) is the only fallback
+   left, for the rare case content exceeds the viewport. */
+.gm-table-wrap { border-right: 1px solid var(--border); padding: 4px 0; }
 .gm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .gm-table th {
-  position: sticky; top: 0; background: var(--card-bg); text-align: left; font-weight: 600;
+  background: var(--card-bg); text-align: left; font-weight: 600;
   color: var(--text-3); font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
   padding: 8px 10px; border-bottom: 1px solid var(--border);
 }
@@ -2202,7 +2210,18 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
 .source-pop td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; word-break: break-word; }
 .source-pop .sp-sec { color: #94a3b8; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; padding-top: 5px; }
 #regimeStrip > * + * { padding-left: 10px; border-left: 1px solid var(--border); }
-#regimeStrip .regime-line { font-size: 13px; cursor: help; border-bottom: 1px dotted var(--border); display: inline-block; }
+/* 2026-08-08 -- .regime-line switched from inline-block to a full-width flex
+   row so its Qtr entry can right-justify to the card's own right edge
+   (flex:1 1 100% claims the whole #regimeStrip row; space-between then
+   pushes .qtr-entry as far right as the card allows) instead of just
+   trailing inline after the last month. User request: "right justify
+   quarter quad to the grid". */
+#regimeStrip .regime-line {
+  font-size: 13px; cursor: help; border-bottom: 1px dotted var(--border);
+  display: flex; flex: 1 1 100%; justify-content: space-between; align-items: baseline; gap: 10px;
+}
+.regime-line .regime-window-text { min-width: 0; }
+.regime-line .qtr-entry { flex-shrink: 0; white-space: nowrap; }
 
 /* TASK_140 -- Sector/Asset class/Style scorecards, each its own full-width
    stacked band (replaces the old tabbed #factorScorecardBand + fs-row/
@@ -2241,10 +2260,27 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
 .axis-dot.axis-asset-class { background: var(--cat2, #0f9488); }
 .axis-dot.axis-style { background: var(--cat4, #7c3aed); }
 .fs-note { font-size: 10px; color: var(--text-3); margin-bottom: 4px; }
-table.fs-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+/* 2026-08-08 -- table-layout:fixed + explicit per-column % widths so the
+   Sector/Asset class/Style scorecards' columns line up vertically down the
+   page. Without this each table auto-sizes its own Category column to that
+   axis's own longest name (e.g. "Information Technology" vs "Cash"), which
+   shoves every column after it to a different x-position per table even
+   though all three share the identical column set. User: "why can't all
+   grid columns be aligned. they all have the same columns." Column order:
+   Category(1) / Wt%(2) / Verdict(3) / one per _FS_WINDOWS(4..). Widths only
+   line up across tables because .cat-table-col is the same flex:1 width in
+   all three .cat-body rows (see .cat-chart's fixed 190px + gap, styles.css
+   TASK_140 follow-up 2/3) -- if that container sizing ever changes, these
+   percentages need re-checking. */
+table.fs-table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
+table.fs-table th:nth-child(1), table.fs-table td:nth-child(1) { width: 26%; }
+table.fs-table th:nth-child(2), table.fs-table td:nth-child(2) { width: 12%; }
+table.fs-table th:nth-child(3), table.fs-table td:nth-child(3) { width: 12%; }
+table.fs-table th:nth-child(n+4), table.fs-table td:nth-child(n+4) { width: 10%; }
 table.fs-table th { text-align: right; padding: 3px 6px; color: var(--text-3); font-weight: 600; border-bottom: 1px solid var(--border); }
 table.fs-table th:first-child, table.fs-table td:first-child { text-align: left; }
 table.fs-table td { padding: 3px 6px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; }
+table.fs-table td:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* TASK_139 -- row click opens the gauge/factor exposure-detail modal. */
 table.fs-table tr.fs-clickable { cursor: pointer; }
 table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
@@ -2253,7 +2289,22 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .fs-weight-cell { position: relative; }
 .fs-weight-bar { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); opacity: 0.15; z-index: 0; }
 .fs-weight-text { position: relative; z-index: 1; }
+/* 2026-08-08 -- secondary "NN.N% total" figure (weight_pct): same market
+   value as a % of total portfolio, inline in the same cell/line right after
+   the primary equity% figure (not stacked on its own line). Sector/style
+   only (asset_class's own weight_pct IS already the total-portfolio view,
+   no secondary figure there). Muted + smaller so the primary (equity%)
+   figure stays the visual anchor. */
+.fs-weight-eq { position: relative; z-index: 1; font-size: 9px; color: var(--text-3); margin-left: 4px; white-space: nowrap; }
 .fs-verdict { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 700; text-transform: uppercase; }
+/* 2026-08-08 -- Today/Yesterday/MTD/QTD/YTD cells show both "mine" (twr,
+   primary/bold, via _fsColorCell's own .pos/.neg) and "not mine" (bench,
+   this smaller trailing figure, own .pos/.neg color kept so its sign still
+   reads independently of the primary figure) -- replaces the twr-bench
+   delta-only display, which was misreadable when twr is 0 (stale
+   transaction feed) while bench is genuinely positive/negative. */
+.fs-bench-cell { font-size: 9px; margin-left: 4px; opacity: 0.85; white-space: nowrap; }
+.fs-dash { color: var(--text-3); }
 
 /* Band 6 — Housekeeping */
 .hk-line { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 6px; }
