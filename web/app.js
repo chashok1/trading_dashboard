@@ -939,7 +939,7 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
       // (axis, category) instead of gauge_key.
       return `<tr title="${escapeHtml(titleParts)}" class="fs-clickable" data-cat="${escapeHtml(catKey)}"
                    onclick="openFactorExposureModal('${escapeHtml(axis)}', '${escapeHtml(row.category).replace(/'/g, "\\'")}')">
-        <td>${stanceIcon}${escapeHtml(row.category)}</td>
+        <td><span style="display:inline-block;min-width:56px;">${stanceIcon}</span>${escapeHtml(row.category)}</td>
         <td class="fs-weight-cell" title="${escapeHtml(
             row.weight_pct_equities != null
               ? 'Weight — % of your EQUITIES only (bold) / % of your TOTAL portfolio incl. cash+bonds+etc (small)'
@@ -1019,11 +1019,21 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
         // guessing this time) and caps the chart down to match whenever
         // it's the taller one, so both columns end the row at the same
         // point.
+        // 2026-08-08 BUGFIX -- this was setting chartBox.style.flexBasis,
+        // but .cat-body is `display:flex` with NO flex-direction override
+        // (row, the default), so flex-basis controls WIDTH, not height.
+        // Setting it from a HEIGHT measurement silently squeezed .cat-chart
+        // narrower whenever a table was short (Asset class's 8 rows vs
+        // Sector's 11), which is exactly why Asset class's chart measured
+        // 204px wide against Sector's 218px and the whole table column
+        // after it started at a different x -- confirmed via user
+        // screenshot + devtools measurement. Fixed to set the SVG's own
+        // height instead, leaving .cat-chart's width (and therefore every
+        // .cat-table-col's left edge) untouched and identical across axes.
         const svg = $(chartId);
-        const chartBox = svg ? svg.closest('.cat-chart') : null;
-        if (chartBox) {
+        if (svg) {
           const tableH = body.offsetHeight;
-          chartBox.style.flexBasis = (tableH > 0 && tableH < 190) ? `${tableH}px` : '';
+          svg.style.height = (tableH > 0 && tableH < 190) ? `${tableH}px` : '';
         }
       }
     }

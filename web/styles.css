@@ -1894,8 +1894,13 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 }
 /* dial-changed-col reduced to 75% of its former share (0.75fr, down from
    1fr); the freed width goes to cat-col (1.3fr -> 1.55fr) so the now-inline
-   composition charts have room next to each table. */
-.main-col { display: grid; grid-template-columns: 0.75fr 1.55fr; gap: 8px; align-items: start; }
+   composition charts have room next to each table.
+   2026-08-08 -- dial-changed-col shrunk a further 15% (0.75fr -> 0.64fr)
+   per user request; freed width (0.11fr) added to cat-col (1.55fr ->
+   1.66fr). Risk Dial's meter bar (.rd-meter below) shrunk to match so it
+   still fits on .rd-top-row's single line instead of wrapping in the
+   narrower column. */
+.main-col { display: grid; grid-template-columns: 0.64fr 1.66fr; gap: 8px; align-items: start; }
 .dial-changed-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .cat-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .right-rail { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
@@ -1972,7 +1977,11 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    budget number/label (was its own row below) per user request; narrowed
    from 280px so it actually fits inline, still wraps via rd-top-row's
    flex-wrap on very narrow cards. */
-.rd-meter { height: 20px; border-radius: 10px; background: var(--border); overflow: hidden; width: 160px; max-width: 100%; flex: 1 1 120px; }
+/* 2026-08-08 -- width/flex-basis reduced 15% (160px->136px, 120px->102px)
+   to match dial-changed-col's own 15% narrowing above, so the meter still
+   fits on .rd-top-row's single line instead of wrapping under the budget
+   number/label in the now-narrower column. */
+.rd-meter { height: 20px; border-radius: 10px; background: var(--border); overflow: hidden; width: 136px; max-width: 100%; flex: 1 1 102px; }
 .rd-meter-fill { height: 100%; background: var(--text-3); }
 .rd-meter-fill.b-clear      { background: var(--ok); }
 .rd-meter-fill.b-caution    { background: var(--warn); }
