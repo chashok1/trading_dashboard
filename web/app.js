@@ -126,12 +126,13 @@ async function loadEconIndicators() {
     empty.hidden = true;
     for (const r of rows) {
       const tr = document.createElement('tr');
-      const sig = normOutlook(r.signal);
+      // 2026-08-08 -- Signal column removed per user request ("remove the
+      // SIGNAL column from INDICATOR grid"); normOutlook(r.signal) is no
+      // longer read here.
       tr.innerHTML = `
         <td class="text">${r.indicator || ''}</td>
-        <td>${fmtDate(r.indicator_date)}</td>
         <td class="num">${r.days != null ? r.days : ''}</td>
-        <td class="text">${sig.label ? `<span class="signal-${sig.cls}">${sig.label}</span>` : ''}</td>
+        <td>${fmtDate(r.indicator_date)}</td>
       `;
       tbody.appendChild(tr);
     }
@@ -163,8 +164,8 @@ async function loadEarnings() {
       const days = r.days_until != null ? `${r.days_until}d` : '';
       tr.innerHTML = `
         <td class="text">${r.category || ''}</td>
-        <td>${fmtDate(r.event_date)}</td>
         <td class="num">${days}</td>
+        <td>${fmtDate(r.event_date)}</td>
       `;
       tbody.appendChild(tr);
     }
@@ -198,8 +199,8 @@ async function loadNearTermEarnings() {
       const days = r.days_until != null ? `${r.days_until}d` : '';
       tr.innerHTML = `
         <td class="text">${escapeHtml(r.symbol || '')}</td>
-        <td>${fmtDate(r.event_date)}</td>
         <td class="num">${days}</td>
+        <td>${fmtDate(r.event_date)}</td>
       `;
       tbody.appendChild(tr);
     }
@@ -461,6 +462,16 @@ function _bullBearForQuadNum(allFactors, quadNum) {
   return { bull, bear };
 }
 
+// "2026-08" -> "Aug", for the Regime line's compact month labels.
+const _REGIME_MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                             'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function _regimeMonAbbr(ym) {
+  const parts = String(ym).split('-');
+  if (parts.length !== 2) return ym;
+  const idx = parseInt(parts[1], 10) - 1;
+  return _REGIME_MONTH_ABBR[idx] || ym;
+}
+
 async function loadRegimeBand() {
   const strip = $('regimeStrip');
   if (!strip) return;
@@ -474,10 +485,17 @@ async function loadRegimeBand() {
     if (!windowData) { strip.innerHTML = '<div class="ev-fail">&#9888; Regime data unavailable.</div>'; return; }
     const dominant = windowData.dominant_quad != null ? `Quad ${windowData.dominant_quad}` : '—';
     const allFactors = factors.factors || [];
+    // 2026-08-08 -- compact format per user request: "60d Win(Q1). Aug(Q3)
+    // 40% . Sep(Q1)50% . Oct(Q2)10%   Qtr(Q2)" -- replaces the old
+    // "Window (60d): Quad 1 — 08 (Q3) 40% · 09 (Q1) 50% ..." wording.
+    // 2026-08-08 -- single space before every "(" (Win (Q1), Aug (Q3),
+    // Qtr (Q2)); % text shrunk to 9px (was inheriting the line's 13px) --
+    // both per user request.
     const months = (windowData.months || [])
-      .map((m, i) => `<span class="month-entry" data-month-idx="${i}">${escapeHtml(String(m.m).slice(5))} `
-        + `<span style="color:${_quadColor('Q' + (m.quad ?? '?'))};font-weight:600;">(Q${m.quad ?? '?'})</span> ${Math.round((m.w || 0) * 100)}%</span>`)
-      .join(' · ');
+      .map((m, i) => `<span class="month-entry" data-month-idx="${i}">${_regimeMonAbbr(m.m)} `
+        + `<span style="color:${_quadColor('Q' + (m.quad ?? '?'))};font-weight:600;">(Q${m.quad ?? '?'})</span> `
+        + `<span style="font-size:9px;">${Math.round((m.w || 0) * 100)}%</span></span>`)
+      .join(' . ');
     // Qtr entry -- right-justified to the card's own right edge (not just
     // trailing inline after the months) via .regime-line's flex layout
     // below. User request: "right justify quarter quad to the grid".
@@ -490,8 +508,15 @@ async function loadRegimeBand() {
     // showed the "Bull factors:"/"Bear factors:" labels with nothing after.
     const bullFactors = (factors.bull || []).filter(f => f.factor);
     const bearFactors = (factors.bear || []).filter(f => f.factor);
+    // 2026-08-08 -- split into 3 flex zones per user request: "remove the .
+    // after 60d Win(Q1) and left align that text to the grid. monthly
+    // quads -> align to center". Win-label pinned left (flex:0 0 auto),
+    // months centered in the remaining middle space (flex:1, text-align:
+    // center), Qtr pinned right (unchanged) -- was previously one big
+    // left-flowing blob with the months embedded right after the label.
+    const winLabel = `<span class="regime-win-label">${windowData.h ?? 60}d Win (<strong style="color:${_quadColor(dominant)};">Q${windowData.dominant_quad ?? '?'}</strong>)</span>`;
     strip.innerHTML = `<div class="regime-line" data-quadbandpop="1">
-      <span class="regime-window-text">Window (${windowData.h ?? 60}d): <strong style="color:${_quadColor(dominant)};">${escapeHtml(dominant)}</strong> — ${months || 'no window data'}</span>${qtrEntry}
+      ${winLabel}<span class="regime-window-text">${months || 'no window data'}</span>${qtrEntry}
     </div>`;
     const line = strip.querySelector('.regime-line');
     if (line) {
