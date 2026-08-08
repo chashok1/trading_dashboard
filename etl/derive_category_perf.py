@@ -343,6 +343,91 @@ def _today_marked_to_market(session: Session, positions: list, cat_map: dict,
     return out
 
 
+def _yesterday_actual_change(session: Session, calendar: list, cat_map: dict,
+                              cash_keys: set) -> dict:
+    """2026-08-08 -- 'Yesterday' $ change, replacing the old mv-diff +
+    25%-swing-guard approach entirely. User's own diagnosis: hist_cs/hist_f
+    already carry the broker's own daily gain/loss per position
+    (day_chng_dollar / today_gl_dollar) -- correct as-is for an unchanged
+    qty (pure price move) AND for a same-day new buy (broker reports ~$0
+    against a same-day cost basis, exactly the "don't count new money as a
+    gain" behavior the old guard was clumsily trying to approximate). The
+    ONE case that figure misses: broker day-change only reflects shares
+    STILL HELD at end of day, so a full or partial SELL that day drops the
+    sold portion's own intraday move (prior close -> sale price) --
+    recovered here from that day's hist_cst/hist_ft transaction row, same
+    (sale_price - prior_close) * qty pattern already used by
+    api/routers/dash.py's portfolio-summary "Today's Gain" (cs_sold_move).
+    No guard needed anymore -- every number here is actually computed, not
+    estimated-then-clamped.
+
+    Returns {axis: {category: dollar_change}}; category keys with no
+    contributing symbol are simply absent (treated as 0/no-data by the
+    caller)."""
+    out = {axis: {} for axis in ("sector", "asset_class", "style")}
+    if len(calendar) < 3:
+        return out
+    d, prior = calendar[-2], calendar[-3]
+    excl_cs = " AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)"
+    excl_f = " AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)"
+
+    dc_by_sym: dict = {}
+    for r in session.execute(text(
+        "SELECT tos_symbol, symbol, SUM(day_chng_dollar) AS dc FROM hist_cs"
+        " WHERE snapshot_date=:d" + excl_cs + " GROUP BY tos_symbol, symbol"
+    ), {"d": d}).mappings().all():
+        key = r["tos_symbol"] or r["symbol"]
+        dc_by_sym[key] = dc_by_sym.get(key, 0.0) + float(r["dc"] or 0)
+    for r in session.execute(text(
+        "SELECT tos_symbol, symbol, SUM(today_gl_dollar) AS dc FROM hist_f"
+        " WHERE snapshot_date=:d" + excl_f + " GROUP BY tos_symbol, symbol"
+    ), {"d": d}).mappings().all():
+        key = r["tos_symbol"] or r["symbol"]
+        dc_by_sym[key] = dc_by_sym.get(key, 0.0) + float(r["dc"] or 0)
+
+    # Prior-day close prices, needed only for the sold-shares adjustment.
+    prior_px: dict = {}
+    for r in session.execute(text(
+        "SELECT tos_symbol, symbol, price FROM hist_cs WHERE snapshot_date=:d" + excl_cs
+    ), {"d": prior}).mappings().all():
+        if r["price"] is not None:
+            prior_px[r["tos_symbol"] or r["symbol"]] = float(r["price"])
+    for r in session.execute(text(
+        "SELECT tos_symbol, symbol, last_price FROM hist_f WHERE snapshot_date=:d" + excl_f
+    ), {"d": prior}).mappings().all():
+        if r["last_price"] is not None:
+            prior_px.setdefault(r["tos_symbol"] or r["symbol"], float(r["last_price"]))
+
+    for r in session.execute(text(
+        "SELECT tos_symbol, symbol, price, quantity FROM hist_cst"
+        " WHERE trade_date=:d AND UPPER(COALESCE(action,'')) LIKE '%SELL%'"
+        "   AND quantity IS NOT NULL AND price IS NOT NULL" + excl_cs
+    ), {"d": d}).mappings().all():
+        key = r["tos_symbol"] or r["symbol"]
+        pp = prior_px.get(key)
+        if pp is None:
+            continue
+        dc_by_sym[key] = dc_by_sym.get(key, 0.0) + (float(r["price"]) - pp) * abs(float(r["quantity"]))
+    for r in session.execute(text(
+        "SELECT tos_symbol, symbol, price, quantity FROM hist_ft"
+        " WHERE trade_date=:d AND action_kind='SELL'"
+        "   AND quantity IS NOT NULL AND price IS NOT NULL" + excl_f
+    ), {"d": d}).mappings().all():
+        key = r["tos_symbol"] or r["symbol"]
+        pp = prior_px.get(key)
+        if pp is None:
+            continue
+        dc_by_sym[key] = dc_by_sym.get(key, 0.0) + (float(r["price"]) - pp) * abs(float(r["quantity"]))
+
+    for sym, dc in dc_by_sym.items():
+        if sym in cash_keys:
+            continue
+        for axis in out:
+            for cat in _categories_for(sym, cat_map, axis):
+                out[axis][cat] = out[axis].get(cat, 0.0) + dc
+    return out
+
+
 def _build_series(positions: list, flows: list, cat_map: dict, cash_keys: set,
                   calendar: list, any_flow_dates: dict) -> dict:
     """Returns {axis: {category: {date: {'v': value, 'flow': netflow,
@@ -699,6 +784,7 @@ def _derive_category_perf_impl(session: Session, as_of_date: date, run_id) -> in
     any_flow_dates = _load_any_flow_dates(session, lo, hi)
     series = _build_series(positions, flows, cat_map, cash_keys, calendar, any_flow_dates)
     today_marked = _today_marked_to_market(session, positions, cat_map, cash_keys, calendar)
+    yesterday_change = _yesterday_actual_change(session, calendar, cat_map, cash_keys)
 
     # Total portfolio value at D (market + cash) for weight_pct -- same
     # universe as /api/portfolio/summary (latest hist_f/hist_cs snapshot <= D
@@ -813,21 +899,24 @@ def _derive_category_perf_impl(session: Session, as_of_date: date, run_id) -> in
                                                "reason": "marked-to-market: yesterday's shares at today's live price"}
                     confs.append("amber")
                     continue
-                # ignore_gap_guard=True + ignore_swing_guard=True -- Yesterday
-                # comes straight off the F/CS snapshot diff even when a qty
-                # change has no matching CST/FT row, AND even when the swing
-                # exceeds the 25% sanity ceiling (2026-08-08, explicit user
-                # request in two steps: "at least yesterday and today should
-                # come from snapshots", then after seeing every sector but
-                # one zeroed by the swing guard, "this is not correct" ->
-                # confirmed drop it for Yesterday too). See _twr_window's
-                # docstring for the trade-off.
-                t, conf, detail_w = _twr_window(by_date, calendar, wdays, offset,
-                                                 ignore_gap_guard=True, ignore_swing_guard=True)
-                twr[f"twr_{wlabel}"] = t
+                # 2026-08-08 -- Yesterday now built from _yesterday_actual_change
+                # (broker day_chng_dollar/today_gl_dollar + sold-transaction
+                # adjustment) instead of the old mv-diff + 25%-swing-guard
+                # approach -- see that function's docstring. No guard/suspect
+                # marking needed anymore since every number is computed, not
+                # estimated-then-clamped; confidence is "green" whenever a
+                # figure exists, "amber" (insufficient history) otherwise.
+                prior_v = by_date.get(calendar[-3], {}).get("v", 0.0) if len(calendar) >= 3 else 0.0
+                dc = yesterday_change.get(axis, {}).get(category)
+                t = (dc / prior_v) if (dc is not None and prior_v) else None
+                conf = "green" if t is not None else "amber"
+                twr["twr_yesterday"] = t
                 b = _bench_return(session, etf_map.get(category), calendar, wdays, offset)
-                bench[f"bench_{wlabel}"] = b
-                window_detail[wlabel] = {"confidence": conf, **detail_w}
+                bench["bench_yesterday"] = b
+                window_detail["yesterday"] = {
+                    "confidence": conf,
+                    "reason": "broker day_chng_dollar/today_gl_dollar + sold-transaction adjustment",
+                }
                 if len(calendar) > wdays + offset:
                     confs.append(conf)
             # 2026-08-08 -- MTD/QTD/YTD (calendar-boundary windows, see

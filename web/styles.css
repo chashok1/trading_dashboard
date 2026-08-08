@@ -2100,12 +2100,22 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 }
 .gauge-modal-backdrop.open { display: flex; }
 .gauge-modal-backdrop .gm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); }
+/* 2026-08-08 -- widened (780px -> 960px, room for the Cumulative+Yesterday
+   columns without cramping) and given internal breathing room via .gm-body
+   padding below -- user request: "Increase the pop up window size add
+   white spaces around the window."
+   2026-08-08 follow-up -- widened further (960px -> 1200px) -- the new
+   stock/rest/sector compare chart's labels were overlapping its bars at
+   960px; more width gives that chart (and Largest holdings beside it)
+   real room. User: "Labels are overlapping with bars. you have to
+   increase graph size. lot more space is availabe for popup size to be
+   increased." */
 .gauge-modal {
-  position: relative; z-index: 1; width: 100%; max-width: 780px;
+  position: relative; z-index: 1; width: 100%; max-width: 1200px;
   background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px;
   box-shadow: 0 20px 48px -12px rgba(0,0,0,.35); overflow: hidden;
 }
-.gm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 22px; border-bottom: 1px solid var(--border); }
+.gm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 24px; border-bottom: 1px solid var(--border); }
 .gm-title { font-size: 16px; font-weight: 700; margin: 0 0 4px; color: var(--text-1); }
 .gm-sub { font-size: 12px; color: var(--text-2); }
 .gm-total { text-align: right; flex-shrink: 0; }
@@ -2118,7 +2128,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
   cursor: pointer; flex-shrink: 0;
 }
 .gm-close:hover { color: var(--text-1); border-color: var(--text-3); }
-.gm-body { display: grid; grid-template-columns: 1.15fr 1fr; }
+.gm-body { display: grid; grid-template-columns: 1.15fr 1fr; padding: 16px 20px 20px; gap: 20px; }
 /* 2026-08-08 -- no max-height/overflow-y here (previously a 380px cap with
    its own inner scrollbar) -- user request: "make sure no scrollbars
    appear". The table now grows to its natural height like .cat-table-col
@@ -2139,6 +2149,15 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .gm-table td.dollar { text-align: right; font-variant-numeric: tabular-nums; }
 .gm-table td.tag { font-size: 10.5px; color: var(--text-2); }
 .gm-table td.gm-empty { color: var(--text-3); text-align: center; padding: 20px 10px; }
+/* 2026-08-08 BUGFIX -- .gm-table td's own `color: var(--text-1)` above has
+   higher specificity (class+element) than the bare .pos/.neg classes
+   (class only) risk_gauge_modal.js adds to Cumulative/Yesterday cells, so
+   it always won regardless of source order -- every gain/loss cell showed
+   default text color instead of green/red, no matter what class JS added.
+   "missing colors" report. Re-declared here at the same class+element
+   specificity so they actually win. */
+.gm-table td.pos { color: var(--bull, #15803d); }
+.gm-table td.neg { color: var(--bear, #b91c1c); }
 .gm-table tr:hover td { background: var(--act-sell-bg); }
 .gm-chart-pane { padding: 16px 18px; }
 .gm-chart-pane h4 { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); margin: 0 0 12px; }

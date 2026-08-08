@@ -31,13 +31,15 @@
       '  <div class="gm-body" id="gmBody">',
       '    <div class="gm-table-wrap">',
       '      <table class="gm-table">',
-      '        <thead><tr><th>Symbol</th><th>Account</th><th style="text-align:right">$</th><th style="text-align:right" title="Unrealized gain/loss vs cost basis, current snapshot">Gain/Loss</th><th id="gmTagHead">Tag</th></tr></thead>',
+      '        <thead><tr><th>Symbol</th><th>Account</th><th style="text-align:right">$</th><th style="text-align:right" title="Unrealized gain/loss vs cost basis, since purchase (current snapshot)">Cumulative</th><th style="text-align:right" title="Broker-reported day change (day_chng_dollar/today_gl_dollar) for this position">Yesterday</th><th id="gmTagHead">Tag</th></tr></thead>',
       '        <tbody id="gmTableBody"></tbody>',
       '      </table>',
       '    </div>',
       '    <div class="gm-chart-pane">',
       '      <h4>Largest holdings</h4>',
       '      <svg class="chart" id="gmBarChart" viewBox="0 0 380 300"></svg>',
+      '      <h4 id="gmCompareTitle" style="margin-top:18px;">Yesterday: stock vs rest of category vs sector</h4>',
+      '      <svg class="chart" id="gmCompareChart" viewBox="0 0 380 220"></svg>',
       '    </div>',
       '  </div>',
       '</div>',
@@ -101,6 +103,125 @@
       val.setAttribute('x', labelW + w + 8); val.setAttribute('y', y + barH * 0.72);
       val.setAttribute('class', 'bar-value'); val.textContent = fmt(d[1]);
       svg.appendChild(val);
+    });
+  }
+
+  // 2026-08-08 -- "stock vs rest of category vs sector" comparison chart,
+  // next to Largest holdings. User request: "show it as a stock's %gain/
+  // loss of the category vs rest vs sector". Three bars per top holding:
+  //   - Stock: that symbol's own Yesterday % (dollar-weighted across
+  //     accounts, from each position's yesterday_dollar/dollar already in
+  //     the response)
+  //   - Rest: the category's Yesterday % with that symbol excluded --
+  //     derived client-side from the SAME positions list (category total
+  //     minus this symbol's contribution), not a separate API call
+  //   - Sector: the benchmark ETF's Yesterday % (data.sector_yesterday_pct)
+  //     -- the one figure that isn't derivable from position data, same
+  //     for every bar group since it's a single market reference
+  // Only available on the Factor Scorecard popup (axis/category is a single
+  // clean pair there); the Risk Dial gauge popup's response has no
+  // category_yesterday_pct/sector_yesterday_pct, so this chart just hides.
+  function _renderCompareChart(data) {
+    var svg = document.getElementById('gmCompareChart');
+    var title = document.getElementById('gmCompareTitle');
+    if (!svg) return;
+    svg.innerHTML = '';
+    var positions = (data.positions || []).filter(function (p) { return p.yesterday_dollar != null; });
+    if (!positions.length || data.sector_yesterday_pct == null) {
+      if (title) title.style.display = 'none';
+      svg.style.display = 'none';
+      return;
+    }
+    if (title) title.style.display = '';
+    svg.style.display = '';
+
+    // Aggregate per symbol across accounts: dollar (today's mv) and
+    // yesterday_dollar (yesterday's $ change), so a symbol held in several
+    // accounts gets one combined bar, same as _renderBars.
+    var bySym = {};
+    positions.forEach(function (p) {
+      var b = bySym[p.symbol] || (bySym[p.symbol] = { dollar: 0, yd: 0 });
+      b.dollar += p.dollar; b.yd += p.yesterday_dollar;
+    });
+    var catTotalYd = 0, catPriorValue = 0;
+    Object.keys(bySym).forEach(function (s) {
+      catTotalYd += bySym[s].yd;
+      catPriorValue += (bySym[s].dollar - bySym[s].yd);
+    });
+
+    var syms = Object.keys(bySym).sort(function (a, b) { return bySym[b].dollar - bySym[a].dollar; }).slice(0, 4);
+    var groups = syms.map(function (s) {
+      var b = bySym[s];
+      var priorValue = b.dollar - b.yd;
+      var stockPct = priorValue ? (b.yd / priorValue * 100) : null;
+      var restYd = catTotalYd - b.yd, restPrior = catPriorValue - priorValue;
+      var restPct = restPrior ? (restYd / restPrior * 100) : null;
+      return { symbol: s, stock: stockPct, rest: restPct, sector: data.sector_yesterday_pct };
+    });
+
+    // 2026-08-08 -- widened + more vertical room per row (labels were
+    // overlapping the bars: negative bars could extend all the way back to
+    // the label column with no gap between them). labelW/gap/valueGap now
+    // reserve dedicated space so a max-magnitude bar's rect AND its value
+    // text never reach the row-label or symbol-name text. User: "Labels
+    // are overlapping with bars. you have to increase graph size."
+    var W = 460, rowH = 72, H = groups.length * rowH + 10;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    var vals = [];
+    groups.forEach(function (g) { [g.stock, g.rest, g.sector].forEach(function (v) { if (v != null) vals.push(Math.abs(v)); }); });
+    var max = Math.max.apply(null, vals.length ? vals : [1]) || 1;
+    var labelW = 60, valueGap = 46, plotStart = labelW + 8, plotEnd = W - valueGap;
+    var plotHalf = (plotEnd - plotStart) / 2, midX = plotStart + plotHalf;
+    // "Stock" (my own holding) colors green/+ve, red/-ve like everywhere
+    // else in the app (.pos/.neg convention) -- Rest/Sector stay neutral
+    // gray/blue since they're reference lines, not "my" performance. User:
+    // "Use green for +ves and reds for -ves for my stocks."
+    var series = [
+      { key: 'stock', label: 'Stock', color: null },
+      { key: 'rest', label: 'Rest', color: 'var(--text-3)' },
+      { key: 'sector', label: 'Sector', color: 'var(--accent, #1d4ed8)' },
+    ];
+
+    groups.forEach(function (g, gi) {
+      var gy = gi * rowH + 6;
+      var name = svgns('text');
+      name.setAttribute('x', 4); name.setAttribute('y', gy + 10);
+      name.setAttribute('class', 'bar-name'); name.textContent = g.symbol;
+      svg.appendChild(name);
+
+      series.forEach(function (ser, si) {
+        var v = g[ser.key];
+        var y = gy + 16 + si * 16;
+        var lbl = svgns('text');
+        lbl.setAttribute('x', labelW - 4); lbl.setAttribute('y', y + 8);
+        lbl.setAttribute('text-anchor', 'end'); lbl.setAttribute('class', 'bar-name');
+        lbl.setAttribute('style', 'font-size:9px;font-weight:400;'); lbl.textContent = ser.label;
+        svg.appendChild(lbl);
+
+        if (v == null) return;
+        var color = ser.color || (v > 0 ? 'var(--bull, #15803d)' : v < 0 ? 'var(--bear, #b91c1c)' : 'var(--text-3)');
+        var w = Math.abs(v) / max * plotHalf;
+        var x = v >= 0 ? midX : midX - w;
+        var rect = svgns('rect');
+        rect.setAttribute('x', x); rect.setAttribute('y', y);
+        rect.setAttribute('width', Math.max(w, 1)); rect.setAttribute('height', 11);
+        rect.setAttribute('rx', 2); rect.setAttribute('fill', color);
+        svg.appendChild(rect);
+
+        var val = svgns('text');
+        val.setAttribute('x', v >= 0 ? midX + w + 4 : midX - w - 4);
+        val.setAttribute('y', y + 8);
+        val.setAttribute('text-anchor', v >= 0 ? 'start' : 'end');
+        val.setAttribute('class', 'bar-value');
+        val.textContent = (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+        svg.appendChild(val);
+      });
+
+      var mid = svgns('line');
+      mid.setAttribute('x1', midX); mid.setAttribute('x2', midX);
+      mid.setAttribute('y1', gy); mid.setAttribute('y2', gy + rowH - 8);
+      mid.setAttribute('stroke', 'var(--border)'); mid.setAttribute('stroke-width', '1');
+      svg.appendChild(mid);
     });
   }
 
@@ -174,7 +295,12 @@
       var dTd = document.createElement('td'); dTd.className = 'dollar'; dTd.textContent = fmt(p.dollar);
       var glTd = document.createElement('td'); glTd.className = 'dollar';
       if (p.gain_pct != null) {
-        glTd.classList.add(p.gain_pct > 0 ? 'pos' : p.gain_pct < 0 ? 'neg' : '');
+        // 2026-08-08 BUGFIX -- classList.add('') throws SyntaxError on a
+        // flat (exactly 0) value, silently aborting the rest of this
+        // forEach and every row after it -- "missing colors" (and rows)
+        // report. Only add a class when there actually is one.
+        var glCls = p.gain_pct > 0 ? 'pos' : p.gain_pct < 0 ? 'neg' : '';
+        if (glCls) glTd.classList.add(glCls);
         // $ and % shown together now (previously $ was tooltip-only, easy
         // to miss) -- user request: "add $ loss or gain to these popups
         // along with %loss/%gain".
@@ -185,7 +311,21 @@
       } else {
         glTd.textContent = '—';
       }
-      tr.appendChild(symTd); tr.appendChild(acctTd); tr.appendChild(dTd); tr.appendChild(glTd);
+      // 2026-08-08 -- per-stock Yesterday $/%, same broker day_chng_dollar/
+      // today_gl_dollar figures the category-level "Yesterday" column sums
+      // (etl/derive_category_perf.py::_yesterday_actual_change) -- user
+      // request: "Can the popups include these numbers for each stock?"
+      var yTd = document.createElement('td'); yTd.className = 'dollar';
+      if (p.yesterday_dollar != null) {
+        var yCls = p.yesterday_dollar > 0 ? 'pos' : p.yesterday_dollar < 0 ? 'neg' : '';
+        if (yCls) yTd.classList.add(yCls);
+        var yText = fmtSigned(p.yesterday_dollar);
+        if (p.yesterday_pct != null) yText += ' (' + (p.yesterday_pct >= 0 ? '+' : '') + p.yesterday_pct.toFixed(1) + '%)';
+        yTd.textContent = yText;
+      } else {
+        yTd.textContent = '—';
+      }
+      tr.appendChild(symTd); tr.appendChild(acctTd); tr.appendChild(dTd); tr.appendChild(glTd); tr.appendChild(yTd);
       if (hasTag) {
         var tagTd = document.createElement('td'); tagTd.className = 'tag'; tagTd.textContent = p.tag || '';
         tr.appendChild(tagTd);
@@ -194,12 +334,13 @@
     });
     if (!(data.positions || []).length) {
       var tr = document.createElement('tr');
-      var td = document.createElement('td'); td.colSpan = hasTag ? 5 : 4; td.className = 'gm-empty';
+      var td = document.createElement('td'); td.colSpan = hasTag ? 6 : 5; td.className = 'gm-empty';
       td.textContent = 'No positions match.';
       tr.appendChild(td); tbody.appendChild(tr);
     } else {
       _renderBars(data.positions);
     }
+    _renderCompareChart(data);
   }
 
   window.openGaugeExposureModal = function (gaugeKey) {

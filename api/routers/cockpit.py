@@ -59,6 +59,44 @@ def _jsonb(v):
     return v
 
 
+def _yesterday_by_symbol_account(session, d) -> dict:
+    """Per-(tos_symbol, account) broker day-change for the exposure-detail
+    popups (day_chng_dollar/pct for Schwab, today_gl_dollar/pct for
+    Fidelity), read from YESTERDAY's own snapshot -- not `d`'s. Same
+    distinction the category-level 'Yesterday' column already draws
+    (etl/derive_category_perf.py::_yesterday_actual_change): `d`'s own
+    snapshot's day-change isn't a finalized capture at derive time (that's
+    why 'Today' uses a separate marked-to-market calc instead), so this
+    must go one snapshot further back, not just pull the column off the
+    `pos` CTE's own (today's) rows. User request: "Can the popups include
+    these numbers for each stock?" Returns {(tos_symbol, account): (dollar,
+    pct)}; a symbol not held yesterday (e.g. bought today) is simply absent.
+    account strings must match _lc()-style expressions used by the callers'
+    own `pos` CTEs exactly, so they join up in Python."""
+    out: dict = {}
+    for r in session.execute(text("""
+        SELECT tos_symbol, account, day_chng_dollar AS yd, day_chng_pct AS ypct
+        FROM hist_cs
+        WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <
+              (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d))
+          AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
+    """), {"d": d}).mappings().all():
+        out[(r["tos_symbol"], r["account"])] = (r["yd"], r["ypct"])
+    for r in session.execute(text("""
+        SELECT hist_f.tos_symbol,
+               COALESCE(hist_f.account_name, hist_f.account_number) ||
+                 COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')') AS account,
+               hist_f.today_gl_dollar AS yd, hist_f.today_gl_pct AS ypct
+        FROM hist_f
+        LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+        WHERE hist_f.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <
+              (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d))
+          AND COALESCE(ra.is_active, TRUE) = TRUE
+    """), {"d": d}).mappings().all():
+        out[(r["tos_symbol"], r["account"])] = (r["yd"], r["ypct"])
+    return out
+
+
 # ---------------------------------------------------------------------------
 # 6.1 GET /api/cockpit/risk-dial
 # ---------------------------------------------------------------------------
@@ -262,7 +300,8 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
                 AND COALESCE(ra.is_active, TRUE) = TRUE
             ), agg AS (SELECT tos_symbol, account, SUM(mv) AS mv, SUM(cb) AS cb, SUM(gl) AS gl
                        FROM pos GROUP BY tos_symbol, account)
-            SELECT a.tos_symbol, a.account, a.mv, a.cb, a.gl, m.sector, m.asset_class, ms.style_stances
+            SELECT a.tos_symbol, a.account, a.mv, a.cb, a.gl,
+                   m.sector, m.asset_class, ms.style_stances
             FROM agg a
             LEFT JOIN drv_ma m ON m.tos_symbol = a.tos_symbol AND m.as_of_date = :d
             LEFT JOIN drv_macro_score ms ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = :d
@@ -275,6 +314,7 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
             ORDER BY a.mv DESC
         """), {"d": d, "sector_cats": _lc(sector_cats), "asset_cats": _lc(asset_cats),
                "style_cats": style_cats}).mappings().all()
+        yesterday_map = _yesterday_by_symbol_account(s, d)
 
         sector_cats_lc, asset_cats_lc = _lc(sector_cats), _lc(asset_cats)
         positions, dollar = [], 0.0
@@ -291,9 +331,19 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
             cb, gl = r["cb"], r["gl"]
             gain_dollar = round(float(gl), 2) if gl is not None else None
             gain_pct = round(float(gl) / float(cb) * 100.0, 2) if (cb and gl is not None) else None
+            # 2026-08-08 -- broker's own daily gain/loss, from YESTERDAY's
+            # snapshot (_yesterday_by_symbol_account), not this row's own --
+            # same distinction etl/derive_category_perf.py::
+            # _yesterday_actual_change draws for the category-level
+            # "Yesterday" column. User request: "Can the popups include
+            # these numbers for each stock?"
+            yd, ypct = yesterday_map.get((r["tos_symbol"], r["account"]), (None, None))
+            yesterday_dollar = round(float(yd), 2) if yd is not None else None
+            yesterday_pct = round(float(ypct), 2) if ypct is not None else None
             positions.append({"symbol": r["tos_symbol"], "account": r["account"],
                                "dollar": round(mv, 2), "tag": tag,
-                               "gain_dollar": gain_dollar, "gain_pct": gain_pct})
+                               "gain_dollar": gain_dollar, "gain_pct": gain_pct,
+                               "yesterday_dollar": yesterday_dollar, "yesterday_pct": yesterday_pct})
 
         return {
             "as_of": d.isoformat(),
@@ -580,6 +630,7 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
             WHERE {where_clause}
             ORDER BY a.mv DESC
         """), {"d": d, "category": category_param}).mappings().all()
+        yesterday_map = _yesterday_by_symbol_account(s, d)
 
         def _gain_fields(r):
             cb, gl = r["cb"], r["gl"]
@@ -587,13 +638,42 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
             gain_pct = round(float(gl) / float(cb) * 100.0, 2) if (cb and gl is not None) else None
             return gain_dollar, gain_pct
 
+        # 2026-08-08 -- broker's own daily gain/loss, from YESTERDAY's
+        # snapshot, not this row's own -- see _yesterday_by_symbol_account's
+        # docstring. User request: "Can the popups include these numbers
+        # for each stock?"
+        def _yesterday_fields(r):
+            yd, ypct = yesterday_map.get((r["tos_symbol"], r["account"]), (None, None))
+            return (round(float(yd), 2) if yd is not None else None,
+                    round(float(ypct), 2) if ypct is not None else None)
+
         positions = []
         for r in rows:
             gain_dollar, gain_pct = _gain_fields(r)
+            yesterday_dollar, yesterday_pct = _yesterday_fields(r)
             positions.append({"symbol": r["tos_symbol"], "account": r["account"],
                                "dollar": round(float(r["mv"] or 0), 2),
-                               "gain_dollar": gain_dollar, "gain_pct": gain_pct})
+                               "gain_dollar": gain_dollar, "gain_pct": gain_pct,
+                               "yesterday_dollar": yesterday_dollar, "yesterday_pct": yesterday_pct})
         dollar = sum(p["dollar"] for p in positions)
+
+        # 2026-08-08 -- category's own Yesterday % (the whole category,
+        # already-computed by etl/derive_category_perf.py::
+        # _yesterday_actual_change) and the benchmark ETF's Yesterday %
+        # (the "sector"/market reference) -- for the new "stock vs rest vs
+        # sector" comparison chart. User: "show it as a stock's %gain/loss
+        # of the category vs rest vs sector" -- "rest" (category minus this
+        # stock) is derived client-side from the positions list already
+        # returned (each carries its own yesterday_dollar); only "sector"
+        # (the benchmark) needs a value not derivable from position data.
+        cat_perf_row = s.execute(text(
+            "SELECT twr_yesterday, bench_yesterday FROM drv_category_perf"
+            " WHERE axis = :axis AND category = :cat AND as_of_date = :d"
+        ), {"axis": axis, "cat": category, "d": d}).mappings().first()
+        category_yesterday_pct = (round(float(cat_perf_row["twr_yesterday"]) * 100, 2)
+                                   if cat_perf_row and cat_perf_row["twr_yesterday"] is not None else None)
+        sector_yesterday_pct = (round(float(cat_perf_row["bench_yesterday"]) * 100, 2)
+                                 if cat_perf_row and cat_perf_row["bench_yesterday"] is not None else None)
 
         return {
             "as_of": d.isoformat(),
@@ -602,6 +682,8 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
             "dollar": round(dollar, 2),
             "pct": round(dollar / total_value * 100.0, 2) if total_value else None,
             "positions": positions,
+            "category_yesterday_pct": category_yesterday_pct,
+            "sector_yesterday_pct": sector_yesterday_pct,
         }
 
 
