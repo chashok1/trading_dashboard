@@ -755,6 +755,14 @@
              by whatever else is active (Source/Acct/Trade Mode/etc.) — also doubles
              as the asset-class filter; click a chip to toggle. -->
         <div class="act-summary" id="assetClassSummary" style="padding-left:8px; border-left:1px solid var(--border,#e0e0e0);"></div>
+        <!-- Held $ by GICS-11 equity sector (drv_actionable.sector) — same
+             filter-chip pattern as assetClassSummary above. -->
+        <div class="act-summary" id="sectorSummary" style="padding-left:8px; border-left:1px solid var(--border,#e0e0e0);"></div>
+        <!-- Held $ by equity style (drv_macro_score.style_stances — Momentum/
+             High Beta/Low Beta/Value/Dividend/Cyclical/Defensives/Secular/
+             Small Caps/Mid Caps). A symbol can carry several style tags at
+             once, so this sums $ per tag rather than bucketing exclusively. -->
+        <div class="act-summary" id="styleSummary" style="padding-left:8px; border-left:1px solid var(--border,#e0e0e0);"></div>
       </div>
 
       <!-- Hedgeye action panel (TASK_100) — Top-5 / Real-Time Alerts / RR trend flips / stance -->
@@ -1363,7 +1371,7 @@
   <script src="/static/_common.js"></script>
   <script src="/static/chart_modal.js"></script>
   <script src="/static/actions.js"></script>
-  <script src="/static/actionable.js?v=20260719f"></script>
+  <script src="/static/actionable.js?v=20260801a"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
   <script src="/static/macro_areas.js" defer></script>

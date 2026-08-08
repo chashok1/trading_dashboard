@@ -580,7 +580,9 @@
   // ---- DOM mount --------------------------------------------------------
   let tapeEl = null;
 
-  const TAPE_PAGES = new Set(['/', '/actionable', '/portfolio']);
+  // '/' removed -- Dashboard now loads dashboard_tv_chart_tape.js instead
+  // (TradingView live mini-chart tape), not this file, per user request.
+  const TAPE_PAGES = new Set(['/actionable', '/portfolio']);
 
   function ensureMount() {
     if (tapeEl) return;

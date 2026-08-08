@@ -1929,6 +1929,8 @@ function applyClientFilter(opts) {
     // by this specific filter, same reasoning as action/stopOnly below: you
     // can see every category's total while one is selected, not just the one.
     if (state.filters.asset_class && r._assetClass !== state.filters.asset_class) return false;
+    if (state.filters.sector && (r.sector || 'Unclassified') !== state.filters.sector) return false;
+    if (state.filters.style && !_rowStyleLabels(r).includes(state.filters.style)) return false;
     if (state.filters.stopOnly && !r.stop_breached) return false;
     if (state.filters.action) {
       const grp = _ACTION_GROUPS[state.filters.action];
@@ -1953,6 +1955,8 @@ function applyClientFilter(opts) {
   renderBulkBar();
   renderSummary();
   renderAssetClassSummary();
+  renderSectorSummary();
+  renderStyleSummary();
   renderSourceFilter();
   renderAccountFilter();
   renderGrid();
@@ -2385,6 +2389,77 @@ function renderAssetClassSummary() {
   }
 }
 
+// Held $ by GICS-11 equity sector (r.sector, already shipped on every
+// /api/actionable row from drv_actionable.sector — no API change needed).
+// Same "computed from baseRows, doubles as the filter UI" pattern as
+// renderAssetClassSummary above.
+function renderSectorSummary() {
+  const wrap = $('sectorSummary');
+  if (!wrap) return;
+  const bySector = new Map();  // sector -> dollars
+  for (const r of state.baseRows) {
+    if (!r.held_today) continue;
+    const sec = r.sector || 'Unclassified';
+    const amt = Math.abs(Number(r.current_position_dollar) || 0);
+    bySector.set(sec, (bySector.get(sec) || 0) + amt);
+  }
+  wrap.innerHTML = '';
+  if (bySector.size === 0) return;
+  const entries = Array.from(bySector.entries()).sort((a, b) => b[1] - a[1]);
+  for (const [sec, dollars] of entries) {
+    const chip = document.createElement('div');
+    chip.className = 'act-chip' + (state.filters.sector === sec ? ' active' : '');
+    chip.title = `${sec}: ${window.fmtUsd ? window.fmtUsd(dollars) : dollars} held — click to filter`;
+    chip.innerHTML = `<span>${escapeHtml(sec)}</span><span class="count">`
+                    + `${window.fmtUsd ? window.fmtUsd(dollars, { compact: true }) : Math.round(dollars)}</span>`;
+    chip.onclick = () => {
+      state.filters.sector = (state.filters.sector === sec) ? '' : sec;
+      applyClientFilter();
+    };
+    wrap.appendChild(chip);
+  }
+}
+
+// Style labels carried by a row (drv_macro_score.style_stances — Momentum/
+// High Beta/Low Beta/Value/Dividend/Cyclical/Defensives/Secular/Small Caps/
+// Mid Caps/...). Kept as a JSONB array, not a single value, because a symbol
+// can carry several independent style tags that disagree with each other.
+function _rowStyleLabels(r) {
+  const arr = Array.isArray(r.style_stances) ? r.style_stances : [];
+  return arr.map(s => s && s.label).filter(Boolean);
+}
+
+// Held $ by equity style. A row can contribute to more than one chip (a
+// symbol tagged both Momentum and Small Caps counts toward both totals),
+// unlike asset_class/sector which are one-per-row buckets.
+function renderStyleSummary() {
+  const wrap = $('styleSummary');
+  if (!wrap) return;
+  const byStyle = new Map();  // style label -> dollars
+  for (const r of state.baseRows) {
+    if (!r.held_today) continue;
+    const amt = Math.abs(Number(r.current_position_dollar) || 0);
+    for (const label of _rowStyleLabels(r)) {
+      byStyle.set(label, (byStyle.get(label) || 0) + amt);
+    }
+  }
+  wrap.innerHTML = '';
+  if (byStyle.size === 0) return;
+  const entries = Array.from(byStyle.entries()).sort((a, b) => b[1] - a[1]);
+  for (const [label, dollars] of entries) {
+    const chip = document.createElement('div');
+    chip.className = 'act-chip' + (state.filters.style === label ? ' active' : '');
+    chip.title = `${label}: ${window.fmtUsd ? window.fmtUsd(dollars) : dollars} held — click to filter`;
+    chip.innerHTML = `<span>${escapeHtml(label)}</span><span class="count">`
+                    + `${window.fmtUsd ? window.fmtUsd(dollars, { compact: true }) : Math.round(dollars)}</span>`;
+    chip.onclick = () => {
+      state.filters.style = (state.filters.style === label) ? '' : label;
+      applyClientFilter();
+    };
+    wrap.appendChild(chip);
+  }
+}
+
 // Set of every source code present in the current dataset (winning + other).
 function _availableSources() {
   const have = new Set();
@@ -2534,6 +2609,7 @@ function clearAllFilters() {
   f.agreement_class = '';
   f.symbols_multi = [];
   f.etfchg_only = false; f.iichg_only = false;
+  f.sector = ''; f.style = '';
   const bpEl = $('bullProbFilter'); if (bpEl) bpEl.value = '0';
   const agEl = $('agreementFilter'); if (agEl) agEl.value = '';
   _syncTriggerSourcePills();
