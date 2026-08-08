@@ -209,7 +209,16 @@
     var vals = [];
     groups.forEach(function (g) { [g.stock, g.rest, g.sector].forEach(function (v) { if (v != null) vals.push(Math.abs(v)); }); });
     var max = Math.max.apply(null, vals.length ? vals : [1]) || 1;
-    var labelW = 60, valueGap = 46, plotStart = labelW + 8, plotEnd = W - valueGap;
+    // 2026-08-08 -- plotStart pushed much further right (labelW+8 -> a
+    // fixed 160) -- the actual overlap wasn't the row label touching the
+    // BAR, it was a negative bar's own VALUE TEXT (e.g. "-$96 (-18.5%)",
+    // positioned just left of the bar, ~65px wide) reaching back far
+    // enough to collide with the "Stock"/"Rest"/"Sector" row label in the
+    // same row -- an 8px gap was nowhere near enough clearance for two
+    // separate text blocks. User: "labels are overlapping ... may be
+    // moving the graph to the right side and/or add some space between
+    // labels and bars."
+    var labelW = 70, valueGap = 46, plotStart = 160, plotEnd = W - valueGap;
     var plotHalf = (plotEnd - plotStart) / 2, midX = plotStart + plotHalf;
     // "Stock" (my own holding) colors green/+ve, red/-ve like everywhere
     // else in the app (.pos/.neg convention) -- Rest/Sector stay neutral
