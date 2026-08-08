@@ -29,15 +29,19 @@
       '    <button class="gm-close" id="gmClose" aria-label="Close">&#10005;</button>',
       '  </div>',
       '  <div class="gm-body" id="gmBody">',
-      '    <div class="gm-table-wrap">',
-      '      <table class="gm-table">',
-      '        <thead><tr><th>Symbol</th><th>Account</th><th style="text-align:right">$</th><th style="text-align:right" title="Unrealized gain/loss vs cost basis, since purchase (current snapshot)">Cumulative</th><th style="text-align:right" title="Broker-reported day change (day_chng_dollar/today_gl_dollar) for this position">Yesterday</th><th id="gmTagHead">Tag</th></tr></thead>',
-      '        <tbody id="gmTableBody"></tbody>',
-      '      </table>',
+      '    <div class="gm-left-col">',
+      '      <div class="gm-table-wrap">',
+      '        <table class="gm-table">',
+      '          <thead><tr><th>Symbol</th><th>Account</th><th style="text-align:right">$</th><th style="text-align:right" title="Unrealized gain/loss vs cost basis, since purchase (current snapshot)">Cumulative</th><th style="text-align:right" title="Broker-reported day change (day_chng_dollar/today_gl_dollar) for this position">Yesterday</th><th id="gmTagHead">Tag</th></tr></thead>',
+      '          <tbody id="gmTableBody"></tbody>',
+      '        </table>',
+      '      </div>',
+      '      <div class="gm-holdings-pane">',
+      '        <svg class="chart" id="gmBarChart" viewBox="0 0 380 220"></svg>',
+      '      </div>',
       '    </div>',
       '    <div class="gm-chart-pane">',
-      '      <h4>Largest holdings</h4>',
-      '      <svg class="chart" id="gmBarChart" viewBox="0 0 380 300"></svg>',
+      '      <svg class="chart" id="gmSymHistChart" viewBox="0 0 460 160" style="display:none;"></svg>',
       '      <h4 id="gmCompareTitle" style="margin-top:18px;">Yesterday: stock vs rest of category vs sector</h4>',
       '      <svg class="chart" id="gmCompareChart" viewBox="0 0 380 220"></svg>',
       '    </div>',
@@ -76,10 +80,22 @@
 
     var svg = document.getElementById('gmBarChart');
     svg.innerHTML = '';
-    var W = 380, H = Math.max(top.length * 32, 120);
+    // 2026-08-08 -- header text ("Largest holdings" h4) removed from above
+    // this chart, and its vertical space reclaimed here instead (12px/5px
+    // row/bar -> 18px/9px, fonts bumped back up 8px/7.5px -> 9px/8.5px) --
+    // the .gm-holdings-pane is flex:0 0 auto within a grid-height-locked
+    // left column, so a taller chart here just takes a bit more of that
+    // column's already-fixed total height (shared with the scrollable
+    // table above it) -- the POPUP's own height is set by the right
+    // column and is untouched. User: "remove the header text 'LARGEST
+    // HOLDINGS' and increase the height of the graph ... don't change the
+    // popup height."
+    // 2026-08-08 follow-up -- 50% taller again (18px/9px -> 27px/14px row/
+    // bar) -- user: "increase by 50%".
+    var W = 380, H = Math.max(top.length * 27, 113);
     svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
     var max = Math.max.apply(null, top.map(function (d) { return d[1]; })) || 1;
-    var rowH = H / top.length, barH = 20, labelW = 108, plotW = W - labelW - 66;
+    var rowH = H / top.length, barH = 14, labelW = 108, plotW = W - labelW - 66;
 
     top.forEach(function (d, i) {
       var y = i * rowH + (rowH - barH) / 2;
@@ -87,8 +103,9 @@
       var color = isOther ? 'var(--text-3)' : 'var(--act-sell)';
 
       var name = svgns('text');
-      name.setAttribute('x', labelW - 8); name.setAttribute('y', y + barH * 0.72);
+      name.setAttribute('x', labelW - 8); name.setAttribute('y', y + barH * 0.72 + 2);
       name.setAttribute('text-anchor', 'end'); name.setAttribute('class', 'bar-name');
+      name.setAttribute('style', 'font-size:9px;');
       name.textContent = d[0];
       svg.appendChild(name);
 
@@ -96,12 +113,12 @@
       var rect = svgns('rect');
       rect.setAttribute('x', labelW); rect.setAttribute('y', y);
       rect.setAttribute('width', Math.max(w, 2)); rect.setAttribute('height', barH);
-      rect.setAttribute('rx', 4); rect.setAttribute('fill', color);
+      rect.setAttribute('rx', 2); rect.setAttribute('fill', color);
       svg.appendChild(rect);
 
       var val = svgns('text');
-      val.setAttribute('x', labelW + w + 8); val.setAttribute('y', y + barH * 0.72);
-      val.setAttribute('class', 'bar-value'); val.textContent = fmt(d[1]);
+      val.setAttribute('x', labelW + w + 8); val.setAttribute('y', y + barH * 0.72 + 2);
+      val.setAttribute('class', 'bar-value'); val.setAttribute('style', 'font-size:8.5px;'); val.textContent = fmt(d[1]);
       svg.appendChild(val);
     });
   }
@@ -165,7 +182,29 @@
     // reserve dedicated space so a max-magnitude bar's rect AND its value
     // text never reach the row-label or symbol-name text. User: "Labels
     // are overlapping with bars. you have to increase graph size."
-    var W = 460, rowH = 72, H = groups.length * rowH + 10;
+    // 2026-08-08 -- bar thickness reduced (11px -> 7px) to match Largest
+    // holdings' earlier shrink, rows tightened accordingly -- user: "reduce
+    // the bar widths for other graphs also".
+    // 2026-08-08 follow-up -- rowH trimmed another 5% (58 -> 55) as part of
+    // an overall 5% height reduction across both charts, so the popup fits
+    // within the viewport without a scrollbar. User: "reduce height by 5%
+    // so it doesn't have scroll bar".
+    // 2026-08-08 follow-up -- W scaled up 29% (460 -> 594) to match the
+    // right column's own 29% width increase (.gm-body grid ratio 1fr ->
+    // 1.29fr) WITHOUT touching H -- these charts are width:100%/height:
+    // auto off a fixed viewBox aspect ratio, so a wider container alone
+    // would have stretched the rendered height too (both scale together
+    // at a fixed W:H ratio). Growing viewBox W by the same factor the
+    // container grew cancels that out: physical height stays put, the
+    // extra physical width goes entirely to plot space (padL/labelW etc.
+    // are fixed absolute units, so plotW = W - padL - ... grows with W).
+    // User: "i was telling you to use [the extra width] without increasing
+    // the height of the popup. or the graph heights".
+    // 2026-08-08 follow-up -- W scaled up again (594 -> 672, matching the
+    // right column's further 13.2% width increase from .gm-body's ratio
+    // going 1.29fr -> 1.46fr), H untouched -- same cancel-the-stretch
+    // reasoning as above.
+    var W = 672, rowH = 55, H = groups.length * rowH + 10;
     svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
     var vals = [];
     groups.forEach(function (g) { [g.stock, g.rest, g.sector].forEach(function (v) { if (v != null) vals.push(Math.abs(v)); }); });
@@ -191,7 +230,7 @@
 
       series.forEach(function (ser, si) {
         var v = g[ser.key];
-        var y = gy + 16 + si * 16;
+        var y = gy + 14 + si * 13;
         var lbl = svgns('text');
         lbl.setAttribute('x', labelW - 4); lbl.setAttribute('y', y + 8);
         lbl.setAttribute('text-anchor', 'end'); lbl.setAttribute('class', 'bar-name');
@@ -204,7 +243,7 @@
         var x = v >= 0 ? midX : midX - w;
         var rect = svgns('rect');
         rect.setAttribute('x', x); rect.setAttribute('y', y);
-        rect.setAttribute('width', Math.max(w, 1)); rect.setAttribute('height', 11);
+        rect.setAttribute('width', Math.max(w, 1)); rect.setAttribute('height', 7);
         rect.setAttribute('rx', 2); rect.setAttribute('fill', color);
         svg.appendChild(rect);
 
@@ -225,6 +264,153 @@
     });
   }
 
+  // 2026-08-08 -- per-symbol daily gain/loss bars, one graph reused across
+  // row clicks (rowEl gets a 'selected' class to show which stock is
+  // active; a second click on a different row just re-renders the SAME
+  // chart with new data, not a new one). User: "Use one graph and change
+  // the bars based on the stock selection."
+  var _symHistReqId = 0;
+  function _loadSymbolHistory(symbol, rowEl) {
+    var tbody = document.getElementById('gmTableBody');
+    if (tbody) Array.prototype.forEach.call(tbody.querySelectorAll('tr.selected'), function (el) {
+      el.classList.remove('selected');
+    });
+    if (rowEl) rowEl.classList.add('selected');
+
+    var reqId = ++_symHistReqId;
+    fetch('/api/cockpit/symbol-daily-change?symbol=' + encodeURIComponent(symbol) + '&days=30')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (reqId !== _symHistReqId) return; // a later click superseded this one
+        _renderSymbolHistory(data);
+      })
+      .catch(function (e) { console.error('symbol daily-change failed:', e); });
+  }
+
+  function _renderSymbolHistory(data) {
+    var svg = document.getElementById('gmSymHistChart');
+    if (!svg) return;
+    var days = data.days || [];
+    svg.style.display = '';
+    svg.innerHTML = '';
+    if (!days.length) {
+      var empty = svgns('text');
+      empty.setAttribute('x', 8); empty.setAttribute('y', 20);
+      empty.setAttribute('class', 'bar-name'); empty.textContent = 'No daily history for ' + data.symbol + '.';
+      svg.appendChild(empty);
+      return;
+    }
+
+    // 2026-08-08 -- taller canvas with FIXED label bands reserved at the
+    // top (positive values) and bottom (negative values, above the date
+    // row) that bars are structurally capped (barHalfMax) from ever
+    // reaching -- labels sit at a constant y regardless of that day's own
+    // bar height, so they can never overlap ANY bar, not just their own.
+    // The previous version anchored each label to its own bar's tip, which
+    // let a wide "+$110 (+0.8%)" label creep into a taller NEIGHBOR bar.
+    // User: "display numbers properly. they are overlapping with bars."
+    // 2026-08-08 -- overall canvas grown (190 -> 260 tall) -- svg.chart is
+    // width:100%/height:auto, so a taller viewBox (same W) renders visibly
+    // bigger for the same container width. User: "make the daily gain/loss
+    // graph bigger".
+    // 2026-08-08 -- trimmed 5% (260 -> 247, padB/padT scaled to match) as
+    // part of an overall 5% height reduction across both charts, so the
+    // popup fits within the viewport without a scrollbar. User: "reduce
+    // height by 5% so it doesn't have scroll bar".
+    // 2026-08-08 follow-up -- W scaled up 29% (460 -> 594) to match the
+    // right column's own width increase, H left untouched -- same
+    // cancel-out-the-aspect-ratio-stretch reasoning as the Compare chart
+    // above. User: "use [the extra width] without increasing the height
+    // of the popup. or the graph heights".
+    // 2026-08-08 follow-up -- W scaled up again (594 -> 672), H untouched,
+    // matching the right column's further 13.2% width increase.
+    var W = 672, H = 247, padL = 44, padB = 49, padT = 38;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    var plotW = W - padL - 8, plotH = H - padB - padT;
+    var max = Math.max.apply(null, days.map(function (d) { return Math.abs(d.dollar || 0); })) || 1;
+    // 2026-08-08 -- widened again (0.85x -> 0.96x of the per-day slot,
+    // gap shrunk 4px -> 1px) so bars fill nearly the entire per-day slot
+    // instead of leaving visible gaps -- user: "increase bar sizes for
+    // daily graph. Take up the whole graph space."
+    var barW = Math.max((plotW / days.length - 1) * 0.96, 4);
+    var zeroY = padT + plotH / 2;
+    var barHalfMax = plotH / 2 - 22;
+    var posLabelY = padT - 6, negLabelY = H - padB - 4;
+
+    // 2026-08-08 -- in-chart header row (symbol left, total gain/loss over
+    // the shown window right) replaces the old "Daily gain/loss — IAK" h4
+    // that sat above the SVG -- reclaims that vertical space for the graph
+    // itself. Total % is the compounded product of each day's own return
+    // (mathematically correct for chaining daily returns, not just a naive
+    // sum). User: "move the total gain or loss to the side of the amount
+    // somewhere on the header. remove the text 'Daily gain/loss — IAK' and
+    // use that space for the graph."
+    var totalDollar = days.reduce(function (s, d) { return s + (d.dollar || 0); }, 0);
+    var totalPct = (days.reduce(function (acc, d) {
+      return d.pct != null ? acc * (1 + d.pct / 100) : acc;
+    }, 1) - 1) * 100;
+    var symLbl = svgns('text');
+    symLbl.setAttribute('x', padL); symLbl.setAttribute('y', 16);
+    symLbl.setAttribute('class', 'bar-name'); symLbl.setAttribute('style', 'font-size:11px;');
+    symLbl.textContent = data.symbol;
+    svg.appendChild(symLbl);
+    // SVG text color comes from `fill`, not CSS `color` -- the shared
+    // .pos/.neg classes only set `color` (built for HTML table cells), so
+    // they're a no-op here; set fill directly instead, same pattern the
+    // bar/rect colors elsewhere in this file already use.
+    var totFill = totalDollar > 0 ? 'var(--bull, #15803d)' : totalDollar < 0 ? 'var(--bear, #b91c1c)' : 'var(--text-1)';
+    var totLbl = svgns('text');
+    totLbl.setAttribute('x', W - 8); totLbl.setAttribute('y', 16);
+    totLbl.setAttribute('text-anchor', 'end');
+    totLbl.setAttribute('style', 'font-size:11px;font-weight:700;fill:' + totFill + ';');
+    totLbl.textContent = (totalDollar >= 0 ? '+' : '') + fmt(totalDollar) + ' (' + (totalPct >= 0 ? '+' : '') + totalPct.toFixed(1) + '%) over ' + days.length + 'd';
+    svg.appendChild(totLbl);
+
+    var zeroLine = svgns('line');
+    zeroLine.setAttribute('x1', padL); zeroLine.setAttribute('x2', W - 8);
+    zeroLine.setAttribute('y1', zeroY); zeroLine.setAttribute('y2', zeroY);
+    zeroLine.setAttribute('stroke', 'var(--border)'); zeroLine.setAttribute('stroke-width', '1');
+    svg.appendChild(zeroLine);
+
+    // Thinned to every ~6th bar (was 5th) -- a bit more horizontal room
+    // between labeled bars so neighboring value labels don't crowd each
+    // other either.
+    days.forEach(function (d, i) {
+      var v = d.dollar || 0;
+      var x = padL + i * (plotW / days.length) + 2;
+      var h = Math.abs(v) / max * barHalfMax;
+      var y = v >= 0 ? zeroY - h : zeroY;
+      var color = v > 0 ? 'var(--bull, #15803d)' : v < 0 ? 'var(--bear, #b91c1c)' : 'var(--text-3)';
+
+      var rect = svgns('rect');
+      rect.setAttribute('x', x); rect.setAttribute('y', y);
+      rect.setAttribute('width', barW); rect.setAttribute('height', Math.max(h, 1));
+      rect.setAttribute('rx', 1); rect.setAttribute('fill', color);
+      var ti = svgns('title');
+      ti.textContent = d.date + ': ' + (v >= 0 ? '+' : '') + fmt(v) + (d.pct != null ? ' (' + (d.pct >= 0 ? '+' : '') + d.pct.toFixed(1) + '%)' : '');
+      rect.appendChild(ti);
+      svg.appendChild(rect);
+
+      if (days.length <= 8 || i % 6 === 0 || i === days.length - 1) {
+        var lbl = svgns('text');
+        lbl.setAttribute('x', x + barW / 2); lbl.setAttribute('y', H - padB + 14);
+        lbl.setAttribute('text-anchor', 'middle'); lbl.setAttribute('class', 'bar-name');
+        lbl.setAttribute('style', 'font-size:9px;font-weight:400;');
+        lbl.textContent = d.date.slice(5);
+        svg.appendChild(lbl);
+
+        var valTxt = (v >= 0 ? '+' : '') + fmt(v) + (d.pct != null ? ' (' + (d.pct >= 0 ? '+' : '') + d.pct.toFixed(1) + '%)' : '');
+        var val = svgns('text');
+        val.setAttribute('x', x + barW / 2);
+        val.setAttribute('y', v >= 0 ? posLabelY : negLabelY);
+        val.setAttribute('text-anchor', 'middle'); val.setAttribute('class', 'bar-value');
+        val.setAttribute('style', 'font-size:8px;');
+        val.textContent = valTxt;
+        svg.appendChild(val);
+      }
+    });
+  }
+
   // opts: {title, subtitlePrefix} -- title shown if the response has no
   // better one (factor response has no `label`); subtitlePrefix prepends
   // e.g. "Sector match" before the position/account count.
@@ -237,6 +423,10 @@
     document.getElementById('gmTotal').innerHTML = '';
     document.getElementById('gmTableBody').innerHTML = '';
     document.getElementById('gmBarChart').innerHTML = '';
+    // Reset the symbol-history chart on every fresh open -- a stock
+    // selected in a previous category/gauge popup shouldn't carry over.
+    document.getElementById('gmSymHistChart').style.display = 'none';
+    _symHistReqId++; // invalidate any in-flight history fetch from before
 
     fetch(fetchUrl)
       .then(function (r) { return r.json(); })
@@ -283,11 +473,19 @@
         (totalGainPct != null ? ' (' + (totalGainPct >= 0 ? '+' : '') + totalGainPct.toFixed(1) + '%)' : '') +
         ' total</div>';
     }
+    // 2026-08-08 -- .d (amount) and .g (total gain/loss) now share a row
+    // (.gm-total-row), .g pushed to the right at the same level as the
+    // amount instead of stacked as a 3rd line below "% of portfolio" --
+    // user: "$(%) total text is still being displayed below % of
+    // portfolio. this text needs to be moved to the right side same level
+    // as sector amount". .p stays on its own centered row below.
     document.getElementById('gmTotal').innerHTML = (data.dollar != null)
-      ? '<div class="d">' + fmt(data.dollar) + '</div><div class="p">' + (data.pct != null ? data.pct.toFixed(1) + '% of portfolio' : '') + '</div>' + gainHtml
-      : '<div class="d">&mdash;</div>' + gainHtml;
+      ? '<div class="gm-total-row"><div class="d">' + fmt(data.dollar) + '</div>' + gainHtml + '</div>'
+        + '<div class="p">' + (data.pct != null ? data.pct.toFixed(1) + '% of portfolio' : '') + '</div>'
+      : '<div class="gm-total-row"><div class="d">&mdash;</div>' + gainHtml + '</div>';
 
     var tbody = document.getElementById('gmTableBody');
+    var firstRow = null, firstSymbol = null;
     (data.positions || []).forEach(function (p) {
       var tr = document.createElement('tr');
       var symTd = document.createElement('td'); symTd.className = 'sym'; symTd.textContent = p.symbol;
@@ -330,6 +528,14 @@
         var tagTd = document.createElement('td'); tagTd.className = 'tag'; tagTd.textContent = p.tag || '';
         tr.appendChild(tagTd);
       }
+      // 2026-08-08 -- click a row to select that stock and load its daily
+      // gain/loss history into the (single, reused) chart below -- user
+      // request: "i also want to see daily (or imported days) gains/losses
+      // as a graph when i select a specific stock ... Use one graph and
+      // change the bars based on the stock selection."
+      tr.style.cursor = 'pointer';
+      tr.addEventListener('click', function () { _loadSymbolHistory(p.symbol, tr); });
+      if (!firstRow) { firstRow = tr; firstSymbol = p.symbol; }
       tbody.appendChild(tr);
     });
     if (!(data.positions || []).length) {
@@ -341,6 +547,10 @@
       _renderBars(data.positions);
     }
     _renderCompareChart(data);
+    // 2026-08-08 -- first row selected by default so the Daily gain/loss
+    // chart isn't empty on open -- user request: "select the first stock
+    // by default".
+    if (firstRow) _loadSymbolHistory(firstSymbol, firstRow);
   }
 
   window.openGaugeExposureModal = function (gaugeKey) {

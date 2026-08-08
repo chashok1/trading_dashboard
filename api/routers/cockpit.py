@@ -75,8 +75,10 @@ def _yesterday_by_symbol_account(session, d) -> dict:
     own `pos` CTEs exactly, so they join up in Python."""
     out: dict = {}
     for r in session.execute(text("""
-        SELECT tos_symbol, account, day_chng_dollar AS yd, day_chng_pct AS ypct
+        SELECT hist_cs.tos_symbol, COALESCE(ra.short_name, hist_cs.account) AS account,
+               day_chng_dollar AS yd, day_chng_pct AS ypct
         FROM hist_cs
+        LEFT JOIN ref_accounts ra ON ra.account_number = hist_cs.account
         WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <
               (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d))
           AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
@@ -84,8 +86,7 @@ def _yesterday_by_symbol_account(session, d) -> dict:
         out[(r["tos_symbol"], r["account"])] = (r["yd"], r["ypct"])
     for r in session.execute(text("""
         SELECT hist_f.tos_symbol,
-               COALESCE(hist_f.account_name, hist_f.account_number) ||
-                 COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')') AS account,
+               COALESCE(ra.short_name, hist_f.account_name, hist_f.account_number) AS account,
                hist_f.today_gl_dollar AS yd, hist_f.today_gl_pct AS ypct
         FROM hist_f
         LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
@@ -281,17 +282,22 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
 
         # 2026-08-08 -- cost_basis/gain_dollar carried through for the
         # popup's %gain/loss column, same as get_factor_exposure_detail.
+        # 2026-08-08 -- Account column uses ref_accounts.short_name only
+        # (e.g. "IRA", "HSA", "F-M") instead of the raw hist_cs.account
+        # string / composite Fidelity name -- user: "popup -> left column
+        # grid (stock listing) -> use account desc". Falls back to the raw
+        # value when an account has no short_name mapped.
         rows = s.execute(text("""
             WITH pos AS (
-              SELECT tos_symbol, account, market_value AS mv,
-                     cost_basis AS cb, gain_dollar AS gl
+              SELECT hist_cs.tos_symbol, COALESCE(ra.short_name, hist_cs.account) AS account,
+                     market_value AS mv, cost_basis AS cb, gain_dollar AS gl
               FROM hist_cs
+              LEFT JOIN ref_accounts ra ON ra.account_number = hist_cs.account
               WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
                 AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
               UNION ALL
               SELECT hist_f.tos_symbol,
-                     COALESCE(hist_f.account_name, hist_f.account_number) ||
-                       COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')') AS account,
+                     COALESCE(ra.short_name, hist_f.account_name, hist_f.account_number) AS account,
                      hist_f.current_value AS mv,
                      hist_f.cost_basis_total AS cb, hist_f.total_gl_dollar AS gl
               FROM hist_f
@@ -602,18 +608,21 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
         # unaffected (this only touches the Unmapped special-case).
         cash_exclude_clause = " AND NOT is_cash(symbol, security_type, description)" \
             if axis in ("sector", "style") or (axis == "asset_class" and category_is_unmapped) else ""
+        # 2026-08-08 -- Account column uses ref_accounts.short_name only,
+        # same as get_gauge_exposure_detail -- user: "popup -> left column
+        # grid (stock listing) -> use account desc".
         rows = s.execute(text(f"""
             WITH pos AS (
-              SELECT tos_symbol, account, market_value AS mv,
-                     cost_basis AS cb, gain_dollar AS gl
+              SELECT hist_cs.tos_symbol, COALESCE(ra.short_name, hist_cs.account) AS account,
+                     market_value AS mv, cost_basis AS cb, gain_dollar AS gl
               FROM hist_cs
+              LEFT JOIN ref_accounts ra ON ra.account_number = hist_cs.account
               WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
                 AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
                 {cash_exclude_clause}
               UNION ALL
               SELECT hist_f.tos_symbol,
-                     COALESCE(hist_f.account_name, hist_f.account_number) ||
-                       COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')') AS account,
+                     COALESCE(ra.short_name, hist_f.account_name, hist_f.account_number) AS account,
                      hist_f.current_value AS mv,
                      hist_f.cost_basis_total AS cb, hist_f.total_gl_dollar AS gl
               FROM hist_f
@@ -684,6 +693,49 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
             "positions": positions,
             "category_yesterday_pct": category_yesterday_pct,
             "sector_yesterday_pct": sector_yesterday_pct,
+        }
+
+
+# ---------------------------------------------------------------------------
+# 6.3c GET /api/cockpit/symbol-daily-change -- per-day $/% for one symbol,
+# across every snapshot date we have it (broker day_chng_dollar/today_gl_
+# dollar, same figures the Yesterday column/popup already use, just one
+# symbol's full history instead of a single day). Powers the exposure-
+# detail popup's "select a stock, see its daily bars" chart -- user
+# request: "i also want to see daily (or imported days) gains/losses as a
+# graph when i select a specific stock ... Use one graph and change the
+# bars based on the stock selection."
+# ---------------------------------------------------------------------------
+
+@router.get("/api/cockpit/symbol-daily-change")
+def get_symbol_daily_change(symbol: str = Query(...), days: int = Query(30, ge=1, le=180)):
+    sym = symbol.strip().upper()
+    with session_scope() as s:
+        by_date: dict = {}
+        for r in s.execute(text("""
+            SELECT snapshot_date, SUM(day_chng_dollar) AS dc, AVG(day_chng_pct) AS dp
+            FROM hist_cs WHERE tos_symbol = :sym
+              AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
+            GROUP BY snapshot_date
+        """), {"sym": sym}).mappings().all():
+            by_date[r["snapshot_date"]] = (float(r["dc"] or 0), float(r["dp"]) if r["dp"] is not None else None)
+        for r in s.execute(text("""
+            SELECT snapshot_date, SUM(today_gl_dollar) AS dc, AVG(today_gl_pct) AS dp
+            FROM hist_f WHERE tos_symbol = :sym
+              AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
+            GROUP BY snapshot_date
+        """), {"sym": sym}).mappings().all():
+            prev = by_date.get(r["snapshot_date"])
+            dc = float(r["dc"] or 0) + (prev[0] if prev else 0)
+            dp = float(r["dp"]) if r["dp"] is not None else (prev[1] if prev else None)
+            by_date[r["snapshot_date"]] = (dc, dp)
+
+        dates = sorted(by_date.keys())[-days:]
+        return {
+            "symbol": sym,
+            "days": [{"date": d.isoformat(), "dollar": round(by_date[d][0], 2),
+                      "pct": round(by_date[d][1], 2) if by_date[d][1] is not None else None}
+                     for d in dates],
         }
 
 
