@@ -2108,18 +2108,14 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .cat-chart { flex: 0 0 190px; }
 .cat-chart .unmapped-note { font-size: 10px; color: var(--text-3); margin-top: 6px; line-height: 1.4; }
 .cat-table-col { flex: 1; min-width: 0; }
-/* TASK_140 follow-up 8/9/10 -- Sector/Asset class reverted to natural
-   auto-height (no cap, matching Style) per prior feedback, then asked to
-   shrink slightly below that: Sector -3%, Asset class -20%. Natural height
-   here is a CSS estimate (row = 6px padding + ~13px line-height + 1px
-   border ~= 20px; Sector 12 rows incl. header + the Unmapped note line
-   ~= 256px; Asset class 8 rows + note ~= 176px) -- there's no browser
-   attached this session to measure the real rendered height, so these
-   percentages are applied to that estimate, not a verified pixel value.
-   overflow-y:auto rather than hidden so shrinking below content is a
-   scrollbar, not a silently clipped row. */
-#sectorScorecardBand .cat-table-col { max-height: 248px; overflow-y: auto; }
-#assetClassScorecardBand .cat-table-col { max-height: 141px; overflow-y: auto; }
+/* TASK_140 follow-up 8/9/10/15 -- Sector still capped slightly below its
+   natural height (-3%, CSS-estimated, see prior follow-ups) with a
+   scrollbar. Asset class reverted back to natural auto-height, no cap, no
+   scrollbar -- per user request it should just use whitespace instead of
+   scrolling; it was never long enough to need one. */
+/* 248px -> 260px -> 273px -> 268px (-5px), content now fits exactly at
+   that height -- overflow-y:auto dropped, no scrollbar needed. */
+#sectorScorecardBand .cat-table-col { max-height: 268px; }
 .cat-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 6px; flex-shrink: 0; vertical-align: middle; }
 .slice-label { font-size: 9.5px; fill: var(--card-bg); font-weight: 700; text-anchor: middle; }
 @media (max-width: 900px) {
@@ -2188,6 +2184,23 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
    with no spacing of its own by default; margin/padding/divider added here
    so it doesn't read as flush against the Risk Dial content above it. */
 #regimeStrip { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+/* TASK_140 follow-up 18 -- .source-pop et al match actionable.html's inline
+   copy verbatim (values, not just class names) so the dashboard's quad
+   popover looks exactly like actionable's, per user request. actionable.js/
+   .html stay untouched (off-limits for unrelated work) -- this is a
+   parallel implementation in app.js/#quadPop, not a shared include. */
+.source-pop {
+  position: fixed; z-index: 1000; display: none;
+  background: #fff; color: #1e293b; border: 1px solid #e2e8f0; border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding: 10px 14px; font-size: 11px; line-height: 1.6;
+  min-width: 150px; max-width: 460px; pointer-events: none;
+}
+.source-pop .sp-title { font-weight: 700; color: #0f172a; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
+.source-pop table { border-collapse: collapse; width: 100%; }
+.source-pop td { padding: 1px 0; vertical-align: top; }
+.source-pop td.k { color: #475569; padding-right: 12px; white-space: nowrap; }
+.source-pop td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; word-break: break-word; }
+.source-pop .sp-sec { color: #94a3b8; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; padding-top: 5px; }
 #regimeStrip > * + * { padding-left: 10px; border-left: 1px solid var(--border); }
 #regimeStrip .regime-line { font-size: 13px; cursor: help; border-bottom: 1px dotted var(--border); display: inline-block; }
 
@@ -2204,6 +2217,25 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
   font-size: 13px; font-weight: 700; margin: 0 0 4px; display: flex; align-items: center; gap: 8px;
   color: var(--text-1); padding: 3px 6px; border-bottom: 1px solid var(--border);
 }
+/* Asset class only -- tighter gap to the title above so the pie sits
+   higher, per user request. Title's own margin/padding-bottom are both
+   already 0 (nothing left to trim there) -- further tightening now pulls
+   the chart SVG itself up past the title's 1px border-bottom via a small
+   negative margin-top. */
+#assetClassScorecardBand .cat-chart-title { margin-bottom: 0; padding-bottom: 0; }
+/* Dropped the -3px margin-top on #assetChart from here -- it was fighting
+   the JS height-matching in loadFactorScorecard() (negative margins do
+   odd things to a flex row's cross-size calc) and may have been part of
+   the "still white space below the chart AND table" report; that JS fix
+   is the one actually responsible for matching the two columns' heights
+   now, this rule should only ever touch spacing, not sizing. */
+/* Card's own bottom padding trimmed (shared .cockpit-band rule gives every
+   band 8px top+bottom; scoped down here, Asset class only) so its overall
+   height shrinks now that the chart/title gap above is also tightened.
+   .fs-note's own trailing margin (used for the "Unmapped: ..." line) is
+   the other candidate for space after both columns end -- zeroed here too. */
+#assetClassScorecardBand { padding-bottom: 0; }
+#assetClassScorecardBand .fs-note { margin-bottom: 0; }
 .axis-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .axis-dot.axis-sector { background: var(--cat1, var(--accent)); }
 .axis-dot.axis-asset-class { background: var(--cat2, #0f9488); }

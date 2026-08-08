@@ -460,15 +460,18 @@ async function loadRegimeBand() {
     // (verified live: {"factor":"Cyclical","qtr":"bull"}), not ticker/
     // category -- those were always undefined, which is why the tooltip
     // showed the "Bull factors:"/"Bear factors:" labels with nothing after.
-    const bullNames = (factors.bull || []).map(f => f.factor).filter(Boolean);
-    const bearNames = (factors.bear || []).map(f => f.factor).filter(Boolean);
-    strip.innerHTML = `<div class="regime-line">
+    const bullFactors = (factors.bull || []).filter(f => f.factor);
+    const bearFactors = (factors.bear || []).filter(f => f.factor);
+    strip.innerHTML = `<div class="regime-line" data-quadbandpop="1">
       Window (${windowData.h ?? 60}d): <strong style="color:${_quadColor(dominant)};">${escapeHtml(dominant)}</strong> — ${months || 'no window data'}
     </div>`;
     const line = strip.querySelector('.regime-line');
     if (line) {
-      line.addEventListener('mousemove', e => _regimeShowTip(e, bullNames, bearNames));
-      line.addEventListener('mouseleave', _chartHideTip);
+      line.addEventListener('mouseover', () => _showQuadPop(line, dominant, bullFactors, bearFactors));
+      line.addEventListener('mouseout', e => {
+        if (e.relatedTarget && e.relatedTarget.closest('.regime-line')) return;
+        _hideQuadPop();
+      });
     }
   } catch (e) {
     console.error('regime band failed:', e);
@@ -476,22 +479,97 @@ async function loadRegimeBand() {
   }
 }
 
-// TASK_140 follow-up 11 -- colored Bull/Bear sections in the shared #tip
-// popover (same element the composition charts hover uses), closer to
-// actionable.js's richer popover than the old plain-text title attribute,
-// without duplicating its full click-positioned table.
-function _regimeShowTip(evt, bullNames, bearNames) {
-  const tip = $('tip');
-  if (!tip) return;
-  const section = (label, color, names) => names.length
-    ? `<div style="font-weight:700;color:${color};margin:4px 0 2px;">${label}</div><div>${names.map(escapeHtml).join(', ')}</div>`
-    : '';
-  tip.innerHTML = section('&#8593; Bull Factors', '#2f9e2f', bullNames)
-    + section('&#8595; Bear Factors', '#d83a3a', bearNames)
-    || '<div>No factor data</div>';
-  tip.classList.add('show');
-  tip.style.left = evt.clientX + 'px';
-  tip.style.top = (evt.clientY - 10) + 'px';
+// TASK_140 follow-up 18 -- replicates actionable.js's #sourcePop quad-band
+// popover exactly (same _buildQuadBandPopHtml table shape: sp-title + per-
+// factor rows under "↑ Bull Factors"/"↓ Bear Factors" section headers, same
+// element-anchored positioning with viewport clamping as its _showDataPop),
+// targeting the dashboard's own #quadPop element/.source-pop CSS (added to
+// styles.css) since actionable.js/.html stay untouched -- see that file's
+// _showDataPop/hideSourcePop/_buildQuadBandPopHtml for the original.
+// Shared element-anchored positioning for #quadPop (viewport-clamped: flips
+// above if it'd overflow the bottom, clamps left if it'd overflow the
+// right) -- used by both the regime-line popover and the per-category
+// quad-stance popover below.
+function _positionQuadPop(el, pop) {
+  const rect = el.getBoundingClientRect();
+  let top = rect.bottom + 4;
+  if (top + pop.offsetHeight > window.innerHeight - 8) top = Math.max(8, rect.top - pop.offsetHeight - 4);
+  let left = rect.left;
+  if (left + pop.offsetWidth > window.innerWidth - 8) left = Math.max(8, window.innerWidth - pop.offsetWidth - 8);
+  pop.style.top = top + 'px';
+  pop.style.left = left + 'px';
+}
+function _showQuadPop(el, quadLabel, bullFactors, bearFactors) {
+  const pop = $('quadPop');
+  if (!pop) return;
+  let h = `<div class="sp-title" style="color:${_quadColor(quadLabel)}">${escapeHtml(quadLabel)}</div>`;
+  h += '<table>';
+  if (bullFactors.length) {
+    h += `<tr><td class="sp-sec" colspan="2" style="color:#1c6c30;">&#8593; Bull Factors</td></tr>`;
+    for (const f of bullFactors) {
+      h += `<tr><td class="k">${escapeHtml(f.factor)}</td><td class="v" style="color:#1c6c30;font-weight:600;font-size:10px;">Bullish</td></tr>`;
+    }
+  }
+  if (bearFactors.length) {
+    h += `<tr><td class="sp-sec" colspan="2" style="color:#8c1d1d;">&#8595; Bear Factors</td></tr>`;
+    for (const f of bearFactors) {
+      h += `<tr><td class="k">${escapeHtml(f.factor)}</td><td class="v" style="color:#8c1d1d;font-weight:600;font-size:10px;">Bearish</td></tr>`;
+    }
+  }
+  if (!bullFactors.length && !bearFactors.length) {
+    h += `<tr><td class="k" colspan="2" style="color:#9ca3af;">No factor data</td></tr>`;
+  }
+  h += '</table>';
+  pop.innerHTML = h;
+  pop.style.display = 'block';
+  _positionQuadPop(el, pop);
+}
+function _hideQuadPop() {
+  const pop = $('quadPop');
+  if (pop) pop.style.display = 'none';
+}
+
+// 2026-08-07 -- per-category quad-stance popover for the Sector/Asset-class/
+// Style scorecard cards ("which factor is going to do well based on the
+// quads"). stanceRow comes from GET /api/quad/factor-stance -- carries this
+// category's OWN per-window-period stance (stanceRow.months, matching the
+// carets rendered inline) plus the blended score and raw quad1-4 outlook.
+// windowData is that same response's top-level fields (h, etc).
+function _showCategoryQuadPop(el, stanceRow, windowData) {
+  const pop = $('quadPop');
+  if (!pop || !stanceRow) return;
+  const v = Number(stanceRow.score) || 0;
+  const col = v > 0 ? '#1c6c30' : v < 0 ? '#8c1d1d' : '#6b7280';
+  let h = `<div class="sp-title" style="color:${col}">${escapeHtml(stanceRow.category)} — ${escapeHtml(stanceRow.stance)}</div>`;
+  h += '<table>';
+  // 2026-08-07 -- main row = the blended 60D score (the bold caret shown
+  // inline, same number driving the Verdict column), then one row per
+  // window period (the smaller carets after the gap) -- this category's OWN
+  // stance per period, not the generic market-wide window mix. Matches
+  // "i need to see carets for all of these periods... that [60D] is the
+  // main one, leave a gap between this and others".
+  h += `<tr><td class="k" style="font-weight:700;">60D window (blended)</td><td class="v" style="color:${col};font-weight:700;font-size:10px;">${escapeHtml(stanceRow.stance)}</td></tr>`;
+  h += `<tr><td class="sp-sec" colspan="2">By period</td></tr>`;
+  (stanceRow.months || []).forEach(mo => {
+    const mv = Number(mo.stance) || 0;
+    const c = mv > 0 ? '#1c6c30' : mv < 0 ? '#8c1d1d' : '#6b7280';
+    const lbl = `${escapeHtml(String(mo.m).slice(5))} (Q${mo.quad ?? '?'}) ${Math.round((mo.w || 0) * 100)}%`;
+    const label = mv > 0 ? 'Bullish' : mv < 0 ? 'Bearish' : 'Neutral';
+    h += `<tr><td class="k">${lbl}</td><td class="v" style="color:${c};font-weight:600;font-size:10px;">${label}</td></tr>`;
+  });
+  if (!stanceRow.months || !stanceRow.months.length) {
+    h += `<tr><td class="k" colspan="2" style="color:#9ca3af;">No window data</td></tr>`;
+  }
+  h += `<tr><td class="sp-sec" colspan="2">By Quad (raw outlook)</td></tr>`;
+  [1, 2, 3, 4].forEach(n => {
+    const val = stanceRow[`quad${n}`];
+    const c = /BULL/i.test(val || '') ? '#1c6c30' : /BEAR/i.test(val || '') ? '#8c1d1d' : '#6b7280';
+    h += `<tr><td class="k">Quad ${n}</td><td class="v" style="color:${c};font-weight:600;font-size:10px;">${escapeHtml(val || '—')}</td></tr>`;
+  });
+  h += '</table>';
+  pop.innerHTML = h;
+  pop.style.display = 'block';
+  _positionQuadPop(el, pop);
 }
 
 // ---------- Band 4: Factor scorecard ----------
@@ -518,10 +596,26 @@ const _VERDICT_CLS = {
   TRIM: 'act-sell', TRIM_HARD: 'act-sell-strong',
   ROTATE: 'act-mixed',
 };
+// TASK_140 follow-up 17 -- popover text per verdict, matching the
+// (band x quad) matrix + overrides in etl/derive_category_perf.py::_verdict
+// exactly (under/at/over target-allocation x bullish/neutral/bearish quad
+// stance, plus the ROTATE and risk_budget<55-caps-to-HOLD overrides).
+const _VERDICT_DESC = {
+  ADD: 'Under-allocated here and the quad regime is bullish for it — add exposure.',
+  WATCH: 'Under-allocated here but the regime is neutral — worth watching, not a clear add yet.',
+  AVOID: 'Under-allocated here and the regime is bearish — the gap is deliberate, don’t add.',
+  HOLD: 'At target allocation (or ADD/PRESS capped here because the Risk Dial budget is below 55) — no allocation-based action.',
+  PRESS: 'At target and bullish, with a positive 1-month trailing return — lean in rather than just hold.',
+  TRIM: 'At or over target and the regime has turned bearish (or neutral while over) — trim back.',
+  HOLD_NO_ADD: 'Over-allocated but the regime is still bullish — hold what you have, don’t add more.',
+  TRIM_HARD: 'Over-allocated and the regime is bearish — trim aggressively.',
+  ROTATE: 'Would otherwise be ADD, but trailing the benchmark in most windows — rotate into something else instead.',
+};
 function _verdictBadge(verdict) {
   if (!verdict) return '';
   const cls = _VERDICT_CLS[verdict] || 'act-neutral';
-  return `<span class="fs-verdict ${cls}-tint">${escapeHtml(verdict)}</span>`;
+  const desc = _VERDICT_DESC[verdict] || '';
+  return `<span class="fs-verdict ${cls}-tint" title="${escapeHtml(desc)}">${escapeHtml(verdict)}</span>`;
 }
 
 // TASK_140 follow-up 2 -- inline composition chart beside each scorecard
@@ -670,13 +764,22 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
   try {
     const params = new URLSearchParams({ axis });
     if (state.date) params.set('date', state.date);
-    const r = await fetchJson(`/api/cockpit/factor-scorecard?${params.toString()}`);
+    const [r, stanceData] = await Promise.all([
+      fetchJson(`/api/cockpit/factor-scorecard?${params.toString()}`),
+      fetchJson(`/api/quad/factor-stance?${params.toString()}`).catch(() => null),
+    ]);
     const note = axis === 'style'
       ? '<div class="fs-note">Overlapping tags — not an allocation.</div>' : '';
     // TASK_140 follow-up 3 -- same color, category column swatch + chart
     // slice/bar. Computed once here from the same r.rows order the chart
     // renderer below also gets, so table and chart never disagree.
     const colorMap = _catColorMap(r.rows);
+    // 2026-08-07 -- category name -> quad-stance row, matched case/trim-
+    // insensitively since ref_quad_outlook's own casing can differ from
+    // drv_category_perf's (e.g. "Health care" vs "Health Care", same gotcha
+    // as the earlier Sector exposure case-sensitivity fix).
+    const stanceMap = new Map();
+    (stanceData?.rows || []).forEach(sr => stanceMap.set(String(sr.category).trim().toLowerCase(), sr));
     const rows = (r.rows || []).map(row => {
       // TASK_136 C.1 -- keep the raw twr_*/bench_* absolute returns reachable
       // on hover via the row's title, since the cells themselves only show
@@ -696,12 +799,39 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
         return `<td>${_fsColorCell(delta)}</td>`;
       }).join('');
       const weightPct = row.weight_pct != null ? Number(row.weight_pct) : null;
+      // 2026-08-07 -- quad-stance carets: the MAIN caret is the blended 60D
+      // window score (the same number driving the Verdict column), then a
+      // gap, then one caret per window period so each period's own read is
+      // also visible -- e.g. "▲  ▲ ▲ ▲" for 60D-blend / 08(Q3) / 09(Q1) /
+      // 10(Q2). Matches the per-period breakdown already shown in the
+      // Regime Band's "Window (60d): 08 (Q3) 42% · 09 (Q1) 50% · 10 (Q2) 8%"
+      // line. See _showCategoryQuadPop for the full table on hover.
+      const catKey = String(row.category).trim().toLowerCase();
+      const stanceRow = stanceMap.get(catKey);
+      const stanceIcon = stanceRow ? (() => {
+        const mv = Number(stanceRow.score) || 0;
+        const mCol = mv > 0 ? '#16a34a' : mv < 0 ? '#dc2626' : '#9ca3af';
+        const mGlyph = mv > 0 ? '&#9650;' : mv < 0 ? '&#9660;' : '&#8211;';
+        const mainCaret = `<span style="color:${mCol};font-size:11px;font-weight:700;">${mGlyph}</span>`;
+        const periodCarets = (stanceRow.months || []).map(mo => {
+          const v = Number(mo.stance) || 0;
+          const sCol = v > 0 ? '#16a34a' : v < 0 ? '#dc2626' : '#9ca3af';
+          const glyph = v > 0 ? '&#9650;' : v < 0 ? '&#9660;' : '&#8211;';
+          return `<span style="color:${sCol};">${glyph}</span>`;
+        }).join('<span style="display:inline-block;width:1px;"></span>');
+        const gap = `<span style="display:inline-block;width:6px;"></span>`;
+        // title="" breaks inheritance from the <tr>'s own title (the twr/
+        // bench tooltip) -- without it, hovering a caret showed BOTH the
+        // native browser tooltip (inherited from the row) and the custom
+        // #quadPop popover at once, overlapping.
+        return `<span class="cat-quad-stance" title="" style="cursor:help;margin-left:5px;font-size:9px;letter-spacing:1px;">${mainCaret}${gap}${periodCarets}</span>`;
+      })() : '';
       // TASK_139 -- row click opens the same exposure-detail modal as the
       // Risk Dial's fired gauges (Screen D of the design doc), keyed by
       // (axis, category) instead of gauge_key.
-      return `<tr title="${escapeHtml(titleParts)}" class="fs-clickable"
+      return `<tr title="${escapeHtml(titleParts)}" class="fs-clickable" data-cat="${escapeHtml(catKey)}"
                    onclick="openFactorExposureModal('${escapeHtml(axis)}', '${escapeHtml(row.category).replace(/'/g, "\\'")}')">
-        <td><span class="cat-swatch" style="background:${_catColor(colorMap, row.category)}"></span>${escapeHtml(row.category)}</td>
+        <td><span class="cat-swatch" style="background:${_catColor(colorMap, row.category)}"></span>${escapeHtml(row.category)}${stanceIcon}</td>
         <td class="fs-weight-cell">
           ${weightPct != null ? `<span class="fs-weight-bar" style="width:${Math.max(0, Math.min(100, weightPct))}%"></span>` : ''}
           <span class="fs-weight-text">${weightPct != null ? weightPct.toFixed(1) + '%' : ''}</span>
@@ -732,9 +862,40 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
       </div>
       ${unmapped}
     `;
+    if (stanceData) {
+      body.querySelectorAll('tr[data-cat]').forEach(tr => {
+        const icon = tr.querySelector('.cat-quad-stance');
+        const stanceRow = icon ? stanceMap.get(tr.dataset.cat) : null;
+        if (!icon || !stanceRow) return;
+        icon.addEventListener('click', e => e.stopPropagation());
+        icon.addEventListener('mouseover', () => _showCategoryQuadPop(icon, stanceRow, stanceData));
+        icon.addEventListener('mouseout', e => {
+          if (e.relatedTarget && e.relatedTarget.closest('.cat-quad-stance')) return;
+          _hideQuadPop();
+        });
+      });
+    }
     if (chartId) {
-      if (axis === 'style') _renderCatBars(chartId, r.rows, r.unmapped, colorMap);
-      else _renderCatPie(chartId, r.rows, r.unmapped, colorMap);
+      if (axis === 'style') {
+        _renderCatBars(chartId, r.rows, r.unmapped, colorMap);
+      } else {
+        _renderCatPie(chartId, r.rows, r.unmapped, colorMap);
+        // TASK_140 follow-up 16 -- the chart is a fixed 190px square
+        // (.cat-chart's flex-basis); when the table is shorter than that
+        // (e.g. Asset class's 7 rows), .cat-body's flex-start row height
+        // was still set by the taller chart, leaving empty space below the
+        // shorter table column. Measures the table's REAL rendered height
+        // (offsetHeight forces a synchronous reflow -- no CSS-estimate
+        // guessing this time) and caps the chart down to match whenever
+        // it's the taller one, so both columns end the row at the same
+        // point.
+        const svg = $(chartId);
+        const chartBox = svg ? svg.closest('.cat-chart') : null;
+        if (chartBox) {
+          const tableH = body.offsetHeight;
+          chartBox.style.flexBasis = (tableH > 0 && tableH < 190) ? `${tableH}px` : '';
+        }
+      }
     }
   } catch (e) {
     console.error(`factor scorecard (${axis}) failed:`, e);

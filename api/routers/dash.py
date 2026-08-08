@@ -1459,39 +1459,34 @@ def get_actionable_macro_detail(
     return {"macro_detail": detail or None, "macro_howto": howto}
 
 
-@router.get("/api/quad-window")
-def get_quad_window(date: Optional[str] = Query(None, description="As-of date (defaults to today)")):
-    """Aggregate (symbol-independent) sliding look-ahead window mix (TASK_126)
-    — the calendar-level month overlap/weights + blended quad distribution,
-    with no per-symbol membership scoring. Powers the Regime Band's window
-    summary (replaces the old Month | Quarter ramp display). Quad regime is
-    calendar-based, not tied to the trading anchor — defaults to real today,
-    same convention as GET /api/dashboard/quads."""
-    from datetime import datetime as _dt
+def _compute_quad_window(s, d):
+    """Shared sliding look-ahead window mix (TASK_126) — the calendar-level
+    month overlap/weights + blended quad distribution, symbol-independent.
+    Returns weighted/pcts_by_month (for per-category stance scoring, see
+    _window_stance_for callers) plus the serializable months_out/eff/dominant
+    fields both GET /api/quad-window and GET /api/quad/factor-stance expose."""
     from etl.derive_macro import window_weights, build_effective_distribution, _dominant_quad_num
 
-    d = _dt.strptime(date, "%Y-%m-%d").date() if date else _dt.now().date()
-    with session_scope() as s:
-        h = 60
-        decay_hl = 0.0
-        rows = s.execute(text(
-            "SELECT setting_name, setting_value FROM ref_settings"
-            " WHERE setting_name IN ('quad_lookahead_days','quad_lookahead_decay_hl')"
-        )).fetchall()
-        cfg = {r[0]: r[1] for r in rows}
-        try: h = int(cfg.get('quad_lookahead_days', h))
-        except (TypeError, ValueError): pass
-        try: decay_hl = float(cfg.get('quad_lookahead_decay_hl', decay_hl))
-        except (TypeError, ValueError): pass
+    h = 60
+    decay_hl = 0.0
+    rows = s.execute(text(
+        "SELECT setting_name, setting_value FROM ref_settings"
+        " WHERE setting_name IN ('quad_lookahead_days','quad_lookahead_decay_hl')"
+    )).fetchall()
+    cfg = {r[0]: r[1] for r in rows}
+    try: h = int(cfg.get('quad_lookahead_days', h))
+    except (TypeError, ValueError): pass
+    try: decay_hl = float(cfg.get('quad_lookahead_decay_hl', decay_hl))
+    except (TypeError, ValueError): pass
 
-        all_monthly = s.execute(text(
-            "SELECT year, period_num, quad, label,"
-            " quad1_pct, quad2_pct, quad3_pct, quad4_pct"
-            " FROM ref_quad_periods WHERE period_type='monthly'"
-            " AND (quad1_pct IS NOT NULL OR quad2_pct IS NOT NULL"
-            "   OR quad3_pct IS NOT NULL OR quad4_pct IS NOT NULL)"
-            " ORDER BY year, period_num"
-        )).mappings().all()
+    all_monthly = s.execute(text(
+        "SELECT year, period_num, quad, label,"
+        " quad1_pct, quad2_pct, quad3_pct, quad4_pct"
+        " FROM ref_quad_periods WHERE period_type='monthly'"
+        " AND (quad1_pct IS NOT NULL OR quad2_pct IS NOT NULL"
+        "   OR quad3_pct IS NOT NULL OR quad4_pct IS NOT NULL)"
+        " ORDER BY year, period_num"
+    )).mappings().all()
 
     def _frac(p):
         v = [p["quad1_pct"], p["quad2_pct"], p["quad3_pct"], p["quad4_pct"]]
@@ -1515,14 +1510,126 @@ def get_quad_window(date: Optional[str] = Query(None, description="As-of date (d
     dominant = (max(range(4), key=lambda i: eff_frac[i]) + 1) if any(eff_frac) else None
 
     return {
-        "as_of_date": d.isoformat(),
+        "weighted": weighted,
+        "pcts_by_month": pcts_by_month,
         "h": h,
         "decay_hl": decay_hl,
         "coverage_pct": coverage_pct,
-        "fallback": coverage_pct < 50.0,
-        "months": months_out,
+        "months_out": months_out,
         "eff": eff,
-        "dominant_quad": dominant,
+        "dominant": dominant,
+    }
+
+
+@router.get("/api/quad-window")
+def get_quad_window(date: Optional[str] = Query(None, description="As-of date (defaults to today)")):
+    """Aggregate (symbol-independent) sliding look-ahead window mix (TASK_126)
+    — the calendar-level month overlap/weights + blended quad distribution,
+    with no per-symbol membership scoring. Powers the Regime Band's window
+    summary (replaces the old Month | Quarter ramp display). Quad regime is
+    calendar-based, not tied to the trading anchor — defaults to real today,
+    same convention as GET /api/dashboard/quads."""
+    from datetime import datetime as _dt
+
+    d = _dt.strptime(date, "%Y-%m-%d").date() if date else _dt.now().date()
+    with session_scope() as s:
+        win = _compute_quad_window(s, d)
+
+    return {
+        "as_of_date": d.isoformat(),
+        "h": win["h"],
+        "decay_hl": win["decay_hl"],
+        "coverage_pct": win["coverage_pct"],
+        "fallback": win["coverage_pct"] < 50.0,
+        "months": win["months_out"],
+        "eff": win["eff"],
+        "dominant_quad": win["dominant"],
+    }
+
+
+# Cockpit factor-scorecard axis -> ref_quad_outlook category. Fixed Income
+# isn't one of the cockpit's 3 axes (sector/asset_class/style) so it's left
+# out here; add a 4th axis mapping if a Fixed Income scorecard card is added.
+_QUAD_OUTLOOK_AXIS_MAP = {
+    "sector": "Equity Sectors",
+    "asset_class": "Asset Class",
+    "style": "Equity Style",
+}
+
+
+@router.get("/api/quad/factor-stance")
+def get_quad_factor_stance(
+    axis: str = Query(..., description="sector | asset_class | style"),
+    date: Optional[str] = Query(None, description="As-of date (defaults to today)"),
+):
+    """Per-category window-blended quad stance (2026-08-07) — answers "which
+    factor is expected to do well based on the quads" for the cockpit's
+    Sector/Asset-class/Style scorecard cards. Reuses the SAME sliding 60d
+    look-ahead window blend as the Regime Band (_compute_quad_window) and the
+    same per-membership weighting as the Actionable MACRO column's dots
+    (etl.derive_macro._window_stance_for) — a single blended score per
+    category, not a raw "current dominant quad" lookup and not one column
+    per quad (see the "do you think we can add that many columns?" pushback
+    this replaced: the 60d window mix already IS the blend across quads)."""
+    from datetime import datetime as _dt
+    from etl.derive_macro import _window_stance_for, _stance as _to_stance_num
+
+    category = _QUAD_OUTLOOK_AXIS_MAP.get(axis)
+    if not category:
+        return {"error": f"unknown axis {axis!r}", "rows": []}
+
+    d = _dt.strptime(date, "%Y-%m-%d").date() if date else _dt.now().date()
+    with session_scope() as s:
+        win = _compute_quad_window(s, d)
+        outlook_rows = s.execute(text(
+            "SELECT sub_category, quad1, quad2, quad3, quad4"
+            " FROM ref_quad_outlook WHERE category = :cat"
+        ), {"cat": category}).mappings().all()
+
+    outlook_map = {(category, r["sub_category"]): [r["quad1"], r["quad2"], r["quad3"], r["quad4"]]
+                   for r in outlook_rows}
+    # 2026-08-07 -- per-window-month carets ("i need to see carets for all of
+    # these periods"): the blended score collapses the whole window to one
+    # number, but the user wants each period (Aug/Sep/Oct in the example) to
+    # show its own directional read. Each month's OWN stance uses that
+    # month's own quad distribution unweighted (not multiplied by the
+    # month's window weight `w`) -- the weighting only matters for blending
+    # into the single score, not for reading one month in isolation.
+    def _month_stances(texts):
+        out = []
+        for ym, w in win["weighted"]:
+            pcts = win["pcts_by_month"][ym]
+            stance_val = sum(pcts[i] * _to_stance_num(texts[i]) for i in range(4))
+            out.append({
+                "m": f"{ym[0]:04d}-{ym[1]:02d}",
+                "quad": next((mo["quad"] for mo in win["months_out"] if mo["m"] == f"{ym[0]:04d}-{ym[1]:02d}"), None),
+                "w": round(w, 4),
+                "stance": round(stance_val, 4),
+            })
+        return out
+
+    rows_out = []
+    for r in outlook_rows:
+        sub = r["sub_category"]
+        texts = [r["quad1"], r["quad2"], r["quad3"], r["quad4"]]
+        score = _window_stance_for(category, sub, outlook_map, win["weighted"], win["pcts_by_month"])
+        stance = "Bullish" if (score or 0) > 0 else "Bearish" if (score or 0) < 0 else "Neutral"
+        rows_out.append({
+            "category": sub,
+            "score": score,
+            "stance": stance,
+            "quad1": r["quad1"], "quad2": r["quad2"], "quad3": r["quad3"], "quad4": r["quad4"],
+            "months": _month_stances(texts),
+        })
+
+    return {
+        "as_of_date": d.isoformat(),
+        "axis": axis,
+        "h": win["h"],
+        "months": win["months_out"],
+        "eff": win["eff"],
+        "dominant_quad": win["dominant"],
+        "rows": rows_out,
     }
 
 
