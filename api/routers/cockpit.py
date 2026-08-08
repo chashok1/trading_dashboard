@@ -62,25 +62,30 @@ def _jsonb(v):
 def _yesterday_by_symbol_account(session, d) -> dict:
     """Per-(tos_symbol, account) broker day-change for the exposure-detail
     popups (day_chng_dollar/pct for Schwab, today_gl_dollar/pct for
-    Fidelity), read from YESTERDAY's own snapshot -- not `d`'s. Same
-    distinction the category-level 'Yesterday' column already draws
-    (etl/derive_category_perf.py::_yesterday_actual_change): `d`'s own
-    snapshot's day-change isn't a finalized capture at derive time (that's
-    why 'Today' uses a separate marked-to-market calc instead), so this
-    must go one snapshot further back, not just pull the column off the
-    `pos` CTE's own (today's) rows. User request: "Can the popups include
-    these numbers for each stock?" Returns {(tos_symbol, account): (dollar,
-    pct)}; a symbol not held yesterday (e.g. bought today) is simply absent.
-    account strings must match _lc()-style expressions used by the callers'
-    own `pos` CTEs exactly, so they join up in Python."""
+    Fidelity), read from the LATEST available snapshot at or before `d`.
+    2026-08-08 -- this used to always step back one snapshot further than
+    that (assuming `d`'s own CS/F row could never be a finalized capture),
+    but that's wrong: CS/F loads land in the evening, well after market
+    close (confirmed via hist_cs.loaded_at ~18:xx on the snapshot's own
+    date), so a `d`-dated row IS already the real, finalized close figure
+    once it exists -- stepping past it just showed stale D-1 data on a
+    day D's data was sitting right there. If `d`'s own CS/F hasn't loaded
+    yet (still mid-day, before the evening file lands), `snapshot_date <=
+    :d` naturally already resolves to the prior completed day -- no
+    special-casing needed. User: "shouldn't I see that data in the grid
+    instead of 8/6 data... I need to see market close data and
+    corresponding bar." Returns {(tos_symbol, account): (dollar, pct)};
+    a symbol with no snapshot at or before `d` (e.g. bought today, no
+    prior data at all) is simply absent. account strings must match
+    _lc()-style expressions used by the callers' own `pos` CTEs exactly,
+    so they join up in Python."""
     out: dict = {}
     for r in session.execute(text("""
         SELECT hist_cs.tos_symbol, COALESCE(ra.short_name, hist_cs.account) AS account,
                day_chng_dollar AS yd, day_chng_pct AS ypct
         FROM hist_cs
         LEFT JOIN ref_accounts ra ON ra.account_number = hist_cs.account
-        WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <
-              (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d))
+        WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
           AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
     """), {"d": d}).mappings().all():
         out[(r["tos_symbol"], r["account"])] = (r["yd"], r["ypct"])
@@ -90,8 +95,7 @@ def _yesterday_by_symbol_account(session, d) -> dict:
                hist_f.today_gl_dollar AS yd, hist_f.today_gl_pct AS ypct
         FROM hist_f
         LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
-        WHERE hist_f.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <
-              (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d))
+        WHERE hist_f.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
           AND COALESCE(ra.is_active, TRUE) = TRUE
     """), {"d": d}).mappings().all():
         out[(r["tos_symbol"], r["account"])] = (r["yd"], r["ypct"])
@@ -708,35 +712,84 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
 # ---------------------------------------------------------------------------
 
 @router.get("/api/cockpit/symbol-daily-change")
-def get_symbol_daily_change(symbol: str = Query(...), days: int = Query(30, ge=1, le=180)):
+def get_symbol_daily_change(symbol: str = Query(...), days: int = Query(30, ge=1, le=180),
+                             date: Optional[str] = Query(None)):
     sym = symbol.strip().upper()
+    # 2026-08-08 -- anchor-gated at <= :d (not < :d). A prior version
+    # excluded the anchor's own snapshot on the theory it's never a
+    # finalized capture -- wrong: CS/F loads land in the evening, well
+    # after market close (confirmed via hist_cs.loaded_at ~18:xx on the
+    # snapshot's own date), so a `d`-dated row IS the real, finalized
+    # close figure once it exists. Matches _yesterday_by_symbol_account's
+    # same fix. User: "shouldn't I see that data in the grid instead of
+    # 8/6 data... I need to see market close data and corresponding bar."
+    d = _resolve_date(date)
     with session_scope() as s:
         by_date: dict = {}
         for r in s.execute(text("""
             SELECT snapshot_date, SUM(day_chng_dollar) AS dc, AVG(day_chng_pct) AS dp
-            FROM hist_cs WHERE tos_symbol = :sym
+            FROM hist_cs WHERE tos_symbol = :sym AND snapshot_date <= :d
               AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
             GROUP BY snapshot_date
-        """), {"sym": sym}).mappings().all():
+        """), {"sym": sym, "d": d}).mappings().all():
             by_date[r["snapshot_date"]] = (float(r["dc"] or 0), float(r["dp"]) if r["dp"] is not None else None)
         for r in s.execute(text("""
             SELECT snapshot_date, SUM(today_gl_dollar) AS dc, AVG(today_gl_pct) AS dp
-            FROM hist_f WHERE tos_symbol = :sym
+            FROM hist_f WHERE tos_symbol = :sym AND snapshot_date <= :d
               AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
             GROUP BY snapshot_date
-        """), {"sym": sym}).mappings().all():
+        """), {"sym": sym, "d": d}).mappings().all():
             prev = by_date.get(r["snapshot_date"])
             dc = float(r["dc"] or 0) + (prev[0] if prev else 0)
             dp = float(r["dp"]) if r["dp"] is not None else (prev[1] if prev else None)
             by_date[r["snapshot_date"]] = (dc, dp)
 
+        # 2026-08-08 -- synthetic "Today" bar, marked-to-market (yesterday's
+        # held qty x live drv_quote price), ONLY when the anchor's own CS/F
+        # snapshot hasn't loaded yet (mid-day, before the evening file
+        # lands) -- i.e. `d` has no real entry in by_date above. Once the
+        # real snapshot lands, the loop above already supplies the real
+        # bar and this is skipped entirely. Same technique
+        # etl/derive_category_perf.py::_today_marked_to_market uses at
+        # category level, as a live preview only.
+        today_entry = None
+        if d not in by_date:
+            d_prev = s.execute(text("""
+                SELECT MAX(sd) FROM (
+                  SELECT MAX(snapshot_date) AS sd FROM hist_cs WHERE snapshot_date < :d
+                  UNION ALL
+                  SELECT MAX(snapshot_date) AS sd FROM hist_f WHERE snapshot_date < :d
+                ) t
+            """), {"d": d}).scalar()
+            if d_prev:
+                qty = s.execute(text("""
+                    SELECT
+                      COALESCE((SELECT SUM(qty) FROM hist_cs WHERE tos_symbol=:sym AND snapshot_date=:dp
+                                AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active=FALSE)),0)
+                    + COALESCE((SELECT SUM(qty) FROM hist_f WHERE tos_symbol=:sym AND snapshot_date=:dp
+                                AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active=FALSE)),0)
+                      AS qty
+                """), {"sym": sym, "dp": d_prev}).scalar()
+                qty = float(qty) if qty else 0.0
+                if qty:
+                    px = {r["as_of_date"]: float(r["last_price"]) for r in s.execute(text(
+                        "SELECT as_of_date, last_price FROM drv_quote WHERE tos_symbol=:sym"
+                        " AND as_of_date IN (:dp, :d) AND last_price IS NOT NULL"
+                    ), {"sym": sym, "dp": d_prev, "d": d}).mappings().all()}
+                    p_prev = px.get(d_prev)
+                    if p_prev:
+                        p_today = px.get(d, p_prev)  # no live tick yet -> flat vs yesterday's close
+                        dollar = qty * (p_today - p_prev)
+                        pct = (p_today - p_prev) / p_prev * 100
+                        today_entry = {"date": d.isoformat(), "dollar": round(dollar, 2), "pct": round(pct, 2)}
+
         dates = sorted(by_date.keys())[-days:]
-        return {
-            "symbol": sym,
-            "days": [{"date": d.isoformat(), "dollar": round(by_date[d][0], 2),
-                      "pct": round(by_date[d][1], 2) if by_date[d][1] is not None else None}
-                     for d in dates],
-        }
+        out_days = [{"date": dt.isoformat(), "dollar": round(by_date[dt][0], 2),
+                     "pct": round(by_date[dt][1], 2) if by_date[dt][1] is not None else None}
+                    for dt in dates]
+        if today_entry:
+            out_days.append(today_entry)
+        return {"symbol": sym, "days": out_days}
 
 
 # ---------------------------------------------------------------------------

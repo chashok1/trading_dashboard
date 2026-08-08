@@ -64,6 +64,30 @@
   // Signed dollar amount for gain/loss cells -- '+$229' / '-$68', sign
   // always shown so a glance tells profit vs loss without reading color.
   function fmtSigned(n) { return (n >= 0 ? '+$' : '-$') + Math.round(Math.abs(n)).toLocaleString('en-US'); }
+  // 2026-08-08 -- compact percent label for the daily gain/loss chart: no
+  // "%" sign, whole number rounded (no decimals) UNLESS the magnitude is
+  // under 1, in which case the leading "0" is dropped and 2 decimals kept
+  // (".99" not "0.99" or the rounded-to-nothing "0"). User: "remove the %
+  // and remove the fractions unless if it is less than zero (in that case
+  // display .99 format)" -- "less than zero" read as "rounds to zero",
+  // i.e. magnitude under 1, since a literal sub-zero (negative) reading
+  // wouldn't square with the ".99 format" example given.
+  function fmtPctShort(v) {
+    if (v == null) return '';
+    if (v === 0) return '0';
+    var neg = v < 0, abs = Math.abs(v);
+    var body = abs < 1 ? abs.toFixed(2).slice(1) : String(Math.round(abs));
+    return (neg ? '-' : '+') + body;
+  }
+  // 2026-08-08 follow-up -- daily gain/loss chart switched from % back to
+  // $, whole number only, no "$" sign, no decimals -- user: "display $
+  // instead ... don't display fractions or $ sign." Layout (+ above, -
+  // below, alternating rows) is unchanged, only the label content/format.
+  function fmtDollarShort(v) {
+    if (v == null) return '';
+    var sign = v < 0 ? '-' : v > 0 ? '+' : '';
+    return sign + Math.round(Math.abs(v));
+  }
   function svgns(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
 
   function _renderBars(rows) {
@@ -287,7 +311,11 @@
     if (rowEl) rowEl.classList.add('selected');
 
     var reqId = ++_symHistReqId;
-    fetch('/api/cockpit/symbol-daily-change?symbol=' + encodeURIComponent(symbol) + '&days=30')
+    // 2026-08-08 -- pass through the dashboard's own selected date (if any)
+    // so viewing a historical date shows that date's anchor-gated history,
+    // not always live-today's -- same pattern as _dateQS elsewhere in this
+    // file.
+    fetch('/api/cockpit/symbol-daily-change?symbol=' + encodeURIComponent(symbol) + '&days=30' + _dateQS('&'))
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (reqId !== _symHistReqId) return; // a later click superseded this one
@@ -333,7 +361,22 @@
     // of the popup. or the graph heights".
     // 2026-08-08 follow-up -- W scaled up again (594 -> 672), H untouched,
     // matching the right column's further 13.2% width increase.
-    var W = 672, H = 247, padL = 44, padB = 49, padT = 38;
+    // 2026-08-08 -- padT/padB grown (38/49 -> 55/58) to add real breathing
+    // room between the header text and the plot below it, and between the
+    // bottom $ labels/dates and the chart's own bottom edge -- there was
+    // slack (white space) at the top/bottom of the canvas not being used
+    // for this. User: "there is a white space above and below. move the
+    // stock and the gain over 30d text line to above (meaning add space
+    // between the graph and this text) same with $ numbers and dates
+    // below (add space)."
+    // 2026-08-08 follow-up -- padB grown again (58 -> 64) and the date
+    // row's own offset widened (+20 -> +26) for more clearance from the
+    // $ labels above it; header text nudged up (13 -> 9) to open up more
+    // room between it and the $ labels below. User: "add more space
+    // between dates below and $ numbers. also you can move the stock
+    // ticker text up (there is more space) meaning add more space between
+    // that text and $ numbers."
+    var W = 672, H = 247, padL = 44, padB = 64, padT = 55;
     svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
     var plotW = W - padL - 8, plotH = H - padB - padT;
     var max = Math.max.apply(null, days.map(function (d) { return Math.abs(d.dollar || 0); })) || 1;
@@ -344,7 +387,16 @@
     var barW = Math.max((plotW / days.length - 1) * 0.96, 4);
     var zeroY = padT + plotH / 2;
     var barHalfMax = plotH / 2 - 22;
-    var posLabelY = padT - 6, negLabelY = H - padB - 4;
+    // 2026-08-08 -- two alternating label rows per side (odd bars on one
+    // row, even on the other) instead of one shared row -- lets every
+    // bar's % label sit further from its horizontal neighbors, since
+    // adjacent bars now print on different lines. User: "display them in
+    // two lines alternatively (ex, 1, 3, 5 bar % in line 1 and 2,4,6 in
+    // second line)". posLabelY0 is closer to the bars (row for even i:
+    // 1st, 3rd... in 1-indexed terms), posLabelY1 sits 10px further up
+    // still within the reserved top margin; symmetric for negative.
+    var posLabelY0 = padT - 6, posLabelY1 = padT - 16;
+    var negLabelY0 = H - padB - 4, negLabelY1 = H - padB + 6;
 
     // 2026-08-08 -- in-chart header row (symbol left, total gain/loss over
     // the shown window right) replaces the old "Daily gain/loss — IAK" h4
@@ -359,7 +411,7 @@
       return d.pct != null ? acc * (1 + d.pct / 100) : acc;
     }, 1) - 1) * 100;
     var symLbl = svgns('text');
-    symLbl.setAttribute('x', padL); symLbl.setAttribute('y', 16);
+    symLbl.setAttribute('x', padL); symLbl.setAttribute('y', 9);
     symLbl.setAttribute('class', 'bar-name'); symLbl.setAttribute('style', 'font-size:11px;');
     symLbl.textContent = data.symbol;
     svg.appendChild(symLbl);
@@ -369,7 +421,7 @@
     // bar/rect colors elsewhere in this file already use.
     var totFill = totalDollar > 0 ? 'var(--bull, #15803d)' : totalDollar < 0 ? 'var(--bear, #b91c1c)' : 'var(--text-1)';
     var totLbl = svgns('text');
-    totLbl.setAttribute('x', W - 8); totLbl.setAttribute('y', 16);
+    totLbl.setAttribute('x', W - 8); totLbl.setAttribute('y', 9);
     totLbl.setAttribute('text-anchor', 'end');
     totLbl.setAttribute('style', 'font-size:11px;font-weight:700;fill:' + totFill + ';');
     totLbl.textContent = (totalDollar >= 0 ? '+' : '') + fmt(totalDollar) + ' (' + (totalPct >= 0 ? '+' : '') + totalPct.toFixed(1) + '%) over ' + days.length + 'd';
@@ -400,18 +452,28 @@
       rect.appendChild(ti);
       svg.appendChild(rect);
 
+      // Date label stays thinned (every ~6th bar) -- full-width dates on
+      // every one of up to 30 bars is still an unreadable wall of text.
       if (days.length <= 8 || i % 6 === 0 || i === days.length - 1) {
         var lbl = svgns('text');
-        lbl.setAttribute('x', x + barW / 2); lbl.setAttribute('y', H - padB + 14);
+        lbl.setAttribute('x', x + barW / 2); lbl.setAttribute('y', H - padB + 26);
         lbl.setAttribute('text-anchor', 'middle'); lbl.setAttribute('class', 'bar-name');
         lbl.setAttribute('style', 'font-size:9px;font-weight:400;');
         lbl.textContent = d.date.slice(5);
         svg.appendChild(lbl);
+      }
 
-        var valTxt = (v >= 0 ? '+' : '') + fmt(v) + (d.pct != null ? ' (' + (d.pct >= 0 ? '+' : '') + d.pct.toFixed(1) + '%)' : '');
+      // 2026-08-08 -- % label now shown on EVERY bar (was thinned to every
+      // ~6th, same as the date labels) -- simplifying to %-only (previous
+      // edit) made each label short enough to fit on every bar's own slot.
+      // User: "for everybar". Full $ + % detail stays on hover (the
+      // <title> above is unchanged).
+      var valTxt = fmtDollarShort(v);
+      if (valTxt) {
+        var onRow0 = i % 2 === 0;
         var val = svgns('text');
         val.setAttribute('x', x + barW / 2);
-        val.setAttribute('y', v >= 0 ? posLabelY : negLabelY);
+        val.setAttribute('y', v >= 0 ? (onRow0 ? posLabelY0 : posLabelY1) : (onRow0 ? negLabelY0 : negLabelY1));
         val.setAttribute('text-anchor', 'middle'); val.setAttribute('class', 'bar-value');
         val.setAttribute('style', 'font-size:8px;');
         val.textContent = valTxt;
