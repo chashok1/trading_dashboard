@@ -59,6 +59,51 @@ def _jsonb(v):
     return v
 
 
+# 2026-08-08 -- shared LATERAL-join fragment for classifying a CLOSED
+# position's sector/asset_class/style: drv_ma/drv_macro_score are scoped to
+# the CURRENT day's holdings universe (drv_symbols = symbols in hist_td
+# WHERE export_date=D), so a sold-out symbol has no row at exactly `:d` --
+# unlike an open position, a closed one needs its latest available
+# classification AT OR BEFORE the anchor instead of an exact-date match.
+# User: "is there a way i can see closed/sold positions also in these
+# dashboard graphs".
+_CLOSED_CLASSIFY_JOIN = """
+    LEFT JOIN LATERAL (
+        SELECT sector, asset_class FROM drv_ma
+        WHERE tos_symbol = c.tos_symbol AND as_of_date <= :d
+        ORDER BY as_of_date DESC LIMIT 1
+    ) m ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT style_stances FROM drv_macro_score
+        WHERE tos_symbol = c.tos_symbol AND as_of_date <= :d
+        ORDER BY as_of_date DESC LIMIT 1
+    ) ms ON TRUE
+"""
+
+
+def _closed_positions_base(d) -> str:
+    """CTE selecting realized sells in the trailing 30 days before/at the
+    anchor (drv_realized_gain already excludes inactive accounts --
+    etl/derive_realized.py's own is_active filter -- so no re-filtering
+    needed here). 2026-08-08 -- was originally scoped to the anchor's
+    fiscal year, but a gauge popup's OR-union across several sector/
+    asset_class/style tags matched 300-700+ closed trades that way (most
+    trades carry SOME broad style tag like High Beta/Secular/Cyclical) --
+    unusable in a popup. Narrowed to a 30-day trailing window (anchor-date
+    based, never the real system clock, per the app's standing anchor-date
+    rule), matching the Daily gain/loss chart's own lookback. User: "popup
+    include stocks traded in last 30 days"."""
+    return """
+        closed AS (
+          SELECT rg.tos_symbol, COALESCE(ra.short_name, rg.account) AS account,
+                 rg.sell_date, rg.realized_gain AS gl, rg.realized_gain_pct AS glpct
+          FROM drv_realized_gain rg
+          LEFT JOIN ref_accounts ra ON ra.account_number = rg.account
+          WHERE rg.sell_date BETWEEN :d - INTERVAL '30 days' AND :d
+        )
+    """
+
+
 def _yesterday_by_symbol_account(session, d) -> dict:
     """Per-(tos_symbol, account) broker day-change for the exposure-detail
     popups (day_chng_dollar/pct for Schwab, today_gl_dollar/pct for
@@ -354,6 +399,47 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
                                "dollar": round(mv, 2), "tag": tag,
                                "gain_dollar": gain_dollar, "gain_pct": gain_pct,
                                "yesterday_dollar": yesterday_dollar, "yesterday_pct": yesterday_pct})
+
+        # 2026-08-08 -- closed/sold positions (this fiscal year), same
+        # sector/asset_class/style OR-union as the open-position query
+        # above, tagged closed:true with $0 current exposure (excluded from
+        # `dollar`/`pct` totals -- they're realized, not live) and
+        # realized_gain_dollar/pct + sell_date instead of gain_dollar/pct.
+        # Still clickable in the UI for the Daily gain/loss chart, which
+        # already has history up through the sell date regardless.
+        # User: "is there a way i can see closed/sold positions also in
+        # these dashboard graphs".
+        closed_rows = s.execute(text(f"""
+            WITH {_closed_positions_base(d)}
+            SELECT c.tos_symbol, c.account, c.sell_date, c.gl, c.glpct,
+                   m.sector, m.asset_class, ms.style_stances
+            FROM closed c
+            {_CLOSED_CLASSIFY_JOIN}
+            WHERE LOWER(TRIM(m.sector)) = ANY(:sector_cats)
+               OR LOWER(TRIM(m.asset_class)) = ANY(:asset_cats)
+               OR EXISTS (
+                    SELECT 1 FROM jsonb_array_elements(COALESCE(ms.style_stances, '[]'::jsonb)) e
+                    WHERE e->>'label' = ANY(:style_cats)
+                  )
+            ORDER BY c.sell_date DESC
+        """), {"d": d, "sector_cats": sector_cats_lc, "asset_cats": asset_cats_lc,
+               "style_cats": style_cats}).mappings().all()
+        for r in closed_rows:
+            if (r["sector"] or "").strip().lower() in sector_cats_lc:
+                tag = r["sector"]
+            elif (r["asset_class"] or "").strip().lower() in asset_cats_lc:
+                tag = r["asset_class"]
+            else:
+                stances = _jsonb(r["style_stances"]) or []
+                tag = ", ".join(sorted({e["label"] for e in stances if e.get("label") in style_cats}))
+            gl = r["gl"]
+            positions.append({
+                "symbol": r["tos_symbol"], "account": r["account"], "tag": tag,
+                "closed": True, "sell_date": r["sell_date"].isoformat(),
+                "dollar": 0.0,
+                "realized_gain_dollar": round(float(gl), 2) if gl is not None else None,
+                "realized_gain_pct": round(float(r["glpct"]), 2) if r["glpct"] is not None else None,
+            })
 
         return {
             "as_of": d.isoformat(),
@@ -669,6 +755,32 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
                                "gain_dollar": gain_dollar, "gain_pct": gain_pct,
                                "yesterday_dollar": yesterday_dollar, "yesterday_pct": yesterday_pct})
         dollar = sum(p["dollar"] for p in positions)
+
+        # 2026-08-08 -- closed/sold positions (this fiscal year) for this
+        # one axis/category, reusing the exact same `where_clause` (incl.
+        # the Unmapped/equity-only special-casing) the open-position query
+        # above already computed -- same m./ms. aliases via
+        # _CLOSED_CLASSIFY_JOIN. $0 current exposure, excluded from
+        # `dollar`/`pct` (computed above, unaffected). User: "is there a
+        # way i can see closed/sold positions also in these dashboard
+        # graphs".
+        closed_rows = s.execute(text(f"""
+            WITH {_closed_positions_base(d)}
+            SELECT c.tos_symbol, c.account, c.sell_date, c.gl, c.glpct
+            FROM closed c
+            {_CLOSED_CLASSIFY_JOIN}
+            WHERE {where_clause}
+            ORDER BY c.sell_date DESC
+        """), {"d": d, "category": category_param}).mappings().all()
+        for r in closed_rows:
+            gl = r["gl"]
+            positions.append({
+                "symbol": r["tos_symbol"], "account": r["account"],
+                "closed": True, "sell_date": r["sell_date"].isoformat(),
+                "dollar": 0.0,
+                "realized_gain_dollar": round(float(gl), 2) if gl is not None else None,
+                "realized_gain_pct": round(float(r["glpct"]), 2) if r["glpct"] is not None else None,
+            })
 
         # 2026-08-08 -- category's own Yesterday % (the whole category,
         # already-computed by etl/derive_category_perf.py::

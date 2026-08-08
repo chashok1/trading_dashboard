@@ -2199,6 +2199,13 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    below; persistent highlight (not just :hover) so it stays visible after
    the mouse moves away to look at the chart. */
 .gm-table tr.selected td { background: var(--accent-bg, rgba(29,78,216,.1)); }
+/* 2026-08-08 -- closed/sold positions (trailing 30 days) shown grayed out
+   in the stock list -- still clickable for their Daily gain/loss history,
+   but visually distinct from live open positions. User: "is there a way i
+   can see closed/sold positions also in these dashboard graphs". */
+.gm-table tr.gm-row-closed td { opacity: .55; font-style: italic; }
+.gm-table tr.gm-row-closed td.pos, .gm-table tr.gm-row-closed td.neg { font-style: normal; }
+.gm-table tr.gm-row-closed:hover td, .gm-table tr.gm-row-closed.selected td { opacity: .85; }
 .gm-chart-pane { padding: 16px 18px; }
 .gm-chart-pane h4, .gm-holdings-pane h4 { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); margin: 0 0 12px; }
 .gm-chart-pane .bar-name, .gm-holdings-pane .bar-name { font-size: 11px; fill: var(--text-1); font-weight: 600; }

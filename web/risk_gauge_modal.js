@@ -561,38 +561,66 @@
       var tr = document.createElement('tr');
       var symTd = document.createElement('td'); symTd.className = 'sym'; symTd.textContent = p.symbol;
       var acctTd = document.createElement('td'); acctTd.className = 'acct'; acctTd.textContent = p.account;
-      var dTd = document.createElement('td'); dTd.className = 'dollar'; dTd.textContent = fmt(p.dollar);
+      var dTd = document.createElement('td'); dTd.className = 'dollar';
       var glTd = document.createElement('td'); glTd.className = 'dollar';
-      if (p.gain_pct != null) {
-        // 2026-08-08 BUGFIX -- classList.add('') throws SyntaxError on a
-        // flat (exactly 0) value, silently aborting the rest of this
-        // forEach and every row after it -- "missing colors" (and rows)
-        // report. Only add a class when there actually is one.
-        var glCls = p.gain_pct > 0 ? 'pos' : p.gain_pct < 0 ? 'neg' : '';
-        if (glCls) glTd.classList.add(glCls);
-        // $ and % shown together now (previously $ was tooltip-only, easy
-        // to miss) -- user request: "add $ loss or gain to these popups
-        // along with %loss/%gain".
-        var glText = (p.gain_pct >= 0 ? '+' : '') + p.gain_pct.toFixed(1) + '%';
-        if (p.gain_dollar != null) glText = fmtSigned(p.gain_dollar) + ' (' + glText + ')';
-        glTd.textContent = glText;
-        glTd.title = (p.gain_dollar != null ? fmt(p.gain_dollar) : '') + ' unrealized';
-      } else {
-        glTd.textContent = '—';
-      }
-      // 2026-08-08 -- per-stock Yesterday $/%, same broker day_chng_dollar/
-      // today_gl_dollar figures the category-level "Yesterday" column sums
-      // (etl/derive_category_perf.py::_yesterday_actual_change) -- user
-      // request: "Can the popups include these numbers for each stock?"
       var yTd = document.createElement('td'); yTd.className = 'dollar';
-      if (p.yesterday_dollar != null) {
-        var yCls = p.yesterday_dollar > 0 ? 'pos' : p.yesterday_dollar < 0 ? 'neg' : '';
-        if (yCls) yTd.classList.add(yCls);
-        var yText = fmtSigned(p.yesterday_dollar);
-        if (p.yesterday_pct != null) yText += ' (' + (p.yesterday_pct >= 0 ? '+' : '') + p.yesterday_pct.toFixed(1) + '%)';
-        yTd.textContent = yText;
-      } else {
+      if (p.closed) {
+        // 2026-08-08 -- closed/sold position (sold within the trailing 30
+        // days) -- $0 current exposure, so the Dollar/Yesterday columns
+        // don't apply; the Gain/Loss column instead shows the REALIZED
+        // (not unrealized) $/% from the sale, and the Dollar column shows
+        // the sell date so it reads as "closed", not just a zero position.
+        // Still clickable -- the Daily gain/loss chart already has history
+        // up through the sell date regardless of open/closed status. User:
+        // "is there a way i can see closed/sold positions also in these
+        // dashboard graphs" / "popup include stocks traded in last 30
+        // days".
+        tr.classList.add('gm-row-closed');
+        dTd.textContent = 'Closed ' + p.sell_date;
+        dTd.title = 'Sold ' + p.sell_date;
+        if (p.realized_gain_dollar != null) {
+          var rCls = p.realized_gain_dollar > 0 ? 'pos' : p.realized_gain_dollar < 0 ? 'neg' : '';
+          if (rCls) glTd.classList.add(rCls);
+          var rText = fmtSigned(p.realized_gain_dollar);
+          if (p.realized_gain_pct != null) rText += ' (' + (p.realized_gain_pct >= 0 ? '+' : '') + p.realized_gain_pct.toFixed(1) + '%)';
+          glTd.textContent = rText;
+          glTd.title = fmt(p.realized_gain_dollar) + ' realized';
+        } else {
+          glTd.textContent = '—';
+        }
         yTd.textContent = '—';
+      } else {
+        dTd.textContent = fmt(p.dollar);
+        if (p.gain_pct != null) {
+          // 2026-08-08 BUGFIX -- classList.add('') throws SyntaxError on a
+          // flat (exactly 0) value, silently aborting the rest of this
+          // forEach and every row after it -- "missing colors" (and rows)
+          // report. Only add a class when there actually is one.
+          var glCls = p.gain_pct > 0 ? 'pos' : p.gain_pct < 0 ? 'neg' : '';
+          if (glCls) glTd.classList.add(glCls);
+          // $ and % shown together now (previously $ was tooltip-only, easy
+          // to miss) -- user request: "add $ loss or gain to these popups
+          // along with %loss/%gain".
+          var glText = (p.gain_pct >= 0 ? '+' : '') + p.gain_pct.toFixed(1) + '%';
+          if (p.gain_dollar != null) glText = fmtSigned(p.gain_dollar) + ' (' + glText + ')';
+          glTd.textContent = glText;
+          glTd.title = (p.gain_dollar != null ? fmt(p.gain_dollar) : '') + ' unrealized';
+        } else {
+          glTd.textContent = '—';
+        }
+        // 2026-08-08 -- per-stock Yesterday $/%, same broker day_chng_dollar/
+        // today_gl_dollar figures the category-level "Yesterday" column sums
+        // (etl/derive_category_perf.py::_yesterday_actual_change) -- user
+        // request: "Can the popups include these numbers for each stock?"
+        if (p.yesterday_dollar != null) {
+          var yCls = p.yesterday_dollar > 0 ? 'pos' : p.yesterday_dollar < 0 ? 'neg' : '';
+          if (yCls) yTd.classList.add(yCls);
+          var yText = fmtSigned(p.yesterday_dollar);
+          if (p.yesterday_pct != null) yText += ' (' + (p.yesterday_pct >= 0 ? '+' : '') + p.yesterday_pct.toFixed(1) + '%)';
+          yTd.textContent = yText;
+        } else {
+          yTd.textContent = '—';
+        }
       }
       tr.appendChild(symTd); tr.appendChild(acctTd); tr.appendChild(dTd); tr.appendChild(glTd); tr.appendChild(yTd);
       if (hasTag) {
@@ -615,7 +643,10 @@
       td.textContent = 'No positions match.';
       tr.appendChild(td); tbody.appendChild(tr);
     } else {
-      _renderBars(data.positions);
+      // 2026-08-08 -- closed positions excluded from the Largest Holdings
+      // bar chart -- $0 current exposure, no meaningful bar to draw (scope
+      // agreed: stock list + Daily chart only, not the value-sized charts).
+      _renderBars((data.positions || []).filter(function (p) { return !p.closed; }));
     }
     _renderCompareChart(data);
     // 2026-08-08 -- first row selected by default so the Daily gain/loss
