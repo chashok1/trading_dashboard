@@ -658,6 +658,61 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
         ), {"d": d}).scalar()
         total_value = float(total_value) if total_value else None
 
+        # 2026-08-09 BUGFIX -- Cash (asset_class axis) is classified via the
+        # is_cash() SQL function (symbol/security_type/description text
+        # patterns -- SPAXX**, "PENDING ACTIVITY", money-market
+        # descriptions, etc; etl/derive_category_perf.py's own cash_keys
+        # membership uses the exact same function), NOT via any drv_ma/
+        # ref_sector asset_class column value -- no symbol has
+        # asset_class='Cash' anywhere. The generic where_clause below
+        # (COALESCE(m.asset_class, rs.asset_class) = :category) can
+        # therefore never match a single row for category=Cash, even
+        # though the aggregate grid card shows a real, large dollar figure
+        # for it -- the popup silently returned $0/zero positions. Handled
+        # as a dedicated early branch instead of teaching the generic
+        # where_clause about is_cash(), since it's a completely different
+        # matching mechanism (text patterns, not a column equality).
+        # User: "asset class -> cash popup -> doesn't have data/details on
+        # which account is holding how much or total cash amount".
+        if axis == "asset_class" and category.strip().lower() == "cash":
+            cash_rows = s.execute(text("""
+                WITH pos AS (
+                  SELECT hist_cs.tos_symbol, hist_cs.symbol,
+                         COALESCE(ra.short_name, hist_cs.account) AS account,
+                         market_value AS mv, hist_cs.security_type, hist_cs.description
+                  FROM hist_cs
+                  LEFT JOIN ref_accounts ra ON ra.account_number = hist_cs.account
+                  WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
+                    AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
+                    AND is_cash(symbol, security_type, description)
+                  UNION ALL
+                  SELECT hist_f.tos_symbol, hist_f.symbol,
+                         COALESCE(ra.short_name, hist_f.account_name, hist_f.account_number) AS account,
+                         hist_f.current_value AS mv, hist_f.type AS security_type, hist_f.description
+                  FROM hist_f
+                  LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+                  WHERE hist_f.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+                    AND COALESCE(ra.is_active, TRUE) = TRUE
+                    AND is_cash(symbol, type, description)
+                )
+                SELECT COALESCE(tos_symbol, symbol) AS symbol, account, SUM(mv) AS mv
+                FROM pos GROUP BY COALESCE(tos_symbol, symbol), account
+                ORDER BY mv DESC
+            """), {"d": d}).mappings().all()
+            positions = [{"symbol": r["symbol"] or "CASH", "account": r["account"],
+                          "dollar": round(float(r["mv"] or 0), 2),
+                          "gain_dollar": None, "gain_pct": None,
+                          "yesterday_dollar": None, "yesterday_pct": None}
+                         for r in cash_rows]
+            dollar = sum(p["dollar"] for p in positions)
+            return {
+                "as_of": d.isoformat(), "axis": axis, "category": category,
+                "dollar": round(dollar, 2),
+                "pct": round(dollar / total_value * 100.0, 2) if total_value else None,
+                "positions": positions,
+                "category_yesterday_pct": None, "sector_yesterday_pct": None,
+            }
+
         # sector/asset_class match case-insensitively against drv_ma (see
         # _lc() docstring -- 'Health care' vs 'Health Care' is a real, live
         # variant); style labels come from a fixed vocabulary in
