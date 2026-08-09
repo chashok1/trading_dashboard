@@ -1378,12 +1378,28 @@ def load_hqds(session: Session, wb: Workbook, source_file: str) -> tuple[int, in
     Two sub-sections in the same sheet:
       cols A-G: monthly periods   (A=Month, B=Start, C=End, D=Active, E=Quads, F=Start2, G=End2)
       cols I-O: quarterly periods (I=Quarter, J=Start, K=End, L=Active, M=Quads, N=Start2, O=End2)
-    Start/End dates in the Excel are used only to derive (year, period_num); they are NOT stored.
-    Monthly: year=start.year, period_num=start.month (1-12).
-    Quarterly: year=start.year, period_num=ceil(start.month/3) (1-4, standard Q1-Q4).
+    Monthly: year=start.year, period_num=start.month (1-12) -- derived from
+    the Start date column, confirmed reliable (Start's month always matches
+    the row's own Month label).
+    Quarterly: year/period_num parsed from the Quarter LABEL text itself
+    ("Q3 2026" -> year=2026, period_num=3), NOT from the Start date.
+    2026-08-09 -- was ceil(start.month/3)/start.year (Start-date-derived,
+    matching the monthly approach) until a live investigation found every
+    quarterly row's Start-derived (year, period_num) landed exactly ONE
+    QUARTER EARLIER than its own label ("Q3 2026" stored as (2026, 2), not
+    (2026, 3); "Q1 2026" stored as (2025, 4), not (2026, 1)) -- the
+    workbook's quarterly Start date apparently records when that quarter's
+    outlook was PUBLISHED (a quarter ahead of the quarter it's about), not
+    the calendar start of the labeled quarter. This silently fed
+    derive_macro.py's current-quarter query (year=this year, period_num=
+    this calendar quarter, 1-4 standard) the WRONG row -- always the next
+    quarter's declared quad instead of the current one -- for every
+    quarter, always. User: "can you check why quarter quad?" -> "Wrong
+    quad number shown". Falls back to the old Start-date method if the
+    label doesn't parse (defensive; every label seen live is "Q<n> <yyyy>").
     PK = (period_type, year, period_num).
     """
-    import math
+    import math, re
     sheet_name = get_sheet_case_insensitive(wb, "HQds")
     if sheet_name is None:
         return 0, 0, 0
@@ -1410,14 +1426,21 @@ def load_hqds(session: Session, wb: Workbook, source_file: str) -> tuple[int, in
         q_label = sheet.cell(row=r, column=9).value
         q_start = to_date(sheet.cell(row=r, column=10).value)
         q_quad  = to_text(sheet.cell(row=r, column=13).value)
-        if q_start is not None:
+        q_label_text = to_text(q_label) if q_label is not None else None
+        q_year = q_num = None
+        m = re.match(r"^Q([1-4])\s+(\d{4})$", (q_label_text or "").strip())
+        if m:
+            q_num, q_year = int(m.group(1)), int(m.group(2))
+        elif q_start is not None:
+            q_year, q_num = q_start.year, math.ceil(q_start.month / 3)
+        if q_year is not None:
             rows_read += 1
             records.append({
                 "period_type": "quarterly",
-                "year":        q_start.year,
-                "period_num":  math.ceil(q_start.month / 3),
+                "year":        q_year,
+                "period_num":  q_num,
                 "quad":        q_quad,
-                "label":       to_text(q_label) if q_label is not None else None,
+                "label":       q_label_text,
             })
     n_attempted, n_inserted = insert_skip_duplicates(session, "ref_quad_periods", records)
     return rows_read, n_inserted, n_attempted - n_inserted
