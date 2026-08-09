@@ -167,6 +167,32 @@
               <div class="cat-table-col" id="styleScorecardBody">Loading…</div>
             </div>
           </section>
+
+          <!-- 2026-08-09 -- Market View: deliberately SEPARATE from the 3
+               $ grids above (not merged into them) -- pure market/quad-
+               outlook read, zero dependency on what you hold. Bars sized
+               by stock COUNT (breadth), not $ weight; color still the
+               bullish/bearish/neutral quad stance. User: "how can i see
+               same graphs for sources, only market data no money is
+               involved. Is it better to display graphs separately?" ->
+               yes. Populated by app.js::loadMarketView(). -->
+          <section class="cockpit-band cat-section market-view-band" id="marketViewBand">
+            <h3 class="cat-chart-title market-view-title">Market View <span class="market-view-sub">(quad outlook only — no $, no holdings)</span></h3>
+            <div class="market-view-cols">
+              <div class="market-view-col">
+                <h4>Sector</h4>
+                <div id="marketViewSector">Loading…</div>
+              </div>
+              <div class="market-view-col">
+                <h4>Asset class</h4>
+                <div id="marketViewAssetClass">Loading…</div>
+              </div>
+              <div class="market-view-col">
+                <h4>Style</h4>
+                <div id="marketViewStyle">Loading…</div>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
 

@@ -1289,6 +1289,53 @@ async function loadCatAccountFilter() {
   }
 }
 
+// 2026-08-09 -- Market View: pure market/quad-outlook read, deliberately
+// separate from the $ grids above (no $ weight, no dependency on your
+// holdings). Bars sized by stock COUNT (breadth) instead, color still the
+// bullish/bearish/neutral quad stance -- reuses GET /api/quad/factor-
+// stance's new `count` field. User: "how can i see same graphs for
+// sources, only market data no money is involved. Is it better to
+// display graphs separately?" -> yes.
+async function loadMarketView(axis, elId) {
+  const el = $(elId);
+  if (!el) return;
+  try {
+    const params = new URLSearchParams({ axis });
+    if (state.date) params.set('date', state.date);
+    const d = await fetchJson(`/api/quad/factor-stance?${params.toString()}`);
+    const rows = (d.rows || []).filter(r => r.count > 0).sort((a, b) => b.count - a.count);
+    if (!rows.length) { el.innerHTML = '<div class="mv-empty">No data.</div>'; return; }
+    const maxCount = Math.max(...rows.map(r => r.count));
+    const stanceColor = (s) => s === 'Bullish' ? '#16a34a' : s === 'Bearish' ? '#dc2626' : '#9ca3af';
+    el.innerHTML = rows.map(r => `
+      <div class="mv-row" title="${escapeHtml(r.category)}: ${escapeHtml(r.stance)}, ${r.count} tickers">
+        <span class="mv-label">${escapeHtml(r.category)}</span>
+        <span class="mv-bar-track">
+          <span class="mv-bar" style="width:${Math.max(2, r.count / maxCount * 100)}%;background:${stanceColor(r.stance)};"></span>
+        </span>
+        <span class="mv-count">${r.count}</span>
+      </div>
+    `).join('');
+    // Style's universe is much smaller (ToS-tracked only) than Sector/
+    // Asset Class's (~961-ticker ref_sector) -- labeled once per panel via
+    // the API's own count_universe field so this isn't hidden.
+    if (axis === 'style' && d.count_universe) {
+      el.innerHTML += `<div class="mv-universe-note">${escapeHtml(d.count_universe)}</div>`;
+    }
+  } catch (e) {
+    console.error('market view failed:', axis, e);
+    el.innerHTML = '<div class="mv-empty">Failed to load.</div>';
+  }
+}
+
+function reloadMarketView() {
+  return Promise.all([
+    loadMarketView('sector', 'marketViewSector'),
+    loadMarketView('asset_class', 'marketViewAssetClass'),
+    loadMarketView('style', 'marketViewStyle'),
+  ]);
+}
+
 async function refreshAll() {
   // Band 6 (housekeeping) resolves state.housekeepingOk/state.anchorDate
   // first since Band 1 needs to know whether to show its stale-data warning
@@ -1304,6 +1351,7 @@ async function refreshAll() {
     loadEventsBand(),
     loadRegimeBand(),
     reloadFactorScorecards(),
+    reloadMarketView(),
     loadBriefing(),
   ]);
   { const _fd = $('footDate'); if (_fd) _fd.textContent = state.date ? fmtDate(state.date) : '—'; }
