@@ -69,7 +69,7 @@ def _jsonb(v):
 # dashboard graphs".
 _CLOSED_CLASSIFY_JOIN = """
     LEFT JOIN LATERAL (
-        SELECT sector, asset_class FROM drv_ma
+        SELECT tos_symbol, sector, asset_class FROM drv_ma
         WHERE tos_symbol = c.tos_symbol AND as_of_date <= :d
         ORDER BY as_of_date DESC LIMIT 1
     ) m ON TRUE
@@ -79,6 +79,17 @@ _CLOSED_CLASSIFY_JOIN = """
         ORDER BY as_of_date DESC LIMIT 1
     ) ms ON TRUE
 """
+# 2026-08-09 BUGFIX -- `m` now selects tos_symbol too (not just sector/
+# asset_class): get_factor_exposure_detail's `where_clause` is built for
+# and reused verbatim against BOTH the open-position query (whose own `m`
+# is `LEFT JOIN drv_ma m ON m.tos_symbol = a.tos_symbol`, so m.tos_symbol
+# always exists) and this LATERAL join -- the Unmapped branch's
+# `m.tos_symbol IS NULL` check (its way of detecting "no drv_ma row
+# matched") crashed with "column m.tos_symbol does not exist" the moment
+# anyone opened Sector/Asset Class's Unmapped popup with a closed position
+# in the trailing 30 days, since the LATERAL subquery hadn't selected that
+# column at all. User: "sector grid -> unmapped -> check and tell me
+# which ones are unmapped" surfaced it live.
 
 
 def _closed_positions_base(d) -> str:
