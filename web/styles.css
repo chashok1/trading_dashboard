@@ -1907,6 +1907,19 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .main-col { display: grid; grid-template-columns: 0.64fr 1.66fr; gap: 8px; align-items: start; }
 .dial-changed-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .cat-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* 2026-08-09 -- Accounts filter bar, shared above the 3 stacked grids.
+   Checkbox-per-account chips, not a dropdown -- few enough accounts
+   (typically <10) that seeing all options at once beats a click-to-open
+   menu, and multi-select needs no special UI beyond normal checkboxes.
+   User: "Can we add a filter bar for second column -> accounts filter." */
+.cat-account-filter {
+  display: flex; flex-wrap: wrap; gap: 6px 10px; padding: 6px 10px;
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px;
+  font-size: 11px;
+}
+.cat-acct-chip { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; color: var(--text-2); }
+.cat-acct-chip input { margin: 0; cursor: pointer; }
+.cat-acct-chip:has(input:checked) { color: var(--text-1); font-weight: 600; }
 .right-rail { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 
 /* Risk Dial / What changed keep their own height cap + internal scroll

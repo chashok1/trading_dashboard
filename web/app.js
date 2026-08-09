@@ -9,6 +9,14 @@ const state = {
   anchorDate: null,
   housekeepingOk: true,
   txnFeedGapCount: 0,
+  // 2026-08-09 -- Cockpit Accounts filter (Sector/Asset Class/Style grids,
+  // the "second column"). Empty array = all accounts (default, matches
+  // today's behavior exactly -- reads the pre-computed nightly table).
+  // Non-empty = live per-account recompute via GET /api/cockpit/factor-
+  // scorecard's `accounts` param. account_number values (ref_accounts.
+  // account_number), not short_name -- that's what the backend filter
+  // matches on.
+  catAccounts: [],
 };
 
 // ---------- helpers ----------
@@ -902,8 +910,14 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
   try {
     const params = new URLSearchParams({ axis });
     if (state.date) params.set('date', state.date);
+    // 2026-08-09 -- Accounts filter param goes on the $/Wt%/TWR endpoint
+    // only -- /api/quad/factor-stance's quad stance is a per-symbol market
+    // read (which quad favors which sector), the same regardless of which
+    // account holds a position, so it never needs an accounts filter.
+    const scoreParams = new URLSearchParams(params);
+    if (state.catAccounts.length) scoreParams.set('accounts', state.catAccounts.join(','));
     const [r, stanceData] = await Promise.all([
-      fetchJson(`/api/cockpit/factor-scorecard?${params.toString()}`),
+      fetchJson(`/api/cockpit/factor-scorecard?${scoreParams.toString()}`),
       fetchJson(`/api/quad/factor-stance?${params.toString()}`).catch(() => null),
     ]);
     const note = axis === 'style'
@@ -1075,7 +1089,6 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
             return bar + text + secondary;
           })()}
         </td>
-        <td>${_verdictBadge(row.verdict)}</td>
         ${cells}
       </tr>`;
     }).join('');
@@ -1124,9 +1137,8 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
         <table class="fs-table">
           <thead><tr><th title="Category, sector/asset-class/style">Category</th>
             <th title="Weight — % of your total portfolio">Wt%</th>
-            <th title="Recommendation from (over/under target-allocation) x (quad regime stance for this category)">Verdict</th>
             ${headCells}</tr></thead>
-          <tbody>${rows || `<tr><td colspan="${3 + _FS_WINDOWS.length}">No rows.</td></tr>`}</tbody>
+          <tbody>${rows || `<tr><td colspan="${2 + _FS_WINDOWS.length}">No rows.</td></tr>`}</tbody>
         </table>
       </div>
       ${unmapped}
@@ -1228,18 +1240,70 @@ async function loadTxnFeedGaps() {
   }
 }
 
+// 2026-08-09 -- re-runs just the 3 stacked grids (Sector/Asset Class/
+// Style), not the whole dashboard -- used by both refreshAll() and the
+// Accounts filter's change handler (loadCatAccountFilter), which only
+// needs to refresh these 3, not re-fetch Risk Dial/Regime/Events/etc.
+function reloadFactorScorecards() {
+  return Promise.all([
+    loadFactorScorecard('sector', 'sectorScorecardBody', 'sectorChart'),
+    loadFactorScorecard('asset_class', 'assetClassScorecardBody', 'assetChart'),
+    loadFactorScorecard('style', 'styleScorecardBody', 'styleChart'),
+  ]);
+}
+
+// 2026-08-09 -- Accounts filter bar above the 3 stacked grids ("second
+// column -> sector grid / asset class grid / style grid (stacked)").
+// Checkbox per active account (from the same /api/actionable/accounts
+// endpoint the Actionable screen's own account filter uses); empty
+// selection = all accounts (default). Only re-fetches the 3 grids on
+// change, not the whole dashboard. User: "Can we add a filter bar for
+// second column -> accounts filter."
+async function loadCatAccountFilter() {
+  const el = $('catAccountFilter');
+  if (!el) return;
+  try {
+    const qs = state.date ? `?date=${encodeURIComponent(state.date)}` : '';
+    const accounts = await fetchJson(`/api/actionable/accounts${qs}`);
+    // Drop any selected accounts that no longer exist for this date (e.g.
+    // after navigating to a date before an account had any activity) --
+    // keeps state.catAccounts from silently filtering to nothing.
+    const validNums = new Set(accounts.map(a => a.account_number));
+    state.catAccounts = state.catAccounts.filter(a => validNums.has(a));
+    el.innerHTML = accounts.map(a => `
+      <label class="cat-acct-chip">
+        <input type="checkbox" value="${escapeHtml(a.account_number)}"
+               ${state.catAccounts.includes(a.account_number) ? 'checked' : ''}>
+        ${escapeHtml(a.display_name)}
+      </label>
+    `).join('');
+    el.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        state.catAccounts = Array.from(el.querySelectorAll('input:checked')).map(c => c.value);
+        reloadFactorScorecards();
+      });
+    });
+  } catch (e) {
+    console.error('cat account filter failed:', e);
+    el.innerHTML = '';
+  }
+}
+
 async function refreshAll() {
   // Band 6 (housekeeping) resolves state.housekeepingOk/state.anchorDate
   // first since Band 1 needs to know whether to show its stale-data warning
   // (spec 7.2 Band 6: "When it is red, Band 1 must show a warning").
   await loadHousekeeping();
   await loadRiskDial();
+  // loadCatAccountFilter awaited on its own first -- it can prune stale
+  // account selections from state.catAccounts (e.g. after navigating to a
+  // date before an account had activity), and reloadFactorScorecards
+  // needs to read that settled value, not race it.
+  await loadCatAccountFilter();
   await Promise.all([
     loadEventsBand(),
     loadRegimeBand(),
-    loadFactorScorecard('sector', 'sectorScorecardBody', 'sectorChart'),
-    loadFactorScorecard('asset_class', 'assetClassScorecardBody', 'assetChart'),
-    loadFactorScorecard('style', 'styleScorecardBody', 'styleChart'),
+    reloadFactorScorecards(),
     loadBriefing(),
   ]);
   { const _fd = $('footDate'); if (_fd) _fd.textContent = state.date ? fmtDate(state.date) : '—'; }
