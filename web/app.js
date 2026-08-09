@@ -502,6 +502,12 @@ async function loadRegimeBand() {
     const qtrEntry = windowData.qtr_quad != null
       ? `<span class="qtr-entry">Qtr <span style="color:${_quadColor('Q' + windowData.qtr_quad)};font-weight:600;">(Q${windowData.qtr_quad})</span></span>`
       : '';
+    // 2026-08-09 -- Next Qtr entry, same format as Qtr above, right after
+    // it. User: "Regime text -> display next quarter and quad in existing
+    // fashion".
+    const nextQtrEntry = windowData.next_qtr_quad != null
+      ? `<span class="qtr-entry next-qtr-entry">Next Qtr <span style="color:${_quadColor('Q' + windowData.next_qtr_quad)};font-weight:600;">(Q${windowData.next_qtr_quad})</span></span>`
+      : '';
     // TASK_140 follow-up 11 -- band-factors items only ever carry `factor`
     // (verified live: {"factor":"Cyclical","qtr":"bull"}), not ticker/
     // category -- those were always undefined, which is why the tooltip
@@ -516,7 +522,7 @@ async function loadRegimeBand() {
     // left-flowing blob with the months embedded right after the label.
     const winLabel = `<span class="regime-win-label">${windowData.h ?? 60}d Win (<strong style="color:${_quadColor(dominant)};">Q${windowData.dominant_quad ?? '?'}</strong>)</span>`;
     strip.innerHTML = `<div class="regime-line" data-quadbandpop="1">
-      ${winLabel}<span class="regime-window-text">${months || 'no window data'}</span>${qtrEntry}
+      ${winLabel}<span class="regime-window-text">${months || 'no window data'}</span>${qtrEntry}${nextQtrEntry}
     </div>`;
     const line = strip.querySelector('.regime-line');
     if (line) {
@@ -542,12 +548,21 @@ async function loadRegimeBand() {
         });
       });
       // Qtr entry -- same treatment, using the current quarter's own quad.
-      const qtrEl = line.querySelector('.qtr-entry');
+      const qtrEl = line.querySelector('.qtr-entry:not(.next-qtr-entry)');
       if (qtrEl && windowData.qtr_quad != null) {
         const { bull, bear } = _bullBearForQuadNum(allFactors, windowData.qtr_quad);
         qtrEl.addEventListener('mouseover', e => {
           e.stopPropagation();
           _showQuadPop(qtrEl, `${windowData.qtr_label || 'Qtr'} — Quad ${windowData.qtr_quad}`, bull, bear);
+        });
+      }
+      // Next Qtr entry -- same treatment, using the upcoming quarter's quad.
+      const nextQtrEl = line.querySelector('.next-qtr-entry');
+      if (nextQtrEl && windowData.next_qtr_quad != null) {
+        const { bull, bear } = _bullBearForQuadNum(allFactors, windowData.next_qtr_quad);
+        nextQtrEl.addEventListener('mouseover', e => {
+          e.stopPropagation();
+          _showQuadPop(nextQtrEl, `${windowData.next_qtr_label || 'Next Qtr'} — Quad ${windowData.next_qtr_quad}`, bull, bear);
         });
       }
     }
@@ -885,6 +900,21 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
     // as the earlier Sector exposure case-sensitivity fix).
     const stanceMap = new Map();
     (stanceData?.rows || []).forEach(sr => stanceMap.set(String(sr.category).trim().toLowerCase(), sr));
+    // 2026-08-09 -- current/next-quarter caret cross-fade: outside the last
+    // 15 days of the current quarter, the current-quarter caret is full
+    // color and the next-quarter caret sits at a fixed light/faded
+    // baseline; INSIDE that window, they linearly cross-fade toward the
+    // opposite state as days_to_qtr_end counts down to 0, so the next
+    // quarter's caret is at full color exactly at quarter-end. User:
+    // "end of current quarter (15 days to end): fade the color to light
+    // and the next quarter color: use the full color, until then fade the
+    // next quad caret color."
+    const QTR_FADE_DAYS = 15, QTR_LIGHT_OP = 0.35;
+    const daysToQtrEnd = stanceData?.days_to_qtr_end;
+    const qtrFadeT = (daysToQtrEnd != null && daysToQtrEnd <= QTR_FADE_DAYS)
+      ? Math.max(0, Math.min(1, (QTR_FADE_DAYS - daysToQtrEnd) / QTR_FADE_DAYS)) : 0;
+    const curQtrOp = 1 - qtrFadeT * (1 - QTR_LIGHT_OP);
+    const nextQtrOp = QTR_LIGHT_OP + qtrFadeT * (1 - QTR_LIGHT_OP);
     const rows = (r.rows || []).map(row => {
       // TASK_136 C.1 -- keep the raw twr_*/bench_* absolute returns reachable
       // on hover via the row's title, since the cells themselves only show
@@ -951,13 +981,23 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
           const qv = Number(stanceRow.qtr.stance) || 0;
           const qCol = qv > 0 ? '#16a34a' : qv < 0 ? '#dc2626' : '#9ca3af';
           const qGlyph = qv > 0 ? '&#9650;' : qv < 0 ? '&#9660;' : '&#8211;';
-          return `<span style="color:${qCol};font-size:11px;font-weight:700;">${qGlyph}</span>`;
+          return `<span style="color:${qCol};opacity:${curQtrOp};font-size:11px;font-weight:700;" title="${escapeHtml(stanceRow.qtr.quad || '')} (current quarter)">${qGlyph}</span>`;
+        })() : '';
+        // 2026-08-09 -- next-quarter caret, right next to the current
+        // quarter's -- see qtrFadeT/curQtrOp/nextQtrOp above for the
+        // cross-fade. User: "display next quarter quad caret in category
+        // column next to current quarter quad caret".
+        const nextQtrCaret = (stanceRow.next_qtr && stanceRow.next_qtr.stance != null) ? (() => {
+          const nv = Number(stanceRow.next_qtr.stance) || 0;
+          const nCol = nv > 0 ? '#16a34a' : nv < 0 ? '#dc2626' : '#9ca3af';
+          const nGlyph = nv > 0 ? '&#9650;' : nv < 0 ? '&#9660;' : '&#8211;';
+          return `<span style="color:${nCol};opacity:${nextQtrOp};font-size:11px;font-weight:700;" title="${escapeHtml(stanceRow.next_qtr.quad || '')} (next quarter)">${nGlyph}</span>`;
         })() : '';
         // title="" breaks inheritance from the <tr>'s own title (the twr/
         // bench tooltip) -- without it, hovering a caret showed BOTH the
         // native browser tooltip (inherited from the row) and the custom
         // #quadPop popover at once, overlapping.
-        return `<span class="cat-quad-stance" title="" style="cursor:help;margin-right:5px;font-size:9px;letter-spacing:1px;">${mainCaret}${gap}${periodCarets}${gap}${qtrCaret}</span>`;
+        return `<span class="cat-quad-stance" title="" style="cursor:help;margin-right:5px;font-size:9px;letter-spacing:1px;">${mainCaret}${gap}${periodCarets}${gap}${qtrCaret}${nextQtrCaret}</span>`;
       })() : '';
       // TASK_139 -- row click opens the same exposure-detail modal as the
       // Risk Dial's fired gauges (Screen D of the design doc), keyed by

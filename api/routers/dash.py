@@ -1531,6 +1531,31 @@ def _compute_quad_window(s, d):
                 qtr_num = int(tok)
                 break
 
+    # 2026-08-09 -- next-quarter one-hot leg + days-to-quarter-end, so the
+    # caret cluster (per-category, GET /api/quad/factor-stance) and the
+    # Regime Band line (GET /api/quad-window) can both show the upcoming
+    # quarter's quad alongside the current one, cross-fading in as the
+    # current quarter nears its end. User: "display next quarter quad caret
+    # in category column next to current quarter quad caret" / "Regime text
+    # -> display next quarter and quad in existing fashion".
+    import calendar as _calmod
+    nxt_qtr_n = cur_qtr_n + 1 if cur_qtr_n < 4 else 1
+    nxt_qtr_y = cur_qtr_y if cur_qtr_n < 4 else cur_qtr_y + 1
+    nxt_qtr_row = s.execute(text(
+        "SELECT quad FROM ref_quad_periods"
+        " WHERE period_type='quarterly' AND year=:y AND period_num=:n"
+    ), {"y": nxt_qtr_y, "n": nxt_qtr_n}).scalar()
+    nxt_qtr_num = None
+    if nxt_qtr_row:
+        for tok in str(nxt_qtr_row).split():
+            if tok.isdigit():
+                nxt_qtr_num = int(tok)
+                break
+    qtr_end_month = cur_qtr_n * 3
+    qtr_end_day = _calmod.monthrange(cur_qtr_y, qtr_end_month)[1]
+    qtr_end_date = d.replace(year=cur_qtr_y, month=qtr_end_month, day=qtr_end_day)
+    days_to_qtr_end = (qtr_end_date - d).days
+
     return {
         "weighted": weighted,
         "pcts_by_month": pcts_by_month,
@@ -1542,6 +1567,9 @@ def _compute_quad_window(s, d):
         "dominant": dominant,
         "qtr_quad": qtr_num,
         "qtr_label": f"Q{cur_qtr_n} {cur_qtr_y}",
+        "next_qtr_quad": nxt_qtr_num,
+        "next_qtr_label": f"Q{nxt_qtr_n} {nxt_qtr_y}",
+        "days_to_qtr_end": days_to_qtr_end,
     }
 
 
@@ -1570,6 +1598,9 @@ def get_quad_window(date: Optional[str] = Query(None, description="As-of date (d
         "dominant_quad": win["dominant"],
         "qtr_quad": win["qtr_quad"],
         "qtr_label": win["qtr_label"],
+        "next_qtr_quad": win["next_qtr_quad"],
+        "next_qtr_label": win["next_qtr_label"],
+        "days_to_qtr_end": win["days_to_qtr_end"],
     }
 
 
@@ -1623,6 +1654,19 @@ def get_quad_factor_stance(
             " WHERE period_type='quarterly' AND year=:y AND period_num=:n"
         ), {"y": cur_qtr_y, "n": cur_qtr_n}).scalar()
         qtr_now_pcts = _onehot(qtr_now) if qtr_now else None
+        # 2026-08-09 -- next-quarter one-hot leg, same shape as qtr_now_pcts
+        # above -- lets the caret cluster show the upcoming quarter's stance
+        # next to the current one, cross-fading in as days_to_qtr_end (from
+        # _compute_quad_window, below) approaches 0. User: "display next
+        # quarter quad caret in category column next to current quarter
+        # quad caret".
+        nxt_qtr_n = cur_qtr_n + 1 if cur_qtr_n < 4 else 1
+        nxt_qtr_y = cur_qtr_y if cur_qtr_n < 4 else cur_qtr_y + 1
+        qtr_next = s.execute(text(
+            "SELECT quad FROM ref_quad_periods"
+            " WHERE period_type='quarterly' AND year=:y AND period_num=:n"
+        ), {"y": nxt_qtr_y, "n": nxt_qtr_n}).scalar()
+        qtr_next_pcts = _onehot(qtr_next) if qtr_next else None
 
     outlook_map = {(category, r["sub_category"]): [r["quad1"], r["quad2"], r["quad3"], r["quad4"]]
                    for r in outlook_rows}
@@ -1654,6 +1698,11 @@ def get_quad_factor_stance(
         stance = "Bullish" if (score or 0) > 0 else "Bearish" if (score or 0) < 0 else "Neutral"
         qtr_stance = (round(sum(qtr_now_pcts[i] * _to_stance_num(texts[i]) for i in range(4)), 4)
                       if qtr_now_pcts else None)
+        # 2026-08-09 -- next quarter's own stance, same shape as `qtr`
+        # above. Frontend cross-fades between qtr/next_qtr's caret colors
+        # based on the top-level days_to_qtr_end below.
+        next_qtr_stance = (round(sum(qtr_next_pcts[i] * _to_stance_num(texts[i]) for i in range(4)), 4)
+                            if qtr_next_pcts else None)
         rows_out.append({
             "category": sub,
             "score": score,
@@ -1661,6 +1710,7 @@ def get_quad_factor_stance(
             "quad1": r["quad1"], "quad2": r["quad2"], "quad3": r["quad3"], "quad4": r["quad4"],
             "months": _month_stances(texts),
             "qtr": {"quad": qtr_now, "stance": qtr_stance} if qtr_now else None,
+            "next_qtr": {"quad": qtr_next, "stance": next_qtr_stance} if qtr_next else None,
         })
 
     return {
@@ -1670,6 +1720,7 @@ def get_quad_factor_stance(
         "months": win["months_out"],
         "eff": win["eff"],
         "dominant_quad": win["dominant"],
+        "days_to_qtr_end": win["days_to_qtr_end"],
         "rows": rows_out,
     }
 
