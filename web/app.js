@@ -879,6 +879,23 @@ const _FS_WINDOWS = [
   { key: 'ytd', label: 'YTD', full: 'year-to-date (first trading day of this year through today)' },
 ];
 
+// 2026-08-09 -- fixed width reserved for the category cell's caret cluster
+// (main + up to 3 period carets + qtr + next-qtr, each a fixed-width glyph
+// span per the neutral-alignment fix), so the category TEXT always starts
+// at the same x regardless of row content, AND the Unmapped note's own
+// "Unmapped" label (rendered outside the table, see loadFactorScorecard's
+// `unmapped` var) can line up with it exactly by using the same number.
+// Kept in sync BY HAND -- there's no single shared DOM element both read
+// from, since the note lives in a sibling div, not a table cell. Recompute
+// if the caret cluster's own glyph count/widths change:
+//   main(11) + gap(6) + periods(3x: 11+1+9+1+9=31) + gap(6) + qtr(11) +
+//   next-qtr(11) = 76, + .cat-quad-stance's own margin-right(5) = 81.
+// User: "alignment should skip two more carets" -- the qtr/next-qtr carets
+// were added after the original 56px reservation was sized, and the
+// wrapper span's old `min-width` (not `width`) let it silently grow past
+// that reservation instead of erroring, so misalignment crept in unnoticed.
+const _CARET_CLUSTER_PX = 81;
+
 async function loadFactorScorecard(axis, bodyId, chartId) {
   const body = $(bodyId);
   if (!body) return;
@@ -1013,7 +1030,7 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
       // (axis, category) instead of gauge_key.
       return `<tr title="${escapeHtml(titleParts)}" class="fs-clickable" data-cat="${escapeHtml(catKey)}"
                    onclick="openFactorExposureModal('${escapeHtml(axis)}', '${escapeHtml(row.category).replace(/'/g, "\\'")}')">
-        <td><span style="display:inline-block;min-width:56px;">${stanceIcon}</span>${escapeHtml(row.category)}</td>
+        <td><span style="display:inline-block;width:${_CARET_CLUSTER_PX}px;">${stanceIcon}</span>${escapeHtml(row.category)}</td>
         <td class="fs-weight-cell" title="${escapeHtml(
             row.weight_pct_equities != null
               ? 'Weight — % of your EQUITIES only (bold) / % of your TOTAL portfolio incl. cash+bonds+etc (small)'
@@ -1058,16 +1075,17 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
     const uPrimary = uWpe != null ? uWpe : uWp;
     const uSecondary = (uWpe != null && uWp != null) ? uWp : null;
     // 2026-08-09 -- two-segment flex row so "Unmapped" lines up under the
-    // CATEGORY TEXT (not the caret cluster before it -- 56px caret span +
-    // 6px td padding = 62px offset, matching the row cells above) and the
-    // %s line up under the Wt% column (flex-basis 26%/12%, same
-    // proportions as table.fs-table's own nth-child(1)/(2) widths -- this
-    // note lives outside the table as a plain div, so it has to replicate
-    // those percentages itself to stay aligned). User: "align unmapped to
-    // category text (excluding carets) and WT%."
+    // CATEGORY TEXT (not the caret cluster before it -- _CARET_CLUSTER_PX
+    // + 6px td padding, matching the row cells above exactly) and the %s
+    // line up under the Wt% column (flex-basis 26%/12%, same proportions
+    // as table.fs-table's own nth-child(1)/(2) widths -- this note lives
+    // outside the table as a plain div, so it has to replicate those
+    // percentages itself to stay aligned). User: "align unmapped to
+    // category text (excluding carets) and WT%" / "alignment should skip
+    // two more carets" (the qtr/next-qtr carets, missed on the first pass).
     const unmapped = r.unmapped
       ? `<div class="fs-note fs-clickable" style="cursor:pointer;display:flex;" onclick="openFactorExposureModal('${escapeHtml(axis)}', 'Unmapped')">
-          <span style="flex:0 0 26%;padding-left:62px;box-sizing:border-box;">Unmapped</span>
+          <span style="flex:0 0 26%;padding-left:${_CARET_CLUSTER_PX + 6}px;box-sizing:border-box;">Unmapped</span>
           <span style="flex:0 0 12%;text-align:right;padding-right:6px;box-sizing:border-box;">${
             uPrimary != null ? `<span class="fs-weight-text">${uPrimary.toFixed(1)}%</span>` : ''
           }${uSecondary != null ? ` <span class="fs-weight-eq">/ ${uSecondary.toFixed(1)}%</span>` : ''}</span>
