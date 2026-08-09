@@ -934,18 +934,26 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
     const curQtrOp = 1 - qtrFadeT * (1 - QTR_LIGHT_OP);
     const nextQtrOp = QTR_LIGHT_OP + qtrFadeT * (1 - QTR_LIGHT_OP);
     const rows = (r.rows || []).map(row => {
-      // TASK_136 C.1 -- keep the raw twr_*/bench_* absolute returns reachable
-      // on hover via the row's title, since the cells themselves only show
-      // the vs-Mkt delta.
-      const titleParts = _FS_WINDOWS
-        .map(w => {
-          const twr = row[`twr_${w.key}`], bench = row[`bench_${w.key}`];
-          if (twr == null && bench == null) return null;
-          const fmt = (v) => v != null ? `${(Number(v) * 100).toFixed(1)}%` : '—';
-          return `${w.label}: you ${fmt(twr)} / mkt ${fmt(bench)}`;
-        })
-        .filter(Boolean)
-        .join('\n');
+      // 2026-08-09 -- row hover replaced with $ amounts instead of the
+      // per-window you/mkt performance breakdown -- category $ value, the
+      // equity-sleeve $ total it's a share of (same denominator behind
+      // weight_pct_equities), and the whole-portfolio $ total (same
+      // denominator behind weight_pct). Both totals are backed out from
+      // market_value/weight_pct rather than fetched separately -- every
+      // row already carries its own weight_pct(_equities) against the
+      // same shared denominator, so this is exact, not an approximation.
+      // User: "hover/popover/tooltip for category column -> instead of
+      // displaying market and mine percentages, display amounts $ amount,
+      // $ account total and $ total portfolio."
+      const fmtTipUsd = (v) => v != null ? '$' + Math.round(v).toLocaleString() : '—';
+      const mv = row.market_value != null ? Number(row.market_value) : null;
+      const totalEquityDollar = (mv != null && row.weight_pct_equities) ? mv / (Number(row.weight_pct_equities) / 100) : null;
+      const totalPortfolioDollar = (mv != null && row.weight_pct) ? mv / (Number(row.weight_pct) / 100) : null;
+      const titleParts = [
+        `Amount: ${fmtTipUsd(mv)}`,
+        totalEquityDollar != null ? `Equities total: ${fmtTipUsd(totalEquityDollar)}` : null,
+        `Portfolio total: ${fmtTipUsd(totalPortfolioDollar)}`,
+      ].filter(Boolean).join('\n');
       // 2026-08-08 -- show BOTH "mine" (twr) and "not mine" (bench/mkt)
       // per user request, instead of just the twr-bench delta -- the delta
       // alone was misreadable when twr is 0 (currently the case here from
