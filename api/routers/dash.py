@@ -1641,10 +1641,19 @@ def _quad_factor_stance_by_source(s, axis: str, source: str, d):
     latest_d = s.execute(text(
         "SELECT MAX(as_of_date) FROM drv_source_standing WHERE source_code = :src AND as_of_date <= :d"
     ), {"src": source, "d": d}).scalar()
+    # 2026-08-09 BUGFIX -- "AND outlook IS NOT NULL" excluded SSS/PS
+    # (Signal Strength / Price Strength -- rank-based signals, confirmed
+    # live: outlook is NULL for every single row of both) entirely, not
+    # just their non-directional rows -- symbols came back empty, cat_map/
+    # tally stayed empty, "No rows." in the UI. Dropped the filter; the
+    # stance-tally loop below already treats a null/non-BULL/BEAR outlook
+    # as delta=0 (Neutral), so these sources now show real counts with a
+    # Neutral stance instead of being excluded outright -- honest about
+    # not having directional data, not silently empty. User: "Bottom
+    # graphs filter -> SSS and PS -> resulting no rows."
     rows = s.execute(text(
         "SELECT tos_symbol, outlook FROM drv_source_standing"
         " WHERE source_code = :src AND as_of_date = :ld AND on_list = TRUE"
-        "   AND outlook IS NOT NULL"
     ), {"src": source, "ld": latest_d}).mappings().all()
     symbols = {r["tos_symbol"] for r in rows if r["tos_symbol"]}
     # latest_d, not d -- same reasoning as above; drv_ma (this function's
