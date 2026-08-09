@@ -945,14 +945,27 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
       // User: "hover/popover/tooltip for category column -> instead of
       // displaying market and mine percentages, display amounts $ amount,
       // $ account total and $ total portfolio."
+      // 2026-08-09 follow-up -- each line also shows the % it represents
+      // ("next to them indicate % of total etc"): Amount gets both %s
+      // that were removed (of equities / of portfolio, same weight_pct(_
+      // equities) fields as the Wt% column); Equities total gets its own
+      // % of the whole portfolio (how much of your book is equities at
+      // all); Portfolio total is trivially 100%, shown for symmetry.
       const fmtTipUsd = (v) => v != null ? '$' + Math.round(v).toLocaleString() : '—';
+      const fmtTipPct = (v) => v != null ? `${Number(v).toFixed(1)}%` : '—';
       const mv = row.market_value != null ? Number(row.market_value) : null;
       const totalEquityDollar = (mv != null && row.weight_pct_equities) ? mv / (Number(row.weight_pct_equities) / 100) : null;
       const totalPortfolioDollar = (mv != null && row.weight_pct) ? mv / (Number(row.weight_pct) / 100) : null;
+      const equityOfPortfolioPct = (totalEquityDollar != null && totalPortfolioDollar)
+        ? totalEquityDollar / totalPortfolioDollar * 100 : null;
+      const amountPct = row.weight_pct_equities != null
+        ? `${fmtTipPct(row.weight_pct_equities)} of equities / ${fmtTipPct(row.weight_pct)} of portfolio`
+        : `${fmtTipPct(row.weight_pct)} of portfolio`;
       const titleParts = [
-        `Amount: ${fmtTipUsd(mv)}`,
-        totalEquityDollar != null ? `Equities total: ${fmtTipUsd(totalEquityDollar)}` : null,
-        `Portfolio total: ${fmtTipUsd(totalPortfolioDollar)}`,
+        `Amount: ${fmtTipUsd(mv)} (${amountPct})`,
+        totalEquityDollar != null
+          ? `Equities total: ${fmtTipUsd(totalEquityDollar)} (${fmtTipPct(equityOfPortfolioPct)} of portfolio)` : null,
+        `Portfolio total: ${fmtTipUsd(totalPortfolioDollar)} (100%)`,
       ].filter(Boolean).join('\n');
       // 2026-08-08 -- show BOTH "mine" (twr) and "not mine" (bench/mkt)
       // per user request, instead of just the twr-bench delta -- the delta
