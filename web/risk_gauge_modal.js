@@ -87,6 +87,20 @@
     return (window.state && window.state.date) ? (sep + 'date=' + encodeURIComponent(window.state.date)) : '';
   }
 
+  // 2026-08-09 -- Cockpit Accounts filter (Sector/Asset Class/Style $
+  // grids) narrows those grids to selected accounts, but a row click's
+  // popup was still always fetching ALL accounts -- ignoring whatever
+  // filter was active on the grid the click came from. Only usable now
+  // that window.state actually resolves (see app.js's window.state =
+  // state fix -- window.state was undefined this whole time, a top-level
+  // const in a classic script never attaches to window). User: "top 3
+  // graphs -> also popups on the my accounts not considering the filters
+  // (ex: one account)".
+  function _accountsQS(sep) {
+    var accts = window.state && window.state.catAccounts;
+    return (accts && accts.length) ? (sep + 'accounts=' + encodeURIComponent(accts.join(','))) : '';
+  }
+
   function fmt(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
   // Signed dollar amount for gain/loss cells -- '+$229' / '-$68', sign
   // always shown so a glance tells profit vs loss without reading color.
@@ -716,8 +730,9 @@
 
   window.openFactorExposureModal = function (axis, category) {
     var axisLabel = axis === 'asset_class' ? 'Asset class' : (axis === 'style' ? 'Style' : 'Sector');
+    var dateQS = _dateQS('?');
     _open('/api/cockpit/factor-scorecard/' + encodeURIComponent(axis) + '/' + encodeURIComponent(category) +
-          '/exposure-detail' + _dateQS('?'), category, axisLabel + ' match');
+          '/exposure-detail' + dateQS + _accountsQS(dateQS ? '&' : '?'), category, axisLabel + ' match');
   };
 
   window.closeGaugeExposureModal = function () {

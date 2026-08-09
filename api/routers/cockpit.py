@@ -102,7 +102,7 @@ _CLOSED_CLASSIFY_JOIN = """
 # symbols to tos exports. Not sure if your fix is going to affect that."
 
 
-def _closed_positions_base(d) -> str:
+def _closed_positions_base(d, accounts: Optional[list] = None) -> str:
     """CTE selecting realized sells in the trailing 30 days before/at the
     anchor (drv_realized_gain already excludes inactive accounts --
     etl/derive_realized.py's own is_active filter -- so no re-filtering
@@ -113,14 +113,22 @@ def _closed_positions_base(d) -> str:
     unusable in a popup. Narrowed to a 30-day trailing window (anchor-date
     based, never the real system clock, per the app's standing anchor-date
     rule), matching the Daily gain/loss chart's own lookback. User: "popup
-    include stocks traded in last 30 days"."""
-    return """
+    include stocks traded in last 30 days".
+    2026-08-09 -- optional accounts filter (rg.account stores the same
+    account_number domain as ref_accounts.account_number directly, same
+    join used everywhere else) so closed positions also respect the
+    Cockpit Accounts filter, matching the open-position query alongside
+    it. User: "popups on the my accounts not considering the filters
+    (ex: one account)"."""
+    acct_clause = " AND rg.account = ANY(:accounts)" if accounts else ""
+    return f"""
         closed AS (
           SELECT rg.tos_symbol, COALESCE(ra.short_name, rg.account) AS account,
                  rg.sell_date, rg.realized_gain AS gl, rg.realized_gain_pct AS glpct
           FROM drv_realized_gain rg
           LEFT JOIN ref_accounts ra ON ra.account_number = rg.account
           WHERE rg.sell_date BETWEEN :d - INTERVAL '30 days' AND :d
+          {acct_clause}
         )
     """
 
@@ -670,10 +678,30 @@ def get_factor_scorecard(date: Optional[str] = Query(None),
 # ---------------------------------------------------------------------------
 
 @router.get("/api/cockpit/factor-scorecard/{axis}/{category}/exposure-detail")
-def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Query(None)):
+def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Query(None),
+                               accounts: Optional[str] = Query(
+                                   None, description="Comma-separated account_number values -- "
+                                   "narrows this popup to match the Cockpit Accounts filter "
+                                   "active on the $ grid the row was clicked from.")):
     if axis not in ("sector", "asset_class", "style"):
         raise HTTPException(status_code=400, detail="axis must be sector|asset_class|style")
     d = _resolve_date(date)
+    # 2026-08-09 BUGFIX -- this popup previously always showed ALL
+    # accounts regardless of the Cockpit Accounts filter active on the $
+    # grid it was opened from -- the filter narrowed the grid's own
+    # numbers but the row-click popup ignored it entirely. Reuses the same
+    # account_number-list filtering pattern as etl/derive_category_perf.py
+    # ::_acct_clause (CS's `account` / F's `account_number` both store the
+    # same domain as ref_accounts.account_number directly). User: "top 3
+    # graphs -> also popups on the my accounts not considering the
+    # filters (ex: one account)".
+    accounts_list = [a.strip() for a in accounts.split(",") if a.strip()] if accounts else None
+    cs_acct = " AND account = ANY(:accounts)" if accounts_list else ""
+    # hist_f.account_number, qualified -- both call sites below LEFT JOIN
+    # ref_accounts ra ON ra.account_number = hist_f.account_number, so an
+    # unqualified "account_number" is ambiguous between the two tables
+    # (caught live: psycopg.errors.AmbiguousColumn).
+    f_acct = " AND hist_f.account_number = ANY(:accounts)" if accounts_list else ""
     with session_scope() as s:
         total_value = s.execute(text(
             "SELECT SUM(market_value) FROM drv_category_perf "
@@ -698,7 +726,7 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
         # User: "asset class -> cash popup -> doesn't have data/details on
         # which account is holding how much or total cash amount".
         if axis == "asset_class" and category.strip().lower() == "cash":
-            cash_rows = s.execute(text("""
+            cash_rows = s.execute(text(f"""
                 WITH pos AS (
                   SELECT hist_cs.tos_symbol, hist_cs.symbol,
                          COALESCE(ra.short_name, hist_cs.account) AS account,
@@ -708,6 +736,7 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
                   WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
                     AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
                     AND is_cash(symbol, security_type, description)
+                    {cs_acct}
                   UNION ALL
                   SELECT hist_f.tos_symbol, hist_f.symbol,
                          COALESCE(ra.short_name, hist_f.account_name, hist_f.account_number) AS account,
@@ -717,11 +746,12 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
                   WHERE hist_f.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
                     AND COALESCE(ra.is_active, TRUE) = TRUE
                     AND is_cash(symbol, type, description)
+                    {f_acct}
                 )
                 SELECT COALESCE(tos_symbol, symbol) AS symbol, account, SUM(mv) AS mv
                 FROM pos GROUP BY COALESCE(tos_symbol, symbol), account
                 ORDER BY mv DESC
-            """), {"d": d}).mappings().all()
+            """), {"d": d, "accounts": accounts_list}).mappings().all()
             positions = [{"symbol": r["symbol"] or "CASH", "account": r["account"],
                           "dollar": round(float(r["mv"] or 0), 2),
                           "gain_dollar": None, "gain_pct": None,
@@ -840,6 +870,7 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
               WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
                 AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
                 {cash_exclude_clause}
+                {cs_acct}
               UNION ALL
               SELECT hist_f.tos_symbol,
                      COALESCE(ra.short_name, hist_f.account_name, hist_f.account_number) AS account,
@@ -850,6 +881,7 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
               WHERE hist_f.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
                 AND COALESCE(ra.is_active, TRUE) = TRUE
                 {cash_exclude_clause.replace('security_type', 'type') if cash_exclude_clause else ''}
+                {f_acct}
             ), agg AS (SELECT tos_symbol, account, SUM(mv) AS mv, SUM(cb) AS cb, SUM(gl) AS gl
                        FROM pos GROUP BY tos_symbol, account)
             SELECT a.tos_symbol, a.account, a.mv, a.cb, a.gl
@@ -859,7 +891,7 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
             LEFT JOIN ref_sector rs ON rs.ticker = a.tos_symbol
             WHERE {where_clause}
             ORDER BY a.mv DESC
-        """), {"d": d, "category": category_param}).mappings().all()
+        """), {"d": d, "category": category_param, "accounts": accounts_list}).mappings().all()
         yesterday_map = _yesterday_by_symbol_account(s, d)
 
         def _gain_fields(r):
@@ -896,13 +928,13 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
         # way i can see closed/sold positions also in these dashboard
         # graphs".
         closed_rows = s.execute(text(f"""
-            WITH {_closed_positions_base(d)}
+            WITH {_closed_positions_base(d, accounts_list)}
             SELECT c.tos_symbol, c.account, c.sell_date, c.gl, c.glpct
             FROM closed c
             {_CLOSED_CLASSIFY_JOIN}
             WHERE {where_clause}
             ORDER BY c.sell_date DESC
-        """), {"d": d, "category": category_param}).mappings().all()
+        """), {"d": d, "category": category_param, "accounts": accounts_list}).mappings().all()
         for r in closed_rows:
             gl = r["gl"]
             positions.append({

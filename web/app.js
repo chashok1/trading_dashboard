@@ -23,6 +23,20 @@ const state = {
   // "add a filter above those graphs for filtering by source."
   marketViewSource: null,
 };
+// 2026-08-09 BUGFIX -- `state` is declared with top-level `const` in this
+// classic (non-module) script, which does NOT attach it to `window` (only
+// `var`/function declarations do -- a `let`/`const` top-level binding
+// lives in the script's lexical scope, reachable by bare name `state`
+// within this file, but window.state is a DIFFERENT, unrelated lookup).
+// risk_gauge_modal.js (and any other later-loaded script) reads
+// window.state.date/window.state.catAccounts to filter its own fetches --
+// window.state has been `undefined` this whole time, so those reads
+// silently short-circuited to falsy and the date/accounts params were
+// silently omitted, not applied. Never surfaced as visibly wrong because
+// omitting `date` defaults to the anchor anyway, usually the date being
+// viewed regardless. User: "popups on the my accounts not considering the
+// filters (ex: one account)" surfaced it.
+window.state = state;
 
 // ---------- helpers ----------
 
@@ -1349,7 +1363,13 @@ async function loadMarketView(axis, bodyId, chartId) {
         return `<td>${_fsColorCell(v) || '<span class="fs-dash">—</span>'}</td>`;
       }).join('');
       const caretHtml = `<span style="color:${_mvStanceColor(r.stance)};font-size:11px;font-weight:700;display:inline-block;width:11px;text-align:center;">${_mvStanceGlyph(r.stance)}</span>`;
-      return `<tr class="fs-clickable" onclick="openFactorExposureModal('${escapeHtml(axis)}', '${escapeHtml(r.category).replace(/'/g, "\\'")}')">
+      // 2026-08-09 -- NOT clickable to the $ exposure popup, unlike the $
+      // grids' own rows -- that popup shows YOUR holdings, which
+      // contradicts Market View's whole point ("no $, no holdings"), and
+      // clicking through to it made the Source filter look broken (row
+      // click always showed the same $ positions regardless of which
+      // source was selected, since it's a different data source entirely).
+      return `<tr>
         <td><span style="display:inline-block;width:16px;">${caretHtml}</span>${escapeHtml(r.category)}</td>
         <td class="fs-weight-cell"><span class="fs-weight-text">${r.count}</span><span class="fs-weight-eq">/ ${total}</span></td>
         ${cells}
