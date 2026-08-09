@@ -9,6 +9,12 @@
    tag) -- _renderData() normalizes both into the same table + bar chart. */
 (function () {
   var MODAL_ID = 'gaugeExpModal';
+  // 2026-08-08 -- last-rendered popup payload + active list filter, so the
+  // Active/Closed/Both toggle can re-render the table client-side without
+  // a refetch. Reset to 'both' on every fresh popup open (_open()).
+  var _lastData = null;
+  var _posFilter = 'both';
+  var _lastSubtitlePrefix = '';
 
   function _ensure() {
     if (document.getElementById(MODAL_ID)) return;
@@ -30,6 +36,18 @@
       '  </div>',
       '  <div class="gm-body" id="gmBody">',
       '    <div class="gm-left-col">',
+      // 2026-08-08 -- Active/Closed/Both filter for the stock list -- both
+      // types render mixed together by default (closed grayed out below
+      // the open rows), but with enough open positions the closed ones
+      // can require scrolling past to find; this lets the user narrow to
+      // just one kind. Client-side only -- the API already returns both
+      // in one response, no refetch needed. User: "Popup - add a filter
+      // to see active/closed/ or both".
+      '      <div class="gm-pos-filter" id="gmPosFilter">',
+      '        <button type="button" data-filter="both" class="active">Both</button>',
+      '        <button type="button" data-filter="active">Active</button>',
+      '        <button type="button" data-filter="closed">Closed</button>',
+      '      </div>',
       '      <div class="gm-table-wrap">',
       '        <table class="gm-table">',
       '          <thead><tr><th>Symbol</th><th>Account</th><th style="text-align:right">$</th><th style="text-align:right" title="Unrealized gain/loss vs cost basis, since purchase (current snapshot)">Cumulative</th><th style="text-align:right" title="Broker-reported day change (day_chng_dollar/today_gl_dollar) for this position">Yesterday</th><th id="gmTagHead">Tag</th></tr></thead>',
@@ -53,6 +71,15 @@
     document.getElementById('gmOverlay').addEventListener('click', window.closeGaugeExposureModal);
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') window.closeGaugeExposureModal();
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#gmPosFilter button'), function (btn) {
+      btn.addEventListener('click', function () {
+        _posFilter = btn.getAttribute('data-filter');
+        Array.prototype.forEach.call(document.querySelectorAll('#gmPosFilter button'), function (b) {
+          b.classList.toggle('active', b === btn);
+        });
+        if (_lastData) _renderPositionsTable(_lastData);
+      });
     });
   }
 
@@ -498,6 +525,13 @@
     // selected in a previous category/gauge popup shouldn't carry over.
     document.getElementById('gmSymHistChart').style.display = 'none';
     _symHistReqId++; // invalidate any in-flight history fetch from before
+    // 2026-08-08 -- reset the Active/Closed/Both filter to its default on
+    // every fresh open too -- a filter left on "Closed" from a previous
+    // gauge shouldn't carry over and silently hide a new gauge's positions.
+    _posFilter = 'both';
+    Array.prototype.forEach.call(document.querySelectorAll('#gmPosFilter button'), function (b) {
+      b.classList.toggle('active', b.getAttribute('data-filter') === 'both');
+    });
 
     fetch(fetchUrl)
       .then(function (r) { return r.json(); })
@@ -509,17 +543,9 @@
   }
 
   function _renderData(data, fallbackTitle, subtitlePrefix) {
-    var hasTag = (data.positions || []).some(function (p) { return p.tag; });
-    document.getElementById('gmTagHead').style.display = hasTag ? '' : 'none';
-
     document.getElementById('gmTitle').textContent = data.label || fallbackTitle;
     var cats = (data.categories || []).join(' · ');
-    var n = (data.positions || []).length;
-    var acctCount = new Set((data.positions || []).map(function (p) { return p.account; })).size;
-    var prefix = cats ? ('Match: ' + cats + '  ·  ') : (subtitlePrefix ? subtitlePrefix + '  ·  ' : '');
-    document.getElementById('gmSub').textContent =
-      prefix + n + ' position' + (n === 1 ? '' : 's') +
-      (acctCount ? ' across ' + acctCount + ' account' + (acctCount === 1 ? '' : 's') : '');
+    _lastSubtitlePrefix = cats ? ('Match: ' + cats + '  ·  ') : (subtitlePrefix ? subtitlePrefix + '  ·  ' : '');
     // Total gain/loss across every position shown -- sum(gain_dollar)
     // straightforwardly; total % isn't a simple average of per-position %s
     // (that would over-weight small positions), so it's derived the same
@@ -555,9 +581,36 @@
         + '<div class="p">' + (data.pct != null ? data.pct.toFixed(1) + '% of portfolio' : '') + '</div>'
       : '<div class="gm-total-row"><div class="d">&mdash;</div>' + gainHtml + '</div>';
 
+    _lastData = data;
+    _renderPositionsTable(data, /* selectFirst */ true);
+    _renderCompareChart(data);
+  }
+
+  // 2026-08-08 -- extracted from _renderData so the Active/Closed/Both
+  // filter can re-render just the table (+ subtitle count + holdings bar
+  // chart) without a refetch -- data.positions never changes, only which
+  // rows are visible. selectFirst is true only on a fresh popup open (not
+  // on a filter toggle) -- switching filters shouldn't yank the Daily
+  // chart to a different stock out from under the user.
+  function _renderPositionsTable(data, selectFirst) {
+    var all = data.positions || [];
+    var hasTag = all.some(function (p) { return p.tag; });
+    document.getElementById('gmTagHead').style.display = hasTag ? '' : 'none';
+
+    var shown = _posFilter === 'active' ? all.filter(function (p) { return !p.closed; })
+      : _posFilter === 'closed' ? all.filter(function (p) { return p.closed; })
+      : all;
+
+    var n = shown.length;
+    var acctCount = new Set(shown.map(function (p) { return p.account; })).size;
+    document.getElementById('gmSub').textContent =
+      _lastSubtitlePrefix + n + ' position' + (n === 1 ? '' : 's') +
+      (acctCount ? ' across ' + acctCount + ' account' + (acctCount === 1 ? '' : 's') : '');
+
     var tbody = document.getElementById('gmTableBody');
+    tbody.innerHTML = '';
     var firstRow = null, firstSymbol = null;
-    (data.positions || []).forEach(function (p) {
+    shown.forEach(function (p) {
       var tr = document.createElement('tr');
       var symTd = document.createElement('td'); symTd.className = 'sym'; symTd.textContent = p.symbol;
       var acctTd = document.createElement('td'); acctTd.className = 'acct'; acctTd.textContent = p.account;
@@ -637,22 +690,23 @@
       if (!firstRow) { firstRow = tr; firstSymbol = p.symbol; }
       tbody.appendChild(tr);
     });
-    if (!(data.positions || []).length) {
+    if (!shown.length) {
       var tr = document.createElement('tr');
       var td = document.createElement('td'); td.colSpan = hasTag ? 6 : 5; td.className = 'gm-empty';
-      td.textContent = 'No positions match.';
+      td.textContent = _posFilter === 'closed' ? 'No closed positions in the last 30 days.'
+        : _posFilter === 'active' ? 'No active positions match.' : 'No positions match.';
       tr.appendChild(td); tbody.appendChild(tr);
     } else {
       // 2026-08-08 -- closed positions excluded from the Largest Holdings
       // bar chart -- $0 current exposure, no meaningful bar to draw (scope
       // agreed: stock list + Daily chart only, not the value-sized charts).
-      _renderBars((data.positions || []).filter(function (p) { return !p.closed; }));
+      _renderBars(shown.filter(function (p) { return !p.closed; }));
     }
-    _renderCompareChart(data);
     // 2026-08-08 -- first row selected by default so the Daily gain/loss
     // chart isn't empty on open -- user request: "select the first stock
-    // by default".
-    if (firstRow) _loadSymbolHistory(firstSymbol, firstRow);
+    // by default". Only on a fresh open, not a filter toggle (see docstring
+    // above).
+    if (selectFirst && firstRow) _loadSymbolHistory(firstSymbol, firstRow);
   }
 
   window.openGaugeExposureModal = function (gaugeKey) {

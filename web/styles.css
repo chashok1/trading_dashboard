@@ -2171,6 +2171,18 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
   display: flex; flex-direction: column; min-height: 0;
   border-right: 1px solid var(--border);
 }
+/* 2026-08-08 -- Active/Closed/Both filter toggle above the stock list.
+   Small segmented-button group, not a <select> -- only 3 fixed options,
+   a click is faster than opening a dropdown. User: "Popup - add a filter
+   to see active/closed/ or both". */
+.gm-pos-filter { display: flex; gap: 4px; padding: 8px 10px 0; flex: 0 0 auto; }
+.gm-pos-filter button {
+  font-size: 10.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--card-bg); color: var(--text-2);
+  cursor: pointer;
+}
+.gm-pos-filter button:hover { color: var(--text-1); }
+.gm-pos-filter button.active { background: var(--accent, #1d4ed8); border-color: var(--accent, #1d4ed8); color: #fff; }
 .gm-table-wrap { flex: 1 1 auto; min-height: 120px; overflow-y: auto; padding: 4px 0; }
 .gm-holdings-pane { flex: 0 0 auto; padding-top: 12px; border-top: 1px solid var(--border); }
 .gm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
