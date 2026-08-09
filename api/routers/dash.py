@@ -1668,6 +1668,46 @@ def get_quad_factor_stance(
         ), {"y": nxt_qtr_y, "n": nxt_qtr_n}).scalar()
         qtr_next_pcts = _onehot(qtr_next) if qtr_next else None
 
+        # 2026-08-09 -- per-category stock COUNT, for the Market View's
+        # breadth-sized bars (separate from the $ grids -- "how are you
+        # deciding on VERDICT outcomes?" -> "can i see same graphs for
+        # sources, only market data no money is involved" -> "number of
+        # stocks in the source"). Sector/asset_class count from ref_sector
+        # (the ~961-ticker reference universe, same table already backing
+        # sector/asset_class classification elsewhere) -- broad, not
+        # limited to symbols you hold or ToS tracks. Style has no such
+        # static column (style tags are computed live per symbol from
+        # beta/PE/div-yield/RSI/market-cap, only available for symbols ToS
+        # currently tracks), so it counts from drv_macro_score's
+        # style_stances instead -- a real but much smaller, ToS-tracked-
+        # only universe; frontend labels this distinction, doesn't hide it.
+        count_map: dict = {}
+        if axis in ("sector", "asset_class"):
+            col = "equity_sector" if axis == "sector" else "asset_class"
+            for r in s.execute(text(
+                f"SELECT LOWER(TRIM({col})) AS k, COUNT(*) AS n FROM ref_sector "
+                f"WHERE {col} IS NOT NULL GROUP BY LOWER(TRIM({col}))"
+            )).mappings().all():
+                count_map[r["k"]] = r["n"]
+        else:  # style
+            # 2026-08-09 BUGFIX -- as_of_date = :d exact-matched zero rows
+            # whenever `d` (this endpoint's own "real today", not the
+            # trading anchor -- see docstring below) falls on a
+            # weekend/holiday with no derive run for that date (e.g. `d`
+            # 2026-08-09 Sunday, drv_macro_score's latest row 2026-08-07)
+            # -- every style count silently came back 0. Latest-available-
+            # at-or-before-d, same fallback pattern used everywhere else.
+            latest_mstance_d = s.execute(text(
+                "SELECT MAX(as_of_date) FROM drv_macro_score WHERE as_of_date <= :d"
+            ), {"d": d}).scalar()
+            for r in s.execute(text("""
+                SELECT e->>'label' AS k, COUNT(DISTINCT tos_symbol) AS n
+                FROM drv_macro_score, jsonb_array_elements(COALESCE(style_stances,'[]'::jsonb)) e
+                WHERE as_of_date = :ld
+                GROUP BY e->>'label'
+            """), {"ld": latest_mstance_d}).mappings().all():
+                count_map[r["k"]] = r["n"]
+
     outlook_map = {(category, r["sub_category"]): [r["quad1"], r["quad2"], r["quad3"], r["quad4"]]
                    for r in outlook_rows}
     # 2026-08-07 -- per-window-month carets ("i need to see carets for all of
@@ -1703,10 +1743,12 @@ def get_quad_factor_stance(
         # based on the top-level days_to_qtr_end below.
         next_qtr_stance = (round(sum(qtr_next_pcts[i] * _to_stance_num(texts[i]) for i in range(4)), 4)
                             if qtr_next_pcts else None)
+        count_key = sub.strip().lower() if axis in ("sector", "asset_class") else sub
         rows_out.append({
             "category": sub,
             "score": score,
             "stance": stance,
+            "count": count_map.get(count_key, 0),
             "quad1": r["quad1"], "quad2": r["quad2"], "quad3": r["quad3"], "quad4": r["quad4"],
             "months": _month_stances(texts),
             "qtr": {"quad": qtr_now, "stance": qtr_stance} if qtr_now else None,
@@ -1721,6 +1763,8 @@ def get_quad_factor_stance(
         "eff": win["eff"],
         "dominant_quad": win["dominant"],
         "days_to_qtr_end": win["days_to_qtr_end"],
+        "count_universe": "ref_sector (~961-ticker reference universe)" if axis in ("sector", "asset_class")
+            else "ToS-tracked symbols only (drv_macro_score) -- smaller universe than Sector/Asset Class",
         "rows": rows_out,
     }
 
