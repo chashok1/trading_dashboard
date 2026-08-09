@@ -73,6 +73,7 @@ _CLOSED_CLASSIFY_JOIN = """
         WHERE tos_symbol = c.tos_symbol AND as_of_date <= :d
         ORDER BY as_of_date DESC LIMIT 1
     ) m ON TRUE
+    LEFT JOIN ref_sector rs ON rs.ticker = c.tos_symbol
     LEFT JOIN LATERAL (
         SELECT style_stances FROM drv_macro_score
         WHERE tos_symbol = c.tos_symbol AND as_of_date <= :d
@@ -90,6 +91,15 @@ _CLOSED_CLASSIFY_JOIN = """
 # in the trailing 30 days, since the LATERAL subquery hadn't selected that
 # column at all. User: "sector grid -> unmapped -> check and tell me
 # which ones are unmapped" surfaced it live.
+# 2026-08-09 -- added a plain `ref_sector rs` join alongside `m` (drv_ma)
+# so callers can COALESCE(m.sector, rs.equity_sector) the same fallback
+# etl/derive_category_perf.py::_build_category_map already uses -- a
+# symbol ToS never exports (no hist_td row ever, e.g. GSL: held, but not
+# ToS-tracked) never gets a drv_ma row at all, so the popup was one symbol
+# short of the aggregate grid card without this. Purely additive; once a
+# symbol gets a real drv_ma row that value wins automatically (COALESCE
+# order). User: "fix it. Keep in mind i will be adding the new stock
+# symbols to tos exports. Not sure if your fix is going to affect that."
 
 
 def _closed_positions_base(d) -> str:
@@ -347,6 +357,20 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
         # string / composite Fidelity name -- user: "popup -> left column
         # grid (stock listing) -> use account desc". Falls back to the raw
         # value when an account has no short_name mapped.
+        # 2026-08-09 BUGFIX -- sector/asset_class now COALESCE(drv_ma,
+        # ref_sector) instead of drv_ma alone, matching etl/derive_
+        # category_perf.py::_build_category_map's own precedence (drv_ma
+        # first, ref_sector fallback). drv_ma only has rows for symbols in
+        # the CURRENT day's hist_td/TOSD universe (drv_symbols) -- a symbol
+        # ToS never exports at all (e.g. GSL, held but not ToS-tracked)
+        # never gets a drv_ma row no matter what, so this popup was one
+        # symbol short of the aggregate grid card (which already reads
+        # ref_sector via _build_category_map) whenever that happened.
+        # Purely additive/fallback -- once a symbol DOES get a real drv_ma
+        # row (e.g. after being added to a ToS export), that value wins
+        # automatically, no behavior change. User: "fix it. Keep in mind i
+        # will be adding the new stock symbols to tos exports. Not sure if
+        # your fix is going to affect that" -- it doesn't.
         rows = s.execute(text("""
             WITH pos AS (
               SELECT hist_cs.tos_symbol, COALESCE(ra.short_name, hist_cs.account) AS account,
@@ -367,12 +391,15 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
             ), agg AS (SELECT tos_symbol, account, SUM(mv) AS mv, SUM(cb) AS cb, SUM(gl) AS gl
                        FROM pos GROUP BY tos_symbol, account)
             SELECT a.tos_symbol, a.account, a.mv, a.cb, a.gl,
-                   m.sector, m.asset_class, ms.style_stances
+                   COALESCE(m.sector, rs.equity_sector) AS sector,
+                   COALESCE(m.asset_class, rs.asset_class) AS asset_class,
+                   ms.style_stances
             FROM agg a
             LEFT JOIN drv_ma m ON m.tos_symbol = a.tos_symbol AND m.as_of_date = :d
             LEFT JOIN drv_macro_score ms ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = :d
-            WHERE LOWER(TRIM(m.sector)) = ANY(:sector_cats)
-               OR LOWER(TRIM(m.asset_class)) = ANY(:asset_cats)
+            LEFT JOIN ref_sector rs ON rs.ticker = a.tos_symbol
+            WHERE LOWER(TRIM(COALESCE(m.sector, rs.equity_sector))) = ANY(:sector_cats)
+               OR LOWER(TRIM(COALESCE(m.asset_class, rs.asset_class))) = ANY(:asset_cats)
                OR EXISTS (
                     SELECT 1 FROM jsonb_array_elements(COALESCE(ms.style_stances, '[]'::jsonb)) e
                     WHERE e->>'label' = ANY(:style_cats)
@@ -423,11 +450,13 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
         closed_rows = s.execute(text(f"""
             WITH {_closed_positions_base(d)}
             SELECT c.tos_symbol, c.account, c.sell_date, c.gl, c.glpct,
-                   m.sector, m.asset_class, ms.style_stances
+                   COALESCE(m.sector, rs.equity_sector) AS sector,
+                   COALESCE(m.asset_class, rs.asset_class) AS asset_class,
+                   ms.style_stances
             FROM closed c
             {_CLOSED_CLASSIFY_JOIN}
-            WHERE LOWER(TRIM(m.sector)) = ANY(:sector_cats)
-               OR LOWER(TRIM(m.asset_class)) = ANY(:asset_cats)
+            WHERE LOWER(TRIM(COALESCE(m.sector, rs.equity_sector))) = ANY(:sector_cats)
+               OR LOWER(TRIM(COALESCE(m.asset_class, rs.asset_class))) = ANY(:asset_cats)
                OR EXISTS (
                     SELECT 1 FROM jsonb_array_elements(COALESCE(ms.style_stances, '[]'::jsonb)) e
                     WHERE e->>'label' = ANY(:style_cats)
@@ -645,7 +674,19 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
         # applied here (asset_class NULL/unknown still passes -- some real
         # equities have no asset_class tag but a valid sector, see
         # _categories_for's DESK/IPAY/NOBL/VYM docstring note).
-        equity_only_clause = " AND (m.asset_class IS NULL OR m.asset_class = 'Equities')" \
+        # 2026-08-09 -- COALESCE(m.*, rs.*) throughout below, not m.* alone
+        # -- matches etl/derive_category_perf.py::_build_category_map's own
+        # drv_ma-first/ref_sector-fallback precedence. drv_ma only has rows
+        # for symbols in the CURRENT day's hist_td/TOSD universe
+        # (drv_symbols); a symbol ToS never exports at all (e.g. GSL: held,
+        # but not ToS-tracked) never gets a drv_ma row no matter what, so
+        # this popup was one symbol short of the aggregate grid card
+        # whenever that happened. Purely additive -- once a symbol gets a
+        # real drv_ma row that value wins automatically (COALESCE order).
+        # User: "fix it. Keep in mind i will be adding the new stock
+        # symbols to tos exports. Not sure if your fix is going to affect
+        # that" -- it doesn't.
+        equity_only_clause = " AND (COALESCE(m.asset_class, rs.asset_class) IS NULL OR COALESCE(m.asset_class, rs.asset_class) = 'Equities')" \
             if axis in ("sector", "style") else ""
         category_param = category if axis == "style" else category.strip().lower()
         # category.strip().lower(), not category_param -- category_param
@@ -673,10 +714,10 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
         # style category and never reaches this popup).
         if category_is_unmapped:
             if axis == "sector":
-                where_clause = ("(m.tos_symbol IS NULL OR m.sector IS NULL) "
-                                 "AND (m.asset_class IS NULL OR m.asset_class = 'Equities')")
+                where_clause = ("COALESCE(m.sector, rs.equity_sector) IS NULL "
+                                 "AND (COALESCE(m.asset_class, rs.asset_class) IS NULL OR COALESCE(m.asset_class, rs.asset_class) = 'Equities')")
             elif axis == "asset_class":
-                where_clause = "(m.tos_symbol IS NULL OR m.asset_class IS NULL)"
+                where_clause = "COALESCE(m.asset_class, rs.asset_class) IS NULL"
             else:  # style
                 where_clause = "m.tos_symbol IS NULL"
         elif axis == "style":
@@ -686,7 +727,7 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
                     WHERE e->>'label' = :category
                 )""" + equity_only_clause
         else:
-            col = "m.sector" if axis == "sector" else "m.asset_class"
+            col = "COALESCE(m.sector, rs.equity_sector)" if axis == "sector" else "COALESCE(m.asset_class, rs.asset_class)"
             where_clause = f"LOWER(TRIM({col})) = :category" + equity_only_clause
 
         # 2026-08-08 -- cost_basis/gain_dollar carried through for the
@@ -737,6 +778,7 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
             FROM agg a
             LEFT JOIN drv_ma m ON m.tos_symbol = a.tos_symbol AND m.as_of_date = :d
             LEFT JOIN drv_macro_score ms ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = :d
+            LEFT JOIN ref_sector rs ON rs.ticker = a.tos_symbol
             WHERE {where_clause}
             ORDER BY a.mv DESC
         """), {"d": d, "category": category_param}).mappings().all()
