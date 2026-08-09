@@ -589,15 +589,37 @@ def get_events(date: Optional[str] = Query(None)):
 
 @router.get("/api/cockpit/factor-scorecard")
 def get_factor_scorecard(date: Optional[str] = Query(None),
-                         axis: str = Query("sector")):
+                         axis: str = Query("sector"),
+                         accounts: Optional[str] = Query(
+                             None, description="Comma-separated account_number values "
+                             "(ref_accounts.account_number) to narrow the grid to. "
+                             "Omit for the full portfolio (reads the pre-computed nightly "
+                             "drv_category_perf table); when set, recomputes live for just "
+                             "those accounts via etl.derive_category_perf._compute_category_rows "
+                             "-- same TWR/flow-adjustment math, just filtered input.")):
     if axis not in ("sector", "asset_class", "style"):
         raise HTTPException(status_code=400, detail="axis must be sector|asset_class|style")
     d = _resolve_date(date)
+    accounts_list = [a.strip() for a in accounts.split(",") if a.strip()] if accounts else None
+
     with session_scope() as s:
-        rows = s.execute(text(
-            "SELECT * FROM drv_category_perf WHERE as_of_date = :d AND axis = :a "
-            "ORDER BY weight_pct DESC NULLS LAST"
-        ), {"d": d, "a": axis}).mappings().all()
+        if accounts_list:
+            # 2026-08-09 -- Cockpit Accounts filter ("why can't you calculate
+            # Today/MTD/QTD by account?"): live per-account recompute, same
+            # function the nightly full-portfolio derive uses internally,
+            # just given a narrower `accounts` list -- not a separate/
+            # simplified $-only path. risk_budget/detail/verdict_note
+            # handling below stays identical to the drv_category_perf path
+            # so the rest of this function doesn't need two branches.
+            from etl.derive_category_perf import _compute_category_rows
+            computed = _compute_category_rows(s, d, accounts=accounts_list)
+            rows = [r for r in computed if r["axis"] == axis]
+            rows.sort(key=lambda r: (r["weight_pct"] is None, -(r["weight_pct"] or 0)))
+        else:
+            rows = s.execute(text(
+                "SELECT * FROM drv_category_perf WHERE as_of_date = :d AND axis = :a "
+                "ORDER BY weight_pct DESC NULLS LAST"
+            ), {"d": d, "a": axis}).mappings().all()
         risk_budget = s.execute(text(
             "SELECT risk_budget FROM drv_market_stat WHERE as_of_date = :d"
         ), {"d": d}).scalar()
@@ -605,7 +627,7 @@ def get_factor_scorecard(date: Optional[str] = Query(None),
     out_rows, unmapped = [], None
     for r in rows:
         rd = dict(r)
-        rd["detail"] = _jsonb(rd["detail"])
+        rd["detail"] = _jsonb(rd["detail"]) if accounts_list is None else rd.get("detail")
         note = (rd["detail"] or {}).get("verdict_note") or ""
         rd["risk_budget_cap_applied"] = "capped to HOLD" in note
         for k in ("as_of_date",):
@@ -628,6 +650,7 @@ def get_factor_scorecard(date: Optional[str] = Query(None),
 
     return {
         "as_of": d.isoformat(), "axis": axis, "risk_budget": risk_budget,
+        "accounts": accounts_list,
         "rows": out_rows, "unmapped": unmapped,
     }
 

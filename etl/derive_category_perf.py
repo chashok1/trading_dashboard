@@ -163,54 +163,92 @@ def _build_category_map(session: Session, as_of_date: date, symbols: set) -> dic
 # Position + flow series
 # ---------------------------------------------------------------------------
 
-_POSITIONS_SQL = text("""
-    SELECT snapshot_date, tos_symbol, symbol, security_type AS sec_type,
-           description, market_value AS mv, qty, 'CS' AS src
-    FROM hist_cs WHERE snapshot_date BETWEEN :lo AND :hi
-      AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
-    UNION ALL
-    SELECT snapshot_date, tos_symbol, symbol, type AS sec_type,
-           description, current_value AS mv, qty, 'F' AS src
-    FROM hist_f WHERE snapshot_date BETWEEN :lo AND :hi
-      AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
-""")
+# 2026-08-09 -- account-scoped variants (Cockpit Accounts filter, "how are
+# you deciding on VERDICT outcomes?" -> "why can't you calculate Today/MTD/
+# QTD by account?"): CS's account column and F's account_number column both
+# store the same domain as ref_accounts.account_number directly (confirmed
+# live -- every other account-scoped query in this codebase, e.g.
+# api/routers/cockpit.py::_yesterday_by_symbol_account, joins ref_accounts
+# ON ra.account_number = hist_cs.account with no translation), so a single
+# `accounts` list of account_number strings filters both sources uniformly.
+# TWR/flows math itself is account-agnostic -- _build_series/
+# _today_marked_to_market/_yesterday_actual_change aggregate whatever
+# positions/flows come in, grouped by category, with no portfolio-wide
+# assumption baked in -- so filtering the INPUT to one account's rows here
+# is sufficient; nothing downstream needs to change to get a correct
+# per-account TWR, not just a per-account $ total.
+def _acct_clause(accounts: Optional[list], cs_col: str = "account", f_col: str = "account_number") -> tuple[str, str]:
+    """Returns (cs_clause, f_clause) SQL fragments -- empty strings when
+    accounts is None/empty (unfiltered, today's existing portfolio-wide
+    behavior, byte-identical query)."""
+    if not accounts:
+        return "", ""
+    return f" AND {cs_col} = ANY(:accounts)", f" AND {f_col} = ANY(:accounts)"
 
-_FLOWS_SQL = text("""
-    SELECT trade_date, tos_symbol, action, amount, 'CST' AS src
-    FROM hist_cst WHERE trade_date BETWEEN :lo AND :hi
-      AND (UPPER(COALESCE(action,'')) LIKE '%BUY%' OR UPPER(COALESCE(action,'')) LIKE '%SELL%')
-    UNION ALL
-    SELECT trade_date, tos_symbol, action_kind AS action, amount, 'FT' AS src
-    FROM hist_ft WHERE trade_date BETWEEN :lo AND :hi
-      AND (UPPER(COALESCE(action_kind,'')) LIKE '%BUY%' OR UPPER(COALESCE(action_kind,'')) LIKE '%SELL%')
-""")
+
+def _positions_sql(accounts: Optional[list] = None):
+    cs_acct, f_acct = _acct_clause(accounts)
+    return text(f"""
+        SELECT snapshot_date, tos_symbol, symbol, security_type AS sec_type,
+               description, market_value AS mv, qty, 'CS' AS src
+        FROM hist_cs WHERE snapshot_date BETWEEN :lo AND :hi
+          AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
+          {cs_acct}
+        UNION ALL
+        SELECT snapshot_date, tos_symbol, symbol, type AS sec_type,
+               description, current_value AS mv, qty, 'F' AS src
+        FROM hist_f WHERE snapshot_date BETWEEN :lo AND :hi
+          AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
+          {f_acct}
+    """)
+
+
+def _flows_sql(accounts: Optional[list] = None):
+    cs_acct, f_acct = _acct_clause(accounts)
+    return text(f"""
+        SELECT trade_date, tos_symbol, action, amount, 'CST' AS src
+        FROM hist_cst WHERE trade_date BETWEEN :lo AND :hi
+          AND (UPPER(COALESCE(action,'')) LIKE '%BUY%' OR UPPER(COALESCE(action,'')) LIKE '%SELL%')
+          {cs_acct}
+        UNION ALL
+        SELECT trade_date, tos_symbol, action_kind AS action, amount, 'FT' AS src
+        FROM hist_ft WHERE trade_date BETWEEN :lo AND :hi
+          AND (UPPER(COALESCE(action_kind,'')) LIKE '%BUY%' OR UPPER(COALESCE(action_kind,'')) LIKE '%SELL%')
+          {f_acct}
+    """)
+
 
 # Broad (ANY action) flow-dates query, used only for gap DETECTION -- not for
 # netflow math. A Buy/Sell isn't the only legitimate reason a qty can change
 # (Stock Split, Reinvest Shares, Reinvest Dividend all move qty too); any row
 # at all on that date for that symbol is enough to explain the change. See
 # _build_series' gap-detection block and DEV_HANDOFF.md (round 2 / Part A).
-_ANY_FLOW_DATES_SQL = text("""
-    SELECT DISTINCT trade_date, tos_symbol FROM hist_cst
-    WHERE trade_date BETWEEN :lo AND :hi AND tos_symbol IS NOT NULL
-    UNION
-    SELECT DISTINCT trade_date, tos_symbol FROM hist_ft
-    WHERE trade_date BETWEEN :lo AND :hi AND tos_symbol IS NOT NULL
-""")
+def _any_flow_dates_sql(accounts: Optional[list] = None):
+    cs_acct, f_acct = _acct_clause(accounts)
+    return text(f"""
+        SELECT DISTINCT trade_date, tos_symbol FROM hist_cst
+        WHERE trade_date BETWEEN :lo AND :hi AND tos_symbol IS NOT NULL {cs_acct}
+        UNION
+        SELECT DISTINCT trade_date, tos_symbol FROM hist_ft
+        WHERE trade_date BETWEEN :lo AND :hi AND tos_symbol IS NOT NULL {f_acct}
+    """)
 
 
-def _load_positions_and_flows(session: Session, lo: date, hi: date) -> tuple[list, list]:
-    positions = session.execute(_POSITIONS_SQL, {"lo": lo, "hi": hi}).mappings().all()
-    flows = session.execute(_FLOWS_SQL, {"lo": lo, "hi": hi}).mappings().all()
+def _load_positions_and_flows(session: Session, lo: date, hi: date,
+                              accounts: Optional[list] = None) -> tuple[list, list]:
+    params = {"lo": lo, "hi": hi, "accounts": accounts}
+    positions = session.execute(_positions_sql(accounts), params).mappings().all()
+    flows = session.execute(_flows_sql(accounts), params).mappings().all()
     return list(positions), list(flows)
 
 
-def _load_any_flow_dates(session: Session, lo: date, hi: date) -> dict:
+def _load_any_flow_dates(session: Session, lo: date, hi: date,
+                         accounts: Optional[list] = None) -> dict:
     """{tos_symbol: {trade_date, ...}} for ANY hist_cst/hist_ft row (any
     action) in the window -- used only to tell whether a qty change on a
     given date is explained by *some* transaction row, not to compute
     netflow amounts."""
-    rows = session.execute(_ANY_FLOW_DATES_SQL, {"lo": lo, "hi": hi}).all()
+    rows = session.execute(_any_flow_dates_sql(accounts), {"lo": lo, "hi": hi, "accounts": accounts}).all()
     out: dict = {}
     for trade_date, tos_symbol in rows:
         if tos_symbol is None:
@@ -344,7 +382,7 @@ def _today_marked_to_market(session: Session, positions: list, cat_map: dict,
 
 
 def _yesterday_actual_change(session: Session, calendar: list, cat_map: dict,
-                              cash_keys: set) -> dict:
+                              cash_keys: set, accounts: Optional[list] = None) -> dict:
     """2026-08-08 -- 'Yesterday' $ change, replacing the old mv-diff +
     25%-swing-guard approach entirely. User's own diagnosis: hist_cs/hist_f
     already carry the broker's own daily gain/loss per position
@@ -370,18 +408,23 @@ def _yesterday_actual_change(session: Session, calendar: list, cat_map: dict,
     d, prior = calendar[-2], calendar[-3]
     excl_cs = " AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)"
     excl_f = " AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)"
+    cs_acct, f_acct = _acct_clause(accounts)
+    excl_cs += cs_acct
+    excl_f += f_acct
+    p = {"d": d, "accounts": accounts}
+    pp_ = {"d": prior, "accounts": accounts}
 
     dc_by_sym: dict = {}
     for r in session.execute(text(
         "SELECT tos_symbol, symbol, SUM(day_chng_dollar) AS dc FROM hist_cs"
         " WHERE snapshot_date=:d" + excl_cs + " GROUP BY tos_symbol, symbol"
-    ), {"d": d}).mappings().all():
+    ), p).mappings().all():
         key = r["tos_symbol"] or r["symbol"]
         dc_by_sym[key] = dc_by_sym.get(key, 0.0) + float(r["dc"] or 0)
     for r in session.execute(text(
         "SELECT tos_symbol, symbol, SUM(today_gl_dollar) AS dc FROM hist_f"
         " WHERE snapshot_date=:d" + excl_f + " GROUP BY tos_symbol, symbol"
-    ), {"d": d}).mappings().all():
+    ), p).mappings().all():
         key = r["tos_symbol"] or r["symbol"]
         dc_by_sym[key] = dc_by_sym.get(key, 0.0) + float(r["dc"] or 0)
 
@@ -389,12 +432,12 @@ def _yesterday_actual_change(session: Session, calendar: list, cat_map: dict,
     prior_px: dict = {}
     for r in session.execute(text(
         "SELECT tos_symbol, symbol, price FROM hist_cs WHERE snapshot_date=:d" + excl_cs
-    ), {"d": prior}).mappings().all():
+    ), pp_).mappings().all():
         if r["price"] is not None:
             prior_px[r["tos_symbol"] or r["symbol"]] = float(r["price"])
     for r in session.execute(text(
         "SELECT tos_symbol, symbol, last_price FROM hist_f WHERE snapshot_date=:d" + excl_f
-    ), {"d": prior}).mappings().all():
+    ), pp_).mappings().all():
         if r["last_price"] is not None:
             prior_px.setdefault(r["tos_symbol"] or r["symbol"], float(r["last_price"]))
 
@@ -402,7 +445,7 @@ def _yesterday_actual_change(session: Session, calendar: list, cat_map: dict,
         "SELECT tos_symbol, symbol, price, quantity FROM hist_cst"
         " WHERE trade_date=:d AND UPPER(COALESCE(action,'')) LIKE '%SELL%'"
         "   AND quantity IS NOT NULL AND price IS NOT NULL" + excl_cs
-    ), {"d": d}).mappings().all():
+    ), p).mappings().all():
         key = r["tos_symbol"] or r["symbol"]
         pp = prior_px.get(key)
         if pp is None:
@@ -412,7 +455,7 @@ def _yesterday_actual_change(session: Session, calendar: list, cat_map: dict,
         "SELECT tos_symbol, symbol, price, quantity FROM hist_ft"
         " WHERE trade_date=:d AND action_kind='SELL'"
         "   AND quantity IS NOT NULL AND price IS NOT NULL" + excl_f
-    ), {"d": d}).mappings().all():
+    ), p).mappings().all():
         key = r["tos_symbol"] or r["symbol"]
         pp = prior_px.get(key)
         if pp is None:
@@ -750,56 +793,70 @@ def _verdict(quad: Optional[str], band: Optional[str], twr: dict, bench: dict,
     return v, note
 
 
-def _derive_category_perf_impl(session: Session, as_of_date: date, run_id) -> int:
+def _compute_category_rows(session: Session, as_of_date: date, accounts: Optional[list] = None) -> list:
+    """Core row-computation logic, extracted so both the nightly portfolio-
+    wide derive AND a live per-account request (Cockpit Accounts filter)
+    can share the exact same TWR/flow-adjustment math -- filtering WHO
+    (accounts) is included happens once, at the position/flow load, and
+    cascades correctly through everything downstream unchanged (TWR math
+    is account-agnostic; it aggregates whatever positions/flows come in).
+    accounts=None means unfiltered (today's existing portfolio-wide
+    behavior, byte-identical queries -- see _acct_clause)."""
     # 2026-08-08 -- widened to cover YTD (see YTD_CALENDAR_DAYS docstring);
     # harmless when less history exists (_trading_calendar just returns
     # whatever's available, no error) or as_of_date is early in the year.
     calendar = _trading_calendar(session, as_of_date, max(CALENDAR_BUFFER, YTD_CALENDAR_DAYS))
     if not calendar:
-        return replace_for_date(session, "drv_category_perf", "as_of_date", as_of_date, [])
+        return []
     lo, hi = calendar[0], calendar[-1]
     calendar_window_days = {k: _window_days_since(calendar, as_of_date, start)
                              for k, start in _calendar_period_starts(as_of_date).items()}
 
-    positions, flows = _load_positions_and_flows(session, lo, hi)
+    positions, flows = _load_positions_and_flows(session, lo, hi, accounts)
 
     symbols = {(p["tos_symbol"] or p["symbol"]) for p in positions}
+    cs_acct, f_acct = _acct_clause(accounts)
     cash_keys = set()
-    is_cash_rows = session.execute(text(
-        "SELECT DISTINCT COALESCE(tos_symbol, symbol) AS k FROM ("
-        "  SELECT tos_symbol, symbol, security_type, description FROM hist_cs "
-        "  WHERE snapshot_date BETWEEN :lo AND :hi"
-        "    AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)"
-        "  UNION ALL"
-        "  SELECT tos_symbol, symbol, type AS security_type, description FROM hist_f "
-        "  WHERE snapshot_date BETWEEN :lo AND :hi"
-        "    AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)"
-        ") u WHERE is_cash(symbol, security_type, description)"
-    ), {"lo": lo, "hi": hi}).scalars().all()
+    is_cash_rows = session.execute(text(f"""
+        SELECT DISTINCT COALESCE(tos_symbol, symbol) AS k FROM (
+          SELECT tos_symbol, symbol, security_type, description FROM hist_cs
+          WHERE snapshot_date BETWEEN :lo AND :hi
+            AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
+            {cs_acct}
+          UNION ALL
+          SELECT tos_symbol, symbol, type AS security_type, description FROM hist_f
+          WHERE snapshot_date BETWEEN :lo AND :hi
+            AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
+            {f_acct}
+        ) u WHERE is_cash(symbol, security_type, description)
+    """), {"lo": lo, "hi": hi, "accounts": accounts}).scalars().all()
     cash_keys = set(is_cash_rows)
 
     non_cash_symbols = symbols - cash_keys
     cat_map = _build_category_map(session, as_of_date, non_cash_symbols)
 
-    any_flow_dates = _load_any_flow_dates(session, lo, hi)
+    any_flow_dates = _load_any_flow_dates(session, lo, hi, accounts)
     series = _build_series(positions, flows, cat_map, cash_keys, calendar, any_flow_dates)
     today_marked = _today_marked_to_market(session, positions, cat_map, cash_keys, calendar)
-    yesterday_change = _yesterday_actual_change(session, calendar, cat_map, cash_keys)
+    yesterday_change = _yesterday_actual_change(session, calendar, cat_map, cash_keys, accounts)
 
-    # Total portfolio value at D (market + cash) for weight_pct -- same
-    # universe as /api/portfolio/summary (latest hist_f/hist_cs snapshot <= D
-    # each, cash included). Phase 5 mandatory reconciliation check.
-    total_row = session.execute(text("""
+    # Total portfolio(-slice) value at D (market + cash) for weight_pct --
+    # same universe as /api/portfolio/summary (latest hist_f/hist_cs
+    # snapshot <= D each, cash included). Phase 5 mandatory reconciliation
+    # check. accounts filter narrows this to the selected account(s)' own
+    # total, so weight_pct reads as "% of what you selected", not "% of
+    # your whole portfolio" when filtered.
+    total_row = session.execute(text(f"""
         WITH f_latest AS (SELECT MAX(snapshot_date) d FROM hist_f WHERE snapshot_date <= :d),
              cs_latest AS (SELECT MAX(snapshot_date) d FROM hist_cs WHERE snapshot_date <= :d),
              excl AS (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
         SELECT
           COALESCE((SELECT SUM(current_value) FROM hist_f WHERE snapshot_date=(SELECT d FROM f_latest)
-                    AND account_number NOT IN (SELECT account_number FROM excl)),0)
+                    AND account_number NOT IN (SELECT account_number FROM excl) {f_acct}),0)
         + COALESCE((SELECT SUM(market_value) FROM hist_cs WHERE snapshot_date=(SELECT d FROM cs_latest)
-                    AND account NOT IN (SELECT account_number FROM excl)),0)
+                    AND account NOT IN (SELECT account_number FROM excl) {cs_acct}),0)
           AS total
-    """), {"d": as_of_date}).scalar()
+    """), {"d": as_of_date, "accounts": accounts}).scalar()
     total_value = float(total_row) if total_row else 0.0
 
     # 2026-08-08 -- total EQUITY value only (Asset Class axis's own
@@ -995,6 +1052,11 @@ def _derive_category_perf_impl(session: Session, as_of_date: date, run_id) -> in
                 "detail": detail,
             })
 
+    return rows_out
+
+
+def _derive_category_perf_impl(session: Session, as_of_date: date, run_id) -> int:
+    rows_out = _compute_category_rows(session, as_of_date, accounts=None)
     return replace_for_date(session, "drv_category_perf", "as_of_date", as_of_date, rows_out)
 
 
