@@ -955,7 +955,15 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
         const mv = Number(stanceRow.score) || 0;
         const mCol = mv > 0 ? '#16a34a' : mv < 0 ? '#dc2626' : '#9ca3af';
         const mGlyph = mv > 0 ? '&#9650;' : mv < 0 ? '&#9660;' : '&#8211;';
-        const mainCaret = `<span style="color:${mCol};font-size:11px;font-weight:700;">${mGlyph}</span>`;
+        // 2026-08-09 -- every glyph span below (main/period/qtr/next-qtr)
+        // gets a fixed inline-block width + text-align:center -- the
+        // neutral glyph (&#8211; en-dash) is much narrower than the
+        // bullish/bearish triangles (&#9650;/&#9660;) at the same font-
+        // size, so an un-fixed-width span shifted everything after it left
+        // whenever a row's carets included a neutral read, misaligning the
+        // whole cluster against rows with no neutrals. User: "make sure
+        // they are aligned properly when incase of - for neutrals."
+        const mainCaret = `<span style="color:${mCol};font-size:11px;font-weight:700;display:inline-block;width:11px;text-align:center;">${mGlyph}</span>`;
         // Current-month period caret (months[0] -- window_weights orders
         // nearest-first) matches the 60D main caret's size/weight, so the
         // "happening right now" period stands out same as the headline
@@ -964,8 +972,8 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
           const v = Number(mo.stance) || 0;
           const sCol = v > 0 ? '#16a34a' : v < 0 ? '#dc2626' : '#9ca3af';
           const glyph = v > 0 ? '&#9650;' : v < 0 ? '&#9660;' : '&#8211;';
-          const sz = i === 0 ? 'font-size:11px;font-weight:700;' : '';
-          return `<span style="color:${sCol};${sz}">${glyph}</span>`;
+          const sz = i === 0 ? 'font-size:11px;font-weight:700;width:11px;' : 'width:9px;';
+          return `<span style="color:${sCol};${sz}display:inline-block;text-align:center;">${glyph}</span>`;
         }).join('<span style="display:inline-block;width:1px;"></span>');
         const gap = `<span style="display:inline-block;width:6px;"></span>`;
         // Quarter caret (the 5%-weighted one-hot anchor blended into
@@ -981,7 +989,7 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
           const qv = Number(stanceRow.qtr.stance) || 0;
           const qCol = qv > 0 ? '#16a34a' : qv < 0 ? '#dc2626' : '#9ca3af';
           const qGlyph = qv > 0 ? '&#9650;' : qv < 0 ? '&#9660;' : '&#8211;';
-          return `<span style="color:${qCol};opacity:${curQtrOp};font-size:11px;font-weight:700;" title="${escapeHtml(stanceRow.qtr.quad || '')} (current quarter)">${qGlyph}</span>`;
+          return `<span style="color:${qCol};opacity:${curQtrOp};font-size:11px;font-weight:700;display:inline-block;width:11px;text-align:center;" title="${escapeHtml(stanceRow.qtr.quad || '')} (current quarter)">${qGlyph}</span>`;
         })() : '';
         // 2026-08-09 -- next-quarter caret, right next to the current
         // quarter's -- see qtrFadeT/curQtrOp/nextQtrOp above for the
@@ -991,7 +999,7 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
           const nv = Number(stanceRow.next_qtr.stance) || 0;
           const nCol = nv > 0 ? '#16a34a' : nv < 0 ? '#dc2626' : '#9ca3af';
           const nGlyph = nv > 0 ? '&#9650;' : nv < 0 ? '&#9660;' : '&#8211;';
-          return `<span style="color:${nCol};opacity:${nextQtrOp};font-size:11px;font-weight:700;" title="${escapeHtml(stanceRow.next_qtr.quad || '')} (next quarter)">${nGlyph}</span>`;
+          return `<span style="color:${nCol};opacity:${nextQtrOp};font-size:11px;font-weight:700;display:inline-block;width:11px;text-align:center;" title="${escapeHtml(stanceRow.next_qtr.quad || '')} (next quarter)">${nGlyph}</span>`;
         })() : '';
         // title="" breaks inheritance from the <tr>'s own title (the twr/
         // bench tooltip) -- without it, hovering a caret showed BOTH the
