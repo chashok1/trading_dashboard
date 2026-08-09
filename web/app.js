@@ -506,7 +506,7 @@ async function loadRegimeBand() {
     // it. User: "Regime text -> display next quarter and quad in existing
     // fashion".
     const nextQtrEntry = windowData.next_qtr_quad != null
-      ? `<span class="qtr-entry next-qtr-entry">Next Qtr <span style="color:${_quadColor('Q' + windowData.next_qtr_quad)};font-weight:600;">(Q${windowData.next_qtr_quad})</span></span>`
+      ? `<span class="qtr-entry next-qtr-entry">Next <span style="color:${_quadColor('Q' + windowData.next_qtr_quad)};font-weight:600;">(Q${windowData.next_qtr_quad})</span></span>`
       : '';
     // TASK_140 follow-up 11 -- band-factors items only ever carry `factor`
     // (verified live: {"factor":"Cyclical","qtr":"bull"}), not ticker/
@@ -520,7 +520,8 @@ async function loadRegimeBand() {
     // months centered in the remaining middle space (flex:1, text-align:
     // center), Qtr pinned right (unchanged) -- was previously one big
     // left-flowing blob with the months embedded right after the label.
-    const winLabel = `<span class="regime-win-label">${windowData.h ?? 60}d Win (<strong style="color:${_quadColor(dominant)};">Q${windowData.dominant_quad ?? '?'}</strong>)</span>`;
+    // 2026-08-09 -- "Win" text dropped per user: "remove the text 'Win'".
+    const winLabel = `<span class="regime-win-label">${windowData.h ?? 60}d (<strong style="color:${_quadColor(dominant)};">Q${windowData.dominant_quad ?? '?'}</strong>)</span>`;
     strip.innerHTML = `<div class="regime-line" data-quadbandpop="1">
       ${winLabel}<span class="regime-window-text">${months || 'no window data'}</span>${qtrEntry}${nextQtrEntry}
     </div>`;
@@ -562,7 +563,7 @@ async function loadRegimeBand() {
         const { bull, bear } = _bullBearForQuadNum(allFactors, windowData.next_qtr_quad);
         nextQtrEl.addEventListener('mouseover', e => {
           e.stopPropagation();
-          _showQuadPop(nextQtrEl, `${windowData.next_qtr_label || 'Next Qtr'} — Quad ${windowData.next_qtr_quad}`, bull, bear);
+          _showQuadPop(nextQtrEl, `${windowData.next_qtr_label || 'Next'} — Quad ${windowData.next_qtr_quad}`, bull, bear);
         });
       }
     }
