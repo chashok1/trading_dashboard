@@ -17,6 +17,11 @@ const state = {
   // account_number), not short_name -- that's what the backend filter
   // matches on.
   catAccounts: [],
+  // 2026-08-09 -- Market View Source filter. null = default (Hedgeye quad
+  // outlook, ref_quad_outlook); one of RR/CALL/ETF/II/SSS/PS = that
+  // source's own per-symbol calls instead (drv_source_standing). User:
+  // "add a filter above those graphs for filtering by source."
+  marketViewSource: null,
 };
 
 // ---------- helpers ----------
@@ -1289,50 +1294,90 @@ async function loadCatAccountFilter() {
   }
 }
 
-// 2026-08-09 -- Market View: pure market/quad-outlook read, deliberately
-// separate from the $ grids above (no $ weight, no dependency on your
-// holdings). Bars sized by stock COUNT (breadth) instead, color still the
-// bullish/bearish/neutral quad stance -- reuses GET /api/quad/factor-
-// stance's new `count` field. User: "how can i see same graphs for
-// sources, only market data no money is involved. Is it better to
-// display graphs separately?" -> yes.
-async function loadMarketView(axis, elId) {
-  const el = $(elId);
-  if (!el) return;
+function _mvStanceColor(s) { return s === 'Bullish' ? '#16a34a' : s === 'Bearish' ? '#dc2626' : '#9ca3af'; }
+function _mvStanceGlyph(s) { return s === 'Bullish' ? '&#9650;' : s === 'Bearish' ? '&#9660;' : '&#8211;'; }
+
+// 2026-08-09 -- Market View: SAME chart+table format as the $ grids above
+// (pie/bar chart + fs-table-style table with a caret), deliberately kept
+// as separate cards -- pure market/quad-outlook read, zero dependency on
+// what you hold. Count replaces $ weight (chart slices/bars sized by # of
+// stocks, table's count column is "N / total universe" instead of a Wt%);
+// benchmark ETF return (bench_mtd/etc, already computed independent of
+// holdings) replaces your TWR in the window cells -- reused from the same
+// /api/cockpit/factor-scorecard response the $ grids already fetch, keyed
+// by category name, so no new backend work was needed for that part.
+// Optional Source filter (state.marketViewSource) switches the count/
+// stance data from the default Hedgeye quad outlook to one of the RR/
+// CALL/ETF/II/SSS/PS per-symbol outlook sources -- see api/routers/
+// dash.py::_quad_factor_stance_by_source. User: "how can i see same
+// graphs for sources, only market data no money is involved" -> "i was
+// envisioning the same graphs as above with no money from my holdings
+// involved" -> "instead of $ percentages they will be # of stocks out of
+// total stocks for a given source or all" -> "add a filter above those
+// graphs for filtering by source."
+async function loadMarketView(axis, bodyId, chartId) {
+  const body = $(bodyId);
+  if (!body) return;
   try {
     const params = new URLSearchParams({ axis });
     if (state.date) params.set('date', state.date);
-    const d = await fetchJson(`/api/quad/factor-stance?${params.toString()}`);
+    if (state.marketViewSource) params.set('source', state.marketViewSource);
+    const benchParams = new URLSearchParams({ axis });
+    if (state.date) benchParams.set('date', state.date);
+    const [d, benchData] = await Promise.all([
+      fetchJson(`/api/quad/factor-stance?${params.toString()}`),
+      fetchJson(`/api/cockpit/factor-scorecard?${benchParams.toString()}`).catch(() => null),
+    ]);
+    const benchMap = new Map((benchData?.rows || []).map(r => [String(r.category).trim().toLowerCase(), r]));
     const rows = (d.rows || []).filter(r => r.count > 0).sort((a, b) => b.count - a.count);
-    if (!rows.length) { el.innerHTML = '<div class="mv-empty">No data.</div>'; return; }
-    const maxCount = Math.max(...rows.map(r => r.count));
-    const stanceColor = (s) => s === 'Bullish' ? '#16a34a' : s === 'Bearish' ? '#dc2626' : '#9ca3af';
-    el.innerHTML = rows.map(r => `
-      <div class="mv-row" title="${escapeHtml(r.category)}: ${escapeHtml(r.stance)}, ${r.count} tickers">
-        <span class="mv-label">${escapeHtml(r.category)}</span>
-        <span class="mv-bar-track">
-          <span class="mv-bar" style="width:${Math.max(2, r.count / maxCount * 100)}%;background:${stanceColor(r.stance)};"></span>
-        </span>
-        <span class="mv-count">${r.count}</span>
-      </div>
-    `).join('');
-    // Style's universe is much smaller (ToS-tracked only) than Sector/
-    // Asset Class's (~961-ticker ref_sector) -- labeled once per panel via
-    // the API's own count_universe field so this isn't hidden.
-    if (axis === 'style' && d.count_universe) {
-      el.innerHTML += `<div class="mv-universe-note">${escapeHtml(d.count_universe)}</div>`;
+    const total = d.total_count || 0;
+
+    const colorMap = new Map(rows.map(r => [r.category, _mvStanceColor(r.stance)]));
+    if (axis === 'style') {
+      _renderCatBars(chartId, rows.map(r => ({ category: r.category, weight_pct: r.count })), null, colorMap, null);
+    } else {
+      _renderCatPie(chartId, rows.map(r => ({ category: r.category, weight_pct: r.count })), null, colorMap, null);
     }
+
+    const headCells = _FS_WINDOWS
+      .map(w => `<th title="${escapeHtml(w.full)} -- benchmark ETF's own return, independent of your holdings">${w.label}</th>`)
+      .join('');
+    const bodyRows = rows.map(r => {
+      const bench = benchMap.get(r.category.trim().toLowerCase());
+      const cells = _FS_WINDOWS.map(w => {
+        const v = bench ? bench[`bench_${w.key}`] : null;
+        return `<td>${_fsColorCell(v) || '<span class="fs-dash">—</span>'}</td>`;
+      }).join('');
+      const caretHtml = `<span style="color:${_mvStanceColor(r.stance)};font-size:11px;font-weight:700;display:inline-block;width:11px;text-align:center;">${_mvStanceGlyph(r.stance)}</span>`;
+      return `<tr class="fs-clickable" onclick="openFactorExposureModal('${escapeHtml(axis)}', '${escapeHtml(r.category).replace(/'/g, "\\'")}')">
+        <td><span style="display:inline-block;width:16px;">${caretHtml}</span>${escapeHtml(r.category)}</td>
+        <td class="fs-weight-cell"><span class="fs-weight-text">${r.count}</span><span class="fs-weight-eq">/ ${total}</span></td>
+        ${cells}
+      </tr>`;
+    }).join('');
+
+    body.innerHTML = `
+      <div style="overflow-x:auto">
+        <table class="fs-table">
+          <thead><tr><th title="Category, sector/asset-class/style">Category</th>
+            <th title="# of stocks in this category / total universe">Count</th>
+            ${headCells}</tr></thead>
+          <tbody>${bodyRows || `<tr><td colspan="${2 + _FS_WINDOWS.length}">No rows.</td></tr>`}</tbody>
+        </table>
+      </div>
+      ${axis === 'style' && d.count_universe ? `<div class="mv-universe-note">${escapeHtml(d.count_universe)}</div>` : ''}
+    `;
   } catch (e) {
     console.error('market view failed:', axis, e);
-    el.innerHTML = '<div class="mv-empty">Failed to load.</div>';
+    body.innerHTML = '<div class="mv-empty">Failed to load.</div>';
   }
 }
 
 function reloadMarketView() {
   return Promise.all([
-    loadMarketView('sector', 'marketViewSector'),
-    loadMarketView('asset_class', 'marketViewAssetClass'),
-    loadMarketView('style', 'marketViewStyle'),
+    loadMarketView('sector', 'marketViewSectorBody', 'marketViewSectorChart'),
+    loadMarketView('asset_class', 'marketViewAssetClassBody', 'marketViewAssetClassChart'),
+    loadMarketView('style', 'marketViewStyleBody', 'marketViewStyleChart'),
   ]);
 }
 
@@ -1368,5 +1413,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   const refreshBtn = $('refreshBtn');
   if (refreshBtn) refreshBtn.addEventListener('click', () => refreshAll());
+  // 2026-08-09 -- Market View Source filter -- only re-runs the 3 Market
+  // View panels, not the whole dashboard. User: "add a filter above those
+  // graphs for filtering by source."
+  const srcSel = $('marketViewSourceSelect');
+  if (srcSel) srcSel.addEventListener('change', () => {
+    state.marketViewSource = srcSel.value || null;
+    reloadMarketView();
+  });
   await refreshAll();
 });

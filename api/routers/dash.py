@@ -1614,10 +1614,81 @@ _QUAD_OUTLOOK_AXIS_MAP = {
 }
 
 
+_SOURCE_CODES = ("RR", "CALL", "ETF", "II", "SSS", "PS")
+
+
+def _quad_factor_stance_by_source(s, axis: str, source: str, d):
+    """2026-08-09 -- Market View Source filter ("add a filter above those
+    graphs for filtering by source" -> confirmed: the RR/CALL/ETF/II/SSS/PS
+    per-symbol outlook sources, drv_outlooks/drv_source_standing, already
+    used elsewhere for Actionable recommendations -- not the quad outlook
+    this endpoint otherwise reads). Counts + net bullish/bearish stance per
+    category from ONE source's own per-symbol calls, instead of Hedgeye's
+    quad-based sector/style/asset-class outlook. No month/quarter window
+    data (RR/CALL/etc are point-in-time calls, not a monthly-distribution
+    source like ref_quad_periods) -- caller must handle those fields being
+    absent. Classification (which category a symbol belongs to) reuses the
+    exact same etl.derive_category_perf logic as the $ grids/default quad
+    view, so a symbol's sector/asset_class/style tag never disagrees
+    between the two."""
+    from etl.derive_category_perf import _build_category_map, _categories_for
+
+    # 2026-08-09 BUGFIX -- same weekend/holiday gap as the style-count fix
+    # above: `d` defaults to real "today" (this endpoint's own convention,
+    # not the trading anchor), which returns zero rows on an exact match
+    # whenever no derive ran for that exact date (e.g. Sunday). Latest-
+    # available-at-or-before-d, same fallback pattern used everywhere else.
+    latest_d = s.execute(text(
+        "SELECT MAX(as_of_date) FROM drv_source_standing WHERE source_code = :src AND as_of_date <= :d"
+    ), {"src": source, "d": d}).scalar()
+    rows = s.execute(text(
+        "SELECT tos_symbol, outlook FROM drv_source_standing"
+        " WHERE source_code = :src AND as_of_date = :ld AND on_list = TRUE"
+        "   AND outlook IS NOT NULL"
+    ), {"src": source, "ld": latest_d}).mappings().all()
+    symbols = {r["tos_symbol"] for r in rows if r["tos_symbol"]}
+    # latest_d, not d -- same reasoning as above; drv_ma (this function's
+    # primary classification source) also only has rows for real derive
+    # dates, so passing the weekend/holiday `d` here would silently push
+    # every symbol onto the ref_sector fallback instead of drv_ma's more
+    # current per-day classification.
+    cat_map = _build_category_map(s, latest_d or d, symbols)
+
+    tally: dict = {}
+    for r in rows:
+        sym = r["tos_symbol"]
+        if not sym:
+            continue
+        outlook = (r["outlook"] or "").upper()
+        delta = 1 if "BULL" in outlook else -1 if "BEAR" in outlook else 0
+        for cat in _categories_for(sym, cat_map, axis):
+            t = tally.setdefault(cat, {"count": 0, "net": 0})
+            t["count"] += 1
+            t["net"] += delta
+
+    rows_out = []
+    for cat, t in tally.items():
+        if cat in ("Unmapped", "Non-Equity (excluded)"):
+            continue
+        stance = "Bullish" if t["net"] > 0 else "Bearish" if t["net"] < 0 else "Neutral"
+        rows_out.append({"category": cat, "score": t["net"], "stance": stance, "count": t["count"],
+                          "months": [], "qtr": None, "next_qtr": None})
+    return {
+        "as_of_date": d.isoformat(), "axis": axis, "source": source,
+        "h": None, "months": [], "eff": {}, "dominant_quad": None, "days_to_qtr_end": None,
+        "count_universe": f"{source} source ({len(symbols)} tickers on that source's list)",
+        "total_count": len(symbols),
+        "rows": rows_out,
+    }
+
+
 @router.get("/api/quad/factor-stance")
 def get_quad_factor_stance(
     axis: str = Query(..., description="sector | asset_class | style"),
     date: Optional[str] = Query(None, description="As-of date (defaults to today)"),
+    source: Optional[str] = Query(None, description="Optional: RR|CALL|ETF|II|SSS|PS to compute "
+                                   "count/stance from that source's own per-symbol calls instead "
+                                   "of the default Hedgeye quad outlook"),
 ):
     """Per-category window-blended quad stance (2026-08-07) — answers "which
     factor is expected to do well based on the quads" for the cockpit's
@@ -1636,6 +1707,13 @@ def get_quad_factor_stance(
         return {"error": f"unknown axis {axis!r}", "rows": []}
 
     d = _dt.strptime(date, "%Y-%m-%d").date() if date else _dt.now().date()
+
+    if source:
+        if source not in _SOURCE_CODES:
+            raise HTTPException(status_code=400, detail=f"source must be one of {_SOURCE_CODES}")
+        with session_scope() as s:
+            return _quad_factor_stance_by_source(s, axis, source, d)
+
     with session_scope() as s:
         win = _compute_quad_window(s, d)
         outlook_rows = s.execute(text(
@@ -1682,6 +1760,7 @@ def get_quad_factor_stance(
         # style_stances instead -- a real but much smaller, ToS-tracked-
         # only universe; frontend labels this distinction, doesn't hide it.
         count_map: dict = {}
+        total_universe = 0
         if axis in ("sector", "asset_class"):
             col = "equity_sector" if axis == "sector" else "asset_class"
             for r in s.execute(text(
@@ -1689,6 +1768,9 @@ def get_quad_factor_stance(
                 f"WHERE {col} IS NOT NULL GROUP BY LOWER(TRIM({col}))"
             )).mappings().all():
                 count_map[r["k"]] = r["n"]
+            # sector/asset_class are exclusive (1 category per ticker), so
+            # summing every category's count IS the total universe size.
+            total_universe = sum(count_map.values())
         else:  # style
             # 2026-08-09 BUGFIX -- as_of_date = :d exact-matched zero rows
             # whenever `d` (this endpoint's own "real today", not the
@@ -1707,6 +1789,12 @@ def get_quad_factor_stance(
                 GROUP BY e->>'label'
             """), {"ld": latest_mstance_d}).mappings().all():
                 count_map[r["k"]] = r["n"]
+            # style tags overlap (1 ticker can carry several), so summing
+            # category counts would double-count -- total is the distinct
+            # ToS-tracked universe size instead.
+            total_universe = s.execute(text(
+                "SELECT COUNT(DISTINCT tos_symbol) FROM drv_macro_score WHERE as_of_date = :ld"
+            ), {"ld": latest_mstance_d}).scalar() or 0
 
     outlook_map = {(category, r["sub_category"]): [r["quad1"], r["quad2"], r["quad3"], r["quad4"]]
                    for r in outlook_rows}
@@ -1765,6 +1853,7 @@ def get_quad_factor_stance(
         "days_to_qtr_end": win["days_to_qtr_end"],
         "count_universe": "ref_sector (~961-ticker reference universe)" if axis in ("sector", "asset_class")
             else "ToS-tracked symbols only (drv_macro_score) -- smaller universe than Sector/Asset Class",
+        "total_count": total_universe,
         "rows": rows_out,
     }
 
