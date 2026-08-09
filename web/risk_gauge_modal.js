@@ -13,7 +13,7 @@
   // Active/Closed/Both toggle can re-render the table client-side without
   // a refetch. Reset to 'both' on every fresh popup open (_open()).
   var _lastData = null;
-  var _posFilter = 'both';
+  var _posFilter = 'active';
   var _lastSubtitlePrefix = '';
 
   function _ensure() {
@@ -44,8 +44,8 @@
       // in one response, no refetch needed. User: "Popup - add a filter
       // to see active/closed/ or both".
       '      <div class="gm-pos-filter" id="gmPosFilter">',
-      '        <button type="button" data-filter="both" class="active">Both</button>',
-      '        <button type="button" data-filter="active">Active</button>',
+      '        <button type="button" data-filter="both">Both</button>',
+      '        <button type="button" data-filter="active" class="active">Active</button>',
       '        <button type="button" data-filter="closed">Closed</button>',
       '      </div>',
       '      <div class="gm-table-wrap">',
@@ -528,9 +528,9 @@
     // 2026-08-08 -- reset the Active/Closed/Both filter to its default on
     // every fresh open too -- a filter left on "Closed" from a previous
     // gauge shouldn't carry over and silently hide a new gauge's positions.
-    _posFilter = 'both';
+    _posFilter = 'active';
     Array.prototype.forEach.call(document.querySelectorAll('#gmPosFilter button'), function (b) {
-      b.classList.toggle('active', b.getAttribute('data-filter') === 'both');
+      b.classList.toggle('active', b.getAttribute('data-filter') === 'active');
     });
 
     fetch(fetchUrl)
