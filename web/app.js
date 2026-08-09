@@ -1044,8 +1044,23 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
     // 2026-08-08 -- Unmapped made clickable (same exposure-detail popup as
     // every other row) so "how can i see what stocks are unmapped?" has an
     // answer -- previously just an inert note line.
+    // 2026-08-09 -- trimmed to "Unmapped — equity% / total%" (dropped the
+    // redundant "Unmapped: Unmapped" self-label and the "of book not
+    // resolved to a category. Click to see which holdings." filler), same
+    // bold-primary/muted-secondary convention as every other row's weight
+    // cell (fs-weight-text/fs-weight-eq) -- equity% first since that's the
+    // primary reading, same weight_pct_equities/weight_pct fallback logic
+    // as the row cells above (asset_class has no weight_pct_equities).
+    // User: "change this text to include both percentages and [remove]
+    // unnecessary text ... bold and non-bold text percentages."
+    const uWpe = r.unmapped?.weight_pct_equities != null ? Number(r.unmapped.weight_pct_equities) : null;
+    const uWp = r.unmapped?.weight_pct != null ? Number(r.unmapped.weight_pct) : null;
+    const uPrimary = uWpe != null ? uWpe : uWp;
+    const uSecondary = (uWpe != null && uWp != null) ? uWp : null;
     const unmapped = r.unmapped
-      ? `<div class="fs-note fs-clickable" style="cursor:pointer;" onclick="openFactorExposureModal('${escapeHtml(axis)}', 'Unmapped')">Unmapped: ${escapeHtml(r.unmapped.category)} — ${r.unmapped.weight_pct != null ? Number(r.unmapped.weight_pct).toFixed(1) + '%' : ''} of book not resolved to a category. Click to see which holdings.</div>`
+      ? `<div class="fs-note fs-clickable" style="cursor:pointer;" onclick="openFactorExposureModal('${escapeHtml(axis)}', 'Unmapped')">Unmapped — ${
+          uPrimary != null ? `<span class="fs-weight-text">${uPrimary.toFixed(1)}%</span>` : ''
+        }${uSecondary != null ? ` <span class="fs-weight-eq">/ ${uSecondary.toFixed(1)}%</span>` : ''}</div>`
       : '';
     const headCells = _FS_WINDOWS
       .map(w => `<th title="Top: your time-weighted return, ${w.full}. Bottom (smaller): its benchmark ETF's return over the same period.">${w.label}</th>`)
