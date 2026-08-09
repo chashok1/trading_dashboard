@@ -1057,10 +1057,21 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
     const uWp = r.unmapped?.weight_pct != null ? Number(r.unmapped.weight_pct) : null;
     const uPrimary = uWpe != null ? uWpe : uWp;
     const uSecondary = (uWpe != null && uWp != null) ? uWp : null;
+    // 2026-08-09 -- two-segment flex row so "Unmapped" lines up under the
+    // CATEGORY TEXT (not the caret cluster before it -- 56px caret span +
+    // 6px td padding = 62px offset, matching the row cells above) and the
+    // %s line up under the Wt% column (flex-basis 26%/12%, same
+    // proportions as table.fs-table's own nth-child(1)/(2) widths -- this
+    // note lives outside the table as a plain div, so it has to replicate
+    // those percentages itself to stay aligned). User: "align unmapped to
+    // category text (excluding carets) and WT%."
     const unmapped = r.unmapped
-      ? `<div class="fs-note fs-clickable" style="cursor:pointer;" onclick="openFactorExposureModal('${escapeHtml(axis)}', 'Unmapped')">Unmapped — ${
-          uPrimary != null ? `<span class="fs-weight-text">${uPrimary.toFixed(1)}%</span>` : ''
-        }${uSecondary != null ? ` <span class="fs-weight-eq">/ ${uSecondary.toFixed(1)}%</span>` : ''}</div>`
+      ? `<div class="fs-note fs-clickable" style="cursor:pointer;display:flex;" onclick="openFactorExposureModal('${escapeHtml(axis)}', 'Unmapped')">
+          <span style="flex:0 0 26%;padding-left:62px;box-sizing:border-box;">Unmapped</span>
+          <span style="flex:0 0 12%;text-align:right;padding-right:6px;box-sizing:border-box;">${
+            uPrimary != null ? `<span class="fs-weight-text">${uPrimary.toFixed(1)}%</span>` : ''
+          }${uSecondary != null ? ` <span class="fs-weight-eq">/ ${uSecondary.toFixed(1)}%</span>` : ''}</span>
+        </div>`
       : '';
     const headCells = _FS_WINDOWS
       .map(w => `<th title="Top: your time-weighted return, ${w.full}. Bottom (smaller): its benchmark ETF's return over the same period.">${w.label}</th>`)
