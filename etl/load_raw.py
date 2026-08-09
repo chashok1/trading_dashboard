@@ -1711,6 +1711,23 @@ def load_f_transactions(session: Session, csv_path: str, source_file: str) -> tu
                 return datetime.strptime(s, fmt).date()
             except ValueError:
                 continue
+        # 2026-08-08 -- some Fidelity export batches carry Run Date/
+        # Settlement Date as a raw Excel serial number (e.g. "46241")
+        # instead of M/D/YYYY text -- confirmed live, 187 of 350 rows in
+        # one History_for_Account_*.csv. casters.py::to_date already
+        # decodes Excel serials, but only for actual int/float values;
+        # this function always stringifies first, so a numeric-looking
+        # string like "46241" fell through every branch to None -- a NULL
+        # trade_date on just ONE row then failed the WHOLE file's batched
+        # insert (insert_upsert does one multi-row INSERT), silently
+        # blocking every other well-formatted row in the same file too.
+        # User: "check and see if CST and FT files are processed properly".
+        if s.isdigit():
+            try:
+                from datetime import datetime, timedelta
+                return (datetime(1899, 12, 30) + timedelta(days=int(s))).date()
+            except (ValueError, OverflowError):
+                pass
         return to_date(s)
 
     records: list[dict] = []
@@ -1760,11 +1777,23 @@ def load_f_transactions(session: Session, csv_path: str, source_file: str) -> tu
 
     # `quantity` and `price` can both be NULL for 401(k) Exchange In/Out,
     # dividends, and cash sweeps. The post-2026-05-18 schema uses a surrogate
-    # `id` PK + a UNIQUE NULLS NOT DISTINCT constraint on the natural key, so
-    # we explicitly tell insert_upsert to dedup on that natural key.
+    # `id` PK + a unique constraint on the natural key, so we explicitly
+    # tell insert_upsert to dedup on that natural key.
+    # 2026-08-08 -- conflict_columns re-keyed from "account" to
+    # "account_number", matching db/baseline.sql's 2026-07-18 migration
+    # (ux_hist_ft_natural_key was re-keyed the same way, to fix the same
+    # trade loading as a "duplicate" miss when Fidelity's raw `account` text
+    # differs between overlapping export files for one physical account).
+    # This function was never updated to match, so every ON CONFLICT
+    # (account, ...) here silently stopped matching any real index --
+    # every FT load errored with "no unique or exclusion constraint
+    # matching the ON CONFLICT specification" the moment that migration
+    # landed. Went unnoticed for weeks since no new FT file was dropped in
+    # that window; hist_ft's data was stuck at 2026-05-01 until this fix.
+    # User: "check and see if CST and FT files are processed properly".
     n_attempted, n_inserted = insert_upsert(
         session, "hist_ft", records,
-        conflict_columns=["account", "trade_date", "action",
+        conflict_columns=["account_number", "trade_date", "action",
                           "symbol", "quantity", "price"],
     )
     return rows_read, n_inserted, n_attempted - n_inserted
