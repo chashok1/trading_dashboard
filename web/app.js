@@ -1399,6 +1399,14 @@ async function loadMarketView(axis, bodyId, chartId) {
     const headCells = _FS_WINDOWS
       .map(w => `<th title="${escapeHtml(w.full)} -- benchmark ETF's own return, independent of your holdings">${w.label}</th>`)
       .join('');
+    // 2026-08-10 -- category -> caret-cluster row, keyed for the hover
+    // popover wiring below (same _showCategoryQuadPop the top 3 $ grids
+    // use). User: "fix popovers on carets" -- Market View never wired this
+    // at all (top grids only); adding it here, reusing the SAME merged
+    // row the caret cluster itself renders from so the popover always
+    // matches what's on screen (source's own read up top, quad-regime
+    // detail below it).
+    const catCaretMap = new Map();
     const bodyRows = rows.map(r => {
       const bench = benchMap.get(r.category.trim().toLowerCase());
       const cells = _FS_WINDOWS.map(w => {
@@ -1410,10 +1418,14 @@ async function loadMarketView(axis, bodyId, chartId) {
       // carets = always the category's quad-regime forecast (quadRow),
       // regardless of Source filter -- see the quadStanceMap fetch above.
       // No source selected -> quadRow IS r already, unchanged.
-      const quadRow = quadStanceMap.get(r.category.trim().toLowerCase());
+      const catKey = r.category.trim().toLowerCase();
+      const quadRow = quadStanceMap.get(catKey);
       const caretRow = state.marketViewSource
-        ? { score: r.score, stance: r.stance, months: quadRow?.months, qtr: quadRow?.qtr, next_qtr: quadRow?.next_qtr }
+        ? { category: r.category, score: r.score, stance: r.stance,
+            months: quadRow?.months, qtr: quadRow?.qtr, next_qtr: quadRow?.next_qtr,
+            quad1: quadRow?.quad1, quad2: quadRow?.quad2, quad3: quadRow?.quad3, quad4: quadRow?.quad4 }
         : r;
+      catCaretMap.set(catKey, caretRow);
       const caretHtml = _quadCaretCluster(caretRow, curQtrOp, nextQtrOp);
       // 2026-08-09 -- NOT clickable to the $ exposure popup, unlike the $
       // grids' own rows -- that popup shows YOUR holdings, which
@@ -1439,7 +1451,7 @@ async function loadMarketView(axis, bodyId, chartId) {
       // quads) -- market_view_modal.js skips that fetch and shows a note
       // instead when source is ''. User: "you could still have a popup for
       // all and show the graphs only right?"
-      const clickAttr = ` class="fs-clickable" style="cursor:pointer;" onclick="openMarketViewDetailModal('${escapeHtml(axis)}', '${escapeHtml(r.category).replace(/'/g, "\\'")}', '${escapeHtml(state.marketViewSource || '')}')"`;
+      const clickAttr = ` class="fs-clickable" data-cat="${escapeHtml(catKey)}" style="cursor:pointer;" onclick="openMarketViewDetailModal('${escapeHtml(axis)}', '${escapeHtml(r.category).replace(/'/g, "\\'")}', '${escapeHtml(state.marketViewSource || '')}')"`;
       return `<tr${clickAttr}>
         <td><span style="display:inline-block;width:${_CARET_CLUSTER_PX}px;">${caretHtml}</span>${escapeHtml(r.category)}</td>
         <td class="fs-weight-cell"><span class="fs-weight-text">${r.count}</span><span class="fs-weight-eq">/ ${total}</span></td>
@@ -1458,6 +1470,22 @@ async function loadMarketView(axis, bodyId, chartId) {
       </div>
       ${axis === 'style' && d.count_universe ? `<div class="mv-universe-note">${escapeHtml(d.count_universe)}</div>` : ''}
     `;
+    // 2026-08-10 -- hover popover on the caret cluster, same
+    // _showCategoryQuadPop the top 3 $ grids use (loadFactorScorecard) --
+    // was never wired here at all. click stopPropagation so hovering/
+    // clicking the caret itself doesn't also open the row's stock-detail
+    // modal. User: "fix popovers on carets."
+    body.querySelectorAll('tr[data-cat]').forEach(tr => {
+      const icon = tr.querySelector('.cat-quad-stance');
+      const stanceRow = icon ? catCaretMap.get(tr.dataset.cat) : null;
+      if (!icon || !stanceRow) return;
+      icon.addEventListener('click', e => e.stopPropagation());
+      icon.addEventListener('mouseover', () => _showCategoryQuadPop(icon, stanceRow));
+      icon.addEventListener('mouseout', e => {
+        if (e.relatedTarget && e.relatedTarget.closest('.cat-quad-stance')) return;
+        _hideQuadPop();
+      });
+    });
   } catch (e) {
     console.error('market view failed:', axis, e);
     body.innerHTML = '<div class="mv-empty">Failed to load.</div>';
