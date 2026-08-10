@@ -1378,7 +1378,20 @@ async function loadMarketView(axis, bodyId, chartId) {
       // clicking through to it made the Source filter look broken (row
       // click always showed the same $ positions regardless of which
       // source was selected, since it's a different data source entirely).
-      return `<tr>
+      // 2026-08-10 -- row IS clickable again, but only to the NEW
+      // market_view_modal.js popup (per-symbol source detail + benchmark
+      // ETF charts, no $/holdings) -- and only when a specific Source
+      // filter is active. The default (no Source, Hedgeye quad-outlook)
+      // view has no single per-symbol "signal value" to list, so it stays
+      // non-clickable there. Same "pass primitives, let the modal fetch its
+      // own data" convention as openFactorExposureModal above -- no bench
+      // object embedded inline. User: "i need to see the stock details in
+      // the popups. depending on the source." / confirmed: specific
+      // sources only.
+      const clickAttr = state.marketViewSource
+        ? ` class="fs-clickable" style="cursor:pointer;" onclick="openMarketViewDetailModal('${escapeHtml(axis)}', '${escapeHtml(r.category).replace(/'/g, "\\'")}', '${escapeHtml(state.marketViewSource)}')"`
+        : '';
+      return `<tr${clickAttr}>
         <td><span style="display:inline-block;width:${_CARET_CLUSTER_PX}px;">${caretHtml}</span>${escapeHtml(r.category)}</td>
         <td class="fs-weight-cell"><span class="fs-weight-text">${r.count}</span><span class="fs-weight-eq">/ ${total}</span></td>
         ${cells}

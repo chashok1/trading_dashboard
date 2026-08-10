@@ -1068,6 +1068,35 @@ def get_symbol_daily_change(symbol: str = Query(...), days: int = Query(30, ge=1
 
 
 # ---------------------------------------------------------------------------
+# 6.3d GET /api/cockpit/benchmark-daily-change -- per-day % change for a bare
+# ETF/index symbol (e.g. XLK, SPY) with NO holdings involved -- Market View's
+# stock-details popup daily gain/loss chart (user: "right side graphs ->
+# daily gain/loss for given sector symbol (ex: XLK for tech etc)").
+# symbol-daily-change above only works for symbols you actually hold
+# (queries hist_cs/hist_f); this reads drv_quote's own daily net_chng/
+# pct_change instead, which exists for any tracked symbol regardless of
+# whether it's ever been a position.
+# ---------------------------------------------------------------------------
+
+@router.get("/api/cockpit/benchmark-daily-change")
+def get_benchmark_daily_change(symbol: str = Query(...), days: int = Query(30, ge=1, le=180),
+                                date: Optional[str] = Query(None)):
+    sym = symbol.strip().upper()
+    d = _resolve_date(date)
+    with session_scope() as s:
+        rows = s.execute(text(
+            "SELECT as_of_date, net_chng, pct_change FROM drv_quote"
+            " WHERE tos_symbol = :sym AND as_of_date <= :d"
+            " ORDER BY as_of_date DESC LIMIT :n"
+        ), {"sym": sym, "d": d, "n": days}).fetchall()
+        out_days = [{"date": r[0].isoformat(),
+                     "dollar": float(r[1]) if r[1] is not None else None,
+                     "pct": float(r[2]) if r[2] is not None else None}
+                    for r in reversed(rows)]
+        return {"symbol": sym, "days": out_days}
+
+
+# ---------------------------------------------------------------------------
 # 6.4 GET /api/cockpit/shortlist
 # ---------------------------------------------------------------------------
 

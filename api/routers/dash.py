@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -1890,6 +1891,79 @@ def get_quad_factor_stance(
         "total_count": total_universe,
         "rows": rows_out,
     }
+
+
+# 2026-08-10 -- Market View stock-details popup ("i need to see the stock
+# details in the popups. depending on the source. relevant information in
+# the grid what ever we have based on the source (SSS, PS etc)"). Per-source
+# raw fields since each source's own hist_* table has genuinely different
+# columns (SSS: pct_delta/analyst rank/days_on; PS: rank/wk_ago/mn_ago/
+# sizing; RR: buy/sell trade levels; CALL: modifier; ETF: brr/trr) -- a
+# uniform column set would lose exactly the detail the user asked for.
+_SOURCE_DETAIL_COLS = {
+    "RR":   ("hist_rr",   ["outlook", "buy_trade", "sell_trade", "last_price"]),
+    "CALL": ("hist_call", ["outlook", "outlook_modifier"]),
+    "ETF":  ("hist_etf",  ["outlook", "brr", "trr", "recent_price"]),
+    "II":   ("hist_ii",   ["outlook"]),
+    "SSS":  ("hist_sss",  ["pct_delta", "anlst_best_idea_rank", "days_on"]),
+    "PS":   ("hist_ps",   ["rank", "wk_ago", "mn_ago", "position_sizing"]),
+}
+
+
+@router.get("/api/quad/factor-stance/source-detail")
+def get_quad_factor_stance_source_detail(
+    axis: str = Query(..., description="sector | asset_class | style"),
+    category: str = Query(...),
+    source: str = Query(..., description="RR|CALL|ETF|II|SSS|PS"),
+    date: Optional[str] = Query(None),
+):
+    """Per-symbol raw detail for ONE category from ONE source's own list --
+    powers the Market View row-click popup. Joins each symbol to its OWN
+    snapshot_date from drv_source_standing (not one shared date) since CALL
+    is a documented window-based exception where symbols carry different
+    effective snapshot dates within the same as_of_date; every other source
+    happens to share one snapshot date, so the per-row join is correct
+    either way. Same category classification (_build_category_map/
+    _categories_for) as _quad_factor_stance_by_source, so a symbol's
+    category here never disagrees with the grid it was clicked from."""
+    if source not in _SOURCE_DETAIL_COLS:
+        raise HTTPException(status_code=400, detail=f"source must be one of {list(_SOURCE_DETAIL_COLS)}")
+    from etl.derive_category_perf import _build_category_map, _categories_for
+
+    d = _resolve_date(date)
+    table, extra_cols = _SOURCE_DETAIL_COLS[source]
+
+    with session_scope() as s:
+        latest_d = s.execute(text(
+            "SELECT MAX(as_of_date) FROM drv_source_standing WHERE source_code = :src AND as_of_date <= :d"
+        ), {"src": source, "d": d}).scalar()
+        if not latest_d:
+            return {"axis": axis, "category": category, "source": source, "as_of_date": d.isoformat(), "rows": []}
+
+        symbols = {sym for sym in s.execute(text(
+            "SELECT tos_symbol FROM drv_source_standing"
+            " WHERE source_code = :src AND as_of_date = :ld AND on_list = TRUE"
+        ), {"src": source, "ld": latest_d}).scalars().all() if sym}
+        cat_map = _build_category_map(s, latest_d, symbols)
+        cat_symbols = [sym for sym in symbols if category in _categories_for(sym, cat_map, axis)]
+        if not cat_symbols:
+            return {"axis": axis, "category": category, "source": source,
+                    "as_of_date": latest_d.isoformat(), "rows": []}
+
+        select_cols = ", ".join(f"h.{c}" for c in extra_cols)
+        rows = s.execute(text(
+            f"SELECT ds.tos_symbol AS tos_symbol, {select_cols} "
+            f"FROM drv_source_standing ds "
+            f"JOIN {table} h ON h.tos_symbol = ds.tos_symbol AND h.snapshot_date = ds.snapshot_date "
+            f"WHERE ds.source_code = :src AND ds.as_of_date = :ld AND ds.tos_symbol = ANY(:syms)"
+        ), {"src": source, "ld": latest_d, "syms": cat_symbols}).mappings().all()
+
+        def _clean(v):
+            return float(v) if isinstance(v, Decimal) else v
+        rows_out = [{k: _clean(v) for k, v in dict(r).items()} for r in rows]
+        rows_out.sort(key=lambda r: r["tos_symbol"])
+        return {"axis": axis, "category": category, "source": source,
+                "as_of_date": latest_d.isoformat(), "columns": extra_cols, "rows": rows_out}
 
 
 @router.get("/api/actionable/source-data")
