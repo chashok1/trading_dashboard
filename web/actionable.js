@@ -71,7 +71,8 @@ const state = {
   sourceMethods: {},   // source_code -> base_weight_method (Metric-column sort)
   buysellSeq: {},      // buysell code -> seq from ref_param_lookup (priority sort)
   agreementScorecard: null, // TASK_69: {agreement_class -> avg_fwd_20d} cache
-  quadFactors: null,        // cached from /api/quad/band-factors for MACRO tooltip
+  // quadFactors (was: cached from /api/quad/band-factors for the removed
+  // Regime band's own popover) removed 2026-08-10 -- no other reader.
   quadData: null,           // cached from /api/dashboard/quads (period dates for dtb)
   allAccounts: [],          // [{account_number, display_name, short_name, custom_name}] from /api/actionable/accounts
   // Pass 3: bulk select
@@ -645,74 +646,20 @@ function _buildScoresPopHtml(r) {
   return h;
 }
 
-// Rich popover for regime-band quad labels (data-quadbandpop="all_periods|cur_month|next_month|cur_qtr|next_qtr")
-function _buildQuadBandPopHtml(key) {
-  const facs  = (state.quadFactors || {}).factors || [];
-  const quads = (state.quadFactors || {}).quads   || {};
+// 2026-08-10 -- MACRO Regime Band (#macroBand) removed entirely per user
+// request ("actionable screen -> remove REGIME panel altogether"); its
+// Asset Class/Sector/Style filter chips were relocated into
+// #moreFiltersPanel (still populated by renderAssetClassSummary() etc.,
+// unchanged) rather than deleted -- see web/actionable.html's
+// #moreFiltersPanel comment. _buildQuadBandPopHtml (the band's own rich
+// quad-factor popover, keyed off state.quadFactors from the now-removed
+// /api/quad/band-factors fetch) and _regimeVerdictHtml (the band's same-day
+// risk-gauge verdict badge) were both dedicated solely to that band's own
+// rendering, so they're removed too, not just left as dead code. The
+// "Quads" side panel (#quadOutlookBody, _renderQuadOutlookPanel) is a
+// SEPARATE feature that only needed loadMacroBand's /api/dashboard/quads
+// fetch, not the band's own DOM -- kept, now fed by loadQuadOutlook() below.
 
-  // ── "Month" label: comparison table across all 3 periods ──────────────────
-  if (key === 'all_periods') {
-    const _oc = v => { const u=(v||'').toUpperCase(); return u==='BULLISH'?'#1c6c30':u==='BEARISH'?'#8c1d1d':'#9ca3af'; };
-    const _ol = v => { if (!v) return '—'; const u=v.toUpperCase(); return u==='BULLISH'?'Bullish':u==='BEARISH'?'Bearish':v; };
-    const bull = facs.filter(f => (f.cur_month||'').toUpperCase()==='BULLISH');
-    const bear = facs.filter(f => (f.cur_month||'').toUpperCase()==='BEARISH');
-    const neut = facs.filter(f => { const u=(f.cur_month||'').toUpperCase(); return u!=='BULLISH'&&u!=='BEARISH'; });
-    const _vcol = 'padding-left:12px;min-width:58px;';
-    const _row = f =>
-      `<tr><td class="k">${escapeHtml(f.factor)}</td>`
-      + `<td class="v" style="${_vcol}color:${_oc(f.cur_month)};font-size:10px;font-weight:600;">${_ol(f.cur_month)}</td>`
-      + `<td class="v" style="${_vcol}color:${_oc(f.next_month)};font-size:10px;font-weight:600;">${_ol(f.next_month)}</td>`
-      + `<td class="v" style="${_vcol}color:${_oc(f.cur_qtr)};font-size:10px;font-weight:600;">${_ol(f.cur_qtr)}</td>`
-      + `</tr>`;
-    const _hdr = `<tr style="border-bottom:1px solid #e2e8f0;">`
-      + `<td class="k" style="color:#94a3b8;font-size:9px;padding-bottom:3px;">Factor</td>`
-      + `<td class="v" style="${_vcol}color:#94a3b8;font-size:9px;white-space:nowrap;padding-bottom:3px;">Cur Month</td>`
-      + `<td class="v" style="${_vcol}color:#94a3b8;font-size:9px;white-space:nowrap;padding-bottom:3px;">Next Month</td>`
-      + `<td class="v" style="${_vcol}color:#94a3b8;font-size:9px;white-space:nowrap;padding-bottom:3px;">Quarter</td>`
-      + `</tr>`;
-    let h = `<div class="sp-title">Monthly Outlook</div><table>${_hdr}`;
-    const sections = [
-      [bull, `<tr><td class="sp-sec" colspan="4" style="color:#1c6c30;">↑ Bull — Current Month</td></tr>`],
-      [bear, `<tr><td class="sp-sec" colspan="4" style="color:#8c1d1d;">↓ Bear — Current Month</td></tr>`],
-      [neut, neut.length ? `<tr><td class="sp-sec" colspan="4" style="color:#9ca3af;">Neutral</td></tr>` : ''],
-    ];
-    for (const [items, hdr] of sections) { if (items.length) { h += hdr; items.forEach(f => { h += _row(f); }); } }
-    return h + '</table>';
-  }
-
-  // Window-mix month popover (data-quadbandpop="by_quad:<1-4>:<yyyy-mm>") --
-  // looks up bull/bear factors by the month's own raw quad number instead of
-  // a fixed period name, so it works for any window month, not just the
-  // cur_month/next_month/cur_qtr periods this endpoint otherwise resolves.
-  const byQuad = /^by_quad:(\d)(?::(\d{4}-\d{2}))?$/.exec(key);
-  const quad = byQuad ? `Quad ${byQuad[1]}` : (quads[key] || '—');
-  const periodLabel = byQuad
-    ? (byQuad[2] ? `${_shortMonth(byQuad[2])} ${byQuad[2].slice(0, 4)}` : 'Blended window')
-    : ({ cur_month: 'Current Month', next_month: 'Next Month', cur_qtr: 'Current Quarter', next_qtr: 'Next Quarter' }[key] || key);
-  const factorKey = byQuad ? `quad${byQuad[1]}` : key;
-  const bull = facs.filter(f => (f[factorKey] || '').toUpperCase() === 'BULLISH');
-  const bear = facs.filter(f => (f[factorKey] || '').toUpperCase() === 'BEARISH');
-  let h = `<div class="sp-title" style="color:${_quadColor(quad)}">${escapeHtml(quad)}</div>`;
-  h += `<div style="color:#94a3b8;font-size:9px;margin-bottom:4px;padding:0 6px;">${periodLabel}</div>`;
-  h += '<table>';
-  if (bull.length) {
-    h += `<tr><td class="sp-sec" colspan="2" style="color:#1c6c30;">↑ Bull Factors</td></tr>`;
-    for (const f of bull)
-      h += `<tr><td class="k">${escapeHtml(f.factor)}</td><td class="v" style="color:#1c6c30;font-weight:600;font-size:10px;">Bullish</td></tr>`;
-  }
-  if (bear.length) {
-    h += `<tr><td class="sp-sec" colspan="2" style="color:#8c1d1d;">↓ Bear Factors</td></tr>`;
-    for (const f of bear)
-      h += `<tr><td class="k">${escapeHtml(f.factor)}</td><td class="v" style="color:#8c1d1d;font-weight:600;font-size:10px;">Bearish</td></tr>`;
-  }
-  if (!bull.length && !bear.length)
-    h += `<tr><td class="k" colspan="2" style="color:#9ca3af;">No factor data</td></tr>`;
-  h += '</table>';
-  return h;
-}
-
-// ── MACRO Regime Band (TASK_74) ─────────────────────────────────────────────
-// Loads /api/dashboard/quads and renders the regime band above the grid.
 const _MONTH_3C = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 function _shortMonthLbl(p) {
   if (p.start_date) { const d = new Date(p.start_date); if (!isNaN(d)) return _MONTH_3C[d.getMonth()]; }
@@ -775,59 +722,10 @@ function _quadColor(q) {
 }
 
 
-// Same-day risk-gauge verdict (2026-08-01) — "is today a good day to trade,"
-// distinct from the forward-looking Quad regime the rest of the band shows.
-// Reuses /api/macro-areas fields already computed for the Sectors rail —
-// zero new backend work except TLT/HYG/SPX/DXY's existing is_hot/is_cold.
-// Deliberately simple/explainable: count how many of 8 key gauges are
-// flagged today, no hidden weighting. Silent (returns '') on a calm day.
-//   VIX/MOVE/Gold-vol/Oil-vol → zone === 'elevated' (already-thresholded,
-//     ref_vol_threshold, same mechanism proven out for these 4 gauges).
-//   S&P → is_hot OR is_cold (stretched in EITHER direction is "not
-//     investable" — matches how the app already flags rr_pos extremes).
-//   Dollar → is_hot only (user's own example: "dollar is high").
-//   Bonds → TLT is_cold. TLT is a red herring to compute yields directly
-//     (see api/routers/macro_areas.py's reverted attempt — the trading-range
-//     formula produces garbage on a raw yield level); TLT's PRICE moves
-//     inversely to yields, so TLT near the bottom of its own range already
-//     IS "yields near the top of theirs," using an already-correct field.
-//   Credit → HYG is_cold (HYG selling off = credit spreads widening/stress).
-function _regimeVerdictHtml(areasData) {
-  if (!areasData || !Array.isArray(areasData.areas)) return '';
-  const bySym = {};
-  for (const a of areasData.areas) {
-    for (const m of (a.members || [])) {
-      if (!(m.symbol in bySym)) bySym[m.symbol] = m; // first occurrence wins ($DXY appears in 2 areas)
-    }
-  }
-  const flags = [];
-  const VOL_GAUGES = [['VIX', 'VIX'], ['MOVE:GIF', 'MOVE'], ['GVZ:CGI', 'Gold vol'], ['OVX:CGI', 'Oil vol']];
-  for (const [sym, label] of VOL_GAUGES) {
-    const m = bySym[sym];
-    if (m && m.zone === 'elevated') flags.push(label + ' elevated');
-  }
-  const spx = bySym['SPX'] || bySym['$SPX'];
-  if (spx && (spx.is_hot || spx.is_cold)) flags.push('S&P price stretched');
-  const dxy = bySym['$DXY'];
-  if (dxy && dxy.is_hot) flags.push('Dollar strong');
-  const tlt = bySym['TLT'];
-  if (tlt && tlt.is_cold) flags.push('Yields elevated');
-  const hyg = bySym['HYG'];
-  if (hyg && hyg.is_cold) flags.push('Credit stress elevated');
-
-  if (!flags.length) return '';
-  const notInvestable = flags.length >= 3;
-  const level = notInvestable ? 'NOT INVESTABLE' : 'CAUTION';
-  const color = notInvestable ? '#b91c1c' : '#b45309';
-  const bg    = notInvestable ? '#fee2e2' : '#fef3c7';
-  return `<span style="background:${bg};color:${color};font-weight:700;padding:1px 6px;border-radius:4px;font-size:10px;cursor:help;" `
-       + `title="Same-day risk gauges (${flags.length} of 8 flagged): ${escapeHtml(flags.join(' · '))}">`
-       + `${level}: ${escapeHtml(flags.join(' · '))}</span>`;
-}
-
-async function loadMacroBand() {
-  const band = $('macroBand');
-  if (!band) return;
+// 2026-08-10 -- slimmed from the old loadMacroBand() (see removal comment
+// above _MONTH_3C): the Regime band itself is gone, but the "Quads" side
+// panel (_renderQuadOutlookPanel) still needs /api/dashboard/quads.
+async function loadQuadOutlook() {
   try {
     // Quad regime is a calendar-based forward outlook, not tied to the trading
     // anchor -- omit `date` when viewing live so the backend's own real-today
@@ -835,196 +733,10 @@ async function loadMacroBand() {
     // Viewing an explicit historical date still passes it through (no look-ahead).
     const viewingLive = !state.date || state.date === state.anchorDate;
     const dateParam = viewingLive ? '' : `?date=${encodeURIComponent(state.date)}`;
-    // sectorsData (2026-07-05): only fetched for the Regime Band's
-    // quad-bullish-sector cross-reference below -- the Sectors side-rail
-    // panel (macro_areas.js) fetches this independently and doesn't expose
-    // it globally, so this is its own request, not a shared cache.
-    const [data, factors, sectorsData, windowData] = await Promise.all([
-      fetchJson(`/api/dashboard/quads${dateParam}`),
-      fetchJson(`/api/quad/band-factors${dateParam}`).catch(() => ({ bull: [], bear: [] })),
-      fetchJson(`/api/macro-areas${dateParam}`).catch(() => null),
-      fetchJson(`/api/quad-window${dateParam}`).catch(() => null),
-    ]);
-    const cq = data.current_quarter;
-    const elM = $('macroBandMonth'), elQ = $('macroBandQtr'), elF = $('macroBandFavoring');
-    if (!elM) return;
-
-    const elVerdict = $('macroBandVerdict');
-    if (elVerdict) {
-      const verdictHtml = _regimeVerdictHtml(sectorsData);
-      elVerdict.innerHTML = verdictHtml;
-      elVerdict.style.display = verdictHtml ? '' : 'none';
-    }
-
-    // _qdLbl defined at module scope below
-    // Thin solid bar for quarterly
-    const _distBarQtr = p => {
-      if (!p) return '';
-      const segs = [
-        {q:'Quad 1',pct:p.quad1_pct||0},{q:'Quad 2',pct:p.quad2_pct||0},
-        {q:'Quad 3',pct:p.quad3_pct||0},{q:'Quad 4',pct:p.quad4_pct||0},
-      ].filter(s=>s.pct>0);
-      if (!segs.length) return '';
-      const bars = segs.map(s=>`<div style="width:${s.pct}%;background:${_quadColor(s.q)};height:100%;" title="${escapeHtml(s.q)} ${s.pct}%"></div>`).join('');
-      return `<span style="display:inline-flex;width:40px;height:5px;border-radius:2px;overflow:hidden;border:1px solid #e2e8f0;vertical-align:middle;margin-left:3px;">${bars}</span>`;
-    };
-
-    // Quad-bullish sectors also currently bullish on the Sectors panel
-    // (2026-07-05): intersect ref_quad_outlook's "Equity Sectors" rows
-    // (ticker + per-period BULLISH/BEARISH/Neutral outlook, from
-    // /api/quad/band-factors) with the Sectors panel's own live stance
-    // (/api/macro-areas sectors.all[], score>=0.5 = bullish, same 0.5
-    // threshold renderSectorsPanel in macro_areas.js uses for Long/Short).
-    // Rendered inline next to each month's distribution bar below, no
-    // separate header text -- just the ticker list itself.
-    const sectorsAll = (sectorsData && sectorsData.sectors && sectorsData.sectors.all) || [];
-    const panelBullishTickers = new Set(
-      sectorsAll.filter(s => s.score >= 0.5 && s.etf && s.etf.symbol).map(s => s.etf.symbol)
-    );
-    const _quadBullishSectorTickers = periodKey => (factors.factors || [])
-      .filter(f => f.category === 'Equity Sectors' && f.ticker
-                   && /^bullish$/i.test((f[periodKey] || '').trim())
-                   && panelBullishTickers.has(f.ticker))
-      .map(f => f.ticker);
-    const _sectorListHtml = list => list.length
-      ? ` <span style="color:#166534;font-size:9px;">${list.map(t => escapeHtml(t)).join(', ')}</span>`
-      : '';
-    const curQtrSectorsHtml = _sectorListHtml(_quadBullishSectorTickers('cur_qtr'));
-
-    // TASK_126: "Month | Quarter" ramp headline replaced by the sliding
-    // look-ahead window mix + dominant forward quad. Quarterly leg is
-    // minimized (weight 0.05) — shown small/de-emphasized beside it rather
-    // than as its own headline span.
-    const wMonths = (windowData && windowData.months) || [];
-    const wDominant = windowData && windowData.dominant_quad ? `Quad ${windowData.dominant_quad}` : '—';
-    // Each month segment hovers the same rich bull/bear-factor popover as the
-    // big quad label (data-quadbandpop, wired once in the mouseover listener
-    // below), keyed by the month's own raw quad number so it works uniformly
-    // for every window month regardless of how many the window spans.
-    const wMixHtml = wMonths.map((m) => {
-      const qLbl = m.quad != null ? `Q${m.quad}` : '?';
-      const segAttr = m.quad != null
-        ? ` data-quadbandpop="by_quad:${m.quad}:${m.m}"`
-        : ` title="${escapeHtml(`${m.m} w=${Math.round(m.w * 100)}%`)}"`;
-      return `<span${segAttr} style="cursor:help;border-bottom:1px dotted #cbd5e1;">`
-        + `${escapeHtml(m.m.slice(5))} <span style="color:${_quadColor(qLbl)};">(${escapeHtml(qLbl)})</span> ${Math.round(m.w * 100)}%</span>`;
-    }).join(' · ');
-    const wTitle = wMonths.map(m => `${m.m} (Quad ${m.quad ?? '?'}) w=${Math.round(m.w * 100)}%`).join('\n');
-    const wSectorsHtml = wMonths.length
-      ? _sectorListHtml(_quadBullishSectorTickers('cur_month'))
-      : '';
-    const wDominantAttr = windowData && windowData.dominant_quad != null
-      ? ` data-quadbandpop="by_quad:${windowData.dominant_quad}"`
-      : '';
-    elM.innerHTML = `<span style="color:#64748b;font-size:10px;" title="${escapeHtml(wTitle)}">Window (${windowData?.h ?? 60}d)</span> `
-      + `<strong style="color:${_quadColor(wDominant)};cursor:help;"${wDominantAttr}>${escapeHtml(_qdLbl(wDominant))}</strong>`
-      + (wMixHtml ? ` <span style="color:#94a3b8;font-size:10px;">${wMixHtml}</span>` : '')
-      + wSectorsHtml
-      + (windowData && windowData.fallback
-          ? ` <span style="color:#f97316;font-size:9px;">(fallback, coverage ${windowData.coverage_pct}%)</span>`
-          : '');
-
-    // Quarter — minimized (0.05 weight), shown small/gray beside the window
-    const qCur = _effectiveQuad(cq) || '—';
-    const qDtb = cq?.end_date ? Math.max(0, Math.round((new Date(cq.end_date) - new Date(data.as_of_date)) / 864e5)) : null;
-    elQ.innerHTML = `<span style="color:#94a3b8;font-size:9px;">Qtr (min wt)</span> `
-      + `<span style="color:${_quadColor(qCur)};cursor:help;font-size:10px;" data-quadbandpop="cur_qtr">${escapeHtml(_qdLbl(qCur))}</span>`
-      + _distBarQtr(cq)
-      + (qDtb != null ? ` <span style="color:#94a3b8;font-size:9px;">(${qDtb}d left)</span>` : '')
-      + curQtrSectorsHtml;
-
-    // Macro distribution — same universe as action split below
-    if (elF) elF.innerHTML = '';
-    // universe is computed below; defer macro dist render until then
-
-    // Universe: same rules as matchesBaseFilters(show_hidden=off) —
-    // excludes null-action, zero-AMT, and unheld-REMOVE rows.
-    // Ignores active user filters (held_only, source, etc.) so stats
-    // always reflect the full real signal universe, not just visible rows.
-    const universe = (state.allRows || []).filter(r => {
-      if (!r.consolidated_action) return false;
-      if (!r._amt) return false;
-      if ((r.consolidated_action || '').toUpperCase() === 'REMOVE' && !r.held_today) return false;
-      return true;
-    });
-
-    // Breadth: ↑/↓ count from pct_change
-    const elBreadth = $('macroBandBreadth');
-    if (elBreadth) {
-      if (universe.length) {
-        let up = 0, dn = 0;
-        for (const r of universe) {
-          const p = r.pct_change != null ? Number(r.pct_change) : null;
-          if (p != null) { if (p > 0) up++; else if (p < 0) dn++; }
-        }
-        elBreadth.innerHTML = `<span style="color:#166534;">↑${up}</span> <span style="color:#991b1b;">↓${dn}</span>`;
-      } else { elBreadth.textContent = ''; }
-    }
-
-    // Macro distribution — counts macro_value within the same universe as action split
-    if (elF && universe.length) {
-      const mcnts = {};
-      for (const r of universe) { const mv = r.macro_value; if (mv) mcnts[mv] = (mcnts[mv]||0)+1; }
-      const SIDE_ORDER = { buy: 0, neutral: 1, sell: 2 };
-      const mparts = Object.entries(mcnts)
-        .sort((a, b) => {
-          const sa = SIDE_ORDER[actionDisplay(a[0]).side] ?? 1;
-          const sb = SIDE_ORDER[actionDisplay(b[0]).side] ?? 1;
-          return sa !== sb ? sa - sb : b[1] - a[1];
-        })
-        .map(([code, cnt]) => {
-          const d = actionDisplay(code);
-          const col = d.side === 'buy' ? '#166534' : d.side === 'sell' ? '#991b1b' : '#6b7280';
-          return `<span style="color:${col};">${escapeHtml(d.code || code)}:${cnt}</span>`;
-        });
-      elF.innerHTML = mparts.length
-        ? `<span style="color:#64748b;font-size:10px;">Macro </span>${mparts.join(' ')}`
-        : '';
-    }
-
-    // Action split: distribution grouped buy→neutral→sell
-    const elSplit = $('macroBandSplit');
-    if (elSplit) {
-      if (universe.length) {
-        const cnts2 = {};
-        for (const r of universe) {
-          const a = r.consolidated_action;
-          if (a) cnts2[a] = (cnts2[a]||0) + 1;
-        }
-        const SIDE_ORDER = { buy: 0, neutral: 1, sell: 2 };
-        const parts = Object.entries(cnts2)
-          .sort((a, b) => {
-            const sa = SIDE_ORDER[actionDisplay(a[0]).side] ?? 1;
-            const sb = SIDE_ORDER[actionDisplay(b[0]).side] ?? 1;
-            return sa !== sb ? sa - sb : b[1] - a[1];
-          })
-          .map(([code, cnt]) => {
-            const d = actionDisplay(code);
-            const col = d.side === 'buy' ? '#166534' : d.side === 'sell' ? '#991b1b' : '#6b7280';
-            return `<span style="color:${col};">${escapeHtml(actionText(d))}:${cnt}</span>`;
-          });
-        elSplit.innerHTML = parts.join(' ');
-      } else { elSplit.textContent = ''; }
-    }
-
+    const data = await fetchJson(`/api/dashboard/quads${dateParam}`);
     state.quadData = data;
-    state.quadFactors = factors;
-    band.style.display = 'flex';
     _renderQuadOutlookPanel(data);
-
-    // Wire rich popover on band quad labels (done once; re-attaching is safe via delegation)
-    if (!band._qbpInit) {
-      band._qbpInit = true;
-      band.addEventListener('mouseover', e => {
-        const el = e.target.closest('[data-quadbandpop]');
-        if (el) _showDataPop(el, _buildQuadBandPopHtml(el.dataset.quadbandpop));
-      });
-      band.addEventListener('mouseout', e => {
-        if (e.relatedTarget && e.relatedTarget.closest('[data-quadbandpop]')) return;
-        hideSourcePop();
-      });
-    }
-  } catch(e) { console.error('MACRO band:', e); if (band) band.style.display = 'none'; }
+  } catch(e) { console.error('Quad outlook:', e); }
 }
 
 function _renderQuadOutlookPanel(data) {
@@ -1784,7 +1496,7 @@ async function loadActionable(opts) {
     if (window._refreshTapeGlyphs) window._refreshTapeGlyphs();
     applyClientFilter(preserveState ? { preserveSelection: true } : undefined);
     loadSidePanels();
-    loadMacroBand();
+    loadQuadOutlook();
     if (window.reloadMacroAreas) window.reloadMacroAreas();
     const now = new Date();
     const mo = now.getMonth() + 1;

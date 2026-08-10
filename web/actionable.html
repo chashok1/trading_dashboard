@@ -736,34 +736,18 @@
         <span id="eodMissingMsg">EOD price feed missing — recommendations unreliable.</span>
       </div>
 
-      <!-- MACRO Regime Band (TASK_74/86) — full-width strip; shown by loadMacroBand() -->
-      <div id="macroBand" style="display:none; padding:3px 8px; background:#f8f8fc; border:1px solid #e0e0f0; border-radius:5px; margin-bottom:4px; font-size:10px; align-items:center; gap:8px; flex-wrap:wrap;">
-        <span style="font-weight:700; color:#555; font-size:9px; text-transform:uppercase; letter-spacing:0.5px;">Regime</span>
-        <!-- Same-day risk-gauge verdict (2026-08-01): VIX/MOVE/Gold-vol/Oil-vol
-             zones + S&P/Dollar/Bonds/Credit stretch reads, synthesized from
-             the same /api/macro-areas payload the Sectors rail already uses.
-             Leads the strip — same-day risk precedes the forward Quad regime
-             content that follows. Empty/hidden on a calm day (no flags). -->
-        <span id="macroBandVerdict" style="white-space:nowrap; display:none;"></span>
-        <span id="macroBandMonth" style="white-space:nowrap;"></span>
-        <span style="color:#ddd;">|</span>
-        <span id="macroBandQtr" style="white-space:nowrap;"></span>
-        <span id="macroBandFavoring" style="white-space:nowrap; color:#475569; display:none;"></span>
-        <span id="macroBandBreadth" style="white-space:nowrap; display:none;"></span>
-        <span id="macroBandSplit" style="white-space:nowrap; display:none;"></span>
-        <!-- Held $ by asset class (Equities/Fixed Income/Commodities/...), filtered
-             by whatever else is active (Source/Acct/Trade Mode/etc.) — also doubles
-             as the asset-class filter; click a chip to toggle. -->
-        <div class="act-summary" id="assetClassSummary" style="padding-left:8px; border-left:1px solid var(--border,#e0e0e0);"></div>
-        <!-- Held $ by GICS-11 equity sector (drv_actionable.sector) — same
-             filter-chip pattern as assetClassSummary above. -->
-        <div class="act-summary" id="sectorSummary" style="padding-left:8px; border-left:1px solid var(--border,#e0e0e0);"></div>
-        <!-- Held $ by equity style (drv_macro_score.style_stances — Momentum/
-             High Beta/Low Beta/Value/Dividend/Cyclical/Defensives/Secular/
-             Small Caps/Mid Caps). A symbol can carry several style tags at
-             once, so this sums $ per tag rather than bucketing exclusively. -->
-        <div class="act-summary" id="styleSummary" style="padding-left:8px; border-left:1px solid var(--border,#e0e0e0);"></div>
-      </div>
+      <!-- 2026-08-10 -- MACRO Regime Band (#macroBand, TASK_74/86) removed
+           entirely per user request ("remove REGIME panel altogether"). Its
+           Asset Class/Sector/Style filter chips (assetClassSummary/
+           sectorSummary/styleSummary -- still populated by
+           renderAssetClassSummary()/renderSectorSummary()/
+           renderStyleSummary() in actionable.js, unchanged) were relocated
+           into #moreFiltersPanel below rather than deleted, per follow-up:
+           "move the chips to 'more' filter bar below." The quad-regime
+           verdict/month/qtr/breadth/split content and its own rich popover
+           (_buildQuadBandPopHtml) were dedicated solely to this band and
+           were removed with it -- see actionable.js's removal comment
+           above loadQuadOutlook(). -->
 
       <!-- Hedgeye action panel (TASK_100) — Top-5 / Real-Time Alerts / RR trend flips / stance -->
       <div id="hedgeyePanel" style="display:none; margin-bottom:6px;"></div>
@@ -946,6 +930,14 @@
             <option value="split_tech_bear">Split Tech Bear</option>
             <option value="neutral">Neutral</option>
           </select>
+          <!-- 2026-08-10 -- relocated from the removed #macroBand (Regime
+               panel), unchanged otherwise -- still populated by
+               renderAssetClassSummary()/renderSectorSummary()/
+               renderStyleSummary() in actionable.js and still double as
+               click-to-filter chips (see those functions' own comments). -->
+          <div class="act-summary" id="assetClassSummary" style="padding-left:8px; border-left:1px solid var(--border,#e0e0e0);"></div>
+          <div class="act-summary" id="sectorSummary" style="padding-left:8px; border-left:1px solid var(--border,#e0e0e0);"></div>
+          <div class="act-summary" id="styleSummary" style="padding-left:8px; border-left:1px solid var(--border,#e0e0e0);"></div>
         </div>
       </div>
 
