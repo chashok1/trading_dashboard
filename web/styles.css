@@ -942,30 +942,48 @@ tbody td {
 tbody td.num { font-variant-numeric: tabular-nums; }
 
 /* ===========================================================================
- * Dashboard News Feed — fixed footer bar (web/dashboard_news_feed.js)
- * TradingView Timeline widget (feedMode: all_symbols), Dashboard-only.
- * 2026-08-10 -- user: "add trending view news feed anchored to the bottom
- * of the screen."
+ * Dashboard News Feed — one-line scrolling ticker (web/dashboard_news_feed.js)
+ * GET /api/market-news (Yahoo Finance RSS via the server), Dashboard-only.
+ * 2026-08-10 -- rebuilt as a pure-CSS marquee (was a TradingView Timeline
+ * widget, a vertical list -- "i need one line scrolling news"). Content is
+ * duplicated once in the track (see the JS) and the whole track slides via
+ * translateX(-50%) on a loop -- that's what makes it seamless, not the CSS
+ * alone.
  * ========================================================================= */
 .dash-news-feed {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 95;
   background: #fff; border-top: 1px solid var(--border, #e0e0e0);
   box-shadow: 0 -2px 8px rgba(0,0,0,0.06);
+  display: flex; align-items: center; height: 26px; padding: 0 8px; gap: 8px;
 }
-.dash-news-hdr {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 4px 10px; font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.5px; color: var(--text-2, #666); cursor: pointer; user-select: none;
-  background: #f4f4f8; border-bottom: 1px solid var(--border, #e0e0e0);
+.dash-news-label {
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-2, #666); flex-shrink: 0; white-space: nowrap;
 }
-.dash-news-hdr:hover { background: #ececf4; }
-.dash-news-body { height: 220px; }
-.dash-news-body .tradingview-widget-container,
-.dash-news-body .tradingview-widget-container__widget { width: 100%; height: 100%; }
-/* Reserve space for the fixed footer's fully-expanded height (header +
-   body) so it never covers the last elements of the page -- fixed
-   regardless of collapsed state to avoid a layout jump on toggle. */
-body.dash-page main { padding-bottom: 250px; }
+.dash-news-viewport { flex: 1; overflow: hidden; height: 100%; align-items: center; min-width: 0; }
+.dash-news-track {
+  display: inline-flex; align-items: center; white-space: nowrap;
+  animation-name: dash-news-scroll; animation-timing-function: linear; animation-iteration-count: infinite;
+  will-change: transform;
+}
+/* Pause on hover so a headline can actually be read/clicked. */
+.dash-news-viewport:hover .dash-news-track { animation-play-state: paused; }
+.dash-news-item { color: var(--text-1, #1c1917); font-size: 11px; text-decoration: none; }
+a.dash-news-item:hover { text-decoration: underline; }
+.dash-news-src { color: var(--text-3, #a8a29e); font-size: 9px; font-weight: 600; }
+.dash-news-sep { color: var(--text-3, #a8a29e); margin: 0 14px; }
+.dash-news-toggle {
+  flex-shrink: 0; background: none; border: none; cursor: pointer; font-size: 10px;
+  color: var(--text-3, #a8a29e); padding: 2px 4px; line-height: 1;
+}
+.dash-news-toggle:hover { color: var(--text-1, #1c1917); }
+@keyframes dash-news-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+/* Reserve space for the fixed footer's one-line height so it never covers
+   the last elements of the page. */
+body.dash-page main { padding-bottom: 38px; }
 
 /* ===========================================================================
  * Market Tape — slim horizontal ribbon below the topbar (market_bar.js)
@@ -1946,7 +1964,9 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .cat-acct-chip { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; color: var(--text-2); }
 .cat-acct-chip input { margin: 0; cursor: pointer; }
 .cat-acct-chip:has(input:checked) { color: var(--text-1); font-weight: 600; }
-.right-rail { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* 2026-08-10 -- gap shrunk 8px -> 2px ("a thin line") per user request,
+   now that this rail has 5 panels stacked instead of 3. */
+.right-rail { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 
 /* Risk Dial / What changed keep their own height cap + internal scroll
    (unchanged from the pre-relayout row-1 behavior). What changed's cap
@@ -1981,8 +2001,15 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 #indicatorBand .side-scroll { max-height: 220px; }
 /* TASK_140 follow-up 13/14 -- +5 rows, then +5 more (315px -> 410px), same
    .mini-grid ~19px/row CSS estimate as above -- no browser attached to
-   measure the real rendered height. */
-#nearEarningsBand .side-scroll { max-height: 410px; }
+   measure the real rendered height.
+   2026-08-10 -- reduced back down to 170px, matching Major Markets'
+   .dash-macro-rail height below -- the 410px cap was never meant to grow
+   just because the near-term-earnings window widened to 30 days (that
+   only changes how much scrolls past the cap, not the cap itself). User:
+   "i instructed not to increase the height of SYMBOL grid panel on the
+   right side. reduce it and make same size as major markets panel
+   height." */
+#nearEarningsBand .side-scroll { max-height: 170px; }
 /* 2026-08-10 -- Volatility/Major Markets (#macroRailVolatility/
    #macroRailTop9), added from the Actionable side rail. On Actionable each
    area's .msr-row list grows unbounded and the WHOLE #actSidePanel column

@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 import logging
+import time
+import urllib.error
+import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -321,6 +325,61 @@ def get_near_term_earnings(
          "event_date": r["event_date"].isoformat()}
         for r in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Market news -- 2026-08-10, user: "i need one line scrolling news" (after
+# TradingView's own news widgets turned out to be list-format only, not a
+# one-line ticker -- see web/dashboard_news_feed.js). Yahoo Finance's free
+# market-news RSS feed, no API key. Needs a browser-like User-Agent or Yahoo
+# 429s the request (confirmed directly: no UA -> 429, with one -> 200).
+# In-memory cache (module-level, not per-worker-safe if ever run multi-
+# process, fine for this single-process dev deployment) so repeated page
+# loads/Refresh clicks don't hammer Yahoo every time.
+# ---------------------------------------------------------------------------
+
+_MARKET_NEWS_URL = "https://finance.yahoo.com/news/rssindex"
+_MARKET_NEWS_TTL = 300  # seconds
+_market_news_cache = {"items": None, "fetched_at": 0.0}
+
+
+@router.get("/api/market-news")
+def get_market_news(limit: int = Query(20, ge=1, le=50)):
+    now = time.time()
+    cached = _market_news_cache["items"]
+    if cached is not None and (now - _market_news_cache["fetched_at"]) < _MARKET_NEWS_TTL:
+        return {"items": cached[:limit], "cached": True}
+
+    req = urllib.request.Request(
+        _MARKET_NEWS_URL,
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            raw = resp.read()
+    except (urllib.error.URLError, TimeoutError) as e:
+        if cached is not None:
+            return {"items": cached[:limit], "cached": True, "stale": True}
+        raise HTTPException(502, f"market news fetch failed: {e}")
+
+    try:
+        root = ET.fromstring(raw)
+        items = []
+        for item in root.findall("./channel/item"):
+            title = (item.findtext("title") or "").strip()
+            link = (item.findtext("link") or "").strip()
+            source_el = item.find("source")
+            source = (source_el.text or "").strip() if source_el is not None and source_el.text else ""
+            if title:
+                items.append({"title": title, "link": link, "source": source})
+    except ET.ParseError as e:
+        if cached is not None:
+            return {"items": cached[:limit], "cached": True, "stale": True}
+        raise HTTPException(502, f"market news parse failed: {e}")
+
+    _market_news_cache["items"] = items
+    _market_news_cache["fetched_at"] = now
+    return {"items": items[:limit], "cached": False}
 
 
 @router.get("/api/quad/band-factors")
