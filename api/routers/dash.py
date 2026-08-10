@@ -1826,6 +1826,24 @@ def get_quad_factor_stance(
         ), {"d": d}).scalar()
         tracked_clause = (" AND ticker IN (SELECT tos_symbol FROM drv_macro_score WHERE as_of_date = :ld)"
                            if latest_mstance_d else "")
+        # 2026-08-10 follow-up -- the intersection fix above still left
+        # sector/asset_class's OWN total_count lower than the shared 907
+        # (sector: 771, asset_class: 843) because tickers with no value for
+        # THAT axis specifically (non-equity for sector, NULL asset_class)
+        # were silently excluded from both count_map and total_universe --
+        # same "no Unmapped row to catch it, count silently understates the
+        # universe" bug _categories_for's own docstring already warns
+        # about for the $ TWR views (TASK_133). full_universe is the same
+        # 907 for every axis; sector/asset_class add an explicit
+        # "Unmapped" bucket for the leftover so their own total_count
+        # matches too, not just the underlying query universe. User:
+        # "count doesn't match even now."
+        full_universe = 0
+        if latest_mstance_d:
+            full_universe = s.execute(text(
+                "SELECT COUNT(DISTINCT tos_symbol) FROM drv_macro_score"
+                " WHERE as_of_date = :ld AND tos_symbol IN (SELECT ticker FROM ref_sector)"
+            ), {"ld": latest_mstance_d}).scalar() or 0
         if axis in ("sector", "asset_class"):
             col = "equity_sector" if axis == "sector" else "asset_class"
             # 2026-08-10 -- sector count restricted to asset_class='Equities',
@@ -1851,8 +1869,20 @@ def get_quad_factor_stance(
             ), {"ld": latest_mstance_d}).mappings().all():
                 count_map[r["k"]] = r["n"]
                 label_map[r["k"]] = r["raw"]
-            # sector/asset_class are exclusive (1 category per ticker), so
-            # summing every category's count IS the total universe size.
+            # Leftover = tickers in the shared universe with no value for
+            # THIS axis (non-equity for sector, NULL asset_class for
+            # asset_class) -- bucketed as "Unmapped" instead of silently
+            # dropped, so total_count matches full_universe like every
+            # other axis. "__unmapped__" deliberately can't collide with a
+            # real LOWER(TRIM(...)) category key.
+            leftover = full_universe - sum(count_map.values())
+            if leftover > 0:
+                count_map["__unmapped__"] = leftover
+                label_map["__unmapped__"] = "Unmapped"
+            # sector/asset_class are exclusive (1 category per ticker,
+            # including the Unmapped catch-all above), so summing every
+            # category's count now IS the total universe size, and equals
+            # full_universe exactly.
             total_universe = sum(count_map.values())
         else:  # style
             # latest_mstance_d resolved once, shared above (2026-08-09
@@ -1873,11 +1903,9 @@ def get_quad_factor_stance(
                 count_map[r["k"]] = r["n"]
             # style tags overlap (1 ticker can carry several), so summing
             # category counts would double-count -- total is the distinct
-            # (ToS-tracked ∩ ref_sector-classified) universe size instead.
-            total_universe = s.execute(text(
-                "SELECT COUNT(DISTINCT tos_symbol) FROM drv_macro_score"
-                " WHERE as_of_date = :ld AND tos_symbol IN (SELECT ticker FROM ref_sector)"
-            ), {"ld": latest_mstance_d}).scalar() or 0
+            # (ToS-tracked ∩ ref_sector-classified) universe size instead,
+            # same full_universe already computed above for every axis.
+            total_universe = full_universe
 
     outlook_map = {(category, r["sub_category"]): [r["quad1"], r["quad2"], r["quad3"], r["quad4"]]
                    for r in outlook_rows}
