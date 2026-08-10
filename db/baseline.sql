@@ -7709,3 +7709,23 @@ ALTER TABLE IF EXISTS user_dashboard_note ADD CONSTRAINT user_dashboard_note_imp
 ALTER TABLE IF EXISTS user_dashboard_note ADD COLUMN IF NOT EXISTS sort_order DOUBLE PRECISION NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS ix_user_dashboard_note_dates ON user_dashboard_note(effective_date, expiration_date);
 CREATE INDEX IF NOT EXISTS ix_user_dashboard_note_sort ON user_dashboard_note(sort_order);
+
+-- =====================================================
+-- 2026-08-10 -- Buy-signal advisory warnings (NOT a change to
+-- consolidated_action/final_code -- annotation only, same spirit as
+-- low_confidence above). etl/derive_actionable.py populates both.
+-- warn_not_at_lrr: TRUE when a buy-tier row's low_lrr (ref_trig_atomic_rule
+-- id=30, drv_cat_atomic_input.low_lrr, already-configured/tunable) != 3
+-- (3 = at/below LRR; 1/2 = progressively clear of it). User: "I should only
+-- buy a stock if above trade/trend and at LRR" -> "can we have them as
+-- warnings in case of buys instead of adding a concrete rule?"
+-- warn_added_this_leg: TRUE when a real Buy transaction (hist_cst.action=
+-- 'Buy' / hist_ft.action_kind='BUY') already happened for this symbol
+-- since the most recent date its price closed at/above TRR ("this leg").
+-- Uses actual transaction imports, not app-logged actions, per user: "use
+-- my actual buy imports (i am not using logged actions)".
+-- =====================================================
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS warn_not_at_lrr BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS warn_added_this_leg BOOLEAN NOT NULL DEFAULT FALSE;

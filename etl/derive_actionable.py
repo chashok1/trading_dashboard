@@ -590,6 +590,46 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     """), {"d": as_of_date}).mappings().all():
         stks[r["tos_symbol"]] = dict(r)
 
+    # ─── Buy-signal advisory warnings (2026-08-10) ─────────────────────────
+    # Annotation only, same spirit as low_confidence -- never changes
+    # consolidated_action/final_code. User: "I should only buy a stock if
+    # above trade/trend and at LRR ... can we have them as warnings in case
+    # of buys instead of adding a concrete rule?"
+    low_lrr_by_sym: dict[str, Optional[int]] = {}
+    for r in session.execute(text("""
+        SELECT tos_symbol, low_lrr FROM drv_cat_atomic_input WHERE as_of_date = :d
+    """), {"d": as_of_date}).mappings().all():
+        low_lrr_by_sym[r["tos_symbol"]] = r["low_lrr"]
+
+    # "This leg" = since the most recent date the symbol's price closed
+    # at/above TRR. Bounded to 200 trading days back (drv_quote/drv_rr
+    # history currently runs ~7 months) -- a legitimate leg is never that
+    # old in practice, and an unbounded scan would only get more expensive
+    # as history accumulates. Uses real Buy transactions (hist_cst.action=
+    # 'Buy' / hist_ft.action_kind='BUY'), not app-logged actions, per user:
+    # "use my actual buy imports (i am not using logged actions)".
+    added_this_leg_by_sym: dict[str, bool] = {}
+    for r in session.execute(text("""
+        WITH leg_start AS (
+            SELECT DISTINCT ON (q.tos_symbol) q.tos_symbol, q.as_of_date AS leg_start_date
+            FROM drv_quote q
+            JOIN drv_rr r ON r.tos_symbol = q.tos_symbol AND r.as_of_date = q.as_of_date
+            WHERE q.as_of_date <= :d AND q.as_of_date >= :d - 200
+              AND r.trr IS NOT NULL AND q.last_price >= r.trr
+            ORDER BY q.tos_symbol, q.as_of_date DESC
+        )
+        SELECT ls.tos_symbol,
+               EXISTS (
+                   SELECT 1 FROM hist_cst c WHERE c.tos_symbol = ls.tos_symbol
+                     AND c.action = 'Buy' AND c.trade_date > ls.leg_start_date AND c.trade_date <= :d
+                   UNION ALL
+                   SELECT 1 FROM hist_ft f WHERE f.tos_symbol = ls.tos_symbol
+                     AND f.action_kind = 'BUY' AND f.trade_date > ls.leg_start_date AND f.trade_date <= :d
+               ) AS added_this_leg
+        FROM leg_start ls
+    """), {"d": as_of_date}).mappings().all():
+        added_this_leg_by_sym[r["tos_symbol"]] = bool(r["added_this_leg"])
+
     # Load action-type rule groups so we can fold rule-engine signals into the
     # actionable mix alongside the outlook-source signals.  A group fires for
     # a symbol when its member composites (per the AND/OR logic) all fire on
@@ -623,7 +663,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            stop_level, source_run_id,
            final_action, final_code, final_side,
            fc_strength, fc_confidence, fc_feasible, priority_rank,
-           stop_breached, low_confidence)
+           stop_breached, low_confidence,
+           warn_not_at_lrr, warn_added_this_leg)
         VALUES
           (:d, :sym, :desc, :sect,
            :ca, :ws, :wp,
@@ -635,7 +676,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            :stop, :rid,
            :f_action, :f_code, :f_side,
            :f_strength, :f_confidence, :f_feasible, :f_priority,
-           :stop_breached, :low_confidence)
+           :stop_breached, :low_confidence,
+           :warn_lrr, :warn_leg)
     """)
 
     rows_written = 0
@@ -909,6 +951,18 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         _seq = buysell_seq.get(_seq_key, -1.0) if fc["fc_feasible"] else -1.0
         priority_rank = _seq * 1e6 + _amt
 
+        # ─── Buy-signal advisory warnings ──────────────────────────────────
+        # Only meaningful on a buy-side Final Call -- a HOLD/sell row is
+        # never "not at LRR" or "already added this leg" in any actionable
+        # sense, so both stay False off that gate regardless of the
+        # underlying low_lrr/leg data.
+        warn_not_at_lrr = False
+        warn_added_this_leg = False
+        if fc["final_side"] == "buy":
+            _low_lrr = low_lrr_by_sym.get(sym)
+            warn_not_at_lrr = _low_lrr is not None and _low_lrr != 3
+            warn_added_this_leg = added_this_leg_by_sym.get(sym, False)
+
         stk = stks.get(sym, {})
         batch.append({
             "d":     as_of_date,
@@ -945,6 +999,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "f_priority":   priority_rank,
             "stop_breached":   stop_breached,
             "low_confidence":  low_confidence,
+            "warn_lrr":        warn_not_at_lrr,
+            "warn_leg":        warn_added_this_leg,
         })
         rows_written += 1
 

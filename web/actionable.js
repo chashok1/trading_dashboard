@@ -2785,6 +2785,18 @@ function _signalReasons(row) {
   const warn = [];
   const buy = [];
 
+  // 2026-08-10 -- advisory-only buy warnings (never touch consolidated_
+  // action/final_code server-side -- see etl/derive_actionable.py's own
+  // comment on these two columns). User: "I should only buy a stock if
+  // above trade/trend and at LRR ... can we have them as warnings in case
+  // of buys instead of adding a concrete rule?"
+  if (row.warn_not_at_lrr) {
+    warn.push('Buy signal not at LRR (low_lrr rule) — price hasn\'t pulled back to the low end of the risk range');
+  }
+  if (row.warn_added_this_leg) {
+    warn.push('Already bought this symbol since price last closed at/above TRR — repeat buy signal this leg');
+  }
+
   // Earnings proximity has its own dedicated icon (_earningsWarning below) —
   // split out 2026-08-01 so an earnings-date caution isn't lumped in with
   // technical/rules signals that mean something different and can be acted
