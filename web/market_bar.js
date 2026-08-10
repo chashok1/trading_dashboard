@@ -4,11 +4,12 @@
  * topbar with a curated pulse: SPX · VIX · [Nasdaq/Dow/Russell/Gold/Oil/Bond
  * Vol] · DXY · GC · WTI · 10Y · HY · BTC (2026-07-04: the 6 bracketed vol
  * gauges were added after VIX, mirroring every entry in the side rail's
- * Volatility area one-for-one). The full market breadth (ETFs, sectors,
- * tech, FX, indexes, credit, crypto, ...) still lives in the Actionable side
- * rail (web/macro_areas.js, /api/macro-areas) — bars 2/3 (#rrTape2/#rrTape3)
- * were retired in favor of that rail. See
- * docs/market_panel_consolidation_design.md.
+ * Volatility area one-for-one; 2026-08-10: SPY/IWM/UUP added alongside their
+ * paired index, the top9 area's remaining 'dual'-role members). The full
+ * market breadth (ETFs, sectors, tech, FX, indexes, credit, crypto, ...)
+ * still lives in the Actionable side rail (web/macro_areas.js,
+ * /api/macro-areas) — bars 2/3 (#rrTape2/#rrTape3) were retired in favor of
+ * that rail. See docs/market_panel_consolidation_design.md.
  *
  * The Econ panel (#econPanel) is a static div in the page HTML (actionable.html).
  * It is toggled by #econBtn and lazily loaded from GET /api/macro.
@@ -408,13 +409,21 @@
     // still the real metric_key used for the /api/marketbar lookup, only
     // the on-tile text changed.
     { label: 'S&P',  source: 'mkt', key: 'SPX',  pairLead: true },   // S&P 500
-    { label: 'VIX',  source: 'mkt', key: 'VIX' },   // S&P Vol
+    // 2026-08-10 -- SPY added after VIX (VIX's own pairLead:true added so
+    // the group renders as one SPX+VIX+SPY unit, same 3-tile pattern as the
+    // Rates group below) -- top9 area's 'dual'-role ETF proxy for SPX. User:
+    // "check the actionable screen right side panels (volatility and major
+    // markets). i need to see all those."
+    { label: 'VIX',  source: 'mkt', key: 'VIX',  pairLead: true },   // S&P Vol
+    { label: 'SPY',  source: 'mkt', key: 'SPY' },   // S&P 500 ETF proxy
     { label: 'Nas',  source: 'mkt', key: 'COMP', pairLead: true },  // Nasdaq Composite
     { label: 'VXN',  source: 'mkt', key: 'VXN' },   // Nasdaq Vol
     { label: 'DJI',  source: 'mkt', key: 'DJI',  pairLead: true },   // Dow
     { label: 'VXD',  source: 'mkt', key: 'VXD' },   // Dow Vol
     { label: 'Rus',  source: 'mkt', key: 'RUT',  pairLead: true },   // Russell 2000
-    { label: 'RVX',  source: 'mkt', key: 'RVX' },   // Russell Vol
+    // IWM added after RVX, same reasoning as SPY above.
+    { label: 'RVX',  source: 'mkt', key: 'RVX',  pairLead: true },   // Russell Vol
+    { label: 'IWM',  source: 'mkt', key: 'IWM' },   // Russell 2000 ETF proxy
     { label: 'Gold', source: 'mkt', key: 'GC',   pairLead: true },    // Gold
     { label: 'GVZ',  source: 'mkt', key: 'GVZ' },   // Gold Vol
     { label: 'WTI',  source: 'mkt', key: 'WTI',  pairLead: true },   // Oil
@@ -438,7 +447,12 @@
     // Dollar group (2026-07-04): moved to the very end, now grouped with
     // USD/JPY (Dolr pairLead removes the border to it). /6J is the FX
     // group's dollar-yen futures entry (label "$JPY" in /api/rr-bar).
+    // 2026-08-10 -- UUP added between Dolr and Yen (Dolr's existing
+    // pairLead:true already removes the border to it; UUP gets its own
+    // pairLead:true so Yen stays grouped too) -- top9 area's 'dual'-role
+    // ETF proxy for $DXY, same reasoning as SPY/IWM above.
     { label: 'Dolr', source: 'mkt', key: 'DXY', pairLead: true },
+    { label: 'UUP',  source: 'mkt', key: 'UUP', pairLead: true },
     { label: 'Yen',  source: 'rr',  group: 'FX', symbol: '/6J' },
   ];
 

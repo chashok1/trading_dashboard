@@ -40,7 +40,16 @@ VALUES
     -- 2026-07-04: mini-tape QQQ tile (added after BTC) had no existing
     -- marketbar/rr-bar row despite drv_quote already carrying real data for
     -- it (same 'dual' role as SPY/IWM in the side rail's top9 area).
-    ('QQQ',   'QQQ',        'index',  '["tos:QQQ"]'::JSONB,                     'price', 45,  TRUE)
+    ('QQQ',   'QQQ',        'index',  '["tos:QQQ"]'::JSONB,                     'price', 45,  TRUE),
+    -- 2026-08-10 -- SPY/IWM/UUP: the side rail's top9 ("Major Markets") area
+    -- has 3 more 'dual'-role ETF-proxy members (same role QQQ already had)
+    -- that the mini-tape never picked up. Same missing-row situation QQQ was
+    -- in before its own 2026-07-04 fix. User: "check the actionable screen
+    -- right side panels (volatility and major markets). i need to see all
+    -- those."
+    ('SPY',   'SPY',        'index',  '["tos:SPY"]'::JSONB,                     'price', 11,  TRUE),
+    ('IWM',   'IWM',        'index',  '["tos:IWM"]'::JSONB,                     'price', 41,  TRUE),
+    ('UUP',   'UUP',        'fx',     '["tos:UUP"]'::JSONB,                     'price', 81,  TRUE)
 ON CONFLICT (metric_key) DO UPDATE SET
     label           = EXCLUDED.label,
     grp             = EXCLUDED.grp,
