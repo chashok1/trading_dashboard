@@ -1346,11 +1346,27 @@ async function loadMarketView(axis, bodyId, chartId) {
     if (state.marketViewSource) params.set('source', state.marketViewSource);
     const benchParams = new URLSearchParams({ axis });
     if (state.date) benchParams.set('date', state.date);
-    const [d, benchData] = await Promise.all([
+    // 2026-08-10 -- when a Source filter is active, ALSO fetch the plain
+    // quad-regime read (no source param) so the caret cluster's trailing
+    // triangles (this month/qtr/next-qtr) still show -- those come from
+    // Hedgeye's own quarterly outlook, a property of the CATEGORY (e.g.
+    // Financials), not of which per-symbol source you're filtering the
+    // stock list by. User: "when i select SSS, i still see financials so
+    // shouldn't i see carets for financials?" -- correct: Financials'
+    // quad-regime forecast doesn't depend on the Source filter at all, it
+    // was only being dropped because the source-filtered response
+    // (_quad_factor_stance_by_source) has no months/qtr/next_qtr fields of
+    // its own (RR/SSS/PS/etc are point-in-time signals, not a forecast).
+    // Skipped when no source is selected -- `d` already IS that same data.
+    const quadParams = state.marketViewSource ? new URLSearchParams({ axis }) : null;
+    if (quadParams && state.date) quadParams.set('date', state.date);
+    const [d, benchData, quadData] = await Promise.all([
       fetchJson(`/api/quad/factor-stance?${params.toString()}`),
       fetchJson(`/api/cockpit/factor-scorecard?${benchParams.toString()}`).catch(() => null),
+      quadParams ? fetchJson(`/api/quad/factor-stance?${quadParams.toString()}`).catch(() => null) : Promise.resolve(null),
     ]);
     const benchMap = new Map((benchData?.rows || []).map(r => [String(r.category).trim().toLowerCase(), r]));
+    const quadStanceMap = new Map((quadData?.rows || d.rows || []).map(r => [String(r.category).trim().toLowerCase(), r]));
     const rows = (d.rows || []).filter(r => r.count > 0).sort((a, b) => b.count - a.count);
     const total = d.total_count || 0;
 
@@ -1362,16 +1378,11 @@ async function loadMarketView(axis, bodyId, chartId) {
     // coloring onto the same categorical palette the top grids use. User:
     // "match the bottom 3 graph colors with top 3 graph colors."
     const colorMap = _catColorMap(rows);
-    // 2026-08-10 -- category-column caret CLUSTER, same as the top 3 $
-    // grids (main 60D-blend + period + qtr/next-qtr carets), not just a
-    // flat single glyph -- user: "bottom three graph should look like the
-    // top except dollar as accounts/holdings are not applicable." Each row
-    // from GET /api/quad/factor-stance already carries score/months/qtr/
-    // next_qtr in the default (no Source filter) case; the SSS/PS Source
-    // filter's point-in-time rows have months/qtr/next_qtr absent, so
-    // _quadCaretCluster degrades to just the main caret for those, honestly
-    // -- no window/quarter data exists to show.
-    const [curQtrOp, nextQtrOp] = _qtrFadeOpacities(d.days_to_qtr_end);
+    // days_to_qtr_end is null on the source-filtered response (it has no
+    // window concept of its own) -- fall back to the always-fetched
+    // quad-regime data's value so the qtr/next-qtr cross-fade still works
+    // when a Source filter is active.
+    const [curQtrOp, nextQtrOp] = _qtrFadeOpacities(quadData?.days_to_qtr_end ?? d.days_to_qtr_end);
     // 2026-08-10 -- chart slices/bars now open the same popup as the table
     // row (openMarketViewDetailModal), matching the top 3 $ grids' own
     // "click the chart, get the same popup as the row" behavior -- this
@@ -1394,7 +1405,16 @@ async function loadMarketView(axis, bodyId, chartId) {
         const v = bench ? bench[`bench_${w.key}`] : null;
         return `<td>${_fsColorCell(v) || '<span class="fs-dash">—</span>'}</td>`;
       }).join('');
-      const caretHtml = _quadCaretCluster(r, curQtrOp, nextQtrOp);
+      // 2026-08-10 -- main caret = the selected source's own bullish/
+      // bearish read (r.score/r.stance); trailing period/qtr/next-qtr
+      // carets = always the category's quad-regime forecast (quadRow),
+      // regardless of Source filter -- see the quadStanceMap fetch above.
+      // No source selected -> quadRow IS r already, unchanged.
+      const quadRow = quadStanceMap.get(r.category.trim().toLowerCase());
+      const caretRow = state.marketViewSource
+        ? { score: r.score, stance: r.stance, months: quadRow?.months, qtr: quadRow?.qtr, next_qtr: quadRow?.next_qtr }
+        : r;
+      const caretHtml = _quadCaretCluster(caretRow, curQtrOp, nextQtrOp);
       // 2026-08-09 -- NOT clickable to the $ exposure popup, unlike the $
       // grids' own rows -- that popup shows YOUR holdings, which
       // contradicts Market View's whole point ("no $, no holdings"), and
