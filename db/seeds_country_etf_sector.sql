@@ -26,3 +26,24 @@ WHERE equity_sector = 'Financials'
     'EWM', 'EWO', 'EWP', 'EWS', 'EWZ', 'EWZS', 'EZA', 'FLG', 'FXI',
     'INDY', 'KBA', 'KSA', 'QAT', 'SMIN', 'THD', 'TUR', 'UAE', 'VNM'
   );
+
+-- 2026-08-10 follow-up -- the first pass above only searched tickers
+-- mistagged 'Financials' specifically, but the same Yahoo issuer-artifact
+-- quirk scatters country/region ETFs across OTHER sectors too, wherever
+-- Yahoo's own per-fund classifier happened to land (e.g. ENZL -- New
+-- Zealand -- tagged "Health care"; EWJ -- Japan -- tagged "Industrials").
+-- Found via a broader description sweep ("Tracks an index of companies
+-- listed in/on <country>", vehicle_type ETF/Index, cross-checked against
+-- individual ADR/stock false positives that just happen to mention a
+-- country in their business description, e.g. PBR/NIO/YUMC -- those are
+-- real single companies, correctly sector-tagged, left alone). ENZL (285
+-- sh) and COLO (400 sh, previously equity_sector=NULL/Unmapped rather than
+-- wrong) are actual held positions; the rest are reference-universe only.
+-- User: "ENZL is a country ETF and why is it showing in health care?"
+UPDATE ref_sector
+SET equity_sector = 'Country ETF'
+WHERE ticker IN (
+    '^N225', 'COLO', 'ECH', 'EFNL', 'EIS', 'ENZL', 'EPU', 'EWD', 'EWG',
+    'EWJ', 'EWK', 'EWN', 'EWQ', 'EWUS', 'EWW', 'EWY', 'IDX', 'INDA',
+    'JPXN', 'KWEB', 'MKOR', 'SCJ', 'VGK'
+  );
