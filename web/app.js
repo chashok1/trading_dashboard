@@ -925,12 +925,14 @@ const _FS_WINDOWS = [
 // from, since the note lives in a sibling div, not a table cell. Recompute
 // if the caret cluster's own glyph count/widths change:
 //   main(11) + gap(6) + periods(3x: 9+1+9+1+9=29) + gap(6) + qtr(11) +
-//   next-qtr(11) = 74, + .cat-quad-stance's own margin-right(5) = 79 --
-// left at 81 (2px of harmless slack; a reservation only needs to be >=
-// the actual content, not exact) since periods went from 31->29 when the
-// current-month caret's size was unified with the other periods' (2026-08-10,
-// "make first month caret same size as other months" -- was previously
-// 11px/bold like the main caret, to stand out).
+//   next-qtr(9) = 72, + .cat-quad-stance's own margin-right(5) = 77 --
+// left at 81 (4px of harmless slack; a reservation only needs to be >=
+// the actual content, not exact) after two 2026-08-10 size trims: periods
+// went 31->29 ("make first month caret same size as other months" -- the
+// current-month caret no longer matches the main caret's larger/bold
+// size), then next-qtr went 11->9 ("make next quarter smaller" -- now
+// matches the period carets' smaller size instead of the current-quarter
+// caret's larger one).
 // User: "alignment should skip two more carets" -- the qtr/next-qtr carets
 // were added after the original 56px reservation was sized, and the
 // wrapper span's old `min-width` (not `width`) let it silently grow past
@@ -977,11 +979,16 @@ function _quadCaretCluster(stanceRow, curQtrOp, nextQtrOp) {
     const qGlyph = qv > 0 ? '&#9650;' : qv < 0 ? '&#9660;' : '&#8211;';
     return `<span style="color:${qCol};opacity:${curQtrOp};font-size:11px;font-weight:700;display:inline-block;width:11px;text-align:center;" title="${escapeHtml(stanceRow.qtr.quad || '')} (current quarter)">${qGlyph}</span>`;
   })() : '';
+  // 2026-08-10 -- smaller than the current-quarter caret (9px, not bold --
+  // same size as the period carets) so current vs. next quarter reads as
+  // primary vs. secondary, matching the main-caret/period-caret size
+  // convention already used elsewhere in this cluster. User: "make next
+  // quarter smaller."
   const nextQtrCaret = (stanceRow.next_qtr && stanceRow.next_qtr.stance != null) ? (() => {
     const nv = Number(stanceRow.next_qtr.stance) || 0;
     const nCol = nv > 0 ? '#16a34a' : nv < 0 ? '#dc2626' : '#9ca3af';
     const nGlyph = nv > 0 ? '&#9650;' : nv < 0 ? '&#9660;' : '&#8211;';
-    return `<span style="color:${nCol};opacity:${nextQtrOp};font-size:11px;font-weight:700;display:inline-block;width:11px;text-align:center;" title="${escapeHtml(stanceRow.next_qtr.quad || '')} (next quarter)">${nGlyph}</span>`;
+    return `<span style="color:${nCol};opacity:${nextQtrOp};width:9px;display:inline-block;text-align:center;" title="${escapeHtml(stanceRow.next_qtr.quad || '')} (next quarter)">${nGlyph}</span>`;
   })() : '';
   // title="" breaks inheritance from the row's own title tooltip -- without
   // it, hovering a caret showed both the native browser tooltip and the
