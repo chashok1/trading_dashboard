@@ -1483,7 +1483,17 @@ async function loadMarketView(axis, bodyId, chartId) {
       </tr>`;
     }).join('');
 
+    // 2026-08-10 -- same "Overlapping tags -- not an allocation" note the
+    // top grid already shows for Style (loadFactorScorecard) -- a stock
+    // can carry several style tags at once, so row counts sum well past
+    // the total (907 stocks, but e.g. 2350 tag-assignments) by design, not
+    // a bug. Market View's Style card never got this note, so there was
+    // nothing explaining the mismatch. User: "bottom three grids -> why
+    // count doesn't add up to the total stock count?" -> "yes" (add it).
+    const styleNote = axis === 'style'
+      ? '<div class="fs-note">Overlapping tags — not an allocation.</div>' : '';
     body.innerHTML = `
+      ${styleNote}
       <div style="overflow-x:auto">
         <table class="fs-table">
           <thead><tr><th title="Category, sector/asset-class/style">Category</th>
