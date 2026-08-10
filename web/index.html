@@ -117,7 +117,16 @@
                -- see hedgeye_panel.js::msrCardHtml(). Populated + wired by
                hedgeye_panel.js (unchanged module, another render target). -->
           <section class="cockpit-band" id="heMktSituationPanel" style="display:none;">
-            <div id="heMktSituationBody">Loading…</div>
+            <!-- 2026-08-10 -- shared collapse toggle, identical on all 3
+                 Hedgeye dashboard panels -- clicking ANY one collapses/
+                 expands all 3 together (one shared localStorage flag).
+                 User: "make hedgeye panels (together) ... collapable and
+                 expandable." Wired by web/hedgeye_collapse.js. -->
+            <div class="he-collapse-hdr" data-he-toggle>
+              <span>Hedgeye</span>
+              <button class="he-collapse-btn" type="button" aria-label="Collapse Hedgeye panels">&#9662;</button>
+            </div>
+            <div id="heMktSituationBody" class="he-collapse-body">Loading…</div>
           </section>
 
           <!-- 2026-08-10 -- Notes panel: freeform sticky notes with an
@@ -157,7 +166,19 @@
                grids that used to sit at the top of this column now render
                below it instead. Populated + wired by hedgeye_panel.js
                (unchanged module, just a second render target). -->
-          <div id="hedgeyeDashPanel" style="display:none;"></div>
+          <!-- 2026-08-10 -- data-presence display (hasDashAny) stays on
+               this outer div, unchanged in hedgeye_panel.js; the new inner
+               #hedgeyeDashPanelBody is what that script now writes its
+               innerHTML into, and what the shared collapse toggle below
+               shows/hides -- keeps the two concerns (has data vs. user
+               collapsed it) from fighting over the same style.display. -->
+          <div id="hedgeyeDashPanel" style="display:none;">
+            <div class="he-collapse-hdr" data-he-toggle>
+              <span>Hedgeye</span>
+              <button class="he-collapse-btn" type="button" aria-label="Collapse Hedgeye panels">&#9662;</button>
+            </div>
+            <div id="hedgeyeDashPanelBody" class="he-collapse-body"></div>
+          </div>
 
           <!-- 2026-08-10 -- Market news list, fixed-height/scrollable, one
                headline per line -- replaces the old bottom-fixed scrolling
@@ -166,13 +187,47 @@
                single line news and a scroll bar -- fixed height to fit
                maybe 5 or 6 latest news." Populated + wired by
                web/dashboard_news_list.js (GET /api/market-news). -->
+          <!-- 2026-08-10 -- collapse toggle (bare arrow, own independent
+               state, not tied to the Hedgeye panels' shared one) added by
+               web/dashboard_news_list.js itself -- user previously asked
+               for no "Market News" header text; the toggle is the one
+               addition on top of that, not a reversal of it. -->
           <div id="dashNewsListPanel" class="cockpit-band dash-news-list-panel" style="margin-top:6px;"></div>
 
           <!-- 2026-08-09 -- Accounts filter bar, shared above all 3 stacked
                grids -- user: "Can we add a filter bar for second column ->
                accounts filter." Populated + wired in app.js::
-               loadCatAccountFilter(). -->
-          <div class="cat-account-filter" id="catAccountFilter">Loading…</div>
+               loadCatAccountFilter().
+               2026-08-10 -- Hedgeye/News collapse toggles + the Returns
+               column's period radios added alongside it, all as SIBLINGS
+               of #catAccountFilter (not inside it) -- loadCatAccountFilter()
+               fully rewrites that div's innerHTML on every account-filter
+               change/refresh, which would wipe out static controls placed
+               inside it. User: "toggle icons for hedgeye and news panels ->
+               they are not on the filter toolbar. make sure they are." /
+               "add radio buttons on to the filter bar (there is space)."
+               Toggle buttons reuse their existing shared-state wiring
+               (data-he-toggle / data-news-toggle, see hedgeye_collapse.js /
+               dashboard_news_list.js) -- clicking either one here stays in
+               sync with the toggle on that panel itself. Radios wired by
+               app.js::_initCatReturnsPeriod -- selecting a period re-runs
+               reloadFactorScorecards() so each grid's Returns column
+               (added as the LAST <td> per row, not a separate chart, see
+               loadFactorScorecard()) reflects it. -->
+          <div class="cat-filter-bar">
+            <div class="cat-account-filter" id="catAccountFilter" style="flex:1;">Loading…</div>
+            <div class="cat-returns-period" id="catReturnsPeriod">
+              <label><input type="radio" name="catReturnsPeriod" value="today"> Today</label>
+              <label><input type="radio" name="catReturnsPeriod" value="yesterday"> Yest</label>
+              <label><input type="radio" name="catReturnsPeriod" value="mtd" checked> MTD</label>
+              <label><input type="radio" name="catReturnsPeriod" value="qtd"> QTD</label>
+              <label><input type="radio" name="catReturnsPeriod" value="ytd"> YTD</label>
+            </div>
+            <button class="he-collapse-btn cat-filter-toggle" type="button" data-he-toggle
+                    aria-label="Collapse Hedgeye panels" title="Hedgeye panels">📊 &#9662;</button>
+            <button class="dash-news-list-toggle cat-filter-toggle" type="button" data-news-toggle
+                    aria-label="Collapse news" title="News">📰 &#9662;</button>
+          </div>
           <!-- TASK_140 follow-up 2/3 -- inline chart replaces the
                Composition popup: each axis's pie/bar renders directly
                beside its table, always visible, no click needed. Color
@@ -360,7 +415,11 @@
              instead of its own nested card box. Populated + wired by
              hedgeye_panel.js (unchanged module, another render target). -->
         <section class="cockpit-band rail-band" id="heInflPanel" style="display:none;">
-          <div id="heInflBody">Loading…</div>
+          <div class="he-collapse-hdr" data-he-toggle>
+            <span>Hedgeye</span>
+            <button class="he-collapse-btn" type="button" aria-label="Collapse Hedgeye panels">&#9662;</button>
+          </div>
+          <div id="heInflBody" class="he-collapse-body">Loading…</div>
         </section>
       </div>
     </div>
@@ -385,6 +444,12 @@
        Actionable loads; it targets whichever of #hedgeyePanel/
        #hedgeyeDashPanel exist in the current page's DOM. -->
   <script src="/static/hedgeye_panel.js" defer></script>
+  <!-- 2026-08-10 -- shared collapse/expand toggle across the 3 Hedgeye
+       dashboard panels above (Mkt Situation/center/INFL) -- user: "make
+       hedgeye panels (together) ... collapable and expandable." Loaded
+       after hedgeye_panel.js (not that hooks into it -- purely reads/
+       writes the .he-collapse-body elements' display + localStorage). -->
+  <script src="/static/hedgeye_collapse.js" defer></script>
   <!-- 2026-08-10 -- renders Volatility/Major Markets into #macroRailVolatility/
        #macroRailTop9 above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its

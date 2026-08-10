@@ -63,13 +63,66 @@
     }
   }
 
+  // 2026-08-10 -- collapse toggle, own independent state (localStorage key
+  // separate from the Hedgeye panels' shared one -- this panel isn't part
+  // of that group). Toggle button ITSELF now lives only on the Accounts
+  // filter bar (index.html, static markup, [data-news-toggle]) -- user:
+  // "news bar still has toggle button on the panel that is extra button"
+  // (the per-panel one, added in an earlier pass, was redundant once the
+  // filter-bar one existed). This module now only owns the header row +
+  // body, both driven by whatever [data-news-toggle] button is clicked.
+  // 2026-08-10 follow-up -- header row (label only, no button) shows ONLY
+  // when expanded, hidden along with the body when collapsed -- user:
+  // "remove the headers for both when collapsed. only add the header row
+  // when expanded (Hedgeye & Market News)." Reverses the still-earlier "no
+  // header text" request only for the expanded state; collapsed still
+  // shows nothing, same as before.
+  // 2026-08-10 follow-up 2 -- collapsing the header/body alone left the
+  // OUTER #dashNewsListPanel card (.cockpit-band's own border+padding)
+  // behind as an empty white box -- user: "market news is leaving white
+  // panel when collapsed. don't need anything here." Now hides the whole
+  // panel element itself; hdr/body no longer need their own display logic
+  // since there's nothing to show through a hidden ancestor either way.
+  var COLLAPSE_KEY = 'dashNewsList_collapsed';
+  // 2026-08-10 follow-up 3 -- newspaper icon prefixed on the arrow so this
+  // toggle is visually distinct from the Hedgeye one beside it on the
+  // filter bar at a glance, not just via tooltip -- user: "Toggle buttons,
+  // have either icons or letters H and M ... Icons better."
+  var ICON = '📰 '; // 📰
+
+  function _applyNewsState(collapsed) {
+    var panel = _ensureMount();
+    if (panel) panel.style.display = collapsed ? 'none' : '';
+    Array.prototype.forEach.call(document.querySelectorAll('[data-news-toggle]'), function (btn) {
+      btn.innerHTML = ICON + (collapsed ? '&#9652;' : '&#9662;');
+      btn.setAttribute('aria-label', (collapsed ? 'Expand' : 'Collapse') + ' news');
+    });
+  }
+
+  function _toggleNews() {
+    var collapsed = localStorage.getItem(COLLAPSE_KEY) !== '1'; // flip current state
+    localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
+    _applyNewsState(collapsed);
+  }
+
   function _init() {
     var panel = _ensureMount();
     if (!panel) return;
     panel.innerHTML =
+      '<div class="dash-news-list-hdr" id="dashNewsListHdr">Market News</div>' +
       '<div class="dash-news-list-body" id="dashNewsListBody" style="height:' + (VISIBLE_ROWS * 20) + 'px;">' +
         '<div class="dash-news-list-row">Loading&hellip;</div>' +
       '</div>';
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-news-toggle]'), function (btn) {
+      btn.addEventListener('click', _toggleNews);
+    });
+    // Applies the persisted collapsed/expanded state to the panel itself
+    // (built as static HTML above, always starts "expanded") and syncs the
+    // filter-bar button's icon -- it's static markup in index.html (not
+    // built by this script), so it starts at its hardcoded default until
+    // this runs.
+    _applyNewsState(localStorage.getItem(COLLAPSE_KEY) === '1');
 
     _load();
     // Refresh alongside the server's own 5-minute cache TTL (api/routers/

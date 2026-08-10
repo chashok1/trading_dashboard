@@ -414,6 +414,12 @@
     // above Indicator grid."
     var actEl = document.getElementById('hedgeyePanel');
     var dashEl = document.getElementById('hedgeyeDashPanel');
+    // 2026-08-10 -- innerHTML now targets this inner wrapper, not dashEl
+    // itself -- dashEl's own display:block/none (data-presence) and the
+    // Hedgeye collapse toggle's display on this inner div (user-collapse)
+    // would otherwise fight over the same style.display. See
+    // web/hedgeye_collapse.js.
+    var dashBodyEl = document.getElementById('hedgeyeDashPanelBody');
     var mktPanelEl = document.getElementById('heMktSituationPanel');
     var mktBodyEl = document.getElementById('heMktSituationBody');
     var inflPanelEl = document.getElementById('heInflPanel');
@@ -592,7 +598,7 @@
                 { maxH: 150 }) +
           '</div>';
 
-        dashEl.innerHTML =
+        if (dashBodyEl) dashBodyEl.innerHTML =
           '<div style="padding:2px 4px; background:#f0eefb; border:1px solid #d5d0f0; ' +
           'border-radius:6px;">' + dashRowEarly + dashRowMacro + dashRowTop3 + '</div>';
         dashEl.style.display = 'block';

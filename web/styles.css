@@ -977,6 +977,43 @@ tbody td.num { font-variant-numeric: tabular-nums; }
   border-bottom: 1px solid var(--border, #eee);
 }
 a.dash-news-list-row:hover { text-decoration: underline; }
+/* 2026-08-10 -- "Market News" header row, shown only when expanded (hidden
+   along with the body when collapsed, see web/dashboard_news_list.js) --
+   user: "remove the headers for both when collapsed. only add the header
+   row when expanded (Hedgeye & Market News)." Label only, no button --
+   the toggle itself lives on the Accounts filter bar now (was a per-panel
+   corner button, removed as redundant: "news bar still has toggle button
+   on the panel that is extra button"). */
+.dash-news-list-hdr {
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-3, #a8a29e); margin-bottom: 4px;
+}
+/* Filter-bar toggle button (.cat-filter-toggle) reuses this class for its
+   chip look -- position:absolute below is only meaningful on the (now
+   removed) per-panel corner button; .cat-filter-toggle resets it to static. */
+.dash-news-list-toggle {
+  position: absolute; top: 6px; right: 8px; z-index: 1;
+  background: var(--bg, #f5f5f4); border: 1px solid var(--border, #e0e0e0); border-radius: 4px;
+  cursor: pointer; font-size: 14px; line-height: 1;
+  color: var(--text-2, #57534e); padding: 2px 6px;
+}
+.dash-news-list-toggle:hover { color: var(--text-1, #1c1917); border-color: var(--text-3, #a8a29e); }
+
+/* ===========================================================================
+ * Hedgeye collapse toggle — shared header row, identical across the 3
+ * Dashboard Hedgeye panels (Mkt Situation / center / INFL). Clicking any
+ * one collapses/expands all 3 together (web/hedgeye_collapse.js).
+ * ========================================================================= */
+.he-collapse-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: #534ab7; margin-bottom: 4px;
+}
+.he-collapse-btn {
+  background: none; border: none; cursor: pointer; font-size: 10px;
+  color: #534ab7; padding: 0 2px; line-height: 1;
+}
+.he-collapse-btn:hover { color: var(--text-1, #1c1917); }
 
 /* ===========================================================================
  * Market Tape — slim horizontal ribbon below the topbar (market_bar.js)
@@ -1957,6 +1994,23 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .cat-acct-chip { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; color: var(--text-2); }
 .cat-acct-chip input { margin: 0; cursor: pointer; }
 .cat-acct-chip:has(input:checked) { color: var(--text-1); font-weight: 600; }
+/* 2026-08-10 -- Hedgeye/News collapse toggles, alongside the Accounts
+   filter -- user: "add both of these toggles icons on grids filter bar."
+   .cat-filter-toggle resets position:static (both source buttons are
+   normally position:absolute, corner-badge style, in their own panel) so
+   they lay out inline in this flex row instead, and gives both a matching
+   visible chip (background+border) regardless of their own base class --
+   .he-collapse-btn on its own is bare colored text at 10px, easy to miss
+   entirely against the page background. User: "toggle icons for hedgeye
+   and news panels -> they are not on the filter toolbar. make sure they
+   are." */
+.cat-filter-bar { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 6px; }
+.cat-filter-toggle {
+  position: static; flex-shrink: 0;
+  background: var(--bg, #f5f5f4); border: 1px solid var(--border, #e0e0e0); border-radius: 4px;
+  font-size: 14px; line-height: 1; padding: 5px 8px; color: var(--text-2, #57534e);
+}
+.cat-filter-toggle:hover { color: var(--text-1, #1c1917); border-color: var(--text-3, #a8a29e); }
 /* 2026-08-10 -- gap shrunk 8px -> 2px ("a thin line") per user request,
    now that this rail has 5 panels stacked instead of 3. */
 .right-rail { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -2378,21 +2432,32 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .cat-chart { flex: 0 0 190px; }
 .cat-chart .unmapped-note { font-size: 10px; color: var(--text-3); margin-top: 6px; line-height: 1.4; }
 .cat-table-col { flex: 1; min-width: 0; }
-/* TASK_140 follow-up 8/9/10/15 -- Sector still capped slightly below its
+/* TASK_140 follow-up 8/9/10/15 -- Sector was capped slightly below its
    natural height (-3%, CSS-estimated, see prior follow-ups) with a
    scrollbar. Asset class reverted back to natural auto-height, no cap, no
    scrollbar -- per user request it should just use whitespace instead of
-   scrolling; it was never long enough to need one. */
-/* 248px -> 260px -> 273px -> 268px (-5px), content now fits exactly at
-   that height -- overflow-y:auto dropped, no scrollbar needed. */
-/* 2026-08-10 -- 268px -> 288px (+1 line, ~20px): the "Unmapped" note
-   (.fs-note, appended after the table by loadFactorScorecard()) was
-   rendering below the box's painted height since overflow is visible, not
-   clipped -- it just visually spilled outside the card. Cap raised by one
-   note-line's height so Unmapped sits inside the grid instead of under it. */
-#sectorScorecardBand .cat-table-col { max-height: 288px; }
+   scrolling; it was never long enough to need one.
+   248px -> 260px -> 273px -> 268px -> 288px, each pass still clipping the
+   trailing Unmapped note (.fs-note, appended after the table) by some
+   amount as the grid's own row count/column set grew (most recently the
+   Returns column). User: "increase height of the sector grid so i can see
+   unmpped row." Cap dropped entirely -- same natural-auto-height treatment
+   Asset class already has, rather than continuing to chase a moving
+   CSS-estimated target. */
 .cat-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 6px; flex-shrink: 0; vertical-align: middle; }
 .slice-label { font-size: 9.5px; fill: var(--card-bg); font-weight: 700; text-anchor: middle; }
+/* 2026-08-10 -- Returns chart (mine vs market, per-period) -- shares
+   .cat-chart's fixed 190px sizing so it lines up with the composition
+   chart beside it ("same size as existing graphs"). Period radio group
+   sits once above all 3 .cat-body rows (shared control, not per-grid). */
+.cat-returns-period {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 10px;
+  flex-shrink: 0;
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px;
+  font-size: 11px; color: var(--text-2);
+}
+.cat-returns-period label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.cat-returns-period input { margin: 0; cursor: pointer; }
 @media (max-width: 900px) {
   .cat-body { flex-direction: column; }
   .cat-chart { flex: none; width: 100%; }
@@ -2565,10 +2630,37 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
    TASK_140 follow-up 2/3) -- if that container sizing ever changes, these
    percentages need re-checking. */
 table.fs-table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
-table.fs-table th:nth-child(1), table.fs-table td:nth-child(1) { width: 26%; }
-table.fs-table th:nth-child(2), table.fs-table td:nth-child(2) { width: 12%; }
-table.fs-table th:nth-child(3), table.fs-table td:nth-child(3) { width: 12%; }
-table.fs-table th:nth-child(n+4), table.fs-table td:nth-child(n+4) { width: 10%; }
+/* 2026-08-10 follow-up 3 -- Category shrunk 5% of its own width
+   (26% -> 24.7%, rounded 25%) and period columns grown 5% of theirs
+   (76px -> 79.8px, rounded 80px), Returns trimmed to compensate -- user:
+   "reduce category column and WT column widths by 5%. and increase
+   period colum widths by 5% and reduce Returns column width." No % given
+   for the Returns reduction -- picked a modest trim (24% -> 22%) in the
+   same rough proportion as Category/Wt%'s own 5% cuts. */
+table.fs-table th:nth-child(1), table.fs-table td:nth-child(1) { width: 25%; }
+/* 2026-08-10 -- Today/Yesterday/MTD/QTD/YTD (cols 3-7) shrunk to a snug
+   fixed width -- "-99.9%/-99.9%" (mine/market, both at their max 3-digit
+   magnitude) is the longest this cell's text ever gets, so a % share
+   (12%/10%, sized for the widest CATEGORY set, not this) was wasted space
+   on every row. Freed width goes to Wt% (12% -> 18%) and Returns
+   (10% -> 18%, needs the extra room for its two mini-bars) -- user:
+   "increase width of the WT% and Returns and reduce the column widths so
+   it fits exacly this string -99.9%/-99.9% in each MTD/YTD etc columns
+   and use the space gained for WT% and Returns columns." Fixed px (not %)
+   so it stays exact regardless of the table's own rendered width; nowrap+
+   ellipsis is a safety net, not the primary fit mechanism. */
+/* 2026-08-10 follow-up -- Wt% shrunk another 20% of its own width
+   (18% -> 14.4%, rounded 14%) and the period columns another 10% of
+   theirs (84px -> 76px), freeing more room for Returns (18% -> 24%) to
+   fit its new $ amount (mine) line above the bars -- user: "add $amount
+   (mine) to Returns columns ... you can reduce WT% column width by 20%
+   and use it if you need to. other period columns (MTD etc) you can
+   reduce them by 10%." */
+table.fs-table th:nth-child(2), table.fs-table td:nth-child(2) { width: 13%; }
+table.fs-table th:nth-child(n+3):nth-child(-n+7), table.fs-table td:nth-child(n+3):nth-child(-n+7) {
+  width: 80px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+table.fs-table th:nth-child(8), table.fs-table td:nth-child(8) { width: 22%; }
 table.fs-table th { text-align: right; padding: 3px 6px; color: var(--text-3); font-weight: 600; border-bottom: 1px solid var(--border); }
 table.fs-table th:first-child, table.fs-table td:first-child { text-align: left; }
 table.fs-table td { padding: 3px 6px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; }
@@ -2576,6 +2668,39 @@ table.fs-table td:first-child { white-space: nowrap; overflow: hidden; text-over
 /* TASK_139 -- row click opens the gauge/factor exposure-detail modal. */
 table.fs-table tr.fs-clickable { cursor: pointer; }
 table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
+/* 2026-08-10 -- Returns column (last, per-row) -- two diverging (zero-
+   centered, sign-colored) mini-bars, mine on top / market below (0.55
+   opacity, "secondary" convention matching .gm-row-closed). Replaces an
+   earlier standalone chart beside the table -- user: "remove the newly
+   added bar charts and add them as a column to the grid as they
+   corresponds to each row anyways (ex: 'Financials')." Row-scale is
+   shared across the whole table (computed once in app.js::
+   loadFactorScorecard, not per-cell) so bar lengths are comparable
+   row-to-row. */
+.fs-returns-cell { text-align: left; padding: 2px 6px; }
+/* 2026-08-10 follow-up -- .fs-ret-wrap is now a flex ROW (plot + $ label
+   side by side), not just the bar plot alone -- the $ label used to stack
+   as a 2nd line ABOVE the plot, which silently grew every row's height
+   table-wide (table rows size to their tallest cell). User: "why the
+   height of the row increased?" Both children share the same 16px height,
+   so the cell's total height is back to what it was before the $ label
+   existed. */
+.fs-ret-wrap { display: flex; align-items: center; gap: 4px; width: 100%; height: 16px; }
+.fs-ret-plot { position: relative; flex: 1 1 auto; min-width: 0; height: 16px; }
+.fs-ret-mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--border); }
+.fs-ret-bar { position: absolute; height: 6px; border-radius: 1.5px; }
+.fs-ret-mine { top: 1px; }
+.fs-ret-mkt { top: 9px; opacity: 0.55; }
+.fs-ret-bar.pos { background: var(--bull, #15803d); }
+.fs-ret-bar.neg { background: var(--bear, #b91c1c); }
+/* $ amount (mine), compact-formatted -- user: "add $amount (mine) to
+   Returns columns. be creative so i can see the numbers." */
+.fs-ret-dollar {
+  flex: 0 0 auto; font-size: 9.5px; font-weight: 700;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.fs-ret-dollar.pos { color: var(--bull, #15803d); }
+.fs-ret-dollar.neg { color: var(--bear, #b91c1c); }
 /* weight% bar behind the Wt% cell -- accent at 15% opacity, applied only to
    the bar layer so the text on top stays full-strength. */
 .fs-weight-cell { position: relative; }

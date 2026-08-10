@@ -829,6 +829,92 @@ function _renderCatPie(svgId, rows, unmapped, colorMap, onClick) {
   });
 }
 
+// 2026-08-10 -- mine-vs-market Returns column, one per row in each of the 3
+// column-2 grids' own table -- user: "remove the newly added bar charts and
+// add them as a column to the grid as they corresponds to each row anyways
+// (ex: 'Financials')." Was a separate SVG chart beside the table (2026-08-10
+// earlier pass); moved into the table itself as the LAST <td> per row since
+// each bar IS that row's own mine-vs-market return, no separate chart
+// needed to cross-reference against the row. Two diverging (zero-centered,
+// sign-colored) mini-bars per cell -- mine at full opacity, market at 0.55
+// (same "secondary/deemphasized" convention as .gm-row-closed elsewhere) --
+// via _fsReturnsBarCell(), called from loadFactorScorecard()'s own row-
+// building loop below. Selecting a different period (#catReturnsPeriod,
+// now on the Accounts filter bar -- "add radio buttons on to the filter
+// bar") just re-runs reloadFactorScorecards() so this column's numbers
+// (already fetched in every row, twr_*/bench_*) reflect it -- no separate
+// cache/re-render path needed the way the old standalone chart required.
+function _selectedCatReturnsPeriod() {
+  const el = document.querySelector('#catReturnsPeriod input[name="catReturnsPeriod"]:checked');
+  return el ? el.value : 'mtd';
+}
+
+function _initCatReturnsPeriod() {
+  const wrap = $('catReturnsPeriod');
+  if (!wrap) return;
+  wrap.querySelectorAll('input[name="catReturnsPeriod"]').forEach(r => {
+    // 2026-08-10 -- also reloads Market View's own 3 grids (bottom three)
+    // now that they carry a Returns column too -- user: "add the Returns
+    // columns to bottom three grids also."
+    r.addEventListener('change', () => { reloadFactorScorecards(); reloadMarketView(); });
+  });
+}
+
+// 2026-08-10 -- $ amount (mine) added above the bars -- user: "add
+// $amount (mine) to Returns columns. be creative so i can see the
+// numbers." Not a fetched field (the API only has %twr per period, no
+// $-per-period) -- approximated as market_value * (mine% / 100), the same
+// "translate a % into its $ size" approximation _renderCatReturnsBars'
+// predecessor and the rest of this app already lean on elsewhere (e.g.
+// _catReturnsCache's old total-gain math). Compact K/M so it fits the
+// column at a glance without hover; the exact-to-the-cent Cumulative $
+// figure already lives in the Wt% cell for anyone who needs it. Market
+// View passes null (no holdings, nothing to show in $).
+function _fsCompactUsd(v) {
+  if (v == null) return null;
+  const abs = Math.abs(v);
+  const sign = v >= 0 ? '+' : '-';
+  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(1)}K`;
+  return `${sign}$${Math.round(abs)}`;
+}
+
+// max: the shared per-table scale (max |mine|/|market| across every row for
+// this period) so bar lengths are comparable row-to-row, computed once by
+// the caller before building rows. mineDollar: mine's approximate $ impact
+// at this period (see _fsCompactUsd above) -- null on Market View (no
+// holdings).
+function _fsReturnsBarCell(mine, mkt, max, mineDollar) {
+  const bar = (v, cls) => {
+    if (v == null) return '';
+    const pct = Math.min(45, Math.abs(v) / max * 45).toFixed(1);
+    const side = v >= 0 ? `left:50%;` : `right:50%;`;
+    const sign = v >= 0 ? 'pos' : 'neg';
+    return `<div class="fs-ret-bar ${cls} ${sign}" style="${side}width:${pct}%;"></div>`;
+  };
+  const fmt = v => v != null ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` : '—';
+  const dollarText = _fsCompactUsd(mineDollar);
+  // 2026-08-10 follow-up -- $ label moved BESIDE the bars (flex row) instead
+  // of stacked above them -- stacking added a 2nd text line inside the
+  // cell, and table rows size to their tallest cell, so it was silently
+  // growing every row's height table-wide. User: "why the height of the
+  // row increased?" Beside it, the cell's total height is unchanged (still
+  // just .fs-ret-plot's 16px) -- the widened Returns column (18% -> 24%,
+  // same pass) is exactly what makes room for it here instead.
+  const dollarHtml = dollarText
+    ? `<div class="fs-ret-dollar ${mineDollar >= 0 ? 'pos' : 'neg'}">${dollarText}</div>` : '';
+  return `<td class="fs-returns-cell" title="Mine: ${fmt(mine)}${mineDollar != null ? ' (' + dollarText + ' approx.)' : ''} / Market: ${fmt(mkt)}">
+    <div class="fs-ret-wrap">
+      <div class="fs-ret-plot">
+        <div class="fs-ret-mid"></div>
+        ${bar(mine, 'fs-ret-mine')}
+        ${bar(mkt, 'fs-ret-mkt')}
+      </div>
+      ${dollarHtml}
+    </div>
+  </td>`;
+}
+
 function _renderCatBars(svgId, rows, unmapped, colorMap, onClick) {
   const svg = $(svgId);
   if (!svg) return;
@@ -1023,6 +1109,14 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
     // and the next quarter color: use the full color, until then fade the
     // next quad caret color."
     const [curQtrOp, nextQtrOp] = _qtrFadeOpacities(stanceData?.days_to_qtr_end);
+    // 2026-08-10 -- Returns column (last <td> per row) -- period comes from
+    // the shared #catReturnsPeriod radio group; retMax is the shared scale
+    // across every row's mine/market value at that period, computed once
+    // here so bar lengths are comparable row-to-row (a single row can't
+    // sensibly self-scale). See _fsReturnsBarCell.
+    const _retPeriod = _selectedCatReturnsPeriod();
+    const _retMax = Math.max(1, ...(r.rows || []).flatMap(rr =>
+      [rr[`twr_${_retPeriod}`], rr[`bench_${_retPeriod}`]].filter(v => v != null).map(Math.abs)));
     const rows = (r.rows || []).map(row => {
       // 2026-08-09 -- row hover replaced with $ amounts instead of the
       // per-window you/mkt performance breakdown -- category $ value, the
@@ -1115,6 +1209,8 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
           })()}
         </td>
         ${cells}
+        ${_fsReturnsBarCell(row[`twr_${_retPeriod}`], row[`bench_${_retPeriod}`], _retMax,
+          (mv != null && row[`twr_${_retPeriod}`] != null) ? mv * row[`twr_${_retPeriod}`] / 100 : null)}
       </tr>`;
     }).join('');
     // 2026-08-08 -- Unmapped made clickable (same exposure-detail popup as
@@ -1156,6 +1252,10 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
     const headCells = _FS_WINDOWS
       .map(w => `<th title="Top: your time-weighted return, ${w.full}. Bottom (smaller): its benchmark ETF's return over the same period.">${w.label}</th>`)
       .join('');
+    // 2026-08-10 -- Returns column header -- period-labeled so it's clear
+    // which of the 5 periods (radio group on the Accounts filter bar) the
+    // bars below reflect. See _fsReturnsBarCell.
+    const retLabel = (_FS_WINDOWS.find(w => w.key === _retPeriod) || {}).label || _retPeriod;
     // TASK_136 A.3 -- wrapped in overflow-x:auto so the table degrades (its
     // own scrollbar) at narrow widths instead of forcing the grid track
     // wider than its share.
@@ -1164,8 +1264,9 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
         <table class="fs-table">
           <thead><tr><th title="Category, sector/asset-class/style">Category</th>
             <th title="Weight — % of your total portfolio">Wt%</th>
-            ${headCells}</tr></thead>
-          <tbody>${rows || `<tr><td colspan="${2 + _FS_WINDOWS.length}">No rows.</td></tr>`}</tbody>
+            ${headCells}
+            <th title="Mine (solid) vs Market (faded), ${retLabel}">Returns (${retLabel})</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="${3 + _FS_WINDOWS.length}">No rows.</td></tr>`}</tbody>
         </table>
       </div>
       ${unmapped}
@@ -1368,6 +1469,19 @@ async function loadMarketView(axis, bodyId, chartId) {
     const quadStanceMap = new Map((quadData?.rows || d.rows || []).map(r => [String(r.category).trim().toLowerCase(), r]));
     const rows = (d.rows || []).filter(r => r.count > 0).sort((a, b) => b.count - a.count);
     const total = d.total_count || 0;
+    // 2026-08-10 -- Returns column, same as the top 3 $ grids -- user:
+    // "add the Returns columns to bottom three grids also (i asked it in
+    // my original request)." Market View has no "mine" data by design
+    // (zero dependency on what you hold), so _fsReturnsBarCell gets
+    // mine=null -- it already renders just the market bar when mine is
+    // absent, no changes needed there. Scale (_retMax) computed from
+    // bench values only, same shared-per-table-scale reasoning as the $
+    // grids.
+    const _retPeriod = _selectedCatReturnsPeriod();
+    const _retMax = Math.max(1, ...rows.map(rr => {
+      const b = benchMap.get(rr.category.trim().toLowerCase());
+      return b ? Math.abs(b[`bench_${_retPeriod}`] || 0) : 0;
+    }));
 
     // 2026-08-10 -- chart slice/bar colors now match the top 3 $ grids'
     // scheme exactly: one distinct color per category (_catColorMap,
@@ -1398,6 +1512,7 @@ async function loadMarketView(axis, bodyId, chartId) {
     const headCells = _FS_WINDOWS
       .map(w => `<th title="${escapeHtml(w.full)} -- benchmark ETF's own return, independent of your holdings">${w.label}</th>`)
       .join('');
+    const retLabel = (_FS_WINDOWS.find(w => w.key === _retPeriod) || {}).label || _retPeriod;
     // 2026-08-10 -- category -> caret-cluster row, keyed for the hover
     // popover wiring below (same _showCategoryQuadPop the top 3 $ grids
     // use). User: "fix popovers on carets" -- Market View never wired this
@@ -1451,10 +1566,12 @@ async function loadMarketView(axis, bodyId, chartId) {
       // instead when source is ''. User: "you could still have a popup for
       // all and show the graphs only right?"
       const clickAttr = ` class="fs-clickable" data-cat="${escapeHtml(catKey)}" style="cursor:pointer;" onclick="openMarketViewDetailModal('${escapeHtml(axis)}', '${escapeHtml(r.category).replace(/'/g, "\\'")}', '${escapeHtml(state.marketViewSource || '')}')"`;
+      const retBench = bench ? bench[`bench_${_retPeriod}`] : null;
       return `<tr${clickAttr}>
         <td><span style="display:inline-block;width:${_CARET_CLUSTER_PX}px;">${caretHtml}</span>${escapeHtml(r.category)}</td>
         <td class="fs-weight-cell"><span class="fs-weight-text">${r.count}</span><span class="fs-weight-eq">/ ${total}</span></td>
         ${cells}
+        ${_fsReturnsBarCell(null, retBench, _retMax)}
       </tr>`;
     }).join('');
 
@@ -1466,8 +1583,9 @@ async function loadMarketView(axis, bodyId, chartId) {
         <table class="fs-table">
           <thead><tr><th title="Category, sector/asset-class/style">Category</th>
             <th title="# of stocks in this category / total universe">Count</th>
-            ${headCells}</tr></thead>
-          <tbody>${bodyRows || `<tr><td colspan="${2 + _FS_WINDOWS.length}">No rows.</td></tr>`}</tbody>
+            ${headCells}
+            <th title="Market return, ${retLabel} (no 'mine' bar -- Market View has no holdings)">Returns (${retLabel})</th></tr></thead>
+          <tbody>${bodyRows || `<tr><td colspan="${3 + _FS_WINDOWS.length}">No rows.</td></tr>`}</tbody>
         </table>
       </div>
     `;
@@ -1546,5 +1664,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.marketViewSource = srcSel.value || null;
     reloadMarketView();
   });
+  // 2026-08-10 -- Returns chart period selector (Today/Yest/MTD/QTD/YTD),
+  // shared across the 3 column-2 grids -- wired once here; each grid's own
+  // loadFactorScorecard() populates the rows this reads from.
+  _initCatReturnsPeriod();
   await refreshAll();
 });
