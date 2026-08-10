@@ -66,7 +66,14 @@ from api.routers.macro_areas import _SECTOR_ETF  # noqa: E402
 # during TASK_133 investigation (132 days, matching the tracked universe).
 _ASSET_CLASS_ETF = {
     "Equities":     "SPY",
-    "Fixed Income": "TLT",   # AGG has no drv_quote history in this system; TLT does
+    # 2026-08-10 -- Fixed Income switched from TLT (generic 20+yr Treasury
+    # proxy, NOT held, duration/volatility mismatch vs the actual sleeve) to
+    # an equal-weighted blend of the actual held FI positions -- user:
+    # "for fixed income, can you use three BUXX, CLOX, CLOZ?" (confirmed:
+    # blend, not a single pick, despite this meaning the "benchmark" is no
+    # longer independent of holdings -- see _bench_return's tuple handling).
+    # AGG/BND/SHV/BIL/JAAA have no drv_quote history in this system.
+    "Fixed Income": ("BUXX", "CLOX", "CLOZ"),
     "Commodities":  "GSG",
     "Gold":         "GLD",
     "FX":           "UUP",
@@ -688,8 +695,20 @@ def _twr_window(by_date: dict, calendar: list, window_days: int, end_offset: int
     return twr, confidence, detail
 
 
-def _bench_return(session: Session, symbol: Optional[str], calendar: list, window_days: int,
+def _bench_return(session: Session, symbol, calendar: list, window_days: int,
                    end_offset: int = 0) -> Optional[float]:
+    """symbol is normally a single ticker; a tuple/list (e.g. Fixed Income's
+    (BUXX, CLOX, CLOZ) blend, see _ASSET_CLASS_ETF) computes the EQUAL-
+    WEIGHTED AVERAGE of each member's own return over the same window --
+    not an averaged price series (meaningless across differently-priced
+    ETFs), an average of returns, the standard custom-composite-index
+    approach. Members missing a price on either endpoint are skipped
+    (partial blend, not a hard failure); returns None only if every member
+    lacks data."""
+    if isinstance(symbol, (tuple, list)):
+        rets = [r for r in (_bench_return(session, s, calendar, window_days, end_offset) for s in symbol)
+                if r is not None]
+        return sum(rets) / len(rets) if rets else None
     if not symbol or len(calendar) <= window_days + end_offset:
         return None
     end_idx = len(calendar) - end_offset
@@ -702,6 +721,17 @@ def _bench_return(session: Session, symbol: Optional[str], calendar: list, windo
     if d_start not in by_date or d_end not in by_date or by_date[d_start] == 0:
         return None
     return by_date[d_end] / by_date[d_start] - 1.0
+
+
+def _bench_symbol_label(symbol) -> Optional[str]:
+    """Display/lookup label for drv_category_perf.bench_symbol -- a tuple
+    blend (Fixed Income) becomes "BUXX+CLOX+CLOZ"; a plain string passes
+    through unchanged. The '+'-joined form is also what
+    GET /api/cockpit/benchmark-daily-change parses back apart to blend the
+    daily chart the same way _bench_return blends the window returns."""
+    if isinstance(symbol, (tuple, list)):
+        return "+".join(symbol) if symbol else None
+    return symbol
 
 
 def _calendar_period_starts(d: date) -> dict:
@@ -1046,7 +1076,7 @@ def _compute_category_rows(session: Session, as_of_date: date, accounts: Optiona
                 "weight_pct_equities": weight_pct_equities,
                 "target_min": target_min, "target_max": target_max,
                 **twr, **bench,
-                "bench_symbol": etf_map.get(category),
+                "bench_symbol": _bench_symbol_label(etf_map.get(category)),
                 "flows_confidence": flows_confidence,
                 "quad_stance": quad_stance, "verdict": verdict,
                 "detail": detail,

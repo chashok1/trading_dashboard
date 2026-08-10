@@ -1081,19 +1081,36 @@ def get_symbol_daily_change(symbol: str = Query(...), days: int = Query(30, ge=1
 @router.get("/api/cockpit/benchmark-daily-change")
 def get_benchmark_daily_change(symbol: str = Query(...), days: int = Query(30, ge=1, le=180),
                                 date: Optional[str] = Query(None)):
-    sym = symbol.strip().upper()
+    # 2026-08-10 -- `symbol` may be a "+"-joined blend (e.g.
+    # "BUXX+CLOX+CLOZ", Fixed Income's drv_category_perf.bench_symbol label
+    # -- see etl/derive_category_perf.py::_bench_symbol_label/_bench_return)
+    # instead of one ticker. Blended day = equal-weighted average of
+    # whichever members have a value that day (not requiring all three --
+    # same partial-blend tolerance _bench_return uses for the window
+    # returns), so the daily chart stays consistent with the MTD/QTD/YTD
+    # numbers next to it.
+    syms = [s.strip().upper() for s in symbol.split("+") if s.strip()]
     d = _resolve_date(date)
     with session_scope() as s:
-        rows = s.execute(text(
-            "SELECT as_of_date, net_chng, pct_change FROM drv_quote"
-            " WHERE tos_symbol = :sym AND as_of_date <= :d"
-            " ORDER BY as_of_date DESC LIMIT :n"
-        ), {"sym": sym, "d": d, "n": days}).fetchall()
-        out_days = [{"date": r[0].isoformat(),
-                     "dollar": float(r[1]) if r[1] is not None else None,
-                     "pct": float(r[2]) if r[2] is not None else None}
-                    for r in reversed(rows)]
-        return {"symbol": sym, "days": out_days}
+        by_date: dict = {}
+        for sym in syms:
+            rows = s.execute(text(
+                "SELECT as_of_date, net_chng, pct_change FROM drv_quote"
+                " WHERE tos_symbol = :sym AND as_of_date <= :d"
+                " ORDER BY as_of_date DESC LIMIT :n"
+            ), {"sym": sym, "d": d, "n": days}).fetchall()
+            for r in rows:
+                bucket = by_date.setdefault(r[0], {"dollar": [], "pct": []})
+                if r[1] is not None:
+                    bucket["dollar"].append(float(r[1]))
+                if r[2] is not None:
+                    bucket["pct"].append(float(r[2]))
+        dates = sorted(by_date.keys())[-days:]
+        out_days = [{"date": dt.isoformat(),
+                     "dollar": (sum(by_date[dt]["dollar"]) / len(by_date[dt]["dollar"])) if by_date[dt]["dollar"] else None,
+                     "pct": (sum(by_date[dt]["pct"]) / len(by_date[dt]["pct"])) if by_date[dt]["pct"] else None}
+                    for dt in dates]
+        return {"symbol": "+".join(syms), "days": out_days}
 
 
 # ---------------------------------------------------------------------------
