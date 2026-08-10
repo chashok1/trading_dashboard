@@ -72,6 +72,20 @@ _SECTOR_ETF = {
     "Materials":               "XLB",
     "Real Estate":             "XLRE",
     "Utilities":               "XLU",
+    # 2026-08-10 -- NOT a GICS-11 sector -- country/region ETFs (EWZ, FXI,
+    # INDY, etc.) that Yahoo Finance mistags equity_sector='Financials'
+    # (fund-issuer classification quirk, not what the fund holds -- see
+    # db/seeds_country_etf_sector.sql). Added here only so
+    # etl/derive_category_perf.py::_canon_sector accepts it (_GICS_SET =
+    # set(_SECTOR_ETF.keys())) -- this dict is the shared source of truth
+    # both that file and this one's own breadth panel (below) import from.
+    # No benchmark ETF: VEU/ACWX/VXUS/EFA (broad ex-US equity proxies) all
+    # have zero drv_quote history in this system. Does NOT create a new row
+    # in this file's OWN Actionable breadth panel below -- that logic gates
+    # on the separate, fixed _GICS_11_LOWER set, so a "country etf" sector
+    # symbol is skipped there exactly like any other non-GICS-11 sector
+    # already was. User: "why can't name them as 'Country ETF'?"
+    "Country ETF":             None,
 }
 
 # Canonical ordering for areas — each of these is now its own side-panel

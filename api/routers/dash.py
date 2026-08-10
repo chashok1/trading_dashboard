@@ -1795,14 +1795,41 @@ def get_quad_factor_stance(
         # style_stances instead -- a real but much smaller, ToS-tracked-
         # only universe; frontend labels this distinction, doesn't hide it.
         count_map: dict = {}
+        # 2026-08-10 -- raw (display-cased) label per lower-key, alongside
+        # count_map -- needed below to show a synthetic row for a category
+        # that exists in the real universe but has no Hedgeye quad-outlook
+        # entry (e.g. "Country ETF"), where there's no outlook_rows sub
+        # to source a display label from otherwise. MIN() is an arbitrary
+        # tie-break among casing variants (e.g. "Health Care" vs
+        # "health care") -- fine for this display-only use; count_map's own
+        # aggregation (by LOWER(TRIM())) is unchanged.
+        label_map: dict = {}
         total_universe = 0
         if axis in ("sector", "asset_class"):
             col = "equity_sector" if axis == "sector" else "asset_class"
+            # 2026-08-10 -- sector count restricted to asset_class='Equities',
+            # same equity-only guard etl/derive_category_perf.py::
+            # _categories_for already applies for the $ TWR/weight views --
+            # a handful of tickers have equity_sector set to an ASSET-CLASS
+            # name instead of a real GICS sector (e.g. UUP sector='USD',
+            # SLV sector='Gold') -- a data-vendor artifact of the fund
+            # issuer, not a real equity-sector exposure, same root cause as
+            # the Financials/Country-ETF mislabeling. Without this guard
+            # those leaked into this endpoint's new "orphaned category"
+            # synthetic rows below as bogus sector buckets ("Gold",
+            # "Commodities", "USD", ...). Not applied to asset_class's own
+            # count -- that axis is supposed to include non-equity
+            # instruments, it IS the total-portfolio view. User: "fix that
+            # too" (after: "for those, quads don't apply, you know that
+            # right?" re: Country ETF, a DIFFERENT, legitimate equity
+            # sub-bucket that still passes this guard).
+            eq_guard = " AND asset_class = 'Equities'" if axis == "sector" else ""
             for r in s.execute(text(
-                f"SELECT LOWER(TRIM({col})) AS k, COUNT(*) AS n FROM ref_sector "
-                f"WHERE {col} IS NOT NULL GROUP BY LOWER(TRIM({col}))"
+                f"SELECT LOWER(TRIM({col})) AS k, MIN({col}) AS raw, COUNT(*) AS n FROM ref_sector "
+                f"WHERE {col} IS NOT NULL{eq_guard} GROUP BY LOWER(TRIM({col}))"
             )).mappings().all():
                 count_map[r["k"]] = r["n"]
+                label_map[r["k"]] = r["raw"]
             # sector/asset_class are exclusive (1 category per ticker), so
             # summing every category's count IS the total universe size.
             total_universe = sum(count_map.values())
@@ -1876,6 +1903,29 @@ def get_quad_factor_stance(
             "months": _month_stances(texts),
             "qtr": {"quad": qtr_now, "stance": qtr_stance} if qtr_now else None,
             "next_qtr": {"quad": qtr_next, "stance": next_qtr_stance} if qtr_next else None,
+        })
+
+    # 2026-08-10 -- synthetic rows for categories that exist in the real
+    # universe (count_map) but have no Hedgeye quad-outlook entry to attach
+    # a forecast to (e.g. "Country ETF" -- Hedgeye's own published sub-
+    # category list only covers the 11 GICS sectors + a few extras;
+    # country/region ETFs were never one of them, see
+    # db/seeds_country_etf_sector.sql). Without this they silently vanished
+    # from this view's rows even though total_count already includes them
+    # (it sums count_map directly, not the rows) -- shown here with a count
+    # but no forecast data (months=[]/qtr=None/next_qtr=None, same "No
+    # quarterly data" shape the frontend popover already renders for a
+    # genuine gap), not hidden. User: "for those, quads don't apply, you
+    # know that right?" -> "yes, go ahead."
+    covered = {r["sub_category"].strip().lower() for r in outlook_rows} if axis in ("sector", "asset_class") \
+        else {r["sub_category"] for r in outlook_rows}
+    for key, n in count_map.items():
+        if n <= 0 or key in covered:
+            continue
+        rows_out.append({
+            "category": label_map.get(key, key), "score": None, "stance": "Neutral", "count": n,
+            "quad1": None, "quad2": None, "quad3": None, "quad4": None,
+            "months": [], "qtr": None, "next_qtr": None,
         })
 
     return {
