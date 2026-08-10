@@ -136,6 +136,14 @@ async function loadDates() {
 }
 
 // ---------- economic indicators ----------
+// 2026-08-10 -- loadEarnings()/#eventBand removed: it was a strict subset
+// of this same endpoint's own data (both ultimately read ref_calendar_event;
+// this query already includes every market-structure row -- Fed Meeting,
+// FOMC Minutes, expiration, etc -- unfiltered, on top of the econ releases),
+// so every one of those rows was rendering in both grids. limit bumped
+// 20 -> 40 to cover what the merged-away Event grid used to show on its
+// own. User: "Are the entries in panels (INDICATOR and EVENT grids)
+// duplicated? Can we merge those two?" -> "Merge into one grid."
 
 async function loadEconIndicators() {
   const tbody = $('econBody');
@@ -143,8 +151,8 @@ async function loadEconIndicators() {
   tbody.innerHTML = '';
   try {
     const url = state.date
-      ? `/api/dashboard/econ-indicators?date=${encodeURIComponent(state.date)}&limit=20`
-      : '/api/dashboard/econ-indicators?limit=20';
+      ? `/api/dashboard/econ-indicators?date=${encodeURIComponent(state.date)}&limit=40`
+      : '/api/dashboard/econ-indicators?limit=40';
     const rows = await fetchJson(url);
     if (!rows || rows.length === 0) {
       empty.hidden = false;
@@ -165,39 +173,6 @@ async function loadEconIndicators() {
     }
   } catch (e) {
     console.error('Failed to load econ indicators:', e);
-    empty.hidden = false;
-    empty.textContent = 'Failed to load.';
-  }
-}
-
-// ---------- earnings / calendar events ----------
-
-async function loadEarnings() {
-  const tbody = $('earningsBody');
-  const empty = $('earningsEmpty');
-  tbody.innerHTML = '';
-  try {
-    const url = state.date
-      ? `/api/dashboard/earnings?date=${encodeURIComponent(state.date)}&days_ahead=60&limit=50`
-      : '/api/dashboard/earnings?days_ahead=60&limit=50';
-    const rows = await fetchJson(url);
-    if (!rows || rows.length === 0) {
-      empty.hidden = false;
-      return;
-    }
-    empty.hidden = true;
-    for (const r of rows) {
-      const tr = document.createElement('tr');
-      const days = r.days_until != null ? `${r.days_until}d` : '';
-      tr.innerHTML = `
-        <td class="text">${r.category || ''}</td>
-        <td class="num">${days}</td>
-        <td>${fmtDate(r.event_date)}</td>
-      `;
-      tbody.appendChild(tr);
-    }
-  } catch (e) {
-    console.error('Failed to load earnings:', e);
     empty.hidden = false;
     empty.textContent = 'Failed to load.';
   }
@@ -1265,7 +1240,7 @@ async function loadHousekeeping() {
     if (line) line.innerHTML = '<span class="hk-dot bad"></span>Housekeeping check failed.';
   }
   await loadTxnFeedGaps();
-  await Promise.all([loadEconIndicators(), loadEarnings(), loadNearTermEarnings()]);
+  await Promise.all([loadEconIndicators(), loadNearTermEarnings()]);
 }
 
 // TASK_134 C.1 -- per-account transaction-feed staleness (Schwab hist_cst /

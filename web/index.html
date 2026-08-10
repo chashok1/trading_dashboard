@@ -87,7 +87,9 @@
          removed, Housekeeping moved into dial-changed-col, both per user
          request). Element IDs are unchanged throughout (econBody/
          earningsBody/housekeepingLine/housekeepingGaps/regimeStrip) so
-         their loaders in app.js need no edits, only containers moved. -->
+         their loaders in app.js need no edits, only containers moved.
+         2026-08-10 -- Event/earningsBody removed entirely, merged into
+         Indicator/econBody (see #indicatorBand's own comment below). -->
     <div class="cockpit-bands">
       <div class="main-col">
         <!-- TASK_140 follow-up -- What changed moved below Risk Dial
@@ -175,16 +177,8 @@
                the same height as the table's own grid-header row (both are
                top-aligned flex children of .cat-body) instead of floating
                above the whole card. -->
-          <section class="cockpit-band cat-section" id="sectorScorecardBand">
-            <div class="cat-body">
-              <div class="cat-chart">
-                <h3 class="cat-chart-title"><span class="axis-dot axis-sector"></span>Sector</h3>
-                <svg class="chart" id="sectorChart" viewBox="0 0 200 200"></svg>
-              </div>
-              <div class="cat-table-col" id="sectorScorecardBody">Loading…</div>
-            </div>
-          </section>
-
+          <!-- 2026-08-10 -- Asset class moved above Sector per user
+               request (same for the Market View trio below). -->
           <section class="cockpit-band cat-section" id="assetClassScorecardBand">
             <div class="cat-body">
               <div class="cat-chart">
@@ -192,6 +186,16 @@
                 <svg class="chart" id="assetChart" viewBox="0 0 200 200"></svg>
               </div>
               <div class="cat-table-col" id="assetClassScorecardBody">Loading…</div>
+            </div>
+          </section>
+
+          <section class="cockpit-band cat-section" id="sectorScorecardBand">
+            <div class="cat-body">
+              <div class="cat-chart">
+                <h3 class="cat-chart-title"><span class="axis-dot axis-sector"></span>Sector</h3>
+                <svg class="chart" id="sectorChart" viewBox="0 0 200 200"></svg>
+              </div>
+              <div class="cat-table-col" id="sectorScorecardBody">Loading…</div>
             </div>
           </section>
 
@@ -235,16 +239,6 @@
               <option value="PS">PS — Price Strength Rank</option>
             </select>
           </div>
-          <section class="cockpit-band cat-section" id="marketViewSectorBand">
-            <div class="cat-body">
-              <div class="cat-chart">
-                <h3 class="cat-chart-title"><span class="axis-dot axis-sector"></span>Sector</h3>
-                <svg class="chart" id="marketViewSectorChart" viewBox="0 0 200 200"></svg>
-              </div>
-              <div class="cat-table-col" id="marketViewSectorBody">Loading…</div>
-            </div>
-          </section>
-
           <section class="cockpit-band cat-section" id="marketViewAssetClassBand">
             <div class="cat-body">
               <div class="cat-chart">
@@ -252,6 +246,16 @@
                 <svg class="chart" id="marketViewAssetClassChart" viewBox="0 0 200 200"></svg>
               </div>
               <div class="cat-table-col" id="marketViewAssetClassBody">Loading…</div>
+            </div>
+          </section>
+
+          <section class="cockpit-band cat-section" id="marketViewSectorBand">
+            <div class="cat-body">
+              <div class="cat-chart">
+                <h3 class="cat-chart-title"><span class="axis-dot axis-sector"></span>Sector</h3>
+                <svg class="chart" id="marketViewSectorChart" viewBox="0 0 200 200"></svg>
+              </div>
+              <div class="cat-table-col" id="marketViewSectorBody">Loading…</div>
             </div>
           </section>
 
@@ -278,6 +282,16 @@
           <div id="heInflBody">Loading…</div>
         </section>
 
+        <!-- 2026-08-10 -- Event grid (#eventBand) merged into Indicator --
+             both read ref_calendar_event, and Event's market-structure
+             names (Fed Meeting/FOMC/expiration/etc) were rendering here
+             AND there, unfiltered, since Indicator's own query never
+             excluded them. Indicator already returns the full deduplicated
+             set on its own (see api/routers/health.py::
+             get_dashboard_econ_indicators), so no query change was needed
+             -- just the redundant second grid removed. User: "Are the
+             entries in panels (INDICATOR and EVENT grids) duplicated? Can
+             we merge those two?" -> "Merge into one grid." -->
         <section class="cockpit-band rail-band" id="indicatorBand">
           <div class="side-scroll">
             <table class="mini-grid">
@@ -291,22 +305,6 @@
               <tbody id="econBody"></tbody>
             </table>
             <div id="econEmpty" class="empty-note" hidden>No active indicators.</div>
-          </div>
-        </section>
-
-        <section class="cockpit-band rail-band" id="eventBand">
-          <div class="side-scroll">
-            <table class="mini-grid">
-              <thead>
-                <tr>
-                  <th>Event</th>
-                  <th class="num">In</th>
-                  <th>Date</th>
-                </tr>
-              </thead>
-              <tbody id="earningsBody"></tbody>
-            </table>
-            <div id="earningsEmpty" class="empty-note" hidden>No upcoming events.</div>
           </div>
         </section>
 

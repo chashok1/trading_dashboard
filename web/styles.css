@@ -1938,22 +1938,29 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
   min-height: 0;
   overflow-y: auto;
 }
-/* Indicator/Event override the shared .side-scroll max-height (styles.css's
-   generic rule, still used elsewhere) with a fixed ~6-row window -- header
-   row (~19px) + 6 data rows (~19.3px each) -- so both stay a consistent
-   height in the rail regardless of how many rows they'd otherwise render,
-   scrolling internally past that. */
-#eventBand .side-scroll { max-height: 140px; }
+/* Indicator overrides the shared .side-scroll max-height (styles.css's
+   generic rule, still used elsewhere) with a fixed window, scrolling
+   internally past that.
+   2026-08-10 -- Event grid (#eventBand) removed entirely -- it was a pure
+   subset of Indicator's own data (both read ref_calendar_event; Event just
+   whitelisted the market-structure category names Indicator already shows
+   unfiltered), so every Fed Meeting/FOMC/expiration row was rendering
+   twice. User: "Are the entries in panels (INDICATOR and EVENT grids)
+   duplicated? Can we merge those two?" -> "Merge into one grid." Indicator
+   already covered the full deduplicated set on its own -- see
+   api/routers/health.py::get_dashboard_econ_indicators -- so the merge was
+   just deleting the redundant second grid, not a query change. */
 /* TASK_140 follow-up 12 -- Indicator and the near-term-earnings ("Symbol")
-   panel grown taller than Event's shared 6-row window per user request. */
+   panel grown taller than the old shared 6-row window per user request. */
 #indicatorBand .side-scroll { max-height: 220px; }
 /* TASK_140 follow-up 13/14 -- +5 rows, then +5 more (315px -> 410px), same
    .mini-grid ~19px/row CSS estimate as above -- no browser attached to
    measure the real rendered height. */
 #nearEarningsBand .side-scroll { max-height: 410px; }
-/* 2026-08-08 -- align columns across all three right-rail tables (Indicator/
-   Event/Symbol, all 3 columns now that Indicator's Signal column is
-   removed: label / Date / num). table-layout:fixed + matching % widths,
+/* 2026-08-08 -- align columns across the right-rail tables (Indicator/
+   Symbol -- Event merged into Indicator 2026-08-10, see above -- all
+   columns now that Indicator's Signal column is removed: label / Date /
+   num). table-layout:fixed + matching % widths,
    same approach as table.fs-table's column alignment fix earlier -- scoped
    to .right-rail specifically (not the bare .mini-grid class) since that
    class is shared with web/actionable.html, which stays untouched. */
@@ -1968,7 +1975,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .right-rail .side-scroll { overflow-y: scroll; }
 /* Days/In (small integers) and Date (MM/DD, always 5 monospace chars)
    sized to their actual minimum content width instead of a %; column 1
-   (Indicator/Event/Symbol label) has no width set, so table-layout:fixed
+   (Indicator/Symbol label) has no width set, so table-layout:fixed
    gives it 100% of whatever's left over -- user request: "use minimum
    lengths required for date and days columns and use that space for
    first column". 2026-08-08 follow-up -- Date moved to column 3 (last),

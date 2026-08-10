@@ -321,10 +321,18 @@
     return line('ADD', adds, '#1d9e75') + line('REM', removes, '#c0392b');
   }
 
+  // 2026-08-10 -- width:100%/height:auto (was max-height:96px/width:auto)
+  // so the image fills the right-rail column's full width, same fix
+  // msrCardHtml() got for Mkt Situation's column -- height follows
+  // proportionally at the image's own aspect ratio, no separate height
+  // logic needed. User: "adjust the graph size to width of the whole
+  // column and thus height of the graph (with current ratio)." Sole
+  // caller is #heInflPanel (see render()); the old Actionable INFL slot
+  // was replaced by Risk Range.
   function inflationNowcastHtml(infl) {
     if (!infl || !infl.image_url) return '';
     return '<img src="' + esc(infl.image_url) + '" ' +
-      'style="max-height:96px; max-width:100%; width:auto; border-radius:3px; display:block; cursor:zoom-in;" ' +
+      'style="width:100%; height:auto; border-radius:3px; display:block; cursor:zoom-in;" ' +
       'onclick="window._heShowImagePopup(\'' + esc(infl.image_url) + '\')" ' +
       'onerror="this.style.display=\'none\'">';
   }

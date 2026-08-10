@@ -219,50 +219,17 @@ def get_dashboard_econ_indicators(
     ]
 
 
-# ref_calendar_event holds ONLY macro-release names (CPI, PPI, NFP, GDP, ...)
-# plus these genuine market-structure dates -- there is no per-ticker earnings
-# data in that table. Whitelisting the market-structure names (rather than
-# trying to exclude econ-release names by fuzzy match against
-# ref_econ_indicator.indicator, whose long-form names like "Consumer Price
-# Index - CPI YoY" never match ref_calendar_event's short codes like
-# "CPI YOY") is what actually keeps econ releases out of this panel.
-_MARKET_STRUCTURE_EVENTS = (
-    "vix expiration", "monthly exp", "qtly exp",
-    "fed meeting", "fmoc minutes", "fomc minutes",
-    "beige book", "jackson hole fed speech",
-)
-
-
-@router.get("/api/dashboard/earnings")
-def get_dashboard_earnings(
-    date: Optional[str] = Query(None, description="As-of date (defaults to today)"),
-    days_ahead: int = Query(60, ge=1, le=365),
-    limit: int = Query(100, ge=1, le=500),
-):
-    """
-    Market-structure events (options/futures expiration, Fed meetings, FOMC
-    minutes, Beige Book, Jackson Hole) for the dashboard side panel.
-    Pulls from ref_calendar_event, restricted to the known non-econ category
-    names -- see _MARKET_STRUCTURE_EVENTS. Per-symbol earnings live in
-    GET /api/dashboard/symbol-earnings instead; ref_calendar_event has no
-    per-ticker data.
-    """
-    d = datetime.strptime(date, "%Y-%m-%d").date() if date else datetime.now().date()
-    with session_scope() as s:
-        rows = s.execute(text("""
-            SELECT
-                category,
-                event_date,
-                (event_date - :d) AS days_until
-            FROM ref_calendar_event
-            WHERE event_date >= :d
-              AND event_date <= :d + (:days_ahead || ' days')::INTERVAL
-              AND LOWER(TRIM(category)) = ANY(:names)
-            ORDER BY event_date ASC, category ASC
-            LIMIT :lim
-        """), {"d": d, "days_ahead": days_ahead, "lim": limit,
-               "names": list(_MARKET_STRUCTURE_EVENTS)}).mappings().all()
-    return [dict(r) for r in rows]
+# 2026-08-10 -- GET /api/dashboard/earnings (market-structure events: VIX/
+# monthly/qtly expiration, Fed Meeting, FOMC Minutes, Beige Book, Jackson
+# Hole) removed -- it whitelisted a subset of category names out of
+# ref_calendar_event for the old #eventBand grid, but get_dashboard_econ_
+# indicators below reads the SAME table with no category filter at all, so
+# every one of those rows was already rendering there too (unfiltered) --
+# pure duplication, not two different data slices. #eventBand was deleted
+# and merged into #indicatorBand (web/index.html), which needed no query
+# change since it already returned the full deduplicated set on its own.
+# User: "Are the entries in panels (INDICATOR and EVENT grids) duplicated?
+# Can we merge those two?" -> "Merge into one grid."
 
 
 @router.get("/api/dashboard/symbol-earnings")
