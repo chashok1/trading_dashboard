@@ -47,11 +47,22 @@
       '  </div>',
       '  <div class="gm-body">',
       '    <div class="gm-left-col">',
-      '      <div class="gm-table-wrap">',
+      '      <div class="gm-table-wrap" id="mvdTableWrap">',
       '        <table class="gm-table" id="mvdTable">',
       '          <thead><tr id="mvdTableHead"></tr></thead>',
       '          <tbody id="mvdTableBody"></tbody>',
       '        </table>',
+      '      </div>',
+      // 2026-08-10 -- "All" (no Source) has no per-symbol table to show
+      // (no single source's signal to list when blending all 4 quads) --
+      // this TradingView 3-month chart of the category's benchmark ETF
+      // fills that empty space instead of a blank/note-only panel. User:
+      // "instead of empty grid, display 3 months stock graph from
+      // trending view." Hidden by default; toggled with mvdTableWrap in
+      // openMarketViewDetailModal based on whether a source is selected.
+      '      <div id="mvdChartWrap" style="display:none;flex:1 1 auto;flex-direction:column;min-height:360px;padding:8px 10px;box-sizing:border-box;">',
+      '        <div id="mvdTvChartLabel" class="gm-sub" style="margin-bottom:8px;flex:0 0 auto;"></div>',
+      '        <div id="mvdTvChart" style="flex:1 1 auto;min-height:320px;"></div>',
       '      </div>',
       '    </div>',
       '    <div class="gm-chart-pane">',
@@ -72,6 +83,52 @@
   }
 
   function svgns(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
+
+  // 2026-08-10 -- "All" view's left panel: a real TradingView chart of the
+  // category's benchmark ETF, 3-month range, instead of an empty/note-only
+  // panel. Same embed pattern as chart_modal.js's openChartModal (mirrors
+  // its script-injection technique) but the lighter "mini symbol overview"
+  // widget (built for a compact panel, not a full-screen dialog) with
+  // dateRange fixed to "3M" -- user: "instead of empty grid, display 3
+  // months stock graph from trending view." Fixed Income's bench_symbol is
+  // a "+"-joined blend (BUXX+CLOX+CLOZ, see derive_category_perf.py) --
+  // can't chart 3 tickers as one line, so this charts just the first
+  // member with a note, same "partial, not silently wrong" spirit as the
+  // blend's own return math.
+  function _loadTvChart(symbol) {
+    var wrap = document.getElementById('mvdChartWrap');
+    var container = document.getElementById('mvdTvChart');
+    var label = document.getElementById('mvdTvChartLabel');
+    if (!wrap || !container) return;
+    container.innerHTML = '';
+    if (!symbol) {
+      if (label) label.textContent = 'No benchmark ETF for this category.';
+      return;
+    }
+    var members = symbol.split('+');
+    var chartSym = members[0];
+    if (label) label.textContent = members.length > 1
+      ? (chartSym + ' -- 3 month (1 of ' + members.length + ' blended: ' + symbol + ')')
+      : (chartSym + ' -- 3 month');
+    var tvWrapper = document.createElement('div');
+    tvWrapper.className = 'tradingview-widget-container';
+    tvWrapper.style.cssText = 'height:100%;width:100%;';
+    var wd = document.createElement('div');
+    wd.className = 'tradingview-widget-container__widget';
+    wd.style.cssText = 'height:100%;width:100%;';
+    tvWrapper.appendChild(wd);
+    var sc = document.createElement('script');
+    sc.type = 'text/javascript';
+    sc.src = 'https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js';
+    sc.async = true;
+    sc.textContent = JSON.stringify({
+      symbol: chartSym, width: '100%', height: '100%', locale: 'en',
+      dateRange: '3M', colorTheme: 'light', isTransparent: false,
+      autosize: true, largeChartUrl: '',
+    });
+    tvWrapper.appendChild(sc);
+    container.appendChild(tvWrapper);
+  }
 
   function _fmtVal(col, v) {
     if (v == null) return '—';
@@ -216,10 +273,13 @@
     document.getElementById(MODAL_ID).classList.add('open');
     document.getElementById('mvdTitle').textContent = category + ' — ' + (_AXIS_LABEL[axis] || axis);
     document.getElementById('mvdSub').textContent = source ? ('Source: ' + source) : 'Source: All (Hedgeye quad outlook)';
+    // "All" has no per-symbol table (no single source's signal to list) --
+    // show the 3-month TradingView chart of the benchmark ETF instead of
+    // an empty table panel; a real Source swaps back to the table.
+    document.getElementById('mvdTableWrap').style.display = source ? '' : 'none';
+    document.getElementById('mvdChartWrap').style.display = source ? 'none' : 'flex';
     document.getElementById('mvdTableHead').innerHTML = '';
-    document.getElementById('mvdTableBody').innerHTML = source
-      ? '<tr><td class="gm-empty">Loading…</td></tr>'
-      : '<tr><td class="gm-empty">No per-symbol table for "All" -- pick a Source above (RR/CALL/ETF/II/SSS/PS) to see it. Charts on the right still apply.</td></tr>';
+    document.getElementById('mvdTableBody').innerHTML = '<tr><td class="gm-empty">Loading…</td></tr>';
     _renderVerticalBars('mvdDailyChart', []);
     _renderVerticalBars('mvdWindowChart', []);
 
@@ -235,6 +295,7 @@
         if (sub) sub.textContent = srcLabel + (benchSymbol ? (' · Benchmark: ' + benchSymbol) : ' · No benchmark ETF for this category');
         _loadDaily(benchSymbol);
         _renderWindows(benchSymbol, bench);
+        if (!source) _loadTvChart(benchSymbol);
       })
       .catch(function (e) { console.error('factor-scorecard (benchmark lookup) failed:', e); });
 
