@@ -14,15 +14,36 @@
    shared, since actionable.js is off-limits to touch (unrelated in-progress
    work) and there is no existing shared module between the two pages. */
 
+// 2026-08-10 -- SPY/QQQ/IWM/UUP (top9 area's 'dual'-role ETF proxies) and
+// the 6 missing vol gauges (VXN/VXD/RVX/GVZ/OVX/MOVE, side rail's
+// Volatility area minus VIX which was already here) added, same gap
+// market_bar.js's mini-tape had -- see that file's own 2026-08-10 comment.
+// Symbol codes verified directly against tradingview.com/symbols/... :
+// ETFs on AMEX:/NASDAQ:, CBOE vol indices on CBOE:/CBOEFTSE: (RVX is the
+// one exception -- CBOEFTSE:, not CBOE:), MOVE on TVC: (matches GOLD/USOIL
+// above, same provider). Same symbols reused in both lists (not swapped
+// for a futures-equivalent) -- unlike the raw cash indices above, ETFs and
+// published vol indices don't need one; existing VIX/DXY/GOLD/USOIL/BTC/FX
+// rows already follow that same reuse pattern.
 const _DTV_SYMS_REGULAR = [
   { symbol: 'FOREXCOM:SPXUSD',      title: 'S&P 500' },
-  { symbol: 'FOREXCOM:NSXUSD',      title: 'Nasdaq 100' },
-  { symbol: 'FOREXCOM:DJI',         title: 'Dow Jones' },
-  { symbol: 'FOREXCOM:US2000',      title: 'Russell 2K' },
   { symbol: 'CAPITALCOM:VIX',       title: 'VIX' },
+  { symbol: 'AMEX:SPY',             title: 'SPY' },
+  { symbol: 'FOREXCOM:NSXUSD',      title: 'Nasdaq 100' },
+  { symbol: 'CBOE:VXN',             title: 'VXN' },
+  { symbol: 'NASDAQ:QQQ',           title: 'QQQ' },
+  { symbol: 'FOREXCOM:DJI',         title: 'Dow Jones' },
+  { symbol: 'CBOE:VXD',             title: 'VXD' },
+  { symbol: 'FOREXCOM:US2000',      title: 'Russell 2K' },
+  { symbol: 'CBOEFTSE:RVX',         title: 'RVX' },
+  { symbol: 'AMEX:IWM',             title: 'IWM' },
   { symbol: 'CAPITALCOM:DXY',       title: 'Dollar' },
+  { symbol: 'AMEX:UUP',             title: 'UUP' },
   { symbol: 'TVC:GOLD',             title: 'Gold' },
+  { symbol: 'CBOE:GVZ',             title: 'GVZ' },
   { symbol: 'TVC:USOIL',            title: 'WTI Crude' },
+  { symbol: 'CBOE:OVX',             title: 'OVX' },
+  { symbol: 'TVC:MOVE',             title: 'MOVE' },
   { symbol: 'BITSTAMP:BTCUSD',      title: 'Bitcoin' },
   { symbol: 'FX:EURUSD',            title: 'EUR/USD' },
   { symbol: 'FX:USDJPY',            title: 'USD/JPY' },
@@ -30,13 +51,23 @@ const _DTV_SYMS_REGULAR = [
 
 const _DTV_SYMS_FUTURES = [
   { symbol: 'FOREXCOM:SPXUSD',      title: 'S&P Fut' },
-  { symbol: 'FOREXCOM:NSXUSD',      title: 'Nasdaq Fut' },
-  { symbol: 'FOREXCOM:DJI',         title: 'Dow Fut' },
-  { symbol: 'FOREXCOM:US2000',      title: 'Russell Fut' },
   { symbol: 'CAPITALCOM:VIX',       title: 'VIX' },
+  { symbol: 'AMEX:SPY',             title: 'SPY' },
+  { symbol: 'FOREXCOM:NSXUSD',      title: 'Nasdaq Fut' },
+  { symbol: 'CBOE:VXN',             title: 'VXN' },
+  { symbol: 'NASDAQ:QQQ',           title: 'QQQ' },
+  { symbol: 'FOREXCOM:DJI',         title: 'Dow Fut' },
+  { symbol: 'CBOE:VXD',             title: 'VXD' },
+  { symbol: 'FOREXCOM:US2000',      title: 'Russell Fut' },
+  { symbol: 'CBOEFTSE:RVX',         title: 'RVX' },
+  { symbol: 'AMEX:IWM',             title: 'IWM' },
   { symbol: 'CAPITALCOM:DXY',       title: 'Dollar' },
+  { symbol: 'AMEX:UUP',             title: 'UUP' },
   { symbol: 'TVC:GOLD',             title: 'Gold' },
+  { symbol: 'CBOE:GVZ',             title: 'GVZ' },
   { symbol: 'TVC:USOIL',            title: 'WTI Crude' },
+  { symbol: 'CBOE:OVX',             title: 'OVX' },
+  { symbol: 'TVC:MOVE',             title: 'MOVE' },
   { symbol: 'BITSTAMP:BTCUSD',      title: 'Bitcoin' },
   { symbol: 'FX:EURUSD',            title: 'EUR/USD' },
   { symbol: 'FX:USDJPY',            title: 'USD/JPY' },
