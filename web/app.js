@@ -924,8 +924,13 @@ const _FS_WINDOWS = [
 // Kept in sync BY HAND -- there's no single shared DOM element both read
 // from, since the note lives in a sibling div, not a table cell. Recompute
 // if the caret cluster's own glyph count/widths change:
-//   main(11) + gap(6) + periods(3x: 11+1+9+1+9=31) + gap(6) + qtr(11) +
-//   next-qtr(11) = 76, + .cat-quad-stance's own margin-right(5) = 81.
+//   main(11) + gap(6) + periods(3x: 9+1+9+1+9=29) + gap(6) + qtr(11) +
+//   next-qtr(11) = 74, + .cat-quad-stance's own margin-right(5) = 79 --
+// left at 81 (2px of harmless slack; a reservation only needs to be >=
+// the actual content, not exact) since periods went from 31->29 when the
+// current-month caret's size was unified with the other periods' (2026-08-10,
+// "make first month caret same size as other months" -- was previously
+// 11px/bold like the main caret, to stand out).
 // User: "alignment should skip two more carets" -- the qtr/next-qtr carets
 // were added after the original 56px reservation was sized, and the
 // wrapper span's old `min-width` (not `width`) let it silently grow past
@@ -953,12 +958,17 @@ function _quadCaretCluster(stanceRow, curQtrOp, nextQtrOp) {
   // at the same font-size, so an un-fixed-width span shifted everything
   // after it left whenever a row's carets included a neutral read.
   const mainCaret = `<span style="color:${mCol};font-size:11px;font-weight:700;display:inline-block;width:11px;text-align:center;">${mGlyph}</span>`;
-  const periodCarets = (stanceRow.months || []).map((mo, i) => {
+  // 2026-08-10 -- all period carets (current month + later-in-window ones)
+  // same size now -- the current-month caret used to match the main 60D
+  // caret's larger bold size to stand out; user: "everywhere make first
+  // month caret same size as other months" (applies globally -- this is
+  // the one shared function both the top 3 $ grids and Market View render
+  // from).
+  const periodCarets = (stanceRow.months || []).map(mo => {
     const v = Number(mo.stance) || 0;
     const sCol = v > 0 ? '#16a34a' : v < 0 ? '#dc2626' : '#9ca3af';
     const glyph = v > 0 ? '&#9650;' : v < 0 ? '&#9660;' : '&#8211;';
-    const sz = i === 0 ? 'font-size:11px;font-weight:700;width:11px;' : 'width:9px;';
-    return `<span style="color:${sCol};${sz}display:inline-block;text-align:center;">${glyph}</span>`;
+    return `<span style="color:${sCol};width:9px;display:inline-block;text-align:center;">${glyph}</span>`;
   }).join('<span style="display:inline-block;width:1px;"></span>');
   const gap = `<span style="display:inline-block;width:6px;"></span>`;
   const qtrCaret = (stanceRow.qtr && stanceRow.qtr.stance != null) ? (() => {
