@@ -14,36 +14,39 @@
    shared, since actionable.js is off-limits to touch (unrelated in-progress
    work) and there is no existing shared module between the two pages. */
 
-// 2026-08-10 -- SPY/QQQ/IWM/UUP (top9 area's 'dual'-role ETF proxies) and
-// the 6 missing vol gauges (VXN/VXD/RVX/GVZ/OVX/MOVE, side rail's
-// Volatility area minus VIX which was already here) added, same gap
-// market_bar.js's mini-tape had -- see that file's own 2026-08-10 comment.
-// Symbol codes verified directly against tradingview.com/symbols/... :
-// ETFs on AMEX:/NASDAQ:, CBOE vol indices on CBOE:/CBOEFTSE: (RVX is the
-// one exception -- CBOEFTSE:, not CBOE:), MOVE on TVC: (matches GOLD/USOIL
-// above, same provider). Same symbols reused in both lists (not swapped
-// for a futures-equivalent) -- unlike the raw cash indices above, ETFs and
-// published vol indices don't need one; existing VIX/DXY/GOLD/USOIL/BTC/FX
-// rows already follow that same reuse pattern.
+// 2026-08-10 -- SPY/QQQ/IWM/UUP added (top9 area's 'dual'-role ETF
+// proxies), same gap market_bar.js's mini-tape had -- see that file's own
+// 2026-08-10 comment. AMEX:/NASDAQ: symbol codes verified directly against
+// tradingview.com/symbols/... and confirmed working in the tape.
+//
+// 2026-08-10 follow-up -- CBOE:VXN/CBOE:VXD/CBOEFTSE:RVX/CBOE:GVZ/CBOE:OVX/
+// TVC:MOVE (the 6 missing vol gauges beyond VIX) were ALSO added in the
+// same pass and REMOVED again here: they have real, valid symbol pages on
+// tradingview.com (verified), but the free ticker-tape embed widget uses a
+// narrower, broker-fed real-time data source than the main site's charts --
+// these low-volume secondary CBOE indices aren't in it, so they rendered
+// as failing/no-data tiles. User: "All volatility (VXN, VXD etc) symbols
+// except VIX are failing on trending view." Confirmed by precedent:
+// actionable.js's own _TV_SYMS_REGULAR/_TV_SYMS_FUTURES (this file's own
+// stated source, proven working) never included any of these either, and
+// uses CAPITALCOM:VIX (a broker CFD instrument) instead of the raw
+// CBOE:VIX symbol -- the same tell. This data isn't lost from the app,
+// just from this decorative widget: market_bar.js's mini-tape
+// (Actionable/Portfolio) already shows all 6 correctly, sourced from real
+// drv_quote data via /api/marketbar, not a TradingView feed.
 const _DTV_SYMS_REGULAR = [
   { symbol: 'FOREXCOM:SPXUSD',      title: 'S&P 500' },
   { symbol: 'CAPITALCOM:VIX',       title: 'VIX' },
   { symbol: 'AMEX:SPY',             title: 'SPY' },
   { symbol: 'FOREXCOM:NSXUSD',      title: 'Nasdaq 100' },
-  { symbol: 'CBOE:VXN',             title: 'VXN' },
   { symbol: 'NASDAQ:QQQ',           title: 'QQQ' },
   { symbol: 'FOREXCOM:DJI',         title: 'Dow Jones' },
-  { symbol: 'CBOE:VXD',             title: 'VXD' },
   { symbol: 'FOREXCOM:US2000',      title: 'Russell 2K' },
-  { symbol: 'CBOEFTSE:RVX',         title: 'RVX' },
   { symbol: 'AMEX:IWM',             title: 'IWM' },
   { symbol: 'CAPITALCOM:DXY',       title: 'Dollar' },
   { symbol: 'AMEX:UUP',             title: 'UUP' },
   { symbol: 'TVC:GOLD',             title: 'Gold' },
-  { symbol: 'CBOE:GVZ',             title: 'GVZ' },
   { symbol: 'TVC:USOIL',            title: 'WTI Crude' },
-  { symbol: 'CBOE:OVX',             title: 'OVX' },
-  { symbol: 'TVC:MOVE',             title: 'MOVE' },
   { symbol: 'BITSTAMP:BTCUSD',      title: 'Bitcoin' },
   { symbol: 'FX:EURUSD',            title: 'EUR/USD' },
   { symbol: 'FX:USDJPY',            title: 'USD/JPY' },
@@ -54,20 +57,14 @@ const _DTV_SYMS_FUTURES = [
   { symbol: 'CAPITALCOM:VIX',       title: 'VIX' },
   { symbol: 'AMEX:SPY',             title: 'SPY' },
   { symbol: 'FOREXCOM:NSXUSD',      title: 'Nasdaq Fut' },
-  { symbol: 'CBOE:VXN',             title: 'VXN' },
   { symbol: 'NASDAQ:QQQ',           title: 'QQQ' },
   { symbol: 'FOREXCOM:DJI',         title: 'Dow Fut' },
-  { symbol: 'CBOE:VXD',             title: 'VXD' },
   { symbol: 'FOREXCOM:US2000',      title: 'Russell Fut' },
-  { symbol: 'CBOEFTSE:RVX',         title: 'RVX' },
   { symbol: 'AMEX:IWM',             title: 'IWM' },
   { symbol: 'CAPITALCOM:DXY',       title: 'Dollar' },
   { symbol: 'AMEX:UUP',             title: 'UUP' },
   { symbol: 'TVC:GOLD',             title: 'Gold' },
-  { symbol: 'CBOE:GVZ',             title: 'GVZ' },
   { symbol: 'TVC:USOIL',            title: 'WTI Crude' },
-  { symbol: 'CBOE:OVX',             title: 'OVX' },
-  { symbol: 'TVC:MOVE',             title: 'MOVE' },
   { symbol: 'BITSTAMP:BTCUSD',      title: 'Bitcoin' },
   { symbol: 'FX:EURUSD',            title: 'EUR/USD' },
   { symbol: 'FX:USDJPY',            title: 'USD/JPY' },
