@@ -129,18 +129,33 @@
   // color (filled when selected, outlined/muted otherwise) instead of a
   // plain <select> -- picking a color directly is a clearer match to what
   // the row itself will look like than reading a text label would be.
+  // 2026-08-10 -- picking a button restyles the buttons IN PLACE
+  // (updateImportanceButtonStyles) rather than calling render(), which
+  // would rebuild the whole form from _notes' saved data and wipe out
+  // whatever the user had typed/half-edited in the textarea or date
+  // fields. User: "changing the priority should not clear the text
+  // entered while editing the note."
+  function _impBtnStyle(key, selected) {
+    var imp = IMPORTANCE[key];
+    return 'flex:1; padding:3px 6px; font-size:10.5px; font-weight:600; border-radius:3px; cursor:pointer; ' +
+      'border:1px solid ' + imp.color + '; ' +
+      (selected ? 'background:' + imp.color + '; color:#fff;' : 'background:transparent; color:' + imp.color + ';');
+  }
+
   function importancePickerHtml() {
     return '<div style="display:flex; gap:4px; margin-bottom:6px;">' +
       Object.keys(IMPORTANCE).map(function (key) {
-        var imp = IMPORTANCE[key];
-        var selected = _formImportance === key;
         return '<button type="button" class="dash-note-imp-btn" data-imp="' + key + '" style="' +
-          'flex:1; padding:3px 6px; font-size:10.5px; font-weight:600; border-radius:3px; cursor:pointer; ' +
-          'border:1px solid ' + imp.color + '; ' +
-          (selected ? 'background:' + imp.color + '; color:#fff;' : 'background:transparent; color:' + imp.color + ';') +
-          '">' + imp.label + '</button>';
+          _impBtnStyle(key, _formImportance === key) + '">' + IMPORTANCE[key].label + '</button>';
       }).join('') +
     '</div>';
+  }
+
+  function updateImportanceButtonStyles() {
+    document.querySelectorAll('.dash-note-imp-btn').forEach(function (btn) {
+      var key = btn.getAttribute('data-imp');
+      btn.setAttribute('style', _impBtnStyle(key, _formImportance === key));
+    });
   }
 
   function formHtml(n) {
@@ -299,7 +314,10 @@
       btn.addEventListener('click', function () { deleteNote(+btn.getAttribute('data-id')); });
     });
     document.querySelectorAll('.dash-note-imp-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () { _formImportance = btn.getAttribute('data-imp'); render(); });
+      btn.addEventListener('click', function () {
+        _formImportance = btn.getAttribute('data-imp');
+        updateImportanceButtonStyles();
+      });
     });
 
     // Drag source: the grip handle only (not the whole row), so drag never
