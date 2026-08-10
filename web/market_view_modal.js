@@ -206,12 +206,20 @@
   // the benchmark ETF symbol/window returns come from a second fetch here
   // (drv_category_perf via /api/cockpit/factor-scorecard, the same response
   // loadMarketView already uses for the grid's own bench_mtd/etc cells).
+  // source === '' means the default "All" (Hedgeye quad-outlook) view --
+  // still opens, still shows the benchmark charts (category+axis driven,
+  // source-independent), but skips the per-symbol table fetch: there's no
+  // single source's signal to list when blending all 4 quads. User: "you
+  // could still have a popup for all and show the graphs only right?"
   window.openMarketViewDetailModal = function (axis, category, source) {
     _ensure();
     document.getElementById(MODAL_ID).classList.add('open');
     document.getElementById('mvdTitle').textContent = category + ' — ' + (_AXIS_LABEL[axis] || axis);
-    document.getElementById('mvdSub').textContent = 'Source: ' + source;
-    document.getElementById('mvdTableBody').innerHTML = '<tr><td class="gm-empty">Loading…</td></tr>';
+    document.getElementById('mvdSub').textContent = source ? ('Source: ' + source) : 'Source: All (Hedgeye quad outlook)';
+    document.getElementById('mvdTableHead').innerHTML = '';
+    document.getElementById('mvdTableBody').innerHTML = source
+      ? '<tr><td class="gm-empty">Loading…</td></tr>'
+      : '<tr><td class="gm-empty">No per-symbol table for "All" -- pick a Source above (RR/CALL/ETF/II/SSS/PS) to see it. Charts on the right still apply.</td></tr>';
     _renderVerticalBars('mvdDailyChart', []);
     _renderVerticalBars('mvdWindowChart', []);
 
@@ -223,12 +231,14 @@
         var bench = (data.rows || []).find(function (r) { return String(r.category).trim().toLowerCase() === catKey; });
         var benchSymbol = bench ? bench.bench_symbol : null;
         var sub = document.getElementById('mvdSub');
-        if (sub) sub.textContent = 'Source: ' + source + (benchSymbol ? (' · Benchmark: ' + benchSymbol) : ' · No benchmark ETF for this category');
+        var srcLabel = source ? ('Source: ' + source) : 'Source: All (Hedgeye quad outlook)';
+        if (sub) sub.textContent = srcLabel + (benchSymbol ? (' · Benchmark: ' + benchSymbol) : ' · No benchmark ETF for this category');
         _loadDaily(benchSymbol);
         _renderWindows(benchSymbol, bench);
       })
       .catch(function (e) { console.error('factor-scorecard (benchmark lookup) failed:', e); });
 
+    if (!source) return;
     var qs = 'axis=' + encodeURIComponent(axis) + '&category=' + encodeURIComponent(category)
       + '&source=' + encodeURIComponent(source) + _dateQS('&');
     fetch('/api/quad/factor-stance/source-detail?' + qs)

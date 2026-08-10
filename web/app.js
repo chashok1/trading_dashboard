@@ -1388,9 +1388,15 @@ async function loadMarketView(axis, bodyId, chartId) {
       // object embedded inline. User: "i need to see the stock details in
       // the popups. depending on the source." / confirmed: specific
       // sources only.
-      const clickAttr = state.marketViewSource
-        ? ` class="fs-clickable" style="cursor:pointer;" onclick="openMarketViewDetailModal('${escapeHtml(axis)}', '${escapeHtml(r.category).replace(/'/g, "\\'")}', '${escapeHtml(state.marketViewSource)}')"`
-        : '';
+      // 2026-08-10 -- also clickable in the default "All" (no Source
+      // filter) view now -- the benchmark ETF charts (daily gain/loss,
+      // MTD/QTD/YTD) are driven by category+axis, not by source, so they
+      // work identically here; only the per-symbol stock TABLE doesn't
+      // apply (no single source's signal to list when blending all 4
+      // quads) -- market_view_modal.js skips that fetch and shows a note
+      // instead when source is ''. User: "you could still have a popup for
+      // all and show the graphs only right?"
+      const clickAttr = ` class="fs-clickable" style="cursor:pointer;" onclick="openMarketViewDetailModal('${escapeHtml(axis)}', '${escapeHtml(r.category).replace(/'/g, "\\'")}', '${escapeHtml(state.marketViewSource || '')}')"`;
       return `<tr${clickAttr}>
         <td><span style="display:inline-block;width:${_CARET_CLUSTER_PX}px;">${caretHtml}</span>${escapeHtml(r.category)}</td>
         <td class="fs-weight-cell"><span class="fs-weight-text">${r.count}</span><span class="fs-weight-eq">/ ${total}</span></td>
