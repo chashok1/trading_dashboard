@@ -1131,7 +1131,11 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
             const text = primary != null ? `<span class="fs-weight-text">${primary.toFixed(1)}%</span>` : '';
             const secondary = (row.weight_pct_equities != null && weightPct != null)
               ? `<span class="fs-weight-eq">/ ${weightPct.toFixed(1)}%</span>` : '';
-            return bar + text + secondary;
+            // 2026-08-10 -- $ amount now shown inline (was hover-tooltip
+            // only, see the tooltip block above this row) -- user: "display
+            // amounts where ever is applicable in the dashboard grids."
+            const dollar = mv != null ? `<span class="fs-weight-eq">(${fmtTipUsd(mv)})</span>` : '';
+            return bar + text + secondary + dollar;
           })()}
         </td>
         ${cells}
@@ -1162,12 +1166,15 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
     // percentages itself to stay aligned). User: "align unmapped to
     // category text (excluding carets) and WT%" / "alignment should skip
     // two more carets" (the qtr/next-qtr carets, missed on the first pass).
+    const uDollar = r.unmapped?.market_value != null ? Number(r.unmapped.market_value) : null;
     const unmapped = r.unmapped
       ? `<div class="fs-note fs-clickable" style="cursor:pointer;display:flex;" onclick="openFactorExposureModal('${escapeHtml(axis)}', 'Unmapped')">
           <span style="flex:0 0 26%;padding-left:${_CARET_CLUSTER_PX + 6}px;box-sizing:border-box;">Unmapped</span>
           <span style="flex:0 0 12%;text-align:right;padding-right:6px;box-sizing:border-box;">${
             uPrimary != null ? `<span class="fs-weight-text">${uPrimary.toFixed(1)}%</span>` : ''
-          }${uSecondary != null ? ` <span class="fs-weight-eq">/ ${uSecondary.toFixed(1)}%</span>` : ''}</span>
+          }${uSecondary != null ? ` <span class="fs-weight-eq">/ ${uSecondary.toFixed(1)}%</span>` : ''}${
+            uDollar != null ? ` <span class="fs-weight-eq">(${fmtUsd(uDollar)})</span>` : ''
+          }</span>
         </div>`
       : '';
     const headCells = _FS_WINDOWS
