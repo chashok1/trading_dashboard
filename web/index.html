@@ -159,6 +159,15 @@
                (unchanged module, just a second render target). -->
           <div id="hedgeyeDashPanel" style="display:none;"></div>
 
+          <!-- 2026-08-10 -- Market news list, fixed-height/scrollable, one
+               headline per line -- replaces the old bottom-fixed scrolling
+               marquee (dashboard_news_feed.js). User: "instead of scrolling,
+               add a panel below Hedgeye's TOP 3 things panel that will have
+               single line news and a scroll bar -- fixed height to fit
+               maybe 5 or 6 latest news." Populated + wired by
+               web/dashboard_news_list.js (GET /api/market-news). -->
+          <div id="dashNewsListPanel" class="cockpit-band dash-news-list-panel" style="margin-top:6px;"></div>
+
           <!-- 2026-08-09 -- Accounts filter bar, shared above all 3 stacked
                grids -- user: "Can we add a filter bar for second column ->
                accounts filter." Populated + wired in app.js::
@@ -386,10 +395,14 @@
        market_bar.js text-tile tape (still used as-is on /actionable and
        /portfolio). See web/dashboard_tv_chart_tape.js. -->
   <script src="/static/dashboard_tv_chart_tape.js" defer></script>
-  <!-- Dashboard-only: one-line scrolling market news ticker (GET
-       /api/market-news, Yahoo Finance RSS via the server), fixed to the
-       bottom of the screen, collapsible. See web/dashboard_news_feed.js. -->
-  <script src="/static/dashboard_news_feed.js" defer></script>
+  <!-- Dashboard-only: fixed-height scrollable market news list, GET
+       /api/market-news (Yahoo Finance RSS via the server). Renders into
+       #dashNewsListPanel, cat-col, below the Hedgeye Top 3 Things card.
+       Replaces the old bottom-fixed scrolling marquee (dashboard_news_feed.js,
+       removed 2026-08-10) -- user: "instead of scrolling, add a panel below
+       Hedgeye's TOP 3 things panel ... fixed height to fit 5 or 6 latest
+       news." See web/dashboard_news_list.js. -->
+  <script src="/static/dashboard_news_list.js" defer></script>
 <script src="/static/warning_badge.js"></script>
 
   <!-- Portfolio Detail Modal -->

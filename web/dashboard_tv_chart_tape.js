@@ -19,6 +19,9 @@
 // 2026-08-10 comment. AMEX:/NASDAQ: symbol codes verified directly against
 // tradingview.com/symbols/... and confirmed working in the tape.
 //
+// 2026-08-10 follow-up -- RSP (S&P 500 Equal Weight ETF) added per user
+// request, next to SPY, in both session variants.
+//
 // 2026-08-10 follow-up -- CBOE:VXN/CBOE:VXD/CBOEFTSE:RVX/CBOE:GVZ/CBOE:OVX/
 // TVC:MOVE (the 6 missing vol gauges beyond VIX) were ALSO added in the
 // same pass and REMOVED again here: they have real, valid symbol pages on
@@ -38,6 +41,7 @@ const _DTV_SYMS_REGULAR = [
   { symbol: 'FOREXCOM:SPXUSD',      title: 'S&P 500' },
   { symbol: 'CAPITALCOM:VIX',       title: 'VIX' },
   { symbol: 'AMEX:SPY',             title: 'SPY' },
+  { symbol: 'AMEX:RSP',             title: 'RSP' },
   { symbol: 'FOREXCOM:NSXUSD',      title: 'Nasdaq 100' },
   { symbol: 'NASDAQ:QQQ',           title: 'QQQ' },
   { symbol: 'FOREXCOM:DJI',         title: 'Dow Jones' },
@@ -56,6 +60,7 @@ const _DTV_SYMS_FUTURES = [
   { symbol: 'FOREXCOM:SPXUSD',      title: 'S&P Fut' },
   { symbol: 'CAPITALCOM:VIX',       title: 'VIX' },
   { symbol: 'AMEX:SPY',             title: 'SPY' },
+  { symbol: 'AMEX:RSP',             title: 'RSP' },
   { symbol: 'FOREXCOM:NSXUSD',      title: 'Nasdaq Fut' },
   { symbol: 'NASDAQ:QQQ',           title: 'QQQ' },
   { symbol: 'FOREXCOM:DJI',         title: 'Dow Fut' },

@@ -50,7 +50,7 @@
       '      </div>',
       '      <div class="gm-table-wrap">',
       '        <table class="gm-table">',
-      '          <thead><tr><th>Symbol</th><th>Account</th><th style="text-align:right">$</th><th style="text-align:right" title="Unrealized gain/loss vs cost basis, since purchase (current snapshot)">Cumulative</th><th style="text-align:right" title="Broker-reported day change (day_chng_dollar/today_gl_dollar) for this position">Yesterday</th><th id="gmTagHead">Tag</th></tr></thead>',
+      '          <thead><tr><th>Symbol</th><th>Account</th><th style="text-align:right">Qty</th><th style="text-align:right">$</th><th style="text-align:right" title="Unrealized gain/loss vs cost basis, since purchase (current snapshot)">Cumulative</th><th style="text-align:right" title="Broker-reported day change (day_chng_dollar/today_gl_dollar) for this position">Yesterday</th><th id="gmTagHead">Tag</th></tr></thead>',
       '          <tbody id="gmTableBody"></tbody>',
       '        </table>',
       '      </div>',
@@ -62,6 +62,25 @@
       '      <svg class="chart" id="gmSymHistChart" viewBox="0 0 460 160" style="display:none;"></svg>',
       '      <h4 id="gmCompareTitle" style="margin-top:18px;">Yesterday: stock vs rest of category vs sector</h4>',
       '      <svg class="chart" id="gmCompareChart" viewBox="0 0 380 220"></svg>',
+      '    </div>',
+      // 2026-08-10 -- Buy/Sell Gain/Loss History column, 3rd column of the
+      // popup -- user: "add one more column to the right and add a grid
+      // with buy sell gain loss history." Follow-up: "i need to the
+      // history for the selected symbol and account (column 1 grid) ->
+      // column 3 grid should have -> Sell Date/Buy Date Qty Gain/loss (for
+      // buy display blank)" -- scoped to whichever row is selected in
+      // column 1 (same selection column 2's Daily gain/loss chart already
+      // follows), full BUY+SELL transaction ledger for that one
+      // symbol+account, not just the category's closed positions. See
+      // _loadTxnHistory/GET /api/cockpit/symbol-txn-history.
+      '    <div class="gm-history-col">',
+      '      <h4 id="gmHistoryTitle">Buy/Sell Gain/Loss History</h4>',
+      '      <div class="gm-table-wrap">',
+      '        <table class="gm-table">',
+      '          <thead><tr><th>Date</th><th style="text-align:right">Qty</th><th style="text-align:right">Current Qty</th><th style="text-align:right">Gain/Loss</th></tr></thead>',
+      '          <tbody id="gmHistoryBody"></tbody>',
+      '        </table>',
+      '      </div>',
       '    </div>',
       '  </div>',
       '</div>',
@@ -535,10 +554,13 @@
     document.getElementById('gmTotal').innerHTML = '';
     document.getElementById('gmTableBody').innerHTML = '';
     document.getElementById('gmBarChart').innerHTML = '';
+    document.getElementById('gmHistoryBody').innerHTML = '';
+    document.getElementById('gmHistoryTitle').textContent = 'Buy/Sell Gain/Loss History';
     // Reset the symbol-history chart on every fresh open -- a stock
     // selected in a previous category/gauge popup shouldn't carry over.
     document.getElementById('gmSymHistChart').style.display = 'none';
     _symHistReqId++; // invalidate any in-flight history fetch from before
+    _txnHistReqId++; // invalidate any in-flight txn-history fetch from before
     // 2026-08-08 -- reset the Active/Closed/Both filter to its default on
     // every fresh open too -- a filter left on "Closed" from a previous
     // gauge shouldn't carry over and silently hide a new gauge's positions.
@@ -600,6 +622,64 @@
     _renderCompareChart(data);
   }
 
+  // Qty column helper -- blank (not "0") when the source has no qty at all
+  // (e.g. an options/cash row hist_cs/hist_f never populated qty for),
+  // distinct from a genuine 0 (fully closed out).
+  function fmtQty(n) { return n == null ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: 2 }); }
+
+  // 2026-08-10 -- Buy/Sell Gain/Loss History column (3rd column) -- full
+  // BUY+SELL transaction ledger for whichever symbol+account is selected
+  // in column 1 (same selection column 2's Daily gain/loss chart follows).
+  // User: "i need to the history for the selected symbol and account
+  // (column 1 grid) -> column 3 grid should have -> Sell Date/Buy Date Qty
+  // Gain/loss (for buy display blank)". One request per row click,
+  // request-id guarded the same way _loadSymbolHistory is (a later click
+  // shouldn't have an earlier, slower fetch clobber it).
+  var _txnHistReqId = 0;
+  function _loadTxnHistory(symbol, account) {
+    var titleEl = document.getElementById('gmHistoryTitle');
+    if (titleEl) titleEl.textContent = 'Buy/Sell Gain/Loss History — ' + symbol + ' (' + account + ')';
+    var reqId = ++_txnHistReqId;
+    fetch('/api/cockpit/symbol-txn-history?symbol=' + encodeURIComponent(symbol) +
+          '&account=' + encodeURIComponent(account) + _dateQS('&'))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (reqId !== _txnHistReqId) return; // a later click superseded this one
+        _renderTxnHistory(data);
+      })
+      .catch(function (e) {
+        console.error('symbol txn history failed:', e);
+        var tbody = document.getElementById('gmHistoryBody');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-3);">Failed to load history.</td></tr>';
+      });
+  }
+
+  function _renderTxnHistory(data) {
+    var rows = data.rows || [];
+    var tbody = document.getElementById('gmHistoryBody');
+    tbody.innerHTML = '';
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-3);">No buy/sell history.</td></tr>';
+      return;
+    }
+    rows.forEach(function (r) {
+      var glCls = r.gain_dollar > 0 ? 'pos' : r.gain_dollar < 0 ? 'neg' : '';
+      var glText = r.gain_dollar != null ? fmtSigned(r.gain_dollar) : '';
+      if (r.gain_dollar != null && r.gain_pct != null) {
+        glText += ' (' + (r.gain_pct >= 0 ? '+' : '') + r.gain_pct.toFixed(1) + '%)';
+      }
+
+      var tr = document.createElement('tr');
+      var dateTd = document.createElement('td'); dateTd.textContent = r.date + ' (' + r.kind + ')';
+      var qtyTd = document.createElement('td'); qtyTd.className = 'dollar'; qtyTd.textContent = fmtQty(r.qty);
+      var curTd = document.createElement('td'); curTd.className = 'dollar'; curTd.textContent = fmtQty(r.current_qty);
+      var glTd = document.createElement('td'); glTd.className = 'dollar'; glTd.textContent = glText;
+      if (glCls) glTd.classList.add(glCls);
+      tr.appendChild(dateTd); tr.appendChild(qtyTd); tr.appendChild(curTd); tr.appendChild(glTd);
+      tbody.appendChild(tr);
+    });
+  }
+
   // 2026-08-08 -- extracted from _renderData so the Active/Closed/Both
   // filter can re-render just the table (+ subtitle count + holdings bar
   // chart) without a refetch -- data.positions never changes, only which
@@ -623,11 +703,18 @@
 
     var tbody = document.getElementById('gmTableBody');
     tbody.innerHTML = '';
-    var firstRow = null, firstSymbol = null;
+    var firstRow = null, firstSymbol = null, firstAccount = null;
     shown.forEach(function (p) {
       var tr = document.createElement('tr');
       var symTd = document.createElement('td'); symTd.className = 'sym'; symTd.textContent = p.symbol;
       var acctTd = document.createElement('td'); acctTd.className = 'acct'; acctTd.textContent = p.account;
+      // 2026-08-10 -- Qty column -- user: "Add current qty to left most
+      // grid (column 1)". Closed rows show "—": this specific row is the
+      // $0/closed sell-event record, not a live position -- current qty
+      // (if any shares remain) lives on that symbol/account's own separate
+      // open-position row instead, not duplicated here.
+      var qTd = document.createElement('td'); qTd.className = 'dollar';
+      qTd.textContent = p.closed ? '—' : fmtQty(p.qty);
       var dTd = document.createElement('td'); dTd.className = 'dollar';
       var glTd = document.createElement('td'); glTd.className = 'dollar';
       var yTd = document.createElement('td'); yTd.className = 'dollar';
@@ -689,7 +776,7 @@
           yTd.textContent = '—';
         }
       }
-      tr.appendChild(symTd); tr.appendChild(acctTd); tr.appendChild(dTd); tr.appendChild(glTd); tr.appendChild(yTd);
+      tr.appendChild(symTd); tr.appendChild(acctTd); tr.appendChild(qTd); tr.appendChild(dTd); tr.appendChild(glTd); tr.appendChild(yTd);
       if (hasTag) {
         var tagTd = document.createElement('td'); tagTd.className = 'tag'; tagTd.textContent = p.tag || '';
         tr.appendChild(tagTd);
@@ -699,14 +786,17 @@
       // request: "i also want to see daily (or imported days) gains/losses
       // as a graph when i select a specific stock ... Use one graph and
       // change the bars based on the stock selection."
+      // 2026-08-10 -- also loads that symbol+account's Buy/Sell Gain/Loss
+      // History into column 3 -- user: "i need to the history for the
+      // selected symbol and account (column 1 grid)".
       tr.style.cursor = 'pointer';
-      tr.addEventListener('click', function () { _loadSymbolHistory(p.symbol, tr); });
-      if (!firstRow) { firstRow = tr; firstSymbol = p.symbol; }
+      tr.addEventListener('click', function () { _loadSymbolHistory(p.symbol, tr); _loadTxnHistory(p.symbol, p.account); });
+      if (!firstRow) { firstRow = tr; firstSymbol = p.symbol; firstAccount = p.account; }
       tbody.appendChild(tr);
     });
     if (!shown.length) {
       var tr = document.createElement('tr');
-      var td = document.createElement('td'); td.colSpan = hasTag ? 6 : 5; td.className = 'gm-empty';
+      var td = document.createElement('td'); td.colSpan = hasTag ? 7 : 6; td.className = 'gm-empty';
       td.textContent = _posFilter === 'closed' ? 'No closed positions in the last 30 days.'
         : _posFilter === 'active' ? 'No active positions match.' : 'No positions match.';
       tr.appendChild(td); tbody.appendChild(tr);
@@ -720,7 +810,7 @@
     // chart isn't empty on open -- user request: "select the first stock
     // by default". Only on a fresh open, not a filter toggle (see docstring
     // above).
-    if (selectFirst && firstRow) _loadSymbolHistory(firstSymbol, firstRow);
+    if (selectFirst && firstRow) { _loadSymbolHistory(firstSymbol, firstRow); _loadTxnHistory(firstSymbol, firstAccount); }
   }
 
   window.openGaugeExposureModal = function (gaugeKey) {

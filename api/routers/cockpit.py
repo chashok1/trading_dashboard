@@ -124,7 +124,8 @@ def _closed_positions_base(d, accounts: Optional[list] = None) -> str:
     return f"""
         closed AS (
           SELECT rg.tos_symbol, COALESCE(ra.short_name, rg.account) AS account,
-                 rg.sell_date, rg.realized_gain AS gl, rg.realized_gain_pct AS glpct
+                 rg.sell_date, rg.realized_gain AS gl, rg.realized_gain_pct AS glpct,
+                 rg.shares_sold
           FROM drv_realized_gain rg
           LEFT JOIN ref_accounts ra ON ra.account_number = rg.account
           WHERE rg.sell_date BETWEEN :d - INTERVAL '30 days' AND :d
@@ -382,7 +383,7 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
         rows = s.execute(text("""
             WITH pos AS (
               SELECT hist_cs.tos_symbol, COALESCE(ra.short_name, hist_cs.account) AS account,
-                     market_value AS mv, cost_basis AS cb, gain_dollar AS gl
+                     market_value AS mv, cost_basis AS cb, gain_dollar AS gl, qty
               FROM hist_cs
               LEFT JOIN ref_accounts ra ON ra.account_number = hist_cs.account
               WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
@@ -391,14 +392,14 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
               SELECT hist_f.tos_symbol,
                      COALESCE(ra.short_name, hist_f.account_name, hist_f.account_number) AS account,
                      hist_f.current_value AS mv,
-                     hist_f.cost_basis_total AS cb, hist_f.total_gl_dollar AS gl
+                     hist_f.cost_basis_total AS cb, hist_f.total_gl_dollar AS gl, hist_f.qty
               FROM hist_f
               LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
               WHERE hist_f.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
                 AND COALESCE(ra.is_active, TRUE) = TRUE
-            ), agg AS (SELECT tos_symbol, account, SUM(mv) AS mv, SUM(cb) AS cb, SUM(gl) AS gl
+            ), agg AS (SELECT tos_symbol, account, SUM(mv) AS mv, SUM(cb) AS cb, SUM(gl) AS gl, SUM(qty) AS qty
                        FROM pos GROUP BY tos_symbol, account)
-            SELECT a.tos_symbol, a.account, a.mv, a.cb, a.gl,
+            SELECT a.tos_symbol, a.account, a.mv, a.cb, a.gl, a.qty,
                    COALESCE(m.sector, rs.equity_sector) AS sector,
                    COALESCE(m.asset_class, rs.asset_class) AS asset_class,
                    ms.style_stances
@@ -443,6 +444,7 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
             yesterday_pct = round(float(ypct), 2) if ypct is not None else None
             positions.append({"symbol": r["tos_symbol"], "account": r["account"],
                                "dollar": round(mv, 2), "tag": tag,
+                               "qty": round(float(r["qty"]), 2) if r["qty"] is not None else None,
                                "gain_dollar": gain_dollar, "gain_pct": gain_pct,
                                "yesterday_dollar": yesterday_dollar, "yesterday_pct": yesterday_pct})
 
@@ -457,7 +459,7 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
         # these dashboard graphs".
         closed_rows = s.execute(text(f"""
             WITH {_closed_positions_base(d)}
-            SELECT c.tos_symbol, c.account, c.sell_date, c.gl, c.glpct,
+            SELECT c.tos_symbol, c.account, c.sell_date, c.gl, c.glpct, c.shares_sold,
                    COALESCE(m.sector, rs.equity_sector) AS sector,
                    COALESCE(m.asset_class, rs.asset_class) AS asset_class,
                    ms.style_stances
@@ -485,6 +487,7 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
                 "symbol": r["tos_symbol"], "account": r["account"], "tag": tag,
                 "closed": True, "sell_date": r["sell_date"].isoformat(),
                 "dollar": 0.0,
+                "shares_sold": round(float(r["shares_sold"]), 2) if r["shares_sold"] is not None else None,
                 "realized_gain_dollar": round(float(gl), 2) if gl is not None else None,
                 "realized_gain_pct": round(float(r["glpct"]), 2) if r["glpct"] is not None else None,
             })
@@ -864,7 +867,7 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
         rows = s.execute(text(f"""
             WITH pos AS (
               SELECT hist_cs.tos_symbol, COALESCE(ra.short_name, hist_cs.account) AS account,
-                     market_value AS mv, cost_basis AS cb, gain_dollar AS gl
+                     market_value AS mv, cost_basis AS cb, gain_dollar AS gl, qty
               FROM hist_cs
               LEFT JOIN ref_accounts ra ON ra.account_number = hist_cs.account
               WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
@@ -875,16 +878,16 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
               SELECT hist_f.tos_symbol,
                      COALESCE(ra.short_name, hist_f.account_name, hist_f.account_number) AS account,
                      hist_f.current_value AS mv,
-                     hist_f.cost_basis_total AS cb, hist_f.total_gl_dollar AS gl
+                     hist_f.cost_basis_total AS cb, hist_f.total_gl_dollar AS gl, hist_f.qty
               FROM hist_f
               LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
               WHERE hist_f.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
                 AND COALESCE(ra.is_active, TRUE) = TRUE
                 {cash_exclude_clause.replace('security_type', 'type') if cash_exclude_clause else ''}
                 {f_acct}
-            ), agg AS (SELECT tos_symbol, account, SUM(mv) AS mv, SUM(cb) AS cb, SUM(gl) AS gl
+            ), agg AS (SELECT tos_symbol, account, SUM(mv) AS mv, SUM(cb) AS cb, SUM(gl) AS gl, SUM(qty) AS qty
                        FROM pos GROUP BY tos_symbol, account)
-            SELECT a.tos_symbol, a.account, a.mv, a.cb, a.gl
+            SELECT a.tos_symbol, a.account, a.mv, a.cb, a.gl, a.qty
             FROM agg a
             LEFT JOIN drv_ma m ON m.tos_symbol = a.tos_symbol AND m.as_of_date = :d
             LEFT JOIN drv_macro_score ms ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = :d
@@ -915,6 +918,7 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
             yesterday_dollar, yesterday_pct = _yesterday_fields(r)
             positions.append({"symbol": r["tos_symbol"], "account": r["account"],
                                "dollar": round(float(r["mv"] or 0), 2),
+                               "qty": round(float(r["qty"]), 2) if r["qty"] is not None else None,
                                "gain_dollar": gain_dollar, "gain_pct": gain_pct,
                                "yesterday_dollar": yesterday_dollar, "yesterday_pct": yesterday_pct})
         dollar = sum(p["dollar"] for p in positions)
@@ -929,7 +933,7 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
         # graphs".
         closed_rows = s.execute(text(f"""
             WITH {_closed_positions_base(d, accounts_list)}
-            SELECT c.tos_symbol, c.account, c.sell_date, c.gl, c.glpct
+            SELECT c.tos_symbol, c.account, c.sell_date, c.gl, c.glpct, c.shares_sold
             FROM closed c
             {_CLOSED_CLASSIFY_JOIN}
             WHERE {where_clause}
@@ -941,6 +945,7 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
                 "symbol": r["tos_symbol"], "account": r["account"],
                 "closed": True, "sell_date": r["sell_date"].isoformat(),
                 "dollar": 0.0,
+                "shares_sold": round(float(r["shares_sold"]), 2) if r["shares_sold"] is not None else None,
                 "realized_gain_dollar": round(float(gl), 2) if gl is not None else None,
                 "realized_gain_pct": round(float(r["glpct"]), 2) if r["glpct"] is not None else None,
             })
@@ -1065,6 +1070,93 @@ def get_symbol_daily_change(symbol: str = Query(...), days: int = Query(30, ge=1
         if today_entry:
             out_days.append(today_entry)
         return {"symbol": sym, "days": out_days}
+
+
+# ---------------------------------------------------------------------------
+# 2026-08-10 -- symbol-txn-history: full buy/sell transaction ledger for one
+# (symbol, account) pair -- exposure popup's 3rd column ("Buy/Sell Gain/Loss
+# History"), driven by the row clicked in column 1 (same selection column
+# 2's Daily gain/loss chart already uses). User: "column 3 -> i need to the
+# history for the selected symbol and account (column 1 grid) -> column 3
+# grid should have -> Sell Date/Buy Date Qty Gain/loss (for buy display
+# blank)".
+#
+# SELL rows come from drv_realized_gain (already FIFO-matched, so the
+# gain/loss figure is correct even across multiple partial buy lots) --
+# reusing it here avoids recomputing FIFO matching a second time and keeps
+# this grid's $ figures identical to the "Closed" filter elsewhere in the
+# popup. BUY rows have no gain/loss (nothing realized yet) -- pulled
+# straight from the raw transaction tables (hist_cst/hist_ft), same
+# BUY/SELL classification etl/derive_realized.py::_fetch_events uses (CS's
+# `action` text has no action_kind column, so it's derived inline the same
+# way here).
+#
+# account matching mirrors the exposure-detail endpoints' own convention
+# throughout this file: COALESCE(ref_accounts.short_name, raw_account) --
+# the frontend always passes through the resolved short_name it already
+# has from that same response, so no extra lookup is needed here.
+# ---------------------------------------------------------------------------
+
+@router.get("/api/cockpit/symbol-txn-history")
+def get_symbol_txn_history(symbol: str = Query(...), account: str = Query(...),
+                            date: Optional[str] = Query(None)):
+    sym = symbol.strip().upper()
+    d = _resolve_date(date)
+    with session_scope() as s:
+        buy_rows = s.execute(text("""
+            WITH cs_buys AS (
+              SELECT trade_date, ABS(quantity) AS qty
+              FROM hist_cst
+              LEFT JOIN ref_accounts ra ON ra.account_number = hist_cst.account
+              WHERE tos_symbol = :sym AND trade_date <= :d
+                AND COALESCE(ra.short_name, hist_cst.account) = :account
+                AND UPPER(action) IN ('BUY', 'REINVEST SHARES')
+            ), f_buys AS (
+              SELECT trade_date, ABS(quantity) AS qty
+              FROM hist_ft
+              LEFT JOIN ref_accounts ra ON ra.account_number = hist_ft.account_number
+              WHERE symbol = :sym AND trade_date <= :d
+                AND COALESCE(ra.short_name, hist_ft.account_number) = :account
+                AND action_kind = 'BUY'
+            )
+            SELECT trade_date, SUM(qty) AS qty FROM (
+              SELECT * FROM cs_buys UNION ALL SELECT * FROM f_buys
+            ) t GROUP BY trade_date
+        """), {"sym": sym, "d": d, "account": account}).mappings().all()
+
+        sell_rows = s.execute(text("""
+            SELECT rg.sell_date, rg.shares_sold, rg.realized_gain, rg.realized_gain_pct
+            FROM drv_realized_gain rg
+            LEFT JOIN ref_accounts ra ON ra.account_number = rg.account
+            WHERE rg.tos_symbol = :sym AND rg.sell_date <= :d
+              AND COALESCE(ra.short_name, rg.account) = :account
+        """), {"sym": sym, "d": d, "account": account}).mappings().all()
+
+        rows = []
+        for r in buy_rows:
+            rows.append({"date": r["trade_date"].isoformat(), "kind": "BUY",
+                         "qty": round(float(r["qty"]), 2), "gain_dollar": None, "gain_pct": None})
+        for r in sell_rows:
+            rows.append({"date": r["sell_date"].isoformat(), "kind": "SELL",
+                         "qty": round(float(r["shares_sold"]), 2) if r["shares_sold"] is not None else None,
+                         "gain_dollar": round(float(r["realized_gain"]), 2) if r["realized_gain"] is not None else None,
+                         "gain_pct": round(float(r["realized_gain_pct"]), 2) if r["realized_gain_pct"] is not None else None})
+
+        # 2026-08-10 -- running "Current Qty" balance, one column to the
+        # right of Qty -- user: "add a column that shows the current
+        # quantity after QTY column." Walked chronologically oldest-first
+        # (BUY adds, SELL subtracts) so each row's balance reflects shares
+        # held immediately after that transaction, matching the user's own
+        # earlier formula ("starting qty +/- buy/sell qty = current qty");
+        # re-sorted newest-first for display afterward, same as before.
+        rows.sort(key=lambda r: r["date"])
+        running = 0.0
+        for r in rows:
+            if r["qty"] is not None:
+                running += r["qty"] if r["kind"] == "BUY" else -r["qty"]
+            r["current_qty"] = round(running, 2)
+        rows.sort(key=lambda r: r["date"], reverse=True)
+        return {"symbol": sym, "account": account, "rows": rows}
 
 
 # ---------------------------------------------------------------------------

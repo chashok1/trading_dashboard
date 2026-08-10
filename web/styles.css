@@ -942,48 +942,41 @@ tbody td {
 tbody td.num { font-variant-numeric: tabular-nums; }
 
 /* ===========================================================================
- * Dashboard News Feed — one-line scrolling ticker (web/dashboard_news_feed.js)
- * GET /api/market-news (Yahoo Finance RSS via the server), Dashboard-only.
- * 2026-08-10 -- rebuilt as a pure-CSS marquee (was a TradingView Timeline
- * widget, a vertical list -- "i need one line scrolling news"). Content is
- * duplicated once in the track (see the JS) and the whole track slides via
- * translateX(-50%) on a loop -- that's what makes it seamless, not the CSS
- * alone.
+ * Dashboard News List — fixed-height, two-column, one headline per line
+ * (web/dashboard_news_list.js). GET /api/market-news (Yahoo Finance RSS via
+ * the server), Dashboard-only. Renders in cat-col, below the Hedgeye "Top 3
+ * Things" card. 2026-08-10 -- replaces the earlier bottom-fixed auto-scroll
+ * marquee -- user: "instead of scrolling, add a panel below Hedgeye's TOP 3
+ * things panel that will have single line news and a scroll bar -- fixed
+ * height to fit maybe 5 or 6 latest news." Follow-up: "two column news, so
+ * we can fit double the news in the viewing area" -- first tried CSS
+ * multi-column (column 1 top-to-bottom, then column 2), but that overflows
+ * *horizontally* past 2 columns' worth of rows. Follow-up: "add vertical
+ * scroll bar instead of horizontal scroll bar" -- switched to a 2-col CSS
+ * grid (grid-auto-flow: row, so items fill left-col/right-col/left-col/...
+ * row by row) with a fixed height + overflow-y: auto -- extra rows just
+ * add grid rows below, scrolling vertically, both columns together.
  * ========================================================================= */
-.dash-news-feed {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 95;
-  background: #fff; border-top: 1px solid var(--border, #e0e0e0);
-  box-shadow: 0 -2px 8px rgba(0,0,0,0.06);
-  display: flex; align-items: center; height: 26px; padding: 0 8px; gap: 8px;
+.dash-news-list-body {
+  display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 20px;
+  column-gap: 14px; overflow-y: auto; overflow-x: hidden;
+  /* Explicit always-on thin scrollbar -- Windows/Chrome overlay scrollbars
+     auto-hide until hover by default, which read as "no scrollbar at all"
+     on a short fixed-height panel like this one. */
+  scrollbar-width: thin; scrollbar-color: var(--text-3, #a8a29e) transparent;
 }
-.dash-news-label {
-  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
-  color: var(--text-2, #666); flex-shrink: 0; white-space: nowrap;
+.dash-news-list-body::-webkit-scrollbar { width: 7px; }
+.dash-news-list-body::-webkit-scrollbar-track { background: transparent; }
+.dash-news-list-body::-webkit-scrollbar-thumb {
+  background: var(--text-3, #a8a29e); border-radius: 4px;
 }
-.dash-news-viewport { flex: 1; overflow: hidden; height: 100%; align-items: center; min-width: 0; }
-.dash-news-track {
-  display: inline-flex; align-items: center; white-space: nowrap;
-  animation-name: dash-news-scroll; animation-timing-function: linear; animation-iteration-count: infinite;
-  will-change: transform;
+.dash-news-list-row {
+  display: block; height: 20px; line-height: 20px;
+  font-size: 11px; color: var(--text-1, #1c1917); text-decoration: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-bottom: 1px solid var(--border, #eee);
 }
-/* Pause on hover so a headline can actually be read/clicked. */
-.dash-news-viewport:hover .dash-news-track { animation-play-state: paused; }
-.dash-news-item { color: var(--text-1, #1c1917); font-size: 11px; text-decoration: none; }
-a.dash-news-item:hover { text-decoration: underline; }
-.dash-news-src { color: var(--text-3, #a8a29e); font-size: 9px; font-weight: 600; }
-.dash-news-sep { color: var(--text-3, #a8a29e); margin: 0 14px; }
-.dash-news-toggle {
-  flex-shrink: 0; background: none; border: none; cursor: pointer; font-size: 10px;
-  color: var(--text-3, #a8a29e); padding: 2px 4px; line-height: 1;
-}
-.dash-news-toggle:hover { color: var(--text-1, #1c1917); }
-@keyframes dash-news-scroll {
-  from { transform: translateX(0); }
-  to   { transform: translateX(-50%); }
-}
-/* Reserve space for the fixed footer's one-line height so it never covers
-   the last elements of the page. */
-body.dash-page main { padding-bottom: 38px; }
+a.dash-news-list-row:hover { text-decoration: underline; }
 
 /* ===========================================================================
  * Market Tape — slim horizontal ribbon below the topbar (market_bar.js)
@@ -2196,13 +2189,43 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    increased."
    2026-08-08 follow-up -- widened once more (1200px -> 1440px), alongside
    the daily-graph bars filling their full per-day slot. User: "increase
-   popup width." */
+   popup width."
+   2026-08-10 -- widened again (1440px -> 1760px) to fit the new 3rd
+   column (Buy/Sell Gain/Loss History) without cramping the existing two.
+   User: "increase the width and add one more column to the right".
+   2026-08-10 follow-up -- max-height + flex-column added -- the 3rd
+   column's transaction ledger has no natural row cap (unlike column 1,
+   scoped to the category, or column 2's fixed-height charts), so a
+   symbol/account with a long buy/sell history was stretching .gm-body's
+   grid row to its own full content height instead of scrolling: CSS Grid
+   sizes an `auto` row to the TALLEST participant's max-content height,
+   and align-items:stretch only matches the OTHER columns to that (now
+   taller) row -- a child's own min-height:0 + overflow-y:auto (see
+   .gm-history-col) only produces an internal scrollbar once the row
+   itself has a genuinely bounded height to stretch into, which it didn't
+   have here. Capping .gauge-modal itself (viewport-relative, matching the
+   backdrop's own 48px top+bottom padding) and making .gm-body a bounded
+   flex child gives every column that real ceiling. User: "use scrollbar
+   for column 3 grid. Don't flex the height of the popup". */
+/* 2026-08-10 follow-up 2 -- max-height alone was a ceiling, not a fixed
+   size: with no explicit `height`, a flex container sizes to its content
+   (hugging it, only ever capped from above by max-height), so .gm-body's
+   flex-grow:1 had no fixed budget to fill -- the modal was still shrinking
+   to whatever height that stock's content (esp. column 3's row count)
+   happened to need, just now also capped at the top. User: "when i click
+   on differnt stocks, height is changing based on if there is a scrollbar
+   or not". `height` (not just max-height) pins the modal to one constant
+   size regardless of which stock is selected -- .gm-body's flex-grow now
+   has real leftover space to fill every time, so every column's own
+   overflow-y:auto is what handles content that doesn't fill it, not the
+   modal's own size. */
 .gauge-modal {
-  position: relative; z-index: 1; width: 100%; max-width: 1440px;
+  position: relative; z-index: 1; width: 100%; max-width: 1760px;
+  height: calc(100vh - 96px); max-height: calc(100vh - 96px); display: flex; flex-direction: column;
   background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px;
   box-shadow: 0 20px 48px -12px rgba(0,0,0,.35); overflow: hidden;
 }
-.gm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 24px; border-bottom: 1px solid var(--border); }
+.gm-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 24px; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
 .gm-title { font-size: 16px; font-weight: 700; margin: 0 0 4px; color: var(--text-1); }
 .gm-sub { font-size: 12px; color: var(--text-2); }
 /* 2026-08-08 -- $ amount + "% of portfolio" centered, total gain/loss %
@@ -2240,7 +2263,13 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    (_renderCompareChart/_renderSymbolHistory) so the charts' rendered
    HEIGHT doesn't stretch along with the width (same width:100%/height:
    auto fixed-aspect-ratio issue as the previous 29% pass). */
-.gm-body { display: grid; grid-template-columns: 0.69fr 1.46fr; padding: 16px 20px 20px; gap: 20px; }
+/* 2026-08-10 -- 3rd column added (Buy/Sell Gain/Loss History) -- the
+   existing two columns' ratio (0.69 : 1.46) is kept, the new column takes
+   a share roughly matching the left stock-list column's width. */
+.gm-body {
+  display: grid; grid-template-columns: 0.69fr 1.46fr 0.75fr; padding: 16px 20px 20px; gap: 20px;
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
+}
 /* 2026-08-08 -- Largest holdings moved into the left column, bottom-
    aligned below the stock list; the list itself now scrolls internally
    (overflow-y:auto) so both fit in whatever height the right column's two
@@ -2302,10 +2331,36 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .gm-table tr.gm-row-closed td { opacity: .55; font-style: italic; }
 .gm-table tr.gm-row-closed td.pos, .gm-table tr.gm-row-closed td.neg { font-style: normal; }
 .gm-table tr.gm-row-closed:hover td, .gm-table tr.gm-row-closed.selected td { opacity: .85; }
-.gm-chart-pane { padding: 16px 18px; }
+/* overflow-y:auto -- safety net now that .gm-body has a real bounded
+   height (see .gauge-modal's 2026-08-10 follow-up note): on a short
+   viewport this column's two fixed-height charts could exceed the
+   available row height same as column 3's ledger could, so it needs the
+   same internal-scroll escape hatch rather than getting silently clipped
+   by .gm-body's own overflow:hidden. */
+.gm-chart-pane { padding: 16px 18px; overflow-y: auto; }
 .gm-chart-pane h4, .gm-holdings-pane h4 { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); margin: 0 0 12px; }
 .gm-chart-pane .bar-name, .gm-holdings-pane .bar-name { font-size: 11px; fill: var(--text-1); font-weight: 600; }
 .gm-chart-pane .bar-value, .gm-holdings-pane .bar-value { font-size: 10.5px; fill: var(--text-1); font-family: ui-monospace, "SF Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+/* 2026-08-10 -- Buy/Sell Gain/Loss History column (3rd column). Same
+   flex-column + min-height:0 pattern as .gm-left-col so its .gm-table-wrap
+   (shared class, flex:1 1 auto + overflow-y:auto) is bounded to the grid
+   row's own stretched height and scrolls internally instead of growing
+   the popup taller -- user: "height should be same as before (should not
+   go beyond my visual area) add scroll bar the column 3 grid." Border
+   treatment mirrors .gm-left-col's right border, on this column's left
+   edge instead. */
+.gm-history-col {
+  display: flex; flex-direction: column; min-height: 0;
+  border-left: 1px solid var(--border); padding-left: 20px;
+}
+.gm-history-col h4 { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); margin: 0 0 8px; }
+@media (max-width: 980px) {
+  .gm-body { grid-template-columns: 0.69fr 1.46fr; }
+  .gm-history-col {
+    grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--border);
+    padding-left: 0; padding-top: 16px; margin-top: 4px;
+  }
+}
 @media (max-width: 680px) {
   .gm-body { grid-template-columns: 1fr; }
   .gm-left-col { border-right: none; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
