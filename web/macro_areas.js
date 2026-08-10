@@ -616,8 +616,14 @@
     }
   }
 
+  // 2026-08-10 -- Dashboard (/) has no `main .card` element (Actionable's
+  // own layout marker) but does have #macroRailVolatility once this script
+  // loads there too -- widened rather than replaced so Actionable's
+  // original check still stands unchanged. User: "add Volatility & Major
+  // Market panels that you see on actionable screen to dashboard screen on
+  // the right side."
   function init() {
-    if (!document.querySelector('main .card')) return;
+    if (!document.querySelector('main .card') && !document.getElementById('macroRailVolatility')) return;
     load();
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);

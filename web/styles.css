@@ -1957,6 +1957,17 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    .mini-grid ~19px/row CSS estimate as above -- no browser attached to
    measure the real rendered height. */
 #nearEarningsBand .side-scroll { max-height: 410px; }
+/* 2026-08-10 -- Volatility/Major Markets (#macroRailVolatility/
+   #macroRailTop9), added from the Actionable side rail. On Actionable each
+   area's .msr-row list grows unbounded and the WHOLE #actSidePanel column
+   scrolls instead; here the right-rail has no such outer scroll, so each
+   panel caps + scrolls internally instead, per user request ("don't change
+   the height. use scrollbar"). ~19px/row CSS estimate (same as the mini-
+   grid rows above) -- Volatility (7 members) mostly fits at 150px,
+   Major Markets (9 members) needs a couple rows' scroll at 170px; no
+   browser attached to measure the real rendered .msr-row height. */
+.dash-macro-rail { max-height: 150px; overflow-y: auto; }
+#macroRailTop9.dash-macro-rail { max-height: 170px; }
 /* 2026-08-08 -- align columns across the right-rail tables (Indicator/
    Symbol -- Event merged into Indicator 2026-08-10, see above -- all
    columns now that Indicator's Signal column is removed: label / Date /

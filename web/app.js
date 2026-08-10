@@ -181,6 +181,7 @@ async function loadEconIndicators() {
 // TASK_140 follow-up 10 -- new grid below Event: earnings in the next 7
 // days, scoped to held positions + actionable symbols only (not the whole
 // tracked watchlist -- see api/routers/health.py::get_near_term_earnings).
+// 2026-08-10 -- days_ahead 7 -> 30 ("one month") per user request.
 async function loadNearTermEarnings() {
   const tbody = $('nearEarningsBody');
   const empty = $('nearEarningsEmpty');
@@ -188,8 +189,8 @@ async function loadNearTermEarnings() {
   tbody.innerHTML = '';
   try {
     const url = state.date
-      ? `/api/dashboard/near-term-earnings?date=${encodeURIComponent(state.date)}&days_ahead=7`
-      : '/api/dashboard/near-term-earnings?days_ahead=7';
+      ? `/api/dashboard/near-term-earnings?date=${encodeURIComponent(state.date)}&days_ahead=30`
+      : '/api/dashboard/near-term-earnings?days_ahead=30';
     const rows = await fetchJson(url);
     if (!rows || rows.length === 0) {
       empty.hidden = false;
@@ -1518,6 +1519,11 @@ async function refreshAll() {
     reloadMarketView(),
     loadBriefing(),
   ]);
+  // 2026-08-10 -- Volatility/Major Markets panels (macro_areas.js, loaded on
+  // this page now too) wire their own #datePicker "change" listener, but
+  // not the Refresh button -- same gap actionable.js's own refresh handler
+  // already works around by calling this global directly.
+  if (window.reloadMacroAreas) window.reloadMacroAreas();
   { const _fd = $('footDate'); if (_fd) _fd.textContent = state.date ? fmtDate(state.date) : '—'; }
 }
 

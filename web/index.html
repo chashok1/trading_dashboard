@@ -272,14 +272,49 @@
       </div>
 
       <div class="right-rail">
-        <!-- 2026-08-10 -- Hedgeye INFL (inflation nowcast), moved here from
-             the Actionable screen's hedgeye_panel.js panel -- user: "INFL to
-             3rd column above Indicator grid." Plain .cockpit-band chrome
-             (matches Indicator/Event/Housekeeping siblings in this rail)
-             instead of its own nested card box. Populated + wired by
-             hedgeye_panel.js (unchanged module, another render target). -->
-        <section class="cockpit-band rail-band" id="heInflPanel" style="display:none;">
-          <div id="heInflBody">Loading…</div>
+        <!-- 2026-08-10 -- Volatility/Major Markets, added from the
+             Actionable screen's macro rail -- same renderRail()/
+             railAreaRow() in macro_areas.js populates these by container
+             ID regardless of page, so no rendering-logic changes needed,
+             just matching container markup + loading that script here too.
+             Fixed height + internal scroll (not Actionable's approach,
+             where the whole side rail scrolls as one unbounded column) so
+             the right-rail's total footprint doesn't grow -- matches this
+             page's own convention (#indicatorBand/#nearEarningsBand already
+             cap+scroll individually). No collapse/chevron toggle (that's
+             wired in actionable.js, scoped to #actSidePanel, not loaded
+             here) -- always expanded. User: "add Volatility & Major Market
+             panels that you see on actionable screen to dashboard screen
+             on the right side ... don't change the height. use scrollbar
+             follow this order Volatility, Major Markets, SYMBOL, INDICATOR,
+             INFL." -->
+        <section class="cockpit-band rail-band" id="macroVolatilityBand">
+          <div class="msr-section-hdr">Volatility <span class="msr-breadth" id="macroBreadthVolatility"></span></div>
+          <div id="macroRailVolatility" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+        </section>
+
+        <section class="cockpit-band rail-band" id="macroTop9Band">
+          <div class="msr-section-hdr">Major Markets <span class="msr-breadth" id="macroBreadthTop9"></span></div>
+          <div id="macroRailTop9" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+        </section>
+
+        <!-- Near-term earnings: symbols currently held OR actionable
+             (drv_actionable, non-null consolidated_action) with earnings in
+             the next 30 days ("one month" per user request, was 7). -->
+        <section class="cockpit-band rail-band" id="nearEarningsBand">
+          <div class="side-scroll">
+            <table class="mini-grid">
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th class="num">Days</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody id="nearEarningsBody"></tbody>
+            </table>
+            <div id="nearEarningsEmpty" class="empty-note" hidden>No earnings in the next 30 days.</div>
+          </div>
         </section>
 
         <!-- 2026-08-10 -- Event grid (#eventBand) merged into Indicator --
@@ -308,23 +343,15 @@
           </div>
         </section>
 
-        <!-- Near-term earnings: symbols currently held OR actionable
-             (drv_actionable, non-null consolidated_action) with earnings in
-             the next 7 days. New grid below Event per user request. -->
-        <section class="cockpit-band rail-band" id="nearEarningsBand">
-          <div class="side-scroll">
-            <table class="mini-grid">
-              <thead>
-                <tr>
-                  <th>Symbol</th>
-                  <th class="num">Days</th>
-                  <th>Date</th>
-                </tr>
-              </thead>
-              <tbody id="nearEarningsBody"></tbody>
-            </table>
-            <div id="nearEarningsEmpty" class="empty-note" hidden>No earnings in the next 7 days.</div>
-          </div>
+        <!-- 2026-08-10 -- Hedgeye INFL (inflation nowcast), moved here from
+             the Actionable screen's hedgeye_panel.js panel -- user: "INFL to
+             3rd column above Indicator grid" -> follow-up reorder put it
+             last in the column instead ("follow this order ... INDICATOR,
+             INFL"). Plain .cockpit-band chrome (matches its rail siblings)
+             instead of its own nested card box. Populated + wired by
+             hedgeye_panel.js (unchanged module, another render target). -->
+        <section class="cockpit-band rail-band" id="heInflPanel" style="display:none;">
+          <div id="heInflBody">Loading…</div>
         </section>
       </div>
     </div>
@@ -349,6 +376,12 @@
        Actionable loads; it targets whichever of #hedgeyePanel/
        #hedgeyeDashPanel exist in the current page's DOM. -->
   <script src="/static/hedgeye_panel.js" defer></script>
+  <!-- 2026-08-10 -- renders Volatility/Major Markets into #macroRailVolatility/
+       #macroRailTop9 above (see right-rail). Same script Actionable loads;
+       its renderRail() populates by container ID regardless of page. Its
+       own init() gate widened to also accept this page (see that file's
+       comment) since Dashboard has no `main .card` element. -->
+  <script src="/static/macro_areas.js" defer></script>
   <!-- Dashboard-only: TradingView live mini-chart tape replaces the shared
        market_bar.js text-tile tape (still used as-is on /actionable and
        /portfolio). See web/dashboard_tv_chart_tape.js. -->
