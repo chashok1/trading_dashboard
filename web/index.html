@@ -106,6 +106,18 @@
             <div id="regimeStrip">Loading…</div>
           </section>
 
+          <!-- 2026-08-10 -- Hedgeye Mkt Situation (MSR), moved here from the
+               Actionable screen's hedgeye_panel.js panel -- user: "move the
+               mkt situation panel to just below risk dial panel." Plain
+               .cockpit-band chrome (matches Risk Dial/What changed/
+               Housekeeping siblings in this column) instead of its own
+               nested card box, so the graph fills the column's actual width
+               -- see hedgeye_panel.js::msrCardHtml(). Populated + wired by
+               hedgeye_panel.js (unchanged module, another render target). -->
+          <section class="cockpit-band" id="heMktSituationPanel" style="display:none;">
+            <div id="heMktSituationBody">Loading…</div>
+          </section>
+
           <section class="cockpit-band" id="eventsBand">
             <div id="eventsBody">Loading…</div>
           </section>
@@ -119,6 +131,21 @@
         </div>
 
         <div class="cat-col">
+          <!-- 2026-08-10 -- Hedgeye Early Look/Macro Commentary/Top 3 Things,
+               moved here from the Actionable screen's hedgeye_panel.js
+               panel -- user: "move HE earylook, macro commentory, hedgeye
+               top 3 things ... from actionable screen to Dashboard screen."
+               Mkt Situation and INFL split into their own panels elsewhere
+               on this page (below Risk Dial / above the Indicator grid,
+               follow-up: "move the mkt situation panel to just below risk
+               dial panel and INFL to 3rd column above Indicator grid").
+               Same shared script (loaded below) renders into this
+               container; the Accounts filter + Sector/Asset class/Style
+               grids that used to sit at the top of this column now render
+               below it instead. Populated + wired by hedgeye_panel.js
+               (unchanged module, just a second render target). -->
+          <div id="hedgeyeDashPanel" style="display:none;"></div>
+
           <!-- 2026-08-09 -- Accounts filter bar, shared above all 3 stacked
                grids -- user: "Can we add a filter bar for second column ->
                accounts filter." Populated + wired in app.js::
@@ -162,7 +189,6 @@
               <div class="cat-chart">
                 <h3 class="cat-chart-title"><span class="axis-dot axis-style"></span>Style</h3>
                 <svg class="chart" id="styleChart" viewBox="0 0 200 200"></svg>
-                <div class="unmapped-note">Bars, not a pie — style tags overlap, so weights don't sum to 100%.</div>
               </div>
               <div class="cat-table-col" id="styleScorecardBody">Loading…</div>
             </div>
@@ -201,7 +227,7 @@
           <section class="cockpit-band cat-section" id="marketViewSectorBand">
             <div class="cat-body">
               <div class="cat-chart">
-                <h3 class="cat-chart-title"><span class="axis-dot axis-sector"></span>Sector <span class="market-view-sub">(market — no $)</span></h3>
+                <h3 class="cat-chart-title"><span class="axis-dot axis-sector"></span>Sector</h3>
                 <svg class="chart" id="marketViewSectorChart" viewBox="0 0 200 200"></svg>
               </div>
               <div class="cat-table-col" id="marketViewSectorBody">Loading…</div>
@@ -211,7 +237,7 @@
           <section class="cockpit-band cat-section" id="marketViewAssetClassBand">
             <div class="cat-body">
               <div class="cat-chart">
-                <h3 class="cat-chart-title"><span class="axis-dot axis-asset-class"></span>Asset class <span class="market-view-sub">(market — no $)</span></h3>
+                <h3 class="cat-chart-title"><span class="axis-dot axis-asset-class"></span>Asset class</h3>
                 <svg class="chart" id="marketViewAssetClassChart" viewBox="0 0 200 200"></svg>
               </div>
               <div class="cat-table-col" id="marketViewAssetClassBody">Loading…</div>
@@ -221,9 +247,8 @@
           <section class="cockpit-band cat-section" id="marketViewStyleBand">
             <div class="cat-body">
               <div class="cat-chart">
-                <h3 class="cat-chart-title"><span class="axis-dot axis-style"></span>Style <span class="market-view-sub">(market — no $)</span></h3>
+                <h3 class="cat-chart-title"><span class="axis-dot axis-style"></span>Style</h3>
                 <svg class="chart" id="marketViewStyleChart" viewBox="0 0 200 200"></svg>
-                <div class="unmapped-note">Bars, not a pie — style tags overlap, so counts don't sum to the full universe. Counted from ToS-tracked symbols only (smaller universe than Sector/Asset Class's ~961-ticker reference list).</div>
               </div>
               <div class="cat-table-col" id="marketViewStyleBody">Loading…</div>
             </div>
@@ -232,6 +257,16 @@
       </div>
 
       <div class="right-rail">
+        <!-- 2026-08-10 -- Hedgeye INFL (inflation nowcast), moved here from
+             the Actionable screen's hedgeye_panel.js panel -- user: "INFL to
+             3rd column above Indicator grid." Plain .cockpit-band chrome
+             (matches Indicator/Event/Housekeeping siblings in this rail)
+             instead of its own nested card box. Populated + wired by
+             hedgeye_panel.js (unchanged module, another render target). -->
+        <section class="cockpit-band rail-band" id="heInflPanel" style="display:none;">
+          <div id="heInflBody">Loading…</div>
+        </section>
+
         <section class="cockpit-band rail-band" id="indicatorBand">
           <div class="side-scroll">
             <table class="mini-grid">
@@ -299,6 +334,11 @@
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/risk_gauge_modal.js"></script>
   <script src="/static/market_view_modal.js"></script>
+  <!-- 2026-08-10 -- renders Mkt Situation/INFL/Early Look/Macro Commentary/
+       Top 3 Things into #hedgeyeDashPanel above (see cat-col). Same script
+       Actionable loads; it targets whichever of #hedgeyePanel/
+       #hedgeyeDashPanel exist in the current page's DOM. -->
+  <script src="/static/hedgeye_panel.js" defer></script>
   <!-- Dashboard-only: TradingView live mini-chart tape replaces the shared
        market_bar.js text-tile tape (still used as-is on /actionable and
        /portfolio). See web/dashboard_tv_chart_tape.js. -->

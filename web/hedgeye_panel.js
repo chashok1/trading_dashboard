@@ -221,7 +221,17 @@
   }
   window._heShowImagePopup = _showImagePopup;
 
-  function msrCardHtml(msr, asOf, loadedAt) {
+  // 2026-08-10 -- moved out of the purple Hedgeye card grid into its own
+  // standalone .cockpit-band section (#heMktSituationPanel, just below Risk
+  // Dial in index.html's left column) -- no nested white/shadow box of its
+  // own anymore, the parent section already supplies that chrome, so this
+  // only fills it. Image now stretches to the section's full content width
+  // (width:100%, height:auto) instead of capping at a small fixed pixel
+  // height, so it matches Risk Dial's column width above it instead of
+  // sitting at some arbitrary smaller size. User: "adjust the width and
+  // height of Mkt situation graph so it matches with risk dial width.
+  // don't make it odd."
+  function msrCardHtml(msr, loadedAt) {
     var msrMetricsHtml = '';
     if (msr) {
       var metricParts = [];
@@ -247,43 +257,32 @@
           if (msr.gamma_throttle != null) bodyParts.push('Gamma Throttle: ' + msr.gamma_throttle.toFixed(2));
           if (msr.rvol_10day != null) bodyParts.push('Realized Vol: ' + msr.rvol_10day.toFixed(2));
           var idx = _richTip(_popBox(titleHtml, bodyParts.join('\n')));
-          // max-height + max-width (not a fixed height) lets the image scale
-          // down to fit whatever width the grid column actually resolves to,
-          // instead of forcing the card wider than its track (same pattern
-          // as the INFL image below).
+          // width:100% (not max-width/auto) -- deliberately stretches to
+          // fill the section's full content width, matching its
+          // .cockpit-band siblings (Risk Dial etc.) in the same column.
+          // height:auto preserves the image's own aspect ratio, so it just
+          // scales proportionally rather than being cropped or distorted.
           return '<img src="' + esc(msr.image_url) + '" ' +
-            'style="max-height:90px; max-width:100%; width:auto; height:auto; ' +
-            'border-radius:3px; display:block; cursor:zoom-in;" ' +
+            'style="width:100%; height:auto; border-radius:4px; display:block; cursor:zoom-in;" ' +
             'data-hetip="' + idx + '" ' +
             'onclick="window._heShowImagePopup(\'' + esc(msr.image_url) + '\')" ' +
             'onerror="this.style.display=\'none\'">';
         })()
-      : '';
+      : '<span style="color:#bbb; font-size:10px;">none</span>';
     var msrLabel = (msr && msr.received_at) ? fmtRecv(msr.received_at)
                  : (msr && msr.date)        ? fmtMD(msr.date) : '';
     var msrTileTs = msrLabel
       ? ' <span style="font-size:8px; color:#bbb; font-weight:400;">· ' + esc(msrLabel) + '</span>'
       : '';
     var panelTitle = '<div style="font-weight:700; font-size:9px; text-transform:uppercase; ' +
-      'letter-spacing:0.6px; color:#534ab7; margin-bottom:4px; display:flex; ' +
+      'letter-spacing:0.6px; color:#534ab7; margin-bottom:6px; display:flex; ' +
       'align-items:baseline; justify-content:space-between; gap:8px;">' +
-      '<span>Hedgeye' +
+      '<span>' + linked('Mkt Situation', 'mkt_situation') + msrTileTs +
       (loadedAt ? ' <span style="color:#bbb; font-weight:400; font-size:8px;">· ' + esc(loadedAt) + '</span>' : '') +
       '</span>' +
-      '<span>' + linked('Mkt Situation', 'mkt_situation') + msrTileTs + msrMetricsHtml + '</span>' +
+      '<span>' + msrMetricsHtml + '</span>' +
       '</div>';
-    // No fixed/flex width here — sizing comes entirely from the parent
-    // row's CSS-grid column (see render()'s GRID_ROW1). min-width:0 lets
-    // this card actually shrink to that column's track instead of the
-    // image forcing it wider (that's what used to require the Macro
-    // Commentary card's width to be reverse-engineered to match).
-    return '<div style="background:#fff; border:1px solid #e0daf5; border-radius:5px; ' +
-      'padding:7px 10px; min-width:0; max-height:110px; ' +
-      'box-shadow:0 1px 4px rgba(83,74,183,0.07); display:flex; flex-direction:column;">' +
-      panelTitle +
-      '<div style="display:flex; gap:0; align-items:flex-start; flex-wrap:nowrap; flex:1; min-height:0; min-width:0; overflow-y:auto; overflow-x:hidden;">' +
-      (img ? '<div style="min-width:0;">' + img + '</div>' : '') +
-      '</div></div>';
+    return panelTitle + img;
   }
 
   function etfChangesHtml(etf) {
@@ -396,24 +395,44 @@
   }
 
   function render(data, loadedAt) {
-    var el = document.getElementById('hedgeyePanel');
-    if (!el) return;
+    // 2026-08-10 -- four independent targets from one shared fetch:
+    // #hedgeyePanel (Actionable, unchanged element), #heMktSituationPanel
+    // (Dashboard left column, below Risk Dial), #heInflPanel (Dashboard
+    // right rail, above the Indicator grid), #hedgeyeDashPanel (Dashboard
+    // center column -- Early Look/Macro Commentary/Top 3 Things only, Mkt
+    // Situation and INFL split out of it). Any subset may be present in the
+    // DOM depending on which page loaded this script. User: "move the mkt
+    // situation panel to just below risk dial panel and INFL to 3rd column
+    // above Indicator grid."
+    var actEl = document.getElementById('hedgeyePanel');
+    var dashEl = document.getElementById('hedgeyeDashPanel');
+    var mktPanelEl = document.getElementById('heMktSituationPanel');
+    var mktBodyEl = document.getElementById('heMktSituationBody');
+    var inflPanelEl = document.getElementById('heInflPanel');
+    var inflBodyEl = document.getElementById('heInflBody');
+    if (!actEl && !dashEl && !mktPanelEl && !inflPanelEl) return;
     _tipHtml = [];  // reset so data-hetip indices match this render's DOM
 
-    var hasAny = (data.top5 && data.top5.length) ||
+    var hasMktAny = !!data.msr;
+    var hasInflAny = !!(data.inflation_nowcast && data.inflation_nowcast.image_url);
+    var hasDashAny = !!(
+      (data.early_look && data.early_look.takeaways) ||
+      (data.call_macro && data.call_macro.note_text) ||
+      (data.top3_things && data.top3_things.note_text));
+    var hasActAny = !!((data.top5 && data.top5.length) ||
       (data.alerts && data.alerts.length) ||
       (data.trend_flips && data.trend_flips.length) ||
       (data.stance && ((data.stance.bullish || []).length || (data.stance.bearish || []).length)) ||
-      (data.msr && (data.msr.gamma_throttle != null || data.msr.rvol_10day != null)) ||
-      (data.early_look && data.early_look.takeaways) ||
       (data.positions && (data.positions.longs.length || data.positions.shorts.length)) ||
       (data.etf_changes && data.etf_changes.changes && data.etf_changes.changes.length) ||
       (data.ii_changes && data.ii_changes.changes && data.ii_changes.changes.length) ||
-      (data.sss_changes && data.sss_changes.changes && data.sss_changes.changes.length) ||
-      (data.call_macro && data.call_macro.note_text) ||
-      (data.top3_things && data.top3_things.note_text) ||
-      (data.inflation_nowcast && data.inflation_nowcast.image_url);
-    if (!hasAny) { el.style.display = 'none'; return; }
+      (data.sss_changes && data.sss_changes.changes && data.sss_changes.changes.length));
+
+    if (dashEl && !hasDashAny) dashEl.style.display = 'none';
+    if (actEl && !hasActAny) actEl.style.display = 'none';
+    if (mktPanelEl && !hasMktAny) mktPanelEl.style.display = 'none';
+    if (inflPanelEl && !hasInflAny) inflPanelEl.style.display = 'none';
+    if (!hasDashAny && !hasActAny && !hasMktAny && !hasInflAny) return;
 
     var collapsed = localStorage.getItem('hePanel_collapsed') === '1';
     var etfTitle = 'ETF CHG';
@@ -480,52 +499,6 @@
         '</div></div>';
     };
 
-    // Row 1: MSR/Mkt Situation | Risk Range | Early Look. Fixed-ish tracks
-    // for MSR + Risk Range, 1fr for Early Look. Cards always render (with a
-    // "none" fallback) once the row itself has something worth showing, so
-    // a sparse day doesn't leave a blank grid cell.
-    var GRID_ROW1 = 'display:grid; grid-template-columns: minmax(300px, 360px) ' +
-      'minmax(160px, calc(22.5ch + 18px)) minmax(220px, 1fr); gap:3px; align-items:stretch;';
-    var row1 = (data.early_look || data.msr || (data.trend_flips && data.trend_flips.length))
-      ? '<div style="' + GRID_ROW1 + '">' +
-        msrCardHtml(data.msr, data.as_of || data.date, loadedAt) +
-        _card(linked('Risk Range', 'trend_change'), flipsHtml(data.trend_flips),
-              td(data.trend_flips_received_at, data.trend_flips_date),
-              { maxH: 110 }) +
-        _inlineHdrCard(linked('Early Look', 'early_look'),
-              data.early_look ? earlyLookHtml(data.early_look) : '',
-              td(data.early_look && data.early_look.received_at, data.early_look && data.early_look.date),
-              { maxH: 110 }) +
-        '</div>'
-      : '';
-
-    // Row: Macro Commentary (fixed-ish) | Hedgeye's Top 3 Things (1fr).
-    // Macro Commentary's max widened 360->460px (2026-07-05) so its right
-    // edge approximates where Row 2's "Macro Show" card ends (Top-5's
-    // calc(15ch+20px) column + Macro Show's own minmax(200px,1fr) column).
-    // This is an approximation, not an exact match: Row 2 and this row are
-    // two independently-sized CSS grids, and Macro Show's own column is a
-    // flexible 1fr track that shares leftover space with the Call column --
-    // its resolved width (and therefore its right edge) shifts with the
-    // panel's overall rendered width, so this alignment can drift at
-    // different window sizes. Exact, width-independent alignment would
-    // need both rows merged into one shared grid (CSS subgrid) instead of
-    // two separate ones -- a bigger change, only worth it if this
-    // approximation isn't close enough in practice.
-    var GRID_ROW_MACRO = 'display:grid; grid-template-columns: minmax(433px, 551px) ' +
-      'minmax(220px, 1fr); gap:3px; align-items:stretch; margin-top:3px;';
-    var rowMacroTop3 = (data.call_macro || (data.top3_things && data.top3_things.note_text))
-      ? '<div style="' + GRID_ROW_MACRO + '">' +
-        _inlineHdrCard(linked('Macro Commentary', 'call_macro'),
-              data.call_macro ? '<span style="font-size:11px; line-height:1.5;">' + boldTickers(data.call_macro.note_text) + '</span>' : '',
-              td(data.call_macro && data.call_macro.received_at, data.call_macro && data.call_macro.date),
-              { maxH: 130 }) +
-        _inlineHdrCard(linked("Hedgeye's Top 3 Things", 'macro_show'), top3Html(data.top3_things),
-              td(data.top3_things && data.top3_things.received_at, data.top3_things && data.top3_things.date),
-              { maxH: 130 }) +
-        '</div>'
-      : '';
-
     var _inflValueHtml = '';
     var _inflMonth = '';
     if (data.inflation_nowcast) {
@@ -554,41 +527,116 @@
       '<span>' + _inflRight + '</span>' +
       '</span>';
 
-    // Row 2: Top-5 | Macro Show | RTA | ETF | II | SSS | Call | INFL.
-    // Fixed-ish chip tracks for Top-5/RTA/ETF/II/SSS/INFL, 1fr for the two
-    // prose-ish cards (Macro Show, Call) so they split any leftover space.
-    var GRID_ROW2 = 'display:grid; grid-template-columns: ' +
-      'minmax(120px, calc(15ch + 20px)) minmax(200px, 1fr) minmax(220px, calc(35ch + 20px)) ' +
-      'minmax(120px, calc(15ch + 20px)) minmax(120px, calc(15ch + 20px)) minmax(120px, calc(15ch + 20px)) ' +
-      'minmax(200px, 1fr) minmax(150px, 210px); gap:3px; align-items:stretch; margin-top:3px;';
-    var row2 =
-      '<div style="' + GRID_ROW2 + '">' +
-      _card(linked('Top-5', 'top5'),                 top5Html(data.top5),              td(data.top5_received_at, data.top5_date)) +
-      _card(linked('Macro Show', 'macro_show'),      stanceHtml(data.stance, data.stance_date), td(data.stance_received_at, data.stance_date)) +
-      _card(linked('RTA', 'alerts'),                 alertsHtml(data.alerts),          td(data.rta_received_at, data.rta_date)) +
-      _card(linked(etfTitle, 'etf_pro'),             etfChangesHtml(data.etf_changes), td(data.etf_changes && data.etf_changes.received_at, data.etf_changes && data.etf_changes.date)) +
-      _card(linked(iiTitle, 'investing_ideas'),      iiChangesHtml(data.ii_changes),   td(data.ii_changes && data.ii_changes.received_at, data.ii_changes && data.ii_changes.date)) +
-      _card(linked(sssTitle, 'sss'),                 sssChangesHtml(data.sss_changes), td(data.sss_changes && data.sss_changes.received_at, data.sss_changes && data.sss_changes.date)) +
-      _card(linked('Call', 'call'),                  positionsHtml(data.positions),    td(data.positions && data.positions.received_at, data.positions && data.positions.date)) +
-      _card(_inflTitle, inflationNowcastHtml(data.inflation_nowcast), '', { extra: 'padding:4px 3px;' }) +
-      '</div>';
+    // ---- Mkt Situation panel (index.html #heMktSituationPanel, left column
+    // just below Risk Dial) -- 2026-08-10, per user: "move the mkt situation
+    // panel to just below risk dial panel." Plain .cockpit-band section (see
+    // index.html) supplies the card chrome; msrCardHtml() just fills it --
+    // see its own comment for the width/height fix.
+    if (mktPanelEl) {
+      if (hasMktAny) {
+        if (mktBodyEl) mktBodyEl.innerHTML = msrCardHtml(data.msr, loadedAt);
+        mktPanelEl.style.display = 'block';
+      } else {
+        mktPanelEl.style.display = 'none';
+      }
+    }
 
-    var bodyHtml =
-      '<div id="hePanelBody" style="display:' + (collapsed ? 'none' : 'block') + '; margin-top:2px;">' +
-      row1 + rowMacroTop3 + row2 + '</div>';
+    // ---- INFL panel (index.html #heInflPanel, right rail above the
+    // Indicator grid) -- 2026-08-10, per user: "INFL to 3rd column above
+    // Indicator grid." Same plain-section treatment as Mkt Situation above.
+    if (inflPanelEl) {
+      if (hasInflAny) {
+        if (inflBodyEl) {
+          inflBodyEl.innerHTML =
+            '<div style="font-weight:700; font-size:9px; text-transform:uppercase; ' +
+            'letter-spacing:0.6px; color:#534ab7; margin-bottom:6px;">' + _inflTitle + '</div>' +
+            inflationNowcastHtml(data.inflation_nowcast);
+        }
+        inflPanelEl.style.display = 'block';
+      } else {
+        inflPanelEl.style.display = 'none';
+      }
+    }
 
-    el.innerHTML =
-      '<div style="padding:2px 4px; background:#f0eefb; border:1px solid #d5d0f0; ' +
-      'border-radius:6px;">' + bodyHtml + '</div>';
-    el.style.display = 'block';
+    // ---- Dashboard center panel (index.html #hedgeyeDashPanel) -- Early
+    // Look / Macro Commentary / Hedgeye's Top 3 Things stacked full-width.
+    // Mkt Situation and INFL split out into their own panels above
+    // (2026-08-10) -- this container now holds only the three prose/list
+    // cards that don't have a more specific home elsewhere on the
+    // dashboard. User: "move HE earylook, macro commentory, hedgeye top 3
+    // things ... from actionable screen to Dashboard screen."
+    if (dashEl) {
+      if (hasDashAny) {
+        var dashRowEarly =
+          _inlineHdrCard(linked('Early Look', 'early_look'),
+                data.early_look ? earlyLookHtml(data.early_look) : '',
+                td(data.early_look && data.early_look.received_at, data.early_look && data.early_look.date),
+                { maxH: 150 });
+        var dashRowMacro = '<div style="margin-top:3px;">' +
+          _inlineHdrCard(linked('Macro Commentary', 'call_macro'),
+                data.call_macro ? '<span style="font-size:11px; line-height:1.5;">' + boldTickers(data.call_macro.note_text) + '</span>' : '',
+                td(data.call_macro && data.call_macro.received_at, data.call_macro && data.call_macro.date),
+                { maxH: 150 }) +
+          '</div>';
+        var dashRowTop3 = '<div style="margin-top:3px;">' +
+          _inlineHdrCard(linked("Hedgeye's Top 3 Things", 'macro_show'), top3Html(data.top3_things),
+                td(data.top3_things && data.top3_things.received_at, data.top3_things && data.top3_things.date),
+                { maxH: 150 }) +
+          '</div>';
 
-    // U15: sync the toggle button's chevron to the persisted collapsed
-    // state on every render (covers page reload — clicking already syncs
-    // this via _hePanelToggle below, but that only runs on click).
-    var toggleBtn = document.getElementById('hePanelToggle');
-    if (toggleBtn) {
-      toggleBtn.classList.toggle('icon-on', !collapsed);
-      toggleBtn.classList.toggle('icon-off', collapsed);
+        dashEl.innerHTML =
+          '<div style="padding:2px 4px; background:#f0eefb; border:1px solid #d5d0f0; ' +
+          'border-radius:6px;">' + dashRowEarly + dashRowMacro + dashRowTop3 + '</div>';
+        dashEl.style.display = 'block';
+      } else {
+        dashEl.style.display = 'none';
+      }
+    }
+
+    // ---- Actionable panel (#hedgeyePanel): Top-5 | Macro Show | RTA | ETF
+    // | II | SSS | Call | Risk Range. Risk Range moved into INFL's old last
+    // column 2026-08-10 (INFL itself moved to the Dashboard panel above) --
+    // same track width (minmax(150px,210px)) INFL used to occupy, per user:
+    // "move the risk range in actionable screen to where INFL panel was
+    // there currently."
+    if (actEl) {
+      if (hasActAny) {
+        var GRID_ROW2 = 'display:grid; grid-template-columns: ' +
+          'minmax(120px, calc(15ch + 20px)) minmax(200px, 1fr) minmax(220px, calc(35ch + 20px)) ' +
+          'minmax(120px, calc(15ch + 20px)) minmax(120px, calc(15ch + 20px)) minmax(120px, calc(15ch + 20px)) ' +
+          'minmax(200px, 1fr) minmax(150px, 210px); gap:3px; align-items:stretch;';
+        var row2 =
+          '<div style="' + GRID_ROW2 + '">' +
+          _card(linked('Top-5', 'top5'),                 top5Html(data.top5),              td(data.top5_received_at, data.top5_date)) +
+          _card(linked('Macro Show', 'macro_show'),      stanceHtml(data.stance, data.stance_date), td(data.stance_received_at, data.stance_date)) +
+          _card(linked('RTA', 'alerts'),                 alertsHtml(data.alerts),          td(data.rta_received_at, data.rta_date)) +
+          _card(linked(etfTitle, 'etf_pro'),             etfChangesHtml(data.etf_changes), td(data.etf_changes && data.etf_changes.received_at, data.etf_changes && data.etf_changes.date)) +
+          _card(linked(iiTitle, 'investing_ideas'),      iiChangesHtml(data.ii_changes),   td(data.ii_changes && data.ii_changes.received_at, data.ii_changes && data.ii_changes.date)) +
+          _card(linked(sssTitle, 'sss'),                 sssChangesHtml(data.sss_changes), td(data.sss_changes && data.sss_changes.received_at, data.sss_changes && data.sss_changes.date)) +
+          _card(linked('Call', 'call'),                  positionsHtml(data.positions),    td(data.positions && data.positions.received_at, data.positions && data.positions.date)) +
+          _card(linked('Risk Range', 'trend_change'),    flipsHtml(data.trend_flips),      td(data.trend_flips_received_at, data.trend_flips_date)) +
+          '</div>';
+
+        var bodyHtml =
+          '<div id="hePanelBody" style="display:' + (collapsed ? 'none' : 'block') + '; margin-top:2px;">' +
+          row2 + '</div>';
+
+        actEl.innerHTML =
+          '<div style="padding:2px 4px; background:#f0eefb; border:1px solid #d5d0f0; ' +
+          'border-radius:6px;">' + bodyHtml + '</div>';
+        actEl.style.display = 'block';
+
+        // U15: sync the toggle button's chevron to the persisted collapsed
+        // state on every render (covers page reload — clicking already syncs
+        // this via _hePanelToggle below, but that only runs on click).
+        var toggleBtn = document.getElementById('hePanelToggle');
+        if (toggleBtn) {
+          toggleBtn.classList.toggle('icon-on', !collapsed);
+          toggleBtn.classList.toggle('icon-off', collapsed);
+        }
+      } else {
+        actEl.style.display = 'none';
+      }
     }
 
     window._hePanelToggle = function () {
@@ -638,8 +686,10 @@
       _links = links || {};
       render(data, fmtLoadedAt());
     } catch (e) {
-      var el = document.getElementById('hedgeyePanel');
-      if (el) el.style.display = 'none';
+      ['hedgeyePanel', 'hedgeyeDashPanel', 'heMktSituationPanel', 'heInflPanel'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
     }
   }
 
@@ -665,17 +715,24 @@
   }
 
   // Rich tooltips: delegated hover on the panel, reusing actionable.js's
-  // #sourcePop/_showDataPop/hideSourcePop globals (see _richTip/_popBox above).
+  // #sourcePop/_showDataPop/hideSourcePop globals (see _richTip/_popBox
+  // above). Only actionable.html loads actionable.js, so on the Dashboard
+  // (#hedgeyeDashPanel only, no _showDataPop global) this is a no-op --
+  // guarded per-panel rather than bailing out entirely if only one target
+  // exists.
   function _wireRichTips() {
-    var panel = document.getElementById('hedgeyePanel');
-    if (!panel || typeof _showDataPop !== 'function') return;
-    panel.addEventListener('mouseover', function (e) {
-      var el = e.target.closest('[data-hetip]');
-      if (el) _showDataPop(el, _tipHtml[+el.getAttribute('data-hetip')] || '');
-    });
-    panel.addEventListener('mouseout', function (e) {
-      if (e.relatedTarget && e.relatedTarget.closest('[data-hetip]')) return;
-      if (typeof hideSourcePop === 'function') hideSourcePop();
+    if (typeof _showDataPop !== 'function') return;
+    ['hedgeyePanel', 'hedgeyeDashPanel', 'heMktSituationPanel', 'heInflPanel'].forEach(function (id) {
+      var panel = document.getElementById(id);
+      if (!panel) return;
+      panel.addEventListener('mouseover', function (e) {
+        var el = e.target.closest('[data-hetip]');
+        if (el) _showDataPop(el, _tipHtml[+el.getAttribute('data-hetip')] || '');
+      });
+      panel.addEventListener('mouseout', function (e) {
+        if (e.relatedTarget && e.relatedTarget.closest('[data-hetip]')) return;
+        if (typeof hideSourcePop === 'function') hideSourcePop();
+      });
     });
   }
 

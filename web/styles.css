@@ -2259,7 +2259,12 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    scrolling; it was never long enough to need one. */
 /* 248px -> 260px -> 273px -> 268px (-5px), content now fits exactly at
    that height -- overflow-y:auto dropped, no scrollbar needed. */
-#sectorScorecardBand .cat-table-col { max-height: 268px; }
+/* 2026-08-10 -- 268px -> 288px (+1 line, ~20px): the "Unmapped" note
+   (.fs-note, appended after the table by loadFactorScorecard()) was
+   rendering below the box's painted height since overflow is visible, not
+   clipped -- it just visually spilled outside the card. Cap raised by one
+   note-line's height so Unmapped sits inside the grid instead of under it. */
+#sectorScorecardBand .cat-table-col { max-height: 288px; }
 .cat-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 6px; flex-shrink: 0; vertical-align: middle; }
 .slice-label { font-size: 9.5px; fill: var(--card-bg); font-weight: 700; text-anchor: middle; }
 @media (max-width: 900px) {

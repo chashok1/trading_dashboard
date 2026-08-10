@@ -1025,8 +1025,8 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
       fetchJson(`/api/cockpit/factor-scorecard?${scoreParams.toString()}`),
       fetchJson(`/api/quad/factor-stance?${params.toString()}`).catch(() => null),
     ]);
-    const note = axis === 'style'
-      ? '<div class="fs-note">Overlapping tags — not an allocation.</div>' : '';
+    // 2026-08-10 -- "Overlapping tags -- not an allocation" note removed
+    // for Style (both here and in Market View below) per user request.
     // TASK_140 follow-up 3 -- same color, category column swatch + chart
     // slice/bar. Computed once here from the same r.rows order the chart
     // renderer below also gets, so table and chart never disagree.
@@ -1184,7 +1184,6 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
     // own scrollbar) at narrow widths instead of forcing the grid track
     // wider than its share.
     body.innerHTML = `
-      ${note}
       <div style="overflow-x:auto">
         <table class="fs-table">
           <thead><tr><th title="Category, sector/asset-class/style">Category</th>
@@ -1483,17 +1482,10 @@ async function loadMarketView(axis, bodyId, chartId) {
       </tr>`;
     }).join('');
 
-    // 2026-08-10 -- same "Overlapping tags -- not an allocation" note the
-    // top grid already shows for Style (loadFactorScorecard) -- a stock
-    // can carry several style tags at once, so row counts sum well past
-    // the total (907 stocks, but e.g. 2350 tag-assignments) by design, not
-    // a bug. Market View's Style card never got this note, so there was
-    // nothing explaining the mismatch. User: "bottom three grids -> why
-    // count doesn't add up to the total stock count?" -> "yes" (add it).
-    const styleNote = axis === 'style'
-      ? '<div class="fs-note">Overlapping tags — not an allocation.</div>' : '';
+    // 2026-08-10 -- Style's "Overlapping tags -- not an allocation" note and
+    // the count_universe ref_sector/ToS-tracked note both removed per user
+    // request (previously explained why counts don't sum to the total).
     body.innerHTML = `
-      ${styleNote}
       <div style="overflow-x:auto">
         <table class="fs-table">
           <thead><tr><th title="Category, sector/asset-class/style">Category</th>
@@ -1502,7 +1494,6 @@ async function loadMarketView(axis, bodyId, chartId) {
           <tbody>${bodyRows || `<tr><td colspan="${2 + _FS_WINDOWS.length}">No rows.</td></tr>`}</tbody>
         </table>
       </div>
-      ${d.count_universe ? `<div class="mv-universe-note">${escapeHtml(d.count_universe)}</div>` : ''}
     `;
     // 2026-08-10 -- hover popover on the caret cluster, same
     // _showCategoryQuadPop the top 3 $ grids use (loadFactorScorecard) --
