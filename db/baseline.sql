@@ -7689,7 +7689,23 @@ CREATE TABLE IF NOT EXISTS user_dashboard_note (
     note_text       TEXT NOT NULL,
     effective_date  DATE,
     expiration_date DATE,
+    -- 2026-08-10 follow-up -- importance drives the panel's color-coded
+    -- left-border stripe (high=red/medium=amber/low=gray, see
+    -- web/dashboard_notes.js). sort_order is a float, not an integer, so
+    -- drag-and-drop reordering only ever has to update the ONE moved row
+    -- (new value = midpoint of its new neighbors' sort_order) instead of
+    -- renumbering the whole list. User: "a way to move up or down by
+    -- dragging the notes. and color it by importance (high, medium, low)."
+    importance      TEXT NOT NULL DEFAULT 'medium'
+                    CHECK (importance IN ('high', 'medium', 'low')),
+    sort_order      DOUBLE PRECISION NOT NULL DEFAULT 0,
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
     updated_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
+ALTER TABLE IF EXISTS user_dashboard_note ADD COLUMN IF NOT EXISTS importance TEXT NOT NULL DEFAULT 'medium';
+ALTER TABLE IF EXISTS user_dashboard_note DROP CONSTRAINT IF EXISTS user_dashboard_note_importance_check;
+ALTER TABLE IF EXISTS user_dashboard_note ADD CONSTRAINT user_dashboard_note_importance_check
+    CHECK (importance IN ('high', 'medium', 'low'));
+ALTER TABLE IF EXISTS user_dashboard_note ADD COLUMN IF NOT EXISTS sort_order DOUBLE PRECISION NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS ix_user_dashboard_note_dates ON user_dashboard_note(effective_date, expiration_date);
+CREATE INDEX IF NOT EXISTS ix_user_dashboard_note_sort ON user_dashboard_note(sort_order);

@@ -20,6 +20,24 @@
   var _editingId = null;   // note id being edited, or null when adding/form closed
   var _formOpen = false;
   var _showAll = false;    // reveal upcoming/expired notes too (default view = active only)
+  var _formImportance = 'medium';  // selection in the currently-open add/edit form
+  var _dragId = null;      // note id currently mid-drag, or null
+
+  // 2026-08-10 -- color-by-importance: a left-border stripe + faint tint on
+  // each row (high=red/medium=amber/low=gray). Deliberately avoids green --
+  // this app already uses green/red for bullish/bearish elsewhere
+  // (hedgeye_panel.js::sideColor), and reusing it here for "low priority"
+  // would read as a market-direction signal instead of an urgency one.
+  // User: "color it by importance (high, medium, low) (choose the best
+  // way)."
+  var IMPORTANCE = {
+    high:   { label: 'High',   color: '#dc2626', bg: 'rgba(220,38,38,0.07)' },
+    medium: { label: 'Medium', color: '#d97706', bg: 'rgba(217,119,6,0.07)' },
+    low:    { label: 'Low',    color: '#6b7280', bg: 'rgba(107,114,128,0.06)' },
+  };
+  function importanceInfo(n) {
+    return IMPORTANCE[n && n.importance] || IMPORTANCE.medium;
+  }
 
   // "Today" is the dashboard's selected as_of date (#datePicker), NOT the
   // system clock -- this is a historical snapshot viewer, same convention
@@ -76,14 +94,29 @@
     return 'no expiration';
   }
 
+  // 2026-08-10 -- drag-to-reorder: the grip handle (not the whole row) is
+  // the draggable element, so dragging never fights with selecting note
+  // text or clicking Edit/Delete. dragstart sets the drag image to the
+  // FULL row (not just the small handle) so what the user sees moving
+  // under the cursor is the whole note, not a tiny icon. Drop position is
+  // resolved in wire()'s dragover/drop handlers by comparing cursor Y to
+  // each row's own vertical midpoint. User: "a way to move up or down by
+  // dragging the notes."
   function noteRowHtml(n) {
     var tag = statusTag(n);
     var tagHtml = tag ? ' &middot; <span style="text-transform:uppercase;">' + tag + '</span>' : '';
-    return '<div class="dash-note-row" style="display:flex; gap:6px; align-items:flex-start; ' +
-      'padding:6px 0; border-bottom:1px solid var(--border);' + (tag ? ' opacity:0.55;' : '') + '">' +
+    var imp = importanceInfo(n);
+    return '<div class="dash-note-row" data-id="' + n.id + '" style="display:flex; gap:6px; align-items:flex-start; ' +
+      'padding:6px 8px; margin-bottom:3px; border-radius:3px; border-left:3px solid ' + imp.color + '; ' +
+      'background:' + imp.bg + ';' + (tag ? ' opacity:0.55;' : '') + '">' +
+      '<span class="dash-note-handle" data-id="' + n.id + '" draggable="true" title="Drag to reorder" ' +
+        'style="cursor:grab; color:var(--text-3); font-size:12px; line-height:1.6; flex-shrink:0; user-select:none;">&#8942;&#8942;</span>' +
       '<div style="flex:1; min-width:0;">' +
         '<div style="font-size:11.5px; line-height:1.45; color:var(--text-1); white-space:pre-wrap;">' + esc(n.note_text) + '</div>' +
-        '<div style="font-size:9.5px; color:var(--text-3); margin-top:2px;">' + esc(dateRangeLabel(n)) + tagHtml + '</div>' +
+        '<div style="font-size:9.5px; color:var(--text-3); margin-top:2px;">' +
+          '<span style="font-weight:600; color:' + imp.color + ';">' + imp.label + '</span> &middot; ' +
+          esc(dateRangeLabel(n)) + tagHtml +
+        '</div>' +
       '</div>' +
       '<div style="display:flex; gap:2px; flex-shrink:0;">' +
         '<button class="btn btn-sm dash-note-edit" data-id="' + n.id + '" type="button" title="Edit" style="padding:1px 6px;">&#9998;</button>' +
@@ -92,9 +125,28 @@
     '</div>';
   }
 
+  // Importance picker: three toggle buttons colored in their own importance
+  // color (filled when selected, outlined/muted otherwise) instead of a
+  // plain <select> -- picking a color directly is a clearer match to what
+  // the row itself will look like than reading a text label would be.
+  function importancePickerHtml() {
+    return '<div style="display:flex; gap:4px; margin-bottom:6px;">' +
+      Object.keys(IMPORTANCE).map(function (key) {
+        var imp = IMPORTANCE[key];
+        var selected = _formImportance === key;
+        return '<button type="button" class="dash-note-imp-btn" data-imp="' + key + '" style="' +
+          'flex:1; padding:3px 6px; font-size:10.5px; font-weight:600; border-radius:3px; cursor:pointer; ' +
+          'border:1px solid ' + imp.color + '; ' +
+          (selected ? 'background:' + imp.color + '; color:#fff;' : 'background:transparent; color:' + imp.color + ';') +
+          '">' + imp.label + '</button>';
+      }).join('') +
+    '</div>';
+  }
+
   function formHtml(n) {
     n = n || {};
     return '<div id="dashNoteForm" style="margin-top:6px; padding:8px; background:var(--bg); border:1px solid var(--border); border-radius:5px;">' +
+      importancePickerHtml() +
       '<div style="display:flex; gap:8px; margin-bottom:6px;">' +
         '<label style="font-size:10px; color:var(--text-3); flex:1;">From<br>' +
           '<input type="date" id="dashNoteFrom" value="' + esc(n.effective_date || '') + '" style="width:100%; font-size:11px; box-sizing:border-box;"></label>' +
@@ -137,6 +189,7 @@
 
   function openAddForm() {
     _editingId = null;
+    _formImportance = 'medium';
     _formOpen = true;
     render();
     var t = document.getElementById('dashNoteText');
@@ -144,7 +197,9 @@
   }
 
   function openEditForm(id) {
+    var n = _notes.find(function (x) { return x.id === id; });
     _editingId = id;
+    _formImportance = (n && n.importance) || 'medium';
     _formOpen = true;
     render();
     var t = document.getElementById('dashNoteText');
@@ -175,7 +230,7 @@
       errEl.style.display = 'block';
       return;
     }
-    var body = JSON.stringify({ note_text: noteText, effective_date: from, expiration_date: to });
+    var body = JSON.stringify({ note_text: noteText, effective_date: from, expiration_date: to, importance: _formImportance });
     try {
       if (_editingId != null) {
         await fetchJson('/api/dashboard-notes/' + _editingId, { method: 'PUT', body: body });
@@ -199,6 +254,35 @@
     } catch (e) { /* non-critical */ }
   }
 
+  // 2026-08-10 -- drag-and-drop reorder. _notes is already in sort_order
+  // order (server-side ORDER BY), so "the row above/below the drop point"
+  // maps directly to "the neighbor in _notes with the next/previous
+  // index" -- no separate lookup needed. Only the ONE dragged note's
+  // sort_order changes (midpoint of its new neighbors); everything else is
+  // untouched, so a drag never renumbers notes hidden by the active-only
+  // filter.
+  async function reorderTo(draggedId, targetId, before) {
+    if (draggedId === targetId) return;
+    var visible = _showAll ? _notes : _notes.filter(isActive);
+    var targetIdx = visible.findIndex(function (n) { return n.id === targetId; });
+    if (targetIdx < 0) return;
+    var dropIdx = before ? targetIdx : targetIdx + 1;
+    var above = visible[dropIdx - 1];
+    var below = visible[dropIdx];
+    if (above && above.id === draggedId) return;   // dropped in its own spot
+    if (below && below.id === draggedId) return;
+    var newSortOrder = (above && below) ? (above.sort_order + below.sort_order) / 2
+      : above ? above.sort_order + 1
+      : below ? below.sort_order - 1
+      : 0;
+    try {
+      await fetchJson('/api/dashboard-notes/' + draggedId + '/sort-order', {
+        method: 'PUT', body: JSON.stringify({ sort_order: newSortOrder }),
+      });
+      await load();
+    } catch (e) { /* non-critical */ }
+  }
+
   function wire() {
     var addBtn = document.getElementById('dashNoteAddBtn');
     if (addBtn) addBtn.addEventListener('click', openAddForm);
@@ -214,6 +298,47 @@
     document.querySelectorAll('.dash-note-del').forEach(function (btn) {
       btn.addEventListener('click', function () { deleteNote(+btn.getAttribute('data-id')); });
     });
+    document.querySelectorAll('.dash-note-imp-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () { _formImportance = btn.getAttribute('data-imp'); render(); });
+    });
+
+    // Drag source: the grip handle only (not the whole row), so drag never
+    // fights with text selection or the Edit/Delete buttons. Drag image is
+    // set to the full row so the whole note appears to move, not just the
+    // small handle icon.
+    document.querySelectorAll('.dash-note-handle').forEach(function (handle) {
+      handle.addEventListener('dragstart', function (e) {
+        _dragId = +handle.getAttribute('data-id');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(_dragId));
+        var row = handle.closest('.dash-note-row');
+        if (row) e.dataTransfer.setDragImage(row, 12, 12);
+      });
+      handle.addEventListener('dragend', function () { _dragId = null; });
+    });
+    // Drop targets: delegate dragover/drop to the list container so a
+    // single listener covers every row, re-wired fresh on each render.
+    var list = document.getElementById('dashNotesList');
+    if (list) {
+      list.addEventListener('dragover', function (e) {
+        if (_dragId == null) return;
+        var row = e.target.closest('.dash-note-row');
+        if (!row) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+      });
+      list.addEventListener('drop', function (e) {
+        if (_dragId == null) return;
+        var row = e.target.closest('.dash-note-row');
+        if (!row) return;
+        e.preventDefault();
+        var targetId = +row.getAttribute('data-id');
+        var rect = row.getBoundingClientRect();
+        var before = (e.clientY - rect.top) < rect.height / 2;
+        reorderTo(_dragId, targetId, before);
+        _dragId = null;
+      });
+    }
   }
 
   async function load() {

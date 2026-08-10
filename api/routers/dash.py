@@ -5042,7 +5042,19 @@ def yahoo_auto_status():
 # "active" window semantics (either bound open-ended). Expired rows are
 # filtered out by default, not deleted -- ?active_only=false surfaces them
 # again for review/cleanup.
+#
+# 2026-08-10 follow-up -- importance (high/medium/low, drives the panel's
+# color stripe) + sort_order (manual drag-and-drop position) added. Ordering
+# is now purely manual (sort_order ASC) -- once the user can drag notes into
+# their own priority order, that's a stronger signal than an automatic
+# expiration/created_at sort. sort_order is a float so a drag only ever
+# updates the ONE moved row (new value = midpoint of its new neighbors'
+# sort_order) via the dedicated reorder endpoint below, instead of
+# renumbering the whole list on every drag.
 # ---------------------------------------------------------------------------
+
+_NOTE_IMPORTANCE_VALUES = ("high", "medium", "low")
+
 
 def _parse_note_date(payload: dict, key: str):
     """None/absent -> None (open-ended bound). Present -> must parse as
@@ -5056,15 +5068,31 @@ def _parse_note_date(payload: dict, key: str):
         raise HTTPException(400, f"{key} must be YYYY-MM-DD")
 
 
+def _parse_note_importance(payload: dict):
+    """Absent -> 'medium' default. Present -> must be high/medium/low."""
+    raw = payload.get("importance")
+    if raw in (None, ""):
+        return "medium"
+    raw = str(raw).lower()
+    if raw not in _NOTE_IMPORTANCE_VALUES:
+        raise HTTPException(400, "importance must be one of: " + ", ".join(_NOTE_IMPORTANCE_VALUES))
+    return raw
+
+
 def _note_row_dict(row):
     return {
         "id": row.id,
         "note_text": row.note_text,
         "effective_date": row.effective_date.isoformat() if row.effective_date else None,
         "expiration_date": row.expiration_date.isoformat() if row.expiration_date else None,
+        "importance": row.importance,
+        "sort_order": row.sort_order,
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
+
+
+_NOTE_COLS = "id, note_text, effective_date, expiration_date, importance, sort_order, created_at, updated_at"
 
 
 @router.get("/api/dashboard-notes")
@@ -5089,10 +5117,10 @@ def list_dashboard_notes(active_only: bool = Query(True), date: Optional[str] = 
         params = {"d": as_of}
     with session_scope() as s:
         rows = s.execute(text(f"""
-            SELECT id, note_text, effective_date, expiration_date, created_at, updated_at
+            SELECT {_NOTE_COLS}
             FROM user_dashboard_note
             {where}
-            ORDER BY COALESCE(expiration_date, DATE '9999-12-31') ASC, created_at DESC
+            ORDER BY sort_order ASC
         """), params).fetchall()
     return {"notes": [_note_row_dict(r) for r in rows]}
 
@@ -5106,12 +5134,18 @@ def create_dashboard_note(payload: dict):
     exp = _parse_note_date(payload, "expiration_date")
     if eff and exp and eff > exp:
         raise HTTPException(400, "effective_date must be on or before expiration_date")
+    importance = _parse_note_importance(payload)
     with session_scope() as s:
-        row = s.execute(text("""
-            INSERT INTO user_dashboard_note (note_text, effective_date, expiration_date)
-            VALUES (:t, :e, :x)
-            RETURNING id, note_text, effective_date, expiration_date, created_at, updated_at
-        """), {"t": note_text, "e": eff, "x": exp}).fetchone()
+        # New notes land at the top -- one below the current minimum
+        # sort_order (COALESCE handles the empty-table case).
+        top = s.execute(text(
+            "SELECT COALESCE(MIN(sort_order), 1) - 1 FROM user_dashboard_note"
+        )).scalar()
+        row = s.execute(text(f"""
+            INSERT INTO user_dashboard_note (note_text, effective_date, expiration_date, importance, sort_order)
+            VALUES (:t, :e, :x, :imp, :so)
+            RETURNING {_NOTE_COLS}
+        """), {"t": note_text, "e": eff, "x": exp, "imp": importance, "so": top}).fetchone()
         s.commit()
     return _note_row_dict(row)
 
@@ -5125,13 +5159,40 @@ def update_dashboard_note(note_id: int, payload: dict):
     exp = _parse_note_date(payload, "expiration_date")
     if eff and exp and eff > exp:
         raise HTTPException(400, "effective_date must be on or before expiration_date")
+    importance = _parse_note_importance(payload)
     with session_scope() as s:
-        row = s.execute(text("""
+        row = s.execute(text(f"""
             UPDATE user_dashboard_note
-            SET note_text=:t, effective_date=:e, expiration_date=:x, updated_at=now()
+            SET note_text=:t, effective_date=:e, expiration_date=:x, importance=:imp, updated_at=now()
             WHERE id=:id
-            RETURNING id, note_text, effective_date, expiration_date, created_at, updated_at
-        """), {"t": note_text, "e": eff, "x": exp, "id": note_id}).fetchone()
+            RETURNING {_NOTE_COLS}
+        """), {"t": note_text, "e": eff, "x": exp, "imp": importance, "id": note_id}).fetchone()
+        s.commit()
+    if not row:
+        raise HTTPException(404, f"note {note_id} not found")
+    return _note_row_dict(row)
+
+
+@router.put("/api/dashboard-notes/{note_id}/sort-order")
+def reorder_dashboard_note(note_id: int, payload: dict):
+    """Drag-and-drop reorder: client computes the new sort_order as the
+    midpoint between the dropped note's new neighbors (from the full note
+    list it already has in memory) and sends just that one float -- only
+    the moved row is touched, nothing else is renumbered."""
+    raw = payload.get("sort_order")
+    if raw is None:
+        raise HTTPException(400, "sort_order is required")
+    try:
+        sort_order = float(raw)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "sort_order must be a number")
+    with session_scope() as s:
+        row = s.execute(text(f"""
+            UPDATE user_dashboard_note
+            SET sort_order=:so, updated_at=now()
+            WHERE id=:id
+            RETURNING {_NOTE_COLS}
+        """), {"so": sort_order, "id": note_id}).fetchone()
         s.commit()
     if not row:
         raise HTTPException(404, f"note {note_id} not found")
