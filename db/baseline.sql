@@ -7671,3 +7671,25 @@ CREATE TABLE IF NOT EXISTS hist_internals (
 
 CREATE INDEX IF NOT EXISTS ix_drv_market_event_sym ON drv_market_event(tos_symbol, as_of_date);
 CREATE INDEX IF NOT EXISTS ix_drv_category_perf_axis ON drv_category_perf(axis, as_of_date);
+
+-- 2026-08-10 -- Dashboard Notes panel: free-text sticky notes with an
+-- optional effective/expiration date window, rendered below the Mkt
+-- Situation panel. effective_date NULL = shown immediately; expiration_date
+-- NULL = never auto-expires (stays until manually deleted). A note is
+-- "active" (shown by default) when today falls in
+-- [effective_date, expiration_date] with either bound open-ended --
+-- see api/routers/dash.py's dashboard-notes endpoints. Rows past their
+-- expiration_date are NOT deleted, just filtered out of the default view,
+-- so the history isn't lost (same DELETE-avoidance spirit as hist_*,
+-- CLAUDE.md convention #1, even though this isn't a hist_ table).
+-- User's worked example: "from date -> none (effective right away), to
+-- date -> 8/13, note -> watch for CPI...".
+CREATE TABLE IF NOT EXISTS user_dashboard_note (
+    id              SERIAL PRIMARY KEY,
+    note_text       TEXT NOT NULL,
+    effective_date  DATE,
+    expiration_date DATE,
+    created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_user_dashboard_note_dates ON user_dashboard_note(effective_date, expiration_date);

@@ -5031,3 +5031,118 @@ def yahoo_auto_status():
     """Return auto-fetch loop state (running, last date, next trigger)."""
     from etl.yahoo_fetch import get_auto_fetch_status
     return get_auto_fetch_status()
+
+
+# ---------------------------------------------------------------------------
+# Dashboard Notes -- 2026-08-10, user: "i need to be able to add notes with
+# effective date and expiration dates. a panel to display and edit the
+# entries." Freeform sticky notes with an optional effective/expiration
+# date window, rendered below the Mkt Situation panel (web/dashboard_notes.js
+# -> #dashNotesPanel). See db/baseline.sql::user_dashboard_note for the
+# "active" window semantics (either bound open-ended). Expired rows are
+# filtered out by default, not deleted -- ?active_only=false surfaces them
+# again for review/cleanup.
+# ---------------------------------------------------------------------------
+
+def _parse_note_date(payload: dict, key: str):
+    """None/absent -> None (open-ended bound). Present -> must parse as
+    YYYY-MM-DD or raise 400."""
+    raw = payload.get(key)
+    if raw in (None, ""):
+        return None
+    try:
+        return datetime.strptime(str(raw), "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(400, f"{key} must be YYYY-MM-DD")
+
+
+def _note_row_dict(row):
+    return {
+        "id": row.id,
+        "note_text": row.note_text,
+        "effective_date": row.effective_date.isoformat() if row.effective_date else None,
+        "expiration_date": row.expiration_date.isoformat() if row.expiration_date else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+@router.get("/api/dashboard-notes")
+def list_dashboard_notes(active_only: bool = Query(True), date: Optional[str] = Query(None)):
+    """Default view: only notes whose [effective_date, expiration_date]
+    window (either bound open-ended) includes "today". active_only=false
+    returns everything, including upcoming/expired notes, for the editor's
+    "show all" mode.
+
+    "Today" here is the dashboard's selected as_of date (via _resolve_date,
+    defaulting to the anchor), NOT the system clock -- this is a historical
+    snapshot viewer, same convention as every other "today"-dependent
+    computation on this dashboard (YTD/MTD/age calcs): the selected date IS
+    "today" for all of them, so browsing back to a past date shows notes
+    exactly as they stood on that date."""
+    where = ""
+    params = {}
+    if active_only:
+        as_of = _resolve_date(date)
+        where = ("WHERE (effective_date IS NULL OR effective_date <= :d) "
+                  "AND (expiration_date IS NULL OR expiration_date >= :d)")
+        params = {"d": as_of}
+    with session_scope() as s:
+        rows = s.execute(text(f"""
+            SELECT id, note_text, effective_date, expiration_date, created_at, updated_at
+            FROM user_dashboard_note
+            {where}
+            ORDER BY COALESCE(expiration_date, DATE '9999-12-31') ASC, created_at DESC
+        """), params).fetchall()
+    return {"notes": [_note_row_dict(r) for r in rows]}
+
+
+@router.post("/api/dashboard-notes")
+def create_dashboard_note(payload: dict):
+    note_text = (payload.get("note_text") or "").strip()
+    if not note_text:
+        raise HTTPException(400, "note_text is required")
+    eff = _parse_note_date(payload, "effective_date")
+    exp = _parse_note_date(payload, "expiration_date")
+    if eff and exp and eff > exp:
+        raise HTTPException(400, "effective_date must be on or before expiration_date")
+    with session_scope() as s:
+        row = s.execute(text("""
+            INSERT INTO user_dashboard_note (note_text, effective_date, expiration_date)
+            VALUES (:t, :e, :x)
+            RETURNING id, note_text, effective_date, expiration_date, created_at, updated_at
+        """), {"t": note_text, "e": eff, "x": exp}).fetchone()
+        s.commit()
+    return _note_row_dict(row)
+
+
+@router.put("/api/dashboard-notes/{note_id}")
+def update_dashboard_note(note_id: int, payload: dict):
+    note_text = (payload.get("note_text") or "").strip()
+    if not note_text:
+        raise HTTPException(400, "note_text is required")
+    eff = _parse_note_date(payload, "effective_date")
+    exp = _parse_note_date(payload, "expiration_date")
+    if eff and exp and eff > exp:
+        raise HTTPException(400, "effective_date must be on or before expiration_date")
+    with session_scope() as s:
+        row = s.execute(text("""
+            UPDATE user_dashboard_note
+            SET note_text=:t, effective_date=:e, expiration_date=:x, updated_at=now()
+            WHERE id=:id
+            RETURNING id, note_text, effective_date, expiration_date, created_at, updated_at
+        """), {"t": note_text, "e": eff, "x": exp, "id": note_id}).fetchone()
+        s.commit()
+    if not row:
+        raise HTTPException(404, f"note {note_id} not found")
+    return _note_row_dict(row)
+
+
+@router.delete("/api/dashboard-notes/{note_id}")
+def delete_dashboard_note(note_id: int):
+    with session_scope() as s:
+        result = s.execute(text("DELETE FROM user_dashboard_note WHERE id=:id"), {"id": note_id})
+        s.commit()
+    if not result.rowcount:
+        raise HTTPException(404, f"note {note_id} not found")
+    return {"ok": True, "id": note_id}
