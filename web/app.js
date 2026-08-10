@@ -1492,7 +1492,7 @@ async function loadMarketView(axis, bodyId, chartId) {
           <tbody>${bodyRows || `<tr><td colspan="${2 + _FS_WINDOWS.length}">No rows.</td></tr>`}</tbody>
         </table>
       </div>
-      ${axis === 'style' && d.count_universe ? `<div class="mv-universe-note">${escapeHtml(d.count_universe)}</div>` : ''}
+      ${d.count_universe ? `<div class="mv-universe-note">${escapeHtml(d.count_universe)}</div>` : ''}
     `;
     // 2026-08-10 -- hover popover on the caret cluster, same
     // _showCategoryQuadPop the top 3 $ grids use (loadFactorScorecard) --

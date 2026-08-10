@@ -1805,6 +1805,27 @@ def get_quad_factor_stance(
         # aggregation (by LOWER(TRIM())) is unchanged.
         label_map: dict = {}
         total_universe = 0
+        # 2026-08-10 -- unified universe across all 3 axes: the
+        # INTERSECTION of ref_sector (has a real sector/asset_class
+        # classification) and drv_macro_score's latest date (ToS is
+        # actively streaming live data for it -- required for Style's
+        # beta/RSI/PE-driven tags to even be computable). Before this fix
+        # each axis silently counted from a different universe (sector/
+        # asset_class: all ~965 ref_sector tickers; style: whatever
+        # drv_macro_score happened to track, ~1175, MORE than ref_sector's
+        # total despite an old code comment claiming "smaller universe") --
+        # neither ref_sector nor drv_macro_score is a subset of the other
+        # (268 ToS-tracks-but-unclassified, 58 classified-but-not-live-
+        # tracked), so the intersection is the only set every axis can
+        # honestly agree represents "real, classified, trackable" symbols.
+        # User: "why the count is different between bottom 3 grids?" ->
+        # "i think it make sense to have the same universe. right?" -> "yes
+        # go ahead."
+        latest_mstance_d = s.execute(text(
+            "SELECT MAX(as_of_date) FROM drv_macro_score WHERE as_of_date <= :d"
+        ), {"d": d}).scalar()
+        tracked_clause = (" AND ticker IN (SELECT tos_symbol FROM drv_macro_score WHERE as_of_date = :ld)"
+                           if latest_mstance_d else "")
         if axis in ("sector", "asset_class"):
             col = "equity_sector" if axis == "sector" else "asset_class"
             # 2026-08-10 -- sector count restricted to asset_class='Equities',
@@ -1826,36 +1847,36 @@ def get_quad_factor_stance(
             eq_guard = " AND asset_class = 'Equities'" if axis == "sector" else ""
             for r in s.execute(text(
                 f"SELECT LOWER(TRIM({col})) AS k, MIN({col}) AS raw, COUNT(*) AS n FROM ref_sector "
-                f"WHERE {col} IS NOT NULL{eq_guard} GROUP BY LOWER(TRIM({col}))"
-            )).mappings().all():
+                f"WHERE {col} IS NOT NULL{eq_guard}{tracked_clause} GROUP BY LOWER(TRIM({col}))"
+            ), {"ld": latest_mstance_d}).mappings().all():
                 count_map[r["k"]] = r["n"]
                 label_map[r["k"]] = r["raw"]
             # sector/asset_class are exclusive (1 category per ticker), so
             # summing every category's count IS the total universe size.
             total_universe = sum(count_map.values())
         else:  # style
-            # 2026-08-09 BUGFIX -- as_of_date = :d exact-matched zero rows
-            # whenever `d` (this endpoint's own "real today", not the
-            # trading anchor -- see docstring below) falls on a
-            # weekend/holiday with no derive run for that date (e.g. `d`
-            # 2026-08-09 Sunday, drv_macro_score's latest row 2026-08-07)
-            # -- every style count silently came back 0. Latest-available-
-            # at-or-before-d, same fallback pattern used everywhere else.
-            latest_mstance_d = s.execute(text(
-                "SELECT MAX(as_of_date) FROM drv_macro_score WHERE as_of_date <= :d"
-            ), {"d": d}).scalar()
+            # latest_mstance_d resolved once, shared above (2026-08-09
+            # BUGFIX note: latest-at-or-before-:d, not an exact match --
+            # `d` is this endpoint's own "real today", not the trading
+            # anchor, so an exact match returned zero rows on a weekend/
+            # holiday with no derive run for that date).
+            # 2026-08-10 -- also intersected with ref_sector (has a real
+            # classification) -- same universe-unification reasoning as
+            # the sector/asset_class branch above.
             for r in s.execute(text("""
                 SELECT e->>'label' AS k, COUNT(DISTINCT tos_symbol) AS n
                 FROM drv_macro_score, jsonb_array_elements(COALESCE(style_stances,'[]'::jsonb)) e
                 WHERE as_of_date = :ld
+                  AND tos_symbol IN (SELECT ticker FROM ref_sector)
                 GROUP BY e->>'label'
             """), {"ld": latest_mstance_d}).mappings().all():
                 count_map[r["k"]] = r["n"]
             # style tags overlap (1 ticker can carry several), so summing
             # category counts would double-count -- total is the distinct
-            # ToS-tracked universe size instead.
+            # (ToS-tracked ∩ ref_sector-classified) universe size instead.
             total_universe = s.execute(text(
-                "SELECT COUNT(DISTINCT tos_symbol) FROM drv_macro_score WHERE as_of_date = :ld"
+                "SELECT COUNT(DISTINCT tos_symbol) FROM drv_macro_score"
+                " WHERE as_of_date = :ld AND tos_symbol IN (SELECT ticker FROM ref_sector)"
             ), {"ld": latest_mstance_d}).scalar() or 0
 
     outlook_map = {(category, r["sub_category"]): [r["quad1"], r["quad2"], r["quad3"], r["quad4"]]
@@ -1936,8 +1957,8 @@ def get_quad_factor_stance(
         "eff": win["eff"],
         "dominant_quad": win["dominant"],
         "days_to_qtr_end": win["days_to_qtr_end"],
-        "count_universe": "ref_sector (~961-ticker reference universe)" if axis in ("sector", "asset_class")
-            else "ToS-tracked symbols only (drv_macro_score) -- smaller universe than Sector/Asset Class",
+        "count_universe": f"ref_sector ∩ ToS-tracked (drv_macro_score) -- {total_universe} tickers "
+            f"with both a real classification and live data",
         "total_count": total_universe,
         "rows": rows_out,
     }
