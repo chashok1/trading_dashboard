@@ -797,7 +797,16 @@ function _catColor(colorMap, category) {
   return colorMap.get(category) || 'var(--text-3)';
 }
 
-function _renderCatPie(svgId, rows, unmapped, colorMap, axis) {
+// 2026-08-10 -- last param generalized from `axis` (implicitly always
+// openFactorExposureModal, the $/holdings popup) to `onClick(category)` so
+// Market View's chart slices/bars can wire to openMarketViewDetailModal
+// instead -- same "pie/bar chart clicks should match the table row clicks"
+// behavior, just a different popup per caller. Pass null/undefined for no
+// click-through (unchanged default). User: "graph clicks for bottom 3
+// graphs are not working" -- Market View passed a hardcoded `null` here
+// (from when its charts pointed at the $ modal, which didn't apply), which
+// disabled clicks entirely instead of pointing at the new modal.
+function _renderCatPie(svgId, rows, unmapped, colorMap, onClick) {
   const svg = $(svgId);
   if (!svg) return;
   svg.innerHTML = '';
@@ -832,19 +841,19 @@ function _renderCatPie(svgId, rows, unmapped, colorMap, axis) {
     hit.setAttribute('d', path.getAttribute('d')); hit.setAttribute('class', 'chart-hit');
     hit.addEventListener('mousemove', e => _chartShowTip(e, [{ k: d.category, v: (frac * 100).toFixed(1) + '%' }]));
     hit.addEventListener('mouseleave', _chartHideTip);
-    // Same exposure-detail popup as clicking the matching table row
-    // (openFactorExposureModal, TASK_139) -- user request: "pie chart
-    // clicks should display the same popups for corresponding pies".
-    if (axis) {
+    // Same popup as clicking the matching table row (TASK_139 -- user
+    // request: "pie chart clicks should display the same popups for
+    // corresponding pies").
+    if (onClick) {
       hit.style.cursor = 'pointer';
-      hit.addEventListener('click', () => openFactorExposureModal(axis, d.category));
+      hit.addEventListener('click', () => onClick(d.category));
     }
     svg.appendChild(hit);
     a0 = a1;
   });
 }
 
-function _renderCatBars(svgId, rows, unmapped, colorMap, axis) {
+function _renderCatBars(svgId, rows, unmapped, colorMap, onClick) {
   const svg = $(svgId);
   if (!svg) return;
   svg.innerHTML = '';
@@ -876,10 +885,10 @@ function _renderCatBars(svgId, rows, unmapped, colorMap, axis) {
     hit.setAttribute('class', 'chart-hit');
     hit.addEventListener('mousemove', e => _chartShowTip(e, [{ k: d.category, v: Number(d.weight_pct).toFixed(1) + '%' }]));
     hit.addEventListener('mouseleave', _chartHideTip);
-    // Same exposure-detail popup as clicking the matching table row.
-    if (axis) {
+    // Same popup as clicking the matching table row.
+    if (onClick) {
       hit.style.cursor = 'pointer';
-      hit.addEventListener('click', () => openFactorExposureModal(axis, d.category));
+      hit.addEventListener('click', () => onClick(d.category));
     }
     svg.appendChild(hit);
   });
@@ -1176,10 +1185,11 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
       });
     }
     if (chartId) {
+      const onSliceClick = cat => openFactorExposureModal(axis, cat);
       if (axis === 'style') {
-        _renderCatBars(chartId, r.rows, r.unmapped, colorMap, axis);
+        _renderCatBars(chartId, r.rows, r.unmapped, colorMap, onSliceClick);
       } else {
-        _renderCatPie(chartId, r.rows, r.unmapped, colorMap, axis);
+        _renderCatPie(chartId, r.rows, r.unmapped, colorMap, onSliceClick);
         // TASK_140 follow-up 16 -- the chart is a fixed 190px square
         // (.cat-chart's flex-basis); when the table is shorter than that
         // (e.g. Asset class's 7 rows), .cat-body's flex-start row height
@@ -1362,10 +1372,17 @@ async function loadMarketView(axis, bodyId, chartId) {
     // _quadCaretCluster degrades to just the main caret for those, honestly
     // -- no window/quarter data exists to show.
     const [curQtrOp, nextQtrOp] = _qtrFadeOpacities(d.days_to_qtr_end);
+    // 2026-08-10 -- chart slices/bars now open the same popup as the table
+    // row (openMarketViewDetailModal), matching the top 3 $ grids' own
+    // "click the chart, get the same popup as the row" behavior -- this
+    // was hardcoded `null` (no click-through) from when Market View's
+    // charts still pointed at the $-holdings popup, which didn't apply
+    // here. User: "graph clicks for bottom 3 graphs are not working."
+    const onSliceClick = cat => openMarketViewDetailModal(axis, cat, state.marketViewSource || '');
     if (axis === 'style') {
-      _renderCatBars(chartId, rows.map(r => ({ category: r.category, weight_pct: r.count })), null, colorMap, null);
+      _renderCatBars(chartId, rows.map(r => ({ category: r.category, weight_pct: r.count })), null, colorMap, onSliceClick);
     } else {
-      _renderCatPie(chartId, rows.map(r => ({ category: r.category, weight_pct: r.count })), null, colorMap, null);
+      _renderCatPie(chartId, rows.map(r => ({ category: r.category, weight_pct: r.count })), null, colorMap, onSliceClick);
     }
 
     const headCells = _FS_WINDOWS
