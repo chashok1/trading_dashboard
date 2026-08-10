@@ -1701,12 +1701,27 @@ def _quad_factor_stance_by_source(s, axis: str, source: str, d):
             t["count"] += 1
             t["net"] += delta
 
+    # 2026-08-10 -- Unmapped/Non-Equity (excluded) used to be dropped
+    # outright here, same "no catch-all row" bug fixed in the default
+    # (no-source) branch above -- total_count (len(symbols), the full
+    # source-list size, e.g. 25 for PS) stayed correct, but individual
+    # category rows silently fell short of it with no row to account for
+    # the gap. Merged into one visible "Unmapped" row instead (same
+    # treatment for genuine classification gaps and non-equity-for-this-
+    # axis symbols -- this endpoint doesn't distinguish the two the way
+    # the $ TWR grids do, matching the default branch's own Unmapped
+    # catch-all above for consistency). User: "PS filter should match 25
+    # but the total stocks are not matching 25."
+    unmapped_count = tally.get("Unmapped", {}).get("count", 0) + tally.get("Non-Equity (excluded)", {}).get("count", 0)
     rows_out = []
     for cat, t in tally.items():
         if cat in ("Unmapped", "Non-Equity (excluded)"):
             continue
         stance = "Bullish" if t["net"] > 0 else "Bearish" if t["net"] < 0 else "Neutral"
         rows_out.append({"category": cat, "score": t["net"], "stance": stance, "count": t["count"],
+                          "months": [], "qtr": None, "next_qtr": None})
+    if unmapped_count > 0:
+        rows_out.append({"category": "Unmapped", "score": None, "stance": "Neutral", "count": unmapped_count,
                           "months": [], "qtr": None, "next_qtr": None})
     return {
         "as_of_date": d.isoformat(), "axis": axis, "source": source,
