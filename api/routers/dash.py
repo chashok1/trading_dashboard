@@ -1652,7 +1652,7 @@ def _quad_factor_stance_by_source(s, axis: str, source: str, d):
     # not having directional data, not silently empty. User: "Bottom
     # graphs filter -> SSS and PS -> resulting no rows."
     rows = s.execute(text(
-        "SELECT tos_symbol, outlook FROM drv_source_standing"
+        "SELECT tos_symbol, outlook, snapshot_date FROM drv_source_standing"
         " WHERE source_code = :src AND as_of_date = :ld AND on_list = TRUE"
     ), {"src": source, "ld": latest_d}).mappings().all()
     symbols = {r["tos_symbol"] for r in rows if r["tos_symbol"]}
@@ -1663,13 +1663,38 @@ def _quad_factor_stance_by_source(s, axis: str, source: str, d):
     # current per-day classification.
     cat_map = _build_category_map(s, latest_d or d, symbols)
 
+    # 2026-08-09 BUGFIX -- SSS/PS `outlook` is NULL for every row (see above),
+    # so the BULL/BEAR text match below always fell through to delta=0 and
+    # every category rendered Neutral (gray, dash caret -- "colors/carets
+    # missing" for the SSS/PS Source filter). Both sources' real direction
+    # already lives in drv_outlook_action.action (INCREASE/ADD = rank or
+    # pct_delta improving = Bullish, REDUCE/REMOVE = worsening = Bearish),
+    # computed by derive_outlook_action.py's _action_rank/_action_sss_pct_delta
+    # from the same snapshot -- reuse it instead of re-deriving. Keyed by the
+    # row's own snapshot_date since drv_outlook_action stamps periodic
+    # sources (SSS/PS/ETF/II) on the period snapshot date, not the derive
+    # anchor D. Only consulted when `outlook` is NULL so RR/CALL/ETF/II
+    # (which already carry outlook text) are untouched.
+    action_map: dict = {}
+    snaps = {r["snapshot_date"] for r in rows if r["snapshot_date"]}
+    if snaps and any(not r["outlook"] for r in rows):
+        action_rows = s.execute(text(
+            "SELECT tos_symbol, action FROM drv_outlook_action"
+            " WHERE source_code = :src AND as_of_date = ANY(:snaps) AND tos_symbol = ANY(:syms)"
+        ), {"src": source, "snaps": list(snaps), "syms": list(symbols)}).mappings().all()
+        action_map = {r["tos_symbol"]: (r["action"] or "").upper() for r in action_rows}
+
     tally: dict = {}
     for r in rows:
         sym = r["tos_symbol"]
         if not sym:
             continue
         outlook = (r["outlook"] or "").upper()
-        delta = 1 if "BULL" in outlook else -1 if "BEAR" in outlook else 0
+        if outlook:
+            delta = 1 if "BULL" in outlook else -1 if "BEAR" in outlook else 0
+        else:
+            act = action_map.get(sym, "")
+            delta = 1 if act in ("INCREASE", "ADD") else -1 if act in ("REDUCE", "REMOVE") else 0
         for cat in _categories_for(sym, cat_map, axis):
             t = tally.setdefault(cat, {"count": 0, "net": 0})
             t["count"] += 1
