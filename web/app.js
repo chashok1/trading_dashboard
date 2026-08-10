@@ -923,6 +923,66 @@ const _FS_WINDOWS = [
 // that reservation instead of erroring, so misalignment crept in unnoticed.
 const _CARET_CLUSTER_PX = 81;
 
+// 2026-08-10 -- quad-stance caret CLUSTER (main 60D-blend + one caret per
+// window period + current-quarter + next-quarter), extracted out of
+// loadFactorScorecard so the Market View cards (loadMarketView) can render
+// the identical cluster instead of the single flat caret they used to fall
+// back to -- user: "bottom three graph should look like the top except
+// dollar as accounts/holdings are not applicable." stanceRow is a row from
+// GET /api/quad/factor-stance (category/score/stance/months/qtr/next_qtr);
+// months/qtr/next_qtr are simply absent for the Market View Source filter's
+// point-in-time sources (SSS/PS/etc -- see _quad_factor_stance_by_source),
+// so this degrades gracefully to just the main caret in that case.
+function _quadCaretCluster(stanceRow, curQtrOp, nextQtrOp) {
+  if (!stanceRow) return '';
+  const mv = Number(stanceRow.score) || 0;
+  const mCol = mv > 0 ? '#16a34a' : mv < 0 ? '#dc2626' : '#9ca3af';
+  const mGlyph = mv > 0 ? '&#9650;' : mv < 0 ? '&#9660;' : '&#8211;';
+  // every glyph span below (main/period/qtr/next-qtr) gets a fixed inline-
+  // block width + text-align:center -- the neutral glyph (&#8211; en-dash)
+  // is much narrower than the bullish/bearish triangles (&#9650;/&#9660;)
+  // at the same font-size, so an un-fixed-width span shifted everything
+  // after it left whenever a row's carets included a neutral read.
+  const mainCaret = `<span style="color:${mCol};font-size:11px;font-weight:700;display:inline-block;width:11px;text-align:center;">${mGlyph}</span>`;
+  const periodCarets = (stanceRow.months || []).map((mo, i) => {
+    const v = Number(mo.stance) || 0;
+    const sCol = v > 0 ? '#16a34a' : v < 0 ? '#dc2626' : '#9ca3af';
+    const glyph = v > 0 ? '&#9650;' : v < 0 ? '&#9660;' : '&#8211;';
+    const sz = i === 0 ? 'font-size:11px;font-weight:700;width:11px;' : 'width:9px;';
+    return `<span style="color:${sCol};${sz}display:inline-block;text-align:center;">${glyph}</span>`;
+  }).join('<span style="display:inline-block;width:1px;"></span>');
+  const gap = `<span style="display:inline-block;width:6px;"></span>`;
+  const qtrCaret = (stanceRow.qtr && stanceRow.qtr.stance != null) ? (() => {
+    const qv = Number(stanceRow.qtr.stance) || 0;
+    const qCol = qv > 0 ? '#16a34a' : qv < 0 ? '#dc2626' : '#9ca3af';
+    const qGlyph = qv > 0 ? '&#9650;' : qv < 0 ? '&#9660;' : '&#8211;';
+    return `<span style="color:${qCol};opacity:${curQtrOp};font-size:11px;font-weight:700;display:inline-block;width:11px;text-align:center;" title="${escapeHtml(stanceRow.qtr.quad || '')} (current quarter)">${qGlyph}</span>`;
+  })() : '';
+  const nextQtrCaret = (stanceRow.next_qtr && stanceRow.next_qtr.stance != null) ? (() => {
+    const nv = Number(stanceRow.next_qtr.stance) || 0;
+    const nCol = nv > 0 ? '#16a34a' : nv < 0 ? '#dc2626' : '#9ca3af';
+    const nGlyph = nv > 0 ? '&#9650;' : nv < 0 ? '&#9660;' : '&#8211;';
+    return `<span style="color:${nCol};opacity:${nextQtrOp};font-size:11px;font-weight:700;display:inline-block;width:11px;text-align:center;" title="${escapeHtml(stanceRow.next_qtr.quad || '')} (next quarter)">${nGlyph}</span>`;
+  })() : '';
+  // title="" breaks inheritance from the row's own title tooltip -- without
+  // it, hovering a caret showed both the native browser tooltip and the
+  // custom #quadPop popover at once, overlapping.
+  return `<span class="cat-quad-stance" title="" style="cursor:help;margin-right:5px;font-size:9px;letter-spacing:1px;">${mainCaret}${gap}${periodCarets}${gap}${qtrCaret}${nextQtrCaret}</span>`;
+}
+
+// Current/next-quarter caret cross-fade opacities (extracted alongside
+// _quadCaretCluster for the same reuse reason). Outside the last 15 days of
+// the current quarter, the current-quarter caret is full color and the
+// next-quarter caret sits at a fixed light/faded baseline; INSIDE that
+// window they linearly cross-fade toward the opposite state as
+// days_to_qtr_end counts down to 0.
+function _qtrFadeOpacities(daysToQtrEnd) {
+  const QTR_FADE_DAYS = 15, QTR_LIGHT_OP = 0.35;
+  const qtrFadeT = (daysToQtrEnd != null && daysToQtrEnd <= QTR_FADE_DAYS)
+    ? Math.max(0, Math.min(1, (QTR_FADE_DAYS - daysToQtrEnd) / QTR_FADE_DAYS)) : 0;
+  return [1 - qtrFadeT * (1 - QTR_LIGHT_OP), QTR_LIGHT_OP + qtrFadeT * (1 - QTR_LIGHT_OP)];
+}
+
 async function loadFactorScorecard(axis, bodyId, chartId) {
   const body = $(bodyId);
   if (!body) return;
@@ -960,12 +1020,7 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
     // "end of current quarter (15 days to end): fade the color to light
     // and the next quarter color: use the full color, until then fade the
     // next quad caret color."
-    const QTR_FADE_DAYS = 15, QTR_LIGHT_OP = 0.35;
-    const daysToQtrEnd = stanceData?.days_to_qtr_end;
-    const qtrFadeT = (daysToQtrEnd != null && daysToQtrEnd <= QTR_FADE_DAYS)
-      ? Math.max(0, Math.min(1, (QTR_FADE_DAYS - daysToQtrEnd) / QTR_FADE_DAYS)) : 0;
-    const curQtrOp = 1 - qtrFadeT * (1 - QTR_LIGHT_OP);
-    const nextQtrOp = QTR_LIGHT_OP + qtrFadeT * (1 - QTR_LIGHT_OP);
+    const [curQtrOp, nextQtrOp] = _qtrFadeOpacities(stanceData?.days_to_qtr_end);
     const rows = (r.rows || []).map(row => {
       // 2026-08-09 -- row hover replaced with $ amounts instead of the
       // per-window you/mkt performance breakdown -- category $ value, the
@@ -1023,62 +1078,7 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
       // line. See _showCategoryQuadPop for the full table on hover.
       const catKey = String(row.category).trim().toLowerCase();
       const stanceRow = stanceMap.get(catKey);
-      const stanceIcon = stanceRow ? (() => {
-        const mv = Number(stanceRow.score) || 0;
-        const mCol = mv > 0 ? '#16a34a' : mv < 0 ? '#dc2626' : '#9ca3af';
-        const mGlyph = mv > 0 ? '&#9650;' : mv < 0 ? '&#9660;' : '&#8211;';
-        // 2026-08-09 -- every glyph span below (main/period/qtr/next-qtr)
-        // gets a fixed inline-block width + text-align:center -- the
-        // neutral glyph (&#8211; en-dash) is much narrower than the
-        // bullish/bearish triangles (&#9650;/&#9660;) at the same font-
-        // size, so an un-fixed-width span shifted everything after it left
-        // whenever a row's carets included a neutral read, misaligning the
-        // whole cluster against rows with no neutrals. User: "make sure
-        // they are aligned properly when incase of - for neutrals."
-        const mainCaret = `<span style="color:${mCol};font-size:11px;font-weight:700;display:inline-block;width:11px;text-align:center;">${mGlyph}</span>`;
-        // Current-month period caret (months[0] -- window_weights orders
-        // nearest-first) matches the 60D main caret's size/weight, so the
-        // "happening right now" period stands out same as the headline
-        // blend; later-in-window periods stay smaller.
-        const periodCarets = (stanceRow.months || []).map((mo, i) => {
-          const v = Number(mo.stance) || 0;
-          const sCol = v > 0 ? '#16a34a' : v < 0 ? '#dc2626' : '#9ca3af';
-          const glyph = v > 0 ? '&#9650;' : v < 0 ? '&#9660;' : '&#8211;';
-          const sz = i === 0 ? 'font-size:11px;font-weight:700;width:11px;' : 'width:9px;';
-          return `<span style="color:${sCol};${sz}display:inline-block;text-align:center;">${glyph}</span>`;
-        }).join('<span style="display:inline-block;width:1px;"></span>');
-        const gap = `<span style="display:inline-block;width:6px;"></span>`;
-        // Quarter caret (the 5%-weighted one-hot anchor blended into
-        // macronet, api/routers/dash.py::get_quad_factor_stance's `qtr`
-        // field) -- same size/weight as the blended main caret and the
-        // current-month caret, with a gap span before it, inline at the end
-        // of the caret cluster. 2026-08-08 -- briefly tried float:right (a
-        // separate span anchored to the cell's right edge) per an earlier
-        // request, then reverted back to this inline placement per
-        // follow-up: "quarter caret in the grid column move it back where
-        // it was before".
-        const qtrCaret = (stanceRow.qtr && stanceRow.qtr.stance != null) ? (() => {
-          const qv = Number(stanceRow.qtr.stance) || 0;
-          const qCol = qv > 0 ? '#16a34a' : qv < 0 ? '#dc2626' : '#9ca3af';
-          const qGlyph = qv > 0 ? '&#9650;' : qv < 0 ? '&#9660;' : '&#8211;';
-          return `<span style="color:${qCol};opacity:${curQtrOp};font-size:11px;font-weight:700;display:inline-block;width:11px;text-align:center;" title="${escapeHtml(stanceRow.qtr.quad || '')} (current quarter)">${qGlyph}</span>`;
-        })() : '';
-        // 2026-08-09 -- next-quarter caret, right next to the current
-        // quarter's -- see qtrFadeT/curQtrOp/nextQtrOp above for the
-        // cross-fade. User: "display next quarter quad caret in category
-        // column next to current quarter quad caret".
-        const nextQtrCaret = (stanceRow.next_qtr && stanceRow.next_qtr.stance != null) ? (() => {
-          const nv = Number(stanceRow.next_qtr.stance) || 0;
-          const nCol = nv > 0 ? '#16a34a' : nv < 0 ? '#dc2626' : '#9ca3af';
-          const nGlyph = nv > 0 ? '&#9650;' : nv < 0 ? '&#9660;' : '&#8211;';
-          return `<span style="color:${nCol};opacity:${nextQtrOp};font-size:11px;font-weight:700;display:inline-block;width:11px;text-align:center;" title="${escapeHtml(stanceRow.next_qtr.quad || '')} (next quarter)">${nGlyph}</span>`;
-        })() : '';
-        // title="" breaks inheritance from the <tr>'s own title (the twr/
-        // bench tooltip) -- without it, hovering a caret showed BOTH the
-        // native browser tooltip (inherited from the row) and the custom
-        // #quadPop popover at once, overlapping.
-        return `<span class="cat-quad-stance" title="" style="cursor:help;margin-right:5px;font-size:9px;letter-spacing:1px;">${mainCaret}${gap}${periodCarets}${gap}${qtrCaret}${nextQtrCaret}</span>`;
-      })() : '';
+      const stanceIcon = _quadCaretCluster(stanceRow, curQtrOp, nextQtrOp);
       // TASK_139 -- row click opens the same exposure-detail modal as the
       // Risk Dial's fired gauges (Screen D of the design doc), keyed by
       // (axis, category) instead of gauge_key.
@@ -1309,7 +1309,6 @@ async function loadCatAccountFilter() {
 }
 
 function _mvStanceColor(s) { return s === 'Bullish' ? '#16a34a' : s === 'Bearish' ? '#dc2626' : '#9ca3af'; }
-function _mvStanceGlyph(s) { return s === 'Bullish' ? '&#9650;' : s === 'Bearish' ? '&#9660;' : '&#8211;'; }
 
 // 2026-08-09 -- Market View: SAME chart+table format as the $ grids above
 // (pie/bar chart + fs-table-style table with a caret), deliberately kept
@@ -1347,6 +1346,16 @@ async function loadMarketView(axis, bodyId, chartId) {
     const total = d.total_count || 0;
 
     const colorMap = new Map(rows.map(r => [r.category, _mvStanceColor(r.stance)]));
+    // 2026-08-10 -- category-column caret CLUSTER, same as the top 3 $
+    // grids (main 60D-blend + period + qtr/next-qtr carets), not just a
+    // flat single glyph -- user: "bottom three graph should look like the
+    // top except dollar as accounts/holdings are not applicable." Each row
+    // from GET /api/quad/factor-stance already carries score/months/qtr/
+    // next_qtr in the default (no Source filter) case; the SSS/PS Source
+    // filter's point-in-time rows have months/qtr/next_qtr absent, so
+    // _quadCaretCluster degrades to just the main caret for those, honestly
+    // -- no window/quarter data exists to show.
+    const [curQtrOp, nextQtrOp] = _qtrFadeOpacities(d.days_to_qtr_end);
     if (axis === 'style') {
       _renderCatBars(chartId, rows.map(r => ({ category: r.category, weight_pct: r.count })), null, colorMap, null);
     } else {
@@ -1362,7 +1371,7 @@ async function loadMarketView(axis, bodyId, chartId) {
         const v = bench ? bench[`bench_${w.key}`] : null;
         return `<td>${_fsColorCell(v) || '<span class="fs-dash">—</span>'}</td>`;
       }).join('');
-      const caretHtml = `<span style="color:${_mvStanceColor(r.stance)};font-size:11px;font-weight:700;display:inline-block;width:11px;text-align:center;">${_mvStanceGlyph(r.stance)}</span>`;
+      const caretHtml = _quadCaretCluster(r, curQtrOp, nextQtrOp);
       // 2026-08-09 -- NOT clickable to the $ exposure popup, unlike the $
       // grids' own rows -- that popup shows YOUR holdings, which
       // contradicts Market View's whole point ("no $, no holdings"), and
@@ -1370,7 +1379,7 @@ async function loadMarketView(axis, bodyId, chartId) {
       // click always showed the same $ positions regardless of which
       // source was selected, since it's a different data source entirely).
       return `<tr>
-        <td><span style="display:inline-block;width:16px;">${caretHtml}</span>${escapeHtml(r.category)}</td>
+        <td><span style="display:inline-block;width:${_CARET_CLUSTER_PX}px;">${caretHtml}</span>${escapeHtml(r.category)}</td>
         <td class="fs-weight-cell"><span class="fs-weight-text">${r.count}</span><span class="fs-weight-eq">/ ${total}</span></td>
         ${cells}
       </tr>`;
