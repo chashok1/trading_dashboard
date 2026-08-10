@@ -1308,7 +1308,6 @@ async function loadCatAccountFilter() {
   }
 }
 
-function _mvStanceColor(s) { return s === 'Bullish' ? '#16a34a' : s === 'Bearish' ? '#dc2626' : '#9ca3af'; }
 
 // 2026-08-09 -- Market View: SAME chart+table format as the $ grids above
 // (pie/bar chart + fs-table-style table with a caret), deliberately kept
@@ -1345,7 +1344,14 @@ async function loadMarketView(axis, bodyId, chartId) {
     const rows = (d.rows || []).filter(r => r.count > 0).sort((a, b) => b.count - a.count);
     const total = d.total_count || 0;
 
-    const colorMap = new Map(rows.map(r => [r.category, _mvStanceColor(r.stance)]));
+    // 2026-08-10 -- chart slice/bar colors now match the top 3 $ grids'
+    // scheme exactly: one distinct color per category (_catColorMap,
+    // --cat1..9 vars), not the earlier bullish/bearish/neutral stance
+    // coloring -- stance is still visible via the caret cluster in the
+    // category column, so this isn't losing that signal, just moving chart
+    // coloring onto the same categorical palette the top grids use. User:
+    // "match the bottom 3 graph colors with top 3 graph colors."
+    const colorMap = _catColorMap(rows);
     // 2026-08-10 -- category-column caret CLUSTER, same as the top 3 $
     // grids (main 60D-blend + period + qtr/next-qtr carets), not just a
     // flat single glyph -- user: "bottom three graph should look like the
