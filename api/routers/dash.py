@@ -1221,26 +1221,39 @@ def get_actionable(
         # now the sole source of truth for the grid row — no more per-row
         # live recompute via the old ramp/lead engine when a derived row
         # exists (perf win + avoids showing a stale ramp-based confidence/
-        # turn that would disagree with the window-based badge). `macro_conf`
-        # is approximated from the nearest window month's weight (how
-        # concentrated the window is on the near term) instead of the old
-        # "max quad% of current month" measure; `macro_turn` (discrete ramp-
-        # proximity alert) is retired -- the sliding window is continuous by
-        # construction, so there's no discrete "turn" event left to flag.
+        # turn that would disagree with the window-based badge). `macro_turn`
+        # (discrete ramp-proximity alert) is retired -- the sliding window is
+        # continuous by construction, so there's no discrete "turn" event
+        # left to flag.
+        # 2026-08-12: `macro_conf` was "nearest window month's weight" (how
+        # concentrated the window is on the near term) -- didn't actually
+        # measure whether the window agrees with anything. Replaced with
+        # technical-direction agreement %: the weight-sum of window months
+        # whose own stance sign matches the symbol's technical direction
+        # (months[].agrees, from etl/derive_macro.py — same signal
+        # tracking_tag()/the Tracking row already use). None when there's no
+        # technical direction to compare against (not low confidence, just
+        # nothing to check). `macro_conflict` is a separate, stricter flag:
+        # does the FINAL blended macronet sign (not just individual window
+        # months) disagree with technical direction — surfaced on its own so
+        # a "score says buy, price says no" case doesn't hide inside a
+        # partial confidence percentage.
         win = d_.get("macro_window")
         if isinstance(win, str):
             try: win = json.loads(win)
             except Exception: win = None
         if d_.get("macro_action"):
-            near_w = None
+            conf_pct = None
             if isinstance(win, dict):
                 months = win.get("months") or []
-                if months:
-                    near_w = months[0].get("w")
+                if any(m.get("agrees") is not None for m in months):
+                    conf_pct = round(sum(m.get("w") or 0 for m in months
+                                          if m.get("agrees") is True), 4)
             macro = {
-                "macro_value": d_["macro_action"], "macro_conf": near_w,
+                "macro_value": d_["macro_action"], "macro_conf": conf_pct,
                 "macro_turn": None, "macro_detail": None, "macro_howto": None,
                 "macronet": d_.get("macronet"),
+                "macro_conflict": win.get("tracking_conflict") if isinstance(win, dict) else None,
             }
         else:
             # Fallback path (derive hasn't populated a row yet): old
@@ -1253,6 +1266,7 @@ def get_actionable(
                     "macro_turn": None, "macro_detail": None, "macro_howto": None,
                     "macronet": None,
                 }
+            macro.setdefault("macro_conflict", None)
         d_.update(macro)
         # F2: drop the (always-None here) heavy keys entirely rather than
         # shipping null placeholders — keeps the per-row payload measurably
@@ -1397,6 +1411,12 @@ def get_actionable_macro_detail(
             float(ms_row["monthly_score"]) if ms_row["monthly_score"] is not None else None)
         detail["quarterly_score"] = (
             float(ms_row["quarterly_score"]) if ms_row["quarterly_score"] is not None else None)
+        # 2026-08-12: promote the two new authoritative fields (from
+        # etl/derive_macro.py) to top level, same pattern as macro_net/
+        # quarterly_score above, so the popover doesn't have to reach into
+        # detail.window for them.
+        detail["quarter_window"] = window.get("quarter_window")
+        detail["tracking_conflict"] = window.get("tracking_conflict")
         # Ramp-based "next month"/blend display is retired (TASK_126) —
         # the window itself supersedes it. Current-month dist/net stays for
         # Category Drivers context (Stage 1-2, unaffected by the change).
@@ -3689,6 +3709,9 @@ def get_portfolio_trends(
     account: Optional[str] = Query(None),
     source:  Optional[str] = Query(None, description="CS | F | (none = both)"),
     group:   Optional[str] = Query(None, description="Group name (ref_accounts.group_name) — ignored if account is set"),
+    accounts: Optional[str] = Query(None, description="Comma-separated account_number list "
+                                     "(Dashboard's multi-select Accounts filter) -- takes "
+                                     "precedence over group, ignored if account is set"),
     symbols: Optional[str] = Query(None, description="TASK_139: comma-separated tos_symbol list "
                                     "(Portfolio screen's Category filter) -- restricts every series "
                                     "to just those symbols' positions."),
@@ -3752,6 +3775,16 @@ def get_portfolio_trends(
     cs_sym_clause = " AND tos_symbol = ANY(:symbols)" if symbol_list else ""
     f_sym_clause  = " AND hist_f.tos_symbol = ANY(:symbols)" if symbol_list else ""
 
+    # 2026-08-11 -- explicit accounts= list (Dashboard's multi-select
+    # Accounts filter, state.catAccounts on the Today snapshot row) -- same
+    # raw-account_number OR-match mechanism as the group filter below
+    # (group_accts), just fed directly from the query param instead of
+    # resolved from group_name. Takes precedence over group (a multi-select
+    # pick is more specific than a named group), both deferred to a single
+    # `account` if that's set. User: "apply the filter to four graphs" (the
+    # Cumulative P&L widget was whole-portfolio/unfiltered until now).
+    accounts_list = [a.strip() for a in accounts.split(",") if a.strip()] if accounts else []
+
     # Group filter (ref_accounts.group_name) — resolves to a list of raw
     # account identifiers (account_number, which for CS IS hist_cs.account
     # directly and for F is hist_f.account_number) and filters both sources
@@ -3759,7 +3792,9 @@ def get_portfolio_trends(
     # (account takes precedence, same as the client-side Group+Account
     # filter interaction on the Portfolio screen).
     group_accts: list = []
-    if group and not account:
+    if accounts_list and not account:
+        group_accts = accounts_list
+    elif group and not account:
         with session_scope() as s:
             group_accts = [r[0] for r in s.execute(text(
                 "SELECT account_number FROM ref_accounts WHERE group_name = :g"
@@ -3767,6 +3802,7 @@ def get_portfolio_trends(
         if not group_accts:
             return {"dates": [], "account_value": [], "day_change": [],
                     "cumulative_pl": [], "per_account": {}}
+    if group_accts:
         params["group_accts"] = group_accts
 
     # F account labels are disambiguated with a " (F2)"/" (F3)" suffix (see

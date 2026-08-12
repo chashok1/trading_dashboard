@@ -11,9 +11,12 @@ stances are then weight-blended into one M_window per symbol. This replaces
 the old month now/next ramp blend entirely -- the window itself is the
 "days passed in month" ramp, sliding one day at a time (TASK_126).
 
-Qtr = one-hot stance for the *current* quarter only (no next-quarter ramp
-blend -- the quarterly ramp/lead params are retired alongside the monthly
-ones; see window_weights()/_derive_macro_impl() and TASK_126 spec section 3).
+Qtr = one-hot stance for the current quarter, blended with next-quarter's
+one-hot stance during the current quarter's LAST CALENDAR MONTH only (linear
+fade by day-of-month: day 1 of that month = 100% current/0% next, last day =
+0% current/100% next). Every other month of the quarter is 100% current
+quarter, unchanged from the old fixed-anchor design. See
+_quarter_fade_weight()/_derive_macro_impl() (2026-08-12).
 
 Both legs use the same membership aggregation:
     net = sector×2 + asset_class×1 + Σ(style×0.5)
@@ -94,6 +97,30 @@ def _onehot(quad_val):
         return [1.0 if i + 1 == q else 0.0 for i in range(4)]
     except (ValueError, IndexError):
         return [0.25, 0.25, 0.25, 0.25]  # uniform fallback
+
+
+def _quarter_bounds(y: int, qn: int):
+    """(start_date, end_date) of calendar quarter qn (1-4) of year y."""
+    start_month = (qn - 1) * 3 + 1
+    end_month = start_month + 2
+    end_day = _cal.monthrange(y, end_month)[1]
+    return date(y, start_month, 1), date(y, end_month, end_day)
+
+
+def _next_quarter(y: int, qn: int):
+    return (y + 1, 1) if qn == 4 else (y, qn + 1)
+
+
+def _quarter_fade_weight(as_of_date: date, qtr_end: date) -> float:
+    """Next-quarter blend weight (0..1). 0 outside the quarter's last
+    calendar month; inside it, linear by day-of-month: day 1 -> 0.0 (100%
+    current quarter), last day of that month -> 1.0 (100% next quarter)."""
+    if as_of_date.month != qtr_end.month or as_of_date.year != qtr_end.year:
+        return 0.0
+    dim = _cal.monthrange(as_of_date.year, as_of_date.month)[1]
+    if dim <= 1:
+        return 1.0
+    return max(0.0, min(1.0, (as_of_date.day - 1) / (dim - 1)))
 
 
 def _norm_pcts(p):
@@ -355,6 +382,8 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
 
     cur_mo_y, cur_mo_n = as_of_date.year, as_of_date.month
     cur_qtr_y, cur_qtr_n = as_of_date.year, (as_of_date.month - 1) // 3 + 1
+    _qtr_start, qtr_end = _quarter_bounds(cur_qtr_y, cur_qtr_n)
+    nxt_qtr_y, nxt_qtr_n = _next_quarter(cur_qtr_y, cur_qtr_n)
 
     qtr_now = session.execute(text(
         "SELECT period_type, year, period_num, quad,"
@@ -362,6 +391,20 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         " FROM ref_quad_periods"
         " WHERE period_type='quarterly' AND year=:y AND period_num=:n"
     ), {'y': cur_qtr_y, 'n': cur_qtr_n}).fetchone()
+
+    # Next quarter is always looked up (2026-08-12 follow-up) so the tooltip
+    # can always show what's coming ("Next Qtr (Quad N)"), not only once the
+    # last-month-of-quarter fade has actually started blending it in. Its
+    # WEIGHT (qtr_fade) still only leaves 0 during the current quarter's
+    # last calendar month -- outside that window this leg is display-only
+    # (0% contribution, per user request: "fine if all zeros").
+    qtr_next = session.execute(text(
+        "SELECT period_type, year, period_num, quad,"
+        " quad1_pct, quad2_pct, quad3_pct, quad4_pct"
+        " FROM ref_quad_periods"
+        " WHERE period_type='quarterly' AND year=:y AND period_num=:n"
+    ), {'y': nxt_qtr_y, 'n': nxt_qtr_n}).fetchone()
+    qtr_fade = _quarter_fade_weight(as_of_date, qtr_end) if qtr_next is not None else 0.0
 
     # All monthly rows with distribution data — used both for the window
     # calc and the per-month sparkline (monthly_scores_json), unchanged.
@@ -400,6 +443,7 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
             return 0
 
     qtr_now_pcts = _onehot(qtr_now.quad)
+    qtr_next_pcts = _onehot(qtr_next.quad) if qtr_next is not None else None
 
     # Outlook lookup map
     outlook_map = {
@@ -441,7 +485,11 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         }
         M_window = sum(w * stance_by_month[ym] for ym, w in weighted)
 
-        Qtr = _membership_net(memberships, outlook_map, qtr_now_pcts)
+        Qtr_cur = _membership_net(memberships, outlook_map, qtr_now_pcts)
+        Qtr_next = (_membership_net(memberships, outlook_map, qtr_next_pcts)
+                    if qtr_next_pcts is not None else None)
+        Qtr = ((1.0 - qtr_fade) * Qtr_cur + qtr_fade * Qtr_next
+               if Qtr_next is not None else Qtr_cur)
 
         macronet = round((1.0 - q) * M_window + q * Qtr, 4)
 
@@ -482,6 +530,43 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
             for ym, w in weighted
         ]
 
+        # Tracking-vs-score conflict (2026-08-12): does the technical
+        # direction (tdir_sign, same signal months_detail[].agrees compares
+        # against) disagree with the sign of the FINAL blended macronet —
+        # not just individual window months. None = no technical direction
+        # or a flat macronet to compare (not a conflict, just nothing to
+        # check); True/False = disagree/agree. Surfaced in the MACRO column
+        # glyph + tooltip so a "score says buy, price says no" case is
+        # visible without opening the popover.
+        macronet_sign = _sign(macronet)
+        tracking_conflict = (
+            (tdir_sign != macronet_sign) if (tdir_sign != 0 and macronet_sign != 0) else None
+        )
+
+        # Quarter window (2026-08-12, always-show-next follow-up): current-
+        # quarter leg always present; next-quarter leg is present whenever
+        # ref_quad_periods has a forecast for it -- its "w" is 0 outside the
+        # last-month fade, so it's visible but contributes nothing to Qtr
+        # until the fade actually starts. Mirrors the monthly `months` list
+        # shape (label/quad/w/stance) so the tooltip can render it the same
+        # way.
+        quarter_window = {
+            "cur": {
+                "label": f"{cur_qtr_y}-Q{cur_qtr_n}",
+                "quad": _dominant_quad_num(qtr_now_pcts, qtr_now.quad),
+                "w": round(1.0 - qtr_fade, 4),
+                "stance": round(Qtr_cur, 4),
+            },
+            "dtb": (qtr_end - as_of_date).days,
+        }
+        if Qtr_next is not None:
+            quarter_window["next"] = {
+                "label": f"{nxt_qtr_y}-Q{nxt_qtr_n}",
+                "quad": _dominant_quad_num(qtr_next_pcts, qtr_next.quad),
+                "w": round(qtr_fade, 4),
+                "stance": round(Qtr_next, 4),
+            }
+
         detail = {
             "h": h,
             "coverage_pct": coverage_pct,
@@ -494,6 +579,8 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
                 "override": override_tag,
             },
             "tracking": tracking,
+            "tracking_conflict": tracking_conflict,
+            "quarter_window": quarter_window,
         }
 
         # Per-month scores for all available periods (sparkline data) —
@@ -541,9 +628,9 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
             'month_next_net': None,
             'month_weight':  None,
             'monthly_score': round(M_window, 4),
-            'qtr_now_net':   round(Qtr, 4),
-            'qtr_next_net':  None,
-            'qtr_weight':    None,
+            'qtr_now_net':   round(Qtr_cur, 4),
+            'qtr_next_net':  round(Qtr_next, 4) if Qtr_next is not None else None,
+            'qtr_weight':    round(qtr_fade, 4),
             'quarterly_score': round(Qtr, 4),
             'macronet':           macronet,
             'macro_action':       vocab,

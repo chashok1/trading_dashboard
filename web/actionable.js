@@ -117,7 +117,9 @@ function fmtDateMD(d) {
 // ── MACRO column cell renderer (TASK_74) ────────────────────────────────────
 // Renders a single cell for the MACRO column using the existing actionDisplay()
 // colors/vocabulary. The turn arrow (↗/↘ + next quad/%) is appended when present.
-// Confidence cue: faded badge at < 60% confidence.
+// Confidence cue: faded badge at < 60% confidence. 2026-08-12: confidence is
+// now technical-direction agreement % across the window (see macro_conf
+// comment in api/routers/dash.py), not "how near-term the window is".
 // On hover, a tooltip shows the full MacroNet breakdown from macro_detail.
 // Data-completeness flag: no ref_sector row for this symbol means
 // _resolve_memberships() (api/routers/dash.py) couldn't add a Sector
@@ -130,6 +132,17 @@ function _macroGapMark(r) {
 
 function _stanceColor(v) {
   return v > 0 ? '#16a34a' : v < 0 ? '#dc2626' : '#9ca3af';
+}
+
+// Tracking-vs-score conflict mark (2026-08-12): r.macro_conflict is true
+// when the FINAL blended macronet sign disagrees with the symbol's
+// technical direction (price vs 50 DMA — etl/derive_macro.py's
+// tracking_conflict, promoted onto the grid row in api/routers/dash.py).
+// Distinct glyph/color from _macroGapMark's data-completeness "!" so the two
+// unrelated warnings never look like the same thing at a glance.
+function _macroConflictMark(r) {
+  if (r.macro_conflict !== true) return '';
+  return `<span style="color:#dc2626;font-size:8px;font-weight:700;vertical-align:super;margin-left:1px;" title="CONFLICT: MacroNet score disagrees with technical direction (price vs 50-day average). Hover the badge for detail.">⚡</span>`;
 }
 
 // Sector/asset-class/style dots (2026-08-01) — one small bar per membership
@@ -192,24 +205,46 @@ function macroCellHtml(r) {
       const sc  = s.score || 0;
       const bh  = Math.max(2, Math.round(Math.abs(sc) / maxAbs * 8));
       const col = sc > 0 ? '#16a34a' : sc < 0 ? '#dc2626' : '#9ca3af';
+      // 2026-08-12 -- current-month bar previously got a border/outline to
+      // mark it as "current". Both approaches put a second color directly
+      // adjacent to (or, with border, cutting into) the bar's own fill on
+      // all 4 sides -- at these 2-8px sizes that reads as a different color
+      // entirely, not "red with a highlight". Dropped the ring styling
+      // altogether: the ONLY difference from other bars now is 1px more
+      // width, so its background color renders through exactly the same
+      // `background:${col}` as every other bar. (Reported 3x: "first bar
+      // red not visible" / "shows up entirely different from other bars".)
       const bw  = s.is_current ? '3' : '2';
-      const bdr = s.is_current ? 'border:1px solid #475569;box-sizing:border-box;' : '';
-      const ti  = `${s.label || ''} (${s.quad || ''}) ${sc >= 0 ? '+' : ''}${sc.toFixed(2)}`;
-      return `<span title="${escapeHtml(ti)}" style="display:inline-block;width:${bw}px;height:${bh}px;background:${col};vertical-align:bottom;${bdr}"></span>`;
+      const ti  = `${s.label || ''} (${s.quad || ''}) ${sc >= 0 ? '+' : ''}${sc.toFixed(2)}${s.is_current ? ' — current month' : ''}`;
+      return `<span title="${escapeHtml(ti)}" style="display:inline-block;width:${bw}px;height:${bh}px;background:${col};vertical-align:bottom;"></span>`;
     }).join('<span style="display:inline-block;width:1px;"></span>');
     sparkLine = `<div data-scorespop="${escapeHtml(sym)}" style="display:flex;justify-content:center;align-items:flex-end;gap:1px;height:9px;margin-top:1px;cursor:help;">${bars}</div>`;
   }
   const memberBars = _macroMemberBarsHtml(r);
+  // MacroNet score (drv_macro_score.macronet) -- small muted number under the
+  // badge/HOLD label so the raw signed score is visible at a glance without
+  // needing to open the tooltip/popover. Same colour convention as the other
+  // stance bars (green>0 / red<0 / grey=0). Confidence % (window weight
+  // agreeing with technical direction, see macro_conf comment in
+  // api/routers/dash.py) appended as "score - conf%" next to the score,
+  // 2026-08-12. white-space:nowrap keeps it on one line at the wider size.
+  const netVal = r.macronet != null ? Number(r.macronet) : null;
+  const confPctTxt = conf != null ? ` - ${Math.round(conf * 100)}%` : '';
+  const netHtml = netVal != null
+    ? `<div style="font-size:9px;line-height:1;white-space:nowrap;color:${_stanceColor(netVal)};margin-top:1px;" title="MacroNet score: ${netVal >= 0 ? '+' : ''}${netVal.toFixed(4)}${conf != null ? ` — confidence ${Math.round(conf * 100)}%` : ''}">${netVal >= 0 ? '+' : ''}${netVal.toFixed(2)}<span style="color:#94a3b8;">${confPctTxt}</span></div>`
+    : '';
   if (!mv || mv === 'HOLD') {
     const holdCls = mv ? 'color:#9ca3af' : 'color:#cbd5e1';
     const lbl = mv ? 'HOLD' : '—';
-    return `<div style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};cursor:help;text-align:center;" data-macropop="${escapeHtml(sym)}">${escapeHtml(lbl)}${_macroGapMark(r)}${dotsLine}${sparkLine}${memberBars}</div>`;
+    return `<div style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};cursor:help;text-align:center;" data-macropop="${escapeHtml(sym)}">${escapeHtml(lbl)}${_macroGapMark(r)}${_macroConflictMark(r)}${netHtml}${dotsLine}${sparkLine}${memberBars}</div>`;
   }
   const d = actionDisplay(mv);
   const cls = d.colorCls || 'act-neutral';
   return `<div style="text-align:center;cursor:help;opacity:${opacity.toFixed(2)};" data-macropop="${escapeHtml(sym)}">`
        + `<span class="act-badge ${cls}-tint" style="font-size:10px;padding:1px 5px;">${escapeHtml(d.code || mv)}</span>`
        + _macroGapMark(r)
+       + _macroConflictMark(r)
+       + netHtml
        + dotsLine
        + sparkLine
        + memberBars
@@ -219,13 +254,24 @@ function macroCellHtml(r) {
 // Build tooltip text for a MACRO cell from macro_detail + macro_howto.
 // TASK_126: Month/Quarter ramp sections replaced by the sliding look-ahead
 // window mix (effective blend line + per-month table + tracking tag).
-// Layout: How to act → Window mix + per-month table → Category drivers
-//         → Quarter (unchanged one-hot leg) → MacroNet
+// Layout: Conflict warning (if any) → How to act → Window mix + per-month
+//         table → Category drivers → Quarter (now/next-quarter blend during
+//         the quarter's last month, 2026-08-12) → MacroNet
 function _macroTooltip(r) {
   let det = r.macro_detail;
   if (typeof det === 'string') { try { det = JSON.parse(det); } catch (_) { det = null; } }
   if (!det) return r.macro_value ? `MacroNet → ${r.macro_value}` : '';
   const lines = [];
+
+  // ── Tracking-vs-score conflict (2026-08-12) ────────────────────────────────
+  // det.tracking_conflict = true when the FINAL macronet sign disagrees with
+  // the technical direction (price vs 50 DMA) — a stronger, single-number
+  // check than "does any window month agree" (that's what confidence now
+  // measures, see macro_conf comment in api/routers/dash.py).
+  if (det.tracking_conflict === true) {
+    lines.push('⚠ CONFLICT: MacroNet direction disagrees with technical direction (price vs 50 DMA)');
+    lines.push('');
+  }
 
   // ── How to act ────────────────────────────────────────────────────────────
   if (r.macro_howto) {
@@ -272,18 +318,32 @@ function _macroTooltip(r) {
   }
 
   // ── Quarter ────────────────────────────────────────────────────────────────
-  // Qtr shown here is det.quarterly_score (the real per-symbol weighted
-  // membership blend, same value the MacroNet formula below uses) -- NOT
-  // qtr.Qtr, which is a single symbol-independent "Equities" anchor shared
-  // by every symbol on this date (see _qtr_top in api/routers/dash.py) and
-  // was never what actually feeds a symbol's own MacroNet.
-  const qtr = det.quarter || {};
-  if (qtr.now) {
+  // det.quarter_window (etl/derive_macro.py, 2026-08-12) is the authoritative
+  // source: current-quarter leg always shown; the next-quarter leg is ALSO
+  // always shown once its forecast exists (2026-08-12 follow-up), labeled
+  // "Next Qtr (Quad N)" so it's identifiable even at w=0% before the last-
+  // month fade actually starts blending it in. Falls back to the legacy
+  // single-anchor det.quarter only when a derive hasn't populated
+  // drv_macro_score yet.
+  const qw = det.quarter_window;
+  if (qw && qw.cur) {
+    const fading = qw.next && qw.next.w > 0;
     lines.push('');
-    lines.push('QUARTER (fixed top-level anchor, no blend)');
-    const qtrLine = `  ${qtr.now}  →  Qtr=${det.quarterly_score ?? '?'}`;
-    const dtbStr = qtr.dtb != null ? `  (${qtr.dtb}d left)` : '';
-    lines.push(qtrLine + dtbStr);
+    lines.push(`QUARTER${fading ? ' WINDOW (fading into next quarter)' : ' (current quarter only)'}`);
+    lines.push(`  ${qw.cur.label} (Quad ${qw.cur.quad ?? '?'})  w=${(qw.cur.w * 100).toFixed(1)}%  stance=${qw.cur.stance}`);
+    if (qw.next) {
+      lines.push(`  Next Qtr (Quad ${qw.next.quad ?? '?'}) — ${qw.next.label}  w=${(qw.next.w * 100).toFixed(1)}%  stance=${qw.next.stance}`);
+    }
+    lines.push(`  → Qtr=${det.quarterly_score ?? '?'}${qw.dtb != null ? `  (${qw.dtb}d left in quarter)` : ''}`);
+  } else {
+    const qtr = det.quarter || {};
+    if (qtr.now) {
+      lines.push('');
+      lines.push('QUARTER (fixed top-level anchor, no blend)');
+      const qtrLine = `  ${qtr.now}  →  Qtr=${det.quarterly_score ?? '?'}`;
+      const dtbStr = qtr.dtb != null ? `  (${qtr.dtb}d left)` : '';
+      lines.push(qtrLine + dtbStr);
+    }
   }
 
   // ── MacroNet ──────────────────────────────────────────────────────────────
@@ -347,6 +407,17 @@ function _buildMacroPopHtml(r, loading) {
        + `padding:3px 6px;font-size:9.5px;margin-bottom:6px;">`
        + `&#9888; No sector classification for ${escapeHtml(sym)} in ref_sector — this score reflects `
        + `Asset Class + style factors only. See Ref &rarr; ref_sector, or GET /api/admin/quad-data-gaps.`
+       + `</div>`;
+  }
+
+  // Tracking-vs-score conflict banner (2026-08-12) — r.macro_conflict is on
+  // the grid row already (api/routers/dash.py), so this shows even before
+  // the lazy detail fetch resolves. See _macroConflictMark for the column
+  // glyph and the CONFLICT line in _macroTooltip for the plain-text version.
+  if (r.macro_conflict === true) {
+    h += `<div style="color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:4px;`
+       + `padding:3px 6px;font-size:9.5px;margin-bottom:6px;font-weight:600;">`
+       + `&#9889; CONFLICT: MacroNet score disagrees with technical direction (price vs 50-day average).`
        + `</div>`;
   }
 
@@ -475,7 +546,11 @@ function _buildMacroPopHtml(r, loading) {
     const confNum = r.macro_conf != null ? Number(r.macro_conf) : 0;
     const confColor = confNum >= 0.7 ? '#16a34a' : confNum >= 0.4 ? '#d97706' : '#dc2626';
     macroFooterHtml += `<tr><td class="k">Confidence</td><td class="v" style="color:${confColor};font-weight:700;">${conf}%`
-       + `<span style="color:#94a3b8;font-weight:400;font-size:8px;"> (nearest-month window weight)</span></td></tr>`;
+       + `<span style="color:#94a3b8;font-weight:400;font-size:8px;"> (window weight agreeing with technical direction)</span></td></tr>`;
+  }
+  if (det.tracking_conflict === true) {
+    macroFooterHtml += `<tr><td class="k">Tracking</td><td class="v" style="color:#dc2626;font-weight:700;">`
+       + `&#9889; CONFLICT<span style="color:#94a3b8;font-weight:400;font-size:8px;"> (MacroNet vs. price/50-DMA direction disagree)</span></td></tr>`;
   }
 
   if (r.macro_howto) {
@@ -567,10 +642,52 @@ function _buildMacroPopHtml(r, loading) {
 
   h += windowHtml;
 
-  // Quarter section — always shown when there are memberships, regardless
-  // of which Category Drivers view rendered above (quarterly has only one
-  // period, so no multi-month table is needed here).
-  if (mems.length) {
+  // Quarter section (2026-08-12) — authoritative from det.quarter_window
+  // (etl/derive_macro.py): current-quarter leg always shown; the next-
+  // quarter leg is ALSO always shown once its forecast exists (2026-08-12
+  // follow-up: "add next quarter column, fine if all zeros"), labeled
+  // "Next Qtr (Quad N)" so it's identifiable before it's actually blended
+  // in — its weight only leaves 0% during the current quarter's last
+  // calendar month. Same row/summary layout as the Window section above,
+  // including its 9px final-score font, so Quarter and Month read as the
+  // same kind of number (was 11px here before).
+  const qw = det.quarter_window;
+  if (qw && qw.cur) {
+    const qLegs = [qw.cur, ...(qw.next ? [qw.next] : [])];
+    const fading = qw.next && qw.next.w > 0;
+    h += `<tr><td class="sp-sec" colspan="2">Quarter${fading ? ' (fading into next quarter)' : ''}`
+       + `${qw.dtb != null ? ` <span style="color:#94a3b8;font-size:9px;font-weight:400;">(${qw.dtb}d left)</span>` : ''}</td></tr>`;
+    h += `<tr><td colspan="2" style="padding:2px 0 4px;">`;
+    let _qSum = 0;
+    qLegs.forEach((leg, i) => {
+      const s = leg.stance;
+      const gc = s > 0 ? '#16a34a' : s < 0 ? '#dc2626' : '#9ca3af';
+      const gl = s > 0 ? '▲' : s < 0 ? '▼' : '—';
+      const contrib = leg.w * s;
+      _qSum += contrib;
+      const cc = contrib > 0 ? '#16a34a' : contrib < 0 ? '#dc2626' : '#9ca3af';
+      const labelTxt = i === 1
+        ? `Next Qtr (Quad ${leg.quad ?? '?'}) — ${leg.label}`
+        : `${leg.label} (Quad ${leg.quad ?? '?'})`;
+      h += `<div style="display:flex;align-items:center;gap:5px;font-size:9px;padding:1px 0;">`
+         + `<span style="color:${_quadColor('Quad ' + leg.quad)};font-weight:700;width:130px;">${escapeHtml(labelTxt)}</span>`
+         + `<span style="color:#64748b;width:44px;">w=${(leg.w * 100).toFixed(1)}%</span>`
+         + `<span style="color:${gc};width:56px;">${gl} ${s != null ? s.toFixed(4) : '?'}</span>`
+         + `<span style="color:#94a3b8;"> &times; </span>`
+         + `<span style="color:${cc};font-weight:700;width:56px;display:inline-block;">${contrib >= 0 ? '+' : ''}${contrib.toFixed(4)}</span>`
+         + `</div>`;
+    });
+    if (qLegs.length > 1) {
+      h += `<div style="display:flex;align-items:center;gap:5px;font-size:9px;padding:2px 0 0;border-top:1px solid #e2e8f0;margin-top:2px;">`
+         + `<span style="width:130px;"></span><span style="width:44px;"></span><span style="width:56px;"></span>`
+         + `<span style="color:#94a3b8;"> &Sigma; = </span>`
+         + `<span style="color:${_sigColor(_qSum)};font-weight:700;">Qtr_window = ${_qSum >= 0 ? '+' : ''}${_qSum.toFixed(4)}</span>`
+         + `</div>`;
+    }
+    h += `</td></tr>`;
+  } else if (mems.length) {
+    // Legacy fallback — only reachable if a derive hasn't populated
+    // drv_macro_score.detail.quarter_window yet.
     h += `<tr><td class="sp-sec" colspan="2">Quarter${qQuad ? ` <span style="color:${_quadColor(qQuad)};font-size:9px;font-weight:400;">${escapeHtml(qQuad)}</span>` : ''}`
        + `${qDtb != null ? ` <span style="color:#94a3b8;font-size:9px;">(${qDtb}d left)</span>` : ''}</td></tr>`;
     let qScore = 0;
@@ -591,7 +708,7 @@ function _buildMacroPopHtml(r, loading) {
     }
     const qScColor = qScore > 0 ? '#16a34a' : qScore < 0 ? '#dc2626' : '#9ca3af';
     h += `<tr><td class="k" style="font-size:9px;color:#475569;">Score</td>`
-       + `<td class="v" style="color:${qScColor};font-weight:700;font-size:11px;">${qScore > 0 ? '+' : ''}${qScore.toFixed(2)}</td></tr>`;
+       + `<td class="v" style="color:${qScColor};font-weight:700;font-size:9px;">${qScore > 0 ? '+' : ''}${qScore.toFixed(2)}</td></tr>`;
   }
 
   h += mixTailHtml + macroFooterHtml;
@@ -1063,7 +1180,8 @@ function _legendHtml() {
       ${row('Mixed', 'Sources and Technical conflict — cross-check the Rules column')}
       ${row('Low', 'LOW CONF — the only sell evidence is a rule with a demonstrated negative historical edge (v_unproven_sell_rules); consolidated_action is unchanged, this is a confidence flag')}
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">STOP pill / chip</div>
-      <div style="color:#475569;">A held position trading below its stop level (red left edge + STOP pill next to ACTION).
+      <div style="color:#475569;">A held position whose price has stayed below its Trade or Trend line for 3 days
+        running (stop_signal = "TD STM" / "TN SA" — red left edge + STOP pill next to ACTION).
         An effective ADD/INCREASE on a breached row is downgraded to HOLD (suppressed_reason = "STOP BREACHED") —
         breach never auto-forces a sell. Click the STOP chip to filter to these rows.</div>
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Trade Mode</div>
@@ -1560,7 +1678,7 @@ function _sourceHitRateBadge(r) {
   const cls = pct < 45 ? 'hit-rate-pill-low' : pct > 55 ? 'hit-rate-pill-high' : 'hit-rate-pill-mid';
   const edgeStr = sc.edge_20d != null ? (sc.edge_20d >= 0 ? '+' : '') + sc.edge_20d.toFixed(2) + '%' : 'n/a';
   const title = `${src} buy hit rate: ${pct}% of ${sc.n} historical buys were positive at 20d ` +
-    `(avg edge ${edgeStr}). See v_source_edge_scorecard.`;
+    `(avg edge ${edgeStr}).`;
   return `<span class="hit-rate-pill ${cls}" title="${escapeHtml(title)}">${pct}%</span>`;
 }
 
@@ -2058,7 +2176,7 @@ function renderSummary() {
   // joining the mutually-exclusive action-chip set.
   const stopChip = document.createElement('div');
   stopChip.className = 'act-chip act-chip-stop' + (state.filters.stopOnly ? ' active' : '');
-  stopChip.title = 'Held positions trading below their stop level';
+  stopChip.title = 'Held positions below their Trade/Trend line 3 days running';
   stopChip.innerHTML = `<span>STOP</span><span class="count">${stopCount}</span>`;
   stopChip.onclick = () => {
     state.filters.stopOnly = !state.filters.stopOnly;
@@ -2761,9 +2879,14 @@ function finalCall(row) {
 }
 
 // Two-way signal reasons for the ACTION column's icon: { warn: [...], buy: [...] }.
-// warn = amber "don't buy" caution reasons; buy = green "buy-supportive" reasons
-// (e.g. oversold, strengthening momentum). A row can only show one icon color —
-// warn takes precedence over buy when both fire (caution wins on conflict).
+// warn = amber "argues against this call" reasons; buy = green "argues for /
+// confirms this call" reasons. A row can only show one icon color — warn
+// takes precedence over buy when both fire (caution wins on conflict).
+// Checks are written buy-oriented first (e.g. oversold RSI, strengthening
+// MACD = supportive) then swapped for sell-side rows (2026-08-12) so the
+// color always reflects agreement with the row's own Final Call side, not a
+// hardcoded buy assumption — e.g. weakening MACD momentum confirms a SELL
+// (green), it doesn't caution against it (amber).
 // Checks earnings proximity, VLM, IV/vol caution, MACD/MACDH momentum, RSI, and
 // Rules(edge). No-fired-rules is not itself a warning or a buy signal.
 // Standalone earnings-proximity check (split out from _signalReasons
@@ -2781,7 +2904,8 @@ function _earningsWarning(row) {
   return null;
 }
 
-function _signalReasons(row) {
+function _signalReasons(row, side) {
+  const isSell = side === 'sell';
   const warn = [];
   const buy = [];
 
@@ -2790,10 +2914,12 @@ function _signalReasons(row) {
   // comment on these two columns). User: "I should only buy a stock if
   // above trade/trend and at LRR ... can we have them as warnings in case
   // of buys instead of adding a concrete rule?"
-  if (row.warn_not_at_lrr) {
+  // Meaningless once the row's own Final Call is a sell (nothing to swap
+  // them into that makes sense), so skip entirely on sell-side rows.
+  if (!isSell && row.warn_not_at_lrr) {
     warn.push('Buy signal not at LRR (low_lrr rule) — price hasn\'t pulled back to the low end of the risk range');
   }
-  if (row.warn_added_this_leg) {
+  if (!isSell && row.warn_added_this_leg) {
     warn.push('Already bought this symbol since price last closed at/above TRR — repeat buy signal this leg');
   }
 
@@ -2848,9 +2974,10 @@ function _signalReasons(row) {
     else if (rv <= lo) buy.push('RSI oversold (' + rv + ')');
   }
 
-  // Rules (edge): a fired buy-side rule with non-positive or unproven edge,
-  // or a fired sell-side rule with a proven-positive (historically correct)
-  // edge, argues against buying. Mirror case: a fired buy-side rule with a
+  // Rules (edge), buy-oriented framing (swapped below for sell-side rows):
+  // a fired buy-side rule with non-positive or unproven edge, or a fired
+  // sell-side rule with a proven-positive (historically correct) edge,
+  // argues against buying. Mirror case: a fired buy-side rule with a
   // *proven* positive edge is buy-supportive.
   let fires = row.rules_engine_fires;
   if (typeof fires === 'string') { try { fires = JSON.parse(fires); } catch (_) { fires = []; } }
@@ -2862,20 +2989,26 @@ function _signalReasons(row) {
       if (!s || s.edge_20d == null) continue;
       const e = Number(s.edge_20d);
       const conf = s.confidence || 'unproven';
-      const side = _ruleSide(id);
-      if (side === 'buy') {
+      const ruleSide = _ruleSide(id);
+      if (ruleSide === 'buy') {
         if (e <= 0 || conf === 'unproven') {
           warn.push('Rule ' + id + ' fired buy with ' + (conf === 'unproven' ? 'unproven' : 'negative') + ' edge');
         } else if (conf === 'proven') {
           buy.push('Rule ' + id + ' fired buy with proven positive edge (+' + e.toFixed(1) + '%)');
         }
-      } else if (side === 'sell' && e > 0) {
+      } else if (ruleSide === 'sell' && e > 0) {
         warn.push('Sell rule ' + id + ' historically correct (+' + e.toFixed(1) + '%)');
       }
     }
   }
 
-  return { warn, buy };
+  // 2026-08-12 -- everything above is framed as buy caution vs buy support
+  // (that's how this function originated -- see the LRR comment above).
+  // For a row whose own Final Call is a SELL, that framing is inverted: e.g.
+  // weakening MACD momentum isn't a caution against selling, it *confirms*
+  // the sell. Swap the two lists so the icon color always reflects agreement
+  // with the row's own action rather than a hardcoded buy assumption.
+  return isSell ? { warn: buy, buy: warn } : { warn, buy };
 }
 
 // HTML for the Final Call cell (label + confidence badge).
@@ -2916,15 +3049,15 @@ function _finalCallHtml(row) {
                     : '';
   var lowConfSub = isLowConf
     ? '<div style="font-size:8px;font-weight:700;color:#b45309;letter-spacing:0.3px;" title="Sell evidence comes only from rules with a demonstrated negative historical edge — cross-check before acting">LOW CONF</div>' : '';
-  // TASK_119: STOP pill — held position trading below its stop level.
+  // TASK_119: STOP pill — held position below its Trade/Trend line 3 days running.
   var stopPill = row.stop_breached
-    ? ' <span class="stop-pill" title="Held below stop level — an effective ADD/INCREASE here is downgraded to HOLD">STOP</span>'
+    ? ` <span class="stop-pill" title="${escapeHtml(row.stop_signal || 'STOP')} — held below its Trade/Trend line 3 days running; an effective ADD/INCREASE here is downgraded to HOLD">STOP</span>`
     : '';
   var earningsDays = _earningsWarning(row);
   var earningsPill = earningsDays != null
     ? ' <span class="earnings-warn-pill" title="Earnings in ' + earningsDays + 'd — calendar risk, separate from technical/rules signals">📅' + earningsDays + 'd</span>'
     : '';
-  var sig = _signalReasons(row);
+  var sig = _signalReasons(row, fc.side);
   var signalPill = '';
   if (sig.warn.length) {
     signalPill = ' <span class="dontbuy-warn-pill" title="' + escapeHtml(sig.warn.join(' · ')) + '">⚠</span>';
@@ -4116,10 +4249,10 @@ function _buildRowEl(r) {
       <td data-col="pos" class="num" style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="Held in: ${escapeHtml(_heldAccountsDisplay(r.held_accounts))}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}</td>
       <td data-col="amt" class="num">
         <span class="amt-primary">${fmtUsd(r._amt)}</span>
-        ${r.stop_level != null ? (
-          (r.last_price != null && Number(r.last_price) < Number(r.stop_level))
-            ? `<div style="font-size:9px;color:#dc2626;font-weight:700;white-space:nowrap;" title="Price below stop level">stop ${fmtUsd(r.stop_level)}</div>`
-            : `<div style="font-size:9px;color:#94a3b8;white-space:nowrap;" title="Stop / exit-below level (task 8)">stop ${fmtUsd(r.stop_level)}</div>`
+        ${r.stop_signal ? (
+          r.stop_breached
+            ? `<div style="font-size:9px;color:#dc2626;font-weight:700;white-space:nowrap;" title="Price sustained below its ${r.stop_signal.startsWith('TN') ? 'Trend' : 'Trade'} line for 3 days running">${escapeHtml(r.stop_signal)}</div>`
+            : `<div style="font-size:9px;color:#16a34a;white-space:nowrap;" title="Price above its Trade${r.stop_signal === 'TD BM' ? '/Trend' : ''} line — Trade/Trend persistence signal">${escapeHtml(r.stop_signal)}</div>`
         ) : ''}
       </td>
       <td data-col="chg" class="num">
@@ -4129,8 +4262,8 @@ function _buildRowEl(r) {
         </div>
         ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
       </td>
-      <td data-col="sym" data-sym-cell="${escapeHtml(r.tos_symbol)}" data-notespop="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer;" title="${r.rr_name && r.rr_name !== r.tos_symbol ? escapeHtml(r.tos_symbol) + ' · ' : ''}Click for chart · Hover for comments">
-        <strong class="tv-sym-link" style="font-size:11px;color:${_symOutlookColor(r)};">${escapeHtml(r.rr_name || r.tos_symbol || '')}</strong>
+      <td data-col="sym" data-sym-cell="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer;" title="${r.rr_name && r.rr_name !== r.tos_symbol ? escapeHtml(r.tos_symbol) + ' · ' : ''}Click for chart">
+        <strong class="tv-sym-link" data-notespop="${escapeHtml(r.tos_symbol)}" style="font-size:11px;color:${_symOutlookColor(r)};" title="Hover for comments">${escapeHtml(r.rr_name || r.tos_symbol || '')}</strong>
         ${r._watchlisted && r._isNew
           ? '<span class="new-pill" title="Winning source data just landed for this date — Technical isn\'t entry-ripe yet, so it waits here rather than promoting to Tier 1">NEW</span>'
           : ''}
@@ -4384,7 +4517,7 @@ function exportCsv() {
     ['Symbol',        r => r.tos_symbol],
     ['Change %',      r => r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : ''],
     ['AMT$',          r => r._amt],
-    ['Stop Level',    r => r.stop_level],
+    ['Stop Signal',   r => r.stop_signal || ''],
     ['Action',        r => r.consolidated_action ? actionText(actionDisplay(r.consolidated_action)) : ''],
     ['Final Call',    r => { const fc = finalCall(r); return (fc.feasible && fc.confidence !== 'none') ? (fc.label || fc.code || '') : ''; }],
     ['Final Call Confidence', r => { const fc = finalCall(r); return (fc.feasible && fc.confidence !== 'none') ? fc.confidence : ''; }],

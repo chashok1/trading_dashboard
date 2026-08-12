@@ -477,44 +477,45 @@ QJ < 0 forces STM even when Trend/Trade is bullish. Both QE and QJ must be posit
 
 ---
 
-## Stop-level (`drv_actionable.stop_level`)
+## Stop signal (`drv_actionable.stop_signal`)
 
-Computed in `etl/derive_actionable.py::_compute_stop()` for held positions and
-BUY/SELL-family actions (INCREASE, ADD, REDUCE, REMOVE). None otherwise.
+Computed in `etl/derive_actionable.py::_compute_stop_signal()` for held
+positions and BUY/SELL-family actions (INCREASE, ADD, REDUCE, REMOVE). NULL
+otherwise.
 
-**Formula** (mode `trade_line_or_pct`, the default):
+**2026-08-12 — replaced the old `stop_level` $ price formula** (`MAX(trade
+line, last_price*(1-stop_pct))`, `stop_level` column now always NULL) with a
+Trade/Trend-line persistence signal. The $ formula reacted to a single day's
+close, which whipsawed; the new signal requires the condition to hold on
+each of the last 3 `as_of_date`s (`drv_technicals` history, one row per
+symbol/date) before firing — "not the same day movement." `Td` = EOD
+`a_trade_value`, `Tn` = EOD `a_trend_value` (same two lines the Rule Flow
+crossover formulas use). Price is the live `drv_quote.last_price` on the
+current anchor date, falling back to that day's frozen `drv_technicals.
+last_price` for the prior 2 confirmation days.
 
-```
-stop_level = MAX(trade_line, last_price * (1 - stop_pct))
-```
+Checked in this priority order:
 
-- `trade_line` — EOD `a_trade_value` from `drv_technicals` for that symbol/date.
-- `last_price` — most recent price from `drv_quote`.
-- `stop_pct` — `ref_settings.stop_pct` (default `0.08` = 8%).
-
-If no price data is available, `stop_level` is NULL.
-
-**Tuning knobs** (in `ref_settings`):
-
-| setting_name | default | meaning |
+| Condition (over the last 3 `as_of_date`s unless noted) | `stop_signal` | Meaning |
 |---|---|---|
-| `stop_mode` | `trade_line_or_pct` | Computation mode (only one mode implemented). |
-| `stop_pct` | `0.08` | Percentage below current price used as the pct-based floor. |
+| Below Trend line all 3 days | `TN SA` | Sell All — most severe; wins over `TD STM` if both true |
+| Below Trade line all 3 days | `TD STM` | Sell To Min |
+| Above **both** Trade and Trend line **today only** (no 3-day persistence — the one same-day exception, so a breakout isn't held back 3 days) | `TD BM` | Buy More |
+| Above Trade line all 3 days | `TD BMN` | Buy Min |
+| None of the above, or fewer than 3 `as_of_date`s of history yet | `NULL` | — |
 
-To change: `UPDATE ref_settings SET setting_value = '0.05' WHERE setting_name = 'stop_pct';`
-then re-derive (`python -m etl.scheduler` or File Monitor → Force Re-derive).
-
-**`stop_breached` (TASK_119, 2026-07-12).** `BOOLEAN NOT NULL DEFAULT FALSE`
-on `drv_actionable`. Set TRUE for held rows where `last_price < stop_level`.
-If `consolidated_action` is ADD or INCREASE, `_compute_final_call()` downgrades
-the *effective* Final Call to HOLD (`fc_confidence='gate'`) while
-`consolidated_action`/`source_actions` keep the original recommendation and
-`suppressed_reason` is set to `'STOP BREACHED'` — the user still sees what the
-system would have said. REMOVE/REDUCE/HOLD rows are just flagged, never
-force-upgraded to REMOVE (bond ETFs can sit pennies below a tight stop
-without being "losers"). Non-held rows are never flagged. Surfaced on
-`/actionable` as a red "STOP" pill next to the ACTION badge, a red left-edge
-row tint, and a "STOP n" summary chip (`web/actionable.js`).
+**`stop_breached` (TASK_119, 2026-07-12; redefined 2026-08-12).** `BOOLEAN
+NOT NULL DEFAULT FALSE` on `drv_actionable`. Set TRUE for held rows where
+`stop_signal IN ('TD STM', 'TN SA')` (was `last_price < stop_level`). `TD BM`/
+`TD BMN` (buy-side signals) never count as a breach. If `consolidated_action`
+is ADD or INCREASE, `_compute_final_call()` downgrades the *effective* Final
+Call to HOLD (`fc_confidence='gate'`) while `consolidated_action`/
+`source_actions` keep the original recommendation and `suppressed_reason` is
+set to `'STOP BREACHED'` — the user still sees what the system would have
+said. REMOVE/REDUCE/HOLD rows are just flagged, never force-upgraded to
+REMOVE. Non-held rows are never flagged. Surfaced on `/actionable` as a red
+"STOP" pill next to the ACTION badge, a red left-edge row tint, and a
+"STOP n" summary chip (`web/actionable.js`).
 
 ## SELL-side confidence (`drv_actionable.low_confidence`, TASK_118)
 

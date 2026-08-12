@@ -332,36 +332,50 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
 
     holdings = _load_holdings_with_dollars(session, as_of_date)
 
-    # Task 8: load stop-level settings from ref_settings.
-    def _ref_setting(name, default):
-        try:
-            row = session.execute(
-                text("SELECT setting_value FROM ref_settings WHERE setting_name = :n"),
-                {"n": name}
-            ).first()
-            return row[0] if row and row[0] is not None else default
-        except Exception:
-            return default
+    # 2026-08-12: stop_level ($ price formula: MAX(trade_line,
+    # price*(1-stop_pct))) is retired in favor of a Trade/Trend persistence
+    # signal -- a same-day dip below the line was too easy to whipsaw ("not
+    # the same day movement"). See migration comment in db/baseline.sql and
+    # docs/actionable_logic.md for the full writeup.
+    #
+    # Trade line = drv_technicals.a_trade_value ("Td"), Trend line =
+    # a_trend_value ("Tn") -- same two lines the Rule Flow crossover
+    # formulas use. Load today's values plus the prior 2 as_of_dates'
+    # (drv_technicals is historized, one row per as_of_date/symbol) so the
+    # 3-day persistence check below doesn't need a query per symbol.
+    _stop_dates = [r[0] for r in session.execute(text("""
+        SELECT DISTINCT as_of_date FROM drv_technicals
+        WHERE as_of_date <= :d ORDER BY as_of_date DESC LIMIT 3
+    """), {"d": as_of_date}).fetchall()]
 
-    stop_mode = _ref_setting("stop_mode", "trade_line_or_pct")
-    try:
-        stop_pct = float(_ref_setting("stop_pct", "0.08"))
-    except (TypeError, ValueError):
-        stop_pct = 0.08
-
-    # Load EOD trade-line (a_trade_value) and live last_price per symbol.
     _trade_val: dict[str, float] = {}
+    _trend_val: dict[str, float] = {}
+    _hist_trade: dict = {}   # {as_of_date: {symbol: value}}
+    _hist_trend: dict = {}
+    _hist_price: dict = {}
     try:
         for r in session.execute(text("""
-            SELECT tos_symbol, a_trade_value
-            FROM drv_technicals WHERE as_of_date = :d
-              AND a_trade_value IS NOT NULL
-        """), {"d": as_of_date}).fetchall():
-            if r[1] is not None:
-                _trade_val[r[0]] = float(r[1])
+            SELECT as_of_date, tos_symbol, a_trade_value, a_trend_value, last_price
+            FROM drv_technicals WHERE as_of_date = ANY(:ds)
+        """), {"ds": _stop_dates}).fetchall():
+            dt, sym_, trade, trend, px = r
+            if trade is not None:
+                _hist_trade.setdefault(dt, {})[sym_] = float(trade)
+            if trend is not None:
+                _hist_trend.setdefault(dt, {})[sym_] = float(trend)
+            if px is not None:
+                _hist_price.setdefault(dt, {})[sym_] = float(px)
+            if dt == as_of_date:
+                if trade is not None:
+                    _trade_val[sym_] = float(trade)
+                if trend is not None:
+                    _trend_val[sym_] = float(trend)
     except Exception:
         pass
 
+    # Live (intraday-capable) price for today only -- drv_quote holds just
+    # the latest read for the current anchor date, no history. Prior days
+    # fall back to that day's frozen EOD drv_technicals.last_price above.
     _last_price: dict[str, float] = {}
     try:
         for r in session.execute(text("""
@@ -374,22 +388,67 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     except Exception:
         pass
 
-    def _compute_stop(sym, consolidated_action):
-        """Compute stop_level for a symbol.
-        For BUY-family (INCREASE/ADD) and held positions: apply stop formula.
-        For SELL-family: same level annotated as 'exit below' in UI.
-        Returns None if no price data available."""
-        price = _last_price.get(sym)
-        if price is None or price <= 0:
+    def _compute_stop_signal(sym):
+        """Trade/Trend persistence stop signal (2026-08-12, replaces the old
+        $ stop_level formula). Returns one of 'TN SA' / 'TD STM' / 'TD BM' /
+        'TD BMN' / None. Checked in this priority order (sell conditions
+        first, then the strongest buy confirmation, then the weaker one):
+
+          1. Below Trend line on each of the last 3 as_of_dates -> 'TN SA'
+             (Sell All) -- most severe, wins over TD STM if both true.
+          2. Below Trade line on each of the last 3 as_of_dates -> 'TD STM'
+             (Sell To Min).
+          3. Above BOTH Trade and Trend line TODAY -- no 3-day persistence
+             required, this is the one same-day exception, so a breakout
+             isn't held back 3 days -> 'TD BM' (Buy More).
+          4. Above Trade line on each of the last 3 as_of_dates -> 'TD BMN'
+             (Buy Min).
+
+        None if there isn't 3 days of history yet, or none of the above
+        hold."""
+        if len(_stop_dates) < 3:
             return None
-        pct_floor = price * (1.0 - stop_pct)
-        if stop_mode == "trade_line_or_pct":
-            trade = _trade_val.get(sym)
-            if trade is not None and trade > 0:
-                return max(trade, pct_floor)
-            return pct_floor
-        # Fallback: pct-only
-        return pct_floor
+
+        def _px(dt):
+            return _last_price.get(sym) if dt == as_of_date else _hist_price.get(dt, {}).get(sym)
+
+        below_trend_all = True
+        below_trade_all = True
+        above_trade_all = True
+        for dt in _stop_dates:
+            p = _px(dt)
+            trade = _trade_val.get(sym) if dt == as_of_date else _hist_trade.get(dt, {}).get(sym)
+            trend = _trend_val.get(sym) if dt == as_of_date else _hist_trend.get(dt, {}).get(sym)
+            if p is None:
+                below_trend_all = below_trade_all = above_trade_all = False
+                continue
+            if trend is None or not (p < trend):
+                below_trend_all = False
+            if trade is None:
+                below_trade_all = False
+                above_trade_all = False
+            else:
+                if not (p < trade):
+                    below_trade_all = False
+                if not (p > trade):
+                    above_trade_all = False
+
+        if below_trend_all:
+            return "TN SA"
+        if below_trade_all:
+            return "TD STM"
+
+        p_today = _last_price.get(sym)
+        td_today = _trade_val.get(sym)
+        tn_today = _trend_val.get(sym)
+        if (p_today is not None and td_today is not None and tn_today is not None
+                and p_today > td_today and p_today > tn_today):
+            return "TD BM"
+
+        if above_trade_all:
+            return "TD BMN"
+
+        return None
 
     # BuySell action → numeric score map for trig_action computation.
     # Populated from ref_param_lookup where table_name='buysell', extra1=numeric score.
@@ -660,7 +719,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            held_today, current_position_dollar, in_my_list,
            rules_engine_fires, source_actions, suppressed_reason,
            triggered_group_ids, trig_action,
-           stop_level, source_run_id,
+           stop_level, stop_signal, source_run_id,
            final_action, final_code, final_side,
            fc_strength, fc_confidence, fc_feasible, priority_rank,
            stop_breached, low_confidence,
@@ -673,7 +732,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            :held, :curr, :iml,
            CAST(:fires AS JSONB), CAST(:srca AS JSONB), :supp,
            CAST(:groups AS JSONB), :trig,
-           :stop, :rid,
+           :stop, :stop_signal, :rid,
            :f_action, :f_code, :f_side,
            :f_strength, :f_confidence, :f_feasible, :f_priority,
            :stop_breached, :low_confidence,
@@ -907,24 +966,25 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             source_ac = asset_class_etf.get(sym)
         # For other sources (RR, SSS, II, etc.), asset_class comes from drv_ma lookup
 
-        # Task 8: compute stop_level for BUY-family, held, and SELL-family rows.
+        # Task 8 / 2026-08-12: compute stop_signal for BUY-family, held, and
+        # SELL-family rows (stop_level, the old $ price, is retired).
         _show_stop = (
             held_today
             or consolidated in ("INCREASE", "ADD", "REMOVE", "REDUCE")
         )
-        stop_level_val = _compute_stop(sym, consolidated) if _show_stop else None
+        stop_signal_val = _compute_stop_signal(sym) if _show_stop else None
 
         # ─── TASK_119: stop-consistency flag ───────────────────────────────
-        # A held position whose latest price is below stop_level is always
-        # flagged. ADD/INCREASE also get suppressed_reason overridden so the
-        # user sees why the effective action was downgraded to HOLD.
+        # A held position flagged 'TD STM' or 'TN SA' (price sustained below
+        # its Trade/Trend line) is always flagged. ADD/INCREASE also get
+        # suppressed_reason overridden so the user sees why the effective
+        # action was downgraded to HOLD. 'TD BM'/'TD BMN' (buy-side signals)
+        # never count as a breach.
         stop_breached = False
-        if held_today and stop_level_val is not None:
-            _price_now = _last_price.get(sym)
-            if _price_now is not None and float(_price_now) < float(stop_level_val):
-                stop_breached = True
-                if consolidated in ("ADD", "INCREASE"):
-                    suppressed = "STOP BREACHED"
+        if held_today and stop_signal_val in ("TD STM", "TN SA"):
+            stop_breached = True
+            if consolidated in ("ADD", "INCREASE"):
+                suppressed = "STOP BREACHED"
 
         # ─── TASK_53: Compute final_call + priority_rank at derive time ───
         rr_act = rr_action_map.get(sym)
@@ -988,7 +1048,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "supp":  suppressed,
             "groups": json.dumps(triggered_groups) if triggered_groups else None,
             "trig":  trig_action,
-            "stop":  stop_level_val,
+            "stop":  None,  # 2026-08-12: $ stop_level retired, see stop_signal
+            "stop_signal": stop_signal_val,
             "rid":   run_id,
             "f_action":     fc["final_action"],
             "f_code":       fc["final_code"],

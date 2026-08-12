@@ -7729,3 +7729,27 @@ ALTER TABLE IF EXISTS drv_actionable
     ADD COLUMN IF NOT EXISTS warn_not_at_lrr BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE IF EXISTS drv_actionable
     ADD COLUMN IF NOT EXISTS warn_added_this_leg BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- =====================================================
+-- 2026-08-12 -- Stop-level logic replaced with Trade/Trend persistence
+-- signal (etl/derive_actionable.py::_compute_stop_signal, was
+-- _compute_stop). Old formula was a single blended $ price
+-- (MAX(trade_line, price*(1-stop_pct))); replaced because a same-day dip
+-- below the line was too easy to whipsaw. New logic requires the condition
+-- to hold on each of the last 3 as_of_dates (drv_technicals history) before
+-- firing, and reports which line broke instead of a price:
+--   price below Trade line 3 days running   -> 'TD STM' (Sell To Min)
+--   price below Trend line 3 days running   -> 'TN SA'  (Sell All, wins
+--                                               over TD STM if both true --
+--                                               Trend break is the more
+--                                               severe condition)
+--   price above Trade line 3 days running   -> 'TD BMN' (Buy Min)
+--   otherwise / not enough history          -> NULL
+-- stop_level (the old $ price) is retired -- always NULL going forward, left
+-- in place for any historical rows/exports that still reference it.
+-- stop_breached keeps its existing meaning (held row, ADD/INCREASE
+-- downgrade+suppress) but is now driven by stop_signal IN ('TD STM','TN SA')
+-- instead of last_price < stop_level.
+-- =====================================================
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS stop_signal TEXT;
