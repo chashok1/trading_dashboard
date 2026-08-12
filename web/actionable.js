@@ -1180,8 +1180,8 @@ function _legendHtml() {
       ${row('Mixed', 'Sources and Technical conflict — cross-check the Rules column')}
       ${row('Low', 'LOW CONF — the only sell evidence is a rule with a demonstrated negative historical edge (v_unproven_sell_rules); consolidated_action is unchanged, this is a confidence flag')}
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">STOP pill / chip</div>
-      <div style="color:#475569;">A held position whose price has stayed below its Trade or Trend line for 3 days
-        running (stop_signal = "TD STM" / "TN SA" — red left edge + STOP pill next to ACTION).
+      <div style="color:#475569;">A held position that just crossed below its Trade line ("TD STM") or its Trend
+        line ("TN SA") — prior 3 days above the line, today below it — red left edge + ▼TD/▼TN pill next to ACTION.
         An effective ADD/INCREASE on a breached row is downgraded to HOLD (suppressed_reason = "STOP BREACHED") —
         breach never auto-forces a sell. Click the STOP chip to filter to these rows.</div>
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Trade Mode</div>
@@ -2176,7 +2176,7 @@ function renderSummary() {
   // joining the mutually-exclusive action-chip set.
   const stopChip = document.createElement('div');
   stopChip.className = 'act-chip act-chip-stop' + (state.filters.stopOnly ? ' active' : '');
-  stopChip.title = 'Held positions below their Trade/Trend line 3 days running';
+  stopChip.title = 'Held positions that just crossed below their Trade or Trend line (prior 3 days above, today below)';
   stopChip.innerHTML = `<span>STOP</span><span class="count">${stopCount}</span>`;
   stopChip.onclick = () => {
     state.filters.stopOnly = !state.filters.stopOnly;
@@ -3049,9 +3049,17 @@ function _finalCallHtml(row) {
                     : '';
   var lowConfSub = isLowConf
     ? '<div style="font-size:8px;font-weight:700;color:#b45309;letter-spacing:0.3px;" title="Sell evidence comes only from rules with a demonstrated negative historical edge — cross-check before acting">LOW CONF</div>' : '';
-  // TASK_119: STOP pill — held position below its Trade/Trend line 3 days running.
+  // TASK_119: STOP pill — held position that just crossed below its Trade
+  // or Trend line (prior 3 days above, today below). 2026-08-12: text
+  // "STOP" swapped for a down-cross icon (▼, the same glyph this file
+  // already uses for a bearish stance elsewhere) + which line broke, e.g.
+  // "▼TD" / "▼TN" — more compact than a word, and shows which line at a
+  // glance.
+  var _stopWhy = 'just crossed below its ' + (row.stop_signal === 'TN SA' ? 'Trend' : 'Trade')
+    + ' line (prior 3 days above, today below)';
+  var _stopIconTxt = '▼' + (row.stop_signal === 'TN SA' ? 'TN' : 'TD');
   var stopPill = row.stop_breached
-    ? ` <span class="stop-pill" title="${escapeHtml(row.stop_signal || 'STOP')} — held below its Trade/Trend line 3 days running; an effective ADD/INCREASE here is downgraded to HOLD">STOP</span>`
+    ? ` <span class="stop-pill" title="${escapeHtml(row.stop_signal || 'STOP')} — held, ${_stopWhy}; an effective ADD/INCREASE here is downgraded to HOLD">${_stopIconTxt}</span>`
     : '';
   var earningsDays = _earningsWarning(row);
   var earningsPill = earningsDays != null
@@ -4251,15 +4259,16 @@ function _buildRowEl(r) {
         <span class="amt-primary">${fmtUsd(r._amt)}</span>
         ${r.stop_signal ? (
           r.stop_breached
-            ? `<div style="font-size:9px;color:#dc2626;font-weight:700;white-space:nowrap;" title="Price sustained below its ${r.stop_signal.startsWith('TN') ? 'Trend' : 'Trade'} line for 3 days running">${escapeHtml(r.stop_signal)}</div>`
-            : `<div style="font-size:9px;color:#16a34a;white-space:nowrap;" title="Price above its Trade${r.stop_signal === 'TD BM' ? '/Trend' : ''} line — Trade/Trend persistence signal">${escapeHtml(r.stop_signal)}</div>`
+            ? `<div style="font-size:9px;color:#dc2626;font-weight:700;white-space:nowrap;" title="Price just crossed below its ${r.stop_signal === 'TN SA' ? 'Trend' : 'Trade'} line (prior 3 days above, today below)">${escapeHtml(r.stop_signal)}</div>`
+            : `<div style="font-size:9px;color:#16a34a;white-space:nowrap;" title="Price just crossed above its Trade line (prior 3 days below, today above)${r.stop_signal === 'TD BM' ? ', and has closed above its Trend line at some point' : ' (never closed above its Trend line)'}">${escapeHtml(r.stop_signal)}</div>`
         ) : ''}
       </td>
       <td data-col="chg" class="num">
         <div class="chg-candle-row" style="display:flex;align-items:center;justify-content:flex-end;gap:4px;">
           ${candleHtml}
-          <span class="${pctCls}" style="font-weight:700;">${pctStr}${intradayTag}</span>
+          <span class="${pctCls}" style="font-weight:700;">${pctStr}</span>
         </div>
+        ${intradayTag ? `<div style="text-align:right;">${intradayTag}</div>` : ''}
         ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
       </td>
       <td data-col="sym" data-sym-cell="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer;" title="${r.rr_name && r.rr_name !== r.tos_symbol ? escapeHtml(r.tos_symbol) + ' · ' : ''}Click for chart">

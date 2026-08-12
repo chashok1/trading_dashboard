@@ -333,19 +333,20 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     holdings = _load_holdings_with_dollars(session, as_of_date)
 
     # 2026-08-12: stop_level ($ price formula: MAX(trade_line,
-    # price*(1-stop_pct))) is retired in favor of a Trade/Trend persistence
-    # signal -- a same-day dip below the line was too easy to whipsaw ("not
-    # the same day movement"). See migration comment in db/baseline.sql and
+    # price*(1-stop_pct))) is retired in favor of Trade/Trend-line signals
+    # -- a same-day dip below the line was too easy to whipsaw ("not the
+    # same day movement"). See migration comment in db/baseline.sql and
     # docs/actionable_logic.md for the full writeup.
     #
     # Trade line = drv_technicals.a_trade_value ("Td"), Trend line =
     # a_trend_value ("Tn") -- same two lines the Rule Flow crossover
-    # formulas use. Load today's values plus the prior 2 as_of_dates'
-    # (drv_technicals is historized, one row per as_of_date/symbol) so the
-    # 3-day persistence check below doesn't need a query per symbol.
+    # formulas use. Load today's values plus the prior 3 as_of_dates'
+    # (drv_technicals is historized, one row per as_of_date/symbol) -- both
+    # the Trend- and Trade-line crossover checks (2026-08-12 follow-up)
+    # need the full 4-date window, see _compute_stop_signal.
     _stop_dates = [r[0] for r in session.execute(text("""
         SELECT DISTINCT as_of_date FROM drv_technicals
-        WHERE as_of_date <= :d ORDER BY as_of_date DESC LIMIT 3
+        WHERE as_of_date <= :d ORDER BY as_of_date DESC LIMIT 4
     """), {"d": as_of_date}).fetchall()]
 
     _trade_val: dict[str, float] = {}
@@ -388,65 +389,101 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     except Exception:
         pass
 
+    # 2026-08-12 follow-up: TD BM vs TD BMN split no longer requires TODAY
+    # above Trend -- just that price has been above Trend on ANY as_of_date
+    # up to and including today (unbounded, not limited to the 4-date
+    # crossover window; user: "just check if it is above trend or not").
+    # One batched query across all symbols/history instead of a per-symbol
+    # lookup.
+    _ever_above_trend: set[str] = set()
+    try:
+        for r in session.execute(text("""
+            SELECT DISTINCT tos_symbol FROM drv_technicals
+            WHERE as_of_date <= :d
+              AND last_price IS NOT NULL AND a_trend_value IS NOT NULL
+              AND last_price > a_trend_value
+        """), {"d": as_of_date}).fetchall():
+            _ever_above_trend.add(r[0])
+    except Exception:
+        pass
+
     def _compute_stop_signal(sym):
-        """Trade/Trend persistence stop signal (2026-08-12, replaces the old
-        $ stop_level formula). Returns one of 'TN SA' / 'TD STM' / 'TD BM' /
+        """Trade/Trend stop signal (2026-08-12, replaces the old $
+        stop_level formula; both legs redesigned 2026-08-12 follow-up to
+        fire on a crossover event instead of N-day persistence -- a
+        symbol sitting below a line for weeks otherwise re-fired every
+        single day). Returns one of 'TN SA' / 'TD STM' / 'TD BM' /
         'TD BMN' / None. Checked in this priority order (sell conditions
         first, then the strongest buy confirmation, then the weaker one):
 
-          1. Below Trend line on each of the last 3 as_of_dates -> 'TN SA'
-             (Sell All) -- most severe, wins over TD STM if both true.
-          2. Below Trade line on each of the last 3 as_of_dates -> 'TD STM'
+          1. Trend-line CROSSOVER, down: each of the PRIOR 3 as_of_dates
+             (not today) above the Trend line, and TODAY below it ->
+             'TN SA' (Sell All) -- most severe, checked first.
+          2. Trade-line CROSSOVER, down: each of the PRIOR 3 as_of_dates
+             above the Trade line, and TODAY below it -> 'TD STM'
              (Sell To Min).
-          3. Above BOTH Trade and Trend line TODAY -- no 3-day persistence
-             required, this is the one same-day exception, so a breakout
-             isn't held back 3 days -> 'TD BM' (Buy More).
-          4. Above Trade line on each of the last 3 as_of_dates -> 'TD BMN'
-             (Buy Min).
+          3 & 4. Trade-line CROSSOVER, up: each of the PRIOR 3 as_of_dates
+             below the Trade line, TODAY above it -- same crossover as
+             TD STM, opposite direction. Split into two tiers by whether
+             price has EVER closed above the Trend line (unbounded lookback,
+             not limited to today or the 4-date crossover window -- any
+             as_of_date on record, per user: "just check if it is above
+             trend or not"):
+               Ever closed above Trend (any date) -> 'TD BM'  (Buy More)
+               Never closed above Trend            -> 'TD BMN' (Buy Min)
 
-        None if there isn't 3 days of history yet, or none of the above
-        hold."""
-        if len(_stop_dates) < 3:
-            return None
-
+        Every crossover check is self-resetting by construction: the day
+        after a flip, that flip day itself joins the "prior 3" window and
+        breaks the uniformity, so a signal only fires once, on the actual
+        crossing day -- not every day price happens to sit on that side.
+        None if there isn't a full 4-date window yet, or none of the above
+        hold.
+        """
         def _px(dt):
             return _last_price.get(sym) if dt == as_of_date else _hist_price.get(dt, {}).get(sym)
 
-        below_trend_all = True
-        below_trade_all = True
-        above_trade_all = True
-        for dt in _stop_dates:
-            p = _px(dt)
-            trade = _trade_val.get(sym) if dt == as_of_date else _hist_trade.get(dt, {}).get(sym)
-            trend = _trend_val.get(sym) if dt == as_of_date else _hist_trend.get(dt, {}).get(sym)
-            if p is None:
-                below_trend_all = below_trade_all = above_trade_all = False
-                continue
-            if trend is None or not (p < trend):
-                below_trend_all = False
-            if trade is None:
-                below_trade_all = False
-                above_trade_all = False
-            else:
-                if not (p < trade):
-                    below_trade_all = False
-                if not (p > trade):
-                    above_trade_all = False
+        def _trade_at(dt):
+            return _trade_val.get(sym) if dt == as_of_date else _hist_trade.get(dt, {}).get(sym)
 
-        if below_trend_all:
+        def _trend_at(dt):
+            return _trend_val.get(sym) if dt == as_of_date else _hist_trend.get(dt, {}).get(sym)
+
+        def _crossover(line_at):
+            """(cross_down, cross_up) vs. `line_at(dt)` -- prior 3
+            as_of_dates (not today) uniformly on one side, today flips to
+            the other. Needs the full 4-date window (today + prior 3)."""
+            if len(_stop_dates) < 4:
+                return False, False
+            prior3 = _stop_dates[1:4]
+            p_today = _px(as_of_date)
+            line_today = line_at(as_of_date)
+            if p_today is None or line_today is None:
+                return False, False
+            prior_above = prior_below = True
+            for dt in prior3:
+                p = _px(dt)
+                line = line_at(dt)
+                if p is None or line is None:
+                    prior_above = prior_below = False
+                    break
+                if not (p > line):
+                    prior_above = False
+                if not (p < line):
+                    prior_below = False
+            return (p_today < line_today) and prior_above, (p_today > line_today) and prior_below
+
+        trend_cross_down, _trend_cross_up = _crossover(_trend_at)
+        if trend_cross_down:
             return "TN SA"
-        if below_trade_all:
+
+        trade_cross_down, trade_cross_up = _crossover(_trade_at)
+        if trade_cross_down:
             return "TD STM"
 
-        p_today = _last_price.get(sym)
-        td_today = _trade_val.get(sym)
-        tn_today = _trend_val.get(sym)
-        if (p_today is not None and td_today is not None and tn_today is not None
-                and p_today > td_today and p_today > tn_today):
-            return "TD BM"
-
-        if above_trade_all:
-            return "TD BMN"
+        # 3 & 4. Trade-line crossover up, split by whether price has EVER
+        # closed above Trend (unbounded, see _ever_above_trend above).
+        if trade_cross_up:
+            return "TD BM" if sym in _ever_above_trend else "TD BMN"
 
         return None
 

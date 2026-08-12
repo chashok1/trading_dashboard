@@ -484,25 +484,39 @@ positions and BUY/SELL-family actions (INCREASE, ADD, REDUCE, REMOVE). NULL
 otherwise.
 
 **2026-08-12 — replaced the old `stop_level` $ price formula** (`MAX(trade
-line, last_price*(1-stop_pct))`, `stop_level` column now always NULL) with a
-Trade/Trend-line persistence signal. The $ formula reacted to a single day's
-close, which whipsawed; the new signal requires the condition to hold on
-each of the last 3 `as_of_date`s (`drv_technicals` history, one row per
-symbol/date) before firing — "not the same day movement." `Td` = EOD
-`a_trade_value`, `Tn` = EOD `a_trend_value` (same two lines the Rule Flow
-crossover formulas use). Price is the live `drv_quote.last_price` on the
-current anchor date, falling back to that day's frozen `drv_technicals.
-last_price` for the prior 2 confirmation days.
+line, last_price*(1-stop_pct))`, `stop_level` column now always NULL) with
+Trade/Trend-line signals. The $ formula reacted to a single day's close,
+which whipsawed. `Td` = EOD `a_trade_value`, `Tn` = EOD `a_trend_value`
+(same two lines the Rule Flow crossover formulas use). Price is the live
+`drv_quote.last_price` on the current anchor date, falling back to that
+day's frozen `drv_technicals.last_price` for prior confirmation days.
 
-Checked in this priority order:
+**2026-08-12 follow-up — both legs redesigned from N-day persistence to a
+crossover event.** A symbol sitting below a line for weeks re-fired every
+single day under plain persistence; a crossover fires only when the prior 3
+`as_of_date`s (not today) all sit on one side of the line and today flips to
+the other side — self-resetting by construction, since the day after a
+flip, that flip day itself joins the "prior 3" window and breaks the
+uniformity, so the signal shows only once, on the actual crossing day.
+(Trend-line `TN SA` started as a persistence check and was converted to a
+crossover in this same follow-up, matching the Trade-line legs.)
 
-| Condition (over the last 3 `as_of_date`s unless noted) | `stop_signal` | Meaning |
+Checked in this priority order, all via the same crossover shape (prior 3
+`as_of_date`s on one side of the line, today on the other) unless noted:
+
+| Condition | `stop_signal` | Meaning |
 |---|---|---|
-| Below Trend line all 3 days | `TN SA` | Sell All — most severe; wins over `TD STM` if both true |
-| Below Trade line all 3 days | `TD STM` | Sell To Min |
-| Above **both** Trade and Trend line **today only** (no 3-day persistence — the one same-day exception, so a breakout isn't held back 3 days) | `TD BM` | Buy More |
-| Above Trade line all 3 days | `TD BMN` | Buy Min |
-| None of the above, or fewer than 3 `as_of_date`s of history yet | `NULL` | — |
+| Trend-line crossover DOWN: prior 3 `as_of_date`s above Trend, today below | `TN SA` | Sell All — most severe, checked first |
+| Trade-line crossover DOWN: prior 3 `as_of_date`s above Trade, today below | `TD STM` | Sell To Min |
+| Trade-line crossover UP (prior 3 `as_of_date`s below Trade, today above), **and** has closed above the Trend line on ANY `as_of_date` on record | `TD BM` | Buy More — the stronger tier |
+| Trade-line crossover UP (same as above), but has never closed above the Trend line | `TD BMN` | Buy Min — the weaker tier |
+| None of the above, or fewer than 4 `as_of_date`s of history yet | `NULL` | — |
+
+`TD BM`/`TD BMN` share the same Trade-line crossover trigger — the only
+difference is `_ever_above_trend` (unbounded lookback, not the 4-date
+crossover window and not limited to today): has the symbol EVER, on any
+`as_of_date` in `drv_technicals`, closed above its Trend line? One batched
+query across all symbols/history per derive run, not a per-symbol lookup.
 
 **`stop_breached` (TASK_119, 2026-07-12; redefined 2026-08-12).** `BOOLEAN
 NOT NULL DEFAULT FALSE` on `drv_actionable`. Set TRUE for held rows where
