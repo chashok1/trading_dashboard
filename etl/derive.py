@@ -1263,7 +1263,7 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
         _dq_settings = dict(session.execute(text(
             "SELECT setting_name, setting_value FROM ref_settings "
             "WHERE setting_name IN "
-            "('dash_threshold_low_pct','dash_threshold_high_pct')"
+            "('dash_threshold_low_pct','dash_threshold_high_pct','rr_reverse_scale')"
         )).fetchall())
     except Exception:
         pass
@@ -1276,6 +1276,36 @@ def _derive_quote_impl(session: Session, as_of_date: date, run_id: int) -> int:
 
     th_low  = _f("dash_threshold_low_pct",  -10.0)
     th_high = _f("dash_threshold_high_pct",  10.0)
+
+    # 2026-08-12: reverse-symbol (yield-quoted, e.g. TNX:CGI/TYX:CGI) quote-
+    # scale fix. Same convention _derive_rr_impl already uses just above
+    # (ref_rrt.reverse='Y', ref_settings.rr_reverse_scale) -- ToS displays
+    # these at yield*rr_scale (the index-level convention drv_technicals'
+    # a_trend_value/a_trade_value and drv_rr's lrr/trr are already in), but
+    # the Y/CACHE (Yahoo) feed reports plain yield% -- an order of
+    # magnitude off (e.g. last=4.68 vs trend/trade ~44-46). TL/TD (native
+    # ToS feeds) are already index-scale, so only Y/CACHE-sourced rows get
+    # rescaled. Fixing here (before pct_brr/zone/dist_to_trend below use
+    # `price`) also fixes those derived fields for the same symbols, not
+    # just last_price.
+    _reverse_syms: set[str] = set()
+    try:
+        for r in session.execute(text("""
+            SELECT tos_ticker FROM (
+                SELECT DISTINCT ON (tos_ticker) tos_ticker, reverse
+                FROM ref_rrt ORDER BY tos_ticker, loaded_at DESC
+            ) latest WHERE reverse = 'Y'
+        """)).fetchall():
+            _reverse_syms.add(r[0])
+    except Exception:
+        pass
+    rr_reverse_scale = _f("rr_reverse_scale", 10.0)
+
+    for rec in merged:
+        if rec["tos_symbol"] in _reverse_syms and rec.get("source") in ("Y", "CACHE"):
+            for _f2 in ("last_price", "open_price", "high_price", "low_price", "net_chng"):
+                if rec.get(_f2) is not None:
+                    rec[_f2] = float(rec[_f2]) * rr_reverse_scale
 
     for rec in merged:
         sym = rec["tos_symbol"]

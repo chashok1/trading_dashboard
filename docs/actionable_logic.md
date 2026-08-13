@@ -508,15 +508,16 @@ Checked in this priority order, all via the same crossover shape (prior 3
 |---|---|---|
 | Trend-line crossover DOWN: prior 3 `as_of_date`s above Trend, today below | `TN SA` | Sell All — most severe, checked first |
 | Trade-line crossover DOWN: prior 3 `as_of_date`s above Trade, today below | `TD STM` | Sell To Min |
-| Trade-line crossover UP (prior 3 `as_of_date`s below Trade, today above), **and** has closed above the Trend line on ANY `as_of_date` on record | `TD BM` | Buy More — the stronger tier |
-| Trade-line crossover UP (same as above), but has never closed above the Trend line | `TD BMN` | Buy Min — the weaker tier |
+| Trade-line crossover UP (prior 3 `as_of_date`s below Trade, today above), **and** also above the Trend line **today** | `TD BM` | Buy More — the stronger tier |
+| Trade-line crossover UP (same as above), but at/below the Trend line today | `TD BMN` | Buy Min — the weaker tier |
 | None of the above, or fewer than 4 `as_of_date`s of history yet | `NULL` | — |
 
 `TD BM`/`TD BMN` share the same Trade-line crossover trigger — the only
-difference is `_ever_above_trend` (unbounded lookback, not the 4-date
-crossover window and not limited to today): has the symbol EVER, on any
-`as_of_date` in `drv_technicals`, closed above its Trend line? One batched
-query across all symbols/history per derive run, not a per-symbol lookup.
+difference is a same-day check: is price ALSO above the Trend line today?
+(Not a lookback — just today's position, same as the `TD BM` design
+before the brief 2026-08-12 "unbounded ever-above-Trend" detour, which was
+reverted after checking it against LQD: price 106.12 vs Trend 106.93 —
+below Trend today, so it should read `TD BMN`, not `TD BM`.)
 
 **`stop_breached` (TASK_119, 2026-07-12; redefined 2026-08-12).** `BOOLEAN
 NOT NULL DEFAULT FALSE` on `drv_actionable`. Set TRUE for held rows where

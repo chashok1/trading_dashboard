@@ -389,24 +389,6 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     except Exception:
         pass
 
-    # 2026-08-12 follow-up: TD BM vs TD BMN split no longer requires TODAY
-    # above Trend -- just that price has been above Trend on ANY as_of_date
-    # up to and including today (unbounded, not limited to the 4-date
-    # crossover window; user: "just check if it is above trend or not").
-    # One batched query across all symbols/history instead of a per-symbol
-    # lookup.
-    _ever_above_trend: set[str] = set()
-    try:
-        for r in session.execute(text("""
-            SELECT DISTINCT tos_symbol FROM drv_technicals
-            WHERE as_of_date <= :d
-              AND last_price IS NOT NULL AND a_trend_value IS NOT NULL
-              AND last_price > a_trend_value
-        """), {"d": as_of_date}).fetchall():
-            _ever_above_trend.add(r[0])
-    except Exception:
-        pass
-
     def _compute_stop_signal(sym):
         """Trade/Trend stop signal (2026-08-12, replaces the old $
         stop_level formula; both legs redesigned 2026-08-12 follow-up to
@@ -425,12 +407,10 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
           3 & 4. Trade-line CROSSOVER, up: each of the PRIOR 3 as_of_dates
              below the Trade line, TODAY above it -- same crossover as
              TD STM, opposite direction. Split into two tiers by whether
-             price has EVER closed above the Trend line (unbounded lookback,
-             not limited to today or the 4-date crossover window -- any
-             as_of_date on record, per user: "just check if it is above
-             trend or not"):
-               Ever closed above Trend (any date) -> 'TD BM'  (Buy More)
-               Never closed above Trend            -> 'TD BMN' (Buy Min)
+             price is ALSO above the Trend line TODAY (same-day, not a
+             crossover/lookback on this leg -- just today's position):
+               TODAY also above Trend -> 'TD BM'  (Buy More)
+               TODAY still at/below Trend -> 'TD BMN' (Buy Min)
 
         Every crossover check is self-resetting by construction: the day
         after a flip, that flip day itself joins the "prior 3" window and
@@ -480,10 +460,14 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         if trade_cross_down:
             return "TD STM"
 
-        # 3 & 4. Trade-line crossover up, split by whether price has EVER
-        # closed above Trend (unbounded, see _ever_above_trend above).
+        # 3 & 4. Trade-line crossover up, split by whether price is ALSO
+        # above Trend today (same-day check, not a lookback).
         if trade_cross_up:
-            return "TD BM" if sym in _ever_above_trend else "TD BMN"
+            p_today = _last_price.get(sym)
+            tn_today = _trend_val.get(sym)
+            if p_today is not None and tn_today is not None and p_today > tn_today:
+                return "TD BM"
+            return "TD BMN"
 
         return None
 

@@ -4258,9 +4258,14 @@ function _buildRowEl(r) {
       <td data-col="amt" class="num">
         <span class="amt-primary">${fmtUsd(r._amt)}</span>
         ${r.stop_signal ? (
-          r.stop_breached
+          // 2026-08-12: color by the SIGN of stop_signal itself (TD STM/TN SA
+          // = sell = red, TD BM/TD BMN = buy = green), not r.stop_breached --
+          // stop_breached also requires held_today=True, so a sell signal on
+          // a NOT-held symbol (stop_breached=false) was wrongly rendering
+          // green here.
+          (r.stop_signal === 'TD STM' || r.stop_signal === 'TN SA')
             ? `<div style="font-size:9px;color:#dc2626;font-weight:700;white-space:nowrap;" title="Price just crossed below its ${r.stop_signal === 'TN SA' ? 'Trend' : 'Trade'} line (prior 3 days above, today below)">${escapeHtml(r.stop_signal)}</div>`
-            : `<div style="font-size:9px;color:#16a34a;white-space:nowrap;" title="Price just crossed above its Trade line (prior 3 days below, today above)${r.stop_signal === 'TD BM' ? ', and has closed above its Trend line at some point' : ' (never closed above its Trend line)'}">${escapeHtml(r.stop_signal)}</div>`
+            : `<div style="font-size:9px;color:#16a34a;white-space:nowrap;" title="Price just crossed above its Trade line (prior 3 days below, today above)${r.stop_signal === 'TD BM' ? ', and is also above its Trend line today' : ' (still at/below its Trend line today)'}">${escapeHtml(r.stop_signal)}</div>`
         ) : ''}
       </td>
       <td data-col="chg" class="num">
