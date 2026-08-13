@@ -1570,6 +1570,18 @@ async function loadActionable(opts) {
     state.cashRows = (Array.isArray(portfolioRows) ? portfolioRows : []).filter(r => r.is_cash);
     state.allRows.forEach(r => {
       r._assetClass = _normAssetClass(r.real_asset_class);
+      // RR column sort key (2026-08-12) — same formula _buildRowEl's rrBarHtml
+      // already computes for the bar's tick position, hoisted here so the RR
+      // header can sort by it (0 = at LRR, 100 = at TRR) without duplicating
+      // the formula at render time.
+      {
+        const lrrN = r.lrr != null ? Number(r.lrr) : null;
+        const trrN = r.trr != null ? Number(r.trr) : null;
+        const lastN = r.last_price != null ? Number(r.last_price) : null;
+        r._rrPos = (lrrN != null && trrN != null && lastN != null && trrN !== lrrN)
+          ? Math.round(Math.max(0, Math.min(100, (lastN - lrrN) / (trrN - lrrN) * 100)))
+          : null;
+      }
       const act = (r.consolidated_action || '').toUpperCase();
       if (_isOverMaxOverlay(r)) {
         // Over-allocation overlay — AMT$ = trim back to the category Max.
@@ -4313,10 +4325,10 @@ function _buildRowEl(r) {
     // see etl/derive.py's pct_brr formula), not the Risk Range at all.
     const _lrrNum = r.lrr != null ? Number(r.lrr) : null;
     const _trrNum = r.trr != null ? Number(r.trr) : null;
-    const _lastNum = r.last_price != null ? Number(r.last_price) : null;
-    const _rrBarW = (_lrrNum != null && _trrNum != null && _lastNum != null && _trrNum !== _lrrNum)
-      ? Math.round(Math.max(0, Math.min(100, (_lastNum - _lrrNum) / (_trrNum - _lrrNum) * 100)))
-      : null;
+    // r._rrPos is hoisted to load time (same formula, see the state.allRows
+    // normalization pass) so the RR column header can sort by it — reused
+    // here instead of recomputing, to avoid the two ever drifting apart.
+    const _rrBarW = r._rrPos;
     // Compact number format so LRR/TRR labels fit the narrow 44px column
     // without wrapping: fewer decimals as magnitude grows.
     const _fmtRR = v => Math.abs(v) >= 100 ? Math.round(v).toString()
