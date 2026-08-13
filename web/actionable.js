@@ -1176,7 +1176,7 @@ function _legendHtml() {
         consolidated_action; click a chip to filter, click ALL to clear.</div>
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Confidence badges (Final Call)</div>
       ${row('High', 'Sources and Technical agree')}
-      ${row('Gate', 'Deterministic gate — Technical not evaluated (e.g. exit signal, at Max, not held)')}
+      ${row('Gate', 'Deterministic gate — Technical not evaluated (e.g. exit signal, at Max, not held, stop breach). Hover the Gate badge on any row for the specific reason.')}
       ${row('Mixed', 'Sources and Technical conflict — cross-check the Rules column')}
       ${row('Low', 'LOW CONF — the only sell evidence is a rule with a demonstrated negative historical edge (v_unproven_sell_rules); consolidated_action is unchanged, this is a confidence flag')}
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">STOP pill / chip</div>
@@ -2693,6 +2693,58 @@ function _fcStrength(code) {
  *   Rules/edge are NOT consulted here — kept in the Rules column for manual
  *   cross-reference only.
  */
+// Deterministic-gate reason classifier (2026-08-12) — walks the SAME branch
+// order as etl/derive_actionable.py::_compute_final_call() purely to name
+// WHY a 'gate' confidence tier fired, for the Gate badge tooltip. The
+// server doesn't persist that reason text (no gate_reason column on
+// drv_actionable) so this re-derives it client-side from the same fields
+// already on the row (consolidated_action, rr_action, held_today,
+// stop_breached, the Max-overlay). Returns null if the row doesn't land in
+// a gate branch (caller should fall back to the generic tooltip text).
+function _gateReasonFor(row) {
+  var ca  = (row.consolidated_action || '').toUpperCase();
+  var rra = (row.rr_action           || '').toUpperCase();
+  if (!ca || ca === 'NONE') return null;
+
+  var atMax       = _isOverMaxOverlay(row);
+  var isHeld      = !!row.held_today;
+  var srcIsExit   = (ca === 'REMOVE' || ca === 'SA');
+  var srcIsReduce = (ca === 'REDUCE' || ca === 'SS' || ca === 'STM');
+  var srcIsBuy    = (ca === 'INCREASE' || ca === 'BS' || ca === 'BM' || ca === 'ADD' || ca === 'BMN');
+  var srcIsAdd    = (ca === 'ADD' || ca === 'BMN');
+  var techIsSell    = (rra === 'SS' || rra === 'STM' || rra === 'SO' || rra === 'REDUCE' || rra === 'SA' || rra === 'REMOVE');
+  var techIsBuy     = (rra === 'BS' || rra === 'BM' || rra === 'INCREASE');
+  var techIsBuyMin  = (rra === 'BMN' || rra === 'ADD');
+  var techIsNeutral = (!techIsSell && !techIsBuy && !techIsBuyMin);
+
+  // 1. Stop breach downgrade (TASK_119) — highest priority, checked first
+  //    server-side too (etl/derive_actionable.py, stop_breached block).
+  if (row.stop_breached && (ca === 'ADD' || ca === 'INCREASE')) {
+    return 'Held position crossed its stop (' + (row.stop_signal || 'stop') + ') — ADD/INCREASE downgraded to HOLD';
+  }
+  // 2. Strategic exit gate: exit signal or over category Max.
+  if (srcIsExit || atMax) {
+    if (!isHeld && !atMax) return 'Exit signal but not held — no action feasible';
+    return atMax ? 'Over category Max — trim back to cap'
+                 : 'Sources: exit signal — Technical not evaluated';
+  }
+  // 3. Don't-initiate guard: not held, Sources doesn't endorse buying.
+  if (!isHeld && !srcIsBuy) {
+    return 'Not held + Sources don’t endorse buying — hold';
+  }
+  // 4. Technical confirms buy, but capped at/over Max.
+  if ((techIsBuy || techIsBuyMin) && atMax) {
+    return 'At/over category Max — cannot add more';
+  }
+  // 5/6. Technical neutral — either establishing a starter position, or
+  // truly no signal from either lens.
+  if (techIsNeutral) {
+    if (!isHeld && srcIsAdd) return 'Sources says ADD, Technical neutral — establishing position';
+    if (!srcIsReduce) return 'No active signal — Sources and Technical both neutral';
+  }
+  return null;
+}
+
 function finalCall(row) {
   // D6: prefer server-computed final call (derived at ETL time via _compute_final_call).
   // Client-side code below is a thin read-only fallback for pre-migration rows.
@@ -2706,6 +2758,7 @@ function finalCall(row) {
     return {
       label: _label, code: _code, side: _side,
       strength: _strength, confidence: _confidence, feasible: _feasible,
+      gateReason: _confidence === 'gate' ? _gateReasonFor(row) : null,
     };
   }
 
@@ -3067,10 +3120,12 @@ function _finalCallHtml(row) {
     : '';
   var sig = _signalReasons(row, fc.side);
   var signalPill = '';
+  // 2026-08-12: rich popover (one reason per line, data-signalpop + #sourcePop)
+  // instead of a plain " · "-joined title attribute.
   if (sig.warn.length) {
-    signalPill = ' <span class="dontbuy-warn-pill" title="' + escapeHtml(sig.warn.join(' · ')) + '">⚠</span>';
+    signalPill = ' <span class="dontbuy-warn-pill" data-signalpop="' + escapeHtml(row.tos_symbol) + '" data-signalpop-warn="1">⚠</span>';
   } else if (sig.buy.length) {
-    signalPill = ' <span class="buy-signal-pill" title="' + escapeHtml(sig.buy.join(' · ')) + '">▲</span>';
+    signalPill = ' <span class="buy-signal-pill" data-signalpop="' + escapeHtml(row.tos_symbol) + '" data-signalpop-warn="0">▲</span>';
   }
   var subIcon = '<div style="font-size:9px;line-height:1.4;">' + badgeHtml + '</div>' + lowConfSub;
   return '<span class="act-badge act-badge-sm ' + colorCls + '" style="' + hedgeyeStyle + '" title="' +
@@ -3659,6 +3714,29 @@ function _buildIvPopHtml(r) {
   return html + '</table>';
 }
 
+// ---- rich Warn/Buy-signal popover (2026-08-12) ------------------------------
+// Replaces the plain title=" · "-joined tooltip on the ACTION cell's ⚠/▲
+// pill (_finalCallHtml's signalPill) with a rich popover, one reason per
+// line — same #sourcePop/_showDataPop mechanism as Vol/IV/Macro/PVV above.
+// `sig` is the same {warn, buy} object _finalCallHtml already computed via
+// _signalReasons(row, fc.side); isWarn picks which list/style to render
+// (a row only ever shows one pill — warn wins over buy on conflict, see
+// _signalReasons' own comment — so the caller already knows which).
+function _buildSignalPopHtml(sym, sig, isWarn) {
+  const items = isWarn ? sig.warn : sig.buy;
+  const color = isWarn ? '#b45309' : '#15803d';
+  const icon  = isWarn ? '⚠' : '▲';
+  const title = isWarn ? 'Caution signals' : 'Supporting signals';
+  let html = `<div class="sp-title">${escapeHtml(sym)} &mdash; ${title}</div>`;
+  html += '<table>';
+  items.forEach(reason => {
+    html += `<tr><td style="padding:2px 5px 2px 0;color:${color};font-weight:700;vertical-align:top;width:14px;">${icon}</td>`
+         + `<td style="padding:2px 0;font-size:10px;color:#374151;line-height:1.4;">${escapeHtml(reason)}</td></tr>`;
+  });
+  html += '</table>';
+  return html;
+}
+
 function _showDataPop(el, html) {
   const pop = $('sourcePop');
   if (!pop) return;
@@ -3715,10 +3793,20 @@ function initSourcePopover() {
     if (pvvEl) {
       const r = state.rows.find(x => x.tos_symbol === pvvEl.dataset.pvvpop);
       if (r) _showDataPop(pvvEl, _buildPvvPopHtml(r));
+      return;
+    }
+    const signalEl = e.target.closest('[data-signalpop]');
+    if (signalEl) {
+      const r = state.rows.find(x => x.tos_symbol === signalEl.dataset.signalpop);
+      if (r) {
+        const isWarn = signalEl.dataset.signalpopWarn === '1';
+        const sig = _signalReasons(r, finalCall(r).side);
+        _showDataPop(signalEl, _buildSignalPopHtml(r.tos_symbol, sig, isWarn));
+      }
     }
   };
   const _onOut = (e) => {
-    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop],[data-macropop],[data-scorespop],[data-notespop],[data-pvvpop]')) return;
+    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop],[data-macropop],[data-scorespop],[data-notespop],[data-pvvpop],[data-signalpop]')) return;
     hideSourcePop();
   };
   body.addEventListener('mouseover', _onOver);
