@@ -145,6 +145,33 @@
             <div id="eventsBody">Loading…</div>
           </section>
 
+          <!-- 2026-08-13 -- Cumulative P&L, moved here from the cat-col
+               middle column (was the top of #todaySnapshot there), directly
+               above Housekeeping, per user request: "move cumulative p/L to
+               the left side column above house keeping panel." Same chart
+               (bar Day Change + line Cumulative P&L) as the Portfolio
+               screen's Trends panel (web/portfolio.js::renderTrendCharts,
+               #chTrendCum); period dropdown mirrors #trendsPeriod there.
+               Element ids unchanged, so app.js::loadCumPnlSnapshot() needed
+               no changes -- only the container moved. -->
+          <section class="cockpit-band" id="cumPnlBand">
+            <div class="ts-title">Cumulative P&amp;L
+              <select id="tsCumPnlPeriod" class="ts-period-select" title="Period">
+                <option value="30d" selected>30 days</option>
+                <option value="90d">90 days</option>
+                <option value="mtd">MTD</option>
+                <option value="180d">180 days</option>
+                <option value="ytd">YTD</option>
+                <option value="1y">1 year</option>
+                <option value="5y">5 years</option>
+              </select>
+              <span class="ts-total-group">
+              <span class="ts-total" id="tsCumPnlToday" title="Today's Gain"></span>
+              <span class="ts-total" id="tsCumPnlTotal" title="Cumulative, selected period"></span>
+            </span></div>
+            <div class="ts-chart-body"><canvas id="tsCumPnlChart"></canvas></div>
+          </section>
+
           <!-- Housekeeping moved here from the right rail, below What
                changed, per user request -- no header text. -->
           <section class="cockpit-band" id="housekeepingBand">
@@ -177,9 +204,11 @@
                2026-08-11 -- moved to the very top of the column, above the
                Today snapshot row, per user request ("Move the filter bar
                to the top and apply the filter to four graphs") -- the
-               Accounts filter (state.catAccounts) now also drives the 4th
-               (Cumulative P&L) widget in that row, not just the 3 factor-
-               scorecard widgets; see app.js::loadCumPnlSnapshot(). -->
+               Accounts filter (state.catAccounts) also drives the
+               Cumulative P&L widget (app.js::loadCumPnlSnapshot(); moved to
+               dial-changed-col 2026-08-13, see #cumPnlBand) and the
+               Portfolio Mix card below, not just the 3 factor-scorecard
+               widgets. -->
           <div class="cat-filter-bar">
             <div class="cat-account-filter" id="catAccountFilter" style="flex:1;">Loading…</div>
             <div class="cat-returns-period" id="catReturnsPeriod">
@@ -195,55 +224,11 @@
                     aria-label="Collapse news" title="News">📰 &#9662;</button>
           </div>
 
-          <!-- 2026-08-11 -- Today snapshot row, above the Hedgeye panels
-               per user request. Originally 4 widgets (Cumulative P&L +
-               Asset Class/Sector/Style "Today" mini-grids showing
-               twr_today from drv_category_perf). The 3 Today-snapshot
-               widgets were REMOVED 2026-08-12 -- twr_today is a mark-to-
-               market APPROXIMATION (freeze yesterday's shares, re-price at
-               today's live quote) that diverged sharply (~$2400 on a live
-               check) from the broker's own actual today's-gain figure,
-               especially on days with trades. User: "why the values are
-               not correct?" -> "Remove those graphs". Only the Cumulative
-               P&L widget remains -- it was never affected (uses the
-               accurate broker day_chng_dollar/today_gl_dollar figures via
-               /api/portfolio/trends + /api/portfolio/summary, not
-               twr_today). Same chart (bar Day Change + line Cumulative
-               P&L) as the Portfolio screen's Trends panel (web/portfolio.js
-               ::renderTrendCharts, #chTrendCum); period dropdown mirrors
-               #trendsPeriod there. Populated + wired by app.js::
-               loadCumPnlSnapshot(). -->
-          <div class="today-snapshot" id="todaySnapshot">
-            <div class="ts-widget">
-              <div class="ts-title">Cumulative P&amp;L
-                <!-- 2026-08-11 -- same period dropdown as the Portfolio
-                     screen's own Trends panel (#trendsPeriod in
-                     portfolio.html), replacing the fixed "10d" label --
-                     user: "remove the header text 10 D and replace it with
-                     same drop down as portfolio screen." Options/values/
-                     default match verbatim; wired by app.js::
-                     loadCumPnlSnapshot() (reads this select's value instead
-                     of a hardcoded '30d'). Still only the last 10 data
-                     points are drawn (readability at this widget's size) --
-                     the dropdown changes the cumulative BASELINE (matching
-                     whatever the Portfolio screen would show at that same
-                     period), not how many bars are visible. -->
-                <select id="tsCumPnlPeriod" class="ts-period-select" title="Period">
-                  <option value="30d" selected>30 days</option>
-                  <option value="90d">90 days</option>
-                  <option value="mtd">MTD</option>
-                  <option value="180d">180 days</option>
-                  <option value="ytd">YTD</option>
-                  <option value="1y">1 year</option>
-                  <option value="5y">5 years</option>
-                </select>
-                <span class="ts-total-group">
-                <span class="ts-total" id="tsCumPnlToday" title="Today's Gain"></span>
-                <span class="ts-total" id="tsCumPnlTotal" title="Cumulative, selected period"></span>
-              </span></div>
-              <div class="ts-chart-body"><canvas id="tsCumPnlChart"></canvas></div>
-            </div>
-          </div>
+          <!-- 2026-08-13 -- Cumulative P&L (previously here, in a
+               #todaySnapshot wrapper) moved to the left column
+               (dial-changed-col), directly above Housekeeping -- see
+               #cumPnlBand there. User: "move cumulative p/L to the left
+               side column above house keeping panel." -->
 
           <!-- 2026-08-13 -- Portfolio Mix: same Asset Allocation/Beta/
                Sector/Concentration pies as the Actionable screen's sidebar
@@ -251,19 +236,20 @@
                via the shared web/portfolio_mix.js module -- Macro Stance
                isn't included (Actionable-only, depends on actionDisplay()'s
                buy/sell vocabulary). Scoped by the same Accounts filter
-               (state.catAccounts) as the Cumulative P&L widget above and
-               the 3 factor-scorecard grids below. Populated + wired by
-               app.js::loadDashPortfolioMix(). User: "display graphs from
-               actionable screen, side bar -> portfolio mix -> asset
-               allocation, Beta, sector, concentration ... on dashboard
-               screen -> line below cumulative P&L."
-               Sits OUTSIDE #todaySnapshot's own grid (not a 2nd grid item
-               inside it) -- that grid's minmax(240px,420px) column track is
-               sized for a single narrow chart and would squeeze 4 pies onto
-               one line; a plain sibling div gets the cat-col column's full
-               width instead. 2026-08-13 -- items laid out in a single
-               horizontal row (was stacked, one per line) per user: "in a
-               row horizontal row, not stacked vertical." -->
+               (state.catAccounts) as #cumPnlBand (left column) and the 3
+               factor-scorecard grids below. Populated + wired by app.js::
+               loadDashPortfolioMix(). Originally added directly below the
+               Cumulative P&L widget when both lived in this column ("line
+               below cumulative P&L") -- Cumulative P&L has since moved to
+               dial-changed-col (see #cumPnlBand there, "move cumulative p/L
+               to the left side column above house keeping panel"), leaving
+               this as the top card in cat-col.
+               Not a grid item inside a minmax(240px,420px)-constrained
+               container (that width was sized for one narrow chart and
+               would squeeze 4 pies onto separate lines) -- a plain div
+               picks up the cat-col column's full width instead, laid out as
+               a wrapping flex row (was stacked, one per line) per user: "in
+               a row horizontal row, not stacked vertical." -->
           <div class="ts-widget" id="dashPortfolioMixSection">
             <div class="ts-title">Portfolio Mix</div>
             <div style="padding-top:2px;display:flex;flex-direction:row;flex-wrap:wrap;gap:16px;">
