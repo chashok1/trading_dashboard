@@ -17,9 +17,9 @@ INSERT INTO ref_corr_asset
     (asset_key, label, source_spec, is_usd_base, sort_order, enabled)
 VALUES
   ('usd',     '$USD Index', '["histy:^NYICDX","yfinance:^NYICDX"]',       TRUE,  0,  TRUE),
-  ('spx',     'S&P 500',    '["histy:^SPX","yfinance:^SPX"]',             FALSE, 10, TRUE),
-  ('brent',   'Brent Oil',  '["histy:BZ=F","yfinance:BZ=F"]',             FALSE, 20, TRUE),
-  ('crb',     'CRB (proxy)','["yfinance:DBC"]',                           FALSE, 60, TRUE),
+  ('spx',     'S&P',        '["histy:^SPX","yfinance:^SPX"]',             FALSE, 10, TRUE),
+  ('brent',   'Brent',      '["histy:BZ=F","yfinance:BZ=F"]',             FALSE, 20, TRUE),
+  ('crb',     'CRB',        '["yfinance:DBC"]',                           FALSE, 60, TRUE),
   ('gold',    'Gold',       '["histy:GC=F","yfinance:GC=F"]',             FALSE, 40, TRUE),
   ('bitcoin', 'Bitcoin',    '["histy:BTC-USD","yfinance:BTC-USD"]',       FALSE, 50, TRUE)
 ON CONFLICT (asset_key) DO UPDATE SET

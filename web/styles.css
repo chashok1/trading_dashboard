@@ -2178,7 +2178,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    visual read of that position (good/caution/bad), independent of whether
    the underlying spx_top_range gauge has actually fired (it fires only at
    >=85%). Hover for the LRR/TRR/upside-downside detail text. */
-.rd-spx-vbar { width: 10px; height: 20px; border-radius: 4px; background: var(--border); overflow: hidden; flex: 0 0 auto; display: flex; align-items: flex-end; }
+.rd-spx-vbar { width: 10px; height: 48px; border-radius: 4px; background: var(--border); overflow: hidden; flex: 0 0 auto; display: flex; align-items: flex-end; }
 .rd-spx-vbar-fill { width: 100%; border-radius: 4px 4px 0 0; }
 .rd-spx-vbar-fill.tier-good     { background: var(--ok); }
 .rd-spx-vbar-fill.tier-caution  { background: var(--warn); }
