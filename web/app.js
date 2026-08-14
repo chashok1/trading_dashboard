@@ -782,7 +782,13 @@ function _catColor(colorMap, category) {
 // graphs are not working" -- Market View passed a hardcoded `null` here
 // (from when its charts pointed at the $ modal, which didn't apply), which
 // disabled clicks entirely instead of pointing at the new modal.
-function _renderCatPie(svgId, rows, unmapped, colorMap, onClick) {
+// fillGap: true for the real $/weight_pct factor-scorecard axis cards
+// (Sector/Asset class) -- false (default) for Market View, which reuses
+// this same function with weight_pct actually holding raw symbol COUNTS
+// (see reloadMarketView's call site), where "gap to 100" is meaningless.
+// Explicit flag, not inferred from the total, so a Market View axis that
+// happens to sum under 100 symbols can never accidentally trigger it.
+function _renderCatPie(svgId, rows, unmapped, colorMap, onClick, fillGap) {
   const svg = $(svgId);
   if (!svg) return;
   svg.innerHTML = '';
@@ -790,14 +796,34 @@ function _renderCatPie(svgId, rows, unmapped, colorMap, onClick) {
     .map(r => ({ category: r.category, weight_pct: r.weight_pct }));
   if (unmapped && unmapped.weight_pct != null) items.push({ category: unmapped.category, weight_pct: unmapped.weight_pct });
   if (!items.length) return;
-  const total = items.reduce((s, r) => s + Number(r.weight_pct), 0);
+  // 2026-08-14 -- weight_pct is always "% of your WHOLE portfolio" (same
+  // total_value denominator for every axis/category, drv_category_perf) --
+  // for an exhaustive axis (asset_class, which always has its own Cash row)
+  // these already sum to ~100 and this is a no-op. Sector/style have no
+  // Cash row at all (cash isn't sector/style-classified), so their rows
+  // only sum to the non-cash sleeve's share (~74% for Sector, live) --
+  // dividing by THAT sum (the very next line, before this fix) stretched
+  // every slice to fill the circle, showing e.g. Non-Equity at 33% instead
+  // of the table's true 24.7%. A gray "Cash" gap-filler slice sized to the
+  // shortfall keeps `total` at the true 100 so every real slice's fraction
+  // matches its own weight_pct exactly -- same fix already applied to the
+  // Portfolio Mix panel's own Sector pie (web/portfolio_mix.js::
+  // pmRenderCoreMix), here for the factor-scorecard card's OWN inline pie
+  // (separate code, same bug). User: two screenshots -- this pie (labeled
+  // "Sector", sits beside the table) still showed 33/18/18/12% after that
+  // fix; traced to this second, independent renormalization.
+  let total = items.reduce((s, r) => s + Number(r.weight_pct), 0);
+  if (fillGap && total < 99.5) {
+    items.push({ category: 'Cash', weight_pct: 100 - total, _gapFiller: true });
+    total = 100;
+  }
   const cx = 95, cy = 90, r = 78;
   svg.setAttribute('viewBox', '0 0 190 190');
   let a0 = -Math.PI / 2;
   items.forEach(d => {
     const frac = Number(d.weight_pct) / total;
     const a1 = a0 + frac * Math.PI * 2;
-    const color = _catColor(colorMap, d.category);
+    const color = d._gapFiller ? '#9ca3af' : _catColor(colorMap, d.category);
     const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
     const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
     const large = (a1 - a0) > Math.PI ? 1 : 0;
@@ -819,8 +845,9 @@ function _renderCatPie(svgId, rows, unmapped, colorMap, onClick) {
     hit.addEventListener('mouseleave', _chartHideTip);
     // Same popup as clicking the matching table row (TASK_139 -- user
     // request: "pie chart clicks should display the same popups for
-    // corresponding pies").
-    if (onClick) {
+    // corresponding pies"). The gap-filler slice has no matching table row
+    // (it's not a real category) -- not clickable.
+    if (onClick && !d._gapFiller) {
       hit.style.cursor = 'pointer';
       hit.addEventListener('click', () => onClick(d.category));
     }
@@ -1321,7 +1348,7 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
       if (axis === 'style') {
         _renderCatBars(chartId, r.rows, r.unmapped, colorMap, onSliceClick);
       } else {
-        _renderCatPie(chartId, r.rows, r.unmapped, colorMap, onSliceClick);
+        _renderCatPie(chartId, r.rows, r.unmapped, colorMap, onSliceClick, true);
         // TASK_140 follow-up 16 -- the chart is a fixed 190px square
         // (.cat-chart's flex-basis); when the table is shorter than that
         // (e.g. Asset class's 7 rows), .cat-body's flex-start row height
