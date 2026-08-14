@@ -6,9 +6,19 @@
 -- =====================================================
 
 -- ---------------------------------------------------------------------------
--- 2.1 ref_risk_gauge — total active weight = 43 (+ volume_breadth_weak seeded
+-- 2.1 ref_risk_gauge — total active weight = 46 (+ volume_breadth_weak seeded
 -- inactive, weight 2 -- flip to TRUE once hist_internals is flowing, per
--- Phase 4.1; active weight becomes 45 at that point).
+-- Phase 4.1; active weight becomes 48 at that point).
+-- 2026-08-14 -- gamma_neutral added: gamma_throttle in [0,2] (never
+-- overlaps gamma_negative's own <0 trigger). usd_gold_decorrelation/
+-- usd_spx_decorrelation added: drv_usd_correlation's 30d USD-vs-gold/spx
+-- correlation weakening above -0.3 (normally strongly negative). All 3
+-- inferred from a macro note's own language ("SPX slipped into neutral
+-- dealer gamma", "-0.91 inverse USD/Bitcoin correlation is the highest in
+-- Macro") -- user picked gold/SPX over Bitcoin for the correlation pair,
+-- and confirmed all 3: "instead of USD/Bitcoin, can you do USD/gold?
+-- USD/stocks?" / "ok to build". Weight 1 each (lighter "watch" tier,
+-- mirrors vix_chop/move_chop), category vol/fx respectively.
 -- 2026-08-14 -- ism_mfg_contraction/ism_svcs_contraction added: ISM
 -- Mfg/Svcs PMI <45 ("well below 50" -- a diffusion index, <50 =
 -- contraction; 45 as a defensible "well below" line, adjustable). Value
@@ -73,6 +83,9 @@ INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes
     ('short_vol_disc',         'Short-dated vol discount gone', 1, TRUE, 'vol',       NULL),
     ('short_vol_low',          'Short-dated vol at low end of range', 1, TRUE, 'vol', NULL),
     ('gamma_negative',         'Dealer gamma negative',      2, TRUE,  'positioning', NULL),
+    ('gamma_neutral',          'Dealer gamma in neutral zone', 1, TRUE, 'positioning', NULL),
+    ('usd_gold_decorrelation', 'USD-Gold correlation weakening', 1, TRUE, 'fx',      NULL),
+    ('usd_spx_decorrelation',  'USD-SPX correlation weakening', 1, TRUE, 'fx',       NULL),
     ('breadth_deteriorating',  'Breadth deteriorating',       2, TRUE,  'breadth',     NULL),
     ('gold_vol_elevated',      'Gold vol elevated',          1, TRUE,  'vol',         NULL),
     ('volume_breadth_weak',    'Up/down volume breadth weak', 2, FALSE, 'breadth',

@@ -114,6 +114,21 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
     gamma_throttle = float(gamma_row[0]) if gamma_row and gamma_row[0] is not None else None
     rvol_10day = float(gamma_row[1]) if gamma_row and gamma_row[1] is not None else None
 
+    # 2026-08-14 -- USD's rolling 30d correlation vs gold/SPX (drv_usd_
+    # correlation, already computed for the Dollar Correlation panel) --
+    # feeds _g_usd_gold_decorrelation/_g_usd_spx_decorrelation below. Both
+    # normally run strongly negative (dollar up = gold/stocks down); a
+    # weakening toward zero signals something else is driving that asset,
+    # not just dollar strength. User inferred this from a macro note's own
+    # "-0.91 inverse correlation" framing (originally about Bitcoin) ->
+    # "instead of USD/Bitcoin, can you do USD/gold? USD/stocks?"
+    corr_rows = session.execute(text(
+        "SELECT asset_key, w30 FROM drv_usd_correlation "
+        "WHERE as_of_date = (SELECT MAX(as_of_date) FROM drv_usd_correlation WHERE as_of_date <= :d) "
+        "AND asset_key = ANY(:keys)"
+    ), {"d": as_of_date, "keys": ["gold", "spx"]}).mappings().all()
+    usd_corr_map = {r["asset_key"]: float(r["w30"]) for r in corr_rows if r["w30"] is not None}
+
     # 2026-08-14 -- VIX9D (CBOE 9-day/short-dated implied vol), feeds
     # _g_short_vol_disc below. etl/fetch_vix9d.py (yfinance, symbol
     # '^VIX9D') writes here, separate from ref_corr_asset (that table also
@@ -159,6 +174,7 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "gamma_throttle": gamma_throttle,
         "rvol_10day": rvol_10day,
         "vix9d": vix9d,
+        "usd_corr": usd_corr_map,
         "hy_oas": _macro_series("BAMLH0A0HYM2", CREDIT_WIDEN_DAYS),
         "t10y2y": _macro_series("T10Y2Y", CURVE_INVERT_DAYS),
         "sahm_rule": _macro_series("SAHMREALTIME", 3),
@@ -511,6 +527,45 @@ def _g_gamma_negative(ctx):
     return v < 0, v, f"Dealer gamma throttle {v:+.2f}"
 
 
+# 2026-08-14 -- "neutral zone" companion to _g_gamma_negative above,
+# mirroring the vix_chop/move_chop pattern -- a macro note's own framing
+# ("SPX has slipped back into neutral dealer gamma -- the supportive,
+# mean-reverting hedging flows that normally buffer large moves are
+# fading") described neutral as ALREADY a meaningful shift, before gamma
+# actually turns negative. Band is 0 to 2 specifically (not -2 to 2) so it
+# never overlaps _g_gamma_negative's own <0 trigger -- each gamma_throttle
+# reading fires at most one of the two gauges, never both. Calibrated
+# against real history: gamma_throttle has ranged -11.61 to +17.40
+# (n=27, avg +4.4); 0-2 sits right at the observed transition zone (e.g.
+# 2026-07-31 printed -1.94, the day before a -11.61 print).
+def _g_gamma_neutral(ctx):
+    v = ctx.get("gamma_throttle")
+    if v is None:
+        return None, None, "gamma_throttle unavailable"
+    return 0 <= v <= 2, v, f"Dealer gamma throttle {v:+.2f} (neutral zone -- hedging support fading)"
+
+
+# 2026-08-14 -- USD's rolling 30d correlation vs gold/SPX weakening from
+# its normal strongly-negative level -- signals something other than
+# dollar strength is driving that asset. Threshold -0.3 (meaningfully
+# weaker than "strongly negative", not just a noisy tick off -0.7ish).
+# User inferred the underlying idea from a macro note's own "-0.91 inverse
+# USD/Bitcoin correlation" framing -> "instead of USD/Bitcoin, can you do
+# USD/gold? USD/stocks?"
+def _g_usd_gold_decorrelation(ctx):
+    v = ctx.get("usd_corr", {}).get("gold")
+    if v is None:
+        return None, None, "USD-Gold correlation unavailable"
+    return v > -0.3, v, f"USD-Gold 30d corr {v:+.2f} (normally strongly negative)"
+
+
+def _g_usd_spx_decorrelation(ctx):
+    v = ctx.get("usd_corr", {}).get("spx")
+    if v is None:
+        return None, None, "USD-SPX correlation unavailable"
+    return v > -0.3, v, f"USD-SPX 30d corr {v:+.2f} (normally strongly negative)"
+
+
 def _g_breadth_deteriorating(ctx):
     pct = ctx.get("pct_above_sma50")
     chg = ctx.get("pct_above_sma50_5d_chg")
@@ -557,6 +612,9 @@ GAUGES: list[tuple[str, Callable]] = [
     ("short_vol_disc", _g_short_vol_disc),
     ("short_vol_low", _g_short_vol_low),
     ("gamma_negative", _g_gamma_negative),
+    ("gamma_neutral", _g_gamma_neutral),
+    ("usd_gold_decorrelation", _g_usd_gold_decorrelation),
+    ("usd_spx_decorrelation", _g_usd_spx_decorrelation),
     ("breadth_deteriorating", _g_breadth_deteriorating),
     ("gold_vol_elevated", _g_gold_vol_elevated),
     ("volume_breadth_weak", _g_volume_breadth_weak),
