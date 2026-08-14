@@ -2336,9 +2336,17 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    added to every header (see risk_gauge_modal.js) made the table wider
    than the column, forcing a horizontal scrollbar inside .gm-left-col.
    User: "popups -> left column -> increase width by 5% so i don't see
-   horizontal scroll bar becuase of sort up/down caret addition." */
+   horizontal scroll bar becuase of sort up/down caret addition."
+   2026-08-14 follow-up -- the real overflow cause turned out to be
+   .gm-sortable's own white-space:nowrap (removed, see that rule's own
+   comment) and the overall modal was also widened 5% (.gauge-modal
+   max-width) -- scrollbar still visible after both. Left column widened
+   a further 10% on top of the above (0.72fr -> 0.79fr, again taken from
+   the chart pane's share, 1.43fr -> 1.36fr) per user: "INCREASE first
+   column width by 10% so i don't see the scroll bar on the left side
+   grid." */
 .gm-body {
-  display: grid; grid-template-columns: 0.72fr 1.43fr 0.75fr; padding: 16px 20px 20px; gap: 20px;
+  display: grid; grid-template-columns: 0.79fr 1.36fr 0.75fr; padding: 16px 20px 20px; gap: 20px;
   flex: 1 1 auto; min-height: 0; overflow: hidden;
 }
 /* 2026-08-08 -- Largest holdings moved into the left column, bottom-
@@ -2453,7 +2461,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 }
 .gm-history-col h4 { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); margin: 0 0 8px; }
 @media (max-width: 980px) {
-  .gm-body { grid-template-columns: 0.72fr 1.43fr; }
+  .gm-body { grid-template-columns: 0.79fr 1.36fr; }
   .gm-history-col {
     grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--border);
     padding-left: 0; padding-top: 16px; margin-top: 4px;
