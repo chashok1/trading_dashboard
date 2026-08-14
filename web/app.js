@@ -666,6 +666,27 @@ function _hideQuadPop() {
   if (pop) pop.style.display = 'none';
 }
 
+// 2026-08-14 -- generic rich-tooltip shim for hedgeye_panel.js's MSR panel
+// (Gamma Throttle/Realized Vol tooltips) on the Dashboard. hedgeye_panel.js
+// reuses actionable.js's #sourcePop/_showDataPop/hideSourcePop globals, but
+// actionable.js is only loaded on actionable.html -- its own _wireRichTips
+// guards on `typeof _showDataPop !== 'function'` and no-ops here otherwise,
+// which is why the tooltips silently never appeared on the Dashboard. Fills
+// that gap with the same generic (el, html) signature, reusing the
+// Dashboard's own #quadPop element + _positionQuadPop's identical
+// viewport-clamped math -- safe to share with the regime-line popover since
+// the two are never hovered at the same time.
+function _showDataPop(el, html) {
+  const pop = $('quadPop');
+  if (!pop) return;
+  pop.innerHTML = html;
+  pop.style.display = 'block';
+  _positionQuadPop(el, pop);
+}
+function hideSourcePop() {
+  _hideQuadPop();
+}
+
 // 2026-08-07 -- per-category quad-stance popover for the Sector/Asset-class/
 // Style scorecard cards ("which factor is going to do well based on the
 // quads"). stanceRow comes from GET /api/quad/factor-stance -- carries this
