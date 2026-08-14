@@ -506,9 +506,14 @@ function _regimeMonAbbr(ym) {
 // the same /api/dashboard/econ-indicators feed the Indicator/Event grid
 // already uses) after the user flagged the computed quarterly date (09/18,
 // "quad witching" 3rd Friday) didn't match what they expected (09/30).
-// ref_calendar_event has its own distinct 'Qtly Exp' category (09/25 for
-// Q3 2026 -- a third, different value from either) and the user confirmed:
-// trust that stored value over any client-side guess.
+// Verified via OCC/OIC published calendars (see db/migrate_calendar_
+// expirations_2026_2028.py): 'Qtly Exp' is OCC's distinct Quarterly
+// Options product (EOQ, last business day of the quarter), NOT quad-
+// witching -- quad-witching IS just that quarter's Monthly Exp (09/18,
+// already shown by the "OPEX" part below). Label changed 'Quad' -> 'EOQ'
+// (was misleadingly implying quad-witching) after user: "can you check
+// Quad 09/30 in options expiration. Shouldn't be replaced with quarterly
+// expiration" -- i.e. 09/30 is real, just mislabeled as quad-witching.
 function _calRow(calRows, category) {
   return (calRows || []).find(r => r.indicator === category);
 }
@@ -517,7 +522,7 @@ function _opexLineHtml(calRows) {
     const row = _calRow(calRows, category);
     return row ? `${label} ${fmtDate(row.indicator_date)} (${row.days}d)` : '';
   };
-  const bits = [part('OPEX', 'Monthly Exp'), part('Quad', 'Qtly Exp')].filter(Boolean);
+  const bits = [part('OPEX', 'Monthly Exp'), part('EOQ', 'Qtly Exp')].filter(Boolean);
   return bits.length ? `<div class="opex-line">${bits.join(' &middot; ')}</div>` : '';
 }
 
