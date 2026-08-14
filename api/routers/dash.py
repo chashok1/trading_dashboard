@@ -1293,6 +1293,38 @@ def get_portfolio_beta_map(date: Optional[str] = Query(None)):
     return {r["tos_symbol"]: float(r["beta"]) for r in rows}
 
 
+@router.get("/api/portfolio/asset-class-map")
+def get_portfolio_asset_class_map(date: Optional[str] = Query(None)):
+    """tos_symbol -> asset_class category, using the EXACT SAME
+    classification etl/derive_category_perf.py's Asset class factor-
+    scorecard table uses (_build_category_map/_categories_for: drv_ma.
+    asset_class, falling back to ref_sector.asset_class, restricted to a
+    fixed vocabulary; unresolved -> "Unmapped") -- reused, not
+    reimplemented, so the Portfolio Mix panel's Asset Allocation pie (both
+    the Actionable sidebar and the Dashboard screen) classifies every
+    symbol identically to the Asset class table shown alongside it. Before
+    this endpoint, the pie grouped by drv_actionable.real_asset_class
+    (the BROKER's own source asset-class tag, a different field/vocabulary
+    entirely) while the table grouped by the technicals-derived asset_class
+    -- the two could legitimately disagree per symbol. User: "Shouldn't
+    asset allocation and asset class below match?"
+
+    Universe = every symbol drv_symbols (this date's tracked universe) or
+    ref_sector knows about -- same lookup scope _build_category_map itself
+    uses. A held symbol outside both simply has no key here; callers fall
+    back to "Unmapped" for it too, matching _categories_for's own
+    "symbol not in cat_map" -> "Unmapped" behavior."""
+    from etl.derive_category_perf import _build_category_map, _categories_for
+    d = _resolve_date(date)
+    with session_scope() as s:
+        universe = set(s.execute(text(
+            "SELECT tos_symbol FROM drv_symbols WHERE as_of_date = :d"
+        ), {"d": d}).scalars().all())
+        universe |= set(s.execute(text("SELECT ticker FROM ref_sector")).scalars().all())
+        cat_map = _build_category_map(s, d, universe)
+    return {sym: _categories_for(sym, cat_map, "asset_class")[0] for sym in cat_map}
+
+
 @router.get("/api/actionable/source-scorecard")
 def get_actionable_source_scorecard():
     """source_code -> buy-family (ADD+INCREASE) n-weighted 20d edge/win-rate

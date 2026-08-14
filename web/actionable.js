@@ -1535,11 +1535,12 @@ async function loadActionable(opts) {
   }
   try {
     const dateParam = state.date ? `?date=${encodeURIComponent(state.date)}` : '';
-    const [rows, accts, betaMap, portfolioRows] = await Promise.all([
+    const [rows, accts, betaMap, portfolioRows, assetClassMap] = await Promise.all([
       fetchJson('/api/actionable?' + params.toString()),
       fetchJson(`/api/actionable/accounts${dateParam}`).catch(() => []),
       fetchJson(`/api/portfolio/beta-map${dateParam}`).catch(() => ({})),
       fetchJson(`/api/portfolio${dateParam}`).catch(() => []),
+      fetchJson(`/api/portfolio/asset-class-map${dateParam}`).catch(() => ({})),
     ]);
     state.allAccounts = Array.isArray(accts) ? accts : [];
     state.allRows = Array.isArray(rows) ? rows : [];
@@ -1550,6 +1551,11 @@ async function loadActionable(opts) {
     state.cashRows = (Array.isArray(portfolioRows) ? portfolioRows : []).filter(r => r.is_cash);
     state.allRows.forEach(r => {
       r._assetClass = _normAssetClass(r.real_asset_class);
+      // Portfolio Mix's Asset Allocation pie groups by THIS field, not
+      // _assetClass above -- see web/portfolio_mix.js::pmRenderCoreMix and
+      // /api/portfolio/asset-class-map's own docstring for why the two
+      // differ (this one matches the Asset class factor-scorecard table).
+      r._pmAssetClass = (assetClassMap && assetClassMap[r.tos_symbol]) || 'Unmapped';
       // RR column sort key (2026-08-12) — same formula _buildRowEl's rrBarHtml
       // already computes for the bar's tick position, hoisted here so the RR
       // header can sort by it (0 = at LRR, 100 = at TRR) without duplicating

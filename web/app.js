@@ -1576,13 +1576,19 @@ async function loadDashPortfolioMix() {
   if (!$('dashPortfolioMixSection') || typeof Chart === 'undefined') return;
   try {
     const dateParam = state.date ? `?date=${encodeURIComponent(state.date)}` : '';
-    const [rows, betaMap, portfolioRows] = await Promise.all([
+    const [rows, betaMap, portfolioRows, assetClassMap] = await Promise.all([
       fetchJson('/api/actionable' + dateParam),
       fetchJson('/api/portfolio/beta-map' + dateParam).catch(() => ({})),
       fetchJson('/api/portfolio' + dateParam).catch(() => []),
+      fetchJson('/api/portfolio/asset-class-map' + dateParam).catch(() => ({})),
     ]);
     const allRows = Array.isArray(rows) ? rows : [];
-    allRows.forEach(r => { r._assetClass = _normAssetClass(r.real_asset_class); });
+    // Same classification as the Asset class factor-scorecard grid in this
+    // column (drv_ma.asset_class/ref_sector, not the broker's own
+    // real_asset_class tag) -- see /api/portfolio/asset-class-map's
+    // docstring. User: "Shouldn't asset allocation and asset class below
+    // match?"
+    allRows.forEach(r => { r._pmAssetClass = (assetClassMap && assetClassMap[r.tos_symbol]) || 'Unmapped'; });
     const accounts = state.catAccounts || [];
     const held = allRows.filter(r => {
       if (!r.held_today || !(Number(r.current_position_dollar) > 0)) return false;

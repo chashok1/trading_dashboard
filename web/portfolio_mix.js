@@ -148,12 +148,20 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
   const held = (heldRowsIn || []).slice()
     .sort((a, b) => (Number(b.current_position_dollar) || 0) - (Number(a.current_position_dollar) || 0));
 
-  // Asset allocation mix -- real_asset_class (from hist_ps.asset_class, with
-  // ETF/technicals fallback) plus uninvested cash (SPAXX/pending activity,
-  // via is_cash()) which has no tos_symbol so it can't come from `held`.
+  // Asset allocation mix -- r._pmAssetClass, the SAME drv_ma.asset_class
+  // (ref_sector fallback, "Unmapped" for anything else) classification the
+  // Asset class factor-scorecard table uses (via /api/portfolio/asset-
+  // class-map), so this pie always agrees with that table. NOT
+  // r._assetClass (real_asset_class/_normAssetClass, the broker's own
+  // source asset-class tag) -- that field still drives the Actionable
+  // grid's own Asset Class filter chips unrelated to this pie, and the two
+  // classifications can legitimately disagree per symbol (see the
+  // /api/portfolio/asset-class-map docstring). Plus uninvested cash
+  // (SPAXX/pending activity, via is_cash()) which has no tos_symbol so it
+  // can't come from `held`.
   const assetTotals = {}, assetTickerMap = {};
   for (const r of held) {
-    const ac = r._assetClass || 'Unclassified';
+    const ac = r._pmAssetClass || 'Unmapped';
     assetTotals[ac] = (assetTotals[ac] || 0) + (Number(r.current_position_dollar) || 0);
     (assetTickerMap[ac] = assetTickerMap[ac] || []).push(r.tos_symbol);
   }
