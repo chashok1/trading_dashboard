@@ -178,6 +178,8 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "hy_oas": _macro_series("BAMLH0A0HYM2", CREDIT_WIDEN_DAYS),
         "t10y2y": _macro_series("T10Y2Y", CURVE_INVERT_DAYS),
         "sahm_rule": _macro_series("SAHMREALTIME", 3),
+        "nfci": _macro_series("NFCI", 3),
+        "icsa": _macro_series("ICSA", 90),
         "ism_mfg": _latest_indicator_actual("ISM Mfg"),
         "ism_svcs": _latest_indicator_actual("ISM Svcs"),
         "vrp": extra.get("vrp"),
@@ -346,6 +348,30 @@ def _g_credit_stress(ctx):
     return fired, v, _leg_detail(legs, fired)
 
 
+# 2026-08-14 -- credit-equity divergence: HY spreads widening WHILE SPX is
+# still near the top of its own risk range -- credit flashing a warning
+# equities haven't priced in yet (a classic "credit leads equities"
+# leading indicator, same spirit as vix_spx_divergence but credit vs
+# equities instead of vol vs equities). Distinct from _g_credit_stress
+# above, which fires on HY widening OR HYG breakdown alone, regardless of
+# what equities are doing -- this one specifically needs the divergence
+# (both legs), not either alone. Reuses hy_oas (already fetched for
+# credit_stress) and SPX's own risk-range position -- no new data. User:
+# "Build all 3" (in response to a list including this one).
+def _g_credit_equity_divergence(ctx):
+    hy_widen = _series_delta(ctx.get("hy_oas"), CREDIT_WIDEN_DAYS)
+    spx_pos = _rr_pos_sym(ctx, "SPX")
+    if hy_widen is None or spx_pos is None:
+        return None, None, "HY OAS delta or SPX range unavailable"
+    widened = hy_widen[1] * 100 >= CREDIT_WIDEN_BP
+    spx_elevated = spx_pos >= 0.7
+    fired = widened and spx_elevated
+    return fired, hy_widen[1] * 100, (
+        f"HY OAS {hy_widen[0]:.2f}% ({hy_widen[1]*100:+.0f}bp/{CREDIT_WIDEN_DAYS}d) "
+        f"while SPX {spx_pos*100:.0f}% of range"
+    )
+
+
 def _g_yield_level_watch(ctx):
     raw = ctx["quote"].get("TNX:CGI")
     tnx = _normalize_tnx(raw)
@@ -404,6 +430,45 @@ def _g_sahm_rule(ctx):
         return None, None, "SAHMREALTIME unavailable"
     latest_date, v = series[0]
     return v >= 0.50, v, f"Sahm Rule {v:+.2f}pp (as of {latest_date.strftime('%b %Y')})"
+
+
+# 2026-08-14 -- NFCI (Chicago Fed National Financial Conditions Index):
+# standardized so 0 = average conditions, positive = tighter-than-average,
+# negative = looser. Already tracked (db/seeds_macro.sql), unused by any
+# gauge until now. Threshold 0 (not some arbitrary positive number) --
+# checked the actual 2020+ history: NFCI has only gone positive during the
+# Apr-May 2020 COVID crash (range -0.694 to +0.304 since 2020, avg -0.42)
+# -- crossing zero at all has been a genuinely rare, crisis-level event in
+# this era, not noise. User: "Build all 3."
+def _g_nfci_tightening(ctx):
+    series = ctx.get("nfci")
+    if not series:
+        return None, None, "NFCI unavailable"
+    latest_date, v = series[0]
+    return v > 0, v, f"NFCI {v:+.2f} (as of {latest_date.strftime('%b %d')})"
+
+
+# 2026-08-14 -- initial jobless claims trending up -- a real-time labor-
+# market-weakening signal that leads UNRATE/the Sahm Rule itself. Raw
+# weekly ICSA is noisy (single-week swings of +-10%+ are routine), so this
+# compares a 4-week average against the 4-week average from 4 weeks
+# earlier (8-12 weeks back) rather than a single-point delta, filtering
+# out routine week-to-week noise. User: "Build all 3."
+def _g_claims_rising(ctx):
+    series = ctx.get("icsa")
+    if not series or len(series) < 12:
+        return None, None, "Initial claims history unavailable"
+    recent, prior = series[:4], series[8:12]
+    if len(recent) < 4 or len(prior) < 4:
+        return None, None, "Initial claims history unavailable"
+    recent_avg = sum(v for _, v in recent) / 4
+    prior_avg = sum(v for _, v in prior) / 4
+    if not prior_avg:
+        return None, None, "Initial claims history unavailable"
+    pct_chg = (recent_avg - prior_avg) / prior_avg * 100
+    return pct_chg >= 10, pct_chg, (
+        f"Claims 4wk avg {recent_avg/1000:.0f}k vs 8wk-ago {prior_avg/1000:.0f}k ({pct_chg:+.0f}%)"
+    )
 
 
 def _g_dollar_strong(ctx):
@@ -600,9 +665,12 @@ GAUGES: list[tuple[str, Callable]] = [
     ("move_elevated", _g_move_elevated),
     ("move_chop", _g_move_chop),
     ("credit_stress", _g_credit_stress),
+    ("credit_equity_divergence", _g_credit_equity_divergence),
     ("yield_level_watch", _g_yield_level_watch),
     ("curve_inverting", _g_curve_inverting),
     ("sahm_rule", _g_sahm_rule),
+    ("nfci_tightening", _g_nfci_tightening),
+    ("claims_rising", _g_claims_rising),
     ("dollar_strong", _g_dollar_strong),
     ("jpy_carry_unwind", _g_jpy_carry_unwind),
     ("ism_mfg_contraction", _g_ism_mfg_contraction),

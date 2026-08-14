@@ -6,9 +6,19 @@
 -- =====================================================
 
 -- ---------------------------------------------------------------------------
--- 2.1 ref_risk_gauge — total active weight = 46 (+ volume_breadth_weak seeded
+-- 2.1 ref_risk_gauge — total active weight = 51 (+ volume_breadth_weak seeded
 -- inactive, weight 2 -- flip to TRUE once hist_internals is flowing, per
--- Phase 4.1; active weight becomes 48 at that point).
+-- Phase 4.1; active weight becomes 53 at that point).
+-- 2026-08-14 -- credit_equity_divergence added: HY OAS widening WHILE SPX
+-- stays near top of its own range (both legs required, unlike
+-- credit_stress which fires on either alone) -- credit warning equities
+-- haven't priced in yet. nfci_tightening added: NFCI >0 (Chicago Fed
+-- financial conditions index; checked history -- only positive during
+-- Apr-May 2020 COVID crash since 2020, a genuinely rare crossing).
+-- claims_rising added: ICSA 4wk-avg vs 8-12wk-ago 4wk-avg, >=10% rise
+-- (smooths routine single-week noise). All 3 weight 1-2, user: "Build all
+-- 3" (in response to a suggested list) -> "Is there anything else that we
+-- can build rates & duration and credit?"
 -- 2026-08-14 -- gamma_neutral added: gamma_throttle in [0,2] (never
 -- overlaps gamma_negative's own <0 trigger). usd_gold_decorrelation/
 -- usd_spx_decorrelation added: drv_usd_correlation's 30d USD-vs-gold/spx
@@ -67,6 +77,8 @@ INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes
     ('spx_bottom_range',       'SPX below risk range',       2, TRUE,  'equity',      NULL),
     ('vix_spx_divergence',     'VIX/SPX inverse relationship broken', 3, TRUE, 'equity', NULL),
     ('sahm_rule',               'Sahm Rule recession signal',  3, TRUE,  'macro',       NULL),
+    ('nfci_tightening',         'Financial conditions tightening', 2, TRUE, 'macro',   NULL),
+    ('claims_rising',           'Initial jobless claims rising', 1, TRUE, 'macro',     NULL),
     ('ism_mfg_contraction',     'ISM Manufacturing well below 50', 2, TRUE, 'macro',   NULL),
     ('ism_svcs_contraction',    'ISM Services well below 50', 2, TRUE,  'macro',       NULL),
     ('vix_elevated',           'Equity vol elevated',        3, TRUE,  'vol',         NULL),
@@ -74,6 +86,7 @@ INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes
     ('move_elevated',          'Bond vol elevated',          3, TRUE,  'vol',         NULL),
     ('move_chop',              'Bond vol in chop zone',      1, TRUE,  'vol',         NULL),
     ('credit_stress',          'Credit stress',               3, TRUE,  'credit',      NULL),
+    ('credit_equity_divergence', 'Credit widening, equities not confirming', 2, TRUE, 'credit', NULL),
     ('yield_level_watch',      'Yields at a watched level',  2, TRUE,  'rates',       NULL),
     ('curve_inverting',        'Curve inverting fast',       1, TRUE,  'rates',       NULL),
     ('dollar_strong',          'Dollar at top of range',     2, TRUE,  'fx',          NULL),
