@@ -234,10 +234,19 @@
                height to match it, flex default is stretch) -- switched to
                align-items:center same day per user: "all graphs on the top
                row, make sure middles are aligned with cumulative P&L" --
-               every item's own vertical CENTER now sits on the same line
-               instead of every item's TOP edge; still no stretching (that
-               risk was specific to 'stretch', not 'flex-start' vs
-               'center' -- both size each item to its own content). -->
+               every item's own vertical CENTER sat on the same line
+               instead of every item's TOP edge.
+               2026-08-14 follow-up -- switched BACK to align-items:
+               flex-start per user: "Horizontally align header texts asset
+               allocation/beta/sector/concentration with cumulative p/l
+               text" -- centering the whole (much taller) Cumulative P&L
+               card against the short pie cards pushed the pie titles down
+               to the row's vertical middle, well below "Cumulative P&L"'s
+               own title line at the top of its card. flex-start puts
+               every item's title on the same top line instead; no
+               stretching risk either way (that was specific to 'stretch',
+               never flex-start/center -- both size each item to its own
+               content). -->
           <!-- 2026-08-14 -- "Portfolio Mix" header line removed -- user:
                "remove the 'portfolio mix' header text line in the graphs
                panel." -->
@@ -259,7 +268,7 @@
                and catgories/legends. Once that is done for all graphs, use
                the remaining space between the graphs." -->
           <div class="ts-widget" id="dashPortfolioMixSection">
-            <div style="display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;">
+            <div style="display:flex;flex-direction:row;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:16px;">
               <!-- 2026-08-14 -- flex-grow dropped to 0 (was 1) alongside the
                    pie cards' own switch to fixed content-driven widths --
                    with this still growing, it alone would have absorbed
