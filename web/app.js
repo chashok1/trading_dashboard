@@ -501,30 +501,35 @@ function _regimeMonAbbr(ym) {
 
 // 2026-08-14 -- Options expiration line, shown above the Regime line (own
 // separator) per user: "i need to see options expiration date (mm/dd) 10d
-// both montly and quarterly". Originally computed client-side (3rd Friday
-// of the month) -- switched to reading ref_calendar_event directly (via
-// the same /api/dashboard/econ-indicators feed the Indicator/Event grid
-// already uses) after the user flagged the computed quarterly date (09/18,
-// "quad witching" 3rd Friday) didn't match what they expected (09/30).
-// Verified via OCC/OIC published calendars (see db/migrate_calendar_
-// expirations_2026_2028.py): 'Qtly Exp' is OCC's distinct Quarterly
-// Options product (last business day of the quarter), NOT quad-witching
-// -- quad-witching IS just that quarter's Monthly Exp (09/18, already
-// shown by the "OPEX" part below). Label went 'Quad' -> 'EOQ' -> 'Qtly
-// Exp' (matches the underlying category name exactly, no invented
-// terminology) after user: "can you check Quad 09/30 in options
-// expiration. Shouldn't be replaced with quarterly expiration" -> "I need
-// quarterly expiration there. not EOQ" -- 09/30 is the correct value,
-// just needed a label that reads as "quarterly expiration".
+// both montly and quarterly". Went through several rounds settling what
+// "quarterly expiration" should mean here:
+//   1. Client-computed 3rd-Friday-of-quarter-month (quad-witching) = 09/18
+//      -- user said that didn't match what they expected (09/30).
+//   2. Switched to ref_calendar_event's own 'Qtly Exp' category, which
+//      turned out (per OCC/OIC published calendars, see db/migrate_
+//      calendar_expirations_2026_2028.py) to be a DIFFERENT real product --
+//      OCC's Quarterly Options (EOQ, last business day of the quarter) =
+//      09/30, not quad-witching.
+//   3. User: "can you check Quad 09/30... Shouldn't be replaced with
+//      quarterly expiration" -> "I need quarterly expiration there. not
+//      EOQ" -> "it should be sept 18" -- settled: "quarterly expiration"
+//      here means quad-witching after all, same convention as the OPEX
+//      part, just restricted to quarter-ending months (Mar/Jun/Sep/Dec).
+//      That IS just Monthly Exp filtered to those 4 months -- no need to
+//      involve ref_calendar_event's separate 'Qtly Exp' category at all.
 function _calRow(calRows, category) {
   return (calRows || []).find(r => r.indicator === category);
 }
+function _nextQuadWitching(calRows) {
+  return (calRows || []).find(r => {
+    if (r.indicator !== 'Monthly Exp') return false;
+    const month = parseInt(String(r.indicator_date).slice(5, 7), 10);
+    return month === 3 || month === 6 || month === 9 || month === 12;
+  });
+}
 function _opexLineHtml(calRows) {
-  const part = (label, category) => {
-    const row = _calRow(calRows, category);
-    return row ? `${label} ${fmtDate(row.indicator_date)} (${row.days}d)` : '';
-  };
-  const bits = [part('OPEX', 'Monthly Exp'), part('Qtly Exp', 'Qtly Exp')].filter(Boolean);
+  const part = (label, row) => row ? `${label} ${fmtDate(row.indicator_date)} (${row.days}d)` : '';
+  const bits = [part('OPEX', _calRow(calRows, 'Monthly Exp')), part('Qtly Exp', _nextQuadWitching(calRows))].filter(Boolean);
   return bits.length ? `<div class="opex-line">${bits.join(' &middot; ')}</div>` : '';
 }
 
