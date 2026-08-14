@@ -204,18 +204,29 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
   // canonicalized/equity-gated/ref_sector-fallback classification the
   // Sector factor-scorecard table uses -- NOT the raw r.sector field
   // (still drives the Actionable grid's own unrelated Sector filter
-  // chips). Non-equity holdings land in their own "Non-Equity (excluded)"
-  // bucket here, same as the table's own row for it.
+  // chips).
   //
-  // 2026-08-14 -- briefly added a Cash slice here (to make this pie's %
-  // match the table's own WT% column, which divides by the whole portfolio
-  // including cash) -- reverted same day. User, after seeing it live: "top
-  // sector included the cash, which it should not." Sector intentionally
-  // has no Cash category (cash isn't sector-classified); this pie's %
-  // is deliberately "% of your sector-classified holdings", not "% of
-  // whole portfolio" -- won't equal the table's WT% number, by design.
+  // 2026-08-14 -- Non-equity holdings (bond/gold/commodity ETFs) EXCLUDED
+  // entirely from this pie -- their dollars simply aren't part of the
+  // Sector mix, same as Cash isn't. Previously shown as their own
+  // "Non-Equity (excluded)" slice (matching the table's then-behavior of
+  // the same name); user: "Sector should include only equities from
+  // 'Asset Class', so non-equity (excluded) probably shouldn't exist at
+  // all in the sector" -- reverted alongside api/routers/cockpit.py's own
+  // get_factor_scorecard, which now drops that category from the table's
+  // response the same way again.
+  //
+  // 2026-08-14 (earlier the same day) -- briefly added a Cash slice here
+  // (to make this pie's % match the table's own WT% column, which divides
+  // by the whole portfolio including cash) -- reverted same day. User,
+  // after seeing it live: "top sector included the cash, which it should
+  // not." Sector intentionally has no Cash category (cash isn't
+  // sector-classified); this pie's % is deliberately "% of your
+  // sector-classified equity holdings", not "% of whole portfolio" --
+  // won't equal the table's WT% number, by design.
   const secTotals = {}, secTickerMap = {};
   for (const r of held) {
+    if (r._pmSector === 'Non-Equity (excluded)') continue;
     const s = r._pmSector || 'Unmapped';
     secTotals[s] = (secTotals[s] || 0) + (Number(r.current_position_dollar) || 0);
     (secTickerMap[s] = secTickerMap[s] || []).push(r.tos_symbol);

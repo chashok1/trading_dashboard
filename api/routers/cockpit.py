@@ -646,23 +646,26 @@ def get_factor_scorecard(date: Optional[str] = Query(None),
                 rd[k] = rd[k].isoformat()
         if rd["category"] == "Unmapped":
             unmapped = rd
-        else:
+        elif rd["category"] == "Non-Equity (excluded)":
             # 2026-08-08 -- "Non-Equity (excluded)" (bond/gold/commodity/
             # crypto ETFs on the equity-only sector/style axes, see
-            # etl/derive_category_perf.py::_categories_for) used to be
-            # dropped here entirely, so sector/style's row sum only ever
-            # totaled the equity sleeve, never the whole portfolio.
-            # 2026-08-11 -- reversed: now included as an ordinary row, same
-            # as any category, so sector/style/asset_class totals actually
-            # match (asset_class was always exhaustive; sector/style weren't)
-            # -- user: "all grids should have the same totals as the stock
-            # universe is same." Kept OUT of `unmapped` (not merged into it)
-            # specifically so "Unmapped" still reads as genuine
-            # classification gaps only, not diluted by non-equity dollars
-            # that were never supposed to resolve to a GICS sector in the
-            # first place -- that was the whole reason this bucket exists
-            # as its own category rather than folding into Unmapped 2026-
-            # 08-08. User confirmed: "Own row, not Unmapped."
+            # etl/derive_category_perf.py::_categories_for) dropped from the
+            # response entirely, so sector/style's row sum only ever totals
+            # the equity sleeve, never the whole portfolio.
+            # 2026-08-11 -- briefly reversed (included as an ordinary row,
+            # so sector/style/asset_class totals would all match the whole
+            # portfolio) -- user at the time: "all grids should have the
+            # same totals as the stock universe is same" / "Own row, not
+            # Unmapped."
+            # 2026-08-14 -- re-reverted (back to dropped) -- user: "Sector
+            # should include only equities from 'Asset Class', so
+            # non-equity (excluded) probably shouldn't exist at all in the
+            # sector." Still computed/persisted as its own row in
+            # drv_category_perf either way (exhaustive-partition invariant,
+            # auditable via SQL) -- this only controls what the API/UI
+            # surfaces, same as before 2026-08-11.
+            continue
+        else:
             out_rows.append(rd)
 
     return {
