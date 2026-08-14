@@ -702,8 +702,8 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
                                    None, description="Comma-separated account_number values -- "
                                    "narrows this popup to match the Cockpit Accounts filter "
                                    "active on the $ grid the row was clicked from.")):
-    if axis not in ("sector", "asset_class", "style"):
-        raise HTTPException(status_code=400, detail="axis must be sector|asset_class|style")
+    if axis not in ("sector", "asset_class", "style", "beta"):
+        raise HTTPException(status_code=400, detail="axis must be sector|asset_class|style|beta")
     d = _resolve_date(date)
     # 2026-08-09 BUGFIX -- this popup previously always showed ALL
     # accounts regardless of the Cockpit Accounts filter active on the $
@@ -815,13 +815,38 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
         # that" -- it doesn't.
         equity_only_clause = " AND (COALESCE(m.asset_class, rs.asset_class) IS NULL OR COALESCE(m.asset_class, rs.asset_class) = 'Equities')" \
             if axis in ("sector", "style") else ""
-        category_param = category if axis == "style" else category.strip().lower()
+        category_param = category if axis in ("style", "beta") else category.strip().lower()
         # category.strip().lower(), not category_param -- category_param
         # preserves case for style (real labels like "Low Beta" are
         # case-sensitive), so comparing IT against a lowercase literal
-        # would never match "Unmapped" for axis=style.
+        # would never match "Unmapped" for axis=style. beta's own labels
+        # (Low/Mid/High/Unknown, from web/portfolio_mix.js's betaBuckets)
+        # are matched via a Python dict below, not a SQL bind param, so
+        # case is preserved here too though it's otherwise unused for beta.
         category_is_unmapped = category.strip().lower() == "unmapped"
         category_is_non_equity = category.strip().lower() == "non-equity (excluded)"
+        # 2026-08-14 -- beta axis added for the Beta pie's exposure-detail
+        # popup ("similar to other graphs"). Unlike sector/asset_class/
+        # style, Beta buckets aren't a drv_ma/ref_sector column value --
+        # they're a threshold bucket over drv_fundamentals.beta, matching
+        # web/portfolio_mix.js::pmRenderCoreMix's OWN bucketing exactly
+        # (Low <=0.7, High >=1.5, else Mid; NULL/missing -> Unknown) so this
+        # popup's positions always sum to the same $ the pie slice shows.
+        # No equity_only_clause -- the Beta pie includes bonds/gold ETFs
+        # too, unlike Sector. Cash excluded below (cash_exclude_clause) --
+        # the frontend's own beta bucketing never sees cash either (passed
+        # to pmRenderCoreMix separately as cashTotal, not part of `held`).
+        beta_join = ""
+        if axis == "beta":
+            beta_join = "LEFT JOIN drv_fundamentals df ON df.tos_symbol = a.tos_symbol AND df.as_of_date = :d"
+            beta_where = {
+                "Low": "df.beta <= 0.7",
+                "Mid": "df.beta > 0.7 AND df.beta < 1.5",
+                "High": "df.beta >= 1.5",
+                "Unknown": "df.beta IS NULL",
+            }
+            if category not in beta_where:
+                raise HTTPException(status_code=400, detail="beta category must be Low|Mid|High|Unknown")
 
         # 2026-08-08 -- "Unmapped" is a synthetic bucket, not a real
         # sector/asset_class/style value -- no symbol ever has
@@ -872,6 +897,8 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
                     SELECT 1 FROM jsonb_array_elements(COALESCE(ms.style_stances, '[]'::jsonb)) e
                     WHERE e->>'label' = :category
                 )""" + equity_only_clause
+        elif axis == "beta":
+            where_clause = beta_where[category]
         else:
             col = "COALESCE(m.sector, rs.equity_sector)" if axis == "sector" else "COALESCE(m.asset_class, rs.asset_class)"
             where_clause = f"LOWER(TRIM({col})) = :category" + equity_only_clause
@@ -895,7 +922,7 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
         # the aggregate's universe; asset_class's real "Cash" category is
         # unaffected (this only touches the Unmapped special-case).
         cash_exclude_clause = " AND NOT is_cash(symbol, security_type, description)" \
-            if axis in ("sector", "style") or (axis == "asset_class" and category_is_unmapped) else ""
+            if axis in ("sector", "style", "beta") or (axis == "asset_class" and category_is_unmapped) else ""
         # 2026-08-08 -- Account column uses ref_accounts.short_name only,
         # same as get_gauge_exposure_detail -- user: "popup -> left column
         # grid (stock listing) -> use account desc".
@@ -927,6 +954,7 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
             LEFT JOIN drv_ma m ON m.tos_symbol = a.tos_symbol AND m.as_of_date = :d
             LEFT JOIN drv_macro_score ms ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = :d
             LEFT JOIN ref_sector rs ON rs.ticker = a.tos_symbol
+            {beta_join}
             WHERE {where_clause}
             ORDER BY a.mv DESC
         """), {"d": d, "category": category_param, "accounts": accounts_list}).mappings().all()
@@ -966,24 +994,32 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
         # `dollar`/`pct` (computed above, unaffected). User: "is there a
         # way i can see closed/sold positions also in these dashboard
         # graphs".
-        closed_rows = s.execute(text(f"""
-            WITH {_closed_positions_base(d, accounts_list)}
-            SELECT c.tos_symbol, c.account, c.sell_date, c.gl, c.glpct, c.shares_sold
-            FROM closed c
-            {_CLOSED_CLASSIFY_JOIN}
-            WHERE {where_clause}
-            ORDER BY c.sell_date DESC
-        """), {"d": d, "category": category_param, "accounts": accounts_list}).mappings().all()
-        for r in closed_rows:
-            gl = r["gl"]
-            positions.append({
-                "symbol": r["tos_symbol"], "account": r["account"],
-                "closed": True, "sell_date": r["sell_date"].isoformat(),
-                "dollar": 0.0,
-                "shares_sold": round(float(r["shares_sold"]), 2) if r["shares_sold"] is not None else None,
-                "realized_gain_dollar": round(float(gl), 2) if gl is not None else None,
-                "realized_gain_pct": round(float(r["glpct"]), 2) if r["glpct"] is not None else None,
-            })
+        # 2026-08-14 -- skipped entirely for axis="beta": _CLOSED_CLASSIFY_JOIN
+        # doesn't join drv_fundamentals (beta_where references df.beta, an
+        # undefined alias there), and "closed position's beta bucket" has no
+        # clean meaning anyway -- beta drifts over time and was never
+        # tracked historically, unlike sector/asset_class/style which are
+        # comparatively stable classifications. Per user: keep beta's popup
+        # to open positions only, no closed-positions section.
+        if axis != "beta":
+            closed_rows = s.execute(text(f"""
+                WITH {_closed_positions_base(d, accounts_list)}
+                SELECT c.tos_symbol, c.account, c.sell_date, c.gl, c.glpct, c.shares_sold
+                FROM closed c
+                {_CLOSED_CLASSIFY_JOIN}
+                WHERE {where_clause}
+                ORDER BY c.sell_date DESC
+            """), {"d": d, "category": category_param, "accounts": accounts_list}).mappings().all()
+            for r in closed_rows:
+                gl = r["gl"]
+                positions.append({
+                    "symbol": r["tos_symbol"], "account": r["account"],
+                    "closed": True, "sell_date": r["sell_date"].isoformat(),
+                    "dollar": 0.0,
+                    "shares_sold": round(float(r["shares_sold"]), 2) if r["shares_sold"] is not None else None,
+                    "realized_gain_dollar": round(float(gl), 2) if gl is not None else None,
+                    "realized_gain_pct": round(float(r["glpct"]), 2) if r["glpct"] is not None else None,
+                })
 
         # 2026-08-08 -- category's own Yesterday % (the whole category,
         # already-computed by etl/derive_category_perf.py::

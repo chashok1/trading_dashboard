@@ -1000,7 +1000,9 @@
   };
 
   window.openFactorExposureModal = function (axis, category) {
-    var axisLabel = axis === 'asset_class' ? 'Asset class' : (axis === 'style' ? 'Style' : 'Sector');
+    // 2026-08-14 -- 'beta' axis added for the Beta pie's popup (was falling
+    // into the else branch and mislabeling itself "Sector match").
+    var axisLabel = axis === 'asset_class' ? 'Asset class' : (axis === 'style' ? 'Style' : (axis === 'beta' ? 'Beta' : 'Sector'));
     var dateQS = _dateQS('?');
     _open('/api/cockpit/factor-scorecard/' + encodeURIComponent(axis) + '/' + encodeURIComponent(category) +
           '/exposure-detail' + dateQS + _accountsQS(dateQS ? '&' : '?'), category, axisLabel + ' match');

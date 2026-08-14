@@ -286,7 +286,14 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
   const betaLabels = Object.keys(betaBuckets).filter(k => betaBuckets[k] > 0);
   _pmDrawPie(idPrefix + 'Beta', idPrefix + 'BetaCanvas', idPrefix + 'BetaLegend',
     betaLabels, betaLabels.map(k => betaBuckets[k]), betaLabels.map(k => _PM_BETA_COLORS[k]),
-    betaLabels.map(k => betaTickers[k]), 'No beta data for held positions.');
+    betaLabels.map(k => betaTickers[k]), 'No beta data for held positions.',
+    // 2026-08-14 -- click popup added, matching Asset Allocation/Sector.
+    // New 'beta' axis in api/routers/cockpit.py::get_factor_exposure_detail
+    // buckets by drv_fundamentals.beta with the SAME thresholds as
+    // betaBuckets above (Low <=0.7, High >=1.5, else Mid, Unknown=NULL) so
+    // the popup's positions always sum to this slice's own $ value. User:
+    // "Add Beta grap click popup (similar to other graphs)".
+    (label) => _pmOpenCategoryModal('beta', label));
   _pmFitCardWidth(idPrefix + 'BetaCard', betaLabels, betaLabels.map(k => betaBuckets[k]));
 
   // Sector mix -- top 7 by $ value + Other. Color assigned by alpha rank so
