@@ -229,12 +229,18 @@
                space." Element ids/period dropdown unchanged from when it
                lived in its own #cumPnlBand card, so app.js::
                loadCumPnlSnapshot() needed no changes, only the container
-               moved (again). align-items:flex-start on the row so the
-               taller chart item doesn't stretch the pie items' height to
-               match it (flex default is stretch). -->
+               moved (again). align-items:flex-start on the row at first
+               (so the taller chart item wouldn't stretch the pie items'
+               height to match it, flex default is stretch) -- switched to
+               align-items:center same day per user: "all graphs on the top
+               row, make sure middles are aligned with cumulative P&L" --
+               every item's own vertical CENTER now sits on the same line
+               instead of every item's TOP edge; still no stretching (that
+               risk was specific to 'stretch', not 'flex-start' vs
+               'center' -- both size each item to its own content). -->
           <div class="ts-widget" id="dashPortfolioMixSection">
             <div class="ts-title">Portfolio Mix</div>
-            <div style="padding-top:2px;display:flex;flex-direction:row;flex-wrap:wrap;align-items:flex-start;gap:16px;">
+            <div style="padding-top:2px;display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:16px;">
               <div style="flex:1 1 260px;min-width:220px;">
                 <div class="ts-title" style="margin-bottom:2px;">Cumulative P&amp;L
                   <select id="tsCumPnlPeriod" class="ts-period-select" title="Period">
