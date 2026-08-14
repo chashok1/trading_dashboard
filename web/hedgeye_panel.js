@@ -267,19 +267,45 @@
   // sitting at some arbitrary smaller size. User: "adjust the width and
   // height of Mkt situation graph so it matches with risk dial width.
   // don't make it odd."
+  // 2026-08-14 -- rich hover tooltips (always this codebase's pattern for
+  // this kind of "what does this number mean" explainer -- see _richTip/
+  // _popBox above -- per user: "always rich tool tips") on Gamma Throttle
+  // and Realized Vol, explaining what a +ve/-ve print means practically.
+  // Gamma Throttle reads its own sign (dealer positioning is naturally
+  // signed). Realized Vol has no natural sign of its own (a vol number is
+  // always >=0), so its tooltip instead compares rvol_10day against VIX
+  // (added to the API response alongside msr -- see api/routers/hedgeye.py)
+  // -- the same Volatility Risk Premium framing as the vrp_gone risk gauge,
+  // just using MSR's faster 10-day realized vol instead of the 21-day one.
+  function _gammaThrottleTip(v) {
+    return v >= 0
+      ? 'Positive (' + v.toFixed(2) + '): dealers hedge counter-trend (buy dips, sell rips) → pins price, dampens realized vol, mean-reversion more reliable.'
+      : 'Negative (' + v.toFixed(2) + '): dealers hedge with-trend (sell weakness, buy strength) → amplifies moves, bigger ranges both ways, breakouts more likely to run.';
+  }
+  function _rvolTip(rvol, vix) {
+    if (vix == null) return null;
+    var vrp = vix - rvol;
+    return vrp >= 0
+      ? 'VIX ' + vix.toFixed(1) + ' > Realized Vol ' + rvol.toFixed(2) + ' (VRP +' + vrp.toFixed(1) + '): options priced richer than what’s actually moving → historically favors premium sellers; calmer, pinned tape while this holds.'
+      : 'Realized Vol ' + rvol.toFixed(2) + ' ≥ VIX ' + vix.toFixed(1) + ' (VRP ' + vrp.toFixed(1) + '): actual movement has caught up to/exceeded what was priced in → the premium-seller edge is gone; expect further vol expansion, IV likely to reprice higher.';
+  }
+
   function msrCardHtml(msr, loadedAt) {
     var msrMetricsHtml = '';
     if (msr) {
       var metricParts = [];
-      var _metricLabel = function (label, val) {
+      var _metricLabel = function (label, val, tipBody) {
         var color = val >= 0 ? '#1d9e75' : '#d4537e';
-        return '<span style="text-transform:none;">' + label + '</span> ' +
+        var inner = '<span style="text-transform:none;">' + label + '</span> ' +
           '<strong style="color:' + color + '; font-size:11px;">' + esc(val.toFixed(2)) + '</strong>';
+        if (!tipBody) return inner;
+        var idx = _richTip(_popBox(esc(label), tipBody));
+        return '<span data-hetip="' + idx + '">' + inner + '</span>';
       };
       if (msr.gamma_throttle != null)
-        metricParts.push(_metricLabel('Gamma Throttle', msr.gamma_throttle));
+        metricParts.push(_metricLabel('Gamma Throttle', msr.gamma_throttle, _gammaThrottleTip(msr.gamma_throttle)));
       if (msr.rvol_10day != null)
-        metricParts.push(_metricLabel('Realized Vol', msr.rvol_10day));
+        metricParts.push(_metricLabel('Realized Vol', msr.rvol_10day, _rvolTip(msr.rvol_10day, msr.vix)));
       if (metricParts.length) {
         msrMetricsHtml = ' <span style="font-size:8px; color:#888; font-weight:400;">&middot; ' +
           metricParts.join(' &middot; ') + '</span>';

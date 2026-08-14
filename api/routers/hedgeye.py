@@ -392,6 +392,13 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                 " WHERE snapshot_date = :md"
             ), {"md": msr_date}).first()
             if msr_row:
+                # VIX alongside gamma_throttle/rvol_10day so the panel can show
+                # a VRP-style (VIX vs realized) tooltip on Realized Vol -- same
+                # source (drv_quote) other quote reads in this router use.
+                # TASK: hover tooltip on Gamma Throttle/Realized Vol (2026-08-14).
+                vix_val = s.execute(text(
+                    "SELECT last_price FROM drv_quote WHERE as_of_date = :d AND tos_symbol = 'VIX'"
+                ), {"d": d}).scalar()
                 out["msr"] = {
                     "date": msr_date.isoformat(),
                     "received_at": _recv(s, "hist_msr", "snapshot_date", msr_date),
@@ -401,6 +408,7 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
                     "rvol_10day": (
                         float(msr_row[1]) if msr_row[1] is not None else None
                     ),
+                    "vix": float(vix_val) if vix_val is not None else None,
                     "image_url": f"/api/msr/image?date={msr_date.isoformat()}",
                 }
 
