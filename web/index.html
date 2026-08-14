@@ -285,29 +285,36 @@
                 </span></div>
                 <div class="ts-chart-body"><canvas id="tsCumPnlChart"></canvas></div>
               </div>
+              <!-- 2026-08-14 -- header text width:90px;text-align:center matches
+                   the canvas's own width exactly, so each title centers over
+                   the pie graphic itself (not the whole card, which is wider
+                   once the legend column is included) -- otherwise a header
+                   like "Asset Allocation" reads centered over legend text
+                   too, not the doughnut it's actually labeling. User: "align
+                   centers with center of the graphs below". -->
               <div id="dpmAssetCard" style="flex:0 0 160px;min-width:130px;">
-                <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Asset Allocation</div>
+                <div style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Asset Allocation</div>
                 <div style="display:flex;align-items:center;gap:8px;">
                   <canvas id="dpmAssetCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
                   <div id="dpmAssetLegend" style="flex:1;min-width:0;"></div>
                 </div>
               </div>
               <div id="dpmBetaCard" style="flex:0 0 160px;min-width:130px;">
-                <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Beta</div>
+                <div style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Beta</div>
                 <div style="display:flex;align-items:center;gap:8px;">
                   <canvas id="dpmBetaCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
                   <div id="dpmBetaLegend" style="flex:1;min-width:0;"></div>
                 </div>
               </div>
               <div id="dpmSectorCard" style="flex:0 0 160px;min-width:130px;">
-                <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Sector</div>
+                <div style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Sector</div>
                 <div style="display:flex;align-items:center;gap:8px;">
                   <canvas id="dpmSectorCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
                   <div id="dpmSectorLegend" style="flex:1;min-width:0;"></div>
                 </div>
               </div>
               <div id="dpmConcCard" style="flex:0 0 160px;min-width:130px;">
-                <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Concentration</div>
+                <div style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Concentration</div>
                 <div style="display:flex;align-items:center;gap:8px;">
                   <canvas id="dpmConcCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
                   <div id="dpmConcLegend" style="flex:1;min-width:0;"></div>

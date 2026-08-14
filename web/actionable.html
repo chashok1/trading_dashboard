@@ -1094,22 +1094,28 @@
           </div>
           <div class="sp-body">
             <div style="padding:6px 8px;display:flex;flex-direction:column;gap:10px;">
+              <!-- 2026-08-14 -- header text width:90px;text-align:center on
+                   the 4 named pies (not Macro Stance, unnamed/out of scope)
+                   matches the canvas's own width so each title centers over
+                   the pie graphic itself, not the whole row (wider once the
+                   legend column is included). User: "align centers with
+                   center of the graphs below". -->
               <div>
-                <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Asset Allocation</div>
+                <div style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Asset Allocation</div>
                 <div style="display:flex;align-items:center;gap:8px;">
                   <canvas id="pmAssetCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
                   <div id="pmAssetLegend" style="flex:1;min-width:0;"></div>
                 </div>
               </div>
               <div>
-                <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Beta</div>
+                <div style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Beta</div>
                 <div style="display:flex;align-items:center;gap:8px;">
                   <canvas id="pmBetaCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
                   <div id="pmBetaLegend" style="flex:1;min-width:0;"></div>
                 </div>
               </div>
               <div>
-                <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Sector</div>
+                <div style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Sector</div>
                 <div style="display:flex;align-items:center;gap:8px;">
                   <canvas id="pmSectorCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
                   <div id="pmSectorLegend" style="flex:1;min-width:0;"></div>
@@ -1123,7 +1129,7 @@
                 </div>
               </div>
               <div>
-                <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Concentration</div>
+                <div style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Concentration</div>
                 <div style="display:flex;align-items:center;gap:8px;">
                   <canvas id="pmConcCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
                   <div id="pmConcLegend" style="flex:1;min-width:0;"></div>
