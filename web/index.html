@@ -115,18 +115,19 @@
                Housekeeping siblings in this column) instead of its own
                nested card box, so the graph fills the column's actual width
                -- see hedgeye_panel.js::msrCardHtml(). Populated + wired by
-               hedgeye_panel.js (unchanged module, another render target). -->
+               hedgeye_panel.js (unchanged module, another render target).
+               2026-08-11 -- header row ("Hedgeye" label + its own collapse
+               button) removed and the body's .he-collapse-body class
+               dropped, so this panel is always expanded and no longer
+               shares the filter bar's collapse-all state with the other 2
+               Hedgeye dashboard panels (hedgeye_collapse.js only ever
+               touches .he-collapse-hdr/.he-collapse-body elements, so
+               neither selector matching here is what excludes it). User:
+               "remove the header line 'Hedgeye' and collapsable/expand
+               button. And make sure coll/exp button on filter bar doesn't
+               control Mkt situation panel." -->
           <section class="cockpit-band" id="heMktSituationPanel" style="display:none;">
-            <!-- 2026-08-10 -- shared collapse toggle, identical on all 3
-                 Hedgeye dashboard panels -- clicking ANY one collapses/
-                 expands all 3 together (one shared localStorage flag).
-                 User: "make hedgeye panels (together) ... collapable and
-                 expandable." Wired by web/hedgeye_collapse.js. -->
-            <div class="he-collapse-hdr" data-he-toggle>
-              <span>Hedgeye</span>
-              <button class="he-collapse-btn" type="button" aria-label="Collapse Hedgeye panels">&#9662;</button>
-            </div>
-            <div id="heMktSituationBody" class="he-collapse-body">Loading…</div>
+            <div id="heMktSituationBody">Loading…</div>
           </section>
 
           <!-- 2026-08-10 -- Notes panel: freeform sticky notes with an
@@ -153,6 +154,143 @@
         </div>
 
         <div class="cat-col">
+          <!-- 2026-08-09 -- Accounts filter bar, shared above all 3 stacked
+               grids -- user: "Can we add a filter bar for second column ->
+               accounts filter." Populated + wired in app.js::
+               loadCatAccountFilter().
+               2026-08-10 -- Hedgeye/News collapse toggles + the Returns
+               column's period radios added alongside it, all as SIBLINGS
+               of #catAccountFilter (not inside it) -- loadCatAccountFilter()
+               fully rewrites that div's innerHTML on every account-filter
+               change/refresh, which would wipe out static controls placed
+               inside it. User: "toggle icons for hedgeye and news panels ->
+               they are not on the filter toolbar. make sure they are." /
+               "add radio buttons on to the filter bar (there is space)."
+               Toggle buttons reuse their existing shared-state wiring
+               (data-he-toggle / data-news-toggle, see hedgeye_collapse.js /
+               dashboard_news_list.js) -- clicking either one here stays in
+               sync with the toggle on that panel itself. Radios wired by
+               app.js::_initCatReturnsPeriod -- selecting a period re-runs
+               reloadFactorScorecards() so each grid's Returns column
+               (added as the LAST <td> per row, not a separate chart, see
+               loadFactorScorecard()) reflects it.
+               2026-08-11 -- moved to the very top of the column, above the
+               Today snapshot row, per user request ("Move the filter bar
+               to the top and apply the filter to four graphs") -- the
+               Accounts filter (state.catAccounts) now also drives the 4th
+               (Cumulative P&L) widget in that row, not just the 3 factor-
+               scorecard widgets; see app.js::loadCumPnlSnapshot(). -->
+          <div class="cat-filter-bar">
+            <div class="cat-account-filter" id="catAccountFilter" style="flex:1;">Loading…</div>
+            <div class="cat-returns-period" id="catReturnsPeriod">
+              <label><input type="radio" name="catReturnsPeriod" value="today"> Today</label>
+              <label><input type="radio" name="catReturnsPeriod" value="yesterday"> Yest</label>
+              <label><input type="radio" name="catReturnsPeriod" value="mtd" checked> MTD</label>
+              <label><input type="radio" name="catReturnsPeriod" value="qtd"> QTD</label>
+              <label><input type="radio" name="catReturnsPeriod" value="ytd"> YTD</label>
+            </div>
+            <button class="he-collapse-btn cat-filter-toggle" type="button" data-he-toggle
+                    aria-label="Collapse Hedgeye panels" title="Hedgeye panels">📊 &#9662;</button>
+            <button class="dash-news-list-toggle cat-filter-toggle" type="button" data-news-toggle
+                    aria-label="Collapse news" title="News">📰 &#9662;</button>
+          </div>
+
+          <!-- 2026-08-11 -- Today snapshot row, above the Hedgeye panels
+               per user request. Originally 4 widgets (Cumulative P&L +
+               Asset Class/Sector/Style "Today" mini-grids showing
+               twr_today from drv_category_perf). The 3 Today-snapshot
+               widgets were REMOVED 2026-08-12 -- twr_today is a mark-to-
+               market APPROXIMATION (freeze yesterday's shares, re-price at
+               today's live quote) that diverged sharply (~$2400 on a live
+               check) from the broker's own actual today's-gain figure,
+               especially on days with trades. User: "why the values are
+               not correct?" -> "Remove those graphs". Only the Cumulative
+               P&L widget remains -- it was never affected (uses the
+               accurate broker day_chng_dollar/today_gl_dollar figures via
+               /api/portfolio/trends + /api/portfolio/summary, not
+               twr_today). Same chart (bar Day Change + line Cumulative
+               P&L) as the Portfolio screen's Trends panel (web/portfolio.js
+               ::renderTrendCharts, #chTrendCum); period dropdown mirrors
+               #trendsPeriod there. Populated + wired by app.js::
+               loadCumPnlSnapshot(). -->
+          <div class="today-snapshot" id="todaySnapshot">
+            <div class="ts-widget">
+              <div class="ts-title">Cumulative P&amp;L
+                <!-- 2026-08-11 -- same period dropdown as the Portfolio
+                     screen's own Trends panel (#trendsPeriod in
+                     portfolio.html), replacing the fixed "10d" label --
+                     user: "remove the header text 10 D and replace it with
+                     same drop down as portfolio screen." Options/values/
+                     default match verbatim; wired by app.js::
+                     loadCumPnlSnapshot() (reads this select's value instead
+                     of a hardcoded '30d'). Still only the last 10 data
+                     points are drawn (readability at this widget's size) --
+                     the dropdown changes the cumulative BASELINE (matching
+                     whatever the Portfolio screen would show at that same
+                     period), not how many bars are visible. -->
+                <select id="tsCumPnlPeriod" class="ts-period-select" title="Period">
+                  <option value="30d" selected>30 days</option>
+                  <option value="90d">90 days</option>
+                  <option value="mtd">MTD</option>
+                  <option value="180d">180 days</option>
+                  <option value="ytd">YTD</option>
+                  <option value="1y">1 year</option>
+                  <option value="5y">5 years</option>
+                </select>
+                <span class="ts-total-group">
+                <span class="ts-total" id="tsCumPnlToday" title="Today's Gain"></span>
+                <span class="ts-total" id="tsCumPnlTotal" title="Cumulative, selected period"></span>
+              </span></div>
+              <div class="ts-chart-body"><canvas id="tsCumPnlChart"></canvas></div>
+            </div>
+
+            <!-- 2026-08-13 -- Portfolio Mix: same Asset Allocation/Beta/
+                 Sector/Concentration pies as the Actionable screen's sidebar
+                 Portfolio Mix panel (#portfolioMixSection in actionable.html),
+                 via the shared web/portfolio_mix.js module -- Macro Stance
+                 isn't included (Actionable-only, depends on actionDisplay()'s
+                 buy/sell vocabulary). Scoped by the same Accounts filter
+                 (state.catAccounts) as the Cumulative P&L widget above and
+                 the 3 factor-scorecard grids below. Populated + wired by
+                 app.js::loadDashPortfolioMix(). User: "display graphs from
+                 actionable screen, side bar -> portfolio mix -> asset
+                 allocation, Beta, sector, concentration ... on dashboard
+                 screen -> line below cumulative P&L." -->
+            <div class="ts-widget" id="dashPortfolioMixSection">
+              <div class="ts-title">Portfolio Mix</div>
+              <div style="padding-top:2px;display:flex;flex-direction:column;gap:10px;">
+                <div>
+                  <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Asset Allocation</div>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <canvas id="dpmAssetCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
+                    <div id="dpmAssetLegend" style="flex:1;min-width:0;"></div>
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Beta</div>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <canvas id="dpmBetaCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
+                    <div id="dpmBetaLegend" style="flex:1;min-width:0;"></div>
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Sector</div>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <canvas id="dpmSectorCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
+                    <div id="dpmSectorLegend" style="flex:1;min-width:0;"></div>
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Concentration</div>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <canvas id="dpmConcCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
+                    <div id="dpmConcLegend" style="flex:1;min-width:0;"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- 2026-08-10 -- Hedgeye Early Look/Macro Commentary/Top 3 Things,
                moved here from the Actionable screen's hedgeye_panel.js
                panel -- user: "move HE earylook, macro commentory, hedgeye
@@ -194,40 +332,6 @@
                addition on top of that, not a reversal of it. -->
           <div id="dashNewsListPanel" class="cockpit-band dash-news-list-panel" style="margin-top:6px;"></div>
 
-          <!-- 2026-08-09 -- Accounts filter bar, shared above all 3 stacked
-               grids -- user: "Can we add a filter bar for second column ->
-               accounts filter." Populated + wired in app.js::
-               loadCatAccountFilter().
-               2026-08-10 -- Hedgeye/News collapse toggles + the Returns
-               column's period radios added alongside it, all as SIBLINGS
-               of #catAccountFilter (not inside it) -- loadCatAccountFilter()
-               fully rewrites that div's innerHTML on every account-filter
-               change/refresh, which would wipe out static controls placed
-               inside it. User: "toggle icons for hedgeye and news panels ->
-               they are not on the filter toolbar. make sure they are." /
-               "add radio buttons on to the filter bar (there is space)."
-               Toggle buttons reuse their existing shared-state wiring
-               (data-he-toggle / data-news-toggle, see hedgeye_collapse.js /
-               dashboard_news_list.js) -- clicking either one here stays in
-               sync with the toggle on that panel itself. Radios wired by
-               app.js::_initCatReturnsPeriod -- selecting a period re-runs
-               reloadFactorScorecards() so each grid's Returns column
-               (added as the LAST <td> per row, not a separate chart, see
-               loadFactorScorecard()) reflects it. -->
-          <div class="cat-filter-bar">
-            <div class="cat-account-filter" id="catAccountFilter" style="flex:1;">Loading…</div>
-            <div class="cat-returns-period" id="catReturnsPeriod">
-              <label><input type="radio" name="catReturnsPeriod" value="today"> Today</label>
-              <label><input type="radio" name="catReturnsPeriod" value="yesterday"> Yest</label>
-              <label><input type="radio" name="catReturnsPeriod" value="mtd" checked> MTD</label>
-              <label><input type="radio" name="catReturnsPeriod" value="qtd"> QTD</label>
-              <label><input type="radio" name="catReturnsPeriod" value="ytd"> YTD</label>
-            </div>
-            <button class="he-collapse-btn cat-filter-toggle" type="button" data-he-toggle
-                    aria-label="Collapse Hedgeye panels" title="Hedgeye panels">📊 &#9662;</button>
-            <button class="dash-news-list-toggle cat-filter-toggle" type="button" data-news-toggle
-                    aria-label="Collapse news" title="News">📰 &#9662;</button>
-          </div>
           <!-- TASK_140 follow-up 2/3 -- inline chart replaces the
                Composition popup: each axis's pie/bar renders directly
                beside its table, always visible, no click needed. Color
@@ -433,6 +537,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
   <script src="/static/_common.js"></script>
   <script src="/static/actions.js"></script>
+  <script src="/static/portfolio_mix.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/dashboard_notes.js"></script>
   <script src="/static/portfolio-modal.js"></script>

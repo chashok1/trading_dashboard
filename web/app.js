@@ -892,7 +892,13 @@ function _fsReturnsBarCell(mine, mkt, max, mineDollar) {
     const sign = v >= 0 ? 'pos' : 'neg';
     return `<div class="fs-ret-bar ${cls} ${sign}" style="${side}width:${pct}%;"></div>`;
   };
-  const fmt = v => v != null ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` : '—';
+  // 2026-08-11 bugfix -- v is a raw FRACTION (twr_*/bench_*), same unit
+  // issue as rowMineDollar above -- needs *100 to read as a percentage,
+  // matching _fsColorCell's own `Number(v) * 100`. Bar widths (above) were
+  // unaffected -- v and max are both unscaled consistently, so their ratio
+  // was always right; only this tooltip text was showing ~100x-too-small
+  // numbers.
+  const fmt = v => v != null ? `${v >= 0 ? '+' : ''}${(v * 100).toFixed(2)}%` : '—';
   const dollarText = _fsCompactUsd(mineDollar);
   // 2026-08-10 follow-up -- $ label moved BESIDE the bars (flex row) instead
   // of stacked above them -- stacking added a 2nd text line inside the
@@ -1087,12 +1093,31 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
       fetchJson(`/api/cockpit/factor-scorecard?${scoreParams.toString()}`),
       fetchJson(`/api/quad/factor-stance?${params.toString()}`).catch(() => null),
     ]);
+    // 2026-08-11 -- Unmapped folded into the same row list as every other
+    // category (Financials/Equities/etc) instead of the special note-
+    // styled line that used to render below the table -- user: "add
+    // unmapped as a row just like Equities etc." Re-sorted by weight_pct
+    // (same DESC NULLS LAST convention the backend's own ORDER BY uses for
+    // r.rows) so it takes its natural place by size rather than always
+    // trailing last. The dedicated chart renderers (_renderCatBars/
+    // _renderCatPie below) still take r.rows/r.unmapped separately -- this
+    // only changes the TABLE.
+    const allRows = (r.rows || []).slice();
+    if (r.unmapped) allRows.push(r.unmapped);
+    allRows.sort((a, b) => {
+      const aw = a.weight_pct, bw = b.weight_pct;
+      if (aw == null && bw == null) return 0;
+      if (aw == null) return 1;
+      if (bw == null) return -1;
+      return Number(bw) - Number(aw);
+    });
     // 2026-08-10 -- "Overlapping tags -- not an allocation" note removed
     // for Style (both here and in Market View below) per user request.
     // TASK_140 follow-up 3 -- same color, category column swatch + chart
-    // slice/bar. Computed once here from the same r.rows order the chart
-    // renderer below also gets, so table and chart never disagree.
-    const colorMap = _catColorMap(r.rows);
+    // slice/bar. Computed once here from the same row order the table
+    // below gets, so table and chart never disagree. ('Unmapped' is
+    // skipped for color assignment either way, see _catColorMap.)
+    const colorMap = _catColorMap(allRows);
     // 2026-08-07 -- category name -> quad-stance row, matched case/trim-
     // insensitively since ref_quad_outlook's own casing can differ from
     // drv_category_perf's (e.g. "Health care" vs "Health Care", same gotcha
@@ -1115,9 +1140,18 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
     // here so bar lengths are comparable row-to-row (a single row can't
     // sensibly self-scale). See _fsReturnsBarCell.
     const _retPeriod = _selectedCatReturnsPeriod();
-    const _retMax = Math.max(1, ...(r.rows || []).flatMap(rr =>
+    const _retMax = Math.max(1, ...allRows.flatMap(rr =>
       [rr[`twr_${_retPeriod}`], rr[`bench_${_retPeriod}`]].filter(v => v != null).map(Math.abs)));
-    const rows = (r.rows || []).map(row => {
+    // 2026-08-10 -- Total row (bottom of table) -- user: "i need the totals
+    // somewhere based on the period selected (overall gain or loss for
+    // that period)." Accumulated alongside each row's own mineDollar (same
+    // market_value * twr% approximation, summed here rather than
+    // recomputed). Unmapped now participates like any other row (2026-08-
+    // 11) -- its API row carries the same twr_*/bench_* fields as every
+    // category (they were just being split out into r.unmapped by
+    // api/routers/cockpit.py, not actually missing).
+    let _retTotalDollar = 0, _retTotalMv = 0;
+    const rows = allRows.map(row => {
       // 2026-08-09 -- row hover replaced with $ amounts instead of the
       // per-window you/mkt performance breakdown -- category $ value, the
       // equity-sleeve $ total it's a share of (same denominator behind
@@ -1209,46 +1243,45 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
           })()}
         </td>
         ${cells}
-        ${_fsReturnsBarCell(row[`twr_${_retPeriod}`], row[`bench_${_retPeriod}`], _retMax,
-          (mv != null && row[`twr_${_retPeriod}`] != null) ? mv * row[`twr_${_retPeriod}`] / 100 : null)}
+        ${(() => {
+          const rowMine = row[`twr_${_retPeriod}`];
+          // 2026-08-11 bugfix -- twr_* is stored as a raw FRACTION (e.g.
+          // -0.0042 = -0.42%), not a percentage number -- confirmed against
+          // _fsColorCell's own `Number(v) * 100` when formatting the %
+          // TEXT. This $ approximation used to divide by 100 too (as if
+          // twr were already a percentage), making every $ figure in this
+          // column ~100x too small ever since it was added. User: "isn't
+          // totals in all grids should be matched? ... check the numbers,
+          // they are not correct."
+          const rowMineDollar = (mv != null && rowMine != null) ? mv * rowMine : null;
+          if (rowMineDollar != null) { _retTotalDollar += rowMineDollar; _retTotalMv += mv; }
+          return _fsReturnsBarCell(rowMine, row[`bench_${_retPeriod}`], _retMax, rowMineDollar);
+        })()}
       </tr>`;
     }).join('');
-    // 2026-08-08 -- Unmapped made clickable (same exposure-detail popup as
-    // every other row) so "how can i see what stocks are unmapped?" has an
-    // answer -- previously just an inert note line.
-    // 2026-08-09 -- trimmed to "Unmapped — equity% / total%" (dropped the
-    // redundant "Unmapped: Unmapped" self-label and the "of book not
-    // resolved to a category. Click to see which holdings." filler), same
-    // bold-primary/muted-secondary convention as every other row's weight
-    // cell (fs-weight-text/fs-weight-eq) -- equity% first since that's the
-    // primary reading, same weight_pct_equities/weight_pct fallback logic
-    // as the row cells above (asset_class has no weight_pct_equities).
-    // User: "change this text to include both percentages and [remove]
-    // unnecessary text ... bold and non-bold text percentages."
-    const uWpe = r.unmapped?.weight_pct_equities != null ? Number(r.unmapped.weight_pct_equities) : null;
-    const uWp = r.unmapped?.weight_pct != null ? Number(r.unmapped.weight_pct) : null;
-    const uPrimary = uWpe != null ? uWpe : uWp;
-    const uSecondary = (uWpe != null && uWp != null) ? uWp : null;
-    // 2026-08-09 -- two-segment flex row so "Unmapped" lines up under the
-    // CATEGORY TEXT (not the caret cluster before it -- _CARET_CLUSTER_PX
-    // + 6px td padding, matching the row cells above exactly) and the %s
-    // line up under the Wt% column (flex-basis 26%/12%, same proportions
-    // as table.fs-table's own nth-child(1)/(2) widths -- this note lives
-    // outside the table as a plain div, so it has to replicate those
-    // percentages itself to stay aligned). User: "align unmapped to
-    // category text (excluding carets) and WT%" / "alignment should skip
-    // two more carets" (the qtr/next-qtr carets, missed on the first pass).
-    const uDollar = r.unmapped?.market_value != null ? Number(r.unmapped.market_value) : null;
-    const unmapped = r.unmapped
-      ? `<div class="fs-note fs-clickable" style="cursor:pointer;display:flex;" onclick="openFactorExposureModal('${escapeHtml(axis)}', 'Unmapped')">
-          <span style="flex:0 0 26%;padding-left:${_CARET_CLUSTER_PX + 6}px;box-sizing:border-box;">Unmapped</span>
-          <span style="flex:0 0 12%;text-align:right;padding-right:6px;box-sizing:border-box;">${
-            uPrimary != null ? `<span class="fs-weight-text">${uPrimary.toFixed(1)}%</span>` : ''
-          }${uSecondary != null ? ` <span class="fs-weight-eq">/ ${uSecondary.toFixed(1)}%</span>` : ''}${
-            uDollar != null ? ` <span class="fs-weight-eq">(${fmtUsd(uDollar)})</span>` : ''
-          }</span>
-        </div>`
-      : '';
+    // 2026-08-10 -- Total row -- see _retTotalDollar/_retTotalMv comment
+    // above. Weighted-avg % approximated the same way each row's own %
+    // already is (dollar / market-value-base), not a true dollar-weighted
+    // TWR -- consistent with the rest of this column, not a new precision
+    // claim.
+    const retTotalPct = _retTotalMv ? (_retTotalDollar / _retTotalMv * 100) : null;
+    const retTotalText = _fsCompactUsd(_retTotalDollar) || '$0';
+    const retTotalRow = `<tr class="fs-total-row">
+      <td>Total</td>
+      <td class="fs-weight-cell"></td>
+      ${_FS_WINDOWS.map(() => '<td class="fs-dash">—</td>').join('')}
+      <td class="fs-returns-cell">
+        <div class="fs-ret-total ${_retTotalDollar >= 0 ? 'pos' : 'neg'}">
+          ${retTotalText}${retTotalPct != null ? ` (${retTotalPct >= 0 ? '+' : ''}${retTotalPct.toFixed(2)}%)` : ''}
+        </div>
+      </td>
+    </tr>`;
+    // 2026-08-11 -- the old special note-styled Unmapped line (below the
+    // table, own alignment math to fake lining up with the Category/Wt%
+    // columns) is gone -- Unmapped now renders as a genuine <tr> inside
+    // `rows` above, via `allRows`, with the exact same cells/click-through/
+    // tooltip every other category gets. User: "add unmapped as a row just
+    // like Equities etc."
     const headCells = _FS_WINDOWS
       .map(w => `<th title="Top: your time-weighted return, ${w.full}. Bottom (smaller): its benchmark ETF's return over the same period.">${w.label}</th>`)
       .join('');
@@ -1266,10 +1299,9 @@ async function loadFactorScorecard(axis, bodyId, chartId) {
             <th title="Weight — % of your total portfolio">Wt%</th>
             ${headCells}
             <th title="Mine (solid) vs Market (faded), ${retLabel}">Returns (${retLabel})</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="${3 + _FS_WINDOWS.length}">No rows.</td></tr>`}</tbody>
+          <tbody>${rows ? rows + retTotalRow : `<tr><td colspan="${3 + _FS_WINDOWS.length}">No rows.</td></tr>`}</tbody>
         </table>
       </div>
-      ${unmapped}
     `;
     if (stanceData) {
       body.querySelectorAll('tr[data-cat]').forEach(tr => {
@@ -1381,6 +1413,197 @@ function reloadFactorScorecards() {
   ]);
 }
 
+// 2026-08-12 -- the 3 Today-snapshot widgets (Asset Class/Sector/Style,
+// _tsRow()/loadTodaySnapshot()) were removed entirely -- their numbers came
+// from drv_category_perf.twr_today, a mark-to-market APPROXIMATION (freeze
+// yesterday's shares, re-price at today's live quote) that can diverge
+// sharply from the broker's own actual today's-gain figure whenever you've
+// traded that day (a sold position still counts as held at yesterday's
+// qty, a bought one isn't counted until tomorrow) -- confirmed diverging by
+// ~$2400 on a live check (-$2159 approx. vs +$273.54 actual). User: "why
+// the values are not correct?" -> chose "Remove those graphs" over
+// rebuilding a proper broker-based per-category breakdown. The Cumulative
+// P&L widget below is unaffected -- it already uses the accurate broker
+// figure (day_chng_dollar/today_gl_dollar via /api/portfolio/trends +
+// /api/portfolio/summary), not twr_today.
+
+// 2026-08-11 -- Cumulative P&L mini chart -- same chart (Day Change bars +
+// Cumulative P&L line) as the Portfolio screen's Trends panel (web/portfolio.js::
+// renderTrendCharts/#chTrendCum), same /api/portfolio/trends endpoint,
+// just trimmed to the last 10 data points client-side (no "10d" period
+// exists server-side -- period only accepts mtd/ytd/1y/5y/30d/90d/180d,
+// see api/routers/dash.py::get_portfolio_trends -- 30d is fetched and
+// sliced rather than adding one). Whole-portfolio, unfiltered: that
+// endpoint takes a single `account`, not a list, so it has no equivalent
+// of the Dashboard's multi-select Accounts filter (state.catAccounts).
+// User: "add same graph that you portfolio screen (cumulative p&L) but
+// show last 10 days -> add it in the same line as today's graph row in
+// the front."
+let _cumPnlChart = null;
+async function loadCumPnlSnapshot() {
+  const canvas = $('tsCumPnlChart');
+  const totalEl = $('tsCumPnlTotal');
+  const todayEl = $('tsCumPnlToday');
+  if (!canvas || typeof Chart === 'undefined') return;
+  try {
+    // 2026-08-11 -- period now comes from #tsCumPnlPeriod (same dropdown/
+    // options/default as portfolio.html's #trendsPeriod), not a hardcoded
+    // '30d' -- user: "remove the header text 10 D and replace it with same
+    // drop down as portfolio screen."
+    const periodEl = $('tsCumPnlPeriod');
+    const period = (periodEl && periodEl.value) || '30d';
+    const trendsParams = new URLSearchParams({ period });
+    // 2026-08-11 -- Accounts filter (state.catAccounts) now applies here
+    // too, via the new accounts= param on /api/portfolio/trends (mirrors
+    // /api/cockpit/factor-scorecard's own accounts= the other 3 widgets
+    // already used) -- user: "Move the filter bar to the top and apply
+    // the filter to four graphs."
+    const filtered = state.catAccounts.length > 0;
+    if (filtered) trendsParams.set('accounts', state.catAccounts.join(','));
+    const [r, summary] = await Promise.all([
+      fetchJson('/api/portfolio/trends?' + trendsParams.toString()),
+      // /api/portfolio/summary has no account filter of its own -- skip
+      // the today-bar override entirely while a filter is active rather
+      // than overwriting a filtered day with an unfiltered whole-portfolio
+      // figure (see the override's own comment below for why it exists).
+      filtered ? Promise.resolve(null)
+               : fetchJson('/api/portfolio/summary' + (state.date ? '?date=' + encodeURIComponent(state.date) : ''))
+                   .catch(() => null),
+    ]);
+    const N = 10;
+    const dates = (r.dates || []).slice(-N);
+    const dayArr = (r.day_change || []).slice(-N);
+    // 2026-08-11 -- last bar overridden with /api/portfolio/summary's
+    // today_gain_dollar (the same figure the Portfolio screen's "Today's
+    // Gain" KPI tile shows, kpiToday in portfolio.js) instead of the plain
+    // trends-endpoint day_change for that date. The two are NOT the same
+    // computation even on the Portfolio screen itself: trends' day_change
+    // is just broker day_chng_dollar/today_gl_dollar, while summary's
+    // today_gain_dollar additionally adds the intraday move on shares SOLD
+    // today and today's dividends/interest (see api/routers/dash.py::
+    // get_portfolio_summary's cs_sold_move/cs_div_int) -- summary is the
+    // more complete, authoritative number, so this widget now matches it.
+    // User: "I need to see the same numbers (today's gain) and cum gain."
+    //
+    // 2026-08-11 -- Cum now taken DIRECTLY from r.cumulative_pl (same
+    // running sum the Portfolio screen's own Trends chart computes from
+    // this same endpoint at the SAME period, now that #tsCumPnlPeriod
+    // mirrors #trendsPeriod's options/default), just sliced to the last 10
+    // points for display -- NOT reset to 0 at day 1 of the window. A prior
+    // version recomputed a fresh from-zero 10-day sum instead, which is a
+    // different, smaller number by design (it drops everything before the
+    // visible window) -- that's why it didn't match. User: "Cum number is
+    // not matching with portfolio screen. I want to see same numbers."
+    // Only the LAST point is nudged
+    // by the same delta the today_gain_dollar override introduces below,
+    // so the line's endpoint stays consistent with the (now more accurate)
+    // last bar instead of silently disagreeing with it.
+    const cumRaw = (r.cumulative_pl || []).slice(-N);
+    const cum = cumRaw.slice();
+    if (summary && summary.today_gain_dollar != null && dayArr.length && cumRaw.length) {
+      const origLastDay = Number(dayArr[dayArr.length - 1] || 0);
+      const newLastDay = Number(summary.today_gain_dollar);
+      const delta = newLastDay - origLastDay;
+      dayArr[dayArr.length - 1] = newLastDay;
+      cum[cum.length - 1] = Math.round((cumRaw[cumRaw.length - 1] + delta) * 100) / 100;
+    }
+    if (_cumPnlChart) { _cumPnlChart.destroy(); _cumPnlChart = null; }
+    if (!dates.length) {
+      if (totalEl) totalEl.textContent = '';
+      if (todayEl) todayEl.textContent = '';
+      return;
+    }
+    const colorPos = '#1c6c30', colorNeg = '#b21f1f';
+    const lastCum = cum.length ? cum[cum.length - 1] : 0;
+    const cumColor = lastCum >= 0 ? colorPos : colorNeg;
+    const yTick = v => Math.abs(v) >= 1000 ? '$' + (Math.round(v / 100) / 10).toFixed(1) + 'k' : '$' + Math.round(v);
+    _cumPnlChart = new Chart(canvas, {
+      type: 'bar',
+      data: { labels: dates, datasets: [
+        { type: 'bar', label: 'Day Change', data: dayArr,
+          backgroundColor: dayArr.map(v => v >= 0 ? 'rgba(28,108,48,0.85)' : 'rgba(178,31,31,0.85)'),
+          borderWidth: 0, barPercentage: 0.5, categoryPercentage: 0.7,
+          yAxisID: 'y1', order: 0 },
+        { type: 'line', label: 'Cumulative P&L', data: cum,
+          borderColor: cumColor,
+          backgroundColor: lastCum >= 0 ? 'rgba(28,108,48,0.10)' : 'rgba(178,31,31,0.10)',
+          fill: false, borderWidth: 2, tension: 0.25,
+          yAxisID: 'y', order: 1 },
+      ] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: true, mode: 'index', intersect: false } },
+        scales: {
+          x:  { display: true, ticks: { font: { size: 8 }, color: '#888', maxRotation: 0, autoSkip: true, maxTicksLimit: 5 }, grid: { display: false } },
+          y:  { type: 'linear', position: 'right', display: true, ticks: { font: { size: 8 }, color: '#888', callback: yTick }, grid: { color: 'rgba(0,0,0,0.06)' } },
+          y1: { type: 'linear', position: 'left', display: false },
+        },
+        elements: { point: { radius: 0 } },
+      },
+    });
+    // 2026-08-11 -- both numbers shown in the title bar, not just Cum --
+    // user: "Display today's gain and cum in 10 chart." Today = the same
+    // (possibly summary-overridden) figure as the chart's own last bar;
+    // Cum = the last point of the recomputed 10-day running line.
+    const lastToday = dayArr.length ? Number(dayArr[dayArr.length - 1]) : null;
+    if (todayEl) {
+      todayEl.className = 'ts-total' + (lastToday >= 0 ? ' pos' : ' neg');
+      todayEl.textContent = lastToday != null ? 'Today ' + (_fsCompactUsd(lastToday) || '') : '';
+    }
+    if (totalEl) {
+      totalEl.className = 'ts-total' + (lastCum >= 0 ? ' pos' : ' neg');
+      totalEl.textContent = 'Cum ' + (_fsCompactUsd(lastCum) || '');  // _fsCompactUsd already signs its own output
+    }
+  } catch (e) {
+    console.error('cum P&L snapshot failed:', e);
+    if (totalEl) totalEl.textContent = '';
+    if (todayEl) todayEl.textContent = '';
+  }
+}
+
+// 2026-08-13 -- Portfolio Mix card: same Asset Allocation/Beta/Sector/
+// Concentration pies as the Actionable screen's sidebar Portfolio Mix panel
+// (web/actionable.js::renderPortfolioMix/_pmHeldRows/_pmCashTotal), reusing
+// the shared web/portfolio_mix.js draw engine (pmRenderCoreMix/_normAssetClass)
+// instead of re-implementing it. Macro Stance is skipped -- it depends on
+// actionDisplay()'s buy/sell/neutral vocabulary, an Actionable-only concept.
+// Whole-portfolio unless the Accounts filter (state.catAccounts) has a
+// selection, same scoping as the Cumulative P&L widget and the 3
+// factor-scorecard grids in this column. User: "display graphs from
+// actionable screen, side bar -> portfolio mix -> asset allocation, Beta,
+// sector, concentration ... on dashboard screen -> line below cumulative P&L."
+async function loadDashPortfolioMix() {
+  if (!$('dashPortfolioMixSection') || typeof Chart === 'undefined') return;
+  try {
+    const dateParam = state.date ? `?date=${encodeURIComponent(state.date)}` : '';
+    const [rows, betaMap, portfolioRows] = await Promise.all([
+      fetchJson('/api/actionable' + dateParam),
+      fetchJson('/api/portfolio/beta-map' + dateParam).catch(() => ({})),
+      fetchJson('/api/portfolio' + dateParam).catch(() => []),
+    ]);
+    const allRows = Array.isArray(rows) ? rows : [];
+    allRows.forEach(r => { r._assetClass = _normAssetClass(r.real_asset_class); });
+    const accounts = state.catAccounts || [];
+    const held = allRows.filter(r => {
+      if (!r.held_today || !(Number(r.current_position_dollar) > 0)) return false;
+      if (accounts.length) {
+        if (!r.held_accounts) return false;
+        const accts = r.held_accounts.split(',').map(a => a.trim());
+        if (!accts.some(a => accounts.includes(a))) return false;
+      }
+      return true;
+    });
+    // Cash isn't a tos_symbol -- drv_actionable never carries it -- so it's
+    // pulled from the raw /api/portfolio feed, same as _pmCashTotal().
+    const cashTotal = (Array.isArray(portfolioRows) ? portfolioRows : [])
+      .filter(r => r.is_cash && (!accounts.length || accounts.includes(r.account_id)))
+      .reduce((s, r) => s + (Number(r.market_value) || 0), 0);
+    pmRenderCoreMix('dpm', held, cashTotal, (betaMap && typeof betaMap === 'object') ? betaMap : {});
+  } catch (e) {
+    console.error('dashboard portfolio mix failed:', e);
+  }
+}
+
 // 2026-08-09 -- Accounts filter bar above the 3 stacked grids ("second
 // column -> sector grid / asset class grid / style grid (stacked)").
 // Checkbox per active account (from the same /api/actionable/accounts
@@ -1410,6 +1633,8 @@ async function loadCatAccountFilter() {
       cb.addEventListener('change', () => {
         state.catAccounts = Array.from(el.querySelectorAll('input:checked')).map(c => c.value);
         reloadFactorScorecards();
+        loadCumPnlSnapshot();
+        loadDashPortfolioMix();
       });
     });
   } catch (e) {
@@ -1634,6 +1859,8 @@ async function refreshAll() {
     loadEventsBand(),
     loadRegimeBand(),
     reloadFactorScorecards(),
+    loadCumPnlSnapshot(),
+    loadDashPortfolioMix(),
     reloadMarketView(),
     loadBriefing(),
   ]);
@@ -1668,5 +1895,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // shared across the 3 column-2 grids -- wired once here; each grid's own
   // loadFactorScorecard() populates the rows this reads from.
   _initCatReturnsPeriod();
+  // 2026-08-11 -- Cumulative P&L widget's own period dropdown (mirrors
+  // portfolio.html's #trendsPeriod) -- only re-runs that one widget.
+  const cumPeriodSel = $('tsCumPnlPeriod');
+  if (cumPeriodSel) cumPeriodSel.addEventListener('change', () => loadCumPnlSnapshot());
   await refreshAll();
 });
