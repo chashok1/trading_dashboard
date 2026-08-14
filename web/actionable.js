@@ -1535,12 +1535,13 @@ async function loadActionable(opts) {
   }
   try {
     const dateParam = state.date ? `?date=${encodeURIComponent(state.date)}` : '';
-    const [rows, accts, betaMap, portfolioRows, assetClassMap] = await Promise.all([
+    const [rows, accts, betaMap, portfolioRows, assetClassMap, sectorMap] = await Promise.all([
       fetchJson('/api/actionable?' + params.toString()),
       fetchJson(`/api/actionable/accounts${dateParam}`).catch(() => []),
       fetchJson(`/api/portfolio/beta-map${dateParam}`).catch(() => ({})),
       fetchJson(`/api/portfolio${dateParam}`).catch(() => []),
       fetchJson(`/api/portfolio/asset-class-map${dateParam}`).catch(() => ({})),
+      fetchJson(`/api/portfolio/sector-map${dateParam}`).catch(() => ({})),
     ]);
     state.allAccounts = Array.isArray(accts) ? accts : [];
     state.allRows = Array.isArray(rows) ? rows : [];
@@ -1556,6 +1557,10 @@ async function loadActionable(opts) {
       // /api/portfolio/asset-class-map's own docstring for why the two
       // differ (this one matches the Asset class factor-scorecard table).
       r._pmAssetClass = (assetClassMap && assetClassMap[r.tos_symbol]) || 'Unmapped';
+      // Portfolio Mix's Sector pie groups by THIS field, not r.sector (still
+      // drives the Actionable grid's own Sector filter chips) -- see
+      // /api/portfolio/sector-map's docstring.
+      r._pmSector = (sectorMap && sectorMap[r.tos_symbol]) || 'Unmapped';
       // RR column sort key (2026-08-12) — same formula _buildRowEl's rrBarHtml
       // already computes for the bar's tick position, hoisted here so the RR
       // header can sort by it (0 = at LRR, 100 = at TRR) without duplicating

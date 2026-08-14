@@ -1293,21 +1293,18 @@ def get_portfolio_beta_map(date: Optional[str] = Query(None)):
     return {r["tos_symbol"]: float(r["beta"]) for r in rows}
 
 
-@router.get("/api/portfolio/asset-class-map")
-def get_portfolio_asset_class_map(date: Optional[str] = Query(None)):
-    """tos_symbol -> asset_class category, using the EXACT SAME
-    classification etl/derive_category_perf.py's Asset class factor-
-    scorecard table uses (_build_category_map/_categories_for: drv_ma.
-    asset_class, falling back to ref_sector.asset_class, restricted to a
-    fixed vocabulary; unresolved -> "Unmapped") -- reused, not
-    reimplemented, so the Portfolio Mix panel's Asset Allocation pie (both
-    the Actionable sidebar and the Dashboard screen) classifies every
-    symbol identically to the Asset class table shown alongside it. Before
-    this endpoint, the pie grouped by drv_actionable.real_asset_class
-    (the BROKER's own source asset-class tag, a different field/vocabulary
-    entirely) while the table grouped by the technicals-derived asset_class
-    -- the two could legitimately disagree per symbol. User: "Shouldn't
-    asset allocation and asset class below match?"
+def _category_axis_map(s, d, axis: str) -> dict:
+    """tos_symbol -> category for `axis` ("asset_class" | "sector"), using
+    the EXACT SAME classification etl/derive_category_perf.py's factor-
+    scorecard tables use (_build_category_map/_categories_for) -- reused,
+    not reimplemented, so the Portfolio Mix panel's pies (both the
+    Actionable sidebar and the Dashboard screen) classify every symbol
+    identically to the tables shown alongside them, instead of each pie
+    grouping by whatever raw field happened to be handy (real_asset_class /
+    raw drv_ma.sector) and silently disagreeing with the table's own
+    canonicalized/gated/fallback-resolved version of the same axis. User:
+    "Shouldn't asset allocation and asset class below match?" / "What about
+    other graphs? sector for ex?"
 
     Universe = every symbol drv_symbols (this date's tracked universe) or
     ref_sector knows about -- same lookup scope _build_category_map itself
@@ -1315,14 +1312,45 @@ def get_portfolio_asset_class_map(date: Optional[str] = Query(None)):
     back to "Unmapped" for it too, matching _categories_for's own
     "symbol not in cat_map" -> "Unmapped" behavior."""
     from etl.derive_category_perf import _build_category_map, _categories_for
+    universe = set(s.execute(text(
+        "SELECT tos_symbol FROM drv_symbols WHERE as_of_date = :d"
+    ), {"d": d}).scalars().all())
+    universe |= set(s.execute(text("SELECT ticker FROM ref_sector")).scalars().all())
+    cat_map = _build_category_map(s, d, universe)
+    return {sym: _categories_for(sym, cat_map, axis)[0] for sym in cat_map}
+
+
+@router.get("/api/portfolio/asset-class-map")
+def get_portfolio_asset_class_map(date: Optional[str] = Query(None)):
+    """See _category_axis_map -- asset_class axis: drv_ma.asset_class,
+    falling back to ref_sector.asset_class, restricted to a fixed
+    vocabulary; unresolved -> "Unmapped". Before this endpoint, the Asset
+    Allocation pie grouped by drv_actionable.real_asset_class (the
+    BROKER's own source asset-class tag, a different field/vocabulary
+    entirely) while the Asset class table grouped by the
+    technicals-derived asset_class -- the two could legitimately disagree
+    per symbol."""
     d = _resolve_date(date)
     with session_scope() as s:
-        universe = set(s.execute(text(
-            "SELECT tos_symbol FROM drv_symbols WHERE as_of_date = :d"
-        ), {"d": d}).scalars().all())
-        universe |= set(s.execute(text("SELECT ticker FROM ref_sector")).scalars().all())
-        cat_map = _build_category_map(s, d, universe)
-    return {sym: _categories_for(sym, cat_map, "asset_class")[0] for sym in cat_map}
+        return _category_axis_map(s, d, "asset_class")
+
+
+@router.get("/api/portfolio/sector-map")
+def get_portfolio_sector_map(date: Optional[str] = Query(None)):
+    """See _category_axis_map -- sector axis: drv_ma.sector canonicalized
+    via _canon_sector (case-variant folding, restricted to the 11 GICS
+    sectors), falling back to ref_sector.equity_sector. Non-equity holdings
+    (bond/gold/commodity/crypto ETFs -- their GICS sector tag is a
+    data-vendor artifact of the issuer, not a real sector exposure) map to
+    "Non-Equity (excluded)" here too, same as the table's own category --
+    unlike the table's API response (api/routers/cockpit.py::
+    get_factor_scorecard), which drops that bucket entirely, this endpoint
+    keeps it so the Sector pie can show it as an explicit slice instead of
+    silently losing those dollars (user: keep every dollar accounted for,
+    pie total should still match the Asset Allocation pie's total)."""
+    d = _resolve_date(date)
+    with session_scope() as s:
+        return _category_axis_map(s, d, "sector")
 
 
 @router.get("/api/actionable/source-scorecard")

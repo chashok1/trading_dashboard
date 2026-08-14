@@ -200,9 +200,16 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
 
   // Sector mix -- top 7 by $ value + Other. Color assigned by alpha rank so
   // the same sector keeps the same slot across re-renders (not tied to $ rank).
+  // Groups by r._pmSector (from /api/portfolio/sector-map), the SAME
+  // canonicalized/equity-gated/ref_sector-fallback classification the
+  // Sector factor-scorecard table uses -- NOT the raw r.sector field
+  // (still drives the Actionable grid's own unrelated Sector filter
+  // chips). Non-equity holdings land in their own "Non-Equity (excluded)"
+  // bucket here (an explicit slice, unlike the table's API response which
+  // drops it) so every dollar stays accounted for.
   const secTotals = {}, secTickerMap = {};
   for (const r of held) {
-    const s = r.sector || 'Unclassified';
+    const s = r._pmSector || 'Unmapped';
     secTotals[s] = (secTotals[s] || 0) + (Number(r.current_position_dollar) || 0);
     (secTickerMap[s] = secTickerMap[s] || []).push(r.tos_symbol);
   }
