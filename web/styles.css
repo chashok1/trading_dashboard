@@ -2729,8 +2729,19 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
    (padding: 3px 6px; border-bottom: 1px solid var(--border)) so the title
    sits at the same height as the table's own grid-header row instead of a
    separate line above it. */
+/* 2026-08-14 -- .axis-dot span dropped from all 6 of these titles (3
+   factor-scorecard $ grids + 3 Market View grids -- see index.html) --
+   flex row + gap:8px (sized for dot-then-text) replaced with
+   justify-content:center so the bare text now centers over its chart
+   below (.cat-chart is a fixed 190px column) instead of left-packing
+   where the dot used to sit. Matches the same "center title over its own
+   chart" treatment just applied to the 4 Portfolio Mix pie headers.
+   User: "graph headers -> ... align centers with center of the graphs
+   below (remove header dot from the grid headers) -> total 10 graphs" ->
+   "I am referring to the graphs in the grids below (asset class/sector/
+   style etc). Dot needs to be removed and header text needs be aligned". */
 .cat-chart-title {
-  font-size: 13px; font-weight: 700; margin: 0 0 4px; display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 700; margin: 0 0 4px; display: flex; align-items: center; justify-content: center;
   color: var(--text-1); padding: 3px 6px; border-bottom: 1px solid var(--border);
 }
 /* Asset class only -- tighter gap to the title above so the pie sits
@@ -2771,10 +2782,9 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
 }
 .mv-empty { color: var(--text-3); font-size: 11px; padding: 8px 0; }
 .mv-universe-note { font-size: 9px; color: var(--text-3); margin-top: 6px; font-style: italic; }
-.axis-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.axis-dot.axis-sector { background: var(--cat1, var(--accent)); }
-.axis-dot.axis-asset-class { background: var(--cat2, #0f9488); }
-.axis-dot.axis-style { background: var(--cat4, #7c3aed); }
+/* .axis-dot/.axis-sector/.axis-asset-class/.axis-style removed 2026-08-14
+   -- no longer referenced anywhere (the 6 .cat-chart-title spans that used
+   them are gone, see above). */
 .fs-note { font-size: 10px; color: var(--text-3); margin-bottom: 4px; }
 /* 2026-08-08 -- table-layout:fixed + explicit per-column % widths so the
    Sector/Asset class/Style scorecards' columns line up vertically down the
