@@ -1974,13 +1974,23 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 /* 2026-08-08 -- right-rail width reduced 20% (300px -> 240px) per user
    request, alongside removing the Indicator grid's Signal column and
    aligning all three right-rail tables' columns (see .right-rail
-   table.mini-grid rules below). */
+   table.mini-grid rules below).
+   2026-08-14 -- bumped 240px -> 260px to match Actionable's own right side
+   panel (.act-side, 260px fixed) -- user: "increase it and make same size
+   as the one in actionable screen (take the space from middle column by
+   reducing it)". The 20px comes out of main-col's own budget automatically
+   (main-col is the grid's other track, "1fr" = whatever's left after this
+   fixed column) -- and within main-col, its two nested fr tracks
+   (dial-changed-col 0.512fr / cat-col 1.66fr) split that loss
+   proportionally, so ~76% of the 20px (cat-col's much larger share) comes
+   out of the middle column, only ~24% (≈5px, imperceptible) out of the
+   left column. */
 .cockpit-bands {
   display: grid;
   gap: 8px;
   padding: 0 8px 8px;
   align-items: start;
-  grid-template-columns: 1fr 240px;
+  grid-template-columns: 1fr 260px;
 }
 /* dial-changed-col reduced to 75% of its former share (0.75fr, down from
    1fr); the freed width goes to cat-col (1.3fr -> 1.55fr) so the now-inline
