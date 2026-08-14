@@ -1957,34 +1957,9 @@ async function loadDashPortfolioMix() {
       .filter(r => r.is_cash && (!accounts.length || accounts.includes(r.account_id)))
       .reduce((s, r) => s + (Number(r.market_value) || 0), 0);
     pmRenderCoreMix('dpm', held, cashTotal, (betaMap && typeof betaMap === 'object') ? betaMap : {});
-    _alignPmHeaderHeights();
   } catch (e) {
     console.error('dashboard portfolio mix failed:', e);
   }
-}
-
-// 2026-08-14 -- matches each pie card's title box height to Cumulative
-// P&L's own .ts-title (which is visually taller than a plain 10px text
-// line -- it carries an inline <select> period dropdown + two totals
-// spans, and a native <select> has its own browser-default min-height
-// regardless of font-size). Without this, aligning the CARDS' tops
-// (align-items:flex-start on the row) only lined up the title TEXT lines
-// approximately -- the actual GRAPHS below (canvas/chart) still started
-// at different y-offsets per card, since each title box's height differed.
-// Setting min-height to match, with the pie titles' own flex centering
-// (align-items/justify-content:center, set in index.html) keeping their
-// text centered within that taller box, aligns the graphs themselves
-// without moving the header text off Cumulative P&L's line. User: "i only
-// asked you to move the texts not the graphs. all graphs need to be
-// aligned horizonatally."
-function _alignPmHeaderHeights() {
-  const ref = document.querySelector('#dashPortfolioMixSection .ts-title');
-  if (!ref) return;
-  const h = ref.offsetHeight;
-  ['dpmAssetTitle', 'dpmBetaTitle', 'dpmSectorTitle', 'dpmConcTitle'].forEach(id => {
-    const el = $(id);
-    if (el) el.style.minHeight = h + 'px';
-  });
 }
 
 // 2026-08-09 -- Accounts filter bar above the 3 stacked grids ("second
