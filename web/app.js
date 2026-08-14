@@ -643,6 +643,17 @@ function _earningsLineHtml(rows) {
     : '<span class="events-empty">No earnings in the next 14 days for watched symbols</span>';
   return `<div class="events-line earnings-line">${body}${gear}</div>`;
 }
+// 2026-08-14 follow-up -- "i need the symbols list with date that are
+// upcoming so i can choose." The picker now leads with a checkable list of
+// symbols that actually HAVE upcoming earnings (your ref_my_stocks
+// watchlist, same source/scope as the unfiltered /api/dashboard/symbol-
+// earnings call actionable.js already uses -- 45d lookahead so there's
+// enough to browse), each row showing its date -- not a blind type-a-
+// ticker box. The free-text add row stays underneath for a symbol outside
+// that tracked watchlist. _earningsCandidates is fetched once per popover
+// open (not on every Dashboard render -- this list is only needed while
+// the picker is actually open).
+let _earningsCandidates = [];
 function _toggleEarningsWatchPop(e) {
   e.stopPropagation();
   const pop = $('earningsWatchPop');
@@ -650,47 +661,79 @@ function _toggleEarningsWatchPop(e) {
   if (pop.style.display === 'block') { pop.style.display = 'none'; return; }
   _renderEarningsWatchPop(e.currentTarget);
 }
-function _renderEarningsWatchPop(anchorEl) {
+function _positionEarningsPop(anchorEl) {
   const pop = $('earningsWatchPop');
   if (!pop) return;
-  let h = '<div class="sp-title">Watched symbols</div>'
-    + '<div class="earnings-add-row"><input type="text" id="earningsAddInput" placeholder="Symbol (e.g. AAPL)" '
-    + 'onkeydown="if(event.key===\'Enter\'){event.preventDefault();_addEarningsSymbol();}">'
-    + '<button type="button" onclick="_addEarningsSymbol()">Add</button></div>'
-    + '<div class="earnings-tag-list" id="earningsSymbolList">' + _earningsTagsHtml() + '</div>'
-    + '<button type="button" class="cal-types-save" onclick="_saveEarningsWatch()">Save</button>';
-  pop.innerHTML = h;
-  pop.style.display = 'block';
   const rect = anchorEl.getBoundingClientRect();
   let top = rect.bottom + 4;
-  if (top + 280 > window.innerHeight - 8) top = Math.max(8, rect.top - 280 - 4);
+  if (top + pop.offsetHeight > window.innerHeight - 8) top = Math.max(8, rect.top - pop.offsetHeight - 4);
   let left = rect.left;
-  if (left + 220 > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 220 - 8);
+  if (left + pop.offsetWidth > window.innerWidth - 8) left = Math.max(8, window.innerWidth - pop.offsetWidth - 8);
   pop.style.top = top + 'px';
   pop.style.left = left + 'px';
+}
+async function _renderEarningsWatchPop(anchorEl) {
+  const pop = $('earningsWatchPop');
+  if (!pop) return;
+  pop.style.width = '260px';
+  pop.innerHTML = '<div class="sp-title">Watched symbols</div><span class="events-empty">Loading upcoming earnings&hellip;</span>';
+  pop.style.display = 'block';
+  _positionEarningsPop(anchorEl);
+  const url = state.date
+    ? `/api/dashboard/symbol-earnings?date=${encodeURIComponent(state.date)}&days_ahead=45&limit=100`
+    : '/api/dashboard/symbol-earnings?days_ahead=45&limit=100';
+  _earningsCandidates = await fetchJson(url).catch(() => []);
+  _earningsRerenderPopBody(anchorEl);
+}
+function _earningsRerenderPopBody(anchorEl) {
+  const pop = $('earningsWatchPop');
+  if (!pop) return;
+  const selSet = new Set(_earningsWatchSymbols);
+  let h = '<div class="sp-title">Watched symbols</div>';
+  h += '<div class="cal-types-list" id="earningsCandidateList">';
+  h += _earningsCandidates.length
+    ? _earningsCandidates.map(r => `<label class="cal-type-row"><input type="checkbox" value="${escapeHtml(r.symbol)}"`
+        + `${selSet.has(r.symbol) ? ' checked' : ''} onchange="_toggleEarningsCandidate('${escapeHtml(r.symbol)}', this.checked)">`
+        + ` ${escapeHtml(r.symbol)} &mdash; ${fmtDate(r.event_date)} (${r.days_until}d)</label>`).join('')
+    : '<span class="events-empty">No upcoming earnings found in your tracked watchlist (ref_my_stocks)</span>';
+  h += '</div>';
+  h += '<div class="earnings-add-row"><input type="text" id="earningsAddInput" placeholder="Other symbol&hellip;" '
+    + 'onkeydown="if(event.key===\'Enter\'){event.preventDefault();_addEarningsSymbol();}">'
+    + '<button type="button" onclick="_addEarningsSymbol()">Add</button></div>';
+  // Manually-added symbols not already shown (with a date) in the
+  // checklist above -- e.g. one outside ref_my_stocks, or one whose
+  // earnings_days fell outside the 45d lookahead window.
+  const extras = _earningsWatchSymbols.filter(s => !_earningsCandidates.some(r => r.symbol === s));
+  if (extras.length) {
+    h += '<div class="earnings-tag-list" id="earningsSymbolList">'
+      + extras.map(sym => `<span class="earnings-tag">${escapeHtml(sym)}`
+          + `<span class="earnings-tag-x" onclick="_removeEarningsSymbol('${escapeHtml(sym)}')" title="Remove">&times;</span></span>`).join('')
+      + '</div>';
+  }
+  h += '<button type="button" class="cal-types-save" onclick="_saveEarningsWatch()">Save</button>';
+  pop.innerHTML = h;
+  if (anchorEl) _positionEarningsPop(anchorEl);
   const input = $('earningsAddInput');
   if (input) input.focus();
 }
-function _earningsTagsHtml() {
-  if (!_earningsWatchSymbols.length) return '<span class="events-empty">None yet -- add one above</span>';
-  return _earningsWatchSymbols.map(sym => `<span class="earnings-tag">${escapeHtml(sym)}`
-    + `<span class="earnings-tag-x" onclick="_removeEarningsSymbol('${escapeHtml(sym)}')" title="Remove">&times;</span></span>`).join('');
+function _toggleEarningsCandidate(sym, checked) {
+  if (checked) {
+    if (!_earningsWatchSymbols.includes(sym)) _earningsWatchSymbols.push(sym);
+  } else {
+    _earningsWatchSymbols = _earningsWatchSymbols.filter(s => s !== sym);
+  }
 }
 function _addEarningsSymbol() {
   const input = $('earningsAddInput');
   if (!input) return;
   const sym = input.value.trim().toUpperCase();
-  input.value = '';
-  if (!sym || _earningsWatchSymbols.includes(sym)) { input.focus(); return; }
+  if (!sym || _earningsWatchSymbols.includes(sym)) { input.value = ''; input.focus(); return; }
   _earningsWatchSymbols.push(sym);
-  const list = $('earningsSymbolList');
-  if (list) list.innerHTML = _earningsTagsHtml();
-  input.focus();
+  _earningsRerenderPopBody(null);
 }
 function _removeEarningsSymbol(sym) {
   _earningsWatchSymbols = _earningsWatchSymbols.filter(s => s !== sym);
-  const list = $('earningsSymbolList');
-  if (list) list.innerHTML = _earningsTagsHtml();
+  _earningsRerenderPopBody(null);
 }
 async function _saveEarningsWatch() {
   const pop = $('earningsWatchPop');
