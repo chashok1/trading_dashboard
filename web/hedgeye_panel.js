@@ -36,9 +36,14 @@
     return '<a href="' + u + '" style="color:inherit; text-decoration:none; border-bottom:1px dotted #aaa;">' + esc(sym) + '</a>';
   }
 
+  // Shrunk to the smallest legible size (2026-08-11, user: "use smallest
+  // font for TRADE TREND TAIL buttons and reduce the size as much as
+  // possible") -- only used for RTA's duration/CORR chips, so the freed
+  // horizontal space is what let the RTA column narrow and hand its width
+  // over to Call (see GRID_ROW2).
   function chip(text, color) {
-    return '<span style="display:inline-block; padding:0 5px; border-radius:3px; font-size:9px; ' +
-      'font-weight:700; color:#fff; background:' + color + '; margin-left:4px;">' + esc(text) + '</span>';
+    return '<span style="display:inline-block; padding:0 2px; border-radius:2px; font-size:6.5px; ' +
+      'font-weight:700; color:#fff; background:' + color + '; margin-left:2px;">' + esc(text) + '</span>';
   }
 
   // Rich tooltips (reuses actionable.js's #sourcePop / _showDataPop / hideSourcePop,
@@ -136,14 +141,45 @@
 
   function flipsHtml(rows) {
     if (!rows || !rows.length) return '';
+    // Widths/gap trimmed 2026-08-11 -- narrower Risk Range track (see
+    // GRID_ROW2) was forcing this row's fixed-width symbol+from+arrow+to
+    // layout past the card's content box, causing a horizontal scrollbar.
+    // User: "reduce the space between the stock and text 'bullish ->
+    // neutral' etc, so no horizontal scroll bar appears."
     return rows.map(function (f) {
-      return '<div style="display:flex; align-items:center; gap:3px; font-size:9px; line-height:1.55; margin-bottom:3px;">' +
-        '<strong style="display:inline-block; width:38px; flex:0 0 auto; overflow:hidden;">' + symLink(f.symbol) + '</strong>' +
-        '<span style="display:inline-block; width:46px; flex:0 0 auto; text-align:right; font-size:8px; font-weight:700; color:' + sideColor(f.from) + ';">' + esc(titleCase(f.from)) + '</span>' +
+      return '<div style="display:flex; align-items:center; gap:2px; font-size:9px; line-height:1.55; margin-bottom:3px;">' +
+        '<strong style="display:inline-block; width:30px; flex:0 0 auto; overflow:hidden;">' + symLink(f.symbol) + '</strong>' +
+        '<span style="display:inline-block; width:38px; flex:0 0 auto; text-align:right; font-size:7.5px; font-weight:700; color:' + sideColor(f.from) + ';">' + esc(titleCase(f.from)) + '</span>' +
         '<span style="flex:0 0 auto; color:#ccc;">&rarr;</span>' +
-        '<span style="display:inline-block; width:46px; flex:0 0 auto; font-size:8px; font-weight:700; color:' + sideColor(f.to) + ';">' + esc(titleCase(f.to)) + '</span>' +
+        '<span style="display:inline-block; width:38px; flex:0 0 auto; font-size:7.5px; font-weight:700; color:' + sideColor(f.to) + ';">' + esc(titleCase(f.to)) + '</span>' +
         '</div>';
     }).join('');
+  }
+
+  // Portfolio movers -- today's top-3 / bottom-3 symbols by % change in
+  // price (data.movers from /api/actionable/hedgeye) -- price move only,
+  // not $ gain/loss. A thin rule separates the two groups instead of text
+  // labels (2026-08-11, user: "remove texts 'Top' and 'Bottom' put a thin
+  // line between top 3 stock and bottom 3 stocks"); row font-size trimmed
+  // so all 6 rows fit without the card's scrollbar kicking in.
+  function moversHtml(m) {
+    var gainers = (m && m.gainers) || [];
+    var losers = (m && m.losers) || [];
+    if (!gainers.length && !losers.length) return '';
+    function row(r) {
+      var up = r.pct >= 0;
+      var color = up ? '#1d9e75' : '#d4537e';
+      var pctStr = (up ? '+' : '') + r.pct.toFixed(2) + '%';
+      return '<div style="display:flex; justify-content:space-between; align-items:center; ' +
+        'font-size:9px; line-height:1.4;">' +
+        '<strong>' + symLink(r.symbol) + '</strong>' +
+        '<span style="color:' + color + '; font-weight:700;">' + esc(pctStr) + '</span>' +
+        '</div>';
+    }
+    var none = '<span style="color:#bbb; font-size:9px;">none</span>';
+    var divider = '<div style="border-top:1px solid #edeafb; margin:3px 0;"></div>';
+    return (gainers.length ? gainers.map(row).join('') : none) + divider +
+      (losers.length ? losers.map(row).join('') : none);
   }
 
   function earlyLookHtml(el) {
@@ -274,11 +310,24 @@
     var msrTileTs = msrLabel
       ? ' <span style="font-size:8px; color:#bbb; font-weight:400;">· ' + esc(msrLabel) + '</span>'
       : '';
+    // 2026-08-14 -- renamed "Mkt Situation" -> "MKT SIT" and the redundant
+    // second date dropped -- this line was showing BOTH the report's own
+    // date (msrTileTs, from msr.received_at/date) AND loadedAt (when the
+    // panel last fetched/rendered, a different, less useful timestamp) side
+    // by side. Kept msrTileTs (the report's actual date) since it's the one
+    // that answers "how current is this report", not "when did my browser
+    // last poll". User: "rename Mkt situation to MKT SIT. Why do i see two
+    // dates next to that text. i only need one." Also added a second link
+    // icon (linkIcon) next to the first -- linked() already made the title
+    // text itself a link (ext_links['mkt_situation'], now pointed at Yahoo
+    // Finance); linkIcon adds a standalone ↗ for ext_links[
+    // 'mkt_situation_cnbc'] (CNBC). User: "make it as a URL link ->
+    // finance.yahoo.com. add one more link next to it in the header for
+    // cnbc.com."
     var panelTitle = '<div style="font-weight:700; font-size:9px; text-transform:uppercase; ' +
       'letter-spacing:0.6px; color:#534ab7; margin-bottom:6px; display:flex; ' +
       'align-items:baseline; justify-content:space-between; gap:8px;">' +
-      '<span>' + linked('Mkt Situation', 'mkt_situation') + msrTileTs +
-      (loadedAt ? ' <span style="color:#bbb; font-weight:400; font-size:8px;">· ' + esc(loadedAt) + '</span>' : '') +
+      '<span>' + linked('MKT SIT', 'mkt_situation') + linkIcon('mkt_situation_cnbc') + msrTileTs +
       '</span>' +
       '<span>' + msrMetricsHtml + '</span>' +
       '</div>';
@@ -440,7 +489,8 @@
       (data.positions && (data.positions.longs.length || data.positions.shorts.length)) ||
       (data.etf_changes && data.etf_changes.changes && data.etf_changes.changes.length) ||
       (data.ii_changes && data.ii_changes.changes && data.ii_changes.changes.length) ||
-      (data.sss_changes && data.sss_changes.changes && data.sss_changes.changes.length));
+      (data.sss_changes && data.sss_changes.changes && data.sss_changes.changes.length) ||
+      (data.movers && ((data.movers.gainers || []).length || (data.movers.losers || []).length)));
 
     if (dashEl && !hasDashAny) dashEl.style.display = 'none';
     if (actEl && !hasActAny) actEl.style.display = 'none';
@@ -608,17 +658,55 @@
     }
 
     // ---- Actionable panel (#hedgeyePanel): Top-5 | Macro Show | RTA | ETF
-    // | II | SSS | Call | Risk Range. Risk Range moved into INFL's old last
-    // column 2026-08-10 (INFL itself moved to the Dashboard panel above) --
-    // same track width (minmax(150px,210px)) INFL used to occupy, per user:
-    // "move the risk range in actionable screen to where INFL panel was
-    // there currently."
+    // | II | SSS | Call | Risk Range | Movers. Risk Range moved into INFL's
+    // old last column 2026-08-10 (INFL itself moved to the Dashboard panel
+    // above) -- same track width (minmax(150px,210px)) INFL used to occupy,
+    // per user: "move the risk range in actionable screen to where INFL
+    // panel was there currently." Movers tile added 2026-08-11 (portfolio
+    // top-3/bottom-3 by today's % price change); to make room, per user
+    // request Top-5 narrowed 20%, RTA 15%, Risk Range 25% from their prior
+    // track widths (120/15ch, 220/35ch, 150/210 respectively). Top-5 then
+    // widened back 5% (2026-08-11, user: "Increase Top 5 tile width by 5%").
+    // Further narrowed 2026-08-11 -- Macro Show 10%, II 10%, Risk Range 5%,
+    // Movers (then labeled "% Chg in Price", renamed back to "Movers") 25%.
+    // Then again 2026-08-11 -- RTA's TRADE/TREND/TAIL chips shrunk to their
+    // smallest legible size (see chip()), so RTA's own track narrowed 20%
+    // (187/30ch -> 150/24ch) and that freed width (~37px) was handed to
+    // Call's min per user: "Use the space gained to CALL tile." Also: Macro
+    // Show -10%, II -5%, Risk Range -5%, Movers -30% from their prior widths.
+    // Then again 2026-08-11 -- Macro Show min narrowed a further 20%
+    // (162px -> 130px), but that had NO visible effect: Macro Show's max
+    // was still '1fr', and a non-flex track's *max* (not its min) is what
+    // actually governs its rendered width whenever the row has any slack --
+    // here Call is also 1fr, so leftover width just kept splitting 50/50
+    // between them regardless of Macro Show's min floor. Fixed 2026-08-11:
+    // Macro Show's max is now a real fixed value (previous 130px min * 0.8,
+    // the same 20% cut, made to actually stick) instead of '1fr', and the
+    // freed 26px went into RTA's *max* (calc(24ch + 20px) -> +46px) since
+    // that's the bound that actually sets RTA's rendered width -- bumping
+    // RTA's min alone last round was the same no-op mistake in reverse.
+    // User: "Reduce the macro show width by 20% and use it for RTA" / "That
+    // didn't work." Then 2026-08-11 -- Macro Show grown 200% (104px -> 3x =
+    // 312px, fixed track, same reasoning as above: fixed width so the
+    // change is real). Call is the row's only remaining flexible (1fr)
+    // track, so growing a fixed sibling by 208px already takes exactly
+    // that much away from Call's rendered size automatically (Call absorbs
+    // whatever's left in the row) -- Call's min floor is lowered by the
+    // same 208px (237px -> 29px) purely so it CAN shrink that far without
+    // the row overflowing, not because its own max changed. User: "Increase
+    // Macro size by 200% and reduce that much for CALL."
+    // Then 2026-08-12 -- Risk Range widened 10% (102/143px -> 112/157px,
+    // both min and max scaled per the usual convention), taken directly from
+    // Macro Show's fixed width (312px -> 298px, same 14px Risk Range's max
+    // grew by -- max is what actually governs a non-flex track's rendered
+    // width). User: "increase Risk Range tile width by 10%, take it from
+    // Macro Show tile."
     if (actEl) {
       if (hasActAny) {
         var GRID_ROW2 = 'display:grid; grid-template-columns: ' +
-          'minmax(120px, calc(15ch + 20px)) minmax(200px, 1fr) minmax(220px, calc(35ch + 20px)) ' +
-          'minmax(120px, calc(15ch + 20px)) minmax(120px, calc(15ch + 20px)) minmax(120px, calc(15ch + 20px)) ' +
-          'minmax(200px, 1fr) minmax(150px, 210px); gap:3px; align-items:stretch;';
+          'minmax(101px, calc(12.6ch + 20px)) 298px minmax(182px, calc(24ch + 46px)) ' +
+          'minmax(120px, calc(15ch + 20px)) minmax(103px, calc(12.8ch + 20px)) minmax(120px, calc(15ch + 20px)) ' +
+          'minmax(29px, 1fr) minmax(112px, 157px) minmax(74px, calc(9.5ch + 20px)); gap:3px; align-items:stretch;';
         var row2 =
           '<div style="' + GRID_ROW2 + '">' +
           _card(linked('Top-5', 'top5'),                 top5Html(data.top5),              td(data.top5_received_at, data.top5_date)) +
@@ -629,6 +717,7 @@
           _card(linked(sssTitle, 'sss'),                 sssChangesHtml(data.sss_changes), td(data.sss_changes && data.sss_changes.received_at, data.sss_changes && data.sss_changes.date)) +
           _card(linked('Call', 'call'),                  positionsHtml(data.positions),    td(data.positions && data.positions.received_at, data.positions && data.positions.date)) +
           _card(linked('Risk Range', 'trend_change'),    flipsHtml(data.trend_flips),      td(data.trend_flips_received_at, data.trend_flips_date)) +
+          _card('Movers',                                moversHtml(data.movers),          td(null, data.movers_date)) +
           '</div>';
 
         var bodyHtml =
@@ -673,6 +762,20 @@
     return '<a href="' + esc(l.url) + '" target="_blank" rel="noopener" ' +
       'style="color:inherit; text-decoration:none;" title="' + esc(l.label) + '">' +
       text + ' <span style="font-size:7px; opacity:0.55; font-weight:400;">&#8599;</span></a>';
+  }
+
+  // 2026-08-14 -- standalone icon-only link (no wrapped text), for a SECOND
+  // link next to a panel title that already has its own linked() text --
+  // Mkt Situation now has two: the title text links to ext_links['mkt_
+  // situation'] (Yahoo Finance), this renders a second ↗ for ext_links[
+  // 'mkt_situation_cnbc'] (CNBC) right next to it. User: "add one more link
+  // next to it in the header for cnbc.com."
+  function linkIcon(key) {
+    var l = _links[key];
+    if (!l || !l.url) return '';
+    return ' <a href="' + esc(l.url) + '" target="_blank" rel="noopener" ' +
+      'style="color:inherit; text-decoration:none;" title="' + esc(l.label) + '">' +
+      '<span style="font-size:7px; opacity:0.55; font-weight:400;">&#8599;</span></a>';
   }
 
   function currentDate() {

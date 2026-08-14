@@ -508,8 +508,12 @@ async function loadRegimeBand() {
     // 2026-08-09 -- Next Qtr entry, same format as Qtr above, right after
     // it. User: "Regime text -> display next quarter and quad in existing
     // fashion".
+    // 2026-08-14 -- "Next" shortened to "N" (fewer characters helps the
+    // whole line fit without wrapping) and a ". " separator added before it
+    // (matching the month list's own separator style) -- user's own desired
+    // format: "Qtr (Q4). N (Q2)".
     const nextQtrEntry = windowData.next_qtr_quad != null
-      ? `<span class="qtr-entry next-qtr-entry">Next <span style="color:${_quadColor('Q' + windowData.next_qtr_quad)};font-weight:600;">(Q${windowData.next_qtr_quad})</span></span>`
+      ? `<span class="qtr-entry next-qtr-entry">${qtrEntry ? '. ' : ''}N <span style="color:${_quadColor('Q' + windowData.next_qtr_quad)};font-weight:600;">(Q${windowData.next_qtr_quad})</span></span>`
       : '';
     // TASK_140 follow-up 11 -- band-factors items only ever carry `factor`
     // (verified live: {"factor":"Cyclical","qtr":"bull"}), not ticker/

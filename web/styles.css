@@ -2610,7 +2610,13 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
   display: flex; flex: 1 1 100%; align-items: baseline; gap: 10px;
 }
 .regime-line .regime-win-label { flex: 0 0 auto; white-space: nowrap; text-align: left; }
-.regime-line .regime-window-text { flex: 1 1 auto; min-width: 0; text-align: center; }
+/* 2026-08-14 -- white-space:nowrap + text-overflow:ellipsis added -- the
+   month list could wrap onto a 2nd line when the column was narrow (or once
+   the Next-Qtr entry was added), making the whole Regime row 2 lines tall.
+   Truncates with "…" instead now, keeping the row (and the pinned-right
+   Qtr/N entries, which never shrink) on one line always. User: "change the
+   format so Regime text fits in one line." */
+.regime-line .regime-window-text { flex: 1 1 auto; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .regime-line .qtr-entry { flex: 0 0 auto; white-space: nowrap; }
 
 /* TASK_140 -- Sector/Asset class/Style scorecards, each its own full-width

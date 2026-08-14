@@ -347,8 +347,16 @@
     }
   }
 
+  // 2026-08-14 -- Dashboard (/) has no `main .card` element (Actionable's
+  // own main-content wrapper) -- same gap macro_areas.js's own init() guard
+  // already had to work around (see its comment) when Volatility/Major
+  // Markets were added there. OR-fallback on #macroRailCorr existing (this
+  // page's own container for this panel) so the Dashboard's Dollar
+  // Correlation panel actually loads. User: "dashboard -> add dollar
+  // correlation panel (that you see on actionable screen) between major
+  // markets and symbol panels."
   function init() {
-    if (!document.querySelector('main .card')) return;
+    if (!document.querySelector('main .card') && !document.getElementById('macroRailCorr')) return;
 
     /* Load immediately when the macro-areas card is ready, or after short delay */
     document.addEventListener('macroReadReady', function () {
