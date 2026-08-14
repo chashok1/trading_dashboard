@@ -6,9 +6,9 @@
 -- =====================================================
 
 -- ---------------------------------------------------------------------------
--- 2.1 ref_risk_gauge — total active weight = 31 (+ volume_breadth_weak seeded
+-- 2.1 ref_risk_gauge — total active weight = 32 (+ volume_breadth_weak seeded
 -- inactive, weight 2 -- flip to TRUE once hist_internals is flowing, per
--- Phase 4.1; active weight becomes 33 at that point).
+-- Phase 4.1; active weight becomes 34 at that point).
 -- 2026-08-14 -- short_vol_disc added: VIX9D vs rvol_10day, the short-dated
 -- companion to vrp_gone (VIX vs RV21). Weight 1 (vs vrp_gone's 2) -- an
 -- early/leading version of the same signal, not a duplicate of it.
@@ -16,6 +16,11 @@
 -- 10-30 range, low end only (<=12, weight 1) -- separate dimension from
 -- short_vol_disc (relative to realized vol), no high-end/bullish gauge
 -- (Risk Dial gauges only ever fire on caution conditions).
+-- move_chop added same day: MOVE's own "chop zone" companion to
+-- move_elevated, mirroring vix_chop -- ref_vol_threshold's MOVE:GIF low
+-- (100) was seeded but unused by any gauge until now. User: "What do you
+-- consider as high risk when bond volatility moves higher... since we are
+-- using risk gauges what can we use?"
 -- ---------------------------------------------------------------------------
 INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes) VALUES
     ('spx_top_range',          'SPX at top of risk range',   3, TRUE,  'equity',      NULL),
@@ -23,6 +28,7 @@ INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes
     ('vix_elevated',           'Equity vol elevated',        3, TRUE,  'vol',         NULL),
     ('vix_chop',               'Equity vol in chop zone',    1, TRUE,  'vol',         NULL),
     ('move_elevated',          'Bond vol elevated',          3, TRUE,  'vol',         NULL),
+    ('move_chop',              'Bond vol in chop zone',      1, TRUE,  'vol',         NULL),
     ('credit_stress',          'Credit stress',               3, TRUE,  'credit',      NULL),
     ('yield_level_watch',      'Yields at a watched level',  2, TRUE,  'rates',       NULL),
     ('curve_inverting',        'Curve inverting fast',       1, TRUE,  'rates',       NULL),

@@ -255,6 +255,19 @@ def _g_move_elevated(ctx):
     return v > th["high"], v, f"MOVE {v:.0f} vs elevated>{th['high']:.0f}"
 
 
+# 2026-08-14 -- MOVE's own "chop zone" companion, mirroring _g_vix_chop
+# above -- ref_vol_threshold's MOVE:GIF low (100) was already seeded but
+# unused by any gauge until now. User: "What do you consider as high risk
+# when bond volatility moves higher..." -> discussed move_elevated's
+# existing >120 threshold -> "yes" (add this, leave move_elevated as-is).
+def _g_move_chop(ctx):
+    v = _vol_value(ctx, "MOVE:GIF")
+    th = ctx["vol"].get("MOVE:GIF")
+    if v is None or th is None:
+        return None, v, "MOVE unavailable"
+    return th["low"] <= v <= th["high"], v, f"MOVE {v:.0f} in chop {th['low']:.0f}-{th['high']:.0f}"
+
+
 def _g_credit_stress(ctx):
     v = _rr_pos_sym(ctx, "HYG")
     hy_widen = _series_delta(ctx.get("hy_oas"), CREDIT_WIDEN_DAYS)
@@ -423,6 +436,7 @@ GAUGES: list[tuple[str, Callable]] = [
     ("vix_elevated", _g_vix_elevated),
     ("vix_chop", _g_vix_chop),
     ("move_elevated", _g_move_elevated),
+    ("move_chop", _g_move_chop),
     ("credit_stress", _g_credit_stress),
     ("yield_level_watch", _g_yield_level_watch),
     ("curve_inverting", _g_curve_inverting),
