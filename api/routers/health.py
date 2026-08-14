@@ -291,13 +291,21 @@ def get_dashboard_symbol_earnings(
     date: Optional[str] = Query(None, description="As-of date (defaults to the current anchor)"),
     days_ahead: int = Query(30, ge=1, le=365),
     limit: int = Query(50, ge=1, le=500),
+    symbols: Optional[str] = Query(
+        None, description="Comma-separated tos_symbol list -- when given, scopes to exactly "
+        "these symbols instead of the ref_my_stocks watchlist (feeds the Regime line's "
+        "Earnings-watch row, an arbitrary user-picked symbol list -- see "
+        "GET/PUT /api/dashboard/earnings-watch)."),
 ):
     """
     Upcoming per-symbol earnings dates for the dashboard side panel, scoped to
     the user's tracked universe (ref_my_stocks, active='Y') rather than just
-    currently-held positions. Sourced from drv_technicals.earnings_days (TOS
+    currently-held positions -- unless `symbols` is given, which overrides
+    that scoping entirely. Sourced from drv_technicals.earnings_days (TOS
     feed; already used by the rules engine) -- ref_calendar_event has no
-    per-ticker earnings data at all.
+    per-ticker earnings data at all. A symbol simply stops appearing once its
+    earnings_days goes negative (next as_of_date's TOS feed refresh) --
+    "falls off automatically", no explicit removal needed.
     """
     with session_scope() as s:
         if date:
@@ -306,25 +314,68 @@ def get_dashboard_symbol_earnings(
             d = s.execute(text("SELECT MAX(as_of_date) FROM drv_technicals")).scalar()
         if d is None:
             return []
-        rows = s.execute(text("""
+        symbols_list = [x.strip() for x in symbols.split(",") if x.strip()] if symbols else None
+        scope_clause = (
+            "t.tos_symbol = ANY(:symbols)" if symbols_list else
+            "EXISTS (SELECT 1 FROM ref_my_stocks m WHERE m.tos_symbol = t.tos_symbol AND m.active = 'Y')"
+        )
+        rows = s.execute(text(f"""
             SELECT t.tos_symbol, t.earnings_days,
                    (:d + (t.earnings_days || ' days')::INTERVAL)::date AS event_date
             FROM drv_technicals t
             WHERE t.as_of_date = :d
               AND t.earnings_days IS NOT NULL
               AND t.earnings_days BETWEEN 0 AND :days_ahead
-              AND EXISTS (
-                  SELECT 1 FROM ref_my_stocks m
-                  WHERE m.tos_symbol = t.tos_symbol AND m.active = 'Y'
-              )
+              AND {scope_clause}
             ORDER BY t.earnings_days ASC, t.tos_symbol ASC
             LIMIT :lim
-        """), {"d": d, "days_ahead": days_ahead, "lim": limit}).mappings().all()
+        """), {"d": d, "days_ahead": days_ahead, "lim": limit, "symbols": symbols_list}).mappings().all()
     return [
         {"symbol": r["tos_symbol"], "days_until": r["earnings_days"],
          "event_date": r["event_date"].isoformat()}
         for r in rows
     ]
+
+
+# 2026-08-14 -- Regime line's Earnings-watch row (web/app.js loadRegimeBand())
+# -- arbitrary user-picked symbol list, distinct from ref_my_stocks (the
+# whole tracked watchlist) or held/actionable positions (near-term-earnings
+# above). Same ref_settings single-row pattern as
+# GET/PUT /api/dashboard/calendar-types.
+@router.get("/api/dashboard/earnings-watch")
+def get_dashboard_earnings_watch():
+    with session_scope() as s:
+        raw = s.execute(text(
+            "SELECT setting_value FROM ref_settings WHERE setting_name = 'dashboard_earnings_watch_symbols'"
+        )).scalar()
+    symbols = [x.strip() for x in raw.split(",") if x.strip()] if raw else []
+    return {"symbols": symbols}
+
+
+@router.put("/api/dashboard/earnings-watch")
+def put_dashboard_earnings_watch(body: dict = Body(...)):
+    symbols = body.get("symbols")
+    if not isinstance(symbols, list) or not all(isinstance(x, str) for x in symbols):
+        raise HTTPException(422, "body must be {'symbols': [<tos_symbol strings>]}")
+    # Normalize (upper-case, de-dup, drop blanks) so the same symbol typed
+    # in different cases doesn't create duplicate watch entries.
+    seen, cleaned = set(), []
+    for x in symbols:
+        u = x.strip().upper()
+        if u and u not in seen:
+            seen.add(u)
+            cleaned.append(u)
+    value = ",".join(cleaned)
+    with session_scope() as s:
+        s.execute(text("""
+            INSERT INTO ref_settings (setting_name, setting_value, description)
+            VALUES ('dashboard_earnings_watch_symbols', :v,
+                    'Dashboard Regime-line Earnings row: user-picked tos_symbol watch list')
+            ON CONFLICT (setting_name) DO UPDATE
+                SET setting_value = EXCLUDED.setting_value, updated_at = now()
+        """), {"v": value})
+        s.commit()
+    return {"ok": True, "symbols": cleaned}
 
 
 @router.get("/api/dashboard/near-term-earnings")

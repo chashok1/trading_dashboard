@@ -614,6 +614,102 @@ document.addEventListener('click', e => {
   }
 });
 
+// 2026-08-14 -- Earnings-watch line, below the Events line, same pattern
+// (gear-icon picker, persisted server-side via GET/PUT /api/dashboard/
+// earnings-watch -- one ref_settings row, single-user app) but picking
+// arbitrary SYMBOLS rather than a fixed set of ~31 calendar categories, so
+// the picker is a type-to-add/remove tag list instead of a checklist.
+// Window is a fixed 14 days ("next two weeks"); a symbol simply stops
+// coming back from the API once its own earnings_days goes negative --
+// "falls off automatically after the date is passed", no client-side
+// removal logic needed. <=3d reuses the same .opex-soon yellow highlight
+// as the OPEX/Events lines above (5d threshold there; 3d here, per user).
+// User: "Similar to Events list in the risk dial where i can choose, i
+// need a way to see Symbols (earnings date) that are going be in next two
+// weeks and should fall off automatically after the date is passed.
+// Should be highlighed when close within 3 days."
+let _earningsWatchSymbols = []; // refreshed each loadRegimeBand(), read by the picker popover
+function _earningsLineHtml(rows) {
+  const gear = `<span class="events-gear" title="Choose watched symbols" onclick="_toggleEarningsWatchPop(event)">&#9881;</span>`;
+  if (!_earningsWatchSymbols.length) {
+    return `<div class="events-line earnings-line"><span class="events-empty">No symbols watched</span>${gear}</div>`;
+  }
+  const bits = (rows || []).map(r => {
+    const text = `${escapeHtml(r.symbol)} ${fmtDate(r.event_date)} (${r.days_until}d)`;
+    return r.days_until <= 3 ? `<span class="opex-soon">${text}</span>` : text;
+  });
+  const body = bits.length
+    ? bits.join(' &middot; ')
+    : '<span class="events-empty">No earnings in the next 14 days for watched symbols</span>';
+  return `<div class="events-line earnings-line">${body}${gear}</div>`;
+}
+function _toggleEarningsWatchPop(e) {
+  e.stopPropagation();
+  const pop = $('earningsWatchPop');
+  if (!pop) return;
+  if (pop.style.display === 'block') { pop.style.display = 'none'; return; }
+  _renderEarningsWatchPop(e.currentTarget);
+}
+function _renderEarningsWatchPop(anchorEl) {
+  const pop = $('earningsWatchPop');
+  if (!pop) return;
+  let h = '<div class="sp-title">Watched symbols</div>'
+    + '<div class="earnings-add-row"><input type="text" id="earningsAddInput" placeholder="Symbol (e.g. AAPL)" '
+    + 'onkeydown="if(event.key===\'Enter\'){event.preventDefault();_addEarningsSymbol();}">'
+    + '<button type="button" onclick="_addEarningsSymbol()">Add</button></div>'
+    + '<div class="earnings-tag-list" id="earningsSymbolList">' + _earningsTagsHtml() + '</div>'
+    + '<button type="button" class="cal-types-save" onclick="_saveEarningsWatch()">Save</button>';
+  pop.innerHTML = h;
+  pop.style.display = 'block';
+  const rect = anchorEl.getBoundingClientRect();
+  let top = rect.bottom + 4;
+  if (top + 280 > window.innerHeight - 8) top = Math.max(8, rect.top - 280 - 4);
+  let left = rect.left;
+  if (left + 220 > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 220 - 8);
+  pop.style.top = top + 'px';
+  pop.style.left = left + 'px';
+  const input = $('earningsAddInput');
+  if (input) input.focus();
+}
+function _earningsTagsHtml() {
+  if (!_earningsWatchSymbols.length) return '<span class="events-empty">None yet -- add one above</span>';
+  return _earningsWatchSymbols.map(sym => `<span class="earnings-tag">${escapeHtml(sym)}`
+    + `<span class="earnings-tag-x" onclick="_removeEarningsSymbol('${escapeHtml(sym)}')" title="Remove">&times;</span></span>`).join('');
+}
+function _addEarningsSymbol() {
+  const input = $('earningsAddInput');
+  if (!input) return;
+  const sym = input.value.trim().toUpperCase();
+  input.value = '';
+  if (!sym || _earningsWatchSymbols.includes(sym)) { input.focus(); return; }
+  _earningsWatchSymbols.push(sym);
+  const list = $('earningsSymbolList');
+  if (list) list.innerHTML = _earningsTagsHtml();
+  input.focus();
+}
+function _removeEarningsSymbol(sym) {
+  _earningsWatchSymbols = _earningsWatchSymbols.filter(s => s !== sym);
+  const list = $('earningsSymbolList');
+  if (list) list.innerHTML = _earningsTagsHtml();
+}
+async function _saveEarningsWatch() {
+  const pop = $('earningsWatchPop');
+  if (!pop) return;
+  try {
+    await fetchJson('/api/dashboard/earnings-watch', {
+      method: 'PUT', body: JSON.stringify({ symbols: _earningsWatchSymbols }),
+    });
+  } catch (e) { console.error('save earnings watch failed:', e); }
+  pop.style.display = 'none';
+  loadRegimeBand();
+}
+document.addEventListener('click', e => {
+  const pop = $('earningsWatchPop');
+  if (pop && pop.style.display === 'block' && !pop.contains(e.target) && !e.target.classList.contains('events-gear')) {
+    pop.style.display = 'none';
+  }
+});
+
 async function loadRegimeBand() {
   const strip = $('regimeStrip');
   if (!strip) return;
@@ -623,13 +719,21 @@ async function loadRegimeBand() {
     const calUrl = state.date
       ? `/api/dashboard/econ-indicators?date=${encodeURIComponent(state.date)}&limit=60`
       : '/api/dashboard/econ-indicators?limit=60';
-    const [windowData, factors, calRows, calTypes] = await Promise.all([
+    const [windowData, factors, calRows, calTypes, earningsWatch] = await Promise.all([
       fetchJson(`/api/quad-window${qs}`).catch(() => null),
       fetchJson(`/api/quad/band-factors${qs}`).catch(() => ({ bull: [], bear: [], factors: [] })),
       fetchJson(calUrl).catch(() => []),
       fetchJson('/api/dashboard/calendar-types').catch(() => ({ all: [], selected: [] })),
+      fetchJson('/api/dashboard/earnings-watch').catch(() => ({ symbols: [] })),
     ]);
     _calTypesCache = calTypes;
+    _earningsWatchSymbols = earningsWatch.symbols || [];
+    // Sequential (not in the Promise.all above) -- depends on the watch
+    // list just fetched. Empty watch list skips the round-trip entirely.
+    const earningsRows = _earningsWatchSymbols.length
+      ? await fetchJson(`/api/dashboard/symbol-earnings?${state.date ? 'date=' + encodeURIComponent(state.date) + '&' : ''}`
+          + `symbols=${encodeURIComponent(_earningsWatchSymbols.join(','))}&days_ahead=14`).catch(() => [])
+      : [];
     if (!windowData) { strip.innerHTML = '<div class="ev-fail">&#9888; Regime data unavailable.</div>'; return; }
     const dominant = windowData.dominant_quad != null ? `Quad ${windowData.dominant_quad}` : '—';
     const allFactors = factors.factors || [];
@@ -683,7 +787,7 @@ async function loadRegimeBand() {
     // left-flowing blob with the months embedded right after the label.
     // 2026-08-09 -- "Win" text dropped per user: "remove the text 'Win'".
     const winLabel = `<span class="regime-win-label">${windowData.h ?? 60}d (<strong style="color:${_quadColor(dominant)};">Q${windowData.dominant_quad ?? '?'}</strong>)</span>`;
-    strip.innerHTML = `${_opexLineHtml(calRows)}${_eventsLineHtml(calRows, calTypes.selected)}<div class="regime-line" data-quadbandpop="1">
+    strip.innerHTML = `${_opexLineHtml(calRows)}${_eventsLineHtml(calRows, calTypes.selected)}${_earningsLineHtml(earningsRows)}<div class="regime-line" data-quadbandpop="1">
       ${winLabel}<span class="regime-window-text">${months || 'no window data'}</span>${qtrEntry}
     </div>`;
     const line = strip.querySelector('.regime-line');

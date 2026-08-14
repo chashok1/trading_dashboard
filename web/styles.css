@@ -2674,6 +2674,27 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
   background: var(--accent, #2563eb); color: #fff; border: none; border-radius: 4px;
 }
 .cal-types-save:hover { opacity: 0.9; }
+/* 2026-08-14 -- Earnings-watch picker: type-to-add input + removable tag
+   list, distinct from Events' fixed checklist (arbitrary symbol universe,
+   not ~31 known categories). Shares .cal-types-pop/.cal-types-list/
+   .cal-types-save's outer chrome (pointer-events, Save button). */
+.earnings-add-row { display: flex; gap: 4px; margin-bottom: 8px; }
+.earnings-add-row input {
+  flex: 1; min-width: 0; font-size: 11px; padding: 4px 6px;
+  border: 1px solid var(--border); border-radius: 4px;
+}
+.earnings-add-row button {
+  flex: 0 0 auto; font-size: 11px; font-weight: 600; padding: 4px 8px; cursor: pointer;
+  background: var(--accent, #2563eb); color: #fff; border: none; border-radius: 4px;
+}
+.earnings-tag-list { display: flex; flex-direction: row; flex-wrap: wrap; max-height: 240px; overflow-y: auto; margin-bottom: 8px; }
+.earnings-tag {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px;
+  background: var(--surface-hover, #f0f6ff); border: 1px solid var(--border);
+  border-radius: 3px; padding: 2px 4px 2px 7px; margin: 0 4px 4px 0;
+}
+.earnings-tag-x { cursor: pointer; color: #6b7280; font-weight: 700; padding: 0 2px; }
+.earnings-tag-x:hover { color: #b91c1c; }
 /* 2026-08-08 -- .regime-line switched from inline-block to a full-width flex
    row so its Qtr entry can right-justify to the card's own right edge
    (flex:1 1 100% claims the whole #regimeStrip row) instead of just
