@@ -6,9 +6,16 @@
 -- =====================================================
 
 -- ---------------------------------------------------------------------------
--- 2.1 ref_risk_gauge — total active weight = 35 (+ volume_breadth_weak seeded
+-- 2.1 ref_risk_gauge — total active weight = 38 (+ volume_breadth_weak seeded
 -- inactive, weight 2 -- flip to TRUE once hist_internals is flowing, per
--- Phase 4.1; active weight becomes 37 at that point).
+-- Phase 4.1; active weight becomes 40 at that point).
+-- 2026-08-14 -- sahm_rule added: FRED's SAHMREALTIME >=0.50pp (Claudia
+-- Sahm's recession indicator -- 3-month avg UNRATE vs its own trailing-
+-- 12-month low). New 'macro' category (none of the existing 8 fit a
+-- labor-market recession signal); weight 3, top tier, given the rule's
+-- historical reliability. User: "Implement Sahm rule (claudia sahm)
+-- unemployment rises by 0.5% on 3 month average vs lowest in last 12
+-- months."
 -- 2026-08-14 -- short_vol_disc added: VIX9D vs rvol_10day, the short-dated
 -- companion to vrp_gone (VIX vs RV21). Weight 1 (vs vrp_gone's 2) -- an
 -- early/leading version of the same signal, not a duplicate of it.
@@ -33,6 +40,7 @@ INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes
     ('spx_top_range',          'SPX at top of risk range',   3, TRUE,  'equity',      NULL),
     ('spx_bottom_range',       'SPX below risk range',       2, TRUE,  'equity',      NULL),
     ('vix_spx_divergence',     'VIX/SPX inverse relationship broken', 3, TRUE, 'equity', NULL),
+    ('sahm_rule',               'Sahm Rule recession signal',  3, TRUE,  'macro',       NULL),
     ('vix_elevated',           'Equity vol elevated',        3, TRUE,  'vol',         NULL),
     ('vix_chop',               'Equity vol in chop zone',    1, TRUE,  'vol',         NULL),
     ('move_elevated',          'Bond vol elevated',          3, TRUE,  'vol',         NULL),
@@ -172,6 +180,9 @@ INSERT INTO ref_gauge_transmission (gauge_key, axis, category) VALUES
     ('spx_top_range',         'style',  'Momentum'),
     ('vix_spx_divergence',    'style',  'High Beta'),
     ('vix_spx_divergence',    'style',  'Momentum'),
+    ('sahm_rule',             'style',  'High Beta'),
+    ('sahm_rule',             'style',  'Momentum'),
+    ('sahm_rule',             'style',  'Small Caps'),
     ('breadth_deteriorating', 'style',  'High Beta'),
     ('breadth_deteriorating', 'style',  'Momentum'),
     ('gold_vol_elevated',     'asset_class', 'Gold')

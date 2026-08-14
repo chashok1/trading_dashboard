@@ -7523,7 +7523,7 @@ CREATE TABLE IF NOT EXISTS ref_risk_gauge (
     label       text    NOT NULL,
     weight      numeric NOT NULL DEFAULT 1,
     is_active   boolean NOT NULL DEFAULT TRUE,
-    category    text,                 -- equity | vol | credit | rates | fx | commodity | breadth | positioning
+    category    text,                 -- equity | vol | credit | rates | fx | commodity | breadth | positioning | macro
     notes       text
 );
 

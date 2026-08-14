@@ -146,6 +146,7 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "vix9d": vix9d,
         "hy_oas": _macro_series("BAMLH0A0HYM2", CREDIT_WIDEN_DAYS),
         "t10y2y": _macro_series("T10Y2Y", CURVE_INVERT_DAYS),
+        "sahm_rule": _macro_series("SAHMREALTIME", 3),
         "vrp": extra.get("vrp"),
         "pct_above_sma50": extra.get("pct_above_sma50"),
         "pct_above_sma50_5d_chg": extra.get("pct_above_sma50_5d_chg"),
@@ -354,6 +355,24 @@ def _g_curve_inverting(ctx):
     return fired, latest, f"2s10s {latest*100:.0f}bp ({delta*100:+.0f}bp/{CURVE_INVERT_DAYS}d)"
 
 
+# 2026-08-14 -- Sahm Rule recession indicator (economist Claudia Sahm):
+# fires when the 3-month average of the national unemployment rate rises
+# >=0.50pp above its own low over the trailing 12 months -- a well-
+# documented, historically reliable real-time recession signal. Tracks
+# FRED's own SAHMREALTIME series directly (db/seeds_macro.sql) rather
+# than recomputing the moving-average math from UNRATE ourselves -- it's
+# the authoritative, point-in-time-correct version. User: "Implement Sahm
+# rule (claudia sahm) unemployment rises by 0.5% on 3 month average vs
+# lowest in last 12 months" -- a precise, standard definition, no
+# clarification needed (unlike the vaguer gauge requests).
+def _g_sahm_rule(ctx):
+    series = ctx.get("sahm_rule")
+    if not series:
+        return None, None, "SAHMREALTIME unavailable"
+    latest_date, v = series[0]
+    return v >= 0.50, v, f"Sahm Rule {v:+.2f}pp (as of {latest_date.strftime('%b %Y')})"
+
+
 def _g_dollar_strong(ctx):
     v = _rr_pos_sym(ctx, "$DXY")
     if v is None:
@@ -468,6 +487,7 @@ GAUGES: list[tuple[str, Callable]] = [
     ("credit_stress", _g_credit_stress),
     ("yield_level_watch", _g_yield_level_watch),
     ("curve_inverting", _g_curve_inverting),
+    ("sahm_rule", _g_sahm_rule),
     ("dollar_strong", _g_dollar_strong),
     ("oil_shock", _g_oil_shock),
     ("vrp_gone", _g_vrp_gone),

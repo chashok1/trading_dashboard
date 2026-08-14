@@ -23,6 +23,15 @@ INSERT INTO ref_macro_series (series_id, label, grp, unit, sort_order, enabled) 
     ('T10YIE',       '10Y breakeven',       'inflation', '%',     40, TRUE),
     -- Jobs & growth --------------------------------------------------------
     ('UNRATE',       'Unemployment',        'jobs',      '%',     10, TRUE),
+    -- 2026-08-14 -- Sahm Rule recession indicator (Claudia Sahm): fires at
+    -- >=0.50 when the 3-month avg of UNRATE rises 0.50pp+ above its own
+    -- low over the trailing 12 months. Tracking FRED's own real-time
+    -- series (SAHMREALTIME) rather than recomputing from UNRATE -- it's
+    -- the authoritative, point-in-time-correct version (accounts for data
+    -- as originally reported, not with hindsight revisions), avoiding any
+    -- risk of our own moving-average math drifting from the "official"
+    -- reading. Feeds etl/derive_risk_dial.py::_g_sahm_rule.
+    ('SAHMREALTIME', 'Sahm Rule',           'jobs',      'pp',    15, TRUE),
     ('PAYEMS',       'Nonfarm payrolls',    'jobs',      'k',     20, TRUE),
     ('ICSA',         'Initial claims',      'jobs',      'count', 30, TRUE),
     -- Risk & financial conditions -----------------------------------------
