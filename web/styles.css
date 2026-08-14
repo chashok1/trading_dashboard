@@ -2164,15 +2164,26 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    to match dial-changed-col's own 15% narrowing above, so the meter still
    fits on .rd-top-row's single line instead of wrapping under the budget
    number/label in the now-narrower column. */
-.rd-meter { height: 20px; border-radius: 10px; background: var(--border); overflow: hidden; width: 136px; max-width: 100%; flex: 1 1 102px; }
+/* 2026-08-14 -- narrowed further (136px->96px, 102px->72px flex-basis) to
+   make room for .rd-spx-vbar on the same row, per user: "reduce bar size". */
+.rd-meter { height: 20px; border-radius: 10px; background: var(--border); overflow: hidden; width: 96px; max-width: 100%; flex: 1 1 72px; }
 .rd-meter-fill { height: 100%; background: var(--text-3); }
 .rd-meter-fill.b-clear      { background: var(--ok); }
 .rd-meter-fill.b-caution    { background: var(--warn); }
 .rd-meter-fill.b-defensive  { background: var(--act-sell); }
 .rd-meter-fill.b-notinv     { background: var(--bear); }
+/* 2026-08-14 -- always-visible vertical SPX risk-range indicator, on the
+   right side of .rd-meter within .rd-top-row. Fill height = SPX's position
+   within LRR/TRR (0=LRR floor, 100%=TRR ceiling); fill colour is a pure
+   visual read of that position (good/caution/bad), independent of whether
+   the underlying spx_top_range gauge has actually fired (it fires only at
+   >=85%). Hover for the LRR/TRR/upside-downside detail text. */
+.rd-spx-vbar { width: 10px; height: 20px; border-radius: 4px; background: var(--border); overflow: hidden; flex: 0 0 auto; display: flex; align-items: flex-end; }
+.rd-spx-vbar-fill { width: 100%; border-radius: 4px 4px 0 0; }
+.rd-spx-vbar-fill.tier-good     { background: var(--ok); }
+.rd-spx-vbar-fill.tier-caution  { background: var(--warn); }
+.rd-spx-vbar-fill.tier-bad      { background: var(--act-sell); }
 .rd-headline { font-size: 13px; font-weight: 400; color: var(--text-2); margin: 8px 0 10px; }
-/* 2026-08-14 -- always-visible SPX upside/downside line (TRR/LRR), independent of gauge fired state */
-.rd-spx-range { font-size: 11px; color: var(--text-3); margin: -6px 0 10px; }
 .rd-gauge-list { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 /* TASK_134 A.4: severity encoded as a coloured left rail + weight chip
    (never colour alone) instead of one flat pink wash for every fired gauge. */

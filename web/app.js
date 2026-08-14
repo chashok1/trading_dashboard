@@ -355,19 +355,27 @@ async function loadRiskDial() {
     }).join('') || '<div class="ev-quiet">No gauges fired.</div>';
     const quietHtml = (r.quiet || [])
       .map(g => `${escapeHtml(g.label || g.key)}: ${escapeHtml(g.detail || '')}`).join('<br>');
-    // 2026-08-14 -- SPX upside/downside line, ALWAYS shown (not just when
-    // spx_top_range/spx_top_range_warning actually fire, which only happens
-    // at 70%/85%+ of its risk range -- see etl/derive_risk_dial.py). The
-    // API already returns every gauge's own value/detail in fired OR quiet
-    // regardless of firing state; this just surfaces spx_top_range_warning's
-    // detail (which already includes "+X% to TRR / -Y% to LRR", added same
-    // day) unconditionally instead of leaving it to be discovered only by
-    // opening "Quiet gauges" on a day neither SPX gauge fires. User: "add
-    // risk if s&P is at TRR just like today. I need to see this SPX upside
-    // is 0.8% and down side is something like 2.7%" -> "Show upside/
-    // downside % always, not just when fired."
-    const spxGauge = (r.fired || []).concat(r.quiet || []).find(g => g.key === 'spx_top_range_warning');
-    const spxRangeHtml = spxGauge ? `<div class="rd-spx-range">${escapeHtml(spxGauge.detail || '')}</div>` : '';
+    // 2026-08-14 -- SPX vertical range indicator, ALWAYS shown (not just
+    // when spx_top_range actually fires, which only happens at >=85% of its
+    // risk range -- see etl/derive_risk_dial.py). The API returns this
+    // gauge's own value (0..1 position within LRR/TRR) in fired OR quiet
+    // regardless of firing state, so the bar can render every day. Replaced
+    // the earlier always-visible text line per user: "I don't need text.
+    // May be bar indicator on the right side of the risk dial bar... vertical
+    // bar and indicator where the current price is and color that indicates
+    // is good or bad. Only fire the gauge if above 85%." -- the gauge itself
+    // fires only at >=85% (single tier, no separate warning gauge); this bar
+    // is a pure visual read of the same value, colored by proximity to
+    // either edge of the range regardless of firing state.
+    const spxGauge = (r.fired || []).concat(r.quiet || []).find(g => g.key === 'spx_top_range');
+    let spxVbarHtml = '';
+    if (spxGauge && spxGauge.value != null) {
+      const v = Math.max(0, Math.min(1, spxGauge.value));
+      const tier = (v >= 0.85 || v <= 0.15) ? 'bad' : (v >= 0.70 || v <= 0.30) ? 'caution' : 'good';
+      spxVbarHtml = `<div class="rd-spx-vbar" title="${escapeHtml(spxGauge.detail || '')}">
+        <div class="rd-spx-vbar-fill tier-${tier}" style="height:${(v * 100).toFixed(0)}%;"></div>
+      </div>`;
+    }
     // TASK_140 follow-up 5/6/7 -- "Risk Dial" header removed from
     // index.html (this card is self-explanatory: the number +
     // CLEAR/CAUTION/etc. label already say what it is). Meter bar moved
@@ -383,9 +391,9 @@ async function loadRiskDial() {
         <span class="rd-budget ${bandClass}">${r.risk_budget != null ? r.risk_budget : '—'}</span>
         <span class="rd-label ${labelClass}">${escapeHtml(r.risk_label || '')}</span>
         <div class="rd-meter"><div class="rd-meter-fill ${bandClass}" style="width:${budget}%;"></div></div>
+        ${spxVbarHtml}
       </div>
       <div class="rd-headline">${escapeHtml(r.headline || '')}</div>
-      ${spxRangeHtml}
       <div class="rd-gauge-list">${firedHtml}</div>
       <div class="rd-bottom-row">
         <span class="rd-quiet-toggle" onclick="document.getElementById('rdQuietList').classList.toggle('open')">Quiet gauges (${(r.quiet || []).length})</span>
