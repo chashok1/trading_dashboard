@@ -277,17 +277,21 @@
   // (added to the API response alongside msr -- see api/routers/hedgeye.py)
   // -- the same Volatility Risk Premium framing as the vrp_gone risk gauge,
   // just using MSR's faster 10-day realized vol instead of the 21-day one.
+  // 2026-08-14 follow-up -- "make sure to add your answers into these
+  // tooltips about affecting stocks" -- each branch now ends with an
+  // explicit stocks-market-behavior line (grinding/pinned tape vs sharper,
+  // extended selloffs/rallies), not just the dealer-hedging mechanics.
   function _gammaThrottleTip(v) {
     return v >= 0
-      ? 'Positive (' + v.toFixed(2) + '): dealers hedge counter-trend (buy dips, sell rips) → pins price, dampens realized vol, mean-reversion more reliable.'
-      : 'Negative (' + v.toFixed(2) + '): dealers hedge with-trend (sell weakness, buy strength) → amplifies moves, bigger ranges both ways, breakouts more likely to run.';
+      ? 'Positive (' + v.toFixed(2) + '): dealers hedge counter-trend (buy dips, sell rips) → pins price, dampens realized vol, mean-reversion more reliable. Stocks: tape tends to grind/range-bound, dips get bought.'
+      : 'Negative (' + v.toFixed(2) + '): dealers hedge with-trend (sell weakness, buy strength) → amplifies moves, bigger ranges both ways, breakouts more likely to run. Stocks: selloffs and rallies can extend further/faster than usual — size and stops matter more here.';
   }
   function _rvolTip(rvol, vix) {
     if (vix == null) return null;
     var vrp = vix - rvol;
     return vrp >= 0
-      ? 'VIX ' + vix.toFixed(1) + ' > Realized Vol ' + rvol.toFixed(2) + ' (VRP +' + vrp.toFixed(1) + '): options priced richer than what’s actually moving → historically favors premium sellers; calmer, pinned tape while this holds.'
-      : 'Realized Vol ' + rvol.toFixed(2) + ' ≥ VIX ' + vix.toFixed(1) + ' (VRP ' + vrp.toFixed(1) + '): actual movement has caught up to/exceeded what was priced in → the premium-seller edge is gone; expect further vol expansion, IV likely to reprice higher.';
+      ? 'VIX ' + vix.toFixed(1) + ' > Realized Vol ' + rvol.toFixed(2) + ' (VRP +' + vrp.toFixed(1) + '): options priced richer than what’s actually moving → historically favors premium sellers. Stocks: calmer, grinding/range-bound tape while this holds — heavy premium-selling flow keeps dealers net long gamma, reinforcing the calm.'
+      : 'Realized Vol ' + rvol.toFixed(2) + ' ≥ VIX ' + vix.toFixed(1) + ' (VRP ' + vrp.toFixed(1) + '): actual movement has caught up to/exceeded what was priced in → the premium-seller edge is gone, IV likely to reprice higher. Stocks: often coincides with sharper selloffs or two-way volatility — dealer hedging can flip with-trend here, amplifying whatever move is already underway.';
   }
 
   function msrCardHtml(msr, loadedAt) {
