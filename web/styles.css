@@ -2180,9 +2180,14 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    >=85%). Hover for the LRR/TRR/upside-downside detail text. */
 .rd-spx-vbar { width: 10px; height: 48px; border-radius: 4px; background: var(--border); overflow: hidden; flex: 0 0 auto; display: flex; align-items: flex-end; }
 .rd-spx-vbar-fill { width: 100%; border-radius: 4px 4px 0 0; }
+/* 2026-08-14 -- var(--warn)/var(--act-sell) are both muted brownish tones
+   (#b45309 / #8b4828) that read as near-identical, near-red on a thin 10px
+   fill -- user: "still not reflecting yellow. it is still showing red."
+   Using explicit, unambiguous yellow/red here instead of the shared muted
+   palette (which is tuned for text/labels, not a small color-coded bar). */
 .rd-spx-vbar-fill.tier-good     { background: var(--ok); }
-.rd-spx-vbar-fill.tier-caution  { background: var(--warn); }
-.rd-spx-vbar-fill.tier-bad      { background: var(--act-sell); }
+.rd-spx-vbar-fill.tier-caution  { background: #eab308; }
+.rd-spx-vbar-fill.tier-bad      { background: var(--bear); }
 .rd-headline { font-size: 13px; font-weight: 400; color: var(--text-2); margin: 8px 0 10px; }
 .rd-gauge-list { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 /* TASK_134 A.4: severity encoded as a coloured left rail + weight chip
