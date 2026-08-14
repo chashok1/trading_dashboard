@@ -2277,8 +2277,15 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    has real leftover space to fill every time, so every column's own
    overflow-y:auto is what handles content that doesn't fill it, not the
    modal's own size. */
+/* 2026-08-14 -- max-width widened 5% (1760px -> 1848px) -- the sort-header
+   overflow fix (removing .gm-sortable's white-space:nowrap) helped but the
+   left column was still tight; user has the screen space and asked to use
+   it: "you have lot of space. you can increase total popup width to
+   accommodate this also ... just increase it by 5%." Grid columns inside
+   (.gm-body's fr ratios) scale with this automatically, no other change
+   needed. */
 .gauge-modal {
-  position: relative; z-index: 1; width: 100%; max-width: 1760px;
+  position: relative; z-index: 1; width: 100%; max-width: 1848px;
   height: calc(100vh - 96px); max-height: calc(100vh - 96px); display: flex; flex-direction: column;
   background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px;
   box-shadow: 0 20px 48px -12px rgba(0,0,0,.35); overflow: hidden;
