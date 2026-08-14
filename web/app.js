@@ -365,13 +365,15 @@ async function loadRiskDial() {
     // bar and indicator where the current price is and color that indicates
     // is good or bad. Only fire the gauge if above 85%." -- the gauge itself
     // fires only at >=85% (single tier, no separate warning gauge); this bar
-    // is a pure visual read of the same value, colored by proximity to
-    // either edge of the range regardless of firing state.
+    // is a pure visual read of the same value. Tiers per follow-up: "warning
+    // yellow >75% and red >85%" -- top-of-range only (mirrors the gauge's
+    // own 85% firing threshold); below 75% reads as good regardless of how
+    // low SPX sits in the range.
     const spxGauge = (r.fired || []).concat(r.quiet || []).find(g => g.key === 'spx_top_range');
     let spxVbarHtml = '';
     if (spxGauge && spxGauge.value != null) {
       const v = Math.max(0, Math.min(1, spxGauge.value));
-      const tier = (v >= 0.85 || v <= 0.15) ? 'bad' : (v >= 0.70 || v <= 0.30) ? 'caution' : 'good';
+      const tier = v > 0.85 ? 'bad' : v > 0.75 ? 'caution' : 'good';
       spxVbarHtml = `<div class="rd-spx-vbar" title="${escapeHtml(spxGauge.detail || '')}">
         <div class="rd-spx-vbar-fill tier-${tier}" style="height:${(v * 100).toFixed(0)}%;"></div>
       </div>`;
