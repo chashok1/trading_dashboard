@@ -83,6 +83,17 @@ const state = {
   // show_hidden is off — see applyColumnVisibility()).
   hiddenCols: _loadHiddenCols(),
 };
+// 2026-08-14 -- exposed on window so later-loaded scripts can read it --
+// a top-level `const`/`let` binding lives in this file's own lexical
+// scope only, NOT on window, even in a classic (non-module) script (only
+// `var`/function declarations do). risk_gauge_modal.js's _dateQS() reads
+// window.state.date to scope the exposure-detail popup (opened by the
+// Portfolio Mix panel's Asset Allocation/Sector pies, see portfolio_mix.js
+// ::_pmOpenCategoryModal) to whichever date is being viewed here -- same
+// fix already applied in app.js (see that file's own comment on this) for
+// the Dashboard screen's equivalent gap. User: "add same click actions on
+// the top graphs also."
+window.state = state;
 
 const $ = (id) => document.getElementById(id);
 

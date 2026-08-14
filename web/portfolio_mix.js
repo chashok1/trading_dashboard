@@ -89,7 +89,15 @@ function _pmTooltipHandler(context) {
   el.style.top = Math.max(4, y) + 'px';
 }
 
-function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists, emptyMsg) {
+// onSliceClick(label): optional -- called with the clicked slice/legend
+// row's label when provided. Callers pass one when this pie's categories
+// map onto something openable (a real axis category -> the same exposure-
+// detail popup the Sector/Asset class/Style factor-scorecard cards use, or
+// a single symbol -> the price-chart popup) -- see pmRenderCoreMix below
+// for which pies wire one and which don't. User: "add same click actions
+// on the top graphs also" (top graphs = the Portfolio Mix pies, previously
+// display-only -- no click handler existed on them at all before this).
+function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists, emptyMsg, onSliceClick) {
   const canvas = $(canvasId);
   const legendEl = $(legendId);
   if (!canvas) return;
@@ -108,6 +116,19 @@ function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists
       responsive: false,
       maintainAspectRatio: false,
       cutout: '55%',
+      // Slice click -> onSliceClick(label), same drill-down the Sector/
+      // Asset class/Style factor-scorecard pies already had before this pie
+      // ever existed -- see pmRenderCoreMix's own callers for which axis
+      // each pie opens (or none, for pies with no natural backend
+      // counterpart -- e.g. Beta's Low/Mid/High buckets aren't a real
+      // category anywhere server-side).
+      onClick: onSliceClick ? (evt, elements) => {
+        if (!elements.length) return;
+        onSliceClick(labels[elements[0].index]);
+      } : undefined,
+      onHover: onSliceClick ? (evt, elements) => {
+        evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+      } : undefined,
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -129,13 +150,38 @@ function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists
       const pct = total ? Math.round(values[i] / total * 100) : 0;
       const tickers = (tickerLists && tickerLists[i]) || [];
       const title = tickers.length ? escapeHtml(_pmTickerLines(tickers).join('\n')) : '';
-      return `<div title="${title}" style="display:flex;align-items:center;gap:4px;font-size:10px;padding:1px 0;cursor:${tickers.length ? 'help' : 'default'};">`
+      const clickable = !!onSliceClick;
+      const cursor = clickable ? 'pointer' : (tickers.length ? 'help' : 'default');
+      return `<div title="${title}" data-pm-idx="${i}" style="display:flex;align-items:center;gap:4px;font-size:10px;padding:1px 0;cursor:${cursor};">`
         + `<span style="width:8px;height:8px;border-radius:2px;background:${colors[i]};flex-shrink:0;"></span>`
         + `<span style="flex:1;min-width:0;color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(lab)}</span>`
         + `<span style="color:#6b7280;flex-shrink:0;">${pct}%</span>`
         + `</div>`;
     }).join('');
+    if (onSliceClick) {
+      legendEl.querySelectorAll('[data-pm-idx]').forEach((el) => {
+        el.addEventListener('click', () => onSliceClick(labels[Number(el.getAttribute('data-pm-idx'))]));
+      });
+    }
   }
+}
+
+// Click actions for the pies whose categories map onto something openable.
+// 'Other' (the top-7-cutoff synthetic aggregate, several categories/symbols
+// folded together) has no single matching backend category/symbol -- not
+// clickable, in either pie. Guarded with typeof-checks, not a hard
+// dependency -- the two popup scripts (risk_gauge_modal.js/chart_modal.js)
+// are expected to be loaded on every page that includes this module
+// (index.html and actionable.html both do, as of this feature), but a
+// future page reusing pmRenderCoreMix without them should degrade to
+// "click does nothing" rather than throwing.
+function _pmOpenCategoryModal(axis, label) {
+  if (label === 'Other') return;
+  if (typeof window.openFactorExposureModal === 'function') window.openFactorExposureModal(axis, label);
+}
+function _pmOpenSymbolChart(label) {
+  if (label === 'Other') return;
+  if (typeof window.openChartModal === 'function') window.openChartModal(label);
 }
 
 // Draws the 4 core Portfolio Mix pies (Asset Allocation, Beta, Sector,
@@ -173,7 +219,8 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
   _pmDrawPie(idPrefix + 'Asset', idPrefix + 'AssetCanvas', idPrefix + 'AssetLegend',
     assetLabels, assetLabels.map(k => assetTotals[k]),
     assetLabels.map(k => _PM_ASSET_COLORS[k] || '#c3c2b7'),
-    assetLabels.map(k => assetTickerMap[k]), 'No asset class data for held positions.');
+    assetLabels.map(k => assetTickerMap[k]), 'No asset class data for held positions.',
+    (label) => _pmOpenCategoryModal('asset_class', label));
 
   if (!held.length) {
     ['Beta', 'Sector', 'Conc'].forEach(suf => {
@@ -243,7 +290,8 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
   const secColorOf = (n) => n === 'Other' ? '#898781' : _PM_CAT_PALETTE[sortedSecNames.indexOf(n) % _PM_CAT_PALETTE.length];
   _pmDrawPie(idPrefix + 'Sector', idPrefix + 'SectorCanvas', idPrefix + 'SectorLegend',
     secEntries.map(e => e[0]), secEntries.map(e => e[1]), secEntries.map(e => secColorOf(e[0])),
-    secTickerLists, 'No sector data for held positions.');
+    secTickerLists, 'No sector data for held positions.',
+    (label) => _pmOpenCategoryModal('sector', label));
 
   // Concentration -- top 7 holdings by $ value + Other.
   let concEntries = held.map(r => [r.tos_symbol, Number(r.current_position_dollar) || 0]);
@@ -257,5 +305,6 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
   _pmDrawPie(idPrefix + 'Conc', idPrefix + 'ConcCanvas', idPrefix + 'ConcLegend',
     concEntries.map(e => e[0]), concEntries.map(e => e[1]),
     concEntries.map((e, i) => e[0] === 'Other' ? '#898781' : _PM_CAT_PALETTE[i % _PM_CAT_PALETTE.length]),
-    concTickerLists, 'No held positions.');
+    concTickerLists, 'No held positions.',
+    _pmOpenSymbolChart);
 }

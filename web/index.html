@@ -535,13 +535,19 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
   <script src="/static/_common.js"></script>
   <script src="/static/actions.js"></script>
-  <script src="/static/portfolio_mix.js?v=20260814d"></script>
+  <script src="/static/portfolio_mix.js?v=20260814e"></script>
   <script src="/static/app.js?v=20260814c"></script>
   <script src="/static/dashboard_notes.js"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/risk_gauge_modal.js?v=20260814b"></script>
   <script src="/static/market_view_modal.js?v=20260814a"></script>
+  <!-- 2026-08-14 -- added so the Portfolio Mix row's Concentration pie
+       (web/portfolio_mix.js::_pmOpenSymbolChart) can open a symbol's price
+       chart on click, same as clicking a symbol link elsewhere in the app
+       already does (web/actionable.html loads this same script for that).
+       User: "add same click actions on the top graphs also." -->
+  <script src="/static/chart_modal.js"></script>
   <!-- 2026-08-10 -- renders Mkt Situation/INFL/Early Look/Macro Commentary/
        Top 3 Things into #hedgeyeDashPanel above (see cat-col). Same script
        Actionable loads; it targets whichever of #hedgeyePanel/
