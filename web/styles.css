@@ -2352,7 +2352,11 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    Small segmented-button group, not a <select> -- only 3 fixed options,
    a click is faster than opening a dropdown. User: "Popup - add a filter
    to see active/closed/ or both". */
-.gm-pos-filter { display: flex; gap: 4px; padding: 8px 10px 0; flex: 0 0 auto; }
+/* 2026-08-14 -- flex-wrap:wrap added (was nowrap by default) as a second
+   overflow safety net for this row now that it also carries the Account
+   dropdown -- a long account name can drop the dropdown onto its own line
+   instead of forcing the whole row wider than its column. */
+.gm-pos-filter { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 10px 0; flex: 0 0 auto; }
 .gm-pos-filter button {
   font-size: 10.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
   border: 1px solid var(--border); background: var(--card-bg); color: var(--text-2);
@@ -2365,7 +2369,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .gm-pos-filter select#gmAccountFilter {
   font-size: 10.5px; font-weight: 600; padding: 3px 8px; border-radius: 999px;
   border: 1px solid var(--border); background: var(--card-bg); color: var(--text-2);
-  cursor: pointer; margin-left: auto;
+  cursor: pointer; margin-left: auto; max-width: 150px;
 }
 .gm-pos-filter select#gmAccountFilter:hover { color: var(--text-1); }
 .gm-table-wrap { flex: 1 1 auto; min-height: 120px; overflow-y: auto; padding: 4px 0; }
@@ -2379,7 +2383,16 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 /* 2026-08-14 -- click-to-sort headers on the popup grids (risk_gauge_modal.js
    / market_view_modal.js) -- user: "all graphs -> click -> popups -> all
    sorting on all grids on the popups." */
-.gm-table th.gm-sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+/* 2026-08-14 -- white-space:nowrap REMOVED (was here originally) -- forcing
+   every sortable header onto one line, even unsorted (no ▲/▼ yet), is what
+   actually overflowed .gm-left-col into a horizontal scrollbar -- the 5%
+   width bump above helped but didn't fully fix it since this was the real
+   cause, not just a raw width shortfall. Left to wrap normally now (a
+   2-word header like "Current Qty" can break onto 2 lines; single-word
+   ones like "Cumulative" can't wrap internally regardless, so they're
+   unaffected either way). User: "1. still an issue" (still overflowing
+   after the width bump alone). */
+.gm-table th.gm-sortable { cursor: pointer; user-select: none; }
 .gm-table th.gm-sortable:hover { color: var(--text-1); }
 .gm-table th.gm-sorted { color: var(--accent, #1d4ed8); }
 .gm-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); color: var(--text-1); white-space: nowrap; }
