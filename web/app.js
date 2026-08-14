@@ -547,8 +547,10 @@ function _opexLineHtml(calRows) {
 // once per render, shared with the OPEX line above); selected categories
 // persist server-side via GET/PUT /api/dashboard/calendar-types
 // (single-user app -- one ref_settings row, no per-session state). Picker
-// UI is the gear icon at the line's right edge. No color-coding for now,
-// per user: "no colors at this time" -- plain text like the other lines.
+// UI is the gear icon at the line's right edge. Originally no color-coding
+// ("no colors at this time"), but the same <=5d yellow highlight added to
+// the OPEX line above was extended here too -- user: "same thing with
+// events below that line".
 let _calTypesCache = null; // {all, selected} -- refreshed each loadRegimeBand(), read by the picker popover
 function _eventsLineHtml(calRows, selected) {
   const gear = `<span class="events-gear" title="Choose event types" onclick="_toggleCalTypesPop(event)">&#9881;</span>`;
@@ -557,7 +559,9 @@ function _eventsLineHtml(calRows, selected) {
   }
   const bits = selected.map(cat => {
     const row = _calRow(calRows, cat);
-    return row ? `${escapeHtml(cat)} ${fmtDate(row.indicator_date)} (${row.days}d)` : '';
+    if (!row) return '';
+    const text = `${escapeHtml(cat)} ${fmtDate(row.indicator_date)} (${row.days}d)`;
+    return row.days <= 5 ? `<span class="opex-soon">${text}</span>` : text;
   }).filter(Boolean);
   const body = bits.length
     ? bits.join(' &middot; ')
