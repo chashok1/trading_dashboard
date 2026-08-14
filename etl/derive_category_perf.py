@@ -563,7 +563,7 @@ def _build_series(positions: list, flows: list, cat_map: dict, cash_keys: set,
     for f in flows:
         key = f["tos_symbol"]
         d = f["trade_date"]
-        if key in cash_keys or key is None:
+        if key is None:
             continue
         amt = float(f["amount"]) if f["amount"] is not None else 0.0
         # netflow (position-value impact) = -amount: hist_cst/hist_ft amount
@@ -571,6 +571,24 @@ def _build_series(positions: list, flows: list, cat_map: dict, cash_keys: set,
         # negating gives the position-value impact (Buy=+, Sell=-). Verified
         # against live rows during TASK_133 investigation.
         flow = -amt
+        # 2026-08-10 -- cash_keys' OWN buy/sell rows (money-market sweep
+        # transactions, e.g. "Buy SPAXX $1000" when a stock sale settles)
+        # now netted into Cash's flow series the same way every other
+        # category already nets its own trades -- these WERE being skipped
+        # entirely, so Cash's raw_v day-over-day changes (position loop
+        # above, "Cash" bucket) had no offsetting flow to subtract, and the
+        # TWR formula (v_end - v_start - flow) / v_start counted every
+        # dollar that moved through the cash balance -- deposits, trade
+        # settlements, dividends landing -- as "return." User: "Cash should
+        # not have a value in period columns, right?" -> confirmed a bug,
+        # not by design (the code's only comment on this, _ASSET_CLASS_ETF's
+        # "flat 0% benchmark" note, addresses the bench side only, not this).
+        # Only the "asset_class" axis -- Cash's raw_v is only ever populated
+        # there too (see the positions loop above), never sector/style.
+        if key in cash_keys:
+            rf = raw_flow["asset_class"].setdefault("Cash", {})
+            rf[d] = rf.get(d, 0.0) + flow
+            continue
         for ax in ("sector", "asset_class"):
             for cat in _categories_for(key, cat_map, ax):
                 rf = raw_flow[ax].setdefault(cat, {})
@@ -867,6 +885,26 @@ def _compute_category_rows(session: Session, as_of_date: date, accounts: Optiona
 
     any_flow_dates = _load_any_flow_dates(session, lo, hi, accounts)
     series = _build_series(positions, flows, cat_map, cash_keys, calendar, any_flow_dates)
+    # 2026-08-14 -- Sector has no Cash category of its own (cash isn't
+    # GICS-classified, see _categories_for) -- cloning asset_class's own
+    # Cash time series into sector's series too so a Cash row flows through
+    # the exact same weight_pct/window machinery as every other category in
+    # the loop below (its TWR is forced to None a few lines down, same
+    # special-case already applied to asset_class's Cash row; its target/
+    # verdict block is skipped further down too -- a GICS equal-weight
+    # target is meaningless for cash). Without this, sector's weight_pct
+    # rows summed to well under 100% of the portfolio (cash's ~26% share
+    # was invisible to this axis) -- the Portfolio Mix pie's own gap-filler
+    # slice (web/portfolio_mix.js) papered over the PERCENTAGE side of that
+    # with a synthetic "Cash" category that had no matching row here,
+    # creating a NEW mismatch (a category the pie shows that this table
+    # doesn't). User: "cash is missing from bottom grid" / "categories
+    # don't match either." Style is NOT extended the same way -- non-equity
+    # holdings have no "Non-Equity (excluded)" catch-all there either (see
+    # _categories_for's style branch), a materially bigger, separate gap
+    # left alone for now.
+    if "Cash" in series.get("asset_class", {}):
+        series["sector"]["Cash"] = series["asset_class"]["Cash"]
     today_marked = _today_marked_to_market(session, positions, cat_map, cash_keys, calendar)
     yesterday_change = _yesterday_actual_change(session, calendar, cat_map, cash_keys, accounts)
 
@@ -1023,6 +1061,26 @@ def _compute_category_rows(session: Session, as_of_date: date, accounts: Optiona
                 bench[f"bench_{wlabel}"] = b
                 window_detail[wlabel] = {"confidence": conf, **detail_w}
                 confs.append(conf)
+            # 2026-08-10 -- Cash forced to no gain/loss on every window, not
+            # just today/yesterday (which were already excluded structurally
+            # above). The flow-netting fix just above (cash_keys' own buy/
+            # sell rows now recorded as flows) still leaves residual noise
+            # for cash movements that aren't a Buy/Sell trade row at all --
+            # dividends/interest credited straight to the cash balance,
+            # wires, ACH transfers, journal entries -- none of which
+            # _flows_sql's BUY/SELL-only filter can see. Cash isn't a
+            # tradeable instrument with a "return" in this app's model
+            # (bench_* is already always None, no ETF proxy exists), so
+            # rather than chase every possible cash-movement type, twr_* is
+            # unconditionally None here too. User: "cash should not have
+            # gain or loss." 2026-08-14 -- extended from asset_class-only to
+            # sector's own cloned Cash row (see the series["sector"]["Cash"]
+            # clone above) -- same reasoning applies verbatim.
+            if category == "Cash" and axis in ("asset_class", "sector"):
+                for k in twr:
+                    twr[k] = None
+                for k in bench:
+                    bench[k] = None
             # flows_confidence: worst across windows that had data
             flows_confidence = ("suspect" if "suspect" in confs
                                else "amber" if any(c == "amber" for c in confs) else
@@ -1039,8 +1097,16 @@ def _compute_category_rows(session: Session, as_of_date: date, accounts: Optiona
                 detail["note"] = "holdings that did not resolve to a category (see DEV_HANDOFF.md)"
             elif category == "Non-Equity (excluded)":
                 detail["note"] = ("non-equity holdings (bond/gold/commodity ETFs) excluded from the "
-                                   "equity sector axis by design -- dropped from the API response, "
-                                   "not shown in the grid")
+                                   "equity sector axis by design -- shown as their own row, same as "
+                                   "any other category (reversed 2026-08-11 from an earlier version "
+                                   "that dropped it from the API response entirely)")
+            elif category == "Cash" and axis == "sector":
+                # 2026-08-14 -- Cash's cloned row (see the series["sector"]["Cash"]
+                # clone above) has no GICS sector -- the equal-weight (100/11)
+                # target band below is meaningless for it (would otherwise
+                # flag Cash as wildly "over" target against a ~9% sector
+                # target it was never subject to).
+                detail["note"] = "cash -- not sector-classified, no GICS target applies"
             else:
                 aa_key = _AC_TO_AA.get(category, category) if axis == "asset_class" else None
                 aa_row = aa_map.get(aa_key) if aa_key else None
