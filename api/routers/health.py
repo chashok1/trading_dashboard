@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -221,6 +221,56 @@ def get_dashboard_econ_indicators(
         }
         for r in rows
     ]
+
+
+# 2026-08-14 -- Dashboard Regime line's new configurable "Events" line
+# (web/app.js loadRegimeBand()) -- lets the user pick which
+# ref_calendar_event categories show up there (e.g. "CPI", "Fed Meeting"),
+# distinct from the fixed OPEX line above it (which now also reads
+# ref_calendar_event directly -- Monthly Exp/Qtly Exp -- instead of a
+# client-side 3rd-Friday guess; see loadRegimeBand's own comment for why).
+# Single-user app -- one global ref_settings row, no per-session state.
+_DEFAULT_CALENDAR_TYPES = ["CPI YOY", "CPI MoM", "Fed Meeting", "FMOC Minutes", "PCE", "NFP"]
+
+
+@router.get("/api/dashboard/calendar-types")
+def get_dashboard_calendar_types():
+    """{"all": [<every distinct ref_calendar_event category>], "selected":
+    [<the ones the user has chosen to show>]}. Falls back to
+    _DEFAULT_CALENDAR_TYPES before the user has ever saved a choice."""
+    with session_scope() as s:
+        all_cats = [r[0] for r in s.execute(text(
+            "SELECT DISTINCT category FROM ref_calendar_event ORDER BY category"
+        )).fetchall()]
+        raw = s.execute(text(
+            "SELECT setting_value FROM ref_settings WHERE setting_name = 'dashboard_calendar_types'"
+        )).scalar()
+        if raw:
+            selected = [c.strip() for c in raw.split(",") if c.strip()]
+        else:
+            selected = list(_DEFAULT_CALENDAR_TYPES)
+        # Drop any saved category no longer present (renamed/removed upstream
+        # in the workbook) so a stale selection can't silently show nothing.
+        selected = [c for c in selected if c in all_cats]
+    return {"all": all_cats, "selected": selected}
+
+
+@router.put("/api/dashboard/calendar-types")
+def put_dashboard_calendar_types(body: dict = Body(...)):
+    selected = body.get("selected")
+    if not isinstance(selected, list) or not all(isinstance(c, str) for c in selected):
+        raise HTTPException(422, "body must be {'selected': [<category strings>]}")
+    value = ",".join(selected)
+    with session_scope() as s:
+        s.execute(text("""
+            INSERT INTO ref_settings (setting_name, setting_value, description)
+            VALUES ('dashboard_calendar_types', :v,
+                    'Dashboard Regime-line Events row: which ref_calendar_event categories to show')
+            ON CONFLICT (setting_name) DO UPDATE
+                SET setting_value = EXCLUDED.setting_value, updated_at = now()
+        """), {"v": value})
+        s.commit()
+    return {"ok": True, "selected": selected}
 
 
 # 2026-08-10 -- GET /api/dashboard/earnings (market-structure events: VIX/

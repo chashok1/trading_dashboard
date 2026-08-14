@@ -501,48 +501,95 @@ function _regimeMonAbbr(ym) {
 
 // 2026-08-14 -- Options expiration line, shown above the Regime line (own
 // separator) per user: "i need to see options expiration date (mm/dd) 10d
-// both montly and quarterly". Reference "today" is state.date/anchorDate
-// (the dashboard's own as_of_date), never the system clock -- see project
-// convention that the date picker IS "today" for business logic.
-// Monthly OPEX = 3rd Friday of the month (standard US equity options
-// expiration). Quarterly ("triple/quad witching") = 3rd Friday of
-// Mar/Jun/Sep/Dec specifically -- also a monthly OPEX date, just the
-// heavier one four times a year.
-function _thirdFridayUTC(year, monthIdx0) {
-  const first = new Date(Date.UTC(year, monthIdx0, 1));
-  const firstFriday = 1 + ((5 - first.getUTCDay() + 7) % 7);
-  return new Date(Date.UTC(year, monthIdx0, firstFriday + 14));
+// both montly and quarterly". Originally computed client-side (3rd Friday
+// of the month) -- switched to reading ref_calendar_event directly (via
+// the same /api/dashboard/econ-indicators feed the Indicator/Event grid
+// already uses) after the user flagged the computed quarterly date (09/18,
+// "quad witching" 3rd Friday) didn't match what they expected (09/30).
+// ref_calendar_event has its own distinct 'Qtly Exp' category (09/25 for
+// Q3 2026 -- a third, different value from either) and the user confirmed:
+// trust that stored value over any client-side guess.
+function _calRow(calRows, category) {
+  return (calRows || []).find(r => r.indicator === category);
 }
-function _nextOpex(refDate, quarterlyOnly) {
-  const qMonths = [2, 5, 8, 11]; // Mar/Jun/Sep/Dec, 0-indexed
-  let y = refDate.getUTCFullYear(), m = refDate.getUTCMonth();
-  for (let i = 0; i < 24; i++) {
-    if (!quarterlyOnly || qMonths.includes(m)) {
-      const tf = _thirdFridayUTC(y, m);
-      if (tf >= refDate) return tf;
-    }
-    m++;
-    if (m > 11) { m = 0; y++; }
-  }
-  return null;
-}
-function _opexLineHtml() {
-  const refIso = state.date || state.anchorDate;
-  if (!refIso) return '';
-  const ref = new Date(refIso + 'T00:00:00Z');
-  if (isNaN(ref)) return '';
-  const dayMs = 86400000;
-  const monthly = _nextOpex(ref, false);
-  const quarterly = _nextOpex(ref, true);
-  const part = (label, dt) => {
-    if (!dt) return '';
-    const iso = dt.toISOString().slice(0, 10);
-    const daysOut = Math.round((dt - ref) / dayMs);
-    return `${label} ${fmtDate(iso)} (${daysOut}d)`;
+function _opexLineHtml(calRows) {
+  const part = (label, category) => {
+    const row = _calRow(calRows, category);
+    return row ? `${label} ${fmtDate(row.indicator_date)} (${row.days}d)` : '';
   };
-  const bits = [part('OPEX', monthly), part('Quad', quarterly)].filter(Boolean);
+  const bits = [part('OPEX', 'Monthly Exp'), part('Quad', 'Qtly Exp')].filter(Boolean);
   return bits.length ? `<div class="opex-line">${bits.join(' &middot; ')}</div>` : '';
 }
+
+// 2026-08-14 -- configurable Events line, between the OPEX line and the
+// Regime line, per user: "Add one more line betwee this and regime and
+// provide a way for me to choose event type (ex options expiration, CPI)
+// to show up." Reuses the same ref_calendar_event data (already fetched
+// once per render, shared with the OPEX line above); selected categories
+// persist server-side via GET/PUT /api/dashboard/calendar-types
+// (single-user app -- one ref_settings row, no per-session state). Picker
+// UI is the gear icon at the line's right edge. No color-coding for now,
+// per user: "no colors at this time" -- plain text like the other lines.
+let _calTypesCache = null; // {all, selected} -- refreshed each loadRegimeBand(), read by the picker popover
+function _eventsLineHtml(calRows, selected) {
+  const gear = `<span class="events-gear" title="Choose event types" onclick="_toggleCalTypesPop(event)">&#9881;</span>`;
+  if (!selected || !selected.length) {
+    return `<div class="events-line"><span class="events-empty">No event types selected</span>${gear}</div>`;
+  }
+  const bits = selected.map(cat => {
+    const row = _calRow(calRows, cat);
+    return row ? `${escapeHtml(cat)} ${fmtDate(row.indicator_date)} (${row.days}d)` : '';
+  }).filter(Boolean);
+  const body = bits.length
+    ? bits.join(' &middot; ')
+    : '<span class="events-empty">No upcoming dates for the selected types</span>';
+  return `<div class="events-line">${body}${gear}</div>`;
+}
+function _toggleCalTypesPop(e) {
+  e.stopPropagation();
+  const pop = $('calTypesPop');
+  if (!pop) return;
+  if (pop.style.display === 'block') { pop.style.display = 'none'; return; }
+  _renderCalTypesPop(e.currentTarget);
+}
+function _renderCalTypesPop(anchorEl) {
+  const pop = $('calTypesPop');
+  if (!pop || !_calTypesCache) return;
+  const selSet = new Set(_calTypesCache.selected || []);
+  let h = '<div class="sp-title">Event types</div><div class="cal-types-list">';
+  (_calTypesCache.all || []).forEach(cat => {
+    h += `<label class="cal-type-row"><input type="checkbox" value="${escapeHtml(cat)}"`
+      + `${selSet.has(cat) ? ' checked' : ''}> ${escapeHtml(cat)}</label>`;
+  });
+  h += '</div><button type="button" class="cal-types-save" onclick="_saveCalTypes()">Save</button>';
+  pop.innerHTML = h;
+  pop.style.display = 'block';
+  const rect = anchorEl.getBoundingClientRect();
+  let top = rect.bottom + 4;
+  if (top + 280 > window.innerHeight - 8) top = Math.max(8, rect.top - 280 - 4);
+  let left = rect.left;
+  if (left + 220 > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 220 - 8);
+  pop.style.top = top + 'px';
+  pop.style.left = left + 'px';
+}
+async function _saveCalTypes() {
+  const pop = $('calTypesPop');
+  if (!pop) return;
+  const selected = Array.from(pop.querySelectorAll('input[type=checkbox]:checked')).map(cb => cb.value);
+  try {
+    await fetchJson('/api/dashboard/calendar-types', {
+      method: 'PUT', body: JSON.stringify({ selected }),
+    });
+  } catch (e) { console.error('save calendar types failed:', e); }
+  pop.style.display = 'none';
+  loadRegimeBand();
+}
+document.addEventListener('click', e => {
+  const pop = $('calTypesPop');
+  if (pop && pop.style.display === 'block' && !pop.contains(e.target) && !e.target.classList.contains('events-gear')) {
+    pop.style.display = 'none';
+  }
+});
 
 async function loadRegimeBand() {
   const strip = $('regimeStrip');
@@ -550,10 +597,16 @@ async function loadRegimeBand() {
   try {
     const viewingLive = !state.date || state.date === state.anchorDate;
     const qs = viewingLive ? '' : _dateQS();
-    const [windowData, factors] = await Promise.all([
+    const calUrl = state.date
+      ? `/api/dashboard/econ-indicators?date=${encodeURIComponent(state.date)}&limit=60`
+      : '/api/dashboard/econ-indicators?limit=60';
+    const [windowData, factors, calRows, calTypes] = await Promise.all([
       fetchJson(`/api/quad-window${qs}`).catch(() => null),
       fetchJson(`/api/quad/band-factors${qs}`).catch(() => ({ bull: [], bear: [], factors: [] })),
+      fetchJson(calUrl).catch(() => []),
+      fetchJson('/api/dashboard/calendar-types').catch(() => ({ all: [], selected: [] })),
     ]);
+    _calTypesCache = calTypes;
     if (!windowData) { strip.innerHTML = '<div class="ev-fail">&#9888; Regime data unavailable.</div>'; return; }
     const dominant = windowData.dominant_quad != null ? `Quad ${windowData.dominant_quad}` : '—';
     const allFactors = factors.factors || [];
@@ -607,7 +660,7 @@ async function loadRegimeBand() {
     // left-flowing blob with the months embedded right after the label.
     // 2026-08-09 -- "Win" text dropped per user: "remove the text 'Win'".
     const winLabel = `<span class="regime-win-label">${windowData.h ?? 60}d (<strong style="color:${_quadColor(dominant)};">Q${windowData.dominant_quad ?? '?'}</strong>)</span>`;
-    strip.innerHTML = `${_opexLineHtml()}<div class="regime-line" data-quadbandpop="1">
+    strip.innerHTML = `${_opexLineHtml(calRows)}${_eventsLineHtml(calRows, calTypes.selected)}<div class="regime-line" data-quadbandpop="1">
       ${winLabel}<span class="regime-window-text">${months || 'no window data'}</span>${qtrEntry}
     </div>`;
     const line = strip.querySelector('.regime-line');

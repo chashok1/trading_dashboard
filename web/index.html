@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260814m">
+  <link rel="stylesheet" href="/static/styles.css?v=20260814n">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -612,12 +612,18 @@
   <!-- TASK_140 follow-up 18 -- quad-band popover for the Regime line, styled
        to match actionable.html's #sourcePop exactly (.source-pop class). -->
   <div id="quadPop" class="source-pop"></div>
+  <!-- 2026-08-14 -- event-type picker for the Regime line's new Events row
+       (web/app.js::_toggleCalTypesPop/_renderCalTypesPop) -- a checklist
+       + Save button, so unlike #quadPop (hover-only, pointer-events:none)
+       this one needs real clicks; see .cal-types-list/.cal-types-save in
+       styles.css. -->
+  <div id="calTypesPop" class="source-pop cal-types-pop"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
   <script src="/static/_common.js"></script>
   <script src="/static/actions.js"></script>
   <script src="/static/portfolio_mix.js?v=20260814e"></script>
-  <script src="/static/app.js?v=20260814k"></script>
+  <script src="/static/app.js?v=20260814l"></script>
   <script src="/static/dashboard_notes.js"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>

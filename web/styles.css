@@ -2634,23 +2634,41 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
 .source-pop td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; word-break: break-word; }
 .source-pop .sp-sec { color: #94a3b8; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; padding-top: 5px; }
 #regimeStrip > * + * { padding-left: 10px; border-left: 1px solid var(--border); }
-/* 2026-08-14 -- Options expiration line, sits on its own row above
-   .regime-line with a horizontal separator between them (both force
-   flex:1 0/1 100% so they stack instead of sitting side by side in
-   #regimeStrip's flex-wrap row). The generic "> * + *" rule above (a
-   vertical left-border, meant for side-by-side items) is neutralized on
-   .regime-line here since it's no longer meaningful once opex-line is on
-   its own row above it. User: "add a line above REGIME text with
-   separator line -> i need to see options expiration date (mm/dd) 10d
-   both montly and quarterly". */
-.opex-line {
+/* 2026-08-14 -- Options expiration line, then the configurable Events
+   line, both sit on their own row above .regime-line with a horizontal
+   separator between each (all three force flex:1 0/1 100% so they stack
+   instead of sitting side by side in #regimeStrip's flex-wrap row). The
+   generic "> * + *" rule above (a vertical left-border, meant for
+   side-by-side items) is neutralized on every row but the first here,
+   since it's no longer meaningful once rows stack vertically. User: "add a
+   line above REGIME text with separator line -> i need to see options
+   expiration date (mm/dd) 10d both montly and quarterly" -> "Add one more
+   line betwee this and regime and provide a way for me to choose event
+   type (ex options expiration, CPI) to show up." */
+.opex-line, .events-line {
   flex: 1 0 100%;
   font-size: 11px;
   color: var(--text-3);
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 6px;
 }
-#regimeStrip .opex-line + .regime-line { padding-left: 0; border-left: none; }
+#regimeStrip > *:not(:first-child) { padding-left: 0; border-left: none; }
+.events-line { justify-content: space-between; }
+.events-empty { color: var(--text-3); font-style: italic; }
+.events-gear { cursor: pointer; opacity: 0.6; font-size: 12px; flex: 0 0 auto; }
+.events-gear:hover { opacity: 1; }
+/* 2026-08-14 -- .source-pop is pointer-events:none by default (hover-only
+   read tooltips); the event-type picker needs real clicks (checkboxes +
+   Save), so it overrides that plus adds its own checklist/button layout. */
+.cal-types-pop { pointer-events: auto; max-height: 320px; overflow-y: auto; }
+.cal-types-list { display: flex; flex-direction: column; gap: 3px; max-height: 240px; overflow-y: auto; margin-bottom: 8px; }
+.cal-type-row { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 400; cursor: pointer; }
+.cal-types-save {
+  width: 100%; padding: 5px 0; font-size: 11px; font-weight: 600; cursor: pointer;
+  background: var(--accent, #2563eb); color: #fff; border: none; border-radius: 4px;
+}
+.cal-types-save:hover { opacity: 0.9; }
 /* 2026-08-08 -- .regime-line switched from inline-block to a full-width flex
    row so its Qtr entry can right-justify to the card's own right edge
    (flex:1 1 100% claims the whole #regimeStrip row) instead of just
