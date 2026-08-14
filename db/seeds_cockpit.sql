@@ -6,9 +6,9 @@
 -- =====================================================
 
 -- ---------------------------------------------------------------------------
--- 2.1 ref_risk_gauge — total active weight = 32 (+ volume_breadth_weak seeded
+-- 2.1 ref_risk_gauge — total active weight = 35 (+ volume_breadth_weak seeded
 -- inactive, weight 2 -- flip to TRUE once hist_internals is flowing, per
--- Phase 4.1; active weight becomes 34 at that point).
+-- Phase 4.1; active weight becomes 37 at that point).
 -- 2026-08-14 -- short_vol_disc added: VIX9D vs rvol_10day, the short-dated
 -- companion to vrp_gone (VIX vs RV21). Weight 1 (vs vrp_gone's 2) -- an
 -- early/leading version of the same signal, not a duplicate of it.
@@ -21,10 +21,18 @@
 -- (100) was seeded but unused by any gauge until now. User: "What do you
 -- consider as high risk when bond volatility moves higher... since we are
 -- using risk gauges what can we use?"
+-- vix_spx_divergence added same day: VIX green (>0%) while SPX rallies
+-- >=1.5% -- the normal inverse VIX/SPX relationship breaking down on a big
+-- up-day, read as hedging demand into the rally. Weight 3 (matches the
+-- other severity-3 gauges: spx_top_range, vix_elevated, move_elevated,
+-- credit_stress) -- user's own framing ("Get out of the market") is
+-- among the strongest conclusions of any gauge in this file. User: "if
+-- VIX is green and SPY is up massively => Get out of the market."
 -- ---------------------------------------------------------------------------
 INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes) VALUES
     ('spx_top_range',          'SPX at top of risk range',   3, TRUE,  'equity',      NULL),
     ('spx_bottom_range',       'SPX below risk range',       2, TRUE,  'equity',      NULL),
+    ('vix_spx_divergence',     'VIX/SPX inverse relationship broken', 3, TRUE, 'equity', NULL),
     ('vix_elevated',           'Equity vol elevated',        3, TRUE,  'vol',         NULL),
     ('vix_chop',               'Equity vol in chop zone',    1, TRUE,  'vol',         NULL),
     ('move_elevated',          'Bond vol elevated',          3, TRUE,  'vol',         NULL),
@@ -162,6 +170,8 @@ INSERT INTO ref_gauge_transmission (gauge_key, axis, category) VALUES
     ('short_vol_low',         'style',  'Small Caps'),
     ('spx_top_range',         'style',  'High Beta'),
     ('spx_top_range',         'style',  'Momentum'),
+    ('vix_spx_divergence',    'style',  'High Beta'),
+    ('vix_spx_divergence',    'style',  'Momentum'),
     ('breadth_deteriorating', 'style',  'High Beta'),
     ('breadth_deteriorating', 'style',  'Momentum'),
     ('gold_vol_elevated',     'asset_class', 'Gold')

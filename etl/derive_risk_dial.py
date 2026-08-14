@@ -82,11 +82,15 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
                                  "outlook": r["outlook"]} for r in rr_rows}
 
     q_rows = session.execute(text(
-        "SELECT tos_symbol, last_price FROM drv_quote "
+        "SELECT tos_symbol, last_price, pct_change FROM drv_quote "
         "WHERE as_of_date = :d AND tos_symbol = ANY(:syms)"
     ), {"d": as_of_date, "syms": _QUOTE_SYMS}).mappings().all()
     quote_map = {r["tos_symbol"]: float(r["last_price"])
                  for r in q_rows if r["last_price"] is not None}
+    # 2026-08-14 -- day's own %change per symbol, feeds _g_vix_spx_divergence
+    # below (needs VIX's/SPX's OWN daily move, not just their level).
+    quote_chg_map = {r["tos_symbol"]: float(r["pct_change"])
+                      for r in q_rows if r["pct_change"] is not None}
 
     vol_rows = session.execute(text(
         "SELECT tos_symbol, low, high FROM ref_vol_threshold"
@@ -134,6 +138,7 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
     return {
         "rr": rr_map,
         "quote": quote_map,
+        "quote_chg": quote_chg_map,
         "vol": vol_map,
         "levels": levels_by_sym,
         "gamma_throttle": gamma_throttle,
@@ -229,6 +234,28 @@ def _g_spx_bottom_range(ctx):
     if v is None:
         return None, None, "SPX risk range unavailable"
     return v <= 0.15, v, f"SPX {v*100:.0f}% of range"
+
+
+# 2026-08-14 -- VIX and SPX normally move inversely (~-70 to -80%
+# correlation historically); when that breaks down on a big up-day --
+# VIX green (any positive tick) WHILE SPX rallies >=1.5% -- it's often
+# read as dealers/hedgers buying protection INTO the rally rather than
+# believing it, a real divergence signal rather than noise. User: "if VIX
+# is green and SPY is up massively => Get out of the market" -- thresholds
+# (SPX >=1.5%, VIX simply >0) confirmed with the user; SPX chosen over SPY
+# to match every other equity gauge already in this file.
+def _g_vix_spx_divergence(ctx):
+    vix_chg = ctx["quote_chg"].get("VIX")
+    spx_chg = ctx["quote_chg"].get("SPX")
+    if vix_chg is None or spx_chg is None:
+        return None, None, "VIX or SPX %change unavailable"
+    fired = vix_chg > 0 and spx_chg >= 1.5
+    # 2026-08-14 BUGFIX -- "(inverse relationship broken)" was hardcoded
+    # onto the detail string unconditionally, so a normal/quiet day (e.g.
+    # SPX -0.2% with VIX -2.7%, the expected inverse move) still claimed
+    # the relationship was "broken" -- only true when fired.
+    tag = "inverse relationship broken" if fired else "normal inverse move"
+    return fired, spx_chg, f"SPX {spx_chg:+.1f}% with VIX {vix_chg:+.1f}% ({tag})"
 
 
 def _g_vix_elevated(ctx):
@@ -433,6 +460,7 @@ def _g_volume_breadth_weak(ctx):
 GAUGES: list[tuple[str, Callable]] = [
     ("spx_top_range", _g_spx_top_range),
     ("spx_bottom_range", _g_spx_bottom_range),
+    ("vix_spx_divergence", _g_vix_spx_divergence),
     ("vix_elevated", _g_vix_elevated),
     ("vix_chop", _g_vix_chop),
     ("move_elevated", _g_move_elevated),
