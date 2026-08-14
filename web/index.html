@@ -300,31 +300,46 @@
                    once the legend column is included) -- otherwise a header
                    like "Asset Allocation" reads centered over legend text
                    too, not the doughnut it's actually labeling. User: "align
-                   centers with center of the graphs below". -->
+                   centers with center of the graphs below".
+                   2026-08-14 follow-up -- canvas+legend row's own
+                   align-items:center -> flex-start. Legend row COUNT varies
+                   per pie (Sector can run 8 rows, taller than the 90px
+                   canvas; Beta/Conc often have far fewer, shorter than
+                   90px) -- center-aligning meant whichever of canvas/legend
+                   was SHORTER got vertically centered against the taller
+                   one, shifting that pie's own CANVAS position down/up
+                   relative to the other pies' canvases even after their
+                   title boxes were height-matched (_alignPmHeaderHeights).
+                   flex-start pins every canvas to the top of its row
+                   instead, so all 4 (now identically-offset) canvases align
+                   with each other regardless of legend length. User: "i
+                   only asked you to move the texts not the graphs. all
+                   graphs need to be aligned horizonatally" -> "header
+                   texts are good but graphs are not aligned". -->
               <div id="dpmAssetCard" style="flex:0 0 160px;min-width:130px;">
-                <div id="dpmAssetTitle" style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;display:flex;align-items:center;justify-content:center;">Asset Allocation</div>
-                <div style="display:flex;align-items:center;gap:8px;">
+                <div id="dpmAssetTitle" style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:4px;text-align:center;display:flex;align-items:center;justify-content:center;">Asset Allocation</div>
+                <div style="display:flex;align-items:flex-start;gap:8px;">
                   <canvas id="dpmAssetCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
                   <div id="dpmAssetLegend" style="flex:1;min-width:0;"></div>
                 </div>
               </div>
               <div id="dpmBetaCard" style="flex:0 0 160px;min-width:130px;">
-                <div id="dpmBetaTitle" style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;display:flex;align-items:center;justify-content:center;">Beta</div>
-                <div style="display:flex;align-items:center;gap:8px;">
+                <div id="dpmBetaTitle" style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:4px;text-align:center;display:flex;align-items:center;justify-content:center;">Beta</div>
+                <div style="display:flex;align-items:flex-start;gap:8px;">
                   <canvas id="dpmBetaCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
                   <div id="dpmBetaLegend" style="flex:1;min-width:0;"></div>
                 </div>
               </div>
               <div id="dpmSectorCard" style="flex:0 0 160px;min-width:130px;">
-                <div id="dpmSectorTitle" style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;display:flex;align-items:center;justify-content:center;">Sector</div>
-                <div style="display:flex;align-items:center;gap:8px;">
+                <div id="dpmSectorTitle" style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:4px;text-align:center;display:flex;align-items:center;justify-content:center;">Sector</div>
+                <div style="display:flex;align-items:flex-start;gap:8px;">
                   <canvas id="dpmSectorCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
                   <div id="dpmSectorLegend" style="flex:1;min-width:0;"></div>
                 </div>
               </div>
               <div id="dpmConcCard" style="flex:0 0 160px;min-width:130px;">
-                <div id="dpmConcTitle" style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;display:flex;align-items:center;justify-content:center;">Concentration</div>
-                <div style="display:flex;align-items:center;gap:8px;">
+                <div id="dpmConcTitle" style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:4px;text-align:center;display:flex;align-items:center;justify-content:center;">Concentration</div>
+                <div style="display:flex;align-items:flex-start;gap:8px;">
                   <canvas id="dpmConcCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
                   <div id="dpmConcLegend" style="flex:1;min-width:0;"></div>
                 </div>
