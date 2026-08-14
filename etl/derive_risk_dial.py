@@ -367,6 +367,24 @@ def _g_short_vol_disc(ctx):
     return disc <= 0, disc, f"Short vol disc {disc:+.1f} (VIX9D {vix9d:.1f} - RV10 {rv10:.1f})"
 
 
+# 2026-08-14 -- separate, absolute-level companion to _g_short_vol_disc
+# above -- that one is RELATIVE (VIX9D vs realized vol); this one is
+# VIX9D's own level against its typical 10-30 range, low end only. User:
+# "Typically ranges from 10 to 30. 10 - sell stocks. 30 - buy stocks" --
+# only the low/bearish end fires here (Risk Dial gauges only ever fire on
+# caution/reduce-budget conditions; there's no mechanism for a fired gauge
+# to signal "buy" the way the 30-end would need to -- discussed and user
+# confirmed: "Low end only, as a Risk Dial gauge"). 12 (not a literal 10)
+# as the cutoff -- a small buffer catching "near the low end" per the
+# user's own "close to 10" framing of the live reading that prompted this,
+# rather than requiring VIX9D to touch the exact floor.
+def _g_short_vol_low(ctx):
+    v = ctx.get("vix9d")
+    if v is None:
+        return None, None, "VIX9D unavailable"
+    return v <= 12, v, f"VIX9D {v:.1f} (low end of its typical 10-30 range)"
+
+
 def _g_gamma_negative(ctx):
     v = ctx.get("gamma_throttle")
     if v is None:
@@ -412,6 +430,7 @@ GAUGES: list[tuple[str, Callable]] = [
     ("oil_shock", _g_oil_shock),
     ("vrp_gone", _g_vrp_gone),
     ("short_vol_disc", _g_short_vol_disc),
+    ("short_vol_low", _g_short_vol_low),
     ("gamma_negative", _g_gamma_negative),
     ("breadth_deteriorating", _g_breadth_deteriorating),
     ("gold_vol_elevated", _g_gold_vol_elevated),

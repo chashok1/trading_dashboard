@@ -6,12 +6,16 @@
 -- =====================================================
 
 -- ---------------------------------------------------------------------------
--- 2.1 ref_risk_gauge — total active weight = 30 (+ volume_breadth_weak seeded
+-- 2.1 ref_risk_gauge — total active weight = 31 (+ volume_breadth_weak seeded
 -- inactive, weight 2 -- flip to TRUE once hist_internals is flowing, per
--- Phase 4.1; active weight becomes 32 at that point).
+-- Phase 4.1; active weight becomes 33 at that point).
 -- 2026-08-14 -- short_vol_disc added: VIX9D vs rvol_10day, the short-dated
 -- companion to vrp_gone (VIX vs RV21). Weight 1 (vs vrp_gone's 2) -- an
 -- early/leading version of the same signal, not a duplicate of it.
+-- short_vol_low added same day: VIX9D's own absolute level vs its typical
+-- 10-30 range, low end only (<=12, weight 1) -- separate dimension from
+-- short_vol_disc (relative to realized vol), no high-end/bullish gauge
+-- (Risk Dial gauges only ever fire on caution conditions).
 -- ---------------------------------------------------------------------------
 INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes) VALUES
     ('spx_top_range',          'SPX at top of risk range',   3, TRUE,  'equity',      NULL),
@@ -26,6 +30,7 @@ INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes
     ('oil_shock',              'Oil shock',                   2, TRUE,  'commodity',   NULL),
     ('vrp_gone',               'Volatility discount gone',   2, TRUE,  'vol',         NULL),
     ('short_vol_disc',         'Short-dated vol discount gone', 1, TRUE, 'vol',       NULL),
+    ('short_vol_low',          'Short-dated vol at low end of range', 1, TRUE, 'vol', NULL),
     ('gamma_negative',         'Dealer gamma negative',      2, TRUE,  'positioning', NULL),
     ('breadth_deteriorating',  'Breadth deteriorating',       2, TRUE,  'breadth',     NULL),
     ('gold_vol_elevated',      'Gold vol elevated',          1, TRUE,  'vol',         NULL),
@@ -146,6 +151,9 @@ INSERT INTO ref_gauge_transmission (gauge_key, axis, category) VALUES
     ('short_vol_disc',        'style',  'High Beta'),
     ('short_vol_disc',        'style',  'Momentum'),
     ('short_vol_disc',        'style',  'Small Caps'),
+    ('short_vol_low',         'style',  'High Beta'),
+    ('short_vol_low',         'style',  'Momentum'),
+    ('short_vol_low',         'style',  'Small Caps'),
     ('spx_top_range',         'style',  'High Beta'),
     ('spx_top_range',         'style',  'Momentum'),
     ('breadth_deteriorating', 'style',  'High Beta'),
