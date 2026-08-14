@@ -6,9 +6,19 @@
 -- =====================================================
 
 -- ---------------------------------------------------------------------------
--- 2.1 ref_risk_gauge — total active weight = 51 (+ volume_breadth_weak seeded
+-- 2.1 ref_risk_gauge — total active weight = 55 (+ volume_breadth_weak seeded
 -- inactive, weight 2 -- flip to TRUE once hist_internals is flowing, per
--- Phase 4.1; active weight becomes 53 at that point).
+-- Phase 4.1; active weight becomes 57 at that point).
+-- 2026-08-14 -- 3m10y_inverted added: 3M/10Y Treasury spread <0 (level-based,
+-- complements the existing delta-based curve_inverting/2s10s gauge) -- this
+-- is the exact spread the NY Fed's own recession-probability model uses,
+-- so weighted higher (2) than curve_inverting's fast-alert 1. ig_spread_
+-- widening added: BAMLC0A0CM (investment-grade OAS) widening >=10bp/10d,
+-- distinct from HY-only credit_stress -- shows whether stress is
+-- concentrated in speculative-grade only or has spread to investment-
+-- grade too. Weight 2, mirrors credit_equity_divergence. User: "Is there
+-- anything else that we can build rates & duration and credit?" -> "build
+-- both".
 -- 2026-08-14 -- credit_equity_divergence added: HY OAS widening WHILE SPX
 -- stays near top of its own range (both legs required, unlike
 -- credit_stress which fires on either alone) -- credit warning equities
@@ -87,8 +97,10 @@ INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes
     ('move_chop',              'Bond vol in chop zone',      1, TRUE,  'vol',         NULL),
     ('credit_stress',          'Credit stress',               3, TRUE,  'credit',      NULL),
     ('credit_equity_divergence', 'Credit widening, equities not confirming', 2, TRUE, 'credit', NULL),
+    ('ig_spread_widening',     'IG credit spread widening',  2, TRUE,  'credit',      NULL),
     ('yield_level_watch',      'Yields at a watched level',  2, TRUE,  'rates',       NULL),
     ('curve_inverting',        'Curve inverting fast',       1, TRUE,  'rates',       NULL),
+    ('3m10y_inverted',         '3M/10Y curve inverted',      2, TRUE,  'rates',       NULL),
     ('dollar_strong',          'Dollar at top of range',     2, TRUE,  'fx',          NULL),
     ('jpy_carry_unwind',       'Yen carry-trade unwind risk', 3, TRUE, 'fx',          NULL),
     ('oil_shock',              'Oil shock',                   2, TRUE,  'commodity',   NULL),

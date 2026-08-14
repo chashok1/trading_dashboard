@@ -45,6 +45,13 @@ CREDIT_WIDEN_BP = 25.0     # BAMLH0A0HYM2 widened >= this over CREDIT_WIDEN_DAYS
 CREDIT_WIDEN_DAYS = 10
 CURVE_INVERT_BP = 15.0     # T10Y2Y fell >= this over CURVE_INVERT_DAYS
 CURVE_INVERT_DAYS = 5
+# 2026-08-14 -- IG (BAMLC0A0CM) runs far tighter/less volatile than HY --
+# checked live history: 0.78-0.81% over the trailing 2 weeks (1-3bp of
+# day-to-day noise). 25bp (HY's own threshold) would be an oversized bar
+# for IG -- a move that big would nearly double the current spread. 10bp
+# over the same CREDIT_WIDEN_DAYS window is scaled to IG's actual
+# volatility instead of reusing HY's number as-is.
+IG_WIDEN_BP = 10.0
 
 
 def _normalize_tnx(last: Optional[float]) -> Optional[float]:
@@ -177,6 +184,9 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "usd_corr": usd_corr_map,
         "hy_oas": _macro_series("BAMLH0A0HYM2", CREDIT_WIDEN_DAYS),
         "t10y2y": _macro_series("T10Y2Y", CURVE_INVERT_DAYS),
+        "dgs10": _macro_series("DGS10", 3),
+        "dgs3mo": _macro_series("DGS3MO", 3),
+        "ig_oas": _macro_series("BAMLC0A0CM", CREDIT_WIDEN_DAYS),
         "sahm_rule": _macro_series("SAHMREALTIME", 3),
         "nfci": _macro_series("NFCI", 3),
         "icsa": _macro_series("ICSA", 90),
@@ -412,6 +422,39 @@ def _g_curve_inverting(ctx):
     latest, delta = d
     fired = (delta * 100) <= -CURVE_INVERT_BP
     return fired, latest, f"2s10s {latest*100:.0f}bp ({delta*100:+.0f}bp/{CURVE_INVERT_DAYS}d)"
+
+
+# 2026-08-14 -- 3M10Y curve, distinct from 2s10s above -- this is the
+# spread the NY Fed's own recession-probability model actually uses
+# (historically a more reliable predictor than 2s10s). Level-based (fires
+# when the spread actually goes negative -- true inversion), not delta-
+# based like _g_curve_inverting -- the NY Fed model uses the LEVEL, not
+# its rate of change, so this complements rather than duplicates the
+# existing gauge. User: "Is there anything else that we can build rates &
+# duration and credit?" -> "build both".
+def _g_3m10y_inverted(ctx):
+    dgs10 = ctx.get("dgs10")
+    dgs3mo = ctx.get("dgs3mo")
+    if not dgs10 or not dgs3mo:
+        return None, None, "3M/10Y Treasury history unavailable"
+    _, y10 = dgs10[0]
+    _, y3mo = dgs3mo[0]
+    spread = y10 - y3mo
+    return spread < 0, spread, f"3M10Y {spread*100:.0f}bp (10Y {y10:.2f}% - 3M {y3mo:.2f}%)"
+
+
+# 2026-08-14 -- IG credit spread widening, distinct from credit_stress
+# above (which is HY-only). Widening in IG without HY confirming (or vice
+# versa) shows WHERE stress is concentrated -- investment-grade vs
+# speculative-grade credit. IG_WIDEN_BP (10bp) is scaled to IG's own much
+# lower volatility, not HY's 25bp reused as-is. User: "build both".
+def _g_ig_spread_widening(ctx):
+    d = _series_delta(ctx.get("ig_oas"), CREDIT_WIDEN_DAYS)
+    if d is None:
+        return None, None, "IG OAS history unavailable"
+    latest, delta = d
+    fired = (delta * 100) >= IG_WIDEN_BP
+    return fired, latest, f"IG OAS {latest:.2f}% ({delta*100:+.0f}bp/{CREDIT_WIDEN_DAYS}d)"
 
 
 # 2026-08-14 -- Sahm Rule recession indicator (economist Claudia Sahm):
@@ -665,9 +708,11 @@ GAUGES: list[tuple[str, Callable]] = [
     ("move_elevated", _g_move_elevated),
     ("move_chop", _g_move_chop),
     ("credit_stress", _g_credit_stress),
+    ("ig_spread_widening", _g_ig_spread_widening),
     ("credit_equity_divergence", _g_credit_equity_divergence),
     ("yield_level_watch", _g_yield_level_watch),
     ("curve_inverting", _g_curve_inverting),
+    ("3m10y_inverted", _g_3m10y_inverted),
     ("sahm_rule", _g_sahm_rule),
     ("nfci_tightening", _g_nfci_tightening),
     ("claims_rising", _g_claims_rising),
