@@ -66,7 +66,7 @@ def _normalize_tnx(last: Optional[float]) -> Optional[float]:
 
 _RR_SYMS = ["SPX", "HYG", "TNX:CGI", "$DXY", "/CL"]
 _QUOTE_SYMS = ["SPX", "HYG", "TNX:CGI", "$DXY", "/CL", "VIX", "MOVE:GIF",
-               "GVZ:CGI", "OVX:CGI"]
+               "GVZ:CGI", "OVX:CGI", "/6J"]
 
 
 def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
@@ -380,6 +380,24 @@ def _g_dollar_strong(ctx):
     return v >= 0.85, v, f"DXY {v*100:.0f}% of range"
 
 
+# 2026-08-14 -- Yen carry-trade unwind risk. Investors borrow JPY (cheap
+# funding currency) to buy higher-yielding assets elsewhere; a sharp JPY
+# appreciation makes the loan more expensive to repay, forcing leveraged
+# unwinds (sell the assets, buy back JPY) that push JPY even higher --
+# a self-reinforcing cascade (real case study: Aug 2024, BOJ surprise
+# hike + weak US labor data -> fast USD/JPY plunge -> Nikkei's worst day
+# since 1987, S&P/Nasdaq hit within the same week). /6J (CME JPY futures,
+# quoted USD-per-JPY) rising sharply in one day IS that appreciation --
+# fires at >=1.0%. User: "what can go wrong with this and how to detect?
+# investors have borrowed money from economies with low interest rates
+# such as Japan or Switzerland..." -> "build it".
+def _g_jpy_carry_unwind(ctx):
+    chg = ctx["quote_chg"].get("/6J")
+    if chg is None:
+        return None, None, "/6J %change unavailable"
+    return chg >= 1.0, chg, f"JPY futures {chg:+.1f}% (carry-unwind risk if leveraged JPY-funded positions get squeezed)"
+
+
 def _g_oil_shock(ctx):
     v = _rr_pos_sym(ctx, "/CL")
     ovx = _vol_value(ctx, "OVX:CGI")
@@ -489,6 +507,7 @@ GAUGES: list[tuple[str, Callable]] = [
     ("curve_inverting", _g_curve_inverting),
     ("sahm_rule", _g_sahm_rule),
     ("dollar_strong", _g_dollar_strong),
+    ("jpy_carry_unwind", _g_jpy_carry_unwind),
     ("oil_shock", _g_oil_shock),
     ("vrp_gone", _g_vrp_gone),
     ("short_vol_disc", _g_short_vol_disc),

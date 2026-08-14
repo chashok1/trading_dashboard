@@ -6,9 +6,17 @@
 -- =====================================================
 
 -- ---------------------------------------------------------------------------
--- 2.1 ref_risk_gauge — total active weight = 38 (+ volume_breadth_weak seeded
+-- 2.1 ref_risk_gauge — total active weight = 41 (+ volume_breadth_weak seeded
 -- inactive, weight 2 -- flip to TRUE once hist_internals is flowing, per
--- Phase 4.1; active weight becomes 40 at that point).
+-- Phase 4.1; active weight becomes 43 at that point).
+-- 2026-08-14 -- jpy_carry_unwind added: /6J (CME JPY futures) up >=1.0% in
+-- a day -- sharp yen appreciation risks forcing leveraged JPY-funded carry
+-- trades to unwind (real case study: Aug 2024 BOJ-hike-driven USD/JPY
+-- plunge -> Nikkei's worst day since 1987, hit S&P/Nasdaq same week).
+-- Weight 3, category fx (same as dollar_strong). User: "what can go wrong
+-- with this and how to detect? investors have borrowed money from
+-- economies with low interest rates such as Japan or Switzerland..." ->
+-- "build it".
 -- 2026-08-14 -- sahm_rule added: FRED's SAHMREALTIME >=0.50pp (Claudia
 -- Sahm's recession indicator -- 3-month avg UNRATE vs its own trailing-
 -- 12-month low). New 'macro' category (none of the existing 8 fit a
@@ -49,6 +57,7 @@ INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes
     ('yield_level_watch',      'Yields at a watched level',  2, TRUE,  'rates',       NULL),
     ('curve_inverting',        'Curve inverting fast',       1, TRUE,  'rates',       NULL),
     ('dollar_strong',          'Dollar at top of range',     2, TRUE,  'fx',          NULL),
+    ('jpy_carry_unwind',       'Yen carry-trade unwind risk', 3, TRUE, 'fx',          NULL),
     ('oil_shock',              'Oil shock',                   2, TRUE,  'commodity',   NULL),
     ('vrp_gone',               'Volatility discount gone',   2, TRUE,  'vol',         NULL),
     ('short_vol_disc',         'Short-dated vol discount gone', 1, TRUE, 'vol',       NULL),
@@ -183,6 +192,9 @@ INSERT INTO ref_gauge_transmission (gauge_key, axis, category) VALUES
     ('sahm_rule',             'style',  'High Beta'),
     ('sahm_rule',             'style',  'Momentum'),
     ('sahm_rule',             'style',  'Small Caps'),
+    ('jpy_carry_unwind',      'style',  'High Beta'),
+    ('jpy_carry_unwind',      'style',  'Momentum'),
+    ('jpy_carry_unwind',      'style',  'Small Caps'),
     ('breadth_deteriorating', 'style',  'High Beta'),
     ('breadth_deteriorating', 'style',  'Momentum'),
     ('gold_vol_elevated',     'asset_class', 'Gold')
