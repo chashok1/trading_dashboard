@@ -355,6 +355,19 @@ async function loadRiskDial() {
     }).join('') || '<div class="ev-quiet">No gauges fired.</div>';
     const quietHtml = (r.quiet || [])
       .map(g => `${escapeHtml(g.label || g.key)}: ${escapeHtml(g.detail || '')}`).join('<br>');
+    // 2026-08-14 -- SPX upside/downside line, ALWAYS shown (not just when
+    // spx_top_range/spx_top_range_warning actually fire, which only happens
+    // at 70%/85%+ of its risk range -- see etl/derive_risk_dial.py). The
+    // API already returns every gauge's own value/detail in fired OR quiet
+    // regardless of firing state; this just surfaces spx_top_range_warning's
+    // detail (which already includes "+X% to TRR / -Y% to LRR", added same
+    // day) unconditionally instead of leaving it to be discovered only by
+    // opening "Quiet gauges" on a day neither SPX gauge fires. User: "add
+    // risk if s&P is at TRR just like today. I need to see this SPX upside
+    // is 0.8% and down side is something like 2.7%" -> "Show upside/
+    // downside % always, not just when fired."
+    const spxGauge = (r.fired || []).concat(r.quiet || []).find(g => g.key === 'spx_top_range_warning');
+    const spxRangeHtml = spxGauge ? `<div class="rd-spx-range">${escapeHtml(spxGauge.detail || '')}</div>` : '';
     // TASK_140 follow-up 5/6/7 -- "Risk Dial" header removed from
     // index.html (this card is self-explanatory: the number +
     // CLEAR/CAUTION/etc. label already say what it is). Meter bar moved
@@ -372,6 +385,7 @@ async function loadRiskDial() {
         <div class="rd-meter"><div class="rd-meter-fill ${bandClass}" style="width:${budget}%;"></div></div>
       </div>
       <div class="rd-headline">${escapeHtml(r.headline || '')}</div>
+      ${spxRangeHtml}
       <div class="rd-gauge-list">${firedHtml}</div>
       <div class="rd-bottom-row">
         <span class="rd-quiet-toggle" onclick="document.getElementById('rdQuietList').classList.toggle('open')">Quiet gauges (${(r.quiet || []).length})</span>

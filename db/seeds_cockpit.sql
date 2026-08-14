@@ -6,12 +6,21 @@
 -- =====================================================
 
 -- ---------------------------------------------------------------------------
--- 2.1 ref_risk_gauge — total active weight = 29 (+ volume_breadth_weak seeded
--- inactive, weight 2 -- flip to TRUE once hist_internals is flowing, per
--- Phase 4.1; active weight becomes 31 at that point).
+-- 2.1 ref_risk_gauge — total active weight = 30 (29 + spx_top_range_warning's
+-- 1, added 2026-08-14; + volume_breadth_weak seeded inactive, weight 2 --
+-- flip to TRUE once hist_internals is flowing, per Phase 4.1; active weight
+-- becomes 32 at that point).
+-- 2026-08-14 -- spx_top_range_warning added as a lighter-weight, earlier-
+-- firing companion to spx_top_range (70% of LRR-TRR range vs 85%) -- both
+-- can fire simultaneously once SPX crosses 85%, cumulatively adding both
+-- weights. User: "add risk if s&P is at TRR just like today" -> "do 1 [the
+-- 70% threshold] as a warning and current >=85% bigger warning" (a
+-- two-tier design, chosen explicitly over just lowering the existing
+-- gauge's own threshold).
 -- ---------------------------------------------------------------------------
 INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes) VALUES
     ('spx_top_range',          'SPX at top of risk range',   3, TRUE,  'equity',      NULL),
+    ('spx_top_range_warning',  'SPX in upper range',         1, TRUE,  'equity',      NULL),
     ('spx_bottom_range',       'SPX below risk range',       2, TRUE,  'equity',      NULL),
     ('vix_elevated',           'Equity vol elevated',        3, TRUE,  'vol',         NULL),
     ('vix_chop',               'Equity vol in chop zone',    1, TRUE,  'vol',         NULL),
@@ -141,6 +150,8 @@ INSERT INTO ref_gauge_transmission (gauge_key, axis, category) VALUES
     ('vrp_gone',              'style',  'Small Caps'),
     ('spx_top_range',         'style',  'High Beta'),
     ('spx_top_range',         'style',  'Momentum'),
+    ('spx_top_range_warning', 'style',  'High Beta'),
+    ('spx_top_range_warning', 'style',  'Momentum'),
     ('breadth_deteriorating', 'style',  'High Beta'),
     ('breadth_deteriorating', 'style',  'Momentum'),
     ('gold_vol_elevated',     'asset_class', 'Gold')

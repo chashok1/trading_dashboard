@@ -180,14 +180,46 @@ def _leg_detail(legs: list, fired: bool) -> str:
 # Gauges — (key, fn(ctx) -> (fired: bool|None, value: float|None, detail: str))
 # ---------------------------------------------------------------------------
 
+def _spx_range_detail(ctx: dict, v: float) -> str:
+    """Shared detail-string builder for the two SPX-range gauges below --
+    adds upside-to-TRR / downside-to-LRR round-trip percentages (both
+    relative to the current price, not the range width) alongside the
+    existing %-of-range/LRR/TRR text. User: "add risk if s&P is at TRR just
+    like today. I need to see this SPX upside is 0.8% and down side is
+    something like 2.7%." Verified live (2026-08-13 anchor): price 7798.99,
+    LRR 7606, TRR 7861 -> upside (7861-7798.99)/7798.99=0.80% (exact match),
+    downside (7798.99-7606)/7798.99=2.48% (user's own "~2.7%" estimate)."""
+    last = ctx["quote"].get("SPX")
+    rr = ctx["rr"].get("SPX", {})
+    lrr, trr = rr.get("lrr"), rr.get("trr")
+    base = f"SPX {last:.0f} — {v*100:.0f}% of range (LRR {lrr} / TRR {trr})"
+    if last and lrr is not None and trr is not None:
+        upside_pct = (float(trr) - last) / last * 100.0
+        downside_pct = (last - float(lrr)) / last * 100.0
+        base += f" · +{upside_pct:.1f}% to TRR / -{downside_pct:.1f}% to LRR"
+    return base
+
+
 def _g_spx_top_range(ctx):
     v = _rr_pos_sym(ctx, "SPX")
     if v is None:
         return None, None, "SPX risk range unavailable"
-    fired = v >= 0.85
-    last = ctx["quote"].get("SPX")
-    rr = ctx["rr"].get("SPX", {})
-    return fired, v, f"SPX {last:.0f} — {v*100:.0f}% of range (LRR {rr.get('lrr')} / TRR {rr.get('trr')})"
+    return v >= 0.85, v, _spx_range_detail(ctx, v)
+
+
+# 2026-08-14 -- lighter-weight, earlier-firing companion to _g_spx_top_range
+# above (85% threshold, weight 3, "bigger warning") -- this one fires at 70%
+# ("warning" tier). User picked a two-tier design explicitly: "do 1 [the 70%
+# option] as a warning and current >=85% bigger warning" -- both gauges can
+# fire simultaneously once SPX crosses 85%, cumulatively adding both weights
+# to the risk budget (a stronger combined signal the further into the top of
+# the range price gets), rather than one gauge with a single fixed weight
+# regardless of how extended SPX actually is.
+def _g_spx_top_range_warning(ctx):
+    v = _rr_pos_sym(ctx, "SPX")
+    if v is None:
+        return None, None, "SPX risk range unavailable"
+    return v >= 0.70, v, _spx_range_detail(ctx, v)
 
 
 def _g_spx_bottom_range(ctx):
@@ -350,6 +382,7 @@ def _g_volume_breadth_weak(ctx):
 
 GAUGES: list[tuple[str, Callable]] = [
     ("spx_top_range", _g_spx_top_range),
+    ("spx_top_range_warning", _g_spx_top_range_warning),
     ("spx_bottom_range", _g_spx_bottom_range),
     ("vix_elevated", _g_vix_elevated),
     ("vix_chop", _g_vix_chop),
