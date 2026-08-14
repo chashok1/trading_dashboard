@@ -508,12 +508,14 @@ function _regimeMonAbbr(ym) {
 // "quad witching" 3rd Friday) didn't match what they expected (09/30).
 // Verified via OCC/OIC published calendars (see db/migrate_calendar_
 // expirations_2026_2028.py): 'Qtly Exp' is OCC's distinct Quarterly
-// Options product (EOQ, last business day of the quarter), NOT quad-
-// witching -- quad-witching IS just that quarter's Monthly Exp (09/18,
-// already shown by the "OPEX" part below). Label changed 'Quad' -> 'EOQ'
-// (was misleadingly implying quad-witching) after user: "can you check
-// Quad 09/30 in options expiration. Shouldn't be replaced with quarterly
-// expiration" -- i.e. 09/30 is real, just mislabeled as quad-witching.
+// Options product (last business day of the quarter), NOT quad-witching
+// -- quad-witching IS just that quarter's Monthly Exp (09/18, already
+// shown by the "OPEX" part below). Label went 'Quad' -> 'EOQ' -> 'Qtly
+// Exp' (matches the underlying category name exactly, no invented
+// terminology) after user: "can you check Quad 09/30 in options
+// expiration. Shouldn't be replaced with quarterly expiration" -> "I need
+// quarterly expiration there. not EOQ" -- 09/30 is the correct value,
+// just needed a label that reads as "quarterly expiration".
 function _calRow(calRows, category) {
   return (calRows || []).find(r => r.indicator === category);
 }
@@ -522,7 +524,7 @@ function _opexLineHtml(calRows) {
     const row = _calRow(calRows, category);
     return row ? `${label} ${fmtDate(row.indicator_date)} (${row.days}d)` : '';
   };
-  const bits = [part('OPEX', 'Monthly Exp'), part('EOQ', 'Qtly Exp')].filter(Boolean);
+  const bits = [part('OPEX', 'Monthly Exp'), part('Qtly Exp', 'Qtly Exp')].filter(Boolean);
   return bits.length ? `<div class="opex-line">${bits.join(' &middot; ')}</div>` : '';
 }
 
