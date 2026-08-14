@@ -145,32 +145,12 @@
             <div id="eventsBody">Loading…</div>
           </section>
 
-          <!-- 2026-08-13 -- Cumulative P&L, moved here from the cat-col
-               middle column (was the top of #todaySnapshot there), directly
-               above Housekeeping, per user request: "move cumulative p/L to
-               the left side column above house keeping panel." Same chart
-               (bar Day Change + line Cumulative P&L) as the Portfolio
-               screen's Trends panel (web/portfolio.js::renderTrendCharts,
-               #chTrendCum); period dropdown mirrors #trendsPeriod there.
-               Element ids unchanged, so app.js::loadCumPnlSnapshot() needed
-               no changes -- only the container moved. -->
-          <section class="cockpit-band" id="cumPnlBand">
-            <div class="ts-title">Cumulative P&amp;L
-              <select id="tsCumPnlPeriod" class="ts-period-select" title="Period">
-                <option value="30d" selected>30 days</option>
-                <option value="90d">90 days</option>
-                <option value="mtd">MTD</option>
-                <option value="180d">180 days</option>
-                <option value="ytd">YTD</option>
-                <option value="1y">1 year</option>
-                <option value="5y">5 years</option>
-              </select>
-              <span class="ts-total-group">
-              <span class="ts-total" id="tsCumPnlToday" title="Today's Gain"></span>
-              <span class="ts-total" id="tsCumPnlTotal" title="Cumulative, selected period"></span>
-            </span></div>
-            <div class="ts-chart-body"><canvas id="tsCumPnlChart"></canvas></div>
-          </section>
+          <!-- 2026-08-14 -- Cumulative P&L moved OUT of this column, into
+               the Portfolio Mix row (cat-col, #dashPortfolioMixSection) --
+               user: "move cumulative P&L graph to the same graphs row.
+               there is space." (Previously here, directly above
+               Housekeeping, per an earlier request to move it from cat-col
+               TO this column -- now reversed/superseded.) -->
 
           <!-- Housekeeping moved here from the right rail, below What
                changed, per user request -- no header text. -->
@@ -205,10 +185,10 @@
                Today snapshot row, per user request ("Move the filter bar
                to the top and apply the filter to four graphs") -- the
                Accounts filter (state.catAccounts) also drives the
-               Cumulative P&L widget (app.js::loadCumPnlSnapshot(); moved to
-               dial-changed-col 2026-08-13, see #cumPnlBand) and the
-               Portfolio Mix card below, not just the 3 factor-scorecard
-               widgets. -->
+               Cumulative P&L widget (app.js::loadCumPnlSnapshot(); now
+               inside the Portfolio Mix row below, see
+               #dashPortfolioMixSection) and the rest of that row, not just
+               the 3 factor-scorecard widgets. -->
           <div class="cat-filter-bar">
             <div class="cat-account-filter" id="catAccountFilter" style="flex:1;">Loading…</div>
             <div class="cat-returns-period" id="catReturnsPeriod">
@@ -224,35 +204,54 @@
                     aria-label="Collapse news" title="News">📰 &#9662;</button>
           </div>
 
-          <!-- 2026-08-13 -- Cumulative P&L (previously here, in a
-               #todaySnapshot wrapper) moved to the left column
-               (dial-changed-col), directly above Housekeeping -- see
-               #cumPnlBand there. User: "move cumulative p/L to the left
-               side column above house keeping panel." -->
-
           <!-- 2026-08-13 -- Portfolio Mix: same Asset Allocation/Beta/
                Sector/Concentration pies as the Actionable screen's sidebar
                Portfolio Mix panel (#portfolioMixSection in actionable.html),
                via the shared web/portfolio_mix.js module -- Macro Stance
                isn't included (Actionable-only, depends on actionDisplay()'s
                buy/sell vocabulary). Scoped by the same Accounts filter
-               (state.catAccounts) as #cumPnlBand (left column) and the 3
-               factor-scorecard grids below. Populated + wired by app.js::
-               loadDashPortfolioMix(). Originally added directly below the
-               Cumulative P&L widget when both lived in this column ("line
-               below cumulative P&L") -- Cumulative P&L has since moved to
-               dial-changed-col (see #cumPnlBand there, "move cumulative p/L
-               to the left side column above house keeping panel"), leaving
-               this as the top card in cat-col.
+               (state.catAccounts) as the 3 factor-scorecard grids below.
+               Populated + wired by app.js::loadDashPortfolioMix().
+               Cumulative P&L (app.js::loadCumPnlSnapshot()) briefly lived
+               in its own card in dial-changed-col (2026-08-13, "move
+               cumulative p/L to the left side column above house keeping
+               panel") before rejoining this row (2026-08-14, see below).
                Not a grid item inside a minmax(240px,420px)-constrained
                container (that width was sized for one narrow chart and
                would squeeze 4 pies onto separate lines) -- a plain div
                picks up the cat-col column's full width instead, laid out as
                a wrapping flex row (was stacked, one per line) per user: "in
-               a row horizontal row, not stacked vertical." -->
+               a row horizontal row, not stacked vertical."
+               2026-08-14 -- Cumulative P&L joined this same row as its
+               first item (wider flex-basis than the pies -- it's a bar+line
+               time series, not a small pie+legend) -- user: "move
+               cumulative P&L graph to the same graphs row. there is
+               space." Element ids/period dropdown unchanged from when it
+               lived in its own #cumPnlBand card, so app.js::
+               loadCumPnlSnapshot() needed no changes, only the container
+               moved (again). align-items:flex-start on the row so the
+               taller chart item doesn't stretch the pie items' height to
+               match it (flex default is stretch). -->
           <div class="ts-widget" id="dashPortfolioMixSection">
             <div class="ts-title">Portfolio Mix</div>
-            <div style="padding-top:2px;display:flex;flex-direction:row;flex-wrap:wrap;gap:16px;">
+            <div style="padding-top:2px;display:flex;flex-direction:row;flex-wrap:wrap;align-items:flex-start;gap:16px;">
+              <div style="flex:1 1 260px;min-width:220px;">
+                <div class="ts-title" style="margin-bottom:2px;">Cumulative P&amp;L
+                  <select id="tsCumPnlPeriod" class="ts-period-select" title="Period">
+                    <option value="30d" selected>30 days</option>
+                    <option value="90d">90 days</option>
+                    <option value="mtd">MTD</option>
+                    <option value="180d">180 days</option>
+                    <option value="ytd">YTD</option>
+                    <option value="1y">1 year</option>
+                    <option value="5y">5 years</option>
+                  </select>
+                  <span class="ts-total-group">
+                  <span class="ts-total" id="tsCumPnlToday" title="Today's Gain"></span>
+                  <span class="ts-total" id="tsCumPnlTotal" title="Cumulative, selected period"></span>
+                </span></div>
+                <div class="ts-chart-body"><canvas id="tsCumPnlChart"></canvas></div>
+              </div>
               <div style="flex:1 1 160px;min-width:150px;">
                 <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Asset Allocation</div>
                 <div style="display:flex;align-items:center;gap:8px;">
