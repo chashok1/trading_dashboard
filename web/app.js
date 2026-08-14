@@ -499,6 +499,51 @@ function _regimeMonAbbr(ym) {
   return _REGIME_MONTH_ABBR[idx] || ym;
 }
 
+// 2026-08-14 -- Options expiration line, shown above the Regime line (own
+// separator) per user: "i need to see options expiration date (mm/dd) 10d
+// both montly and quarterly". Reference "today" is state.date/anchorDate
+// (the dashboard's own as_of_date), never the system clock -- see project
+// convention that the date picker IS "today" for business logic.
+// Monthly OPEX = 3rd Friday of the month (standard US equity options
+// expiration). Quarterly ("triple/quad witching") = 3rd Friday of
+// Mar/Jun/Sep/Dec specifically -- also a monthly OPEX date, just the
+// heavier one four times a year.
+function _thirdFridayUTC(year, monthIdx0) {
+  const first = new Date(Date.UTC(year, monthIdx0, 1));
+  const firstFriday = 1 + ((5 - first.getUTCDay() + 7) % 7);
+  return new Date(Date.UTC(year, monthIdx0, firstFriday + 14));
+}
+function _nextOpex(refDate, quarterlyOnly) {
+  const qMonths = [2, 5, 8, 11]; // Mar/Jun/Sep/Dec, 0-indexed
+  let y = refDate.getUTCFullYear(), m = refDate.getUTCMonth();
+  for (let i = 0; i < 24; i++) {
+    if (!quarterlyOnly || qMonths.includes(m)) {
+      const tf = _thirdFridayUTC(y, m);
+      if (tf >= refDate) return tf;
+    }
+    m++;
+    if (m > 11) { m = 0; y++; }
+  }
+  return null;
+}
+function _opexLineHtml() {
+  const refIso = state.date || state.anchorDate;
+  if (!refIso) return '';
+  const ref = new Date(refIso + 'T00:00:00Z');
+  if (isNaN(ref)) return '';
+  const dayMs = 86400000;
+  const monthly = _nextOpex(ref, false);
+  const quarterly = _nextOpex(ref, true);
+  const part = (label, dt) => {
+    if (!dt) return '';
+    const iso = dt.toISOString().slice(0, 10);
+    const daysOut = Math.round((dt - ref) / dayMs);
+    return `${label} ${fmtDate(iso)} (${daysOut}d)`;
+  };
+  const bits = [part('OPEX', monthly), part('Quad', quarterly)].filter(Boolean);
+  return bits.length ? `<div class="opex-line">${bits.join(' &middot; ')}</div>` : '';
+}
+
 async function loadRegimeBand() {
   const strip = $('regimeStrip');
   if (!strip) return;
@@ -562,7 +607,7 @@ async function loadRegimeBand() {
     // left-flowing blob with the months embedded right after the label.
     // 2026-08-09 -- "Win" text dropped per user: "remove the text 'Win'".
     const winLabel = `<span class="regime-win-label">${windowData.h ?? 60}d (<strong style="color:${_quadColor(dominant)};">Q${windowData.dominant_quad ?? '?'}</strong>)</span>`;
-    strip.innerHTML = `<div class="regime-line" data-quadbandpop="1">
+    strip.innerHTML = `${_opexLineHtml()}<div class="regime-line" data-quadbandpop="1">
       ${winLabel}<span class="regime-window-text">${months || 'no window data'}</span>${qtrEntry}
     </div>`;
     const line = strip.querySelector('.regime-line');

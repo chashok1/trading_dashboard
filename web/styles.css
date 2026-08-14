@@ -2634,6 +2634,23 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
 .source-pop td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; word-break: break-word; }
 .source-pop .sp-sec { color: #94a3b8; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; padding-top: 5px; }
 #regimeStrip > * + * { padding-left: 10px; border-left: 1px solid var(--border); }
+/* 2026-08-14 -- Options expiration line, sits on its own row above
+   .regime-line with a horizontal separator between them (both force
+   flex:1 0/1 100% so they stack instead of sitting side by side in
+   #regimeStrip's flex-wrap row). The generic "> * + *" rule above (a
+   vertical left-border, meant for side-by-side items) is neutralized on
+   .regime-line here since it's no longer meaningful once opex-line is on
+   its own row above it. User: "add a line above REGIME text with
+   separator line -> i need to see options expiration date (mm/dd) 10d
+   both montly and quarterly". */
+.opex-line {
+  flex: 1 0 100%;
+  font-size: 11px;
+  color: var(--text-3);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+#regimeStrip .opex-line + .regime-line { padding-left: 0; border-left: none; }
 /* 2026-08-08 -- .regime-line switched from inline-block to a full-width flex
    row so its Qtr entry can right-justify to the card's own right edge
    (flex:1 1 100% claims the whole #regimeStrip row) instead of just
