@@ -14,6 +14,7 @@
   // a refetch. Reset to 'both' on every fresh popup open (_open()).
   var _lastData = null;
   var _posFilter = 'active';
+  var _acctFilter = ''; // '' = all accounts; else an exact p.account value. Reset on every fresh open (_open()).
   var _lastSubtitlePrefix = '';
   // 2026-08-14 -- click-to-sort on both grids in this popup (positions table
   // + Buy/Sell history table). {key, dir} -- key null means "unsorted, use
@@ -98,6 +99,15 @@
       '        <button type="button" data-filter="both">Both</button>',
       '        <button type="button" data-filter="active" class="active">Active</button>',
       '        <button type="button" data-filter="closed">Closed</button>',
+      // 2026-08-14 -- Account dropdown, same row as the Active/Closed/Both
+      // filter -- narrows the position list (and Largest Holdings/Compare
+      // charts, both fed from the same `shown` array) to one account.
+      // Options are built from whatever accounts actually appear in THIS
+      // popup's own data.positions, not a fixed global account list -- a
+      // gauge/category with holdings in only 2 of your 5 accounts should
+      // only offer those 2. Client-side only, same as the Active/Closed/
+      // Both filter (no refetch). User: "also add account dropdown filter."
+      '        <select id="gmAccountFilter" title="Filter by account"><option value="">All accounts</option></select>',
       '      </div>',
       '      <div class="gm-table-wrap">',
       '        <table class="gm-table">',
@@ -162,6 +172,13 @@
         if (_lastData) _renderPositionsTable(_lastData);
       });
     });
+    var acctSel = document.getElementById('gmAccountFilter');
+    if (acctSel) {
+      acctSel.addEventListener('change', function () {
+        _acctFilter = acctSel.value;
+        if (_lastData) _renderPositionsTable(_lastData);
+      });
+    }
     _wireSort(document.getElementById('gmTableHeadRow'), _posSort, function () {
       if (_lastData) _renderPositionsTable(_lastData);
     });
@@ -636,10 +653,27 @@
     Array.prototype.forEach.call(document.querySelectorAll('#gmPosFilter button'), function (b) {
       b.classList.toggle('active', b.getAttribute('data-filter') === 'active');
     });
+    // 2026-08-14 -- same reasoning: an account filter left on from a
+    // previous gauge/category shouldn't carry over either -- reset here;
+    // _populateAccountFilter (called from _renderData, once the fetch
+    // resolves) rebuilds the option list from THIS gauge/category's own
+    // accounts and leaves the dropdown on "All accounts" since _acctFilter
+    // is already '' by the time it runs.
+    _acctFilter = '';
     // 2026-08-14 -- same reasoning: a sort left over from a previous
     // gauge/category shouldn't carry over onto this one.
-    _posSort = { key: null, dir: 'asc' };
-    _histSort = { key: null, dir: 'asc' };
+    // BUGFIX same day -- mutate the EXISTING _posSort/_histSort objects'
+    // properties in place, don't reassign to new ones. _wireSort (called
+    // once, in _ensure(), since this modal's <thead> is built once and
+    // never rebuilt) closed over these objects BY REFERENCE when the popup
+    // first opened; reassigning `_posSort = {...}` here on every later open
+    // orphaned that reference -- clicks kept mutating the OLD object while
+    // _renderPositionsTable/_renderTxnHistory read the module-level
+    // variable, which now pointed at a different, never-mutated object.
+    // Net effect: every click silently wrote to a dead object and the sort
+    // never visibly changed. User: "sort is not working."
+    _posSort.key = null; _posSort.dir = 'asc';
+    _histSort.key = null; _histSort.dir = 'asc';
     _updateSortIndicators(document.getElementById('gmTableHeadRow'), _posSort);
     _updateSortIndicators(document.getElementById('gmHistoryHeadRow'), _histSort);
 
@@ -692,8 +726,33 @@
       : '<div class="gm-total-row"><div class="d">&mdash;</div>' + gainHtml + '</div>';
 
     _lastData = data;
+    _populateAccountFilter(data.positions || []);
     _renderPositionsTable(data, /* selectFirst */ true);
     _renderCompareChart(data);
+  }
+
+  // Rebuilds the Account dropdown's options from whatever accounts appear
+  // in THIS popup's own positions -- called once per fresh data load
+  // (_renderData), NOT from _renderPositionsTable (which re-runs on every
+  // filter/sort click and would otherwise wipe out the user's current
+  // dropdown selection on every one of those). Sorted alphabetically for a
+  // stable, predictable order.
+  function _populateAccountFilter(positions) {
+    var sel = document.getElementById('gmAccountFilter');
+    if (!sel) return;
+    var accounts = Array.from(new Set(positions.map(function (p) { return p.account; }).filter(Boolean))).sort();
+    sel.innerHTML = '';
+    var allOpt = document.createElement('option');
+    allOpt.value = ''; allOpt.textContent = 'All accounts';
+    sel.appendChild(allOpt);
+    accounts.forEach(function (a) {
+      var opt = document.createElement('option');
+      opt.value = a; opt.textContent = a;
+      sel.appendChild(opt);
+    });
+    // _acctFilter is already reset to '' by _open() before this runs (see
+    // its own comment) -- this just keeps the visible <select> in sync.
+    sel.value = '';
   }
 
   // Qty column helper -- blank (not "0") when the source has no qty at all
@@ -714,8 +773,10 @@
     var titleEl = document.getElementById('gmHistoryTitle');
     if (titleEl) titleEl.textContent = 'Buy/Sell Gain/Loss History — ' + symbol + ' (' + account + ')';
     // A sort left over from a previously-selected symbol shouldn't silently
-    // carry over onto this one's history table.
-    _histSort = { key: null, dir: 'asc' };
+    // carry over onto this one's history table. Mutated in place, not
+    // reassigned -- see _open()'s own fix comment for why reassigning here
+    // would silently orphan _wireSort's closure reference again.
+    _histSort.key = null; _histSort.dir = 'asc';
     _updateSortIndicators(document.getElementById('gmHistoryHeadRow'), _histSort);
     var reqId = ++_txnHistReqId;
     fetch('/api/cockpit/symbol-txn-history?symbol=' + encodeURIComponent(symbol) +
@@ -807,6 +868,7 @@
     var shown = _posFilter === 'active' ? all.filter(function (p) { return !p.closed; })
       : _posFilter === 'closed' ? all.filter(function (p) { return p.closed; })
       : all;
+    if (_acctFilter) shown = shown.filter(function (p) { return p.account === _acctFilter; });
     if (_posSort.key) {
       var pmul = _posSort.dir === 'asc' ? 1 : -1;
       shown = shown.slice().sort(function (a, b) {
