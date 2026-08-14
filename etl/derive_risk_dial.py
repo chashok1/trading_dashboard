@@ -104,10 +104,25 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
             (float(r["level_value"]), float(r["tolerance"])))
 
     gamma_row = session.execute(text(
-        "SELECT gamma_throttle FROM hist_msr WHERE snapshot_date <= :d "
+        "SELECT gamma_throttle, rvol_10day FROM hist_msr WHERE snapshot_date <= :d "
         "ORDER BY snapshot_date DESC LIMIT 1"
     ), {"d": as_of_date}).first()
     gamma_throttle = float(gamma_row[0]) if gamma_row and gamma_row[0] is not None else None
+    rvol_10day = float(gamma_row[1]) if gamma_row and gamma_row[1] is not None else None
+
+    # 2026-08-14 -- VIX9D (CBOE 9-day/short-dated implied vol), feeds
+    # _g_short_vol_disc below. etl/fetch_vix9d.py (yfinance, symbol
+    # '^VIX9D') writes here, separate from ref_corr_asset (that table also
+    # drives the Dollar Correlation panel; VIX9D isn't a USD-correlation
+    # asset). User: "Short dated volatility calendar... close to 10 and
+    # Imp vol disc is -ve" -> "use it" -- VIX9D vs rvol_10day is the
+    # standardized, independently-verifiable version of that MSR chart
+    # reading (vs OCR'ing Hedgeye's own proprietary number).
+    vix9d_row = session.execute(text(
+        "SELECT close FROM hist_quote_daily WHERE source = 'yfinance' AND symbol = '^VIX9D' "
+        "AND obs_date <= :d ORDER BY obs_date DESC LIMIT 1"
+    ), {"d": as_of_date}).first()
+    vix9d = float(vix9d_row[0]) if vix9d_row and vix9d_row[0] is not None else None
 
     def _macro_series(series_id: str, lookback_days: int) -> Optional[list]:
         rows = session.execute(text(
@@ -122,6 +137,8 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "vol": vol_map,
         "levels": levels_by_sym,
         "gamma_throttle": gamma_throttle,
+        "rvol_10day": rvol_10day,
+        "vix9d": vix9d,
         "hy_oas": _macro_series("BAMLH0A0HYM2", CREDIT_WIDEN_DAYS),
         "t10y2y": _macro_series("T10Y2Y", CURVE_INVERT_DAYS),
         "vrp": extra.get("vrp"),
@@ -333,6 +350,23 @@ def _g_vrp_gone(ctx):
     return v <= 0, v, f"VRP {v:+.1f} (VIX - RV21)"
 
 
+# 2026-08-14 -- short-dated companion to _g_vrp_gone above -- same "implied
+# vol discount gone negative" shape (VIX - RV21 <= 0), but VIX9D (CBOE
+# 9-day/short-dated implied vol, etl/fetch_vix9d.py) vs rvol_10day (MSR's
+# own 10-day realized vol) instead of the standard 30-day VIX vs 21-day
+# realized. The short end of the vol curve moves first -- this can fire
+# (and did, live: VIX9D 10.96 vs rvol_10day) before vrp_gone does on the
+# same underlying dynamic. User: "Short dated volatility calendar -> close
+# to 10 and Imp vol disc is -ve. Should not buy stocks" -> confirmed
+# "Imp vol disc is implied vol vs hist vol" -> "use it" (VIX9D, not OCR).
+def _g_short_vol_disc(ctx):
+    vix9d, rv10 = ctx.get("vix9d"), ctx.get("rvol_10day")
+    if vix9d is None or rv10 is None:
+        return None, None, "VIX9D or rvol_10day unavailable"
+    disc = vix9d - rv10
+    return disc <= 0, disc, f"Short vol disc {disc:+.1f} (VIX9D {vix9d:.1f} - RV10 {rv10:.1f})"
+
+
 def _g_gamma_negative(ctx):
     v = ctx.get("gamma_throttle")
     if v is None:
@@ -377,6 +411,7 @@ GAUGES: list[tuple[str, Callable]] = [
     ("dollar_strong", _g_dollar_strong),
     ("oil_shock", _g_oil_shock),
     ("vrp_gone", _g_vrp_gone),
+    ("short_vol_disc", _g_short_vol_disc),
     ("gamma_negative", _g_gamma_negative),
     ("breadth_deteriorating", _g_breadth_deteriorating),
     ("gold_vol_elevated", _g_gold_vol_elevated),
