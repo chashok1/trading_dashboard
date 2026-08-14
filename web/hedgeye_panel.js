@@ -317,17 +317,16 @@
     // by side. Kept msrTileTs (the report's actual date) since it's the one
     // that answers "how current is this report", not "when did my browser
     // last poll". User: "rename Mkt situation to MKT SIT. Why do i see two
-    // dates next to that text. i only need one." Also added a second link
-    // icon (linkIcon) next to the first -- linked() already made the title
-    // text itself a link (ext_links['mkt_situation'], now pointed at Yahoo
-    // Finance); linkIcon adds a standalone ↗ for ext_links[
-    // 'mkt_situation_cnbc'] (CNBC). User: "make it as a URL link ->
-    // finance.yahoo.com. add one more link next to it in the header for
-    // cnbc.com."
+    // dates next to that text. i only need one."
+    // 2026-08-14 follow-up -- a second Yahoo Finance/CNBC link pair was
+    // briefly added here too, reverted same day -- user: "links should be
+    // on 'Market News' panel" (see web/dashboard_news_list.js instead).
+    // This panel's own link (linked(), ext_links['mkt_situation']) is back
+    // to its original Hedgeye Market Situation Report URL, unchanged.
     var panelTitle = '<div style="font-weight:700; font-size:9px; text-transform:uppercase; ' +
       'letter-spacing:0.6px; color:#534ab7; margin-bottom:6px; display:flex; ' +
       'align-items:baseline; justify-content:space-between; gap:8px;">' +
-      '<span>' + linked('MKT SIT', 'mkt_situation') + linkIcon('mkt_situation_cnbc') + msrTileTs +
+      '<span>' + linked('MKT SIT', 'mkt_situation') + msrTileTs +
       '</span>' +
       '<span>' + msrMetricsHtml + '</span>' +
       '</div>';
