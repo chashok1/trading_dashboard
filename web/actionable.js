@@ -933,18 +933,62 @@ function _renderQuadOutlookPanel(data) {
   el.innerHTML = h;
 }
 
+// 2026-08-14 -- Actual column: same click-to-edit pattern as web/app.js's
+// econBody (GET/PUT /api/dashboard/econ-indicators/actual). Duplicated
+// rather than shared -- this panel has always been two independent
+// per-page implementations (loadEconIndicators/loadSideEcon), not a shared
+// module. User: "i need a way to enter this data from EVENT panel both in
+// dashboard and actionable screens. I don't want to go /ref screen."
+function _econActualCellHtml(r) {
+  const ind = escapeHtml(r.indicator || '');
+  const dt = r.indicator_date || '';
+  const val = r.actual != null ? escapeHtml(String(r.actual)) : '';
+  const display = r.actual != null ? escapeHtml(String(r.actual)) : '<span class="econ-actual-add">+</span>';
+  return `<td class="num econ-actual-cell" data-ind="${ind}" data-date="${dt}" data-val="${val}" title="Click to enter the actual reading">${display}</td>`;
+}
+function _wireEconActualEdit(tbody) {
+  if (tbody._econActualWired) return;
+  tbody._econActualWired = true;
+  tbody.addEventListener('click', e => {
+    const cell = e.target.closest('.econ-actual-cell');
+    if (!cell || cell.querySelector('input')) return;
+    const cur = cell.getAttribute('data-val') || '';
+    cell.innerHTML = `<input type="text" inputmode="decimal" class="econ-actual-input" value="${escapeHtml(cur)}">`;
+    const input = cell.querySelector('input');
+    input.focus();
+    input.select();
+    const save = async () => {
+      const raw = input.value.trim();
+      const actual = raw === '' ? null : Number(raw);
+      if (raw !== '' && Number.isNaN(actual)) { input.focus(); return; }
+      try {
+        await fetchJson('/api/dashboard/econ-indicators/actual', {
+          method: 'PUT',
+          body: JSON.stringify({ indicator: cell.getAttribute('data-ind'), indicator_date: cell.getAttribute('data-date'), actual }),
+        });
+      } catch (err) { console.error('save actual failed:', err); }
+      loadSideEcon();
+    };
+    input.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter') { ev.preventDefault(); save(); }
+      else if (ev.key === 'Escape') { loadSideEcon(); }
+    });
+    input.addEventListener('blur', save);
+  });
+}
 // Combined econ-release + market-structure calendar (Events folded in server
 // side -- see /api/dashboard/econ-indicators).
 async function loadSideEcon() {
   const tbody = $('econBody'), empty = $('econEmpty'); if (!tbody) return;
   tbody.innerHTML = '';
+  _wireEconActualEdit(tbody);
   try {
     const rows = await fetchJson(state.date ? `/api/dashboard/econ-indicators?date=${encodeURIComponent(state.date)}&limit=60` : '/api/dashboard/econ-indicators?limit=60');
     if (!rows?.length) { empty.hidden = false; return; }
     empty.hidden = true;
     for (const r of rows) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td class="text">${r.indicator||''}</td><td>${fmtDateMD(r.indicator_date)}</td><td class="num">${r.days??''}</td>`;
+      tr.innerHTML = `<td class="text">${r.indicator||''}</td><td>${fmtDateMD(r.indicator_date)}</td><td class="num">${r.days??''}</td>${_econActualCellHtml(r)}`;
       tbody.appendChild(tr);
     }
   } catch(e) { console.error('Side econ:', e); empty.hidden = false; }

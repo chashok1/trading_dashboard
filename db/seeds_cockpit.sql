@@ -6,9 +6,17 @@
 -- =====================================================
 
 -- ---------------------------------------------------------------------------
--- 2.1 ref_risk_gauge — total active weight = 41 (+ volume_breadth_weak seeded
+-- 2.1 ref_risk_gauge — total active weight = 43 (+ volume_breadth_weak seeded
 -- inactive, weight 2 -- flip to TRUE once hist_internals is flowing, per
--- Phase 4.1; active weight becomes 43 at that point).
+-- Phase 4.1; active weight becomes 45 at that point).
+-- 2026-08-14 -- ism_mfg_contraction/ism_svcs_contraction added: ISM
+-- Mfg/Svcs PMI <45 ("well below 50" -- a diffusion index, <50 =
+-- contraction; 45 as a defensible "well below" line, adjustable). Value
+-- comes from ref_indicator_actual (hand-entered from the Indicator/Event
+-- panel -- no free feed exists for the real print, ISM stopped freely
+-- redistributing it). Weight 2 each, category macro. User: "ISM PMIs are
+-- well below 50" -> "Manual entry. If you are doing this, do we need to
+-- do this wholestically... for other readings?" -> "yes, build it."
 -- 2026-08-14 -- jpy_carry_unwind added: /6J (CME JPY futures) up >=1.0% in
 -- a day -- sharp yen appreciation risks forcing leveraged JPY-funded carry
 -- trades to unwind (real case study: Aug 2024 BOJ-hike-driven USD/JPY
@@ -49,6 +57,8 @@ INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes
     ('spx_bottom_range',       'SPX below risk range',       2, TRUE,  'equity',      NULL),
     ('vix_spx_divergence',     'VIX/SPX inverse relationship broken', 3, TRUE, 'equity', NULL),
     ('sahm_rule',               'Sahm Rule recession signal',  3, TRUE,  'macro',       NULL),
+    ('ism_mfg_contraction',     'ISM Manufacturing well below 50', 2, TRUE, 'macro',   NULL),
+    ('ism_svcs_contraction',    'ISM Services well below 50', 2, TRUE,  'macro',       NULL),
     ('vix_elevated',           'Equity vol elevated',        3, TRUE,  'vol',         NULL),
     ('vix_chop',               'Equity vol in chop zone',    1, TRUE,  'vol',         NULL),
     ('move_elevated',          'Bond vol elevated',          3, TRUE,  'vol',         NULL),
@@ -192,6 +202,12 @@ INSERT INTO ref_gauge_transmission (gauge_key, axis, category) VALUES
     ('sahm_rule',             'style',  'High Beta'),
     ('sahm_rule',             'style',  'Momentum'),
     ('sahm_rule',             'style',  'Small Caps'),
+    ('ism_mfg_contraction',   'style',  'High Beta'),
+    ('ism_mfg_contraction',   'style',  'Momentum'),
+    ('ism_mfg_contraction',   'style',  'Small Caps'),
+    ('ism_svcs_contraction',  'style',  'High Beta'),
+    ('ism_svcs_contraction',  'style',  'Momentum'),
+    ('ism_svcs_contraction',  'style',  'Small Caps'),
     ('jpy_carry_unwind',      'style',  'High Beta'),
     ('jpy_carry_unwind',      'style',  'Momentum'),
     ('jpy_carry_unwind',      'style',  'Small Caps'),

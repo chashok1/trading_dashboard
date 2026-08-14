@@ -128,6 +128,21 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
     ), {"d": as_of_date}).first()
     vix9d = float(vix9d_row[0]) if vix9d_row and vix9d_row[0] is not None else None
 
+    # 2026-08-14 -- ISM Mfg/Svcs actual readings (no free feed exists for
+    # ISM's own PMI print -- see ref_indicator_actual's own comment in
+    # db/baseline.sql) -- user-entered from the Indicator/Event panel
+    # (GET/PUT /api/dashboard/econ-indicators/actual), feeds
+    # _g_ism_mfg_contraction/_g_ism_svcs_contraction below.
+    def _latest_indicator_actual(indicator: str):
+        row = session.execute(text(
+            "SELECT obs_date, actual FROM ref_indicator_actual "
+            "WHERE LOWER(REGEXP_REPLACE(indicator, '\\s+', '', 'g')) "
+            "    = LOWER(REGEXP_REPLACE(:ind, '\\s+', '', 'g')) "
+            "AND obs_date <= :d AND actual IS NOT NULL "
+            "ORDER BY obs_date DESC LIMIT 1"
+        ), {"ind": indicator, "d": as_of_date}).first()
+        return (row[0], float(row[1])) if row else None
+
     def _macro_series(series_id: str, lookback_days: int) -> Optional[list]:
         rows = session.execute(text(
             "SELECT obs_date, value FROM hist_macro WHERE series_id = :sid "
@@ -147,6 +162,8 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "hy_oas": _macro_series("BAMLH0A0HYM2", CREDIT_WIDEN_DAYS),
         "t10y2y": _macro_series("T10Y2Y", CURVE_INVERT_DAYS),
         "sahm_rule": _macro_series("SAHMREALTIME", 3),
+        "ism_mfg": _latest_indicator_actual("ISM Mfg"),
+        "ism_svcs": _latest_indicator_actual("ISM Svcs"),
         "vrp": extra.get("vrp"),
         "pct_above_sma50": extra.get("pct_above_sma50"),
         "pct_above_sma50_5d_chg": extra.get("pct_above_sma50_5d_chg"),
@@ -398,6 +415,31 @@ def _g_jpy_carry_unwind(ctx):
     return chg >= 1.0, chg, f"JPY futures {chg:+.1f}% (carry-unwind risk if leveraged JPY-funded positions get squeezed)"
 
 
+# 2026-08-14 -- ISM PMI is a diffusion index: >50 = expansion, <50 =
+# contraction. "Well below 50" (not just a marginal 48-49 dip) is the read
+# that actually signals a meaningfully shrinking sector -- 45 as the
+# cutoff (a defensible, commonly-used "well below" line, not a single
+# universal standard; adjustable). No free feed exists for the real print
+# (ISM stopped freely redistributing it) -- value comes from
+# ref_indicator_actual, hand-entered via the Indicator/Event panel. User:
+# "ISM PMIs are well below 50" -> "Manual entry... do we need to do this
+# wholestically... for other readings?" -> "yes, build it."
+def _g_ism_mfg_contraction(ctx):
+    r = ctx.get("ism_mfg")
+    if r is None:
+        return None, None, "ISM Mfg actual not entered"
+    obs_date, v = r
+    return v < 45, v, f"ISM Mfg {v:.1f} (as of {obs_date.strftime('%b %Y')})"
+
+
+def _g_ism_svcs_contraction(ctx):
+    r = ctx.get("ism_svcs")
+    if r is None:
+        return None, None, "ISM Svcs actual not entered"
+    obs_date, v = r
+    return v < 45, v, f"ISM Svcs {v:.1f} (as of {obs_date.strftime('%b %Y')})"
+
+
 def _g_oil_shock(ctx):
     v = _rr_pos_sym(ctx, "/CL")
     ovx = _vol_value(ctx, "OVX:CGI")
@@ -508,6 +550,8 @@ GAUGES: list[tuple[str, Callable]] = [
     ("sahm_rule", _g_sahm_rule),
     ("dollar_strong", _g_dollar_strong),
     ("jpy_carry_unwind", _g_jpy_carry_unwind),
+    ("ism_mfg_contraction", _g_ism_mfg_contraction),
+    ("ism_svcs_contraction", _g_ism_svcs_contraction),
     ("oil_shock", _g_oil_shock),
     ("vrp_gone", _g_vrp_gone),
     ("short_vol_disc", _g_short_vol_disc),

@@ -178,6 +178,14 @@ def get_dashboard_econ_indicators(
     Floor of the window is the last business day on/before the as-of date
     (not a flat 7-day lookback) — so a Monday view still shows Friday's
     releases, but nothing older.
+
+    2026-08-14 -- `actual` field added: a user-entered reading from
+    ref_indicator_actual (indicator + date, matched with the same
+    whitespace/case-insensitive join used between cal/econ above), entered
+    directly from this panel's own UI (PUT /api/dashboard/econ-indicators/
+    actual below) -- not the /ref screen. First use is ISM Mfg/Svcs (no
+    free data source exists for the real PMI print), but works for any
+    indicator name that shows up in this list.
     """
     d = datetime.strptime(date, "%Y-%m-%d").date() if date else datetime.now().date()
     floor = _last_business_day(d)
@@ -193,23 +201,31 @@ def get_dashboard_econ_indicators(
                 FROM ref_econ_indicator
                 WHERE COALESCE(show_on_dashboard, incl) = 'Y'
                   AND indicator_date >= :floor
+            ),
+            combined AS (
+                SELECT c.indicator, c.indicator_date, e.signal
+                FROM cal c
+                LEFT JOIN econ e
+                  ON LOWER(REGEXP_REPLACE(e.indicator, '\\s+', '', 'g'))
+                     = LOWER(REGEXP_REPLACE(c.indicator, '\\s+', '', 'g'))
+                 AND e.indicator_date = c.indicator_date
+                UNION ALL
+                SELECT e.indicator, e.indicator_date, e.signal
+                FROM econ e
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM cal c
+                    WHERE LOWER(REGEXP_REPLACE(c.indicator, '\\s+', '', 'g'))
+                          = LOWER(REGEXP_REPLACE(e.indicator, '\\s+', '', 'g'))
+                      AND c.indicator_date = e.indicator_date
+                )
             )
-            SELECT c.indicator, c.indicator_date, e.signal
-            FROM cal c
-            LEFT JOIN econ e
-              ON LOWER(REGEXP_REPLACE(e.indicator, '\\s+', '', 'g'))
-                 = LOWER(REGEXP_REPLACE(c.indicator, '\\s+', '', 'g'))
-             AND e.indicator_date = c.indicator_date
-            UNION ALL
-            SELECT e.indicator, e.indicator_date, e.signal
-            FROM econ e
-            WHERE NOT EXISTS (
-                SELECT 1 FROM cal c
-                WHERE LOWER(REGEXP_REPLACE(c.indicator, '\\s+', '', 'g'))
-                      = LOWER(REGEXP_REPLACE(e.indicator, '\\s+', '', 'g'))
-                  AND c.indicator_date = e.indicator_date
-            )
-            ORDER BY indicator_date ASC
+            SELECT combined.indicator, combined.indicator_date, combined.signal, ia.actual
+            FROM combined
+            LEFT JOIN ref_indicator_actual ia
+              ON LOWER(REGEXP_REPLACE(ia.indicator, '\\s+', '', 'g'))
+                 = LOWER(REGEXP_REPLACE(combined.indicator, '\\s+', '', 'g'))
+             AND ia.obs_date = combined.indicator_date
+            ORDER BY combined.indicator_date ASC
             LIMIT :lim
         """), {"floor": floor, "lim": limit}).mappings().all()
     return [
@@ -218,9 +234,46 @@ def get_dashboard_econ_indicators(
             "indicator_date": r["indicator_date"].isoformat() if r["indicator_date"] else None,
             "days": (r["indicator_date"] - d).days if r["indicator_date"] else None,
             "signal": r["signal"],
+            "actual": float(r["actual"]) if r["actual"] is not None else None,
         }
         for r in rows
     ]
+
+
+@router.put("/api/dashboard/econ-indicators/actual")
+def put_econ_indicator_actual(body: dict = Body(...)):
+    """Save (or clear, if `actual` is null) a user-entered reading for one
+    indicator+date row -- see get_dashboard_econ_indicators's own docstring.
+    Entered directly from the Indicator/Event panel (Dashboard + Actionable),
+    not /ref. Body: {"indicator": "ISM Mfg", "indicator_date": "2026-08-01",
+    "actual": 46.2}."""
+    indicator = body.get("indicator")
+    indicator_date = body.get("indicator_date")
+    if not indicator or not indicator_date:
+        raise HTTPException(422, "body must include indicator and indicator_date")
+    try:
+        d = datetime.strptime(indicator_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(422, "indicator_date must be YYYY-MM-DD")
+    actual = body.get("actual")
+    with session_scope() as s:
+        if actual is None:
+            s.execute(text(
+                "DELETE FROM ref_indicator_actual WHERE indicator = :ind AND obs_date = :d"
+            ), {"ind": indicator, "d": d})
+        else:
+            try:
+                actual_val = float(actual)
+            except (TypeError, ValueError):
+                raise HTTPException(422, "actual must be numeric or null")
+            s.execute(text("""
+                INSERT INTO ref_indicator_actual (indicator, obs_date, actual)
+                VALUES (:ind, :d, :v)
+                ON CONFLICT (indicator, obs_date) DO UPDATE
+                    SET actual = EXCLUDED.actual, entered_at = now()
+            """), {"ind": indicator, "d": d, "v": actual_val})
+        s.commit()
+    return {"ok": True}
 
 
 # 2026-08-14 -- Dashboard Regime line's new configurable "Events" line

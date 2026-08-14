@@ -742,6 +742,17 @@ tbody tr:hover { background: #fafafa; }
     .mini-grid td.text { font-family: inherit; }
     .mini-grid td.num { text-align: right; }
 
+    /* 2026-08-14 -- Econ Indicators panel's Actual column (GET/PUT
+       /api/dashboard/econ-indicators/actual) -- click a cell to edit. */
+    .econ-actual-cell { cursor: pointer; }
+    .econ-actual-add { color: var(--text-3, #6b7280); opacity: 0.5; }
+    .econ-actual-cell:hover .econ-actual-add { opacity: 1; }
+    .econ-actual-input {
+      width: 100%; box-sizing: border-box; text-align: right; font-size: 11px;
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+      padding: 1px 3px; border: 1px solid var(--accent, #1d4ed8); border-radius: 3px;
+    }
+
     .signal-BULLISH { color: var(--bull, #15803d); font-weight: 600; }
     .signal-BEARISH { color: var(--bear, #b91c1c); font-weight: 600; }
     .signal-NEUTRAL { color: var(--text-3, #6b7280); }

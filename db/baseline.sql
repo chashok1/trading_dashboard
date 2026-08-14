@@ -264,6 +264,25 @@ CREATE TABLE IF NOT EXISTS ref_calendar_event (
 
 CREATE INDEX IF NOT EXISTS ix_ref_calendar_event_date ON ref_calendar_event(event_date);
 
+-- 2026-08-14 -- user-entered ACTUAL reading for an economic release, keyed
+-- generically by indicator name + date -- works for any indicator already
+-- surfaced by GET /api/dashboard/econ-indicators (which unions
+-- ref_calendar_event.category and ref_econ_indicator.indicator; this table
+-- is deliberately separate from both -- neither is safe/appropriate to
+-- hand-edit directly, both are workbook-reloaded). Entered from the
+-- Indicator/Event panel itself (Dashboard + Actionable), not /ref. First
+-- use: ISM Mfg/ISM Svcs (no free data source exists for the real PMI
+-- print -- ISM stopped freely redistributing it), but any indicator name
+-- works the same way. User: "Manual entry. If you are doing this, do we
+-- need to do this wholestically... for other readings?" -> yes.
+CREATE TABLE IF NOT EXISTS ref_indicator_actual (
+    indicator   TEXT NOT NULL,
+    obs_date    DATE NOT NULL,
+    actual      NUMERIC,
+    entered_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (indicator, obs_date)
+);
+
 
 
 -- -----------------------------------------------------
