@@ -646,17 +646,23 @@ def get_factor_scorecard(date: Optional[str] = Query(None),
                 rd[k] = rd[k].isoformat()
         if rd["category"] == "Unmapped":
             unmapped = rd
-        elif rd["category"] == "Non-Equity (excluded)":
-            # 2026-08-08 -- deliberately excluded from the response, not just
-            # from the grid rendering: these dollars (bond/gold/commodity
-            # ETFs) were never supposed to count toward an equity-sector
-            # view. Kept as its own row in drv_category_perf (exhaustive-
-            # partition invariant, auditable via SQL) but the user does not
-            # want it surfaced anywhere in the UI -- not the grid, not a
-            # note line, not the category filter dropdown (portfolio.js
-            # sources its filter list from this same endpoint).
-            continue
         else:
+            # 2026-08-08 -- "Non-Equity (excluded)" (bond/gold/commodity/
+            # crypto ETFs on the equity-only sector/style axes, see
+            # etl/derive_category_perf.py::_categories_for) used to be
+            # dropped here entirely, so sector/style's row sum only ever
+            # totaled the equity sleeve, never the whole portfolio.
+            # 2026-08-11 -- reversed: now included as an ordinary row, same
+            # as any category, so sector/style/asset_class totals actually
+            # match (asset_class was always exhaustive; sector/style weren't)
+            # -- user: "all grids should have the same totals as the stock
+            # universe is same." Kept OUT of `unmapped` (not merged into it)
+            # specifically so "Unmapped" still reads as genuine
+            # classification gaps only, not diluted by non-equity dollars
+            # that were never supposed to resolve to a GICS sector in the
+            # first place -- that was the whole reason this bucket exists
+            # as its own category rather than folding into Unmapped 2026-
+            # 08-08. User confirmed: "Own row, not Unmapped."
             out_rows.append(rd)
 
     return {
@@ -805,6 +811,7 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
         # case-sensitive), so comparing IT against a lowercase literal
         # would never match "Unmapped" for axis=style.
         category_is_unmapped = category.strip().lower() == "unmapped"
+        category_is_non_equity = category.strip().lower() == "non-equity (excluded)"
 
         # 2026-08-08 -- "Unmapped" is a synthetic bucket, not a real
         # sector/asset_class/style value -- no symbol ever has
@@ -831,6 +838,24 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
                 where_clause = "COALESCE(m.asset_class, rs.asset_class) IS NULL"
             else:  # style
                 where_clause = "m.tos_symbol IS NULL"
+        elif category_is_non_equity and axis == "sector":
+            # 2026-08-14 BUGFIX -- "Non-Equity (excluded)" is a synthetic
+            # bucket too (etl/derive_category_perf.py::_categories_for:
+            # sector routes any symbol with a KNOWN non-equity asset_class
+            # -- bond/gold/commodity/crypto ETFs -- here instead of its
+            # spurious GICS sector tag), not a real m.sector value -- no
+            # symbol ever has m.sector='Non-Equity (excluded)'. The generic
+            # where_clause below ALSO appends equity_only_clause (requires
+            # asset_class IS NULL OR = 'Equities'), the exact OPPOSITE of
+            # what this category means, so a click here always matched zero
+            # rows -- silently wrong ever since "Non-Equity (excluded)"
+            # started actually being shown/clickable in the grid (2026-08-11,
+            # see get_factor_scorecard's own history). Mirrors the Unmapped
+            # branch just above: dedicated where_clause instead of falling
+            # into the generic column-equality one. User: "bottom sector
+            # graph -> non-equity (excluded) -> click -> popup -> no data."
+            where_clause = ("COALESCE(m.asset_class, rs.asset_class) IS NOT NULL "
+                             "AND COALESCE(m.asset_class, rs.asset_class) != 'Equities'")
         elif axis == "style":
             where_clause = """
                 EXISTS (
