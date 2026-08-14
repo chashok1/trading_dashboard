@@ -304,7 +304,14 @@ def get_risk_dial(date: Optional[str] = Query(None)):
             detail_bits = "; ".join(g.get("detail") or g["label"] for g in top2)
             headline = f"{size_phrase} {detail_bits}".strip()
         else:
-            headline = f"{size_phrase} No risk gauges fired.".strip()
+            # 2026-08-14 -- dropped the trailing "No risk gauges fired." --
+            # the card's own gauge-list already renders that exact message
+            # (app.js's `|| '<div class="ev-quiet">No gauges fired.</div>'`
+            # fallback) right below this headline, so both were showing on
+            # screen at once. User: "There is a redundance text here in risk
+            # dial panel... Full size. No risk gauges fired. / No gauges
+            # fired". Headline now stays just the size phrase.
+            headline = size_phrase
 
         return {
             "as_of": d.isoformat(),
