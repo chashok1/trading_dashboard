@@ -15,6 +15,57 @@
   var _lastData = null;
   var _posFilter = 'active';
   var _lastSubtitlePrefix = '';
+  // 2026-08-14 -- click-to-sort on both grids in this popup (positions table
+  // + Buy/Sell history table). {key, dir} -- key null means "unsorted, use
+  // the order the API/aggregation returned" (positions: mv DESC from the
+  // backend query; history: whatever _loadTxnHistory's response order is).
+  // Reset on every fresh popup open / new symbol selection, same reasoning
+  // as _posFilter's own reset -- a sort left over from a previous
+  // gauge/category or a previously-selected symbol shouldn't silently carry
+  // over. User: "all graphs -> click -> popups -> all sorting on all grids
+  // on the popups."
+  var _posSort = { key: null, dir: 'asc' };
+  var _histSort = { key: null, dir: 'asc' };
+  var _lastHistoryData = null; // last _loadTxnHistory response, so a header click can re-render without a refetch
+
+  // Null-safe comparator (ascending) -- nulls always sort to the end
+  // regardless of direction (the caller flips sign for desc, but null
+  // placement is intentionally NOT flipped -- "no data" reads better always
+  // at the bottom than jumping to the top on a desc click).
+  function _sortCmp(a, b) {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    if (typeof a === 'string' || typeof b === 'string') return String(a).localeCompare(String(b));
+    return a - b;
+  }
+  // Wires click-to-sort onto a <tr> of <th data-sort-key="..." data-label="...">
+  // cells -- called once per table (these theads are built once in _ensure(),
+  // never rebuilt, unlike market_view_modal.js's dynamic-column table).
+  // rerender is called after every click; the caller re-sorts using the
+  // now-updated sortState right before it builds rows.
+  function _wireSort(theadRow, sortState, rerender) {
+    if (!theadRow) return;
+    Array.prototype.forEach.call(theadRow.querySelectorAll('th[data-sort-key]'), function (th) {
+      th.classList.add('gm-sortable');
+      th.addEventListener('click', function () {
+        var key = th.getAttribute('data-sort-key');
+        if (sortState.key === key) sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+        else { sortState.key = key; sortState.dir = 'asc'; }
+        _updateSortIndicators(theadRow, sortState);
+        rerender();
+      });
+    });
+  }
+  function _updateSortIndicators(theadRow, sortState) {
+    if (!theadRow) return;
+    Array.prototype.forEach.call(theadRow.querySelectorAll('th[data-sort-key]'), function (th) {
+      var label = th.getAttribute('data-label') || '';
+      var active = th.getAttribute('data-sort-key') === sortState.key;
+      th.classList.toggle('gm-sorted', active);
+      th.textContent = label + (active ? (sortState.dir === 'asc' ? ' ▲' : ' ▼') : '');
+    });
+  }
 
   function _ensure() {
     if (document.getElementById(MODAL_ID)) return;
@@ -50,7 +101,14 @@
       '      </div>',
       '      <div class="gm-table-wrap">',
       '        <table class="gm-table">',
-      '          <thead><tr><th>Symbol</th><th>Account</th><th style="text-align:right">Qty</th><th style="text-align:right">$</th><th style="text-align:right" title="Unrealized gain/loss vs cost basis, since purchase (current snapshot)">Cumulative</th><th style="text-align:right" title="Broker-reported day change (day_chng_dollar/today_gl_dollar) for this position">Yesterday</th><th id="gmTagHead">Tag</th></tr></thead>',
+      '          <thead><tr id="gmTableHeadRow">' +
+              '<th data-sort-key="symbol" data-label="Symbol">Symbol</th>' +
+              '<th data-sort-key="account" data-label="Account">Account</th>' +
+              '<th style="text-align:right" data-sort-key="qty" data-label="Qty">Qty</th>' +
+              '<th style="text-align:right" data-sort-key="dollar" data-label="$">$</th>' +
+              '<th style="text-align:right" title="Unrealized gain/loss vs cost basis, since purchase (current snapshot)" data-sort-key="gain" data-label="Cumulative">Cumulative</th>' +
+              '<th style="text-align:right" title="Broker-reported day change (day_chng_dollar/today_gl_dollar) for this position" data-sort-key="yesterday" data-label="Yesterday">Yesterday</th>' +
+              '<th id="gmTagHead" data-sort-key="tag" data-label="Tag">Tag</th></tr></thead>',
       '          <tbody id="gmTableBody"></tbody>',
       '        </table>',
       '      </div>',
@@ -77,7 +135,11 @@
       '      <h4 id="gmHistoryTitle">Buy/Sell Gain/Loss History</h4>',
       '      <div class="gm-table-wrap">',
       '        <table class="gm-table">',
-      '          <thead><tr><th>Date</th><th style="text-align:right">Qty</th><th style="text-align:right">Current Qty</th><th style="text-align:right">Gain/Loss</th></tr></thead>',
+      '          <thead><tr id="gmHistoryHeadRow">' +
+              '<th data-sort-key="date" data-label="Date">Date</th>' +
+              '<th style="text-align:right" data-sort-key="qty" data-label="Qty">Qty</th>' +
+              '<th style="text-align:right" data-sort-key="current_qty" data-label="Current Qty">Current Qty</th>' +
+              '<th style="text-align:right" data-sort-key="gain" data-label="Gain/Loss">Gain/Loss</th></tr></thead>',
       '          <tbody id="gmHistoryBody"></tbody>',
       '        </table>',
       '      </div>',
@@ -99,6 +161,12 @@
         });
         if (_lastData) _renderPositionsTable(_lastData);
       });
+    });
+    _wireSort(document.getElementById('gmTableHeadRow'), _posSort, function () {
+      if (_lastData) _renderPositionsTable(_lastData);
+    });
+    _wireSort(document.getElementById('gmHistoryHeadRow'), _histSort, function () {
+      if (_lastHistoryData) _renderTxnHistory(_lastHistoryData);
     });
   }
 
@@ -568,6 +636,12 @@
     Array.prototype.forEach.call(document.querySelectorAll('#gmPosFilter button'), function (b) {
       b.classList.toggle('active', b.getAttribute('data-filter') === 'active');
     });
+    // 2026-08-14 -- same reasoning: a sort left over from a previous
+    // gauge/category shouldn't carry over onto this one.
+    _posSort = { key: null, dir: 'asc' };
+    _histSort = { key: null, dir: 'asc' };
+    _updateSortIndicators(document.getElementById('gmTableHeadRow'), _posSort);
+    _updateSortIndicators(document.getElementById('gmHistoryHeadRow'), _histSort);
 
     fetch(fetchUrl)
       .then(function (r) { return r.json(); })
@@ -639,12 +713,17 @@
   function _loadTxnHistory(symbol, account) {
     var titleEl = document.getElementById('gmHistoryTitle');
     if (titleEl) titleEl.textContent = 'Buy/Sell Gain/Loss History — ' + symbol + ' (' + account + ')';
+    // A sort left over from a previously-selected symbol shouldn't silently
+    // carry over onto this one's history table.
+    _histSort = { key: null, dir: 'asc' };
+    _updateSortIndicators(document.getElementById('gmHistoryHeadRow'), _histSort);
     var reqId = ++_txnHistReqId;
     fetch('/api/cockpit/symbol-txn-history?symbol=' + encodeURIComponent(symbol) +
           '&account=' + encodeURIComponent(account) + _dateQS('&'))
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (reqId !== _txnHistReqId) return; // a later click superseded this one
+        _lastHistoryData = data;
         _renderTxnHistory(data);
       })
       .catch(function (e) {
@@ -654,6 +733,16 @@
       });
   }
 
+  function _histSortValue(r, key) {
+    switch (key) {
+      case 'date': return r.date; // ISO (YYYY-MM-DD) -- sorts correctly as a string
+      case 'qty': return r.qty != null ? Number(r.qty) : null;
+      case 'current_qty': return r.current_qty != null ? Number(r.current_qty) : null;
+      case 'gain': return r.gain_dollar != null ? Number(r.gain_dollar) : null;
+      default: return null;
+    }
+  }
+
   function _renderTxnHistory(data) {
     var rows = data.rows || [];
     var tbody = document.getElementById('gmHistoryBody');
@@ -661,6 +750,12 @@
     if (!rows.length) {
       tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-3);">No buy/sell history.</td></tr>';
       return;
+    }
+    if (_histSort.key) {
+      var hmul = _histSort.dir === 'asc' ? 1 : -1;
+      rows = rows.slice().sort(function (a, b) {
+        return hmul * _sortCmp(_histSortValue(a, _histSort.key), _histSortValue(b, _histSort.key));
+      });
     }
     rows.forEach(function (r) {
       var glCls = r.gain_dollar > 0 ? 'pos' : r.gain_dollar < 0 ? 'neg' : '';
@@ -686,6 +781,24 @@
   // rows are visible. selectFirst is true only on a fresh popup open (not
   // on a filter toggle) -- switching filters shouldn't yank the Daily
   // chart to a different stock out from under the user.
+  // Cumulative/Yesterday only apply to open positions (closed rows show
+  // realized gain / a dash in those cells instead, see _renderPositionsTable's
+  // own row-building below) -- null for closed rows here too, so they sort
+  // to the end rather than comparing a realized figure against unrealized
+  // ones under the same column.
+  function _posSortValue(p, key) {
+    switch (key) {
+      case 'symbol': return p.symbol;
+      case 'account': return p.account;
+      case 'qty': return p.closed ? null : (p.qty != null ? Number(p.qty) : null);
+      case 'dollar': return p.closed ? null : (p.dollar != null ? Number(p.dollar) : null);
+      case 'gain': return (p.closed ? p.realized_gain_dollar : p.gain_dollar);
+      case 'yesterday': return p.closed ? null : (p.yesterday_dollar != null ? Number(p.yesterday_dollar) : null);
+      case 'tag': return p.tag || null;
+      default: return null;
+    }
+  }
+
   function _renderPositionsTable(data, selectFirst) {
     var all = data.positions || [];
     var hasTag = all.some(function (p) { return p.tag; });
@@ -694,6 +807,12 @@
     var shown = _posFilter === 'active' ? all.filter(function (p) { return !p.closed; })
       : _posFilter === 'closed' ? all.filter(function (p) { return p.closed; })
       : all;
+    if (_posSort.key) {
+      var pmul = _posSort.dir === 'asc' ? 1 : -1;
+      shown = shown.slice().sort(function (a, b) {
+        return pmul * _sortCmp(_posSortValue(a, _posSort.key), _posSortValue(b, _posSort.key));
+      });
+    }
 
     var n = shown.length;
     var acctCount = new Set(shown.map(function (p) { return p.account; })).size;

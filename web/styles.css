@@ -1978,7 +1978,11 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    1.66fr). Risk Dial's meter bar (.rd-meter below) shrunk to match so it
    still fits on .rd-top-row's single line instead of wrapping in the
    narrower column. */
-.main-col { display: grid; grid-template-columns: 0.64fr 1.66fr; gap: 8px; align-items: start; }
+/* 2026-08-11 -- dial-changed-col shrunk a further 20% (0.64fr -> 0.512fr)
+   per user request ("reduce column 1 size by 20%"); cat-col's own number is
+   left untouched -- with two competing fr tracks, cutting column 1's share
+   automatically hands the freed proportion to column 2. */
+.main-col { display: grid; grid-template-columns: 0.512fr 1.66fr; gap: 8px; align-items: start; }
 .dial-changed-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .cat-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 /* 2026-08-09 -- Accounts filter bar, shared above the 3 stacked grids.
@@ -2358,6 +2362,12 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
   color: var(--text-3); font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
   padding: 8px 10px; border-bottom: 1px solid var(--border);
 }
+/* 2026-08-14 -- click-to-sort headers on the popup grids (risk_gauge_modal.js
+   / market_view_modal.js) -- user: "all graphs -> click -> popups -> all
+   sorting on all grids on the popups." */
+.gm-table th.gm-sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+.gm-table th.gm-sortable:hover { color: var(--text-1); }
+.gm-table th.gm-sorted { color: var(--accent, #1d4ed8); }
 .gm-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); color: var(--text-1); white-space: nowrap; }
 .gm-table td.sym { font-weight: 700; }
 .gm-table td.acct { color: var(--text-2); font-weight: 400; }
@@ -2554,7 +2564,7 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
    months embedded right after the label. User: "left align that text to
    the grid. monthly quads -> align to center". */
 #regimeStrip .regime-line {
-  font-size: 13px; cursor: help; border-bottom: 1px dotted var(--border);
+  font-size: 12px; cursor: help; border-bottom: 1px dotted var(--border);
   display: flex; flex: 1 1 100%; align-items: baseline; gap: 10px;
 }
 .regime-line .regime-win-label { flex: 0 0 auto; white-space: nowrap; text-align: left; }
@@ -2637,7 +2647,11 @@ table.fs-table { width: 100%; border-collapse: collapse; font-size: 11px; table-
    period colum widths by 5% and reduce Returns column width." No % given
    for the Returns reduction -- picked a modest trim (24% -> 22%) in the
    same rough proportion as Category/Wt%'s own 5% cuts. */
-table.fs-table th:nth-child(1), table.fs-table td:nth-child(1) { width: 25%; }
+/* 2026-08-10 follow-up 4 -- Wt% grown 5% of its own width (13% -> 13.65%,
+   rounded 14%), Category shrunk by that same 1 point (25% -> 24%) to make
+   room for it -- user: "increase WT% by 5%, reduce category column to
+   fit it." */
+table.fs-table th:nth-child(1), table.fs-table td:nth-child(1) { width: 24%; }
 /* 2026-08-10 -- Today/Yesterday/MTD/QTD/YTD (cols 3-7) shrunk to a snug
    fixed width -- "-99.9%/-99.9%" (mine/market, both at their max 3-digit
    magnitude) is the longest this cell's text ever gets, so a % share
@@ -2656,7 +2670,7 @@ table.fs-table th:nth-child(1), table.fs-table td:nth-child(1) { width: 25%; }
    (mine) to Returns columns ... you can reduce WT% column width by 20%
    and use it if you need to. other period columns (MTD etc) you can
    reduce them by 10%." */
-table.fs-table th:nth-child(2), table.fs-table td:nth-child(2) { width: 13%; }
+table.fs-table th:nth-child(2), table.fs-table td:nth-child(2) { width: 14%; }
 table.fs-table th:nth-child(n+3):nth-child(-n+7), table.fs-table td:nth-child(n+3):nth-child(-n+7) {
   width: 80px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -2701,6 +2715,44 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 }
 .fs-ret-dollar.pos { color: var(--bull, #15803d); }
 .fs-ret-dollar.neg { color: var(--bear, #b91c1c); }
+/* 2026-08-10 -- Total row, bottom of each $ grid's table -- user: "i need
+   the totals somewhere based on the period selected (overall gain or loss
+   for that period)." Bold divider above it (heavier than the regular
+   row-separator lines) so it reads as a summary, not just another row. */
+.fs-total-row td { font-weight: 700; border-top: 2px solid var(--text-3); }
+.fs-ret-total { font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fs-ret-total.pos { color: var(--bull, #15803d); }
+.fs-ret-total.neg { color: var(--bear, #b91c1c); }
+/* 2026-08-11 -- Today snapshot row above the cat filter bar (see
+   index.html #todaySnapshot / app.js::loadCumPnlSnapshot). Originally 4
+   side-by-side mini widgets; the 3 Today-snapshot widgets (Asset Class/
+   Sector/Style, .ts-body/.ts-row/.ts-row-cat/.ts-empty, reused .fs-ret-*)
+   were removed 2026-08-12 -- see app.js's own removal comment for why.
+   Only the Cumulative P&L widget remains, so the grid is back to a single
+   compact column instead of 4 fr tracks. */
+.today-snapshot { display: grid; grid-template-columns: minmax(240px, 420px); gap: 8px; margin-bottom: -8px; }
+.ts-widget {
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 8px; min-width: 0;
+}
+.ts-title {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-3); margin-bottom: 4px; display: flex; align-items: baseline; justify-content: space-between; gap: 6px;
+}
+.ts-total { font-size: 10.5px; font-weight: 700; text-transform: none; letter-spacing: normal; font-variant-numeric: tabular-nums; }
+.ts-total.pos { color: var(--bull, #15803d); }
+.ts-total.neg { color: var(--bear, #b91c1c); }
+/* Cumulative P&L widget's title bar carries TWO numbers (Today's Gain +
+   the 10-day Cumulative), not one -- user: "Display today's gain and cum
+   in 10 chart." */
+.ts-total-group { display: flex; gap: 8px; }
+/* Period dropdown replacing the old fixed "10d" label in the Cumulative
+   P&L widget's title -- same options as portfolio.html's #trendsPeriod. */
+.ts-period-select { font-size: 9.5px; padding: 1px 3px; text-transform: none; letter-spacing: normal; }
+/* Cumulative P&L mini chart -- fixed-height canvas box (Chart.js needs a
+   sized parent). */
+.ts-chart-body { height: 140px; position: relative; }
+
 /* weight% bar behind the Wt% cell -- accent at 15% opacity, applied only to
    the bar layer so the text on top stays full-strength. */
 .fs-weight-cell { position: relative; }

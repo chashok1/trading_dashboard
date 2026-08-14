@@ -27,6 +27,24 @@
     rank: 'Rank', wk_ago: 'Wk Ago', mn_ago: 'Mn Ago', position_sizing: 'Sizing',
   };
   var _NUMERIC_INT_COLS = { rank: 1, wk_ago: 1, mn_ago: 1, days_on: 1 };
+  // 2026-08-14 -- click-to-sort on this popup's per-symbol table (columns
+  // vary by source -- see _COLUMN_LABELS). {key, dir} -- key null means
+  // "unsorted, use the order the API returned"; reset on every fresh popup
+  // open (openMarketViewDetailModal), same reasoning as risk_gauge_modal.js's
+  // own sort-state reset -- a sort left over from a previous category/source
+  // shouldn't silently carry over. _lastCols/_lastRows let a header click
+  // re-render without a refetch. User: "all graphs -> click -> popups -> all
+  // sorting on all grids on the popups."
+  var _tableSort = { key: null, dir: 'asc' };
+  var _lastCols = [], _lastRows = [];
+
+  function _sortCmp(a, b) {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    if (typeof a === 'string' || typeof b === 'string') return String(a).localeCompare(String(b));
+    return a - b;
+  }
 
   function _ensure() {
     if (document.getElementById(MODAL_ID)) return;
@@ -142,9 +160,34 @@
     var head = document.getElementById('mvdTableHead');
     var body = document.getElementById('mvdTableBody');
     if (!head || !body) return;
-    head.innerHTML = '<th>Symbol</th>' + cols.map(function (c) {
-      return '<th style="text-align:right">' + (_COLUMN_LABELS[c] || c) + '</th>';
+    // Remembered (not the possibly-sorted local copy below) so a header
+    // click can re-render from the true original order without a refetch.
+    _lastCols = cols; _lastRows = rows;
+    head.innerHTML = '<th data-sort-key="tos_symbol" data-label="Symbol">Symbol</th>' + cols.map(function (c) {
+      var label = _COLUMN_LABELS[c] || c;
+      return '<th style="text-align:right" data-sort-key="' + c + '" data-label="' + label + '">' + label + '</th>';
     }).join('');
+    Array.prototype.forEach.call(head.querySelectorAll('th[data-sort-key]'), function (th) {
+      var key = th.getAttribute('data-sort-key');
+      th.classList.add('gm-sortable');
+      if (key === _tableSort.key) {
+        th.classList.add('gm-sorted');
+        th.textContent = th.getAttribute('data-label') + (_tableSort.dir === 'asc' ? ' ▲' : ' ▼');
+      }
+      th.addEventListener('click', function () {
+        if (_tableSort.key === key) _tableSort.dir = _tableSort.dir === 'asc' ? 'desc' : 'asc';
+        else { _tableSort.key = key; _tableSort.dir = 'asc'; }
+        _renderTable(_lastCols, _lastRows);
+      });
+    });
+    if (_tableSort.key) {
+      var mul = _tableSort.dir === 'asc' ? 1 : -1;
+      rows = rows.slice().sort(function (a, b) {
+        var av = _tableSort.key === 'tos_symbol' ? a.tos_symbol : a[_tableSort.key];
+        var bv = _tableSort.key === 'tos_symbol' ? b.tos_symbol : b[_tableSort.key];
+        return mul * _sortCmp(av, bv);
+      });
+    }
     if (!rows.length) {
       body.innerHTML = '<tr><td class="gm-empty" colspan="' + (cols.length + 1) + '">No symbols.</td></tr>';
       return;
@@ -270,6 +313,9 @@
   // could still have a popup for all and show the graphs only right?"
   window.openMarketViewDetailModal = function (axis, category, source) {
     _ensure();
+    // A sort left over from a previous category/source shouldn't silently
+    // carry over onto this one.
+    _tableSort = { key: null, dir: 'asc' };
     document.getElementById(MODAL_ID).classList.add('open');
     document.getElementById('mvdTitle').textContent = category + ' — ' + (_AXIS_LABEL[axis] || axis);
     document.getElementById('mvdSub').textContent = source ? ('Source: ' + source) : 'Source: All (Hedgeye quad outlook)';
