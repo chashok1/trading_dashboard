@@ -518,29 +518,27 @@ async function loadRegimeBand() {
     // 2026-08-08 -- single space before every "(" (Win (Q1), Aug (Q3),
     // Qtr (Q2)); % text shrunk to 9px (was inheriting the line's 13px) --
     // both per user request.
-    // 2026-08-14 -- space between the quad span and the % dropped (was
-    // "(Q3) 40%", now "(Q3)40%") -- user: "remove spaces between ->) and
-    // percentage numbers."
+    // 2026-08-14 -- space between the quad span and the % restored (was
+    // "(Q3)40%", now "(Q3) 40%" again) -- user: "add space between ) and
+    // percentage". Month separator changed from " . " to a plain " " (dot
+    // dropped) -- user: "remove '. ' (dot and space)".
     const months = (windowData.months || [])
       .map((m, i) => `<span class="month-entry" data-month-idx="${i}">${_regimeMonAbbr(m.m)} `
-        + `<span style="color:${_quadColor('Q' + (m.quad ?? '?'))};font-weight:600;">(Q${m.quad ?? '?'})</span>`
+        + `<span style="color:${_quadColor('Q' + (m.quad ?? '?'))};font-weight:600;">(Q${m.quad ?? '?'})</span> `
         + `<span style="font-size:9px;">${Math.round((m.w || 0) * 100)}%</span></span>`)
-      .join(' . ');
+      .join(' ');
     // Qtr/Next-Qtr entry -- right-justified to the card's own right edge
     // (not just trailing inline after the months) via .regime-line's flex
     // layout below. User request: "right justify quarter quad to the grid".
     // 2026-08-09 -- Next Qtr added, same format as Qtr, right after it.
     // User: "Regime text -> display next quarter and quad in existing
     // fashion".
-    // 2026-08-14 -- "Next" shortened to "N"; BOTH pieces now built as ONE
-    // combined <span class="qtr-entry"> (was two separate .qtr-entry flex
-    // children) so the "." between them sits glued tight with zero space on
-    // either side -- as two separate flex children, .regime-line's own
-    // gap:10px inserted space between "Qtr (Q4)" and ".N (Q2)" regardless of
-    // what whitespace was/wasn't in the string itself. User: "remove spaces
-    // between ... Qtr (Q4) and ., also remove ." (the space after it, before
-    // N) -- desired final shape "Qtr(Q4).N(Q2)" with the "Qtr "/"N " labels'
-    // own internal space kept (only the space AROUND the "." is gone).
+    // 2026-08-14 -- "Next" shortened to "N"; both pieces built as ONE
+    // combined <span class="qtr-entry"> (rather than two separate flex
+    // children) so the separator between them is exactly what's in the
+    // string, not also padded by .regime-line's own gap:10px. Separator
+    // changed from a bare "." to a single space -- user: "replace . with
+    // space between the quarters" -- final shape "Qtr (Q4) N (Q2)".
     const qtrPart = windowData.qtr_quad != null
       ? `<span class="qtr-cur-part">Qtr <span style="color:${_quadColor('Q' + windowData.qtr_quad)};font-weight:600;">(Q${windowData.qtr_quad})</span></span>`
       : '';
@@ -548,7 +546,7 @@ async function loadRegimeBand() {
       ? `<span class="qtr-next-part">N <span style="color:${_quadColor('Q' + windowData.next_qtr_quad)};font-weight:600;">(Q${windowData.next_qtr_quad})</span></span>`
       : '';
     const qtrEntry = (qtrPart || nextQtrPart)
-      ? `<span class="qtr-entry">${qtrPart}${qtrPart && nextQtrPart ? '.' : ''}${nextQtrPart}</span>`
+      ? `<span class="qtr-entry">${qtrPart}${qtrPart && nextQtrPart ? ' ' : ''}${nextQtrPart}</span>`
       : '';
     // TASK_140 follow-up 11 -- band-factors items only ever carry `factor`
     // (verified live: {"factor":"Cyclical","qtr":"bull"}), not ticker/
