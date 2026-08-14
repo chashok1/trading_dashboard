@@ -1342,12 +1342,11 @@ def get_portfolio_sector_map(date: Optional[str] = Query(None)):
     sectors), falling back to ref_sector.equity_sector. Non-equity holdings
     (bond/gold/commodity/crypto ETFs -- their GICS sector tag is a
     data-vendor artifact of the issuer, not a real sector exposure) map to
-    "Non-Equity (excluded)" here too, same as the table's own category --
-    unlike the table's API response (api/routers/cockpit.py::
-    get_factor_scorecard), which drops that bucket entirely, this endpoint
-    keeps it so the Sector pie can show it as an explicit slice instead of
-    silently losing those dollars (user: keep every dollar accounted for,
-    pie total should still match the Asset Allocation pie's total)."""
+    "Non-Equity (excluded)" here, same as the table's own row for it
+    (api/routers/cockpit.py::get_factor_scorecard includes it as an
+    ordinary row alongside every GICS sector, not a dropped/special
+    bucket -- corrected 2026-08-14, an earlier version of this docstring
+    described stale 2026-08-08 behavior that was reversed 2026-08-11)."""
     d = _resolve_date(date)
     with session_scope() as s:
         return _category_axis_map(s, d, "sector")
