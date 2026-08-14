@@ -301,30 +301,40 @@
                    once the legend column is included) -- otherwise a header
                    like "Asset Allocation" reads centered over legend text
                    too, not the doughnut it's actually labeling. User: "align
-                   centers with center of the graphs below". -->
+                   centers with center of the graphs below".
+                   2026-08-14 follow-up -- titles now individually id'd so
+                   web/app.js::_alignPmHeaderText() can nudge ONLY the text
+                   up to Cumulative P&L's title line via CSS transform
+                   (translateY -- purely visual, doesn't participate in
+                   layout flow) instead of resizing/repositioning the title
+                   BOX, which would have pushed the canvas below it down/up
+                   too. User: "Do not move the pie charts but align the
+                   header texts with CUMULATIVE P/L header text. Pie charts
+                   should be in the same poisition only header texts ...
+                   should be moved." -->
               <div id="dpmAssetCard" style="flex:0 0 160px;min-width:130px;">
-                <div style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Asset Allocation</div>
+                <div id="dpmAssetTitle" style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Asset Allocation</div>
                 <div style="display:flex;align-items:center;gap:8px;">
                   <canvas id="dpmAssetCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
                   <div id="dpmAssetLegend" style="flex:1;min-width:0;"></div>
                 </div>
               </div>
               <div id="dpmBetaCard" style="flex:0 0 160px;min-width:130px;">
-                <div style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Beta</div>
+                <div id="dpmBetaTitle" style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Beta</div>
                 <div style="display:flex;align-items:center;gap:8px;">
                   <canvas id="dpmBetaCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
                   <div id="dpmBetaLegend" style="flex:1;min-width:0;"></div>
                 </div>
               </div>
               <div id="dpmSectorCard" style="flex:0 0 160px;min-width:130px;">
-                <div style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Sector</div>
+                <div id="dpmSectorTitle" style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Sector</div>
                 <div style="display:flex;align-items:center;gap:8px;">
                   <canvas id="dpmSectorCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
                   <div id="dpmSectorLegend" style="flex:1;min-width:0;"></div>
                 </div>
               </div>
               <div id="dpmConcCard" style="flex:0 0 160px;min-width:130px;">
-                <div style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Concentration</div>
+                <div id="dpmConcTitle" style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Concentration</div>
                 <div style="display:flex;align-items:center;gap:8px;">
                   <canvas id="dpmConcCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
                   <div id="dpmConcLegend" style="flex:1;min-width:0;"></div>
@@ -670,7 +680,7 @@
   <script src="/static/_common.js"></script>
   <script src="/static/actions.js"></script>
   <script src="/static/portfolio_mix.js?v=20260814g"></script>
-  <script src="/static/app.js?v=20260814u"></script>
+  <script src="/static/app.js?v=20260814v"></script>
   <script src="/static/dashboard_notes.js"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>

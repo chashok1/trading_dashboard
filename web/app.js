@@ -1968,9 +1968,33 @@ async function loadDashPortfolioMix() {
       .filter(r => r.is_cash && (!accounts.length || accounts.includes(r.account_id)))
       .reduce((s, r) => s + (Number(r.market_value) || 0), 0);
     pmRenderCoreMix('dpm', held, cashTotal, (betaMap && typeof betaMap === 'object') ? betaMap : {});
+    _alignPmHeaderText();
   } catch (e) {
     console.error('dashboard portfolio mix failed:', e);
   }
+}
+
+// 2026-08-14 -- moves ONLY the pie header text up to Cumulative P&L's
+// title line, via CSS transform (translateY) -- purely visual, does not
+// participate in layout flow, so the canvas+legend row directly below
+// each title is completely unaffected (stays exactly where align-items:
+// center on the row already puts it; no box heights/positions change).
+// Earlier attempts (align-items:flex-start on the row, min-height
+// matching) moved the CARDS -- reverted. User: "Do not move the pie
+// charts but align the header texts with CUMULATIVE P/L header text. Pie
+// charts should be in the same poisition only header texts (asset
+// allocation/Beta/sector/Concentration) should be moved."
+function _alignPmHeaderText() {
+  const ref = document.querySelector('#dashPortfolioMixSection .ts-title');
+  if (!ref) return;
+  const refTop = ref.getBoundingClientRect().top;
+  ['dpmAssetTitle', 'dpmBetaTitle', 'dpmSectorTitle', 'dpmConcTitle'].forEach(id => {
+    const el = $(id);
+    if (!el) return;
+    el.style.transform = 'none'; // reset first so re-renders re-measure from the untransformed position
+    const delta = el.getBoundingClientRect().top - refTop;
+    el.style.transform = delta ? `translateY(${-delta}px)` : 'none';
+  });
 }
 
 // 2026-08-09 -- Accounts filter bar above the 3 stacked grids ("second
