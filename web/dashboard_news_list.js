@@ -33,30 +33,26 @@
   // .dash-news-list-row's row height in styles.css.
   var VISIBLE_ROWS = 6;
 
-  // 2026-08-14 -- header links (same ext_links convention/pattern as
-  // hedgeye_panel.js's linked()/linkIcon(), duplicated rather than shared
-  // -- separate script/IIFE, no guaranteed load order between the two).
-  // "Market News" text links to Yahoo Finance; a second standalone icon
-  // links to CNBC. User: "links should be on 'Market News' panel" (moved
-  // here from an earlier, wrong placement on the Mkt Situation panel).
+  // 2026-08-14 -- header links (ext_links convention -- same table/API
+  // hedgeye_panel.js's panels read, small self-contained render here since
+  // this is a separate script/IIFE with no guaranteed load order relative
+  // to that one). "Market News" text stays plain (2 links now, so it can't
+  // unambiguously BE either one); each link renders as its own small
+  // labeled chip after it instead of a bare "↗" icon -- a lone arrow with
+  // only a hover title gave no visible way to tell Yahoo's icon from
+  // CNBC's apart without hovering each one. User: "add some indicators/
+  // text for the links."
   var _links = {};
-  function _linked(text, key) {
-    var l = _links[key];
-    if (!l || !l.url) return text;
-    return '<a href="' + esc(l.url) + '" target="_blank" rel="noopener" ' +
-      'style="color:inherit; text-decoration:none;" title="' + esc(l.label) + '">' +
-      text + ' <span style="font-size:7px; opacity:0.55; font-weight:400;">&#8599;</span></a>';
-  }
-  function _linkIcon(key) {
+  function _extLinkChip(key, fallbackLabel) {
     var l = _links[key];
     if (!l || !l.url) return '';
     return ' <a href="' + esc(l.url) + '" target="_blank" rel="noopener" ' +
-      'style="color:inherit; text-decoration:none;" title="' + esc(l.label) + '">' +
-      '<span style="font-size:7px; opacity:0.55; font-weight:400;">&#8599;</span></a>';
+      'class="dash-news-ext-link" title="' + esc(l.label || fallbackLabel) + '">' +
+      esc(l.label || fallbackLabel) + ' <span style="font-size:7px; opacity:0.55;">&#8599;</span></a>';
   }
   function _renderHdr() {
     var hdr = document.getElementById('dashNewsListHdr');
-    if (hdr) hdr.innerHTML = _linked('Market News', 'market_news') + _linkIcon('market_news_cnbc');
+    if (hdr) hdr.innerHTML = 'Market News' + _extLinkChip('market_news', 'Yahoo') + _extLinkChip('market_news_cnbc', 'CNBC');
   }
   function _loadLinks() {
     fetchJson('/api/ext-links').then(function (links) {

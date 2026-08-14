@@ -988,6 +988,18 @@ a.dash-news-list-row:hover { text-decoration: underline; }
   font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
   color: var(--text-3, #a8a29e); margin-bottom: 4px;
 }
+/* 2026-08-14 -- Yahoo/CNBC link chips beside "Market News" -- small pill
+   look (not just a bare "↗" icon) so each one reads as its own distinct,
+   labeled link at a glance, not just a generic external-link glyph.
+   User: "add some indicators/text for the links." */
+.dash-news-ext-link {
+  display: inline-flex; align-items: center; gap: 2px;
+  font-size: 8px; font-weight: 600; text-transform: none; letter-spacing: normal;
+  color: var(--text-2, #78716c); text-decoration: none;
+  background: var(--bg, #f5f5f4); border: 1px solid var(--border, #e0e0e0);
+  border-radius: 999px; padding: 1px 6px;
+}
+.dash-news-ext-link:hover { color: var(--text-1, #1c1917); border-color: var(--text-3, #a8a29e); }
 /* Filter-bar toggle button (.cat-filter-toggle) reuses this class for its
    chip look -- position:absolute below is only meaningful on the (now
    removed) per-panel corner button; .cat-filter-toggle resets it to static. */
