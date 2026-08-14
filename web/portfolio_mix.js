@@ -207,28 +207,18 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
   // chips). Non-equity holdings land in their own "Non-Equity (excluded)"
   // bucket here, same as the table's own row for it.
   //
-  // 2026-08-14 -- Cash added as its own slice here too (same cashTotal the
-  // Asset Allocation pie above already uses), so this pie's 100% is the
-  // WHOLE portfolio, not just the sector-classified (non-cash) sleeve.
-  // Sector has no cash bucket of its own -- cash isn't sector-classified --
-  // so without this, a symbol's on-screen % here was $value / (portfolio
-  // MINUS cash), while the table's own WT% column is always $value / WHOLE
-  // portfolio (same denominator for every axis, drv_category_perf's
-  // total_value) -- same dollar amounts, visibly different percentages.
-  // User (from a live screenshot): pie showed "Non-Equity (excluded) 33%"
-  // against the table's 24.7% -- traced to exactly this denominator gap.
-  // Confirmed live: 254001.5 / 763009 (this pie's old, cash-less total) =
-  // 33.3%; 254001.5 / 1029933.7 (whole portfolio, WITH cash) = 24.7%,
-  // matching the table exactly.
+  // 2026-08-14 -- briefly added a Cash slice here (to make this pie's %
+  // match the table's own WT% column, which divides by the whole portfolio
+  // including cash) -- reverted same day. User, after seeing it live: "top
+  // sector included the cash, which it should not." Sector intentionally
+  // has no Cash category (cash isn't sector-classified); this pie's %
+  // is deliberately "% of your sector-classified holdings", not "% of
+  // whole portfolio" -- won't equal the table's WT% number, by design.
   const secTotals = {}, secTickerMap = {};
   for (const r of held) {
     const s = r._pmSector || 'Unmapped';
     secTotals[s] = (secTotals[s] || 0) + (Number(r.current_position_dollar) || 0);
     (secTickerMap[s] = secTickerMap[s] || []).push(r.tos_symbol);
-  }
-  if (cashTotal > 0) {
-    secTotals.Cash = (secTotals.Cash || 0) + cashTotal;
-    secTickerMap.Cash = (secTickerMap.Cash || []).concat(['Cash balance']);
   }
   let secEntries = Object.entries(secTotals).sort((a, b) => b[1] - a[1]);
   let secTickerLists = secEntries.map(e => secTickerMap[e[0]]);
@@ -238,11 +228,8 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
     secEntries = secEntries.slice(0, 7).concat([['Other', otherSum]]);
     secTickerLists = secTickerLists.slice(0, 7).concat([otherTickers]);
   }
-  const sortedSecNames = secEntries.map(e => e[0]).filter(n => n !== 'Other' && n !== 'Cash').sort();
-  // Cash gets a distinct gray from "Other"'s (#898781) so the two synthetic,
-  // non-sector buckets don't render as identical slices.
-  const secColorOf = (n) => n === 'Other' ? '#898781' : n === 'Cash' ? '#9ca3af'
-    : _PM_CAT_PALETTE[sortedSecNames.indexOf(n) % _PM_CAT_PALETTE.length];
+  const sortedSecNames = secEntries.map(e => e[0]).filter(n => n !== 'Other').sort();
+  const secColorOf = (n) => n === 'Other' ? '#898781' : _PM_CAT_PALETTE[sortedSecNames.indexOf(n) % _PM_CAT_PALETTE.length];
   _pmDrawPie(idPrefix + 'Sector', idPrefix + 'SectorCanvas', idPrefix + 'SectorLegend',
     secEntries.map(e => e[0]), secEntries.map(e => e[1]), secEntries.map(e => secColorOf(e[0])),
     secTickerLists, 'No sector data for held positions.');

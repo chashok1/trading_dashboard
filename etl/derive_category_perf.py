@@ -885,26 +885,14 @@ def _compute_category_rows(session: Session, as_of_date: date, accounts: Optiona
 
     any_flow_dates = _load_any_flow_dates(session, lo, hi, accounts)
     series = _build_series(positions, flows, cat_map, cash_keys, calendar, any_flow_dates)
-    # 2026-08-14 -- Sector has no Cash category of its own (cash isn't
-    # GICS-classified, see _categories_for) -- cloning asset_class's own
-    # Cash time series into sector's series too so a Cash row flows through
-    # the exact same weight_pct/window machinery as every other category in
-    # the loop below (its TWR is forced to None a few lines down, same
-    # special-case already applied to asset_class's Cash row; its target/
-    # verdict block is skipped further down too -- a GICS equal-weight
-    # target is meaningless for cash). Without this, sector's weight_pct
-    # rows summed to well under 100% of the portfolio (cash's ~26% share
-    # was invisible to this axis) -- the Portfolio Mix pie's own gap-filler
-    # slice (web/portfolio_mix.js) papered over the PERCENTAGE side of that
-    # with a synthetic "Cash" category that had no matching row here,
-    # creating a NEW mismatch (a category the pie shows that this table
-    # doesn't). User: "cash is missing from bottom grid" / "categories
-    # don't match either." Style is NOT extended the same way -- non-equity
-    # holdings have no "Non-Equity (excluded)" catch-all there either (see
-    # _categories_for's style branch), a materially bigger, separate gap
-    # left alone for now.
-    if "Cash" in series.get("asset_class", {}):
-        series["sector"]["Cash"] = series["asset_class"]["Cash"]
+    # 2026-08-14 -- briefly cloned asset_class's Cash row into sector's own
+    # series too (a Cash row on the Sector axis), reverted same day -- user,
+    # after seeing it live: "top sector included the cash, which it should
+    # not." Sector intentionally has no Cash category (cash isn't
+    # GICS-classified); the Portfolio Mix pie's Cash slice (web/
+    # portfolio_mix.js) and the factor-scorecard's inline pie gap-filler
+    # (web/app.js::_renderCatPie) were reverted alongside this for the same
+    # reason -- see those files' own 2026-08-14 revert comments.
     today_marked = _today_marked_to_market(session, positions, cat_map, cash_keys, calendar)
     yesterday_change = _yesterday_actual_change(session, calendar, cat_map, cash_keys, accounts)
 
@@ -1073,10 +1061,8 @@ def _compute_category_rows(session: Session, as_of_date: date, accounts: Optiona
             # (bench_* is already always None, no ETF proxy exists), so
             # rather than chase every possible cash-movement type, twr_* is
             # unconditionally None here too. User: "cash should not have
-            # gain or loss." 2026-08-14 -- extended from asset_class-only to
-            # sector's own cloned Cash row (see the series["sector"]["Cash"]
-            # clone above) -- same reasoning applies verbatim.
-            if category == "Cash" and axis in ("asset_class", "sector"):
+            # gain or loss."
+            if axis == "asset_class" and category == "Cash":
                 for k in twr:
                     twr[k] = None
                 for k in bench:
@@ -1100,13 +1086,6 @@ def _compute_category_rows(session: Session, as_of_date: date, accounts: Optiona
                                    "equity sector axis by design -- shown as their own row, same as "
                                    "any other category (reversed 2026-08-11 from an earlier version "
                                    "that dropped it from the API response entirely)")
-            elif category == "Cash" and axis == "sector":
-                # 2026-08-14 -- Cash's cloned row (see the series["sector"]["Cash"]
-                # clone above) has no GICS sector -- the equal-weight (100/11)
-                # target band below is meaningless for it (would otherwise
-                # flag Cash as wildly "over" target against a ~9% sector
-                # target it was never subject to).
-                detail["note"] = "cash -- not sector-classified, no GICS target applies"
             else:
                 aa_key = _AC_TO_AA.get(category, category) if axis == "asset_class" else None
                 aa_row = aa_map.get(aa_key) if aa_key else None
