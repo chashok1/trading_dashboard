@@ -17,7 +17,7 @@ from config.settings import settings
 from etl.db import get_engine, session_scope
 
 from api.models import HealthResponse
-from api._helpers import discover_data_tables
+from api._helpers import discover_data_tables, _resolve_date, _get_ref_setting
 
 logger = logging.getLogger(__name__)
 
@@ -376,6 +376,31 @@ def put_dashboard_earnings_watch(body: dict = Body(...)):
         """), {"v": value})
         s.commit()
     return {"ok": True, "symbols": cleaned}
+
+
+# 2026-08-14 -- default selection for the Accounts filter bar's
+# Today/Yesterday/MTD/QTD/YTD radio group (web/app.js::_initCatReturnsPeriod,
+# #catReturnsPeriod). Previously a hardcoded 'mtd' checked= in index.html.
+# User: "Default to today if there is a middle of the data loaded else
+# default to yesertday" -> "TL load or Yahoo load in middle of the trading
+# day" -- 'today' only once a genuine INTRADAY refresh has landed for
+# today's anchor date (TOSL and/or YFiles/YFILES processed during market
+# hours, not just the routine post-close EOD batch -- per db/baseline.sql's
+# own note, "TOSL and YFiles run optionally several times per day"), else
+# 'yesterday' (today's own numbers wouldn't reflect a fresh session yet).
+@router.get("/api/dashboard/returns-period-default")
+def get_returns_period_default():
+    d = _resolve_date(None)
+    close_cutoff = _get_ref_setting("market_close_cutoff", "16:30")
+    with session_scope() as s:
+        loaded = s.execute(text("""
+            SELECT 1 FROM meta_file_processed
+            WHERE UPPER(file_type) IN ('TOSL', 'YFILES')
+              AND file_date = :d
+              AND processed_at::time BETWEEN TIME '09:30' AND CAST(:close_cutoff AS time)
+            LIMIT 1
+        """), {"d": d, "close_cutoff": close_cutoff}).scalar()
+    return {"default": "today" if loaded else "yesterday", "as_of": d.isoformat()}
 
 
 @router.get("/api/dashboard/near-term-earnings")

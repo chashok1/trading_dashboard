@@ -1187,7 +1187,7 @@ function _selectedCatReturnsPeriod() {
   return el ? el.value : 'mtd';
 }
 
-function _initCatReturnsPeriod() {
+async function _initCatReturnsPeriod() {
   const wrap = $('catReturnsPeriod');
   if (!wrap) return;
   wrap.querySelectorAll('input[name="catReturnsPeriod"]').forEach(r => {
@@ -1196,6 +1196,17 @@ function _initCatReturnsPeriod() {
     // columns to bottom three grids also."
     r.addEventListener('change', () => { reloadFactorScorecards(); reloadMarketView(); });
   });
+  // 2026-08-14 -- default (was a hardcoded mtd checked= in index.html) now
+  // decided server-side: today vs yesterday depending on whether a TOSL/
+  // YFiles intraday refresh has already landed for the anchor date. Falls
+  // back to the old mtd default if the fetch fails for any reason.
+  let def = 'mtd';
+  try {
+    const r = await fetchJson('/api/dashboard/returns-period-default');
+    if (r && (r.default === 'today' || r.default === 'yesterday')) def = r.default;
+  } catch (e) { console.error('returns-period-default failed:', e); }
+  const radio = wrap.querySelector(`input[name="catReturnsPeriod"][value="${def}"]`);
+  if (radio) radio.checked = true;
 }
 
 // 2026-08-10 -- $ amount (mine) added above the bars -- user: "add
@@ -2252,7 +2263,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 2026-08-10 -- Returns chart period selector (Today/Yest/MTD/QTD/YTD),
   // shared across the 3 column-2 grids -- wired once here; each grid's own
   // loadFactorScorecard() populates the rows this reads from.
-  _initCatReturnsPeriod();
+  // 2026-08-14 -- awaited (was fire-and-forget) since it now picks the
+  // initial checked radio via a server fetch (GET /api/dashboard/returns-
+  // period-default) -- refreshAll() below reads _selectedCatReturnsPeriod()
+  // to build every grid's Returns column, so the default must be settled
+  // BEFORE that first load, not racing it.
+  await _initCatReturnsPeriod();
   // 2026-08-11 -- Cumulative P&L widget's own period dropdown (mirrors
   // portfolio.html's #trendsPeriod) -- only re-runs that one widget.
   const cumPeriodSel = $('tsCumPnlPeriod');
