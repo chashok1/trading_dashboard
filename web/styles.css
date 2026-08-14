@@ -2655,6 +2655,11 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
 }
 #regimeStrip > *:not(:first-child) { padding-left: 0; border-left: none; }
 .events-line { justify-content: space-between; }
+/* 2026-08-14 -- yellow highlight for an OPEX/Qtly Exp entry <=5 days out.
+   Same yellow as .rd-spx-vbar-fill.tier-caution (#eab308), dark text for
+   contrast on the light background. User: "Options expirations (OPEX and
+   qtr) if less than or equal to 5d. highligh with yellow color." */
+.opex-soon { background: #eab308; color: #1e293b; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
 .events-empty { color: var(--text-3); font-style: italic; }
 .events-gear { cursor: pointer; opacity: 0.6; font-size: 12px; flex: 0 0 auto; }
 .events-gear:hover { opacity: 1; }

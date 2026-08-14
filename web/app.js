@@ -527,8 +527,15 @@ function _nextQuadWitching(calRows) {
     return month === 3 || month === 6 || month === 9 || month === 12;
   });
 }
+// 2026-08-14 -- yellow highlight when an expiration is <=5 days out, per
+// user: "Options expirations (OPEX and qtr) if less than or equal to 5d.
+// highligh with yellow color."
 function _opexLineHtml(calRows) {
-  const part = (label, row) => row ? `${label} ${fmtDate(row.indicator_date)} (${row.days}d)` : '';
+  const part = (label, row) => {
+    if (!row) return '';
+    const text = `${label} ${fmtDate(row.indicator_date)} (${row.days}d)`;
+    return row.days <= 5 ? `<span class="opex-soon">${text}</span>` : text;
+  };
   const bits = [part('OPEX', _calRow(calRows, 'Monthly Exp')), part('Qtly Exp', _nextQuadWitching(calRows))].filter(Boolean);
   return bits.length ? `<div class="opex-line">${bits.join(' &middot; ')}</div>` : '';
 }
