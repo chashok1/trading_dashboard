@@ -89,6 +89,47 @@ function _pmTooltipHandler(context) {
   el.style.top = Math.max(4, y) + 'px';
 }
 
+// 2026-08-14 -- per-pie CARD width sized to that pie's own longest
+// "label + pct%" combination (canvas.measureText, matching the legend
+// row's actual 10px font) instead of every pie getting an equal fixed
+// width regardless of content. User: "on cumulative p/l panel -> graphs
+// -> use the space for sector graph. reduce space between categories and
+// percentages in asset allocation, beta, and concentration graphs and use
+// it for sector graph. check max size of cat lenghts and use the same
+// space as between graph and catgories/legends. Once that is done for all
+// graphs, use the remaining space between the graphs." Short-label pies
+// (Asset Allocation/Beta/Concentration) now claim only what their own
+// content needs; Sector (longer category names) gets exactly what IT
+// needs -- freed space isn't hand-tuned per pie, it falls out of each
+// pie's own measured content width. Dashboard-only: index.html gives each
+// pie's outer wrapper an id ("...Card"); Actionable's narrow sidebar
+// stack has no such ids, so _pmFitCardWidth no-ops there (getElementById
+// returns null), leaving that layout's own CSS untouched.
+let _pmMeasureCtx = null;
+const PM_LEGEND_FONT = '10px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+const PM_SWATCH_W = 8, PM_ROW_GAP = 4; // matches _pmDrawPie's legend-row markup below (swatch width, gap between swatch/label/pct)
+const PM_CANVAS_W = 90, PM_CANVAS_LEGEND_GAP = 8; // canvas width + canvas-to-legend gap in the outer row markup
+const PM_CARD_MIN_W = 130; // floor so an empty/near-empty pie doesn't collapse to nothing
+function _pmMeasureTextWidth(text) {
+  if (!_pmMeasureCtx) _pmMeasureCtx = document.createElement('canvas').getContext('2d');
+  _pmMeasureCtx.font = PM_LEGEND_FONT;
+  return _pmMeasureCtx.measureText(text).width;
+}
+function _pmFitCardWidth(cardId, labels, values) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const total = values.reduce((a, b) => a + b, 0);
+  let maxLegendW = 0;
+  labels.forEach((lab, i) => {
+    const pct = total ? Math.round(values[i] / total * 100) : 0;
+    const w = _pmMeasureTextWidth(String(lab)) + PM_ROW_GAP + _pmMeasureTextWidth(`${pct}%`);
+    if (w > maxLegendW) maxLegendW = w;
+  });
+  const cardW = Math.max(PM_CARD_MIN_W,
+    PM_CANVAS_W + PM_CANVAS_LEGEND_GAP + PM_SWATCH_W + PM_ROW_GAP + Math.ceil(maxLegendW));
+  card.style.flex = `0 0 ${cardW}px`;
+}
+
 // onSliceClick(label): optional -- called with the clicked slice/legend
 // row's label when provided. Callers pass one when this pie's categories
 // map onto something openable (a real axis category -> the same exposure-
@@ -221,11 +262,13 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
     assetLabels.map(k => _PM_ASSET_COLORS[k] || '#c3c2b7'),
     assetLabels.map(k => assetTickerMap[k]), 'No asset class data for held positions.',
     (label) => _pmOpenCategoryModal('asset_class', label));
+  _pmFitCardWidth(idPrefix + 'AssetCard', assetLabels, assetLabels.map(k => assetTotals[k]));
 
   if (!held.length) {
     ['Beta', 'Sector', 'Conc'].forEach(suf => {
       _pmDrawPie(idPrefix + suf, idPrefix + suf + 'Canvas', idPrefix + suf + 'Legend',
         [], [], [], [], 'No held positions match the current filters.');
+      _pmFitCardWidth(idPrefix + suf + 'Card', [], []);
     });
     return;
   }
@@ -244,6 +287,7 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
   _pmDrawPie(idPrefix + 'Beta', idPrefix + 'BetaCanvas', idPrefix + 'BetaLegend',
     betaLabels, betaLabels.map(k => betaBuckets[k]), betaLabels.map(k => _PM_BETA_COLORS[k]),
     betaLabels.map(k => betaTickers[k]), 'No beta data for held positions.');
+  _pmFitCardWidth(idPrefix + 'BetaCard', betaLabels, betaLabels.map(k => betaBuckets[k]));
 
   // Sector mix -- top 7 by $ value + Other. Color assigned by alpha rank so
   // the same sector keeps the same slot across re-renders (not tied to $ rank).
@@ -292,6 +336,7 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
     secEntries.map(e => e[0]), secEntries.map(e => e[1]), secEntries.map(e => secColorOf(e[0])),
     secTickerLists, 'No sector data for held positions.',
     (label) => _pmOpenCategoryModal('sector', label));
+  _pmFitCardWidth(idPrefix + 'SectorCard', secEntries.map(e => e[0]), secEntries.map(e => e[1]));
 
   // Concentration -- top 7 holdings by $ value + Other.
   let concEntries = held.map(r => [r.tos_symbol, Number(r.current_position_dollar) || 0]);
@@ -307,4 +352,5 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
     concEntries.map((e, i) => e[0] === 'Other' ? '#898781' : _PM_CAT_PALETTE[i % _PM_CAT_PALETTE.length]),
     concTickerLists, 'No held positions.',
     _pmOpenSymbolChart);
+  _pmFitCardWidth(idPrefix + 'ConcCard', concEntries.map(e => e[0]), concEntries.map(e => e[1]));
 }
