@@ -1564,49 +1564,58 @@ async function loadCumPnlSnapshot() {
 // 2026-08-13 -- Portfolio Mix card: same Asset Allocation/Beta/Sector/
 // Concentration pies as the Actionable screen's sidebar Portfolio Mix panel
 // (web/actionable.js::renderPortfolioMix/_pmHeldRows/_pmCashTotal), reusing
-// the shared web/portfolio_mix.js draw engine (pmRenderCoreMix/_normAssetClass)
-// instead of re-implementing it. Macro Stance is skipped -- it depends on
+// the shared web/portfolio_mix.js draw engine (pmRenderCoreMix) instead of
+// re-implementing it. Macro Stance is skipped -- it depends on
 // actionDisplay()'s buy/sell/neutral vocabulary, an Actionable-only concept.
 // Whole-portfolio unless the Accounts filter (state.catAccounts) has a
 // selection, same scoping as the Cumulative P&L widget and the 3
 // factor-scorecard grids in this column. User: "display graphs from
 // actionable screen, side bar -> portfolio mix -> asset allocation, Beta,
 // sector, concentration ... on dashboard screen -> line below cumulative P&L."
+//
+// 2026-08-14 -- position source switched from /api/actionable (drv_
+// actionable's held_today/current_position_dollar) to the raw /api/portfolio
+// feed (hist_cs/hist_f, same as the Sector/Asset class factor-scorecard
+// tables) -- drv_actionable only carries symbols with a resolved tos_symbol
+// in the tracked technicals universe, silently dropping any held position
+// without one (found live: QTUM/IVOL/SOFI/WRBY/INTU, ~$44k/5.75% of one
+// portfolio, missing from every pie, not just misclassified). No
+// /api/actionable fetch needed anymore -- this card has no macro_value
+// dependency (that's Actionable-only, see above), so the raw broker
+// position feed is now the ONLY position source here. /api/portfolio's own
+// tos_symbol column is unreliable (NULL on most rows, even tracked ones --
+// confirmed live), so the raw broker `symbol` string is used as both the
+// display label and the join key into assetClassMap/sectorMap (built the
+// same way, keyed by tos_symbol OR ref_sector.ticker -- see /api/portfolio/
+// asset-class-map's docstring). User: "sector is not matching" -> traced to
+// the drv_actionable gap -> "switch all 4 pies to source from
+// /api/portfolio entirely".
 async function loadDashPortfolioMix() {
   if (!$('dashPortfolioMixSection') || typeof Chart === 'undefined') return;
   try {
     const dateParam = state.date ? `?date=${encodeURIComponent(state.date)}` : '';
-    const [rows, betaMap, portfolioRows, assetClassMap, sectorMap] = await Promise.all([
-      fetchJson('/api/actionable' + dateParam),
+    const [portfolioRows, betaMap, assetClassMap, sectorMap] = await Promise.all([
+      fetchJson('/api/portfolio' + dateParam),
       fetchJson('/api/portfolio/beta-map' + dateParam).catch(() => ({})),
-      fetchJson('/api/portfolio' + dateParam).catch(() => []),
       fetchJson('/api/portfolio/asset-class-map' + dateParam).catch(() => ({})),
       fetchJson('/api/portfolio/sector-map' + dateParam).catch(() => ({})),
     ]);
-    const allRows = Array.isArray(rows) ? rows : [];
-    // Same classification as the Asset class / Sector factor-scorecard
-    // grids in this column (drv_ma.asset_class|sector/ref_sector, not the
-    // raw real_asset_class/sector fields) -- see /api/portfolio/asset-
-    // class-map and /api/portfolio/sector-map's docstrings. User:
-    // "Shouldn't asset allocation and asset class below match?" / "What
-    // about other graphs? sector for ex?"
-    allRows.forEach(r => {
-      r._pmAssetClass = (assetClassMap && assetClassMap[r.tos_symbol]) || 'Unmapped';
-      r._pmSector = (sectorMap && sectorMap[r.tos_symbol]) || 'Unmapped';
-    });
+    const allPositions = Array.isArray(portfolioRows) ? portfolioRows : [];
     const accounts = state.catAccounts || [];
-    const held = allRows.filter(r => {
-      if (!r.held_today || !(Number(r.current_position_dollar) > 0)) return false;
-      if (accounts.length) {
-        if (!r.held_accounts) return false;
-        const accts = r.held_accounts.split(',').map(a => a.trim());
-        if (!accts.some(a => accounts.includes(a))) return false;
-      }
-      return true;
-    });
-    // Cash isn't a tos_symbol -- drv_actionable never carries it -- so it's
-    // pulled from the raw /api/portfolio feed, same as _pmCashTotal().
-    const cashTotal = (Array.isArray(portfolioRows) ? portfolioRows : [])
+    const bySymbol = {};
+    for (const p of allPositions) {
+      if (p.is_cash || !p.symbol) continue;
+      if (accounts.length && !accounts.includes(p.account_id)) continue;
+      const row = bySymbol[p.symbol] || (bySymbol[p.symbol] = {
+        tos_symbol: p.symbol,
+        current_position_dollar: 0,
+        _pmAssetClass: (assetClassMap && assetClassMap[p.symbol]) || 'Unmapped',
+        _pmSector: (sectorMap && sectorMap[p.symbol]) || 'Unmapped',
+      });
+      row.current_position_dollar += Number(p.market_value) || 0;
+    }
+    const held = Object.values(bySymbol).filter(r => r.current_position_dollar > 0);
+    const cashTotal = allPositions
       .filter(r => r.is_cash && (!accounts.length || accounts.includes(r.account_id)))
       .reduce((s, r) => s + (Number(r.market_value) || 0), 0);
     pmRenderCoreMix('dpm', held, cashTotal, (betaMap && typeof betaMap === 'object') ? betaMap : {});

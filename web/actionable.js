@@ -1546,21 +1546,22 @@ async function loadActionable(opts) {
     state.allAccounts = Array.isArray(accts) ? accts : [];
     state.allRows = Array.isArray(rows) ? rows : [];
     state.betaMap = (betaMap && typeof betaMap === 'object') ? betaMap : {};
-    // drv_actionable never carries cash/money-market rows (no technicals to
-    // track), so the Portfolio Mix Asset Allocation pie sources cash separately
-    // from the raw /api/portfolio positions feed (is_cash rows only, kept small).
-    state.cashRows = (Array.isArray(portfolioRows) ? portfolioRows : []).filter(r => r.is_cash);
+    // 2026-08-14 -- Portfolio Mix now sources its HELD POSITIONS from the raw
+    // /api/portfolio feed (hist_cs/hist_f, same as the Sector/Asset class
+    // factor-scorecard tables), not from state.allRows (drv_actionable) --
+    // drv_actionable only carries symbols with a resolved tos_symbol in the
+    // tracked technicals universe, silently dropping any held position that
+    // lacks one (found live: QTUM/IVOL/SOFI/WRBY/INTU, ~$44k/5.75% of the
+    // portfolio, missing from every pie, not just misclassified). User:
+    // "sector is not matching" -> traced to this gap -> "switch all 4 pies
+    // to source from /api/portfolio entirely". See _pmHeldRows/_pmCashTotal
+    // below (built from state.portfolioRows/assetClassMap/sectorMap/allRows
+    // set here, not from drv_actionable's held_today/current_position_dollar).
+    state.portfolioRows = Array.isArray(portfolioRows) ? portfolioRows : [];
+    state.assetClassMap = (assetClassMap && typeof assetClassMap === 'object') ? assetClassMap : {};
+    state.sectorMap = (sectorMap && typeof sectorMap === 'object') ? sectorMap : {};
     state.allRows.forEach(r => {
       r._assetClass = _normAssetClass(r.real_asset_class);
-      // Portfolio Mix's Asset Allocation pie groups by THIS field, not
-      // _assetClass above -- see web/portfolio_mix.js::pmRenderCoreMix and
-      // /api/portfolio/asset-class-map's own docstring for why the two
-      // differ (this one matches the Asset class factor-scorecard table).
-      r._pmAssetClass = (assetClassMap && assetClassMap[r.tos_symbol]) || 'Unmapped';
-      // Portfolio Mix's Sector pie groups by THIS field, not r.sector (still
-      // drives the Actionable grid's own Sector filter chips) -- see
-      // /api/portfolio/sector-map's docstring.
-      r._pmSector = (sectorMap && sectorMap[r.tos_symbol]) || 'Unmapped';
       // RR column sort key (2026-08-12) — same formula _buildRowEl's rrBarHtml
       // already computes for the bar's tick position, hoisted here so the RR
       // header can sort by it (0 = at LRR, 100 = at TRR) without duplicating
@@ -1808,36 +1809,66 @@ function applyClientFilter(opts) {
 // _pmCharts / _pmFmtUsd / _pmDrawPie / pmRenderCoreMix now live in
 // web/portfolio_mix.js (shared with the Dashboard screen's Portfolio Mix
 // card), loaded before this file.
-
+//
+// 2026-08-14 -- source switched from state.allRows (drv_actionable's
+// held_today/current_position_dollar) to state.portfolioRows (raw
+// /api/portfolio -- hist_cs/hist_f, one row per symbol+account, same feed
+// the Sector/Asset class factor-scorecard tables sum). drv_actionable only
+// carries symbols with a resolved tos_symbol in the tracked technicals
+// universe -- a held position without one (found live: QTUM/IVOL/SOFI/
+// WRBY/INTU, ~$44k/5.75% of one portfolio) silently never got a
+// drv_actionable row at all, dropping out of every pie entirely, not just
+// showing the wrong category. User: "sector is not matching" -> traced to
+// this gap -> "switch all 4 pies to source from /api/portfolio entirely".
+// /api/portfolio's own tos_symbol column is unreliable (NULL on most rows,
+// even tracked ones -- confirmed live), so the raw broker `symbol` string
+// is used as both the display label and the join key back into
+// state.assetClassMap/sectorMap (built the same way, keyed by tos_symbol
+// OR ref_sector.ticker -- see /api/portfolio/asset-class-map's docstring)
+// and into state.allRows (for macro_value -- see the tos_symbol->macro_value
+// map built below) -- exact-string match, same as how the two already
+// happened to agree for 50/55 positions in the live check above.
 function _pmHeldRows() {
   const account = state.filters.account;
   const symSearch = (state.filters.symbol_search || '').toUpperCase();
   const symList = state.filters.symbols_multi;
-  return (state.allRows || []).filter(r => {
-    if (!r.held_today || !(Number(r.current_position_dollar) > 0)) return false;
-    if (account) {
-      if (!r.held_accounts) return false;
-      const accts = r.held_accounts.split(',').map(a => a.trim());
-      if (!accts.includes(account)) return false;
-    }
-    if (symSearch && (!r.tos_symbol || !r.tos_symbol.toUpperCase().includes(symSearch))) return false;
-    if (symList && symList.length && (!r.tos_symbol || !symList.includes(r.tos_symbol.toUpperCase()))) return false;
-    return true;
-  });
+  const macroBySymbol = {};
+  for (const r of state.allRows || []) {
+    if (r.tos_symbol) macroBySymbol[r.tos_symbol] = r.macro_value;
+  }
+  const assetClassMap = state.assetClassMap || {};
+  const sectorMap = state.sectorMap || {};
+  const bySymbol = {};
+  for (const p of state.portfolioRows || []) {
+    if (p.is_cash || !p.symbol) continue;
+    const sym = p.symbol;
+    if (account && p.account_id !== account) continue;
+    if (symSearch && !sym.toUpperCase().includes(symSearch)) continue;
+    if (symList && symList.length && !symList.includes(sym.toUpperCase())) continue;
+    const row = bySymbol[sym] || (bySymbol[sym] = {
+      tos_symbol: sym,
+      current_position_dollar: 0,
+      _pmAssetClass: assetClassMap[sym] || 'Unmapped',
+      _pmSector: sectorMap[sym] || 'Unmapped',
+      macro_value: macroBySymbol[sym] || null,
+    });
+    row.current_position_dollar += Number(p.market_value) || 0;
+  }
+  return Object.values(bySymbol).filter(r => r.current_position_dollar > 0);
 }
 
-// Cash isn't a tos_symbol -- drv_actionable never carries it -- so it's
-// pulled from the raw /api/portfolio feed (state.cashRows) and scoped by
-// the same account filter as held stock positions. A symbol search/list
-// filter means the user is looking for specific tickers, so cash (which
-// can't match a ticker) drops out rather than showing a misleading total.
+// Same raw /api/portfolio feed as _pmHeldRows above (is_cash rows this
+// time), scoped by the same account filter as held stock positions. A
+// symbol search/list filter means the user is looking for specific
+// tickers, so cash (which can't match a ticker) drops out rather than
+// showing a misleading total.
 function _pmCashTotal() {
   const account = state.filters.account;
   const symSearch = state.filters.symbol_search;
   const symList = state.filters.symbols_multi;
   if (symSearch || (symList && symList.length)) return 0;
-  return (state.cashRows || [])
-    .filter(r => !account || r.account_id === account)
+  return (state.portfolioRows || [])
+    .filter(r => r.is_cash && (!account || r.account_id === account))
     .reduce((s, r) => s + (Number(r.market_value) || 0), 0);
 }
 
