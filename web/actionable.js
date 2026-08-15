@@ -3014,12 +3014,20 @@ function _finalCallHtml(row) {
   // low_confidence rows render muted/outline (-tint) instead of the solid -fill
   // so a shaky sell doesn't headline with the same visual weight as a real one.
   var colorCls = (fcDisp.colorCls || 'act-neutral') + (isLowConf ? '-tint' : '-fill');
+  // 2026-08-15: LT conflict — a SELL-side Final Call on a symbol with an
+  // active conviction hold. User: "I need stronger color change... hard to
+  // see the change" (the plain 🔭 icon in the SYMBOL cell wasn't loud enough
+  // on a SELL ALL). A thick purple ring around the badge itself, on top of
+  // whatever red/pink the sell action already uses — annotation only, the
+  // underlying action/color is untouched, this is a visual overlay.
+  var ltConflict = !!row.conviction_hold && fc.side === 'sell';
   // SA (SELL ALL) / BM (BUY MORE) match the HEDGEYE panel's red/green exactly;
   // weaker tiers (SS/STM/SO/SW, BS/BMN/BW) and neutral keep the standard palette.
   var hedgeyeStyle = isLowConf ? 'opacity:0.8;'
                     : fcDisp.code === 'SA' ? 'background:#d4537e;'
                     : fcDisp.code === 'BM' ? 'background:#1d9e75;'
                     : '';
+  if (ltConflict) hedgeyeStyle += 'box-shadow:0 0 0 3px #7c3aed;';
   var lowConfSub = isLowConf
     ? '<div style="font-size:8px;font-weight:700;color:#b45309;letter-spacing:0.3px;" title="Sell evidence comes only from rules with a demonstrated negative historical edge — cross-check before acting">LOW CONF</div>' : '';
   // TASK_119: STOP pill — held position that just crossed below its Trade
@@ -3047,10 +3055,15 @@ function _finalCallHtml(row) {
   } else if (sig.buy.length) {
     signalPill = ' <span class="buy-signal-pill" data-signalpop="' + escapeHtml(row.tos_symbol) + '" data-signalpop-warn="0">▲</span>';
   }
-  var subIcon = '<div style="font-size:9px;line-height:1.4;">' + badgeHtml + '</div>' + lowConfSub;
+  var ltConflictPill = ltConflict
+    ? ` <span class="lt-conflict-pill" title="Long-term conviction hold on file — ${escapeHtml(row.conviction_note || '')}\n\nThis SELL/REDUCE signal conflicts with that thesis. Cross-check before acting.">🔭 LT HOLD</span>`
+    : '';
+  var ltConflictSub = ltConflict
+    ? '<div class="lt-conflict-sub" title="Conflicts with an active long-term conviction hold — cross-check before acting">🔭 CONFLICTS W/ LT HOLD</div>' : '';
+  var subIcon = '<div style="font-size:9px;line-height:1.4;">' + badgeHtml + '</div>' + lowConfSub + ltConflictSub;
   return '<span class="act-badge act-badge-sm ' + colorCls + '" style="' + hedgeyeStyle + '" title="' +
          escapeHtml(fc.label || text) + '">' +
-         escapeHtml(text) + '</span>' + stopPill + earningsPill + signalPill + subIcon;
+         escapeHtml(text) + '</span>' + stopPill + earningsPill + signalPill + ltConflictPill + subIcon;
 }
 
 // ── Pass 2: Priority score (TASK_120 — dollar-weighted-edge default sort;
@@ -4180,6 +4193,7 @@ function _buildRowEl(r) {
     const isActed = r._rowActed || _ua === 'DONE' || _ua === 'SKIPPED' || _ua === 'OVERRIDDEN';
     if (isActed) tr.classList.add('row-acted');
     if (r.stop_breached) tr.classList.add('row-stop-breach');
+    if (r.conviction_hold && r._fc_side === 'sell') tr.classList.add('row-lt-conflict');
     tr.dataset.sym = r.tos_symbol;
 
     const pctCls = r.pct_change != null ? (Number(r.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : '';
