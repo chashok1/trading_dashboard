@@ -3330,14 +3330,6 @@ def derive_all(session: Session, as_of_date: date,
     counts["drv_fundamentals"] = _safe("drv_fundamentals", derive_fundamentals)
     counts["drv_outlooks"]     = _safe("drv_outlooks",     derive_outlooks)
     counts["drv_portfolio"]    = _safe("drv_portfolio",    derive_portfolio)
-    # drv_pvv (TASK_125): Price/Volume/Volatility multi-bucket signal +
-    # consolidated decision. Informational v1 — not wired into
-    # consolidated_action. Needs drv_technicals (vlm_projected/SMAs), so runs
-    # after the component tables and before drv_dash. See docs/pvv_logic.md.
-    def _drv_pvv_runner(session, as_of_date, parent_run_id=None):
-        from etl.derive_pvv import derive_pvv
-        return derive_pvv(session, as_of_date, parent_run_id)
-    counts["drv_pvv"] = _safe("drv_pvv", _drv_pvv_runner)
     # drv_bb_rr_gap (TASK_132): daily BBTop/BBBottom vs hist_rr variance
     # tracking + drift alert. Needs drv_rr's reverse-scale settings/inputs
     # already applied above; nothing downstream depends on it, so it runs
@@ -3382,6 +3374,20 @@ def derive_all(session: Session, as_of_date: date,
     # Fill drv_rr.outlook for BB-fallback rows from QE (second pass; drv_tn_td_bb_rr
     # must exist first, so this runs after trend_trade_rules).
     counts["drv_rr_outlook_from_qe"]  = _safe("drv_rr_outlook_from_qe", _derive_rr_outlook_from_qe)
+    # drv_pvv (TASK_125): Price/Volume/Volatility multi-bucket signal +
+    # consolidated decision. Informational v1 — not wired into
+    # consolidated_action. Needs drv_technicals (vlm_projected/SMAs, built
+    # above) AND a resolved drv_rr.outlook — MOVED HERE (was right after
+    # drv_portfolio, before trend_trade_rules/drv_rr_outlook_from_qe) because
+    # most symbols get their outlook via the BB fallback, which isn't filled
+    # in until drv_rr_outlook_from_qe just above. Running PVV before that fill
+    # meant ~73% of symbols read outlook=NULL every single day and could
+    # never produce anything but WATCH — not an occasional edge case, the
+    # normal daily result. See docs/pvv_logic.md §4.
+    def _drv_pvv_runner(session, as_of_date, parent_run_id=None):
+        from etl.derive_pvv import derive_pvv
+        return derive_pvv(session, as_of_date, parent_run_id)
+    counts["drv_pvv"] = _safe("drv_pvv", _drv_pvv_runner)
     # Parm-lookup Pass-3 (QF/QG/QK/QL/QO/QP/QQ/QS/QT) — runs AFTER
     # trend_trade_rules has populated QE/QJ/QM/QN/QR.
     def _drv_cat_atomic_input_pass3(session, as_of_date, parent_run_id=None):

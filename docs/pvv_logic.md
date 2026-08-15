@@ -10,9 +10,12 @@ rich hover tooltip. **Not wired into `consolidated_action` / `drv_actionable`
 scoring** — a later task may do so once the signal has been validated.
 
 Code: `etl/derive_pvv.py` (deriver + pure classification functions),
-wired into `derive_all()` in `etl/derive.py` right after the 5 `drv_ma`
-component tables (needs `drv_technicals` for `vlm_projected`/SMAs) and before
-`drv_dash`. API: `api/routers/dash.py` (`/api/actionable`, LEFT JOIN on
+wired into `derive_all()` in `etl/derive.py`. Runs after `trend_trade_rules`
+and `drv_rr_outlook_from_qe` (2026-08-15 — moved from right after the 5
+`drv_ma` component tables; see §4's now-fixed BB-fallback note) since it
+needs both `drv_technicals` (`vlm_projected`/SMAs) and a *resolved*
+`drv_rr.outlook`, and before `drv_dash`. API: `api/routers/dash.py`
+(`/api/actionable`, LEFT JOIN on
 `drv_pvv`). UI: `web/actionable.js` / `web/actionable.html` (PVV column,
 `_pvvCellHtml`, `_buildPvvPopHtml`, `data-pvvpop` hover mechanism). Table:
 `drv_pvv` in `db/baseline.sql`. Tests: `tests/test_pvv_classify.py` (pure
@@ -116,17 +119,18 @@ prior 5d/3w/3m bucket-alignment matrix (TASK_125) entirely.
 like `'Light Bullish'`/`'Mild Bearish'` — see below) both resolve to "no
 outlook", which behaves identically to `Neutral`.
 
-**BB-fallback outlook timing nuance**: within a fresh `derive_all()`
-cascade, `derive_pvv` runs *before* `_derive_rr_outlook_from_qe`'s
-second-pass UPDATE (`etl/derive.py`), so `source='BB'` rows are still
-`outlook=NULL` at read time — a normal daily re-derive always sees "no
-outlook" for BB rows. A **standalone** re-derive of `drv_pvv` alone (e.g. a
-drv_pvv-only backfill loop, outside the full cascade) instead reads whatever
-`drv_rr.outlook` is *currently* stored for that date, which may already
-carry a prior cascade's QE-filled BB gradation (`'Bullish'`, `'Light
-Bullish'`, `'Mild Bearish'`, etc. — see `_derive_rr_outlook_from_qe` in
-`etl/derive.py`). `_normalize_outlook()` treats those the same way in both
-cases: exact (trimmed, case-insensitive) `'Bullish'`/`'Bearish'`/`'Neutral'`
+**BB-fallback outlook timing (fixed 2026-08-15)**: `derive_pvv` used to run
+*before* `_derive_rr_outlook_from_qe`'s second-pass UPDATE (`etl/derive.py`),
+so every `source='BB'` row was still `outlook=NULL` at read time — not an
+edge case, the normal daily result (measured: 73% of that day's `WATCH`
+rows). `derive_pvv` now runs in `derive_all()` *after*
+`_derive_rr_outlook_from_qe`, so BB-fallback rows see their filled-in
+outlook the same as everything else. A **standalone** re-derive of
+`drv_pvv` alone (e.g. a drv_pvv-only backfill loop, outside the full
+cascade) still just reads whatever `drv_rr.outlook` is *currently* stored
+for that date — fine as long as it's run after a full cascade has already
+filled it in. `_normalize_outlook()` treats a BB gradation the same either
+way: exact (trimmed, case-insensitive) `'Bullish'`/`'Bearish'`/`'Neutral'`
 match; anything else (including `'Light Bullish'`) → no outlook → `WATCH`
 column.
 
