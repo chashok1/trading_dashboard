@@ -7772,3 +7772,36 @@ ALTER TABLE IF EXISTS drv_actionable
 -- =====================================================
 ALTER TABLE IF EXISTS drv_actionable
     ADD COLUMN IF NOT EXISTS stop_signal TEXT;
+
+-- =====================================================
+-- 2026-08-14 -- Long-term conviction hold (analyst call notes, e.g. Hedgeye
+-- "the Call"). User: "I have stocks I should accumulate for the long term
+-- based on analyst notes (ex: TXG, BJRI) — I shouldn't be selling based on
+-- short-term fluctuations." Manual entry only (no note_repo auto-suggest
+-- yet). One row per thesis; a partial unique index caps a symbol at one
+-- ACTIVE hold at a time so the derive-time join below is unambiguous.
+-- Annotation only, same spirit as low_confidence above — conviction_hold /
+-- conviction_note never change consolidated_action/trig_action/final_code.
+-- etl/derive_actionable.py populates both columns from the ACTIVE row (if
+-- any) per symbol. UI: web/actionable.js renders a "LT" badge + the
+-- add/close form lives in the drilldown modal (web/actionable.html).
+-- =====================================================
+CREATE TABLE IF NOT EXISTS ref_conviction_hold (
+    id            BIGSERIAL PRIMARY KEY,
+    tos_symbol    TEXT NOT NULL,
+    thesis_note   TEXT NOT NULL,
+    target_date   DATE,
+    added_at      TIMESTAMP NOT NULL DEFAULT now(),
+    status        TEXT NOT NULL DEFAULT 'ACTIVE'
+        CHECK (status IN ('ACTIVE', 'CLOSED_WIN', 'CLOSED_LOSS', 'EXPIRED')),
+    closed_at     TIMESTAMP,
+    closed_note   TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_ref_conviction_hold_symbol ON ref_conviction_hold(tos_symbol);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_ref_conviction_hold_one_active
+    ON ref_conviction_hold(tos_symbol) WHERE status = 'ACTIVE';
+
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS conviction_hold BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS conviction_note TEXT;

@@ -9,6 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from etl.db import session_scope
 from etl.derive_macro import _classify_style, _STANCE
@@ -2428,6 +2429,111 @@ def get_call_note(
             n["note_date"] = n["note_date"].isoformat()
         notes.append(n)
     return {"notes": notes}
+
+
+_CONVICTION_STATUSES = ("ACTIVE", "CLOSED_WIN", "CLOSED_LOSS", "EXPIRED")
+
+
+@router.get("/api/actionable/conviction-holds")
+def get_conviction_holds(
+    symbol: Optional[str] = Query(None),
+    status: Optional[str] = Query(None, description="Filter to one status; omit for all"),
+):
+    """2026-08-14: long-term conviction holds (ref_conviction_hold). With
+    `symbol`, returns full history (any status) for that symbol — backs the
+    drilldown modal's Long-Term Hold section. Without it, returns everything
+    matching `status` (default: all) — a future watchlist panel."""
+    where = []
+    params: dict = {}
+    if symbol:
+        where.append("tos_symbol = :sym")
+        params["sym"] = symbol.upper().strip()
+    if status:
+        status_u = status.upper().strip()
+        if status_u not in _CONVICTION_STATUSES:
+            raise HTTPException(400, "invalid status")
+        where.append("status = :status")
+        params["status"] = status_u
+    sql = """
+        SELECT id, tos_symbol, thesis_note, target_date, added_at,
+               status, closed_at, closed_note
+        FROM ref_conviction_hold
+    """
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY added_at DESC"
+    with session_scope() as s:
+        rows = s.execute(text(sql), params).mappings().all()
+    out = []
+    for r in rows:
+        d = dict(r)
+        for k in ("target_date", "added_at", "closed_at"):
+            if d.get(k) is not None:
+                d[k] = d[k].isoformat()
+        out.append(d)
+    return out
+
+
+@router.post("/api/actionable/conviction-holds")
+def post_conviction_hold(payload: dict):
+    """Add a new long-term conviction hold. Manual entry only (no note_repo
+    auto-suggest yet). At most one ACTIVE hold per symbol — the partial
+    unique index (ux_ref_conviction_hold_one_active) enforces it; close the
+    existing one first via PATCH."""
+    sym = str(payload.get("tos_symbol") or "").upper().strip()
+    thesis = str(payload.get("thesis_note") or "").strip()
+    if not sym or not thesis:
+        raise HTTPException(400, "tos_symbol and thesis_note are required")
+    target_date = payload.get("target_date") or None
+    with session_scope() as s:
+        try:
+            row = s.execute(text("""
+                INSERT INTO ref_conviction_hold (tos_symbol, thesis_note, target_date)
+                VALUES (:sym, :thesis, :tgt)
+                RETURNING id
+            """), {"sym": sym, "thesis": thesis, "tgt": target_date}).first()
+        except IntegrityError:
+            raise HTTPException(409, f"{sym} already has an active conviction hold — close it first")
+    return {"ok": True, "id": row[0]}
+
+
+@router.patch("/api/actionable/conviction-holds/{hold_id}")
+def patch_conviction_hold(hold_id: int, payload: dict):
+    """Edit an active hold's thesis/target_date, and/or close it out
+    (status -> CLOSED_WIN/CLOSED_LOSS/EXPIRED, stamping closed_at). Reopening
+    to ACTIVE is allowed but will 409 if another ACTIVE hold already exists
+    for the symbol."""
+    fields = []
+    params: dict = {"id": hold_id}
+    if "thesis_note" in payload:
+        fields.append("thesis_note = :thesis")
+        params["thesis"] = str(payload["thesis_note"]).strip()
+    if "target_date" in payload:
+        fields.append("target_date = :tgt")
+        params["tgt"] = payload["target_date"] or None
+    if "status" in payload:
+        status_u = str(payload["status"]).upper().strip()
+        if status_u not in _CONVICTION_STATUSES:
+            raise HTTPException(400, "invalid status")
+        fields.append("status = :status")
+        params["status"] = status_u
+        fields.append("closed_at = " + ("now()" if status_u != "ACTIVE" else "NULL"))
+    if "closed_note" in payload:
+        fields.append("closed_note = :cnote")
+        params["cnote"] = payload["closed_note"] or None
+    if not fields:
+        raise HTTPException(400, "no fields to update")
+    with session_scope() as s:
+        try:
+            res = s.execute(text(f"""
+                UPDATE ref_conviction_hold SET {', '.join(fields)}
+                WHERE id = :id
+            """), params)
+        except IntegrityError:
+            raise HTTPException(409, "symbol already has an active conviction hold")
+    if not res.rowcount:
+        raise HTTPException(404, "conviction hold not found")
+    return {"ok": True}
 
 
 def _log_actionable_action(s, sym_u: str, as_of, user_action: str, payload: dict) -> Optional[int]:

@@ -4286,6 +4286,9 @@ function _buildRowEl(r) {
       </td>
       <td data-col="sym" data-sym-cell="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer;" title="${r.rr_name && r.rr_name !== r.tos_symbol ? escapeHtml(r.tos_symbol) + ' · ' : ''}Click for chart">
         <strong class="tv-sym-link" data-notespop="${escapeHtml(r.tos_symbol)}" style="font-size:11px;color:${_symOutlookColor(r)};" title="Hover for comments">${escapeHtml(r.rr_name || r.tos_symbol || '')}</strong>
+        ${r.conviction_hold
+          ? `<span class="conviction-pill" title="Long-term conviction hold — ${escapeHtml(r.conviction_note || '')}\n\nShort-term SELL/REDUCE signals here may conflict with this thesis; click the row for details." style="display:inline-block;margin-left:4px;font-size:9px;padding:1px 4px;border-radius:3px;background:#ede9fe;color:#6d28d9;font-weight:700;vertical-align:middle;cursor:help;">🔭 LT</span>`
+          : ''}
         ${r._watchlisted && r._isNew
           ? '<span class="new-pill" title="Winning source data just landed for this date — Technical isn\'t entry-ripe yet, so it waits here rather than promoting to Tier 1">NEW</span>'
           : ''}
@@ -4864,6 +4867,7 @@ async function openDrilldown(row) {
 
   await loadComparison(row.tos_symbol, row.as_of_date);
   await loadHistory(row.tos_symbol);
+  await loadConviction(row.tos_symbol);
   loadRRAnalysis(row.tos_symbol, row.as_of_date);
   _loadDrilldownChart(row.tos_symbol);
 
@@ -5239,6 +5243,80 @@ async function dismissUserAction() {
     loadActionable();
   } catch (e) {
     $('actionStatus').textContent = 'Dismiss failed: ' + e.message;
+  }
+}
+
+// ---- Long-term conviction hold (2026-08-14) -----------------------------------
+// Manual tracker for analyst-call (HE Call) picks to accumulate long-term, so
+// short-term SELL/REDUCE signals don't get acted on by mistake. Annotation
+// only server-side (drv_actionable.conviction_hold/conviction_note) — this
+// panel is the add/close UI, keyed to whichever symbol the drilldown modal
+// is currently open on. At most one ACTIVE hold per symbol (DB-enforced).
+let _convictionActiveId = null;
+
+async function loadConviction(symbol) {
+  _convictionActiveId = null;
+  $('convictionStatus').textContent = '';
+  let rows = [];
+  try {
+    rows = await fetchJson('/api/actionable/conviction-holds?symbol=' + encodeURIComponent(symbol));
+  } catch (_) { rows = []; }
+  const active = Array.isArray(rows) ? rows.find(r => r.status === 'ACTIVE') : null;
+  if (active) {
+    _convictionActiveId = active.id;
+    const added = (active.added_at || '').toString().slice(0, 10);
+    const tgt = active.target_date ? ' · target ' + active.target_date : '';
+    $('convictionActiveText').textContent = `Added ${added}${tgt} — ${active.thesis_note}`;
+    $('convictionActive').style.display = '';
+    $('convictionAdd').style.display = 'none';
+  } else {
+    $('convictionActive').style.display = 'none';
+    $('convictionAdd').style.display = '';
+    $('convictionThesis').value = '';
+    $('convictionTargetDate').value = '';
+  }
+}
+
+async function addConvictionHold() {
+  if (!state.current) return;
+  const thesis_note = $('convictionThesis').value.trim();
+  if (!thesis_note) {
+    $('convictionStatus').textContent = 'Thesis note is required.';
+    return;
+  }
+  try {
+    await fetchJson('/api/actionable/conviction-holds', {
+      method: 'POST',
+      body: JSON.stringify({
+        tos_symbol: state.current.tos_symbol,
+        thesis_note,
+        target_date: $('convictionTargetDate').value || null,
+      }),
+    });
+    $('convictionStatus').textContent = 'Added.';
+    await loadConviction(state.current.tos_symbol);
+    loadActionable();  // refresh grid so the LT badge appears
+  } catch (e) {
+    $('convictionStatus').textContent = 'Add failed: ' + e.message;
+  }
+}
+
+async function closeConvictionHold() {
+  if (!_convictionActiveId) return;
+  try {
+    await fetchJson('/api/actionable/conviction-holds/' + encodeURIComponent(_convictionActiveId), {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status: $('convictionCloseStatus').value,
+        closed_note: $('convictionCloseNote').value || null,
+      }),
+    });
+    $('convictionStatus').textContent = 'Closed.';
+    $('convictionCloseNote').value = '';
+    await loadConviction(state.current.tos_symbol);
+    loadActionable();
+  } catch (e) {
+    $('convictionStatus').textContent = 'Close failed: ' + e.message;
   }
 }
 
@@ -5664,6 +5742,8 @@ const _closeModal = () => {
   });
   $('saveActionBtn').addEventListener('click', saveUserAction);
   $('dismissActionBtn').addEventListener('click', dismissUserAction);
+  $('convictionAddBtn').addEventListener('click', addConvictionHold);
+  $('convictionCloseBtn').addEventListener('click', closeConvictionHold);
   $('closePop').addEventListener('click', () => closeAtomicPopover());
 
   // ── Side panel toggle ─────────────────────────────────────────────────────
