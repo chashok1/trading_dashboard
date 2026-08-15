@@ -986,10 +986,10 @@
 
       <div class="bulk-bar" id="bulkBar">
         <strong id="bulkCount">0 selected</strong>
-        <button class="btn-done" id="bulkDoneBtn">&#10003; Done</button>
-        <button class="btn-skip" id="bulkSkipBtn">&#10007; Skip</button>
-        <button class="btn-snz"  id="bulkSnzBtn">&#128164; Snooze</button>
-        <button class="btn-dismiss" id="bulkClearBtn" style="margin-left:auto;">Clear</button>
+        <button class="btn-done" id="bulkDoneBtn" title="Log DONE for every checked row — records that you acted, visible in that row's History table. Doesn't place any trade, and isn't the official performance track record (that's inferred from your CS/F position uploads — see the Performance screen).">&#10003; Done</button>
+        <button class="btn-skip" id="bulkSkipBtn" title="Log SKIPPED for every checked row — 'I saw this, chose not to act.' Drops these rows out of the default actionable view for today.">&#10007; Skip</button>
+        <button class="btn-snz"  id="bulkSnzBtn" title="Log SNOOZED for every checked row — hides them from the actionable view indefinitely (no resume date is set here). Toggle 'Show Hidden' to see them again, or open a row and log a new action to clear it.">&#128164; Snooze</button>
+        <button class="btn-dismiss" id="bulkClearBtn" style="margin-left:auto;" title="Uncheck every selected row without logging anything.">Clear</button>
       </div>
 
       <div class="act-content-row">
