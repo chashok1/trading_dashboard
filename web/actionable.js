@@ -3482,6 +3482,7 @@ function initGridSymClick() {
   const body = $('actBody');
   if (!body) return;
   body.addEventListener('click', (e) => {
+    if (e.target.closest('.lt-quick-btn')) return;
     const cell = e.target.closest('[data-sym-cell]');
     if (!cell) return;
     const sym = cell.dataset.symCell;
@@ -4286,13 +4287,13 @@ function _buildRowEl(r) {
       </td>
       <td data-col="sym" data-sym-cell="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer;" title="${r.rr_name && r.rr_name !== r.tos_symbol ? escapeHtml(r.tos_symbol) + ' · ' : ''}Click for chart">
         <strong class="tv-sym-link" data-notespop="${escapeHtml(r.tos_symbol)}" style="font-size:11px;color:${_symOutlookColor(r)};" title="Hover for comments">${escapeHtml(r.rr_name || r.tos_symbol || '')}</strong>
-        ${r.conviction_hold
-          ? `<span class="conviction-pill" title="Long-term conviction hold — ${escapeHtml(r.conviction_note || '')}\n\nShort-term SELL/REDUCE signals here may conflict with this thesis; click the row for details." style="display:inline-block;margin-left:4px;font-size:9px;padding:1px 4px;border-radius:3px;background:#ede9fe;color:#6d28d9;font-weight:700;vertical-align:middle;cursor:help;">🔭 LT</span>`
-          : ''}
         ${r._watchlisted && r._isNew
           ? '<span class="new-pill" title="Winning source data just landed for this date — Technical isn\'t entry-ripe yet, so it waits here rather than promoting to Tier 1">NEW</span>'
           : ''}
         ${hitRateBadge ? '<div style="margin-top:1px;">' + hitRateBadge + '</div>' : ''}
+        <div style="margin-top:1px;">${r.conviction_hold
+          ? `<span class="lt-quick-btn conviction-pill" data-sym="${escapeHtml(r.tos_symbol)}" title="Long-term conviction hold — ${escapeHtml(r.conviction_note || '')}\n\nClick to view/close.">🔭 LT</span>`
+          : `<span class="lt-quick-btn lt-add-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Add a long-term conviction hold (analyst call note) — short-term SELL/REDUCE signals won't drive you to act on it">+LT</span>`}</div>
       </td>
       <td data-col="agree3" style="padding:6px 4px; text-align:center;">${(() => {
         const dir = _agreementDir(r);
@@ -4355,7 +4356,8 @@ function _buildRowEl(r) {
     `;
     tr.onclick = (e) => {
       if (e.target.closest('.btn-inline-done') || e.target.closest('.btn-inline-skip') ||
-          e.target.closest('.btn-inline-snz')  || e.target.closest('.row-check')) return;
+          e.target.closest('.btn-inline-snz')  || e.target.closest('.row-check') ||
+          e.target.closest('.lt-quick-btn')) return;
       const rulesCell = e.target.closest('.rules-link-cell');
       if (rulesCell) {
         window.location.href = '/rule-flow?symbol=' + encodeURIComponent(rulesCell.dataset.sym);
@@ -5320,6 +5322,148 @@ async function closeConvictionHold() {
   }
 }
 
+// ---- Long-term conviction hold: inline quick-add popover -----------------------
+// User: "instead of going to a popup, why can't you add a button in SYMBOL
+// column below %button so I can add it from there in a editable small form."
+// A click-toggled popover anchored to the +LT / 🔭 LT button in the grid's
+// SYMBOL cell — no need to open the full drilldown modal just to log a
+// thesis. Self-contained (doesn't touch state.current, so it works from any
+// row regardless of whether the drilldown modal is open).
+let _cpSym = null;
+let _cpActiveId = null;
+
+function closeConvictionPop() {
+  _cpSym = null;
+  const pop = $('convictionPop');
+  if (pop) pop.style.display = 'none';
+}
+
+function _positionConvictionPop(pop, anchorEl) {
+  const rect = anchorEl.getBoundingClientRect();
+  let top = rect.bottom + 4;
+  if (top + pop.offsetHeight > window.innerHeight - 8) {
+    top = Math.max(8, rect.top - pop.offsetHeight - 4);
+  }
+  let left = rect.left;
+  if (left + pop.offsetWidth > window.innerWidth - 8) {
+    left = Math.max(8, window.innerWidth - pop.offsetWidth - 8);
+  }
+  pop.style.top = top + 'px';
+  pop.style.left = left + 'px';
+}
+
+function _convictionPopHtml(sym, active) {
+  if (active) {
+    const added = (active.added_at || '').toString().slice(0, 10);
+    const tgt = active.target_date ? ' &middot; target ' + escapeHtml(active.target_date) : '';
+    return `
+      <div class="cp-title">&#128301; ${escapeHtml(sym)} &mdash; Long-Term Hold</div>
+      <div style="margin-bottom:7px;">Added ${escapeHtml(added)}${tgt}<br>${escapeHtml(active.thesis_note)}</div>
+      <select id="cpCloseStatus" style="width:100%;font:inherit;padding:4px;border:1px solid #e2e8f0;border-radius:5px;margin-bottom:6px;">
+        <option value="CLOSED_WIN">Close as: Won — thesis played out</option>
+        <option value="CLOSED_LOSS">Close as: Lost — thesis broke</option>
+        <option value="EXPIRED">Close as: Expired / no longer tracking</option>
+      </select>
+      <input type="text" id="cpCloseNote" placeholder="close note (optional)…">
+      <div class="cp-actions">
+        <button class="btn" id="cpCloseBtn">Close hold</button>
+      </div>
+      <div class="cp-status" id="cpStatus"></div>`;
+  }
+  return `
+    <div class="cp-title">&#128301; ${escapeHtml(sym)} &mdash; Add Long-Term Hold</div>
+    <textarea id="cpThesis" placeholder="e.g. HE Call: strong Q3 setup, accumulate on weakness…"></textarea>
+    <label style="display:flex;align-items:center;gap:6px;color:#64748b;margin-bottom:6px;">Target date
+      <input type="date" id="cpTargetDate">
+    </label>
+    <div class="cp-actions">
+      <button class="btn" id="cpAddBtn">Add hold</button>
+    </div>
+    <div class="cp-status" id="cpStatus"></div>`;
+}
+
+function _wireConvictionPop(sym) {
+  const addBtn = document.getElementById('cpAddBtn');
+  if (addBtn) addBtn.addEventListener('click', async () => {
+    const statusEl = document.getElementById('cpStatus');
+    const thesis = document.getElementById('cpThesis').value.trim();
+    if (!thesis) { statusEl.textContent = 'Thesis note is required.'; return; }
+    try {
+      await fetchJson('/api/actionable/conviction-holds', {
+        method: 'POST',
+        body: JSON.stringify({
+          tos_symbol: sym,
+          thesis_note: thesis,
+          target_date: document.getElementById('cpTargetDate').value || null,
+        }),
+      });
+      closeConvictionPop();
+      loadActionable();  // refresh grid so the LT badge appears
+    } catch (e) {
+      statusEl.textContent = 'Add failed: ' + e.message;
+    }
+  });
+  const closeBtn = document.getElementById('cpCloseBtn');
+  if (closeBtn) closeBtn.addEventListener('click', async () => {
+    const statusEl = document.getElementById('cpStatus');
+    if (!_cpActiveId) return;
+    try {
+      await fetchJson('/api/actionable/conviction-holds/' + encodeURIComponent(_cpActiveId), {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: document.getElementById('cpCloseStatus').value,
+          closed_note: document.getElementById('cpCloseNote').value || null,
+        }),
+      });
+      closeConvictionPop();
+      loadActionable();
+    } catch (e) {
+      statusEl.textContent = 'Close failed: ' + e.message;
+    }
+  });
+}
+
+async function openConvictionPop(sym, anchorEl) {
+  const pop = $('convictionPop');
+  if (!pop) return;
+  if (_cpSym === sym && pop.style.display === 'block') {
+    closeConvictionPop();  // clicking the same button again toggles it off
+    return;
+  }
+  _cpSym = sym;
+  pop.innerHTML = `<div class="cp-title">&#128301; ${escapeHtml(sym)} &mdash; Long-Term Hold</div><div class="cp-status">Loading&hellip;</div>`;
+  pop.style.display = 'block';
+  _positionConvictionPop(pop, anchorEl);
+
+  let rows = [];
+  try {
+    rows = await fetchJson('/api/actionable/conviction-holds?symbol=' + encodeURIComponent(sym));
+  } catch (_) { rows = []; }
+  if (_cpSym !== sym) return;  // closed or reopened on a different symbol while this was loading
+  const active = Array.isArray(rows) ? rows.find(r => r.status === 'ACTIVE') : null;
+  _cpActiveId = active ? active.id : null;
+  pop.innerHTML = _convictionPopHtml(sym, active);
+  _positionConvictionPop(pop, anchorEl);
+  _wireConvictionPop(sym);
+}
+
+function initConvictionQuickBtn() {
+  const body = $('actBody');
+  if (!body) return;
+  body.addEventListener('click', (e) => {
+    const btn = e.target.closest('.lt-quick-btn');
+    if (!btn) return;
+    openConvictionPop(btn.dataset.sym, btn);
+  });
+  // Outside click closes the popover (mirrors modalBackdrop's dismiss pattern).
+  document.addEventListener('click', (e) => {
+    if (!_cpSym) return;
+    const pop = $('convictionPop');
+    if (pop && (pop.contains(e.target) || e.target.closest('.lt-quick-btn'))) return;
+    closeConvictionPop();
+  });
+}
+
 // ---- TradingView tape toggle --------------------------------------------------
 const _TV_LS_KEY = 'act_tv_tape';
 
@@ -5458,6 +5602,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // captured from the clean header text (before sort indicators are injected).
   initSorting();
   initGridSymClick();
+  initConvictionQuickBtn();
   initEcoBarClick();
   _initSidePanels();
   _initColMenu();
