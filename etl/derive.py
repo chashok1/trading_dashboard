@@ -588,6 +588,17 @@ def _derive_technicals_impl(session: Session, as_of_date: date, run_id: int) -> 
         {"d": as_of_date},
     )
     # Step 1: tl + dq CTEs (price/rsi/IV)
+    # vlm_projected (2026-08-15): looks up ref_vlm_intraday_curve — an
+    # empirical "typical % of the day's volume done by now" curve computed
+    # from this system's own history (etl/derive_vlm_intraday_curve.py) —
+    # instead of assuming a flat/constant trading pace. User: "if the volume
+    # is doubled in a few minutes then intraday calc will not be correct...
+    # I need proper values". A flat linear assumption (volume*390/elapsed)
+    # chronically under-projected the full-day total at every point in the
+    # day, not just near the close — see db/baseline.sql's
+    # ref_vlm_intraday_curve comment for the measured numbers. No matching
+    # bucket (very early in the session, before any calibration data exists)
+    # -> NULL, same "insufficient data" convention used elsewhere.
     session.execute(text("""
         CREATE TEMP TABLE _t_tech_tl ON COMMIT DROP AS
         SELECT DISTINCT ON (h.tos_symbol)
@@ -599,12 +610,14 @@ def _derive_technicals_impl(session: Session, as_of_date: date, run_id: int) -> 
             CASE
                 WHEN h.volume IS NULL OR h.sequence < 930 THEN NULL
                 WHEN h.sequence >= 1600 THEN h.volume::numeric
-                WHEN ((h.sequence/100)*60+(h.sequence%100)-570) > 0
-                    THEN h.volume::numeric*390.0
-                         /((h.sequence/100)*60+(h.sequence%100)-570)
+                WHEN c.median_fraction IS NOT NULL
+                    THEN h.volume::numeric / c.median_fraction
                 ELSE NULL
             END AS vlm_projected
         FROM hist_tl h
+        LEFT JOIN ref_vlm_intraday_curve c
+               ON ((h.sequence/100)*60+(h.sequence%100)-570) >= c.bucket_start_min
+              AND ((h.sequence/100)*60+(h.sequence%100)-570) <  c.bucket_end_min
         WHERE h.export_date = :d          -- anchor-locked: exact match, no carry-forward
         ORDER BY h.tos_symbol, h.sequence DESC
     """), {"d": as_of_date})

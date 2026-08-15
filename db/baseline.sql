@@ -7805,3 +7805,34 @@ ALTER TABLE IF EXISTS drv_actionable
     ADD COLUMN IF NOT EXISTS conviction_hold BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE IF EXISTS drv_actionable
     ADD COLUMN IF NOT EXISTS conviction_note TEXT;
+
+-- =====================================================
+-- 2026-08-15 -- ref_vlm_intraday_curve: empirical intraday volume-completion
+-- curve, replacing the flat linear assumption in drv_technicals.vlm_projected
+-- (etl/derive.py::_derive_technicals_impl). User: "if the volume is doubled
+-- in a few minutes then intraday calc will not be correct... I need proper
+-- values otherwise no point in using it."
+--
+-- Old formula: volume_so_far * 390 / minutes_elapsed_since_open (assumes a
+-- flat, constant trading pace all day). Measured against this system's own
+-- history (55,487 symbol-days across 52 distinct days, docs/pvv_logic.md):
+-- only ~67% of a day's total volume has typically happened with 30 minutes
+-- left in the session -- the closing auction alone is roughly a third of a
+-- typical day's volume. The flat assumption chronically UNDER-projects the
+-- full-day total at every point in the day, not just near the close.
+--
+-- One row per 30-minute bucket (minutes since 9:30 open); median_fraction =
+-- typical share of the day's eventual total volume reached by then, from
+-- hist_tl history. Computed/refreshed by
+-- etl/derive_vlm_intraday_curve.py (python -m etl.derive_vlm_intraday_curve)
+-- -- a periodic tunable-table refresh (grows more reliable as more trading
+-- days accumulate), not part of the daily derive_all() cascade. Full
+-- TRUNCATE+rebuild each run, no history kept (same spirit as etl/refresh_ref.py).
+-- =====================================================
+CREATE TABLE IF NOT EXISTS ref_vlm_intraday_curve (
+    bucket_start_min INTEGER PRIMARY KEY,
+    bucket_end_min   INTEGER NOT NULL,
+    median_fraction  NUMERIC NOT NULL CHECK (median_fraction > 0 AND median_fraction <= 1),
+    n_obs            INTEGER NOT NULL,
+    updated_at       TIMESTAMP NOT NULL DEFAULT now()
+);

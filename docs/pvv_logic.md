@@ -69,6 +69,34 @@ never raw `symbol`. Universe = `drv_symbols` for D.
   Missing days fall back to the nearest value within a 3-calendar-day
   tolerance (`_series_value_near`); if fewer than `min_window_pts` (3)
   usable points exist in a window, the bucket signal is `NA`.
+- **`vlm_projected` intraday curve (2026-08-15 fix)**: `drv_technicals.vlm_projected`
+  (the "today" volume ROC's numerator) used to assume a flat, constant
+  trading pace all day (`volume_so_far × 390 ÷ minutes_elapsed`). User:
+  "if the volume is doubled in a few minutes then intraday calc will not be
+  correct... I need proper values otherwise no point in using it." Measured
+  against this system's own history (55,487 symbol-days, 52 distinct days):
+  only ~67% of a day's eventual total volume has typically happened with 30
+  minutes left in the session — the closing auction alone is roughly a
+  third of a typical day — so the flat assumption chronically
+  **under**-projected the full-day total at every point in the day, not
+  just near the close (backtested median error: **-27.3%**, i.e. a
+  systematic low bias, not noise). Replaced with a lookup against
+  `ref_vlm_intraday_curve` — a 30-minute-bucket empirical "typical % of the
+  day's volume done by now" curve computed from `hist_tl` history
+  (`etl/derive_vlm_intraday_curve.py`, `python -m
+  etl.derive_vlm_intraday_curve` — periodic tunable-table refresh, not part
+  of the daily `derive_all()` cascade, same spirit as `etl/refresh_ref.py`).
+  Backtested median error after the fix: **-0.7%** (effectively unbiased —
+  expected, since the curve is literally built from the median of this same
+  data). Individual symbol-days still vary (p25/p75 roughly -26%/+32%,
+  vs -45%/-3% before) — that's real day-to-day variance, not something a
+  single number can eliminate, but the systematic downward bias is gone.
+  No calibration data exists for the first ~30 minutes after the 9:30 open
+  (`ref_vlm_intraday_curve` has no bucket that early) — `vlm_projected`
+  stays `NULL` there, same "insufficient data" convention as elsewhere,
+  rather than guessing. This also improves the "Proj Volume" tooltip value
+  shown elsewhere on the Actionable grid's Vlm column, since both read the
+  same `drv_technicals.vlm_projected` column.
 - **Flat band**: `|ROC| < k × σ`, where σ is the trailing standard deviation
   of that symbol's own rolling-ROC(horizon) series (up to `sigma_window`=60
   trailing daily observations, minimum `sigma_min_obs`=20). When a symbol
