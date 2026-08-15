@@ -2,7 +2,7 @@
 
 // ── Column show/hide manager (TASK_105 U1) ──────────────────────────────────
 // Toggleable columns (everything except the non-toggleable core: LT hold,
-// bulk checkbox, H, Symbol, ACTION, AMT$, Act). `id` matches each th/td's
+// bulk checkbox, H, Symbol, ACTION, AMT$). `id` matches each th/td's
 // data-col attribute; visibility is applied via a single dynamic <style>
 // rule (see applyColumnVisibility()) rather than per-cell DOM edits.
 const COL_STORAGE_KEY = 'act_cols_v1';
@@ -4160,14 +4160,14 @@ function renderGrid() {
 }
 
 // Collapsed/expand toggle row for the Watchlist band (TASK_120 buy-noise
-// gate). One <tr><td colspan> spanning every grid column (22 — keep in sync
+// gate). One <tr><td colspan> spanning every grid column (23 — keep in sync
 // with the <th data-col> count in actionable.html); clicking toggles
 // state.watchlistExpanded and re-renders.
 function _watchlistBandRowEl(count, expanded) {
   const tr = document.createElement('tr');
   tr.className = 'watchlist-band-row';
   const td = document.createElement('td');
-  td.colSpan = 22;
+  td.colSpan = 23;
   td.style.cssText = 'padding:6px 10px;background:#f8fafc;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;';
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -4270,8 +4270,6 @@ function _buildRowEl(r) {
 
     // Final Call cell — reconciled action + confidence badge
     const fcHtml = _finalCallHtml(r);
-    // Default Act action: use final call code when available, else 'DONE'
-    const fcActCode = r._fc_code || 'DONE';
 
     const posStr = fmtCompact(r.current_position_dollar);
     const _hReason = _hiddenReason(r);
@@ -4364,18 +4362,9 @@ function _buildRowEl(r) {
       <td data-col="bullprob" class="num" style="padding:4px 6px; white-space:nowrap;">${_bullProbCellHtml(r)}</td>
       <td data-col="agree" style="padding:4px 6px; white-space:nowrap;">${_agreementCellHtml(r)}</td>
       <td data-col="pvv" style="padding:4px 6px; text-align:center; white-space:nowrap;">${_pvvCellHtml(r)}</td>
-      <td data-col="act" style="padding:4px 6px;">
-        <div class="act-inline-btns">
-          <button type="button" class="btn-done btn-inline-done" data-sym="${escapeHtml(r.tos_symbol)}" data-fc="${escapeHtml(fcActCode)}" title="Act: log final call action">&#10003; ${escapeHtml(fcActCode)}</button>
-          <button type="button" class="btn-skip btn-inline-skip" data-sym="${escapeHtml(r.tos_symbol)}" title="Skip">&#10007;</button>
-          <button type="button" class="btn-snz btn-inline-snz"  data-sym="${escapeHtml(r.tos_symbol)}" title="Snooze">&#128164;</button>
-        </div>
-      </td>
     `;
     tr.onclick = (e) => {
-      if (e.target.closest('.btn-inline-done') || e.target.closest('.btn-inline-skip') ||
-          e.target.closest('.btn-inline-snz')  || e.target.closest('.row-check') ||
-          e.target.closest('.lt-quick-btn')) return;
+      if (e.target.closest('.row-check') || e.target.closest('.lt-quick-btn')) return;
       const rulesCell = e.target.closest('.rules-link-cell');
       if (rulesCell) {
         window.location.href = '/rule-flow?symbol=' + encodeURIComponent(rulesCell.dataset.sym);
@@ -5740,20 +5729,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('exportCsvBtn').addEventListener('click', exportCsv);
   $('copySymbolsBtn').addEventListener('click', copySymbols);
   initSourcePopover();
-  // Inline action buttons (Pass 3)
+  // Row-check (bulk-select) — the per-row inline Act/Skip/Snooze buttons
+  // (ACT column) were removed 2026-08-15: user "don't need it, I can use
+  // the checkbox [+ bulk action buttons] for now." inlineAction() itself is
+  // kept — Focus Mode (focusAdvance) still calls it.
   $('actBody').addEventListener('click', (e) => {
-    const doneBtn = e.target.closest('.btn-inline-done');
-    if (doneBtn) {
-      e.stopPropagation();
-      // Use final call code as the action if available, else 'DONE'
-      const actCode = doneBtn.dataset.fc || 'DONE';
-      inlineAction(doneBtn.dataset.sym, actCode);
-      return;
-    }
-    const skipBtn = e.target.closest('.btn-inline-skip');
-    if (skipBtn) { e.stopPropagation(); inlineAction(skipBtn.dataset.sym, 'SKIPPED'); return; }
-    const snzBtn = e.target.closest('.btn-inline-snz');
-    if (snzBtn) { e.stopPropagation(); inlineAction(snzBtn.dataset.sym, 'SNOOZED'); return; }
     const chk = e.target.closest('.row-check');
     if (chk) {
       e.stopPropagation();
