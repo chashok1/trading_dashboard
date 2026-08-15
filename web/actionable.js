@@ -3279,16 +3279,39 @@ function _ivRatioScore(ratio) {
   if (r < 1) return 3;      // below its own 63-day baseline -- favorable
   return 0;                 // 1.00-1.15 -- elevated but not spiked, neutral
 }
+// Raw (unclamped) LRR-relative position in % — negative below LRR, >100
+// above TRR. Distinct from row._rrPos (clamped to [0,100] for the RR bar's
+// fixed-width display/sort) — the score needs the unclamped value so
+// "below LRR" isn't silently indistinguishable from "right at LRR" the
+// way the clamped display value makes it look.
+function _rawRrPos(row) {
+  if (row.lrr == null || row.trr == null || row.last_price == null) return null;
+  const lrr = Number(row.lrr), trr = Number(row.trr), last = Number(row.last_price);
+  if (trr === lrr) return null;
+  return (last - lrr) / (trr - lrr) * 100;
+}
 function _lrrProximityScore(row) {
-  if (row._rrPos == null) return 0;
-  // Full credit at/near LRR (0%), tapering linearly to 0 by 40% of the way
-  // to TRR — mirrors 52-BS-BRR's own condition (near the Risk Range bottom).
-  // "about to go up or going up" (pct_change >= 0) adds a partial bonus on
-  // top; still credits "at LRR, flat" since 52-BS-BRR's proven edge is keyed
-  // on the LRR position itself, not today's tick direction.
-  const pos = Number(row._rrPos);
-  const base = Math.max(0, 1 - pos / 40);
+  const rawPos = _rawRrPos(row);
+  if (rawPos == null) return 0;
   const turningUp = row.pct_change != null && Number(row.pct_change) >= 0;
+  // 2026-08-15: below LRR scored separately and MUCH lower, not treated
+  // the same as "at LRR" (the old code clamped at 0% and couldn't tell the
+  // two apart). User: "<LRR is not desirable and have to lot of caution. I
+  // would rather buy once going up from there." — so below LRR AND still
+  // falling is a real penalty (this system's own proven-edge rule,
+  // 52-BS-BRR, is keyed on price AT the Risk Range bottom, not below it);
+  // below LRR but already turning up gets a small, capped bounce credit —
+  // never as much as being at LRR itself.
+  if (rawPos < 0) {
+    if (!turningUp) return -1;
+    return Math.max(0, 0.3 - Math.abs(rawPos) / 100);
+  }
+  // At/near LRR, tapering linearly to 0 by 40% of the way to TRR — mirrors
+  // 52-BS-BRR's own condition. "about to go up or going up" (pct_change >=
+  // 0) adds a partial bonus on top; still credits "at LRR, flat" since
+  // 52-BS-BRR's proven edge is keyed on the LRR position itself, not
+  // today's tick direction.
+  const base = Math.max(0, 1 - rawPos / 40);
   return base * (turningUp ? 1 : 0.7);
 }
 function _buyTradabilityScore(row) {
@@ -3326,7 +3349,9 @@ function _buyTradabilityScore(row) {
   // LRR proximity weighted far above everything else (matches its outsized
   // proven edge vs any combination of the other factors, see 52-BS-BRR note
   // above); technical bracket and agreement are smaller flat bonuses; factor
-  // deltas are the finest-grained tiebreak. Range roughly [-9, +30].
+  // deltas are the finest-grained tiebreak. Range roughly [-19, +30] (a
+  // still-falling below-LRR row's -10 LRR term is a real penalty, not a
+  // floor of 0 — see _lrrProximityScore).
   return lrrPts * 10 + techPts * 2 + agreementPts + factorPts;
 }
 // Structured breakdown for the tradability badge's popover (2026-08-15:
@@ -3348,13 +3373,20 @@ function _tradabilityBreakdown(row) {
   const items = [];
   const fmtDelta = d => (d >= 0 ? '+' : '') + d.toFixed(1) + 'pp win rate vs baseline';
 
-  const pos = row._rrPos;
+  // Raw (unclamped) position, not row._rrPos — a below-LRR row must read
+  // as "below LRR", not "0% up from LRR" (which is what the RR bar's
+  // clamped display value would otherwise make it look like).
+  const rawPos = _rawRrPos(row);
+  const turningUpForLrr = row.pct_change != null && Number(row.pct_change) >= 0;
   items.push({
     label: 'Risk Range',
-    detail: pos != null
-      ? pos + '% up from LRR' + (pos <= 15 ? ' — near LRR, the strongest proven buy signal (52-BS-BRR)' : pos <= 40 ? ' — reasonably close to LRR' : ' — well above LRR')
-      : 'no LRR/TRR data',
-    color: pos == null ? '#94a3b8' : pos <= 15 ? '#16a34a' : pos <= 40 ? '#d97706' : '#94a3b8',
+    detail: rawPos == null ? 'no LRR/TRR data'
+      : rawPos < 0
+        ? Math.abs(Math.round(rawPos)) + '% BELOW LRR' + (turningUpForLrr ? ' — bouncing, but still under the line' : ' — falling below LRR, be cautious')
+        : Math.round(rawPos) + '% up from LRR' + (rawPos <= 15 ? ' — near LRR, the strongest proven buy signal (52-BS-BRR)' : rawPos <= 40 ? ' — reasonably close to LRR' : ' — well above LRR'),
+    color: rawPos == null ? '#94a3b8'
+      : rawPos < 0 ? (turningUpForLrr ? '#d97706' : '#dc2626')
+      : rawPos <= 15 ? '#16a34a' : rawPos <= 40 ? '#d97706' : '#94a3b8',
   });
 
   const tech = (row.rr_action || '').toUpperCase();
