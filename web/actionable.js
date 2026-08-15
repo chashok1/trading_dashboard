@@ -1,8 +1,8 @@
 /* Actionable Stocks page logic */
 
 // ── Column show/hide manager (TASK_105 U1) ──────────────────────────────────
-// Toggleable columns (everything except the non-toggleable core: bulk
-// checkbox, H, Symbol, ACTION, AMT$, Act). `id` matches each th/td's
+// Toggleable columns (everything except the non-toggleable core: LT hold,
+// bulk checkbox, H, Symbol, ACTION, AMT$, Act). `id` matches each th/td's
 // data-col attribute; visibility is applied via a single dynamic <style>
 // rule (see applyColumnVisibility()) rather than per-cell DOM edits.
 const COL_STORAGE_KEY = 'act_cols_v1';
@@ -4160,14 +4160,14 @@ function renderGrid() {
 }
 
 // Collapsed/expand toggle row for the Watchlist band (TASK_120 buy-noise
-// gate). One <tr><td colspan> spanning every grid column (21 — keep in sync
+// gate). One <tr><td colspan> spanning every grid column (22 — keep in sync
 // with the <th data-col> count in actionable.html); clicking toggles
 // state.watchlistExpanded and re-renders.
 function _watchlistBandRowEl(count, expanded) {
   const tr = document.createElement('tr');
   tr.className = 'watchlist-band-row';
   const td = document.createElement('td');
-  td.colSpan = 21;
+  td.colSpan = 22;
   td.style.cssText = 'padding:6px 10px;background:#f8fafc;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;';
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -4276,6 +4276,10 @@ function _buildRowEl(r) {
     const posStr = fmtCompact(r.current_position_dollar);
     const _hReason = _hiddenReason(r);
     tr.innerHTML = `
+      <td data-col="lt" style="padding:4px 2px; text-align:center;">${r.conviction_hold
+          ? `<span class="lt-quick-btn lt-scope-btn lt-scope-active" data-sym="${escapeHtml(r.tos_symbol)}" title="Long-term conviction hold — ${escapeHtml(r.conviction_note || '')}\n\nClick to view/close.">🔭</span>`
+          : `<span class="lt-quick-btn lt-scope-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Add a long-term conviction hold (analyst call note) — a reminder only, badges this row so a SELL/REDUCE signal doesn't get mistaken for a reason to abandon the thesis. Doesn't suppress or change the signal itself.">🔭</span>`}
+      </td>
       <td data-col="bulk" style="padding:4px 6px; text-align:center;">
         <input type="checkbox" class="row-check" data-sym="${escapeHtml(r.tos_symbol)}"${isChecked ? ' checked' : ''}>
       </td>
@@ -4308,9 +4312,6 @@ function _buildRowEl(r) {
           ? '<span class="new-pill" title="Winning source data just landed for this date — Technical isn\'t entry-ripe yet, so it waits here rather than promoting to Tier 1">NEW</span>'
           : ''}
         ${hitRateBadge ? '<div style="margin-top:1px;">' + hitRateBadge + '</div>' : ''}
-        <div style="margin-top:1px;">${r.conviction_hold
-          ? `<span class="lt-quick-btn lt-scope-btn lt-scope-active" data-sym="${escapeHtml(r.tos_symbol)}" title="Long-term conviction hold — ${escapeHtml(r.conviction_note || '')}\n\nClick to view/close.">🔭</span>`
-          : `<span class="lt-quick-btn lt-scope-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Add a long-term conviction hold (analyst call note) — a reminder only, badges this row so a SELL/REDUCE signal doesn't get mistaken for a reason to abandon the thesis. Doesn't suppress or change the signal itself.">🔭</span>`}</div>
       </td>
       <td data-col="agree3" style="padding:6px 4px; text-align:center;">${(() => {
         const dir = _agreementDir(r);
