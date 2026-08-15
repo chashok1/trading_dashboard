@@ -223,6 +223,7 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Actionable / outlook-action logic | `docs/actionable_logic.md` |
 | Actionable daily trading playbook + design-validation status (A1–A6) | `docs/actionable_playbook.md` |
 | Actionable screen 3 action columns | `docs/actionable_logic.md` (consolidated_action, TrTnBBRskRng, Trig) |
+| Long-term conviction note (LT column, 🔭 Hold / 🚫 Avoid) — analyst-call reminder badge, annotation only, never changes consolidated_action/trig_action | `ref_conviction_hold` (`direction` IN HOLD/AVOID) → `drv_actionable.conviction_hold/conviction_note/conviction_direction` (`etl/derive_actionable.py`); `GET/POST/PATCH/DELETE /api/actionable/conviction-holds` (`api/routers/dash.py`); grid badge + quick-add popover + drilldown modal form in `web/actionable.js`/`web/actionable.html` |
 | PVV column (Price/Volume/Volatility multi-bucket signal + decision, informational v1) | `docs/pvv_logic.md`; `etl/derive_pvv.py`; `drv_pvv` |
 | trig_action computation (BuySell vocab) | `etl/derive_actionable.py::_derive_actionable_impl` (buysell_scores block) |
 | Atomic-input column derivation (JF..NP + QE..QT) | `docs/drv_cat_atomic_input_logic.md` |

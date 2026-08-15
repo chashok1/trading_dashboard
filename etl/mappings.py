@@ -204,6 +204,12 @@ HIST_MAPS = {
             ("A_HVPercentile",       "a_hv_percentile",     to_numeric),
             ("A_BB_Top_Slope",       "a_bb_top_slope",      to_numeric),
             ("A_BB_Bot_Slope",       "a_bb_bot_slope",      to_numeric),
+            # 2026-08-15: user's ThinkOrSwim IV-spike/normalize study,
+            # exported as the watchlist's last custom column. Self-relative
+            # (this symbol's own IV vs its own 63-day baseline) instead of
+            # cross-sectional percentile — see db/baseline.sql's 2026-08-15
+            # migration comment for the full rationale.
+            ("A_IVRatio",            "iv_ratio",            to_numeric),
         ],
     ),
 

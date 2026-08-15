@@ -112,6 +112,14 @@
     tr.row-lt-conflict { border-left: 4px solid #7c3aed; background: #faf5ff; }
     tr.row-lt-conflict:hover { background: #f3e8ff; }
 
+    /* 2026-08-15: mirror of the above for the opposite direction — a BUY-side
+       Final Call on a symbol with an active AVOID note ("don't buy"). Same
+       treatment, amber instead of purple so HOLD-conflict and AVOID-conflict
+       are never confused with each other (amber matches .dontbuy-warn-pill's
+       existing don't-buy color language). Annotation only. */
+    tr.row-lt-avoid-conflict { border-left: 4px solid #b45309; background: #fffbeb; }
+    tr.row-lt-avoid-conflict:hover { background: #fef3c7; }
+
     /* Don't-buy warning icon — earnings/VLM/IV/MACD-MACDH/RSI/Rules(edge)
        caution signals on the ACTION cell. Same shape as .stop-pill; amber
        (not red) since it's a caution, not a hard stop. */
@@ -198,6 +206,25 @@
     .hit-rate-pill-low  { background: #fef3c7; color: #b45309; border: 1px solid #b45309; }
     .hit-rate-pill-mid  { background: #f1f5f9; color: #475569; border: 1px solid #94a3b8; }
     .hit-rate-pill-high { background: #dcfce7; color: #15803d; border: 1px solid #15803d; }
+
+    /* 2026-08-15: Buy Tradability badge — marks a BUY row whose entry looks
+       clean right now (near LRR + supporting RSI/IV/RVOL history), per
+       _buyTradabilityScore in actionable.js. Hover for the rich colored
+       popover (data-tradabilitypop, same #sourcePop mechanism as Vol/IV/
+       Macro/PVV/Signal). Below _TRADABILITY_BADGE_MIN the 🎯 icon is
+       replaced by the raw numeric score instead of showing nothing, so
+       every BUY row stays visible/comparable at a glance. */
+    .tradability-badge {
+      display: inline-block;
+      font-size: 11px;
+      cursor: help;
+      vertical-align: middle;
+    }
+    .tradability-badge-num {
+      font-size: 9px;
+      font-weight: 700;
+      color: #94a3b8;
+    }
 
     /* TASK_124: Trade Mode toggle — icon-only, same footprint + icon-on/icon-off
        dual-state convention as the other row-filter toggles (showHidden/
@@ -997,7 +1024,7 @@
         <table class="act-grid" id="actGrid">
           <thead>
             <tr>
-              <th data-col="lt" style="width:20px;" title="Long-term conviction hold (analyst call note) — click 🔭 to add/view/close">🔭</th>
+              <th data-col="lt" style="width:20px;" title="Long-term conviction note (analyst call note) — 🔭 Hold: don't sell on short-term noise. 🚫 Avoid: don't chase a BUY signal. Click to add/view/close.">🔭</th>
               <th data-col="bulk" style="width:28px;"><input type="checkbox" id="bulkSelectAll" title="Select all"></th>
               <th data-col="h" style="width:18px;" title="H = row is hidden by the default filter (hover cell for reason)">H</th>
               <th data-col="pos" class="num sortable" data-key="current_position_dollar" data-type="num" title="Current position $ held" style="width:58px;">POS$</th>
@@ -1392,7 +1419,7 @@
 
       <div class="modal-section">
         <div style="display:flex;align-items:flex-start;gap:12px;">
-          <h3 style="margin:0;white-space:nowrap;min-width:110px;">🔭 Long-Term Hold</h3>
+          <h3 style="margin:0;white-space:nowrap;min-width:110px;">🔭 Long-Term Note</h3>
           <div style="flex:1;min-width:0;">
             <div id="convictionActive" style="display:none;">
               <div id="convictionActiveText" style="font-size:12px;margin-bottom:6px;"></div>
@@ -1407,19 +1434,25 @@
                 <label style="flex:1; min-width:220px; display:flex; align-items:center; gap:6px;">Note
                   <input type="text" id="convictionCloseNote" placeholder="optional…" style="flex:1;">
                 </label>
-                <button class="btn" id="convictionCloseBtn">Close hold</button>
+                <button class="btn" id="convictionCloseBtn">Close note</button>
                 <button class="btn" id="convictionDeleteBtn" title="Hard-delete this entry (not reversible) — use Close instead to keep it as history" style="color:#dc2626;border-color:#dc2626;">Delete</button>
               </div>
             </div>
             <div id="convictionAdd" style="display:none;">
               <div class="action-form" style="border:none;padding:0;margin-top:0;">
+                <label>Direction
+                  <select id="convictionDirection" title="Hold: don't sell on short-term noise, badges SELL/REDUCE. Avoid: don't chase a BUY signal, badges BUY/ADD/INCREASE.">
+                    <option value="HOLD">🔭 Hold — don't sell</option>
+                    <option value="AVOID">🚫 Avoid — don't buy</option>
+                  </select>
+                </label>
                 <label style="flex:1; min-width:260px; display:flex; align-items:center; gap:6px;">Thesis
                   <input type="text" id="convictionThesis" placeholder="e.g. HE Call: strong Q3 setup, accumulate on weakness…" style="flex:1;">
                 </label>
                 <label>Target date
                   <input type="date" id="convictionTargetDate">
                 </label>
-                <button class="btn" id="convictionAddBtn">Add hold</button>
+                <button class="btn" id="convictionAddBtn">Add note</button>
               </div>
             </div>
             <div id="convictionStatus" style="font-size:11px;margin-top:6px;color:var(--text-2,#666);"></div>

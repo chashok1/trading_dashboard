@@ -1397,13 +1397,49 @@ async function loadSources() {
 // shift); default renders a <sup> for inline placement next to a value.
 // Returns '' if no data for that bucket yet (min_n=30 not met) or the
 // baseline itself isn't loaded — deliberately quiet rather than misleading.
+// Raw numeric delta (bucket's avg_fwd_20d minus the 'Baseline'/'All stocks'
+// row) — the same lookup _factorEdgeTag renders as a badge, extracted so the
+// buy-tradability score (2026-08-15, see _buyTradabilityScore below) can use
+// the actual measured number instead of a hand-picked weight. Returns null
+// if there's no data for that bucket yet or the baseline isn't loaded.
+function _factorEdgeDelta(factor, bucket) {
+  if (!bucket) return null;
+  const r = (state.factorScorecard || {})[factor + '|' + bucket];
+  const base = (state.factorScorecard || {})['Baseline|All stocks'];
+  if (!r || r.avg_fwd_20d == null || !base || base.avg_fwd_20d == null) return null;
+  return Number(r.avg_fwd_20d) - Number(base.avg_fwd_20d);
+}
+// 2026-08-15: win-rate delta (percentage points) — used by _buyTradabilityScore
+// INSTEAD of _factorEdgeDelta's mean. User: "IV can be high while price is
+// going up or it can cause stock to go down — did you consider both facts?"
+// Checked directly against drv_factor_snapshot: elevated/extreme IV's mean
+// forward return (+1.7/+2.0%) is real but heavily right-tail-skewed — median
+// is only +0.6/+0.9% (well under the mean), and Extreme IV carries the
+// WORST downside tail of any IV bucket (15.8% of 20-day windows land below
+// -10%, vs 11.6% for Low IV). The mean alone hides that IV is a two-sided
+// dispersion signal (bigger moves either way), not a clean directional one.
+// Win rate (just: did it end up positive at all) is far less distorted by a
+// few huge winners, so it's the more honest "did this typically work"
+// measure. Cross-checked RSI/RVOL the same way — both hold up fine (RSI
+// oversold: median 2.72 close to its 3.69 mean, LOWER downside-tail risk
+// than neutral/overbought; RVOL high+up-day: median near zero, HIGHEST
+// downside-tail risk, confirming the existing "buying climax" caution) — so
+// only IV's contribution actually needed correcting, not the other two.
+function _factorWinRateDelta(factor, bucket) {
+  if (!bucket) return null;
+  const r = (state.factorScorecard || {})[factor + '|' + bucket];
+  const base = (state.factorScorecard || {})['Baseline|All stocks'];
+  if (!r || r.win_rate == null || !base || base.win_rate == null) return null;
+  return (Number(r.win_rate) - Number(base.win_rate)) * 100; // fraction -> pp
+}
+
 function _factorEdgeTag(factor, bucket, standalone) {
   const r = (state.factorScorecard || {})[factor + '|' + bucket];
   const base = (state.factorScorecard || {})['Baseline|All stocks'];
-  if (!r || r.avg_fwd_20d == null || !base || base.avg_fwd_20d == null) return '';
+  const delta = _factorEdgeDelta(factor, bucket);
+  if (delta == null) return '';
   const e = Number(r.avg_fwd_20d);
   const baseAvg = Number(base.avg_fwd_20d);
-  const delta = e - baseAvg;
   // Suppress near-zero deltas (rounds to "0.0%") instead of showing a tag
   // that carries no signal — e.g. RSI's "Neutral" bucket is ~95% of rows on
   // a given day and sits within 0.03pp of baseline, so showing it on almost
@@ -1443,6 +1479,17 @@ function _ivBucket(ivPct) {
   if (v >= 70) return 'Elevated (70-90)';
   if (v <= 30) return 'Low (<=30)';
   return 'Mid (30-70)';
+}
+// 2026-08-15: mirrors etl/compute_factor_outcomes.py's rvol_bucket CASE
+// exactly (same "same bucket the scorecard was computed on" contract as
+// _rsiBucket/_ivBucket above) — used by _buyTradabilityScore.
+function _rvolBucket(rvol, pctChange) {
+  if (rvol == null) return null;
+  const hi = state.vlmRvolAvoidThreshold != null ? state.vlmRvolAvoidThreshold : 1.5;
+  const rv = Number(rvol);
+  if (rv >= hi && pctChange != null && Number(pctChange) > 0) return 'High RVOL + up day';
+  if (rv >= hi && pctChange != null && Number(pctChange) < 0) return 'High RVOL + down day';
+  return 'Normal/low RVOL';
 }
 
 // Resolve the buy/sell side for a fired rule ID via actions.js (single source
@@ -3015,18 +3062,23 @@ function _finalCallHtml(row) {
   // so a shaky sell doesn't headline with the same visual weight as a real one.
   var colorCls = (fcDisp.colorCls || 'act-neutral') + (isLowConf ? '-tint' : '-fill');
   // 2026-08-15: LT conflict — a SELL-side Final Call on a symbol with an
-  // active conviction hold. User: "I need stronger color change... hard to
+  // active conviction HOLD note, OR a BUY-side Final Call on a symbol with
+  // an active conviction AVOID note ("don't buy" — mirrors HOLD the other
+  // direction, User: "if I have a note saying don't buy, it should do the
+  // same for Buy actions"). User: "I need stronger color change... hard to
   // see the change" (the plain 🔭 icon in the SYMBOL cell wasn't loud enough
-  // on a SELL ALL). A thick purple ring around the badge, on top of whatever
-  // red/pink the sell action already uses, plus a 🔭 next to the confidence
-  // text (High/Gate/Mixed) — annotation only, the underlying action/color is
-  // untouched, this is a visual overlay. (Tried a separate pill + sub-line
-  // first; user asked to drop those and fold the icon into the confidence
-  // slot instead.)
-  var ltConflict = !!row.conviction_hold && fc.side === 'sell';
+  // on a SELL ALL). A thick ring around the badge (purple for HOLD, amber for
+  // AVOID), on top of whatever color the action already uses, plus the
+  // direction icon next to the confidence text (High/Gate/Mixed) —
+  // annotation only, the underlying action/color is untouched, this is a
+  // visual overlay. (Tried a separate pill + sub-line first; user asked to
+  // drop those and fold the icon into the confidence slot instead.)
+  var ltAvoid = row.conviction_direction === 'AVOID';
+  var ltConflict = !!row.conviction_hold && fc.side === (ltAvoid ? 'buy' : 'sell');
   if (ltConflict) {
-    var ltIcon = '<span title="Long-term conviction hold on file — '
-      + escapeHtml(row.conviction_note || '') + '\n\nConflicts with this SELL/REDUCE signal.">🔭</span>';
+    var ltIcon = '<span title="Long-term conviction ' + (ltAvoid ? 'avoid' : 'hold') + ' on file — '
+      + escapeHtml(row.conviction_note || '') + '\n\nConflicts with this '
+      + (ltAvoid ? 'BUY/ADD/INCREASE' : 'SELL/REDUCE') + ' signal.">' + (ltAvoid ? '🚫' : '🔭') + '</span>';
     badgeHtml = badgeHtml ? badgeHtml + ' ' + ltIcon : ltIcon;
   }
   // SA (SELL ALL) / BM (BUY MORE) match the HEDGEYE panel's red/green exactly;
@@ -3035,7 +3087,7 @@ function _finalCallHtml(row) {
                     : fcDisp.code === 'SA' ? 'background:#d4537e;'
                     : fcDisp.code === 'BM' ? 'background:#1d9e75;'
                     : '';
-  if (ltConflict) hedgeyeStyle += 'box-shadow:0 0 0 3px #7c3aed;';
+  if (ltConflict) hedgeyeStyle += 'box-shadow:0 0 0 3px ' + (ltAvoid ? '#b45309' : '#7c3aed') + ';';
   var lowConfSub = isLowConf
     ? '<div style="font-size:8px;font-weight:700;color:#b45309;letter-spacing:0.3px;text-align:center;margin-top:3px;" title="Sell evidence comes only from rules with a demonstrated negative historical edge — cross-check before acting">LOW CONF</div>' : '';
   // TASK_119: STOP pill — held position that just crossed below its Trade
@@ -3086,11 +3138,20 @@ function _finalCallHtml(row) {
 //                (fc.side === 'sell' AND held_today;
 //                 low_confidence rows are never "credible" — they were
 //                 already routed to Bottom above this check)
-//   Tier 2     — BUYs that passed the technical gate  → sub-ranked by
-//                (fc.side === 'buy', not watchlisted)   agreement (2a/2b/2c,
-//                                                        see _buyAgreementSubTier),
-//                                                        dollar-weighted edge
-//                                                        desc within each
+//   Tier 2     — BUYs that passed the technical gate  → one flat ranking by
+//                (fc.side === 'buy', not watchlisted)   _buyTradabilityScore
+//                                                        (2026-08-15 — LRR
+//                                                        proximity/RSI/IV/
+//                                                        RVOL edges, agreement
+//                                                        folded in as a small
+//                                                        bonus, not the outer
+//                                                        tier it used to be —
+//                                                        v_agreement_scorecard
+//                                                        has zero rows, so
+//                                                        "agreement beats
+//                                                        entry quality" was
+//                                                        never validated),
+//                                                        dollar desc tiebreak
 //   Tier 3     — HOLD / mixed / no-action              → dollar-weighted edge desc
 //   Watchlist  — gated unheld ADD/BMN rows, Technical  → collapsed band, dollar-weighted
 //                not entry-ripe (see _buyNoiseGated)     edge desc inside; below Tier 3,
@@ -3159,6 +3220,237 @@ function _buyAgreementSubTier(row) {
   if (buyVotes === 3) return 2;                       // 2a
   if (buyVotes === 2 && !anySell) return 1;            // 2b
   return 0;                                            // 2c
+}
+
+// ── Buy Tradability Score (2026-08-15) ──────────────────────────────────
+// "Bring the most tradable stock to the top" of the BUY tier — ranks rows
+// WITHIN their existing 2a/2b/2c agreement group (_buyAgreementSubTier
+// above stays the primary grouping) by how clean the entry looks right
+// now, replacing the plain dollar-weighted tiebreak _computePriority used
+// there before. Works unchanged inside Trade Mode too — Trade Mode only
+// filters which rows are shown (_isTradeModeQualifyingBuy), it has no sort
+// of its own, so this becomes the Trade Mode ranking automatically.
+//
+// Weights come from this system's OWN measured history (state.factorScorecard,
+// same v_factor_scorecard data the RSI/IV grid-cell edge tags already use),
+// not hand-picked point values — checked empirically before building rather
+// than assumed from textbook TA, because several textbook assumptions turned
+// out backwards in this system's actual outcome history:
+//   - LRR proximity dominates: the single best-proven BUY composite rule in
+//     this system's history (52-BS-BRR, "Buy Strong at the bottom of the
+//     Risk Range") is pure LRR proximity, edge_20d +1.94% vs a ~1.4%
+//     baseline (n=27,477) — roughly double the edge of the "kitchen sink"
+//     rule that ANDs RSI+MACD+Volume+IV/HV+IV-at-BRR together (+0.80% on a
+//     comparable n). Stacking required conditions measurably DILUTES edge
+//     in this system's own history, so this score is a weighted SUM, never
+//     an AND-gate.
+//   - RSI oversold outperforms "neutral" (62% win rate vs neutral's ~52%,
+//     baseline 49%) — the opposite of "avoid extremes". Median forward
+//     return (2.72%) sits close to its mean (3.69%) and its downside tail
+//     (10.7% of windows below -10%) is the LOWEST of the three RSI
+//     buckets — a genuinely robust signal, not a mean-driven fluke.
+//   - High RVOL + up day is the WEAKEST RVOL bucket on win rate (49%, flat
+//     vs baseline) AND has the HIGHEST downside tail risk (15.3% below
+//     -10%) of the three RVOL buckets — confirms the existing "buying
+//     climax" warning in _signalReasons is real, not just a mean artifact.
+//   - IV: originally scored via the cross-sectional IV-percentile bucket
+//     (win rate — see git history), but that mixes structurally-high-IV
+//     names (nothing unusual happening) with names that just had a genuine
+//     event-driven spike, since it only says where a stock ranks among ALL
+//     stocks, not against its OWN normal range. User: "IV can be high
+//     while price is going up or it can cause stock to go down." 2026-08-15:
+//     replaced with `row.iv_ratio` — the user's own ThinkOrSwim IV-spike/
+//     normalize study (4-day-smoothed IV vs a dynamic 63-day trailing
+//     average of that SAME symbol's own IV), exported as a TOSD custom
+//     column (`A_IVRatio` -> hist_td.iv_ratio -> drv_technicals.iv_ratio,
+//     see db/baseline.sql's 2026-08-15 migration). Self-relative instead
+//     of cross-sectional — see _ivRatioScore below.
+// MACDH and PVV are deliberately NOT scored: MACDH's two buckets sit within
+// ~0.2pp of each other in the factor scorecard (not a reliable signal), and
+// PVV is explicitly "Informational v1" in docs/pvv_logic.md with no
+// outcome-tracking table yet. Same for IV/HV discount — no factor-scorecard
+// entry exists for it yet, so it's excluded rather than guessed.
+// Score thresholds (>1.15 spiked, <1 below its own baseline) mirror the
+// user's own script's RED/GREEN/YELLOW label logic exactly — not re-derived.
+function _ivRatioScore(ratio) {
+  if (ratio == null) return 0;
+  const r = Number(ratio);
+  if (r > 1.15) return -3;  // spiked -- "the red line", be careful
+  if (r < 1) return 3;      // below its own 63-day baseline -- favorable
+  return 0;                 // 1.00-1.15 -- elevated but not spiked, neutral
+}
+function _lrrProximityScore(row) {
+  if (row._rrPos == null) return 0;
+  // Full credit at/near LRR (0%), tapering linearly to 0 by 40% of the way
+  // to TRR — mirrors 52-BS-BRR's own condition (near the Risk Range bottom).
+  // "about to go up or going up" (pct_change >= 0) adds a partial bonus on
+  // top; still credits "at LRR, flat" since 52-BS-BRR's proven edge is keyed
+  // on the LRR position itself, not today's tick direction.
+  const pos = Number(row._rrPos);
+  const base = Math.max(0, 1 - pos / 40);
+  const turningUp = row.pct_change != null && Number(row.pct_change) >= 0;
+  return base * (turningUp ? 1 : 0.7);
+}
+function _buyTradabilityScore(row) {
+  // Technical bracket: rr_action (the QS code) already blends Trade/Trend/
+  // BB-streak/MACDH per docs/drv_cat_atomic_input_logic.md. Flat credit for
+  // any entry-ripe code (BS/BM/BMN) rather than tiering BS > BM > BMN —
+  // v_final_call_scorecard shows BS/high-confidence at a NEGATIVE edge on a
+  // small sample (n=64), which doesn't support ranking BS above BM/BMN.
+  const tech = (row.rr_action || '').toUpperCase();
+  const techPts = _ENTRY_RIPE_TECH.indexOf(tech) !== -1 ? 1 : 0;
+  const lrrPts = _lrrProximityScore(row);
+  // 2026-08-15: win-rate delta (pp), not mean-return delta — see
+  // _factorWinRateDelta's header comment for why (IV's mean hides real
+  // downside-tail risk that win rate doesn't).
+  const rsiDelta  = _factorWinRateDelta('RSI', _rsiBucket(row.rsi));
+  const rvolDelta = _factorWinRateDelta('RVOL + direction', _rvolBucket(row.rvol, row.pct_change));
+  // Each delta is a measured win-rate edge in percentage points (typically
+  // -3..+13ish, RSI oversold's ~13pp is the outlier) — clamp so one
+  // outsized bucket can't swamp LRR proximity (the dominant term below);
+  // missing data (null, not enough history yet) contributes 0, never a
+  // penalty.
+  const clamp = v => v == null ? 0 : Math.max(-3, Math.min(6, v));
+  const factorPts = clamp(rsiDelta) + _ivRatioScore(row.iv_ratio) + clamp(rvolDelta);
+  // 2026-08-15: agreement (2a/2b/2c — Technical+Sources+MACRO 3-way, see
+  // _buyAgreementSubTier) folded in as a small additive bonus instead of the
+  // outer sort tier it used to be in _computePriority. User: "I need to
+  // trade the best possible stock, I have limited capital" — a hard tier
+  // wall could bury a genuinely clean entry (high LRR/RSI/IV/RVOL score)
+  // below a mediocre one that merely had 3 sources nominally agree.
+  // Checked before folding it in: v_agreement_scorecard has ZERO rows in
+  // this system — "3-way agreement beats partial agreement" was never
+  // actually validated, unlike every other term in this score. Still worth
+  // a modest nudge (corroboration isn't nothing), just not a wall.
+  const agreementPts = _buyAgreementSubTier(row) * 1.5; // 0, 1.5, or 3 (2c/2b/2a)
+  // LRR proximity weighted far above everything else (matches its outsized
+  // proven edge vs any combination of the other factors, see 52-BS-BRR note
+  // above); technical bracket and agreement are smaller flat bonuses; factor
+  // deltas are the finest-grained tiebreak. Range roughly [-9, +30].
+  return lrrPts * 10 + techPts * 2 + agreementPts + factorPts;
+}
+// Structured breakdown for the tradability badge's popover (2026-08-15:
+// "make it rich and use some colors" — switched from a native title=
+// tooltip to a real hover popover, same #sourcePop/_showDataPop mechanism
+// as the Vol/IV/Macro/PVV/Signal cells). Each item is colored by whether
+// it's actually helping the score: green = favorable/proven-positive,
+// amber = mixed/moderate, grey = neutral or no data. Colors reflect the
+// SAME measured deltas the score itself is built from — never decorative.
+// Threshold at 1.5pp win rate (not 0) — a win-rate delta under that is
+// noise at these sample sizes, not a real tilt either way.
+function _tradabilityDeltaColor(d) {
+  if (d == null) return '#94a3b8';
+  if (d > 1.5) return '#16a34a';
+  if (d < -1.5) return '#dc2626';
+  return '#94a3b8';
+}
+function _tradabilityBreakdown(row) {
+  const items = [];
+  const fmtDelta = d => (d >= 0 ? '+' : '') + d.toFixed(1) + 'pp win rate vs baseline';
+
+  const pos = row._rrPos;
+  items.push({
+    label: 'Risk Range',
+    detail: pos != null
+      ? pos + '% up from LRR' + (pos <= 15 ? ' — near LRR, the strongest proven buy signal (52-BS-BRR)' : pos <= 40 ? ' — reasonably close to LRR' : ' — well above LRR')
+      : 'no LRR/TRR data',
+    color: pos == null ? '#94a3b8' : pos <= 15 ? '#16a34a' : pos <= 40 ? '#d97706' : '#94a3b8',
+  });
+
+  const tech = (row.rr_action || '').toUpperCase();
+  const techRipe = _ENTRY_RIPE_TECH.indexOf(tech) !== -1;
+  items.push({
+    label: 'Technical',
+    detail: tech ? (tech + (techRipe ? ' — entry-ripe' : '')) : 'no Technical (QS) code',
+    color: techRipe ? '#16a34a' : '#94a3b8',
+  });
+
+  const rsiB = _rsiBucket(row.rsi);
+  const rsiD = _factorWinRateDelta('RSI', rsiB);
+  items.push({
+    label: 'RSI',
+    detail: (row.rsi != null ? Number(row.rsi).toFixed(1) + ' — ' : '') + (rsiB || 'no data') + (rsiD != null ? ' (' + fmtDelta(rsiD) + ')' : ''),
+    color: _tradabilityDeltaColor(rsiD),
+  });
+
+  // IV: self-relative ratio (user's own ThinkOrSwim study — this symbol's
+  // own IV vs its own 63-day baseline), not the cross-sectional percentile
+  // bucket — see _ivRatioScore's comment for why.
+  const ivRatio = row.iv_ratio != null ? Number(row.iv_ratio) : null;
+  items.push({
+    label: 'IV',
+    detail: ivRatio == null ? 'no data'
+      : ivRatio.toFixed(2) + 'x its own 63-day average'
+        + (ivRatio > 1.15 ? ' — spiked, above the 1.15x red line, be careful'
+           : ivRatio < 1 ? ' — below its own normal range'
+           : ' — elevated but not yet spiked'),
+    color: ivRatio == null ? '#94a3b8' : ivRatio > 1.15 ? '#dc2626' : ivRatio < 1 ? '#16a34a' : '#d97706',
+  });
+
+  const rvolB = _rvolBucket(row.rvol, row.pct_change);
+  const rvolD = _factorWinRateDelta('RVOL + direction', rvolB);
+  items.push({
+    label: 'Volume',
+    detail: (rvolB || 'no data') + (rvolD != null ? ' (' + fmtDelta(rvolD) + ')' : ''),
+    color: _tradabilityDeltaColor(rvolD),
+  });
+
+  const subtier = _buyAgreementSubTier(row);
+  items.push({
+    label: 'Agreement',
+    detail: subtier === 2 ? '3-way — Technical + Sources + MACRO all agree'
+          : subtier === 1 ? 'Partial — 2 of 3 agree, none opposing'
+          : 'Weak/solo — not independently corroborated',
+    color: subtier === 2 ? '#16a34a' : subtier === 1 ? '#d97706' : '#94a3b8',
+  });
+
+  return items;
+}
+// Rich colored popover HTML — same .source-pop/.sp-title convention as
+// _buildSignalPopHtml/_buildPvvPopHtml above, shown via #sourcePop.
+function _buildTradabilityPopHtml(row) {
+  const sym = row.tos_symbol || '—';
+  const score = _buyTradabilityScore(row);
+  const scoreColor = score >= 15 ? '#16a34a' : score >= _TRADABILITY_BADGE_MIN ? '#d97706' : '#94a3b8';
+  let h = `<div class="sp-title">\u{1F3AF} ${escapeHtml(sym)} &mdash; Tradability `
+        + `<span style="color:${scoreColor};">${score.toFixed(1)}</span></div>`;
+  h += `<div style="color:#94a3b8;font-size:9px;margin:-2px 0 6px;">Weighted by this system's own measured trading history — Risk Range position dominates, everything else is a smaller nudge.</div>`;
+  h += '<table>';
+  _tradabilityBreakdown(row).forEach(it => {
+    h += `<tr><td style="padding:2px 8px 2px 0;color:${it.color};font-weight:700;vertical-align:top;white-space:nowrap;font-size:10px;">${escapeHtml(it.label)}</td>`
+       + `<td style="padding:2px 0;font-size:10px;color:#374151;line-height:1.4;">${escapeHtml(it.detail)}</td></tr>`;
+  });
+  h += '</table>';
+  return h;
+}
+// Minimum score to show the badge. Rescaled 2026-08-15 when the factor
+// terms switched from mean-return delta to win-rate delta (wider range,
+// see _factorWinRateDelta) — re-checked against the same live data
+// (2026-08-14 anchor, 103 buy-side rows): new distribution is max 18.95,
+// mean 4.96, median 3.90, top-10% >= 10.00. Set to 10 (top ~10%, roughly
+// the same selectivity as the pre-rescale threshold of 6) rather than
+// re-guessing from scratch. Revisit again after a few more weeks of live
+// data.
+const _TRADABILITY_BADGE_MIN = 10;
+// 2026-08-15: every BUY row gets something here now, not just ones clearing
+// the threshold — the 🎯 icon at/above _TRADABILITY_BADGE_MIN, the raw
+// numeric score (muted, smaller) below it. User: "display the tradability
+// score instead of icon when it doesn't meet the min score" — so a
+// below-threshold row is still visible/comparable at a glance instead of
+// disappearing, and the same rich popover works either way.
+function _tradabilityBadge(row) {
+  const fc = finalCall(row);
+  if (fc.side !== 'buy') return '';
+  const score = _buyTradabilityScore(row);
+  const meetsMin = score >= _TRADABILITY_BADGE_MIN;
+  const cls = 'tradability-badge' + (meetsMin ? '' : ' tradability-badge-num');
+  const content = meetsMin ? '\u{1F3AF}' : score.toFixed(1);
+  // title="" (empty, not omitted) suppresses the SYMBOL cell's own
+  // ancestor title="...Click for chart" from bleeding through on hover —
+  // without it the browser shows that native tooltip layered on top of
+  // this span's rich data-tradabilitypop popover, since this span has no
+  // title of its own to take precedence.
+  return '<span class="' + cls + '" data-tradabilitypop="' + escapeHtml(row.tos_symbol) + '" title="">' + content + '</span>';
 }
 
 // Fired composite rule ids from rules_engine_fires (same parsing as
@@ -3269,12 +3561,10 @@ const _TIER_WATCHLIST = 0;     // Watchlist band: gated unheld ADD/BMN rows, dol
                                 // well clear of Tier 3 (1e4 ± ~150) and Bottom (-1e6 ± ~20) so
                                 // gated rows stay contiguous in the sorted list with no overlap.
 const _TIER_BOTTOM    = -1e6;  // Bottom: low_confidence-only sells / infeasible / suppressed
-// Tier 2 sub-tier offsets (2a > 2b > 2c), each internally ranked by
-// dollar-weighted edge (unscaled — realistically well under a few hundred,
-// same scale used unscaled elsewhere e.g. the Watchlist band) — comfortably
-// clear of the 2000-wide gap between sub-tiers and the 9.9e7-wide gap up to
-// Tier 1 / down to Tier 3.
-const _BUY_SUBTIER_STEP = 2000;
+// _BUY_SUBTIER_STEP (2a/2b/2c as a hard outer tier) retired 2026-08-15 —
+// agreement is now a small additive term inside _buyTradabilityScore
+// instead of a wall that could bury a clean entry below a merely-agreed-on
+// mediocre one. See _buyTradabilityScore's header comment.
 
 function _computePriority(row) {
   // Tier 0 (TASK_119): held + trading below stop — position $ desc, always
@@ -3310,9 +3600,19 @@ function _computePriority(row) {
   // TASK_122 Tier 2: a BUY that passed the technical gate (never watchlisted
   // — held buys are never gated; unheld buys only reach here when
   // _buyNoiseGated already said no), sub-ranked 2a/2b/2c by how many of
-  // Technical/Sources/MACRO agree.
+  // Technical/Sources/MACRO agree. 2026-08-15: within each 2a/2b/2c group,
+  // ranked by _buyTradabilityScore (how clean the entry looks right now —
+  // see that function's header comment) instead of plain dollar size —
+  // "bring the most tradable stock to the top". 2026-08-15: agreement is no
+  // longer an outer tier here either — folded into _buyTradabilityScore
+  // itself as a small bonus (see that function), so this is one flat
+  // ranking across every buy, not agreement-group-then-tradability. Dollar-
+  // weighted edge drops to a *0.01 tiebreak, only decisive on an exact
+  // tradability-score tie (score range ~[-3,+21] * 10 vs dollarWeightedScore's
+  // own "well under a few hundred" range, so tradability always wins short
+  // of a tie).
   if (fc.side === 'buy') {
-    return _TIER_BUY + _buyAgreementSubTier(row) * _BUY_SUBTIER_STEP + _dollarWeightedScore(row);
+    return _TIER_BUY + _buyTradabilityScore(row) * 10 + _dollarWeightedScore(row) * 0.01;
   }
 
   // TASK_122 Tier 3: HOLD / mixed / no-action — dollar-weighted edge desc.
@@ -3748,10 +4048,16 @@ function initSourcePopover() {
         const sig = _signalReasons(r, finalCall(r).side);
         _showDataPop(signalEl, _buildSignalPopHtml(r.tos_symbol, sig, isWarn));
       }
+      return;
+    }
+    const tradEl = e.target.closest('[data-tradabilitypop]');
+    if (tradEl) {
+      const r = state.rows.find(x => x.tos_symbol === tradEl.dataset.tradabilitypop);
+      if (r) _showDataPop(tradEl, _buildTradabilityPopHtml(r));
     }
   };
   const _onOut = (e) => {
-    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop],[data-macropop],[data-scorespop],[data-notespop],[data-pvvpop],[data-signalpop]')) return;
+    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop],[data-macropop],[data-scorespop],[data-notespop],[data-pvvpop],[data-signalpop],[data-tradabilitypop]')) return;
     hideSourcePop();
   };
   body.addEventListener('mouseover', _onOver);
@@ -4204,13 +4510,18 @@ function _buildRowEl(r) {
     const isActed = r._rowActed || _ua === 'DONE' || _ua === 'SKIPPED' || _ua === 'OVERRIDDEN';
     if (isActed) tr.classList.add('row-acted');
     if (r.stop_breached) tr.classList.add('row-stop-breach');
-    if (r.conviction_hold && r._fc_side === 'sell') tr.classList.add('row-lt-conflict');
+    if (r.conviction_hold && r.conviction_direction === 'AVOID' && r._fc_side === 'buy') {
+      tr.classList.add('row-lt-avoid-conflict');
+    } else if (r.conviction_hold && r.conviction_direction !== 'AVOID' && r._fc_side === 'sell') {
+      tr.classList.add('row-lt-conflict');
+    }
     tr.dataset.sym = r.tos_symbol;
 
     const pctCls = r.pct_change != null ? (Number(r.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : '';
     const pctStr = r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : '';
     const priceStr = r.last_price != null ? fmtUsd(r.last_price) : '';
     const hitRateBadge = state.filters.trade_mode ? _sourceHitRateBadge(r) : '';
+    const tradabilityBadge = _tradabilityBadge(r);
     const candleHtml = window.mtTip?.candleSvg(r.open_price, r.high_price, r.low_price, r.last_price) || '';
     // Task 4: intraday marker — shown only when quote is fresher than EOD anchor
     //         AND export_time falls within regular market hours (0930–1559 ET).
@@ -4283,8 +4594,8 @@ function _buildRowEl(r) {
     const _hReason = _hiddenReason(r);
     tr.innerHTML = `
       <td data-col="lt" style="padding:4px 2px; text-align:center;">${r.conviction_hold
-          ? `<span class="lt-quick-btn lt-scope-btn lt-scope-active" data-sym="${escapeHtml(r.tos_symbol)}" title="Long-term conviction hold — ${escapeHtml(r.conviction_note || '')}\n\nClick to view/close.">🔭</span>`
-          : `<span class="lt-quick-btn lt-scope-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Add a long-term conviction hold (analyst call note) — a reminder only, badges this row so a SELL/REDUCE signal doesn't get mistaken for a reason to abandon the thesis. Doesn't suppress or change the signal itself.">🔭</span>`}
+          ? `<span class="lt-quick-btn lt-scope-btn lt-scope-active" data-sym="${escapeHtml(r.tos_symbol)}" title="Long-term conviction ${r.conviction_direction === 'AVOID' ? 'avoid' : 'hold'} — ${escapeHtml(r.conviction_note || '')}\n\nClick to view/close.">${r.conviction_direction === 'AVOID' ? '🚫' : '🔭'}</span>`
+          : `<span class="lt-quick-btn lt-scope-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Add a long-term conviction note (analyst call note) — a reminder only. Hold badges this row so a SELL/REDUCE signal doesn't get mistaken for a reason to abandon the thesis; Avoid badges it so a BUY/ADD/INCREASE signal doesn't get mistaken for a reason to chase it. Doesn't suppress or change the signal itself.">🔭</span>`}
       </td>
       <td data-col="bulk" style="padding:4px 6px; text-align:center;">
         <input type="checkbox" class="row-check" data-sym="${escapeHtml(r.tos_symbol)}"${isChecked ? ' checked' : ''}>
@@ -4310,7 +4621,7 @@ function _buildRowEl(r) {
           <span class="${pctCls}" style="font-weight:700;">${pctStr}</span>
         </div>
         ${intradayTag ? `<div style="text-align:right;">${intradayTag}</div>` : ''}
-        ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
+        ${priceStr ? `<div style="font-size:10px;color:#94a3b8;text-align:center;">${priceStr}</div>` : ''}
       </td>
       <td data-col="sym" data-sym-cell="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer; text-align:center;" title="${r.rr_name && r.rr_name !== r.tos_symbol ? escapeHtml(r.tos_symbol) + ' · ' : ''}Click for chart">
         <strong class="tv-sym-link" data-notespop="${escapeHtml(r.tos_symbol)}" style="font-size:11px;color:${_symOutlookColor(r)};" title="Hover for comments">${escapeHtml(r.rr_name || r.tos_symbol || '')}</strong>
@@ -4318,6 +4629,7 @@ function _buildRowEl(r) {
           ? '<span class="new-pill" title="Winning source data just landed for this date — Technical isn\'t entry-ripe yet, so it waits here rather than promoting to Tier 1">NEW</span>'
           : ''}
         ${hitRateBadge ? '<div style="margin-top:1px;">' + hitRateBadge + '</div>' : ''}
+        ${tradabilityBadge ? '<div style="margin-top:1px;">' + tradabilityBadge + '</div>' : ''}
       </td>
       <td data-col="agree3" style="padding:6px 4px; text-align:center;">${(() => {
         const dir = _agreementDir(r);
@@ -5271,6 +5583,15 @@ async function dismissUserAction() {
 // is currently open on. At most one ACTIVE hold per symbol (DB-enforced).
 let _convictionActiveId = null;
 
+// 2026-08-15: icon per direction — 🔭 Hold (don't sell), 🚫 Avoid (don't buy).
+// Shared by the grid badge, the drilldown modal, and the quick-add popover.
+function _convictionDirIcon(direction) {
+  return direction === 'AVOID' ? '🚫' : '🔭';
+}
+function _convictionDirLabel(direction) {
+  return direction === 'AVOID' ? 'Avoid — don\'t buy' : 'Hold — don\'t sell';
+}
+
 async function loadConviction(symbol) {
   _convictionActiveId = null;
   $('convictionStatus').textContent = '';
@@ -5283,12 +5604,14 @@ async function loadConviction(symbol) {
     _convictionActiveId = active.id;
     const added = (active.added_at || '').toString().slice(0, 10);
     const tgt = active.target_date ? ' · target ' + active.target_date : '';
-    $('convictionActiveText').textContent = `Added ${added}${tgt} — ${active.thesis_note}`;
+    $('convictionActiveText').textContent =
+      `${_convictionDirIcon(active.direction)} ${_convictionDirLabel(active.direction)} — added ${added}${tgt} — ${active.thesis_note}`;
     $('convictionActive').style.display = '';
     $('convictionAdd').style.display = 'none';
   } else {
     $('convictionActive').style.display = 'none';
     $('convictionAdd').style.display = '';
+    $('convictionDirection').value = 'HOLD';
     $('convictionThesis').value = '';
     $('convictionTargetDate').value = '';
   }
@@ -5308,6 +5631,7 @@ async function addConvictionHold() {
         tos_symbol: state.current.tos_symbol,
         thesis_note,
         target_date: $('convictionTargetDate').value || null,
+        direction: $('convictionDirection').value || 'HOLD',
       }),
     });
     $('convictionStatus').textContent = 'Added.';
@@ -5389,8 +5713,10 @@ function _convictionPopHtml(sym, active) {
   if (active) {
     const added = (active.added_at || '').toString().slice(0, 10);
     const tgt = active.target_date ? ' &middot; target ' + escapeHtml(active.target_date) : '';
+    const dirIcon = _convictionDirIcon(active.direction);
+    const dirLabel = _convictionDirLabel(active.direction);
     return `
-      <div class="cp-title">&#128301; ${escapeHtml(sym)} &mdash; Long-Term Hold</div>
+      <div class="cp-title">${dirIcon} ${escapeHtml(sym)} &mdash; ${escapeHtml(dirLabel)}</div>
       <div style="margin-bottom:7px;">Added ${escapeHtml(added)}${tgt}<br>${escapeHtml(active.thesis_note)}</div>
       <select id="cpCloseStatus" style="width:100%;font:inherit;padding:4px;border:1px solid #e2e8f0;border-radius:5px;margin-bottom:6px;">
         <option value="CLOSED_WIN">Close as: Won — thesis played out</option>
@@ -5400,18 +5726,22 @@ function _convictionPopHtml(sym, active) {
       <input type="text" id="cpCloseNote" placeholder="close note (optional)…">
       <div class="cp-actions">
         <button class="btn" id="cpDeleteBtn" title="Hard-delete this entry (not reversible) — use Close instead to keep it as history" style="color:#dc2626;border-color:#dc2626;">Delete</button>
-        <button class="btn" id="cpCloseBtn">Close hold</button>
+        <button class="btn" id="cpCloseBtn">Close</button>
       </div>
       <div class="cp-status" id="cpStatus"></div>`;
   }
   return `
-    <div class="cp-title">&#128301; ${escapeHtml(sym)} &mdash; Add Long-Term Hold</div>
+    <div class="cp-title">&#128301; ${escapeHtml(sym)} &mdash; Add Long-Term Note</div>
+    <select id="cpDirection" style="width:100%;font:inherit;padding:4px;border:1px solid #e2e8f0;border-radius:5px;margin-bottom:6px;" title="Hold: don't sell on short-term noise, badges SELL/REDUCE. Avoid: don't chase a BUY signal, badges BUY/ADD/INCREASE.">
+      <option value="HOLD">🔭 Hold — don't sell</option>
+      <option value="AVOID">🚫 Avoid — don't buy</option>
+    </select>
     <textarea id="cpThesis" placeholder="e.g. HE Call: strong Q3 setup, accumulate on weakness…"></textarea>
     <label style="display:flex;align-items:center;gap:6px;color:#64748b;margin-bottom:6px;">Target date
       <input type="date" id="cpTargetDate">
     </label>
     <div class="cp-actions">
-      <button class="btn" id="cpAddBtn">Add hold</button>
+      <button class="btn" id="cpAddBtn">Add note</button>
     </div>
     <div class="cp-status" id="cpStatus"></div>`;
 }
@@ -5429,6 +5759,7 @@ function _wireConvictionPop(sym) {
           tos_symbol: sym,
           thesis_note: thesis,
           target_date: document.getElementById('cpTargetDate').value || null,
+          direction: document.getElementById('cpDirection').value || 'HOLD',
         }),
       });
       closeConvictionPop();
@@ -5480,7 +5811,7 @@ async function openConvictionPop(sym, anchorEl) {
     return;
   }
   _cpSym = sym;
-  pop.innerHTML = `<div class="cp-title">&#128301; ${escapeHtml(sym)} &mdash; Long-Term Hold</div><div class="cp-status">Loading&hellip;</div>`;
+  pop.innerHTML = `<div class="cp-title">&#128301; ${escapeHtml(sym)} &mdash; Long-Term Note</div><div class="cp-status">Loading&hellip;</div>`;
   pop.style.display = 'block';
   _positionConvictionPop(pop, anchorEl);
 

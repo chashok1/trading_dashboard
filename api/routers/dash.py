@@ -1065,7 +1065,7 @@ def get_actionable(
                mt.iv_percentile, mt.hv_percentile, mt.range_compression, mt.d_iv_to_hv,
                mt.volume, mt.vlm_projected,
                mt.a_macd_brr, mt.a_macdh_d_brr, mt.rsi,
-               mt.earnings_days, mt.d_vlt_caution,
+               mt.earnings_days, mt.d_vlt_caution, mt.iv_ratio,
                mo.pct_brr AS ma_pct_brr,
                dr.lrr, dr.mrr, dr.trr, dr.outlook AS rr_outlook,
                q.last_price, q.net_chng, q.pct_change, q.export_date, q.export_time, q.loaded_at,
@@ -1105,7 +1105,8 @@ def get_actionable(
                iichg.change_str AS iichg_desc,
                (cv.thesis_note IS NOT NULL) AS conviction_hold,
                cv.thesis_note AS conviction_note,
-               cv.target_date AS conviction_target_date
+               cv.target_date AS conviction_target_date,
+               cv.direction AS conviction_direction
         FROM drv_actionable a
         LEFT JOIN drv_tn_td_bb_rr rr
                ON rr.tos_symbol = a.tos_symbol AND rr.as_of_date = a.as_of_date
@@ -1136,7 +1137,7 @@ def get_actionable(
             -- grid was showing stale state right after an add). Same pattern
             -- as the user_action_log join above: query the live table here
             -- instead of waiting for the next derive cascade.
-            SELECT thesis_note, target_date
+            SELECT thesis_note, target_date, direction
             FROM ref_conviction_hold
             WHERE ref_conviction_hold.tos_symbol = a.tos_symbol
               AND ref_conviction_hold.status = 'ACTIVE'
@@ -2448,6 +2449,7 @@ def get_call_note(
 
 
 _CONVICTION_STATUSES = ("ACTIVE", "CLOSED_WIN", "CLOSED_LOSS", "EXPIRED")
+_CONVICTION_DIRECTIONS = ("HOLD", "AVOID")
 
 
 @router.get("/api/actionable/conviction-holds")
@@ -2472,7 +2474,7 @@ def get_conviction_holds(
         params["status"] = status_u
     sql = """
         SELECT id, tos_symbol, thesis_note, target_date, added_at,
-               status, closed_at, closed_note
+               status, closed_at, closed_note, direction
         FROM ref_conviction_hold
     """
     if where:
@@ -2492,33 +2494,38 @@ def get_conviction_holds(
 
 @router.post("/api/actionable/conviction-holds")
 def post_conviction_hold(payload: dict):
-    """Add a new long-term conviction hold. Manual entry only (no note_repo
-    auto-suggest yet). At most one ACTIVE hold per symbol — the partial
+    """Add a new long-term conviction note. Manual entry only (no note_repo
+    auto-suggest yet). At most one ACTIVE note per symbol — the partial
     unique index (ux_ref_conviction_hold_one_active) enforces it; close the
-    existing one first via PATCH."""
+    existing one first via PATCH. `direction` (2026-08-15): 'HOLD' (default)
+    = don't sell on short-term noise, badges SELL/REDUCE rows; 'AVOID' =
+    don't chase a BUY signal on this symbol, badges BUY/ADD/INCREASE rows."""
     sym = str(payload.get("tos_symbol") or "").upper().strip()
     thesis = str(payload.get("thesis_note") or "").strip()
     if not sym or not thesis:
         raise HTTPException(400, "tos_symbol and thesis_note are required")
     target_date = payload.get("target_date") or None
+    direction = str(payload.get("direction") or "HOLD").upper().strip()
+    if direction not in _CONVICTION_DIRECTIONS:
+        raise HTTPException(400, "invalid direction")
     with session_scope() as s:
         try:
             row = s.execute(text("""
-                INSERT INTO ref_conviction_hold (tos_symbol, thesis_note, target_date)
-                VALUES (:sym, :thesis, :tgt)
+                INSERT INTO ref_conviction_hold (tos_symbol, thesis_note, target_date, direction)
+                VALUES (:sym, :thesis, :tgt, :dir)
                 RETURNING id
-            """), {"sym": sym, "thesis": thesis, "tgt": target_date}).first()
+            """), {"sym": sym, "thesis": thesis, "tgt": target_date, "dir": direction}).first()
         except IntegrityError:
-            raise HTTPException(409, f"{sym} already has an active conviction hold — close it first")
+            raise HTTPException(409, f"{sym} already has an active conviction note — close it first")
     return {"ok": True, "id": row[0]}
 
 
 @router.patch("/api/actionable/conviction-holds/{hold_id}")
 def patch_conviction_hold(hold_id: int, payload: dict):
-    """Edit an active hold's thesis/target_date, and/or close it out
-    (status -> CLOSED_WIN/CLOSED_LOSS/EXPIRED, stamping closed_at). Reopening
-    to ACTIVE is allowed but will 409 if another ACTIVE hold already exists
-    for the symbol."""
+    """Edit an active note's thesis/target_date/direction, and/or close it
+    out (status -> CLOSED_WIN/CLOSED_LOSS/EXPIRED, stamping closed_at).
+    Reopening to ACTIVE is allowed but will 409 if another ACTIVE note
+    already exists for the symbol."""
     fields = []
     params: dict = {"id": hold_id}
     if "thesis_note" in payload:
@@ -2527,6 +2534,12 @@ def patch_conviction_hold(hold_id: int, payload: dict):
     if "target_date" in payload:
         fields.append("target_date = :tgt")
         params["tgt"] = payload["target_date"] or None
+    if "direction" in payload:
+        direction_u = str(payload["direction"]).upper().strip()
+        if direction_u not in _CONVICTION_DIRECTIONS:
+            raise HTTPException(400, "invalid direction")
+        fields.append("direction = :dir")
+        params["dir"] = direction_u
     if "status" in payload:
         status_u = str(payload["status"]).upper().strip()
         if status_u not in _CONVICTION_STATUSES:

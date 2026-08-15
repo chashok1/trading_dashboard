@@ -641,7 +641,8 @@ def _derive_technicals_impl(session: Session, as_of_date: date, run_id: int) -> 
             COALESCE(dr.hv_percentile, h.a_hv_percentile) AS hv_percentile,
             dr.range_compression, dr.d_iv_to_hv, dr.d_vlt_caution,
             h.a_trend_value, h.a_trade_value,
-            h.a_bb_top, h.a_bb_bottom, h.a_bb_streak
+            h.a_bb_top, h.a_bb_bottom, h.a_bb_streak,
+            h.iv_ratio
         FROM hist_td h
         LEFT JOIN drv_td dr
                ON dr.snapshot_date = h.snapshot_date
@@ -702,7 +703,8 @@ def _derive_technicals_impl(session: Session, as_of_date: date, run_id: int) -> 
             td.a_trend_value, td.a_trade_value,
             td.a_bb_top, td.a_bb_bottom, td.a_bb_streak,
             tw.tw_date, tw.a_macd_brr, tw.a_macdh_d_brr,
-            tw.earnings_days, tw.sma_20, tw.sma_50, tw.sma_200
+            tw.earnings_days, tw.sma_20, tw.sma_50, tw.sma_200,
+            td.iv_ratio
         FROM drv_symbols s
         LEFT JOIN _t_tech_td td ON td.tos_symbol=s.tos_symbol
         LEFT JOIN _t_tech_tw tw ON tw.tos_symbol=s.tos_symbol
@@ -724,7 +726,8 @@ def _derive_technicals_impl(session: Session, as_of_date: date, run_id: int) -> 
             b.a_bb_bottom, b.a_bb_streak,
             b.tw_date, b.a_macd_brr, b.a_macdh_d_brr, b.earnings_days,
             b.sma_20, b.sma_50, b.sma_200,
-            CAST(:run AS bigint) AS source_run_id
+            CAST(:run AS bigint) AS source_run_id,
+            b.iv_ratio
         FROM _t_tech_s1 a
         LEFT JOIN _t_tech_s2 b USING (tos_symbol)
     """), {"d": as_of_date, "run": run_id})

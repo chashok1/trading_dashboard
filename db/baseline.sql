@@ -7838,3 +7838,54 @@ CREATE TABLE IF NOT EXISTS ref_vlm_intraday_curve (
     n_obs            INTEGER NOT NULL,
     updated_at       TIMESTAMP NOT NULL DEFAULT now()
 );
+
+-- =====================================================
+-- 2026-08-15 -- Conviction-note direction (HOLD vs AVOID). User: "if I have
+-- a note saying don't buy, it should do the same for Buy actions" — mirrors
+-- the 2026-08-14 long-term hold ('HOLD': don't sell on short-term noise)
+-- with the opposite stance ('AVOID': don't chase a BUY signal on this
+-- symbol). Same table, same one-ACTIVE-note-per-symbol constraint, same
+-- annotation-only contract — direction never changes consolidated_action/
+-- trig_action/final_code, it only changes which side (buy vs sell) the UI
+-- badges as a conflict. etl/derive_actionable.py carries the direction
+-- through to drv_actionable.conviction_direction; web/actionable.js renders
+-- the AVOID conflict badge on BUY/ADD/INCREASE rows the same way the HOLD
+-- conflict badge renders on SELL/REDUCE rows.
+-- =====================================================
+ALTER TABLE IF EXISTS ref_conviction_hold
+    ADD COLUMN IF NOT EXISTS direction TEXT NOT NULL DEFAULT 'HOLD'
+        CHECK (direction IN ('HOLD', 'AVOID'));
+
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS conviction_direction TEXT;
+
+-- =====================================================
+-- 2026-08-15 -- IV Ratio (A_IVRatio), user's own ThinkOrSwim IV-spike/
+-- normalize study exported as a TOSD custom column (last column,
+-- header "A_IVRatio"), replacing the cross-sectional IV-percentile term in
+-- the Actionable buy-tradability score. User: "IV can be high while price
+-- is going up or it can cause stock to go down" — a cross-sectional
+-- percentile ("this stock's IV ranks in the 90th pctile among all stocks")
+-- lumps together structurally-high-IV names (nothing unusual happening)
+-- with names that just had a genuine event-driven spike, which is why the
+-- percentile-bucket approach showed a fat downside tail despite a good
+-- mean (see docs/pvv_logic.md-style investigation in the 2026-08-15 memory
+-- notes). IV Ratio is self-relative instead: current 4-day-smoothed IV vs
+-- a dynamic 63-day trailing average of the SAME symbol's own IV (excludes
+-- the 5 days right before a detected spike so the baseline doesn't get
+-- contaminated by the spike itself; switches to the full 63-day average
+-- once "spiked" so the ratio decays back toward 1 as the spike fades).
+-- ratio < 1 = below its own normal range; 1-1.15 = normal; > 1.15 = spiked
+-- ("the red line"), per the user's own script. Raw value only — no
+-- normalization/derivation on our side, ToS computes it with its own full
+-- chart history so it's already meaningful the day it starts exporting
+-- (unlike our hist_td, which only has ~124 days for most symbols).
+-- etl/mappings.py::HIST_MAPS['TD'] column "A_IVRatio" -> hist_td.iv_ratio;
+-- threaded through etl/derive.py::_derive_technicals_impl same path as
+-- iv_percentile -> drv_technicals.iv_ratio -> api/routers/dash.py's
+-- actionable query -> web/actionable.js::_buyTradabilityScore's IV term.
+-- =====================================================
+ALTER TABLE IF EXISTS hist_td
+    ADD COLUMN IF NOT EXISTS iv_ratio NUMERIC;
+ALTER TABLE IF EXISTS drv_technicals
+    ADD COLUMN IF NOT EXISTS iv_ratio NUMERIC;

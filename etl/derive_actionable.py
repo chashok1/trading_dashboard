@@ -520,12 +520,14 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     # 2026-08-14: long-term conviction holds (analyst call notes) — annotation
     # only, same spirit as low_confidence. At most one ACTIVE row per symbol
     # (enforced by ux_ref_conviction_hold_one_active), so this dict is unambiguous.
-    conviction_by_sym: dict[str, str] = {}
+    # 2026-08-15: carries `direction` too ('HOLD' = don't sell, 'AVOID' =
+    # don't buy) so the mirrored AVOID badge can be built downstream.
+    conviction_by_sym: dict[str, tuple[str, str]] = {}
     try:
         for r in session.execute(text(
-            "SELECT tos_symbol, thesis_note FROM ref_conviction_hold WHERE status = 'ACTIVE'"
+            "SELECT tos_symbol, thesis_note, direction FROM ref_conviction_hold WHERE status = 'ACTIVE'"
         )).fetchall():
-            conviction_by_sym[r[0]] = r[1]
+            conviction_by_sym[r[0]] = (r[1], r[2])
     except Exception:
         log.warning("ref_conviction_hold load failed (conviction_hold stays False)", exc_info=True)
 
@@ -757,7 +759,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            fc_strength, fc_confidence, fc_feasible, priority_rank,
            stop_breached, low_confidence,
            warn_not_at_lrr, warn_added_this_leg,
-           conviction_hold, conviction_note)
+           conviction_hold, conviction_note, conviction_direction)
         VALUES
           (:d, :sym, :desc, :sect,
            :ca, :ws, :wp,
@@ -771,7 +773,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            :f_strength, :f_confidence, :f_feasible, :f_priority,
            :stop_breached, :low_confidence,
            :warn_lrr, :warn_leg,
-           :conviction_hold, :conviction_note)
+           :conviction_hold, :conviction_note, :conviction_direction)
     """)
 
     rows_written = 0
@@ -1059,7 +1061,10 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             warn_added_this_leg = added_this_leg_by_sym.get(sym, False)
 
         # ─── 2026-08-14: conviction_hold annotation ─────────────────────────
-        conviction_note = conviction_by_sym.get(sym)
+        # 2026-08-15: direction added ('HOLD'/'AVOID') — see conviction_by_sym above.
+        _conviction = conviction_by_sym.get(sym)
+        conviction_note = _conviction[0] if _conviction else None
+        conviction_direction = _conviction[1] if _conviction else None
         conviction_hold = conviction_note is not None
 
         stk = stks.get(sym, {})
@@ -1103,6 +1108,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "warn_leg":        warn_added_this_leg,
             "conviction_hold": conviction_hold,
             "conviction_note": conviction_note,
+            "conviction_direction": conviction_direction,
         })
         rows_written += 1
 
