@@ -2552,6 +2552,19 @@ def patch_conviction_hold(hold_id: int, payload: dict):
     return {"ok": True}
 
 
+@router.delete("/api/actionable/conviction-holds/{hold_id}")
+def delete_conviction_hold(hold_id: int):
+    """Hard-delete a conviction hold — for cleaning up a mistaken entry, not
+    the normal end-of-thesis workflow (that's PATCH status -> CLOSED_WIN/
+    CLOSED_LOSS/EXPIRED, which keeps the row as history). Unlike close, this
+    is not reversible."""
+    with session_scope() as s:
+        res = s.execute(text("DELETE FROM ref_conviction_hold WHERE id = :id"), {"id": hold_id})
+    if not res.rowcount:
+        raise HTTPException(404, "conviction hold not found")
+    return {"ok": True}
+
+
 def _log_actionable_action(s, sym_u: str, as_of, user_action: str, payload: dict) -> Optional[int]:
     """Snapshot the drv_actionable row + raw hist_* rows for forensic replay and
     insert one user_action_log row. Runs on the caller's session (caller owns

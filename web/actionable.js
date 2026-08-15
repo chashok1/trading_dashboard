@@ -5339,6 +5339,24 @@ async function closeConvictionHold() {
   }
 }
 
+// Hard delete — for cleaning up a mistaken entry, not the normal
+// end-of-thesis workflow (that's closeConvictionHold above, which keeps the
+// row as history). Not reversible, so confirm first.
+async function deleteConvictionHold() {
+  if (!_convictionActiveId) return;
+  if (!confirm('Delete this conviction hold? This cannot be undone (use Close instead to keep it as history).')) return;
+  try {
+    await fetchJson('/api/actionable/conviction-holds/' + encodeURIComponent(_convictionActiveId), {
+      method: 'DELETE',
+    });
+    $('convictionStatus').textContent = 'Deleted.';
+    await loadConviction(state.current.tos_symbol);
+    loadActionable();
+  } catch (e) {
+    $('convictionStatus').textContent = 'Delete failed: ' + e.message;
+  }
+}
+
 // ---- Long-term conviction hold: inline quick-add popover -----------------------
 // User: "instead of going to a popup, why can't you add a button in SYMBOL
 // column below %button so I can add it from there in a editable small form."
@@ -5383,6 +5401,7 @@ function _convictionPopHtml(sym, active) {
       </select>
       <input type="text" id="cpCloseNote" placeholder="close note (optional)…">
       <div class="cp-actions">
+        <button class="btn" id="cpDeleteBtn" title="Hard-delete this entry (not reversible) — use Close instead to keep it as history" style="color:#dc2626;border-color:#dc2626;">Delete</button>
         <button class="btn" id="cpCloseBtn">Close hold</button>
       </div>
       <div class="cp-status" id="cpStatus"></div>`;
@@ -5436,6 +5455,21 @@ function _wireConvictionPop(sym) {
       loadActionable();
     } catch (e) {
       statusEl.textContent = 'Close failed: ' + e.message;
+    }
+  });
+  const deleteBtn = document.getElementById('cpDeleteBtn');
+  if (deleteBtn) deleteBtn.addEventListener('click', async () => {
+    const statusEl = document.getElementById('cpStatus');
+    if (!_cpActiveId) return;
+    if (!confirm('Delete this conviction hold? This cannot be undone (use Close instead to keep it as history).')) return;
+    try {
+      await fetchJson('/api/actionable/conviction-holds/' + encodeURIComponent(_cpActiveId), {
+        method: 'DELETE',
+      });
+      closeConvictionPop();
+      loadActionable();
+    } catch (e) {
+      statusEl.textContent = 'Delete failed: ' + e.message;
     }
   });
 }
@@ -5906,6 +5940,7 @@ const _closeModal = () => {
   $('dismissActionBtn').addEventListener('click', dismissUserAction);
   $('convictionAddBtn').addEventListener('click', addConvictionHold);
   $('convictionCloseBtn').addEventListener('click', closeConvictionHold);
+  $('convictionDeleteBtn').addEventListener('click', deleteConvictionHold);
   $('closePop').addEventListener('click', () => closeAtomicPopover());
 
   // ── Side panel toggle ─────────────────────────────────────────────────────
