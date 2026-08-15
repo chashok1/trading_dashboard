@@ -303,15 +303,17 @@ def _fetch_daily_tl_volume(session: Session, symbols: list, start: date, d: date
 def _fetch_rr_outlook(session: Session, symbols: list, d: date) -> dict:
     """{tos_symbol: (outlook_raw, source)} from drv_rr for D.
 
-    Within a fresh derive_all() cascade, derive_pvv runs BEFORE
-    _derive_rr_outlook_from_qe's second-pass UPDATE (etl/derive.py), so
-    source='BB' rows are still outlook=NULL at this point — matches
-    TASK_127's "no outlook" spec for BB-fallback rows. A standalone re-derive
-    of drv_pvv alone (outside a full derive_all() cascade, e.g. a
-    drv_pvv-only backfill loop) instead sees whatever outlook is *currently*
-    stored in drv_rr for that date, which may already include a prior
-    cascade's QE-filled BB outlook (e.g. 'Light Bullish') — normalized by
-    _normalize_outlook() the same way either way (see docs/pvv_logic.md §4)."""
+    Within a fresh derive_all() cascade, derive_pvv now runs AFTER
+    _derive_rr_outlook_from_qe's second-pass UPDATE (etl/derive.py, fixed
+    2026-08-15 — used to run before it, so every source='BB' row was still
+    outlook=NULL at this point, every day, not an edge case: measured 73% of
+    that day's WATCH rows), so BB-fallback rows see their filled-in outlook
+    the same as everything else. A standalone re-derive of drv_pvv alone
+    (outside a full derive_all() cascade, e.g. a drv_pvv-only backfill loop)
+    just reads whatever outlook is *currently* stored in drv_rr for that
+    date — fine as long as it runs after a full cascade has already filled
+    it in. Either way, a BB gradation (e.g. 'Light Bullish') is normalized
+    by _normalize_outlook() the same way (see docs/pvv_logic.md §4)."""
     if not symbols:
         return {}
     rows = session.execute(text("""
@@ -332,24 +334,51 @@ def _fetch_technicals(session: Session, d: date) -> dict:
     return {r["tos_symbol"]: dict(r) for r in rows}
 
 
-def _today_rocs(td_series: list, tl_series: list, tech: dict) -> Optional[dict]:
+def _today_rocs(td_series: list, tl_series: list, tech: dict, as_of_date: date) -> Optional[dict]:
     """Raw (unclassified) ROC values for the 'today' bucket, or None if there
-    isn't enough history yet (< 2 daily TD rows).
+    isn't enough history yet.
 
-    'Today' compares the live tl/quote price against the most recent settled
-    TD close (td_series[-1]) -- there is no TD row for "today" itself until a
-    new TOSD load advances the anchor, so td_series[-1] IS "prior day" here
-    (same baseline as drv_quote.pct_change on the Actionable grid). td_series[-2]
-    is the day before that, used only as the fallback HV comparison point
-    below (no live HV feed exists, so that leg compares the two most recent
-    daily readings instead of live-vs-prior).
+    Two cases, detected by whether td_series[-1] is D's own settled row --
+    D is *defined* as MAX(export_date) FROM hist_td, so once today's TOSD
+    (EOD) file has loaded there IS always a TD row for D itself (2026-08-15
+    fix: the old code assumed the opposite -- "there is no TD row for today
+    itself" -- which was true only before that load landed):
+
+      - **Still intraday** (D's TOSD row hasn't loaded yet, so td_series[-1]
+        is genuinely yesterday's settled close): compare the live current
+        price/IV (`tech`, which can carry a same-day intraday quote once one
+        exists -- same baseline as drv_quote.pct_change on the Actionable
+        grid) against that settled close. This is the normal case while
+        actively trading, and is unchanged by this fix.
+      - **After D's close has loaded**: there's no fresher price/IV left
+        to compare against -- `tech`'s values resolve to that same settled
+        close, so comparing it to itself always produced a false 0% ROC
+        (not "flat trading", a same-value-vs-itself artifact — this was
+        the actual 0/0 the user found on META and most other symbols).
+        Fixed by shifting the whole window back one day: compare D's
+        settled close/IV to D-1's, a real day-over-day change, instead.
+
+    The day-before-the-reference row ([-2], or [-3] once shifted) is used
+    only as the fallback HV comparison point (no live HV feed exists, so
+    that leg always compares two settled daily readings, live-price case
+    or not -- unaffected by which case above we're in).
     """
     if len(td_series) < 2:
         return None
-    d_prior, price_prior, hv_prior1, iv_prior1 = td_series[-1]
-    _d_prior2, _lp_prior2, hv_prior2, iv_prior2 = td_series[-2]
 
-    cur_price = tech.get("last_price")
+    settled_today = td_series[-1][0] == as_of_date
+    if settled_today:
+        if len(td_series) < 3:
+            return None
+        d_prior, price_prior, hv_prior1, iv_prior1 = td_series[-2]
+        _dp2, _lp2, hv_prior2, iv_prior2 = td_series[-3]
+        _d_cur, cur_price, _hv_cur, cur_iv = td_series[-1]
+    else:
+        d_prior, price_prior, hv_prior1, iv_prior1 = td_series[-1]
+        _dp2, _lp2, hv_prior2, iv_prior2 = td_series[-2]
+        cur_price = tech.get("last_price")
+        cur_iv = tech.get("imp_volatility")
+
     p_roc = _roc(cur_price, price_prior)
 
     vlm_today = tech.get("vlm_projected")
@@ -358,7 +387,7 @@ def _today_rocs(td_series: list, tl_series: list, tech: dict) -> Optional[dict]:
     avg_vol = statistics.fmean(window) if len(window) >= PVV_CONFIG["min_window_pts"] else None
     v_roc = _roc(vlm_today, avg_vol)
 
-    cur_iv, prior_iv, vol_src = tech.get("imp_volatility"), iv_prior1, "iv"
+    prior_iv, vol_src = iv_prior1, "iv"
     if cur_iv is None or prior_iv is None:
         cur_iv, prior_iv, vol_src = hv_prior1, hv_prior2, "hv"
     vol_roc = _roc(cur_iv, prior_iv)
@@ -492,7 +521,7 @@ def _derive_pvv_impl(session: Session, as_of_date: date, run_id: int) -> int:
 
         _prelim[sym] = {
             "td": td, "tl": tl, "tech": tech,
-            "rocs_today": _today_rocs(td, tl, tech),
+            "rocs_today": _today_rocs(td, tl, tech, as_of_date),
             "rocs_5d": _horizon_rocs(5, td, tl, tech),
             "rocs_3w": _horizon_rocs(15, td, tl, tech),
             "own_sigma_today": _own(1),
