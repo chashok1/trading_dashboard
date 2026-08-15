@@ -47,11 +47,23 @@ never raw `symbol`. Universe = `drv_symbols` for D.
 
 | Bucket | Price ROC | Volume ROC | Volatility ROC | Flat band |
 |---|---|---|---|---|
-| `today` | tl last_price vs prior-day TD last_price | drv_technicals.vlm_projected vs 20d avg EOD volume | tl imp_volatility_raw vs prior TD imp_volatility | **1.0σ** (alert-only, wide) |
+| `today` | live price vs prior settled TD close (or, once today's own TD close has loaded — see below — that close vs the day before) | drv_technicals.vlm_projected vs 20d avg EOD volume | live IV vs prior settled TD IV (same today/settled split as price) | **1.0σ** (alert-only, wide) |
 | `5d` | 5d ROC of hist_td last_price | 5d ROC of EOD volume | 5d ROC of hist_td imp_volatility | 0.5σ |
 | `3w` | 15d ROC of hist_td last_price | 15d ROC of EOD volume | 15d ROC of imp_volatility | 0.5σ |
 | `3m` | structure, not ROC (see below) | none (skip) | iv_percentile level | n/a |
 
+- **`today` price/IV, two cases (2026-08-15 fix)**: D is *defined* as
+  `MAX(export_date) FROM hist_td`, so once today's TOSD (EOD) file has
+  loaded there's always a settled TD row for D itself — at that point
+  there's no fresher live price/IV left to compare against, so the window
+  shifts back one day (D's close vs D-1's) instead of comparing D's close
+  to itself. **Still intraday** (D's TOSD row hasn't loaded yet, so the
+  most recent TD row is genuinely yesterday's close): unchanged, live
+  price/IV (`drv_technicals`, same source as `drv_quote.pct_change` on the
+  Actionable grid) vs that settled close — the normal case while actively
+  trading. Before this fix, the settled case always produced a false 0%
+  ROC (comparing D's close to itself), not a "flat trading" reading — see
+  `etl/derive_pvv.py::_today_rocs`.
 - **EOD volume** = hist_tl volume at max(sequence) per export_date per
   symbol (hist_td has no volume column). Built via `_fetch_daily_tl_volume`.
   Missing days fall back to the nearest value within a 3-calendar-day
