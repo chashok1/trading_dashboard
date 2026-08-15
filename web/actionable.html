@@ -99,36 +99,18 @@
 
     /* 2026-08-15: LT conviction conflict — a SELL-side Final Call on a symbol
        with an active conviction hold. User: "I need stronger color change...
-       hard to see the change" — loud purple treatment (row stripe + ringed
-       badge + bold pill/sub-line), same visual weight class as the stop-
+       hard to see the change" — loud purple row stripe + ringed badge (see
+       _finalCallHtml's box-shadow), same visual weight class as the stop-
        breach red above, but purple so the two are never confused. Declared
        AFTER .row-stop-breach so it wins the shared border-left/background if
        a row is somehow both (equal specificity, last-declared wins) —
        the LT thesis is the more important thing to notice in that case.
+       (Tried a separate pill + sub-line too; user asked to drop those and
+       fold a 🔭 into the confidence badge slot — High/Gate/Mixed — instead,
+       done in JS, no extra CSS needed for that part.)
        Annotation only; the underlying action/color is untouched. */
     tr.row-lt-conflict { border-left: 4px solid #7c3aed; background: #faf5ff; }
     tr.row-lt-conflict:hover { background: #f3e8ff; }
-    .lt-conflict-pill {
-      display: inline-block;
-      margin-left: 4px;
-      padding: 1px 5px;
-      border-radius: 5px;
-      background: #7c3aed;
-      color: #fff;
-      border: 1px solid #6d28d9;
-      font-size: 8px;
-      line-height: 1.3;
-      font-weight: 700;
-      letter-spacing: 0.2px;
-      vertical-align: middle;
-      cursor: help;
-    }
-    .lt-conflict-sub {
-      font-size: 8px;
-      font-weight: 700;
-      color: #7c3aed;
-      letter-spacing: 0.3px;
-    }
 
     /* Don't-buy warning icon — earnings/VLM/IV/MACD-MACDH/RSI/Rules(edge)
        caution signals on the ACTION cell. Same shape as .stop-pill; amber
@@ -1473,7 +1455,7 @@
        factor-scorecard cards already use, on click. User: "add same click
        actions on the top graphs also." -->
   <script src="/static/risk_gauge_modal.js?v=20260814c"></script>
-  <script src="/static/actionable.js?v=20260815a"></script>
+  <script src="/static/actionable.js?v=20260815b"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
   <script src="/static/macro_areas.js" defer></script>

@@ -3017,10 +3017,18 @@ function _finalCallHtml(row) {
   // 2026-08-15: LT conflict — a SELL-side Final Call on a symbol with an
   // active conviction hold. User: "I need stronger color change... hard to
   // see the change" (the plain 🔭 icon in the SYMBOL cell wasn't loud enough
-  // on a SELL ALL). A thick purple ring around the badge itself, on top of
-  // whatever red/pink the sell action already uses — annotation only, the
-  // underlying action/color is untouched, this is a visual overlay.
+  // on a SELL ALL). A thick purple ring around the badge, on top of whatever
+  // red/pink the sell action already uses, plus a 🔭 next to the confidence
+  // text (High/Gate/Mixed) — annotation only, the underlying action/color is
+  // untouched, this is a visual overlay. (Tried a separate pill + sub-line
+  // first; user asked to drop those and fold the icon into the confidence
+  // slot instead.)
   var ltConflict = !!row.conviction_hold && fc.side === 'sell';
+  if (ltConflict) {
+    var ltIcon = '<span title="Long-term conviction hold on file — '
+      + escapeHtml(row.conviction_note || '') + '\n\nConflicts with this SELL/REDUCE signal.">🔭</span>';
+    badgeHtml = badgeHtml ? badgeHtml + ' ' + ltIcon : ltIcon;
+  }
   // SA (SELL ALL) / BM (BUY MORE) match the HEDGEYE panel's red/green exactly;
   // weaker tiers (SS/STM/SO/SW, BS/BMN/BW) and neutral keep the standard palette.
   var hedgeyeStyle = isLowConf ? 'opacity:0.8;'
@@ -3055,15 +3063,10 @@ function _finalCallHtml(row) {
   } else if (sig.buy.length) {
     signalPill = ' <span class="buy-signal-pill" data-signalpop="' + escapeHtml(row.tos_symbol) + '" data-signalpop-warn="0">▲</span>';
   }
-  var ltConflictPill = ltConflict
-    ? ` <span class="lt-conflict-pill" title="Long-term conviction hold on file — ${escapeHtml(row.conviction_note || '')}\n\nThis SELL/REDUCE signal conflicts with that thesis. Cross-check before acting.">🔭 LT HOLD</span>`
-    : '';
-  var ltConflictSub = ltConflict
-    ? '<div class="lt-conflict-sub" title="Conflicts with an active long-term conviction hold — cross-check before acting">🔭 CONFLICTS W/ LT HOLD</div>' : '';
-  var subIcon = '<div style="font-size:9px;line-height:1.4;">' + badgeHtml + '</div>' + lowConfSub + ltConflictSub;
+  var subIcon = '<div style="font-size:9px;line-height:1.4;">' + badgeHtml + '</div>' + lowConfSub;
   return '<span class="act-badge act-badge-sm ' + colorCls + '" style="' + hedgeyeStyle + '" title="' +
          escapeHtml(fc.label || text) + '">' +
-         escapeHtml(text) + '</span>' + stopPill + earningsPill + signalPill + ltConflictPill + subIcon;
+         escapeHtml(text) + '</span>' + stopPill + earningsPill + signalPill + subIcon;
 }
 
 // ── Pass 2: Priority score (TASK_120 — dollar-weighted-edge default sort;
