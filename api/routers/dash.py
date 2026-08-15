@@ -1102,7 +1102,10 @@ def get_actionable(
                etfchg.event_date AS etfchg_date, etfchg.outlook AS etfchg_outlook,
                etfchg.change_str AS etfchg_desc,
                iichg.event_date AS iichg_date, iichg.outlook AS iichg_outlook,
-               iichg.change_str AS iichg_desc
+               iichg.change_str AS iichg_desc,
+               (cv.thesis_note IS NOT NULL) AS conviction_hold,
+               cv.thesis_note AS conviction_note,
+               cv.target_date AS conviction_target_date
         FROM drv_actionable a
         LEFT JOIN drv_tn_td_bb_rr rr
                ON rr.tos_symbol = a.tos_symbol AND rr.as_of_date = a.as_of_date
@@ -1126,6 +1129,19 @@ def get_actionable(
               AND user_action_log.tos_symbol = a.tos_symbol
             ORDER BY acted_at DESC LIMIT 1
         ) u ON TRUE
+        LEFT JOIN LATERAL (
+            -- 2026-08-15: live override for a.conviction_hold/conviction_note
+            -- (drv_actionable's copy is only as fresh as the last derive —
+            -- adding/closing a hold via the popover doesn't re-derive, so the
+            -- grid was showing stale state right after an add). Same pattern
+            -- as the user_action_log join above: query the live table here
+            -- instead of waiting for the next derive cascade.
+            SELECT thesis_note, target_date
+            FROM ref_conviction_hold
+            WHERE ref_conviction_hold.tos_symbol = a.tos_symbol
+              AND ref_conviction_hold.status = 'ACTIVE'
+            LIMIT 1
+        ) cv ON TRUE
         LEFT JOIN (
             SELECT tos_symbol,
                    STRING_AGG(DISTINCT acct, ', ' ORDER BY acct) AS held_accounts
