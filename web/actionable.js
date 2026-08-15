@@ -3037,7 +3037,7 @@ function _finalCallHtml(row) {
                     : '';
   if (ltConflict) hedgeyeStyle += 'box-shadow:0 0 0 3px #7c3aed;';
   var lowConfSub = isLowConf
-    ? '<div style="font-size:8px;font-weight:700;color:#b45309;letter-spacing:0.3px;text-align:center;" title="Sell evidence comes only from rules with a demonstrated negative historical edge — cross-check before acting">LOW CONF</div>' : '';
+    ? '<div style="font-size:8px;font-weight:700;color:#b45309;letter-spacing:0.3px;text-align:center;margin-top:3px;" title="Sell evidence comes only from rules with a demonstrated negative historical edge — cross-check before acting">LOW CONF</div>' : '';
   // TASK_119: STOP pill — held position that just crossed below its Trade
   // or Trend line (prior 3 days above, today below). 2026-08-12: text
   // "STOP" swapped for a down-cross icon (▼, the same glyph this file
@@ -3063,7 +3063,7 @@ function _finalCallHtml(row) {
   } else if (sig.buy.length) {
     signalPill = ' <span class="buy-signal-pill" data-signalpop="' + escapeHtml(row.tos_symbol) + '" data-signalpop-warn="0">▲</span>';
   }
-  var subIcon = '<div style="font-size:9px;line-height:1.4;text-align:center;">' + badgeHtml + '</div>' + lowConfSub;
+  var subIcon = '<div style="font-size:9px;line-height:1.4;text-align:center;margin-top:3px;">' + badgeHtml + '</div>' + lowConfSub;
   // 2026-08-15: user asked for the action badge on its own centered line,
   // with everything else (stop/earnings/signal pills, confidence text,
   // LOW CONF) moved to line(s) below instead of crowding the same line.
