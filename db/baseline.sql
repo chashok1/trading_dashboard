@@ -7823,11 +7823,13 @@ ALTER TABLE IF EXISTS drv_actionable
 --
 -- One row per 30-minute bucket (minutes since 9:30 open); median_fraction =
 -- typical share of the day's eventual total volume reached by then, from
--- hist_tl history. Computed/refreshed by
--- etl/derive_vlm_intraday_curve.py (python -m etl.derive_vlm_intraday_curve)
+-- hist_tl history. Computed/refreshed by etl/derive_vlm_intraday_curve.py
 -- -- a periodic tunable-table refresh (grows more reliable as more trading
--- days accumulate), not part of the daily derive_all() cascade. Full
--- TRUNCATE+rebuild each run, no history kept (same spirit as etl/refresh_ref.py).
+-- days accumulate), not part of the daily derive_all() cascade. Runs
+-- automatically once a day via etl/scheduler.py's nightly job
+-- (run_nightly_outcomes) whenever the scheduler is running; can also be run
+-- by hand (python -m etl.derive_vlm_intraday_curve). Full TRUNCATE+rebuild
+-- each run, no history kept (same spirit as etl/refresh_ref.py).
 -- =====================================================
 CREATE TABLE IF NOT EXISTS ref_vlm_intraday_curve (
     bucket_start_min INTEGER PRIMARY KEY,

@@ -506,6 +506,22 @@ def run_nightly_outcomes() -> None:
     except Exception:
         log.exception("nightly: factor outcomes refresh crashed")
 
+    # 2026-08-15: was a manual "python -m etl.derive_vlm_intraday_curve" step
+    # the user had to remember to re-run periodically. User: "you have to
+    # schedule it or do something. i forget to run it." Now rides the
+    # existing once-a-day nightly job instead — cheap (a few seconds over
+    # ~55k rows), and the curve can only get more accurate as more trading
+    # days land in hist_tl, so refreshing it daily is free upside.
+    log.info("nightly: vlm intraday curve refresh starting")
+    try:
+        from etl.db import session_scope
+        from etl.derive_vlm_intraday_curve import refresh_vlm_intraday_curve
+        with session_scope() as s:
+            n = refresh_vlm_intraday_curve(s)
+        log.info("nightly: vlm intraday curve refresh done: %d buckets", n)
+    except Exception:
+        log.exception("nightly: vlm intraday curve refresh crashed")
+
 
 def _read_nightly_state(state_path: Path):
     """Return the ISO date in the state file, or None if missing/invalid.

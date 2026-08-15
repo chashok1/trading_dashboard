@@ -211,7 +211,7 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 |---|---|
 | TL tab column map | `etl/mappings.py::HIST_MAPS['TL']` |
 | drv_ma component table derive functions | `etl/derive.py::_derive_symbols/technicals/fundamentals/outlooks/portfolio_impl` |
-| Vlm projection formula (empirical intraday curve, not flat-linear) | `etl/derive.py::_derive_technicals_impl`; curve table `ref_vlm_intraday_curve`, refreshed via `python -m etl.derive_vlm_intraday_curve` |
+| Vlm projection formula (empirical intraday curve, not flat-linear) | `etl/derive.py::_derive_technicals_impl`; curve table `ref_vlm_intraday_curve`, auto-refreshed nightly by `etl/scheduler.py`'s nightly job (or manually: `python -m etl.derive_vlm_intraday_curve`) |
 | Outlook → weight mapping | `ref_param` where `sheet='outlook'` |
 | Atomic rules feeding a composite | `ref_trig_composite_mapping WHERE composite_rule_code=...` |
 | Why a load skipped a row | `meta_etl_run.rows_skipped` |

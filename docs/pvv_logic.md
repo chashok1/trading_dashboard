@@ -83,9 +83,11 @@ never raw `symbol`. Universe = `drv_symbols` for D.
   systematic low bias, not noise). Replaced with a lookup against
   `ref_vlm_intraday_curve` — a 30-minute-bucket empirical "typical % of the
   day's volume done by now" curve computed from `hist_tl` history
-  (`etl/derive_vlm_intraday_curve.py`, `python -m
-  etl.derive_vlm_intraday_curve` — periodic tunable-table refresh, not part
-  of the daily `derive_all()` cascade, same spirit as `etl/refresh_ref.py`).
+  (`etl/derive_vlm_intraday_curve.py` — periodic tunable-table refresh, not
+  part of the daily `derive_all()` cascade, same spirit as
+  `etl/refresh_ref.py`). Runs automatically once a day via
+  `etl/scheduler.py`'s nightly job whenever the scheduler is running; can
+  also be run by hand (`python -m etl.derive_vlm_intraday_curve`).
   Backtested median error after the fix: **-0.7%** (effectively unbiased —
   expected, since the curve is literally built from the median of this same
   data). Individual symbol-days still vary (p25/p75 roughly -26%/+32%,

@@ -20,8 +20,11 @@ ref_vlm_intraday_curve comment for the measured numbers).
 
 Not part of the daily derive_all() cascade — a periodic tunable-table
 refresh (same spirit as etl/refresh_ref.py, full TRUNCATE + rebuild each
-run, no history kept), run manually as more trading days accumulate and
-the curve can only get more reliable:
+run, no history kept). Runs automatically once a day as part of
+etl/scheduler.py's existing nightly job (run_nightly_outcomes, 2026-08-15 —
+was manual-only; user: "you have to schedule it or do something. i forget
+to run it.") whenever the scheduler (run_scheduler.bat) is running. Can
+still be run by hand any time, e.g. right after a big backfill:
 
     python -m etl.derive_vlm_intraday_curve
 """
