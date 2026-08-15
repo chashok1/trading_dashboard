@@ -313,11 +313,15 @@
     .conviction-pop input[type="date"] { font: inherit; padding: 3px 5px; border: 1px solid #e2e8f0; border-radius: 5px; }
     .conviction-pop .cp-actions { display: flex; justify-content: flex-end; }
     .conviction-pop .cp-status { font-size: 10px; color: #64748b; margin-top: 5px; min-height: 12px; }
-    .lt-quick-btn { display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 3px;
-                    font-weight: 700; cursor: pointer; }
-    .lt-quick-btn.conviction-pill { background: #ede9fe; color: #6d28d9; }
-    .lt-quick-btn.lt-add-btn { border: 1px dashed #c4b5fd; color: #7c3aed; background: #faf5ff; }
-    .lt-quick-btn.lt-add-btn:hover { background: #f3e8ff; }
+    /* Small icon-only telescope button — same control whether a hold is
+       already active (filled/opaque) or not (dim/outline until hovered). */
+    .lt-scope-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 16px; height: 16px; border-radius: 50%; font-size: 10px; line-height: 1;
+      cursor: pointer; border: 1px solid #e2e8f0; background: #f8fafc; opacity: 0.55;
+    }
+    .lt-scope-btn:hover { opacity: 1; border-color: #c4b5fd; background: #faf5ff; }
+    .lt-scope-btn.lt-scope-active { opacity: 1; border-color: #c4b5fd; background: #ede9fe; }
     /* PVV hover tooltip: 5-column table (label + Signal/Price/Volume/Vol) --
        the shared .k/.v rule above has zero horizontal gap between .v cells,
        fine for a 2-col key/value layout but cramped once there are 4 value
@@ -1436,7 +1440,7 @@
        factor-scorecard cards already use, on click. User: "add same click
        actions on the top graphs also." -->
   <script src="/static/risk_gauge_modal.js?v=20260814c"></script>
-  <script src="/static/actionable.js?v=20260814e"></script>
+  <script src="/static/actionable.js?v=20260814f"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
   <script src="/static/macro_areas.js" defer></script>

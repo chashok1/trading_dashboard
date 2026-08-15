@@ -4292,8 +4292,8 @@ function _buildRowEl(r) {
           : ''}
         ${hitRateBadge ? '<div style="margin-top:1px;">' + hitRateBadge + '</div>' : ''}
         <div style="margin-top:1px;">${r.conviction_hold
-          ? `<span class="lt-quick-btn conviction-pill" data-sym="${escapeHtml(r.tos_symbol)}" title="Long-term conviction hold — ${escapeHtml(r.conviction_note || '')}\n\nClick to view/close.">🔭 LT</span>`
-          : `<span class="lt-quick-btn lt-add-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Add a long-term conviction hold (analyst call note) — short-term SELL/REDUCE signals won't drive you to act on it">+LT</span>`}</div>
+          ? `<span class="lt-quick-btn lt-scope-btn lt-scope-active" data-sym="${escapeHtml(r.tos_symbol)}" title="Long-term conviction hold — ${escapeHtml(r.conviction_note || '')}\n\nClick to view/close.">🔭</span>`
+          : `<span class="lt-quick-btn lt-scope-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Add a long-term conviction hold (analyst call note) — short-term SELL/REDUCE signals won't drive you to act on it">🔭</span>`}</div>
       </td>
       <td data-col="agree3" style="padding:6px 4px; text-align:center;">${(() => {
         const dir = _agreementDir(r);
