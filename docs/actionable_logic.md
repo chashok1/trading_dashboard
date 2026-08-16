@@ -213,6 +213,62 @@ glyphs. All rows render by default (the earlier Top-15-row collapse +
 "Show all N" bar was removed 2026-07-06 — the user preferred scrolling the
 full list). MACRO sorts numerically on `macronet`.
 
+**ACTION badge hover popover (2026-08-16, `_buildActionPopHtml`, `data-
+actionpop` + `_showDataPop`).** Hovering the Final Call badge shows a rich
+"how it got there" summary instead of a plain repeat of the badge text.
+Iterated with the user: v1 replaced the plain `title` repeat ("instead of
+repeating what I see for action ... it should say how it got there"); a
+same-cell always-visible dot-tally line was tried next and reverted ("I
+need to see a summary in action badge pop/hover over," not a new line in
+the cell); v3 restored full source visibility and added a synthesized
+headline ("I have all the sources how the final call is being made ...
+organize it ... so I can see information from all sources and maybe a
+recommended final decision"); v4 (current) folded in the rest of what the
+SYMBOL cell already knows (Tradability Score, source hit-rate, fresh-signal
+state) that wasn't reaching this popover yet. Top to bottom:
+1. **Header** — symbol + Final Call.
+2. **Recommendation** — a synthesized headline verdict (Strong/Moderate
+   {BUY/SELL}, Weak, Conflicted, Unproven), derived from the agreement
+   checklist's own agree/conflict tally (below) — distinct from
+   `fc.confidence`, which only reflects the Sources×Technical two-driver
+   gate, not the fuller checklist. Strong requires zero conflicts and
+   agreement on ≥75% of checklist rows (`Math.ceil(checklist.length*0.75)`
+   — 3/4 on sell-side rows, 4/5 on buy-side rows since Tradability only
+   applies there).
+3. **Confidence** — `fc.confidence` (High/Gate/Mixed) + why (`_gateReasonFor`
+   for Gate).
+4. **Fresh-signal note** (buy-side, conditional) — same condition as the
+   SYMBOL cell's NEW pill (`row._watchlisted && row._isNew`): winning-
+   source data just landed, Technical hasn't had a chance to confirm yet.
+   Shown as an informational blue note, not a risk flag — it's timing
+   context, not disagreement.
+5. **Sources** (the *full* per-source list, `_srcReasonsHtml` — every
+   source's action + reason + date, not just the winner) — now also shows
+   the winning source's own historical win rate inline (same
+   `state.sourceScorecard` data as the SYMBOL cell's Trade-Mode-only
+   hit-rate badge, but shown here regardless of Trade Mode) — + **Technical**
+   (the tactical `rr_action` + its descriptor).
+6. **Agreement checklist** — ✓ agrees / ✗ conflicts / ○ no signal, one
+   short reason each, for **3-Way** (`_threeWayAgreement`), **CALC model**
+   (`final_side_cal` vs `fc.side` — see the "CALC model inactive" project
+   memory: currently always reads "no independent model score" since
+   `ref_bull_model` has no active row), **Signals** (`_signalReasons`'
+   RSI/MACD/rules tally), **PVV** (buy/sell tilt vs `fc.side`, skipping
+   `NO_ACTION`/`WATCH`), and — buy-side rows only — **Tradability**
+   (`_buyTradabilityScore` vs `_TRADABILITY_BADGE_MIN`, same score as the
+   SYMBOL cell's 🎯 badge; conflict when the score is negative; headline
+   reason is the dominant Risk Range factor, with the full item-by-item
+   breakdown — Risk Range/Technical/RSI/IV/Volume/Source/Agreement, same
+   `_tradabilityBreakdown` data as the 🎯 badge's own popover — indented
+   underneath it, not just the one-line summary) — collapsing what used to
+   be six separately-scattered agreement mechanisms (fc.confidence, the
+   3-Way ▲3/▼3 badge, the CALC-vs-ACTION border, RULES edge pills, the PVV
+   icon, the SYMBOL cell's 🎯 badge) into one place.
+7. **Risk flags** (STOP breach, LOW CONF, earnings proximity, LT conviction
+   conflict) — kept separate and always last, since these are risk, not
+   directional disagreement; the Recommendation line notes their count but
+   doesn't fold them into the tier itself.
+
 **Refresh & data volume.** The 30-second auto-poll reloads rows with
 `loadActionable({preserveState:true})` — user sort and bulk selection
 survive; manual Refresh/date change still reset. Symbol search is debounced

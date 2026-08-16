@@ -4386,72 +4386,190 @@ const _PVV_DECISION_COLOR = {
 // Rich hover tooltip: 4-row table (Today / 5d / 3w / 3m), signal + P/V/Vol
 // arrows + ROC values, gated/vol-src annotations. Reuses _showDataPop/#sourcePop.
 // 2026-08-16: rich "how it got there" hover for the ACTION column's Final
-// Call badge -- reuses already-computed fields/helpers, no new data. Two-
-// driver breakdown (Sources = strategic, Technical = tactical, per
-// finalCall()'s own doc comment), the confidence-tier reason (_gateReasonFor
-// for Gate, else the same "align"/"conflict" text already used for the
-// High/Mixed badge titles), and every warning pill this row is currently
-// showing (LOW CONF, STOP, earnings, LT conflict, PVV conflict) folded into
-// one list instead of scattered across separate hover targets.
+// Call badge -- reuses already-computed fields/helpers, no new data.
+// Rewritten (v3) per user, iterating on the same request: "organize it
+// proper way so I can see information from all sources and maybe a
+// recommended final decision." Structure, top to bottom:
+//   1. Header (symbol + Final Call)
+//   2. Recommended Decision -- a synthesized headline verdict (Strong /
+//      Moderate / Weak / Conflicted), computed from the SAME agreement
+//      checklist as (5) below, so it's not just restating the badge --
+//      distinct from finalCall()'s own confidence tier.
+//   3. Confidence -- fc.confidence (High/Gate/Mixed) + why
+//   4. Sources (ALL of them, full per-source list via _srcReasonsHtml --
+//      the earlier v2 trimmed this to just the winning vote; user asked
+//      for full source visibility back) + Technical's tactical read
+//   5. Agreement checklist -- ✓ agree / ✗ conflict / ○ no signal, one
+//      short reason each, for 3-Way / CALC model / Signals / PVV --
+//      collapsing what used to be six scattered agreement mechanisms
+//      (fc.confidence, 3-Way badge, CALC-vs-ACTION border, RULES edge
+//      pills, PVV icon) into one place
+//   6. Risk flags (STOP/LT/LOW CONF/earnings) -- risk, not disagreement,
+//      kept separate and always shown last regardless of how strong the
+//      recommendation reads above.
 function _buildActionPopHtml(row) {
   const fc = finalCall(row);
   const sym = row.tos_symbol || '—';
   const text = fc.label || actionText(fc);
-  const color = fc.side === 'sell' ? '#dc2626' : fc.side === 'buy' ? '#16a34a' : '#64748b';
+  const side = fc.side;
+  const color = side === 'sell' ? '#dc2626' : side === 'buy' ? '#16a34a' : '#64748b';
   let h = `<div class="sp-title">${escapeHtml(sym)} Final Call &mdash; `
         + `<span style="color:${color};font-weight:700;">${escapeHtml(text)}</span></div>`;
+
+  // ---- Agreement checklist (built first -- the Recommendation headline
+  // above it is derived from this same tally) ----
+  let checklist = [];
+  if (side === 'buy' || side === 'sell') {
+    const sig = _signalReasons(row, side);
+    const threeWay = _threeWayAgreement(row);
+    const calSide = row.final_side_cal || null;
+    const pvvD = row.pvv_decision;
+    const pvvSide = (pvvD && pvvD !== 'NO_ACTION' && pvvD !== 'WATCH')
+      ? (_PVV_BUY_SIDE.includes(pvvD) ? 'buy' : (_PVV_SELL_SIDE.includes(pvvD) ? 'sell' : null)) : null;
+    // Icons reuse the SAME glyphs these concepts already wear elsewhere on
+    // the grid, not new ones: 3-Way mirrors the agree3 column's own ▲3/▼3
+    // badge; Signals mirrors the ⚠/▲ warn/buy-signal pills; PVV mirrors the
+    // ACTION column's own 🟢/🔴/🟡 PVV dot; Tradability mirrors the SYMBOL
+    // cell's 🎯 badge. CALC model has no existing icon anywhere else, so
+    // 🧮 is a new pick there.
+    checklist = [
+      { agree: threeWay === side, conflict: !!threeWay && threeWay !== side,
+        icon: side === 'buy' ? '▲3' : '▼3', label: '3-Way',
+        reason: threeWay === side ? 'MACRO+Sources+Technical all ' + side
+          : threeWay ? 'MACRO+Sources+Technical lean ' + threeWay : 'no 3-way alignment' },
+      { agree: calSide === side, conflict: !!calSide && calSide !== side,
+        icon: '🧮', label: 'CALC model',
+        reason: calSide === side ? 'independent model agrees'
+          : calSide ? 'independent model says ' + calSide : 'no independent model score' },
+      { agree: !sig.warn.length && !!sig.buy.length, conflict: !!sig.warn.length,
+        icon: sig.warn.length ? '⚠' : sig.buy.length ? '▲' : null, label: 'Signals',
+        reason: sig.warn.length ? sig.warn[0] : sig.buy.length ? sig.buy[0] : 'no RSI/MACD/rule signal' },
+      { agree: pvvSide === side, conflict: !!pvvSide && pvvSide !== side,
+        icon: pvvD && _PVV_CAUTION.includes(pvvD) ? '🟡' : pvvSide === 'buy' ? '🟢' : pvvSide === 'sell' ? '🔴' : null,
+        label: 'PVV',
+        reason: pvvSide === side ? (_PVV_LABEL[pvvD] || pvvD) + ' confirms'
+          : pvvSide ? (_PVV_LABEL[pvvD] || pvvD) + ' conflicts' : 'no confirmed setup today' },
+    ];
+    // Tradability Score is buy-only (SYMBOL cell's 🎯 badge) -- the single
+    // most empirically-tuned signal in the app, so it's weighted the same
+    // as the other checklist rows here (counts toward the Recommendation
+    // tally) rather than bolted on separately. Its dominant factor (Risk
+    // Range position) doubles as the reason text.
+    if (side === 'buy') {
+      const tScore = _buyTradabilityScore(row);
+      const tBreakdown = _tradabilityBreakdown(row);
+      const rrItem = tBreakdown.find(it => it.label === 'Risk Range');
+      checklist.push({ agree: tScore >= _TRADABILITY_BADGE_MIN, conflict: tScore < 0,
+        icon: '🎯', label: 'Tradability',
+        reason: tScore.toFixed(1) + ' — ' + (rrItem ? rrItem.detail : 'no breakdown available'),
+        sub: tBreakdown });
+    }
+  }
+
+  // ---- Risk flags (computed early too -- the Recommendation caveats on these) ----
+  const flags = [];
+  if (row.low_confidence && side === 'sell') {
+    flags.push('LOW CONF — sell evidence comes only from rules with a demonstrated negative historical edge');
+  }
+  if (row.stop_breached) {
+    flags.push((row.stop_signal || 'STOP') + ' — held, just crossed below its '
+      + (row.stop_signal === 'TN SA' ? 'Trend' : 'Trade') + ' line');
+  }
+  const ed = _earningsWarning(row);
+  if (ed != null) flags.push('Earnings in ' + ed + 'd');
+  const ltAvoid = row.conviction_direction === 'AVOID';
+  const ltConflict = !!row.conviction_hold && side === (ltAvoid ? 'buy' : 'sell');
+  if (ltConflict) {
+    flags.push('Conflicts with long-term conviction ' + (ltAvoid ? 'AVOID' : 'HOLD')
+      + ' note: ' + (row.conviction_note || ''));
+  }
+
+  // ---- Recommended Decision headline ----
+  if (side === 'buy' || side === 'sell') {
+    const agreeN = checklist.filter(c => c.agree).length;
+    const conflictN = checklist.filter(c => c.conflict).length;
+    const strongMin = Math.ceil(checklist.length * 0.75); // 3/4 or 4/5
+    let tier, why;
+    if (conflictN === 0 && agreeN >= strongMin) { tier = 'Strong ' + side.toUpperCase(); why = agreeN + '/' + checklist.length + ' confirm, no conflicts'; }
+    else if (conflictN === 0 && agreeN >= 1) { tier = 'Moderate ' + side.toUpperCase(); why = agreeN + '/' + checklist.length + ' confirm, no conflicts'; }
+    else if (agreeN > conflictN) { tier = 'Moderate ' + side.toUpperCase(); why = agreeN + ' confirm vs ' + conflictN + ' conflict'; }
+    else if (agreeN === conflictN && conflictN > 0) { tier = 'Conflicted'; why = 'evenly split (' + agreeN + ' vs ' + conflictN + ')'; }
+    else if (conflictN > agreeN) { tier = 'Weak'; why = conflictN + ' conflict vs ' + agreeN + ' confirm'; }
+    else { tier = 'Unproven'; why = 'no supporting signal yet'; }
+    const tierColor = tier === 'Conflicted' || tier === 'Weak' ? '#b45309' : color;
+    const caution = flags.length ? ' — ⚠ ' + flags.length + ' risk flag' + (flags.length > 1 ? 's' : '') + ' below' : '';
+    h += `<div style="font-size:11px;margin:3px 0 6px;padding:3px 6px;background:#f8fafc;border-radius:3px;">`
+       + `<b>Recommendation:</b> <span style="color:${tierColor};font-weight:700;">${escapeHtml(tier)}</span>`
+       + ` <span style="color:#64748b;">(${escapeHtml(why)}${caution})</span></div>`;
+  }
 
   const confLabel = fc.confidence === 'high' ? 'High' : fc.confidence === 'gate' ? 'Gate'
     : fc.confidence === 'none' ? 'No recommendation' : 'Mixed';
   const confReason = fc.confidence === 'gate' ? (fc.gateReason || 'Deterministic gate — Technical not evaluated')
     : fc.confidence === 'high' ? 'Sources and Technical align'
     : fc.confidence === 'none' ? 'Not feasible (nothing to act on)'
-    : 'Sources and Technical conflict — cross-check below';
-  h += `<div style="font-size:10px;color:#64748b;margin:2px 0 6px;">Confidence: `
+    : 'Sources and Technical conflict';
+  h += `<div style="font-size:10px;color:#64748b;margin:2px 0 4px;">Confidence: `
      + `<b>${escapeHtml(confLabel)}</b> — ${escapeHtml(confReason)}</div>`;
 
-  h += `<div style="font-size:10px;line-height:1.6;">`;
+  // Fresh-signal note (same condition as the SYMBOL cell's NEW pill) --
+  // informational, not a risk flag: Technical hasn't had a chance to
+  // confirm yet, it's not disagreeing.
+  if (row._watchlisted && row._isNew) {
+    h += `<div style="font-size:10px;color:#0a84ff;margin:0 0 4px;">🆕 Fresh signal — winning source data just landed, `
+       + `Technical isn't entry-ripe yet</div>`;
+  }
+
+  // ---- All sources (full list, not just the winner) + Technical ----
   const ca = row.consolidated_action ? escapeHtml(String(row.consolidated_action)) : 'none';
-  h += `<div><b>Sources</b> <span style="color:#94a3b8;">(strategic — gates ownership)</span>: <b>${ca}</b></div>`;
+  // Winning source's own historical win rate (same data as the SYMBOL
+  // cell's Trade-Mode-only hit-rate badge -- shown here regardless of
+  // Trade Mode, since it's directly relevant to how much to trust this call).
+  const winSrcCode = (row.winning_source || '').toString().toUpperCase();
+  const winSrcSc = (state.sourceScorecard || {})[winSrcCode];
+  let winRateStr = '';
+  if (winSrcCode && winSrcSc && winSrcSc.win_rate_20d != null && winSrcSc.n >= 5) {
+    const wrPct = Math.round(winSrcSc.win_rate_20d * 100);
+    const wrCls = wrPct < 45 ? 'hit-rate-pill-low' : wrPct > 55 ? 'hit-rate-pill-high' : 'hit-rate-pill-mid';
+    const wrEdge = winSrcSc.edge_20d != null
+      ? (winSrcSc.edge_20d >= 0 ? '+' : '') + Number(winSrcSc.edge_20d).toFixed(2) + '%' : 'n/a';
+    winRateStr = `<span class="hit-rate-pill ${wrCls}" style="font-size:9px;vertical-align:middle;margin:0 4px;">${wrPct}%</span>`
+      + `<span style="color:#94a3b8;">(${escapeHtml(winSrcCode)} hit rate, n=${Number(winSrcSc.n)}, avg edge ${escapeHtml(wrEdge)})</span>`;
+  }
+  h += `<div style="font-size:10px;line-height:1.5;"><div><b>Sources</b>: <b>${ca}</b>${winRateStr}</div>`;
   const srcHtml = _srcReasonsHtml(row);
-  if (srcHtml) h += `<div style="margin:2px 0 6px 4px;">${srcHtml}</div>`;
+  h += srcHtml ? `<div style="margin:2px 0 4px 4px;">${srcHtml}</div>`
+               : `<div style="margin:2px 0 4px 4px;color:#94a3b8;">no source rows</div>`;
+  const rra = row.rr_action ? String(row.rr_action) : 'none';
+  const techDesc = row.rr_desc || row.tn_td_desc || row.bb_desc || '';
+  const techLine = techDesc ? `${rra} — ${techDesc}` : rra;
+  h += `<div><b>Technical</b>: ${escapeHtml(techLine)}</div></div>`;
 
-  const rra = row.rr_action ? escapeHtml(String(row.rr_action)) : 'none';
-  h += `<div><b>Technical</b> <span style="color:#94a3b8;">(tactical — trim/add while owning)</span>: <b>${rra}</b></div>`;
-  const techBits = [];
-  if (row.tn_td_desc) techBits.push('TnTd: ' + row.tn_td_desc);
-  if (row.bb_desc) techBits.push('BB: ' + row.bb_desc);
-  if (row.rr_desc) techBits.push('RR: ' + row.rr_desc);
-  if (techBits.length) {
-    h += `<div style="margin:2px 0 6px 4px;color:#64748b;">${escapeHtml(techBits.join(' · '))}</div>`;
+  // ---- Agreement checklist -- rows with a `sub` breakdown (Tradability)
+  // get the same full item-by-item list the SYMBOL cell's 🎯 popover shows
+  // (_tradabilityBreakdown), indented underneath, instead of just the
+  // one-line summary -- user: "what I see in [the Tradability] popover, can
+  // we add the missing parts to Final Call popover?"
+  if (checklist.length) {
+    h += `<div style="font-size:10px;line-height:1.6;border-top:1px solid #e5e7eb;margin-top:4px;padding-top:4px;">`
+       + checklist.map(rw => {
+           const icon = rw.agree ? '<span style="color:' + color + ';">✓</span>'
+             : rw.conflict ? '<span style="color:#b45309;">✗</span>'
+             : '<span style="color:#cbd5e1;">○</span>';
+           const glyph = rw.icon ? escapeHtml(rw.icon) + ' ' : '';
+           let line = `<div>${icon} ${glyph}${escapeHtml(rw.label)} — ${escapeHtml(rw.reason)}</div>`;
+           if (rw.sub && rw.sub.length) {
+             line += `<div style="margin:2px 0 4px 16px;">` + rw.sub.map(it =>
+               `<div><span style="color:${it.color};font-weight:700;">${escapeHtml(it.label)}</span>: `
+               + `<span style="color:#374151;">${escapeHtml(it.detail)}</span></div>`
+             ).join('') + `</div>`;
+           }
+           return line;
+         }).join('') + `</div>`;
   }
-  h += `</div>`;
 
-  const flags = [];
-  if (row.low_confidence && fc.side === 'sell') {
-    flags.push('LOW CONF — sell evidence comes only from rules with a demonstrated negative historical edge');
-  }
-  if (row.stop_breached) {
-    flags.push((row.stop_signal || 'STOP') + ' — held, just crossed below its '
-      + (row.stop_signal === 'TN SA' ? 'Trend' : 'Trade') + ' line (prior 3 days above, today below)');
-  }
-  const ed = _earningsWarning(row);
-  if (ed != null) flags.push('Earnings in ' + ed + 'd');
-  const ltAvoid = row.conviction_direction === 'AVOID';
-  const ltConflict = !!row.conviction_hold && fc.side === (ltAvoid ? 'buy' : 'sell');
-  if (ltConflict) {
-    flags.push('Conflicts with long-term conviction ' + (ltAvoid ? 'AVOID' : 'HOLD')
-      + ' note: ' + (row.conviction_note || ''));
-  }
-  const pvvD = row.pvv_decision;
-  if (pvvD && pvvD !== 'NO_ACTION' && pvvD !== 'WATCH') {
-    const pvvSide = _PVV_BUY_SIDE.includes(pvvD) ? 'buy' : (_PVV_SELL_SIDE.includes(pvvD) ? 'sell' : null);
-    if ((fc.side === 'buy' || fc.side === 'sell') && pvvSide && pvvSide !== fc.side) {
-      flags.push('PVV (' + (_PVV_LABEL[pvvD] || pvvD) + ') conflicts with this action');
-    }
-  }
   if (flags.length) {
-    h += `<div style="font-size:10px;color:#b45309;border-top:1px solid #e5e7eb;padding-top:4px;margin-top:2px;">`
+    h += `<div style="font-size:10px;color:#b45309;border-top:1px solid #e5e7eb;padding-top:4px;margin-top:4px;">`
        + flags.map(f => '⚠ ' + escapeHtml(f)).join('<br>') + `</div>`;
   }
   return h;
