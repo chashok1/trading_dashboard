@@ -3314,6 +3314,25 @@ function _lrrProximityScore(row) {
   const base = Math.max(0, 1 - rawPos / 40);
   return base * (turningUp ? 1 : 0.7);
 }
+// 2026-08-15: winning source's own buy-family (ADD+INCREASE) win-rate track
+// record (state.sourceScorecard, same v_source_edge_scorecard data the
+// Trade Mode hit-rate badge already shows — TASK_123). Checked the mean
+// (edge_20d) before using it, same as every other factor here: RR/ADD's
+// mean is +6.76% but its MEDIAN is -0.17% (SD=87, a handful of huge
+// outliers driving the mean) and its win rate is 47.9% — barely a coin
+// flip, actually slightly BELOW the ~49.4% baseline. RTA (66.3% win rate)
+// and SSSCHG (60.9%) are the genuinely reliable sources; PS (37.6%) is
+// genuinely bad. Scored on win_rate_20d for the same reason IV/RSI/RVOL
+// are — mean alone would have ranked RR as the best source when it's
+// actually flat-to-negative on the metric that matters.
+function _sourceTrackRecordScore(row) {
+  const src = (row.winning_source || '').toString().toUpperCase();
+  const sc = (state.sourceScorecard || {})[src];
+  const base = (state.factorScorecard || {})['Baseline|All stocks'];
+  if (!sc || sc.win_rate_20d == null || sc.n < 5 || !base || base.win_rate == null) return 0;
+  const delta = (Number(sc.win_rate_20d) - Number(base.win_rate)) * 100;
+  return Math.max(-3, Math.min(6, delta));
+}
 function _buyTradabilityScore(row) {
   // Technical bracket: rr_action (the QS code) already blends Trade/Trend/
   // BB-streak/MACDH per docs/drv_cat_atomic_input_logic.md. Flat credit for
@@ -3334,7 +3353,8 @@ function _buyTradabilityScore(row) {
   // missing data (null, not enough history yet) contributes 0, never a
   // penalty.
   const clamp = v => v == null ? 0 : Math.max(-3, Math.min(6, v));
-  const factorPts = clamp(rsiDelta) + _ivRatioScore(row.iv_ratio) + clamp(rvolDelta);
+  const factorPts = clamp(rsiDelta) + _ivRatioScore(row.iv_ratio) + clamp(rvolDelta)
+    + _sourceTrackRecordScore(row);
   // 2026-08-15: agreement (2a/2b/2c — Technical+Sources+MACRO 3-way, see
   // _buyAgreementSubTier) folded in as a small additive bonus instead of the
   // outer sort tier it used to be in _computePriority. User: "I need to
@@ -3349,7 +3369,7 @@ function _buyTradabilityScore(row) {
   // LRR proximity weighted far above everything else (matches its outsized
   // proven edge vs any combination of the other factors, see 52-BS-BRR note
   // above); technical bracket and agreement are smaller flat bonuses; factor
-  // deltas are the finest-grained tiebreak. Range roughly [-19, +30] (a
+  // deltas are the finest-grained tiebreak. Range roughly [-22, +36] (a
   // still-falling below-LRR row's -10 LRR term is a real penalty, not a
   // floor of 0 — see _lrrProximityScore).
   return lrrPts * 10 + techPts * 2 + agreementPts + factorPts;
@@ -3425,6 +3445,22 @@ function _tradabilityBreakdown(row) {
     label: 'Volume',
     detail: (rvolB || 'no data') + (rvolD != null ? ' (' + fmtDelta(rvolD) + ')' : ''),
     color: _tradabilityDeltaColor(rvolD),
+  });
+
+  // Winning source's own buy-family win-rate track record — see
+  // _sourceTrackRecordScore's comment for why this is win-rate, not the
+  // source's (sometimes fat-tail-distorted) mean edge. Enough-history gate
+  // (n>=5) mirrors _sourceTrackRecordScore's own check exactly.
+  const src = (row.winning_source || '').toString().toUpperCase();
+  const srcSc = (state.sourceScorecard || {})[src];
+  const srcHasData = !!src && srcSc && srcSc.win_rate_20d != null && srcSc.n >= 5;
+  const srcD = srcHasData ? _sourceTrackRecordScore(row) : null;
+  items.push({
+    label: 'Source',
+    detail: !src ? 'no winning source'
+      : !srcHasData ? src + ' — not enough history yet'
+      : src + ': ' + Math.round(srcSc.win_rate_20d * 100) + '% buy win rate (n=' + srcSc.n + ') (' + fmtDelta(srcD) + ')',
+    color: _tradabilityDeltaColor(srcD),
   });
 
   const subtier = _buyAgreementSubTier(row);
