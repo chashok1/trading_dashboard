@@ -2712,6 +2712,48 @@ function _gateReasonFor(row) {
   return null;
 }
 
+// 2026-08-16: sibling to _gateReasonFor -- same branch order/classifiers,
+// crisp per-scenario text for the High/Mixed confidence tiers instead of
+// the flat "Sources and Technical align"/"...conflict" the popover used to
+// show regardless of which of the several High/Mixed branches actually
+// fired. User: "did we add these to tooltip with crisp reasoning/why?" —
+// Gate already was (this function's sibling); High/Mixed weren't. Returns
+// null when neither tier's scenario matches (falls back to the generic
+// text in the caller).
+function _highMixedReasonFor(row) {
+  var ca  = (row.consolidated_action || '').toUpperCase();
+  var rra = (row.rr_action           || '').toUpperCase();
+  if (!ca || ca === 'NONE') return null;
+
+  var isHeld      = !!row.held_today;
+  var srcIsReduce = (ca === 'REDUCE' || ca === 'SS' || ca === 'STM');
+  var srcIsBuy    = (ca === 'INCREASE' || ca === 'BS' || ca === 'BM' || ca === 'ADD' || ca === 'BMN');
+  var srcIsAdd    = (ca === 'ADD' || ca === 'BMN');
+  var techIsSell    = (rra === 'SS' || rra === 'STM' || rra === 'SO' || rra === 'REDUCE' || rra === 'SA' || rra === 'REMOVE');
+  var techIsBuy     = (rra === 'BS' || rra === 'BM' || rra === 'INCREASE');
+  var techIsBuyMin  = (rra === 'BMN' || rra === 'ADD');
+  var src = (row.winning_source || '').toString().toUpperCase();
+
+  // Live-trigger bypass (RTA/SSSCHG) — resolves the buy on its own, no
+  // Technical confirmation needed. Checked first, same as the server.
+  if ((src === 'RTA' || src === 'SSSCHG') && srcIsBuy) {
+    return src + ' is a live, same-day trigger — resolves the buy on its own, Technical confirmation not required';
+  }
+  if (techIsSell) {
+    if (!isHeld) return 'Technical says sell, but nothing is held to sell — netted to HOLD';
+    if (srcIsReduce) return 'Sources and Technical both say sell — confirmed';
+    return 'Technical says sell but Sources doesn’t confirm it — Technical overrides the call, flagged as Mixed';
+  }
+  if (techIsBuy || techIsBuyMin) {
+    if (srcIsReduce) return 'Technical says buy but Sources says reduce — direct conflict, netted to HOLD';
+    if (!isHeld && srcIsAdd) return 'Sources and Technical both confirm — starter position';
+    if (srcIsBuy) return 'Sources and Technical both confirm buy';
+    return 'Technical says buy but Sources isn’t backing it — Technical driving the call alone';
+  }
+  if (srcIsReduce) return 'Sources says reduce but Technical has no read either way — flagged as Mixed';
+  return null;
+}
+
 function finalCall(row) {
   // D6: prefer server-computed final call (derived at ETL time via _compute_final_call).
   // Client-side code below is a thin read-only fallback for pre-migration rows.
@@ -4499,18 +4541,32 @@ function _buildActionPopHtml(row) {
     const tierColor = tier === 'Conflicted' || tier === 'Weak' ? '#b45309' : color;
     const caution = flags.length ? ' — ⚠ ' + flags.length + ' risk flag' + (flags.length > 1 ? 's' : '') + ' below' : '';
     h += `<div style="font-size:11px;margin:3px 0 6px;padding:3px 6px;background:#f8fafc;border-radius:3px;">`
-       + `<b>Recommendation:</b> <span style="color:${tierColor};font-weight:700;">${escapeHtml(tier)}</span>`
+       + `Recommendation : <span style="color:${tierColor};font-weight:700;">${escapeHtml(tier)}</span>`
        + ` <span style="color:#64748b;">(${escapeHtml(why)}${caution})</span></div>`;
   }
 
   const confLabel = fc.confidence === 'high' ? 'High' : fc.confidence === 'gate' ? 'Gate'
     : fc.confidence === 'none' ? 'No recommendation' : 'Mixed';
+  // Crisp, per-scenario reasoning for all four tiers -- Gate already had
+  // this (_gateReasonFor); High/Mixed now share the same treatment via
+  // _highMixedReasonFor (both walk _compute_final_call's exact branch
+  // order), falling back to a generic line only if neither matches.
   const confReason = fc.confidence === 'gate' ? (fc.gateReason || 'Deterministic gate — Technical not evaluated')
-    : fc.confidence === 'high' ? 'Sources and Technical align'
+    : fc.confidence === 'high' ? (_highMixedReasonFor(row) || 'Sources and Technical align')
     : fc.confidence === 'none' ? 'Not feasible (nothing to act on)'
-    : 'Sources and Technical conflict';
-  h += `<div style="font-size:10px;color:#64748b;margin:2px 0 4px;">Confidence: `
-     + `<b>${escapeHtml(confLabel)}</b> — ${escapeHtml(confReason)}</div>`;
+    : (_highMixedReasonFor(row) || 'Sources and Technical conflict');
+  // Header + value on one line (bold header, bold value -- matching Sources/
+  // Technical below), reason text indented on its own line underneath
+  // rather than crammed onto the header line -- user: "make sure second
+  // line leave margin in the front so it's not aligned to the confidence
+  // header," and "check the bold ... header text and action, not matching."
+  // Same color-by-value treatment as the checklist/Tradability labels:
+  // High -> side color, Mixed -> amber (active disagreement), Gate/None ->
+  // neutral gray (a deterministic branch or nothing to evaluate, not
+  // really a "confidence" read either way).
+  const confColor = fc.confidence === 'high' ? color : fc.confidence === 'mixed' ? '#b45309' : '#94a3b8';
+  h += `<div style="font-size:10px;margin:2px 0 0;">Confidence : <b style="color:${confColor};">${escapeHtml(confLabel)}</b></div>`
+     + `<div style="font-size:10px;color:#64748b;margin:0 0 4px 4px;">${escapeHtml(confReason)}</div>`;
 
   // Fresh-signal note (same condition as the SYMBOL cell's NEW pill) --
   // informational, not a risk flag: Technical hasn't had a chance to
@@ -4536,14 +4592,23 @@ function _buildActionPopHtml(row) {
     winRateStr = `<span class="hit-rate-pill ${wrCls}" style="font-size:9px;vertical-align:middle;margin:0 4px;">${wrPct}%</span>`
       + `<span style="color:#94a3b8;">(${escapeHtml(winSrcCode)} hit rate, n=${Number(winSrcSc.n)}, avg edge ${escapeHtml(wrEdge)})</span>`;
   }
-  h += `<div style="font-size:10px;line-height:1.5;"><div><b>Sources</b>: <b>${ca}</b>${winRateStr}</div>`;
+  // Sources/Technical colored the same way -- does THIS lens's own side
+  // agree with the row's overall side (color), actively oppose it (amber),
+  // or have no directional read at all (gray)?
+  const caUpper = (row.consolidated_action || '').toUpperCase();
+  const srcSide = _SRC_BUY.has(caUpper) ? 'buy' : _SRC_SELL.has(caUpper) ? 'sell' : null;
+  const srcColor = srcSide === side ? color : srcSide ? '#b45309' : '#94a3b8';
+  h += `<div style="font-size:10px;line-height:1.5;"><div>Sources : <b style="color:${srcColor};">${ca}</b>${winRateStr}</div>`;
   const srcHtml = _srcReasonsHtml(row);
   h += srcHtml ? `<div style="margin:2px 0 4px 4px;">${srcHtml}</div>`
                : `<div style="margin:2px 0 4px 4px;color:#94a3b8;">no source rows</div>`;
-  const rra = row.rr_action ? String(row.rr_action) : 'none';
+  const rra = row.rr_action ? escapeHtml(String(row.rr_action)) : 'none';
+  const rraUpper = (row.rr_action || '').toUpperCase();
+  const techSide = _TECH_BUY.has(rraUpper) ? 'buy' : _TECH_SELL.has(rraUpper) ? 'sell' : null;
+  const techColor = techSide === side ? color : techSide ? '#b45309' : '#94a3b8';
   const techDesc = row.rr_desc || row.tn_td_desc || row.bb_desc || '';
-  const techLine = techDesc ? `${rra} — ${techDesc}` : rra;
-  h += `<div><b>Technical</b>: ${escapeHtml(techLine)}</div></div>`;
+  h += `<div>Technical : <b style="color:${techColor};">${rra}</b></div>`
+     + `<div style="margin:2px 0 4px 4px;color:#64748b;">${techDesc ? escapeHtml(techDesc) : 'no descriptor'}</div></div>`;
 
   // ---- Agreement checklist -- rows with a `sub` breakdown (Tradability)
   // get the same full item-by-item list the SYMBOL cell's 🎯 popover shows
@@ -4553,11 +4618,16 @@ function _buildActionPopHtml(row) {
   if (checklist.length) {
     h += `<div style="font-size:10px;line-height:1.6;border-top:1px solid #e5e7eb;margin-top:4px;padding-top:4px;">`
        + checklist.map(rw => {
+           // Same color-by-value treatment as the Tradability sub-list's
+           // own labels (_tradabilityBreakdown's it.color) -- bold, colored
+           // by agree/conflict/neutral, not just the ✓/✗/○ glyph.
+           const rowColor = rw.agree ? color : rw.conflict ? '#b45309' : '#94a3b8';
            const icon = rw.agree ? '<span style="color:' + color + ';">✓</span>'
              : rw.conflict ? '<span style="color:#b45309;">✗</span>'
              : '<span style="color:#cbd5e1;">○</span>';
            const glyph = rw.icon ? escapeHtml(rw.icon) + ' ' : '';
-           let line = `<div>${icon} ${glyph}${escapeHtml(rw.label)} — ${escapeHtml(rw.reason)}</div>`;
+           let line = `<div>${icon} ${glyph}<span style="color:${rowColor};font-weight:700;">${escapeHtml(rw.label)}</span>`
+             + ` — <span style="color:#374151;">${escapeHtml(rw.reason)}</span></div>`;
            if (rw.sub && rw.sub.length) {
              line += `<div style="margin:2px 0 4px 16px;">` + rw.sub.map(it =>
                `<div><span style="color:${it.color};font-weight:700;">${escapeHtml(it.label)}</span>: `

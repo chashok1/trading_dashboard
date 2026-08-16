@@ -235,8 +235,18 @@ state) that wasn't reaching this popover yet. Top to bottom:
    agreement on ≥75% of checklist rows (`Math.ceil(checklist.length*0.75)`
    — 3/4 on sell-side rows, 4/5 on buy-side rows since Tradability only
    applies there).
-3. **Confidence** — `fc.confidence` (High/Gate/Mixed) + why (`_gateReasonFor`
-   for Gate).
+3. **Confidence** — `fc.confidence` (High/Gate/Mixed/None) + a crisp,
+   per-scenario reason for all four tiers, not just a flat "align"/
+   "conflict" line. `_gateReasonFor(row)` (Gate) and `_highMixedReasonFor
+   (row)` (High/Mixed) both walk `_compute_final_call`'s exact branch
+   order (`etl/derive_actionable.py`) using the same classifier booleans,
+   so the popover text always matches the actual server-side reason a row
+   landed where it did — e.g. Gate covers 7 distinct branches (stop
+   breach, exit-not-held, exit-held/at-Max, don't-initiate, buy-capped-at-
+   Max, establishing-position, both-neutral); High/Mixed cover the
+   RTA/SSSCHG live-trigger bypass and every Sources-vs-Technical
+   agree/disagree combination. Falls back to a generic "align"/"conflict"
+   line only if neither scenario matches.
 4. **Fresh-signal note** (buy-side, conditional) — same condition as the
    SYMBOL cell's NEW pill (`row._watchlisted && row._isNew`): winning-
    source data just landed, Technical hasn't had a chance to confirm yet.
