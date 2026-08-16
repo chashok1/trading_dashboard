@@ -1,13 +1,19 @@
-# PVV — Price/Volume/Volatility multi-bucket signal (TASK_125, decision layer TASK_127)
+# PVV — Price/Volume/Volatility multi-bucket signal (TASK_125, decision layer TASK_127, dip-buyer revision 2026-08-16)
 
 Informational v1: `drv_pvv` computes a Price/Volume/Volatility (PVV,
 Hedgeye-style ROC) signal in 4 time buckets per symbol (TASK_125, unchanged),
-then consolidates into one decision (`BUY`, `BUY_DIP`, `REDUCE`, `AVOID`,
-`SELL`, `TRIM`, `WATCH`) via RR outlook × `sig_today` (TASK_127 — see §4;
-`sig_5d`/`sig_3w`/`sig_3m` are now display-only context, not decision
-inputs). Surfaced as a new **PVV** column on the Actionable screen with a
-rich hover tooltip. **Not wired into `consolidated_action` / `drv_actionable`
-scoring** — a later task may do so once the signal has been validated.
+then consolidates into one decision (`BUY_LRR`, `BUY_DIP`, `BUY_WATCH`,
+`REDUCE`, `AVOID`, `SELL`, `SELL_WATCH`, `TRIM`, `NO_ACTION`) via RR
+outlook × `sig_today` × `at_lrr` (TASK_127 introduced the outlook×
+sig_today matrix — see §4; 2026-08-16 added the LRR gate, the
+`BUY_WATCH`/`SELL_WATCH` caution tiers, and retired `WATCH` in favor of
+`NO_ACTION` everywhere, per user's dip-buyer philosophy.
+`sig_5d`/`sig_3w`/`sig_3m` remain display-only context, not decision
+inputs). Surfaced as a **PVV** column on the Actionable screen with a rich
+hover tooltip, plus a ✅/✋/❌ agreement icon folded into the ACTION column's
+Final Call cell (see §7). **Not wired into `consolidated_action` /
+`drv_actionable` scoring** — a later task may do so once the signal has
+been validated.
 
 Code: `etl/derive_pvv.py` (deriver + pure classification functions),
 wired into `derive_all()` in `etl/derive.py`. Runs after `trend_trade_rules`
@@ -147,19 +153,23 @@ Volume Flat resolves toward ↓ (unconfirmed); Vol Flat resolves toward ↓
 Pure functions (unit-testable, no DB): `classify_pvv(p_dir, v_dir, vol_dir)`
 and `classify_pvv_3m(p_dir, vol_dir)` in `etl/derive_pvv.py`.
 
-## 4. Consolidated decision — RR outlook × sig_today (TASK_127)
+## 4. Consolidated decision — RR outlook × sig_today × at_lrr (2026-08-16)
 
-As of TASK_127, `decide_pvv(sig_today, outlook)` is a straight 9×3 lookup:
-**RR outlook decides WHAT** (direction), **sig_today decides WHEN**
-(timing). `sig_5d`/`sig_3w`/`sig_3m` no longer feed the decision — they
-remain display-only context in `detail` and the tooltip. This replaced the
-prior 5d/3w/3m bucket-alignment matrix (TASK_125) entirely.
+`decide_pvv(sig_today, outlook, at_lrr)` is a matrix lookup: **RR outlook
+decides WHAT** (direction), **sig_today decides WHEN** (timing), and
+**`at_lrr` gates the two price-up rows** (dip-buyer philosophy — see
+below). `sig_5d`/`sig_3w`/`sig_3m` still don't feed the decision — they
+remain display-only context in `detail` and the tooltip.
 
 **Outlook input**: `drv_rr.outlook` for `(as_of_date=D, tos_symbol)` —
 `'Bullish'`/`'Bearish'`/`'Neutral'` (case-insensitive, trimmed). `NULL`
 (missing row) and any unrecognized string (e.g. a `source='BB'` gradation
 like `'Light Bullish'`/`'Mild Bearish'` — see below) both resolve to "no
 outlook", which behaves identically to `Neutral`.
+
+**`at_lrr` input**: `drv_cat_atomic_input.low_lrr == 3` for `(as_of_date=D,
+tos_symbol)` — the same "at LRR" flag `derive_actionable.py` already uses
+for its `warn_not_at_lrr` buy-side annotation, not a new calculation.
 
 **BB-fallback outlook timing (fixed 2026-08-15)**: `derive_pvv` used to run
 *before* `_derive_rr_outlook_from_qe`'s second-pass UPDATE (`etl/derive.py`),
@@ -176,35 +186,58 @@ way: exact (trimmed, case-insensitive) `'Bullish'`/`'Bearish'`/`'Neutral'`
 match; anything else (including `'Light Bullish'`) → no outlook → `WATCH`
 column.
 
-| sig_today ↓ \ outlook → | **Bullish** | **Bearish** | Neutral / NULL |
+| # | sig_today ↓ \ outlook → | **Bullish** | **Bearish** |
 |---|---|---|---|
-| `STRONG_BULL` | `BUY` | `TRIM` | `WATCH` |
-| `WEAK_BULL` | `BUY` | `TRIM` | `WATCH` |
-| `OVEREXT_BULL` | `TRIM` | `TRIM` | `WATCH` |
-| `BEAR_DIV` | `WATCH` | `TRIM` | `WATCH` |
-| `NEUTRAL` / `NA` | `WATCH` | `AVOID` | `WATCH` |
-| `DRIFT` | `BUY_DIP` | `AVOID` | `WATCH` |
-| `MILD_BEAR` | `BUY_DIP` | `REDUCE` | `WATCH` |
-| `BEAR_LEAN` | `BUY_DIP` | `REDUCE` | `WATCH` |
-| `STRONG_BEAR` | `WATCH` *(knife guard)* | `SELL` | `WATCH` |
+| 1 | `STRONG_BULL` | `BUY_LRR` if at LRR, else `NO_ACTION` | `TRIM` |
+| 2 | `WEAK_BULL` | `BUY_LRR` if at LRR, else `NO_ACTION` | `TRIM` |
+| 3 | `OVEREXT_BULL` | `TRIM` | `TRIM` |
+| 4 | `BEAR_DIV` | `NO_ACTION` | `TRIM` |
+| 5 | `NEUTRAL` | `NO_ACTION` | `AVOID` |
+| 6 | `NA` | `NO_ACTION` | `AVOID` |
+| 7 | `DRIFT` | `BUY_DIP` | `AVOID` |
+| 8 | `MILD_BEAR` | `BUY_WATCH` | `REDUCE` |
+| 9 | `BEAR_LEAN` | `BUY_DIP` | `REDUCE` |
+| 10 | `STRONG_BEAR` | `SELL_WATCH` | `SELL` |
+
+Neutral outlook / no outlook (`NULL` or unrecognized) → `NO_ACTION`
+regardless of `sig_today` or `at_lrr` (row-independent fallback;
+2026-08-16: previously `WATCH` — user asked for `–` here too, same
+convention as everywhere else in the matrix). `WATCH` is retired as a
+`decide_pvv()` output but remains a valid value in already-derived
+`drv_pvv` rows for dates before 2026-08-16 (not backfilled).
 
 Notes:
-- **Knife guard**: bullish outlook + `STRONG_BEAR` sig_today (a heavy-
-  volume selloff day) deliberately does **not** fire `BUY_DIP` — it waits
-  at `WATCH` rather than trying to catch a falling knife.
+- **Dip-buyer gate (rows 1–2)**: user philosophy — "I only want to buy the
+  dips." A same-day price-up reading (`STRONG_BULL`/`WEAK_BULL`) is *not*
+  an automatic buy; it only fires `BUY_LRR` when price is also sitting at
+  the LRR support line. Off LRR it falls to `NO_ACTION` ("no confirmed
+  setup") rather than a bare `WATCH`.
+- **`BUY_WATCH` (row 8)**: `MILD_BEAR` under a bullish outlook is a softer,
+  less-confirmed dip than `DRIFT`/`BEAR_LEAN` (rows 7/9, which stay
+  `BUY_DIP` — "my most valuable signal of all," per user) — downgraded to
+  a caution tier rather than a full dip-buy.
+- **`SELL_WATCH` (row 10, Bullish column)**: replaces the old "knife guard"
+  `WATCH`. A heavy-volume selloff under a *bullish* outlook is flagged as
+  an explicit "may need to get rid of the stock" caution rather than
+  silently suppressed — user: "this is also critical." Bearish outlook +
+  `STRONG_BEAR` is unchanged, a plain `SELL`.
 - **Sell the rip**: bearish outlook + any up-tape sig_today
-  (`STRONG_BULL`/`WEAK_BULL`/`OVEREXT_BULL`/`BEAR_DIV`) consolidates to
-  `TRIM`.
-- `TRIM` and `WATCH` each map from multiple matrix cells (see table); `BUY`
-  and `BUY_DIP` are Bullish-outlook-only; `SELL`/`REDUCE`/`AVOID` are
-  Bearish-outlook-only.
-- Decision vocab unchanged from TASK_125 (`BUY`, `BUY_DIP`, `TRIM`, `WATCH`,
-  `AVOID`, `REDUCE`, `SELL`) — no badge/sort-rank changes needed.
+  (`STRONG_BULL`/`WEAK_BULL`/`OVEREXT_BULL`/`BEAR_DIV`) still consolidates
+  to `TRIM`.
+- `TRIM`/`NO_ACTION`/`AVOID` each map from multiple matrix cells (see
+  table); `BUY_LRR`/`BUY_DIP`/`BUY_WATCH` are Bullish-outlook-only;
+  `SELL`/`REDUCE`/`AVOID` are Bearish-outlook-only; `SELL_WATCH` is the
+  Bullish-side `STRONG_BEAR` cell specifically.
+- Decision vocab (2026-08-16): `BUY_LRR`, `BUY_DIP`, `BUY_WATCH`, `TRIM`,
+  `REDUCE`, `SELL`, `SELL_WATCH`, `AVOID`, `NO_ACTION`. Plain `BUY` and
+  `WATCH` are both retired as outputs (the no-outlook fallback that used to
+  produce `WATCH` now produces `NO_ACTION` too); `WATCH` can still appear
+  when viewing a historical date derived before 2026-08-16.
 
 Pure functions in `etl/derive_pvv.py`: `_normalize_outlook(outlook)` (case-
 insensitive/trim → `'Bullish'`/`'Bearish'`/`'Neutral'`/`None`) and
-`decide_pvv(sig_today, outlook)` (the matrix lookup above, via
-`_PVV_DECISION_MATRIX`).
+`decide_pvv(sig_today, outlook, at_lrr=False)` (the matrix lookup above, via
+`_PVV_DECISION_MATRIX` and the `_LRR_GATE` sentinel).
 
 ## 5. `detail` JSONB shape (drives the tooltip)
 
@@ -221,6 +254,11 @@ insensitive/trim → `'Bullish'`/`'Bearish'`/`'Neutral'`/`None`) and
 `"RR"`/`"BB"`/`null` (from `drv_rr.source`, `null` when there's no
 `drv_rr` row for the symbol at all).
 
+`detail.at_lrr` (2026-08-16) — boolean, `drv_cat_atomic_input.low_lrr == 3`
+for the symbol at D. Only affects the decision for `STRONG_BULL`/
+`WEAK_BULL` under a Bullish outlook (§4 rows 1–2), but always recorded so
+the tooltip can show it regardless of sig_today.
+
 ## 6. API
 
 `GET /api/actionable` LEFT JOINs `drv_pvv` on `(tos_symbol, as_of_date)` and
@@ -230,19 +268,63 @@ adds `pvv_decision` (= `drv_pvv.decision`) and `pvv_detail` (=
 
 ## 7. UI
 
-New **PVV** column (toggleable via the gear menu, visible by default) shows
-a colored decision badge (`_pvvCellHtml`), reusing the existing
-`.act-badge` tint classes: `BUY`→act-buy-strong-tint, `BUY_DIP`→
-act-buy-tint, `SELL`→act-sell-strong-tint, `REDUCE`→act-sell-tint,
-`TRIM`/`AVOID`→act-sell-weak-tint (amber), `WATCH`→act-neutral-tint (gray).
+**PVV** column (toggleable via the gear menu, visible by default) shows a
+colored decision badge (`_pvvCellHtml`), reusing the existing `.act-badge`
+tint classes: `BUY_LRR`→act-buy-strong-tint, `BUY_DIP`/`BUY_WATCH`→
+act-buy-tint, `SELL`→act-sell-strong-tint, `SELL_WATCH`/`REDUCE`→
+act-sell-tint, `TRIM`/`AVOID`→act-sell-weak-tint (amber). `NO_ACTION`
+renders as a plain muted `—` dash (same style as "no `drv_pvv` row"), not a
+colored badge — both are still hoverable. `WATCH`→act-neutral-tint (gray)
+is kept in the JS map only so historical dates derived before 2026-08-16
+still render (decide_pvv() no longer produces it going forward). Badge
+text differs from the DB decision code for three tiers
+(`_PVV_LABEL`): `BUY_LRR`→"BUY@LRR", `BUY_WATCH`→"BUYWATCH",
+`SELL_WATCH`→"SELLWATCH".
+
 Hover (`data-pvvpop` + `_showDataPop`, same mechanism as the MACRO/Vol/IV
 popovers) shows a 4-row table (Today/5d/3w/3m) with the signal code, P/V/Vol
 arrows, and ROC percentages from `pvv_detail`; gated 3w rows show
-`(gated)`; HV-fallback legs show `[hv]`.
+`(gated)`; HV-fallback legs show `[hv]`. A `NO_ACTION` row's title shows the
+underlying `sig_today` code that was suppressed (e.g. "– (STRONG_BULL, no
+confirmed setup)") so the raw calculation stays visible even when there's
+no action to take.
 
-Sortable by `_pvv_rank` (ascending = most actionable first): `BUY_DIP`(0) <
-`BUY`(1) < `SELL`(2) < `REDUCE`(3) < `TRIM`(4) < `AVOID`(5) < `WATCH`(6) <
-no-row(7).
+Sortable by `_pvv_rank` (ascending = most actionable first): `BUY_LRR`(0) <
+`BUY_DIP`(1) < `SELL`(2) < `SELL_WATCH`(3) < `BUY_WATCH`(4) < `REDUCE`(5) <
+`TRIM`(6) < `AVOID`(7) < `WATCH`(8) < `NO_ACTION`(9) < no-row(10).
+
+**ACTION-column icon (2026-08-16, three revisions)**: the existing Final
+Call cell (`_finalCallHtml`, `web/actionable.js`) folds a PVV icon into its
+confidence slot — same mechanism already used for the conviction-hold 🔭/🚫
+overlay. v1 was shape-only (✅/✋/❌) with no color; user found that
+"confusing." v2 switched to colored ▲/▼ triangles. v3 went back to
+colored-circle icons (🟢/🟡/🔴) with a text-decoration strikethrough for
+conflicts. User then asked for a proper "no entry" stop-sign glyph for the
+conflict case instead of a strikethrough — "circle like around and a line
+from 1.5 hour in clock to 7.5" — so conflicts now render as a small inline
+SVG (`_pvvStopIconSvg()`): a ring + diagonal line from the 1:30 to 7:30
+clock position (45°/225°, a straight diameter through center), tinted to
+match the tone it replaces rather than a universal red.
+
+Shows **any time PVV has an actionable decision**, regardless of what (or
+whether) the ACTION column has to say — user: "I need to see some kind of
+icon always ... regardless of the action column values." That includes the
+plain `—` no-recommendation case (`fc.feasible === false` / `fc.confidence
+=== 'none'`) and rows where `fc.side` is `'neutral'` (HOLD).
+
+`_pvvAgreementIcon(row, fc.side)`: tone is green for buy-tilted PVV
+(`BUY_LRR`/`BUY_DIP`), red for sell-tilted (`SELL`/`REDUCE`/`TRIM`/
+`AVOID`), yellow for a caution tier (`BUY_WATCH`/`SELL_WATCH`). No
+conflict → plain colored dot (🟢/🔴/🟡). ACTION *does* have its own
+buy/sell direction and it's the opposite of PVV's tilt → the tone's color
+renders as the stop-sign ring+diagonal SVG instead of the dot, so you
+still see which way PVV leans (via color) even while it's flagging that it
+disagrees with ACTION. No direction to compare against (no recommendation,
+or HOLD) never conflicts, so always the plain dot. Nothing shown when PVV
+has no row, is `NO_ACTION`, or is the outlook-less `WATCH` fallback. Hover
+shows the PVV label + its one-line meaning, plus "— CONFLICTS with the
+computed action" on the stop-sign case. Annotation only — never changes
+`consolidated_action`/`final_code`.
 
 ## 8. Config
 

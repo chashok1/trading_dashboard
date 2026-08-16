@@ -3031,11 +3031,63 @@ function _signalReasons(row, side) {
   return isSell ? { warn: buy, buy: warn } : { warn, buy };
 }
 
+// 2026-08-16: PVV icon folded into the Final Call confidence slot (same
+// mechanism as the conviction-hold 🔭/🚫 icon below). Revised three times:
+// v1 was shape-only agree/caution/conflict (✅/✋/❌), user found that
+// "confusing"; v2 switched to colored ▲/▼ triangles; v3 went back to the
+// original colored-circle icons (🟢/🟡/🔴) instead of triangles, with a
+// text-decoration strikethrough for conflicts; user then asked for a
+// proper "no entry" stop-sign glyph for the conflict case instead of a
+// strikethrough -- "circle like around and a line from 1.5 hour in clock
+// to 7.5" -- so conflicts now render as a small inline SVG (colored ring +
+// diagonal, NE-to-SW at exactly the 1:30/7:30 clock positions) via
+// _pvvStopIconSvg() rather than CSS text-decoration. 🟢 = PVV buy-tilted
+// (BUY_LRR/BUY_DIP), 🔴 = PVV sell-tilted (SELL/REDUCE/TRIM/AVOID), 🟡 = a
+// caution tier (BUY_WATCH/SELL_WATCH) -- same color used for both the
+// plain dot (no conflict) and the stop-sign ring (conflict). Shows ANY
+// time PVV has an actionable decision, regardless of what (or whether)
+// ACTION itself has to say (user: "I need to see some kind of icon always
+// ... regardless of the action column values") -- including the plain "—"
+// no-recommendation case below, and rows where fc.side is 'neutral'
+// (HOLD); those never conflict (nothing to conflict with), so always get
+// the plain dot. Nothing shown when PVV has no row or is NO_ACTION/WATCH
+// (no confirmed setup either way).
+const _PVV_BUY_SIDE = ['BUY_LRR', 'BUY_DIP', 'BUY_WATCH'];
+const _PVV_SELL_SIDE = ['SELL', 'SELL_WATCH', 'REDUCE', 'TRIM', 'AVOID'];
+const _PVV_CAUTION = ['BUY_WATCH', 'SELL_WATCH'];
+const _PVV_DOT_COLOR = { green: '#16a34a', red: '#dc2626', yellow: '#d97706' };
+// Colored ring + diagonal from the 1:30 to 7:30 clock position (45deg NE to
+// 225deg SW through center) -- a "no entry" stop-sign glyph, tinted to
+// match the dot it replaces rather than a universal red.
+function _pvvStopIconSvg(color) {
+  return '<svg width="11" height="11" viewBox="0 0 12 12" style="vertical-align:-1px;">'
+       + '<circle cx="6" cy="6" r="5" fill="none" stroke="' + color + '" stroke-width="1.6"/>'
+       + '<line x1="9.5" y1="2.5" x2="2.5" y2="9.5" stroke="' + color + '" stroke-width="1.6"/>'
+       + '</svg>';
+}
+function _pvvAgreementIcon(row, fcSide) {
+  const d = row.pvv_decision;
+  if (!d || d === 'NO_ACTION' || d === 'WATCH') return '';
+  const pvvSide = _PVV_BUY_SIDE.includes(d) ? 'buy' : (_PVV_SELL_SIDE.includes(d) ? 'sell' : null);
+  if (!pvvSide) return '';
+  const info = _PVV_DECISION_INFO[d];
+  const label = _PVV_LABEL[d] || d;
+  const conflicts = (fcSide === 'buy' || fcSide === 'sell') && pvvSide !== fcSide;
+  const title = `PVV: ${label}` + (info ? ` — ${info.meaning}` : '')
+    + (conflicts ? ' — CONFLICTS with the computed action' : '');
+  const tone = _PVV_CAUTION.includes(d) ? 'yellow' : (pvvSide === 'buy' ? 'green' : 'red');
+  const glyph = conflicts
+    ? _pvvStopIconSvg(_PVV_DOT_COLOR[tone])
+    : (tone === 'yellow' ? '🟡' : (tone === 'green' ? '🟢' : '🔴'));
+  return ` <span title="${escapeHtml(title)}">${glyph}</span>`;
+}
+
 // HTML for the Final Call cell (label + confidence badge).
 function _finalCallHtml(row) {
   var fc = finalCall(row);
   if (!fc.feasible || fc.confidence === 'none') {
-    return '<span style="color:#cbd5e1;">—</span>';
+    var _pvvNone = _pvvAgreementIcon(row, fc.side).trim();
+    return '<span style="color:#cbd5e1;">—</span>' + (_pvvNone ? ' ' + _pvvNone : '');
   }
   var text = fc.label || actionText(fc);  // plain-English label (e.g. "SELL ALL")
   // TASK_118: low_confidence — sell evidence comes only from rules with a
@@ -3088,6 +3140,8 @@ function _finalCallHtml(row) {
       + (ltAvoid ? 'BUY/ADD/INCREASE' : 'SELL/REDUCE') + ' signal.">' + (ltAvoid ? '🚫' : '🔭') + '</span>';
     badgeHtml = badgeHtml ? badgeHtml + ' ' + ltIcon : ltIcon;
   }
+  var pvvIcon = _pvvAgreementIcon(row, fc.side).trim();
+  if (pvvIcon) badgeHtml = badgeHtml ? badgeHtml + ' ' + pvvIcon : pvvIcon;
   // SA (SELL ALL) / BM (BUY MORE) match the HEDGEYE panel's red/green exactly;
   // weaker tiers (SS/STM/SO/SW, BS/BMN/BW) and neutral keep the standard palette.
   var hedgeyeStyle = isLowConf ? 'opacity:0.8;'
@@ -3126,9 +3180,13 @@ function _finalCallHtml(row) {
   // 2026-08-15: user asked for the action badge on its own centered line,
   // with everything else (stop/earnings/signal pills, confidence text,
   // LOW CONF) moved to line(s) below instead of crowding the same line.
+  // 2026-08-16: rich hover popover (data-actionpop + _showDataPop, same
+  // mechanism as PVV/signal popovers) replaces the old plain `title`
+  // attribute -- user: "instead of repeating what I see for action (SELL
+  // SOME) it should say how it got there." See _buildActionPopHtml().
   var badgeLine = '<div style="text-align:center;">'
-    + '<span class="act-badge act-badge-sm ' + colorCls + '" style="' + hedgeyeStyle + '" title="'
-    + escapeHtml(fc.label || text) + '">' + escapeHtml(text) + '</span>'
+    + '<span class="act-badge act-badge-sm ' + colorCls + '" style="' + hedgeyeStyle + ';cursor:help;" '
+    + 'data-actionpop="' + escapeHtml(row.tos_symbol) + '">' + escapeHtml(text) + '</span>'
     + '</div>';
   var pillsLine = (stopPill || earningsPill || signalPill)
     ? '<div style="text-align:center;margin-top:2px;">' + stopPill + earningsPill + signalPill + '</div>'
@@ -4133,6 +4191,12 @@ function initSourcePopover() {
       if (r) _showDataPop(pvvEl, _buildPvvPopHtml(r));
       return;
     }
+    const actionEl = e.target.closest('[data-actionpop]');
+    if (actionEl) {
+      const r = state.rows.find(x => x.tos_symbol === actionEl.dataset.actionpop);
+      if (r) _showDataPop(actionEl, _buildActionPopHtml(r));
+      return;
+    }
     const signalEl = e.target.closest('[data-signalpop]');
     if (signalEl) {
       const r = state.rows.find(x => x.tos_symbol === signalEl.dataset.signalpop);
@@ -4150,7 +4214,7 @@ function initSourcePopover() {
     }
   };
   const _onOut = (e) => {
-    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop],[data-macropop],[data-scorespop],[data-notespop],[data-pvvpop],[data-signalpop],[data-tradabilitypop]')) return;
+    if (e.relatedTarget && e.relatedTarget.closest('[data-srcpop],[data-volpop],[data-ivpop],[data-macropop],[data-scorespop],[data-notespop],[data-pvvpop],[data-signalpop],[data-tradabilitypop],[data-actionpop]')) return;
     hideSourcePop();
   };
   body.addEventListener('mouseover', _onOver);
@@ -4209,33 +4273,51 @@ function _agreementCellHtml(r) {
   return `<span style="font-size:10px;font-weight:700;color:${color};" title="${cls}">${lbl}</span>${edgeBadge}`;
 }
 
-// ---- TASK_125: PVV (Price/Volume/Volatility) cell renderer ----
+// ---- PVV (Price/Volume/Volatility) cell renderer ----
 // Informational-only decision badge; hover shows the 4-bucket detail table
 // (same data-XXXpop / _showDataPop mechanism as MACRO/Vol/Scores popovers).
-// Sort order (ascending = most-actionable first): BUY_DIP, BUY, SELL,
-// REDUCE, TRIM, AVOID, WATCH, then no-row last.
+// 2026-08-16 revision (user-directed, dip-buyer philosophy): plain "BUY" is
+// gone -- BUY_LRR only fires when price is at LRR; NO_ACTION ("no confirmed
+// setup") replaces WATCH everywhere, including the Neutral/no-outlook
+// fallback; BUY_WATCH/SELL_WATCH are new caution tiers. "WATCH" itself is
+// retired as a decide_pvv() output but kept below so already-derived
+// historical drv_pvv rows (past dates, pre-2026-08-16) still render instead
+// of falling through to the unknown-code default. Sort order (ascending =
+// most-actionable first): BUY_LRR, BUY_DIP, SELL, SELL_WATCH, BUY_WATCH,
+// REDUCE, TRIM, AVOID, WATCH, NO_ACTION, then no-row last.
 const _PVV_RANK = {
-  BUY_DIP: 0, BUY: 1, SELL: 2, REDUCE: 3, TRIM: 4, AVOID: 5, WATCH: 6,
+  BUY_LRR: 0, BUY_DIP: 1, SELL: 2, SELL_WATCH: 3, BUY_WATCH: 4,
+  REDUCE: 5, TRIM: 6, AVOID: 7, WATCH: 8, NO_ACTION: 9,
 };
 function _pvvRank(decision) {
-  return (decision != null && _PVV_RANK[decision] != null) ? _PVV_RANK[decision] : 7;
+  return (decision != null && _PVV_RANK[decision] != null) ? _PVV_RANK[decision] : 10;
 }
 // Reuses the existing act-badge tint classes rather than inventing new CSS.
 const _PVV_CLASS = {
-  BUY:      'act-buy-strong-tint',
-  BUY_DIP:  'act-buy-tint',
-  SELL:     'act-sell-strong-tint',
-  REDUCE:   'act-sell-tint',
-  TRIM:     'act-sell-weak-tint',
-  AVOID:    'act-sell-weak-tint',
-  WATCH:    'act-neutral-tint',
+  BUY_LRR:    'act-buy-strong-tint',
+  BUY_DIP:    'act-buy-tint',
+  BUY_WATCH:  'act-buy-tint',
+  SELL:       'act-sell-strong-tint',
+  SELL_WATCH: 'act-sell-tint',
+  REDUCE:     'act-sell-tint',
+  TRIM:       'act-sell-weak-tint',
+  AVOID:      'act-sell-weak-tint',
+  WATCH:      'act-neutral-tint',
+};
+// Display label shown on the badge -- differs from the DB decision code for
+// the "@ LRR" / "WATCH-suffix" tiers per user's requested wording.
+const _PVV_LABEL = {
+  BUY_LRR: 'BUY@LRR', BUY_WATCH: 'BUYWATCH', SELL_WATCH: 'SELLWATCH',
 };
 function _pvvCellHtml(r) {
   const decision = r.pvv_decision;
-  if (!decision) return '<span style="color:#cbd5e1;font-size:10px;">—</span>';
+  if (!decision || decision === 'NO_ACTION') {
+    return `<span style="color:#cbd5e1;font-size:10px;" data-pvvpop="${escapeHtml(r.tos_symbol || '')}">—</span>`;
+  }
   const cls = _PVV_CLASS[decision] || 'act-neutral-tint';
+  const label = _PVV_LABEL[decision] || decision;
   return `<span class="act-badge ${cls}" data-pvvpop="${escapeHtml(r.tos_symbol)}" `
-       + `style="font-size:10px;padding:1px 5px;cursor:help;">${escapeHtml(decision)}</span>`;
+       + `style="font-size:10px;padding:1px 5px;cursor:help;">${escapeHtml(label)}</span>`;
 }
 // Small arrow glyph for a bucket leg direction ('up'/'down'/'flat'/null).
 function _pvvArrow(dir) {
@@ -4264,38 +4346,127 @@ function _pvvRatio(v) {
   const color = n > 1 ? '#16a34a' : (n < 1 ? '#dc2626' : '#94a3b8');
   return `<span style="color:${color};">${n.toFixed(2)}</span>`;
 }
-// Decision matrix reference (docs/pvv_logic.md §4, TASK_127) -- condition +
-// meaning shown in the hover tooltip header so the badge is self-explanatory.
-// decide_pvv(sig_today, outlook): RR outlook decides WHAT, sig_today decides
-// WHEN. TRIM and WATCH each cover more than one matrix cell (see condition
-// text); BUY/BUY_DIP are Bullish-outlook-only, SELL/REDUCE/AVOID are
-// Bearish-outlook-only.
+// Decision matrix reference (docs/pvv_logic.md §4, 2026-08-16 revision) --
+// condition + meaning shown in the hover tooltip header so the badge is
+// self-explanatory. decide_pvv(sig_today, outlook, at_lrr): RR outlook
+// decides WHAT, sig_today decides WHEN, at_lrr gates the two price-up rows
+// (dip-buyer philosophy -- a same-day price-up reading alone is no longer
+// a buy trigger). TRIM/WATCH/NO_ACTION each cover more than one matrix cell
+// (see condition text); BUY_LRR/BUY_DIP/BUY_WATCH are Bullish-outlook-only,
+// SELL/SELL_WATCH/REDUCE/AVOID are Bearish-outlook-only except SELL_WATCH
+// which is the Bullish-side STRONG_BEAR cell.
 const _PVV_DECISION_INFO = {
-  BUY:      { condition: 'outlook=Bullish, today=STRONG_BULL/WEAK_BULL',
-              meaning: "RR outlook is bullish and today's tape confirms strength — buy now." },
-  BUY_DIP:  { condition: 'outlook=Bullish, today=DRIFT/MILD_BEAR/BEAR_LEAN',
-              meaning: "Bullish outlook intact; today's soft tape is a dip to buy, not a reversal." },
-  TRIM:     { condition: 'outlook=Bullish & today=OVEREXT_BULL, or outlook=Bearish & today=STRONG_BULL/WEAK_BULL/OVEREXT_BULL/BEAR_DIV',
-              meaning: 'Either an overbought pop in a bullish name, or a rip in a bearish one ("sell the rip") — take some off either way.' },
-  REDUCE:   { condition: 'outlook=Bearish, today=MILD_BEAR/BEAR_LEAN',
-              meaning: 'Bearish outlook with the tape confirming the down move — lighten up.' },
-  SELL:     { condition: 'outlook=Bearish, today=STRONG_BEAR',
-              meaning: "Bearish outlook and today's heavy-volume selloff both confirm — exit." },
-  AVOID:    { condition: 'outlook=Bearish, today=NEUTRAL/NA/DRIFT',
-              meaning: "Bearish outlook, no confirming setup yet — don't initiate." },
-  WATCH:    { condition: 'outlook=Neutral/none (any today), or outlook=Bullish & today=BEAR_DIV/NEUTRAL/NA/STRONG_BEAR',
-              meaning: 'No outlook conviction, or (bullish outlook) today is too weak/volatile to act — includes the deliberate STRONG_BEAR "knife guard" that blocks BUY_DIP during a heavy-volume selloff.' },
+  BUY_LRR:    { condition: 'outlook=Bullish, today=STRONG_BULL/WEAK_BULL, price at LRR',
+                meaning: 'Price up today, confirmed by volume/volatility, and sitting right at the LRR support line — a genuine buy setup.' },
+  BUY_DIP:    { condition: 'outlook=Bullish, today=DRIFT/BEAR_LEAN',
+                meaning: "Bullish outlook intact; today's soft pullback is a dip to buy, not a reversal. Your most reliable signal." },
+  BUY_WATCH:  { condition: 'outlook=Bullish, today=MILD_BEAR',
+                meaning: "Bullish outlook, but today's down move came with rising volume — a softer, less-confirmed dip. Worth watching for an entry, not a confirmed buy yet." },
+  TRIM:       { condition: 'outlook=Bullish & today=OVEREXT_BULL, or outlook=Bearish & today=STRONG_BULL/WEAK_BULL/OVEREXT_BULL/BEAR_DIV',
+                meaning: 'Either an overbought pop in a bullish name, or a rip in a bearish one ("sell the rip") — take some off either way.' },
+  REDUCE:     { condition: 'outlook=Bearish, today=MILD_BEAR/BEAR_LEAN',
+                meaning: 'Bearish outlook with the tape confirming the down move — lighten up.' },
+  SELL:       { condition: 'outlook=Bearish, today=STRONG_BEAR',
+                meaning: "Bearish outlook and today's heavy-volume selloff both confirm — exit." },
+  SELL_WATCH: { condition: 'outlook=Bullish, today=STRONG_BEAR',
+                meaning: "Bullish outlook, but today is a heavy-volume selloff — a serious warning sign. Watch closely; you may need to get rid of the stock despite the bullish thesis." },
+  AVOID:      { condition: 'outlook=Bearish, today=NEUTRAL/NA/DRIFT',
+                meaning: "Bearish outlook, no confirming setup yet — don't initiate." },
+  NO_ACTION:  { condition: 'outlook=Bullish & today=BEAR_DIV/NEUTRAL/NA, or today=STRONG_BULL/WEAK_BULL but not at LRR',
+                meaning: 'No confirmed setup today — sit tight.' },
+  WATCH:      { condition: 'outlook=Neutral/none (any today)',
+                meaning: 'No outlook conviction either way — nothing to act on.' },
+};
+// green = buy-tilted, red = sell-tilted, gray = neutral/no-action.
+const _PVV_DECISION_COLOR = {
+  BUY_LRR: '#16a34a', BUY_DIP: '#16a34a', BUY_WATCH: '#16a34a',
+  SELL: '#dc2626', SELL_WATCH: '#dc2626', REDUCE: '#dc2626', TRIM: '#dc2626', AVOID: '#dc2626',
+  WATCH: '#94a3b8', NO_ACTION: '#94a3b8',
 };
 // Rich hover tooltip: 4-row table (Today / 5d / 3w / 3m), signal + P/V/Vol
 // arrows + ROC values, gated/vol-src annotations. Reuses _showDataPop/#sourcePop.
+// 2026-08-16: rich "how it got there" hover for the ACTION column's Final
+// Call badge -- reuses already-computed fields/helpers, no new data. Two-
+// driver breakdown (Sources = strategic, Technical = tactical, per
+// finalCall()'s own doc comment), the confidence-tier reason (_gateReasonFor
+// for Gate, else the same "align"/"conflict" text already used for the
+// High/Mixed badge titles), and every warning pill this row is currently
+// showing (LOW CONF, STOP, earnings, LT conflict, PVV conflict) folded into
+// one list instead of scattered across separate hover targets.
+function _buildActionPopHtml(row) {
+  const fc = finalCall(row);
+  const sym = row.tos_symbol || '—';
+  const text = fc.label || actionText(fc);
+  const color = fc.side === 'sell' ? '#dc2626' : fc.side === 'buy' ? '#16a34a' : '#64748b';
+  let h = `<div class="sp-title">${escapeHtml(sym)} Final Call &mdash; `
+        + `<span style="color:${color};font-weight:700;">${escapeHtml(text)}</span></div>`;
+
+  const confLabel = fc.confidence === 'high' ? 'High' : fc.confidence === 'gate' ? 'Gate'
+    : fc.confidence === 'none' ? 'No recommendation' : 'Mixed';
+  const confReason = fc.confidence === 'gate' ? (fc.gateReason || 'Deterministic gate — Technical not evaluated')
+    : fc.confidence === 'high' ? 'Sources and Technical align'
+    : fc.confidence === 'none' ? 'Not feasible (nothing to act on)'
+    : 'Sources and Technical conflict — cross-check below';
+  h += `<div style="font-size:10px;color:#64748b;margin:2px 0 6px;">Confidence: `
+     + `<b>${escapeHtml(confLabel)}</b> — ${escapeHtml(confReason)}</div>`;
+
+  h += `<div style="font-size:10px;line-height:1.6;">`;
+  const ca = row.consolidated_action ? escapeHtml(String(row.consolidated_action)) : 'none';
+  h += `<div><b>Sources</b> <span style="color:#94a3b8;">(strategic — gates ownership)</span>: <b>${ca}</b></div>`;
+  const srcHtml = _srcReasonsHtml(row);
+  if (srcHtml) h += `<div style="margin:2px 0 6px 4px;">${srcHtml}</div>`;
+
+  const rra = row.rr_action ? escapeHtml(String(row.rr_action)) : 'none';
+  h += `<div><b>Technical</b> <span style="color:#94a3b8;">(tactical — trim/add while owning)</span>: <b>${rra}</b></div>`;
+  const techBits = [];
+  if (row.tn_td_desc) techBits.push('TnTd: ' + row.tn_td_desc);
+  if (row.bb_desc) techBits.push('BB: ' + row.bb_desc);
+  if (row.rr_desc) techBits.push('RR: ' + row.rr_desc);
+  if (techBits.length) {
+    h += `<div style="margin:2px 0 6px 4px;color:#64748b;">${escapeHtml(techBits.join(' · '))}</div>`;
+  }
+  h += `</div>`;
+
+  const flags = [];
+  if (row.low_confidence && fc.side === 'sell') {
+    flags.push('LOW CONF — sell evidence comes only from rules with a demonstrated negative historical edge');
+  }
+  if (row.stop_breached) {
+    flags.push((row.stop_signal || 'STOP') + ' — held, just crossed below its '
+      + (row.stop_signal === 'TN SA' ? 'Trend' : 'Trade') + ' line (prior 3 days above, today below)');
+  }
+  const ed = _earningsWarning(row);
+  if (ed != null) flags.push('Earnings in ' + ed + 'd');
+  const ltAvoid = row.conviction_direction === 'AVOID';
+  const ltConflict = !!row.conviction_hold && fc.side === (ltAvoid ? 'buy' : 'sell');
+  if (ltConflict) {
+    flags.push('Conflicts with long-term conviction ' + (ltAvoid ? 'AVOID' : 'HOLD')
+      + ' note: ' + (row.conviction_note || ''));
+  }
+  const pvvD = row.pvv_decision;
+  if (pvvD && pvvD !== 'NO_ACTION' && pvvD !== 'WATCH') {
+    const pvvSide = _PVV_BUY_SIDE.includes(pvvD) ? 'buy' : (_PVV_SELL_SIDE.includes(pvvD) ? 'sell' : null);
+    if ((fc.side === 'buy' || fc.side === 'sell') && pvvSide && pvvSide !== fc.side) {
+      flags.push('PVV (' + (_PVV_LABEL[pvvD] || pvvD) + ') conflicts with this action');
+    }
+  }
+  if (flags.length) {
+    h += `<div style="font-size:10px;color:#b45309;border-top:1px solid #e5e7eb;padding-top:4px;margin-top:2px;">`
+       + flags.map(f => '⚠ ' + escapeHtml(f)).join('<br>') + `</div>`;
+  }
+  return h;
+}
+
 function _buildPvvPopHtml(r) {
   const sym = r.tos_symbol || '—';
   let det = r.pvv_detail;
   if (typeof det === 'string') { try { det = JSON.parse(det); } catch (_) { det = null; } }
-  const decision = r.pvv_decision || '—';
-  const dColor = _PVV_CLASS[r.pvv_decision] ? _pvvSigColor(
-    r.pvv_decision === 'SELL' || r.pvv_decision === 'REDUCE' ? 'STRONG_BEAR'
-      : (r.pvv_decision === 'WATCH' ? null : 'STRONG_BULL')) : '#94a3b8';
+  const isNoAction = !r.pvv_decision || r.pvv_decision === 'NO_ACTION';
+  const todaySig = det && det.today ? det.today.sig : null;
+  const decision = isNoAction
+    ? `– ${todaySig ? `(${todaySig}, no confirmed setup)` : '(no confirmed setup)'}`
+    : (_PVV_LABEL[r.pvv_decision] || r.pvv_decision);
+  const dColor = _PVV_DECISION_COLOR[r.pvv_decision] || '#94a3b8';
   const info = _PVV_DECISION_INFO[r.pvv_decision] || null;
   let h = `<div class="sp-title">${escapeHtml(sym)} PVV &mdash; `
         + `<span style="color:${dColor};font-weight:700;">${escapeHtml(decision)}</span>`

@@ -117,41 +117,70 @@ def _normalize_outlook(outlook: Optional[str]) -> Optional[str]:
 
 # outlook decides WHAT, sig_today decides WHEN (docs/pvv_logic.md §4). Each
 # sig_today row maps {Bullish outlook -> decision, Bearish outlook -> decision};
-# Neutral outlook and no-outlook both fall through to WATCH (below).
+# Neutral outlook and no-outlook both fall through to NO_ACTION (below).
+#
+# 2026-08-16 revision (user-directed redesign, no task number — implemented
+# directly per CLAUDE.md rule 17 exception): the old plain "BUY" cell is
+# gone. User's stated philosophy: "I only want to buy the dips" — a same-day
+# price-up reading (STRONG_BULL/WEAK_BULL) is no longer an automatic buy;
+# it only fires if price is also sitting at the LRR support line (the
+# _LRR_GATE sentinel below, resolved in decide_pvv() using the existing
+# drv_cat_atomic_input.low_lrr flag — same "at LRR" signal already used for
+# derive_actionable.py's warn_not_at_lrr annotation, not a new calculation).
+# Off LRR, those two rows fall to NO_ACTION ("no confirmed setup") instead
+# of a bare WATCH. Two new caution tiers were added for the codes that used
+# to be flat WATCH/BUY_DIP: BUY_WATCH (a less-confirmed dip — MILD_BEAR
+# under a bullish outlook) and SELL_WATCH (a heavy-volume selloff under a
+# BULLISH outlook — this replaces the old "knife guard" WATCH; user: "if I
+# need to get rid of the stock depending on other signals" — so instead of
+# silently blocking, it now surfaces as an explicit "watch to sell" flag).
+# STRONG_BEAR under a BEARISH outlook is unchanged (still a plain SELL).
+_LRR_GATE = "_LRR_GATE"  # sentinel: resolved by decide_pvv() using at_lrr
 _PVV_DECISION_MATRIX = {
-    "STRONG_BULL":  {"Bullish": "BUY",     "Bearish": "TRIM"},
-    "WEAK_BULL":    {"Bullish": "BUY",     "Bearish": "TRIM"},
-    "OVEREXT_BULL": {"Bullish": "TRIM",    "Bearish": "TRIM"},
-    "BEAR_DIV":     {"Bullish": "WATCH",   "Bearish": "TRIM"},
-    "NEUTRAL":      {"Bullish": "WATCH",   "Bearish": "AVOID"},
-    "NA":           {"Bullish": "WATCH",   "Bearish": "AVOID"},
-    "DRIFT":        {"Bullish": "BUY_DIP", "Bearish": "AVOID"},
-    "MILD_BEAR":    {"Bullish": "BUY_DIP", "Bearish": "REDUCE"},
-    "BEAR_LEAN":    {"Bullish": "BUY_DIP", "Bearish": "REDUCE"},
-    "STRONG_BEAR":  {"Bullish": "WATCH",   "Bearish": "SELL"},   # knife guard
+    "STRONG_BULL":  {"Bullish": _LRR_GATE,   "Bearish": "TRIM"},
+    "WEAK_BULL":    {"Bullish": _LRR_GATE,   "Bearish": "TRIM"},
+    "OVEREXT_BULL": {"Bullish": "TRIM",      "Bearish": "TRIM"},
+    "BEAR_DIV":     {"Bullish": "NO_ACTION", "Bearish": "TRIM"},
+    "NEUTRAL":      {"Bullish": "NO_ACTION", "Bearish": "AVOID"},
+    "NA":           {"Bullish": "NO_ACTION", "Bearish": "AVOID"},
+    "DRIFT":        {"Bullish": "BUY_DIP",   "Bearish": "AVOID"},
+    "MILD_BEAR":    {"Bullish": "BUY_WATCH", "Bearish": "REDUCE"},
+    "BEAR_LEAN":    {"Bullish": "BUY_DIP",   "Bearish": "REDUCE"},
+    "STRONG_BEAR":  {"Bullish": "SELL_WATCH", "Bearish": "SELL"},
 }
 
 
-def decide_pvv(sig_today: Optional[str], outlook: Optional[str]) -> str:
+def decide_pvv(sig_today: Optional[str], outlook: Optional[str],
+                at_lrr: bool = False) -> str:
     """Consolidated decision — RR outlook decides WHAT (direction), today's
     PVV signal decides WHEN (timing). See docs/pvv_logic.md §4 for the full
-    9x3 matrix (TASK_127).
+    matrix (2026-08-16 revision).
 
-    Deliberate "knife guard": bullish outlook + STRONG_BEAR sig_today (a
-    heavy-volume selloff day) does NOT fire BUY_DIP — it waits at WATCH
-    rather than trying to catch the falling knife. Bearish outlook + any
-    up-tape sig_today ("sell the rip") consolidates to TRIM. Neutral outlook
-    and no-outlook (missing/NULL, e.g. BB-fallback rows) are both WATCH
-    across every sig_today value. sig_5d/sig_3w/sig_3m no longer influence
-    the decision — they remain display-only context in `detail`.
+    `at_lrr`: True when the symbol's price is currently at the LRR support
+    line (drv_cat_atomic_input.low_lrr == 3 — see _derive_pvv_impl). Only
+    matters for STRONG_BULL/WEAK_BULL under a Bullish outlook: at LRR fires
+    BUY_LRR, off LRR falls to NO_ACTION ("dip-buyer" philosophy — a same-day
+    price-up reading alone is no longer a buy trigger). Bearish outlook +
+    any up-tape sig_today ("sell the rip") still consolidates to TRIM.
+    Neutral outlook and no-outlook (missing/NULL, e.g. BB-fallback rows) are
+    both NO_ACTION across every sig_today value (2026-08-16: previously
+    WATCH — user asked for "-" here too, same convention as everywhere
+    else). sig_5d/sig_3w/sig_3m still don't influence the decision —
+    display-only context in `detail`. "WATCH" itself is retired as an
+    output of this function but stays a valid historical value in already-
+    derived drv_pvv rows for past dates.
     """
     label = _normalize_outlook(outlook)
     row = _PVV_DECISION_MATRIX.get(sig_today, _PVV_DECISION_MATRIX["NA"])
     if label == "Bullish":
-        return row["Bullish"]
-    if label == "Bearish":
-        return row["Bearish"]
-    return "WATCH"
+        decision = row["Bullish"]
+    elif label == "Bearish":
+        decision = row["Bearish"]
+    else:
+        return "NO_ACTION"
+    if decision == _LRR_GATE:
+        return "BUY_LRR" if at_lrr else "NO_ACTION"
+    return decision
 
 
 # =============================================================================
@@ -322,6 +351,19 @@ def _fetch_rr_outlook(session: Session, symbols: list, d: date) -> dict:
         WHERE as_of_date = :d AND tos_symbol = ANY(:syms)
     """), {"d": d, "syms": symbols}).fetchall()
     return {sym: (outlook, source) for sym, outlook, source in rows}
+
+
+def _fetch_low_lrr(session: Session, symbols: list, d: date) -> dict:
+    """{tos_symbol: low_lrr} from drv_cat_atomic_input for D — the existing
+    "at LRR" flag (low_lrr == 3) already used by derive_actionable.py's
+    warn_not_at_lrr annotation. Reused as-is here, not recomputed."""
+    if not symbols:
+        return {}
+    rows = session.execute(text("""
+        SELECT tos_symbol, low_lrr FROM drv_cat_atomic_input
+        WHERE as_of_date = :d AND tos_symbol = ANY(:syms)
+    """), {"d": d, "syms": symbols}).fetchall()
+    return {sym: low_lrr for sym, low_lrr in rows}
 
 
 def _fetch_technicals(session: Session, d: date) -> dict:
@@ -500,6 +542,7 @@ def _derive_pvv_impl(session: Session, as_of_date: date, run_id: int) -> int:
     tl_by_sym = _fetch_daily_tl_volume(session, universe, start, as_of_date)
     tech_by_sym = _fetch_technicals(session, as_of_date)
     rr_by_sym = _fetch_rr_outlook(session, universe, as_of_date)
+    low_lrr_by_sym = _fetch_low_lrr(session, universe, as_of_date)
 
     # ---- pass 1: raw ROCs (today/5d/3w) + own-symbol trailing sigma per bucket ----
     _prelim: dict = {}
@@ -576,7 +619,8 @@ def _derive_pvv_impl(session: Session, as_of_date: date, run_id: int) -> int:
         sig_3m, det_3m = _bucket_3m(tech)
 
         outlook_raw, rr_source = rr_by_sym.get(sym, (None, None))
-        decision = decide_pvv(sig_today, outlook_raw)
+        at_lrr = low_lrr_by_sym.get(sym) == 3
+        decision = decide_pvv(sig_today, outlook_raw, at_lrr)
         outlook_detail = {"value": _normalize_outlook(outlook_raw), "source": rr_source}
 
         out_rows.append({
@@ -588,7 +632,7 @@ def _derive_pvv_impl(session: Session, as_of_date: date, run_id: int) -> int:
             "sig_3m": sig_3m,
             "decision": decision,
             "detail": {"today": det_today, "d5": det_5d, "w3": det_3w, "m3": det_3m,
-                       "outlook": outlook_detail},
+                       "outlook": outlook_detail, "at_lrr": at_lrr},
         })
 
     return replace_for_date(session, "drv_pvv", "as_of_date", as_of_date, out_rows)

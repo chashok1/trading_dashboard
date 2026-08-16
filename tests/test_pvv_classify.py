@@ -4,8 +4,9 @@ Tests for etl.derive_pvv — pure-Python classification and decision logic.
 Covers:
   - classify_pvv: all 9 rows of the signal-code table (docs/pvv_logic.md §3)
   - classify_pvv_3m: the 5-row Price/Vol-only variant used by the 3m bucket
-  - decide_pvv: the 9x3 outlook x sig_today decision matrix (docs/pvv_logic.md
-    §4, TASK_127) — RR outlook decides WHAT, sig_today decides WHEN
+  - decide_pvv: the outlook x sig_today decision matrix (docs/pvv_logic.md
+    §4, 2026-08-16 revision) — RR outlook decides WHAT, sig_today decides
+    WHEN, at_lrr gates the two price-up rows (dip-buyer philosophy)
 
 Pure-Python, no DB — runs with no setup.
 
@@ -82,59 +83,83 @@ def test_classify_pvv_3m_vol_flat_resolves_down():
     assert classify_pvv_3m("down", "flat") == "DRIFT"
 
 
-# ─── decide_pvv: outlook x sig_today 9x3 matrix (TASK_127) ────────────────
-# docs/pvv_logic.md §4 / agent-tasks/TASK_127_pvv_outlook_decision.md §2.
+# ─── decide_pvv: outlook x sig_today decision matrix (2026-08-16 revision) ──
+# docs/pvv_logic.md §4. at_lrr defaults False -- only STRONG_BULL/WEAK_BULL
+# under a Bullish outlook read it (dip-buyer gate); every other cell ignores it.
 _MATRIX_CASES = [
-    # sig_today,      outlook,     expected
-    ("STRONG_BULL",   "Bullish",   "BUY"),
-    ("STRONG_BULL",   "Bearish",   "TRIM"),
-    ("STRONG_BULL",   "Neutral",   "WATCH"),
-    ("WEAK_BULL",     "Bullish",   "BUY"),
-    ("WEAK_BULL",     "Bearish",   "TRIM"),
-    ("WEAK_BULL",     "Neutral",   "WATCH"),
-    ("OVEREXT_BULL",  "Bullish",   "TRIM"),
-    ("OVEREXT_BULL",  "Bearish",   "TRIM"),
-    ("OVEREXT_BULL",  "Neutral",   "WATCH"),
-    ("BEAR_DIV",      "Bullish",   "WATCH"),
-    ("BEAR_DIV",      "Bearish",   "TRIM"),
-    ("BEAR_DIV",      "Neutral",   "WATCH"),
-    ("NEUTRAL",       "Bullish",   "WATCH"),
-    ("NEUTRAL",       "Bearish",   "AVOID"),
-    ("NEUTRAL",       "Neutral",   "WATCH"),
-    ("NA",            "Bullish",   "WATCH"),
-    ("NA",            "Bearish",   "AVOID"),
-    ("NA",            "Neutral",   "WATCH"),
-    ("DRIFT",         "Bullish",   "BUY_DIP"),
-    ("DRIFT",         "Bearish",   "AVOID"),
-    ("DRIFT",         "Neutral",   "WATCH"),
-    ("MILD_BEAR",     "Bullish",   "BUY_DIP"),
-    ("MILD_BEAR",     "Bearish",   "REDUCE"),
-    ("MILD_BEAR",     "Neutral",   "WATCH"),
-    ("BEAR_LEAN",     "Bullish",   "BUY_DIP"),
-    ("BEAR_LEAN",     "Bearish",   "REDUCE"),
-    ("BEAR_LEAN",     "Neutral",   "WATCH"),
-    ("STRONG_BEAR",   "Bullish",   "WATCH"),   # knife guard — no BUY_DIP
-    ("STRONG_BEAR",   "Bearish",   "SELL"),
-    ("STRONG_BEAR",   "Neutral",   "WATCH"),
+    # sig_today,      outlook,     at_lrr,  expected
+    ("STRONG_BULL",   "Bullish",   False,   "NO_ACTION"),
+    ("STRONG_BULL",   "Bullish",   True,    "BUY_LRR"),
+    ("STRONG_BULL",   "Bearish",   False,   "TRIM"),
+    ("STRONG_BULL",   "Neutral",   False,   "NO_ACTION"),
+    ("WEAK_BULL",     "Bullish",   False,   "NO_ACTION"),
+    ("WEAK_BULL",     "Bullish",   True,    "BUY_LRR"),
+    ("WEAK_BULL",     "Bearish",   False,   "TRIM"),
+    ("WEAK_BULL",     "Neutral",   False,   "NO_ACTION"),
+    ("OVEREXT_BULL",  "Bullish",   False,   "TRIM"),
+    ("OVEREXT_BULL",  "Bearish",   False,   "TRIM"),
+    ("OVEREXT_BULL",  "Neutral",   False,   "NO_ACTION"),
+    ("BEAR_DIV",      "Bullish",   False,   "NO_ACTION"),
+    ("BEAR_DIV",      "Bearish",   False,   "TRIM"),
+    ("BEAR_DIV",      "Neutral",   False,   "NO_ACTION"),
+    ("NEUTRAL",       "Bullish",   False,   "NO_ACTION"),
+    ("NEUTRAL",       "Bearish",   False,   "AVOID"),
+    ("NEUTRAL",       "Neutral",   False,   "NO_ACTION"),
+    ("NA",            "Bullish",   False,   "NO_ACTION"),
+    ("NA",            "Bearish",   False,   "AVOID"),
+    ("NA",            "Neutral",   False,   "NO_ACTION"),
+    ("DRIFT",         "Bullish",   False,   "BUY_DIP"),
+    ("DRIFT",         "Bearish",   False,   "AVOID"),
+    ("DRIFT",         "Neutral",   False,   "NO_ACTION"),
+    ("MILD_BEAR",     "Bullish",   False,   "BUY_WATCH"),
+    ("MILD_BEAR",     "Bearish",   False,   "REDUCE"),
+    ("MILD_BEAR",     "Neutral",   False,   "NO_ACTION"),
+    ("BEAR_LEAN",     "Bullish",   False,   "BUY_DIP"),
+    ("BEAR_LEAN",     "Bearish",   False,   "REDUCE"),
+    ("BEAR_LEAN",     "Neutral",   False,   "NO_ACTION"),
+    ("STRONG_BEAR",   "Bullish",   False,   "SELL_WATCH"),
+    ("STRONG_BEAR",   "Bearish",   False,   "SELL"),
+    ("STRONG_BEAR",   "Neutral",   False,   "NO_ACTION"),
 ]
 
 
-@pytest.mark.parametrize("sig_today,outlook,expected", _MATRIX_CASES)
-def test_decide_pvv_matrix(sig_today, outlook, expected):
-    assert decide_pvv(sig_today, outlook) == expected
+@pytest.mark.parametrize("sig_today,outlook,at_lrr,expected", _MATRIX_CASES)
+def test_decide_pvv_matrix(sig_today, outlook, at_lrr, expected):
+    assert decide_pvv(sig_today, outlook, at_lrr) == expected
 
 
-@pytest.mark.parametrize("sig_today", [s for s, _, _ in _MATRIX_CASES])
-def test_decide_pvv_null_outlook_is_watch(sig_today):
-    # Missing/NULL outlook (e.g. BB-fallback rows) -> WATCH regardless of
-    # sig_today, same as Neutral.
-    assert decide_pvv(sig_today, None) == "WATCH"
+@pytest.mark.parametrize("sig_today", [s for s, _, _, _ in _MATRIX_CASES])
+def test_decide_pvv_null_outlook_is_no_action(sig_today):
+    # Missing/NULL outlook (e.g. BB-fallback rows) -> NO_ACTION regardless
+    # of sig_today, same as Neutral. (2026-08-16: previously WATCH.)
+    assert decide_pvv(sig_today, None) == "NO_ACTION"
 
 
-def test_decide_pvv_knife_guard_bullish_strong_bear():
-    # Deliberate: bullish outlook + STRONG_BEAR sig_today does NOT fire
-    # BUY_DIP -- it waits at WATCH rather than catching a falling knife.
-    assert decide_pvv("STRONG_BEAR", "Bullish") == "WATCH"
+def test_decide_pvv_dip_buyer_gate_off_lrr_is_no_action():
+    # User philosophy: "I only want to buy the dips" -- a same-day price-up
+    # reading alone is no longer a buy trigger unless price is at LRR.
+    assert decide_pvv("STRONG_BULL", "Bullish", at_lrr=False) == "NO_ACTION"
+    assert decide_pvv("WEAK_BULL", "Bullish", at_lrr=False) == "NO_ACTION"
+
+
+def test_decide_pvv_dip_buyer_gate_at_lrr_is_buy():
+    assert decide_pvv("STRONG_BULL", "Bullish", at_lrr=True) == "BUY_LRR"
+    assert decide_pvv("WEAK_BULL", "Bullish", at_lrr=True) == "BUY_LRR"
+
+
+def test_decide_pvv_at_lrr_ignored_outside_the_two_gated_rows():
+    # at_lrr only matters for STRONG_BULL/WEAK_BULL + Bullish -- every other
+    # cell ignores it entirely.
+    assert decide_pvv("OVEREXT_BULL", "Bullish", at_lrr=True) == "TRIM"
+    assert decide_pvv("DRIFT", "Bullish", at_lrr=True) == "BUY_DIP"
+    assert decide_pvv("STRONG_BEAR", "Bearish", at_lrr=True) == "SELL"
+
+
+def test_decide_pvv_strong_bear_bullish_is_sell_watch():
+    # Replaces the old "knife guard" WATCH: a heavy-volume selloff under a
+    # bullish outlook now surfaces as an explicit sell-watch flag rather
+    # than being silently suppressed.
+    assert decide_pvv("STRONG_BEAR", "Bullish") == "SELL_WATCH"
 
 
 def test_decide_pvv_sell_the_rip():
@@ -144,17 +169,25 @@ def test_decide_pvv_sell_the_rip():
 
 
 @pytest.mark.parametrize("raw,expected", [
-    ("bullish", "BUY"), ("BULLISH", "BUY"), (" Bullish ", "BUY"),
+    ("bullish", "TRIM"), ("BULLISH", "TRIM"), (" Bullish ", "TRIM"),
+])
+def test_decide_pvv_case_insensitive_bullish_overext(raw, expected):
+    # OVEREXT_BULL ignores at_lrr, so it's a stable code to check case-
+    # insensitive outlook parsing against.
+    assert decide_pvv("OVEREXT_BULL", raw) == expected
+
+
+@pytest.mark.parametrize("raw,expected", [
     ("bearish", "TRIM"), ("BEARISH", "TRIM"), (" Bearish\n", "TRIM"),
 ])
-def test_decide_pvv_case_insensitive_trim(raw, expected):
+def test_decide_pvv_case_insensitive_bearish(raw, expected):
     assert decide_pvv("STRONG_BULL", raw) == expected
 
 
-def test_decide_pvv_unrecognized_outlook_is_watch():
+def test_decide_pvv_unrecognized_outlook_is_no_action():
     # Any string that isn't exactly Bullish/Bearish/Neutral (after trim/
     # case-fold) falls to the Neutral/NULL column -- e.g. a BB-fallback
     # gradation like "Mild Bullish" that shouldn't reach decide_pvv in
     # practice (derive_pvv runs before the QE second pass fills those),
     # but the pure function stays defensive regardless.
-    assert decide_pvv("STRONG_BULL", "Mild Bullish") == "WATCH"
+    assert decide_pvv("STRONG_BULL", "Mild Bullish") == "NO_ACTION"
