@@ -3040,8 +3040,15 @@ function _finalCallHtml(row) {
   var text = fc.label || actionText(fc);  // plain-English label (e.g. "SELL ALL")
   // TASK_118: low_confidence — sell evidence comes only from rules with a
   // proven-negative historical edge (v_unproven_sell_rules). Annotation only;
-  // consolidated_action / final_code are unchanged server-side.
-  var isLowConf = !!row.low_confidence;
+  // consolidated_action / final_code are unchanged server-side. 2026-08-15:
+  // gated on fc.side === 'sell' — the flag is computed purely from SELL-side
+  // fired composites (etl/derive_actionable.py's own comment: "does not
+  // touch consolidated_action or any BUY-side logic"), but was being applied
+  // to ANY row regardless of side, muting/burying legitimate BUY signals
+  // that merely had an unrelated unproven SELL rule also fire in the
+  // background (found live: REAL — a real BMN buy, wrongly shown muted with
+  // a "LOW CONF — Sell evidence..." badge that doesn't even apply to it).
+  var isLowConf = !!row.low_confidence && fc.side === 'sell';
   // Badge
   var badgeHtml;
   if (isLowConf) {
@@ -3355,24 +3362,39 @@ function _buyTradabilityScore(row) {
   const clamp = v => v == null ? 0 : Math.max(-3, Math.min(6, v));
   const factorPts = clamp(rsiDelta) + _ivRatioScore(row.iv_ratio) + clamp(rvolDelta)
     + _sourceTrackRecordScore(row);
+  // 2026-08-15: cap the SUM of every non-LRR, non-agreement term, not just
+  // each one individually. User: "tickers that are not at LRR are above the
+  // ones at LRR" — checked live and confirmed: tech(2) + RSI(6) + IV(3) +
+  // RVOL(6) + source(6) can total 23, well over LRR's own max of 10, so a
+  // stock 50%+ away from LRR with several decent-but-unremarkable secondary
+  // factors was routinely outranking one actually AT LRR. This is the exact
+  // "stacking dilutes the dominant signal" failure mode the whole score
+  // exists to avoid (52-BS-BRR alone beats the multi-factor kitchen-sink
+  // rule) — recreated by accumulation as terms were added one at a time
+  // without rechecking the total. Capped so the combined secondary terms
+  // can nudge/break ties but can never manufacture a bigger swing than a
+  // real LRR gap.
+  const secondaryRaw = techPts * 2 + factorPts;
+  const secondaryPts = Math.max(-6, Math.min(8, secondaryRaw));
   // 2026-08-15: agreement (2a/2b/2c — Technical+Sources+MACRO 3-way, see
-  // _buyAgreementSubTier) folded in as a small additive bonus instead of the
-  // outer sort tier it used to be in _computePriority. User: "I need to
-  // trade the best possible stock, I have limited capital" — a hard tier
-  // wall could bury a genuinely clean entry (high LRR/RSI/IV/RVOL score)
-  // below a mediocre one that merely had 3 sources nominally agree.
-  // Checked before folding it in: v_agreement_scorecard has ZERO rows in
-  // this system — "3-way agreement beats partial agreement" was never
-  // actually validated, unlike every other term in this score. Still worth
-  // a modest nudge (corroboration isn't nothing), just not a wall.
-  const agreementPts = _buyAgreementSubTier(row) * 1.5; // 0, 1.5, or 3 (2c/2b/2a)
+  // _buyAgreementSubTier) given its OWN dedicated weight, separate from the
+  // capped secondaryPts bucket above. User: "agreeing all three sources
+  // get high score" — full agreement wasn't actually standing out: it only
+  // added +3 inside the shared secondaryPts cap, so once RSI/IV/RVOL/source
+  // already filled that cap on their own (common — many rows hit the 8-pt
+  // ceiling regardless of agreement level), the +3 changed nothing.
+  // Weighted at 60% of LRR's max (agreement is still unvalidated in this
+  // system's own history — v_agreement_scorecard has ZERO rows, unlike LRR's
+  // proven 52-BS-BRR — so it can meaningfully lift a score but can't fully
+  // override a genuinely bad LRR position on its own: 6 < LRR's 10).
+  const agreementPts = _buyAgreementSubTier(row) * 3; // 0, 3, or 6 (2c/2b/2a)
   // LRR proximity weighted far above everything else (matches its outsized
   // proven edge vs any combination of the other factors, see 52-BS-BRR note
-  // above); technical bracket and agreement are smaller flat bonuses; factor
-  // deltas are the finest-grained tiebreak. Range roughly [-22, +36] (a
+  // above) — secondaryPts can add/subtract at most 8/-6, agreementPts up to
+  // 6, both against LRR's own [-10,+10] range. Range roughly [-16, +24] (a
   // still-falling below-LRR row's -10 LRR term is a real penalty, not a
   // floor of 0 — see _lrrProximityScore).
-  return lrrPts * 10 + techPts * 2 + agreementPts + factorPts;
+  return lrrPts * 10 + secondaryPts + agreementPts;
 }
 // Structured breakdown for the tradability badge's popover (2026-08-15:
 // "make it rich and use some colors" — switched from a native title=
@@ -3479,7 +3501,7 @@ function _tradabilityBreakdown(row) {
 function _buildTradabilityPopHtml(row) {
   const sym = row.tos_symbol || '—';
   const score = _buyTradabilityScore(row);
-  const scoreColor = score >= 15 ? '#16a34a' : score >= _TRADABILITY_BADGE_MIN ? '#d97706' : '#94a3b8';
+  const scoreColor = score >= 16 ? '#16a34a' : score >= _TRADABILITY_BADGE_MIN ? '#d97706' : '#94a3b8';
   let h = `<div class="sp-title">\u{1F3AF} ${escapeHtml(sym)} &mdash; Tradability `
         + `<span style="color:${scoreColor};">${score.toFixed(1)}</span></div>`;
   h += `<div style="color:#94a3b8;font-size:9px;margin:-2px 0 6px;">Weighted by this system's own measured trading history — Risk Range position dominates, everything else is a smaller nudge.</div>`;
@@ -3491,15 +3513,15 @@ function _buildTradabilityPopHtml(row) {
   h += '</table>';
   return h;
 }
-// Minimum score to show the badge. Rescaled 2026-08-15 when the factor
-// terms switched from mean-return delta to win-rate delta (wider range,
-// see _factorWinRateDelta) — re-checked against the same live data
-// (2026-08-14 anchor, 103 buy-side rows): new distribution is max 18.95,
-// mean 4.96, median 3.90, top-10% >= 10.00. Set to 10 (top ~10%, roughly
-// the same selectivity as the pre-rescale threshold of 6) rather than
-// re-guessing from scratch. Revisit again after a few more weeks of live
-// data.
-const _TRADABILITY_BADGE_MIN = 10;
+// Minimum score to show the badge. Rescaled a third time 2026-08-15 when
+// agreement got its own dedicated weight (see _buyTradabilityScore's
+// agreementPts comment) — max grew back up (was ~14, now ~20). Re-checked
+// against the same live data (2026-08-14 anchor, low_confidence-excluded
+// buy-side rows): new distribution is max 19.90, mean 7.57, median 8.00,
+// top-10% >= 14.00. Set to 12 (~top 15-20%, a bit more permissive than a
+// strict top-10% cutoff so it's not ONLY the near-LRR-plus-agreement rows
+// showing it). Revisit again after a few more weeks of live data.
+const _TRADABILITY_BADGE_MIN = 12;
 // 2026-08-15: every BUY row gets something here now, not just ones clearing
 // the threshold — the 🎯 icon at/above _TRADABILITY_BADGE_MIN, the raw
 // numeric score (muted, smaller) below it. User: "display the tradability
@@ -3646,8 +3668,11 @@ function _computePriority(row) {
   // suppressed row sinks below every real tier regardless of dollars — still
   // ordered internally by dollar-weighted score. low_confidence sells are
   // never "credible" (Tier 1) — this check runs first so they land here
-  // instead.
-  if (row.low_confidence || !fc.feasible || row.suppressed_reason) {
+  // instead. 2026-08-15: low_confidence gated on fc.side === 'sell' — it's
+  // computed purely from SELL-side fired composites (see _finalCallHtml's
+  // comment on isLowConf) and was wrongly burying legitimate BUY rows that
+  // merely had an unrelated unproven SELL rule also fire in the background.
+  if ((row.low_confidence && fc.side === 'sell') || !fc.feasible || row.suppressed_reason) {
     return _TIER_BOTTOM + _dollarWeightedScore(row);
   }
 
