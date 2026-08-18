@@ -17,7 +17,13 @@ deliberately deleted from ref_my_stocks as "needs adding to Tier 1".
 tier=1 if ANY of these are true (checked in this priority order --
 whichever fires first becomes `reason`):
   1. held               — a real position right now (hist_cs/hist_f, latest
-                           snapshot <= D, qty <> 0).
+                           snapshot <= D, qty <> 0), EXCLUDING hist_f rows
+                           from employer retirement-plan accounts (e.g.
+                           "BOEING 401(K)", account_name ILIKE '%401%') --
+                           those hold plan-internal fund codes (NON40O26D
+                           etc.) that are real positions but not TOS-
+                           tradable instruments, so they'd never actually
+                           import into a watchlist. See _fetch_held().
   2. active_90d          — drv_actionable.consolidated_action was non-blank
                            for this symbol on any date in [D-90, D].
   3. hedgeye_directional_90d — a directional (BULLISH/BEARISH, not NEUTRAL)
@@ -87,6 +93,19 @@ _HEDGEYE_DIRECTIONAL_SOURCES = [
 
 
 def _fetch_held(session: Session, d: date) -> set:
+    # hist_f's account_name != '401%' exclusion (2026-08-18): employer
+    # retirement-plan accounts (e.g. "BOEING 401(K)") hold plan-internal
+    # fund codes (NON40O26D = "TARGET DATE 2035", NON40PGVY = "BOND FUND",
+    # etc.) that are real positions but NOT TOS-tradable instruments --
+    # zero hist_td history ever, and never will have any, since they're
+    # proprietary record-keeper fund units, not exchange-traded securities.
+    # They stay correctly "held" for portfolio-value purposes wherever else
+    # hist_f is read; excluded ONLY from this tier universe, whose purpose
+    # is specifically TOS-watchlist export cadence. Deliberately NOT a
+    # blanket "no hist_td history" filter -- that would also wrongly
+    # exclude real holdings that just aren't on a TOS watchlist yet (e.g.
+    # CRAK/IGV/INTU/NOBL/SMDV, found sitting in this exact state), which is
+    # precisely the case this tier table exists to catch and fix.
     rows = session.execute(text("""
         SELECT DISTINCT symbol FROM hist_cs
         WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
@@ -95,6 +114,7 @@ def _fetch_held(session: Session, d: date) -> set:
         SELECT DISTINCT symbol FROM hist_f
         WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
           AND qty <> 0
+          AND (account_name IS NULL OR account_name NOT ILIKE '%401%')
     """), {"d": d}).fetchall()
     return {r[0] for r in rows if r[0]}
 
