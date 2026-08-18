@@ -3435,6 +3435,19 @@ def derive_all(session: Session, as_of_date: date,
         try: session.rollback()
         except Exception: pass
 
+    # 2026-08-18: export-frequency tier per symbol (held / active_90d /
+    # hedgeye_directional_90d / dormant) -- TOS-export right-sizing design,
+    # no task number. Runs after drv_actionable (needs consolidated_action
+    # for the active_90d rule). Non-critical, purely descriptive today.
+    try:
+        from etl.derive_symbol_tier import derive_symbol_tier
+        counts["drv_symbol_tier"] = _safe("drv_symbol_tier", derive_symbol_tier)
+    except Exception:
+        log.exception("derive_symbol_tier import failed (non-fatal)")
+        counts["drv_symbol_tier"] = 0
+        try: session.rollback()
+        except Exception: pass
+
     # TASK_66: score bull_prob + bull_agreement after drv_actionable is built.
     # Non-critical: if no active model the columns stay NULL (additive only).
     try:

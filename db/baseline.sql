@@ -7889,3 +7889,29 @@ ALTER TABLE IF EXISTS hist_td
     ADD COLUMN IF NOT EXISTS iv_ratio NUMERIC;
 ALTER TABLE IF EXISTS drv_technicals
     ADD COLUMN IF NOT EXISTS iv_ratio NUMERIC;
+
+-- =====================================================
+-- 2026-08-18: drv_symbol_tier — daily export-frequency tier per symbol
+-- (user-directed design, TOS-export right-sizing analysis, no task number).
+-- tier=1 (export/refresh daily) if held OR active_90d (drv_actionable fired
+-- a real consolidated_action in the trailing 90 days) OR
+-- hedgeye_directional_90d (a directional -- not NEUTRAL -- Hedgeye
+-- call/stance/side/outlook across hist_call/hist_hedgeye_stance/
+-- hist_call_top5/hist_rta/hist_etfchg/hist_rr in the trailing 90 days).
+-- Else tier=2 (weekly). `reason` records whichever rule fired, in that
+-- priority order, or 'dormant'. Idempotent: DELETE WHERE as_of_date=D then
+-- INSERT (etl/derive_symbol_tier.py). Purely descriptive today -- does not
+-- yet drive any actual TOS watchlist sync.
+-- =====================================================
+CREATE TABLE IF NOT EXISTS drv_symbol_tier (
+    as_of_date  DATE     NOT NULL,
+    tos_symbol  TEXT     NOT NULL,
+    tier        SMALLINT NOT NULL,
+    reason      TEXT     NOT NULL,
+    derived_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (as_of_date, tos_symbol)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_symbol_tier_symbol
+    ON drv_symbol_tier(tos_symbol, as_of_date);
+CREATE INDEX IF NOT EXISTS ix_drv_symbol_tier_tier
+    ON drv_symbol_tier(as_of_date, tier);
