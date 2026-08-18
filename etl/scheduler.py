@@ -522,6 +522,25 @@ def run_nightly_outcomes() -> None:
     except Exception:
         log.exception("nightly: vlm intraday curve refresh crashed")
 
+    # 2026-08-18: nightly TOS watchlist file generation (WL*.csv + additions.csv
+    # for TOSDownloads/LoadWatchlists.py + ImportAdditions.py) -- rides the
+    # existing nightly job, same reasoning as the vlm curve refresh above.
+    # mode="weekly" -- Tier 1 + Tier 2 combined (WL1-17), every night.
+    # Reads drv_symbol_tier, so must run after that (and drv_actionable,
+    # which drv_symbol_tier itself depends on) has already been derived for
+    # today -- true by this point in the nightly job, well after the day's
+    # normal derive_all() cascades have already run.
+    log.info("nightly: watchlist file generation starting")
+    try:
+        from etl.db import session_scope
+        from etl.generate_watchlist_files import generate_watchlist_files
+        from config.settings import settings
+        with session_scope() as s:
+            result = generate_watchlist_files(s, "weekly", settings.watchlist_files_dir)
+        log.info("nightly: watchlist file generation done: %s", result)
+    except Exception:
+        log.exception("nightly: watchlist file generation crashed")
+
 
 def _read_nightly_state(state_path: Path):
     """Return the ISO date in the state file, or None if missing/invalid.
