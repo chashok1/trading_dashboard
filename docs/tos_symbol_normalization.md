@@ -25,9 +25,14 @@ Using `tos_symbol` as the common key ensures:
 The populate phase (`derive_all()`) runs before any derives and fills `tos_symbol` for all tables:
 
 ### GROUP 1: TOS Tables (hist_tl, hist_td, hist_to, hist_tw)
-- **Strategy**: Direct copy — `symbol IS tos_symbol`
+- **Strategy**: Direct copy — `symbol IS tos_symbol` — **except dated futures contracts**
+  (2026-08-18): TOS exports these with a bracketed expiration suffix that rolls forward
+  every 1-3 months (`/6B[H26]` → `/6B[M26]` → `/6B[U26]`). That suffix is stripped so
+  `tos_symbol` is the root symbol, matching GROUP 2's Yahoo-side root form for the same
+  instrument (`ref_rrt`) — otherwise TOS- and Yahoo-sourced rows for the same future never
+  join. `symbol` keeps the original literal TOS text.
 - **Function**: `_populate_tos_table_tos_symbol()`
-- **Implementation**: `UPDATE hist_* SET tos_symbol = symbol WHERE tos_symbol IS NULL`
+- **Implementation**: `UPDATE hist_* SET tos_symbol = regexp_replace(symbol, '\[[A-Z][0-9]{2}\]$', '') WHERE tos_symbol IS NULL`
 
 ### GROUP 2: Yahoo (hist_y)
 - **Strategy**: Map via `ref_rrt` WHERE `y_ticker = symbol`

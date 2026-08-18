@@ -2941,11 +2941,24 @@ def _populate_ps_tos_symbol(session: Session, as_of_date: date) -> int:
 def _populate_tos_table_tos_symbol(session: Session, table: str, as_of_date: date) -> int:
     """Populate tos_symbol for TOS tables (hist_tl, hist_td, hist_to, hist_tw).
 
-    For TOS workbook sources, symbol IS already the tos_symbol.
-    Just copy symbol → tos_symbol directly (all dates).
+    For TOS workbook sources, symbol IS already the tos_symbol -- EXCEPT dated
+    futures contracts, which TOS exports with a bracketed expiration suffix
+    that rolls forward every 1-3 months (e.g. /6B[H26] -> /6B[M26] ->
+    /6B[U26] as the front-month contract changes). Left as a literal copy,
+    that suffix makes tos_symbol a moving target per symbol per quarter,
+    which breaks it as a stable join key -- and it never lines up with the
+    Yahoo feed's tos_symbol for the same instrument, which is already root
+    form via ref_rrt (GROUP 2). 2026-08-18 fix: strip the bracket suffix so
+    tos_symbol is root here too, matching the user's own TOS watchlist
+    (root symbol, TOS auto-resolves the current contract) and letting TOS-
+    and Yahoo-sourced rows for the same future finally merge in drv_quote/
+    drv_technicals instead of sitting as permanently disconnected symbols.
+    `symbol` keeps the original literal TOS text untouched.
     """
     updated = session.execute(text(f"""
-        UPDATE {table} SET tos_symbol = symbol WHERE tos_symbol IS NULL
+        UPDATE {table}
+        SET tos_symbol = regexp_replace(symbol, '\\[[A-Z][0-9]{{2}}\\]$', '')
+        WHERE tos_symbol IS NULL
     """)).rowcount
     return updated
 
