@@ -522,31 +522,14 @@ def run_nightly_outcomes() -> None:
     except Exception:
         log.exception("nightly: vlm intraday curve refresh crashed")
 
-    # 2026-08-18: nightly TOS watchlist file generation (WL*.csv + additions.csv
-    # for TOSDownloads/LoadWatchlists.py + ImportAdditions.py) -- rides the
-    # existing nightly job, same reasoning as the vlm curve refresh above.
-    # mode="daily" -- Tier 1 only (WL1-10). User: "I won't even load
-    # watchlists other than tier 1" -- Tier 2 stays generated into
-    # ref_watchlist_assignment/drv_symbol_tier for reference (visible in
-    # symbol_tier_review.xlsx) but its WL11+ files are never auto-produced
-    # or auto-imported; run --mode weekly by hand if a Tier 2 symbol is
-    # ever actually needed.
-    # Reads drv_symbol_tier, so must run after that (and drv_actionable,
-    # which drv_symbol_tier itself depends on) has already been derived for
-    # today -- true by this point in the nightly job, well after the day's
-    # normal derive_all() cascades have already run.
-    log.info("nightly: watchlist file generation starting")
-    try:
-        from etl.db import session_scope
-        from etl.generate_watchlist_files import generate_watchlist_files
-        from config.settings import settings
-        with session_scope() as s:
-            result = generate_watchlist_files(s, "daily", settings.watchlist_files_dir,
-                                               settings.watchlist_lists_dir)
-        log.info("nightly: watchlist file generation done: %s", result)
-        _run_watchlist_housekeeping_reminders(result)
-    except Exception:
-        log.exception("nightly: watchlist file generation crashed")
+    # 2026-08-18/19: TOS watchlist file generation moved OUT of this nightly
+    # job -- was clock-hour-gated here (mode="daily", Tier 1 only), but user:
+    # "i load TOS EOD exports only once a day, why can't we run this after
+    # loading all TOS uploads?" -- now fires event-driven from
+    # etl/etl_load.py::load_one_file() right after a TOSD/TOSL/TOSW load
+    # derives successfully, instead of guessing a safe clock hour here.
+    # _run_watchlist_housekeeping_reminders() lives below, still shared by
+    # that call site (etl_load.py imports it from this module).
 
 
 def _run_watchlist_housekeeping_reminders(result: dict) -> None:

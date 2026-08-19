@@ -585,6 +585,31 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
         except BaseException:
             log.exception("forward re-derive: block failed (continuing)")
 
+    # TOS watchlist file generation (2026-08-19, user-directed): "i load TOS
+    # EOD exports only once a day, why can't we run this after loading all
+    # TOS uploads?" -- was a once-daily clock-hour-gated nightly job (moved
+    # from there to here, same day). Fires after any of the daily TOS EOD
+    # sources loads and derives successfully -- TOSD (advances the anchor),
+    # TOSL, TOSW. NOT TOSO (user: "TOSO is weekly load"), and not any other
+    # file_type (RR/CS/F/CALL/etc never touch watchlist eligibility).
+    # All 3, not just TOSD, because load order isn't fixed within one EOD
+    # batch (e.g. 2026-08-19: TOSL, then TOSD, then TOSW) -- whichever lands
+    # LAST naturally produces the final fresh files. generate_watchlist_
+    # files() reads the anchor fresh each call, so firing 2-3x in one batch
+    # is harmless, just redundant. Wrapped in try/except -- must never break
+    # the load path for any file type, TOS or otherwise.
+    if do_derive and derive_error is None and ft.upper() in ('TOSD', 'TOSL', 'TOSW'):
+        try:
+            from etl.generate_watchlist_files import generate_watchlist_files
+            with session_scope() as s5:
+                wl_result = generate_watchlist_files(
+                    s5, "daily", settings.watchlist_files_dir, settings.watchlist_lists_dir)
+            log.info("watchlist file generation (after %s load): %s", ft, wl_result)
+            from etl.scheduler import _run_watchlist_housekeeping_reminders
+            _run_watchlist_housekeeping_reminders(wl_result)
+        except BaseException:
+            log.exception("watchlist file generation failed after %s load (continuing)", ft)
+
     return {"status": "loaded", "rows_inserted": ins if 'ins' in locals() else 0}
 
 
