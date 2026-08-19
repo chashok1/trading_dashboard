@@ -525,7 +525,12 @@ def run_nightly_outcomes() -> None:
     # 2026-08-18: nightly TOS watchlist file generation (WL*.csv + additions.csv
     # for TOSDownloads/LoadWatchlists.py + ImportAdditions.py) -- rides the
     # existing nightly job, same reasoning as the vlm curve refresh above.
-    # mode="weekly" -- Tier 1 + Tier 2 combined (WL1-17), every night.
+    # mode="daily" -- Tier 1 only (WL1-10). User: "I won't even load
+    # watchlists other than tier 1" -- Tier 2 stays generated into
+    # ref_watchlist_assignment/drv_symbol_tier for reference (visible in
+    # symbol_tier_review.xlsx) but its WL11+ files are never auto-produced
+    # or auto-imported; run --mode weekly by hand if a Tier 2 symbol is
+    # ever actually needed.
     # Reads drv_symbol_tier, so must run after that (and drv_actionable,
     # which drv_symbol_tier itself depends on) has already been derived for
     # today -- true by this point in the nightly job, well after the day's
@@ -536,7 +541,7 @@ def run_nightly_outcomes() -> None:
         from etl.generate_watchlist_files import generate_watchlist_files
         from config.settings import settings
         with session_scope() as s:
-            result = generate_watchlist_files(s, "weekly", settings.watchlist_files_dir)
+            result = generate_watchlist_files(s, "daily", settings.watchlist_files_dir)
         log.info("nightly: watchlist file generation done: %s", result)
     except Exception:
         log.exception("nightly: watchlist file generation crashed")
