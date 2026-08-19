@@ -16,6 +16,12 @@ deliberately deleted from ref_my_stocks as "needs adding to Tier 1".
 
 tier=1 if ANY of these are true (checked in this priority order --
 whichever fires first becomes `reason`):
+  0. user_pinned         — ref_my_stocks.sticky_tier1='Y'. 2026-08-18: "i
+                           want to have a list my own symbols to be added
+                           to tier1 (they are going to be sticky) so i can
+                           see them always regardless of HE" -- the user's
+                           own explicit override, checked first, ahead of
+                           every automatic/derived reason below.
   1. held               — a real position right now (hist_cs/hist_f, latest
                            snapshot <= D, qty <> 0), EXCLUDING hist_f rows
                            from employer retirement-plan accounts (e.g.
@@ -205,9 +211,17 @@ def _fetch_dashboard_dependency(session: Session) -> set:
     return out
 
 
+def _fetch_user_pinned(session: Session) -> set:
+    rows = session.execute(text(
+        "SELECT tos_symbol FROM ref_my_stocks WHERE active = 'Y' AND sticky_tier1 = 'Y'"
+    )).fetchall()
+    return {r[0] for r in rows if r[0]}
+
+
 def _derive_symbol_tier_impl(session: Session, as_of_date: date, run_id: int) -> int:
     held = _fetch_held(session, as_of_date)
     dashboard_dependency = _fetch_dashboard_dependency(session)
+    user_pinned = _fetch_user_pinned(session)
 
     # 2026-08-18 fix: universe is the user's curated ref_my_stocks list
     # (active='Y'), NOT raw drv_symbols -- drv_symbols is every symbol ANY
@@ -216,11 +230,13 @@ def _derive_symbol_tier_impl(session: Session, as_of_date: date, run_id: int) ->
     # kept resurrecting already-deleted junk as "needs adding to Tier 1".
     # held and dashboard_dependency are unioned in as safety nets (a
     # position, or a symbol a dashboard panel depends on, should always be
-    # tracked even if missing from ref_my_stocks).
+    # tracked even if missing from ref_my_stocks). user_pinned is already
+    # a subset of curated (sticky_tier1 rows are also active='Y' rows in
+    # the same table) -- unioned anyway for clarity/robustness.
     curated = {r[0] for r in session.execute(
         text("SELECT tos_symbol FROM ref_my_stocks WHERE active = 'Y'")
     ).fetchall()}
-    universe = sorted(curated | held | dashboard_dependency)
+    universe = sorted(curated | held | dashboard_dependency | user_pinned)
     if not universe:
         return replace_for_date(session, "drv_symbol_tier", "as_of_date", as_of_date, [])
 
@@ -229,7 +245,9 @@ def _derive_symbol_tier_impl(session: Session, as_of_date: date, run_id: int) ->
 
     out_rows = []
     for sym in universe:
-        if sym in held:
+        if sym in user_pinned:
+            tier, reason = 1, "user_pinned"
+        elif sym in held:
             tier, reason = 1, "held"
         elif sym in active_90d:
             tier, reason = 1, "active_90d"

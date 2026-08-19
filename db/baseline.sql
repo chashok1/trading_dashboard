@@ -3906,6 +3906,13 @@ END $$;
 
 -- Note: symbol remains as PK for backward compat; tos_symbol is the normalized key
 
+-- 2026-08-18: sticky_tier1 -- user-pinned symbols that stay tier=1 in
+-- drv_symbol_tier regardless of held/active_90d/hedgeye/dashboard-
+-- dependency status. User: "i want to have a list my own symbols to be
+-- added to tier1 (they are going to be sticky) so i can see them always
+-- regardless of HE". Editable via the generic /ref screen like `active`.
+ALTER TABLE ref_my_stocks ADD COLUMN IF NOT EXISTS sticky_tier1 CHAR(1) NOT NULL DEFAULT 'N';
+
 -- -----------------------------------------------------
 
 -- ref_outlook_source - 8 sources from Requirements matrix
@@ -7915,3 +7922,47 @@ CREATE INDEX IF NOT EXISTS ix_drv_symbol_tier_symbol
     ON drv_symbol_tier(tos_symbol, as_of_date);
 CREATE INDEX IF NOT EXISTS ix_drv_symbol_tier_tier
     ON drv_symbol_tier(as_of_date, tier);
+
+-- =====================================================
+-- 2026-08-18: ref_watchlist_assignment — persisted, STABLE symbol -> WL
+-- number mapping for etl/generate_watchlist_files.py. Not date-keyed (ref_*,
+-- not drv_*) -- a symbol keeps its assigned wl_number across runs as long as
+-- it stays in scope, so day-to-day regeneration doesn't reshuffle everyone's
+-- number just because one new symbol got inserted alphabetically ahead of
+-- them. A symbol falling out of scope (demoted tier) frees its slot for
+-- later reassignment. See generate_watchlist_files.py's own docstring for
+-- the full reconciliation algorithm.
+-- =====================================================
+CREATE TABLE IF NOT EXISTS ref_watchlist_assignment (
+    tos_symbol   TEXT PRIMARY KEY,
+    wl_number    INTEGER  NOT NULL,
+    tier         SMALLINT NOT NULL,
+    assigned_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ix_ref_watchlist_assignment_wl
+    ON ref_watchlist_assignment(wl_number);
+
+-- 2026-08-18: ref_pending_tos_removal -- symbols _reconcile_assignment()
+-- dropped from ref_watchlist_assignment (fell out of tier scope), that
+-- the user still needs to manually remove from the real TOS watchlist
+-- (LoadWatchlists.py/ImportAdditions.py only ever ADD, never remove).
+-- Acts as the "sticky" half of the tiering design: the symbol keeps
+-- exporting daily in TOS until the user actually removes it there, not
+-- the moment our own tier reassessment drops it. Populated by
+-- etl/generate_watchlist_files.py; consumed by removals.csv + the
+-- monthly housekeeping reminder (see meta_warning). Auto-clears both
+-- when the symbol drops out of hist_td (removed in TOS, confirmed) and
+-- when it re-qualifies for tier 1 before removal (cancelled) -- see
+-- generate_watchlist_files.py for both checks, no manual /ref cleanup.
+CREATE TABLE IF NOT EXISTS ref_pending_tos_removal (
+    tos_symbol   TEXT PRIMARY KEY,
+    wl_number    INTEGER  NOT NULL,
+    tier         SMALLINT NOT NULL,
+    removed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('tos_removal_list_enabled', 'true',
+     'When true, generate_watchlist_files.py writes removals.csv from '
+     'ref_pending_tos_removal and the monthly housekeeping reminder fires. '
+     'When false, pending removals still get tracked, just not surfaced.')
+ON CONFLICT (setting_name) DO NOTHING;

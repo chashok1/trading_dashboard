@@ -543,8 +543,74 @@ def run_nightly_outcomes() -> None:
         with session_scope() as s:
             result = generate_watchlist_files(s, "daily", settings.watchlist_files_dir)
         log.info("nightly: watchlist file generation done: %s", result)
+        _run_watchlist_housekeeping_reminders(result)
     except Exception:
         log.exception("nightly: watchlist file generation crashed")
+
+
+def _run_watchlist_housekeeping_reminders(result: dict) -> None:
+    """2026-08-18, user-directed: surface pending additions/removals via the
+    existing warning-badge system (meta_warning -> /api/warnings ->
+    web/warning_badge.js, already loaded on every page) instead of a new
+    notification mechanism. User: "if i don't add them remind me in the
+    house keeping" (additions -- refreshed every night, this job already
+    only fires once/day via maybe_run_nightly) / "if i don't remove them
+    remind me in house keeping once a month" (removals -- gated
+    separately below, lower urgency). Both auto-clear the moment their
+    underlying condition resolves (see generate_watchlist_files.py
+    "REMOVAL TRACKING" for how ref_pending_tos_removal itself clears) --
+    nothing here requires a /ref visit.
+
+    Cleared/re-added by `code`, not by clearing the whole screen, so the
+    monthly removals reminder isn't wiped by every night's additions
+    refresh in between its own monthly checks.
+    """
+    from etl.db import session_scope
+    from etl.warnings import add_warning
+    SCREEN = "watchlist_housekeeping"
+    try:
+        with session_scope() as s:
+            s.execute(text(
+                "DELETE FROM meta_warning WHERE screen=:s AND code='pending_additions' AND as_of_date IS NULL"
+            ), {"s": SCREEN})
+            n_add = result.get("additions", 0)
+            if n_add:
+                add_warning(
+                    s, SCREEN,
+                    f"{n_add} Tier 1 symbol(s) need adding to a TOS watchlist -- "
+                    f"see additions.csv (TOSDownloads\\ImportAdditions.py).",
+                    severity="info", code="pending_additions",
+                )
+    except Exception:
+        log.exception("nightly: additions housekeeping reminder crashed")
+
+    try:
+        month_state_path = Path(settings.etl_working_dir) / "scheduler_housekeeping_last_month.txt"
+        this_month = datetime.now().strftime("%Y-%m")
+        last_month = (month_state_path.read_text(encoding="utf-8").strip()
+                      if month_state_path.exists() else None)
+        if last_month == this_month:
+            return  # already checked removals this calendar month
+        with session_scope() as s:
+            s.execute(text(
+                "DELETE FROM meta_warning WHERE screen=:s AND code='pending_removals' AND as_of_date IS NULL"
+            ), {"s": SCREEN})
+            removal_toggle = s.execute(text(
+                "SELECT setting_value FROM ref_settings WHERE setting_name = 'tos_removal_list_enabled'"
+            )).scalar()
+            if (removal_toggle or "").strip().lower() == "true":
+                n_remove = s.execute(text("SELECT COUNT(*) FROM ref_pending_tos_removal")).scalar() or 0
+                if n_remove:
+                    add_warning(
+                        s, SCREEN,
+                        f"{n_remove} symbol(s) still need manual removal from a TOS "
+                        f"watchlist -- see removals.csv.",
+                        severity="info", code="pending_removals",
+                    )
+        month_state_path.parent.mkdir(parents=True, exist_ok=True)
+        month_state_path.write_text(this_month, encoding="utf-8")
+    except Exception:
+        log.exception("nightly: removals housekeeping reminder crashed")
 
 
 def _read_nightly_state(state_path: Path):
