@@ -1094,7 +1094,15 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
         elif etype == "WL":
             if firstopenindex==99:
                 firstopenindex=index
-                download_watchlist(df.iloc[firstopenindex+1], save_folder, images_folder, True, False, re_process)
+                # 2026-08-19: disabled per user request -- this primed TOS by
+                # open-only navigating to the SECOND watchlist (index+1)
+                # before downloading the first one for real. No longer
+                # needed now that the RELOADWL99 reprocess/retry logic
+                # (below) handles stuck symbols reliably. firstopenindex
+                # itself still needs to be set above -- the failure-retry
+                # logic right below still reads it. Commented out rather
+                # than deleted in case it needs to come back.
+                # download_watchlist(df.iloc[firstopenindex+1], save_folder, images_folder, True, False, re_process)
 
             if not download_watchlist(row, save_folder, images_folder, False, False, re_process):
                 if index==firstopenindex:
