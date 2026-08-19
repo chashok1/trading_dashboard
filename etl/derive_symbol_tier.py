@@ -57,6 +57,17 @@ whichever fires first becomes `reason`):
                            onto a generated watchlist wouldn't help and (for
                            the FRED/internals ones) isn't even a symbol TOS
                            would recognize on import.
+  5. special_format      — the symbol contains ':', '/', or '=' (see
+                           _SPECIAL_CHARS). User: "make sure all important
+                           stocks are in tier 1 (indexes, currencies,
+                           sectors, the ones with special chars)" -- a
+                           non-standard format is itself a signal the
+                           symbol is an index/futures/currency/RR-
+                           benchmark, not a plain equity, even if it isn't
+                           wired into any of the dashboard_dependency
+                           sources above. Only applies to symbols already
+                           in the universe (curated/held/dashboard-
+                           dependency) -- doesn't pull in anything new.
 Else tier=2, reason='dormant'.
 
 Idempotent: DELETE WHERE as_of_date=D then INSERT. Purely descriptive
@@ -77,6 +88,12 @@ from etl.db import replace_for_date
 log = logging.getLogger(__name__)
 
 ACTIVE_WINDOW_DAYS = 90
+
+# 2026-08-18: symbols carrying one of these are, by their format alone,
+# an index/futures/currency/RR-benchmark rather than a plain equity --
+# futures (/GC, /BTC), RR-index codes (TNX:CGI, MOVE:GIF), spot forex
+# (USD/JPY). See reason 5 below.
+_SPECIAL_CHARS = (":", "/", "=")
 
 # Hedgeye tables that carry some notion of directional stance, and how to
 # read "directional, not neutral" out of each one's own vocabulary. Each
@@ -220,6 +237,8 @@ def _derive_symbol_tier_impl(session: Session, as_of_date: date, run_id: int) ->
             tier, reason = 1, "hedgeye_directional_90d"
         elif sym in dashboard_dependency:
             tier, reason = 1, "dashboard_dependency"
+        elif any(c in sym for c in _SPECIAL_CHARS):
+            tier, reason = 1, "special_format"
         else:
             tier, reason = 2, "dormant"
         out_rows.append({

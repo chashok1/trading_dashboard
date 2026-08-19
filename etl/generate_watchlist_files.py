@@ -40,11 +40,11 @@ noise instead of a real delta. Reconciliation each run:
      to overflow.csv instead of silently dropped or exceeding the cap.
 
 Output files (all in the target output_dir, overwritten fresh each run).
-Row order within WL<n>.csv/additions.csv (2026-08-18, user-directed):
-dashboard-dependency symbols (indexes/RRT-benchmarks/sector ETFs -- same
-set _fetch_dashboard_dependency() computes for tiering) sort first, then
-everything else alphabetically -- so the important tickers are visible at
-the top of each imported TOS watchlist page instead of buried mid-list.
+Row order within WL<n>.csv/additions.csv is plain alphabetical (tried
+sorting dashboard-dependency symbols to the top first, 2026-08-18, but
+reverted same day -- see etl/derive_symbol_tier.py's dashboard_dependency
+reason instead: important tickers are guaranteed tier=1, not specially
+positioned within a file).
     WL<n>.csv       -- one per occupied WL number, plain symbol-per-line
                        (LoadWatchlists.py's expected input format).
     additions.csv   -- tos_symbol,watchlist_name for every symbol assigned
@@ -72,7 +72,6 @@ from sqlalchemy.orm import Session
 
 from config.settings import settings
 from etl.db import session_scope
-from etl.derive_symbol_tier import _fetch_dashboard_dependency
 
 log = logging.getLogger(__name__)
 
@@ -90,25 +89,6 @@ def _wl_range_for_tier(tier: int):
     if tier == 1:
         return TIER1_RANGE
     return itertools.count(TIER2_BASE)  # no upper bound -- every Tier 2 symbol gets a slot
-
-
-_SPECIAL_CHARS = (":", "/", "=")  # futures (/GC), RR-index codes (TNX:CGI), etc.
-
-
-def _importance_sort_key(important: set):
-    """2026-08-18: user asked that indexes/RRT/sector benchmarks -- the same
-    'dashboard_dependency' set used for tiering -- sort to the top of each
-    output file, with everything else alphabetical after. Also (same day,
-    follow-up): symbols carrying a ':', '/', or '=' -- futures (/GC, /BTC),
-    RR-index codes (TNX:CGI, MOVE:GIF) -- sort to that same top group even
-    if not already in `important`, since their non-standard format is
-    itself a signal they're an index/benchmark, not a plain equity. Returns
-    a key function: (0, symbol) sorts before (1, symbol), alphabetical
-    within each group."""
-    def key(sym: str):
-        is_top = sym in important or any(c in sym for c in _SPECIAL_CHARS)
-        return (0 if is_top else 1, sym)
-    return key
 
 
 def _reconcile_assignment(session: Session, target: dict) -> tuple:
@@ -190,8 +170,6 @@ def generate_watchlist_files(session: Session, mode: str, output_dir: str) -> di
     target = {r[0]: r[1] for r in tier_rows}
 
     assignment, overflow = _reconcile_assignment(session, target)
-    important = _fetch_dashboard_dependency(session)
-    sort_key = _importance_sort_key(important)
 
     by_wl: dict = {}
     for sym, wl in assignment.items():
@@ -201,7 +179,7 @@ def generate_watchlist_files(session: Session, mode: str, output_dir: str) -> di
     for wl, syms in by_wl.items():
         path = os.path.join(output_dir, f"WL{wl}.csv")
         with open(path, "w", newline="") as f:
-            for s in sorted(syms, key=sort_key):
+            for s in sorted(syms):
                 f.write(s + "\n")
 
     real_watchlist = {
@@ -211,8 +189,7 @@ def generate_watchlist_files(session: Session, mode: str, output_dir: str) -> di
         ).fetchall()
     }
     additions = sorted(
-        ((sym, f"WL{wl}") for sym, wl in assignment.items() if sym not in real_watchlist),
-        key=lambda row: sort_key(row[0]),
+        (sym, f"WL{wl}") for sym, wl in assignment.items() if sym not in real_watchlist
     )
     with open(os.path.join(output_dir, "additions.csv"), "w", newline="") as f:
         w = csv.writer(f)
