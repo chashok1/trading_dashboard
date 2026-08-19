@@ -142,11 +142,22 @@ def _fetch_hedgeye_directional_90d(session: Session, d: date) -> set:
     return out
 
 
+# 2026-08-18: user-confirmed important indexes/instruments that aren't
+# wired into any of the queried panel tables/constants below (so the live
+# scan can't find them on its own) -- HSI:HK (Hang Seng), /NKD (Nikkei
+# futures, distinct product from N225:JP's cash index), USD/JPY (spot
+# forex, distinct product from the /6J futures contract). Manually
+# maintained precisely because these are real exceptions, not a category
+# with its own source-of-truth table -- add here if the user confirms
+# another one-off the same way.
+_MANUAL_DASHBOARD_SYMBOLS = {"HSI:HK", "/NKD", "USD/JPY"}
+
+
 def _fetch_dashboard_dependency(session: Session) -> set:
     """Symbols dashboard panels depend on regardless of whether the user
     personally trades them. Computed live from the same tables/constants
     those panels already read -- see module docstring reason 4."""
-    out: set = set()
+    out: set = set(_MANUAL_DASHBOARD_SYMBOLS)
 
     out.update(r[0] for r in session.execute(text("""
         SELECT DISTINCT substring(elem FROM 5) FROM ref_market_metric,
