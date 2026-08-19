@@ -1,8 +1,10 @@
 @echo off
-REM Step 1 of 3: generate WL1..WLn.csv / additions.csv / overflow.csv
+REM Step 1 of 3: generate WL1..WLn.csv / overflow.csv / additions.csv / removals.csv
 REM from ref_watchlist_assignment via etl.generate_watchlist_files.
-REM Output lands in C:\Ashok\Investing\Stocks\Scripts\TOSDownloads\WatchlistLoads\
-REM (settings.watchlist_files_dir).
+REM WL*.csv/overflow.csv -> C:\Ashok\Investing\Stocks\TOS Watchlists\Watchlists\
+REM   (settings.watchlist_files_dir)
+REM additions.csv/removals.csv -> C:\Ashok\Investing\Stocks\TOS Watchlists\
+REM   (settings.watchlist_lists_dir)
 
 cd /d "C:\Ashok\Invest\Projects\trading-dashboard"
 

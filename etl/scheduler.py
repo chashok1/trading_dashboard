@@ -541,7 +541,8 @@ def run_nightly_outcomes() -> None:
         from etl.generate_watchlist_files import generate_watchlist_files
         from config.settings import settings
         with session_scope() as s:
-            result = generate_watchlist_files(s, "daily", settings.watchlist_files_dir)
+            result = generate_watchlist_files(s, "daily", settings.watchlist_files_dir,
+                                               settings.watchlist_lists_dir)
         log.info("nightly: watchlist file generation done: %s", result)
         _run_watchlist_housekeeping_reminders(result)
     except Exception:

@@ -11,7 +11,7 @@ echo === Delta watchlist import (additions.csv only) ===
 echo Make sure TOS is already open before continuing.
 pause
 
-python.exe ImportAdditions.py WatchlistLoads\additions.csv WatchlistLoads Images TOS.lock
+python.exe ImportAdditions.py "C:\Ashok\Investing\Stocks\TOS Watchlists\additions.csv" "C:\Ashok\Investing\Stocks\TOS Watchlists\Watchlists" Images TOS.lock
 
 if errorlevel 1 (
     echo.

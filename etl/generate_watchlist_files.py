@@ -39,14 +39,15 @@ noise instead of a real delta. Reconciliation each run:
   4. A symbol with nowhere to go (its whole tier range is full) is written
      to overflow.csv instead of silently dropped or exceeding the cap.
 
-Output files (all in the target output_dir, overwritten fresh each run).
-Row order within WL<n>.csv/additions.csv is plain alphabetical (tried
-sorting dashboard-dependency symbols to the top first, 2026-08-18, but
-reverted same day -- see etl/derive_symbol_tier.py's dashboard_dependency
-reason instead: important tickers are guaranteed tier=1, not specially
-positioned within a file).
+Output files, split across two directories (2026-08-18, user-directed
+relocation -- settings.watchlist_base_dir is the single reference point
+both hang off of):
+  output_dir (settings.watchlist_files_dir, "...\TOS Watchlists\Watchlists"):
     WL<n>.csv       -- one per occupied WL number, plain symbol-per-line
                        (LoadWatchlists.py's expected input format).
+    overflow.csv    -- symbols that qualified for this run's tier(s) but
+                       had no room in their WL range. Not silently dropped.
+  lists_dir (settings.watchlist_lists_dir, "...\TOS Watchlists"):
     additions.csv   -- tos_symbol,watchlist_name for every symbol assigned
                        in this run that ISN'T already on the real TOS
                        watchlist (hist_td, today) -- ImportAdditions.py's
@@ -58,8 +59,11 @@ positioned within a file).
                        TRACKING" below -- there is no Program to auto-
                        remove a symbol from a real TOS watchlist, so this
                        is purely informational, for you to act on by hand.
-    overflow.csv    -- symbols that qualified for this run's tier(s) but
-                       had no room in their WL range. Not silently dropped.
+All overwritten fresh each run. Row order within WL<n>.csv/additions.csv
+is plain alphabetical (tried sorting dashboard-dependency symbols to the
+top first, 2026-08-18, but reverted same day -- see etl/derive_symbol_
+tier.py's dashboard_dependency reason instead: important tickers are
+guaranteed tier=1, not specially positioned within a file).
 
 REMOVAL TRACKING (2026-08-18, user-directed -- "sticky" TOS-removal
 design): when a symbol falls out of scope (its drv_symbol_tier.tier
@@ -80,7 +84,7 @@ meta_warning row from etl/scheduler.py's nightly job.
 Usage:
     python -m etl.generate_watchlist_files --mode daily
     python -m etl.generate_watchlist_files --mode weekly
-    python -m etl.generate_watchlist_files --mode daily --output-dir C:\\some\\folder
+    python -m etl.generate_watchlist_files --mode daily --output-dir C:\\some\\folder --lists-dir C:\\some\\other\\folder
 """
 from __future__ import annotations
 
@@ -209,7 +213,13 @@ def _reconcile_assignment(session: Session, target: dict, all_tiers: dict, real_
     return {sym: wl for sym, (wl, _tier) in result.items()}, overflow
 
 
-def generate_watchlist_files(session: Session, mode: str, output_dir: str) -> dict:
+def generate_watchlist_files(session: Session, mode: str, output_dir: str, lists_dir: str = None) -> dict:
+    """output_dir: where WL<n>.csv + overflow.csv land (settings.watchlist_files_dir).
+    lists_dir: where additions.csv + removals.csv land (settings.watchlist_lists_dir) --
+    2026-08-18, user-directed relocation, defaults to output_dir if not given
+    (back-compat for any caller not yet passing it explicitly)."""
+    if lists_dir is None:
+        lists_dir = output_dir
     if mode not in MODE_TIERS:
         raise ValueError(f"Unknown mode '{mode}' -- expected one of {sorted(MODE_TIERS)}")
 
@@ -247,10 +257,11 @@ def generate_watchlist_files(session: Session, mode: str, output_dir: str) -> di
             for s in sorted(syms):
                 f.write(s + "\n")
 
+    os.makedirs(lists_dir, exist_ok=True)
     additions = sorted(
         (sym, f"WL{wl}") for sym, wl in assignment.items() if sym not in real_watchlist
     )
-    with open(os.path.join(output_dir, "additions.csv"), "w", newline="") as f:
+    with open(os.path.join(lists_dir, "additions.csv"), "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["tos_symbol", "watchlist_name"])
         w.writerows(additions)
@@ -286,7 +297,7 @@ def generate_watchlist_files(session: Session, mode: str, output_dir: str) -> di
     )).scalar()
     removal_list_written = (removal_toggle or "").strip().lower() == "true"
     if removal_list_written:
-        with open(os.path.join(output_dir, "removals.csv"), "w", newline="") as f:
+        with open(os.path.join(lists_dir, "removals.csv"), "w", newline="") as f:
             w = csv.writer(f)
             w.writerow(["tos_symbol", "watchlist_name"])
             w.writerows(still_pending)
@@ -308,13 +319,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=sorted(MODE_TIERS), default="daily")
     parser.add_argument("--output-dir", default=None,
-                         help="Defaults to settings.watchlist_files_dir")
+                         help="WL<n>.csv + overflow.csv location. Defaults to settings.watchlist_files_dir")
+    parser.add_argument("--lists-dir", default=None,
+                         help="additions.csv + removals.csv location. Defaults to settings.watchlist_lists_dir")
     args = parser.parse_args()
 
     output_dir = args.output_dir or settings.watchlist_files_dir
+    lists_dir = args.lists_dir or settings.watchlist_lists_dir
     with session_scope() as session:
-        result = generate_watchlist_files(session, args.mode, output_dir)
-    print(f"mode={args.mode} output_dir={output_dir}")
+        result = generate_watchlist_files(session, args.mode, output_dir, lists_dir)
+    print(f"mode={args.mode} output_dir={output_dir} lists_dir={lists_dir}")
     print(result)
 
 

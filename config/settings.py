@@ -21,6 +21,19 @@ class Settings(BaseSettings):
     tickers_file: str = ""
     loadfiles_file: str = ""
     etl_working_dir: str = str(PROJECT_ROOT / "etl" / "working")
+    # 2026-08-18, user-directed relocation: watchlist_base_dir is the single
+    # reference point both other paths below hang off of -- read by
+    # TOSDownloads/LoadWatchlists.py + ImportAdditions.py, which run from
+    # this same machine but a separate location (outside this repo, same
+    # convention as tickers_file/loadfiles_file above).
+    watchlist_base_dir: str = r"C:\Ashok\Investing\Stocks\TOS Watchlists"
+    # WL<n>.csv + overflow.csv (etl/generate_watchlist_files.py) -- the full
+    # per-watchlist symbol files LoadWatchlists.py imports.
+    watchlist_files_dir: str = r"C:\Ashok\Investing\Stocks\TOS Watchlists\Watchlists"
+    # additions.csv + removals.csv -- the two housekeeping worklists, one
+    # level up from watchlist_files_dir (user: "so it can be used for both
+    # full list and additions and removals").
+    watchlist_lists_dir: str = r"C:\Ashok\Investing\Stocks\TOS Watchlists"
 
     # Retention
     default_retention_days: int = 365
