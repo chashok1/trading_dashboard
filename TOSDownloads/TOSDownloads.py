@@ -1124,15 +1124,28 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
             # themselves. Excludes the RELOADWL99 row itself from the
             # re-run (that's handled separately below) to avoid recursing
             # back into this same branch.
+            print(f"\n{'=' * 60}\n=== RELOADWL99 reached -- checking for stuck 'Loading' symbols ===\n{'=' * 60}")
             reprocess_attempts = 0
-            stuck_count = len(find_genuinely_stuck_symbols(save_folder))
+            stuck_symbols = find_genuinely_stuck_symbols(save_folder)
+            stuck_count = len(stuck_symbols)
+            print(f"Stuck symbols right now ({stuck_count}): {sorted(stuck_symbols)}")
+            print(f"Incomplete watchlist fragments right now: {incomplete_files}")
+
+            if stuck_count <= RELOAD_SYMBOL_THRESHOLD:
+                print(f"{stuck_count} <= threshold ({RELOAD_SYMBOL_THRESHOLD}) -- skipping the reprocess "
+                      "step, letting WL99's own reload handle these directly.")
+
             while stuck_count > RELOAD_SYMBOL_THRESHOLD and reprocess_attempts < MAX_REPROCESS_ATTEMPTS:
                 print(f"\n--- {stuck_count} symbol(s) still 'Loading' (> {RELOAD_SYMBOL_THRESHOLD}) -- "
                       f"reprocessing incomplete watchlists before WL99 reload "
-                      f"(attempt {reprocess_attempts + 1}/{MAX_REPROCESS_ATTEMPTS}). ---")
+                      f"(attempt {reprocess_attempts + 1}/{MAX_REPROCESS_ATTEMPTS}). "
+                      f"Watchlists being touched: {incomplete_files} ---")
                 run_recipe_rows(df[df['Type'] != 'RELOADWL99'], save_folder, images_folder, recipe_dir, True)
                 reprocess_attempts += 1
-                new_stuck_count = len(find_genuinely_stuck_symbols(save_folder))
+                new_stuck_symbols = find_genuinely_stuck_symbols(save_folder)
+                new_stuck_count = len(new_stuck_symbols)
+                print(f"After reprocess attempt {reprocess_attempts}: {new_stuck_count} still stuck: "
+                      f"{sorted(new_stuck_symbols)}")
                 if new_stuck_count >= stuck_count:
                     print(f"Reminder: reprocess attempt {reprocess_attempts} made no progress "
                           f"({new_stuck_count} still 'Loading') -- stopping reprocessing early.")
@@ -1143,13 +1156,18 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
             # one reload/export pass to actually resolve every symbol.
             # Retry up to MAX_WL99_RETRY_ATTEMPTS, stopping as soon as
             # nothing's stuck or a pass makes no further progress.
+            print(f"\n--- Proceeding to WL99 reload+export (up to {MAX_WL99_RETRY_ATTEMPTS} attempt(s)). ---")
             wl99_attempts = 0
             prev_remaining = None
             while wl99_attempts < MAX_WL99_RETRY_ATTEMPTS:
+                print(f"\n--- WL99 reload+export attempt {wl99_attempts + 1}/{MAX_WL99_RETRY_ATTEMPTS} starting. ---")
                 do_reloadwl99(row, save_folder, images_folder, recipe_dir)
                 wl99_attempts += 1
-                remaining = len(find_genuinely_stuck_symbols(save_folder))
+                remaining_symbols = find_genuinely_stuck_symbols(save_folder)
+                remaining = len(remaining_symbols)
+                print(f"After WL99 attempt {wl99_attempts}: {remaining} still stuck: {sorted(remaining_symbols)}")
                 if remaining == 0:
+                    print("--- Nothing left stuck -- WL99 reload/retry loop done. ---")
                     break
                 if prev_remaining is not None and remaining >= prev_remaining:
                     print(f"Reminder: WL99 reload attempt {wl99_attempts} made no progress "
@@ -1159,6 +1177,8 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
                     print(f"Reminder: {remaining} symbol(s) still stuck 'Loading' after WL99 reload "
                           f"attempt {wl99_attempts}/{MAX_WL99_RETRY_ATTEMPTS} -- retrying.")
                 prev_remaining = remaining
+            print(f"{'=' * 60}\n=== RELOADWL99 handling done ({wl99_attempts} WL99 attempt(s), "
+                  f"{reprocess_attempts} reprocess attempt(s)) ===\n{'=' * 60}\n")
         else:
             print(f"Unknown type '{etype}' ")
 
