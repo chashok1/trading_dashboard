@@ -32,13 +32,23 @@ whichever fires first becomes `reason`):
                            import into a watchlist. See _fetch_held().
   2. active_90d          — drv_actionable.consolidated_action was non-blank
                            for this symbol on any date in [D-90, D].
-  3. hedgeye_directional_90d — a directional (BULLISH/BEARISH, not NEUTRAL)
-                           Hedgeye call/stance/side/outlook in [D-90, D],
-                           across hist_call, hist_hedgeye_stance,
-                           hist_call_top5, hist_rta, hist_etfchg, hist_rr.
-                           hist_sss_change is deliberately excluded — its
-                           'action' column is add/remove list membership,
-                           not a directional stance.
+  3. hedgeye_90d         — ANY Hedgeye call/stance/side/outlook in
+                           [D-90, D], across hist_call, hist_hedgeye_stance,
+                           hist_call_top5, hist_rta, hist_etfchg, hist_rr --
+                           including NEUTRAL (2026-08-18: was directional-
+                           only, i.e. BULLISH/BEARISH/long/short, excluding
+                           NEUTRAL; user asked "add neutrals to tier 1 list
+                           also" after finding AMD -- 6 straight NEUTRAL
+                           calls, no other qualifying reason -- sitting in
+                           Tier 2. Renamed from hedgeye_directional_90d
+                           since it's no longer strictly directional.
+                           hist_rta/hist_etfchg have no neutral value in
+                           their vocabulary today (checked: only long/
+                           short), so their predicates are unchanged;
+                           hist_call/hist_call_top5/hist_rr all do and now
+                           include it). hist_sss_change is deliberately
+                           still excluded — its 'action' column is add/
+                           remove list membership, not a stance at all.
   4. dashboard_dependency — a symbol a dashboard PANEL depends on to
                            function, independent of whether the user
                            personally trades it (index/benchmark/risk-gauge
@@ -101,17 +111,19 @@ ACTIVE_WINDOW_DAYS = 90
 # (USD/JPY). See reason 5 below.
 _SPECIAL_CHARS = (":", "/", "=")
 
-# Hedgeye tables that carry some notion of directional stance, and how to
-# read "directional, not neutral" out of each one's own vocabulary. Each
-# entry: (table, date_column, directional_sql_predicate). hist_hedgeye_stance
-# has no neutral value at all, so its predicate is just TRUE.
-_HEDGEYE_DIRECTIONAL_SOURCES = [
-    ("hist_call", "snapshot_date", "UPPER(outlook) IN ('BULLISH', 'BEARISH')"),
+# Hedgeye tables that carry some notion of stance -- ANY stance now
+# qualifies, including NEUTRAL (2026-08-18, see reason 3 above). Each
+# entry: (table, date_column, has_a_stance_predicate). hist_hedgeye_stance
+# has no neutral value at all (always a real stance), so its predicate is
+# just TRUE. hist_rta/hist_etfchg have no neutral value in their
+# vocabulary (checked live: only long/short) -- nothing to add there.
+_HEDGEYE_SOURCES = [
+    ("hist_call", "snapshot_date", "UPPER(outlook) IN ('BULLISH', 'BEARISH', 'NEUTRAL')"),
     ("hist_hedgeye_stance", "snapshot_date", "TRUE"),
-    ("hist_call_top5", "snapshot_date", "LOWER(side) IN ('long', 'short')"),
+    ("hist_call_top5", "snapshot_date", "LOWER(side) IN ('long', 'short', 'neutral')"),
     ("hist_rta", "snapshot_date", "LOWER(side) IN ('long', 'short')"),
     ("hist_etfchg", "event_date", "LOWER(outlook) IN ('long', 'short')"),
-    ("hist_rr", "snapshot_date", "UPPER(outlook) IN ('BULLISH', 'BEARISH')"),
+    ("hist_rr", "snapshot_date", "UPPER(outlook) IN ('BULLISH', 'BEARISH', 'NEUTRAL')"),
 ]
 
 
@@ -151,10 +163,10 @@ def _fetch_active_90d(session: Session, d: date) -> set:
     return {r[0] for r in rows if r[0]}
 
 
-def _fetch_hedgeye_directional_90d(session: Session, d: date) -> set:
+def _fetch_hedgeye_90d(session: Session, d: date) -> set:
     start = d - timedelta(days=ACTIVE_WINDOW_DAYS)
     out: set = set()
-    for table, date_col, predicate in _HEDGEYE_DIRECTIONAL_SOURCES:
+    for table, date_col, predicate in _HEDGEYE_SOURCES:
         rows = session.execute(text(f"""
             SELECT DISTINCT tos_symbol FROM {table}
             WHERE {date_col} BETWEEN :start AND :d
@@ -241,7 +253,7 @@ def _derive_symbol_tier_impl(session: Session, as_of_date: date, run_id: int) ->
         return replace_for_date(session, "drv_symbol_tier", "as_of_date", as_of_date, [])
 
     active_90d = _fetch_active_90d(session, as_of_date)
-    hedgeye_90d = _fetch_hedgeye_directional_90d(session, as_of_date)
+    hedgeye_90d = _fetch_hedgeye_90d(session, as_of_date)
 
     out_rows = []
     for sym in universe:
@@ -252,7 +264,7 @@ def _derive_symbol_tier_impl(session: Session, as_of_date: date, run_id: int) ->
         elif sym in active_90d:
             tier, reason = 1, "active_90d"
         elif sym in hedgeye_90d:
-            tier, reason = 1, "hedgeye_directional_90d"
+            tier, reason = 1, "hedgeye_90d"
         elif sym in dashboard_dependency:
             tier, reason = 1, "dashboard_dependency"
         elif any(c in sym for c in _SPECIAL_CHARS):

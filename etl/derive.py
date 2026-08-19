@@ -3448,10 +3448,11 @@ def derive_all(session: Session, as_of_date: date,
         try: session.rollback()
         except Exception: pass
 
-    # 2026-08-18: export-frequency tier per symbol (held / active_90d /
-    # hedgeye_directional_90d / dormant) -- TOS-export right-sizing design,
-    # no task number. Runs after drv_actionable (needs consolidated_action
-    # for the active_90d rule). Non-critical, purely descriptive today.
+    # 2026-08-18: export-frequency tier per symbol (user_pinned / held /
+    # active_90d / hedgeye_90d / dashboard_dependency / special_format /
+    # dormant) -- TOS-export right-sizing design, no task number. Runs
+    # after drv_actionable (needs consolidated_action for the active_90d
+    # rule). Non-critical, purely descriptive today.
     try:
         from etl.derive_symbol_tier import derive_symbol_tier
         counts["drv_symbol_tier"] = _safe("drv_symbol_tier", derive_symbol_tier)
