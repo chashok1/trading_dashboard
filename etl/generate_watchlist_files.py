@@ -92,14 +92,22 @@ def _wl_range_for_tier(tier: int):
     return itertools.count(TIER2_BASE)  # no upper bound -- every Tier 2 symbol gets a slot
 
 
+_SPECIAL_CHARS = (":", "/", "=")  # futures (/GC), RR-index codes (TNX:CGI), etc.
+
+
 def _importance_sort_key(important: set):
     """2026-08-18: user asked that indexes/RRT/sector benchmarks -- the same
     'dashboard_dependency' set used for tiering -- sort to the top of each
-    output file, with everything else alphabetical after. Returns a key
-    function: (0, symbol) for important symbols sorts before (1, symbol)
-    for everything else, alphabetical within each group."""
+    output file, with everything else alphabetical after. Also (same day,
+    follow-up): symbols carrying a ':', '/', or '=' -- futures (/GC, /BTC),
+    RR-index codes (TNX:CGI, MOVE:GIF) -- sort to that same top group even
+    if not already in `important`, since their non-standard format is
+    itself a signal they're an index/benchmark, not a plain equity. Returns
+    a key function: (0, symbol) sorts before (1, symbol), alphabetical
+    within each group."""
     def key(sym: str):
-        return (0 if sym in important else 1, sym)
+        is_top = sym in important or any(c in sym for c in _SPECIAL_CHARS)
+        return (0 if is_top else 1, sym)
     return key
 
 
