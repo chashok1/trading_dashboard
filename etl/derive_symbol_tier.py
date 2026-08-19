@@ -187,6 +187,18 @@ def _fetch_hedgeye_90d(session: Session, d: date) -> set:
 # another one-off the same way.
 _MANUAL_DASHBOARD_SYMBOLS = {"HSI:HK", "/NKD", "USD/JPY"}
 
+# 2026-08-18: dashboard-dependency symbols confirmed by the user's own live
+# TOS session to have no real TOS-tradable form -- "TOS is not loading data
+# for these". $SSEC is a real, currently-live dashboard row (ref_macro_area
+# 'country_etfs', Yahoo-sourced price still works fine) so disabling that
+# row would break a working panel; excluded HERE instead, from tier-1
+# eligibility only, same rationale as the FRED-key/internals/VIX9D
+# exclusions above just empirically confirmed per-symbol instead of by
+# category. Add here (not deactivate ref_my_stocks/disable the source
+# table) for any future symbol that's a legitimate dashboard dependency
+# but confirmed non-TOS-loadable.
+_MANUAL_EXCLUDED_SYMBOLS = {"$SSEC"}
+
 
 def _fetch_dashboard_dependency(session: Session) -> set:
     """Symbols dashboard panels depend on regardless of whether the user
@@ -220,6 +232,7 @@ def _fetch_dashboard_dependency(session: Session) -> set:
             out.add(v)
     out.update(v for v in _STYLE_ETF.values() if v)
 
+    out -= _MANUAL_EXCLUDED_SYMBOLS
     return out
 
 
