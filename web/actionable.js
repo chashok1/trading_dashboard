@@ -1748,7 +1748,7 @@ async function loadActionable(opts) {
 // Watchlist gate's _ENTRY_RIPE_TECH): rr_bull_bear only reflects whether the
 // RR band-position leg (QO) used the bull_rr_rule or nbull_rr_rule table,
 // not whether Technical actually confirmed a buy on this snapshot.
-const _TECH_GATE_EXEMPT_SRC = ['RTA', 'SSSCHG'];
+const _TECH_GATE_EXEMPT_SRC = ['RTA', 'SSSCHG', 'TOP5'];
 function _isTradeModeQualifyingBuy(r) {
   const code = (r.final_code || '').toUpperCase();
   if (code !== 'BM' && code !== 'BMN') return false;
@@ -3756,6 +3756,19 @@ const _TIER_BOTTOM    = -1e6;  // Bottom: low_confidence-only sells / infeasible
 // instead of a wall that could bury a clean entry below a merely-agreed-on
 // mediocre one. See _buyTradabilityScore's header comment.
 
+// 2026-08-19 (user decision): Tier 1 (credible held sells) sub-ranked 1a/1b
+// by whether trig_action (rules-engine trend/trade read, BuySell vocab) also
+// confirms bearish. A sell where Sources AND the rules engine both agree
+// (e.g. dropped from a list AND the trend line is breaking down) is more
+// convicted than a sell driven by Sources alone (e.g. dropped from a list
+// while the trend still looks fine) — should rank above it regardless of
+// dollar size. 1e7 sits well inside the 1e6-1e8 gap between Tier 2 (buys)
+// and Tier 1's own $-at-stake range (real positions run well under $1e6),
+// so 1a-with-small-$ always outranks 1b-with-large-$ but never spills into
+// an adjacent tier.
+const _TIER_SELL_CONFIRMED = 1e7;
+const _TREND_TRADE_BEARISH = ['SA', 'STM', 'SS'];
+
 function _computePriority(row) {
   // Tier 0 (TASK_119): held + trading below stop — position $ desc, always
   // above every other tier regardless of edge/dollars.
@@ -3783,11 +3796,14 @@ function _computePriority(row) {
     return _TIER_WATCHLIST + _dollarWeightedScore(row);
   }
 
-  // TASK_122 Tier 1: a credible SELL on a HELD position — by $ at stake desc.
-  // (low_confidence sells already routed to Bottom above, so every sell that
-  // reaches here is "credible" per the spec's definition.)
+  // TASK_122 Tier 1: a credible SELL on a HELD position — sub-ranked 1a/1b
+  // by whether trig_action also confirms bearish (see _TIER_SELL_CONFIRMED
+  // above), then by $ at stake desc within each sub-tier. (low_confidence
+  // sells already routed to Bottom above, so every sell that reaches here
+  // is "credible" per the spec's definition.)
   if (row.held_today && fc.side === 'sell') {
-    return _TIER_SELL + _dollarsAtStake(row);
+    var trigConfirms = _TREND_TRADE_BEARISH.indexOf((row.trig_action || '').toUpperCase()) !== -1;
+    return _TIER_SELL + (trigConfirms ? _TIER_SELL_CONFIRMED : 0) + _dollarsAtStake(row);
   }
 
   // TASK_122 Tier 2: a BUY that passed the technical gate (never watchlisted

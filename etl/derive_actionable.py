@@ -21,15 +21,22 @@ log = logging.getLogger("etl.derive_actionable")
 ACTION_RANK  = {"REMOVE": 4, "REDUCE": 3, "INCREASE": 2, "ADD": 1, "HOLD": 0}
 # RTA (long-book, same-day trigger) ranks highest — a real-time alert on a
 # held position should always headline over a standing weekly/monthly list.
-# SSSCHG (Signal Strength Stocks Gmail Added/Removed, same-day trigger) sits
-# right behind it, same rationale — user decision 2026-07-19: a same-day
-# add/remove overrides the file-based weekly SSS source until SSS's own next
-# snapshot catches up (SSS stays at its own tier, unchanged).
-# RTAINFO (short-book, informational-only HOLD) and TOP5 (Hedgeye's daily
-# Top-5 list, also informational-only HOLD) rank lowest so they never mask
-# a real signal from another source.
-SOURCE_ORDER = {"RTA": 1, "SSSCHG": 2, "PS": 3, "ETF": 4, "RR": 5, "SSS": 6,
-                "II": 7, "CALL": 8, "RTAINFO": 9, "TOP5": 10}
+# TOP5 (Hedgeye's daily Top-5 list) sits right behind it -- user decision
+# 2026-08-19 ("TOP5 acts like RTA"): now an independent actionable source
+# (same classifier shape as RTA's long side), ranked just under RTA even
+# though it's drawn from the same Call email CALL scores separately --
+# plain priority, no special tie-break between the two.
+# SSSCHG (Signal Strength Stocks Gmail Added/Removed, same-day trigger)
+# follows, same rationale — user decision 2026-07-19: a same-day add/remove
+# overrides the file-based weekly SSS source until SSS's own next snapshot
+# catches up (SSS stays at its own tier, unchanged).
+# RTAINFO (short-book, informational-only HOLD) ranks near the bottom so it
+# never masks a real signal. MACROSHOW (Hedgeye Macro Show bullish/bearish
+# stance, also now an independent actionable source) ranks lowest of all --
+# it's the broadest, least symbol-specific call, so it shouldn't override
+# any dedicated per-symbol source.
+SOURCE_ORDER = {"RTA": 1, "TOP5": 2, "SSSCHG": 3, "PS": 4, "ETF": 5, "RR": 6,
+                "SSS": 7, "II": 8, "CALL": 9, "RTAINFO": 10, "MACROSHOW": 11}
 
 # Final-call strength scale (mirrors JS _FC_SCALE in actionable.js).
 _FC_SCALE: dict[str, int] = {
@@ -79,12 +86,16 @@ def _compute_final_call(
 ) -> dict:
     """Python port of JS finalCall() in web/actionable.js.
 
-    bypass_technical (winning_source == 'RTA'): a Real-Time Alert is itself
-    a live, same-day trigger — it doesn't need Technical (rr_action) to also
-    confirm the entry point the way a standing weekly/monthly source does.
-    Only applies to the buy side (src_is_buy); RTA sells still go through
-    REMOVE's existing Technical-agnostic exit gate (step 1) or REDUCE's
-    normal Technical-confirmation path, unchanged.
+    bypass_technical (winning_source in RTA/SSSCHG/TOP5): a Real-Time Alert
+    (or same-tier same-day trigger) is itself a live signal — it doesn't
+    need Technical (rr_action) to also confirm the entry point the way a
+    standing weekly/monthly source does. TOP5 joins this list per user
+    decision 2026-08-19 ("TOP5 acts like RTA"); MACROSHOW deliberately does
+    NOT bypass — it's a broad daily macro call, not a live per-symbol
+    trigger, so its ADD/INCREASE still needs Technical to agree for
+    high-confidence display. Only applies to the buy side (src_is_buy);
+    sells still go through REMOVE's existing Technical-agnostic exit gate
+    (step 1) or REDUCE's normal Technical-confirmation path, unchanged.
 
     Returns dict with keys: final_action, final_code, final_side,
     fc_strength, fc_confidence, fc_feasible.
@@ -1032,7 +1043,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             current_position_dollar=held_dollar,
             target_max_dollar=target_max,
             stop_breached=stop_breached,
-            bypass_technical=(winning_source in ("RTA", "SSSCHG")),
+            bypass_technical=(winning_source in ("RTA", "SSSCHG", "TOP5")),
         )
         # priority_rank mirrors JS _computePriority: seq * 1e6 + |amt|.
         # amt = suggested - held for buys; held for sells; 0 otherwise.

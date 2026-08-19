@@ -793,21 +793,50 @@ def _action_sss_change(action: Optional[str], held: bool) -> tuple[Optional[str]
     return None, f"unrecognized SSS Change action {action!r}"
 
 
-def _action_top5(side: Optional[str]) -> tuple[Optional[str], str]:
-    """TOP5 (Hedgeye's daily Top-5 most-actionable list) — informational
-    only, same role as RTAINFO. Top-5 is drawn from the same Call email
-    that already feeds the CALL source's own 30-day standing model, so it
-    never drives ADD/REMOVE/REDUCE here (that would risk disagreeing with
-    CALL on the same underlying call) -- always HOLD, tagged with the
-    day's long/short bias so it's visible as a source badge without
-    competing for winning_source. Ranked last in SOURCE_ORDER.
+_TOP5_WEIGHT = {"long": 1.0, "short": -1.0}
+
+
+def _action_top5(side: Optional[str], held: bool) -> tuple[Optional[str], str]:
+    """TOP5 (Hedgeye's daily Top-5 most-actionable list) — independent
+    actionable source, same shape as RTA's long-side classifier (user
+    decision 2026-08-19: "TOP5 acts like RTA"). Top-5 is drawn from the
+    same Call email that already feeds the CALL source's own 30-day
+    standing model; the two are treated as fully independent and may
+    disagree same-day -- SOURCE_ORDER (etl/derive_actionable.py) decides
+    the winner, no special tie-break to CALL.
+      long bias  -> INCREASE (held) / ADD (not held)
+      short bias -> REMOVE if held, else no row (long-only book)
     """
     s = (side or "").strip().lower()
     if s == "long":
-        return "HOLD", "Hedgeye Top 5 (long bias) — informational"
+        return ("INCREASE" if held else "ADD"), \
+               f"Hedgeye Top 5 (long bias){' (held)' if held else ', establishing'}"
     if s == "short":
-        return "HOLD", "Hedgeye Top 5 (short bias) — informational"
-    return "HOLD", "Hedgeye Top 5 (neutral) — informational"
+        if held:
+            return "REMOVE", "Hedgeye Top 5 (short bias) — full exit"
+        return None, "Hedgeye Top 5 (short bias), not held"
+    return None, f"unrecognized TOP5 side {side!r}"
+
+
+_MACROSHOW_WEIGHT = {"bullish": 1.0, "bearish": -1.0}
+
+
+def _action_macro_show(stance: Optional[str], held: bool) -> tuple[Optional[str], str]:
+    """MACROSHOW (Hedgeye "The Macro Show" daily bullish/bearish stance
+    list, hist_hedgeye_stance) — independent actionable source, same shape
+    as RTA's long-side classifier and TOP5 (user decision 2026-08-19).
+      bullish -> INCREASE (held) / ADD (not held)
+      bearish -> REMOVE if held, else no row (long-only book)
+    """
+    s = (stance or "").strip().lower()
+    if s == "bullish":
+        return ("INCREASE" if held else "ADD"), \
+               f"Macro Show (bullish){' (held)' if held else ', establishing'}"
+    if s == "bearish":
+        if held:
+            return "REMOVE", "Macro Show (bearish) — full exit"
+        return None, "Macro Show (bearish), not held"
+    return None, f"unrecognized Macro Show stance {stance!r}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1307,9 +1336,9 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                 # trailing window wins, so the badge persists briefly after
                 # a symbol drops off the list rather than vanishing next day.
                 # Same live-anchor ceiling as RTA/SSS-change (see position_ceiling
-                # docstring): always HOLD/informational (_action_top5), so same-day
-                # visibility carries none of CALL's look-ahead risk on a real
-                # ADD/REMOVE recommendation.
+                # docstring). Independent actionable source (_action_top5,
+                # mirrors RTA's long-side classifier) -- may agree or disagree
+                # with CALL same-day; SOURCE_ORDER decides the winner.
                 lb = int(s.get("lookback_days") or 10)
                 top5_ceil = position_ceiling(session, as_of_date)
                 top5_rows = session.execute(text(f"""
@@ -1332,12 +1361,13 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                 top5_batch = []
                 for tsym, tside, trank, tsnap in top5_rows:
                     theld = tsym in holdings
-                    tact, treason = _action_top5(tside)
+                    tact, treason = _action_top5(tside, theld)
                     if tact is None:
                         continue
+                    tweight = _TOP5_WEIGHT.get((tside or "").strip().lower(), 0.0)
                     top5_batch.append({
                         "d": as_of_date, "sym": tsym, "sc": sc,
-                        "base": 0.0, "prev": None, "prev_d": None,
+                        "base": tweight, "prev": None, "prev_d": None,
                         "delta": None, "held": theld, "act": tact,
                         "reason": treason, "cat": category, "rid": run_id,
                         "analyst_rank": trank,
@@ -1346,6 +1376,52 @@ def _derive_outlook_action_impl(session: Session, as_of_date: date, run_id: int)
                 for trow in top5_batch:
                     session.execute(insert_sql, trow)
                 total_rows += len(top5_batch)
+
+            elif method == "stance_alert":
+                # MACROSHOW — Hedgeye "The Macro Show" daily bullish/bearish
+                # stance list (hist_hedgeye_stance). Independent actionable
+                # source, same shape as RTA's long-side classifier
+                # (_action_macro_show): bullish -> ADD/INCREASE, bearish ->
+                # REMOVE if held else no row (long-only book). lookback_days
+                # (default 5) mirrors RTA/SSSCHG -- a mention stays active
+                # through a weekend. Same live-anchor ceiling as RTA.
+                lb = int(s.get("lookback_days") or 5)
+                stance_ceil = position_ceiling(session, as_of_date)
+                stance_rows = session.execute(text(f"""
+                    WITH ranked AS (
+                        SELECT COALESCE(tos_symbol, symbol) AS sym,
+                               stance, snapshot_date,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY COALESCE(tos_symbol, symbol)
+                                   ORDER BY snapshot_date DESC
+                               ) AS rk
+                          FROM hist_hedgeye_stance
+                         WHERE snapshot_date <= '{stance_ceil}'
+                           AND snapshot_date >= ('{as_of_date}'::date - ('{lb}' || ' days')::interval)::date
+                           AND COALESCE(tos_symbol, symbol) IS NOT NULL
+                    )
+                    SELECT sym, stance, snapshot_date
+                      FROM ranked WHERE rk = 1
+                """)).fetchall()
+
+                stance_batch = []
+                for msym, mstance, msnap in stance_rows:
+                    mheld = msym in holdings
+                    mact, mreason = _action_macro_show(mstance, mheld)
+                    if mact is None:
+                        continue
+                    mweight = _MACROSHOW_WEIGHT.get((mstance or "").strip().lower(), 0.0)
+                    stance_batch.append({
+                        "d": as_of_date, "sym": msym, "sc": sc,
+                        "base": mweight, "prev": None, "prev_d": None,
+                        "delta": None, "held": mheld, "act": mact,
+                        "reason": mreason, "cat": category, "rid": run_id,
+                        "analyst_rank": None,
+                        "source_snap": msnap,
+                    })
+                for mrow in stance_batch:
+                    session.execute(insert_sql, mrow)
+                total_rows += len(stance_batch)
 
             else:
                 log.warning("unknown base_weight_method for %s: %s", sc, method)

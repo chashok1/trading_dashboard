@@ -31,10 +31,10 @@ Keep both diagrams in sync whenever this logic changes.
 
 ## Stage 1 — per-source action
 
-`ref_outlook_source` (8 active: RR, CALL, ETF, II, SSS, PS, RTA, RTAINFO)
-drives the loop. `base_weight_method` selects the comparison window +
-classifier. Each source runs inside its own SAVEPOINT so one failure
-doesn't abort the rest.
+`ref_outlook_source` (11 active: RR, CALL, ETF, II, SSS, PS, RTA, RTAINFO,
+SSSCHG, TOP5, MACROSHOW) drives the loop. `base_weight_method` selects the
+comparison window + classifier. Each source runs inside its own SAVEPOINT so
+one failure doesn't abort the rest.
 
 | Source | Method | Cadence / window | Classifier | Notes |
 |---|---|---|---|---|
@@ -46,6 +46,9 @@ doesn't abort the rest.
 | SSS | rank_pct_delta | Weekly, MON anchor; driven by `pct_delta` | `_action_sss_pct_delta` | |
 | RTA | rta_alert | Event-based — 5-day sparse window, most recent alert wins | `_action_rta` (side='long') | Real-time trigger; see below |
 | RTAINFO | rta_alert | Event-based — 5-day sparse window, most recent alert wins | `_action_rta` (side='short') | Informational only; see below |
+| SSSCHG | sss_change_alert | Event-based — 5-day sparse window, most recent event wins | `_action_sss_change` | Same-day trigger; see below |
+| TOP5 | top5_alert | Event-based — 10-day sparse window, most recent appearance wins | `_action_top5` | Independent actionable source (acts like RTA); see below |
+| MACROSHOW | stance_alert | Event-based — 5-day sparse window, most recent mention wins | `_action_macro_show` | Independent actionable source, normal Technical gate; see below |
 
 ### Classifier rules
 
@@ -88,25 +91,50 @@ window is considered:
   produces ADD/REMOVE — RTAINFO sits at the bottom of `SOURCE_ORDER` so an
   informational HOLD never masks a real signal from another source.
 
-**RTA and SSSCHG bypass the Technical gate on the buy side**
+**`_action_top5`** (TOP5) — event-based classifier, not a standing list;
+each `hist_call_top5` row tags a symbol's day on Hedgeye's Top-5 list with a
+long/short bias. Only the most recent appearance per symbol within the
+10-day window is considered. User decision 2026-08-19 ("TOP5 acts like
+RTA"): mirrors `_action_rta`'s long side exactly — long bias → INCREASE
+(held) / ADD (not held); short bias → REMOVE if held, else silent. Top-5 is
+drawn from the same Hedgeye "Call" email that already feeds CALL's own
+30-day standing model, but the two are treated as fully independent — no
+special tie-break; `SOURCE_ORDER` decides the winner if they disagree
+same-day.
+
+**`_action_macro_show`** (MACROSHOW) — event-based classifier, not a
+standing list; each `hist_hedgeye_stance` row tags a symbol's mention on
+Hedgeye's "The Macro Show" as bullish or bearish. Only the most recent
+mention per symbol within the 5-day window is considered. Same shape as
+RTA's long side: bullish → INCREASE (held) / ADD (not held); bearish →
+REMOVE if held, else silent. Unlike TOP5, does **not** bypass the Technical
+gate (below) — it's a broad daily macro call, not a live per-symbol
+trigger. Ranked lowest in `SOURCE_ORDER` so it never overrides a dedicated
+per-symbol source.
+
+**RTA, SSSCHG, and TOP5 bypass the Technical gate on the buy side**
 (`_compute_final_call(..., bypass_technical=(winning_source in ("RTA",
-"SSSCHG")))`, `etl/derive_actionable.py`). Both are live, same-day event
-triggers — RTA from Real-Time Alert emails, SSSCHG from the "Signal Strength
-Stocks" Added/Removed lines (`hist_sss_change`, `etl/hedgeye/parsers.py::
-parse_signal_strength`, wired in 2026-07-19 — previously informational-only,
-never reached the rules engine). An ADD/INCREASE from either resolves
-straight to BMN/BM at `fc_confidence='high'` without requiring `rr_action`
-(Technical) to also confirm the entry, unlike every other source. Sells are
-unaffected: REMOVE still exits via the Technical-agnostic step-1 gate
-(unchanged, pre-existing for all sources) and REDUCE still needs normal
-Technical confirmation. `SOURCE_ORDER` ranks SSSCHG right behind RTA (both
-same-day triggers) — a same-day Gmail add/remove overrides the file-based
-weekly `SSS` source (`hist_sss`, unchanged, its own lower tier) until SSS's
-own next snapshot catches up. Trade Mode's client-side check
-(`web/actionable.js::_isTradeModeQualifyingBuy`, `_TECH_GATE_EXEMPT_SRC`) has
-the same RTA/SSSCHG exemption, so an RTA- or SSSCHG-sourced BM/BMN can
-qualify for Trade Mode even when `rr_action` (Technical) hasn't independently
-confirmed.
+"SSSCHG", "TOP5")))`, `etl/derive_actionable.py`). All three are treated as
+live, same-day-equivalent triggers — RTA from Real-Time Alert emails,
+SSSCHG from the "Signal Strength Stocks" Added/Removed lines
+(`hist_sss_change`, `etl/hedgeye/parsers.py::parse_signal_strength`, wired
+in 2026-07-19 — previously informational-only, never reached the rules
+engine), TOP5 from Hedgeye's daily Top-5 list (wired in 2026-08-19 — see
+above). An ADD/INCREASE from any of the three resolves straight to BMN/BM
+at `fc_confidence='high'` without requiring `rr_action` (Technical) to also
+confirm the entry, unlike every other source (MACROSHOW included — it goes
+through the normal gate). Sells are unaffected: REMOVE still exits via the
+Technical-agnostic step-1 gate (unchanged, pre-existing for all sources) and
+REDUCE still needs normal Technical confirmation. `SOURCE_ORDER` ranks TOP5
+right behind RTA and SSSCHG right behind that (all same-day-equivalent
+triggers) — a same-day Gmail add/remove overrides the file-based weekly
+`SSS` source (`hist_sss`, unchanged, its own lower tier) until SSS's own
+next snapshot catches up. Trade Mode's client-side check
+(`web/actionable.js::_isTradeModeQualifyingBuy`, `_TECH_GATE_EXEMPT_SRC`)
+has the same RTA/SSSCHG/TOP5 exemption, so an RTA-, SSSCHG-, or
+TOP5-sourced BM/BMN can qualify for Trade Mode even when `rr_action`
+(Technical) hasn't independently confirmed. MACROSHOW is deliberately not
+in this list — it goes through the normal Technical gate everywhere.
 
 **ETFCHG/IICHG remain merged, not split out like SSSCHG** (deprecated as
 standalone `ref_outlook_source` rows since this repo's initial commit —
@@ -154,12 +182,14 @@ Initial); analyst rank is display-only:
 rule groups (synthetic `RULES:<code>` candidates), compete via a
 **held/not-held branch**:
 
-- **Held symbol** — fixed `SOURCE_ORDER` (RTA=1 · PS=2 · ETF=3 · RR=4 · SSS=5 ·
-  II=6 · CALL=7 · RTAINFO=8). The highest-precedence source present sets the
-  headline, whatever its action. RTA (same-day real-time trigger) ranks
-  highest deliberately; RTAINFO (informational short-book sentiment, always
-  HOLD) ranks lowest so it can only "win" when no other source fired that
-  day — it never buries a real signal.
+- **Held symbol** — fixed `SOURCE_ORDER` (RTA=1 · TOP5=2 · SSSCHG=3 · PS=4 ·
+  ETF=5 · RR=6 · SSS=7 · II=8 · CALL=9 · RTAINFO=10 · MACROSHOW=11). The
+  highest-precedence source present sets the headline, whatever its action.
+  RTA (same-day real-time trigger) ranks highest deliberately, with TOP5 and
+  SSSCHG (same-day-equivalent triggers) right behind it; RTAINFO
+  (informational short-book sentiment, always HOLD) and MACROSHOW (broad
+  daily macro call) rank lowest so they can only "win" when no other source
+  fired that day — they never bury a real signal.
 - **Not-held symbol** — the most-recently-updated source wins (recency of
   `source_snapshot_date`); ties on date break by `SOURCE_ORDER`.
 

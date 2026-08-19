@@ -23,13 +23,14 @@ BEGIN;
 
 -- Widen the base_weight_method CHECK for existing databases (baseline.sql's
 -- CREATE TABLE IF NOT EXISTS won't re-run on an already-created table).
--- NOTE: seeds_top5_source.sql and seeds_sss_change_source.sql each also
--- widen this same constraint -- every file's list must include every value
--- any seed file uses (a superset), or whichever runs last in db.init_db's
--- alphabetical glob order re-narrows it and breaks rows the others inserted.
+-- NOTE: seeds_top5_source.sql, seeds_sss_change_source.sql, and
+-- seeds_macro_show_source.sql each also widen this same constraint -- every
+-- file's list must include every value any seed file uses (a superset), or
+-- whichever runs last in db.init_db's alphabetical glob order re-narrows it
+-- and breaks rows the others inserted.
 ALTER TABLE ref_outlook_source DROP CONSTRAINT IF EXISTS ref_outlook_source_base_weight_method_check;
 ALTER TABLE ref_outlook_source ADD CONSTRAINT ref_outlook_source_base_weight_method_check
-    CHECK (base_weight_method IN ('outlook_modifier','rank','rank_pct_delta','rta_alert','top5_alert','sss_change_alert'));
+    CHECK (base_weight_method IN ('outlook_modifier','rank','rank_pct_delta','rta_alert','top5_alert','sss_change_alert','stance_alert'));
 
 INSERT INTO ref_outlook_source
     (source_code, source_table, investment_priority, base_weight_method,

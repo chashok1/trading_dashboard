@@ -20,9 +20,12 @@
 -- =============================================================================
 BEGIN;
 
+-- NOTE: seeds_rta_source.sql, seeds_top5_source.sql, and
+-- seeds_macro_show_source.sql each also widen this same constraint -- keep
+-- this list a superset of every seed file's values.
 ALTER TABLE ref_outlook_source DROP CONSTRAINT IF EXISTS ref_outlook_source_base_weight_method_check;
 ALTER TABLE ref_outlook_source ADD CONSTRAINT ref_outlook_source_base_weight_method_check
-    CHECK (base_weight_method IN ('outlook_modifier','rank','rank_pct_delta','rta_alert','top5_alert','sss_change_alert'));
+    CHECK (base_weight_method IN ('outlook_modifier','rank','rank_pct_delta','rta_alert','top5_alert','sss_change_alert','stance_alert'));
 
 INSERT INTO ref_outlook_source
     (source_code, source_table, investment_priority, base_weight_method,
