@@ -30,16 +30,21 @@ if "%2"=="Y" (
 :: Ensure destination folder exists
 if not exist "%inputDir%" mkdir "%inputDir%"
 
-:: Pre-create empty placeholder files for manual exports -- if you ever need
-:: to export a watchlist by hand from TOS instead of the automated clicks,
-:: the filename already exists in the Save-As dialog's file list so you can
-:: just click it instead of typing it out.
-for /f "usebackq delims=" %%A in ("%fileList%") do (
-	if not exist "%inputDir%\%%A" (
-		echo Creating file %%A in %inputDir%
-		type nul > "%inputDir%\%%A"
-	)
-)
+:: 2026-08-19: disabled -- this pre-created empty placeholder files so a
+:: manual by-hand TOS export would find the filename already in the Save-As
+:: dialog's file list. But on this (the automated) path, TOSDownloads.py's
+:: main() deletes every .csv in inputDir as its very first action (clearing
+:: stale leftovers) before any download happens -- so these placeholders
+:: were being created and immediately trashed again every single run, for
+:: no benefit, since no human gets a chance to use them in between. Left
+:: commented out (not deleted) in case a manual-export workflow needs it
+:: back -- run this block by hand if you're exporting from TOS yourself.
+REM for /f "usebackq delims=" %%A in ("%fileList%") do (
+REM 	if not exist "%inputDir%\%%A" (
+REM 		echo Creating file %%A in %inputDir%
+REM 		type nul > "%inputDir%\%%A"
+REM 	)
+REM )
 
 :: 2026-08-16: TOSDownloads.py and MergeExports.py were merged into one
 :: script -- download + merge now happen in a single python.exe call
