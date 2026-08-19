@@ -41,6 +41,16 @@ last_auto_pos = None
 # left untouched alongside this file for reference.
 WORD_TO_FIND = 'loading'
 
+# 2026-08-19: RELOADWL99 reprocess/retry tuning -- see run_recipe_rows()'s
+# RELOADWL99 branch. RELOAD_SYMBOL_THRESHOLD is roughly what a single WL99
+# reload+import can realistically absorb in one pass; above that, reprocess
+# the individual stuck watchlists first rather than dumping everything on
+# WL99 at once. Both attempt caps exist so a genuinely-stuck symbol (bad
+# ticker, TOS glitch, delisted) can't loop the automation forever.
+RELOAD_SYMBOL_THRESHOLD = 55
+MAX_REPROCESS_ATTEMPTS = 3
+MAX_WL99_RETRY_ATTEMPTS = 3
+
 
 # --- LOCKING (shared by both stages -- single copy; each original script
 # had its own identical acquire_lock/release_lock) ---
@@ -882,6 +892,48 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir):
     # contents.
     download_watchlist(export_row, save_folder, images_folder, False, False, False)
 
+def edit_watchlist(watchlist_name, symbols_file, images_folder, recipe_dir,
+                    recipe_name='EditWatchlist.csv'):
+    """Generic 'import symbols into ANY watchlist' building block (2026-08-18)
+    -- reused by both LoadWatchlists.py (imports a whole folder of watchlist
+    files) and ImportAdditions.py (imports just a delta). Same mechanism
+    do_reloadwl99() uses for WL99 (substitute_placeholders() + a shared,
+    name-agnostic recipe replayed through run_recipe_rows()), generalized to
+    any watchlist name with no coordinate/pre-select dependency -- unlike
+    do_reloadwl99()'s trimmed ReloadWL99.csv (which skips the dropdown-hunt
+    because download_watchlist() already pre-selected the watchlist by
+    coordinate), this has no coordinates to work with for an arbitrary
+    watchlist name, so recipe_name's default (EditWatchlist.csv) is the
+    FULL untrimmed name-image-only navigation chain -- open dropdown ->
+    Personal -> menu_{name} -> Watchlist_{name} -> Edit{name} ->
+    EditDialog{name} -> Import -> ... -> Save.
+
+    Requires 4 per-watchlist-name screenshots (menu_<name>.png,
+    Watchlist_<name>.png, Edit<name>.png, EditDialog<name>.png) in
+    images_folder -- same convention as WL99's own images. Returns True if
+    it ran, False if skipped (missing images or recipe file), matching the
+    old import_symbols_into_watchlist()'s skip-not-fail contract."""
+    for template in ('menu_{n}.png', 'Watchlist_{n}.png', 'Edit{n}.png', 'EditDialog{n}.png'):
+        img = template.format(n=watchlist_name)
+        if not os.path.exists(os.path.join(images_folder, img)):
+            print(f"⚠️ Skipping '{watchlist_name}': missing reference image '{img}' in "
+                  f"{images_folder}. Capture it (same pattern as WL99's images) to enable this watchlist.")
+            return False
+
+    recipe_path = os.path.join(recipe_dir, recipe_name)
+    if not os.path.exists(recipe_path):
+        print(f"⚠️ {recipe_name} not found in {recipe_dir} -- cannot import '{watchlist_name}'.")
+        return False
+
+    substitution_row = {'Name': watchlist_name, 'watchlist_name': watchlist_name,
+                         'symbols_file': symbols_file}
+    recipe_df = pd.read_csv(recipe_path)
+    recipe_df['ref_image'] = recipe_df['ref_image'].apply(
+        lambda v: substitute_placeholders(v, substitution_row))
+    print(f"\n--- Importing {symbols_file} into watchlist '{watchlist_name}' ---")
+    run_recipe_rows(recipe_df, None, images_folder, recipe_dir, False)
+    return True
+
 def download_watchlist(watchlist_data, save_folder, images_folder, open_only, force_download, re_process):
     global elapsed_time
     """Navigate menus to export a specific watchlist."""
@@ -1061,15 +1113,62 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
         elif etype == "TYPEFILE":
             do_typefile(row, base_dir=recipe_dir)
         elif etype == "RELOADWL99":
-            do_reloadwl99(row, save_folder, images_folder, recipe_dir)
+            # 2026-08-19: reprocess gate -- if a lot of symbols are still
+            # stuck 'Loading' across WL1..WL16, retry those specific
+            # watchlists (via download_watchlist()'s own re_process=True
+            # skip-if-not-incomplete check) BEFORE handing the leftover to
+            # WL99's own reload. WL99's single reload+import can only
+            # realistically absorb a couple dozen symbols in one go, not
+            # the whole board -- dumping everything on it wastes the
+            # reload on symbols other watchlists could have resolved
+            # themselves. Excludes the RELOADWL99 row itself from the
+            # re-run (that's handled separately below) to avoid recursing
+            # back into this same branch.
+            reprocess_attempts = 0
+            stuck_count = len(find_genuinely_stuck_symbols(save_folder))
+            while stuck_count > RELOAD_SYMBOL_THRESHOLD and reprocess_attempts < MAX_REPROCESS_ATTEMPTS:
+                print(f"\n--- {stuck_count} symbol(s) still 'Loading' (> {RELOAD_SYMBOL_THRESHOLD}) -- "
+                      f"reprocessing incomplete watchlists before WL99 reload "
+                      f"(attempt {reprocess_attempts + 1}/{MAX_REPROCESS_ATTEMPTS}). ---")
+                run_recipe_rows(df[df['Type'] != 'RELOADWL99'], save_folder, images_folder, recipe_dir, True)
+                reprocess_attempts += 1
+                new_stuck_count = len(find_genuinely_stuck_symbols(save_folder))
+                if new_stuck_count >= stuck_count:
+                    print(f"Reminder: reprocess attempt {reprocess_attempts} made no progress "
+                          f"({new_stuck_count} still 'Loading') -- stopping reprocessing early.")
+                    break
+                stuck_count = new_stuck_count
+
+            # WL99 reload+export retry loop -- TOS sometimes needs more than
+            # one reload/export pass to actually resolve every symbol.
+            # Retry up to MAX_WL99_RETRY_ATTEMPTS, stopping as soon as
+            # nothing's stuck or a pass makes no further progress.
+            wl99_attempts = 0
+            prev_remaining = None
+            while wl99_attempts < MAX_WL99_RETRY_ATTEMPTS:
+                do_reloadwl99(row, save_folder, images_folder, recipe_dir)
+                wl99_attempts += 1
+                remaining = len(find_genuinely_stuck_symbols(save_folder))
+                if remaining == 0:
+                    break
+                if prev_remaining is not None and remaining >= prev_remaining:
+                    print(f"Reminder: WL99 reload attempt {wl99_attempts} made no progress "
+                          f"({remaining} still 'Loading') -- stopping retries.")
+                    break
+                if wl99_attempts < MAX_WL99_RETRY_ATTEMPTS:
+                    print(f"Reminder: {remaining} symbol(s) still stuck 'Loading' after WL99 reload "
+                          f"attempt {wl99_attempts}/{MAX_WL99_RETRY_ATTEMPTS} -- retrying.")
+                prev_remaining = remaining
         else:
             print(f"Unknown type '{etype}' ")
 
 def main(watchlist_file, save_folder, images_folder, re_process):
 
     """Main execution entrypoint for the DOWNLOAD stage only (unchanged from
-    the original standalone TOSDownloads.py). run_pipeline() below drives
-    this plus the retry pass plus the merge stage as one combined run."""
+    the original standalone TOSDownloads.py, except run_recipe_rows()'s own
+    RELOADWL99 branch now reprocesses incomplete watchlists before WL99's
+    reload, see that branch's comment). run_pipeline() below drives this
+    plus the merge stage as one combined run."""
     ensure_tos_active(images_folder)
 
     if not os.path.exists(save_folder):
@@ -1135,9 +1234,20 @@ def sync_and_validate_count(data, filename):
 
         if current_count != stored_count:
             print(f"Row count mismatch! Previous: {stored_count}, Current: {current_count}")
-            user_input = input("The row count has changed. Do you wish to continue? (y/n): ").lower()
+            # 2026-08-19: was a blocking console input() -- by the time the
+            # merge stage reaches here, TOS automation has long since left
+            # the terminal window out of focus, so the prompt sat there
+            # invisibly waiting for a keystroke. A real GUI dialog (same
+            # pattern as ensure_tos_in_focus()'s focus-loss check) is visible
+            # regardless of which window currently has focus.
+            user_choice = pyautogui.confirm(
+                text=f"Row count mismatch!\n\nPrevious: {stored_count}\nCurrent: {current_count}\n\n"
+                     "Do you wish to continue?",
+                title="Row Count Mismatch",
+                buttons=["Continue", "Abort"]
+            )
 
-            if user_input != 'y':
+            if user_choice != "Continue":
                 print("Aborting process.")
                 sys.exit()
 
@@ -1693,9 +1803,11 @@ def derive_merge_params(watchlist_file, save_folder):
 
 def run_pipeline(watchlist_file, save_folder, images_folder, update_exports='N',
                   ignore_keyword_issues='N', skip_download='N', lock_file_path=None):
-    """Download stage (main() + its retry pass, same logic as the original
-    standalone TOSDownloads.py's __main__ block) followed by the merge
-    stage (monitor_directory(), same logic as the original standalone
+    """Download stage (main(), same logic as the original standalone
+    TOSDownloads.py's __main__ block -- reprocessing of incomplete
+    watchlists now happens inside main()'s own RELOADWL99 handling, before
+    WL99's reload/export, not as a separate pass here) followed by the
+    merge stage (monitor_directory(), same logic as the original standalone
     MergeExports.py), as one combined run under a single lock.
 
     skip_download='Y' -- merge-only mode (2026-08-16, restored): skips the
@@ -1711,22 +1823,22 @@ def run_pipeline(watchlist_file, save_folder, images_folder, update_exports='N',
     global incomplete_files
 
     if skip_download != 'Y':
+        # 2026-08-19: no separate post-hoc retry pass here anymore -- the
+        # reprocess decision now happens BEFORE WL99's own reload/export,
+        # inside run_recipe_rows()'s RELOADWL99 branch (gated on loading
+        # SYMBOL count, not incomplete FILE count), since reprocessing
+        # after WL99 already exported was too late to matter: WL99 would
+        # have reloaded from a stale LoadingSymbols.txt snapshot regardless.
         main(watchlist_file, save_folder, images_folder, False)
 
         if len(incomplete_files) > 0:
             print('\n')
             print('=' * 50)
-            print(f"--- Incomplete files ---")
+            print(f"--- {len(incomplete_files)} fragment(s) still incomplete after WL1..WL16 + WL99 "
+                  "reload/retry. Left for the merge stage / next run to resolve. ---")
             print(incomplete_files)
-            if len(incomplete_files) < 5:
-                print(f"--- Re-Processing  ---")
-                print('=' * 50)
-                print('\n')
-                main(watchlist_file, save_folder, images_folder, True)
-            else:
-                print(f"--- Skipping Re-Processing. Too many files {len(incomplete_files)} ---")
-                print('=' * 50)
-                print('\n')
+            print('=' * 50)
+            print('\n')
     else:
         print("\n--- Merge-only mode: skipping the download stage ---")
         # 2026-08-17: merge-only mode never calls main(), so the RELOADWL99
