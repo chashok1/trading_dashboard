@@ -598,6 +598,24 @@ def normalize_for_reimport(symbol):
     bracket_index = symbol.find('[')
     return symbol[:bracket_index] if bracket_index != -1 else symbol
 
+def sync_loading_symbols_file(save_folder, symbols):
+    """Overwrite (not append) LoadingSymbols.txt with exactly this symbol
+    set. append_loading_symbols() below only ever unions new stuck symbols
+    in -- it's never trimmed mid-run, so by the time do_reloadwl99() is
+    retried a 2nd/3rd time, LoadingSymbols.txt still holds every symbol
+    that was EVER stuck this run, including ones already resolved by an
+    earlier reprocess pass or WL99 attempt. do_reloadwl99()'s reload step
+    reads that file directly (not find_genuinely_stuck_symbols()), so
+    without this it redundantly re-imports already-resolved symbols on
+    every retry -- a full extra TOS click-through cycle for nothing.
+    Call this with the current, accurate stuck set (from
+    find_genuinely_stuck_symbols()) right before each do_reloadwl99() call
+    in the RELOADWL99 branch's retry loop."""
+    working_dir = os.path.dirname(os.path.normpath(save_folder))
+    loading_symbols_file = os.path.join(working_dir, 'LoadingSymbols.txt')
+    reimport_symbols = sorted({normalize_for_reimport(s) for s in symbols})
+    write_filenames_to_file(reimport_symbols, loading_symbols_file, label="symbols")
+
 def append_loading_symbols(save_folder, new_symbols):
     """Append newly-found stuck symbols (deduped, sorted) to this run's
     LoadingSymbols.txt -- working_dir/LoadingSymbols.txt, same convention
@@ -1157,17 +1175,35 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
                 if new_stuck_count >= stuck_count:
                     print(f"Reminder: reprocess attempt {reprocess_attempts} made no progress "
                           f"({new_stuck_count} still 'Loading') -- stopping reprocessing early.")
+                    stuck_symbols = new_stuck_symbols
                     break
                 stuck_count = new_stuck_count
+                stuck_symbols = new_stuck_symbols
 
             # WL99 reload+export retry loop -- TOS sometimes needs more than
             # one reload/export pass to actually resolve every symbol.
             # Retry up to MAX_WL99_RETRY_ATTEMPTS, stopping as soon as
             # nothing's stuck or a pass makes no further progress.
+            #
+            # 2026-08-19 bug fix: do_reloadwl99() reads LoadingSymbols.txt
+            # directly to decide what to reload, but that file is monotonic
+            # (append_loading_symbols() only ever unions symbols in, never
+            # trims resolved ones out mid-run) -- so without the
+            # sync_loading_symbols_file() call below, attempt 2/3 would
+            # redundantly re-import every symbol EVER stuck this run,
+            # including ones the reprocess step or a prior WL99 attempt
+            # already resolved. Trim it to the current, accurate stuck set
+            # (from find_genuinely_stuck_symbols()) before every attempt,
+            # including the first, so TOS only ever gets re-clicked for
+            # symbols that actually still need it.
             print(f"\n--- Proceeding to WL99 reload+export (up to {MAX_WL99_RETRY_ATTEMPTS} attempt(s)). ---")
+            symbols_to_reload = stuck_symbols
             wl99_attempts = 0
             prev_remaining = None
             while wl99_attempts < MAX_WL99_RETRY_ATTEMPTS:
+                sync_loading_symbols_file(save_folder, symbols_to_reload)
+                print(f"LoadingSymbols.txt trimmed to the {len(symbols_to_reload)} symbol(s) actually still "
+                      f"stuck before this attempt: {sorted(symbols_to_reload)}")
                 print(f"\n--- WL99 reload+export attempt {wl99_attempts + 1}/{MAX_WL99_RETRY_ATTEMPTS} starting. ---")
                 do_reloadwl99(row, save_folder, images_folder, recipe_dir)
                 wl99_attempts += 1
@@ -1181,6 +1217,7 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
                     print(f"Reminder: WL99 reload attempt {wl99_attempts} made no progress "
                           f"({remaining} still 'Loading') -- stopping retries.")
                     break
+                symbols_to_reload = remaining_symbols
                 if wl99_attempts < MAX_WL99_RETRY_ATTEMPTS:
                     print(f"Reminder: {remaining} symbol(s) still stuck 'Loading' after WL99 reload "
                           f"attempt {wl99_attempts}/{MAX_WL99_RETRY_ATTEMPTS} -- retrying.")
