@@ -82,7 +82,8 @@ def _populate_snapshot(s, settings):
         INSERT INTO drv_factor_snapshot
             (as_of_date, tos_symbol, rsi_bucket, macdh_bucket, rvol_bucket,
              iv_bucket, macro_action, winning_source, sector, growth_style,
-             valuation_style, momentum_style, fwd_5d_pct, fwd_20d_pct)
+             valuation_style, momentum_style, pvv_decision,
+             fwd_5d_pct, fwd_20d_pct)
         SELECT
             a.as_of_date, a.tos_symbol,
             CASE WHEN mt.rsi <= :rsi_lo THEN 'Oversold (<=' || :rsi_lo || ')'
@@ -103,6 +104,7 @@ def _populate_snapshot(s, settings):
             rs.growth AS growth_style,
             rs.valuation AS valuation_style,
             rs.price_action AS momentum_style,
+            pv.decision AS pvv_decision,
             f.fwd5, f.fwd20
         FROM drv_actionable a
         JOIN _fwd_fac f ON f.tos_symbol = a.tos_symbol AND f.as_of_date = a.as_of_date
@@ -115,6 +117,7 @@ def _populate_snapshot(s, settings):
         LEFT JOIN drv_quote q ON q.tos_symbol = a.tos_symbol AND q.as_of_date = a.as_of_date
         LEFT JOIN drv_macro_score ms ON ms.tos_symbol = a.tos_symbol AND ms.as_of_date = a.as_of_date
         LEFT JOIN ref_sector rs ON rs.ticker = a.tos_symbol
+        LEFT JOIN drv_pvv pv ON pv.tos_symbol = a.tos_symbol AND pv.as_of_date = a.as_of_date
         WHERE f.fwd20 IS NOT NULL
         ON CONFLICT (as_of_date, tos_symbol) DO UPDATE SET
             rsi_bucket = EXCLUDED.rsi_bucket,
@@ -127,6 +130,7 @@ def _populate_snapshot(s, settings):
             growth_style = EXCLUDED.growth_style,
             valuation_style = EXCLUDED.valuation_style,
             momentum_style = EXCLUDED.momentum_style,
+            pvv_decision = EXCLUDED.pvv_decision,
             fwd_5d_pct = EXCLUDED.fwd_5d_pct,
             fwd_20d_pct = EXCLUDED.fwd_20d_pct,
             derived_at = now()

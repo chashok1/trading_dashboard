@@ -7438,6 +7438,15 @@ CREATE TABLE IF NOT EXISTS drv_factor_snapshot (
     PRIMARY KEY (as_of_date, tos_symbol)
 );
 CREATE INDEX IF NOT EXISTS ix_drv_factor_snapshot_date ON drv_factor_snapshot(as_of_date);
+-- 2026-08-20: PVV backtest (user: "backtest PVV first" before trusting it
+-- in any score/agreement badge -- it was never run through this framework,
+-- see docs/pvv_logic.md / etl/derive_pvv.py, decision drv_pvv.decision).
+-- Same raw (non-direction-adjusted) win-rate convention as every other
+-- factor here (fwd_20d_pct > 0), NOT swapped for PVV's sell-side buckets --
+-- deliberately, so "does a SELL/AVOID/TRIM decision actually precede a
+-- price DROP" is checked honestly instead of baked into a "win" definition
+-- that assumes the decision is always right.
+ALTER TABLE drv_factor_snapshot ADD COLUMN IF NOT EXISTS pvv_decision TEXT;
 
 -- v_factor_scorecard - unpivots drv_factor_snapshot's per-factor bucket columns
 -- into one (factor, bucket) row per group, with the same raw (non-direction-
@@ -7500,6 +7509,10 @@ WITH unpivoted AS (
     SELECT as_of_date, tos_symbol, 'Style: momentum', momentum_style,
            fwd_5d_pct, fwd_20d_pct
     FROM drv_factor_snapshot WHERE momentum_style IS NOT NULL
+    UNION ALL
+    SELECT as_of_date, tos_symbol, 'PVV decision', pvv_decision,
+           fwd_5d_pct, fwd_20d_pct
+    FROM drv_factor_snapshot WHERE pvv_decision IS NOT NULL
     UNION ALL
     SELECT as_of_date, tos_symbol, 'Baseline', 'All stocks',
            fwd_5d_pct, fwd_20d_pct
