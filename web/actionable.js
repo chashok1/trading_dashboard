@@ -153,11 +153,17 @@ function _stanceColor(v) {
 // unrelated warnings never look like the same thing at a glance.
 function _macroConflictMark(r) {
   if (r.macro_conflict !== true) return '';
-  // 2026-08-20: was #dc2626 (red) at 8px superscript -- unreadable sitting
-  // right against a red-tinted SELL badge (red-on-red). Violet neither
-  // green nor red, so it pops against both buy- and sell-tinted badges;
-  // bumped size + a white halo for contrast on either background.
-  return `<span style="color:#000000;font-size:11px;font-weight:800;vertical-align:middle;margin-left:2px;text-shadow:0 0 2px #fff;" title="CONFLICT: MacroNet score disagrees with technical direction (price vs 50-day average). Hover the badge for detail.">⚡</span>`;
+  // 2026-08-20: the ⚡ CHARACTER is a COLOR emoji glyph on Windows/Mac emoji
+  // fonts -- its yellow/orange fill is baked into the font's own COLR/CBDT
+  // color table and completely ignores CSS `color`. That's why every color
+  // change here (red -> violet -> black) looked identical: none of them
+  // were ever actually being applied. Switched to an inline SVG bolt with
+  // fill="currentColor" instead, so `color:` on the wrapping span actually
+  // controls it.
+  return `<span style="display:inline-block;vertical-align:middle;margin-left:2px;color:#000000;" `
+    + `title="CONFLICT: MacroNet score disagrees with technical direction (price vs 50-day average). Hover the badge for detail.">`
+    + `<svg width="10" height="10" viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle;">`
+    + `<path fill="currentColor" d="M13 2 3 14h7v8l10-12h-7z"/></svg></span>`;
 }
 
 // Sector/asset-class/style dots (2026-08-01) — one small bar per membership
