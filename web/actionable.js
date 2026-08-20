@@ -3105,6 +3105,32 @@ function _signalReasons(row, side) {
     else if (rv <= lo) buy.push('RSI oversold (' + rv + ')');
   }
 
+  // Winning Source / Sector track record (2026-08-20): reuses
+  // v_factor_scorecard, the same validated backtest data the Tradability
+  // box's Source item and the grid's RSI/IV edge tags already draw from --
+  // previously only shown informationally there, never as an active
+  // caution. -3pp threshold (meaningfully negative, not just noise) mirrors
+  // _tradabilityDeltaColor's own -1.5 cutoff for "this clearly hurts."
+  // Buy-oriented framing (swapped below for sell-side rows) like every
+  // other check here — win_rate is "forward 20d was positive," a bad
+  // number is bad news for a BUY specifically.
+  if (row.winning_source) {
+    const srcCode = row.winning_source.toString().toUpperCase();
+    const srcDelta = _factorWinRateDelta('Winning source', srcCode);
+    if (srcDelta != null && srcDelta < -3) {
+      warn.push('Winning source ' + srcCode + ' has a proven negative edge (' + srcDelta.toFixed(1) + 'pp vs baseline)');
+    }
+  }
+  // 'N/A' is a real v_factor_scorecard bucket (no sector classification),
+  // not an actual sector -- "Sector N/A has a proven negative edge" reads
+  // as broken rather than actionable, excluded.
+  if (row.sector && row.sector !== 'N/A') {
+    const secDelta = _factorWinRateDelta('Sector', row.sector);
+    if (secDelta != null && secDelta < -3) {
+      warn.push('Sector ' + row.sector + ' has a proven negative edge (' + secDelta.toFixed(1) + 'pp vs baseline)');
+    }
+  }
+
   // Rules (edge), buy-oriented framing (swapped below for sell-side rows):
   // a fired buy-side rule with non-positive or unproven edge, or a fired
   // sell-side rule with a proven-positive (historically correct) edge,
