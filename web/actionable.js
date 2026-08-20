@@ -5044,7 +5044,7 @@ function _actpopDriverBullets(row, side) {
 function _actpopRulePillsHtml(row, side) {
   let fires = row.rules_engine_fires;
   if (typeof fires === 'string') { try { fires = JSON.parse(fires); } catch (_) { fires = []; } }
-  if (!Array.isArray(fires) || !fires.length) return { support: '', oppose: '' };
+  if (!Array.isArray(fires) || !fires.length) return { support: '', oppose: '', supportCount: 0, opposeCount: 0 };
   const sc = state.scorecard || {};
   const supportPills = [], opposePills = [];
   for (const f of fires) {
@@ -5069,6 +5069,8 @@ function _actpopRulePillsHtml(row, side) {
   return {
     support: supportPills.length ? `<div class="actpop-tug-sub">Rules</div><div class="actpop-rule-pills">${supportPills.join('')}</div>` : '',
     oppose: opposePills.length ? `<div class="actpop-tug-sub">Rules</div><div class="actpop-rule-pills">${opposePills.join('')}</div>` : '',
+    supportCount: supportPills.length,
+    opposeCount: opposePills.length,
   };
 }
 
@@ -5114,7 +5116,27 @@ function _actpopTugHtml(row, side) {
     ? `${supItems ? `<div class="actpop-tug-sub">Signals</div>${supItems}` : ''}${rulePills.support}`
     : `<div class="actpop-tug-item" style="color:#94a3b8;">none</div>`;
 
+  // Conviction (2026-08-20): a plain, honest tally of everything already
+  // listed below -- how many things point which way -- NOT a weighted/
+  // calibrated score. Deliberately not pretending to the same precision as
+  // _buyTradabilityScore (whose per-factor weights are individually
+  // backtested); this just counts what's already visible in Opposing/
+  // Supporting so there's a single number to glance at instead of having
+  // to read every line. PVV excluded on purpose -- backtested 2026-08-20
+  // and found backwards on its one statistically meaningful bucket (AVOID:
+  // +3.66% avg 20d forward return, proven confidence, opposite of what
+  // "avoid" should mean) -- not trustworthy as a vote in anything yet.
+  const supportN = supportSignals.length + rulePills.supportCount;
+  const opposeN = opposeSignals.length + rulePills.opposeCount;
+  const net = supportN - opposeN;
+  const netColor = net > 0 ? 'var(--act-buy-strong)' : net < 0 ? 'var(--act-sell-strong)' : '#94a3b8';
+  const convictionHtml = (supportN + opposeN) > 0
+    ? `<div class="actpop-tug-conviction">Conviction: <b style="color:${netColor};">${net > 0 ? '+' : ''}${net}</b>`
+      + `<span style="color:#94a3b8;"> (${supportN} support, ${opposeN} oppose)</span></div>`
+    : '';
+
   return `<div class="actpop-tug">
+    ${convictionHtml}
     <div class="actpop-tug-col oppose"><div class="actpop-tug-h">Opposing</div>${oppBody}</div>
     <div class="actpop-tug-col support"><div class="actpop-tug-h">Supporting</div>${supBody}</div>
   </div>`;
