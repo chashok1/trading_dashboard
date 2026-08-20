@@ -4754,9 +4754,12 @@ function _actpopMacroBarsHtml(r) {
   return `<div class="actpop-mgroup">${sparkRow}${memberRow}</div>`;
 }
 
-// Header: [Src] [Tech] [Macro + bars] pills. Src/Tech reuse actionDisplay's
-// canonical short code (same BuySell vocab the grid's own badges show) so
-// they read consistently with the rest of the app, not a bespoke abbreviation.
+// Header: [Src] [Tech] pills. Src/Tech reuse actionDisplay's canonical short
+// code (same BuySell vocab the grid's own badges show) so they read
+// consistently with the rest of the app, not a bespoke abbreviation. Macro
+// (pill + bar charts) moved out of the header onto the RR bar line — see
+// _actpopMacroStackHtml, called from _buildActionPopHtmlV2 alongside
+// _actpopRrBarHtml.
 function _actpopHeaderPillsHtml(row) {
   const parts = [];
   if (row.consolidated_action) {
@@ -4769,15 +4772,21 @@ function _actpopHeaderPillsHtml(row) {
     const cls = d.side === 'buy' ? 'buy' : d.side === 'sell' ? 'sell' : '';
     parts.push(`<span class="actpop-pill ${cls}"><span class="pl">Tech</span>${escapeHtml(d.code || row.rr_action)}</span>`);
   }
+  return parts.join('');
+}
+
+// Macro pill + bar charts — sits on the RR bar line (_buildActionPopHtmlV2),
+// not the header. Extracted from the header block so the RR bar could be
+// narrowed to share its line with this.
+function _actpopMacroStackHtml(row) {
   const mv = row.macro_value;
   const mcls = (mv === 'BM' || mv === 'BS') ? 'buy' : (mv === 'SA' || mv === 'STM') ? 'sell' : '';
   const conflictMark = row.macro_conflict === true
     ? ' <span class="mc-conflict" title="MacroNet disagrees with technical direction (price vs 50-day average)">&#9888;</span>' : '';
-  parts.push(`<span class="actpop-macro-stack">
+  return `<span class="actpop-macro-stack">
     <span class="actpop-pill ${mcls}"><span class="pl">Macro</span>${escapeHtml(mv || 'HOLD')}${conflictMark}</span>
     ${_actpopMacroBarsHtml(row)}
-  </span>`);
-  return parts.join('');
+  </span>`;
 }
 
 // Tradability icon — always shown (per-card, not just buy rows) but greyed
@@ -4993,7 +5002,7 @@ function _buildActionPopHtmlV2(row) {
     + `<span class="actpop-call ${callCls}">${escapeHtml(fc.label || actionText(fc) || '—')}</span></div>
   </div>`;
 
-  h += _actpopRrBarHtml(row);
+  h += `<div class="actpop-rr-row">${_actpopRrBarHtml(row)}${_actpopMacroStackHtml(row)}</div>`;
 
   if (row.stop_breached) {
     h += `<div class="actpop-neutral" style="color:#b91c1c;font-weight:700;">&#9888; Stop breached &mdash; `
