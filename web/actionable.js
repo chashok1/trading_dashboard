@@ -4857,13 +4857,43 @@ function _actpopMacroBarsHtml(r) {
   return `<div class="actpop-mgroup-wrap"><div class="actpop-mgroup">${sparkRow}${memberRow}</div></div>`;
 }
 
-// Header: Source / Tech, always shown (disabled/dashed when no data),
-// single line, label as its own small pill + plain colored value next to
-// it: "[Src] SA  [Tech] SA". Src/Tech reuse actionDisplay's canonical short
-// code (same BuySell vocab the grid's own badges show) so they read
-// consistently with the rest of the app, not a bespoke abbreviation. Macro
-// (pill + bar charts) and the tradability icon sit on the RR bar line
-// instead — see _actpopMacroStackHtml / _actpopTradIconHtml, called from
+// VLM (volume projection, 2026-08-20) — same [Label] value pattern as
+// Src/Tech, always shown/dashed. Note: vlm_action's own rule table has a
+// known internal-consistency issue (5 of 10 rule codes test volume shape
+// only with no price-direction check, yet 3 of them still carry a
+// directional label) -- relabel audit is on hold per project memory, this
+// surfaces the value AS COMPUTED TODAY, not a corrected version.
+function _actpopVlmPillHtml(row) {
+  const va = row.vlm_action;
+  const cls = !va ? 'disabled' : va === 'Accumulate' ? 'buy' : va === 'Avoid' ? 'sell' : '';
+  const txt = va ? (va === 'Accumulate' ? 'Accum' : va) : '—';
+  const titleAttr = row.vlm_desc ? ` title="${escapeHtml(row.vlm_desc)}"` : '';
+  return `<span class="actpop-lv"${titleAttr}><span class="actpop-lbl">VLM</span><span class="actpop-val ${cls}">${escapeHtml(txt)}</span></span>`;
+}
+
+// CALC model (2026-08-20) -- P(up 20d) probability, same 3-tier color the
+// grid's own bull_prob cell uses (>=65% green, >=50% amber, else red), not
+// the buy/sell/disabled convention (a probability isn't a side). NOTE:
+// ref_bull_model currently has no active row (parked 2026-08-16, see
+// project memory) so this will show "—" for every row until reactivated --
+// the slot is wired and ready, not a broken display.
+function _actpopCalcPillHtml(row) {
+  const p = row.bull_prob;
+  const has = p != null;
+  const pct = has ? Math.round(Number(p) * 100) : null;
+  const color = !has ? '' : pct >= 65 ? 'var(--act-buy-strong)' : pct >= 50 ? '#d97706' : 'var(--act-sell-strong)';
+  const txt = has ? pct + '%' : '—';
+  return `<span class="actpop-lv"><span class="actpop-lbl">CALC</span><span class="actpop-val${has ? '' : ' disabled'}"${has ? ` style="color:${color};"` : ''}>${escapeHtml(txt)}</span></span>`;
+}
+
+// Header: Source / Tech / VLM / CALC, always shown (disabled/dashed when no
+// data), single line, label as its own small pill + plain colored value
+// next to it: "[Src] SA  [Tech] SA  [VLM] Accum  [CALC] 68%". Src/Tech
+// reuse actionDisplay's canonical short code (same BuySell vocab the
+// grid's own badges show) so they read consistently with the rest of the
+// app, not a bespoke abbreviation. Macro (pill + bar charts) and the
+// tradability icon sit on the RR bar line instead — see
+// _actpopMacroStackHtml / _actpopTradIconHtml, called from
 // _buildActionPopHtmlV2 alongside _actpopRrBarHtml.
 function _actpopHeaderPillsHtml(row) {
   const src = row.consolidated_action ? actionDisplay(row.consolidated_action) : null;
@@ -4875,7 +4905,9 @@ function _actpopHeaderPillsHtml(row) {
   const techTxt = tech ? (tech.code || row.rr_action) : '—';
 
   return `<span class="actpop-lv"><span class="actpop-lbl">Src</span><span class="actpop-val ${srcCls}">${escapeHtml(srcTxt)}</span></span>`
-    + `<span class="actpop-lv"><span class="actpop-lbl">Tech</span><span class="actpop-val ${techCls}">${escapeHtml(techTxt)}</span></span>`;
+    + `<span class="actpop-lv"><span class="actpop-lbl">Tech</span><span class="actpop-val ${techCls}">${escapeHtml(techTxt)}</span></span>`
+    + _actpopVlmPillHtml(row)
+    + _actpopCalcPillHtml(row);
 }
 
 // Macro pill + bar charts — sits on the RR bar line (_buildActionPopHtmlV2),
