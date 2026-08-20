@@ -500,6 +500,22 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
 
         return None
 
+    # 2026-08-20 -- premature-drop conflict pill color (web/actionable.js's
+    # _srcReasonsHtml/_actpopDriverBullets): "up 3 days in a row" = today's
+    # price > yesterday's > the day before's > 3 days ago's, i.e. 3
+    # consecutive daily gains. Reuses the exact same 4-date window
+    # (_stop_dates, ordered DESC -- [0]=today) and price lookups already
+    # loaded for _compute_stop_signal above, no extra query.
+    def _three_day_up_streak(sym):
+        if len(_stop_dates) < 4:
+            return False
+        def _px(dt):
+            return _last_price.get(sym) if dt == as_of_date else _hist_price.get(dt, {}).get(sym)
+        p0, p1, p2, p3 = (_px(d) for d in _stop_dates[:4])
+        if None in (p0, p1, p2, p3):
+            return False
+        return p0 > p1 > p2 > p3
+
     # BuySell action → numeric score map for trig_action computation.
     # Populated from ref_param_lookup where table_name='buysell', extra1=numeric score.
     # e.g. SA→-10, STM→-9, SS→-8, BM→10, BS→9, BMN→8. Gracefully empty if not loaded.
@@ -1235,6 +1251,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                         pct = (px_now - px_drop) / px_drop * 100
                         a["pct_since_drop"] = round(pct, 1)
                         a["drop_conflict"] = pct > 5.0
+                        a["up_streak_3d"] = _three_day_up_streak(b["sym"])
                         changed = True
             if changed:
                 b["srca"] = json.dumps(srca_list)

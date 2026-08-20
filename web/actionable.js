@@ -170,6 +170,31 @@ function _macroConflictMark(r) {
   return _conflictBoltHtml('CONFLICT: MacroNet score disagrees with technical direction (price vs 50-day average). Hover the badge for detail.');
 }
 
+// Premature-drop pill (2026-08-20): always shown for a REMOVE ("dropped
+// from list") source_actions entry, next to the drop message, in the same
+// pill style as every other percentage in the app (.hit-rate-pill) instead
+// of plain colored text. Green (hit-rate-pill-high) only when the move is
+// positive AND the stock has risen 3 days running (up_streak_3d,
+// etl/derive_actionable.py -- fresh, confirmed momentum, same 4-date
+// window _compute_stop_signal already uses); grey (hit-rate-pill-mid)
+// otherwise -- including a positive move that hasn't streaked yet, or a
+// negative one. Shared by _srcReasonsHtml (grid Sources column) and
+// _actpopDriverBullets (Action popup driver bullets). The separate magenta
+// conflict bolt (>+5% up since the drop, etl-side threshold) is its own
+// signal, unaffected by this pill's color.
+function _dropPctPillHtml(s) {
+  if (s.action !== 'REMOVE' || s.pct_since_drop == null) return '';
+  const pct = Number(s.pct_since_drop);
+  const sign = pct >= 0 ? '+' : '';
+  const isGreen = pct > 0 && s.up_streak_3d === true;
+  const cls = isGreen ? 'hit-rate-pill-high' : 'hit-rate-pill-mid';
+  const title = `${sign}${pct.toFixed(1)}% since dropped` + (isGreen ? ' — up 3 days running' : '');
+  const bolt = s.drop_conflict
+    ? _conflictBoltHtml(`Dropped but up ${sign}${pct.toFixed(1)}% since — may have been premature`)
+    : '';
+  return ` <span class="hit-rate-pill ${cls}" title="${escapeHtml(title)}">${sign}${pct.toFixed(1)}%</span>${bolt}`;
+}
+
 // Sector/asset-class/style dots (2026-08-01) — one small bar per membership
 // dimension of the quad engine's live regime read, same color/height
 // convention as the monthly sparkline bars. Styles are NOT averaged into one
@@ -2587,22 +2612,7 @@ function _srcReasonsHtml(r) {
     const chg    = (chgRaw && chgRaw !== dtRaw)
       ? `<span style="font-size:9px;font-weight:400;opacity:0.7;"> → ${chgRaw.replace(/^0/, '')}</span>`
       : '';
-    // Premature-drop conflict (2026-08-20): for a REMOVE ("dropped from
-    // list") entry, always show the price move since that drop
-    // (etl/derive_actionable.py's pct_since_drop, enriched onto the entry
-    // itself) — flagged with the shared conflict bolt only when it's an
-    // UP move past +5% (a down move after a drop means the source's call
-    // was right, not a conflict).
-    let dropPct = '';
-    if (s.action === 'REMOVE' && s.pct_since_drop != null) {
-      const pct = Number(s.pct_since_drop);
-      const sign = pct >= 0 ? '+' : '';
-      const txt = `${sign}${pct.toFixed(1)}% since`;
-      dropPct = s.drop_conflict
-        ? ` <span style="color:#ec4899;font-weight:700;">${txt}</span>` + _conflictBoltHtml(
-            `Dropped ${dtRaw || ''} but up ${sign}${pct.toFixed(1)}% since — may have been premature`)
-        : ` <span style="color:#94a3b8;font-weight:400;">${txt}</span>`;
-    }
+    const dropPct = _dropPctPillHtml(s);
     return `<div class="src-reason-line">
       <span class="src-ic" style="color:${ic.color};">${ic.glyph}</span>
       <span class="src-tag">${src}${dt}${chg}</span>
@@ -4922,7 +4932,7 @@ function _actpopDriverBullets(row, side) {
   // reason/dt are escaped separately and joined with a literal HTML entity
   // AFTER escaping -- escaping the already-built "reason &middot; snapshot
   // X" string as one unit would double-escape that entity into &amp;middot;.
-  const bulletFor = (label, actUpper, reason, dt, tag, pctSinceDrop, dropConflict) => {
+  const bulletFor = (label, actUpper, reason, dt, tag, pctSinceDrop, dropConflict, upStreak3d) => {
     const d = actionDisplay(actUpper);
     const cls = d.side === 'buy' ? 'buy' : d.side === 'sell' ? 'sell' : '';
     // 2026-08-20: side-matched to THIS bullet's own action (was hardcoded
@@ -4936,20 +4946,9 @@ function _actpopDriverBullets(row, side) {
     }
     const actionLabel = d.label || actUpper || '—'; // literal em dash, not an entity -- see note above
     let noteHtml = escapeHtml(reason || '') + (dt ? ` &middot; snapshot ${escapeHtml(dt)}` : '');
-    // Premature-drop conflict (2026-08-20): a REMOVE ("dropped from list")
-    // bullet always shows the price move since that drop (pct_since_drop,
-    // enriched by etl/derive_actionable.py), flagged with the shared
-    // conflict bolt only on an UP move past +5% -- see _srcReasonsHtml's
-    // grid-column twin of this same treatment.
-    if (actUpper === 'REMOVE' && pctSinceDrop != null) {
-      const pct = Number(pctSinceDrop);
-      const sign = pct >= 0 ? '+' : '';
-      const txt = `${sign}${pct.toFixed(1)}% since`;
-      noteHtml += dropConflict
-        ? ` &middot; <span style="color:#ec4899;font-weight:700;">${txt}</span>` + _conflictBoltHtml(
-            `Dropped but up ${sign}${pct.toFixed(1)}% since — may have been premature`)
-        : ` &middot; <span style="color:#94a3b8;">${txt}</span>`;
-    }
+    // Premature-drop pill (2026-08-20) -- see _dropPctPillHtml's own header
+    // comment; _srcReasonsHtml's grid-column twin of this same treatment.
+    noteHtml += _dropPctPillHtml({ action: actUpper, pct_since_drop: pctSinceDrop, drop_conflict: dropConflict, up_streak_3d: upStreak3d });
     return `<div class="actpop-driver ${cls}">
       <span class="dv-name">${escapeHtml(label)}</span>${hit}
       <span class="dv-action ${cls}">${escapeHtml(actionLabel)}</span>
@@ -4965,7 +4964,7 @@ function _actpopDriverBullets(row, side) {
   if (winEntry) {
     const code = winEntry.source || winEntry.source_code || winning;
     rows.push(bulletFor(code, winEntry.action, winEntry.reason, fmtMD(winEntry.snapshot_date), 'drove it',
-      winEntry.pct_since_drop, winEntry.drop_conflict));
+      winEntry.pct_since_drop, winEntry.drop_conflict, winEntry.up_streak_3d));
   }
   const rraUpper = (row.rr_action || '').toUpperCase();
   if (rraUpper) {
@@ -4979,7 +4978,7 @@ function _actpopDriverBullets(row, side) {
   others.sort((a, b) => (ACTION_RANK[(b.action || '').toUpperCase()] || 0) - (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
   for (const s of others) {
     const code = s.source || s.source_code || '?';
-    rows.push(bulletFor(code, s.action, s.reason, fmtMD(s.snapshot_date), null, s.pct_since_drop, s.drop_conflict));
+    rows.push(bulletFor(code, s.action, s.reason, fmtMD(s.snapshot_date), null, s.pct_since_drop, s.drop_conflict, s.up_streak_3d));
   }
   // PVV (2026-08-20, ported into V2): a real PVV decision (anything besides
   // NO_ACTION/WATCH) previously only showed up as an ABSENCE, via
