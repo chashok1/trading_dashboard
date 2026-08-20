@@ -2985,13 +2985,14 @@ function finalCall(row) {
 // warn = amber "argues against this call" reasons; buy = green "argues for /
 // confirms this call" reasons. A row can only show one icon color — warn
 // takes precedence over buy when both fire (caution wins on conflict).
-// Checks are written buy-oriented first (e.g. oversold RSI, strengthening
-// MACD = supportive) then swapped for sell-side rows (2026-08-12) so the
-// color always reflects agreement with the row's own Final Call side, not a
-// hardcoded buy assumption — e.g. weakening MACD momentum confirms a SELL
-// (green), it doesn't caution against it (amber).
-// Checks earnings proximity, VLM, IV/vol caution, MACD/MACDH momentum, RSI, and
-// Rules(edge). No-fired-rules is not itself a warning or a buy signal.
+// Checks are written buy-oriented first (e.g. oversold RSI = supportive)
+// then swapped for sell-side rows (2026-08-12) so the color always reflects
+// agreement with the row's own Final Call side, not a hardcoded buy
+// assumption.
+// Checks earnings proximity, VLM, IV/vol caution, RSI, and Rules(edge).
+// MACD/MACDH momentum moved out (2026-08-20) to a caret on the grid
+// columns themselves — see _macdCaret. No-fired-rules is not itself a
+// warning or a buy signal.
 // Standalone earnings-proximity check (split out from _signalReasons
 // 2026-08-01) — earnings-date risk is a different kind of caution than
 // technical/rules signals: it's calendar-driven, not resolved by waiting
@@ -3055,17 +3056,13 @@ function _signalReasons(row, side) {
   // edge, so it's dropped from the icon pending a longer, less regime-specific
   // check.
 
-  // MACD/MACDH momentum: MACDH (a_macdh_d_brr) sign IS the trend direction —
-  // positive = MACD rising above its own signal line (strengthening), <=0 =
-  // falling below it (weakening) — same convention the rules engine already
-  // uses for Buy-Min-vs-Buy-More sizing. Raw MACD level alone doesn't
-  // indicate direction, so it's intentionally not checked separately.
-  const macdh = row.a_macdh_d_brr;
-  if (macdh != null) {
-    const mv = Number(macdh);
-    if (mv <= 0) warn.push('MACD momentum weakening (MACDH ' + mv.toFixed(2) + ')');
-    else buy.push('MACD momentum strengthening (MACDH ' + mv.toFixed(2) + ')');
-  }
+  // MACD/MACDH momentum (2026-08-20): used to push a 'MACD momentum
+  // strengthening/weakening' warn/buy signal here (MACDH sign IS the trend
+  // direction — positive = MACD rising above its own signal line, <=0 =
+  // falling below it). Moved out of the Action popup's caution/confirm
+  // signals to a caret directly on the MACD/MACDH grid columns instead
+  // (_macdCaret) — always visible there without opening the popup, so no
+  // need to duplicate it in this list too.
 
   // RSI: two-sided, tunable via ref_settings (rsi_overbought/rsi_oversold).
   // Overbought = caution (topping risk); oversold = buy-supportive (dip/bounce).
@@ -4126,6 +4123,21 @@ function _macdColor(v) {
   if (n < -0.5) return '#b91c1c';   // strong bear  — red-700
   if (n <  0)   return '#f87171';   // mild bear    — red-400
   return '#6b7280';                  // flat         — gray-500
+}
+// 2026-08-20: MACD momentum direction used to only show up as a "MACD
+// momentum strengthening/weakening" line in the Action popup's caution/
+// confirm signals (_signalReasons) — moved here instead, as a caret right
+// on the MACD/MACDH grid columns themselves, so it's visible without
+// opening the popup. MACDH's sign IS the direction (positive = MACD rising
+// above its own signal line; <=0 = falling below it — same convention
+// _signalReasons used); MACD's raw level doesn't carry direction on its
+// own, so both columns mirror the same MACDH-derived caret.
+function _macdCaret(macdhVal) {
+  if (macdhVal == null) return '';
+  const mv = Number(macdhVal);
+  const up = mv > 0;
+  return `<span style="margin-left:2px;color:${_macdColor(mv)};" `
+    + `title="MACD momentum ${up ? 'strengthening' : 'weakening'} (MACDH ${mv.toFixed(2)})">${up ? '▲' : '▼'}</span>`;
 }
 function _rsiColor(v) {
   if (v == null) return '';
@@ -5549,8 +5561,8 @@ function _buildRowEl(r) {
           + `</div>`
           + (edgeTag ? `<div style="line-height:1.2;">${edgeTag}</div>` : '');
       })()}</td>
-      <td data-col="macd" class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macd_brr)}">${r.a_macd_brr != null ? Number(r.a_macd_brr).toFixed(2) : ''}</td>
-      <td data-col="macdh" class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macdh_d_brr)}">${r.a_macdh_d_brr != null ? Number(r.a_macdh_d_brr).toFixed(2) : ''}</td>
+      <td data-col="macd" class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macd_brr)}">${r.a_macd_brr != null ? Number(r.a_macd_brr).toFixed(2) : ''}${_macdCaret(r.a_macdh_d_brr)}</td>
+      <td data-col="macdh" class="num" style="font-size:11px;font-weight:600;color:${_macdColor(r.a_macdh_d_brr)}">${r.a_macdh_d_brr != null ? Number(r.a_macdh_d_brr).toFixed(2) : ''}${_macdCaret(r.a_macdh_d_brr)}</td>
       <td data-col="rsi" class="num" style="font-size:11px;font-weight:600;color:${_rsiColor(r.rsi)}">${r.rsi != null ? Number(r.rsi).toFixed(1) : ''}${r.rsi != null ? _factorEdgeTag('RSI', _rsiBucket(r.rsi)) : ''}</td>
       <td data-col="rules" class="rules-link-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:4px 6px; max-width:340px; overflow:hidden; cursor:pointer;" title="Open Rule Flow for ${escapeHtml(r.tos_symbol)}">${firesCellHtml(r, 4)}</td>
       <td data-col="bullprob" class="num" style="padding:4px 6px; white-space:nowrap;">${_bullProbCellHtml(r)}</td>
