@@ -3046,7 +3046,7 @@ function _signalReasons(row, side) {
   // Meaningless once the row's own Final Call is a sell (nothing to swap
   // them into that makes sense), so skip entirely on sell-side rows.
   if (!isSell && row.warn_not_at_lrr) {
-    warn.push('Buy signal not at LRR (low_lrr rule) — price hasn\'t pulled back to the low end of the risk range');
+    warn.push('Caution: price at TRR');
   }
   if (!isSell && row.warn_added_this_leg) {
     warn.push('Already bought this symbol since price last closed at/above TRR — repeat buy signal this leg');
