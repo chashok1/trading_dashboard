@@ -1797,21 +1797,26 @@ function _isTradeModeStopBreach(r) {
 function _matchesTradeMode(r) {
   return _isTradeModeQualifyingBuy(r) || _isTradeModeHeldSaSell(r) || _isTradeModeStopBreach(r);
 }
-// Numeric hit-rate badge for a qualifying Trade Mode buy — the winning
-// source's buy-family (ADD+INCREASE) 20d win rate from
-// state.sourceScorecard, shown in place of the old binary WEAK SRC pill
-// (TASK_124) so every source's track record is visible, not just the
-// three that happened to be below zero at one point in time.
+// Numeric hit-rate badge for a qualifying Trade Mode row — the winning
+// source's 20d win rate from state.sourceScorecard, shown in place of the
+// old binary WEAK SRC pill (TASK_124) so every source's track record is
+// visible, not just the three that happened to be below zero at one point
+// in time. 2026-08-20: was buy-only (_isTradeModeQualifyingBuy, BM/BMN)
+// with no sell-side equivalent even though a held SA row already qualifies
+// for Trade Mode on its own (_isTradeModeHeldSaSell) -- the badge itself
+// just never got wired to it. Now covers both, picking .buy/.sell to match
+// (same side-aware data source-scorecard's other consumers use).
 function _sourceHitRateBadge(r) {
-  if (!_isTradeModeQualifyingBuy(r)) return '';
+  const side = _isTradeModeQualifyingBuy(r) ? 'buy' : _isTradeModeHeldSaSell(r) ? 'sell' : null;
+  if (!side) return '';
   const src = (r.winning_source || '').toString().toUpperCase();
-  const sc = ((state.sourceScorecard || {})[src] || {}).buy;
+  const sc = ((state.sourceScorecard || {})[src] || {})[side];
   if (!sc || sc.win_rate_20d == null || sc.n < 5) return '';
   const pct = Math.round(sc.win_rate_20d * 100);
   const cls = pct < 45 ? 'hit-rate-pill-low' : pct > 55 ? 'hit-rate-pill-high' : 'hit-rate-pill-mid';
   const edgeStr = sc.edge_20d != null ? (sc.edge_20d >= 0 ? '+' : '') + sc.edge_20d.toFixed(2) + '%' : 'n/a';
-  const title = `${src} buy hit rate: ${pct}% of ${sc.n} historical buys were positive at 20d ` +
-    `(avg edge ${edgeStr}).`;
+  const title = `${src} ${side} hit rate: ${pct}% of ${sc.n} historical ${side}s were `
+    + `${side === 'buy' ? 'positive' : 'negative'} at 20d (avg edge ${edgeStr}).`;
   return `<span class="hit-rate-pill ${cls}" title="${escapeHtml(title)}">${pct}%</span>`;
 }
 
