@@ -4887,12 +4887,16 @@ function _actpopMacroBarsHtml(r) {
 // only with no price-direction check, yet 3 of them still carry a
 // directional label) -- relabel audit is on hold per project memory, this
 // surfaces the value AS COMPUTED TODAY, not a corrected version.
+// 2026-08-20 correction: vlm_desc was originally a title= hover tooltip --
+// doesn't work inside this popup, see _actpopSectorPillHtml's comment
+// (#sourcePop is pointer-events:none, nothing nested in it can ever get a
+// native hover). Shown as small inline text instead.
 function _actpopVlmPillHtml(row) {
   const va = row.vlm_action;
   const cls = !va ? 'disabled' : va === 'Accumulate' ? 'buy' : va === 'Avoid' ? 'sell' : '';
   const txt = va ? (va === 'Accumulate' ? 'Accum' : va) : '—';
-  const titleAttr = row.vlm_desc ? ` title="${escapeHtml(row.vlm_desc)}"` : '';
-  return `<span class="actpop-lv"${titleAttr}><span class="actpop-lbl">VLM</span><span class="actpop-val ${cls}">${escapeHtml(txt)}</span></span>`;
+  const detail = row.vlm_desc ? `<span style="font-size:8px;color:#94a3b8;margin-left:3px;">${escapeHtml(row.vlm_desc)}</span>` : '';
+  return `<span class="actpop-lv"><span class="actpop-lbl">VLM</span><span class="actpop-val ${cls}">${escapeHtml(txt)}</span>${detail}</span>`;
 }
 
 // CALC model (2026-08-20) -- P(up 20d) probability, same 3-tier color the
@@ -4917,15 +4921,20 @@ function _actpopCalcPillHtml(row) {
 // gated sample (_factorWinRateDeltaGated, n_symbols>=5) behind it; plain
 // grey text (no color claim) when the sample's too thin or missing, same
 // as every other "not enough history" case in this popup.
+// 2026-08-20 correction: the delta/sample-size detail was originally a
+// title= hover tooltip -- doesn't work, #sourcePop (this whole popup's
+// container) is pointer-events:none by design (a mouse-passthrough
+// overlay), so NOTHING nested inside it can ever show a native hover
+// tooltip. Shown as small inline text instead, always visible.
 function _actpopSectorPillHtml(row) {
   const sector = row.sector && row.sector !== 'N/A' ? row.sector : null;
   const g = sector ? _factorWinRateDeltaGated('Sector', sector) : null;
   const cls = !sector ? 'disabled' : !g ? '' : g.delta > 3 ? 'buy' : g.delta < -3 ? 'sell' : '';
   const txt = sector || '—';
-  const title = g
-    ? `${g.delta >= 0 ? '+' : ''}${g.delta.toFixed(1)}pp vs baseline (${g.nSymbols} symbols)`
-    : (sector ? 'Not enough symbols in this sector for a reliable read' : '');
-  return `<span class="actpop-lv"${title ? ` title="${escapeHtml(title)}"` : ''}><span class="actpop-lbl">Sector</span><span class="actpop-val ${cls}">${escapeHtml(txt)}</span></span>`;
+  const detail = g
+    ? `<span style="font-size:8px;color:#94a3b8;margin-left:3px;">${g.delta >= 0 ? '+' : ''}${g.delta.toFixed(1)}pp, ${g.nSymbols} syms</span>`
+    : '';
+  return `<span class="actpop-lv"><span class="actpop-lbl">Sector</span><span class="actpop-val ${cls}">${escapeHtml(txt)}</span>${detail}</span>`;
 }
 
 // Header: Source / Tech / VLM / CALC / Sector, always shown (disabled/
