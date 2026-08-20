@@ -261,21 +261,34 @@ function macroCellHtml(r) {
   const netHtml = netVal != null
     ? `<div style="font-size:9px;line-height:1;white-space:nowrap;color:${_stanceColor(netVal)};margin-top:1px;" title="MacroNet score: ${netVal >= 0 ? '+' : ''}${netVal.toFixed(4)}${conf != null ? ` — confidence ${Math.round(conf * 100)}%` : ''}">${netVal >= 0 ? '+' : ''}${netVal.toFixed(2)}<span style="color:#94a3b8;">${confPctTxt}</span></div>`
     : '';
+  // Confidence-driven opacity used to sit on the ONE outer wrapper div that
+  // held everything, including the conflict icon -- nested opacity can't be
+  // un-dimmed by a child (CSS composites the whole dimmed subtree as a
+  // group), so a low-confidence conflict row faded the ⚡ right along with
+  // the badge, making the one thing you most need to see the hardest to
+  // see. Fix: opacity now sits on its own inner wrapper(s) around the stuff
+  // that SHOULD dim (badge/label, gap mark, net score, sparkline, member
+  // bars); the conflict icon is a sibling of that wrapper, not a
+  // descendant, so it stays at full opacity regardless.
   if (!mv || mv === 'HOLD') {
     const holdCls = mv ? 'color:#9ca3af' : 'color:#cbd5e1';
     const lbl = mv ? 'HOLD' : '—';
-    return `<div style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};cursor:help;text-align:center;" data-macropop="${escapeHtml(sym)}">${escapeHtml(lbl)}${_macroGapMark(r)}${_macroConflictMark(r)}${netHtml}${dotsLine}${sparkLine}${memberBars}</div>`;
+    return `<div style="cursor:help;text-align:center;" data-macropop="${escapeHtml(sym)}">`
+      + `<div style="display:flex;align-items:center;justify-content:center;">`
+      + `<span style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};">${escapeHtml(lbl)}${_macroGapMark(r)}</span>`
+      + _macroConflictMark(r)
+      + `</div>`
+      + `<div style="opacity:${opacity.toFixed(2)};">${netHtml}${dotsLine}${sparkLine}${memberBars}</div>`
+      + `</div>`;
   }
   const d = actionDisplay(mv);
   const cls = d.colorCls || 'act-neutral';
-  return `<div style="text-align:center;cursor:help;opacity:${opacity.toFixed(2)};" data-macropop="${escapeHtml(sym)}">`
-       + `<span class="act-badge ${cls}-tint" style="font-size:10px;padding:1px 5px;">${escapeHtml(d.code || mv)}</span>`
-       + _macroGapMark(r)
+  return `<div style="text-align:center;cursor:help;" data-macropop="${escapeHtml(sym)}">`
+       + `<div style="display:flex;align-items:center;justify-content:center;">`
+       + `<span style="opacity:${opacity.toFixed(2)};"><span class="act-badge ${cls}-tint" style="font-size:10px;padding:1px 5px;">${escapeHtml(d.code || mv)}</span>${_macroGapMark(r)}</span>`
        + _macroConflictMark(r)
-       + netHtml
-       + dotsLine
-       + sparkLine
-       + memberBars
+       + `</div>`
+       + `<div style="opacity:${opacity.toFixed(2)};">${netHtml}${dotsLine}${sparkLine}${memberBars}</div>`
        + `</div>`;
 }
 
