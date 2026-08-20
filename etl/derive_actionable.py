@@ -506,6 +506,16 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     # consecutive daily gains. Reuses the exact same 4-date window
     # (_stop_dates, ordered DESC -- [0]=today) and price lookups already
     # loaded for _compute_stop_signal above, no extra query.
+    #
+    # Strict day-over-day > was too brittle to ordinary noise: found live,
+    # XLE ran 62.58 -> 63.68 -> 63.58 -> 64.45 -- a clean 3-day rally with
+    # one -0.16% tick in the middle -- and strict comparison called it "not
+    # a streak" even though nothing about the trend actually reversed.
+    # Tolerance is HV-normalized (same daily_move formula as
+    # stop_proximity_sd above) rather than a flat %, since what counts as
+    # "noise" scales with the stock's own normal daily wiggle: a day only
+    # breaks the streak if it's down by MORE than 0.25 of that stock's own
+    # daily move, not by any amount at all.
     def _three_day_up_streak(sym):
         if len(_stop_dates) < 4:
             return False
@@ -514,7 +524,11 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         p0, p1, p2, p3 = (_px(d) for d in _stop_dates[:4])
         if None in (p0, p1, p2, p3):
             return False
-        return p0 > p1 > p2 > p3
+        tolerance = 0.0
+        hvv = _hv.get(sym)
+        if hvv is not None and hvv > 0 and p0 > 0:
+            tolerance = 0.25 * (p0 * hvv / (252 ** 0.5))
+        return (p0 > p1 - tolerance) and (p1 > p2 - tolerance) and (p2 > p3 - tolerance)
 
     # BuySell action → numeric score map for trig_action computation.
     # Populated from ref_param_lookup where table_name='buysell', extra1=numeric score.
@@ -1252,11 +1266,16 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                         streak = _three_day_up_streak(b["sym"])
                         a["pct_since_drop"] = round(pct, 1)
                         a["up_streak_3d"] = streak
-                        # 2026-08-20: flag (drop_conflict) on EITHER signal,
-                        # not just the >5% magnitude check -- a fresh 3-day
-                        # up-streak is itself reason to flag even if the
-                        # cumulative move hasn't cleared 5% yet.
-                        a["drop_conflict"] = (pct > 5.0) or streak
+                        # 2026-08-20: flag (drop_conflict) on EITHER the >5%
+                        # magnitude check OR a fresh 3-day up-streak -- but
+                        # ALWAYS gated on the cumulative move being positive
+                        # first. Bug found live: MSFT/CALL was -0.8% since
+                        # its drop yet streak-flagged green -- a stock that
+                        # dropped hard right after being sold and only
+                        # recently ticked up for 3 days is still net
+                        # negative since the call; a small bounce inside a
+                        # bigger downtrend doesn't make the sell look wrong.
+                        a["drop_conflict"] = pct > 0 and ((pct > 5.0) or streak)
                         changed = True
             if changed:
                 b["srca"] = json.dumps(srca_list)
