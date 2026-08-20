@@ -355,10 +355,11 @@
     .actpop-lv { display:inline-flex; align-items:center; gap:4px; }
     .actpop-lbl { font-size:8px; font-weight:800; letter-spacing:.03em; text-transform:uppercase;
       color:#94a3b8; background:#f1f5f9; padding:2px 5px; border-radius:4px; }
-    .actpop-val { font-size:10px; font-weight:800; color:#475569; }
-    .actpop-val.buy { color: var(--act-buy-strong); }
-    .actpop-val.sell { color: var(--act-sell-strong); }
-    .actpop-val.disabled { color:#cbd5e1; }
+    .actpop-val { font-size:10px; font-weight:800; padding:2px 6px; border-radius:5px;
+      background:#f1f5f9; color:#475569; }
+    .actpop-val.buy { background: var(--act-buy-bg); color: var(--act-buy-strong); }
+    .actpop-val.sell { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); }
+    .actpop-val.disabled { background:#f1f5f9; color:#cbd5e1; }
     .mc-conflict { color:#b45309; font-weight:800; margin-left:2px; }
     .actpop-call { font-size:12px; font-weight:800; padding:2px 8px; border-radius:6px; }
     .actpop-call.buy { color: var(--act-buy-strong); background: var(--act-buy-bg); }
