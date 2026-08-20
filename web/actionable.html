@@ -379,9 +379,21 @@
     .actpop-mbar.sell { background: var(--act-sell-strong); }
     .actpop-mbar.neutral { background:#cbd5e1; }
 
-    .actpop-rr-row { display:flex; align-items:center; gap:10px; margin: 24px 0 10px; }
-    .actpop-rr { flex: 0 0 66%; margin: 0; }
+    /* Row top-aligned (was center) so the RR bar's %-tag (which sits
+       position:absolute top:-18px above the track -- see .actpop-rr-tag)
+       lines its own top up with the top of the Macro/Tradability group on
+       the right, instead of the invisible .actpop-rr box (track+labels,
+       NOT the tag poking up above it) being what centers against them. */
+    .actpop-rr-row { display:flex; align-items:flex-start; gap:10px; margin: 24px 0 10px; }
+    .actpop-rr { flex: 0 0 66%; margin: 18px 0 0; }
     .actpop-rr-right { display:flex; align-items:flex-start; gap:8px; margin-left:auto; flex-shrink:0; }
+    /* Trad icon and Macro's label pill differ in font-size (11px vs 8px)
+       so top-aligning the two columns alone leaves their actual glyphs
+       off-center from each other by a couple px -- pinning both to the
+       same fixed height + internal centering makes their true visual
+       centers match, not just their box tops. */
+    .actpop-trad-col > .actpop-trad-icon,
+    .actpop-macro-stack > .actpop-lv { height: 15px; display: inline-flex; align-items: center; }
     .actpop-rr-track { position:relative; height:7px; border-radius:4px; background:#e2e8f0; }
     .actpop-rr-fill { position:absolute; left:0; top:0; height:100%; border-radius:4px;
       background:linear-gradient(90deg,var(--act-buy) 0%, #d97706 62%, var(--act-sell-strong) 100%); }
