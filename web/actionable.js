@@ -2601,6 +2601,7 @@ function _srcReasonsHtml(r) {
   const rows = winner.concat(others).map(s => {
     const srcCode = s.source || s.source_code || '?';
     const src    = escapeHtml(_srcAbbr(srcCode));
+    const ic     = actionIcon(s.action);
     const reason = s.reason ? escapeHtml(s.reason) : '';
     const dtRaw  = fmtMD(s.snapshot_date);
     const dt     = dtRaw ? `<span style="font-size:9px;font-weight:400;opacity:0.7;"> (${dtRaw.replace(/^0/, '')})</span>` : '';
@@ -2618,6 +2619,7 @@ function _srcReasonsHtml(r) {
     const droveIt = srcCode === winning
       ? `<span class="dv-tag" style="margin-left:3px;" title="Drove the action">D</span>` : '';
     return `<div class="src-reason-line">
+      <span class="src-ic" style="color:${ic.color};">${ic.glyph}</span>
       <span class="src-tag">${src}${dt}${chg}</span>${droveIt}
       <span class="src-rsn">${reason}${dropPct}</span>
     </div>`;
@@ -5734,10 +5736,7 @@ function _buildRowEl(r) {
       <td data-col="calc" style="padding:6px 4px;">${_finalCallCalHtml(r)}</td>
       <td data-col="sources" class="act-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:help;">
         <div style="display:flex;align-items:flex-start;gap:8px;">
-          <div style="width:38px;flex-shrink:0;align-self:center;text-align:center;">
-            ${(()=>{ const _ic=actionIcon(_badgeAction(r)); return `<span class="act-main-ic" style="font-family:ui-monospace,monospace;font-size:24px;font-weight:700;color:${_ic.color};cursor:help;">${_ic.glyph}</span>`; })()}
-            ${_isOverMaxOverlay(r) ? `<div style="font-size:8px;line-height:1;font-weight:600;margin-top:1px;" class="${_actionColorCls(action)}">was ${actionText(actionDisplay(action))}</div>` : ''}
-          </div>
+          ${_isOverMaxOverlay(r) ? `<div style="width:38px;flex-shrink:0;align-self:center;text-align:center;font-size:8px;line-height:1;font-weight:600;" class="${_actionColorCls(action)}">was ${actionText(actionDisplay(action))}</div>` : ''}
           ${_srcReasonsHtml(r)}
         </div>
       </td>
