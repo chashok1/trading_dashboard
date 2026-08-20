@@ -151,26 +151,23 @@ function _stanceColor(v) {
 // tracking_conflict, promoted onto the grid row in api/routers/dash.py).
 // Distinct glyph/color from _macroGapMark's data-completeness "!" so the two
 // unrelated warnings never look like the same thing at a glance.
-function _macroConflictMark(r) {
-  if (r.macro_conflict !== true) return '';
-  // 2026-08-20: the ⚡ CHARACTER is a COLOR emoji glyph on Windows/Mac emoji
-  // fonts -- its yellow/orange fill is baked into the font's own COLR/CBDT
-  // color table and completely ignores CSS `color`. That's why every color
-  // change here (red -> violet -> black) looked identical: none of them
-  // were ever actually being applied. Switched to an inline SVG bolt with
-  // fill="currentColor" instead, so `color:` on the wrapping span actually
-  // controls it.
-  // Bright magenta (#ec4899) -- reads clearly against both the muted green
-  // BUY tint and muted red/brown SELL tint without being confused with
-  // either side's own color, or with #f59e0b (the data-completeness "!"
-  // mark's amber). Plain fill, no stroke, original bolt shape -- stretched
-  // vertically vs. the 24x24 viewBox (width held at 11, height 11->15,
-  // preserveAspectRatio="none") per user's picks off the Artifact
-  // color-comparison preview, 2026-08-20.
+// Shared bolt-shaped conflict icon (magenta #ec4899, 11x15 stretched, no
+// stroke) -- established 2026-08-20 for the MACRO column's tracking-vs-
+// score conflict (below). Reused for any other "disagrees with reality"
+// signal (e.g. _srcReasonsHtml's premature-drop conflict) so "conflict"
+// reads as one consistent visual language across the screen instead of a
+// new glyph per feature. Plain SVG fill (not the ⚡ CHARACTER) because that
+// glyph is a COLOR emoji on Windows/Mac -- its fill is baked into the font's
+// own COLR/CBDT color table and ignores CSS `color` entirely.
+function _conflictBoltHtml(title) {
   return `<span style="display:inline-block;vertical-align:middle;margin-left:2px;color:#ec4899;" `
-    + `title="CONFLICT: MacroNet score disagrees with technical direction (price vs 50-day average). Hover the badge for detail.">`
+    + `title="${escapeHtml(title)}">`
     + `<svg width="11" height="15" viewBox="0 0 24 24" preserveAspectRatio="none" style="display:inline-block;vertical-align:middle;">`
     + `<path fill="currentColor" d="M13 2 3 14h7v8l10-12h-7z"/></svg></span>`;
+}
+function _macroConflictMark(r) {
+  if (r.macro_conflict !== true) return '';
+  return _conflictBoltHtml('CONFLICT: MacroNet score disagrees with technical direction (price vs 50-day average). Hover the badge for detail.');
 }
 
 // Sector/asset-class/style dots (2026-08-01) — one small bar per membership
@@ -2585,10 +2582,26 @@ function _srcReasonsHtml(r) {
     const chg    = (chgRaw && chgRaw !== dtRaw)
       ? `<span style="font-size:9px;font-weight:400;opacity:0.7;"> → ${chgRaw.replace(/^0/, '')}</span>`
       : '';
+    // Premature-drop conflict (2026-08-20): for a REMOVE ("dropped from
+    // list") entry, always show the price move since that drop
+    // (etl/derive_actionable.py's pct_since_drop, enriched onto the entry
+    // itself) — flagged with the shared conflict bolt only when it's an
+    // UP move past +5% (a down move after a drop means the source's call
+    // was right, not a conflict).
+    let dropPct = '';
+    if (s.action === 'REMOVE' && s.pct_since_drop != null) {
+      const pct = Number(s.pct_since_drop);
+      const sign = pct >= 0 ? '+' : '';
+      const txt = `${sign}${pct.toFixed(1)}% since`;
+      dropPct = s.drop_conflict
+        ? ` <span style="color:#ec4899;font-weight:700;">${txt}</span>` + _conflictBoltHtml(
+            `Dropped ${dtRaw || ''} but up ${sign}${pct.toFixed(1)}% since — may have been premature`)
+        : ` <span style="color:#94a3b8;font-weight:400;">${txt}</span>`;
+    }
     return `<div class="src-reason-line">
       <span class="src-ic" style="color:${ic.color};">${ic.glyph}</span>
       <span class="src-tag">${src}${dt}${chg}</span>
-      <span class="src-rsn">${reason}</span>
+      <span class="src-rsn">${reason}${dropPct}</span>
     </div>`;
   });
   return `<div class="src-reasons">${rows.join('')}</div>`;
@@ -4894,7 +4907,7 @@ function _actpopDriverBullets(row, side) {
   // reason/dt are escaped separately and joined with a literal HTML entity
   // AFTER escaping -- escaping the already-built "reason &middot; snapshot
   // X" string as one unit would double-escape that entity into &amp;middot;.
-  const bulletFor = (label, actUpper, reason, dt, tag) => {
+  const bulletFor = (label, actUpper, reason, dt, tag, pctSinceDrop, dropConflict) => {
     const d = actionDisplay(actUpper);
     const cls = d.side === 'buy' ? 'buy' : d.side === 'sell' ? 'sell' : '';
     // 2026-08-20: side-matched to THIS bullet's own action (was hardcoded
@@ -4907,7 +4920,21 @@ function _actpopDriverBullets(row, side) {
       hit = `<span class="actpop-hit hit-rate-pill ${hcls}" title="${escapeHtml(label)} hit rate: ${wr}% (n=${srcSc.n})">${wr}%</span>`;
     }
     const actionLabel = d.label || actUpper || '—'; // literal em dash, not an entity -- see note above
-    const noteHtml = escapeHtml(reason || '') + (dt ? ` &middot; snapshot ${escapeHtml(dt)}` : '');
+    let noteHtml = escapeHtml(reason || '') + (dt ? ` &middot; snapshot ${escapeHtml(dt)}` : '');
+    // Premature-drop conflict (2026-08-20): a REMOVE ("dropped from list")
+    // bullet always shows the price move since that drop (pct_since_drop,
+    // enriched by etl/derive_actionable.py), flagged with the shared
+    // conflict bolt only on an UP move past +5% -- see _srcReasonsHtml's
+    // grid-column twin of this same treatment.
+    if (actUpper === 'REMOVE' && pctSinceDrop != null) {
+      const pct = Number(pctSinceDrop);
+      const sign = pct >= 0 ? '+' : '';
+      const txt = `${sign}${pct.toFixed(1)}% since`;
+      noteHtml += dropConflict
+        ? ` &middot; <span style="color:#ec4899;font-weight:700;">${txt}</span>` + _conflictBoltHtml(
+            `Dropped but up ${sign}${pct.toFixed(1)}% since — may have been premature`)
+        : ` &middot; <span style="color:#94a3b8;">${txt}</span>`;
+    }
     return `<div class="actpop-driver ${cls}">
       <span class="dv-name">${escapeHtml(label)}</span>${hit}
       <span class="dv-action ${cls}">${escapeHtml(actionLabel)}</span>
@@ -4922,7 +4949,8 @@ function _actpopDriverBullets(row, side) {
   const winEntry = sources.find(s => (s.source || s.source_code || '') === winning);
   if (winEntry) {
     const code = winEntry.source || winEntry.source_code || winning;
-    rows.push(bulletFor(code, winEntry.action, winEntry.reason, fmtMD(winEntry.snapshot_date), 'drove it'));
+    rows.push(bulletFor(code, winEntry.action, winEntry.reason, fmtMD(winEntry.snapshot_date), 'drove it',
+      winEntry.pct_since_drop, winEntry.drop_conflict));
   }
   const rraUpper = (row.rr_action || '').toUpperCase();
   if (rraUpper) {
@@ -4936,7 +4964,7 @@ function _actpopDriverBullets(row, side) {
   others.sort((a, b) => (ACTION_RANK[(b.action || '').toUpperCase()] || 0) - (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
   for (const s of others) {
     const code = s.source || s.source_code || '?';
-    rows.push(bulletFor(code, s.action, s.reason, fmtMD(s.snapshot_date)));
+    rows.push(bulletFor(code, s.action, s.reason, fmtMD(s.snapshot_date), null, s.pct_since_drop, s.drop_conflict));
   }
   return rows.length ? `<div class="actpop-drivers">${rows.join('')}</div>` : '';
 }

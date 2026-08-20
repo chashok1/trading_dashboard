@@ -1123,6 +1123,66 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         })
         rows_written += 1
 
+    # ─── Premature-drop conflict (2026-08-20) ───────────────────────────
+    # Enriches every source_actions entry with action='REMOVE' ("dropped
+    # from list") with pct_since_drop: the price move from that source's
+    # own snapshot_date (its drop date, nearest prior hist_td close) to
+    # today's price. Always populated (not just past a threshold) -- the
+    # UI shows it next to the drop message on every REMOVE entry and
+    # additionally flags it (drop_conflict=true) only when the move is UP
+    # past +5%, since a down move after a drop means the source's call was
+    # right, not a conflict. No new column -- folded into the existing
+    # source_actions JSONB per entry, read by web/actionable.js's
+    # _srcReasonsHtml (grid Sources column) and _actpopDriverBullets
+    # (Action popup driver bullets).
+    _drop_pairs = set()
+    for b in batch:
+        for a in json.loads(b["srca"] or "[]"):
+            if a.get("action") == "REMOVE" and a.get("snapshot_date"):
+                _drop_pairs.add((b["sym"], a["snapshot_date"]))
+
+    _price_at_drop: dict[tuple[str, str], float] = {}
+    _drop_pairs_list = list(_drop_pairs)
+    _CHUNK = 20  # keeps each generated VALUES-list query modestly sized
+    for _i in range(0, len(_drop_pairs_list), _CHUNK):
+        chunk = _drop_pairs_list[_i:_i + _CHUNK]
+        # CAST(...AS date), not :dN::date -- SQLAlchemy's text() bind-param
+        # parser misreads a `::` cast immediately following a named param.
+        values_sql = ", ".join(f"(:s{j}, CAST(:d{j} AS date))" for j in range(len(chunk)))
+        params = {}
+        for j, (sym_, dt_) in enumerate(chunk):
+            params[f"s{j}"] = sym_
+            params[f"d{j}"] = dt_
+        rows = session.execute(text(f"""
+            WITH pairs(tos_symbol, drop_date) AS (VALUES {values_sql})
+            SELECT p.tos_symbol, p.drop_date, h.last_price
+            FROM pairs p
+            JOIN LATERAL (
+                SELECT last_price FROM hist_td
+                WHERE tos_symbol = p.tos_symbol AND export_date <= p.drop_date
+                  AND last_price IS NOT NULL
+                ORDER BY export_date DESC, sequence DESC LIMIT 1
+            ) h ON true
+        """), params).fetchall()
+        for r in rows:
+            _price_at_drop[(r[0], r[1].isoformat())] = float(r[2])
+
+    if _price_at_drop:
+        for b in batch:
+            srca_list = json.loads(b["srca"] or "[]")
+            changed = False
+            for a in srca_list:
+                if a.get("action") == "REMOVE" and a.get("snapshot_date"):
+                    px_drop = _price_at_drop.get((b["sym"], a["snapshot_date"]))
+                    px_now = _last_price.get(b["sym"])
+                    if px_drop and px_now:
+                        pct = (px_now - px_drop) / px_drop * 100
+                        a["pct_since_drop"] = round(pct, 1)
+                        a["drop_conflict"] = pct > 5.0
+                        changed = True
+            if changed:
+                b["srca"] = json.dumps(srca_list)
+
     # Single executemany — previous version did one INSERT per symbol.
     if batch:
         session.execute(insert_sql, batch)
