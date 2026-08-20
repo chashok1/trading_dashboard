@@ -1249,9 +1249,14 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                     px_now = _last_price.get(b["sym"])
                     if px_drop and px_now:
                         pct = (px_now - px_drop) / px_drop * 100
+                        streak = _three_day_up_streak(b["sym"])
                         a["pct_since_drop"] = round(pct, 1)
-                        a["drop_conflict"] = pct > 5.0
-                        a["up_streak_3d"] = _three_day_up_streak(b["sym"])
+                        a["up_streak_3d"] = streak
+                        # 2026-08-20: flag (drop_conflict) on EITHER signal,
+                        # not just the >5% magnitude check -- a fresh 3-day
+                        # up-streak is itself reason to flag even if the
+                        # cumulative move hasn't cleared 5% yet.
+                        a["drop_conflict"] = (pct > 5.0) or streak
                         changed = True
             if changed:
                 b["srca"] = json.dumps(srca_list)

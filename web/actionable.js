@@ -173,23 +173,23 @@ function _macroConflictMark(r) {
 // Premature-drop pill (2026-08-20): always shown for a REMOVE ("dropped
 // from list") source_actions entry, next to the drop message, in the same
 // pill style as every other percentage in the app (.hit-rate-pill) instead
-// of plain colored text. Green (hit-rate-pill-high) only when the move is
-// positive AND the stock has risen 3 days running (up_streak_3d,
-// etl/derive_actionable.py -- fresh, confirmed momentum, same 4-date
-// window _compute_stop_signal already uses); grey (hit-rate-pill-mid)
-// otherwise -- including a positive move that hasn't streaked yet, or a
-// negative one. Shared by _srcReasonsHtml (grid Sources column) and
-// _actpopDriverBullets (Action popup driver bullets). The separate magenta
-// conflict bolt (>+5% up since the drop, etl-side threshold) is its own
-// signal, unaffected by this pill's color.
+// of plain colored text. Green (hit-rate-pill-high) + the magenta conflict
+// bolt when drop_conflict is true -- a single flag now, computed
+// etl-side as EITHER the cumulative move clearing +5% OR a fresh 3-day
+// up-streak (up_streak_3d, same 4-date window _compute_stop_signal already
+// uses) -- either one alone is reason to flag, not just the magnitude
+// check. Grey (hit-rate-pill-mid), no bolt, otherwise. Shared by
+// _srcReasonsHtml (grid Sources column) and _actpopDriverBullets (Action
+// popup driver bullets) -- also read by _actpopTugHtml to surface a
+// flagged drop as an Opposing signal on a sell-side row.
 function _dropPctPillHtml(s) {
   if (s.action !== 'REMOVE' || s.pct_since_drop == null) return '';
   const pct = Number(s.pct_since_drop);
   const sign = pct >= 0 ? '+' : '';
-  const isGreen = pct > 0 && s.up_streak_3d === true;
-  const cls = isGreen ? 'hit-rate-pill-high' : 'hit-rate-pill-mid';
-  const title = `${sign}${pct.toFixed(1)}% since dropped` + (isGreen ? ' — up 3 days running' : '');
-  const bolt = s.drop_conflict
+  const flagged = s.drop_conflict === true;
+  const cls = flagged ? 'hit-rate-pill-high' : 'hit-rate-pill-mid';
+  const title = `${sign}${pct.toFixed(1)}% since dropped` + (flagged ? (s.up_streak_3d ? ' — up 3 days running' : ' — up >5% since') : '');
+  const bolt = flagged
     ? _conflictBoltHtml(`Dropped but up ${sign}${pct.toFixed(1)}% since — may have been premature`)
     : '';
   return ` <span class="hit-rate-pill ${cls}" title="${escapeHtml(title)}">${sign}${pct.toFixed(1)}%</span>${bolt}`;
@@ -5026,7 +5026,25 @@ function _actpopTugHtml(row, side) {
   const sig = _signalReasons(row, side);
   const isRuleText = s => /^Rule \S+ fired|^Sell rule \S+/.test(s);
   const supportSignals = sig.buy.filter(s => !isRuleText(s));
-  const opposeSignals = sig.warn.filter(s => !isRuleText(s));
+  let opposeSignals = sig.warn.filter(s => !isRuleText(s));
+
+  // Premature-drop conflict (2026-08-20): a flagged REMOVE entry
+  // (drop_conflict -- see _dropPctPillHtml) argues against a SELL call —
+  // the source dropped the symbol and price has since rallied, undermining
+  // the sell thesis. Sell-side only; on a buy row this wouldn't read as
+  // opposition (it'd actually support the buy, out of scope here).
+  if (side === 'sell') {
+    const dropOpp = _sourcesOf(row)
+      .filter(s => s.action === 'REMOVE' && s.drop_conflict === true)
+      .map(s => {
+        const src = s.source || s.source_code || '?';
+        const pct = Number(s.pct_since_drop);
+        const sign = pct >= 0 ? '+' : '';
+        return `${src} dropped it but up ${sign}${pct.toFixed(1)}% since — may have been premature`;
+      });
+    opposeSignals = opposeSignals.concat(dropOpp);
+  }
+
   const rulePills = _actpopRulePillsHtml(row, side);
 
   const oppItems = opposeSignals.map(s => `<div class="actpop-tug-item">${escapeHtml(s)}</div>`).join('');
