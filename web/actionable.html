@@ -340,6 +340,84 @@
     .source-pop td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; word-break: break-word; }
     .source-pop .sp-sec { color: #94a3b8; font-size: 9px;
                           text-transform: uppercase; letter-spacing: 0.5px; padding-top: 5px; }
+
+    /* Action popup V2 — driver-first redesign of _buildActionPopHtml, behind
+       a temporary toggle (localStorage.actionPopV2='1') while it's compared
+       against the original. See _buildActionPopHtmlV2 in actionable.js.
+       Reuses .source-pop's box (#sourcePop) and the app's real --act-* color
+       tokens (styles.css :root) rather than inventing a new palette. */
+    .actpop { width: 400px; }
+    .actpop-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px;
+      margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
+    .actpop-sym { font-size:14px; font-weight:800; color:#0f172a; }
+    .actpop-sym .actpop-co { font-weight:400; color:#94a3b8; font-size:10px; margin-left:5px; }
+    .actpop-badges { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+    .actpop-pill { font-size:9px; font-weight:700; padding:2px 6px; border-radius:5px;
+      background:#f1f5f9; color:#475569; white-space:nowrap; }
+    .actpop-pill .pl { font-weight:800; opacity:.55; font-size:8px; letter-spacing:.03em;
+      text-transform:uppercase; margin-right:3px; }
+    .actpop-pill.buy { background: var(--act-buy-bg); color: var(--act-buy-strong); }
+    .actpop-pill.sell { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); }
+    .actpop-pill .mc-conflict { color:#b45309; font-weight:800; margin-left:2px; }
+    .actpop-call { font-size:12px; font-weight:800; padding:2px 8px; border-radius:6px; }
+    .actpop-call.buy { color: var(--act-buy-strong); background: var(--act-buy-bg); }
+    .actpop-call.sell { color: var(--act-sell-strong); background: var(--act-sell-strong-bg); }
+    .actpop-call.neutral { color: var(--act-neutral); background: var(--act-neutral-bg); }
+    .actpop-trad-icon { font-size:11px; padding:2px 5px; border-radius:5px; background:#eef2ff; color:#4338ca; }
+    .actpop-trad-icon.disabled { background:#f1f5f9; color:#cbd5e1; }
+    .actpop-macro-stack { display:inline-flex; flex-direction:column; align-items:center; gap:2px; }
+    .actpop-mgroup { display:flex; align-items:flex-end; gap:5px; }
+    .actpop-mrow { display:flex; align-items:flex-end; gap:1px; cursor:help; height:8px; }
+    .actpop-mrow.member { padding-left:5px; border-left:1px solid #e2e8f0; }
+    .actpop-mbar { display:inline-block; width:2px; }
+    .actpop-mbar.buy { background: var(--act-buy); }
+    .actpop-mbar.sell { background: var(--act-sell-strong); }
+    .actpop-mbar.neutral { background:#cbd5e1; }
+
+    .actpop-rr { margin: 8px 0 10px; }
+    .actpop-rr-track { position:relative; height:7px; border-radius:4px; background:#e2e8f0; }
+    .actpop-rr-fill { position:absolute; left:0; top:0; height:100%; border-radius:4px;
+      background:linear-gradient(90deg,var(--act-buy) 0%, #d97706 62%, var(--act-sell-strong) 100%); }
+    .actpop-rr-tick { position:absolute; top:-4px; width:3px; height:15px; border-radius:2px;
+      background:#0f172a; transform:translateX(-50%); }
+    .actpop-rr-tag { position:absolute; top:-18px; transform:translateX(-50%); font-size:9px;
+      font-weight:800; padding:1px 5px; border-radius:4px; background:#f1f5f9; white-space:nowrap; }
+    .actpop-rr-labels { display:flex; justify-content:space-between; font-size:9px; color:#94a3b8; margin-top:3px; }
+
+    .actpop-drivers { display:flex; flex-direction:column; gap:4px; margin-bottom:8px; }
+    .actpop-driver { display:flex; align-items:center; gap:6px; border-radius:7px; padding:4px 8px; background:#f8fafc; }
+    .actpop-driver.buy { background: var(--act-buy-bg); }
+    .actpop-driver.sell { background: var(--act-sell-strong-bg); }
+    .actpop-driver .dv-name { font-size:10px; font-weight:700; color:#0f172a; min-width:56px; flex-shrink:0; }
+    .actpop-driver .dv-action { font-size:11px; font-weight:800; flex-shrink:0; }
+    .actpop-driver .dv-action.buy { color: var(--act-buy-strong); }
+    .actpop-driver .dv-action.sell { color: var(--act-sell-strong); }
+    .actpop-driver .dv-note { font-size:9px; color:#64748b; flex:1; opacity:.9; }
+    .actpop-driver .dv-tag { font-size:7px; font-weight:800; letter-spacing:.03em; text-transform:uppercase;
+      background:#0f172a; color:#fff; padding:2px 5px; border-radius:4px; flex-shrink:0; }
+    .actpop-hit { font-size:8px; font-weight:800; padding:1px 4px; border-radius:4px; flex-shrink:0;
+      font-family: ui-monospace, monospace; }
+
+    .actpop-tug { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:8px 0; }
+    .actpop-tug-col { border-radius:7px; padding:6px 8px; background:#f8fafc; border-left:3px solid #cbd5e1; }
+    .actpop-tug-col.oppose { border-left-color: var(--act-sell-strong); }
+    .actpop-tug-col.support { border-left-color: var(--act-buy); }
+    .actpop-tug-h { font-size:8px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#94a3b8; margin-bottom:3px; }
+    .actpop-tug-item { font-size:9.5px; padding:1px 0; }
+    .actpop-tug-col.oppose .actpop-tug-item { color: var(--act-sell-strong); }
+    .actpop-tug-col.support .actpop-tug-item { color: var(--act-buy-strong); }
+    .actpop-tug-sub { font-size:7px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#94a3b8; margin:4px 0 2px; opacity:.8; }
+    .actpop-tug-sub:first-child { margin-top:0; }
+    .actpop-rule-pills { display:flex; flex-wrap:wrap; gap:3px; }
+    .actpop-neutral { font-size:9.5px; color:#94a3b8; margin:4px 0; }
+
+    .actpop-trad { margin:8px 0; padding:6px 8px; border-radius:7px; background:#f8fafc; border:1px solid #e2e8f0; }
+    .actpop-trad-h { font-size:9px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#94a3b8;
+      display:flex; justify-content:space-between; margin-bottom:4px; }
+    .actpop-trad-item { font-size:9px; margin:1px 0; }
+
+    .actpop-details { font-size:9.5px; color:#64748b; margin-top:6px; padding-top:6px; border-top:1px solid #e2e8f0; }
+
     /* 2026-08-14: long-term conviction hold — inline quick-add popover
        (SYMBOL column button, below the trade-mode hit-rate % badge).
        Reuses .source-pop's box/shadow but needs pointer-events:auto (set

@@ -2520,6 +2520,17 @@ function _srcChangeEventDate(row, srcCode) {
   return null;
 }
 
+// Source-code abbreviations for the Sources column's tight 2-char label.
+// Most codes are legible from their own first 2 chars (RR, PS, II, ETF...);
+// a few need an explicit override because the blind slice reads as
+// something else entirely -- TOP5 -> "TO" looked like nothing. 2026-08-19
+// (user decision "change TO to T5 everywhere"): only overrides listed here.
+const _SRC_ABBR = { TOP5: 'T5', MACROSHOW: 'MS' };
+function _srcAbbr(srcCode) {
+  const up = (srcCode || '').toString().toUpperCase();
+  return _SRC_ABBR[up] || (srcCode || '').toString().slice(0, 2);
+}
+
 // ── Source sub-line (Action cell second line) ──────────────────────────────
 // Returns compact HTML like: RR·<colored>BS</colored>  II·<colored>BM</colored>
 // Winning source first, then others sorted by severity.  Empty → ''.
@@ -2535,7 +2546,7 @@ function _srcReasonsHtml(r) {
     (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
   const rows = winner.concat(others).map(s => {
     const srcCode = s.source || s.source_code || '?';
-    const src    = escapeHtml(srcCode.slice(0, 2));
+    const src    = escapeHtml(_srcAbbr(srcCode));
     const ic     = actionIcon(s.action);
     const reason = s.reason ? escapeHtml(s.reason) : '';
     const dtRaw  = fmtMD(s.snapshot_date);
@@ -4252,7 +4263,11 @@ function initSourcePopover() {
     const actionEl = e.target.closest('[data-actionpop]');
     if (actionEl) {
       const r = state.rows.find(x => x.tos_symbol === actionEl.dataset.actionpop);
-      if (r) _showDataPop(actionEl, _buildActionPopHtml(r));
+      // V2 redesign (driver-first layout, see _buildActionPopHtmlV2) behind a
+      // temporary compare toggle: `localStorage.setItem('actionPopV2','1')`
+      // in the browser console to try it, remove the key to go back. Drop
+      // this branch once V2 replaces the original outright.
+      if (r) _showDataPop(actionEl, _actionPopV2Enabled() ? _buildActionPopHtmlV2(r) : _buildActionPopHtml(r));
       return;
     }
     const signalEl = e.target.closest('[data-signalpop]');
@@ -4658,6 +4673,341 @@ function _buildActionPopHtml(row) {
     h += `<div style="font-size:10px;color:#b45309;border-top:1px solid #e5e7eb;padding-top:4px;margin-top:4px;">`
        + flags.map(f => '⚠ ' + escapeHtml(f)).join('<br>') + `</div>`;
   }
+  return h;
+}
+
+// ==========================================================================
+// Action popup V2 — driver-first redesign (mockup approved 2026-08-20).
+// Reuses the SAME real computations _buildActionPopHtml already relies on
+// (finalCall, _tradabilityBreakdown, _signalReasons, state.scorecard,
+// state.sourceScorecard, _macroMemberBarsHtml's stance data) rendered into
+// the mockup's 3-tier layout instead of the original's checklist layout.
+// Behind a temporary toggle — see the [data-actionpop] handler above.
+// ==========================================================================
+
+function _actionPopV2Enabled() {
+  try { return localStorage.getItem('actionPopV2') === '1'; } catch (_) { return false; }
+}
+
+// "$7,356" -> "$7k" (>=1000, rounded to nearest thousand); untouched below 1000.
+function _actpopFmtAmt(v) {
+  const n = Number(v);
+  if (!isFinite(n)) return '';
+  const abs = Math.abs(n);
+  if (abs >= 1000) return (n < 0 ? '-' : '') + '$' + Math.round(abs / 1000) + 'k';
+  return fmtUsd(n);
+}
+
+// Same monthly_scores_json parse+slice (from current month onward) as
+// macroCellHtml's inline sparkline — factored out so the popup can build its
+// own bar row from the identical data without duplicating the JSON handling.
+function _monthlyScoresVisible(r) {
+  const raw = r.monthly_scores_json;
+  const arr = Array.isArray(raw) ? raw
+    : (typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch (_e) { return null; } })() : null);
+  if (!arr) return null;
+  const curIdx = arr.findIndex(s => s.is_current);
+  return curIdx >= 0 ? arr.slice(curIdx) : arr;
+}
+
+// Two bar rows side by side: forward monthly quad-regime sparkline, and the
+// Sector/Asset class/Style stance bars (same data _macroMemberBarsHtml uses,
+// rebuilt here with .actpop-mbar classes to match the popup's own palette).
+function _actpopMacroBarsHtml(r) {
+  const sparks = _monthlyScoresVisible(r);
+  let sparkRow = '';
+  if (sparks && sparks.length >= 2) {
+    const maxAbs = Math.max(...sparks.map(s => Math.abs(s.score || 0)), 0.001);
+    const bars = sparks.map(s => {
+      const sc = s.score || 0;
+      const bh = Math.max(2, Math.round(Math.abs(sc) / maxAbs * 8));
+      const cls = sc > 0 ? 'buy' : sc < 0 ? 'sell' : 'neutral';
+      const ti = `${s.label || ''} (${s.quad || ''}) ${sc >= 0 ? '+' : ''}${sc.toFixed(2)}${s.is_current ? ' — current month' : ''}`;
+      return `<span class="actpop-mbar ${cls}" style="height:${bh}px;" title="${escapeHtml(ti)}"></span>`;
+    }).join('');
+    sparkRow = `<div class="actpop-mrow spark" title="Forward monthly quad-regime score (live sparkline)">${bars}</div>`;
+  }
+  const memberItems = [];
+  if (r.sector_stance != null) memberItems.push({ label: `Sector: ${r.sector || '?'}`, v: Number(r.sector_stance) });
+  if (r.asset_class_stance != null) memberItems.push({ label: `Asset class: ${r.real_asset_class || '?'}`, v: Number(r.asset_class_stance) });
+  let styles = r.style_stances;
+  if (typeof styles === 'string') { try { styles = JSON.parse(styles); } catch (_) { styles = []; } }
+  if (Array.isArray(styles)) {
+    for (const s of styles) if (s && s.stance != null) memberItems.push({ label: `Style: ${s.label}`, v: Number(s.stance) });
+  }
+  let memberRow = '';
+  if (memberItems.length) {
+    const maxAbs = Math.max(...memberItems.map(b => Math.abs(b.v)), 0.001);
+    const bars = memberItems.map(b => {
+      const bh = Math.max(2, Math.round(Math.abs(b.v) / maxAbs * 6));
+      const cls = b.v > 0 ? 'buy' : b.v < 0 ? 'sell' : 'neutral';
+      const ti = `${b.label}: ${b.v >= 0 ? '+' : ''}${b.v.toFixed(2)} (live quad regime)`;
+      return `<span class="actpop-mbar ${cls}" style="height:${bh}px;" title="${escapeHtml(ti)}"></span>`;
+    }).join('');
+    memberRow = `<div class="actpop-mrow member" title="Sector / Asset class / Style — live quad-regime stance">${bars}</div>`;
+  }
+  if (!sparkRow && !memberRow) return '';
+  return `<div class="actpop-mgroup">${sparkRow}${memberRow}</div>`;
+}
+
+// Header: [Src] [Tech] [Macro + bars] pills. Src/Tech reuse actionDisplay's
+// canonical short code (same BuySell vocab the grid's own badges show) so
+// they read consistently with the rest of the app, not a bespoke abbreviation.
+function _actpopHeaderPillsHtml(row) {
+  const parts = [];
+  if (row.consolidated_action) {
+    const d = actionDisplay(row.consolidated_action);
+    const cls = d.side === 'buy' ? 'buy' : d.side === 'sell' ? 'sell' : '';
+    parts.push(`<span class="actpop-pill ${cls}"><span class="pl">Src</span>${escapeHtml(d.code || row.consolidated_action)}</span>`);
+  }
+  if (row.rr_action) {
+    const d = actionDisplay(row.rr_action);
+    const cls = d.side === 'buy' ? 'buy' : d.side === 'sell' ? 'sell' : '';
+    parts.push(`<span class="actpop-pill ${cls}"><span class="pl">Tech</span>${escapeHtml(d.code || row.rr_action)}</span>`);
+  }
+  const mv = row.macro_value;
+  const mcls = (mv === 'BM' || mv === 'BS') ? 'buy' : (mv === 'SA' || mv === 'STM') ? 'sell' : '';
+  const conflictMark = row.macro_conflict === true
+    ? ' <span class="mc-conflict" title="MacroNet disagrees with technical direction (price vs 50-day average)">&#9888;</span>' : '';
+  parts.push(`<span class="actpop-macro-stack">
+    <span class="actpop-pill ${mcls}"><span class="pl">Macro</span>${escapeHtml(mv || 'HOLD')}${conflictMark}</span>
+    ${_actpopMacroBarsHtml(row)}
+  </span>`);
+  return parts.join('');
+}
+
+// Tradability icon — always shown (per-card, not just buy rows) but greyed
+// out/disabled when not applicable, since the score itself is buy-only
+// (_buyTradabilityScore / _TRADABILITY_BADGE_MIN gate the same way).
+function _actpopTradIconHtml(side) {
+  if (side === 'buy') return `<span class="actpop-trad-icon" title="Tradability read below">&#127919;</span>`;
+  return `<span class="actpop-trad-icon disabled" title="No tradability read — that score is buy-only">&#127919;</span>`;
+}
+
+// RR position bar — same _rawRrPos formula as the grid's RR column tick
+// (unclamped, so an above-TRR/below-LRR row still shows its real % — the
+// grid's own .rr-rb only shows the clamped tick; this popup wants the number).
+function _actpopRrBarHtml(row) {
+  const rawPos = _rawRrPos(row);
+  if (rawPos == null) return '';
+  const lrr = row.lrr != null ? Number(row.lrr) : null;
+  const trr = row.trr != null ? Number(row.trr) : null;
+  const clamped = Math.max(0, Math.min(100, rawPos));
+  const tagBg = rawPos > 100 ? 'var(--act-sell-strong-bg)' : rawPos < 0 ? 'var(--act-buy-bg)' : '#f1f5f9';
+  const tagColor = rawPos > 100 ? 'var(--act-sell-strong)' : rawPos < 0 ? 'var(--act-buy-strong)' : '#475569';
+  return `<div class="actpop-rr">
+    <div class="actpop-rr-track">
+      <div class="actpop-rr-tag" style="left:${clamped}%;background:${tagBg};color:${tagColor};">${Math.round(rawPos)}%</div>
+      <div class="actpop-rr-fill" style="width:${clamped}%;"></div>
+      <div class="actpop-rr-tick" style="left:${clamped}%;"></div>
+    </div>
+    <div class="actpop-rr-labels"><span>LRR ${lrr != null ? lrr.toFixed(2) : '&mdash;'}</span>`
+    + `<span class="num">${row.last_price != null ? fmtUsd(row.last_price) : ''}</span>`
+    + `<span>TRR ${trr != null ? trr.toFixed(2) : '&mdash;'}</span></div>
+  </div>`;
+}
+
+// Tier 1 — "Driven by": one bullet per source_actions entry + Technical,
+// winning source first ("drove it"), Technical tagged agrees/conflicts vs
+// the row's own side, each with a real historical hit-rate pill from
+// state.sourceScorecard (same v_source_edge_scorecard data / thresholds as
+// the Trade Mode hit-rate badge — TASK_123).
+function _actpopDriverBullets(row, side) {
+  const sc = state.sourceScorecard || {};
+  // reason/dt are escaped separately and joined with a literal HTML entity
+  // AFTER escaping -- escaping the already-built "reason &middot; snapshot
+  // X" string as one unit would double-escape that entity into &amp;middot;.
+  const bulletFor = (label, actUpper, reason, dt, tag) => {
+    const d = actionDisplay(actUpper);
+    const cls = d.side === 'buy' ? 'buy' : d.side === 'sell' ? 'sell' : '';
+    const srcSc = sc[(label || '').toUpperCase()];
+    let hit = '';
+    if (srcSc && srcSc.win_rate_20d != null && srcSc.n >= 5) {
+      const wr = Math.round(srcSc.win_rate_20d * 100);
+      const hcls = wr < 45 ? 'hit-rate-pill-low' : wr > 55 ? 'hit-rate-pill-high' : 'hit-rate-pill-mid';
+      hit = `<span class="actpop-hit hit-rate-pill ${hcls}" title="${escapeHtml(label)} hit rate: ${wr}% (n=${srcSc.n})">${wr}%</span>`;
+    }
+    const actionLabel = d.label || actUpper || '—'; // literal em dash, not an entity -- see note above
+    const noteHtml = escapeHtml(reason || '') + (dt ? ` &middot; snapshot ${escapeHtml(dt)}` : '');
+    return `<div class="actpop-driver ${cls}">
+      <span class="dv-name">${escapeHtml(label)}</span>${hit}
+      <span class="dv-action ${cls}">${escapeHtml(actionLabel)}</span>
+      <span class="dv-note">${noteHtml}</span>
+      ${tag ? `<span class="dv-tag">${escapeHtml(tag)}</span>` : ''}
+    </div>`;
+  };
+
+  const rows = [];
+  const sources = _sourcesOf(row);
+  const winning = (row.winning_source || '').toString();
+  const winEntry = sources.find(s => (s.source || s.source_code || '') === winning);
+  if (winEntry) {
+    const code = winEntry.source || winEntry.source_code || winning;
+    rows.push(bulletFor(code, winEntry.action, winEntry.reason, fmtMD(winEntry.snapshot_date), 'drove it'));
+  }
+  const rraUpper = (row.rr_action || '').toUpperCase();
+  if (rraUpper) {
+    const techSide = actionDisplay(rraUpper).side;
+    const tag = winEntry ? (techSide === side ? 'agrees' : (techSide && side ? 'conflicts' : ''))
+                          : 'drove it'; // no source row at all -- Technical is the only driver
+    const desc = row.rr_desc || row.tn_td_desc || row.bb_desc || '';
+    rows.push(bulletFor('Technical', rraUpper, desc, null, tag));
+  }
+  const others = sources.filter(s => (s.source || s.source_code || '') !== winning);
+  others.sort((a, b) => (ACTION_RANK[(b.action || '').toUpperCase()] || 0) - (ACTION_RANK[(a.action || '').toUpperCase()] || 0));
+  for (const s of others) {
+    const code = s.source || s.source_code || '?';
+    rows.push(bulletFor(code, s.action, s.reason, fmtMD(s.snapshot_date)));
+  }
+  return rows.length ? `<div class="actpop-drivers">${rows.join('')}</div>` : '';
+}
+
+// Fired composite rules, partitioned by whether their proven direction
+// (state.scorecard / _ruleSide) agrees with the row's own side -- reuses the
+// exact same edge/confidence data and color convention as firesCellHtml's
+// grid pills, just grouped into supporting vs opposing instead of one list.
+function _actpopRulePillsHtml(row, side) {
+  let fires = row.rules_engine_fires;
+  if (typeof fires === 'string') { try { fires = JSON.parse(fires); } catch (_) { fires = []; } }
+  if (!Array.isArray(fires) || !fires.length) return { support: '', oppose: '' };
+  const sc = state.scorecard || {};
+  const supportPills = [], opposePills = [];
+  for (const f of fires) {
+    const id = String(f.rule_id || f.id || f);
+    const s = sc[id];
+    const ruleSide = _ruleSide(id);
+    if (ruleSide !== 'buy' && ruleSide !== 'sell') continue;
+    const bucket = ruleSide === side ? supportPills : opposePills;
+    const cls = ruleSide === 'buy' ? 'buy' : 'sell';
+    const conf = (s && s.confidence) || 'unproven';
+    const e = (s && s.edge_20d != null) ? Number(s.edge_20d) : null;
+    if (conf === 'unproven' || e == null) {
+      const n = s && (s.n_fires != null ? s.n_fires : s.fires);
+      bucket.push(`<span class="rule-edge-badge act-badge-sm rule-${cls} rule-weak" style="opacity:.55;" `
+        + `title="Unproven${n != null ? ' (n=' + n + ')' : ''} — too few fires or CI straddles 0">${escapeHtml(id)}</span>`);
+    } else {
+      const strong = conf === 'proven' ? 'rule-strong' : 'rule-weak';
+      bucket.push(`<span class="rule-edge-badge act-badge-sm rule-${cls} ${strong}" title="${conf}: 20d edge, diagnostic">`
+        + `${escapeHtml(id)} ${e >= 0 ? '+' : ''}${e.toFixed(1)}%</span>`);
+    }
+  }
+  return {
+    support: supportPills.length ? `<div class="actpop-tug-sub">Rules</div><div class="actpop-rule-pills">${supportPills.join('')}</div>` : '',
+    oppose: opposePills.length ? `<div class="actpop-tug-sub">Rules</div><div class="actpop-rule-pills">${opposePills.join('')}</div>` : '',
+  };
+}
+
+// Tier 2 — Opposing/Supporting: reuses _signalReasons(row, side) (the same
+// direction-aware RSI/MACD/RVOL classification the original popup's
+// "Signals" checklist row already used) for Signals, filtered to drop its
+// "Rule ... fired" text entries since those get their own pills below
+// instead, from _actpopRulePillsHtml.
+function _actpopTugHtml(row, side) {
+  if (side !== 'buy' && side !== 'sell') return '';
+  const sig = _signalReasons(row, side);
+  const isRuleText = s => /^Rule \S+ fired|^Sell rule \S+/.test(s);
+  const supportSignals = sig.buy.filter(s => !isRuleText(s));
+  const opposeSignals = sig.warn.filter(s => !isRuleText(s));
+  const rulePills = _actpopRulePillsHtml(row, side);
+
+  const oppItems = opposeSignals.map(s => `<div class="actpop-tug-item">${escapeHtml(s)}</div>`).join('');
+  const supItems = supportSignals.map(s => `<div class="actpop-tug-item">${escapeHtml(s)}</div>`).join('');
+  if (!oppItems && !supItems && !rulePills.oppose && !rulePills.support) return '';
+
+  const oppBody = (oppItems || rulePills.oppose)
+    ? `${oppItems ? `<div class="actpop-tug-sub">Signals</div>${oppItems}` : ''}${rulePills.oppose}`
+    : `<div class="actpop-tug-item" style="color:#94a3b8;">none</div>`;
+  const supBody = (supItems || rulePills.support)
+    ? `${supItems ? `<div class="actpop-tug-sub">Signals</div>${supItems}` : ''}${rulePills.support}`
+    : `<div class="actpop-tug-item" style="color:#94a3b8;">none</div>`;
+
+  return `<div class="actpop-tug">
+    <div class="actpop-tug-col oppose"><div class="actpop-tug-h">Opposing</div>${oppBody}</div>
+    <div class="actpop-tug-col support"><div class="actpop-tug-h">Supporting</div>${supBody}</div>
+  </div>`;
+}
+
+// Bottom "no read" line — factors that don't clear a real lean threshold,
+// so they stay out of the Opposing/Supporting pills rather than padding them
+// with noise (RSI's own overbought/oversold band, IV's Mid/Low bucket which
+// the factor scorecard shows near-50/50, PVV/CALC model when unset).
+function _actpopNeutralLine(row) {
+  const bits = [];
+  const mv = row.macro_value;
+  if (!mv || mv === 'HOLD') {
+    const confPct = row.macro_conf != null ? Math.round(row.macro_conf * 100) + '%' : null;
+    bits.push('MACRO' + (confPct ? ` (Hold, ${confPct})` : ''));
+  }
+  if (row.rsi != null) {
+    const rv = Number(row.rsi);
+    const hi = state.rsiOverbought != null ? state.rsiOverbought : 70;
+    const lo = state.rsiOversold != null ? state.rsiOversold : 30;
+    if (rv > lo && rv < hi) bits.push('RSI ' + Math.round(rv));
+  }
+  if (row.iv_percentile != null) {
+    const bucket = _ivBucket(row.iv_percentile);
+    if (bucket === 'Mid (30-70)' || bucket === 'Low (<=30)') bits.push('IV ' + Math.round(row.iv_percentile) + 'pt');
+  }
+  const pvvD = row.pvv_decision;
+  if (!pvvD || pvvD === 'NO_ACTION' || pvvD === 'WATCH') bits.push('PVV');
+  if (row.final_side_cal == null) bits.push('CALC model');
+  if (!bits.length) return '';
+  return `<div class="actpop-neutral">no read: ${bits.join(' &middot; ')} &mdash; none extreme enough to lean either way</div>`;
+}
+
+// Tradability box — buy-only (same gate as the SYMBOL cell's 🎯 badge),
+// reusing _tradabilityBreakdown's already-computed, already-colored items
+// verbatim rather than re-deriving RSI/IV/RVOL thresholds a second time.
+function _actpopTradabilityHtml(row, side) {
+  if (side !== 'buy') return '';
+  const score = _buyTradabilityScore(row);
+  const scoreColor = score >= 16 ? 'var(--act-buy-strong)' : score >= _TRADABILITY_BADGE_MIN ? '#d97706' : '#94a3b8';
+  const items = _tradabilityBreakdown(row).map(it =>
+    `<div class="actpop-trad-item"><b style="color:${it.color};">${escapeHtml(it.label)}</b>: `
+    + `<span style="color:#374151;">${escapeHtml(it.detail)}</span></div>`).join('');
+  return `<div class="actpop-trad">
+    <div class="actpop-trad-h"><span>Tradability</span><span style="color:${scoreColor};font-size:12px;">${score.toFixed(1)}</span></div>
+    ${items}
+  </div>`;
+}
+
+function _buildActionPopHtmlV2(row) {
+  const fc = finalCall(row);
+  const sym = row.tos_symbol || '—';
+  const side = fc.side;
+  const callCls = side === 'buy' ? 'buy' : side === 'sell' ? 'sell' : 'neutral';
+  const amtTxt = row.held_today && row.current_position_dollar != null
+    ? _actpopFmtAmt(row.current_position_dollar) : 'not held (yet)';
+  const ed = row.earnings_days;
+  const hasEd = ed != null && Number(ed) >= 0 && Number(ed) < 900;
+  const edTxt = hasEd ? ` &middot; e ${Math.round(Number(ed))}d` : '';
+
+  let h = `<div class="actpop">`;
+  h += `<div class="actpop-head">
+    <div class="actpop-sym">${escapeHtml(sym)}<span class="actpop-co">${escapeHtml(amtTxt)}${edTxt}</span></div>
+    <div class="actpop-badges">${_actpopHeaderPillsHtml(row)}${_actpopTradIconHtml(side)}`
+    + `<span class="actpop-call ${callCls}">${escapeHtml(fc.label || actionText(fc) || '—')}</span></div>
+  </div>`;
+
+  h += _actpopRrBarHtml(row);
+
+  if (row.stop_breached) {
+    h += `<div class="actpop-neutral" style="color:#b91c1c;font-weight:700;">&#9888; Stop breached &mdash; `
+       + `${escapeHtml(row.stop_signal || 'trade line broke down')}</div>`;
+  }
+
+  h += _actpopDriverBullets(row, side);
+  h += _actpopTradabilityHtml(row, side);
+  h += _actpopTugHtml(row, side);
+  h += _actpopNeutralLine(row);
+
+  const details = [];
+  if (row.rvol != null) details.push(`RVOL ${Number(row.rvol).toFixed(2)}&times;`);
+  if (hasEd) details.push(`earnings ${Math.round(Number(ed))}d out`);
+  if (!row.held_today && row.suggested_target_dollar != null) details.push(`target ${_actpopFmtAmt(row.suggested_target_dollar)}`);
+  if (details.length) h += `<div class="actpop-details">${details.join(' &middot; ')}</div>`;
+
+  h += `</div>`;
   return h;
 }
 
