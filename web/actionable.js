@@ -1281,10 +1281,7 @@ function _legendHtml() {
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Chips</div>
       <div style="color:#475569;">REMOVE / OVER_MAX / REDUCE / INCREASE / ADD / HOLD / NONE group rows by
         consolidated_action; click a chip to filter, click ALL to clear.</div>
-      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Confidence badges (Final Call)</div>
-      ${row('High', 'Sources and Technical agree')}
-      ${row('Gate', 'Deterministic gate — Technical not evaluated (e.g. exit signal, at Max, not held, stop breach). Hover the Gate badge on any row for the specific reason.')}
-      ${row('Mixed', 'Sources and Technical conflict — cross-check the Rules column')}
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Confidence flag</div>
       ${row('Low', 'LOW CONF — the only sell evidence is a rule with a demonstrated negative historical edge (v_unproven_sell_rules); consolidated_action is unchanged, this is a confidence flag')}
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">STOP pill / chip</div>
       <div style="color:#475569;">A held position that just crossed below its Trade line ("TD STM") or its Trend
@@ -3210,19 +3207,14 @@ function _finalCallHtml(row) {
   // a "LOW CONF — Sell evidence..." badge that doesn't even apply to it).
   var isLowConf = !!row.low_confidence && fc.side === 'sell';
   // Badge
-  var badgeHtml;
-  if (isLowConf) {
-    // LOW CONF sub-line below already says this — no need to also duplicate
-    // it in the confidence-tier badge slot.
-    badgeHtml = '';
-  } else if (fc.confidence === 'high') {
-    badgeHtml = '<span style="font-size:9px;color:#16a34a;" title="Sources and Technical align">High</span>';
-  } else if (fc.confidence === 'gate') {
-    var gateTitle = fc.gateReason || 'Deterministic gate — Technical not evaluated';
-    badgeHtml = '<span style="font-size:9px;color:#64748b;" title="' + escapeHtml(gateTitle) + '">Gate</span>';
-  } else {
-    badgeHtml = '<span style="font-size:9px;color:#f97316;" title="Sources and Technical conflict — cross-check the Rules column">Mixed</span>';
-  }
+  // 2026-08-20: confidence badge (High/Gate/Mixed) removed from display —
+  // user: it's after-the-fact from the Final Call decision itself
+  // (_compute_final_call), not new information on top of it. fc.confidence
+  // still drives the underlying decision logic (untouched); fc.gateReason /
+  // _highMixedReasonFor() are no longer read by anything but left in place
+  // (cheap, still correct) in case a future feature wants them again.
+  // LT-conflict and PVV icons below still use this badge slot.
+  var badgeHtml = '';
   // Color via actions.js token (act-*-fill gives solid fill + white text, matching Portfolio Action column)
   var fcDisp = actionDisplay(fc.code || (fc.side === 'sell' ? 'SA' : fc.side === 'buy' ? 'BS' : 'HOLD'));
   // low_confidence rows render muted/outline (-tint) instead of the solid -fill
@@ -4660,28 +4652,11 @@ function _buildActionPopHtml(row) {
        + ` <span style="color:#64748b;">(${escapeHtml(why)}${caution})</span></div>`;
   }
 
-  const confLabel = fc.confidence === 'high' ? 'High' : fc.confidence === 'gate' ? 'Gate'
-    : fc.confidence === 'none' ? 'No recommendation' : 'Mixed';
-  // Crisp, per-scenario reasoning for all four tiers -- Gate already had
-  // this (_gateReasonFor); High/Mixed now share the same treatment via
-  // _highMixedReasonFor (both walk _compute_final_call's exact branch
-  // order), falling back to a generic line only if neither matches.
-  const confReason = fc.confidence === 'gate' ? (fc.gateReason || 'Deterministic gate — Technical not evaluated')
-    : fc.confidence === 'high' ? (_highMixedReasonFor(row) || 'Sources and Technical align')
-    : fc.confidence === 'none' ? 'Not feasible (nothing to act on)'
-    : (_highMixedReasonFor(row) || 'Sources and Technical conflict');
-  // Header + value on one line (bold header, bold value -- matching Sources/
-  // Technical below), reason text indented on its own line underneath
-  // rather than crammed onto the header line -- user: "make sure second
-  // line leave margin in the front so it's not aligned to the confidence
-  // header," and "check the bold ... header text and action, not matching."
-  // Same color-by-value treatment as the checklist/Tradability labels:
-  // High -> side color, Mixed -> amber (active disagreement), Gate/None ->
-  // neutral gray (a deterministic branch or nothing to evaluate, not
-  // really a "confidence" read either way).
-  const confColor = fc.confidence === 'high' ? color : fc.confidence === 'mixed' ? '#b45309' : '#94a3b8';
-  h += `<div style="font-size:10px;margin:2px 0 0;">Confidence : <b style="color:${confColor};">${escapeHtml(confLabel)}</b></div>`
-     + `<div style="font-size:10px;color:#64748b;margin:0 0 4px 4px;">${escapeHtml(confReason)}</div>`;
+  // 2026-08-20: "Confidence : High/Gate/Mixed" line removed from display —
+  // user: it's after-the-fact from the Final Call decision itself
+  // (_compute_final_call), not new information on top of it. fc.confidence
+  // still exists and drives the underlying decision logic, just not shown
+  // as its own line here anymore.
 
   // Fresh-signal note (same condition as the SYMBOL cell's NEW pill) --
   // informational, not a risk flag: Technical hasn't had a chance to
