@@ -4754,25 +4754,35 @@ function _actpopMacroBarsHtml(r) {
   return `<div class="actpop-mgroup">${sparkRow}${memberRow}</div>`;
 }
 
-// Header: [Src] [Tech] pills. Src/Tech reuse actionDisplay's canonical short
-// code (same BuySell vocab the grid's own badges show) so they read
-// consistently with the rest of the app, not a bespoke abbreviation. Macro
-// (pill + bar charts) moved out of the header onto the RR bar line — see
-// _actpopMacroStackHtml, called from _buildActionPopHtmlV2 alongside
-// _actpopRrBarHtml.
+// Header: Source / Tech, always shown (disabled/dashed when no data) as a
+// two-line block — label on top, value pill below:
+//   [Source] [Tech]
+//     SA       SA
+// Src/Tech reuse actionDisplay's canonical short code (same BuySell vocab
+// the grid's own badges show) so they read consistently with the rest of
+// the app, not a bespoke abbreviation. Macro (pill + bar charts) and the
+// tradability icon sit on the RR bar line instead — see
+// _actpopMacroStackHtml / _actpopTradIconHtml, called from
+// _buildActionPopHtmlV2 alongside _actpopRrBarHtml.
 function _actpopHeaderPillsHtml(row) {
-  const parts = [];
-  if (row.consolidated_action) {
-    const d = actionDisplay(row.consolidated_action);
-    const cls = d.side === 'buy' ? 'buy' : d.side === 'sell' ? 'sell' : '';
-    parts.push(`<span class="actpop-pill ${cls}"><span class="pl">Src</span>${escapeHtml(d.code || row.consolidated_action)}</span>`);
-  }
-  if (row.rr_action) {
-    const d = actionDisplay(row.rr_action);
-    const cls = d.side === 'buy' ? 'buy' : d.side === 'sell' ? 'sell' : '';
-    parts.push(`<span class="actpop-pill ${cls}"><span class="pl">Tech</span>${escapeHtml(d.code || row.rr_action)}</span>`);
-  }
-  return parts.join('');
+  const src = row.consolidated_action ? actionDisplay(row.consolidated_action) : null;
+  const srcCls = src ? (src.side === 'buy' ? 'buy' : src.side === 'sell' ? 'sell' : '') : 'disabled';
+  const srcTxt = src ? (src.code || row.consolidated_action) : '—';
+
+  const tech = row.rr_action ? actionDisplay(row.rr_action) : null;
+  const techCls = tech ? (tech.side === 'buy' ? 'buy' : tech.side === 'sell' ? 'sell' : '') : 'disabled';
+  const techTxt = tech ? (tech.code || row.rr_action) : '—';
+
+  return `<div class="actpop-st">
+    <div class="actpop-st-col">
+      <div class="actpop-st-label">Source</div>
+      <span class="actpop-pill ${srcCls}">${escapeHtml(srcTxt)}</span>
+    </div>
+    <div class="actpop-st-col">
+      <div class="actpop-st-label">Tech</div>
+      <span class="actpop-pill ${techCls}">${escapeHtml(techTxt)}</span>
+    </div>
+  </div>`;
 }
 
 // Macro pill + bar charts — sits on the RR bar line (_buildActionPopHtmlV2),
@@ -4998,11 +5008,12 @@ function _buildActionPopHtmlV2(row) {
   let h = `<div class="actpop">`;
   h += `<div class="actpop-head">
     <div class="actpop-sym">${escapeHtml(sym)}<span class="actpop-co">${escapeHtml(amtTxt)}${edTxt}</span></div>
-    <div class="actpop-badges">${_actpopHeaderPillsHtml(row)}${_actpopTradIconHtml(side)}`
+    <div class="actpop-badges">${_actpopHeaderPillsHtml(row)}`
     + `<span class="actpop-call ${callCls}">${escapeHtml(fc.label || actionText(fc) || '—')}</span></div>
   </div>`;
 
-  h += `<div class="actpop-rr-row">${_actpopRrBarHtml(row)}${_actpopMacroStackHtml(row)}</div>`;
+  h += `<div class="actpop-rr-row">${_actpopRrBarHtml(row)}`
+    + `<div class="actpop-rr-right">${_actpopTradIconHtml(side)}${_actpopMacroStackHtml(row)}</div></div>`;
 
   if (row.stop_breached) {
     h += `<div class="actpop-neutral" style="color:#b91c1c;font-weight:700;">&#9888; Stop breached &mdash; `
