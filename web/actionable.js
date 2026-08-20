@@ -160,14 +160,17 @@ function _macroConflictMark(r) {
   // were ever actually being applied. Switched to an inline SVG bolt with
   // fill="currentColor" instead, so `color:` on the wrapping span actually
   // controls it.
-  // Bright yellow (#facc15) rather than #f59e0b (the data-completeness "!"
-  // mark's amber) so the two don't read as the same warning. Pure yellow
-  // washes out on a plain white cell, so the path gets a thin black stroke
-  // for definition against any background (white cell, green/red badge tint).
-  return `<span style="display:inline-block;vertical-align:middle;margin-left:2px;color:#facc15;" `
+  // Bright magenta (#ec4899) -- reads clearly against both the muted green
+  // BUY tint and muted red/brown SELL tint without being confused with
+  // either side's own color, or with #f59e0b (the data-completeness "!"
+  // mark's amber). Plain fill, no stroke, original bolt shape -- stretched
+  // vertically vs. the 24x24 viewBox (width held at 11, height 11->15,
+  // preserveAspectRatio="none") per user's picks off the Artifact
+  // color-comparison preview, 2026-08-20.
+  return `<span style="display:inline-block;vertical-align:middle;margin-left:2px;color:#ec4899;" `
     + `title="CONFLICT: MacroNet score disagrees with technical direction (price vs 50-day average). Hover the badge for detail.">`
-    + `<svg width="11" height="11" viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle;">`
-    + `<path fill="currentColor" stroke="#000" stroke-width="1.5" stroke-linejoin="round" d="M13 2 3 14h7v8l10-12h-7z"/></svg></span>`;
+    + `<svg width="11" height="15" viewBox="0 0 24 24" preserveAspectRatio="none" style="display:inline-block;vertical-align:middle;">`
+    + `<path fill="currentColor" d="M13 2 3 14h7v8l10-12h-7z"/></svg></span>`;
 }
 
 // Sector/asset-class/style dots (2026-08-01) — one small bar per membership
