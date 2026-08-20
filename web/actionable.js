@@ -3045,7 +3045,13 @@ function _signalReasons(row, side) {
   // of buys instead of adding a concrete rule?"
   // Meaningless once the row's own Final Call is a sell (nothing to swap
   // them into that makes sense), so skip entirely on sell-side rows.
-  if (!isSell && row.warn_not_at_lrr) {
+  // 2026-08-20: was row.warn_not_at_lrr (server-side low_lrr atomic rule !=
+  // 3, i.e. "not exactly at the LRR tier") relabeled to "price at TRR"
+  // without actually checking TRR -- wired up a real calculation instead,
+  // mirroring _tradabilityBreakdown's own "near LRR" convention (rawPos <=
+  // 15) symmetrically at the other end of the range (rawPos >= 85).
+  const _rrPosForWarn = !isSell ? _rawRrPos(row) : null;
+  if (_rrPosForWarn != null && _rrPosForWarn >= 85) {
     warn.push('Caution: price at TRR');
   }
   if (!isSell && row.warn_added_this_leg) {
