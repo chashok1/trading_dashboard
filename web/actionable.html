@@ -211,14 +211,17 @@
        clean right now (near LRR + supporting RSI/IV/RVOL history), per
        _buyTradabilityScore in actionable.js. Hover for the rich colored
        popover (data-tradabilitypop, same #sourcePop mechanism as Vol/IV/
-       Macro/PVV/Signal). Below _TRADABILITY_BADGE_MIN the 🎯 icon is
-       replaced by the raw numeric score instead of showing nothing, so
-       every BUY row stays visible/comparable at a glance. */
+       Macro/PVV/Signal). Below _TRADABILITY_BADGE_MIN the icon is replaced
+       by the raw numeric score instead of showing nothing, so every BUY row
+       stays visible/comparable at a glance. 2026-08-20: color:#4338ca added
+       so the shared SVG icon (_tradabilityIconSvg, currentColor) matches
+       the same indigo .actpop-trad-icon uses in the Action popup. */
     .tradability-badge {
       display: inline-block;
       font-size: 11px;
       cursor: help;
       vertical-align: middle;
+      color: #4338ca;
     }
     .tradability-badge-num {
       font-size: 9px;

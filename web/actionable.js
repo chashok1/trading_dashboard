@@ -3738,7 +3738,10 @@ function _tradabilityBadge(row) {
   const score = _buyTradabilityScore(row);
   const meetsMin = score >= _TRADABILITY_BADGE_MIN;
   const cls = 'tradability-badge' + (meetsMin ? '' : ' tradability-badge-num');
-  const content = meetsMin ? '\u{1F3AF}' : score.toFixed(1);
+  // 2026-08-20: was the 🎯 CHARACTER (a color emoji, see _tradabilityIconSvg's
+  // header comment) -- same inline SVG the Action popup uses now, so the
+  // grid and the popup show the identical icon for the identical score.
+  const content = meetsMin ? _tradabilityIconSvg(12) : score.toFixed(1);
   // title="" (empty, not omitted) suppresses the SYMBOL cell's own
   // ancestor title="...Click for chart" from bleeding through on hover —
   // without it the browser shows that native tooltip layered on top of
@@ -4900,6 +4903,22 @@ function _actpopPvvActionHtml(row) {
   return `<span class="actpop-lv"><span class="actpop-lbl">PVV</span><span class="actpop-val ${cls}">${escapeHtml(txt)}</span></span>`;
 }
 
+// Shared target/bullseye icon (2026-08-20) -- inline SVG, fill/stroke=
+// currentColor so it actually responds to CSS `color`/.disabled, unlike
+// the 🎯 CHARACTER it replaced (a COLOR emoji on Windows/Mac, fill baked
+// into the font, ignores CSS `color` entirely -- same bug class as the
+// MACRO conflict icon, see _macroConflictMark). Used by both the Action
+// popup's Tradability icon (_actpopTradIconHtml) and the grid SYMBOL
+// column's badge (_tradabilityBadge) so they're the same icon, not two
+// different ones for the same score.
+function _tradabilityIconSvg(size) {
+  const s = size || 12;
+  return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle;">`
+    + `<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2.5"/>`
+    + `<circle cx="12" cy="12" r="5.5" fill="none" stroke="currentColor" stroke-width="2.5"/>`
+    + `<circle cx="12" cy="12" r="1.8" fill="currentColor"/></svg>`;
+}
+
 // Tradability icon — always shown, score always computed regardless of
 // side (2026-08-20: was buy-only/disabled-greyed on sell rows; the score
 // itself is still buy-calibrated under the hood, see _buyTradabilityScore's
@@ -4911,21 +4930,13 @@ function _actpopTradIconHtml(row) {
   const score = _buyTradabilityScore(row);
   const meetsMin = score >= _TRADABILITY_BADGE_MIN;
   const scoreColor = score >= 16 ? 'var(--act-buy-strong)' : meetsMin ? '#d97706' : '#94a3b8';
-  // 2026-08-20: icon itself now goes into .disabled styling (grey, same
-  // treatment as a non-buy row before today's always-show change) whenever
-  // the score doesn't clear _TRADABILITY_BADGE_MIN -- previously stayed
-  // "active"-looking even on a low/negative score, same visual weight as a
-  // genuinely tradable setup. Was the 🎯 CHARACTER -- same bug as the MACRO
-  // conflict icon (_macroConflictMark): a COLOR emoji on Windows/Mac, its
-  // fill baked into the font, ignores CSS `color` entirely, so
-  // .disabled's grey never actually showed on the glyph itself, only the
-  // faint background box. Inline SVG target/bullseye instead
-  // (fill/stroke=currentColor) so .disabled's color genuinely applies.
+  // icon itself goes into .disabled styling (grey, same treatment as a
+  // non-buy row before the always-show change) whenever the score doesn't
+  // clear _TRADABILITY_BADGE_MIN -- previously stayed "active"-looking
+  // even on a low/negative score, same visual weight as a genuinely
+  // tradable setup.
   const icon = `<span class="actpop-trad-icon${meetsMin ? '' : ' disabled'}" title="Tradability read below">`
-    + `<svg width="12" height="12" viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle;">`
-    + `<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2.5"/>`
-    + `<circle cx="12" cy="12" r="5.5" fill="none" stroke="currentColor" stroke-width="2.5"/>`
-    + `<circle cx="12" cy="12" r="1.8" fill="currentColor"/></svg></span>`;
+    + _tradabilityIconSvg(12) + `</span>`;
   const scoreLine = `<div class="actpop-trad-score" style="color:${scoreColor};" title="Tradability score">${score.toFixed(1)}</div>`;
   return `<span class="actpop-trad-col">${icon}${scoreLine}</span>`;
 }
