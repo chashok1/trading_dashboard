@@ -4263,10 +4263,10 @@ function initSourcePopover() {
     const actionEl = e.target.closest('[data-actionpop]');
     if (actionEl) {
       const r = state.rows.find(x => x.tos_symbol === actionEl.dataset.actionpop);
-      // V2 redesign (driver-first layout, see _buildActionPopHtmlV2) behind a
-      // temporary compare toggle: `localStorage.setItem('actionPopV2','1')`
-      // in the browser console to try it, remove the key to go back. Drop
-      // this branch once V2 replaces the original outright.
+      // V2 redesign (driver-first layout, see _buildActionPopHtmlV2) is now
+      // the default. Rollback escape hatch: `localStorage.setItem('actionPopV2','0')`
+      // in the browser console. Drop this branch + _buildActionPopHtml once
+      // V2 is validated in the field.
       if (r) _showDataPop(actionEl, _actionPopV2Enabled() ? _buildActionPopHtmlV2(r) : _buildActionPopHtml(r));
       return;
     }
@@ -4686,7 +4686,11 @@ function _buildActionPopHtml(row) {
 // ==========================================================================
 
 function _actionPopV2Enabled() {
-  try { return localStorage.getItem('actionPopV2') === '1'; } catch (_) { return false; }
+  // V2 is the default as of 2026-08-20. Old layout (_buildActionPopHtml) is
+  // kept only as a rollback escape hatch (localStorage.actionPopV2='0') until
+  // V2 is validated in the field, at which point delete _buildActionPopHtml,
+  // this function, and the ternary at the [data-actionpop] handler above.
+  try { return localStorage.getItem('actionPopV2') !== '0'; } catch (_) { return true; }
 }
 
 // "$7,356" -> "$7k" (>=1000, rounded to nearest thousand); untouched below 1000.

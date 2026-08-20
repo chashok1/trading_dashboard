@@ -341,11 +341,11 @@
     .source-pop .sp-sec { color: #94a3b8; font-size: 9px;
                           text-transform: uppercase; letter-spacing: 0.5px; padding-top: 5px; }
 
-    /* Action popup V2 — driver-first redesign of _buildActionPopHtml, behind
-       a temporary toggle (localStorage.actionPopV2='1') while it's compared
-       against the original. See _buildActionPopHtmlV2 in actionable.js.
-       Reuses .source-pop's box (#sourcePop) and the app's real --act-* color
-       tokens (styles.css :root) rather than inventing a new palette. */
+    /* Action popup V2 — driver-first redesign of _buildActionPopHtml, now the
+       default (rollback escape hatch: localStorage.actionPopV2='0'). See
+       _buildActionPopHtmlV2 in actionable.js. Reuses .source-pop's box
+       (#sourcePop) and the app's real --act-* color tokens (styles.css
+       :root) rather than inventing a new palette. */
     .actpop { width: 400px; }
     .actpop-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px;
       margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
