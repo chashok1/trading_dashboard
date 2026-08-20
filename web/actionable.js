@@ -4910,14 +4910,32 @@ function _actpopCalcPillHtml(row) {
   return `<span class="actpop-lv"><span class="actpop-lbl">CALC</span><span class="actpop-val${has ? '' : ' disabled'}"${has ? ` style="color:${color};"` : ''}>${escapeHtml(txt)}</span></span>`;
 }
 
-// Header: Source / Tech / VLM / CALC, always shown (disabled/dashed when no
-// data), single line, label as its own small pill + plain colored value
-// next to it: "[Src] SA  [Tech] SA  [VLM] Accum  [CALC] 68%". Src/Tech
-// reuse actionDisplay's canonical short code (same BuySell vocab the
-// grid's own badges show) so they read consistently with the rest of the
-// app, not a bespoke abbreviation. Macro (pill + bar charts) and the
-// tradability icon sit on the RR bar line instead — see
-// _actpopMacroStackHtml / _actpopTradIconHtml, called from
+// Sector (2026-08-20) -- was only ever shown conditionally, as a caution
+// line in Opposing/Supporting when it underperforms (see _signalReasons).
+// Always-visible pill here so the sector itself is readable regardless of
+// whether it crosses that threshold -- green/red only when there's a real,
+// gated sample (_factorWinRateDeltaGated, n_symbols>=5) behind it; plain
+// grey text (no color claim) when the sample's too thin or missing, same
+// as every other "not enough history" case in this popup.
+function _actpopSectorPillHtml(row) {
+  const sector = row.sector && row.sector !== 'N/A' ? row.sector : null;
+  const g = sector ? _factorWinRateDeltaGated('Sector', sector) : null;
+  const cls = !sector ? 'disabled' : !g ? '' : g.delta > 3 ? 'buy' : g.delta < -3 ? 'sell' : '';
+  const txt = sector || '—';
+  const title = g
+    ? `${g.delta >= 0 ? '+' : ''}${g.delta.toFixed(1)}pp vs baseline (${g.nSymbols} symbols)`
+    : (sector ? 'Not enough symbols in this sector for a reliable read' : '');
+  return `<span class="actpop-lv"${title ? ` title="${escapeHtml(title)}"` : ''}><span class="actpop-lbl">Sector</span><span class="actpop-val ${cls}">${escapeHtml(txt)}</span></span>`;
+}
+
+// Header: Source / Tech / VLM / CALC / Sector, always shown (disabled/
+// dashed when no data), single line, label as its own small pill + plain
+// colored value next to it: "[Src] SA  [Tech] SA  [VLM] Accum  [CALC] 68%
+// [Sector] Energy". Src/Tech reuse actionDisplay's canonical short code
+// (same BuySell vocab the grid's own badges show) so they read
+// consistently with the rest of the app, not a bespoke abbreviation. Macro
+// (pill + bar charts) and the tradability icon sit on the RR bar line
+// instead — see _actpopMacroStackHtml / _actpopTradIconHtml, called from
 // _buildActionPopHtmlV2 alongside _actpopRrBarHtml.
 function _actpopHeaderPillsHtml(row) {
   const src = row.consolidated_action ? actionDisplay(row.consolidated_action) : null;
@@ -4931,7 +4949,8 @@ function _actpopHeaderPillsHtml(row) {
   return `<span class="actpop-lv"><span class="actpop-lbl">Src</span><span class="actpop-val ${srcCls}">${escapeHtml(srcTxt)}</span></span>`
     + `<span class="actpop-lv"><span class="actpop-lbl">Tech</span><span class="actpop-val ${techCls}">${escapeHtml(techTxt)}</span></span>`
     + _actpopVlmPillHtml(row)
-    + _actpopCalcPillHtml(row);
+    + _actpopCalcPillHtml(row)
+    + _actpopSectorPillHtml(row);
 }
 
 // Macro pill + bar charts — sits on the RR bar line (_buildActionPopHtmlV2),
