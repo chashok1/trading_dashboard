@@ -4755,8 +4755,9 @@ function _actpopMacroBarsHtml(r) {
 }
 
 // Header: Source / Tech, always shown (disabled/dashed when no data),
-// single line: "Src SA  Tech SA". Src/Tech reuse actionDisplay's canonical
-// short code (same BuySell vocab the grid's own badges show) so they read
+// single line, label as its own small pill + plain colored value next to
+// it: "[Src] SA  [Tech] SA". Src/Tech reuse actionDisplay's canonical short
+// code (same BuySell vocab the grid's own badges show) so they read
 // consistently with the rest of the app, not a bespoke abbreviation. Macro
 // (pill + bar charts) and the tradability icon sit on the RR bar line
 // instead — see _actpopMacroStackHtml / _actpopTradIconHtml, called from
@@ -4770,8 +4771,8 @@ function _actpopHeaderPillsHtml(row) {
   const techCls = tech ? (tech.side === 'buy' ? 'buy' : tech.side === 'sell' ? 'sell' : '') : 'disabled';
   const techTxt = tech ? (tech.code || row.rr_action) : '—';
 
-  return `<span class="actpop-pill ${srcCls}"><span class="pl">Src</span>${escapeHtml(srcTxt)}</span>`
-    + `<span class="actpop-pill ${techCls}"><span class="pl">Tech</span>${escapeHtml(techTxt)}</span>`;
+  return `<span class="actpop-lv"><span class="actpop-lbl">Src</span><span class="actpop-val ${srcCls}">${escapeHtml(srcTxt)}</span></span>`
+    + `<span class="actpop-lv"><span class="actpop-lbl">Tech</span><span class="actpop-val ${techCls}">${escapeHtml(techTxt)}</span></span>`;
 }
 
 // Macro pill + bar charts — sits on the RR bar line (_buildActionPopHtmlV2),
