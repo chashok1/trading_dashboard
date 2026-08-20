@@ -346,7 +346,7 @@
        _buildActionPopHtmlV2 in actionable.js. Reuses .source-pop's box
        (#sourcePop) and the app's real --act-* color tokens (styles.css
        :root) rather than inventing a new palette. */
-    .actpop { width: 400px; }
+    .actpop { width: 400px; padding: 6px; }
     .actpop-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px;
       margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
     .actpop-sym { font-size:14px; font-weight:800; color:#0f172a; }
@@ -374,7 +374,7 @@
     .actpop-mbar.sell { background: var(--act-sell-strong); }
     .actpop-mbar.neutral { background:#cbd5e1; }
 
-    .actpop-rr { margin: 8px 0 10px; }
+    .actpop-rr { margin: 16px 0 10px; }
     .actpop-rr-track { position:relative; height:7px; border-radius:4px; background:#e2e8f0; }
     .actpop-rr-fill { position:absolute; left:0; top:0; height:100%; border-radius:4px;
       background:linear-gradient(90deg,var(--act-buy) 0%, #d97706 62%, var(--act-sell-strong) 100%); }
