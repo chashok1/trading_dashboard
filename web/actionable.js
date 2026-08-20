@@ -2601,7 +2601,6 @@ function _srcReasonsHtml(r) {
   const rows = winner.concat(others).map(s => {
     const srcCode = s.source || s.source_code || '?';
     const src    = escapeHtml(_srcAbbr(srcCode));
-    const ic     = actionIcon(s.action);
     const reason = s.reason ? escapeHtml(s.reason) : '';
     const dtRaw  = fmtMD(s.snapshot_date);
     const dt     = dtRaw ? `<span style="font-size:9px;font-weight:400;opacity:0.7;"> (${dtRaw.replace(/^0/, '')})</span>` : '';
@@ -2614,11 +2613,11 @@ function _srcReasonsHtml(r) {
     // the Action popup's driver bullets already use (_actpopDriverBullets),
     // so a row with several source lines shows at a glance which one
     // actually determined the row's action instead of just sorting the
-    // winner first with no visual distinction from the others.
+    // winner first with no visual distinction from the others. Shortened
+    // to just "D" to save space in the compact grid column.
     const droveIt = srcCode === winning
-      ? `<span class="dv-tag" style="margin-left:3px;">drove it</span>` : '';
+      ? `<span class="dv-tag" style="margin-left:3px;" title="Drove the action">D</span>` : '';
     return `<div class="src-reason-line">
-      <span class="src-ic" style="color:${ic.color};">${ic.glyph}</span>
       <span class="src-tag">${src}${dt}${chg}</span>${droveIt}
       <span class="src-rsn">${reason}${dropPct}</span>
     </div>`;
