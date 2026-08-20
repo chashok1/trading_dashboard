@@ -4883,8 +4883,17 @@ function _actpopTradIconHtml(row) {
   // treatment as a non-buy row before today's always-show change) whenever
   // the score doesn't clear _TRADABILITY_BADGE_MIN -- previously stayed
   // "active"-looking even on a low/negative score, same visual weight as a
-  // genuinely tradable setup.
-  const icon = `<span class="actpop-trad-icon${meetsMin ? '' : ' disabled'}" title="Tradability read below">&#127919;</span>`;
+  // genuinely tradable setup. Was the 🎯 CHARACTER -- same bug as the MACRO
+  // conflict icon (_macroConflictMark): a COLOR emoji on Windows/Mac, its
+  // fill baked into the font, ignores CSS `color` entirely, so
+  // .disabled's grey never actually showed on the glyph itself, only the
+  // faint background box. Inline SVG target/bullseye instead
+  // (fill/stroke=currentColor) so .disabled's color genuinely applies.
+  const icon = `<span class="actpop-trad-icon${meetsMin ? '' : ' disabled'}" title="Tradability read below">`
+    + `<svg width="12" height="12" viewBox="0 0 24 24" style="display:inline-block;vertical-align:middle;">`
+    + `<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2.5"/>`
+    + `<circle cx="12" cy="12" r="5.5" fill="none" stroke="currentColor" stroke-width="2.5"/>`
+    + `<circle cx="12" cy="12" r="1.8" fill="currentColor"/></svg></span>`;
   const scoreLine = `<div class="actpop-trad-score" style="color:${scoreColor};" title="Tradability score">${score.toFixed(1)}</div>`;
   return `<span class="actpop-trad-col">${icon}${scoreLine}</span>`;
 }
