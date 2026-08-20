@@ -5180,7 +5180,6 @@ function _buildActionPopHtmlV2(row) {
   }
 
   h += _actpopDriverBullets(row, side);
-  h += _actpopTradabilityHtml(row);
   h += _actpopTugHtml(row, side);
   h += _actpopNeutralLine(row);
 
@@ -5189,6 +5188,11 @@ function _buildActionPopHtmlV2(row) {
   if (hasEd) details.push(`earnings ${Math.round(Number(ed))}d out`);
   if (!row.held_today && row.suggested_target_dollar != null) details.push(`target ${_actpopFmtAmt(row.suggested_target_dollar)}`);
   if (details.length) h += `<div class="actpop-details">${details.join(' &middot; ')}</div>`;
+
+  // Tradability detail box moved to the bottom (2026-08-20) -- was between
+  // driver bullets and Tug; user wanted the score breakdown last, after
+  // everything else.
+  h += _actpopTradabilityHtml(row);
 
   h += `</div>`;
   return h;
