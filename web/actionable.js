@@ -1482,6 +1482,23 @@ function _factorWinRateDelta(factor, bucket) {
   return (Number(r.win_rate) - Number(base.win_rate)) * 100; // fraction -> pp
 }
 
+// 2026-08-20: like _factorWinRateDelta, but also gates on n_symbols (DISTINCT
+// tickers, not row-days) -- found live: v_factor_scorecard's 'Sector'
+// bucket had Gold at n=234 row-days but n_symbols=2, Fixed Income/
+// Commodities/'Health Care' (capital C, a casing dupe of the real 68-ticker
+// 'Health care') each n_symbols=1 -- single tickers' repeated daily history
+// masquerading as a broad sector effect. min_symbols defaults to 5.
+// Returns {delta, n, nSymbols} or null if missing/gated out.
+function _factorWinRateDeltaGated(factor, bucket, minSymbols) {
+  if (!bucket) return null;
+  const r = (state.factorScorecard || {})[factor + '|' + bucket];
+  const base = (state.factorScorecard || {})['Baseline|All stocks'];
+  if (!r || r.win_rate == null || !base || base.win_rate == null) return null;
+  const nSymbols = r.n_symbols != null ? Number(r.n_symbols) : 0;
+  if (nSymbols < (minSymbols != null ? minSymbols : 5)) return null;
+  return { delta: (Number(r.win_rate) - Number(base.win_rate)) * 100, n: r.n, nSymbols };
+}
+
 function _factorEdgeTag(factor, bucket, standalone) {
   const r = (state.factorScorecard || {})[factor + '|' + bucket];
   const base = (state.factorScorecard || {})['Baseline|All stocks'];
@@ -3113,29 +3130,36 @@ function _signalReasons(row, side) {
     else if (rv <= lo) buy.push('RSI oversold (' + rv + ')');
   }
 
-  // Winning Source / Sector track record (2026-08-20): reuses
-  // v_factor_scorecard, the same validated backtest data the Tradability
-  // box's Source item and the grid's RSI/IV edge tags already draw from --
-  // previously only shown informationally there, never as an active
-  // caution. -3pp threshold (meaningfully negative, not just noise) mirrors
-  // _tradabilityDeltaColor's own -1.5 cutoff for "this clearly hurts."
-  // Buy-oriented framing (swapped below for sell-side rows) like every
-  // other check here — win_rate is "forward 20d was positive," a bad
+  // Winning Source / Sector track record (2026-08-20, revised same day
+  // after review): reuses v_factor_scorecard, the same backtest data the
+  // Tradability box's Source item and the grid's RSI/IV edge tags already
+  // draw from. -3pp threshold (meaningfully negative, not just noise)
+  // mirrors _tradabilityDeltaColor's own -1.5 cutoff for "this clearly
+  // hurts." Buy-oriented framing (swapped below for sell-side rows) like
+  // every other check here — win_rate is "forward 20d was positive," a bad
   // number is bad news for a BUY specifically.
+  // Gated on n_symbols>=5 via _factorWinRateDeltaGated (not just row-count
+  // n) -- found live: 'Sector' had single-ticker buckets (Gold n_symbols=2,
+  // Fixed Income/Commodities/'Health Care' n_symbols=1 each) whose large
+  // row-count came from one ticker's daily history repeating for months,
+  // not a real sector-wide sample. Also dropped "proven" from the wording
+  // -- v_factor_scorecard's own confidence column is one-sided (only ever
+  // certifies a *positive* edge "proven"; PS/Gold/etc all show 'unproven'
+  // even with a real, gated sample), so claiming "proven negative" was
+  // never accurate regardless of n_symbols.
   if (row.winning_source) {
     const srcCode = row.winning_source.toString().toUpperCase();
-    const srcDelta = _factorWinRateDelta('Winning source', srcCode);
-    if (srcDelta != null && srcDelta < -3) {
-      warn.push('Winning source ' + srcCode + ' has a proven negative edge (' + srcDelta.toFixed(1) + 'pp vs baseline)');
+    const g = _factorWinRateDeltaGated('Winning source', srcCode);
+    if (g && g.delta < -3) {
+      warn.push('Winning source ' + srcCode + ' historically underperforms (' + g.delta.toFixed(1) + 'pp vs baseline, ' + g.nSymbols + ' symbols)');
     }
   }
   // 'N/A' is a real v_factor_scorecard bucket (no sector classification),
-  // not an actual sector -- "Sector N/A has a proven negative edge" reads
-  // as broken rather than actionable, excluded.
+  // not an actual sector -- excluded regardless of n_symbols.
   if (row.sector && row.sector !== 'N/A') {
-    const secDelta = _factorWinRateDelta('Sector', row.sector);
-    if (secDelta != null && secDelta < -3) {
-      warn.push('Sector ' + row.sector + ' has a proven negative edge (' + secDelta.toFixed(1) + 'pp vs baseline)');
+    const g = _factorWinRateDeltaGated('Sector', row.sector);
+    if (g && g.delta < -3) {
+      warn.push('Sector ' + row.sector + ' historically underperforms (' + g.delta.toFixed(1) + 'pp vs baseline, ' + g.nSymbols + ' symbols)');
     }
   }
 
