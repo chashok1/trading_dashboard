@@ -2610,9 +2610,16 @@ function _srcReasonsHtml(r) {
       ? `<span style="font-size:9px;font-weight:400;opacity:0.7;"> → ${chgRaw.replace(/^0/, '')}</span>`
       : '';
     const dropPct = _dropPctPillHtml(s);
+    // 2026-08-20: winning-source indicator -- same "drove it" black pill
+    // the Action popup's driver bullets already use (_actpopDriverBullets),
+    // so a row with several source lines shows at a glance which one
+    // actually determined the row's action instead of just sorting the
+    // winner first with no visual distinction from the others.
+    const droveIt = srcCode === winning
+      ? `<span class="dv-tag" style="margin-left:3px;">drove it</span>` : '';
     return `<div class="src-reason-line">
       <span class="src-ic" style="color:${ic.color};">${ic.glyph}</span>
-      <span class="src-tag">${src}${dt}${chg}</span>
+      <span class="src-tag">${src}${dt}${chg}</span>${droveIt}
       <span class="src-rsn">${reason}${dropPct}</span>
     </div>`;
   });

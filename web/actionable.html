@@ -440,7 +440,10 @@
     .actpop-driver .dv-action.buy { color: var(--act-buy-strong); }
     .actpop-driver .dv-action.sell { color: var(--act-sell-strong); }
     .actpop-driver .dv-note { font-size:9px; color:#64748b; flex:1; opacity:.9; }
-    .actpop-driver .dv-tag { font-size:7px; font-weight:800; letter-spacing:.03em; text-transform:uppercase;
+    /* Standalone (not scoped to .actpop-driver) -- 2026-08-20: reused as-is
+       for the grid Sources column's winning-source indicator
+       (_srcReasonsHtml), same "drove it" pill in both places. */
+    .dv-tag { font-size:7px; font-weight:800; letter-spacing:.03em; text-transform:uppercase;
       background:#0f172a; color:#fff; padding:2px 5px; border-radius:4px; flex-shrink:0; }
     .actpop-hit { font-size:8px; font-weight:800; padding:1px 4px; border-radius:4px; flex-shrink:0;
       font-family: ui-monospace, monospace; }
