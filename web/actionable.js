@@ -4868,8 +4868,14 @@ function _actpopMacroStackHtml(row) {
 // Macro-pill/bar-charts) so the two line up.
 function _actpopTradIconHtml(row) {
   const score = _buyTradabilityScore(row);
-  const scoreColor = score >= 16 ? 'var(--act-buy-strong)' : score >= _TRADABILITY_BADGE_MIN ? '#d97706' : '#94a3b8';
-  const icon = `<span class="actpop-trad-icon" title="Tradability read below">&#127919;</span>`;
+  const meetsMin = score >= _TRADABILITY_BADGE_MIN;
+  const scoreColor = score >= 16 ? 'var(--act-buy-strong)' : meetsMin ? '#d97706' : '#94a3b8';
+  // 2026-08-20: icon itself now goes into .disabled styling (grey, same
+  // treatment as a non-buy row before today's always-show change) whenever
+  // the score doesn't clear _TRADABILITY_BADGE_MIN -- previously stayed
+  // "active"-looking even on a low/negative score, same visual weight as a
+  // genuinely tradable setup.
+  const icon = `<span class="actpop-trad-icon${meetsMin ? '' : ' disabled'}" title="Tradability read below">&#127919;</span>`;
   const scoreLine = `<div class="actpop-trad-score" style="color:${scoreColor};" title="Tradability score">${score.toFixed(1)}</div>`;
   return `<span class="actpop-trad-col">${icon}${scoreLine}</span>`;
 }
@@ -5128,6 +5134,21 @@ function _buildActionPopHtmlV2(row) {
   if (row.stop_breached) {
     h += `<div class="actpop-neutral" style="color:#b91c1c;font-weight:700;">&#9888; Stop breached &mdash; `
        + `${escapeHtml(row.stop_signal || 'trade line broke down')}</div>`;
+  } else if (row.stop_proximity_sd != null) {
+    // Proximity-to-stop (2026-08-20, popover audit item #8): only ever
+    // populated when NOT breached (etl/derive_actionable.py), so this and
+    // the stop_breached banner above are mutually exclusive by construction.
+    // HV-normalized distance -- see db/baseline.sql's migration comment for
+    // the full rationale. Below 1.5 SD is close enough to be worth a line;
+    // below 0.5 SD gets the more urgent red instead of amber.
+    const sd = Number(row.stop_proximity_sd);
+    if (sd < 1.5) {
+      const lineLabel = row.stop_proximity_line === 'TN' ? 'Trend' : 'Trade';
+      const urgent = sd < 0.5;
+      h += `<div class="actpop-neutral" style="color:${urgent ? '#b91c1c' : '#d97706'};font-weight:${urgent ? 700 : 600};">`
+         + `&#9888; ${sd.toFixed(2)}&sigma; from its ${lineLabel} line`
+         + `${urgent ? ' &mdash; very close' : ''}</div>`;
+    }
   }
 
   // LT conviction-hold conflict (2026-08-20: ported from V1, was dropped in

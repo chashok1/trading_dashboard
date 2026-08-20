@@ -400,6 +400,24 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     except Exception:
         pass
 
+    # HV (2026-08-20, proximity-to-stop -- see the stop_proximity_sd
+    # migration comment in db/baseline.sql for the full rationale). Same
+    # source as the API's own hv join (api/routers/dash.py): ThinkOrSwim's
+    # own HistoricalVolatility, hist_td.historical_vol, latest snapshot
+    # on/before this as_of_date.
+    _hv: dict[str, float] = {}
+    try:
+        for r in session.execute(text("""
+            SELECT DISTINCT ON (tos_symbol) tos_symbol, historical_vol
+            FROM hist_td
+            WHERE tos_symbol = ANY(:syms) AND snapshot_date <= :d
+              AND historical_vol IS NOT NULL
+            ORDER BY tos_symbol, snapshot_date DESC, sequence DESC
+        """), {"syms": list(my_stocks), "d": as_of_date}).fetchall():
+            _hv[r[0]] = float(r[1])
+    except Exception:
+        pass
+
     def _compute_stop_signal(sym):
         """Trade/Trend stop signal (2026-08-12, replaces the old $
         stop_level formula; both legs redesigned 2026-08-12 follow-up to
@@ -770,7 +788,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            fc_strength, fc_confidence, fc_feasible, priority_rank,
            stop_breached, low_confidence,
            warn_not_at_lrr, warn_added_this_leg,
-           conviction_hold, conviction_note, conviction_direction)
+           conviction_hold, conviction_note, conviction_direction,
+           stop_proximity_sd, stop_proximity_line)
         VALUES
           (:d, :sym, :desc, :sect,
            :ca, :ws, :wp,
@@ -784,7 +803,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            :f_strength, :f_confidence, :f_feasible, :f_priority,
            :stop_breached, :low_confidence,
            :warn_lrr, :warn_leg,
-           :conviction_hold, :conviction_note, :conviction_direction)
+           :conviction_hold, :conviction_note, :conviction_direction,
+           :stop_prox_sd, :stop_prox_line)
     """)
 
     rows_written = 0
@@ -1034,6 +1054,40 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             if consolidated in ("ADD", "INCREASE"):
                 suppressed = "STOP BREACHED"
 
+        # ─── Proximity-to-stop (2026-08-20) ────────────────────────────
+        # Only meaningful for a held position not already breached -- an
+        # early warning while price is still drifting toward its line, not
+        # a duplicate of stop_breached. See db/baseline.sql's migration
+        # comment for the full rationale (HV-normalized, not raw %).
+        stop_proximity_sd = None
+        stop_proximity_line = None
+        if held_today and not stop_breached:
+            _px = _last_price.get(sym)
+            _hvv = _hv.get(sym)
+            _trade = _trade_val.get(sym)
+            _trend = _trend_val.get(sym)
+            if _px is not None and _hvv is not None and _hvv > 0:
+                _daily_move = _px * _hvv / (252 ** 0.5)
+                if _daily_move > 0:
+                    _candidates = []
+                    if _trade is not None and _px > _trade:
+                        _candidates.append(((_px - _trade) / _daily_move, "TD"))
+                    if _trend is not None and _px > _trend:
+                        _candidates.append(((_px - _trend) / _daily_move, "TN"))
+                    if _candidates:
+                        # Trend is the more severe break (see
+                        # _compute_stop_signal) -- prefer reporting it on a
+                        # near-tie (within 0.05 SD) instead of whichever
+                        # happens to sort first.
+                        _candidates.sort(key=lambda c: c[0])
+                        _best_sd, _best_line = _candidates[0]
+                        if len(_candidates) > 1:
+                            _other_sd, _other_line = _candidates[1]
+                            if _other_line == "TN" and (_other_sd - _best_sd) < 0.05:
+                                _best_sd, _best_line = _other_sd, _other_line
+                        stop_proximity_sd = round(_best_sd, 2)
+                        stop_proximity_line = _best_line
+
         # ─── TASK_53: Compute final_call + priority_rank at derive time ───
         rr_act = rr_action_map.get(sym)
         fc = _compute_final_call(
@@ -1105,6 +1159,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "trig":  trig_action,
             "stop":  None,  # 2026-08-12: $ stop_level retired, see stop_signal
             "stop_signal": stop_signal_val,
+            "stop_prox_sd":   stop_proximity_sd,
+            "stop_prox_line": stop_proximity_line,
             "rid":   run_id,
             "f_action":     fc["final_action"],
             "f_code":       fc["final_code"],

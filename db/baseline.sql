@@ -7966,3 +7966,29 @@ INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
      'ref_pending_tos_removal and the monthly housekeeping reminder fires. '
      'When false, pending removals still get tracked, just not surfaced.')
 ON CONFLICT (setting_name) DO NOTHING;
+
+-- =====================================================
+-- 2026-08-20 -- Proximity-to-stop, in standard deviations (Action popup
+-- audit item #8). stop_signal/stop_breached (2026-08-12 above) only fire
+-- AFTER a Trade/Trend-line crossover already happened -- reactive, no
+-- early warning while a held position is still drifting toward its line.
+-- Raw % distance to the line was rejected: a stock's normal day-to-day
+-- wiggle scales with its own volatility, so a 2% gap is nothing for a
+-- name that routinely moves 2% intraday and a real warning for a quiet
+-- one. hv (ThinkOrSwim's own HistoricalVolatility, hist_td.historical_vol
+-- -- literally the annualized stddev of the stock's own daily returns) is
+-- un-annualized into a daily $ move (last_price * hv / SQRT(252)) and used
+-- to express the gap in units of that stock's own normal daily noise.
+-- stop_proximity_sd: signed distance, in standard deviations, from
+--   last_price to the NEARER of the Trade/Trend line the price is
+--   currently on the safe (above) side of. NULL when not held, already
+--   breached (stop_signal covers that), or hv/line data is missing.
+-- stop_proximity_line: which line stop_proximity_sd is measured against
+--   ('TD' or 'TN') -- the Trend line is the more severe break (see
+--   _compute_stop_signal), so ties/near-ties prefer reporting 'TN'.
+-- Computed in etl/derive_actionable.py alongside stop_signal.
+-- =====================================================
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS stop_proximity_sd NUMERIC;
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS stop_proximity_line TEXT;
