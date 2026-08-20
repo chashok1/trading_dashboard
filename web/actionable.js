@@ -4784,7 +4784,7 @@ function _actpopMacroBarsHtml(r) {
     const maxAbs = Math.max(...sparks.map(s => Math.abs(s.score || 0)), 0.001);
     const bars = sparks.map(s => {
       const sc = s.score || 0;
-      const bh = Math.max(2, Math.round(Math.abs(sc) / maxAbs * 8));
+      const bh = Math.max(3, Math.round(Math.abs(sc) / maxAbs * 16));
       const cls = sc > 0 ? 'buy' : sc < 0 ? 'sell' : 'neutral';
       const ti = `${s.label || ''} (${s.quad || ''}) ${sc >= 0 ? '+' : ''}${sc.toFixed(2)}${s.is_current ? ' — current month' : ''}`;
       return `<span class="actpop-mbar ${cls}" style="height:${bh}px;" title="${escapeHtml(ti)}"></span>`;
@@ -4803,7 +4803,7 @@ function _actpopMacroBarsHtml(r) {
   if (memberItems.length) {
     const maxAbs = Math.max(...memberItems.map(b => Math.abs(b.v)), 0.001);
     const bars = memberItems.map(b => {
-      const bh = Math.max(2, Math.round(Math.abs(b.v) / maxAbs * 6));
+      const bh = Math.max(3, Math.round(Math.abs(b.v) / maxAbs * 14));
       const cls = b.v > 0 ? 'buy' : b.v < 0 ? 'sell' : 'neutral';
       const ti = `${b.label}: ${b.v >= 0 ? '+' : ''}${b.v.toFixed(2)} (live quad regime)`;
       return `<span class="actpop-mbar ${cls}" style="height:${bh}px;" title="${escapeHtml(ti)}"></span>`;
@@ -4851,6 +4851,21 @@ function _actpopMacroStackHtml(row) {
     <span class="actpop-lv"><span class="actpop-lbl">Macro</span><span class="actpop-val ${mcls}">${escapeHtml(mv || 'HOLD')}</span>${conflictMark}</span>
     ${_actpopMacroBarsHtml(row)}
   </span>`;
+}
+
+// PVV action pill — sits on the RR bar line between the Tradability icon
+// and the Macro stack (2026-08-20). Same [Label] value pattern as Src/Tech
+// in the header, always shown (dashed/disabled when PVV has no confirmed
+// setup today, i.e. NO_ACTION/WATCH) rather than only appearing as a
+// driver bullet when it has something to say.
+function _actpopPvvActionHtml(row) {
+  const d = row.pvv_decision;
+  const hasReal = !!d && d !== 'NO_ACTION' && d !== 'WATCH';
+  const pvvSide = hasReal ? (_PVV_BUY_SIDE.includes(d) ? 'buy' : _PVV_SELL_SIDE.includes(d) ? 'sell' : null) : null;
+  const caution = hasReal && _PVV_CAUTION.includes(d);
+  const cls = !hasReal ? 'disabled' : caution ? '' : (pvvSide === 'buy' ? 'buy' : pvvSide === 'sell' ? 'sell' : '');
+  const txt = hasReal ? (_PVV_LABEL[d] || d) : '—';
+  return `<span class="actpop-lv"><span class="actpop-lbl">PVV</span><span class="actpop-val ${cls}">${escapeHtml(txt)}</span></span>`;
 }
 
 // Tradability icon — always shown, score always computed regardless of
@@ -5130,7 +5145,7 @@ function _buildActionPopHtmlV2(row) {
   </div>`;
 
   h += `<div class="actpop-rr-row">${_actpopRrBarHtml(row)}`
-    + `<div class="actpop-rr-right">${_actpopTradIconHtml(row)}${_actpopMacroStackHtml(row)}</div></div>`;
+    + `<div class="actpop-rr-right">${_actpopTradIconHtml(row)}${_actpopPvvActionHtml(row)}${_actpopMacroStackHtml(row)}</div></div>`;
 
   if (row.stop_breached) {
     h += `<div class="actpop-neutral" style="color:#b91c1c;font-weight:700;">&#9888; Stop breached &mdash; `

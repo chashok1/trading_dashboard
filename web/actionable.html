@@ -353,13 +353,14 @@
     .actpop-sym .actpop-co { font-weight:400; color:#94a3b8; font-size:10px; margin-left:5px; }
     .actpop-badges { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .actpop-lv { display:inline-flex; align-items:center; gap:4px; }
-    .actpop-lbl { font-size:8px; font-weight:800; letter-spacing:.03em; text-transform:uppercase;
-      color:#94a3b8; background:#f1f5f9; padding:2px 5px; border-radius:4px; }
-    .actpop-val { font-size:10px; font-weight:800; padding:2px 6px; border-radius:5px;
-      background:#f1f5f9; color:#475569; }
-    .actpop-val.buy { background: var(--act-buy-bg); color: var(--act-buy-strong); }
-    .actpop-val.sell { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); }
-    .actpop-val.disabled { background:#f1f5f9; color:#cbd5e1; }
+    /* 2026-08-20: backgrounds removed + weight 800->400 (Src/Tech/Macro
+       labels+values) -- was reading as too heavy/pill-like per user. */
+    .actpop-lbl { font-size:8px; font-weight:400; letter-spacing:.03em; text-transform:uppercase;
+      color:#94a3b8; padding:2px 5px; }
+    .actpop-val { font-size:10px; font-weight:400; padding:2px 6px; color:#475569; }
+    .actpop-val.buy { color: var(--act-buy-strong); }
+    .actpop-val.sell { color: var(--act-sell-strong); }
+    .actpop-val.disabled { color:#cbd5e1; }
     .actpop-call { font-size:12px; font-weight:800; padding:2px 8px; border-radius:6px; }
     .actpop-call.buy { color: var(--act-buy-strong); background: var(--act-buy-bg); }
     .actpop-call.sell { color: var(--act-sell-strong); background: var(--act-sell-strong-bg); }
@@ -368,8 +369,10 @@
     .actpop-trad-icon { font-size:11px; padding:2px 5px; border-radius:5px; background:#eef2ff; color:#4338ca; }
     .actpop-trad-icon.disabled { background:#f1f5f9; color:#cbd5e1; }
     /* height+centering matches .actpop-mgroup-wrap below -- see the shared
-       comment there for why (centers the score against the bar charts). */
-    .actpop-trad-score { font-size:9px; font-weight:800; height:11px; display:flex; align-items:center; justify-content:center; }
+       comment there for why (centers the score against the bar charts).
+       2026-08-20: 11px -> 16px, synced to the bar charts' own increase
+       (below) so the two stay centered against each other. */
+    .actpop-trad-score { font-size:9px; font-weight:800; height:16px; display:flex; align-items:center; justify-content:center; }
     .actpop-trad-score.disabled { color:#cbd5e1; }
     /* gap 2px -> 8px: was reading as glued to the Macro pill above it */
     .actpop-macro-stack { display:inline-flex; flex-direction:column; align-items:center; gap:8px; }
@@ -378,11 +381,14 @@
        to it -- .actpop-mgroup itself keeps align-items:flex-end internally
        (bars need a common baseline to read as a real chart; centering that
        directly would make them grow from the middle instead of up). */
-    .actpop-mgroup-wrap { height:11px; display:flex; align-items:center; }
+    .actpop-mgroup-wrap { height:16px; display:flex; align-items:center; }
     .actpop-mgroup { display:flex; align-items:flex-end; gap:5px; }
-    .actpop-mrow { display:flex; align-items:flex-end; gap:1px; cursor:help; height:8px; }
+    /* 2026-08-20: bar width 2px->4px, row height 8px->16px (max bar height
+       is now 16px for the sparkline -- see _actpopMacroBarsHtml) -- were
+       too small to read the color on, per user. */
+    .actpop-mrow { display:flex; align-items:flex-end; gap:2px; cursor:help; height:16px; }
     .actpop-mrow.member { padding-left:5px; border-left:1px solid #e2e8f0; }
-    .actpop-mbar { display:inline-block; width:2px; }
+    .actpop-mbar { display:inline-block; width:4px; }
     /* 2026-08-20: was var(--act-buy)/var(--act-sell-strong) -- the app's
        muted badge-pill greens/reds (#3a6a4a/#9e3636), which don't read as
        clearly "green"/"red" for a bar chart. Matched exactly to the grid's
@@ -399,15 +405,17 @@
        the right, instead of the invisible .actpop-rr box (track+labels,
        NOT the tag poking up above it) being what centers against them. */
     .actpop-rr-row { display:flex; align-items:flex-start; gap:10px; margin: 24px 0 10px; }
-    .actpop-rr { flex: 0 0 66%; margin: 18px 0 0; }
-    .actpop-rr-right { display:flex; align-items:flex-start; gap:8px; margin-left:auto; flex-shrink:0; }
+    /* 66% -> 50%: RR bar now occupies exactly half the popup's width. */
+    .actpop-rr { flex: 0 0 50%; margin: 18px 0 0; }
+    .actpop-rr-right { display:flex; align-items:flex-start; gap:10px; margin-left:auto; flex-shrink:0; }
     /* Trad icon and Macro's label pill differ in font-size (11px vs 8px)
-       so top-aligning the two columns alone leaves their actual glyphs
-       off-center from each other by a couple px -- pinning both to the
-       same fixed height + internal centering makes their true visual
-       centers match, not just their box tops. */
+       so top-aligning the columns alone leaves their actual glyphs
+       off-center from each other by a couple px -- pinning them (+ the new
+       PVV action pill between them) to the same fixed height + internal
+       centering makes their true visual centers match, not just box tops. */
     .actpop-trad-col > .actpop-trad-icon,
-    .actpop-macro-stack > .actpop-lv { height: 15px; display: inline-flex; align-items: center; }
+    .actpop-macro-stack > .actpop-lv,
+    .actpop-rr-right > .actpop-lv { height: 15px; display: inline-flex; align-items: center; }
     .actpop-rr-track { position:relative; height:7px; border-radius:4px; background:#e2e8f0; }
     .actpop-rr-fill { position:absolute; left:0; top:0; height:100%; border-radius:4px;
       background:linear-gradient(90deg,var(--act-buy) 0%, #d97706 62%, var(--act-sell-strong) 100%); }
