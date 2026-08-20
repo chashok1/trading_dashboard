@@ -819,7 +819,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            stop_breached, low_confidence,
            warn_not_at_lrr, warn_added_this_leg,
            conviction_hold, conviction_note, conviction_direction,
-           stop_proximity_sd, stop_proximity_line)
+           stop_proximity_sd, stop_proximity_line,
+           trade_line_value, trend_line_value)
         VALUES
           (:d, :sym, :desc, :sect,
            :ca, :ws, :wp,
@@ -834,7 +835,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            :stop_breached, :low_confidence,
            :warn_lrr, :warn_leg,
            :conviction_hold, :conviction_note, :conviction_direction,
-           :stop_prox_sd, :stop_prox_line)
+           :stop_prox_sd, :stop_prox_line,
+           :trade_line, :trend_line)
     """)
 
     rows_written = 0
@@ -1191,6 +1193,8 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "stop_signal": stop_signal_val,
             "stop_prox_sd":   stop_proximity_sd,
             "stop_prox_line": stop_proximity_line,
+            "trade_line":     _trade_val.get(sym),
+            "trend_line":     _trend_val.get(sym),
             "rid":   run_id,
             "f_action":     fc["final_action"],
             "f_code":       fc["final_code"],

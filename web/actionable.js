@@ -5230,8 +5230,15 @@ function _buildActionPopHtmlV2(row) {
     + `<div class="actpop-rr-right">${_actpopTradIconHtml(row)}${_actpopPvvActionHtml(row)}${_actpopMacroStackHtml(row)}</div></div>`;
 
   if (row.stop_breached) {
+    // 2026-08-20: shows the actual line price now (trade_line_value/
+    // trend_line_value, today's Trade/Trend line -- same source
+    // stop_proximity_sd below uses), not just the crossover code with no
+    // number to check it against.
+    const lineVal = row.stop_signal === 'TN SA' ? row.trend_line_value : row.trade_line_value;
+    const lineLabel = row.stop_signal === 'TN SA' ? 'Trend' : 'Trade';
+    const priceTxt = lineVal != null ? ` (${lineLabel} line ${fmtUsd(Number(lineVal))})` : '';
     h += `<div class="actpop-neutral" style="color:#b91c1c;font-weight:700;">&#9888; Stop breached &mdash; `
-       + `${escapeHtml(row.stop_signal || 'trade line broke down')}</div>`;
+       + `${escapeHtml(row.stop_signal || 'trade line broke down')}${priceTxt}</div>`;
   } else if (row.stop_proximity_sd != null) {
     // Proximity-to-stop (2026-08-20, popover audit item #8): only ever
     // populated when NOT breached (etl/derive_actionable.py), so this and

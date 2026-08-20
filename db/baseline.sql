@@ -8005,3 +8005,15 @@ ALTER TABLE IF EXISTS drv_actionable
     ADD COLUMN IF NOT EXISTS stop_proximity_sd NUMERIC;
 ALTER TABLE IF EXISTS drv_actionable
     ADD COLUMN IF NOT EXISTS stop_proximity_line TEXT;
+
+-- 2026-08-20: trade_line_value/trend_line_value -- today's raw Trade/Trend
+-- line values (drv_technicals.a_trade_value/a_trend_value), unconditional
+-- (every row, not just held/breached) so the UI can show the actual $
+-- price a stop was breached at ("Stop breached -- TD STM, Trade line
+-- $63.20") instead of just the crossover code with no number. Same
+-- _trade_val/_trend_val lookups already loaded in
+-- etl/derive_actionable.py for _compute_stop_signal, no new query.
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS trade_line_value NUMERIC;
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS trend_line_value NUMERIC;
