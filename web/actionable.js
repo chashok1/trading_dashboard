@@ -4784,17 +4784,29 @@ function _actpopMacroStackHtml(row) {
   const conflictMark = row.macro_conflict === true
     ? ' <span class="mc-conflict" title="MacroNet disagrees with technical direction (price vs 50-day average)">&#9888;</span>' : '';
   return `<span class="actpop-macro-stack">
-    <span class="actpop-pill ${mcls}"><span class="pl">Macro</span>${escapeHtml(mv || 'HOLD')}${conflictMark}</span>
+    <span class="actpop-lv"><span class="actpop-lbl">Macro</span><span class="actpop-val ${mcls}">${escapeHtml(mv || 'HOLD')}</span>${conflictMark}</span>
     ${_actpopMacroBarsHtml(row)}
   </span>`;
 }
 
 // Tradability icon — always shown (per-card, not just buy rows) but greyed
 // out/disabled when not applicable, since the score itself is buy-only
-// (_buyTradabilityScore / _TRADABILITY_BADGE_MIN gate the same way).
-function _actpopTradIconHtml(side) {
-  if (side === 'buy') return `<span class="actpop-trad-icon" title="Tradability read below">&#127919;</span>`;
-  return `<span class="actpop-trad-icon disabled" title="No tradability read — that score is buy-only">&#127919;</span>`;
+// (_buyTradabilityScore / _TRADABILITY_BADGE_MIN gate the same way). Score
+// rendered below the icon, same two-row column shape as the Macro stack
+// (icon/score mirrors Macro-pill/bar-charts) so the two line up.
+function _actpopTradIconHtml(row, side) {
+  const icon = side === 'buy'
+    ? `<span class="actpop-trad-icon" title="Tradability read below">&#127919;</span>`
+    : `<span class="actpop-trad-icon disabled" title="No tradability read — that score is buy-only">&#127919;</span>`;
+  let scoreLine;
+  if (side === 'buy') {
+    const score = _buyTradabilityScore(row);
+    const scoreColor = score >= 16 ? 'var(--act-buy-strong)' : score >= _TRADABILITY_BADGE_MIN ? '#d97706' : '#94a3b8';
+    scoreLine = `<div class="actpop-trad-score" style="color:${scoreColor};" title="Tradability score">${score.toFixed(1)}</div>`;
+  } else {
+    scoreLine = `<div class="actpop-trad-score disabled">&mdash;</div>`;
+  }
+  return `<span class="actpop-trad-col">${icon}${scoreLine}</span>`;
 }
 
 // RR position bar — same _rawRrPos formula as the grid's RR column tick
@@ -5003,7 +5015,7 @@ function _buildActionPopHtmlV2(row) {
   </div>`;
 
   h += `<div class="actpop-rr-row">${_actpopRrBarHtml(row)}`
-    + `<div class="actpop-rr-right">${_actpopTradIconHtml(side)}${_actpopMacroStackHtml(row)}</div></div>`;
+    + `<div class="actpop-rr-right">${_actpopTradIconHtml(row, side)}${_actpopMacroStackHtml(row)}</div></div>`;
 
   if (row.stop_breached) {
     h += `<div class="actpop-neutral" style="color:#b91c1c;font-weight:700;">&#9888; Stop breached &mdash; `

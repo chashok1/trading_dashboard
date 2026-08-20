@@ -359,20 +359,16 @@
     .actpop-val.buy { color: var(--act-buy-strong); }
     .actpop-val.sell { color: var(--act-sell-strong); }
     .actpop-val.disabled { color:#cbd5e1; }
-    .actpop-pill { font-size:9px; font-weight:700; padding:2px 6px; border-radius:5px;
-      background:#f1f5f9; color:#475569; white-space:nowrap; }
-    .actpop-pill .pl { font-weight:800; opacity:.55; font-size:8px; letter-spacing:.03em;
-      text-transform:uppercase; margin-right:3px; }
-    .actpop-pill.buy { background: var(--act-buy-bg); color: var(--act-buy-strong); }
-    .actpop-pill.sell { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); }
-    .actpop-pill.disabled { background:#f1f5f9; color:#cbd5e1; }
-    .actpop-pill .mc-conflict { color:#b45309; font-weight:800; margin-left:2px; }
+    .mc-conflict { color:#b45309; font-weight:800; margin-left:2px; }
     .actpop-call { font-size:12px; font-weight:800; padding:2px 8px; border-radius:6px; }
     .actpop-call.buy { color: var(--act-buy-strong); background: var(--act-buy-bg); }
     .actpop-call.sell { color: var(--act-sell-strong); background: var(--act-sell-strong-bg); }
     .actpop-call.neutral { color: var(--act-neutral); background: var(--act-neutral-bg); }
+    .actpop-trad-col { display:inline-flex; flex-direction:column; align-items:center; gap:2px; }
     .actpop-trad-icon { font-size:11px; padding:2px 5px; border-radius:5px; background:#eef2ff; color:#4338ca; }
     .actpop-trad-icon.disabled { background:#f1f5f9; color:#cbd5e1; }
+    .actpop-trad-score { font-size:9px; font-weight:800; }
+    .actpop-trad-score.disabled { color:#cbd5e1; }
     .actpop-macro-stack { display:inline-flex; flex-direction:column; align-items:center; gap:2px; }
     .actpop-mgroup { display:flex; align-items:flex-end; gap:5px; }
     .actpop-mrow { display:flex; align-items:flex-end; gap:1px; cursor:help; height:8px; }
@@ -384,7 +380,7 @@
 
     .actpop-rr-row { display:flex; align-items:center; gap:10px; margin: 24px 0 10px; }
     .actpop-rr { flex: 0 0 66%; margin: 0; }
-    .actpop-rr-right { display:flex; align-items:center; gap:8px; margin-left:auto; flex-shrink:0; }
+    .actpop-rr-right { display:flex; align-items:flex-start; gap:8px; margin-left:auto; flex-shrink:0; }
     .actpop-rr-track { position:relative; height:7px; border-radius:4px; background:#e2e8f0; }
     .actpop-rr-fill { position:absolute; left:0; top:0; height:100%; border-radius:4px;
       background:linear-gradient(90deg,var(--act-buy) 0%, #d97706 62%, var(--act-sell-strong) 100%); }
