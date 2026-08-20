@@ -1372,29 +1372,55 @@ def get_portfolio_sector_map(date: Optional[str] = Query(None)):
 
 @router.get("/api/actionable/source-scorecard")
 def get_actionable_source_scorecard():
-    """source_code -> buy-family (ADD+INCREASE) n-weighted 20d edge/win-rate
-    from v_source_edge_scorecard (TASK_123). Feeds the Trade Mode hit-rate
-    badge (web/actionable.js) -- same view etl/derive_source_edge.py reads
-    to recompute ref_settings.trade_mode_weak_buy_sources nightly, just
-    exposed here as the raw numeric win_rate_20d instead of a binary flag."""
+    """source_code -> buy-family (ADD+INCREASE) AND sell-family (REDUCE+
+    REMOVE) n-weighted 20d edge/win-rate from v_source_edge_scorecard
+    (TASK_123; sell side added 2026-08-20 -- the view already computed it
+    direction-aware, hit=(fwd20<0) for sell, just wasn't exposed here).
+    Top-level n/edge_20d/win_rate_20d stay buy-family for back-compat with
+    the Trade Mode hit-rate badge (web/actionable.js); buy/sell sub-objects
+    (null if that source has <1 fire on that side) are the side-aware read,
+    used by the Action popup's Source tradability item and driver bullets
+    so a sell row shows a real sell win rate instead of a buy-only number."""
     with session_scope() as s:
         rows = s.execute(text("""
             SELECT source_code,
-                   SUM(n) AS n,
-                   SUM(n * edge_20d) / NULLIF(SUM(n), 0) AS edge_20d,
-                   SUM(n * win_rate_20d) / NULLIF(SUM(n), 0) AS win_rate_20d
+                   SUM(n) FILTER (WHERE action IN ('ADD','INCREASE')) AS n_buy,
+                   SUM(n*edge_20d) FILTER (WHERE action IN ('ADD','INCREASE'))
+                     / NULLIF(SUM(n) FILTER (WHERE action IN ('ADD','INCREASE')), 0) AS edge_20d_buy,
+                   SUM(n*win_rate_20d) FILTER (WHERE action IN ('ADD','INCREASE'))
+                     / NULLIF(SUM(n) FILTER (WHERE action IN ('ADD','INCREASE')), 0) AS win_rate_20d_buy,
+                   SUM(n) FILTER (WHERE action IN ('REDUCE','REMOVE')) AS n_sell,
+                   SUM(n*edge_20d) FILTER (WHERE action IN ('REDUCE','REMOVE'))
+                     / NULLIF(SUM(n) FILTER (WHERE action IN ('REDUCE','REMOVE')), 0) AS edge_20d_sell,
+                   SUM(n*win_rate_20d) FILTER (WHERE action IN ('REDUCE','REMOVE'))
+                     / NULLIF(SUM(n) FILTER (WHERE action IN ('REDUCE','REMOVE')), 0) AS win_rate_20d_sell
             FROM v_source_edge_scorecard
-            WHERE action IN ('ADD', 'INCREASE')
+            WHERE action IN ('ADD', 'INCREASE', 'REDUCE', 'REMOVE')
             GROUP BY source_code
         """)).mappings().all()
-    return {
-        r["source_code"]: {
-            "n": int(r["n"]),
-            "edge_20d": float(r["edge_20d"]) if r["edge_20d"] is not None else None,
-            "win_rate_20d": float(r["win_rate_20d"]) if r["win_rate_20d"] is not None else None,
+
+    def _side(r, suffix):
+        n = r[f"n_{suffix}"]
+        if n is None:
+            return None
+        return {
+            "n": int(n),
+            "edge_20d": float(r[f"edge_20d_{suffix}"]) if r[f"edge_20d_{suffix}"] is not None else None,
+            "win_rate_20d": float(r[f"win_rate_20d_{suffix}"]) if r[f"win_rate_20d_{suffix}"] is not None else None,
         }
-        for r in rows
-    }
+
+    out = {}
+    for r in rows:
+        buy = _side(r, "buy")
+        sell = _side(r, "sell")
+        out[r["source_code"]] = {
+            "n": buy["n"] if buy else 0,
+            "edge_20d": buy["edge_20d"] if buy else None,
+            "win_rate_20d": buy["win_rate_20d"] if buy else None,
+            "buy": buy,
+            "sell": sell,
+        }
+    return out
 
 
 def _window_howto(macro_action: str | None, window: dict | None) -> str:

@@ -1808,7 +1808,7 @@ function _matchesTradeMode(r) {
 function _sourceHitRateBadge(r) {
   if (!_isTradeModeQualifyingBuy(r)) return '';
   const src = (r.winning_source || '').toString().toUpperCase();
-  const sc = (state.sourceScorecard || {})[src];
+  const sc = ((state.sourceScorecard || {})[src] || {}).buy;
   if (!sc || sc.win_rate_20d == null || sc.n < 5) return '';
   const pct = Math.round(sc.win_rate_20d * 100);
   const cls = pct < 45 ? 'hit-rate-pill-low' : pct > 55 ? 'hit-rate-pill-high' : 'hit-rate-pill-mid';
@@ -3472,7 +3472,12 @@ function _lrrProximityScore(row) {
 // actually flat-to-negative on the metric that matters.
 function _sourceTrackRecordScore(row) {
   const src = (row.winning_source || '').toString().toUpperCase();
-  const sc = (state.sourceScorecard || {})[src];
+  // Buy-family win rate specifically, even on a sell row -- this score
+  // formula stays buy-calibrated by design (see _buyTradabilityScore's
+  // header comment); the Source item's DISPLAYED text picks side-aware
+  // win rate separately (_tradabilityBreakdown), this is just the point
+  // contribution.
+  const sc = ((state.sourceScorecard || {})[src] || {}).buy;
   const base = (state.factorScorecard || {})['Baseline|All stocks'];
   if (!sc || sc.win_rate_20d == null || sc.n < 5 || !base || base.win_rate == null) return 0;
   const delta = (Number(sc.win_rate_20d) - Number(base.win_rate)) * 100;
@@ -3607,20 +3612,25 @@ function _tradabilityBreakdown(row) {
     color: _tradabilityDeltaColor(rvolD),
   });
 
-  // Winning source's own buy-family win-rate track record — see
-  // _sourceTrackRecordScore's comment for why this is win-rate, not the
-  // source's (sometimes fat-tail-distorted) mean edge. Enough-history gate
-  // (n>=5) mirrors _sourceTrackRecordScore's own check exactly.
+  // Winning source's own win-rate track record, side-matched to this row's
+  // actual Final Call (2026-08-20: displayed text was hardcoded buy-family
+  // even on sell rows -- v_source_edge_scorecard computes sell-family win
+  // rate too, direction-aware (hit = fwd20 < 0 for REDUCE/REMOVE), just
+  // wasn't exposed via the API until now). The colored delta (srcD) driving
+  // this item's amber/green still comes from _sourceTrackRecordScore, which
+  // stays buy-calibrated by design (see its own header comment) — only the
+  // win-rate number/label shown below is side-aware.
   const src = (row.winning_source || '').toString().toUpperCase();
-  const srcSc = (state.sourceScorecard || {})[src];
-  const srcHasData = !!src && srcSc && srcSc.win_rate_20d != null && srcSc.n >= 5;
-  const srcD = srcHasData ? _sourceTrackRecordScore(row) : null;
+  const srcSide = finalCall(row).side;
+  const srcSc = ((state.sourceScorecard || {})[src] || {})[srcSide];
+  const srcHasData = !!src && !!srcSc && srcSc.win_rate_20d != null && srcSc.n >= 5;
+  const srcD = _sourceTrackRecordScore(row);
   items.push({
     label: 'Source',
     detail: !src ? 'no winning source'
-      : !srcHasData ? src + ' — not enough history yet'
-      : src + ': ' + Math.round(srcSc.win_rate_20d * 100) + '% buy win rate (n=' + srcSc.n + ') (' + fmtDelta(srcD) + ')',
-    color: _tradabilityDeltaColor(srcD),
+      : !srcHasData ? src + (srcSide === 'buy' || srcSide === 'sell' ? ' — not enough ' + srcSide + ' history yet' : ' — no directional read')
+      : src + ': ' + Math.round(srcSc.win_rate_20d * 100) + '% ' + srcSide + ' win rate (n=' + srcSc.n + ') (' + fmtDelta(srcD) + ')',
+    color: _tradabilityDeltaColor(srcHasData ? srcD : null),
   });
 
   const subtier = _buyAgreementSubTier(row);
@@ -3660,15 +3670,19 @@ function _buildTradabilityPopHtml(row) {
 // strict top-10% cutoff so it's not ONLY the near-LRR-plus-agreement rows
 // showing it). Revisit again after a few more weeks of live data.
 const _TRADABILITY_BADGE_MIN = 12;
-// 2026-08-15: every BUY row gets something here now, not just ones clearing
+// 2026-08-15: every row gets something here now, not just ones clearing
 // the threshold — the 🎯 icon at/above _TRADABILITY_BADGE_MIN, the raw
 // numeric score (muted, smaller) below it. User: "display the tradability
 // score instead of icon when it doesn't meet the min score" — so a
 // below-threshold row is still visible/comparable at a glance instead of
-// disappearing, and the same rich popover works either way.
+// disappearing, and the same rich popover works either way. (2026-08-20:
+// no longer buy-only either, see the function's own comment.)
 function _tradabilityBadge(row) {
-  const fc = finalCall(row);
-  if (fc.side !== 'buy') return '';
+  // 2026-08-20: was buy-only (fc.side !== 'buy' -> ''). Score/breakdown are
+  // still buy-calibrated under the hood (see _buyTradabilityScore's header
+  // comment) but now always computed/shown per user request -- the Source
+  // item's win-rate wording was relabeled (_tradabilityBreakdown) so it
+  // doesn't read as a sell-side stat it isn't.
   const score = _buyTradabilityScore(row);
   const meetsMin = score >= _TRADABILITY_BADGE_MIN;
   const cls = 'tradability-badge' + (meetsMin ? '' : ' tradability-badge-num');
@@ -4655,7 +4669,8 @@ function _buildActionPopHtml(row) {
   // cell's Trade-Mode-only hit-rate badge -- shown here regardless of
   // Trade Mode, since it's directly relevant to how much to trust this call).
   const winSrcCode = (row.winning_source || '').toString().toUpperCase();
-  const winSrcSc = (state.sourceScorecard || {})[winSrcCode];
+  // 2026-08-20: side-matched (was hardcoded buy-family, blank on sell rows).
+  const winSrcSc = ((state.sourceScorecard || {})[winSrcCode] || {})[finalCall(row).side];
   let winRateStr = '';
   if (winSrcCode && winSrcSc && winSrcSc.win_rate_20d != null && winSrcSc.n >= 5) {
     const wrPct = Math.round(winSrcSc.win_rate_20d * 100);
@@ -4831,23 +4846,18 @@ function _actpopMacroStackHtml(row) {
   </span>`;
 }
 
-// Tradability icon — always shown (per-card, not just buy rows) but greyed
-// out/disabled when not applicable, since the score itself is buy-only
-// (_buyTradabilityScore / _TRADABILITY_BADGE_MIN gate the same way). Score
-// rendered below the icon, same two-row column shape as the Macro stack
-// (icon/score mirrors Macro-pill/bar-charts) so the two line up.
-function _actpopTradIconHtml(row, side) {
-  const icon = side === 'buy'
-    ? `<span class="actpop-trad-icon" title="Tradability read below">&#127919;</span>`
-    : `<span class="actpop-trad-icon disabled" title="No tradability read — that score is buy-only">&#127919;</span>`;
-  let scoreLine;
-  if (side === 'buy') {
-    const score = _buyTradabilityScore(row);
-    const scoreColor = score >= 16 ? 'var(--act-buy-strong)' : score >= _TRADABILITY_BADGE_MIN ? '#d97706' : '#94a3b8';
-    scoreLine = `<div class="actpop-trad-score" style="color:${scoreColor};" title="Tradability score">${score.toFixed(1)}</div>`;
-  } else {
-    scoreLine = `<div class="actpop-trad-score disabled">&mdash;</div>`;
-  }
+// Tradability icon — always shown, score always computed regardless of
+// side (2026-08-20: was buy-only/disabled-greyed on sell rows; the score
+// itself is still buy-calibrated under the hood, see _buyTradabilityScore's
+// header comment, but user asked it be calculated and displayed
+// regardless of the row's own Final Call). Score rendered below the icon,
+// same two-row column shape as the Macro stack (icon/score mirrors
+// Macro-pill/bar-charts) so the two line up.
+function _actpopTradIconHtml(row) {
+  const score = _buyTradabilityScore(row);
+  const scoreColor = score >= 16 ? 'var(--act-buy-strong)' : score >= _TRADABILITY_BADGE_MIN ? '#d97706' : '#94a3b8';
+  const icon = `<span class="actpop-trad-icon" title="Tradability read below">&#127919;</span>`;
+  const scoreLine = `<div class="actpop-trad-score" style="color:${scoreColor};" title="Tradability score">${score.toFixed(1)}</div>`;
   return `<span class="actpop-trad-col">${icon}${scoreLine}</span>`;
 }
 
@@ -4887,7 +4897,9 @@ function _actpopDriverBullets(row, side) {
   const bulletFor = (label, actUpper, reason, dt, tag) => {
     const d = actionDisplay(actUpper);
     const cls = d.side === 'buy' ? 'buy' : d.side === 'sell' ? 'sell' : '';
-    const srcSc = sc[(label || '').toUpperCase()];
+    // 2026-08-20: side-matched to THIS bullet's own action (was hardcoded
+    // buy-family, so a sell-side source bullet showed nothing/wrong data).
+    const srcSc = (sc[(label || '').toUpperCase()] || {})[d.side];
     let hit = '';
     if (srcSc && srcSc.win_rate_20d != null && srcSc.n >= 5) {
       const wr = Math.round(srcSc.win_rate_20d * 100);
@@ -5022,11 +5034,14 @@ function _actpopNeutralLine(row) {
   return `<div class="actpop-neutral">no read: ${bits.join(' &middot; ')} &mdash; none extreme enough to lean either way</div>`;
 }
 
-// Tradability box — buy-only (same gate as the SYMBOL cell's 🎯 badge),
-// reusing _tradabilityBreakdown's already-computed, already-colored items
-// verbatim rather than re-deriving RSI/IV/RVOL thresholds a second time.
-function _actpopTradabilityHtml(row, side) {
-  if (side !== 'buy') return '';
+// Tradability box — always shown regardless of side (2026-08-20: was
+// buy-only, same gate as the SYMBOL cell's 🎯 badge), reusing
+// _tradabilityBreakdown's already-computed, already-colored items verbatim
+// rather than re-deriving RSI/IV/RVOL thresholds a second time. The score
+// itself stays buy-calibrated under the hood — see _buyTradabilityScore's
+// header comment — the Source item's win-rate wording was relabeled so it
+// doesn't misread as a sell-side stat.
+function _actpopTradabilityHtml(row) {
   const score = _buyTradabilityScore(row);
   const scoreColor = score >= 16 ? 'var(--act-buy-strong)' : score >= _TRADABILITY_BADGE_MIN ? '#d97706' : '#94a3b8';
   const items = _tradabilityBreakdown(row).map(it =>
@@ -5057,7 +5072,7 @@ function _buildActionPopHtmlV2(row) {
   </div>`;
 
   h += `<div class="actpop-rr-row">${_actpopRrBarHtml(row)}`
-    + `<div class="actpop-rr-right">${_actpopTradIconHtml(row, side)}${_actpopMacroStackHtml(row)}</div></div>`;
+    + `<div class="actpop-rr-right">${_actpopTradIconHtml(row)}${_actpopMacroStackHtml(row)}</div></div>`;
 
   if (row.stop_breached) {
     h += `<div class="actpop-neutral" style="color:#b91c1c;font-weight:700;">&#9888; Stop breached &mdash; `
@@ -5065,7 +5080,7 @@ function _buildActionPopHtmlV2(row) {
   }
 
   h += _actpopDriverBullets(row, side);
-  h += _actpopTradabilityHtml(row, side);
+  h += _actpopTradabilityHtml(row);
   h += _actpopTugHtml(row, side);
   h += _actpopNeutralLine(row);
 
