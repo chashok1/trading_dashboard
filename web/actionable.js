@@ -4826,7 +4826,7 @@ function _actpopMacroBarsHtml(r) {
     memberRow = `<div class="actpop-mrow member" title="Sector / Asset class / Style — live quad-regime stance">${bars}</div>`;
   }
   if (!sparkRow && !memberRow) return '';
-  return `<div class="actpop-mgroup">${sparkRow}${memberRow}</div>`;
+  return `<div class="actpop-mgroup-wrap"><div class="actpop-mgroup">${sparkRow}${memberRow}</div></div>`;
 }
 
 // Header: Source / Tech, always shown (disabled/dashed when no data),
@@ -4856,8 +4856,12 @@ function _actpopHeaderPillsHtml(row) {
 function _actpopMacroStackHtml(row) {
   const mv = row.macro_value;
   const mcls = (mv === 'BM' || mv === 'BS') ? 'buy' : (mv === 'SA' || mv === 'STM') ? 'sell' : '';
+  // 2026-08-20: was its own amber ⚠ (.mc-conflict), a different glyph/color
+  // than the grid's MACRO column for the exact same macro_conflict signal.
+  // Matched to the shared magenta bolt (_conflictBoltHtml) instead, same
+  // one _macroConflictMark uses on the grid.
   const conflictMark = row.macro_conflict === true
-    ? ' <span class="mc-conflict" title="MacroNet disagrees with technical direction (price vs 50-day average)">&#9888;</span>' : '';
+    ? _conflictBoltHtml('MacroNet disagrees with technical direction (price vs 50-day average)') : '';
   return `<span class="actpop-macro-stack">
     <span class="actpop-lv"><span class="actpop-lbl">Macro</span><span class="actpop-val ${mcls}">${escapeHtml(mv || 'HOLD')}</span>${conflictMark}</span>
     ${_actpopMacroBarsHtml(row)}

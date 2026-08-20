@@ -360,7 +360,6 @@
     .actpop-val.buy { background: var(--act-buy-bg); color: var(--act-buy-strong); }
     .actpop-val.sell { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); }
     .actpop-val.disabled { background:#f1f5f9; color:#cbd5e1; }
-    .mc-conflict { color:#b45309; font-weight:800; margin-left:2px; }
     .actpop-call { font-size:12px; font-weight:800; padding:2px 8px; border-radius:6px; }
     .actpop-call.buy { color: var(--act-buy-strong); background: var(--act-buy-bg); }
     .actpop-call.sell { color: var(--act-sell-strong); background: var(--act-sell-strong-bg); }
@@ -368,16 +367,31 @@
     .actpop-trad-col { display:inline-flex; flex-direction:column; align-items:center; gap:2px; }
     .actpop-trad-icon { font-size:11px; padding:2px 5px; border-radius:5px; background:#eef2ff; color:#4338ca; }
     .actpop-trad-icon.disabled { background:#f1f5f9; color:#cbd5e1; }
-    .actpop-trad-score { font-size:9px; font-weight:800; }
+    /* height+centering matches .actpop-mgroup-wrap below -- see the shared
+       comment there for why (centers the score against the bar charts). */
+    .actpop-trad-score { font-size:9px; font-weight:800; height:11px; display:flex; align-items:center; justify-content:center; }
     .actpop-trad-score.disabled { color:#cbd5e1; }
-    .actpop-macro-stack { display:inline-flex; flex-direction:column; align-items:center; gap:2px; }
+    /* gap 2px -> 8px: was reading as glued to the Macro pill above it */
+    .actpop-macro-stack { display:inline-flex; flex-direction:column; align-items:center; gap:8px; }
+    /* Wraps .actpop-mgroup at a fixed height matching .actpop-trad-score's
+       so the bar-chart cluster centers against the Tradability number next
+       to it -- .actpop-mgroup itself keeps align-items:flex-end internally
+       (bars need a common baseline to read as a real chart; centering that
+       directly would make them grow from the middle instead of up). */
+    .actpop-mgroup-wrap { height:11px; display:flex; align-items:center; }
     .actpop-mgroup { display:flex; align-items:flex-end; gap:5px; }
     .actpop-mrow { display:flex; align-items:flex-end; gap:1px; cursor:help; height:8px; }
     .actpop-mrow.member { padding-left:5px; border-left:1px solid #e2e8f0; }
     .actpop-mbar { display:inline-block; width:2px; }
-    .actpop-mbar.buy { background: var(--act-buy); }
-    .actpop-mbar.sell { background: var(--act-sell-strong); }
-    .actpop-mbar.neutral { background:#cbd5e1; }
+    /* 2026-08-20: was var(--act-buy)/var(--act-sell-strong) -- the app's
+       muted badge-pill greens/reds (#3a6a4a/#9e3636), which don't read as
+       clearly "green"/"red" for a bar chart. Matched exactly to the grid's
+       own MACRO column bar colors instead (_stanceColor/sparkline in
+       macroCellHtml) so the popup's bars and the grid's bars are the same
+       color, not two different app palettes for the same signal. */
+    .actpop-mbar.buy { background: #16a34a; }
+    .actpop-mbar.sell { background: #dc2626; }
+    .actpop-mbar.neutral { background: #9ca3af; }
 
     /* Row top-aligned (was center) so the RR bar's %-tag (which sits
        position:absolute top:-18px above the track -- see .actpop-rr-tag)
