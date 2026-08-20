@@ -2617,7 +2617,7 @@ function _srcReasonsHtml(r) {
     // winner first with no visual distinction from the others. Shortened
     // to just "D" to save space in the compact grid column.
     const droveIt = srcCode === winning
-      ? `<span class="dv-tag" style="margin-left:3px;" title="Drove the action">D</span>` : '';
+      ? `<span class="dv-tag drove-it-pill" style="margin-left:3px;" title="Drove the action">D</span>` : '';
     return `<div class="src-reason-line">
       <span class="src-ic" style="color:${ic.color};">${ic.glyph}</span>
       <span class="src-tag">${src}${dt}${chg}</span>${droveIt}
@@ -7507,8 +7507,11 @@ function setupActionCol() {
   const body = $('actBody');
   if (!body) return;
 
+  // 2026-08-20: was .act-main-ic (the big final-outcome glyph, removed from
+  // the Sources cell) -- reattached to the 'D' (drove-it) pill instead,
+  // same detail popup (_actionPopHtml) on the same hover mechanism.
   body.addEventListener('mouseover', (e) => {
-    const ic = e.target.closest('.act-main-ic');
+    const ic = e.target.closest('.drove-it-pill');
     if (!ic) return;
     const cell = ic.closest('.act-action-cell');
     if (!cell) return;
@@ -7525,7 +7528,7 @@ function setupActionCol() {
   });
 
   body.addEventListener('mouseout', (e) => {
-    if (e.relatedTarget && e.relatedTarget.closest('.act-main-ic')) return;
+    if (e.relatedTarget && e.relatedTarget.closest('.drove-it-pill')) return;
     tip.style.display = 'none';
   });
 }
