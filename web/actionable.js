@@ -4966,6 +4966,29 @@ function _actpopDriverBullets(row, side) {
     const code = s.source || s.source_code || '?';
     rows.push(bulletFor(code, s.action, s.reason, fmtMD(s.snapshot_date), null, s.pct_since_drop, s.drop_conflict));
   }
+  // PVV (2026-08-20, ported into V2): a real PVV decision (anything besides
+  // NO_ACTION/WATCH) previously only showed up as an ABSENCE, via
+  // _actpopNeutralLine's "no read" line -- not represented anywhere when it
+  // actually had something to say. Same agree/conflict framing
+  // _pvvAgreementIcon already uses elsewhere in the grid (buy/sell side vs.
+  // the row's own side; BUY_WATCH/SELL_WATCH are caution, neither side).
+  const pvvD = row.pvv_decision;
+  if (pvvD && pvvD !== 'NO_ACTION' && pvvD !== 'WATCH') {
+    const pvvSide = _PVV_BUY_SIDE.includes(pvvD) ? 'buy' : (_PVV_SELL_SIDE.includes(pvvD) ? 'sell' : null);
+    if (pvvSide) {
+      const caution = _PVV_CAUTION.includes(pvvD);
+      const cls = caution ? '' : pvvSide;
+      const conflicts = (side === 'buy' || side === 'sell') && pvvSide !== side;
+      const tag = conflicts ? 'conflicts' : (pvvSide === side ? 'agrees' : '');
+      const info = _PVV_DECISION_INFO[pvvD];
+      rows.push(`<div class="actpop-driver ${cls}">
+        <span class="dv-name">PVV</span>
+        <span class="dv-action ${cls}">${escapeHtml(_PVV_LABEL[pvvD] || pvvD)}</span>
+        <span class="dv-note">${escapeHtml(info ? info.meaning : '')}</span>
+        ${tag ? `<span class="dv-tag">${escapeHtml(tag)}</span>` : ''}
+      </div>`);
+    }
+  }
   return rows.length ? `<div class="actpop-drivers">${rows.join('')}</div>` : '';
 }
 
@@ -5105,6 +5128,25 @@ function _buildActionPopHtmlV2(row) {
   if (row.stop_breached) {
     h += `<div class="actpop-neutral" style="color:#b91c1c;font-weight:700;">&#9888; Stop breached &mdash; `
        + `${escapeHtml(row.stop_signal || 'trade line broke down')}</div>`;
+  }
+
+  // LT conviction-hold conflict (2026-08-20: ported from V1, was dropped in
+  // the V2 rewrite) — a SELL-side Final Call fighting an active conviction
+  // HOLD note, or a BUY-side Final Call fighting an active AVOID note.
+  const ltAvoid = row.conviction_direction === 'AVOID';
+  const ltConflict = !!row.conviction_hold && side === (ltAvoid ? 'buy' : 'sell');
+  if (ltConflict) {
+    h += `<div class="actpop-neutral" style="color:#7c3aed;font-weight:700;">`
+       + `${ltAvoid ? '&#128683;' : '&#128301;'} Conflicts with long-term conviction ${ltAvoid ? 'AVOID' : 'HOLD'} `
+       + `&mdash; ${escapeHtml(row.conviction_note || '')}</div>`;
+  }
+
+  // Fresh-signal note (2026-08-20: also ported from V1) — informational,
+  // not a risk flag: Technical hasn't had a chance to confirm yet, it's
+  // not disagreeing.
+  if (row._watchlisted && row._isNew) {
+    h += `<div class="actpop-neutral" style="color:#0a84ff;">&#127991; Fresh signal &mdash; winning source data `
+       + `just landed, Technical isn't entry-ripe yet</div>`;
   }
 
   h += _actpopDriverBullets(row, side);
