@@ -157,7 +157,7 @@ function _macroConflictMark(r) {
   // right against a red-tinted SELL badge (red-on-red). Violet neither
   // green nor red, so it pops against both buy- and sell-tinted badges;
   // bumped size + a white halo for contrast on either background.
-  return `<span style="color:#4c1d95;font-size:11px;font-weight:800;vertical-align:middle;margin-left:2px;text-shadow:0 0 2px #fff;" title="CONFLICT: MacroNet score disagrees with technical direction (price vs 50-day average). Hover the badge for detail.">⚡</span>`;
+  return `<span style="color:#000000;font-size:11px;font-weight:800;vertical-align:middle;margin-left:2px;text-shadow:0 0 2px #fff;" title="CONFLICT: MacroNet score disagrees with technical direction (price vs 50-day average). Hover the badge for detail.">⚡</span>`;
 }
 
 // Sector/asset-class/style dots (2026-08-01) — one small bar per membership
