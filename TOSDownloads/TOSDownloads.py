@@ -403,6 +403,25 @@ def set_column_set():
     ui_click(DESIRED_COL_SET_X, DESIRED_COL_SET_Y)
     print("✅ Column set applied.")
 
+def do_click_row(row, images_folder):
+    """Shared 'Click' row handler (2026-08-21) -- resolves row['ref_image']
+    on screen and clicks at row['X']/row['Y'] as an OFFSET from that
+    image's location (falls back to X/Y as literal screen coordinates only
+    if no image is found/given). Factored out of run_recipe_rows()'s own
+    inline Click dispatch so every other caller clicking a 'Click'-type row
+    resolves it exactly the same way -- see toggle_column_set_away_and_back()
+    below, which used to skip this resolution and click its row's raw
+    X/Y (266,7 etc.) as absolute screen coordinates instead of an offset
+    from watchlist.png's actual on-screen position. Since watchlist.png
+    isn't anywhere near the physical top-left corner, that landed every
+    click near the very top of the screen instead of the column-set
+    combobox -- confirmed live 2026-08-21."""
+    offset_location = get_ref_image_location(row, images_folder)
+    if offset_location:
+        ui_click(row['X'] + int(offset_location.left), row['Y'] + int(offset_location.top), row['Name'])
+    else:
+        ui_click(row['X'], row['Y'], row['Name'])
+
 def toggle_column_set_away_and_back(df, images_folder):
     """RELOADWL99 reprocess helper (2026-08-20): switches the column-set
     combobox to a different entry and back to this recipe's own entry,
@@ -414,12 +433,16 @@ def toggle_column_set_away_and_back(df, images_folder):
 
     Reads its own coordinates straight from df instead of a hardcoded
     per-type map: every recipe's first two rows are `Click, TOS Column Set`
-    -- row 0 opens the combobox (266,7), row 1 picks this recipe's own
-    entry (e.g. TOSL.csv's own Y=196) and carries a target_image
-    (e.g. TOSL.png) confirming it applied. 'A different entry' is just
-    that row's own Y +/- COLUMN_SET_ROW_SPACING, picking whichever
+    -- row 0 opens the combobox (266,7 offset from watchlist.png), row 1
+    picks this recipe's own entry (e.g. TOSL.csv's own Y=196) and carries a
+    target_image (e.g. TOSL.png) confirming it applied. 'A different entry'
+    is just that row's own Y +/- COLUMN_SET_ROW_SPACING, picking whichever
     direction stays within the known list (COLUMN_SET_MAX_Y) -- so this
-    works for any of TOSD/TOSL/TOSO/TOSW.csv without naming them.
+    works for any of TOSD/TOSL/TOSO/TOSW.csv without naming them. Each
+    click goes through do_click_row() (2026-08-21 fix) so these offsets
+    resolve against watchlist.png's on-screen position exactly like every
+    other Click row in a recipe -- previously clicked as literal screen
+    coordinates instead, landing near the physical top of the screen.
 
     No-op (with a warning) if a recipe doesn't have the expected two rows,
     e.g. if it's ever run standalone without them."""
@@ -429,19 +452,22 @@ def toggle_column_set_away_and_back(df, images_folder):
               "rows -- skipping the toggle.")
         return
 
-    open_x, open_y = int(click_rows.iloc[0]['X']), int(click_rows.iloc[0]['Y'])
-    own_x, own_y = int(click_rows.iloc[1]['X']), int(click_rows.iloc[1]['Y'])
+    open_row = click_rows.iloc[0]
+    own_row = click_rows.iloc[1]
+    own_y = int(own_row['Y'])
     other_y = own_y + COLUMN_SET_ROW_SPACING if own_y + COLUMN_SET_ROW_SPACING <= COLUMN_SET_MAX_Y \
         else own_y - COLUMN_SET_ROW_SPACING
+    away_row = own_row.copy()
+    away_row['Y'] = other_y
 
-    print(f"--- Toggling column set away ({own_y}) and back, x{COLUMN_SET_TOGGLE_REPEAT}, "
+    print(f"--- Toggling column set away ({own_y} -> {other_y}) and back, x{COLUMN_SET_TOGGLE_REPEAT}, "
           "to force TOS to recompute stuck cells before reprocessing. ---")
     for i in range(COLUMN_SET_TOGGLE_REPEAT):
-        ui_click(open_x, open_y, "TOS Column Set (open)")
-        ui_click(own_x, other_y, "TOS Column Set (switch away)")
+        do_click_row(open_row, images_folder)
+        do_click_row(away_row, images_folder)
         time.sleep(2.0)
-        ui_click(open_x, open_y, "TOS Column Set (reopen)")
-        ui_click(own_x, own_y, "TOS Column Set (switch back)")
+        do_click_row(open_row, images_folder)
+        do_click_row(own_row, images_folder)
         time.sleep(2.0)
         print(f"    toggle {i + 1}/{COLUMN_SET_TOGGLE_REPEAT} done.")
 
@@ -1261,11 +1287,7 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
     for index, row in df.iterrows():
         etype = row['Type']
         if etype == "Click":
-            offset_location = get_ref_image_location(row, images_folder)
-            if offset_location:
-                ui_click(row['X']+ int(offset_location.left),row['Y']+ int(offset_location.top),row['Name'])
-            else:
-                ui_click(row['X'],row['Y'],row['Name'])
+            do_click_row(row, images_folder)
         elif etype == "WL":
             if firstopenindex==99:
                 firstopenindex=index
