@@ -8,17 +8,22 @@ consume. Writes into settings.watchlist_files_dir.
 
 2026-08-18, user-directed design (TOS-export right-sizing, no task
 number). Two modes:
-    daily   -- Tier 1 only, spread across WL1-WL10 (fixed range, CAP=55
-               each -- up to 550 symbols; any excess goes to overflow.csv).
-    weekly  -- Tier 1 + Tier 2 combined. Tier 1 -> WL1-10 as above. Tier 2
-               -> WL11, WL12, ... with no upper bound -- as many WL numbers
+    daily   -- Tier 1 only, spread across WL1-WL13 (fixed range, CAP=55
+               each -- up to 715 symbols; any excess goes to overflow.csv).
+    weekly  -- Tier 1 + Tier 2 combined. Tier 1 -> WL1-13 as above. Tier 2
+               -> WL14, WL15, ... with no upper bound -- as many WL numbers
                as needed (CAP=55 each) so every Tier 2 symbol gets a slot
                and none of them land in overflow.csv.
-Both modes assign Tier 1 to the same WL1-10 range -- weekly is a full
-rebuild covering everything, daily only touches WL1-10 (its own Tier 1
-portion). They don't collide even though weekly also covers WL1-10,
+Both modes assign Tier 1 to the same WL1-13 range -- weekly is a full
+rebuild covering everything, daily only touches WL1-13 (its own Tier 1
+portion). They don't collide even though weekly also covers WL1-13,
 because it's the SAME assignment for the SAME symbols, not two different
 things competing for the same names.
+
+2026-08-21, user-directed: Tier 1 range widened WL1-10 -> WL1-13 (Tier 2
+not in active use yet) and Tier 2's base pushed out to WL14 accordingly --
+just the two constants below, TIER1_RANGE/TIER2_BASE; the reconciliation
+algorithm itself (see _reconcile_assignment) is unchanged.
 
 STABILITY: symbol -> WL-number assignment is persisted in
 ref_watchlist_assignment, not recomputed from scratch (e.g. by sorting the
@@ -103,8 +108,8 @@ from etl.db import session_scope
 log = logging.getLogger(__name__)
 
 CAP = 55
-TIER1_RANGE = list(range(1, 11))  # WL1..WL10, fixed
-TIER2_BASE = 11                   # WL11, WL12, ... -- unbounded, extends as far as needed
+TIER1_RANGE = list(range(1, 14))  # WL1..WL13, fixed
+TIER2_BASE = 14                   # WL14, WL15, ... -- unbounded, extends as far as needed
 
 MODE_TIERS = {
     "daily": (1,),

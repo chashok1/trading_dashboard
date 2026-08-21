@@ -8,7 +8,7 @@ REM   (settings.watchlist_lists_dir)
 
 cd /d "C:\Ashok\Invest\Projects\trading-dashboard"
 
-echo === Generating Tier 1 watchlist files only (WL1-10) ===
+echo === Generating Tier 1 watchlist files only (WL1-13) ===
 ".venv\Scripts\python.exe" -m etl.generate_watchlist_files --mode daily
 
 if errorlevel 1 (
