@@ -424,12 +424,16 @@ def do_click_row(row, images_folder):
 
 def toggle_column_set_away_and_back(df, images_folder):
     """RELOADWL99 reprocess helper (2026-08-20): switches the column-set
-    combobox to a different entry and back to this recipe's own entry,
-    COLUMN_SET_TOGGLE_REPEAT times -- tried before each reprocess attempt,
-    ahead of falling back to reloading the missing symbols into WL99.
-    ThinkOrSwim sometimes gets individual cells stuck 'Loading' forever on
-    the currently-applied column set but resolves them the moment the set
-    changes and changes back, without needing any symbol re-import at all.
+    combobox to a different entry and back to this recipe's own entry --
+    up to COLUMN_SET_TOGGLE_REPEAT times, checking the actual 'lo*'
+    loading-image count after each toggle and stopping as soon as it's
+    resolved or a toggle stops helping (2026-08-21, user-directed --
+    COLUMN_SET_TOGGLE_REPEAT is a CAP, not a fixed number of toggles to
+    always run). Tried before each reprocess attempt, ahead of falling
+    back to reloading the missing symbols into WL99. ThinkOrSwim sometimes
+    gets individual cells stuck 'Loading' forever on the currently-applied
+    column set but resolves them the moment the set changes and changes
+    back, without needing any symbol re-import at all.
 
     Reads its own coordinates straight from df instead of a hardcoded
     per-type map: every recipe's first two rows are `Click, TOS Column Set`
@@ -460,16 +464,27 @@ def toggle_column_set_away_and_back(df, images_folder):
     away_row = own_row.copy()
     away_row['Y'] = other_y
 
-    print(f"--- Toggling column set away ({own_y} -> {other_y}) and back, x{COLUMN_SET_TOGGLE_REPEAT}, "
-          "to force TOS to recompute stuck cells before reprocessing. ---")
+    loading_count = count_images_in_folder(images_folder, "lo", timeout=1)
+    print(f"--- Toggling column set away ({own_y} -> {other_y}) and back, up to "
+          f"{COLUMN_SET_TOGGLE_REPEAT}x ({loading_count} 'lo*' instance(s) visible now) -- "
+          "checking after each toggle and stopping early once it's resolved or stalls. ---")
     for i in range(COLUMN_SET_TOGGLE_REPEAT):
+        if loading_count == 0:
+            print(f"    nothing left visibly loading -- stopping after {i} toggle(s).")
+            break
         do_click_row(open_row, images_folder)
         do_click_row(away_row, images_folder)
         time.sleep(2.0)
         do_click_row(open_row, images_folder)
         do_click_row(own_row, images_folder)
         time.sleep(2.0)
-        print(f"    toggle {i + 1}/{COLUMN_SET_TOGGLE_REPEAT} done.")
+        new_count = count_images_in_folder(images_folder, "lo", timeout=1)
+        print(f"    toggle {i + 1}/{COLUMN_SET_TOGGLE_REPEAT} done -- "
+              f"{loading_count} -> {new_count} 'lo*' instance(s).")
+        if new_count >= loading_count:
+            print(f"    no further improvement -- stopping early.")
+            break
+        loading_count = new_count
 
 def wait_if_mouse_moved():
     """If the mouse has moved since our last automated action, someone's
@@ -1050,8 +1065,10 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
     # 4. Nudge before exporting (2026-08-21, user-directed): if a 'lo*'
     # loading-spinner image is still visible on screen at this point, run
     # the same column-set-toggle-away-and-back nudge the reprocess loop
-    # uses (x3, via COLUMN_SET_TOGGLE_REPEAT inside the helper) BEFORE
-    # exporting -- every time WL99 is loaded, right before its export, not
+    # uses (up to 3x, via COLUMN_SET_TOGGLE_REPEAT inside the helper --
+    # it stops early on its own once resolved or once a toggle stops
+    # helping) BEFORE exporting -- every time WL99 is loaded, right before
+    # its export, not
     # just once per run. A quick (timeout=1) scan, since this only needs to
     # know "is anything still visibly loading", not count instances.
     still_loading = count_images_in_folder(images_folder, "lo", timeout=1)
@@ -1359,8 +1376,9 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
                       f"(attempt {reprocess_attempts + 1}/{MAX_REPROCESS_ATTEMPTS}). "
                       f"Watchlists being touched: {incomplete_files} ---")
                 # 2026-08-20: try jarring TOS into recomputing the stuck cells
-                # by switching the column set away and back (x3) BEFORE
-                # re-hitting the same incomplete watchlists -- often resolves
+                # by switching the column set away and back (up to 3x, stops
+                # early once it's helped) BEFORE re-hitting the same
+                # incomplete watchlists -- often resolves
                 # them without needing any symbol reimport at all. Falls
                 # through to the reprocess below regardless of whether this
                 # helped; if it didn't, the reload-into-WL99 fallback after
