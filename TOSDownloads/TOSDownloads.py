@@ -960,6 +960,11 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
          navigate to it, so the coordinates only need to be correct in one
          place per TOSType CSV, same as any other WL row.
 
+    If stuck_symbols_memory is empty when this call starts, steps 1/2/3
+    above are skipped (nothing to import) AND the whole nudge+export step
+    is skipped too (2026-08-21, user-directed) -- nothing changed in WL99,
+    so there's nothing new worth exporting; this call is then a no-op.
+
     df (2026-08-21): the calling recipe's full DataFrame (e.g. TOSL.csv's),
     needed only to hand to toggle_column_set_away_and_back() for its own
     'TOS Column Set' row lookup -- this function otherwise only ever uses
@@ -1030,7 +1035,17 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
             run_recipe_rows(reload_df, save_folder, images_folder, working_dir, False)
             print(f"--- RELOADWL99: reload replay into {row['watchlist_name']} finished. ---")
     else:
-        print("\n--- RELOADWL99: nothing in stuck_symbols_memory -- nothing to reload, still exporting. ---")
+        # 2026-08-21, user-directed: nothing stuck means nothing changed in
+        # WL99 either -- skip touching TOS at all (no nudge, no export, no
+        # LoadingSymbols.txt rewrite) instead of re-exporting WL99's
+        # unchanged contents. Safe now that derive_merge_params() already
+        # derives final_partial_filename from the last plain WL row, never
+        # WL99 (see its own docstring) -- nothing downstream expects a
+        # fresh WL99 fragment to exist every run, so skipping it here can't
+        # cause monitor_directory() to wait on a file that never arrives.
+        print("\n--- RELOADWL99: nothing in stuck_symbols_memory -- nothing to reload, skipping WL99 "
+              "export too. ---")
+        return
 
     # 4. Nudge before exporting (2026-08-21, user-directed): if a 'lo*'
     # loading-spinner image is still visible on screen at this point, run
@@ -1045,23 +1060,17 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
               "nudging column-set (x3) to force a recompute. ---")
         toggle_column_set_away_and_back(df, images_folder)
 
-    # 5. Real export of WL99 -- ALWAYS, even with nothing to reload above.
-    # The merge stage expects this fragment to exist every run (same as any
-    # WL1..WL17 fragment); skipping it here previously left it missing
-    # whenever nothing happened to be stuck, causing a "missing file" error
-    # downstream instead of just re-exporting WL99's current, unchanged
-    # contents.
+    # 5. Real export of WL99 -- only reached when has_symbols was True (see
+    # the early return above for the nothing-stuck case).
     #
-    # already_selected=has_symbols (2026-08-20): only true when step 1's
-    # pre-select actually ran -- in that branch nothing between here and
-    # there switches watchlists (step 2's reload sequence edits WL99's
-    # symbols without navigating away from it), so re-doing the same 3
-    # selection clicks here would just reselect WL99 a second time for
-    # nothing. When has_symbols is False, steps 1/2 above were skipped
-    # entirely -- WL99 was never actually selected this call, so this
-    # export still needs the real navigation.
+    # already_selected=True (2026-08-20): step 1's pre-select already ran
+    # (only reached this far when has_symbols was True), and nothing
+    # between here and there switches watchlists (step 2's reload sequence
+    # edits WL99's symbols without navigating away from it), so re-doing
+    # the same 3 selection clicks here would just reselect WL99 a second
+    # time for nothing.
     download_watchlist(export_row, save_folder, images_folder, False, False, False,
-                        already_selected=has_symbols)
+                        already_selected=True)
 
     # 6. Re-sync LoadingSymbols.txt to stuck_symbols_memory's state AFTER
     # this export (2026-08-21, user-directed) -- step 5's download_watchlist
@@ -1576,32 +1585,6 @@ def read_headers(headers_file):
 
     return input_headers, output_headers
 
-def read_files_list(files_list_path):
-    """Reads the FilesList.txt to get the list of already processed files."""
-    if not os.path.exists(files_list_path):
-        return []
-    with open(files_list_path, 'r') as file:
-        return [line.strip() for line in file.readlines()]
-
-def update_files_list(files_list_path, filename):
-    """Updates the FilesList.txt by adding a new file entry, removing date prefix in 'YYYY-MM-DD-' format."""
-    # Remove the date prefix in 'YYYY-MM-DD-' format from the filename
-    filename_without_date = re.sub(r'^\d{4}-\d{2}-\d{2}-', '', filename)
-    # 2026-08-17: removed a stray "strip the character 5 from the end if it's
-    # a letter" step that used to run here -- nothing in the current naming
-    # scheme needs a trailing letter stripped (WL1..WL17 end in digits; the
-    # WL99TD/TL/TO/TW suffix's trailing letter IS the type identifier, not
-    # something to discard). It was silently corrupting entries like
-    # "TOSL_WL99TL.csv" into "TOSL_WL99T.csv" -- exactly the stale name that
-    # kept reappearing in FilesList.txt and triggering monitor_directory()'s
-    # blocking "Do you want to remove '...' from FilesList.txt?" prompt.
-
-    files = read_files_list(files_list_path)
-
-    if filename_without_date not in files:
-        with open(files_list_path, 'a') as file:
-            file.write(filename_without_date + '\n')
-
 def delete_processed_files(directory, file_dict):
     """
     Deletes each file specified in the provided dictionary of file names, appending the directory.
@@ -1760,7 +1743,6 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
         output_dir = os.path.join(working_dir, 'output')
         archive_dir = os.path.join(working_dir, 'archive')
         headers_file = os.path.join(working_dir, 'Headers.csv')
-        files_list_path = os.path.join(working_dir, 'FilesList.txt')
         incomplete_files_list_path = os.path.join(working_dir, 'IncompleteFilesList.txt')
         # 2026-08-17: the actual stuck SYMBOLS (not filenames -- that's what
         # IncompleteFilesList.txt records, via extract_filenames()), for
@@ -1856,12 +1838,15 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                                     del summary_messages[symbol]
 
                         if dataexists:
-                            if update_exports=="N":
-                                update_files_list(files_list_path, filename)
-                            elif filename!=export_file_to_update:
-                                update_exports_prompt = True
-                            else:
-                                exit_update_exports=True
+                            # 2026-08-21: no longer auto-updating FilesList.txt
+                            # here (user manages it by hand now, if at all) --
+                            # only the update_exports='Y' mode still has
+                            # something to do in this branch.
+                            if update_exports=="Y":
+                                if filename!=export_file_to_update:
+                                    update_exports_prompt = True
+                                else:
+                                    exit_update_exports=True
                             processed_files[filename] = file_modified_time
                             last_file=filename
 
@@ -1915,25 +1900,13 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                 continue
 
             # Exit condition check: Verify if the final file has been processed
+            # (2026-08-21: the cross-run FilesList.txt "were any expected
+            # files missed" check that used to live here is gone -- user
+            # tracks that themselves via Excel + a rowcount comparison
+            # against the previous run instead. This is just "has THIS
+            # run's own last watchlist fragment shown up yet".)
             if update_exports=="N":
                 if not any(final_partial_filename in f for f in processed_files):
-                    continue
-
-                # Verify all files are processed
-                all_processed_files = read_files_list(files_list_path)
-                processed_files_without_date = {re.sub(r'^\d{4}-\d{2}-\d{2}-', '', filename) for filename in processed_files}
-                missed_files = set(all_processed_files) - processed_files_without_date
-
-                if missed_files:
-                    print("The following files were missed:")
-                    for missed_file in missed_files:
-                        print(missed_file)
-                        remove = input(f"Do you want to remove '{missed_file}' from FilesList.txt? (y/Y to remove): ").strip().lower()
-                        if remove == 'y':
-                            with open(files_list_path, 'w') as file:
-                                for f in all_processed_files:
-                                    if f != missed_file:
-                                        file.write(f + '\n')
                     continue
 
             else:
