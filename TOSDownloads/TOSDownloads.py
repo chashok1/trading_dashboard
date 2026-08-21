@@ -34,6 +34,18 @@ fd = None
 incomplete_files = []
 last_auto_pos = None
 
+# 2026-08-20: single source of truth for "which symbols are currently stuck
+# 'Loading'" -- an in-memory set, kept accurate incrementally as each
+# fragment is exported (update_stuck_symbols_memory() adds a symbol when its
+# freshly-exported row is stuck, REMOVES it the moment a fresher row shows it
+# resolved). Written to LoadingSymbols.txt exactly once, immediately before
+# each do_reloadwl99() call -- never accumulated on disk across calls, so
+# there's nothing to go stale or need trimming. Only bootstrapped from a
+# one-time disk rescan (find_genuinely_stuck_symbols()) when there's no
+# in-process export history to draw from -- run_pipeline()'s merge-only
+# mode, which never calls main().
+stuck_symbols_memory = set()
+
 # 2026-08-16: merged in from MergeExports.py so one script (same 4 required
 # CLI args as the old TOSDownloads.py) both downloads the TOS watchlist
 # fragments AND merges them into the final consolidated file. See __main__
@@ -573,33 +585,60 @@ def check_loading_threshold_from_csv(file_path: str, lines_to_skip: int = 3, tar
     # Check the condition
     return proportion_without_word >= threshold or len(df)<5
 
-def extract_loading_symbols(file_path: str, lines_to_skip: int = 3, target_word: str = 'loading') -> list:
-    """Scan an exported watchlist fragment for rows still containing
-    target_word and return the symbols (first column) for those rows.
-    Companion to check_loading_threshold_from_csv() above -- that function
-    only computes a file-level pass/fail threshold (a file can pass the
-    70% threshold while still having a handful of individually-stuck
-    symbols in it), so it can't be reused directly for this. Called right
-    after each watchlist's own export (2026-08-17), so LoadingSymbols.txt
-    accumulates from THIS run's own exports as they happen, not a stale
-    snapshot from a previous run. Returns [] on any read error, same
-    defensive spirit as check_loading_threshold_from_csv."""
+def normalize_for_reimport(symbol):
+    """TOS renders a specific-month futures contract with a bracketed
+    expiration suffix in exports (e.g. "/BTC[Q26]"), but re-importing that
+    exact text via Edit > Import > Load from File errors out -- confirmed
+    2026-08-17. TOS's import only accepts the root symbol (e.g. "/BTC"),
+    which resolves to whichever contract is currently front-month/
+    continuous. Strips everything from the first "[" onward; symbols
+    without brackets (the common case -- plain equities/ETFs) pass through
+    unchanged. Applied at the point a symbol enters stuck_symbols_memory
+    (update_stuck_symbols_memory() below), so every entry in memory is
+    already reimport-ready -- no separate normalize pass needed later."""
+    bracket_index = symbol.find('[')
+    return symbol[:bracket_index] if bracket_index != -1 else symbol
+
+def update_stuck_symbols_memory(file_path: str, lines_to_skip: int = 3, target_word: str = 'loading') -> None:
+    """Single point where stuck_symbols_memory gets updated -- called right
+    after every fragment export (download_watchlist()'s export-success
+    path, for both the initial WL1..WL16 pass and any reprocess/WL99
+    re-export of the same fragment). For every symbol row in this
+    fragment: adds it to stuck_symbols_memory if this reading is still
+    stuck, REMOVES it the moment a fresher reading shows it resolved --
+    the freshest sighting of a symbol always wins, immediately, no
+    separate reconciliation pass needed later. Symbols not present in this
+    fragment are left untouched (each watchlist fragment covers its own
+    disjoint symbol set, except WL99 which temporarily re-hosts a subset
+    of the others for reload -- exactly the case this needs to reconcile).
+
+    2026-08-20: replaces the old extract_loading_symbols() /
+    append_loading_symbols() disk-based approach (and, everywhere main()
+    actually runs, find_genuinely_stuck_symbols() too -- see that
+    function's own docstring for its one remaining use) -- that wrote
+    LoadingSymbols.txt as a monotonic union (never removing a resolved
+    symbol) and only got trimmed back to accurate via a separate
+    full-directory rescan right before each retry. Keeping one in-memory
+    set accurate incrementally, as each export happens, means there's
+    nothing to trim or re-derive from disk at all. Silently no-ops on any
+    read error, same defensive spirit as the functions it replaces."""
     if not os.path.exists(file_path):
-        return []
+        return
     try:
         df = pd.read_csv(file_path, skiprows=lines_to_skip)
     except Exception:
-        return []
+        return
     if df.empty:
-        return []
+        return
     df_str = df.select_dtypes(include=[object]).astype(str).fillna('')
     contains_word = df_str.apply(
         lambda col: col.str.contains(target_word, case=False, na=False)
     ).any(axis=1)
-    stuck_rows = df[contains_word]
-    if stuck_rows.empty:
-        return []
-    return stuck_rows.iloc[:, 0].astype(str).tolist()
+    symbols = df.iloc[:, 0].astype(str)
+    stuck_now = {normalize_for_reimport(s) for s in symbols[contains_word]}
+    resolved_now = {normalize_for_reimport(s) for s in symbols[~contains_word]}
+    stuck_symbols_memory.update(stuck_now)
+    stuck_symbols_memory.difference_update(resolved_now)
 
 def find_genuinely_stuck_symbols(save_folder, lines_to_skip: int = 3, target_word: str = 'loading') -> set:
     """Scans every fragment CSV in save_folder and returns only the symbols
@@ -607,16 +646,13 @@ def find_genuinely_stuck_symbols(save_folder, lines_to_skip: int = 3, target_wor
     across every fragment, shows target_word, with no fragment anywhere
     holding resolved (non-loading) data for it.
 
-    2026-08-17: this exists because a naive per-file union of
-    extract_loading_symbols() results (what merge-only mode's RELOADWL99
-    trigger first used) re-flags a symbol forever once it's ever been seen
-    stuck in ANY fragment -- even after a later export (e.g. WL99's own
-    reload+export) already resolved it elsewhere. Confirmed in practice:
-    a second merge-only run kept reloading the original stuck list even
-    though the newer WL99 export had proper data for some of them. This
-    mirrors monitor_directory()'s own per-symbol logic instead (a resolved
-    sighting always wins over a stuck one, regardless of which file or how
-    old), so only symbols with NO resolved sighting anywhere come back."""
+    2026-08-20: kept ONLY as a one-time bootstrap for run_pipeline()'s
+    merge-only mode (skip_download='Y') -- that path never calls main(),
+    so there's no in-process download history for stuck_symbols_memory to
+    have accumulated; a disk rescan of whatever fragments a PRIOR run left
+    behind is the only way to seed it. Everywhere main() actually runs,
+    update_stuck_symbols_memory() keeps stuck_symbols_memory accurate
+    incrementally as exports happen, and this function is not called."""
     stuck, resolved = set(), set()
     if not os.path.isdir(save_folder):
         return stuck
@@ -635,59 +671,20 @@ def find_genuinely_stuck_symbols(save_folder, lines_to_skip: int = 3, target_wor
             lambda col: col.str.contains(target_word, case=False, na=False)
         ).any(axis=1)
         symbols = df.iloc[:, 0].astype(str)
-        stuck.update(symbols[contains_word])
-        resolved.update(symbols[~contains_word])
+        stuck.update(normalize_for_reimport(s) for s in symbols[contains_word])
+        resolved.update(normalize_for_reimport(s) for s in symbols[~contains_word])
     return stuck - resolved
 
-def normalize_for_reimport(symbol):
-    """TOS renders a specific-month futures contract with a bracketed
-    expiration suffix in exports (e.g. "/BTC[Q26]"), but re-importing that
-    exact text via Edit > Import > Load from File errors out -- confirmed
-    2026-08-17. TOS's import only accepts the root symbol (e.g. "/BTC"),
-    which resolves to whichever contract is currently front-month/
-    continuous. Strips everything from the first "[" onward; symbols
-    without brackets (the common case -- plain equities/ETFs) pass through
-    unchanged. Deliberately NOT applied in find_genuinely_stuck_symbols()'s
-    own stuck-vs-resolved comparison -- different expiration months are
-    genuinely different instruments there, and collapsing them would wrongly
-    treat one month's resolved data as covering another's. This only matters
-    at the point a symbol is about to be typed into TOS's import dialog."""
-    bracket_index = symbol.find('[')
-    return symbol[:bracket_index] if bracket_index != -1 else symbol
-
-def sync_loading_symbols_file(save_folder, symbols):
-    """Overwrite (not append) LoadingSymbols.txt with exactly this symbol
-    set. append_loading_symbols() below only ever unions new stuck symbols
-    in -- it's never trimmed mid-run, so by the time do_reloadwl99() is
-    retried a 2nd/3rd time, LoadingSymbols.txt still holds every symbol
-    that was EVER stuck this run, including ones already resolved by an
-    earlier reprocess pass or WL99 attempt. do_reloadwl99()'s reload step
-    reads that file directly (not find_genuinely_stuck_symbols()), so
-    without this it redundantly re-imports already-resolved symbols on
-    every retry -- a full extra TOS click-through cycle for nothing.
-    Call this with the current, accurate stuck set (from
-    find_genuinely_stuck_symbols()) right before each do_reloadwl99() call
-    in the RELOADWL99 branch's retry loop."""
+def write_stuck_symbols_to_file(save_folder):
+    """Writes the CURRENT stuck_symbols_memory set to
+    working_dir/LoadingSymbols.txt (working_dir = parent of save_folder,
+    same convention derive_merge_params()/do_reloadwl99() use) -- called
+    exactly once, immediately before each do_reloadwl99() call, so the
+    file always reflects memory's live, accurate state at the moment
+    it's actually read for the reload."""
     working_dir = os.path.dirname(os.path.normpath(save_folder))
     loading_symbols_file = os.path.join(working_dir, 'LoadingSymbols.txt')
-    reimport_symbols = sorted({normalize_for_reimport(s) for s in symbols})
-    write_filenames_to_file(reimport_symbols, loading_symbols_file, label="symbols")
-
-def append_loading_symbols(save_folder, new_symbols):
-    """Append newly-found stuck symbols (deduped, sorted) to this run's
-    LoadingSymbols.txt -- working_dir/LoadingSymbols.txt, same convention
-    derive_merge_params()/do_reloadwl99() use (working_dir = parent of
-    save_folder). No-op if new_symbols is empty."""
-    if not new_symbols:
-        return
-    working_dir = os.path.dirname(os.path.normpath(save_folder))
-    loading_symbols_file = os.path.join(working_dir, 'LoadingSymbols.txt')
-    existing = set()
-    if os.path.exists(loading_symbols_file):
-        with open(loading_symbols_file, 'r') as f:
-            existing = {line.strip() for line in f if line.strip()}
-    combined = sorted(existing | {normalize_for_reimport(s) for s in new_symbols})
-    write_filenames_to_file(combined, loading_symbols_file, label="symbols")
+    write_filenames_to_file(sorted(stuck_symbols_memory), loading_symbols_file, label="symbols")
 
 def get_ref_image_location(watchlist_data, images_folder):
     ref_image = watchlist_data['ref_image']
@@ -906,29 +903,22 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir):
          so the coordinates only need to be correct in one place per
          TOSType CSV, same as any other WL row.
 
-    Symbol source: LoadingSymbols.txt in this run's working_dir (parent of
-    save_folder, same convention derive_merge_params()/monitor_directory()
-    use). This is THIS run's own data, not a stale previous-run snapshot:
-    main() clears it before exporting WL1, then download_watchlist() (via
-    extract_loading_symbols()/append_loading_symbols()) accumulates stuck
-    symbols into it fresh as each of WL1..WL16 actually export -- by the
-    time this row runs (last), it holds the complete, current set from
-    every watchlist in this same run. The merge stage afterward still does
-    its own, more precise per-symbol tracking across all fragments (catches
-    anything this per-file scan might miss) and will retry any leftovers on
-    the NEXT run automatically, same as before."""
+    Symbol source: stuck_symbols_memory (2026-08-20) -- the in-memory set
+    download_watchlist() keeps accurate via update_stuck_symbols_memory()
+    as each fragment actually exports, reconciled fresh from every export
+    including this same call's own WL99 export (step 3 below still goes
+    through download_watchlist(), so it self-reconciles too). Written to
+    LoadingSymbols.txt right here, immediately before the reload sequence
+    reads it -- not accumulated on disk across calls, so there's nothing
+    to go stale between being written and being used. The merge stage
+    afterward still does its own, independent per-symbol tracking across
+    all fragments and will retry any leftovers on the NEXT run
+    automatically, same as before."""
     working_dir = os.path.dirname(os.path.normpath(save_folder))
-    loading_symbols_file = os.path.join(working_dir, 'LoadingSymbols.txt')
 
     # Skip the RELOAD/IMPORT part (not the export -- see below) if there's
-    # nothing to reload: no file, or empty/blank-only content (monitor_
-    # directory() writes an empty file via write_filenames_to_file([], ...)
-    # when nothing's stuck, rather than deleting it, so "exists but empty"
-    # is the normal steady-state case).
-    has_symbols = False
-    if os.path.exists(loading_symbols_file):
-        with open(loading_symbols_file, 'r') as f:
-            has_symbols = any(line.strip() for line in f)
+    # nothing currently stuck.
+    has_symbols = bool(stuck_symbols_memory)
 
     export_row = dict(row)
 
@@ -945,7 +935,13 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir):
         # which this coordinate-based call already does more reliably.
         download_watchlist(export_row, save_folder, images_folder, True, False, False)
 
-        # 2. Reload sequence: replay ReloadWL99.csv (co-located with the
+        # 2. Write stuck_symbols_memory's CURRENT contents to
+        # LoadingSymbols.txt right here -- immediately before the reload
+        # sequence below reads it (its own TYPEFILE step types this exact
+        # file's path) -- so it's always in sync at the moment it's used.
+        write_stuck_symbols_to_file(save_folder)
+
+        # 3. Reload sequence: replay ReloadWL99.csv (co-located with the
         # calling recipe) with this row's own values substituted into its
         # placeholders. Starts from "Click watchlist dropdown box" now
         # (2026-08-17) -- see step 1's note.
@@ -957,9 +953,9 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir):
             reload_df['ref_image'] = reload_df['ref_image'].apply(lambda v: substitute_placeholders(v, row))
             run_recipe_rows(reload_df, save_folder, images_folder, working_dir, False)
     else:
-        print(f"\n--- RELOADWL99: {loading_symbols_file} has no symbols -- nothing to reload, still exporting. ---")
+        print("\n--- RELOADWL99: nothing in stuck_symbols_memory -- nothing to reload, still exporting. ---")
 
-    # 3. Real export of WL99 -- ALWAYS, even with nothing to reload above.
+    # 4. Real export of WL99 -- ALWAYS, even with nothing to reload above.
     # The merge stage expects this fragment to exist every run (same as any
     # WL1..WL17 fragment); skipping it here previously left it missing
     # whenever nothing happened to be stuck, causing a "missing file" error
@@ -1146,12 +1142,12 @@ def download_watchlist(watchlist_data, save_folder, images_folder, open_only, fo
     # Verify export succeeded
     if os.path.exists(full_path):
         print(f"✅ Successfully saved to: {full_path}")
-        # 2026-08-17: pull the actual stuck symbols out of THIS export
-        # (regardless of whether it passes the file-level threshold below)
-        # and accumulate them into this run's LoadingSymbols.txt, so
-        # RELOADWL99 (which runs after all 16 watchlists) sees this run's
-        # real data instead of a stale snapshot from last time.
-        append_loading_symbols(save_folder, extract_loading_symbols(full_path))
+        # 2026-08-20: reconcile stuck_symbols_memory against THIS export --
+        # adds anything still stuck, removes anything this fresher reading
+        # resolved -- so RELOADWL99 (which runs after all 16 watchlists)
+        # always sees this run's live, accurate state, not a stale
+        # snapshot from last time.
+        update_stuck_symbols_memory(full_path)
         if check_loading_threshold_from_csv(full_path):
             return True
         else:
@@ -1235,11 +1231,15 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
             # themselves. Excludes the RELOADWL99 row itself from the
             # re-run (that's handled separately below) to avoid recursing
             # back into this same branch.
+            # 2026-08-20: reads stuck_symbols_memory directly -- no disk
+            # rescan needed. Every fragment export so far (WL1..WL16, via
+            # download_watchlist()'s own update_stuck_symbols_memory()
+            # call) has already kept it accurate incrementally, so by the
+            # time this row runs it already holds the true current state.
             print(f"\n{'=' * 60}\n=== RELOADWL99 reached -- checking for stuck 'Loading' symbols ===\n{'=' * 60}")
             reprocess_attempts = 0
-            stuck_symbols = find_genuinely_stuck_symbols(save_folder)
-            stuck_count = len(stuck_symbols)
-            print(f"Stuck symbols right now ({stuck_count}): {sorted(stuck_symbols)}")
+            stuck_count = len(stuck_symbols_memory)
+            print(f"Stuck symbols right now ({stuck_count}): {sorted(stuck_symbols_memory)}")
             print(f"Incomplete watchlist fragments right now: {incomplete_files}")
 
             if stuck_count <= RELOAD_SYMBOL_THRESHOLD:
@@ -1261,48 +1261,34 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
                 toggle_column_set_away_and_back(df, images_folder)
                 run_recipe_rows(df[df['Type'] != 'RELOADWL99'], save_folder, images_folder, recipe_dir, True)
                 reprocess_attempts += 1
-                new_stuck_symbols = find_genuinely_stuck_symbols(save_folder)
-                new_stuck_count = len(new_stuck_symbols)
+                new_stuck_count = len(stuck_symbols_memory)
                 print(f"After reprocess attempt {reprocess_attempts}: {new_stuck_count} still stuck: "
-                      f"{sorted(new_stuck_symbols)}")
+                      f"{sorted(stuck_symbols_memory)}")
                 if new_stuck_count >= stuck_count:
                     print(f"Reminder: reprocess attempt {reprocess_attempts} made no progress "
                           f"({new_stuck_count} still 'Loading') -- stopping reprocessing early.")
-                    stuck_symbols = new_stuck_symbols
                     break
                 stuck_count = new_stuck_count
-                stuck_symbols = new_stuck_symbols
 
             # WL99 reload+export retry loop -- TOS sometimes needs more than
             # one reload/export pass to actually resolve every symbol.
             # Retry up to MAX_WL99_RETRY_ATTEMPTS, stopping as soon as
             # nothing's stuck or a pass makes no further progress.
             #
-            # 2026-08-19 bug fix: do_reloadwl99() reads LoadingSymbols.txt
-            # directly to decide what to reload, but that file is monotonic
-            # (append_loading_symbols() only ever unions symbols in, never
-            # trims resolved ones out mid-run) -- so without the
-            # sync_loading_symbols_file() call below, attempt 2/3 would
-            # redundantly re-import every symbol EVER stuck this run,
-            # including ones the reprocess step or a prior WL99 attempt
-            # already resolved. Trim it to the current, accurate stuck set
-            # (from find_genuinely_stuck_symbols()) before every attempt,
-            # including the first, so TOS only ever gets re-clicked for
-            # symbols that actually still need it.
+            # 2026-08-20: do_reloadwl99() itself now writes
+            # stuck_symbols_memory's current contents to LoadingSymbols.txt
+            # immediately before its own reload sequence reads it -- no
+            # separate trim-and-write needed here before each attempt.
             print(f"\n--- Proceeding to WL99 reload+export (up to {MAX_WL99_RETRY_ATTEMPTS} attempt(s)). ---")
-            symbols_to_reload = stuck_symbols
             wl99_attempts = 0
             prev_remaining = None
             while wl99_attempts < MAX_WL99_RETRY_ATTEMPTS:
-                sync_loading_symbols_file(save_folder, symbols_to_reload)
-                print(f"LoadingSymbols.txt trimmed to the {len(symbols_to_reload)} symbol(s) actually still "
-                      f"stuck before this attempt: {sorted(symbols_to_reload)}")
-                print(f"\n--- WL99 reload+export attempt {wl99_attempts + 1}/{MAX_WL99_RETRY_ATTEMPTS} starting. ---")
+                print(f"\n--- WL99 reload+export attempt {wl99_attempts + 1}/{MAX_WL99_RETRY_ATTEMPTS} starting "
+                      f"({len(stuck_symbols_memory)} symbol(s) currently stuck). ---")
                 do_reloadwl99(row, save_folder, images_folder, recipe_dir)
                 wl99_attempts += 1
-                remaining_symbols = find_genuinely_stuck_symbols(save_folder)
-                remaining = len(remaining_symbols)
-                print(f"After WL99 attempt {wl99_attempts}: {remaining} still stuck: {sorted(remaining_symbols)}")
+                remaining = len(stuck_symbols_memory)
+                print(f"After WL99 attempt {wl99_attempts}: {remaining} still stuck: {sorted(stuck_symbols_memory)}")
                 if remaining == 0:
                     print("--- Nothing left stuck -- WL99 reload/retry loop done. ---")
                     break
@@ -1310,7 +1296,6 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
                     print(f"Reminder: WL99 reload attempt {wl99_attempts} made no progress "
                           f"({remaining} still 'Loading') -- stopping retries.")
                     break
-                symbols_to_reload = remaining_symbols
                 if wl99_attempts < MAX_WL99_RETRY_ATTEMPTS:
                     print(f"Reminder: {remaining} symbol(s) still stuck 'Loading' after WL99 reload "
                           f"attempt {wl99_attempts}/{MAX_WL99_RETRY_ATTEMPTS} -- retrying.")
@@ -1355,6 +1340,7 @@ def main(watchlist_file, save_folder, images_folder, re_process):
     # ADD to what the first pass already found/downloaded, not wipe it.
     if not re_process:
         working_dir = os.path.dirname(os.path.normpath(save_folder))
+        stuck_symbols_memory.clear()
         write_filenames_to_file([], os.path.join(working_dir, 'LoadingSymbols.txt'), label="symbols")
         if os.path.isdir(save_folder):
             for fname in os.listdir(save_folder):
@@ -2022,16 +2008,19 @@ def run_pipeline(watchlist_file, save_folder, images_folder, update_exports='N',
         reload_rows = df[df['Type'] == 'RELOADWL99']
         if not reload_rows.empty and os.path.isdir(save_folder):
             reload_row = reload_rows.iloc[0]
-            stuck_symbols = find_genuinely_stuck_symbols(save_folder)
+            # Bootstrap stuck_symbols_memory from disk (2026-08-20) -- this
+            # process never ran main(), so there's no in-process export
+            # history to have kept it accurate incrementally; a one-time
+            # rescan of whatever a PRIOR run's fragments left behind is the
+            # only way to seed it. do_reloadwl99() below reads/writes it
+            # from here on, same as a normal run.
+            stuck_symbols_memory.clear()
+            stuck_symbols_memory.update(find_genuinely_stuck_symbols(save_folder))
             wl99_fragment = os.path.join(save_folder, f"{reload_row['Name']}_{reload_row['watchlist_name']}.csv")
 
-            if stuck_symbols or not os.path.exists(wl99_fragment):
-                working_dir = os.path.dirname(os.path.normpath(save_folder))
-                loading_symbols_file = os.path.join(working_dir, 'LoadingSymbols.txt')
-                reimport_symbols = sorted({normalize_for_reimport(s) for s in stuck_symbols})
-                write_filenames_to_file(reimport_symbols, loading_symbols_file, label="symbols")
-                if stuck_symbols:
-                    print(f"\n--- Merge-only mode: {len(stuck_symbols)} symbol(s) genuinely still "
+            if stuck_symbols_memory or not os.path.exists(wl99_fragment):
+                if stuck_symbols_memory:
+                    print(f"\n--- Merge-only mode: {len(stuck_symbols_memory)} symbol(s) genuinely still "
                           "'Loading' (no fragment has resolved data for them) -- running RELOADWL99 "
                           "to reload and re-export WL99. ---")
                 else:
