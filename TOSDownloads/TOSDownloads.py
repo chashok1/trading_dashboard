@@ -51,6 +51,21 @@ RELOAD_SYMBOL_THRESHOLD = 55
 MAX_REPROCESS_ATTEMPTS = 3
 MAX_WL99_RETRY_ATTEMPTS = 3
 
+# 2026-08-20: column-set toggle, tried before each reprocess attempt (see
+# toggle_column_set_away_and_back() / the RELOADWL99 branch). Every recipe
+# CSV (TOSD/TOSL/TOSO/TOSW.csv) opens the same column-set combobox at
+# (266,7) then picks its own entry from one vertical list, spaced 24px
+# apart -- known entries today: TOSD=172, TOSL=196, TOSO=220, TOSW=244.
+# COLUMN_SET_MAX_Y is the bottom-most of those, used only to pick which
+# direction (+/-) lands on a valid, different entry instead of an offset
+# beyond the last item. Deliberately generic (no per-type name mapping) --
+# just "switch to *a* different entry, then back", repeated
+# COLUMN_SET_TOGGLE_REPEAT times per reprocess attempt since a single
+# switch doesn't always force TOS to recompute.
+COLUMN_SET_ROW_SPACING = 24
+COLUMN_SET_MAX_Y = 244
+COLUMN_SET_TOGGLE_REPEAT = 3
+
 
 # --- LOCKING (shared by both stages -- single copy; each original script
 # had its own identical acquire_lock/release_lock) ---
@@ -346,6 +361,48 @@ def set_column_set():
     ui_click(COL_SET_COMBOBOX_X, COL_SET_COMBOBOX_Y)
     ui_click(DESIRED_COL_SET_X, DESIRED_COL_SET_Y)
     print("✅ Column set applied.")
+
+def toggle_column_set_away_and_back(df, images_folder):
+    """RELOADWL99 reprocess helper (2026-08-20): switches the column-set
+    combobox to a different entry and back to this recipe's own entry,
+    COLUMN_SET_TOGGLE_REPEAT times -- tried before each reprocess attempt,
+    ahead of falling back to reloading the missing symbols into WL99.
+    ThinkOrSwim sometimes gets individual cells stuck 'Loading' forever on
+    the currently-applied column set but resolves them the moment the set
+    changes and changes back, without needing any symbol re-import at all.
+
+    Reads its own coordinates straight from df instead of a hardcoded
+    per-type map: every recipe's first two rows are `Click, TOS Column Set`
+    -- row 0 opens the combobox (266,7), row 1 picks this recipe's own
+    entry (e.g. TOSL.csv's own Y=196) and carries a target_image
+    (e.g. TOSL.png) confirming it applied. 'A different entry' is just
+    that row's own Y +/- COLUMN_SET_ROW_SPACING, picking whichever
+    direction stays within the known list (COLUMN_SET_MAX_Y) -- so this
+    works for any of TOSD/TOSL/TOSO/TOSW.csv without naming them.
+
+    No-op (with a warning) if a recipe doesn't have the expected two rows,
+    e.g. if it's ever run standalone without them."""
+    click_rows = df[(df['Type'] == 'Click') & (df['Name'] == 'TOS Column Set')]
+    if len(click_rows) < 2:
+        print("⚠️ toggle_column_set_away_and_back: recipe is missing its 'TOS Column Set' "
+              "rows -- skipping the toggle.")
+        return
+
+    open_x, open_y = int(click_rows.iloc[0]['X']), int(click_rows.iloc[0]['Y'])
+    own_x, own_y = int(click_rows.iloc[1]['X']), int(click_rows.iloc[1]['Y'])
+    other_y = own_y + COLUMN_SET_ROW_SPACING if own_y + COLUMN_SET_ROW_SPACING <= COLUMN_SET_MAX_Y \
+        else own_y - COLUMN_SET_ROW_SPACING
+
+    print(f"--- Toggling column set away ({own_y}) and back, x{COLUMN_SET_TOGGLE_REPEAT}, "
+          "to force TOS to recompute stuck cells before reprocessing. ---")
+    for i in range(COLUMN_SET_TOGGLE_REPEAT):
+        ui_click(open_x, open_y, "TOS Column Set (open)")
+        ui_click(own_x, other_y, "TOS Column Set (switch away)")
+        time.sleep(2.0)
+        ui_click(open_x, open_y, "TOS Column Set (reopen)")
+        ui_click(own_x, own_y, "TOS Column Set (switch back)")
+        time.sleep(2.0)
+        print(f"    toggle {i + 1}/{COLUMN_SET_TOGGLE_REPEAT} done.")
 
 def wait_if_mouse_moved():
     """If the mouse has moved since our last automated action, someone's
@@ -908,7 +965,17 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir):
     # whenever nothing happened to be stuck, causing a "missing file" error
     # downstream instead of just re-exporting WL99's current, unchanged
     # contents.
-    download_watchlist(export_row, save_folder, images_folder, False, False, False)
+    #
+    # already_selected=has_symbols (2026-08-20): only true when step 1's
+    # pre-select actually ran -- in that branch nothing between here and
+    # there switches watchlists (step 2's reload sequence edits WL99's
+    # symbols without navigating away from it), so re-doing the same 3
+    # selection clicks here would just reselect WL99 a second time for
+    # nothing. When has_symbols is False, steps 1/2 above were skipped
+    # entirely -- WL99 was never actually selected this call, so this
+    # export still needs the real navigation.
+    download_watchlist(export_row, save_folder, images_folder, False, False, False,
+                        already_selected=has_symbols)
 
 def edit_watchlist(watchlist_name, symbols_file, images_folder, recipe_dir,
                     recipe_name='EditWatchlist.csv'):
@@ -952,23 +1019,24 @@ def edit_watchlist(watchlist_name, symbols_file, images_folder, recipe_dir,
     run_recipe_rows(recipe_df, None, images_folder, recipe_dir, False)
     return True
 
-def download_watchlist(watchlist_data, save_folder, images_folder, open_only, force_download, re_process):
+def download_watchlist(watchlist_data, save_folder, images_folder, open_only, force_download, re_process,
+                        already_selected=False):
     global elapsed_time
-    """Navigate menus to export a specific watchlist."""
+    """Navigate menus to export a specific watchlist.
+
+    already_selected (2026-08-20): set True when the caller already knows
+    this watchlist is the one currently showing on screen and nothing has
+    navigated away from it since -- skips the dropdown/category/name
+    re-navigation clicks below entirely (still runs the target_image
+    checkpoint, since that's a cheap read-only confirmation, not a click).
+    Only do_reloadwl99()'s final export call uses this: its own earlier
+    open_only pre-select call already selected this exact watchlist, and
+    the reload sequence in between (editing WL99's symbols) never switches
+    away from it -- redoing the same 3 selection clicks there was pure
+    waste, on every WL99 export/retry."""
     category = watchlist_data['Name']
     ref_image = watchlist_data['ref_image']
     w_name = watchlist_data['watchlist_name']
-    offset_location = get_ref_image_location(watchlist_data, images_folder)
-    if offset_location:
-        c_x = watchlist_data['X'] + int(offset_location.left)
-        c_y = watchlist_data['Y'] + int(offset_location.top)
-        w_x = watchlist_data['watchlist_x'] + int(offset_location.left)
-        w_y = watchlist_data['watchlist_y'] + int(offset_location.top)
-    else:
-        c_x = watchlist_data['X']
-        c_y = watchlist_data['Y']
-        w_x = watchlist_data['watchlist_x']
-        w_y = watchlist_data['watchlist_y']
 
     filename = f"{category}_{w_name}.csv"
     if (not open_only) and re_process:
@@ -981,14 +1049,29 @@ def download_watchlist(watchlist_data, save_folder, images_folder, open_only, fo
     if (open_only):
         print(f"Opening {category} → {w_name} to refresh the list.")
 
-    # Open watchlist dropdown
-    ui_click(WATCHLIST_COMBOBOX_X, WATCHLIST_COMBOBOX_Y)
+    if already_selected:
+        print(f"--- {category} → {w_name} already selected -- skipping re-navigation. ---")
+    else:
+        offset_location = get_ref_image_location(watchlist_data, images_folder)
+        if offset_location:
+            c_x = watchlist_data['X'] + int(offset_location.left)
+            c_y = watchlist_data['Y'] + int(offset_location.top)
+            w_x = watchlist_data['watchlist_x'] + int(offset_location.left)
+            w_y = watchlist_data['watchlist_y'] + int(offset_location.top)
+        else:
+            c_x = watchlist_data['X']
+            c_y = watchlist_data['Y']
+            w_x = watchlist_data['watchlist_x']
+            w_y = watchlist_data['watchlist_y']
 
-    # Click category
-    ui_click(c_x, c_y)
+        # Open watchlist dropdown
+        ui_click(WATCHLIST_COMBOBOX_X, WATCHLIST_COMBOBOX_Y)
 
-    # Click watchlist name
-    ui_click(w_x, w_y)
+        # Click category
+        ui_click(c_x, c_y)
+
+        # Click watchlist name
+        ui_click(w_x, w_y)
 
     # Optional identity checkpoint (2026-08-17): confirms the watchlist that's
     # now active on screen is actually the one this row meant to select --
@@ -996,6 +1079,8 @@ def download_watchlist(watchlist_data, save_folder, images_folder, open_only, fo
     # no proof they landed on the right item (e.g. list reordered/changed).
     # Blank/missing target_image (most rows, for now) skips the check --
     # same opt-in shape as get_ref_image_location()'s ref_image handling.
+    # Kept even when already_selected=True -- it's a read-only check, not a
+    # click, so it's still worth confirming nothing drifted.
     target_image = watchlist_data.get('target_image')
     if pd.notna(target_image) and str(target_image).strip() != "":
         do_exists({'Name': f'Confirm {w_name} is active', 'ref_image': target_image}, images_folder)
@@ -1166,6 +1251,14 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
                       f"reprocessing incomplete watchlists before WL99 reload "
                       f"(attempt {reprocess_attempts + 1}/{MAX_REPROCESS_ATTEMPTS}). "
                       f"Watchlists being touched: {incomplete_files} ---")
+                # 2026-08-20: try jarring TOS into recomputing the stuck cells
+                # by switching the column set away and back (x3) BEFORE
+                # re-hitting the same incomplete watchlists -- often resolves
+                # them without needing any symbol reimport at all. Falls
+                # through to the reprocess below regardless of whether this
+                # helped; if it didn't, the reload-into-WL99 fallback after
+                # this loop still runs.
+                toggle_column_set_away_and_back(df, images_folder)
                 run_recipe_rows(df[df['Type'] != 'RELOADWL99'], save_folder, images_folder, recipe_dir, True)
                 reprocess_attempts += 1
                 new_stuck_symbols = find_genuinely_stuck_symbols(save_folder)
