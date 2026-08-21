@@ -53,6 +53,20 @@ stuck_symbols_memory = set()
 # left untouched alongside this file for reference.
 WORD_TO_FIND = 'loading'
 
+def _row_has_loading(row):
+    """monitor_directory()'s single Loading-word test (2026-08-21) --
+    case-insensitive substring match against each cell, same convention the
+    newer update_stuck_symbols_memory()/check_loading_threshold_from_csv()
+    already use (case=False) but this older, pure-csv.reader merge loop
+    never got: it was comparing the lowercase WORD_TO_FIND against raw cell
+    text with plain (case-sensitive) `in`, which misses TOS text that isn't
+    exactly lowercase. Also fixes a dead-code bug at this function's other
+    former call site: `for d in row for cell in d` iterated each cell
+    STRING's individual characters (never 7+ chars long, so `WORD_TO_FIND in
+    cell` was always False) instead of the row's cells -- this takes `row`
+    (a list of cell strings) directly, one `in` check per actual cell."""
+    return any(WORD_TO_FIND in str(cell).lower() for cell in row)
+
 # 2026-08-19: RELOADWL99 reprocess/retry tuning -- see run_recipe_rows()'s
 # RELOADWL99 branch. RELOAD_SYMBOL_THRESHOLD is roughly what a single WL99
 # reload+import can realistically absorb in one pass; above that, reprocess
@@ -1768,12 +1782,12 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                             #    print (f"symbol {symbol}")
 
                             # if no symbol in the output list or word loading in outputlist or word loading not found in the source row
-                            if (not symbol in output_list.keys()) or any(WORD_TO_FIND in cell for d in output_list[symbol] for cell in d) or ((filename!=export_file_to_update) and (not WORD_TO_FIND in row)):
+                            if (not symbol in output_list.keys()) or _row_has_loading(output_list[symbol]) or ((filename!=export_file_to_update) and (not _row_has_loading(row))):
                                 output_list[symbol] = row
                                 dataexists = True
 
                                 # Check for 'loading' and display the information
-                                if WORD_TO_FIND in row:
+                                if _row_has_loading(row):
                                     #summary_messages[symbol] = f"{filename} - " + ', '.join(row)
                                     summary_messages[symbol] = f"{filename} - " + symbol
                                 elif symbol in summary_messages:
@@ -1835,7 +1849,7 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                     write_filenames_to_file(extracted_list, incomplete_files_list_path)
                     sys.exit(2)
 
-            if any(WORD_TO_FIND in cell for row in output_list.values() for cell in row):
+            if any(_row_has_loading(row) for row in output_list.values()):
                 continue
 
             # Exit condition check: Verify if the final file has been processed
