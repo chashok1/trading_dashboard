@@ -912,7 +912,7 @@ def check_recipe_images(watchlist_file, images_folder):
         print(f"\n✅ {watchlist_label}: all images present.")
     return missing
 
-def do_reloadwl99(row, save_folder, images_folder, recipe_dir):
+def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
     """RELOADWL99 step: one row, added to a TOSType's own recipe CSV (e.g.
     TOSL.csv), that:
       1. Loads whatever LoadingSymbols.txt currently holds into this row's
@@ -926,11 +926,18 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir):
          combination -- no per-type copy of the recipe, no hardcoded image
          names in Python (2026-08-17 redesign -- previously this called a
          hardcoded, WL99-only import_symbols_into_watchlist()).
-      2. Does a REAL export of WL99 afterward, using this row's
-         own Name/ref_image/X/Y/watchlist_name/watchlist_x/watchlist_y --
-         the same columns a plain WL row already uses to navigate to it --
-         so the coordinates only need to be correct in one place per
-         TOSType CSV, same as any other WL row.
+      2. Nudges TOS (column-set toggle away and back, x3 -- same helper the
+         reprocess loop uses) if a 'lo*' image (the on-screen loading
+         spinner) is still visible, THEN does a REAL export of WL99 --
+         using this row's own Name/ref_image/X/Y/watchlist_name/watchlist_x/
+         watchlist_y, the same columns a plain WL row already uses to
+         navigate to it, so the coordinates only need to be correct in one
+         place per TOSType CSV, same as any other WL row.
+
+    df (2026-08-21): the calling recipe's full DataFrame (e.g. TOSL.csv's),
+    needed only to hand to toggle_column_set_away_and_back() for its own
+    'TOS Column Set' row lookup -- this function otherwise only ever uses
+    `row`, a single row of it.
 
     Symbol source: stuck_symbols_memory (2026-08-20) -- the in-memory set
     download_watchlist() keeps accurate via update_stuck_symbols_memory()
@@ -939,10 +946,18 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir):
     through download_watchlist(), so it self-reconciles too). Written to
     LoadingSymbols.txt right here, immediately before the reload sequence
     reads it -- not accumulated on disk across calls, so there's nothing
-    to go stale between being written and being used. The merge stage
-    afterward still does its own, independent per-symbol tracking across
-    all fragments and will retry any leftovers on the NEXT run
-    automatically, same as before."""
+    to go stale between being written and being used. Written AGAIN
+    (2026-08-21) right after this call's own WL99 export, so the file on
+    disk always reflects this attempt's OUTCOME too, not just what went
+    into it -- previously only written pre-reload, so a symbol this
+    export just resolved (or a symbol still stuck) could sit stale in the
+    file between WL99 retry attempts. The merge stage afterward still does
+    its own, independent per-symbol tracking across all fragments; there's
+    no automated next-day retry (2026-08-21 -- confirmed there never was
+    one by design) -- whatever's still stuck when this run's retries are
+    exhausted just sits there until the user manually resolves it (editing
+    the fragment file directly, or re-exporting that watchlist from TOS by
+    hand), same as before."""
     working_dir = os.path.dirname(os.path.normpath(save_folder))
 
     # Skip the RELOAD/IMPORT part (not the export -- see below) if there's
@@ -991,7 +1006,20 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir):
     else:
         print("\n--- RELOADWL99: nothing in stuck_symbols_memory -- nothing to reload, still exporting. ---")
 
-    # 4. Real export of WL99 -- ALWAYS, even with nothing to reload above.
+    # 4. Nudge before exporting (2026-08-21, user-directed): if a 'lo*'
+    # loading-spinner image is still visible on screen at this point, run
+    # the same column-set-toggle-away-and-back nudge the reprocess loop
+    # uses (x3, via COLUMN_SET_TOGGLE_REPEAT inside the helper) BEFORE
+    # exporting -- every time WL99 is loaded, right before its export, not
+    # just once per run. A quick (timeout=1) scan, since this only needs to
+    # know "is anything still visibly loading", not count instances.
+    still_loading = count_images_in_folder(images_folder, "lo", timeout=1)
+    if still_loading:
+        print(f"--- RELOADWL99: 'lo*' loading image(s) still visible before export -- "
+              "nudging column-set (x3) to force a recompute. ---")
+        toggle_column_set_away_and_back(df, images_folder)
+
+    # 5. Real export of WL99 -- ALWAYS, even with nothing to reload above.
     # The merge stage expects this fragment to exist every run (same as any
     # WL1..WL17 fragment); skipping it here previously left it missing
     # whenever nothing happened to be stuck, causing a "missing file" error
@@ -1008,6 +1036,18 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir):
     # export still needs the real navigation.
     download_watchlist(export_row, save_folder, images_folder, False, False, False,
                         already_selected=has_symbols)
+
+    # 6. Re-sync LoadingSymbols.txt to stuck_symbols_memory's state AFTER
+    # this export (2026-08-21, user-directed) -- step 5's download_watchlist
+    # call already reconciled stuck_symbols_memory itself (via its own
+    # update_stuck_symbols_memory() call on WL99's freshly-exported CSV),
+    # but the file on disk still only reflects step 2's PRE-reload
+    # snapshot. Without this, a symbol this export just resolved (or a
+    # symbol that's newly stuck) sits stale in the file until some LATER
+    # do_reloadwl99() call happens to overwrite it -- rewriting here means
+    # the file always matches this attempt's actual outcome, not just its
+    # input.
+    write_stuck_symbols_to_file(save_folder)
 
 def edit_watchlist(watchlist_name, symbols_file, images_folder, recipe_dir,
                     recipe_name='EditWatchlist.csv'):
@@ -1321,7 +1361,7 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
             while wl99_attempts < MAX_WL99_RETRY_ATTEMPTS:
                 print(f"\n--- WL99 reload+export attempt {wl99_attempts + 1}/{MAX_WL99_RETRY_ATTEMPTS} starting "
                       f"({len(stuck_symbols_memory)} symbol(s) currently stuck). ---")
-                do_reloadwl99(row, save_folder, images_folder, recipe_dir)
+                do_reloadwl99(row, save_folder, images_folder, recipe_dir, df)
                 wl99_attempts += 1
                 remaining = len(stuck_symbols_memory)
                 print(f"After WL99 attempt {wl99_attempts}: {remaining} still stuck: {sorted(stuck_symbols_memory)}")
@@ -2015,7 +2055,8 @@ def run_pipeline(watchlist_file, save_folder, images_folder, update_exports='N',
             print('\n')
             print('=' * 50)
             print(f"--- {len(incomplete_files)} fragment(s) still incomplete after WL1..WL16 + WL99 "
-                  "reload/retry. Left for the merge stage / next run to resolve. ---")
+                  "reload/retry. No automated retry beyond this -- the merge stage below will keep "
+                  "waiting until you manually re-export or edit these on disk. ---")
             print(incomplete_files)
             print('=' * 50)
             print('\n')
@@ -2067,7 +2108,7 @@ def run_pipeline(watchlist_file, save_folder, images_folder, update_exports='N',
                 # main() itself does before its own row loop.
                 ensure_tos_active(images_folder)
                 recipe_dir = os.path.dirname(os.path.abspath(watchlist_file))
-                do_reloadwl99(reload_row, save_folder, images_folder, recipe_dir)
+                do_reloadwl99(reload_row, save_folder, images_folder, recipe_dir, df)
 
     # 2026-08-17: release the TOS.lock here -- right after every WL row AND
     # the RELOADWL99 row's WL99 export have all finished (main() processes
