@@ -78,6 +78,21 @@ COLUMN_SET_ROW_SPACING = 24
 COLUMN_SET_MAX_Y = 244
 COLUMN_SET_TOGGLE_REPEAT = 3
 
+# 2026-08-20: TOS.lock is shared by two very different waiters --
+# (1) another TOSType's __main__ wanting to START its own download
+# (time-critical: TOS is sitting idle waiting for clicks), and
+# (2) this run's own merge-stage wanting to open the finished output in
+# Excel (a background admin action, not time-critical). Both used to poll
+# at acquire_lock()'s default 0.5s interval, so whichever happened to poll
+# first the instant the lock freed won -- observed live: the Excel-open
+# step would win that race and steal focus from TOS while another
+# TOSType's download was still actively clicking, tripping
+# ensure_tos_in_focus()'s "focus on another window" pause. Excel-open now
+# polls this much slower (see monitor_directory()'s acquire_lock call), so
+# a queued download-start (still polling every 0.5s) is overwhelmingly
+# likely to grab the lock first.
+EXCEL_OPEN_LOCK_CHECK_INTERVAL = 20
+
 
 # --- LOCKING (shared by both stages -- single copy; each original script
 # had its own identical acquire_lock/release_lock) ---
@@ -951,7 +966,14 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir):
         else:
             reload_df = pd.read_csv(reload_recipe_path)
             reload_df['ref_image'] = reload_df['ref_image'].apply(lambda v: substitute_placeholders(v, row))
+            # 2026-08-20: explicit start/end markers -- most of the rows in
+            # here (CLICKEXISTS/Click) print nothing by default, so without
+            # these the reload could easily happen on screen while looking
+            # like silence in the console/logs.
+            print(f"--- RELOADWL99: replaying {os.path.basename(reload_recipe_path)} to reload "
+                  f"{len(stuck_symbols_memory)} symbol(s) into {row['watchlist_name']}... ---")
             run_recipe_rows(reload_df, save_folder, images_folder, working_dir, False)
+            print(f"--- RELOADWL99: reload replay into {row['watchlist_name']} finished. ---")
     else:
         print("\n--- RELOADWL99: nothing in stuck_symbols_memory -- nothing to reload, still exporting. ---")
 
@@ -1887,7 +1909,7 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
         # away -- bounded to just the open moment, not however long the
         # user leaves Excel open afterward.
         if excel_open_lock_path:
-            acquire_lock(excel_open_lock_path)
+            acquire_lock(excel_open_lock_path, check_interval=EXCEL_OPEN_LOCK_CHECK_INTERVAL)
         try:
             open_and_wait(output_file)
         finally:
