@@ -1703,13 +1703,20 @@ async function loadActionable(opts) {
   }
   try {
     const dateParam = state.date ? `?date=${encodeURIComponent(state.date)}` : '';
-    const [rows, accts, betaMap, portfolioRows, assetClassMap, sectorMap] = await Promise.all([
+    const [rows, accts, betaMap, portfolioRows, assetClassMap, sectorMap, macroAreas] = await Promise.all([
       fetchJson('/api/actionable?' + params.toString()),
       fetchJson(`/api/actionable/accounts${dateParam}`).catch(() => []),
       fetchJson(`/api/portfolio/beta-map${dateParam}`).catch(() => ({})),
       fetchJson(`/api/portfolio${dateParam}`).catch(() => []),
       fetchJson(`/api/portfolio/asset-class-map${dateParam}`).catch(() => ({})),
       fetchJson(`/api/portfolio/sector-map${dateParam}`).catch(() => ({})),
+      // Sector-ETF proxy (2026-08-20) -- Action popup's "Sector ETF" line
+      // (_actpopSectorEtfHtml) needs XLF/XLK/etc.'s own outlook/%chg/risk-range
+      // position, not the symbol's. /api/macro-areas already computes this per
+      // GICS sector via _sector_etf_proxy (api/routers/macro_areas.py) for the
+      // side-rail Sectors card -- reused as-is, own fetch (not shared with
+      // web/macro_areas.js's copy) per user's "own fetch, simpler" call.
+      fetchJson(`/api/macro-areas${dateParam}`).catch(() => null),
     ]);
     state.allAccounts = Array.isArray(accts) ? accts : [];
     state.allRows = Array.isArray(rows) ? rows : [];
@@ -1728,6 +1735,19 @@ async function loadActionable(opts) {
     state.portfolioRows = Array.isArray(portfolioRows) ? portfolioRows : [];
     state.assetClassMap = (assetClassMap && typeof assetClassMap === 'object') ? assetClassMap : {};
     state.sectorMap = (sectorMap && typeof sectorMap === 'object') ? sectorMap : {};
+    // lowercased sector name -> {symbol, last, pct_change, td, tn, rr_pos, outlook}
+    // (macro_areas.py::_sector_etf_proxy). Keyed lowercase, not by the API's
+    // display-cased s.sector, because row.sector (ref_sector.equity_sector,
+    // read straight off drv_actionable) isn't guaranteed the same casing --
+    // macro_areas.py's own _GICS_DISPLAY map exists specifically to merge
+    // "Health care"/"Health Care" variants; _sectorEtfFor below does the same
+    // lowercase + healthcare alias fold before lookup. Missing/null when a
+    // sector has no mapped ETF (e.g. "Country ETF") or the ETF itself has no
+    // drv_quote row.
+    state.sectorEtfMap = {};
+    for (const s of ((macroAreas && macroAreas.sectors && macroAreas.sectors.all) || [])) {
+      if (s.sector && s.etf) state.sectorEtfMap[s.sector.trim().toLowerCase()] = s.etf;
+    }
     state.allRows.forEach(r => {
       r._assetClass = _normAssetClass(r.real_asset_class);
       // RR column sort key (2026-08-12) — same formula _buildRowEl's rrBarHtml
@@ -4888,9 +4908,9 @@ function _actpopMacroBarsHtml(r) {
 // directional label) -- relabel audit is on hold per project memory, this
 // surfaces the value AS COMPUTED TODAY, not a corrected version.
 // 2026-08-20 correction: vlm_desc was originally a title= hover tooltip --
-// doesn't work inside this popup, see _actpopSectorPillHtml's comment
-// (#sourcePop is pointer-events:none, nothing nested in it can ever get a
-// native hover). Shown as small inline text instead.
+// doesn't work inside this popup (#sourcePop is pointer-events:none,
+// nothing nested in it can ever get a native hover). Shown as small inline
+// text instead.
 function _actpopVlmPillHtml(row) {
   const va = row.vlm_action;
   const cls = !va ? 'disabled' : va === 'Accumulate' ? 'buy' : va === 'Avoid' ? 'sell' : '';
@@ -4914,52 +4934,79 @@ function _actpopCalcPillHtml(row) {
   return `<span class="actpop-lv"><span class="actpop-lbl">CALC</span><span class="actpop-val${has ? '' : ' disabled'}"${has ? ` style="color:${color};"` : ''}>${escapeHtml(txt)}</span></span>`;
 }
 
-// Sector (2026-08-20) -- was only ever shown conditionally, as a caution
-// line in Opposing/Supporting when it underperforms (see _signalReasons).
-// Always-visible pill here so the sector itself is readable regardless of
-// whether it crosses that threshold -- green/red only when there's a real,
-// gated sample (_factorWinRateDeltaGated, n_symbols>=5) behind it; plain
-// grey text (no color claim) when the sample's too thin or missing, same
-// as every other "not enough history" case in this popup.
-// 2026-08-20 correction: the delta/sample-size detail was originally a
-// title= hover tooltip -- doesn't work, #sourcePop (this whole popup's
-// container) is pointer-events:none by design (a mouse-passthrough
-// overlay), so NOTHING nested inside it can ever show a native hover
-// tooltip. Shown as small inline text instead, always visible.
-function _actpopSectorPillHtml(row) {
-  const sector = row.sector && row.sector !== 'N/A' ? row.sector : null;
-  const g = sector ? _factorWinRateDeltaGated('Sector', sector) : null;
-  const cls = !sector ? 'disabled' : !g ? '' : g.delta > 3 ? 'buy' : g.delta < -3 ? 'sell' : '';
-  const txt = sector || '—';
-  const detail = g
-    ? `<span style="font-size:8px;color:#94a3b8;margin-left:3px;">${g.delta >= 0 ? '+' : ''}${g.delta.toFixed(1)}pp, ${g.nSymbols} syms</span>`
-    : '';
-  return `<span class="actpop-lv"><span class="actpop-lbl">Sector</span><span class="actpop-val ${cls}">${escapeHtml(txt)}</span>${detail}</span>`;
+function _sectorEtfFor(row) {
+  const raw = (row.sector || '').trim().toLowerCase();
+  if (!raw) return null;
+  const key = raw === 'healthcare' ? 'health care' : raw;
+  return (state.sectorEtfMap || {})[key] || null;
 }
 
-// Header: Source / Tech / VLM / CALC / Sector, always shown (disabled/
-// dashed when no data), single line, label as its own small pill + plain
-// colored value next to it: "[Src] SA  [Tech] SA  [VLM] Accum  [CALC] 68%
-// [Sector] Energy". Src/Tech reuse actionDisplay's canonical short code
-// (same BuySell vocab the grid's own badges show) so they read
-// consistently with the rest of the app, not a bespoke abbreviation. Macro
-// (pill + bar charts) and the tradability icon sit on the RR bar line
-// instead — see _actpopMacroStackHtml / _actpopTradIconHtml, called from
-// _buildActionPopHtmlV2 alongside _actpopRrBarHtml.
+// Sector ETF proxy row (2026-08-20) -- "JPM -> Financials -> how's XLF doing":
+// the Sector pill above is a historical win-rate stat (does this GICS sector's
+// past BUY calls beat baseline), not a live read. This is the live one --
+// the sector's own SPDR ETF's current outlook (drv_rr.outlook), %chg
+// (drv_quote), and risk-range position (drv_rr lrr/trr), same fields/formula
+// /api/macro-areas already computes for the side-rail Sectors card
+// (macro_areas.py::_sector_etf_proxy). rr_pos there is a [0,1] fraction, not
+// raw lrr/trr, so this bar has no LRR/TRR $ labels like the stock's own RR
+// bar (_actpopRrBarHtml) -- position only.
+function _actpopSectorEtfHtml(row) {
+  const etf = _sectorEtfFor(row);
+  // 2026-08-20: no bare '' return here anymore -- with .actpop-rr-row's own
+  // bottom margin trimmed to 0 (actionable.html), an empty return left the
+  // RR bar and the next content (banner/drivers) with nothing between them
+  // but that content's own top margin (0-4px) -- close to overlapping for
+  // any symbol with no mapped sector ETF. An empty spacer carrying the same
+  // margin as the populated row keeps the gap consistent either way.
+  if (!etf) return '<div class="actpop-sector-etf" style="margin:2px 0 14px;"></div>';
+  const pos = etf.rr_pos != null ? Math.max(0, Math.min(100, Number(etf.rr_pos) * 100)) : null;
+  const pct = etf.pct_change != null ? Number(etf.pct_change) : null;
+  const pctTxt = pct != null ? `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%` : '&mdash;';
+  const pctColor = pct == null ? '#94a3b8' : pct >= 0 ? 'var(--act-buy-strong)' : 'var(--act-sell-strong)';
+  const outlookTxt = etf.outlook || '&mdash;';
+  const outlookCss = etf.outlook && window.outlookColor ? window.outlookColor(etf.outlook) : '#94a3b8';
+  const bar = pos != null
+    ? `<div class="actpop-rr-track" style="width:70px;display:inline-block;vertical-align:middle;margin-left:6px;">
+         <div class="actpop-rr-fill" style="width:${pos}%;"></div>
+         <div class="actpop-rr-tick" style="left:${pos}%;"></div>
+       </div><span style="font-size:9px;color:#94a3b8;margin-left:3px;">${Math.round(pos)}%</span>`
+    : '';
+  // This row sits BELOW .actpop-rr-row (a sibling, not nested in it), so its
+  // vertical position tracks the row's overall rendered height -- set by
+  // whichever column (RR bar, or the taller Macro stack on the right) ends
+  // up tallest, not by the RR bar alone. 2026-08-20: rather than chase that
+  // with a negative margin here, .actpop-rr-row's own bottom margin was
+  // trimmed instead (10px -> 4px, actionable.html) -- paired with this
+  // row's 2px top / 6px bottom, that nets a symmetric 6px/6px gap: evenly
+  // spaced between the RR bar row above and whatever follows below.
+  return `<div class="actpop-sector-etf" style="font-size:9px;color:#64748b;margin:2px 0 14px;">`
+    + `<span class="actpop-lbl" style="margin-right:4px;">Sector ETF</span>`
+    + `<b>${escapeHtml(etf.symbol || '')}</b>`
+    + `<span style="margin-left:6px;">Outlook <b style="color:${outlookCss};">${escapeHtml(outlookTxt)}</b></span>`
+    + `<span style="margin-left:6px;color:${pctColor};">${pctTxt}</span>`
+    + bar
+    + `</div>`;
+}
+
+// Header: Source / Tech / VLM / CALC, always shown (disabled/dashed when no
+// data), single line, label as its own small pill + plain colored value
+// next to it: "[Src] SA  [Tech] SA  [VLM] Accum  [CALC] 68%". Src/Tech reuse
+// actionDisplay's canonical short code (same BuySell vocab the grid's own
+// badges show) so they read consistently with the rest of the app, not a
+// bespoke abbreviation. Macro (pill + bar charts) and the tradability icon
+// sit on the RR bar line instead — see _actpopMacroStackHtml /
+// _actpopTradIconHtml, called from _buildActionPopHtmlV2 alongside
+// _actpopRrBarHtml. Sector pill (historical win-rate stat) removed from
+// this header 2026-08-20 -- the live Sector ETF read
+// (_actpopSectorEtfHtml) below the RR row replaced it.
+// 2026-08-20: Src and Tech pills removed (row.consolidated_action /
+// row.rr_action are still shown elsewhere -- e.g. the Technical driver
+// bullet in _actpopDriverBullets -- just not duplicated up here). Header
+// pills are now VLM/CALC only; Final Call + Conviction moved to the sym
+// line instead (see _buildActionPopHtmlV2).
 function _actpopHeaderPillsHtml(row) {
-  const src = row.consolidated_action ? actionDisplay(row.consolidated_action) : null;
-  const srcCls = src ? (src.side === 'buy' ? 'buy' : src.side === 'sell' ? 'sell' : '') : 'disabled';
-  const srcTxt = src ? (src.code || row.consolidated_action) : '—';
-
-  const tech = row.rr_action ? actionDisplay(row.rr_action) : null;
-  const techCls = tech ? (tech.side === 'buy' ? 'buy' : tech.side === 'sell' ? 'sell' : '') : 'disabled';
-  const techTxt = tech ? (tech.code || row.rr_action) : '—';
-
-  return `<span class="actpop-lv"><span class="actpop-lbl">Src</span><span class="actpop-val ${srcCls}">${escapeHtml(srcTxt)}</span></span>`
-    + `<span class="actpop-lv"><span class="actpop-lbl">Tech</span><span class="actpop-val ${techCls}">${escapeHtml(techTxt)}</span></span>`
-    + _actpopVlmPillHtml(row)
-    + _actpopCalcPillHtml(row)
-    + _actpopSectorPillHtml(row);
+  return _actpopVlmPillHtml(row)
+    + _actpopCalcPillHtml(row);
 }
 
 // Macro pill + bar charts — sits on the RR bar line (_buildActionPopHtmlV2),
@@ -5182,8 +5229,14 @@ function _actpopRulePillsHtml(row, side) {
 // "Signals" checklist row already used) for Signals, filtered to drop its
 // "Rule ... fired" text entries since those get their own pills below
 // instead, from _actpopRulePillsHtml.
+// 2026-08-20: returns {conviction, html} instead of one HTML string --
+// conviction (the net tally, no "Conviction:" label) moved up into the
+// popup header next to the Final Call, so _buildActionPopHtmlV2 now calls
+// this once up front and splices conviction into the header while html
+// (the Opposing/Supporting columns, tally line removed) still renders at
+// its original later position.
 function _actpopTugHtml(row, side) {
-  if (side !== 'buy' && side !== 'sell') return '';
+  if (side !== 'buy' && side !== 'sell') return { conviction: '', html: '' };
   const sig = _signalReasons(row, side);
   const isRuleText = s => /^Rule \S+ fired|^Sell rule \S+/.test(s);
   const supportSignals = sig.buy.filter(s => !isRuleText(s));
@@ -5210,7 +5263,7 @@ function _actpopTugHtml(row, side) {
 
   const oppItems = opposeSignals.map(s => `<div class="actpop-tug-item">${escapeHtml(s)}</div>`).join('');
   const supItems = supportSignals.map(s => `<div class="actpop-tug-item">${escapeHtml(s)}</div>`).join('');
-  if (!oppItems && !supItems && !rulePills.oppose && !rulePills.support) return '';
+  if (!oppItems && !supItems && !rulePills.oppose && !rulePills.support) return { conviction: '', html: '' };
 
   const oppBody = (oppItems || rulePills.oppose)
     ? `${oppItems ? `<div class="actpop-tug-sub">Signals</div>${oppItems}` : ''}${rulePills.oppose}`
@@ -5233,16 +5286,20 @@ function _actpopTugHtml(row, side) {
   const opposeN = opposeSignals.length + rulePills.opposeCount;
   const net = supportN - opposeN;
   const netColor = net > 0 ? 'var(--act-buy-strong)' : net < 0 ? 'var(--act-sell-strong)' : '#94a3b8';
-  const convictionHtml = (supportN + opposeN) > 0
-    ? `<div class="actpop-tug-conviction">Conviction: <b style="color:${netColor};">${net > 0 ? '+' : ''}${net}</b>`
-      + `<span style="color:#94a3b8;"> (${supportN} support, ${opposeN} oppose)</span></div>`
+  // No "Conviction:" label here (2026-08-20) -- this now sits in the header
+  // next to the Final Call badge, where the label would be redundant; the
+  // colored net number + support/oppose parenthetical carry the meaning on
+  // their own.
+  const conviction = (supportN + opposeN) > 0
+    ? `<span class="actpop-tug-conviction"><b style="color:${netColor};">${net > 0 ? '+' : ''}${net}</b>`
+      + `<span style="color:#94a3b8;"> (${supportN} support, ${opposeN} oppose)</span></span>`
     : '';
 
-  return `<div class="actpop-tug">
-    ${convictionHtml}
+  const html = `<div class="actpop-tug">
     <div class="actpop-tug-col oppose"><div class="actpop-tug-h">Opposing</div>${oppBody}</div>
     <div class="actpop-tug-col support"><div class="actpop-tug-h">Supporting</div>${supBody}</div>
   </div>`;
+  return { conviction, html };
 }
 
 // Bottom "no read" line — factors that don't clear a real lean threshold,
@@ -5302,16 +5359,28 @@ function _buildActionPopHtmlV2(row) {
   const ed = row.earnings_days;
   const hasEd = ed != null && Number(ed) >= 0 && Number(ed) < 900;
   const edTxt = hasEd ? ` &middot; e ${Math.round(Number(ed))}d` : '';
+  // Computed here (not at its original later call site) so its conviction
+  // piece is ready in time for the header below -- see _actpopTugHtml's own
+  // comment for why it now returns {conviction, html} instead of one string.
+  const tug = _actpopTugHtml(row, side);
 
   let h = `<div class="actpop">`;
+  // 2026-08-20: Final Call badge + Conviction tally moved from the badges
+  // row into the sym line, next to earnings days -- Src/Tech pills removed
+  // from .actpop-badges entirely (still available via the Technical driver
+  // bullet below), leaving it VLM/CALC only.
   h += `<div class="actpop-head">
-    <div class="actpop-sym">${escapeHtml(sym)}<span class="actpop-co">${escapeHtml(amtTxt)}${edTxt}</span></div>
-    <div class="actpop-badges">${_actpopHeaderPillsHtml(row)}`
-    + `<span class="actpop-call ${callCls}">${escapeHtml(fc.label || actionText(fc) || '—')}</span></div>
+    <div class="actpop-sym">${escapeHtml(sym)}<span class="actpop-co">${escapeHtml(amtTxt)}${edTxt}</span>`
+    + `<span class="actpop-call ${callCls}" style="margin-left:8px;">${escapeHtml(fc.label || actionText(fc) || '—')}</span>`
+    + tug.conviction
+    + `</div>
+    <div class="actpop-badges">${_actpopHeaderPillsHtml(row)}</div>
   </div>`;
 
   h += `<div class="actpop-rr-row">${_actpopRrBarHtml(row)}`
     + `<div class="actpop-rr-right">${_actpopTradIconHtml(row)}${_actpopPvvActionHtml(row)}${_actpopMacroStackHtml(row)}</div></div>`;
+
+  h += _actpopSectorEtfHtml(row);
 
   if (row.stop_breached) {
     // 2026-08-20: shows the actual line price now (trade_line_value/
@@ -5360,7 +5429,7 @@ function _buildActionPopHtmlV2(row) {
   }
 
   h += _actpopDriverBullets(row, side);
-  h += _actpopTugHtml(row, side);
+  h += tug.html;
   h += _actpopNeutralLine(row);
 
   const details = [];

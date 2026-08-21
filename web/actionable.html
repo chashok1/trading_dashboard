@@ -410,9 +410,19 @@
        lines its own top up with the top of the Macro/Tradability group on
        the right, instead of the invisible .actpop-rr box (track+labels,
        NOT the tag poking up above it) being what centers against them. */
-    .actpop-rr-row { display:flex; align-items:flex-start; gap:10px; margin: 24px 0 10px; }
-    /* 66% -> 50%: RR bar now occupies exactly half the popup's width. */
-    .actpop-rr { flex: 0 0 50%; margin: 18px 0 0; }
+    /* 2026-08-20: bottom margin 10px -> 4px (matches .actpop-neutral's own
+       4px rhythm -- the gap when no Sector ETF is mapped and nothing else
+       fills this space). Paired with .actpop-sector-etf's own 2px top / 6px
+       bottom margins (actionable.js) this nets a symmetric 6px/6px gap
+       around that row -- evenly spaced between the RR bar row above and
+       whatever follows below (banner/drivers), not stacked unevenly. */
+    .actpop-rr-row { display:flex; align-items:flex-start; gap:10px; margin: 24px 0 0; }
+    /* 66% -> 50%: RR bar now occupies exactly half the popup's width.
+       2026-08-20: own top margin 18px -> 3px (one .actpop-lv line-height,
+       15px, trimmed off) -- moves the RR bar (and, since it's the row's
+       tallest column, the Sector ETF row that follows) up to close the gap
+       the Sector pill's removal from the header left. */
+    .actpop-rr { flex: 0 0 50%; margin: 3px 0 0; }
     .actpop-rr-right { display:flex; align-items:flex-start; gap:10px; margin-left:auto; flex-shrink:0; }
     /* Trad icon and Macro's label pill differ in font-size (11px vs 8px)
        so top-aligning the columns alone leaves their actual glyphs
@@ -449,10 +459,10 @@
       font-family: ui-monospace, monospace; }
 
     .actpop-tug { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:8px 0; }
-    /* spans both columns, sits on its own row above Opposing/Supporting --
-       without grid-column:1/-1 this would land in column 1 only and shove
-       .actpop-tug-col.support down into a second row by itself. */
-    .actpop-tug-conviction { grid-column: 1 / -1; font-size:10px; margin-bottom:2px; }
+    /* 2026-08-20: moved out of .actpop-tug (was grid-column:1/-1, its own row
+       above Opposing/Supporting) into .actpop-sym in the header, next to the
+       Final Call badge -- now a plain inline span, no grid positioning. */
+    .actpop-tug-conviction { font-size:10px; margin-left:8px; }
     .actpop-tug-col { border-radius:7px; padding:6px 8px; background:#f8fafc; border-left:3px solid #cbd5e1; }
     .actpop-tug-col.oppose { border-left-color: var(--act-sell-strong); }
     .actpop-tug-col.support { border-left-color: var(--act-buy); }
