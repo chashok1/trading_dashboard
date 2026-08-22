@@ -298,6 +298,67 @@ async function loadSchedulerLevels() {
     }
 }
 
+// ─── Delete-load button (ETL Runs panel) ─────────────────────────────
+async function deleteLoad(btn, row) {
+    const runId = row.run_id;
+    // 1) Preview what this would delete.
+    let preview;
+    try {
+        const r = await fetch(`/api/monitor/delete-load/preview?run_id=${runId}`);
+        preview = await r.json();
+    } catch (e) {
+        addSchedulerOutputLog('ERROR', `[EXCEPTION] Delete-load preview failed: ${e.message}`, row.file_type);
+        await loadSchedulerOutput();
+        return;
+    }
+    if (!preview.found) {
+        addSchedulerOutputLog('ERROR', `[ERROR] Cannot delete run ${runId}: ${preview.msg}`, row.file_type);
+        await loadSchedulerOutput();
+        return;
+    }
+
+    // 2) Confirm before running — this is destructive to raw hist_* data.
+    const fileName = preview.file_path ? preview.file_path.split(/[\\/]/).pop() : '(unknown file)';
+    const msg = `Delete ${preview.row_count} row(s) from ${preview.target_tab}?\n\n` +
+                `File: ${fileName}\nFile date: ${preview.file_date || '(none)'}\n\n` +
+                `This clears the file's processed record (so it can be reprocessed) and ` +
+                `re-derives affected dates. Not reversible except by re-loading the original file.`;
+    if (!confirm(msg)) return;
+
+    // 3) Run.
+    try {
+        btn.classList.add('spinning');
+        btn.disabled = true;
+        btn.title = 'Deleting...';
+
+        const resp = await fetch(`/api/monitor/delete-load?run_id=${runId}`, { method: 'POST' });
+        const result = await resp.json();
+
+        if (!resp.ok || !result.success) {
+            const msg = `[ERROR] Delete-load failed: ${result.msg || `HTTP ${resp.status}`}`;
+            console.error(msg);
+            addSchedulerOutputLog('ERROR', msg, row.file_type);
+        } else {
+            const okMsg = `[INFO] Deleted ${result.rows_deleted} row(s) from ${result.target_tab} ` +
+                          `(run ${runId}). Re-derived anchor ${result.anchor_derived || '(none)'}` +
+                          (result.forward_rederived_count ? `, ${result.forward_rederived_count} forward date(s)` : '') +
+                          (result.derive_error ? ` — derive error: ${result.derive_error}` : '') + '.';
+            addSchedulerOutputLog(result.derive_error ? 'WARNING' : 'INFO', okMsg, row.file_type);
+        }
+    } catch (e) {
+        addSchedulerOutputLog('ERROR', `[EXCEPTION] Delete-load failed: ${e.message}`, row.file_type);
+    } finally {
+        btn.classList.remove('spinning');
+        btn.disabled = false;
+        btn.title = 'Delete this load\'s data and allow reprocessing';
+        await loadSchedulerOutput();
+        await loadEtlRuns();
+        await loadSchedule();
+        await loadDeriveRuns();
+        await loadSummary();
+    }
+}
+
 async function doReprocess(btn, filePath, fileType) {
     try {
         btn.classList.add('spinning');
@@ -598,7 +659,7 @@ function renderEtlRuns() {
     tbody.innerHTML = '';
 
     if (!state.etlRuns || state.etlRuns.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="empty">No ETL runs found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="empty">No ETL runs found.</td></tr>';
         return;
     }
 
@@ -606,6 +667,7 @@ function renderEtlRuns() {
         const tr = document.createElement('tr');
         tr.id = `etl-row-${row.run_id}`;
         if (row.status === 'running') tr.style.background = '#fffbeb';
+        if (row.status === 'reverted') tr.style.opacity = '0.55';
 
         const startTime = new Date(row.started_at);
         const startDisplay = startTime.toLocaleTimeString();
@@ -642,11 +704,27 @@ function renderEtlRuns() {
             <td class="num" style="${rowCountHighlight}">${rowsInsertedCell}</td>
             <td class="num" style="color: var(--text-3);">${row.rows_skipped != null ? row.rows_skipped.toLocaleString() : '—'}</td>
             <td>${duration}</td>
+            <td>
+                <button class="btn btn-sm delete-load-btn"
+                        data-run-id="${row.run_id}"
+                        title="Delete this load's data and allow reprocessing"
+                        ${(!row.target_tab || !row.target_tab.startsWith('hist_') || row.status === 'running' || row.status === 'reverted') ? 'disabled' : ''}>
+                    🗑
+                </button>
+            </td>
         `;
 
         if (row.status === 'error') {
             tr.style.cursor = 'pointer';
             tr.addEventListener('click', () => toggleErrorDetail(row.run_id));
+        }
+
+        const delBtn = tr.querySelector('.delete-load-btn');
+        if (delBtn && !delBtn.disabled) {
+            delBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteLoad(e.target, row);
+            });
         }
 
         tbody.appendChild(tr);
@@ -657,7 +735,7 @@ function renderEtlRuns() {
             detailTr.className = 'error-detail';
             detailTr.style.display = 'none';
             detailTr.innerHTML = `
-                <td colspan="9" style="background: #fee2e2; padding: 12px; border-top: none;">
+                <td colspan="10" style="background: #fee2e2; padding: 12px; border-top: none;">
                     <pre style="color: var(--bear); margin: 0; font-size: 12px; white-space: pre-wrap; word-wrap: break-word;">
 ${escapeHtml(row.error_msg)}
                     </pre>
@@ -719,6 +797,7 @@ function statusToPill(status) {
         'error':     { cls: 'pill-bear', txt: 'error' },
         'not today': { cls: 'pill-neut', txt: 'not today' },
         'optional':  { cls: 'pill-opt',  txt: 'optional' },
+        'reverted':  { cls: 'pill-neut', txt: '↩ reverted' },
     };
     const def = map[status] || { cls: 'pill-neut', txt: status };
     return `<span class="pill ${def.cls}">${def.txt}</span>`;

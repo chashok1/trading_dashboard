@@ -156,6 +156,8 @@ dates, then `derive_realized_gain` (FIFO across both brokerages).
 | `/api/monitor/startup/register` | POST | Write launcher bat files into Windows Startup folder |
 | `/api/monitor/startup/unregister` | POST | Remove Startup-folder launchers |
 | `/api/monitor/reprocess` | POST | Call `load_one_file(force=True, do_derive=True)` for a given file path |
+| `/api/monitor/delete-load/preview` | GET | Preview what `delete-load` would remove for a `run_id` (row count, target table, file date) — read-only |
+| `/api/monitor/delete-load` | POST | Delete one ETL run's `hist_*` rows + `meta_file_processed` entry, mark the run `reverted`, re-derive |
 | `/api/monitor/derive-missing` | GET | Preview dates that need derives (gap or force mode) |
 | `/api/monitor/derive-missing/run` | POST | Run `derive_all` oldest-to-newest for missing or force-rederive dates |
 
@@ -225,6 +227,39 @@ only genuinely new rows and rerun the derive cascade.
 
 After a successful reprocess the UI refreshes the schedule grid and the KPI
 summary.
+
+## Delete-load button
+
+The 🗑 button per row in the ETL Runs panel (`etl/delete_load.py`, also
+runnable standalone via `python -m etl.delete_load --run-id N`) lets a wrong
+or partial load be undone so the corrected file can be reprocessed cleanly.
+It is a deliberate, confirm-gated exception to the "never delete raw
+`hist_*`" convention — not a general cleanup tool.
+
+Identified by `run_id` (unambiguous — no path-matching guesswork), it:
+
+1. Deletes rows from that run's `target_tab` matching `source_file`. Matches
+   either the full path or the bare filename, because the CSV custom
+   handlers (CS/CST/FT/F401K) stamp `hist_*.source_file` with just the
+   filename while the generic Excel loader stamps the full path — both use
+   the full path for `meta_etl_run.file_path` / `meta_file_processed.file_path`
+   either way.
+2. Deletes the `meta_file_processed` row, so the file (or its corrected
+   replacement at the same path) becomes eligible to reprocess again.
+3. Marks the `meta_etl_run` row `status='reverted'` — the row itself is
+   never deleted, so the audit trail ("this load happened, then was undone")
+   survives.
+4. Re-derives: `derive_all` for the current anchor, then the same
+   forward-re-derive sweep `etl_load.py` runs after a load (every
+   already-derived date after the deleted load's `file_date`) — a deletion
+   can invalidate later dates exactly like a backfilled insert can, since
+   positions/periodic feeds carry forward "latest snapshot ≤ D".
+
+Only runs whose `target_tab` starts with `hist_` and has a `source_file`
+column are deletable (guards against ref/derived tables and legacy rows with
+no target_tab). The UI disables the button for `running` and already-
+`reverted` rows, previews the row count via `GET .../delete-load/preview`,
+and requires an explicit `confirm()` before calling the delete endpoint.
 
 ## "Run Missing Derives"
 

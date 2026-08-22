@@ -1071,6 +1071,33 @@ def reprocess_file(file_path: str = Query(...),
                 "msg": f"reprocess failed: {e}",
                 "trace": traceback.format_exc()}
 
+
+@router.get("/api/monitor/delete-load/preview")
+def delete_load_preview(run_id: int = Query(...)):
+    """Preview what 'Delete load' would remove for this ETL run — used to
+    populate the File Monitor confirmation dialog. Read-only."""
+    from etl.delete_load import preview_delete_load
+    with session_scope() as s:
+        return preview_delete_load(s, run_id)
+
+
+@router.post("/api/monitor/delete-load")
+def delete_load_endpoint(run_id: int = Query(...)):
+    """Delete one ETL run's hist_* rows (matched by source_file), clear its
+    meta_file_processed entry so the file can be reprocessed, mark the run
+    'reverted' (audit trail kept, row not deleted), and re-derive. See
+    etl/delete_load.py for the full rationale — this is a deliberate,
+    confirm-gated exception to the 'never delete raw hist_*' convention."""
+    from etl.delete_load import delete_load
+    try:
+        with session_scope() as s:
+            return delete_load(s, run_id)
+    except Exception as e:
+        import traceback
+        return {"success": False,
+                "msg": f"delete_load failed: {e}",
+                "trace": traceback.format_exc()}
+
 # ─── Missing derives finder + runner ────────────────────────────────────
 # A "missing" date is one where some hist_* table has a row for that
 # snapshot_date but meta_derived_run has no successful row for the same
