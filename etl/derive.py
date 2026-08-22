@@ -3013,6 +3013,22 @@ def _populate_generic_tos_symbol(session: Session, table: str, as_of_date: date)
     return updated
 
 
+def populate_tos_symbol(session: Session, table: str) -> int:
+    """Public entry point for _populate_generic_tos_symbol, for callers
+    outside the derive_all() cascade.
+
+    Needed because the CST/FT/CS/F401K transaction-file branches in
+    etl_load.py return early and never reach derive_all() (see
+    'Derive cascade' comment there) -- so hist_cst/hist_ft never get their
+    tos_symbol backfilled by the normal path. This left hist_cst.tos_symbol
+    NULL for any CST file loaded without an accompanying CS/TOS load that
+    day, which crashed _derive_cs_realized_gain_impl with a NOT NULL
+    violation on drv_cs_realized_gain.tos_symbol (found 2026-08-22 loading
+    two fresh CST files in isolation -- 10/10 recent trade dates failed).
+    """
+    return _populate_generic_tos_symbol(session, table, None)
+
+
 def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: int) -> int:
     """Populate MA-tab rule columns QE, QJ, QM, QN, QR in drv_cat_atomic_input.
 

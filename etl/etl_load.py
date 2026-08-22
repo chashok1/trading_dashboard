@@ -212,6 +212,20 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
                 #         Realized tab. Mixes CS + F so a single rebuild keeps
                 #         the picture consistent across both brokerages.
                 if do_derive and ins > 0:
+                    # Backfill hist_cst.tos_symbol FIRST — this branch returns
+                    # early and never reaches derive_all() below, so it's the
+                    # only place that normally populates it. Without this,
+                    # derive_cs_realized_gain crashes with a NOT NULL
+                    # violation on any trade date whose tos_symbol is still
+                    # unset (e.g. a CST file loaded with no accompanying
+                    # CS/TOS load that day to trigger the full cascade).
+                    try:
+                        from etl.derive import populate_tos_symbol
+                        with session_scope() as s2:
+                            populate_tos_symbol(s2, "hist_cst")
+                    except Exception:
+                        log.exception("populate_tos_symbol(hist_cst) failed (continuing)")
+
                     distinct_dates = s.execute(text("""
                         SELECT DISTINCT trade_date FROM hist_cst
                         ORDER BY trade_date DESC LIMIT 10

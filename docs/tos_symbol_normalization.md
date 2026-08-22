@@ -55,6 +55,15 @@ The populate phase (`derive_all()`) runs before any derives and fills `tos_symbo
 - **Function**: `_populate_generic_tos_symbol()`
 - **Result**: `tos_symbol` is always populated (never NULL)
 
+**Gotcha (fixed 2026-08-22):** this only runs as part of `derive_all()`'s
+cascade. The CST/FT/CS/F401K transaction-file branches in `etl_load.py`
+return early and never reach `derive_all()`, so a CST file loaded with no
+accompanying CS/TOS load that day left `hist_cst.tos_symbol` NULL — which
+crashed `_derive_cs_realized_gain_impl` (NOT NULL constraint on
+`drv_cs_realized_gain.tos_symbol`) for every trade date touched. Fixed by
+calling the public `populate_tos_symbol(session, table)` wrapper directly
+from the CST branch, before the per-date `derive_cs_realized_gain` loop.
+
 ## Derive Phase Usage
 
 ### In SQL Queries
