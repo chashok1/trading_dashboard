@@ -4289,7 +4289,12 @@ def get_portfolio_trends(
 
 
 @router.get("/api/portfolio/summary")
-def get_portfolio_summary(date: Optional[str] = Query(None)):
+def get_portfolio_summary(date: Optional[str] = Query(None),
+                          latest_prices: bool = Query(False,
+                              description="Overlay a live intraday delta from drv_quote on top of "
+                                          "the last-loaded CS/F snapshot. Response carries "
+                                          "pricing='live'|'eod' so callers can show which kind of "
+                                          "Today figure they're looking at.")):
     """KPI strip: totals + per-account breakdown + YTD/MTD on the resolved date."""
     d = _resolve_date(date)
     ytd_start = d.replace(month=1, day=1)
@@ -4868,6 +4873,118 @@ def get_portfolio_summary(date: Optional[str] = Query(None)):
     global_cb = float(d2.get("cost_basis") or 0)
     d2["total_gain_dollar"] = sum(a["total_gain_dollar"] for a in d2["by_account"])
     d2["total_gain_pct"] = (d2["total_gain_dollar"] / global_cb * 100) if global_cb else None
+
+    # ── Optional: intraday reprice using drv_quote.last_price ──────────────
+    # By default this endpoint reflects only the last-loaded CS/F snapshot --
+    # frozen until the next file load, whether that was this morning or last
+    # night. latest_prices=True overlays a live delta from drv_quote on top,
+    # same idea as /api/portfolio's own latest_prices option (see its comment
+    # above) but computed as a delta and applied at the account-aggregate
+    # level, since this endpoint only returns per-account sums, not
+    # per-position rows like /api/portfolio does.
+    # Only actually applied when the held symbols' latest drv_quote batch is
+    # flagged is_intraday=TRUE -- once the market's closed and drv_quote
+    # holds the same settled close hist_cs/hist_f already used, there's
+    # nothing live to add, so we leave the snapshot numbers untouched rather
+    # than layering a redundant (usually ~0, but not always exactly so)
+    # delta on top. pricing='live'|'eod' tells the caller which case this is
+    # (user: "add some indicator to indicate intraday or clean day").
+    d2["pricing"] = "eod"
+    d2["pricing_as_of"] = None
+    if latest_prices:
+        with session_scope() as s2:
+            held = s2.execute(text(f"""
+                SELECT c.account AS acct_key, ra.short_name AS account_tag,
+                       c.tos_symbol AS symbol, c.qty,
+                       COALESCE(c.market_value, 0) AS old_mv,
+                       COALESCE(c.day_chng_dollar, 0) AS old_day_chg
+                  FROM hist_cs c
+                  LEFT JOIN ref_accounts ra ON ra.account_number = c.account
+                 WHERE c.snapshot_date = (SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d)
+                   AND {CS_IS_NOT_CASH_C}
+                   AND COALESCE(ra.is_active, TRUE) = TRUE
+                UNION ALL
+                SELECT hist_f.account_number AS acct_key, ra.short_name AS account_tag,
+                       tos_symbol AS symbol, qty,
+                       COALESCE(current_value, 0) AS old_mv,
+                       COALESCE(today_gl_dollar, 0) AS old_day_chg
+                  FROM hist_f
+                  LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+                 WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+                   AND {F_IS_NOT_CASH}
+                   AND COALESCE(ra.is_active, TRUE) = TRUE
+            """), {"d": d}).mappings().all()
+
+            syms_held = list({h["symbol"] for h in held if h["symbol"] and h["qty"] is not None})
+            deltas_by_tag: dict = {}
+            mv_delta_total = 0.0
+            day_delta_total = 0.0
+            is_live = False
+            as_of_ts = None
+            if syms_held:
+                qrow = s2.execute(text("SELECT MAX(as_of_date) FROM drv_quote")).first()
+                latest_dq_date = qrow[0] if qrow else None
+                latest_price_map, prev_close_map = {}, {}
+                if latest_dq_date:
+                    for r in s2.execute(text("""
+                        SELECT tos_symbol, last_price FROM drv_quote
+                         WHERE as_of_date = :d AND tos_symbol = ANY(:syms)
+                    """), {"d": latest_dq_date, "syms": syms_held}).all():
+                        if r[1] is not None:
+                            latest_price_map[r[0]] = float(r[1])
+                    for r in s2.execute(text("""
+                        SELECT tos_symbol, last_price FROM drv_quote
+                         WHERE as_of_date = (SELECT MAX(as_of_date) FROM drv_quote
+                                              WHERE as_of_date < :d)
+                           AND tos_symbol = ANY(:syms)
+                    """), {"d": latest_dq_date, "syms": syms_held}).all():
+                        if r[1] is not None:
+                            prev_close_map[r[0]] = float(r[1])
+                    live_row = s2.execute(text("""
+                        SELECT BOOL_OR(is_intraday), MAX(derived_at) FROM drv_quote
+                         WHERE as_of_date = :d AND tos_symbol = ANY(:syms)
+                    """), {"d": latest_dq_date, "syms": syms_held}).first()
+                    if live_row:
+                        is_live = bool(live_row[0])
+                        as_of_ts = live_row[1]
+
+                if is_live:
+                    for h in held:
+                        sym, qty = h["symbol"], h["qty"]
+                        if not sym or qty is None:
+                            continue
+                        lp = latest_price_map.get(sym)
+                        if lp is None:
+                            continue
+                        qty_f = float(qty)
+                        mv_delta = qty_f * lp - float(h["old_mv"] or 0)
+                        pc = prev_close_map.get(sym)
+                        day_delta = ((lp - pc) * qty_f - float(h["old_day_chg"] or 0)) if pc is not None else 0.0
+                        mv_delta_total += mv_delta
+                        day_delta_total += day_delta
+                        tag = h["account_tag"]
+                        bucket = deltas_by_tag.setdefault(tag, {"mv": 0.0, "day": 0.0})
+                        bucket["mv"]  += mv_delta
+                        bucket["day"] += day_delta
+
+            if is_live:
+                d2["market_value"]      = float(d2.get("market_value") or 0) + mv_delta_total
+                d2["day_change_dollar"] = float(d2.get("day_change_dollar") or 0) + day_delta_total
+                d2["today_gain_dollar"] = float(d2.get("today_gain_dollar") or 0) + day_delta_total
+                mv_denom = d2["market_value"] - d2["today_gain_dollar"]
+                d2["today_gain_pct"] = (d2["today_gain_dollar"] / mv_denom * 100) if mv_denom else None
+                for a in d2["by_account"]:
+                    bucket = deltas_by_tag.get(a["account_tag"])
+                    if not bucket:
+                        continue
+                    a["market_value"]      += bucket["mv"]
+                    a["day_change_dollar"] += bucket["day"]
+                    a["today_gain_dollar"] += bucket["day"]
+                    denom = a["market_value"] - a["today_gain_dollar"]
+                    a["today_gain_pct"] = (a["today_gain_dollar"] / denom * 100) if denom else None
+                d2["pricing"] = "live"
+                d2["pricing_as_of"] = as_of_ts.isoformat() if as_of_ts else None
+
     return d2
 
 

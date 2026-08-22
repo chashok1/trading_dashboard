@@ -1873,9 +1873,17 @@ async function loadCumPnlSnapshot() {
     // (misses the sold-today intraday move + dividends/interest) -- user:
     // "Today number, when i select IRA checkbox, Today's number is showing
     // as +1.6K instead of 3.xK."
+    // 2026-08-22 -- latest_prices=true asks the backend to overlay a live
+    // intraday delta from drv_quote on top of the last-loaded CS/F snapshot
+    // (see api/routers/dash.py::get_portfolio_summary) -- user: "How does
+    // it work during intraday?" It's a no-op (pricing='eod') once the
+    // market's closed or before today's file has loaded, so this is safe to
+    // always request. summary.pricing drives the Live/EOD badge below.
+    const summaryParams = new URLSearchParams({ latest_prices: 'true' });
+    if (state.date) summaryParams.set('date', state.date);
     const [r, summary] = await Promise.all([
       fetchJson('/api/portfolio/trends?' + trendsParams.toString()),
-      fetchJson('/api/portfolio/summary' + (state.date ? '?date=' + encodeURIComponent(state.date) : ''))
+      fetchJson('/api/portfolio/summary?' + summaryParams.toString())
         .catch(() => null),
     ]);
     const N = 10;
@@ -1975,7 +1983,22 @@ async function loadCumPnlSnapshot() {
     const lastToday = dayArr.length ? Number(dayArr[dayArr.length - 1]) : null;
     if (todayEl) {
       todayEl.className = 'ts-total' + (lastToday >= 0 ? ' pos' : ' neg');
-      todayEl.textContent = lastToday != null ? 'Today ' + (_fsCompactUsd(lastToday) || '') : '';
+      // 2026-08-22 -- Live/EOD indicator -- user: "add some indicator to
+      // indicate intraday or clean day." 'live' = drv_quote has a genuine
+      // intraday tick for the held symbols and the figure includes it;
+      // 'eod' = market's closed (or today's file hasn't loaded yet) and
+      // this is the settled broker snapshot number, nothing live layered on.
+      const isLive = summary && summary.pricing === 'live';
+      const badge = isLive ? ' 🔴' : '';
+      let title = 'Today\'s Gain';
+      if (isLive) {
+        const asOf = summary.pricing_as_of ? new Date(summary.pricing_as_of).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : null;
+        title = 'Live intraday price' + (asOf ? ` as of ${asOf}` : '');
+      } else if (summary && summary.pricing === 'eod') {
+        title = 'End-of-day — from the last loaded broker file, not live';
+      }
+      todayEl.title = title;
+      todayEl.textContent = lastToday != null ? 'Today ' + (_fsCompactUsd(lastToday) || '') + badge : '';
     }
     if (totalEl) {
       totalEl.className = 'ts-total' + (lastCum >= 0 ? ' pos' : ' neg');
