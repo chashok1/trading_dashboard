@@ -17,6 +17,13 @@ const state = {
   // account_number), not short_name -- that's what the backend filter
   // matches on.
   catAccounts: [],
+  // account_number -> account_tag (short_name) map, populated by
+  // loadCatAccountFilter() -- lets loadCumPnlSnapshot() match state.
+  // catAccounts (account_number values) against /api/portfolio/summary's
+  // by_account entries, which only carry account_tag/account (a composed
+  // display string for Fidelity, not account_number), not account_number
+  // itself.
+  accountTagByNumber: {},
   // 2026-08-09 -- Market View Source filter. null = default (Hedgeye quad
   // outlook, ref_quad_outlook); one of RR/CALL/ETF/II/SSS/PS = that
   // source's own per-symbol calls instead (drv_source_standing). User:
@@ -1856,15 +1863,20 @@ async function loadCumPnlSnapshot() {
     // the filter to four graphs."
     const filtered = state.catAccounts.length > 0;
     if (filtered) trendsParams.set('accounts', state.catAccounts.join(','));
+    // 2026-08-22 -- /api/portfolio/summary has no accounts= param of its
+    // own, but it always returns the full by_account breakdown (each entry
+    // already carries the same complete today_gain_dollar the unfiltered
+    // override below uses) -- so fetch it unconditionally and, when
+    // filtered, sum the matching accounts' today_gain_dollar ourselves
+    // instead of skipping the override. Previously skipping it while
+    // filtered silently fell back to the plainer trends day_change figure
+    // (misses the sold-today intraday move + dividends/interest) -- user:
+    // "Today number, when i select IRA checkbox, Today's number is showing
+    // as +1.6K instead of 3.xK."
     const [r, summary] = await Promise.all([
       fetchJson('/api/portfolio/trends?' + trendsParams.toString()),
-      // /api/portfolio/summary has no account filter of its own -- skip
-      // the today-bar override entirely while a filter is active rather
-      // than overwriting a filtered day with an unfiltered whole-portfolio
-      // figure (see the override's own comment below for why it exists).
-      filtered ? Promise.resolve(null)
-               : fetchJson('/api/portfolio/summary' + (state.date ? '?date=' + encodeURIComponent(state.date) : ''))
-                   .catch(() => null),
+      fetchJson('/api/portfolio/summary' + (state.date ? '?date=' + encodeURIComponent(state.date) : ''))
+        .catch(() => null),
     ]);
     const N = 10;
     const dates = (r.dates || []).slice(-N);
@@ -1896,9 +1908,28 @@ async function loadCumPnlSnapshot() {
     // last bar instead of silently disagreeing with it.
     const cumRaw = (r.cumulative_pl || []).slice(-N);
     const cum = cumRaw.slice();
-    if (summary && summary.today_gain_dollar != null && dayArr.length && cumRaw.length) {
+    // Filtered: sum today_gain_dollar across just the selected accounts --
+    // unfiltered: use the whole-portfolio total directly, as before.
+    // by_account entries carry account_tag (short_name), not account_number
+    // (their 'account' field is a composed display string for Fidelity, not
+    // the raw number) -- so match via state.accountTagByNumber, the same
+    // account_number -> short_name map the checkbox list itself is built
+    // from, rather than state.catAccounts directly.
+    let summaryToday = null;
+    if (summary) {
+      if (filtered) {
+        const selectedTags = new Set(state.catAccounts.map(num => state.accountTagByNumber[num]));
+        const matched = (summary.by_account || []).filter(a => selectedTags.has(a.account_tag));
+        if (matched.length) {
+          summaryToday = matched.reduce((sum, a) => sum + Number(a.today_gain_dollar || 0), 0);
+        }
+      } else if (summary.today_gain_dollar != null) {
+        summaryToday = Number(summary.today_gain_dollar);
+      }
+    }
+    if (summaryToday != null && dayArr.length && cumRaw.length) {
       const origLastDay = Number(dayArr[dayArr.length - 1] || 0);
-      const newLastDay = Number(summary.today_gain_dollar);
+      const newLastDay = summaryToday;
       const delta = newLastDay - origLastDay;
       dayArr[dayArr.length - 1] = newLastDay;
       cum[cum.length - 1] = Math.round((cumRaw[cumRaw.length - 1] + delta) * 100) / 100;
@@ -2062,6 +2093,7 @@ async function loadCatAccountFilter() {
     // keeps state.catAccounts from silently filtering to nothing.
     const validNums = new Set(accounts.map(a => a.account_number));
     state.catAccounts = state.catAccounts.filter(a => validNums.has(a));
+    state.accountTagByNumber = Object.fromEntries(accounts.map(a => [a.account_number, a.short_name]));
     el.innerHTML = accounts.map(a => `
       <label class="cat-acct-chip">
         <input type="checkbox" value="${escapeHtml(a.account_number)}"
