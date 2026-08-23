@@ -2187,12 +2187,27 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    number/label in the now-narrower column. */
 /* 2026-08-14 -- narrowed further (136px->96px, 102px->72px flex-basis) to
    make room for .rd-spx-vbar on the same row, per user: "reduce bar size". */
-.rd-meter { height: 20px; border-radius: 10px; background: var(--border); overflow: hidden; width: 96px; max-width: 100%; flex: 1 1 72px; }
+/* 2026-08-23 -- .rd-meter's own sizing (width/max-width/flex) moved onto
+   this new .rd-meter-pctwrap so the rendered size/position of the meter bar
+   is byte-for-byte identical to before (.rd-meter now just fills the
+   wrapper at width:100%) -- per user: "without changing any controls and
+   their sizes". The wrapper's only job is to be a position:relative anchor
+   for the "% TRR"/"% LRR" label overlays below, which must live OUTSIDE
+   .rd-meter's own overflow:hidden (that clip is load-bearing -- it's what
+   keeps the square-cornered fill div inside the bar's rounded corners). */
+.rd-meter-pctwrap { position: relative; width: 96px; max-width: 100%; flex: 1 1 72px; }
+.rd-meter { height: 20px; border-radius: 10px; background: var(--border); overflow: hidden; width: 100%; }
 .rd-meter-fill { height: 100%; background: var(--text-3); }
 .rd-meter-fill.b-clear      { background: var(--ok); }
 .rd-meter-fill.b-caution    { background: var(--warn); }
 .rd-meter-fill.b-defensive  { background: var(--act-sell); }
 .rd-meter-fill.b-notinv     { background: var(--bear); }
+/* Small right-justified "% TRR" / "% LRR" overlay labels, above/below the
+   meter -- position:absolute so they add zero height/width to the row (no
+   other control's size or position moves). */
+.rd-meter-pct { position: absolute; right: 0; font-size: 8px; line-height: 1; color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none; }
+.rd-meter-pct-top { bottom: 100%; margin-bottom: 1px; }
+.rd-meter-pct-bottom { top: 100%; margin-top: 1px; }
 /* 2026-08-14 -- always-visible vertical SPX risk-range indicator, on the
    right side of .rd-meter within .rd-top-row. Fill height = SPX's position
    within LRR/TRR (0=LRR floor, 100%=TRR ceiling); fill colour is a pure

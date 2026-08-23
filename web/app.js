@@ -425,12 +425,31 @@ async function loadRiskDial() {
     // low SPX sits in the range.
     const spxGauge = (r.fired || []).concat(r.quiet || []).find(g => g.key === 'spx_top_range');
     let spxVbarHtml = '';
+    // 2026-08-23 -- small "% TRR" / "% LRR" labels, right-justified, sitting
+    // above/below .rd-meter (not the vertical bar) -- per user: "without
+    // changing any controls and their sizes". Implemented as absolutely-
+    // positioned overlays anchored to a thin .rd-meter-pctwrap so .rd-meter
+    // itself (and every other control on the row) keeps its exact rendered
+    // size; only a non-sizing position:relative wrapper was added around it.
+    let meterLabelTop = '', meterLabelBottom = '';
     if (spxGauge && spxGauge.value != null) {
       const v = Math.max(0, Math.min(1, spxGauge.value));
       const tier = v > 0.85 ? 'bad' : v > 0.75 ? 'caution' : 'good';
       spxVbarHtml = `<div class="rd-spx-vbar" title="${escapeHtml(spxGauge.detail || '')}">
         <div class="rd-spx-vbar-fill tier-${tier}" style="height:${(v * 100).toFixed(0)}%;"></div>
       </div>`;
+      // Parsed from the gauge's own detail string (frontend only -- no
+      // backend field added): "SPX 6395 — 91% of range (LRR 6180 / TRR
+      // 6435) · +2.3% to TRR / -4.1% to LRR". upM[1]/dnM[1] already carry
+      // their own sign from that source string -- do NOT prepend another
+      // "+"/"-" or it doubles up ("++2.3%"). Either match can legitimately
+      // be absent (detail omits the clause when last/lrr/trr aren't all
+      // available).
+      const detail = spxGauge.detail || '';
+      const upM = /([+-]?\d+\.?\d*)% to TRR/.exec(detail);
+      const dnM = /([+-]?\d+\.?\d*)% to LRR/.exec(detail);
+      if (upM) meterLabelTop = `<span class="rd-meter-pct rd-meter-pct-top" title="${escapeHtml(detail)}">${upM[1]}% TRR</span>`;
+      if (dnM) meterLabelBottom = `<span class="rd-meter-pct rd-meter-pct-bottom" title="${escapeHtml(detail)}">${dnM[1]}% LRR</span>`;
     }
     // TASK_140 follow-up 5/6/7 -- "Risk Dial" header removed from
     // index.html (this card is self-explanatory: the number +
@@ -446,7 +465,11 @@ async function loadRiskDial() {
       <div class="rd-top-row">
         <span class="rd-budget ${bandClass}">${r.risk_budget != null ? r.risk_budget : '—'}</span>
         <span class="rd-label ${labelClass}">${escapeHtml(r.risk_label || '')}</span>
-        <div class="rd-meter"><div class="rd-meter-fill ${bandClass}" style="width:${budget}%;"></div></div>
+        <div class="rd-meter-pctwrap">
+          ${meterLabelTop}
+          <div class="rd-meter"><div class="rd-meter-fill ${bandClass}" style="width:${budget}%;"></div></div>
+          ${meterLabelBottom}
+        </div>
         ${spxVbarHtml}
       </div>
       <div class="rd-headline">${escapeHtml(r.headline || '')}</div>
