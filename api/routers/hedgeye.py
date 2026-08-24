@@ -64,6 +64,30 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
         "stance": {"bullish": [], "bearish": []},
     }
 
+    def _movers(s, limit: int = 3) -> dict:
+        """Top/bottom N portfolio symbols by today's % change in price —
+        drv_quote.pct_change, the exact same live-quote source the
+        Actionable grid's own %CHG column reads (api/routers/dash.py, `q.
+        pct_change`), not the once-daily CS/Fidelity broker snapshot. Scoped
+        to currently-held symbols via drv_portfolio at the same as_of_date."""
+        rows = s.execute(text("""
+            SELECT p.tos_symbol, q.pct_change AS pct
+            FROM drv_portfolio p
+            JOIN drv_quote q ON q.tos_symbol = p.tos_symbol AND q.as_of_date = p.as_of_date
+            WHERE p.as_of_date = :d
+              AND (COALESCE(p.held_qty_fid, 0) <> 0 OR COALESCE(p.held_qty_cs, 0) <> 0)
+              AND q.pct_change IS NOT NULL
+        """), {"d": d}).all()
+        ranked = sorted(
+            ({"symbol": r[0], "pct": float(r[1])} for r in rows),
+            key=lambda x: x["pct"],
+        )
+        if not ranked:
+            return {"gainers": [], "losers": []}
+        losers = ranked[:limit]
+        gainers = list(reversed(ranked[-limit:]))
+        return {"gainers": gainers, "losers": losers}
+
     def _recv(s, table: str, date_col: str, date_val) -> Optional[str]:
         """received_at via message_id join (works when message_id is populated)."""
         if date_val is None:
@@ -121,6 +145,12 @@ def actionable_hedgeye(date: Optional[str] = Query(None)):
         else:
             effective_date = d
         out["as_of"] = effective_date.isoformat()
+
+        # Portfolio movers — today's top-3 gainers/bottom-3 losers by % price
+        # change, keyed off the viewing date `d` (a position snapshot, not a
+        # Hedgeye email date, so it doesn't ride effective_date's clamp).
+        out["movers"] = _movers(s)
+        out["movers_date"] = d.isoformat()
 
         # Top-5 actionable ideas — only if received exactly on effective_date;
         # no carry-forward, so a day with nothing new shows blank rather than

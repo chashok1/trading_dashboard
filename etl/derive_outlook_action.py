@@ -538,13 +538,16 @@ def _action_standing(base, prev, held: bool = False,
     every period, not just on first appearance. Held-vs-not is resolved
     downstream by derive_actionable suppression.
 
-      base > 0                  -> ADD     (positive weight on the current list)
-      base < 0                  -> REMOVE  (negative weight on the current list)
-      base absent, prev present -> drop_action if held, else silent (dropped from list)
-      otherwise                 -> silent
+      base > 0                       -> ADD     (positive weight on the current list)
+      base < 0                       -> REMOVE  (negative weight on the current list)
+      base absent, prev > 0, held    -> drop_action (lost a bullish listing)
+      base absent, prev <= 0, held   -> silent (was already bearish/avoid — dropping off adds no new signal)
+      base absent, prev present, not held -> silent
+      otherwise                      -> silent
 
     drop_action defaults to "REDUCE".  Pass "REMOVE" for ETF so a symbol
-    dropped from the ETF list while held triggers Sell All, not Sell Some.
+    dropped from the ETF list while held (and previously bullish) triggers
+    Sell All, not Sell Some.
     """
     if base is not None:
         try:
@@ -557,11 +560,17 @@ def _action_standing(base, prev, held: bool = False,
             return "REMOVE", f"on list, weight {b:+g}"
         return None, "weight 0 - silent"
     if prev is not None:
+        try:
+            p = float(prev)
+        except (TypeError, ValueError):
+            p = None
+        if p is not None and p <= 0:
+            # Was already bearish/avoid last time it was seen — dropping off
+            # the list entirely is not new information, don't re-fire a sell.
+            return None, f"dropped from list, was already bearish ({p:+g})"
         if held:
-            try:
-                return drop_action, f"dropped from list (was {float(prev):+g})"
-            except (TypeError, ValueError):
-                return drop_action, "dropped from list"
+            return drop_action, (f"dropped from list (was {p:+g})" if p is not None
+                                  else "dropped from list")
         else:
             return None, "dropped from list, not held"
     return None, "not on list"

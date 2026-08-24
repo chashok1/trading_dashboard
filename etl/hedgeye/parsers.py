@@ -926,8 +926,18 @@ def parse_the_call(email: Email) -> Parsed:
             para = para.strip()
             if not para:
                 continue
-            pm = re.match(r"([^\n:]*\([A-Z][A-Z0-9.\-/]{0,9}\)[^\n:]*):\s*(.+)",
-                          para, re.S)
+            # 2026-08-19: header/body separator is usually ":" but Hedgeye
+            # sometimes sends " - " instead (seen 8/19 -- 4 of 5 Top-5 entries
+            # used " - " and were silently dropped to commentary; the 5th,
+            # TJX, "matched" the colon-only regex by accident via an
+            # unrelated colon buried inside its own text, producing a
+            # garbled rationale). Non-greedy on both sides of the ticker
+            # paren so the match stops at whichever separator (":" or " - ")
+            # occurs first in the text, not always preferring a later stray
+            # colon over an earlier real dash separator.
+            pm = re.match(
+                r"([^\n]*?\([A-Z][A-Z0-9.\-/]{0,9}\)[^\n]*?)(?::\s*|\s+-\s+)(.+)",
+                para, re.S)
             if not pm:
                 # Prose paragraphs where the tickers appear only after the
                 # lead-in colon (e.g. "Position monitor tilted ...: Mastercard

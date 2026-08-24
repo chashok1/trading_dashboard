@@ -281,10 +281,32 @@
   // tooltips about affecting stocks" -- each branch now ends with an
   // explicit stocks-market-behavior line (grinding/pinned tape vs sharper,
   // extended selloffs/rallies), not just the dealer-hedging mechanics.
+  // 2026-08-23 -- expanded per user request: explain WHY dealers end up on
+  // that side (what the public is doing with options) and walk through the
+  // actual hedging mechanics (what a dealer has to buy/sell as price moves),
+  // not just the net effect -- so the tooltip teaches the "why", not only
+  // the "so what". Kept as plain text + '\n' (this file's own rich-tooltip
+  // convention -- _popBox renders the body through esc() with
+  // white-space:pre-wrap, so real HTML tags here would just show up
+  // literally; '- ' prefixed lines read as a bulleted list once wrapped).
   function _gammaThrottleTip(v) {
     return v >= 0
-      ? 'Positive (' + v.toFixed(2) + '): dealers hedge counter-trend (buy dips, sell rips) → pins price, dampens realized vol, mean-reversion more reliable. Stocks: tape tends to grind/range-bound, dips get bought.'
-      : 'Negative (' + v.toFixed(2) + '): dealers hedge with-trend (sell weakness, buy strength) → amplifies moves, bigger ranges both ways, breakouts more likely to run. Stocks: selloffs and rallies can extend further/faster than usual — size and stops matter more here.';
+      ? 'Positive (' + v.toFixed(2) + '): the public is selling options for income ' +
+        '(covered calls, cash-secured puts, overwriting programs) → dealers end up net ' +
+        'long options.\n\n' +
+        'To stay hedged, a dealer who\'s long options has to:\n' +
+        '- Sell stock when price rises (their long-call delta grew, so trim it back)\n' +
+        '- Buy stock when price falls (their long-put delta grew, so trim it back)\n\n' +
+        'Net effect: dealers buy dips and sell rips → pins price, dampens realized vol, ' +
+        'mean-reversion more reliable. Stocks: tape tends to grind/range-bound, dips get bought.'
+      : 'Negative (' + v.toFixed(2) + '): the public is buying lots of options ' +
+        '(protective puts, chasing calls, 0DTE) → dealers end up net short options.\n\n' +
+        'To stay hedged, a dealer who\'s short options has to:\n' +
+        '- Buy stock when price rises (their short-call exposure gets worse as price climbs)\n' +
+        '- Sell stock when price falls (their short-put exposure gets worse as price drops)\n\n' +
+        'Net effect: dealers sell weakness and buy strength → amplifies moves, bigger ranges ' +
+        'both ways, breakouts more likely to run. Stocks: selloffs and rallies can extend ' +
+        'further/faster than usual — size and stops matter more here.';
   }
   function _rvolTip(rvol, vix) {
     if (vix == null) return null;
@@ -298,16 +320,27 @@
     var msrMetricsHtml = '';
     if (msr) {
       var metricParts = [];
-      var _metricLabel = function (label, val, tipBody) {
+      // 2026-08-23 -- highlightNeg (opt-in, per-call -- not a global rule
+      // for every metric run through _metricLabel) wraps the label+value in
+      // a red badge when val<0, per user: "highlight Gamma Throttle somehow
+      // if it is negative (more visible)". Only passed true for Gamma
+      // Throttle -- Realized Vol is never negative (it's a volatility
+      // number), so it stays plain either way, but this keeps the badge
+      // opt-in rather than an accidental side effect of a shared helper.
+      var _metricLabel = function (label, val, tipBody, highlightNeg) {
         var color = val >= 0 ? '#1d9e75' : '#d4537e';
         var inner = '<span style="text-transform:none;">' + label + '</span> ' +
           '<strong style="color:' + color + '; font-size:11px;">' + esc(val.toFixed(2)) + '</strong>';
+        if (highlightNeg && val < 0) {
+          inner = '<span style="background:#fdeaf0; border:1px solid #d4537e; border-radius:3px; ' +
+            'padding:1px 5px; display:inline-block;">&#9888; ' + inner + '</span>';
+        }
         if (!tipBody) return inner;
         var idx = _richTip(_popBox(esc(label), tipBody));
         return '<span data-hetip="' + idx + '">' + inner + '</span>';
       };
       if (msr.gamma_throttle != null)
-        metricParts.push(_metricLabel('Gamma Throttle', msr.gamma_throttle, _gammaThrottleTip(msr.gamma_throttle)));
+        metricParts.push(_metricLabel('Gamma Throttle', msr.gamma_throttle, _gammaThrottleTip(msr.gamma_throttle), true));
       if (msr.rvol_10day != null)
         metricParts.push(_metricLabel('Realized Vol', msr.rvol_10day, _rvolTip(msr.rvol_10day, msr.vix)));
       if (metricParts.length) {
@@ -730,10 +763,15 @@
     // grew by -- max is what actually governs a non-flex track's rendered
     // width). User: "increase Risk Range tile width by 10%, take it from
     // Macro Show tile."
+    // Then 2026-08-19 -- Top-5 widened 10% (101/12.6ch -> 111/13.9ch, both
+    // min and max scaled per the usual convention), taken directly from
+    // Macro Show's fixed width again (298px -> 288px, same ~10px Top-5's
+    // max grew by). User: "increase TOP5 panel width by 10% and take the
+    // space from Macroshow."
     if (actEl) {
       if (hasActAny) {
         var GRID_ROW2 = 'display:grid; grid-template-columns: ' +
-          'minmax(101px, calc(12.6ch + 20px)) 298px minmax(182px, calc(24ch + 46px)) ' +
+          'minmax(111px, calc(13.9ch + 20px)) 288px minmax(182px, calc(24ch + 46px)) ' +
           'minmax(120px, calc(15ch + 20px)) minmax(103px, calc(12.8ch + 20px)) minmax(120px, calc(15ch + 20px)) ' +
           'minmax(29px, 1fr) minmax(112px, 157px) minmax(74px, calc(9.5ch + 20px)); gap:3px; align-items:stretch;';
         var row2 =

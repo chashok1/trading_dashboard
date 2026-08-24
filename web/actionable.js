@@ -1370,68 +1370,96 @@ async function loadDates() {
 }
 
 // ---- source metadata (base_weight_method per source, for Metric sort) ----
+// 2026-08-21: 7 fetches batched into one Promise.all instead of 7 sequential
+// awaits -- this ran as a waterfall before, and 3 of the 7 (factor-scorecard,
+// source-scorecard, rules/scorecard) each take 1.5-3.2s on their own because
+// they hit unmaterialized SQL views that recompute a full aggregation from
+// scratch every call (v_factor_scorecard, v_source_edge_scorecard,
+// v_rule_scorecard). Sequentially that summed to ~5-10s, awaited before
+// loadActionable() even starts fetching the grid's own data. None of the 7
+// depend on another's result, so running them concurrently is safe --
+// total wait drops to ~max(slowest one) instead of the sum. Each call keeps
+// its own try/catch + fallback default exactly as before, just wrapped in
+// an immediately-invoked async fn so a rejection can't short-circuit the
+// others.
 async function loadSources() {
-  try {
-    const rows = await fetchJson('/api/actionable/sources');
-    state.sourceMethods = {};
-    for (const r of rows) state.sourceMethods[r.source_code] = r.base_weight_method;
-  } catch (_) { state.sourceMethods = {}; }
-  // Rule track-record (v_rule_scorecard) keyed by composite code, for the
-  // edge badges on fired-rule pills. Diagnostic only while history is shallow.
-  try {
-    const sc = await fetchJson('/api/rules/scorecard?min_fires=0&limit=2000');
-    state.scorecard = {};
-    for (const r of sc) state.scorecard[r.rule_id] = r;
-  } catch (_) { state.scorecard = {}; }
-  // Buysell code→seq map from ref_param_lookup for the default priority sort.
-  // SA has seq=21 (highest); sorting by seq DESC puts SA at the top.
-  try {
-    state.buysellSeq = await fetchJson('/api/ref/buysell');
-  } catch (_) { state.buysellSeq = {}; }
-  // TASK_106/F5: tunable conviction-proven-edge threshold (ref_settings),
-  // instead of hardcoding 0.5 in _hasPositiveEdge.
-  try {
-    const settings = await fetchJson('/api/actionable/settings');
-    state.convictionProvenEdgeMin = Number(settings.conviction_proven_edge_min);
-    if (!isFinite(state.convictionProvenEdgeMin)) state.convictionProvenEdgeMin = 0.5;
-    state.rsiOverbought = Number(settings.rsi_overbought);
-    if (!isFinite(state.rsiOverbought)) state.rsiOverbought = 70;
-    state.rsiOversold = Number(settings.rsi_oversold);
-    if (!isFinite(state.rsiOversold)) state.rsiOversold = 30;
-    state.vlmRvolAvoidThreshold = Number(settings.vlm_rvol_avoid_threshold);
-    if (!isFinite(state.vlmRvolAvoidThreshold)) state.vlmRvolAvoidThreshold = 1.5;
-  } catch (_) {
-    state.convictionProvenEdgeMin = 0.5;
-    state.rsiOverbought = 70;
-    state.rsiOversold = 30;
-    state.vlmRvolAvoidThreshold = 1.5;
-  }
-  // Per-source buy-family hit rate (v_source_edge_scorecard, same table
-  // etl/derive_source_edge.py recomputes ref_settings.trade_mode_weak_buy_sources
-  // from nightly) — the Trade Mode Symbol-cell badge shows this number
-  // directly instead of a binary WEAK SRC flag.
-  try {
-    state.sourceScorecard = await fetchJson('/api/actionable/source-scorecard');
-  } catch (_) { state.sourceScorecard = {}; }
-  // TASK_69: agreement scorecard — keyed by agreement_class -> avg_fwd_20d.
-  try {
-    const asc = await fetchJson('/api/rules/agreement-scorecard');
-    state.agreementScorecard = {};
-    for (const r of (asc || [])) {
-      if (r.agreement_class != null) {
-        state.agreementScorecard[r.agreement_class] = r.avg_fwd_20d;
+  await Promise.all([
+    (async () => {
+      try {
+        const rows = await fetchJson('/api/actionable/sources');
+        state.sourceMethods = {};
+        for (const r of rows) state.sourceMethods[r.source_code] = r.base_weight_method;
+      } catch (_) { state.sourceMethods = {}; }
+    })(),
+    // Rule track-record (v_rule_scorecard) keyed by composite code, for the
+    // edge badges on fired-rule pills. Diagnostic only while history is shallow.
+    (async () => {
+      try {
+        const sc = await fetchJson('/api/rules/scorecard?min_fires=0&limit=2000');
+        state.scorecard = {};
+        for (const r of sc) state.scorecard[r.rule_id] = r;
+      } catch (_) { state.scorecard = {}; }
+    })(),
+    // Buysell code→seq map from ref_param_lookup for the default priority sort.
+    // SA has seq=21 (highest); sorting by seq DESC puts SA at the top.
+    (async () => {
+      try {
+        state.buysellSeq = await fetchJson('/api/ref/buysell');
+      } catch (_) { state.buysellSeq = {}; }
+    })(),
+    // TASK_106/F5: tunable conviction-proven-edge threshold (ref_settings),
+    // instead of hardcoding 0.5 in _hasPositiveEdge.
+    (async () => {
+      try {
+        const settings = await fetchJson('/api/actionable/settings');
+        state.convictionProvenEdgeMin = Number(settings.conviction_proven_edge_min);
+        if (!isFinite(state.convictionProvenEdgeMin)) state.convictionProvenEdgeMin = 0.5;
+        state.rsiOverbought = Number(settings.rsi_overbought);
+        if (!isFinite(state.rsiOverbought)) state.rsiOverbought = 70;
+        state.rsiOversold = Number(settings.rsi_oversold);
+        if (!isFinite(state.rsiOversold)) state.rsiOversold = 30;
+        state.vlmRvolAvoidThreshold = Number(settings.vlm_rvol_avoid_threshold);
+        if (!isFinite(state.vlmRvolAvoidThreshold)) state.vlmRvolAvoidThreshold = 1.5;
+      } catch (_) {
+        state.convictionProvenEdgeMin = 0.5;
+        state.rsiOverbought = 70;
+        state.rsiOversold = 30;
+        state.vlmRvolAvoidThreshold = 1.5;
       }
-    }
-  } catch (_) { state.agreementScorecard = {}; }
-  // 2026-08-01: factor scorecard (v_factor_scorecard) — keyed by "factor|bucket"
-  // for the small track-record tags on the RSI/IV grid cells.
-  try {
-    const fsc = await fetchJson('/api/rules/factor-scorecard?min_n=30');
-    state.factorScorecard = {};
-    for (const r of (fsc || [])) {
-      state.factorScorecard[r.factor + '|' + r.bucket] = r;
-    }
-  } catch (_) { state.factorScorecard = {}; }
+    })(),
+    // Per-source buy-family hit rate (v_source_edge_scorecard, same table
+    // etl/derive_source_edge.py recomputes ref_settings.trade_mode_weak_buy_sources
+    // from nightly) — the Trade Mode Symbol-cell badge shows this number
+    // directly instead of a binary WEAK SRC flag.
+    (async () => {
+      try {
+        state.sourceScorecard = await fetchJson('/api/actionable/source-scorecard');
+      } catch (_) { state.sourceScorecard = {}; }
+    })(),
+    // TASK_69: agreement scorecard — keyed by agreement_class -> avg_fwd_20d.
+    (async () => {
+      try {
+        const asc = await fetchJson('/api/rules/agreement-scorecard');
+        state.agreementScorecard = {};
+        for (const r of (asc || [])) {
+          if (r.agreement_class != null) {
+            state.agreementScorecard[r.agreement_class] = r.avg_fwd_20d;
+          }
+        }
+      } catch (_) { state.agreementScorecard = {}; }
+    })(),
+    // 2026-08-01: factor scorecard (v_factor_scorecard) — keyed by "factor|bucket"
+    // for the small track-record tags on the RSI/IV grid cells.
+    (async () => {
+      try {
+        const fsc = await fetchJson('/api/rules/factor-scorecard?min_n=30');
+        state.factorScorecard = {};
+        for (const r of (fsc || [])) {
+          state.factorScorecard[r.factor + '|' + r.bucket] = r;
+        }
+      } catch (_) { state.factorScorecard = {}; }
+    })(),
+  ]);
 }
 
 // Small track-record tag for a grid cell, reading state.factorScorecard
@@ -4280,7 +4308,12 @@ function _buildVolPopHtml(r) {
   const dirCls = dir === '▲' ? 'color:#16a34a' : dir === '▼' ? 'color:#dc2626' : 'color:#888';
   const vs = _decodeVolumeSpike(r.a_volume_spike);
   const rows = [
-    ['Rel Vlm (RVOL)',    fmtR(r.rvol)],
+    // 2026-08-21: "(d ÷ 10d)" added per user -- clarifies RVOL is today's
+    // daily volume (hist_tw.volume, loaded fresh every day) over the 10-day
+    // average, not a weekly figure -- the "W_" in the source Excel's
+    // W_Vlm_Expn_Ratio formula name is just that tab's naming prefix, not a
+    // weekly time window (see etl/derive_v2.py's mirrored formula comment).
+    ['Rel Vlm (RVOL, d ÷ 10d)', fmtR(r.rvol)],
     ['Prior Day RVOL',   fmtR(r.rvol_prior)],
     ['vs Prior',         dir ? `<span style="${dirCls}">${dir}</span>` : '—'],
     ['Volume',           fmtV(r.w_volume || r.volume)],
@@ -4931,7 +4964,7 @@ function _actpopCalcPillHtml(row) {
   const pct = has ? Math.round(Number(p) * 100) : null;
   const color = !has ? '' : pct >= 65 ? 'var(--act-buy-strong)' : pct >= 50 ? '#d97706' : 'var(--act-sell-strong)';
   const txt = has ? pct + '%' : '—';
-  return `<span class="actpop-lv"><span class="actpop-lbl">CALC</span><span class="actpop-val${has ? '' : ' disabled'}"${has ? ` style="color:${color};"` : ''}>${escapeHtml(txt)}</span></span>`;
+  return `<span class="actpop-lv"><span class="actpop-lbl">CAL</span><span class="actpop-val${has ? '' : ' disabled'}"${has ? ` style="color:${color};"` : ''}>${escapeHtml(txt)}</span></span>`;
 }
 
 function _sectorEtfFor(row) {
@@ -4950,15 +4983,15 @@ function _sectorEtfFor(row) {
 // (macro_areas.py::_sector_etf_proxy). rr_pos there is a [0,1] fraction, not
 // raw lrr/trr, so this bar has no LRR/TRR $ labels like the stock's own RR
 // bar (_actpopRrBarHtml) -- position only.
+// 2026-08-20: now rendered INSIDE .actpop-rr-info (a vertical stack sharing
+// the RR row with .actpop-rr-icons -- Tradability/CALC/PVV/Macro), not as
+// its own full-width row below it -- so no outer margin of its own anymore;
+// .actpop-rr-info's own `gap` handles spacing between its lines, and an
+// empty '' return here just means one fewer line in that stack instead of
+// needing a spacer placeholder.
 function _actpopSectorEtfHtml(row) {
   const etf = _sectorEtfFor(row);
-  // 2026-08-20: no bare '' return here anymore -- with .actpop-rr-row's own
-  // bottom margin trimmed to 0 (actionable.html), an empty return left the
-  // RR bar and the next content (banner/drivers) with nothing between them
-  // but that content's own top margin (0-4px) -- close to overlapping for
-  // any symbol with no mapped sector ETF. An empty spacer carrying the same
-  // margin as the populated row keeps the gap consistent either way.
-  if (!etf) return '<div class="actpop-sector-etf" style="margin:2px 0 14px;"></div>';
+  if (!etf) return '';
   const pos = etf.rr_pos != null ? Math.max(0, Math.min(100, Number(etf.rr_pos) * 100)) : null;
   const pct = etf.pct_change != null ? Number(etf.pct_change) : null;
   const pctTxt = pct != null ? `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%` : '&mdash;';
@@ -4971,15 +5004,7 @@ function _actpopSectorEtfHtml(row) {
          <div class="actpop-rr-tick" style="left:${pos}%;"></div>
        </div><span style="font-size:9px;color:#94a3b8;margin-left:3px;">${Math.round(pos)}%</span>`
     : '';
-  // This row sits BELOW .actpop-rr-row (a sibling, not nested in it), so its
-  // vertical position tracks the row's overall rendered height -- set by
-  // whichever column (RR bar, or the taller Macro stack on the right) ends
-  // up tallest, not by the RR bar alone. 2026-08-20: rather than chase that
-  // with a negative margin here, .actpop-rr-row's own bottom margin was
-  // trimmed instead (10px -> 4px, actionable.html) -- paired with this
-  // row's 2px top / 6px bottom, that nets a symmetric 6px/6px gap: evenly
-  // spaced between the RR bar row above and whatever follows below.
-  return `<div class="actpop-sector-etf" style="font-size:9px;color:#64748b;margin:2px 0 14px;">`
+  return `<div class="actpop-sector-etf" style="font-size:9px;color:#64748b;">`
     + `<span class="actpop-lbl" style="margin-right:4px;">Sector ETF</span>`
     + `<b>${escapeHtml(etf.symbol || '')}</b>`
     + `<span style="margin-left:6px;">Outlook <b style="color:${outlookCss};">${escapeHtml(outlookTxt)}</b></span>`
@@ -4988,25 +5013,41 @@ function _actpopSectorEtfHtml(row) {
     + `</div>`;
 }
 
-// Header: Source / Tech / VLM / CALC, always shown (disabled/dashed when no
-// data), single line, label as its own small pill + plain colored value
-// next to it: "[Src] SA  [Tech] SA  [VLM] Accum  [CALC] 68%". Src/Tech reuse
-// actionDisplay's canonical short code (same BuySell vocab the grid's own
-// badges show) so they read consistently with the rest of the app, not a
-// bespoke abbreviation. Macro (pill + bar charts) and the tradability icon
-// sit on the RR bar line instead — see _actpopMacroStackHtml /
-// _actpopTradIconHtml, called from _buildActionPopHtmlV2 alongside
-// _actpopRrBarHtml. Sector pill (historical win-rate stat) removed from
-// this header 2026-08-20 -- the live Sector ETF read
-// (_actpopSectorEtfHtml) below the RR row replaced it.
-// 2026-08-20: Src and Tech pills removed (row.consolidated_action /
-// row.rr_action are still shown elsewhere -- e.g. the Technical driver
-// bullet in _actpopDriverBullets -- just not duplicated up here). Header
-// pills are now VLM/CALC only; Final Call + Conviction moved to the sym
-// line instead (see _buildActionPopHtmlV2).
-function _actpopHeaderPillsHtml(row) {
-  return _actpopVlmPillHtml(row)
-    + _actpopCalcPillHtml(row);
+// Proximity-to-stop ("delta from trade line", 2026-08-20: moved from a
+// standalone .actpop-neutral banner into .actpop-rr-info, below the VLM
+// line). Only ever populated when NOT breached (etl/derive_actionable.py) --
+// the stop_breached banner (_buildActionPopHtmlV2) is the breached case,
+// still shown separately since it's a bigger deal than a proximity warning.
+// HV-normalized distance -- see db/baseline.sql's migration comment for the
+// full rationale. Below 1.5 SD is close enough to be worth a line; below
+// 0.5 SD gets the more urgent red instead of amber.
+function _actpopStopProximityHtml(row) {
+  if (row.stop_proximity_sd == null) return '';
+  const sd = Number(row.stop_proximity_sd);
+  if (sd >= 1.5) return '';
+  const lineLabel = row.stop_proximity_line === 'TN' ? 'Trend' : 'Trade';
+  const urgent = sd < 0.5;
+  return `<div style="font-size:9px;color:${urgent ? '#b91c1c' : '#d97706'};font-weight:${urgent ? 700 : 600};text-align:right;">`
+    + `&#9888; ${sd.toFixed(2)}&sigma; from ${lineLabel} line${urgent ? ' &mdash; close' : ''}</div>`;
+}
+
+// VLM line in .actpop-rr-info (2026-08-20 -- renamed from
+// _actpopHeaderPillsHtml, its old header-pills days; Src/Tech/CALC/Sector
+// all moved elsewhere or were dropped over several rounds of layout
+// changes the same day -- this is the one survivor, now on its own line
+// between Sector ETF and the stop-proximity line).
+// 2026-08-21: RVOL moved here from the .actpop-details line at the very
+// bottom of the popup -- same value (row.rvol), just relocated next to
+// VLM (the volume-projection signal RVOL itself feeds) and right-justified
+// via .actpop-vlm-line's own width:100%/space-between (that width only
+// reaches the popup's true right edge because .actpop-rr-info now grows to
+// fill the row instead of shrinking to its content, see actionable.html).
+function _actpopVlmLineHtml(row) {
+  // "(d/10d)" added 2026-08-21, same clarification as _buildVolPopHtml's
+  // "Rel Vlm (RVOL, d ÷ 10d)" label -- today's daily volume over the 10-day
+  // average, not a weekly figure.
+  const rvolTxt = row.rvol != null ? `<span style="font-size:9px;color:#94a3b8;">RVOL ${Number(row.rvol).toFixed(2)}&times; (d/10d)</span>` : '';
+  return `<div class="actpop-vlm-line">${_actpopVlmPillHtml(row)}${rvolTxt}</div>`;
 }
 
 // Macro pill + bar charts — sits on the RR bar line (_buildActionPopHtmlV2),
@@ -5217,8 +5258,8 @@ function _actpopRulePillsHtml(row, side) {
     }
   }
   return {
-    support: supportPills.length ? `<div class="actpop-tug-sub">Rules</div><div class="actpop-rule-pills">${supportPills.join('')}</div>` : '',
-    oppose: opposePills.length ? `<div class="actpop-tug-sub">Rules</div><div class="actpop-rule-pills">${opposePills.join('')}</div>` : '',
+    support: supportPills.length ? `<div class="actpop-rule-pills">${supportPills.join('')}</div>` : '',
+    oppose: opposePills.length ? `<div class="actpop-rule-pills">${opposePills.join('')}</div>` : '',
     supportCount: supportPills.length,
     opposeCount: opposePills.length,
   };
@@ -5266,10 +5307,10 @@ function _actpopTugHtml(row, side) {
   if (!oppItems && !supItems && !rulePills.oppose && !rulePills.support) return { conviction: '', html: '' };
 
   const oppBody = (oppItems || rulePills.oppose)
-    ? `${oppItems ? `<div class="actpop-tug-sub">Signals</div>${oppItems}` : ''}${rulePills.oppose}`
+    ? `${oppItems}${rulePills.oppose}`
     : `<div class="actpop-tug-item" style="color:#94a3b8;">none</div>`;
   const supBody = (supItems || rulePills.support)
-    ? `${supItems ? `<div class="actpop-tug-sub">Signals</div>${supItems}` : ''}${rulePills.support}`
+    ? `${supItems}${rulePills.support}`
     : `<div class="actpop-tug-item" style="color:#94a3b8;">none</div>`;
 
   // Conviction (2026-08-20): a plain, honest tally of everything already
@@ -5288,11 +5329,21 @@ function _actpopTugHtml(row, side) {
   const netColor = net > 0 ? 'var(--act-buy-strong)' : net < 0 ? 'var(--act-sell-strong)' : '#94a3b8';
   // No "Conviction:" label here (2026-08-20) -- this now sits in the header
   // next to the Final Call badge, where the label would be redundant; the
-  // colored net number + support/oppose parenthetical carry the meaning on
-  // their own.
+  // colored net number + support/oppose carry the meaning on their own.
+  // 2026-08-20: stacked 3 lines (Supp / net / Opp) instead of one
+  // "+8 (8 support, 0 oppose)" line, per user's exact layout -- easier to
+  // scan at a glance than a parenthetical.
+  // 2026-08-20: net number moved beside the Supp/Opp pair, not stacked
+  // between them -- three items sharing one tight line-height had the
+  // bigger (13px) net number clipping into its 8px neighbors. Supp/Opp are
+  // their own tight little column instead so they read as one unit.
   const conviction = (supportN + opposeN) > 0
-    ? `<span class="actpop-tug-conviction"><b style="color:${netColor};">${net > 0 ? '+' : ''}${net}</b>`
-      + `<span style="color:#94a3b8;"> (${supportN} support, ${opposeN} oppose)</span></span>`
+    ? `<span class="actpop-tug-conviction">`
+      + `<b style="font-size:13px;color:${netColor};">${net > 0 ? '+' : ''}${net}</b>`
+      + `<span class="actpop-tug-conviction-nn">`
+      + `<span class="actpop-tug-conviction-n" style="color:var(--act-buy-strong);">${supportN} Supp</span>`
+      + `<span class="actpop-tug-conviction-n" style="color:var(--act-sell-strong);">${opposeN} Opp</span>`
+      + `</span></span>`
     : '';
 
   const html = `<div class="actpop-tug">
@@ -5365,49 +5416,44 @@ function _buildActionPopHtmlV2(row) {
   const tug = _actpopTugHtml(row, side);
 
   let h = `<div class="actpop">`;
-  // 2026-08-20: Final Call badge + Conviction tally moved from the badges
-  // row into the sym line, next to earnings days -- Src/Tech pills removed
-  // from .actpop-badges entirely (still available via the Technical driver
-  // bullet below), leaving it VLM/CALC only.
+  // Header: symbol/amount/earnings + Final Call badge + Conviction tally on
+  // the left (.actpop-sym); the RR bar (_actpopRrBarHtml) right-aligned on
+  // the right (.actpop-rr), centered against .actpop-sym.
   h += `<div class="actpop-head">
     <div class="actpop-sym">${escapeHtml(sym)}<span class="actpop-co">${escapeHtml(amtTxt)}${edTxt}</span>`
     + `<span class="actpop-call ${callCls}" style="margin-left:8px;">${escapeHtml(fc.label || actionText(fc) || '—')}</span>`
     + tug.conviction
-    + `</div>
-    <div class="actpop-badges">${_actpopHeaderPillsHtml(row)}</div>
-  </div>`;
+    + `</div>`
+    + _actpopRrBarHtml(row)
+    + `</div>`;
 
-  h += `<div class="actpop-rr-row">${_actpopRrBarHtml(row)}`
-    + `<div class="actpop-rr-right">${_actpopTradIconHtml(row)}${_actpopPvvActionHtml(row)}${_actpopMacroStackHtml(row)}</div></div>`;
-
-  h += _actpopSectorEtfHtml(row);
+  // Second row: Tradability/PVV/CALC/Macro grouped on the left
+  // (.actpop-rr-icons); Sector ETF / VLM / stop-proximity stacked on the
+  // right (.actpop-rr-info), three lines top to bottom.
+  // 2026-08-21: PVV moved next to Tradability; CALC moved below PVV (its
+  // own small vertical pair, .actpop-pvv-calc-col) instead of sitting in
+  // the same horizontal row as Tradability/Macro.
+  h += `<div class="actpop-rr-row">`
+    + `<div class="actpop-rr-icons">${_actpopTradIconHtml(row)}`
+    + `<span class="actpop-pvv-calc-col">${_actpopPvvActionHtml(row)}${_actpopCalcPillHtml(row)}</span>`
+    + `${_actpopMacroStackHtml(row)}</div>`
+    + `<div class="actpop-rr-info">${_actpopSectorEtfHtml(row)}${_actpopVlmLineHtml(row)}${_actpopStopProximityHtml(row)}</div>`
+    + `</div>`;
 
   if (row.stop_breached) {
     // 2026-08-20: shows the actual line price now (trade_line_value/
     // trend_line_value, today's Trade/Trend line -- same source
-    // stop_proximity_sd below uses), not just the crossover code with no
+    // _actpopStopProximityHtml uses), not just the crossover code with no
     // number to check it against.
     const lineVal = row.stop_signal === 'TN SA' ? row.trend_line_value : row.trade_line_value;
     const lineLabel = row.stop_signal === 'TN SA' ? 'Trend' : 'Trade';
     const priceTxt = lineVal != null ? ` (${lineLabel} line ${fmtUsd(Number(lineVal))})` : '';
     h += `<div class="actpop-neutral" style="color:#b91c1c;font-weight:700;">&#9888; Stop breached &mdash; `
        + `${escapeHtml(row.stop_signal || 'trade line broke down')}${priceTxt}</div>`;
-  } else if (row.stop_proximity_sd != null) {
-    // Proximity-to-stop (2026-08-20, popover audit item #8): only ever
-    // populated when NOT breached (etl/derive_actionable.py), so this and
-    // the stop_breached banner above are mutually exclusive by construction.
-    // HV-normalized distance -- see db/baseline.sql's migration comment for
-    // the full rationale. Below 1.5 SD is close enough to be worth a line;
-    // below 0.5 SD gets the more urgent red instead of amber.
-    const sd = Number(row.stop_proximity_sd);
-    if (sd < 1.5) {
-      const lineLabel = row.stop_proximity_line === 'TN' ? 'Trend' : 'Trade';
-      const urgent = sd < 0.5;
-      h += `<div class="actpop-neutral" style="color:${urgent ? '#b91c1c' : '#d97706'};font-weight:${urgent ? 700 : 600};">`
-         + `&#9888; ${sd.toFixed(2)}&sigma; from its ${lineLabel} line`
-         + `${urgent ? ' &mdash; very close' : ''}</div>`;
-    }
   }
+  // Proximity-to-stop ("delta from trade line") moved 2026-08-20 into
+  // .actpop-rr-info (see _actpopStopProximityHtml, called from there) --
+  // was rendered here as a standalone banner.
 
   // LT conviction-hold conflict (2026-08-20: ported from V1, was dropped in
   // the V2 rewrite) — a SELL-side Final Call fighting an active conviction
@@ -5432,9 +5478,10 @@ function _buildActionPopHtmlV2(row) {
   h += tug.html;
   h += _actpopNeutralLine(row);
 
+  // RVOL moved 2026-08-21 to the VLM line (.actpop-rr-info) -- not
+  // duplicated here anymore. Earnings dropped the same day -- already
+  // shown in the header (.actpop-co, next to the amount, edTxt above).
   const details = [];
-  if (row.rvol != null) details.push(`RVOL ${Number(row.rvol).toFixed(2)}&times;`);
-  if (hasEd) details.push(`earnings ${Math.round(Number(ed))}d out`);
   if (!row.held_today && row.suggested_target_dollar != null) details.push(`target ${_actpopFmtAmt(row.suggested_target_dollar)}`);
   if (details.length) h += `<div class="actpop-details">${details.join(' &middot; ')}</div>`;
 

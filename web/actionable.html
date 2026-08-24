@@ -350,11 +350,13 @@
        (#sourcePop) and the app's real --act-* color tokens (styles.css
        :root) rather than inventing a new palette. */
     .actpop { width: 552px; padding: 6px; }  /* 460px + 20% */
-    .actpop-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px;
+    /* .actpop-sym on the left, the RR bar widget (.actpop-rr, below) on the
+       right -- align-items:center so the bar reads level with the symbol
+       name instead of both just sharing a top edge. */
+    .actpop-head { display:flex; align-items:center; justify-content:space-between; gap:8px;
       margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
     .actpop-sym { font-size:14px; font-weight:800; color:#0f172a; }
     .actpop-sym .actpop-co { font-weight:400; color:#94a3b8; font-size:10px; margin-left:5px; }
-    .actpop-badges { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .actpop-lv { display:inline-flex; align-items:center; gap:4px; }
     /* 2026-08-20: weight 800->400 on both (Src/Tech/Macro labels+values);
        background removed from the LABEL only ("Src"/"Tech"/"Macro") -- the
@@ -405,25 +407,53 @@
     .actpop-mbar.sell { background: #dc2626; }
     .actpop-mbar.neutral { background: #9ca3af; }
 
-    /* Row top-aligned (was center) so the RR bar's %-tag (which sits
-       position:absolute top:-18px above the track -- see .actpop-rr-tag)
-       lines its own top up with the top of the Macro/Tradability group on
-       the right, instead of the invisible .actpop-rr box (track+labels,
-       NOT the tag poking up above it) being what centers against them. */
-    /* 2026-08-20: bottom margin 10px -> 4px (matches .actpop-neutral's own
-       4px rhythm -- the gap when no Sector ETF is mapped and nothing else
-       fills this space). Paired with .actpop-sector-etf's own 2px top / 6px
-       bottom margins (actionable.js) this nets a symmetric 6px/6px gap
-       around that row -- evenly spaced between the RR bar row above and
-       whatever follows below (banner/drivers), not stacked unevenly. */
-    .actpop-rr-row { display:flex; align-items:flex-start; gap:10px; margin: 24px 0 0; }
-    /* 66% -> 50%: RR bar now occupies exactly half the popup's width.
-       2026-08-20: own top margin 18px -> 3px (one .actpop-lv line-height,
-       15px, trimmed off) -- moves the RR bar (and, since it's the row's
-       tallest column, the Sector ETF row that follows) up to close the gap
-       the Sector pill's removal from the header left. */
-    .actpop-rr { flex: 0 0 50%; margin: 3px 0 0; }
-    .actpop-rr-right { display:flex; align-items:flex-start; gap:10px; margin-left:auto; flex-shrink:0; }
+    /* Row below the header: .actpop-rr-icons (Tradability/CALC/PVV/Macro) on
+       the left, .actpop-rr-info (Sector ETF / VLM / stop-proximity, stacked)
+       on the right. Small top margin -- just a plain gap under the header's
+       divider line, no %-tag clearance needed here (the RR bar itself lives
+       in .actpop-head, see .actpop-rr below). */
+    /* 2026-08-21: bottom margin 0 -> 10px. With nothing here, whatever
+       follows (stop-breached banner, driver bullets, Opposing/Supporting)
+       started flush against this row's tallest content -- normally
+       .actpop-rr-info (3 lines) or .actpop-rr-icons' Macro stack (pill +
+       bar chart, ~39px) depending on which has data, but when the info
+       stack is short/empty (missing Sector ETF/VLM/proximity data) and
+       Macro still has its bar chart, that tallest edge sat right on top of
+       the next section with no gap at all -- read as overlapping. */
+    .actpop-rr-row { display:flex; align-items:flex-start; gap:10px; margin: 10px 0 10px; }
+    /* RR bar widget, lives in .actpop-head (right-aligned via the header's
+       own justify-content:space-between). flex-basis fixed since it no
+       longer has a 50%-of-popup parent to size .actpop-rr-track against.
+       margin-top 8px keeps the %-tag (position:absolute top:-18px above the
+       track) clear of .actpop's own 6px top padding -- .actpop-head's
+       align-items:center does most of that lifting already. */
+    .actpop-rr { flex: 0 0 220px; margin-top: 8px; }
+    .actpop-rr-icons { display:flex; align-items:flex-start; gap:10px; flex-shrink:0; }
+    /* 2026-08-21: PVV over CALC, its own small vertical pair sitting next to
+       Tradability (was two of the four items side by side in
+       .actpop-rr-icons directly). gap 4px -> 7px -> 12px. */
+    .actpop-pvv-calc-col { display:inline-flex; flex-direction:column; gap:12px; }
+    /* Sector ETF / VLM / stop-proximity, stacked top to bottom, right-
+       aligned as a GROUP against the popup's true right edge via
+       margin-left:auto (shrink-to-fit width -- flex-shrink:0, no grow --
+       so the box is only as wide as its content and margin-left:auto
+       pushes that whole narrow box flush right, not spread across the
+       row). 2026-08-21: gap 4px -> 7px -- three lines this close together
+       read as cramped. 2026-08-21: briefly tried flex:1 1 auto (grow to
+       fill the row) so RVOL's space-between would reach the true right
+       edge -- wrong fix, and a regression: growing the box wide pulled
+       Sector ETF/VLM/delta's LEFT-aligned text start away from the right
+       side along with it. Reverted -- margin-left:auto on a shrink-to-fit
+       box already puts its right edge at the row's right edge (= the
+       popup's true edge) with NO grow needed; .actpop-vlm-line's
+       width:100% below just needs to match THIS box's width, which it
+       does automatically via flex-direction:column's default stretch. */
+    .actpop-rr-info { display:flex; flex-direction:column; gap:7px; margin-left:auto; flex-shrink:0; max-width:320px; }
+    /* 2026-08-21: justify-content space-between -> flex-end + gap:10px --
+       VLM and RVOL now sit next to each other (grouped, with breathing
+       room between them) at the line's right edge, instead of VLM pinned
+       left / RVOL pinned right with a big gap stretched between them. */
+    .actpop-vlm-line { display:flex; align-items:center; justify-content:flex-end; gap:10px; width:100%; }
     /* Trad icon and Macro's label pill differ in font-size (11px vs 8px)
        so top-aligning the columns alone leaves their actual glyphs
        off-center from each other by a couple px -- pinning them (+ the new
@@ -431,7 +461,8 @@
        centering makes their true visual centers match, not just box tops. */
     .actpop-trad-col > .actpop-trad-icon,
     .actpop-macro-stack > .actpop-lv,
-    .actpop-rr-right > .actpop-lv { height: 15px; display: inline-flex; align-items: center; }
+    .actpop-rr-icons > .actpop-lv,
+    .actpop-pvv-calc-col > .actpop-lv { height: 15px; display: inline-flex; align-items: center; }
     .actpop-rr-track { position:relative; height:7px; border-radius:4px; background:#e2e8f0; }
     .actpop-rr-fill { position:absolute; left:0; top:0; height:100%; border-radius:4px;
       background:linear-gradient(90deg,var(--act-buy) 0%, #d97706 62%, var(--act-sell-strong) 100%); }
@@ -461,8 +492,16 @@
     .actpop-tug { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:8px 0; }
     /* 2026-08-20: moved out of .actpop-tug (was grid-column:1/-1, its own row
        above Opposing/Supporting) into .actpop-sym in the header, next to the
-       Final Call badge -- now a plain inline span, no grid positioning. */
-    .actpop-tug-conviction { font-size:10px; margin-left:8px; }
+       Final Call badge -- now a plain inline span, no grid positioning.
+       2026-08-20: net number (13px) sits BESIDE the Supp/Opp pair, not
+       stacked between them in one column -- three items sharing one
+       line-height had the bigger number clipping into its 8px neighbors.
+       .actpop-tug-conviction-nn is Supp/Opp's own tight little column so
+       they still read as one compact unit next to the net number. */
+    .actpop-tug-conviction { display:inline-flex; align-items:center; gap:3px;
+      vertical-align:middle; margin-left:8px; font-size:10px; }
+    .actpop-tug-conviction-nn { display:inline-flex; flex-direction:column; line-height:1.1; }
+    .actpop-tug-conviction-n { font-size:8px; font-weight:700; }
     .actpop-tug-col { border-radius:7px; padding:6px 8px; background:#f8fafc; border-left:3px solid #cbd5e1; }
     .actpop-tug-col.oppose { border-left-color: var(--act-sell-strong); }
     .actpop-tug-col.support { border-left-color: var(--act-buy); }
