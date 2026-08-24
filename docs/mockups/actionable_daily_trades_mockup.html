@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup — Daily Trades view (Actionable redesign)</title>
+<style>
+  /* ── Palette copied from web/styles.css :root (the app's own validated tokens) ── */
+  :root {
+    --bg: #f7f7f5;
+    --card-bg: #ffffff;
+    --border: #e5e5e2;
+    --text-1: #1c1917;
+    --text-2: #57534e;
+    --text-3: #a8a29e;
+    --accent: #1d4ed8;
+    --bull: #15803d;
+    --bear: #b91c1c;
+    --neutral: #6b7280;
+    --warn: #b45309;
+    --ok: #16a34a;
+    --act-sell-strong: #9e3636; --act-sell-strong-bg: #f4e6e6;
+    --act-sell: #8b4828;        --act-sell-bg: #f4e9e2;
+    --act-buy-strong: #2a5a3d;  --act-buy-strong-bg: #d6eadd;
+    --act-buy: #3a6a4a;         --act-buy-bg: #dceadd;
+    --act-buy-weak: #4a784a;    --act-buy-weak-bg: #e2eee2;
+    --act-neutral: #6b7280;     --act-neutral-bg: #f3f4f6;
+    --act-mixed: #8a6028;       --act-mixed-bg: #f2e8c4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text-1);
+    font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 20px 16px 60px; }
+
+  /* ── Mockup banner ── */
+  .mock-banner {
+    background: #eef2ff; border: 1px dashed var(--accent); border-radius: 8px;
+    padding: 10px 14px; font-size: 12.5px; color: #3730a3; margin-bottom: 18px;
+  }
+  .mock-banner b { color: #1e1b4b; }
+
+  /* ── Pre-flight strip ── */
+  .preflight {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 14px; margin-bottom: 6px;
+  }
+  .pf-light {
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 700; font-size: 13px; letter-spacing: .3px;
+    padding: 5px 12px; border-radius: 999px;
+  }
+  .pf-light.go   { background: var(--act-buy-strong-bg); color: var(--act-buy-strong); }
+  .pf-light .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); }
+  .pf-item { font-size: 12px; color: var(--text-2); display: flex; align-items: center; gap: 5px; }
+  .pf-item .ok { color: var(--ok); font-weight: 700; }
+  .pf-spx { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2); }
+
+  /* small risk-range bar (like the app's .rr-rb) */
+  .rb { position: relative; width: 84px; height: 6px; border-radius: 3px;
+        background: linear-gradient(90deg, var(--act-buy-bg), var(--act-neutral-bg) 55%, var(--act-sell-bg)); }
+  .rb .tick { position: absolute; top: -3px; width: 2.5px; height: 12px; background: var(--text-1); border-radius: 1px; }
+  .rb .lim  { position: absolute; top: -5px; width: 0; height: 0;
+              border-left: 5px solid transparent; border-right: 5px solid transparent;
+              border-top: 7px solid var(--accent); transform: translateX(-5px); }
+  .rb-lbl { font-size: 10px; color: var(--text-3); }
+
+  /* ── Routine line ── */
+  .routine { font-size: 12px; color: var(--text-2); margin: 10px 2px 18px; }
+  .routine b { color: var(--text-1); }
+  .routine .step {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 50%; background: var(--text-1); color: #fff;
+    font-size: 10.5px; font-weight: 700; margin: 0 5px 0 10px;
+  }
+
+  /* ── Section header ── */
+  .sec-hdr { display: flex; align-items: baseline; gap: 10px; margin: 6px 2px 10px; }
+  .sec-hdr h2 { font-size: 17px; margin: 0; }
+  .sec-hdr .sub { font-size: 12px; color: var(--text-3); }
+  .sec-hdr .spacer { flex: 1; }
+  .demo-btn {
+    font-size: 11.5px; color: var(--accent); background: none; border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 9px; cursor: pointer;
+  }
+  .demo-btn:hover { background: #eef2ff; }
+
+  /* ── Trade cards ── */
+  .card {
+    display: grid; grid-template-columns: 6px 1fr; overflow: hidden;
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
+    margin-bottom: 12px; transition: opacity .25s;
+  }
+  .card.acted { opacity: .45; }
+  .rail { width: 6px; }
+  .rail.sell-strong { background: var(--act-sell-strong); }
+  .rail.sell        { background: var(--act-sell); }
+  .rail.buy         { background: var(--act-buy-strong); }
+  .card-body { padding: 12px 16px 10px; }
+
+  .card-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .prio {
+    font-size: 10px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase;
+    color: var(--text-3); min-width: 74px;
+  }
+  .verb {
+    font-size: 15px; font-weight: 800; letter-spacing: .2px;
+    padding: 6px 12px; border-radius: 8px; white-space: nowrap;
+  }
+  .verb.sell-strong { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); }
+  .verb.sell        { background: var(--act-sell-bg);        color: var(--act-sell); }
+  .verb.buy         { background: var(--act-buy-strong-bg);  color: var(--act-buy-strong); }
+  .verb .amt { font-size: 15px; }
+  .sym { font-size: 16px; font-weight: 800; }
+  .sym small { font-weight: 400; color: var(--text-3); font-size: 11.5px; margin-left: 6px; }
+  .pill {
+    font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--text-2); background: var(--bg);
+  }
+  .pill.hi   { color: var(--act-buy-strong); border-color: var(--act-buy); background: var(--act-buy-weak-bg); }
+  .pill.stop { color: #fff; border-color: var(--act-sell-strong); background: var(--act-sell-strong); }
+  .card-top .spacer { flex: 1; }
+
+  .why { margin: 8px 0 2px; font-size: 13px; color: var(--text-2); }
+  .why b { color: var(--text-1); }
+
+  .levels {
+    display: flex; gap: 22px; flex-wrap: wrap; align-items: center;
+    margin: 8px 0 2px; font-size: 12.5px; color: var(--text-2);
+  }
+  .levels .lv b { color: var(--text-1); font-size: 13px; }
+  .levels .lv .cap { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-3); display: block; }
+
+  .card-actions {
+    display: flex; align-items: center; gap: 8px; margin-top: 10px;
+    border-top: 1px solid var(--border); padding-top: 9px;
+  }
+  .btn {
+    font-size: 12.5px; font-weight: 600; border-radius: 7px; cursor: pointer;
+    padding: 6px 14px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text-2);
+  }
+  .btn.done { background: var(--text-1); color: #fff; border-color: var(--text-1); }
+  .btn:hover { filter: brightness(.96); }
+  .details-toggle { margin-left: auto; font-size: 12px; color: var(--accent); background: none; border: none; cursor: pointer; }
+
+  .details { display: none; margin-top: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
+  .details.open { display: block; }
+  .chk { font-size: 12.5px; color: var(--text-2); margin: 3px 0; }
+  .chk .y { color: var(--ok); font-weight: 700; }
+  .chk .n { color: var(--bear); font-weight: 700; }
+  .chk .o { color: var(--text-3); font-weight: 700; }
+  .details .note { font-size: 11px; color: var(--text-3); margin-top: 8px; font-style: italic; }
+
+  /* ── Empty state ── */
+  .empty {
+    display: none; text-align: center; background: var(--card-bg);
+    border: 1px solid var(--border); border-radius: 10px; padding: 38px 20px; margin-bottom: 12px;
+  }
+  .empty.show { display: block; }
+  .empty .big { font-size: 34px; }
+  .empty h3 { margin: 8px 0 4px; }
+  .empty p { color: var(--text-2); font-size: 13px; margin: 0; }
+
+  /* ── Collapsed sections ── */
+  .fold {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 16px; margin: 16px 0 0; font-size: 13px; color: var(--text-2);
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .fold b { color: var(--text-1); }
+  .fold .chip {
+    font-size: 11px; border: 1px solid var(--border); background: var(--bg);
+    border-radius: 999px; padding: 2px 9px; color: var(--text-3);
+  }
+  .fold .open-link { margin-left: auto; color: var(--accent); font-size: 12px; cursor: pointer; white-space: nowrap; }
+
+  .gridfold {
+    margin-top: 12px; border: 1px dashed var(--border); border-radius: 10px;
+    padding: 14px 16px; color: var(--text-3); font-size: 12.5px; background: repeating-linear-gradient(
+      45deg, transparent, transparent 10px, #fafaf8 10px, #fafaf8 20px);
+  }
+
+  /* ── Annotation table ── */
+  .annot { margin-top: 34px; }
+  .annot h3 { font-size: 14px; margin-bottom: 8px; }
+  table.map { width: 100%; border-collapse: collapse; font-size: 12px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; }
+  table.map th, table.map td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.map th { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-3); }
+  table.map td:first-child { font-weight: 600; }
+  table.map tr:last-child td { border-bottom: none; }
+  code { background: var(--act-neutral-bg); border-radius: 4px; padding: 1px 5px; font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="mock-banner">
+    <b>MOCKUP — not live data.</b> Proposal: this "Daily Trades" section sits <b>on top of your existing
+    Actionable screen</b>; the current grid stays below it, collapsed. Nothing is removed.
+    Try it: click <b>Done</b> / <b>Skip</b> on the cards, expand <b>Why? Details</b>, and press
+    "Preview a no-trade day".
+  </div>
+
+  <!-- STEP 0 : PRE-FLIGHT -->
+  <div class="preflight">
+    <div class="pf-light go"><span class="dot"></span> CLEAR TO TRADE</div>
+    <div class="pf-item"><span class="ok">✓</span> Data: Tue 08/18 EOD, all feeds landed</div>
+    <div class="pf-item"><span class="ok">✓</span> Hedgeye feeds current</div>
+    <div class="pf-spx">
+      SPX
+      <span class="rb"><span class="tick" style="left:38%"></span></span>
+      <span class="rb-lbl">mid-range — buys OK</span>
+    </div>
+    <div class="pf-item">VIX 15.2 <span style="color:var(--bull)">▼3%</span> — full size OK</div>
+  </div>
+  <div class="routine">
+    Your whole routine: <span class="step">1</span><b>Light is green?</b> (red = fix data first, no decisions)
+    <span class="step">2</span><b>Work the cards top-down</b>
+    <span class="step">3</span><b>Click Done or Skip on each.</b> Done in minutes.
+  </div>
+
+  <!-- TRADE CARDS -->
+  <div class="sec-hdr">
+    <h2>Today's trades — 3</h2>
+    <span class="sub">exits first, then best-edge buys · ≈ 5 min</span>
+    <span class="spacer"></span>
+    <button class="demo-btn" id="emptyToggle">Preview a no-trade day</button>
+  </div>
+
+  <div class="empty" id="emptyState">
+    <div class="big">✓</div>
+    <h3>Nothing to trade today</h3>
+    <p>No proven-edge setup passed the gates. Not trading is a position — close the tab.<br>
+       (0–3 cards per day is normal and by design.)</p>
+  </div>
+
+  <div id="cards">
+
+    <!-- CARD 1 : EXIT / PROTECT -->
+    <div class="card">
+      <div class="rail sell-strong"></div>
+      <div class="card-body">
+        <div class="card-top">
+          <span class="prio">1 · Protect</span>
+          <span class="verb sell-strong">SELL to MIN — <span class="amt">$4,000</span></span>
+          <span class="sym">LQD <small>held $6,400</small></span>
+          <span class="pill stop">STOP fired</span>
+          <span class="spacer"></span>
+          <span class="pill">keeps $2,400 (category MIN)</span>
+        </div>
+        <div class="why">Price <b>crossed below the Trade line</b> yesterday (the stop rule). Exits come first — this protects money before any buying.</div>
+        <div class="levels">
+          <span class="lv"><span class="cap">Order</span><b>Sell $4,000 at market, at the open</b></span>
+          <span class="lv"><span class="cap">Last</span><b>106.12</b></span>
+          <span class="lv"><span class="cap">Trade line</span><b>106.93</b></span>
+        </div>
+        <div class="card-actions">
+          <button class="btn done" onclick="act(this,'DONE')">✓ Done</button>
+          <button class="btn" onclick="act(this,'SKIPPED')">Skip</button>
+          <button class="btn" onclick="act(this,'SNOOZED')">Snooze</button>
+          <button class="details-toggle" onclick="tog(this)">Why? Details ▾</button>
+        </div>
+        <div class="details">
+          <div class="chk"><span class="n">■</span> Stop signal <b>TD STM</b> — 3 days above Trade line, today closed below (crossover event)</div>
+          <div class="chk"><span class="y">✓</span> Sizing — sell down to category MIN $2,400 (maintain-min is on)</div>
+          <div class="chk"><span class="o">○</span> Sources — no REMOVE from any source today; this exit is purely the stop rule</div>
+          <div class="note">Same content as today's ACTION hover popover — now one click, on the card.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD 2 : SELL HIGH -->
+    <div class="card">
+      <div class="rail sell"></div>
+      <div class="card-body">
+        <div class="card-top">
+          <span class="prio">2 · Sell high</span>
+          <span class="verb sell">SELL ALL — <span class="amt">$3,800</span></span>
+          <span class="sym">HES <small>held $3,800</small></span>
+          <span class="pill hi">SA · proven sell (72% win)</span>
+        </div>
+        <div class="why"><b>Hedgeye dropped it from the RR list</b> and price is at the top of its risk range — the one sell type your own validation says to trust (SA/gate, +5.1% edge).</div>
+        <div class="levels">
+          <span class="lv"><span class="cap">Order</span><b>Sell all, limit 163.80 (near range top)</b></span>
+          <span class="lv"><span class="cap">Last</span><b>163.40</b></span>
+          <span class="lv"><span class="cap">Range</span>
+            <span class="rb" style="width:110px"><span class="tick" style="left:88%"></span></span>
+            <span class="rb-lbl">near TRR 164.6</span>
+          </span>
+        </div>
+        <div class="card-actions">
+          <button class="btn done" onclick="act(this,'DONE')">✓ Done</button>
+          <button class="btn" onclick="act(this,'SKIPPED')">Skip</button>
+          <button class="btn" onclick="act(this,'SNOOZED')">Snooze</button>
+          <button class="details-toggle" onclick="tog(this)">Why? Details ▾</button>
+        </div>
+        <div class="details">
+          <div class="chk"><span class="y">✓</span> Source RR — REMOVE (dropped from list) 08/18</div>
+          <div class="chk"><span class="y">✓</span> Technical — price at top of risk range (sell zone)</div>
+          <div class="chk"><span class="y">✓</span> Confidence — High (sources and technicals agree)</div>
+          <div class="chk"><span class="o">○</span> Macro — no conflict</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD 3 : BUY LOW -->
+    <div class="card">
+      <div class="rail buy"></div>
+      <div class="card-body">
+        <div class="card-top">
+          <span class="prio">3 · Buy low</span>
+          <span class="verb buy">BUY — <span class="amt">$3,000</span></span>
+          <span class="sym">NVDA <small>not held → starts at MIN</small></span>
+          <span class="pill hi">BMN · RR source · 63% hit rate</span>
+        </div>
+        <div class="why"><b>Hedgeye added it with a bullish range</b>, price has pulled back toward the bottom of that range, and technicals confirm. This is your proven buy pattern (BM/BMN backed by RR).</div>
+        <div class="levels">
+          <span class="lv"><span class="cap">Order</span><b>Buy $3,000, limit 178.40 (near range bottom)</b></span>
+          <span class="lv"><span class="cap">Last</span><b>183.40</b></span>
+          <span class="lv"><span class="cap">Range</span>
+            <span class="rb" style="width:110px"><span class="tick" style="left:30%"></span><span class="lim" style="left:12%"></span></span>
+            <span class="rb-lbl">▼ your limit · LRR 178.2</span>
+          </span>
+          <span class="lv"><span class="cap">After it fills</span><b>Exit if it closes below Trade line (176.1)</b></span>
+        </div>
+        <div class="card-actions">
+          <button class="btn done" onclick="act(this,'DONE')">✓ Done</button>
+          <button class="btn" onclick="act(this,'SKIPPED')">Skip</button>
+          <button class="btn" onclick="act(this,'SNOOZED')">Snooze</button>
+          <button class="details-toggle" onclick="tog(this)">Why? Details ▾</button>
+        </div>
+        <div class="details">
+          <div class="chk"><span class="y">✓</span> Source RR — ADD 08/18 (fresh) · RR buy hit rate 63% of 41 buys</div>
+          <div class="chk"><span class="y">✓</span> Technical — buy-family confirmation (BS)</div>
+          <div class="chk"><span class="y">✓</span> Macro — sector stance OK, no SA/STM conflict</div>
+          <div class="chk"><span class="y">✓</span> Rules edge +2.8% (20-day)</div>
+          <div class="chk"><span class="o">○</span> CALC model — inactive, no independent score</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- WEAKER SIGNALS FOLD -->
+  <div class="fold">
+    <b>7 weaker signals hidden</b> — failed a gate (Mixed confidence, unproven source, or HOLD):
+    <span class="chip">AAPL BUY SOME · Mixed</span>
+    <span class="chip">XLE BUY→MIN · ETF source (measured negative)</span>
+    <span class="chip">TSLA SELL SOME · LOW CONF</span>
+    <span class="chip">+4 HOLD</span>
+    <span class="open-link">Show in grid ↓</span>
+  </div>
+
+  <!-- GRID FOLD -->
+  <div class="gridfold">
+    ▸ <b>Full research grid</b> (your current screen, unchanged — all 20 columns, filters, Hedgeye panel).
+    Collapsed by default; opens for weekly review or when you want to dig into a symbol.
+  </div>
+
+  <!-- MAPPING -->
+  <div class="annot">
+    <h3>Where each card element comes from (no new math — it's all already computed)</h3>
+    <table class="map">
+      <tr><th>On the card</th><th>Existing source</th></tr>
+      <tr><td>Card appears at all</td><td>Trade Mode filter (<code>_matchesTradeMode</code>) — BM/BMN qualified buys, held SA sells, stop breaches</td></tr>
+      <tr><td>Verb + dollar amount</td><td><code>final_code</code> label + <code>AMT$</code> delta (already position-aware, MIN/MAX-sized)</td></tr>
+      <tr><td>Priority order</td><td>Exits (stop / SA) first, then the existing dollar-weighted-edge sort</td></tr>
+      <tr><td>"Why" sentence + checklist</td><td>The ACTION hover popover (<code>_buildActionPopHtml</code>) — promoted from hover to the card</td></tr>
+      <tr><td>Limit level / range bar</td><td>RR bands (LRR/TRR) + <code>drv_quote</code> last price — same data as the grid's RR bar</td></tr>
+      <tr><td>Exit line after a buy fills</td><td>Trade-line value (the stop-signal rule) shown as a plain instruction</td></tr>
+      <tr><td>Hit-rate pill</td><td>Source scorecard win-rate badge (Trade Mode already computes it)</td></tr>
+      <tr><td>Done / Skip / Snooze</td><td>Existing <code>POST /api/actionable/…/action</code> — keeps the feedback loop honest</td></tr>
+      <tr><td>Pre-flight light</td><td>Anchor/stale status + ingest log + SPX/VIX mini-tape checks (§3.1 of the playbook)</td></tr>
+    </table>
+  </div>
+
+</div>
+
+<script>
+  function act(btn, what) {
+    const card = btn.closest('.card');
+    card.classList.add('acted');
+    btn.closest('.card-actions').querySelectorAll('.btn').forEach(b => b.disabled = true);
+    btn.textContent = what === 'DONE' ? '✓ Logged as Done' : (what === 'SKIPPED' ? 'Skipped' : 'Snoozed');
+  }
+  function tog(btn) {
+    const d = btn.closest('.card-body').querySelector('.details');
+    d.classList.toggle('open');
+    btn.textContent = d.classList.contains('open') ? 'Why? Details ▴' : 'Why? Details ▾';
+  }
+  document.getElementById('emptyToggle').addEventListener('click', () => {
+    const empty = document.getElementById('emptyState');
+    const cards = document.getElementById('cards');
+    const showEmpty = !empty.classList.contains('show');
+    empty.classList.toggle('show', showEmpty);
+    cards.style.display = showEmpty ? 'none' : '';
+    document.getElementById('emptyToggle').textContent =
+      showEmpty ? 'Back to the 3-trade day' : 'Preview a no-trade day';
+    document.querySelector('.sec-hdr h2').textContent =
+      showEmpty ? "Today's trades — 0" : "Today's trades — 3";
+  });
+</script>
+</body>
+</html>

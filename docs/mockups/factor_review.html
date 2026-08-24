@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Factor Review — Actionable Signals</title>
+<style>
+  /* Palette copied from web/styles.css :root — the app's own tokens,
+     same convention as trade_desk_mockup_v2.html in this folder. */
+  :root{
+    --bg:#f7f7f5; --card-bg:#ffffff; --border:#e5e5e2;
+    --text-1:#1c1917; --text-2:#57534e; --text-3:#a8a29e;
+    --accent:#1d4ed8; --bull:#15803d; --bear:#b91c1c; --warn:#b45309; --ok:#16a34a;
+    --act-sell-strong:#9e3636; --act-sell-strong-bg:#f4e6e6;
+    --act-sell:#8b4828;        --act-sell-bg:#f4e9e2;
+    --act-buy-strong:#2a5a3d;  --act-buy-strong-bg:#d6eadd;
+    --act-buy:#3a6a4a;         --act-buy-bg:#dceadd;
+    --act-buy-weak:#4a784a;    --act-buy-weak-bg:#e2eee2;
+    --act-neutral:#6b7280;     --act-neutral-bg:#f3f4f6;
+    --act-mixed:#8a6028;       --act-mixed-bg:#f2e8c4;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text-1);
+       font:14px/1.45 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:960px;margin:0 auto;padding:22px 18px 80px}
+
+  /* ── header ── */
+  .topbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+  .topbar h1{font-size:21px;margin:0;letter-spacing:-.2px}
+  .topbar .spacer{flex:1}
+  .progress-chip{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-2);
+       background:var(--card-bg);border:1px solid var(--border);border-radius:999px;padding:6px 14px}
+  .progress-chip b{color:var(--text-1)}
+  .progress-bar{width:90px;height:6px;border-radius:4px;background:var(--act-neutral-bg);overflow:hidden}
+  .progress-bar i{display:block;height:100%;width:0%;background:var(--ok);transition:width .25s}
+  .subhead{font-size:13px;color:var(--text-3);margin:0 0 20px}
+
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--text-2);margin-bottom:22px}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .legend .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+  /* ── category section ── */
+  .cat{margin:26px 0 6px}
+  .cat-head{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+  .cat-head h2{font-size:13px;margin:0;letter-spacing:.6px;text-transform:uppercase;color:var(--text-1)}
+  .cat-head .n{font-size:10.5px;font-weight:700;color:#fff;background:var(--text-1);border-radius:999px;padding:1px 8px}
+  .cat-head .cat-note{font-size:11.5px;color:var(--text-3)}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media (max-width:640px){ .grid{grid-template-columns:1fr} }
+
+  /* ── factor card ── */
+  .card{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;
+       padding:12px 14px;transition:opacity .2s, background .2s;position:relative}
+  .card.reviewed{opacity:.55;background:#fbfbfa}
+  .card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:5px}
+  .card-name{font-size:13.5px;font-weight:700;color:var(--text-1)}
+  .card-desc{font-size:12px;color:var(--text-2);line-height:1.5;margin:0 0 8px}
+  .card-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .loc{font-size:10.5px;color:var(--text-3)}
+  .status{font-size:10px;font-weight:700;letter-spacing:.2px;padding:2px 8px;border-radius:999px;white-space:nowrap}
+  .status.proven{background:var(--act-buy-bg);color:var(--act-buy-strong)}
+  .status.unproven{background:var(--act-mixed-bg);color:var(--act-mixed)}
+  .status.backwards{background:var(--act-sell-strong-bg);color:var(--act-sell-strong)}
+  .status.excluded{background:var(--act-neutral-bg);color:var(--act-neutral)}
+  .status.new{background:#e0e7ff;color:#3730a3}
+  .status.unreviewed{background:var(--act-neutral-bg);color:var(--text-3)}
+
+  .chk{position:absolute;top:10px;right:10px;width:18px;height:18px;border-radius:5px;
+       border:1.5px solid var(--border);background:#fff;cursor:pointer;display:flex;
+       align-items:center;justify-content:center;font-size:12px;color:#fff;flex-shrink:0}
+  .card.reviewed .chk{background:var(--ok);border-color:var(--ok)}
+  .card-top{padding-right:22px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>Factor Review</h1>
+    <div class="spacer"></div>
+    <div class="progress-chip">
+      <span id="progText"><b>0</b> of <b id="totalCount">0</b> reviewed</span>
+      <div class="progress-bar"><i id="progBar"></i></div>
+    </div>
+  </div>
+  <p class="subhead">Every signal currently feeding the Actionable screen and its Action popup — click a card to mark it reviewed. State persists locally.</p>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--act-buy-strong)"></i>Proven — backtested, holds up</span>
+    <span><i class="dot" style="background:var(--act-mixed)"></i>Unproven — real, sample too thin</span>
+    <span><i class="dot" style="background:var(--act-sell-strong)"></i>Backwards — checked, opposite of intended</span>
+    <span><i class="dot" style="background:var(--act-neutral)"></i>Excluded / inactive by design</span>
+    <span><i class="dot" style="background:#3730a3"></i>New today</span>
+  </div>
+
+  <div id="categories"></div>
+</div>
+
+<script>
+const DATA = [
+  { cat: "Sources", note: "who's calling the shots", items: [
+    { name: "Winning Source", desc: "Which source drove the action — its own reason, weight, and snapshot date.", loc: "Grid: Sources col · Popup: driver bullets", status: "unreviewed" },
+    { name: "Winning Source track record", desc: "Validated win-rate edge vs baseline (e.g. PS: -12pp). Now an active caution.", loc: "Popup: Opposing/Supporting", status: "new" },
+    { name: "Premature-drop conflict", desc: "A source dropped the symbol (REMOVE) but price rallied >5% or streaked up 3 days since (HV-tolerant).", loc: "Grid: Sources col · Popup: Opposing", status: "new" },
+  ]},
+  { cat: "Technical", note: "price action itself", items: [
+    { name: "rr_action (TrTnBBRskRng)", desc: "Combined Trade/Trend/BB-streak code — the core technical read.", loc: "Grid: Technical col · Popup: Tech pill", status: "unreviewed" },
+    { name: "Trade/Trend line + Stop breach", desc: "Actual $ line values, now shown when a stop is breached.", loc: "Popup: Stop banner", status: "new" },
+    { name: "Proximity-to-stop", desc: "HV-normalized distance (σ) to the nearer line, before a breach happens.", loc: "Popup: early-warning banner", status: "new" },
+    { name: "MACD/MACDH momentum", desc: "Backtested: near-zero discriminating power (51.0% vs 52.8% win rate, basically identical). Deliberately not a caution.", loc: "Grid: MACD/MACDH caret only", status: "backwards" },
+    { name: "BB streak / band position", desc: "Bollinger Band streak and position context.", loc: "Popup: driver note text", status: "unreviewed" },
+    { name: "BB-vs-RR drift flag", desc: "Rolling calibration-quality flag between the BB and RR bands.", loc: "Grid (conditional)", status: "unreviewed" },
+  ]},
+  { cat: "Macro", note: "quad regime", items: [
+    { name: "Macro quad value", desc: "BM/BS/STM/SA/HOLD blended quad-regime call, plus confidence %.", loc: "Grid: MACRO col · Popup: Macro pill", status: "unreviewed" },
+    { name: "Macro conflict", desc: "Tracking (price vs 50-DMA) disagrees with the quad score.", loc: "Grid + Popup: magenta bolt icon", status: "unreviewed" },
+    { name: "Sector/Asset-class/Style stance", desc: "Live quad-regime membership reads, one bar per dimension.", loc: "Grid + Popup: stance bars", status: "unreviewed" },
+    { name: "Monthly/quarterly sparkline", desc: "Forward-looking quad calendar, one bar per month.", loc: "Grid + Popup", status: "unreviewed" },
+  ]},
+  { cat: "Risk Range (LRR / TRR)", note: "", items: [
+    { name: "RR position %", desc: "Near LRR = this system's single strongest proven edge (52-BS-BRR). Near/at TRR is now a caution.", loc: "Popup: RR bar + Tradability", status: "proven" },
+  ]},
+  { cat: "RSI", note: "", items: [
+    { name: "RSI overbought/oversold", desc: "Validated via factor scorecard, feeds both the caution signal and Tradability.", loc: "Grid: RSI col · Popup: Opposing/Supporting", status: "proven" },
+  ]},
+  { cat: "Volume", note: "", items: [
+    { name: "RVOL + direction", desc: "High RVOL on an up day = “buying climax” caution. Validated — flipped from the original hypothesis.", loc: "Popup: Opposing/Supporting", status: "proven" },
+    { name: "VLM (volume projection)", desc: "Separate 4-bucket volume-projection signal. Relabel audit still on hold — surfaced as-computed, not corrected.", loc: "Grid: VLM col · Popup: header pill", status: "new" },
+  ]},
+  { cat: "Volatility", note: "", items: [
+    { name: "IV percentile / IV ratio", desc: "Checked and explicitly excluded as a caution: extreme IV beats baseline, backwards from assumption.", loc: "Popup: Tradability box only", status: "excluded" },
+    { name: "HV (historical volatility)", desc: "Not a standalone signal — now the basis for stop-proximity math and the 3-day-streak noise tolerance.", loc: "Used internally", status: "proven" },
+  ]},
+  { cat: "Rules Engine", note: "", items: [
+    { name: "Fired composite rules", desc: "Each with proven/promising/unproven confidence and a real 20d edge.", loc: "Grid: Rules col · Popup: rule pills", status: "unreviewed" },
+  ]},
+  { cat: "PVV", note: "", items: [
+    { name: "PVV decision", desc: "Just backtested. AVOID is backwards (+3.66% avg 20d return, proven, n=2,078). BUY_DIP looks backwards too but n=51, unproven. Excluded from Conviction score.", loc: "Popup: PVV action pill + driver bullet", status: "backwards" },
+  ]},
+  { cat: "Sector", note: "", items: [
+    { name: "Sector track record", desc: "Win-rate edge vs baseline (e.g. Winning Source PS: -12.2pp, 60 symbols). Reviewed — found and fixed single-ticker buckets masquerading as sectors (Gold n=2, Fixed Income/'Health Care' n=1) plus a casing bug ('Health Care' vs 'Health care' were opposite-signed buckets); now gated on n_symbols>=5.", loc: "Popup: Opposing/Supporting", status: "proven" },
+    { name: "ref_sector casing dupe (follow-up)", desc: "'Health Care' (1 ticker) and 'Health care' (68 tickers, real sector) are two separate rows in ref_sector.equity_sector due to a capitalization mismatch — should be merged upstream. Not fixed today; the caution signal is just gated around it.", loc: "Data quality, ref_sector table", status: "unproven" },
+  ]},
+  { cat: "Composite scores", note: "", items: [
+    { name: "Tradability Score", desc: "Buy-calibrated composite (LRR-dominant + RSI/IV/RVOL/Source + Technical + Agreement). Shown on every row now, but the number itself is still a “buy lens.”", loc: "Grid: SYMBOL badge · Popup: icon + box", status: "unreviewed" },
+    { name: "Conviction Score", desc: "Honest tally of everything in Opposing/Supporting — not weighted or calibrated.", loc: "Popup: above Opposing/Supporting", status: "new" },
+    { name: "3-Way Agreement", desc: "MACRO+Sources+Technical unanimous — ≥2 agree AND zero opposing.", loc: "Grid: 3W col", status: "unreviewed" },
+  ]},
+  { cat: "Other flags", note: "", items: [
+    { name: "LT Conviction Hold/Avoid", desc: "Your own analyst-note conflict warning.", loc: "Grid: LT col · Popup: banner", status: "unreviewed" },
+    { name: "Fresh signal (NEW)", desc: "Winning source data just landed, Technical hasn't confirmed yet.", loc: "Grid: SYMBOL · Popup: banner", status: "unreviewed" },
+    { name: "Earnings proximity", desc: "Separate calendar-driven caution, not resolved by waiting for a better technical read.", loc: "Grid + Popup", status: "unreviewed" },
+    { name: "CALC model", desc: "Inactive — ref_bull_model has no active row, always shows dashes. Parked 2026-08-16. Popup slot is wired and ready for reactivation.", loc: "Grid: CALC col · Popup: header pill (shows — for now)", status: "new" },
+  ]},
+];
+
+const STATUS_LABEL = { proven: "Proven", unproven: "Unproven", backwards: "Backwards", excluded: "Excluded", new: "New today", unreviewed: "Not reviewed" };
+
+const root = document.getElementById('categories');
+let idCounter = 0;
+DATA.forEach(section => {
+  const catEl = document.createElement('div');
+  catEl.className = 'cat';
+  catEl.innerHTML = `<div class="cat-head"><h2>${section.cat}</h2><span class="n">${section.items.length}</span>${section.note ? `<span class="cat-note">${section.note}</span>` : ''}</div>`;
+  const gridEl = document.createElement('div');
+  gridEl.className = 'grid';
+  section.items.forEach(item => {
+    const id = 'f' + (idCounter++);
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.id = id;
+    card.innerHTML = `
+      <div class="chk">✓</div>
+      <div class="card-top"><div class="card-name">${item.name}</div></div>
+      <p class="card-desc">${item.desc}</p>
+      <div class="card-meta">
+        <span class="loc">${item.loc}</span>
+        <span class="status ${item.status}">${STATUS_LABEL[item.status]}</span>
+      </div>`;
+    card.addEventListener('click', () => toggleReview(id));
+    gridEl.appendChild(card);
+  });
+  catEl.appendChild(gridEl);
+  root.appendChild(catEl);
+});
+
+const totalCount = idCounter;
+document.getElementById('totalCount').textContent = totalCount;
+
+function loadReviewed() {
+  try { return JSON.parse(localStorage.getItem('factorReviewState') || '{}'); }
+  catch (e) { return {}; }
+}
+function saveReviewed(state) {
+  localStorage.setItem('factorReviewState', JSON.stringify(state));
+}
+function toggleReview(id) {
+  const state = loadReviewed();
+  state[id] = !state[id];
+  saveReviewed(state);
+  render();
+}
+function render() {
+  const state = loadReviewed();
+  let count = 0;
+  document.querySelectorAll('.card').forEach(card => {
+    const on = !!state[card.dataset.id];
+    card.classList.toggle('reviewed', on);
+    if (on) count++;
+  });
+  document.querySelector('#progText b').textContent = count;
+  document.getElementById('progBar').style.width = (totalCount ? (count / totalCount * 100) : 0) + '%';
+}
+render();
+</script>
+</body>
+</html>

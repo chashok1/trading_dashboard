@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup v2 — Move Sectors-and-down rail panels into middle column (same row anatomy)</title>
+<style>
+  /* Palette copied from web/styles.css :root — the app's own tokens */
+  :root{
+    --bg:#f7f7f5; --card-bg:#ffffff; --border:#e5e5e2;
+    --text-1:#1c1917; --text-2:#57534e; --text-3:#a8a29e;
+    --accent:#1d4ed8; --bull:#15803d; --bear:#b91c1c; --neutral:#6b7280;
+    --warn:#b45309; --ok:#16a34a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#eceae6;color:var(--text-1);
+       font:13px/1.4 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1560px;margin:0 auto;padding:18px 16px 80px}
+
+  .mock-banner{background:#eef2ff;border:1px dashed var(--accent);border-radius:8px;
+       padding:10px 14px;font-size:12.5px;color:#3730a3;margin-bottom:18px}
+  .mock-banner b{color:#1e1b4b}
+  .mock-banner ul{margin:6px 0 0;padding-left:18px}
+  .mock-banner li{margin:2px 0}
+
+  h1{font-size:19px;margin:0 0 4px;letter-spacing:-.2px}
+  h2{font-size:14px;margin:26px 0 8px;color:var(--text-2)}
+  .sub{font-size:12px;color:var(--text-3);margin:0 0 18px}
+
+  /* ── Before/After thumbnail comparison ─────────────────────────────── */
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:6px}
+  .compare-col{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:10px}
+  .compare-col .cc-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+    color:var(--text-3);margin-bottom:8px}
+  .compare-col.after .cc-label{color:var(--accent)}
+  .mini-cols{display:grid;grid-template-columns:22% 45% 33%;gap:6px;height:300px}
+  .mini-block{border-radius:4px;font-size:9px;color:#fff;display:flex;align-items:flex-start;
+    justify-content:center;padding-top:4px;text-align:center;overflow:hidden}
+  .mb-dial{background:#a8a29e}
+  .mb-cat{background:#78716c}
+  .mb-rail{background:#57534e}
+  .mb-fold{position:relative}
+  .mb-fold::after{content:"fold (~900px laptop)";position:absolute;top:-8px;left:2px;
+    font-size:8px;color:var(--bear);background:#fff;padding:0 3px;white-space:nowrap;
+    border-top:2px dashed var(--bear);width:100%}
+
+  /* ── Full-scale proposed mockup ────────────────────────────────────── */
+  .stage{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;
+    padding:10px;position:relative;overflow:auto}
+  .fold-line{position:absolute;left:0;right:0;border-top:2px dashed var(--bear);z-index:5}
+  .fold-line span{position:absolute;right:8px;top:-9px;background:#fff;color:var(--bear);
+    font-size:10px;font-weight:700;padding:0 4px;border:1px solid var(--bear);border-radius:3px}
+
+  .cockpit-bands{display:grid;grid-template-columns:1fr 240px;gap:8px;min-width:1400px}
+  .main-col{display:grid;grid-template-columns:0.42fr 1.58fr;gap:8px;align-items:start}
+  .dial-col, .cat-col, .right-rail{display:flex;flex-direction:column;gap:8px;min-width:0}
+
+  .band{background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:8px}
+  .band-hdr{font-size:11px;font-weight:700;color:var(--text-2);margin-bottom:4px}
+  .band.dim{background:#fafaf9;color:var(--text-3);font-size:11px;text-align:center;padding:20px 8px}
+  .band.short{padding:10px 8px}
+
+  /* ══════════════════════════════════════════════════════════════════
+     REAL rail-panel anatomy — classes/values copied verbatim from
+     web/styles.css (.msr-section-hdr / .msr-row / .msr-name-tick /
+     .msr-data-cluster / .msr-dur / .msr-rb* / .msr-chg) so this is the
+     SAME row, just relocated — not a simplified stand-in. Only new class
+     is the outer masonry wrapper (.macro-rail-new / .mrn-cols / .mrn-col)
+     and each panel's own box (.rail-band-mock), which mirrors the real
+     <section class="cockpit-band rail-band"> + #macroRailXxx.dash-macro-
+     rail structure. ══════════════════════════════════════════════════ */
+  .macro-rail-new{margin-bottom:2px}
+  .macro-rail-new .mrn-label{font-size:10px;font-weight:700;color:var(--accent);
+    text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+  /* Masonry columns (JS-packed, see script) — NOT a fixed grid, since
+     panels vary wildly in height (Sectors ~500px vs Credit ~55px); a fixed
+     grid row would waste all the leftover height under every short panel
+     sharing Sectors' row. Flex columns instead, each holding whichever
+     panels the greedy packer assigned it, stacked with a small gap. */
+  .mrn-cols{display:flex;align-items:flex-start;gap:8px}
+  .mrn-col{display:flex;flex-direction:column;gap:8px;width:270px;flex-shrink:0}
+  .rail-band-mock{background:var(--card-bg);border:1px solid var(--border);border-radius:6px;
+    overflow:hidden}
+  .msr-etf-row{padding-left:16px !important}
+  .msr-price{font-size:8px;color:var(--text-3);white-space:nowrap;flex:0 0 30px;
+    font-variant-numeric:tabular-nums;text-align:right}
+  .msr-price-chg{font-size:8px;white-space:nowrap;flex:0 0 30px;
+    font-variant-numeric:tabular-nums;text-align:right}
+  .msr-price-chg-up{color:#166534} .msr-price-chg-down{color:#991b1b} .msr-price-chg-flat{color:var(--text-3)}
+  .msr-sec-subrow{font-size:10px;line-height:1.4;padding:2px 8px;color:var(--text-2)}
+  .msr-sec-lbl{font-weight:600;color:var(--text-2);font-size:9px}
+  .msr-sec-down{color:#991b1b} .msr-sec-rotate{color:#1d4ed8}
+
+  .msr-section-hdr{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+    color:var(--text-2);padding:4px 8px 2px;border-bottom:1px solid var(--border);
+    background:#f4f4f8;display:flex;align-items:center;gap:6px}
+  .msr-breadth{font-size:9px;font-weight:400;margin-left:auto;white-space:nowrap}
+  .msr-breadth-up{color:#166534} .msr-breadth-down{color:#991b1b}
+  .msr-row{display:flex;align-items:center;gap:2px;padding:2px 8px;
+    border-bottom:1px solid #f0f0f0;font-size:11px;position:relative}
+  .msr-row:last-child{border-bottom:none}
+  .msr-arrow{width:12px;height:12px;flex-shrink:0;display:inline-flex;align-items:center;
+    justify-content:center;font-size:10px;line-height:1}
+  .msr-arrow-long{color:#166534} .msr-arrow-short{color:#991b1b}
+  .msr-name{font-size:10px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;min-width:0;color:var(--text-1)}
+  .msr-name-tick{flex:0 0 44px}
+  .msr-data-cluster{display:flex;align-items:center;gap:2px;margin-left:auto;flex-shrink:0}
+  .msr-dur{font-size:9px;white-space:nowrap;display:inline-flex;align-items:center;
+    justify-content:flex-end;gap:1px;flex:0 0 20px}
+  .msr-dur-up{color:#166534} .msr-dur-down{color:#991b1b} .msr-dur-flat{color:#9ca3af}
+  .msr-rb-wrap{display:flex;align-items:center;gap:3px}
+  .msr-rb{position:relative;height:3px;width:28px;background:var(--border);border-radius:2px;flex-shrink:0}
+  .msr-rb-fill{position:absolute;left:0;top:0;height:100%;border-radius:2px;background:#94a3b8;opacity:.4}
+  .msr-rb-tick{position:absolute;top:-3px;width:2px;height:9px;background:var(--text-1);
+    transform:translateX(-1px);border-radius:1px}
+  .msr-rb-tick.extreme{background:#ef4444}
+  .msr-pct{font-size:9px;color:var(--text-2);font-variant-numeric:tabular-nums;
+    min-width:16px;text-align:right}
+  .msr-candle{width:6px;height:12px;flex-shrink:0;display:block}
+  .msr-candle .wick{stroke:#57534e;stroke-width:1}
+  .msr-candle.up .body{fill:#15803d} .msr-candle.down .body{fill:#b91c1c}
+  .msr-chg{font-size:9px;font-weight:700;padding:0 4px;border-radius:3px;text-align:center;
+    font-variant-numeric:tabular-nums;white-space:nowrap;display:inline-block;color:#fff;flex:0 0 40px}
+  .chg-up{background:#15803d} .chg-down{background:#b91c1c}
+
+  .callout{font-size:10.5px;color:var(--accent);background:#eef2ff;border:1px solid #c7d2fe;
+    border-radius:4px;padding:3px 6px;margin-top:6px;display:inline-block}
+
+  .filter-bar{display:flex;justify-content:space-between;align-items:center;background:var(--card-bg);
+    border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:10.5px;color:var(--text-2)}
+  .filter-bar .radios{display:flex;gap:8px}
+  .filter-bar .radios span.on{color:var(--accent);font-weight:700}
+
+  .ts-row{display:flex;gap:12px;align-items:flex-start}
+  .ts-cum{flex:0 0 260px;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;
+    padding:8px}
+  .ts-cum .th{font-size:10.5px;font-weight:700;color:var(--text-2);display:flex;justify-content:space-between}
+  .ts-cum .chart-fake{height:70px;margin-top:6px;background:
+    linear-gradient(to top, rgba(21,128,61,.12), transparent 60%);
+    border-bottom:1px solid var(--border);position:relative}
+  .ts-cum .chart-fake::before{content:"";position:absolute;left:0;right:0;bottom:8px;height:2px;
+    background:var(--bull);opacity:.5}
+  .pies{flex:1;display:flex;gap:10px}
+  .pie-card{flex:1;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;
+    padding:8px;text-align:center}
+  .pie-card .ph{font-size:10px;color:var(--text-2);margin-bottom:6px}
+  .pie-fake{width:64px;height:64px;border-radius:50%;margin:0 auto;
+    background:conic-gradient(var(--accent) 0% 30%, var(--bull) 30% 55%, var(--warn) 55% 75%, var(--text-3) 75% 100%)}
+
+  .scorecards{display:flex;gap:8px}
+  .sc-card{flex:1;background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:8px}
+  .sc-card .sch{font-size:10.5px;font-weight:700;color:var(--text-2);margin-bottom:6px}
+  .sc-row{display:flex;justify-content:space-between;font-size:9.5px;color:var(--text-2);
+    padding:2px 0;border-bottom:1px solid #f2f1ee}
+  .sc-row .v.up{color:var(--bull)} .sc-row .v.down{color:var(--bear)}
+
+  .rail-mini{background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px}
+  .rail-mini .rm-hdr{font-size:10px;font-weight:700;color:var(--text-2);margin-bottom:3px}
+  .rail-mini .rm-row{font-size:9px;color:var(--text-3);padding:1px 0}
+
+  .legend{display:flex;gap:14px;margin-top:10px;font-size:11px;color:var(--text-2)}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="mock-banner">
+    <b>Mockup v3 — Sectors' real two-row-per-sector anatomy fixed, panels bin-packed to minimize white space.</b>
+    Two fixes from your last round of feedback:
+    <ul>
+      <li><b>Sectors was missing rows.</b> Its real markup (<code>web/macro_areas.js::renderSectorsPanel</code>/
+        <code>etfProxyRowHtml</code>) is TWO rows per sector, not one: a stance row (Long/Short arrow + full-width
+        name + Td/Tn + range bar) plus an indented ETF-proxy sub-row (the sector's representative ETF, plain
+        price+%chg text, own Td/Tn/range bar) — 11 sectors × 2 rows + 2 summary lines (Laggards/Rotate in) =
+        24 row-equivalents, not 11. That makes Sectors the <b>tallest</b> panel now, not a small one — fixed
+        below with its real anatomy.</li>
+      <li><b>No more fixed 4-across grid.</b> A rigid grid wasted space under every short panel sharing a row
+        with a tall one (e.g. Credit's 2 rows next to Sectors' 24). The script below now measures every
+        panel's <i>real rendered height</i>, then bin-packs them into columns with a largest-first
+        greedy algorithm (small panels stack together to fill a column, matching a tall panel next to them) —
+        it tries 3/4/5 columns and keeps whichever leaves the least empty space at the bottom of any column.
+        The measured result prints live under the layout below.</li>
+      <li>Row content itself is unchanged from v2: real <code>.msr-row</code>/<code>.msr-data-cluster</code>/
+        <code>.msr-rb</code>/<code>.msr-chg</code> classes and values, copied from <code>web/styles.css</code>.</li>
+      <li>Right rail still keeps Volatility / Major Markets / Correlation / Symbol / Indicator only.</li>
+    </ul>
+  </div>
+
+  <h1>Dashboard — macro rail relocation (v3, bin-packed)</h1>
+  <p class="sub">Current vs proposed, then a full-scale look with corrected Sectors anatomy and packed columns.</p>
+
+  <h2>Before / after — column shape (schematic, not to content scale)</h2>
+  <div class="compare">
+    <div class="compare-col before">
+      <div class="cc-label">Current</div>
+      <div class="mini-cols">
+        <div class="mini-block mb-dial" style="height:100%">Left<br>Risk&nbsp;Dial<br>Notes<br>Events</div>
+        <div class="mini-block mb-cat mb-fold" style="height:100%">Middle<br>filters + Cum&nbsp;P&amp;L +
+          pies + scorecards<br>(fits fine on its own)</div>
+        <div class="mini-block mb-rail" style="height:100%">Right rail<br>Vol / Top9 / Corr / Symbol /
+          Indicator<br>Sectors<br>Rates&amp;Dur<br>Credit<br>USD<br>Commodities<br>Tech&amp;ETFs<br>Crypto<br>
+          Country&nbsp;ETFs<br><b style="color:#fca5a5">↓ scrolls well past fold</b></div>
+      </div>
+    </div>
+    <div class="compare-col after">
+      <div class="cc-label">Proposed</div>
+      <div class="mini-cols">
+        <div class="mini-block mb-dial" style="height:100%">Left<br>Risk&nbsp;Dial<br>Notes<br>Events</div>
+        <div class="mini-block mb-cat mb-fold" style="height:100%">Middle<br><b>NEW: 8-panel grid,
+          same rows as today</b><br>filters<br>Cum&nbsp;P&amp;L + pies<br>scorecards</div>
+        <div class="mini-block mb-rail" style="height:60%">Right rail<br>Vol / Top9 / Corr /<br>Symbol /
+          Indicator<br><b style="color:#bbf7d0">fits at/near fold</b></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Proposed middle column — full scale, real row anatomy</h2>
+  <p class="sub">Wider than the page (min-width:1400px on the grid below) — scroll the box horizontally if
+    your window is narrower; the real page won't need to, this box just isn't full-bleed like the app is.</p>
+  <div class="stage">
+    <div class="fold-line" style="top:900px"><span>900px fold (1440×900 laptop)</span></div>
+    <div class="cockpit-bands">
+      <div class="main-col">
+        <div class="dial-col">
+          <div class="band dim" style="height:120px">Risk Dial<br><span style="font-size:9px">(unchanged)</span></div>
+          <div class="band dim" style="height:70px">Notes</div>
+          <div class="band dim" style="height:150px">What changed</div>
+          <div class="band dim" style="height:60px">Housekeeping</div>
+        </div>
+        <div class="cat-col">
+
+          <!-- ── NEW: relocated macro rail, above the filter bar — REAL row anatomy ── -->
+          <div class="macro-rail-new">
+            <div class="mrn-label">Moved from right rail — Sectors → Country ETFs (same rows as today)</div>
+            <div class="mrn-cols" id="mrnCols"></div>
+            <span class="callout" id="mrnHeightNote"></span>
+          </div>
+
+          <div class="filter-bar">
+            <span>Accounts: ☑ All &nbsp; ☑ IRA &nbsp; ☐ Taxable</span>
+            <div class="radios"><span class="on">Today</span><span>Yest</span><span>MTD</span><span>QTD</span><span>YTD</span></div>
+          </div>
+
+          <div class="ts-row">
+            <div class="ts-cum">
+              <div class="th"><span>P&amp;L</span><span style="color:var(--bull)">$6,871 · $638K</span></div>
+              <div class="chart-fake"></div>
+            </div>
+            <div class="pies">
+              <div class="pie-card"><div class="ph">Asset Allocation</div><div class="pie-fake"></div></div>
+              <div class="pie-card"><div class="ph">Beta</div><div class="pie-fake"></div></div>
+              <div class="pie-card"><div class="ph">Sector</div><div class="pie-fake"></div></div>
+              <div class="pie-card"><div class="ph">Concentration</div><div class="pie-fake"></div></div>
+            </div>
+          </div>
+
+          <div class="scorecards">
+            <div class="sc-card">
+              <div class="sch">Asset Class</div>
+              <div class="sc-row"><span>Equities</span><span class="v up">+1.1%</span></div>
+              <div class="sc-row"><span>Fixed Income</span><span class="v down">-0.3%</span></div>
+              <div class="sc-row"><span>Cash</span><span class="v">0.0%</span></div>
+            </div>
+            <div class="sc-card">
+              <div class="sch">Sector</div>
+              <div class="sc-row"><span>Info Tech</span><span class="v up">+1.6%</span></div>
+              <div class="sc-row"><span>Financials</span><span class="v up">+1.4%</span></div>
+              <div class="sc-row"><span>Health Care</span><span class="v down">-0.0%</span></div>
+            </div>
+            <div class="sc-card">
+              <div class="sch">Style</div>
+              <div class="sc-row"><span>Growth</span><span class="v up">+1.2%</span></div>
+              <div class="sc-row"><span>Value</span><span class="v down">-0.2%</span></div>
+              <div class="sc-row"><span>Momentum</span><span class="v up">+2.0%</span></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="right-rail">
+        <div class="band short"><div class="band-hdr">Volatility</div>
+          <div class="rail-mini"><div class="rm-row">VIX 15.2 · VVIX 88</div></div></div>
+        <div class="band short"><div class="band-hdr">Major Markets</div>
+          <div class="rail-mini"><div class="rm-row">SPX +0.9% · NDX +1.2%</div></div></div>
+        <div class="band short"><div class="band-hdr">Correlation</div>
+          <div class="rail-mini"><div class="rm-row">SPX/TLT -0.31</div></div></div>
+        <div class="band short"><div class="band-hdr">Symbol (earnings)</div>
+          <div class="rail-mini"><div class="rm-row">AAPL 10/28 · MSFT 10/29</div></div></div>
+        <div class="band short"><div class="band-hdr">Indicator</div>
+          <div class="rail-mini"><div class="rm-row">FOMC 9/17 · CPI 9/11</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><i style="background:var(--accent)"></i> relocated panel (real rows)</span>
+    <span><i style="background:#a8a29e"></i> unchanged panel (dimmed, not re-mocked)</span>
+    <span><i style="background:transparent;border:2px dashed var(--bear)"></i> viewport fold</span>
+  </div>
+
+  <h2>Open questions before I build this for real</h2>
+  <div class="mock-banner" style="background:#fefce8;border-color:#ca8a04;color:#713f12">
+    <ul>
+      <li><b>Sectors' ETF sub-row is now approximated.</b> I dropped the candle from it (the real
+        <code>etfProxyRowHtml</code> doesn't draw one either — confirmed in the source) but the price
+        column shows a placeholder number, not a real one (this mockup has no live price feed). That's
+        fine for a layout mockup but flagging so you're not comparing exact digits.</li>
+      <li><b>Column order is now height-driven, not name-driven.</b> The bin-packer sorts panels
+        largest-first and drops each into whichever column is currently shortest — so which panels land in
+        which column (and their top-to-bottom order within a column) is whatever balances best, not the
+        Sectors→Country-ETFs reading order from today's right rail. Is that OK (packing efficiency wins), or
+        do you need the reading order preserved even if it leaves more white space?</li>
+      <li><b>Column width</b> — fixed at 270px per column (matching today's right-rail panel width) so row
+        content doesn't need to change size. Check the live "N columns... tallest column NNNpx" callout
+        below once you open the file — if the packer picks 5 columns, that's 5×270px+gaps ≈ 1400px of
+        middle-column width; let me know if that's wider than your actual window so I can bias it toward
+        fewer/wider columns instead.</li>
+    </ul>
+  </div>
+
+</div>
+<script>
+(function () {
+  // Real member counts, pulled live from /api/macro-areas at mockup-build
+  // time (2026-08-23) -- not hardcoded guesses. Sectors is special-cased
+  // (isSectors:true) -- corrected 2026-08-24 per feedback: "Sectors has
+  // multiple rows for each sector (you are missing in the markup)". Real
+  // anatomy (web/macro_areas.js::renderSectorsPanel/etfProxyRowHtml) is
+  // TWO rows per sector, not one: a main stance row (Long/Short arrow +
+  // full-width name + Td/Tn + range bar -- NO candle, NO %chg chip) plus
+  // an indented ETF-proxy sub-row (the sector's representative ETF, with
+  // plain price+%chg TEXT columns, not the solid chip, and no candle
+  // either) -- 11 sectors x 2 rows = 22, plus 2 summary lines (Laggards /
+  // Rotate in) = 24 row-equivalents, not 11. That's why Sectors is now the
+  // TALLEST panel, not a small one.
+  var PANELS = [
+    { name: 'Sectors', isSectors: true,
+      laggards: 'XLU · XLRE', rotateIn: 'XLK · XLY',
+      sectors: ['Technology','Financials','Health Care','Cons. Discretionary','Energy',
+                'Industrials','Comm. Services','Cons. Staples','Utilities','Materials','Real Estate'],
+      etfs: ['XLK','XLF','XLV','XLY','XLE','XLI','XLC','XLP','XLU','XLB','XLRE'] },
+    { name: 'Tech & ETFs', breadthUp: 9, breadthDown: 7,
+      members: ['SPY','QQQ','IWM','DIA','MDY','SMH','SOXX','ARKK','XBI','IBB','IGV','SKYY','FDN','VGT','XSW','IPO'] },
+    { name: 'Commodities', breadthUp: 5, breadthDown: 3,
+      members: ['GLD','SLV','USO','UNG','DBA','DBB','CPER','PPLT'] },
+    { name: 'Country ETFs', breadthUp: 4, breadthDown: 3,
+      members: ['EWJ','EWZ','EWG','EWU','FXI','INDA','EWC'] },
+    { name: 'USD & Currency', breadthUp: 3, breadthDown: 3,
+      members: ['DXY','UUP','FXE','FXY','FXB','FXA'] },
+    { name: 'Rates & Duration', breadthUp: 2, breadthDown: 3,
+      members: ['TLT','IEF','SHY','TIP','AGG'] },
+    { name: 'Crypto', breadthUp: 2, breadthDown: 2,
+      members: ['BTC','ETH','SOL','COIN'] },
+    { name: 'Credit', breadthUp: 1, breadthDown: 1,
+      members: ['HYG','LQD'] },
+  ];
+
+  function candleSvg(up) {
+    return '<svg class="msr-candle ' + (up ? 'up' : 'down') + '" viewBox="0 0 6 12">' +
+      '<line class="wick" x1="3" y1="0" x2="3" y2="12"/>' +
+      '<rect class="body" x="1" y="4" width="4" height="4"/></svg>';
+  }
+
+  // Generic railAreaRow-style row (Tech&ETFs/Commodities/Country ETFs/USD/
+  // Rates/Crypto/Credit): quad glyph + name + [Td/Tn + range bar + candle
+  // + solid %chg chip] cluster. Unchanged from v2 -- this part wasn't the
+  // feedback.
+  function rowHtml(sym, i) {
+    var up = (i % 3) !== 1; // deterministic-looking mix, not random (mockup only)
+    var pct = ((i * 37) % 41) / 10 - 2;
+    var pctStr = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+    var rbFill = 30 + ((i * 17) % 60);
+    return '' +
+      '<div class="msr-row">' +
+        '<span class="msr-arrow ' + (up ? 'msr-arrow-long' : 'msr-arrow-short') + '">' + (up ? '▲' : '▼') + '</span>' +
+        '<span class="msr-name msr-name-tick">' + sym + '</span>' +
+        '<span class="msr-data-cluster">' +
+          '<span class="msr-dur ' + (up ? 'msr-dur-up' : 'msr-dur-down') + '">' + (up ? '↗' : '↘') + '</span>' +
+          '<span class="msr-rb-wrap">' +
+            '<span class="msr-rb"><span class="msr-rb-fill" style="width:' + rbFill + '%"></span>' +
+              '<span class="msr-rb-tick" style="left:' + rbFill + '%"></span></span>' +
+            '<span class="msr-pct">' + rbFill + '%</span>' +
+          '</span>' +
+          candleSvg(up) +
+          '<span class="msr-chg ' + (up ? 'chg-up' : 'chg-down') + '">' + pctStr + '</span>' +
+        '</span>' +
+      '</div>';
+  }
+
+  // Sectors' two-row-per-sector anatomy (corrected 2026-08-24).
+  function sectorPairHtml(sectorName, etfSym, i) {
+    var stanceUp = (i % 3) !== 1;
+    var etfUp = (i % 2) === 0;
+    var etfPct = ((i * 29) % 35) / 10 - 1.7;
+    var etfPctStr = (etfPct >= 0 ? '+' : '') + etfPct.toFixed(2) + '%';
+    var rbFill1 = 25 + ((i * 19) % 65);
+    var rbFill2 = 25 + ((i * 23) % 65);
+    var mainRow =
+      '<div class="msr-row">' +
+        '<span class="msr-arrow ' + (stanceUp ? 'msr-arrow-long' : 'msr-arrow-short') + '">' + (stanceUp ? '▲' : '▼') + '</span>' +
+        '<span class="msr-name">' + sectorName + '</span>' +
+        '<span class="msr-dur ' + (stanceUp ? 'msr-dur-up' : 'msr-dur-down') + '">Td' + (stanceUp ? '↗' : '↘') + '</span>' +
+        '<span class="msr-dur ' + (etfUp ? 'msr-dur-up' : 'msr-dur-down') + '">Tn' + (etfUp ? '↗' : '↘') + '</span>' +
+        '<span class="msr-rb-wrap">' +
+          '<span class="msr-rb"><span class="msr-rb-fill" style="width:' + rbFill1 + '%"></span>' +
+            '<span class="msr-rb-tick" style="left:' + rbFill1 + '%"></span></span>' +
+        '</span>' +
+      '</div>';
+    var etfRow =
+      '<div class="msr-row msr-etf-row">' +
+        '<span class="msr-name msr-name-tick" style="font-weight:400;color:' + (etfUp ? '#166534' : '#991b1b') + '">' + etfSym + '</span>' +
+        '<span class="msr-price">' + (40 + i).toFixed(1) + '</span>' +
+        '<span class="msr-price-chg ' + (etfUp ? 'msr-price-chg-up' : 'msr-price-chg-down') + '">' + etfPctStr + '</span>' +
+        '<span class="msr-dur ' + (etfUp ? 'msr-dur-up' : 'msr-dur-down') + '">Td' + (etfUp ? '↗' : '↘') + '</span>' +
+        '<span class="msr-dur ' + (stanceUp ? 'msr-dur-up' : 'msr-dur-down') + '">Tn' + (stanceUp ? '↗' : '↘') + '</span>' +
+        '<span class="msr-rb-wrap">' +
+          '<span class="msr-rb"><span class="msr-rb-fill" style="width:' + rbFill2 + '%"></span>' +
+            '<span class="msr-rb-tick" style="left:' + rbFill2 + '%"></span></span>' +
+        '</span>' +
+      '</div>';
+    return mainRow + etfRow;
+  }
+
+  function panelEl(p) {
+    var panel = document.createElement('div');
+    panel.className = 'rail-band-mock';
+    if (p.isSectors) {
+      var subrows =
+        '<div class="msr-sec-subrow"><span class="msr-sec-down">▼</span> <span class="msr-sec-lbl">Laggards:</span> ' + p.laggards + '</div>' +
+        '<div class="msr-sec-subrow"><span class="msr-sec-rotate">↻</span> <span class="msr-sec-lbl">Rotate in:</span> ' + p.rotateIn + '</div>';
+      var pairsHtml = p.sectors.map(function (s, i) { return sectorPairHtml(s, p.etfs[i], i); }).join('');
+      panel.innerHTML = '<div class="msr-section-hdr">' + p.name + '</div>' + subrows + pairsHtml;
+    } else {
+      var rowsHtml = p.members.map(rowHtml).join('');
+      panel.innerHTML =
+        '<div class="msr-section-hdr">' + p.name +
+          '<span class="msr-breadth"><span class="msr-breadth-up">↑' + p.breadthUp + '</span> ' +
+          '<span class="msr-breadth-down">↓' + p.breadthDown + '</span></span></div>' +
+        rowsHtml;
+    }
+    return panel;
+  }
+
+  // ── Masonry bin-pack: measure every panel's REAL rendered height, then
+  // greedily assign each (largest-first) to the currently-shortest column
+  // -- the standard LPT heuristic for balanced bin-packing. Tries a couple
+  // of column counts and keeps whichever gives the smallest max-column
+  // height (least wasted white space), rather than assuming a fixed
+  // column count. User: "rearrange them so they all fit but with min
+  // white space left."
+  var stage = document.createElement('div');
+  stage.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;width:270px';
+  document.body.appendChild(stage);
+  var measured = PANELS.map(function (p) {
+    var el = panelEl(p);
+    stage.appendChild(el);
+    return { name: p.name, el: el };
+  });
+
+  requestAnimationFrame(function () {
+    var GAP = 8;
+    measured.forEach(function (m) { m.height = m.el.getBoundingClientRect().height; });
+    measured.sort(function (a, b) { return b.height - a.height; }); // LPT: largest first
+
+    function pack(n) {
+      var cols = [];
+      for (var c = 0; c < n; c++) cols.push({ items: [], height: 0 });
+      measured.forEach(function (m) {
+        cols.sort(function (a, b) { return a.height - b.height; });
+        cols[0].items.push(m);
+        cols[0].height += m.height + (cols[0].items.length > 1 ? GAP : 0);
+      });
+      var maxH = Math.max.apply(null, cols.map(function (c) { return c.height; }));
+      return { cols: cols, maxH: maxH };
+    }
+
+    var candidates = [3, 4, 5].map(pack);
+    var best = candidates.reduce(function (a, b) { return b.maxH < a.maxH ? b : a; });
+
+    var wrap = document.getElementById('mrnCols');
+    wrap.innerHTML = '';
+    best.cols.forEach(function (col) {
+      var colEl = document.createElement('div');
+      colEl.className = 'mrn-col';
+      col.items.forEach(function (m) { colEl.appendChild(m.el); }); // moves real, already-measured nodes
+      wrap.appendChild(colEl);
+    });
+    stage.remove();
+
+    var totalContent = measured.reduce(function (s, m) { return s + m.height; }, 0);
+    var wasted = Math.round(best.maxH * best.cols.length - totalContent);
+    document.getElementById('mrnHeightNote').textContent =
+      '↑ ' + best.cols.length + ' columns (tried 3/4/5, picked the tightest) — tallest column ' +
+      Math.round(best.maxH) + 'px · ' + wasted + 'px of empty column-bottom space total across all columns';
+  });
+})();
+</script>
+</body>
+</html>

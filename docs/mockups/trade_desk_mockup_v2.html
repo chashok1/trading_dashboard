@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mockup v2 — Trade Desk (Actionable redesign)</title>
+<style>
+  /* Palette copied from web/styles.css :root — the app's own tokens */
+  :root{
+    --bg:#f7f7f5; --card-bg:#ffffff; --border:#e5e5e2;
+    --text-1:#1c1917; --text-2:#57534e; --text-3:#a8a29e;
+    --accent:#1d4ed8; --bull:#15803d; --bear:#b91c1c; --warn:#b45309; --ok:#16a34a;
+    --act-sell-strong:#9e3636; --act-sell-strong-bg:#f4e6e6;
+    --act-sell:#8b4828;        --act-sell-bg:#f4e9e2;
+    --act-buy-strong:#2a5a3d;  --act-buy-strong-bg:#d6eadd;
+    --act-buy:#3a6a4a;         --act-buy-bg:#dceadd;
+    --act-buy-weak:#4a784a;    --act-buy-weak-bg:#e2eee2;
+    --act-neutral:#6b7280;     --act-neutral-bg:#f3f4f6;
+    --act-mixed:#8a6028;       --act-mixed-bg:#f2e8c4;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text-1);
+       font:14px/1.45 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:920px;margin:0 auto;padding:18px 16px 70px}
+
+  .mock-banner{background:#eef2ff;border:1px dashed var(--accent);border-radius:8px;
+       padding:10px 14px;font-size:12.5px;color:#3730a3;margin-bottom:16px}
+  .mock-banner b{color:#1e1b4b}
+  .mock-banner .try{display:block;margin-top:5px;color:#4338ca}
+
+  /* ── top bar ── */
+  .topbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+  .topbar h1{font-size:20px;margin:0;letter-spacing:-.2px}
+  .topbar .date{font-size:12.5px;color:var(--text-3)}
+  .topbar .spacer{flex:1}
+  .modesw{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--card-bg)}
+  .modesw button{font:600 12px/1 inherit;padding:8px 13px;border:0;background:none;color:var(--text-2);cursor:pointer}
+  .modesw button.on{background:var(--text-1);color:#fff}
+
+  /* ── pre-flight ── */
+  .preflight{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--card-bg);
+       border:1px solid var(--border);border-radius:10px;padding:10px 14px}
+  .pf-light{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;letter-spacing:.3px;
+       padding:5px 12px;border-radius:999px;background:var(--act-buy-strong-bg);color:var(--act-buy-strong)}
+  .pf-light .dot{width:10px;height:10px;border-radius:50%;background:var(--ok)}
+  .pf-item{font-size:12px;color:var(--text-2);display:flex;align-items:center;gap:5px}
+  .pf-item .ok{color:var(--ok);font-weight:700}
+
+  /* ── money + progress line ── */
+  .strip{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin:10px 2px 4px;font-size:12.5px;color:var(--text-2)}
+  .strip b{color:var(--text-1)}
+  .prog{flex:1;min-width:180px;display:flex;align-items:center;gap:9px}
+  .bar{flex:1;height:7px;border-radius:4px;background:var(--act-neutral-bg);overflow:hidden}
+  .bar i{display:block;height:100%;width:0%;background:var(--text-1);transition:width .3s}
+
+  /* ── routine ── */
+  .routine{font-size:12px;color:var(--text-2);margin:12px 2px 16px}
+  .routine b{color:var(--text-1)}
+  .routine .step{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;
+       border-radius:50%;background:var(--text-1);color:#fff;font-size:10.5px;font-weight:700;margin:0 5px 0 12px}
+
+  /* ── lane ── */
+  .lane{margin:20px 0 4px;display:flex;align-items:baseline;gap:10px}
+  .lane h2{font-size:14px;margin:0;letter-spacing:.6px;text-transform:uppercase}
+  .lane .n{font-size:11px;font-weight:700;color:#fff;background:var(--text-1);border-radius:999px;padding:1px 8px}
+  .lane .sub{font-size:12px;color:var(--text-3)}
+  .lane.protect h2{color:var(--act-sell-strong)}
+  .lane.sell h2{color:var(--act-sell)}
+  .lane.buy h2{color:var(--act-buy-strong)}
+
+  /* ── card ── */
+  .card{display:grid;grid-template-columns:6px 1fr;overflow:hidden;background:var(--card-bg);
+       border:1px solid var(--border);border-radius:10px;margin-bottom:10px;transition:opacity .25s}
+  .card.acted{opacity:.4}
+  .rail.sell-strong{background:var(--act-sell-strong)}
+  .rail.sell{background:var(--act-sell)}
+  .rail.buy{background:var(--act-buy-strong)}
+  .card-body{padding:12px 15px 10px}
+
+  .order{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .rank{font-size:11px;font-weight:800;color:var(--text-3);min-width:16px}
+  .verb{font-size:15.5px;font-weight:800;padding:6px 12px;border-radius:8px;white-space:nowrap}
+  .verb.sell-strong{background:var(--act-sell-strong-bg);color:var(--act-sell-strong)}
+  .verb.sell{background:var(--act-sell-bg);color:var(--act-sell)}
+  .verb.buy{background:var(--act-buy-strong-bg);color:var(--act-buy-strong)}
+  .sym{font-size:17px;font-weight:800}
+  .sym small{font-weight:400;color:var(--text-3);font-size:11.5px;margin-left:7px}
+  .order .spacer{flex:1}
+  .pill{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;
+       border:1px solid var(--border);color:var(--text-2);background:var(--bg)}
+  .pill.hi{color:var(--act-buy-strong);border-color:var(--act-buy);background:var(--act-buy-weak-bg)}
+  .pill.stop{color:#fff;border-color:var(--act-sell-strong);background:var(--act-sell-strong)}
+
+  .why{margin:9px 0 0;font-size:13px;color:var(--text-2)}
+  .why b{color:var(--text-1)}
+
+  .ticket{margin:10px 0 0;background:var(--bg);border:1px solid var(--border);border-radius:8px;
+       padding:9px 12px;display:flex;gap:26px;flex-wrap:wrap;align-items:center}
+  .lv .cap{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--text-3)}
+  .lv b{font-size:13.5px}
+  .lv .mono{font-variant-numeric:tabular-nums}
+  .rb{position:relative;display:inline-block;width:110px;height:6px;border-radius:3px;margin-top:5px;
+      background:linear-gradient(90deg,var(--act-buy-bg),var(--act-neutral-bg) 55%,var(--act-sell-bg))}
+  .rb .tick{position:absolute;top:-3px;width:2.5px;height:12px;background:var(--text-1);border-radius:1px}
+  .rb .lim{position:absolute;top:-5px;width:0;height:0;border-left:5px solid transparent;
+       border-right:5px solid transparent;border-top:7px solid var(--accent);transform:translateX(-5px)}
+  .rb-lbl{font-size:10px;color:var(--text-3);display:block;margin-top:2px}
+
+  /* execute-mode nudge */
+  .nudge{margin-top:9px;font-size:12.5px;font-weight:600;padding:7px 11px;border-radius:8px;
+       display:flex;align-items:center;gap:8px}
+  .nudge.go{background:var(--act-buy-strong-bg);color:var(--act-buy-strong)}
+  .nudge.wait{background:var(--act-mixed-bg);color:var(--act-mixed)}
+  .nudge.now{background:var(--act-sell-strong-bg);color:var(--act-sell-strong)}
+
+  .card-actions{display:flex;align-items:center;gap:8px;margin-top:10px;border-top:1px solid var(--border);padding-top:9px}
+  .btn{font-size:12.5px;font-weight:600;border-radius:7px;cursor:pointer;padding:6px 14px;
+       border:1px solid var(--border);background:var(--card-bg);color:var(--text-2)}
+  .btn.done{background:var(--text-1);color:#fff;border-color:var(--text-1)}
+  .btn:hover{filter:brightness(.96)}
+  .btn:disabled{cursor:default;filter:none}
+  .details-toggle{margin-left:auto;font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer}
+  .details{display:none;margin-top:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 13px}
+  .details.open{display:block}
+  .chk{font-size:12.5px;color:var(--text-2);margin:3px 0}
+  .chk .y{color:var(--ok);font-weight:700}
+  .chk .n{color:var(--bear);font-weight:700}
+  .chk .o{color:var(--text-3);font-weight:700}
+  .details .note{font-size:11px;color:var(--text-3);margin-top:8px;font-style:italic}
+
+  /* compact overflow rows */
+  .compact{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .crow{display:flex;align-items:center;gap:12px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:13px}
+  .crow:last-child{border-bottom:none}
+  .crow .cverb{font-weight:800;font-size:12px;padding:2px 8px;border-radius:6px;min-width:112px;text-align:center}
+  .crow .csym{font-weight:800;min-width:52px}
+  .crow .cwhy{color:var(--text-2);font-size:12.5px;flex:1}
+  .crow .cbtn{font-size:11.5px;padding:4px 10px}
+
+  /* folds */
+  .fold{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:10px 15px;
+       margin-top:14px;font-size:13px;color:var(--text-2);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .fold b{color:var(--text-1)}
+  .fold .chip{font-size:11px;border:1px solid var(--border);background:var(--bg);border-radius:999px;
+       padding:2px 9px;color:var(--text-3)}
+  .fold .open-link{margin-left:auto;color:var(--accent);font-size:12px;cursor:pointer;white-space:nowrap}
+  .gridfold{margin-top:10px;border:1px dashed var(--border);border-radius:10px;padding:13px 15px;
+       color:var(--text-3);font-size:12.5px;
+       background:repeating-linear-gradient(45deg,transparent,transparent 10px,#fafaf8 10px,#fafaf8 20px)}
+
+  /* empty / finished */
+  .panel{display:none;text-align:center;background:var(--card-bg);border:1px solid var(--border);
+       border-radius:10px;padding:34px 20px;margin-bottom:12px}
+  .panel.show{display:block}
+  .panel .big{font-size:34px}
+  .panel h3{margin:8px 0 4px}
+  .panel p{color:var(--text-2);font-size:13px;margin:0}
+
+  /* contract */
+  .contract{margin-top:26px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+  .contract h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-3)}
+  .contract ol{margin:0;padding-left:20px;font-size:13px;color:var(--text-2)}
+  .contract li{margin:4px 0}
+  .contract b{color:var(--text-1)}
+
+  .annot{margin-top:30px}
+  .annot h3{font-size:13.5px;margin-bottom:8px}
+  table.map{width:100%;border-collapse:collapse;font-size:12px;background:var(--card-bg);
+       border:1px solid var(--border);border-radius:8px}
+  table.map th,table.map td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  table.map th{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-3)}
+  table.map td:first-child{font-weight:600}
+  table.map tr:last-child td{border-bottom:none}
+  code{background:var(--act-neutral-bg);border-radius:4px;padding:1px 5px;font-size:11px}
+
+  /* mode visibility */
+  .exec-only{display:none}
+  body.exec .exec-only{display:flex}
+  body.exec .plan-only{display:none}
+  body.exec .modehint-plan{display:none}
+  .modehint-exec{display:none}
+  body.exec .modehint-exec{display:inline}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="mock-banner">
+    <b>MOCKUP v2 — not live data.</b> One screen, one job: tell you exactly what to trade today, in order,
+    with the order already written out. Every number shown already exists in your database — nothing new is computed.
+    <span class="try">Try: flip <b>Plan ⇄ Execute</b> at top right · click <b>Done / Skip</b> · open <b>Why?</b> ·
+    press <b>Busy day</b> and <b>No-trade day</b> at the bottom of the queue.</span>
+  </div>
+
+  <div class="topbar">
+    <h1>Trade Desk</h1>
+    <span class="date">Wed 08/19 · data as of Tue 08/18 close</span>
+    <span class="spacer"></span>
+    <div class="modesw">
+      <button id="mPlan" class="on">Plan (evening)</button>
+      <button id="mExec">Execute (market open)</button>
+    </div>
+  </div>
+
+  <div class="preflight">
+    <div class="pf-light"><span class="dot"></span> CLEAR TO TRADE</div>
+    <div class="pf-item"><span class="ok">✓</span> All feeds landed · derives current</div>
+    <div class="pf-item"><span class="ok">✓</span> Hedgeye feeds current</div>
+    <div class="pf-item">SPX mid-range · VIX 15.2 ▼3% — <b>full size OK</b></div>
+  </div>
+
+  <div class="strip">
+    <span>Sells free up <b>$13,000</b></span>
+    <span>Buys need <b>$9,000</b></span>
+    <span>Cash after: <b>$28,400</b></span>
+    <span class="prog"><span class="bar"><i id="progBar"></i></span>
+      <span id="progTxt"><b>0</b> of 6 handled</span></span>
+  </div>
+
+  <div class="routine modehint-plan">
+    Tonight: <span class="step">1</span><b>Light green?</b> (red = fix the data, make no decisions)
+    <span class="step">2</span><b>Work the cards top-down</b> — they are already in the only order that matters
+    <span class="step">3</span><b>Done or Skip on every card.</b> Then close the laptop.
+  </div>
+  <div class="routine modehint-exec">
+    At the open: <span class="step">1</span><b>Place the PROTECT orders first</b>
+    <span class="step">2</span><b>Then work down — green badge = place it now, amber = leave the limit and walk away</b>
+    <span class="step">3</span><b>No new ideas intraday.</b> Only price moved; the evidence did not.
+  </div>
+
+  <div class="panel" id="finished">
+    <div class="big">✓</div>
+    <h3>Queue clear — you're done for today</h3>
+    <p>6 of 6 handled. Come back tomorrow after the close.</p>
+  </div>
+
+  <div class="panel" id="emptyDay">
+    <div class="big">✓</div>
+    <h3>Nothing passes the gates today</h3>
+    <p>No setup cleared the rules. Not trading is a position — close the tab.<br>
+      (0–3 cards a day is normal and by design.)</p>
+  </div>
+
+  <div id="queue">
+
+  <!-- ══ LANE 1 : PROTECT ══ -->
+  <div class="lane protect"><h2>1 · Protect</h2><span class="n">2</span>
+    <span class="sub">stops fired — do these first, at the open, at market</span></div>
+
+  <div class="card">
+    <div class="rail sell-strong"></div>
+    <div class="card-body">
+      <div class="order">
+        <span class="rank">1</span>
+        <span class="verb sell-strong">SELL 38 sh</span>
+        <span class="sym">LQD <small>iShares Inv Grade Corp · held $6,400</small></span>
+        <span class="pill stop">STOP FIRED</span>
+        <span class="spacer"></span>
+        <span class="pill">keeps $2,400 (your minimum)</span>
+      </div>
+      <div class="why">Price <b>crossed below its Trade line</b> yesterday — your exit rule fired.
+        Cut it back to the minimum before you buy anything else.</div>
+      <div class="ticket">
+        <span class="lv"><span class="cap">Order</span><b class="mono">SELL 38 sh @ market</b></span>
+        <span class="lv"><span class="cap">≈ Dollars</span><b class="mono">$4,033</b></span>
+        <span class="lv"><span class="cap">Last</span><b class="mono">106.12</b></span>
+        <span class="lv"><span class="cap">Trade line</span><b class="mono">106.93</b></span>
+        <span class="lv"><span class="cap">After</span><b class="mono">$2,400 left</b></span>
+      </div>
+      <div class="nudge now exec-only">▲ Market order — place it now, first thing.</div>
+      <div class="card-actions">
+        <button class="btn done" onclick="act(this,'DONE')">✓ Done</button>
+        <button class="btn" onclick="act(this,'SKIPPED')">Skip</button>
+        <button class="btn" onclick="act(this,'SNOOZED')">Snooze</button>
+        <button class="details-toggle" onclick="tog(this)">Why? ▾</button>
+      </div>
+      <div class="details">
+        <div class="chk"><span class="n">■</span> Stop signal <b>TD STM</b> — 3 days above the Trade line, yesterday closed below it (a crossover, not a wobble)</div>
+        <div class="chk"><span class="y">✓</span> Sizing — down to your category minimum $2,400 (maintain-minimum is on for this bucket)</div>
+        <div class="chk"><span class="o">○</span> Sources — nobody dropped it from a list today; this exit is purely the stop rule</div>
+        <div class="chk"><span class="o">○</span> Macro — no conflict</div>
+        <div class="note">Same content as today's ACTION hover popover — moved onto the card, one click instead of a hover.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="rail sell-strong"></div>
+    <div class="card-body">
+      <div class="order">
+        <span class="rank">2</span>
+        <span class="verb sell-strong">SELL 168 sh</span>
+        <span class="sym">EWZ <small>Brazil ETF · held $5,200</small></span>
+        <span class="pill stop">STOP FIRED</span>
+        <span class="spacer"></span>
+        <span class="pill">exits the position entirely</span>
+      </div>
+      <div class="why">Price <b>crossed below its Trend line</b> — the more serious of the two exit rules.
+        The whole position goes.</div>
+      <div class="ticket">
+        <span class="lv"><span class="cap">Order</span><b class="mono">SELL 168 sh @ market</b></span>
+        <span class="lv"><span class="cap">≈ Dollars</span><b class="mono">$5,200</b></span>
+        <span class="lv"><span class="cap">Last</span><b class="mono">30.95</b></span>
+        <span class="lv"><span class="cap">Trend line</span><b class="mono">31.60</b></span>
+        <span class="lv"><span class="cap">After</span><b class="mono">$0 — flat</b></span>
+      </div>
+      <div class="nudge now exec-only">▲ Market order — place it now.</div>
+      <div class="card-actions">
+        <button class="btn done" onclick="act(this,'DONE')">✓ Done</button>
+        <button class="btn" onclick="act(this,'SKIPPED')">Skip</button>
+        <button class="btn" onclick="act(this,'SNOOZED')">Snooze</button>
+        <button class="details-toggle" onclick="tog(this)">Why? ▾</button>
+      </div>
+      <div class="details">
+        <div class="chk"><span class="n">■</span> Stop signal <b>TN SA</b> — Trend-line crossover down, the most severe exit tier</div>
+        <div class="chk"><span class="n">■</span> Macro — Brazil sits in a bearish quad stance, agrees with the exit</div>
+        <div class="chk"><span class="y">✓</span> Sizing — no minimum to maintain in this bucket, so it's a full exit</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ LANE 2 : SELL HIGH ══ -->
+  <div class="lane sell"><h2>2 · Sell high</h2><span class="n">1</span>
+    <span class="sub">strength to sell into — limit order near the top of the range</span></div>
+
+  <div class="card">
+    <div class="rail sell"></div>
+    <div class="card-body">
+      <div class="order">
+        <span class="rank">3</span>
+        <span class="verb sell">SELL 23 sh</span>
+        <span class="sym">HES <small>Hess Corp · held $3,800</small></span>
+        <span class="pill hi">proven sell · 72% win rate</span>
+      </div>
+      <div class="why"><b>Hedgeye dropped it from the list</b> and price is sitting at the top of its range —
+        the one sell pattern your own results say to trust.</div>
+      <div class="ticket">
+        <span class="lv"><span class="cap">Order</span><b class="mono">SELL 23 sh, limit 163.80</b></span>
+        <span class="lv"><span class="cap">≈ Dollars</span><b class="mono">$3,767</b></span>
+        <span class="lv"><span class="cap">Last</span><b class="mono">163.40</b></span>
+        <span class="lv"><span class="cap">Where in range</span>
+          <span class="rb"><span class="tick" style="left:88%"></span><span class="lim" style="left:93%"></span></span>
+          <span class="rb-lbl">near top · ▼ your limit · top 164.60</span></span>
+      </div>
+      <div class="nudge wait exec-only">◆ 0.2% under your limit — leave the order in, it fills on any pop. Don't chase it down.</div>
+      <div class="card-actions">
+        <button class="btn done" onclick="act(this,'DONE')">✓ Done</button>
+        <button class="btn" onclick="act(this,'SKIPPED')">Skip</button>
+        <button class="btn" onclick="act(this,'SNOOZED')">Snooze</button>
+        <button class="details-toggle" onclick="tog(this)">Why? ▾</button>
+      </div>
+      <div class="details">
+        <div class="chk"><span class="y">✓</span> Source RR — REMOVE (dropped from the list) 08/18</div>
+        <div class="chk"><span class="y">✓</span> Technical — price in the sell zone at the top of the risk range</div>
+        <div class="chk"><span class="y">✓</span> Confidence — High: sources and technicals point the same way</div>
+        <div class="chk"><span class="y">✓</span> Track record — this exact pattern (SA + gate) measured +5.1% over 20 days, 72% of the time</div>
+        <div class="chk"><span class="o">○</span> Macro — no conflict</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ LANE 3 : BUY LOW ══ -->
+  <div class="lane buy"><h2>3 · Buy low</h2><span class="n">3</span>
+    <span class="sub">pullbacks worth buying — limit near the bottom of the range, never at market</span></div>
+
+  <div class="card">
+    <div class="rail buy"></div>
+    <div class="card-body">
+      <div class="order">
+        <span class="rank">4</span>
+        <span class="verb buy">BUY 8 sh</span>
+        <span class="sym">GLD <small>Gold ETF · not held → opening position</small></span>
+        <span class="pill hi">real-time alert · today</span>
+      </div>
+      <div class="why"><b>Hedgeye sent a live Buy alert this morning</b> and price is already near the bottom of
+        its range. Freshest signal on the board.</div>
+      <div class="ticket">
+        <span class="lv"><span class="cap">Order</span><b class="mono">BUY 8 sh, limit 312.50</b></span>
+        <span class="lv"><span class="cap">≈ Dollars</span><b class="mono">$2,500</b></span>
+        <span class="lv"><span class="cap">Last</span><b class="mono">312.10</b></span>
+        <span class="lv"><span class="cap">Where in range</span>
+          <span class="rb"><span class="tick" style="left:18%"></span><span class="lim" style="left:22%"></span></span>
+          <span class="rb-lbl">near bottom · ▼ your limit · bottom 309.80</span></span>
+        <span class="lv"><span class="cap">Exit if</span><b class="mono">closes below 305.40</b></span>
+      </div>
+      <div class="nudge go exec-only">● In your buy zone right now — place it.</div>
+      <div class="card-actions">
+        <button class="btn done" onclick="act(this,'DONE')">✓ Done</button>
+        <button class="btn" onclick="act(this,'SKIPPED')">Skip</button>
+        <button class="btn" onclick="act(this,'SNOOZED')">Snooze</button>
+        <button class="details-toggle" onclick="tog(this)">Why? ▾</button>
+      </div>
+      <div class="details">
+        <div class="chk"><span class="y">✓</span> Source RTA — Buy alert 08/19 (live trigger, skips the usual technical wait)</div>
+        <div class="chk"><span class="y">✓</span> Technical — buy-family confirmation anyway (BS)</div>
+        <div class="chk"><span class="y">✓</span> Macro — quad stance supports gold here</div>
+        <div class="chk"><span class="y">✓</span> Entry quality — 82/100, mostly because you're buying near the low end of the range</div>
+        <div class="chk"><span class="o">○</span> Rules engine — no scored rule fired on this one</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="rail buy"></div>
+    <div class="card-body">
+      <div class="order">
+        <span class="rank">5</span>
+        <span class="verb buy">BUY 39 sh</span>
+        <span class="sym">TLT <small>20+ Yr Treasury · not held → opening position</small></span>
+        <span class="pill hi">proven source · 68% hit rate</span>
+      </div>
+      <div class="why">Added to the <b>signal-strength list</b> with a rising score, price pulled back to the
+        bottom of its range, and the trend still points up.</div>
+      <div class="ticket">
+        <span class="lv"><span class="cap">Order</span><b class="mono">BUY 39 sh, limit 89.20</b></span>
+        <span class="lv"><span class="cap">≈ Dollars</span><b class="mono">$3,479</b></span>
+        <span class="lv"><span class="cap">Last</span><b class="mono">88.90</b></span>
+        <span class="lv"><span class="cap">Where in range</span>
+          <span class="rb"><span class="tick" style="left:24%"></span><span class="lim" style="left:28%"></span></span>
+          <span class="rb-lbl">near bottom · ▼ your limit · bottom 88.10</span></span>
+        <span class="lv"><span class="cap">Exit if</span><b class="mono">closes below 86.90</b></span>
+      </div>
+      <div class="nudge go exec-only">● In your buy zone right now — place it.</div>
+      <div class="card-actions">
+        <button class="btn done" onclick="act(this,'DONE')">✓ Done</button>
+        <button class="btn" onclick="act(this,'SKIPPED')">Skip</button>
+        <button class="btn" onclick="act(this,'SNOOZED')">Snooze</button>
+        <button class="details-toggle" onclick="tog(this)">Why? ▾</button>
+      </div>
+      <div class="details">
+        <div class="chk"><span class="y">✓</span> Source SSS — score rising, added 08/18 · this source's buys: 68% positive at 20 days</div>
+        <div class="chk"><span class="y">✓</span> Technical — buy-family confirmation (BM)</div>
+        <div class="chk"><span class="y">✓</span> Rules engine — +2.3% measured edge over 20 days</div>
+        <div class="chk"><span class="y">✓</span> Entry quality — 74/100</div>
+        <div class="chk"><span class="o">○</span> Macro — neutral, no conflict either way</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="rail buy"></div>
+    <div class="card-body">
+      <div class="order">
+        <span class="rank">6</span>
+        <span class="verb buy">BUY 17 sh</span>
+        <span class="sym">NVDA <small>NVIDIA · not held → opening position</small></span>
+        <span class="pill">wait for the pullback</span>
+      </div>
+      <div class="why">Good signal, <b>wrong price</b>. It's 2.8% above where you'd want to buy — put the limit in
+        and let it come to you. If it never fills, you lost nothing.</div>
+      <div class="ticket">
+        <span class="lv"><span class="cap">Order</span><b class="mono">BUY 17 sh, limit 178.40</b></span>
+        <span class="lv"><span class="cap">≈ Dollars</span><b class="mono">$3,033</b></span>
+        <span class="lv"><span class="cap">Last</span><b class="mono">183.40</b></span>
+        <span class="lv"><span class="cap">Where in range</span>
+          <span class="rb"><span class="tick" style="left:58%"></span><span class="lim" style="left:14%"></span></span>
+          <span class="rb-lbl">mid · ▼ your limit · bottom 178.20</span></span>
+        <span class="lv"><span class="cap">Exit if</span><b class="mono">closes below 176.10</b></span>
+      </div>
+      <div class="nudge wait exec-only">◆ 2.8% above your limit — leave the order and walk away. Do not buy at market.</div>
+      <div class="card-actions">
+        <button class="btn done" onclick="act(this,'DONE')">✓ Done</button>
+        <button class="btn" onclick="act(this,'SKIPPED')">Skip</button>
+        <button class="btn" onclick="act(this,'SNOOZED')">Snooze</button>
+        <button class="details-toggle" onclick="tog(this)">Why? ▾</button>
+      </div>
+      <div class="details">
+        <div class="chk"><span class="y">✓</span> Source RR — ADD 08/18 (fresh) · this source's buys: 63% positive at 20 days</div>
+        <div class="chk"><span class="y">✓</span> Technical — buy-family confirmation (BMN)</div>
+        <div class="chk"><span class="y">✓</span> Macro — sector stance fine, no conflict</div>
+        <div class="chk"><span class="n">■</span> Entry quality — 41/100: price is mid-range, not near the low. That's why it's last.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- busy-day overflow, hidden by default -->
+  <div id="busyBlock" style="display:none">
+    <div class="lane buy"><h2>3 · Buy low — the rest</h2><span class="n">4</span>
+      <span class="sub">same rules, weaker entry quality — take them only if you still have cash</span></div>
+    <div class="compact">
+      <div class="crow"><span class="cverb" style="background:var(--act-buy-strong-bg);color:var(--act-buy-strong)">BUY 44 sh</span>
+        <span class="csym">XLE</span><span class="cwhy">limit 88.10 · $3,876 · entry quality 38 — mid-range</span>
+        <button class="btn cbtn" onclick="act(this,'DONE')">Done</button>
+        <button class="btn cbtn" onclick="act(this,'SKIPPED')">Skip</button></div>
+      <div class="crow"><span class="cverb" style="background:var(--act-buy-strong-bg);color:var(--act-buy-strong)">BUY 61 sh</span>
+        <span class="csym">PFE</span><span class="cwhy">limit 24.60 · $1,500 · entry quality 33</span>
+        <button class="btn cbtn" onclick="act(this,'DONE')">Done</button>
+        <button class="btn cbtn" onclick="act(this,'SKIPPED')">Skip</button></div>
+      <div class="crow"><span class="cverb" style="background:var(--act-buy-strong-bg);color:var(--act-buy-strong)">BUY 12 sh</span>
+        <span class="csym">CVX</span><span class="cwhy">limit 152.30 · $1,828 · entry quality 29</span>
+        <button class="btn cbtn" onclick="act(this,'DONE')">Done</button>
+        <button class="btn cbtn" onclick="act(this,'SKIPPED')">Skip</button></div>
+      <div class="crow"><span class="cverb" style="background:var(--act-buy-strong-bg);color:var(--act-buy-strong)">BUY 90 sh</span>
+        <span class="csym">FXI</span><span class="cwhy">limit 33.30 · $2,997 · entry quality 25</span>
+        <button class="btn cbtn" onclick="act(this,'DONE')">Done</button>
+        <button class="btn cbtn" onclick="act(this,'SKIPPED')">Skip</button></div>
+    </div>
+  </div>
+
+  <div class="fold">
+    <b>9 signals held back</b> — they failed a gate, so they are not trades today:
+    <span class="chip">AAPL · stacks disagree</span>
+    <span class="chip">XOP · source has a losing record</span>
+    <span class="chip">TSLA · sell signal not yet proven</span>
+    <span class="chip">+6 hold</span>
+    <span class="open-link">Show me why ↓</span>
+  </div>
+
+  <div class="gridfold">
+    ▸ <b>Full research grid</b> — your current Actionable screen, untouched: 20 columns, all filters,
+    Hedgeye panel, macro rail. Collapsed by default. Open it for the weekly review, not for trading.
+  </div>
+
+  </div><!-- /queue -->
+
+  <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn" id="busyToggle">Preview: busy day (10 trades)</button>
+    <button class="btn" id="emptyToggle">Preview: no-trade day</button>
+    <button class="btn" id="resetBtn">Reset</button>
+  </div>
+
+  <div class="contract">
+    <h3>The whole rulebook — always on screen</h3>
+    <ol>
+      <li><b>Protect first.</b> Every stop and full exit goes in before any buy.</li>
+      <li><b>Trade the dollars shown.</b> The size is the risk control, not a suggestion.</li>
+      <li><b>Buys are limit orders near the bottom of the range.</b> Never at market. An unfilled order costs nothing.</li>
+      <li><b>The moment a buy fills, set the exit</b> at the level on the card.</li>
+      <li><b>Every card gets Done or Skip.</b> That's what keeps tomorrow's list short and the track record honest.</li>
+    </ol>
+  </div>
+
+  <div class="annot">
+    <h3>Where every element comes from — no new math, all of it exists today</h3>
+    <table class="map">
+      <tr><th>On the card</th><th>Already in your system</th></tr>
+      <tr><td>Which cards appear at all</td><td>Trade Mode's gate (<code>_matchesTradeMode</code>) — qualified BM/BMN buys, held SA sells, stop breaches</td></tr>
+      <tr><td>Lane 1 / 2 / 3 split</td><td>Priority tiers you already compute: <code>_TIER_STOP</code> → <code>_TIER_SELL</code> → <code>_TIER_BUY</code></td></tr>
+      <tr><td>Order inside a lane</td><td>Position $ (protect), $ at stake (sells), <code>_buyTradabilityScore</code> (buys)</td></tr>
+      <tr><td>Dollar amount</td><td><code>AMT$</code> — already position-aware and sized to your category MIN/MAX</td></tr>
+      <tr><td>Share count</td><td><b>New, trivial:</b> dollars ÷ limit price, rounded down</td></tr>
+      <tr><td>Limit price</td><td>LRR (buys) / TRR (sells) from <code>drv_rr</code> — the same bands the RR bar draws</td></tr>
+      <tr><td>"Exit if" level</td><td>Trade-line value — the same line the stop rule watches</td></tr>
+      <tr><td>Plain-English "why"</td><td>Winning source + reason from <code>source_actions</code>, phrased as a sentence</td></tr>
+      <tr><td>Why? checklist</td><td>The ACTION hover popover (<code>_buildActionPopHtml</code>), moved onto the card</td></tr>
+      <tr><td>Entry quality score</td><td><code>_buyTradabilityScore</code> + <code>_tradabilityBreakdown</code>, rescaled to 0–100</td></tr>
+      <tr><td>Hit-rate pill</td><td>Source scorecard win rate (<code>state.sourceScorecard</code>)</td></tr>
+      <tr><td>Execute-mode nudge</td><td><b>New, trivial:</b> live <code>drv_quote.last_price</code> vs the card's limit</td></tr>
+      <tr><td>Done / Skip / Snooze</td><td>Existing <code>POST /api/actionable/{sym}/action</code></td></tr>
+      <tr><td>Pre-flight light</td><td><code>/api/anchor-status</code> + ingest log + SPX/VIX mini-tape</td></tr>
+    </table>
+  </div>
+
+</div>
+
+<script>
+  var TOTAL = 6, doneCount = 0;
+
+  function refreshProg(){
+    var pct = TOTAL ? Math.round(doneCount / TOTAL * 100) : 0;
+    document.getElementById('progBar').style.width = pct + '%';
+    document.getElementById('progTxt').innerHTML = '<b>' + doneCount + '</b> of ' + TOTAL + ' handled';
+    var fin = document.getElementById('finished');
+    var allDone = doneCount >= TOTAL && TOTAL > 0;
+    fin.classList.toggle('show', allDone);
+    fin.querySelector('p').textContent = doneCount + ' of ' + TOTAL + ' handled. Come back tomorrow after the close.';
+  }
+
+  function act(btn, what){
+    var host = btn.closest('.card') || btn.closest('.crow');
+    if (host.classList.contains('acted')) return;
+    host.classList.add('acted');
+    var scope = btn.closest('.card-actions') || btn.closest('.crow');
+    scope.querySelectorAll('.btn').forEach(function(b){ b.disabled = true; });
+    btn.textContent = what === 'DONE' ? '✓ Logged' : (what === 'SKIPPED' ? 'Skipped' : 'Snoozed');
+    doneCount++;
+    refreshProg();
+  }
+
+  function tog(btn){
+    var d = btn.closest('.card-body').querySelector('.details');
+    d.classList.toggle('open');
+    btn.textContent = d.classList.contains('open') ? 'Why? ▴' : 'Why? ▾';
+  }
+
+  document.getElementById('mPlan').addEventListener('click', function(){
+    document.body.classList.remove('exec');
+    this.classList.add('on'); document.getElementById('mExec').classList.remove('on');
+  });
+  document.getElementById('mExec').addEventListener('click', function(){
+    document.body.classList.add('exec');
+    this.classList.add('on'); document.getElementById('mPlan').classList.remove('on');
+  });
+
+  document.getElementById('busyToggle').addEventListener('click', function(){
+    var b = document.getElementById('busyBlock');
+    var show = b.style.display === 'none';
+    b.style.display = show ? '' : 'none';
+    TOTAL = show ? 10 : 6;
+    this.textContent = show ? 'Back to a normal day' : 'Preview: busy day (10 trades)';
+    refreshProg();
+  });
+
+  document.getElementById('emptyToggle').addEventListener('click', function(){
+    var e = document.getElementById('emptyDay'), q = document.getElementById('queue');
+    var show = !e.classList.contains('show');
+    e.classList.toggle('show', show);
+    q.style.display = show ? 'none' : '';
+    this.textContent = show ? 'Back to today’s queue' : 'Preview: no-trade day';
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', function(){ location.reload(); });
+
+  refreshProg();
+</script>
+</body>
+</html>
