@@ -2070,7 +2070,7 @@ async function loadCumPnlSnapshot() {
       totalEl.textContent = 'Cum ' + (_fsCompactUsd(lastCum) || '');  // _fsCompactUsd already signs its own output
     }
     if (acctTotalEl) {
-      acctTotalEl.textContent = acctTotal != null ? 'Tot ' + (_fmtKUsd(acctTotal) || '') : '';
+      acctTotalEl.textContent = acctTotal != null ? (_fmtKUsd(acctTotal) || '') : '';
     }
   } catch (e) {
     console.error('cum P&L snapshot failed:', e);
