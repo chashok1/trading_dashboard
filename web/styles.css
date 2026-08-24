@@ -2216,10 +2216,24 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .rd-meter-fill.b-notinv     { background: var(--bear); }
 /* Small right-justified "% TRR" / "% LRR" overlay labels, above/below the
    meter -- position:absolute so they add zero height/width to the row (no
-   other control's size or position moves). */
-.rd-meter-pct { position: absolute; right: 0; font-size: 8px; line-height: 1; color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none; }
-.rd-meter-pct-top { bottom: 100%; margin-bottom: 1px; }
-.rd-meter-pct-bottom { top: 100%; margin-top: 1px; }
+   other control's size or position moves). Each sits in a 14px-tall box
+   flush against the meter (14px = (.rd-spx-vbar's 48px - .rd-meter's 20px)
+   / 2, i.e. how far .rd-spx-vbar already extends above/below the meter on
+   this row) with the text pushed to the box's OUTER edge -- so the label's
+   top lines up with the vertical bar's top, its bottom with the vertical
+   bar's bottom, and the gap that's left (box minus text) reads as
+   whitespace between the label and the meter itself, per user: "add some
+   white space between the labels and horizontal bar". */
+.rd-meter-pct { position: absolute; right: 0; display: flex; justify-content: flex-end; height: 14px; font-size: 8px; line-height: 1; color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none; }
+.rd-meter-pct-top { bottom: 100%; align-items: flex-start; }
+.rd-meter-pct-bottom { top: 100%; align-items: flex-end; }
+/* 2026-08-23 -- TRR label only: red when the remaining distance to TRR is
+   less than SPX's trailing-10d average |daily % change| (could tag TRR
+   within ~1 average day), green otherwise. LRR label stays neutral
+   (.rd-meter-pct's default var(--text-3)) -- this gauge is deliberately
+   top-of-range-only, see the JS comment above trrCls. */
+.rd-meter-pct-red   { color: var(--bear); font-weight: 700; }
+.rd-meter-pct-green { color: var(--ok); }
 /* 2026-08-14 -- always-visible vertical SPX risk-range indicator, on the
    right side of .rd-meter within .rd-top-row. Fill height = SPX's position
    within LRR/TRR (0=LRR floor, 100%=TRR ceiling); fill colour is a pure

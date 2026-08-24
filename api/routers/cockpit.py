@@ -277,7 +277,7 @@ def get_risk_dial(date: Optional[str] = Query(None)):
             return {"as_of": d.isoformat(), "risk_budget": None, "risk_label": None,
                     "headline": "No risk-dial data for this date.",
                     "fired": [], "quiet": [], "evaluable_weight": 0, "fired_weight": 0,
-                    "suggested_size_multiplier": None}
+                    "suggested_size_multiplier": None, "spx_avg_daily_pct_10d": None}
 
         gauges = _jsonb(row["gauges_fired"]) or []
         fired = [g for g in gauges if g.get("fired") is True]
@@ -297,6 +297,21 @@ def get_risk_dial(date: Optional[str] = Query(None)):
         risk_label = row["risk_label"]
         evaluable_weight = sum(g.get("weight") or 0 for g in gauges if g.get("fired") is not None)
         fired_weight = sum(g.get("weight") or 0 for g in fired)
+
+        # 2026-08-23 -- SPX's trailing-10-day average |daily % change|, for
+        # the dashboard's "% TRR" label: red when the remaining distance to
+        # TRR is less than a typical day's move (could tag TRR within ~1
+        # average day), green otherwise. Read-only/ad-hoc here -- not
+        # persisted, doesn't touch etl/derive_risk_dial.py or
+        # drv_market_stat, so it can't affect that table's idempotency.
+        spx_avg_daily_pct_10d = s.execute(text("""
+            SELECT AVG(ABS(pct_change)) FROM (
+                SELECT pct_change FROM drv_quote
+                WHERE tos_symbol = 'SPX' AND pct_change IS NOT NULL AND as_of_date <= :d
+                ORDER BY as_of_date DESC LIMIT 10
+            ) t
+        """), {"d": d}).scalar()
+        spx_avg_daily_pct_10d = float(spx_avg_daily_pct_10d) if spx_avg_daily_pct_10d is not None else None
 
         size_phrase = _RISK_SIZE_PHRASE.get(risk_label, "")
         if fired:
@@ -323,6 +338,7 @@ def get_risk_dial(date: Optional[str] = Query(None)):
             "evaluable_weight": evaluable_weight,
             "fired_weight": fired_weight,
             "suggested_size_multiplier": round(risk_budget / 100.0, 2) if risk_budget is not None else None,
+            "spx_avg_daily_pct_10d": spx_avg_daily_pct_10d,
         }
 
 
