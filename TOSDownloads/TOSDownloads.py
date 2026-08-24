@@ -92,6 +92,13 @@ COLUMN_SET_ROW_SPACING = 24
 COLUMN_SET_MAX_Y = 244
 COLUMN_SET_TOGGLE_REPEAT = 3
 
+# 2026-08-21: how long do_reloadwl99()'s pre-export nudge check waits
+# between its "before" and "after" 'lo*' counts before deciding whether
+# TOS has stalled (see that function's step 4) -- long enough to give a
+# freshly-reloaded symbol a real chance to resolve on its own, short
+# enough not to waste time on every WL99 attempt.
+WL99_NUDGE_WAIT_SECONDS = 15
+
 # 2026-08-20: TOS.lock is shared by two very different waiters --
 # (1) another TOSType's __main__ wanting to START its own download
 # (time-critical: TOS is sitting idle waiting for clicks), and
@@ -1062,20 +1069,30 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
               "export too. ---")
         return
 
-    # 4. Nudge before exporting (2026-08-21, user-directed): if a 'lo*'
-    # loading-spinner image is still visible on screen at this point, run
-    # the same column-set-toggle-away-and-back nudge the reprocess loop
-    # uses (up to 3x, via COLUMN_SET_TOGGLE_REPEAT inside the helper --
-    # it stops early on its own once resolved or once a toggle stops
-    # helping) BEFORE exporting -- every time WL99 is loaded, right before
-    # its export, not
-    # just once per run. A quick (timeout=1) scan, since this only needs to
-    # know "is anything still visibly loading", not count instances.
-    still_loading = count_images_in_folder(images_folder, "lo", timeout=1)
-    if still_loading:
-        print(f"--- RELOADWL99: 'lo*' loading image(s) still visible before export -- "
-              "nudging column-set (x3) to force a recompute. ---")
-        toggle_column_set_away_and_back(df, images_folder)
+    # 4. Nudge before exporting (2026-08-21, user-directed) -- gated on a
+    # STALL (count unchanged/worse after waiting), not on the mere sight of
+    # a 'lo*' loading-spinner image. Right after the reload-import above,
+    # some symbols showing 'Loading' is completely normal (TOS hasn't
+    # fetched them yet) -- nudging on that alone forces a column-set toggle
+    # that recomputes the ENTIRE watchlist, resetting already-resolved
+    # symbols back to 'Loading' too (live bug: a board that had actually
+    # cleared showed stale 'Loading' data again because of this). Give TOS
+    # a real chance first: count now, wait, count again, and only nudge if
+    # it hasn't improved -- same stall convention
+    # toggle_column_set_away_and_back()'s own internal loop and
+    # download_watchlist()'s stabilization wait already use.
+    before_loading = count_images_in_folder(images_folder, "lo", timeout=1)
+    if before_loading:
+        time.sleep(WL99_NUDGE_WAIT_SECONDS)
+        after_loading = count_images_in_folder(images_folder, "lo", timeout=1)
+        if after_loading >= before_loading:
+            print(f"--- RELOADWL99: 'lo*' loading image(s) unchanged ({before_loading} -> "
+                  f"{after_loading}) after a {WL99_NUDGE_WAIT_SECONDS}s wait -- nudging "
+                  "column-set (x3) to force a recompute. ---")
+            toggle_column_set_away_and_back(df, images_folder)
+        else:
+            print(f"--- RELOADWL99: 'lo*' loading image(s) still resolving on their own "
+                  f"({before_loading} -> {after_loading}) -- skipping the nudge, exporting as-is. ---")
 
     # 5. Real export of WL99 -- only reached when has_symbols was True (see
     # the early return above for the nothing-stuck case).
@@ -1503,20 +1520,20 @@ def sync_and_validate_count(data, filename):
 
         if current_count != stored_count:
             print(f"Row count mismatch! Previous: {stored_count}, Current: {current_count}")
-            # 2026-08-19: was a blocking console input() -- by the time the
-            # merge stage reaches here, TOS automation has long since left
-            # the terminal window out of focus, so the prompt sat there
-            # invisibly waiting for a keystroke. A real GUI dialog (same
-            # pattern as ensure_tos_in_focus()'s focus-loss check) is visible
-            # regardless of which window currently has focus.
-            user_choice = pyautogui.confirm(
-                text=f"Row count mismatch!\n\nPrevious: {stored_count}\nCurrent: {current_count}\n\n"
-                     "Do you wish to continue?",
-                title="Row Count Mismatch",
-                buttons=["Continue", "Abort"]
-            )
-
-            if user_choice != "Continue":
+            # 2026-08-21: back to a console input() (was a pyautogui.confirm()
+            # GUI dialog from 2026-08-19, chosen because the console prompt
+            # was invisible once TOS automation took focus away from the
+            # terminal). That GUI dialog turned out worse in practice: this
+            # runs inside monitor_directory() while it still holds
+            # lock_file_path, so an unattended run left the popup sitting
+            # unanswered forever, holding the pipeline lock and blocking every
+            # other auto script waiting on it (LoadWatchlists.py,
+            # ImportAdditions.py, etc). monitor_directory() now releases
+            # lock_file_path before calling this, so whichever prompt style
+            # is used here no longer blocks other scripts either way.
+            cont = input(f"Row count mismatch! Previous: {stored_count}, Current: {current_count}. "
+                          "Press y to continue, anything else to abort: ").strip().lower()
+            if cont != 'y':
                 print("Aborting process.")
                 sys.exit()
 
@@ -1959,6 +1976,16 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                 data.insert(0, get_export_date("%m/%d/%Y"))
                 data.insert(1, get_export_time())
                 writer.writerow(data)
+
+        # 2026-08-21: release the pipeline lock before the row-count-mismatch
+        # check below -- that check can block on a console prompt, and other
+        # auto scripts (LoadWatchlists.py, ImportAdditions.py, etc.) poll
+        # this same lock_file_path and would otherwise sit blocked for
+        # however long the prompt goes unanswered. Same pattern run_pipeline()
+        # already uses for its own early release; the finally below stays as
+        # a safety net and is a no-op once fd is already None.
+        if lock_file_path:
+            release_lock()
 
         sync_and_validate_count(sorted_output_list, rowcount_file)
         # delete processed files if everything is successful
