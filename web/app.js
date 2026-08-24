@@ -448,7 +448,24 @@ async function loadRiskDial() {
       const detail = spxGauge.detail || '';
       const upM = /([+-]?\d+\.?\d*)% to TRR/.exec(detail);
       const dnM = /([+-]?\d+\.?\d*)% to LRR/.exec(detail);
-      if (upM) meterLabelTop = `<span class="rd-meter-pct rd-meter-pct-top" title="${escapeHtml(detail)}">${upM[1]}% TRR</span>`;
+      // 2026-08-23 -- TRR label only (not LRR -- this gauge is deliberately
+      // single-sided, top-of-range risk only, per the earlier "Only fire the
+      // gauge if above 85%" instruction; LRR proximity is a different,
+      // out-of-scope question) turns red when the remaining distance to TRR
+      // is less than SPX's own trailing-10-day average |daily % change| --
+      // i.e. TRR could be tagged within about one average day at the recent
+      // pace -- green otherwise. avgDaily comes from the new
+      // spx_avg_daily_pct_10d API field (api/routers/cockpit.py, read-only/
+      // ad-hoc -- doesn't touch derive_risk_dial.py or drv_market_stat).
+      const avgDaily = r.spx_avg_daily_pct_10d;
+      let trrTitle = detail;
+      let trrCls = '';
+      if (upM && avgDaily != null) {
+        const upVal = Math.abs(parseFloat(upM[1]));
+        trrCls = upVal < avgDaily ? ' rd-meter-pct-red' : ' rd-meter-pct-green';
+        trrTitle = `${detail} · 10d avg daily move ±${avgDaily.toFixed(2)}%`;
+      }
+      if (upM) meterLabelTop = `<span class="rd-meter-pct rd-meter-pct-top${trrCls}" title="${escapeHtml(trrTitle)}">${upM[1]}% TRR</span>`;
       if (dnM) meterLabelBottom = `<span class="rd-meter-pct rd-meter-pct-bottom" title="${escapeHtml(detail)}">${dnM[1]}% LRR</span>`;
     }
     // TASK_140 follow-up 5/6/7 -- "Risk Dial" header removed from
@@ -893,12 +910,6 @@ async function loadRegimeBand() {
     const qtrEntry = (qtrPart || nextQtrPart)
       ? `<span class="qtr-entry">${qtrPart}${qtrPart && nextQtrPart ? ' ' : ''}${nextQtrPart}</span>`
       : '';
-    // TASK_140 follow-up 11 -- band-factors items only ever carry `factor`
-    // (verified live: {"factor":"Cyclical","qtr":"bull"}), not ticker/
-    // category -- those were always undefined, which is why the tooltip
-    // showed the "Bull factors:"/"Bear factors:" labels with nothing after.
-    const bullFactors = (factors.bull || []).filter(f => f.factor);
-    const bearFactors = (factors.bear || []).filter(f => f.factor);
     // 2026-08-08 -- split into 3 flex zones per user request: "remove the .
     // after 60d Win(Q1) and left align that text to the grid. monthly
     // quads -> align to center". Win-label pinned left (flex:0 0 auto),
@@ -912,10 +923,21 @@ async function loadRegimeBand() {
     </div>`;
     const line = strip.querySelector('.regime-line');
     if (line) {
-      // Line-level fallback: hovering the "Window (60d): Quad X" summary
-      // text itself (not inside a specific month/Qtr entry) still shows the
-      // blended dominant-quad's factors.
-      line.addEventListener('mouseover', () => _showQuadPop(line, dominant, bullFactors, bearFactors));
+      // Line-level fallback: hovering the "60d (Q1)" win-label itself (not
+      // inside a specific month/Qtr entry) shows the WINDOW'S OWN dominant
+      // quad's factors. 2026-08-23 bug fix -- this used to pass the top-
+      // level factors.bull/bear arrays, but those come from the API's
+      // *current calendar month*'s effective quad (get_quad_band_factors'
+      // cur_month), not windowData.dominant_quad -- so whenever the 60d
+      // window's dominant quad differed from the current month's own quad,
+      // the win-label's popover showed the wrong quad's factors while still
+      // labelled "Quad 1" (or whatever the window's quad was). Every other
+      // Q-label on this line (months, Qtr, Next Qtr) already looks its own
+      // factors up correctly via _bullBearForQuadNum -- this makes the win-
+      // label consistent with them. User: "popover for Q1 shows different
+      // values at two different places".
+      const { bull: winBull, bear: winBear } = _bullBearForQuadNum(allFactors, windowData.dominant_quad);
+      line.addEventListener('mouseover', () => _showQuadPop(line, dominant, winBull, winBear));
       line.addEventListener('mouseout', e => {
         if (e.relatedTarget && e.relatedTarget.closest('.regime-line')) return;
         _hideQuadPop();
@@ -1303,6 +1325,15 @@ function _fsCompactUsd(v) {
   if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`;
   if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(1)}K`;
   return `${sign}$${Math.round(abs)}`;
+}
+
+// 2026-08-23 -- always-K formatter for the Cumulative P&L widget's account-
+// balance badge -- unlike _fsCompactUsd this never switches to M above $1M
+// and never signs (a balance, not a gain/loss) -- user explicitly asked for
+// "total current account $ in K".
+function _fmtKUsd(v) {
+  if (v == null) return null;
+  return '$' + (v / 1000).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + 'K';
 }
 
 // max: the shared per-table scale (max |mine|/|market| across every row for
@@ -1870,6 +1901,7 @@ async function loadCumPnlSnapshot() {
   const canvas = $('tsCumPnlChart');
   const totalEl = $('tsCumPnlTotal');
   const todayEl = $('tsCumPnlToday');
+  const acctTotalEl = $('tsCumPnlAcctTotal');
   if (!canvas || typeof Chart === 'undefined') return;
   try {
     // 2026-08-11 -- period now comes from #tsCumPnlPeriod (same dropdown/
@@ -1947,15 +1979,25 @@ async function loadCumPnlSnapshot() {
     // account_number -> short_name map the checkbox list itself is built
     // from, rather than state.catAccounts directly.
     let summaryToday = null;
+    // 2026-08-23 -- total CURRENT account $ (market value + cash, i.e. the
+    // account balance right now -- not a gain/loss figure) shown in K
+    // alongside Today/Cum -- user: "cumulative P&L graph -> bar chart ->
+    // display total $ somewhere" -> "total current account $ in K". Same
+    // filtered/unfiltered split as summaryToday below: filtered sums
+    // market_value+cash_value across the selected accounts' by_account
+    // rows, unfiltered uses summary's own top-level totals directly.
+    let acctTotal = null;
     if (summary) {
       if (filtered) {
         const selectedTags = new Set(state.catAccounts.map(num => state.accountTagByNumber[num]));
         const matched = (summary.by_account || []).filter(a => selectedTags.has(a.account_tag));
         if (matched.length) {
           summaryToday = matched.reduce((sum, a) => sum + Number(a.today_gain_dollar || 0), 0);
+          acctTotal = matched.reduce((sum, a) => sum + Number(a.market_value || 0) + Number(a.cash_value || 0), 0);
         }
       } else if (summary.today_gain_dollar != null) {
         summaryToday = Number(summary.today_gain_dollar);
+        acctTotal = Number(summary.market_value || 0) + Number(summary.cash_value || 0);
       }
     }
     if (summaryToday != null && dayArr.length && cumRaw.length) {
@@ -2027,10 +2069,14 @@ async function loadCumPnlSnapshot() {
       totalEl.className = 'ts-total' + (lastCum >= 0 ? ' pos' : ' neg');
       totalEl.textContent = 'Cum ' + (_fsCompactUsd(lastCum) || '');  // _fsCompactUsd already signs its own output
     }
+    if (acctTotalEl) {
+      acctTotalEl.textContent = acctTotal != null ? 'Total ' + (_fmtKUsd(acctTotal) || '') : '';
+    }
   } catch (e) {
     console.error('cum P&L snapshot failed:', e);
     if (totalEl) totalEl.textContent = '';
     if (todayEl) todayEl.textContent = '';
+    if (acctTotalEl) acctTotalEl.textContent = '';
   }
 }
 
