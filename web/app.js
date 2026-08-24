@@ -1333,7 +1333,7 @@ function _fsCompactUsd(v) {
 // "total current account $ in K".
 function _fmtKUsd(v) {
   if (v == null) return null;
-  return '$' + (v / 1000).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + 'K';
+  return '$' + Math.round(v / 1000).toLocaleString('en-US') + 'K';
 }
 
 // max: the shared per-table scale (max |mine|/|market| across every row for
