@@ -2024,7 +2024,7 @@ async function loadCumPnlSnapshot() {
           backgroundColor: dayArr.map(v => v >= 0 ? 'rgba(28,108,48,0.85)' : 'rgba(178,31,31,0.85)'),
           borderWidth: 0, barPercentage: 0.5, categoryPercentage: 0.7,
           yAxisID: 'y1', order: 0 },
-        { type: 'line', label: 'C. P&L', data: cum,
+        { type: 'line', label: 'P&L', data: cum,
           borderColor: cumColor,
           backgroundColor: lastCum >= 0 ? 'rgba(28,108,48,0.10)' : 'rgba(178,31,31,0.10)',
           fill: false, borderWidth: 2, tension: 0.25,
