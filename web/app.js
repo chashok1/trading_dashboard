@@ -2024,7 +2024,7 @@ async function loadCumPnlSnapshot() {
           backgroundColor: dayArr.map(v => v >= 0 ? 'rgba(28,108,48,0.85)' : 'rgba(178,31,31,0.85)'),
           borderWidth: 0, barPercentage: 0.5, categoryPercentage: 0.7,
           yAxisID: 'y1', order: 0 },
-        { type: 'line', label: 'Cumulative P&L', data: cum,
+        { type: 'line', label: 'C. P&L', data: cum,
           borderColor: cumColor,
           backgroundColor: lastCum >= 0 ? 'rgba(28,108,48,0.10)' : 'rgba(178,31,31,0.10)',
           fill: false, borderWidth: 2, tension: 0.25,
@@ -2070,7 +2070,7 @@ async function loadCumPnlSnapshot() {
       totalEl.textContent = 'Cum ' + (_fsCompactUsd(lastCum) || '');  // _fsCompactUsd already signs its own output
     }
     if (acctTotalEl) {
-      acctTotalEl.textContent = acctTotal != null ? 'Total ' + (_fmtKUsd(acctTotal) || '') : '';
+      acctTotalEl.textContent = acctTotal != null ? 'Tot ' + (_fmtKUsd(acctTotal) || '') : '';
     }
   } catch (e) {
     console.error('cum P&L snapshot failed:', e);
