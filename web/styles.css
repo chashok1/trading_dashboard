@@ -2105,6 +2105,18 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    browser attached to measure the real rendered .msr-row height. */
 .dash-macro-rail { max-height: 150px; overflow-y: auto; }
 #macroRailTop9.dash-macro-rail { max-height: 170px; }
+/* 2026-08-23 -- Sectors/Commodities/Tech & ETFs grown to fit their full
+   content instead of capping + internally scrolling like
+   Volatility/Major Markets above -- user: "increase height so i don't see
+   scroll bars." No fixed px guess (member counts can change) -- these
+   three just expand naturally; the page's own scroll handles any
+   overflow, same as every other non-rail panel on this screen. */
+#macroRailSectors.dash-macro-rail,
+#macroRailCommodities.dash-macro-rail,
+#macroRailRemaining.dash-macro-rail {
+  max-height: none;
+  overflow-y: visible;
+}
 /* 2026-08-08 -- align columns across the right-rail tables (Indicator/
    Symbol -- Event merged into Indicator 2026-08-10, see above -- all
    columns now that Indicator's Signal column is removed: label / Date /
