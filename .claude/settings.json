@@ -7,8 +7,7 @@
       "Edit(etl/*)",
       "Read",
       "PowerShell(python -m etl.*)",
-      "PowerShell(python -m db.*)",
-      "PowerShell(*)"
+      "PowerShell(python -m db.*)"
     ]
   }
 }
