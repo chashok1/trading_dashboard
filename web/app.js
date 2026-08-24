@@ -1295,15 +1295,16 @@ async function _initCatReturnsPeriod() {
     // columns to bottom three grids also."
     r.addEventListener('change', () => { reloadFactorScorecards(); reloadMarketView(); });
   });
-  // 2026-08-14 -- default (was a hardcoded mtd checked= in index.html) now
-  // decided server-side: today vs yesterday depending on whether a TOSL/
-  // YFiles intraday refresh has already landed for the anchor date. Falls
-  // back to the old mtd default if the fetch fails for any reason.
-  let def = 'mtd';
-  try {
-    const r = await fetchJson('/api/dashboard/returns-period-default');
-    if (r && (r.default === 'today' || r.default === 'yesterday')) def = r.default;
-  } catch (e) { console.error('returns-period-default failed:', e); }
+  // 2026-08-23 -- default hardcoded to 'today' (was server-decided
+  // today-vs-yesterday via /api/dashboard/returns-period-default,
+  // depending on whether an intraday TOSL/YFiles refresh had landed --
+  // that distinction existed because twr_today used to be pure live-tick
+  // mark-to-market and was meaningless/stale without one). Now that
+  // twr_today falls back to the broker's own settled EOD figure once the
+  // anchor date's snapshot lands (etl/derive_category_perf.py::
+  // _eod_actual_change), "Today" is always the most useful default,
+  // intraday refresh or not. User: "default to Today."
+  const def = 'today';
   const radio = wrap.querySelector(`input[name="catReturnsPeriod"][value="${def}"]`);
   if (radio) radio.checked = true;
 }

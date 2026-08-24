@@ -179,8 +179,8 @@ def _build_category_map(session: Session, as_of_date: date, symbols: set) -> dic
 # ON ra.account_number = hist_cs.account with no translation), so a single
 # `accounts` list of account_number strings filters both sources uniformly.
 # TWR/flows math itself is account-agnostic -- _build_series/
-# _today_marked_to_market/_yesterday_actual_change aggregate whatever
-# positions/flows come in, grouped by category, with no portfolio-wide
+# _eod_actual_change aggregate whatever positions/flows come in, grouped
+# by category, with no portfolio-wide
 # assumption baked in -- so filtering the INPUT to one account's rows here
 # is sufficient; nothing downstream needs to change to get a correct
 # per-account TWR, not just a per-account $ total.
@@ -323,22 +323,35 @@ def _categories_for(symbol_key: str, cat_map: dict, axis: str) -> list:
 
 def _today_marked_to_market(session: Session, positions: list, cat_map: dict,
                              cash_keys: set, calendar: list) -> dict:
-    """2026-08-08 -- 'Today' twr, computed by marking YESTERDAY's (calendar
-    [-2], the last FINALIZED F/CS position snapshot) share counts to TODAY's
-    (calendar[-1]) LIVE price via drv_quote, instead of diffing two F/CS
-    snapshots the way every other window does. Rationale: Schwab/Fidelity
-    only export F/CS once a day (EOD), so at the time this derive runs
-    (right after the EOD TOSD/TOSW load) today's own F/CS snapshot isn't a
-    finalized capture yet -- diffing against it either gives 0 (no new
-    file) or an unreliable partial read. Freezing yesterday's shares and
-    re-pricing them off drv_quote (which DOES tick intraday from TL loads,
-    same source _bench_return already uses for bench_today) gives real
-    intraday movement during market hours and naturally settles to exactly
-    0 outside them, with no special-casing needed: when drv_quote hasn't
-    ticked past yesterday's close yet, today's price falls back to
+    """2026-08-08 -- INTRADAY-ONLY 'Today' preview, computed by marking
+    YESTERDAY's (calendar[-2], the last FINALIZED F/CS position snapshot)
+    share counts to TODAY's (calendar[-1]) LIVE price via drv_quote,
+    instead of diffing two F/CS snapshots the way every other window does.
+    Rationale: Schwab/Fidelity only export F/CS once a day (EOD), so mid-
+    trading-day the anchor date's own F/CS snapshot doesn't exist yet --
+    diffing against it (or querying its day_chng_dollar/today_gl_dollar,
+    see _eod_actual_change) returns nothing. Freezing yesterday's shares
+    and re-pricing them off drv_quote (which DOES tick intraday from TL
+    loads, same source _bench_return already uses for bench_today) gives
+    real intraday movement during market hours and naturally settles to
+    exactly 0 outside them, with no special-casing needed: when drv_quote
+    hasn't ticked past yesterday's close yet, today's price falls back to
     yesterday's and the marked value is unchanged. User-requested design
     (2026-08-08): "is today going to be calculated based on loads during
     market hours?" -> "yes, build it".
+
+    2026-08-23 -- demoted from twr_today's ONLY source to its INTRADAY
+    fallback only: once the anchor date's own EOD hist_cs/hist_f snapshot
+    lands, _eod_actual_change(offset=0) takes over (the broker-actual
+    figure, not this live-tick approximation) -- see the
+    today_snapshot_exists gate around the EXTRA_WINDOWS loop below. This
+    function alone used to be twr_today's whole story, which meant it
+    never reflected the settled EOD gain even after market close (see
+    _eod_actual_change's docstring for the "+$6,871 showed as 0" bug that
+    motivated the split). User, after that fix removed live-updating
+    intraday visibility entirely: "what does it show in middle of trading
+    day?" -> restored as the intraday-only fallback (hybrid, recommended
+    option).
 
     Returns {axis: {category: twr_or_None}}; None when the baseline value
     is 0 (nothing held) or no price data exists at all."""
@@ -388,31 +401,53 @@ def _today_marked_to_market(session: Session, positions: list, cat_map: dict,
     return out
 
 
-def _yesterday_actual_change(session: Session, calendar: list, cat_map: dict,
-                              cash_keys: set, accounts: Optional[list] = None) -> dict:
-    """2026-08-08 -- 'Yesterday' $ change, replacing the old mv-diff +
-    25%-swing-guard approach entirely. User's own diagnosis: hist_cs/hist_f
-    already carry the broker's own daily gain/loss per position
-    (day_chng_dollar / today_gl_dollar) -- correct as-is for an unchanged
-    qty (pure price move) AND for a same-day new buy (broker reports ~$0
-    against a same-day cost basis, exactly the "don't count new money as a
-    gain" behavior the old guard was clumsily trying to approximate). The
-    ONE case that figure misses: broker day-change only reflects shares
-    STILL HELD at end of day, so a full or partial SELL that day drops the
-    sold portion's own intraday move (prior close -> sale price) --
-    recovered here from that day's hist_cst/hist_ft transaction row, same
-    (sale_price - prior_close) * qty pattern already used by
-    api/routers/dash.py's portfolio-summary "Today's Gain" (cs_sold_move).
-    No guard needed anymore -- every number here is actually computed, not
-    estimated-then-clamped.
+def _eod_actual_change(session: Session, calendar: list, cat_map: dict,
+                        cash_keys: set, accounts: Optional[list] = None,
+                        offset: int = 1) -> dict:
+    """2026-08-08 -- '$ change for one EOD-settled trading day, replacing
+    the old mv-diff + 25%-swing-guard approach entirely. User's own
+    diagnosis: hist_cs/hist_f already carry the broker's own daily
+    gain/loss per position (day_chng_dollar / today_gl_dollar) -- correct
+    as-is for an unchanged qty (pure price move) AND for a same-day new buy
+    (broker reports ~$0 against a same-day cost basis, exactly the "don't
+    count new money as a gain" behavior the old guard was clumsily trying
+    to approximate). The ONE case that figure misses: broker day-change
+    only reflects shares STILL HELD at end of day, so a full or partial
+    SELL that day drops the sold portion's own intraday move (prior close
+    -> sale price) -- recovered here from that day's hist_cst/hist_ft
+    transaction row, same (sale_price - prior_close) * qty pattern already
+    used by api/routers/dash.py's portfolio-summary "Today's Gain"
+    (cs_sold_move). No guard needed anymore -- every number here is
+    actually computed, not estimated-then-clamped.
+
+    offset=1 (the original "yesterday" case) reads calendar[-2]/[-3];
+    offset=0 reads calendar[-1]/[-2] -- i.e. the anchor date D itself.
+
+    2026-08-23 -- offset=0 added: twr_today now uses this (broker-EOD-
+    actual) once the anchor date's own hist_cs/hist_f snapshot has
+    actually landed, instead of staying on _today_marked_to_market's
+    live-tick mark forever -- that live version froze at 0 once the
+    market closed for the day, so the anchor date's own FINAL settled
+    gain never showed up under either "Today" (stale 0) or "Yest" (a
+    different, earlier day). Confirmed live: anchor day's broker gain was
+    +$6,871 while the grid showed twr_today=0 for every category. User:
+    "check the data for yesterday. all showing as reds in reality +6.9k."
+    -> root-caused to twr_today's live-tick design -> "yes, make that
+    change". Follow-up ("what does it show in middle of trading day?")
+    surfaced that hist_cs/hist_f for D don't exist until EOD, so this
+    function alone returns no data all day -- see the today_snapshot_exists
+    gate around the EXTRA_WINDOWS loop below, which keeps
+    _today_marked_to_market as the INTRADAY-ONLY fallback (live preview
+    while D's own snapshot hasn't landed yet) and switches to this
+    function the moment it has.
 
     Returns {axis: {category: dollar_change}}; category keys with no
     contributing symbol are simply absent (treated as 0/no-data by the
     caller)."""
     out = {axis: {} for axis in ("sector", "asset_class", "style")}
-    if len(calendar) < 3:
+    if len(calendar) < 2 + offset:
         return out
-    d, prior = calendar[-2], calendar[-3]
+    d, prior = calendar[-(1 + offset)], calendar[-(2 + offset)]
     excl_cs = " AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)"
     excl_f = " AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)"
     cs_acct, f_acct = _acct_clause(accounts)
@@ -893,8 +928,18 @@ def _compute_category_rows(session: Session, as_of_date: date, accounts: Optiona
     # portfolio_mix.js) and the factor-scorecard's inline pie gap-filler
     # (web/app.js::_renderCatPie) were reverted alongside this for the same
     # reason -- see those files' own 2026-08-14 revert comments.
-    today_marked = _today_marked_to_market(session, positions, cat_map, cash_keys, calendar)
-    yesterday_change = _yesterday_actual_change(session, calendar, cat_map, cash_keys, accounts)
+    today_change = _eod_actual_change(session, calendar, cat_map, cash_keys, accounts, offset=0)
+    yesterday_change = _eod_actual_change(session, calendar, cat_map, cash_keys, accounts, offset=1)
+    # 2026-08-23 -- twr_today's data source depends on whether the anchor
+    # date's own EOD hist_cs/hist_f snapshot has landed yet (checked once,
+    # portfolio-wide, from the already-fetched `positions` list -- no extra
+    # query): before it lands (mid-trading-day), fall back to the live-tick
+    # intraday preview; once it lands, today_change (broker-actual) above
+    # is used instead. See _eod_actual_change's and
+    # _today_marked_to_market's docstrings.
+    today_snapshot_exists = bool(calendar) and any(p["snapshot_date"] == calendar[-1] for p in positions)
+    today_live = None if today_snapshot_exists else \
+        _today_marked_to_market(session, positions, cat_map, cash_keys, calendar)
 
     # Total portfolio(-slice) value at D (market + cash) for weight_pct --
     # same universe as /api/portfolio/summary (latest hist_f/hist_cs
@@ -992,41 +1037,43 @@ def _compute_category_rows(session: Session, as_of_date: date, accounts: Optiona
                 window_detail[wlabel] = {"confidence": conf, **detail_w}
                 if len(calendar) > wdays:
                     confs.append(conf)
+            # 2026-08-08 -- Yesterday built from _eod_actual_change (broker
+            # day_chng_dollar/today_gl_dollar + sold-transaction
+            # adjustment) instead of the old mv-diff + 25%-swing-guard
+            # approach -- see that function's docstring. No guard/suspect
+            # marking needed since every number is actually computed, not
+            # estimated-then-clamped; confidence is "green" whenever a
+            # figure exists, "amber" (insufficient history) otherwise.
+            # 2026-08-23 -- Today now shares this same EOD-actual
+            # computation too, but ONLY once the anchor date's own
+            # hist_cs/hist_f snapshot has landed (today_snapshot_exists,
+            # computed once above) -- before that (mid-trading-day) it
+            # falls back to _today_marked_to_market's live-tick intraday
+            # preview instead, so the grid still updates during market
+            # hours rather than showing blank all day. See both functions'
+            # docstrings for the full history.
+            eod_change_by_offset = {0: today_change, 1: yesterday_change}
             for wlabel, (wdays, offset) in EXTRA_WINDOWS.items():
-                if wlabel == "today":
-                    # 2026-08-08 -- Today's OWN return (twr_today) is no
-                    # longer diffed against today's own F/CS snapshot
-                    # (unreliable -- not a finalized EOD capture yet at
-                    # derive time). Instead: yesterday's shares marked to
-                    # today's LIVE price via _today_marked_to_market -- real
-                    # movement during market hours (as drv_quote ticks from
-                    # TL loads), settling to exactly 0 outside them. User
-                    # request: "is today going to be calculated based on the
-                    # loads during the stock market hours?" -> "yes, build
-                    # it". bench_today is unaffected either way -- it's
-                    # public market price data, not a brokerage snapshot.
-                    twr["twr_today"] = today_marked.get(axis, {}).get(category)
+                if wlabel == "today" and not today_snapshot_exists:
+                    twr["twr_today"] = today_live.get(axis, {}).get(category)
                     b = _bench_return(session, etf_map.get(category), calendar, wdays, offset)
                     bench["bench_today"] = b
-                    window_detail["today"] = {"confidence": "amber",
-                                               "reason": "marked-to-market: yesterday's shares at today's live price"}
+                    window_detail["today"] = {
+                        "confidence": "amber",
+                        "reason": "marked-to-market: yesterday's shares at today's live price "
+                                  "(today's EOD snapshot not loaded yet)",
+                    }
                     confs.append("amber")
                     continue
-                # 2026-08-08 -- Yesterday now built from _yesterday_actual_change
-                # (broker day_chng_dollar/today_gl_dollar + sold-transaction
-                # adjustment) instead of the old mv-diff + 25%-swing-guard
-                # approach -- see that function's docstring. No guard/suspect
-                # marking needed anymore since every number is computed, not
-                # estimated-then-clamped; confidence is "green" whenever a
-                # figure exists, "amber" (insufficient history) otherwise.
-                prior_v = by_date.get(calendar[-3], {}).get("v", 0.0) if len(calendar) >= 3 else 0.0
-                dc = yesterday_change.get(axis, {}).get(category)
+                prior_idx = -(2 + offset)
+                prior_v = by_date.get(calendar[prior_idx], {}).get("v", 0.0) if len(calendar) >= (2 + offset) else 0.0
+                dc = eod_change_by_offset[offset].get(axis, {}).get(category)
                 t = (dc / prior_v) if (dc is not None and prior_v) else None
                 conf = "green" if t is not None else "amber"
-                twr["twr_yesterday"] = t
+                twr[f"twr_{wlabel}"] = t
                 b = _bench_return(session, etf_map.get(category), calendar, wdays, offset)
-                bench["bench_yesterday"] = b
-                window_detail["yesterday"] = {
+                bench[f"bench_{wlabel}"] = b
+                window_detail[wlabel] = {
                     "confidence": conf,
                     "reason": "broker day_chng_dollar/today_gl_dollar + sold-transaction adjustment",
                 }

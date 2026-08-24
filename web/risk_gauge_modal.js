@@ -945,7 +945,7 @@
         }
         // 2026-08-08 -- per-stock Yesterday $/%, same broker day_chng_dollar/
         // today_gl_dollar figures the category-level "Yesterday" column sums
-        // (etl/derive_category_perf.py::_yesterday_actual_change) -- user
+        // (etl/derive_category_perf.py::_eod_actual_change) -- user
         // request: "Can the popups include these numbers for each stock?"
         if (p.yesterday_dollar != null) {
           var yCls = p.yesterday_dollar > 0 ? 'pos' : p.yesterday_dollar < 0 ? 'neg' : '';

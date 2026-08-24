@@ -443,7 +443,7 @@ def get_gauge_exposure_detail(gauge_key: str, date: Optional[str] = Query(None))
             # 2026-08-08 -- broker's own daily gain/loss, from YESTERDAY's
             # snapshot (_yesterday_by_symbol_account), not this row's own --
             # same distinction etl/derive_category_perf.py::
-            # _yesterday_actual_change draws for the category-level
+            # _eod_actual_change draws for the category-level
             # "Yesterday" column. User request: "Can the popups include
             # these numbers for each stock?"
             yd, ypct = yesterday_map.get((r["tos_symbol"], r["account"]), (None, None))
@@ -1023,7 +1023,7 @@ def get_factor_exposure_detail(axis: str, category: str, date: Optional[str] = Q
 
         # 2026-08-08 -- category's own Yesterday % (the whole category,
         # already-computed by etl/derive_category_perf.py::
-        # _yesterday_actual_change) and the benchmark ETF's Yesterday %
+        # _eod_actual_change) and the benchmark ETF's Yesterday %
         # (the "sector"/market reference) -- for the new "stock vs rest vs
         # sector" comparison chart. User: "show it as a stock's %gain/loss
         # of the category vs rest vs sector" -- "rest" (category minus this
@@ -1102,7 +1102,10 @@ def get_symbol_daily_change(symbol: str = Query(...), days: int = Query(30, ge=1
         # real snapshot lands, the loop above already supplies the real
         # bar and this is skipped entirely. Same technique
         # etl/derive_category_perf.py::_today_marked_to_market uses at
-        # category level, as a live preview only.
+        # category level -- there too it's an INTRADAY-ONLY fallback
+        # (2026-08-23), swapped for the broker-EOD-actual figure
+        # (_eod_actual_change) the moment the anchor day's own snapshot
+        # lands, so twr_today doesn't stay stuck on a live preview forever.
         today_entry = None
         if d not in by_date:
             d_prev = s.execute(text("""
