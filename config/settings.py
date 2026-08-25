@@ -26,14 +26,23 @@ class Settings(BaseSettings):
     # TOSDownloads/LoadWatchlists.py + ImportAdditions.py, which run from
     # this same machine but a separate location (outside this repo, same
     # convention as tickers_file/loadfiles_file above).
-    watchlist_base_dir: str = r"C:\Ashok\Investing\Stocks\TOS Watchlists"
+    # 2026-08-24, user-directed re-layout: base dir dropped "TOS " from its
+    # name (now shared by TOS + per-account + Yahoo output, not TOS-only);
+    # the old TOS-specific files + lists dirs moved one level down under a
+    # new TOS/ subfolder so they sit alongside the new Accounts/TOS and
+    # Accounts/Y dirs below.
+    watchlist_base_dir: str = r"C:\Ashok\Investing\Stocks\Watchlists"
     # WL<n>.csv + overflow.csv (etl/generate_watchlist_files.py) -- the full
     # per-watchlist symbol files LoadWatchlists.py imports.
-    watchlist_files_dir: str = r"C:\Ashok\Investing\Stocks\TOS Watchlists\Watchlists"
+    watchlist_files_dir: str = r"C:\Ashok\Investing\Stocks\Watchlists\TOS\Watchlists"
     # additions.csv + removals.csv -- the two housekeeping worklists, one
     # level up from watchlist_files_dir (user: "so it can be used for both
     # full list and additions and removals").
-    watchlist_lists_dir: str = r"C:\Ashok\Investing\Stocks\TOS Watchlists"
+    watchlist_lists_dir: str = r"C:\Ashok\Investing\Stocks\Watchlists\TOS"
+    # 2026-08-24: per-account watchlist output (nightly, all accounts), TOS
+    # and Yahoo formats, both nested under watchlist_base_dir\Accounts.
+    account_tos_watch_lists_dir: str = r"C:\Ashok\Investing\Stocks\Watchlists\Accounts\TOS"
+    account_y_watch_lists_dir: str = r"C:\Ashok\Investing\Stocks\Watchlists\Accounts\Y"
 
     # Retention
     default_retention_days: int = 365

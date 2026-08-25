@@ -624,6 +624,21 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
         except BaseException:
             log.exception("watchlist file generation failed after %s load (continuing)", ft)
 
+        # 2026-08-24, user-directed: per-account TOS + Yahoo watchlist files
+        # (held positions only, one file per ref_accounts.short_name) --
+        # rides the same trigger as the tier-based watchlist generation
+        # right above (same reasoning: fires after whichever daily TOS EOD
+        # source lands last). Wrapped separately so a failure here never
+        # blocks the tier-based files above it, or the load itself.
+        try:
+            from etl.generate_account_watchlist_files import generate_account_watchlist_files
+            with session_scope() as s6:
+                acct_wl_result = generate_account_watchlist_files(
+                    s6, settings.account_tos_watch_lists_dir, settings.account_y_watch_lists_dir)
+            log.info("account watchlist file generation (after %s load): %s", ft, acct_wl_result)
+        except BaseException:
+            log.exception("account watchlist file generation failed after %s load (continuing)", ft)
+
     return {"status": "loaded", "rows_inserted": ins if 'ins' in locals() else 0}
 
 

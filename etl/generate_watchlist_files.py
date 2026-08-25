@@ -47,12 +47,12 @@ noise instead of a real delta. Reconciliation each run:
 Output files, split across two directories (2026-08-18, user-directed
 relocation -- settings.watchlist_base_dir is the single reference point
 both hang off of):
-  output_dir (settings.watchlist_files_dir, "...\TOS Watchlists\Watchlists"):
+  output_dir (settings.watchlist_files_dir, "...\Watchlists\TOS\Watchlists"):
     WL<n>.csv       -- one per occupied WL number, plain symbol-per-line
                        (LoadWatchlists.py's expected input format).
     overflow.csv    -- symbols that qualified for this run's tier(s) but
                        had no room in their WL range. Not silently dropped.
-  lists_dir (settings.watchlist_lists_dir, "...\TOS Watchlists"):
+  lists_dir (settings.watchlist_lists_dir, "...\Watchlists\TOS"):
     additions.csv   -- tos_symbol,watchlist_name for every symbol assigned
                        in this run that ISN'T already on the real TOS
                        watchlist (hist_td, today) -- ImportAdditions.py's
