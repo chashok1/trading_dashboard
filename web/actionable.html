@@ -239,6 +239,13 @@
       color: #fff;
       border-color: #16a34a;
     }
+    /* 2026-08-25: Strict sub-toggle -- same active-state green as Trade Mode
+       itself (it's a narrowing of the same filter, not a separate concept). */
+    #tradeModeStrictBtn.active {
+      background: #16a34a;
+      color: #fff;
+      border-color: #16a34a;
+    }
     #multiSymBtn.active {
       background: #1f7af2;
       color: #fff;
@@ -1029,7 +1036,10 @@
             </svg>
           </button>
           <!-- TASK_124: Trade Mode — collapse the grid to just qualifying buys +
-               held SA sells + stop breaches. Persisted in localStorage. -->
+               held SA sells + stop breaches. Not persisted -- always starts ON
+               (see web/actionable.js's own init-block comment; this HTML
+               comment previously said "Persisted in localStorage", which was
+               stale/wrong). -->
           <button id="tradeModeBtn" class="btn-icon btn-icon-sm" data-tip="Trade Mode: only qualifying buys, SA sells, stop breaches" title="Trade Mode: show only rows that need action">
             <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="1" y1="1" x2="23" y2="23"/>
@@ -1037,6 +1047,17 @@
             <svg class="icon-on" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
             </svg>
+          </button>
+          <!-- 2026-08-25: Strict sub-toggle -- narrows Trade Mode's qualifying
+               buys further (exclude macro/index/FX/futures instruments +
+               require the Tradability Score badge threshold, see
+               _isTradeModeQualifyingBuy). Only meaningful (and only shown)
+               while Trade Mode is on -- toggled in JS alongside it. Defaults
+               ON (today's tightened behavior); OFF reverts to the original,
+               looser TASK_124 criteria ("Previous" list). Client-side only,
+               no reload needed (unlike Trade Mode itself, which also changes
+               what's fetched from the API for the stop-breach category). -->
+          <button id="tradeModeStrictBtn" class="btn-icon btn-icon-sm" data-tip="Strict: exclude macro/index instruments + require Tradability Score" title="Strict: tighter Trade Mode criteria" style="display:none; font-size:8px; font-weight:700; padding:0 4px; width:auto;">Strict
           </button>
           <!-- Source filter -->
           <select id="sourceFilter" title="Source filter"><option value="">All</option></select>

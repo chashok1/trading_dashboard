@@ -1291,12 +1291,16 @@ function _legendHtml() {
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Trade Mode</div>
       <div style="color:#475569;">Toggle in the toolbar collapses the grid to only rows with measured
         positive edge (docs/actionable_playbook.md §3.3): (1) qualifying buys — BM/BMN, feasible, Risk
-        Range bullish, no stop breach, MACRO not SA/STM, not a macro/index/FX/futures instrument,
-        Tradability Score at/above the 🎯 badge threshold, any winning source; (2) held SA sells;
+        Range bullish, no stop breach, MACRO not SA/STM, any winning source; (2) held SA sells;
         (3) held stop breaches, whatever the action. Everything else (Watchlist band, HOLD/no-action
         rows) is hidden. <strong>WEAK SRC</strong> pill = the qualifying buy's winning source measured
         negative buy-edge in the last validation — size down or skip; see
-        docs/audit/signal_validation_2026-07.md. Persisted across reloads.</div>
+        docs/audit/signal_validation_2026-07.md. Not persisted — always starts ON.
+        <strong>Strict</strong> sub-toggle (next to Trade Mode, only shown while it's on; also not
+        persisted, defaults ON): narrows qualifying buys further to exclude macro/index/FX/futures
+        instruments (you can't place a simple buy order on an index or a yield curve) and require the
+        Tradability Score to meet its own 🎯 badge threshold. Turn Strict off to see the original,
+        looser qualifying-buy list.</div>
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Conviction filter</div>
       ${row('Any', 'No filter')}
       ${row('Multi', '2+ sources agree on this row')}
@@ -1865,7 +1869,10 @@ async function loadActionable(opts) {
 // not whether Technical actually confirmed a buy on this snapshot.
 //
 // 2026-08-25, user: "too many [buys] — reduce to perfect ones." Two
-// tightening passes added on top of the original criteria below:
+// tightening passes added on top of the original criteria below, gated
+// behind state.filters.trade_mode_strict (the "Strict" sub-toggle next to
+// Trade Mode -- defaults ON; OFF reverts to the original, looser TASK_124
+// criteria only, same as before this date):
 //   1. Exclude macro/index/FX/futures instruments (a.is_macro_instrument,
 //      api/routers/dash.py — ref_rrt.y_ticker format: '^' prefix = index,
 //      '=F'/'=X' suffix = futures/FX). RR's outlook source covers these as
@@ -1889,8 +1896,10 @@ function _isTradeModeQualifyingBuy(r) {
   if (r.stop_breached) return false;
   const mv = (r.macro_value || '').toUpperCase();
   if (mv === 'SA' || mv === 'STM') return false;
-  if (r.is_macro_instrument === true || r.is_macro_instrument === 'true') return false;
-  if (_buyTradabilityScore(r) < _TRADABILITY_BADGE_MIN) return false;
+  if (state.filters.trade_mode_strict) {
+    if (r.is_macro_instrument === true || r.is_macro_instrument === 'true') return false;
+    if (_buyTradabilityScore(r) < _TRADABILITY_BADGE_MIN) return false;
+  }
   return true;
 }
 function _isTradeModeHeldSaSell(r) {
@@ -2503,6 +2512,13 @@ function syncFilterUi() {
   }
   const tradeModeBtn = $('tradeModeBtn');
   if (tradeModeBtn) tradeModeBtn.classList.toggle('active', !!f.trade_mode);
+  // 2026-08-25: Strict sub-toggle -- only shown/meaningful while Trade Mode
+  // itself is on.
+  const tradeModeStrictBtn = $('tradeModeStrictBtn');
+  if (tradeModeStrictBtn) {
+    tradeModeStrictBtn.style.display = f.trade_mode ? '' : 'none';
+    tradeModeStrictBtn.classList.toggle('active', !!f.trade_mode_strict);
+  }
   const multiSymBtn = $('multiSymBtn');
   if (multiSymBtn) multiSymBtn.classList.toggle('active', !!(f.symbols_multi && f.symbols_multi.length));
   const sym = $('symbolSearch');        if (sym) sym.value = f.symbol_search || '';
@@ -7359,6 +7375,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // persisted across visits (the user explicitly wants it re-armed every
   // time, not remembered from a prior session).
   state.filters.trade_mode = true;
+  // 2026-08-25: Strict sub-toggle, same re-armed-every-visit convention.
+  state.filters.trade_mode_strict = true;
 
   await loadSources();
   await loadDates();
@@ -7486,9 +7504,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     tradeModeBtn.addEventListener('click', () => {
       state.filters.trade_mode = !state.filters.trade_mode;
       tradeModeBtn.classList.toggle('active', state.filters.trade_mode);
+      // Show/hide the Strict sub-toggle alongside Trade Mode itself.
+      const strictBtn = $('tradeModeStrictBtn');
+      if (strictBtn) strictBtn.style.display = state.filters.trade_mode ? '' : 'none';
       // Trade Mode also controls whether suppressed rows (e.g. STOP BREACHED)
       // are fetched from the API — needs a full reload, not just a re-filter.
       loadActionable();
+    });
+  }
+  // 2026-08-25: Strict sub-toggle -- client-side only (doesn't change what's
+  // fetched from the API, only which already-fetched rows qualify), so a
+  // light re-filter is enough, no reload.
+  const tradeModeStrictBtn = $('tradeModeStrictBtn');
+  if (tradeModeStrictBtn) {
+    tradeModeStrictBtn.addEventListener('click', () => {
+      state.filters.trade_mode_strict = !state.filters.trade_mode_strict;
+      tradeModeStrictBtn.classList.toggle('active', state.filters.trade_mode_strict);
+      applyClientFilter();
     });
   }
   // Debounced ~150ms trailing: typing a symbol shouldn't re-render the full grid + tape on every keystroke.
