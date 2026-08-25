@@ -3889,10 +3889,18 @@ def get_portfolio_snapshot_status():
     hasn't been refreshed in 4 days — current value may be off")."""
     sql = """
         WITH cs AS (
-          SELECT 'CS' AS source, account AS account, MAX(snapshot_date) AS last_snapshot
-          FROM hist_cs
-          WHERE account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
-          GROUP BY account
+          -- Grouped by ref_accounts.short_name, not raw hist_cs.account:
+          -- a broker can rename an account's export label mid-history
+          -- (e.g. Schwab's HSA_Brokerage ...311 -> HSA ...311, 2026-08-24)
+          -- and hist_cs.account is never rewritten, so without this the
+          -- retired label would show up as its own permanently-stale row
+          -- forever even though the account itself is current.
+          SELECT 'CS' AS source, COALESCE(ra.short_name, c.account) AS account,
+                 MAX(c.snapshot_date) AS last_snapshot
+          FROM hist_cs c
+          LEFT JOIN ref_accounts ra ON ra.account_number = c.account
+          WHERE COALESCE(ra.is_active, TRUE) = TRUE
+          GROUP BY COALESCE(ra.short_name, c.account)
         ),
         f AS (
           SELECT 'F' AS source,
@@ -4002,6 +4010,24 @@ def get_portfolio_trends(
     if account:
         params["acct"] = account
 
+    # 2026-08-25: canonical key for the ?account= filter, resolved the same
+    # way the CS series/catchup/cashflow output below is now keyed (short_
+    # name when ref_accounts has one, else the raw/disambiguated label
+    # unchanged) -- needed so filtering by one specific account still
+    # matches its own series after the consolidation fix below (a broker
+    # can rename a CS account's export label mid-history; see the
+    # ytd_total_acct comment in get_portfolio_summary for the concrete
+    # HSA_Brokerage -> HSA case). Does NOT change the SQL WHERE-clause
+    # matching itself (cs_acct_clause/f_acct_clause below still filter on
+    # the raw text the caller passed, unchanged) -- only the Python-side
+    # comparisons against the now-consolidated acct_series/cf_schedule keys.
+    account_key = None
+    if account:
+        with session_scope() as s0:
+            account_key = s0.execute(text(
+                "SELECT short_name FROM ref_accounts WHERE account_number = :a"
+            ), {"a": account}).scalar() or account
+
     symbol_list = [x.strip() for x in symbols.split(",") if x.strip()] if symbols else None
     if symbol_list:
         params["symbols"] = symbol_list
@@ -4063,15 +4089,23 @@ def get_portfolio_trends(
 
     unions = []
     if inc_cs:
+        # acct is COALESCE(ra.short_name, account), not raw account, so a
+        # broker-renamed CS account label (e.g. Schwab's HSA_Brokerage
+        # ...311 -> HSA ...311, 2026-08-24) still produces ONE continuous
+        # per-account series instead of splitting into two at the rename
+        # date -- see the ytd_total_acct comment in get_portfolio_summary
+        # for the same root cause. cs_acct_clause/cs_sym_clause still filter
+        # on raw hist_cs.account (unchanged) -- only the output key changes.
         unions.append(f"""
-            SELECT snapshot_date AS d,
-                   account       AS acct,
+            SELECT hist_cs.snapshot_date AS d,
+                   COALESCE(ra.short_name, hist_cs.account) AS acct,
                    SUM(CASE WHEN {CS_IS_NOT_CASH} THEN market_value ELSE 0 END)        AS mv,
                    SUM(CASE WHEN {CS_IS_CASH}     THEN market_value ELSE 0 END)        AS cash,
                    SUM(CASE WHEN {CS_IS_NOT_CASH} THEN COALESCE(day_chng_dollar,0) ELSE 0 END) AS dc
               FROM hist_cs
-             WHERE snapshot_date BETWEEN :start AND :end {cs_acct_clause} {cs_sym_clause}
-             GROUP BY snapshot_date, account
+              LEFT JOIN ref_accounts ra ON ra.account_number = hist_cs.account
+             WHERE hist_cs.snapshot_date BETWEEN :start AND :end {cs_acct_clause} {cs_sym_clause}
+             GROUP BY hist_cs.snapshot_date, COALESCE(ra.short_name, hist_cs.account)
         """)
     if inc_f:
         unions.append(f"""
@@ -4115,11 +4149,20 @@ def get_portfolio_trends(
     # counting a broker-reported purchase-day gain.
     catchup_unions = []
     if inc_cs:
+        # Same short_name consolidation as the main CS union above -- the
+        # "first tracked date" join below is keyed by RAW hist_cs.account
+        # (fs.account = hist_cs.account, unchanged) so a renamed account's
+        # catchup still anchors off its own actual first-tracked-date per
+        # label; only the OUTPUT acct key is consolidated, so the catchup
+        # dollar amount lands on the same continuous series as the main
+        # union instead of a separate, permanently-orphaned one.
         catchup_unions.append(f"""
-            SELECT hist_cs.snapshot_date AS d, hist_cs.account AS acct,
+            SELECT hist_cs.snapshot_date AS d,
+                   COALESCE(ra.short_name, hist_cs.account) AS acct,
                    SUM((COALESCE(hist_cs.market_value,0) - COALESCE(hist_cs.cost_basis,0))
                        - COALESCE(hist_cs.day_chng_dollar,0)) AS catchup
               FROM hist_cs
+              LEFT JOIN ref_accounts ra ON ra.account_number = hist_cs.account
               JOIN (
                 SELECT account, symbol, MIN(snapshot_date) AS first_date
                   FROM hist_cs
@@ -4127,7 +4170,7 @@ def get_portfolio_trends(
                  GROUP BY account, symbol
               ) fs ON fs.account = hist_cs.account AND fs.symbol = hist_cs.symbol
                   AND fs.first_date = hist_cs.snapshot_date
-             GROUP BY hist_cs.snapshot_date, hist_cs.account
+             GROUP BY hist_cs.snapshot_date, COALESCE(ra.short_name, hist_cs.account)
         """)
     if inc_f:
         catchup_unions.append(f"""
@@ -4200,7 +4243,16 @@ def get_portfolio_trends(
         running: dict = defaultdict(float)
         for source, raw_acct, flow_date, amount in cashflow_rows:
             if source == "CS":
-                label = raw_acct
+                # Same short_name consolidation as the main/catchup CS
+                # unions above -- keeps this label matching acct_series'
+                # keys (a renamed CS account otherwise never matches its
+                # own real-snapshot dates at line ~earliest_real check
+                # below, since raw_acct here could be either label while
+                # acct_series is keyed by the consolidated one).
+                with session_scope() as s:
+                    label = s.execute(text(
+                        "SELECT short_name FROM ref_accounts WHERE account_number = :a"
+                    ), {"a": raw_acct}).scalar() or raw_acct
             else:
                 with session_scope() as s:
                     label = s.execute(text("""
@@ -4213,7 +4265,7 @@ def get_portfolio_trends(
                     """), {"an": raw_acct}).scalar()
                 if not label:
                     continue
-            if account and label != account:
+            if account_key and label != account_key:
                 continue  # respect the ?account= filter, same as the main query
             if group_accts and raw_acct not in group_accts:
                 continue  # respect the ?group= filter, same as the main query
@@ -4243,11 +4295,11 @@ def get_portfolio_trends(
     # two point values, so it's immune to that gap, and it's guaranteed
     # consistent with the lifetime Total Gain figure shown elsewhere.
     full_cashflow_coverage = (
-        account and account in cf_schedule and dates_sorted
-        and cf_schedule[account][0][0] <= dates_sorted[0]
+        account_key and account_key in cf_schedule and dates_sorted
+        and cf_schedule[account_key][0][0] <= dates_sorted[0]
     )
     if full_cashflow_coverage:
-        schedule = cf_schedule[account]  # sorted by flow_date (query ORDER BY)
+        schedule = cf_schedule[account_key]  # sorted by flow_date (query ORDER BY)
         cumulative_pl = []
         for d, av in zip(dates_sorted, account_value):
             deposits_as_of = 0.0
@@ -4526,12 +4578,21 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
         # for this dataset), so it's left as a known limitation.
         ytd_total_acct = {}
         mtd_total_acct = {}
-        # Same disambiguated account-label expression as f_accts above (must
-        # match exactly — it's the join key into ytd_total_acct/mtd_total_acct).
-        f_acct_expr_summary = (
-            "COALESCE(hist_f.account_name, hist_f.account_number) "
-            "|| COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')"
-        )
+        # 2026-08-25: all six dicts below (ytd/mtd_total_acct, manual_baseline_
+        # only_labels, lifetime_net_deposit_acct, ytd/mtd_contrib_acct) are
+        # keyed by ref_accounts.short_name (COALESCE'd to the pre-existing
+        # label when no short_name exists) rather than raw account text —
+        # same canonical key as acct_rows' own "account_tag" column, used at
+        # lookup time below. Raw hist_cs.account is NOT stable: a broker can
+        # rename an account's export label mid-history (Schwab's
+        # HSA_Brokerage ...311 -> HSA ...311, 2026-08-24) and hist_cs.account
+        # is never rewritten, so a YTD/MTD baseline snapshot taken under the
+        # old label would silently fail to match today's row under the new
+        # label (confirmed: this was actively producing blank YTD/MTD for
+        # the renamed HSA account before this fix). short_name is stable
+        # across a rename since ref_accounts maps every label a broker has
+        # ever used for that account to the same short_name (see
+        # db/baseline.sql's HSA consolidation row).
 
         # Get YTD baseline (last snapshot before Jan 1)
         ytd_snap = s.execute(text(
@@ -4539,11 +4600,13 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
         ), {"s": ytd_start}).scalar()
         if ytd_snap:
             ytd_rows = s.execute(text("""
-                SELECT account, COALESCE(SUM(market_value),0) AS total_value
+                SELECT COALESCE(ra.short_name, hist_cs.account) AS account,
+                       COALESCE(SUM(hist_cs.market_value),0) AS total_value
                 FROM hist_cs
-                WHERE snapshot_date = :s
-                  AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
-                GROUP BY account
+                LEFT JOIN ref_accounts ra ON ra.account_number = hist_cs.account
+                WHERE hist_cs.snapshot_date = :s
+                  AND COALESCE(ra.is_active, TRUE) = TRUE
+                GROUP BY COALESCE(ra.short_name, hist_cs.account)
             """), {"s": ytd_snap}).mappings().all()
             for r in ytd_rows:
                 ytd_total_acct[r["account"]] = float(r["total_value"] or 0)
@@ -4554,27 +4617,31 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
         ), {"s": mtd_start}).scalar()
         if mtd_snap:
             mtd_rows = s.execute(text("""
-                SELECT account, COALESCE(SUM(market_value),0) AS total_value
+                SELECT COALESCE(ra.short_name, hist_cs.account) AS account,
+                       COALESCE(SUM(hist_cs.market_value),0) AS total_value
                 FROM hist_cs
-                WHERE snapshot_date = :s
-                  AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
-                GROUP BY account
+                LEFT JOIN ref_accounts ra ON ra.account_number = hist_cs.account
+                WHERE hist_cs.snapshot_date = :s
+                  AND COALESCE(ra.is_active, TRUE) = TRUE
+                GROUP BY COALESCE(ra.short_name, hist_cs.account)
             """), {"s": mtd_snap}).mappings().all()
             for r in mtd_rows:
                 mtd_total_acct[r["account"]] = float(r["total_value"] or 0)
 
         # Fidelity per-account YTD/MTD baselines. Keyed into the SAME dicts as
-        # CS above (disambiguated "Name (F2)" label matches r["account"] for F
-        # rows in acct_rows) so the single ytd_total_acct.get(r["account"])
-        # lookup below transparently covers both sources.
+        # CS above -- short_name when set (matches acct_rows' account_tag),
+        # else the disambiguated "Name (F2)" label (F accounts haven't hit
+        # the rename problem, but the fallback keeps behavior identical for
+        # any F account without a ref_accounts row).
         ytd_snap_f = s.execute(text(
             "SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date < :s"
         ), {"s": ytd_start}).scalar()
         if ytd_snap_f:
             ytd_rows_f = s.execute(text("""
-                SELECT COALESCE(hist_f.account_name, hist_f.account_number)
-                         || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
-                                                                          AS account,
+                SELECT COALESCE(ra.short_name,
+                         COALESCE(hist_f.account_name, hist_f.account_number)
+                           || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
+                       ) AS account,
                        COALESCE(SUM(current_value),0) AS total_value
                 FROM hist_f
                 LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
@@ -4590,9 +4657,10 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
         ), {"s": mtd_start}).scalar()
         if mtd_snap_f:
             mtd_rows_f = s.execute(text("""
-                SELECT COALESCE(hist_f.account_name, hist_f.account_number)
-                         || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
-                                                                          AS account,
+                SELECT COALESCE(ra.short_name,
+                         COALESCE(hist_f.account_name, hist_f.account_number)
+                           || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
+                       ) AS account,
                        COALESCE(SUM(current_value),0) AS total_value
                 FROM hist_f
                 LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
@@ -4620,23 +4688,26 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
         # these accounts (see per-account loop below).
         manual_baseline_only_labels: set = set()
         for r in baseline_overrides:
-            label = s.execute(text("""
+            label_row = s.execute(text("""
                 SELECT COALESCE(hist_f.account_name, hist_f.account_number)
                          || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
+                                                                     AS label,
+                       ra.short_name AS short_name
                 FROM hist_f
                 LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
                 WHERE hist_f.account_number = :an
                 ORDER BY hist_f.snapshot_date DESC LIMIT 1
-            """), {"an": r["account_number"]}).scalar()
-            if not label:
+            """), {"an": r["account_number"]}).mappings().first()
+            if not label_row or not label_row["label"]:
                 continue
+            key = label_row["short_name"] or label_row["label"]
             # YTD only — a manually-estimated baseline this stale (typically
             # a prior year-end value) isn't a meaningful MTD anchor even when
             # it technically predates the 1st of this month; using it there
             # would show a "MTD" figure actually spanning many months.
-            if r["as_of_date"] < ytd_start and label not in ytd_total_acct:
-                ytd_total_acct[label] = float(r["total_value"])
-                manual_baseline_only_labels.add(label)
+            if r["as_of_date"] < ytd_start and key not in ytd_total_acct:
+                ytd_total_acct[key] = float(r["total_value"])
+                manual_baseline_only_labels.add(key)
 
         # All-time net deposits (ref_account_cashflow) — when known, this is
         # a MORE authoritative "lifetime starting basis" than Fidelity/
@@ -4654,19 +4725,25 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
         )).mappings().all()
         for r in cashflow_totals:
             if r["source"] == "CS":
-                label = r["account"]
+                short_name = s.execute(text(
+                    "SELECT short_name FROM ref_accounts WHERE account_number = :a"
+                ), {"a": r["account"]}).scalar()
+                key = short_name or r["account"]
             else:
-                label = s.execute(text("""
+                label_row = s.execute(text("""
                     SELECT COALESCE(hist_f.account_name, hist_f.account_number)
                              || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
+                                                                         AS label,
+                           ra.short_name AS short_name
                     FROM hist_f
                     LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
                     WHERE hist_f.account_number = :an
                     ORDER BY hist_f.snapshot_date DESC LIMIT 1
-                """), {"an": r["account"]}).scalar()
-            if not label:
-                continue
-            lifetime_net_deposit_acct[label] = float(r["net"] or 0)
+                """), {"an": r["account"]}).mappings().first()
+                if not label_row or not label_row["label"]:
+                    continue
+                key = label_row["short_name"] or label_row["label"]
+            lifetime_net_deposit_acct[key] = float(r["net"] or 0)
 
         # Contributions since each baseline date (hist_401k_contrib), netted
         # out of the Total-delta below — Total(end)-Total(start) otherwise
@@ -4686,18 +4763,21 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
             GROUP BY account_number
         """), {"ytd_s": ytd_start, "mtd_s": mtd_start}).mappings().all()
         for r in contrib_rows:
-            label = s.execute(text("""
+            label_row = s.execute(text("""
                 SELECT COALESCE(hist_f.account_name, hist_f.account_number)
                          || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
+                                                                     AS label,
+                       ra.short_name AS short_name
                 FROM hist_f
                 LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
                 WHERE hist_f.account_number = :an
                 ORDER BY hist_f.snapshot_date DESC LIMIT 1
-            """), {"an": r["account_number"]}).scalar()
-            if not label:
+            """), {"an": r["account_number"]}).mappings().first()
+            if not label_row or not label_row["label"]:
                 continue
-            ytd_contrib_acct[label] = float(r["ytd_contrib"] or 0)
-            mtd_contrib_acct[label] = float(r["mtd_contrib"] or 0)
+            key = label_row["short_name"] or label_row["label"]
+            ytd_contrib_acct[key] = float(r["ytd_contrib"] or 0)
+            mtd_contrib_acct[key] = float(r["mtd_contrib"] or 0)
 
         # NOTE: no separate global YTD/MTD baseline query here — the global
         # figure is summed from the per-account values below (each of which
@@ -4813,10 +4893,15 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
         # "YTD" was actively misleading, not just approximate.
         # Net out contributions since the baseline (hist_401k_contrib) where
         # we have that data — Total-delta alone counts money added as gain.
-        ytd_gain = (tot - ytd_total_acct[r["account"]] - ytd_contrib_acct.get(r["account"], 0)) \
-            if r["account"] in ytd_total_acct else None
-        mtd_gain = (tot - mtd_total_acct[r["account"]] - mtd_contrib_acct.get(r["account"], 0)) \
-            if r["account"] in mtd_total_acct else None
+        # Lookup key: account_tag (ref_accounts.short_name) when set, else
+        # the raw/disambiguated account label — matches how every baseline
+        # dict above is keyed, and stays correct across a broker-renamed CS
+        # account label (see the ytd_total_acct comment above).
+        key = r["account_tag"] or r["account"]
+        ytd_gain = (tot - ytd_total_acct[key] - ytd_contrib_acct.get(key, 0)) \
+            if key in ytd_total_acct else None
+        mtd_gain = (tot - mtd_total_acct[key] - mtd_contrib_acct.get(key, 0)) \
+            if key in mtd_total_acct else None
 
         # For accounts with NO real snapshot before ytd_start (only a manual
         # ref_account_baseline estimate), we have zero verified visibility
@@ -4825,9 +4910,9 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
         # seen) — showing a separate "lifetime Total Gain" next to YTD would
         # compare a number we can't verify against one we can. Collapse
         # Total Gain to equal YTD for these accounts.
-        if r["account"] in lifetime_net_deposit_acct:
-            display_gain = tot - lifetime_net_deposit_acct[r["account"]]
-        elif r["account"] in manual_baseline_only_labels:
+        if key in lifetime_net_deposit_acct:
+            display_gain = tot - lifetime_net_deposit_acct[key]
+        elif key in manual_baseline_only_labels:
             display_gain = ytd_gain
         else:
             display_gain = sgd
