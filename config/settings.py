@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     # and Yahoo formats, both nested under watchlist_base_dir\Accounts.
     account_tos_watch_lists_dir: str = r"C:\Ashok\Investing\Stocks\Watchlists\Accounts\TOS"
     account_y_watch_lists_dir: str = r"C:\Ashok\Investing\Stocks\Watchlists\Accounts\Y"
+    # 2026-08-24: per-source watchlist output (PS/ETF/II/RR/CALL/SSS), TOS
+    # and Yahoo formats, both nested under watchlist_base_dir\Sources.
+    source_tos_watch_lists_dir: str = r"C:\Ashok\Investing\Stocks\Watchlists\Sources\TOS"
+    source_y_watch_lists_dir: str = r"C:\Ashok\Investing\Stocks\Watchlists\Sources\Y"
 
     # Retention
     default_retention_days: int = 365

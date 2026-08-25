@@ -639,6 +639,20 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
         except BaseException:
             log.exception("account watchlist file generation failed after %s load (continuing)", ft)
 
+        # 2026-08-24, user-directed: per-source TOS + Yahoo watchlist files
+        # (PS/ETF/II/RR/CALL/SSS -- "what does this feed currently cover",
+        # Bullish-only for the 4 outlook sources, all-ranked for PS/SSS).
+        # Same trigger + own try/except, same reasoning as the two blocks
+        # above.
+        try:
+            from etl.generate_source_watchlist_files import generate_source_watchlist_files
+            with session_scope() as s7:
+                src_wl_result = generate_source_watchlist_files(
+                    s7, settings.source_tos_watch_lists_dir, settings.source_y_watch_lists_dir)
+            log.info("source watchlist file generation (after %s load): %s", ft, src_wl_result)
+        except BaseException:
+            log.exception("source watchlist file generation failed after %s load (continuing)", ft)
+
     return {"status": "loaded", "rows_inserted": ins if 'ins' in locals() else 0}
 
 
