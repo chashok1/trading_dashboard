@@ -1291,7 +1291,8 @@ function _legendHtml() {
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Trade Mode</div>
       <div style="color:#475569;">Toggle in the toolbar collapses the grid to only rows with measured
         positive edge (docs/actionable_playbook.md §3.3): (1) qualifying buys — BM/BMN, feasible, Risk
-        Range bullish, no stop breach, MACRO not SA/STM, any winning source; (2) held SA sells;
+        Range bullish, no stop breach, MACRO not SA/STM, not a macro/index/FX/futures instrument,
+        Tradability Score at/above the 🎯 badge threshold, any winning source; (2) held SA sells;
         (3) held stop breaches, whatever the action. Everything else (Watchlist band, HOLD/no-action
         rows) is hidden. <strong>WEAK SRC</strong> pill = the qualifying buy's winning source measured
         negative buy-edge in the last validation — size down or skip; see
@@ -1862,6 +1863,21 @@ async function loadActionable(opts) {
 // Watchlist gate's _ENTRY_RIPE_TECH): rr_bull_bear only reflects whether the
 // RR band-position leg (QO) used the bull_rr_rule or nbull_rr_rule table,
 // not whether Technical actually confirmed a buy on this snapshot.
+//
+// 2026-08-25, user: "too many [buys] — reduce to perfect ones." Two
+// tightening passes added on top of the original criteria below:
+//   1. Exclude macro/index/FX/futures instruments (a.is_macro_instrument,
+//      api/routers/dash.py — ref_rrt.y_ticker format: '^' prefix = index,
+//      '=F'/'=X' suffix = futures/FX). RR's outlook source covers these as
+//      well as real stocks/ETFs (asset_class='RR' alone doesn't
+//      distinguish XOP the ETF from SPX the index), and you can't actually
+//      place a simple buy order on an index or a yield curve. Confirmed
+//      live 2026-08-25: 5 of 37 qualifying buys were this category.
+//   2. Require the existing Tradability Score (_buyTradabilityScore,
+//      SYMBOL cell's 🎯 badge) to meet its own badge threshold
+//      (_TRADABILITY_BADGE_MIN). Reuses the already-validated LRR-dominant
+//      score instead of a new invented cutoff — "perfect" now means
+//      "would already show a 🎯 badge," not a separate concept.
 const _TECH_GATE_EXEMPT_SRC = ['RTA', 'SSSCHG', 'TOP5'];
 function _isTradeModeQualifyingBuy(r) {
   const code = (r.final_code || '').toUpperCase();
@@ -1873,6 +1889,8 @@ function _isTradeModeQualifyingBuy(r) {
   if (r.stop_breached) return false;
   const mv = (r.macro_value || '').toUpperCase();
   if (mv === 'SA' || mv === 'STM') return false;
+  if (r.is_macro_instrument === true || r.is_macro_instrument === 'true') return false;
+  if (_buyTradabilityScore(r) < _TRADABILITY_BADGE_MIN) return false;
   return true;
 }
 function _isTradeModeHeldSaSell(r) {

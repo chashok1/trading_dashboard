@@ -1099,6 +1099,18 @@ def get_actionable(
                bg.ape_top_med20 AS bb_rr_ape_top_med20,
                bg.ape_bottom_med20 AS bb_rr_ape_bottom_med20,
                rrt.rr_name,
+               -- 2026-08-25: Trade Mode buy-list quality fix -- ref_rrt.y_ticker
+               -- follows Yahoo's own convention for non-equity instruments
+               -- ('^' prefix = index, e.g. ^SPX/^RUT/^TNX; '=F' suffix = futures
+               -- contract, e.g. HG=F; '=X' suffix = FX pair, e.g. EURUSD=X) --
+               -- a real stock/ETF ticker is always plain (XOP, AAPL, ...). RR's
+               -- outlook source covers macro/index/FX/futures instruments as
+               -- well as stocks, and asset_class='RR' doesn't distinguish them
+               -- (XOP the ETF and SPX the index both carry it) -- y_ticker's
+               -- format is the reliable signal. NULL rrt.y_ticker (no ref_rrt
+               -- row at all) means "not a macro instrument" by default.
+               (rrt.y_ticker LIKE '^%' OR rrt.y_ticker LIKE '%=F' OR rrt.y_ticker LIKE '%=X')
+                 AS is_macro_instrument,
                etfchg.event_date AS etfchg_date, etfchg.outlook AS etfchg_outlook,
                etfchg.change_str AS etfchg_desc,
                iichg.event_date AS iichg_date, iichg.outlook AS iichg_outlook,
@@ -1193,7 +1205,7 @@ def get_actionable(
         LEFT JOIN drv_bb_rr_gap bg
                ON bg.tos_symbol = a.tos_symbol AND bg.as_of_date = a.as_of_date
         LEFT JOIN LATERAL (
-            SELECT rr_name FROM ref_rrt
+            SELECT rr_name, y_ticker FROM ref_rrt
             WHERE tos_ticker = a.tos_symbol
             ORDER BY preferred_display DESC, rr_name
             LIMIT 1
