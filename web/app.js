@@ -254,8 +254,9 @@ async function loadNearTermEarnings() {
     for (const r of rows) {
       const tr = document.createElement('tr');
       const days = r.days_until != null ? `${r.days_until}d` : '';
+      const sym = typeof symbolLink === 'function' ? symbolLink(escapeHtml(r.symbol || ''), r.symbol) : escapeHtml(r.symbol || '');
       tr.innerHTML = `
-        <td class="text">${escapeHtml(r.symbol || '')}</td>
+        <td class="text">${sym}</td>
         <td class="num">${days}</td>
         <td>${fmtDate(r.event_date)}</td>
       `;
@@ -729,7 +730,8 @@ function _earningsLineHtml(rows) {
     return `<div class="events-line earnings-line"><span class="events-empty">No symbols watched</span>${gear}</div>`;
   }
   const bits = (rows || []).map(r => {
-    const text = `${escapeHtml(r.symbol)} ${fmtDate(r.event_date)} (${r.days_until}d)`;
+    const sym = typeof symbolLink === 'function' ? symbolLink(escapeHtml(r.symbol), r.symbol) : escapeHtml(r.symbol);
+    const text = `${sym} ${fmtDate(r.event_date)} (${r.days_until}d)`;
     return r.days_until <= 3 ? `<span class="opex-soon">${text}</span>` : text;
   });
   const body = bits.length

@@ -193,6 +193,61 @@
          + 'line-height:1.2; display:inline-block;">Y!</a>';
   }
 
+  // ── TOS/internal code -> real Yahoo Finance ticker ────────────────
+  // Covers macro/index/futures/FX codes used internally (market_bar.js
+  // BAR_MINI keys+rr symbols, macro_areas.js member symbols) that aren't
+  // themselves valid Yahoo tickers. Values sourced from ref_rrt.y_ticker
+  // (2026-08-24; re-run `SELECT tos_ticker, y_ticker FROM ref_rrt` if this
+  // ever drifts). Anything NOT in this map (plain stock/ETF tickers like
+  // AAPL, SPY, XLK, HYG, IWM, QQQ, UUP, LQD, country ETFs, ...) is already
+  // a valid Yahoo ticker as-is.
+  const _YAHOO_TICKER_MAP = {
+    SPX: '^SPX', VIX: '^VIX',
+    COMP: '^IXIC', '$COMP': '^IXIC',
+    DJI: '^DJI', '$INDU': '^DJI', INDU: '^DJI',
+    RUT: '^RUT',
+    VXN: '^VXN', '$VXN': '^VXN', 'VXN:CGI': '^VXN',
+    VXD: '^VXD',
+    RVX: '^RVX',                              // not in ref_rrt; CBOE-pattern best-effort
+    GVZ: '^GVZ', '$GVZ': '^GVZ', 'GVZ:CGI': '^GVZ',
+    OVX: '^OVX', '$OVX': '^OVX', 'OVX:CGI': '^OVX',
+    MOVE: '^MOVE', '$MOVE': '^MOVE', 'MOVE:GIF': '^MOVE',
+    VOLQ: '^VOLQ', '$VOLQ': '^VOLQ',
+    VVIX: '^VVIX',
+    GC: 'GC=F', '/GC': 'GC=F',
+    WTI: 'CL=F', '/CL': 'CL=F',
+    '/SI': 'SI=F', '/HG': 'HG=F', '/NG': 'NG=F', '/BZ': 'BZ=F',
+    DXY: 'DX=F', '$DXY': 'DX=F',
+    '/BTC': 'BTC-USD', BTCUSD: 'BTC-USD',
+    '/6J': 'JPYUSD=X', '/6E': 'EURUSD=X', '/6B': 'GBPUSD=X', '/6C': 'CADUSD=X',
+    'DGS2:FRED': '2YY=F', '2-Year Treasury': '2YY=F',
+    'TNX:CGI': '^TNX', 'TYX:CGI': '^TYX',
+    'GDAXI:DE': '^GDAXI', 'N225:JP': '^N225', '$SSEC': '000001.SS',
+  };
+
+  function yahooTicker(symbol) {
+    if (!symbol) return '';
+    const raw = String(symbol).trim();
+    return _YAHOO_TICKER_MAP[raw] || raw;
+  }
+
+  // ── Yahoo Finance symbol wrap ──────────────────────────────────────
+  // Wraps existing display HTML in a link to that symbol's Yahoo Finance
+  // quote page -- no separate icon/badge (see yahooLink() above for that
+  // style); the text itself becomes the click target. Cash/pseudo markers
+  // pass through unlinked, same exclusions as yahooLink().
+  function symbolLink(displayHtml, symbol) {
+    if (!symbol) return displayHtml;
+    const sym = String(symbol).trim();
+    if (!sym || sym.includes('**') || /^cash/i.test(sym) ||
+        sym === 'Cash & Cash Investments') return displayHtml;
+    const url = 'https://finance.yahoo.com/quote/' + encodeURIComponent(yahooTicker(sym)) + '/';
+    return '<a href="' + url + '" target="_blank" rel="noopener noreferrer" '
+         + 'onclick="event.stopPropagation()" '
+         + 'title="Open ' + escapeHtml(sym) + ' on Yahoo Finance" '
+         + 'style="color:inherit; text-decoration:inherit;">' + displayHtml + '</a>';
+  }
+
   // ── Outlook color — canonical hex map (D3: single source of truth).
   // Matches actions.js _OUTLOOK_COLOR exactly; _common.js exposes it so pages
   // that load _common.js but NOT actions.js (trace, dbstats…) still have one color.
@@ -1023,6 +1078,8 @@
     loadDates,
     clearDateCache,
     yahooLink,
+    yahooTicker,
+    symbolLink,
     outlookColor,
     renderRRAnalysis,
     pctRing,
@@ -1042,6 +1099,8 @@
   // fetchJSON is a common alias used in ref.js, dbstats.js, explore.js, trig.js
   window.fetchJSON    = fetchJson;
   window.yahooLink    = yahooLink;
+  window.yahooTicker  = yahooTicker;
+  window.symbolLink   = symbolLink;
   // D3: outlookColor canonical single source. actions.js re-exports the same
   // function so loading order doesn't matter — last write wins, same value.
   window.outlookColor = outlookColor;

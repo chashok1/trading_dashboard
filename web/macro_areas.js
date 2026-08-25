@@ -47,6 +47,13 @@
       });
   }
 
+  // Wraps _common.js's symbolLink() defensively (same guard style this file
+  // already uses for window.mtTip below) -- Yahoo Finance quote-page link on
+  // the member symbol text, no separate icon.
+  function symLink(html, sym) {
+    return (typeof window.symbolLink === 'function') ? window.symbolLink(html, sym) : html;
+  }
+
   function fmtPct(v, digits) {
     if (v === null || v === undefined) return '—';
     return (v * 100).toFixed(digits === undefined ? 0 : digits) + '%';
@@ -183,7 +190,7 @@
     var trendDir = etf.tn === 'up' ? 1 : etf.tn === 'down' ? -1 : null;
     return '<div class="msr-row msr-etf-row" style="padding-left:16px;">' +
       '<span class="msr-name msr-name-tick" style="color:' + _nameColor(etf.outlook) + '; font-weight:400;" title="' + esc(etf.symbol) + ' sector ETF proxy">' +
-        _msGlyph(etf.monthly_score) + esc(etf.symbol) +
+        _msGlyph(etf.monthly_score) + symLink(esc(etf.symbol), etf.symbol) +
       '</span>' +
       _priceChgSpan({ last: etf.last, pct_change: etf.pct_change }) +
       durArrow(tradeDir, 'Td') +
@@ -268,7 +275,7 @@
         return (
           '<div class="msr-row" title="' + esc(_rowTitle(m)) + '">' +
             '<span class="msr-name msr-name-tick" style="color:' + _zoneColor(zone) + ';">' +
-              _msGlyph(m.monthly_score) + esc(m.label || area.label) +
+              _msGlyph(m.monthly_score) + symLink(esc(m.label || area.label), m.symbol) +
             '</span>' +
             '<div class="msr-gauge-wrap">' +
               '<span class="msr-gauge ' + gaugeClass + '">' + esc(zone) + '</span>' +
@@ -285,7 +292,7 @@
       return (
         '<div class="msr-row" title="' + esc(_rowTitle(m, dispName)) + '">' +
           '<span class="msr-name msr-name-tick" style="color:' + _nameColor(m.outlook) + ';">' +
-            _msGlyph(m.monthly_score) + esc(dispName) +
+            _msGlyph(m.monthly_score) + symLink(esc(dispName), m.symbol) +
           '</span>' +
           '<div class="msr-data-cluster">' +
             durArrow(m.trade, 'Td') +
