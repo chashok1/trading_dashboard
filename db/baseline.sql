@@ -391,6 +391,29 @@ ON CONFLICT (setting_name) DO NOTHING;
 ALTER TABLE IF EXISTS ref_accounts ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
 UPDATE ref_accounts SET is_active = FALSE WHERE account_number = '85911';
 
+-- 2026-08-24: Schwab renamed the HSA account's export label from
+-- "HSA_Brokerage ...311" to "HSA ...311" starting 2026-08-07 (same physical
+-- account, no snapshot_date overlap between the two labels in hist_cs --
+-- confirmed clean cutover). hist_cs.account is raw/immutable (never
+-- rewritten), so both labels stay in hist_ts forever; this row gives the
+-- new label the same short_name/group as the old one so every ref_accounts
+-- join (Portfolio, Cockpit, realized gains, category-perf, inferred
+-- actions, outlook actions) consolidates them into one logical account
+-- instead of showing two.
+INSERT INTO ref_accounts (account_number, short_name, source, notes, group_name, group_desc, is_active)
+VALUES (
+    'HSA ...311', 'HSA', 'CS',
+    'hist_cs: HSA (Schwab renamed HSA_Brokerage ...311 -> HSA ...311 starting 2026-08-07; same physical account, no date overlap, same short_name as HSA_Brokerage ...311)',
+    'A1', 'A1-Desc', TRUE
+)
+ON CONFLICT (account_number) DO UPDATE SET
+    short_name = EXCLUDED.short_name,
+    source     = EXCLUDED.source,
+    notes      = EXCLUDED.notes,
+    group_name = EXCLUDED.group_name,
+    group_desc = EXCLUDED.group_desc,
+    is_active  = EXCLUDED.is_active;
+
 -- -----------------------------------------------------
 -- ref_account_baseline — manual Total-value overrides used as a YTD/MTD
 -- baseline fallback ONLY for accounts with no real hist_f/hist_cs snapshot
