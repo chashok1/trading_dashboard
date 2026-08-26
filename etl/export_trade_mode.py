@@ -222,6 +222,25 @@ def _is_stop_breach(row) -> bool:
     return bool(row.get("held_today")) and bool(row.get("stop_breached"))
 
 
+def _get_ac_for_symbol(tos_symbol: str, as_of_date) -> "float | None":
+    """AC = volatility scale (MIN(standard_dev, median_sd), $ terms) --
+    etl/derive_cat_atomic_input.py::compute_intermediates. Not exposed by
+    /api/actionable (that query deliberately excludes drv_cat_atomic_input
+    joins -- see its own SQL comment on GEQO threshold), so fetched
+    per-symbol from the Rule Flow intermediates endpoint instead -- same
+    data the Data Flow panel uses. 2026-08-25, user-directed: Trade column
+    shows standard deviations above the Trade line, not a plain % diff."""
+    if not tos_symbol:
+        return None
+    try:
+        date_str = as_of_date.isoformat() if hasattr(as_of_date, "isoformat") else str(as_of_date)
+        data = _get_json(f"/api/rule-flow/{urllib.parse.quote(str(tos_symbol))}/intermediates?date={date_str}")
+        ac = data.get("AC")
+        return float(ac) if ac is not None else None
+    except Exception:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Build the three Trade Mode buckets from the live app
 # ---------------------------------------------------------------------------
@@ -250,6 +269,7 @@ def build_trade_mode_export(strict: bool = True) -> dict:
             row["_tradability_score"] = _buy_tradability_score(
                 row, rsi_overbought, rsi_oversold, rvol_threshold,
                 factor_scorecard, source_scorecard)
+            row["_ac"] = _get_ac_for_symbol(row.get("tos_symbol"), row.get("as_of_date"))
             buys.append(row)
         elif _is_held_sa_sell(row):
             sells.append(row)
@@ -272,6 +292,24 @@ def _fmt(v, digits=2) -> str:
         return f"{float(v):.{digits}f}"
     except (TypeError, ValueError):
         return html.escape(str(v))
+
+
+def _fmt_trade_cell(row) -> str:
+    """Trade line value + standard deviations above/below it in parens,
+    e.g. "34.80(0.8SD)". 2026-08-25, user-directed: "instead display
+    standard deviations above Trade" (not a plain % diff, unlike LRR).
+    (last_price - trade_line_value) / AC -- AC fetched per-symbol, see
+    _get_ac_for_symbol; row["_ac"] is set by build_trade_mode_export."""
+    trade_val = row.get("trade_line_value")
+    trade_str = _fmt(trade_val)
+    last, ac = row.get("last_price"), row.get("_ac")
+    if trade_val is None or last is None or not ac:
+        return trade_str
+    try:
+        sd = (float(last) - float(trade_val)) / float(ac)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return trade_str
+    return f"{trade_str}({sd:.1f}SD)"
 
 
 def _fmt_lrr_cell(row) -> str:
@@ -323,7 +361,7 @@ def _build_email_html(export: dict) -> str:
             html.escape(str(r.get("winning_source") or "—")),
             html.escape(str(r.get("rr_action") or "—")),
             html.escape(str(r.get("macro_value") or "—")),
-            _fmt(r.get("trade_line_value")),
+            _fmt_trade_cell(r),
             _fmt_lrr_cell(r),
         ])
         for r in export["buys"]
