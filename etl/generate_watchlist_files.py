@@ -55,8 +55,15 @@ both hang off of):
   lists_dir (settings.watchlist_lists_dir, "...\Watchlists\TOS"):
     additions.csv   -- tos_symbol,watchlist_name for every symbol assigned
                        in this run that ISN'T already on the real TOS
-                       watchlist (hist_td, today) -- ImportAdditions.py's
-                       input, so a full re-import isn't needed daily.
+                       watchlist (hist_td, today). 2026-08-25, user-
+                       directed: watchlist_name is left BLANK -- the user
+                       decides which real watchlist each new symbol goes
+                       into and adds it by hand (appended at the end), not
+                       via the WL-slot the reconciliation algorithm below
+                       computed for the full-reload files. Column kept for
+                       shape/back-compat only -- ImportAdditions.py's
+                       per-WL automation no longer has anything to route
+                       on and will skip every row.
     removals.csv    -- tos_symbol,watchlist_name for every symbol still
                        pending manual removal from TOS (ref_pending_tos_
                        removal), only written when ref_settings
@@ -263,8 +270,15 @@ def generate_watchlist_files(session: Session, mode: str, output_dir: str, lists
                 f.write(s + "\n")
 
     os.makedirs(lists_dir, exist_ok=True)
+    # watchlist_name intentionally left blank (2026-08-25, user-directed):
+    # the WL<n> the reconciliation algorithm computed is what the daily/
+    # weekly full-reload files (WL<n>.csv above) use, but for the delta
+    # list the user decides which real TOS watchlist each new symbol goes
+    # into by hand -- they add it themselves, appended at the end, not via
+    # the WL-slot the algorithm picked. Column kept (same tos_symbol,
+    # watchlist_name shape) so nothing downstream has to reparse the file.
     additions = sorted(
-        (sym, f"WL{wl}") for sym, wl in assignment.items() if sym not in real_watchlist
+        (sym, "") for sym, wl in assignment.items() if sym not in real_watchlist
     )
     with open(os.path.join(lists_dir, "additions.csv"), "w", newline="") as f:
         w = csv.writer(f)
