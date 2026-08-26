@@ -274,6 +274,25 @@ def _fmt(v, digits=2) -> str:
         return html.escape(str(v))
 
 
+def _fmt_lrr_cell(row) -> str:
+    """LRR value + current price's % diff from it in parens, e.g. price 3%
+    above an LRR of 50 -> "50.00(3%)". 2026-08-25, user-directed. Plain %
+    diff from LRR itself (last-lrr)/lrr*100 -- NOT _raw_rr_pos's range-
+    relative position (that's (last-lrr)/(trr-lrr), a different number)."""
+    lrr, last = row.get("lrr"), row.get("last_price")
+    lrr_str = _fmt(lrr)
+    if lrr is None or last is None:
+        return lrr_str
+    try:
+        lrr_f, last_f = float(lrr), float(last)
+        if lrr_f == 0:
+            return lrr_str
+        pct = (last_f - lrr_f) / lrr_f * 100
+    except (TypeError, ValueError):
+        return lrr_str
+    return f"{lrr_str}({pct:.0f}%)"
+
+
 def _row_html(sym, cells) -> str:
     tds = "".join(f'<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;">{c}</td>' for c in cells)
     return f'<tr><td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-weight:600;">{html.escape(sym)}</td>{tds}</tr>'
@@ -305,7 +324,7 @@ def _build_email_html(export: dict) -> str:
             html.escape(str(r.get("rr_action") or "—")),
             html.escape(str(r.get("macro_value") or "—")),
             _fmt(r.get("trade_line_value")),
-            _fmt(r.get("lrr")),
+            _fmt_lrr_cell(r),
         ])
         for r in export["buys"]
     ]
