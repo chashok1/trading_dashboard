@@ -37,10 +37,14 @@ noise instead of a real delta. Reconciliation each run:
      tier) keeps its existing wl_number -- untouched.
   2. Any symbol assigned but no longer in scope (demoted, or tier changed)
      has its assignment deleted, freeing that slot.
-  3. Any symbol newly in scope gets the first wl_number in its tier's range
-     that currently has room (< CAP occupants) -- in alphabetical order,
-     so which specific new symbol claims which specific slot is still
-     deterministic even though it's no longer position-based.
+  3. Any symbol newly in scope gets a slot in the tier's currently-growing
+     WL (a forward-only pointer, seeded from the highest WL number already
+     holding an assignment) -- filled to CAP before advancing to the next
+     WL number. Deliberately does NOT backfill a single slot freed by an
+     earlier removal in a lower-numbered WL (2026-08-25, user-directed:
+     "keep adding at the end"). New symbols within one run still claim
+     slots in alphabetical order, so which specific symbol lands where is
+     deterministic.
   4. A symbol with nowhere to go (its whole tier range is full) is written
      to overflow.csv instead of silently dropped or exceeding the cap.
 
@@ -55,15 +59,17 @@ both hang off of):
   lists_dir (settings.watchlist_lists_dir, "...\Watchlists\TOS"):
     additions.csv   -- tos_symbol,watchlist_name for every symbol assigned
                        in this run that ISN'T already on the real TOS
-                       watchlist (hist_td, today). 2026-08-25, user-
-                       directed: watchlist_name is left BLANK -- the user
-                       decides which real watchlist each new symbol goes
-                       into and adds it by hand (appended at the end), not
-                       via the WL-slot the reconciliation algorithm below
-                       computed for the full-reload files. Column kept for
-                       shape/back-compat only -- ImportAdditions.py's
-                       per-WL automation no longer has anything to route
-                       on and will skip every row.
+                       watchlist (hist_td, today) -- ImportAdditions.py's
+                       input, so a full re-import isn't needed daily.
+                       2026-08-25, user-directed: the reconciliation
+                       algorithm below fills forward-only (keeps adding to
+                       the currently-growing WL, e.g. WL10, until it hits
+                       CAP, then moves to WL11) rather than backfilling any
+                       single slot freed by removals in an earlier WL -- so
+                       watchlist_name always reflects "the one you're
+                       actively filling", matching how the user adds
+                       symbols by hand. (Briefly left blank the same day
+                       for manual assignment, reverted same session.)
     removals.csv    -- tos_symbol,watchlist_name for every symbol still
                        pending manual removal from TOS (ref_pending_tos_
                        removal), only written when ref_settings
@@ -130,6 +136,12 @@ def _wl_range_for_tier(tier: int):
     return itertools.count(TIER2_BASE)  # no upper bound -- every Tier 2 symbol gets a slot
 
 
+def _wl_range_start(tier: int) -> int:
+    """First WL number in a tier's range -- used to seed the forward-fill
+    pointer when a tier has no existing assignment yet."""
+    return TIER1_RANGE[0] if tier == 1 else TIER2_BASE
+
+
 def _reconcile_assignment(session: Session, target: dict, all_tiers: dict, real_watchlist: set) -> tuple:
     """target: {tos_symbol: tier} for THIS run's --mode scope (drives what
     gets assigned a WL slot). all_tiers: {tos_symbol: tier} for the FULL
@@ -187,6 +199,18 @@ def _reconcile_assignment(session: Session, target: dict, all_tiers: dict, real_
     for sym, (wl, tier) in existing.items():
         occupancy[wl] = occupancy.get(wl, 0) + 1
 
+    # Forward-only fill pointer per tier (2026-08-25, user-directed: "keep
+    # adding at the end -- fill [the current WL] up and then move to the
+    # next one"). Starts at the highest WL number that already has any
+    # assignment in that tier; only ever advances. This deliberately does
+    # NOT backfill single slots freed by removals in earlier-numbered WLs
+    # (e.g. WL2/WL3 sitting at 54/55 while WL10 is the active one) -- new
+    # symbols always land in the currently-growing WL, matching how the
+    # user actually works through TOS by hand.
+    current_wl = {}
+    for wl, tier in existing.values():
+        current_wl[tier] = max(current_wl.get(tier, wl), wl)
+
     result = dict(existing)  # sym -> (wl, tier), kept assignments so far
     new_rows = []
     overflow = []
@@ -194,8 +218,11 @@ def _reconcile_assignment(session: Session, target: dict, all_tiers: dict, real_
         if sym in result:
             continue
         tier = target[sym]
+        start_wl = current_wl.get(tier, _wl_range_start(tier))
         assigned_wl = None
         for wl in _wl_range_for_tier(tier):
+            if wl < start_wl:
+                continue
             if occupancy.get(wl, 0) < CAP:
                 assigned_wl = wl
                 break
@@ -203,6 +230,7 @@ def _reconcile_assignment(session: Session, target: dict, all_tiers: dict, real_
             overflow.append(sym)
             continue
         occupancy[assigned_wl] = occupancy.get(assigned_wl, 0) + 1
+        current_wl[tier] = assigned_wl
         result[sym] = (assigned_wl, tier)
         new_rows.append({"tos_symbol": sym, "wl_number": assigned_wl, "tier": tier})
 
@@ -270,15 +298,14 @@ def generate_watchlist_files(session: Session, mode: str, output_dir: str, lists
                 f.write(s + "\n")
 
     os.makedirs(lists_dir, exist_ok=True)
-    # watchlist_name intentionally left blank (2026-08-25, user-directed):
-    # the WL<n> the reconciliation algorithm computed is what the daily/
-    # weekly full-reload files (WL<n>.csv above) use, but for the delta
-    # list the user decides which real TOS watchlist each new symbol goes
-    # into by hand -- they add it themselves, appended at the end, not via
-    # the WL-slot the algorithm picked. Column kept (same tos_symbol,
-    # watchlist_name shape) so nothing downstream has to reparse the file.
+    # watchlist_name = the computed WL<n> again (2026-08-25, user-directed
+    # follow-up -- reverts the same-day "leave it blank" change). The
+    # forward-only fill pointer above now matches how the user actually
+    # works: keep adding to the currently-growing WL (e.g. WL10) until it
+    # hits CAP, then move to the next number -- so the computed slot is
+    # trustworthy again, not an arbitrary backfilled gap.
     additions = sorted(
-        (sym, "") for sym, wl in assignment.items() if sym not in real_watchlist
+        (sym, f"WL{wl}") for sym, wl in assignment.items() if sym not in real_watchlist
     )
     with open(os.path.join(lists_dir, "additions.csv"), "w", newline="") as f:
         w = csv.writer(f)
