@@ -15,7 +15,6 @@ import datetime
 import re
 import chardet
 import msvcrt
-import ctypes
 
 pyautogui.useImageNotFoundException(False)
 
@@ -34,24 +33,6 @@ elapsed_time = 60
 fd = None
 incomplete_files = []
 last_auto_pos = None
-
-def _focus_console_window():
-    """Bring this process's own console window to the foreground -- call
-    right before any blocking input() prompt that follows TOS-GUI
-    automation. 2026-08-25, confirmed live (user typed 'y' at the
-    row-count-mismatch prompt below and ThinkOrSwim reacted instead of the
-    script continuing): pyautogui's clicking leaves TOS as the foreground
-    window, and Windows routes keyboard input to whichever window has
-    focus, NOT to whichever process happens to be blocked on stdin -- so
-    without this, keystrokes meant for input() land in TOS instead, and
-    the prompt looks permanently stuck no matter what's typed. Best-effort
-    -- never let a focus-stealing failure crash or block the prompt itself."""
-    try:
-        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-        if hwnd:
-            ctypes.windll.user32.SetForegroundWindow(hwnd)
-    except Exception:
-        pass
 
 # 2026-08-20: single source of truth for "which symbols are currently stuck
 # 'Loading'" -- an in-memory set, kept accurate incrementally as each
@@ -1539,7 +1520,6 @@ def sync_and_validate_count(data, filename):
 
         if current_count != stored_count:
             print(f"Row count mismatch! Previous: {stored_count}, Current: {current_count}")
-            _focus_console_window()
             # 2026-08-21: back to a console input() (was a pyautogui.confirm()
             # GUI dialog from 2026-08-19, chosen because the console prompt
             # was invisible once TOS automation took focus away from the
@@ -1865,7 +1845,6 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                         actual_headers = next(reader)
                         if actual_headers != input_headers:
                             compare_lists(actual_headers, input_headers)
-                            _focus_console_window()
                             cont = input(f"Error: The headers in the file '{filename}' do not match the expected headers (First Row in headers file). Press y to continue: ").strip().lower()
                             if cont == 'y':
                                 continue
@@ -1968,7 +1947,6 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
             else:
                 if not exit_update_exports:
                     if update_exports_prompt:
-                        _focus_console_window()
                         comp = input(f"Process more files? Press y to process more files: ").strip().lower()
                         if comp != 'y':
                             copy_and_add_empty_lines(export_file_latest, export_file_to_update_indir, lines_to_ignore)
