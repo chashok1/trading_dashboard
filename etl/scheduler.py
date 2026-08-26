@@ -448,11 +448,18 @@ class XlsxHandler(FileSystemEventHandler):
 
 
 def _get_nightly_hour(default: int = 22) -> int:
-    """Read scheduled hour for nightly compute_outcomes from ref_settings."""
+    """Read scheduled hour for nightly compute_outcomes from ref_settings.
+
+    2026-08-25 bugfix: was querying columns `key`/`value`, but ref_settings'
+    real columns are `setting_name`/`setting_value` (every other reader in
+    this codebase uses those) -- the old query always threw and silently
+    fell back to `default`, so this was never actually configurable despite
+    the docstring. Column names fixed; behavior otherwise unchanged (still
+    falls back to `default` if no row is set)."""
     try:
         with session_scope() as s:
             row = s.execute(text(
-                "SELECT value FROM ref_settings WHERE key = 'outcomes_compute_hour'"
+                "SELECT setting_value FROM ref_settings WHERE setting_name = 'outcomes_compute_hour'"
             )).first()
             return int(row[0]) if row and row[0] else default
     except Exception:

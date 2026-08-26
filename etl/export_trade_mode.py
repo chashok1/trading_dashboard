@@ -349,12 +349,39 @@ def _build_email_plain(export: dict) -> str:
 # Entry point -- called from etl/scheduler.py's nightly job
 # ---------------------------------------------------------------------------
 
+def _todays_tosd_loaded() -> bool:
+    """True if today's TOSD export has actually landed -- i.e. the derive
+    anchor (MAX(export_date) FROM hist_td, see docs/derive_date_logic.md)
+    equals today's calendar date. Only enforced on weekdays: TOSD never
+    lands on a weekend, so a weekend/holiday run is expected to reuse the
+    last real trading day's anchor, same as every other anchor-date
+    consumer in this system -- that's not "unprocessed," it's normal.
+    2026-08-25, user-directed: "does it stop if all files are not
+    processed (like TOS exports etc.)" -- it didn't; this makes it does,
+    for the trade mode export specifically (not the rest of the nightly
+    job, which is anchor-agnostic by design)."""
+    from datetime import date
+    today = date.today()
+    if today.weekday() >= 5:  # Sat/Sun -- no TOSD expected, anchor lag is normal
+        return True
+    from etl.db import session_scope
+    from etl.derive import get_anchor_date
+    with session_scope() as s:
+        anchor = get_anchor_date(s)
+    return anchor == today
+
+
 def run() -> Optional[dict]:
     """Best-effort: builds the export and emails it. Returns the export
-    dict on success, None if skipped (email disabled) or on any failure --
-    never raises, so the nightly job's other steps are unaffected."""
+    dict on success, None if skipped (email disabled, today's TOSD export
+    hasn't loaded yet) or on any failure -- never raises, so the nightly
+    job's other steps are unaffected."""
     if not settings.notify_email:
         log.debug("trade mode export skipped -- NOTIFY_EMAIL is off")
+        return None
+    if not _todays_tosd_loaded():
+        log.warning("trade mode export skipped -- today's TOSD export hasn't loaded yet "
+                    "(derive anchor is still yesterday's date or earlier)")
         return None
     try:
         export = build_trade_mode_export(strict=True)
