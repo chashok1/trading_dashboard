@@ -313,22 +313,18 @@ def _fmt_trade_cell(row) -> str:
 
 
 def _fmt_lrr_cell(row) -> str:
-    """LRR value + current price's % diff from it in parens, e.g. price 3%
-    above an LRR of 50 -> "50.00(3%)". 2026-08-25, user-directed. Plain %
-    diff from LRR itself (last-lrr)/lrr*100 -- NOT _raw_rr_pos's range-
-    relative position (that's (last-lrr)/(trr-lrr), a different number)."""
-    lrr, last = row.get("lrr"), row.get("last_price")
+    """LRR value + risk-range position in parens, e.g. "50.00(22%)" means
+    price sits 22% of the way from LRR to TRR. 2026-08-25, user-corrected:
+    "LRR should have risk range % from bottom. price - LRR / (TRR-LRR)."
+    -- reuses _raw_rr_pos (already ported from web/actionable.js for
+    scoring) rather than a plain %-diff-from-LRR, which is what this
+    showed before this fix."""
+    lrr = row.get("lrr")
     lrr_str = _fmt(lrr)
-    if lrr is None or last is None:
+    pos = _raw_rr_pos(row)
+    if pos is None:
         return lrr_str
-    try:
-        lrr_f, last_f = float(lrr), float(last)
-        if lrr_f == 0:
-            return lrr_str
-        pct = (last_f - lrr_f) / lrr_f * 100
-    except (TypeError, ValueError):
-        return lrr_str
-    return f"{lrr_str}({pct:.0f}%)"
+    return f"{lrr_str}({pos:.0f}%)"
 
 
 def _row_html(sym, cells) -> str:
