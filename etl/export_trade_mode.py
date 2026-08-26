@@ -293,13 +293,19 @@ def _section_html(title: str, header: list, rows: list) -> str:
 
 
 def _build_email_html(export: dict) -> str:
+    # 2026-08-25, user-directed: drop Score/Price columns, add Trade (the
+    # stop-line reference, drv_actionable.trade_line_value -- part of a.*
+    # in /api/actionable) and LRR; Source/Technical/Macro shortened to
+    # Src/Tech/Mcr. Rows still SORT by Tradability Score (build_trade_mode_
+    # export's buys.sort) -- only the displayed column is gone, not the
+    # ranking behind it.
     buy_rows = [
         _row_html(r.get("tos_symbol", ""), [
-            _fmt(r.get("_tradability_score"), 0),
             html.escape(str(r.get("winning_source") or "—")),
             html.escape(str(r.get("rr_action") or "—")),
             html.escape(str(r.get("macro_value") or "—")),
-            _fmt(r.get("last_price")),
+            _fmt(r.get("trade_line_value")),
+            _fmt(r.get("lrr")),
         ])
         for r in export["buys"]
     ]
@@ -323,7 +329,7 @@ def _build_email_html(export: dict) -> str:
         f'<div style="font-family:sans-serif;">',
         f'<h2 style="margin:0 0 4px;color:#111827;">Trade Mode Export — {html.escape(str(as_of))}</h2>',
         f'<p style="margin:0 0 8px;color:#6b7280;font-size:13px;">Strict view, matches actionable.js Trade Mode + Strict on screen.</p>',
-        _section_html("🟢 Qualifying Buys", ["Score", "Source", "Technical", "Macro", "Price"], buy_rows),
+        _section_html("🟢 Qualifying Buys", ["Src", "Tech", "Mcr", "Trade", "LRR"], buy_rows),
         _section_html("🔴 Held SA Sells", ["Source", "Action", "Price"], sell_rows),
         _section_html("⛔ Stop Breaches", ["Action", "Price"], breach_rows),
         "</div>",
