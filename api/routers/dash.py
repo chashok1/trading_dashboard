@@ -431,6 +431,40 @@ def get_actionable_settings():
     }
 
 
+@router.post("/api/actionable/email-trade-mode")
+def post_email_trade_mode():
+    """Manual, on-demand send of the Trade Mode export (same content as
+    the nightly job -- etl/export_trade_mode.py) -- 2026-08-25,
+    user-directed: "add a small email button so i can send email from
+    actionable screen". Deliberately bypasses run()'s NOTIFY_EMAIL-off
+    skip and today's-TOSD-freshness guard: those exist to stop an
+    UNATTENDED nightly run from emailing stale/incomplete data, but a user
+    clicking a button already knows what date they're looking at and wants
+    it sent right now regardless."""
+    from config.settings import settings as app_settings
+    if not (app_settings.smtp_host and app_settings.notify_email_to):
+        raise HTTPException(400, "Email isn't configured -- set SMTP_HOST/NOTIFY_EMAIL_TO in .env")
+    from etl.export_trade_mode import build_trade_mode_export, _build_email_html, _build_email_plain
+    from etl.notify import send_email
+    try:
+        export = build_trade_mode_export(strict=True)
+    except Exception as e:
+        raise HTTPException(502, f"Could not build Trade Mode export: {e}")
+    subject = (f"Trade Mode — {export.get('as_of_date') or ''}: "
+               f"{len(export['buys'])} buy(s), {len(export['sells'])} sell(s), "
+               f"{len(export['breaches'])} breach(es)")
+    ok = send_email(subject, _build_email_plain(export), _build_email_html(export))
+    if not ok:
+        raise HTTPException(502, "Email send failed -- check SMTP settings/logs")
+    return {
+        "sent": True,
+        "as_of_date": export.get("as_of_date"),
+        "buys": len(export["buys"]),
+        "sells": len(export["sells"]),
+        "breaches": len(export["breaches"]),
+    }
+
+
 def _build_macro_engine(d):
     """Build the per-date MacroNet quad engine: loads ref_settings/quad-outlook
     lookups and returns (compute_macro, quad_m_label, quad_q_label). Shared by

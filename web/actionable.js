@@ -6309,6 +6309,30 @@ async function copySymbols() {
   }
 }
 
+// 2026-08-25, user-directed: "add a small email button so i can send email
+// from actionable screen" -- on-demand send of the same Trade Mode digest
+// the nightly job emails (etl/export_trade_mode.py), via
+// POST /api/actionable/email-trade-mode. That endpoint deliberately skips
+// the nightly job's NOTIFY_EMAIL-off / stale-anchor guards -- clicking this
+// button is an explicit "send it now" regardless of time of day.
+async function emailTradeMode() {
+  const btn = $('emailTradeModeBtn');
+  if (btn) btn.disabled = true;
+  showStatus('Sending Trade Mode email…', 'info');
+  try {
+    const result = await fetchJson('/api/actionable/email-trade-mode', { method: 'POST' });
+    showStatus(
+      `Sent: ${result.buys} buy(s), ${result.sells} sell(s), ${result.breaches} breach(es)`,
+      'success'
+    );
+  } catch (e) {
+    console.error('Email Trade Mode failed:', e);
+    showStatus('Email failed: ' + e.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // Map a numeric weight back to an {outlook, modifier} label pair.
 // Standard convention: BULLISH=3, BEARISH=-3, NEUTRAL=0; "Bench" modifier
 // divides the magnitude by 3 → fractional. We infer from magnitude.
@@ -7400,6 +7424,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   $('staleRederiveBtn').addEventListener('click', rederiveStale);
   $('exportCsvBtn').addEventListener('click', exportCsv);
+  $('emailTradeModeBtn').addEventListener('click', emailTradeMode);
   $('copySymbolsBtn').addEventListener('click', copySymbols);
   initSourcePopover();
   // Row-check (bulk-select) — the per-row inline Act/Skip/Snooze buttons
