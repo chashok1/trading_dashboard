@@ -5445,11 +5445,18 @@ INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
 
     ('dash_threshold_high_pct',    '10',   'drv_dash zone_signal=N when pct_brr >= this'),
 
-    ('outcomes_compute_hour',      '22',   'Local hour (0-23) the scheduler runs compute_outcomes'),
+    ('outcomes_compute_hour',      '23',   'Local hour (0-23) the scheduler runs compute_outcomes'),
 
     ('staleness_lookback_days',    '30',   'Days back the auto-heal scans drv_actionable for staleness')
 
 ON CONFLICT (setting_name) DO NOTHING;
+
+-- 2026-08-25, user-directed: "change the scheduler time to 11 PM" -- the
+-- INSERT above only seeds '22' as the fresh-install default (ON CONFLICT
+-- DO NOTHING never touches an existing row); UPDATE so an already-
+-- initialized DB actually picks up the new hour. Idempotent -- no-op once
+-- already '23'.
+UPDATE ref_settings SET setting_value = '23' WHERE setting_name = 'outcomes_compute_hour';
 
 
 

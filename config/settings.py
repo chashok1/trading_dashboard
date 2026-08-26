@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     notify_email_to: str = ""
+    # Own pydantic field (not etl/hedgeye/config.py's os.environ-based
+    # secret()) so it's read straight from .env regardless of whether that
+    # module's lazy load_dotenv() has run yet in this process -- see
+    # model_post_init below ("use the same key for password").
+    hedgeye_imap_password: str = ""
 
     # Macro feed (FRED) — free API key from
     # https://fred.stlouisfed.org/docs/api/api_key.html
@@ -74,6 +79,15 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    def model_post_init(self, __context) -> None:
+        # 2026-08-25, user-directed: "use the same key for password" --
+        # SMTP_PASSWORD reuses HEDGEYE_IMAP_PASSWORD's value if SMTP_PASSWORD
+        # itself is unset, so the Gmail App Password only has to be stored
+        # once in .env. Gmail App Passwords aren't scoped per protocol --
+        # the same one authenticates IMAP and SMTP for that account.
+        if not self.smtp_password:
+            self.smtp_password = self.hedgeye_imap_password
 
     @property
     def sqlalchemy_url(self) -> str:

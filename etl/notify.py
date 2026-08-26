@@ -12,6 +12,11 @@ in `.env` is set:
   SMTP_PASSWORD=...
   NOTIFY_EMAIL_TO=alerts@example.com
 
+SMTP_PASSWORD may be left unset if HEDGEYE_IMAP_PASSWORD is already
+configured for the same account (2026-08-25, user-directed: "use the same
+key for password") — config/settings.py's model_post_init falls back to
+it automatically, since a Gmail App Password isn't scoped to one protocol.
+
 Public API: `notify(title, message, level='info')`.  All exceptions are
 swallowed and logged — a notification failure must NEVER crash the scheduler.
 """
