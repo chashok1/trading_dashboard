@@ -522,6 +522,19 @@ def run_nightly_outcomes() -> None:
     except Exception:
         log.exception("nightly: vlm intraday curve refresh crashed")
 
+    # 2026-08-25, user-directed: "send a trade mode export to that email
+    # every night after processing all exports" -- last step, since by the
+    # scheduled nightly hour (default 22:00 ET, see _get_nightly_hour)
+    # today's TOS/periodic/Hedgeye loads have all landed. No-ops (logs and
+    # returns) if NOTIFY_EMAIL isn't on in .env -- see etl/export_trade_mode.py.
+    log.info("nightly: trade mode export starting")
+    try:
+        from etl.export_trade_mode import run as run_trade_mode_export
+        result = run_trade_mode_export()
+        log.info("nightly: trade mode export done: %s", "sent" if result else "skipped")
+    except Exception:
+        log.exception("nightly: trade mode export crashed")
+
     # 2026-08-18/19: TOS watchlist file generation moved OUT of this nightly
     # job -- was clock-hour-gated here (mode="daily", Tier 1 only), but user:
     # "i load TOS EOD exports only once a day, why can't we run this after

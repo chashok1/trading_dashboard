@@ -68,6 +68,37 @@ def _email(title: str, message: str, level: Level) -> None:
         log.warning("email notification failed: %s", e)
 
 
+def send_email(subject: str, plain_body: str, html_body: str | None = None) -> bool:
+    """Send a full-length email -- unlike notify(), subject/body are not
+    truncated (notify() caps title/message for toast+short-alert use).
+    2026-08-25: added for scheduled jobs that need a real report (e.g.
+    etl/export_trade_mode.py's nightly digest), not just a status ping.
+    Gated the same way as notify()'s email channel -- caller should check
+    settings.notify_email first if it wants to skip work when disabled;
+    this function only checks the SMTP/recipient settings themselves.
+    Returns True on send, False if skipped (settings empty) or failed."""
+    if not (settings.smtp_host and settings.notify_email_to):
+        log.debug("send_email skipped (SMTP_HOST or NOTIFY_EMAIL_TO empty)")
+        return False
+    try:
+        msg = EmailMessage()
+        msg["From"] = settings.smtp_user or settings.notify_email_to
+        msg["To"] = settings.notify_email_to
+        msg["Subject"] = subject
+        msg.set_content(plain_body)
+        if html_body:
+            msg.add_alternative(html_body, subtype="html")
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as s:
+            s.starttls()
+            if settings.smtp_user and settings.smtp_password:
+                s.login(settings.smtp_user, settings.smtp_password)
+            s.send_message(msg)
+        return True
+    except Exception as e:
+        log.warning("send_email failed (%s): %s", subject, e)
+        return False
+
+
 def notify(title: str, message: str, level: Level = "info") -> None:
     """Send a notification through every enabled channel.
 
@@ -82,4 +113,4 @@ def notify(title: str, message: str, level: Level = "info") -> None:
         _email(title, message, level)
 
 
-__all__ = ["notify"]
+__all__ = ["notify", "send_email"]
