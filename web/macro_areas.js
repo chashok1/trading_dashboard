@@ -59,25 +59,6 @@
     return (v * 100).toFixed(digits === undefined ? 0 : digits) + '%';
   }
 
-  /* ── stance arrowhead SVGs (deep-arch "C" style from spec) ─────────── */
-  var SVG_UP =
-    '<svg class="msr-arrow msr-arrow-long" viewBox="0 0 16 16" aria-hidden="true">' +
-      '<path d="M2,12.5 L8,3 L14,12.5 Q8,7 2,12.5 Z" fill="currentColor"/>' +
-    '</svg>';
-
-  var SVG_DOWN =
-    '<svg class="msr-arrow msr-arrow-short" viewBox="0 0 16 16" aria-hidden="true">' +
-      '<path d="M2,3.5 L8,13 L14,3.5 Q8,9 2,3.5 Z" fill="currentColor"/>' +
-    '</svg>';
-
-  var SVG_NEUT = '<span class="msr-arrow msr-arrow-neut" aria-hidden="true">&#8212;</span>';
-
-  function stanceArrow(stance) {
-    if (stance === 'Long')  return SVG_UP;
-    if (stance === 'Short') return SVG_DOWN;
-    return SVG_NEUT;
-  }
-
   /* ── Td / Tn diagonal arrows ──────────────────────────────────────── */
   /* val: >0 up (↗), <0 down (↘), 0/null flat (–) */
   function durArrow(val, label) {
@@ -182,35 +163,6 @@
     // Fixed-width slot even when empty, so the symbol text starts at the
     // same x-position on every row regardless of whether it has a score.
     return '<span style="display:inline-block; width:8px; font-size:7px; color:' + color + '; vertical-align:middle;">' + glyph + '</span>';
-  }
-
-  // 2026-08-27 -- replaces the old per-sector ETF-proxy sub-row
-  // (etfProxyRowHtml -- price/Trade/Trend/RR-position for one ETF like
-  // XLF): that same ETF info now has its own full rail panel (see
-  // #macroRailSectorEtfs / area_key 'sector_etfs', same ref_macro_area
-  // mechanism as Major Markets/Country ETFs), so this sub-row shows what
-  // the ETF sub-row DIDN'T: the underlying breadth numbers behind the
-  // stance arrows (n stocks, raw % above Trade/Trend, already computed
-  // server-side but previously unused), plus your own $ exposure to that
-  // sector (drv_category_perf via /api/cockpit/factor-scorecard?axis=
-  // sector, the SAME table the Sector factor-scorecard grid and Portfolio
-  // Mix's Sector pie use) -- ties the macro breadth read to your actual
-  // risk, which the ETF sub-row never did. User: "if we remove sectors
-  // ETFs what other information ... would be useful?" -> "yes, implement
-  // that."
-  function sectorStatsRowHtml(s, exposureMap) {
-    var bits = [];
-    if (s.n != null) bits.push(s.n + ' stk');
-    if (s.pct_above_trade != null) bits.push(Math.round(s.pct_above_trade * 100) + '% Td');
-    if (s.pct_above_trend != null) bits.push(Math.round(s.pct_above_trend * 100) + '% Tn');
-    var exp = exposureMap && exposureMap[s.sector];
-    if (exp && exp.market_value) {
-      bits.push((typeof fmtUsd === 'function' ? fmtUsd(exp.market_value, { compact: true }) : '$' + Math.round(exp.market_value))
-        + (exp.weight_pct != null ? ' (' + exp.weight_pct.toFixed(1) + '%)' : ''));
-    }
-    if (!bits.length) return '';
-    return '<div class="msr-row msr-sec-stats" style="padding-left:16px; font-size:10px; color:var(--text-3);">'
-      + bits.join(' &middot; ') + '</div>';
   }
 
   /* ── range bar (compact rail version) ──────────────────────────────── */
@@ -321,36 +273,122 @@
   }
 
   /* ── sectors panel (own side-rail section) ────────────────────────── */
+  // 2026-08-27 -- trimmed from a full per-sector list (stance arrow + Td/Tn
+  // + range bar + breadth-stats sub-row, one row per GICS sector) down to
+  // just the Leaders/Laggards/Rotate-in summary, each name tagged with your
+  // own $ exposure. The dropped per-sector rows visually duplicated the new
+  // Sectors ETF rail panel (col 4) -- same arrow/bar widgets, unrelated math
+  // underneath (breadth % vs. one ETF's price-vs-line/RR-position) -- which
+  // read as "the same info again" rather than a distinct signal, per
+  // analysis: "if breadth-vs-price divergence isn't a signal you
+  // specifically watch for, this panel is largely redundant with the new
+  // Sectors ETF panel ... keep just Leaders/Laggards/Rotate-in + your $
+  // exposure." User: "do right-rail recommendation."
+  // 2026-08-27 follow-up -- a numbers table under "Rotate in" for each
+  // flagged sector: the raw breadth % (behind the rotate_in threshold rule
+  // itself -- pct_above_trend>=50% AND pct_above_trade<50%) plus that
+  // sector's own SPDR ETF read (outlook/Td/Tn/RR%), same fields as the
+  // Signal|Read table shown in chat. User: "I don't need thesis, i need
+  // numbers. The table you have shown, can we display that below 'Rotate
+  // in'".
+  function rotateDetailHtml(sectorObj, showName) {
+    if (!sectorObj) return '';
+    var etf = sectorObj.etf || {};
+    var rows = [];
+    if (sectorObj.pct_above_trade != null || sectorObj.pct_above_trend != null) {
+      // User: "rename Sector Td/Tn to Sec Bredth [sic] in the details,
+      // number of stocks" -- label now includes n (the breadth universe
+      // size behind the two %s) instead of a bare "Td / Tn" tag.
+      rows.push(['Sec Breadth' + (sectorObj.n != null ? ' (' + sectorObj.n + ')' : ''),
+        (sectorObj.pct_above_trade != null ? Math.round(sectorObj.pct_above_trade * 100) + '% Td' : '—')
+        + ' / ' + (sectorObj.pct_above_trend != null ? Math.round(sectorObj.pct_above_trend * 100) + '% Tn' : '—')]);
+    }
+    if (etf.symbol) {
+      if (etf.outlook) rows.push([esc(etf.symbol) + ' RR Outlook', esc(etf.outlook)]);
+      // Td/Tn arrows + RR bar combined into one row, same
+      // [durArrow(Td)][durArrow(Tn)][railRangeBar] cluster every other
+      // rail-panel row uses (railAreaRow's .msr-data-cluster) -- was two
+      // separate rows. Same hot/cold thresholds (0.8/0.2) too. User:
+      // "Combine Td/TN and RR% like others".
+      if (etf.td || etf.tn || etf.rr_pos != null) {
+        // 2026-08-27 -- was durArrow() (the shared rail-panel helper),
+        // which wraps each arrow in .msr-dur: fixed 22px width + right-
+        // justified, so a SERIES of rows' arrows all line up in a column.
+        // That's correct for a repeating column of many rows (every other
+        // use of durArrow in this file) but wrong for this ONE-OFF row --
+        // right-justifying "Td" inside its own empty 22px box reads as a
+        // phantom leading space before it. Local arrowHtml() reuses just
+        // the color classes (.msr-dur-up/-down/-flat), no fixed width/
+        // justify. &nbsp; (not a bare space) separates the pieces -- a
+        // literal " " between flex-item siblings can collapse to nothing.
+        // User: "Align Td with top rows" -> "there is one space before Td
+        // and no space between arrow[Tn] and [bar]".
+        var arrowHtml = function (dir, label) {
+          var cls = dir === 'up' ? 'msr-dur-up' : dir === 'down' ? 'msr-dur-down' : 'msr-dur-flat';
+          var glyph = dir === 'up' ? '&#8599;' : dir === 'down' ? '&#8600;' : '&ndash;';
+          return '<span class="' + cls + '">' + esc(label) + glyph + '</span>';
+        };
+        rows.push([esc(etf.symbol),
+          '<span class="msr-data-cluster" style="margin-left:0;">'
+          + arrowHtml(etf.td, 'Td') + '&nbsp;'
+          + arrowHtml(etf.tn, 'Tn') + '&nbsp;'
+          + railRangeBar(etf.rr_pos, 0.8, 0.2, true)
+          + '</span>']);
+      }
+    }
+    if (!rows.length) return '';
+    var trs = rows.map(function (r) {
+      return '<tr><td style="color:var(--text-3);padding:1px 6px 1px 0;">' + r[0] + '</td>'
+        + '<td style="font-weight:600;">' + r[1] + '</td></tr>';
+    }).join('');
+    // Per-sector name header only when there's more than one rotate-in
+    // sector to tell apart -- with just one, the "Rotate in:" chip line
+    // right above already names it (redundant, per "you don't need header
+    // Consumer Discretionary as you already have it above Rotate in");
+    // with several, each table needs its own label or they run together
+    // indistinguishably. User: "you need to display details under the
+    // sector name if you have multiple."
+    var nameHtml = showName
+      ? '<div style="font-size:9px;font-weight:600;color:var(--text-3);margin:4px 0 1px 14px;">' + esc(sectorObj.sector) + '</div>'
+      : '';
+    return nameHtml + '<table style="font-size:10px;margin:2px 0 2px 14px;border-collapse:collapse;">' + trs + '</table>';
+  }
+
   function renderSectorsPanel(sectors, exposureMap) {
     var container = document.getElementById('macroRailSectors');
     if (!container) return;
     if (!sectors) { container.innerHTML = '<div class="msr-loading">No sector data.</div>'; return; }
 
-    var laggards  = (sectors.laggards  || []).map(esc).join(' · ');
-    var rotateIn  = (sectors.rotate_in || []).map(esc).join(' · ');
-    var subrows = '';
-    if (laggards) subrows += '<div class="msr-sec-subrow"><span class="msr-sec-down">&#9660;</span> <span class="msr-sec-lbl">Laggards:</span> ' + laggards + '</div>';
-    if (rotateIn) subrows += '<div class="msr-sec-subrow"><span class="msr-sec-rotate">&#8635;</span> <span class="msr-sec-lbl">Rotate in:</span> ' + rotateIn + '</div>';
-
-    // Full per-sector list — always visible, no collapse toggle
     var all = sectors.all || [];
-    var allRows = all.map(function (s) {
-      var score     = s.score != null ? s.score : 0;
-      var stance    = score >= 0.5 ? 'Long' : 'Short';
-      var tradeDir  = s.pct_above_trade  != null ? s.pct_above_trade  - 0.5 : null;
-      var trendDir  = s.pct_above_trend  != null ? s.pct_above_trend  - 0.5 : null;
-      return '<div class="msr-row">' +
-        stanceArrow(stance) +
-        '<span class="msr-name">' + esc(s.sector) + '</span>' +
-        durArrow(tradeDir,  'Td') +
-        durArrow(trendDir,  'Tn') +
-        railRangeBar(score, 0.7, 0.3, false) +
-      '</div>' + sectorStatsRowHtml(s, exposureMap);
-    }).join('');
+    function findSector(name) {
+      for (var i = 0; i < all.length; i++) { if (all[i].sector === name) return all[i]; }
+      return null;
+    }
+    function chip(name) {
+      var exp = exposureMap && exposureMap[name];
+      var expTxt = (exp && exp.market_value)
+        ? ' (' + (typeof fmtUsd === 'function' ? fmtUsd(exp.market_value, { compact: true }) : '$' + Math.round(exp.market_value)) + ')'
+        : '';
+      return esc(name) + expTxt;
+    }
+    function chipList(names) { return (names || []).map(chip).join(' &middot; '); }
 
-    if (!subrows && !allRows) subrows = '<span class="mra-muted">—</span>';
+    var leaders  = chipList(sectors.leaders);
+    var laggards = chipList(sectors.laggards);
+    var rotateIn = chipList(sectors.rotate_in);
+    var subrows = '';
+    if (leaders)  subrows += '<div class="msr-sec-subrow"><span class="msr-sec-up">&#9650;</span> <span class="msr-sec-lbl">Leaders:</span> ' + leaders + '</div>';
+    if (laggards) subrows += '<div class="msr-sec-subrow"><span class="msr-sec-down">&#9660;</span> <span class="msr-sec-lbl">Laggards:</span> ' + laggards + '</div>';
+    if (rotateIn) {
+      subrows += '<div class="msr-sec-subrow"><span class="msr-sec-rotate">&#8635;</span> <span class="msr-sec-lbl">Rotate in:</span> ' + rotateIn + '</div>';
+      var rotateNames = sectors.rotate_in || [];
+      var showRotateNames = rotateNames.length > 1;
+      subrows += rotateNames.map(function (name) { return rotateDetailHtml(findSector(name), showRotateNames); }).join('');
+    }
 
-    container.innerHTML = '<div class="msr-sec-block">' + subrows + allRows + '</div>';
+    if (!subrows) subrows = '<span class="mra-muted">—</span>';
+
+    container.innerHTML = '<div class="msr-sec-block">' + subrows + '</div>';
   }
 
   /* ── render into side rail ──────────────────────────────────────────── */
@@ -614,15 +652,15 @@
     );
   }
 
-  // 2026-08-27 -- your own $ exposure per sector, for the Sectors panel's
-  // stats sub-row (sectorStatsRowHtml) -- same drv_category_perf table
-  // (via /api/cockpit/factor-scorecard?axis=sector) the Sector factor-
-  // scorecard grid and Portfolio Mix's Sector pie both read, so this
-  // agrees with those rather than recomputing its own $ totals from raw
-  // held rows. Whole-portfolio (no accounts= filter) -- this rail panel
-  // has no Accounts-filter UI of its own to scope it further. Best-effort:
-  // a failure here still lets the sector breadth rows render, just without
-  // the $ exposure bit.
+  // 2026-08-27 -- your own $ exposure per sector, tagged onto each name in
+  // renderSectorsPanel's Leaders/Laggards/Rotate-in chip lists -- same
+  // drv_category_perf table (via /api/cockpit/factor-scorecard?axis=
+  // sector) the Sector factor-scorecard grid and Portfolio Mix's Sector
+  // pie both read, so this agrees with those rather than recomputing its
+  // own $ totals from raw held rows. Whole-portfolio (no accounts= filter)
+  // -- this rail panel has no Accounts-filter UI of its own to scope it
+  // further. Best-effort: a failure here still lets the chip lists render,
+  // just without the $ exposure tag.
   async function _fetchSectorExposure(dateParam) {
     try {
       var qs = dateParam ? dateParam + '&axis=sector' : '?axis=sector';

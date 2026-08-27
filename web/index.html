@@ -758,8 +758,14 @@
        #macroRailTop9 above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its
        own init() gate widened to also accept this page (see that file's
-       comment) since Dashboard has no `main .card` element. -->
-  <script src="/static/macro_areas.js" defer></script>
+       comment) since Dashboard has no `main .card` element.
+       2026-08-27 -- cache-busting ?v= added (was the one script on this
+       page without one, unlike app.js/portfolio_mix.js/etc. above) after a
+       repeated "align Td" request appeared to have no effect even though
+       the fix was genuinely in the file -- the browser was very likely
+       still serving a stale cached copy across several same-session edits
+       to this file. Bump the date suffix on any future edit here too. -->
+  <script src="/static/macro_areas.js?v=20260827b" defer></script>
   <!-- 2026-08-14 -- renders Dollar Correlation into #macroRailCorr/
        #usdCorrSideHdr above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its
