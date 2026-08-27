@@ -1899,6 +1899,22 @@ function _isTradeModeQualifyingBuy(r) {
   if (state.filters.trade_mode_strict) {
     if (r.is_macro_instrument === true || r.is_macro_instrument === 'true') return false;
     if (_buyTradabilityScore(r) < _TRADABILITY_BADGE_MIN) return false;
+    // 2026-08-27, 3rd Strict-only tightening pass -- closes the
+    // RTA/SSSCHG/TOP5 tech-gate EXEMPTION above for Strict mode
+    // specifically (non-strict keeps it). Those sources bypass the
+    // Technical check entirely on the theory that a same-day live trigger
+    // doesn't need TA to also confirm, but Strict's whole point is
+    // "perfect only" -- require rr_action to actually be entry-ripe here
+    // regardless of source. User: "In Trade + Strict mode, don't include
+    // the ones that technicals are not aligned for today (AMZN, TJX)."
+    if (_ENTRY_RIPE_TECH.indexOf(tech) === -1) return false;
+    // 2026-08-27, 4th Strict-only tightening pass -- PVV's own AVOID
+    // decision (r.pvv_decision, condition "outlook=Bearish, today=NEUTRAL/
+    // NA/DRIFT" -- see _PVV_DECISION_INFO) is a second, independent
+    // sell-tilted signal Strict mode wasn't checking; exclude it same as
+    // the other 3 tightening rules above. User: "Also remove PVV -> AVOID
+    // from strict mode."
+    if (r.pvv_decision === 'AVOID') return false;
   }
   return true;
 }
@@ -4042,7 +4058,24 @@ function _computePriority(row) {
   // own "well under a few hundred" range, so tradability always wins short
   // of a tie).
   if (fc.side === 'buy') {
-    return _TIER_BUY + _buyTradabilityScore(row) * 10 + _dollarWeightedScore(row) * 0.01;
+    // 2026-08-27 -- Trade Mode only: PVV-confirmed buys sub-ranked above
+    // everything else within Tier 2 -- BUY_DIP highest, other confirmed
+    // bullish PVV reads (_PVV_BUY_SIDE) next, NO_ACTION/unconfirmed last --
+    // mirrors etl/export_trade_mode.py's own Buys sort exactly (see that
+    // module's docstring on keeping the two in sync). Off (the general
+    // grid, Trade Mode not active) stays pixel-identical to before: pure
+    // tradability-score ranking, untouched. Bonuses (2000/1000) dwarf
+    // tradability's own max contribution (~210, score range ~[-3,+21]*10)
+    // so a PVV tier always wins over score, same guarantee the Python sort
+    // makes via tuple ordering. User: "Bring BUY_DIP stocks to the top in
+    // Buys." -> "NO ACTION ones are coming in the middle." -> "EX: XLRE &
+    // FWONK should be below ETSY."
+    let pvvBonus = 0;
+    if (state.filters.trade_mode) {
+      const pvv = (row.pvv_decision || '').toUpperCase();
+      pvvBonus = pvv === 'BUY_DIP' ? 2000 : (_PVV_BUY_SIDE.indexOf(pvv) !== -1 ? 1000 : 0);
+    }
+    return _TIER_BUY + pvvBonus + _buyTradabilityScore(row) * 10 + _dollarWeightedScore(row) * 0.01;
   }
 
   // TASK_122 Tier 3: HOLD / mixed / no-action — dollar-weighted edge desc.

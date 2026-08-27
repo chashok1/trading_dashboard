@@ -44,7 +44,7 @@ log = logging.getLogger(__name__)
 
 # Mirrors web/actionable.js's _ENTRY_RIPE_TECH / _TECH_GATE_EXEMPT_SRC /
 # _MACRO_BUY / _MACRO_SELL / _SRC_BUY / _SRC_SELL / _TECH_SELL /
-# _TRADABILITY_BADGE_MIN exactly -- see module docstring.
+# _TRADABILITY_BADGE_MIN / _PVV_BUY_SIDE exactly -- see module docstring.
 _ENTRY_RIPE_TECH = ("BS", "BM", "BMN")
 _TECH_GATE_EXEMPT_SRC = ("RTA", "SSSCHG", "TOP5")
 _MACRO_BUY = {"BM", "BS"}
@@ -53,6 +53,7 @@ _SRC_BUY = {"ADD", "INCREASE"}
 _SRC_SELL = {"REDUCE", "REMOVE"}
 _TECH_SELL = {"SA", "STM", "SS", "SO"}
 _TRADABILITY_BADGE_MIN = 12
+_PVV_BUY_SIDE = ("BUY_LRR", "BUY_DIP", "BUY_WATCH")
 
 
 def _api_base() -> str:
@@ -211,6 +212,20 @@ def _is_qualifying_buy(row, strict, rsi_overbought, rsi_oversold, rvol_threshold
                                         factor_scorecard, source_scorecard)
         if score < _TRADABILITY_BADGE_MIN:
             return False
+        # 2026-08-27, 3rd Strict-only tightening pass -- closes the
+        # RTA/SSSCHG/TOP5 tech-gate EXEMPTION above for Strict mode
+        # specifically (non-strict keeps it), mirroring web/actionable.js's
+        # own _isTradeModeQualifyingBuy change (see module docstring).
+        # User: "In Trade + Strict mode, don't include the ones that
+        # technicals are not aligned for today (AMZN, TJX)."
+        if tech not in _ENTRY_RIPE_TECH:
+            return False
+        # 2026-08-27, 4th Strict-only tightening pass -- mirrors
+        # web/actionable.js's own _isTradeModeQualifyingBuy change (see
+        # module docstring). User: "Also remove PVV -> AVOID from strict
+        # mode."
+        if str(row.get("pvv_decision") or "").upper() == "AVOID":
+            return False
     return True
 
 
@@ -248,10 +263,10 @@ def _get_ac_for_symbol(tos_symbol: str, as_of_date) -> "float | None":
 def build_trade_mode_export(strict: bool = True) -> dict:
     """Fetch the same data the browser fetches and apply the same Trade
     Mode filters. Returns {buys, sells, breaches, as_of_date} -- each a
-    list of row dicts (buys sorted by Tradability Score, descending, same
-    ranking the on-screen Strict view uses). Raises on a network/API
-    failure -- caller (run()) is the one that swallows exceptions, so a
-    failure here surfaces clearly to anyone calling this directly."""
+    list of row dicts (buys sorted BUY_DIP-first, then by Tradability Score
+    descending within each group). Raises on a network/API failure --
+    caller (run()) is the one that swallows exceptions, so a failure here
+    surfaces clearly to anyone calling this directly."""
     rows = _get_json("/api/actionable?show_suppressed=true")
     settings_ = _get_json("/api/actionable/settings")
     source_scorecard = _get_json("/api/actionable/source-scorecard")
@@ -276,7 +291,23 @@ def build_trade_mode_export(strict: bool = True) -> dict:
         elif _is_stop_breach(row):
             breaches.append(row)
 
-    buys.sort(key=lambda r: r.get("_tradability_score", 0), reverse=True)
+    # 2026-08-27 -- BUY_DIP (PVV's own dip-buy signal) sorted to the top,
+    # then any other confirmed-bullish PVV decision (_PVV_BUY_SIDE), then
+    # everyone else (NO_ACTION, no PVV read at all, or -- non-strict mode
+    # only, Strict already excludes AVOID -- a leftover sell-tilted PVV
+    # read on a row that still qualified as a buy via final_code). First
+    # cut was a 2-tier (BUY_DIP vs not) key, sorted by score alone within
+    # the "not" bucket -- that let a high-score NO_ACTION row rank ABOVE a
+    # lower-score BUY_LRR row, i.e. an unconfirmed row outranking a
+    # PVV-confirmed one. This 3-tier key fixes that: NO_ACTION now always
+    # sorts below every PVV-confirmed buy, regardless of score. Ties within
+    # each tier still broken by Tradability Score descending. User: "Bring
+    # BUY_DIP stocks to the top in Buys." -> "NO ACTION ones are coming in
+    # the middle."
+    def _buy_sort_key(r):
+        pvv = str(r.get("pvv_decision") or "").upper()
+        return (pvv == "BUY_DIP", pvv in _PVV_BUY_SIDE, r.get("_tradability_score", 0))
+    buys.sort(key=_buy_sort_key, reverse=True)
     as_of_date = rows[0].get("as_of_date") if rows else None
     return {"buys": buys, "sells": sells, "breaches": breaches, "as_of_date": as_of_date}
 
