@@ -97,15 +97,14 @@
              their own vertical column in the space that opened up beside
              them, instead of spanning full-width below both. -->
         <div class="dial-changed-col">
-          <!-- Regime lives inside the Risk Dial card now, toward the bottom
-               -- #regimeStrip is a sibling of #riskDialBody (NOT nested
-               inside it), since loadRiskDial() replaces #riskDialBody's
-               innerHTML wholesale on every refresh and would wipe out
-               anything nested there. loadRegimeBand() still targets
-               #regimeStrip by id regardless of container, unchanged. -->
+          <!-- 2026-08-27 -- #regimeStrip (which used to live here, a
+               sibling of #riskDialBody so loadRiskDial()'s wholesale
+               replace of #riskDialBody wouldn't wipe it out) was split
+               into 4 independent panels below Mkt Situation -- see
+               #regimeOpexBand's own comment. Risk Dial is now just its
+               own body, no sibling needed here anymore. -->
           <section class="cockpit-band" id="riskDialBand">
             <div id="riskDialBody">Loading…</div>
-            <div id="regimeStrip">Loading…</div>
           </section>
 
           <!-- 2026-08-10 -- Hedgeye Mkt Situation (MSR), moved here from the
@@ -129,6 +128,37 @@
           <section class="cockpit-band" id="heMktSituationPanel" style="display:none;">
             <div id="heMktSituationBody">Loading…</div>
           </section>
+          <!-- 2026-08-27 -- Opex/CPI-Events/Earnings/Regime split out of
+               the single #regimeStrip container into 4 independent panels
+               -- user: "Separate Opex, CPI, earnings, Regime into their own
+               panels." Each still populated by web/app.js::loadRegimeBand()
+               (rewritten to target these 4 containers instead of one
+               combined innerHTML=), same data/logic, just no longer one
+               atomic block -- this also satisfies the earlier "Mkt Situation
+               above Opex" ask, with no risk to #riskDialBand's own height
+               budget this time (Opex isn't inside it). Panel spacing in this
+               whole column tightened to ~1px -- user: "Don't leave too much
+               space between the panels. Leave thin hair space" -> "same
+               spacing between all panels on the left side use even tight
+               ~1px" -- see .dial-changed-col's own gap. -->
+          <section class="cockpit-band" id="regimeOpexBand">
+            <div id="regimeOpexBody">Loading…</div>
+          </section>
+
+          <!-- 2026-08-27 -- CPI/Events panel removed -- user: "Remove econ
+               panel as we have on the right side" (the Indicator panel, now
+               driven by the same shared calendar-types selection + <=5d
+               highlight -- see #indicatorBand's own comment). The picker
+               itself (#calTypesPop/_toggleCalTypesPop) stays -- Indicator's
+               own gear icon still opens it. -->
+          <section class="cockpit-band" id="regimeEarningsBand">
+            <div id="regimeEarningsBody">Loading…</div>
+          </section>
+
+          <section class="cockpit-band" id="regimeLineBand">
+            <div id="regimeLineBody">Loading…</div>
+          </section>
+
 
           <!-- 2026-08-10 -- Notes panel: freeform sticky notes with an
                optional effective/expiration date window, just below Mkt
@@ -214,15 +244,18 @@
 
           </div>
 
+          <!-- 2026-08-27 -- Commodities <-> Sectors ETF panel swapped
+               (Commodities moved to col 5, Sectors moved here) -- user:
+               "switch Commodities (Col2) and Sectors postitions (col5)". -->
           <div class="macro-rail-col">
           <section class="cockpit-band rail-band" id="macroTop9Band">
             <div class="msr-section-hdr">Major Markets <span class="msr-breadth" id="macroBreadthTop9"></span></div>
             <div id="macroRailTop9" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
-          <section class="cockpit-band rail-band" id="macroCommoditiesBand">
-            <div class="msr-section-hdr">Commodities <span class="msr-breadth" id="macroBreadthCommodities"></span></div>
-            <div id="macroRailCommodities" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          <section class="cockpit-band rail-band" id="macroSectorEtfsBand">
+            <div class="msr-section-hdr">Sectors <span class="msr-breadth" id="macroBreadthSectorEtfs"></span></div>
+            <div id="macroRailSectorEtfs" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
           </div>
 
@@ -246,69 +279,27 @@
           </div>
 
           <!-- 2026-08-24 -- "Switch Col 4 and 5" -- Tech & ETFs now col 4,
-               Symbol/Indicator now col 5. -->
+               Symbol/Indicator now col 5.
+               2026-08-27 -- Indicator/Symbol moved OUT to the right rail
+               (see .right-rail's own comment); the Sectors ETF panel took
+               col 5 instead, moved down from col 4 -- user: "move the
+               INDICATOR panel to the side panel above INFL. and Symbol to
+               the bottom side panel. move Sectors panel to col 5" (the ETF
+               panel, confirmed over the breadth-based right-rail one). -->
           <div class="macro-rail-col">
           <section class="cockpit-band rail-band" id="macroRemainingBand">
             <div class="msr-section-hdr">Tech &amp; ETFs <span class="msr-breadth" id="macroBreadthRemaining"></span></div>
             <div id="macroRailRemaining" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
-
-          <!-- 2026-08-27 -- new Sectors ETF panel (the 11 GICS sector SPDR
-               ETFs -- XLF/XLK/etc.), col 4 below Tech & ETFs -- same
-               ref_macro_area/railAreaRow mechanism as every other panel
-               here, area_key 'sector_etfs' (distinct from the breadth-based
-               Sectors roll-up in the right rail, #macroRailSectors, which
-               reads drv_technicals per-stock, not this table). User: "add a
-               SECTORS panel in the middle with corresponding ETFs (starts
-               with X) similar to other panels." -->
-          <section class="cockpit-band rail-band" id="macroSectorEtfsBand">
-            <div class="msr-section-hdr">Sectors <span class="msr-breadth" id="macroBreadthSectorEtfs"></span></div>
-            <div id="macroRailSectorEtfs" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-          </section>
           </div>
 
           <div class="macro-rail-col">
-          <!-- 2026-08-27 -- Dollar Correlation moved back to the right rail
-               -- user: "move Dollar correlation back to side panel". See
-               .right-rail's own comment for where it landed. -->
-          <section class="cockpit-band rail-band" id="indicatorBand">
-            <div class="side-scroll">
-              <table class="mini-grid">
-                <thead>
-                  <tr>
-                    <th>Indicator</th>
-                    <th class="num">Days</th>
-                    <th>Date</th>
-                    <th class="num">Actual</th>
-                  </tr>
-                </thead>
-                <tbody id="econBody"></tbody>
-              </table>
-              <div id="econEmpty" class="empty-note" hidden>No active indicators.</div>
-            </div>
-          </section>
-
-          <!-- 2026-08-27 -- Symbol moved here, below Indicator -- swapped
-               back from the right rail. User: "move Symbol from side panel
-               to below INDICATOR" (col5, where Indicator actually lives --
-               confirmed with the user over the "col3" label). Same
-               container ids/markup as its prior spots; web/app.js
-               populates #nearEarningsBody by id regardless of parent, so no
-               script change needed. -->
-          <section class="cockpit-band rail-band" id="nearEarningsBand">
-            <div class="side-scroll">
-              <table class="mini-grid">
-                <thead>
-                  <tr>
-                    <th>Symbol</th>
-                    <th class="num">Days</th>
-                    <th>Date</th>
-                  </tr>
-                </thead>
-                <tbody id="nearEarningsBody"></tbody>
-              </table>
-              <div id="nearEarningsEmpty" class="empty-note" hidden>No earnings in the next 30 days.</div>
-            </div>
+          <!-- 2026-08-27 -- Commodities moved here, swapped with the
+               Sectors ETF panel (now col 2) -- user: "switch Commodities
+               (Col2) and Sectors postitions (col5)". -->
+          <section class="cockpit-band rail-band" id="macroCommoditiesBand">
+            <div class="msr-section-hdr">Commodities <span class="msr-breadth" id="macroBreadthCommodities"></span></div>
+            <div id="macroRailCommodities" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
           </div>
           </div>
@@ -441,6 +432,8 @@
                     <option value="1y">1 year</option>
                     <option value="5y">5 years</option>
                   </select>
+                  <button id="tsCumPnlExpandBtn" type="button" title="Expand chart"
+                          style="border:none;background:transparent;cursor:pointer;font-size:13px;color:var(--text-2,#666);padding:0 4px;vertical-align:middle;">⤢</button>
                   <span class="ts-total-group">
                   <span class="ts-total" id="tsCumPnlAcctTotal" title="Total current account value (market value + cash)"></span>
                   <span class="ts-total" id="tsCumPnlToday" title="Today's Gain"></span>
@@ -662,8 +655,18 @@
              web/macro_usd_corr.js::renderRail() targets #macroRailCorr/
              #usdCorrSideHdr by id regardless of parent, so no script change
              needed. -->
+        <!-- 2026-08-27 -- "Dollar Correlation" header removed (the
+             #usdCorrSideHdr div, Dashboard-only -- Actionable's own copy of
+             this element lives separately in actionable.html and keeps its
+             label) -- replaced with a "$Corln" label in the grid's own
+             top-left corner cell instead, see web/macro_usd_corr.js::
+             railHeatmapHtml()'s .ucr-corner-label. User: "Remove the header
+             Dollar Correlation and add a text in top left column of the
+             grid as $Corln small font so it fits". macro_usd_corr.js's
+             renderRail()/renderError() still guard with `if (sideHdr)`
+             before touching #usdCorrSideHdr, so removing this div is a
+             safe no-op there, not a script change. -->
         <section class="cockpit-band rail-band" id="macroCorrBand">
-          <div class="msr-section-hdr" id="usdCorrSideHdr">Dollar Correlation</div>
           <div id="macroRailCorr" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
         </section>
 
@@ -696,15 +699,73 @@
              container id, same markup; web/macro_areas.js::
              renderSectorsPanel() targets it by id regardless of parent, so
              no script change needed. -->
+        <!-- 2026-08-27 -- "Sectors" header removed -- user: "Remove the
+             header SectorS in right side panel". -->
         <section class="cockpit-band rail-band" id="macroSectorsBand">
-          <div class="msr-section-hdr">Sectors</div>
           <div id="macroRailSectors" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+        </section>
+
+        <!-- 2026-08-27 -- Indicator moved here from col 5 (macro-rail-row),
+             above INFL -- user: "move the INDICATOR panel to the side panel
+             above INFL." Same container ids/markup as its prior spot;
+             web/app.js populates #econBody by id regardless of parent, so
+             no script change needed. -->
+        <section class="cockpit-band rail-band" id="indicatorBand">
+          <!-- 2026-08-27 -- gear icon added to the "Indicator" column
+               header (own header row dropped per user: "No need of the
+               header. move the gear icon to header INDICATOR") -- reuses
+               the SAME event-type selection (calendar-types picker,
+               #calTypesPop) the left panel's CPI/Events line already
+               drives, opened via the same web/app.js::_toggleCalTypesPop().
+               A row here now highlights (.indicator-soon) when its own
+               indicator name is in that selection AND <=5 days out -- same
+               threshold _eventsLineHtml already uses for its own
+               highlight. One shared preference, not a second/separate
+               picker. User: "Can we implement Economic indicator
+               functionality of the left side panel ... in INDICATOR panel
+               on the right side. 1. Highlight and allow choosing the
+               specific event to be highlighed when the time comes?" -->
+          <div class="side-scroll">
+            <table class="mini-grid">
+              <thead>
+                <tr>
+                  <th>E.IND <span class="events-gear" title="Choose event types" onclick="_toggleCalTypesPop(event)">&#9881;</span></th>
+                  <th class="num">D</th>
+                  <th>Date</th>
+                  <th class="num">Actual</th>
+                </tr>
+              </thead>
+              <tbody id="econBody"></tbody>
+            </table>
+            <div id="econEmpty" class="empty-note" hidden>No active indicators.</div>
+          </div>
         </section>
 
         <!-- 2026-08-24 -- INFL moved below Sectors -- user: "move INFL
              panel to below sectors panel". -->
         <section class="cockpit-band rail-band" id="heInflPanel" style="display:none;">
           <div id="heInflBody">Loading…</div>
+        </section>
+
+        <!-- 2026-08-27 -- Symbol moved here from col 5 (macro-rail-row),
+             the bottom of this side panel -- user: "Symbol to the bottom
+             side panel." Same container ids/markup as its prior spot;
+             web/app.js populates #nearEarningsBody by id regardless of
+             parent, so no script change needed. -->
+        <section class="cockpit-band rail-band" id="nearEarningsBand">
+          <div class="side-scroll">
+            <table class="mini-grid">
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th class="num">Days</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody id="nearEarningsBody"></tbody>
+            </table>
+            <div id="nearEarningsEmpty" class="empty-note" hidden>No earnings in the next 30 days.</div>
+          </div>
         </section>
 
       </div>
@@ -879,6 +940,25 @@
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Expanded Cumulative P&L chart (⤢ button next to the mini widget's
+       period dropdown) -- full selected period at full resolution, same
+       real+estimate override and purple pending-estimate bar as the mini
+       widget and web/portfolio.js's own Trends-panel expand modal. -->
+  <div class="modal-overlay" id="dashTrendModal">
+    <div class="modal-content" style="max-width:1100px;">
+      <div class="modal-header">
+        <div>
+          <h2 style="margin:0;">Cumulative P&amp;L</h2>
+          <p id="dashTrendModalSub">Loading...</p>
+        </div>
+        <button class="close-btn" onclick="closeDashTrendModal()">&times;</button>
+      </div>
+      <div class="modal-body" style="height:440px;position:relative;">
+        <canvas id="dashTrendModalCanvas" role="img" aria-label="expanded cumulative P&L chart"></canvas>
       </div>
     </div>
   </div>

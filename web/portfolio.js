@@ -42,6 +42,55 @@ const $ = (id) => document.getElementById(id);
 const _trendCharts = { value: null, daily: null, cum: null };
 const _sparkCharts = {};   // keyed by account name
 
+// Day Change bar color for a still-pending CST/FT estimate (etl/mark_sales.py
+// -> drv_realized_gain_estimate) -- deliberately NOT green/red-by-sign like
+// every other bar, so a provisional figure reads as visually distinct at a
+// glance instead of blending in as a confirmed gain/loss. Matches .pill-est.
+const ESTIMATE_BAR_COLOR = 'rgba(90,62,168,0.85)';
+
+// Applies the same "today" override to a /api/portfolio/trends response's
+// day_change/cumulative_pl arrays that both the compact Trends panel
+// (renderTrendCharts) and its expanded modal (openTrendModal) need:
+//   1. Real+estimate fallback (getEffectiveSummaryEntry() -- same filtered
+//      "today" figure the KPI tiles show; /api/portfolio/summary's
+//      today_gain_dollar already blends real cs_sold_move with the
+//      etl/mark_sales.py provisional estimate when no CST/FT is loaded yet).
+//   2. Live-intraday re-pricing on top when "Use latest prices" is on
+//      (supersedes the estimate flag -- it's a different, more current
+//      "not final" number with its own 🔴 indicator).
+// Never mutates `data` -- returns fresh arrays. estBarIdx is the index of
+// the rightmost bar when it's still a pending CST/FT estimate, else -1.
+function _applyTodayOverride(data) {
+    const dayArr = (data.day_change || []).slice();
+    const cum    = (data.cumulative_pl || []).slice();
+    let estBarIdx = -1;
+    if (cum.length && data.dates && data.dates.length === cum.length) {
+        const lastIdx = cum.length - 1;
+        const lastTrendsDate = data.dates[lastIdx];
+        // Skip entirely when the user has selected a Portfolio snapshot date
+        // older than this trends series -- examining history, not "today".
+        const userInPast = state.date && lastTrendsDate && state.date < lastTrendsDate;
+        if (!userInPast) {
+            const entry = getEffectiveSummaryEntry();
+            if (entry && entry.today_gain_dollar != null) {
+                const newDay = Number(entry.today_gain_dollar || 0);
+                const origDay = Number(dayArr[lastIdx] || 0);
+                dayArr[lastIdx] = newDay;
+                cum[lastIdx] = (cum[lastIdx] || 0) - origDay + newDay;
+                if (Number(entry.today_gain_estimate_dollar || 0) !== 0) estBarIdx = lastIdx;
+            }
+            if (state.filters && state.filters.latestPrices && state.latestSummary) {
+                estBarIdx = -1;
+                const newDay = Number(state.latestSummary.today_gain_dollar || 0);
+                const origDay = Number(dayArr[lastIdx] || 0);
+                dayArr[lastIdx] = newDay;
+                cum[lastIdx] = (cum[lastIdx] || 0) - origDay + newDay;
+            }
+        }
+    }
+    return { dayArr, cum, estBarIdx };
+}
+
 let _lastTrendData = null;
 
 async function loadTrends() {
@@ -132,33 +181,8 @@ function renderTrendCharts(data) {
     // Combined Cumulative P&L (line) + Day Change (thin bars overlay)
     if (_trendCharts.daily) _trendCharts.daily.destroy();
     if (_trendCharts.cum)   _trendCharts.cum.destroy();
-    // Copy so the override below doesn't mutate _lastTrendData. Without
-    // .slice() a toggle off→on cycle would see dayArr[last] already pointing
-    // at the previously-overridden value, making origDay == newDay and
-    // producing a zero-delta override (= no visible change).
-    const dayArr = (data.day_change || []).slice();
-    const cum    = (data.cumulative_pl || []).slice();
-    // ── Latest-prices override for the rightmost bar + Cum line ─────────
-    // The rightmost data point represents the "current" day in this chart
-    // (which equals today only when today's data is loaded; otherwise it
-    // equals the most recent loaded snapshot). When "Use latest prices" is
-    // on, replace that day's day_change with the client-side recomputed
-    // value (sum of overridden per-row today_gain) and re-derive the
-    // cumulative. Skip ONLY when the user has selected a Portfolio snapshot
-    // date older than this trends series (then they're examining history,
-    // and re-pricing makes no sense).
-    if (state.filters && state.filters.latestPrices && state.latestSummary
-        && cum.length && data.dates && data.dates.length === cum.length) {
-        const lastIdx = cum.length - 1;
-        const lastTrendsDate = data.dates[lastIdx];
-        const userInPast = state.date && lastTrendsDate && state.date < lastTrendsDate;
-        if (!userInPast) {
-            const newDay = Number(state.latestSummary.today_gain_dollar || 0);
-            const origDay = Number(dayArr[lastIdx] || 0);
-            dayArr[lastIdx] = newDay;
-            cum[lastIdx] = (cum[lastIdx] || 0) - origDay + newDay;
-        }
-    }
+    const { dayArr, cum, estBarIdx } = _applyTodayOverride(data);
+    const ovCumEstFlag = estBarIdx >= 0;
     // lastCum / cumColor computed AFTER the override so the line color and
     // overlay label both reflect the new rightmost value.
     const lastCum  = cum.length ? cum[cum.length - 1] : 0;
@@ -168,7 +192,13 @@ function renderTrendCharts(data) {
         responsive: true, maintainAspectRatio: false,
         plugins: {
             legend:  { display: false },
-            tooltip: { enabled: true, mode: 'index', intersect: false },
+            tooltip: { enabled: true, mode: 'index', intersect: false,
+                callbacks: { label(ctx) {
+                    const v = fmtUsd(ctx.parsed.y);
+                    const isEst = estBarIdx >= 0 && ctx.dataIndex === estBarIdx
+                        && ctx.dataset.label === 'Day Change';
+                    return ctx.dataset.label + ': ' + v + (isEst ? ' (pending CST/FT estimate)' : '');
+                } } },
         },
         scales: {
             x:  { display: true,
@@ -190,8 +220,9 @@ function renderTrendCharts(data) {
             // Thin Day Change bars on the secondary axis (left).
             // order:0 puts bars on top so they're never hidden by the line stroke.
             { type: 'bar', label: 'Day Change', data: dayArr,
-              backgroundColor: dayArr.map(v => v >= 0
-                  ? 'rgba(28,108,48,0.85)' : 'rgba(178,31,31,0.85)'),
+              backgroundColor: dayArr.map((v, i) => i === estBarIdx
+                  ? ESTIMATE_BAR_COLOR
+                  : (v >= 0 ? 'rgba(28,108,48,0.85)' : 'rgba(178,31,31,0.85)')),
               borderWidth: 0,
               barPercentage: 0.45, categoryPercentage: 0.7,
               yAxisID: 'y1', order: 0 },
@@ -211,7 +242,8 @@ function renderTrendCharts(data) {
     const _finalCum = (typeof _lastCum === 'number') ? _lastCum : lastCum;
     const ovCumEl = $('ovCum');
     if (ovCumEl) {
-        ovCumEl.textContent = (_finalCum >= 0 ? '+' : '') + fmtUsd(_finalCum);
+        ovCumEl.innerHTML = escapeHtml((_finalCum >= 0 ? '+' : '') + fmtUsd(_finalCum))
+            + (ovCumEstFlag ? ' <span class="pill pill-est" title="Includes a pending CST/FT estimate for today">*</span>' : '');
         ovCumEl.className   = gainClass(_finalCum);
     }
 }
@@ -274,7 +306,7 @@ function openTrendModal(key, title) {
     const colorPos = '#1c6c30', colorNeg = '#b21f1f', colorAcc = '#7F77DD';
     const labels = _lastTrendData.dates || [];
 
-    let dataset, type, yPos = 'right', combined = null;
+    let dataset, type, yPos = 'right', combined = null, modalEstBarIdx = -1;
     if (key === 'value') {
         dataset = { type: 'line',
                     data: _lastTrendData.account_value || [], borderColor: colorAcc,
@@ -283,14 +315,21 @@ function openTrendModal(key, title) {
         type = 'line';
     } else if (key === 'cum' || key === 'daily') {
         // Cumulative P&L (line, right axis) + Day Change (thin bars, left axis)
-        const arr = _lastTrendData.day_change || [];
-        const cum = _lastTrendData.cumulative_pl || [];
+        // Same real+estimate/latest-prices override as the compact Trends
+        // panel (_applyTodayOverride) -- _lastTrendData itself is always the
+        // raw, un-overridden trends response (renderTrendCharts never
+        // mutates it), so without this the expanded view silently reverted
+        // to the plain broker-only figure.
+        const _ov = _applyTodayOverride(_lastTrendData);
+        const arr = _ov.dayArr, cum = _ov.cum;
+        modalEstBarIdx = _ov.estBarIdx;
         const lastCum = cum.length ? cum[cum.length - 1] : 0;
         const cumColor = lastCum >= 0 ? colorPos : colorNeg;
         combined = [
             { type: 'bar', label: 'Day Change', data: arr,
-              backgroundColor: arr.map(v => v >= 0
-                  ? 'rgba(28,108,48,0.85)' : 'rgba(178,31,31,0.85)'),
+              backgroundColor: arr.map((v, i) => i === modalEstBarIdx
+                  ? ESTIMATE_BAR_COLOR
+                  : (v >= 0 ? 'rgba(28,108,48,0.85)' : 'rgba(178,31,31,0.85)')),
               borderWidth: 0,
               barPercentage: 0.45, categoryPercentage: 0.7,
               yAxisID: 'y1', order: 0 },
@@ -321,7 +360,8 @@ function openTrendModal(key, title) {
         ? _lastTrendData.start + ' → ' + _lastTrendData.end
         : '';
     $('trendModalTitle').textContent = title;
-    $('trendModalSub').textContent   = sub;
+    $('trendModalSub').textContent   = sub
+        + (modalEstBarIdx >= 0 ? '  •  purple bar = pending CST/FT estimate, not yet confirmed' : '');
     $('trendModalBackdrop').style.display = 'flex';
 
     if (_trendModalChart) { _trendModalChart.destroy(); _trendModalChart = null; }
@@ -357,7 +397,12 @@ function openTrendModal(key, title) {
             responsive: true, maintainAspectRatio: false,
             plugins: {
                 legend:  { display: false },
-                tooltip: { enabled: true, mode: combined ? 'index' : 'nearest', intersect: false },
+                tooltip: { enabled: true, mode: combined ? 'index' : 'nearest', intersect: false,
+                    callbacks: modalEstBarIdx >= 0 ? { label(ctx) {
+                        const v = fmtUsd(ctx.parsed.y);
+                        const isEst = ctx.dataIndex === modalEstBarIdx && ctx.dataset.label === 'Day Change';
+                        return ctx.dataset.label + ': ' + v + (isEst ? ' (pending CST/FT estimate)' : '');
+                    } } : undefined },
             },
             scales: modalScales,
         },
@@ -572,6 +617,11 @@ function renderKpiTiles(data) {
     if (el) el.textContent = text;
     else console.warn('Missing element:', id);
   };
+  const safeSetHtml = (id, html) => {
+    const el = $(id);
+    if (el) el.innerHTML = html;
+    else console.warn('Missing element:', id);
+  };
   const safeClass = (id, cls) => {
     const el = $(id);
     if (el) el.className = cls;
@@ -600,7 +650,18 @@ function renderKpiTiles(data) {
   safeSet('kpiMV', fmtUsd(mv));
   safeSet('kpiMVsub', cb ? 'cost ' + fmtUsd(cb, { compact: true }) : '');
 
-  safeSet('kpiToday', (tg >= 0 ? '+' : '') + fmtUsd(tg));
+  // Provisional-estimate markers (etl/mark_sales.py -> drv_realized_gain_estimate):
+  // when part of Today's Gain / Realized Today is still a pending estimate
+  // (no CST/FT loaded yet for a sale), flag it with a "*" + tooltip instead
+  // of silently blending it in unmarked. Zero once the real number lands.
+  const tgEst = Number(data.today_gain_estimate_dollar || 0);
+  const tgEstMark = tgEst !== 0
+    ? ` <span class="pill pill-est" title="Includes ${fmtUsd(tgEst)} pending CST/FT estimate">*</span>` : '';
+  const rtEst = Number(data.realized_today_estimate_dollar || 0);
+  const rtEstMark = rtEst !== 0
+    ? ` <span class="pill pill-est" title="Includes ${fmtUsd(rtEst)} pending CST/FT estimate">*</span>` : '';
+
+  safeSetHtml('kpiToday', escapeHtml((tg >= 0 ? '+' : '') + fmtUsd(tg)) + tgEstMark);
   safeClass('kpiToday', 'kpi-value ' + gainClass(tg));
   safeClass('kpiTodayPct', 'kpi-sub ' + gainClass(data.today_gain_pct));
   safeSet('kpiTodayPct', data.today_gain_pct != null ? fmtPct(data.today_gain_pct) : '');
@@ -613,7 +674,7 @@ function renderKpiTiles(data) {
   // already matches Schwab via the API formula (day_chng + intraday-on-sold + DIV/INT),
   // so we no longer display a separate Day Change tile.
   const rt = data.realized_today_dollar != null ? Number(data.realized_today_dollar) : null;
-  safeSet('kpiRealizedToday', rt != null ? (rt >= 0 ? '+' : '') + fmtUsd(rt) : '—');
+  safeSetHtml('kpiRealizedToday', escapeHtml(rt != null ? (rt >= 0 ? '+' : '') + fmtUsd(rt) : '—') + rtEstMark);
   safeClass('kpiRealizedToday', 'kpi-value ' + gainClass(rt));
 
   safeSet('kpiCost', fmtUsd(cb));
@@ -633,13 +694,13 @@ function renderKpiTiles(data) {
   }
   const ovTG = $('ovTodayGain');
   if (ovTG) {
-    ovTG.textContent = (tg >= 0 ? '+' : '') + fmtUsd(tg);
+    ovTG.innerHTML = escapeHtml((tg >= 0 ? '+' : '') + fmtUsd(tg)) + tgEstMark;
     ovTG.className   = gainClass(tg);
   }
   // Realized Today reuses `rt` computed above (data.realized_today_dollar).
   const ovR = $('ovRealized');
   if (ovR) {
-    ovR.textContent = rt != null ? (rt >= 0 ? '+' : '') + fmtUsd(rt) : '—';
+    ovR.innerHTML = escapeHtml(rt != null ? (rt >= 0 ? '+' : '') + fmtUsd(rt) : '—') + rtEstMark;
     ovR.className   = rt != null ? gainClass(rt) : 'gain-zero';
   }
   // `cash_value` and `accounts` only exist on the global summary object, not on by_account entries
@@ -691,19 +752,21 @@ function computeFilteredAggregate() {
   };
 }
 
-function updateKpiTiles() {
-  // Dispatch KPI tile rendering based on current filter state.
-  // If a specific account is selected, show that account's data.
-  // If a source is selected (but no account), aggregate all accounts for that source.
-  // Otherwise, show global totals.
+// Resolves "the summary object representing the current filter selection" --
+// same object shape as state.summary / a by_account entry (today_gain_dollar,
+// realized_today_dollar, today_gain_estimate_dollar, etc). Shared by
+// updateKpiTiles() (KPI tiles) and renderTrendCharts() (Trends panel's
+// rightmost bar), so both reflect the same filtered "today" figure --
+// including the etl/mark_sales.py provisional estimate baked into
+// today_gain_dollar/realized_today_dollar by the API.
+function getEffectiveSummaryEntry() {
   const s = state.summary;
-  if (!s) return;
+  if (!s) return null;
 
   // Category filter takes priority over every branch below -- see
   // computeFilteredAggregate()'s comment.
   if (state.filters.catValue) {
-    renderKpiTiles(computeFilteredAggregate());
-    return;
+    return computeFilteredAggregate();
   }
 
   const selectedAcct = state.filters.account;
@@ -716,11 +779,10 @@ function updateKpiTiles() {
 
   // When Latest is on, state.latestSummary already represents the
   // currently-displayed grid (per recomputeLatestSummary using
-  // state.filtered). Render that directly; don't reach into the
+  // state.filtered). Use that directly; don't reach into the
   // un-overridden by_account or source-aggregate values.
   if (state.filters && state.filters.latestPrices) {
-    renderKpiTiles(s_eff);
-    return;
+    return s_eff;
   }
 
   if (selectedAcct) {
@@ -736,7 +798,7 @@ function updateKpiTiles() {
       return (a.source || '').toUpperCase() === selectedSrc.toUpperCase();
     };
     const entry = (s.by_account || []).find(matchAcct);
-    renderKpiTiles(entry || s);
+    return entry || s;
   } else if (selectedGroup || selectedSrc) {
     // Group and/or source selected (no specific account): aggregate every
     // by_account entry matching BOTH active filters.
@@ -752,6 +814,8 @@ function updateKpiTiles() {
         acc.today_gain_dollar     += Number(a.today_gain_dollar     || 0);
         acc.day_change_dollar     += Number(a.day_change_dollar     || 0);
         acc.realized_today_dollar += Number(a.realized_today_dollar || 0);
+        acc.today_gain_estimate_dollar     += Number(a.today_gain_estimate_dollar     || 0);
+        acc.realized_today_estimate_dollar += Number(a.realized_today_estimate_dollar || 0);
         acc.ytd_gain_dollar       += Number(a.ytd_gain_dollar       || 0);
         acc.mtd_gain_dollar       += Number(a.mtd_gain_dollar       || 0);
         acc.cost_basis            += Number(a.cost_basis            || 0);
@@ -763,6 +827,8 @@ function updateKpiTiles() {
         today_gain_dollar: 0,
         day_change_dollar: 0,
         realized_today_dollar: 0,
+        today_gain_estimate_dollar: 0,
+        realized_today_estimate_dollar: 0,
         ytd_gain_dollar: 0,
         mtd_gain_dollar: 0,
         cost_basis: 0,
@@ -774,15 +840,18 @@ function updateKpiTiles() {
       const denom = agg.market_value - agg.today_gain_dollar;
       agg.today_gain_pct = denom ? (agg.today_gain_dollar / denom * 100) : null;
 
-      renderKpiTiles(agg);
-    } else {
-      renderKpiTiles(s_eff);
+      return agg;
     }
-  } else {
-    // All accounts, all sources: use global summary totals
-    // (s_eff layers latestSummary overrides on top of s when toggle is on)
-    renderKpiTiles(s_eff);
+    return s_eff;
   }
+  // All accounts, all sources: use global summary totals
+  // (s_eff layers latestSummary overrides on top of s when toggle is on)
+  return s_eff;
+}
+
+function updateKpiTiles() {
+  const entry = getEffectiveSummaryEntry();
+  if (entry) renderKpiTiles(entry);
 }
 
 // ---- KPI summary ----
@@ -1759,9 +1828,14 @@ async function loadRealized() {
   const mtdCut = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2,'0')}-01`;
 
   let totals;
+  let nEstimatePending = 0;
   if (groupBy === 'none') {
     // Each row is a single sell event. Aggregate the realized_gain column.
+    // Estimate rows (is_estimate, from drv_realized_gain_estimate — provisional,
+    // pending the real CST/FT transaction) are shown in the table but excluded
+    // from the KPI totals so they never inflate the confirmed numbers.
     totals = (rows||[]).reduce((m, r) => {
+      if (r.is_estimate) { nEstimatePending++; return m; }
       const g = Number(r.realized_gain || 0);
       m.all += g;
       if (r.is_long_term) m.lt += g; else m.st += g;
@@ -1801,6 +1875,7 @@ async function loadRealized() {
   if ($('realAccountFilter')?.value) sub.push($('realAccountFilter').value);
   if ($('realSymFilter').value)      sub.push($('realSymFilter').value.trim().toUpperCase());
   if (from || to) sub.push(`${from || '…'} → ${to || 'today'}`);
+  if (nEstimatePending > 0) sub.push(`${nEstimatePending} pending estimate${nEstimatePending===1?'':'s'} (excluded)`);
   const subEl = $('realKpiAllSub');
   if (subEl) subEl.textContent = sub.length ? sub.join(' • ') : 'all accounts • all time';
 
@@ -1820,8 +1895,8 @@ async function loadRealized() {
       <th class="num">Realized</th>
       <th class="num">%</th><th class="num">Hold (d)</th><th>LT?</th>
     </tr>`;
-    body.innerHTML = rows.map(r => `<tr>
-      <td>${escapeHtml(r.sell_date||'')}</td>
+    body.innerHTML = rows.map(r => `<tr${r.is_estimate ? ' class="real-est-row" title="Estimated: qty-diff vs. prior snapshot x that day\'s low price — provisional until the CST/FT transaction file confirms the real sale."' : ''}>
+      <td>${escapeHtml(r.sell_date||'')}${r.is_estimate ? ' <span class="pill pill-est">est.</span>' : ''}</td>
       <td><span class="pill pill-${(r.source||'').toLowerCase()}">${escapeHtml(r.source||'')}</span></td>
       <td title="${escapeHtml(r.account||'')}">${escapeHtml((r.account||'').slice(0,28))}</td>
       <td><strong>${escapeHtml(r.symbol||'')}</strong></td>

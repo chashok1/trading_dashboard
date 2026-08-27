@@ -197,6 +197,14 @@ function _wireEconActualEdit(tbody) {
     input.addEventListener('blur', save);
   });
 }
+// 2026-08-27 -- rows highlight (.indicator-soon) using the SAME event-type
+// selection and <=5d threshold the left panel's CPI/Events line already
+// uses (_eventsLineHtml/_calTypesCache) -- one shared preference, not a
+// second picker; the gear icon here (see index.html) opens the same
+// #calTypesPop via the same _toggleCalTypesPop(). User: "Can we implement
+// Economic indicator functionality of the left side panel ... in
+// INDICATOR panel on the right side. 1. Highlight and allow choosing the
+// specific event to be highlighed when the time comes?"
 async function loadEconIndicators() {
   const tbody = $('econBody');
   const empty = $('econEmpty');
@@ -206,7 +214,15 @@ async function loadEconIndicators() {
     const url = state.date
       ? `/api/dashboard/econ-indicators?date=${encodeURIComponent(state.date)}&limit=40`
       : '/api/dashboard/econ-indicators?limit=40';
-    const rows = await fetchJson(url);
+    // Fetched here too (not just relying on loadRegimeBand() having
+    // already populated _calTypesCache) so this table's highlighting works
+    // correctly regardless of which loader runs first.
+    const [rows, calTypes] = await Promise.all([
+      fetchJson(url),
+      fetchJson('/api/dashboard/calendar-types').catch(() => _calTypesCache || { all: [], selected: [] }),
+    ]);
+    _calTypesCache = calTypes;
+    const selected = new Set(calTypes.selected || []);
     if (!rows || rows.length === 0) {
       empty.hidden = false;
       return;
@@ -214,6 +230,8 @@ async function loadEconIndicators() {
     empty.hidden = true;
     for (const r of rows) {
       const tr = document.createElement('tr');
+      const highlight = selected.has(r.indicator) && r.days != null && r.days <= 5;
+      if (highlight) tr.className = 'indicator-soon';
       // 2026-08-08 -- Signal column removed per user request ("remove the
       // SIGNAL column from INDICATOR grid"); normOutlook(r.signal) is no
       // longer read here.
@@ -646,23 +664,13 @@ function _opexLineHtml(calRows) {
 // ("no colors at this time"), but the same <=5d yellow highlight added to
 // the OPEX line above was extended here too -- user: "same thing with
 // events below that line".
+// 2026-08-27 -- the left panel's CPI/Events line (_eventsLineHtml, which
+// used to render into this) was removed -- user: "Remove econ panel as we
+// have on the right side" (the Indicator panel now covers the same ground:
+// same selection, same <=5d highlight, see loadEconIndicators()). The
+// underlying picker (#calTypesPop) and its cache stay -- Indicator's own
+// gear icon still opens the same picker.
 let _calTypesCache = null; // {all, selected} -- refreshed each loadRegimeBand(), read by the picker popover
-function _eventsLineHtml(calRows, selected) {
-  const gear = `<span class="events-gear" title="Choose event types" onclick="_toggleCalTypesPop(event)">&#9881;</span>`;
-  if (!selected || !selected.length) {
-    return `<div class="events-line"><span class="events-empty">No event types selected</span>${gear}</div>`;
-  }
-  const bits = selected.map(cat => {
-    const row = _calRow(calRows, cat);
-    if (!row) return '';
-    const text = `${escapeHtml(cat)} ${fmtDate(row.indicator_date)} (${row.days}d)`;
-    return row.days <= 5 ? `<span class="opex-soon">${text}</span>` : text;
-  }).filter(Boolean);
-  const body = bits.length
-    ? bits.join(' &middot; ')
-    : '<span class="events-empty">No upcoming dates for the selected types</span>';
-  return `<div class="events-line">${body}${gear}</div>`;
-}
 function _toggleCalTypesPop(e) {
   e.stopPropagation();
   const pop = $('calTypesPop');
@@ -747,11 +755,30 @@ document.addEventListener('click', e => {
 // two lines for watched ones. Add () around 8/26 and space after )" +
 // "display not watched at the end in small font NVDA(0) ABC(1)"
 let _earningsUnwatchedSymbols = []; // refreshed each loadRegimeBand(), read by the picker popover
+// 2026-08-27 -- persisted collapse state for the watched-earnings block.
+// Default (not collapsed) shows 4 lines, up from the original 2 -- user:
+// "display two more lines of data" -> "make sure it is collapsable" so the
+// panel can still be shrunk back down when the extra height isn't wanted.
+// localStorage, same lightweight per-viewer-preference pattern other
+// dashboard toggles use (no server round-trip needed for a display-only
+// preference).
+const _EARNINGS_COLLAPSE_KEY = 'dashEarningsLinesCollapsed';
+function _earningsLinesCollapsed() {
+  try { return localStorage.getItem(_EARNINGS_COLLAPSE_KEY) === '1'; } catch (e) { return false; }
+}
+function _toggleEarningsLinesCollapse(e) {
+  if (e) e.stopPropagation();
+  try { localStorage.setItem(_EARNINGS_COLLAPSE_KEY, _earningsLinesCollapsed() ? '0' : '1'); } catch (e2) { /* ignore */ }
+  loadRegimeBand();
+}
 function _earningsLineHtml(rows) {
   const gear = `<span class="events-gear" title="Choose watched symbols" onclick="_toggleEarningsWatchPop(event)">&#9881;</span>`;
   if (!rows || !rows.length) {
     return `<div class="events-line earnings-line"><span class="events-empty">No upcoming earnings</span>${gear}</div>`;
   }
+  const collapsed = _earningsLinesCollapsed();
+  const collapseToggle = `<span class="events-gear" title="${collapsed ? 'Show more lines' : 'Show fewer lines'}" `
+    + `onclick="_toggleEarningsLinesCollapse(event)">${collapsed ? '&#9662;' : '&#9652;'}</span>`;
   const unwatchedSet = new Set(_earningsUnwatchedSymbols);
   const watchedRows = rows.filter(r => !unwatchedSet.has(r.symbol));
   const unwatchedRows = rows.filter(r => unwatchedSet.has(r.symbol));
@@ -770,14 +797,23 @@ function _earningsLineHtml(rows) {
     }).join(' ');
     return `(${fmtDate(date)}) ${symsHtml}`;
   });
-  const watchedHtml = groupsHtml.length ? `<span class="earnings-groups">${groupsHtml.join(' ')}</span>` : '';
-  const unwatchedHtml = unwatchedRows.length
-    ? `<span class="earnings-unwatched">${unwatchedRows.map(r => {
-        const sym = typeof symbolLink === 'function' ? symbolLink(escapeHtml(r.symbol), r.symbol) : escapeHtml(r.symbol);
-        return `${sym}(${r.days_until})`;
-      }).join(' ')}</span>`
-    : '';
-  return `<div class="events-line earnings-line"><span class="earnings-content">${watchedHtml}${unwatchedHtml}</span>${gear}</div>`;
+  // 2026-08-27 -- watched (date-grouped) and un-watched pieces now flow
+  // into ONE clamped block instead of two independently-clamped ones
+  // stacked on top of each other -- previously un-watched always started
+  // on its own fixed line even when the watched block only used 1-2 of
+  // its 4, wasting the rest. A single flow lets un-watched entries wrap up
+  // into whatever room the watched block DIDN'T use, same as ordinary
+  // text reflow -- each un-watched entry keeps its own smaller font via an
+  // inline span (was the separate .earnings-unwatched block's font-size)
+  // since there's no longer a separate block to carry that style. User:
+  // "display unwatched starting from 4th line if there is a space."
+  const unwatchedHtml = unwatchedRows.map(r => {
+    const sym = typeof symbolLink === 'function' ? symbolLink(escapeHtml(r.symbol), r.symbol) : escapeHtml(r.symbol);
+    return `<span class="earnings-unwatched-item">${sym}(${r.days_until})</span>`;
+  });
+  const allPieces = groupsHtml.concat(unwatchedHtml);
+  const content = allPieces.length ? `<span class="earnings-groups">${allPieces.join(' ')}</span>` : '';
+  return `<div class="events-line earnings-line${collapsed ? ' earnings-collapsed' : ''}"><span class="earnings-content">${content}</span>${collapseToggle}${gear}</div>`;
 }
 // 2026-08-14 follow-up -- "i need the symbols list with date that are
 // upcoming so i can choose." The picker leads with a checkable list of
@@ -871,9 +907,20 @@ document.addEventListener('click', e => {
   }
 });
 
+// 2026-08-27 -- Opex/CPI-Events/Earnings/Regime split from one combined
+// #regimeStrip innerHTML= into 4 independent panel containers (see
+// web/index.html's own comment on #regimeOpexBand and siblings) -- this
+// function now writes each panel's body separately instead of one strip.
+// User: "Separate Opex, CPI, earnings, Regime into their own panels." ->
+// "Remove econ panel as we have on the right side" (CPI panel/#regimeCpi*
+// dropped; calRows/calTypes are still fetched below since _opexLineHtml
+// and _calTypesCache both still need them).
 async function loadRegimeBand() {
-  const strip = $('regimeStrip');
-  if (!strip) return;
+  const opexBody = $('regimeOpexBody');
+  const earningsBody = $('regimeEarningsBody');
+  const regimeLineBody = $('regimeLineBody');
+  if (!opexBody || !earningsBody || !regimeLineBody) return;
+  const failHtml = '<div class="ev-fail">&#9888; Regime data unavailable.</div>';
   try {
     const viewingLive = !state.date || state.date === state.anchorDate;
     const qs = viewingLive ? '' : _dateQS();
@@ -898,7 +945,10 @@ async function loadRegimeBand() {
     ]);
     _calTypesCache = calTypes;
     _earningsUnwatchedSymbols = earningsUnwatch.symbols || [];
-    if (!windowData) { strip.innerHTML = '<div class="ev-fail">&#9888; Regime data unavailable.</div>'; return; }
+    if (!windowData) {
+      opexBody.innerHTML = earningsBody.innerHTML = regimeLineBody.innerHTML = failHtml;
+      return;
+    }
     const dominant = windowData.dominant_quad != null ? `Quad ${windowData.dominant_quad}` : '—';
     const allFactors = factors.factors || [];
     // 2026-08-08 -- compact format per user request: "60d Win(Q1). Aug(Q3)
@@ -945,10 +995,12 @@ async function loadRegimeBand() {
     // left-flowing blob with the months embedded right after the label.
     // 2026-08-09 -- "Win" text dropped per user: "remove the text 'Win'".
     const winLabel = `<span class="regime-win-label">${windowData.h ?? 60}d (<strong style="color:${_quadColor(dominant)};">Q${windowData.dominant_quad ?? '?'}</strong>)</span>`;
-    strip.innerHTML = `${_opexLineHtml(calRows)}${_eventsLineHtml(calRows, calTypes.selected)}${_earningsLineHtml(earningsRows)}<div class="regime-line" data-quadbandpop="1">
+    opexBody.innerHTML = _opexLineHtml(calRows);
+    earningsBody.innerHTML = _earningsLineHtml(earningsRows);
+    regimeLineBody.innerHTML = `<div class="regime-line" data-quadbandpop="1">
       ${winLabel}<span class="regime-window-text">${months || 'no window data'}</span>${qtrEntry}
     </div>`;
-    const line = strip.querySelector('.regime-line');
+    const line = regimeLineBody.querySelector('.regime-line');
     if (line) {
       // Line-level fallback: hovering the "60d (Q1)" win-label itself (not
       // inside a specific month/Qtr entry) shows the WINDOW'S OWN dominant
@@ -1006,7 +1058,7 @@ async function loadRegimeBand() {
     }
   } catch (e) {
     console.error('regime band failed:', e);
-    strip.innerHTML = '<div class="ev-fail">&#9888; Regime data unavailable.</div>';
+    opexBody.innerHTML = earningsBody.innerHTML = regimeLineBody.innerHTML = failHtml;
   }
 }
 
@@ -1924,7 +1976,19 @@ function reloadFactorScorecards() {
 // User: "add same graph that you portfolio screen (cumulative p&L) but
 // show last 10 days -> add it in the same line as today's graph row in
 // the front."
+// Day Change bar color for a still-pending CST/FT estimate (etl/mark_sales.py
+// -> drv_realized_gain_estimate) -- matches web/portfolio.js's same constant
+// and .pill-est -- deliberately not green/red-by-sign so a provisional
+// figure reads as visually distinct at a glance, not a confirmed gain/loss.
+const ESTIMATE_BAR_COLOR = 'rgba(90,62,168,0.85)';
+
 let _cumPnlChart = null;
+// Cached for the expand-to-modal view (openDashTrendModal) -- the FULL
+// (unsliced) trends response + the same override figures used for the
+// mini widget's last bar, so the modal can show the whole selected period
+// at full resolution instead of just the last-10-days the mini chart shows.
+let _lastDashTrendData = null;
+let _lastDashSummaryToday = null;     // { today, todayEst, period }
 async function loadCumPnlSnapshot() {
   const canvas = $('tsCumPnlChart');
   const totalEl = $('tsCumPnlTotal');
@@ -2015,6 +2079,11 @@ async function loadCumPnlSnapshot() {
     // market_value+cash_value across the selected accounts' by_account
     // rows, unfiltered uses summary's own top-level totals directly.
     let acctTotal = null;
+    // Provisional portion of summaryToday (etl/mark_sales.py estimate,
+    // zero once the real CST/FT-derived number lands) -- same filtered/
+    // unfiltered split, flagged on the Today pill below rather than
+    // blended in unmarked.
+    let summaryTodayEst = 0;
     if (summary) {
       if (filtered) {
         const selectedTags = new Set(state.catAccounts.map(num => state.accountTagByNumber[num]));
@@ -2022,19 +2091,28 @@ async function loadCumPnlSnapshot() {
         if (matched.length) {
           summaryToday = matched.reduce((sum, a) => sum + Number(a.today_gain_dollar || 0), 0);
           acctTotal = matched.reduce((sum, a) => sum + Number(a.market_value || 0) + Number(a.cash_value || 0), 0);
+          summaryTodayEst = matched.reduce((sum, a) => sum + Number(a.today_gain_estimate_dollar || 0), 0);
         }
       } else if (summary.today_gain_dollar != null) {
         summaryToday = Number(summary.today_gain_dollar);
         acctTotal = Number(summary.market_value || 0) + Number(summary.cash_value || 0);
+        summaryTodayEst = Number(summary.today_gain_estimate_dollar || 0);
       }
     }
+    let estBarIdx = -1;   // index of the rightmost bar when it's a pending CST/FT estimate
     if (summaryToday != null && dayArr.length && cumRaw.length) {
       const origLastDay = Number(dayArr[dayArr.length - 1] || 0);
       const newLastDay = summaryToday;
       const delta = newLastDay - origLastDay;
       dayArr[dayArr.length - 1] = newLastDay;
       cum[cum.length - 1] = Math.round((cumRaw[cumRaw.length - 1] + delta) * 100) / 100;
+      if (summaryTodayEst !== 0) estBarIdx = dayArr.length - 1;
     }
+    // Cache for openDashTrendModal() -- full (unsliced) response + the same
+    // override figures, so the expand view can show the whole selected
+    // period with the identical last-bar treatment instead of just 10 days.
+    _lastDashTrendData = r;
+    _lastDashSummaryToday = { today: summaryToday, todayEst: summaryTodayEst, period };
     if (_cumPnlChart) { _cumPnlChart.destroy(); _cumPnlChart = null; }
     if (!dates.length) {
       if (totalEl) totalEl.textContent = '';
@@ -2049,7 +2127,9 @@ async function loadCumPnlSnapshot() {
       type: 'bar',
       data: { labels: dates, datasets: [
         { type: 'bar', label: 'Day Change', data: dayArr,
-          backgroundColor: dayArr.map(v => v >= 0 ? 'rgba(28,108,48,0.85)' : 'rgba(178,31,31,0.85)'),
+          backgroundColor: dayArr.map((v, i) => i === estBarIdx
+              ? ESTIMATE_BAR_COLOR
+              : (v >= 0 ? 'rgba(28,108,48,0.85)' : 'rgba(178,31,31,0.85)')),
           borderWidth: 0, barPercentage: 0.5, categoryPercentage: 0.7,
           yAxisID: 'y1', order: 0 },
         { type: 'line', label: '', data: cum,
@@ -2060,7 +2140,13 @@ async function loadCumPnlSnapshot() {
       ] },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { enabled: true, mode: 'index', intersect: false } },
+        plugins: { legend: { display: false }, tooltip: { enabled: true, mode: 'index', intersect: false,
+            callbacks: estBarIdx >= 0 ? { label(ctx) {
+                const y = ctx.parsed.y;
+                const v = _fsCompactUsd(y) || ('$' + Number(y).toFixed(2));
+                const isEst = ctx.dataIndex === estBarIdx && ctx.dataset.label === 'Day Change';
+                return (ctx.dataset.label || 'Cumulative P&L') + ': ' + v + (isEst ? ' (pending CST/FT estimate)' : '');
+            } } : undefined } },
         scales: {
           x:  { display: true, ticks: { font: { size: 8 }, color: '#888', maxRotation: 0, autoSkip: true, maxTicksLimit: 5 }, grid: { display: false } },
           y:  { type: 'linear', position: 'right', display: true, ticks: { font: { size: 8 }, color: '#888', callback: yTick }, grid: { color: 'rgba(0,0,0,0.06)' } },
@@ -2090,8 +2176,15 @@ async function loadCumPnlSnapshot() {
       } else if (summary && summary.pricing === 'eod') {
         title = 'End-of-day — from the last loaded broker file, not live';
       }
+      // Provisional-estimate flag (etl/mark_sales.py -> drv_realized_gain_estimate):
+      // part of this figure is a pending sale not yet confirmed by a CST/FT
+      // upload. Disappears once the real transaction data lands.
+      const estBadge = summaryTodayEst !== 0 ? ' *' : '';
+      if (summaryTodayEst !== 0) {
+        title += ` (includes ${_fsCompactUsd(summaryTodayEst) || ('$' + summaryTodayEst.toFixed(2))} pending CST/FT estimate)`;
+      }
       todayEl.title = title;
-      todayEl.textContent = lastToday != null ? 'Today ' + (_fsCompactUsd(lastToday) || '') + badge : '';
+      todayEl.textContent = lastToday != null ? 'Today ' + (_fsCompactUsd(lastToday) || '') + badge + estBadge : '';
     }
     if (totalEl) {
       totalEl.className = 'ts-total' + (lastCum >= 0 ? ' pos' : ' neg');
@@ -2106,6 +2199,89 @@ async function loadCumPnlSnapshot() {
     if (todayEl) todayEl.textContent = '';
     if (acctTotalEl) acctTotalEl.textContent = '';
   }
+}
+
+let _dashTrendModalChart = null;
+
+// Expanded view of the Cumulative P&L widget (⤢ button) -- the FULL selected
+// period at full resolution (the mini widget only shows the last 10 points),
+// same real+estimate override and purple pending-estimate bar treatment.
+// Uses _lastDashTrendData/_lastDashSummaryToday cached by the most recent
+// loadCumPnlSnapshot() call -- refresh the mini widget (change the period
+// dropdown, wait for a reload) before expanding if those are stale/empty.
+function openDashTrendModal() {
+  if (typeof Chart === 'undefined' || !_lastDashTrendData) return;
+  const r = _lastDashTrendData;
+  const labels = r.dates || [];
+  const dayArr = (r.day_change || []).slice();
+  const cum = (r.cumulative_pl || []).slice();
+  let estBarIdx = -1;
+  const ov = _lastDashSummaryToday;
+  if (ov && ov.today != null && dayArr.length && cum.length) {
+    const lastIdx = dayArr.length - 1;
+    const origLastDay = Number(dayArr[lastIdx] || 0);
+    const delta = ov.today - origLastDay;
+    dayArr[lastIdx] = ov.today;
+    cum[lastIdx] = Math.round((cum[lastIdx] + delta) * 100) / 100;
+    if (ov.todayEst) estBarIdx = lastIdx;
+  }
+  const periodLabelMap = { '30d': '30 days', '90d': '90 days', mtd: 'MTD', '180d': '180 days',
+                            ytd: 'YTD', '1y': '1 year', '5y': '5 years' };
+  const subEl = $('dashTrendModalSub');
+  if (subEl) {
+    const range = (r.dates && r.dates.length) ? `${r.dates[0]} → ${r.dates[r.dates.length - 1]}` : '';
+    const periodLabel = (ov && periodLabelMap[ov.period]) || '';
+    subEl.textContent = [periodLabel, range].filter(Boolean).join('  •  ')
+      + (estBarIdx >= 0 ? '  •  purple bar = pending CST/FT estimate, not yet confirmed' : '');
+  }
+  $('dashTrendModal').classList.add('active');
+
+  if (_dashTrendModalChart) { _dashTrendModalChart.destroy(); _dashTrendModalChart = null; }
+  const colorPos = '#1c6c30', colorNeg = '#b21f1f';
+  const lastCum = cum.length ? cum[cum.length - 1] : 0;
+  const cumColor = lastCum >= 0 ? colorPos : colorNeg;
+  const yTick = v => Math.abs(v) >= 1000 ? '$' + (Math.round(v / 100) / 10).toFixed(1) + 'k' : '$' + Math.round(v);
+  _dashTrendModalChart = new Chart($('dashTrendModalCanvas'), {
+    type: 'bar',
+    data: { labels, datasets: [
+      { type: 'bar', label: 'Day Change', data: dayArr,
+        backgroundColor: dayArr.map((v, i) => i === estBarIdx
+            ? ESTIMATE_BAR_COLOR
+            : (v >= 0 ? 'rgba(28,108,48,0.85)' : 'rgba(178,31,31,0.85)')),
+        borderWidth: 0, barPercentage: 0.6, categoryPercentage: 0.75,
+        yAxisID: 'y1', order: 0 },
+      { type: 'line', label: 'Cumulative P&L', data: cum,
+        borderColor: cumColor,
+        backgroundColor: lastCum >= 0 ? 'rgba(28,108,48,0.10)' : 'rgba(178,31,31,0.10)',
+        fill: false, borderWidth: 2, tension: 0.25, pointRadius: 0,
+        yAxisID: 'y', order: 1 },
+    ] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { enabled: true, mode: 'index', intersect: false,
+          callbacks: estBarIdx >= 0 ? { label(ctx) {
+            const y = ctx.parsed.y;
+            const v = _fsCompactUsd(y) || ('$' + Number(y).toFixed(2));
+            const isEst = ctx.dataIndex === estBarIdx && ctx.dataset.label === 'Day Change';
+            return ctx.dataset.label + ': ' + v + (isEst ? ' (pending CST/FT estimate)' : '');
+          } } : undefined },
+      },
+      scales: {
+        x:  { display: true, ticks: { font: { size: 10 }, color: '#666', maxRotation: 0, autoSkip: true, maxTicksLimit: 14 }, grid: { display: false } },
+        y:  { type: 'linear', position: 'right', display: true, ticks: { font: { size: 10 }, color: '#666', callback: yTick }, grid: { color: 'rgba(0,0,0,0.06)' } },
+        y1: { type: 'linear', position: 'left', display: true, ticks: { font: { size: 10 }, color: '#888', callback: yTick }, grid: { drawOnChartArea: false } },
+      },
+      elements: { point: { radius: 0 } },
+    },
+  });
+}
+
+function closeDashTrendModal() {
+  if (_dashTrendModalChart) { _dashTrendModalChart.destroy(); _dashTrendModalChart = null; }
+  const el = $('dashTrendModal');
+  if (el) el.classList.remove('active');
 }
 
 // 2026-08-13 -- Portfolio Mix card: same Asset Allocation/Beta/Sector/
@@ -2496,5 +2672,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // portfolio.html's #trendsPeriod) -- only re-runs that one widget.
   const cumPeriodSel = $('tsCumPnlPeriod');
   if (cumPeriodSel) cumPeriodSel.addEventListener('change', () => loadCumPnlSnapshot());
+  // Expand button (⤢) -- opens the full-period, full-resolution version of
+  // the same chart. Backdrop click (outside the card) also closes it,
+  // mirroring web/portfolio-modal.js's portfolioModal pattern.
+  $('tsCumPnlExpandBtn')?.addEventListener('click', openDashTrendModal);
+  $('dashTrendModal')?.addEventListener('click', (ev) => {
+    if (ev.target.id === 'dashTrendModal') closeDashTrendModal();
+  });
   await refreshAll();
 });

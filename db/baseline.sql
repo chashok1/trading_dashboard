@@ -1796,6 +1796,65 @@ CREATE INDEX IF NOT EXISTS ix_drv_realized_gain_acct ON drv_realized_gain(accoun
 
 
 -- -----------------------------------------------------
+-- drv_realized_gain_estimate  <- PROVISIONAL partial-sale gain/loss,
+-- computed from CS/F snapshot qty diffs (etl/mark_sales.py) for the gap
+-- between "position size dropped" and "the real CST/FT transaction file
+-- confirms the sale". NOT FIFO — avg cost basis x that day's LOW price
+-- (conservative fill proxy), so this number will NOT exactly match the
+-- real drv_realized_gain figure. Auto-purged (etl/derive_realized.py) once
+-- a real drv_realized_gain row covers the same account/symbol/date gap —
+-- never mixed into drv_realized_gain itself.
+-- -----------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS drv_realized_gain_estimate (
+
+    source                 TEXT NOT NULL,           -- 'CS' or 'F'
+
+    account                TEXT NOT NULL,
+
+    tos_symbol             TEXT NOT NULL,
+
+    snapshot_date          DATE NOT NULL,            -- snapshot that first showed the qty drop
+
+    prev_snapshot_date     DATE NOT NULL,
+
+    shares_sold_est        NUMERIC NOT NULL,         -- qty_prev - qty_curr
+
+    cost_per_share_prev    NUMERIC,                  -- prior snapshot's avg cost basis per share
+
+    low_price              NUMERIC,                  -- day's low on snapshot_date
+
+    proceeds_est           NUMERIC,                  -- shares_sold_est * low_price
+
+    cost_basis_est         NUMERIC,                  -- shares_sold_est * cost_per_share_prev
+
+    realized_gain_est      NUMERIC,                  -- proceeds_est - cost_basis_est
+
+    realized_gain_pct_est  NUMERIC,
+
+    computed_at            TIMESTAMP NOT NULL DEFAULT now(),
+
+    PRIMARY KEY (source, account, tos_symbol, snapshot_date)
+
+);
+
+CREATE INDEX IF NOT EXISTS ix_drv_realized_gain_estimate_date ON drv_realized_gain_estimate(snapshot_date);
+
+CREATE INDEX IF NOT EXISTS ix_drv_realized_gain_estimate_acct ON drv_realized_gain_estimate(account, snapshot_date);
+
+-- prev_mark_price/sold_move_est added 2026-08-27: the "Today's Gain" KPI and
+-- Dashboard Cumulative P&L chart use a DIFFERENT figure than realized_gain_est
+-- -- the day's mark-to-market move on shares no longer held (sell price vs.
+-- YESTERDAY's price, not vs. cost basis) -- mirroring get_portfolio_summary's
+-- real cs_sold_move CTE (api/routers/dash.py). prev_mark_price is that prior
+-- snapshot's own price/last_price; sold_move_est = shares_sold_est *
+-- (low_price - prev_mark_price).
+ALTER TABLE drv_realized_gain_estimate ADD COLUMN IF NOT EXISTS prev_mark_price NUMERIC;
+ALTER TABLE drv_realized_gain_estimate ADD COLUMN IF NOT EXISTS sold_move_est   NUMERIC;
+
+
+
+-- -----------------------------------------------------
 
 -- hist_etfchg  <- etfchg tab
 

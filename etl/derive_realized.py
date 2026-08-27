@@ -279,6 +279,24 @@ def derive_realized_gain(session: Session) -> int:
         for r in all_rows
     ])
     session.commit()
+
+    # Real FIFO data has now landed — drop any provisional partial-sale
+    # estimate (etl/mark_sales.py) that this rebuild's real sell(s) cover.
+    # Not a numeric match (estimate = avg cost x day's low, real = FIFO lots
+    # x actual fill); the estimate just steps aside once the real number
+    # exists for that account/symbol/date gap.
+    session.execute(text("""
+        DELETE FROM drv_realized_gain_estimate e
+        WHERE EXISTS (
+            SELECT 1 FROM drv_realized_gain r
+            WHERE r.source = e.source
+              AND r.account = e.account
+              AND r.tos_symbol = e.tos_symbol
+              AND r.sell_date BETWEEN e.prev_snapshot_date AND e.snapshot_date
+        )
+    """))
+    session.commit()
+
     return len(all_rows)
 
 

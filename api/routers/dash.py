@@ -3863,14 +3863,47 @@ def get_portfolio_realized(
         sql = f"""
             SELECT source, account, symbol, sell_date, shares_sold,
                    sell_proceeds, cost_basis, realized_gain, realized_gain_pct,
-                   holding_days_avg, is_long_term, lots_consumed
+                   holding_days_avg, is_long_term, lots_consumed,
+                   FALSE AS is_estimate
             FROM drv_realized_gain
             WHERE sell_date <= :d {wclause}
             ORDER BY sell_date DESC, symbol
             LIMIT 1000
         """
+        # Provisional partial-sale estimates (etl/mark_sales.py) — snapshot-diff
+        # rows still pending the real CST/FT transaction. Same filters, applied
+        # to their own columns (tos_symbol/account/source/snapshot_date). These
+        # are dropped from drv_realized_gain_estimate automatically once the
+        # real FIFO row lands (etl/derive_realized.py), so anything still here
+        # is genuinely unconfirmed — flagged is_estimate:true for the UI.
+        est_where = []
+        if symbol:
+            est_where.append("tos_symbol = :sym")
+        if account:
+            est_where.append("account ILIKE :acc")
+        if source:
+            est_where.append("source = :src")
+        if fd:
+            est_where.append("snapshot_date >= :fd")
+        if td:
+            est_where.append("snapshot_date <= :td")
+        est_wclause = (" AND " + " AND ".join(est_where)) if est_where else ""
+        est_sql = f"""
+            SELECT source, account, tos_symbol AS symbol, snapshot_date AS sell_date,
+                   shares_sold_est AS shares_sold, proceeds_est AS sell_proceeds,
+                   cost_basis_est AS cost_basis, realized_gain_est AS realized_gain,
+                   realized_gain_pct_est AS realized_gain_pct,
+                   NULL::numeric AS holding_days_avg, NULL::boolean AS is_long_term,
+                   NULL::jsonb AS lots_consumed, TRUE AS is_estimate
+            FROM drv_realized_gain_estimate
+            WHERE snapshot_date <= :d {est_wclause}
+            ORDER BY snapshot_date DESC, tos_symbol
+            LIMIT 1000
+        """
         with session_scope() as s:
-            return [dict(r) for r in s.execute(text(sql), params).mappings().all()]
+            rows = [dict(r) for r in s.execute(text(sql), params).mappings().all()]
+            est_rows = [dict(r) for r in s.execute(text(est_sql), params).mappings().all()]
+        return sorted(rows + est_rows, key=lambda r: (r["sell_date"] or d), reverse=True)
 
     key = "symbol" if group_by == "symbol" else "account"
     if key not in ("symbol", "account"):
@@ -4441,6 +4474,20 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
                    AND account NOT IN (SELECT account_number FROM excl)
                  GROUP BY account
             ),
+            -- Provisional fallback (etl/mark_sales.py) for the gap before
+            -- CST/FT loads — auto-purged once real transaction data covers
+            -- the same account/symbol/date (etl/derive_realized.py), so
+            -- this only ever contributes on days that genuinely have no
+            -- real number yet. F gets sold-move/realized-today for the
+            -- first time here (no real computation exists for it above).
+            est_today AS (
+                SELECT source,
+                       SUM(COALESCE(sold_move_est, 0))     AS sold_move_est,
+                       SUM(COALESCE(realized_gain_est, 0)) AS realized_est
+                  FROM drv_realized_gain_estimate
+                 WHERE snapshot_date = (SELECT d FROM latest_cs)
+                 GROUP BY source
+            ),
             u AS (
               SELECT CASE WHEN {F_IS_NOT_CASH} THEN current_value ELSE 0 END AS mv,
                      CASE WHEN {F_IS_NOT_CASH} THEN today_gl_dollar ELSE 0 END AS tg,
@@ -4478,19 +4525,29 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
                    -- Schwab-style Today's Gain:
                    --   per-position day_chng (held)
                    -- + intraday move on sold shares (sell_price - yesterday_close) * qty
+                   -- + estimated intraday move on sold shares not yet in a real
+                   --   transaction file (CS + F, provisional — see est_today)
                    -- + dividends/interest today (settled to cash)
                    COALESCE(SUM(tg),0)
                      + COALESCE((SELECT SUM(amt) FROM cs_sold_move), 0)
+                     + COALESCE((SELECT SUM(sold_move_est) FROM est_today), 0)
                      + COALESCE((SELECT SUM(amt) FROM cs_div_int),   0)
                      AS today_gain_dollar,
                    COALESCE(SUM(dc),0) AS day_change_dollar,
                    -- Pull realized_today directly from drv_cs_realized_gain so
-                   -- fully-sold-out positions (no hist_cs row today) are counted.
-                   -- Strictly today's snapshot: if nothing was sold on the
-                   -- current day this returns 0 (no fall-through to prior days).
+                   -- fully-sold-out positions (no hist_cs row today) are counted,
+                   -- plus the provisional estimate (CS + F) for any account/
+                   -- symbol/date gap the real number doesn't cover yet.
                    COALESCE((SELECT SUM(realized_gain) FROM drv_cs_realized_gain
                               WHERE as_of_date = (SELECT d FROM latest_cs)), 0)
+                     + COALESCE((SELECT SUM(realized_est) FROM est_today), 0)
                        AS realized_today_dollar,
+                   -- Estimate-only components, so callers can flag "includes
+                   -- a provisional number" without re-deriving it themselves.
+                   COALESCE((SELECT SUM(sold_move_est) FROM est_today), 0)
+                       AS today_gain_estimate_dollar,
+                   COALESCE((SELECT SUM(realized_est) FROM est_today), 0)
+                       AS realized_today_estimate_dollar,
                    COALESCE(SUM(sg),0) AS total_gain_dollar,
                    COALESCE(SUM(cb),0) AS cost_basis,
                    COALESCE(SUM(leg_count),0)::INTEGER AS legs,
@@ -4501,26 +4558,6 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
         # Per-account breakdown (exclude cash positions from totals, but include cash value separately)
         acct_rows = list(s.execute(text(f"""
             WITH excl AS (SELECT account_number FROM ref_accounts WHERE is_active = FALSE),
-            f_accts AS (
-              SELECT 'F' AS source,
-                     COALESCE(hist_f.account_name, hist_f.account_number)
-                       || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
-                                                                          AS account,
-                     ra.short_name AS account_tag,
-                     SUM(CASE WHEN {F_IS_NOT_CASH} THEN current_value ELSE 0 END) AS market_value,
-                     SUM(CASE WHEN {F_IS_NOT_CASH} THEN today_gl_dollar ELSE 0 END) AS today_gain_dollar,
-                     SUM(CASE WHEN {F_IS_NOT_CASH} THEN today_gl_dollar ELSE 0 END) AS day_change_dollar,
-                     0::NUMERIC AS realized_today_dollar,
-                     SUM(CASE WHEN {F_IS_NOT_CASH} THEN {F_TOTAL_GAIN_DOLLAR} ELSE 0 END) AS total_gain_dollar,
-                     SUM(CASE WHEN {F_IS_NOT_CASH} THEN cost_basis_total ELSE 0 END) AS cost_basis,
-                     COUNT(DISTINCT CASE WHEN {F_IS_NOT_CASH} THEN symbol END) AS positions,
-                     SUM(CASE WHEN {F_IS_CASH} THEN current_value ELSE 0 END) AS cash_value
-              FROM hist_f
-              LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
-              WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
-                AND COALESCE(ra.is_active, TRUE) = TRUE
-              GROUP BY hist_f.account_number, hist_f.account_name, ra.short_name
-            ),
             latest_cs AS (
               SELECT MAX(snapshot_date) AS d FROM hist_cs WHERE snapshot_date <= :d
             ),
@@ -4532,6 +4569,52 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
               SELECT account, tos_symbol, price FROM hist_cs
                WHERE snapshot_date = (SELECT d FROM prev_cs_snap)
                  AND account NOT IN (SELECT account_number FROM excl)
+            ),
+            -- Provisional fallback (etl/mark_sales.py), same rule as the
+            -- overall-totals query above: auto-purged once real transaction
+            -- data covers the same account/symbol/date gap
+            -- (etl/derive_realized.py). F gets a sold-move/realized-today
+            -- number for the first time here (no real computation exists
+            -- for it below).
+            f_est_by_acct AS (
+              SELECT account AS account_number,
+                     SUM(COALESCE(sold_move_est, 0))     AS sold_move_est,
+                     SUM(COALESCE(realized_gain_est, 0)) AS realized_est
+                FROM drv_realized_gain_estimate
+               WHERE source = 'F' AND snapshot_date = (SELECT d FROM latest_cs)
+               GROUP BY account
+            ),
+            cs_est_by_acct AS (
+              SELECT account,
+                     SUM(COALESCE(sold_move_est, 0))     AS sold_move_est,
+                     SUM(COALESCE(realized_gain_est, 0)) AS realized_est
+                FROM drv_realized_gain_estimate
+               WHERE source = 'CS' AND snapshot_date = (SELECT d FROM latest_cs)
+               GROUP BY account
+            ),
+            f_accts AS (
+              SELECT 'F' AS source,
+                     COALESCE(hist_f.account_name, hist_f.account_number)
+                       || COALESCE(' (' || ra.short_name || ')', ' (' || hist_f.account_number || ')')
+                                                                          AS account,
+                     ra.short_name AS account_tag,
+                     SUM(CASE WHEN {F_IS_NOT_CASH} THEN current_value ELSE 0 END) AS market_value,
+                     SUM(CASE WHEN {F_IS_NOT_CASH} THEN today_gl_dollar ELSE 0 END)
+                       + COALESCE(MAX(fest.sold_move_est), 0) AS today_gain_dollar,
+                     SUM(CASE WHEN {F_IS_NOT_CASH} THEN today_gl_dollar ELSE 0 END) AS day_change_dollar,
+                     COALESCE(MAX(fest.realized_est), 0) AS realized_today_dollar,
+                     SUM(CASE WHEN {F_IS_NOT_CASH} THEN {F_TOTAL_GAIN_DOLLAR} ELSE 0 END) AS total_gain_dollar,
+                     SUM(CASE WHEN {F_IS_NOT_CASH} THEN cost_basis_total ELSE 0 END) AS cost_basis,
+                     COUNT(DISTINCT CASE WHEN {F_IS_NOT_CASH} THEN symbol END) AS positions,
+                     SUM(CASE WHEN {F_IS_CASH} THEN current_value ELSE 0 END) AS cash_value,
+                     COALESCE(MAX(fest.sold_move_est), 0) AS today_gain_estimate_dollar,
+                     COALESCE(MAX(fest.realized_est), 0)  AS realized_today_estimate_dollar
+              FROM hist_f
+              LEFT JOIN ref_accounts ra ON ra.account_number = hist_f.account_number
+              LEFT JOIN f_est_by_acct fest ON fest.account_number = hist_f.account_number
+              WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d)
+                AND COALESCE(ra.is_active, TRUE) = TRUE
+              GROUP BY hist_f.account_number, hist_f.account_name, ra.short_name
             ),
             cs_sold_move AS (
               SELECT cst.account,
@@ -4570,22 +4653,29 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
                      c.account,
                      ra.short_name AS account_tag,
                      SUM(CASE WHEN {CS_IS_NOT_CASH_C} THEN c.market_value ELSE 0 END) AS market_value,
-                     -- Schwab-style Today's Gain per account (day_chng + sold-intraday + DIV/INT)
+                     -- Schwab-style Today's Gain per account (day_chng + sold-intraday
+                     -- [real, then provisional fallback] + DIV/INT)
                      SUM(CASE WHEN {CS_IS_NOT_CASH_C}
                               THEN COALESCE(c.day_chng_dollar, 0) ELSE 0 END)
                        + COALESCE(MAX(sm.amt), 0)
+                       + COALESCE(MAX(cest.sold_move_est), 0)
                        + COALESCE(MAX(di.amt), 0)
                        AS today_gain_dollar,
                      SUM(CASE WHEN {CS_IS_NOT_CASH_C}
                               THEN COALESCE(c.day_chng_dollar, 0) ELSE 0 END) AS day_change_dollar,
                      -- Direct from drv_cs_realized_gain via the per-account
                      -- pre-aggregate CTE so fully-sold-out positions are
-                     -- counted (LEFT JOIN above only sees still-held rows).
-                     COALESCE(MAX(rt2.realized_today_dollar), 0) AS realized_today_dollar,
+                     -- counted (LEFT JOIN above only sees still-held rows),
+                     -- plus the provisional estimate for any gap it doesn't
+                     -- cover yet.
+                     COALESCE(MAX(rt2.realized_today_dollar), 0)
+                       + COALESCE(MAX(cest.realized_est), 0) AS realized_today_dollar,
                      SUM(CASE WHEN {CS_IS_NOT_CASH_C} THEN c.gain_dollar ELSE 0 END) AS total_gain_dollar,
                      SUM(CASE WHEN {CS_IS_NOT_CASH_C} THEN c.cost_basis ELSE 0 END) AS cost_basis,
                      COUNT(DISTINCT CASE WHEN {CS_IS_NOT_CASH_C} THEN c.symbol END) AS positions,
-                     SUM(CASE WHEN {CS_IS_CASH_C} THEN c.market_value ELSE 0 END) AS cash_value
+                     SUM(CASE WHEN {CS_IS_CASH_C} THEN c.market_value ELSE 0 END) AS cash_value,
+                     COALESCE(MAX(cest.sold_move_est), 0) AS today_gain_estimate_dollar,
+                     COALESCE(MAX(cest.realized_est), 0)  AS realized_today_estimate_dollar
               FROM hist_cs c
               LEFT JOIN ref_accounts ra ON ra.account_number = c.account
               LEFT JOIN drv_cs_realized_gain rg
@@ -4595,6 +4685,7 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
               LEFT JOIN cs_sold_move sm ON sm.account = c.account
               LEFT JOIN cs_div_int   di ON di.account = c.account
               LEFT JOIN cs_realized_by_acct rt2 ON rt2.account = c.account
+              LEFT JOIN cs_est_by_acct cest ON cest.account = c.account
               WHERE c.snapshot_date = (SELECT d FROM latest_cs)
                 AND COALESCE(ra.is_active, TRUE) = TRUE
               GROUP BY c.account, ra.short_name
@@ -4986,6 +5077,11 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
             "cost_basis":          cb,
             "cash_value":          float(r["cash_value"] or 0),
             "positions":           int(r["positions"] or 0),
+            # Provisional portion of today_gain_dollar/realized_today_dollar
+            # above (etl/mark_sales.py estimate — see drv_realized_gain_estimate).
+            # Zero once the real CST/FT-derived number covers the gap.
+            "today_gain_estimate_dollar":    float(r["today_gain_estimate_dollar"] or 0),
+            "realized_today_estimate_dollar": float(r["realized_today_estimate_dollar"] or 0),
         })
     # Global YTD/MTD = sum of the per-account figures above (skipping accounts
     # with no baseline — None, not 0 — so a newly-tracked account doesn't

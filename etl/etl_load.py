@@ -37,7 +37,9 @@ from etl.load_raw import (
     close_run, file_hash, load_etf, load_etfchg, load_iichg, load_one_tab,
     load_rr, load_tw, open_run, parse_file_date_from_name,
 )
-from etl.mark_sales import mark_cs_sales, mark_f_sales
+from etl.mark_sales import (mark_cs_sales, mark_f_sales,
+                            estimate_cs_partial_sale, estimate_f_partial_sale,
+                            estimate_cs_full_sale, estimate_f_full_sale)
 from etl.mappings import HIST_MAPS
 
 from etl._logging import setup_logging
@@ -493,14 +495,21 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
             log.info("LOADED %s: %d read, %d ins, %d skip", target_tab, read, ins, skp)
 
             # After loading positions, mark any sold positions by detecting missing symbols
+            # (full exits) and estimate realized gain for partial reductions (position
+            # still open) — provisional, superseded once real CST/FT data lands.
             if ins > 0 and file_dt and target_tab.upper() in ('F', 'CS'):
                 try:
                     if target_tab.upper() == 'CS':
                         marked = mark_cs_sales(file_dt)
+                        estimated = estimate_cs_partial_sale(file_dt) + estimate_cs_full_sale(file_dt)
                     elif target_tab.upper() == 'F':
                         marked = mark_f_sales(file_dt)
+                        estimated = estimate_f_partial_sale(file_dt) + estimate_f_full_sale(file_dt)
                     if marked > 0:
                         log.info("MARKED %d sold positions in %s as of %s", marked, target_tab, file_dt)
+                    if estimated > 0:
+                        log.info("ESTIMATED %d partial-sale realized-gain row(s) in %s as of %s",
+                                 estimated, target_tab, file_dt)
                 except Exception as e:
                     log.warning("Could not mark sales for %s: %s", target_tab, e)
 
