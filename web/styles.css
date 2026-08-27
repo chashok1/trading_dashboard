@@ -2051,6 +2051,23 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 /* 2026-08-10 -- gap shrunk 8px -> 2px ("a thin line") per user request,
    now that this rail has 5 panels stacked instead of 3. */
 .right-rail { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* 2026-08-24 -- Sectors..Country ETFs (+ Symbol/Indicator, moved in later)
+   relocated from .right-rail into .cat-col (see index.html's own comment
+   there) -- iterated live through a few layouts: fixed 260px panels (wrapped
+   too early) -> flex:1 1 0 (all 8 squeezed onto one row) -> CSS
+   `column-count` masonry (auto-balanced across 5 columns, but couldn't
+   target a SPECIFIC column once "move symbol and indicator to the 5th
+   column" needed one). Settled here on 5 EXPLICIT column containers
+   (.macro-rail-col, one per index.html column div) -- each stacks its own
+   panels top-to-bottom (real masonry: columns don't need to row-align with
+   each other, just each column's own panels align vertically), and DOM
+   placement (not an auto-balancer) decides which column a panel lands in,
+   so a specific column assignment is just "put it in that div".
+   Row CONTENT is untouched throughout (.msr-row/.msr-name-tick/.msr-rb/
+   .msr-chg etc., shared with the right-rail panels that stayed put and with
+   Actionable's own rail, so deliberately never touched here). */
+.macro-rail-row { display: flex; align-items: flex-start; gap: 8px; }
+.macro-rail-col { display: flex; flex-direction: column; gap: 8px; flex: 1 1 0; min-width: 130px; }
 
 /* Risk Dial / What changed keep their own height cap + internal scroll
    (unchanged from the pre-relayout row-1 behavior). What changed's cap
@@ -2707,6 +2724,41 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
 }
 #regimeStrip > *:not(:first-child) { padding-left: 0; border-left: none; }
 .events-line { justify-content: space-between; }
+/* 2026-08-27 -- earnings-line overrides: was nowrap like its siblings (fine
+   when it only listed a handful of opted-IN watched symbols), but now it
+   lists everyone in ref_my_stocks with upcoming earnings by default, so
+   nowrap ran the row off the right edge of this narrow column -- pushing
+   the gear icon out of view. align-items:flex-start (overriding
+   .opex-line/.events-line's center above) keeps the gear pinned to the
+   TOP of the now-multi-line block instead of vertically centered against
+   its full height. User: "What happened to my gear icon ... (total 3
+   lines) but not highlighted."
+   2026-08-27 follow-up -- .earnings-content is a flex column stacking the
+   watched block above the un-watched block; .earnings-line itself stays a
+   plain 2-item flex row (that column + the gear). flex:1 1 auto +
+   min-width:0 let it shrink to the column width so each block's
+   line-clamp has a real wrap boundary to clamp against. User: "Only
+   display symbols in 3 lines. group by date ... Wrap this into three
+   lines".
+   2026-08-27 follow-up 2 -- split into 2 clamped blocks (was 1 clamped to
+   3) so watched (grouped by date) and un-watched (plain "SYMBOL(days)")
+   don't run together mid-line -- watched gets first crack at 2 lines,
+   un-watched pinned to its own 3rd line. User: "move the un-watched one to
+   3rd line ... use first two lines for watched ones." */
+.earnings-line { align-items: flex-start; }
+.earnings-content { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.earnings-groups {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* 2026-08-27 -- smaller font for the un-watched (3rd) line -- it's the
+   overflow/deprioritized set, not meant to compete visually with the
+   watched, date-grouped lines above it. User: "display not watched at the
+   end in small font NVDA(0) ABC(1)". */
+.earnings-unwatched {
+  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+  overflow: hidden; font-size: 9px;
+}
 /* 2026-08-14 -- yellow highlight for an OPEX/Qtly Exp entry <=5 days out.
    Same yellow as .rd-spx-vbar-fill.tier-caution (#eab308), dark text for
    contrast on the light background. User: "Options expirations (OPEX and
@@ -2726,27 +2778,13 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
   background: var(--accent, #2563eb); color: #fff; border: none; border-radius: 4px;
 }
 .cal-types-save:hover { opacity: 0.9; }
-/* 2026-08-14 -- Earnings-watch picker: type-to-add input + removable tag
-   list, distinct from Events' fixed checklist (arbitrary symbol universe,
-   not ~31 known categories). Shares .cal-types-pop/.cal-types-list/
-   .cal-types-save's outer chrome (pointer-events, Save button). */
-.earnings-add-row { display: flex; gap: 4px; margin-bottom: 8px; }
-.earnings-add-row input {
-  flex: 1; min-width: 0; font-size: 11px; padding: 4px 6px;
-  border: 1px solid var(--border); border-radius: 4px;
-}
-.earnings-add-row button {
-  flex: 0 0 auto; font-size: 11px; font-weight: 600; padding: 4px 8px; cursor: pointer;
-  background: var(--accent, #2563eb); color: #fff; border: none; border-radius: 4px;
-}
-.earnings-tag-list { display: flex; flex-direction: row; flex-wrap: wrap; max-height: 240px; overflow-y: auto; margin-bottom: 8px; }
-.earnings-tag {
-  display: inline-flex; align-items: center; gap: 4px; font-size: 11px;
-  background: var(--surface-hover, #f0f6ff); border: 1px solid var(--border);
-  border-radius: 3px; padding: 2px 4px 2px 7px; margin: 0 4px 4px 0;
-}
-.earnings-tag-x { cursor: pointer; color: #6b7280; font-weight: 700; padding: 0 2px; }
-.earnings-tag-x:hover { color: #b91c1c; }
+/* 2026-08-14 -- Earnings-watch picker checklist, distinct from Events'
+   fixed checklist (arbitrary symbol universe, not ~31 known categories).
+   Shares .cal-types-pop/.cal-types-list/.cal-types-save's outer chrome
+   (pointer-events, Save button). 2026-08-27 -- the type-to-add input +
+   removable tag list (.earnings-add-row/.earnings-tag*) was dropped along
+   with the watch-list reversal (opt-in -> opt-out) -- no more concept of
+   adding an extra watched symbol once everyone is watched by default. */
 /* 2026-08-08 -- .regime-line switched from inline-block to a full-width flex
    row so its Qtr entry can right-justify to the card's own right edge
    (flex:1 1 100% claims the whole #regimeStrip row) instead of just

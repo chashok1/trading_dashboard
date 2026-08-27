@@ -161,6 +161,145 @@
         </div>
 
         <div class="cat-col">
+          <!-- 2026-08-24 -- Sectors through Country ETFs (8 panels), moved
+               here from the right rail (were #macroSectorsBand../
+               #macroCountryBand under .right-rail, added 2026-08-14) --
+               moved in 2 steps per user request ("move panel by panel"):
+               Sectors first, the other 7 to its right after. No content
+               changes -- same container ids, same markup;
+               web/macro_areas.js::renderSectorsPanel()/renderRail() target
+               them by id regardless of parent, so no script change needed.
+               2026-08-24 follow-up -- switched from a flex row / CSS
+               column-count to 5 EXPLICIT column containers (.macro-rail-col)
+               -- user: "Make 5 vertical columns and fit all them. They
+               just need to align vertically. Horizantally they don't need
+               to align" (masonry: each column stacks its own panels,
+               columns don't row-align with each other) -- then "move
+               symbol and indicator to the 5th column", which needs a
+               SPECIFIC column assignment column-count's auto-balancing
+               can't give -- hence explicit per-column containers instead.
+               Symbol (#nearEarningsBand) and Indicator (#indicatorBand)
+               moved here from the right rail, into column 5 -- same ids,
+               same markup, no content/script changes. -->
+          <div class="macro-rail-row">
+          <!-- 2026-08-24 -- Sectors moved back to the right rail (see
+               .right-rail's own comment) -- user: "move the sectors back
+               to side panel." Volatility and Major Markets moved into its
+               now-empty column 1 instead -- "move the volatility and
+               major markets to center columns instead". Same container
+               ids, same markup as their original right-rail versions;
+               web/macro_areas.js::railAreaRow() targets them by id
+               regardless of parent, so no script change needed. -->
+          <!-- 2026-08-24 -- "move volatility to col 1 above major markets.
+               move commodities to col 3 below USD". -->
+          <div class="macro-rail-col">
+          <section class="cockpit-band rail-band" id="macroVolatilityBand">
+            <div class="msr-section-hdr">Volatility <span class="msr-breadth" id="macroBreadthVolatility"></span></div>
+            <div id="macroRailVolatility" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+
+          <!-- 2026-08-24 -- Rates & Duration moved here (col 1), below
+               Volatility -- user: "move rates to col1 below volatility". -->
+          <section class="cockpit-band rail-band" id="macroRatesBand">
+            <div class="msr-section-hdr">Rates &amp; Duration <span class="msr-breadth" id="macroBreadthRates"></span></div>
+            <div id="macroRailRates" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+
+          <!-- 2026-08-24 -- Credit moved here (col 1), below Rates &
+               Duration -- user: "also credit to below rates". -->
+          <section class="cockpit-band rail-band" id="macroCreditBand">
+            <div class="msr-section-hdr">Credit <span class="msr-breadth" id="macroBreadthCredit"></span></div>
+            <div id="macroRailCredit" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+
+          </div>
+
+          <div class="macro-rail-col">
+          <section class="cockpit-band rail-band" id="macroTop9Band">
+            <div class="msr-section-hdr">Major Markets <span class="msr-breadth" id="macroBreadthTop9"></span></div>
+            <div id="macroRailTop9" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+
+          <section class="cockpit-band rail-band" id="macroCommoditiesBand">
+            <div class="msr-section-hdr">Commodities <span class="msr-breadth" id="macroBreadthCommodities"></span></div>
+            <div id="macroRailCommodities" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+          </div>
+
+          <div class="macro-rail-col">
+          <section class="cockpit-band rail-band" id="macroUsdBand">
+            <div class="msr-section-hdr">USD &amp; Currency <span class="msr-breadth" id="macroBreadthUsd"></span></div>
+            <div id="macroRailUsd" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+
+          <!-- 2026-08-27 -- Crypto moved here (col 3), below USD & Currency
+               -- user: "move CRYPTO to belwo USD&Currency". -->
+          <section class="cockpit-band rail-band" id="macroCryptoBand">
+            <div class="msr-section-hdr">Crypto <span class="msr-breadth" id="macroBreadthCrypto"></span></div>
+            <div id="macroRailCrypto" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+
+          <section class="cockpit-band rail-band" id="macroCountryBand">
+            <div class="msr-section-hdr">Country ETFs <span class="msr-breadth" id="macroBreadthCountry"></span></div>
+            <div id="macroRailCountry" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+          </div>
+
+          <!-- 2026-08-24 -- "Switch Col 4 and 5" -- Tech & ETFs now col 4,
+               Symbol/Indicator now col 5. -->
+          <div class="macro-rail-col">
+          <section class="cockpit-band rail-band" id="macroRemainingBand">
+            <div class="msr-section-hdr">Tech &amp; ETFs <span class="msr-breadth" id="macroBreadthRemaining"></span></div>
+            <div id="macroRailRemaining" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+          </div>
+
+          <div class="macro-rail-col">
+          <!-- 2026-08-27 -- Dollar Correlation moved back to the right rail
+               -- user: "move Dollar correlation back to side panel". See
+               .right-rail's own comment for where it landed. -->
+          <section class="cockpit-band rail-band" id="indicatorBand">
+            <div class="side-scroll">
+              <table class="mini-grid">
+                <thead>
+                  <tr>
+                    <th>Indicator</th>
+                    <th class="num">Days</th>
+                    <th>Date</th>
+                    <th class="num">Actual</th>
+                  </tr>
+                </thead>
+                <tbody id="econBody"></tbody>
+              </table>
+              <div id="econEmpty" class="empty-note" hidden>No active indicators.</div>
+            </div>
+          </section>
+
+          <!-- 2026-08-27 -- Symbol moved here, below Indicator -- swapped
+               back from the right rail. User: "move Symbol from side panel
+               to below INDICATOR" (col5, where Indicator actually lives --
+               confirmed with the user over the "col3" label). Same
+               container ids/markup as its prior spots; web/app.js
+               populates #nearEarningsBody by id regardless of parent, so no
+               script change needed. -->
+          <section class="cockpit-band rail-band" id="nearEarningsBand">
+            <div class="side-scroll">
+              <table class="mini-grid">
+                <thead>
+                  <tr>
+                    <th>Symbol</th>
+                    <th class="num">Days</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody id="nearEarningsBody"></tbody>
+              </table>
+              <div id="nearEarningsEmpty" class="empty-note" hidden>No earnings in the next 30 days.</div>
+            </div>
+          </section>
+          </div>
+          </div>
+
           <!-- 2026-08-09 -- Accounts filter bar, shared above all 3 stacked
                grids -- user: "Can we add a filter bar for second column ->
                accounts filter." Populated + wired in app.js::
@@ -493,99 +632,26 @@
       </div>
 
       <div class="right-rail">
-        <!-- 2026-08-10 -- Volatility/Major Markets, added from the
-             Actionable screen's macro rail -- same renderRail()/
-             railAreaRow() in macro_areas.js populates these by container
-             ID regardless of page, so no rendering-logic changes needed,
-             just matching container markup + loading that script here too.
-             Fixed height + internal scroll (not Actionable's approach,
-             where the whole side rail scrolls as one unbounded column) so
-             the right-rail's total footprint doesn't grow -- matches this
-             page's own convention (#indicatorBand/#nearEarningsBand already
-             cap+scroll individually). No collapse/chevron toggle (that's
-             wired in actionable.js, scoped to #actSidePanel, not loaded
-             here) -- always expanded. User: "add Volatility & Major Market
-             panels that you see on actionable screen to dashboard screen
-             on the right side ... don't change the height. use scrollbar
-             follow this order Volatility, Major Markets, SYMBOL, INDICATOR,
-             INFL." -->
-        <section class="cockpit-band rail-band" id="macroVolatilityBand">
-          <div class="msr-section-hdr">Volatility <span class="msr-breadth" id="macroBreadthVolatility"></span></div>
-          <div id="macroRailVolatility" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-        </section>
-
-        <section class="cockpit-band rail-band" id="macroTop9Band">
-          <div class="msr-section-hdr">Major Markets <span class="msr-breadth" id="macroBreadthTop9"></span></div>
-          <div id="macroRailTop9" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-        </section>
-
-        <!-- 2026-08-14 -- Dollar Correlation, added from the Actionable
-             screen's own side rail (#usdCorrSection there) -- same
-             web/macro_usd_corr.js::renderRail() populates #macroRailCorr/
-             #usdCorrSideHdr by container ID regardless of page (its init()
-             guard widened to allow this page, see that file's own comment),
-             so no rendering-logic changes needed, just matching container
-             markup + loading the script here too -- same pattern already
-             used for Volatility/Major Markets above. User: "dashboard ->
-             add dollar correlation panel (that you see on actionable
-             screen) between major markets and symbol panels." -->
+        <!-- 2026-08-24 -- Volatility and Major Markets moved to .cat-col's
+             macro-rail-row column 1 -- user: "move the volatility and
+             major markets to center columns instead". See that block's
+             own comment. Original order note (now partly stale): "add
+             Volatility & Major Market panels ... follow this order
+             Volatility, Major Markets, SYMBOL, INDICATOR, INFL." -->
+        <!-- 2026-08-24 -- Symbol (#nearEarningsBand) and Indicator
+             (#indicatorBand) moved to .cat-col's macro-rail-row, column 5
+             -- user: "move symbol and indicator to the 5th column". See
+             that block's own comment.
+             2026-08-27 -- Dollar Correlation moved back here -- user:
+             "move Dollar correlation back to side panel". Symbol moved out
+             (see col 5's own comment) to below Indicator instead. Same
+             container ids, same markup as its earlier right-rail spot;
+             web/macro_usd_corr.js::renderRail() targets #macroRailCorr/
+             #usdCorrSideHdr by id regardless of parent, so no script change
+             needed. -->
         <section class="cockpit-band rail-band" id="macroCorrBand">
           <div class="msr-section-hdr" id="usdCorrSideHdr">Dollar Correlation</div>
           <div id="macroRailCorr" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-        </section>
-
-        <!-- Near-term earnings: symbols currently held OR actionable
-             (drv_actionable, non-null consolidated_action) with earnings in
-             the next 30 days ("one month" per user request, was 7). -->
-        <section class="cockpit-band rail-band" id="nearEarningsBand">
-          <div class="side-scroll">
-            <table class="mini-grid">
-              <thead>
-                <tr>
-                  <th>Symbol</th>
-                  <th class="num">Days</th>
-                  <th>Date</th>
-                </tr>
-              </thead>
-              <tbody id="nearEarningsBody"></tbody>
-            </table>
-            <div id="nearEarningsEmpty" class="empty-note" hidden>No earnings in the next 30 days.</div>
-          </div>
-        </section>
-
-        <!-- 2026-08-10 -- Event grid (#eventBand) merged into Indicator --
-             both read ref_calendar_event, and Event's market-structure
-             names (Fed Meeting/FOMC/expiration/etc) were rendering here
-             AND there, unfiltered, since Indicator's own query never
-             excluded them. Indicator already returns the full deduplicated
-             set on its own (see api/routers/health.py::
-             get_dashboard_econ_indicators), so no query change was needed
-             -- just the redundant second grid removed. User: "Are the
-             entries in panels (INDICATOR and EVENT grids) duplicated? Can
-             we merge those two?" -> "Merge into one grid." -->
-        <!-- 2026-08-14 -- Actual column: user-entered reading for a
-             release (GET/PUT /api/dashboard/econ-indicators/actual --
-             ref_indicator_actual, generic by indicator+date, not tied to
-             ISM specifically). Entered inline here, not /ref -- click the
-             cell (or its "+" placeholder when empty) to edit. User:
-             "i need a way to enter this data from EVENT panel both in
-             dashboard and actionable screens. I don't want to go /ref
-             screen." -->
-        <section class="cockpit-band rail-band" id="indicatorBand">
-          <div class="side-scroll">
-            <table class="mini-grid">
-              <thead>
-                <tr>
-                  <th>Indicator</th>
-                  <th class="num">Days</th>
-                  <th>Date</th>
-                  <th class="num">Actual</th>
-                </tr>
-              </thead>
-              <tbody id="econBody"></tbody>
-            </table>
-            <div id="econEmpty" class="empty-note" hidden>No active indicators.</div>
-          </div>
         </section>
 
         <!-- 2026-08-10 -- Hedgeye INFL (inflation nowcast), moved here from
@@ -612,60 +678,22 @@
              as Mkt Situation -- INFL is now always expanded and no longer
              shares that toggle's state, matching every other split-out
              Dashboard Hedgeye panel. -->
-        <section class="cockpit-band rail-band" id="heInflPanel" style="display:none;">
-          <div id="heInflBody">Loading…</div>
-        </section>
-
-        <!-- 2026-08-14 -- Sectors + Rates & Duration..Country ETFs, added
-             from the Actionable screen's side rail (bottom of it there) --
-             same web/macro_areas.js renderSectorsPanel()/renderRail()
-             populate these by container ID regardless of page, already
-             loaded on this page (see the Volatility/Major Markets panels
-             above) -- no rendering-logic or script-tag changes needed, just
-             matching container markup, same order Actionable uses. User:
-             "dashboard -> right side panels -> add panels from actionable
-             screen at the bottom of the panels -> sectors, and all the
-             panels that you see you on actinable screen from Rates &
-             Duration to Country ETFs." -->
+        <!-- 2026-08-24 -- Sectors moved back here from .cat-col -- user:
+             "move the sectors back to side panel". Same #macroRailSectors
+             container id, same markup; web/macro_areas.js::
+             renderSectorsPanel() targets it by id regardless of parent, so
+             no script change needed. -->
         <section class="cockpit-band rail-band" id="macroSectorsBand">
           <div class="msr-section-hdr">Sectors</div>
           <div id="macroRailSectors" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
         </section>
 
-        <section class="cockpit-band rail-band" id="macroRatesBand">
-          <div class="msr-section-hdr">Rates &amp; Duration <span class="msr-breadth" id="macroBreadthRates"></span></div>
-          <div id="macroRailRates" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+        <!-- 2026-08-24 -- INFL moved below Sectors -- user: "move INFL
+             panel to below sectors panel". -->
+        <section class="cockpit-band rail-band" id="heInflPanel" style="display:none;">
+          <div id="heInflBody">Loading…</div>
         </section>
 
-        <section class="cockpit-band rail-band" id="macroCreditBand">
-          <div class="msr-section-hdr">Credit <span class="msr-breadth" id="macroBreadthCredit"></span></div>
-          <div id="macroRailCredit" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-        </section>
-
-        <section class="cockpit-band rail-band" id="macroUsdBand">
-          <div class="msr-section-hdr">USD &amp; Currency <span class="msr-breadth" id="macroBreadthUsd"></span></div>
-          <div id="macroRailUsd" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-        </section>
-
-        <section class="cockpit-band rail-band" id="macroCommoditiesBand">
-          <div class="msr-section-hdr">Commodities <span class="msr-breadth" id="macroBreadthCommodities"></span></div>
-          <div id="macroRailCommodities" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-        </section>
-
-        <section class="cockpit-band rail-band" id="macroRemainingBand">
-          <div class="msr-section-hdr">Tech &amp; ETFs <span class="msr-breadth" id="macroBreadthRemaining"></span></div>
-          <div id="macroRailRemaining" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-        </section>
-
-        <section class="cockpit-band rail-band" id="macroCryptoBand">
-          <div class="msr-section-hdr">Crypto <span class="msr-breadth" id="macroBreadthCrypto"></span></div>
-          <div id="macroRailCrypto" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-        </section>
-
-        <section class="cockpit-band rail-band" id="macroCountryBand">
-          <div class="msr-section-hdr">Country ETFs <span class="msr-breadth" id="macroBreadthCountry"></span></div>
-          <div id="macroRailCountry" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-        </section>
       </div>
     </div>
   </main>

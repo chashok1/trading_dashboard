@@ -710,10 +710,9 @@ document.addEventListener('click', e => {
 });
 
 // 2026-08-14 -- Earnings-watch line, below the Events line, same pattern
-// (gear-icon picker, persisted server-side via GET/PUT /api/dashboard/
-// earnings-watch -- one ref_settings row, single-user app) but picking
-// arbitrary SYMBOLS rather than a fixed set of ~31 calendar categories, so
-// the picker is a type-to-add/remove tag list instead of a checklist.
+// (gear-icon picker, persisted server-side, one ref_settings row,
+// single-user app) but picking arbitrary SYMBOLS rather than a fixed set of
+// ~31 calendar categories.
 // Window is a fixed 14 days ("next two weeks"); a symbol simply stops
 // coming back from the API once its own earnings_days goes negative --
 // "falls off automatically after the date is passed", no client-side
@@ -723,32 +722,76 @@ document.addEventListener('click', e => {
 // need a way to see Symbols (earnings date) that are going be in next two
 // weeks and should fall off automatically after the date is passed.
 // Should be highlighed when close within 3 days."
-let _earningsWatchSymbols = []; // refreshed each loadRegimeBand(), read by the picker popover
+// 2026-08-27 -- reversed: was an opt-IN watch list (started empty, .
+// user picked symbols to see highlighted, plus a separate compact line for
+// everyone else). Now everyone in your ref_my_stocks universe is watched by
+// default -- the picker is an opt-OUT exclude checklist instead -- and both
+// groups render in ONE combined line so more symbols fit, watched entries
+// highlighted when <=3d, excluded entries shown plain. Persisted via
+// GET/PUT /api/dashboard/earnings-unwatch (was earnings-watch; the old
+// setting held the opposite meaning so it's left as an unused orphan row
+// rather than reinterpreted).
+// 2026-08-27 follow-up -- watched entries grouped by DATE instead of one
+// "(date)" suffix per symbol -- "(8/26) ANF BBWI CRM ... (8/27) ONE TWO
+// ..." -- since with everyone shown by default the per-symbol suffix was
+// too repetitive to read at a glance. Budgeted 3 lines total: watched
+// (grouped by date) gets the first 2, un-watched (plain "SYMBOL(days)",
+// space-separated, smaller font) is pushed to a 3rd line of its own -- both
+// clamped independently in CSS (.earnings-groups/.earnings-unwatched,
+// -webkit-line-clamp) rather than truncating the row list here, so each
+// degrades to "as many as fit" instead of an arbitrary count.
+// User: "combine watched and not watched lines so we get to display more
+// symbols and only highlight when needed and watched." + "reverse the
+// logic -> watch all symbols by default but allow me not to watch." +
+// "move the un-watched one to 3rd line in this format NVDA(0). use first
+// two lines for watched ones. Add () around 8/26 and space after )" +
+// "display not watched at the end in small font NVDA(0) ABC(1)"
+let _earningsUnwatchedSymbols = []; // refreshed each loadRegimeBand(), read by the picker popover
 function _earningsLineHtml(rows) {
   const gear = `<span class="events-gear" title="Choose watched symbols" onclick="_toggleEarningsWatchPop(event)">&#9881;</span>`;
-  if (!_earningsWatchSymbols.length) {
-    return `<div class="events-line earnings-line"><span class="events-empty">No symbols watched</span>${gear}</div>`;
+  if (!rows || !rows.length) {
+    return `<div class="events-line earnings-line"><span class="events-empty">No upcoming earnings</span>${gear}</div>`;
   }
-  const bits = (rows || []).map(r => {
-    const sym = typeof symbolLink === 'function' ? symbolLink(escapeHtml(r.symbol), r.symbol) : escapeHtml(r.symbol);
-    const text = `${sym} ${fmtDate(r.event_date)} (${r.days_until}d)`;
-    return r.days_until <= 3 ? `<span class="opex-soon">${text}</span>` : text;
+  const unwatchedSet = new Set(_earningsUnwatchedSymbols);
+  const watchedRows = rows.filter(r => !unwatchedSet.has(r.symbol));
+  const unwatchedRows = rows.filter(r => unwatchedSet.has(r.symbol));
+  // Rows arrive ordered by earnings_days ASC (the API's own ORDER BY), so
+  // event_date is already non-decreasing -- a plain Map (insertion-order
+  // iteration) groups same-date rows together without a separate sort.
+  const groups = new Map();
+  for (const r of watchedRows) {
+    if (!groups.has(r.event_date)) groups.set(r.event_date, []);
+    groups.get(r.event_date).push(r);
+  }
+  const groupsHtml = [...groups.entries()].map(([date, list]) => {
+    const symsHtml = list.map(r => {
+      const sym = typeof symbolLink === 'function' ? symbolLink(escapeHtml(r.symbol), r.symbol) : escapeHtml(r.symbol);
+      return r.days_until <= 3 ? `<span class="opex-soon">${sym}</span>` : sym;
+    }).join(' ');
+    return `(${fmtDate(date)}) ${symsHtml}`;
   });
-  const body = bits.length
-    ? bits.join(' &middot; ')
-    : '<span class="events-empty">No earnings in the next 14 days for watched symbols</span>';
-  return `<div class="events-line earnings-line">${body}${gear}</div>`;
+  const watchedHtml = groupsHtml.length ? `<span class="earnings-groups">${groupsHtml.join(' ')}</span>` : '';
+  const unwatchedHtml = unwatchedRows.length
+    ? `<span class="earnings-unwatched">${unwatchedRows.map(r => {
+        const sym = typeof symbolLink === 'function' ? symbolLink(escapeHtml(r.symbol), r.symbol) : escapeHtml(r.symbol);
+        return `${sym}(${r.days_until})`;
+      }).join(' ')}</span>`
+    : '';
+  return `<div class="events-line earnings-line"><span class="earnings-content">${watchedHtml}${unwatchedHtml}</span>${gear}</div>`;
 }
 // 2026-08-14 follow-up -- "i need the symbols list with date that are
-// upcoming so i can choose." The picker now leads with a checkable list of
+// upcoming so i can choose." The picker leads with a checkable list of
 // symbols that actually HAVE upcoming earnings (your ref_my_stocks
 // watchlist, same source/scope as the unfiltered /api/dashboard/symbol-
 // earnings call actionable.js already uses -- 45d lookahead so there's
-// enough to browse), each row showing its date -- not a blind type-a-
-// ticker box. The free-text add row stays underneath for a symbol outside
-// that tracked watchlist. _earningsCandidates is fetched once per popover
-// open (not on every Dashboard render -- this list is only needed while
-// the picker is actually open).
+// enough to browse), each row showing its date.
+// 2026-08-27 -- checked now means WATCHED (the default -- everyone starts
+// checked); unchecking excludes. The free-text "add a symbol outside your
+// list" row was dropped in the same change -- there's no more concept of
+// adding an extra watched symbol once everyone is watched by default. User
+// confirmed dropping it over repurposing it.
+// _earningsCandidates is fetched once per popover open (not on every
+// Dashboard render -- this list is only needed while the picker is open).
 let _earningsCandidates = [];
 function _toggleEarningsWatchPop(e) {
   e.stopPropagation();
@@ -772,73 +815,52 @@ async function _renderEarningsWatchPop(anchorEl) {
   const pop = $('earningsWatchPop');
   if (!pop) return;
   pop.style.width = '260px';
-  pop.innerHTML = '<div class="sp-title">Watched symbols</div><span class="events-empty">Loading upcoming earnings&hellip;</span>';
+  pop.innerHTML = '<div class="sp-title">Watched symbols (uncheck to exclude)</div><span class="events-empty">Loading upcoming earnings&hellip;</span>';
   pop.style.display = 'block';
   _positionEarningsPop(anchorEl);
+  // universe=signals -- same default-watched pool as the merged line itself
+  // (held positions UNION Call Bullish-or-Neutral UNION SSS membership), so the
+  // checklist only offers what's actually shown by default. User: "Select
+  // the only ones that are my holdings, call bullish, SSS by default not
+  // all."
   const url = state.date
-    ? `/api/dashboard/symbol-earnings?date=${encodeURIComponent(state.date)}&days_ahead=45&limit=100`
-    : '/api/dashboard/symbol-earnings?days_ahead=45&limit=100';
+    ? `/api/dashboard/symbol-earnings?date=${encodeURIComponent(state.date)}&days_ahead=45&limit=100&universe=signals`
+    : '/api/dashboard/symbol-earnings?days_ahead=45&limit=100&universe=signals';
   _earningsCandidates = await fetchJson(url).catch(() => []);
   _earningsRerenderPopBody(anchorEl);
 }
 function _earningsRerenderPopBody(anchorEl) {
   const pop = $('earningsWatchPop');
   if (!pop) return;
-  const selSet = new Set(_earningsWatchSymbols);
-  let h = '<div class="sp-title">Watched symbols</div>';
+  const unwatchedSet = new Set(_earningsUnwatchedSymbols);
+  let h = '<div class="sp-title">Watched symbols (uncheck to exclude)</div>';
   h += '<div class="cal-types-list" id="earningsCandidateList">';
   h += _earningsCandidates.length
     ? _earningsCandidates.map(r => `<label class="cal-type-row"><input type="checkbox" value="${escapeHtml(r.symbol)}"`
-        + `${selSet.has(r.symbol) ? ' checked' : ''} onchange="_toggleEarningsCandidate('${escapeHtml(r.symbol)}', this.checked)">`
+        + `${unwatchedSet.has(r.symbol) ? '' : ' checked'} onchange="_toggleEarningsCandidate('${escapeHtml(r.symbol)}', this.checked)">`
         + ` ${escapeHtml(r.symbol)} &mdash; ${fmtDate(r.event_date)} (${r.days_until}d)</label>`).join('')
     : '<span class="events-empty">No upcoming earnings found in your tracked watchlist (ref_my_stocks)</span>';
   h += '</div>';
-  h += '<div class="earnings-add-row"><input type="text" id="earningsAddInput" placeholder="Other symbol&hellip;" '
-    + 'onkeydown="if(event.key===\'Enter\'){event.preventDefault();_addEarningsSymbol();}">'
-    + '<button type="button" onclick="_addEarningsSymbol()">Add</button></div>';
-  // Manually-added symbols not already shown (with a date) in the
-  // checklist above -- e.g. one outside ref_my_stocks, or one whose
-  // earnings_days fell outside the 45d lookahead window.
-  const extras = _earningsWatchSymbols.filter(s => !_earningsCandidates.some(r => r.symbol === s));
-  if (extras.length) {
-    h += '<div class="earnings-tag-list" id="earningsSymbolList">'
-      + extras.map(sym => `<span class="earnings-tag">${escapeHtml(sym)}`
-          + `<span class="earnings-tag-x" onclick="_removeEarningsSymbol('${escapeHtml(sym)}')" title="Remove">&times;</span></span>`).join('')
-      + '</div>';
-  }
-  h += '<button type="button" class="cal-types-save" onclick="_saveEarningsWatch()">Save</button>';
+  h += '<button type="button" class="cal-types-save" onclick="_saveEarningsUnwatch()">Save</button>';
   pop.innerHTML = h;
   if (anchorEl) _positionEarningsPop(anchorEl);
-  const input = $('earningsAddInput');
-  if (input) input.focus();
 }
 function _toggleEarningsCandidate(sym, checked) {
   if (checked) {
-    if (!_earningsWatchSymbols.includes(sym)) _earningsWatchSymbols.push(sym);
+    // checked = watched (the default) -> no longer excluded
+    _earningsUnwatchedSymbols = _earningsUnwatchedSymbols.filter(s => s !== sym);
   } else {
-    _earningsWatchSymbols = _earningsWatchSymbols.filter(s => s !== sym);
+    if (!_earningsUnwatchedSymbols.includes(sym)) _earningsUnwatchedSymbols.push(sym);
   }
 }
-function _addEarningsSymbol() {
-  const input = $('earningsAddInput');
-  if (!input) return;
-  const sym = input.value.trim().toUpperCase();
-  if (!sym || _earningsWatchSymbols.includes(sym)) { input.value = ''; input.focus(); return; }
-  _earningsWatchSymbols.push(sym);
-  _earningsRerenderPopBody(null);
-}
-function _removeEarningsSymbol(sym) {
-  _earningsWatchSymbols = _earningsWatchSymbols.filter(s => s !== sym);
-  _earningsRerenderPopBody(null);
-}
-async function _saveEarningsWatch() {
+async function _saveEarningsUnwatch() {
   const pop = $('earningsWatchPop');
   if (!pop) return;
   try {
-    await fetchJson('/api/dashboard/earnings-watch', {
-      method: 'PUT', body: JSON.stringify({ symbols: _earningsWatchSymbols }),
+    await fetchJson('/api/dashboard/earnings-unwatch', {
+      method: 'PUT', body: JSON.stringify({ symbols: _earningsUnwatchedSymbols }),
     });
-  } catch (e) { console.error('save earnings watch failed:', e); }
+  } catch (e) { console.error('save earnings unwatch list failed:', e); }
   pop.style.display = 'none';
   loadRegimeBand();
 }
@@ -858,21 +880,24 @@ async function loadRegimeBand() {
     const calUrl = state.date
       ? `/api/dashboard/econ-indicators?date=${encodeURIComponent(state.date)}&limit=60`
       : '/api/dashboard/econ-indicators?limit=60';
-    const [windowData, factors, calRows, calTypes, earningsWatch] = await Promise.all([
+    const earningsDateQS = state.date ? `date=${encodeURIComponent(state.date)}&` : '';
+    const [windowData, factors, calRows, calTypes, earningsUnwatch, earningsRows] = await Promise.all([
       fetchJson(`/api/quad-window${qs}`).catch(() => null),
       fetchJson(`/api/quad/band-factors${qs}`).catch(() => ({ bull: [], bear: [], factors: [] })),
       fetchJson(calUrl).catch(() => []),
       fetchJson('/api/dashboard/calendar-types').catch(() => ({ all: [], selected: [] })),
-      fetchJson('/api/dashboard/earnings-watch').catch(() => ({ symbols: [] })),
+      fetchJson('/api/dashboard/earnings-unwatch').catch(() => ({ symbols: [] })),
+      // 2026-08-27 -- universe=signals (held positions UNION Call
+      // Bullish-or-Neutral UNION SSS membership -- narrower than the full
+      // ref_my_stocks watchlist), "today onwards" (days_until >= 0, the API's own floor)
+      // -- feeds the single combined earnings line (_earningsLineHtml());
+      // everyone in this list is watched unless excluded via
+      // _earningsUnwatchedSymbols. User: "Select the only ones that are my
+      // holdings, call bullish, SSS by default not all."
+      fetchJson(`/api/dashboard/symbol-earnings?${earningsDateQS}days_ahead=14&limit=200&universe=signals`).catch(() => []),
     ]);
     _calTypesCache = calTypes;
-    _earningsWatchSymbols = earningsWatch.symbols || [];
-    // Sequential (not in the Promise.all above) -- depends on the watch
-    // list just fetched. Empty watch list skips the round-trip entirely.
-    const earningsRows = _earningsWatchSymbols.length
-      ? await fetchJson(`/api/dashboard/symbol-earnings?${state.date ? 'date=' + encodeURIComponent(state.date) + '&' : ''}`
-          + `symbols=${encodeURIComponent(_earningsWatchSymbols.join(','))}&days_ahead=14`).catch(() => [])
-      : [];
+    _earningsUnwatchedSymbols = earningsUnwatch.symbols || [];
     if (!windowData) { strip.innerHTML = '<div class="ev-fail">&#9888; Regime data unavailable.</div>'; return; }
     const dominant = windowData.dominant_quad != null ? `Quad ${windowData.dominant_quad}` : '—';
     const allFactors = factors.factors || [];
