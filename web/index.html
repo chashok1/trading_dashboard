@@ -252,6 +252,19 @@
             <div class="msr-section-hdr">Tech &amp; ETFs <span class="msr-breadth" id="macroBreadthRemaining"></span></div>
             <div id="macroRailRemaining" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
+
+          <!-- 2026-08-27 -- new Sectors ETF panel (the 11 GICS sector SPDR
+               ETFs -- XLF/XLK/etc.), col 4 below Tech & ETFs -- same
+               ref_macro_area/railAreaRow mechanism as every other panel
+               here, area_key 'sector_etfs' (distinct from the breadth-based
+               Sectors roll-up in the right rail, #macroRailSectors, which
+               reads drv_technicals per-stock, not this table). User: "add a
+               SECTORS panel in the middle with corresponding ETFs (starts
+               with X) similar to other panels." -->
+          <section class="cockpit-band rail-band" id="macroSectorEtfsBand">
+            <div class="msr-section-hdr">Sectors <span class="msr-breadth" id="macroBreadthSectorEtfs"></span></div>
+            <div id="macroRailSectorEtfs" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
           </div>
 
           <div class="macro-rail-col">

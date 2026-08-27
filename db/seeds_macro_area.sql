@@ -282,3 +282,67 @@ WHERE area_key = 'commodities_credit' AND member_symbol IN ('GLD', 'SLV');
 INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
   ('top9', 'Major Markets', 'RSP', 'dual', 40)
 ON CONFLICT (area_key, member_symbol) DO NOTHING;
+
+-- 2026-08-27: EWY (iShares MSCI South Korea ETF) added to Country ETFs --
+-- user asked for "an appropriate symbol" after a question about KOSPI
+-- coverage (which has no TOS/hist_rr symbol at all, only a Yahoo-only feed
+-- via etl/fetch_yahoo_history.py's ^KS11 -- not usable here, this table
+-- needs a drv_technicals/drv_rr symbol). EWY is the direct South-Korea
+-- analogue of the existing EEM/EWZ/EWG/EWM rows -- role='dual', sort_order
+-- 80, right after EWM.
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
+  ('country_etfs', 'Country ETFs', 'EWY', 'dual', 80)
+ON CONFLICT (area_key, member_symbol) DO NOTHING;
+
+-- 2026-08-27: GLD, SLV, and ETF proxies for Platinum/Palladium/Corn/Wheat/
+-- Soybeans added (back) to Commodities, role='dual' -- reverses the
+-- 2026-08-24 "no tradable proxies" call (both the GLD/SLV DELETE above and
+-- the deliberate rr_only-only choice for the 5 newer commodities) after the
+-- user explicitly confirmed the reversal, having been shown the prior
+-- decision first: "why i don't see trade and trend for platinum,
+-- palladium, wheat, soy beens, com?" -> confirmed reversing GLD/SLV too,
+-- for a consistent panel (every commodity gets Trade/Trend, not a mix).
+-- Raw futures rows (/GC, /SI, /PL, /PA, /ZC, /ZW, /ZS) stay -- same
+-- futures-plus-ETF-proxy pattern as WTI/Brent/Copper/Nat-Gas keep for
+-- themselves already (rr_only only, no proxy exists/was asked for there).
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
+  ('commodities_credit', 'Commodities', 'GLD',  'dual', 100),
+  ('commodities_credit', 'Commodities', 'SLV',  'dual', 101),
+  ('commodities_credit', 'Commodities', 'PPLT', 'dual', 102),
+  ('commodities_credit', 'Commodities', 'PALL', 'dual', 103),
+  ('commodities_credit', 'Commodities', 'CORN', 'dual', 104),
+  ('commodities_credit', 'Commodities', 'WEAT', 'dual', 105),
+  ('commodities_credit', 'Commodities', 'SOYB', 'dual', 106)
+ON CONFLICT (area_key, member_symbol) DO NOTHING;
+
+-- 2026-08-27 follow-up: the /PL, /PA, /ZC, /ZW, /ZS futures rows above are
+-- now a redundant no-Trade/Trend duplicate of their own PPLT/PALL/CORN/
+-- WEAT/SOYB dual row (added moments earlier, same commit) -- user: "remove
+-- the commodities with no trade/trend from the panel" -> clarified to mean
+-- specifically these 5 (not every rr_only row -- WTI/Brent/Gold/Copper/
+-- Nat-Gas/Silver futures rows are unaffected; Gold and Silver deliberately
+-- keep BOTH their futures row and their GLD/SLV dual row, same as before
+-- this whole change). Each of these 5 now has ONLY its dual ETF-proxy row.
+DELETE FROM ref_macro_area
+WHERE area_key = 'commodities_credit' AND member_symbol IN ('/PL', '/PA', '/ZC', '/ZW', '/ZS');
+
+-- 2026-08-27: new area 'sector_etfs' -- the 11 GICS sector SPDR ETFs as
+-- their own full rail panel (role='dual', same as every other ETF row in
+-- this file), distinct from the separate breadth-based Sectors roll-up
+-- (which reads drv_technicals per-stock, not this table). Symbol->sector
+-- mapping and sort order match api/routers/macro_areas.py::_SECTOR_ETF /
+-- _GICS_DISPLAY exactly. User: "add a SECTORS panel in the middle with
+-- corresponding ETFs (starts with X) similar to other panels."
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
+  ('sector_etfs', 'Sectors', 'XLK',  'dual', 10),   -- Information Technology
+  ('sector_etfs', 'Sectors', 'XLF',  'dual', 20),   -- Financials
+  ('sector_etfs', 'Sectors', 'XLV',  'dual', 30),   -- Health Care
+  ('sector_etfs', 'Sectors', 'XLY',  'dual', 40),   -- Consumer Discretionary
+  ('sector_etfs', 'Sectors', 'XLC',  'dual', 50),   -- Communication Services
+  ('sector_etfs', 'Sectors', 'XLI',  'dual', 60),   -- Industrials
+  ('sector_etfs', 'Sectors', 'XLP',  'dual', 70),   -- Consumer Staples
+  ('sector_etfs', 'Sectors', 'XLE',  'dual', 80),   -- Energy
+  ('sector_etfs', 'Sectors', 'XLU',  'dual', 90),   -- Utilities
+  ('sector_etfs', 'Sectors', 'XLRE', 'dual', 100),  -- Real Estate
+  ('sector_etfs', 'Sectors', 'XLB',  'dual', 110)   -- Materials
+ON CONFLICT (area_key, member_symbol) DO NOTHING;

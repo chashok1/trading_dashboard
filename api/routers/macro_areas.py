@@ -91,9 +91,16 @@ _SECTOR_ETF = {
 # Canonical ordering for areas — each of these is now its own side-panel
 # section (broken out one row per member); frontend routes each area_key to
 # its own container based on this same set of keys.
+# 2026-08-27 -- 'sector_etfs' added: the 11 GICS sector SPDR ETFs (XLF/XLK/
+# etc.) as their own full rail panel, same railAreaRow rendering as every
+# other area here -- distinct from the separate breadth-based "sectors" roll-
+# up below (data.sectors, keyed off drv_technicals per-stock breadth, not
+# this table) which now shows breadth stats + $ exposure instead of a single
+# ETF-proxy sub-row. User: "add a SECTORS panel in the middle with
+# corresponding ETFs (starts with X) similar to other panels."
 _AREA_ORDER = [
     "volatility", "top9", "rates_duration", "credit", "commodities_credit",
-    "usd_currency", "country_etfs", "crypto", "remaining",
+    "usd_currency", "country_etfs", "crypto", "sector_etfs", "remaining",
 ]
 
 # Canonical area display name, matching the side-rail section headers in
@@ -112,6 +119,7 @@ _AREA_DISPLAY_NAME = {
     "usd_currency":        "USD & Currency",
     "country_etfs":        "Country ETFs",
     "crypto":              "Crypto",
+    "sector_etfs":         "Sectors",
     "remaining":           "Tech & ETFs",
 }
 

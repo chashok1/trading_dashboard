@@ -184,27 +184,41 @@
     return '<span style="display:inline-block; width:8px; font-size:7px; color:' + color + '; vertical-align:middle;">' + glyph + '</span>';
   }
 
-  function etfProxyRowHtml(etf) {
-    if (!etf || etf.last == null) return '';
-    var tradeDir = etf.td === 'up' ? 1 : etf.td === 'down' ? -1 : null;
-    var trendDir = etf.tn === 'up' ? 1 : etf.tn === 'down' ? -1 : null;
-    return '<div class="msr-row msr-etf-row" style="padding-left:16px;">' +
-      '<span class="msr-name msr-name-tick" style="color:' + _nameColor(etf.outlook) + '; font-weight:400;" title="' + esc(etf.symbol) + ' sector ETF proxy">' +
-        _msGlyph(etf.monthly_score) + symLink(esc(etf.symbol), etf.symbol) +
-      '</span>' +
-      _priceChgSpan({ last: etf.last, pct_change: etf.pct_change }) +
-      durArrow(tradeDir, 'Td') +
-      durArrow(trendDir, 'Tn') +
-      railRangeBar(etf.rr_pos, 0.8, 0.2, false) +
-    '</div>';
+  // 2026-08-27 -- replaces the old per-sector ETF-proxy sub-row
+  // (etfProxyRowHtml -- price/Trade/Trend/RR-position for one ETF like
+  // XLF): that same ETF info now has its own full rail panel (see
+  // #macroRailSectorEtfs / area_key 'sector_etfs', same ref_macro_area
+  // mechanism as Major Markets/Country ETFs), so this sub-row shows what
+  // the ETF sub-row DIDN'T: the underlying breadth numbers behind the
+  // stance arrows (n stocks, raw % above Trade/Trend, already computed
+  // server-side but previously unused), plus your own $ exposure to that
+  // sector (drv_category_perf via /api/cockpit/factor-scorecard?axis=
+  // sector, the SAME table the Sector factor-scorecard grid and Portfolio
+  // Mix's Sector pie use) -- ties the macro breadth read to your actual
+  // risk, which the ETF sub-row never did. User: "if we remove sectors
+  // ETFs what other information ... would be useful?" -> "yes, implement
+  // that."
+  function sectorStatsRowHtml(s, exposureMap) {
+    var bits = [];
+    if (s.n != null) bits.push(s.n + ' stk');
+    if (s.pct_above_trade != null) bits.push(Math.round(s.pct_above_trade * 100) + '% Td');
+    if (s.pct_above_trend != null) bits.push(Math.round(s.pct_above_trend * 100) + '% Tn');
+    var exp = exposureMap && exposureMap[s.sector];
+    if (exp && exp.market_value) {
+      bits.push((typeof fmtUsd === 'function' ? fmtUsd(exp.market_value, { compact: true }) : '$' + Math.round(exp.market_value))
+        + (exp.weight_pct != null ? ' (' + exp.weight_pct.toFixed(1) + '%)' : ''));
+    }
+    if (!bits.length) return '';
+    return '<div class="msr-row msr-sec-stats" style="padding-left:16px; font-size:10px; color:var(--text-3);">'
+      + bits.join(' &middot; ') + '</div>';
   }
 
   /* ── range bar (compact rail version) ──────────────────────────────── */
   // showPct (default true): the trailing "42%"-style label. railAreaRow's
   // regular rows (2026-07-04) pass false since the row is already dense with
   // the candle + Td/Tn + %chg chip; the tick + hover title (still present)
-  // carry the same info. Sectors call sites (etfProxyRowHtml, renderSectors-
-  // Panel) don't pass it, so they keep the label unchanged.
+  // carry the same info. renderSectorsPanel's own row doesn't pass it, so
+  // it keeps the label unchanged.
   function railRangeBar(rr_pos, hot_pct, cold_pct, showPct) {
     if (rr_pos === null || rr_pos === undefined) {
       return '<span class="mra-muted" style="font-size:9px;">n/a</span>';
@@ -307,7 +321,7 @@
   }
 
   /* ── sectors panel (own side-rail section) ────────────────────────── */
-  function renderSectorsPanel(sectors) {
+  function renderSectorsPanel(sectors, exposureMap) {
     var container = document.getElementById('macroRailSectors');
     if (!container) return;
     if (!sectors) { container.innerHTML = '<div class="msr-loading">No sector data.</div>'; return; }
@@ -331,7 +345,7 @@
         durArrow(tradeDir,  'Td') +
         durArrow(trendDir,  'Tn') +
         railRangeBar(score, 0.7, 0.3, false) +
-      '</div>' + etfProxyRowHtml(s.etf);
+      '</div>' + sectorStatsRowHtml(s, exposureMap);
     }).join('');
 
     if (!subrows && !allRows) subrows = '<span class="mra-muted">—</span>';
@@ -351,6 +365,7 @@
     usd_currency:        'macroRailUsd',
     country_etfs:        'macroRailCountry',
     crypto:               'macroRailCrypto',
+    sector_etfs:         'macroRailSectorEtfs',
     remaining:           'macroRailRemaining',
   };
 
@@ -366,6 +381,7 @@
     usd_currency:        'macroBreadthUsd',
     country_etfs:        'macroBreadthCountry',
     crypto:               'macroBreadthCrypto',
+    sector_etfs:         'macroBreadthSectorEtfs',
     remaining:           'macroBreadthRemaining',
   };
 
@@ -598,6 +614,27 @@
     );
   }
 
+  // 2026-08-27 -- your own $ exposure per sector, for the Sectors panel's
+  // stats sub-row (sectorStatsRowHtml) -- same drv_category_perf table
+  // (via /api/cockpit/factor-scorecard?axis=sector) the Sector factor-
+  // scorecard grid and Portfolio Mix's Sector pie both read, so this
+  // agrees with those rather than recomputing its own $ totals from raw
+  // held rows. Whole-portfolio (no accounts= filter) -- this rail panel
+  // has no Accounts-filter UI of its own to scope it further. Best-effort:
+  // a failure here still lets the sector breadth rows render, just without
+  // the $ exposure bit.
+  async function _fetchSectorExposure(dateParam) {
+    try {
+      var qs = dateParam ? dateParam + '&axis=sector' : '?axis=sector';
+      var resp = await fetch('/api/cockpit/factor-scorecard' + qs);
+      if (!resp.ok) return {};
+      var data = await resp.json();
+      var map = {};
+      (data.rows || []).forEach(function (r) { map[r.category] = r; });
+      return map;
+    } catch (e) { return {}; }
+  }
+
   /* ── main load ──────────────────────────────────────────────────────── */
   async function load() {
     var dateEl    = document.getElementById('datePicker');
@@ -606,10 +643,11 @@
       var resp = await fetch('/api/macro-areas' + dateParam);
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       var data = await resp.json();
+      var exposureMap = await _fetchSectorExposure(dateParam);
 
       /* Primary: render side rail */
       renderRail(data);
-      renderSectorsPanel(data && data.sectors);
+      renderSectorsPanel(data && data.sectors, exposureMap);
 
       /* Legacy full-width card (only if the old wrapper was injected by another path) */
       if (document.getElementById('macroReadCard')) {

@@ -2127,10 +2127,14 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    Volatility/Major Markets above -- user: "increase height so i don't see
    scroll bars." No fixed px guess (member counts can change) -- these
    three just expand naturally; the page's own scroll handles any
-   overflow, same as every other non-rail panel on this screen. */
+   overflow, same as every other non-rail panel on this screen.
+   2026-08-27 -- Country ETFs joined this group -- its 150px default cap
+   started scrolling once EWY (South Korea) brought it to 8 members. User:
+   "remove the vertical scroll bar from Country ETFs panel." */
 #macroRailSectors.dash-macro-rail,
 #macroRailCommodities.dash-macro-rail,
-#macroRailRemaining.dash-macro-rail {
+#macroRailRemaining.dash-macro-rail,
+#macroRailCountry.dash-macro-rail {
   max-height: none;
   overflow-y: visible;
 }
