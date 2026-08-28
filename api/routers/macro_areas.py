@@ -22,6 +22,7 @@ from api._helpers import (
     _resolve_date, _get_ref_setting, load_quote_ohlc, load_vol_thresholds, rr_pos,
 )
 from etl.db import session_scope
+from etl.derive_macro import _classify_style
 
 router = APIRouter(tags=["macro_areas"])
 
@@ -289,6 +290,41 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         """)).mappings().all()
         desc_map = {r["ticker"]: (r["description"] or r["sub_asset_class"]) for r in desc_rows}
 
+        # Category Drivers (Sector/Asset Class/Style membership breakdown),
+        # for the rail carets' hover popover -- same content, same rules,
+        # as the Actionable grid's MACRO-cell popover (api/routers/dash.py::
+        # _resolve_memberships), reused here rather than duplicated: same
+        # _classify_style() import, same Fixed Income -> sub_asset_class
+        # redirect (2026-08-27 HYG/XLF fix), same ref_rrt bridge for
+        # symbols ref_sector can't reach directly (2026-08-27 TNX/TYX fix)
+        # -- minus drv_actionable, which most rail symbols (VIX, /GC, ...)
+        # don't have a row in at all. User: "display the same popover that
+        # is just fixed on dashboard screen carets popover."
+        fund_rows = s.execute(text("""
+            SELECT tos_symbol, sector, asset_class, sub_asset_class,
+                   beta, pe_ratio, div_yield, rsi, market_cap_str
+            FROM drv_ma WHERE as_of_date = (SELECT MAX(as_of_date) FROM drv_ma)
+        """)).mappings().all()
+        fund_map = {r["tos_symbol"]: r for r in fund_rows}
+        bridge_rows = s.execute(text("""
+            SELECT DISTINCT ON (rrt.tos_ticker)
+                   rrt.tos_ticker, rs.asset_class, rs.sub_asset_class
+            FROM ref_rrt rrt
+            JOIN ref_sector rs ON rs.ticker = rrt.y_ticker
+            WHERE rrt.tos_ticker IS NOT NULL
+            ORDER BY rrt.tos_ticker, rrt.preferred_display DESC NULLS LAST, rrt.y_ticker
+        """)).fetchall()
+        bridge_map = {b.tos_ticker: b for b in bridge_rows}
+        quad_rows = s.execute(text("""
+            SELECT category, sub_category, quad1, quad2, quad3, quad4
+            FROM ref_quad_outlook
+        """)).mappings().all()
+        quad_lookup = {
+            (r["category"], (r["sub_category"] or "").lower()):
+                (r["quad1"], r["quad2"], r["quad3"], r["quad4"])
+            for r in quad_rows
+        }
+
         # WoW: quote 5 trading days ago (best effort)
         # Use the 5th-most-recent as_of_date in drv_quote before anchor
         wow_row = s.execute(text("""
@@ -384,6 +420,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     "monthly_score": _maybe_float(ms_map.get(sym, {}).get("monthly_score")),
                     "macro6": ms_map.get(sym, {}).get("macro6"),
                     "desc": desc_map.get(sym),
+                    "drivers": _category_drivers_for(sym, fund_map, bridge_map, quad_lookup),
                     "inverted": inverted,
                 })
                 continue
@@ -419,6 +456,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     "monthly_score": _maybe_float(ms_map.get(sym, {}).get("monthly_score")),
                     "macro6": ms_map.get(sym, {}).get("macro6"),
                     "desc": desc_map.get(sym),
+                    "drivers": _category_drivers_for(sym, fund_map, bridge_map, quad_lookup),
                     "inverted": inverted,
                 })
                 continue
@@ -473,6 +511,7 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 "monthly_score": _maybe_float(ms_map.get(sym, {}).get("monthly_score")),
                 "macro6": ms_map.get(sym, {}).get("macro6"),
                 "desc": desc_map.get(sym),
+                "drivers": _category_drivers_for(sym, fund_map, bridge_map, quad_lookup),
                 "inverted": inverted,
             })
 
@@ -634,6 +673,50 @@ def _macro6_from_detail(monthly_score, detail) -> Optional[dict]:
     if not any(v and v.get("stance") is not None for v in carets.values()):
         return None
     return carets
+
+
+def _driver_leg(cat: str, sub: str, weight: float, quad_lookup: dict) -> Optional[dict]:
+    q = quad_lookup.get((cat, (sub or "").lower()))
+    if not q:
+        return None
+    return {"category": cat, "sub_cat": sub, "weight": weight,
+            "quad1": q[0], "quad2": q[1], "quad3": q[2], "quad4": q[3]}
+
+
+def _category_drivers_for(sym: str, fund_map: dict, bridge_map: dict,
+                          quad_lookup: dict) -> list[dict]:
+    """Sector/Asset Class/Style membership breakdown for one symbol -- same
+    rows, same rules, as the Actionable grid's MACRO-cell popover (see
+    api/routers/dash.py::_resolve_memberships, kept in sync by hand since
+    that copy also needs drv_actionable context this one doesn't have)."""
+    f = fund_map.get(sym)
+    sector    = (f["sector"] if f else None) or ""
+    asset_cls = (f["asset_class"] if f else None) or ""
+    sub_asset = f["sub_asset_class"] if f else None
+    if not sector and not asset_cls:
+        b = bridge_map.get(sym)
+        if b:
+            asset_cls = b.asset_class or ""
+            sub_asset = b.sub_asset_class
+
+    drivers = []
+    if asset_cls == "Fixed Income":
+        if sub_asset:
+            leg = _driver_leg("Fixed Income", sub_asset, 2.0, quad_lookup)
+            if leg: drivers.append(leg)
+    elif sector:
+        leg = _driver_leg("Equity Sectors", sector, 2.0, quad_lookup)
+        if leg: drivers.append(leg)
+    if asset_cls:
+        leg = _driver_leg("Asset Class", asset_cls, 1.0, quad_lookup)
+        if leg: drivers.append(leg)
+    if f:
+        for cat, sub, wt in _classify_style(
+                f["beta"], f["pe_ratio"], f["div_yield"], f["rsi"],
+                f["market_cap_str"], sector):
+            leg = _driver_leg(cat, sub, wt, quad_lookup)
+            if leg: drivers.append(leg)
+    return drivers
 
 
 def _sector_etf_proxy(symbol: str, q_map: dict, tech_map: dict, rr_map: dict, ms_map: dict) -> Optional[dict]:

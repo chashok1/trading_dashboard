@@ -188,6 +188,7 @@
     ['next_qtr', 'Next Qtr', false],
   ];
   var _macro6BySymbol = {};   // symbol -> macro6 obj, for the hover popover
+  var _macro6DriversBySymbol = {};   // symbol -> drivers[] (Sector/Asset Class/Style), same popover
 
   function _macro6Dir(stance) {
     if (stance === null || stance === undefined) return { g: '→', c: '#9ca3af' };
@@ -197,7 +198,7 @@
     return { g: '→', c: '#9ca3af' };
   }
 
-  function _macro6CaretsHtml(macro6, sym) {
+  function _macro6CaretsHtml(macro6, sym, drivers) {
     // Fixed-width empty slot when there's no data, so rows still line up
     // the same way the old single-caret slot did. A separate flex-item
     // sibling of .msr-name-tick (NOT nested inside it) -- text-overflow:
@@ -210,6 +211,7 @@
       return '<span style="display:inline-block; width:20px; vertical-align:middle;"></span>';
     }
     _macro6BySymbol[sym] = macro6;
+    _macro6DriversBySymbol[sym] = drivers;
     var cells = _MACRO6_ORDER.map(function (pair) {
       var leg = macro6[pair[0]];
       var dir = _macro6Dir(leg ? leg.stance : null);
@@ -228,9 +230,15 @@
     if (_macro6PopEl) return _macro6PopEl;
     var el = document.createElement('div');
     el.id = 'mra-macro6-pop';
+    // max-width widened + white-space:nowrap (2026-08-27) -- user: "increase
+    // the popover width so everything fits in single lines." 230px wrapped
+    // the longer leg/driver lines (e.g. "Following month (Q2) x41.7%:
+    // +0.500 (2026-10)"); nowrap + a generous cap keeps every <li> on one
+    // line instead of relying on natural wrap width guessing.
     el.style.cssText = 'display:none; position:fixed; z-index:3000; background:#fff; ' +
       'border:1px solid #d1d5db; border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,0.18); ' +
-      'padding:8px 10px; font-size:10px; color:#1f2937; max-width:230px; pointer-events:none;';
+      'padding:8px 10px; font-size:10px; color:#1f2937; max-width:360px; white-space:nowrap; ' +
+      'pointer-events:none;';
     document.body.appendChild(el);
     _macro6PopEl = el;
     return el;
@@ -253,7 +261,40 @@
         '</li>';
     }).join('');
     return '<div style="font-weight:700;margin-bottom:4px;">' + esc(sym) + ' — MacroNet legs</div>' +
-      '<ul style="margin:0;padding-left:15px;list-style:disc;">' + lis + '</ul>';
+      '<ul style="margin:0;padding-left:15px;list-style:disc;">' + lis + '</ul>' +
+      _driversHtml(_macro6DriversBySymbol[sym]);
+  }
+  // Category Drivers (Sector/Asset Class/Style membership) -- same content
+  // as the Actionable grid's MACRO-cell popover section of the same name
+  // (api/routers/macro_areas.py::_category_drivers_for), added to this
+  // popover too. User: "display the same popover that is just fixed on
+  // dashboard screen carets popover." One bullet per membership: category/
+  // sub-category, its weight, and a Q1-Q4 strip (green/red/grey per quad's
+  // outlook) instead of a single caret -- there's no one "current quad"
+  // baked into this popover the way the 6 MacroNet legs above have their
+  // own per-leg stance, so the full 4-quad read is shown instead.
+  function _driverQuadColor(v) {
+    var u = (v || '').toUpperCase();
+    if (u === 'BULLISH') return '#16a34a';
+    if (u === 'BEARISH') return '#dc2626';
+    return '#9ca3af';
+  }
+  function _driversHtml(drivers) {
+    if (!drivers || !drivers.length) return '';
+    var lis = drivers.map(function (dr) {
+      var quads = ['quad1', 'quad2', 'quad3', 'quad4'].map(function (k, i) {
+        var c = _driverQuadColor(dr[k]);
+        return '<span title="Q' + (i + 1) + ': ' + esc(dr[k] || '?') + '" ' +
+          'style="display:inline-block;width:6px;height:6px;border-radius:1px;' +
+          'background:' + c + ';margin-right:1px;"></span>';
+      }).join('');
+      return '<li style="margin:2px 0;">' +
+        '<strong>' + esc(dr.category) + '</strong>: ' + esc(dr.sub_cat) +
+        ' <span style="color:#94a3b8;">(×' + dr.weight + ')</span> ' + quads +
+        '</li>';
+    }).join('');
+    return '<div style="font-weight:700;margin:6px 0 4px;border-top:1px solid #e5e7eb;padding-top:4px;">' +
+      'Category Drivers</div><ul style="margin:0;padding-left:15px;list-style:disc;">' + lis + '</ul>';
   }
   function _macro6Show(target, macro6, sym) {
     if (!macro6) return;
@@ -394,7 +435,7 @@
       var dispName = _memberDisplayName(m, area);
       return (
         '<div class="msr-row" title="' + esc(_rowTitle(m, dispName)) + '">' +
-          (noCarets ? '' : _macro6CaretsHtml(m.macro6, m.symbol)) +
+          (noCarets ? '' : _macro6CaretsHtml(m.macro6, m.symbol, m.drivers)) +
           '<span class="msr-name msr-name-tick" style="color:' + _nameColor(m.outlook) + ';">' +
             // Same fallback as the gauge row above: dispName only differs
             // from the raw symbol when there's a real label override
