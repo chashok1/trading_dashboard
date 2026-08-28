@@ -198,7 +198,11 @@ def _classify_style(beta, pe_ratio, div_yield, rsi, market_cap_str, sector):
     if r is not None and r > 65:
         tags.append(('Equity Style', 'Momentum', 0.5))
 
-    if mc is not None:
+    # mc == 0 means "no market cap" (indices/futures/FX -- TOS's raw feed
+    # reports literal "0" for these instead of leaving it blank), not a
+    # real $0 market cap -- was tagging SPX, VIX, DXY, /GC, etc. (30
+    # symbols) as Small Caps. `if mc:` treats 0 the same as None/no-data.
+    if mc:
         if mc < 2e9:
             tags.append(('Equity Style', 'Small Caps', 0.5))
         elif mc < 10e9:
@@ -460,20 +464,72 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
 
     # Load symbols with fundamentals + technical-direction fields via drv_ma
     sym_rows = session.execute(text("""
-        SELECT tos_symbol, sector, asset_class,
+        SELECT tos_symbol, sector, asset_class, sub_asset_class,
                beta, pe_ratio, eps, div_yield, market_cap_str, rsi,
                last_price, sma_50
         FROM drv_ma
         WHERE as_of_date = :d
     """), {'d': as_of_date}).fetchall()
 
+    # drv_ma's sector/asset_class/sub_asset_class come from ref_sector via a
+    # DIRECT ticker=tos_symbol join (etl/derive.py) -- misses every index/
+    # futures/FX symbol whose tos_symbol differs from ref_sector's own
+    # (Yahoo-format) ticker, e.g. SPX vs '^SPX', TNX:CGI vs '^TNX', /GC vs
+    # 'GC=F'. Bridge via ref_rrt (tos_ticker -> y_ticker) for just those
+    # rows here, rather than touching derive.py's shared, byte-constrained
+    # join (used well beyond this one derive, don't want to risk it).
+    # DISTINCT ON guards against ref_rrt's occasional duplicate/conflicting
+    # y_ticker rows for the same tos_ticker (e.g. /BTC has two).
+    bridge_rows = session.execute(text("""
+        SELECT DISTINCT ON (rrt.tos_ticker)
+               rrt.tos_ticker, rs.equity_sector, rs.asset_class, rs.sub_asset_class
+        FROM ref_rrt rrt
+        JOIN ref_sector rs ON rs.ticker = rrt.y_ticker
+        WHERE rrt.tos_ticker IS NOT NULL
+        ORDER BY rrt.tos_ticker, rrt.preferred_display DESC NULLS LAST, rrt.y_ticker
+    """)).fetchall()
+    bridge_map = {b.tos_ticker: b for b in bridge_rows}
+
     out = []
     for r in sym_rows:
-        sector    = r.sector or ''
-        asset_cls = r.asset_class or ''
+        sector      = r.sector or ''
+        asset_cls   = r.asset_class or ''
+        sub_asset   = r.sub_asset_class
+        if not sector and not asset_cls:
+            b = bridge_map.get(r.tos_symbol)
+            if b:
+                # equity_sector deliberately NOT taken from the bridge --
+                # checked all 61 bridged rows (2026-08-27) and it's a lazy
+                # default for every one of them (FX -> Financials,
+                # commodities -> Materials/Energy, broad indices/vol gauges
+                # like SPX/VIX/RUT -> arbitrary GICS names that don't
+                # describe an index), same pattern as HYG's original bug --
+                # just for asset classes this fix doesn't special-case.
+                # asset_class/sub_asset_class ARE accurate for these, so
+                # still bridge those (drives the Fixed Income redirect
+                # below + the 'Asset Class' membership either way).
+                asset_cls = b.asset_class or ''
+                sub_asset = b.sub_asset_class
+
+        # Fixed Income instruments (bond/credit ETFs, rate futures, etc.):
+        # ref_sector.equity_sector is a generic "Financials" default for
+        # these -- not a real GICS sector -- so scoring HYG/LQD/TLT/etc.
+        # against the 'Equity Sectors' x 'Financials' outlook makes a junk-
+        # bond ETF score identically to an actual bank-stock ETF (found
+        # 2026-08-27: HYG and XLF had bit-for-bit identical sector_stance).
+        # ref_quad_outlook already has a dedicated 'Fixed Income' category
+        # with sub-categories matching ref_sector.sub_asset_class (HY
+        # Credit, IG Credit, Long Bond, ...) -- just never wired in. Falls
+        # through to no sector membership (not the wrong Financials one)
+        # when sub_asset_class doesn't exactly match a ref_quad_outlook row
+        # (_membership_net already skips unmatched (cat, sub) pairs).
+        if asset_cls == 'Fixed Income':
+            sector_cat, sector_sub = 'Fixed Income', (sub_asset or '')
+        else:
+            sector_cat, sector_sub = 'Equity Sectors', sector
 
         memberships = (
-            [('Equity Sectors', sector, 2.0), ('Asset Class', asset_cls, 1.0)]
+            [(sector_cat, sector_sub, 2.0), ('Asset Class', asset_cls, 1.0)]
             + _classify_style(r.beta, r.pe_ratio, r.div_yield,
                               r.rsi, r.market_cap_str, sector)
         )
@@ -611,8 +667,12 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         # appended above regardless of whether an outlook row exists for
         # them — _window_stance_for returns None if it doesn't); [2:] are
         # this symbol's style tags (0 to ~6, from _classify_style).
+        # sector_cat/sector_sub (Fixed Income -> 'Fixed Income'/sub_asset_class,
+        # else 'Equity Sectors'/sector) -- same swap as memberships[0] above,
+        # so this dot doesn't silently keep scoring bond ETFs against the
+        # 'Equity Sectors' outlook after macronet stopped doing so.
         sector_stance = _window_stance_for(
-            'Equity Sectors', sector, outlook_map, weighted, pcts_by_month) if sector else None
+            sector_cat, sector_sub, outlook_map, weighted, pcts_by_month) if sector_sub else None
         asset_class_stance = _window_stance_for(
             'Asset Class', asset_cls, outlook_map, weighted, pcts_by_month) if asset_cls else None
         style_stances = []

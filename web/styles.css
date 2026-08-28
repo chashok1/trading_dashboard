@@ -1788,7 +1788,14 @@ svg.rr-candle {
             overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 /* Ticker-row variant (macro-area/ETF-proxy rows with a price column):
    fixed width instead of flex:1 so the price column that follows lines up
-   at the same x-position on every row, regardless of symbol length. */
+   at the same x-position on every row, regardless of symbol length.
+   Briefly widened 44px -> 48px/55px (2026-08-27) to fit the 6-caret
+   MacroNet indicator (web/macro_areas.js::_macro6CaretsHtml) INSIDE this
+   column -- reverted back to the original 44px once that caret strip
+   moved OUT to its own flex-item sibling (rendered before this span, not
+   nested inside it): mixing the caret's inline content with the symbol
+   text broke this column's text-overflow:ellipsis measurement (was
+   truncating "S&P" to just "S" while leaving visible slack before Td). */
 .msr-name-tick { flex: 0 0 44px; }
 /* Sectors ETF-proxy sub-row (2026-07-04): range-bar % label removed here
    (railRangeBar's showPct=false) -- let the symbol column grow into that
@@ -1922,6 +1929,12 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
   border-bottom: 1px solid var(--border, #ececec);
 }
 .msr-ucr-table th:first-child { text-align: left; }
+/* 2026-08-27 -- "$Corln" corner-cell label, smaller than the table's usual
+   9px header text so it actually fits the narrow first column (which was
+   previously just an empty <th>) instead of forcing the column wider or
+   wrapping. User: "add a text in top left column of the grid as $Corln
+   small font so it fits". */
+.ucr-corner-label { font-size: 7px; white-space: nowrap; text-transform: none; }
 .msr-ucr-table td {
   padding: 2px 5px; border-bottom: 1px solid var(--border, #f0f0f0);
   text-align: right; font-variant-numeric: tabular-nums;
@@ -1996,10 +2009,19 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    proportionally, so ~76% of the 20px (cat-col's much larger share) comes
    out of the middle column, only ~24% (≈5px, imperceptible) out of the
    left column. */
+/* 2026-08-27 -- gap/padding tightened 8px -> 4px (settled here after
+   briefly trying 2px), part of a page-wide spacing unification -- user:
+   "Use the same space between left panel and IE edge, right panel and IE
+   edge, between 3 main columns, and between the panels in second column.
+   Filter bar and panels above. Filter bar and panels below. Hedgeye panel
+   all sides." -> "make it 4px". This gap is the space between main-col
+   (dial-changed-col+cat-col) and right-rail, one of the "3 main columns";
+   this padding is the left/right-panel-to-viewport-edge space (left/
+   right/bottom all inherit 4px from the 3-value shorthand). */
 .cockpit-bands {
   display: grid;
-  gap: 8px;
-  padding: 0 8px 8px;
+  gap: 4px;
+  padding: 0 4px 4px;
   align-items: start;
   grid-template-columns: 1fr 260px;
 }
@@ -2015,9 +2037,23 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    per user request ("reduce column 1 size by 20%"); cat-col's own number is
    left untouched -- with two competing fr tracks, cutting column 1's share
    automatically hands the freed proportion to column 2. */
-.main-col { display: grid; grid-template-columns: 0.512fr 1.66fr; gap: 8px; align-items: start; }
-.dial-changed-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.cat-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* 2026-08-27 -- gap tightened 8px -> 4px -- the other "3 main columns"
+   gap, between dial-changed-col and cat-col -- part of the same page-wide
+   unification as .cockpit-bands above. */
+.main-col { display: grid; grid-template-columns: 0.512fr 1.66fr; gap: 4px; align-items: start; }
+/* 2026-08-27 -- gap tightened 8px -> 1px, every panel in this column
+   (Risk Dial, Mkt Situation, Opex, CPI, Earnings, Regime, Notes, What
+   changed, Housekeeping) -- user: "Don't leave too much space between the
+   panels. Leave thin hair space" -> "same spacing between all panels on
+   the left side use even tight ~1px." Bumped 1px -> 4px, folded into the
+   later page-wide unification after all -- user: "make it 4px" -> "also
+   between leftside panels (hair thin ones i mentioned before)". */
+.dial-changed-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+/* 2026-08-27 -- gap tightened 8px -> 4px: "between the panels in second
+   column" + "Filter bar and panels above/below" (the filter bar is just
+   another flex child here, no separate margin rule needed -- this gap
+   alone covers both sides of it). */
+.cat-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 /* 2026-08-09 -- Accounts filter bar, shared above the 3 stacked grids.
    Checkbox-per-account chips, not a dropdown -- few enough accounts
    (typically <10) that seeing all options at once beats a click-to-open
@@ -2050,7 +2086,7 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .cat-filter-toggle:hover { color: var(--text-1, #1c1917); border-color: var(--text-3, #a8a29e); }
 /* 2026-08-10 -- gap shrunk 8px -> 2px ("a thin line") per user request,
    now that this rail has 5 panels stacked instead of 3. */
-.right-rail { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.right-rail { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 /* 2026-08-24 -- Sectors..Country ETFs (+ Symbol/Indicator, moved in later)
    relocated from .right-rail into .cat-col (see index.html's own comment
    there) -- iterated live through a few layouts: fixed 260px panels (wrapped
@@ -2066,8 +2102,12 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    Row CONTENT is untouched throughout (.msr-row/.msr-name-tick/.msr-rb/
    .msr-chg etc., shared with the right-rail panels that stayed put and with
    Actionable's own rail, so deliberately never touched here). */
-.macro-rail-row { display: flex; align-items: flex-start; gap: 8px; }
-.macro-rail-col { display: flex; flex-direction: column; gap: 8px; flex: 1 1 0; min-width: 130px; }
+/* gap 8px -> 4px (2026-08-27): user: "make sure 4px between panels" --
+   applies to both the vertical gap between stacked panels within one
+   column (.macro-rail-col) and the horizontal gap between the 5 columns
+   themselves (.macro-rail-row), for one consistent spacing throughout. */
+.macro-rail-row { display: flex; align-items: flex-start; gap: 4px; }
+.macro-rail-col { display: flex; flex-direction: column; gap: 4px; flex: 1 1 0; min-width: 130px; }
 
 /* Risk Dial / What changed keep their own height cap + internal scroll
    (unchanged from the pre-relayout row-1 behavior). What changed's cap
@@ -2130,11 +2170,15 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    overflow, same as every other non-rail panel on this screen.
    2026-08-27 -- Country ETFs joined this group -- its 150px default cap
    started scrolling once EWY (South Korea) brought it to 8 members. User:
-   "remove the vertical scroll bar from Country ETFs panel." */
+   "remove the vertical scroll bar from Country ETFs panel."
+   2026-08-27 follow-up -- Sectors ETF panel (11 GICS SPDR ETFs) joined
+   too, same reason -- user: "expand sectors table so no vertical
+   scrollbar." */
 #macroRailSectors.dash-macro-rail,
 #macroRailCommodities.dash-macro-rail,
 #macroRailRemaining.dash-macro-rail,
-#macroRailCountry.dash-macro-rail {
+#macroRailCountry.dash-macro-rail,
+#macroRailSectorEtfs.dash-macro-rail {
   max-height: none;
   overflow-y: visible;
 }
@@ -2179,9 +2223,15 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
   .main-col { grid-template-columns: 1fr; }
 }
 
+/* 2026-08-27 -- padding tightened 8px/12px -> 4px on every side -- the
+   shared card class every Dashboard panel uses (index.html-only, see
+   grep), including the Hedgeye panels (#heMktSituationPanel/#heInflPanel/
+   #hedgeyeDashPanel, plain .cockpit-band chrome, no panel-specific
+   padding override) -- user: "Hedgeye panel all sides" as part of a
+   page-wide spacing unification (all set to 4px). */
 .cockpit-band {
   border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg);
-  padding: 8px 12px; min-width: 0; /* required -- without it wide tables blow the grid out */
+  padding: 4px; min-width: 0; /* required -- without it wide tables blow the grid out */
 }
 .cockpit-band h2 {
   margin: 0 0 6px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
@@ -2680,15 +2730,13 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
 .ev-quiet { color: var(--text-3); font-size: 12px; font-style: italic; }
 .ev-fail  { color: var(--bear); font-size: 12px; font-weight: 600; }
 
-/* Regime -- combined into the "What changed" band (Band 2), above the
-   events list, per user request. A single flex row that wraps, with a
-   divider between successive children. The band's own JS content (quad
-   path + window months) is unchanged -- this is presentation only, so it
-   degrades to one item with no visible divider. */
-/* Sits directly below #riskDialBody (sibling, not nested -- see index.html)
-   with no spacing of its own by default; margin/padding/divider added here
-   so it doesn't read as flush against the Risk Dial content above it. */
-#regimeStrip { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+/* Regime -- 2026-08-27: Opex/CPI-Events/Earnings/Regime used to be 4
+   stacked "rows" inside one shared #regimeStrip flex-wrap container
+   (border/divider rules below handled the stacking + separators between
+   them); now each lives in its own #regimeXxxBand .cockpit-band card (see
+   index.html), so the shared-container rules that follow are retired --
+   each card's own standard border/padding IS the separator now. User:
+   "Separate Opex, CPI, earnings, Regime into their own panels." */
 /* TASK_140 follow-up 18 -- .source-pop et al match actionable.html's inline
    copy verbatim (values, not just class names) so the dashboard's quad
    popover looks exactly like actionable's, per user request. actionable.js/
@@ -2706,27 +2754,22 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
 .source-pop td.k { color: #475569; padding-right: 12px; white-space: nowrap; }
 .source-pop td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; word-break: break-word; }
 .source-pop .sp-sec { color: #94a3b8; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; padding-top: 5px; }
-#regimeStrip > * + * { padding-left: 10px; border-left: 1px solid var(--border); }
-/* 2026-08-14 -- Options expiration line, then the configurable Events
-   line, both sit on their own row above .regime-line with a horizontal
-   separator between each (all three force flex:1 0/1 100% so they stack
-   instead of sitting side by side in #regimeStrip's flex-wrap row). The
-   generic "> * + *" rule above (a vertical left-border, meant for
-   side-by-side items) is neutralized on every row but the first here,
-   since it's no longer meaningful once rows stack vertically. User: "add a
-   line above REGIME text with separator line -> i need to see options
-   expiration date (mm/dd) 10d both montly and quarterly" -> "Add one more
-   line betwee this and regime and provide a way for me to choose event
-   type (ex options expiration, CPI) to show up." */
+/* 2026-08-14 -- Options expiration line / configurable Events line's own
+   internal row layout (icon/text/gear). Was flex:1 0 100% + a bottom
+   border/padding acting as the divider between stacked rows sharing
+   #regimeStrip -- now each lives alone in its own .cockpit-band card, so
+   the card's own border is the divider and the old flex-sizing/divider
+   properties were dropped as no-ops. User: "add a line above REGIME text
+   with separator line -> i need to see options expiration date (mm/dd)
+   10d both montly and quarterly" -> "Add one more line betwee this and
+   regime and provide a way for me to choose event type (ex options
+   expiration, CPI) to show up." -> "Separate Opex, CPI, earnings, Regime
+   into their own panels." */
 .opex-line, .events-line {
-  flex: 1 0 100%;
   font-size: 11px;
   color: var(--text-3);
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 6px;
 }
-#regimeStrip > *:not(:first-child) { padding-left: 0; border-left: none; }
 .events-line { justify-content: space-between; }
 /* 2026-08-27 -- earnings-line overrides: was nowrap like its siblings (fine
    when it only listed a handful of opted-IN watched symbols), but now it
@@ -2744,30 +2787,57 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
    line-clamp has a real wrap boundary to clamp against. User: "Only
    display symbols in 3 lines. group by date ... Wrap this into three
    lines".
-   2026-08-27 follow-up 2 -- split into 2 clamped blocks (was 1 clamped to
-   3) so watched (grouped by date) and un-watched (plain "SYMBOL(days)")
-   don't run together mid-line -- watched gets first crack at 2 lines,
-   un-watched pinned to its own 3rd line. User: "move the un-watched one to
-   3rd line ... use first two lines for watched ones." */
+   2026-08-27 follow-up 2 -- watched (grouped by date) and un-watched
+   (plain "SYMBOL(days)", smaller font) now flow into ONE clamped block
+   instead of two independently-clamped ones stacked on top of each other
+   -- the earlier 2-blocks version always started un-watched on its own
+   fixed line even when watched only used 1-2 of its lines, wasting the
+   rest. A single flow lets un-watched wrap up into whatever room watched
+   didn't use, same as ordinary text reflow. User: "move the un-watched
+   one to 3rd line ... use first two lines for watched ones" (superseded)
+   -> "display unwatched starting from 4th line if there is a space". */
 .earnings-line { align-items: flex-start; }
-.earnings-content { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.earnings-content { flex: 1 1 auto; min-width: 0; }
+/* 2026-08-27 -- font sizes dropped 1px each (was inheriting 11px from
+   .opex-line/.events-line above; un-watched was already 9px) -- user:
+   "decrease font size by one point". */
 .earnings-groups {
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+  overflow: hidden; font-size: 10px;
+  line-height: 19px; /* the "space between line 1 & 2" fix -- line-height
+    is what controls the gap between wrapped lines within this clamped
+    block. User: "betwee line 1 & 2". */
 }
-/* 2026-08-27 -- smaller font for the un-watched (3rd) line -- it's the
-   overflow/deprioritized set, not meant to compete visually with the
-   watched, date-grouped lines above it. User: "display not watched at the
-   end in small font NVDA(0) ABC(1)". */
-.earnings-unwatched {
-  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
-  overflow: hidden; font-size: 9px;
-}
+/* 2026-08-27 -- clamp bumped 2 -> 4 lines by default (user: "display two
+   more lines of data"), collapsible back down to the original 2 via
+   web/app.js::_toggleEarningsLinesCollapse (user: "make sure it is
+   collapsable") -- .earnings-collapsed is added to .earnings-line when the
+   persisted localStorage preference says so. */
+.earnings-line.earnings-collapsed .earnings-groups { -webkit-line-clamp: 2; }
+/* 2026-08-27 -- smaller font for each un-watched entry, inline within the
+   combined flow above (was a separate .earnings-unwatched BLOCK, pinned
+   to its own line regardless of space -- see the flow-together comment
+   above) -- it's the overflow/deprioritized set, not meant to compete
+   visually with the watched, date-grouped entries. User: "display not
+   watched at the end in small font NVDA(0) ABC(1)". */
+.earnings-unwatched-item { font-size: 8px; }
 /* 2026-08-14 -- yellow highlight for an OPEX/Qtly Exp entry <=5 days out.
    Same yellow as .rd-spx-vbar-fill.tier-caution (#eab308), dark text for
    contrast on the light background. User: "Options expirations (OPEX and
-   qtr) if less than or equal to 5d. highligh with yellow color." */
-.opex-soon { background: #eab308; color: #1e293b; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
+   qtr) if less than or equal to 5d. highligh with yellow color."
+   2026-08-27 -- small horizontal margin added so adjacent highlighted
+   entries (e.g. two same-date earnings both <=3d out, space-separated)
+   don't read as one continuous highlighted block. User: "make sure there
+   is small space between the highlight boxes". */
+.opex-soon { background: #eab308; color: #1e293b; padding: 1px 5px; margin: 0 2px; border-radius: 3px; font-weight: 600; }
+/* 2026-08-27 -- same yellow highlight as .opex-soon, applied to a whole
+   Indicator-table row instead of an inline span (a <tr>'s own background
+   doesn't reliably render across browsers without the <td>-level rule
+   too) -- for a row whose indicator name is in the shared calendar-types
+   selection AND <=5 days out, see web/app.js::loadEconIndicators(). User:
+   "Highlight and allow choosing the specific event to be highlighed when
+   the time comes?" */
+tr.indicator-soon, tr.indicator-soon td { background: #eab308; color: #1e293b; font-weight: 600; }
 .events-empty { color: var(--text-3); font-style: italic; }
 .events-gear { cursor: pointer; opacity: 0.6; font-size: 12px; flex: 0 0 auto; }
 .events-gear:hover { opacity: 1; }
@@ -2791,18 +2861,22 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
    adding an extra watched symbol once everyone is watched by default. */
 /* 2026-08-08 -- .regime-line switched from inline-block to a full-width flex
    row so its Qtr entry can right-justify to the card's own right edge
-   (flex:1 1 100% claims the whole #regimeStrip row) instead of just
-   trailing inline after the last month. User request: "right justify
-   quarter quad to the grid".
+   instead of just trailing inline after the last month. User request:
+   "right justify quarter quad to the grid".
    2026-08-08 follow-up -- 3-zone layout: .regime-win-label pinned left
    (flex:0 0 auto), .regime-window-text (the month entries) centered in
    the remaining middle space (flex:1, text-align:center), .qtr-entry
    pinned right (flex:0 0 auto) -- was one left-flowing blob with the
    months embedded right after the label. User: "left align that text to
-   the grid. monthly quads -> align to center". */
-#regimeStrip .regime-line {
+   the grid. monthly quads -> align to center".
+   2026-08-27 -- rescoped from #regimeStrip (retired, see that block's own
+   comment) to #regimeLineBody; dropped flex:1 1 100% (was claiming the
+   whole width of the #regimeStrip flex-wrap row -- #regimeLineBody isn't
+   a flex container, so it'd be a no-op, this card's own width already
+   fills naturally). */
+#regimeLineBody .regime-line {
   font-size: 12px; cursor: help; border-bottom: 1px dotted var(--border);
-  display: flex; flex: 1 1 100%; align-items: baseline; gap: 10px;
+  display: flex; align-items: baseline; gap: 10px;
 }
 .regime-line .regime-win-label { flex: 0 0 auto; white-space: nowrap; text-align: left; }
 /* 2026-08-14 -- white-space:nowrap + text-overflow:ellipsis added -- the

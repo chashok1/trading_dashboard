@@ -49,9 +49,13 @@
 
   // Wraps _common.js's symbolLink() defensively (same guard style this file
   // already uses for window.mtTip below) -- Yahoo Finance quote-page link on
-  // the member symbol text, no separate icon.
-  function symLink(html, sym) {
-    return (typeof window.symbolLink === 'function') ? window.symbolLink(html, sym) : html;
+  // the member symbol text, no separate icon. `desc` (the friendly name
+  // already shown as the row's display text, e.g. "Gold" for /GC) prints
+  // ahead of "Open ... on Yahoo Finance" in the hover title when it differs
+  // from the raw symbol -- user: "for symbols -> popover -> add company
+  // names before saying open in finance."
+  function symLink(html, sym, desc) {
+    return (typeof window.symbolLink === 'function') ? window.symbolLink(html, sym, desc) : html;
   }
 
   function fmtPct(v, digits) {
@@ -60,10 +64,15 @@
   }
 
   /* ── Td / Tn diagonal arrows ──────────────────────────────────────── */
-  /* val: >0 up (↗), <0 down (↘), 0/null flat (–) */
+  /* val: >0 up (↗), <0 down (↘), 0 flat (–), null/undefined = no data at
+     all for this symbol (e.g. Dollar/DXY has no Trade/Trend value) -- that
+     case renders BLANK, not a "Td–" placeholder. Still keeps the fixed
+     22px .msr-dur box (styles.css) so columns line up; just nothing in it.
+     User: "Just replace with blanks when there is no values for TD and TN
+     ex: Dollar." (Labels print normally whenever there IS a value.) */
   function durArrow(val, label) {
     if (val === null || val === undefined) {
-      return '<span class="msr-dur msr-dur-flat">' + esc(label) + '&ndash;</span>';
+      return '<span class="msr-dur" title="' + esc(label) + ': no data"></span>';
     }
     if (val > 0) {
       return '<span class="msr-dur msr-dur-up" title="' + esc(label) + ' up">' +
@@ -73,7 +82,7 @@
       return '<span class="msr-dur msr-dur-down" title="' + esc(label) + ' down">' +
         esc(label) + '&#8600;</span>';
     }
-    return '<span class="msr-dur msr-dur-flat">' + esc(label) + '&ndash;</span>';
+    return '<span class="msr-dur msr-dur-flat" title="' + esc(label) + '">' + esc(label) + '&ndash;</span>';
   }
 
   /* ── ETF proxy sub-row (single sector ETF: price/%chg/Td/Tn/Risk Range) ── */
@@ -150,20 +159,135 @@
     return parts.join(' — ');
   }
 
-  // Small Quad-score glyph shown before the symbol, same convention as
-  // rrTape's chips (market_bar.js _msGlyphTape): green ▲ / red ▼ from
-  // drv_macro_score.monthly_score (Hedgeye Quad-calendar-derived), not price.
-  function _msGlyph(score) {
-    var glyph = '', color = '#888';
-    if (score !== null && score !== undefined) {
-      var s = Number(score);
-      if (s > 0) { glyph = '&#9650;'; color = '#16a34a'; }
-      else if (s < 0) { glyph = '&#9660;'; color = '#dc2626'; }
-    }
-    // Fixed-width slot even when empty, so the symbol text starts at the
-    // same x-position on every row regardless of whether it has a score.
-    return '<span style="display:inline-block; width:8px; font-size:7px; color:' + color + '; vertical-align:middle;">' + glyph + '</span>';
+  // 6-caret MacroNet breakdown shown before the symbol (replaces the old
+  // single monthly-score glyph, 2026-08-27) — 60D window, this/next/
+  // following month, Qtr, Next Qtr: the same 6 legs, same glyph set
+  // (▲/▼/→, green/red/grey) as the Actionable grid's Category Drivers
+  // caret rows (web/actionable.js ~line 690: `st > 0 ? '▲' : st < 0 ? '▼'
+  // : '→'`), sourced from api/routers/macro_areas.py::_macro6_from_detail
+  // (per-member `macro6`). All 6 on ONE line (user: "same way ... same
+  // sizes all on the same line with same ratio, but smaller") — same
+  // glyph/color proportions as that reference, just shrunk to font-size
+  // 5px so 6 fit ahead of the symbol name instead of Category Drivers'
+  // one-per-row layout. Hover -> bulleted popover with the full breakdown
+  // (label/quad/weight/value per leg), same Rich Tooltips convention as
+  // the rest of the app (structured list, not a flat string — a native
+  // title= attribute can't render that, hence the custom popover below
+  // instead of just a longer title=).
+  // 3rd element: true = the "headline" legs (60D window = the blended
+  // summary of the 3 months; Qtr = the live current-quarter leg, as
+  // opposed to Next Qtr's often-~0%-weight preview) render bigger than
+  // the 4 supporting-detail legs. User: "60D and Qtr should be bigger
+  // than the others."
+  var _MACRO6_ORDER = [
+    ['window',   '60D window', true],
+    ['month1',   'This month', false],
+    ['month2',   'Next month', false],
+    ['month3',   'Following month', false],
+    ['qtr',      'Qtr', true],
+    ['next_qtr', 'Next Qtr', false],
+  ];
+  var _macro6BySymbol = {};   // symbol -> macro6 obj, for the hover popover
+
+  function _macro6Dir(stance) {
+    if (stance === null || stance === undefined) return { g: '→', c: '#9ca3af' };
+    var n = Number(stance);
+    if (n > 0) return { g: '▲', c: '#16a34a' };
+    if (n < 0) return { g: '▼', c: '#dc2626' };
+    return { g: '→', c: '#9ca3af' };
   }
+
+  function _macro6CaretsHtml(macro6, sym) {
+    // Fixed-width empty slot when there's no data, so rows still line up
+    // the same way the old single-caret slot did. A separate flex-item
+    // sibling of .msr-name-tick (NOT nested inside it) -- text-overflow:
+    // ellipsis on a container with mixed inline content (this caret strip
+    // + the symbol text) measures unreliably, which is what was cutting
+    // "S&P" down to just "S" while leaving visible slack before Td. Extra
+    // margin-right beyond .msr-row's own gap:2px -- user: "add a space
+    // after Carets and Symbol."
+    if (!macro6 || !sym) {
+      return '<span style="display:inline-block; width:20px; vertical-align:middle;"></span>';
+    }
+    _macro6BySymbol[sym] = macro6;
+    var cells = _MACRO6_ORDER.map(function (pair) {
+      var leg = macro6[pair[0]];
+      var dir = _macro6Dir(leg ? leg.stance : null);
+      var big = pair[2];
+      return '<span style="color:' + dir.c + '; font-size:' + (big ? '7px' : '5px') +
+        '; line-height:1;">' + dir.g + '</span>';
+    }).join('');
+    return '<span class="mra-macro6" data-mra-sym="' + esc(sym) + '" ' +
+      'style="display:inline-flex; align-items:center; gap:0.5px; margin-right:4px; ' +
+      'vertical-align:middle; cursor:help;">' + cells + '</span>';
+  }
+
+  /* ── 6-caret popover (bulleted, per Rich Tooltips convention) ─────────── */
+  var _macro6PopEl = null;
+  function _macro6Pop() {
+    if (_macro6PopEl) return _macro6PopEl;
+    var el = document.createElement('div');
+    el.id = 'mra-macro6-pop';
+    el.style.cssText = 'display:none; position:fixed; z-index:3000; background:#fff; ' +
+      'border:1px solid #d1d5db; border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,0.18); ' +
+      'padding:8px 10px; font-size:10px; color:#1f2937; max-width:230px; pointer-events:none;';
+    document.body.appendChild(el);
+    _macro6PopEl = el;
+    return el;
+  }
+  function _macro6PopHtml(macro6, sym) {
+    var lis = _MACRO6_ORDER.map(function (pair) {
+      var leg = macro6[pair[0]];
+      var dir = _macro6Dir(leg ? leg.stance : null);
+      var label = (leg && leg.label) ? leg.label : pair[1];
+      var quadTxt = (leg && leg.quad != null) ? ' (Q' + leg.quad + ')' : '';
+      var wTxt = (leg && leg.w != null) ? ' ×' + Math.round(leg.w * 100) + '%' : '';
+      var valTxt = (leg && leg.stance != null)
+        ? (leg.stance >= 0 ? '+' : '') + leg.stance.toFixed(3) : '—';
+      return '<li style="margin:2px 0;">' +
+        '<span style="color:' + dir.c + ';font-weight:700;">' + dir.g + '</span> ' +
+        '<strong>' + pair[1] + '</strong>' + esc(quadTxt) +
+        '<span style="color:#94a3b8;">' + esc(wTxt) + '</span>: ' +
+        '<span style="color:' + dir.c + ';font-weight:600;">' + esc(valTxt) + '</span>' +
+        (label && label !== pair[1] ? ' <span style="color:#94a3b8;">(' + esc(label) + ')</span>' : '') +
+        '</li>';
+    }).join('');
+    return '<div style="font-weight:700;margin-bottom:4px;">' + esc(sym) + ' — MacroNet legs</div>' +
+      '<ul style="margin:0;padding-left:15px;list-style:disc;">' + lis + '</ul>';
+  }
+  function _macro6Show(target, macro6, sym) {
+    if (!macro6) return;
+    var pop = _macro6Pop();
+    pop.innerHTML = _macro6PopHtml(macro6, sym);
+    pop.style.display = 'block';
+    var rect = target.getBoundingClientRect();
+    pop.style.top = (rect.bottom + 4) + 'px';
+    pop.style.left = rect.left + 'px';
+    requestAnimationFrame(function () {
+      var vw = window.innerWidth, vh = window.innerHeight;
+      var pr = pop.getBoundingClientRect();
+      if (pr.right > vw - 8) pop.style.left = Math.max(8, vw - pr.width - 8) + 'px';
+      if (pr.bottom > vh - 8) pop.style.top = Math.max(8, rect.top - pr.height - 4) + 'px';
+    });
+  }
+  function _macro6Hide() {
+    if (_macro6PopEl) _macro6PopEl.style.display = 'none';
+  }
+  // Delegated (rows are rebuilt via innerHTML on every refresh, so a
+  // per-element listener would need re-attaching every render).
+  document.addEventListener('mouseover', function (ev) {
+    var el = ev.target.closest && ev.target.closest('.mra-macro6');
+    if (!el) return;
+    var sym = el.getAttribute('data-mra-sym');
+    var macro6 = _macro6BySymbol[sym];
+    if (macro6) _macro6Show(el, macro6, sym);
+  });
+  document.addEventListener('mouseout', function (ev) {
+    var el = ev.target.closest && ev.target.closest('.mra-macro6');
+    if (!el) return;
+    if (ev.relatedTarget && el.contains(ev.relatedTarget)) return;
+    _macro6Hide();
+  });
 
   /* ── range bar (compact rail version) ──────────────────────────────── */
   // showPct (default true): the trailing "42%"-style label. railAreaRow's
@@ -227,27 +351,40 @@
   // [%chg chip]. Volatility (gauge) swaps Td/Tn+range-bar for the 3-zone
   // volRangeBar and colors SYM by zone instead of outlook; the trailing zone
   // badge stays.
+  // Areas that skip the 6-caret MacroNet strip entirely -- user: "for
+  // country ETFs & USD&Currency no carets" (Volatility already skips it
+  // via its own gauge-role branch below).
+  var _MACRO6_EXCLUDED_AREAS = { usd_currency: true, country_etfs: true };
+
   function railAreaRow(area) {
     var members = area.members || [];
+    var noCarets = !!_MACRO6_EXCLUDED_AREAS[area.area_key];
     return members.map(function (m) {
       if (m.role === 'gauge') {
         var zone = m.zone || '—';
         var gaugeClass = zone === 'investable' ? 'msr-gauge-g'
                        : zone === 'elevated'   ? 'msr-gauge-r'
                        : 'msr-gauge-a';
-        var volBar = (window.mtTip && window.mtTip.volRangeBar)
-          ? window.mtTip.volRangeBar(m.last, m.vol_low, m.vol_high)
-          : '<div class="rr-rb"></div>';
         return (
+          // Volatility (gauge) rows: no 6-caret MacroNet strip -- user:
+          // "For Volatility -> don't display carets." (the zone badge
+          // already carries this row's own signal). volRangeBar (the
+          // low/high threshold bar between the zone text and the candle/
+          // %chg) dropped too -- user: "what is bar between investable
+          // text and Value? Can we remove that."
           '<div class="msr-row" title="' + esc(_rowTitle(m)) + '">' +
             '<span class="msr-name msr-name-tick" style="color:' + _zoneColor(zone) + ';">' +
-              _msGlyph(m.monthly_score) + symLink(esc(m.label || area.label), m.symbol) +
+              // Prefer a real per-symbol label override; when there isn't
+              // one (label just repeats the area's own name, e.g. VIX's
+              // is "Volatility"), fall back to ref_sector.description
+              // (m.desc) instead of nothing.
+              symLink(esc(m.label || area.label), m.symbol,
+                      (m.label && m.label !== area.label) ? m.label : m.desc) +
             '</span>' +
             '<div class="msr-gauge-wrap">' +
               '<span class="msr-gauge ' + gaugeClass + '">' + esc(zone) + '</span>' +
             '</div>' +
             '<div class="msr-vol-cluster">' +
-              volBar +
               _candleHtml(m) +
               _chgChipHtml(m.pct_change, m.inverted) +
             '</div>' +
@@ -257,8 +394,16 @@
       var dispName = _memberDisplayName(m, area);
       return (
         '<div class="msr-row" title="' + esc(_rowTitle(m, dispName)) + '">' +
+          (noCarets ? '' : _macro6CaretsHtml(m.macro6, m.symbol)) +
           '<span class="msr-name msr-name-tick" style="color:' + _nameColor(m.outlook) + ';">' +
-            _msGlyph(m.monthly_score) + symLink(esc(dispName), m.symbol) +
+            // Same fallback as the gauge row above: dispName only differs
+            // from the raw symbol when there's a real label override
+            // (_memberDisplayName); otherwise use ref_sector.description
+            // (m.desc) -- user: "Why HYG is not saying High yield credit?"
+            // (HYG's own ref_macro_area.label is just "Credit", its area's
+            // name, so dispName fell back to the bare symbol with nothing
+            // to show).
+            symLink(esc(dispName), m.symbol, dispName !== m.symbol ? dispName : m.desc) +
           '</span>' +
           '<div class="msr-data-cluster">' +
             durArrow(m.trade, 'Td') +

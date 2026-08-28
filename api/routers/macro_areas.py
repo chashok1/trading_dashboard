@@ -10,6 +10,7 @@ MACRO-column logic, not duplicated in JS).
 """
 from __future__ import annotations
 
+import json
 import math
 import statistics
 from typing import Optional
@@ -260,14 +261,33 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         ohlc_map = load_quote_ohlc(s, anchor)
         vt_map = load_vol_thresholds(s)
 
-        # Load drv_macro_score (Quad-calendar-derived monthly_score) — same
+        # Load drv_macro_score (Quad-calendar-derived monthly_score + the
+        # detail JSONB behind the 6-caret window/quarter breakdown) — same
         # source as rrTape's tile glyph (api/routers/marketbar.py::_RR_SQL).
         ms_rows = s.execute(text("""
-            SELECT tos_symbol, monthly_score
+            SELECT tos_symbol, monthly_score, detail
             FROM drv_macro_score
             WHERE as_of_date = (SELECT MAX(as_of_date) FROM drv_macro_score)
         """)).mappings().all()
-        ms_map = {r["tos_symbol"]: r["monthly_score"] for r in ms_rows}
+        ms_map = {
+            r["tos_symbol"]: {
+                "monthly_score": r["monthly_score"],
+                "macro6": _macro6_from_detail(r["monthly_score"], r["detail"]),
+            }
+            for r in ms_rows
+        }
+
+        # Fund/instrument description, for the symbol-link hover title
+        # (web/macro_areas.js::symLink) when a rail member has no friendly
+        # ref_macro_area.label override — e.g. HYG's own label is just its
+        # area's name ("Credit"), so the row falls back to the raw ticker;
+        # ref_sector.description gives "Tracks an index of U.S.
+        # dollar-denominated high-yield corporate bonds." instead of
+        # nothing. User: "Why HYG is not saying High yield credit?"
+        desc_rows = s.execute(text("""
+            SELECT ticker, description, sub_asset_class FROM ref_sector
+        """)).mappings().all()
+        desc_map = {r["ticker"]: (r["description"] or r["sub_asset_class"]) for r in desc_rows}
 
         # WoW: quote 5 trading days ago (best effort)
         # Use the 5th-most-recent as_of_date in drv_quote before anchor
@@ -361,7 +381,9 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     "vol_high": vt.get("high"),
                     "zone": zone,
                     "outlook": rr.get("outlook"),
-                    "monthly_score": _maybe_float(ms_map.get(sym)),
+                    "monthly_score": _maybe_float(ms_map.get(sym, {}).get("monthly_score")),
+                    "macro6": ms_map.get(sym, {}).get("macro6"),
+                    "desc": desc_map.get(sym),
                     "inverted": inverted,
                 })
                 continue
@@ -394,7 +416,9 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                     "trade": None,
                     "trend": None,
                     "wow_pct": wow_pct,
-                    "monthly_score": _maybe_float(ms_map.get(sym)),
+                    "monthly_score": _maybe_float(ms_map.get(sym, {}).get("monthly_score")),
+                    "macro6": ms_map.get(sym, {}).get("macro6"),
+                    "desc": desc_map.get(sym),
                     "inverted": inverted,
                 })
                 continue
@@ -446,7 +470,9 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 "is_hot": rr_pos_val is not None and rr_pos_val >= hot_pct,
                 "is_cold": rr_pos_val is not None and rr_pos_val <= cold_pct,
                 "wow_pct": wow_pct,
-                "monthly_score": _maybe_float(ms_map.get(sym)),
+                "monthly_score": _maybe_float(ms_map.get(sym, {}).get("monthly_score")),
+                "macro6": ms_map.get(sym, {}).get("macro6"),
+                "desc": desc_map.get(sym),
                 "inverted": inverted,
             })
 
@@ -565,6 +591,49 @@ def _pct(v: Optional[float]) -> Optional[float]:
     if v is None:
         return None
     return round(v, 3)
+
+
+# The 6-caret MacroNet breakdown (60D window, this/next/following month,
+# Qtr, Next Qtr) — same 6 legs the Actionable grid's MACRO-cell popover
+# shows (web/actionable.js's Window + Quarter sections), sourced from the
+# SAME drv_macro_score.detail JSONB that endpoint reads. Deliberately NOT
+# reusing /api/actionable/macro-detail here: that endpoint 404s for any
+# symbol without a drv_actionable row (rail-panel members — VIX, DXY,
+# futures, gauges — mostly don't have one), while detail/monthly_score on
+# drv_macro_score itself are populated for the full quad-engine universe.
+def _macro6_leg(leg, fallback_label):
+    if not leg:
+        return None
+    return {
+        "label": leg.get("m") or leg.get("label") or fallback_label,
+        "quad":  leg.get("quad"),
+        "w":     _maybe_float(leg.get("w")),
+        "stance": _maybe_float(leg.get("stance")),
+    }
+
+
+def _macro6_from_detail(monthly_score, detail) -> Optional[dict]:
+    if isinstance(detail, str):
+        try:
+            detail = json.loads(detail)
+        except (TypeError, ValueError):
+            detail = None
+    if not isinstance(detail, dict):
+        detail = {}
+    months = detail.get("months") or []
+    qw = detail.get("quarter_window") or {}
+    carets = {
+        "window":    {"label": "60D window", "quad": None, "w": None,
+                       "stance": _maybe_float(monthly_score)},
+        "month1":    _macro6_leg(months[0] if len(months) > 0 else None, "This month"),
+        "month2":    _macro6_leg(months[1] if len(months) > 1 else None, "Next month"),
+        "month3":    _macro6_leg(months[2] if len(months) > 2 else None, "Following month"),
+        "qtr":       _macro6_leg(qw.get("cur"),  "Qtr"),
+        "next_qtr":  _macro6_leg(qw.get("next"), "Next Qtr"),
+    }
+    if not any(v and v.get("stance") is not None for v in carets.values()):
+        return None
+    return carets
 
 
 def _sector_etf_proxy(symbol: str, q_map: dict, tech_map: dict, rr_map: dict, ms_map: dict) -> Optional[dict]:

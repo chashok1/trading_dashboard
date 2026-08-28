@@ -236,15 +236,21 @@
   // quote page -- no separate icon/badge (see yahooLink() above for that
   // style); the text itself becomes the click target. Cash/pseudo markers
   // pass through unlinked, same exclusions as yahooLink().
-  function symbolLink(displayHtml, symbol) {
+  // Optional `desc` (company/index/fund name) prints ahead of the "Open ...
+  // on Yahoo Finance" title text when the caller has one on hand -- user:
+  // "for symbols -> popover -> add company names before saying open in
+  // finance." Omit it (existing callers) for unchanged behavior.
+  function symbolLink(displayHtml, symbol, desc) {
     if (!symbol) return displayHtml;
     const sym = String(symbol).trim();
     if (!sym || sym.includes('**') || /^cash/i.test(sym) ||
         sym === 'Cash & Cash Investments') return displayHtml;
     const url = 'https://finance.yahoo.com/quote/' + encodeURIComponent(yahooTicker(sym)) + '/';
+    const namePrefix = (desc && String(desc).trim() && desc !== sym)
+      ? escapeHtml(String(desc).trim()) + ' — ' : '';
     return '<a href="' + url + '" target="_blank" rel="noopener noreferrer" '
          + 'onclick="event.stopPropagation()" '
-         + 'title="Open ' + escapeHtml(sym) + ' on Yahoo Finance" '
+         + 'title="' + namePrefix + 'Open ' + escapeHtml(sym) + ' on Yahoo Finance" '
          + 'style="color:inherit; text-decoration:inherit;">' + displayHtml + '</a>';
   }
 
