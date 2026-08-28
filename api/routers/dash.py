@@ -758,6 +758,7 @@ def _build_macro_engine(d):
         sym: str,
         real_asset_class: str | None,
         sector: str | None,
+        sub_asset_class: str | None = None,
     ) -> list[dict]:
         """Return per-membership list: {label, category, sub_cat, weight, quad1..4}."""
         memberships: list[dict] = []
@@ -791,7 +792,23 @@ def _build_macro_engine(d):
         sec = (sector or "").strip()
 
         # ── Equity-sector lookup (case-insensitive) ─────────────────────────
-        if sec and sec.lower() not in ("n/a", "none"):
+        # Fixed Income instruments (HYG, LQD, TLT, ...): `sector` here is
+        # ref_sector.equity_sector, a generic "Financials" default for
+        # anything non-equity -- NOT a real GICS sector. Mirrors
+        # etl/derive_macro.py's _derive_macro_impl (2026-08-27 fix, same
+        # HYG/XLF-identical-score bug found there) -- redirect to
+        # ref_quad_outlook's dedicated 'Fixed Income' category (HY Credit,
+        # IG Credit, Long Bond, ...) via sub_asset_class instead, so this
+        # popover's Category Drivers table doesn't drift from the (already
+        # fixed) MacroNet/Window/Quarter numbers shown above it in the same
+        # popover -- the exact kind of drift this function's own docstring
+        # was written to prevent (see 2026-07-16 LQD comment above _add).
+        sub_ac = (sub_asset_class or "").strip()
+        if rac == "Fixed Income":
+            if sub_ac:
+                _add(f"sector={sub_ac}", "Fixed Income", sub_ac,
+                     ("Fixed Income", sub_ac.lower()), 2.0)
+        elif sec and sec.lower() not in ("n/a", "none"):
             _add(f"sector={sec}", "Equity Sectors", sec,
                  ("Equity Sectors", sec.lower()), 2.0)
 
@@ -864,6 +881,7 @@ def _build_macro_engine(d):
         real_asset_class: str | None,
         sector: str | None,
         include_detail: bool = True,
+        sub_asset_class: str | None = None,
     ) -> dict:
         """Full MacroNet computation per symbol.
 
@@ -874,7 +892,7 @@ def _build_macro_engine(d):
             "macro_value": None, "macro_conf": None,
             "macro_turn": None, "macro_detail": None, "macro_howto": None, "macronet": None,
         }
-        memberships = _resolve_memberships(sym, real_asset_class, sector)
+        memberships = _resolve_memberships(sym, real_asset_class, sector, sub_asset_class)
         if not memberships:
             return _blank
 
@@ -1520,7 +1538,7 @@ def get_actionable_macro_detail(
     with session_scope() as s:
         row = s.execute(text("""
             SELECT COALESCE(a.source_asset_class, mt.asset_class) AS real_asset_class,
-                   a.sector
+                   a.sector, mt.sub_asset_class
             FROM drv_actionable a
             LEFT JOIN drv_technicals mt
                    ON mt.tos_symbol = a.tos_symbol AND mt.as_of_date = a.as_of_date
@@ -1538,7 +1556,8 @@ def get_actionable_macro_detail(
 
     _compute_macro, _quad_m_label, _quad_q_label = _build_macro_engine(d)
     try:
-        macro = _compute_macro(sym, row["real_asset_class"], row["sector"], include_detail=True)
+        macro = _compute_macro(sym, row["real_asset_class"], row["sector"], include_detail=True,
+                               sub_asset_class=row["sub_asset_class"])
     except Exception:
         macro = {"macro_detail": None, "macro_howto": None}
     detail = macro.get("macro_detail") or {}
