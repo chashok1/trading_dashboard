@@ -1904,7 +1904,21 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                         for row in reader:
                             if len(row)==0:
                                 continue
-                            symbol = row[0]  # Assuming the symbol is in the first column
+                            # 2026-08-28 fix: normalize the dict key the same way
+                            # update_stuck_symbols_memory()/find_genuinely_stuck_symbols()
+                            # already do -- a futures/specific-month symbol can export
+                            # with a different bracket suffix (or none) once it's been
+                            # reloaded via its root symbol into WL99 (see
+                            # normalize_for_reimport()'s own docstring). Without this,
+                            # the original stuck row (e.g. "/BTC[Q26]") and WL99's
+                            # resolved re-export (e.g. "/BTC") land under two DIFFERENT
+                            # keys -- the old stuck entry never gets overwritten/removed
+                            # and would still leak into the final merged output CSV as a
+                            # leftover "Loading" row. The row's actual literal text
+                            # (row[0], whatever bracket format the WINNING fragment
+                            # happens to use) is still what gets written out below --
+                            # only the matching KEY is normalized.
+                            symbol = normalize_for_reimport(row[0])
                             #if symbol in ('NFLX'):
                             #    print (f"symbol {symbol}")
 
@@ -1949,9 +1963,10 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                     print(summary_messages[key])
                 joined_string = ",".join(sorted_summary_messages)
                 print(joined_string)
-                # normalize_for_reimport() here, not on sorted_summary_messages
-                # itself -- that list still needs its original bracketed form
-                # for the summary_messages[key] lookups above.
+                # 2026-08-28: sorted_summary_messages keys are already
+                # normalize_for_reimport()'d (symbol itself is now normalized
+                # where summary_messages gets built, above) -- re-applying it
+                # here is just a no-op safety net, not a separate pass.
                 reimport_symbols = sorted({normalize_for_reimport(s) for s in sorted_summary_messages})
                 write_filenames_to_file(reimport_symbols, loading_symbols_file, label="symbols")
             elif os.path.exists(loading_symbols_file):
