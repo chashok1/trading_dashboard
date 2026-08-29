@@ -1103,8 +1103,29 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
     # edits WL99's symbols without navigating away from it), so re-doing
     # the same 3 selection clicks here would just reselect WL99 a second
     # time for nothing.
-    download_watchlist(export_row, save_folder, images_folder, False, False, False,
-                        already_selected=True)
+    #
+    # 2026-08-28 fix: force_download=False here meant a stall (loading count
+    # not improving for 30s+, common right after a big fresh reimport) made
+    # download_watchlist() return False WITHOUT exporting anything at all --
+    # leaving the WL99 fragment CSV on disk at whatever an EARLIER, staler
+    # attempt left it (or missing entirely, on a first-ever attempt).
+    # update_stuck_symbols_memory() only runs on an actual export, so
+    # stuck_symbols_memory never reconciled against this attempt's real
+    # (partial) progress either. Confirmed live: after 3 stalled attempts,
+    # the merge stage downstream read that stale/missing WL99 fragment and
+    # fell back to WL1..16's ORIGINAL per-source stuck data instead of
+    # WL99's narrowed-down result -- the "shows the original list, not the
+    # shorter one" symptom. Retry once with force_download=True (same
+    # fallback the plain WL-row path already uses at the bottom of
+    # run_recipe_rows()'s WL branch) so this attempt's actual current state
+    # -- even if some symbols are still genuinely stuck -- always lands on
+    # disk.
+    if not download_watchlist(export_row, save_folder, images_folder, False, False, False,
+                               already_selected=True):
+        print("--- RELOADWL99: export stalled (no change in loading count) -- forcing export of "
+              "current WL99 state so this attempt's progress isn't lost. ---")
+        download_watchlist(export_row, save_folder, images_folder, False, True, False,
+                            already_selected=True)
 
     # 6. Re-sync LoadingSymbols.txt to stuck_symbols_memory's state AFTER
     # this export (2026-08-21, user-directed) -- step 5's download_watchlist
