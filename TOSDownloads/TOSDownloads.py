@@ -1465,6 +1465,33 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
                 prev_remaining = remaining
             print(f"{'=' * 60}\n=== RELOADWL99 handling done ({wl99_attempts} WL99 attempt(s), "
                   f"{reprocess_attempts} reprocess attempt(s)) ===\n{'=' * 60}\n")
+
+            # 2026-08-28, user-directed: write stuck_symbols_memory's final
+            # state to LoadingSymbols.txt (redundant safety net -- the last
+            # do_reloadwl99() call's own step 6 should already have done
+            # this, but costs nothing to repeat) and then READ IT BACK FROM
+            # DISK and print it -- rather than printing stuck_symbols_memory
+            # itself -- so what's shown on screen is provably what's
+            # actually sitting in the file the user (or a manual re-import)
+            # would work from, matching the manual workflow's own
+            # copy-from-terminal step.
+            write_stuck_symbols_to_file(save_folder)
+            working_dir = os.path.dirname(os.path.normpath(save_folder))
+            loading_symbols_file = os.path.join(working_dir, 'LoadingSymbols.txt')
+            final_stuck = read_filenames_from_file(loading_symbols_file)
+            print(f"{'=' * 60}")
+            if final_stuck:
+                print(f"📋 {len(final_stuck)} symbol(s) still 'Loading' after all automated retries "
+                      f"-- read back from {loading_symbols_file}:")
+                for s in final_stuck:
+                    print(f"  {s}")
+                print(",".join(final_stuck))
+                print("\nReimport this list into WL99 by hand (Edit Watchlist > Import > Load from "
+                      "File) and re-export when ready -- the merge stage below will pick it up "
+                      "automatically.")
+            else:
+                print(f"✅ Nothing left 'Loading' -- {loading_symbols_file} is empty.")
+            print(f"{'=' * 60}\n")
         else:
             print(f"Unknown type '{etype}' ")
 
