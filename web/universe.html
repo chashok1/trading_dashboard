@@ -36,7 +36,9 @@
       border: 1px solid var(--border); border-radius: 9px; gap: 2px; }
     .uv-tab { appearance: none; border: 0; background: transparent; color: var(--text-2);
       font: inherit; font-size: 12px; font-weight: 600; padding: 7px 13px; border-radius: 6px;
-      cursor: pointer; white-space: nowrap; transition: background .12s ease, color .12s ease; }
+      cursor: pointer; white-space: nowrap; transition: background .12s ease, color .12s ease;
+      display: inline-flex; align-items: center; gap: 5px; }
+    .uv-color-dot { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
     .uv-tab:hover { color: var(--text-1); }
     .uv-tab[aria-selected="true"] { background: var(--accent); color: #fff; }
     .uv-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -46,10 +48,6 @@
     .uv-tabs.small { padding: 2px; border-radius: 8px; }
     .uv-tabs.small .uv-tab { padding: 5px 11px; font-size: 11.5px; border-radius: 5px; }
     .uv-ctrl-group .uv-fcount { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-
-    .uv-split-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px;
-      color: var(--text-2); cursor: pointer; user-select: none; }
-    .uv-split-toggle input { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
 
     /* min-height/margin dropped to 0 -- empty most of the time (only
        populated during a drilldown), and its old 26px reserved footprint
@@ -115,13 +113,12 @@
 
     .uv-foot { margin-top: 16px; font-size: 11px; color: var(--text-3); }
 
-    /* nested (split-by-account) group chrome */
-    .uv-grp-rect { fill: none; stroke: var(--border); stroke-width: 1px; }
-    .uv-grp-label { font-weight: 700; fill: var(--text-2); pointer-events: none; }
-
     /* 2026-08-30: the sequential magnitude ramps (count/capital) that used
-       to live here were dropped -- color is sector identity (catAssign)
-       everywhere now, see universe.js's own comment on VIEWS. */
+       to live here were dropped -- color is sector/asset-class identity
+       everywhere now, see universe.js's own header comment. The nested
+       "split each sector tile by account" view (and its .uv-grp-* group
+       chrome) was dropped the same day -- By Account's own hierarchy
+       covers that angle. */
 
     @media (prefers-reduced-motion: reduce) {
       .uv-tab, #uvTt { transition: none; }
@@ -164,9 +161,21 @@
       </div>
       <div class="uv-hdr-controls">
         <div class="uv-tabs" role="tablist" aria-label="Treemap view">
-          <button class="uv-tab" role="tab" data-view="count" aria-selected="true">By Count</button>
-          <button class="uv-tab" role="tab" data-view="capital" aria-selected="false">By Capital</button>
+          <button class="uv-tab" role="tab" data-view="assetclass" aria-selected="true">By Asset Class</button>
           <button class="uv-tab" role="tab" data-view="account" aria-selected="false">By Account</button>
+        </div>
+
+        <!-- Size -- what sizes every tile at every level of either
+             hierarchy (symbol count vs $ capital). Replaces the old
+             "By Count"/"By Capital" top-level tabs, which only ever
+             differed by this one number -- now a toggle instead of two
+             separate entry points. -->
+        <div class="uv-ctrl-group">
+          <span class="uv-flabel">Size</span>
+          <div class="uv-tabs small" role="tablist" aria-label="Tile size">
+            <button class="uv-tab" role="tab" data-size="count" aria-selected="true">Count</button>
+            <button class="uv-tab" role="tab" data-size="capital" aria-selected="false">Capital</button>
+          </div>
         </div>
 
         <div class="uv-ctrl-group">
@@ -179,14 +188,30 @@
           <span class="uv-fcount" id="uvFilterCount"></span>
         </div>
 
-        <div class="uv-ctrl-group" id="uvAcctRow" hidden>
-          <span class="uv-flabel">Account</span>
-          <div class="uv-tabs small" role="tablist" aria-label="Account" id="uvAcctTabs"></div>
-          <label class="uv-split-toggle" id="uvSplitToggleWrap" hidden>
-            <input type="checkbox" id="uvSplitToggle" />
-            Split each tile by account
-          </label>
+        <!-- Color filter -- narrows the drilldown (individual stock) tiles
+             to one trading-signal color; has no effect until you drill
+             all the way down to symbols (see renderSymbolTiles). -->
+        <div class="uv-ctrl-group">
+          <span class="uv-flabel">Color</span>
+          <div class="uv-tabs small" role="tablist" aria-label="Stock tile color filter">
+            <button class="uv-tab" role="tab" data-color="all" aria-selected="true">All</button>
+            <button class="uv-tab" role="tab" data-color="buy" aria-selected="false"><span class="uv-color-dot" style="background:var(--act-buy-strong);"></span>Buy</button>
+            <button class="uv-tab" role="tab" data-color="sell" aria-selected="false"><span class="uv-color-dot" style="background:var(--act-sell-strong);"></span>Sell</button>
+            <button class="uv-tab" role="tab" data-color="hold" aria-selected="false"><span class="uv-color-dot" style="background:var(--act-neutral);"></span>Hold</button>
+          </div>
         </div>
+
+        <!-- Style filter -- a symbol can carry several style tags at once
+             (e.g. both "Low Beta" and "Mid Caps"), so this is a filter, not
+             a hierarchy level (see the "By Asset Class" research chat) --
+             narrows the drilldown tiles to one tag, same scope as Color.
+             Populated from ALL_STYLE_TAGS (data-driven, not hardcoded) --
+             see wireStyleTabs(). -->
+        <div class="uv-ctrl-group">
+          <span class="uv-flabel">Style</span>
+          <div class="uv-tabs small" role="tablist" aria-label="Style filter" id="uvStyleTabs"></div>
+        </div>
+
       </div>
     </div>
 
@@ -215,6 +240,6 @@
   <div id="uvTt"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
-  <script src="/static/universe.js?v=6"></script>
+  <script src="/static/universe.js?v=15"></script>
 </body>
 </html>
