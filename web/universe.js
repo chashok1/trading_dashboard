@@ -155,6 +155,23 @@
   }
   const labelColorFor = hex => luminance(hex) > 0.42 ? '#1c1917' : '#ffffff';
 
+  // Per-symbol color for the drilldown level (individual tickers) -- a
+  // stable hash of the ticker string into the app's own --cat1..9 +
+  // unmapped slots (10 total), NOT a fresh hue per symbol -- there can be
+  // dozens of symbols in one sector, far past the categorical cap, so this
+  // is deliberately a visual-variety cycle rather than a real identity
+  // channel (each tile is already directly labeled with its own ticker,
+  // which is what actually carries identity here). Hash-based (not
+  // render-order index) so a given symbol tends to land on the same color
+  // across different drilldowns, not just within one.
+  const SYMBOL_COLOR_SLOTS = ['--cat1', '--cat2', '--cat3', '--cat4', '--cat5', '--cat6', '--cat7', '--cat8', '--cat9', '--cat-unmapped'];
+  function symbolColor(sym) {
+    let h = 0;
+    const s = sym || '';
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return cssVar(SYMBOL_COLOR_SLOTS[h % SYMBOL_COLOR_SLOTS.length]);
+  }
+
   const svg = d3.select('#uvTm');
   const tt = $('uvTt');
 
@@ -505,12 +522,11 @@
   // ---- drilldown: individual symbols within a sector (± account) --------
   function renderDrill(drillState, W, H) {
     hideAllLegends();
-    let rows, color, unit;
+    let rows, unit;
     if (drillState.sector && drillState.account) {
       // sector + account (from the split-by-account nested treemap)
       const posList = (POS_BY_SECTOR_ACCOUNT[drillState.sector] || {})[drillState.account] || [];
       rows = posList.map(r => ({ tos_symbol: r.tos_symbol, value: r.market_value }));
-      color = cssVar(acctColor.get(drillState.account));
       unit = 'capital';
     } else if (drillState.account) {
       // account only (from "By Account") -- flatten that account's
@@ -521,14 +537,12 @@
         if (list) flat = flat.concat(list);
       });
       rows = flat.map(r => ({ tos_symbol: r.tos_symbol, value: r.market_value }));
-      color = cssVar(acctColor.get(drillState.account));
       unit = 'capital';
     } else {
       const symRows = (SYMS_BY_SECTOR[currentFilter] || {})[drillState.sector] || [];
       const useCapital = currentFilter === 'held';
       rows = symRows.map(r => ({ tos_symbol: r.tos_symbol, value: useCapital ? (r.current_position_dollar || 0) : 1 }));
       unit = useCapital ? 'capital' : 'count';
-      color = cssVar(catAssign.get(drillState.sector) || '--cat-unmapped');
     }
     if (unit === 'count') rows = rows.map(r => ({ ...r, value: 1 }));
 
@@ -541,14 +555,20 @@
       .attr('class', 'uv-cell-group uv-cell').attr('tabindex', 0)
       .attr('transform', d => `translate(${d.x0},${d.y0})`);
 
+    // per-symbol color (was one flat color for the whole drilldown, inherited
+    // from the parent sector/account tile) -- user: "use different colors
+    // for stock symbols after drill down". Stable per ticker (symbolColor
+    // hashes the string into the app's own --catN slots), not just
+    // render-order, so a symbol tends to read the same color across
+    // different drilldowns too, not just within one.
     cell.append('rect').attr('class', 'uv-cell-rect')
       .attr('width', d => Math.max(0, d.x1 - d.x0)).attr('height', d => Math.max(0, d.y1 - d.y0))
-      .attr('rx', 3).attr('fill', color);
+      .attr('rx', 3).attr('fill', d => symbolColor(d.data.tos_symbol));
 
-    const ink = labelColorFor(color);
     cell.each(function (d) {
       const w = d.x1 - d.x0, h = d.y1 - d.y0;
       if (w < 30 || h < 18) return;
+      const ink = labelColorFor(symbolColor(d.data.tos_symbol));
       const g = d3.select(this);
       g.append('text').attr('class', 'uv-c-name').attr('x', 5).attr('y', 13)
         .attr('font-size', w < 60 ? 9 : 10.5).attr('fill', ink).text(d.data.tos_symbol);
