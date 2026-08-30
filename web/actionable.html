@@ -239,9 +239,11 @@
       color: #fff;
       border-color: #16a34a;
     }
-    /* 2026-08-25: Strict sub-toggle -- same active-state green as Trade Mode
-       itself (it's a narrowing of the same filter, not a separate concept). */
-    #tradeModeStrictBtn.active {
+    /* 2026-08-28: "Non-Strict" button (was the Strict sub-toggle's slot) --
+       same green as Trade Mode itself, a differently-colored active state
+       would read as a totally separate concept when it's really the same
+       Trade Mode data, just the complementary half of it. */
+    #tradeModeDiffBtn.active {
       background: #16a34a;
       color: #fff;
       border-color: #16a34a;
@@ -339,7 +341,15 @@
       border-radius: 8px;
       box-shadow: 0 4px 16px rgba(0,0,0,0.12);
       padding: 10px 14px; font-size: 11px; line-height: 1.6;
-      min-width: 150px; max-width: 600px;
+      /* 2026-08-29: 600px -> 700px -- .actpop (the Action popup's own
+         content div) grew to 662px wide over several width bumps, but this
+         SHARED popover shell (#sourcePop, reused for Vol/IV/PVV/scores
+         popups too, not just the Action popup) still capped out at 600px,
+         so its background/border/shadow box clipped below .actpop's actual
+         width instead of growing with it. 700 covers .actpop's 662px +
+         this element's own 14px*2 side padding (690px) with a little
+         headroom. */
+      min-width: 150px; max-width: 700px;
       pointer-events: none;
     }
     .source-pop .sp-title { font-weight: 700; color: #0f172a; margin-bottom: 6px;
@@ -356,14 +366,105 @@
        _buildActionPopHtmlV2 in actionable.js. Reuses .source-pop's box
        (#sourcePop) and the app's real --act-* color tokens (styles.css
        :root) rather than inventing a new palette. */
-    .actpop { width: 552px; padding: 6px; }  /* 460px + 20% */
+    .actpop { width: 662px; padding: 6px; }  /* 460px + 20% + 20% (2026-08-29) */
     /* .actpop-sym on the left, the RR bar widget (.actpop-rr, below) on the
        right -- align-items:center so the bar reads level with the symbol
-       name instead of both just sharing a top edge. */
-    .actpop-head { display:flex; align-items:center; justify-content:space-between; gap:8px;
+       name instead of both just sharing a top edge.
+       2026-08-30: flex -> CSS Grid, 3 columns (was flex +
+       justify-content:space-between). Why: the Tradability icon/score down
+       in .actpop-rr-row needs to sit directly under .actpop-tdtn here, even
+       though they're on two different rows -- flex can't do that (each
+       row's space-between gaps are computed independently from that row's
+       OWN content, so they drift apart whenever the two rows' content
+       widths differ). .actpop-rr-row (below) uses this EXACT SAME
+       grid-template-columns string, and grid track sizes don't depend on
+       which content fills them, so col2 is guaranteed to land at the same
+       x-position in both rows regardless of what's actually in col1/col3
+       that row.
+       2026-08-30 follow-up: col1/col3 both plain 1fr (was minmax(0,1fr) /
+       minmax(220px,320px)) -- user wants Td/Tn/Tradability horizontally
+       CENTERED IN THE POPOVER, not just centered within whatever narrow
+       slot was left over after the symbol block and RR bar claimed their
+       share. Two equal 1fr flanks split the remaining space evenly on
+       both sides of col2 by construction, which is what actually puts col2
+       at the popover's true horizontal center -- asymmetric flanks (the
+       old minmax pair) can't guarantee that no matter how col2 itself is
+       justified within its own column.
+       2026-08-30 follow-up: 1fr:1fr -> 1fr:1.2fr -- user wants more room
+       for the Sector ETF/Volume lines (col3 of .actpop-rr-row, same
+       column) which were still cramped; col1 (this row: symbol block, the
+       other row: Macro/PVV/CALC icons) had slack to give up. Trade-off,
+       noted here since it partially undoes the "exact center" request
+       above: col2 (Td/Tn/Tradability) is now centered slightly LEFT of the
+       popover's true middle, not dead-center -- still lines up between the
+       two rows (that only needs col1 identical in both grids, which it
+       still is) and reads as roughly-centered, just no longer exact. Both
+       grids below still MUST use this exact same string, unchanged from
+       each other, for that row-to-row alignment to hold. */
+    .actpop-head { display:grid; grid-template-columns: 1fr 130px 1.2fr;
+      align-items:center; column-gap:8px;
       margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
-    .actpop-sym { font-size:14px; font-weight:800; color:#0f172a; }
-    .actpop-sym .actpop-co { font-weight:400; color:#94a3b8; font-size:10px; margin-left:5px; }
+    .actpop-sym { min-width:0; font-size:14px; font-weight:800; color:#0f172a; }
+    /* 2026-08-29: held amount/earnings moved to their own line below the
+       symbol (was an inline span next to it) -- block instead of inline. */
+    .actpop-sym .actpop-co { display:block; font-weight:400; color:#94a3b8; font-size:10px; margin:2px 0 0; }
+    /* Trade/Trend header boxes (2026-08-29) -- .actpop-head's middle grid
+       column (col2, see above). Stack order (which box is on top) is
+       decided in JS per row -- see _actpopTdTnHtml. Boxes shortened
+       (padding 2px->0, fixed 14px line-height) per user -- were too tall
+       next to the RR controls.
+       justify-self:center centers it within col2 (130px, wider than the
+       boxes' own content) -- that's also what keeps it lined up with
+       .actpop-rr-trad below, since both are justify-self:center in the
+       SAME 130px column. align-self:flex-start is what keeps it sharing
+       one coordinate frame with .actpop-rr (this row's col3) -- .actpop-
+       head's align-items:center still centers .actpop-sym normally, it
+       just no longer applies to these two.
+       margin-top/height are computed (not eyeballed) from .actpop-rr's own
+       geometry so the top edge lines up with the %-tag pill and the bottom
+       edge lines up with the LRR/TRR label line:
+         .actpop-rr margin-top 8 + .actpop-rr-tag top:-18 = -10 (tag top)
+         .actpop-rr margin-top 8 + track height 7 + labels margin-top 3
+           + ~11px label line-height = 29 (labels bottom)
+         => margin-top:-10px, height:39px (29 - -10).
+       2026-08-29 follow-up: +10px added to both this and .actpop-rr's own
+       margin-top (below) -- user wants the whole group moved DOWN so its
+       top (the %-tag, previously at y:-10 relative to .actpop-head's own
+       top edge -- i.e. poking 10px above it) lines up with the top of the
+       Final Call badge (.actpop-call, "BUY MORE"/"BUY TO MIN" etc., which
+       sits at roughly y:0 on the symbol line) instead. Estimated from the
+       CSS geometry, not visually confirmed (no browser access this
+       session) -- flag it if it needs a further nudge. */
+    .actpop-tdtn { display:flex; flex-direction:column; align-items:center; justify-content:space-between;
+      justify-self:center; align-self:flex-start; margin-top:0; height:39px; }
+    .actpop-tdtn-box { font-size:10px; font-weight:700; line-height:14px; color:#334155; background:#f1f5f9;
+      border:1px solid #e2e8f0; border-radius:5px; padding:0 7px; white-space:nowrap; }
+    /* Green/red per box (2026-08-29) -- last price above that line reads
+       bullish (green), below reads bearish (red), same above/below-the-line
+       convention _isTradeModeQualifyingBuy's trade_line_value check and the
+       stop-breach banner already use. Neutral gray (no class) when
+       last_price is missing. */
+    .actpop-tdtn-box.buy { color: var(--act-buy-strong); background: var(--act-buy-bg); border-color: transparent; }
+    .actpop-tdtn-box.sell { color: var(--act-sell-strong); background: var(--act-sell-strong-bg); border-color: transparent; }
+    /* Stop-proximity SD badge (2026-08-29) -- separate small button next to
+       each Td/Tn box (_tdtnSdBadge), not merged into the box's own text.
+       Same red/amber/green thresholds as the banner it replaced; color is
+       set inline per badge since it's data-driven, this rule just carries
+       the shared box shape. 2026-08-29 follow-up: fixed width (was
+       content-width, shifting box size per row) sized to fit the longest
+       possible reading, "99.9σ" (2-digit whole part, 1 decimal -- was 2
+       decimals/"99.89σ", per user -- the sigma glyph) at the new smaller
+       8px font -- text-align:center keeps shorter readings like "0.2σ"
+       centered in the same box instead of left-hugging it. Font/line-
+       height/width all shrunk together (was 9px/14px/content-width) per
+       user -- was too big next to the shrunk Td/Tn boxes.
+       2026-08-30: 24px -> 28px -- _lineProximitySd went back to signed
+       (below-the-line readings show as negative, "-1.2σ" etc.), so the
+       worst case is now "-99.9σ" (one char longer than "99.9σ"). */
+    .actpop-tdtn-row { display:flex; align-items:center; gap:4px; }
+    .actpop-tdtn-sd { font-size:8px; font-weight:700; line-height:12px; width:28px;
+      text-align:center; box-sizing:border-box; border:1px solid; border-radius:5px;
+      background:#fff; white-space:nowrap; overflow:hidden; }
     .actpop-lv { display:inline-flex; align-items:center; gap:4px; }
     /* 2026-08-20: weight 800->400 on both (Src/Tech/Macro labels+values);
        background removed from the LABEL only ("Src"/"Tech"/"Macro") -- the
@@ -414,11 +515,19 @@
     .actpop-mbar.sell { background: #dc2626; }
     .actpop-mbar.neutral { background: #9ca3af; }
 
-    /* Row below the header: .actpop-rr-icons (Tradability/CALC/PVV/Macro) on
-       the left, .actpop-rr-info (Sector ETF / VLM / stop-proximity, stacked)
-       on the right. Small top margin -- just a plain gap under the header's
-       divider line, no %-tag clearance needed here (the RR bar itself lives
-       in .actpop-head, see .actpop-rr below). */
+    /* Row below the header: .actpop-rr-icons (Macro, then Tradability,
+       then PVV/CALC) on the left, .actpop-rr-info (Sector ETF / VLM /
+       stop-proximity, stacked) on the right. Small top margin -- just a
+       plain gap under the header's divider line, no %-tag clearance
+       needed here (the RR bar itself lives in .actpop-head, see .actpop-rr
+       below).
+       2026-08-30: briefly went through two rounds of CSS Grid here to keep
+       Tradability aligned under .actpop-head's Td/Tn column (first nested
+       in the header itself, then its own grid column on this row) --
+       reverted to plain flex: Tradability moved back inside .actpop-rr-
+       icons per user request (between Macro and PVV/CALC, see
+       _buildActionPopHtmlV2), so nothing on this row needs to line up with
+       the header's grid columns anymore. */
     /* 2026-08-21: bottom margin 0 -> 10px. With nothing here, whatever
        follows (stop-breached banner, driver bullets, Opposing/Supporting)
        started flush against this row's tallest content -- normally
@@ -428,13 +537,27 @@
        Macro still has its bar chart, that tallest edge sat right on top of
        the next section with no gap at all -- read as overlapping. */
     .actpop-rr-row { display:flex; align-items:flex-start; gap:10px; margin: 10px 0 10px; }
-    /* RR bar widget, lives in .actpop-head (right-aligned via the header's
-       own justify-content:space-between). flex-basis fixed since it no
-       longer has a 50%-of-popup parent to size .actpop-rr-track against.
-       margin-top 8px keeps the %-tag (position:absolute top:-18px above the
-       track) clear of .actpop's own 6px top padding -- .actpop-head's
-       align-items:center does most of that lifting already. */
-    .actpop-rr { flex: 0 0 220px; margin-top: 8px; }
+    /* Tradability icon+score (2026-08-30: back inside .actpop-rr-icons,
+       between Macro and PVV/CALC -- was its own thing off to the side a
+       couple times, see .actpop-rr-row's own comment). Extra 6px margin on
+       both sides, on top of .actpop-rr-icons' own 10px flex gap (16px
+       total each side) -- user asked for "a little more space on both
+       sides" around it specifically, not just the row's normal gap. */
+    .actpop-rr-trad { margin: 0 6px; }
+    /* RR bar widget, lives in .actpop-head (col3, right-aligned via
+       justify-self:end -- col3 can resolve wider than 220px, see
+       .actpop-head's own comment, so .actpop-rr keeps an explicit width to
+       stay its original 220px and justify-self:end to stay flush against
+       the popup's true right edge instead of stretching to fill the
+       column). margin-top 8px keeps the %-tag (position:absolute top:-18px
+       above the track) clear of .actpop's own 6px top padding.
+       align-self:flex-start (2026-08-29: was relying on .actpop-head's own
+       align-items:center) -- pinned to the same coordinate-frame top as
+       .actpop-tdtn now that they're both grid items, see .actpop-tdtn's
+       own comment for the math this and its margin-top:8 feed into.
+       2026-08-29 follow-up: 8px -> 18px -- same +10px group-down shift as
+       .actpop-tdtn, see its comment. */
+    .actpop-rr { width: 220px; justify-self: end; align-self: flex-start; margin-top: 18px; }
     .actpop-rr-icons { display:flex; align-items:flex-start; gap:10px; flex-shrink:0; }
     /* 2026-08-21: PVV over CALC, its own small vertical pair sitting next to
        Tradability (was two of the four items side by side in
@@ -454,7 +577,13 @@
        box already puts its right edge at the row's right edge (= the
        popup's true edge) with NO grow needed; .actpop-vlm-line's
        width:100% below just needs to match THIS box's width, which it
-       does automatically via flex-direction:column's default stretch. */
+       does automatically via flex-direction:column's default stretch.
+       2026-08-30: tried flex:1 1 auto a SECOND time (while chasing the
+       Tradability-alignment/grid work below) -- same regression again,
+       user: "now they expanded into the middle of the popover. They
+       should not." Reverted for real this time, back to margin-left:auto +
+       max-width:320px exactly as it was originally -- do not retry
+       flex:1 1 auto here a third time. */
     .actpop-rr-info { display:flex; flex-direction:column; gap:7px; margin-left:auto; flex-shrink:0; max-width:320px; }
     /* 2026-08-21: justify-content space-between -> flex-end + gap:10px --
        VLM and RVOL now sit next to each other (grouped, with breathing
@@ -954,6 +1083,8 @@
       <a href="/" class="nav-item">Dashboard</a>
       <a href="/actionable" class="nav-item active">Actionable</a>
       <a href="/portfolio" class="nav-item">Portfolio</a>
+
+      <a href="/universe" class="nav-item">Universe</a>
       <a href="/rules" class="nav-item">Rules</a>
       <a href="/groups" class="nav-item">Rule Groups</a>
       <a href="/rule-performance" class="nav-item">Performance</a>
@@ -1039,8 +1170,10 @@
                held SA sells + stop breaches. Not persisted -- always starts ON
                (see web/actionable.js's own init-block comment; this HTML
                comment previously said "Persisted in localStorage", which was
-               stale/wrong). -->
-          <button id="tradeModeBtn" class="btn-icon btn-icon-sm" data-tip="Trade Mode: only qualifying buys, SA sells, stop breaches" title="Trade Mode: show only rows that need action">
+               stale/wrong). 2026-08-28: the buy leg is always Strict now (was
+               an opt-in sub-toggle) -- see #tradeModeDiffBtn below for the
+               inverse ("Non-Strict") view. -->
+          <button id="tradeModeBtn" class="btn-icon btn-icon-sm" data-tip="Trade Mode (Strict): only qualifying buys, SA sells, stop breaches" title="Trade Mode: show only rows that need action (Strict buy criteria)">
             <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="1" y1="1" x2="23" y2="23"/>
             </svg>
@@ -1048,16 +1181,19 @@
               <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
             </svg>
           </button>
-          <!-- 2026-08-25: Strict sub-toggle -- narrows Trade Mode's qualifying
-               buys further (exclude macro/index/FX/futures instruments +
-               require the Tradability Score badge threshold, see
-               _isTradeModeQualifyingBuy). Only meaningful (and only shown)
-               while Trade Mode is on -- toggled in JS alongside it. Defaults
-               ON (today's tightened behavior); OFF reverts to the original,
-               looser TASK_124 criteria ("Previous" list). Client-side only,
-               no reload needed (unlike Trade Mode itself, which also changes
-               what's fetched from the API for the stop-breach category). -->
-          <button id="tradeModeStrictBtn" class="btn-icon btn-icon-sm" data-tip="Strict: exclude macro/index instruments + require Tradability Score" title="Strict: tighter Trade Mode criteria" style="display:none; font-size:8px; font-weight:700; padding:0 4px; width:auto;">Strict
+          <!-- 2026-08-25: was the "Strict" sub-toggle (narrowed Trade Mode's
+               qualifying buys further; OFF reverted to the original, looser
+               TASK_124 criteria). 2026-08-28, user: "Make trade mode button
+               behave strict mode" -- Strict is no longer optional, it's
+               Trade Mode's only buy gate now (_isTradeModeQualifyingBuy).
+               This button's slot repurposed for "Non-Strict": the inverse
+               view -- current Trade Mode stocks WITHOUT the ones Strict also
+               keeps (_isTradeModeDiffBuy) -- user: "create a new button and
+               display all current trade mode stocks without strict mode
+               stocks." Mutually exclusive with Trade Mode (own click
+               handler), always visible (was conditional on Trade Mode being
+               on; no longer a sub-toggle of it). -->
+          <button id="tradeModeDiffBtn" class="btn-icon btn-icon-sm" data-tip="Non-Strict: Trade Mode buys that Strict mode filters out" title="Non-Strict: Trade Mode buys minus Strict mode's buys" style="font-size:8px; font-weight:700; padding:0 4px; width:auto;">Non-Strict
           </button>
           <!-- Source filter -->
           <select id="sourceFilter" title="Source filter"><option value="">All</option></select>
@@ -1701,7 +1837,7 @@
        factor-scorecard cards already use, on click. User: "add same click
        actions on the top graphs also." -->
   <script src="/static/risk_gauge_modal.js?v=20260814c"></script>
-  <script src="/static/actionable.js?v=20260815h"></script>
+  <script src="/static/actionable.js?v=20260830i"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
   <!-- 2026-08-27 -- cache-busting ?v= added, matching web/index.html's own

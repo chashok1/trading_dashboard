@@ -1731,7 +1731,10 @@ async function loadActionable(opts) {
   // TASK_124: Trade Mode's stop-breach category needs suppressed rows too —
   // a held ADD/INCREASE downgraded to HOLD by a stop breach carries
   // suppressed_reason='STOP BREACHED' and would otherwise be excluded server-side.
-  if (state.filters.trade_mode && !state.filters.show_hidden) {
+  // trade_mode_diff (2026-08-28) doesn't itself surface suppressed rows
+  // (it's buys-only by construction, see _isTradeModeDiffBuy), but fetching
+  // them anyway keeps this consistent/harmless if that ever changes.
+  if ((state.filters.trade_mode || state.filters.trade_mode_diff) && !state.filters.show_hidden) {
     params.append('show_suppressed', 'true');
   }
   try {
@@ -1868,11 +1871,19 @@ async function loadActionable(opts) {
 // RR band-position leg (QO) used the bull_rr_rule or nbull_rr_rule table,
 // not whether Technical actually confirmed a buy on this snapshot.
 //
-// 2026-08-25, user: "too many [buys] — reduce to perfect ones." Two
-// tightening passes added on top of the original criteria below, gated
-// behind state.filters.trade_mode_strict (the "Strict" sub-toggle next to
-// Trade Mode -- defaults ON; OFF reverts to the original, looser TASK_124
-// criteria only, same as before this date):
+// 2026-08-25, user: "too many [buys] — reduce to perfect ones." Four
+// tightening passes were added on top of the original (TASK_124) criteria,
+// gated behind a separate "Strict" sub-toggle (defaulted ON but could be
+// turned off to see the original looser set).
+// 2026-08-28, user: "Make trade mode button behave strict mode" -- Strict
+// is no longer an opt-out sub-toggle; the tightening passes are now always
+// applied by the Trade Mode button itself (_isTradeModeQualifyingBuy below
+// = the old "Strict" function, unconditionally). The original looser
+// criteria are kept as their own function (_isTradeModeQualifyingBuyLoose)
+// so the new "Non-Strict" button (was the Strict toggle's old DOM slot,
+// tradeModeDiffBtn) can show exactly what these tightening passes filter
+// out -- user: "create a new button and display all current trade mode
+// stocks without strict mode stocks."
 //   1. Exclude macro/index/FX/futures instruments (a.is_macro_instrument,
 //      api/routers/dash.py — ref_rrt.y_ticker format: '^' prefix = index,
 //      '=F'/'=X' suffix = futures/FX). RR's outlook source covers these as
@@ -1886,7 +1897,10 @@ async function loadActionable(opts) {
 //      score instead of a new invented cutoff — "perfect" now means
 //      "would already show a 🎯 badge," not a separate concept.
 const _TECH_GATE_EXEMPT_SRC = ['RTA', 'SSSCHG', 'TOP5'];
-function _isTradeModeQualifyingBuy(r) {
+// Original (pre-2026-08-25) TASK_124 criteria only -- no tightening passes.
+// Kept standalone (not folded into the strict function below) so the new
+// "Non-Strict" button can compute loose-minus-strict.
+function _isTradeModeQualifyingBuyLoose(r) {
   const code = (r.final_code || '').toUpperCase();
   if (code !== 'BM' && code !== 'BMN') return false;
   if (!(r.fc_feasible === true || r.fc_feasible === 'true')) return false;
@@ -1896,26 +1910,40 @@ function _isTradeModeQualifyingBuy(r) {
   if (r.stop_breached) return false;
   const mv = (r.macro_value || '').toUpperCase();
   if (mv === 'SA' || mv === 'STM') return false;
-  if (state.filters.trade_mode_strict) {
-    if (r.is_macro_instrument === true || r.is_macro_instrument === 'true') return false;
-    if (_buyTradabilityScore(r) < _TRADABILITY_BADGE_MIN) return false;
-    // 2026-08-27, 3rd Strict-only tightening pass -- closes the
-    // RTA/SSSCHG/TOP5 tech-gate EXEMPTION above for Strict mode
-    // specifically (non-strict keeps it). Those sources bypass the
-    // Technical check entirely on the theory that a same-day live trigger
-    // doesn't need TA to also confirm, but Strict's whole point is
-    // "perfect only" -- require rr_action to actually be entry-ripe here
-    // regardless of source. User: "In Trade + Strict mode, don't include
-    // the ones that technicals are not aligned for today (AMZN, TJX)."
-    if (_ENTRY_RIPE_TECH.indexOf(tech) === -1) return false;
-    // 2026-08-27, 4th Strict-only tightening pass -- PVV's own AVOID
-    // decision (r.pvv_decision, condition "outlook=Bearish, today=NEUTRAL/
-    // NA/DRIFT" -- see _PVV_DECISION_INFO) is a second, independent
-    // sell-tilted signal Strict mode wasn't checking; exclude it same as
-    // the other 3 tightening rules above. User: "Also remove PVV -> AVOID
-    // from strict mode."
-    if (r.pvv_decision === 'AVOID') return false;
-  }
+  return true;
+}
+// Strict criteria -- now the Trade Mode button's ONLY buy gate (see comment
+// block above). Builds on the loose criteria above, plus 5 tightening passes.
+function _isTradeModeQualifyingBuy(r) {
+  if (!_isTradeModeQualifyingBuyLoose(r)) return false;
+  const code = (r.final_code || '').toUpperCase();
+  const tech = (r.rr_action || '').toUpperCase();
+  if (r.is_macro_instrument === true || r.is_macro_instrument === 'true') return false;
+  if (_buyTradabilityScore(r) < _TRADABILITY_BADGE_MIN) return false;
+  // 2026-08-27, 3rd Strict-only tightening pass -- closes the
+  // RTA/SSSCHG/TOP5 tech-gate EXEMPTION above for Strict mode
+  // specifically (the loose function above keeps it). Those sources
+  // bypass the Technical check entirely on the theory that a same-day
+  // live trigger doesn't need TA to also confirm, but Strict's whole
+  // point is "perfect only" -- require rr_action to actually be
+  // entry-ripe here regardless of source. User: "In Trade + Strict mode,
+  // don't include the ones that technicals are not aligned for today
+  // (AMZN, TJX)."
+  if (_ENTRY_RIPE_TECH.indexOf(tech) === -1) return false;
+  // 2026-08-27, 4th Strict-only tightening pass -- PVV's own AVOID
+  // decision (r.pvv_decision, condition "outlook=Bearish, today=NEUTRAL/
+  // NA/DRIFT" -- see _PVV_DECISION_INFO) is a second, independent
+  // sell-tilted signal Strict mode wasn't checking; exclude it same as
+  // the other tightening rules here. User: "Also remove PVV -> AVOID
+  // from strict mode."
+  if (r.pvv_decision === 'AVOID') return false;
+  // 2026-08-28, 5th Strict-only tightening pass -- BUY TO MIN (BMN, a
+  // starter position — not yet held) only qualifies when price is
+  // actually above the Trade line (docs/drv_cat_atomic_input_logic.md's
+  // trade_trend_sd_rule: last_price > trade_line_value). BUY MORE (BM,
+  // adding to an existing position) is unaffected. User: "include BUYTOMIN
+  // only if it is above trade."
+  if (code === 'BMN' && !(r.last_price > r.trade_line_value)) return false;
   return true;
 }
 function _isTradeModeHeldSaSell(r) {
@@ -1926,6 +1954,18 @@ function _isTradeModeStopBreach(r) {
 }
 function _matchesTradeMode(r) {
   return _isTradeModeQualifyingBuy(r) || _isTradeModeHeldSaSell(r) || _isTradeModeStopBreach(r);
+}
+// "Non-Strict" button (tradeModeDiffBtn) -- current Trade Mode stocks
+// WITHOUT the ones Strict also keeps: loose-qualifying buys minus
+// strict-qualifying buys. Held SA-sells/stop-breaches are identical under
+// both (Strict never touches them), so they cancel out of this difference
+// and don't appear here -- this view is buys-only by construction, which
+// matches its purpose (show what the tightening passes filtered out).
+function _isTradeModeDiffBuy(r) {
+  return _isTradeModeQualifyingBuyLoose(r) && !_isTradeModeQualifyingBuy(r);
+}
+function _matchesTradeModeDiff(r) {
+  return _isTradeModeDiffBuy(r);
 }
 // Numeric hit-rate badge for a qualifying Trade Mode row — the winning
 // source's 20d win rate from state.sourceScorecard, shown in place of the
@@ -1957,8 +1997,13 @@ function matchesBaseFilters(r) {
   // TASK_124: Trade Mode replaces the default show_hidden suppression logic
   // outright — its own criteria are the complete gate. Toggle OFF (default)
   // leaves this whole block unreached, keeping OFF pixel-identical to before.
+  // Trade Mode and its "Non-Strict" counterpart (2026-08-28) are mutually
+  // exclusive alternate views (enforced in the click handlers below), so
+  // this only ever needs to check one or the other, never both.
   if (state.filters.trade_mode) {
     if (!_matchesTradeMode(r)) return false;
+  } else if (state.filters.trade_mode_diff) {
+    if (!_matchesTradeModeDiff(r)) return false;
   } else if (!state.filters.show_hidden) {
     // When show_hidden is OFF, hide suppressed/$0 AMT/no-action/acted/unheld-remove rows.
     if (r.suppressed_reason) return false;
@@ -2528,13 +2573,10 @@ function syncFilterUi() {
   }
   const tradeModeBtn = $('tradeModeBtn');
   if (tradeModeBtn) tradeModeBtn.classList.toggle('active', !!f.trade_mode);
-  // 2026-08-25: Strict sub-toggle -- only shown/meaningful while Trade Mode
-  // itself is on.
-  const tradeModeStrictBtn = $('tradeModeStrictBtn');
-  if (tradeModeStrictBtn) {
-    tradeModeStrictBtn.style.display = f.trade_mode ? '' : 'none';
-    tradeModeStrictBtn.classList.toggle('active', !!f.trade_mode_strict);
-  }
+  // 2026-08-28: "Non-Strict" button -- mutually exclusive alternate view to
+  // Trade Mode (not a sub-toggle anymore, always visible).
+  const tradeModeDiffBtn = $('tradeModeDiffBtn');
+  if (tradeModeDiffBtn) tradeModeDiffBtn.classList.toggle('active', !!f.trade_mode_diff);
   const multiSymBtn = $('multiSymBtn');
   if (multiSymBtn) multiSymBtn.classList.toggle('active', !!(f.symbols_multi && f.symbols_multi.length));
   const sym = $('symbolSearch');        if (sym) sym.value = f.symbol_search || '';
@@ -5065,37 +5107,73 @@ function _actpopSectorEtfHtml(row) {
   const pctColor = pct == null ? '#94a3b8' : pct >= 0 ? 'var(--act-buy-strong)' : 'var(--act-sell-strong)';
   const outlookTxt = etf.outlook || '&mdash;';
   const outlookCss = etf.outlook && window.outlookColor ? window.outlookColor(etf.outlook) : '#94a3b8';
+  // 2026-08-30: bar is a fixed 45px again (briefly tried flex:1 1 auto,
+  // "maximize sector bar to use whitespace" -- reverted: that made the
+  // whole line/box grow to fill the row, which the user then flagged as
+  // "expanded into the middle of the popover, should not". Small fixed bar
+  // + margin-left:auto (below) keeps this compact and right-flush, back to
+  // how it was before that detour -- do not reintroduce flex-grow here.
   const bar = pos != null
-    ? `<div class="actpop-rr-track" style="width:70px;display:inline-block;vertical-align:middle;margin-left:6px;">
+    ? `<div class="actpop-rr-track" style="width:45px;display:inline-block;vertical-align:middle;flex-shrink:0;">
          <div class="actpop-rr-fill" style="width:${pos}%;"></div>
          <div class="actpop-rr-tick" style="left:${pos}%;"></div>
        </div><span style="font-size:9px;color:#94a3b8;margin-left:3px;">${Math.round(pos)}%</span>`
     : '';
-  return `<div class="actpop-sector-etf" style="font-size:9px;color:#64748b;">`
-    + `<span class="actpop-lbl" style="margin-right:4px;">Sector ETF</span>`
-    + `<b>${escapeHtml(etf.symbol || '')}</b>`
-    + `<span style="margin-left:6px;">Outlook <b style="color:${outlookCss};">${escapeHtml(outlookTxt)}</b></span>`
-    + `<span style="margin-left:6px;color:${pctColor};">${pctTxt}</span>`
-    + bar
+  // 2026-08-30: flex row, label/symbol/outlook/%chg grouped tight on the
+  // left (own overflow:hidden/ellipsis span, in case a longer sector name
+  // ever doesn't fit) and the bar pushed flush right via margin-left:auto
+  // -- see .actpop-rr-info's own CSS comment (actionable.html) for why
+  // this whole box stays shrink-to-fit rather than growing to fill the row.
+  return `<div class="actpop-sector-etf" style="font-size:9px;color:#64748b;`
+    + `display:flex;align-items:center;width:100%;">`
+    + `<span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">`
+    + `<span class="actpop-lbl" style="margin-right:4px;flex-shrink:0;">Sector ETF</span>`
+    + `<b style="flex-shrink:0;">${escapeHtml(etf.symbol || '')}</b>`
+    + `<span style="margin-left:6px;flex-shrink:0;">Outlook <b style="color:${outlookCss};">${escapeHtml(outlookTxt)}</b></span>`
+    + `<span style="margin-left:6px;flex-shrink:0;color:${pctColor};">${pctTxt}</span>`
+    + `</span>`
+    + `<span style="margin-left:auto;flex-shrink:0;display:flex;align-items:center;padding-left:4px;">${bar}</span>`
     + `</div>`;
 }
 
-// Proximity-to-stop ("delta from trade line", 2026-08-20: moved from a
-// standalone .actpop-neutral banner into .actpop-rr-info, below the VLM
-// line). Only ever populated when NOT breached (etl/derive_actionable.py) --
-// the stop_breached banner (_buildActionPopHtmlV2) is the breached case,
-// still shown separately since it's a bigger deal than a proximity warning.
-// HV-normalized distance -- see db/baseline.sql's migration comment for the
-// full rationale. Below 1.5 SD is close enough to be worth a line; below
-// 0.5 SD gets the more urgent red instead of amber.
-function _actpopStopProximityHtml(row) {
-  if (row.stop_proximity_sd == null) return '';
-  const sd = Number(row.stop_proximity_sd);
-  if (sd >= 1.5) return '';
-  const lineLabel = row.stop_proximity_line === 'TN' ? 'Trend' : 'Trade';
-  const urgent = sd < 0.5;
-  return `<div style="font-size:9px;color:${urgent ? '#b91c1c' : '#d97706'};font-weight:${urgent ? 700 : 600};text-align:right;">`
-    + `&#9888; ${sd.toFixed(2)}&sigma; from ${lineLabel} line${urgent ? ' &mdash; close' : ''}</div>`;
+// Proximity-to-stop ("delta from trade/trend line" in HV-normalized SD --
+// see db/baseline.sql's migration comment for the full rationale). Was a
+// single right-aligned line in .actpop-rr-info reading the backend's one
+// "closest" reading (etl/derive_actionable.py's stop_proximity_sd/_line);
+// 2026-08-29: moved next to the Td/Tn boxes as its own small badge PER
+// LINE, so both Trade and Trend show their own reading instead of only
+// whichever was closer. Recomputed here (not a second backend field) from
+// data already on the row -- same HV daily-move-normalized-distance formula
+// the backend uses for its own stop_proximity_sd. 2026-08-29 follow-ups:
+// (1) always shown now (was hidden past 1.5 SD), 3-tier colored instead of
+// 2-tier: <0.5 SD urgent red, <1.5 SD amber (getting close), >=1.5 SD green
+// (safely clear); (2) held_today/stop_breached/"price still above the
+// line" gating dropped -- user wants this for every row, held or not.
+// 2026-08-30: SIGNED again (was Math.abs -- unsigned "either direction"
+// distance) -- user: "if price is below trade, it should show in negative
+// and red color" -- below-the-line is a materially different, worse
+// situation than being N SDs above it, and needs to read that way rather
+// than looking identical to a healthy cushion. Only null (badge hidden)
+// when the reading genuinely can't be computed -- missing price/HV/line
+// data.
+function _lineProximitySd(row, lineVal) {
+  const px = row.last_price != null ? Number(row.last_price) : null;
+  const hv = row.hv != null ? Number(row.hv) : null;
+  if (px == null || hv == null || hv <= 0 || lineVal == null) return null;
+  const dailyMove = px * hv / Math.sqrt(252);
+  return dailyMove > 0 ? (px - lineVal) / dailyMove : null;
+}
+// 2026-08-30: below the line (sd < 0) is always red now, regardless of how
+// far below -- distance doesn't make "below" better, unlike above the line
+// where farther is safer. The 3-tier red/amber/green scale only applies
+// once price is actually above the line (sd >= 0).
+function _tdtnSdBadge(sd) {
+  if (sd == null) return '';
+  const below = sd < 0;
+  const color = below ? '#b91c1c' : sd < 0.5 ? '#b91c1c' : sd < 1.5 ? '#d97706' : 'var(--act-buy-strong)';
+  const note = below ? ' — below this line' : sd < 0.5 ? ' — close' : sd < 1.5 ? ' — getting close' : ' — clear';
+  return `<span class="actpop-tdtn-sd" style="color:${color};border-color:${color};" `
+    + `title="${sd.toFixed(1)}σ from this line${note}">${sd.toFixed(1)}&sigma;</span>`;
 }
 
 // VLM line in .actpop-rr-info (2026-08-20 -- renamed from
@@ -5171,8 +5249,11 @@ function _tradabilityIconSvg(size) {
 // itself is still buy-calibrated under the hood, see _buyTradabilityScore's
 // header comment, but user asked it be calculated and displayed
 // regardless of the row's own Final Call). Score rendered below the icon,
-// same two-row column shape as the Macro stack (icon/score mirrors
-// Macro-pill/bar-charts) so the two line up.
+// own two-row column shape (.actpop-trad-col). Lives in .actpop-rr-icons,
+// between Macro and PVV/CALC (2026-08-30: after a few rounds -- briefly in
+// the header centered under Td/Tn, then its own grid column on this row
+// still under Td/Tn -- user settled on back inside .actpop-rr-icons in
+// this specific position, with extra side margins, see .actpop-rr-trad).
 function _actpopTradIconHtml(row) {
   const score = _buyTradabilityScore(row);
   const meetsMin = score >= _TRADABILITY_BADGE_MIN;
@@ -5467,6 +5548,36 @@ function _actpopTradabilityHtml(row) {
   </div>`;
 }
 
+// Trade/Trend line boxes (2026-08-29) -- middle of .actpop-head, between
+// the symbol block and the RR bar widget. Descriptive (today's Trade/Trend
+// line prices, same fields the stop-breach banner reads) plus, as a
+// separate small badge next to each box, that line's own stop-proximity SD
+// (_lineProximitySd/_tdtnSdBadge -- shown whenever it applies, 3-tier
+// colored red/amber/green). Whichever line is currently higher sits on top; order is
+// decided here in JS (column order), not CSS, since it's data-dependent
+// per row.
+function _actpopTdTnHtml(row) {
+  const td = row.trade_line_value != null ? Number(row.trade_line_value) : null;
+  const tn = row.trend_line_value != null ? Number(row.trend_line_value) : null;
+  if (td == null && tn == null) return '';
+  // 2026-08-29: green/red per box -- last price above that line reads
+  // bullish, below reads bearish (same convention as the BMN trade-line
+  // check and the stop-breach banner elsewhere in this file).
+  const lp = row.last_price != null ? Number(row.last_price) : null;
+  const lineCls = v => (lp == null || v == null) ? '' : lp >= v ? ' buy' : ' sell';
+  const tdRow = td != null
+    ? `<span class="actpop-tdtn-row"><span class="actpop-tdtn-box${lineCls(td)}">Td ${td.toFixed(1)}</span>`
+      + `${_tdtnSdBadge(_lineProximitySd(row, td))}</span>`
+    : '';
+  const tnRow = tn != null
+    ? `<span class="actpop-tdtn-row"><span class="actpop-tdtn-box${lineCls(tn)}">Tn ${tn.toFixed(1)}</span>`
+      + `${_tdtnSdBadge(_lineProximitySd(row, tn))}</span>`
+    : '';
+  const top = (tn != null && (td == null || tn > td)) ? tnRow : tdRow;
+  const bottom = top === tdRow ? tnRow : tdRow;
+  return `<div class="actpop-tdtn">${top}${bottom}</div>`;
+}
+
 function _buildActionPopHtmlV2(row) {
   const fc = finalCall(row);
   const sym = row.tos_symbol || '—';
@@ -5476,51 +5587,83 @@ function _buildActionPopHtmlV2(row) {
     ? _actpopFmtAmt(row.current_position_dollar) : 'not held (yet)';
   const ed = row.earnings_days;
   const hasEd = ed != null && Number(ed) >= 0 && Number(ed) < 900;
-  const edTxt = hasEd ? ` &middot; e ${Math.round(Number(ed))}d` : '';
+  const edDays = hasEd ? Math.round(Number(ed)) : null;
+  // 2026-08-29: dropped the "e " label prefix; highlight reuses the same
+  // <=3d yellow .opex-soon treatment the dashboard's own earnings lines use
+  // (web/app.js::_earningsLineHtml/_opexLineHtml) instead of inventing a
+  // separate threshold/color here.
+  const edTxt = hasEd
+    ? ` &middot; ${edDays <= 3 ? `<span class="opex-soon">${edDays}d</span>` : `${edDays}d`}`
+    : '';
   // Computed here (not at its original later call site) so its conviction
   // piece is ready in time for the header below -- see _actpopTugHtml's own
   // comment for why it now returns {conviction, html} instead of one string.
   const tug = _actpopTugHtml(row, side);
 
   let h = `<div class="actpop">`;
-  // Header: symbol/amount/earnings + Final Call badge + Conviction tally on
-  // the left (.actpop-sym); the RR bar (_actpopRrBarHtml) right-aligned on
-  // the right (.actpop-rr), centered against .actpop-sym.
+  // Header: symbol + Final Call badge + Conviction tally on the top line
+  // (.actpop-sym), held amount/earnings on their own line below it
+  // (.actpop-co, 2026-08-29: was inline next to the symbol); Trade/Trend
+  // boxes (_actpopTdTnHtml) and the RR bar (_actpopRrBarHtml) as two more
+  // grid columns (2026-08-30: .actpop-head is CSS Grid now, was flex --
+  // see actionable.html's own comment on .actpop-head for why: symmetric
+  // 1fr flanks around the Td/Tn column is what actually centers it in the
+  // popover, which plain flex can't guarantee. Originally also needed to
+  // keep .actpop-rr-row's Tradability column aligned under this one, but
+  // Tradability has since moved back into .actpop-rr-icons -- see that
+  // row's own comment -- so .actpop-rr-row is plain flex again; this grid
+  // stays for the popover-centering reason alone now).
   h += `<div class="actpop-head">
-    <div class="actpop-sym">${escapeHtml(sym)}<span class="actpop-co">${escapeHtml(amtTxt)}${edTxt}</span>`
+    <div class="actpop-sym">${escapeHtml(sym)}`
     + `<span class="actpop-call ${callCls}" style="margin-left:8px;">${escapeHtml(fc.label || actionText(fc) || '—')}</span>`
     + tug.conviction
+    + `<div class="actpop-co">${escapeHtml(amtTxt)}${edTxt}</div>`
     + `</div>`
+    + _actpopTdTnHtml(row)
     + _actpopRrBarHtml(row)
     + `</div>`;
 
-  // Second row: Tradability/PVV/CALC/Macro grouped on the left
-  // (.actpop-rr-icons); Sector ETF / VLM / stop-proximity stacked on the
-  // right (.actpop-rr-info), three lines top to bottom.
+  // Second row: Macro/PVV/CALC grouped on the left (.actpop-rr-icons);
+  // Sector ETF / VLM / stop-proximity stacked on the right
+  // (.actpop-rr-info), three lines top to bottom.
   // 2026-08-21: PVV moved next to Tradability; CALC moved below PVV (its
   // own small vertical pair, .actpop-pvv-calc-col) instead of sitting in
   // the same horizontal row as Tradability/Macro.
+  // 2026-08-29: Macro moved to the front (was last) -- user wanted the
+  // Macro-related controls (action pill, conflict bolt, bar charts) leading
+  // the row, ahead of Tradability and PVV/CAL.
+  // 2026-08-30: Tradability's journey -- .actpop-rr-icons (original spot,
+  // first item) -> header, centered under Td/Tn -> its own middle grid
+  // column here, still under Td/Tn but back on this row -> now back inside
+  // .actpop-rr-icons, this time BETWEEN Macro and PVV/CALC (user request),
+  // in its own .actpop-rr-trad wrapper for the extra side margins that
+  // asks for. Row-to-row grid alignment with .actpop-head's Td/Tn column
+  // is no longer needed (nothing here targets that column anymore), so
+  // .actpop-rr-row itself reverted from grid back to flex -- see its own
+  // CSS comment.
   h += `<div class="actpop-rr-row">`
-    + `<div class="actpop-rr-icons">${_actpopTradIconHtml(row)}`
+    + `<div class="actpop-rr-icons">${_actpopMacroStackHtml(row)}`
+    + `<span class="actpop-rr-trad">${_actpopTradIconHtml(row)}</span>`
     + `<span class="actpop-pvv-calc-col">${_actpopPvvActionHtml(row)}${_actpopCalcPillHtml(row)}</span>`
-    + `${_actpopMacroStackHtml(row)}</div>`
-    + `<div class="actpop-rr-info">${_actpopSectorEtfHtml(row)}${_actpopVlmLineHtml(row)}${_actpopStopProximityHtml(row)}</div>`
+    + `</div>`
+    + `<div class="actpop-rr-info">${_actpopSectorEtfHtml(row)}${_actpopVlmLineHtml(row)}</div>`
     + `</div>`;
 
   if (row.stop_breached) {
     // 2026-08-20: shows the actual line price now (trade_line_value/
-    // trend_line_value, today's Trade/Trend line -- same source
-    // _actpopStopProximityHtml uses), not just the crossover code with no
-    // number to check it against.
+    // trend_line_value, today's Trade/Trend line -- same fields the Td/Tn
+    // header boxes show), not just the crossover code with no number to
+    // check it against.
     const lineVal = row.stop_signal === 'TN SA' ? row.trend_line_value : row.trade_line_value;
     const lineLabel = row.stop_signal === 'TN SA' ? 'Trend' : 'Trade';
     const priceTxt = lineVal != null ? ` (${lineLabel} line ${fmtUsd(Number(lineVal))})` : '';
     h += `<div class="actpop-neutral" style="color:#b91c1c;font-weight:700;">&#9888; Stop breached &mdash; `
        + `${escapeHtml(row.stop_signal || 'trade line broke down')}${priceTxt}</div>`;
   }
-  // Proximity-to-stop ("delta from trade line") moved 2026-08-20 into
-  // .actpop-rr-info (see _actpopStopProximityHtml, called from there) --
-  // was rendered here as a standalone banner.
+  // Proximity-to-stop ("delta from trade/trend line") moved 2026-08-20 into
+  // .actpop-rr-info as a standalone banner, then 2026-08-29 into a per-line
+  // badge next to each Td/Tn header box instead -- see _tdtnSdBadge, called
+  // from _actpopTdTnHtml.
 
   // LT conviction-hold conflict (2026-08-20: ported from V1, was dropped in
   // the V2 rewrite) — a SELL-side Final Call fighting an active conviction
@@ -7430,10 +7573,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // TASK_124: Trade Mode always starts ON on entering the screen — not
   // persisted across visits (the user explicitly wants it re-armed every
-  // time, not remembered from a prior session).
+  // time, not remembered from a prior session). 2026-08-28: Strict is no
+  // longer a separate sub-toggle (state.filters.trade_mode_strict retired)
+  // -- Trade Mode's own gate is always the strict one now; trade_mode_diff
+  // (the "Non-Strict" button) is its mutually-exclusive alternate view,
+  // off by default same re-armed-every-visit convention.
   state.filters.trade_mode = true;
-  // 2026-08-25: Strict sub-toggle, same re-armed-every-visit convention.
-  state.filters.trade_mode_strict = true;
+  state.filters.trade_mode_diff = false;
 
   await loadSources();
   await loadDates();
@@ -7443,6 +7589,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Sync UI to restored state
   syncFilterUi();
+
+  // 2026-08-30 -- ?symbol=XYZ deep link (web/universe.js's drilldown jumps
+  // here after a symbol tile click: `/actionable?symbol=XYZ`). Same lookup
+  // path the manual #symbolSearch input already uses, just applied once on
+  // load instead of on keystroke -- takes precedence over restored/
+  // persisted filter state, which is why it runs after syncFilterUi().
+  const _deepLinkSymbol = new URLSearchParams(window.location.search).get('symbol');
+  if (_deepLinkSymbol) {
+    const symEl = $('symbolSearch');
+    if (symEl) symEl.value = _deepLinkSymbol;
+    state.filters.symbol_search = _deepLinkSymbol;
+    _resetToggleFiltersForLookup();
+    loadActionable();
+  }
 
   $('datePicker').addEventListener('change', (e) => {
     state.date = e.target.value;
@@ -7556,29 +7716,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadActionable();
   });
   // TASK_124: Trade Mode toggle — always starts ON (see above); not persisted,
-  // so toggling off only lasts for the current page session.
+  // so toggling off only lasts for the current page session. 2026-08-28:
+  // mutually exclusive with the "Non-Strict" button (trade_mode_diff) below
+  // — turning Trade Mode on forces trade_mode_diff off.
   const tradeModeBtn = $('tradeModeBtn');
   if (tradeModeBtn) {
     tradeModeBtn.addEventListener('click', () => {
       state.filters.trade_mode = !state.filters.trade_mode;
+      if (state.filters.trade_mode) state.filters.trade_mode_diff = false;
       tradeModeBtn.classList.toggle('active', state.filters.trade_mode);
-      // Show/hide the Strict sub-toggle alongside Trade Mode itself.
-      const strictBtn = $('tradeModeStrictBtn');
-      if (strictBtn) strictBtn.style.display = state.filters.trade_mode ? '' : 'none';
+      const diffBtn = $('tradeModeDiffBtn');
+      if (diffBtn) diffBtn.classList.toggle('active', state.filters.trade_mode_diff);
       // Trade Mode also controls whether suppressed rows (e.g. STOP BREACHED)
       // are fetched from the API — needs a full reload, not just a re-filter.
       loadActionable();
     });
   }
-  // 2026-08-25: Strict sub-toggle -- client-side only (doesn't change what's
-  // fetched from the API, only which already-fetched rows qualify), so a
-  // light re-filter is enough, no reload.
-  const tradeModeStrictBtn = $('tradeModeStrictBtn');
-  if (tradeModeStrictBtn) {
-    tradeModeStrictBtn.addEventListener('click', () => {
-      state.filters.trade_mode_strict = !state.filters.trade_mode_strict;
-      tradeModeStrictBtn.classList.toggle('active', state.filters.trade_mode_strict);
-      applyClientFilter();
+  // 2026-08-28: "Non-Strict" button -- current Trade Mode stocks WITHOUT the
+  // ones Strict also keeps (was the old Strict sub-toggle's DOM slot; Strict
+  // itself is no longer optional, see _isTradeModeQualifyingBuy). Mutually
+  // exclusive with Trade Mode -- an alternate view, not a refinement of it
+  // — so this needs the same full reload Trade Mode's own toggle does (same
+  // show_suppressed fetch-param dependency), not just a re-filter.
+  const tradeModeDiffBtn = $('tradeModeDiffBtn');
+  if (tradeModeDiffBtn) {
+    tradeModeDiffBtn.addEventListener('click', () => {
+      state.filters.trade_mode_diff = !state.filters.trade_mode_diff;
+      if (state.filters.trade_mode_diff) state.filters.trade_mode = false;
+      tradeModeDiffBtn.classList.toggle('active', state.filters.trade_mode_diff);
+      tradeModeBtn.classList.toggle('active', state.filters.trade_mode);
+      loadActionable();
     });
   }
   // Debounced ~150ms trailing: typing a symbol shouldn't re-render the full grid + tape on every keystroke.
