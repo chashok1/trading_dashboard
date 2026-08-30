@@ -68,9 +68,15 @@
       return '<div class="msr-loading">No data yet.</div>';
     }
 
+    // 2026-08-27 -- "$Corln" label in the corner cell, small font so it
+    // fits the narrow column -- replaces the separate #usdCorrSideHdr
+    // header line on Dashboard (removed there; Actionable keeps its own
+    // copy of that header separately, unaffected). User: "Remove the
+    // header Dollar Correlation and add a text in top left column of the
+    // grid as $Corln small font so it fits".
     var hdr =
       '<thead><tr>' +
-        '<th></th>' +
+        '<th class="ucr-corner-label">$Corln</th>' +
         WINDOWS.map(function (w) {
           return '<th>' + WIN_LABELS[w] + '</th>';
         }).join('') +

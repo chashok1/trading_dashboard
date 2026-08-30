@@ -14,9 +14,14 @@ source-scorecard, factor-scorecard, settings) against the locally-running
 FastAPI app, then re-implements the identical filter + score logic in
 Python below. This is a deliberate, documented duplication -- one side is
 browser JS, the other a headless nightly job, so there's no shared-module
-option -- not an oversight. If you change any of the following in
-web/actionable.js, mirror the change here too:
-  _isTradeModeQualifyingBuy / _isTradeModeHeldSaSell / _isTradeModeStopBreach
+option -- not an oversight. 2026-08-28: web/actionable.js's Trade Mode
+button now ALWAYS applies the (formerly opt-in) Strict criteria -- this
+module's `strict` parameter/build_trade_mode_export(strict=True) default
+already matched that, no behavior change needed here beyond the BMN rule
+below. If you change any of the following in web/actionable.js, mirror the
+change here too:
+  _isTradeModeQualifyingBuy / _isTradeModeQualifyingBuyLoose /
+  _isTradeModeHeldSaSell / _isTradeModeStopBreach
   _buyTradabilityScore and its helpers (_lrrProximityScore, _rawRrPos,
   _factorWinRateDelta, _rsiBucket, _rvolBucket, _ivRatioScore,
   _sourceTrackRecordScore, _buyAgreementSubTier)
@@ -226,6 +231,16 @@ def _is_qualifying_buy(row, strict, rsi_overbought, rsi_oversold, rvol_threshold
         # mode."
         if str(row.get("pvv_decision") or "").upper() == "AVOID":
             return False
+        # 2026-08-28, 5th Strict-only tightening pass -- mirrors
+        # web/actionable.js's own _isTradeModeQualifyingBuy change (see
+        # module docstring). BUY TO MIN (BMN, a starter position -- not yet
+        # held) only qualifies when price is actually above the Trade line.
+        # User: "include BUYTOMIN only if it is above trade."
+        if code == "BMN":
+            last_price = row.get("last_price")
+            trade_line = row.get("trade_line_value")
+            if last_price is None or trade_line is None or not (last_price > trade_line):
+                return False
     return True
 
 
