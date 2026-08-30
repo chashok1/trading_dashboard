@@ -32,7 +32,7 @@ except Exception:
     raise
 
 _routers: dict = {}
-for _name in ("dash", "health", "macro", "macro_areas", "marketbar", "monitor", "pages", "ref", "rules", "trace", "correlations", "hedgeye", "cockpit"):
+for _name in ("dash", "health", "macro", "macro_areas", "marketbar", "monitor", "pages", "ref", "rules", "trace", "correlations", "hedgeye", "cockpit", "universe"):
     try:
         import importlib
         _routers[_name] = importlib.import_module(f"api.routers.{_name}")
@@ -54,6 +54,7 @@ trace        = _routers["trace"]
 correlations = _routers["correlations"]
 hedgeye      = _routers["hedgeye"]
 cockpit      = _routers["cockpit"]
+universe     = _routers["universe"]
 
 
 app = FastAPI(
@@ -132,6 +133,7 @@ app.include_router(rules.router)
 app.include_router(trace.router)
 app.include_router(hedgeye.router)
 app.include_router(cockpit.router)
+app.include_router(universe.router)
 
 # Pages router MUST be included LAST so its explicit page routes
 # (and its trailing /static mount registered below) take precedence

@@ -1133,6 +1133,7 @@
     { href: '/',                 label: 'Dashboard' },
     { href: '/actionable',       label: 'Actionable' },
     { href: '/portfolio',        label: 'Portfolio' },
+    { href: '/universe',         label: 'Universe' },
     { href: '/rules',            label: 'Rules' },
     { href: '/groups',           label: 'Rule Groups' },
     { href: '/param-sets',       label: 'Param Sets' },

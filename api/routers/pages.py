@@ -153,6 +153,11 @@ def page_trig():
     return FileResponse(WEB_DIR / "trig.html", media_type="text/html; charset=utf-8")
 
 
+@router.get("/universe")
+def page_universe():
+    return FileResponse(WEB_DIR / "universe.html", media_type="text/html; charset=utf-8")
+
+
 # -----------------------------------------------------------------------------
 # Static asset mount — serves web/*.css, web/*.js, etc. under /static/<file>.
 # Mounted via main.py AFTER all routers are included so the page routes above
