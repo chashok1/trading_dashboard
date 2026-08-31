@@ -728,14 +728,26 @@
     // just miniaturized onto the tile.
     cell.each(function (d) {
       const w = d.x1 - d.x0, h = d.y1 - d.y0;
-      if (w < 30 || h < 18) return;
       const fill = actionColor(d.data.detail.final_code);
       const ink = labelColorFor(fill);
       const det = d.data.detail;
       const g = d3.select(this);
 
-      g.append('text').attr('class', 'uv-c-name').attr('x', 5).attr('y', 13)
-        .attr('font-size', w < 60 ? 9 : 10.5).attr('fill', ink).text(d.data.tos_symbol);
+      // Symbol name -- draw down to a much smaller minimum than the
+      // richer progressive detail below, so a short treemap row (a whole
+      // band of short-but-not-narrow tiles, common with hundreds of
+      // symbols) still shows ticker names instead of going fully blank.
+      // User: "Name doesn't show in the tile that whole row."
+      if (w >= 16 && h >= 10) {
+        const nameFontSize = w < 30 ? 7.5 : (w < 60 ? 9 : 10.5);
+        const nameY = h < 16 ? Math.max(8, Math.round(h / 2) + 3) : 13;
+        const maxChars = Math.max(1, Math.floor((w - 4) / (nameFontSize * 0.62)));
+        const symName = d.data.tos_symbol;
+        g.append('text').attr('class', 'uv-c-name').attr('x', 4).attr('y', nameY)
+          .attr('font-size', nameFontSize).attr('fill', ink)
+          .text(symName.length > maxChars ? symName.slice(0, maxChars) : symName);
+      }
+      if (w < 30 || h < 18) return; // too small for the richer detail below
 
       if (h > 28 && det.final_code) {
         g.append('text').attr('x', 5).attr('y', 24)
