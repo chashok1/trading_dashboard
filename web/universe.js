@@ -341,7 +341,7 @@
     $('uvSectorsUnit').textContent = 'accounts';
     $('uvSHeld').textContent = totalHeldSymbols + ' symbols';
     $('uvSCapital').textContent = fmtUsd(d3.sum(ACCOUNTS, a => a.total));
-    $('uvFilterCount').textContent = '— by account';
+    $('uvFilterCount').textContent = '';
 
     renderCrumbs();
     $('uvSideHeading').textContent = 'Top accounts';
