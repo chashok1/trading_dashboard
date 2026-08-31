@@ -458,6 +458,28 @@
     el.querySelectorAll('[data-crumb="assetClass"]').forEach(e => e.addEventListener('click', () => { drill = drill.account ? { account: drill.account, assetClass: drill.assetClass } : { assetClass: drill.assetClass }; render(); }));
   }
 
+  // Draws a group tile's name (+ optional sub-line, if there's room) --
+  // shared by every group-level tile renderer (Account / Asset Class /
+  // Sector) so the "how small can a tile be before it goes label-less"
+  // rule is the same everywhere. User: "Some tiles are blank. By asset
+  // class -> equities" -- the old cutoff (46x26) left plenty of
+  // legitimately smaller-but-not-tiny sector tiles with no name at all
+  // (just a colored box); lowered so a tile only goes unlabeled once it's
+  // genuinely too small to hold even an abbreviated name.
+  function drawGroupTileLabel(g, w, h, ink, name, subText) {
+    if (w < 22 || h < 12) return; // truly too small for even 1-2 characters
+    const fontSize = w < 50 ? 8 : (w < 90 ? 9.5 : 11);
+    const nameY = h < 18 ? Math.max(9, Math.round(h / 2) + 3) : 16;
+    const maxChars = Math.max(1, Math.floor((w - 6) / (fontSize * 0.62)));
+    g.append('text').attr('class', 'uv-c-name').attr('x', 5).attr('y', nameY)
+      .attr('font-size', fontSize).attr('fill', ink)
+      .text(name.length > maxChars ? name.slice(0, Math.max(1, maxChars - 1)) + '…' : name);
+    if (subText && h > 40) {
+      g.append('text').attr('class', 'uv-c-sub').attr('x', 7).attr('y', 30)
+        .attr('font-size', 9.5).attr('fill', ink).attr('opacity', 0.85).text(subText);
+    }
+  }
+
   // ---- "By Account" root tiles: accounts, colored by acctColor. Click
   // drills into that account's Asset Class breakdown (renderHierarchy).
   function renderAccountFlat(W, H) {
@@ -485,19 +507,11 @@
 
     cell.each(function (d) {
       const w = d.x1 - d.x0, h = d.y1 - d.y0;
-      if (w < 46 || h < 26) return;
       const fill = cssVar(acctColor.get(d.data.key)); const ink = labelColorFor(fill);
-      const g = d3.select(this); const name = d.data.label;
-      g.append('text').attr('class', 'uv-c-name').attr('x', 7).attr('y', 16)
-        .attr('font-size', w < 90 ? 9.5 : 11).attr('fill', ink)
-        .text(name.length > (w / 6) ? name.slice(0, Math.max(3, Math.floor(w / 6.2))) + '…' : name);
-      if (h > 40) {
-        const sub = d.data.posCount > 0
-          ? `${fmtUsd(d.data.total)} · ${d.data.posCount} symbol${d.data.posCount === 1 ? '' : 's'}`
-          : `${fmtUsd(d.data.total)} · all cash`;
-        g.append('text').attr('class', 'uv-c-sub').attr('x', 7).attr('y', 30)
-          .attr('font-size', 9.5).attr('fill', ink).attr('opacity', 0.85).text(sub);
-      }
+      const sub = d.data.posCount > 0
+        ? `${fmtUsd(d.data.total)} · ${d.data.posCount} symbol${d.data.posCount === 1 ? '' : 's'}`
+        : `${fmtUsd(d.data.total)} · all cash`;
+      drawGroupTileLabel(d3.select(this), w, h, ink, d.data.label, sub);
     });
 
     cell.on('mousemove', (evt, d) => {
@@ -549,17 +563,9 @@
 
     cell.each(function (d) {
       const w = d.x1 - d.x0, h = d.y1 - d.y0;
-      if (w < 46 || h < 26) return;
       const fill = colorFn(d.data); const ink = labelColorFor(fill);
-      const g = d3.select(this); const name = d.data.asset_class;
-      g.append('text').attr('class', 'uv-c-name').attr('x', 7).attr('y', 16)
-        .attr('font-size', w < 90 ? 9.5 : 11).attr('fill', ink)
-        .text(name.length > (w / 6) ? name.slice(0, Math.max(3, Math.floor(w / 6.2))) + '…' : name);
-      if (h > 40) {
-        g.append('text').attr('class', 'uv-c-sub').attr('x', 7).attr('y', 30)
-          .attr('font-size', 9.5).attr('fill', ink).attr('opacity', 0.85)
-          .text(`${fmtInt(d.data.count)} sym · ${fmtUsd(d.data.held_value)}`);
-      }
+      const g = d3.select(this);
+      drawGroupTileLabel(g, w, h, ink, d.data.asset_class, `${fmtInt(d.data.count)} sym · ${fmtUsd(d.data.held_value)}`);
       // Small "All stocks" corner link, Equities tile only -- skips the
       // Sector step and goes straight to every equity symbol, flat. Its
       // own click handler stops propagation so the rest of the tile keeps
@@ -616,17 +622,8 @@
 
     cell.each(function (d) {
       const w = d.x1 - d.x0, h = d.y1 - d.y0;
-      if (w < 46 || h < 26) return;
       const fill = colorFn(d.data); const ink = labelColorFor(fill);
-      const g = d3.select(this); const name = d.data.sector;
-      g.append('text').attr('class', 'uv-c-name').attr('x', 7).attr('y', 16)
-        .attr('font-size', w < 90 ? 9.5 : 11).attr('fill', ink)
-        .text(name.length > (w / 6) ? name.slice(0, Math.max(3, Math.floor(w / 6.2))) + '…' : name);
-      if (h > 40) {
-        g.append('text').attr('class', 'uv-c-sub').attr('x', 7).attr('y', 30)
-          .attr('font-size', 9.5).attr('fill', ink).attr('opacity', 0.85)
-          .text(`${fmtInt(d.data.count)} sym · ${fmtUsd(d.data.held_value)}`);
-      }
+      drawGroupTileLabel(d3.select(this), w, h, ink, d.data.sector, `${fmtInt(d.data.count)} sym · ${fmtUsd(d.data.held_value)}`);
     });
 
     cell.on('mousemove', (evt, d) => {
