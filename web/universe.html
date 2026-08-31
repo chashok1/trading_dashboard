@@ -26,14 +26,16 @@
 
     /* Full-width -- no max-width/centering, per the app's standing
        full-width-screens convention (matches every other screen). */
-    .uv-wrap { width: 100%; padding: 20px 24px; }
+    .uv-wrap { width: 100%; padding: 6px 24px 20px; }
     .uv-hdr { display: flex; align-items: center; justify-content: space-between; gap: 16px;
-      flex-wrap: wrap; margin-bottom: 12px; }
+      flex-wrap: wrap; margin-bottom: 6px; }
     .uv-stat { font-variant-numeric: tabular-nums; color: var(--text-1); font-weight: 700; }
     /* Stats line -- moved onto the crumbs row (right-justified) instead of
        its own header line under a page title; no page title any more
        either. */
     .uv-stats-line { margin: 0; color: var(--text-2); font-size: 12.5px; white-space: nowrap; }
+    .uv-stats-line b { color: var(--text-1); font-variant-numeric: tabular-nums; }
+    .uv-stats-sep { color: var(--text-3); margin: 0 2px; }
 
     /* View/Filter/Account controls, all on the header's own line (user:
        "move all the controls to the same line as By controls") -- each is
@@ -78,25 +80,24 @@
     .uv-crumb-sep { color: var(--text-3); }
 
 
-    .uv-board { display: grid; grid-template-columns: 1fr 240px; gap: 18px; align-items: start; }
-    @media (max-width: 820px) { .uv-board { grid-template-columns: 1fr; } }
-
     .uv-panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; }
     .uv-tm-card { padding: 14px; }
     /* Viewport-relative height (was aspect-ratio: 16/9) -- on this
        full-width page, 16:9 against the actual available width could run
        taller than the viewport and force page scroll. calc() targets
        "fits the actual screen" directly instead of guessing a ratio.
-       155px is the rest of the page's chrome (36px topbar + 40px .uv-wrap
-       padding, now top+bottom matched at 20px each + ~46px controls row +
-       ~24px crumbs/stats row + card padding) -- recomputed again
-       2026-08-30 after also dropping the footer hint line and .uv-wrap's
-       extra 20px of bottom padding it no longer needs (was 210px). User:
-       "you don't need this either ['Click a tile...'] ... use the space
-       as much as you can to display the stocks." min/max keep it sane on
-       very short or very tall windows. */
+       180px is the rest of the page's chrome: 36px topbar + 26px
+       .uv-wrap padding (6px top, tightened per "only keep top filter bar
+       and nav bar like 6px" + 20px bottom) + ~46px controls row + 6px its
+       margin-bottom ("between filterbar and heading 6px") + ~24px
+       crumbs/stats row + ~34px the bottom single-line legend row (moved
+       out of the old side panel, so it now adds to page height instead of
+       sitting beside the treemap) + card padding. Recomputed 2026-08-30
+       after collapsing the side panel into that bottom row and retightening
+       the header spacing (was 155px). min/max keep it sane on very short
+       or very tall windows. */
     .uv-svg-wrap { position: relative; width: 100%;
-      height: calc(100vh - 155px); min-height: 360px; max-height: 860px; }
+      height: calc(100vh - 180px); min-height: 360px; max-height: 880px; }
     svg.uv-tm { width: 100%; height: 100%; display: block; }
 
     .uv-cell rect.uv-cell-rect { stroke: none; cursor: pointer; }
@@ -110,18 +111,19 @@
     .uv-cell .uv-c-link { pointer-events: auto; }
     .uv-cell-group:focus-visible rect { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-    .uv-side { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-    .uv-side h3 { margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: .04em; color: var(--text-3); }
-    .uv-rank-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
-    .uv-rank-row { display: flex; align-items: center; gap: 8px; }
-    .uv-rank-dot { width: 9px; height: 9px; border-radius: 2.5px; flex: 0 0 auto; }
-    .uv-rank-name { flex: 1 1 auto; min-width: 0; font-size: 11.5px; color: var(--text-1); font-weight: 600;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .uv-rank-val { flex: 0 0 auto; font-size: 11px; color: var(--text-2); font-variant-numeric: tabular-nums; }
-    .uv-divider { border: 0; border-top: 1px solid var(--border); margin: 2px 0; }
-    .uv-side-stat { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-2); }
-    .uv-side-stat b { color: var(--text-1); font-variant-numeric: tabular-nums; }
+    /* Bottom legend row -- was a separate side panel (vertical list next
+       to the treemap); now a single line under it instead, freeing the
+       treemap to use the full width too. User: "rest of the legend
+       display at the bottom in a sigle line." */
+    .uv-legend-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px;
+      margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+    .uv-legend-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .04em; color: var(--text-3); flex: 0 0 auto; }
+    .uv-rank-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+    .uv-rank-row { display: inline-flex; align-items: center; gap: 5px; }
+    .uv-rank-dot { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
+    .uv-rank-name { font-size: 11.5px; color: var(--text-1); font-weight: 600; white-space: nowrap; }
+    .uv-rank-val { font-size: 11px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 
     #uvTt { position: fixed; z-index: 50; pointer-events: none; background: var(--text-1); color: var(--bg);
       font-size: 11px; line-height: 1.5; padding: 8px 10px; border-radius: 7px; box-shadow: 0 6px 20px rgba(0,0,0,.18);
@@ -238,22 +240,19 @@
 
     <div class="uv-crumbs-row">
       <div class="uv-crumbs" id="uvCrumbs"></div>
-      <p class="uv-stats-line"><span class="uv-stat" id="uvTotalCount">—</span> symbols across <span class="uv-stat" id="uvTotalSectors">—</span> <span id="uvSectorsUnit">sectors</span>, as of <span class="uv-stat" id="uvAsOf">—</span>.</p>
+      <p class="uv-stats-line"><span class="uv-stat" id="uvTotalCount">—</span> symbols across <span class="uv-stat" id="uvTotalSectors">—</span> <span id="uvSectorsUnit">sectors</span>, as of <span class="uv-stat" id="uvAsOf">—</span>.
+        <span class="uv-stats-sep">·</span> Held <b id="uvSHeld">—</b>
+        <span class="uv-stats-sep">·</span> Capital <b id="uvSCapital">—</b>
+        <span class="uv-stats-sep">·</span> Largest <b id="uvSLargest">—</b></p>
     </div>
 
-    <div class="uv-board">
-      <div class="uv-panel uv-tm-card">
-        <div class="uv-svg-wrap"><svg class="uv-tm" id="uvTm"></svg></div>
-      </div>
+    <div class="uv-panel uv-tm-card">
+      <div class="uv-svg-wrap"><svg class="uv-tm" id="uvTm"></svg></div>
+    </div>
 
-      <div class="uv-panel uv-side">
-        <h3 id="uvSideHeading">Top sectors</h3>
-        <ul class="uv-rank-list" id="uvRankList"></ul>
-        <hr class="uv-divider" />
-        <div class="uv-side-stat"><span>Held positions</span><b id="uvSHeld">—</b></div>
-        <div class="uv-side-stat"><span>Capital deployed</span><b id="uvSCapital">—</b></div>
-        <div class="uv-side-stat"><span>Largest bucket</span><b id="uvSLargest">—</b></div>
-      </div>
+    <div class="uv-legend-row">
+      <span class="uv-legend-label" id="uvSideHeading">Top sectors</span>
+      <ul class="uv-rank-list" id="uvRankList"></ul>
     </div>
   </main>
 
