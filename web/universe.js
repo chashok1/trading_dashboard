@@ -378,7 +378,6 @@
       svg.selectAll('*').remove();
       svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
         .text('No held positions to break out by account.');
-      hideAllLegends();
       $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
       return;
     }
@@ -422,7 +421,7 @@
       svg.selectAll('*').remove();
       svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
         .text('No symbols match this filter.');
-      hideAllLegends(); $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
+      $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
       return;
     }
 
@@ -474,7 +473,6 @@
   }
 
   function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-  function hideAllLegends() { $('uvLegendCat').hidden = true; $('uvLegendAcct').hidden = true; }
 
   // Breadcrumb for the unified drill path (account? -> assetClass? ->
   // sector?) -- works for both hierarchies since it just walks whichever
@@ -526,13 +524,6 @@
   // ---- "By Account" root tiles: accounts, colored by acctColor. Click
   // drills into that account's Asset Class breakdown (renderHierarchy).
   function renderAccountFlat(W, H) {
-    hideAllLegends();
-    const legendAcct = $('uvLegendAcct');
-    legendAcct.hidden = false;
-    legendAcct.innerHTML = ACCOUNTS.map(a =>
-      `<span class="uv-lg-item"><span class="uv-lg-dot" style="background:${cssVar(acctColor.get(a.key))};"></span>${esc(a.label)}</span>`
-    ).join('');
-
     const rawValueFn = a => sizeMode === 'capital' ? a.total : a.posCount;
     const sized = ACCOUNTS.filter(a => rawValueFn(a) > 0);
     const root = d3.hierarchy({ children: sized }).sum(floorValueFn(sized, rawValueFn)).sort((a, b) => b.value - a.value);
@@ -581,13 +572,6 @@
   // from bubbling, so the rest of the tile keeps its normal onClick
   // (-> Sector tiles) behavior.
   function renderAssetClassFlat(data, W, H, onClick, onAllStocks) {
-    hideAllLegends();
-    const legendCat = $('uvLegendCat');
-    legendCat.hidden = false;
-    legendCat.innerHTML = ASSET_RANK.slice(0, CAT_SLOTS.length).map((d, i) =>
-      `<span class="uv-lg-item"><span class="uv-lg-dot" style="background:${cssVar(CAT_SLOTS[i])};"></span>${esc(d.asset_class)}</span>`
-    ).join('') + `<span class="uv-lg-item"><span class="uv-lg-dot" style="background:${cssVar('--cat-unmapped')};"></span>Other / unclassified</span>`;
-
     const rawValueFn = d => sizeMode === 'capital' ? d.held_value : d.count;
     const sized = data.filter(d => rawValueFn(d) > 0);
     const root = d3.hierarchy({ children: sized }).sum(floorValueFn(sized, rawValueFn)).sort((a, b) => b.value - a.value);
@@ -640,12 +624,6 @@
   // the SAME catAssign the sector legend uses everywhere -- a sector reads
   // as the same color here as anywhere else it appears.
   function renderSectorWithinAsset(sectors, W, H, onClick) {
-    hideAllLegends();
-    const legendCat = $('uvLegendCat');
-    legendCat.hidden = false;
-    legendCat.innerHTML = SECTOR_RANK.slice(0, CAT_SLOTS.length).map((d, i) =>
-      `<span class="uv-lg-item"><span class="uv-lg-dot" style="background:${cssVar(CAT_SLOTS[i])};"></span>${esc(d.sector)}</span>`
-    ).join('') + `<span class="uv-lg-item"><span class="uv-lg-dot" style="background:${cssVar('--cat-unmapped')};"></span>Other / unclassified</span>`;
 
     const rawValueFn = d => sizeMode === 'capital' ? d.held_value : d.count;
     const sized = sectors.filter(d => rawValueFn(d) > 0);
@@ -705,7 +683,6 @@
   // -- value is always the $ figure; this function itself decides whether
   // to size by it or by count, per the module-level `sizeMode`).
   function renderSymbolTiles(rows, W, H) {
-    hideAllLegends();
     const unit = sizeMode;
     if (unit === 'count') rows = rows.map(r => ({ ...r, value: 1 }));
     else rows = rows.filter(r => r.value > 0); // capital sizing: a $0 position/symbol gets no tile
@@ -857,16 +834,6 @@
       tt.style.left = (evt.clientX + 14) + 'px'; tt.style.top = (evt.clientY + 14) + 'px'; tt.classList.add('show');
     }).on('mouseleave', () => tt.classList.remove('show'))
       .on('click', (evt, d) => { window.location.href = '/actionable?symbol=' + encodeURIComponent(d.data.tos_symbol); });
-
-    // small Buy/Sell/Hold legend -- reuses .uv-legend-cats' styling via
-    // uvLegendCat (hidden by everything else at the top of this function).
-    const legendCat = $('uvLegendCat');
-    legendCat.hidden = false;
-    legendCat.innerHTML = [
-      { c: '--act-buy-strong', l: 'Buy' },
-      { c: '--act-sell-strong', l: 'Sell' },
-      { c: '--act-neutral', l: 'Hold' },
-    ].map(x => `<span class="uv-lg-item"><span class="uv-lg-dot" style="background:${cssVar(x.c)};"></span>${x.l}</span>`).join('');
   }
 
   // ---------------------------------------------------------------------

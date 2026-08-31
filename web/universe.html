@@ -16,13 +16,12 @@
        version: /api/universe, not client-aggregated mock data. */
     /* Real bug, not a guess: several elements this page toggles via the
        `hidden` attribute (JS `.hidden = true`) ALSO carry an explicit
-       `display: flex` from their own class (.uv-ctrl-group,
-       .uv-legend-cats) -- author CSS always wins over the browser's own
-       default `[hidden] { display: none }` rule, even at equal
-       specificity, so `.hidden = true` was silently doing nothing on
-       every one of those elements (#uvFilterRow/#uvColorRow/#uvStyleRow,
-       and the pre-existing #uvLegendCat/#uvLegendAcct toggle). This one
-       override wins over any class's `display` and actually hides them. */
+       `display: flex` from their own class (.uv-ctrl-group) -- author CSS
+       always wins over the browser's own default `[hidden] { display:
+       none }` rule, even at equal specificity, so `.hidden = true` was
+       silently doing nothing on #uvFilterRow/#uvColorRow/#uvStyleRow. This
+       one override wins over any class's `display` and actually hides
+       them. */
     [hidden] { display: none !important; }
 
     /* Full-width -- no max-width/centering, per the app's standing
@@ -30,9 +29,11 @@
     .uv-wrap { width: 100%; padding: 20px 24px 40px; }
     .uv-hdr { display: flex; align-items: center; justify-content: space-between; gap: 16px;
       flex-wrap: wrap; margin-bottom: 12px; }
-    .uv-hdr h2 { margin: 0 0 4px; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; color: var(--text-1); }
-    .uv-hdr p { margin: 0; color: var(--text-2); font-size: 12.5px; max-width: 56ch; }
     .uv-stat { font-variant-numeric: tabular-nums; color: var(--text-1); font-weight: 700; }
+    /* Stats line -- moved onto the crumbs row (right-justified) instead of
+       its own header line under a page title; no page title any more
+       either. */
+    .uv-stats-line { margin: 0; color: var(--text-2); font-size: 12.5px; white-space: nowrap; }
 
     /* View/Filter/Account controls, all on the header's own line (user:
        "move all the controls to the same line as By controls") -- each is
@@ -65,8 +66,12 @@
        (18px min-height + 8px margin) was most of the "space between
        controls and tiles" the user asked to shrink to 6px total (now
        carried entirely by .uv-hdr's own margin-bottom, below). */
+    /* Crumbs row -- breadcrumb trail (left, populated only while drilled
+       in) and the symbol-count stats line (right, always shown) on one
+       row instead of two separate header lines. */
+    .uv-crumbs-row { display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
     .uv-crumbs { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
-    .uv-crumbs:not(:empty) { margin-bottom: 6px; }
     .uv-crumb { cursor: pointer; color: var(--accent); }
     .uv-crumb:hover { text-decoration: underline; }
     .uv-crumb.current { color: var(--text-1); font-weight: 700; cursor: default; text-decoration: none; }
@@ -99,11 +104,6 @@
        every other label lets clicks fall through to the tile's rect). */
     .uv-cell .uv-c-link { pointer-events: auto; }
     .uv-cell-group:focus-visible rect { outline: 2px solid var(--accent); outline-offset: -2px; }
-
-    .uv-legend-cats { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 11px; color: var(--text-2);
-      margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-    .uv-legend-cats .uv-lg-item { display: inline-flex; align-items: center; gap: 5px; }
-    .uv-lg-dot { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
 
     .uv-side { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
     .uv-side h3 { margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase;
@@ -171,10 +171,6 @@
 
   <main class="uv-wrap">
     <div class="uv-hdr">
-      <div>
-        <h2>Universe by Sector</h2>
-        <p><span class="uv-stat" id="uvTotalCount">—</span> symbols across <span class="uv-stat" id="uvTotalSectors">—</span> <span id="uvSectorsUnit">sectors</span>, as of <span class="uv-stat" id="uvAsOf">—</span>.</p>
-      </div>
       <div class="uv-hdr-controls">
         <div class="uv-tabs" role="tablist" aria-label="Treemap view">
           <button class="uv-tab" role="tab" data-view="assetclass" aria-selected="true">By Asset Class</button>
@@ -237,13 +233,14 @@
       </div>
     </div>
 
-    <div class="uv-crumbs" id="uvCrumbs"></div>
+    <div class="uv-crumbs-row">
+      <div class="uv-crumbs" id="uvCrumbs"></div>
+      <p class="uv-stats-line"><span class="uv-stat" id="uvTotalCount">—</span> symbols across <span class="uv-stat" id="uvTotalSectors">—</span> <span id="uvSectorsUnit">sectors</span>, as of <span class="uv-stat" id="uvAsOf">—</span>.</p>
+    </div>
 
     <div class="uv-board">
       <div class="uv-panel uv-tm-card">
         <div class="uv-svg-wrap"><svg class="uv-tm" id="uvTm"></svg></div>
-        <div class="uv-legend-cats" id="uvLegendCat" hidden></div>
-        <div class="uv-legend-cats" id="uvLegendAcct" hidden></div>
       </div>
 
       <div class="uv-panel uv-side">
@@ -262,6 +259,6 @@
   <div id="uvTt"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
-  <script src="/static/universe.js?v=30"></script>
+  <script src="/static/universe.js?v=31"></script>
 </body>
 </html>
