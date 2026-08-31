@@ -14,6 +14,17 @@
        page. Built from the "Universe by Sector" prototype (artifact) --
        see git history for that exploration; this is the real, DB-backed
        version: /api/universe, not client-aggregated mock data. */
+    /* Real bug, not a guess: several elements this page toggles via the
+       `hidden` attribute (JS `.hidden = true`) ALSO carry an explicit
+       `display: flex` from their own class (.uv-ctrl-group,
+       .uv-legend-cats) -- author CSS always wins over the browser's own
+       default `[hidden] { display: none }` rule, even at equal
+       specificity, so `.hidden = true` was silently doing nothing on
+       every one of those elements (#uvFilterRow/#uvColorRow/#uvStyleRow,
+       and the pre-existing #uvLegendCat/#uvLegendAcct toggle). This one
+       override wins over any class's `display` and actually hides them. */
+    [hidden] { display: none !important; }
+
     /* Full-width -- no max-width/centering, per the app's standing
        full-width-screens convention (matches every other screen). */
     .uv-wrap { width: 100%; padding: 20px 24px 40px; }
