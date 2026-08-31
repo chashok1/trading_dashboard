@@ -183,7 +183,11 @@
           </div>
         </div>
 
-        <div class="uv-ctrl-group">
+        <!-- Hidden under "By Account" -- that view only ever means
+             something for held positions (there's no such thing as an
+             unheld position "in an account"), so it's forced to Held and
+             not a real choice there; see wireStaticControls(). -->
+        <div class="uv-ctrl-group" id="uvFilterRow">
           <span class="uv-flabel">Filter</span>
           <div class="uv-tabs small" role="tablist" aria-label="Symbol filter">
             <button class="uv-tab" role="tab" data-filter="all" aria-selected="true">All</button>
@@ -245,6 +249,6 @@
   <div id="uvTt"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
-  <script src="/static/universe.js?v=24"></script>
+  <script src="/static/universe.js?v=25"></script>
 </body>
 </html>

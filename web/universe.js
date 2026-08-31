@@ -326,6 +326,11 @@
     document.querySelectorAll('.uv-tab[data-filter]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.filter === currentFilter)));
     document.querySelectorAll('.uv-tab[data-color]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.color === currentColorFilter)));
     document.querySelectorAll('.uv-tab[data-style]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.style === currentStyleFilter)));
+    // Filter (All/Held/Actionable) isn't a real choice under "By Account"
+    // -- it's forced to Held there (see wireStaticControls) -- so hide it
+    // instead of showing a 3-way selector that silently reverts you to
+    // "By Asset Class" if you touch anything but Held.
+    $('uvFilterRow').hidden = currentView === 'account';
 
     if (currentView === 'account' && !(drill && drill.account)) { renderAccountRoot(); return; }
     renderHierarchy();
