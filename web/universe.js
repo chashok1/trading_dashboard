@@ -754,7 +754,7 @@
         // shows up but not the action (BM etc)."
         if (det.final_code && h >= nameY + 9) {
           g.append('text').attr('x', 4).attr('y', nameY + 10)
-            .attr('font-size', 7.5).attr('font-weight', 700).attr('fill', ink).attr('opacity', 0.85)
+            .attr('font-size', 6.5).attr('font-weight', 400).attr('fill', ink).attr('opacity', 0.85)
             .text(det.final_code);
         }
       }
