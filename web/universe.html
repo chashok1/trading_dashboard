@@ -82,6 +82,11 @@
     .uv-cell text { pointer-events: none; font-family: inherit; }
     .uv-cell .uv-c-name { font-weight: 700; }
     .uv-cell .uv-c-sub { font-weight: 500; opacity: .85; }
+    /* the "All stocks" corner link needs its OWN click, distinct from the
+       tile's click-anywhere-else -- re-enable pointer events just for it
+       (the blanket `.uv-cell text { pointer-events: none }` above exists so
+       every other label lets clicks fall through to the tile's rect). */
+    .uv-cell .uv-c-link { pointer-events: auto; }
     .uv-cell-group:focus-visible rect { outline: 2px solid var(--accent); outline-offset: -2px; }
 
     .uv-legend-cats { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 11px; color: var(--text-2);
