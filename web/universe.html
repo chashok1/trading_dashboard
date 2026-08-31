@@ -26,7 +26,7 @@
 
     /* Full-width -- no max-width/centering, per the app's standing
        full-width-screens convention (matches every other screen). */
-    .uv-wrap { width: 100%; padding: 20px 24px 40px; }
+    .uv-wrap { width: 100%; padding: 20px 24px; }
     .uv-hdr { display: flex; align-items: center; justify-content: space-between; gap: 16px;
       flex-wrap: wrap; margin-bottom: 12px; }
     .uv-stat { font-variant-numeric: tabular-nums; color: var(--text-1); font-weight: 700; }
@@ -87,15 +87,16 @@
        full-width page, 16:9 against the actual available width could run
        taller than the viewport and force page scroll. calc() targets
        "fits the actual screen" directly instead of guessing a ratio.
-       210px is the rest of the page's chrome (36px topbar + 60px .uv-wrap
-       padding + ~46px controls row + ~24px crumbs/stats row + ~32px
-       footer + card padding) -- recomputed 2026-08-30 after dropping the
-       page title and the legend block (was 300px, sized for chrome that
-       no longer exists), reclaiming that space for the treemap itself.
-       User: "use that space for content (stocks) you could add atleaset 3
-       rows." min/max keep it sane on very short or very tall windows. */
+       155px is the rest of the page's chrome (36px topbar + 40px .uv-wrap
+       padding, now top+bottom matched at 20px each + ~46px controls row +
+       ~24px crumbs/stats row + card padding) -- recomputed again
+       2026-08-30 after also dropping the footer hint line and .uv-wrap's
+       extra 20px of bottom padding it no longer needs (was 210px). User:
+       "you don't need this either ['Click a tile...'] ... use the space
+       as much as you can to display the stocks." min/max keep it sane on
+       very short or very tall windows. */
     .uv-svg-wrap { position: relative; width: 100%;
-      height: calc(100vh - 210px); min-height: 320px; max-height: 780px; }
+      height: calc(100vh - 155px); min-height: 360px; max-height: 860px; }
     svg.uv-tm { width: 100%; height: 100%; display: block; }
 
     .uv-cell rect.uv-cell-rect { stroke: none; cursor: pointer; }
@@ -130,8 +131,6 @@
     #uvTt .uv-tt-row { display: flex; justify-content: space-between; gap: 10px; opacity: .85; }
     #uvTt .uv-tt-syms { margin-top: 5px; opacity: .7; font-size: 10.5px; }
     #uvTt .uv-tt-hint { margin-top: 5px; opacity: .6; font-size: 10px; font-style: italic; }
-
-    .uv-foot { margin-top: 16px; font-size: 11px; color: var(--text-3); }
 
     /* 2026-08-30: the sequential magnitude ramps (count/capital) that used
        to live here were dropped -- color is sector/asset-class identity
@@ -256,8 +255,6 @@
         <div class="uv-side-stat"><span>Largest bucket</span><b id="uvSLargest">—</b></div>
       </div>
     </div>
-
-    <p class="uv-foot">Click a tile to drill into its symbols; click a symbol to open it in Actionable. Data from <code>/api/universe</code>.</p>
   </main>
 
   <div id="uvTt"></div>
