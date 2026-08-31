@@ -86,12 +86,16 @@
     /* Viewport-relative height (was aspect-ratio: 16/9) -- on this
        full-width page, 16:9 against the actual available width could run
        taller than the viewport and force page scroll. calc() targets
-       "fits the actual screen" directly instead of guessing a ratio;
-       300px is the rest of the page's chrome (topbar + header/controls +
-       card padding + legend + footer). min/max keep it sane on very
-       short or very tall windows. */
+       "fits the actual screen" directly instead of guessing a ratio.
+       210px is the rest of the page's chrome (36px topbar + 60px .uv-wrap
+       padding + ~46px controls row + ~24px crumbs/stats row + ~32px
+       footer + card padding) -- recomputed 2026-08-30 after dropping the
+       page title and the legend block (was 300px, sized for chrome that
+       no longer exists), reclaiming that space for the treemap itself.
+       User: "use that space for content (stocks) you could add atleaset 3
+       rows." min/max keep it sane on very short or very tall windows. */
     .uv-svg-wrap { position: relative; width: 100%;
-      height: calc(100vh - 300px); min-height: 280px; max-height: 640px; }
+      height: calc(100vh - 210px); min-height: 320px; max-height: 780px; }
     svg.uv-tm { width: 100%; height: 100%; display: block; }
 
     .uv-cell rect.uv-cell-rect { stroke: none; cursor: pointer; }
