@@ -346,3 +346,42 @@ INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VA
   ('sector_etfs', 'Sectors', 'XLRE', 'dual', 100),  -- Real Estate
   ('sector_etfs', 'Sectors', 'XLB',  'dual', 110)   -- Materials
 ON CONFLICT (area_key, member_symbol) DO NOTHING;
+
+-- 2026-08-31: NIB (cocoa ETN) and WOOD (lumber/timber ETF) added to
+-- Commodities, role='dual' -- same ETF-proxy pattern as GLD/SLV/PPLT/PALL/
+-- CORN/WEAT/SOYB above (no raw futures counterpart added -- no Cocoa/Lumber
+-- rr_only rows exist yet, unlike WTI/Gold/etc. which keep both). User:
+-- "add NIB and WOOD to the watchlist -> dashboard -> middle panels -> col 5
+-- -> Commodities".
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
+  ('commodities_credit', 'Commodities', 'NIB',  'dual', 107),
+  ('commodities_credit', 'Commodities', 'WOOD', 'dual', 108)
+ON CONFLICT (area_key, member_symbol) DO NOTHING;
+
+-- 2026-08-31 follow-up: NIB removed -- user confirmed it's delisted. No
+-- confidently-verified live cocoa ETF/ETN proxy exists to swap in, so
+-- cocoa is dropped from the panel for now (same precedent as the 2026-08-24
+-- "no tradable proxy" GLD/SLV removal above -- re-add if/when a real proxy
+-- is confirmed). WOOD is unaffected.
+DELETE FROM ref_macro_area
+WHERE area_key = 'commodities_credit' AND member_symbol = 'NIB';
+
+-- 2026-08-31 follow-up: URA (Global X Uranium ETF) added to Commodities,
+-- role='dual' -- same ETF-proxy pattern as GLD/SLV/PPLT/WOOD above. Already
+-- confirmed live in hist_td/hist_tl/hist_y before adding (avoids a repeat
+-- of the NIB delisting surprise). User asked for uranium symbol + chose
+-- URA over URNM/both.
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
+  ('commodities_credit', 'Commodities', 'URA', 'dual', 109)
+ON CONFLICT (area_key, member_symbol) DO NOTHING;
+
+-- 2026-08-31 follow-up: reorder so URA displays right below SLV -- user:
+-- "display it below SLV". Bump PPLT/PALL/CORN/WEAT/SOYB down one slot
+-- (descending order, though sort_order has no uniqueness constraint) to
+-- open 102 for URA; WOOD (108) is unaffected/unchanged.
+UPDATE ref_macro_area SET sort_order = 107 WHERE area_key = 'commodities_credit' AND member_symbol = 'SOYB';
+UPDATE ref_macro_area SET sort_order = 106 WHERE area_key = 'commodities_credit' AND member_symbol = 'WEAT';
+UPDATE ref_macro_area SET sort_order = 105 WHERE area_key = 'commodities_credit' AND member_symbol = 'CORN';
+UPDATE ref_macro_area SET sort_order = 104 WHERE area_key = 'commodities_credit' AND member_symbol = 'PALL';
+UPDATE ref_macro_area SET sort_order = 103 WHERE area_key = 'commodities_credit' AND member_symbol = 'PPLT';
+UPDATE ref_macro_area SET sort_order = 102 WHERE area_key = 'commodities_credit' AND member_symbol = 'URA';
