@@ -271,6 +271,12 @@
   // it first, then the same assetClass/sector legs follow underneath.
   let drill = null;
   function resetDrill() { drill = null; }
+  // Sentinel for drill.sector meaning "every sector, flattened" -- set by
+  // the Equities tile's small "All stocks" link (renderAssetClassFlat),
+  // which skips the Sector grouping step and goes straight to a flat list
+  // of every equity symbol in scope. Not a real sector name, so it's
+  // rendered as "All stocks" in the breadcrumb rather than shown raw.
+  const ALL_SECTORS = '__ALL_SECTORS__';
 
   let FILTERS = {}; // {all|held|actionable: {note, rows: [SYMS...]}}
 
@@ -369,10 +375,9 @@
     }
 
     if (!drill || !drill.assetClass) {
-      renderAssetClassFlat(hier.agg, W, H, ac => {
-        drill = inAccount ? { account: drill.account, assetClass: ac } : { assetClass: ac };
-        render();
-      });
+      renderAssetClassFlat(hier.agg, W, H,
+        ac => { drill = inAccount ? { account: drill.account, assetClass: ac } : { assetClass: ac }; render(); },
+        ac => { drill = inAccount ? { account: drill.account, assetClass: ac, sector: ALL_SECTORS } : { assetClass: ac, sector: ALL_SECTORS }; render(); });
     } else if (!drill.sector) {
       if (drill.assetClass === 'Equities') {
         renderSectorWithinAsset(hier.sectorByAsset['Equities'] || [], W, H, sec => { drill = { ...drill, sector: sec }; render(); });
@@ -380,6 +385,11 @@
         const rows = (hier.byAsset[drill.assetClass] || []).map(r => ({ tos_symbol: r.tos_symbol, value: r.current_position_dollar || 0, detail: symbolDetail.get(r.tos_symbol) || {} }));
         renderSymbolTiles(rows, W, H);
       }
+    } else if (drill.sector === ALL_SECTORS) {
+      // "All stocks" link on the Equities tile -- every equity symbol in
+      // this scope, flat, skipping the Sector grouping step entirely.
+      const rows = (hier.byAsset[drill.assetClass] || []).map(r => ({ tos_symbol: r.tos_symbol, value: r.current_position_dollar || 0, detail: symbolDetail.get(r.tos_symbol) || {} }));
+      renderSymbolTiles(rows, W, H);
     } else {
       const symRows = ((hier.symsByAssetSector[drill.assetClass] || {})[drill.sector] || []);
       const rows = symRows.map(r => ({ tos_symbol: r.tos_symbol, value: r.current_position_dollar || 0, detail: symbolDetail.get(r.tos_symbol) || {} }));
@@ -411,7 +421,7 @@
     const segs = [];
     if (drill.account) segs.push({ key: 'account', label: acctLabelMap.get(drill.account) || drill.account });
     if (drill.assetClass) segs.push({ key: 'assetClass', label: drill.assetClass });
-    if (drill.sector) segs.push({ key: 'sector', label: drill.sector });
+    if (drill.sector) segs.push({ key: 'sector', label: drill.sector === ALL_SECTORS ? 'All stocks' : drill.sector });
     if (segs.length === 0) { el.innerHTML = ''; return; }
 
     const parts = [`<span class="uv-crumb" data-crumb="root">Universe</span>`];
@@ -485,7 +495,13 @@
   // ---- Asset Class tiles (top level of renderHierarchy), colored by
   // assetColorAssign. `onClick(assetClass)` lets the caller decide what the
   // resulting drill state looks like (whole-universe vs within an account).
-  function renderAssetClassFlat(data, W, H, onClick) {
+  // `onAllStocks(assetClass)` fires only from the Equities tile's small
+  // "All stocks" corner link -- user: "small link on the account tile ->
+  // equities to take me to all stocks directly and anywhere else on the
+  // equities tile takes me to sectors" -- the link stops the click event
+  // from bubbling, so the rest of the tile keeps its normal onClick
+  // (-> Sector tiles) behavior.
+  function renderAssetClassFlat(data, W, H, onClick, onAllStocks) {
     hideAllLegends();
     const legendCat = $('uvLegendCat');
     legendCat.hidden = false;
@@ -522,16 +538,28 @@
           .attr('font-size', 9.5).attr('fill', ink).attr('opacity', 0.85)
           .text(`${fmtInt(d.data.count)} sym · ${fmtUsd(d.data.held_value)}`);
       }
+      // Small "All stocks" corner link, Equities tile only -- skips the
+      // Sector step and goes straight to every equity symbol, flat. Its
+      // own click handler stops propagation so the rest of the tile keeps
+      // its normal "go to Sectors" click.
+      if (d.data.asset_class === 'Equities' && w > 78 && h > 26 && onAllStocks) {
+        g.append('text').attr('class', 'uv-c-link').attr('x', w - 6).attr('y', 16)
+          .attr('text-anchor', 'end').attr('font-size', 8.5).attr('font-weight', 700)
+          .attr('fill', ink).style('text-decoration', 'underline').style('cursor', 'pointer')
+          .text('All stocks →')
+          .on('click', evt => { evt.stopPropagation(); onAllStocks(d.data.asset_class); });
+      }
     });
 
     cell.on('mousemove', (evt, d) => {
       const heldPct = d.data.count ? Math.round((d.data.held / d.data.count) * 100) : 0;
+      const hint = d.data.asset_class === 'Equities' ? 'Click to see sectors · or "All stocks" for every symbol' : 'Click to see symbols';
       tt.innerHTML = `<div class="uv-tt-title">${esc(d.data.asset_class)}</div>` +
         `<div class="uv-tt-row"><span>Symbols</span><span>${fmtInt(d.data.count)}</span></div>` +
         `<div class="uv-tt-row"><span>Held</span><span>${d.data.held} (${heldPct}%)</span></div>` +
         `<div class="uv-tt-row"><span>Capital</span><span>${fmtUsd(d.data.held_value)}</span></div>` +
         `<div class="uv-tt-syms">${d.data.sample.map(esc).join(' · ')}${d.data.count > d.data.sample.length ? ' …' : ''}</div>` +
-        `<div class="uv-tt-hint">${d.data.asset_class === 'Equities' ? 'Click to see sectors' : 'Click to see symbols'}</div>`;
+        `<div class="uv-tt-hint">${hint}</div>`;
       tt.style.left = (evt.clientX + 14) + 'px'; tt.style.top = (evt.clientY + 14) + 'px'; tt.classList.add('show');
     }).on('mouseleave', () => tt.classList.remove('show'))
       .on('click', (evt, d) => onClick(d.data.asset_class));
