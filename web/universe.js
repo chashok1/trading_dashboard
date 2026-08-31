@@ -746,14 +746,20 @@
         g.append('text').attr('class', 'uv-c-name').attr('x', 4).attr('y', nameY)
           .attr('font-size', nameFontSize).attr('fill', ink)
           .text(symName.length > maxChars ? symName.slice(0, maxChars) : symName);
+
+        // Action code (BM/SA/etc) -- own, smaller minimum than the richer
+        // detail below (value/Td-Tn/RR bar): it's just a 2-4 char
+        // abbreviation, so it only needs a bit more vertical room than the
+        // name alone, not the tile sizes those need. User: "Now the name
+        // shows up but not the action (BM etc)."
+        if (det.final_code && h >= nameY + 9) {
+          g.append('text').attr('x', 4).attr('y', nameY + 10)
+            .attr('font-size', 7.5).attr('font-weight', 700).attr('fill', ink).attr('opacity', 0.85)
+            .text(det.final_code);
+        }
       }
       if (w < 30 || h < 18) return; // too small for the richer detail below
 
-      if (h > 28 && det.final_code) {
-        g.append('text').attr('x', 5).attr('y', 24)
-          .attr('font-size', 8.5).attr('font-weight', 700).attr('fill', ink).attr('opacity', 0.85)
-          .text(det.final_code);
-      }
       if (h > 40 && unit === 'capital') {
         g.append('text').attr('class', 'uv-c-sub').attr('x', 5).attr('y', 35)
           .attr('font-size', 9).attr('fill', ink).attr('opacity', 0.85).text(fmtUsd(d.data.value));
