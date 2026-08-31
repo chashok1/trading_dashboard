@@ -277,6 +277,15 @@
   // of every equity symbol in scope. Not a real sector name, so it's
   // rendered as "All stocks" in the breadcrumb rather than shown raw.
   const ALL_SECTORS = '__ALL_SECTORS__';
+  // Sentinel for drill.assetClass meaning "every asset class, flattened" --
+  // only reachable via the Equities tile's "All stocks" link while inside
+  // an account (By Account path). User: "only going through the By
+  // account i need to see all stocks for the account when i click on all
+  // stocks" -- there, "all stocks" means every position in that account
+  // (bonds/FX/etc included), not just the equity subset the same link
+  // gives you from the whole-universe root (where there's no single
+  // account to unify around, so it stays Equities-only there).
+  const ALL_ASSET_CLASSES = '__ALL_ASSET_CLASSES__';
 
   let FILTERS = {}; // {all|held|actionable: {note, rows: [SYMS...]}}
 
@@ -377,7 +386,19 @@
     if (!drill || !drill.assetClass) {
       renderAssetClassFlat(hier.agg, W, H,
         ac => { drill = inAccount ? { account: drill.account, assetClass: ac } : { assetClass: ac }; render(); },
-        ac => { drill = inAccount ? { account: drill.account, assetClass: ac, sector: ALL_SECTORS } : { assetClass: ac, sector: ALL_SECTORS }; render(); });
+        ac => {
+          drill = inAccount
+            ? { account: drill.account, assetClass: ALL_ASSET_CLASSES } // whole account, every asset class
+            : { assetClass: ac, sector: ALL_SECTORS };                   // whole universe: Equities only, flat
+          render();
+        });
+    } else if (drill.assetClass === ALL_ASSET_CLASSES) {
+      // "All stocks" link, taken from inside an account -- every position
+      // in that account, regardless of asset class. `scope` is already
+      // exactly that (currentScopeRows() narrows to the account once
+      // drill.account is set), so no further filtering needed.
+      const rows = scope.map(r => ({ tos_symbol: r.tos_symbol, value: r.current_position_dollar || 0, detail: symbolDetail.get(r.tos_symbol) || {} }));
+      renderSymbolTiles(rows, W, H);
     } else if (!drill.sector) {
       if (drill.assetClass === 'Equities') {
         renderSectorWithinAsset(hier.sectorByAsset['Equities'] || [], W, H, sec => { drill = { ...drill, sector: sec }; render(); });
@@ -420,7 +441,8 @@
     if (!drill) { el.innerHTML = ''; return; }
     const segs = [];
     if (drill.account) segs.push({ key: 'account', label: acctLabelMap.get(drill.account) || drill.account });
-    if (drill.assetClass) segs.push({ key: 'assetClass', label: drill.assetClass });
+    if (drill.assetClass && drill.assetClass !== ALL_ASSET_CLASSES) segs.push({ key: 'assetClass', label: drill.assetClass });
+    if (drill.assetClass === ALL_ASSET_CLASSES) segs.push({ key: 'assetClass', label: 'All stocks' });
     if (drill.sector) segs.push({ key: 'sector', label: drill.sector === ALL_SECTORS ? 'All stocks' : drill.sector });
     if (segs.length === 0) { el.innerHTML = ''; return; }
 
@@ -553,7 +575,7 @@
 
     cell.on('mousemove', (evt, d) => {
       const heldPct = d.data.count ? Math.round((d.data.held / d.data.count) * 100) : 0;
-      const hint = d.data.asset_class === 'Equities' ? 'Click to see sectors · or "All stocks" for every symbol' : 'Click to see symbols';
+      const hint = d.data.asset_class === 'Equities' ? 'Click to see sectors · or "All stocks" to skip sectors' : 'Click to see symbols';
       tt.innerHTML = `<div class="uv-tt-title">${esc(d.data.asset_class)}</div>` +
         `<div class="uv-tt-row"><span>Symbols</span><span>${fmtInt(d.data.count)}</span></div>` +
         `<div class="uv-tt-row"><span>Held</span><span>${d.data.held} (${heldPct}%)</span></div>` +
