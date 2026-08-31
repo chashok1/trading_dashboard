@@ -97,6 +97,27 @@
   }
   const aggregate = rows => aggregateBy(rows, 'sector', r => r.sector);
 
+  // A raw value-based treemap can degenerate a near-zero-share item to a
+  // literal 0-height sliver -- genuinely invisible, not just unlabeled
+  // (e.g. a sector holding one tiny odd-lot position next to sectors
+  // worth 1000x more, under Capital sizing). User: "Still doesn't show"
+  // -- traced to exactly this. Floors every item's share at a small
+  // percentage of the group's total so it still gets a visible, clickable
+  // tile; the distortion is tiny for anything with a real share and only
+  // matters for the near-zero outliers this exists to rescue.
+  function floorValueFn(items, rawValueFn, floorRatio) {
+    const total = d3.sum(items, rawValueFn) || 0;
+    const n = items.length || 1;
+    // Auto-scale by count when the caller doesn't pin a ratio: a handful
+    // of sector/asset-class/account tiles vs. a couple hundred individual
+    // symbol tiles need very different floors for the same "still
+    // visible" guarantee -- cap all items' floors together at ~40% of the
+    // total, however many items there are.
+    const ratio = floorRatio != null ? floorRatio : Math.min(0.02, 0.4 / n);
+    const floor = total * ratio;
+    return d => Math.max(rawValueFn(d), floor);
+  }
+
   // Adapts a POS row (per-account position: tos_symbol/account_id/sector/
   // asset_class/market_value -- sector+asset_class attached in build()) to
   // the shape SYMS rows already have, so the exact same aggregation/
@@ -490,9 +511,9 @@
       `<span class="uv-lg-item"><span class="uv-lg-dot" style="background:${cssVar(acctColor.get(a.key))};"></span>${esc(a.label)}</span>`
     ).join('');
 
-    const valueFn = a => sizeMode === 'capital' ? a.total : a.posCount;
-    const sized = ACCOUNTS.filter(a => valueFn(a) > 0);
-    const root = d3.hierarchy({ children: sized }).sum(valueFn).sort((a, b) => b.value - a.value);
+    const rawValueFn = a => sizeMode === 'capital' ? a.total : a.posCount;
+    const sized = ACCOUNTS.filter(a => rawValueFn(a) > 0);
+    const root = d3.hierarchy({ children: sized }).sum(floorValueFn(sized, rawValueFn)).sort((a, b) => b.value - a.value);
     d3.treemap().size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
 
     const leaves = root.leaves();
@@ -545,9 +566,9 @@
       `<span class="uv-lg-item"><span class="uv-lg-dot" style="background:${cssVar(CAT_SLOTS[i])};"></span>${esc(d.asset_class)}</span>`
     ).join('') + `<span class="uv-lg-item"><span class="uv-lg-dot" style="background:${cssVar('--cat-unmapped')};"></span>Other / unclassified</span>`;
 
-    const valueFn = d => sizeMode === 'capital' ? d.held_value : d.count;
-    const sized = data.filter(d => valueFn(d) > 0);
-    const root = d3.hierarchy({ children: sized }).sum(valueFn).sort((a, b) => b.value - a.value);
+    const rawValueFn = d => sizeMode === 'capital' ? d.held_value : d.count;
+    const sized = data.filter(d => rawValueFn(d) > 0);
+    const root = d3.hierarchy({ children: sized }).sum(floorValueFn(sized, rawValueFn)).sort((a, b) => b.value - a.value);
     d3.treemap().size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
 
     const leaves = root.leaves();
@@ -604,9 +625,9 @@
       `<span class="uv-lg-item"><span class="uv-lg-dot" style="background:${cssVar(CAT_SLOTS[i])};"></span>${esc(d.sector)}</span>`
     ).join('') + `<span class="uv-lg-item"><span class="uv-lg-dot" style="background:${cssVar('--cat-unmapped')};"></span>Other / unclassified</span>`;
 
-    const valueFn = d => sizeMode === 'capital' ? d.held_value : d.count;
-    const sized = sectors.filter(d => valueFn(d) > 0);
-    const root = d3.hierarchy({ children: sized }).sum(valueFn).sort((a, b) => b.value - a.value);
+    const rawValueFn = d => sizeMode === 'capital' ? d.held_value : d.count;
+    const sized = sectors.filter(d => rawValueFn(d) > 0);
+    const root = d3.hierarchy({ children: sized }).sum(floorValueFn(sized, rawValueFn)).sort((a, b) => b.value - a.value);
     d3.treemap().size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
 
     const leaves = root.leaves();
@@ -686,7 +707,7 @@
       return;
     }
 
-    const root = d3.hierarchy({ children: rows }).sum(d => Math.max(d.value, 0.0001)).sort((a, b) => b.value - a.value);
+    const root = d3.hierarchy({ children: rows }).sum(floorValueFn(rows, r => r.value)).sort((a, b) => b.value - a.value);
     d3.treemap().size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
 
     const leaves = root.leaves();
