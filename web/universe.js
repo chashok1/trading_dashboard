@@ -409,9 +409,7 @@
     $('uvSectorsUnit').textContent = 'asset classes';
     $('uvSHeld').textContent = d3.sum(hier.agg, d => d.held) + ' symbols';
     $('uvSCapital').textContent = fmtUsd(d3.sum(hier.agg, d => d.held_value));
-    const note = inAccount ? `in ${acctLabelMap.get(drill.account) || drill.account}`
-      : (currentFilter !== 'all' ? FILTERS[currentFilter].note : '');
-    $('uvFilterCount').textContent = note ? `— ${note}` : '';
+    $('uvFilterCount').textContent = inAccount ? `— in ${acctLabelMap.get(drill.account) || drill.account}` : '';
 
     renderCrumbs();
     $('uvSideHeading').textContent = inAccount ? `Top asset classes in ${acctLabelMap.get(drill.account) || drill.account}` : 'Top asset classes';
@@ -907,9 +905,9 @@
     }
     build(payload);
     FILTERS = {
-      all:        { note: 'every tracked symbol', rows: SYMS },
-      held:       { note: '', rows: SYMS.filter(r => r.held_today) },
-      actionable: { note: '', rows: SYMS.filter(r => r.final_code && r.final_code !== 'HOLD') },
+      all:        { rows: SYMS },
+      held:       { rows: SYMS.filter(r => r.held_today) },
+      actionable: { rows: SYMS.filter(r => r.final_code && r.final_code !== 'HOLD') },
     };
     $('uvAsOf').textContent = new Date().toLocaleDateString();
     wireStyleTabs();
