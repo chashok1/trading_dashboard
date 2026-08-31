@@ -57,11 +57,28 @@
     .uv-tab[aria-selected="true"] { background: var(--accent); color: #fff; }
     .uv-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-    .uv-ctrl-group .uv-flabel { font-size: 10.5px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: .05em; color: var(--text-3); }
     .uv-tabs.small { padding: 2px; border-radius: 8px; }
     .uv-tabs.small .uv-tab { padding: 5px 11px; font-size: 11.5px; border-radius: 5px; }
     .uv-ctrl-group .uv-fcount { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+    /* Risk Range dual-thumb slider -- two overlapping native <input
+       type=range> elements (classic pattern: shared track drawn
+       underneath, only each input's own thumb is clickable via
+       pointer-events, the track itself is transparent/inert). */
+    .uv-rr-slider { position: relative; width: 130px; height: 20px; flex: 0 0 auto; }
+    .uv-rr-track { position: absolute; top: 8px; left: 2px; right: 2px; height: 3px;
+      background: var(--border); border-radius: 2px; }
+    .uv-rr-range { position: absolute; top: 0; height: 3px; background: var(--accent); border-radius: 2px; }
+    .uv-rr-slider input[type="range"] { position: absolute; top: 0; left: 0; width: 100%; height: 20px;
+      margin: 0; background: transparent; -webkit-appearance: none; appearance: none; pointer-events: none; }
+    .uv-rr-slider input[type="range"]::-webkit-slider-runnable-track { -webkit-appearance: none; background: transparent; }
+    .uv-rr-slider input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto;
+      width: 13px; height: 13px; margin-top: 3.5px; border-radius: 50%; background: var(--accent);
+      border: 2px solid var(--card-bg); box-shadow: 0 0 0 1px var(--border); cursor: pointer; }
+    .uv-rr-slider input[type="range"]::-moz-range-track { background: transparent; border: none; }
+    .uv-rr-slider input[type="range"]::-moz-range-thumb { pointer-events: auto; width: 13px; height: 13px;
+      border-radius: 50%; background: var(--accent); border: 2px solid var(--card-bg);
+      box-shadow: 0 0 0 1px var(--border); cursor: pointer; }
 
     /* min-height/margin dropped to 0 -- empty most of the time (only
        populated during a drilldown), and its old 26px reserved footprint
@@ -191,7 +208,6 @@
              differed by this one number -- now a toggle instead of two
              separate entry points. -->
         <div class="uv-ctrl-group">
-          <span class="uv-flabel">Size</span>
           <div class="uv-tabs small" role="tablist" aria-label="Tile size">
             <button class="uv-tab" role="tab" data-size="count" aria-selected="true">Count</button>
             <button class="uv-tab" role="tab" data-size="capital" aria-selected="false">Capital</button>
@@ -203,7 +219,6 @@
              unheld position "in an account"), so it's forced to Held and
              not a real choice there; see wireStaticControls(). -->
         <div class="uv-ctrl-group" id="uvFilterRow">
-          <span class="uv-flabel">Filter</span>
           <div class="uv-tabs small" role="tablist" aria-label="Symbol filter">
             <button class="uv-tab" role="tab" data-filter="all" aria-selected="true">All</button>
             <button class="uv-tab" role="tab" data-filter="held" aria-selected="false">Held</button>
@@ -217,7 +232,6 @@
              all the way down to symbols (see renderSymbolTiles). Hidden
              except at that level -- see atSymbolLevel(). -->
         <div class="uv-ctrl-group" id="uvColorRow">
-          <span class="uv-flabel">Color</span>
           <div class="uv-tabs small" role="tablist" aria-label="Stock tile color filter">
             <button class="uv-tab" role="tab" data-color="all" aria-selected="true">All</button>
             <button class="uv-tab" role="tab" data-color="buy" aria-selected="false"><span class="uv-color-dot" style="background:var(--act-buy-strong);"></span>Buy</button>
@@ -234,8 +248,23 @@
              see wireStyleTabs(). Hidden except at the symbol level, same
              as Color -- see atSymbolLevel(). -->
         <div class="uv-ctrl-group" id="uvStyleRow">
-          <span class="uv-flabel">Style</span>
           <div class="uv-tabs small" role="tablist" aria-label="Style filter" id="uvStyleTabs"></div>
+        </div>
+
+        <!-- Risk Range slider -- narrows the drilldown (individual stock)
+             tiles to a Risk Range position band (0-100%, clamped -- same
+             scale renderSymbolTiles' own mini RR bar uses). Symbol level
+             only, same visibility rule as Color/Style -- see
+             atSymbolLevel(). User: "have a new filter risk range slider
+             -> slider should filter the stocks based on that (display it
+             only on the stocks)." -->
+        <div class="uv-ctrl-group" id="uvRrRow">
+          <div class="uv-rr-slider">
+            <div class="uv-rr-track"><div class="uv-rr-range" id="uvRrRange"></div></div>
+            <input type="range" id="uvRrMin" min="0" max="100" value="0" step="1" aria-label="Risk Range minimum">
+            <input type="range" id="uvRrMax" min="0" max="100" value="100" step="1" aria-label="Risk Range maximum">
+          </div>
+          <span class="uv-fcount" id="uvRrLabel">RR 0–100%</span>
         </div>
 
       </div>
@@ -262,6 +291,6 @@
   <div id="uvTt"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
-  <script src="/static/universe.js?v=31"></script>
+  <script src="/static/universe.js?v=32"></script>
 </body>
 </html>

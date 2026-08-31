@@ -286,6 +286,10 @@
   let currentColorFilter = 'all';
   // 'all' or one tag from ALL_STYLE_TAGS -- same scope as Color.
   let currentStyleFilter = 'all';
+  // Risk Range position band (0-100, clamped -- same scale the mini RR
+  // bar itself uses), same scope as Color/Style -- narrows symbol tiles
+  // to a rawRrPos() range, via the #uvRrMin/#uvRrMax dual-thumb slider.
+  let rrMin = 0, rrMax = 100;
   // Unified drill path, shared by both hierarchies: null (root) or
   // { account?, assetClass?, sector? } -- built progressively. The "By
   // Asset Class" entry never sets `account`; the "By Account" entry sets
@@ -344,12 +348,13 @@
     // instead of showing a 3-way selector that silently reverts you to
     // "By Asset Class" if you touch anything but Held.
     $('uvFilterRow').hidden = currentView === 'account';
-    // Color/Style only affect individual symbol tiles -- hide them at
-    // every group level (Account root, Asset Class, Sector) where they'd
-    // have no visible effect.
+    // Color/Style/Risk Range only affect individual symbol tiles -- hide
+    // them at every group level (Account root, Asset Class, Sector) where
+    // they'd have no visible effect.
     const showSymbolFilters = atSymbolLevel();
     $('uvColorRow').hidden = !showSymbolFilters;
     $('uvStyleRow').hidden = !showSymbolFilters;
+    $('uvRrRow').hidden = !showSymbolFilters;
 
     if (currentView === 'account' && !(drill && drill.account)) { renderAccountRoot(); return; }
     renderHierarchy();
@@ -687,22 +692,32 @@
     if (unit === 'count') rows = rows.map(r => ({ ...r, value: 1 }));
     else rows = rows.filter(r => r.value > 0); // capital sizing: a $0 position/symbol gets no tile
 
-    // Color/Style filters -- narrow to one trading-signal side and/or one
-    // style tag, applied here (drilldown level) only; rollups above are
-    // unaffected.
+    // Color/Style/Risk Range filters -- narrow to one trading-signal
+    // side, one style tag, and/or a Risk Range position band, applied
+    // here (drilldown level) only; rollups above are unaffected.
     if (currentColorFilter !== 'all') {
       rows = rows.filter(r => actionSide(r.detail.final_code) === currentColorFilter);
     }
     if (currentStyleFilter !== 'all') {
       rows = rows.filter(r => (r.detail.style_tags || []).includes(currentStyleFilter));
     }
+    if (rrMin > 0 || rrMax < 100) {
+      rows = rows.filter(r => {
+        const pos = rawRrPos(r.detail.lrr, r.detail.trr, r.detail.last_price);
+        if (pos == null) return false;
+        const clamped = Math.max(0, Math.min(100, pos));
+        return clamped >= rrMin && clamped <= rrMax;
+      });
+    }
 
     svg.selectAll('*').remove();
     if (rows.length === 0) {
-      const why = currentStyleFilter !== 'all' ? currentStyleFilter
-        : currentColorFilter !== 'all' ? currentColorFilter : '';
+      const msg = currentStyleFilter !== 'all' ? `No ${currentStyleFilter} symbols here.`
+        : currentColorFilter !== 'all' ? `No ${currentColorFilter} symbols here.`
+        : (rrMin > 0 || rrMax < 100) ? `No symbols in the ${rrMin}–${rrMax}% Risk Range band here.`
+        : 'No symbols here.';
       svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
-        .text(why ? `No ${why} symbols here.` : 'No symbols here.');
+        .text(msg);
       return;
     }
 
@@ -875,6 +890,34 @@
       t.addEventListener('click', () => { currentStyleFilter = t.dataset.style; render(); }));
   }
 
+  // Dual-thumb Risk Range slider -- two overlapping native <input
+  // type=range> elements (min/max), a shared visual track drawn between
+  // them. Deliberately does NOT reset the drill on change, same as
+  // Color/Style (see wireStaticControls' own comment on why).
+  function wireRrSlider() {
+    const minEl = $('uvRrMin'), maxEl = $('uvRrMax'), rangeEl = $('uvRrRange'), label = $('uvRrLabel');
+    const update = () => {
+      let lo = parseInt(minEl.value, 10), hi = parseInt(maxEl.value, 10);
+      // keep the two thumbs from crossing -- clamp whichever one just
+      // moved to the other's position instead of letting lo > hi.
+      if (lo > hi) {
+        if (document.activeElement === maxEl) { lo = hi; minEl.value = String(lo); }
+        else { hi = lo; maxEl.value = String(hi); }
+      }
+      rrMin = lo; rrMax = hi;
+      rangeEl.style.left = lo + '%';
+      rangeEl.style.right = (100 - hi) + '%';
+      label.textContent = `RR ${lo}–${hi}%`;
+      render();
+    };
+    minEl.addEventListener('input', update);
+    maxEl.addEventListener('input', update);
+    // initial visual state only (0-100%, the default) -- not a full
+    // update(), which would also trigger a redundant render() before
+    // init()'s own first render() call right after this wiring.
+    rangeEl.style.left = '0%'; rangeEl.style.right = '0%';
+  }
+
   async function init() {
     let payload;
     try {
@@ -894,6 +937,7 @@
     };
     $('uvAsOf').textContent = new Date().toLocaleDateString();
     wireStyleTabs();
+    wireRrSlider();
     wireStaticControls();
     render();
   }
