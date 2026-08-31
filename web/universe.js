@@ -755,6 +755,12 @@
       const det = d.data.detail;
       const g = d3.select(this);
 
+      // contentBottom tracks the lowest y drawn so far, so the RR bar
+      // (added below) can place itself under whatever actually rendered
+      // above it instead of a fixed offset that risked overlapping Td/Tn
+      // once its own threshold was lowered independently.
+      let contentBottom = 0;
+
       // Symbol name -- draw down to a much smaller minimum than the
       // richer progressive detail below, so a short treemap row (a whole
       // band of short-but-not-narrow tiles, common with hundreds of
@@ -768,6 +774,7 @@
         g.append('text').attr('class', 'uv-c-name').attr('x', 4).attr('y', nameY)
           .attr('font-size', nameFontSize).attr('fill', ink)
           .text(symName.length > maxChars ? symName.slice(0, maxChars) : symName);
+        contentBottom = nameY;
 
         // Action code (BM/SA/etc) -- own, smaller minimum than the richer
         // detail below (value/Td-Tn/RR bar): it's just a 2-4 char
@@ -778,6 +785,7 @@
           g.append('text').attr('x', 4).attr('y', nameY + 10)
             .attr('font-size', 6.5).attr('font-weight', 400).attr('fill', ink).attr('opacity', 0.85)
             .text(det.final_code);
+          contentBottom = nameY + 10;
         }
       }
       if (w < 30 || h < 18) return; // too small for the richer detail below
@@ -785,6 +793,7 @@
       if (h > 40 && unit === 'capital') {
         g.append('text').attr('class', 'uv-c-sub').attr('x', 5).attr('y', 35)
           .attr('font-size', 9).attr('fill', ink).attr('opacity', 0.85).text(fmtUsd(d.data.value));
+        contentBottom = Math.max(contentBottom, 35);
       }
 
       // Trade/Trend: white up/down arrow (direction, always legible
@@ -810,14 +819,20 @@
           if (sd != null) t.append('tspan').attr('fill', color).attr('opacity', 0.8).text(` (${sd.toFixed(1)}σ)`);
         };
         lineRow('Td', det.trade_line_value, tdY);
-        if (h > tdY + 18) lineRow('Tn', det.trend_line_value, tdY + 9);
+        contentBottom = Math.max(contentBottom, tdY);
+        if (h > tdY + 18) { lineRow('Tn', det.trend_line_value, tdY + 9); contentBottom = Math.max(contentBottom, tdY + 9); }
       }
 
-      // mini Risk Range bar -- clamped track + a tick at the raw (possibly
-      // <0 or >100) position, ink-colored so it stays legible against
-      // whichever action color the tile itself is filled with.
+      // mini Risk Range bar -- clamped track + a tick at the raw
+      // (possibly <0 or >100) position, ink-colored so it stays legible
+      // against whichever action color the tile itself is filled with.
+      // Placed under whatever content actually rendered above it
+      // (contentBottom) instead of the old fixed h>62 threshold, so it
+      // shows on plenty of tiles too small for Td/Tn but with a little
+      // room to spare below the name/action code. User: "you could show
+      // the riskrange bar on tiles. right?"
       const pos = rawRrPos(det.lrr, det.trr, lastPx);
-      if (pos != null && h > 62 && w > 46) {
+      if (pos != null && w > 34 && h > contentBottom + 14) {
         const barW = w - 10, barY = h - 10, clamped = Math.max(0, Math.min(100, pos));
         g.append('rect').attr('x', 5).attr('y', barY).attr('width', barW).attr('height', 3)
           .attr('rx', 1.5).attr('fill', ink).attr('opacity', 0.25);
