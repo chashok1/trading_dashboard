@@ -71,9 +71,15 @@
     /* Crumbs row -- breadcrumb trail (left, populated only while drilled
        in) and the symbol-count stats line (right, always shown) on one
        row instead of two separate header lines. */
-    .uv-crumbs-row { display: flex; align-items: center; justify-content: space-between;
+    .uv-crumbs-row { display: flex; align-items: baseline; justify-content: space-between;
       gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
     .uv-crumbs { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+    /* Right side of the crumbs row -- stats line + "Top X" legend list,
+       kept together as one group (not spread apart by the row's own
+       space-between) so they always sit adjacent. User: "you can add the
+       bottom legend in the same line as other text that starts with
+       Universe." */
+    .uv-crumbs-right { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
     .uv-crumb { cursor: pointer; color: var(--accent); }
     .uv-crumb:hover { text-decoration: underline; }
     .uv-crumb.current { color: var(--text-1); font-weight: 700; cursor: default; text-decoration: none; }
@@ -86,18 +92,18 @@
        full-width page, 16:9 against the actual available width could run
        taller than the viewport and force page scroll. calc() targets
        "fits the actual screen" directly instead of guessing a ratio.
-       180px is the rest of the page's chrome: 36px topbar + 26px
-       .uv-wrap padding (6px top, tightened per "only keep top filter bar
-       and nav bar like 6px" + 20px bottom) + ~46px controls row + 6px its
-       margin-bottom ("between filterbar and heading 6px") + ~24px
-       crumbs/stats row + ~34px the bottom single-line legend row (moved
-       out of the old side panel, so it now adds to page height instead of
-       sitting beside the treemap) + card padding. Recomputed 2026-08-30
-       after collapsing the side panel into that bottom row and retightening
-       the header spacing (was 155px). min/max keep it sane on very short
-       or very tall windows. */
+       155px is the rest of the page's chrome: 36px topbar + 26px
+       .uv-wrap padding (6px top + 20px bottom) + ~46px controls row + 6px
+       its margin-bottom + ~24px crumbs/stats/legend row (now ONE row --
+       the "Top X" legend folded back into it, see .uv-crumbs-right,
+       instead of its own row below the treemap) + card padding.
+       Recomputed 2026-08-30 -- was 180px while the legend briefly had its
+       own row. min/max keep it sane on very short or very tall windows
+       (raised a little further since the legend row's height is reclaimed
+       here too -- widen if the crumbs row visibly wraps onto 2 lines
+       often with a wide "Top X" list). */
     .uv-svg-wrap { position: relative; width: 100%;
-      height: calc(100vh - 180px); min-height: 360px; max-height: 880px; }
+      height: calc(100vh - 155px); min-height: 360px; max-height: 900px; }
     svg.uv-tm { width: 100%; height: 100%; display: block; }
 
     .uv-cell rect.uv-cell-rect { stroke: none; cursor: pointer; }
@@ -111,15 +117,12 @@
     .uv-cell .uv-c-link { pointer-events: auto; }
     .uv-cell-group:focus-visible rect { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-    /* Bottom legend row -- was a separate side panel (vertical list next
-       to the treemap); now a single line under it instead, freeing the
-       treemap to use the full width too. User: "rest of the legend
-       display at the bottom in a sigle line." */
-    .uv-legend-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px;
-      margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+    /* "Top X" ranked-bucket legend -- was its own side panel, then its own
+       bottom row; now folded into .uv-crumbs-right so it shares the same
+       line as the breadcrumbs/stats. */
     .uv-legend-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
       letter-spacing: .04em; color: var(--text-3); flex: 0 0 auto; }
-    .uv-rank-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+    .uv-rank-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; }
     .uv-rank-row { display: inline-flex; align-items: center; gap: 5px; }
     .uv-rank-dot { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
     .uv-rank-name { font-size: 11.5px; color: var(--text-1); font-weight: 600; white-space: nowrap; }
@@ -240,19 +243,19 @@
 
     <div class="uv-crumbs-row">
       <div class="uv-crumbs" id="uvCrumbs"></div>
-      <p class="uv-stats-line"><span class="uv-stat" id="uvTotalCount">—</span> symbols across <span class="uv-stat" id="uvTotalSectors">—</span> <span id="uvSectorsUnit">sectors</span>, as of <span class="uv-stat" id="uvAsOf">—</span>.
-        <span class="uv-stats-sep">·</span> Held <b id="uvSHeld">—</b>
-        <span class="uv-stats-sep">·</span> Capital <b id="uvSCapital">—</b>
-        <span class="uv-stats-sep">·</span> Largest <b id="uvSLargest">—</b></p>
+      <div class="uv-crumbs-right">
+        <p class="uv-stats-line"><span class="uv-stat" id="uvTotalCount">—</span> symbols across <span class="uv-stat" id="uvTotalSectors">—</span> <span id="uvSectorsUnit">sectors</span>, as of <span class="uv-stat" id="uvAsOf">—</span>.
+          <span class="uv-stats-sep">·</span> Held <b id="uvSHeld">—</b>
+          <span class="uv-stats-sep">·</span> Capital <b id="uvSCapital">—</b>
+          <span class="uv-stats-sep">·</span> Largest <b id="uvSLargest">—</b></p>
+        <span class="uv-stats-sep">·</span>
+        <span class="uv-legend-label" id="uvSideHeading">Top sectors</span>
+        <ul class="uv-rank-list" id="uvRankList"></ul>
+      </div>
     </div>
 
     <div class="uv-panel uv-tm-card">
       <div class="uv-svg-wrap"><svg class="uv-tm" id="uvTm"></svg></div>
-    </div>
-
-    <div class="uv-legend-row">
-      <span class="uv-legend-label" id="uvSideHeading">Top sectors</span>
-      <ul class="uv-rank-list" id="uvRankList"></ul>
     </div>
   </main>
 
