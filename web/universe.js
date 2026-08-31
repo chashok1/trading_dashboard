@@ -909,7 +909,7 @@
     FILTERS = {
       all:        { note: 'every tracked symbol', rows: SYMS },
       held:       { note: '', rows: SYMS.filter(r => r.held_today) },
-      actionable: { note: 'symbols with a live signal today', rows: SYMS.filter(r => r.final_code && r.final_code !== 'HOLD') },
+      actionable: { note: '', rows: SYMS.filter(r => r.final_code && r.final_code !== 'HOLD') },
     };
     $('uvAsOf').textContent = new Date().toLocaleDateString();
     wireStyleTabs();
