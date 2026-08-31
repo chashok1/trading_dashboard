@@ -278,9 +278,12 @@
   // ---------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------
-  let currentView = 'assetclass'; // 'assetclass' | 'account' -- which hierarchy's root is showing
+  let currentView = 'account'; // 'assetclass' | 'account' -- which hierarchy's root is showing; defaults to Account
   let sizeMode = 'count';         // 'count' | 'capital' -- what sizes every tile at every level
-  let currentFilter = 'all';
+  // Held to match the 'account' default above -- "By Account" only ever
+  // means anything for held positions, same rule wireStaticControls
+  // enforces on every subsequent view click (see its own comment).
+  let currentFilter = 'held';
   // 'all' | 'buy' | 'sell' | 'hold' -- narrows the drilldown (stock) tiles
   // by trading signal; has no effect above the drilldown level.
   let currentColorFilter = 'all';
