@@ -769,23 +769,24 @@
       if (w >= 16 && h >= 10) {
         const nameFontSize = w < 30 ? 7.5 : (w < 60 ? 9 : 10.5);
         const nameY = h < 16 ? Math.max(8, Math.round(h / 2) + 3) : 13;
-        const maxChars = Math.max(1, Math.floor((w - 4) / (nameFontSize * 0.62)));
+        // Action code (BM/SA/etc) -- same line as the name, right-
+        // justified, instead of its own line below. User: "display BM/BTM
+        // same level as symbol right justified." Only when there's room
+        // for a short code beside the name (w>=40); reserved out of the
+        // name's own width budget below so the two never collide.
+        const showCode = det.final_code && w >= 40;
+        const codeReserve = showCode ? 24 : 0;
+        const maxChars = Math.max(1, Math.floor((w - 4 - codeReserve) / (nameFontSize * 0.62)));
         const symName = d.data.tos_symbol;
         g.append('text').attr('class', 'uv-c-name').attr('x', 4).attr('y', nameY)
           .attr('font-size', nameFontSize).attr('fill', ink)
           .text(symName.length > maxChars ? symName.slice(0, maxChars) : symName);
         contentBottom = nameY;
 
-        // Action code (BM/SA/etc) -- own, smaller minimum than the richer
-        // detail below (value/Td-Tn/RR bar): it's just a 2-4 char
-        // abbreviation, so it only needs a bit more vertical room than the
-        // name alone, not the tile sizes those need. User: "Now the name
-        // shows up but not the action (BM etc)."
-        if (det.final_code && h >= nameY + 9) {
-          g.append('text').attr('x', 4).attr('y', nameY + 10)
+        if (showCode) {
+          g.append('text').attr('x', w - 4).attr('y', nameY).attr('text-anchor', 'end')
             .attr('font-size', 6.5).attr('font-weight', 400).attr('fill', ink).attr('opacity', 0.85)
             .text(det.final_code);
-          contentBottom = nameY + 10;
         }
       }
       if (w < 30 || h < 18) return; // too small for the richer detail below
