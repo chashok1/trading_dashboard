@@ -199,8 +199,9 @@
 
         <!-- Color filter -- narrows the drilldown (individual stock) tiles
              to one trading-signal color; has no effect until you drill
-             all the way down to symbols (see renderSymbolTiles). -->
-        <div class="uv-ctrl-group">
+             all the way down to symbols (see renderSymbolTiles). Hidden
+             except at that level -- see atSymbolLevel(). -->
+        <div class="uv-ctrl-group" id="uvColorRow">
           <span class="uv-flabel">Color</span>
           <div class="uv-tabs small" role="tablist" aria-label="Stock tile color filter">
             <button class="uv-tab" role="tab" data-color="all" aria-selected="true">All</button>
@@ -215,8 +216,9 @@
              a hierarchy level (see the "By Asset Class" research chat) --
              narrows the drilldown tiles to one tag, same scope as Color.
              Populated from ALL_STYLE_TAGS (data-driven, not hardcoded) --
-             see wireStyleTabs(). -->
-        <div class="uv-ctrl-group">
+             see wireStyleTabs(). Hidden except at the symbol level, same
+             as Color -- see atSymbolLevel(). -->
+        <div class="uv-ctrl-group" id="uvStyleRow">
           <span class="uv-flabel">Style</span>
           <div class="uv-tabs small" role="tablist" aria-label="Style filter" id="uvStyleTabs"></div>
         </div>
@@ -249,6 +251,6 @@
   <div id="uvTt"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
-  <script src="/static/universe.js?v=25"></script>
+  <script src="/static/universe.js?v=26"></script>
 </body>
 </html>

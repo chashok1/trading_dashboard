@@ -320,6 +320,19 @@
     return FILTERS[currentFilter].rows;
   }
 
+  // True when the current state's render would show individual symbol
+  // tiles (renderSymbolTiles) rather than a group-level rollup (Account /
+  // Asset Class / Sector tiles) -- Color and Style only affect symbol
+  // tiles, so those controls are hidden everywhere else. Mirrors
+  // renderHierarchy's own dispatch exactly, without running it.
+  function atSymbolLevel() {
+    if (currentView === 'account' && !(drill && drill.account)) return false; // Account root
+    if (!drill || !drill.assetClass) return false; // Asset Class tiles
+    if (drill.assetClass === ALL_ASSET_CLASSES) return true; // "All stocks" (whole account)
+    if (!drill.sector) return drill.assetClass !== 'Equities'; // Equities -> Sector tiles; others -> symbols directly
+    return true; // a sector (or ALL_SECTORS) is chosen -> symbol tiles
+  }
+
   function render() {
     document.querySelectorAll('.uv-tab[data-view]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.view === currentView)));
     document.querySelectorAll('.uv-tab[data-size]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.size === sizeMode)));
@@ -331,6 +344,12 @@
     // instead of showing a 3-way selector that silently reverts you to
     // "By Asset Class" if you touch anything but Held.
     $('uvFilterRow').hidden = currentView === 'account';
+    // Color/Style only affect individual symbol tiles -- hide them at
+    // every group level (Account root, Asset Class, Sector) where they'd
+    // have no visible effect.
+    const showSymbolFilters = atSymbolLevel();
+    $('uvColorRow').hidden = !showSymbolFilters;
+    $('uvStyleRow').hidden = !showSymbolFilters;
 
     if (currentView === 'account' && !(drill && drill.account)) { renderAccountRoot(); return; }
     renderHierarchy();
