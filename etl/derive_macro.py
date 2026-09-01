@@ -33,6 +33,8 @@ from datetime import date, timedelta
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from etl.warnings import add_warning, clear_screen_warnings
+
 log = logging.getLogger(__name__)
 
 _STANCE = {
@@ -53,14 +55,35 @@ def _stance(v):
     return _STANCE.get(v, 0.0)
 
 
-def _window_stance_for(cat, sub, outlook_map, weighted, pcts_by_month):
+def _outlook_key(cat, sub):
+    """Case/whitespace-insensitive key into outlook_map. 2026-09-01: a
+    ref_quad_outlook row edited as 'Health care' (the app's canonical label
+    everywhere else is 'Health Care') silently broke that sector's quad
+    stance -- exact-match dict lookup just returned nothing, no error. This
+    exact mismatch had already bitten once before (_DEFENSIVE_SECTORS above
+    hard-codes BOTH 'Health care' and 'Health Care' as a workaround) without
+    the root cause -- the lookup itself -- ever being fixed. Normalizing
+    here means a casing/whitespace slip in ref_quad_outlook (a user-editable
+    /ref table) can't silently blank out a category's stance again; see
+    also the missing_outlook_keys warning in _derive_macro_impl for gaps
+    this normalization can't paper over (a genuinely absent category)."""
+    if cat is None or sub is None:
+        return None
+    return (str(cat).strip().lower(), str(sub).strip().lower())
+
+
+def _window_stance_for(cat, sub, outlook_map, weighted, pcts_by_month, missing=None):
     """Window-weighted stance for ONE (cat, sub) membership in isolation —
     same weighting as M_window, but not summed with a symbol's other
     memberships, so its own bullish(+1)/bearish(-1)/neutral(0) read can be
     shown separately (2026-08-01, MACRO column sector/asset-class/style
-    dots). Returns None if this (cat, sub) has no ref_quad_outlook row."""
-    texts = outlook_map.get((cat, sub))
+    dots). Returns None if this (cat, sub) has no ref_quad_outlook row
+    (`missing`, if passed, collects the (cat, sub) pair for the caller's
+    missing-mapping warning — see _outlook_key)."""
+    texts = outlook_map.get(_outlook_key(cat, sub))
     if not texts:
+        if missing is not None and cat and sub:
+            missing.add((cat, sub))
         return None
     total = 0.0
     for ym, w in weighted:
@@ -70,13 +93,16 @@ def _window_stance_for(cat, sub, outlook_map, weighted, pcts_by_month):
     return round(total, 4)
 
 
-def _membership_net(memberships, outlook_map, quad_pcts):
+def _membership_net(memberships, outlook_map, quad_pcts, missing=None):
     """Score one symbol's membership bundle against a quad distribution
-    (quad_pcts = fractions 0..1, index 0..3 = quad1..quad4)."""
+    (quad_pcts = fractions 0..1, index 0..3 = quad1..quad4). `missing`, if
+    passed, collects any (cat, sub) pair with no ref_quad_outlook row."""
     total = 0.0
     for cat, sub, wt in memberships:
-        texts = outlook_map.get((cat, sub))
+        texts = outlook_map.get(_outlook_key(cat, sub))
         if not texts:
+            if missing is not None and cat and sub:
+                missing.add((cat, sub))
             continue
         stance = sum(quad_pcts[i] * _stance(texts[i]) for i in range(4))
         total += wt * stance
@@ -449,14 +475,22 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
     qtr_now_pcts = _onehot(qtr_now.quad)
     qtr_next_pcts = _onehot(qtr_next.quad) if qtr_next is not None else None
 
-    # Outlook lookup map
+    # Outlook lookup map — keyed by _outlook_key (case/whitespace-normalized)
+    # so a ref_quad_outlook edit doesn't have to match the app's canonical
+    # sector/asset-class/style label casing exactly (see _outlook_key).
     outlook_map = {
-        (r.category, r.sub_category): [r.quad1, r.quad2, r.quad3, r.quad4]
+        _outlook_key(r.category, r.sub_category): [r.quad1, r.quad2, r.quad3, r.quad4]
         for r in session.execute(text(
             "SELECT category, sub_category, quad1, quad2, quad3, quad4"
             " FROM ref_quad_outlook"
         )).fetchall()
     }
+    # Collects every (cat, sub) membership actually looked up this run that
+    # had no ref_quad_outlook row at all (genuinely missing, not just a
+    # casing slip _outlook_key already absorbs) — flushed to meta_warning
+    # after the symbol loop so a real gap is visible instead of a silent
+    # blank stance. See docs/quad_design.md.
+    missing_outlook_keys: set = set()
 
     if not outlook_map:
         log.info("derive_macronet: ref_quad_outlook is empty — skipping")
@@ -536,13 +570,16 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
 
         # Per-month stances for every month in the window (§2)
         stance_by_month = {
-            ym: _membership_net(memberships, outlook_map, pcts_by_month[ym])
+            ym: _membership_net(memberships, outlook_map, pcts_by_month[ym],
+                                 missing=missing_outlook_keys)
             for ym, _w in weighted
         }
         M_window = sum(w * stance_by_month[ym] for ym, w in weighted)
 
-        Qtr_cur = _membership_net(memberships, outlook_map, qtr_now_pcts)
-        Qtr_next = (_membership_net(memberships, outlook_map, qtr_next_pcts)
+        Qtr_cur = _membership_net(memberships, outlook_map, qtr_now_pcts,
+                                   missing=missing_outlook_keys)
+        Qtr_next = (_membership_net(memberships, outlook_map, qtr_next_pcts,
+                                     missing=missing_outlook_keys)
                     if qtr_next_pcts is not None else None)
         Qtr = ((1.0 - qtr_fade) * Qtr_cur + qtr_fade * Qtr_next
                if Qtr_next is not None else Qtr_cur)
@@ -672,12 +709,15 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         # so this dot doesn't silently keep scoring bond ETFs against the
         # 'Equity Sectors' outlook after macronet stopped doing so.
         sector_stance = _window_stance_for(
-            sector_cat, sector_sub, outlook_map, weighted, pcts_by_month) if sector_sub else None
+            sector_cat, sector_sub, outlook_map, weighted, pcts_by_month,
+            missing=missing_outlook_keys) if sector_sub else None
         asset_class_stance = _window_stance_for(
-            'Asset Class', asset_cls, outlook_map, weighted, pcts_by_month) if asset_cls else None
+            'Asset Class', asset_cls, outlook_map, weighted, pcts_by_month,
+            missing=missing_outlook_keys) if asset_cls else None
         style_stances = []
         for cat, sub, _wt in memberships[2:]:
-            st = _window_stance_for(cat, sub, outlook_map, weighted, pcts_by_month)
+            st = _window_stance_for(cat, sub, outlook_map, weighted, pcts_by_month,
+                                     missing=missing_outlook_keys)
             if st is not None:
                 style_stances.append({'label': sub, 'stance': st})
 
@@ -700,6 +740,23 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
             'asset_class_stance': asset_class_stance,
             'style_stances':      json.dumps(style_stances),
         })
+
+    # Surface any (cat, sub) membership this run actually needed but found
+    # no ref_quad_outlook row for at all (a genuine gap _outlook_key's
+    # normalization can't paper over — e.g. a whole new sector/style with
+    # no outlook row yet) — was previously a silent blank stance with no
+    # trace anywhere. Same meta_warning mechanism the topbar badge already
+    # polls (web/warning_badge.js -> GET /api/warnings), so it's visible
+    # without having to know to look for it.
+    clear_screen_warnings(session, "quad_outlook", as_of_date=as_of_date)
+    for cat, sub in sorted(missing_outlook_keys):
+        add_warning(
+            session, "quad_outlook",
+            f"No ref_quad_outlook row for '{cat}' / '{sub}' — quad stance "
+            f"blank for this category. Add a row on the Ref Data screen "
+            f"(ref_quad_outlook) with this exact category/sub_category.",
+            as_of_date=as_of_date, code="missing_quad_outlook_row",
+        )
 
     if not out:
         return 0
