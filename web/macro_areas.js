@@ -169,6 +169,16 @@
       parts.push('Tn ' + _fmtPrice(m.trend_val));
     }
     if (m.action) parts.push(m.action);
+    // 2026-09-01 -- Hedgeye risk range for curve-role members (10Y/30Y
+    // Treasury in Rates & Duration -- TNX/TYX's own 10x-yield convention,
+    // converted back to a real %) -- the position-in-range bar stays off
+    // (that formula doesn't apply to a yield index), but the range itself
+    // is real Hedgeye data that was never surfaced anywhere before. User:
+    // "in HE risk ranges, i get 10 year risk range 30 year risk range.
+    // can we display that (RR) in Rates & Duration panel?"
+    if (m.curve_lrr_pct != null && m.curve_trr_pct != null) {
+      parts.push('RR ' + m.curve_lrr_pct.toFixed(2) + '%–' + m.curve_trr_pct.toFixed(2) + '%');
+    }
     return parts.join(' — ');
   }
 

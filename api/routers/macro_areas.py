@@ -437,43 +437,24 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 })
                 continue
 
-            # Curve members: use outlook only; skip rr_pos. (Tried computing
-            # rr_pos here 2026-08-01 for the Regime bar's yield check —
-            # produced nonsensical values like -34% instead of 0-100%: the
-            # (last-lrr)/(trr-lrr) trading-range formula is calibrated for
-            # equity-style price ranges and doesn't mean anything applied to
-            # a raw yield level. Reverted — the Regime bar reads TLT's
-            # existing is_cold instead: TLT price moves inversely to yields,
-            # so "TLT near the bottom of its range" already IS "yields near
-            # the top of theirs," using a field that's already correct here.)
+            # 2026-09-01 -- curve members (10Y/30Y Treasury) now go through
+            # the SAME rr_pos() computation as everything else below,
+            # instead of skipping it. The 2026-08-01 "nonsensical values"
+            # revert predates rr_pos()'s own defensive scale guard (see its
+            # docstring in api/_helpers.py) -- built specifically for
+            # TNX:CGI's day-to-day scale inconsistency (x10 index-level
+            # most days, plain percent on 'Y'-feed days) -- which already
+            # handles exactly the case that broke the old inline attempt.
+            # trade/trend stay None automatically below (that block is
+            # gated on role=="dual", which curve members aren't -- they
+            # have no drv_technicals Trade/Trend lines to show anyway).
+            # User: "Display RR bar for 10year and 30year like others."
+            curve_lrr_raw = curve_trr_raw = None
             if role == "curve":
-                ol_sig = _outlook_sig(rr.get("outlook"))
-                if ol_sig != 0:
-                    sigs.append(ol_sig)
-                wow_pct = _wow_pct(last, wow_map.get(sym))
-                member_details.append({
-                    "symbol": sym,
-                    "role": role,
-                    "label": mc.get("label"),
-                    "last": _maybe_float(last),
-                    "pct_change": _maybe_float(pct_chg),
-                    "open": ohlc.get("open"),
-                    "high": ohlc.get("high"),
-                    "low": ohlc.get("low"),
-                    "outlook": rr.get("outlook"),
-                    "rr_pos": None,
-                    "trade": None,
-                    "trend": None,
-                    "wow_pct": wow_pct,
-                    "monthly_score": _maybe_float(ms_map.get(sym, {}).get("monthly_score")),
-                    "macro6": ms_map.get(sym, {}).get("macro6"),
-                    "desc": desc_map.get(sym),
-                    "drivers": _category_drivers_for(sym, fund_map, bridge_map, quad_lookup),
-                    "inverted": inverted,
-                })
-                continue
+                curve_lrr_raw = _maybe_float(rr.get("lrr"))
+                curve_trr_raw = _maybe_float(rr.get("trr"))
 
-            # RR position (all non-curve, non-gauge) — shared TASK_133 helper
+            # RR position (all non-gauge) — shared TASK_133 helper
             lrr = _maybe_float(rr.get("lrr"))
             trr = _maybe_float(rr.get("trr"))
             rr_pos_val = rr_pos(last, lrr, trr)
@@ -524,6 +505,8 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 "action": act_map.get(sym),
                 "is_hot": rr_pos_val is not None and rr_pos_val >= hot_pct,
                 "is_cold": rr_pos_val is not None and rr_pos_val <= cold_pct,
+                "curve_lrr_pct": (curve_lrr_raw / 10.0) if curve_lrr_raw is not None else None,
+                "curve_trr_pct": (curve_trr_raw / 10.0) if curve_trr_raw is not None else None,
                 "wow_pct": wow_pct,
                 "monthly_score": _maybe_float(ms_map.get(sym, {}).get("monthly_score")),
                 "macro6": ms_map.get(sym, {}).get("macro6"),

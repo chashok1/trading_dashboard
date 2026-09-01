@@ -113,7 +113,11 @@
   function axisGroupHtml(axisKey, axisRows) {
     var cols = AXIS_COLS[axisKey] || 4;
     var boxesHtml = sortedByConviction(axisRows).map(categoryBox).join('');
-    return '<div style="display:flex; gap:6px; align-items:flex-start;">' +
+    // 2026-09-01 -- no gap between the axis label and its own box-grid
+    // (was 6px) -- user: "removing the margin before those boxes would
+    // do it" (paired with the TILE_WIDTH shrink above to kill the
+    // horizontal scrollbar).
+    return '<div style="display:flex; gap:0; align-items:flex-start;">' +
       axisHeaderChip(axisKey) +
       '<div style="display:grid; grid-template-columns:repeat(' + cols + ', ' + TILE_WIDTH + '); gap:6px;">' +
       boxesHtml + '</div></div>';

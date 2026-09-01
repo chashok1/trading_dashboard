@@ -399,3 +399,15 @@ INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VA
   ('usd_currency', 'USD & Currency', 'FXY', 'dual', 100),  -- Japanese Yen
   ('usd_currency', 'USD & Currency', 'YCS', 'dual', 110)   -- short Yen
 ON CONFLICT (area_key, member_symbol) DO NOTHING;
+
+-- 2026-09-01: 2Y Treasury added back to Rates & Duration (removed
+-- 2026-08-24, see that DELETE above) -- role='curve', same as 10Y/30Y
+-- (TNX:CGI/TYX:CGI), same DGS2:FRED tos_symbol as before. Now meaningful
+-- to have back: curve-role members just gained a real rr_pos bar (see
+-- api/routers/macro_areas.py, 2026-09-01 -- rr_pos() already had a
+-- defensive scale guard for exactly this symbol shape, the old "skip it"
+-- special-case predated that guard). sort_order=10, ahead of 10Y(20)/
+-- 30Y(30) -- maturity-ascending order.
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
+  ('rates_duration', '2Y Treasury', 'DGS2:FRED', 'curve', 10)
+ON CONFLICT (area_key, member_symbol) DO NOTHING;
