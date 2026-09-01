@@ -50,6 +50,21 @@ _CYCLICAL_SECTORS = {
     'Industrials', 'Materials', 'Energy', 'Consumer Discretionary', 'Financials',
 }
 
+# Sector/sub_asset_class tags that deliberately get NO sector membership
+# (no ref_quad_outlook lookup attempted at all) -- checked against both
+# `sector` (non-GICS pseudo-sectors) and the Fixed Income redirect's
+# `sub_asset_class` (generic/non-directional buckets). Not a data gap to
+# fill: Gold/USD already have a correct stance via the 'Asset Class'
+# category; Country ETF has no single defensible quad view spanning every
+# country; 'Fixed Income'/'Fixed Income Volatility' are catch-all/vol-gauge
+# labels, not one of the specific curated sub-categories (HY Credit, IG
+# Credit, Long Bond, ...). 2026-09-01, found via the missing_outlook_keys
+# warning (see _outlook_key) -- keeping these out of that lookup entirely
+# stops them from re-triggering the warning every single derive run.
+_NO_SECTOR_MEMBERSHIP = {
+    'Country ETF', 'Gold', 'USD', 'Fixed Income', 'Fixed Income Volatility',
+}
+
 
 def _stance(v):
     return _STANCE.get(v, 0.0)
@@ -559,6 +574,27 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
         # (_membership_net already skips unmatched (cat, sub) pairs).
         if asset_cls == 'Fixed Income':
             sector_cat, sector_sub = 'Fixed Income', (sub_asset or '')
+            # 'Fixed Income' itself (the generic catch-all sub_asset_class,
+            # e.g. PFIX) and 'Fixed Income Volatility' (a rate-vol gauge
+            # like ^MOVE, not a directional sub-asset-class) don't have --
+            # and structurally shouldn't get -- a dedicated ref_quad_outlook
+            # row the way HY Credit/IG Credit/Long Bond/etc. do. Drop to no
+            # sector membership deliberately, same as an unmatched
+            # sub_asset_class, so _MISSING_OUTLOOK_EXPECTED below doesn't
+            # have to also carry these (2026-09-01, found via the
+            # missing_outlook_keys warning -- see _outlook_key).
+            if sector_sub in _NO_SECTOR_MEMBERSHIP:
+                sector_sub = ''
+        elif sector in _NO_SECTOR_MEMBERSHIP:
+            # Non-GICS pseudo-sector tags (Country ETF/Gold/USD) -- not real
+            # equity sectors, so scoring them against 'Equity Sectors' was
+            # never going to match (2026-09-01, same discovery as above).
+            # Gold and USD already get a correct asset_class_stance via the
+            # 'Asset Class' category (both have their own row there);
+            # Country ETF has no single defensible quad view as one bucket
+            # spanning every country, so it's left with no sector dot at
+            # all rather than an invented one.
+            sector_cat, sector_sub = 'Equity Sectors', ''
         else:
             sector_cat, sector_sub = 'Equity Sectors', sector
 
