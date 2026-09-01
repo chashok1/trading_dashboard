@@ -26,6 +26,13 @@
   var AXIS_FILTER_PARAM = { asset_class: 'filter_asset_class', sector: 'filter_sector', style: 'filter_style' };
   var AXIS_ORDER = ['asset_class', 'sector', 'style'];
   var TILE_WIDTH = '88px';
+  // 2026-09-01 -- columns per axis's own mini-grid, chosen to land ~3 rows
+  // against each axis's real category count (asset_class 6 -> 2x3,
+  // sector 12 -> 4x3, style ~10 -> 4 cols/3 rows w/ a partial last row) --
+  // matches the exact layout the user sketched. Not auto-computed from
+  // n_tracked (the axis's OWN category count, always small/fixed, isn't
+  // in the API payload -- these are just sized to the current real shape).
+  var AXIS_COLS = { asset_class: 2, sector: 4, style: 4 };
 
   var fetchJson = (window.td_common && window.td_common.fetchJson) || async function (url) {
     var r = await fetch(url);
@@ -79,28 +86,57 @@
       '</a>';
   }
 
-  function boxesRowHtml(axisRows) {
-    var sorted = axisRows.slice().sort(function (a, b) { return convictionScore(b) - convictionScore(a); });
-    return '<div style="display:flex; gap:6px; flex-wrap:wrap; padding:0 8px 10px;">' +
-      sorted.map(categoryBox).join('') + '</div>';
+  function sortedByConviction(axisRows) {
+    return axisRows.slice().sort(function (a, b) { return convictionScore(b) - convictionScore(a); });
   }
 
-  function axisLabelHtml(axisKey) {
-    return '<div style="padding:2px 8px 3px; font-size:9px; font-weight:700; color:var(--text-3,#a8a29e); ' +
-      'text-transform:uppercase; letter-spacing:.05em;">' + esc(AXIS_LABEL[axisKey]) + '</div>';
+  // 2026-09-01 -- axis-name label, same width/border/padding/radius as
+  // categoryBox() so it reads as "one of the boxes" -- tinted background
+  // (not white) + no border-left color distinguishes it from an actual
+  // clickable category box at a glance.
+  function axisHeaderChip(axisKey) {
+    return '<div style="display:flex; align-items:center; justify-content:center; padding:6px 8px; ' +
+      'background:var(--card-bg-alt,#f5f5f4); border:1px solid var(--border,#e5e5e2); border-radius:6px; ' +
+      'width:' + TILE_WIDTH + '; flex:0 0 ' + TILE_WIDTH + '; text-align:center; font-size:9px; ' +
+      'font-weight:700; color:var(--text-3,#a8a29e); text-transform:uppercase; letter-spacing:.05em;">' +
+      esc(AXIS_LABEL[axisKey]) + '</div>';
   }
 
-  function axisSectionHtml(axisRows, axisKey) {
-    return axisLabelHtml(axisKey) + boxesRowHtml(axisRows);
+  // 2026-09-01 -- rearranged into 3 side-by-side groups, each its own
+  // label + a fixed-column CSS grid of that axis's boxes (wraps into
+  // multiple rows on its own, independent of the other axes) -- user's
+  // own sketch: "[asset class] [1][2] [Sector] 1 2 3 4 [Style] 1 2 3 4 /
+  // [3][4] 5 6 7 8 5 6 7 8 / [5][6] 9 10 11 12 9 10". Replaces the single
+  // continuous flow from the previous version -- each axis's boxes now
+  // stay within their own column block instead of spilling into the next
+  // axis's row.
+  function axisGroupHtml(axisKey, axisRows) {
+    var cols = AXIS_COLS[axisKey] || 4;
+    var boxesHtml = sortedByConviction(axisRows).map(categoryBox).join('');
+    return '<div style="display:flex; gap:6px; align-items:flex-start;">' +
+      axisHeaderChip(axisKey) +
+      '<div style="display:grid; grid-template-columns:repeat(' + cols + ', ' + TILE_WIDTH + '); gap:6px;">' +
+      boxesHtml + '</div></div>';
   }
 
-  // 2026-09-01 -- header line ("QUAD ROTATION · date · N bullish
-  // candidates") removed entirely, and the collapse/expand toggle moved
-  // onto the Asset Class label row instead of its own header row -- user:
-  // "move expand to the same row as Asset class and remove the line QUAD
-  // ROTATION 2026-08-31 · 17 bullish candidates." Asset Class's label row
-  // is now the panel's only always-visible element (everything else,
-  // including its own boxes, lives inside the collapsible #qrPanelBody).
+  // 2026-09-01 follow-up -- nowrap: all 3 groups stay on one line (Style
+  // was dropping below Asset Class + Sector once their combined width
+  // exceeded the column) -- user: "Style should be in the same lines as
+  // other two. whole section needs to sit besides sector." overflow-x
+  // is the safety net if the column is ever too narrow to fit all 3,
+  // instead of silently clipping Style off the edge.
+  function boxGridHtml(byAxis) {
+    return '<div style="display:flex; gap:14px; flex-wrap:nowrap; align-items:flex-start; ' +
+      'padding:0 8px 10px; overflow-x:auto;">' +
+      AXIS_ORDER.map(function (a) { return axisGroupHtml(a, byAxis[a]); }).join('') + '</div>';
+  }
+
+  // 2026-09-01 -- collapse/expand moved OFF the panel body entirely, onto
+  // its own button on the filter bar (#qrFilterToggle, web/index.html),
+  // same placement as the Hedgeye/News toggles beside it -- user: "add a
+  // button to collapse or expand just like HE panel buttons next to it on
+  // the filter bar." The panel body no longer carries any toggle control
+  // or header line of its own -- just the axis chips + boxes.
   function render(data) {
     var panel = document.getElementById('quadRotationPanel');
     var body = document.getElementById('quadRotationPanelBody');
@@ -113,36 +149,26 @@
     AXIS_ORDER.forEach(function (a) { byAxis[a] = []; });
     rows.forEach(function (r) { if (byAxis[r.axis]) byAxis[r.axis].push(r); });
 
-    var firstAxis = AXIS_ORDER[0];
-    var restAxes = AXIS_ORDER.slice(1);
-
-    var labelRowHtml =
-      '<div style="display:flex; align-items:center; gap:8px; padding:6px 8px 3px; cursor:pointer;" ' +
-      'onclick="window._qrPanelToggle()">' +
-      '<span style="font-size:9px; font-weight:700; color:var(--text-3,#a8a29e); text-transform:uppercase; ' +
-      'letter-spacing:.05em;">' + esc(AXIS_LABEL[firstAxis]) + '</span>' +
-      '<button id="qrPanelToggle" class="btn-icon btn-icon-sm ' + (collapsed ? 'icon-off' : 'icon-on') +
-      '" style="margin-left:auto; background:none; border:none; cursor:pointer; color:var(--text-3,#a8a29e); ' +
-      'font-size:11px;">' + (collapsed ? '&#9656; expand' : '&#9662; collapse') + '</button>' +
-      '</div>';
-
-    var bodyHtml = '<div id="qrPanelBody" style="display:' + (collapsed ? 'none' : 'block') + ';">' +
-      boxesRowHtml(byAxis[firstAxis]) +
-      restAxes.map(function (a) { return axisSectionHtml(byAxis[a], a); }).join('') +
-      '</div>';
-
-    body.innerHTML = labelRowHtml + bodyHtml;
+    body.innerHTML = '<div id="qrPanelBody" style="display:' + (collapsed ? 'none' : 'block') + ';">' +
+      boxGridHtml(byAxis) + '</div>';
     panel.style.display = 'block';
+    _qrSyncToggleButton(collapsed);
+  }
+
+  function _qrSyncToggleButton(collapsed) {
+    var btn = document.getElementById('qrFilterToggle');
+    if (!btn) return;
+    btn.innerHTML = '🧭 ' + (collapsed ? '&#9652;' : '&#9662;');
+    btn.setAttribute('aria-label', (collapsed ? 'Expand' : 'Collapse') + ' Quad Rotation');
   }
 
   window._qrPanelToggle = function () {
     var body = document.getElementById('qrPanelBody');
-    var btn = document.getElementById('qrPanelToggle');
     if (!body) return;
     var nowHidden = body.style.display === 'none';
     body.style.display = nowHidden ? 'block' : 'none';
-    if (btn) btn.innerHTML = nowHidden ? '&#9656; expand' : '&#9662; collapse';
     localStorage.setItem('qrPanel_collapsed', nowHidden ? '0' : '1');
+    _qrSyncToggleButton(!nowHidden);
   };
 
   function currentDate() {
@@ -166,6 +192,8 @@
     if (dp) dp.addEventListener('change', load);
     var rb = document.getElementById('refreshBtn');
     if (rb) rb.addEventListener('click', function () { setTimeout(load, 300); });
+    var toggleBtn = document.getElementById('qrFilterToggle');
+    if (toggleBtn) toggleBtn.addEventListener('click', window._qrPanelToggle);
     setTimeout(load, 600);
   }
 

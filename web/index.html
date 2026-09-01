@@ -266,13 +266,6 @@
             <div id="macroRailUsd" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
-          <!-- 2026-08-27 -- Crypto moved here (col 3), below USD & Currency
-               -- user: "move CRYPTO to belwo USD&Currency". -->
-          <section class="cockpit-band rail-band" id="macroCryptoBand">
-            <div class="msr-section-hdr">Crypto <span class="msr-breadth" id="macroBreadthCrypto"></span></div>
-            <div id="macroRailCrypto" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
-          </section>
-
           <section class="cockpit-band rail-band" id="macroCountryBand">
             <div class="msr-section-hdr">Country ETFs <span class="msr-breadth" id="macroBreadthCountry"></span></div>
             <div id="macroRailCountry" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
@@ -301,6 +294,14 @@
           <section class="cockpit-band rail-band" id="macroCommoditiesBand">
             <div class="msr-section-hdr">Commodities <span class="msr-breadth" id="macroBreadthCommodities"></span></div>
             <div id="macroRailCommodities" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
+          </section>
+
+          <!-- 2026-09-01 -- Crypto moved here (col 5), below Commodities --
+               user: "move the crypto panel above to the col 5 under
+               commodities panel." (Previously col 3, below USD & Currency.) -->
+          <section class="cockpit-band rail-band" id="macroCryptoBand">
+            <div class="msr-section-hdr">Crypto <span class="msr-breadth" id="macroBreadthCrypto"></span></div>
+            <div id="macroRailCrypto" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
           </div>
           </div>
@@ -354,6 +355,19 @@
             </div>
             <button class="he-collapse-btn cat-filter-toggle" type="button" data-he-toggle
                     aria-label="Collapse Hedgeye panels" title="Hedgeye panels">📊 &#9662;</button>
+            <!-- 2026-09-01 -- Quad Rotation's own collapse/expand button on
+                 the filter bar, same pattern/placement as the Hedgeye and
+                 News toggles beside it -- user: "add a button to collapse
+                 or expand just like HE panel buttons next to it on the
+                 filter bar." Deliberately NOT class="he-collapse-btn" --
+                 that class is queried generically by hedgeye_collapse.js
+                 (shared state across the 3 Hedgeye panels only); reusing it
+                 here would make Hedgeye's toggle also relabel this button.
+                 Wired independently in web/quad_rotation_panel.js
+                 (_qrPanelToggle / init()), own localStorage key
+                 (qrPanel_collapsed, unchanged from before). -->
+            <button class="cat-filter-toggle" type="button" id="qrFilterToggle"
+                    aria-label="Collapse Quad Rotation" title="Quad Rotation">🧭 &#9662;</button>
             <button class="dash-news-list-toggle cat-filter-toggle" type="button" data-news-toggle
                     aria-label="Collapse news" title="News">📰 &#9662;</button>
           </div>
