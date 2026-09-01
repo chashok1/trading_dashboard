@@ -292,16 +292,23 @@
     return (c && c !== 'inherit') ? c : '#888';
   }
 
-  function rangeBar(buy, sell, cur) {
+  // label (2026-09-01, user request -- "RR bar hover missing the actual
+  // values"): had no title at all before -- buy/sell/cur (LRR/TRR/last)
+  // were already right here in scope, just never surfaced. Same "SYM last
+  // — X% of range (LRR .. / TRR ..)" wording web/app.js's Risk Dial SPX
+  // gauge and web/macro_areas.js's railRangeBar both use, for one
+  // consistent phrasing everywhere an RR bar shows up.
+  function rangeBar(buy, sell, cur, label) {
     if (buy == null || sell == null || sell <= buy || cur == null) {
       return '<div class="rr-rb"></div>';
     }
     const pct = Math.max(0, Math.min(1, (Number(cur) - Number(buy)) / (Number(sell) - Number(buy))));
     const w = Math.round(pct * 100);
-    return `<div class="rr-rb"><div class="rr-rb-tick" style="left:${w}%;"></div></div>`;
+    const title = `${label ? label + ' ' : ''}${cur} — ${w}% of range (LRR ${buy} / TRR ${sell})`;
+    return `<div class="rr-rb" title="${escHtml(title)}"><div class="rr-rb-tick" style="left:${w}%;"></div></div>`;
   }
 
-  function volRangeBar(value, low, high) {
+  function volRangeBar(value, low, high, label) {
     if (value == null || low == null || high == null) return '<div class="rr-rb"></div>';
     // Zones are equal thirds. Tick uses piecewise scale so it lands inside the right zone:
     //   0 → low  maps to 0–33%,  low → high maps to 33–67%,  high → high×1.5 maps to 67–100%
@@ -318,7 +325,8 @@
     // Colors + tick mark only (2026-07-04) -- the two zone-boundary dot
     // markers are intentionally gone; the colored zones already show the
     // boundaries without them.
-    return `<div class="rr-rb vol-rb">` +
+    const volTitle = `${label ? label + ' ' : ''}${value} (zones: <${low} calm / ${low}-${high} normal / >${high} elevated)`;
+    return `<div class="rr-rb vol-rb" title="${escHtml(volTitle)}">` +
       `<div class="vol-z vol-z-g"></div>` +
       `<div class="vol-z vol-z-a"></div>` +
       `<div class="vol-z vol-z-r"></div>` +
@@ -350,8 +358,8 @@
     // base absolute positioning for this context.
     const candle = ohlc ? _candleSvg(ohlc.o, ohlc.h, ohlc.l, ohlc.c) : '';
     const rb = volThresh
-      ? volRangeBar(volThresh.value, volThresh.low, volThresh.high)
-      : rangeBar(buy, sell, cur);
+      ? volRangeBar(volThresh.value, volThresh.low, volThresh.high, name)
+      : rangeBar(buy, sell, cur, name);
     const _pg = _msGlyphTape(scoreSym);
     // Volatility-gauge tile (VIX, currently the only BAR_MINI item carrying
     // a volThresh): badge and range bar stay stacked together in rr-chip-

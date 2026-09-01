@@ -498,6 +498,8 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 "low": ohlc.get("low"),
                 "outlook": rr.get("outlook"),
                 "rr_pos": _pct(rr_pos_val),
+                "lrr": lrr,
+                "trr": trr,
                 "trade": trade_sig,
                 "trend": trend_sig,
                 "trade_val": trade_val,
@@ -744,6 +746,8 @@ def _sector_etf_proxy(symbol: str, q_map: dict, tech_map: dict, rr_map: dict, ms
         "td": "up" if tv is not None and last > tv else ("down" if tv is not None else None),
         "tn": "up" if trv is not None and last > trv else ("down" if trv is not None else None),
         "rr_pos": _pct(rr_pos_val),
+        "lrr": lrr,
+        "trr": trr,
         "outlook": r.get("outlook"),
         "monthly_score": _maybe_float(ms_map.get(symbol)),
     }

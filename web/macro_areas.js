@@ -359,7 +359,16 @@
   // the candle + Td/Tn + %chg chip; the tick + hover title (still present)
   // carry the same info. renderSectorsPanel's own row doesn't pass it, so
   // it keeps the label unchanged.
-  function railRangeBar(rr_pos, hot_pct, cold_pct, showPct) {
+  //
+  // vals (2026-09-01, user request -- "RR bar hover missing the actual
+  // values, just says X% of range"): optional {last, lrr, trr} so the
+  // title can show the real numbers instead of just the bare percentage --
+  // same "SYM last — X% of range (LRR .. / TRR ..)" wording web/app.js's
+  // Risk Dial SPX gauge already uses (parsed from its own detail string),
+  // reused here verbatim for one consistent phrasing app-wide. Falls back
+  // to the old bare-percentage title when vals/last/lrr/trr aren't
+  // available (e.g. a gauge-role member with no RR line at all).
+  function railRangeBar(rr_pos, hot_pct, cold_pct, showPct, vals) {
     if (rr_pos === null || rr_pos === undefined) {
       return '<span class="mra-muted" style="font-size:9px;">n/a</span>';
     }
@@ -370,9 +379,14 @@
     var isHot  = (hot_pct  !== null && hot_pct  !== undefined) ? (rr_pos >= hot_pct)  : (rr_pos >= 0.80);
     var isCold = (cold_pct !== null && cold_pct !== undefined) ? (rr_pos <= cold_pct) : (rr_pos <= 0.20);
     var extreme = isHot || isCold;
+    var title = actualPct + '% of range';
+    if (vals && vals.last != null && vals.lrr != null && vals.trr != null) {
+      title = (vals.label ? vals.label + ' ' : '') + vals.last + ' — ' + actualPct +
+        '% of range (LRR ' + vals.lrr + ' / TRR ' + vals.trr + ')';
+    }
     return (
       '<div class="msr-rb-wrap">' +
-        '<div class="msr-rb" title="' + actualPct + '% of range">' +
+        '<div class="msr-rb" title="' + esc(title) + '">' +
           '<div class="msr-rb-fill" style="width:' + tickPx + '%"></div>' +
           '<div class="msr-rb-tick' + (extreme ? ' extreme' : '') +
                '" style="left:' + tickPx + '%"></div>' +
@@ -472,7 +486,8 @@
           '<div class="msr-data-cluster">' +
             durArrow(m.trade, 'Td') +
             durArrow(m.trend, 'Tn') +
-            railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct, false) +
+            railRangeBar(m.rr_pos, area.hot_pct, area.cold_pct, false,
+                         { last: m.last, lrr: m.lrr, trr: m.trr, label: dispName }) +
             _candleHtml(m) +
             _chgChipHtml(m.pct_change, m.inverted) +
           '</div>' +
@@ -541,7 +556,8 @@
           '<span class="msr-data-cluster" style="margin-left:0;">'
           + arrowHtml(etf.td, 'Td') + '&nbsp;'
           + arrowHtml(etf.tn, 'Tn') + '&nbsp;'
-          + railRangeBar(etf.rr_pos, 0.8, 0.2, true)
+          + railRangeBar(etf.rr_pos, 0.8, 0.2, true,
+                         { last: etf.last, lrr: etf.lrr, trr: etf.trr, label: etf.symbol })
           + '</span>']);
       }
     }
@@ -686,13 +702,21 @@
     return '<span class="mra-chip ' + cls + '">' + label + ':' + arrow + '</span>';
   }
 
-  function rrBarHtml(rr_pos, is_hot, is_cold) {
+  // label (2026-09-01, user request -- "RR bar hover missing the actual
+  // values"): this bar is an AREA-LEVEL median across every member's own
+  // rr_pos, not one symbol's LRR/TRR -- there's no single "LRR X / TRR Y"
+  // pair to show here the way railRangeBar's per-symbol bars can. Naming
+  // it as a median instead is still strictly more informative than the
+  // old bare percentage, without fabricating numbers that don't exist for
+  // an aggregate.
+  function rrBarHtml(rr_pos, is_hot, is_cold, label) {
     if (rr_pos === null || rr_pos === undefined) return '<span class="mra-no-rr">n/a</span>';
     var pct = Math.max(0, Math.min(1, rr_pos));
     var tickPct = Math.round(pct * 100);
     var fillCls = is_hot ? ' mra-rb-hot' : is_cold ? ' mra-rb-cold' : '';
+    var title = (label ? label + ': ' : '') + tickPct + '% of range (area median across members)';
     return (
-      '<div class="rr-rb mra-rb" title="' + (tickPct) + '% of range">' +
+      '<div class="rr-rb mra-rb" title="' + esc(title) + '">' +
         '<div class="rr-rb-fill' + fillCls + '" style="width:' + tickPct + '%"></div>' +
         '<div class="rr-rb-tick" style="left:' + tickPct + '%"></div>' +
       '</div>' +
@@ -747,7 +771,7 @@
         '<td>' + durationChip(area.trade, 'Trade') + durationChip(area.trend, 'Trend') + '</td>' +
         '<td class="mra-rb-wrap">' +
           rrBarHtml(area.rr_pos, (area.extremes_hot || []).length > 0,
-                                  (area.extremes_cold || []).length > 0) +
+                                  (area.extremes_cold || []).length > 0, area.label) +
         '</td>' +
         '<td>' + extremesHtml(area.extremes_hot, area.extremes_cold) + '</td>' +
       '</tr>'

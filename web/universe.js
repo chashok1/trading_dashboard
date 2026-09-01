@@ -847,7 +847,13 @@
         (unit === 'capital' ? `<div class="uv-tt-row"><span>Value</span><span>${fmtUsd(d.data.value)}</span></div>` : '') +
         (det.trade_line_value != null ? `<div class="uv-tt-row"><span>Trade line</span><span>${fmtUsd(det.trade_line_value)}</span></div>` : '') +
         (det.trend_line_value != null ? `<div class="uv-tt-row"><span>Trend line</span><span>${fmtUsd(det.trend_line_value)}</span></div>` : '') +
-        (pos != null ? `<div class="uv-tt-row"><span>Risk Range</span><span>${Math.round(pos)}%</span></div>` : '') +
+        // 2026-09-01, user request: was just the bare "${pos}%" -- add the
+        // actual LRR/TRR/last values, same info every other RR bar's hover
+        // now shows (web/actionable.js's RR column, web/macro_areas.js's
+        // railRangeBar, web/market_bar.js's mini-tape rangeBar).
+        (pos != null ? `<div class="uv-tt-row"><span>Risk Range</span><span>${Math.round(pos)}%` +
+          (det.lrr != null && det.trr != null ? ` (LRR ${fmtUsd(det.lrr)} / TRR ${fmtUsd(det.trr)})` : '') +
+          `</span></div>` : '') +
         `<div class="uv-tt-hint">Click to open in Actionable</div>`;
       tt.style.left = (evt.clientX + 14) + 'px'; tt.style.top = (evt.clientY + 14) + 'px'; tt.classList.add('show');
     }).on('mouseleave', () => tt.classList.remove('show'))
