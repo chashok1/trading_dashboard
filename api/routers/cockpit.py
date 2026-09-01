@@ -1425,3 +1425,29 @@ def get_shortlist(date: Optional[str] = Query(None)):
         rd = dict(r)
         out.append(rd)
     return {"as_of": d.isoformat(), "rows": out}
+
+
+@router.get("/api/cockpit/cross-asset-signals")
+def get_cross_asset_signals(date: Optional[str] = Query(None)):
+    """Cross-asset rules (2026-09-01, user request) -- multi-symbol RR-
+    position conditions the ordinary atomic-rule engine can't express, e.g.
+    "Bonds and USD at TRR, Gold at LRR -> buy Gold". Thin read over
+    drv_cross_asset_signal (etl/derive_cross_asset_rules.py); a fired row
+    already drove its target_symbol's real Final Call via
+    derive_actionable.py (triggered_group_ids, tagged cross_asset:true) --
+    this endpoint is purely for the dashboard panel display, not a second
+    computation of anything."""
+    d = _resolve_date(date)
+    with session_scope() as s:
+        rows = s.execute(text("""
+            SELECT rule_code, fired, target_symbol, target_action, description, detail
+            FROM drv_cross_asset_signal
+            WHERE as_of_date = :d
+            ORDER BY fired DESC, rule_code
+        """), {"d": d}).mappings().all()
+    out = []
+    for r in rows:
+        rd = dict(r)
+        rd["detail"] = _jsonb(rd.get("detail")) or []
+        out.append(rd)
+    return {"as_of": d.isoformat(), "rows": out}

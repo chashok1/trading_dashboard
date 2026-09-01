@@ -6769,6 +6769,105 @@ CREATE TABLE IF NOT EXISTS ref_macro_area (
     PRIMARY KEY (area_key, member_symbol)
 );
 
+-- 2026-09-01: cross-asset rules -- multi-symbol RR-position conditions the
+-- ordinary atomic-rule engine can't express (atomic rules only evaluate a
+-- row's OWN fields, see docs/rules_logic.md). E.g. user rule: "Bonds and US
+-- dollar at TRR and Gold is at LRR, then buy gold" -- needs 3 OTHER symbols'
+-- RR reads to fire a signal on a 4th. A rule fires when EVERY one of its
+-- legs passes; a leg passes when its symbol's RR position (api._helpers.
+-- rr_pos(), same [0,1] formula/scale ref_macro_area's own HOT/COLD read
+-- uses -- see macro_area_hot_pct/macro_area_cold_pct in ref_settings above)
+-- satisfies comparison+rr_threshold_pct. Editable via /ref like any other
+-- tunable ref table -- designed to hold more rules than just this one.
+-- Evaluated daily by etl/derive_cross_asset_rules.py -> drv_cross_asset_
+-- signal; a fired rule injects a synthetic candidate for target_symbol the
+-- same way a fired rule GROUP already does (derive_actionable.py).
+CREATE TABLE IF NOT EXISTS ref_cross_asset_rule (
+    rule_code      TEXT    PRIMARY KEY,
+    description    TEXT    NOT NULL,
+    target_symbol  TEXT    NOT NULL,
+    target_action  TEXT    NOT NULL DEFAULT 'ADD',
+    is_active      BOOL    NOT NULL DEFAULT TRUE,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- leg_group (2026-09-01, user request -- "may be use 10y more weighted?"):
+-- NULL = standalone leg, its own independent AND condition (e.g. $DXY,
+-- /GC). Legs sharing the SAME (rule_code, leg_group) instead BLEND: their
+-- rr_pos values combine via a `weight`-weighted average into one reading,
+-- which is then compared against comparison/rr_threshold_pct -- legs in a
+-- group must carry the SAME comparison/rr_threshold_pct (the group's one
+-- shared condition; kept per-row for schema uniformity, not because each
+-- leg has its own). Every group (blended or standalone) must pass for the
+-- rule to fire -- AND across groups, weighted-average WITHIN a group.
+CREATE TABLE IF NOT EXISTS ref_cross_asset_rule_leg (
+    id                SERIAL  PRIMARY KEY,
+    rule_code         TEXT    NOT NULL REFERENCES ref_cross_asset_rule(rule_code) ON DELETE CASCADE,
+    leg_symbol        TEXT    NOT NULL,
+    comparison        TEXT    NOT NULL CHECK (comparison IN ('>=','<=')),
+    rr_threshold_pct  NUMERIC NOT NULL,
+    weight            NUMERIC NOT NULL DEFAULT 1,
+    leg_group         TEXT,
+    sort_order        INT     NOT NULL DEFAULT 0,
+    UNIQUE (rule_code, leg_symbol)
+);
+ALTER TABLE ref_cross_asset_rule_leg ADD COLUMN IF NOT EXISTS weight NUMERIC NOT NULL DEFAULT 1;
+ALTER TABLE ref_cross_asset_rule_leg ADD COLUMN IF NOT EXISTS leg_group TEXT;
+
+-- drv_cross_asset_signal -- derived, idempotent (DELETE WHERE as_of_date=D
+-- then INSERT). One row per active rule per date. detail JSONB: per-leg
+-- {symbol, comparison, threshold_pct, rr_pct, passed} for the dashboard
+-- panel's tooltip / "how close" read.
+CREATE TABLE IF NOT EXISTS drv_cross_asset_signal (
+    as_of_date     DATE    NOT NULL,
+    rule_code      TEXT    NOT NULL,
+    fired          BOOL    NOT NULL,
+    target_symbol  TEXT    NOT NULL,
+    target_action  TEXT    NOT NULL,
+    description    TEXT,
+    detail         JSONB,
+    PRIMARY KEY (as_of_date, rule_code)
+);
+
+-- Seed: the rule above. 2026-09-01 correction -- the "Bonds" leg was
+-- originally TLT+IEF (bond PRICE ETFs), but the user's actual rule concept
+-- (confirmed against their Hedgeye RR email -- UST30Y/UST10Y/UST2Y yield
+-- levels, matching TYX:CGI/TNX:CGI/DGS2:FRED in hist_rr exactly) is
+-- Treasury YIELD risk range, not bond price. "Yield at TRR" is a mean-
+-- reversion setup (yields expected to roll over) -- coherent with USD at
+-- TRR also rolling over and Gold at LRR bouncing, all pointing the same
+-- bullish-gold direction; no comparison inversion needed, just the right
+-- symbols. 10Y+30Y (TNX:CGI/TYX:CGI) used, not 2Y (DGS2:FRED) -- 2Y is
+-- dominated by near-term Fed rate-path expectations, a different driver
+-- than the long-duration/real-yield story that ties to Gold. Blended
+-- 70/30 (10Y/30Y) per user request ("may be use 10y more weighted?") so a
+-- strong 10Y can carry a slightly-lagging 30Y over the ≥85% line, instead
+-- of requiring both independently -- see leg_group on the table above.
+-- $DXY = the dedicated USD rr_only member; /GC = the dedicated Gold
+-- rr_only member (condition leg -- cleanest single-instrument RR read);
+-- GLD = the actual tradable ETF this app already treats as canonical Gold
+-- elsewhere (asset-class benchmark, Quad Rotation panel) -- the buy target.
+INSERT INTO ref_cross_asset_rule (rule_code, description, target_symbol, target_action) VALUES
+    ('BONDS_USD_TRR_GOLD_LRR',
+     'Bonds (10Y+30Y Treasury yield, 70/30 blend) and US Dollar ($DXY) at TRR while Gold (/GC) is at LRR -- buy Gold',
+     'GLD', 'ADD')
+ON CONFLICT (rule_code) DO UPDATE SET description = EXCLUDED.description;
+
+-- Clean up the superseded TLT/IEF legs (correctness fix, not user-tuned
+-- data -- safe to force, unlike a normal ON CONFLICT DO NOTHING seed).
+DELETE FROM ref_cross_asset_rule_leg
+ WHERE rule_code = 'BONDS_USD_TRR_GOLD_LRR' AND leg_symbol IN ('TLT', 'IEF');
+
+INSERT INTO ref_cross_asset_rule_leg
+    (rule_code, leg_symbol, comparison, rr_threshold_pct, weight, leg_group, sort_order) VALUES
+    ('BONDS_USD_TRR_GOLD_LRR', 'TNX:CGI', '>=', 85, 0.7, 'bonds_yield', 1),
+    ('BONDS_USD_TRR_GOLD_LRR', 'TYX:CGI', '>=', 85, 0.3, 'bonds_yield', 2),
+    ('BONDS_USD_TRR_GOLD_LRR', '$DXY',    '>=', 85, 1,   NULL,          3),
+    ('BONDS_USD_TRR_GOLD_LRR', '/GC',     '<=', 15, 1,   NULL,          4)
+ON CONFLICT (rule_code, leg_symbol) DO UPDATE SET
+    comparison = EXCLUDED.comparison, rr_threshold_pct = EXCLUDED.rr_threshold_pct,
+    weight = EXCLUDED.weight, leg_group = EXCLUDED.leg_group, sort_order = EXCLUDED.sort_order;
+
 -- 2026-06-21 TASK_78: macro-area thresholds in ref_settings.
 INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
   ('macro_area_hot_pct',  '0.85',

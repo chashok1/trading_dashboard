@@ -3445,6 +3445,21 @@ def derive_all(session: Session, as_of_date: date,
     counts["drv_cs_realized_gain"]    = _safe("drv_cs_realized_gain",  derive_cs_realized_gain)
     counts["drv_dash_summary"]        = _safe("drv_dash_summary",      derive_dash_summary)
 
+    # drv_cross_asset_signal (2026-09-01, user request): multi-symbol RR-
+    # position rules the ordinary atomic engine can't express (e.g. "Bonds
+    # and USD at TRR, Gold at LRR -> buy Gold"). Needs only drv_quote/drv_rr
+    # (already built above); must run before derive_actionable below, which
+    # reads a fired rule's row to inject a synthetic candidate for its
+    # target_symbol. Non-critical: failure must not break the cascade.
+    try:
+        from etl.derive_cross_asset_rules import derive_cross_asset_rules
+        counts["drv_cross_asset_signal"] = _safe("drv_cross_asset_signal", derive_cross_asset_rules)
+    except Exception:
+        log.exception("derive_cross_asset_rules import/run failed (continuing)")
+        counts["drv_cross_asset_signal"] = 0
+        try: session.rollback()
+        except Exception: pass
+
     # ---- Actionable Stocks pipeline (outlook-weight + resolver) ----
     try:
         from etl.derive_outlook_action import derive_outlook_action

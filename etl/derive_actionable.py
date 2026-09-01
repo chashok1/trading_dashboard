@@ -798,6 +798,27 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     """)).mappings().all()
     from etl.rule_groups import eval_rule_group  # lazy import — avoids cycle
 
+    # Cross-asset rules (2026-09-01, user request) -- multi-symbol RR-
+    # position conditions the atomic engine above can't express (e.g.
+    # "Bonds and USD at TRR, Gold at LRR -> buy Gold"). Evaluated daily by
+    # etl/derive_cross_asset_rules.py -> drv_cross_asset_signal; a fired row
+    # here is folded into a symbol's candidate list the exact same way a
+    # fired rule GROUP is below (group_candidates), just keyed by
+    # target_symbol instead of being evaluated per-symbol against
+    # drv_stks. Priority 60: below every real outlook source and action
+    # rule group (all <=10 in practice) so a fired cross-asset rule only
+    # wins on a symbol nothing else has an opinion on, never overrides a
+    # real signal -- these are cross-market context, not this symbol's own
+    # technicals/fundamentals.
+    CROSS_ASSET_PRIORITY = 60
+    cross_asset_by_symbol: dict = {}
+    for r in session.execute(text("""
+        SELECT rule_code, target_symbol, target_action, description
+        FROM drv_cross_asset_signal
+        WHERE as_of_date = :d AND fired = TRUE
+    """), {"d": as_of_date}).mappings().all():
+        cross_asset_by_symbol.setdefault(r["target_symbol"], []).append(dict(r))
+
     # Wipe today
     session.execute(text("DELETE FROM drv_actionable WHERE as_of_date = :d"), {"d": as_of_date})
     from etl.warnings import clear_screen_warnings
@@ -905,6 +926,31 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                 "source_code":  f"RULES:{grp_code}",
                 "_group_prio":  grp_prio if grp_prio is not None else 500,
             })
+
+        # ─── Cross-asset rules (2026-09-01) ───
+        # Same treatment as a fired action rule group just above -- a
+        # synthetic candidate in group_candidates so it can win
+        # consolidated_action, and an entry in triggered_groups so it's
+        # visible/traceable via the same triggered_group_ids JSONB column
+        # (tagged "cross_asset": True to tell the two apart). Not part of
+        # trig_action (BuySell vocabulary) -- these rules speak the
+        # consolidated_action vocabulary (ADD/INCREASE/...) only.
+        for r in cross_asset_by_symbol.get(sym, []):
+            action = r["target_action"]
+            triggered_groups.append({
+                "rule_group_code": r["rule_code"],
+                "action": action,
+                "priority": CROSS_ASSET_PRIORITY,
+                "category": None,
+                "cross_asset": True,
+                "description": r["description"],
+            })
+            if action in ACTION_RANK:
+                group_candidates.append({
+                    "action":      action,
+                    "source_code": f"CROSS:{r['rule_code']}",
+                    "_group_prio": CROSS_ASSET_PRIORITY,
+                })
 
         # ─── Compute trig_action from fired rule groups (BuySell vocabulary) ───
         # For each fired group, look up its action_label in the BuySell score

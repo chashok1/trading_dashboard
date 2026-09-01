@@ -263,6 +263,7 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Param-set management screen | `web/param_sets.*` → `/param-sets`; API `api/routers/rules.py` (`/api/rules/param-sets*`) |
 | Composite editor (clone, threshold pre-fill, BASE picker) | `web/composite_edit.*`; API `/api/rules/composite/{id}/clone`, `/api/rules/base-composites` |
 | Group-of-groups nesting | `web/groups.html` (`memberOptionsHTML`/`memberTypeFor`) |
+| Cross-asset rules (multi-symbol RR-position conditions the atomic engine can't express, e.g. "Bonds/USD at TRR, Gold at LRR → buy Gold") | `docs/cross_asset_rules_logic.md`; `ref_cross_asset_rule(_leg)`; `etl/derive_cross_asset_rules.py` → `drv_cross_asset_signal`; folded into `derive_actionable.py` like a fired rule group; dashboard panel `web/cross_asset_panel.js` → `/api/cockpit/cross-asset-signals` |
 | Rule Flow screen logic (live trace, data flow panel, trig_action calc) | `docs/rule_flow_logic.md` |
 | Performance / feedback-loop logic | `docs/performance_logic.md` |
 | Rule tuning, profiles (param sets), outcomes & scorecard — USE & FIX guide | `docs/rule_tuning_and_outcomes.md` |
