@@ -6043,6 +6043,38 @@ function _watchlistBandRowEl(count, expanded) {
   return tr;
 }
 
+// Td/Tn diagonal-arrow chip — same convention as the macro rail at the
+// bottom of this screen (web/macro_areas.js's durArrow): label + up/down/
+// flat glyph, colored green/red/gray, reusing that file's .msr-dur* CSS
+// (styles.css) so the two read as one visual language. val: >0 up (↗),
+// <0 down (↘), 0 flat (–), null/undefined = no data (blank, keeps the
+// fixed-width box so nothing shifts).
+function _durArrow(val, label) {
+  if (val === null || val === undefined) {
+    return `<span class="msr-dur" title="${escapeHtml(label)}: no data"></span>`;
+  }
+  if (val > 0) {
+    return `<span class="msr-dur msr-dur-up" title="${escapeHtml(label)} up">${escapeHtml(label)}&#8599;</span>`;
+  }
+  if (val < 0) {
+    return `<span class="msr-dur msr-dur-down" title="${escapeHtml(label)} down">${escapeHtml(label)}&#8600;</span>`;
+  }
+  return `<span class="msr-dur msr-dur-flat" title="${escapeHtml(label)}">${escapeHtml(label)}&ndash;</span>`;
+}
+
+// Td/Tn cell content for the Technical column: sign of (last_price - the
+// Trade/Trend line), i.e. is price currently above or below each line —
+// same formula api/routers/macro_areas.py uses for the rail's Td/Tn arrows.
+function _technicalDurHtml(r) {
+  const last = r.last_price != null ? Number(r.last_price) : null;
+  const tradeVal = r.a_trade_value != null ? Number(r.a_trade_value) : null;
+  const trendVal = r.a_trend_value != null ? Number(r.a_trend_value) : null;
+  const tradeSig = (last != null && tradeVal != null) ? Math.sign(last - tradeVal) : null;
+  const trendSig = (last != null && trendVal != null) ? Math.sign(last - trendVal) : null;
+  if (tradeSig === null && trendSig === null) return '';
+  return `<div style="display:flex;gap:4px;">${_durArrow(tradeSig, 'Td')}${_durArrow(trendSig, 'Tn')}</div>`;
+}
+
 // Builds one <tr> for the main grid or an expanded Watchlist band row.
 // Extracted from renderGrid (TASK_120) so both share identical row markup.
 function _buildRowEl(r) {
@@ -6121,8 +6153,18 @@ function _buildRowEl(r) {
     const _fmtRR = v => Math.abs(v) >= 100 ? Math.round(v).toString()
                        : Math.abs(v) >= 10  ? v.toFixed(1)
                        : v.toFixed(2);
+    // % position number, colored the same low=green/high=red scale as the
+    // IV percentile column (window._ivpBarColor) — low (near LRR) is the
+    // favorable entry zone, high (near/at TRR, >=85) is the "caution" zone
+    // _srcReasonsHtml's warn logic already flags (see _rawRrPos comment
+    // above), so the color meaning lines up with that existing convention.
+    const _rrPosColor = window._ivpBarColor ? window._ivpBarColor(_rrBarW) : '#7c3aed';
+    const _rrPosPctHtml = _rrBarW != null
+      ? `<div style="font-size:10px;line-height:1;font-weight:700;text-align:center;font-variant-numeric:tabular-nums;color:${_rrPosColor};" title="Risk Range position: ${_rrBarW}% (LRR ${_lrrNum.toFixed(2)} – TRR ${_trrNum.toFixed(2)})">${_rrBarW}%</div>`
+      : '';
     const rrBarHtml = _rrBarW != null
       ? `<div style="display:flex;flex-direction:column;align-items:stretch;gap:4px;">
+           ${_rrPosPctHtml}
            <div style="font-size:8px;line-height:1;color:#94a3b8;text-align:left;" title="LRR ${_lrrNum.toFixed(2)}">${_fmtRR(_lrrNum)}</div>
            <div class="rr-rb" title="Risk Range position: ${_rrBarW}% (LRR ${_lrrNum.toFixed(2)} – TRR ${_trrNum.toFixed(2)})"><div class="rr-rb-tick" style="left:${_rrBarW}%;"></div></div>
            <div style="font-size:8px;line-height:1;color:#94a3b8;text-align:right;" title="TRR ${_trrNum.toFixed(2)}">${_fmtRR(_trrNum)}</div>
@@ -6191,7 +6233,10 @@ function _buildRowEl(r) {
       <td data-col="technical" class="rr-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-date="${escapeHtml(r.as_of_date || state.date || '')}" style="padding:6px 4px;">
         <div style="display:flex;align-items:flex-start;gap:6px;">
           ${rrHtml}
-          ${_rrSubLineHtml}
+          <div>
+            ${_technicalDurHtml(r)}
+            ${_rrSubLineHtml}
+          </div>
         </div>
       </td>
       <td data-col="rr" style="padding:6px 4px;">${rrBarHtml}</td>

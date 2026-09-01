@@ -1124,6 +1124,7 @@ def get_actionable(
                mt.volume, mt.vlm_projected,
                mt.a_macd_brr, mt.a_macdh_d_brr, mt.rsi,
                mt.earnings_days, mt.d_vlt_caution, mt.iv_ratio,
+               mt.a_trade_value, mt.a_trend_value,
                mo.pct_brr AS ma_pct_brr,
                dr.lrr, dr.mrr, dr.trr, dr.outlook AS rr_outlook,
                q.last_price, q.net_chng, q.pct_change, q.export_date, q.export_time, q.loaded_at,
