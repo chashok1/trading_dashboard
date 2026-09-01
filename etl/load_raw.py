@@ -1412,14 +1412,18 @@ def load_hqds(session: Session, wb: Workbook, source_file: str) -> tuple[int, in
         # Monthly
         m_label = sheet.cell(row=r, column=1).value
         m_start = to_date(sheet.cell(row=r, column=2).value)
-        m_quad  = to_text(sheet.cell(row=r, column=5).value)
         if m_start is not None:
             rows_read += 1
             records.append({
                 "period_type": "monthly",
                 "year":        m_start.year,
                 "period_num":  m_start.month,
-                "quad":        m_quad,
+                # 2026-08-31: quad deliberately NOT populated for monthly rows
+                # -- the dominant quad is inferred live from quad1_pct..
+                # quad4_pct (once seeded) instead of trusting this workbook
+                # column, which drifted out of sync with its own pct
+                # distribution on prior months. See seeds_quad_periods.sql.
+                "quad":        None,
                 "label":       to_text(m_label) if m_label is not None else None,
             })
         # Quarterly

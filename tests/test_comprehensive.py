@@ -320,11 +320,21 @@ class TestD_DailyBriefing:
 
 
 class TestD_Notifications:
-    """notify() module is no-op when settings off; toast + email behind flags."""
+    """notify() module is no-op when settings off; toast + email behind flags.
 
-    def test_notify_silent_when_disabled(self):
+    2026-08-31: both notify_* flags are FORCE-DISABLED here via monkeypatch,
+    not relied on as defaults -- a deployment with NOTIFY_EMAIL=1 in .env
+    (e.g. this one, for the Trade Mode digest feature) previously made these
+    tests send real emails to the configured NOTIFY_EMAIL_TO address on every
+    run ("[trading-dashboard:info] test" / "t" / "warn" / "error" -- user
+    saw these land in their real inbox and asked if the app got hacked).
+    monkeypatch restores the original values after each test automatically."""
+
+    def test_notify_silent_when_disabled(self, monkeypatch):
         from etl.notify import notify
-        # Both flags default to False — call must not raise
+        from config.settings import settings
+        monkeypatch.setattr(settings, "notify_toast", False)
+        monkeypatch.setattr(settings, "notify_email", False)
         notify("test", "hello", "info")
 
     def test_settings_has_notify_flags(self):
@@ -333,8 +343,11 @@ class TestD_Notifications:
                      "smtp_host", "smtp_port", "smtp_user", "notify_email_to"):
             assert hasattr(settings, attr)
 
-    def test_levels_typed(self):
+    def test_levels_typed(self, monkeypatch):
         from etl.notify import notify
+        from config.settings import settings
+        monkeypatch.setattr(settings, "notify_toast", False)
+        monkeypatch.setattr(settings, "notify_email", False)
         notify("t", "m", "info")
         notify("t", "m", "warn")
         notify("t", "m", "error")

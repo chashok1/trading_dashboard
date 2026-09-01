@@ -161,7 +161,6 @@
             <div id="regimeLineBody">Loading…</div>
           </section>
 
-
           <!-- 2026-08-10 -- Notes panel: freeform sticky notes with an
                optional effective/expiration date window, just below Mkt
                Situation per user request. Populated + wired by
@@ -491,6 +490,17 @@
             </div>
           </div>
 
+          <!-- Quad Rotation panel (2026-08-31) — sector + asset_class + style
+               rotation view: quad direction + live Trade/Trend breadth, one
+               box per category, linking to Actionable. Center column, below
+               the graphs panel (#dashPortfolioMixSection) and above Hedgeye
+               -- user: "move the tiles to center column and display them
+               below the graphs panel and above Hedgeye panel." (Previously
+               tried in the left column below Regime, before that.) -->
+          <section class="cockpit-band" id="quadRotationPanel" style="display:none;">
+            <div id="quadRotationPanelBody">Loading…</div>
+          </section>
+
           <!-- 2026-08-10 -- Hedgeye Early Look/Macro Commentary/Top 3 Things,
                moved here from the Actionable screen's hedgeye_panel.js
                panel -- user: "move HE earylook, macro commentory, hedgeye
@@ -806,6 +816,7 @@
        already does (web/actionable.html loads this same script for that).
        User: "add same click actions on the top graphs also." -->
   <script src="/static/chart_modal.js"></script>
+  <script src="/static/quad_rotation_panel.js?v=20260831a" defer></script>
   <!-- 2026-08-10 -- renders Mkt Situation/INFL/Early Look/Macro Commentary/
        Top 3 Things into #hedgeyeDashPanel above (see cat-col). Same script
        Actionable loads; it targets whichever of #hedgeyePanel/

@@ -527,7 +527,7 @@ _YF_SECTOR_MAP = {
     "consumer cyclical": "Consumer Discretionary",
     "consumer defensive": "Consumer Staples",
     "financial services": "Financials",
-    "healthcare": "Health care",
+    "healthcare": "Health Care",
     "technology": "Information Technology",
     "communication services": "Communication Services",
     "basic materials": "Materials",

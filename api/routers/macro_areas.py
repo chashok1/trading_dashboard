@@ -255,6 +255,18 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
         """), {"d": anchor}).mappings().all()
         q_map = {r["tos_symbol"]: dict(r) for r in q_rows}
 
+        # 2026-08-31 -- final_action (post-suppression, NOT consolidated_action
+        # -- see the MSFT investigation this session: consolidated_action is
+        # the raw pre-suppression source label and can show a stale/wrong
+        # call like ADD on an already-overweight position) for the hover
+        # tooltip's action line. Most rail symbols (VIX, /GC, currencies,
+        # indices) have no drv_actionable row at all -- left as a graceful
+        # gap in the tooltip, not a placeholder dash.
+        act_rows = s.execute(text("""
+            SELECT tos_symbol, final_action FROM drv_actionable WHERE as_of_date = :d
+        """), {"d": anchor}).mappings().all()
+        act_map = {r["tos_symbol"]: r["final_action"] for r in act_rows}
+
         # OHLC (candle) at the same anchor date, and vol thresholds — shared
         # helpers, same source query /api/rr-bar uses (api/_helpers.py
         # ::load_quote_ohlc / load_vol_thresholds), factored out so this
@@ -469,6 +481,8 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
             # Dual: technicals available
             trade_sig = None
             trend_sig = None
+            trade_val = None
+            trend_val = None
             if role == "dual" and tech:
                 trade_val = _maybe_float(tech.get("a_trade_value"))
                 trend_val = _maybe_float(tech.get("a_trend_value"))
@@ -505,6 +519,9 @@ def get_macro_areas(date: Optional[str] = Query(None)) -> dict:
                 "rr_pos": _pct(rr_pos_val),
                 "trade": trade_sig,
                 "trend": trend_sig,
+                "trade_val": trade_val,
+                "trend_val": trend_val,
+                "action": act_map.get(sym),
                 "is_hot": rr_pos_val is not None and rr_pos_val >= hot_pct,
                 "is_cold": rr_pos_val is not None and rr_pos_val <= cold_pct,
                 "wow_pct": wow_pct,

@@ -2162,6 +2162,11 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
    browser attached to measure the real rendered .msr-row height. */
 .dash-macro-rail { max-height: 150px; overflow-y: auto; }
 #macroRailTop9.dash-macro-rail { max-height: 170px; }
+/* 2026-09-01 -- USD & Currency shrunk 2 rows (~19px/row incl. border,
+   .msr-row) off the 150px default -- user: "reduce the height by two
+   rows (about 25%)". 2*19=38px cut, 150-38=112 (25.3%, matches "about
+   25%" closely). */
+#macroRailUsd.dash-macro-rail { max-height: 112px; }
 /* 2026-08-23 -- Sectors/Commodities/Tech & ETFs grown to fit their full
    content instead of capping + internally scrolling like
    Volatility/Major Markets above -- user: "increase height so i don't see

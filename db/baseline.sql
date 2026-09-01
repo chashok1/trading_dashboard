@@ -7767,6 +7767,14 @@ CREATE TABLE IF NOT EXISTS drv_category_perf (
     flows_confidence text,              -- 'green' | 'amber' | 'suspect'
     quad_stance      text,              -- BULLISH | NEUTRAL | BEARISH
     verdict          text,
+    -- 2026-08-31: independent quad-driven signal, decoupled from `verdict`.
+    -- `verdict` requires a resolvable target/band (ref_asset_allocation) and
+    -- returns NULL without one -- quad_opportunity fires on quad_stance
+    -- alone (TRUE when BULLISH and verdict isn't already ADD/ROTATE/PRESS),
+    -- so a favorable regime still surfaces even when the account-scope
+    -- target math is stale/unresolved for a category. See
+    -- etl/derive_category_perf.py::_verdict / _compute_category_rows.
+    quad_opportunity boolean,
     detail           jsonb,
     derived_at       timestamp NOT NULL DEFAULT now(),
     PRIMARY KEY (as_of_date, axis, category)
@@ -7782,6 +7790,7 @@ ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS twr_ytd numeric
 ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS bench_mtd numeric;
 ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS bench_qtd numeric;
 ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS bench_ytd numeric;
+ALTER TABLE IF EXISTS drv_category_perf ADD COLUMN IF NOT EXISTS quad_opportunity boolean;
 
 -- Phase 4.1: ToS market internals (INT tab) — $ADVN/$DECN/$UVOL/$DVOL/$TRIN.
 -- Deliberately NOT part of drv_symbols/hist_td universe (see CLAUDE.md

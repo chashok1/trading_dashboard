@@ -385,3 +385,17 @@ UPDATE ref_macro_area SET sort_order = 105 WHERE area_key = 'commodities_credit'
 UPDATE ref_macro_area SET sort_order = 104 WHERE area_key = 'commodities_credit' AND member_symbol = 'PALL';
 UPDATE ref_macro_area SET sort_order = 103 WHERE area_key = 'commodities_credit' AND member_symbol = 'PPLT';
 UPDATE ref_macro_area SET sort_order = 102 WHERE area_key = 'commodities_credit' AND member_symbol = 'URA';
+
+-- 2026-08-31: FX ETF proxies added to USD & Currency (usd_currency),
+-- role='dual' -- same ETF-proxy pattern as Commodities' GLD/SLV/PPLT/etc.
+-- The 4 raw futures rows (/6B /6C /6E /6J) stay (rr_only, no Trade/Trend);
+-- these are the ETF-tradable equivalents of the same 4 currencies plus YCS
+-- (short-Yen, no direct futures counterpart already listed). User: "how
+-- about displaying 5 FX symbols in USD & Currency."
+INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
+  ('usd_currency', 'USD & Currency', 'FXE', 'dual', 70),   -- Euro
+  ('usd_currency', 'USD & Currency', 'FXB', 'dual', 80),   -- British Pound
+  ('usd_currency', 'USD & Currency', 'FXC', 'dual', 90),   -- Canadian Dollar
+  ('usd_currency', 'USD & Currency', 'FXY', 'dual', 100),  -- Japanese Yen
+  ('usd_currency', 'USD & Currency', 'YCS', 'dual', 110)   -- short Yen
+ON CONFLICT (area_key, member_symbol) DO NOTHING;

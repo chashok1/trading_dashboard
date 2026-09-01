@@ -709,6 +709,12 @@ def _build_macro_engine(d):
         _qp_cur_pcts_tmp,
         _quad_col(_qp_cur.quad if _qp_cur else None),
     )
+    # Monthly display label -- same argmax-of-pcts inference (monthly `quad`
+    # is NULL in the DB as of 2026-08-31, so this is now the only source).
+    _mp_cur_label = _effective_quad_col(
+        _mp_cur.pcts if _mp_cur else None,
+        _quad_col(_mp_cur.quad if _mp_cur else None),
+    )
 
     def _col_to_quad_name(col: str | None) -> str | None:
         """Convert 'quadN' → 'Quad N' for display."""
@@ -947,7 +953,7 @@ def _build_macro_engine(d):
             turn = "↗" if S_m_nxt > S_m_cur else "↘"
             if _mp_nxt:
                 nxt_conf = int(max(_mp_nxt.pcts.values())) if _mp_nxt.pcts else 100
-                turn_extra = f" {_mp_nxt.quad} {nxt_conf}%"
+                turn_extra = f" {_col_to_quad_name(m_nxt_eff)} {nxt_conf}%"
         # Quarterly alert near quarter-end (discrete, separate from M)
         elif q_nxt_eff and _qp_cur and _qp_cur.dtb <= _ramp_qtr_begin:
             q_nxt_stance = float(_qtr_top.get(q_nxt_eff, 0))
@@ -1063,7 +1069,7 @@ def _build_macro_engine(d):
             "macronet": macro_net,
         }
 
-    return _compute_macro, (_mp_cur.quad if _mp_cur else None), (_qp_cur.quad if _qp_cur else None)
+    return _compute_macro, _col_to_quad_name(_mp_cur_label), _col_to_quad_name(_qp_cur_label)
 
 
 @router.get("/api/actionable")
@@ -2368,6 +2374,74 @@ def get_actionable_data_status():
             WHERE UPPER(file_type) IN ('TOSL', 'YFILES')
         """)).scalar()
     return {"last_at": last_at.isoformat() if last_at else None}
+
+
+@router.get("/api/actionable/quad-rotation")
+def get_quad_rotation(date: Optional[str] = Query(None)):
+    """Sector + asset_class + style rotation view for the Quad Rotation
+    panel: per category, the quad-regime direction and live breadth -- how
+    many tracked symbols in the category are trading above BOTH their Trade
+    line and Trend line right now (same two lines the Rule Flow crossover
+    formulas use). A bullish quad with low breadth means the regime call
+    hasn't been confirmed by price yet.
+
+    No target/verdict fields -- both sector's equal-weight (100/11 GICS +/-
+    3pp) and asset_class's ref_asset_allocation-based target were dropped as
+    invalid (2026-08-31, see etl/derive_category_perf.py); style never had
+    one. quad_stance/breadth are the only category-level signals left, so
+    that's all this endpoint returns now. Per-symbol drill-down (used by an
+    earlier version of the panel) was dropped too -- the panel now links
+    each category box straight to Actionable instead (?filter_sector=/
+    ?filter_asset_class=/?filter_style=).
+
+    Style membership isn't a plain drv_ma column (a symbol can carry several
+    style tags at once, see drv_macro_score.style_stances JSONB array) --
+    its breadth query unnests that instead of the simple column-equality
+    join sector/asset_class use."""
+    d = _resolve_date(date)
+    with session_scope() as s:
+        cp_rows = s.execute(text("""
+            SELECT axis, category, quad_stance
+            FROM drv_category_perf
+            WHERE as_of_date = :d AND axis IN ('sector','asset_class','style')
+              AND category NOT IN ('Unmapped','Non-Equity (excluded)','Cash','USD')
+            ORDER BY axis, category
+        """), {"d": d}).mappings().all()
+
+        out = []
+        for r in cp_rows:
+            row = dict(r)
+            axis = row["axis"]
+
+            if axis == "style":
+                from_where = """
+                    FROM drv_macro_score ms
+                    JOIN drv_technicals t
+                      ON t.tos_symbol = ms.tos_symbol AND t.as_of_date = ms.as_of_date
+                    CROSS JOIN LATERAL jsonb_array_elements(
+                        COALESCE(ms.style_stances, '[]'::jsonb)) elem
+                    WHERE ms.as_of_date = :d AND elem->>'label' = :cat
+                """
+            else:
+                col = "sector" if axis == "sector" else "asset_class"
+                from_where = f"""
+                    FROM drv_ma m
+                    JOIN drv_technicals t
+                      ON t.tos_symbol = m.tos_symbol AND t.as_of_date = m.as_of_date
+                    WHERE m.as_of_date = :d AND m.{col} = :cat
+                """
+
+            b = s.execute(text(f"""
+                SELECT COUNT(*) AS n_tracked,
+                       COUNT(*) FILTER (WHERE t.last_price > t.a_trade_value
+                                          AND t.last_price > t.a_trend_value) AS n_above
+                {from_where}
+            """), {"d": d, "cat": row["category"]}).mappings().first()
+            row["n_tracked"] = int(b["n_tracked"] or 0)
+            row["n_above"] = int(b["n_above"] or 0)
+            out.append(row)
+
+    return {"date": d.isoformat(), "rows": out}
 
 
 @router.get("/api/actionable/comparison")

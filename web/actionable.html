@@ -1344,11 +1344,62 @@
             <option value="split_tech_bear">Split Tech Bear</option>
             <option value="neutral">Neutral</option>
           </select>
+          <!-- 2026-08-31 -- Sector/Asset class/Style dropdowns, ALL possible
+               values (not just held ones) -- the chips below only ever list
+               categories you currently hold, so a not-held category (e.g.
+               something you land on via the Dashboard's Quad Rotation panel
+               deep link) had no manual way to pick it from this screen.
+               Same <select> pattern as Agree below. User: "need all types
+               of filters, add them if they are missing (assets, sectors,
+               style)." Options match the canonical lists drv_category_perf/
+               _ASSET_CLASS_ALIAS (web/portfolio_mix.js) already use, so a
+               selection here always matches a real category. -->
+          <select id="sectorFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:130px;" title="Filter by sector (all sectors, not just held)">
+            <option value="">All Sectors</option>
+            <option>Communication Services</option>
+            <option>Consumer Discretionary</option>
+            <option>Consumer Staples</option>
+            <option>Country ETF</option>
+            <option>Energy</option>
+            <option>Financials</option>
+            <option>Health Care</option>
+            <option>Industrials</option>
+            <option>Information Technology</option>
+            <option>Materials</option>
+            <option>Real Estate</option>
+            <option>Utilities</option>
+          </select>
+          <select id="assetClassFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:110px;" title="Filter by asset class (all classes, not just held)">
+            <option value="">All Asset Classes</option>
+            <option>Equities</option>
+            <option>Fixed Income</option>
+            <option>Commodities</option>
+            <option>Gold</option>
+            <option>Crypto</option>
+            <option>FX</option>
+            <option>Cash</option>
+          </select>
+          <select id="styleFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:110px;" title="Filter by style (all styles, not just held)">
+            <option value="">All Styles</option>
+            <option>High Beta</option>
+            <option>Low Beta</option>
+            <option>Defensives</option>
+            <option>Cyclical</option>
+            <option>Value</option>
+            <option>Secular</option>
+            <option>Dividend</option>
+            <option>Momentum</option>
+            <option>Small Caps</option>
+            <option>Mid Caps</option>
+          </select>
           <!-- 2026-08-10 -- relocated from the removed #macroBand (Regime
                panel), unchanged otherwise -- still populated by
                renderAssetClassSummary()/renderSectorSummary()/
                renderStyleSummary() in actionable.js and still double as
-               click-to-filter chips (see those functions' own comments). -->
+               click-to-filter chips (see those functions' own comments).
+               Kept alongside the dropdowns above -- a quick $-amount
+               shortcut for what you actually hold, dropdowns cover
+               everything else. -->
           <div class="act-summary" id="assetClassSummary" style="padding-left:8px; border-left:1px solid var(--border,#e0e0e0);"></div>
           <div class="act-summary" id="sectorSummary" style="padding-left:8px; border-left:1px solid var(--border,#e0e0e0);"></div>
           <div class="act-summary" id="styleSummary" style="padding-left:8px; border-left:1px solid var(--border,#e0e0e0);"></div>

@@ -1840,6 +1840,29 @@ async function loadActionable(opts) {
       state.allRows.map(r => [r.tos_symbol, r.monthly_score ?? null])
     );
     if (window._refreshTapeGlyphs) window._refreshTapeGlyphs();
+    // 2026-08-31 -- one-time deep-link filter from the Dashboard's Quad
+    // Rotation panel ("see all N in Actionable" link): ?filter_sector=/
+    // ?filter_asset_class=/?filter_style= pre-applies the same client
+    // filter the sector/asset-class/style summary chips already set via
+    // state.filters + applyClientFilter() (see renderSectorSummary() etc.
+    // above) -- reuses that existing mechanism rather than a new one.
+    // Guarded to run only once so a manual Refresh/date-change afterward
+    // doesn't keep re-forcing the filter back on if the user cleared it.
+    if (!window._qrDeepLinkApplied) {
+      window._qrDeepLinkApplied = true;
+      const qp = new URLSearchParams(window.location.search);
+      const fSector = qp.get('filter_sector');
+      const fAssetClass = qp.get('filter_asset_class');
+      const fStyle = qp.get('filter_style');
+      if (fSector) state.filters.sector = fSector;
+      if (fAssetClass) state.filters.asset_class = fAssetClass;
+      if (fStyle) state.filters.style = fStyle;
+      // init()'s own syncFilterUi() call already ran (before this filter
+      // state existed) -- re-sync now so the new sector/asset-class/style
+      // <select> dropdowns visually reflect the deep-linked value too, not
+      // just the grid.
+      if (fSector || fAssetClass || fStyle) syncFilterUi();
+    }
     applyClientFilter(preserveState ? { preserveSelection: true } : undefined);
     loadSidePanels();
     loadQuadOutlook();
@@ -2582,6 +2605,11 @@ function syncFilterUi() {
   const sym = $('symbolSearch');        if (sym) sym.value = f.symbol_search || '';
   const bp = $('bullProbFilter');       if (bp) bp.value = f.bull_prob_min || 0;
   const ag = $('agreementFilter');      if (ag) ag.value = f.agreement_class || '';
+  // 2026-08-31 -- Sector/Asset class/Style dropdowns (all values, not just
+  // held) -- same sync-on-load/refresh pattern as Agree above.
+  const sf = $('sectorFilter');         if (sf) sf.value = f.sector || '';
+  const acf = $('assetClassFilter');    if (acf) acf.value = f.asset_class || '';
+  const styf = $('styleFilter');        if (styf) styf.value = f.style || '';
   // conviction segmented
   document.querySelectorAll('#convictionCtrl button').forEach(b => {
     b.classList.toggle('seg-active', b.dataset.conv === f.conviction);
@@ -2617,9 +2645,12 @@ function clearAllFilters() {
   f.agreement_class = '';
   f.symbols_multi = [];
   f.etfchg_only = false; f.iichg_only = false;
-  f.sector = ''; f.style = '';
+  f.sector = ''; f.style = ''; f.asset_class = '';
   const bpEl = $('bullProbFilter'); if (bpEl) bpEl.value = '0';
   const agEl = $('agreementFilter'); if (agEl) agEl.value = '';
+  const sfEl = $('sectorFilter'); if (sfEl) sfEl.value = '';
+  const acfEl = $('assetClassFilter'); if (acfEl) acfEl.value = '';
+  const styfEl = $('styleFilter'); if (styfEl) styfEl.value = '';
   _syncTriggerSourcePills();
   // Reset sort to default actionability order (updateSortIndicators called in renderGrid)
   state.sort = { key: '_priority', dir: -1, type: 'num' };
@@ -7775,6 +7806,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (agreementFilterEl) {
     agreementFilterEl.addEventListener('change', (e) => {
       state.filters.agreement_class = e.target.value || '';
+      applyClientFilter();
+    });
+  }
+
+  // 2026-08-31 -- Sector/Asset class/Style dropdowns (all values, not just
+  // held) -- same change-listener pattern as Agree above.
+  const sectorFilterEl = $('sectorFilter');
+  if (sectorFilterEl) {
+    sectorFilterEl.addEventListener('change', (e) => {
+      state.filters.sector = e.target.value || '';
+      applyClientFilter();
+    });
+  }
+  const assetClassFilterEl = $('assetClassFilter');
+  if (assetClassFilterEl) {
+    assetClassFilterEl.addEventListener('change', (e) => {
+      state.filters.asset_class = e.target.value || '';
+      applyClientFilter();
+    });
+  }
+  const styleFilterEl = $('styleFilter');
+  if (styleFilterEl) {
+    styleFilterEl.addEventListener('change', (e) => {
+      state.filters.style = e.target.value || '';
       applyClientFilter();
     });
   }

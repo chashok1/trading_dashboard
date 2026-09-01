@@ -156,6 +156,19 @@
       parts.push((m.pct_change > 0 ? '+' : '') + Number(m.pct_change).toFixed(2) + '%');
     }
     if (m.outlook) parts.push(m.outlook);
+    // 2026-08-31 -- raw Trade/Trend $ values (the row already shows their
+    // direction as Td/Tn arrows -- see durArrow() -- this adds the actual
+    // numbers) + Actionable's final_action (post-suppression -- NOT
+    // consolidated_action, see the MSFT investigation this session) where
+    // one exists. User: "for hover/popovers can i see this data (Trade/
+    // Trend values and action)?"
+    if (m.trade_val !== null && m.trade_val !== undefined) {
+      parts.push('Td ' + _fmtPrice(m.trade_val));
+    }
+    if (m.trend_val !== null && m.trend_val !== undefined) {
+      parts.push('Tn ' + _fmtPrice(m.trend_val));
+    }
+    if (m.action) parts.push(m.action);
     return parts.join(' — ');
   }
 

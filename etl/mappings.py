@@ -24,6 +24,34 @@ from etl.casters import (
 ColMap = list[tuple[str, str, Optional[Callable]]]
 
 
+# 2026-08-31: canonical GICS sector casing -- single source of truth for the
+# ref_sector.equity_sector write boundary (Sctr tab -> ref_sector, the ONLY
+# other writer being etl/yahoo_fetch.py's own hardcoded _YF_SECTOR_MAP, fixed
+# separately there). Everything downstream (drv_technicals.sector, drv_ma,
+# drv_category_perf, drv_macro_score, api/routers/macro_areas.py, etc.) reads
+# equity_sector as a straight passthrough with no normalization of its own --
+# several of those files carry their own ad-hoc case-alias dict as a
+# workaround (e.g. derive_category_perf.py's _SECTOR_CANON) because the
+# underlying data drifted ("Health care" vs "Health Care", live in ref_sector
+# for 73 tickers, sourced from the Sctr tab's own inconsistent casing).
+# Normalizing here, at the one place a Sctr-tab row becomes a DB row, is the
+# permanent fix -- those downstream dicts become harmless dead-code safety
+# nets instead of the only thing preventing the bug. User: "keep running into
+# it all the time" -- expand this map if another sector name drifts.
+_SECTOR_CANON = {
+    "health care": "Health Care",
+    "healthcare": "Health Care",
+}
+
+
+def to_equity_sector(v) -> Optional[str]:
+    """to_text, then canonicalize known GICS sector-name case variants."""
+    s = to_text(v)
+    if s is None:
+        return None
+    return _SECTOR_CANON.get(s.strip().lower(), s)
+
+
 # =============================================================================
 # REFERENCE TABLES (load once, refresh full table on each run)
 # =============================================================================
@@ -46,7 +74,7 @@ REF_MAPS = {
             ("Vehicle Type",  "vehicle_type",    to_text),
             ("Asset Class",   "asset_class",     to_text),
             ("Sub-Asset Class","sub_asset_class",to_text),
-            ("Equity Sector", "equity_sector",   to_text),
+            ("Equity Sector", "equity_sector",   to_equity_sector),
             ("Growth",        "growth",          to_text),
             ("Valuation",     "valuation",       to_text),
             ("Price Action",  "price_action",    to_text),

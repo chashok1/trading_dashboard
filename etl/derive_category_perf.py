@@ -1004,13 +1004,6 @@ def _compute_category_rows(session: Session, as_of_date: date, accounts: Optiona
         "SELECT risk_budget FROM drv_market_stat WHERE as_of_date = :d"
     ), {"d": as_of_date}).scalar()
 
-    aa_rows = session.execute(text(
-        "SELECT category, min_pct, max_pct, min_dollar, max_dollar FROM ref_asset_allocation"
-    )).mappings().all()
-    aa_map = {r["category"]: r for r in aa_rows}
-    _AC_TO_AA = {"Equities": "Equities", "Fixed Income": "Fixed Income",
-                 "Commodities": "Commodities", "Cash": "Cash", "FX": "Foreign Exchange"}
-
     rows_out = []
     for axis, etf_map, stance_map in (
         ("sector", _SECTOR_ETF, sector_stance_map),
@@ -1134,33 +1127,56 @@ def _compute_category_rows(session: Session, as_of_date: date, accounts: Optiona
                                    "any other category (reversed 2026-08-11 from an earlier version "
                                    "that dropped it from the API response entirely)")
             else:
-                aa_key = _AC_TO_AA.get(category, category) if axis == "asset_class" else None
-                aa_row = aa_map.get(aa_key) if aa_key else None
-                if aa_row and aa_row["min_dollar"] is not None and aa_row["max_dollar"] is not None:
-                    min_d, max_d = float(aa_row["min_dollar"]), float(aa_row["max_dollar"])
-                    target_min = (min_d / total_value * 100.0) if total_value else None
-                    target_max = (max_d / total_value * 100.0) if total_value else None
-                    if mv < min_d:
-                        band = "under"
-                    elif mv > max_d:
-                        band = "over"
-                    else:
-                        band = "at"
-                    detail["target_source"] = "ref_asset_allocation (dollar band)"
-                elif axis == "sector":
-                    mid = 100.0 / 11.0
-                    target_min, target_max = mid - 3.0, mid + 3.0
-                    if weight_pct is not None:
-                        band = "under" if weight_pct < target_min else ("over" if weight_pct > target_max else "at")
-                    detail["target_source"] = "equal-weight (100/11 GICS sectors) +/- 3pp -- no per-sector benchmark target exists in the schema"
-                else:
-                    detail["note"] = "no allocation target defined for this category"
+                # 2026-08-31: asset_class dropped from this target/band/verdict
+                # machinery entirely -- ref_asset_allocation's min_dollar/
+                # max_dollar is a PER-POSITION sizing rule (already correctly
+                # applied per-symbol in etl/derive_actionable.py: max_dollar
+                # is a per-holding ceiling, min_dollar is the suggested $ for
+                # a fresh ADD), not a category-aggregate target. Summing every
+                # symbol in a category and comparing that sum against a
+                # per-position band was never a valid use of the table --
+                # user: "I never had total amount based on total portfolio.
+                # Those amounts are at each stock/ETF level." Removed rather
+                # than rescaled. See quad_opportunity (below) for the
+                # category-level signal that replaces it for asset_class.
+                #
+                # 2026-08-31 follow-up: sector's equal-weight (100/11 GICS
+                # sectors +/- 3pp) target dropped too, same reasoning --
+                # confirmed with the user it "doesn't make sense": it was a
+                # bare code fallback ("no per-sector benchmark target exists
+                # in the schema", per the removed comment here), not a real
+                # benchmark -- the real market isn't sector-equal-weighted
+                # (Information Technology is naturally much bigger than
+                # Utilities), so a sector that's just large in reality would
+                # permanently read "over target" here regardless of any
+                # actual view. User explicitly chose "strip it" over "wire in
+                # a real market-cap benchmark." quad_opportunity (below) is
+                # now sector's only category-level signal too, same as
+                # asset_class/style.
+                detail["note"] = "no allocation target defined for this category"
 
             verdict, note = (_verdict(quad_stance, band, twr, bench, int(risk_budget) if risk_budget is not None else None)
                             if axis != "style" else (None, "overlapping tags -- not an allocation"))
             if note:
                 detail["verdict_note"] = note
             detail["windows"] = window_detail
+
+            # 2026-08-31: quad_opportunity -- independent of `verdict`, which
+            # returns None whenever the target/band can't be resolved (e.g.
+            # ref_asset_allocation's dollar bands are scoped to one account
+            # while weight_pct here is whole-portfolio -- see conversation).
+            # Fires on quad_stance alone so a bullish regime still surfaces
+            # even when the amount-target math is unusable/stale for this
+            # category. Explicit allowlist (not "not in ADD/ROTATE/PRESS"):
+            # verdict=None means no usable target at all -- the exact gap
+            # this is for; verdict=HOLD covers both "at target" and a
+            # risk_budget-capped ADD/PRESS, both worth surfacing. Every
+            # other verdict is a deliberate call already covering this
+            # (ADD/ROTATE/PRESS already say "add"; HOLD_NO_ADD explicitly
+            # means "over target, bullish, don't add more" -- flagging that
+            # as an opportunity would contradict its own verdict).
+            quad_opportunity = (axis != "style" and quad_stance == "BULLISH"
+                                 and verdict in (None, "HOLD"))
 
             rows_out.append({
                 "as_of_date": as_of_date, "axis": axis, "category": category,
@@ -1171,6 +1187,7 @@ def _compute_category_rows(session: Session, as_of_date: date, accounts: Optiona
                 "bench_symbol": _bench_symbol_label(etf_map.get(category)),
                 "flows_confidence": flows_confidence,
                 "quad_stance": quad_stance, "verdict": verdict,
+                "quad_opportunity": quad_opportunity,
                 "detail": detail,
             })
 
