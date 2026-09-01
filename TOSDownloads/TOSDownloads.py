@@ -1866,6 +1866,29 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
         while True:
             time.sleep(5)
 
+            # 2026-09-01: LoadingSymbols.txt as an ADDITIONAL "known resolved"
+            # signal, not a replacement for the row-text check below. A
+            # first attempt made "stuck" depend ONLY on this file and broke
+            # manual fixes -- once main() exits, nothing ever rewrites this
+            # file in response to a user editing a fragment CSV/Excel by
+            # hand, so that edit was invisible to the stuck decision even
+            # though the row itself now had correct data. The row-text check
+            # (_row_has_loading(row), re-evaluated every poll since it reads
+            # the file fresh) is what catches a manual fix -- keep it. What
+            # it can't catch is a symbol WL99 already resolved under a row
+            # the merge loop never matches back to the ORIGINAL stuck row
+            # (different file, possibly different exact symbol text) -- main()
+            # tracked that resolution correctly and wrote it here, so use it
+            # as a second way to clear the stuck flag, on top of the row
+            # check, not instead of it. A symbol only still counts as stuck
+            # if BOTH say so.
+            try:
+                with open(loading_symbols_file, 'r') as _lf:
+                    loading_symbols_set = {normalize_for_reimport(line.strip())
+                                            for line in _lf if line.strip()}
+            except (FileNotFoundError, IOError):
+                loading_symbols_set = set()
+
             for filename in os.listdir(input_dir):
                 filepath = os.path.join(input_dir, filename)
                 if not filename.endswith('.csv'):
@@ -1922,13 +1945,30 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                             #if symbol in ('NFLX'):
                             #    print (f"symbol {symbol}")
 
-                            # if no symbol in the output list or word loading in outputlist or word loading not found in the source row
-                            if (not symbol in output_list.keys()) or _row_has_loading(output_list[symbol]) or ((filename!=export_file_to_update) and (not _row_has_loading(row))):
+                            # 2026-09-01: a symbol counts as stuck only if
+                            # BOTH the row's own text says "Loading" AND
+                            # LoadingSymbols.txt still lists it -- either
+                            # signal alone clearing it is enough to treat it
+                            # as resolved. Covers both directions: a manual
+                            # edit clears the row-text signal even though
+                            # LoadingSymbols.txt hasn't caught up yet; WL99
+                            # resolving a symbol under a row this loop never
+                            # matches back to the original clears the
+                            # LoadingSymbols.txt signal even though the
+                            # original row's stale text still says Loading.
+                            in_loading_set = symbol in loading_symbols_set
+                            existing_is_stuck = (symbol in output_list
+                                                  and _row_has_loading(output_list[symbol])
+                                                  and in_loading_set)
+                            this_row_is_stuck = _row_has_loading(row) and in_loading_set
+
+                            # if no symbol in the output list or the existing entry is still stuck or word loading not found in the source row
+                            if (not symbol in output_list.keys()) or existing_is_stuck or ((filename!=export_file_to_update) and (not this_row_is_stuck)):
                                 output_list[symbol] = row
                                 dataexists = True
 
                                 # Check for 'loading' and display the information
-                                if _row_has_loading(row):
+                                if this_row_is_stuck:
                                     #summary_messages[symbol] = f"{filename} - " + ', '.join(row)
                                     summary_messages[symbol] = f"{filename} - " + symbol
                                 elif symbol in summary_messages:
@@ -1994,7 +2034,15 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                     write_filenames_to_file(extracted_list, incomplete_files_list_path)
                     sys.exit(2)
 
-            if any(_row_has_loading(row) for row in output_list.values()):
+            # 2026-09-01: was a raw re-scan of output_list's row text --
+            # now inconsistent with the hybrid stuck rule above (a symbol
+            # the loop just resolved via loading_symbols_set could still
+            # have "Loading" text sitting in its stored row, if that row
+            # came from a file whose own reading never got refreshed).
+            # summary_messages already IS "every symbol currently stuck" by
+            # that same rule -- check it directly instead of re-deriving a
+            # second, now-inconsistent answer from raw row text.
+            if summary_messages:
                 continue
 
             # Exit condition check: Verify if the final file has been processed
