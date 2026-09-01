@@ -2326,7 +2326,6 @@ function renderSummary() {
   }
   const wrap = $('summaryChips');
   wrap.innerHTML = '';
-  const order = ['REMOVE', 'OVER_MAX', 'REDUCE', 'INCREASE', 'ADD', 'HOLD', 'NONE'];
   const all = document.createElement('div');
   all.className = 'act-chip' + (state.filters.action === '' ? ' active' : '');
   all.innerHTML = `<span>ALL</span><span class="count">${state.baseRows.length}</span>`;
@@ -2337,7 +2336,12 @@ function renderSummary() {
   wrap.appendChild(all);
   // S / B group chips — aggregate REMOVE+REDUCE / INCREASE+ADD so the whole
   // sell or buy side can be isolated in one click without picking a single
-  // granular bucket.
+  // granular bucket. The individual REMOVE/OVER_MAX/REDUCE/INCREASE/ADD/
+  // HOLD/NONE chips (SA/OM/SR/BM/BA/H/N) were dropped 2026-09-01 — user:
+  // "keep chips All, S, B, Stop and remove other chips" — down to just the
+  // four requested. Their filter values (state.filters.action = 'REMOVE'
+  // etc.) and matchesBaseFilters/_chipAction handling are untouched, only
+  // no chip sets them anymore.
   const groupChip = (key, label, title) => {
     const n = _ACTION_GROUPS[key].reduce((sum, a) => sum + (counts[a] || 0), 0);
     const chip = document.createElement('div');
@@ -2352,22 +2356,7 @@ function renderSummary() {
     return chip;
   };
   wrap.appendChild(groupChip('SELL', 'S', 'All sells — SELL ALL + SELL SOME (REMOVE + REDUCE)'));
-  for (const a of order) {
-    const chip = document.createElement('div');
-    const disp = actionDisplay(a);
-    chip.className = 'act-chip act-chip-' + a.toLowerCase()
-                   + (state.filters.action === a ? ' active' : '');
-    chip.title = disp.label || a;
-    chip.innerHTML = `<span>${actionText(disp)}</span><span class="count">${counts[a] || 0}</span>`;
-    chip.onclick = () => {
-      state.filters.action = (state.filters.action === a) ? '' : a;
-      applyClientFilter();
-    };
-    wrap.appendChild(chip);
-    if (a === 'REDUCE') {
-      wrap.appendChild(groupChip('BUY', 'B', 'All buys — BUY MORE + BUY TO MIN (INCREASE + ADD)'));
-    }
-  }
+  wrap.appendChild(groupChip('BUY', 'B', 'All buys — BUY MORE + BUY TO MIN (INCREASE + ADD)'));
   // TASK_119: STOP chip — orthogonal to the action buckets above (a REDUCE
   // row can also be stop_breached), so it toggles independently rather than
   // joining the mutually-exclusive action-chip set.

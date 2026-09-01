@@ -1213,6 +1213,54 @@
           <!-- Account filter -->
           <label style="font-size:11px; color:var(--text-2,#666); margin-right:2px; white-space:nowrap;">Acct</label>
           <select id="accountFilter" style="max-width:8em;"><option value="">All</option></select>
+          <!-- Sector/Asset class/Style dropdowns, ALL possible values (not just
+               held ones) -- moved onto the main bar 2026-09-01 (were in
+               #moreFiltersPanel below the More ▾ toggle since 2026-08-31; user
+               wanted them visible without expanding More). The held-$ chip
+               versions (assetClassSummary/sectorSummary/styleSummary) stay in
+               #moreFiltersPanel -- they need more room and are a supplementary
+               shortcut, not the primary way to pick a category. Options match
+               the canonical lists drv_category_perf/_ASSET_CLASS_ALIAS
+               (web/portfolio_mix.js) already use, so a selection here always
+               matches a real category. -->
+          <select id="sectorFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:130px;" title="Filter by sector (all sectors, not just held)">
+            <option value="">All Sectors</option>
+            <option>Communication Services</option>
+            <option>Consumer Discretionary</option>
+            <option>Consumer Staples</option>
+            <option>Country ETF</option>
+            <option>Energy</option>
+            <option>Financials</option>
+            <option>Health Care</option>
+            <option>Industrials</option>
+            <option>Information Technology</option>
+            <option>Materials</option>
+            <option>Real Estate</option>
+            <option>Utilities</option>
+          </select>
+          <select id="assetClassFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:110px;" title="Filter by asset class (all classes, not just held)">
+            <option value="">All Asset Classes</option>
+            <option>Equities</option>
+            <option>Fixed Income</option>
+            <option>Commodities</option>
+            <option>Gold</option>
+            <option>Crypto</option>
+            <option>FX</option>
+            <option>Cash</option>
+          </select>
+          <select id="styleFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:110px;" title="Filter by style (all styles, not just held)">
+            <option value="">All Styles</option>
+            <option>High Beta</option>
+            <option>Low Beta</option>
+            <option>Defensives</option>
+            <option>Cyclical</option>
+            <option>Value</option>
+            <option>Secular</option>
+            <option>Dividend</option>
+            <option>Momentum</option>
+            <option>Small Caps</option>
+            <option>Mid Caps</option>
+          </select>
           <!-- Symbol search -->
           <input type="text" id="symbolSearch" placeholder="Symbol…" style="padding:3px 8px; border:1px solid var(--border); border-radius:4px; font-size:11px; width:64px;">
           <!-- Multi-symbol filter -->
@@ -1344,54 +1392,9 @@
             <option value="split_tech_bear">Split Tech Bear</option>
             <option value="neutral">Neutral</option>
           </select>
-          <!-- 2026-08-31 -- Sector/Asset class/Style dropdowns, ALL possible
-               values (not just held ones) -- the chips below only ever list
-               categories you currently hold, so a not-held category (e.g.
-               something you land on via the Dashboard's Quad Rotation panel
-               deep link) had no manual way to pick it from this screen.
-               Same <select> pattern as Agree below. User: "need all types
-               of filters, add them if they are missing (assets, sectors,
-               style)." Options match the canonical lists drv_category_perf/
-               _ASSET_CLASS_ALIAS (web/portfolio_mix.js) already use, so a
-               selection here always matches a real category. -->
-          <select id="sectorFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:130px;" title="Filter by sector (all sectors, not just held)">
-            <option value="">All Sectors</option>
-            <option>Communication Services</option>
-            <option>Consumer Discretionary</option>
-            <option>Consumer Staples</option>
-            <option>Country ETF</option>
-            <option>Energy</option>
-            <option>Financials</option>
-            <option>Health Care</option>
-            <option>Industrials</option>
-            <option>Information Technology</option>
-            <option>Materials</option>
-            <option>Real Estate</option>
-            <option>Utilities</option>
-          </select>
-          <select id="assetClassFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:110px;" title="Filter by asset class (all classes, not just held)">
-            <option value="">All Asset Classes</option>
-            <option>Equities</option>
-            <option>Fixed Income</option>
-            <option>Commodities</option>
-            <option>Gold</option>
-            <option>Crypto</option>
-            <option>FX</option>
-            <option>Cash</option>
-          </select>
-          <select id="styleFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:110px;" title="Filter by style (all styles, not just held)">
-            <option value="">All Styles</option>
-            <option>High Beta</option>
-            <option>Low Beta</option>
-            <option>Defensives</option>
-            <option>Cyclical</option>
-            <option>Value</option>
-            <option>Secular</option>
-            <option>Dividend</option>
-            <option>Momentum</option>
-            <option>Small Caps</option>
-            <option>Mid Caps</option>
-          </select>
+          <!-- 2026-09-01 -- Sector/Asset class/Style dropdowns relocated to
+               the main bar (see #accountFilter's neighbor above) so they're
+               visible without expanding More ▾. -->
           <!-- 2026-08-10 -- relocated from the removed #macroBand (Regime
                panel), unchanged otherwise -- still populated by
                renderAssetClassSummary()/renderSectorSummary()/
@@ -1888,7 +1891,7 @@
        factor-scorecard cards already use, on click. User: "add same click
        actions on the top graphs also." -->
   <script src="/static/risk_gauge_modal.js?v=20260814c"></script>
-  <script src="/static/actionable.js?v=20260901b"></script>
+  <script src="/static/actionable.js?v=20260901c"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
   <!-- 2026-08-27 -- cache-busting ?v= added, matching web/index.html's own
