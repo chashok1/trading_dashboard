@@ -23,6 +23,7 @@ const DOM = {
     tableInfo: document.getElementById('tableInfo'),
     headerRow: document.getElementById('headerRow'),
     tableBody: document.getElementById('tableBody'),
+    refTable: document.getElementById('refTable'),
     pagination: document.getElementById('pagination'),
     pageInfo: document.getElementById('pageInfo'),
     prevBtn: document.getElementById('prevBtn'),
@@ -297,6 +298,18 @@ function renderTable() {
     }).join('');
     DOM.tableBody.innerHTML = rows;
 
+    // Lock column widths to their naturally-rendered size, then switch the
+    // table to table-layout:fixed. Without this, replacing a cell's text with
+    // an <input> (inline edit, or the "Copy Selected" new-row editor) makes
+    // the browser's auto table layout re-measure columns using the input's
+    // default intrinsic width, which is often wider than the real content —
+    // ballooning that column and shifting the whole table horizontally.
+    DOM.refTable.style.tableLayout = 'auto';
+    const headerCells = DOM.headerRow.querySelectorAll('th');
+    const measuredWidths = Array.from(headerCells).map(th => th.getBoundingClientRect().width);
+    headerCells.forEach((th, i) => { th.style.width = `${measuredWidths[i]}px`; });
+    DOM.refTable.style.tableLayout = 'fixed';
+
     // Add checkbox change listeners
     document.querySelectorAll('input[data-row-idx]').forEach(cb => {
         cb.addEventListener('change', (e) => {
@@ -460,9 +473,20 @@ async function copyAndInsertRow(rowIdx) {
     const firstInput = newTr.querySelector('input');
     if (firstInput) firstInput.focus();
 
-    // Add save/cancel buttons
+    // Save/Cancel buttons go in their own full-width row below the data row
+    // (colspan across every column) instead of stealing a data cell — the
+    // previous version removed the LAST column's <td> (input and all) to
+    // make room for the buttons, so that column's value could never be
+    // edited and silently kept the duplicated source value, which triggered
+    // a primary-key conflict on save whenever the last column was part of
+    // the key.
+    const actionTr = document.createElement('tr');
+    actionTr.className = 'new-row-editor';
+    actionTr.style.backgroundColor = '#fffacd';
     const btnCell = document.createElement('td');
-    btnCell.style.padding = '10px 6px';
+    btnCell.colSpan = state.columns.length + 1;
+    btnCell.style.padding = '8px 12px';
+    btnCell.style.borderTop = 'none';
     const saveBtn = document.createElement('button');
     saveBtn.textContent = 'Save';
     saveBtn.style.marginRight = '6px';
@@ -484,16 +508,12 @@ async function copyAndInsertRow(rowIdx) {
 
     btnCell.appendChild(saveBtn);
     btnCell.appendChild(cancelBtn);
-
-    // Re-insert the new row with buttons
-    newTr.removeChild(newTr.lastChild); // Remove last data cell
-    newTr.appendChild(btnCell); // Add buttons cell
-    for (let i = state.columns.length - 1; i >= 0; i--) {
-        newTr.insertBefore(newTr.children[i + 1], newTr.children[i + 1]);
-    }
+    actionTr.appendChild(btnCell);
+    newTr.parentNode.insertBefore(actionTr, newTr.nextSibling);
 
     cancelBtn.addEventListener('click', () => {
         newTr.remove();
+        actionTr.remove();
     });
 
     saveBtn.addEventListener('click', async () => {
@@ -527,6 +547,7 @@ async function copyAndInsertRow(rowIdx) {
             // tbody.innerHTML wipe — guard against any future re-render
             // change that might leave the editor row in place).
             newTr.remove();
+            actionTr.remove();
             showStatus('Row inserted successfully', 'success');
             state.currentPage = 0;
             await loadTable(state.currentTable);
@@ -575,7 +596,13 @@ function showStatus(message, type) {
     const msg = String(message || 'Unknown error');
     DOM.statusBar.textContent = msg;
     DOM.statusBar.className = `status-bar ${type}`;
-    DOM.statusBar.style.display = 'block';
+    // Pin the chip's height to the Apply Filter button's rendered height —
+    // a stable sibling in the same toolbar row — so showing/hiding this
+    // message can never grow the row and shift the table down.
+    if (DOM.filterApplyBtn) {
+        DOM.statusBar.style.height = `${DOM.filterApplyBtn.offsetHeight}px`;
+    }
+    DOM.statusBar.style.display = 'inline-flex';
     if (type === 'success') {
         setTimeout(() => { DOM.statusBar.style.display = 'none'; }, 3000);
     }
