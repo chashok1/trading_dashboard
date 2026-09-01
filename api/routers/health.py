@@ -786,6 +786,34 @@ def get_dashboard_quads(
               AND year = :y AND period_num = :qn
         """), {"y": nxt_qtr_y, "qn": nxt_qtr_n}).mappings().first()
 
+        # 2026-09-01, user request ("Add Global Quad to Quads panel... I
+        # added it to the ref table") -- same year/period_num lookup as the
+        # US quarterly rows above, just period_type='global'. Global quad
+        # periods only ever carry a single declared `quad` (no quad1..4_pct
+        # distribution) -- a separate, non-US macro-regime read, distinct
+        # from the US current_quarter/next_quarter above.
+        gq = s.execute(text("""
+            SELECT period_type, year, period_num, label, quad,
+                   quad1_pct, quad2_pct, quad3_pct, quad4_pct,
+                   make_date(year, (period_num-1)*3+1, 1) AS start_date,
+                   (make_date(year, period_num*3, 1)
+                    + INTERVAL '1 month' - INTERVAL '1 day')::date AS end_date
+            FROM ref_quad_periods
+            WHERE period_type = 'global'
+              AND year = :y AND period_num = :qn
+        """), {"y": cur_qtr_y, "qn": cur_qtr_n}).mappings().first()
+
+        gnq = s.execute(text("""
+            SELECT period_type, year, period_num, label, quad,
+                   quad1_pct, quad2_pct, quad3_pct, quad4_pct,
+                   make_date(year, (period_num-1)*3+1, 1) AS start_date,
+                   (make_date(year, period_num*3, 1)
+                    + INTERVAL '1 month' - INTERVAL '1 day')::date AS end_date
+            FROM ref_quad_periods
+            WHERE period_type = 'global'
+              AND year = :y AND period_num = :qn
+        """), {"y": nxt_qtr_y, "qn": nxt_qtr_n}).mappings().first()
+
         months = s.execute(text("""
             SELECT period_type, year, period_num, label, quad,
                    quad1_pct, quad2_pct, quad3_pct, quad4_pct,
@@ -802,6 +830,8 @@ def get_dashboard_quads(
         "as_of_date": d.isoformat(),
         "current_quarter": _row(cq),
         "next_quarter":    _row(nq),
+        "global_quarter":      _row(gq),
+        "global_next_quarter": _row(gnq),
         "months":          [dict(m) for m in months],
     }
 

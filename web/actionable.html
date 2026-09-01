@@ -6,7 +6,10 @@
   <title>Actionable Stocks — Trading Dashboard</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/static/styles.css?v=20260814r">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- Chart.js CDN tag REMOVED (2026-09-01) -- was loaded solely for the
+       Portfolio Mix panel's pie charts (web/portfolio_mix.js), gone along
+       with the rest of the side panel ("remove the side panel from
+       actionable screen altogether"). No other Chart.js usage on this page. -->
   <style>
     /* Actionable-only override — the shared .tv-sym-link underline (web/styles.css)
        reads as noisy in this dense grid; scoped to this page so Portfolio/Cockpit
@@ -1002,18 +1005,10 @@
     body.act-page #hedgeyePanel { flex-shrink: 0; }
     body.act-page .act-table-wrap { flex: 1; overflow-x: auto; overflow-y: auto; min-height: 0; }
 
-    /* Side panels */
-    .act-side { width: 260px; flex-shrink: 0; display: none; flex-direction: column; gap: 6px; overflow-y: auto; border-left: 1px solid var(--border, #e0e0e0); padding: 0 0 12px 0; }
-    .act-side.pinned { display: flex; position: fixed; top: 0; right: 0; bottom: 0; z-index: 100; background: var(--surface, #fafafa); box-shadow: -2px 0 8px rgba(0,0,0,0.07); }
-    body:has(#actSidePanel.pinned) .act-main-col { padding-right: 264px; }
-    body:has(#actSidePanel.pinned) .topbar { padding-right: 264px; }
-    body:has(#actSidePanel.pinned) #rrTape1 { padding-right: 264px; }
-    /* Collapsible panels */
-    .sp-panel .sp-hdr { cursor: pointer; user-select: none; display: flex; align-items: center; }
-    .sp-panel .sp-hdr:hover { background: rgba(0,0,0,0.04); }
-    .sp-chevron { margin-left: auto; font-size: 10px; line-height: 1; transition: transform 0.15s; flex-shrink: 0; padding-left: 4px; }
-    .sp-panel.sp-collapsed .sp-chevron { transform: rotate(-90deg); }
-    .sp-panel.sp-collapsed .sp-body { display: none; }
+    /* Side panels REMOVED (2026-09-01, user request: "remove the side
+       panel from actionable screen altogether") -- .act-side/.sp-panel/
+       .sp-hdr/.sp-body/.sp-chevron/.sp-collapsed no longer used anywhere
+       on this page. */
 
     /* ── Pass 1: Conviction badge ─────────────────────────────────────────── */
     .conviction-badge {
@@ -1360,15 +1355,8 @@
                 <line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/>
               </svg>
             </button>
-            <button id="sidePanelBtn" class="btn-icon btn-icon-sm" data-tip="Side Panel" title="Toggle side panels">
-              <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-              </svg>
-              <svg class="icon-on" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                <line x1="15" y1="3" x2="15" y2="21"/>
-              </svg>
-            </button>
+            <!-- Side Panel toggle REMOVED (2026-09-01, user request: "remove
+                 the side panel from actionable screen altogether"). -->
           </div>
         </div>
         <!-- More filters panel — Conv / P(up20d) / Agree, collapsed by default,
@@ -1458,235 +1446,17 @@
       </div><!-- end .act-table-wrap -->
       </div><!-- end .act-content-row -->
       </div><!-- end .act-main-col -->
-      <aside class="side-stack act-side" id="actSidePanel">
-        <!-- Macro Rail: split into one panel per area_key (each renders one row
-             per member symbol, same as Volatility always did) -->
-        <!-- Section order = tape priority (docs/market_panel_consolidation_design.md):
-             Volatility · Major Markets · Sectors · Rates & Duration · Credit ·
-             USD & Currency · Commodities · Tech & ETFs · Crypto · Country. -->
-        <section id="macroVolatilitySection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="macroVolatility">
-            Volatility
-            <span class="msr-breadth" id="macroBreadthVolatility"></span>
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div id="macroRailVolatility"><div class="msr-loading">Loading…</div></div>
-          </div>
-        </section>
-
-        <section id="macroTop9Section" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="macroTop9">
-            Major Markets
-            <span class="msr-breadth" id="macroBreadthTop9"></span>
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div id="macroRailTop9"><div class="msr-loading">Loading…</div></div>
-          </div>
-        </section>
-
-        <!-- Econ Indicators / Earnings / Quads / Dollar Correlation — pulled up
-             to sit directly below Major Markets, ahead of the Macro Rail panels. -->
-        <section class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="econIndicators">
-            Econ Indicators
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div class="side-scroll">
-              <!-- 2026-08-14 -- Actual column: user-entered reading, same
-                   mechanism as index.html's econBody (GET/PUT
-                   /api/dashboard/econ-indicators/actual). -->
-              <table class="mini-grid">
-                <thead><tr><th>Indicator</th><th>Date</th><th>Days</th><th>Actual</th></tr></thead>
-                <tbody id="econBody"></tbody>
-              </table>
-              <div class="empty-note" id="econEmpty" hidden>No data.</div>
-            </div>
-          </div>
-        </section>
-        <section class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="symbolEarnings">
-            Earnings
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div class="side-scroll">
-              <table class="mini-grid">
-                <thead><tr><th>Symbol</th><th>Date</th><th>In</th></tr></thead>
-                <tbody id="symEarningsBody"></tbody>
-              </table>
-              <div class="empty-note" id="symEarningsEmpty" hidden>No upcoming earnings.</div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Quad Outlook — monthly distributions + quarterly quads -->
-        <section id="quadOutlookSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="quadOutlook">
-            <span id="quadOutlookHdr">Quads</span>
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div id="quadOutlookBody"><div class="msr-loading">Loading…</div></div>
-          </div>
-        </section>
-
-        <!-- USD Correlations — own collapsible panel -->
-        <section id="usdCorrSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="usdCorr">
-            <span id="usdCorrSideHdr" style="font-size:10px;font-weight:600;">Dollar Correlation</span>
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div id="macroRailCorr"><div class="msr-loading">Loading…</div></div>
-          </div>
-        </section>
-
-        <!-- Sectors — split out of Macro Rail -->
-        <section id="sectorsSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="sectors">
-            Sectors
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div id="macroRailSectors"><div class="msr-loading">Loading…</div></div>
-          </div>
-        </section>
-
-        <!-- Portfolio Mix — beta/sector/macro-stance/concentration pies over
-             held positions, scoped to whatever filters are currently active
-             on the grid (same state.rows the grid renders from). -->
-        <section id="portfolioMixSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="portfolioMix">
-            Portfolio Mix
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div style="padding:6px 8px;display:flex;flex-direction:column;gap:10px;">
-              <!-- 2026-08-14 -- header text width:90px;text-align:center on
-                   the 4 named pies (not Macro Stance, unnamed/out of scope)
-                   matches the canvas's own width so each title centers over
-                   the pie graphic itself, not the whole row (wider once the
-                   legend column is included). User: "align centers with
-                   center of the graphs below". -->
-              <div>
-                <div style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Asset Allocation</div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                  <canvas id="pmAssetCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
-                  <div id="pmAssetLegend" style="flex:1;min-width:0;"></div>
-                </div>
-              </div>
-              <div>
-                <div style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Beta</div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                  <canvas id="pmBetaCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
-                  <div id="pmBetaLegend" style="flex:1;min-width:0;"></div>
-                </div>
-              </div>
-              <div>
-                <div style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Sector</div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                  <canvas id="pmSectorCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
-                  <div id="pmSectorLegend" style="flex:1;min-width:0;"></div>
-                </div>
-              </div>
-              <div>
-                <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;">Macro Stance</div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                  <canvas id="pmMacroCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
-                  <div id="pmMacroLegend" style="flex:1;min-width:0;"></div>
-                </div>
-              </div>
-              <div>
-                <div style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Concentration</div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                  <canvas id="pmConcCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
-                  <div id="pmConcLegend" style="flex:1;min-width:0;"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section id="macroRatesSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="macroRates">
-            Rates &amp; Duration
-            <span class="msr-breadth" id="macroBreadthRates"></span>
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div id="macroRailRates"><div class="msr-loading">Loading…</div></div>
-          </div>
-        </section>
-
-        <section id="macroCreditSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="macroCredit">
-            Credit
-            <span class="msr-breadth" id="macroBreadthCredit"></span>
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div id="macroRailCredit"><div class="msr-loading">Loading…</div></div>
-          </div>
-        </section>
-
-        <section id="macroUsdSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="macroUsd">
-            USD &amp; Currency
-            <span class="msr-breadth" id="macroBreadthUsd"></span>
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div id="macroRailUsd"><div class="msr-loading">Loading…</div></div>
-          </div>
-        </section>
-
-        <section id="macroCommoditiesSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="macroCommodities">
-            Commodities
-            <span class="msr-breadth" id="macroBreadthCommodities"></span>
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div id="macroRailCommodities"><div class="msr-loading">Loading…</div></div>
-          </div>
-        </section>
-
-        <section id="macroRemainingSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="macroRemaining">
-            Tech &amp; ETFs
-            <span class="msr-breadth" id="macroBreadthRemaining"></span>
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div id="macroRailRemaining"><div class="msr-loading">Loading…</div></div>
-          </div>
-        </section>
-
-        <section id="macroCryptoSection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="macroCrypto">
-            Crypto
-            <span class="msr-breadth" id="macroBreadthCrypto"></span>
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div id="macroRailCrypto"><div class="msr-loading">Loading…</div></div>
-          </div>
-        </section>
-
-        <section id="macroCountrySection" class="sp-panel" style="border:1px solid var(--border,#e0e0e0); border-radius:6px; overflow:hidden; background:#fff; flex-shrink:0;">
-          <div class="msr-section-hdr sp-hdr" data-panel="macroCountry">
-            Country ETFs
-            <span class="msr-breadth" id="macroBreadthCountry"></span>
-            <span class="sp-chevron">▾</span>
-          </div>
-          <div class="sp-body">
-            <div id="macroRailCountry"><div class="msr-loading">Loading…</div></div>
-          </div>
-        </section>
-      </aside>
+      <!-- Actionable side panel (#actSidePanel, 14 sp-panel sections) REMOVED
+           entirely (2026-09-01, user request: "Do i have all the panels in
+           Dashboard that are in actionable screen -> side panel except
+           portfolio mix? If so, remove the side panel from actionable
+           screen altogether"). Every panel it had (Volatility, Major
+           Markets, Econ Indicators, Earnings, Dollar Correlation, Sectors,
+           Portfolio Mix, Rates & Duration, Credit, USD & Currency,
+           Commodities, Tech & ETFs, Crypto, Country ETFs) already has a
+           Dashboard equivalent (web/index.html) -- see web/app.js's
+           Portfolio Mix / _renderDashMacroStance comments for the one
+           partial exception (Macro Stance) and how it was handled. -->
     </div><!-- end .card -->
   <div id="sourcePop" class="source-pop"></div>
   <div id="colMenuPop" class="source-pop" style="display:none; pointer-events:auto;"></div>
@@ -1884,20 +1654,17 @@
   <script src="/static/_common.js"></script>
   <script src="/static/chart_modal.js"></script>
   <script src="/static/actions.js"></script>
-  <script src="/static/portfolio_mix.js?v=20260814g"></script>
-  <!-- 2026-08-14 -- added so the Portfolio Mix panel's Asset Allocation/
-       Sector pies (web/portfolio_mix.js::_pmOpenCategoryModal) can open the
-       same exposure-detail popup the Dashboard's Sector/Asset class/Style
-       factor-scorecard cards already use, on click. User: "add same click
-       actions on the top graphs also." -->
-  <script src="/static/risk_gauge_modal.js?v=20260814c"></script>
-  <script src="/static/actionable.js?v=20260901c"></script>
+  <!-- portfolio_mix.js / risk_gauge_modal.js / macro_areas.js /
+       macro_usd_corr.js REMOVED (2026-09-01) -- all four were loaded
+       solely for the now-removed Actionable side panel (Portfolio Mix's
+       pies + exposure-detail popup, and the Volatility/Major Markets/
+       Sectors/Rates/Credit/USD/Commodities/Tech/Crypto/Country macro rail
+       + Dollar Correlation panels) -- "remove the side panel from
+       actionable screen altogether". All four remain loaded on
+       web/index.html, which now has every one of those panels. -->
+  <script src="/static/actionable.js?v=20260901e"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
-  <!-- 2026-08-27 -- cache-busting ?v= added, matching web/index.html's own
-       fix on this same script tag (see that file's comment). -->
-  <script src="/static/macro_areas.js?v=20260827o" defer></script>
-  <script src="/static/macro_usd_corr.js?v=20260814a" defer></script>
 <script src="/static/warning_badge.js"></script>
 <script src="/static/hedgeye_panel.js?v=20260814d" defer></script>
 

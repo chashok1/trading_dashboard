@@ -207,15 +207,59 @@ function _pmDrawPie(key, canvasId, legendId, labels, values, colors, tickerLists
   }
 }
 
+// Segmented bar (2026-09-01, user request: "change the Beta chart into bar
+// like Quad % mixes from pie chart and don't use legend. instead use the %
+// in the bar itself just like Quad %s") -- same visual convention as the
+// Quads panel's Quarterly/Monthly bars (web/app.js::_renderQuadOutlookPanel's
+// _segBar): one horizontal bar, width-proportional segments, % printed
+// INSIDE a segment only once it's wide enough (>=15%) to hold the text
+// legibly. No separate legend list -- the bar IS the legend. Only caller
+// so far is Beta (pmRenderCoreMix above); written generically (same
+// labels/values/colors/tickerLists/onClick shape as _pmDrawPie) in case a
+// future pie gets the same treatment.
+function _pmDrawSegBar(barId, labels, values, colors, tickerLists, emptyMsg, onSliceClick) {
+  const el = $(barId);
+  if (!el) return;
+  const total = values.reduce((a, b) => a + b, 0);
+  if (!total || !labels.length) {
+    el.innerHTML = `<div class="empty-note" style="font-size:10px;">${emptyMsg}</div>`;
+    return;
+  }
+  const segs = labels.map((lab, i) => ({ lab, val: values[i], pct: values[i] / total * 100,
+    color: colors[i], tickers: (tickerLists && tickerLists[i]) || [] }))
+    .filter(s => s.pct > 0);
+  const bars = segs.map((s, i) => {
+    const pctRound = Math.round(s.pct);
+    const inner = s.pct >= 15
+      ? `<span style="font-size:9px;color:#fff;font-weight:700;pointer-events:none;white-space:nowrap;">${escapeHtml(s.lab)} ${pctRound}%</span>`
+      : '';
+    const titleTickers = s.tickers.length ? ` — ${_pmTickerLines(s.tickers).join(', ')}` : '';
+    const title = `${s.lab}: ${_pmFmtUsd(s.val)} (${pctRound}%)${titleTickers}`;
+    const cursor = onSliceClick && s.lab !== 'Other' ? 'pointer' : 'default';
+    return `<div data-pm-seg="${i}" style="width:${s.pct}%;background:${s.color};height:100%;` +
+      `display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:${cursor};" ` +
+      `title="${escapeHtml(title)}">${inner}</div>`;
+  }).join('');
+  el.innerHTML = `<div style="display:flex;width:100%;height:16px;border-radius:3px;overflow:hidden;border:1px solid #e2e8f0;">${bars}</div>`;
+  if (onSliceClick) {
+    el.querySelectorAll('[data-pm-seg]').forEach((seg) => {
+      const s = segs[Number(seg.getAttribute('data-pm-seg'))];
+      if (s.lab === 'Other') return;
+      seg.addEventListener('click', () => onSliceClick(s.lab));
+    });
+  }
+}
+
 // Click actions for the pies whose categories map onto something openable.
 // 'Other' (the top-7-cutoff synthetic aggregate, several categories/symbols
 // folded together) has no single matching backend category/symbol -- not
-// clickable, in either pie. Guarded with typeof-checks, not a hard
+// clickable, in either pie/bar. Guarded with typeof-checks, not a hard
 // dependency -- the two popup scripts (risk_gauge_modal.js/chart_modal.js)
 // are expected to be loaded on every page that includes this module
-// (index.html and actionable.html both do, as of this feature), but a
-// future page reusing pmRenderCoreMix without them should degrade to
-// "click does nothing" rather than throwing.
+// (index.html only now -- actionable.html's Portfolio Mix panel, and its
+// copy of both those scripts, was removed 2026-09-01), but a future page
+// reusing pmRenderCoreMix without them should degrade to "click does
+// nothing" rather than throwing.
 function _pmOpenCategoryModal(axis, label) {
   if (label === 'Other') return;
   if (typeof window.openFactorExposureModal === 'function') window.openFactorExposureModal(axis, label);
@@ -265,7 +309,8 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
   _pmFitCardWidth(idPrefix + 'AssetCard', assetLabels, assetLabels.map(k => assetTotals[k]));
 
   if (!held.length) {
-    ['Beta', 'Sector', 'Conc'].forEach(suf => {
+    _pmDrawSegBar(idPrefix + 'BetaBar', [], [], [], [], 'No held positions match the current filters.');
+    ['Sector', 'Conc'].forEach(suf => {
       _pmDrawPie(idPrefix + suf, idPrefix + suf + 'Canvas', idPrefix + suf + 'Legend',
         [], [], [], [], 'No held positions match the current filters.');
       _pmFitCardWidth(idPrefix + suf + 'Card', [], []);
@@ -284,17 +329,17 @@ function pmRenderCoreMix(idPrefix, heldRowsIn, cashTotal, betaMap) {
     betaTickers[bucket].push(r.tos_symbol);
   }
   const betaLabels = Object.keys(betaBuckets).filter(k => betaBuckets[k] > 0);
-  _pmDrawPie(idPrefix + 'Beta', idPrefix + 'BetaCanvas', idPrefix + 'BetaLegend',
-    betaLabels, betaLabels.map(k => betaBuckets[k]), betaLabels.map(k => _PM_BETA_COLORS[k]),
-    betaLabels.map(k => betaTickers[k]), 'No beta data for held positions.',
-    // 2026-08-14 -- click popup added, matching Asset Allocation/Sector.
-    // New 'beta' axis in api/routers/cockpit.py::get_factor_exposure_detail
-    // buckets by drv_fundamentals.beta with the SAME thresholds as
-    // betaBuckets above (Low <=0.7, High >=1.5, else Mid, Unknown=NULL) so
-    // the popup's positions always sum to this slice's own $ value. User:
-    // "Add Beta grap click popup (similar to other graphs)".
+  // 2026-09-01, user request: "change the Beta chart into bar like Quad %
+  // mixes from pie chart and don't use legend. instead use the % in the
+  // bar itself just like Quad %s" -- segmented bar (_pmDrawSegBar below),
+  // same look/convention as the Quads panel's Quarterly/Monthly bars
+  // (web/app.js::_renderQuadOutlookPanel's _segBar) -- one bar, no
+  // separate legend list, % printed INSIDE each wide-enough segment.
+  // Click-to-open popup unchanged (same 'beta' axis/thresholds as before).
+  _pmDrawSegBar(idPrefix + 'BetaBar', betaLabels, betaLabels.map(k => betaBuckets[k]),
+    betaLabels.map(k => _PM_BETA_COLORS[k]), betaLabels.map(k => betaTickers[k]),
+    'No beta data for held positions.',
     (label) => _pmOpenCategoryModal('beta', label));
-  _pmFitCardWidth(idPrefix + 'BetaCard', betaLabels, betaLabels.map(k => betaBuckets[k]));
 
   // Sector mix -- top 7 by $ value + Other. Color assigned by alpha rank so
   // the same sector keeps the same slot across re-renders (not tied to $ rank).

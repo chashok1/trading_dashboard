@@ -130,6 +130,22 @@
           <section class="cockpit-band" id="heMktSituationPanel" style="display:none;">
             <div id="heMktSituationBody">Loading…</div>
           </section>
+
+          <!-- 2026-09-01 -- Cross-Asset Signals: multi-symbol RR-position
+               rules (e.g. "Bonds and USD at TRR, Gold at LRR -> buy Gold")
+               the ordinary rules engine can't express -- see
+               etl/derive_cross_asset_rules.py / ref_cross_asset_rule(_leg).
+               Below Mkt Situation per user request ("in its own panel...
+               we will be adding more") -- designed to hold more rules than
+               just this one, so it stays visible even with zero rows fired
+               (shows "how close" each rule is). Populated + wired by
+               web/cross_asset_panel.js, reads GET /api/cockpit/
+               cross-asset-signals. Plain .cockpit-band chrome, matches
+               Risk Dial/Mkt Situation siblings. -->
+          <section class="cockpit-band" id="crossAssetPanel" style="display:none;">
+            <div id="crossAssetBody">Loading…</div>
+          </section>
+
           <!-- 2026-08-27 -- Opex/CPI-Events/Earnings/Regime split out of
                the single #regimeStrip container into 4 independent panels
                -- user: "Separate Opex, CPI, earnings, Regime into their own
@@ -480,12 +496,31 @@
                   <div id="dpmAssetLegend" style="flex:1;min-width:0;"></div>
                 </div>
               </div>
+              <!-- 2026-09-01, user request: "move the macro stance to
+                   dashboard and display it in place of Beta graph in the
+                   middle column between Asset allocation and Sector
+                   Graphs. Just display Beta graph legends (without the
+                   graph) underneath that graph." Macro Stance takes this
+                   card's primary pie slot (was Beta's). Beta itself
+                   originally moved to a legend-only row below it, then
+                   (same day, follow-up: "change the Beta chart into bar
+                   like Quad % mixes from pie chart and don't use legend.
+                   instead use the % in the bar itself just like Quad %s")
+                   became a segmented bar instead -- #dpmBetaBar, drawn by
+                   web/portfolio_mix.js::_pmDrawSegBar(), no canvas/legend
+                   pair needed at all (the bar's own segments print their
+                   %). See web/app.js::loadDashPortfolioMix() for the
+                   render calls (pmRenderCoreMix draws Beta into
+                   dpmBetaBar; a separate _pmDrawPie call draws Macro
+                   Stance into dpmMacroCanvas/dpmMacroLegend). -->
               <div id="dpmBetaCard" style="flex:0 0 160px;min-width:130px;">
-                <div id="dpmBetaTitle" style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Beta</div>
+                <div id="dpmMacroTitle" style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Macro Stance</div>
                 <div style="display:flex;align-items:center;gap:8px;">
-                  <canvas id="dpmBetaCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
-                  <div id="dpmBetaLegend" style="flex:1;min-width:0;"></div>
+                  <canvas id="dpmMacroCanvas" width="90" height="90" style="flex-shrink:0;"></canvas>
+                  <div id="dpmMacroLegend" style="flex:1;min-width:0;"></div>
                 </div>
+                <div style="width:90px;font-size:9px;color:#6b7280;font-weight:600;margin-top:6px;text-align:center;">Beta</div>
+                <div id="dpmBetaBar" style="margin-top:3px;"></div>
               </div>
               <div id="dpmSectorCard" style="flex:0 0 160px;min-width:130px;">
                 <div id="dpmSectorTitle" style="width:90px;font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px;text-align:center;">Sector</div>
@@ -731,6 +766,19 @@
           <div id="macroRailSectors" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
         </section>
 
+        <!-- Quad Outlook -- monthly distributions + quarterly quads (+
+             Global, once ref_quad_periods has a period_type='global' row).
+             MOVED here from the Actionable screen's side panel (2026-09-01,
+             user request: "Move the quads side panel from actionable to
+             dashboard side panel"), then repositioned same day ("display
+             quads panel between leaders/lagers and e.IND panels") --
+             Sectors above (whose own summary line shows Leaders/Laggards/
+             Rotate-in) and Indicator (E.IND) below. Populated + wired by
+             web/app.js::loadQuadOutlook()/_renderQuadOutlookPanel(). -->
+        <section id="quadOutlookSection" class="cockpit-band rail-band">
+          <div id="quadOutlookBody"><div class="msr-loading">Loading…</div></div>
+        </section>
+
         <!-- 2026-08-27 -- Indicator moved here from col 5 (macro-rail-row),
              above INFL -- user: "move the INDICATOR panel to the side panel
              above INFL." Same container ids/markup as its prior spot;
@@ -817,8 +865,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
   <script src="/static/_common.js"></script>
   <script src="/static/actions.js"></script>
-  <script src="/static/portfolio_mix.js?v=20260814g"></script>
-  <script src="/static/app.js?v=20260814w"></script>
+  <script src="/static/portfolio_mix.js?v=20260901a"></script>
+  <script src="/static/app.js?v=20260901b"></script>
   <script src="/static/dashboard_notes.js"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>
@@ -831,6 +879,9 @@
        User: "add same click actions on the top graphs also." -->
   <script src="/static/chart_modal.js"></script>
   <script src="/static/quad_rotation_panel.js?v=20260831a" defer></script>
+  <!-- 2026-09-01 -- Cross-Asset Signals panel (#crossAssetPanel above), see
+       web/cross_asset_panel.js's own header comment. -->
+  <script src="/static/cross_asset_panel.js?v=20260901a" defer></script>
   <!-- 2026-08-10 -- renders Mkt Situation/INFL/Early Look/Macro Commentary/
        Top 3 Things into #hedgeyeDashPanel above (see cat-col). Same script
        Actionable loads; it targets whichever of #hedgeyePanel/

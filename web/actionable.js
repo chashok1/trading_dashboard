@@ -836,33 +836,15 @@ function _buildScoresPopHtml(r) {
 // /api/quad/band-factors fetch) and _regimeVerdictHtml (the band's same-day
 // risk-gauge verdict badge) were both dedicated solely to that band's own
 // rendering, so they're removed too, not just left as dead code. The
-// "Quads" side panel (#quadOutlookBody, _renderQuadOutlookPanel) is a
-// SEPARATE feature that only needed loadMacroBand's /api/dashboard/quads
-// fetch, not the band's own DOM -- kept, now fed by loadQuadOutlook() below.
-
-const _MONTH_3C = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-function _shortMonthLbl(p) {
-  if (p.start_date) { const d = new Date(p.start_date); if (!isNaN(d)) return _MONTH_3C[d.getMonth()]; }
-  if (p.label) { const m = String(p.label).match(/^\d{4}-(\d{2})/); if (m) { const i = +m[1]-1; return (i>=0&&i<12)?_MONTH_3C[i]:String(p.label).toUpperCase(); } return String(p.label).toUpperCase(); }
-  return '—';
-}
-function _shortQtrLbl(p) {
-  if (p.start_date) { const d = new Date(p.start_date); if (!isNaN(d)) return `Q${Math.floor(d.getMonth()/3)+1} '${String(d.getFullYear()).slice(-2)}`; }
-  return p.label ? String(p.label) : '—';
-}
-function _quadShort(q) { return q ? String(q).replace(/^Quad\s*/i, 'Q') : '—'; }
-// Return the displayed quad name from a period object, using distribution argmax
-// when available, falling back to the declared `.quad` field.
-function _effectiveQuad(p) {
-  if (!p) return null;
-  const pcts = { 'Quad 1': p.quad1_pct || 0, 'Quad 2': p.quad2_pct || 0,
-                 'Quad 3': p.quad3_pct || 0, 'Quad 4': p.quad4_pct || 0 };
-  const total = Object.values(pcts).reduce((a, b) => a + b, 0);
-  if (total > 0) return Object.entries(pcts).sort((a, b) => b[1] - a[1])[0][0];
-  return p.quad || null;
-}
-function _qdLbl(q) { return q ? q.replace('Quad ', 'Qd') : '—'; }
-function _qLbl(q)  { return q ? q.replace('Quad ', 'Q')  : '—'; }
+// "Quads" side panel (#quadOutlookBody, loadQuadOutlook/
+// _renderQuadOutlookPanel, plus their _shortMonthLbl/_shortQtrLbl/
+// _quadShort/_effectiveQuad/_qdLbl/_qLbl helpers) was kept here for a
+// while after that removal, then MOVED to web/app.js entirely (2026-09-01,
+// user request: "Move the quads side panel from actionable to dashboard
+// side panel") -- it's a Dashboard-only panel now, not a shared one; see
+// app.js's own copy for the current implementation. _quadColor stays here
+// (duplicated in app.js too) since the MACRO column popover below still
+// needs it independently of the Quads panel.
 function _msGlyph(score) {
   const s = score == null ? null : Number(score);
   if (s > 0) return '<span style="font-size:6px;color:#16a34a;line-height:1;vertical-align:middle;">▲</span>';
@@ -902,169 +884,15 @@ function _quadColor(q) {
 }
 
 
-// 2026-08-10 -- slimmed from the old loadMacroBand() (see removal comment
-// above _MONTH_3C): the Regime band itself is gone, but the "Quads" side
-// panel (_renderQuadOutlookPanel) still needs /api/dashboard/quads.
-async function loadQuadOutlook() {
-  try {
-    // Quad regime is a calendar-based forward outlook, not tied to the trading
-    // anchor -- omit `date` when viewing live so the backend's own real-today
-    // default applies (current month/quarter don't wait on TOSD to load).
-    // Viewing an explicit historical date still passes it through (no look-ahead).
-    const viewingLive = !state.date || state.date === state.anchorDate;
-    const dateParam = viewingLive ? '' : `?date=${encodeURIComponent(state.date)}`;
-    const data = await fetchJson(`/api/dashboard/quads${dateParam}`);
-    state.quadData = data;
-    _renderQuadOutlookPanel(data);
-  } catch(e) { console.error('Quad outlook:', e); }
-}
-
-function _renderQuadOutlookPanel(data) {
-  const el = $('quadOutlookBody');
-  if (!el) return;
-  const months = data.months || [];
-  const cq = data.current_quarter, nq = data.next_quarter;
-
-  const _segBar = (p, width) => {
-    if (!p) return '';
-    const segs = [
-      {q:'Quad 1',pct:p.quad1_pct||0},{q:'Quad 2',pct:p.quad2_pct||0},
-      {q:'Quad 3',pct:p.quad3_pct||0},{q:'Quad 4',pct:p.quad4_pct||0},
-    ].filter(s => s.pct > 0);
-    if (!segs.length) return '';
-    const bars = segs.map(s => {
-      const lbl = s.pct >= 15
-        ? `<span style="font-size:8px;color:#fff;font-weight:600;pointer-events:none;">Q${s.q.slice(-1)} ${Math.round(s.pct)}</span>`
-        : '';
-      return `<div style="width:${s.pct}%;background:${_quadColor(s.q)};height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;" title="${escapeHtml(s.q)} ${s.pct}%">${lbl}</div>`;
-    }).join('');
-    return `<div style="display:flex;width:${width}px;height:14px;border-radius:3px;overflow:hidden;border:1px solid #e2e8f0;">${bars}</div>`;
-  };
-
-  // ── Header ────────────────────────────────────────────────────────────────
-  const hdrEl = $('quadOutlookHdr');
-  if (hdrEl) hdrEl.textContent = 'Quads';
-
-  let h = '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
-
-  // ── Quarterly ────────────────────────────────────────────────────────────
-  h += `<tr><td colspan="2" style="padding:4px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Quarterly</td></tr>`;
-  for (const qp of [cq, nq].filter(Boolean)) {
-    const quad = qp.quad || '';
-    const qcol = _quadColor(quad);
-    const lbl = qp.label || '—';
-    h += `<tr>`
-       + `<td style="padding:2px 6px;white-space:nowrap;vertical-align:middle;">`
-       + `<span style="display:inline-block;width:48px;color:#94a3b8;font-size:9px;">${escapeHtml(lbl)}</span>`
-       + `<span style="font-weight:600;color:${qcol};">${escapeHtml(_qdLbl(quad))}</span>`
-       + `</td>`
-       + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">`
-       + `<div style="display:flex;align-items:center;justify-content:center;width:140px;height:14px;border-radius:3px;overflow:hidden;background:${qcol};border:1px solid #e2e8f0;" title="${escapeHtml(quad)} 100%">`
-       + `<span style="font-size:8px;color:#fff;font-weight:600;pointer-events:none;">${escapeHtml(_qdLbl(quad))} 100</span>`
-       + `</div>`
-       + `</td>`
-       + `</tr>`;
-  }
-
-  // ── Monthly distributions ────────────────────────────────────────────────
-  h += `<tr><td colspan="2" style="padding:6px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;border-top:1px solid #f1f5f9;">Monthly</td></tr>`;
-  for (const m of months) {
-    const lbl = m.label || '—';
-    const quad = _effectiveQuad(m) || '';
-    const qcol = _quadColor(quad);
-    h += `<tr>`
-       + `<td style="padding:2px 6px;white-space:nowrap;vertical-align:middle;">`
-       + `<span style="display:inline-block;width:38px;color:#94a3b8;font-size:9px;">${escapeHtml(lbl)}</span>`
-       + `<span style="font-weight:600;color:${qcol};">${escapeHtml(_qdLbl(quad))}</span>`
-       + `</td>`
-       + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">${_segBar(m, 140)}</td>`
-       + `</tr>`;
-  }
-
-  h += '</table>';
-  el.innerHTML = h;
-}
-
-// 2026-08-14 -- Actual column: same click-to-edit pattern as web/app.js's
-// econBody (GET/PUT /api/dashboard/econ-indicators/actual). Duplicated
-// rather than shared -- this panel has always been two independent
-// per-page implementations (loadEconIndicators/loadSideEcon), not a shared
-// module. User: "i need a way to enter this data from EVENT panel both in
-// dashboard and actionable screens. I don't want to go /ref screen."
-function _econActualCellHtml(r) {
-  const ind = escapeHtml(r.indicator || '');
-  const dt = r.indicator_date || '';
-  const val = r.actual != null ? escapeHtml(String(r.actual)) : '';
-  const display = r.actual != null ? escapeHtml(String(r.actual)) : '<span class="econ-actual-add">+</span>';
-  return `<td class="num econ-actual-cell" data-ind="${ind}" data-date="${dt}" data-val="${val}" title="Click to enter the actual reading">${display}</td>`;
-}
-function _wireEconActualEdit(tbody) {
-  if (tbody._econActualWired) return;
-  tbody._econActualWired = true;
-  tbody.addEventListener('click', e => {
-    const cell = e.target.closest('.econ-actual-cell');
-    if (!cell || cell.querySelector('input')) return;
-    const cur = cell.getAttribute('data-val') || '';
-    cell.innerHTML = `<input type="text" inputmode="decimal" class="econ-actual-input" value="${escapeHtml(cur)}">`;
-    const input = cell.querySelector('input');
-    input.focus();
-    input.select();
-    const save = async () => {
-      const raw = input.value.trim();
-      const actual = raw === '' ? null : Number(raw);
-      if (raw !== '' && Number.isNaN(actual)) { input.focus(); return; }
-      try {
-        await fetchJson('/api/dashboard/econ-indicators/actual', {
-          method: 'PUT',
-          body: JSON.stringify({ indicator: cell.getAttribute('data-ind'), indicator_date: cell.getAttribute('data-date'), actual }),
-        });
-      } catch (err) { console.error('save actual failed:', err); }
-      loadSideEcon();
-    };
-    input.addEventListener('keydown', ev => {
-      if (ev.key === 'Enter') { ev.preventDefault(); save(); }
-      else if (ev.key === 'Escape') { loadSideEcon(); }
-    });
-    input.addEventListener('blur', save);
-  });
-}
-// Combined econ-release + market-structure calendar (Events folded in server
-// side -- see /api/dashboard/econ-indicators).
-async function loadSideEcon() {
-  const tbody = $('econBody'), empty = $('econEmpty'); if (!tbody) return;
-  tbody.innerHTML = '';
-  _wireEconActualEdit(tbody);
-  try {
-    const rows = await fetchJson(state.date ? `/api/dashboard/econ-indicators?date=${encodeURIComponent(state.date)}&limit=60` : '/api/dashboard/econ-indicators?limit=60');
-    if (!rows?.length) { empty.hidden = false; return; }
-    empty.hidden = true;
-    for (const r of rows) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td class="text">${r.indicator||''}</td><td>${fmtDateMD(r.indicator_date)}</td><td class="num">${r.days??''}</td>${_econActualCellHtml(r)}`;
-      tbody.appendChild(tr);
-    }
-  } catch(e) { console.error('Side econ:', e); empty.hidden = false; }
-}
-// Real per-symbol earnings dates (held positions), separate from the
-// econ/market-structure calendar above -- see /api/dashboard/symbol-earnings.
-async function loadSideSymbolEarnings() {
-  const tbody = $('symEarningsBody'), empty = $('symEarningsEmpty'); if (!tbody) return;
-  tbody.innerHTML = '';
-  try {
-    const rows = await fetchJson(state.date ? `/api/dashboard/symbol-earnings?date=${encodeURIComponent(state.date)}` : '/api/dashboard/symbol-earnings');
-    if (!rows?.length) { empty.hidden = false; return; }
-    empty.hidden = true;
-    for (const r of rows) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td class="text">${r.symbol||''}</td><td>${fmtDateMD(r.event_date)}</td><td class="num">${r.days_until!=null?r.days_until+'d':''}</td>`;
-      tbody.appendChild(tr);
-    }
-  } catch(e) { console.error('Side symbol earnings:', e); empty.hidden = false; }
-}
-function loadSidePanels() {
-  if (!$('actSidePanel')?.classList.contains('pinned')) return;
-  Promise.all([loadSideEcon(), loadSideSymbolEarnings()]);
-}
+// _econActualCellHtml/_wireEconActualEdit/loadSideEcon/loadSideSymbolEarnings/
+// loadSidePanels (Actionable's own Econ Indicators/Earnings side-panel copies)
+// REMOVED (2026-09-01, user request: "remove the side panel from actionable
+// screen altogether") -- see the Portfolio Mix removal comment below for the
+// full list of what moved/already existed on Dashboard. Dashboard's own
+// Econ Indicators (#econBody, web/app.js) and Symbol/Earnings
+// (#nearEarningsBody, separate independent implementation) panels are
+// unaffected -- always two independent per-page implementations, not a
+// shared module, per this block's own prior comment.
 // Short MM/DD date for snapshot columns (no year). '' for empty.
 function fmtMD(d) {
   if (!d) return '';
@@ -1864,9 +1692,6 @@ async function loadActionable(opts) {
       if (fSector || fAssetClass || fStyle) syncFilterUi();
     }
     applyClientFilter(preserveState ? { preserveSelection: true } : undefined);
-    loadSidePanels();
-    loadQuadOutlook();
-    if (window.reloadMacroAreas) window.reloadMacroAreas();
     const now = new Date();
     const mo = now.getMonth() + 1;
     const dd = String(now.getDate()).padStart(2, '0');
@@ -2126,120 +1951,22 @@ function applyClientFilter(opts) {
   renderSourceFilter();
   renderAccountFilter();
   renderGrid();
-  renderPortfolioMix();
 }
 
-// ---- Portfolio Mix panel: beta / sector / macro-stance / concentration
-// pies over held positions. A held position always counts toward the mix --
-// action/signal filters (Trade Mode, actionable_only, action chip, source,
-// conviction, ...) narrow the GRID's candidate list, not what you actually
-// own, so they're deliberately not applied here (a Trade-Mode-hidden REDUCE
-// on a held symbol must still show up in your portfolio composition).
-// Account and symbol-search ARE applied -- those genuinely scope "which of
-// my holdings" rather than "which actions are live right now".
-// _PM_BETA_COLORS / _PM_CAT_PALETTE / _PM_SIDE_COLORS / _PM_ASSET_COLORS /
-// _pmCharts / _pmFmtUsd / _pmDrawPie / pmRenderCoreMix now live in
-// web/portfolio_mix.js (shared with the Dashboard screen's Portfolio Mix
-// card), loaded before this file.
-//
-// 2026-08-14 -- source switched from state.allRows (drv_actionable's
-// held_today/current_position_dollar) to state.portfolioRows (raw
-// /api/portfolio -- hist_cs/hist_f, one row per symbol+account, same feed
-// the Sector/Asset class factor-scorecard tables sum). drv_actionable only
-// carries symbols with a resolved tos_symbol in the tracked technicals
-// universe -- a held position without one (found live: QTUM/IVOL/SOFI/
-// WRBY/INTU, ~$44k/5.75% of one portfolio) silently never got a
-// drv_actionable row at all, dropping out of every pie entirely, not just
-// showing the wrong category. User: "sector is not matching" -> traced to
-// this gap -> "switch all 4 pies to source from /api/portfolio entirely".
-// /api/portfolio's own tos_symbol column is unreliable (NULL on most rows,
-// even tracked ones -- confirmed live), so the raw broker `symbol` string
-// is used as both the display label and the join key back into
-// state.assetClassMap/sectorMap (built the same way, keyed by tos_symbol
-// OR ref_sector.ticker -- see /api/portfolio/asset-class-map's docstring)
-// and into state.allRows (for macro_value -- see the tos_symbol->macro_value
-// map built below) -- exact-string match, same as how the two already
-// happened to agree for 50/55 positions in the live check above.
-function _pmHeldRows() {
-  const account = state.filters.account;
-  const symSearch = (state.filters.symbol_search || '').toUpperCase();
-  const symList = state.filters.symbols_multi;
-  const macroBySymbol = {};
-  for (const r of state.allRows || []) {
-    if (r.tos_symbol) macroBySymbol[r.tos_symbol] = r.macro_value;
-  }
-  const assetClassMap = state.assetClassMap || {};
-  const sectorMap = state.sectorMap || {};
-  const bySymbol = {};
-  for (const p of state.portfolioRows || []) {
-    if (p.is_cash || !p.symbol) continue;
-    const sym = p.symbol;
-    if (account && p.account_id !== account) continue;
-    if (symSearch && !sym.toUpperCase().includes(symSearch)) continue;
-    if (symList && symList.length && !symList.includes(sym.toUpperCase())) continue;
-    const row = bySymbol[sym] || (bySymbol[sym] = {
-      tos_symbol: sym,
-      current_position_dollar: 0,
-      _pmAssetClass: assetClassMap[sym] || 'Unmapped',
-      _pmSector: sectorMap[sym] || 'Unmapped',
-      macro_value: macroBySymbol[sym] || null,
-    });
-    row.current_position_dollar += Number(p.market_value) || 0;
-  }
-  return Object.values(bySymbol).filter(r => r.current_position_dollar > 0);
-}
-
-// Same raw /api/portfolio feed as _pmHeldRows above (is_cash rows this
-// time), scoped by the same account filter as held stock positions. A
-// symbol search/list filter means the user is looking for specific
-// tickers, so cash (which can't match a ticker) drops out rather than
-// showing a misleading total.
-function _pmCashTotal() {
-  const account = state.filters.account;
-  const symSearch = state.filters.symbol_search;
-  const symList = state.filters.symbols_multi;
-  if (symSearch || (symList && symList.length)) return 0;
-  return (state.portfolioRows || [])
-    .filter(r => r.is_cash && (!account || r.account_id === account))
-    .reduce((s, r) => s + (Number(r.market_value) || 0), 0);
-}
-
-// Formats the ticker list shown on hover (chart tooltip + legend title),
-// wrapped ~8/line, capped at 24 with a "+N more" tail so a big HOLD/Financials
-// bucket doesn't produce an unreadable wall of text.
-// _pmTickerLines / _pmTooltipHandler / _pmDrawPie / pmRenderCoreMix now live
-// in web/portfolio_mix.js (shared with the Dashboard screen's Portfolio Mix
-// card), loaded before this file.
-
-function renderPortfolioMix() {
-  if (!$('portfolioMixSection') || typeof Chart === 'undefined') return;
-  const held = _pmHeldRows();
-  const cashTotal = _pmCashTotal();
-  // Asset/Beta/Sector/Concentration pies (shared with the Dashboard screen).
-  pmRenderCoreMix('pm', held, cashTotal, state.betaMap || {});
-
-  if (!held.length) {
-    _pmDrawPie('pmMacro', 'pmMacroCanvas', 'pmMacroLegend', [], [], [], [], 'No held positions match the current filters.');
-    return;
-  }
-
-  // Macro stance mix — reuses the same buy/sell/neutral colors already used
-  // for macro_value elsewhere on this screen (macro band, action badges).
-  // Actionable-only (depends on actionDisplay()'s action vocabulary), so it
-  // isn't part of the shared pmRenderCoreMix and is drawn separately here.
-  const macroTotals = {}, macroTickerMap = {};
-  for (const r of held) {
-    const mv = r.macro_value || 'No signal';
-    macroTotals[mv] = (macroTotals[mv] || 0) + (Number(r.current_position_dollar) || 0);
-    (macroTickerMap[mv] = macroTickerMap[mv] || []).push(r.tos_symbol);
-  }
-  const macroLabels = Object.keys(macroTotals);
-  const macroColorOf = (k) => k === 'No signal' ? _PM_SIDE_COLORS.neutral : (_PM_SIDE_COLORS[actionDisplay(k).side] || _PM_SIDE_COLORS.neutral);
-  _pmDrawPie('pmMacro', 'pmMacroCanvas', 'pmMacroLegend',
-    macroLabels, macroLabels.map(k => macroTotals[k]), macroLabels.map(macroColorOf),
-    macroLabels.map(k => macroTickerMap[k]), 'No macro signal for held positions.');
-}
-
+// ---- Portfolio Mix panel (renderPortfolioMix/_pmHeldRows/_pmCashTotal) --
+// REMOVED (2026-09-01, user request: "remove the side panel from
+// actionable screen altogether"). The whole Actionable side panel
+// (#actSidePanel) is gone -- every panel it had (Volatility, Major
+// Markets, Econ Indicators, Earnings, Dollar Correlation, Sectors,
+// Portfolio Mix, Rates & Duration, Credit, USD & Currency, Commodities,
+// Tech & ETFs, Crypto, Country ETFs) already has a Dashboard equivalent.
+// Portfolio Mix specifically: Asset Allocation/Beta/Sector/Concentration
+// via web/portfolio_mix.js (shared, unchanged); Macro Stance (the one pie
+// that wasn't already on Dashboard, since it needs actionDisplay()'s
+// vocabulary) moved to web/app.js::_renderDashMacroStance() -- see that
+// function's own comment and #dashPortfolioMixSection's dpmBetaCard in
+// web/index.html (Macro Stance now takes that card's pie slot; Beta
+// demoted to a legend-only row underneath it).
 // ---- staleness banner ----
 async function checkFreshness() {
   const banner = $('staleBanner');
@@ -4348,20 +4075,10 @@ function initGridSymClick() {
   });
 }
 
-function _initSidePanels() {
-  document.querySelectorAll('#actSidePanel .sp-hdr').forEach(hdr => {
-    const panel = hdr.closest('.sp-panel');
-    if (!panel) return;
-    const key = 'sp_' + (hdr.dataset.panel || panel.id || '');
-    const _defaultCollapsed = key === 'sp_quadOutlook' || key === 'sp_usdCorr';
-    const _stored = localStorage.getItem(key);
-    if (_defaultCollapsed ? _stored !== 'open' : _stored === 'collapsed') panel.classList.add('sp-collapsed');
-    hdr.addEventListener('click', () => {
-      panel.classList.toggle('sp-collapsed');
-      localStorage.setItem(key, panel.classList.contains('sp-collapsed') ? 'collapsed' : 'open');
-    });
-  });
-}
+// _initSidePanels() (per-panel collapse/expand wiring for #actSidePanel
+// .sp-hdr headers) REMOVED (2026-09-01, user request: "remove the side
+// panel from actionable screen altogether") -- #actSidePanel no longer
+// exists.
 
 function initEcoBarClick() {
   ['rrTape1'].forEach(id => {
@@ -7581,7 +7298,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   initGridSymClick();
   initConvictionQuickBtn();
   initEcoBarClick();
-  _initSidePanels();
   _initColMenu();
   _initMultiSymPop();
   _initLegendPopover();
@@ -7925,41 +7641,9 @@ const _closeModal = () => {
   $('convictionDeleteBtn').addEventListener('click', deleteConvictionHold);
   $('closePop').addEventListener('click', () => closeAtomicPopover());
 
-  // ── Side panel toggle ─────────────────────────────────────────────────────
-  // Pinned by default (TASK_116): missing actSidePinned key => pinned;
-  // explicit '0' stays unpinned. Auto-unpin below 1200px viewport width on
-  // load and resize; a manual toggle wins for the rest of the session.
-  const _sideEl  = $('actSidePanel');
-  const _sideBtn = $('sidePanelBtn');
-  if (_sideEl && _sideBtn) {
-    let _sideManualOverride = false;
-
-    const _applyPinned = (pinned) => {
-      _sideEl.classList.toggle('pinned', pinned);
-      _sideBtn.classList.toggle('sp-active', pinned);
-      if (pinned) loadSidePanels();
-    };
-
-    const _autoPinWanted = () => {
-      if (window.innerWidth < 1200) return false;
-      return localStorage.getItem('actSidePinned') !== '0';
-    };
-
-    _applyPinned(_autoPinWanted());
-
-    _sideBtn.addEventListener('click', () => {
-      const pinned = _sideEl.classList.toggle('pinned');
-      _sideManualOverride = true;
-      _sideBtn.classList.toggle('sp-active', pinned);
-      localStorage.setItem('actSidePinned', pinned ? '1' : '0');
-      if (pinned) loadSidePanels();
-    });
-
-    window.addEventListener('resize', () => {
-      if (_sideManualOverride) return;
-      _applyPinned(_autoPinWanted());
-    });
-  }
+  // Side panel toggle REMOVED (2026-09-01, user request: "remove the side
+  // panel from actionable screen altogether") -- #actSidePanel/#sidePanelBtn
+  // no longer exist.
 
   // ── Action column hover popup ──────────────────────────────────────────────
   setupActionCol();

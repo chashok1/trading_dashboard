@@ -581,6 +581,132 @@ function _quadColor(q) {
   if (/4/.test(q)) return '#d83a3a'; // Q4 = risk-off
   return '#9ca3af';
 }
+function _qdLbl(q) { return q ? q.replace('Quad ', 'Qd') : '—'; }
+// Return the displayed quad name from a period object, using distribution
+// argmax when available, falling back to the declared `.quad` field.
+function _effectiveQuad(p) {
+  if (!p) return null;
+  const pcts = { 'Quad 1': p.quad1_pct || 0, 'Quad 2': p.quad2_pct || 0,
+                 'Quad 3': p.quad3_pct || 0, 'Quad 4': p.quad4_pct || 0 };
+  const total = Object.values(pcts).reduce((a, b) => a + b, 0);
+  if (total > 0) return Object.entries(pcts).sort((a, b) => b[1] - a[1])[0][0];
+  return p.quad || null;
+}
+
+// "Quads" side panel -- MOVED here from web/actionable.js (2026-09-01, user
+// request: "Move the quads side panel from actionable to dashboard side
+// panel") -- Dashboard-only now, not a shared cross-page panel. Reads
+// GET /api/dashboard/quads (current+next US quarter, current+next Global
+// quarter -- ref_quad_periods period_type='global', a separate non-US
+// macro-regime read the user added directly via /ref -- and the forward
+// monthly distributions). #quadOutlookSection lives in web/index.html's
+// .right-rail.
+async function loadQuadOutlook() {
+  try {
+    // Quad regime is a calendar-based forward outlook, not tied to the trading
+    // anchor -- omit `date` when viewing live so the backend's own real-today
+    // default applies (current month/quarter don't wait on TOSD to load).
+    // Viewing an explicit historical date still passes it through (no look-ahead).
+    const viewingLive = !state.date || state.date === state.anchorDate;
+    const dateParam = viewingLive ? '' : `?date=${encodeURIComponent(state.date)}`;
+    const data = await fetchJson(`/api/dashboard/quads${dateParam}`);
+    state.quadData = data;
+    _renderQuadOutlookPanel(data);
+  } catch(e) { console.error('Quad outlook:', e); }
+}
+
+function _renderQuadOutlookPanel(data) {
+  const el = $('quadOutlookBody');
+  if (!el) return;
+  const months = data.months || [];
+  const cq = data.current_quarter, nq = data.next_quarter;
+  const gq = data.global_quarter, gnq = data.global_next_quarter;
+
+  const _segBar = (p, width) => {
+    if (!p) return '';
+    const segs = [
+      {q:'Quad 1',pct:p.quad1_pct||0},{q:'Quad 2',pct:p.quad2_pct||0},
+      {q:'Quad 3',pct:p.quad3_pct||0},{q:'Quad 4',pct:p.quad4_pct||0},
+    ].filter(s => s.pct > 0);
+    if (!segs.length) return '';
+    const bars = segs.map(s => {
+      const lbl = s.pct >= 15
+        ? `<span style="font-size:8px;color:#fff;font-weight:600;pointer-events:none;">Q${s.q.slice(-1)} ${Math.round(s.pct)}</span>`
+        : '';
+      return `<div style="width:${s.pct}%;background:${_quadColor(s.q)};height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;" title="${escapeHtml(s.q)} ${s.pct}%">${lbl}</div>`;
+    }).join('');
+    return `<div style="display:flex;width:${width}px;height:14px;border-radius:3px;overflow:hidden;border:1px solid #e2e8f0;">${bars}</div>`;
+  };
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  const hdrEl = $('quadOutlookHdr');
+  if (hdrEl) hdrEl.textContent = 'Quads';
+
+  let h = '<table style="width:100%;border-collapse:collapse;font-size:10px;">';
+
+  // ── Quarterly ────────────────────────────────────────────────────────────
+  h += `<tr><td colspan="2" style="padding:4px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">Quarterly</td></tr>`;
+  for (const qp of [cq, nq].filter(Boolean)) {
+    const quad = qp.quad || '';
+    const qcol = _quadColor(quad);
+    const lbl = qp.label || '—';
+    h += `<tr>`
+       + `<td style="padding:2px 6px;white-space:nowrap;vertical-align:middle;">`
+       + `<span style="display:inline-block;width:48px;color:#94a3b8;font-size:9px;">${escapeHtml(lbl)}</span>`
+       + `<span style="font-weight:600;color:${qcol};">${escapeHtml(_qdLbl(quad))}</span>`
+       + `</td>`
+       + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">`
+       + `<div style="display:flex;align-items:center;justify-content:center;width:140px;height:14px;border-radius:3px;overflow:hidden;background:${qcol};border:1px solid #e2e8f0;" title="${escapeHtml(quad)} 100%">`
+       + `<span style="font-size:8px;color:#fff;font-weight:600;pointer-events:none;">${escapeHtml(_qdLbl(quad))} 100</span>`
+       + `</div>`
+       + `</td>`
+       + `</tr>`;
+  }
+
+  // ── Global ────────────────────────────────────────────────────────────────
+  // Same single-quad-per-period shape as Quarterly above (no quad1..4_pct
+  // distribution) -- a separate, non-US macro-regime read. Section only
+  // appears once at least one global period exists, so this stays a no-op
+  // for anyone who hasn't added ref_quad_periods period_type='global' rows.
+  const globalPeriods = [gq, gnq].filter(Boolean);
+  if (globalPeriods.length) {
+    h += `<tr><td colspan="2" style="padding:6px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;border-top:1px solid #f1f5f9;">Global</td></tr>`;
+    for (const qp of globalPeriods) {
+      const quad = qp.quad || '';
+      const qcol = _quadColor(quad);
+      const lbl = qp.label || '—';
+      h += `<tr>`
+         + `<td style="padding:2px 6px;white-space:nowrap;vertical-align:middle;">`
+         + `<span style="display:inline-block;width:48px;color:#94a3b8;font-size:9px;">${escapeHtml(lbl)}</span>`
+         + `<span style="font-weight:600;color:${qcol};">${escapeHtml(_qdLbl(quad))}</span>`
+         + `</td>`
+         + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">`
+         + `<div style="display:flex;align-items:center;justify-content:center;width:140px;height:14px;border-radius:3px;overflow:hidden;background:${qcol};border:1px solid #e2e8f0;" title="Global ${escapeHtml(quad)} 100%">`
+         + `<span style="font-size:8px;color:#fff;font-weight:600;pointer-events:none;">${escapeHtml(_qdLbl(quad))} 100</span>`
+         + `</div>`
+         + `</td>`
+         + `</tr>`;
+    }
+  }
+
+  // ── Monthly distributions ────────────────────────────────────────────────
+  h += `<tr><td colspan="2" style="padding:6px 6px 2px;font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;border-top:1px solid #f1f5f9;">Monthly</td></tr>`;
+  for (const m of months) {
+    const lbl = m.label || '—';
+    const quad = _effectiveQuad(m) || '';
+    const qcol = _quadColor(quad);
+    h += `<tr>`
+       + `<td style="padding:2px 6px;white-space:nowrap;vertical-align:middle;">`
+       + `<span style="display:inline-block;width:38px;color:#94a3b8;font-size:9px;">${escapeHtml(lbl)}</span>`
+       + `<span style="font-weight:600;color:${qcol};">${escapeHtml(_qdLbl(quad))}</span>`
+       + `</td>`
+       + `<td style="padding:2px 6px 2px 0;vertical-align:middle;">${_segBar(m, 140)}</td>`
+       + `</tr>`;
+  }
+
+  h += '</table>';
+  el.innerHTML = h;
+}
 
 // 2026-08-08 -- per-quad bull/bear factor lists, filtered from band-factors'
 // `factors` array (its quad1..quad4 columns are period-independent raw
@@ -2288,8 +2414,17 @@ function closeDashTrendModal() {
 // Concentration pies as the Actionable screen's sidebar Portfolio Mix panel
 // (web/actionable.js::renderPortfolioMix/_pmHeldRows/_pmCashTotal), reusing
 // the shared web/portfolio_mix.js draw engine (pmRenderCoreMix) instead of
-// re-implementing it. Macro Stance is skipped -- it depends on
-// actionDisplay()'s buy/sell/neutral vocabulary, an Actionable-only concept.
+// re-implementing it.
+// 2026-09-01 -- Macro Stance ADDED (was skipped -- it needs actionDisplay()'s
+// buy/sell/neutral vocabulary, which wasn't loaded here at the time; actions.js
+// is loaded on this page too, so that's no longer a blocker). Not part of
+// pmRenderCoreMix (still Actionable-only logic, per that function's own
+// comment) -- drawn separately by _renderDashMacroStance() below, in the
+// Beta card's slot (Beta itself demoted to a legend-only row underneath --
+// see that card's own HTML comment in index.html). Whole side panel MOVED
+// here from Actionable entirely (2026-09-01, user request: "Move the quads
+// side panel..." / "remove the side panel from actionable screen altogether"
+// -- Dashboard now has every panel Actionable's side panel had).
 // Whole-portfolio unless the Accounts filter (state.catAccounts) has a
 // selection, same scoping as the Cumulative P&L widget and the 3
 // factor-scorecard grids in this column. User: "display graphs from
@@ -2317,11 +2452,18 @@ async function loadDashPortfolioMix() {
   if (!$('dashPortfolioMixSection') || typeof Chart === 'undefined') return;
   try {
     const dateParam = state.date ? `?date=${encodeURIComponent(state.date)}` : '';
-    const [portfolioRows, betaMap, assetClassMap, sectorMap] = await Promise.all([
+    const [portfolioRows, betaMap, assetClassMap, sectorMap, macroMap] = await Promise.all([
       fetchJson('/api/portfolio' + dateParam),
       fetchJson('/api/portfolio/beta-map' + dateParam).catch(() => ({})),
       fetchJson('/api/portfolio/asset-class-map' + dateParam).catch(() => ({})),
       fetchJson('/api/portfolio/sector-map' + dateParam).catch(() => ({})),
+      // 2026-09-01 -- Macro Stance pie, moved here from Actionable's own
+      // Portfolio Mix panel (see this card's own HTML comment above the
+      // dpmBetaCard/dpmMacroCanvas markup). tos_symbol -> macro_action
+      // (SA/STM/HOLD/BS/BM), same vocabulary/colors (_PM_SIDE_COLORS,
+      // actionDisplay()) Actionable's copy already used -- both actions.js
+      // and portfolio_mix.js are loaded on this page too.
+      fetchJson('/api/portfolio/macro-map' + dateParam).catch(() => ({})),
     ]);
     const allPositions = Array.isArray(portfolioRows) ? portfolioRows : [];
     const accounts = state.catAccounts || [];
@@ -2334,6 +2476,7 @@ async function loadDashPortfolioMix() {
         current_position_dollar: 0,
         _pmAssetClass: (assetClassMap && assetClassMap[p.symbol]) || 'Unmapped',
         _pmSector: (sectorMap && sectorMap[p.symbol]) || 'Unmapped',
+        macro_value: (macroMap && macroMap[p.symbol]) || null,
       });
       row.current_position_dollar += Number(p.market_value) || 0;
     }
@@ -2342,10 +2485,36 @@ async function loadDashPortfolioMix() {
       .filter(r => r.is_cash && (!accounts.length || accounts.includes(r.account_id)))
       .reduce((s, r) => s + (Number(r.market_value) || 0), 0);
     pmRenderCoreMix('dpm', held, cashTotal, (betaMap && typeof betaMap === 'object') ? betaMap : {});
+    _renderDashMacroStance(held);
     _alignPmHeaderText();
   } catch (e) {
     console.error('dashboard portfolio mix failed:', e);
   }
+}
+
+// Macro stance mix -- reuses the same buy/sell/neutral colors
+// (_PM_SIDE_COLORS, portfolio_mix.js) and actionDisplay() vocabulary
+// Actionable's own copy of this pie already used. Moved here from
+// web/actionable.js::renderPortfolioMix() (2026-09-01, user request) --
+// same logic, `held` rows now carry macro_value from /api/portfolio/
+// macro-map instead of state.allRows (Dashboard has no equivalent
+// already-loaded grid dataset to pull it from).
+function _renderDashMacroStance(held) {
+  if (!held.length) {
+    _pmDrawPie('dpmMacro', 'dpmMacroCanvas', 'dpmMacroLegend', [], [], [], [], 'No held positions match the current filters.');
+    return;
+  }
+  const macroTotals = {}, macroTickerMap = {};
+  for (const r of held) {
+    const mv = r.macro_value || 'No signal';
+    macroTotals[mv] = (macroTotals[mv] || 0) + (Number(r.current_position_dollar) || 0);
+    (macroTickerMap[mv] = macroTickerMap[mv] || []).push(r.tos_symbol);
+  }
+  const macroLabels = Object.keys(macroTotals);
+  const macroColorOf = (k) => k === 'No signal' ? _PM_SIDE_COLORS.neutral : (_PM_SIDE_COLORS[actionDisplay(k).side] || _PM_SIDE_COLORS.neutral);
+  _pmDrawPie('dpmMacro', 'dpmMacroCanvas', 'dpmMacroLegend',
+    macroLabels, macroLabels.map(k => macroTotals[k]), macroLabels.map(macroColorOf),
+    macroLabels.map(k => macroTickerMap[k]), 'No macro signal for held positions.');
 }
 
 // 2026-08-14 -- moves ONLY the pie header text up to Cumulative P&L's
@@ -2362,7 +2531,7 @@ function _alignPmHeaderText() {
   const ref = document.querySelector('#dashPortfolioMixSection .ts-title');
   if (!ref) return;
   const refTop = ref.getBoundingClientRect().top;
-  ['dpmAssetTitle', 'dpmBetaTitle', 'dpmSectorTitle', 'dpmConcTitle'].forEach(id => {
+  ['dpmAssetTitle', 'dpmMacroTitle', 'dpmSectorTitle', 'dpmConcTitle'].forEach(id => {
     const el = $(id);
     if (!el) return;
     el.style.transform = 'none'; // reset first so re-renders re-measure from the untransformed position
@@ -2631,6 +2800,7 @@ async function refreshAll() {
     loadDashPortfolioMix(),
     reloadMarketView(),
     loadBriefing(),
+    loadQuadOutlook(),
   ]);
   // 2026-08-10 -- Volatility/Major Markets panels (macro_areas.js, loaded on
   // this page now too) wire their own #datePicker "change" listener, but

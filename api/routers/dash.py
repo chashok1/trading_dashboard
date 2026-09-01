@@ -1382,6 +1382,28 @@ def get_portfolio_beta_map(date: Optional[str] = Query(None)):
     return {r["tos_symbol"]: float(r["beta"]) for r in rows}
 
 
+@router.get("/api/portfolio/macro-map")
+def get_portfolio_macro_map(date: Optional[str] = Query(None)):
+    """tos_symbol -> macro_action (drv_macro_score's MACRO column vocab --
+    SA/STM/HOLD/BS/BM -- /api/actionable exposes the same value under the
+    row-level alias "macro_value") for a date. 2026-09-01, user request:
+    moved the Actionable Portfolio Mix panel's Macro Stance pie to the
+    Dashboard screen. Same lean-projection pattern as beta-map above -- a
+    small single-table query, not the full /api/actionable payload (which
+    is what Actionable's OWN Macro Stance pie already had loaded for its
+    main grid anyway; Dashboard has no equivalent already-loaded dataset
+    to piggyback on, so this exists to avoid fetching that whole payload
+    just for one column)."""
+    d = _resolve_date(date)
+    with session_scope() as s:
+        rows = s.execute(
+            text("SELECT tos_symbol, macro_action FROM drv_macro_score "
+                 "WHERE as_of_date = :d AND macro_action IS NOT NULL"),
+            {"d": d},
+        ).mappings().all()
+    return {r["tos_symbol"]: r["macro_action"] for r in rows}
+
+
 def _category_axis_map(s, d, axis: str) -> dict:
     """tos_symbol -> category for `axis` ("asset_class" | "sector"), using
     the EXACT SAME classification etl/derive_category_perf.py's factor-
