@@ -6146,7 +6146,7 @@ function _buildRowEl(r) {
         <input type="checkbox" class="row-check" data-sym="${escapeHtml(r.tos_symbol)}"${isChecked ? ' checked' : ''}>
       </td>
       <td data-col="h" class="num" style="font-size:10px;color:#f59e0b;font-weight:700;text-align:center;">${_hReason ? `<span title="${escapeHtml(_hReason)}">Y</span>` : ''}</td>
-      <td data-col="pos" class="num" style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="Held in: ${escapeHtml(_heldAccountsDisplay(r.held_accounts))}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}</td>
+      <td data-col="pos" class="num" style="font-size:11px; color:#475569;" ${r.held_accounts ? `title="Held in: ${escapeHtml(_heldAccountsDisplay(r.held_accounts))}"` : ''}>${posStr || '<span style="color:#cbd5e1;">—</span>'}${r.held_accounts ? `<div style="font-size:8px;line-height:1.2;color:#94a3b8;white-space:normal;">${escapeHtml(_heldAccountsDisplay(r.held_accounts))}</div>` : ''}</td>
       <td data-col="amt" class="num">
         <span class="amt-primary">${fmtUsd(r._amt)}</span>
         ${r.stop_signal ? (
