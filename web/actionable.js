@@ -173,9 +173,10 @@ function _pctChgChipHtml(pct) {
 // against the anti-aliasing. -webkit-font-smoothing:antialiased (+ the
 // -moz equivalent) still applies -- the browser's thinner, sharper AA
 // hinting instead of the default subpixel/heavier one. Same font-size
-// (7px) throughout -- all of this is a rendering-quality fix, not a size
-// change.
-const _CHG_TINY_STYLE = 'font-size:7px;color:#334155;line-height:1.2;white-space:nowrap;'
+// throughout both call sites (hi/lo % above/below the candle bar, and the
+// $ high-low range) -- bumped 7px->8px 2026-09-02 per user request; the
+// rendering-quality smoothing below is otherwise unchanged.
+const _CHG_TINY_STYLE = 'font-size:8px;color:#334155;line-height:1.2;white-space:nowrap;'
   + '-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;';
 
 function _hiLoParts(high, low, last) {
@@ -195,10 +196,11 @@ function _hiLoParts(high, low, last) {
 // _hiLoParts above).
 function _hiLoRangeHtml(high, low) {
   if (high == null || low == null) return '';
-  // margin-top re-tuned 2026-09-02 back to the Symbol column's tradability
+  // margin-top re-tuned 2026-09-02 to the Symbol column's tradability
   // badge (user: "price range center with tradability number text
-  // center") -- see the call site's own comment for the full history.
-  return `<div style="${_CHG_TINY_STYLE}margin-top:5.16px;">${fmtUsd(low)} - ${fmtUsd(high)}</div>`;
+  // center"), then again for the _CHG_TINY_STYLE font-size bump 7px->8px
+  // -- see the call site's own comment for the full history.
+  return `<div style="${_CHG_TINY_STYLE}margin-top:4.01px;">${fmtUsd(low)} - ${fmtUsd(high)}</div>`;
 }
 
 // One-line summary of an active watch's trigger config for the 🔔 cell's
@@ -6209,15 +6211,17 @@ function _buildRowEl(r) {
                     Symbol...center and price range center with
                     tradability number text center" -- chip~name and
                     range~tradability restored (range back off "Lo%"),
-                    price~hit-rate held fixed throughout. Solved the 3x3
-                    system (wrapper/price/range margins x their effect on
-                    chip/price/range offsets) for the values below;
-                    verified on a real render: chip_minus_name ~0,
-                    range_minus_trad exactly 0, price_minus_hit
-                    unchanged from round 2 on every sampled row. -->
-          <div style="display:flex;flex-direction:column;align-items:center;width:60px;flex:0 0 auto;margin-top:0.05px;">
+                    price~hit-rate held fixed throughout.
+                 4. 2026-09-02, user: "increase the font size by one point"
+                    on _CHG_TINY_STYLE (7px->8px, the hi/lo% and range
+                    lines) -- re-solved the same 3x3 system from scratch
+                    since the taller lines shifted all 3 offsets again.
+               Each round solved via measured perturbation gains (never a
+               naive 1:1 margin guess), verified on a real render down to
+               sub-pixel residuals on every sampled row. -->
+          <div style="display:flex;flex-direction:column;align-items:center;width:60px;flex:0 0 auto;margin-top:0.68px;">
             ${pctChipHtml}
-            ${priceStr ? `<div style="font-size:10px;color:#94a3b8;margin-top:1.75px;">${priceStr}</div>` : ''}
+            ${priceStr ? `<div style="font-size:10px;color:#94a3b8;margin-top:2.29px;">${priceStr}</div>` : ''}
             ${_hiLoRangeHtml(r.high_price, r.low_price)}
           </div>
         </div>
