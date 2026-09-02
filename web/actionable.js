@@ -1531,10 +1531,35 @@ function fmtPct(v) {
   return isFinite(n) ? (formatNum(n * 100) + '%') : '';
 }
 
-// Normalize real_asset_class into a small set of display/filter buckets —
-// _ASSET_CLASS_ALIAS / _normAssetClass now live in web/portfolio_mix.js
-// (shared with the Dashboard screen's own Portfolio Mix card), loaded
-// before this file.
+// Normalize real_asset_class into a small set of display/filter buckets --
+// used for r._assetClass (Asset Class filter chips/dropdown), independent
+// of the Portfolio Mix pies this was originally extracted alongside.
+// 2026-09-01 BUGFIX: got left behind in web/portfolio_mix.js when that
+// script's tag was removed from actionable.html (side panel removal,
+// "remove the side panel from actionable screen altogether") -- broke the
+// whole page load ("Failed to load actionable: _normAssetClass is not
+// defined") since this is called from the main row-normalization loop
+// below, not from anything Portfolio-Mix-specific. Restored here directly
+// rather than re-adding the whole portfolio_mix.js script tag just for
+// these two small definitions -- same "duplicate small helpers per page"
+// convention this file's own _quadColor (vs. app.js's copy) already uses.
+const _ASSET_CLASS_ALIAS = {
+  'domestic equities': 'Equities', 'global equities': 'Equities',
+  'international equities': 'Equities', 'emerging markets equities': 'Equities',
+  'equities': 'Equities',
+  'us fixed income': 'Fixed Income', 'domestic fixed income': 'Fixed Income',
+  'fixed income': 'Fixed Income',
+  'foreign currencies': 'FX', 'foreign currency': 'FX', 'fx': 'FX',
+  'commodities': 'Commodities',
+  'crypto': 'Crypto',
+  'gold': 'Gold',
+  'cash': 'Cash',
+};
+function _normAssetClass(raw) {
+  if (!raw) return 'Unclassified';
+  const key = String(raw).trim().toLowerCase();
+  return _ASSET_CLASS_ALIAS[key] || raw;
+}
 
 // ---- core load ----
 // opts.preserveState: when true (auto-poll path only), keep the user's current
