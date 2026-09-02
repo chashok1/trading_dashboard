@@ -195,10 +195,10 @@ function _hiLoParts(high, low, last) {
 // _hiLoParts above).
 function _hiLoRangeHtml(high, low) {
   if (high == null || low == null) return '';
-  // margin-top re-tuned 2026-09-02 to line up with the "Lo%" label below
-  // the candle bar in this same cell's left column (was tuned to the
-  // Symbol column's tradability badge) -- see the call site's own comment.
-  return `<div style="${_CHG_TINY_STYLE}margin-top:7.88px;">${fmtUsd(low)} - ${fmtUsd(high)}</div>`;
+  // margin-top re-tuned 2026-09-02 back to the Symbol column's tradability
+  // badge (user: "price range center with tradability number text
+  // center") -- see the call site's own comment for the full history.
+  return `<div style="${_CHG_TINY_STYLE}margin-top:5.16px;">${fmtUsd(low)} - ${fmtUsd(high)}</div>`;
 }
 
 // One-line summary of an active watch's trigger config for the 🔔 cell's
@@ -6180,46 +6180,30 @@ function _buildRowEl(r) {
             ${candleHtml}
             ${hiLo.lo}
           </div>
-          <!-- Line-by-line match to the Symbol column's own 3 lines
-               (2026-09-02, user: "Align %change box middle with Symbol
-               name text's middle" / "price with hit rate % chip" /
-               "range with tradability score") -- chip~name, price~hit-
-               rate badge, range~tradability badge. Measured (real
-               render) the Symbol stack's own line-to-line center
-               spacing (name->hit-rate ~15.3px, hit-rate->tradability
-               ~15.6px) vs this stack's default (chip->price 14.0px,
-               price->range 11.7px, both from the uniform gap:1px below)
-               and closed the gap: no shared flex gap here any more, each
-               line's own margin-top tuned instead, plus a small shift up
-               on the whole block so line 1 (chip) starts at line 1
-               (name) instead of below it. Verified down to ~1px on rows
-               with all 3 Symbol lines; a row with fewer Symbol lines
-               (no hit-rate/tradability badge) won't match as tightely --
-               inherent to pairing two stacks whose own line count varies
-               row to row, not something a static offset can fully fix.
-               2026-09-02, follow-up user requests re-targeted the price/
-               range margins specifically: "align price...with hit rate
-               pill...align center of the price range...with center of %
-               change number that is below the vertical bar" -- i.e.
-               price's own center -> hit-rate badge's center (not just
-               chip -> name), and range's own center -> the "Lo%" label
-               below the candle bar in the LEFT column of this same cell
-               (not the Symbol column this time). Calibrated by solving
-               2 equations from measured deltas, NOT a naive 1:1 margin
+          <!-- Line-by-line match to the Symbol column's own 3 lines --
+               chip~name, price~hit-rate badge, range~tradability badge.
+               History of re-targeting (each round solved as a linear
+               system from measured deltas, never a naive 1:1 margin
                guess -- growing this column's own height triggers a
                ~0.5x row-level re-centering against the candle column
-               (chg-candle-row's align-items:center), so a straight
-               "add the measured gap in px" guess overshoots by 2x and
-               even shifts the OTHER line the wrong way (verified: a
-               live +2px test on price alone moved price_minus_hit by
-               only +1px AND shifted range_minus_lo by +1px too, since
-               both float on the same recentering). Solved for the two
-               margins that zero both simultaneously; verified on a real
-               render, range now sits at 0px, price at 0px on rows with a
-               same-height hit-rate badge. -->
-          <div style="display:flex;flex-direction:column;align-items:center;width:60px;flex:0 0 auto;margin-top:-4px;">
+               via chg-candle-row's align-items:center, so every margin
+               here also nudges the other two lines):
+                 1. chip~name, price~hit-rate, range~tradability (initial)
+                 2. price re-targeted to hit-rate (kept), range re-
+                    targeted to the "Lo%" label in the LEFT column instead
+                 3. 2026-09-02, user: "align %change box center with
+                    Symbol...center and price range center with
+                    tradability number text center" -- chip~name and
+                    range~tradability restored (range back off "Lo%"),
+                    price~hit-rate held fixed throughout. Solved the 3x3
+                    system (wrapper/price/range margins x their effect on
+                    chip/price/range offsets) for the values below;
+                    verified on a real render: chip_minus_name ~0,
+                    range_minus_trad exactly 0, price_minus_hit
+                    unchanged from round 2 on every sampled row. -->
+          <div style="display:flex;flex-direction:column;align-items:center;width:60px;flex:0 0 auto;margin-top:0.05px;">
             ${pctChipHtml}
-            ${priceStr ? `<div style="font-size:10px;color:#94a3b8;margin-top:8.52px;">${priceStr}</div>` : ''}
+            ${priceStr ? `<div style="font-size:10px;color:#94a3b8;margin-top:1.75px;">${priceStr}</div>` : ''}
             ${_hiLoRangeHtml(r.high_price, r.low_price)}
           </div>
         </div>
