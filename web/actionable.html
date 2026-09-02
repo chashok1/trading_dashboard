@@ -484,13 +484,18 @@
        has no free space to consume otherwise. */
     .actpop-head { display: flex; align-items: center; column-gap: 14px;
       margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
-    .actpop-ctrl-row { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; }
+    /* gap 10px -> 20px, 2026-09-02, user: "2) double it" (the %CHG<->Trade/
+       Trend group spacing) -- also the base component of the Trade/
+       Trend<->RR spacing (.actpop-rr's own extra margin-left below adds
+       to this SAME value), so its own margin-left doubled too to keep
+       item 3 doubled independently -- see .actpop-rr's own comment. */
+    .actpop-ctrl-row { display: flex; align-items: center; gap: 20px; flex: 1 1 auto; min-width: 0; }
     /* Wraps the %CHG group only (2026-09-02, user: "anchor %CHG controls &
        td/tn to the RR controls and leave the same gap as between %CHG,Tn/
        Td control groups") -- margin-left:auto claims all of
        .actpop-ctrl-row's leftover space for itself, pushing this wrapper
        (and everything after it: Trade/Trend, RR, both still on the row's
-       normal 10px gap -- auto margins only add space BEFORE the item they're
+       own gap -- auto margins only add space BEFORE the item they're
        set on) into one tight cluster flush against the popup's right edge.
        Supp/Opp is left behind on the near side of that auto margin, next
        to the symbol block instead. */
@@ -649,15 +654,21 @@
        for the math this and its margin-top:8 feed into. 2026-08-29
        follow-up: 8px -> 18px -- same +10px group-down shift as
        .actpop-tdtn, see its comment.
-       2026-09-02 follow-up: extra margin-left:10px (2026-09-02, user:
-       "stdev box and text LRR" -> "double the space") -- on top of
-       .actpop-ctrl-row's normal 10px gap this doubles the visual gap
-       between the Td/Tn box's stdev badge and the RR bar's "LRR" label
-       (its own left edge sits flush with .actpop-rr's left edge) to
-       ~20px, WITHOUT touching the shared 10px gap value itself -- that
-       stays exactly as before between %CHG and Trade/Trend, per the same
-       request's "leave as it is" on that pairing. */
-    .actpop-rr { width: 220px; flex: 0 0 auto; align-self: flex-start; margin-top: 18px; margin-left: 10px; }
+       2026-09-02 follow-up: extra margin-left:10px (user: "stdev box and
+       text LRR" -> "double the space") -- on top of .actpop-ctrl-row's
+       gap (then 10px) this doubled the sdBadge<->LRR gap to ~20px
+       without touching the shared gap value (stayed 10px between %CHG
+       and Trade/Trend, per the same request's "leave as it is" on that
+       pairing).
+       2026-09-02 follow-up #2: margin-left 10px -> 20px, alongside
+       .actpop-ctrl-row's OWN gap 10px -> 20px (user: "2) double it 3)
+       double it", i.e. double both the %CHG<->Trade/Trend gap AND the
+       sdBadge<->LRR gap independently). Since sdBadge<->LRR =
+       ctrl-row-gap + this margin, and ctrl-row-gap just doubled to 20 on
+       its own, this margin doubling to 20 keeps sdBadge<->LRR at
+       20(gap)+20(margin)=40 -- double ITS OWN prior 20px value, not
+       double-counting the gap's own doubling. */
+    .actpop-rr { width: 220px; flex: 0 0 auto; align-self: flex-start; margin-top: 18px; margin-left: 20px; }
     .actpop-rr-icons { display:flex; align-items:flex-start; gap:10px; flex-shrink:0; }
     /* 2026-08-21: PVV over CALC, its own small vertical pair sitting next to
        Tradability (was two of the four items side by side in
@@ -1817,7 +1828,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260902zd"></script>
+  <script src="/static/actionable.js?v=20260902ze"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>
