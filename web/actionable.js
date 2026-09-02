@@ -195,9 +195,10 @@ function _hiLoParts(high, low, last) {
 // _hiLoParts above).
 function _hiLoRangeHtml(high, low) {
   if (high == null || low == null) return '';
-  // margin-top tuned to line up with the Symbol column's own 3rd line
-  // (tradability badge) -- see the call site's own comment.
-  return `<div style="${_CHG_TINY_STYLE}margin-top:3.9px;">${fmtUsd(low)} - ${fmtUsd(high)}</div>`;
+  // margin-top re-tuned 2026-09-02 to line up with the "Lo%" label below
+  // the candle bar in this same cell's left column (was tuned to the
+  // Symbol column's tradability badge) -- see the call site's own comment.
+  return `<div style="${_CHG_TINY_STYLE}margin-top:7.88px;">${fmtUsd(low)} - ${fmtUsd(high)}</div>`;
 }
 
 // One-line summary of an active watch's trigger config for the 🔔 cell's
@@ -6195,10 +6196,30 @@ function _buildRowEl(r) {
                with all 3 Symbol lines; a row with fewer Symbol lines
                (no hit-rate/tradability badge) won't match as tightely --
                inherent to pairing two stacks whose own line count varies
-               row to row, not something a static offset can fully fix. -->
+               row to row, not something a static offset can fully fix.
+               2026-09-02, follow-up user requests re-targeted the price/
+               range margins specifically: "align price...with hit rate
+               pill...align center of the price range...with center of %
+               change number that is below the vertical bar" -- i.e.
+               price's own center -> hit-rate badge's center (not just
+               chip -> name), and range's own center -> the "Lo%" label
+               below the candle bar in the LEFT column of this same cell
+               (not the Symbol column this time). Calibrated by solving
+               2 equations from measured deltas, NOT a naive 1:1 margin
+               guess -- growing this column's own height triggers a
+               ~0.5x row-level re-centering against the candle column
+               (chg-candle-row's align-items:center), so a straight
+               "add the measured gap in px" guess overshoots by 2x and
+               even shifts the OTHER line the wrong way (verified: a
+               live +2px test on price alone moved price_minus_hit by
+               only +1px AND shifted range_minus_lo by +1px too, since
+               both float on the same recentering). Solved for the two
+               margins that zero both simultaneously; verified on a real
+               render, range now sits at 0px, price at 0px on rows with a
+               same-height hit-rate badge. -->
           <div style="display:flex;flex-direction:column;align-items:center;width:60px;flex:0 0 auto;margin-top:-4px;">
             ${pctChipHtml}
-            ${priceStr ? `<div style="font-size:10px;color:#94a3b8;margin-top:2.5px;">${priceStr}</div>` : ''}
+            ${priceStr ? `<div style="font-size:10px;color:#94a3b8;margin-top:8.52px;">${priceStr}</div>` : ''}
             ${_hiLoRangeHtml(r.high_price, r.low_price)}
           </div>
         </div>
