@@ -4897,7 +4897,7 @@ function _actpopMacroBarsHtml(r) {
 // 'Watch'/'Avoid' in the DB/API), so every color/class branch that compares
 // against those literal values keeps working unchanged -- only the text
 // shown to the user goes through this map.
-const _VLM_ACTION_LABEL = { Accumulate: 'Heavy Vol', Watch: 'Mixed Vol', Avoid: 'Thin Vol' };
+const _VLM_ACTION_LABEL = { Accumulate: 'Heavy', Watch: 'Mixed', Avoid: 'Thin' };
 function _vlmActionLabel(va) {
   return _VLM_ACTION_LABEL[va] || va;
 }
