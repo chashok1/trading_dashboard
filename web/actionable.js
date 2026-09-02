@@ -3407,6 +3407,20 @@ function _finalCallHtml(row) {
     + '<span class="act-badge act-badge-sm ' + colorCls + '" style="' + hedgeyeStyle + ';cursor:help;" '
     + 'data-actionpop="' + escapeHtml(row.tos_symbol) + '">' + escapeHtml(text) + '</span>'
     + '</div>';
+  // 2026-09-02, user: "I need to see the original action underneath the
+  // sell overage signal" -- OVER_MAX is a synthetic trim-to-max overlay
+  // that REPLACES whatever consolidated_action actually said (see
+  // etl/derive_actionable.py::_compute_final_call, gate 1); that original
+  // action was already surfaced next to the Sources cell (_srcReasonsHtml
+  // call site) and in the drilldown modal, but not directly under the
+  // badge itself where this Final Call sits. Mirrors that same "was X"
+  // wording/style, just anchored under the badge instead.
+  var wasLine = '';
+  if (_isOverMaxOverlay(row)) {
+    var _origAction = (row.consolidated_action || 'NONE').toUpperCase();
+    wasLine = '<div style="font-size:8px;line-height:1.2;text-align:center;margin-top:2px;font-weight:600;" class="'
+      + _actionColorCls(_origAction) + '">was ' + escapeHtml(actionText(actionDisplay(_origAction))) + '</div>';
+  }
   // 2026-09-02, user: "supporting signals and caution signals are not
   // centered when they are by themselves in that line" -- each of
   // stopPill/earningsPill/signalPill carries its own leading space (a
@@ -3429,7 +3443,7 @@ function _finalCallHtml(row) {
   var pillsLine = (stopPill || earningsPill || signalPill)
     ? '<div class="pills-line" style="text-align:center;margin-top:2px;">' + (stopPill + earningsPill + signalPill).trim() + '</div>'
     : '';
-  return badgeLine + pillsLine + subIcon;
+  return badgeLine + wasLine + pillsLine + subIcon;
 }
 
 // ── Pass 2: Priority score (TASK_120 — dollar-weighted-edge default sort;
