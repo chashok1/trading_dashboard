@@ -131,7 +131,7 @@ function _vrocHtml(r) {
   const sign = v >= 0 ? '+' : '';
   const color = v >= 0 ? '#16a34a' : '#dc2626';
   const title = `VROC (Volume Rate of Change, 14-day): today's volume vs ~14 trading days ago — ${sign}${v.toFixed(1)}%`;
-  return `<div style="font-size:9px;line-height:1;margin-top:1px;white-space:nowrap;color:${color};" title="${escapeHtml(title)}">${sign}${v.toFixed(1)}%</div>`;
+  return `<div style="font-size:8px;line-height:1;margin-top:2px;white-space:nowrap;color:${color};" title="${escapeHtml(title)}">${sign}${v.toFixed(1)}%</div>`;
 }
 
 function fmtDateMD(d) {
@@ -6059,7 +6059,7 @@ function _buildRowEl(r) {
       </td>
       <td data-col="rr" style="padding:6px 4px;">${rrBarHtml}</td>
       <td data-col="vlm" class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">
-        <div>${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}${r.vlm_action ? `<span style="display:inline-block;margin-left:3px;font-size:9px;padding:1px 3px;border-radius:3px;background:${r.vlm_action==='Accumulate'?'#bbf7d0':r.vlm_action==='Avoid'?'#fecaca':'#e5e7eb'};color:#374151;font-weight:600;text-decoration:none;vertical-align:middle;">${escapeHtml(r.vlm_action === 'Accumulate' ? 'Accum' : r.vlm_action)}</span>` : ''}</div>
+        <div style="line-height:16px;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}${r.vlm_action ? `<span style="display:inline-block;margin-left:3px;font-size:9px;padding:1px 3px;border-radius:3px;background:${r.vlm_action==='Accumulate'?'#bbf7d0':r.vlm_action==='Avoid'?'#fecaca':'#e5e7eb'};color:#374151;font-weight:600;text-decoration:none;vertical-align:middle;">${escapeHtml(r.vlm_action === 'Accumulate' ? 'Accum' : r.vlm_action)}</span>` : ''}</div>
         ${_vrocHtml(r)}
       </td>
       <td data-col="iv" class="num" data-sym="${escapeHtml(r.tos_symbol)}" data-ivpop style="padding:3px 4px;cursor:default;text-align:center;">${(() => {
