@@ -48,6 +48,59 @@ def get_universe(date: Optional[str] = Query(None)):
     )
     accounts = list_actionable_accounts(date=date)
 
+    # is_macro_instrument flows through so the client can peel real
+    # futures/FX/index instruments (no GICS sector by nature -- /GC, SPX,
+    # /6E etc.) out of the "Unclassified" catch-all into their own bucket,
+    # instead of lumping them in with ordinary stocks whose `sector` is
+    # merely unpopulated in the reference data (a separate, larger, actual
+    # data gap this screen doesn't try to paper over).
+    # last_price/trade_line_value/trend_line_value/lrr/trr feed the
+    # drilldown tile's Trade/Trend above-below coloring and mini Risk Range
+    # bar -- same fields + formula (_rawRrPos) the Actionable screen's own
+    # Action popup uses, so a tile's read matches what you'd see there.
+    def _f(v):
+        return float(v) if v is not None else None
+
+    # asset_class (real_asset_class, normalized) + style_tags feed the new
+    # "By Asset Class" hierarchy (Asset Class -> Sector-if-Equities ->
+    # Symbol) and the Style filter. Region-split equity labels ("Domestic
+    # Equities"/"Global Equities"/"International Equities"/"Emerging
+    # Markets Equities") merged into one "Equities" -- only ~19 of 568
+    # equity rows even carry a region tag, too sparse to be a useful split.
+    # Currency labels ("Foreign Currency"/"Foreign Currencies"/"FX") merged
+    # the same way. Unpopulated (None) is left as-is -- same "Unclassified"
+    # catch-all treatment the client already gives an empty sector.
+    _EQUITY_ALIASES = {"Equities", "Domestic Equities", "Global Equities",
+                        "International Equities", "Emerging Markets Equities"}
+    _FX_ALIASES = {"Foreign Currency", "Foreign Currencies", "FX", "USD"}
+    _FIXED_INCOME_ALIASES = {"Fixed Income", "Domestic Fixed Income"}
+
+    def _norm_asset_class(raw):
+        s = (raw or "").strip()
+        if not s:
+            return None
+        if s in _EQUITY_ALIASES:
+            return "Equities"
+        if s in _FX_ALIASES:
+            return "FX / Currency"
+        if s in _FIXED_INCOME_ALIASES:
+            return "Fixed Income"
+        return s
+
+    def _style_labels(raw):
+        if not raw:
+            return []
+        return [x.get("label") for x in raw if isinstance(x, dict) and x.get("label")]
+
+    # sources: which outlook source(s) (RR/CALL/ETF/II/SSS/PS/...) flagged
+    # this symbol, from drv_actionable.source_actions -- feeds the new "By
+    # Source" hierarchy. A symbol can carry more than one (e.g. both RR and
+    # CALL), so this is a list, same multi-tag shape as style_tags.
+    def _source_codes(raw):
+        if not raw:
+            return []
+        return [x.get("source") for x in raw if isinstance(x, dict) and x.get("source")]
+
     symbols = [
         {
             "tos_symbol": r.get("tos_symbol"),
@@ -55,6 +108,16 @@ def get_universe(date: Optional[str] = Query(None)):
             "held_today": bool(r.get("held_today")),
             "current_position_dollar": float(r.get("current_position_dollar") or 0),
             "final_code": r.get("final_code"),
+            "is_macro_instrument": bool(r.get("is_macro_instrument")),
+            "last_price": _f(r.get("last_price")),
+            "trade_line_value": _f(r.get("trade_line_value")),
+            "trend_line_value": _f(r.get("trend_line_value")),
+            "lrr": _f(r.get("lrr")),
+            "trr": _f(r.get("trr")),
+            "hv": _f(r.get("hv")),
+            "asset_class": _norm_asset_class(r.get("real_asset_class")),
+            "style_tags": _style_labels(r.get("style_stances")),
+            "sources": _source_codes(r.get("source_actions")),
         }
         for r in actionable_rows
         if r.get("tos_symbol")

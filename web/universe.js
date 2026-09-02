@@ -20,9 +20,18 @@
 // by asset class + sector under the account too, not just a flat symbol
 // list), so a diagonal sector-split-by-account cut isn't needed alongside it.
 //
-// Independent controls: View (Asset Class / Account — which hierarchy),
-// Size (Count/Capital — what sizes every tile), Filter (all/held/
-// actionable — which symbols count), Color (buy/sell/hold — narrows
+// 2026-09-02: added a 3rd entry point, "By Source" (Source -> Asset Class ->
+// Sector -> Symbol), rooted at the outlook source(s) that flagged a symbol
+// (drv_actionable.source_actions -- RR/CALL/ETF/II/SSS/PS/...). Unlike
+// Account/Asset Class (each symbol has exactly one), a symbol can carry
+// several sources at once, so it can land under more than one source root
+// tile -- same multi-tag shape Style already has, not a strict partition.
+// Filter (All/Held/Actionable) stays live under it (a source can flag a
+// not-held symbol too), unlike "By Account" which forces Held.
+//
+// Independent controls: View (Asset Class / Account / Source — which
+// hierarchy), Size (Count/Capital — what sizes every tile), Filter (all/
+// held/actionable — which symbols count), Color (buy/sell/hold — narrows
 // drilldown tiles), Style (one style tag — narrows drilldown tiles). Click
 // any group tile to drill in; click a symbol tile to jump to Actionable.
 (function () {
@@ -78,6 +87,7 @@
   const CAT_SLOTS = ['--cat1', '--cat2', '--cat3', '--cat4', '--cat5', '--cat6', '--cat7', '--cat8', '--cat9'];
   const ACCOUNT_COLOR_SLOTS = ['--cat1', '--cat2', '--cat3', '--cat4', '--cat5'];
   let acctColor = new Map();
+  let sourceColorAssign = new Map();  // source code -> --catN, same ranked-on-whole-universe pattern as catAssign/assetColorAssign
   let ALL_STYLE_TAGS = [];      // sorted unique style labels across the whole universe
 
   // keyField names the output property (e.g. 'sector' or 'asset_class') so
@@ -96,6 +106,25 @@
     return [...by.values()].sort((a, b) => b.count - a.count);
   }
   const aggregate = rows => aggregateBy(rows, 'sector', r => r.sector);
+
+  // Same shape as aggregateBy(), but for a MULTI-valued field (r.sources
+  // can list more than one code) -- a row with 2 sources counts under
+  // both, same multi-membership Style tags already allow, so this can't
+  // reuse aggregateBy's one-key-per-row loop as-is.
+  function aggregateByMulti(rows, keyField, keysFn) {
+    const by = new Map();
+    rows.forEach(r => {
+      (keysFn(r) || []).forEach(key => {
+        if (!by.has(key)) by.set(key, { [keyField]: key, count: 0, held: 0, held_value: 0, sample: [] });
+        const a = by.get(key);
+        a.count++;
+        if (r.held_today) { a.held++; a.held_value += r.current_position_dollar || 0; }
+        if (a.sample.length < 6) a.sample.push(r.tos_symbol);
+      });
+    });
+    return [...by.values()].sort((a, b) => b.count - a.count);
+  }
+  const aggregateSources = rows => aggregateByMulti(rows, 'source', r => r.sources);
 
   // A raw value-based treemap can degenerate a near-zero-share item to a
   // literal 0-height sliver -- genuinely invisible, not just unlabeled
@@ -159,6 +188,7 @@
       sector: normSector(r.sector, r.is_macro_instrument),
       asset_class: normAssetClass(r.asset_class),
       style_tags: r.style_tags || [],
+      sources: r.sources || [],
     }));
     const sectorOf = new Map(SYMS.map(r => [r.tos_symbol, r.sector]));
     const assetClassOf = new Map(SYMS.map(r => [r.tos_symbol, r.asset_class]));
@@ -211,6 +241,14 @@
     assetColorAssign = new Map();
     ASSET_RANK.forEach((d, i) => assetColorAssign.set(d.asset_class, i < CAT_SLOTS.length ? CAT_SLOTS[i] : '--cat-unmapped'));
     assetColorAssign.set('Unclassified', '--cat-unmapped');
+
+    // Source ranked on the FULL universe too, same reason -- a source's
+    // color stays the same whichever Filter tab (All/Held/Actionable) is
+    // active, since (unlike Account) the Source root's own tile SET does
+    // change with that filter.
+    const SOURCE_RANK = aggregateSources(SYMS);
+    sourceColorAssign = new Map();
+    SOURCE_RANK.forEach((d, i) => sourceColorAssign.set(d.source, i < CAT_SLOTS.length ? CAT_SLOTS[i] : '--cat-unmapped'));
   }
 
   // ---------------------------------------------------------------------
@@ -278,7 +316,7 @@
   // ---------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------
-  let currentView = 'account'; // 'assetclass' | 'account' -- which hierarchy's root is showing; defaults to Account
+  let currentView = 'account'; // 'assetclass' | 'account' | 'source' -- which hierarchy's root is showing; defaults to Account
   let sizeMode = 'count';         // 'count' | 'capital' -- what sizes every tile at every level
   // Held to match the 'account' default above -- "By Account" only ever
   // means anything for held positions, same rule wireStaticControls
@@ -293,10 +331,11 @@
   // bar itself uses), same scope as Color/Style -- narrows symbol tiles
   // to a rawRrPos() range, via the #uvRrMin/#uvRrMax dual-thumb slider.
   let rrMin = 0, rrMax = 100;
-  // Unified drill path, shared by both hierarchies: null (root) or
-  // { account?, assetClass?, sector? } -- built progressively. The "By
-  // Asset Class" entry never sets `account`; the "By Account" entry sets
-  // it first, then the same assetClass/sector legs follow underneath.
+  // Unified drill path, shared by all three hierarchies: null (root) or
+  // { account?, source?, assetClass?, sector? } -- built progressively.
+  // "By Asset Class" never sets `account`/`source`; "By Account" sets
+  // `account` first and "By Source" sets `source` first, then the same
+  // assetClass/sector legs follow underneath either one.
   let drill = null;
   function resetDrill() { drill = null; }
   // Sentinel for drill.sector meaning "every sector, flattened" -- set by
@@ -319,11 +358,16 @@
 
   // The symbol-shaped rows the CURRENT drill level's hierarchy is built
   // from. Once an account is chosen (drill.account set), scope narrows to
-  // just that account's positions; otherwise it's the whole filtered
-  // universe. Same shape either way (posAsSymRow adapts POS to match), so
-  // buildAssetHierarchy doesn't care which source it got.
+  // just that account's positions; once a source is chosen (drill.source),
+  // scope narrows to the current Filter's rows that carry that source tag
+  // (a row can carry several, so this is a filter, not a partition -- same
+  // membership rule aggregateSources() itself uses). Otherwise it's the
+  // whole filtered universe. Same {tos_symbol,...} shape either way
+  // (posAsSymRow adapts POS to match), so buildAssetHierarchy doesn't care
+  // which source it got.
   function currentScopeRows() {
     if (drill && drill.account) return POS.filter(r => r.account_id === drill.account).map(posAsSymRow);
+    if (drill && drill.source) return FILTERS[currentFilter].rows.filter(r => (r.sources || []).includes(drill.source));
     return FILTERS[currentFilter].rows;
   }
 
@@ -334,6 +378,7 @@
   // renderHierarchy's own dispatch exactly, without running it.
   function atSymbolLevel() {
     if (currentView === 'account' && !(drill && drill.account)) return false; // Account root
+    if (currentView === 'source' && !(drill && drill.source)) return false; // Source root
     if (!drill || !drill.assetClass) return false; // Asset Class tiles
     if (drill.assetClass === ALL_ASSET_CLASSES) return true; // "All stocks" (whole account)
     if (!drill.sector) return drill.assetClass !== 'Equities'; // Equities -> Sector tiles; others -> symbols directly
@@ -360,6 +405,7 @@
     $('uvRrRow').hidden = !showSymbolFilters;
 
     if (currentView === 'account' && !(drill && drill.account)) { renderAccountRoot(); return; }
+    if (currentView === 'source' && !(drill && drill.source)) { renderSourceRoot(); return; }
     renderHierarchy();
   }
 
@@ -410,16 +456,21 @@
     const scope = currentScopeRows();
     const hier = buildAssetHierarchy(scope);
     const inAccount = !!(drill && drill.account);
+    // "in {scope}" label for either an account or a source drill leg --
+    // same treatment, just a different lookup for the display label
+    // (accounts have a friendly display_name; sources are shown as-is).
+    const scopeLabel = inAccount ? (acctLabelMap.get(drill.account) || drill.account)
+      : (drill && drill.source) ? drill.source : null;
 
     $('uvTotalCount').textContent = fmtInt(scope.length);
     $('uvTotalSectors').textContent = hier.agg.length;
     $('uvSectorsUnit').textContent = 'asset classes';
     $('uvSHeld').textContent = d3.sum(hier.agg, d => d.held) + ' symbols';
     $('uvSCapital').textContent = fmtUsd(d3.sum(hier.agg, d => d.held_value));
-    $('uvFilterCount').textContent = inAccount ? `— in ${acctLabelMap.get(drill.account) || drill.account}` : '';
+    $('uvFilterCount').textContent = scopeLabel ? `— in ${scopeLabel}` : '';
 
     renderCrumbs();
-    $('uvSideHeading').textContent = inAccount ? `Top asset classes in ${acctLabelMap.get(drill.account) || drill.account}` : 'Top asset classes';
+    $('uvSideHeading').textContent = scopeLabel ? `Top asset classes in ${scopeLabel}` : 'Top asset classes';
 
     const wrap = document.querySelector('.uv-svg-wrap');
     const W = wrap.clientWidth, H = wrap.clientHeight;
@@ -434,12 +485,15 @@
     }
 
     if (!drill || !drill.assetClass) {
+      // Preserve whichever root leg (account or source) got us here --
+      // same `parent` pattern renderCrumbs() uses.
+      const parent = inAccount ? { account: drill.account } : (drill && drill.source) ? { source: drill.source } : {};
       renderAssetClassFlat(hier.agg, W, H,
-        ac => { drill = inAccount ? { account: drill.account, assetClass: ac } : { assetClass: ac }; render(); },
+        ac => { drill = { ...parent, assetClass: ac }; render(); },
         ac => {
           drill = inAccount
             ? { account: drill.account, assetClass: ALL_ASSET_CLASSES } // whole account, every asset class
-            : { assetClass: ac, sector: ALL_SECTORS };                   // whole universe: Equities only, flat
+            : { ...parent, assetClass: ac, sector: ALL_SECTORS };       // whole universe / one source: Equities only, flat
           render();
         });
     } else if (drill.assetClass === ALL_ASSET_CLASSES) {
@@ -482,14 +536,15 @@
 
   function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-  // Breadcrumb for the unified drill path (account? -> assetClass? ->
-  // sector?) -- works for both hierarchies since it just walks whichever
-  // legs `drill` has set.
+  // Breadcrumb for the unified drill path (account?/source? -> assetClass?
+  // -> sector?) -- works for all three hierarchies since it just walks
+  // whichever legs `drill` has set.
   function renderCrumbs() {
     const el = $('uvCrumbs');
     if (!drill) { el.innerHTML = ''; return; }
     const segs = [];
     if (drill.account) segs.push({ key: 'account', label: acctLabelMap.get(drill.account) || drill.account });
+    if (drill.source) segs.push({ key: 'source', label: drill.source });
     if (drill.assetClass && drill.assetClass !== ALL_ASSET_CLASSES) segs.push({ key: 'assetClass', label: drill.assetClass });
     if (drill.assetClass === ALL_ASSET_CLASSES) segs.push({ key: 'assetClass', label: 'All stocks' });
     if (drill.sector) segs.push({ key: 'sector', label: drill.sector === ALL_SECTORS ? 'All stocks' : drill.sector });
@@ -502,9 +557,14 @@
       parts.push(isLast ? `<span class="uv-crumb current">${esc(s.label)}</span>` : `<span class="uv-crumb" data-crumb="${s.key}">${esc(s.label)}</span>`);
     });
     el.innerHTML = parts.join('');
+    // `parent` carries whichever root leg (account or source) the current
+    // drill has, so re-clicking the assetClass crumb keeps it instead of
+    // dropping back to the whole-universe root.
+    const parent = drill.account ? { account: drill.account } : drill.source ? { source: drill.source } : {};
     el.querySelectorAll('[data-crumb="root"]').forEach(e => e.addEventListener('click', () => { drill = null; render(); }));
     el.querySelectorAll('[data-crumb="account"]').forEach(e => e.addEventListener('click', () => { drill = { account: drill.account }; render(); }));
-    el.querySelectorAll('[data-crumb="assetClass"]').forEach(e => e.addEventListener('click', () => { drill = drill.account ? { account: drill.account, assetClass: drill.assetClass } : { assetClass: drill.assetClass }; render(); }));
+    el.querySelectorAll('[data-crumb="source"]').forEach(e => e.addEventListener('click', () => { drill = { source: drill.source }; render(); }));
+    el.querySelectorAll('[data-crumb="assetClass"]').forEach(e => e.addEventListener('click', () => { drill = { ...parent, assetClass: drill.assetClass }; render(); }));
   }
 
   // Draws a group tile's name (+ optional sub-line, if there's room) --
@@ -568,6 +628,92 @@
       tt.style.left = (evt.clientX + 14) + 'px'; tt.style.top = (evt.clientY + 14) + 'px'; tt.classList.add('show');
     }).on('mouseleave', () => tt.classList.remove('show'))
       .on('click', (evt, d) => { if (d.data.posCount > 0) { drill = { account: d.data.key }; render(); } });
+  }
+
+  // ---- "By Source" root: tiles = outlook sources (RR/CALL/ETF/II/SSS/
+  // PS/...). Unlike ACCOUNTS (fixed once in build(), always Held), this is
+  // recomputed from the CURRENT Filter's rows on every render -- a source
+  // can flag a not-held symbol too, so All/Held/Actionable stays a live
+  // choice here (see currentScopeRows()'s own comment). Click drills into
+  // that source's own Asset Class -> Sector -> Symbol hierarchy
+  // (renderHierarchy, via drill = {source}).
+  function renderSourceRoot() {
+    const rows = FILTERS[currentFilter].rows;
+    const srcAgg = aggregateSources(rows);
+
+    $('uvTotalCount').textContent = fmtInt(rows.length);
+    $('uvTotalSectors').textContent = srcAgg.length;
+    $('uvSectorsUnit').textContent = 'sources';
+    $('uvSHeld').textContent = d3.sum(srcAgg, d => d.held) + ' symbols';
+    $('uvSCapital').textContent = fmtUsd(d3.sum(srcAgg, d => d.held_value));
+    $('uvFilterCount').textContent = '';
+
+    renderCrumbs();
+    $('uvSideHeading').textContent = 'Top sources';
+
+    const wrap = document.querySelector('.uv-svg-wrap');
+    const W = wrap.clientWidth, H = wrap.clientHeight;
+    svg.attr('viewBox', `0 0 ${W} ${H}`);
+
+    if (srcAgg.length === 0) {
+      svg.selectAll('*').remove();
+      svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
+        .text('No symbols match this filter.');
+      $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
+      return;
+    }
+
+    renderSourceFlat(srcAgg, W, H, src => { drill = { source: src }; render(); });
+
+    const ranklist = $('uvRankList');
+    const top = [...srcAgg].sort((a, b) => (sizeMode === 'capital' ? b.held_value - a.held_value : b.count - a.count)).slice(0, 8);
+    ranklist.innerHTML = top.map(d => {
+      const dot = cssVar(sourceColorAssign.get(d.source) || '--cat-unmapped');
+      const val = sizeMode === 'capital' ? fmtUsd(d.held_value) : fmtInt(d.count);
+      return `<li class="uv-rank-row"><span class="uv-rank-dot" style="background:${dot};"></span>` +
+        `<span class="uv-rank-name">${esc(d.source)}</span><span class="uv-rank-val">${val}</span></li>`;
+    }).join('');
+    $('uvSLargest').textContent = top[0] ? top[0].source : '—';
+  }
+
+  // ---- Source tiles, colored by sourceColorAssign -- same generic
+  // {count,held,held_value,sample}-keyed tile renderer as
+  // renderSectorWithinAsset, just at root level and keyed by source code
+  // instead of sector name.
+  function renderSourceFlat(data, W, H, onClick) {
+    const rawValueFn = d => sizeMode === 'capital' ? d.held_value : d.count;
+    const sized = data.filter(d => rawValueFn(d) > 0);
+    const root = d3.hierarchy({ children: sized }).sum(floorValueFn(sized, rawValueFn)).sort((a, b) => b.value - a.value);
+    d3.treemap().size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
+
+    const leaves = root.leaves();
+    svg.selectAll('*').remove();
+    const cell = svg.selectAll('g.uv-cell').data(leaves).join('g')
+      .attr('class', 'uv-cell-group uv-cell').attr('tabindex', 0)
+      .attr('transform', d => `translate(${d.x0},${d.y0})`);
+
+    const colorFn = d => cssVar(sourceColorAssign.get(d.source) || '--cat-unmapped');
+    cell.append('rect').attr('class', 'uv-cell-rect')
+      .attr('width', d => Math.max(0, d.x1 - d.x0)).attr('height', d => Math.max(0, d.y1 - d.y0))
+      .attr('rx', 3).attr('fill', d => colorFn(d.data));
+
+    cell.each(function (d) {
+      const w = d.x1 - d.x0, h = d.y1 - d.y0;
+      const fill = colorFn(d.data); const ink = labelColorFor(fill);
+      drawGroupTileLabel(d3.select(this), w, h, ink, d.data.source, `${fmtInt(d.data.count)} sym · ${fmtUsd(d.data.held_value)}`);
+    });
+
+    cell.on('mousemove', (evt, d) => {
+      const heldPct = d.data.count ? Math.round((d.data.held / d.data.count) * 100) : 0;
+      tt.innerHTML = `<div class="uv-tt-title">${esc(d.data.source)}</div>` +
+        `<div class="uv-tt-row"><span>Symbols</span><span>${fmtInt(d.data.count)}</span></div>` +
+        `<div class="uv-tt-row"><span>Held</span><span>${d.data.held} (${heldPct}%)</span></div>` +
+        `<div class="uv-tt-row"><span>Capital</span><span>${fmtUsd(d.data.held_value)}</span></div>` +
+        `<div class="uv-tt-syms">${d.data.sample.map(esc).join(' · ')}${d.data.count > d.data.sample.length ? ' …' : ''}</div>` +
+        `<div class="uv-tt-hint">Click to see asset classes</div>`;
+      tt.style.left = (evt.clientX + 14) + 'px'; tt.style.top = (evt.clientY + 14) + 'px'; tt.classList.add('show');
+    }).on('mouseleave', () => tt.classList.remove('show'))
+      .on('click', (evt, d) => onClick(d.data.source));
   }
 
   // ---- Asset Class tiles (top level of renderHierarchy), colored by
