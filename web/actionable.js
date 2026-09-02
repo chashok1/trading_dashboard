@@ -124,6 +124,22 @@ function fmtDateMD(d) {
   return s.slice(5, 7) + '/' + s.slice(8, 10);
 }
 
+// Solid %CHG chip (2026-09-01, user: "use boxes like you are using in
+// dashboard panels" -- matches macro_areas.js's _chgChipHtml/the tape's
+// %chg convention) — replaces the old plain colored text (.pct-positive/
+// .pct-negative). Reuses the shared .msr-chg class (styles.css) for the
+// pill shape/font, overriding its fixed flex-basis (tuned for that panel's
+// 1-decimal values) to auto since this column keeps its existing 2-decimal
+// precision, which can run a character wider.
+function _pctChgChipHtml(pct) {
+  if (pct === null || pct === undefined) return '';
+  const n = Number(pct);
+  const flat = Math.abs(n) < 0.001;
+  const bg = flat ? '#888' : (n > 0 ? '#1d9e75' : '#d4537e');
+  const txt = (n > 0 ? '+' : '') + n.toFixed(2) + '%';
+  return `<span class="msr-chg" style="background:${bg};flex:0 0 auto;">${escapeHtml(txt)}</span>`;
+}
+
 // ---------- Side panel helpers + MACRO band (TASK_74) ----------
 
 // ── MACRO column cell renderer (TASK_74) ────────────────────────────────────
@@ -5857,8 +5873,7 @@ function _buildRowEl(r) {
     }
     tr.dataset.sym = r.tos_symbol;
 
-    const pctCls = r.pct_change != null ? (Number(r.pct_change) >= 0 ? 'pct-positive' : 'pct-negative') : '';
-    const pctStr = r.pct_change != null ? (Number(r.pct_change).toFixed(2) + '%') : '';
+    const pctChipHtml = _pctChgChipHtml(r.pct_change);
     const priceStr = r.last_price != null ? fmtUsd(r.last_price) : '';
     const hitRateBadge = state.filters.trade_mode ? _sourceHitRateBadge(r) : '';
     const tradabilityBadge = _tradabilityBadge(r);
@@ -5968,7 +5983,7 @@ function _buildRowEl(r) {
       <td data-col="chg" class="num">
         <div class="chg-candle-row" style="display:flex;align-items:center;justify-content:flex-end;gap:4px;">
           ${candleHtml}
-          <span class="${pctCls}" style="font-weight:700;">${pctStr}</span>
+          ${pctChipHtml}
         </div>
         ${intradayTag ? `<div style="text-align:right;">${intradayTag}</div>` : ''}
         ${priceStr ? `<div style="font-size:10px;color:#94a3b8;text-align:center;">${priceStr}</div>` : ''}
