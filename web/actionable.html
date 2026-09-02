@@ -454,60 +454,37 @@
        _buildActionPopHtmlV2 in actionable.js. Reuses .source-pop's box
        (#sourcePop) and the app's real --act-* color tokens (styles.css
        :root) rather than inventing a new palette. */
-    .actpop { width: 662px; padding: 6px; }  /* 460px + 20% + 20% (2026-08-29) */
-    /* .actpop-sym on the left, the RR bar widget (.actpop-rr, below) on the
-       right -- align-items:center so the bar reads level with the symbol
-       name instead of both just sharing a top edge.
-       2026-08-30: flex -> CSS Grid, 3 columns (was flex +
-       justify-content:space-between). Why: the Tradability icon/score down
-       in .actpop-rr-row needs to sit directly under .actpop-tdtn here, even
-       though they're on two different rows -- flex can't do that (each
-       row's space-between gaps are computed independently from that row's
-       OWN content, so they drift apart whenever the two rows' content
-       widths differ). .actpop-rr-row (below) uses this EXACT SAME
-       grid-template-columns string, and grid track sizes don't depend on
-       which content fills them, so col2 is guaranteed to land at the same
-       x-position in both rows regardless of what's actually in col1/col3
-       that row.
-       2026-08-30 follow-up: col1/col3 both plain 1fr (was minmax(0,1fr) /
-       minmax(220px,320px)) -- user wants Td/Tn/Tradability horizontally
-       CENTERED IN THE POPOVER, not just centered within whatever narrow
-       slot was left over after the symbol block and RR bar claimed their
-       share. Two equal 1fr flanks split the remaining space evenly on
-       both sides of col2 by construction, which is what actually puts col2
-       at the popover's true horizontal center -- asymmetric flanks (the
-       old minmax pair) can't guarantee that no matter how col2 itself is
-       justified within its own column.
-       2026-08-30 follow-up: 1fr:1fr -> 1fr:1.2fr -- user wants more room
-       for the Sector ETF/Volume lines (col3 of .actpop-rr-row, same
-       column) which were still cramped; col1 (this row: symbol block, the
-       other row: Macro/PVV/CALC icons) had slack to give up. Trade-off,
-       noted here since it partially undoes the "exact center" request
-       above: col2 (Td/Tn/Tradability) is now centered slightly LEFT of the
-       popover's true middle, not dead-center -- still lines up between the
-       two rows (that only needs col1 identical in both grids, which it
-       still is) and reads as roughly-centered, just no longer exact. Both
-       grids below still MUST use this exact same string, unchanged from
-       each other, for that row-to-row alignment to hold. */
-    .actpop-head { display:grid; grid-template-columns: 1fr 130px 1.2fr;
-      align-items:center; column-gap:8px;
+    .actpop { width: 780px; padding: 6px; }  /* 460px + 20% + 20% (2026-08-29), +118px (2026-09-02) for the new %CHG control group */
+    /* .actpop-sym (symbol name + Final Call badge + amount/earnings) on the
+       left; .actpop-ctrl-row -- 4 equally-gapped control groups (Supp/Opp
+       tally, %CHG widget, Trade/Trend boxes, RR bar) -- fills the rest.
+       2026-09-02: back to plain flex (was CSS Grid 2026-08-30 through
+       2026-09-02) -- the grid's whole reason was keeping a SECOND row's
+       middle column aligned under this row's Td/Tn column, but that
+       second-row alignment need is long gone (.actpop-rr-row is plain flex
+       -- see its own comment) and doesn't apply to the new 4-group layout
+       either. .actpop-ctrl-row's own justify-content:space-between now
+       does the "equal gap between groups" job a grid isn't even needed
+       for -- with N flex items, space-between always divides the row's
+       leftover width into N-1 identical gaps, whatever each item's own
+       width is, and pins the last item (RR bar) to the row's right edge
+       same as before. */
+    .actpop-head { display: flex; align-items: center; column-gap: 14px;
       margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
-    .actpop-sym { min-width:0; font-size:14px; font-weight:800; color:#0f172a; }
+    .actpop-ctrl-row { display: flex; align-items: center; justify-content: space-between; flex: 1 1 auto; min-width: 0; }
+    .actpop-sym { min-width:0; flex: 0 0 auto; font-size:14px; font-weight:800; color:#0f172a; }
     /* 2026-08-29: held amount/earnings moved to their own line below the
        symbol (was an inline span next to it) -- block instead of inline. */
     .actpop-sym .actpop-co { display:block; font-weight:400; color:#94a3b8; font-size:10px; margin:2px 0 0; }
-    /* Trade/Trend header boxes (2026-08-29) -- .actpop-head's middle grid
-       column (col2, see above). Stack order (which box is on top) is
-       decided in JS per row -- see _actpopTdTnHtml. Boxes shortened
-       (padding 2px->0, fixed 14px line-height) per user -- were too tall
-       next to the RR controls.
-       justify-self:center centers it within col2 (130px, wider than the
-       boxes' own content) -- that's also what keeps it lined up with
-       .actpop-rr-trad below, since both are justify-self:center in the
-       SAME 130px column. align-self:flex-start is what keeps it sharing
-       one coordinate frame with .actpop-rr (this row's col3) -- .actpop-
-       head's align-items:center still centers .actpop-sym normally, it
-       just no longer applies to these two.
+    /* Trade/Trend header boxes -- one of .actpop-ctrl-row's 4 groups (JS
+       order decides which box, Td or Tn, sits on top -- see
+       _actpopTdTnHtml). Boxes shortened (padding 2px->0, fixed 14px
+       line-height) per user -- were too tall next to the RR controls.
+       align-self:flex-start keeps it sharing the same coordinate-frame top
+       as .actpop-rr (both flex items of .actpop-ctrl-row) instead of
+       .actpop-ctrl-row's own align-items:center, which would otherwise
+       center it -- see .actpop-rr's own comment for the math this and its
+       margin-top:8 feed into.
        margin-top/height are computed (not eyeballed) from .actpop-rr's own
        geometry so the top edge lines up with the %-tag pill and the bottom
        edge lines up with the LRR/TRR label line:
@@ -524,7 +501,7 @@
        CSS geometry, not visually confirmed (no browser access this
        session) -- flag it if it needs a further nudge. */
     .actpop-tdtn { display:flex; flex-direction:column; align-items:center; justify-content:space-between;
-      justify-self:center; align-self:flex-start; margin-top:0; height:39px; }
+      align-self:flex-start; margin-top:0; height:39px; }
     .actpop-tdtn-box { font-size:10px; font-weight:700; line-height:14px; color:#334155; background:#f1f5f9;
       border:1px solid #e2e8f0; border-radius:5px; padding:0 7px; white-space:nowrap; }
     /* Green/red per box (2026-08-29) -- last price above that line reads
@@ -632,20 +609,19 @@
        total each side) -- user asked for "a little more space on both
        sides" around it specifically, not just the row's normal gap. */
     .actpop-rr-trad { margin: 0 6px; }
-    /* RR bar widget, lives in .actpop-head (col3, right-aligned via
-       justify-self:end -- col3 can resolve wider than 220px, see
-       .actpop-head's own comment, so .actpop-rr keeps an explicit width to
-       stay its original 220px and justify-self:end to stay flush against
-       the popup's true right edge instead of stretching to fill the
-       column). margin-top 8px keeps the %-tag (position:absolute top:-18px
-       above the track) clear of .actpop's own 6px top padding.
-       align-self:flex-start (2026-08-29: was relying on .actpop-head's own
-       align-items:center) -- pinned to the same coordinate-frame top as
-       .actpop-tdtn now that they're both grid items, see .actpop-tdtn's
-       own comment for the math this and its margin-top:8 feed into.
-       2026-08-29 follow-up: 8px -> 18px -- same +10px group-down shift as
-       .actpop-tdtn, see its comment. */
-    .actpop-rr { width: 220px; justify-self: end; align-self: flex-start; margin-top: 18px; }
+    /* RR bar widget -- last of .actpop-ctrl-row's 4 flex groups (2026-09-02:
+       was a CSS Grid column, right-aligned via justify-self:end; now the
+       row's own justify-content:space-between naturally puts the last
+       item flush against the row's right edge, no justify-self needed).
+       Explicit width keeps it its original 220px regardless of the row's
+       leftover space. margin-top 8px keeps the %-tag (position:absolute
+       top:-18px above the track) clear of .actpop's own 6px top padding.
+       align-self:flex-start (not .actpop-ctrl-row's own align-items:center)
+       pins it to the same coordinate-frame top as .actpop-tdtn -- see
+       that rule's own comment for the math this and its margin-top:8 feed
+       into. 2026-08-29 follow-up: 8px -> 18px -- same +10px group-down
+       shift as .actpop-tdtn, see its comment. */
+    .actpop-rr { width: 220px; flex: 0 0 auto; align-self: flex-start; margin-top: 18px; }
     .actpop-rr-icons { display:flex; align-items:flex-start; gap:10px; flex-shrink:0; }
     /* 2026-08-21: PVV over CALC, its own small vertical pair sitting next to
        Tradability (was two of the four items side by side in
@@ -721,9 +697,16 @@
        stacked between them in one column -- three items sharing one
        line-height had the bigger number clipping into its 8px neighbors.
        .actpop-tug-conviction-nn is Supp/Opp's own tight little column so
-       they still read as one compact unit next to the net number. */
+       they still read as one compact unit next to the net number.
+       2026-09-02: moved again -- out of .actpop-sym entirely, now its own
+       first group in .actpop-ctrl-row (see _buildActionPopHtmlV2). Dropped
+       margin-left:8px (was separating it from the badge it used to sit
+       right next to inline) -- .actpop-ctrl-row's own
+       justify-content:space-between now provides that spacing, an extra
+       fixed margin on top would just make its gap to the Trade/Trend group
+       unequal to the others'. */
     .actpop-tug-conviction { display:inline-flex; align-items:center; gap:3px;
-      vertical-align:middle; margin-left:8px; font-size:10px; }
+      vertical-align:middle; font-size:10px; }
     .actpop-tug-conviction-nn { display:inline-flex; flex-direction:column; line-height:1.1; }
     .actpop-tug-conviction-n { font-size:8px; font-weight:700; }
     .actpop-tug-col { border-radius:7px; padding:6px 8px; background:#f8fafc; border-left:3px solid #cbd5e1; }
@@ -1798,7 +1781,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260902y"></script>
+  <script src="/static/actionable.js?v=20260902za"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>

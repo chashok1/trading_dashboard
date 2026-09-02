@@ -203,6 +203,35 @@ function _hiLoRangeHtml(high, low) {
   return `<div style="${_CHG_TINY_STYLE}margin-top:4.01px;">${fmtUsd(low)} - ${fmtUsd(high)}</div>`;
 }
 
+// Full %CHG widget (candle + hi/lo% + chip + price + range), exactly as
+// rendered in the grid's %CHG column -- factored out 2026-09-02 (user:
+// "take exactly controls like that from %CHG column and display it in
+// ...popover") so the Action popup can reuse the identical markup instead
+// of a re-derived copy. The per-line margin-top values baked into
+// _hiLoRangeHtml/the price div were calibrated against the grid's
+// SYMBOL-column badges (chip~name, price~hit-rate, range~tradability) --
+// there's no such neighbor in the popover, so here the whole block just
+// centers as one self-contained unit; the internal sub-pixel calibration
+// is harmless (still <1px) even though its original target doesn't apply.
+function _chgCandleControlsHtml(row) {
+  const pctChipHtml = _pctChgChipHtml(row.pct_change);
+  const priceStr = row.last_price != null ? fmtUsd(row.last_price) : '';
+  const hiLo = _hiLoParts(row.high_price, row.low_price, row.last_price);
+  const candleHtml = window.mtTip?.candleSvg(row.open_price, row.high_price, row.low_price, row.last_price, 28) || '';
+  return `<div class="chg-candle-row" style="display:flex;align-items:center;justify-content:center;gap:9px;">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:22px;flex:0 0 auto;">
+      ${hiLo.hi}
+      ${candleHtml}
+      ${hiLo.lo}
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;width:60px;flex:0 0 auto;margin-top:0.68px;">
+      ${pctChipHtml}
+      ${priceStr ? `<div style="font-size:10px;color:#94a3b8;margin-top:2.29px;">${priceStr}</div>` : ''}
+      ${_hiLoRangeHtml(row.high_price, row.low_price)}
+    </div>
+  </div>`;
+}
+
 // One-line summary of an active watch's trigger config for the 🔔 cell's
 // hover tooltip, e.g. "↑4% · LRR · TRR · $52.00" or "plain reminder" for
 // one with no condition set. trigger_pct is direction-specific (2026-09-02
@@ -5555,26 +5584,38 @@ function _buildActionPopHtmlV2(row) {
   const tug = _actpopTugHtml(row, side);
 
   let h = `<div class="actpop">`;
-  // Header: symbol + Final Call badge + Conviction tally on the top line
-  // (.actpop-sym), held amount/earnings on their own line below it
-  // (.actpop-co, 2026-08-29: was inline next to the symbol); Trade/Trend
-  // boxes (_actpopTdTnHtml) and the RR bar (_actpopRrBarHtml) as two more
-  // grid columns (2026-08-30: .actpop-head is CSS Grid now, was flex --
-  // see actionable.html's own comment on .actpop-head for why: symmetric
-  // 1fr flanks around the Td/Tn column is what actually centers it in the
-  // popover, which plain flex can't guarantee. Originally also needed to
-  // keep .actpop-rr-row's Tradability column aligned under this one, but
-  // Tradability has since moved back into .actpop-rr-icons -- see that
-  // row's own comment -- so .actpop-rr-row is plain flex again; this grid
-  // stays for the popover-centering reason alone now).
+  // Header: symbol + Final Call badge on the top line (.actpop-sym), held
+  // amount/earnings on their own line below it (.actpop-co). To its right,
+  // .actpop-ctrl-row -- 4 equally-gapped control groups (2026-09-02, user:
+  // "take exactly controls like that from %CHG column and display it in
+  // ...popover, between Supp/Opp controls and Trade/Trend controls...
+  // distribute all those controls so there is same white space/gap
+  // between [them] as groups"):
+  //   1. Conviction tally (tug.conviction, "N Supp / N Opp") -- pulled OUT
+  //      of .actpop-sym, where it used to sit inline next to the badge.
+  //   2. The %CHG column's own candle+hi/lo%+price+range widget, verbatim
+  //      (_chgCandleControlsHtml -- shared with the grid's %CHG cell).
+  //   3. Trade/Trend boxes (_actpopTdTnHtml) -- moved right to make room.
+  //   4. The RR bar (_actpopRrBarHtml).
+  // .actpop-ctrl-row is flex with justify-content:space-between (not a
+  // fixed gap) so the 4 groups' own uneven widths still divide the row's
+  // leftover space into genuinely equal gaps, same trick space-between
+  // always does with N items -- and it keeps the RR bar pinned to the
+  // popover's right edge like before. .actpop-head itself dropped its old
+  // 3-column CSS Grid (was needed only to align a second row underneath
+  // it that's since gone back to plain flex -- see that row's own
+  // comment) for a simple 2-child flex: the symbol block, then this row.
   h += `<div class="actpop-head">
     <div class="actpop-sym">${escapeHtml(sym)}`
     + `<span class="actpop-call ${callCls}" style="margin-left:8px;">${escapeHtml(fc.label || actionText(fc) || '—')}</span>`
-    + tug.conviction
     + `<div class="actpop-co">${escapeHtml(amtTxt)}${edTxt}</div>`
     + `</div>`
+    + `<div class="actpop-ctrl-row">`
+    + tug.conviction
+    + _chgCandleControlsHtml(row)
     + _actpopTdTnHtml(row)
     + _actpopRrBarHtml(row)
+    + `</div>`
     + `</div>`;
 
   // Second row: Macro/PVV/CALC grouped on the left (.actpop-rr-icons);
@@ -6069,15 +6110,8 @@ function _buildRowEl(r) {
     if (r.watch_triggered && !r.watch_reviewed) tr.classList.add('row-watch-triggered');
     tr.dataset.sym = r.tos_symbol;
 
-    const pctChipHtml = _pctChgChipHtml(r.pct_change);
-    const priceStr = r.last_price != null ? fmtUsd(r.last_price) : '';
-    const hiLo = _hiLoParts(r.high_price, r.low_price, r.last_price);
     const hitRateBadge = state.filters.trade_mode ? _sourceHitRateBadge(r) : '';
     const tradabilityBadge = _tradabilityBadge(r);
-    // vh=28 (2026-09-01, user request): tall enough to visually span both
-    // the chip row and the price row stacked beside it below (see the
-    // data-col="chg" cell markup) instead of just the chip's own ~14px row.
-    const candleHtml = window.mtTip?.candleSvg(r.open_price, r.high_price, r.low_price, r.last_price, 28) || '';
     const isChecked = state.selected.has(r.tos_symbol);
 
     // TrTnBBRskRng cell: run action through actionDisplay; attach rr-action-cell for hover tooltip
@@ -6178,53 +6212,23 @@ function _buildRowEl(r) {
       </td>
       <td data-col="chg" class="num">
         <!-- 2026-09-02, user: "make sure all vertical bars are aligned in
-             the grid" -- both inner columns below are FIXED width now
-             (was shrink-to-fit), so the candle's X position can't drift
-             with how wide this row's own %/price/range text happens to
-             be. Verified with a real render across every row: candle X
-             spread was ~4.5px shrink-to-fit, then ~1.5px with just the
-             candle column fixed (the price/chip column's own varying
-             width was still shifting the shared centered flex row) --
-             fixing BOTH columns' width brought it to exactly 0px. Widths
-             sized from the real worst case across all 1053 rows measured
-             with canvas.measureText, not guessed: candle column 22px
-             comfortably fits "-100%"-class text; price/chip column 60px
-             fits the widest range seen ("$26,063 - $26,234", ~55px). -->
-        <div class="chg-candle-row" style="display:flex;align-items:center;justify-content:center;gap:9px;">
-          <div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:22px;flex:0 0 auto;">
-            ${hiLo.hi}
-            ${candleHtml}
-            ${hiLo.lo}
-          </div>
-          <!-- Line-by-line match to the Symbol column's own 3 lines --
-               chip~name, price~hit-rate badge, range~tradability badge.
-               History of re-targeting (each round solved as a linear
-               system from measured deltas, never a naive 1:1 margin
-               guess -- growing this column's own height triggers a
-               ~0.5x row-level re-centering against the candle column
-               via chg-candle-row's align-items:center, so every margin
-               here also nudges the other two lines):
-                 1. chip~name, price~hit-rate, range~tradability (initial)
-                 2. price re-targeted to hit-rate (kept), range re-
-                    targeted to the "Lo%" label in the LEFT column instead
-                 3. 2026-09-02, user: "align %change box center with
-                    Symbol...center and price range center with
-                    tradability number text center" -- chip~name and
-                    range~tradability restored (range back off "Lo%"),
-                    price~hit-rate held fixed throughout.
-                 4. 2026-09-02, user: "increase the font size by one point"
-                    on _CHG_TINY_STYLE (7px->8px, the hi/lo% and range
-                    lines) -- re-solved the same 3x3 system from scratch
-                    since the taller lines shifted all 3 offsets again.
-               Each round solved via measured perturbation gains (never a
-               naive 1:1 margin guess), verified on a real render down to
-               sub-pixel residuals on every sampled row. -->
-          <div style="display:flex;flex-direction:column;align-items:center;width:60px;flex:0 0 auto;margin-top:0.68px;">
-            ${pctChipHtml}
-            ${priceStr ? `<div style="font-size:10px;color:#94a3b8;margin-top:2.29px;">${priceStr}</div>` : ''}
-            ${_hiLoRangeHtml(r.high_price, r.low_price)}
-          </div>
-        </div>
+             the grid" -- both inner columns of _chgCandleControlsHtml are
+             FIXED width (was shrink-to-fit), so the candle's X position
+             can't drift with how wide this row's own %/price/range text
+             happens to be. Verified with a real render across every row:
+             candle X spread was ~4.5px shrink-to-fit, then ~1.5px with
+             just the candle column fixed (the price/chip column's own
+             varying width was still shifting the shared centered flex
+             row) -- fixing BOTH columns' width brought it to exactly 0px.
+             Widths sized from the real worst case across all 1053 rows
+             measured with canvas.measureText, not guessed: candle column
+             22px comfortably fits "-100%"-class text; price/chip column
+             60px fits the widest range seen ("$26,063 - $26,234", ~55px).
+             Margin-top calibration inside the widget (chip~Symbol name,
+             price~hit-rate badge, range~tradability badge) -- history in
+             _chgCandleControlsHtml's own comment (factored out 2026-09-02
+             so the Action popup can reuse this exact markup). -->
+        ${_chgCandleControlsHtml(r)}
       </td>
       <td data-col="sym" data-sym-cell="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer; text-align:center;" title="${r.rr_name && r.rr_name !== r.tos_symbol ? escapeHtml(r.tos_symbol) + ' · ' : ''}Click for chart">
         <div class="hdr-anchor-box">
