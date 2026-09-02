@@ -2332,7 +2332,9 @@ function renderAccountFilter() {
     state.filters.account = '';
   }
   const cur = state.filters.account;
-  sel.innerHTML = '<option value="">All</option>';
+  // Placeholder reads "Acct" (no separate <label> anymore), same convention
+  // as the Sectors/Asset Classes/Styles dropdowns.
+  sel.innerHTML = '<option value="">Acct</option>';
   const sorted = [...accounts].sort((a, b) =>
     (a.display_name || a.account_number).localeCompare(b.display_name || b.account_number));
   for (const a of sorted) {

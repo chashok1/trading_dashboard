@@ -1250,9 +1250,10 @@
             <div class="act-chip" data-src-pill="SSSCHG" title="Filter to SC (Signal Strength Stocks Change)"><span>SC</span></div>
             <div class="act-chip" data-flag-pill="iichg_only" title="Filter to symbols with a recent II Pro Change event (informational -- does not drive II's own action)"><span>IC</span></div>
           </div>
-          <!-- Account filter -->
-          <label style="font-size:11px; color:var(--text-2,#666); margin-right:2px; white-space:nowrap;">Acct</label>
-          <select id="accountFilter" style="max-width:8em;"><option value="">All</option></select>
+          <!-- Account filter -- placeholder option itself reads "Acct" (no
+               separate label), same convention as Sectors/Asset Classes/
+               Styles below. -->
+          <select id="accountFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:8em;" title="Filter by account"><option value="">Acct</option></select>
           <!-- Sector/Asset class/Style dropdowns, ALL possible values (not just
                held ones) -- moved onto the main bar 2026-09-01 (were in
                #moreFiltersPanel below the More ▾ toggle since 2026-08-31; user
@@ -1707,7 +1708,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260901h"></script>
+  <script src="/static/actionable.js?v=20260901i"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>
