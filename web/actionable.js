@@ -118,6 +118,22 @@ function fmtCompact(v) {
   if (abs >= 1e3) return sign + '$' + Math.round(abs / 1e3) + 'k';
   return sign + '$' + Math.round(abs);
 }
+// VROC (Volume Rate of Change, 2026-09-02, user request) -- TOS's own
+// 14-day volume trend indicator (today's volume vs ~14 trading days ago,
+// as a %), loaded into drv_tw.vlm_rate_change_d/API's volume_rate_change.
+// Was already computed and used internally (one input to the Accumulate/
+// Watch/Avoid rule) but never shown on its own -- surfaced here, colored
+// green/red by sign like every other signed number in the app, in the Vlm
+// column below the dot+action pill row.
+function _vrocHtml(r) {
+  if (r.volume_rate_change == null) return '';
+  const v = Number(r.volume_rate_change);
+  const sign = v >= 0 ? '+' : '';
+  const color = v >= 0 ? '#16a34a' : '#dc2626';
+  const title = `VROC (Volume Rate of Change, 14-day): today's volume vs ~14 trading days ago — ${sign}${v.toFixed(1)}%`;
+  return `<div style="font-size:9px;line-height:1;margin-top:1px;white-space:nowrap;color:${color};" title="${escapeHtml(title)}">${sign}${v.toFixed(1)}%</div>`;
+}
+
 function fmtDateMD(d) {
   if (!d) return '—';
   const s = d.toString().slice(0, 10); // YYYY-MM-DD
@@ -6042,7 +6058,10 @@ function _buildRowEl(r) {
         </div>
       </td>
       <td data-col="rr" style="padding:6px 4px;">${rrBarHtml}</td>
-      <td data-col="vlm" class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}${r.vlm_action ? `<span style="display:inline-block;margin-left:3px;font-size:9px;padding:1px 3px;border-radius:3px;background:${r.vlm_action==='Accumulate'?'#bbf7d0':r.vlm_action==='Avoid'?'#fecaca':'#e5e7eb'};color:#374151;font-weight:600;text-decoration:none;vertical-align:middle;">${escapeHtml(r.vlm_action === 'Accumulate' ? 'Accum' : r.vlm_action)}</span>` : ''}</td>
+      <td data-col="vlm" class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">
+        <div>${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}${r.vlm_action ? `<span style="display:inline-block;margin-left:3px;font-size:9px;padding:1px 3px;border-radius:3px;background:${r.vlm_action==='Accumulate'?'#bbf7d0':r.vlm_action==='Avoid'?'#fecaca':'#e5e7eb'};color:#374151;font-weight:600;text-decoration:none;vertical-align:middle;">${escapeHtml(r.vlm_action === 'Accumulate' ? 'Accum' : r.vlm_action)}</span>` : ''}</div>
+        ${_vrocHtml(r)}
+      </td>
       <td data-col="iv" class="num" data-sym="${escapeHtml(r.tos_symbol)}" data-ivpop style="padding:3px 4px;cursor:default;text-align:center;">${(() => {
         const ivpVal = r.iv_percentile != null ? Math.round(Number(r.iv_percentile)) : null;
         const hvVal  = r.hv != null ? Number(r.hv) * 100 : null;
