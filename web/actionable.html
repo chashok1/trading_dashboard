@@ -454,32 +454,37 @@
        _buildActionPopHtmlV2 in actionable.js. Reuses .source-pop's box
        (#sourcePop) and the app's real --act-* color tokens (styles.css
        :root) rather than inventing a new palette. */
-    .actpop { width: 780px; padding: 6px; }  /* 460px + 20% + 20% (2026-08-29), +118px (2026-09-02) for the new %CHG control group */
+    .actpop { width: 662px; padding: 6px; }  /* 460px + 20% + 20% (2026-08-29). 2026-09-02: briefly 780px (+118px)
+      to fit the new %CHG control group, but that stretched every OTHER
+      body section too -- .actpop-rr-info/.actpop-trad/.actpop-tug etc. all
+      size relative to .actpop's own width, so widening the popup widened
+      them right along with it (user: "controls in the window down below
+      are still extended... they need to go back"). Back to the original
+      662px; the header row's 4 control groups (below) fit within it on a
+      tight but fixed gap instead. */
     /* .actpop-sym (symbol name + Final Call badge + amount/earnings) on the
-       left; .actpop-ctrl-row -- 4 equally-gapped control groups (Supp/Opp
-       tally, %CHG widget, Trade/Trend boxes, RR bar) -- fills the rest.
+       left; .actpop-ctrl-row -- 4 control groups (Supp/Opp tally, %CHG
+       widget, Trade/Trend boxes, RR bar) -- fills the rest.
        2026-09-02: back to plain flex (was CSS Grid 2026-08-30 through
        2026-09-02) -- the grid's whole reason was keeping a SECOND row's
        middle column aligned under this row's Td/Tn column, but that
        second-row alignment need is long gone (.actpop-rr-row is plain flex
        -- see its own comment) and doesn't apply to the new 4-group layout
        either.
-       2026-09-02 follow-up: justify-content:space-between -> a fixed
-       gap:22px (user: "controls are stretched to outside the width of the
-       popup" -- space-between stretches the 3 gaps to consume ALL of the
-       row's leftover width, which on a row with a wider symbol block/
-       Td-Tn/RR reading pushed the whole group past .actpop's own right
-       edge since nothing here clips overflow). A fixed gap can't do that
-       -- the row is only ever as wide as its own content needs
-       (sum of the 4 groups' widths + 3*22px), so it's guaranteed no wider
-       than the space-between version and normally narrower, at the cost
-       of the row (and the RR bar within it) no longer necessarily
-       reaching the popup's true right edge on a narrow-content row. Still
-       equal gaps between all 4 groups, just a fixed number instead of
-       "whatever's left over". */
+       2026-09-02 follow-up: tried justify-content:space-between (stretched
+       past .actpop's edge on a wide row, see above), then a fixed
+       gap:22px (still too close to the popup's 662px budget once the
+       width revert above put the squeeze back on). Settled on: the first
+       3 groups (Supp/Opp, %CHG, Trade/Trend) sit close together on a
+       small fixed gap; RR is pushed to the row's right edge via its own
+       margin-left:auto (below) instead of participating in that same
+       gap -- user: "RR controls need to be moved to the right (only
+       those controls in the header)". flex:1 1 auto so the row still
+       grows to fill .actpop-head's remaining width -- margin-left:auto
+       has no free space to consume otherwise. */
     .actpop-head { display: flex; align-items: center; column-gap: 14px;
       margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
-    .actpop-ctrl-row { display: flex; align-items: center; gap: 22px; flex: 0 1 auto; min-width: 0; }
+    .actpop-ctrl-row { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; }
     .actpop-sym { min-width:0; flex: 0 0 auto; font-size:14px; font-weight:800; color:#0f172a; }
     /* 2026-08-29: held amount/earnings moved to their own line below the
        symbol (was an inline span next to it) -- block instead of inline. */
@@ -617,19 +622,25 @@
        total each side) -- user asked for "a little more space on both
        sides" around it specifically, not just the row's normal gap. */
     .actpop-rr-trad { margin: 0 6px; }
-    /* RR bar widget -- last of .actpop-ctrl-row's 4 flex groups (2026-09-02:
-       was a CSS Grid column, right-aligned via justify-self:end; now the
-       row's own justify-content:space-between naturally puts the last
-       item flush against the row's right edge, no justify-self needed).
-       Explicit width keeps it its original 220px regardless of the row's
-       leftover space. margin-top 8px keeps the %-tag (position:absolute
-       top:-18px above the track) clear of .actpop's own 6px top padding.
-       align-self:flex-start (not .actpop-ctrl-row's own align-items:center)
-       pins it to the same coordinate-frame top as .actpop-tdtn -- see
-       that rule's own comment for the math this and its margin-top:8 feed
-       into. 2026-08-29 follow-up: 8px -> 18px -- same +10px group-down
-       shift as .actpop-tdtn, see its comment. */
-    .actpop-rr { width: 220px; flex: 0 0 auto; align-self: flex-start; margin-top: 18px; }
+    /* RR bar widget -- last of .actpop-ctrl-row's 4 flex groups. Pushed to
+       the row's right edge via margin-left:auto (2026-09-02, user: "RR
+       controls need to be moved to the right (only those controls in the
+       header)") -- an auto margin on a flex item claims ALL the row's
+       leftover space for itself, which both visually separates it from
+       the other 3 (packed on their own small fixed gap, see
+       .actpop-ctrl-row) and keeps it flush against the popup's true right
+       edge same as the original design (tried justify-content:
+       space-between for this first, see .actpop-ctrl-row's own comment
+       for why that regressed). Explicit width keeps it its original
+       220px regardless of the row's leftover space. margin-top 8px keeps
+       the %-tag (position:absolute top:-18px above the track) clear of
+       .actpop's own 6px top padding. align-self:flex-start (not
+       .actpop-ctrl-row's own align-items:center) pins it to the same
+       coordinate-frame top as .actpop-tdtn -- see that rule's own comment
+       for the math this and its margin-top:8 feed into. 2026-08-29
+       follow-up: 8px -> 18px -- same +10px group-down shift as
+       .actpop-tdtn, see its comment. */
+    .actpop-rr { width: 220px; flex: 0 0 auto; margin-left: auto; align-self: flex-start; margin-top: 18px; }
     .actpop-rr-icons { display:flex; align-items:flex-start; gap:10px; flex-shrink:0; }
     /* 2026-08-21: PVV over CALC, its own small vertical pair sitting next to
        Tradability (was two of the four items side by side in
