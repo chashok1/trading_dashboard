@@ -648,8 +648,16 @@
        coordinate-frame top as .actpop-tdtn -- see that rule's own comment
        for the math this and its margin-top:8 feed into. 2026-08-29
        follow-up: 8px -> 18px -- same +10px group-down shift as
-       .actpop-tdtn, see its comment. */
-    .actpop-rr { width: 220px; flex: 0 0 auto; align-self: flex-start; margin-top: 18px; }
+       .actpop-tdtn, see its comment.
+       2026-09-02 follow-up: extra margin-left:10px (2026-09-02, user:
+       "stdev box and text LRR" -> "double the space") -- on top of
+       .actpop-ctrl-row's normal 10px gap this doubles the visual gap
+       between the Td/Tn box's stdev badge and the RR bar's "LRR" label
+       (its own left edge sits flush with .actpop-rr's left edge) to
+       ~20px, WITHOUT touching the shared 10px gap value itself -- that
+       stays exactly as before between %CHG and Trade/Trend, per the same
+       request's "leave as it is" on that pairing. */
+    .actpop-rr { width: 220px; flex: 0 0 auto; align-self: flex-start; margin-top: 18px; margin-left: 10px; }
     .actpop-rr-icons { display:flex; align-items:flex-start; gap:10px; flex-shrink:0; }
     /* 2026-08-21: PVV over CALC, its own small vertical pair sitting next to
        Tradability (was two of the four items side by side in
@@ -1809,7 +1817,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260902zb"></script>
+  <script src="/static/actionable.js?v=20260902zc"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>
