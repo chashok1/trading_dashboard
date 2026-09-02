@@ -203,6 +203,17 @@
           <button class="uv-tab" role="tab" data-view="source" aria-selected="false">By Source</button>
         </div>
 
+        <!-- "All My Stocks" -- one flat screen of every held symbol across
+             every account, no Account/Source/Asset Class/Sector grouping.
+             Orthogonal on/off toggle, not a 4th View tab -- see
+             flatStocksMode in universe.js. User: "no drill down at the
+             account level, all accounts combined." -->
+        <div class="uv-ctrl-group">
+          <div class="uv-tabs small" role="tablist" aria-label="All my stocks">
+            <button class="uv-tab" type="button" role="tab" id="uvAllStocksBtn" aria-selected="false">All My Stocks</button>
+          </div>
+        </div>
+
         <!-- Size -- what sizes every tile at every level of either
              hierarchy (symbol count vs $ capital). Replaces the old
              "By Count"/"By Capital" top-level tabs, which only ever
@@ -292,6 +303,6 @@
   <div id="uvTt"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
-  <script src="/static/universe.js?v=34"></script>
+  <script src="/static/universe.js?v=35"></script>
 </body>
 </html>

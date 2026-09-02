@@ -317,6 +317,13 @@
   // State
   // ---------------------------------------------------------------------
   let currentView = 'account'; // 'assetclass' | 'account' | 'source' -- which hierarchy's root is showing; defaults to Account
+  // "All My Stocks" button -- orthogonal to currentView/drill: when true,
+  // every grouping level (account, source, asset class, sector) is
+  // skipped and every held symbol across every account renders as flat
+  // symbol tiles on one screen (renderAllStocksFlat). User: "no drill
+  // down at the account level, all accounts combined." Cleared by
+  // clicking any View tab (see wireStaticControls).
+  let flatStocksMode = false;
   let sizeMode = 'count';         // 'count' | 'capital' -- what sizes every tile at every level
   // Held to match the 'account' default above -- "By Account" only ever
   // means anything for held positions, same rule wireStaticControls
@@ -377,6 +384,7 @@
   // tiles, so those controls are hidden everywhere else. Mirrors
   // renderHierarchy's own dispatch exactly, without running it.
   function atSymbolLevel() {
+    if (flatStocksMode) return true; // "All My Stocks" -- always flat symbol tiles
     if (currentView === 'account' && !(drill && drill.account)) return false; // Account root
     if (currentView === 'source' && !(drill && drill.source)) return false; // Source root
     if (!drill || !drill.assetClass) return false; // Asset Class tiles
@@ -386,7 +394,10 @@
   }
 
   function render() {
-    document.querySelectorAll('.uv-tab[data-view]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.view === currentView)));
+    // View tabs show as deselected while "All My Stocks" is active -- it's
+    // orthogonal to currentView, not a 4th value of it.
+    document.querySelectorAll('.uv-tab[data-view]').forEach(t => t.setAttribute('aria-selected', String(!flatStocksMode && t.dataset.view === currentView)));
+    $('uvAllStocksBtn').setAttribute('aria-selected', String(flatStocksMode));
     document.querySelectorAll('.uv-tab[data-size]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.size === sizeMode)));
     document.querySelectorAll('.uv-tab[data-filter]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.filter === currentFilter)));
     document.querySelectorAll('.uv-tab[data-color]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.color === currentColorFilter)));
@@ -394,8 +405,9 @@
     // Filter (All/Held/Actionable) isn't a real choice under "By Account"
     // -- it's forced to Held there (see wireStaticControls) -- so hide it
     // instead of showing a 3-way selector that silently reverts you to
-    // "By Asset Class" if you touch anything but Held.
-    $('uvFilterRow').hidden = currentView === 'account';
+    // "By Asset Class" if you touch anything but Held. Same reason under
+    // "All My Stocks" -- it's held positions by definition.
+    $('uvFilterRow').hidden = currentView === 'account' || flatStocksMode;
     // Color/Style/Risk Range only affect individual symbol tiles -- hide
     // them at every group level (Account root, Asset Class, Sector) where
     // they'd have no visible effect.
@@ -404,6 +416,7 @@
     $('uvStyleRow').hidden = !showSymbolFilters;
     $('uvRrRow').hidden = !showSymbolFilters;
 
+    if (flatStocksMode) { renderAllStocksFlat(); return; }
     if (currentView === 'account' && !(drill && drill.account)) { renderAccountRoot(); return; }
     if (currentView === 'source' && !(drill && drill.source)) { renderSourceRoot(); return; }
     renderHierarchy();
@@ -446,6 +459,57 @@
         `<span class="uv-rank-name">${esc(a.label)}</span><span class="uv-rank-val">${val}</span></li>`;
     }).join('');
     $('uvSLargest').textContent = ACCOUNTS[0] ? ACCOUNTS[0].label : '—';
+  }
+
+  // ---- "All My Stocks": every held symbol, every account combined, as
+  // flat individual tiles -- no Account/Source/Asset Class/Sector grouping
+  // at all. `current_position_dollar` on a SYMS row is already the
+  // symbol's TOTAL held $ across every account (drv_actionable is one row
+  // per symbol, not per account -- POS, the per-account breakdown, isn't
+  // needed here), so this is just SYMS filtered to held, no aggregation.
+  function renderAllStocksFlat() {
+    const rows = SYMS.filter(r => r.held_today);
+    const sectorCount = new Set(rows.map(r => r.sector)).size;
+
+    $('uvTotalCount').textContent = fmtInt(rows.length);
+    $('uvTotalSectors').textContent = sectorCount;
+    $('uvSectorsUnit').textContent = 'sectors';
+    $('uvSHeld').textContent = rows.length + ' symbols';
+    $('uvSCapital').textContent = fmtUsd(d3.sum(rows, r => r.current_position_dollar || 0));
+    $('uvFilterCount').textContent = '';
+
+    const crumbEl = $('uvCrumbs');
+    crumbEl.innerHTML = `<span class="uv-crumb" data-crumb="root">Universe</span>` +
+      `<span class="uv-crumb-sep">/</span><span class="uv-crumb current">All My Stocks</span>`;
+    crumbEl.querySelectorAll('[data-crumb="root"]').forEach(e => e.addEventListener('click', () => { flatStocksMode = false; render(); }));
+    $('uvSideHeading').textContent = 'Top holdings';
+
+    const wrap = document.querySelector('.uv-svg-wrap');
+    const W = wrap.clientWidth, H = wrap.clientHeight;
+    svg.attr('viewBox', `0 0 ${W} ${H}`);
+
+    if (rows.length === 0) {
+      svg.selectAll('*').remove();
+      svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
+        .text('No held positions.');
+      $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
+      return;
+    }
+
+    const tileRows = rows.map(r => ({ tos_symbol: r.tos_symbol, value: r.current_position_dollar || 0, detail: r }));
+    renderSymbolTiles(tileRows, W, H);
+
+    // side panel -- top holdings by $ regardless of Size mode (Count
+    // sizing makes every tile here weigh the same, so it has no natural
+    // per-symbol ranking of its own; Capital is the meaningful one).
+    const ranklist = $('uvRankList');
+    const top = [...rows].sort((a, b) => (b.current_position_dollar || 0) - (a.current_position_dollar || 0)).slice(0, 8);
+    ranklist.innerHTML = top.map(d => {
+      const dot = actionColor(d.final_code);
+      return `<li class="uv-rank-row"><span class="uv-rank-dot" style="background:${dot};"></span>` +
+        `<span class="uv-rank-name">${esc(d.tos_symbol)}</span><span class="uv-rank-val">${fmtUsd(d.current_position_dollar || 0)}</span></li>`;
+    }).join('');
+    $('uvSLargest').textContent = top[0] ? top[0].tos_symbol : '—';
   }
 
   // ---- Shared hierarchy renderer: Asset Class -> Sector (Equities only)
@@ -1012,11 +1076,19 @@
   function wireStaticControls() {
     document.querySelectorAll('.uv-tab[data-view]').forEach(t =>
       t.addEventListener('click', () => {
+        flatStocksMode = false; // switching hierarchy exits "All My Stocks"
         currentView = t.dataset.view;
         // "By Account" only means anything for held positions.
         if (currentView === 'account') currentFilter = 'held';
         resetDrill(); render();
       }));
+    // "All My Stocks" -- a simple on/off toggle, orthogonal to
+    // currentView/drill (see flatStocksMode's own comment). Click again to
+    // go back to whatever hierarchy view was showing before.
+    $('uvAllStocksBtn').addEventListener('click', () => {
+      flatStocksMode = !flatStocksMode;
+      resetDrill(); render();
+    });
     document.querySelectorAll('.uv-tab[data-size]').forEach(t =>
       t.addEventListener('click', () => { sizeMode = t.dataset.size; render(); }));
     document.querySelectorAll('.uv-tab[data-filter]').forEach(t =>
