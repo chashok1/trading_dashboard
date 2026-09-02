@@ -5607,8 +5607,12 @@ function _buildPvvPopHtml(r) {
 // A "vs" highlight (amber border) is added when the two disagree on side.
 function _finalCallCalHtml(r) {
   const code = r.final_code_cal;
+  // No placeholder dash (2026-09-01, user: "CALC column remove -") -- the
+  // CALC model is currently inactive (ref_bull_model has no active row, see
+  // docs/audit -- every row shows this empty state right now), so a "—" in
+  // every cell was just clutter; blank reads cleaner until it's reactivated.
   if (code == null || code === '') {
-    return '<span style="color:#cbd5e1;font-size:10px;">—</span>';
+    return '';
   }
   const label    = r.final_action_cal || code;
   const side     = r.final_side_cal   || 'neutral';
@@ -6021,7 +6025,7 @@ function _buildRowEl(r) {
       })()}</td>
       <td data-col="action" style="padding:6px 4px;">${fcHtml}</td>
       <td data-col="macro" style="padding:4px 6px; text-align:center;">${macroCellHtml(r)}</td>
-      <td data-col="calc" style="padding:6px 4px;">${_finalCallCalHtml(r)}</td>
+      <td data-col="calc" style="padding:6px 4px; text-align:center;">${_finalCallCalHtml(r)}</td>
       <td data-col="sources" class="act-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:help;">
         <div style="display:flex;align-items:flex-start;gap:8px;">
           ${_isOverMaxOverlay(r) ? `<div style="width:38px;flex-shrink:0;align-self:center;text-align:center;font-size:8px;line-height:1;font-weight:600;" class="${_actionColorCls(action)}">was ${actionText(actionDisplay(action))}</div>` : ''}
