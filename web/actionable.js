@@ -4560,17 +4560,22 @@ const _PVV_RANK = {
 function _pvvRank(decision) {
   return (decision != null && _PVV_RANK[decision] != null) ? _PVV_RANK[decision] : 10;
 }
-// Reuses the existing act-badge tint classes rather than inventing new CSS.
+// Reuses the existing act-badge classes rather than inventing new CSS.
+// -fill (solid background + white text), not -tint (2026-09-02, user:
+// "change action button similar to Action button in Action column") --
+// _finalCallHtml's ACTION badge (fcDisp) uses the same -fill family, so a
+// PVV decision now reads with the same visual weight as the reconciled
+// ACTION call, not a lighter/secondary-looking outline badge.
 const _PVV_CLASS = {
-  BUY_LRR:    'act-buy-strong-tint',
-  BUY_DIP:    'act-buy-tint',
-  BUY_WATCH:  'act-buy-tint',
-  SELL:       'act-sell-strong-tint',
-  SELL_WATCH: 'act-sell-tint',
-  REDUCE:     'act-sell-tint',
-  TRIM:       'act-sell-weak-tint',
-  AVOID:      'act-sell-weak-tint',
-  WATCH:      'act-neutral-tint',
+  BUY_LRR:    'act-buy-strong-fill',
+  BUY_DIP:    'act-buy-fill',
+  BUY_WATCH:  'act-buy-fill',
+  SELL:       'act-sell-strong-fill',
+  SELL_WATCH: 'act-sell-fill',
+  REDUCE:     'act-sell-fill',
+  TRIM:       'act-sell-weak-fill',
+  AVOID:      'act-sell-weak-fill',
+  WATCH:      'act-neutral-fill',
 };
 // Display label shown on the badge -- differs from the DB decision code for
 // the "@ LRR" / "WATCH-suffix" tiers per user's requested wording.
@@ -4582,8 +4587,12 @@ function _pvvCellHtml(r) {
   if (!decision || decision === 'NO_ACTION') {
     return `<span style="color:#cbd5e1;font-size:10px;" data-pvvpop="${escapeHtml(r.tos_symbol || '')}">—</span>`;
   }
-  const cls = _PVV_CLASS[decision] || 'act-neutral-tint';
-  const label = _PVV_LABEL[decision] || decision;
+  const cls = _PVV_CLASS[decision] || 'act-neutral-fill';
+  // 2026-09-02, user: "remove _ from actions" -- any decision code not
+  // explicitly relabeled above (e.g. BUY_DIP) falls through to the raw DB
+  // code; strip underscores from THAT fallback so it never shows raw
+  // "BUY_DIP" on the badge, present or future.
+  const label = _PVV_LABEL[decision] || decision.replace(/_/g, ' ');
   return `<span class="act-badge ${cls}" data-pvvpop="${escapeHtml(r.tos_symbol)}" `
        + `style="font-size:10px;padding:1px 5px;cursor:help;">${escapeHtml(label)}</span>`;
 }
