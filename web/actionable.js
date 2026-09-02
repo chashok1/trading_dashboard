@@ -6181,18 +6181,7 @@ function _buildRowEl(r) {
         </div>
       </td>
       <td data-col="sym" data-sym-cell="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer; text-align:center;" title="${r.rr_name && r.rr_name !== r.tos_symbol ? escapeHtml(r.tos_symbol) + ' · ' : ''}Click for chart">
-        <!-- min-height wrapper (2026-09-02, user request): reserves the
-             same ~47px %CHG's own content always takes (candle+Hi%/Lo%
-             fixed-width column, see data-col="chg" below), regardless of
-             whether THIS row has 0, 1, or 2 of the optional NEW pill/
-             hit-rate/tradability badges below the symbol name -- without
-             it, Symbol's content height (and so, under this table's
-             vertical-align:middle default, where its content actually
-             sits) varied by badge count, so it and %CHG lined up on some
-             rows and not others. justify-content:center means a shorter
-             row's content (e.g. just the name, no badges) still centers
-             within that reserved space rather than sitting at its top. -->
-        <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:47px;">
+        <div class="hdr-anchor-box">
           <strong class="tv-sym-link" data-notespop="${escapeHtml(r.tos_symbol)}" style="font-size:11px;color:${_symOutlookColor(r)};" title="Hover for comments">${escapeHtml(r.rr_name || r.tos_symbol || '')}</strong>
           ${r._watchlisted && r._isNew
             ? '<span class="new-pill" title="Winning source data just landed for this date — Technical isn\'t entry-ripe yet, so it waits here rather than promoting to Tier 1">NEW</span>'
@@ -6201,8 +6190,8 @@ function _buildRowEl(r) {
           ${tradabilityBadge ? '<div style="margin-top:1px;">' + tradabilityBadge + '</div>' : ''}
         </div>
       </td>
-      <td data-col="action" style="padding:6px 4px;">${fcHtml}</td>
-      <td data-col="macro" style="padding:4px 6px; text-align:center;">${macroCellHtml(r)}</td>
+      <td data-col="action" style="padding:6px 4px;"><div class="hdr-anchor-box">${fcHtml}</div></td>
+      <td data-col="macro" style="padding:4px 6px; text-align:center;"><div class="hdr-anchor-box">${macroCellHtml(r)}</div></td>
       <td data-col="pvv" style="padding:4px 6px; text-align:center; white-space:nowrap;">${_pvvCellHtml(r)}</td>
       <td data-col="rr" style="padding:6px 4px;">${rrBarHtml}</td>
       <td data-col="vlm" class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">

@@ -358,20 +358,47 @@
     #actGrid th[data-col="pos"], #actGrid td[data-col="pos"],
     #actGrid th[data-col="amt"], #actGrid td[data-col="amt"],
     #actGrid th[data-col="chg"], #actGrid td[data-col="chg"] { text-align: center; }
-    /* %CHG aligned to Symbol (2026-09-02, user request) -- superseded its
-       own first attempt (vertical-align:top on both) once the user
+    /* %CHG aligned to Symbol (2026-09-02, first user request) -- superseded
+       its own first attempt (vertical-align:top on both) once the user
        clarified "content should be in middle of the row vertically": a
        taller row (Technical/RR pushing row height well past either
        column's own content) would pin Sym/%CHG to the row's TOP while
        every other column stayed middle-centered, breaking the row's
        overall look. Both stay vertical-align:middle (the grid-wide
-       default, untouched) -- the actual fix is making Symbol's own
-       content height CONSTANT (see the .sym-content-box wrapper in
-       web/actionable.js, min-height matching %CHG's own ~47px content
-       height) instead of varying with which badges that row happens to
-       have. Equal heights under the same middle-alignment is what makes
-       their tops (and bottoms) line up, whatever the row's total height
-       ends up being from its other columns. */
+       default, untouched).
+       Extended (2026-09-02, follow-up user request) to Action and Macro
+       too: "Always align Symbol name center... and Action button center...
+       with Macro column's action button center horizontally... anchor the
+       controls below them to these all the time... regardless if they
+       span two lines or three lines." .hdr-anchor-box (used by all three
+       columns' JS templates) is the one shared mechanism: a fixed
+       min-height (47px, the common ~3-line case measured across all
+       three columns on a real render) with justify-content:FLEX-START,
+       not center -- top-anchoring each column's own headline (symbol
+       name / ACTION pill / MACRO badge) to the same fixed offset from the
+       box's own top, so it never moves regardless of how many optional
+       lines (badges/pills/sparkline/etc) follow it that row. All three
+       boxes share this same constant height, so under middle-alignment
+       they still settle at the same point relative to each other AND
+       stay centered in a taller row (driven by Technical/RR) exactly like
+       the first %CHG-vs-Symbol fix required -- top-anchoring is scoped to
+       WITHIN each fixed-height box, not to the row itself.
+       Sharing one top offset (flex-start) lines up all three boxes'
+       TOPS, but "align...center" means matching each headline's own
+       vertical CENTER, and the three headline elements are different
+       heights by design (Symbol's plain 11px <strong> vs Action's
+       .act-badge-sm ~15.5px pill vs Macro's full-size .act-badge ~19px
+       pill, per web/styles.css) -- same top, different height, so
+       different center. Closed that with small measured margin-tops
+       (real render, not computed from the CSS box model, which was off
+       by ~1px vs actual glyph/line-height rendering): Symbol's name
+       nudged down 2.36px, Action's pill line nudged down 1.5px, Macro
+       (the tallest) left alone as the reference. Verified down to
+       ~0.1-1px on every sampled row. */
+    .hdr-anchor-box { display: flex; flex-direction: column; justify-content: flex-start;
+      align-items: center; min-height: 47px; }
+    #actGrid td[data-col="sym"] .hdr-anchor-box > strong { display: inline-block; margin-top: 2.36px; }
+    #actGrid td[data-col="action"] .hdr-anchor-box > div:first-child { margin-top: 1.5px; }
     .act-grid th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
     .act-grid th.sortable:hover { background: var(--surface-hover, #f0f6ff); }
     .act-grid th .sort-ind { font-size: 9px; opacity: 0.85; }
