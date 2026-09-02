@@ -158,11 +158,12 @@ function _pctChgChipHtml(pct) {
 
 // Tiny High/Low readout flanking the %CHG candle bar (2026-09-02, user
 // request): day High above the bar, Low below it, each with its %
-// distance from the current price in parens, e.g. "H $100 (+4%)" over
+// distance from the current price in parens, e.g. "H $100 (4%)" over
 // the bar and "L $92 (-2%)" under it -- lets you see today's range and
-// how far price has pulled back from it without a separate hover. Sign
-// always shown (Low is typically negative, High typically positive, but
-// an intraday quote can sit outside a stale high/low so don't assume).
+// how far price has pulled back from it without a separate hover. No "+"
+// prefix on a positive move (user: "you don't need signs") -- negative
+// still reads as negative via its own minus sign, just nothing extra
+// prepended to a positive one.
 // Returns {hi, lo} (each a small <div>, or '' if that side has no data)
 // so the caller can place them above/below the candle rather than
 // stacked together in one block.
@@ -171,8 +172,7 @@ function _hiLoParts(high, low, last) {
   const line = val => {
     if (val == null) return '';
     const pct = Math.round((val - last) / last * 100);
-    const sign = pct >= 0 ? '+' : '';
-    return `<div style="font-size:7px;color:#94a3b8;line-height:1.2;white-space:nowrap;">${fmtUsd(val)}<span style="opacity:.7;">(${sign}${pct}%)</span></div>`;
+    return `<div style="font-size:7px;color:#94a3b8;line-height:1.2;white-space:nowrap;">${fmtUsd(val)}<span style="opacity:.7;">(${pct}%)</span></div>`;
   };
   return { hi: line(high), lo: line(low) };
 }
