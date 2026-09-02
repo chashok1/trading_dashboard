@@ -186,6 +186,18 @@ function _macroConflictMark(r) {
   if (r.macro_conflict !== true) return '';
   return _conflictBoltHtml('CONFLICT: MacroNet score disagrees with technical direction (price vs 50-day average). Hover the badge for detail.');
 }
+// Fixed-width slot for the conflict bolt (2026-09-01, user: "align the
+// action buttons like BS with others when there is no conflict and there
+// is conflict") -- macroCellHtml's badge/label row centers its children as
+// a group (badge + bolt), so a conflict row's badge sat visibly left of
+// where the same badge sits on a no-conflict row (badge alone). Reserving
+// the bolt's ~13px footprint (11px icon + 2px margin) even when it's not
+// shown keeps every row's centered group the same total width, so the
+// badge itself lands in the same spot column-to-column either way.
+function _macroConflictSlotHtml(r) {
+  const mark = _macroConflictMark(r);
+  return mark || '<span style="display:inline-block;width:13px;visibility:hidden;" aria-hidden="true"></span>';
+}
 
 // Premature-drop pill (2026-08-20): always shown for a REMOVE ("dropped
 // from list") source_actions entry, next to the drop message, in the same
@@ -317,7 +329,7 @@ function macroCellHtml(r) {
     return `<div style="cursor:help;text-align:center;" data-macropop="${escapeHtml(sym)}">`
       + `<div style="display:flex;align-items:center;justify-content:center;">`
       + `<span style="${holdCls};font-size:10px;opacity:${opacity.toFixed(2)};">${escapeHtml(lbl)}${_macroGapMark(r)}</span>`
-      + _macroConflictMark(r)
+      + _macroConflictSlotHtml(r)
       + `</div>`
       + `<div style="opacity:${opacity.toFixed(2)};">${netHtml}${dotsLine}${sparkLine}${memberBars}</div>`
       + `</div>`;
@@ -327,7 +339,7 @@ function macroCellHtml(r) {
   return `<div style="text-align:center;cursor:help;" data-macropop="${escapeHtml(sym)}">`
        + `<div style="display:flex;align-items:center;justify-content:center;">`
        + `<span style="opacity:${opacity.toFixed(2)};"><span class="act-badge ${cls}-tint" style="font-size:10px;padding:1px 5px;">${escapeHtml(d.code || mv)}</span>${_macroGapMark(r)}</span>`
-       + _macroConflictMark(r)
+       + _macroConflictSlotHtml(r)
        + `</div>`
        + `<div style="opacity:${opacity.toFixed(2)};">${netHtml}${dotsLine}${sparkLine}${memberBars}</div>`
        + `</div>`;
