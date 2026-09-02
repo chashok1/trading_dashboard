@@ -156,25 +156,32 @@ function _pctChgChipHtml(pct) {
   return `<span class="msr-chg" style="background:${bg};flex:0 0 auto;">${escapeHtml(txt)}</span>`;
 }
 
-// Tiny High/Low readout flanking the %CHG candle bar (2026-09-02, user
-// request): day High above the bar, Low below it, each with its %
-// distance from the current price in parens, e.g. "H $100 (4%)" over
-// the bar and "L $92 (-2%)" under it -- lets you see today's range and
-// how far price has pulled back from it without a separate hover. No "+"
-// prefix on a positive move (user: "you don't need signs") -- negative
-// still reads as negative via its own minus sign, just nothing extra
-// prepended to a positive one.
+// Tiny % readout flanking the %CHG candle bar (2026-09-02, user request):
+// day High's % distance from the current price above the bar, Low's %
+// distance below it -- just the number, e.g. "4%" / "-2%" -- so you can
+// see how far price has pulled back from today's range without a
+// separate hover. No "+" prefix on a positive move (user: "you don't
+// need signs") -- negative still reads as negative via its own minus.
 // Returns {hi, lo} (each a small <div>, or '' if that side has no data)
-// so the caller can place them above/below the candle rather than
-// stacked together in one block.
+// so the caller can place them above/below the candle.
 function _hiLoParts(high, low, last) {
   if (last == null || !last) return { hi: '', lo: '' };
   const line = val => {
     if (val == null) return '';
     const pct = Math.round((val - last) / last * 100);
-    return `<div style="font-size:7px;color:#94a3b8;line-height:1.2;white-space:nowrap;">${fmtUsd(val)}<span style="opacity:.7;">(${pct}%)</span></div>`;
+    return `<div style="font-size:7px;color:#94a3b8;line-height:1.2;white-space:nowrap;">${pct}%</div>`;
   };
   return { hi: line(high), lo: line(low) };
+}
+
+// The actual $ High-Low range, "$180 - $183" (2026-09-02, user: "move the
+// range to below the current price") -- shown once, under the price line
+// in the %CHG cell's price/chip column, rather than repeated on both
+// sides of the candle (that's now just the bare % distances, see
+// _hiLoParts above).
+function _hiLoRangeHtml(high, low) {
+  if (high == null || low == null) return '';
+  return `<div style="font-size:7px;color:#94a3b8;line-height:1.2;white-space:nowrap;">${fmtUsd(low)} - ${fmtUsd(high)}</div>`;
 }
 
 // One-line summary of an active watch's trigger config for the 🔔 cell's
@@ -6115,6 +6122,7 @@ function _buildRowEl(r) {
           <div style="display:flex;flex-direction:column;align-items:center;gap:1px;">
             ${pctChipHtml}
             ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
+            ${_hiLoRangeHtml(r.high_price, r.low_price)}
           </div>
         </div>
       </td>
