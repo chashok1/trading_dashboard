@@ -259,14 +259,20 @@
 
   // ---- mini candlestick SVG -----------------------------------------------
 
-  function _candleSvg(o, h, l, c) {
+  // vh (2026-09-01): optional taller canvas so a caller with more content
+  // stacked beside the candle (e.g. actionable.js's %CHG cell -- chip +
+  // price stacked in a column next to it) can make the wick visually span
+  // that whole stack instead of just a single ~14px row. Defaults to 14,
+  // the original fixed height every existing caller (macro_areas.js) still
+  // gets unchanged.
+  function _candleSvg(o, h, l, c, vh) {
     if (o == null || h == null || l == null || c == null) return '';
     const range = h - l;
     if (range <= 0) return '';
 
-    // Fixed 7×14 px canvas — VH chosen to match the mt-chg button height (~14px).
+    // Fixed 7px-wide canvas — VH chosen to match the mt-chg button height (~14px) by default.
     // shape-rendering="crispEdges" disables anti-aliasing on lines/rects for pixel-sharp output.
-    const VW = 7, VH = 14, PAD = 1;
+    const VW = 7, VH = vh || 14, PAD = 1;
     const usable = VH - 2 * PAD;
     const toY = p => Math.round(PAD + usable * (1 - (p - l) / range));
 

@@ -5877,7 +5877,10 @@ function _buildRowEl(r) {
     const priceStr = r.last_price != null ? fmtUsd(r.last_price) : '';
     const hitRateBadge = state.filters.trade_mode ? _sourceHitRateBadge(r) : '';
     const tradabilityBadge = _tradabilityBadge(r);
-    const candleHtml = window.mtTip?.candleSvg(r.open_price, r.high_price, r.low_price, r.last_price) || '';
+    // vh=28 (2026-09-01, user request): tall enough to visually span both
+    // the chip row and the price row stacked beside it below (see the
+    // data-col="chg" cell markup) instead of just the chip's own ~14px row.
+    const candleHtml = window.mtTip?.candleSvg(r.open_price, r.high_price, r.low_price, r.last_price, 28) || '';
     // Task 4: intraday marker — shown only when quote is fresher than EOD anchor
     //         AND export_time falls within regular market hours (0930–1559 ET).
     const _idyRaw = String(r.export_time || '').replace(/:/g, '');
@@ -5983,10 +5986,12 @@ function _buildRowEl(r) {
       <td data-col="chg" class="num">
         <div class="chg-candle-row" style="display:flex;align-items:center;justify-content:flex-end;gap:4px;">
           ${candleHtml}
-          ${pctChipHtml}
+          <div style="display:flex;flex-direction:column;align-items:center;gap:1px;">
+            ${pctChipHtml}
+            ${intradayTag ? `<div>${intradayTag}</div>` : ''}
+            ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
+          </div>
         </div>
-        ${intradayTag ? `<div style="text-align:right;">${intradayTag}</div>` : ''}
-        ${priceStr ? `<div style="font-size:10px;color:#94a3b8;text-align:center;">${priceStr}</div>` : ''}
       </td>
       <td data-col="sym" data-sym-cell="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer; text-align:center;" title="${r.rr_name && r.rr_name !== r.tos_symbol ? escapeHtml(r.tos_symbol) + ' · ' : ''}Click for chart">
         <strong class="tv-sym-link" data-notespop="${escapeHtml(r.tos_symbol)}" style="font-size:11px;color:${_symOutlookColor(r)};" title="Hover for comments">${escapeHtml(r.rr_name || r.tos_symbol || '')}</strong>
