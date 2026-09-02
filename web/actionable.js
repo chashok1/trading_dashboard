@@ -1991,13 +1991,15 @@ function applyClientFilter(opts) {
 // syncFilterUi/clearAllFilters, no re-render) and the input listeners below
 // (added in the DOM-wiring block, drive state + applyClientFilter).
 function _syncRrSliderUi() {
-  const minEl = $('actRrMin'), maxEl = $('actRrMax'), rangeEl = $('actRrRange'), label = $('actRrLabel');
-  if (!minEl || !maxEl || !rangeEl || !label) return;
+  const minEl = $('actRrMin'), maxEl = $('actRrMax'), rangeEl = $('actRrRange'), row = $('actRrRow');
+  if (!minEl || !maxEl || !rangeEl || !row) return;
   const lo = state.filters.rr_min || 0, hi = state.filters.rr_max != null ? state.filters.rr_max : 100;
   minEl.value = String(lo); maxEl.value = String(hi);
   rangeEl.style.left = lo + '%';
   rangeEl.style.right = (100 - hi) + '%';
-  label.textContent = `${lo}–${hi}%`;
+  // No visible label (2026-09-01, compact main-toolbar placement) — current
+  // range is conveyed via the container's title tooltip instead.
+  row.title = `Risk Range %: ${lo}–${hi}%`;
 }
 
 // ---- Portfolio Mix panel (renderPortfolioMix/_pmHeldRows/_pmCashTotal) --

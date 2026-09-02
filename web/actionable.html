@@ -62,6 +62,13 @@
     .act-rr-slider input[type="range"]::-moz-range-thumb { pointer-events: auto; width: 13px; height: 13px;
       border-radius: 50%; background: var(--accent); border: 2px solid var(--card-bg);
       box-shadow: 0 0 0 1px var(--border); cursor: pointer; }
+    /* Compact main-toolbar variant (2026-09-01) -- no visible label/readout,
+       current range shown via the container's title tooltip instead. */
+    .act-rr-slider-sm { width: 46px; height: 18px; margin: 0 1px; }
+    .act-rr-slider-sm .act-rr-track { top: 7.5px; }
+    .act-rr-slider-sm input[type="range"] { height: 18px; }
+    .act-rr-slider-sm input[type="range"]::-webkit-slider-thumb { width: 11px; height: 11px; margin-top: 3.5px; }
+    .act-rr-slider-sm input[type="range"]::-moz-range-thumb { width: 11px; height: 11px; }
     /* act-toolbar-title kept for legacy references but no longer rendered */
     .act-summary {
       display: flex;
@@ -1226,6 +1233,19 @@
           <!-- Account filter -->
           <label style="font-size:11px; color:var(--text-2,#666); margin-right:2px; white-space:nowrap;">Acct</label>
           <select id="accountFilter" style="max-width:8em;"><option value="">All</option></select>
+          <!-- RR (Risk Range %) dual-thumb slider — filters to rows whose
+               position within LRR..TRR (0% = at LRR, 100% = at TRR) falls in
+               the selected band. Reuses r._rrPos, already computed per-row
+               during load (same formula as Universe's rawRrPos()), so this
+               is a pure client-side filter — no server round-trip. Compact,
+               unlabeled per user request (2026-09-01) -- current range is
+               conveyed via the container's title tooltip instead of visible
+               text, see _syncRrSliderUi() in actionable.js. -->
+          <div class="act-rr-slider act-rr-slider-sm" id="actRrRow" title="Risk Range %: 0–100%">
+            <div class="act-rr-track"><div class="act-rr-range" id="actRrRange"></div></div>
+            <input type="range" id="actRrMin" min="0" max="100" value="0" step="1" aria-label="Risk Range % minimum">
+            <input type="range" id="actRrMax" min="0" max="100" value="100" step="1" aria-label="Risk Range % maximum">
+          </div>
           <!-- Sector/Asset class/Style dropdowns, ALL possible values (not just
                held ones) -- moved onto the main bar 2026-09-01 (were in
                #moreFiltersPanel below the More ▾ toggle since 2026-08-31; user
@@ -1236,8 +1256,8 @@
                the canonical lists drv_category_perf/_ASSET_CLASS_ALIAS
                (web/portfolio_mix.js) already use, so a selection here always
                matches a real category. -->
-          <select id="sectorFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:130px;" title="Filter by sector (all sectors, not just held)">
-            <option value="">All Sectors</option>
+          <select id="sectorFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:66px;" title="Filter by sector (all sectors, not just held)">
+            <option value="">Sectors</option>
             <option>Communication Services</option>
             <option>Consumer Discretionary</option>
             <option>Consumer Staples</option>
@@ -1252,7 +1272,7 @@
             <option>Utilities</option>
           </select>
           <select id="assetClassFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:110px;" title="Filter by asset class (all classes, not just held)">
-            <option value="">All Asset Classes</option>
+            <option value="">Asset Classes</option>
             <option>Equities</option>
             <option>Fixed Income</option>
             <option>Commodities</option>
@@ -1262,7 +1282,7 @@
             <option>Cash</option>
           </select>
           <select id="styleFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:110px;" title="Filter by style (all styles, not just held)">
-            <option value="">All Styles</option>
+            <option value="">Styles</option>
             <option>High Beta</option>
             <option>Low Beta</option>
             <option>Defensives</option>
@@ -1398,18 +1418,6 @@
             <option value="split_tech_bear">Split Tech Bear</option>
             <option value="neutral">Neutral</option>
           </select>
-          <!-- RR (Risk Range %) dual-thumb slider — filters to rows whose
-               position within LRR..TRR (0% = at LRR, 100% = at TRR) falls in
-               the selected band. Reuses r._rrPos, already computed per-row
-               during load (same formula as Universe's rawRrPos()), so this
-               is a pure client-side filter — no server round-trip. -->
-          <label style="font-size:11px; color:var(--text-2,#666); white-space:nowrap;" title="Filter to symbols whose price sits within this % band of their LRR (0%) to TRR (100%) Risk Range">RR</label>
-          <div class="act-rr-slider" id="actRrRow">
-            <div class="act-rr-track"><div class="act-rr-range" id="actRrRange"></div></div>
-            <input type="range" id="actRrMin" min="0" max="100" value="0" step="1" aria-label="Risk Range minimum">
-            <input type="range" id="actRrMax" min="0" max="100" value="100" step="1" aria-label="Risk Range maximum">
-          </div>
-          <span style="font-size:11px; color:var(--text-2,#666); white-space:nowrap;" id="actRrLabel">0–100%</span>
           <!-- 2026-09-01 -- Sector/Asset class/Style dropdowns relocated to
                the main bar (see #accountFilter's neighbor above) so they're
                visible without expanding More ▾. -->
@@ -1692,7 +1700,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260901g"></script>
+  <script src="/static/actionable.js?v=20260901h"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>
