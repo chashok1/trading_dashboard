@@ -8214,3 +8214,74 @@ ALTER TABLE IF EXISTS drv_actionable
     ADD COLUMN IF NOT EXISTS trade_line_value NUMERIC;
 ALTER TABLE IF EXISTS drv_actionable
     ADD COLUMN IF NOT EXISTS trend_line_value NUMERIC;
+
+-- =====================================================
+-- 2026-09-02 -- ref_watch: intraday "watch this and tell me" feature,
+-- separate from ref_conviction_hold (that's a standing long-term thesis;
+-- this is a same-day price/level alert). User: "when i going through the
+-- stocks in the morning, i want to wait until and take action on the
+-- stocks before closing again there based on the price going up or down
+-- or regardless." Mirrors ref_conviction_hold's shape (one row per
+-- symbol, partial unique index caps one ACTIVE watch per symbol, UI badge
+-- + quick-add popover) but is intentionally NOT baked into
+-- drv_actionable/the derive cascade -- this is ephemeral same-day state,
+-- read live via a LATERAL join in get_actionable (api/routers/dash.py),
+-- not a historical annotation worth keeping in derived snapshots.
+--
+-- Trigger config is any combination of the 6 columns below; ALL left
+-- unset means a plain "remind me regardless" (no condition -- flagged
+-- triggered immediately at creation, see the POST handler). baseline_* is
+-- a snapshot of price/LRR/TRR/Trade-line/Trend-line at the moment the
+-- watch was created; a level trigger (LRR/TRR/trade/trend/trigger_price)
+-- fires on a genuine CROSSING -- current price sits on the opposite side
+-- of the current level from where baseline_price sat relative to the
+-- baseline level -- not merely "already past it" (etl/derive_watch.py
+-- _crossed()). trigger_pct is a plain magnitude threshold (% move either
+-- direction from baseline_price), no crossing concept needed.
+--
+-- Checked every ~minute by etl/scheduler.py's maybe_check_watches() (via
+-- etl/derive_watch.py::check_watches) while a watch is ACTIVE and
+-- triggered_at IS NULL; once a condition fires, triggered_at/
+-- triggered_reason are stamped and it stays put (no more re-checking).
+-- Once/day, near close (ref_settings.watch_digest_hour, default 15 =
+-- 3pm), maybe_send_watch_digest() emails ONE combined message listing
+-- every triggered-and-unreviewed watch (etl/notify.py::send_email) --
+-- skipped entirely if nothing qualifies, which is also how "already
+-- reviewed it in the evening" suppresses the email: marking a watch
+-- reviewed via the panel (PATCH .../{id} {reviewed:true}) removes it from
+-- that email's WHERE clause before the digest job ever runs.
+-- =====================================================
+CREATE TABLE IF NOT EXISTS ref_watch (
+    id                BIGSERIAL PRIMARY KEY,
+    tos_symbol        TEXT NOT NULL,
+    added_at          TIMESTAMP NOT NULL DEFAULT now(),
+    note              TEXT,
+    baseline_price    NUMERIC,
+    baseline_lrr      NUMERIC,
+    baseline_trr      NUMERIC,
+    baseline_trade    NUMERIC,
+    baseline_trend    NUMERIC,
+    trigger_pct       NUMERIC,
+    trigger_lrr       BOOLEAN NOT NULL DEFAULT FALSE,
+    trigger_trr       BOOLEAN NOT NULL DEFAULT FALSE,
+    trigger_trade     BOOLEAN NOT NULL DEFAULT FALSE,
+    trigger_trend     BOOLEAN NOT NULL DEFAULT FALSE,
+    trigger_price     NUMERIC,
+    status            TEXT NOT NULL DEFAULT 'ACTIVE'
+        CHECK (status IN ('ACTIVE', 'CLOSED')),
+    triggered_at      TIMESTAMP,
+    triggered_reason  TEXT,
+    emailed_at        TIMESTAMP,
+    reviewed_at       TIMESTAMP,
+    closed_at         TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_ref_watch_symbol ON ref_watch(tos_symbol);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_ref_watch_one_active
+    ON ref_watch(tos_symbol) WHERE status = 'ACTIVE';
+
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('watch_digest_hour', '15',
+     'Local hour (0-23) after which the once-daily combined watch-trigger '
+     'email fires, same clock the scheduler machine uses for '
+     'outcomes_compute_hour. Default 15 (3pm) -- "before close".')
+ON CONFLICT (setting_name) DO NOTHING;

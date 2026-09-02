@@ -714,6 +714,55 @@
     }
     .lt-scope-btn:hover { opacity: 1; border-color: #c4b5fd; background: #faf5ff; }
     .lt-scope-btn.lt-scope-active { opacity: 1; border-color: #c4b5fd; background: #ede9fe; }
+    /* Watch (2026-09-02) -- same popover/icon-button pattern as
+       conviction-pop/.lt-scope-btn above, own blue palette so the two
+       icon columns read as distinct at a glance. Third state
+       (.watch-scope-triggered, amber) for "fired, not reviewed yet". */
+    .watch-pop .wp-title { font-weight: 700; color: #0369a1; margin-bottom: 6px;
+                            border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
+    .watch-pop textarea, .watch-pop input[type="text"], .watch-pop input[type="number"] {
+      width: 100%; box-sizing: border-box; font: inherit; padding: 5px;
+      border: 1px solid #e2e8f0; border-radius: 5px; margin-bottom: 6px; resize: vertical;
+    }
+    .watch-pop textarea { min-height: 36px; }
+    .watch-pop label.wp-trig { display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: #334155; margin-bottom: 4px; }
+    .watch-pop label.wp-trig input[type="checkbox"] { margin: 0; }
+    .watch-pop label.wp-trig .wp-trig-val { color: #94a3b8; }
+    .watch-pop .wp-pctrow { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 11px; color: #334155; }
+    .watch-pop .wp-pctrow input { width: 56px; flex: 0 0 auto; margin-bottom: 0; }
+    .watch-pop .wp-actions { display: flex; justify-content: flex-end; gap: 6px; }
+    .watch-pop .wp-status { font-size: 10px; color: #64748b; margin-top: 5px; min-height: 12px; }
+    .watch-scope-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 16px; height: 16px; border-radius: 50%; font-size: 10px; line-height: 1;
+      cursor: pointer; border: 1px solid #e2e8f0; background: #f8fafc; opacity: 0.55;
+    }
+    .watch-scope-btn:hover { opacity: 1; border-color: #7dd3fc; background: #f0f9ff; }
+    .watch-scope-btn.watch-scope-active { opacity: 1; border-color: #7dd3fc; background: #e0f2fe; }
+    .watch-scope-btn.watch-scope-triggered { opacity: 1; border-color: #fbbf24; background: #fef3c7; animation: wp-pulse 1.6s ease-in-out infinite; }
+    @keyframes wp-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,.55); } 50% { box-shadow: 0 0 0 3px rgba(251,191,36,0); } }
+    tr.row-watch-triggered { border-left: 4px solid #f59e0b; background: #fffbeb; }
+    tr.row-watch-triggered:hover { background: #fef3c7; }
+    /* Brief highlight when the Watching panel scrolls a row into view --
+       fades out over the same 1.2s the JS timeout removes the class. */
+    tr.row-flash { animation: row-flash-fade 1.2s ease-out; }
+    @keyframes row-flash-fade { 0% { background: #bae6fd; } 100% { background: transparent; } }
+    /* "Watching" panel button + its list rows. */
+    #watchPanelBtn .wpb-count { display: inline-flex; align-items: center; justify-content: center;
+      min-width: 14px; height: 14px; padding: 0 3px; margin-left: 4px; border-radius: 7px;
+      background: #e0f2fe; color: #0369a1; font-size: 9.5px; font-weight: 700; }
+    #watchPanelBtn .wpb-count.wpb-count-triggered { background: #fef3c7; color: #b45309; }
+    #watchPanelBtn .wpb-count:empty { display: none; }
+    .watch-pop .wp-panel-row { display: flex; align-items: center; justify-content: space-between;
+      gap: 6px; padding: 5px 0; border-bottom: 1px solid #f1f5f9; font-size: 11px; }
+    .watch-pop .wp-panel-row:last-child { border-bottom: none; }
+    .watch-pop .wp-panel-sym { font-weight: 700; cursor: pointer; }
+    .watch-pop .wp-panel-sym:hover { text-decoration: underline; }
+    .watch-pop .wp-panel-reason { color: #64748b; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0 6px; }
+    .watch-pop .wp-panel-row.triggered .wp-panel-reason { color: #b45309; }
+    .watch-pop .wp-panel-actions { display: flex; gap: 4px; flex: 0 0 auto; }
+    .watch-pop .wp-panel-actions button { font-size: 10px; padding: 2px 6px; }
     /* PVV hover tooltip: 5-column table (label + Signal/Price/Volume/Vol) --
        the shared .k/.v rule above has zero horizontal gap between .v cells,
        fine for a 2-col key/value layout but cramped once there are 4 value
@@ -1318,6 +1367,12 @@
               <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
             </svg>
           </button>
+          <!-- Watching panel (2026-09-02) -- lists every 🔔-watched symbol
+               (across the whole date, not just the current filter) with its
+               trigger status; built straight from state.allRows' own
+               watch_* fields (already carried by the LATERAL join in
+               get_actionable), no separate fetch. -->
+          <button id="watchPanelBtn" class="btn-icon" title="Watching — symbols with an active or triggered watch">🔔 Watching</button>
           <!-- More filters toggle: Conv / P(up20d) / Agree — see .act-toolbar-more below -->
           <button id="moreFiltersBtn" class="btn-icon" title="More filters — Conviction, P(up20d) minimum, Agreement class">More ▾</button>
           <!-- Focus + Export CSV + Clear filters — lives with the filters -->
@@ -1469,6 +1524,7 @@
           <thead>
             <tr>
               <th data-col="lt" style="width:20px;" title="Long-term conviction note (analyst call note) — 🔭 Hold: don't sell on short-term noise. 🚫 Avoid: don't chase a BUY signal. Click to add/view/close.">🔭</th>
+              <th data-col="watch" style="width:20px;" title="Watch this symbol — set a % move, LRR/TRR/Trade/Trend/$ crossing, or a plain end-of-close reminder; get a combined email if it fires and you haven't reviewed it. Click to add/view/stop.">🔔</th>
               <th data-col="bulk" style="width:28px;"><input type="checkbox" id="bulkSelectAll" title="Select all"></th>
               <th data-col="h" style="width:18px;" title="H = row is hidden by the default filter (hover cell for reason)">H</th>
               <th data-col="pos" class="num sortable" data-key="current_position_dollar" data-type="num" title="Current position $ held" style="width:58px;">POS$</th>
@@ -1515,6 +1571,8 @@
   <div id="legendPop" class="source-pop" style="display:none; pointer-events:auto; max-width:420px;"></div>
   <div id="multiSymPop" class="source-pop" style="display:none; pointer-events:auto;"></div>
   <div id="convictionPop" class="source-pop conviction-pop" style="display:none; pointer-events:auto; width:260px;"></div>
+  <div id="watchPop" class="source-pop watch-pop" style="display:none; pointer-events:auto; width:250px;"></div>
+  <div id="watchPanelPop" class="source-pop watch-pop" style="display:none; pointer-events:auto; width:320px; max-height:360px; overflow-y:auto;"></div>
 
   </main>
 
@@ -1714,7 +1772,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260902e"></script>
+  <script src="/static/actionable.js?v=20260902f"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>

@@ -1177,7 +1177,15 @@ def get_actionable(
                (cv.thesis_note IS NOT NULL) AS conviction_hold,
                cv.thesis_note AS conviction_note,
                cv.target_date AS conviction_target_date,
-               cv.direction AS conviction_direction
+               cv.direction AS conviction_direction,
+               w.id AS watch_id, w.note AS watch_note,
+               w.trigger_pct AS watch_trigger_pct,
+               w.trigger_lrr AS watch_trigger_lrr, w.trigger_trr AS watch_trigger_trr,
+               w.trigger_trade AS watch_trigger_trade, w.trigger_trend AS watch_trigger_trend,
+               w.trigger_price AS watch_trigger_price,
+               (w.triggered_at IS NOT NULL) AS watch_triggered,
+               w.triggered_reason AS watch_triggered_reason,
+               (w.reviewed_at IS NOT NULL) AS watch_reviewed
         FROM drv_actionable a
         LEFT JOIN drv_tn_td_bb_rr rr
                ON rr.tos_symbol = a.tos_symbol AND rr.as_of_date = a.as_of_date
@@ -1214,6 +1222,17 @@ def get_actionable(
               AND ref_conviction_hold.status = 'ACTIVE'
             LIMIT 1
         ) cv ON TRUE
+        LEFT JOIN LATERAL (
+            -- Live, same reason as the ref_conviction_hold join above --
+            -- ref_watch isn't baked into drv_actionable at all (see its own
+            -- baseline.sql comment), this IS the only source for it.
+            SELECT id, note, trigger_pct, trigger_lrr, trigger_trr, trigger_trade,
+                   trigger_trend, trigger_price, triggered_at, triggered_reason, reviewed_at
+            FROM ref_watch
+            WHERE ref_watch.tos_symbol = a.tos_symbol
+              AND ref_watch.status = 'ACTIVE'
+            LIMIT 1
+        ) w ON TRUE
         LEFT JOIN (
             SELECT tos_symbol,
                    STRING_AGG(DISTINCT acct, ', ' ORDER BY acct) AS held_accounts
@@ -2763,6 +2782,157 @@ def delete_conviction_hold(hold_id: int):
         res = s.execute(text("DELETE FROM ref_conviction_hold WHERE id = :id"), {"id": hold_id})
     if not res.rowcount:
         raise HTTPException(404, "conviction hold not found")
+    return {"ok": True}
+
+
+# ── Watch (2026-09-02) ──────────────────────────────────────────────────────
+# Same shape as conviction holds above (one ACTIVE row per symbol, live
+# LATERAL join in get_actionable), but intraday/same-day rather than a
+# standing thesis — see ref_watch's own comment in db/baseline.sql for the
+# full design, and etl/derive_watch.py for how triggered_at/
+# triggered_reason get set (scheduler background check, not this API).
+_WATCH_TRIGGER_FIELDS = ("trigger_pct", "trigger_lrr", "trigger_trr", "trigger_trade", "trigger_trend", "trigger_price")
+
+
+@router.get("/api/actionable/watch")
+def get_watches(
+    symbol: Optional[str] = Query(None),
+    status: Optional[str] = Query(None, description="Filter to one status; omit for all"),
+):
+    """With `symbol`, full history for that symbol. Without it, everything
+    matching `status` (default: all) — backs the "Watching" panel."""
+    where = []
+    params: dict = {}
+    if symbol:
+        where.append("tos_symbol = :sym")
+        params["sym"] = symbol.upper().strip()
+    if status:
+        status_u = status.upper().strip()
+        if status_u not in ("ACTIVE", "CLOSED"):
+            raise HTTPException(400, "invalid status")
+        where.append("status = :status")
+        params["status"] = status_u
+    sql = """
+        SELECT id, tos_symbol, note, added_at, baseline_price,
+               trigger_pct, trigger_lrr, trigger_trr, trigger_trade, trigger_trend, trigger_price,
+               status, triggered_at, triggered_reason, emailed_at, reviewed_at, closed_at
+        FROM ref_watch
+    """
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY added_at DESC"
+    with session_scope() as s:
+        rows = s.execute(text(sql), params).mappings().all()
+    out = []
+    for r in rows:
+        d = dict(r)
+        for k in ("added_at", "triggered_at", "emailed_at", "reviewed_at", "closed_at"):
+            if d.get(k) is not None:
+                d[k] = d[k].isoformat()
+        out.append(d)
+    return out
+
+
+@router.post("/api/actionable/watch")
+def post_watch(payload: dict):
+    """Start watching a symbol. Any combination of the 6 trigger_* fields;
+    all omitted/falsy = a plain "remind me regardless" (no condition —
+    flagged triggered immediately, so it surfaces in today's digest/panel
+    with no further checking needed). At most one ACTIVE watch per symbol
+    — the partial unique index enforces it; stop watching first via PATCH
+    (status=CLOSED) or DELETE to start a new one."""
+    sym = str(payload.get("tos_symbol") or "").upper().strip()
+    if not sym:
+        raise HTTPException(400, "tos_symbol is required")
+    note = str(payload.get("note") or "").strip() or None
+    triggers = {f: payload.get(f) for f in _WATCH_TRIGGER_FIELDS}
+    for f in ("trigger_lrr", "trigger_trr", "trigger_trade", "trigger_trend"):
+        triggers[f] = bool(triggers[f])
+    has_condition = bool(
+        triggers["trigger_pct"] or triggers["trigger_lrr"] or triggers["trigger_trr"]
+        or triggers["trigger_trade"] or triggers["trigger_trend"] or triggers["trigger_price"]
+    )
+    with session_scope() as s:
+        # Baseline snapshot -- crossing triggers (LRR/TRR/Trade/Trend/$)
+        # fire relative to THIS reading (see etl/derive_watch.py::_crossed),
+        # not just "already past the level" at watch-creation time.
+        base = s.execute(text("""
+            SELECT q.last_price, dr.lrr, dr.trr, mt.a_trade_value, mt.a_trend_value
+            FROM (SELECT 1) _dummy
+            LEFT JOIN LATERAL (
+                SELECT last_price FROM drv_quote WHERE tos_symbol = :sym ORDER BY as_of_date DESC LIMIT 1
+            ) q ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT lrr, trr FROM drv_rr WHERE tos_symbol = :sym ORDER BY as_of_date DESC LIMIT 1
+            ) dr ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT a_trade_value, a_trend_value FROM drv_technicals WHERE tos_symbol = :sym ORDER BY as_of_date DESC LIMIT 1
+            ) mt ON TRUE
+        """), {"sym": sym}).mappings().first() or {}
+        try:
+            row = s.execute(text("""
+                INSERT INTO ref_watch (
+                    tos_symbol, note, baseline_price, baseline_lrr, baseline_trr, baseline_trade, baseline_trend,
+                    trigger_pct, trigger_lrr, trigger_trr, trigger_trade, trigger_trend, trigger_price,
+                    triggered_at, triggered_reason
+                ) VALUES (
+                    :sym, :note, :bp, :blrr, :btrr, :btrade, :btrend,
+                    :tpct, :tlrr, :ttrr, :ttrade, :ttrend, :tprice,
+                    :trig_at, :trig_reason
+                )
+                RETURNING id
+            """), {
+                "sym": sym, "note": note,
+                "bp": base.get("last_price"), "blrr": base.get("lrr"), "btrr": base.get("trr"),
+                "btrade": base.get("a_trade_value"), "btrend": base.get("a_trend_value"),
+                "tpct": triggers["trigger_pct"], "tlrr": triggers["trigger_lrr"], "ttrr": triggers["trigger_trr"],
+                "ttrade": triggers["trigger_trade"], "ttrend": triggers["trigger_trend"], "tprice": triggers["trigger_price"],
+                "trig_at": None if has_condition else datetime.now(),
+                "trig_reason": None if has_condition else "Reminder (no condition set)",
+            }).first()
+        except IntegrityError:
+            raise HTTPException(409, f"{sym} is already being watched — stop watching it first")
+    return {"ok": True, "id": row[0]}
+
+
+@router.patch("/api/actionable/watch/{watch_id}")
+def patch_watch(watch_id: int, payload: dict):
+    """Mark reviewed (removes it from the next digest email/panel badge),
+    and/or stop watching (status -> CLOSED, stamping closed_at)."""
+    fields = []
+    params: dict = {"id": watch_id}
+    if payload.get("reviewed") is True:
+        fields.append("reviewed_at = now()")
+    if "note" in payload:
+        fields.append("note = :note")
+        params["note"] = str(payload["note"]).strip() or None
+    if "status" in payload:
+        status_u = str(payload["status"]).upper().strip()
+        if status_u not in ("ACTIVE", "CLOSED"):
+            raise HTTPException(400, "invalid status")
+        fields.append("status = :status")
+        params["status"] = status_u
+        fields.append("closed_at = " + ("now()" if status_u == "CLOSED" else "NULL"))
+    if not fields:
+        raise HTTPException(400, "no fields to update")
+    with session_scope() as s:
+        try:
+            res = s.execute(text(f"UPDATE ref_watch SET {', '.join(fields)} WHERE id = :id"), params)
+        except IntegrityError:
+            raise HTTPException(409, "symbol already has an active watch")
+    if not res.rowcount:
+        raise HTTPException(404, "watch not found")
+    return {"ok": True}
+
+
+@router.delete("/api/actionable/watch/{watch_id}")
+def delete_watch(watch_id: int):
+    """Hard-delete a watch — for cleaning up a mistaken entry. Unlike PATCH
+    status=CLOSED, this is not reversible and leaves no history."""
+    with session_scope() as s:
+        res = s.execute(text("DELETE FROM ref_watch WHERE id = :id"), {"id": watch_id})
+    if not res.rowcount:
+        raise HTTPException(404, "watch not found")
     return {"ok": True}
 
 

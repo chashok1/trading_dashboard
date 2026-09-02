@@ -4,6 +4,46 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ---
 
+## 2026-09-02
+
+- **Universe screen — "By Source" view + "All My Stocks" button.** Third
+  top-level hierarchy (Source → Asset Class → Sector → Symbol) rooted at
+  the outlook source(s) that flagged a symbol (`drv_actionable.source_actions`,
+  new `sources` field on `/api/universe`'s symbol rows) — a symbol can
+  carry more than one, so it can land under several source tiles, same as
+  Style tags. "All My Stocks" is an orthogonal toggle (not a 4th view):
+  every held symbol across every account as flat tiles, no Account/Source/
+  Asset Class/Sector grouping — a symbol held in several accounts combines
+  into one tile (`current_position_dollar` is already the cross-account
+  total on a `drv_actionable` row). `web/universe.js`/`web/universe.html`.
+- **Actionable screen — 3W column removed.** The "3-Way Agreement" ▼3/▲3
+  grid column is gone (dead `_agree3`/`_agree3Score` plumbing removed with
+  it); `_threeWayAgreement()` itself stays, still feeding the "3-Way" row
+  in the Final-Call side panel checklist.
+- **Actionable screen — %Chg column Hi/Lo readout.** Tiny-font day
+  High/Low under the price, each with its % distance from `last_price` in
+  parens (e.g. "H $100 (+4%)"). Column widened 62px→98px, candle-to-price
+  gap widened 4px→9px.
+- **Watch/notify (🔔 column).** New `ref_watch` table — same-day price/
+  level alert, separate from the standing `ref_conviction_hold` thesis.
+  Trigger on a % move, or a genuine crossing (vs. a baseline reading taken
+  at watch-creation, see `etl/derive_watch.py::_crossed`) of LRR/TRR/Trade
+  line/Trend line/a $ target, or no condition at all (a plain
+  "remind me regardless" reminder, triggered immediately). Live
+  `LEFT JOIN LATERAL` in `get_actionable` (not baked into `drv_actionable`
+  — this is ephemeral, not a historical annotation); `GET/POST/PATCH/DELETE
+  /api/actionable/watch`. `etl/scheduler.py`'s `maybe_check_watches`
+  (every ~minute, idempotent) flips `triggered_at`/`triggered_reason`;
+  `maybe_send_watch_digest` (once/day, `ref_settings.watch_digest_hour`,
+  default 15 = 3pm) emails ONE combined message of everything still
+  triggered-and-unreviewed via `etl/notify.py::send_email` — skipped
+  entirely if nothing qualifies, which is also how reviewing a watch
+  in-app before the digest runs suppresses its email. Grid badge +
+  quick-add popover + toolbar "Watching" panel in `web/actionable.js`/
+  `web/actionable.html`.
+
+---
+
 ## 2026-08-01
 
 - **Dashboard cockpit (TASK_133, full build).** Replaces the `/` ticker-grid

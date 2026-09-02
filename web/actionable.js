@@ -176,6 +176,20 @@ function _hiLoPctHtml(high, low, last) {
   return `<div style="font-size:8px;color:#94a3b8;line-height:1.3;white-space:nowrap;">${parts.join('<br>')}</div>`;
 }
 
+// One-line summary of an active watch's trigger config for the 🔔 cell's
+// hover tooltip, e.g. "±4% · LRR · TRR · $52.00" or "plain reminder" for
+// one with no condition set.
+function _watchConfigSummary(r) {
+  const parts = [];
+  if (r.watch_trigger_pct != null) parts.push(`±${r.watch_trigger_pct}%`);
+  if (r.watch_trigger_lrr) parts.push('LRR');
+  if (r.watch_trigger_trr) parts.push('TRR');
+  if (r.watch_trigger_trade) parts.push('Trade line');
+  if (r.watch_trigger_trend) parts.push('Trend line');
+  if (r.watch_trigger_price != null) parts.push('$' + Number(r.watch_trigger_price).toFixed(2));
+  return parts.length ? parts.join(' · ') : 'plain reminder (no condition)';
+}
+
 // ---------- Side panel helpers + MACRO band (TASK_74) ----------
 
 // ── MACRO column cell renderer (TASK_74) ────────────────────────────────────
@@ -2049,6 +2063,7 @@ function applyClientFilter(opts) {
   renderSourceFilter();
   renderAccountFilter();
   renderGrid();
+  _updateWatchPanelBtn();
 }
 
 // RR (Risk Range %) dual-thumb slider — same pattern as Universe's
@@ -4172,7 +4187,7 @@ function initGridSymClick() {
   const body = $('actBody');
   if (!body) return;
   body.addEventListener('click', (e) => {
-    if (e.target.closest('.lt-quick-btn')) return;
+    if (e.target.closest('.lt-quick-btn') || e.target.closest('.watch-quick-btn')) return;
     const cell = e.target.closest('[data-sym-cell]');
     if (!cell) return;
     const sym = cell.dataset.symCell;
@@ -5926,6 +5941,7 @@ function _buildRowEl(r) {
     } else if (r.conviction_hold && r.conviction_direction !== 'AVOID' && r._fc_side === 'sell') {
       tr.classList.add('row-lt-conflict');
     }
+    if (r.watch_triggered && !r.watch_reviewed) tr.classList.add('row-watch-triggered');
     tr.dataset.sym = r.tos_symbol;
 
     const pctChipHtml = _pctChgChipHtml(r.pct_change);
@@ -6021,6 +6037,12 @@ function _buildRowEl(r) {
           ? `<span class="lt-quick-btn lt-scope-btn lt-scope-active" data-sym="${escapeHtml(r.tos_symbol)}" title="Long-term conviction ${r.conviction_direction === 'AVOID' ? 'avoid' : 'hold'} — ${escapeHtml(r.conviction_note || '')}\n\nClick to view/close.">${r.conviction_direction === 'AVOID' ? '🚫' : '🔭'}</span>`
           : `<span class="lt-quick-btn lt-scope-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Add a long-term conviction note (analyst call note) — a reminder only. Hold badges this row so a SELL/REDUCE signal doesn't get mistaken for a reason to abandon the thesis; Avoid badges it so a BUY/ADD/INCREASE signal doesn't get mistaken for a reason to chase it. Doesn't suppress or change the signal itself.">🔭</span>`}
       </td>
+      <td data-col="watch" style="padding:4px 2px; text-align:center;">${r.watch_id
+          ? (r.watch_triggered
+              ? `<span class="watch-quick-btn watch-scope-btn watch-scope-triggered" data-sym="${escapeHtml(r.tos_symbol)}" title="Triggered: ${escapeHtml(r.watch_triggered_reason || '')}${r.watch_reviewed ? ' (reviewed)' : ' — click to review'}">🔔</span>`
+              : `<span class="watch-quick-btn watch-scope-btn watch-scope-active" data-sym="${escapeHtml(r.tos_symbol)}" title="Watching — ${escapeHtml(_watchConfigSummary(r))}\n\nClick to view/stop.">🔔</span>`)
+          : `<span class="watch-quick-btn watch-scope-btn" data-sym="${escapeHtml(r.tos_symbol)}" title="Watch this symbol — set a % move, LRR/TRR/Trade/Trend/$ crossing, or a plain end-of-close reminder. Gets a combined email if it fires and you haven't reviewed it before the close-time digest.">🔔</span>`}
+      </td>
       <td data-col="bulk" style="padding:4px 6px; text-align:center;">
         <input type="checkbox" class="row-check" data-sym="${escapeHtml(r.tos_symbol)}"${isChecked ? ' checked' : ''}>
       </td>
@@ -6108,7 +6130,7 @@ function _buildRowEl(r) {
       <td data-col="pvv" style="padding:4px 6px; text-align:center; white-space:nowrap;">${_pvvCellHtml(r)}</td>
     `;
     tr.onclick = (e) => {
-      if (e.target.closest('.row-check') || e.target.closest('.lt-quick-btn')) return;
+      if (e.target.closest('.row-check') || e.target.closest('.lt-quick-btn') || e.target.closest('.watch-quick-btn')) return;
       const rulesCell = e.target.closest('.rules-link-cell');
       if (rulesCell) {
         window.location.href = '/rule-flow?symbol=' + encodeURIComponent(rulesCell.dataset.sym);
@@ -7292,6 +7314,260 @@ function initConvictionQuickBtn() {
   });
 }
 
+// ---- Watch popover (2026-09-02) -- same shape as the conviction popover
+// just above, adapted for watch's richer trigger config. See ref_watch's
+// own comment in db/baseline.sql for the full feature design. -----------
+let _wpSym = null;
+let _wpActiveId = null;
+
+function closeWatchPop() {
+  _wpSym = null;
+  const pop = $('watchPop');
+  if (pop) pop.style.display = 'none';
+}
+
+function _positionWatchPop(pop, anchorEl) {
+  const rect = anchorEl.getBoundingClientRect();
+  let top = rect.bottom + 4;
+  if (top + pop.offsetHeight > window.innerHeight - 8) {
+    top = Math.max(8, rect.top - pop.offsetHeight - 4);
+  }
+  let left = rect.left;
+  if (left + pop.offsetWidth > window.innerWidth - 8) {
+    left = Math.max(8, window.innerWidth - pop.offsetWidth - 8);
+  }
+  pop.style.top = top + 'px';
+  pop.style.left = left + 'px';
+}
+
+// active: the ACTIVE ref_watch row (or null). row: the grid's own row data
+// for this symbol (state.allRows), used only to show current LRR/TRR/
+// Trade/Trend values next to each checkbox so you know what you're
+// setting before you set it.
+function _watchPopHtml(sym, active, row) {
+  const fmt = v => v == null ? '—' : '$' + Number(v).toFixed(2);
+  if (active) {
+    const added = (active.added_at || '').toString().slice(0, 16).replace('T', ' ');
+    if (active.triggered_at) {
+      return `
+        <div class="wp-title">🔔 ${escapeHtml(sym)} — Triggered</div>
+        <div style="margin-bottom:7px;">${escapeHtml(active.triggered_reason || '')}${active.note ? '<br>' + escapeHtml(active.note) : ''}</div>
+        <div class="wp-actions">
+          <button class="btn" id="wpDeleteBtn" title="Hard-delete (not reversible)" style="color:#dc2626;border-color:#dc2626;">Stop</button>
+          ${active.reviewed_at ? '' : '<button class="btn" id="wpReviewBtn">Mark reviewed</button>'}
+        </div>
+        <div class="wp-status" id="wpStatus">${active.reviewed_at ? 'Reviewed — won\'t appear in the close-time digest.' : ''}</div>`;
+    }
+    return `
+      <div class="wp-title">🔔 ${escapeHtml(sym)} — Watching</div>
+      <div style="margin-bottom:7px;color:#64748b;">Since ${escapeHtml(added)}${active.note ? '<br>' + escapeHtml(active.note) : ''}<br>${escapeHtml(_watchConfigSummary({
+        watch_trigger_pct: active.trigger_pct, watch_trigger_lrr: active.trigger_lrr, watch_trigger_trr: active.trigger_trr,
+        watch_trigger_trade: active.trigger_trade, watch_trigger_trend: active.trigger_trend, watch_trigger_price: active.trigger_price,
+      }))}</div>
+      <div class="wp-actions">
+        <button class="btn" id="wpDeleteBtn" title="Stop watching (not reversible)" style="color:#dc2626;border-color:#dc2626;">Stop watching</button>
+      </div>
+      <div class="wp-status" id="wpStatus"></div>`;
+  }
+  return `
+    <div class="wp-title">🔔 ${escapeHtml(sym)} — Watch</div>
+    <div class="wp-pctrow"><input type="number" id="wpPct" step="0.5" min="0" placeholder="4"> % move (either direction)</div>
+    <label class="wp-trig"><input type="checkbox" id="wpLrr"> LRR <span class="wp-trig-val">(${fmt(row && row.lrr)})</span></label>
+    <label class="wp-trig"><input type="checkbox" id="wpTrr"> TRR <span class="wp-trig-val">(${fmt(row && row.trr)})</span></label>
+    <label class="wp-trig"><input type="checkbox" id="wpTrade"> Trade line <span class="wp-trig-val">(${fmt(row && row.trade_line_value)})</span></label>
+    <label class="wp-trig"><input type="checkbox" id="wpTrend"> Trend line <span class="wp-trig-val">(${fmt(row && row.trend_line_value)})</span></label>
+    <div class="wp-pctrow">$ <input type="number" id="wpPrice" step="0.01" min="0" placeholder="target price"></div>
+    <textarea id="wpNote" placeholder="note (optional)…"></textarea>
+    <div class="wp-actions">
+      <button class="btn" id="wpAddBtn">Watch</button>
+    </div>
+    <div class="wp-status" id="wpStatus">Leave every field blank for a plain end-of-close reminder.</div>`;
+}
+
+function _wireWatchPop(sym) {
+  const addBtn = document.getElementById('wpAddBtn');
+  if (addBtn) addBtn.addEventListener('click', async () => {
+    const statusEl = document.getElementById('wpStatus');
+    const pct = document.getElementById('wpPct').value;
+    const price = document.getElementById('wpPrice').value;
+    try {
+      await fetchJson('/api/actionable/watch', {
+        method: 'POST',
+        body: JSON.stringify({
+          tos_symbol: sym,
+          note: document.getElementById('wpNote').value || null,
+          trigger_pct: pct ? Number(pct) : null,
+          trigger_lrr: document.getElementById('wpLrr').checked,
+          trigger_trr: document.getElementById('wpTrr').checked,
+          trigger_trade: document.getElementById('wpTrade').checked,
+          trigger_trend: document.getElementById('wpTrend').checked,
+          trigger_price: price ? Number(price) : null,
+        }),
+      });
+      closeWatchPop();
+      loadActionable();  // refresh grid so the 🔔 badge appears
+    } catch (e) {
+      statusEl.textContent = 'Watch failed: ' + e.message;
+    }
+  });
+  const reviewBtn = document.getElementById('wpReviewBtn');
+  if (reviewBtn) reviewBtn.addEventListener('click', async () => {
+    const statusEl = document.getElementById('wpStatus');
+    if (!_wpActiveId) return;
+    try {
+      await fetchJson('/api/actionable/watch/' + encodeURIComponent(_wpActiveId), {
+        method: 'PATCH', body: JSON.stringify({ reviewed: true }),
+      });
+      closeWatchPop();
+      loadActionable();
+    } catch (e) {
+      statusEl.textContent = 'Review failed: ' + e.message;
+    }
+  });
+  const deleteBtn = document.getElementById('wpDeleteBtn');
+  if (deleteBtn) deleteBtn.addEventListener('click', async () => {
+    const statusEl = document.getElementById('wpStatus');
+    if (!_wpActiveId) return;
+    if (!confirm('Stop watching ' + sym + '? This cannot be undone.')) return;
+    try {
+      await fetchJson('/api/actionable/watch/' + encodeURIComponent(_wpActiveId), { method: 'DELETE' });
+      closeWatchPop();
+      loadActionable();
+    } catch (e) {
+      statusEl.textContent = 'Stop failed: ' + e.message;
+    }
+  });
+}
+
+async function openWatchPop(sym, anchorEl) {
+  const pop = $('watchPop');
+  if (!pop) return;
+  if (_wpSym === sym && pop.style.display === 'block') {
+    closeWatchPop();  // clicking the same button again toggles it off
+    return;
+  }
+  _wpSym = sym;
+  pop.innerHTML = `<div class="wp-title">🔔 ${escapeHtml(sym)} — Watch</div><div class="wp-status">Loading…</div>`;
+  pop.style.display = 'block';
+  _positionWatchPop(pop, anchorEl);
+
+  let rows = [];
+  try {
+    rows = await fetchJson('/api/actionable/watch?symbol=' + encodeURIComponent(sym));
+  } catch (_) { rows = []; }
+  if (_wpSym !== sym) return;  // closed or reopened on a different symbol while this was loading
+  const active = Array.isArray(rows) ? rows.find(r => r.status === 'ACTIVE') : null;
+  _wpActiveId = active ? active.id : null;
+  const row = (state.allRows || []).find(r => r.tos_symbol === sym);
+  pop.innerHTML = _watchPopHtml(sym, active, row);
+  _positionWatchPop(pop, anchorEl);
+  _wireWatchPop(sym);
+}
+
+function initWatchQuickBtn() {
+  const body = $('actBody');
+  if (!body) return;
+  body.addEventListener('click', (e) => {
+    const btn = e.target.closest('.watch-quick-btn');
+    if (!btn) return;
+    openWatchPop(btn.dataset.sym, btn);
+  });
+  document.addEventListener('click', (e) => {
+    if (!_wpSym) return;
+    const pop = $('watchPop');
+    if (pop && (pop.contains(e.target) || e.target.closest('.watch-quick-btn'))) return;
+    closeWatchPop();
+  });
+}
+
+// ---- Watching panel (2026-09-02) -- every watched symbol at once, built
+// straight from state.allRows' own watch_* fields (the live LATERAL join
+// in get_actionable already carries them, so no separate fetch/endpoint
+// needed here — unlike the per-symbol popover above, which does fetch
+// /api/actionable/watch for that one symbol's own history). -----------
+function _watchedRows() {
+  return (state.allRows || []).filter(r => r.watch_id != null)
+    .sort((a, b) => (b.watch_triggered ? 1 : 0) - (a.watch_triggered ? 1 : 0) || a.tos_symbol.localeCompare(b.tos_symbol));
+}
+
+// Refreshes the toolbar button's count badge -- called after every grid
+// (re)render, not just on open, so the count stays current even while the
+// panel itself is closed.
+function _updateWatchPanelBtn() {
+  const btn = $('watchPanelBtn');
+  if (!btn) return;
+  const rows = _watchedRows();
+  const triggered = rows.filter(r => r.watch_triggered && !r.watch_reviewed).length;
+  const watching = rows.length - triggered;
+  const bits = [];
+  if (triggered) bits.push(`<span class="wpb-count wpb-count-triggered">${triggered}</span>`);
+  if (watching) bits.push(`<span class="wpb-count">${watching}</span>`);
+  btn.innerHTML = '🔔 Watching' + bits.join('');
+  // Keep an open panel's list in sync with the grid it's summarizing (e.g.
+  // after a background auto-refresh flips a watch to triggered).
+  if ($('watchPanelPop').style.display === 'block') _renderWatchPanelList();
+}
+
+function _watchPanelRowHtml(r) {
+  const reason = r.watch_triggered ? (r.watch_triggered_reason || 'triggered') : _watchConfigSummary(r);
+  const actions = r.watch_triggered
+    ? (r.watch_reviewed ? '' : `<button class="btn" data-wp-review="${r.watch_id}">Reviewed</button>`)
+    : '';
+  return `<div class="wp-panel-row${r.watch_triggered ? ' triggered' : ''}">
+      <span class="wp-panel-sym" data-wp-sym="${escapeHtml(r.tos_symbol)}">${escapeHtml(r.tos_symbol)}</span>
+      <span class="wp-panel-reason" title="${escapeHtml(reason)}">${escapeHtml(reason)}</span>
+      <span class="wp-panel-actions">${actions}<button class="btn" data-wp-stop="${r.watch_id}">Stop</button></span>
+    </div>`;
+}
+
+function _renderWatchPanelList() {
+  const pop = $('watchPanelPop');
+  if (!pop) return;
+  const rows = _watchedRows();
+  pop.innerHTML = `<div class="wp-title">🔔 Watching (${rows.length})</div>`
+    + (rows.length ? rows.map(_watchPanelRowHtml).join('') : '<div class="wp-status">Nothing watched right now — click a row\'s 🔔 to start.</div>');
+  pop.querySelectorAll('[data-wp-sym]').forEach(el => el.addEventListener('click', () => {
+    closeWatchPanel();
+    const target = document.querySelector(`tr[data-sym="${CSS.escape(el.dataset.wpSym)}"]`);
+    if (target) { target.scrollIntoView({ block: 'center' }); target.classList.add('row-flash'); setTimeout(() => target.classList.remove('row-flash'), 1200); }
+  }));
+  pop.querySelectorAll('[data-wp-review]').forEach(el => el.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    try { await fetchJson('/api/actionable/watch/' + encodeURIComponent(el.dataset.wpReview), { method: 'PATCH', body: JSON.stringify({ reviewed: true }) }); loadActionable(); }
+    catch (_) { /* ignore -- panel just won't update this row */ }
+  }));
+  pop.querySelectorAll('[data-wp-stop]').forEach(el => el.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    try { await fetchJson('/api/actionable/watch/' + encodeURIComponent(el.dataset.wpStop), { method: 'DELETE' }); loadActionable(); }
+    catch (_) { /* ignore */ }
+  }));
+}
+
+function closeWatchPanel() {
+  const pop = $('watchPanelPop');
+  if (pop) pop.style.display = 'none';
+}
+
+function openWatchPanel(anchorEl) {
+  const pop = $('watchPanelPop');
+  if (!pop) return;
+  if (pop.style.display === 'block') { closeWatchPanel(); return; }
+  _renderWatchPanelList();
+  pop.style.display = 'block';
+  _positionWatchPop(pop, anchorEl);
+}
+
+function initWatchPanel() {
+  const btn = $('watchPanelBtn');
+  if (btn) btn.addEventListener('click', () => openWatchPanel(btn));
+  document.addEventListener('click', (e) => {
+    const pop = $('watchPanelPop');
+    if (!pop || pop.style.display !== 'block') return;
+    if (pop.contains(e.target) || e.target.closest('#watchPanelBtn')) return;
+    closeWatchPanel();
+  });
+}
+
 // ---- TradingView tape toggle --------------------------------------------------
 const _TV_LS_KEY = 'act_tv_tape';
 
@@ -7431,6 +7707,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   initSorting();
   initGridSymClick();
   initConvictionQuickBtn();
+  initWatchQuickBtn();
+  initWatchPanel();
   initEcoBarClick();
   _initColMenu();
   _initMultiSymPop();

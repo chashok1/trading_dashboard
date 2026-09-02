@@ -657,6 +657,32 @@ def maybe_run_nightly(state_path: Path) -> None:
     _write_nightly_state(state_path, now.date())
 
 
+def maybe_check_watches() -> None:
+    """Every tick this is called (main loop: every ~minute) -- evaluate
+    ref_watch trigger conditions against the latest price/LRR/TRR/Trade/
+    Trend reading. Idempotent (only touches rows still un-triggered), so
+    unlike the nightly/digest jobs below this has no once-per-day gate."""
+    from etl.derive_watch import check_watches
+    check_watches()
+
+
+def maybe_send_watch_digest(state_path: Path) -> None:
+    """Once/day, at/after ref_settings.watch_digest_hour (default 15 =
+    3pm local, same clock outcomes_compute_hour uses) -- send the combined
+    watch-trigger email if anything still qualifies. Same once-per-day
+    dedupe pattern as maybe_run_nightly (state_path is a separate file, so
+    the two jobs' dedupe doesn't collide)."""
+    from etl.derive_watch import _get_digest_hour, send_watch_digest
+    now = datetime.now()
+    if now.hour < _get_digest_hour():
+        return
+    last_run = _read_nightly_state(state_path)
+    if last_run == now.date():
+        return
+    send_watch_digest()
+    _write_nightly_state(state_path, now.date())
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # After-market Yahoo Y load — fires at 4:15 PM ET Mon–Fri.
 # Writes a DB flag at start so the FastAPI fallback (4:30 PM ET) skips it.
@@ -929,6 +955,7 @@ def main() -> int:
         log.exception("Observer() construction failed — running without watchdog")
         observer = None
     nightly_state_path = Path(settings.etl_working_dir) / "scheduler_nightly_last.txt"
+    watch_digest_state_path = Path(settings.etl_working_dir) / "scheduler_watch_digest_last.txt"
     stop_flag_path = Path(settings.etl_working_dir) / "scheduler_stop.txt"
     if not args.no_nightly:
         log.info("nightly compute_outcomes scheduled (hour=%d, state=%s)",
@@ -1005,6 +1032,22 @@ def main() -> int:
                 except Exception:
                     try:
                         log.exception("maybe_run_hedgeye_poll failed (continuing)")
+                    except Exception:
+                        pass
+            if tick % 60 == 0:
+                try:
+                    maybe_check_watches()
+                except Exception:
+                    try:
+                        log.exception("maybe_check_watches failed (continuing)")
+                    except Exception:
+                        pass
+            if tick % 60 == 0:
+                try:
+                    maybe_send_watch_digest(watch_digest_state_path)
+                except Exception:
+                    try:
+                        log.exception("maybe_send_watch_digest failed (continuing)")
                     except Exception:
                         pass
     except KeyboardInterrupt:
