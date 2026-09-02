@@ -214,9 +214,10 @@ function _hiLoRangeHtml(high, low) {
 // centers as one self-contained unit; the internal sub-pixel calibration
 // is harmless (still <1px) even though its original target doesn't apply.
 // `gap` (candle column <-> price/chip column) defaults to the grid's own
-// calibrated 9px; the popover call site passes 4.5 (2026-09-02, user:
-// "make half") -- parameterized instead of hardcoded so that request
-// doesn't also reach into the grid's own already-tuned spacing.
+// calibrated 9px; the popover call site passes 2.25 (2026-09-02, user:
+// "make half" then "reduce it to half" again, 9 -> 4.5 -> 2.25) --
+// parameterized instead of hardcoded so that request doesn't also reach
+// into the grid's own already-tuned spacing.
 function _chgCandleControlsHtml(row, gap) {
   const pctChipHtml = _pctChgChipHtml(row.pct_change);
   const priceStr = row.last_price != null ? fmtUsd(row.last_price) : '';
@@ -5617,7 +5618,7 @@ function _buildActionPopHtmlV2(row) {
     + `</div>`
     + `<div class="actpop-ctrl-row">`
     + tug.conviction
-    + `<div class="actpop-ctrl-anchor-rr">${_chgCandleControlsHtml(row, 4.5)}</div>`
+    + `<div class="actpop-ctrl-anchor-rr">${_chgCandleControlsHtml(row, 2.25)}</div>`
     + _actpopTdTnHtml(row)
     + _actpopRrBarHtml(row)
     + `</div>`
