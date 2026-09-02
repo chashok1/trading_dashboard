@@ -485,6 +485,16 @@
     .actpop-head { display: flex; align-items: center; column-gap: 14px;
       margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
     .actpop-ctrl-row { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; }
+    /* Wraps the %CHG group only (2026-09-02, user: "anchor %CHG controls &
+       td/tn to the RR controls and leave the same gap as between %CHG,Tn/
+       Td control groups") -- margin-left:auto claims all of
+       .actpop-ctrl-row's leftover space for itself, pushing this wrapper
+       (and everything after it: Trade/Trend, RR, both still on the row's
+       normal 10px gap -- auto margins only add space BEFORE the item they're
+       set on) into one tight cluster flush against the popup's right edge.
+       Supp/Opp is left behind on the near side of that auto margin, next
+       to the symbol block instead. */
+    .actpop-ctrl-anchor-rr { margin-left: auto; }
     .actpop-sym { min-width:0; flex: 0 0 auto; font-size:14px; font-weight:800; color:#0f172a; }
     /* 2026-08-29: held amount/earnings moved to their own line below the
        symbol (was an inline span next to it) -- block instead of inline. */
@@ -622,25 +632,24 @@
        total each side) -- user asked for "a little more space on both
        sides" around it specifically, not just the row's normal gap. */
     .actpop-rr-trad { margin: 0 6px; }
-    /* RR bar widget -- last of .actpop-ctrl-row's 4 flex groups. Pushed to
-       the row's right edge via margin-left:auto (2026-09-02, user: "RR
-       controls need to be moved to the right (only those controls in the
-       header)") -- an auto margin on a flex item claims ALL the row's
-       leftover space for itself, which both visually separates it from
-       the other 3 (packed on their own small fixed gap, see
-       .actpop-ctrl-row) and keeps it flush against the popup's true right
-       edge same as the original design (tried justify-content:
-       space-between for this first, see .actpop-ctrl-row's own comment
-       for why that regressed). Explicit width keeps it its original
-       220px regardless of the row's leftover space. margin-top 8px keeps
-       the %-tag (position:absolute top:-18px above the track) clear of
+    /* RR bar widget -- last of .actpop-ctrl-row's 4 flex groups, and last
+       of the [%CHG, Trade/Trend, RR] cluster the auto margin on
+       .actpop-ctrl-anchor-rr pushes flush against the popup's right edge
+       (2026-09-02, user: "anchor %CHG controls & td/tn to the RR controls
+       ... leave the same gap as between %CHG,Tn/Td control groups" --
+       RR's OWN margin-left:auto, tried first, put a bigger gap before RR
+       than the one between %CHG and Trade/Trend; moving the auto margin
+       to the front of the cluster instead keeps all 3 on the row's
+       normal fixed gap). Explicit width keeps it its original 220px
+       regardless of the row's leftover space. margin-top 8px keeps the
+       %-tag (position:absolute top:-18px above the track) clear of
        .actpop's own 6px top padding. align-self:flex-start (not
        .actpop-ctrl-row's own align-items:center) pins it to the same
        coordinate-frame top as .actpop-tdtn -- see that rule's own comment
        for the math this and its margin-top:8 feed into. 2026-08-29
        follow-up: 8px -> 18px -- same +10px group-down shift as
        .actpop-tdtn, see its comment. */
-    .actpop-rr { width: 220px; flex: 0 0 auto; margin-left: auto; align-self: flex-start; margin-top: 18px; }
+    .actpop-rr { width: 220px; flex: 0 0 auto; align-self: flex-start; margin-top: 18px; }
     .actpop-rr-icons { display:flex; align-items:flex-start; gap:10px; flex-shrink:0; }
     /* 2026-08-21: PVV over CALC, its own small vertical pair sitting next to
        Tradability (was two of the four items side by side in
@@ -1800,7 +1809,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260902za"></script>
+  <script src="/static/actionable.js?v=20260902zb"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>

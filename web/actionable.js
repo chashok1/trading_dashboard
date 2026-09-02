@@ -5595,16 +5595,17 @@ function _buildActionPopHtmlV2(row) {
   //      of .actpop-sym, where it used to sit inline next to the badge.
   //   2. The %CHG column's own candle+hi/lo%+price+range widget, verbatim
   //      (_chgCandleControlsHtml -- shared with the grid's %CHG cell).
-  //   3. Trade/Trend boxes (_actpopTdTnHtml) -- moved right to make room.
+  //   3. Trade/Trend boxes (_actpopTdTnHtml).
   //   4. The RR bar (_actpopRrBarHtml).
-  // .actpop-ctrl-row is flex with justify-content:space-between (not a
-  // fixed gap) so the 4 groups' own uneven widths still divide the row's
-  // leftover space into genuinely equal gaps, same trick space-between
-  // always does with N items -- and it keeps the RR bar pinned to the
-  // popover's right edge like before. .actpop-head itself dropped its old
-  // 3-column CSS Grid (was needed only to align a second row underneath
-  // it that's since gone back to plain flex -- see that row's own
-  // comment) for a simple 2-child flex: the symbol block, then this row.
+  // .actpop-ctrl-row uses a small fixed gap (not justify-content:
+  // space-between -- that stretched past the popup's own edge on a wide
+  // row, see .actpop-ctrl-row's CSS comment) between ALL 4 groups.
+  // 2026-09-02, user: "anchor %CHG controls & td/tn to the RR controls and
+  // leave the same gap as between %CHG,Tn/Td control groups" -- %CHG is
+  // wrapped in .actpop-ctrl-anchor-rr (margin-left:auto) so it, Td/Tn and
+  // RR form one tight cluster flush against the popup's right edge, all 3
+  // sharing that same fixed gap; Supp/Opp is left behind on the far side
+  // of the auto margin, next to the symbol block instead.
   h += `<div class="actpop-head">
     <div class="actpop-sym">${escapeHtml(sym)}`
     + `<span class="actpop-call ${callCls}" style="margin-left:8px;">${escapeHtml(fc.label || actionText(fc) || '—')}</span>`
@@ -5612,7 +5613,7 @@ function _buildActionPopHtmlV2(row) {
     + `</div>`
     + `<div class="actpop-ctrl-row">`
     + tug.conviction
-    + _chgCandleControlsHtml(row)
+    + `<div class="actpop-ctrl-anchor-rr">${_chgCandleControlsHtml(row)}</div>`
     + _actpopTdTnHtml(row)
     + _actpopRrBarHtml(row)
     + `</div>`
