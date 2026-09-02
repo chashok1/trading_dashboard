@@ -199,6 +199,28 @@
     if (w.trigger_pct_dir === 'DOWN') return '<span title="Watching for a drop" style="color:#d4537e; font-weight:700;">&#9660;</span>';
     return '<span title="Watching (level/reminder)" style="color:#7c93c9;">&#9679;</span>';
   }
+  // Rich hover tooltip for a Watching row -- bulleted breakdown of the
+  // note + full trigger config + trigger status, not a flat string (see
+  // web/actionable.js's own _watchConfigSummary for the same bullets used
+  // on the main grid's 🔔 badge). Native title= only supports plain text,
+  // so bullets are "\n• " lines per the project's rich-tooltip convention.
+  function watchTip(w) {
+    var lines = [];
+    if (w.note) lines.push(w.note);
+    var since = w.added_at ? new Date(w.added_at).toLocaleDateString() : null;
+    if (since) lines.push('Since ' + since);
+    var cond = [];
+    if (w.trigger_pct != null) cond.push((w.trigger_pct_dir === 'DOWN' ? '↓' : '↑') + w.trigger_pct + '%');
+    if (w.trigger_lrr) cond.push('LRR');
+    if (w.trigger_trr) cond.push('TRR');
+    if (w.trigger_trade) cond.push('Trade line');
+    if (w.trigger_trend) cond.push('Trend line');
+    if (w.trigger_price != null) cond.push('$' + Number(w.trigger_price).toFixed(2));
+    lines.push(cond.length ? 'Watching for: ' + cond.join(', ') : 'Plain reminder (no condition)');
+    if (w.baseline_price != null) lines.push('Baseline price: $' + Number(w.baseline_price).toFixed(2));
+    if (w.triggered_at) lines.push('Triggered: ' + (w.triggered_reason || '(no reason recorded)'));
+    return lines.map(function (l) { return '• ' + l; }).join('\n');
+  }
   function watchingHtml(list) {
     if (!list || !list.length) return '';
     function row(w) {
@@ -206,7 +228,7 @@
       var up = pct != null && Number(pct) >= 0;
       var color = pct == null ? '#999' : (up ? '#1d9e75' : '#d4537e');
       var pctStr = pct == null ? '—' : (up ? '+' : '') + Number(pct).toFixed(2) + '%';
-      return '<div style="display:flex; justify-content:space-between; align-items:center; gap:4px; ' +
+      return '<div title="' + esc(watchTip(w)) + '" style="display:flex; justify-content:space-between; align-items:center; gap:4px; ' +
         'font-size:9px; line-height:1.4;">' +
         '<strong>' + symLink(w.tos_symbol) + '</strong>' +
         '<span style="display:flex; align-items:center; gap:3px;">' +
