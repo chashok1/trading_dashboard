@@ -156,24 +156,25 @@ function _pctChgChipHtml(pct) {
   return `<span class="msr-chg" style="background:${bg};flex:0 0 auto;">${escapeHtml(txt)}</span>`;
 }
 
-// Tiny High/Low readout under the %CHG chip (2026-09-02, user request):
-// day High and Low $ each followed by their % distance from the current
-// price in parens, e.g. "H $100 (+4%)" / "L $92 (-2%)" -- lets you see
-// today's range and how far price has pulled back from it without a
-// separate hover. Sign always shown (Low is typically negative, High
-// typically positive, but an intraday quote can sit outside a stale
-// high/low so don't assume).
-function _hiLoPctHtml(high, low, last) {
-  if (last == null || !last) return '';
-  const line = (label, val) => {
+// Tiny High/Low readout flanking the %CHG candle bar (2026-09-02, user
+// request): day High above the bar, Low below it, each with its %
+// distance from the current price in parens, e.g. "H $100 (+4%)" over
+// the bar and "L $92 (-2%)" under it -- lets you see today's range and
+// how far price has pulled back from it without a separate hover. Sign
+// always shown (Low is typically negative, High typically positive, but
+// an intraday quote can sit outside a stale high/low so don't assume).
+// Returns {hi, lo} (each a small <div>, or '' if that side has no data)
+// so the caller can place them above/below the candle rather than
+// stacked together in one block.
+function _hiLoParts(high, low, last) {
+  if (last == null || !last) return { hi: '', lo: '' };
+  const line = val => {
     if (val == null) return '';
     const pct = Math.round((val - last) / last * 100);
     const sign = pct >= 0 ? '+' : '';
-    return `${label} ${fmtUsd(val)}<span style="opacity:.7;">(${sign}${pct}%)</span>`;
+    return `<div style="font-size:7px;color:#94a3b8;line-height:1.2;white-space:nowrap;">${fmtUsd(val)}<span style="opacity:.7;">(${sign}${pct}%)</span></div>`;
   };
-  const parts = [line('H', high), line('L', low)].filter(Boolean);
-  if (!parts.length) return '';
-  return `<div style="font-size:8px;color:#94a3b8;line-height:1.3;white-space:nowrap;">${parts.join('<br>')}</div>`;
+  return { hi: line(high), lo: line(low) };
 }
 
 // One-line summary of an active watch's trigger config for the 🔔 cell's
@@ -5999,7 +6000,7 @@ function _buildRowEl(r) {
 
     const pctChipHtml = _pctChgChipHtml(r.pct_change);
     const priceStr = r.last_price != null ? fmtUsd(r.last_price) : '';
-    const hiLoHtml = _hiLoPctHtml(r.high_price, r.low_price, r.last_price);
+    const hiLo = _hiLoParts(r.high_price, r.low_price, r.last_price);
     const hitRateBadge = state.filters.trade_mode ? _sourceHitRateBadge(r) : '';
     const tradabilityBadge = _tradabilityBadge(r);
     // vh=28 (2026-09-01, user request): tall enough to visually span both
@@ -6106,11 +6107,14 @@ function _buildRowEl(r) {
       </td>
       <td data-col="chg" class="num">
         <div class="chg-candle-row" style="display:flex;align-items:center;justify-content:flex-end;gap:9px;">
-          ${candleHtml}
+          <div style="display:flex;flex-direction:column;align-items:center;gap:0;">
+            ${hiLo.hi}
+            ${candleHtml}
+            ${hiLo.lo}
+          </div>
           <div style="display:flex;flex-direction:column;align-items:center;gap:1px;">
             ${pctChipHtml}
             ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
-            ${hiLoHtml}
           </div>
         </div>
       </td>
