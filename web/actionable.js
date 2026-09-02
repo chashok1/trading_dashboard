@@ -62,6 +62,7 @@ const state = {
     symbols_multi: [],   // multi-symbol filter popup — exact-match list, empty = no filter
     etfchg_only: false,  // EC pill — recent ETF Pro Change event (etfchg_date), informational only
     iichg_only: false,   // IC pill — recent II Pro Change event (iichg_date), informational only
+    rr_min: 0, rr_max: 100, // RR (Risk Range %) dual-thumb slider — 0/100 = no filter
   },
   // TASK_120 buy-noise gate: manual expand/collapse for the "Watchlist (n)"
   // band (gated unheld ADD/BMN rows). Auto-expands (without flipping this
@@ -1925,6 +1926,13 @@ function matchesBaseFilters(r) {
   // doesn't drive ETF's/II's own action — see docs/actionable_logic.md).
   if (state.filters.etfchg_only && !r.etfchg_date) return false;
   if (state.filters.iichg_only && !r.iichg_date) return false;
+  // RR (Risk Range %) slider — r._rrPos is already computed per-row during
+  // load (0-100, null if lrr/trr/last_price unavailable). Rows with no RR
+  // data are excluded once the band is narrowed off its full 0-100 default.
+  const rrMin = state.filters.rr_min || 0, rrMax = state.filters.rr_max != null ? state.filters.rr_max : 100;
+  if (rrMin > 0 || rrMax < 100) {
+    if (r._rrPos == null || r._rrPos < rrMin || r._rrPos > rrMax) return false;
+  }
   return true;
 }
 
@@ -1976,6 +1984,20 @@ function applyClientFilter(opts) {
   renderSourceFilter();
   renderAccountFilter();
   renderGrid();
+}
+
+// RR (Risk Range %) dual-thumb slider — same pattern as Universe's
+// wireRrSlider() (web/universe.js), split into a UI-sync helper (called from
+// syncFilterUi/clearAllFilters, no re-render) and the input listeners below
+// (added in the DOM-wiring block, drive state + applyClientFilter).
+function _syncRrSliderUi() {
+  const minEl = $('actRrMin'), maxEl = $('actRrMax'), rangeEl = $('actRrRange'), label = $('actRrLabel');
+  if (!minEl || !maxEl || !rangeEl || !label) return;
+  const lo = state.filters.rr_min || 0, hi = state.filters.rr_max != null ? state.filters.rr_max : 100;
+  minEl.value = String(lo); maxEl.value = String(hi);
+  rangeEl.style.left = lo + '%';
+  rangeEl.style.right = (100 - hi) + '%';
+  label.textContent = `${lo}–${hi}%`;
 }
 
 // ---- Portfolio Mix panel (renderPortfolioMix/_pmHeldRows/_pmCashTotal) --
@@ -2351,6 +2373,7 @@ function syncFilterUi() {
   const sf = $('sectorFilter');         if (sf) sf.value = f.sector || '';
   const acf = $('assetClassFilter');    if (acf) acf.value = f.asset_class || '';
   const styf = $('styleFilter');        if (styf) styf.value = f.style || '';
+  _syncRrSliderUi();
   // conviction segmented
   document.querySelectorAll('#convictionCtrl button').forEach(b => {
     b.classList.toggle('seg-active', b.dataset.conv === f.conviction);
@@ -2387,11 +2410,15 @@ function clearAllFilters() {
   f.symbols_multi = [];
   f.etfchg_only = false; f.iichg_only = false;
   f.sector = ''; f.style = ''; f.asset_class = '';
+  f.rr_min = 0; f.rr_max = 100;
   const bpEl = $('bullProbFilter'); if (bpEl) bpEl.value = '0';
   const agEl = $('agreementFilter'); if (agEl) agEl.value = '';
   const sfEl = $('sectorFilter'); if (sfEl) sfEl.value = '';
   const acfEl = $('assetClassFilter'); if (acfEl) acfEl.value = '';
   const styfEl = $('styleFilter'); if (styfEl) styfEl.value = '';
+  const rrMinEl = $('actRrMin'); if (rrMinEl) rrMinEl.value = '0';
+  const rrMaxEl = $('actRrMax'); if (rrMaxEl) rrMaxEl.value = '100';
+  _syncRrSliderUi();
   _syncTriggerSourcePills();
   // Reset sort to default actionability order (updateSortIndicators called in renderGrid)
   state.sort = { key: '_priority', dir: -1, type: 'num' };
@@ -7607,6 +7634,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.filters.style = e.target.value || '';
       applyClientFilter();
     });
+  }
+
+  // RR (Risk Range %) dual-thumb slider — thumb-crossing prevention mirrors
+  // Universe's wireRrSlider() (web/universe.js).
+  const actRrMinEl = $('actRrMin'), actRrMaxEl = $('actRrMax');
+  if (actRrMinEl && actRrMaxEl) {
+    const updateRr = () => {
+      let lo = parseInt(actRrMinEl.value, 10), hi = parseInt(actRrMaxEl.value, 10);
+      if (lo > hi) {
+        if (document.activeElement === actRrMaxEl) { lo = hi; actRrMinEl.value = String(lo); }
+        else { hi = lo; actRrMaxEl.value = String(hi); }
+      }
+      state.filters.rr_min = lo; state.filters.rr_max = hi;
+      _syncRrSliderUi();
+      applyClientFilter();
+    };
+    actRrMinEl.addEventListener('input', updateRr);
+    actRrMaxEl.addEventListener('input', updateRr);
   }
 
   // Conviction segmented control

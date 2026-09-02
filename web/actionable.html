@@ -44,6 +44,24 @@
       padding: 3px 7px;
       width: auto;
     }
+    /* RR (Risk Range %) dual-thumb slider — same pattern as Universe's
+       .uv-rr-slider (web/universe.html), renamed act- for this page. Two
+       overlapping native range inputs; pointer-events off on the container,
+       on only for the thumbs, so both thumbs stay independently draggable. */
+    .act-rr-slider { position: relative; width: 130px; height: 20px; flex: 0 0 auto; }
+    .act-rr-track { position: absolute; top: 8px; left: 2px; right: 2px; height: 3px;
+      background: var(--border); border-radius: 2px; }
+    .act-rr-range { position: absolute; top: 0; height: 3px; background: var(--accent); border-radius: 2px; }
+    .act-rr-slider input[type="range"] { position: absolute; top: 0; left: 0; width: 100%; height: 20px;
+      margin: 0; background: transparent; -webkit-appearance: none; appearance: none; pointer-events: none; }
+    .act-rr-slider input[type="range"]::-webkit-slider-runnable-track { -webkit-appearance: none; background: transparent; }
+    .act-rr-slider input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto;
+      width: 13px; height: 13px; margin-top: 3.5px; border-radius: 50%; background: var(--accent);
+      border: 2px solid var(--card-bg); box-shadow: 0 0 0 1px var(--border); cursor: pointer; }
+    .act-rr-slider input[type="range"]::-moz-range-track { background: transparent; border: none; }
+    .act-rr-slider input[type="range"]::-moz-range-thumb { pointer-events: auto; width: 13px; height: 13px;
+      border-radius: 50%; background: var(--accent); border: 2px solid var(--card-bg);
+      box-shadow: 0 0 0 1px var(--border); cursor: pointer; }
     /* act-toolbar-title kept for legacy references but no longer rendered */
     .act-summary {
       display: flex;
@@ -1380,6 +1398,18 @@
             <option value="split_tech_bear">Split Tech Bear</option>
             <option value="neutral">Neutral</option>
           </select>
+          <!-- RR (Risk Range %) dual-thumb slider — filters to rows whose
+               position within LRR..TRR (0% = at LRR, 100% = at TRR) falls in
+               the selected band. Reuses r._rrPos, already computed per-row
+               during load (same formula as Universe's rawRrPos()), so this
+               is a pure client-side filter — no server round-trip. -->
+          <label style="font-size:11px; color:var(--text-2,#666); white-space:nowrap;" title="Filter to symbols whose price sits within this % band of their LRR (0%) to TRR (100%) Risk Range">RR</label>
+          <div class="act-rr-slider" id="actRrRow">
+            <div class="act-rr-track"><div class="act-rr-range" id="actRrRange"></div></div>
+            <input type="range" id="actRrMin" min="0" max="100" value="0" step="1" aria-label="Risk Range minimum">
+            <input type="range" id="actRrMax" min="0" max="100" value="100" step="1" aria-label="Risk Range maximum">
+          </div>
+          <span style="font-size:11px; color:var(--text-2,#666); white-space:nowrap;" id="actRrLabel">0–100%</span>
           <!-- 2026-09-01 -- Sector/Asset class/Style dropdowns relocated to
                the main bar (see #accountFilter's neighbor above) so they're
                visible without expanding More ▾. -->
@@ -1662,7 +1692,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260901f"></script>
+  <script src="/static/actionable.js?v=20260901g"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>
