@@ -195,7 +195,9 @@ function _hiLoParts(high, low, last) {
 // _hiLoParts above).
 function _hiLoRangeHtml(high, low) {
   if (high == null || low == null) return '';
-  return `<div style="${_CHG_TINY_STYLE}">${fmtUsd(low)} - ${fmtUsd(high)}</div>`;
+  // margin-top tuned to line up with the Symbol column's own 3rd line
+  // (tradability badge) -- see the call site's own comment.
+  return `<div style="${_CHG_TINY_STYLE}margin-top:3.9px;">${fmtUsd(low)} - ${fmtUsd(high)}</div>`;
 }
 
 // One-line summary of an active watch's trigger config for the 🔔 cell's
@@ -6154,9 +6156,26 @@ function _buildRowEl(r) {
             ${candleHtml}
             ${hiLo.lo}
           </div>
-          <div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:60px;flex:0 0 auto;">
+          <!-- Line-by-line match to the Symbol column's own 3 lines
+               (2026-09-02, user: "Align %change box middle with Symbol
+               name text's middle" / "price with hit rate % chip" /
+               "range with tradability score") -- chip~name, price~hit-
+               rate badge, range~tradability badge. Measured (real
+               render) the Symbol stack's own line-to-line center
+               spacing (name->hit-rate ~15.3px, hit-rate->tradability
+               ~15.6px) vs this stack's default (chip->price 14.0px,
+               price->range 11.7px, both from the uniform gap:1px below)
+               and closed the gap: no shared flex gap here any more, each
+               line's own margin-top tuned instead, plus a small shift up
+               on the whole block so line 1 (chip) starts at line 1
+               (name) instead of below it. Verified down to ~1px on rows
+               with all 3 Symbol lines; a row with fewer Symbol lines
+               (no hit-rate/tradability badge) won't match as tightely --
+               inherent to pairing two stacks whose own line count varies
+               row to row, not something a static offset can fully fix. -->
+          <div style="display:flex;flex-direction:column;align-items:center;width:60px;flex:0 0 auto;margin-top:-4px;">
             ${pctChipHtml}
-            ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
+            ${priceStr ? `<div style="font-size:10px;color:#94a3b8;margin-top:2.5px;">${priceStr}</div>` : ''}
             ${_hiLoRangeHtml(r.high_price, r.low_price)}
           </div>
         </div>
