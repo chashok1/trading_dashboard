@@ -2065,6 +2065,7 @@ function applyClientFilter(opts) {
   renderAccountFilter();
   renderGrid();
   _updateWatchPanelBtn();
+  _updateChgHeaderIdy();
 }
 
 // RR (Risk Range %) dual-thumb slider — same pattern as Universe's
@@ -5726,6 +5727,57 @@ function updateSortIndicators() {
       th.innerHTML = escapeHtml(base);
     }
   });
+  // Re-apply after every rebuild above (a sort click rewrites every th's
+  // innerHTML, which would otherwise wipe this out) -- see its own comment.
+  _applyChgIdyBadge();
+}
+
+// %CHG column IDY badge (2026-09-02, user: "since all stocks get the
+// update at the same time can we display IDY in the header" -- was a
+// per-row "IDY @ HH:MM" tag repeated on every intraday row, which is
+// exactly the same info on every one of them since the whole batch lands
+// in one TL/Y load (verified: every intraday-tagged row shares one
+// export_time/quote_source). One badge on the column header instead.
+// _lastChgIdy is module state (not recomputed inline) because the badge
+// has to survive updateSortIndicators() rebuilding the header's innerHTML
+// on every sort click, independent of when the data itself last loaded.
+let _lastChgIdy = null;  // {time, source} | null
+
+function _computeChgIdy() {
+  const idyRow = (state.allRows || []).find(r => {
+    if (!r.quote_is_intraday) return false;
+    const raw = String(r.export_time || '').replace(/:/g, '');
+    if (raw.length < 4) return false;
+    const hhmm = parseInt(raw.slice(0, 4), 10);
+    return hhmm >= 930 && hhmm < 1600;  // regular market hours (0930-1559 ET)
+  });
+  if (!idyRow) return null;
+  const raw = String(idyRow.export_time || '').replace(/:/g, '');
+  const time = raw.slice(0, 2) + ':' + raw.slice(2, 4);
+  const source = { TL: 'TOS Level', TD: 'TOS Daily', Y: 'Yahoo', CACHE: 'Yahoo (cached)' }[idyRow.quote_source]
+    || idyRow.quote_source || 'unknown';
+  return { time, source };
+}
+
+// Called from the load pipeline once fresh data is in state.allRows.
+function _updateChgHeaderIdy() {
+  _lastChgIdy = _computeChgIdy();
+  _applyChgIdyBadge();
+}
+
+function _applyChgIdyBadge() {
+  const th = document.querySelector('#actGrid th[data-col="chg"]');
+  if (!th) return;
+  const existing = th.querySelector('.chg-idy-badge');
+  if (existing) existing.remove();
+  if (!_lastChgIdy) return;
+  const badge = document.createElement('span');
+  badge.className = 'chg-idy-badge';
+  badge.textContent = 'IDY';
+  badge.title = `Intraday quote as of ${_lastChgIdy.time} — source ${_lastChgIdy.source}. `
+    + `Every symbol updates in this same batch, so this applies to the whole column, not just one row.`;
+  badge.style.cssText = 'font-size:8px;color:#0a84ff;font-weight:700;margin-left:3px;vertical-align:top;';
+  th.appendChild(badge);
 }
 
 // Columns whose most useful first-click order is descending, not the
@@ -5954,16 +6006,6 @@ function _buildRowEl(r) {
     // the chip row and the price row stacked beside it below (see the
     // data-col="chg" cell markup) instead of just the chip's own ~14px row.
     const candleHtml = window.mtTip?.candleSvg(r.open_price, r.high_price, r.low_price, r.last_price, 28) || '';
-    // Task 4: intraday marker — shown only when quote is fresher than EOD anchor
-    //         AND export_time falls within regular market hours (0930–1559 ET).
-    const _idyRaw = String(r.export_time || '').replace(/:/g, '');
-    const _idyTime = _idyRaw.length >= 4 ? ' @ ' + _idyRaw.slice(0,2) + ':' + _idyRaw.slice(2,4) : '';
-    const _idyHHMM = _idyRaw.length >= 4 ? parseInt(_idyRaw.slice(0,4)) : null;
-    const _inMktHours = _idyHHMM != null && _idyHHMM >= 930 && _idyHHMM < 1600;
-    const _idySourceLabel = { TL: 'TOS Level', TD: 'TOS Daily', Y: 'Yahoo', CACHE: 'Yahoo (cached)' }[r.quote_source] || r.quote_source || 'unknown';
-    const intradayTag = r.quote_is_intraday && _inMktHours
-      ? `<span title="Source: ${escapeHtml(_idySourceLabel)}${escapeHtml(_idyTime)} — pct_brr/zone computed against live quote" style="font-size:8px;color:#0a84ff;font-weight:700;margin-left:2px;">IDY</span>`
-      : '';
     const isChecked = state.selected.has(r.tos_symbol);
 
     // TrTnBBRskRng cell: run action through actionDisplay; attach rr-action-cell for hover tooltip
@@ -6067,7 +6109,6 @@ function _buildRowEl(r) {
           ${candleHtml}
           <div style="display:flex;flex-direction:column;align-items:center;gap:1px;">
             ${pctChipHtml}
-            ${intradayTag ? `<div>${intradayTag}</div>` : ''}
             ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
             ${hiLoHtml}
           </div>
