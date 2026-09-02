@@ -756,21 +756,9 @@
        fades out over the same 1.2s the JS timeout removes the class. */
     tr.row-flash { animation: row-flash-fade 1.2s ease-out; }
     @keyframes row-flash-fade { 0% { background: #bae6fd; } 100% { background: transparent; } }
-    /* "Watching" panel button + its list rows. */
-    #watchPanelBtn .wpb-count { display: inline-flex; align-items: center; justify-content: center;
-      min-width: 14px; height: 14px; padding: 0 3px; margin-left: 4px; border-radius: 7px;
-      background: #e0f2fe; color: #0369a1; font-size: 9.5px; font-weight: 700; }
-    #watchPanelBtn .wpb-count.wpb-count-triggered { background: #fef3c7; color: #b45309; }
-    #watchPanelBtn .wpb-count:empty { display: none; }
-    .watch-pop .wp-panel-row { display: flex; align-items: center; justify-content: space-between;
-      gap: 6px; padding: 5px 0; border-bottom: 1px solid #f1f5f9; font-size: 11px; }
-    .watch-pop .wp-panel-row:last-child { border-bottom: none; }
-    .watch-pop .wp-panel-sym { font-weight: 700; cursor: pointer; }
-    .watch-pop .wp-panel-sym:hover { text-decoration: underline; }
-    .watch-pop .wp-panel-reason { color: #64748b; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0 6px; }
-    .watch-pop .wp-panel-row.triggered .wp-panel-reason { color: #b45309; }
-    .watch-pop .wp-panel-actions { display: flex; gap: 4px; flex: 0 0 auto; }
-    .watch-pop .wp-panel-actions button { font-size: 10px; padding: 2px 6px; }
+    /* Old "Watching" toolbar-panel button/list CSS removed 2026-09-02 --
+       moved to a Hedgeye panel tile (web/hedgeye_panel.js), which has its
+       own card chrome; see the removal note by the old button's HTML spot. */
     /* PVV hover tooltip: 5-column table (label + Signal/Price/Volume/Vol) --
        the shared .k/.v rule above has zero horizontal gap between .v cells,
        fine for a 2-col key/value layout but cramped once there are 4 value
@@ -1375,12 +1363,12 @@
               <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
             </svg>
           </button>
-          <!-- Watching panel (2026-09-02) -- lists every 🔔-watched symbol
-               (across the whole date, not just the current filter) with its
-               trigger status; built straight from state.allRows' own
-               watch_* fields (already carried by the LATERAL join in
-               get_actionable), no separate fetch. -->
-          <button id="watchPanelBtn" class="btn-icon" title="Watching — symbols with an active or triggered watch">🔔 Watching</button>
+          <!-- Watching panel toolbar button REMOVED 2026-09-02 -- user:
+               "move watchlist from filter bar to the panels above" -- now a
+               tile in #hedgeyePanel (web/hedgeye_panel.js's "Watching"
+               card), next to Movers. Managing a watch (add/review/stop)
+               is still done via each row's own 🔔 icon in the grid --
+               only the toolbar SUMMARY moved, not the per-symbol popover. -->
           <!-- More filters toggle: Conv / P(up20d) / Agree — see .act-toolbar-more below -->
           <button id="moreFiltersBtn" class="btn-icon" title="More filters — Conviction, P(up20d) minimum, Agreement class">More ▾</button>
           <!-- Focus + Export CSV + Clear filters — lives with the filters -->
@@ -1580,7 +1568,6 @@
   <div id="multiSymPop" class="source-pop" style="display:none; pointer-events:auto;"></div>
   <div id="convictionPop" class="source-pop conviction-pop" style="display:none; pointer-events:auto; width:260px;"></div>
   <div id="watchPop" class="source-pop watch-pop" style="display:none; pointer-events:auto; width:250px;"></div>
-  <div id="watchPanelPop" class="source-pop watch-pop" style="display:none; pointer-events:auto; width:320px; max-height:360px; overflow-y:auto;"></div>
 
   </main>
 
@@ -1780,11 +1767,11 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260902t"></script>
+  <script src="/static/actionable.js?v=20260902u"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>
-<script src="/static/hedgeye_panel.js?v=20260814d" defer></script>
+<script src="/static/hedgeye_panel.js?v=20260902a" defer></script>
 
 <!-- TradingView Ticker Tape - injected dynamically by _initTvToggle() in actionable.js -->
 <div id="tv-tape-wrapper" style="border-top:1px solid #ddd;background:#fff;flex-shrink:0;display:none;"></div>

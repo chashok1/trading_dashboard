@@ -2804,23 +2804,32 @@ def get_watches(
     where = []
     params: dict = {}
     if symbol:
-        where.append("tos_symbol = :sym")
+        where.append("w.tos_symbol = :sym")
         params["sym"] = symbol.upper().strip()
     if status:
         status_u = status.upper().strip()
         if status_u not in ("ACTIVE", "CLOSED"):
             raise HTTPException(400, "invalid status")
-        where.append("status = :status")
+        where.append("w.status = :status")
         params["status"] = status_u
     sql = """
-        SELECT id, tos_symbol, note, added_at, baseline_price,
-               trigger_pct, trigger_pct_dir, trigger_lrr, trigger_trr, trigger_trade, trigger_trend, trigger_price,
-               status, triggered_at, triggered_reason, emailed_at, reviewed_at, closed_at
-        FROM ref_watch
+        SELECT w.id, w.tos_symbol, w.note, w.added_at, w.baseline_price,
+               w.trigger_pct, w.trigger_pct_dir, w.trigger_lrr, w.trigger_trr, w.trigger_trade, w.trigger_trend, w.trigger_price,
+               w.status, w.triggered_at, w.triggered_reason, w.emailed_at, w.reviewed_at, w.closed_at,
+               q.last_price, q.pct_change
+        FROM ref_watch w
+        LEFT JOIN LATERAL (
+            -- Live "right now" price/pct_change for the Hedgeye panel's
+            -- Watching tile (2026-09-02) -- this list is only ever "as of
+            -- today", unlike the rest of that panel's date-scoped feeds, so
+            -- always the latest quote rather than one tied to a date param.
+            SELECT last_price, pct_change FROM drv_quote
+            WHERE tos_symbol = w.tos_symbol ORDER BY as_of_date DESC LIMIT 1
+        ) q ON TRUE
     """
     if where:
         sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY added_at DESC"
+    sql += " ORDER BY w.added_at DESC"
     with session_scope() as s:
         rows = s.execute(text(sql), params).mappings().all()
     out = []

@@ -182,6 +182,41 @@
       (losers.length ? losers.map(row).join('') : none);
   }
 
+  // "Watching" tile (2026-09-02) -- user: "move watchlist from filter bar
+  // to the panels above... Display Symbol %chg and something about watch
+  // (what i am watching, up arrow or down arrow etc, use icons or css to
+  // represent)". Reads GET /api/actionable/watch?status=ACTIVE directly
+  // (own fetch in load(), see its own comment) -- that endpoint is
+  // "always now", unlike the rest of this panel's date-scoped feeds, so
+  // it deliberately ignores the #datePicker value. One icon per row:
+  // 🔔 (amber) once triggered: a directional ▲/▼ for a %-move watch
+  // (colored by trigger_pct_dir, not by whether it's fired yet); a plain
+  // dot for a level watch (LRR/TRR/Trade/Trend/$) or a no-condition
+  // reminder, where "up or down" isn't a single fixed direction.
+  function watchDirIcon(w) {
+    if (w.triggered_at) return '<span title="Triggered" style="color:#d97706; font-weight:700;">&#128276;</span>';
+    if (w.trigger_pct_dir === 'UP')   return '<span title="Watching for a rally" style="color:#1d9e75; font-weight:700;">&#9650;</span>';
+    if (w.trigger_pct_dir === 'DOWN') return '<span title="Watching for a drop" style="color:#d4537e; font-weight:700;">&#9660;</span>';
+    return '<span title="Watching (level/reminder)" style="color:#7c93c9;">&#9679;</span>';
+  }
+  function watchingHtml(list) {
+    if (!list || !list.length) return '';
+    function row(w) {
+      var pct = w.pct_change;
+      var up = pct != null && Number(pct) >= 0;
+      var color = pct == null ? '#999' : (up ? '#1d9e75' : '#d4537e');
+      var pctStr = pct == null ? '—' : (up ? '+' : '') + Number(pct).toFixed(2) + '%';
+      return '<div style="display:flex; justify-content:space-between; align-items:center; gap:4px; ' +
+        'font-size:9px; line-height:1.4;">' +
+        '<strong>' + symLink(w.tos_symbol) + '</strong>' +
+        '<span style="display:flex; align-items:center; gap:3px;">' +
+        '<span style="color:' + color + '; font-weight:700;">' + esc(pctStr) + '</span>' +
+        watchDirIcon(w) +
+        '</span></div>';
+    }
+    return list.map(row).join('');
+  }
+
   function earlyLookHtml(el) {
     if (!el || !el.takeaways) return '';
     // Current parser joins takeaway paragraphs with "\n• "; older stored
@@ -552,7 +587,8 @@
       (data.etf_changes && data.etf_changes.changes && data.etf_changes.changes.length) ||
       (data.ii_changes && data.ii_changes.changes && data.ii_changes.changes.length) ||
       (data.sss_changes && data.sss_changes.changes && data.sss_changes.changes.length) ||
-      (data.movers && ((data.movers.gainers || []).length || (data.movers.losers || []).length)));
+      (data.movers && ((data.movers.gainers || []).length || (data.movers.losers || []).length)) ||
+      (data.watching && data.watching.length));
 
     if (dashEl && !hasDashAny) dashEl.style.display = 'none';
     if (actEl && !hasActAny) actEl.style.display = 'none';
@@ -768,12 +804,25 @@
     // Macro Show's fixed width again (298px -> 288px, same ~10px Top-5's
     // max grew by). User: "increase TOP5 panel width by 10% and take the
     // space from Macroshow."
+    // Then 2026-09-02 -- new 10th tile, "Watching" (the old toolbar
+    // Watching-panel button's content, moved here -- user: "move
+    // watchlist from filter bar to the panels above... make [it] the
+    // 1.25 size of Movers tile and display next to it"). Track 10, right
+    // after Movers: min/max both Movers' own (74px / calc(9.5ch+20px))
+    // scaled by 1.25 -> minmax(93px, calc(11.9ch+25px)). Budget per user:
+    // "take the space from MACRO (make it same size as RTA) and the rest
+    // from CALL" -- Macro Show's track (was a fixed 288px) now copies
+    // RTA's exact minmax(182px, calc(24ch+46px)) verbatim; Call (track 7)
+    // is the row's only flexible (1fr) track, so it automatically absorbs
+    // whatever's left after that -- same "rest goes to Call" mechanic
+    // every prior resize above relied on, not something hand-tuned here.
     if (actEl) {
       if (hasActAny) {
         var GRID_ROW2 = 'display:grid; grid-template-columns: ' +
-          'minmax(111px, calc(13.9ch + 20px)) 288px minmax(182px, calc(24ch + 46px)) ' +
+          'minmax(111px, calc(13.9ch + 20px)) minmax(182px, calc(24ch + 46px)) minmax(182px, calc(24ch + 46px)) ' +
           'minmax(120px, calc(15ch + 20px)) minmax(103px, calc(12.8ch + 20px)) minmax(120px, calc(15ch + 20px)) ' +
-          'minmax(29px, 1fr) minmax(112px, 157px) minmax(74px, calc(9.5ch + 20px)); gap:3px; align-items:stretch;';
+          'minmax(29px, 1fr) minmax(112px, 157px) minmax(74px, calc(9.5ch + 20px)) minmax(93px, calc(11.9ch + 25px)); ' +
+          'gap:3px; align-items:stretch;';
         var row2 =
           '<div style="' + GRID_ROW2 + '">' +
           _card(linked('Top-5', 'top5'),                 top5Html(data.top5),              td(data.top5_received_at, data.top5_date)) +
@@ -785,6 +834,7 @@
           _card(linked('Call', 'call'),                  positionsHtml(data.positions),    td(data.positions && data.positions.received_at, data.positions && data.positions.date)) +
           _card(linked('Risk Range', 'trend_change'),    flipsHtml(data.trend_flips),      td(data.trend_flips_received_at, data.trend_flips_date)) +
           _card('Movers',                                moversHtml(data.movers),          td(null, data.movers_date)) +
+          _card('Watching',                              watchingHtml(data.watching),      '') +
           '</div>';
 
         var bodyHtml =
@@ -863,11 +913,16 @@
   async function load() {
     try {
       var d = currentDate();
-      var [data, links] = await Promise.all([
+      var [data, links, watching] = await Promise.all([
         fetchJson('/api/actionable/hedgeye' + (d ? '?date=' + encodeURIComponent(d) : '')),
         fetchJson('/api/ext-links').catch(function () { return {}; }),
+        // Own fetch, ignores `d` on purpose -- a watch is a same-day/"now"
+        // concept, not tied to whatever date is picked elsewhere on the
+        // page (unlike every other feed this panel reads).
+        fetchJson('/api/actionable/watch?status=ACTIVE').catch(function () { return []; }),
       ]);
       _links = links || {};
+      data.watching = watching;
       render(data, fmtLoadedAt());
     } catch (e) {
       ['hedgeyePanel', 'hedgeyeDashPanel', 'heMktSituationPanel', 'heInflPanel'].forEach(function (id) {

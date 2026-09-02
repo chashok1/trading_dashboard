@@ -2086,7 +2086,6 @@ function applyClientFilter(opts) {
   renderSourceFilter();
   renderAccountFilter();
   renderGrid();
-  _updateWatchPanelBtn();
   _updateChgHeaderIdy();
 }
 
@@ -7577,93 +7576,12 @@ function initWatchQuickBtn() {
   });
 }
 
-// ---- Watching panel (2026-09-02) -- every watched symbol at once, built
-// straight from state.allRows' own watch_* fields (the live LATERAL join
-// in get_actionable already carries them, so no separate fetch/endpoint
-// needed here — unlike the per-symbol popover above, which does fetch
-// /api/actionable/watch for that one symbol's own history). -----------
-function _watchedRows() {
-  return (state.allRows || []).filter(r => r.watch_id != null)
-    .sort((a, b) => (b.watch_triggered ? 1 : 0) - (a.watch_triggered ? 1 : 0) || a.tos_symbol.localeCompare(b.tos_symbol));
-}
-
-// Refreshes the toolbar button's count badge -- called after every grid
-// (re)render, not just on open, so the count stays current even while the
-// panel itself is closed.
-function _updateWatchPanelBtn() {
-  const btn = $('watchPanelBtn');
-  if (!btn) return;
-  const rows = _watchedRows();
-  const triggered = rows.filter(r => r.watch_triggered && !r.watch_reviewed).length;
-  const watching = rows.length - triggered;
-  const bits = [];
-  if (triggered) bits.push(`<span class="wpb-count wpb-count-triggered">${triggered}</span>`);
-  if (watching) bits.push(`<span class="wpb-count">${watching}</span>`);
-  btn.innerHTML = '🔔 Watching' + bits.join('');
-  // Keep an open panel's list in sync with the grid it's summarizing (e.g.
-  // after a background auto-refresh flips a watch to triggered).
-  if ($('watchPanelPop').style.display === 'block') _renderWatchPanelList();
-}
-
-function _watchPanelRowHtml(r) {
-  const reason = r.watch_triggered ? (r.watch_triggered_reason || 'triggered') : _watchConfigSummary(r);
-  const actions = r.watch_triggered
-    ? (r.watch_reviewed ? '' : `<button class="btn" data-wp-review="${r.watch_id}">Reviewed</button>`)
-    : '';
-  return `<div class="wp-panel-row${r.watch_triggered ? ' triggered' : ''}">
-      <span class="wp-panel-sym" data-wp-sym="${escapeHtml(r.tos_symbol)}">${escapeHtml(r.tos_symbol)}</span>
-      <span class="wp-panel-reason" title="${escapeHtml(reason)}">${escapeHtml(reason)}</span>
-      <span class="wp-panel-actions">${actions}<button class="btn" data-wp-stop="${r.watch_id}">Stop</button></span>
-    </div>`;
-}
-
-function _renderWatchPanelList() {
-  const pop = $('watchPanelPop');
-  if (!pop) return;
-  const rows = _watchedRows();
-  pop.innerHTML = `<div class="wp-title">🔔 Watching (${rows.length})</div>`
-    + (rows.length ? rows.map(_watchPanelRowHtml).join('') : '<div class="wp-status">Nothing watched right now — click a row\'s 🔔 to start.</div>');
-  pop.querySelectorAll('[data-wp-sym]').forEach(el => el.addEventListener('click', () => {
-    closeWatchPanel();
-    const target = document.querySelector(`tr[data-sym="${CSS.escape(el.dataset.wpSym)}"]`);
-    if (target) { target.scrollIntoView({ block: 'center' }); target.classList.add('row-flash'); setTimeout(() => target.classList.remove('row-flash'), 1200); }
-  }));
-  pop.querySelectorAll('[data-wp-review]').forEach(el => el.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    try { await fetchJson('/api/actionable/watch/' + encodeURIComponent(el.dataset.wpReview), { method: 'PATCH', body: JSON.stringify({ reviewed: true }) }); loadActionable(); }
-    catch (_) { /* ignore -- panel just won't update this row */ }
-  }));
-  pop.querySelectorAll('[data-wp-stop]').forEach(el => el.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    try { await fetchJson('/api/actionable/watch/' + encodeURIComponent(el.dataset.wpStop), { method: 'DELETE' }); loadActionable(); }
-    catch (_) { /* ignore */ }
-  }));
-}
-
-function closeWatchPanel() {
-  const pop = $('watchPanelPop');
-  if (pop) pop.style.display = 'none';
-}
-
-function openWatchPanel(anchorEl) {
-  const pop = $('watchPanelPop');
-  if (!pop) return;
-  if (pop.style.display === 'block') { closeWatchPanel(); return; }
-  _renderWatchPanelList();
-  pop.style.display = 'block';
-  _positionWatchPop(pop, anchorEl);
-}
-
-function initWatchPanel() {
-  const btn = $('watchPanelBtn');
-  if (btn) btn.addEventListener('click', () => openWatchPanel(btn));
-  document.addEventListener('click', (e) => {
-    const pop = $('watchPanelPop');
-    if (!pop || pop.style.display !== 'block') return;
-    if (pop.contains(e.target) || e.target.closest('#watchPanelBtn')) return;
-    closeWatchPanel();
-  });
-}
+// ---- Old toolbar "Watching" summary panel REMOVED 2026-09-02 -- user:
+// "move watchlist from filter bar to the panels above." Its content
+// (every watched symbol's status) now lives in a Hedgeye panel tile
+// (web/hedgeye_panel.js's "Watching" card, next to Movers) instead;
+// review/stop a watch from the grid's own per-symbol 🔔 popover above,
+// which is unaffected by this removal. ------------------------------
 
 // ---- TradingView tape toggle --------------------------------------------------
 const _TV_LS_KEY = 'act_tv_tape';
@@ -7805,7 +7723,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   initGridSymClick();
   initConvictionQuickBtn();
   initWatchQuickBtn();
-  initWatchPanel();
   initEcoBarClick();
   _initColMenu();
   _initMultiSymPop();
