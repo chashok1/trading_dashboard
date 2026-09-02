@@ -6114,7 +6114,7 @@ function _buildRowEl(r) {
       </td>
       <td data-col="chg" class="num">
         <div class="chg-candle-row" style="display:flex;align-items:center;justify-content:flex-end;gap:9px;">
-          <div style="display:flex;flex-direction:column;align-items:center;gap:0;">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:1px;">
             ${hiLo.hi}
             ${candleHtml}
             ${hiLo.lo}
