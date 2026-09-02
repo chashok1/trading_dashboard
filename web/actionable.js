@@ -6127,13 +6127,26 @@ function _buildRowEl(r) {
         ) : ''}
       </td>
       <td data-col="chg" class="num">
-        <div class="chg-candle-row" style="display:flex;align-items:center;justify-content:flex-end;gap:9px;">
-          <div style="display:flex;flex-direction:column;align-items:center;gap:1px;">
+        <!-- 2026-09-02, user: "make sure all vertical bars are aligned in
+             the grid" -- both inner columns below are FIXED width now
+             (was shrink-to-fit), so the candle's X position can't drift
+             with how wide this row's own %/price/range text happens to
+             be. Verified with a real render across every row: candle X
+             spread was ~4.5px shrink-to-fit, then ~1.5px with just the
+             candle column fixed (the price/chip column's own varying
+             width was still shifting the shared centered flex row) --
+             fixing BOTH columns' width brought it to exactly 0px. Widths
+             sized from the real worst case across all 1053 rows measured
+             with canvas.measureText, not guessed: candle column 22px
+             comfortably fits "-100%"-class text; price/chip column 60px
+             fits the widest range seen ("$26,063 - $26,234", ~55px). -->
+        <div class="chg-candle-row" style="display:flex;align-items:center;justify-content:center;gap:9px;">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:22px;flex:0 0 auto;">
             ${hiLo.hi}
             ${candleHtml}
             ${hiLo.lo}
           </div>
-          <div style="display:flex;flex-direction:column;align-items:center;gap:1px;">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:60px;flex:0 0 auto;">
             ${pctChipHtml}
             ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
             ${_hiLoRangeHtml(r.high_price, r.low_price)}

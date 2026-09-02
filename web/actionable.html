@@ -350,6 +350,14 @@
     }
     table.act-grid tbody tr:hover { background: var(--surface-hover, #f0f6ff); cursor: pointer; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
+    /* POS$/AMT$/%CHG (2026-09-02, user request): centered instead of the
+       .num default right-align -- header label centers over the cell
+       content too, not just the numbers. Higher specificity than .num
+       ([data-col=...] + element beats a bare class) so no !important
+       needed. */
+    #actGrid th[data-col="pos"], #actGrid td[data-col="pos"],
+    #actGrid th[data-col="amt"], #actGrid td[data-col="amt"],
+    #actGrid th[data-col="chg"], #actGrid td[data-col="chg"] { text-align: center; }
     .act-grid th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
     .act-grid th.sortable:hover { background: var(--surface-hover, #f0f6ff); }
     .act-grid th .sort-ind { font-size: 9px; opacity: 0.85; }
@@ -1523,29 +1531,29 @@
         <table class="act-grid" id="actGrid">
           <thead>
             <tr>
-              <th data-col="lt" style="width:20px;" title="Long-term conviction note (analyst call note) — 🔭 Hold: don't sell on short-term noise. 🚫 Avoid: don't chase a BUY signal. Click to add/view/close.">🔭</th>
-              <th data-col="watch" style="width:20px;" title="Watch this symbol — set a % move, LRR/TRR/Trade/Trend/$ crossing, or a plain end-of-close reminder; get a combined email if it fires and you haven't reviewed it. Click to add/view/stop.">🔔</th>
-              <th data-col="bulk" style="width:28px;"><input type="checkbox" id="bulkSelectAll" title="Select all"></th>
-              <th data-col="h" style="width:18px;" title="H = row is hidden by the default filter (hover cell for reason)">H</th>
-              <th data-col="pos" class="num sortable" data-key="current_position_dollar" data-type="num" title="Current position $ held" style="width:58px;">POS$</th>
-              <th data-col="amt" class="num sortable" data-key="_amt" data-type="num" style="width:58px;">AMT$</th>
-              <th data-col="chg" class="num sortable" data-key="pct_change" data-type="num" style="width:112px;">%CHG</th>
-              <th data-col="sym" class="sortable" data-key="tos_symbol" data-type="str" style="width:68px;">Symbol</th>
-              <th data-col="action" class="sortable" data-key="_fc_strength" data-type="num" title="Final Call: reconciled action with confidence badge (drives ranking + default Act)" style="width:90px;">ACTION</th>
-              <th data-col="macro" class="sortable" data-key="macronet" data-type="num" title="MACRO regime stance: MacroNet of sector+asset+style factors under current+next month/quarter quads → SA/STM/HOLD/BS/BM. Hover for breakdown." style="width:64px;">MACRO</th>
-              <th data-col="calc" class="sortable" data-key="fc_strength_cal" data-type="num" title="Final Call (cal): calibrated call from bull_prob probability bands. Evaluation-only — compare vs Final Call to assess the model. NULL when no active model." style="width:90px;">CALC</th>
-              <th data-col="sources" class="sortable" data-key="consolidated_action" data-type="str" data-label="Sources" title="Consolidated from RR/CALL/ETF/II/SSS/PS (most-aggressive-wins), then sized to your min/max/holdings." style="width:41px;">Sources</th>
-              <th data-col="technical" class="sortable" data-key="rr_action" data-type="str" data-label="Technical" title="Trend-vs-Trade crossover + Bollinger range streak + Risk-Range position." style="width:200px;">Technical</th>
-              <th data-col="rr" class="sortable" data-key="_rrPos" data-type="num" title="Risk Range position: where the last price sits between LRR (Low, left) and TRR (Top, right), 0-100%. Sort ascending to bring rows near LRR to the top, descending for rows near TRR." style="width:52px;">RR</th>
-              <th data-col="vlm" class="num sortable" data-key="rvol" data-type="num" title="Relative Volume (today÷10d avg). Hollow = below avg; solid gray = ~avg; amber/green = above avg. Caret = vs yesterday." style="width:44px;">Vlm</th>
-              <th data-col="iv" class="num" title="IV Glyph: IVP (blue) · HV (slate) · IV (dark). Background = IV/HV discount shade. Numbers below: IVP / HV / IV." style="width:62px;">IV</th>
-              <th data-col="macd" class="num sortable" data-key="a_macd_brr" data-type="num" title="MACD Bull-Run-Risk score" style="width:60px;">MACD</th>
-              <th data-col="macdh" class="num sortable" data-key="a_macdh_d_brr" data-type="num" title="MACD Histogram direction BRR" style="width:60px;">MACDH</th>
-              <th data-col="rsi" class="num sortable" data-key="rsi" data-type="num" title="Relative Strength Index (0–100)" style="width:52px;">RSI</th>
+              <th data-col="lt" style="width:20px;min-width:20px;" title="Long-term conviction note (analyst call note) — 🔭 Hold: don't sell on short-term noise. 🚫 Avoid: don't chase a BUY signal. Click to add/view/close.">🔭</th>
+              <th data-col="watch" style="width:20px;min-width:20px;" title="Watch this symbol — set a % move, LRR/TRR/Trade/Trend/$ crossing, or a plain end-of-close reminder; get a combined email if it fires and you haven't reviewed it. Click to add/view/stop.">🔔</th>
+              <th data-col="bulk" style="width:28px;min-width:28px;"><input type="checkbox" id="bulkSelectAll" title="Select all"></th>
+              <th data-col="h" style="width:18px;min-width:18px;" title="H = row is hidden by the default filter (hover cell for reason)">H</th>
+              <th data-col="pos" class="num sortable" data-key="current_position_dollar" data-type="num" title="Current position $ held" style="width:46px;min-width:46px;">POS$</th>
+              <th data-col="amt" class="num sortable" data-key="_amt" data-type="num" style="width:58px;min-width:58px;">AMT$</th>
+              <th data-col="chg" class="num sortable" data-key="pct_change" data-type="num" style="width:112px;min-width:112px;">%CHG</th>
+              <th data-col="sym" class="sortable" data-key="tos_symbol" data-type="str" style="width:68px;min-width:68px;">Symbol</th>
+              <th data-col="action" class="sortable" data-key="_fc_strength" data-type="num" title="Final Call: reconciled action with confidence badge (drives ranking + default Act)" style="width:90px;min-width:90px;">ACTION</th>
+              <th data-col="macro" class="sortable" data-key="macronet" data-type="num" title="MACRO regime stance: MacroNet of sector+asset+style factors under current+next month/quarter quads → SA/STM/HOLD/BS/BM. Hover for breakdown." style="width:64px;min-width:64px;">MACRO</th>
+              <th data-col="calc" class="sortable" data-key="fc_strength_cal" data-type="num" title="Final Call (cal): calibrated call from bull_prob probability bands. Evaluation-only — compare vs Final Call to assess the model. NULL when no active model." style="width:90px;min-width:90px;">CALC</th>
+              <th data-col="sources" class="sortable" data-key="consolidated_action" data-type="str" data-label="Sources" title="Consolidated from RR/CALL/ETF/II/SSS/PS (most-aggressive-wins), then sized to your min/max/holdings." style="width:41px;min-width:41px;">Sources</th>
+              <th data-col="technical" class="sortable" data-key="rr_action" data-type="str" data-label="Technical" title="Trend-vs-Trade crossover + Bollinger range streak + Risk-Range position." style="width:200px;min-width:200px;">Technical</th>
+              <th data-col="rr" class="sortable" data-key="_rrPos" data-type="num" title="Risk Range position: where the last price sits between LRR (Low, left) and TRR (Top, right), 0-100%. Sort ascending to bring rows near LRR to the top, descending for rows near TRR." style="width:52px;min-width:52px;">RR</th>
+              <th data-col="vlm" class="num sortable" data-key="rvol" data-type="num" title="Relative Volume (today÷10d avg). Hollow = below avg; solid gray = ~avg; amber/green = above avg. Caret = vs yesterday." style="width:44px;min-width:44px;">Vlm</th>
+              <th data-col="iv" class="num" title="IV Glyph: IVP (blue) · HV (slate) · IV (dark). Background = IV/HV discount shade. Numbers below: IVP / HV / IV." style="width:62px;min-width:62px;">IV</th>
+              <th data-col="macd" class="num sortable" data-key="a_macd_brr" data-type="num" title="MACD Bull-Run-Risk score" style="width:60px;min-width:60px;">MACD</th>
+              <th data-col="macdh" class="num sortable" data-key="a_macdh_d_brr" data-type="num" title="MACD Histogram direction BRR" style="width:60px;min-width:60px;">MACDH</th>
+              <th data-col="rsi" class="num sortable" data-key="rsi" data-type="num" title="Relative Strength Index (0–100)" style="width:52px;min-width:52px;">RSI</th>
               <th data-col="rules" style="max-width:292px;">Rules (edge)</th>
-              <th data-col="bullprob" class="num sortable" data-key="bull_prob" data-type="num" title="Bull Prob: P(up 20d) from calibrated logistic model (TASK_66). Sortable — rank by probability. Agreement badge = share of signals pointing bullish." style="width:72px;">P(↑20d)</th>
-              <th data-col="agree" class="sortable" data-key="agreement_class" data-type="str" title="Agreement class (TASK_69): agree_bull / agree_bear / split_tech_bull / split_tech_bear / neutral — bull_prob direction vs consolidated action direction." style="width:100px;">Agree</th>
-              <th data-col="pvv" class="sortable" data-key="_pvv_rank" data-type="num" title="PVV: Price/Volume/Volatility ROC signal in 4 time buckets (Today/5d/3w/3m), consolidated into one decision. Informational only — not part of consolidated_action. Hover for per-bucket detail." style="width:64px;">PVV</th>
+              <th data-col="bullprob" class="num sortable" data-key="bull_prob" data-type="num" title="Bull Prob: P(up 20d) from calibrated logistic model (TASK_66). Sortable — rank by probability. Agreement badge = share of signals pointing bullish." style="width:72px;min-width:72px;">P(↑20d)</th>
+              <th data-col="agree" class="sortable" data-key="agreement_class" data-type="str" title="Agreement class (TASK_69): agree_bull / agree_bear / split_tech_bull / split_tech_bear / neutral — bull_prob direction vs consolidated action direction." style="width:100px;min-width:100px;">Agree</th>
+              <th data-col="pvv" class="sortable" data-key="_pvv_rank" data-type="num" title="PVV: Price/Volume/Volatility ROC signal in 4 time buckets (Today/5d/3w/3m), consolidated into one decision. Informational only — not part of consolidated_action. Hover for per-bucket detail." style="width:64px;min-width:64px;">PVV</th>
             </tr>
           </thead>
           <tbody id="actBody"></tbody>
@@ -1772,7 +1780,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260902n"></script>
+  <script src="/static/actionable.js?v=20260902p"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>
