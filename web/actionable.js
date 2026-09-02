@@ -4273,7 +4273,7 @@ function _buildVolPopHtml(r) {
     ['Vlm vs 3m Avg',    fmtP(r.vlm_3m_pct)],
     ['Vlm Rate Chg',     fmtN(r.volume_rate_change)],
     ['Vlm Signal',       r.vlm_desc || '—'],
-    ['Vlm Action',       r.vlm_action ? (r.vlm_action === 'Accumulate' ? 'Accum' : r.vlm_action) : '—'],
+    ['Vlm Action',       r.vlm_action ? _vlmActionLabel(r.vlm_action) : '—'],
   ];
   let html = '<div class="sp-title">Volume</div><table>';
   for (const [k, v] of rows)
@@ -4884,12 +4884,26 @@ function _actpopMacroBarsHtml(r) {
   return `<div class="actpop-mgroup-wrap"><div class="actpop-mgroup">${sparkRow}${memberRow}</div></div>`;
 }
 
+// Display-label override for vlm_action (2026-09-02, user: "relabel the
+// tags to be less misleading"). "Accumulate"/"Avoid" read as directional
+// buy/sell calls, but the rule table behind them is mostly volume-magnitude
+// -only with no price-direction check (5 of 10 rule codes test volume shape
+// alone, yet 3 of them still carried a directional label -- known
+// internal-consistency issue, previously audited and parked per project
+// memory as its own, separate fix: RE-CLASSIFYING which rules map to which
+// tier). This is a narrower, display-only change on top of that: same
+// rule→tier mapping as today, just wording that can't be misread as a
+// trade direction. row.vlm_action itself is untouched (still 'Accumulate'/
+// 'Watch'/'Avoid' in the DB/API), so every color/class branch that compares
+// against those literal values keeps working unchanged -- only the text
+// shown to the user goes through this map.
+const _VLM_ACTION_LABEL = { Accumulate: 'Heavy Vol', Watch: 'Mixed Vol', Avoid: 'Thin Vol' };
+function _vlmActionLabel(va) {
+  return _VLM_ACTION_LABEL[va] || va;
+}
+
 // VLM (volume projection, 2026-08-20) — same [Label] value pattern as
-// Src/Tech, always shown/dashed. Note: vlm_action's own rule table has a
-// known internal-consistency issue (5 of 10 rule codes test volume shape
-// only with no price-direction check, yet 3 of them still carry a
-// directional label) -- relabel audit is on hold per project memory, this
-// surfaces the value AS COMPUTED TODAY, not a corrected version.
+// Src/Tech, always shown/dashed.
 // 2026-08-20 correction: vlm_desc was originally a title= hover tooltip --
 // doesn't work inside this popup (#sourcePop is pointer-events:none,
 // nothing nested in it can ever get a native hover). Shown as small inline
@@ -4897,7 +4911,7 @@ function _actpopMacroBarsHtml(r) {
 function _actpopVlmPillHtml(row) {
   const va = row.vlm_action;
   const cls = !va ? 'disabled' : va === 'Accumulate' ? 'buy' : va === 'Avoid' ? 'sell' : '';
-  const txt = va ? (va === 'Accumulate' ? 'Accum' : va) : '—';
+  const txt = va ? _vlmActionLabel(va) : '—';
   const detail = row.vlm_desc ? `<span style="font-size:8px;color:#94a3b8;margin-left:3px;">${escapeHtml(row.vlm_desc)}</span>` : '';
   return `<span class="actpop-lv"><span class="actpop-lbl">VLM</span><span class="actpop-val ${cls}">${escapeHtml(txt)}</span>${detail}</span>`;
 }
@@ -6059,7 +6073,7 @@ function _buildRowEl(r) {
       </td>
       <td data-col="rr" style="padding:6px 4px;">${rrBarHtml}</td>
       <td data-col="vlm" class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">
-        <div style="line-height:16px;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}${r.vlm_action ? `<span style="display:inline-block;margin-left:3px;font-size:9px;padding:1px 3px;border-radius:3px;background:${r.vlm_action==='Accumulate'?'#bbf7d0':r.vlm_action==='Avoid'?'#fecaca':'#e5e7eb'};color:#374151;font-weight:600;text-decoration:none;vertical-align:middle;">${escapeHtml(r.vlm_action === 'Accumulate' ? 'Accum' : r.vlm_action)}</span>` : ''}</div>
+        <div style="line-height:16px;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}${r.vlm_action ? `<span style="display:inline-block;margin-left:3px;font-size:9px;padding:1px 3px;border-radius:3px;background:${r.vlm_action==='Accumulate'?'#bbf7d0':r.vlm_action==='Avoid'?'#fecaca':'#e5e7eb'};color:#374151;font-weight:600;text-decoration:none;vertical-align:middle;">${escapeHtml(_vlmActionLabel(r.vlm_action))}</span>` : ''}</div>
         ${_vrocHtml(r)}
       </td>
       <td data-col="iv" class="num" data-sym="${escapeHtml(r.tos_symbol)}" data-ivpop style="padding:3px 4px;cursor:default;text-align:center;">${(() => {
