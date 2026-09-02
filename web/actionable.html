@@ -370,12 +370,8 @@
        too: "Always align Symbol name center... and Action button center...
        with Macro column's action button center horizontally... anchor the
        controls below them to these all the time... regardless if they
-       span two lines or three lines." Extended again to PVV ("check PVV
-       buydip icon in that column" -- it had no anchor box at all, so its
-       badge just middle-centered in the row directly, landing well below
-       the other three's shared anchor line whenever the row was taller
-       than one line). .hdr-anchor-box (used by all four columns' JS
-       templates now) is the one shared mechanism: a fixed
+       span two lines or three lines." .hdr-anchor-box (used by all three
+       columns' JS templates) is the one shared mechanism: a fixed
        min-height (47px, the common ~3-line case measured across all
        three columns on a real render) with justify-content:FLEX-START,
        not center -- top-anchoring each column's own headline (symbol

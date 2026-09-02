@@ -6201,7 +6201,7 @@ function _buildRowEl(r) {
       </td>
       <td data-col="action" style="padding:6px 4px;"><div class="hdr-anchor-box">${fcHtml}</div></td>
       <td data-col="macro" style="padding:4px 6px; text-align:center;"><div class="hdr-anchor-box">${macroCellHtml(r)}</div></td>
-      <td data-col="pvv" style="padding:4px 6px; text-align:center; white-space:nowrap;"><div class="hdr-anchor-box">${_pvvCellHtml(r)}</div></td>
+      <td data-col="pvv" style="padding:4px 6px; text-align:center; white-space:nowrap;">${_pvvCellHtml(r)}</td>
       <td data-col="rr" style="padding:6px 4px;">${rrBarHtml}</td>
       <td data-col="vlm" class="num rvol-cell" data-sym="${escapeHtml(r.tos_symbol)}" data-volpop style="cursor:default;">
         <div style="line-height:16px;">${typeof rvolDot === 'function' ? rvolDot(r.rvol, r.rvol_prior) : ''}</div>
