@@ -203,6 +203,19 @@
       cursor: help;
     }
 
+    /* 2026-09-02, user: "bottom two are not aligned" -- .stop-pill/
+       .dontbuy-warn-pill/.earnings-warn-pill/.buy-signal-pill above all
+       carry margin-left:4px as a same-line separator from a PRECEDING
+       pill on the ACTION cell's pillsLine (web/actionable.js). Whichever
+       one ends up first that row still got that 4px on its left only --
+       text-align:center then centered the resulting asymmetric box,
+       visibly shifting a LONE pill ~2px right of the ACTION badge/PVV
+       icon above and below it. Zero it on the first pill specifically
+       (2nd/3rd pills keep their separation) rather than touching the
+       shared pill classes themselves, which still want that margin in
+       every other context they're used. */
+    .pills-line > *:first-child { margin-left: 0; }
+
     /* TASK_122: "NEW" pill — Watchlist band only, same shape as .stop-pill,
        blue tint so it never reads as a warning. */
     .new-pill {

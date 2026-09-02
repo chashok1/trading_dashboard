@@ -3411,8 +3411,18 @@ function _finalCallHtml(row) {
   // visibly shifting the lone icon right. .trim() drops only the outer
   // leading/trailing space, leaving the separator between two-or-more
   // pills intact.
+  // Follow-up (still user-reported, "bottom two are not aligned"): that
+  // wasn't the whole story -- .stop-pill/.dontbuy-warn-pill/.earnings-
+  // warn-pill/.buy-signal-pill (web/actionable.html) all carry their own
+  // margin-left:4px as a same-line separator from a PRECEDING pill. A
+  // lone pill still gets that 4px on its left only, asymmetrically
+  // widening the box text-align:center centers -- same rightward-shift
+  // symptom as the leading-space bug, different cause, and .trim() alone
+  // can't touch a CSS margin. .pills-line's own CSS zeroes it on
+  // whichever pill ends up first (see web/actionable.html), so a lone
+  // pill is never shifted while 2nd/3rd pills keep their separation.
   var pillsLine = (stopPill || earningsPill || signalPill)
-    ? '<div style="text-align:center;margin-top:2px;">' + (stopPill + earningsPill + signalPill).trim() + '</div>'
+    ? '<div class="pills-line" style="text-align:center;margin-top:2px;">' + (stopPill + earningsPill + signalPill).trim() + '</div>'
     : '';
   return badgeLine + pillsLine + subIcon;
 }
