@@ -463,15 +463,23 @@
        middle column aligned under this row's Td/Tn column, but that
        second-row alignment need is long gone (.actpop-rr-row is plain flex
        -- see its own comment) and doesn't apply to the new 4-group layout
-       either. .actpop-ctrl-row's own justify-content:space-between now
-       does the "equal gap between groups" job a grid isn't even needed
-       for -- with N flex items, space-between always divides the row's
-       leftover width into N-1 identical gaps, whatever each item's own
-       width is, and pins the last item (RR bar) to the row's right edge
-       same as before. */
+       either.
+       2026-09-02 follow-up: justify-content:space-between -> a fixed
+       gap:22px (user: "controls are stretched to outside the width of the
+       popup" -- space-between stretches the 3 gaps to consume ALL of the
+       row's leftover width, which on a row with a wider symbol block/
+       Td-Tn/RR reading pushed the whole group past .actpop's own right
+       edge since nothing here clips overflow). A fixed gap can't do that
+       -- the row is only ever as wide as its own content needs
+       (sum of the 4 groups' widths + 3*22px), so it's guaranteed no wider
+       than the space-between version and normally narrower, at the cost
+       of the row (and the RR bar within it) no longer necessarily
+       reaching the popup's true right edge on a narrow-content row. Still
+       equal gaps between all 4 groups, just a fixed number instead of
+       "whatever's left over". */
     .actpop-head { display: flex; align-items: center; column-gap: 14px;
       margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
-    .actpop-ctrl-row { display: flex; align-items: center; justify-content: space-between; flex: 1 1 auto; min-width: 0; }
+    .actpop-ctrl-row { display: flex; align-items: center; gap: 22px; flex: 0 1 auto; min-width: 0; }
     .actpop-sym { min-width:0; flex: 0 0 auto; font-size:14px; font-weight:800; color:#0f172a; }
     /* 2026-08-29: held amount/earnings moved to their own line below the
        symbol (was an inline span next to it) -- block instead of inline. */
