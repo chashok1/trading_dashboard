@@ -164,12 +164,24 @@ function _pctChgChipHtml(pct) {
 // need signs") -- negative still reads as negative via its own minus.
 // Returns {hi, lo} (each a small <div>, or '' if that side has no data)
 // so the caller can place them above/below the candle.
+// 2026-09-02, user: "make font crisper? don't increase the font size" --
+// at 7px, default-weight grey (#94a3b8) text anti-aliases into a soft
+// blur. -webkit-font-smoothing:antialiased (+ the -moz equivalent) uses
+// the browser's thinner, sharper AA hinting instead of the default
+// subpixel/heavier one; font-weight 600 (still not bold enough to read
+// as bold text, just enough that the same anti-aliasing has more glyph
+// to work with) gives the AA fewer barely-there strokes to smear. Same
+// font-size (7px) either way -- both are rendering-quality fixes, not
+// size changes.
+const _CHG_TINY_STYLE = 'font-size:7px;color:#94a3b8;line-height:1.2;white-space:nowrap;'
+  + 'font-weight:600;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;';
+
 function _hiLoParts(high, low, last) {
   if (last == null || !last) return { hi: '', lo: '' };
   const line = val => {
     if (val == null) return '';
     const pct = Math.round((val - last) / last * 100);
-    return `<div style="font-size:7px;color:#94a3b8;line-height:1.2;white-space:nowrap;">${pct}%</div>`;
+    return `<div style="${_CHG_TINY_STYLE}">${pct}%</div>`;
   };
   return { hi: line(high), lo: line(low) };
 }
@@ -181,7 +193,7 @@ function _hiLoParts(high, low, last) {
 // _hiLoParts above).
 function _hiLoRangeHtml(high, low) {
   if (high == null || low == null) return '';
-  return `<div style="font-size:7px;color:#94a3b8;line-height:1.2;white-space:nowrap;">${fmtUsd(low)} - ${fmtUsd(high)}</div>`;
+  return `<div style="${_CHG_TINY_STYLE}">${fmtUsd(low)} - ${fmtUsd(high)}</div>`;
 }
 
 // One-line summary of an active watch's trigger config for the 🔔 cell's
