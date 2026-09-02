@@ -165,16 +165,18 @@ function _pctChgChipHtml(pct) {
 // Returns {hi, lo} (each a small <div>, or '' if that side has no data)
 // so the caller can place them above/below the candle.
 // 2026-09-02, user: "make font crisper? don't increase the font size" --
-// at 7px, default-weight grey (#94a3b8) text anti-aliases into a soft
-// blur. -webkit-font-smoothing:antialiased (+ the -moz equivalent) uses
-// the browser's thinner, sharper AA hinting instead of the default
-// subpixel/heavier one; font-weight 600 (still not bold enough to read
-// as bold text, just enough that the same anti-aliasing has more glyph
-// to work with) gives the AA fewer barely-there strokes to smear. Same
-// font-size (7px) either way -- both are rendering-quality fixes, not
-// size changes.
-const _CHG_TINY_STYLE = 'font-size:7px;color:#94a3b8;line-height:1.2;white-space:nowrap;'
-  + 'font-weight:600;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;';
+// at 7px, default-weight light grey (#94a3b8) text anti-aliases into a
+// soft blur. First try was font-weight 600 + AA hinting; user's follow-up
+// ("may be thin but more black?") swapped that for a darker color
+// instead of a heavier weight -- stays thin (weight back to normal),
+// #334155 (dark slate, near-black) instead of #94a3b8 for more contrast
+// against the anti-aliasing. -webkit-font-smoothing:antialiased (+ the
+// -moz equivalent) still applies -- the browser's thinner, sharper AA
+// hinting instead of the default subpixel/heavier one. Same font-size
+// (7px) throughout -- all of this is a rendering-quality fix, not a size
+// change.
+const _CHG_TINY_STYLE = 'font-size:7px;color:#334155;line-height:1.2;white-space:nowrap;'
+  + '-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;';
 
 function _hiLoParts(high, low, last) {
   if (last == null || !last) return { hi: '', lo: '' };
