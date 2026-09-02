@@ -213,11 +213,12 @@ function _hiLoRangeHtml(high, low) {
 // there's no such neighbor in the popover, so here the whole block just
 // centers as one self-contained unit; the internal sub-pixel calibration
 // is harmless (still <1px) even though its original target doesn't apply.
-// `gap` (candle column <-> price/chip column) defaults to the grid's own
-// calibrated 9px; the popover call site passes 1.125 (2026-09-02, user:
-// "make half" x3, 9 -> 4.5 -> 2.25 -> 1.125) -- parameterized instead of
-// hardcoded so that request doesn't also reach into the grid's own
-// already-tuned spacing.
+// `gap` (candle column <-> price/chip column): both call sites now pass
+// it explicitly rather than relying on the default (kept at the original
+// 9px as a fallback) -- parameterized 2026-09-02 so each context can be
+// tuned independently. Grid: 9 -> 4.5 -> 3 -> 0.125 -> 0. Popover: 9 ->
+// 4.5 -> 2.25 -> 1.125 -> 0. Both landed at 0 together (user: "make it
+// to 0px here and also in the popover window").
 function _chgCandleControlsHtml(row, gap) {
   const pctChipHtml = _pctChgChipHtml(row.pct_change);
   const priceStr = row.last_price != null ? fmtUsd(row.last_price) : '';
@@ -5618,7 +5619,7 @@ function _buildActionPopHtmlV2(row) {
     + `</div>`
     + `<div class="actpop-ctrl-row">`
     + tug.conviction
-    + `<div class="actpop-ctrl-anchor-rr">${_chgCandleControlsHtml(row, 1.125)}</div>`
+    + `<div class="actpop-ctrl-anchor-rr">${_chgCandleControlsHtml(row, 0)}</div>`
     + _actpopTdTnHtml(row)
     + _actpopRrBarHtml(row)
     + `</div>`
@@ -6233,8 +6234,14 @@ function _buildRowEl(r) {
              Margin-top calibration inside the widget (chip~Symbol name,
              price~hit-rate badge, range~tradability badge) -- history in
              _chgCandleControlsHtml's own comment (factored out 2026-09-02
-             so the Action popup can reuse this exact markup). -->
-        ${_chgCandleControlsHtml(r)}
+             so the Action popup can reuse this exact markup). Candle<->
+             chip gap, 2026-09-02: 9px -> 4.5px (user: "reduce the space
+             between vertical bar and % change number box by half") ->
+             3px -> 0.125px -> 0px ("make it to 0px here and also in the
+             popover window") -- horizontal-only, doesn't touch any of
+             the vertical calibration above (that's all margin-top,
+             unaffected by this row's own gap). -->
+        ${_chgCandleControlsHtml(r, 0)}
       </td>
       <td data-col="sym" data-sym-cell="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:pointer; text-align:center;" title="${r.rr_name && r.rr_name !== r.tos_symbol ? escapeHtml(r.tos_symbol) + ' · ' : ''}Click for chart">
         <div class="hdr-anchor-box">
