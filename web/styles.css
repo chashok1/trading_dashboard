@@ -304,7 +304,14 @@ html, body {
 }
 .seg-ctrl button:last-child { border-right: none; }
 .seg-ctrl button:hover { background: var(--surface-hover, #f0f6ff); }
-.seg-ctrl button.seg-active {
+/* .active alongside .seg-active (2026-09-02, Actionable toolbar
+   consistency pass, web/actionable.html): .seg-active is this control's
+   own single-select convention (Conv Any/Multi/Proven); .active is what
+   web/actionable.js already toggles on independent multi-select buttons
+   sharing this same pill-group look (row-visibility toggles, Trade
+   Mode/Non-Strict) -- same visual either way, just two different JS call
+   sites' existing class-toggle convention. */
+.seg-ctrl button.seg-active, .seg-ctrl button.active {
   background: var(--accent, #0a84ff);
   color: #fff;
   font-weight: 700;

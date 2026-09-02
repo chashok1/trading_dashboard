@@ -2499,15 +2499,19 @@ function syncFilterUi() {
 
 // A Source/Account/Symbol/P(up) lookup is a targeted search — the row(s) it
 // names shouldn't be silently swallowed by an unrelated toggle (Positions
-// Only / Active Only / Actionable Only / Trade Mode) left on from earlier
-// browsing. Reset those four to their "show everything" state whenever one
-// of the lookup filters is actively set to a non-empty value.
+// Only / Active Only / Actionable Only / Trade Mode / Non-Strict) left on
+// from earlier browsing. Reset those five to their "show everything" state
+// whenever one of the lookup filters is actively set to a non-empty value.
+// 2026-09-02, toolbar-consistency review: trade_mode_diff was missing here
+// (only trade_mode was reset) -- picking a Source/Account while Non-Strict
+// was on left the "targeted search" silently narrowed by it.
 function _resetToggleFiltersForLookup() {
   const f = state.filters;
   f.held_only = false;
   f.show_hidden = true;
   f.actionable_only = false;
   f.trade_mode = false;
+  f.trade_mode_diff = false;
   syncFilterUi();
 }
 

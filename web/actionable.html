@@ -275,25 +275,18 @@
       color: #94a3b8;
     }
 
-    /* TASK_124: Trade Mode toggle — icon-only, same footprint + icon-on/icon-off
-       dual-state convention as the other row-filter toggles (showHidden/
-       heldOnly/actionableOnlyBtn: base .btn-icon.btn-icon-sm + .icon-on/.icon-off
-       swap). The active state additionally keeps a distinct green fill since
-       this one collapses the whole grid, not just hides some rows. */
-    #tradeModeBtn.active {
-      background: #16a34a;
-      color: #fff;
-      border-color: #16a34a;
-    }
-    /* 2026-08-28: "Non-Strict" button (was the Strict sub-toggle's slot) --
-       same green as Trade Mode itself, a differently-colored active state
-       would read as a totally separate concept when it's really the same
-       Trade Mode data, just the complementary half of it. */
-    #tradeModeDiffBtn.active {
-      background: #16a34a;
-      color: #fff;
-      border-color: #16a34a;
-    }
+    /* TASK_124/2026-08-28 Trade Mode + Non-Strict used to be two independent
+       .btn-icon buttons with a bespoke green .active fill (this one
+       collapses the whole grid, not just hides some rows -- felt like it
+       deserved its own visual language). 2026-09-02, user-directed toolbar
+       consistency pass ("do the rest"): moved into a 2-button .seg-ctrl
+       (same pill-group + accent-blue active fill as the Conv filter) so
+       every filter toggle in this bar now shares one visual language
+       instead of three (icon buttons / native select / this one-off green)
+       -- see the row-visibility .seg-ctrl below for the other half of that
+       pass. Green dropped in the move; the mutual-exclusivity that
+       justified a special look is now visible in the widget shape itself
+       (one pill lit at a time in a shared track), not a unique color. */
     #multiSymBtn.active {
       background: #1f7af2;
       color: #fff;
@@ -1103,8 +1096,14 @@
     .btn-icon.icon-on  .icon-off { display: none; }
     .btn-icon.icon-off .icon-on  { display: none; }
     .btn-icon.icon-off .icon-off { display: block; }
-    /* Styled tooltips via data-tip attribute */
-    .btn-icon[data-tip]::after {
+    /* Styled tooltips via data-tip attribute -- was scoped to .btn-icon
+       only; broadened to any [data-tip] element (2026-09-02, toolbar
+       consistency pass) so the .seg-ctrl row-filter/Trade-Mode buttons
+       below get the same tooltip look instead of falling back to a plain
+       native title (or, worse, showing both -- the mismatch the review
+       flagged). data-tip is a bespoke attribute nothing else on this page
+       uses for a different purpose, so widening the selector is additive. */
+    [data-tip]::after {
       content: attr(data-tip);
       position: absolute;
       top: calc(100% + 5px);
@@ -1122,7 +1121,8 @@
       transition: opacity 0.15s 0.4s;
       z-index: 500;
     }
-    .btn-icon[data-tip]:hover::after { opacity: 1; }
+    [data-tip] { position: relative; }
+    [data-tip]:hover::after { opacity: 1; }
 
 
 
@@ -1279,81 +1279,58 @@
           </div>
           <!-- Action chips -->
           <div class="act-summary" id="summaryChips"></div>
-          <!-- Row filter toggles: Show Hidden, Positions Only, Actionable Only -->
-          <button id="showHidden" class="btn-icon btn-icon-sm" data-tip="Active Only  →  Show Hidden">
-            <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
-            </svg>
-            <svg class="icon-on" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-            </svg>
-          </button>
-          <button id="heldOnly" class="btn-icon btn-icon-sm" data-tip="All Symbols  →  Positions Only">
-            <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="1" y1="1" x2="23" y2="23"/>
-            </svg>
-            <svg class="icon-on" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><polyline points="9 13 11 15 15 11"/>
-            </svg>
-          </button>
-          <button id="actionableOnlyBtn" class="btn-icon btn-icon-sm" data-tip="Actionable Only  →  Show All">
-            <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="3" y="3" width="18" height="18" rx="2"/>
-            </svg>
-            <svg class="icon-on" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-            </svg>
-          </button>
+          <!-- Row filter toggles: Show Hidden, Positions Only, Actionable Only.
+               2026-09-02, user-directed toolbar consistency pass ("do the
+               rest"): converted from 3 independent icon-only .btn-icon
+               buttons (SVG icon-on/icon-off swap) to one .seg-ctrl pill
+               group with text labels -- same visual language the Conv
+               filter (More panel) and, below, Trade Mode/Non-Strict now
+               use. Still 3 INDEPENDENT booleans, not a single-select group
+               -- .seg-ctrl button.active (aliased to .seg-active in
+               web/styles.css) toggles per-button regardless of siblings,
+               same state.filters.*/click-handler wiring as before (IDs
+               unchanged), just restyled. -->
+          <div class="seg-ctrl" title="Row visibility">
+            <button id="showHidden" data-tip="Active Only  →  Show Hidden">Hidden</button>
+            <button id="heldOnly" data-tip="All Symbols  →  Positions Only">Held</button>
+            <button id="actionableOnlyBtn" data-tip="Actionable Only  →  Show All">Actionable</button>
+          </div>
           <!-- TASK_124: Trade Mode — collapse the grid to just qualifying buys +
                held SA sells + stop breaches. Not persisted -- always starts ON
                (see web/actionable.js's own init-block comment; this HTML
                comment previously said "Persisted in localStorage", which was
                stale/wrong). 2026-08-28: the buy leg is always Strict now (was
-               an opt-in sub-toggle) -- see #tradeModeDiffBtn below for the
-               inverse ("Non-Strict") view. -->
-          <button id="tradeModeBtn" class="btn-icon btn-icon-sm" data-tip="Trade Mode (Strict): only qualifying buys, SA sells, stop breaches" title="Trade Mode: show only rows that need action (Strict buy criteria)">
-            <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="1" y1="1" x2="23" y2="23"/>
-            </svg>
-            <svg class="icon-on" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
-            </svg>
-          </button>
-          <!-- 2026-08-25: was the "Strict" sub-toggle (narrowed Trade Mode's
-               qualifying buys further; OFF reverted to the original, looser
-               TASK_124 criteria). 2026-08-28, user: "Make trade mode button
-               behave strict mode" -- Strict is no longer optional, it's
-               Trade Mode's only buy gate now (_isTradeModeQualifyingBuy).
-               This button's slot repurposed for "Non-Strict": the inverse
-               view -- current Trade Mode stocks WITHOUT the ones Strict also
-               keeps (_isTradeModeDiffBuy) -- user: "create a new button and
-               display all current trade mode stocks without strict mode
-               stocks." Mutually exclusive with Trade Mode (own click
-               handler), always visible (was conditional on Trade Mode being
-               on; no longer a sub-toggle of it). -->
-          <button id="tradeModeDiffBtn" class="btn-icon btn-icon-sm" data-tip="Non-Strict: Trade Mode buys that Strict mode filters out" title="Non-Strict: Trade Mode buys minus Strict mode's buys">
-            <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/><line x1="1" y1="1" x2="23" y2="23"/>
-            </svg>
-            <svg class="icon-on" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/>
-            </svg>
-          </button>
+               an opt-in sub-toggle) -- Non-Strict below is the inverse view.
+               2026-09-02: restyled from 2 icon buttons with a bespoke green
+               .active fill into this 2-button .seg-ctrl, same pass as the
+               row-visibility group above -- see web/actionable.html's own
+               CSS-block comment (search "toolbar consistency pass") for why
+               the green was dropped. -->
+          <div class="seg-ctrl" title="Trade Mode view">
+            <button id="tradeModeBtn" data-tip="Trade Mode (Strict): only qualifying buys, SA sells, stop breaches">Trade Mode</button>
+            <button id="tradeModeDiffBtn" data-tip="Non-Strict: Trade Mode buys that Strict mode filters out">Non-Strict</button>
+          </div>
           <!-- Source filter -- placeholder option itself reads "Source" (no
                separate label), same convention as Acct/Sectors/Asset
                Classes/Styles. -->
           <select id="sourceFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:8em;" title="Source filter"><option value="">Source</option></select>
-          <!-- Same-day-trigger quick-filter pills. RTA/SC are real decision-
-               driving source_codes (state.filters.source). EC/IC are
-               informational-only -- ETFCHG/IICHG are merged into ETF/II's
-               own weight at derive time (no separate source_code survives),
-               so they filter on the etfchg_date/iichg_date lookback flag
-               instead (state.filters.etfchg_only/iichg_only), added purely
-               for "did a change event land recently" visibility. -->
+          <!-- Recent-event quick-filter pills (2026-09-02: RTA/SC removed --
+               review found they were byte-for-byte duplicates of picking
+               "RTA"/"SSSCHG" in the Source dropdown right above, same
+               state.filters.source field, same match logic; the dropdown
+               alone covers them, per user: "i believe we can remove the
+               chips as source drop down does the same thing"). EC/IC kept
+               -- they're NOT source filters despite the shared chip
+               styling/id: ETFCHG/IICHG are merged into ETF/II's own weight
+               at derive time (no separate source_code survives), so these
+               filter on the etfchg_date/iichg_date lookback flag instead
+               (state.filters.etfchg_only/iichg_only) -- "did a change
+               event land recently" visibility, with no dropdown
+               equivalent. #triggerSourcePills id kept as-is (still
+               referenced throughout web/actionable.js) even though it's
+               no longer literally "source" pills once RTA/SC are gone. -->
           <div class="act-summary" id="triggerSourcePills">
-            <div class="act-chip" data-src-pill="RTA" title="Filter to RTA (Real-Time Alert)"><span>RTA</span></div>
             <div class="act-chip" data-flag-pill="etfchg_only" title="Filter to symbols with a recent ETF Pro Change event (informational -- does not drive ETF's own action)"><span>EC</span></div>
-            <div class="act-chip" data-src-pill="SSSCHG" title="Filter to SC (Signal Strength Stocks Change)"><span>SC</span></div>
             <div class="act-chip" data-flag-pill="iichg_only" title="Filter to symbols with a recent II Pro Change event (informational -- does not drive II's own action)"><span>IC</span></div>
           </div>
           <!-- Account filter -- placeholder option itself reads "Acct" (no
