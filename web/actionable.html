@@ -358,18 +358,20 @@
     #actGrid th[data-col="pos"], #actGrid td[data-col="pos"],
     #actGrid th[data-col="amt"], #actGrid td[data-col="amt"],
     #actGrid th[data-col="chg"], #actGrid td[data-col="chg"] { text-align: center; }
-    /* %CHG top-aligned to Symbol (2026-09-02, user request): both were
-       vertical-align:middle (the grid-wide default) -- fine when their
-       content heights happen to match, but Symbol's own height varies
-       row to row (NEW pill / hit-rate badge / tradability badge are all
-       conditional), so middle-centering gave each row a DIFFERENT top
-       offset instead of a consistent one. Both columns share the same
-       td padding (4px 8px, table.act-grid td rule) with nothing above
-       their first child, so vertical-align:top alone lines their tops up
-       exactly, for every row, regardless of either column's own content
-       height that row -- no per-row height-matching needed the way the
-       earlier MACRO alignment fix required. */
-    #actGrid td[data-col="sym"], #actGrid td[data-col="chg"] { vertical-align: top; }
+    /* %CHG aligned to Symbol (2026-09-02, user request) -- superseded its
+       own first attempt (vertical-align:top on both) once the user
+       clarified "content should be in middle of the row vertically": a
+       taller row (Technical/RR pushing row height well past either
+       column's own content) would pin Sym/%CHG to the row's TOP while
+       every other column stayed middle-centered, breaking the row's
+       overall look. Both stay vertical-align:middle (the grid-wide
+       default, untouched) -- the actual fix is making Symbol's own
+       content height CONSTANT (see the .sym-content-box wrapper in
+       web/actionable.js, min-height matching %CHG's own ~47px content
+       height) instead of varying with which badges that row happens to
+       have. Equal heights under the same middle-alignment is what makes
+       their tops (and bottoms) line up, whatever the row's total height
+       ends up being from its other columns. */
     .act-grid th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
     .act-grid th.sortable:hover { background: var(--surface-hover, #f0f6ff); }
     .act-grid th .sort-ind { font-size: 9px; opacity: 0.85; }
