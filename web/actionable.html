@@ -1159,6 +1159,20 @@
       <div class="act-toolbar">
         <!-- Single consolidated filter bar -->
         <div class="act-toolbar-main">
+          <!-- RR (Risk Range %) dual-thumb slider — filters to rows whose
+               position within LRR..TRR (0% = at LRR, 100% = at TRR) falls in
+               the selected band. Reuses r._rrPos, already computed per-row
+               during load (same formula as Universe's rawRrPos()), so this
+               is a pure client-side filter — no server round-trip. Compact,
+               unlabeled per user request (2026-09-01) -- current range is
+               conveyed via the container's title tooltip instead of visible
+               text, see _syncRrSliderUi() in actionable.js. Moved to the
+               front of the filter bar per user request. -->
+          <div class="act-rr-slider act-rr-slider-sm" id="actRrRow" title="Risk Range %: 0–100%">
+            <div class="act-rr-track"><div class="act-rr-range" id="actRrRange"></div></div>
+            <input type="range" id="actRrMin" min="0" max="100" value="0" step="1" aria-label="Risk Range % minimum">
+            <input type="range" id="actRrMax" min="0" max="100" value="100" step="1" aria-label="Risk Range % maximum">
+          </div>
           <!-- Action chips -->
           <div class="act-summary" id="summaryChips"></div>
           <!-- Row filter toggles: Show Hidden, Positions Only, Actionable Only -->
@@ -1213,7 +1227,13 @@
                stocks." Mutually exclusive with Trade Mode (own click
                handler), always visible (was conditional on Trade Mode being
                on; no longer a sub-toggle of it). -->
-          <button id="tradeModeDiffBtn" class="btn-icon btn-icon-sm" data-tip="Non-Strict: Trade Mode buys that Strict mode filters out" title="Non-Strict: Trade Mode buys minus Strict mode's buys" style="font-size:8px; font-weight:700; padding:0 4px; width:auto;">Non-Strict
+          <button id="tradeModeDiffBtn" class="btn-icon btn-icon-sm" data-tip="Non-Strict: Trade Mode buys that Strict mode filters out" title="Non-Strict: Trade Mode buys minus Strict mode's buys">
+            <svg class="icon-off" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/><line x1="1" y1="1" x2="23" y2="23"/>
+            </svg>
+            <svg class="icon-on" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/>
+            </svg>
           </button>
           <!-- Source filter -->
           <select id="sourceFilter" title="Source filter"><option value="">All</option></select>
@@ -1233,19 +1253,6 @@
           <!-- Account filter -->
           <label style="font-size:11px; color:var(--text-2,#666); margin-right:2px; white-space:nowrap;">Acct</label>
           <select id="accountFilter" style="max-width:8em;"><option value="">All</option></select>
-          <!-- RR (Risk Range %) dual-thumb slider — filters to rows whose
-               position within LRR..TRR (0% = at LRR, 100% = at TRR) falls in
-               the selected band. Reuses r._rrPos, already computed per-row
-               during load (same formula as Universe's rawRrPos()), so this
-               is a pure client-side filter — no server round-trip. Compact,
-               unlabeled per user request (2026-09-01) -- current range is
-               conveyed via the container's title tooltip instead of visible
-               text, see _syncRrSliderUi() in actionable.js. -->
-          <div class="act-rr-slider act-rr-slider-sm" id="actRrRow" title="Risk Range %: 0–100%">
-            <div class="act-rr-track"><div class="act-rr-range" id="actRrRange"></div></div>
-            <input type="range" id="actRrMin" min="0" max="100" value="0" step="1" aria-label="Risk Range % minimum">
-            <input type="range" id="actRrMax" min="0" max="100" value="100" step="1" aria-label="Risk Range % maximum">
-          </div>
           <!-- Sector/Asset class/Style dropdowns, ALL possible values (not just
                held ones) -- moved onto the main bar 2026-09-01 (were in
                #moreFiltersPanel below the More ▾ toggle since 2026-08-31; user
