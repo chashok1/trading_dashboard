@@ -1773,10 +1773,16 @@ svg.rr-candle {
    the tape's corner-overlay use case, which has no meaning inside this
    cell's flex row and just flies the SVG out to whatever positioned
    ancestor happens to exist, so it never actually renders next to the
-   %CHG text without this override. */
+   %CHG text without this override. No `height` here (2026-09-01, was a
+   hardcoded 14px) -- this cell now asks _candleSvg() for a taller 28px
+   canvas (spans the chip+price stack beside it, see actionable.js), and a
+   fixed CSS height clobbers the SVG's own height attribute, forcing its
+   viewBox to squash/scale into the wrong box instead of rendering at the
+   size the geometry was actually computed for. The SVG's own width/height
+   attributes (set per-call in _candleSvg()) are sufficient on their own. */
 .chg-candle-row svg.rr-candle {
   position: static; top: auto; right: auto;
-  width: 7px; height: 14px; flex-shrink: 0; display: block;
+  width: 7px; flex-shrink: 0; display: block;
 }
 /* Stance arrowhead SVG */
 .msr-arrow { width: 14px; height: 14px; flex-shrink: 0; display: inline-block; }
