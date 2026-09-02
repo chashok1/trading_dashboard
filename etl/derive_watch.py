@@ -51,7 +51,7 @@ def check_watches() -> int:
     with session_scope() as s:
         rows = s.execute(text("""
             SELECT w.id, w.baseline_price, w.baseline_lrr, w.baseline_trr,
-                   w.baseline_trade, w.baseline_trend, w.trigger_pct, w.trigger_lrr,
+                   w.baseline_trade, w.baseline_trend, w.trigger_pct, w.trigger_pct_dir, w.trigger_lrr,
                    w.trigger_trr, w.trigger_trade, w.trigger_trend, w.trigger_price,
                    q.last_price, dr.lrr, dr.trr, mt.a_trade_value, mt.a_trend_value
             FROM ref_watch w
@@ -78,8 +78,14 @@ def check_watches() -> int:
             reason = None
             if r["trigger_pct"] is not None and r["baseline_price"]:
                 pct = (float(last) - float(r["baseline_price"])) / float(r["baseline_price"]) * 100
-                if abs(pct) >= float(r["trigger_pct"]):
-                    reason = f"{pct:+.1f}% from ${float(r['baseline_price']):.2f}"
+                # Direction-specific (2026-09-02, user: "% move should be
+                # specific direction either up or down") -- UP only fires on
+                # a rally of at least trigger_pct, DOWN only on a drop of at
+                # least trigger_pct; a move the wrong way never fires.
+                if r["trigger_pct_dir"] == "UP" and pct >= float(r["trigger_pct"]):
+                    reason = f"+{pct:.1f}% from ${float(r['baseline_price']):.2f}"
+                elif r["trigger_pct_dir"] == "DOWN" and pct <= -float(r["trigger_pct"]):
+                    reason = f"{pct:.1f}% from ${float(r['baseline_price']):.2f}"
             if reason is None and r["trigger_lrr"] and _crossed(r["baseline_price"], r["baseline_lrr"], last, r["lrr"]):
                 reason = f"crossed LRR (${float(r['lrr']):.2f})"
             if reason is None and r["trigger_trr"] and _crossed(r["baseline_price"], r["baseline_trr"], last, r["trr"]):

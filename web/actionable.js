@@ -177,11 +177,12 @@ function _hiLoPctHtml(high, low, last) {
 }
 
 // One-line summary of an active watch's trigger config for the 🔔 cell's
-// hover tooltip, e.g. "±4% · LRR · TRR · $52.00" or "plain reminder" for
-// one with no condition set.
+// hover tooltip, e.g. "↑4% · LRR · TRR · $52.00" or "plain reminder" for
+// one with no condition set. trigger_pct is direction-specific (2026-09-02
+// user request) -- ↑ for UP, ↓ for DOWN, never a bare "±".
 function _watchConfigSummary(r) {
   const parts = [];
-  if (r.watch_trigger_pct != null) parts.push(`±${r.watch_trigger_pct}%`);
+  if (r.watch_trigger_pct != null) parts.push(`${r.watch_trigger_pct_dir === 'DOWN' ? '↓' : '↑'}${r.watch_trigger_pct}%`);
   if (r.watch_trigger_lrr) parts.push('LRR');
   if (r.watch_trigger_trr) parts.push('TRR');
   if (r.watch_trigger_trade) parts.push('Trade line');
@@ -7361,7 +7362,7 @@ function _watchPopHtml(sym, active, row) {
     return `
       <div class="wp-title">🔔 ${escapeHtml(sym)} — Watching</div>
       <div style="margin-bottom:7px;color:#64748b;">Since ${escapeHtml(added)}${active.note ? '<br>' + escapeHtml(active.note) : ''}<br>${escapeHtml(_watchConfigSummary({
-        watch_trigger_pct: active.trigger_pct, watch_trigger_lrr: active.trigger_lrr, watch_trigger_trr: active.trigger_trr,
+        watch_trigger_pct: active.trigger_pct, watch_trigger_pct_dir: active.trigger_pct_dir, watch_trigger_lrr: active.trigger_lrr, watch_trigger_trr: active.trigger_trr,
         watch_trigger_trade: active.trigger_trade, watch_trigger_trend: active.trigger_trend, watch_trigger_price: active.trigger_price,
       }))}</div>
       <div class="wp-actions">
@@ -7371,7 +7372,13 @@ function _watchPopHtml(sym, active, row) {
   }
   return `
     <div class="wp-title">🔔 ${escapeHtml(sym)} — Watch</div>
-    <div class="wp-pctrow"><input type="number" id="wpPct" step="0.5" min="0" placeholder="4"> % move (either direction)</div>
+    <div class="wp-pctrow">
+      <select id="wpPctDir" style="flex:0 0 auto;margin-bottom:0;padding:3px 4px;">
+        <option value="UP">↑ Up</option>
+        <option value="DOWN">↓ Down</option>
+      </select>
+      <input type="number" id="wpPct" step="0.5" min="0" placeholder="4"> % move
+    </div>
     <label class="wp-trig"><input type="checkbox" id="wpLrr"> LRR <span class="wp-trig-val">(${fmt(row && row.lrr)})</span></label>
     <label class="wp-trig"><input type="checkbox" id="wpTrr"> TRR <span class="wp-trig-val">(${fmt(row && row.trr)})</span></label>
     <label class="wp-trig"><input type="checkbox" id="wpTrade"> Trade line <span class="wp-trig-val">(${fmt(row && row.trade_line_value)})</span></label>
@@ -7397,6 +7404,7 @@ function _wireWatchPop(sym) {
           tos_symbol: sym,
           note: document.getElementById('wpNote').value || null,
           trigger_pct: pct ? Number(pct) : null,
+          trigger_pct_dir: pct ? document.getElementById('wpPctDir').value : null,
           trigger_lrr: document.getElementById('wpLrr').checked,
           trigger_trr: document.getElementById('wpTrr').checked,
           trigger_trade: document.getElementById('wpTrade').checked,

@@ -8236,8 +8236,9 @@ ALTER TABLE IF EXISTS drv_actionable
 -- fires on a genuine CROSSING -- current price sits on the opposite side
 -- of the current level from where baseline_price sat relative to the
 -- baseline level -- not merely "already past it" (etl/derive_watch.py
--- _crossed()). trigger_pct is a plain magnitude threshold (% move either
--- direction from baseline_price), no crossing concept needed.
+-- _crossed()). trigger_pct is a plain magnitude threshold (% move from
+-- baseline_price), no crossing concept needed -- but IS direction-specific
+-- (trigger_pct_dir, added below 2026-09-02), unlike the level triggers.
 --
 -- Checked every ~minute by etl/scheduler.py's maybe_check_watches() (via
 -- etl/derive_watch.py::check_watches) while a watch is ACTIVE and
@@ -8285,3 +8286,14 @@ INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
      'email fires, same clock the scheduler machine uses for '
      'outcomes_compute_hour. Default 15 (3pm) -- "before close".')
 ON CONFLICT (setting_name) DO NOTHING;
+
+-- 2026-09-02: trigger_pct direction. User: "% move should be specific
+-- direction either up or down" -- trigger_pct was a magnitude threshold
+-- (fired on a move of that size either way); now paired with an explicit
+-- UP/DOWN so "notify me if it drops 4%" and "notify me if it rallies 4%"
+-- are two different watches, not the same one. Required whenever
+-- trigger_pct is set (etl/derive_watch.py::check_watches and the POST
+-- handler both enforce this -- see api/routers/dash.py).
+ALTER TABLE IF EXISTS ref_watch
+    ADD COLUMN IF NOT EXISTS trigger_pct_dir TEXT
+        CHECK (trigger_pct_dir IN ('UP', 'DOWN'));

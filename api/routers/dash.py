@@ -1179,7 +1179,7 @@ def get_actionable(
                cv.target_date AS conviction_target_date,
                cv.direction AS conviction_direction,
                w.id AS watch_id, w.note AS watch_note,
-               w.trigger_pct AS watch_trigger_pct,
+               w.trigger_pct AS watch_trigger_pct, w.trigger_pct_dir AS watch_trigger_pct_dir,
                w.trigger_lrr AS watch_trigger_lrr, w.trigger_trr AS watch_trigger_trr,
                w.trigger_trade AS watch_trigger_trade, w.trigger_trend AS watch_trigger_trend,
                w.trigger_price AS watch_trigger_price,
@@ -1226,7 +1226,7 @@ def get_actionable(
             -- Live, same reason as the ref_conviction_hold join above --
             -- ref_watch isn't baked into drv_actionable at all (see its own
             -- baseline.sql comment), this IS the only source for it.
-            SELECT id, note, trigger_pct, trigger_lrr, trigger_trr, trigger_trade,
+            SELECT id, note, trigger_pct, trigger_pct_dir, trigger_lrr, trigger_trr, trigger_trade,
                    trigger_trend, trigger_price, triggered_at, triggered_reason, reviewed_at
             FROM ref_watch
             WHERE ref_watch.tos_symbol = a.tos_symbol
@@ -2814,7 +2814,7 @@ def get_watches(
         params["status"] = status_u
     sql = """
         SELECT id, tos_symbol, note, added_at, baseline_price,
-               trigger_pct, trigger_lrr, trigger_trr, trigger_trade, trigger_trend, trigger_price,
+               trigger_pct, trigger_pct_dir, trigger_lrr, trigger_trr, trigger_trade, trigger_trend, trigger_price,
                status, triggered_at, triggered_reason, emailed_at, reviewed_at, closed_at
         FROM ref_watch
     """
@@ -2848,6 +2848,15 @@ def post_watch(payload: dict):
     triggers = {f: payload.get(f) for f in _WATCH_TRIGGER_FIELDS}
     for f in ("trigger_lrr", "trigger_trr", "trigger_trade", "trigger_trend"):
         triggers[f] = bool(triggers[f])
+    # trigger_pct is direction-specific (2026-09-02, user: "% move should be
+    # specific direction either up or down") -- required whenever trigger_pct
+    # is set, so "notify on a rally" and "notify on a drop" are two distinct
+    # watches, never both at once.
+    trigger_pct_dir = None
+    if triggers["trigger_pct"]:
+        trigger_pct_dir = str(payload.get("trigger_pct_dir") or "").upper().strip()
+        if trigger_pct_dir not in ("UP", "DOWN"):
+            raise HTTPException(400, "trigger_pct_dir must be 'UP' or 'DOWN' when trigger_pct is set")
     has_condition = bool(
         triggers["trigger_pct"] or triggers["trigger_lrr"] or triggers["trigger_trr"]
         or triggers["trigger_trade"] or triggers["trigger_trend"] or triggers["trigger_price"]
@@ -2873,11 +2882,11 @@ def post_watch(payload: dict):
             row = s.execute(text("""
                 INSERT INTO ref_watch (
                     tos_symbol, note, baseline_price, baseline_lrr, baseline_trr, baseline_trade, baseline_trend,
-                    trigger_pct, trigger_lrr, trigger_trr, trigger_trade, trigger_trend, trigger_price,
+                    trigger_pct, trigger_pct_dir, trigger_lrr, trigger_trr, trigger_trade, trigger_trend, trigger_price,
                     triggered_at, triggered_reason
                 ) VALUES (
                     :sym, :note, :bp, :blrr, :btrr, :btrade, :btrend,
-                    :tpct, :tlrr, :ttrr, :ttrade, :ttrend, :tprice,
+                    :tpct, :tpctdir, :tlrr, :ttrr, :ttrade, :ttrend, :tprice,
                     :trig_at, :trig_reason
                 )
                 RETURNING id
@@ -2885,7 +2894,8 @@ def post_watch(payload: dict):
                 "sym": sym, "note": note,
                 "bp": base.get("last_price"), "blrr": base.get("lrr"), "btrr": base.get("trr"),
                 "btrade": base.get("a_trade_value"), "btrend": base.get("a_trend_value"),
-                "tpct": triggers["trigger_pct"], "tlrr": triggers["trigger_lrr"], "ttrr": triggers["trigger_trr"],
+                "tpct": triggers["trigger_pct"], "tpctdir": trigger_pct_dir,
+                "tlrr": triggers["trigger_lrr"], "ttrr": triggers["trigger_trr"],
                 "ttrade": triggers["trigger_trade"], "ttrend": triggers["trigger_trend"], "tprice": triggers["trigger_price"],
                 "trig_at": None if has_condition else datetime.now(),
                 "trig_reason": None if has_condition else "Reminder (no condition set)",
