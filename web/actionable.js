@@ -10,6 +10,7 @@ const TOGGLEABLE_COLS = [
   { id: 'pos',       label: 'POS$' },
   { id: 'chg',       label: '%CHG' },
   { id: 'macro',     label: 'MACRO' },
+  { id: 'pvv',       label: 'PVV' },
   { id: 'calc',      label: 'CALC' },
   { id: 'sources',   label: 'Sources' },
   { id: 'technical', label: 'Technical' },
@@ -22,7 +23,6 @@ const TOGGLEABLE_COLS = [
   { id: 'rules',     label: 'Rules (edge)' },
   { id: 'bullprob',  label: 'P(↑ 20d)' },
   { id: 'agree',     label: 'Agree' },
-  { id: 'pvv',       label: 'PVV' },
 ];
 // Default-hidden: model-diagnostic columns not needed for day-to-day workflow.
 const DEFAULT_HIDDEN_COLS = ['calc', 'bullprob', 'agree'];
@@ -6163,6 +6163,7 @@ function _buildRowEl(r) {
       </td>
       <td data-col="action" style="padding:6px 4px;">${fcHtml}</td>
       <td data-col="macro" style="padding:4px 6px; text-align:center;">${macroCellHtml(r)}</td>
+      <td data-col="pvv" style="padding:4px 6px; text-align:center; white-space:nowrap;">${_pvvCellHtml(r)}</td>
       <td data-col="calc" style="padding:6px 4px; text-align:center;">${_finalCallCalHtml(r)}</td>
       <td data-col="sources" class="act-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:help;">
         <div style="display:flex;align-items:flex-start;gap:8px;">
@@ -6208,7 +6209,6 @@ function _buildRowEl(r) {
       <td data-col="rules" class="rules-link-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:4px 6px; max-width:292px; overflow:hidden; cursor:pointer;" title="Open Rule Flow for ${escapeHtml(r.tos_symbol)}">${firesCellHtml(r, 4)}</td>
       <td data-col="bullprob" class="num" style="padding:4px 6px; white-space:nowrap;">${_bullProbCellHtml(r)}</td>
       <td data-col="agree" style="padding:4px 6px; white-space:nowrap;">${_agreementCellHtml(r)}</td>
-      <td data-col="pvv" style="padding:4px 6px; text-align:center; white-space:nowrap;">${_pvvCellHtml(r)}</td>
     `;
     tr.onclick = (e) => {
       if (e.target.closest('.row-check') || e.target.closest('.lt-quick-btn') || e.target.closest('.watch-quick-btn')) return;
