@@ -174,21 +174,23 @@ function _macroConflictMark(r) {
 // Premature-drop pill (2026-08-20): always shown for a REMOVE ("dropped
 // from list") source_actions entry, next to the drop message, in the same
 // pill style as every other percentage in the app (.hit-rate-pill) instead
-// of plain colored text. Green (hit-rate-pill-high) + the magenta conflict
-// bolt when drop_conflict is true -- a single flag now, computed
-// etl-side as EITHER the cumulative move clearing +5% OR a fresh 3-day
-// up-streak (up_streak_3d, same 4-date window _compute_stop_signal already
-// uses) -- either one alone is reason to flag, not just the magnitude
-// check. Grey (hit-rate-pill-mid), no bolt, otherwise. Shared by
-// _srcReasonsHtml (grid Sources column) and _actpopDriverBullets (Action
-// popup driver bullets) -- also read by _actpopTugHtml to surface a
+// of plain colored text. Color now follows sign (2026-09-01, user: "use
+// light colors instead of grey so i can see +ve or -ve") -- light green
+// (hit-rate-pill-high) if price is up since the drop, light red
+// (hit-rate-pill-neg) if it's down, no more grey either way. The magenta
+// conflict bolt is layered on top when drop_conflict is true -- a single
+// flag computed etl-side as EITHER the cumulative move clearing +5% OR a
+// fresh 3-day up-streak (up_streak_3d, same 4-date window
+// _compute_stop_signal already uses) -- either one alone is reason to flag.
+// Shared by _srcReasonsHtml (grid Sources column) and _actpopDriverBullets
+// (Action popup driver bullets) -- also read by _actpopTugHtml to surface a
 // flagged drop as an Opposing signal on a sell-side row.
 function _dropPctPillHtml(s) {
   if (s.action !== 'REMOVE' || s.pct_since_drop == null) return '';
   const pct = Number(s.pct_since_drop);
   const sign = pct >= 0 ? '+' : '';
   const flagged = s.drop_conflict === true;
-  const cls = flagged ? 'hit-rate-pill-high' : 'hit-rate-pill-mid';
+  const cls = pct >= 0 ? 'hit-rate-pill-high' : 'hit-rate-pill-neg';
   const title = `${sign}${pct.toFixed(1)}% since dropped` + (flagged ? (s.up_streak_3d ? ' — up 3 days running' : ' — up >5% since') : '');
   const bolt = flagged
     ? _conflictBoltHtml(`Dropped but up ${sign}${pct.toFixed(1)}% since — may have been premature`)

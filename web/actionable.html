@@ -234,6 +234,11 @@
     .hit-rate-pill-low  { background: #fef3c7; color: #b45309; border: 1px solid #b45309; }
     .hit-rate-pill-mid  { background: #f1f5f9; color: #475569; border: 1px solid #94a3b8; }
     .hit-rate-pill-high { background: #dcfce7; color: #15803d; border: 1px solid #15803d; }
+    /* Light red, same weight as -high's light green -- 2026-09-01, for
+       _dropPctPillHtml's "% since dropped" pill so a negative move (price
+       kept falling after the source dropped it) reads distinctly from a
+       positive one, instead of both showing the same grey. */
+    .hit-rate-pill-neg  { background: #fee2e2; color: #dc2626; border: 1px solid #dc2626; }
 
     /* 2026-08-15: Buy Tradability badge — marks a BUY row whose entry looks
        clean right now (near LRR + supporting RSI/IV/RVOL history), per
@@ -1710,7 +1715,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260901j"></script>
+  <script src="/static/actionable.js?v=20260901k"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>
