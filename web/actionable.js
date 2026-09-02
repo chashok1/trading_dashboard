@@ -156,6 +156,26 @@ function _pctChgChipHtml(pct) {
   return `<span class="msr-chg" style="background:${bg};flex:0 0 auto;">${escapeHtml(txt)}</span>`;
 }
 
+// Tiny High/Low readout under the %CHG chip (2026-09-02, user request):
+// day High and Low $ each followed by their % distance from the current
+// price in parens, e.g. "H $100 (+4%)" / "L $92 (-2%)" -- lets you see
+// today's range and how far price has pulled back from it without a
+// separate hover. Sign always shown (Low is typically negative, High
+// typically positive, but an intraday quote can sit outside a stale
+// high/low so don't assume).
+function _hiLoPctHtml(high, low, last) {
+  if (last == null || !last) return '';
+  const line = (label, val) => {
+    if (val == null) return '';
+    const pct = Math.round((val - last) / last * 100);
+    const sign = pct >= 0 ? '+' : '';
+    return `${label} ${fmtUsd(val)}<span style="opacity:.7;">(${sign}${pct}%)</span>`;
+  };
+  const parts = [line('H', high), line('L', low)].filter(Boolean);
+  if (!parts.length) return '';
+  return `<div style="font-size:8px;color:#94a3b8;line-height:1.3;white-space:nowrap;">${parts.join('<br>')}</div>`;
+}
+
 // ---------- Side panel helpers + MACRO band (TASK_74) ----------
 
 // ── MACRO column cell renderer (TASK_74) ────────────────────────────────────
@@ -1732,7 +1752,6 @@ async function loadActionable(opts) {
       r._fc_side     = fc.side;
       r._watchlisted = _buyNoiseGated(r);
       r._priority = _computePriority(r);
-      r._agree3 = _agree3Score(r);
       r._pvv_rank = _pvvRank(r.pvv_decision);
     });
     // Expose monthly score map for market_bar.js tape chips
@@ -3397,9 +3416,9 @@ const _TECH_BUY  = new Set(['BM', 'BS', 'BMN', 'BR']), _TECH_SELL = new Set(['SA
 // implied 2-of-3 agreement but the logic was really "no dissent" — a single
 // signal with the other two silent/neutral qualified. Now requires >= 2 of
 // the 3 columns (MACRO / Sources / Technical) to point the same way AND zero
-// columns opposing before calling it agreement. Display-only (▼3/▲3 marker
-// next to Symbol, and the legend entry) — no longer drives the default sort
-// (see _computePriority below).
+// columns opposing before calling it agreement. 2026-09-02: the grid's own
+// "3W" ▼3/▲3 column was dropped (see git history) -- this now only feeds
+// the "3-Way" row in the Final-Call side panel checklist.
 function _threeWayAgreement(row) {
   const m = (row.macro_value || '').toUpperCase();
   const s = (row.consolidated_action || '').toUpperCase();
@@ -3410,15 +3429,6 @@ function _threeWayAgreement(row) {
   if (buyVotes  >= 2 && sellVotes === 0) return 'buy';
   return null;
 }
-// Sort key for the "3W" column: sell-agreement ranks above buy-agreement
-// above no-agreement, so sorting descending surfaces negatives (sells) first.
-function _agree3Score(row) {
-  const dir = _threeWayAgreement(row);
-  return dir === 'sell' ? 2 : dir === 'buy' ? 1 : 0;
-}
-// Back-compat: other call sites in this file still say "Dir" for brevity.
-const _agreementDir = _threeWayAgreement;
-
 // TASK_122 Tier 2 sub-ranking: 2 = 2a (Technical + Sources + MACRO all
 // buy-side, 3/3), 1 = 2b (Technical + one other buy-side, none opposing,
 // 2/3), 0 = 2c (Technical ripe only / partial agreement with opposition).
@@ -5703,10 +5713,10 @@ function updateSortIndicators() {
 }
 
 // Columns whose most useful first-click order is descending, not the
-// generic ascending default — currently just "3W" (_agree3: sell=2 > buy=1
-// > none=0), so one click surfaces sell-agreement rows immediately instead
-// of requiring a second click to flip direction.
-const _DEFAULT_DESC_SORT_KEYS = new Set(['_agree3']);
+// generic ascending default — empty for now (was "3W"/_agree3, removed
+// with the grid column; kept as reusable infra for the next column that
+// wants this).
+const _DEFAULT_DESC_SORT_KEYS = new Set([]);
 
 function initSorting() {
   document.querySelectorAll('#actGrid th.sortable').forEach(th => {
@@ -5760,7 +5770,6 @@ function renderGrid() {
     // qualifying buys — never band these into the collapsed Watchlist.
     r._watchlisted = state.filters.trade_mode ? false : _buyNoiseGated(r);
     r._priority = _computePriority(r);
-    r._agree3 = _agree3Score(r);
     r._pvv_rank = _pvvRank(r.pvv_decision);
   }
   hideSourcePop();
@@ -5921,6 +5930,7 @@ function _buildRowEl(r) {
 
     const pctChipHtml = _pctChgChipHtml(r.pct_change);
     const priceStr = r.last_price != null ? fmtUsd(r.last_price) : '';
+    const hiLoHtml = _hiLoPctHtml(r.high_price, r.low_price, r.last_price);
     const hitRateBadge = state.filters.trade_mode ? _sourceHitRateBadge(r) : '';
     const tradabilityBadge = _tradabilityBadge(r);
     // vh=28 (2026-09-01, user request): tall enough to visually span both
@@ -6030,12 +6040,13 @@ function _buildRowEl(r) {
         ) : ''}
       </td>
       <td data-col="chg" class="num">
-        <div class="chg-candle-row" style="display:flex;align-items:center;justify-content:flex-end;gap:4px;">
+        <div class="chg-candle-row" style="display:flex;align-items:center;justify-content:flex-end;gap:9px;">
           ${candleHtml}
           <div style="display:flex;flex-direction:column;align-items:center;gap:1px;">
             ${pctChipHtml}
             ${intradayTag ? `<div>${intradayTag}</div>` : ''}
             ${priceStr ? `<div style="font-size:10px;color:#94a3b8;">${priceStr}</div>` : ''}
+            ${hiLoHtml}
           </div>
         </div>
       </td>
@@ -6047,12 +6058,6 @@ function _buildRowEl(r) {
         ${hitRateBadge ? '<div style="margin-top:1px;">' + hitRateBadge + '</div>' : ''}
         ${tradabilityBadge ? '<div style="margin-top:1px;">' + tradabilityBadge + '</div>' : ''}
       </td>
-      <td data-col="agree3" style="padding:6px 4px; text-align:center;">${(() => {
-        const dir = _agreementDir(r);
-        if (dir === 'sell') return `<span title="3-Way Agreement: MACRO/Sources/Technical agree sell, none opposing" style="color:#dc2626;font-size:12px;font-weight:700;">&#9660;3</span>`;
-        if (dir === 'buy')  return `<span title="3-Way Agreement: MACRO/Sources/Technical agree buy, none opposing" style="color:#16a34a;font-size:12px;font-weight:700;">&#9650;3</span>`;
-        return '<span style="color:#cbd5e1;font-size:10px;">—</span>';
-      })()}</td>
       <td data-col="action" style="padding:6px 4px;">${fcHtml}</td>
       <td data-col="macro" style="padding:4px 6px; text-align:center;">${macroCellHtml(r)}</td>
       <td data-col="calc" style="padding:6px 4px; text-align:center;">${_finalCallCalHtml(r)}</td>
