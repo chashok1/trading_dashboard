@@ -3402,8 +3402,17 @@ function _finalCallHtml(row) {
     + '<span class="act-badge act-badge-sm ' + colorCls + '" style="' + hedgeyeStyle + ';cursor:help;" '
     + 'data-actionpop="' + escapeHtml(row.tos_symbol) + '">' + escapeHtml(text) + '</span>'
     + '</div>';
+  // 2026-09-02, user: "supporting signals and caution signals are not
+  // centered when they are by themselves in that line" -- each of
+  // stopPill/earningsPill/signalPill carries its own leading space (a
+  // separator for when more than one is present); with only the LAST one
+  // present, that stray leading space became part of the centered text
+  // content and text-align:center dutifully centered THAT (space+icon),
+  // visibly shifting the lone icon right. .trim() drops only the outer
+  // leading/trailing space, leaving the separator between two-or-more
+  // pills intact.
   var pillsLine = (stopPill || earningsPill || signalPill)
-    ? '<div style="text-align:center;margin-top:2px;">' + stopPill + earningsPill + signalPill + '</div>'
+    ? '<div style="text-align:center;margin-top:2px;">' + (stopPill + earningsPill + signalPill).trim() + '</div>'
     : '';
   return badgeLine + pillsLine + subIcon;
 }
