@@ -1235,8 +1235,10 @@
               <circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/>
             </svg>
           </button>
-          <!-- Source filter -->
-          <select id="sourceFilter" title="Source filter"><option value="">All</option></select>
+          <!-- Source filter -- placeholder option itself reads "Source" (no
+               separate label), same convention as Acct/Sectors/Asset
+               Classes/Styles. -->
+          <select id="sourceFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:8em;" title="Source filter"><option value="">Source</option></select>
           <!-- Same-day-trigger quick-filter pills. RTA/SC are real decision-
                driving source_codes (state.filters.source). EC/IC are
                informational-only -- ETFCHG/IICHG are merged into ETF/II's
@@ -1708,7 +1710,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260901i"></script>
+  <script src="/static/actionable.js?v=20260901j"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>

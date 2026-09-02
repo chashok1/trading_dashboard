@@ -2270,7 +2270,9 @@ function renderSourceFilter() {
   const have = _availableSources();
   // preserve current selection if still present
   const cur = state.filters.source;
-  sel.innerHTML = '<option value="">All</option>';
+  // Placeholder reads "Source" (no separate label), same convention as the
+  // Acct/Sectors/Asset Classes/Styles dropdowns.
+  sel.innerHTML = '<option value="">Source</option>';
   for (const c of Array.from(have).sort()) {
     const o = document.createElement('option');
     o.value = c; o.textContent = c;
