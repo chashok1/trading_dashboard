@@ -100,12 +100,17 @@ const $ = (id) => document.getElementById(id);
 
 // fetchJson is provided by _common.js (window.fetchJson).
 
+// Sign always goes before the $ ("-$188", never "$-188") -- same fix as
+// universe.js's fmtUsd (2026-09-05); both branches here kept whatever sign
+// Math.round(n)/n.toFixed(0) produced glued onto "$" instead of moving it
+// in front.
 function fmtUsd(v) {
   if (v === null || v === undefined || v === '') return '';
   const n = Number(v);
   if (!isFinite(n)) return '';
-  if (Math.abs(n) >= 1000) return '$' + (Math.round(n)).toLocaleString();
-  return '$' + n.toFixed(0);
+  const abs = Math.abs(n);
+  const s = abs >= 1000 ? Math.round(abs).toLocaleString() : abs.toFixed(0);
+  return (n < 0 ? '-$' : '$') + s;
 }
 // Compact currency: $38k, $1.2m, $500 — for Pos $ column
 function fmtCompact(v) {
@@ -1245,14 +1250,17 @@ function _legendHtml() {
       ${row('SA', 'Sell All')}
       ${row('STM', 'Sell Trim (partial)')}
       ${row('SS', 'Sell Some')}
-      ${row('SO', 'Sell Overage — trim back to category Max')}
       ${row('BMN', 'Buy to Min — establish a starter position')}
       ${row('BS', 'Buy Some')}
       ${row('BM', 'Buy More')}
       ${row('HOLD', 'No change recommended')}
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Chips</div>
-      <div style="color:#475569;">REMOVE / OVER_MAX / REDUCE / INCREASE / ADD / HOLD / NONE group rows by
+      <div style="color:#475569;">REMOVE / REDUCE / INCREASE / ADD / HOLD / NONE group rows by
         consolidated_action; click a chip to filter, click ALL to clear.</div>
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">OVER MAX pill</div>
+      <div style="color:#475569;">Held position exceeds its category Max (position sizing, not a market
+        signal) — orange pill next to ACTION, tooltip shows the $ to trim back to cap. Informational only;
+        it never overrides the ACTION badge itself, same as Sources/Technical/Macro inputs.</div>
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Confidence flag</div>
       ${row('Low', 'LOW CONF — the only sell evidence is a rule with a demonstrated negative historical edge (v_unproven_sell_rules); consolidated_action is unchanged, this is a confidence flag')}
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">STOP pill / chip</div>
@@ -1796,10 +1804,11 @@ async function loadActionable(opts) {
           : null;
       }
       const act = (r.consolidated_action || '').toUpperCase();
-      if (_isOverMaxOverlay(r)) {
-        // Over-allocation overlay — AMT$ = trim back to the category Max.
-        r._amt = Number(r.current_position_dollar) - Number(r.target_max_dollar);
-      } else if (act === 'REMOVE') {
+      // 2026-09-03: over-max no longer overrides AMT$ — it's informational
+      // only (OVER MAX pill, whose own tooltip shows the trim-to-cap $).
+      // AMT$ now always reflects the real consolidated_action, same as any
+      // other row.
+      if (act === 'REMOVE') {
         r._amt = r.current_position_dollar;
       } else if (act === 'ADD' && r.target_min_dollar != null) {
         // ADD: AMT$ is the top-up needed to reach Min. Already at/above Min → 0.
@@ -2236,7 +2245,7 @@ async function rederiveStale() {
 
 // ---- summary chips (act as quick action filters) ----
 function renderSummary() {
-  const counts = { REMOVE: 0, OVER_MAX: 0, REDUCE: 0, INCREASE: 0, ADD: 0, HOLD: 0, NONE: 0 };
+  const counts = { REMOVE: 0, REDUCE: 0, INCREASE: 0, ADD: 0, HOLD: 0, NONE: 0 };
   let stopCount = 0;
   for (const r of state.baseRows) {
     const a = _chipAction(r);
@@ -2618,9 +2627,7 @@ function _actionColorCls(act) {
 }
 // actionDisplay() is provided by actions.js (loaded before this script).
 // actionLabel: plain-English label for a row's consolidated_action.
-// OVER_MAX synthetic overlay gets its own display entry.
 function actionLabel(row) {
-  if (_isOverMaxOverlay(row)) return actionText(actionDisplay('OVER_MAX'));
   const a = ((row && row.consolidated_action) || 'NONE').toUpperCase();
   return actionText(actionDisplay(a));
 }
@@ -2633,9 +2640,8 @@ const _ACTION_GROUPS = {
 };
 // Chip bucket for a row — derived from finalCall() so filter pills match
 // what the Final Call column actually shows.
-// Returns one of: REMOVE | REDUCE | INCREASE | ADD | HOLD | OVER_MAX | NONE
+// Returns one of: REMOVE | REDUCE | INCREASE | ADD | HOLD | NONE
 function _chipAction(row) {
-  if (_isOverMaxOverlay(row)) return 'OVER_MAX';
   const fc = finalCall(row);
   if (!fc.feasible) return 'NONE';
   const code = (fc.code || '').toUpperCase();
@@ -2647,15 +2653,15 @@ function _chipAction(row) {
   return 'NONE';
 }
 
-// Badge color class — REDUCE (orange) when the over-Max overlay fires so
-// the sell intent reads at a glance; otherwise mirrors consolidated_action.
+// Badge color class — mirrors consolidated_action.
 function _badgeAction(row) {
-  if (_isOverMaxOverlay(row)) return 'REDUCE';
   return ((row && row.consolidated_action) || 'NONE').toUpperCase();
 }
-// True when the row's held position exceeds the category Max and the
-// SELL→MAX overlay applies (badge label + AMT$ + "was X" annotation).
-// REMOVE rows are excluded — sell-all is stronger than sell-to-max.
+// True when the row's held position exceeds the category Max. 2026-09-03:
+// no longer overrides the ACTION badge/AMT$/chip bucket (user: "Sell
+// Overage ... should not drive the main action" — it's now a purely
+// informational OVER MAX pill, see _finalCallHtml). REMOVE rows are
+// excluded — sell-all already covers the position, over-max is moot.
 function _isOverMaxOverlay(row) {
   if (!row) return false;
   if ((row.consolidated_action || '').toUpperCase() === 'REMOVE') return false;
@@ -2872,11 +2878,11 @@ function _gateReasonFor(row) {
   if (row.stop_breached && (ca === 'ADD' || ca === 'INCREASE')) {
     return 'Held position crossed its stop (' + (row.stop_signal || 'stop') + ') — ADD/INCREASE downgraded to HOLD';
   }
-  // 2. Strategic exit gate: exit signal or over category Max.
-  if (srcIsExit || atMax) {
-    if (!isHeld && !atMax) return 'Exit signal but not held — no action feasible';
-    return atMax ? 'Over category Max — trim back to cap'
-                 : 'Sources: exit signal — Technical not evaluated';
+  // 2. Strategic exit gate: exit signal. (2026-09-03: over-max no longer
+  //    gates here — it's informational only, see the OVER MAX pill.)
+  if (srcIsExit) {
+    if (!isHeld) return 'Exit signal but not held — no action feasible';
+    return 'Sources: exit signal — Technical not evaluated';
   }
   // 3. Don't-initiate guard: not held, Sources doesn't endorse buying.
   if (!isHeld && !srcIsBuy) {
@@ -2968,9 +2974,12 @@ function finalCall(row) {
   }
 
   // ── Helper classifiers ────────────────────────────────────────────────────
-  var caOverMax  = _isOverMaxOverlay(row);
+  // 2026-09-03: over-max no longer gates the Final Call (mirrors server-side
+  // etl/derive_actionable.py::_compute_final_call) — informational only, see
+  // the OVER MAX pill in _finalCallHtml. `atMax` still guards against
+  // recommending MORE buying past the ceiling (step 4 below), unchanged.
   var isHeld     = !!row.held_today;
-  var atMax      = caOverMax;  // position already exceeds category Max
+  var atMax      = _isOverMaxOverlay(row);  // position already exceeds category Max
 
   // Sources side categorisation
   var srcIsExit    = (ca === 'REMOVE' || ca === 'SA');
@@ -2989,16 +2998,12 @@ function finalCall(row) {
 
   // ── 1. Feasibility (pre-check): never sell unheld, never buy past Max ─────
   // Selling an unheld position is infeasible; we'll guard this below per-path.
-  // Buying past Max is infeasible; over-max rows are flagged via caOverMax.
+  // Buying past Max is infeasible; over-max rows are flagged via atMax (step 4).
 
   // ── 2. Strategic gate: SELL ALL / REMOVE → exit regardless of Technical ──
-  if (srcIsExit || caOverMax) {
-    // Over-max uses the OVER_MAX strength so it sorts below genuine SELL ALL.
-    var exitStrength = caOverMax ? _FC_SCALE['OVER_MAX'] : _FC_SCALE['SA'];
-    var exitCode     = caOverMax ? 'OVER_MAX' : 'SA';
-    var exitDisp     = actionDisplay(exitCode);
-    // Feasibility: can only sell if held (or over-max which implies held via overlay).
-    if (!isHeld && !caOverMax) {
+  if (srcIsExit) {
+    var exitDisp = actionDisplay('SA');
+    if (!isHeld) {
       var holdDisp = actionDisplay('HOLD');
       return {
         label: holdDisp.label, code: holdDisp.code,
@@ -3013,11 +3018,9 @@ function finalCall(row) {
       code:       exitDisp.code,
       side:       exitDisp.side,
       cls:        exitDisp.cls,
-      strength:   exitStrength,
+      strength:   _FC_SCALE['SA'],
       confidence: 'gate',
-      gateReason: caOverMax
-        ? 'Over category Max — trim back to cap'
-        : 'Sources: exit signal — Technical not evaluated',
+      gateReason: 'Sources: exit signal — Technical not evaluated',
       feasible:   true,
     };
   }
@@ -3444,20 +3447,18 @@ function _finalCallHtml(row) {
     + '<span class="act-badge act-badge-sm ' + colorCls + '" style="' + hedgeyeStyle + ';cursor:help;" '
     + 'data-actionpop="' + escapeHtml(row.tos_symbol) + '">' + escapeHtml(text) + '</span>'
     + '</div>';
-  // 2026-09-02, user: "I need to see the original action underneath the
-  // sell overage signal" -- OVER_MAX is a synthetic trim-to-max overlay
-  // that REPLACES whatever consolidated_action actually said (see
-  // etl/derive_actionable.py::_compute_final_call, gate 1); that original
-  // action was already surfaced next to the Sources cell (_srcReasonsHtml
-  // call site) and in the drilldown modal, but not directly under the
-  // badge itself where this Final Call sits. Mirrors that same "was X"
-  // wording/style, just anchored under the badge instead.
-  var wasLine = '';
-  if (_isOverMaxOverlay(row)) {
-    var _origAction = (row.consolidated_action || 'NONE').toUpperCase();
-    wasLine = '<div style="font-size:8px;line-height:1.2;text-align:center;margin-top:2px;font-weight:600;" class="'
-      + _actionColorCls(_origAction) + '">was ' + escapeHtml(actionText(actionDisplay(_origAction))) + '</div>';
-  }
+  // 2026-09-03, user: "Sell Overage ... should be one of the input[s]
+  // like Sources, Technicals, Macro ... should not drive the main
+  // action" -- OVER_MAX used to REPLACE the badge outright (see
+  // etl/derive_actionable.py::_compute_final_call, gate 1, now removed);
+  // the badge always shows the real consolidated_action/rr_action-driven
+  // Final Call now, and over-max is just another informational pill
+  // alongside stop/earnings/signal, not a badge override.
+  var overMaxPill = _isOverMaxOverlay(row)
+    ? ' <span class="overmax-pill" title="Held position exceeds its category Max by '
+      + escapeHtml(fmtUsd(Number(row.current_position_dollar) - Number(row.target_max_dollar)))
+      + ' — informational only, does not change the action above">OVER MAX</span>'
+    : '';
   // 2026-09-02, user: "supporting signals and caution signals are not
   // centered when they are by themselves in that line" -- each of
   // stopPill/earningsPill/signalPill carries its own leading space (a
@@ -3477,10 +3478,10 @@ function _finalCallHtml(row) {
   // can't touch a CSS margin. .pills-line's own CSS zeroes it on
   // whichever pill ends up first (see web/actionable.html), so a lone
   // pill is never shifted while 2nd/3rd pills keep their separation.
-  var pillsLine = (stopPill || earningsPill || signalPill)
-    ? '<div class="pills-line" style="text-align:center;margin-top:2px;">' + (stopPill + earningsPill + signalPill).trim() + '</div>'
+  var pillsLine = (stopPill || earningsPill || signalPill || overMaxPill)
+    ? '<div class="pills-line" style="text-align:center;margin-top:2px;">' + (stopPill + earningsPill + signalPill + overMaxPill).trim() + '</div>'
     : '';
-  return badgeLine + wasLine + pillsLine + subIcon;
+  return badgeLine + pillsLine + subIcon;
 }
 
 // ── Pass 2: Priority score (TASK_120 — dollar-weighted-edge default sort;
@@ -6104,7 +6105,6 @@ function _technicalDurHtml(r) {
 // Extracted from renderGrid (TASK_120) so both share identical row markup.
 function _buildRowEl(r) {
     const tr = document.createElement('tr');
-    const action = (r.consolidated_action || 'NONE').toUpperCase();
     const _ua = (r.last_user_action || '').toUpperCase();
     const isActed = r._rowActed || _ua === 'DONE' || _ua === 'SKIPPED' || _ua === 'OVERRIDDEN';
     if (isActed) tr.classList.add('row-acted');
@@ -6285,7 +6285,6 @@ function _buildRowEl(r) {
       <td data-col="calc" style="padding:6px 4px; text-align:center;">${_finalCallCalHtml(r)}</td>
       <td data-col="sources" class="act-action-cell" data-sym="${escapeHtml(r.tos_symbol)}" style="padding:6px 4px; cursor:help;">
         <div style="display:flex;align-items:flex-start;gap:8px;">
-          ${_isOverMaxOverlay(r) ? `<div style="width:38px;flex-shrink:0;align-self:center;text-align:center;font-size:8px;line-height:1;font-weight:600;" class="${_actionColorCls(action)}">was ${actionText(actionDisplay(action))}</div>` : ''}
           ${_srcReasonsHtml(r)}
         </div>
       </td>
@@ -6752,10 +6751,15 @@ async function openDrilldown(row) {
     chgEl.innerHTML = '';
   }
 
-  const action = (row.consolidated_action || 'NONE').toUpperCase();
+  // 2026-09-03: over-max is informational only (see _finalCallHtml's OVER
+  // MAX pill) — no longer a "was X" badge override, so the modal's own
+  // Action row gets the same pill instead.
+  const modalOverMaxPill = _isOverMaxOverlay(row)
+    ? ` <span class="overmax-pill" title="Held position exceeds its category Max by ${escapeHtml(fmtUsd(Number(row.current_position_dollar) - Number(row.target_max_dollar)))}">OVER MAX</span>`
+    : '';
   const kv = $('modalKv');
   kv.innerHTML = `
-    <dt>Action</dt><dd><span class="act-badge ${(actionDisplay(_badgeAction(row)).colorCls || 'act-neutral') + '-tint'}">${actionLabel(row)}</span>${_isOverMaxOverlay(row) ? ` <small class="${_actionColorCls(action)}" style="font-weight:600;font-size:9px;">was ${actionText(actionDisplay(action))}</small>` : ''}</dd>
+    <dt>Action</dt><dd><span class="act-badge ${(actionDisplay(_badgeAction(row)).colorCls || 'act-neutral') + '-tint'}">${actionLabel(row)}</span>${modalOverMaxPill}</dd>
     <dt>Winning source</dt><dd>${row.winning_source || '—'}</dd>
     <dt>AMT$</dt><dd><strong>${fmtUsd(row._amt) || '—'}</strong></dd>
     <dt>Suppressed</dt><dd>${row.suppressed_reason || '—'}</dd>

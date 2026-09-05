@@ -40,7 +40,13 @@
   const $ = id => document.getElementById(id);
   const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const fmtInt = d3.format(',');
-  const fmtUsd = v => (v >= 1000 || v <= -1000) ? (v < 0 ? '-$' : '$') + d3.format(',.0f')(Math.abs(v)) : '$' + Math.round(v);
+  // Sign always goes before the $ ("-$188", never "$-188") -- the old
+  // small-magnitude branch below 1000 tacked Math.round(v)'s own leading
+  // "-" straight onto "$" instead of moving it in front. User: "fix the
+  // fmtUsd negative formatting" -- 2026-09-05, noticed via the new Account
+  // tile P&L lines but pre-existing everywhere fmtUsd/fmtSignedUsd render
+  // a small negative $ amount (e.g. the KPI strip's "Today" card).
+  const fmtUsd = v => (v < 0 ? '-$' : '$') + (Math.abs(v) >= 1000 ? d3.format(',.0f')(Math.abs(v)) : Math.round(Math.abs(v)));
 
   // isMacro (is_macro_instrument from drv_actionable) peels real futures/
   // FX/index instruments (/GC, SPX, /6E, foreign indices, etc.) into their
@@ -81,6 +87,12 @@
   // account_id -> {total_realized, ytd_realized} -- FIFO-matched realized
   // gain (drv_realized_gain), same rollup /portfolio's Realized tab uses.
   let realizedByAccount = new Map();
+  // account_id -> {buy, sell} -- count of that account's held positions
+  // whose current final_code (drv_actionable's trading signal) is a buy-
+  // or sell-tier action, same tiering ACTION_COLOR already encodes. Feeds
+  // the Account root tile's "N BUY · N SELL" line. User: "so I know
+  // exactly what is happening to my accounts" -- 2026-09-05.
+  let acctActionCounts = new Map();
   // Portfolio-wide KPI strip totals, computed once in build() -- NOT
   // re-filtered by View/Filter/Color (those only narrow the treemap).
   let KPI = null;
@@ -223,6 +235,7 @@
     const acctTotals = new Map();
     const posCounts = new Map();
     acctGain = new Map();
+    acctActionCounts = new Map();
     POS.forEach(r => {
       acctTotals.set(r.account_id, (acctTotals.get(r.account_id) || 0) + (r.market_value || 0));
       posCounts.set(r.account_id, (posCounts.get(r.account_id) || 0) + 1);
@@ -231,6 +244,12 @@
       if (r.total_gain_dollar != null) g.totalGainDollar += r.total_gain_dollar;
       if (r.today_gain_dollar != null) g.todayGainDollar += r.today_gain_dollar;
       acctGain.set(r.account_id, g);
+      const side = actionSide(symbolDetail.get(r.tos_symbol)?.final_code);
+      if (side === 'buy' || side === 'sell') {
+        const c = acctActionCounts.get(r.account_id) || { buy: 0, sell: 0 };
+        c[side] += 1;
+        acctActionCounts.set(r.account_id, c);
+      }
     });
     // Cash folded into every account's total (not just cash-only ones) --
     // an account's real size is securities + cash, and a 100%-cash account
@@ -792,6 +811,37 @@
     }
   }
 
+  // Account tile "what's happening" extras -- unrealized P&L, today's $
+  // move, and a BUY/SELL signal count, progressively added as the tile has
+  // room (same "more room -> more detail" pattern as drawGroupTileLabel's
+  // own name/subtitle reveal). User: "top level -> tile has space -> what
+  // can you show me so i know exactly what is happening to my accounts" --
+  // 2026-09-05, chose "Combine P&L + signals". Gated on w > 100 (these are
+  // longer strings than the name/subtitle) so it never fires on the same
+  // narrow tiles the "Stocks →" link's stacked layout targets -- the two
+  // never compete for the same space.
+  function appendAccountPnlAndSignals(g, w, h, ink, gain, counts) {
+    if (w <= 100) return;
+    let y = 44;
+    if (h > 58 && gain && gain.costBasis) {
+      const pct = gain.totalGainDollar / gain.costBasis * 100;
+      g.append('text').attr('x', 7).attr('y', y).attr('font-size', 9)
+        .attr('font-weight', 700).attr('fill', gain.totalGainDollar >= 0 ? '#16a34a' : '#dc2626')
+        .text(`${fmtSignedUsd(gain.totalGainDollar)} (${fmtSignedPct1(pct)})`);
+      y += 13;
+    }
+    if (h > 72 && gain && gain.todayGainDollar != null) {
+      g.append('text').attr('x', 7).attr('y', y).attr('font-size', 9)
+        .attr('font-weight', 700).attr('fill', gain.todayGainDollar >= 0 ? '#16a34a' : '#dc2626')
+        .text(`${fmtSignedUsd(gain.todayGainDollar)} today`);
+      y += 13;
+    }
+    if (h > 86 && counts && (counts.buy || counts.sell)) {
+      g.append('text').attr('x', 7).attr('y', y).attr('font-size', 9).attr('opacity', 0.85)
+        .attr('fill', ink).text(`${counts.buy} BUY · ${counts.sell} SELL`);
+    }
+  }
+
   // ---- "By Account" root tiles: accounts, colored by acctColor. Click
   // drills into that account's Asset Class breakdown (renderHierarchy).
   // Small "Stocks →" corner link skips straight past that Asset Class /
@@ -823,6 +873,7 @@
         ? `${fmtUsd(d.data.total)} · ${d.data.posCount} symbol${d.data.posCount === 1 ? '' : 's'}`
         : `${fmtUsd(d.data.total)} · all cash`;
       drawGroupTileLabel(d3.select(this), w, h, ink, d.data.label, sub);
+      appendAccountPnlAndSignals(d3.select(this), w, h, ink, acctGain.get(d.data.key), acctActionCounts.get(d.data.key));
       // Small "Stocks →" corner link -- skips the Asset Class / Sector
       // breakdown and goes straight to every held symbol in this account,
       // flat. Own click handler stops propagation so the rest of the tile
