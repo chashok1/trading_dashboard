@@ -1566,9 +1566,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Realized via hash, or where the auto-load on click hits an error.)
   loadRealizedAccounts().catch(e => console.warn('preload accounts:', e));
 
-  // -------- Tab switching (Positions / Activity / Realized) --------
-  // Activity + Realized panes load lazily on first activation so the
-  // Positions tab opens fast.
+  // -------- Tab switching (Positions / Activity / Realized / Dividends) --------
+  // Activity + Realized + Dividends panes load lazily on first activation
+  // so the Positions tab opens fast.
   const _loadedTabs = new Set(['positions']);
   document.querySelectorAll('.pf-tab-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -1578,12 +1578,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       $('pfTabHint').textContent = ({
         positions: 'Snapshot positions (hist_cs / hist_f)',
         realized:  'Realized gains + transactions feed',
+        dividends: 'Dividend income (cash + reinvested)',
       })[tab] || '';
       if (tab === 'realized' && !_loadedTabs.has('realized')) {
         _loadedTabs.add('realized');
         await loadRealizedAccounts();
         await loadRealized();
         await loadActivity();
+      }
+      if (tab === 'dividends' && !_loadedTabs.has('dividends')) {
+        _loadedTabs.add('dividends');
+        await loadDividendAccounts();
+        await loadDividends();
       }
     });
   });
@@ -1598,6 +1604,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('realSymFilter')?.addEventListener('change', _reloadBoth);
   $('realSymFilter')?.addEventListener('input', _debounce(_reloadBoth, 300));
   $('actKindFilter')?.addEventListener('change', loadActivity);
+
+  // Dividends tab filter wiring -- same shape as the Realized block above.
+  ['divSrcFilter','divAccountFilter','divDatePreset','divFromDate','divToDate','divGroupBy']
+    .forEach(id => { const el = $(id); if (el) el.addEventListener('change', loadDividends); });
+  $('divSymFilter')?.addEventListener('change', loadDividends);
+  $('divSymFilter')?.addEventListener('input', _debounce(loadDividends, 300));
 });
 
 // ---- helpers shared by new tabs ----
@@ -1936,6 +1948,193 @@ async function loadRealized() {
       <td class="num ${gainClass(r.short_term_gain)}">${fmtUsd(r.short_term_gain)}</td>
       <td>${escapeHtml(r.first_sell||'')} → ${escapeHtml(r.last_sell||'')}</td>
     </tr>`).join('');
+  }
+}
+
+// ---- Dividends tab -- same shape as the Realized block above, on
+// purpose, so the two behave identically. Default preset is YTD (not
+// Today, unlike Realized) since dividend payments are sparse events --
+// "Today" would show empty almost always. ----
+function _divPresetRange(preset) {
+  const today = new Date();
+  const ymd = (d) => d.toISOString().slice(0, 10);
+  const tEnd = ymd(today);
+  if (preset === 'today') return { from: tEnd, to: tEnd };
+  if (preset === 'ytd') return { from: `${today.getFullYear()}-01-01`, to: tEnd };
+  if (preset === 'mtd') {
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    return { from: `${today.getFullYear()}-${m}-01`, to: tEnd };
+  }
+  if (preset.startsWith('last')) {
+    const n = Number(preset.slice(4));
+    if (Number.isFinite(n) && n > 0) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - n);
+      return { from: ymd(d), to: tEnd };
+    }
+  }
+  if (preset === 'custom') {
+    return { from: $('divFromDate')?.value || null, to: $('divToDate')?.value || null };
+  }
+  return { from: null, to: null };
+}
+
+// Populate the Dividends tab's Account dropdown. Uses has_dividends=true
+// (matches drv_dividend_income.account's own convention, unlike the
+// has_realized=false fallback which returns a friendly display label that
+// wouldn't actually match either table -- see api/routers/dash.py's
+// get_portfolio_accounts comment).
+async function loadDividendAccounts() {
+  const sel = $('divAccountFilter');
+  if (!sel) return;
+  const prior = sel.value;
+  const buildOpts = (rows) =>
+    (rows || []).map(r => {
+      const acct = r.account || '';
+      const src  = r.source  || '';
+      const label = src ? `[${src}] ${acct}` : acct;
+      return `<option value="${escapeHtml(acct)}">${escapeHtml(label)}</option>`;
+    }).join('');
+
+  let rows = [];
+  try {
+    rows = await fetchJson('/api/portfolio/accounts?has_dividends=true');
+  } catch (e) {
+    console.error('loadDividendAccounts failed:', e);
+  }
+  sel.innerHTML = '<option value="">All accounts</option>' + buildOpts(rows);
+  if (prior) sel.value = prior;
+}
+
+async function loadDividends() {
+  const groupBy = $('divGroupBy').value || 'symbol';
+  const params = new URLSearchParams();
+  params.set('group_by', groupBy);
+  if ($('divSrcFilter').value) params.set('source', $('divSrcFilter').value);
+  if ($('divSymFilter').value) params.set('symbol', $('divSymFilter').value.trim().toUpperCase());
+  if ($('divAccountFilter')?.value) params.set('account', $('divAccountFilter').value);
+
+  const preset = $('divDatePreset')?.value || 'ytd';
+  const wrap = $('divCustomDateWrap');
+  if (wrap) wrap.style.display = (preset === 'custom') ? 'inline-flex' : 'none';
+  const { from, to } = _divPresetRange(preset);
+  if (from) params.set('from', from);
+  if (to)   params.set('to',   to);
+
+  const theadEl = $('divThead');
+  const body    = $('divBody');
+  const empty   = $('divEmpty');
+  body.innerHTML = '<tr><td colspan="8" style="padding:20px;text-align:center;color:#888;">Loading…</td></tr>';
+  empty.style.display = 'none';
+
+  let rows;
+  try {
+    rows = await fetchJson('/api/portfolio/dividends?' + params.toString());
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="8" style="padding:20px;text-align:center;color:#b21f1f;">Error: ${escapeHtml(e.message)}</td></tr>`;
+    return;
+  }
+
+  // KPI tiles. YTD/MTD always use calendar boundaries vs today, regardless
+  // of the date-range filter -- same convention loadRealized() uses.
+  const today = new Date();
+  const ytdCut = `${today.getFullYear()}-01-01`;
+  const mtdCut = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2,'0')}-01`;
+
+  let totals;
+  if (groupBy === 'none') {
+    totals = (rows||[]).reduce((m, r) => {
+      const amt = Number(r.amount || 0);
+      m.all += amt;
+      if (r.is_reinvested) m.reinvested += amt; else m.cash += amt;
+      const pd = r.pay_date || '';
+      if (pd >= ytdCut) m.ytd += amt;
+      if (pd >= mtdCut) m.mtd += amt;
+      m.n += 1;
+      return m;
+    }, {ytd:0, mtd:0, all:0, cash:0, reinvested:0, n:0});
+  } else {
+    totals = (rows||[]).reduce((m, r) => {
+      m.ytd += Number(r.ytd_amount||0);
+      m.mtd += Number(r.mtd_amount||0);
+      m.all += Number(r.total_amount||0);
+      m.cash += Number(r.cash_amount||0);
+      m.reinvested += Number(r.reinvested_amount||0);
+      m.n += Number(r.n_payments||0);
+      return m;
+    }, {ytd:0, mtd:0, all:0, cash:0, reinvested:0, n:0});
+  }
+  $('divKpiYtd').textContent = fmtUsd(totals.ytd);
+  $('divKpiMtd').textContent = fmtUsd(totals.mtd);
+  $('divKpiAll').textContent = fmtUsd(totals.all);
+  $('divKpiCash').textContent = fmtUsd(totals.cash);
+  $('divKpiReinvest').textContent = fmtUsd(totals.reinvested);
+  $('divKpiN').textContent = String(totals.n);
+
+  const sub = [];
+  if ($('divSrcFilter').value)      sub.push($('divSrcFilter').value);
+  if ($('divAccountFilter')?.value) sub.push($('divAccountFilter').value);
+  if ($('divSymFilter').value)      sub.push($('divSymFilter').value.trim().toUpperCase());
+  if (from || to) sub.push(`${from || '…'} → ${to || 'today'}`);
+  const subEl = $('divKpiAllSub');
+  if (subEl) subEl.textContent = sub.length ? sub.join(' • ') : 'all accounts • all time';
+
+  $('divRowCount').textContent = `${(rows||[]).length} rows`;
+  if (!rows || rows.length === 0) {
+    body.innerHTML = '';
+    theadEl.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+
+  if (groupBy === 'none') {
+    theadEl.innerHTML = `<tr>
+      <th>Pay Date</th><th>Src</th><th>Account</th><th>Symbol</th>
+      <th class="num">Amount</th><th>Leg</th><th>Action</th>
+    </tr>`;
+    body.innerHTML = rows.map(r => `<tr>
+      <td>${escapeHtml(r.pay_date||'')}</td>
+      <td><span class="pill pill-${(r.source||'').toLowerCase()}">${escapeHtml(r.source||'')}</span></td>
+      <td title="${escapeHtml(r.account||'')}">${escapeHtml((r.account||'').slice(0,28))}</td>
+      <td><strong>${escapeHtml(r.symbol||'')}</strong></td>
+      <td class="num">${fmtUsd(r.amount)}</td>
+      <td>${r.is_reinvested ? 'Reinvested' : 'Cash'}</td>
+      <td title="${escapeHtml(r.raw_action||'')}">${escapeHtml((r.raw_action||'').slice(0,40))}</td>
+    </tr>`).join('');
+  } else {
+    const label = groupBy === 'symbol' ? 'Symbol' : 'Account';
+    theadEl.innerHTML = `<tr>
+      <th>${label}</th>
+      <th class="num">Payments</th>
+      <th class="num">Total</th>
+      <th class="num">Cash</th>
+      <th class="num">Reinvested</th>
+      <th class="num">YTD</th>
+      <th class="num">MTD</th>
+      <th class="num" title="${label === 'Account' ? 'Current total cost basis across every symbol held in the account, right now' : 'Position size (cost basis) actually held at the time of the MOST RECENT dividend payment -- from the hist_f/hist_cs snapshot history, not a lifetime sum of every buy (which badly overstates an actively-traded position -- e.g. a symbol bought/sold dozens of times a year)'}">Investment</th>
+      <th class="num" title="Average of each individual payment's own yield (that payment's $ ÷ what was actually held right then) -- correct for a position whose size changes over time, not total income ÷ one snapshot">Yield on Cost</th>
+      <th>First → Last</th>
+    </tr>`;
+    body.innerHTML = rows.map(r => {
+      const isApprox = r.investment_basis === 'point_in_time_approx';
+      const isAcctTotal = r.investment_basis === 'current_account_total';
+      const invTitle = r.cost_basis == null ? 'No position snapshot found within 30 days of the most recent payment (e.g. a pure cash-sweep fund, a position built entirely via dividend reinvestment, or bought before the loaded transaction history begins)'
+        : isAcctTotal ? 'Current total cost basis across every symbol held in this account, right now'
+        : isApprox ? 'No snapshot on or before the most recent payment date -- using the nearest snapshot within 30 days AFTER it instead (position was likely just opened around then)'
+        : 'Position size as of the most recent payment date, summed across every account that pays this symbol a dividend (exact snapshot on or before that date)';
+      return `<tr>
+      <td><strong>${escapeHtml(r.bucket||'')}</strong></td>
+      <td class="num">${r.n_payments||0}</td>
+      <td class="num">${fmtUsd(r.total_amount)}</td>
+      <td class="num">${fmtUsd(r.cash_amount)}</td>
+      <td class="num">${fmtUsd(r.reinvested_amount)}</td>
+      <td class="num">${fmtUsd(r.ytd_amount)}</td>
+      <td class="num">${fmtUsd(r.mtd_amount)}</td>
+      <td class="num" title="${invTitle}">${r.cost_basis!=null ? fmtUsd(r.cost_basis) + (isApprox ? ' ~' : '') : '—'}</td>
+      <td class="num">${fmtPct(r.yield_on_cost_pct, 1) || '—'}</td>
+      <td>${escapeHtml(r.first_payment||'')} → ${escapeHtml(r.last_payment||'')}</td>
+    </tr>`;
+    }).join('');
   }
 }
 

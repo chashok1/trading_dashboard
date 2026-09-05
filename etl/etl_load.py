@@ -247,6 +247,17 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
                         log.info("drv_realized_gain rebuilt: %d sell-event rows", n_r)
                     except Exception:
                         log.exception("derive_realized_gain failed (continuing)")
+                    # Same trigger as derive_realized_gain above -- dividend
+                    # income lives in the same transaction tables, and the
+                    # rebuild is a cheap filter+classify (no FIFO), so no
+                    # reason not to keep it in lockstep.
+                    try:
+                        from etl.derive_dividend_income import derive_dividend_income
+                        with session_scope() as s2:
+                            n_d = derive_dividend_income(s2)
+                        log.info("drv_dividend_income rebuilt: %d dividend-leg rows", n_d)
+                    except Exception:
+                        log.exception("derive_dividend_income failed (continuing)")
             except Exception as e:
                 # Roll back the aborted txn so close_run can write cleanly —
                 # see /docs/CLAUDE.md "Working notes for Claude" on this trap.
@@ -352,6 +363,13 @@ def load_one_file(file_path: str, file_type: Optional[str] = None,
                         log.info("drv_realized_gain rebuilt: %d sell-event rows", n_r)
                     except Exception:
                         log.exception("derive_realized_gain failed (continuing)")
+                    try:
+                        from etl.derive_dividend_income import derive_dividend_income
+                        with session_scope() as s2:
+                            n_d = derive_dividend_income(s2)
+                        log.info("drv_dividend_income rebuilt: %d dividend-leg rows", n_d)
+                    except Exception:
+                        log.exception("derive_dividend_income failed (continuing)")
             except Exception as e:
                 # The original error left the PG transaction in 'aborted'
                 # state; any further write on the same session will raise

@@ -17,7 +17,9 @@ from typing import Optional
 
 from fastapi import APIRouter, Query
 
-from api.routers.dash import get_actionable, get_portfolio, list_actionable_accounts
+from api.routers.dash import (
+    get_actionable, get_portfolio, get_portfolio_realized, get_portfolio_dividends, list_actionable_accounts,
+)
 
 router = APIRouter()
 
@@ -101,6 +103,87 @@ def get_universe(date: Optional[str] = Query(None)):
             return []
         return [x.get("source") for x in raw if isinstance(x, dict) and x.get("source")]
 
+    # 2026-09-03 (held-perspective proposal): unrealized P&L per symbol,
+    # summed across accounts from the same `portfolio_rows` this endpoint
+    # already fetches -- get_portfolio() computes avg_cost/cost_basis/
+    # today_gain_*/total_gain_*/ytd_gain_*/mtd_gain_* per (symbol, account)
+    # row already (real broker cost basis, hist_cs.cost_basis /
+    # hist_f.cost_basis_total), it just wasn't being surfaced here. Dollar
+    # totals sum naturally across accounts; percentages are RE-DERIVED from
+    # the summed dollars (dollar / summed cost_basis, etc.) rather than
+    # averaging each account's own %, which would mis-weight a symbol held
+    # unevenly across accounts.
+    _gain_keys = ("today_gain_dollar", "total_gain_dollar", "ytd_gain_dollar", "mtd_gain_dollar")
+    gain_by_symbol: dict = {}
+    for r in portfolio_rows:
+        sym = r.get("symbol")
+        if r.get("is_cash") or not sym or not r.get("market_value"):
+            continue
+        g = gain_by_symbol.setdefault(sym, {"cost_basis": 0.0, "market_value": 0.0, "qty": 0.0,
+                                             "has_cost_basis": False, "has_qty": False,
+                                             **{k: 0.0 for k in _gain_keys}})
+        cb = r.get("cost_basis")
+        if cb is not None:
+            g["cost_basis"] += float(cb)
+            g["has_cost_basis"] = True
+        qty = r.get("qty")
+        if qty is not None:
+            g["qty"] += float(qty)
+            g["has_qty"] = True
+        g["market_value"] += float(r.get("market_value") or 0)
+        for k in _gain_keys:
+            v = r.get(k)
+            if v is not None:
+                g[k] += float(v)
+
+    def _pct(dollar, base):
+        return (dollar / base * 100.0) if base else None
+
+    # Realized gain (FIFO-matched, drv_realized_gain via the same endpoint
+    # /portfolio's Realized tab uses) -- summed per symbol across accounts.
+    # Defensive try/except mirrors this file's/dash.py's own pattern for
+    # supplementary decorations that shouldn't 500 the whole screen.
+    realized_by_symbol: dict = {}
+    try:
+        for r in get_portfolio_realized(
+            date=date, symbol=None, account=None, source=None,
+            group_by="symbol", from_date=None, to_date=None,
+        ):
+            if r.get("bucket"):
+                realized_by_symbol[r["bucket"]] = {
+                    "total_realized": float(r.get("total_realized") or 0),
+                    "ytd_realized": float(r.get("ytd_realized") or 0),
+                }
+    except Exception:
+        pass
+
+    def _gain_fields(sym):
+        g = gain_by_symbol.get(sym)
+        rg = realized_by_symbol.get(sym)
+        out = {
+            "avg_cost": None, "cost_basis": None,
+            "today_gain_dollar": None, "today_gain_pct": None,
+            "total_gain_dollar": None, "total_gain_pct": None,
+            "ytd_gain_dollar": None, "mtd_gain_dollar": None,
+            "total_realized": rg["total_realized"] if rg else None,
+            "ytd_realized": rg["ytd_realized"] if rg else None,
+        }
+        if g:
+            cb = g["cost_basis"] if g["has_cost_basis"] else None
+            qty = g["qty"] if g["has_qty"] else None
+            prior_mv = g["market_value"] - g["today_gain_dollar"]
+            out.update({
+                "avg_cost": (cb / qty) if (cb is not None and qty) else None,
+                "cost_basis": cb,
+                "today_gain_dollar": g["today_gain_dollar"],
+                "today_gain_pct": _pct(g["today_gain_dollar"], prior_mv),
+                "total_gain_dollar": g["total_gain_dollar"],
+                "total_gain_pct": _pct(g["total_gain_dollar"], cb),
+                "ytd_gain_dollar": g["ytd_gain_dollar"],
+                "mtd_gain_dollar": g["mtd_gain_dollar"],
+            })
+        return out
+
     symbols = [
         {
             "tos_symbol": r.get("tos_symbol"),
@@ -118,6 +201,7 @@ def get_universe(date: Optional[str] = Query(None)):
             "asset_class": _norm_asset_class(r.get("real_asset_class")),
             "style_tags": _style_labels(r.get("style_stances")),
             "sources": _source_codes(r.get("source_actions")),
+            **_gain_fields(r.get("tos_symbol")),
         }
         for r in actionable_rows
         if r.get("tos_symbol")
@@ -139,6 +223,17 @@ def get_universe(date: Optional[str] = Query(None)):
             "account_id": r.get("account_id"),
             "account_tag": r.get("account_tag"),
             "market_value": float(r.get("market_value") or 0),
+            # 2026-09-03: per-account unrealized P&L, straight off this same
+            # get_portfolio() row -- no aggregation needed here (unlike
+            # symbols[] above, which sums across accounts per symbol).
+            "avg_cost": _f(r.get("avg_cost")),
+            "cost_basis": _f(r.get("cost_basis")),
+            "today_gain_dollar": _f(r.get("today_gain_dollar")),
+            "today_gain_pct": _f(r.get("today_gain_pct")),
+            "total_gain_dollar": _f(r.get("total_gain_dollar")),
+            "total_gain_pct": _f(r.get("total_gain_pct")),
+            "ytd_gain_dollar": _f(r.get("ytd_gain_dollar")),
+            "mtd_gain_dollar": _f(r.get("mtd_gain_dollar")),
         }
         for r in portfolio_rows
         if not r.get("is_cash") and r.get("symbol") and r.get("market_value")
@@ -149,4 +244,50 @@ def get_universe(date: Optional[str] = Query(None)):
             cash_totals[r["account_id"]] = cash_totals.get(r["account_id"], 0.0) + float(r.get("market_value") or 0)
     cash_by_account = [{"account_id": k, "cash_value": v} for k, v in cash_totals.items()]
 
-    return {"symbols": symbols, "positions": positions, "accounts": accounts, "cash_by_account": cash_by_account}
+    # 2026-09-03: realized gain per account (YTD + all-time), for the
+    # account-tile tooltip -- same drv_realized_gain rollup as
+    # /api/portfolio/realized?group_by=account, called directly (plain
+    # Python call, same reuse pattern as get_actionable/get_portfolio
+    # above) rather than duplicating its SQL. `bucket` is the account's
+    # raw account_number/account_id (CS) or Fidelity's own masked account
+    # identifier (F) -- both are exactly what get_portfolio's own
+    # `account_id` already uses, so this joins straight onto `positions`/
+    # `cash_by_account` above with no translation needed.
+    realized_by_account = []
+    try:
+        for r in get_portfolio_realized(
+            date=date, symbol=None, account=None, source=None,
+            group_by="account", from_date=None, to_date=None,
+        ):
+            if r.get("bucket"):
+                realized_by_account.append({
+                    "account_id": r["bucket"],
+                    "total_realized": float(r.get("total_realized") or 0),
+                    "ytd_realized": float(r.get("ytd_realized") or 0),
+                })
+    except Exception:
+        pass
+
+    # 2026-09-05: dividend income per account (YTD + all-time), for the
+    # account-tile tooltip -- same shape/reuse pattern as realized_by_account
+    # just above (drv_dividend_income via /api/portfolio/dividends).
+    dividends_by_account = []
+    try:
+        for r in get_portfolio_dividends(
+            date=date, symbol=None, account=None, source=None,
+            group_by="account", from_date=None, to_date=None,
+        ):
+            if r.get("bucket"):
+                dividends_by_account.append({
+                    "account_id": r["bucket"],
+                    "total_dividends": float(r.get("total_amount") or 0),
+                    "ytd_dividends": float(r.get("ytd_amount") or 0),
+                })
+    except Exception:
+        pass
+
+    return {
+        "symbols": symbols, "positions": positions, "accounts": accounts,
+        "cash_by_account": cash_by_account, "realized_by_account": realized_by_account,
+        "dividends_by_account": dividends_by_account,
+    }

@@ -1853,6 +1853,37 @@ ALTER TABLE drv_realized_gain_estimate ADD COLUMN IF NOT EXISTS prev_mark_price 
 ALTER TABLE drv_realized_gain_estimate ADD COLUMN IF NOT EXISTS sold_move_est   NUMERIC;
 
 
+-- -----------------------------------------------------
+-- drv_dividend_income  <- gross dividend income per (source, account,
+-- symbol, pay_date, leg), derived from {hist_cst, hist_ft} the same way
+-- drv_realized_gain is (etl/derive_dividend_income.py, triggered right
+-- alongside derive_realized_gain in etl/etl_load.py). Not FIFO -- a
+-- straight filter+classify of the transaction tables, no lot matching.
+--
+-- "Gross" = cash-received dividends PLUS dividend-reinvestment (DRIP)
+-- amounts. Both brokers record a DRIP leg as a BUY-tagged row (never
+-- tagged as a dividend), so summing only dividend-tagged rows silently
+-- undercounts income for any symbol with DRIP on. Each leg is its own row
+-- (is_reinvested flag) so the cash-vs-reinvested split stays auditable;
+-- summing both gives the figure a 1099-DIV would report. User: "track it"
+-- (dividends), confirmed "gross income" over "cash-received only" --
+-- 2026-09-05.
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS drv_dividend_income (
+    source         TEXT NOT NULL,           -- 'CS' or 'F'
+    account        TEXT NOT NULL,
+    tos_symbol     TEXT NOT NULL,
+    pay_date       DATE NOT NULL,
+    amount         NUMERIC NOT NULL,        -- gross $ for this leg (always > 0)
+    is_reinvested  BOOLEAN NOT NULL DEFAULT FALSE,  -- TRUE = DRIP leg, FALSE = cash-received
+    raw_action     TEXT,                    -- original broker action text, for audit
+    computed_at    TIMESTAMP NOT NULL DEFAULT now(),
+    PRIMARY KEY (source, account, tos_symbol, pay_date, amount, is_reinvested)
+);
+CREATE INDEX IF NOT EXISTS ix_drv_dividend_income_date ON drv_dividend_income(pay_date);
+CREATE INDEX IF NOT EXISTS ix_drv_dividend_income_acct ON drv_dividend_income(account, pay_date);
+CREATE INDEX IF NOT EXISTS ix_drv_dividend_income_sym  ON drv_dividend_income(tos_symbol, pay_date);
+
 
 -- -----------------------------------------------------
 

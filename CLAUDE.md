@@ -41,6 +41,7 @@ trading-dashboard/
             tickers_initial_load.py, db.py, _logging.py, warnings.py, notify.py,
             derive.py, derive_v2.py, _derive_common.py, derive_cat_atomic_input.py,
             derive_outlook_action.py, derive_actionable.py, derive_realized.py,
+            derive_dividend_income.py,
             derive_freshness.py, rule_groups.py, rebuild_rules.py,
             compute_outcomes.py, mark_sales.py, ma_codegen.py
           BUILD/CODEGEN one-offs (run manually via `python -m`, not in runtime path):
@@ -67,7 +68,7 @@ trading-dashboard/
 - `drv_*` — derived, idempotent (`DELETE WHERE as_of_date=D` → INSERT). Key tables:
   - **`drv_ma`** — **compatibility VIEW** (not a table as of 2026-05-31). JOINs the 5 component tables. Never INSERT into it.
   - `drv_symbols`, `drv_technicals`, `drv_fundamentals`, `drv_outlooks`, `drv_portfolio` — 5 component tables written by derive_all (replaced drv_ma).
-  - `drv_dash`, `drv_stks`, `drv_dash_summary`, `drv_trig`, `drv_rule_outcome`, `drv_quote`, `drv_rr`, `drv_cat_atomic_input`, `drv_realized_gain`, `drv_cs_realized_gain`.
+  - `drv_dash`, `drv_stks`, `drv_dash_summary`, `drv_trig`, `drv_rule_outcome`, `drv_quote`, `drv_rr`, `drv_cat_atomic_input`, `drv_realized_gain`, `drv_cs_realized_gain`, `drv_dividend_income`.
   - `drv_actionable` — final recommendation per symbol. Columns: `consolidated_action`, `trig_action` (SA/STM/SS/BM vocab), `triggered_group_ids` JSONB, `source_actions` JSONB.
 - `meta_*` — operational (etl_run, file_processed, cleanup_policy, derived_run, scheduler_log, hedgeye_msg [raw Hedgeye emails before parsing], warning, macro_fetch).
 
@@ -239,6 +240,8 @@ If truncated, **don't re-Edit** — append the missing tail via bash heredoc. Sm
 | Rule Flow crossover formulas — Trade(JM) vs Trend(JP) | Trade: `IFS(D>AF AND AF>MIN(EF,J),1, MAX(EF,I)>AF AND AF>D,-1, 0)` — no BZ. Trend: same but `MIN(BZ,EF,J)` / `MAX(BZ,EF,I)` — includes BZ. DMA crossovers: BZ only. |
 | Current Price SD Rule (NK) input scale | Python uses `net_chng/AC`; Excel uses `pct_change(%)×D/AC` (100× larger). Thresholds in `ref_trig_atomic_rule` calibrated at Python scale — do not change formula without also updating thresholds. |
 | Dashboard / snapshot-date logic | `docs/dashboard_logic.md` |
+| Dividend income (gross — cash-received + reinvested/DRIP legs) | `docs/dividend_income_logic.md`; `etl/derive_dividend_income.py` → `drv_dividend_income`; `GET /api/portfolio/dividends`; Portfolio screen "Dividends" tab (`web/portfolio.js`) |
+| Realized gain (FIFO) vs legacy avg-cost realized gain | `etl/derive_realized.py` → `drv_realized_gain` (FIFO, both brokers, feeds `GET /api/portfolio/realized`) vs `etl/derive.py::_derive_cs_realized_gain_impl` → `drv_cs_realized_gain` (legacy per-day avg-cost snapshot-diff, Schwab only, feeds the same-day "Today's Gain" KPI before the transaction file lands) |
 | Dashboard cockpit design (six-band `/` landing screen, supersedes the Attention panel) | `docs/dashboard_cockpit_design.md` |
 | Risk Dial (14/15 gauges, weight-arithmetic budget, size multiplier) | `etl/derive_risk_dial.py`; `ref_risk_gauge`; `GET /api/cockpit/risk-dial` |
 | Market stats — realized vol (Yang–Zhang), VRP, breadth, participation | `etl/derive_market_stat.py` → `drv_market_stat` |

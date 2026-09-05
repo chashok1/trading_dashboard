@@ -253,6 +253,10 @@
               style="border:none;background:none;padding:8px 16px;font-size:12px;
                      font-weight:500;color:#6b7280;cursor:pointer;
                      border-bottom:2px solid transparent;margin-bottom:-2px;">Activity</button>
+      <button class="pf-tab-btn" data-pf-tab="dividends"
+              style="border:none;background:none;padding:8px 16px;font-size:12px;
+                     font-weight:500;color:#6b7280;cursor:pointer;
+                     border-bottom:2px solid transparent;margin-bottom:-2px;">Dividends</button>
       <div style="margin-left:auto;font-size:11px;color:#6b7280;align-self:center;padding-right:8px;"
            id="pfTabHint">Snapshot positions (hist_cs / hist_f)</div>
     </div>
@@ -538,6 +542,75 @@
       </div>
     </div>
     </div><!-- /pf-pane-realized (now labeled "Activity") -->
+
+    <!-- User: "track it" (dividends) -- gross dividend income (cash +
+         reinvested/DRIP legs), from drv_dividend_income
+         (etl/derive_dividend_income.py). Mirrors the Realized pane's
+         structure/filters on purpose, same params, so the two tabs
+         behave identically. -->
+    <div class="pf-tab-pane" id="pf-pane-dividends">
+    <div class="card" style="border-radius:0; margin:0 8px;">
+      <div class="pf-filter-bar" style="margin-top:0;">
+        <span style="font-size:11px; color:var(--text-2,#666); margin-right:8px;">
+          Gross (cash + reinvested) → <code>drv_dividend_income</code>
+        </span>
+        <label>Group by</label>
+        <select id="divGroupBy">
+          <option value="symbol" selected>Symbol</option>
+          <option value="account">Account</option>
+          <option value="none">Raw payments</option>
+        </select>
+        <label>Source</label>
+        <select id="divSrcFilter">
+          <option value="">All (F+CS)</option>
+          <option value="F">Fidelity (F)</option>
+          <option value="CS">Charles Schwab (CS)</option>
+        </select>
+        <label>Account</label>
+        <select id="divAccountFilter" style="max-width:220px;">
+          <option value="">All accounts</option>
+        </select>
+        <label>Period</label>
+        <select id="divDatePreset">
+          <option value="ytd" selected>YTD</option>
+          <option value="custom">Custom</option>
+          <option value="mtd">MTD</option>
+          <option value="today">Today</option>
+          <option value="last30">30 days</option>
+          <option value="last90">90 days</option>
+          <option value="last180">180 days</option>
+          <option value="last365">1 year</option>
+          <option value="last1825">5 years</option>
+          <option value="all">All time</option>
+        </select>
+        <span id="divCustomDateWrap" style="display:none; gap:6px; align-items:center;">
+          <label>From</label>
+          <input type="date" id="divFromDate" style="font-size:12px; padding:4px 6px;">
+          <label>To</label>
+          <input type="date" id="divToDate" style="font-size:12px; padding:4px 6px;">
+        </span>
+        <label>Symbol</label>
+        <input type="search" id="divSymFilter" placeholder="AAPL …" style="width:90px;">
+        <span style="margin-left:auto;font-size:11px;color:var(--text-2,#666);" id="divRowCount"></span>
+      </div>
+      <!-- Rollup KPI strip (reflects current filters: source, account, symbol, date range) -->
+      <div class="kpi-strip" id="dividendKpiStrip">
+        <div class="kpi-card"><div class="kpi-label">Total Dividends</div><div class="kpi-value" id="divKpiAll">—</div><div class="kpi-sub" id="divKpiAllSub"></div></div>
+        <div class="kpi-card"><div class="kpi-label">YTD</div><div class="kpi-value" id="divKpiYtd">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">MTD</div><div class="kpi-value" id="divKpiMtd">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Cash received</div><div class="kpi-value" id="divKpiCash">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Reinvested (DRIP)</div><div class="kpi-value" id="divKpiReinvest">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Payments</div><div class="kpi-value" id="divKpiN">—</div></div>
+      </div>
+      <div style="border: 1px solid var(--border,#ececec); border-radius:6px; overflow:auto; max-height: 60vh;">
+        <table class="pf-grid" id="divGrid">
+          <thead id="divThead"></thead>
+          <tbody id="divBody"></tbody>
+        </table>
+        <div id="divEmpty" style="display:none;padding:32px;text-align:center;color:#666;">No dividend income in this view.</div>
+      </div>
+    </div>
+    </div><!-- /pf-pane-dividends -->
   </main>
 
   <!-- Drilldown Modal -->
@@ -572,7 +645,7 @@
 
   <script src="/static/_common.js"></script>
   <script src="/static/chart_modal.js"></script>
-  <script src="/static/portfolio.js"></script>
+  <script src="/static/portfolio.js?v=20260905d"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>

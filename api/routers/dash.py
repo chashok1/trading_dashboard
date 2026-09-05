@@ -4064,13 +4064,29 @@ def get_portfolio_activity(
 def get_portfolio_accounts(
     has_realized: bool = Query(True,
         description="Only return accounts that have at least one realized-gain row"),
+    has_dividends: bool = Query(False,
+        description="Only return accounts that have at least one dividend-income row "
+                     "(drv_dividend_income) — for the Dividends tab's filter dropdown. "
+                     "Takes precedence over has_realized when both would otherwise apply, "
+                     "since the two tables use the same account-value convention "
+                     "(account_number for F, account for CS) but the has_realized=False "
+                     "fallback below returns a friendly display label instead, which "
+                     "wouldn't match either table's own account column."),
 ):
-    """List distinct accounts for the Realized tab's filter dropdown.
+    """List distinct accounts for the Realized/Dividends tabs' filter dropdowns.
 
     When has_realized=True (default), returns only accounts with at least one
-    sell event in drv_realized_gain — so the dropdown stays useful.
+    sell event in drv_realized_gain — so the dropdown stays useful. When
+    has_dividends=True, same idea against drv_dividend_income instead.
     """
-    if has_realized:
+    if has_dividends:
+        sql = """
+            SELECT DISTINCT account, source
+            FROM drv_dividend_income
+            WHERE account IS NOT NULL
+            ORDER BY source, account
+        """
+    elif has_realized:
         sql = """
             SELECT DISTINCT account, source
             FROM drv_realized_gain
@@ -4153,7 +4169,7 @@ def get_portfolio_realized(
     where_extra = []
     params: dict = {"d": d, "ytd": ytd_start, "mtd": mtd_start}
     if symbol:
-        where_extra.append("symbol = :sym"); params["sym"] = symbol.upper()
+        where_extra.append("tos_symbol = :sym"); params["sym"] = symbol.upper()
     if account:
         where_extra.append("account ILIKE :acc"); params["acc"] = f"%{account}%"
     if source:
@@ -4166,13 +4182,13 @@ def get_portfolio_realized(
 
     if group_by == "none":
         sql = f"""
-            SELECT source, account, symbol, sell_date, shares_sold,
+            SELECT source, account, tos_symbol AS symbol, sell_date, shares_sold,
                    sell_proceeds, cost_basis, realized_gain, realized_gain_pct,
                    holding_days_avg, is_long_term, lots_consumed,
                    FALSE AS is_estimate
             FROM drv_realized_gain
             WHERE sell_date <= :d {wclause}
-            ORDER BY sell_date DESC, symbol
+            ORDER BY sell_date DESC, tos_symbol
             LIMIT 1000
         """
         # Provisional partial-sale estimates (etl/mark_sales.py) — snapshot-diff
@@ -4213,8 +4229,13 @@ def get_portfolio_realized(
     key = "symbol" if group_by == "symbol" else "account"
     if key not in ("symbol", "account"):
         key = "symbol"
+    # drv_realized_gain's symbol column is tos_symbol (renamed 2026-07-18, see
+    # its own ix_drv_realized_gain_tos_sym/ux_drv_realized_gain_natural_key
+    # comments) -- group_col is the real SQL column name, `key`/`bucket` stay
+    # "symbol" as the JSON-facing name group_by="symbol" callers expect.
+    group_col = "tos_symbol" if key == "symbol" else "account"
     sql = f"""
-        SELECT {key} AS bucket,
+        SELECT {group_col} AS bucket,
                COUNT(*) AS n_sells,
                SUM(shares_sold)                                   AS total_shares,
                SUM(sell_proceeds)                                 AS total_proceeds,
@@ -4232,12 +4253,235 @@ def get_portfolio_realized(
                MAX(sell_date)                                     AS last_sell
         FROM drv_realized_gain
         WHERE sell_date <= :d {wclause}
-        GROUP BY {key}
+        GROUP BY {group_col}
         ORDER BY total_realized DESC NULLS LAST
     """
     with session_scope() as s:
         rows = s.execute(text(sql), params).mappings().all()
     return [dict(r) for r in rows]
+
+
+@router.get("/api/portfolio/dividends")
+def get_portfolio_dividends(
+    date: Optional[str] = Query(None,
+        description="Anchor date for YTD/MTD comparison columns (default = today)"),
+    symbol:  Optional[str] = Query(None),
+    account: Optional[str] = Query(None,
+        description="Substring match on account name (ILIKE %account%)"),
+    source:  Optional[str] = Query(None),
+    group_by: str = Query("symbol", description="symbol | account | none (= raw payments)"),
+    from_date: Optional[str] = Query(None, alias="from",
+        description="Filter result rows to pay_date >= this (YYYY-MM-DD)"),
+    to_date: Optional[str]   = Query(None, alias="to",
+        description="Filter result rows to pay_date <= this (YYYY-MM-DD)"),
+):
+    """Dividend-income rollup from drv_dividend_income (gross -- cash-received
+    + reinvested/DRIP legs, see etl/derive_dividend_income.py for why both
+    count). Same shape as /api/portfolio/realized (its sibling endpoint) on
+    purpose, so the two screens/params behave identically:
+
+    Three response shapes depending on `group_by`:
+      symbol  → one row per symbol with totals + YTD + MTD
+      account → one row per account with totals + YTD + MTD
+      none    → raw dividend-payment rows ordered by pay_date DESC
+
+    Date filters:
+      • date         — anchor for the YTD / MTD comparison columns
+      • from / to    — restrict the underlying payment rows
+    """
+    from datetime import datetime
+
+    d = _resolve_date(date)
+    ytd_start = d.replace(month=1, day=1)
+    mtd_start = d.replace(day=1)
+
+    fd = None
+    td = None
+    if from_date:
+        try:
+            fd = datetime.strptime(from_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(400, "from must be YYYY-MM-DD")
+    if to_date:
+        try:
+            td = datetime.strptime(to_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(400, "to must be YYYY-MM-DD")
+
+    where_extra = []
+    params: dict = {"d": d, "ytd": ytd_start, "mtd": mtd_start}
+    if symbol:
+        where_extra.append("tos_symbol = :sym"); params["sym"] = symbol.upper()
+    if account:
+        where_extra.append("account ILIKE :acc"); params["acc"] = f"%{account}%"
+    if source:
+        where_extra.append("source = :src"); params["src"] = source.upper()
+    if fd:
+        where_extra.append("pay_date >= :fd"); params["fd"] = fd
+    if td:
+        where_extra.append("pay_date <= :td"); params["td"] = td
+    wclause = (" AND " + " AND ".join(where_extra)) if where_extra else ""
+
+    # Point-in-time cost basis per payment: what was actually HELD (per
+    # hist_f/hist_cs -- append-only position snapshots, not just the
+    # latest) on the closest available snapshot -- prefers on-or-before
+    # that specific pay_date, falls back to the nearest snapshot within 30
+    # days AFTER it (flagged cost_basis_is_approx) for a position that was
+    # only just opened right around payment time and has no earlier
+    # snapshot yet. 2026-09-05, replaces an earlier "sum every historical
+    # BUY transaction" attempt: confirmed live that approach produces
+    # nonsensical numbers for any actively-traded symbol -- GOOGL alone
+    # showed $431k "invested" against a $34.85 dividend, because the
+    # account trades it in small lots dozens of times a year; gross-summing
+    # every buy (never netting the sells) compounds every round-trip into
+    # one inflated total. A symbol/account's true "investment" varies
+    # payment to payment as the position is traded, so this looks up the
+    # REAL position size at each individual payment instead of one
+    # lifetime aggregate. User: "numbers doesn't make sense. Check and
+    # properly display the values" -- 2026-09-05.
+    pit_cte = f"""
+        WITH pit_raw AS (
+            SELECT d.source, d.account, d.tos_symbol AS symbol, d.pay_date,
+                   d.amount, d.is_reinvested,
+                   pit_f.cost_basis_total AS f_cb, pit_f.is_approx AS f_approx,
+                   pit_cs.cost_basis AS cs_cb, pit_cs.is_approx AS cs_approx
+            FROM drv_dividend_income d
+            LEFT JOIN LATERAL (
+                SELECT hf.cost_basis_total, (hf.snapshot_date > d.pay_date) AS is_approx
+                FROM hist_f hf
+                WHERE d.source = 'F' AND hf.account_number = d.account AND hf.tos_symbol = d.tos_symbol
+                  AND ABS(hf.snapshot_date - d.pay_date) <= 30
+                ORDER BY (hf.snapshot_date > d.pay_date), ABS(hf.snapshot_date - d.pay_date)
+                LIMIT 1
+            ) pit_f ON d.source = 'F'
+            LEFT JOIN LATERAL (
+                SELECT hc.cost_basis, (hc.snapshot_date > d.pay_date) AS is_approx
+                FROM hist_cs hc
+                WHERE d.source = 'CS' AND hc.account = d.account AND hc.tos_symbol = d.tos_symbol
+                  AND ABS(hc.snapshot_date - d.pay_date) <= 30
+                ORDER BY (hc.snapshot_date > d.pay_date), ABS(hc.snapshot_date - d.pay_date)
+                LIMIT 1
+            ) pit_cs ON d.source = 'CS'
+            WHERE d.pay_date <= :d {wclause}
+        ),
+        pit AS (
+            SELECT source, account, symbol, pay_date, amount, is_reinvested,
+                   COALESCE(f_cb, cs_cb) AS cost_basis_at_payment,
+                   COALESCE(f_approx, cs_approx, FALSE) AS cost_basis_is_approx
+            FROM pit_raw
+        )
+    """
+
+    if group_by == "none":
+        sql = f"{pit_cte} SELECT * FROM pit ORDER BY pay_date DESC, symbol LIMIT 1000"
+        with session_scope() as s:
+            rows = [dict(r) for r in s.execute(text(sql), params).mappings().all()]
+        for r in rows:
+            cb = r.get("cost_basis_at_payment")
+            r["yield_on_cost_pct"] = (float(r["amount"]) / float(cb) * 100.0) if cb else None
+        return rows
+
+    key = "symbol" if group_by == "symbol" else "account"
+    if key not in ("symbol", "account"):
+        key = "symbol"
+    group_col = "symbol" if key == "symbol" else "account"
+    sql = f"""
+        {pit_cte},
+        agg AS (
+            SELECT {group_col} AS bucket,
+                   COUNT(*)                                            AS n_payments,
+                   SUM(amount)                                         AS total_amount,
+                   SUM(CASE WHEN NOT is_reinvested THEN amount
+                            ELSE 0 END)                                 AS cash_amount,
+                   SUM(CASE WHEN is_reinvested THEN amount
+                            ELSE 0 END)                                 AS reinvested_amount,
+                   SUM(CASE WHEN pay_date >= :ytd
+                            THEN amount ELSE 0 END)                     AS ytd_amount,
+                   SUM(CASE WHEN pay_date >= :mtd
+                            THEN amount ELSE 0 END)                     AS mtd_amount,
+                   MIN(pay_date)                                        AS first_payment,
+                   MAX(pay_date)                                        AS last_payment,
+                   -- Average of each individual payment's OWN yield
+                   -- (amount ÷ what was actually held right then), not
+                   -- total ÷ one snapshot -- correct for a position whose
+                   -- size varies payment to payment (see this block's own
+                   -- comment above).
+                   AVG(CASE WHEN cost_basis_at_payment > 0
+                            THEN amount / cost_basis_at_payment * 100.0 END) AS avg_yield_pct
+            FROM pit
+            GROUP BY {group_col}
+        ),
+        last_by_pair AS (
+            -- One row per (account, symbol) -- that PAIR's own point-in-time
+            -- cost basis as of ITS most recent payment. A symbol grouping
+            -- can span several accounts (and an account grouping several
+            -- symbols); computing "last payment" straight off the bucket
+            -- column alone (a single DISTINCT ON) would silently keep only
+            -- whichever ONE pair happened to pay most recently and drop
+            -- every other contributing account/symbol entirely -- confirmed
+            -- live this undercounts a symbol like GOOGL that pays in more
+            -- than one account. Summing each pair's own latest snapshot
+            -- (below) is the fix.
+            SELECT DISTINCT ON (account, symbol) account, symbol,
+                   cost_basis_at_payment, cost_basis_is_approx
+            FROM pit
+            ORDER BY account, symbol, pay_date DESC
+        ),
+        last_cb AS (
+            -- Position size as of each contributing pair's own most recent
+            -- payment, summed onto this bucket -- a concrete, understandable
+            -- "what you had invested last time this paid" figure for the
+            -- Investment column, not a lifetime sum.
+            SELECT {group_col} AS bucket,
+                   SUM(cost_basis_at_payment) AS investment,
+                   BOOL_OR(cost_basis_is_approx) AS investment_is_approx
+            FROM last_by_pair
+            GROUP BY {group_col}
+        )
+        SELECT agg.*, last_cb.investment, last_cb.investment_is_approx
+        FROM agg JOIN last_cb ON agg.bucket = last_cb.bucket
+        ORDER BY agg.total_amount DESC NULLS LAST
+    """
+    with session_scope() as s:
+        rows = [dict(r) for r in s.execute(text(sql), params).mappings().all()]
+    for r in rows:
+        inv = r.pop("investment", None)
+        is_approx = r.pop("investment_is_approx", False)
+        r["cost_basis"] = float(inv) if inv else None
+        r["investment_basis"] = ("point_in_time_approx" if is_approx else "point_in_time") if inv else None
+        avg_y = r.pop("avg_yield_pct", None)
+        r["yield_on_cost_pct"] = float(avg_y) if avg_y is not None else None
+
+    if key == "account":
+        # An account persists (never "closes" the way an individual symbol
+        # position can), so its CURRENT total cost basis is a coherent,
+        # single point-in-time figure -- unlike summing each contributing
+        # symbol's own last-payment snapshot (what the SQL above computes,
+        # correct for symbol grouping), which adds together snapshots from
+        # DIFFERENT calendar dates per symbol and can badly overstate the
+        # account's real size once capital has rotated between symbols --
+        # confirmed live: summed to $577k for an account whose real current
+        # total was $242k. Overrides `cost_basis`/`investment_basis` for
+        # this grouping only; `yield_on_cost_pct` (an average of RATES, not
+        # summed dollars) doesn't have this problem and is kept as-is.
+        try:
+            portfolio_rows = get_portfolio(date=date, consolidated=False, account=None, source=None, latest_prices=False)
+        except Exception:
+            portfolio_rows = []
+        cost_by_account: dict = {}
+        for pr in portfolio_rows:
+            if source and (pr.get("source") or "").upper() != source.upper():
+                continue
+            acct_id = pr.get("account_id")
+            if not acct_id:
+                continue
+            cost_by_account[acct_id] = cost_by_account.get(acct_id, 0.0) + float(pr.get("cost_basis") or 0)
+        for r in rows:
+            cb = cost_by_account.get(r["bucket"])
+            r["cost_basis"] = cb
+            r["investment_basis"] = "current_account_total" if cb else None
+
+    return rows
 
 
 @router.get("/api/portfolio/groups")

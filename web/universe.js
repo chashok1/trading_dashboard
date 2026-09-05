@@ -87,6 +87,11 @@
   // account_id -> {total_realized, ytd_realized} -- FIFO-matched realized
   // gain (drv_realized_gain), same rollup /portfolio's Realized tab uses.
   let realizedByAccount = new Map();
+  // account_id -> {total_dividends, ytd_dividends} -- gross dividend income
+  // (drv_dividend_income), same rollup /portfolio's Dividends tab uses.
+  // Feeds the Account root tile tooltip, same spot realizedByAccount does.
+  // User: "add the dividends line to universe" -- 2026-09-05.
+  let dividendsByAccount = new Map();
   // account_id -> {buy, sell} -- count of that account's held positions
   // whose current final_code (drv_actionable's trading signal) is a buy-
   // or sell-tier action, same tiering ACTION_COLOR already encodes. Feeds
@@ -296,6 +301,7 @@
       acctTotals.set(acctId, (acctTotals.get(acctId) || 0) + cashVal);
     });
     realizedByAccount = new Map((payload.realized_by_account || []).map(r => [r.account_id, r]));
+    dividendsByAccount = new Map((payload.dividends_by_account || []).map(r => [r.account_id, r]));
     ACCOUNTS = [...acctTotals.entries()]
       .map(([key, total]) => ({ key, label: acctLabelMap.get(key) || key, total, posCount: posCounts.get(key) || 0 }))
       .sort((a, b) => b.total - a.total);
@@ -1162,7 +1168,20 @@
   // they have sublevels then the tile should have a 'Stocks' link so I can
   // go to stocks directly."
   function renderAccountFlat(W, H) {
-    const rawValueFn = a => sizeMode === 'capital' ? a.total : a.posCount;
+    // Count mode sizes tiles by posCount -- an all-cash account (real $,
+    // zero stock positions, e.g. an HSA or a beneficiary account sitting
+    // in cash) has posCount=0, so `rawValueFn(a) > 0` was silently
+    // excluding it from `sized` below and it never got a tile at all in
+    // the DEFAULT (Count) mode -- confirmed live: 2 of 6 real accounts
+    // ("A"/HSA ...311, both cash-only) were completely missing from the
+    // treemap. The `cashByAccount` build()-time fold-in (this file's own
+    // earlier comment) only guaranteed these accounts exist in `ACCOUNTS`
+    // with a real `total`, not that Count mode's sizing basis would ever
+    // be positive for them. Nominal size 1 (a real cash account still
+    // "counts" as one thing to show) fixes it without disturbing relative
+    // sizing among accounts that DO hold positions. User: "Cash is missing
+    // from Universe. Check and fix it" -- 2026-09-05.
+    const rawValueFn = a => sizeMode === 'capital' ? a.total : (a.posCount > 0 ? a.posCount : (a.total > 0 ? 1 : 0));
     const sized = ACCOUNTS.filter(a => rawValueFn(a) > 0);
     const root = d3.hierarchy({ children: sized }).sum(floorValueFn(sized, rawValueFn)).sort((a, b) => b.value - a.value);
     d3.treemap().tile(SQUARE_TILE).size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
@@ -1208,6 +1227,7 @@
       // all-cash) doesn't show a misleading "$0".
       const g = acctGain.get(d.data.key);
       const rg = realizedByAccount.get(d.data.key);
+      const dv = dividendsByAccount.get(d.data.key);
       const gainPct = g && g.costBasis ? (g.totalGainDollar / g.costBasis * 100) : null;
       const hint = d.data.posCount > 0 ? 'Click to see asset classes · or "Stocks" to skip straight to symbols' : 'No securities held';
       tt.innerHTML = `<div class="uv-tt-title">${esc(d.data.label)}</div>` +
@@ -1216,6 +1236,7 @@
         `<div class="uv-tt-row"><span>Cash</span><span>${fmtUsd(cashVal)}</span></div>` +
         (g ? `<div class="uv-tt-row"><span>Unrealized</span>${gainSpanHtml(g.totalGainDollar, gainPct)}</div>` : '') +
         (rg ? `<div class="uv-tt-row"><span>Realized (YTD)</span>${gainSpanHtml(rg.ytd_realized, null)}</div>` : '') +
+        (dv && dv.ytd_dividends ? `<div class="uv-tt-row"><span>Dividends (YTD)</span>${gainSpanHtml(dv.ytd_dividends, null)}</div>` : '') +
         `<div class="uv-tt-row"><span>Symbols</span><span>${d.data.posCount}</span></div>` +
         `<div class="uv-tt-hint">${hint}</div>`;
       tt.style.left = (evt.clientX + 14) + 'px'; tt.style.top = (evt.clientY + 14) + 'px'; tt.classList.add('show');
