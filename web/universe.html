@@ -164,6 +164,25 @@
     @media (prefers-reduced-motion: reduce) {
       .uv-tab, #uvTt { transition: none; }
     }
+
+    /* 2026-09-03 (held-perspective proposal): portfolio-wide KPI strip --
+       same .kpi-strip/.kpi-card pattern already established on
+       web/portfolio.html, copied here rather than shared/extracted (every
+       screen in this app keeps its own page-scoped <style> block, see this
+       file's own top-of-file comment). Page-wide facts (total held, P&L,
+       cash, account count) -- NOT re-filtered by the View/Filter/Color
+       controls below, which only narrow the treemap itself; rendered once
+       from build(), not on every render(). */
+    .uv-kpi-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px; margin-bottom: 10px; }
+    .uv-kpi-card { padding: 7px 12px; border-radius: 8px; background: var(--card-bg);
+      border: 1px solid var(--border); min-width: 0; }
+    .uv-kpi-label { font-size: 10px; letter-spacing: .5px; text-transform: uppercase;
+      color: var(--text-3); margin-bottom: 2px; }
+    .uv-kpi-value { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .uv-kpi-sub { font-size: 10.5px; margin-top: 1px; font-variant-numeric: tabular-nums; color: var(--text-2); }
+    .uv-gain-pos { color: #16a34a; }
+    .uv-gain-neg { color: #dc2626; }
   </style>
 </head>
 <body class="act-page">
@@ -226,6 +245,19 @@
           </div>
         </div>
 
+        <!-- Tile fill: Signal (trading action, existing behavior) vs
+             Gain/Loss (unrealized P&L %, held perspective). Symbol-level
+             only, same visibility rule as Color/Style/Risk Range -- see
+             atSymbolLevel(). Distinct control from the "Color" filter above
+             (that narrows WHICH symbols show; this changes what the fill
+             represents), so labeled "Color by" to avoid confusion. -->
+        <div class="uv-ctrl-group" id="uvColorModeRow">
+          <div class="uv-tabs small" role="tablist" aria-label="Tile fill mode">
+            <button class="uv-tab" role="tab" data-colormode="signal" aria-selected="true">Signal</button>
+            <button class="uv-tab" role="tab" data-colormode="gainloss" aria-selected="false">Gain/Loss</button>
+          </div>
+        </div>
+
         <!-- Hidden under "By Account" -- that view only ever means
              something for held positions (there's no such thing as an
              unheld position "in an account"), so it's forced to Held and
@@ -282,6 +314,8 @@
       </div>
     </div>
 
+    <div class="uv-kpi-strip" id="uvKpiStrip"></div>
+
     <div class="uv-crumbs-row">
       <div class="uv-crumbs" id="uvCrumbs"></div>
       <div class="uv-crumbs-right">
@@ -303,6 +337,6 @@
   <div id="uvTt"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
-  <script src="/static/universe.js?v=35"></script>
+  <script src="/static/universe.js?v=38"></script>
 </body>
 </html>

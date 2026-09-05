@@ -73,6 +73,17 @@
   let ACCOUNTS = [];           // [{key,label,total,posCount}] sorted by total desc -- total = securities + cash
   let acctLabelMap = new Map();
   let cashByAccount = new Map(); // account_id -> cash $ (no sector -- can't feed a by-sector breakdown)
+  // 2026-09-03 (held-perspective proposal): account_id -> {costBasis,
+  // totalGainDollar, todayGainDollar} -- summed from POS rows (each already
+  // carries its own account's unrealized P&L straight off get_portfolio(),
+  // see api/routers/universe.py). Feeds the Account root tile tooltip.
+  let acctGain = new Map();
+  // account_id -> {total_realized, ytd_realized} -- FIFO-matched realized
+  // gain (drv_realized_gain), same rollup /portfolio's Realized tab uses.
+  let realizedByAccount = new Map();
+  // Portfolio-wide KPI strip totals, computed once in build() -- NOT
+  // re-filtered by View/Filter/Color (those only narrow the treemap).
+  let KPI = null;
   // tos_symbol -> full SYMS row (final_code, last_price, trade/trend line
   // values, lrr/trr, style_tags) -- position rows (account drilldowns)
   // don't carry any of this themselves, only {tos_symbol, market_value},
@@ -211,9 +222,15 @@
     // position counts, for the "By Account" root level.
     const acctTotals = new Map();
     const posCounts = new Map();
+    acctGain = new Map();
     POS.forEach(r => {
       acctTotals.set(r.account_id, (acctTotals.get(r.account_id) || 0) + (r.market_value || 0));
       posCounts.set(r.account_id, (posCounts.get(r.account_id) || 0) + 1);
+      const g = acctGain.get(r.account_id) || { costBasis: 0, totalGainDollar: 0, todayGainDollar: 0 };
+      if (r.cost_basis != null) g.costBasis += r.cost_basis;
+      if (r.total_gain_dollar != null) g.totalGainDollar += r.total_gain_dollar;
+      if (r.today_gain_dollar != null) g.todayGainDollar += r.today_gain_dollar;
+      acctGain.set(r.account_id, g);
     });
     // Cash folded into every account's total (not just cash-only ones) --
     // an account's real size is securities + cash, and a 100%-cash account
@@ -224,10 +241,37 @@
     cashByAccount.forEach((cashVal, acctId) => {
       acctTotals.set(acctId, (acctTotals.get(acctId) || 0) + cashVal);
     });
+    realizedByAccount = new Map((payload.realized_by_account || []).map(r => [r.account_id, r]));
     ACCOUNTS = [...acctTotals.entries()]
       .map(([key, total]) => ({ key, label: acctLabelMap.get(key) || key, total, posCount: posCounts.get(key) || 0 }))
       .sort((a, b) => b.total - a.total);
     acctColor = new Map(ACCOUNTS.map((a, i) => [a.key, ACCOUNT_COLOR_SLOTS[i % ACCOUNT_COLOR_SLOTS.length]]));
+
+    // 2026-09-03 (held-perspective proposal): portfolio-wide KPI totals.
+    // Total securities/cash come from ACCOUNTS (already the securities+cash
+    // total per account); unrealized P&L is summed from SYMS (held) rather
+    // than POS so it covers the full drv_actionable-known universe, not
+    // just the subset POS kept (POS drops a symbol with no sector match --
+    // see its own filter in build() above). Realized is summed from the
+    // per-account rollup since that's all the API returns (no single
+    // portfolio-wide total row).
+    const totalCash = d3.sum([...cashByAccount.values()]);
+    const totalPortfolio = d3.sum(ACCOUNTS, a => a.total);
+    const heldSyms = SYMS.filter(r => r.held_today);
+    const totalCostBasis = d3.sum(heldSyms, r => r.cost_basis || 0);
+    const totalUnrealizedDollar = d3.sum(heldSyms, r => r.total_gain_dollar || 0);
+    const totalTodayDollar = d3.sum(heldSyms, r => r.today_gain_dollar || 0);
+    const realizedRows = payload.realized_by_account || [];
+    KPI = {
+      totalPortfolio, totalCash,
+      totalSecurities: totalPortfolio - totalCash,
+      totalUnrealizedDollar,
+      totalUnrealizedPct: totalCostBasis ? (totalUnrealizedDollar / totalCostBasis * 100) : null,
+      totalTodayDollar,
+      totalRealizedYtd: d3.sum(realizedRows, r => r.ytd_realized || 0),
+      totalRealizedAll: d3.sum(realizedRows, r => r.total_realized || 0),
+      accountCount: ACCOUNTS.length,
+    };
 
     // categorical color assignment — ranked on the FULL universe so a
     // sector's / asset class's color stays the same across filters, drills
@@ -292,6 +336,39 @@
     return 'hold';
   }
 
+  // 2026-09-03 (held-perspective proposal): Gain/Loss tile fill -- unrealized
+  // P&L % interpolated from neutral (--act-neutral) toward full buy/sell
+  // strong (green/red) as magnitude approaches +/-20% (a reasonable full-
+  // saturation cap for a single stock's swing; beyond it stays at the same
+  // strong color rather than continuing to intensify). null (no cost basis
+  // -- not held, or a sold/estimate-only row) renders neutral, same as a
+  // HOLD signal tile.
+  const GAIN_COLOR_CAP_PCT = 20;
+  function gainColor(pct) {
+    const neutral = cssVar('--act-neutral');
+    if (pct == null) return neutral;
+    const clamped = Math.max(-GAIN_COLOR_CAP_PCT, Math.min(GAIN_COLOR_CAP_PCT, pct));
+    if (clamped === 0) return neutral;
+    const t = Math.abs(clamped) / GAIN_COLOR_CAP_PCT;
+    const strong = cssVar(clamped > 0 ? '--act-buy-strong' : '--act-sell-strong');
+    return d3.interpolateRgb(neutral, strong)(t);
+  }
+  // Tile fill dispatcher -- Signal (trading action) or Gain/Loss (unrealized
+  // P&L %), per the module-level colorMode toggle.
+  function tileColor(det) {
+    return colorMode === 'gainloss' ? gainColor(det.total_gain_pct) : actionColor(det.final_code);
+  }
+  const fmtSignedUsd = v => (v >= 0 ? '+' : '') + fmtUsd(v);
+  const fmtSignedPct1 = v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+  // Small colored "+$X (+Y%)" span for tooltips -- green/red, same convention
+  // as the tile's own Td/Tn line coloring (above/below = green/red).
+  function gainSpanHtml(dollar, pct) {
+    if (dollar == null) return '';
+    const color = dollar >= 0 ? '#16a34a' : '#dc2626';
+    const pctTxt = pct != null ? ` (${fmtSignedPct1(pct)})` : '';
+    return `<span style="color:${color};font-weight:700;">${fmtSignedUsd(dollar)}${pctTxt}</span>`;
+  }
+
   // Raw Risk Range position (%, can go <0 or >100) -- identical formula to
   // web/actionable.js's own _rawRrPos, so a symbol's mini RR bar here reads
   // the same as its Action popup's RR bar there.
@@ -332,6 +409,12 @@
   // 'all' | 'buy' | 'sell' | 'hold' -- narrows the drilldown (stock) tiles
   // by trading signal; has no effect above the drilldown level.
   let currentColorFilter = 'all';
+  // 2026-09-03 (held-perspective proposal): 'signal' (trading action fill,
+  // existing/default) | 'gainloss' (unrealized P&L % fill) -- what a symbol
+  // tile's own color/detail represents. Independent of currentColorFilter
+  // above (that narrows WHICH symbols show; this changes what the fill
+  // means), symbol-level only, same visibility rule as Color/Style.
+  let colorMode = 'signal';
   // 'all' or one tag from ALL_STYLE_TAGS -- same scope as Color.
   let currentStyleFilter = 'all';
   // Risk Range position band (0-100, clamped -- same scale the mini RR
@@ -393,6 +476,35 @@
     return true; // a sector (or ALL_SECTORS) is chosen -> symbol tiles
   }
 
+  // 2026-09-03 (held-perspective proposal): portfolio-wide KPI strip.
+  // Rendered once from build()'s KPI totals -- NOT re-rendered inside
+  // render(), since it deliberately does not follow the current View/
+  // Filter/drill (it's "what does my whole book look like", not "what's
+  // in the current treemap").
+  function renderKpiStrip() {
+    if (!KPI) return;
+    const card = (label, value, sub) =>
+      `<div class="uv-kpi-card"><div class="uv-kpi-label">${esc(label)}</div>` +
+      `<div class="uv-kpi-value">${value}</div>` +
+      (sub ? `<div class="uv-kpi-sub">${sub}</div>` : '') + `</div>`;
+    const gainCls = v => v >= 0 ? 'uv-gain-pos' : 'uv-gain-neg';
+    $('uvKpiStrip').innerHTML =
+      card('Total Portfolio', fmtUsd(KPI.totalPortfolio),
+        `${fmtUsd(KPI.totalSecurities)} securities`) +
+      card('Unrealized P&amp;L',
+        `<span class="${gainCls(KPI.totalUnrealizedDollar)}">${fmtSignedUsd(KPI.totalUnrealizedDollar)}</span>`,
+        KPI.totalUnrealizedPct != null
+          ? `<span class="${gainCls(KPI.totalUnrealizedPct)}">${fmtSignedPct1(KPI.totalUnrealizedPct)}</span>`
+          : '—') +
+      card('Today',
+        `<span class="${gainCls(KPI.totalTodayDollar)}">${fmtSignedUsd(KPI.totalTodayDollar)}</span>`) +
+      card('Realized (YTD)',
+        `<span class="${gainCls(KPI.totalRealizedYtd)}">${fmtSignedUsd(KPI.totalRealizedYtd)}</span>`,
+        `${fmtSignedUsd(KPI.totalRealizedAll)} all-time`) +
+      card('Cash', fmtUsd(KPI.totalCash)) +
+      card('Accounts', fmtInt(KPI.accountCount));
+  }
+
   function render() {
     // View tabs show as deselected while "All My Stocks" is active -- it's
     // orthogonal to currentView, not a 4th value of it.
@@ -402,6 +514,7 @@
     document.querySelectorAll('.uv-tab[data-filter]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.filter === currentFilter)));
     document.querySelectorAll('.uv-tab[data-color]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.color === currentColorFilter)));
     document.querySelectorAll('.uv-tab[data-style]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.style === currentStyleFilter)));
+    document.querySelectorAll('.uv-tab[data-colormode]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.colormode === colorMode)));
     // Filter (All/Held/Actionable) isn't a real choice under "By Account"
     // -- it's forced to Held there (see wireStaticControls) -- so hide it
     // instead of showing a 3-way selector that silently reverts you to
@@ -415,6 +528,7 @@
     $('uvColorRow').hidden = !showSymbolFilters;
     $('uvStyleRow').hidden = !showSymbolFilters;
     $('uvRrRow').hidden = !showSymbolFilters;
+    $('uvColorModeRow').hidden = !showSymbolFilters;
 
     if (flatStocksMode) { renderAllStocksFlat(); return; }
     if (currentView === 'account' && !(drill && drill.account)) { renderAccountRoot(); return; }
@@ -653,8 +767,39 @@
     }
   }
 
+  // Draws the "Stocks →" corner-link shared by every top-level tile that
+  // has sublevels underneath it (Account, Source, Equities-within-Asset-
+  // Class). User: "make sure last account tile has it visible" -- squarify
+  // hands the smallest item whichever thin shape the data produces: a WIDE
+  // short strip in some layouts, a TALL narrow column in others (confirmed
+  // via the live page's own DOM -- the real "last" tile came back w=53
+  // h=337, the opposite orientation from the wide-strip case this was
+  // first fixed for). One fixed w/h gate can't cover both, so this now
+  // picks between two layouts: "row" -- link right-aligned beside the name
+  // on the same line (needs width) -- when there's room, else "stacked" --
+  // link on its own line below the name/subtitle (needs height instead).
+  function canShowCornerLink(w, h) { return (w > 78 && h > 13) || (w > 40 && h > 46); }
+  function cornerLinkY(h) { return h < 22 ? Math.max(9, Math.round(h / 2) + 3) : 16; }
+  function appendCornerLink(g, w, h, ink, onClick) {
+    const t = g.append('text').attr('class', 'uv-c-link').attr('font-size', 8.5).attr('font-weight', 700)
+      .attr('fill', ink).style('text-decoration', 'underline').style('cursor', 'pointer')
+      .text('Stocks →')
+      .on('click', evt => { evt.stopPropagation(); onClick(); });
+    if (w > 78 && h > 13) {
+      t.attr('x', w - 6).attr('y', cornerLinkY(h)).attr('text-anchor', 'end');
+    } else {
+      t.attr('x', 5).attr('y', 44).attr('text-anchor', 'start'); // below the name (y16) + subtitle (y30, shown whenever h>40, which this branch already requires)
+    }
+  }
+
   // ---- "By Account" root tiles: accounts, colored by acctColor. Click
   // drills into that account's Asset Class breakdown (renderHierarchy).
+  // Small "Stocks →" corner link skips straight past that Asset Class /
+  // Sector breakdown to the account's flat symbol tiles -- same shortcut
+  // mechanism (ALL_ASSET_CLASSES) the Equities "All stocks" link already
+  // uses, just reachable one level earlier. User: "top level filters -- if
+  // they have sublevels then the tile should have a 'Stocks' link so I can
+  // go to stocks directly."
   function renderAccountFlat(W, H) {
     const rawValueFn = a => sizeMode === 'capital' ? a.total : a.posCount;
     const sized = ACCOUNTS.filter(a => rawValueFn(a) > 0);
@@ -678,17 +823,35 @@
         ? `${fmtUsd(d.data.total)} · ${d.data.posCount} symbol${d.data.posCount === 1 ? '' : 's'}`
         : `${fmtUsd(d.data.total)} · all cash`;
       drawGroupTileLabel(d3.select(this), w, h, ink, d.data.label, sub);
+      // Small "Stocks →" corner link -- skips the Asset Class / Sector
+      // breakdown and goes straight to every held symbol in this account,
+      // flat. Own click handler stops propagation so the rest of the tile
+      // keeps its normal "go to Asset Classes" click.
+      if (d.data.posCount > 0 && canShowCornerLink(w, h)) {
+        appendCornerLink(d3.select(this), w, h, ink, () => { drill = { account: d.data.key, assetClass: ALL_ASSET_CLASSES }; render(); });
+      }
     });
 
     cell.on('mousemove', (evt, d) => {
       const cashVal = cashByAccount.get(d.data.key) || 0;
       const securitiesVal = d.data.total - cashVal;
+      // 2026-09-03 (held-perspective proposal): per-account unrealized P&L
+      // (acctGain, summed from POS in build()) + realized YTD
+      // (realizedByAccount, drv_realized_gain rollup) -- both optional,
+      // rendered only when present so an account with no gain data (e.g.
+      // all-cash) doesn't show a misleading "$0".
+      const g = acctGain.get(d.data.key);
+      const rg = realizedByAccount.get(d.data.key);
+      const gainPct = g && g.costBasis ? (g.totalGainDollar / g.costBasis * 100) : null;
+      const hint = d.data.posCount > 0 ? 'Click to see asset classes · or "Stocks" to skip straight to symbols' : 'No securities held';
       tt.innerHTML = `<div class="uv-tt-title">${esc(d.data.label)}</div>` +
         `<div class="uv-tt-row"><span>Total</span><span>${fmtUsd(d.data.total)}</span></div>` +
         `<div class="uv-tt-row"><span>Securities</span><span>${fmtUsd(securitiesVal)}</span></div>` +
         `<div class="uv-tt-row"><span>Cash</span><span>${fmtUsd(cashVal)}</span></div>` +
+        (g ? `<div class="uv-tt-row"><span>Unrealized</span>${gainSpanHtml(g.totalGainDollar, gainPct)}</div>` : '') +
+        (rg ? `<div class="uv-tt-row"><span>Realized (YTD)</span>${gainSpanHtml(rg.ytd_realized, null)}</div>` : '') +
         `<div class="uv-tt-row"><span>Symbols</span><span>${d.data.posCount}</span></div>` +
-        `<div class="uv-tt-hint">${d.data.posCount > 0 ? 'Click to see asset classes' : 'No securities held'}</div>`;
+        `<div class="uv-tt-hint">${hint}</div>`;
       tt.style.left = (evt.clientX + 14) + 'px'; tt.style.top = (evt.clientY + 14) + 'px'; tt.classList.add('show');
     }).on('mouseleave', () => tt.classList.remove('show'))
       .on('click', (evt, d) => { if (d.data.posCount > 0) { drill = { account: d.data.key }; render(); } });
@@ -727,7 +890,8 @@
       return;
     }
 
-    renderSourceFlat(srcAgg, W, H, src => { drill = { source: src }; render(); });
+    renderSourceFlat(srcAgg, W, H, src => { drill = { source: src }; render(); },
+      src => { drill = { source: src, assetClass: ALL_ASSET_CLASSES }; render(); });
 
     const ranklist = $('uvRankList');
     const top = [...srcAgg].sort((a, b) => (sizeMode === 'capital' ? b.held_value - a.held_value : b.count - a.count)).slice(0, 8);
@@ -743,8 +907,11 @@
   // ---- Source tiles, colored by sourceColorAssign -- same generic
   // {count,held,held_value,sample}-keyed tile renderer as
   // renderSectorWithinAsset, just at root level and keyed by source code
-  // instead of sector name.
-  function renderSourceFlat(data, W, H, onClick) {
+  // instead of sector name. `onAllStocks(source)` fires only from the small
+  // "Stocks →" corner link -- same shortcut as the Account root tiles, skips
+  // the Asset Class / Sector breakdown and goes straight to this source's
+  // flat symbol tiles.
+  function renderSourceFlat(data, W, H, onClick, onAllStocks) {
     const rawValueFn = d => sizeMode === 'capital' ? d.held_value : d.count;
     const sized = data.filter(d => rawValueFn(d) > 0);
     const root = d3.hierarchy({ children: sized }).sum(floorValueFn(sized, rawValueFn)).sort((a, b) => b.value - a.value);
@@ -764,7 +931,11 @@
     cell.each(function (d) {
       const w = d.x1 - d.x0, h = d.y1 - d.y0;
       const fill = colorFn(d.data); const ink = labelColorFor(fill);
-      drawGroupTileLabel(d3.select(this), w, h, ink, d.data.source, `${fmtInt(d.data.count)} sym · ${fmtUsd(d.data.held_value)}`);
+      const g = d3.select(this);
+      drawGroupTileLabel(g, w, h, ink, d.data.source, `${fmtInt(d.data.count)} sym · ${fmtUsd(d.data.held_value)}`);
+      if (canShowCornerLink(w, h) && onAllStocks) {
+        appendCornerLink(g, w, h, ink, () => onAllStocks(d.data.source));
+      }
     });
 
     cell.on('mousemove', (evt, d) => {
@@ -774,7 +945,7 @@
         `<div class="uv-tt-row"><span>Held</span><span>${d.data.held} (${heldPct}%)</span></div>` +
         `<div class="uv-tt-row"><span>Capital</span><span>${fmtUsd(d.data.held_value)}</span></div>` +
         `<div class="uv-tt-syms">${d.data.sample.map(esc).join(' · ')}${d.data.count > d.data.sample.length ? ' …' : ''}</div>` +
-        `<div class="uv-tt-hint">Click to see asset classes</div>`;
+        `<div class="uv-tt-hint">Click to see asset classes · or "Stocks" to skip straight to symbols</div>`;
       tt.style.left = (evt.clientX + 14) + 'px'; tt.style.top = (evt.clientY + 14) + 'px'; tt.classList.add('show');
     }).on('mouseleave', () => tt.classList.remove('show'))
       .on('click', (evt, d) => onClick(d.data.source));
@@ -811,22 +982,18 @@
       const fill = colorFn(d.data); const ink = labelColorFor(fill);
       const g = d3.select(this);
       drawGroupTileLabel(g, w, h, ink, d.data.asset_class, `${fmtInt(d.data.count)} sym · ${fmtUsd(d.data.held_value)}`);
-      // Small "All stocks" corner link, Equities tile only -- skips the
+      // Small "Stocks →" corner link, Equities tile only -- skips the
       // Sector step and goes straight to every equity symbol, flat. Its
       // own click handler stops propagation so the rest of the tile keeps
       // its normal "go to Sectors" click.
-      if (d.data.asset_class === 'Equities' && w > 78 && h > 26 && onAllStocks) {
-        g.append('text').attr('class', 'uv-c-link').attr('x', w - 6).attr('y', 16)
-          .attr('text-anchor', 'end').attr('font-size', 8.5).attr('font-weight', 700)
-          .attr('fill', ink).style('text-decoration', 'underline').style('cursor', 'pointer')
-          .text('All stocks →')
-          .on('click', evt => { evt.stopPropagation(); onAllStocks(d.data.asset_class); });
+      if (d.data.asset_class === 'Equities' && canShowCornerLink(w, h) && onAllStocks) {
+        appendCornerLink(g, w, h, ink, () => onAllStocks(d.data.asset_class));
       }
     });
 
     cell.on('mousemove', (evt, d) => {
       const heldPct = d.data.count ? Math.round((d.data.held / d.data.count) * 100) : 0;
-      const hint = d.data.asset_class === 'Equities' ? 'Click to see sectors · or "All stocks" to skip sectors' : 'Click to see symbols';
+      const hint = d.data.asset_class === 'Equities' ? 'Click to see sectors · or "Stocks" to skip sectors' : 'Click to see symbols';
       tt.innerHTML = `<div class="uv-tt-title">${esc(d.data.asset_class)}</div>` +
         `<div class="uv-tt-row"><span>Symbols</span><span>${fmtInt(d.data.count)}</span></div>` +
         `<div class="uv-tt-row"><span>Held</span><span>${d.data.held} (${heldPct}%)</span></div>` +
@@ -942,11 +1109,11 @@
       .attr('class', 'uv-cell-group uv-cell').attr('tabindex', 0)
       .attr('transform', d => `translate(${d.x0},${d.y0})`);
 
-    // per-symbol color = trading signal (final_code), not identity -- see
-    // ACTION_COLOR's own comment.
+    // per-symbol color = trading signal (final_code) by default, or
+    // unrealized P&L % in Gain/Loss mode -- see tileColor()'s own comment.
     cell.append('rect').attr('class', 'uv-cell-rect')
       .attr('width', d => Math.max(0, d.x1 - d.x0)).attr('height', d => Math.max(0, d.y1 - d.y0))
-      .attr('rx', 3).attr('fill', d => actionColor(d.data.detail.final_code));
+      .attr('rx', 3).attr('fill', d => tileColor(d.data.detail));
 
     // Progressive detail as the tile has room -- name always, then action
     // code, then value, then Trade/Trend above/below coloring, then a mini
@@ -955,9 +1122,9 @@
     // just miniaturized onto the tile.
     cell.each(function (d) {
       const w = d.x1 - d.x0, h = d.y1 - d.y0;
-      const fill = actionColor(d.data.detail.final_code);
-      const ink = labelColorFor(fill);
       const det = d.data.detail;
+      const fill = tileColor(det);
+      const ink = labelColorFor(fill);
       const g = d3.select(this);
 
       // contentBottom tracks the lowest y drawn so far, so the RR bar
@@ -979,7 +1146,14 @@
         // same level as symbol right justified." Only when there's room
         // for a short code beside the name (w>=40); reserved out of the
         // name's own width budget below so the two never collide.
-        const showCode = det.final_code && w >= 40;
+        // 2026-09-03: in Gain/Loss mode this slot shows unrealized % instead
+        // of the action code -- the tile's fill already IS the P&L color,
+        // so the % is the natural label to pair with it (same "right-
+        // justified beside the name" placement/behavior).
+        const codeText = colorMode === 'gainloss'
+          ? (det.total_gain_pct != null ? fmtSignedPct1(det.total_gain_pct) : null)
+          : det.final_code;
+        const showCode = !!codeText && w >= 40;
         const codeReserve = showCode ? 24 : 0;
         const maxChars = Math.max(1, Math.floor((w - 4 - codeReserve) / (nameFontSize * 0.62)));
         const symName = d.data.tos_symbol;
@@ -991,15 +1165,29 @@
         if (showCode) {
           g.append('text').attr('x', w - 4).attr('y', nameY).attr('text-anchor', 'end')
             .attr('font-size', 6.5).attr('font-weight', 400).attr('fill', ink).attr('opacity', 0.85)
-            .text(det.final_code);
+            .text(codeText);
         }
       }
       if (w < 30 || h < 18) return; // too small for the richer detail below
 
-      if (h > 40 && unit === 'capital') {
-        g.append('text').attr('class', 'uv-c-sub').attr('x', 5).attr('y', 35)
-          .attr('font-size', 9).attr('fill', ink).attr('opacity', 0.85).text(fmtUsd(d.data.value));
-        contentBottom = Math.max(contentBottom, 35);
+      // 2026-09-03: in Gain/Loss mode, this line shows unrealized $ (+%)
+      // instead of position $ -- the point of this mode is "how much did
+      // this make/lose", not the position size (still available via Size:
+      // Capital -> tile area, and in the hover tooltip). Falls through to
+      // the normal position-$ line for a symbol with no gain data (not
+      // held / no cost basis) so the tile still shows something in Capital
+      // sizing.
+      if (h > 40) {
+        if (colorMode === 'gainloss' && det.total_gain_dollar != null) {
+          g.append('text').attr('class', 'uv-c-sub').attr('x', 5).attr('y', 35)
+            .attr('font-size', 9).attr('fill', ink).attr('opacity', 0.85)
+            .text(fmtSignedUsd(det.total_gain_dollar));
+          contentBottom = Math.max(contentBottom, 35);
+        } else if (unit === 'capital') {
+          g.append('text').attr('class', 'uv-c-sub').attr('x', 5).attr('y', 35)
+            .attr('font-size', 9).attr('fill', ink).attr('opacity', 0.85).text(fmtUsd(d.data.value));
+          contentBottom = Math.max(contentBottom, 35);
+        }
       }
 
       // Trade/Trend: white up/down arrow (direction, always legible
@@ -1012,7 +1200,11 @@
       // white now". Red-on-dark-green is a known weaker case; live with it
       // for now rather than re-introduce the chip.
       const lastPx = det.last_price;
-      const tdY = (h > 40 && unit === 'capital') ? 46 : 35;
+      // 46 when the $/gain subtext line above actually rendered (own y=35 +
+      // clearance), 35 otherwise -- mirrors exactly the h>40 && (Gain/Loss
+      // mode with data, or Capital sizing) condition the subtext used.
+      const subtextDrawn = h > 40 && ((colorMode === 'gainloss' && det.total_gain_dollar != null) || unit === 'capital');
+      const tdY = subtextDrawn ? 46 : 35;
       if (h > tdY + 8 && w > 60) {
         const lineRow = (label, lineVal, y) => {
           if (lineVal == null || lastPx == null) return;
@@ -1055,6 +1247,13 @@
       tt.innerHTML = `<div class="uv-tt-title">${esc(d.data.tos_symbol)}</div>` +
         `<div class="uv-tt-row"><span>Signal</span><span>${esc(actionLabel(det.final_code))} (${esc(det.final_code || 'HOLD')})</span></div>` +
         (unit === 'capital' ? `<div class="uv-tt-row"><span>Value</span><span>${fmtUsd(d.data.value)}</span></div>` : '') +
+        // 2026-09-03 (held-perspective proposal): unrealized/today/realized
+        // P&L -- always shown when present (regardless of colorMode), same
+        // "informational input, not gated behind a toggle" treatment as the
+        // rest of this proposal.
+        (det.total_gain_dollar != null ? `<div class="uv-tt-row"><span>Unrealized</span>${gainSpanHtml(det.total_gain_dollar, det.total_gain_pct)}</div>` : '') +
+        (det.today_gain_dollar != null ? `<div class="uv-tt-row"><span>Today</span>${gainSpanHtml(det.today_gain_dollar, det.today_gain_pct)}</div>` : '') +
+        (det.total_realized != null ? `<div class="uv-tt-row"><span>Realized (all-time)</span>${gainSpanHtml(det.total_realized, null)}</div>` : '') +
         (det.trade_line_value != null ? `<div class="uv-tt-row"><span>Trade line</span><span>${fmtUsd(det.trade_line_value)}</span></div>` : '') +
         (det.trend_line_value != null ? `<div class="uv-tt-row"><span>Trend line</span><span>${fmtUsd(det.trend_line_value)}</span></div>` : '') +
         // 2026-09-01, user request: was just the bare "${pos}%" -- add the
@@ -1106,6 +1305,11 @@
     // in wireStyleTabs() below, once its data-driven tab list exists.)
     document.querySelectorAll('.uv-tab[data-color]').forEach(t =>
       t.addEventListener('click', () => { currentColorFilter = t.dataset.color; render(); }));
+    // Color-by mode (Signal/Gain-Loss) -- same "don't reset the drill"
+    // treatment as Color/Style above; it only changes what a symbol tile's
+    // fill/detail represents, not which rows are in scope.
+    document.querySelectorAll('.uv-tab[data-colormode]').forEach(t =>
+      t.addEventListener('click', () => { colorMode = t.dataset.colormode; render(); }));
     window.addEventListener('resize', () => render());
   }
 
@@ -1157,6 +1361,7 @@
       return;
     }
     build(payload);
+    renderKpiStrip();
     FILTERS = {
       all:        { rows: SYMS },
       held:       { rows: SYMS.filter(r => r.held_today) },
