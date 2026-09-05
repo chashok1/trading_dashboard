@@ -93,6 +93,14 @@
   // the Account root tile's "N BUY · N SELL" line. User: "so I know
   // exactly what is happening to my accounts" -- 2026-09-05.
   let acctActionCounts = new Map();
+  // account_id -> [{asset_class, value, count}] sorted desc by value --
+  // that account's own held positions broken out by asset class (securities
+  // only, cash isn't an asset class in this taxonomy). Feeds the Account
+  // tile's Asset Class legend rows, shown when there's still room below
+  // the P&L/signal lines. User: "We still have more space in the tiles on
+  // top level. Display Asset Classes breakdown in the tile for 'By
+  // Account'" -- 2026-09-05.
+  let acctAssetBreakdown = new Map();
   // Portfolio-wide KPI strip totals, computed once in build() -- NOT
   // re-filtered by View/Filter/Color (those only narrow the treemap).
   let KPI = null;
@@ -108,6 +116,19 @@
   let SECTOR_RANK = [];                // ranked sector aggregate, whole universe, excl. Unclassified -- feeds catAssign + every sector legend
   let ASSET_RANK = [];                 // same for asset classes
   const CAT_SLOTS = ['--cat1', '--cat2', '--cat3', '--cat4', '--cat5', '--cat6', '--cat7', '--cat8', '--cat9'];
+  // Tiling for every treemap in this file (Account/Source/AssetClass/
+  // Sector/Symbol tiles all share this one d3.treemap() config). Default
+  // squarify targets phi (~1.618, a general-purpose aesthetic ratio) as
+  // its "good enough" aspect ratio -- still produces genuine slivers on
+  // real data (the "Ra" account tile measured an 18:1 ratio under the
+  // default, at some viewport sizes/size-modes). ratio(1) asks the same
+  // built-in algorithm to target an actual square instead, cutting that
+  // same tile's worst case to ~4.2:1 with no downside on tiles that were
+  // already reasonable (verified against live account data across several
+  // viewport sizes and both Count/Capital size modes). User: "arrange
+  // tiles... close to square boxes instead of long horizontal or
+  // vertical" -- 2026-09-05.
+  const SQUARE_TILE = d3.treemapSquarify.ratio(1);
   const ACCOUNT_COLOR_SLOTS = ['--cat1', '--cat2', '--cat3', '--cat4', '--cat5'];
   let acctColor = new Map();
   let sourceColorAssign = new Map();  // source code -> --catN, same ranked-on-whole-universe pattern as catAssign/assetColorAssign
@@ -234,6 +255,7 @@
     // position counts, for the "By Account" root level.
     const acctTotals = new Map();
     const posCounts = new Map();
+    const acctAssetTmp = new Map(); // account_id -> Map(asset_class -> {value,count})
     acctGain = new Map();
     acctActionCounts = new Map();
     POS.forEach(r => {
@@ -250,6 +272,19 @@
         c[side] += 1;
         acctActionCounts.set(r.account_id, c);
       }
+      let am = acctAssetTmp.get(r.account_id);
+      if (!am) { am = new Map(); acctAssetTmp.set(r.account_id, am); }
+      const ae = am.get(r.asset_class) || { value: 0, count: 0, costBasis: 0, gainDollar: 0 };
+      ae.value += (r.market_value || 0); ae.count += 1;
+      if (r.cost_basis != null) ae.costBasis += r.cost_basis;
+      if (r.total_gain_dollar != null) ae.gainDollar += r.total_gain_dollar;
+      am.set(r.asset_class, ae);
+    });
+    acctAssetBreakdown = new Map();
+    acctAssetTmp.forEach((am, acctId) => {
+      acctAssetBreakdown.set(acctId, [...am.entries()]
+        .map(([asset_class, v]) => ({ asset_class, value: v.value, count: v.count, costBasis: v.costBasis, gainDollar: v.gainDollar }))
+        .sort((a, b) => b.value - a.value));
     });
     // Cash folded into every account's total (not just cash-only ones) --
     // an account's real size is securities + cash, and a 100%-cash account
@@ -317,12 +352,38 @@
   // ---------------------------------------------------------------------
   // Colors / formulas shared by every tile level
   // ---------------------------------------------------------------------
-  function luminance(hex) {
-    const c = d3.rgb(hex);
+  function luminanceRgb(r, g, b) {
     const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
-    return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
   }
+  function luminance(hex) { const c = d3.rgb(hex); return luminanceRgb(c.r, c.g, c.b); }
   const labelColorFor = hex => luminance(hex) > 0.42 ? '#1c1917' : '#ffffff';
+  // WCAG contrast ratio between two hex colors.
+  function contrastRatio(hex1, hex2) {
+    const a = luminance(hex1), b = luminance(hex2);
+    const hi = Math.max(a, b), lo = Math.min(a, b);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+  // Blends `base` (a semantic red/green) toward `toward` (the tile's own
+  // `ink` -- white on a dark tile, black on a light one) just far enough to
+  // clear `target` contrast against `bg`, so the result stays as close to
+  // "red"/"green" as legibility allows instead of one fixed hex that reads
+  // fine on some account colors and is nearly invisible on others (checked:
+  // a flat #dc2626/#16a34a bottoms out around 1.0-2.0 contrast on --cat2/
+  // --cat3/--cat5). Falls back to `toward` itself (ink) if even a full
+  // blend can't clear the target -- still guaranteed legible, just no
+  // longer tinted. User: "is there a way to represent -ves in some kind of
+  // red version" -- 2026-09-05.
+  function legibleTint(bg, base, toward, target) {
+    const from = d3.rgb(base), to = d3.rgb(toward);
+    for (let t = 0; t <= 1.0001; t += 0.05) {
+      const r = Math.round(from.r + (to.r - from.r) * t);
+      const g = Math.round(from.g + (to.g - from.g) * t);
+      const bl = Math.round(from.b + (to.b - from.b) * t);
+      if (contrastRatio(bg, `rgb(${r},${g},${bl})`) >= target) return `rgb(${r},${g},${bl})`;
+    }
+    return toward;
+  }
 
   // Per-symbol color for the drilldown level (individual tickers) -- the
   // trading signal (final_code), not a decorative hash. The app's own
@@ -797,9 +858,15 @@
   // picks between two layouts: "row" -- link right-aligned beside the name
   // on the same line (needs width) -- when there's room, else "stacked" --
   // link on its own line below the name/subtitle (needs height instead).
-  function canShowCornerLink(w, h) { return (w > 78 && h > 13) || (w > 40 && h > 46); }
+  // `stackY` -- where the stacked (narrow-tile) layout starts, default 44
+  // (right after name+subtitle, the old fixed spot) for Source/Equities
+  // callers that draw nothing else below the subtitle. The Account tile
+  // caller passes the real y-cursor appendAccountPnlAndSignals returns
+  // instead, so this link stacks below whatever P&L/signal lines actually
+  // rendered rather than overwriting them at a stale fixed y.
+  function canShowCornerLink(w, h, stackY = 44) { return (w > 78 && h > 13) || (w > 40 && h > stackY + 4); }
   function cornerLinkY(h) { return h < 22 ? Math.max(9, Math.round(h / 2) + 3) : 16; }
-  function appendCornerLink(g, w, h, ink, onClick) {
+  function appendCornerLink(g, w, h, ink, onClick, stackY = 44) {
     const t = g.append('text').attr('class', 'uv-c-link').attr('font-size', 8.5).attr('font-weight', 700)
       .attr('fill', ink).style('text-decoration', 'underline').style('cursor', 'pointer')
       .text('Stocks →')
@@ -807,39 +874,283 @@
     if (w > 78 && h > 13) {
       t.attr('x', w - 6).attr('y', cornerLinkY(h)).attr('text-anchor', 'end');
     } else {
-      t.attr('x', 5).attr('y', 44).attr('text-anchor', 'start'); // below the name (y16) + subtitle (y30, shown whenever h>40, which this branch already requires)
+      t.attr('x', 5).attr('y', stackY).attr('text-anchor', 'start');
     }
   }
 
   // Account tile "what's happening" extras -- unrealized P&L, today's $
-  // move, and a BUY/SELL signal count, progressively added as the tile has
-  // room (same "more room -> more detail" pattern as drawGroupTileLabel's
-  // own name/subtitle reveal). User: "top level -> tile has space -> what
-  // can you show me so i know exactly what is happening to my accounts" --
-  // 2026-09-05, chose "Combine P&L + signals". Gated on w > 100 (these are
-  // longer strings than the name/subtitle) so it never fires on the same
-  // narrow tiles the "Stocks →" link's stacked layout targets -- the two
-  // never compete for the same space.
-  function appendAccountPnlAndSignals(g, w, h, ink, gain, counts) {
-    if (w <= 100) return;
-    let y = 44;
-    if (h > 58 && gain && gain.costBasis) {
+  // move, and a BUY/SELL signal count. User: "top level -> tile has space
+  // -> what can you show me so i know exactly what is happening to my
+  // accounts" -- 2026-09-05, chose "Combine P&L + signals".
+  //
+  // Each line WRAPS (via the existing wrapTokens greedy wrapper, same one
+  // the sample-ticker line uses) onto up to 2 rows instead of just not
+  // showing at all once the text is wider than the tile -- user: "last
+  // tile doesn't show all the info, wrap the information so it displays
+  // the info" -- 2026-09-05, after the original w > 100 hard cutoff (fine
+  // on roomy tiles, but hid this whole block on any narrow-but-tall tile,
+  // including the exact "last tile" shape the "Stocks →" link itself had
+  // to be fixed for earlier). Returns the y-cursor after the last line
+  // actually drawn, so the caller's "Stocks →" link -- which shares this
+  // same left column when the tile's too narrow for its own row layout --
+  // can stack below whatever did fit instead of at a fixed y that might
+  // already be occupied.
+  //
+  // Text color: a real red/green, not `ink` flat -- but tinted toward
+  // `ink` (legibleTint) rather than a fixed hex, since a flat #dc2626/
+  // #16a34a bottoms out around a 1.0-2.0 WCAG contrast ratio on several
+  // account colors (teal/brown/pink especially), well under the ~3:1 floor
+  // this text size needs, and no single green/red pair clears that floor
+  // on all five. The ▲/▼ glyph still backs up the color for direction,
+  // same trick this file's own Td/Tn arrow already uses. User: "is there a
+  // way to represent -ves in some kind of red version" -- 2026-09-05,
+  // after "check colors for fonts and background... choose contrast
+  // colors" (the flat-ink fallback that immediately preceded this).
+  // Negative/red target lowered 3.2 -> 2.6 ("little bit more reddish for
+  // -ve numbers not too much" -- 2026-09-05): legibleTint needs LESS ink
+  // blended in to clear a lower target, so the result sits closer to the
+  // real #dc2626 red instead of the paler tint 3.2 required -- e.g. on
+  // --cat1 blue, #f0a0a0 (3.2) -> #eb8585 (2.6). Positive/green kept at
+  // 3.2 -- only "-ve numbers" were asked for.
+  const PNL_RED = '#dc2626', PNL_GREEN = '#16a34a';
+  const PNL_CONTRAST_TARGET = 3.2, PNL_NEG_CONTRAST_TARGET = 2.6;
+  const PNL_START_Y = 44, PNL_LINE_H = 12;
+  function appendAccountPnlAndSignals(g, w, h, bg, ink, gain, counts) {
+    if (w <= 34) return PNL_START_Y; // truly too narrow for even a wrapped word or two
+    const posColor = legibleTint(bg, PNL_GREEN, ink, PNL_CONTRAST_TARGET);
+    const negColor = legibleTint(bg, PNL_RED, ink, PNL_NEG_CONTRAST_TARGET);
+    const maxChars = Math.max(3, Math.floor((w - 12) / (9 * 0.62)));
+    let y = PNL_START_Y;
+    const drawWrapped = (text, color, opacity, weight) => {
+      for (const line of wrapTokens(text.split(' '), maxChars, 2)) {
+        if (h <= y + PNL_LINE_H - 5) return;
+        g.append('text').attr('x', 7).attr('y', y).attr('font-size', 9)
+          .attr('font-weight', weight).attr('opacity', opacity).attr('fill', color).text(line);
+        y += PNL_LINE_H;
+      }
+    };
+    if (gain && gain.costBasis) {
       const pct = gain.totalGainDollar / gain.costBasis * 100;
-      g.append('text').attr('x', 7).attr('y', y).attr('font-size', 9)
-        .attr('font-weight', 700).attr('fill', gain.totalGainDollar >= 0 ? '#16a34a' : '#dc2626')
-        .text(`${fmtSignedUsd(gain.totalGainDollar)} (${fmtSignedPct1(pct)})`);
-      y += 13;
+      const up = gain.totalGainDollar >= 0;
+      drawWrapped(`${up ? '▲' : '▼'} ${fmtSignedUsd(gain.totalGainDollar)} (${fmtSignedPct1(pct)})`, up ? posColor : negColor, 1, 700);
     }
-    if (h > 72 && gain && gain.todayGainDollar != null) {
-      g.append('text').attr('x', 7).attr('y', y).attr('font-size', 9)
-        .attr('font-weight', 700).attr('fill', gain.todayGainDollar >= 0 ? '#16a34a' : '#dc2626')
-        .text(`${fmtSignedUsd(gain.todayGainDollar)} today`);
-      y += 13;
+    if (gain && gain.todayGainDollar != null) {
+      const up = gain.todayGainDollar >= 0;
+      drawWrapped(`${up ? '▲' : '▼'} ${fmtSignedUsd(gain.todayGainDollar)} today`, up ? posColor : negColor, 0.9, 700);
     }
-    if (h > 86 && counts && (counts.buy || counts.sell)) {
-      g.append('text').attr('x', 7).attr('y', y).attr('font-size', 9).attr('opacity', 0.85)
-        .attr('fill', ink).text(`${counts.buy} BUY · ${counts.sell} SELL`);
+    if (counts && (counts.buy || counts.sell)) {
+      drawWrapped(`${counts.buy} BUY · ${counts.sell} SELL`, ink, 0.85, 400);
     }
+    return y;
+  }
+
+  // Account tile Asset Class breakdown -- a thin stacked composition bar +
+  // a companion legend (dot + name + %), segments/rows proportional to
+  // whichever basis (value $ / count) the current Size toggle uses
+  // elsewhere on this screen. Segment/dot color is assetColorAssign -- the
+  // SAME palette the Asset Class root tiles use, so "Equities" reads as
+  // the same color here as anywhere else it appears.
+  //
+  // Surface ring + gaps (dataviz skill's own fix for "a mark overlapping a
+  // colored surface"): acctColor and assetColorAssign are BOTH ranked
+  // "biggest gets slot 1" over their own populations, so the #1 account by
+  // $ and the #1 asset class by count (almost always Equities) collide on
+  // --cat1 more often than not -- confirmed live: F-M's tile fill and its
+  // own dominant Equities segment were BOTH #1d4ed8, the segment
+  // invisible against its own tile. A track drawn behind the segments
+  // (showing through as ~1.5px gaps between them) plus a ring around the
+  // whole bar keeps every segment demarcated regardless of which account/
+  // asset-class colors happen to coincide, without touching the shared
+  // color-ranking scheme those two legends still rely on elsewhere in the
+  // app.
+  //
+  // Track/ring/dot-outline colors are COMPUTED (legibleTint, the same
+  // blend-until-contrast-clears helper the P&L red/green already uses),
+  // not a guessed opacity -- an alpha-blended `ink` at a picked-by-eye
+  // opacity is itself just another unverified color, the exact thing this
+  // whole feature's color pass has been fixing. Track targets a mild 1.6
+  // contrast (just enough to read as "a different surface," not a bold
+  // stripe); ring/dot-outline target 2.4 (assertively visible, since their
+  // whole job is demarcation). User: "Try to use proper contrast colors
+  // and add some space between legend and bar" -- 2026-09-05, after "bar
+  // chart need proper colors with % names in it and a legend".
+  const ASSETBAR_TRACK_TARGET = 1.6, ASSETBAR_RING_TARGET = 2.4;
+  // Neutral gray anchor for the track/ring blend (legibleTint's `base`) --
+  // NOT the tile's own bg. Blending from the tile's own color (as this
+  // first did) still comes out visibly tinted with that color once mixed
+  // toward `ink` -- e.g. on a blue (--cat1) tile the "neutral" track/ring
+  // computed out to #567ae2/#839eea, still plainly blue. Zero-saturation
+  // gray as the start point keeps the result a genuine neutral (light or
+  // dark gray) on every tile color instead of just a paler shade of
+  // whatever hue the tile already is. User: "you are using blue for the
+  // bar. change that to something else" -- 2026-09-05.
+  const ASSETBAR_NEUTRAL = '#808080';
+  // Segment/dot color override for the bar ONLY -- assetColorAssign still
+  // ranks asset classes into the shared --cat1..5 slots exactly as it
+  // always has (Asset Class root tiles, Sector tiles, and Account tile
+  // backgrounds via acctColor all keep reading those slots' real CSS
+  // values unaffected), this just substitutes a different rendered hex
+  // for --cat1 specifically WITHIN this bar's own segments/dots. First
+  // tried changing --cat1 itself in styles.css, but that's shared with
+  // Account tile backgrounds too -- reverted per "Change the color only
+  // in the bar not tile. Bar is good now." -- 2026-09-05. Amber (#c8800d)
+  // clears the blue-vs-cat4-purple normal-vision-floor failure (ΔE 13.0)
+  // the validator's --pairs all check found; see styles.css's own comment
+  // on --cat1 for the full history.
+  const ASSETBAR_SLOT_OVERRIDE = { '--cat1': '#c8800d' };
+  function assetBarColor(assetClass) {
+    const slot = assetColorAssign.get(assetClass) || '--cat-unmapped';
+    return ASSETBAR_SLOT_OVERRIDE[slot] || cssVar(slot);
+  }
+  // Pairs in the app's own --cat1..5 categorical palette (shared with
+  // Account/Sector/Source tiles elsewhere -- NOT something to silently
+  // recolor here beyond the one swap made in styles.css, see its own
+  // comment) that fail the dataviz skill's own checks when placed
+  // directly adjacent, found via the full --pairs all sweep (the default
+  // adjacent-only check misses these): --cat2<->--cat5 (teal/pink) fails
+  // the deuteranopia CVD floor (ΔE 3.8, below 6) -- pre-existing.
+  // --cat1<->--cat3 (amber/brown, since 2026-09-05's blue->amber swap)
+  // sits at ΔE 11.6, below the 15 normal-vision floor -- amber was picked
+  // specifically to clear the WORSE pair blue used to fail (blue<->purple
+  // was 13.0; amber<->purple is 35), at the cost of this milder one with
+  // brown, its nearest neighbor on the hue wheel. Since the palette itself
+  // is out of scope to change further here, this bar instead never PLACES
+  // either pair adjacent -- reorderAvoidingUnsafeAdjacency swaps a
+  // colliding neighbor forward when a safe one is available, a bounded,
+  // local mitigation matching the skill's own prescribed fix ("re-step it
+  // on the adjacent pair list"). User: "Color contrast please..." then
+  // "you are using blue for the bar. change that to something else" --
+  // 2026-09-05.
+  const UNSAFE_ADJACENT_SLOTS = new Set(['--cat1|--cat3', '--cat3|--cat1', '--cat2|--cat5', '--cat5|--cat2']);
+  function reorderAvoidingUnsafeAdjacency(rows) {
+    const slotOf = r => assetColorAssign.get(r.asset_class) || '--cat-unmapped';
+    const arr = rows.slice();
+    for (let i = 0; i < arr.length - 1; i++) {
+      if (!UNSAFE_ADJACENT_SLOTS.has(`${slotOf(arr[i])}|${slotOf(arr[i + 1])}`)) continue;
+      // Look ahead for a later row that's safe on both sides of the swap
+      // (won't re-create the same collision at i, won't create a new one
+      // where it lands) and bring it forward one slot.
+      for (let j = i + 2; j < arr.length; j++) {
+        const safeAtI = !UNSAFE_ADJACENT_SLOTS.has(`${slotOf(arr[i])}|${slotOf(arr[j])}`);
+        const safeAfter = !UNSAFE_ADJACENT_SLOTS.has(`${slotOf(arr[j])}|${slotOf(arr[i + 1])}`);
+        if (safeAtI && safeAfter) {
+          const [moved] = arr.splice(j, 1);
+          arr.splice(i + 1, 0, moved);
+          break;
+        }
+      }
+    }
+    return arr;
+  }
+  let _assetBarClipSeq = 0;
+  function appendAccountAssetBreakdown(g, w, h, bg, ink, startY, rowsIn) {
+    if (!rowsIn || !rowsIn.length || w <= 30) return startY;
+    // Reordered (not re-sorted) once here so the bar's segment order and
+    // the legend's row order match each other left-to-right/top-to-bottom
+    // -- both loops below iterate this same `rows`, not the original
+    // value-sorted `rowsIn`.
+    const rows = reorderAvoidingUnsafeAdjacency(rowsIn);
+    const basis = sizeMode === 'capital' ? 'value' : 'count';
+    const total = rows.reduce((s, r) => s + r[basis], 0) || 1;
+    // barH raised 9 -> 14 to fit a direct %-label on each wide-enough
+    // segment (font-size 8, vertically centered) -- user: "put the % in
+    // the bar". Legend font bumped 8 -> 9.5 to match every other line in
+    // this block (P&L/today/signals are all font-size 9) -- user:
+    // "increase font size" -- 2026-09-05.
+    const barH = 14, gapAbove = 8, segGap = rows.length > 1 ? 1.5 : 0;
+    const y = startY + gapAbove;
+    if (h <= y + barH - 4) return startY; // no room -- don't spend the gap either
+    const barX = 7, barW = w - 14;
+    const drawableW = Math.max(0, barW - segGap * (rows.length - 1));
+    const trackColor = legibleTint(bg, ASSETBAR_NEUTRAL, ink, ASSETBAR_TRACK_TARGET);
+    const ringColor = legibleTint(bg, ASSETBAR_NEUTRAL, ink, ASSETBAR_RING_TARGET);
+
+    // Track: the pill shape itself -- what shows through as the gap
+    // between segments, and what frames a segment whose fill happens to
+    // match the tile's own bg.
+    g.append('rect').attr('x', barX).attr('y', y).attr('width', barW).attr('height', barH)
+      .attr('rx', barH / 2).attr('fill', trackColor);
+
+    const clipId = `uv-assetbar-clip-${_assetBarClipSeq++}`;
+    g.append('clipPath').attr('id', clipId).append('rect')
+      .attr('x', barX).attr('y', y).attr('width', barW).attr('height', barH).attr('rx', barH / 2);
+    const segG = g.append('g').attr('clip-path', `url(#${clipId})`);
+    const pctFontSize = 8;
+    let x = barX;
+    for (const row of rows) {
+      const segW = row[basis] / total * drawableW;
+      const fill = assetBarColor(row.asset_class);
+      segG.append('rect').attr('x', x).attr('y', y).attr('width', segW).attr('height', barH).attr('fill', fill);
+      // Direct %-label ON the segment, only when it's wide enough to hold
+      // its own text without spilling into a neighbor -- selective direct
+      // labeling (never crammed onto every sliver), same principle as
+      // drawGroupTileLabel's own "too small -> skip" cutoffs elsewhere in
+      // this file. Color is computed against THIS segment's own fill
+      // (labelColorFor), not the tile's `ink` -- ink is only guaranteed
+      // legible against the tile's background, not against an arbitrary
+      // asset-class color sitting on top of it.
+      const pct = Math.round(row[basis] / total * 100);
+      const pctStr = `${pct}%`;
+      const pctW = pctStr.length * pctFontSize * 0.62;
+      if (segW >= pctW + 6) {
+        segG.append('text').attr('x', x + segW / 2).attr('y', y + barH / 2 + pctFontSize * 0.35)
+          .attr('text-anchor', 'middle').attr('font-size', pctFontSize).attr('font-weight', 700)
+          .attr('fill', labelColorFor(fill)).text(pctStr);
+      }
+      x += segW + segGap;
+    }
+    // Ring: crisp outline on top of the segments so the bar's own boundary
+    // against the tile is always visible, independent of any segment/tile
+    // color coincidence.
+    g.append('rect').attr('x', barX).attr('y', y).attr('width', barW).attr('height', barH)
+      .attr('rx', barH / 2).attr('fill', 'none').attr('stroke', ringColor).attr('stroke-width', 1);
+
+    // Legend: dot (same color as its segment) + name + allocation % + (if
+    // room) a right-aligned gain/loss indicator per asset class -- still
+    // shown even though wide segments now carry their own %-label too,
+    // since narrow segments (and their names) only ever appear here.
+    // Largest share first, only as many rows as actually fit. legendGap
+    // widened to 12 (was 5) so the legend clearly reads as its own section
+    // below the bar, not a cramped continuation of it.
+    //
+    // Gain/loss color reuses the same legibleTint-computed green/red the
+    // P&L block uses (not a fixed hex -- same reasoning: a flat green/red
+    // can fail contrast on some account colors). GAINLOSS_MIN_W gates the
+    // whole indicator off on tiles too narrow to fit "name + alloc% +
+    // ▼-99.9%" without the name getting squeezed to nothing. User: "is it
+    // possible to display loss/gain by asset class as separate bar in the
+    // tile" -- chose "inline with legend rows" -- 2026-09-05.
+    const legendFontSize = 9.5, legendRowH = 13, legendGap = 12;
+    const GAINLOSS_RESERVED_W = 44, GAINLOSS_MIN_W = 130;
+    const showGainLoss = w >= GAINLOSS_MIN_W;
+    const posColor = legibleTint(bg, PNL_GREEN, ink, PNL_CONTRAST_TARGET);
+    const negColor = legibleTint(bg, PNL_RED, ink, PNL_NEG_CONTRAST_TARGET);
+    let ly = y + barH + legendGap;
+    const nameAreaW = w - 24 - (showGainLoss ? GAINLOSS_RESERVED_W : 0);
+    const maxChars = Math.max(3, Math.floor(nameAreaW / (legendFontSize * 0.62)));
+    for (const row of rows) {
+      if (h <= ly + legendRowH - 4) break;
+      const pct = Math.round(row[basis] / total * 100);
+      const label = row.asset_class.length > maxChars ? row.asset_class.slice(0, Math.max(1, maxChars - 1)) + '…' : row.asset_class;
+      // Same ring treatment as the bar itself -- a legend dot can hit the
+      // identical tile-fill collision the bar segments do (e.g. an
+      // "Equities" dot landing on a same-color account tile), so it gets
+      // the same computed outline rather than relying on fill alone.
+      g.append('circle').attr('cx', 11).attr('cy', ly - 3.5).attr('r', 3.5)
+        .attr('fill', assetBarColor(row.asset_class))
+        .attr('stroke', ringColor).attr('stroke-width', 0.75);
+      g.append('text').attr('x', 19).attr('y', ly).attr('font-size', legendFontSize).attr('fill', ink).attr('opacity', 0.9)
+        .text(`${label} ${pct}%`);
+      if (showGainLoss && row.costBasis) {
+        const glPct = row.gainDollar / row.costBasis * 100;
+        const up = glPct >= 0;
+        g.append('text').attr('x', w - 7).attr('y', ly).attr('text-anchor', 'end')
+          .attr('font-size', legendFontSize).attr('font-weight', 700).attr('fill', up ? posColor : negColor)
+          .text(`${up ? '▲' : '▼'}${fmtSignedPct1(glPct)}`);
+      }
+      ly += legendRowH;
+    }
+    return ly > y + barH + legendGap ? ly : y + barH;
   }
 
   // ---- "By Account" root tiles: accounts, colored by acctColor. Click
@@ -854,7 +1165,7 @@
     const rawValueFn = a => sizeMode === 'capital' ? a.total : a.posCount;
     const sized = ACCOUNTS.filter(a => rawValueFn(a) > 0);
     const root = d3.hierarchy({ children: sized }).sum(floorValueFn(sized, rawValueFn)).sort((a, b) => b.value - a.value);
-    d3.treemap().size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
+    d3.treemap().tile(SQUARE_TILE).size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
 
     const leaves = root.leaves();
     svg.selectAll('*').remove();
@@ -873,13 +1184,17 @@
         ? `${fmtUsd(d.data.total)} · ${d.data.posCount} symbol${d.data.posCount === 1 ? '' : 's'}`
         : `${fmtUsd(d.data.total)} · all cash`;
       drawGroupTileLabel(d3.select(this), w, h, ink, d.data.label, sub);
-      appendAccountPnlAndSignals(d3.select(this), w, h, ink, acctGain.get(d.data.key), acctActionCounts.get(d.data.key));
+      let contentY = appendAccountPnlAndSignals(d3.select(this), w, h, fill, ink, acctGain.get(d.data.key), acctActionCounts.get(d.data.key));
+      contentY = appendAccountAssetBreakdown(d3.select(this), w, h, fill, ink, contentY, acctAssetBreakdown.get(d.data.key));
       // Small "Stocks →" corner link -- skips the Asset Class / Sector
       // breakdown and goes straight to every held symbol in this account,
       // flat. Own click handler stops propagation so the rest of the tile
-      // keeps its normal "go to Asset Classes" click.
-      if (d.data.posCount > 0 && canShowCornerLink(w, h)) {
-        appendCornerLink(d3.select(this), w, h, ink, () => { drill = { account: d.data.key, assetClass: ALL_ASSET_CLASSES }; render(); });
+      // keeps its normal "go to Asset Classes" click. Stacks below
+      // whatever P&L/signal/asset-breakdown content actually rendered
+      // (contentY) rather than a fixed y, so nothing ever overwrites
+      // anything else on a narrow tile that has room for all of it.
+      if (d.data.posCount > 0 && canShowCornerLink(w, h, contentY)) {
+        appendCornerLink(d3.select(this), w, h, ink, () => { drill = { account: d.data.key, assetClass: ALL_ASSET_CLASSES }; render(); }, contentY);
       }
     });
 
@@ -966,7 +1281,7 @@
     const rawValueFn = d => sizeMode === 'capital' ? d.held_value : d.count;
     const sized = data.filter(d => rawValueFn(d) > 0);
     const root = d3.hierarchy({ children: sized }).sum(floorValueFn(sized, rawValueFn)).sort((a, b) => b.value - a.value);
-    d3.treemap().size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
+    d3.treemap().tile(SQUARE_TILE).size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
 
     const leaves = root.leaves();
     svg.selectAll('*').remove();
@@ -1015,7 +1330,7 @@
     const rawValueFn = d => sizeMode === 'capital' ? d.held_value : d.count;
     const sized = data.filter(d => rawValueFn(d) > 0);
     const root = d3.hierarchy({ children: sized }).sum(floorValueFn(sized, rawValueFn)).sort((a, b) => b.value - a.value);
-    d3.treemap().size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
+    d3.treemap().tile(SQUARE_TILE).size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
 
     const leaves = root.leaves();
     svg.selectAll('*').remove();
@@ -1064,7 +1379,7 @@
     const rawValueFn = d => sizeMode === 'capital' ? d.held_value : d.count;
     const sized = sectors.filter(d => rawValueFn(d) > 0);
     const root = d3.hierarchy({ children: sized }).sum(floorValueFn(sized, rawValueFn)).sort((a, b) => b.value - a.value);
-    d3.treemap().size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
+    d3.treemap().tile(SQUARE_TILE).size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
 
     const leaves = root.leaves();
     svg.selectAll('*').remove();
@@ -1153,7 +1468,7 @@
     }
 
     const root = d3.hierarchy({ children: rows }).sum(floorValueFn(rows, r => r.value)).sort((a, b) => b.value - a.value);
-    d3.treemap().size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
+    d3.treemap().tile(SQUARE_TILE).size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
 
     const leaves = root.leaves();
     const cell = svg.selectAll('g.uv-cell').data(leaves).join('g')

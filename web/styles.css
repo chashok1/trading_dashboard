@@ -45,7 +45,16 @@
      contrast vs surface. Order is fixed and assigned by index, never cycled
      per-chart -- see composition_modal.js. --cat-unmapped is deliberately
      outside this set (a distinct neutral, not a 10th hue) since "Unmapped"
-     is a real bucket, not a category on par with the rest. */
+     is a real bucket, not a category on par with the rest.
+     2026-09-05 -- cat1 was briefly changed here to amber (#c8800d) to fix a
+     blue-vs-cat4-purple normal-vision-floor failure (ΔE 13.0) surfaced by
+     the dataviz validator's --pairs all check on web/universe.js's Account
+     tile Asset Class breakdown bar. Reverted: this token is shared with
+     Account tile backgrounds (acctColor) and Asset Class/Sector tiles
+     elsewhere, and the user wanted the color change scoped to the bar only
+     ("Change the color only in the bar not tile"). The bar keeps its amber
+     via a LOCAL override instead -- see ASSETBAR_SLOT_OVERRIDE in
+     universe.js -- so this shared token is untouched. */
   --cat1: #1d4ed8; --cat2: #0f9488; --cat3: #b45309; --cat4: #7c3aed; --cat5: #db2777;
   --cat6: #15803d; --cat7: #0369a1; --cat8: #c2410c; --cat9: #4f46e5;
   --cat-unmapped: #a8a29e;
