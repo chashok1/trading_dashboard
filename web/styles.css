@@ -3126,3 +3126,160 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 /* TASK_134 C.1: per-account transaction-feed staleness lines. */
 .hk-gap-line { color: var(--bear); font-size: 11px; margin-bottom: 4px; }
 
+/* ==========================================================================
+   Universe screen -- Action popover port (2026-09-06)
+   ==========================================================================
+   User: "Also display the same popover that is being displayed in
+   Actionable screen -> Action column -> Action popover" -- clicking a
+   Symbol tile on /universe (web/universe.js) now opens the same rich
+   popover content web/actionable.js's Action-badge hover shows, built by a
+   PARALLEL REIMPLEMENTATION of _buildActionPopHtmlV2 and its helpers (not a
+   shared module) -- same "copy, don't share" precedent as web/app.js's own
+   #quadPop (see this file's own .source-pop comment above, and
+   web/app.js:~1191-1197). web/actionable.js/.html stay untouched.
+
+   Every .actpop-* class below is copied VERBATIM (values, not just names)
+   from web/actionable.html's inline <style> block (that page's own
+   .actpop-head..actpop-details rules) -- only the classes the ported HTML
+   actually emits, not the full ~130-class block (some were V1-only/dead
+   for V2). The shell (#uvActionPop) is its own new id/class, NOT a reuse of
+   .source-pop -- .source-pop is pointer-events:none (hover-only), but this
+   popover opens on CLICK and needs to stay interactive (click-outside/
+   Escape to dismiss, not mouseout) -- see uv-actpop-shell below. Action
+   color tokens (--act-buy-strong etc.), .act-badge/.act-badge-sm, and the
+   .rule-edge-badge/.rule-buy/.rule-sell/.rule-strong/.rule-weak/.opex-soon
+   classes are NOT duplicated here -- already global (:root tokens + rules
+   earlier in this file), used as-is. */
+
+.uv-actpop-shell {
+  position: fixed; z-index: 1000; display: none;
+  background: #fff; color: #1e293b; border: 1px solid #e2e8f0; border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  padding: 10px 14px; font-size: 11px; line-height: 1.6;
+  min-width: 150px; max-width: 700px;
+  /* auto, not none -- .source-pop is a hover-only read tooltip; this is a
+     click-opened popover with a click-outside/Escape dismiss listener, so
+     clicks landing inside it must not fall through and immediately
+     re-trigger that listener. */
+  pointer-events: auto;
+}
+.uv-actpop-shell .sp-title { font-weight: 700; color: #0f172a; margin-bottom: 6px;
+  border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
+.uv-actpop-shell table { border-collapse: collapse; width: 100%; }
+.uv-actpop-shell td { padding: 1px 0; vertical-align: top; }
+.uv-actpop-shell td.k { color: #475569; padding-right: 12px; white-space: nowrap; }
+.uv-actpop-shell td.v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; word-break: break-word; }
+
+.actpop { width: 662px; padding: 6px; }
+.actpop-head { display: flex; align-items: center; column-gap: 14px;
+  margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #e2e8f0; }
+.actpop-ctrl-row { display: flex; align-items: center; gap: 20px; flex: 1 1 auto; min-width: 0; }
+.actpop-ctrl-anchor-rr { margin-left: auto; }
+.actpop-sym { min-width:0; flex: 0 0 auto; font-size:14px; font-weight:800; color:#0f172a; }
+.actpop-sym .actpop-co { display:block; font-weight:400; color:#94a3b8; font-size:10px; margin:2px 0 0; }
+.actpop-tdtn { display:flex; flex-direction:column; align-items:center; justify-content:space-between;
+  align-self:flex-start; margin-top:0; height:39px; }
+.actpop-tdtn-box { font-size:10px; font-weight:700; line-height:14px; color:#334155; background:#f1f5f9;
+  border:1px solid #e2e8f0; border-radius:5px; padding:0 7px; white-space:nowrap; }
+.actpop-tdtn-box.buy { color: var(--act-buy-strong); background: var(--act-buy-bg); border-color: transparent; }
+.actpop-tdtn-box.sell { color: var(--act-sell-strong); background: var(--act-sell-strong-bg); border-color: transparent; }
+.actpop-tdtn-row { display:flex; align-items:center; gap:4px; }
+.actpop-tdtn-sd { font-size:8px; font-weight:700; line-height:12px; width:28px;
+  text-align:center; box-sizing:border-box; border:1px solid; border-radius:5px;
+  background:#fff; white-space:nowrap; overflow:hidden; }
+.actpop-lv { display:inline-flex; align-items:center; gap:4px; }
+.actpop-lbl { font-size:8px; font-weight:400; letter-spacing:.03em; text-transform:uppercase;
+  color:#94a3b8; padding:2px 5px; }
+.actpop-val { font-size:10px; font-weight:400; padding:2px 6px; border-radius:5px;
+  background:#f1f5f9; color:#475569; }
+.actpop-val.buy { background: var(--act-buy-bg); color: var(--act-buy-strong); }
+.actpop-val.sell { background: var(--act-sell-strong-bg); color: var(--act-sell-strong); }
+.actpop-val.disabled { background:#f1f5f9; color:#cbd5e1; }
+.actpop-call { font-size:12px; font-weight:800; padding:2px 8px; border-radius:6px; }
+.actpop-call.buy { color: var(--act-buy-strong); background: var(--act-buy-bg); }
+.actpop-call.sell { color: var(--act-sell-strong); background: var(--act-sell-strong-bg); }
+.actpop-call.neutral { color: var(--act-neutral); background: var(--act-neutral-bg); }
+.actpop-trad-col { display:inline-flex; flex-direction:column; align-items:center; gap:2px; }
+.actpop-trad-icon { font-size:11px; padding:2px 5px; border-radius:5px; background:#eef2ff; color:#4338ca; }
+.actpop-trad-icon.disabled { background:#f1f5f9; color:#cbd5e1; }
+.actpop-trad-score { font-size:9px; font-weight:800; height:16px; display:flex; align-items:center; justify-content:center; }
+.actpop-trad-score.disabled { color:#cbd5e1; }
+.actpop-macro-stack { display:inline-flex; flex-direction:column; align-items:center; gap:8px; }
+.actpop-mgroup-wrap { height:16px; display:flex; align-items:center; }
+.actpop-mgroup { display:flex; align-items:flex-end; gap:5px; }
+.actpop-mrow { display:flex; align-items:flex-end; gap:2px; cursor:help; height:16px; }
+.actpop-mrow.member { padding-left:5px; border-left:1px solid #e2e8f0; }
+.actpop-mbar { display:inline-block; width:4px; }
+.actpop-mbar.buy { background: #16a34a; }
+.actpop-mbar.sell { background: #dc2626; }
+.actpop-mbar.neutral { background: #9ca3af; }
+.actpop-rr-row { display:flex; align-items:flex-start; gap:10px; margin: 10px 0 10px; }
+.actpop-rr-trad { margin: 0 6px; }
+.actpop-rr { width: 220px; flex: 0 0 auto; align-self: flex-start; margin-top: 18px; margin-left: 20px; }
+.actpop-rr-icons { display:flex; align-items:flex-start; gap:10px; flex-shrink:0; }
+.actpop-pvv-calc-col { display:inline-flex; flex-direction:column; gap:12px; }
+.actpop-rr-info { display:flex; flex-direction:column; gap:7px; margin-left:auto; flex-shrink:0; max-width:320px; }
+.actpop-vlm-line { display:flex; align-items:center; justify-content:flex-end; gap:10px; width:100%; }
+.actpop-trad-col > .actpop-trad-icon,
+.actpop-macro-stack > .actpop-lv,
+.actpop-rr-icons > .actpop-lv,
+.actpop-pvv-calc-col > .actpop-lv { height: 15px; display: inline-flex; align-items: center; }
+.actpop-rr-track { position:relative; height:7px; border-radius:4px; background:#e2e8f0; }
+.actpop-rr-fill { position:absolute; left:0; top:0; height:100%; border-radius:4px;
+  background:linear-gradient(90deg,var(--act-buy) 0%, #d97706 62%, var(--act-sell-strong) 100%); }
+.actpop-rr-tick { position:absolute; top:-4px; width:3px; height:15px; border-radius:2px;
+  background:#0f172a; transform:translateX(-50%); }
+.actpop-rr-tag { position:absolute; top:-18px; transform:translateX(-50%); font-size:9px;
+  font-weight:800; padding:1px 5px; border-radius:4px; background:#f1f5f9; white-space:nowrap; }
+.actpop-rr-labels { display:flex; justify-content:space-between; font-size:9px; color:#94a3b8; margin-top:3px; }
+.actpop-drivers { display:flex; flex-direction:column; gap:4px; margin-bottom:8px; }
+.actpop-driver { display:flex; align-items:center; gap:6px; border-radius:7px; padding:4px 8px; background:#f8fafc; }
+.actpop-driver.buy { background: var(--act-buy-bg); }
+.actpop-driver.sell { background: var(--act-sell-strong-bg); }
+.actpop-driver .dv-name { font-size:10px; font-weight:700; color:#0f172a; min-width:56px; flex-shrink:0; }
+.actpop-driver .dv-action { font-size:11px; font-weight:800; flex-shrink:0; }
+.actpop-driver .dv-action.buy { color: var(--act-buy-strong); }
+.actpop-driver .dv-action.sell { color: var(--act-sell-strong); }
+.actpop-driver .dv-note { font-size:9px; color:#64748b; flex:1; opacity:.9; }
+/* Standalone (not scoped to .actpop-driver) -- the "drove it"/agrees/
+   conflicts tag on a driver bullet. */
+.dv-tag { font-size:7px; font-weight:800; letter-spacing:.03em; text-transform:uppercase;
+  background:#0f172a; color:#fff; padding:2px 5px; border-radius:4px; flex-shrink:0; }
+.actpop-hit { font-size:8px; font-weight:800; padding:1px 4px; border-radius:4px; flex-shrink:0;
+  font-family: ui-monospace, monospace; }
+.actpop-tug { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:8px 0; }
+.actpop-tug-conviction { display:inline-flex; align-items:center; gap:3px;
+  vertical-align:middle; font-size:10px; }
+.actpop-tug-conviction-nn { display:inline-flex; flex-direction:column; line-height:1.1; }
+.actpop-tug-conviction-n { font-size:8px; font-weight:700; }
+.actpop-tug-col { border-radius:7px; padding:6px 8px; background:#f8fafc; border-left:3px solid #cbd5e1; }
+.actpop-tug-col.oppose { border-left-color: var(--act-sell-strong); }
+.actpop-tug-col.support { border-left-color: var(--act-buy); }
+.actpop-tug-h { font-size:8px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#94a3b8; margin-bottom:3px; }
+.actpop-tug-item { font-size:9.5px; padding:1px 0; }
+.actpop-tug-col.oppose .actpop-tug-item { color: var(--act-sell-strong); }
+.actpop-tug-col.support .actpop-tug-item { color: var(--act-buy-strong); }
+.actpop-rule-pills { display:flex; flex-wrap:wrap; gap:3px; }
+.actpop-neutral { font-size:9.5px; color:#94a3b8; margin:4px 0; }
+.actpop-trad { margin:8px 0; padding:6px 8px; border-radius:7px; background:#f8fafc; border:1px solid #e2e8f0; }
+.actpop-trad-h { font-size:9px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#94a3b8;
+  display:flex; justify-content:space-between; margin-bottom:4px; }
+.actpop-trad-item { font-size:9px; margin:1px 0; }
+.actpop-details { font-size:9.5px; color:#64748b; margin-top:6px; padding-top:6px; border-top:1px solid #e2e8f0; }
+
+/* %CHG candle+chip control group (_chgCandleControlsHtml port) -- .msr-chg/
+   svg.rr-candle base rules are already global (above); this is just the
+   flex row wrapper the popover's header control-group needs. */
+.chg-candle-row { display:flex; align-items:center; }
+
+/* Driver-bullet/source-reason hit-rate pill (win-rate %) -- copied from
+   web/actionable.html verbatim, same 4 tiers. */
+.hit-rate-pill {
+  display: inline-block; padding: 0 3px; border-radius: 6px;
+  font-size: 7px; line-height: 1.4; font-weight: 700; vertical-align: middle;
+}
+.hit-rate-pill-low  { background: #fef3c7; color: #b45309; border: 1px solid #b45309; }
+.hit-rate-pill-mid  { background: #f1f5f9; color: #475569; border: 1px solid #94a3b8; }
+.hit-rate-pill-high { background: #dcfce7; color: #15803d; border: 1px solid #15803d; }
+.hit-rate-pill-neg  { background: #fee2e2; color: #dc2626; border: 1px solid #dc2626; }
+

@@ -850,6 +850,22 @@ _CALL_MODIFIERS = ("best idea long", "best idea short", "long bench", "short ben
 # Top-5 idea isn't always a member of.
 _TOP5_SIDE_TAIL_RE = re.compile(r"\b(long|short)\b\W*$", re.IGNORECASE)
 
+# 2026-09-04: Hedgeye sometimes drops the ":"/" - " separator entirely and
+# runs the rationale straight on from the ticker paren, e.g. "BJ's
+# Restaurants (BJRI) is a Best Idea Long that returned nearly 54% after...".
+# Recovers the same header/body split as the primary separator regex below,
+# but anchored purely on the leading run of "Name (TICKER)[, /& ...]"
+# chunks — no punctuation required between header and body. Tried only when
+# the separator regex fails, so it never changes behavior for the common
+# ":"/" - " case. This is the third distinct Top-5 formatting variant seen
+# (see the 2026-08-19 note on the " - " case below) — Hedgeye's send format
+# drifts periodically, so keep this chain of fallbacks growing rather than
+# hand-fixing one format each time.
+_TOP5_HEADER_NOSEP_RE = re.compile(
+    r"^((?:[^\n(]{0,60}?\([A-Z][A-Z0-9.\-/]{0,9}\)\s*(?:[,/&]\s*|\s+and\s+)?)+)"
+    r"[:\-,;\s]*(.+)",
+    re.S)
+
 
 def parse_the_call(email: Email) -> Parsed:
     p = Parsed("the_call")
@@ -939,6 +955,11 @@ def parse_the_call(email: Email) -> Parsed:
                 r"([^\n]*?\([A-Z][A-Z0-9.\-/]{0,9}\)[^\n]*?)(?::\s*|\s+-\s+)(.+)",
                 para, re.S)
             if not pm:
+                # No ":"/" - " separator anywhere in the paragraph — try the
+                # separator-less header shape before giving up (see
+                # _TOP5_HEADER_NOSEP_RE above).
+                pm = _TOP5_HEADER_NOSEP_RE.match(para)
+            if not pm:
                 # Prose paragraphs where the tickers appear only after the
                 # lead-in colon (e.g. "Position monitor tilted ...: Mastercard
                 # (MA), Global Payments (GPN) ...") don't fit the "Company
@@ -972,7 +993,15 @@ def parse_the_call(email: Email) -> Parsed:
                     })
                 p.notes.append(_note(email, "the_call_top5", full_text, tickers=syms, signal_kind=side))
             else:
-                p.notes.append(_note(email, "the_call_commentary", full_text, tickers=syms, signal_kind=side))
+                # Commentary (non-Top-5) notes have always tagged every
+                # ticker mentioned anywhere in the paragraph, not just the
+                # header's — a sector-summary paragraph often names a second
+                # symbol mid-sentence (e.g. "Starbucks (SBUX) is ...; BJ's
+                # Restaurants (BJRI), a Best Idea Long, ..."). `syms` here can
+                # come from either header regex, which only sees the leading
+                # name(s), so re-scan the full paragraph to keep that intact.
+                all_syms = sorted(set(s.upper() for s in _TICKER_PAREN.findall(full_text))) or syms
+                p.notes.append(_note(email, "the_call_commentary", full_text, tickers=all_syms, signal_kind=side))
     p.add_rows("hist_call_top5", top_rows)
     return p
 

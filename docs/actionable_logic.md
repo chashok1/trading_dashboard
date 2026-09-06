@@ -319,25 +319,34 @@ hover popover lazy-loads them from `GET /api/actionable/macro-detail`
 
 **Action labels.** The Action badge shows an instructional label, not the
 raw code: ADD → `BUY→MIN`, INCREASE → `BUY SOME`, REDUCE → `SELL SOME`,
-REMOVE → `SELL ALL`, HOLD → `HOLD`. When the held position exceeds the
-category Max (`current_position_dollar > target_max_dollar`, REMOVE
-excepted), the badge overlays `SELL→MAX` in REDUCE orange (so the sell
-intent reads at a glance) and the original label is shown underneath in
-small bold letters tinted with that action's own color ("was BUY SOME" in
-INCREASE green, "was BUY→MIN" in ADD blue, etc.). The stored `consolidated_action`,
-`winning_source`, Reason, chip count, and sort severity are all unchanged
-— it's a pure display overlay, no derive change. Summary/filter chips use
-the same instructional labels (SELL ALL, SELL SOME, BUY SOME, BUY→MIN, HOLD,
-— for no-action; ALL stays "ALL"). A synthetic `SELL→MAX` chip counts and
-filters over-allocation rows (any row where the overlay fires); those rows
-are also counted in their underlying action chip.
+REMOVE → `SELL ALL`, HOLD → `HOLD`.
+
+**Over category Max (`current_position_dollar > target_max_dollar`, REMOVE
+excepted) — informational only (2026-09-03).** Previously this synthesized
+a standalone `OVER_MAX`/"SO" Final Call that replaced whatever
+Sources+Technical actually recommended — the same strategic-gate tier as
+SELL ALL (`_compute_final_call` gate 1) — so a position could headline
+"SELL OVERAGE" with no other sell signal anywhere. User: "Sell Overage
+action ... should not drive the main action. Instead it should be one of
+the input like Sources, Technicals, Macro." The gate was removed —
+`_compute_final_call`/`finalCall()` now compute the Final Call purely from
+Sources × Technical, identically whether or not the position is over its
+category Max. Over-max is now flagged with an orange **OVER MAX** pill
+next to the ACTION badge (`_isOverMaxOverlay`, same shape as the STOP/
+earnings pills; tooltip shows the $ over cap) — it never changes
+`consolidated_action`, `final_code`, `fc_confidence`, chip bucket, sort
+severity, or AMT$. (The one surviving use of the over-max fact in
+`_compute_final_call` is gate 4: if Technical says buy but the position is
+already at/over Max, the call is capped at HOLD rather than recommending
+more buying — that's a sizing cap on buys, not a synthetic sell, and is
+unchanged.)
 
 **AMT$** shows the delta for actionable rows: ADD / INCREASE = target −
 position, REMOVE / REDUCE = position − target, all clamped ≥ 0 (suppressed
 rows → 0). HOLD / no-action rows show the current held dollars, not a delta.
-When the position exceeds the category Max (REMOVE excepted), AMT$
-overrides to `position − Max` — the trim back to the ceiling — paired with
-the `SELL→MAX` badge overlay.
+It always reflects the real `consolidated_action` now — over-max no longer
+overrides it (see above); the trim-to-cap $ is available in the OVER MAX
+pill's own tooltip instead.
 
 **Snapshot dates.** The winning source's effective snapshot date — the date
 the underlying data record is for (`drv_outlook_action.as_of_date`, carried

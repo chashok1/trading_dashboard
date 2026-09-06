@@ -125,7 +125,17 @@
 
     .uv-cell rect.uv-cell-rect { stroke: none; cursor: pointer; }
     .uv-cell text { pointer-events: none; font-family: inherit; }
-    .uv-cell .uv-c-name { font-weight: 700; }
+    /* Header/name text needs its OWN pointer events -- Symbol tiles hover
+       this element specifically to open the Action popover (see
+       renderSymbolTiles/uv-c-name .on('mouseenter'/'mouseleave') in
+       universe.js); re-enabled here (not on the tile as a whole) since the
+       blanket `.uv-cell text { pointer-events: none }` above exists so
+       every OTHER label still lets clicks/hover fall through to the tile's
+       rect underneath. cursor:help signals "hover for detail" the same way
+       the rest of the app's rich-popover triggers do. User: "make the
+       popover pops up only when i hover over the header, for ex, hover on
+       account name, source name, stock name etc" -- 2026-09-06. */
+    .uv-cell .uv-c-name { font-weight: 700; pointer-events: auto; cursor: help; }
     .uv-cell .uv-c-sub { font-weight: 500; opacity: .85; }
     /* the "All stocks" corner link needs its OWN click, distinct from the
        tile's click-anywhere-else -- re-enable pointer events just for it
@@ -165,22 +175,22 @@
       .uv-tab, #uvTt { transition: none; }
     }
 
-    /* 2026-09-03 (held-perspective proposal): portfolio-wide KPI strip --
-       same .kpi-strip/.kpi-card pattern already established on
-       web/portfolio.html, copied here rather than shared/extracted (every
-       screen in this app keeps its own page-scoped <style> block, see this
-       file's own top-of-file comment). Page-wide facts (total held, P&L,
-       cash, account count) -- NOT re-filtered by the View/Filter/Color
-       controls below, which only narrow the treemap itself; rendered once
-       from build(), not on every render(). */
-    .uv-kpi-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-      gap: 10px; margin-bottom: 10px; }
-    .uv-kpi-card { padding: 7px 12px; border-radius: 8px; background: var(--card-bg);
-      border: 1px solid var(--border); min-width: 0; }
-    .uv-kpi-label { font-size: 10px; letter-spacing: .5px; text-transform: uppercase;
-      color: var(--text-3); margin-bottom: 2px; }
-    .uv-kpi-value { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
-    .uv-kpi-sub { font-size: 10.5px; margin-top: 1px; font-variant-numeric: tabular-nums; color: var(--text-2); }
+    /* 2026-09-03 (held-perspective proposal): portfolio-wide KPI summary.
+       Page-wide facts (total held, cash, today's gain, realized YTD) --
+       NOT re-filtered by the View/Filter/Color controls, which only narrow
+       the treemap itself; rendered once from build(), not on every
+       render(). Originally its own multi-card strip row (.uv-kpi-strip/
+       .uv-kpi-card, same pattern as web/portfolio.html); replaced with
+       this single right-justified line living directly on the filter bar
+       (.uv-hdr already has justify-content:space-between, so this just
+       becomes its second flex child) -- concise dot-separated
+       "Total · YTD · Cash · Today" instead of 4+ full cards. User: "is
+       there a way to display Total portfolio/YTD/Cash/Today in concise
+       manner on the top filter bar right justified" -- 2026-09-06. */
+    .uv-hdr-kpis { font-size: 12.5px; color: var(--text-2); white-space: nowrap;
+      font-variant-numeric: tabular-nums; }
+    .uv-hdr-kpis b { color: var(--text-1); font-weight: 700; }
+    .uv-hdr-kpis .uv-kpi-sep { color: var(--text-3); margin: 0 8px; }
     .uv-gain-pos { color: #16a34a; }
     .uv-gain-neg { color: #dc2626; }
   </style>
@@ -216,46 +226,34 @@
   <main class="uv-wrap">
     <div class="uv-hdr">
       <div class="uv-hdr-controls">
+        <!-- All | Account | Asset | Src# | Src$ -- one combined radio
+             group. "All" used to be a separate on/off toggle button
+             (uvAllStocksBtn); Source used to be its own separate tab plus
+             a further separate Count/Capital toggle you had to click
+             AFTER switching to it (2 clicks to get "Source sized by
+             count"). Src#/Src$ collapse that into ONE click each --
+             clicking either sets currentView='source' AND sizeMode
+             together (see wireStaticControls) -- so there's no standalone
+             "Source" button left to click first. All/Account/Asset don't
+             get a count/$ split of their own since their tile sizing and
+             legend %s are already always dollar-based regardless (the
+             "% and $K must match" fix earlier this session) -- there's no
+             meaningful "sized by count" variant of those to offer.
+             History: "Combine first two radio buttons (By account etc &
+             All stocks) into one as All|Account|Asset and separate By
+             source into its own as Source" -- 2026-09-06; "Filter
+             Count|Capital -> doesn't appply for first three radio button
+             options... Always use Capital option" -- 2026-09-06; "Combine
+             Source Count|Capital into Src#|Src$ and default to Src#" --
+             2026-09-06; "Why do you need Source still? Can we combine
+             Src#|Src$ with All|Account|Asset" -- 2026-09-06, which is
+             what actually removed the standalone Source/Size rows. -->
         <div class="uv-tabs" role="tablist" aria-label="Treemap view">
-          <button class="uv-tab" role="tab" data-view="account" aria-selected="true">By Account</button>
-          <button class="uv-tab" role="tab" data-view="assetclass" aria-selected="false">By Asset Class</button>
-          <button class="uv-tab" role="tab" data-view="source" aria-selected="false">By Source</button>
-        </div>
-
-        <!-- "All My Stocks" -- one flat screen of every held symbol across
-             every account, no Account/Source/Asset Class/Sector grouping.
-             Orthogonal on/off toggle, not a 4th View tab -- see
-             flatStocksMode in universe.js. User: "no drill down at the
-             account level, all accounts combined." -->
-        <div class="uv-ctrl-group">
-          <div class="uv-tabs small" role="tablist" aria-label="All my stocks">
-            <button class="uv-tab" type="button" role="tab" id="uvAllStocksBtn" aria-selected="false">All My Stocks</button>
-          </div>
-        </div>
-
-        <!-- Size -- what sizes every tile at every level of either
-             hierarchy (symbol count vs $ capital). Replaces the old
-             "By Count"/"By Capital" top-level tabs, which only ever
-             differed by this one number -- now a toggle instead of two
-             separate entry points. -->
-        <div class="uv-ctrl-group">
-          <div class="uv-tabs small" role="tablist" aria-label="Tile size">
-            <button class="uv-tab" role="tab" data-size="count" aria-selected="true">Count</button>
-            <button class="uv-tab" role="tab" data-size="capital" aria-selected="false">Capital</button>
-          </div>
-        </div>
-
-        <!-- Tile fill: Signal (trading action, existing behavior) vs
-             Gain/Loss (unrealized P&L %, held perspective). Symbol-level
-             only, same visibility rule as Color/Style/Risk Range -- see
-             atSymbolLevel(). Distinct control from the "Color" filter above
-             (that narrows WHICH symbols show; this changes what the fill
-             represents), so labeled "Color by" to avoid confusion. -->
-        <div class="uv-ctrl-group" id="uvColorModeRow">
-          <div class="uv-tabs small" role="tablist" aria-label="Tile fill mode">
-            <button class="uv-tab" role="tab" data-colormode="signal" aria-selected="true">Signal</button>
-            <button class="uv-tab" role="tab" data-colormode="gainloss" aria-selected="false">Gain/Loss</button>
-          </div>
+          <button class="uv-tab" role="tab" data-view="all" aria-selected="false">All</button>
+          <button class="uv-tab" role="tab" data-view="account" aria-selected="true">Account</button>
+          <button class="uv-tab" role="tab" data-view="assetclass" aria-selected="false">Asset</button>
+          <button class="uv-tab" role="tab" data-view="source" data-size="count" aria-selected="false">Src#</button>
+          <button class="uv-tab" role="tab" data-view="source" data-size="capital" aria-selected="false">Src$</button>
         </div>
 
         <!-- Hidden under "By Account" -- that view only ever means
@@ -308,13 +306,12 @@
             <input type="range" id="uvRrMin" min="0" max="100" value="0" step="1" aria-label="Risk Range minimum">
             <input type="range" id="uvRrMax" min="0" max="100" value="100" step="1" aria-label="Risk Range maximum">
           </div>
-          <span class="uv-fcount" id="uvRrLabel">RR 0–100%</span>
         </div>
 
       </div>
-    </div>
 
-    <div class="uv-kpi-strip" id="uvKpiStrip"></div>
+      <div class="uv-hdr-kpis" id="uvHdrKpis"></div>
+    </div>
 
     <div class="uv-crumbs-row">
       <div class="uv-crumbs" id="uvCrumbs"></div>
@@ -337,6 +334,18 @@
   <div id="uvTt"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
-  <script src="/static/universe.js?v=57"></script>
+  <!-- Action popover port: window.outlookColor/actionDisplay/actionText/
+       escapeHtml/fmtUsd globals the ported popover code (from
+       web/actionable.js) depends on. Loaded before universe.js, same order
+       actionable.html uses. window.mtTip.candleSvg (market_bar.js) is
+       deliberately NOT loaded here -- that file auto-inits DOM widgets
+       specific to actionable.html's own market-bar elements that don't
+       exist on this page; universe.js replicates just the one candleSvg
+       function it needs instead (credited at its own definition). User:
+       "Also display the same popover that is being displayed in Actionable
+       screen -> Action column -> Action popover" -- 2026-09-06. -->
+  <script src="/static/_common.js?v=1"></script>
+  <script src="/static/actions.js?v=1"></script>
+  <script src="/static/universe.js?v=101"></script>
 </body>
 </html>

@@ -201,6 +201,77 @@ def get_universe(date: Optional[str] = Query(None)):
             "asset_class": _norm_asset_class(r.get("real_asset_class")),
             "style_tags": _style_labels(r.get("style_stances")),
             "sources": _source_codes(r.get("source_actions")),
+            # Macro/Technical/PVV -- same fields the Actionable screen's own
+            # MACRO/technical/PVV grid columns read off this identical
+            # get_actionable() row, just not previously surfaced here. Feeds
+            # Symbol tile detail lines (web/universe.js::renderSymbolTiles).
+            # User: "display/add macro, sources, technical, PVV, & other
+            # columns that you see on actionable screen" -- 2026-09-06.
+            "macro_value": r.get("macro_value"),
+            "macro_conf": _f(r.get("macro_conf")),
+            "macronet": _f(r.get("macronet")),
+            "macro_conflict": bool(r.get("macro_conflict")) if r.get("macro_conflict") is not None else None,
+            "rsi": _f(r.get("rsi")),
+            "a_macdh_d_brr": _f(r.get("a_macdh_d_brr")),
+            "rvol": _f(r.get("rvol")),
+            "iv_percentile": _f(r.get("iv_percentile")),
+            "rr_action": r.get("rr_action"),
+            "pvv_decision": r.get("pvv_decision"),
+            # Plain Bullish/Mild Bullish/Light Bullish/Neutral/Mild Bearish/
+            # Bearish text (etl/derive.py::_derive_rr_outlook_from_qe, or the
+            # raw RR feed) -- the simple per-symbol outlook already used to
+            # color the Symbol name on the Actionable grid (outlookColor()).
+            # Aggregated (Bullish-vs-Bearish majority) per asset-class/sector
+            # row for the legend's own single indicator caret. User: "Don't
+            # i have a simple Bullish or Bearish signal?" -> "Just display
+            # one, rr outlook" -- 2026-09-06.
+            "rr_outlook": r.get("rr_outlook"),
+            # Action popover port (Universe screen) -- the rest of the fields
+            # _buildActionPopHtmlV2 and its helpers (web/universe.js, ported
+            # from web/actionable.js) read off a get_actionable() row that
+            # weren't already surfaced above. Every one of these already
+            # comes back from get_actionable() (drv_actionable's own columns
+            # via `a.*`, or an existing join) -- nothing new queried here.
+            # JSONB fields (source_actions/rules_engine_fires/style_stances/
+            # monthly_scores_json) pass through as-is, already
+            # JSON-serializable straight from psycopg. User: "Also display
+            # the same popover that is being displayed in Actionable screen
+            # -> Action column -> Action popover" -- 2026-09-06.
+            "consolidated_action": r.get("consolidated_action"),
+            "winning_source": r.get("winning_source"),
+            "source_actions": r.get("source_actions"),
+            "rules_engine_fires": r.get("rules_engine_fires"),
+            "low_confidence": bool(r.get("low_confidence")) if r.get("low_confidence") is not None else None,
+            "stop_breached": bool(r.get("stop_breached")) if r.get("stop_breached") is not None else None,
+            "stop_signal": r.get("stop_signal"),
+            "target_max_dollar": _f(r.get("target_max_dollar")),
+            "suggested_target_dollar": _f(r.get("suggested_target_dollar")),
+            "final_action": r.get("final_action"),
+            "final_side": r.get("final_side"),
+            "fc_feasible": bool(r.get("fc_feasible")) if r.get("fc_feasible") is not None else None,
+            "fc_strength": _f(r.get("fc_strength")),
+            "fc_confidence": r.get("fc_confidence"),
+            "final_side_cal": r.get("final_side_cal"),
+            "bull_prob": _f(r.get("bull_prob")),
+            "warn_added_this_leg": bool(r.get("warn_added_this_leg")) if r.get("warn_added_this_leg") is not None else None,
+            "pct_change": _f(r.get("pct_change")),
+            "open_price": _f(r.get("open_price")),
+            "high_price": _f(r.get("high_price")),
+            "low_price": _f(r.get("low_price")),
+            "iv_ratio": _f(r.get("iv_ratio")),
+            "vlm_action": r.get("vlm_action"),
+            "vlm_desc": r.get("vlm_desc"),
+            "rr_desc": r.get("rr_desc"),
+            "tn_td_desc": r.get("tn_td_desc"),
+            "bb_desc": r.get("bb_desc"),
+            "conviction_hold": bool(r.get("conviction_hold")) if r.get("conviction_hold") is not None else None,
+            "conviction_note": r.get("conviction_note"),
+            "conviction_direction": r.get("conviction_direction"),
+            "real_asset_class": r.get("real_asset_class"),
+            "sector_stance": _f(r.get("sector_stance")),
+            "asset_class_stance": _f(r.get("asset_class_stance")),
+            "style_stances": r.get("style_stances"),
+            "monthly_scores_json": r.get("monthly_scores_json"),
             **_gain_fields(r.get("tos_symbol")),
         }
         for r in actionable_rows

@@ -144,12 +144,18 @@ def _compute_final_call(
     tech_is_buy    = rra in ("BS", "BM", "INCREASE")
     tech_is_buy_min = rra in ("BMN", "ADD")
 
-    # ── 1. Strategic gate: SELL ALL / REMOVE or over-max ────────────────
-    if src_is_exit or at_max:
-        exit_strength = _FC_SCALE.get("OVER_MAX", -1) if at_max else _FC_SCALE.get("SA", -3)
-        exit_code = "OVER_MAX" if at_max else "SA"
-        lbl, code, side = _action_display(exit_code)
-        if not is_held and not at_max:
+    # ── 1. Strategic gate: SELL ALL / REMOVE ─────────────────────────────
+    # (2026-09-03, user: "Sell Overage ... should not drive the main
+    # action". Over-max used to short-circuit here exactly like SELL ALL,
+    # replacing whatever Sources+Technical actually recommended with a
+    # synthetic OVER_MAX/"SO" headline even when nothing else said sell.
+    # It's now purely informational — see `at_max` below, still used at
+    # gate 4 to block a buy recommendation from adding past the ceiling,
+    # and surfaced client-side as the OVER MAX pill (web/actionable.js)
+    # — and never overrides the real Final Call.)
+    if src_is_exit:
+        lbl, code, side = _action_display("SA")
+        if not is_held:
             hold_lbl, hold_code, hold_side = _action_display("HOLD")
             return {
                 "final_action": hold_lbl, "final_code": hold_code,
@@ -158,7 +164,7 @@ def _compute_final_call(
             }
         return {
             "final_action": lbl, "final_code": code, "final_side": side,
-            "fc_strength": exit_strength, "fc_confidence": "gate", "fc_feasible": True,
+            "fc_strength": _FC_SCALE.get("SA", -3), "fc_confidence": "gate", "fc_feasible": True,
         }
 
     # ── 2. Don't-initiate guard ──────────────────────────────────────────
