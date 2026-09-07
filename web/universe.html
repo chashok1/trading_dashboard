@@ -61,6 +61,26 @@
     .uv-tabs.small .uv-tab { padding: 5px 11px; font-size: 11.5px; border-radius: 5px; }
     .uv-ctrl-group .uv-fcount { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 
+    /* Small "what is this?" info icon -- hover/focus opens a real styled
+       popover (#uvInfoPop, see _uvShowInfoPopover) instead of the
+       browser's plain native title tooltip. */
+    .uv-info-icon { display: inline-flex; align-items: center; justify-content: center;
+      width: 15px; height: 15px; border-radius: 50%; font-size: 12px; line-height: 1;
+      color: var(--text-3); cursor: help; flex: 0 0 auto; }
+    .uv-info-icon:hover, .uv-info-icon:focus-visible { color: var(--accent); outline: none; }
+    /* Generic info popover shell -- unlike .uv-actpop-shell (copied
+       verbatim from actionable.html, hardcoded light-only), this is new
+       and follows this page's own convention of theming off the real
+       :root vars so it reads correctly in both themes. */
+    .uv-infopop-shell { position: fixed; z-index: 1000; display: none;
+      background: var(--card-bg); color: var(--text-1); border: 1px solid var(--border);
+      border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+      padding: 10px 12px; font-size: 11.5px; line-height: 1.5; max-width: 260px;
+      pointer-events: none; }
+    .uv-infopop-shell b { color: var(--text-1); }
+    .uv-infopop-shell ul { margin: 4px 0 0; padding-left: 16px; }
+    .uv-infopop-shell li { margin: 2px 0; }
+
     /* Risk Range dual-thumb slider -- two overlapping native <input
        type=range> elements (classic pattern: shared track drawn
        underneath, only each input's own thumb is clickable via
@@ -299,12 +319,65 @@
              only, same visibility rule as Color/Style -- see
              atSymbolLevel(). User: "have a new filter risk range slider
              -> slider should filter the stocks based on that (display it
-             only on the stocks)." -->
+             only on the stocks)." Visible "RR" label + hover tooltip
+             added (2026-09-07) -- the slider itself had no on-screen
+             label at all before this, just an aria-label a sighted user
+             never sees. Title text is \n-separated (own line per fact),
+             not the flat middot-joined form -- native title tooltips
+             can't render real <li> bullets, this is the closest
+             structured equivalent. User: "add small text on the top
+             and/or popover for slider on what it is? RR" -- 2026-09-07. -->
         <div class="uv-ctrl-group" id="uvRrRow">
+          <!-- Was a plain "RR" text label with a native title tooltip
+               (2026-09-07); replaced with an icon + a real styled popover
+               (see _uvShowInfoPopover) per direct request -- native title
+               tooltips are unstyled/plain and don't match the rest of the
+               app's popover look. User: "remove label 'RR' and use
+               popover to tell me what it is" -- 2026-09-07. -->
+          <span class="uv-info-icon" id="uvRrInfoIcon" tabindex="0" aria-label="What is Risk Range?">ⓘ</span>
           <div class="uv-rr-slider">
             <div class="uv-rr-track"><div class="uv-rr-range" id="uvRrRange"></div></div>
             <input type="range" id="uvRrMin" min="0" max="100" value="0" step="1" aria-label="Risk Range minimum">
             <input type="range" id="uvRrMax" min="0" max="100" value="100" step="1" aria-label="Risk Range maximum">
+          </div>
+        </div>
+
+        <!-- Unrealized gain% filter -- EVERY tile level now, rollups
+             included (Account/Asset Class/Sector/Source root tiles, not
+             just individual symbol tiles) -- always visible, no
+             atSymbolLevel() gating any more. Rollup tiles use each GROUP's
+             own aggregate gain% (costGainPct off computeScopedBreakdown/
+             acctGain/etc., the same figure already shown on that tile's own
+             P&L block) since there's no single symbol to test there -- see
+             filterByGain's own comment. All/Gains/Losses, same 3-tab shape
+             as the Color filter (a symbol or group with no cost basis data
+             is excluded from both Gains and Losses, same "can't tell" rule
+             the RR filter uses for a null rawRrPos). Was a min/max range
+             slider (2026-09-07); replaced with this simpler All/Gains/
+             Losses toggle per direct request -- see git history for the
+             slider version if that's ever wanted back. User: "instead of a
+             slider have a 2 button radio buttons. gains and losses" --
+             2026-09-07, then "Can we apply this filter for all screens?"
+             -- 2026-09-07 (symbol tiles only, at first), then "Why can't i
+             use it all levels?" -- 2026-09-07 (extended to rollups too). -->
+        <div class="uv-ctrl-group" id="uvGainRow">
+          <div class="uv-tabs small" role="tablist" aria-label="Unrealized gain filter">
+            <button class="uv-tab" role="tab" data-gain="all" aria-selected="true">All</button>
+            <button class="uv-tab" role="tab" data-gain="gains" aria-selected="false">Gains</button>
+            <button class="uv-tab" role="tab" data-gain="losses" aria-selected="false">Losses</button>
+          </div>
+          <!-- Tile SIZE -- symbol-tile level only (see renderSymbolTiles);
+               hidden at rollup levels since it has no effect there (those
+               still size by capital/count, sizeMode, untouched by this
+               feature). % (the original/default) sizes by |Unrealized
+               gain%|, $ sizes by |Unrealized gain $| instead. Independent
+               of the All/Gains/Losses filter (that always narrows by %,
+               regardless of which sizing is picked). User: "gains and
+               losses -> provide $ % to display the tiles based on the $
+               or %" -- 2026-09-07. -->
+          <div class="uv-tabs small" role="tablist" aria-label="Tile size basis" id="uvGainSizeGroup">
+            <button class="uv-tab" role="tab" data-gainsize="pct" aria-selected="true">%</button>
+            <button class="uv-tab" role="tab" data-gainsize="dollar" aria-selected="false">$</button>
           </div>
         </div>
 
@@ -346,6 +419,6 @@
        screen -> Action column -> Action popover" -- 2026-09-06. -->
   <script src="/static/_common.js?v=1"></script>
   <script src="/static/actions.js?v=1"></script>
-  <script src="/static/universe.js?v=101"></script>
+  <script src="/static/universe.js?v=112"></script>
 </body>
 </html>

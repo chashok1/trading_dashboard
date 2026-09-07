@@ -145,6 +145,19 @@
   // User: "Now one level deep, dsiplay stocks, % and amount, caret,% up
   // or down" -- 2026-09-06.
   let acctSectorSymbolBreakdown = new Map();
+  // account_id -> Map(asset_class -> [{tos_symbol, value, count,
+  // costBasis, gainDollar}]) sorted desc by value -- same shape as
+  // acctSectorSymbolBreakdown above, but keyed by asset class and NOT
+  // restricted to Equities (every asset class gets its own symbol list,
+  // not just the one with GICS sectors). Feeds the same "Stocks" legend
+  // one level up: directly on Asset Class tiles (renderAssetClassFlat --
+  // e.g. a "Fixed Income" tile, which has no sector breakdown of its own
+  // to show instead), and, flattened across every asset class, on Account
+  // tiles themselves (renderAccountFlat) when there's still room below
+  // everything else. User: "in Account and Asset -> top level -> display
+  // stocks if you have enough space like being displyed in the sector
+  // level" -- 2026-09-06.
+  let acctAssetSymbolBreakdown = new Map();
   // Portfolio-wide KPI strip totals, computed once in build() -- NOT
   // re-filtered by View/Filter/Color (those only narrow the treemap).
   let KPI = null;
@@ -306,8 +319,9 @@
   // Generic per-scope P&L/breakdown aggregation -- takes ANY subset of POS
   // rows (one account's positions, one source's positions across every
   // account, or the entire portfolio unfiltered) and returns the same
-  // {gain, counts, assetBreakdown, sectorBreakdown, sectorSymbolBreakdown}
-  // shape build() used to compute ONLY per-account. build() itself now
+  // {gain, counts, assetBreakdown, sectorBreakdown, sectorSymbolBreakdown,
+  // assetSymbolBreakdown} shape build() used to compute ONLY per-account.
+  // build() itself now
   // calls this once per account (below) so the Account path can't drift
   // from what By-Asset-Class-root/By-Source use; renderAssetClassFlat/
   // renderSectorWithinAsset call it directly, on the fly, with a source-
@@ -316,11 +330,33 @@
   // choose all other options starting with By Asset Class, By Source etc.
   // all applicable data" -- 2026-09-06.
   function computeScopedBreakdown(posRows) {
-    const gain = { costBasis: 0, totalGainDollar: 0, todayGainDollar: 0 };
+    const gain = { costBasis: 0, totalGainDollar: 0, todayGainDollar: 0, realizedYtd: 0, realizedTotal: 0 };
     const counts = { buy: 0, sell: 0, buySymbols: [], sellSymbols: [] };
+    const scopeRealizedSeen = new Set();
     const assetTmp = new Map();
     const sectorTmp = new Map();
     const sectorSymbolsTmp = new Map();
+    const assetSymbolsTmp = new Map();
+    // Realized gain is a per-SYMBOL fact (det.ytd_realized -- already
+    // that symbol's own total across every account, from
+    // get_portfolio_realized(group_by="symbol")), not a per-POSITION one
+    // -- unlike costBasis/gainDollar/todayGainDollar above, which are
+    // legitimately summed once per POS row. Naively adding it once per
+    // POS row would double-count a symbol held in more than one account
+    // (real at the whole-portfolio/By-Source scopes, where the same
+    // symbol's rows come from multiple accounts). These two Sets track
+    // which symbols have already been counted per asset-class/sector row
+    // so each contributes its realized figure exactly once. NOTE: the
+    // figure itself is still that symbol's whole-portfolio realized total
+    // -- when this scope IS one specific account (drill.account), a
+    // symbol also sold in a DIFFERENT account would still show up here,
+    // same caveat drawSubline('Realized YTD', ...) on the Symbol tile
+    // documents. User: "I need to see realized gain or loss as one
+    // number for a given account and current holdings i need to see gain
+    // or loss" -> "can we do that at stock level and sector level etc?"
+    // -- 2026-09-07.
+    const assetRealizedSeen = new Map();
+    const sectorRealizedSeen = new Map();
     posRows.forEach(r => {
       if (r.cost_basis != null) gain.costBasis += r.cost_basis;
       if (r.total_gain_dollar != null) gain.totalGainDollar += r.total_gain_dollar;
@@ -328,6 +364,11 @@
       const det = symbolDetail.get(r.tos_symbol);
       const side = actionSide(det?.final_code);
       if (side === 'buy' || side === 'sell') { counts[side] += 1; counts[`${side}Symbols`].push(r.tos_symbol); }
+      if (det && det.ytd_realized != null && !scopeRealizedSeen.has(r.tos_symbol)) {
+        scopeRealizedSeen.add(r.tos_symbol);
+        gain.realizedYtd += det.ytd_realized;
+        gain.realizedTotal += (det.total_realized || 0);
+      }
       // Simple per-symbol Bullish/Bearish read (rr_outlook -- "Bullish"/
       // "Mild Bullish"/.../"Bearish", same field/prefix-match convention
       // drv_dash_summary's own n_bullish/n_bearish counts already use
@@ -341,22 +382,53 @@
       // a simple Bullish or Bearish signal?" -> "Just display one, rr
       // outlook" -- 2026-09-06.
       const dir = _outlookDir(det && det.rr_outlook);
-      const ae = assetTmp.get(r.asset_class) || { value: 0, count: 0, costBasis: 0, gainDollar: 0, todayGainDollar: 0, buy: 0, sell: 0, buySymbols: [], sellSymbols: [], rrBullish: 0, rrBearish: 0 };
+      const ae = assetTmp.get(r.asset_class) || { value: 0, count: 0, costBasis: 0, gainDollar: 0, todayGainDollar: 0, buy: 0, sell: 0, buySymbols: [], sellSymbols: [], rrBullish: 0, rrBearish: 0, realizedYtd: 0, realizedTotal: 0 };
       ae.value += (r.market_value || 0); ae.count += 1;
       if (r.cost_basis != null) ae.costBasis += r.cost_basis;
       if (r.total_gain_dollar != null) ae.gainDollar += r.total_gain_dollar;
       if (r.today_gain_dollar != null) ae.todayGainDollar += r.today_gain_dollar;
       if (side === 'buy' || side === 'sell') { ae[side] += 1; ae[`${side}Symbols`].push(r.tos_symbol); }
       if (dir === 'up') ae.rrBullish += 1; else if (dir === 'down') ae.rrBearish += 1;
+      if (det && det.ytd_realized != null) {
+        const seen = assetRealizedSeen.get(r.asset_class) || new Set();
+        if (!seen.has(r.tos_symbol)) {
+          seen.add(r.tos_symbol);
+          assetRealizedSeen.set(r.asset_class, seen);
+          ae.realizedYtd += det.ytd_realized;
+          ae.realizedTotal += (det.total_realized || 0);
+        }
+      }
       assetTmp.set(r.asset_class, ae);
+
+      // Flat symbol list per asset class -- same shape as sectorSymbolsTmp
+      // below, but every asset class gets one (not just Equities). Feeds
+      // the Stocks legend on Asset Class tiles directly, and (flattened
+      // across every asset class) on Account tiles. See
+      // acctAssetSymbolBreakdown's own comment.
+      const acSymList = assetSymbolsTmp.get(r.asset_class) || [];
+      acSymList.push({
+        tos_symbol: r.tos_symbol, value: r.market_value || 0, count: 1,
+        costBasis: r.cost_basis || 0, gainDollar: r.total_gain_dollar || 0,
+      });
+      assetSymbolsTmp.set(r.asset_class, acSymList);
+
       if (r.asset_class === 'Equities') {
-        const se = sectorTmp.get(r.sector) || { value: 0, count: 0, costBasis: 0, gainDollar: 0, todayGainDollar: 0, buy: 0, sell: 0, buySymbols: [], sellSymbols: [], rrBullish: 0, rrBearish: 0 };
+        const se = sectorTmp.get(r.sector) || { value: 0, count: 0, costBasis: 0, gainDollar: 0, todayGainDollar: 0, buy: 0, sell: 0, buySymbols: [], sellSymbols: [], rrBullish: 0, rrBearish: 0, realizedYtd: 0, realizedTotal: 0 };
         se.value += (r.market_value || 0); se.count += 1;
         if (r.cost_basis != null) se.costBasis += r.cost_basis;
         if (r.total_gain_dollar != null) se.gainDollar += r.total_gain_dollar;
         if (r.today_gain_dollar != null) se.todayGainDollar += r.today_gain_dollar;
         if (side === 'buy' || side === 'sell') { se[side] += 1; se[`${side}Symbols`].push(r.tos_symbol); }
         if (dir === 'up') se.rrBullish += 1; else if (dir === 'down') se.rrBearish += 1;
+        if (det && det.ytd_realized != null) {
+          const seenSec = sectorRealizedSeen.get(r.sector) || new Set();
+          if (!seenSec.has(r.tos_symbol)) {
+            seenSec.add(r.tos_symbol);
+            sectorRealizedSeen.set(r.sector, seenSec);
+            se.realizedYtd += det.ytd_realized;
+            se.realizedTotal += (det.total_realized || 0);
+          }
+        }
         sectorTmp.set(r.sector, se);
 
         const symList = sectorSymbolsTmp.get(r.sector) || [];
@@ -375,7 +447,9 @@
       .sort((a, b) => b.value - a.value);
     const sectorSymbolBreakdown = new Map();
     sectorSymbolsTmp.forEach((rows, sector) => sectorSymbolBreakdown.set(sector, [...rows].sort((a, b) => b.value - a.value)));
-    return { gain, counts, assetBreakdown, sectorBreakdown, sectorSymbolBreakdown };
+    const assetSymbolBreakdown = new Map();
+    assetSymbolsTmp.forEach((rows, asset_class) => assetSymbolBreakdown.set(asset_class, [...rows].sort((a, b) => b.value - a.value)));
+    return { gain, counts, assetBreakdown, sectorBreakdown, sectorSymbolBreakdown, assetSymbolBreakdown };
   }
 
   // Resolves the P&L/breakdown data for whatever scope `drill` currently
@@ -393,6 +467,7 @@
         assetBreakdown: acctAssetBreakdown.get(drill.account) || [],
         sectorBreakdown: acctSectorBreakdown.get(drill.account) || [],
         sectorSymbolBreakdown: acctSectorSymbolBreakdown.get(drill.account) || new Map(),
+        assetSymbolBreakdown: acctAssetSymbolBreakdown.get(drill.account) || new Map(),
       };
     }
     if (drill && drill.source) {
@@ -400,6 +475,37 @@
       return computeScopedBreakdown(POS.filter(r => (symbolDetail.get(r.tos_symbol)?.sources || []).includes(src)));
     }
     return computeScopedBreakdown(POS);
+  }
+
+  // Gains/Losses filter, extended to ROLLUP tiles (Account/Asset Class/
+  // Sector/Source) -- not just individual symbol tiles (renderSymbolTiles'
+  // own copy of this same all-or-gains-or-losses check). A rollup tile is
+  // many symbols, not one, so there's no single symbol gain% to test --
+  // `gainPctFn` instead computes that GROUP's own aggregate ($-weighted
+  // gainDollar/costBasis, from computeScopedBreakdown/acctGain/etc., same
+  // figure already shown on that tile's own P&L block), and a group with
+  // no cost basis data can't be judged, same "can't tell" rule used
+  // everywhere else this filter appears. User: "Why can't i use it all
+  // levels?" -- 2026-09-07.
+  function filterByGain(items, gainPctFn) {
+    if (currentGainFilter === 'all') return items;
+    return items.filter(item => {
+      const pct = gainPctFn(item);
+      if (pct == null) return false;
+      return currentGainFilter === 'gains' ? pct >= 0 : pct < 0;
+    });
+  }
+  // costBasis/gainDollar -> % (null when no cost basis) -- the one-line
+  // math filterByGain's callers all repeat, pulled out once. Two field-name
+  // shapes feed this: computeScopedBreakdown's own top-level `gain` (and
+  // acctGain, same shape) call it `totalGainDollar`; its per-asset-class/
+  // per-sector breakdown ROWS call the identical figure `gainDollar` --
+  // both accepted here rather than making every caller know which shape
+  // it has.
+  function costGainPct(g) {
+    if (!g || !g.costBasis) return null;
+    const dollar = g.totalGainDollar != null ? g.totalGainDollar : g.gainDollar;
+    return dollar != null ? (dollar / g.costBasis * 100) : null;
   }
 
   function build(payload) {
@@ -459,6 +565,7 @@
     acctAssetBreakdown = new Map();
     acctSectorBreakdown = new Map();
     acctSectorSymbolBreakdown = new Map();
+    acctAssetSymbolBreakdown = new Map();
     posByAccount.forEach((rows, acctId) => {
       const b = computeScopedBreakdown(rows);
       acctGain.set(acctId, b.gain);
@@ -466,6 +573,7 @@
       acctAssetBreakdown.set(acctId, b.assetBreakdown);
       acctSectorBreakdown.set(acctId, b.sectorBreakdown);
       acctSectorSymbolBreakdown.set(acctId, b.sectorSymbolBreakdown);
+      acctAssetSymbolBreakdown.set(acctId, b.assetSymbolBreakdown);
     });
     // Cash folded into every account's total (not just cash-only ones) --
     // an account's real size is securities + cash, and a 100%-cash account
@@ -540,6 +648,18 @@
   }
   function luminance(hex) { const c = d3.rgb(hex); return luminanceRgb(c.r, c.g, c.b); }
   const labelColorFor = hex => luminance(hex) > 0.42 ? '#1c1917' : '#ffffff';
+  // Light pastel version of a saturated category color -- blends toward
+  // white, same ~0.83 ratio the app's own hand-picked --act-*-bg tint
+  // tokens work out to (checked: --act-buy-strong #2a5a3d -> its own
+  // -bg #d6eadd is roughly an 0.82-0.87 per-channel blend toward white).
+  // Used for Account/Source/Asset Class/Sector tile fills so every tile on
+  // this screen reads as a light card with dark text, not a solid color
+  // block with white text -- labelColorFor() picks the dark ink
+  // automatically once the fill's own luminance clears 0.42 (verified:
+  // every cat1-9 + cat-unmapped tint clears it by a wide margin, ~11-16:1
+  // contrast against #1c1917). User: "Universe screen-tiles-background,
+  // use light colors and contrast font" -- 2026-09-06.
+  function tintBg(hex) { return d3.interpolateRgb(hex, '#ffffff')(0.83); }
   // WCAG contrast ratio between two hex colors.
   function contrastRatio(hex1, hex2) {
     const a = luminance(hex1), b = luminance(hex2);
@@ -588,6 +708,20 @@
     HOLD: 'Hold',
   };
   function actionColor(code) { return cssVar(ACTION_COLOR[code] || '--act-neutral'); }
+  // Light tint counterpart of ACTION_COLOR -- the app's own already-
+  // defined --act-*-bg tokens (used elsewhere for badges/pills), reused
+  // here for the Symbol tile's own fill instead of the saturated base
+  // color. See tintBg's own comment for the "light bg + dark ink" screen-
+  // wide change this is part of.
+  const ACTION_COLOR_BG = {
+    BM: '--act-buy-strong-bg',
+    BS: '--act-buy-bg', INCREASE: '--act-buy-bg',
+    BMN: '--act-buy-weak-bg', ADD: '--act-buy-weak-bg', BW: '--act-buy-weak-bg', BSW: '--act-buy-weak-bg',
+    SA: '--act-sell-strong-bg', REMOVE: '--act-sell-strong-bg',
+    SS: '--act-sell-bg', STM: '--act-sell-bg', REDUCE: '--act-sell-bg', SO: '--act-sell-bg',
+    SW: '--act-sell-weak-bg', SWW: '--act-sell-weak-bg',
+  };
+  function actionColorBg(code) { return cssVar(ACTION_COLOR_BG[code] || '--act-neutral-bg'); }
   function actionLabel(code) { return ACTION_LABEL[code] || 'Hold'; }
   // 'buy' | 'sell' | 'hold' -- same grouping as ACTION_COLOR, coarsened to
   // 3 buckets for the Color filter (all 3 buy tiers count as "Buy", etc.).
@@ -606,9 +740,11 @@
   // it's unconditionally shown as its own Unrealized/Today text lines
   // (appendSymbolBreakdown-adjacent code below) alongside the signal
   // fill/badge, so both are visible on every tile at once instead of
-  // either/or.
+  // either/or. Light tint (actionColorBg), not the saturated actionColor,
+  // so the tile reads as a light card with dark text -- labelColorFor()
+  // downstream picks dark ink automatically once this fill is light.
   function tileColor(det) {
-    return actionColor(det.final_code);
+    return actionColorBg(det.final_code);
   }
   const fmtSignedUsd = v => (v >= 0 ? '+' : '') + fmtUsd(v);
   const fmtSignedPct1 = v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
@@ -667,6 +803,25 @@
   // bar itself uses), same scope as Color/Style -- narrows symbol tiles
   // to a rawRrPos() range, via the #uvRrMin/#uvRrMax dual-thumb slider.
   let rrMin = 0, rrMax = 100;
+  // Unrealized gain% filter -- every symbol-tile view, applied inside
+  // renderSymbolTiles itself (was "All My Stocks" only until "Can we apply
+  // this filter for all screens?" -- 2026-09-07). 'all' | 'gains' |
+  // 'losses', same 3-way shape/scope as currentColorFilter above (wired
+  // the same way, see wireStaticControls' data-color loop). Was a min/max
+  // range slider (2026-09-07); replaced with this simpler toggle per
+  // direct request -- see git history for the slider version. User: "add
+  // a filter button to show >= gains and losses" -- 2026-09-07, then
+  // "instead of a slider have a 2 button radio buttons. gains and losses"
+  // -- 2026-09-07.
+  let currentGainFilter = 'all';
+  // Tile SIZE basis, every symbol-tile view (see renderSymbolTiles) --
+  // 'pct' sizes by |Unrealized gain%| (the original/default), 'dollar'
+  // sizes by |Unrealized gain $| instead. Independent of currentGainFilter
+  // above (that always filters by %, whichever sizing is showing). User:
+  // "gains and losses -> provide $ % to display the tiles based on the $
+  // or %"
+  // -- 2026-09-07.
+  let gainSizeMode = 'pct';
   // Unified drill path, shared by all three hierarchies: null (root) or
   // { account?, source?, assetClass?, sector? } -- built progressively.
   // "By Asset Class" never sets `account`/`source`; "By Account" sets
@@ -780,6 +935,8 @@
     document.querySelectorAll('.uv-tab[data-filter]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.filter === currentFilter)));
     document.querySelectorAll('.uv-tab[data-color]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.color === currentColorFilter)));
     document.querySelectorAll('.uv-tab[data-style]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.style === currentStyleFilter)));
+    document.querySelectorAll('.uv-tab[data-gain]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.gain === currentGainFilter)));
+    document.querySelectorAll('.uv-tab[data-gainsize]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.gainsize === gainSizeMode)));
     // Filter (All/Held/Actionable) isn't a real choice under "By Account"
     // -- it's forced to Held there (see wireStaticControls) -- so hide it
     // instead of showing a 3-way selector that silently reverts you to
@@ -793,6 +950,15 @@
     $('uvColorRow').hidden = !showSymbolFilters;
     $('uvStyleRow').hidden = !showSymbolFilters;
     $('uvRrRow').hidden = !showSymbolFilters;
+    // Gain% filter -- ALWAYS visible now, rollup levels included (was
+    // "All My Stocks" only, then every symbol-tile level, until "Why
+    // can't i use it all levels?" -- 2026-09-07). The $/% SIZE toggle
+    // inside it, though, only does anything at the symbol-tile level
+    // (rollup tiles still size by capital/count, sizeMode, untouched) --
+    // hidden there so it doesn't look like a working control that quietly
+    // isn't.
+    $('uvGainRow').hidden = false;
+    $('uvGainSizeGroup').hidden = !showSymbolFilters;
 
     if (flatStocksMode) { renderAllStocksFlat(); return; }
     if (currentView === 'account' && !(drill && drill.account)) { renderAccountRoot(); return; }
@@ -810,7 +976,9 @@
     $('uvSectorsUnit').textContent = 'accounts';
     $('uvSHeld').textContent = totalHeldSymbols + ' symbols';
     $('uvSCapital').textContent = fmtUsd(d3.sum(ACCOUNTS, a => a.total));
-    $('uvFilterCount').textContent = '';
+    // Stats above stay unfiltered (same rule every other level follows --
+    // Gain only narrows the tiles drawn below, not these headline counts).
+    $('uvFilterCount').textContent = currentGainFilter !== 'all' ? `— ${currentGainFilter}` : '';
 
     renderCrumbs();
     $('uvSideHeading').textContent = 'Top accounts';
@@ -827,8 +995,25 @@
       return;
     }
 
-    renderAccountFlat(W, H);
+    // Gains/Losses filter, ACCOUNT level -- each account's own aggregate
+    // gain% (acctGain, precomputed in build() via computeScopedBreakdown,
+    // the same figure the account tile's own P&L block already shows),
+    // not a single symbol's. See filterByGain's own comment. User: "Why
+    // can't i use it all levels?" -- 2026-09-07.
+    const rows = filterByGain(ACCOUNTS, a => costGainPct(acctGain.get(a.key)));
+    if (rows.length === 0) {
+      svg.selectAll('*').remove();
+      svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
+        .text(`No ${currentGainFilter} accounts here.`);
+      $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
+      return;
+    }
 
+    renderAccountFlat(W, H, rows);
+
+    // Side panel -- top accounts overall, same "regardless of the current
+    // filter" convention the Asset Class rank list already follows (see
+    // its own comment): ACCOUNTS, not the gain-filtered `rows` above.
     const ranklist = $('uvRankList');
     ranklist.innerHTML = ACCOUNTS.slice(0, 8).map(a => {
       const dot = cssVar(acctColor.get(a.key));
@@ -846,6 +1031,9 @@
   // per symbol, not per account -- POS, the per-account breakdown, isn't
   // needed here), so this is just SYMS filtered to held, no aggregation.
   function renderAllStocksFlat() {
+    // Stats line reflects the full held set, same as renderHierarchy's own
+    // (Color/Style/RR/Gain only ever narrow the tiles drawn below, inside
+    // renderSymbolTiles -- never these headline counts).
     const rows = SYMS.filter(r => r.held_today);
     const sectorCount = new Set(rows.map(r => r.sector)).size;
 
@@ -874,6 +1062,10 @@
       return;
     }
 
+    // Gain% filter + $/% tile sizing both now live in renderSymbolTiles
+    // itself (2026-09-07 -- "Can we apply this filter for all screens?"),
+    // same as every other symbol-tile caller; this just passes capital $
+    // as `value` (the realValue fallback), like they do.
     const tileRows = rows.map(r => ({ tos_symbol: r.tos_symbol, value: r.current_position_dollar || 0, detail: r }));
     renderSymbolTiles(tileRows, W, H);
 
@@ -909,7 +1101,8 @@
     $('uvSectorsUnit').textContent = 'asset classes';
     $('uvSHeld').textContent = d3.sum(hier.agg, d => d.held) + ' symbols';
     $('uvSCapital').textContent = fmtUsd(d3.sum(hier.agg, d => d.held_value));
-    $('uvFilterCount').textContent = scopeLabel ? `— in ${scopeLabel}` : '';
+    const filterCountParts = [scopeLabel && `in ${scopeLabel}`, currentGainFilter !== 'all' && currentGainFilter].filter(Boolean);
+    $('uvFilterCount').textContent = filterCountParts.length ? `— ${filterCountParts.join(', ')}` : '';
 
     renderCrumbs();
     $('uvSideHeading').textContent = scopeLabel ? `Top asset classes in ${scopeLabel}` : 'Top asset classes';
@@ -930,7 +1123,22 @@
       // Preserve whichever root leg (account or source) got us here --
       // same `parent` pattern renderCrumbs() uses.
       const parent = inAccount ? { account: drill.account } : (drill && drill.source) ? { source: drill.source } : {};
-      renderAssetClassFlat(hier.agg, W, H,
+      // Gains/Losses filter, ASSET CLASS level -- each class's own
+      // aggregate gain% for the CURRENT scope (scopedBreakdownFor already
+      // resolves account/source/whole-portfolio correctly, the same
+      // figure the account tile's own Asset Class breakdown legend shows).
+      // See filterByGain's own comment. User: "Why can't i use it all
+      // levels?" -- 2026-09-07.
+      const assetGainPct = new Map(scopedBreakdownFor(drill).assetBreakdown.map(b => [b.asset_class, costGainPct(b)]));
+      const assetRows = filterByGain(hier.agg, d => assetGainPct.get(d.asset_class));
+      if (assetRows.length === 0) {
+        svg.selectAll('*').remove();
+        svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
+          .text(`No ${currentGainFilter} asset classes here.`);
+        $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
+        return;
+      }
+      renderAssetClassFlat(assetRows, W, H,
         ac => { drill = { ...parent, assetClass: ac }; render(); },
         ac => {
           drill = inAccount
@@ -947,7 +1155,18 @@
       renderSymbolTiles(rows, W, H);
     } else if (!drill.sector) {
       if (drill.assetClass === 'Equities') {
-        renderSectorWithinAsset(hier.sectorByAsset['Equities'] || [], W, H, sec => { drill = { ...drill, sector: sec }; render(); });
+        // Gains/Losses filter, SECTOR level -- same idea as the Asset
+        // Class branch above, one level deeper (Equities sectors only).
+        const sectorGainPct = new Map(scopedBreakdownFor(drill).sectorBreakdown.map(b => [b.sector, costGainPct(b)]));
+        const sectorRows = filterByGain(hier.sectorByAsset['Equities'] || [], d => sectorGainPct.get(d.sector));
+        if (sectorRows.length === 0) {
+          svg.selectAll('*').remove();
+          svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
+            .text(`No ${currentGainFilter} sectors here.`);
+          $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
+          return;
+        }
+        renderSectorWithinAsset(sectorRows, W, H, sec => { drill = { ...drill, sector: sec }; render(); });
       } else {
         const rows = (hier.byAsset[drill.assetClass] || []).map(r => ({ tos_symbol: r.tos_symbol, value: r.current_position_dollar || 0, detail: symbolDetail.get(r.tos_symbol) || {} }));
         renderSymbolTiles(rows, W, H);
@@ -1884,9 +2103,22 @@
   // or down" -- 2026-09-06, then "add Buy or Sell as a last column
   // instead of listing at the bottom for this" -- 2026-09-06, then "What
   // do the dots before stock symbols represent?" -> "do the same for
-  // stocks" -- 2026-09-06.
+  // stocks" -- 2026-09-06, then "Also display short account name in the
+  // stocks grid" -- 2026-09-06 (see acctTextFor below), then "Display the
+  // stocks in two column format if there is a space" -- 2026-09-06 (see
+  // SYMBOL_TWOCOL_MIN_W below), then "account name, align it properly as
+  // a column" -- 2026-09-06.
   const SYMBOL_LEGEND_MIN_W = 110;
   const SYMBOL_SIDE_GAP = 6, SYMBOL_SIDE_RESERVE = 30; // "SELL" alone
+  // Newspaper-style 2-column layout, only once the tile is wide enough for
+  // BOTH columns to run in full aligned mode on their own (each needs at
+  // least LEGEND_ALIGNED_MIN_W) -- a single wide column otherwise wastes
+  // horizontal space once a tile is roomy (Account/Asset Class top-level
+  // tiles routinely are), showing far fewer stocks than the same vertical
+  // space could hold split side by side. User: "Display the stocks in two
+  // column format if there is a space" -- 2026-09-06.
+  const SYMBOL_TWOCOL_GAP = 18;
+  const SYMBOL_TWOCOL_MIN_W = LEGEND_ALIGNED_MIN_W * 2 + SYMBOL_TWOCOL_GAP;
   function appendSymbolBreakdown(g, w, h, bg, ink, startY, rowsIn) {
     if (!rowsIn || !rowsIn.length || w < SYMBOL_LEGEND_MIN_W) return startY;
     const basis = 'value'; // always dollar -- same "% must match $K" fix as the two breakdowns above
@@ -1902,68 +2134,135 @@
       .text('STOCKS');
     const posColor = legibleTint(bg, PNL_GREEN, ink, PNL_CONTRAST_TARGET);
     const negColor = legibleTint(bg, PNL_RED, ink, PNL_NEG_CONTRAST_TARGET);
-    const showAligned = w >= LEGEND_ALIGNED_MIN_W;
-    const showGainLoss = showAligned;
-    // Symbols are short (2-5 chars) and don't need LEGEND_NAME_MAX_W's
-    // full budget the way a GICS sector name does -- still fit-to-content
-    // (capped smaller) so a short ticker doesn't reserve more name room
-    // than it needs, leaving a bit more to the tile's own physical limit.
-    const availableForName = (w - 7) - LEGEND_VALUE_RESERVE - SYMBOL_SIDE_GAP - SYMBOL_SIDE_RESERVE - LEGEND_PCT_COL_W - 4 - 19;
+    const showGainLoss = w >= LEGEND_ALIGNED_MIN_W;
+    // Short account name(s) holding this symbol (symbolAccounts, same map
+    // the Symbol tile's own "Held" detail line uses) -- its own aligned
+    // column right after the ticker name (a first attempt appended it
+    // inline into the name text itself, which made names variable-width
+    // and unaligned row to row). Multi-account holdings (a symbol held in
+    // more than one account) only actually surface at the whole-portfolio
+    // or By-Source scopes, where a row can combine positions across
+    // accounts -- inside one account's own tile this just repeats that
+    // account's own (already-known) name, which is harmless. User: "Also
+    // display short account name in the stocks grid" -- 2026-09-06, then
+    // "account name, align it properly as a column" -- 2026-09-06.
+    const acctTextFor = row => (symbolAccounts.get(row.tos_symbol) || []).join(', ');
+    // Longest name/account computed globally (not per column) so both
+    // columns' widths -- and therefore every other column's x position --
+    // line up with each other, not just within themselves.
     const longestName = legendRows.reduce((m, r) => Math.max(m, r.tos_symbol.length), 0);
-    const nameAreaW = showAligned
-      ? Math.max(0, Math.min(60, longestName * legendFontSize * 0.62, availableForName))
-      : (w - 24);
-    const pctColX = 19 + nameAreaW + 4 + LEGEND_PCT_COL_W;
-    const symKColX = pctColX + LEGEND_PCT_GAP + LEGEND_K_RESERVE;
-    const caretColX = symKColX + LEGEND_K_GAP + LEGEND_CARET_RESERVE;
-    const gainPctColX = caretColX + LEGEND_CARET_GAP + LEGEND_GAINPCT_RESERVE;
-    const sideColX = gainPctColX + SYMBOL_SIDE_GAP + SYMBOL_SIDE_RESERVE;
-    const maxChars = Math.max(3, Math.floor(nameAreaW / (legendFontSize * 0.62)));
-    let ly = firstRowY;
-    for (const row of legendRows) {
-      if (h <= ly + legendRowH - 4) break;
-      const pct = Math.round(row[basis] / total * 100);
-      const label = row.tos_symbol.length > maxChars ? row.tos_symbol.slice(0, Math.max(1, maxChars - 1)) + '…' : row.tos_symbol;
-      // Same single outlook caret as the Sector/Asset Class legends above
-      // it -- here there's no crowd to tally or ETF to stand in for, it's
-      // just the stock's own rr_outlook directly. Was a colored dot keyed
-      // to final_code (the trading signal, still shown separately via the
-      // BUY/SELL column at the far right of this same row) -- replaced so
-      // all three legend levels read the same way. User: "What do the
-      // dots before stock symbols represent?" -> "do the same for stocks"
-      // -- 2026-09-06.
-      appendOutlookCaret(g, 11, ly, _outlookDir(symbolDetail.get(row.tos_symbol)?.rr_outlook), ink, posColor, negColor);
-      g.append('text').attr('x', 19).attr('y', ly).attr('font-size', legendFontSize).attr('fill', ink).attr('opacity', 0.9)
-        .text(showAligned ? label : `${label} ${pct}%`);
-      if (showAligned) {
-        g.append('text').attr('x', pctColX).attr('y', ly).attr('text-anchor', 'end')
-          .attr('font-size', legendFontSize).attr('fill', ink).attr('opacity', 0.9)
-          .text(`${pct}%`);
-        g.append('text').attr('x', symKColX).attr('y', ly).attr('text-anchor', 'end')
-          .attr('font-size', legendFontSize).attr('fill', ink).attr('opacity', 0.85)
-          .text(fmtK(row.value));
-        if (showGainLoss && row.costBasis) {
-          const glPct = row.gainDollar / row.costBasis * 100;
-          const up = glPct >= 0;
-          const color = up ? posColor : negColor;
-          g.append('text').attr('x', caretColX).attr('y', ly).attr('text-anchor', 'end')
-            .attr('font-size', legendFontSize).attr('font-weight', 700).attr('fill', color)
-            .text(up ? '▲' : '▼');
-          g.append('text').attr('x', gainPctColX).attr('y', ly).attr('text-anchor', 'end')
-            .attr('font-size', legendFontSize).attr('font-weight', 700).attr('fill', color)
-            .text(fmtSignedPct1(glPct));
+    const longestAcct = legendRows.reduce((m, r) => Math.max(m, acctTextFor(r).length), 0);
+
+    const numCols = w >= SYMBOL_TWOCOL_MIN_W ? 2 : 1;
+    const colW = numCols === 2 ? (w - SYMBOL_TWOCOL_GAP) / 2 : w;
+
+    // How many rows actually fit, vertically, in one column -- mirrors the
+    // exact per-row bail condition the drawing loop below uses, so the
+    // column split below can never claim more rows than will really fit.
+    let maxRowsPerCol = 0;
+    for (let ly = firstRowY; h > ly + legendRowH - 4; ly += legendRowH) maxRowsPerCol++;
+
+    // Balanced newspaper split: column 1 gets the first half (capped by
+    // what actually fits), column 2 continues from there, also capped --
+    // rather than filling column 1 to the brim before column 2 gets
+    // anything, which reads less naturally for a short list.
+    const half = Math.min(maxRowsPerCol, Math.ceil(legendRows.length / numCols));
+    const columns = numCols === 2
+      ? [legendRows.slice(0, half), legendRows.slice(half, half + maxRowsPerCol)]
+      : [legendRows];
+
+    // Draws one column's rows starting at horizontal offset `originX`,
+    // itself `colW` wide -- every column-relative x position
+    // (name/pct/$K/caret/gain%/side) is computed fresh per column since
+    // colW differs from the tile's own full width once split in two.
+    function drawColumn(rows, originX) {
+      const showAligned = colW >= LEGEND_ALIGNED_MIN_W;
+      const ACCT_COL_GAP = 6;
+      // Name area sized to fit just the ticker (short, 2-6 chars) -- it
+      // no longer has to carry the account text too (that's its own
+      // column now, right after this one). Account column is fit-to-
+      // content the same way, reusing whatever room is left once every
+      // other fixed-width column (pct/$K/caret/gain%/side) has reserved
+      // its own space -- shrinks to 0 (and is simply not drawn) on a
+      // column too narrow to spare any of it, same "don't overflow, just
+      // omit" rule the rest of this legend follows.
+      const availableForName = (colW - 7) - LEGEND_VALUE_RESERVE - SYMBOL_SIDE_GAP - SYMBOL_SIDE_RESERVE - LEGEND_PCT_COL_W - 4 - 19;
+      const nameAreaW = showAligned
+        ? Math.max(0, Math.min(44, longestName * legendFontSize * 0.62, availableForName))
+        : (colW - 24);
+      const availableForAcct = showAligned ? Math.max(0, availableForName - nameAreaW - ACCT_COL_GAP) : 0;
+      const acctColW = showAligned && longestAcct > 0
+        ? Math.max(0, Math.min(70, longestAcct * (legendFontSize - 1) * 0.62, availableForAcct))
+        : 0;
+      const nameX = originX + 19;
+      const acctColX = nameX + nameAreaW + ACCT_COL_GAP;
+      const pctColX = acctColX + acctColW + (acctColW > 0 ? ACCT_COL_GAP : 0) + LEGEND_PCT_COL_W;
+      const symKColX = pctColX + LEGEND_PCT_GAP + LEGEND_K_RESERVE;
+      const caretColX = symKColX + LEGEND_K_GAP + LEGEND_CARET_RESERVE;
+      const gainPctColX = caretColX + LEGEND_CARET_GAP + LEGEND_GAINPCT_RESERVE;
+      const sideColX = gainPctColX + SYMBOL_SIDE_GAP + SYMBOL_SIDE_RESERVE;
+      const maxChars = Math.max(3, Math.floor(nameAreaW / (legendFontSize * 0.62)));
+      const acctMaxChars = Math.max(3, Math.floor(acctColW / ((legendFontSize - 1) * 0.62)));
+      let ly = firstRowY;
+      for (const row of rows) {
+        if (h <= ly + legendRowH - 4) break;
+        const pct = Math.round(row[basis] / total * 100);
+        const label = row.tos_symbol.length > maxChars ? row.tos_symbol.slice(0, Math.max(1, maxChars - 1)) + '…' : row.tos_symbol;
+        // Same single outlook caret as the Sector/Asset Class legends
+        // above it -- here there's no crowd to tally or ETF to stand in
+        // for, it's just the stock's own rr_outlook directly. Was a
+        // colored dot keyed to final_code (the trading signal, still
+        // shown separately via the BUY/SELL column at the far right of
+        // this same row) -- replaced so all three legend levels read the
+        // same way. User: "What do the dots before stock symbols
+        // represent?" -> "do the same for stocks" -- 2026-09-06.
+        appendOutlookCaret(g, originX + 11, ly, _outlookDir(symbolDetail.get(row.tos_symbol)?.rr_outlook), ink, posColor, negColor);
+        g.append('text').attr('x', nameX).attr('y', ly).attr('font-size', legendFontSize).attr('fill', ink).attr('opacity', 0.9)
+          .text(showAligned ? label : `${label} ${pct}%`);
+        if (acctColW > 0) {
+          const acctRaw = acctTextFor(row);
+          const acctLabel = acctRaw.length > acctMaxChars ? acctRaw.slice(0, Math.max(1, acctMaxChars - 1)) + '…' : acctRaw;
+          g.append('text').attr('x', acctColX).attr('y', ly).attr('font-size', legendFontSize - 1)
+            .attr('fill', ink).attr('opacity', 0.65)
+            .text(acctLabel);
         }
-        const side = actionSide(symbolDetail.get(row.tos_symbol)?.final_code);
-        if (side === 'buy' || side === 'sell') {
-          g.append('text').attr('x', sideColX).attr('y', ly).attr('text-anchor', 'end')
-            .attr('font-size', legendFontSize).attr('font-weight', 700)
-            .attr('fill', side === 'buy' ? posColor : negColor)
-            .text(side === 'buy' ? 'BUY' : 'SELL');
+        if (showAligned) {
+          g.append('text').attr('x', pctColX).attr('y', ly).attr('text-anchor', 'end')
+            .attr('font-size', legendFontSize).attr('fill', ink).attr('opacity', 0.9)
+            .text(`${pct}%`);
+          g.append('text').attr('x', symKColX).attr('y', ly).attr('text-anchor', 'end')
+            .attr('font-size', legendFontSize).attr('fill', ink).attr('opacity', 0.85)
+            .text(fmtK(row.value));
+          if (showGainLoss && row.costBasis) {
+            const glPct = row.gainDollar / row.costBasis * 100;
+            const up = glPct >= 0;
+            const color = up ? posColor : negColor;
+            g.append('text').attr('x', caretColX).attr('y', ly).attr('text-anchor', 'end')
+              .attr('font-size', legendFontSize).attr('font-weight', 700).attr('fill', color)
+              .text(up ? '▲' : '▼');
+            g.append('text').attr('x', gainPctColX).attr('y', ly).attr('text-anchor', 'end')
+              .attr('font-size', legendFontSize).attr('font-weight', 700).attr('fill', color)
+              .text(fmtSignedPct1(glPct));
+          }
+          const side = actionSide(symbolDetail.get(row.tos_symbol)?.final_code);
+          if (side === 'buy' || side === 'sell') {
+            g.append('text').attr('x', sideColX).attr('y', ly).attr('text-anchor', 'end')
+              .attr('font-size', legendFontSize).attr('font-weight', 700)
+              .attr('fill', side === 'buy' ? posColor : negColor)
+              .text(side === 'buy' ? 'BUY' : 'SELL');
+          }
         }
+        ly += legendRowH;
       }
-      ly += legendRowH;
+      return ly;
     }
-    return ly;
+
+    let maxLy = firstRowY;
+    columns.forEach((rows, i) => {
+      const ly = drawColumn(rows, i * (colW + SYMBOL_TWOCOL_GAP));
+      maxLy = Math.max(maxLy, ly);
+    });
+    return maxLy;
   }
 
   // ---- "By Account" root tiles: accounts, colored by acctColor. Click
@@ -1974,7 +2273,10 @@
   // uses, just reachable one level earlier. User: "top level filters -- if
   // they have sublevels then the tile should have a 'Stocks' link so I can
   // go to stocks directly."
-  function renderAccountFlat(W, H) {
+  function renderAccountFlat(W, H, rows) {
+    // `rows` -- the Gains/Losses-filtered account list (renderAccountRoot),
+    // defaulting to every account when called without one.
+    if (!rows) rows = ACCOUNTS;
     // Count mode sizes tiles by posCount -- an all-cash account (real $,
     // zero stock positions, e.g. an HSA or a beneficiary account sitting
     // in cash) has posCount=0, so `rawValueFn(a) > 0` was silently
@@ -1989,7 +2291,7 @@
     // sizing among accounts that DO hold positions. User: "Cash is missing
     // from Universe. Check and fix it" -- 2026-09-05.
     const rawValueFn = a => sizeMode === 'capital' ? a.total : (a.posCount > 0 ? a.posCount : (a.total > 0 ? 1 : 0));
-    const sized = ACCOUNTS.filter(a => rawValueFn(a) > 0);
+    const sized = rows.filter(a => rawValueFn(a) > 0);
     const root = d3.hierarchy({ children: sized }).sum(floorValueFn(sized, rawValueFn)).sort((a, b) => b.value - a.value);
     d3.treemap().tile(SQUARE_TILE).size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
 
@@ -1999,9 +2301,14 @@
       .attr('class', 'uv-cell-group uv-cell').attr('tabindex', 0)
       .attr('transform', d => `translate(${d.x0},${d.y0})`);
 
+    // Light tint of the account's own category color -- tintBg(), same
+    // "light bg + dark ink" treatment as every other tile level. `d` here
+    // is the plain data object (called as colorFn(d.data) below), same
+    // convention the Source/Asset Class/Sector colorFns use.
+    const colorFn = d => tintBg(cssVar(acctColor.get(d.key)));
     cell.append('rect').attr('class', 'uv-cell-rect')
       .attr('width', d => Math.max(0, d.x1 - d.x0)).attr('height', d => Math.max(0, d.y1 - d.y0))
-      .attr('rx', 3).attr('fill', d => cssVar(acctColor.get(d.data.key)));
+      .attr('rx', 3).attr('fill', d => colorFn(d.data));
 
     // Every tile's own % share of the whole screen -- ONE %, on $ value
     // (rawValueFn above, always 'capital'/$ now that the Count/Capital
@@ -2015,7 +2322,7 @@
     const totalValue = d3.sum(sized, a => a.total);
     cell.each(function (d) {
       const w = d.x1 - d.x0, h = d.y1 - d.y0;
-      const fill = cssVar(acctColor.get(d.data.key)); const ink = labelColorFor(fill);
+      const fill = colorFn(d.data); const ink = labelColorFor(fill);
       const valuePct = totalValue ? Math.round(d.data.total / totalValue * 100) : 0;
       const sub = d.data.posCount > 0
         ? `${fmtUsd(d.data.total)} (${valuePct}%) · ${d.data.posCount} symbol${d.data.posCount === 1 ? '' : 's'}`
@@ -2027,6 +2334,15 @@
       contentY = appendAccountAssetBreakdown(d3.select(this), w, h, fill, ink, contentY, acctAssetBreakdown.get(d.data.key));
       contentY = appendAccountSectorBreakdown(d3.select(this), w, h, fill, ink, contentY, acctSectorBreakdown.get(d.data.key));
       contentY = appendBuySellList(d3.select(this), w, h, fill, ink, contentY, acctActionCounts.get(d.data.key));
+      // Individual stocks, same "Stocks" legend the Sector tile (one level
+      // deeper) already shows -- every asset class's symbol list flattened
+      // together (an account isn't scoped to one asset class the way a
+      // Sector/Asset Class tile is), only drawn if there's still room
+      // below everything else above. User: "in Account and Asset -> top
+      // level -> display stocks if you have enough space like being
+      // displyed in the sector level" -- 2026-09-06.
+      const acctSymRows = [].concat(...(acctAssetSymbolBreakdown.get(d.data.key) || new Map()).values());
+      contentY = appendSymbolBreakdown(d3.select(this), w, h, fill, ink, contentY, acctSymRows);
       // Small "Stocks →" corner link -- skips the Asset Class / Sector
       // breakdown and goes straight to every held symbol in this account,
       // flat. Own click handler stops propagation so the rest of the tile
@@ -2083,7 +2399,7 @@
     $('uvSectorsUnit').textContent = 'sources';
     $('uvSHeld').textContent = d3.sum(srcAgg, d => d.held) + ' symbols';
     $('uvSCapital').textContent = fmtUsd(d3.sum(srcAgg, d => d.held_value));
-    $('uvFilterCount').textContent = '';
+    $('uvFilterCount').textContent = currentGainFilter !== 'all' ? `— ${currentGainFilter}` : '';
 
     renderCrumbs();
     $('uvSideHeading').textContent = 'Top sources';
@@ -2100,9 +2416,27 @@
       return;
     }
 
-    renderSourceFlat(srcAgg, W, H, src => { drill = { source: src }; render(); },
+    // Gains/Losses filter, SOURCE level -- each source's own aggregate
+    // gain% (computeScopedBreakdown over that source's POS rows, same
+    // figure the source tile's own P&L block shows -- see renderSourceFlat's
+    // own sourceBreakdown, recomputed here since it isn't hoisted out of
+    // that function). See filterByGain's own comment. User: "Why can't i
+    // use it all levels?" -- 2026-09-07.
+    const srcRows = filterByGain(srcAgg, d =>
+      costGainPct(computeScopedBreakdown(POS.filter(r => (symbolDetail.get(r.tos_symbol)?.sources || []).includes(d.source))).gain));
+    if (srcRows.length === 0) {
+      svg.selectAll('*').remove();
+      svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
+        .text(`No ${currentGainFilter} sources here.`);
+      $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
+      return;
+    }
+
+    renderSourceFlat(srcRows, W, H, src => { drill = { source: src }; render(); },
       src => { drill = { source: src, assetClass: ALL_ASSET_CLASSES }; render(); });
 
+    // Side panel -- top sources overall, same "regardless of the current
+    // filter" convention as every other rank list (srcAgg, not srcRows).
     const ranklist = $('uvRankList');
     const top = [...srcAgg].sort((a, b) => (sizeMode === 'capital' ? b.held_value - a.held_value : b.count - a.count)).slice(0, 8);
     ranklist.innerHTML = top.map(d => {
@@ -2133,7 +2467,7 @@
       .attr('class', 'uv-cell-group uv-cell').attr('tabindex', 0)
       .attr('transform', d => `translate(${d.x0},${d.y0})`);
 
-    const colorFn = d => cssVar(sourceColorAssign.get(d.source) || '--cat-unmapped');
+    const colorFn = d => tintBg(cssVar(sourceColorAssign.get(d.source) || '--cat-unmapped'));
     cell.append('rect').attr('class', 'uv-cell-rect')
       .attr('width', d => Math.max(0, d.x1 - d.x0)).attr('height', d => Math.max(0, d.y1 - d.y0))
       .attr('rx', 3).attr('fill', d => colorFn(d.data));
@@ -2161,7 +2495,14 @@
       const scoped = sourceBreakdown.get(d.data.source);
       let contentY = PNL_START_Y;
       if (scoped) {
-        contentY = appendAccountPnlAndSignals(g, w, h, fill, ink, scoped.gain, scoped.counts, null, null, null, null);
+        // Realized YTD, rolled up across this source's own scope -- see
+        // computeScopedBreakdown's own comment on the per-symbol dedup
+        // this relies on. User: "I need to see realized gain or loss as
+        // one number for a given account and current holdings i need to
+        // see gain or loss" -> "can we do that at stock level and sector
+        // level etc?" -- 2026-09-07.
+        const realized = { ytd_realized: scoped.gain.realizedYtd, total_realized: scoped.gain.realizedTotal };
+        contentY = appendAccountPnlAndSignals(g, w, h, fill, ink, scoped.gain, scoped.counts, null, null, realized, null);
         contentY = appendAccountAssetBreakdown(g, w, h, fill, ink, contentY, scoped.assetBreakdown);
         contentY = appendAccountSectorBreakdown(g, w, h, fill, ink, contentY, scoped.sectorBreakdown);
         contentY = appendBuySellList(g, w, h, fill, ink, contentY, scoped.counts);
@@ -2206,7 +2547,7 @@
       .attr('class', 'uv-cell-group uv-cell').attr('tabindex', 0)
       .attr('transform', d => `translate(${d.x0},${d.y0})`);
 
-    const colorFn = d => cssVar(assetColorAssign.get(d.asset_class) || '--cat-unmapped');
+    const colorFn = d => tintBg(cssVar(assetColorAssign.get(d.asset_class) || '--cat-unmapped'));
     cell.append('rect').attr('class', 'uv-cell-rect')
       .attr('width', d => Math.max(0, d.x1 - d.x0)).attr('height', d => Math.max(0, d.y1 - d.y0))
       .attr('rx', 3).attr('fill', d => colorFn(d.data));
@@ -2238,11 +2579,27 @@
       if (gainRow) {
         const gain = { costBasis: gainRow.costBasis, totalGainDollar: gainRow.gainDollar, todayGainDollar: gainRow.todayGainDollar };
         const counts = { buy: gainRow.buy, sell: gainRow.sell, buySymbols: gainRow.buySymbols, sellSymbols: gainRow.sellSymbols };
-        contentY = appendAccountPnlAndSignals(g, w, h, fill, ink, gain, counts, null, null, null, null);
+        // Realized YTD, rolled up to this asset class -- see
+        // computeScopedBreakdown's own comment on the per-symbol dedup
+        // this relies on. User: "I need to see realized gain or loss as
+        // one number for a given account and current holdings i need to
+        // see gain or loss" -> "can we do that at stock level and sector
+        // level etc?" -- 2026-09-07.
+        const realized = { ytd_realized: gainRow.realizedYtd, total_realized: gainRow.realizedTotal };
+        contentY = appendAccountPnlAndSignals(g, w, h, fill, ink, gain, counts, null, null, realized, null);
         if (d.data.asset_class === 'Equities') {
           contentY = appendAccountSectorBreakdown(g, w, h, fill, ink, contentY, scoped.sectorBreakdown);
         }
         contentY = appendBuySellList(g, w, h, fill, ink, contentY, counts);
+        // Individual stocks within THIS asset class -- same "Stocks"
+        // legend the Sector tile shows one level deeper, only drawn if
+        // there's still room below everything else above. Every asset
+        // class gets its own list here (not just Equities -- Fixed
+        // Income/Commodities/FX/Crypto tiles had nothing at all below
+        // their P&L block until now). User: "in Account and Asset -> top
+        // level -> display stocks if you have enough space like being
+        // displyed in the sector level" -- 2026-09-06.
+        contentY = appendSymbolBreakdown(g, w, h, fill, ink, contentY, scoped.assetSymbolBreakdown.get(d.data.asset_class));
       }
       // Small "Stocks →" corner link, Equities tile only -- skips the
       // Sector step and goes straight to every equity symbol, flat. Its
@@ -2295,7 +2652,7 @@
       .attr('class', 'uv-cell-group uv-cell').attr('tabindex', 0)
       .attr('transform', d => `translate(${d.x0},${d.y0})`);
 
-    const colorFn = d => cssVar(catAssign.get(d.sector) || '--cat-unmapped');
+    const colorFn = d => tintBg(cssVar(catAssign.get(d.sector) || '--cat-unmapped'));
     cell.append('rect').attr('class', 'uv-cell-rect')
       .attr('width', d => Math.max(0, d.x1 - d.x0)).attr('height', d => Math.max(0, d.y1 - d.y0))
       .attr('rx', 3).attr('fill', d => colorFn(d.data));
@@ -2319,7 +2676,14 @@
         // Sell: ..." list would just repeat the same tickers. User: "add
         // Buy or Sell as a last column instead of listing at the bottom
         // for this" -- 2026-09-06.
-        const contentY = appendAccountPnlAndSignals(g, w, h, fill, ink, gain, counts, null, null, null, null);
+        // Realized YTD, rolled up to this sector -- see
+        // computeScopedBreakdown's own comment on the per-symbol dedup
+        // this relies on. User: "I need to see realized gain or loss as
+        // one number for a given account and current holdings i need to
+        // see gain or loss" -> "can we do that at stock level and sector
+        // level etc?" -- 2026-09-07.
+        const realized = { ytd_realized: gainRow.realizedYtd, total_realized: gainRow.realizedTotal };
+        const contentY = appendAccountPnlAndSignals(g, w, h, fill, ink, gain, counts, null, null, realized, null);
         appendSymbolBreakdown(g, w, h, fill, ink, contentY, symbolsBySector && symbolsBySector.get(d.data.sector));
       }
     });
@@ -2358,17 +2722,38 @@
   // ---- Symbol tiles: the actual "individual stock" drawing (action
   // color, Td/Tn, RR bar, click-to-Actionable) used by every drilldown
   // path. Caller resolves `rows` (each needing {tos_symbol, value, detail}
-  // -- value is always the $ figure; this function itself decides whether
-  // to size by it or by count, per the module-level `sizeMode`).
+  // -- value is a capital $ figure, kept as the realValue fallback below);
+  // tile SIZE itself is decided HERE, uniformly for every caller.
+  //
+  // Gain% filter + $/% size (Gains/Losses toggle, gainSizeMode) used to be
+  // "All My Stocks"-only (2026-09-07), computed by that one caller before
+  // handing rows to this function; folded in HERE instead so every symbol-
+  // tile view behaves identically -- Account "all stocks", Asset Class
+  // flat, Sector "all stocks", and a drilled Sector's own symbols, not
+  // just the flat view. Tile size is now ALWAYS |Unrealized gain%| or
+  // |Unrealized gain $|, replacing the old capital-or-count sizing
+  // (`sizeMode`) at this level entirely -- sizeMode still matters for the
+  // Source view's OWN rollup tiles (Asset Class/Sector/Account), just not
+  // once you're down to individual symbols. User: "Can we apply this
+  // filter for all screens?" -- 2026-09-07 (scoped to every Universe
+  // symbol-tile view, not other app screens -- see chat).
   function renderSymbolTiles(rows, W, H) {
-    const unit = sizeMode;
-    // realValue preserves the actual $ value through the Count-mode
-    // override below (which blanks `value` to 1 for treemap AREA only) --
-    // the tile's own display wants the real $ regardless of what's
-    // currently sizing it. User: "display as much information as you can
-    // in the tile as we have space" -- 2026-09-06.
-    if (unit === 'count') rows = rows.map(r => ({ ...r, value: 1, realValue: r.value }));
-    else rows = rows.filter(r => r.value > 0); // capital sizing: a $0 position/symbol gets no tile
+    if (currentGainFilter !== 'all') {
+      rows = rows.filter(r => {
+        const pct = r.detail.total_gain_pct;
+        if (pct == null) return false;
+        return currentGainFilter === 'gains' ? pct >= 0 : pct < 0;
+      });
+    }
+    // A flat/no-data symbol (0 or null gain) still gets a real (if tiny)
+    // tile via the `|| 0.01` floor, same reason "All My Stocks" needed it
+    // (see git history) -- a hard `value<=0` drop would otherwise exclude
+    // it well before floorValueFn's own relative floor gets a say.
+    rows = rows.map(r => {
+      const det = r.detail;
+      const gv = (gainSizeMode === 'dollar' ? Math.abs(det.total_gain_dollar ?? 0) : Math.abs(det.total_gain_pct ?? 0)) || 0.01;
+      return { ...r, value: gv, realValue: det.current_position_dollar ?? r.value };
+    });
 
     // Color/Style/Risk Range filters -- narrow to one trading-signal
     // side, one style tag, and/or a Risk Range position band, applied
@@ -2393,6 +2778,7 @@
       const msg = currentStyleFilter !== 'all' ? `No ${currentStyleFilter} symbols here.`
         : currentColorFilter !== 'all' ? `No ${currentColorFilter} symbols here.`
         : (rrMin > 0 || rrMax < 100) ? `No symbols in the ${rrMin}–${rrMax}% Risk Range band here.`
+        : currentGainFilter !== 'all' ? `No ${currentGainFilter} here.`
         : 'No symbols here.';
       svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
         .text(msg);
@@ -2518,6 +2904,22 @@
           const up = det.today_gain_dollar >= 0;
           const pctTxt = det.today_gain_pct != null ? ` (${fmtSignedPct1(det.today_gain_pct)})` : '';
           drawSubline('Today', `${up ? '▲' : '▼'} ${fmtSignedUsd(det.today_gain_dollar)}${pctTxt}`, up ? posColor : negColor, 700, 0.9);
+        }
+        // Realized YTD -- same field/label the Account tile's own P&L
+        // block already shows, rolled up to Account level; this is the
+        // per-symbol figure directly (det.ytd_realized, already in the
+        // /api/universe payload via get_portfolio_realized(group_by=
+        // "symbol")). NOTE this is that symbol's realized gain across
+        // EVERY account that has ever sold it, not just whichever
+        // account's drill path led to this tile -- same caveat as the
+        // Sector/Asset Class rollups below (see computeScopedBreakdown's
+        // own comment). User: "I need to see realized gain or loss as
+        // one number for a given account and current holdings i need to
+        // see gain or loss" -> "can we do that at stock level and sector
+        // level etc?" -- 2026-09-07.
+        if (det.ytd_realized) {
+          const up = det.ytd_realized >= 0;
+          drawSubline('Realized YTD', `${up ? '▲' : '▼'} ${fmtSignedUsd(det.ytd_realized)}`, up ? posColor : negColor, 700, 0.9);
         }
       }
 
@@ -3763,6 +4165,42 @@
     });
   }
 
+  // Generic "what is this?" info popover -- hover/focus-only read tooltip
+  // (pointer-events:none, same reason .source-pop is: nothing to click
+  // inside it, so no dismiss listener needed), unlike the Action popover
+  // above (click-driven, interactive, needs Escape/click-outside). Content
+  // is real <ul><li> HTML the caller builds -- an actual bulleted list,
+  // not a flat middot-joined string. Reused by any .uv-info-icon; RR is
+  // the first (wireRrSlider wires it), more can call
+  // _uvShowInfoPopover(icon, html) the same way. User: "remove label 'RR'
+  // and use popover to tell me what it is" -- 2026-09-07.
+  function _uvInfoPopEl() {
+    let el = $('uvInfoPop');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'uvInfoPop';
+      el.className = 'uv-infopop-shell';
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+  function _uvShowInfoPopover(el, html) {
+    const pop = _uvInfoPopEl();
+    pop.innerHTML = html;
+    pop.style.display = 'block';
+    const rect = el.getBoundingClientRect();
+    let top = rect.bottom + 4;
+    if (top + pop.offsetHeight > window.innerHeight - 8) top = Math.max(8, rect.top - pop.offsetHeight - 4);
+    let left = rect.left;
+    if (left + pop.offsetWidth > window.innerWidth - 8) left = Math.max(8, window.innerWidth - pop.offsetWidth - 8);
+    pop.style.top = top + 'px';
+    pop.style.left = left + 'px';
+  }
+  function _uvHideInfoPopover() {
+    const pop = $('uvInfoPop');
+    if (pop) pop.style.display = 'none';
+  }
+
   // ---------------------------------------------------------------------
   // Wiring
   // ---------------------------------------------------------------------
@@ -3821,6 +4259,12 @@
     // in wireStyleTabs() below, once its data-driven tab list exists.)
     document.querySelectorAll('.uv-tab[data-color]').forEach(t =>
       t.addEventListener('click', () => { currentColorFilter = t.dataset.color; render(); }));
+    // Gain% filter -- same deliberately-no-drill-reset rule as Color/
+    // Style just above (re-filters whatever tiles are already showing).
+    document.querySelectorAll('.uv-tab[data-gain]').forEach(t =>
+      t.addEventListener('click', () => { currentGainFilter = t.dataset.gain; render(); }));
+    document.querySelectorAll('.uv-tab[data-gainsize]').forEach(t =>
+      t.addEventListener('click', () => { gainSizeMode = t.dataset.gainsize; render(); }));
     window.addEventListener('resize', () => render());
   }
 
@@ -3871,6 +4315,20 @@
     // update(), which would also trigger a redundant render() before
     // init()'s own first render() call right after this wiring.
     rangeEl.style.left = '0%'; rangeEl.style.right = '0%';
+
+    // "What is Risk Range?" info icon -- hover or keyboard-focus (tabindex
+    // on the icon itself, see the HTML) opens the same read-only popover
+    // _uvShowInfoPopover uses elsewhere. Real <ul><li> content, not a
+    // flat middot-joined string.
+    const infoIcon = $('uvRrInfoIcon');
+    const rrInfoHtml = '<b>Risk Range position (0-100%)</b><ul>' +
+      '<li>0% = at the Low Risk Range (LRR) support level</li>' +
+      '<li>100% = at the Trade Risk Range (TRR) target level</li>' +
+      '<li>Drag a thumb to narrow to a band; left at 0/100 = no filter</li></ul>';
+    infoIcon.addEventListener('mouseenter', () => _uvShowInfoPopover(infoIcon, rrInfoHtml));
+    infoIcon.addEventListener('mouseleave', _uvHideInfoPopover);
+    infoIcon.addEventListener('focus', () => _uvShowInfoPopover(infoIcon, rrInfoHtml));
+    infoIcon.addEventListener('blur', _uvHideInfoPopover);
   }
 
   async function init() {
