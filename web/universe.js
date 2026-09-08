@@ -815,13 +815,29 @@
   // -- 2026-09-07.
   let currentGainFilter = 'all';
   // Tile SIZE basis, every symbol-tile view (see renderSymbolTiles) --
-  // 'pct' sizes by |Unrealized gain%| (the original/default), 'dollar'
-  // sizes by |Unrealized gain $| instead. Independent of currentGainFilter
-  // above (that always filters by %, whichever sizing is showing). User:
-  // "gains and losses -> provide $ % to display the tiles based on the $
-  // or %"
-  // -- 2026-09-07.
-  let gainSizeMode = 'pct';
+  // 'pct' sizes by |Unrealized gain%|, 'dollar' sizes by |Unrealized gain
+  // $|, 'equal' (the default, matching currentGainFilter's own default of
+  // 'all' just above -- picking Gains/Losses lets %/$ size unambiguously,
+  // but "All" mixes winners and losers so Equal is the less misleading
+  // starting point, see wireStaticControls' data-gain click handler)
+  // makes every tile the same size (a flat grid, gain data shown as text
+  // only, not tile area). User: "gains and losses -> provide $ % to
+  // display the tiles based on the $ or %" -- 2026-09-07, then "one more
+  // option along with % and $ so i can see all tiles with same
+  // dimentions" -- 2026-09-07, then "Shouldn't All ... default to =" --
+  // 2026-09-07 (this initial value included, not just the click-time
+  // switch -- the very first render is already on "All").
+  let gainSizeMode = 'equal';
+  // Symbols actually on screen right now, as individual stock tiles --
+  // captured at the end of renderSymbolTiles (after Color/Style/RR/Gain
+  // have all narrowed `rows`), read by copySymbols(). Same "copy exactly
+  // what's currently visible" idea as web/actionable.js's own
+  // state.visibleRows/copySymbols -- Copy only ever appears at the
+  // symbol-tile level here (see atSymbolLevel()), so there's no rollup-
+  // tile equivalent to reconcile. User: "add copy button on all universe
+  // screens to copy the stock symbols like on actionalble screen" --
+  // 2026-09-07.
+  let visibleSymbols = [];
   // Unified drill path, shared by all three hierarchies: null (root) or
   // { account?, source?, assetClass?, sector? } -- built progressively.
   // "By Asset Class" never sets `account`/`source`; "By Account" sets
@@ -877,27 +893,32 @@
     return true; // a sector (or ALL_SECTORS) is chosen -> symbol tiles
   }
 
-  // 2026-09-03 (held-perspective proposal), condensed 2026-09-06: portfolio-
-  // wide KPI summary, right-justified on the filter bar itself
-  // (.uv-hdr's own justify-content:space-between). Rendered once from
-  // build()'s KPI totals -- NOT re-rendered inside render(), since it
+  // 2026-09-03 (held-perspective proposal), condensed 2026-09-06, restacked
+  // 2026-09-07: portfolio-wide KPI summary, right-justified on the filter
+  // bar itself (.uv-hdr's own justify-content:space-between). Rendered once
+  // from build()'s KPI totals -- NOT re-rendered inside render(), since it
   // deliberately does not follow the current View/Filter/drill (it's
   // "what does my whole book look like", not "what's in the current
-  // treemap"). One dot-separated line -- Total/YTD/Cash/Today -- replacing
-  // the old 6-card strip; Unrealized P&L and Accounts dropped from this
-  // condensed line (still computed on KPI for anything that wants them
-  // later) since 4 figures is what was asked for. User: "is there a way
-  // to display Total portfolio/YTD/Cash/Today in concise manner on the
-  // top filter bar right justified" -- 2026-09-06.
+  // treemap"). 4 stacked label|value rows (label left, value right) --
+  // replaced the single dot-separated line per direct request (labels ran
+  // together horizontally on a narrower window); Unrealized P&L and
+  // Accounts stay dropped from this condensed set (still computed on KPI
+  // for anything that wants them later) since 4 figures is what was asked
+  // for. User (original): "is there a way to display Total portfolio/YTD/
+  // Cash/Today in concise manner on the top filter bar right justified"
+  // -- 2026-09-06, then "display Total .../YTD/Cash/Today vertically on
+  // the right side in 4 lines so it fits two lines only with small font"
+  // -- 2026-09-07 ("numbers right alined and labels left").
   function renderKpiStrip() {
     if (!KPI) return;
     const gainCls = v => v >= 0 ? 'uv-gain-pos' : 'uv-gain-neg';
-    const gainSpan = v => `<span class="${gainCls(v)}">${fmtSignedUsd(v)}</span>`;
+    const row = (label, valueHtml) => `<span class="uv-kpi-label">${label}</span><span class="uv-kpi-val">${valueHtml}</span>`;
+    const gainVal = v => `<span class="${gainCls(v)}">${fmtSignedUsd(v)}</span>`;
     $('uvHdrKpis').innerHTML =
-      `Total <b>${fmtUsd(KPI.totalPortfolio)}</b>` +
-      `<span class="uv-kpi-sep">·</span>YTD <b>${gainSpan(KPI.totalRealizedYtd)}</b>` +
-      `<span class="uv-kpi-sep">·</span>Cash <b>${fmtUsd(KPI.totalCash)}</b>` +
-      `<span class="uv-kpi-sep">·</span>Today <b>${gainSpan(KPI.totalTodayDollar)}</b>`;
+      row('Total', fmtUsd(KPI.totalPortfolio)) +
+      row('YTD', gainVal(KPI.totalRealizedYtd)) +
+      row('Cash', fmtUsd(KPI.totalCash)) +
+      row('Today', gainVal(KPI.totalTodayDollar));
   }
 
   function render() {
@@ -959,6 +980,12 @@
     // isn't.
     $('uvGainRow').hidden = false;
     $('uvGainSizeGroup').hidden = !showSymbolFilters;
+    // Copy Symbols -- symbol-tile level only, same rule as the $/% size
+    // toggle just above (no rollup-tile equivalent, see visibleSymbols'
+    // own comment). Stale list from a previous symbol-tile view cleared
+    // here too, so a hidden button never copies last screen's symbols.
+    $('uvCopySymbolsBtn').hidden = !showSymbolFilters;
+    if (!showSymbolFilters) visibleSymbols = [];
 
     if (flatStocksMode) { renderAllStocksFlat(); return; }
     if (currentView === 'account' && !(drill && drill.account)) { renderAccountRoot(); return; }
@@ -1101,8 +1128,11 @@
     $('uvSectorsUnit').textContent = 'asset classes';
     $('uvSHeld').textContent = d3.sum(hier.agg, d => d.held) + ' symbols';
     $('uvSCapital').textContent = fmtUsd(d3.sum(hier.agg, d => d.held_value));
-    const filterCountParts = [scopeLabel && `in ${scopeLabel}`, currentGainFilter !== 'all' && currentGainFilter].filter(Boolean);
-    $('uvFilterCount').textContent = filterCountParts.length ? `— ${filterCountParts.join(', ')}` : '';
+    // "in {scopeLabel}" dropped from this line per direct request (2026-
+    // 09-07, "remove the text '— in CALL'") -- scopeLabel is still shown
+    // via the crumbs trail and uvSideHeading just below, so it wasn't the
+    // only place carrying it, just a redundant one.
+    $('uvFilterCount').textContent = currentGainFilter !== 'all' ? `— ${currentGainFilter}` : '';
 
     renderCrumbs();
     $('uvSideHeading').textContent = scopeLabel ? `Top asset classes in ${scopeLabel}` : 'Top asset classes';
@@ -2748,10 +2778,16 @@
     // A flat/no-data symbol (0 or null gain) still gets a real (if tiny)
     // tile via the `|| 0.01` floor, same reason "All My Stocks" needed it
     // (see git history) -- a hard `value<=0` drop would otherwise exclude
-    // it well before floorValueFn's own relative floor gets a say.
+    // it well before floorValueFn's own relative floor gets a say. 'equal'
+    // sidesteps all of that -- every tile is a flat 1, so they all come
+    // out the same size regardless of gain data (still shown as text on
+    // the tile, it just isn't what sizes it any more). User: "one more
+    // option along with % and $ so i can see all tiles with same
+    // dimentions" -- 2026-09-07.
     rows = rows.map(r => {
       const det = r.detail;
-      const gv = (gainSizeMode === 'dollar' ? Math.abs(det.total_gain_dollar ?? 0) : Math.abs(det.total_gain_pct ?? 0)) || 0.01;
+      const gv = gainSizeMode === 'equal' ? 1
+        : (gainSizeMode === 'dollar' ? Math.abs(det.total_gain_dollar ?? 0) : Math.abs(det.total_gain_pct ?? 0)) || 0.01;
       return { ...r, value: gv, realValue: det.current_position_dollar ?? r.value };
     });
 
@@ -2772,6 +2808,12 @@
         return clamped >= rrMin && clamped <= rrMax;
       });
     }
+
+    // Copy Symbols' source of truth -- exactly what survived every active
+    // filter above, regardless of whether any tiles actually fit on
+    // screen below (an empty result still means "0 symbols", not stale
+    // data from whatever rendered last).
+    visibleSymbols = rows.map(r => r.tos_symbol).filter(Boolean);
 
     svg.selectAll('*').remove();
     if (rows.length === 0) {
@@ -4170,10 +4212,12 @@
   // inside it, so no dismiss listener needed), unlike the Action popover
   // above (click-driven, interactive, needs Escape/click-outside). Content
   // is real <ul><li> HTML the caller builds -- an actual bulleted list,
-  // not a flat middot-joined string. Reused by any .uv-info-icon; RR is
-  // the first (wireRrSlider wires it), more can call
-  // _uvShowInfoPopover(icon, html) the same way. User: "remove label 'RR'
-  // and use popover to tell me what it is" -- 2026-09-07.
+  // not a flat middot-joined string. Reusable by any element (pass its own
+  // ref + html); RR's own range bar is the only caller so far
+  // (wireRrSlider) -- was a dedicated "ⓘ" icon at first, moved onto the
+  // slider itself per direct follow-up. User: "remove label 'RR' and use
+  // popover to tell me what it is" -- 2026-09-07, then "remove the i next
+  // to RR instead just do a popover on the range bar itself" -- 2026-09-07.
   function _uvInfoPopEl() {
     let el = $('uvInfoPop');
     if (!el) {
@@ -4201,6 +4245,54 @@
     if (pop) pop.style.display = 'none';
   }
 
+  // Copy the symbols actually on screen right now (visibleSymbols, kept
+  // current by renderSymbolTiles) as a comma-separated list -- same
+  // recipe as web/actionable.js's own copySymbols(): async Clipboard API
+  // first, a hidden-textarea/execCommand fallback for non-secure contexts
+  // without it. This page has no shared toast/status-bar mechanism (that
+  // one uses showStatus()), so feedback is a brief inline flash on the
+  // button itself (_uvFlashCopyButton) instead. User: "add copy button on
+  // all universe screens to copy the stock symbols like on actionalble
+  // screen" -- 2026-09-07.
+  async function copySymbols() {
+    const btn = $('uvCopySymbolsBtn');
+    if (!visibleSymbols.length) return;
+    const text = visibleSymbols.join(',');
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      _uvFlashCopyButton(btn, `Copied ${visibleSymbols.length} symbols`, false);
+    } catch (e) {
+      console.error('Copy symbols failed:', e);
+      _uvFlashCopyButton(btn, 'Copy failed: ' + e.message, true);
+    }
+  }
+  // Brief post-click feedback on the Copy button itself -- swaps its
+  // title (screen-reader/hover text) and a color class for ~1.4s, then
+  // reverts both. See its own CSS comment (.uv-copied/.uv-copy-error).
+  function _uvFlashCopyButton(btn, msg, isError) {
+    if (!btn) return;
+    if (btn.dataset.origTitle == null) btn.dataset.origTitle = btn.title;
+    btn.title = msg;
+    btn.classList.toggle('uv-copy-error', isError);
+    btn.classList.toggle('uv-copied', !isError);
+    clearTimeout(btn._uvFlashTimer);
+    btn._uvFlashTimer = setTimeout(() => {
+      btn.classList.remove('uv-copied', 'uv-copy-error');
+      btn.title = btn.dataset.origTitle;
+    }, 1400);
+  }
+
   // ---------------------------------------------------------------------
   // Wiring
   // ---------------------------------------------------------------------
@@ -4221,6 +4313,13 @@
           currentView = t.dataset.view;
           // "By Account" only means anything for held positions.
           if (currentView === 'account') currentFilter = 'held';
+          // Src#/Src$ default the Filter back to All -- a source can flag
+          // a not-held symbol too (see currentScopeRows()'s own comment),
+          // so landing on whatever Filter happened to be active before
+          // (e.g. still "Held" from a prior Account visit) could silently
+          // hide not-held source hits. User: "src# src$ -> default to All
+          // in All|held|actionable" -- 2026-09-07.
+          if (currentView === 'source') currentFilter = 'all';
           // Src#/Src$ are two separate buttons now, each declaring its own
           // data-size ('count'/'capital') -- a click just sets sizeMode to
           // whichever one was clicked, same as the old standalone Size-
@@ -4261,10 +4360,25 @@
       t.addEventListener('click', () => { currentColorFilter = t.dataset.color; render(); }));
     // Gain% filter -- same deliberately-no-drill-reset rule as Color/
     // Style just above (re-filters whatever tiles are already showing).
+    // Switching to "All" also auto-switches tile size to "=" (Equal) --
+    // |gain%|/|gain $| sizing conflates a big winner and a big loser into
+    // the same tile size once both directions are back on screen together
+    // (color/text are the only way to tell them apart then), so Equal is
+    // the less misleading default there. Only "All" forces this -- picking
+    // Gains or Losses leaves gainSizeMode alone, whatever it currently is
+    // (including "=" if that's what "All" just set), since a single-
+    // direction view has an unambiguous magnitude to size by if the user
+    // wants it. User: "Shouldn't All in all/gains/losses default to ="
+    // -- 2026-09-07.
     document.querySelectorAll('.uv-tab[data-gain]').forEach(t =>
-      t.addEventListener('click', () => { currentGainFilter = t.dataset.gain; render(); }));
+      t.addEventListener('click', () => {
+        currentGainFilter = t.dataset.gain;
+        if (currentGainFilter === 'all') gainSizeMode = 'equal';
+        render();
+      }));
     document.querySelectorAll('.uv-tab[data-gainsize]').forEach(t =>
       t.addEventListener('click', () => { gainSizeMode = t.dataset.gainsize; render(); }));
+    $('uvCopySymbolsBtn').addEventListener('click', copySymbols);
     window.addEventListener('resize', () => render());
   }
 
@@ -4316,19 +4430,28 @@
     // init()'s own first render() call right after this wiring.
     rangeEl.style.left = '0%'; rangeEl.style.right = '0%';
 
-    // "What is Risk Range?" info icon -- hover or keyboard-focus (tabindex
-    // on the icon itself, see the HTML) opens the same read-only popover
-    // _uvShowInfoPopover uses elsewhere. Real <ul><li> content, not a
-    // flat middot-joined string.
-    const infoIcon = $('uvRrInfoIcon');
+    // "What is Risk Range?" popover -- was a separate "ⓘ" icon next to the
+    // slider (2026-09-07); now opens straight off the range bar itself, no
+    // separate element to notice/hover first (2026-09-07, "remove the i
+    // next to RR instead just do a popover on the range bar itself").
+    // Hover fires on the whole bar (#uvRrSlider, the container -- mouse
+    // events still target it even where a child thumb's own pointer-
+    // events:auto sits on top, since this listens for entering/leaving
+    // the container's own box, not a specific descendant); keyboard focus
+    // instead fires on the two range inputs directly (what Tab actually
+    // lands on -- the wrapping div itself isn't a natural tab stop). Real
+    // <ul><li> content, not a flat middot-joined string.
+    const rrSliderEl = $('uvRrSlider');
     const rrInfoHtml = '<b>Risk Range position (0-100%)</b><ul>' +
       '<li>0% = at the Low Risk Range (LRR) support level</li>' +
       '<li>100% = at the Trade Risk Range (TRR) target level</li>' +
       '<li>Drag a thumb to narrow to a band; left at 0/100 = no filter</li></ul>';
-    infoIcon.addEventListener('mouseenter', () => _uvShowInfoPopover(infoIcon, rrInfoHtml));
-    infoIcon.addEventListener('mouseleave', _uvHideInfoPopover);
-    infoIcon.addEventListener('focus', () => _uvShowInfoPopover(infoIcon, rrInfoHtml));
-    infoIcon.addEventListener('blur', _uvHideInfoPopover);
+    rrSliderEl.addEventListener('mouseenter', () => _uvShowInfoPopover(rrSliderEl, rrInfoHtml));
+    rrSliderEl.addEventListener('mouseleave', _uvHideInfoPopover);
+    [minEl, maxEl].forEach(el => {
+      el.addEventListener('focus', () => _uvShowInfoPopover(rrSliderEl, rrInfoHtml));
+      el.addEventListener('blur', _uvHideInfoPopover);
+    });
   }
 
   async function init() {

@@ -27,7 +27,15 @@
     /* Full-width -- no max-width/centering, per the app's standing
        full-width-screens convention (matches every other screen). */
     .uv-wrap { width: 100%; padding: 6px 24px 20px; }
-    .uv-hdr { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    /* Controls+crumbs (left, stacked) alongside the KPI panel (right),
+       stretched via align-items:stretch to match their COMBINED height --
+       the KPI panel used to be a child of .uv-hdr alone, confined to just
+       that (short) row's height even once it became a 4-row grid. User:
+       "take up the space from below line also. where it starts with
+       Universe" -- 2026-09-07. */
+    .uv-top-row { display: flex; align-items: stretch; gap: 16px; margin-bottom: 6px; }
+    .uv-top-left { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+    .uv-hdr { display: flex; align-items: center; justify-content: flex-start; gap: 16px;
       flex-wrap: wrap; margin-bottom: 6px; }
     .uv-stat { font-variant-numeric: tabular-nums; color: var(--text-1); font-weight: 700; }
     /* Stats line -- moved onto the crumbs row (right-justified) instead of
@@ -43,8 +51,8 @@
        divider-ish gap between groups; wraps as a whole onto a second line
        under the title on narrow viewports rather than any one group
        breaking apart. */
-    .uv-hdr-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 18px; }
-    .uv-ctrl-group { display: flex; align-items: center; gap: 8px; }
+    .uv-hdr-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .uv-ctrl-group { display: flex; align-items: center; gap: 6px; }
 
     .uv-tabs { display: inline-flex; flex-wrap: wrap; padding: 3px; background: var(--card-bg);
       border: 1px solid var(--border); border-radius: 9px; gap: 2px; }
@@ -58,16 +66,30 @@
     .uv-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     .uv-tabs.small { padding: 2px; border-radius: 8px; }
-    .uv-tabs.small .uv-tab { padding: 5px 11px; font-size: 11.5px; border-radius: 5px; }
+    .uv-tabs.small .uv-tab { padding: 4px 8px; font-size: 11.5px; border-radius: 5px; }
     .uv-ctrl-group .uv-fcount { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 
-    /* Small "what is this?" info icon -- hover/focus opens a real styled
-       popover (#uvInfoPop, see _uvShowInfoPopover) instead of the
-       browser's plain native title tooltip. */
-    .uv-info-icon { display: inline-flex; align-items: center; justify-content: center;
-      width: 15px; height: 15px; border-radius: 50%; font-size: 12px; line-height: 1;
-      color: var(--text-3); cursor: help; flex: 0 0 auto; }
-    .uv-info-icon:hover, .uv-info-icon:focus-visible { color: var(--accent); outline: none; }
+    /* Copy Symbols icon button -- this page's own minimal copy of
+       actionable.html's .btn-icon look (border+bg instead of that page's
+       borderless toolbar style, since this button sits among .uv-tabs
+       groups here rather than a dedicated toolbar strip). .uv-copied /
+       .uv-copy-error are brief post-click feedback states (a green/red
+       flash on the icon+border, plus a "Copied N symbols" title-attribute
+       swap -- this page has no shared toast/status mechanism, unlike
+       actionable.js's showStatus, see copySymbols' own comment). */
+    .uv-icon-btn { display: inline-flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 6px;
+      background: var(--card-bg); color: var(--text-2); cursor: pointer; }
+    .uv-icon-btn:hover { color: var(--text-1); border-color: var(--text-3); }
+    .uv-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .uv-icon-btn.uv-copied { color: #16a34a; border-color: #16a34a; }
+    .uv-icon-btn.uv-copy-error { color: #dc2626; border-color: #dc2626; }
+
+    /* Cursor hint for a control that opens a "what is this?" popover on
+       hover/focus (#uvInfoPop, see _uvShowInfoPopover) -- the Risk Range
+       slider itself is the first (wireRrSlider), not a separate icon any
+       more (removed 2026-09-07, see the slider's own HTML comment). */
+    #uvRrSlider { cursor: help; }
     /* Generic info popover shell -- unlike .uv-actpop-shell (copied
        verbatim from actionable.html, hardcoded light-only), this is new
        and follows this page's own convention of theming off the real
@@ -200,17 +222,26 @@
        NOT re-filtered by the View/Filter/Color controls, which only narrow
        the treemap itself; rendered once from build(), not on every
        render(). Originally its own multi-card strip row (.uv-kpi-strip/
-       .uv-kpi-card, same pattern as web/portfolio.html); replaced with
-       this single right-justified line living directly on the filter bar
-       (.uv-hdr already has justify-content:space-between, so this just
-       becomes its second flex child) -- concise dot-separated
-       "Total · YTD · Cash · Today" instead of 4+ full cards. User: "is
-       there a way to display Total portfolio/YTD/Cash/Today in concise
-       manner on the top filter bar right justified" -- 2026-09-06. */
-    .uv-hdr-kpis { font-size: 12.5px; color: var(--text-2); white-space: nowrap;
-      font-variant-numeric: tabular-nums; }
-    .uv-hdr-kpis b { color: var(--text-1); font-weight: 700; }
-    .uv-hdr-kpis .uv-kpi-sep { color: var(--text-3); margin: 0 8px; }
+       .uv-kpi-card, same pattern as web/portfolio.html); replaced with 4
+       stacked label|value rows (label left, value right) instead of one
+       dot-separated line or 4+ full cards. Now a sibling of .uv-top-left
+       (not .uv-hdr's own child any more), stretched by .uv-top-row's
+       align-items:stretch to the COMBINED height of the controls row +
+       crumbs row -- align-content:center spreads the 4 rows to use that
+       full height instead of staying squeezed at the top. Was the dot-
+       separated line until "display Total .../YTD/Cash/Today vertically
+       on the right side in 4 lines so it fits two lines only with small
+       font" -- 2026-09-07 (labels left/values right per that same
+       request's follow-up note), then "take up the space from below
+       line also. where it starts with Universe" -- 2026-09-07 (the
+       stretch-to-combined-height part). User (original): "is there a way
+       to display Total portfolio/YTD/Cash/Today in concise manner on the
+       top filter bar right justified" -- 2026-09-06. */
+    .uv-hdr-kpis { display: grid; grid-template-columns: auto auto; column-gap: 10px; row-gap: 1px;
+      align-content: center; font-size: 11px; line-height: 1.1; color: var(--text-2);
+      font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+    .uv-hdr-kpis .uv-kpi-label { text-align: left; color: var(--text-3); }
+    .uv-hdr-kpis .uv-kpi-val { text-align: right; font-weight: 700; color: var(--text-1); }
     .uv-gain-pos { color: #16a34a; }
     .uv-gain-neg { color: #dc2626; }
   </style>
@@ -244,6 +275,14 @@
   </header>
 
   <main class="uv-wrap">
+    <!-- uv-top-row: controls+crumbs (left, stacked) alongside the KPI
+         panel (right), stretched to match their COMBINED height -- was
+         KPIs squeezed into just the controls row's own (short) height;
+         see .uv-top-row/.uv-top-left's own CSS comment. User: "take up
+         the space from below line also. where it starts with Universe"
+         -- 2026-09-07. -->
+    <div class="uv-top-row">
+    <div class="uv-top-left">
     <div class="uv-hdr">
       <div class="uv-hdr-controls">
         <!-- All | Account | Asset | Src# | Src$ -- one combined radio
@@ -329,13 +368,16 @@
              and/or popover for slider on what it is? RR" -- 2026-09-07. -->
         <div class="uv-ctrl-group" id="uvRrRow">
           <!-- Was a plain "RR" text label with a native title tooltip
-               (2026-09-07); replaced with an icon + a real styled popover
-               (see _uvShowInfoPopover) per direct request -- native title
-               tooltips are unstyled/plain and don't match the rest of the
-               app's popover look. User: "remove label 'RR' and use
-               popover to tell me what it is" -- 2026-09-07. -->
-          <span class="uv-info-icon" id="uvRrInfoIcon" tabindex="0" aria-label="What is Risk Range?">ⓘ</span>
-          <div class="uv-rr-slider">
+               (2026-09-07), then a separate "ⓘ" icon next to the slider
+               (2026-09-07) opening a real styled popover (see
+               _uvShowInfoPopover); the icon itself is gone now -- hovering
+               (or keyboard-focusing either thumb of) the range bar ITSELF
+               opens the same popover instead, no separate element to
+               notice/hover first. User: "remove label 'RR' and use
+               popover to tell me what it is" -- 2026-09-07, then "remove
+               the i next to RR instead just do a popover on the range bar
+               itself" -- 2026-09-07. -->
+          <div class="uv-rr-slider" id="uvRrSlider" aria-label="What is Risk Range?">
             <div class="uv-rr-track"><div class="uv-rr-range" id="uvRrRange"></div></div>
             <input type="range" id="uvRrMin" min="0" max="100" value="0" step="1" aria-label="Risk Range minimum">
             <input type="range" id="uvRrMax" min="0" max="100" value="100" step="1" aria-label="Risk Range maximum">
@@ -370,20 +412,42 @@
                hidden at rollup levels since it has no effect there (those
                still size by capital/count, sizeMode, untouched by this
                feature). % (the original/default) sizes by |Unrealized
-               gain%|, $ sizes by |Unrealized gain $| instead. Independent
-               of the All/Gains/Losses filter (that always narrows by %,
-               regardless of which sizing is picked). User: "gains and
-               losses -> provide $ % to display the tiles based on the $
-               or %" -- 2026-09-07. -->
+               gain%|, $ sizes by |Unrealized gain $|, = makes every tile
+               the same size (a flat grid -- gain%/$ still shows as text on
+               each tile, it just stops driving the tile's area). All three
+               are independent of the All/Gains/Losses filter (that always
+               narrows by %, regardless of which sizing is picked). User:
+               "gains and losses -> provide $ % to display the tiles based
+               on the $ or %" -- 2026-09-07, then "one more option ... so i
+               can see all tiles with same dimentions" -- 2026-09-07. -->
           <div class="uv-tabs small" role="tablist" aria-label="Tile size basis" id="uvGainSizeGroup">
-            <button class="uv-tab" role="tab" data-gainsize="pct" aria-selected="true">%</button>
+            <button class="uv-tab" role="tab" data-gainsize="pct" aria-selected="false">%</button>
             <button class="uv-tab" role="tab" data-gainsize="dollar" aria-selected="false">$</button>
+            <button class="uv-tab" role="tab" data-gainsize="equal" aria-selected="true" title="Equal-size tiles">=</button>
           </div>
+          <!-- Copy Symbols -- same visibility rule as the $/% size toggle
+               just above (symbol-tile level only; no rollup-tile
+               equivalent, a rollup tile is a group of symbols, not one --
+               see visibleSymbols' own comment in universe.js). Folded
+               into this same row (rather than its own .uv-ctrl-group,
+               2026-09-07) so it doesn't wrap onto its own otherwise-empty
+               line on a narrower window -- "don't take up the whole line
+               for it." Same icon + recipe as web/actionable.js's own
+               #copySymbolsBtn/copySymbols(), this page's own scoped copy
+               since each page keeps its own (see .uv-rr-slider's own
+               "act-" renamed copy in actionable.html for the established
+               convention). User: "add copy button on all universe
+               screens to copy the stock symbols like on actionalble
+               screen" -- 2026-09-07. -->
+          <button class="uv-icon-btn" id="uvCopySymbolsBtn" title="Copy visible symbols (comma-separated)" aria-label="Copy visible symbols">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+          </button>
         </div>
 
       </div>
-
-      <div class="uv-hdr-kpis" id="uvHdrKpis"></div>
     </div>
 
     <div class="uv-crumbs-row">
@@ -397,6 +461,10 @@
         <span class="uv-legend-label" id="uvSideHeading">Top sectors</span>
         <ul class="uv-rank-list" id="uvRankList"></ul>
       </div>
+    </div>
+    </div>
+
+    <div class="uv-hdr-kpis" id="uvHdrKpis"></div>
     </div>
 
     <div class="uv-panel uv-tm-card">
@@ -419,6 +487,6 @@
        screen -> Action column -> Action popover" -- 2026-09-06. -->
   <script src="/static/_common.js?v=1"></script>
   <script src="/static/actions.js?v=1"></script>
-  <script src="/static/universe.js?v=112"></script>
+  <script src="/static/universe.js?v=119"></script>
 </body>
 </html>
