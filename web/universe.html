@@ -424,6 +424,21 @@
             <button class="uv-tab" role="tab" data-gainsize="pct" aria-selected="false">%</button>
             <button class="uv-tab" role="tab" data-gainsize="dollar" aria-selected="false">$</button>
             <button class="uv-tab" role="tab" data-gainsize="equal" aria-selected="true" title="Equal-size tiles">=</button>
+            <!-- Sig% -- SSS-only tile size, sizes by |SSS pct_delta
+                 ("Signal Strength")| instead of Unrealized gain. Hidden
+                 (id-targeted, not [data-gainsize]) unless drilled into the
+                 SSS source -- see universe.js render()'s own auto-reset
+                 comment. User: "i need to see the universe for Source SSS
+                 based on Signal Strength %" -- 2026-09-08. -->
+            <button class="uv-tab" role="tab" data-gainsize="signal" aria-selected="false" id="uvSigSizeBtn" title="Size by SSS Signal Strength %" hidden>Sig%</button>
+            <!-- Rank -- PS-only. Sizes tiles by position $ (capital) AND
+                 reorders the treemap layout by PS rank ascending (rank 1
+                 first) instead of by size -- see universe.js's own
+                 sortFn comment in renderSymbolTiles. Hidden unless drilled
+                 into the PS source, same rule as Sig% above. User:
+                 "Similarly for PS use rank (ordering) and position sizing
+                 (for size of tiles)" -- 2026-09-08. -->
+            <button class="uv-tab" role="tab" data-gainsize="position" aria-selected="false" id="uvRankSizeBtn" title="Order by PS rank, size by position $" hidden>Rank</button>
           </div>
           <!-- Copy Symbols -- same visibility rule as the $/% size toggle
                just above (symbol-tile level only; no rollup-tile
@@ -487,6 +502,6 @@
        screen -> Action column -> Action popover" -- 2026-09-06. -->
   <script src="/static/_common.js?v=1"></script>
   <script src="/static/actions.js?v=1"></script>
-  <script src="/static/universe.js?v=119"></script>
+  <script src="/static/universe.js?v=121"></script>
 </body>
 </html>

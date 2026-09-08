@@ -748,6 +748,35 @@
   }
   const fmtSignedUsd = v => (v >= 0 ? '+' : '') + fmtUsd(v);
   const fmtSignedPct1 = v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+  // SSS's own "Signal Strength" -- hist_sss.pct_delta ("% Delta Since
+  // Initial"), the same value that already drives SSS's own BUY/SELL
+  // action (etl/derive_outlook_action.py::_action_sss_pct_delta). Already
+  // passed straight through to the client as det.source_actions (raw
+  // drv_actionable JSONB, see api/routers/universe.py's own pass-through
+  // comment) -- no new API field needed, just pulled out of the SSS entry
+  // here. Stored as a fraction (e.g. 0.053), x100 for display/sizing --
+  // same convention web/actionable.js::fmtPct already uses for this exact
+  // value. Returns null when the symbol carries no SSS entry (most
+  // symbols, outside an SSS source drill). User: "i need to see the
+  // universe for Source SSS based on Signal Strength %" -- 2026-09-08.
+  function sssSignalPct(det) {
+    const arr = det && det.source_actions;
+    if (!Array.isArray(arr)) return null;
+    const e = arr.find(a => a && a.source === 'SSS');
+    return (e && e.weight != null) ? e.weight * 100 : null;
+  }
+  // PS's own rank (hist_ps.rank -- 1 = strongest Price Strength). Same
+  // source_actions.weight field as sssSignalPct above, but PS's own
+  // base_weight_method is 'rank' (a plain integer, NOT a fraction -- see
+  // db/baseline.sql seed row 'PS','hist_ps',...,'rank',...), so this reads
+  // it raw, no x100 scaling. User: "Similarly for PS use rank (ordering)
+  // and position sizing (for size of tiles)" -- 2026-09-08.
+  function psRankOf(det) {
+    const arr = det && det.source_actions;
+    if (!Array.isArray(arr)) return null;
+    const e = arr.find(a => a && a.source === 'PS');
+    return (e && e.weight != null) ? e.weight : null;
+  }
   // Small colored "+$X (+Y%)" span for tooltips -- green/red, same convention
   // as the tile's own Td/Tn line coloring (above/below = green/red).
   function gainSpanHtml(dollar, pct) {
@@ -932,6 +961,17 @@
     // "Filter Count|Capital -> doesn't appply for first three radio
     // button options... Always use Capital option" -- 2026-09-06.
     if (flatStocksMode || currentView !== 'source') sizeMode = 'capital';
+    // "Sig%" tile-size mode only means anything while drilled into the SSS
+    // source (it sizes by SSS's own pct_delta signal, which no other
+    // source carries) -- auto-revert to Equal on any navigation away from
+    // that drill so leaving SSS never leaves every tile flattened to the
+    // 0.01 floor. Mirrors the "All" gain-filter auto-reset just below in
+    // wireStaticControls (same idea, different trigger). User: "i need to
+    // see the universe for Source SSS based on Signal Strength %" --
+    // 2026-09-08.
+    if (gainSizeMode === 'signal' && !(drill && drill.source === 'SSS')) gainSizeMode = 'equal';
+    // "Rank" (PS-only) -- same auto-reset rule, different source/mode.
+    if (gainSizeMode === 'position' && !(drill && drill.source === 'PS')) gainSizeMode = 'equal';
     // One combined data-view radio group -- All|Account|Asset|Src#|Src$.
     // "All" is its own value (selected whenever flatStocksMode is on,
     // ignoring currentView, same as before it was a separate toggle
@@ -980,6 +1020,15 @@
     // isn't.
     $('uvGainRow').hidden = false;
     $('uvGainSizeGroup').hidden = !showSymbolFilters;
+    // "Sig%" -- only meaningful while drilled into the SSS source (see
+    // gainSizeMode's own auto-reset above); hidden everywhere else in the
+    // $/%/= group rather than shown-but-inert, same rule as the group's
+    // own visibility.
+    $('uvSigSizeBtn').hidden = !(showSymbolFilters && drill && drill.source === 'SSS');
+    // "Rank" -- PS-only, same visibility rule as Sig% above (sizes by
+    // position $ instead of Unrealized gain -- see renderSymbolTiles'
+    // own sort-order override for the rank-ordering half of this).
+    $('uvRankSizeBtn').hidden = !(showSymbolFilters && drill && drill.source === 'PS');
     // Copy Symbols -- symbol-tile level only, same rule as the $/% size
     // toggle just above (no rollup-tile equivalent, see visibleSymbols'
     // own comment). Stale list from a previous symbol-tile view cleared
@@ -2787,6 +2836,8 @@
     rows = rows.map(r => {
       const det = r.detail;
       const gv = gainSizeMode === 'equal' ? 1
+        : gainSizeMode === 'signal' ? Math.abs(sssSignalPct(det) ?? 0) || 0.01
+        : gainSizeMode === 'position' ? Math.abs(det.current_position_dollar ?? 0) || 0.01
         : (gainSizeMode === 'dollar' ? Math.abs(det.total_gain_dollar ?? 0) : Math.abs(det.total_gain_pct ?? 0)) || 0.01;
       return { ...r, value: gv, realValue: det.current_position_dollar ?? r.value };
     });
@@ -2827,7 +2878,24 @@
       return;
     }
 
-    const root = d3.hierarchy({ children: rows }).sum(floorValueFn(rows, r => r.value)).sort((a, b) => b.value - a.value);
+    // Layout ORDER vs tile SIZE, decoupled -- normally the same thing
+    // (biggest tile first/top-left, via value descending) since size IS
+    // the ranking signal everywhere else. "Rank" mode breaks that: size
+    // stays position $ (how much capital is at stake) but the layout
+    // order follows PS's own rank instead (rank 1 -> top-left), so the
+    // strongest PS pick reads as "first" even if it's a small position.
+    // Rank-less rows (no PS entry, or PS dropped it) sort last, not first.
+    // User: "for PS use rank (ordering) and position sizing (for size of
+    // tiles)" -- 2026-09-08.
+    const sortFn = (gainSizeMode === 'position' && drill && drill.source === 'PS')
+      ? (a, b) => {
+          const ra = psRankOf(a.data.detail), rb = psRankOf(b.data.detail);
+          if (ra == null) return rb == null ? 0 : 1;
+          if (rb == null) return -1;
+          return ra - rb;
+        }
+      : (a, b) => b.value - a.value;
+    const root = d3.hierarchy({ children: rows }).sum(floorValueFn(rows, r => r.value)).sort(sortFn);
     d3.treemap().tile(SQUARE_TILE).size([W, H]).paddingInner(2).paddingOuter(2).round(true)(root);
 
     const leaves = root.leaves();
@@ -2937,6 +3005,24 @@
       if (h > 40) {
         const realValue = d.data.realValue != null ? d.data.realValue : d.data.value;
         if (realValue > 0) drawSubline('Value', fmtUsd(realValue), ink, 400, 0.85);
+        // Signal Strength -- SSS-only, shown whenever this tile carries an
+        // SSS entry AND we're drilled into that source (i.e. exactly when
+        // Sig% sizing is even selectable), not just when Sig% happens to
+        // be the active size mode -- so switching back to $/%/= to compare
+        // magnitudes doesn't hide the number that explains the tile.
+        if (drill && drill.source === 'SSS') {
+          const sig = sssSignalPct(det);
+          if (sig != null) {
+            const up = sig >= 0;
+            drawSubline('Signal', `${up ? '▲' : '▼'} ${fmtSignedPct1(sig)}`, up ? posColor : negColor, 700, 0.9);
+          }
+        }
+        // PS rank -- same "shown whenever relevant, not just when it's the
+        // active size mode" rule as Signal above.
+        if (drill && drill.source === 'PS') {
+          const rk = psRankOf(det);
+          if (rk != null) drawSubline('Rank', `#${Math.round(rk)}`, ink, 700, 0.9);
+        }
         if (det.total_gain_dollar != null) {
           const up = det.total_gain_dollar >= 0;
           const pctTxt = det.total_gain_pct != null ? ` (${fmtSignedPct1(det.total_gain_pct)})` : '';
