@@ -983,6 +983,20 @@
   }
 
   function render() {
+    // Compact summary line (#uvCompactSummary) takes over the whole
+    // stats-line + Top-list area with a different, denser layout at the
+    // Account/Asset Class/Source ROOT levels (see buildCompactSummaryLine
+    // and its 3 callers) -- reset to the normal shared layout on every
+    // render, then whichever root function actually runs flips it back on.
+    // Centralized here rather than in each of those 3 functions
+    // individually, since every OTHER view (Sector-within-Asset-Class,
+    // symbol tiles, Factors, All Stocks) still uses the plain shared
+    // stats-line/rank-list as-is, unchanged.
+    $('uvCompactSummary').hidden = true;
+    $('uvStatsLine').hidden = false;
+    $('uvSideHeading').hidden = false;
+    $('uvRankList').hidden = false;
+
     // sizeMode only means anything under Source -- All/Account/Asset don't
     // have a meaningful "count vs $" distinction (their own tile sizing/
     // legend %s are always dollar-based already, see the "% and $K must
@@ -1216,17 +1230,34 @@
   // via drill = {account}). ------------------------------------------------
   function renderAccountRoot() {
     const totalHeldSymbols = d3.sum(ACCOUNTS, a => a.posCount);
-    $('uvTotalCount').textContent = fmtInt(totalHeldSymbols);
-    $('uvTotalSectors').textContent = ACCOUNTS.length;
-    $('uvSectorsUnit').textContent = 'accounts';
-    $('uvSHeld').textContent = totalHeldSymbols + ' symbols';
-    $('uvSCapital').textContent = fmtUsd(d3.sum(ACCOUNTS, a => a.total));
     // Stats above stay unfiltered (same rule every other level follows --
     // Gain only narrows the tiles drawn below, not these headline counts).
     $('uvFilterCount').textContent = currentGainFilter !== 'all' ? `— ${currentGainFilter}` : '';
 
     renderCrumbs();
-    $('uvSideHeading').textContent = 'Top accounts';
+
+    // One compact line -- "Symbols: N, Accounts: N, <acct>: <securities>/
+    // <cash>, ..." -- replaces the normal stats-line + separate "Top
+    // accounts" list entirely for this view (both hidden here, un-hidden
+    // by render()'s own reset the moment you leave Account). Securities/
+    // Cash split per account: cashByAccount is the same build()-time fold-
+    // in the account tile's own hover tooltip already uses (a.total minus
+    // cash = securities). User: "display: Symbols: 56, Accounts: 6, F-M:
+    // 224K/$-215K, IRA: etc instead of [the old multi-line layout]" --
+    // 2026-09-08.
+    $('uvStatsLine').hidden = true;
+    $('uvSideHeading').hidden = true;
+    $('uvRankList').hidden = true;
+    const summaryEl = $('uvCompactSummary');
+    summaryEl.hidden = false;
+    summaryEl.innerHTML = buildCompactSummaryLine(
+      [{ label: 'Symbols', value: totalHeldSymbols }, { label: 'Accounts', value: ACCOUNTS.length }],
+      ACCOUNTS.map(a => {
+        const cashVal = cashByAccount.get(a.key) || 0;
+        const secVal = a.total - cashVal;
+        return { label: a.label, a: fmtK(secVal), b: fmtK(cashVal) };
+      })
+    );
 
     const wrap = document.querySelector('.uv-svg-wrap');
     const W = wrap.clientWidth, H = wrap.clientHeight;
@@ -1236,7 +1267,6 @@
       svg.selectAll('*').remove();
       svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
         .text('No held positions to break out by account.');
-      $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
       return;
     }
 
@@ -1250,23 +1280,10 @@
       svg.selectAll('*').remove();
       svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
         .text(`No ${currentGainFilter} accounts here.`);
-      $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
       return;
     }
 
     renderAccountFlat(W, H, rows);
-
-    // Side panel -- top accounts overall, same "regardless of the current
-    // filter" convention the Asset Class rank list already follows (see
-    // its own comment): ACCOUNTS, not the gain-filtered `rows` above.
-    const ranklist = $('uvRankList');
-    ranklist.innerHTML = ACCOUNTS.slice(0, 8).map(a => {
-      const dot = cssVar(acctColor.get(a.key));
-      const val = sizeMode === 'capital' ? fmtUsd(a.total) : fmtInt(a.posCount);
-      return `<li class="uv-rank-row"><span class="uv-rank-dot" style="background:${dot};"></span>` +
-        `<span class="uv-rank-name">${esc(a.label)}</span><span class="uv-rank-val">${val}</span></li>`;
-    }).join('');
-    $('uvSLargest').textContent = ACCOUNTS[0] ? ACCOUNTS[0].label : '—';
   }
 
   // ---- "All My Stocks": every held symbol, every account combined, as
@@ -1356,19 +1373,29 @@
     const scopeLabel = inAccount ? (acctLabelMap.get(drill.account) || drill.account)
       : (drill && drill.source) ? drill.source : null;
 
-    $('uvTotalCount').textContent = fmtInt(scope.length);
-    $('uvTotalSectors').textContent = hier.agg.length;
-    $('uvSectorsUnit').textContent = 'asset classes';
-    $('uvSHeld').textContent = d3.sum(hier.agg, d => d.held) + ' symbols';
-    $('uvSCapital').textContent = fmtUsd(d3.sum(hier.agg, d => d.held_value));
-    // "in {scopeLabel}" dropped from this line per direct request (2026-
-    // 09-07, "remove the text '— in CALL'") -- scopeLabel is still shown
-    // via the crumbs trail and uvSideHeading just below, so it wasn't the
-    // only place carrying it, just a redundant one.
     $('uvFilterCount').textContent = currentGainFilter !== 'all' ? `— ${currentGainFilter}` : '';
 
     renderCrumbs();
-    $('uvSideHeading').textContent = scopeLabel ? `Top asset classes in ${scopeLabel}` : 'Top asset classes';
+    // Compact summary line -- same shape/styling as Account/Source roots
+    // (see buildCompactSummaryLine), Held count / Capital $ per asset
+    // class. Built up front (not deferred past the empty-scope checks
+    // below) so it's populated even on an empty-result render, same as
+    // Account/Source root -- an early return would otherwise leave it
+    // showing stale content from whatever rendered last. Shown at every
+    // drill depth within this hierarchy (root, sector-within-asset, symbol
+    // tiles), matching this side panel's own pre-existing "regardless of
+    // drill depth" rule (the breadcrumb already says where you are), just
+    // restyled. User: "Also do this for other levels" -- 2026-09-08.
+    $('uvStatsLine').hidden = true;
+    $('uvSideHeading').hidden = true;
+    $('uvRankList').hidden = true;
+    const acHeadLabel = scopeLabel ? `Asset classes in ${scopeLabel}` : 'Asset classes';
+    const acSorted = [...hier.agg].sort((a, b) => (sizeMode === 'capital' ? b.held_value - a.held_value : b.count - a.count));
+    $('uvCompactSummary').hidden = false;
+    $('uvCompactSummary').innerHTML = buildCompactSummaryLine(
+      [{ label: 'Symbols', value: scope.length }, { label: acHeadLabel, value: hier.agg.length }],
+      acSorted.map(d => ({ label: d.asset_class, a: fmtInt(d.held), b: fmtK(d.held_value) }))
+    );
 
     const wrap = document.querySelector('.uv-svg-wrap');
     const W = wrap.clientWidth, H = wrap.clientHeight;
@@ -1378,7 +1405,6 @@
       svg.selectAll('*').remove();
       svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
         .text('No symbols match this filter.');
-      $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
       return;
     }
 
@@ -1398,7 +1424,6 @@
         svg.selectAll('*').remove();
         svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
           .text(`No ${currentGainFilter} asset classes here.`);
-        $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
         return;
       }
       renderAssetClassFlat(assetRows, W, H,
@@ -1426,7 +1451,6 @@
           svg.selectAll('*').remove();
           svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
             .text(`No ${currentGainFilter} sectors here.`);
-          $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
           return;
         }
         renderSectorWithinAsset(sectorRows, W, H, sec => { drill = { ...drill, sector: sec }; render(); });
@@ -1444,21 +1468,30 @@
       const rows = symRows.map(r => ({ tos_symbol: r.tos_symbol, value: r.current_position_dollar || 0, detail: symbolDetail.get(r.tos_symbol) || {} }));
       renderSymbolTiles(rows, W, H);
     }
-
-    // side panel -- top asset classes for the current scope, regardless of
-    // drill depth (the breadcrumb already says where you are).
-    const ranklist = $('uvRankList');
-    const top = [...hier.agg].sort((a, b) => (sizeMode === 'capital' ? b.held_value - a.held_value : b.count - a.count)).slice(0, 8);
-    ranklist.innerHTML = top.map(d => {
-      const dot = cssVar(assetColorAssign.get(d.asset_class) || '--cat-unmapped');
-      const val = sizeMode === 'capital' ? fmtUsd(d.held_value) : fmtInt(d.count);
-      return `<li class="uv-rank-row"><span class="uv-rank-dot" style="background:${dot};"></span>` +
-        `<span class="uv-rank-name">${esc(d.asset_class)}</span><span class="uv-rank-val">${val}</span></li>`;
-    }).join('');
-    $('uvSLargest').textContent = top[0] ? top[0].asset_class : '—';
   }
 
   function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // Builds the shared #uvCompactSummary line's HTML -- "Head1: N · Head2:
+  // N · <label>: <a> / <b>, <label>: <a> / <b>, ..." -- one bold-and-
+  // colored figure per item (uv-m-a/uv-m-b, see their own CSS comment),
+  // used identically by the Account/Asset Class/Source root levels, just
+  // with a different pair of figures per item (Securities/Cash for
+  // Account, Held/Capital for Asset Class and Source). `heads` is
+  // [{label, value}] for the leading counts (plain bold, no color -- these
+  // aren't a per-item pair); `items` is [{label, a, b}] already formatted
+  // strings for the two per-item figures. User: "Use different colors for
+  // securities and cash with bold font. use proper spacing between the
+  // words at the right places so its readable ... Also do this for other
+  // levels" -- 2026-09-08.
+  function buildCompactSummaryLine(heads, items) {
+    const headHtml = heads.map(h => `${esc(h.label)}: <b>${esc(h.value)}</b>`).join(' <span class="uv-stats-sep">·</span> ');
+    if (!items.length) return headHtml;
+    const itemsHtml = items.map(it =>
+      `<span class="uv-cs-label">${esc(it.label)}:</span> <span class="uv-m-a">${esc(it.a)}</span> / <span class="uv-m-b">${esc(it.b)}</span>`
+    ).join(', ');
+    return `${headHtml} <span class="uv-stats-sep">·</span> ${itemsHtml}`;
+  }
 
   // Guard for the group-level tiles' (Account/Source/Asset Class/Sector)
   // hover tooltip -- true only when the pointer is actually over that
@@ -2657,15 +2690,28 @@
     const rows = FILTERS[currentFilter].rows;
     const srcAgg = aggregateSources(rows);
 
-    $('uvTotalCount').textContent = fmtInt(rows.length);
-    $('uvTotalSectors').textContent = srcAgg.length;
-    $('uvSectorsUnit').textContent = 'sources';
-    $('uvSHeld').textContent = d3.sum(srcAgg, d => d.held) + ' symbols';
-    $('uvSCapital').textContent = fmtUsd(d3.sum(srcAgg, d => d.held_value));
     $('uvFilterCount').textContent = currentGainFilter !== 'all' ? `— ${currentGainFilter}` : '';
 
     renderCrumbs();
-    $('uvSideHeading').textContent = 'Top sources';
+
+    // Compact summary line -- same shape/styling as Account's own (see
+    // buildCompactSummaryLine), Held count / Capital $ per source instead
+    // of Securities/Cash (sources don't hold cash -- there's no account-
+    // level concept at this level, held count is the natural analog).
+    // Every source shown, not just a top-8 cutoff (the old "Top sources"
+    // list's own limit) -- the line wraps now, so there's no space reason
+    // left to truncate it. User: "Also do this for other levels" --
+    // 2026-09-08.
+    $('uvStatsLine').hidden = true;
+    $('uvSideHeading').hidden = true;
+    $('uvRankList').hidden = true;
+    const summaryEl = $('uvCompactSummary');
+    summaryEl.hidden = false;
+    const srcSorted = [...srcAgg].sort((a, b) => (sizeMode === 'capital' ? b.held_value - a.held_value : b.count - a.count));
+    summaryEl.innerHTML = buildCompactSummaryLine(
+      [{ label: 'Symbols', value: rows.length }, { label: 'Sources', value: srcAgg.length }],
+      srcSorted.map(d => ({ label: d.source, a: fmtInt(d.held), b: fmtK(d.held_value) }))
+    );
 
     const wrap = document.querySelector('.uv-svg-wrap');
     const W = wrap.clientWidth, H = wrap.clientHeight;
@@ -2675,7 +2721,6 @@
       svg.selectAll('*').remove();
       svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
         .text('No symbols match this filter.');
-      $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
       return;
     }
 
@@ -2691,24 +2736,11 @@
       svg.selectAll('*').remove();
       svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
         .text(`No ${currentGainFilter} sources here.`);
-      $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
       return;
     }
 
     renderSourceFlat(srcRows, W, H, src => { drill = { source: src }; render(); },
       src => { drill = { source: src, assetClass: ALL_ASSET_CLASSES }; render(); });
-
-    // Side panel -- top sources overall, same "regardless of the current
-    // filter" convention as every other rank list (srcAgg, not srcRows).
-    const ranklist = $('uvRankList');
-    const top = [...srcAgg].sort((a, b) => (sizeMode === 'capital' ? b.held_value - a.held_value : b.count - a.count)).slice(0, 8);
-    ranklist.innerHTML = top.map(d => {
-      const dot = cssVar(sourceColorAssign.get(d.source) || '--cat-unmapped');
-      const val = sizeMode === 'capital' ? fmtUsd(d.held_value) : fmtInt(d.count);
-      return `<li class="uv-rank-row"><span class="uv-rank-dot" style="background:${dot};"></span>` +
-        `<span class="uv-rank-name">${esc(d.source)}</span><span class="uv-rank-val">${val}</span></li>`;
-    }).join('');
-    $('uvSLargest').textContent = top[0] ? top[0].source : '—';
   }
 
   // ---- Source tiles, colored by sourceColorAssign -- same generic
@@ -4786,6 +4818,52 @@
     wireStyleTabs();
     wireRrSlider();
     wireStaticControls();
+    render();
+    checkForNewData();
+    setInterval(checkForNewData, 30000);
+  }
+
+  // ---- Auto-refresh once when any source file finishes processing --------
+  // Mirrors actionable.js's checkForNewData: poll a lightweight shared
+  // signal (any file_type in meta_file_processed) and reload only when it
+  // changes, so the treemap picks up new data without a manual page reload.
+  // Re-fetches + re-derives SYMS/POS/FILTERS and re-renders, but (unlike
+  // init()) does NOT re-run wireStyleTabs/wireRrSlider/wireStaticControls --
+  // those only attach event listeners once; re-running them on every poll
+  // would rebuild the style-tab DOM and re-add duplicate listeners. Doesn't
+  // touch view/filter/drill state either (currentView, flatStocksMode,
+  // sizeMode, drill, etc. all live outside build()/render()'s own data), so
+  // a background reload preserves whatever the user is looking at.
+  // 2026-09-09.
+  let _lastDataSignal = null;
+  async function checkForNewData() {
+    try {
+      const status = await fetchJson('/api/data-status');
+      const sig = (status && status.last_at) || '';
+      if (_lastDataSignal !== null && sig !== _lastDataSignal) {
+        reloadUniverseData();
+      }
+      _lastDataSignal = sig;
+    } catch (_) { /* non-critical, ignore */ }
+  }
+
+  async function reloadUniverseData() {
+    let payload;
+    try {
+      const resp = await fetch('/api/universe');
+      payload = await resp.json();
+    } catch (e) {
+      console.error('Failed to reload /api/universe:', e);
+      return;
+    }
+    build(payload);
+    renderKpiStrip();
+    FILTERS = {
+      all:        { rows: SYMS },
+      held:       { rows: SYMS.filter(r => r.held_today) },
+      actionable: { rows: SYMS.filter(r => r.final_code && r.final_code !== 'HOLD') },
+    };
+    $('uvAsOf').textContent = new Date().toLocaleDateString();
     render();
   }
 

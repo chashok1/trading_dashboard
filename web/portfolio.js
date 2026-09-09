@@ -1429,6 +1429,32 @@ function renderTimeline(legs, actions, recs) {
   `).join('');
 }
 
+// Shared by the manual Refresh button, the date-picker change handler, and
+// the auto-refresh poll below -- re-fetches for state.date/current filters
+// without resetting them.
+async function refreshAll() {
+  await Promise.all([loadSummary(), loadPortfolio()]);
+  loadTrends();
+  if (state.filters.catValue) loadCategoryExposure();
+}
+
+// ---- Auto-refresh once when any source file finishes processing ----------
+// Mirrors actionable.js's checkForNewData: poll a lightweight shared signal
+// (any file_type in meta_file_processed) and reload only when it changes,
+// so the screen picks up new data without waiting for a manual Refresh
+// click, and without refreshing on every poll. 2026-09-09.
+let _lastDataSignal = null;
+async function checkForNewData() {
+  try {
+    const status = await fetchJson('/api/data-status');
+    const sig = (status && status.last_at) || '';
+    if (_lastDataSignal !== null && sig !== _lastDataSignal) {
+      refreshAll();
+    }
+    _lastDataSignal = sig;
+  } catch (_) { /* non-critical, ignore */ }
+}
+
 // ---- wire up ----
 console.log('Portfolio.js loaded');
 document.addEventListener('DOMContentLoaded', async () => {
@@ -1439,15 +1465,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   $('datePicker').addEventListener('change', async (e) => {
     state.date = e.target.value;
-    await Promise.all([loadSummary(), loadPortfolio()]);
-    loadTrends();
-    if (state.filters.catValue) loadCategoryExposure();
+    await refreshAll();
   });
   $('refreshBtn').addEventListener('click', async () => {
-    await Promise.all([loadSummary(), loadPortfolio()]);
-    loadTrends();
-    if (state.filters.catValue) loadCategoryExposure();
+    await refreshAll();
   });
+  checkForNewData();
+  setInterval(checkForNewData, 30000);
 
   $('groupFilter').addEventListener('change', e => {
     state.filters.group = e.target.value;

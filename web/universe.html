@@ -44,6 +44,39 @@
     .uv-stats-line { margin: 0; color: var(--text-2); font-size: 12.5px; white-space: nowrap; }
     .uv-stats-line b { color: var(--text-1); font-variant-numeric: tabular-nums; }
     .uv-stats-sep { color: var(--text-3); margin: 0 2px; }
+    /* Compact per-item summary line (Account/Asset Class/Source roots) --
+       "Symbols: N · Accounts: N · <label>: <a> / <b>, <label>: <a> / <b>,
+       ..." replacing the old stats-line + separate "Top X" list at those
+       3 levels. Allows wrapping (unlike .uv-stats-line's own nowrap --
+       this can run to a dozen+ comma-separated items) with generous line-
+       height so a wrapped line doesn't read as cramped. The two per-item
+       figures get their own DARK, distinct color + bold, so "which number
+       is which" is readable at a glance without having to parse the label
+       pattern every time -- this app is light-theme only (no --card-bg
+       dark-mode variant exists), so a genuinely dark shade always has
+       strong contrast against the white card, unlike cat1/cat2 (tried
+       first, 2026-09-08) which read as merely "medium", not dark. Forest
+       green (Securities, "money at work") vs a distinct dark blue (Cash,
+       "money parked") -- distinct hues, not just distinct lightness, so
+       they still read apart for a red/green colorblind viewer. Reuses
+       this app's own established tokens (--bull/--cat7, already in
+       :root) rather than new hex -- consistent with how every other
+       semantic color on this page is sourced.
+       2026-09-09 BUGFIX -- the first attempt (raw #166534/#1e3a8a) was
+       confirmed correctly applied via DevTools (right class, right rule,
+       nothing overriding it) but still read as flat black to the user --
+       both were simply too dark to register as anything but black at
+       this line's 11.5-12.5px size against white. --bull/--cat7 keep the
+       same "dark, not pastel" intent while staying visibly green/blue at
+       that size. User: "Use different colors for securities and cash
+       with bold font..." -- 2026-09-08, then "use some dark color for
+       Securities and different dark color for Cash" -- 2026-09-09, then
+       "did a hard refresh, still not showing ... I still see the numbers
+       in black" -- 2026-09-09. -->
+    .uv-compact-summary { white-space: normal; line-height: 1.7; }
+    .uv-compact-summary .uv-m-a { color: var(--bull); font-weight: 700; font-variant-numeric: tabular-nums; }
+    .uv-compact-summary .uv-m-b { color: var(--cat7); font-weight: 700; font-variant-numeric: tabular-nums; }
+    .uv-compact-summary .uv-cs-label { color: var(--text-2); }
 
     /* View/Filter/Account controls, all on the header's own line (user:
        "move all the controls to the same line as By controls") -- each is
@@ -555,13 +588,28 @@
     <div class="uv-crumbs-row">
       <div class="uv-crumbs" id="uvCrumbs"></div>
       <div class="uv-crumbs-right">
-        <p class="uv-stats-line"><span class="uv-stat" id="uvTotalCount">—</span> symbols across <span class="uv-stat" id="uvTotalSectors">—</span> <span id="uvSectorsUnit">sectors</span>, as of <span class="uv-stat" id="uvAsOf">—</span>.
+        <p class="uv-stats-line" id="uvStatsLine"><span class="uv-stat" id="uvTotalCount">—</span> symbols across <span class="uv-stat" id="uvTotalSectors">—</span> <span id="uvSectorsUnit">sectors</span>, as of <span class="uv-stat" id="uvAsOf">—</span>.
           <span class="uv-stats-sep">·</span> Held <b id="uvSHeld">—</b>
           <span class="uv-stats-sep">·</span> Capital <b id="uvSCapital">—</b>
           <span class="uv-stats-sep">·</span> Largest <b id="uvSLargest">—</b></p>
         <span class="uv-stats-sep">·</span>
         <span class="uv-legend-label" id="uvSideHeading">Top sectors</span>
         <ul class="uv-rank-list" id="uvRankList"></ul>
+        <!-- Shared compact one-line summary -- "Symbols: N · Accounts: N ·
+             <label>: <a> / <b>, <label>: <a> / <b>, ..." -- replaces the
+             normal stats-line + Top-list pair entirely at the Account/
+             Asset Class/Source ROOT levels (see universe.js::
+             buildCompactSummaryLine + its 3 callers: renderAccountRoot,
+             renderHierarchy's asset-class-root branch, renderSourceRoot).
+             ONE shared element, not one per level -- only one of those
+             three is ever the active view at once. Hidden by default;
+             toggled opposite uvStatsLine/uvSideHeading/uvRankList in
+             render()'s own reset. User: "display: Symbols: 56, Accounts:
+             6, F-M: 224K/$-215K, IRA: etc instead of [the multi-line
+             stats+Top-accounts layout]" -- 2026-09-08, then "Use different
+             colors for securities and cash with bold font ... Also do
+             this for other levels" -- 2026-09-08. -->
+        <p class="uv-stats-line uv-compact-summary" id="uvCompactSummary" hidden></p>
       </div>
     </div>
     </div>
@@ -596,6 +644,6 @@
        screen -> Action column -> Action popover" -- 2026-09-06. -->
   <script src="/static/_common.js?v=1"></script>
   <script src="/static/actions.js?v=1"></script>
-  <script src="/static/universe.js?v=130"></script>
+  <script src="/static/universe.js?v=133"></script>
 </body>
 </html>

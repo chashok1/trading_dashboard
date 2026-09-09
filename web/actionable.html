@@ -1328,6 +1328,25 @@
             <input type="range" id="actRrMin" min="0" max="100" value="0" step="1" aria-label="Risk Range % minimum">
             <input type="range" id="actRrMax" min="0" max="100" value="100" step="1" aria-label="Risk Range % maximum">
           </div>
+          <!-- Quad favorability filter -- same multi-select AND semantics as
+               the Universe screen's own Quad filter (web/universe.js): a
+               symbol's ISOLATED stance for a specific quad ("if Quad N were
+               certain", quad{N}_net, drv_macro_score -- already in this
+               screen's /api/actionable payload, no backend change needed).
+               "Quad" clears the whole selection; Q1-Q4 each toggle
+               independently (.seg-ctrl, same multi-button-independently-
+               active pattern as the Row-visibility group above -- NOT a
+               single-select group). Selecting more than one narrows to
+               symbols favorable for ALL selected quads (AND), matching
+               Universe. User: "Actionable screen -> Add quad radio buttons
+               similiar to the ones in Universe screen" -- 2026-09-09. -->
+          <div class="seg-ctrl" id="quadFilterRow" title="Quad favorability filter (multi-select)">
+            <button id="quadClearBtn" data-tip="Clear Quad filter">Quad</button>
+            <button id="quadQ1Btn" data-quad="1" data-tip="Favorable for Quad 1">Q1</button>
+            <button id="quadQ2Btn" data-quad="2" data-tip="Favorable for Quad 2">Q2</button>
+            <button id="quadQ3Btn" data-quad="3" data-tip="Favorable for Quad 3">Q3</button>
+            <button id="quadQ4Btn" data-quad="4" data-tip="Favorable for Quad 4">Q4</button>
+          </div>
           <!-- Action chips -->
           <div class="act-summary" id="summaryChips"></div>
           <!-- Row filter toggles: Show Hidden, Positions Only, Actionable Only.
@@ -1849,7 +1868,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260905a"></script>
+  <script src="/static/actionable.js?v=20260909b"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>

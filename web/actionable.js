@@ -63,6 +63,13 @@ const state = {
     etfchg_only: false,  // EC pill — recent ETF Pro Change event (etfchg_date), informational only
     iichg_only: false,   // IC pill — recent II Pro Change event (iichg_date), informational only
     rr_min: 0, rr_max: 100, // RR (Risk Range %) dual-thumb slider — 0/100 = no filter
+    quads: [],           // Quad favorability filter (multi-select, like symbols_multi) --
+                          // '1'..'4', empty = no filter. A row must be net-bullish
+                          // (quad{N}_net > 0) for EVERY selected quad (AND, not OR) --
+                          // same semantics as the Universe screen's own Quad filter.
+                          // See matchesBaseFilters' own check. User: "Actionable screen
+                          // -> Add quad radio buttons similiar to the ones in Universe
+                          // screen" -- 2026-09-09.
   },
   // TASK_120 buy-noise gate: manual expand/collapse for the "Watchlist (n)"
   // band (gated unheld ADD/BMN rows). Auto-expands (without flipping this
@@ -2084,6 +2091,13 @@ function matchesBaseFilters(r) {
   if (rrMin > 0 || rrMax < 100) {
     if (r._rrPos == null || r._rrPos < rrMin || r._rrPos > rrMax) return false;
   }
+  // Quad favorability -- r.quad{N}_net is the symbol's ISOLATED stance for
+  // that specific quad ("if Quad N were certain"), already in the
+  // /api/actionable payload (same drv_macro_score columns Universe's own
+  // Quad filter reads). AND across every selected quad, same as there.
+  if (state.filters.quads && state.filters.quads.length) {
+    if (!state.filters.quads.every(n => (r['quad' + n + '_net'] ?? null) > 0)) return false;
+  }
   return true;
 }
 
@@ -2214,14 +2228,15 @@ async function checkEodFeed() {
   }
 }
 
-// ---- Auto-refresh once when fresh TL (TOSL) / Yahoo quote data lands ------
+// ---- Auto-refresh once when any source file finishes processing ----------
 // Mirrors hedgeye_panel.js's checkForNewEmail: poll a lightweight signal and
-// reload only when it changes, so the grid picks up new prices without
-// waiting for a manual Refresh click, and without refreshing on every poll.
+// reload only when it changes, so the grid picks up new data (any file
+// type — quotes, RR, CALL, positions, etc.) without waiting for a manual
+// Refresh click, and without refreshing on every poll.
 let _lastDataSignal = null;
 async function checkForNewData() {
   try {
-    const status = await fetchJson('/api/actionable/data-status');
+    const status = await fetchJson('/api/data-status');
     const sig = (status && status.last_at) || '';
     if (_lastDataSignal !== null && sig !== _lastDataSignal) {
       loadActionable({ preserveState: true });
@@ -8010,6 +8025,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     // show_hidden also controls whether acted/suppressed rows are fetched from the API
     loadActionable();
   });
+  // Quad filter -- multi-select toggle group (unlike heldOnly/showHidden
+  // above, which are independent booleans on DIFFERENT buttons; Q1-Q4
+  // here share ONE array, state.filters.quads). "Quad" clears the whole
+  // selection. See matchesBaseFilters' own AND-semantics comment. User:
+  // "Actionable screen -> Add quad radio buttons similiar to the ones in
+  // Universe screen" -- 2026-09-09.
+  function _syncQuadButtons() {
+    const active = state.filters.quads || [];
+    $('quadClearBtn').classList.toggle('active', active.length === 0);
+    ['1', '2', '3', '4'].forEach(n => $('quadQ' + n + 'Btn').classList.toggle('active', active.includes(n)));
+  }
+  $('quadClearBtn').addEventListener('click', () => {
+    state.filters.quads = [];
+    _syncQuadButtons();
+    applyClientFilter();
+  });
+  ['1', '2', '3', '4'].forEach(n => {
+    $('quadQ' + n + 'Btn').addEventListener('click', () => {
+      const cur = state.filters.quads || (state.filters.quads = []);
+      const i = cur.indexOf(n);
+      if (i === -1) cur.push(n); else cur.splice(i, 1);
+      _syncQuadButtons();
+      applyClientFilter();
+    });
+  });
+  _syncQuadButtons();
   // TASK_124: Trade Mode toggle — always starts ON (see above); not persisted,
   // so toggling off only lasts for the current page session. 2026-08-28:
   // mutually exclusive with the "Non-Strict" button (trade_mode_diff) below

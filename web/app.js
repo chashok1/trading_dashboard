@@ -2810,6 +2810,23 @@ async function refreshAll() {
   { const _fd = $('footDate'); if (_fd) _fd.textContent = state.date ? fmtDate(state.date) : '—'; }
 }
 
+// ---- Auto-refresh once when any source file finishes processing ----------
+// Mirrors actionable.js's checkForNewData: poll a lightweight shared signal
+// (any file_type in meta_file_processed) and reload only when it changes,
+// so the cockpit picks up new data without waiting for a manual Refresh
+// click, and without refreshing on every poll. 2026-09-09.
+let _lastDataSignal = null;
+async function checkForNewData() {
+  try {
+    const status = await fetchJson('/api/data-status');
+    const sig = (status && status.last_at) || '';
+    if (_lastDataSignal !== null && sig !== _lastDataSignal) {
+      refreshAll();
+    }
+    _lastDataSignal = sig;
+  } catch (_) { /* non-critical, ignore */ }
+}
+
 
 document.addEventListener('DOMContentLoaded', async () => {
   loadHealth();
@@ -2850,4 +2867,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (ev.target.id === 'dashTrendModal') closeDashTrendModal();
   });
   await refreshAll();
+  checkForNewData();
+  setInterval(checkForNewData, 30000);
 });
