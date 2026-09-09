@@ -832,6 +832,27 @@
   // bar itself uses), same scope as Color/Style -- narrows symbol tiles
   // to a rawRrPos() range, via the #uvRrMin/#uvRrMax dual-thumb slider.
   let rrMin = 0, rrMax = 100;
+  // Macro score (macronet) band -- same dual-thumb pattern as Risk Range,
+  // just a different scale/field. -2..+2 covers the practical range seen
+  // in real data (docs/quad_design.md's own live thresholds top out at
+  // macro_thr_bm=1.25 / bottom out at macro_thr_sa=-0.6 -- -2/+2 leaves
+  // headroom past both without being so wide the slider has no real
+  // resolution). Narrows to det.macronet, via #uvMacroMin/#uvMacroMax.
+  // User: "Add macro range bar to filter based on Macro points" --
+  // 2026-09-08.
+  let macroMin = -2, macroMax = 2;
+  const MACRO_RANGE_MIN = -2, MACRO_RANGE_MAX = 2;
+  // Quad favorability filter -- a Set of '1'..'4', multi-select (empty =
+  // no filter/"Quad" button). Narrows symbol tiles to those whose ISOLATED
+  // stance (det.quad{N}_net -- "if Quad N were certain", ignoring the real
+  // near/far window blending macronet itself uses) is net bullish (>0) for
+  // EVERY selected quad (AND/intersection, not OR -- a stock with two
+  // quads picked has to work in BOTH regimes to show, not just one). Same
+  // scope as Color/Style/RR/Macro. User: "add Q1|Q2|Q3|Q4 filter -> show
+  // the stocks or factors based on quad favorable" -- 2026-09-08, then
+  // "allow selecting more than one quad ... select the stocks applicable
+  // to selected quads" -- 2026-09-08 (confirmed: ALL selected, not ANY).
+  let currentQuadFilter = new Set();
   // Unrealized gain% filter -- every symbol-tile view, applied inside
   // renderSymbolTiles itself (was "All My Stocks" only until "Can we apply
   // this filter for all screens?" -- 2026-09-07). 'all' | 'gains' |
@@ -998,6 +1019,8 @@
     document.querySelectorAll('.uv-tab[data-style]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.style === currentStyleFilter)));
     document.querySelectorAll('.uv-tab[data-gain]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.gain === currentGainFilter)));
     document.querySelectorAll('.uv-tab[data-gainsize]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.gainsize === gainSizeMode)));
+    document.querySelectorAll('.uv-tab[data-quad]').forEach(t =>
+      t.setAttribute('aria-selected', String(t.dataset.quad === 'all' ? currentQuadFilter.size === 0 : currentQuadFilter.has(t.dataset.quad))));
     // Filter (All/Held/Actionable) isn't a real choice under "By Account"
     // -- it's forced to Held there (see wireStaticControls) -- so hide it
     // instead of showing a 3-way selector that silently reverts you to
@@ -1011,6 +1034,8 @@
     $('uvColorRow').hidden = !showSymbolFilters;
     $('uvStyleRow').hidden = !showSymbolFilters;
     $('uvRrRow').hidden = !showSymbolFilters;
+    $('uvMacroRow').hidden = !showSymbolFilters;
+    $('uvQuadRow').hidden = !showSymbolFilters;
     // Gain% filter -- ALWAYS visible now, rollup levels included (was
     // "All My Stocks" only, then every symbol-tile level, until "Why
     // can't i use it all levels?" -- 2026-09-07). The $/% SIZE toggle
@@ -1036,10 +1061,142 @@
     $('uvCopySymbolsBtn').hidden = !showSymbolFilters;
     if (!showSymbolFilters) visibleSymbols = [];
 
+    // Factors -- category-level (ref_quad_outlook), not a symbol treemap
+    // at all. Swaps the tile area for #uvFactorsWrap and hides every
+    // filter that only makes sense against symbols (Filter/Color/Style/RR/
+    // Macro/Gain); Quad stays visible/usable since it's what a Factor row
+    // itself is keyed by. Checked FIRST, ahead of every other dispatch
+    // branch below (those all assume the symbol/treemap machinery).
+    //
+    // BUGFIX -- `!flatStocksMode` added. Clicking "All" only ever sets
+    // flatStocksMode = true; it deliberately leaves currentView untouched
+    // (see wireStaticControls' own comment -- "All" isn't a real view, so
+    // whatever Account/Asset/Source/Factors was picked before stays
+    // remembered for whenever you leave All). So currentView was still
+    // 'factors' after clicking All from the Factors screen, and this
+    // branch kept firing every render -- flatStocksMode never got a
+    // chance to reach the `if (flatStocksMode)` dispatch below. User:
+    // "Selecting Factors and then Quads -> working fine -> after that if i
+    // select All -> not refreshing" -- 2026-09-08.
+    if (currentView === 'factors' && !flatStocksMode) {
+      $('uvTm').parentElement.hidden = true;
+      $('uvFactorsWrap').hidden = false;
+      $('uvFilterRow').hidden = true;
+      $('uvColorRow').hidden = true; $('uvStyleRow').hidden = true;
+      $('uvRrRow').hidden = true; $('uvMacroRow').hidden = true;
+      $('uvGainRow').hidden = true;
+      // BUGFIX -- the showSymbolFilters gate just above (atSymbolLevel())
+      // already set this hidden=true for the Factors view (drill is null
+      // there, so atSymbolLevel() reads false, same as any other rollup
+      // level) before this branch got a chance to un-hide it. Quad is the
+      // one row Factors DOES use (see this block's own comment) -- every
+      // other row above is a real, deliberate hide. User: "you added the
+      // factors but missing the Quad filter" -- 2026-09-08.
+      $('uvQuadRow').hidden = false;
+      renderFactorsView();
+      return;
+    }
+    $('uvTm').parentElement.hidden = false;
+    $('uvFactorsWrap').hidden = true;
+
     if (flatStocksMode) { renderAllStocksFlat(); return; }
     if (currentView === 'account' && !(drill && drill.account)) { renderAccountRoot(); return; }
     if (currentView === 'source' && !(drill && drill.source)) { renderSourceRoot(); return; }
     renderHierarchy();
+  }
+
+  // ---- Factors view: ref_quad_outlook, grouped by category, one row per
+  // sub_category with a colored pill (Bullish/Bearish/Neutral) per quad.
+  // Lazily fetched once (QUAD_FACTORS cache -- this is small, static-ish
+  // reference data, not per-date derived data, so it doesn't need
+  // re-fetching on every render/date change the way SYMS does). Selecting
+  // a quad (#uvQuadRow, shared with the stock-tile filter) FILTERS the
+  // list to rows Bullish for every selected quad (same AND semantics as
+  // the stock filter -- see rowsFiltered below), plus dims every remaining
+  // row's OTHER (non-selected, non-Bullish) quad pills for context. User:
+  // "show the stocks or factors based on quad favorable" -- 2026-09-08,
+  // then "List needs to be filtered based on the filter selection" --
+  // 2026-09-08.
+  let QUAD_FACTORS = null;
+  // BUGFIX -- ref_quad_outlook's real data is inconsistently cased
+  // ('BULLISH'/'BEARISH' uppercase, but 'Neutral' mixed-case -- confirmed
+  // live, same inconsistency etl/derive_macro.py's own _STANCE dict
+  // already has both-case entries to tolerate). An exact 'Bullish'/
+  // 'Bearish' match here silently classified every real row as neutral --
+  // caught only once the quad filter (which reuses this) returned 0 rows
+  // for a quad known to have hundreds of favorable symbols. Uppercased
+  // compare now, case-insensitive.
+  const QUAD_IS_BULLISH = v => (v || '').toUpperCase() === 'BULLISH';
+  const QUAD_IS_BEARISH = v => (v || '').toUpperCase() === 'BEARISH';
+  const QUAD_STANCE_CLASS = v => QUAD_IS_BULLISH(v) ? 'bull' : QUAD_IS_BEARISH(v) ? 'bear' : 'neutral';
+  async function renderFactorsView() {
+    const wrap = $('uvFactorsWrap');
+    $('uvSideHeading').textContent = 'Quad factors';
+    $('uvRankList').innerHTML = '';
+    $('uvCrumbs').innerHTML = '';
+    $('uvSLargest').textContent = '—';
+    $('uvFilterCount').textContent = '';
+
+    if (QUAD_FACTORS === null) {
+      wrap.innerHTML = '<p style="padding:12px;color:var(--text-3);font-size:12px;">Loading factors…</p>';
+      try {
+        const resp = await fetch('/api/universe/quad-factors');
+        QUAD_FACTORS = await resp.json();
+      } catch (e) {
+        console.error('Failed to load quad-factors:', e);
+        QUAD_FACTORS = [];
+      }
+      // A quad/view change (or the initial "All"->Factors click) could
+      // have happened while this was in flight -- re-render only if
+      // Factors is still the active view, so a since-abandoned fetch
+      // doesn't clobber whatever's on screen now.
+      if (currentView !== 'factors') return;
+    }
+
+    $('uvTotalCount').textContent = fmtInt(QUAD_FACTORS.length);
+    $('uvTotalSectors').textContent = new Set(QUAD_FACTORS.map(f => f.category)).size;
+    $('uvSectorsUnit').textContent = 'categories';
+
+    if (QUAD_FACTORS.length === 0) {
+      wrap.innerHTML = '<p style="padding:12px;color:var(--text-3);font-size:12px;">No ref_quad_outlook rows.</p>';
+      return;
+    }
+
+    // Actually FILTER the list, not just dim pills, when a quad is
+    // selected -- same "favorable for EVERY selected quad" AND semantics
+    // as the stock-tile filter (currentQuadFilter). Header counts above
+    // stay unfiltered (same "stats never follow a filter" convention every
+    // other Universe view uses); uvFilterCount instead carries which quads
+    // are narrowing this specific list. User: "List needs to be filtered
+    // based on the filter selection" -- 2026-09-08.
+    const quadArr = [...currentQuadFilter];
+    const rowsFiltered = quadArr.length
+      ? QUAD_FACTORS.filter(f => quadArr.every(n => QUAD_IS_BULLISH(f['quad' + n])))
+      : QUAD_FACTORS;
+    $('uvFilterCount').textContent = quadArr.length ? `— Quad ${quadArr.sort().join(' & ')} favorable` : '';
+
+    if (rowsFiltered.length === 0) {
+      wrap.innerHTML = `<p style="padding:12px;color:var(--text-3);font-size:12px;">No categories favorable for Quad ${quadArr.sort().join(' & ')}.</p>`;
+      return;
+    }
+
+    const byCategory = d3.group(rowsFiltered, f => f.category);
+    const quadCols = [1, 2, 3, 4];
+    const head = '<div class="uv-factor-head"><span></span>' +
+      quadCols.map(n => `<span>Q${n}</span>`).join('') + '</div>';
+    const groups = [...byCategory.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([cat, rows]) => {
+      const body = rows.map(f => {
+        const pills = quadCols.map(n => {
+          const v = f['quad' + n];
+          const cls = QUAD_STANCE_CLASS(v);
+          const dim = currentQuadFilter.size > 0 && !currentQuadFilter.has(String(n)) && cls !== 'bull' ? ' dim' : '';
+          return `<span class="uv-factor-pill ${cls}${dim}" title="${esc(v || 'No data')}">${esc(v ? v.slice(0, 4) : '—')}</span>`;
+        }).join('');
+        return `<div class="uv-factor-row"><span class="uv-factor-sub">${esc(f.sub_category)}</span>${pills}</div>`;
+      }).join('');
+      return `<div class="uv-factor-group"><div class="uv-factor-group-title">${esc(cat)}</div>${head}${body}</div>`;
+    }).join('');
+    wrap.innerHTML = groups;
   }
 
   // ---- "By Account" root: tiles = accounts. Click drills into that
@@ -1107,22 +1264,37 @@
   // per symbol, not per account -- POS, the per-account breakdown, isn't
   // needed here), so this is just SYMS filtered to held, no aggregation.
   function renderAllStocksFlat() {
-    // Stats line reflects the full held set, same as renderHierarchy's own
-    // (Color/Style/RR/Gain only ever narrow the tiles drawn below, inside
-    // renderSymbolTiles -- never these headline counts).
-    const rows = SYMS.filter(r => r.held_today);
+    // 2026-09-08 BUGFIX -- this was `SYMS.filter(r => r.held_today)`, so
+    // the top-level "All" tab (labeled just "All", not "Held") actually
+    // showed only your ~44 held positions out of a ~1,094-symbol universe
+    // -- a real "All" already exists at the drilldown level (the Filter
+    // row's own All/Held/Actionable), so this button showing the SAME
+    // narrower thing under a different label was pure confusion, not a
+    // second, distinct option. User: "shouldn't i see all stocks when i
+    // select all on the main radio button?" -- 2026-09-08.
+    //
+    // Not the RAW universe either, though -- 1,094 tracked symbols is
+    // mostly dormant tickers (ref_sector's full tracked list) with nothing
+    // to look at. "All" = held OR flagged by at least one outlook source
+    // (RR/CALL/ETF/II/PS/SSS/MACROSHOW/etc, `sources` -- same membership
+    // rule aggregateSources()/currentScopeRows() already use for the
+    // Source view) -- i.e. "currently active", not "every ticker this app
+    // has ever seen". User: "can we reduce it based on certain criteria?
+    // currently active, call + RR + PS + Etf etc?" -- 2026-09-08.
+    const rows = SYMS.filter(r => r.held_today || (r.sources && r.sources.length));
+    const heldRows = rows.filter(r => r.held_today);
     const sectorCount = new Set(rows.map(r => r.sector)).size;
 
     $('uvTotalCount').textContent = fmtInt(rows.length);
     $('uvTotalSectors').textContent = sectorCount;
     $('uvSectorsUnit').textContent = 'sectors';
-    $('uvSHeld').textContent = rows.length + ' symbols';
-    $('uvSCapital').textContent = fmtUsd(d3.sum(rows, r => r.current_position_dollar || 0));
+    $('uvSHeld').textContent = heldRows.length + ' symbols';
+    $('uvSCapital').textContent = fmtUsd(d3.sum(heldRows, r => r.current_position_dollar || 0));
     $('uvFilterCount').textContent = '';
 
     const crumbEl = $('uvCrumbs');
     crumbEl.innerHTML = `<span class="uv-crumb" data-crumb="root">Universe</span>` +
-      `<span class="uv-crumb-sep">/</span><span class="uv-crumb current">All My Stocks</span>`;
+      `<span class="uv-crumb-sep">/</span><span class="uv-crumb current">Active Stocks</span>`;
     crumbEl.querySelectorAll('[data-crumb="root"]').forEach(e => e.addEventListener('click', () => { flatStocksMode = false; render(); }));
     $('uvSideHeading').textContent = 'Top holdings';
 
@@ -1133,7 +1305,7 @@
     if (rows.length === 0) {
       svg.selectAll('*').remove();
       svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
-        .text('No held positions.');
+        .text('No held or source-flagged symbols.');
       $('uvRankList').innerHTML = ''; $('uvSLargest').textContent = '—';
       return;
     }
@@ -2859,6 +3031,17 @@
         return clamped >= rrMin && clamped <= rrMax;
       });
     }
+    if (macroMin > MACRO_RANGE_MIN || macroMax < MACRO_RANGE_MAX) {
+      rows = rows.filter(r => {
+        const mn = r.detail.macronet;
+        if (mn == null) return false;
+        const clamped = Math.max(MACRO_RANGE_MIN, Math.min(MACRO_RANGE_MAX, mn));
+        return clamped >= macroMin && clamped <= macroMax;
+      });
+    }
+    if (currentQuadFilter.size > 0) {
+      rows = rows.filter(r => [...currentQuadFilter].every(n => (r.detail['quad' + n + '_net'] ?? null) > 0));
+    }
 
     // Copy Symbols' source of truth -- exactly what survived every active
     // filter above, regardless of whether any tiles actually fit on
@@ -2871,6 +3054,8 @@
       const msg = currentStyleFilter !== 'all' ? `No ${currentStyleFilter} symbols here.`
         : currentColorFilter !== 'all' ? `No ${currentColorFilter} symbols here.`
         : (rrMin > 0 || rrMax < 100) ? `No symbols in the ${rrMin}–${rrMax}% Risk Range band here.`
+        : (macroMin > MACRO_RANGE_MIN || macroMax < MACRO_RANGE_MAX) ? `No symbols in the ${macroMin}–${macroMax} Macro score band here.`
+        : currentQuadFilter.size > 0 ? `No symbols favorable for Quad ${[...currentQuadFilter].sort().join(' & ')} here.`
         : currentGainFilter !== 'all' ? `No ${currentGainFilter} here.`
         : 'No symbols here.';
       svg.append('text').attr('x', 16).attr('y', 24).attr('fill', cssVar('--text-3')).attr('font-size', 12)
@@ -3022,6 +3207,15 @@
         if (drill && drill.source === 'PS') {
           const rk = psRankOf(det);
           if (rk != null) drawSubline('Rank', `#${Math.round(rk)}`, ink, 700, 0.9);
+        }
+        // Favorable quads -- shown only while the Q1-Q4 filter is active
+        // (otherwise it's clutter irrelevant to what's on screen), listing
+        // every quad this symbol's isolated stance is net-bullish for, not
+        // just the one currently selected -- so switching quads to compare
+        // doesn't require re-reading each tile.
+        if (currentQuadFilter.size > 0) {
+          const favQuads = [1, 2, 3, 4].filter(n => (det['quad' + n + '_net'] ?? null) > 0);
+          if (favQuads.length) drawSubline('Fav Quads', favQuads.join(', '), ink, 700, 0.9);
         }
         if (det.total_gain_dollar != null) {
           const up = det.total_gain_dollar >= 0;
@@ -4464,6 +4658,19 @@
       }));
     document.querySelectorAll('.uv-tab[data-gainsize]').forEach(t =>
       t.addEventListener('click', () => { gainSizeMode = t.dataset.gainsize; render(); }));
+    // Quad filter -- multi-select toggle (unlike every other filter row,
+    // which is single-select radio): "Quad" clears the whole set, Q1-Q4
+    // each toggle their own membership independently. Same no-drill-reset
+    // rule as Color/Style/Gain above. User: "allow selecting more than one
+    // quad Q1/Q2/Q3/Q4 and select the stocks applicable to selected
+    // quads" -- 2026-09-08.
+    document.querySelectorAll('.uv-tab[data-quad]').forEach(t =>
+      t.addEventListener('click', () => {
+        if (t.dataset.quad === 'all') currentQuadFilter.clear();
+        else if (currentQuadFilter.has(t.dataset.quad)) currentQuadFilter.delete(t.dataset.quad);
+        else currentQuadFilter.add(t.dataset.quad);
+        render();
+      }));
     $('uvCopySymbolsBtn').addEventListener('click', copySymbols);
     window.addEventListener('resize', () => render());
   }
@@ -4540,6 +4747,42 @@
     });
   }
 
+  // Dual-thumb Macro score slider -- same mechanism as wireRrSlider() just
+  // above, different field/scale (macronet, MACRO_RANGE_MIN..MACRO_RANGE_MAX
+  // instead of 0-100). User: "Add macro range bar to filter based on Macro
+  // points" -- 2026-09-08.
+  function wireMacroSlider() {
+    const minEl = $('uvMacroMin'), maxEl = $('uvMacroMax'), rangeEl = $('uvMacroRange');
+    const span = MACRO_RANGE_MAX - MACRO_RANGE_MIN;
+    const pct = v => ((v - MACRO_RANGE_MIN) / span) * 100;
+    const update = () => {
+      let lo = parseFloat(minEl.value), hi = parseFloat(maxEl.value);
+      if (lo > hi) {
+        if (document.activeElement === maxEl) { lo = hi; minEl.value = String(lo); }
+        else { hi = lo; maxEl.value = String(hi); }
+      }
+      macroMin = lo; macroMax = hi;
+      rangeEl.style.left = pct(lo) + '%';
+      rangeEl.style.right = (100 - pct(hi)) + '%';
+      render();
+    };
+    minEl.addEventListener('input', update);
+    maxEl.addEventListener('input', update);
+    rangeEl.style.left = '0%'; rangeEl.style.right = '0%';
+
+    const macroSliderEl = $('uvMacroSlider');
+    const macroInfoHtml = '<b>Macro score (MacroNet)</b><ul>' +
+      '<li>The blended quad-regime score behind the MACRO badge (BM/BS/HOLD/STM/SA)</li>' +
+      `<li>Positive = net bullish quad alignment, negative = net bearish</li>` +
+      '<li>Drag a thumb to narrow to a band; left at the ends = no filter</li></ul>';
+    macroSliderEl.addEventListener('mouseenter', () => _uvShowInfoPopover(macroSliderEl, macroInfoHtml));
+    macroSliderEl.addEventListener('mouseleave', _uvHideInfoPopover);
+    [minEl, maxEl].forEach(el => {
+      el.addEventListener('focus', () => _uvShowInfoPopover(macroSliderEl, macroInfoHtml));
+      el.addEventListener('blur', _uvHideInfoPopover);
+    });
+  }
+
   async function init() {
     // Action popover port -- fired alongside the main /api/universe fetch
     // below, not awaited (fire-and-forget): populates uvPopState in the
@@ -4567,6 +4810,7 @@
     $('uvAsOf').textContent = new Date().toLocaleDateString();
     wireStyleTabs();
     wireRrSlider();
+    wireMacroSlider();
     wireStaticControls();
     render();
   }

@@ -107,18 +107,22 @@
        type=range> elements (classic pattern: shared track drawn
        underneath, only each input's own thumb is clickable via
        pointer-events, the track itself is transparent/inert). */
-    .uv-rr-slider { position: relative; width: 130px; height: 20px; flex: 0 0 auto; }
-    .uv-rr-track { position: absolute; top: 8px; left: 2px; right: 2px; height: 3px;
+    /* .uv-macro-slider shares every rule below (same dual-thumb pattern,
+       different field/scale) -- width shrunk 130px -> 90px 2026-09-08 to
+       leave room for the new Macro bar/Quad filter alongside it. User:
+       "Reduce the width of RR range bar." */
+    .uv-rr-slider, .uv-macro-slider { position: relative; width: 90px; height: 20px; flex: 0 0 auto; }
+    .uv-rr-track, .uv-macro-track { position: absolute; top: 8px; left: 2px; right: 2px; height: 3px;
       background: var(--border); border-radius: 2px; }
-    .uv-rr-range { position: absolute; top: 0; height: 3px; background: var(--accent); border-radius: 2px; }
-    .uv-rr-slider input[type="range"] { position: absolute; top: 0; left: 0; width: 100%; height: 20px;
+    .uv-rr-range, .uv-macro-range { position: absolute; top: 0; height: 3px; background: var(--accent); border-radius: 2px; }
+    .uv-rr-slider input[type="range"], .uv-macro-slider input[type="range"] { position: absolute; top: 0; left: 0; width: 100%; height: 20px;
       margin: 0; background: transparent; -webkit-appearance: none; appearance: none; pointer-events: none; }
-    .uv-rr-slider input[type="range"]::-webkit-slider-runnable-track { -webkit-appearance: none; background: transparent; }
-    .uv-rr-slider input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto;
+    .uv-rr-slider input[type="range"]::-webkit-slider-runnable-track, .uv-macro-slider input[type="range"]::-webkit-slider-runnable-track { -webkit-appearance: none; background: transparent; }
+    .uv-rr-slider input[type="range"]::-webkit-slider-thumb, .uv-macro-slider input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto;
       width: 13px; height: 13px; margin-top: 3.5px; border-radius: 50%; background: var(--accent);
       border: 2px solid var(--card-bg); box-shadow: 0 0 0 1px var(--border); cursor: pointer; }
-    .uv-rr-slider input[type="range"]::-moz-range-track { background: transparent; border: none; }
-    .uv-rr-slider input[type="range"]::-moz-range-thumb { pointer-events: auto; width: 13px; height: 13px;
+    .uv-rr-slider input[type="range"]::-moz-range-track, .uv-macro-slider input[type="range"]::-moz-range-track { background: transparent; border: none; }
+    .uv-rr-slider input[type="range"]::-moz-range-thumb, .uv-macro-slider input[type="range"]::-moz-range-thumb { pointer-events: auto; width: 13px; height: 13px;
       border-radius: 50%; background: var(--accent); border: 2px solid var(--card-bg);
       box-shadow: 0 0 0 1px var(--border); cursor: pointer; }
 
@@ -164,6 +168,27 @@
     .uv-svg-wrap { position: relative; width: 100%;
       height: calc(100vh - 155px); min-height: 360px; max-height: 900px; }
     svg.uv-tm { width: 100%; height: 100%; display: block; }
+
+    /* Factor view (ref_quad_outlook table) -- see #uvFactorsWrap's own
+       comment. Scrollable card of grouped rows, not a treemap. */
+    .uv-factors-wrap { overflow-y: auto; padding: 4px 2px; }
+    .uv-factor-group { margin-bottom: 14px; }
+    .uv-factor-group-title { font-size: 12px; font-weight: 700; color: var(--text-2);
+      text-transform: uppercase; letter-spacing: .03em; margin: 0 0 6px 2px; }
+    .uv-factor-row { display: grid; grid-template-columns: 1fr repeat(4, 64px);
+      align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; }
+    .uv-factor-row:nth-child(odd) { background: var(--card-bg-2, rgba(128,128,128,0.06)); }
+    .uv-factor-sub { font-size: 12.5px; color: var(--text-1); }
+    .uv-factor-pill { text-align: center; font-size: 10.5px; font-weight: 700;
+      padding: 3px 4px; border-radius: 4px; }
+    .uv-factor-pill.bull { background: rgba(22,163,74,0.16); color: #16a34a; }
+    .uv-factor-pill.bear { background: rgba(220,38,38,0.16); color: #dc2626; }
+    .uv-factor-pill.neutral { background: rgba(148,163,184,0.16); color: var(--text-3); }
+    .uv-factor-pill.dim { opacity: 0.35; }
+    .uv-factor-head { display: grid; grid-template-columns: 1fr repeat(4, 64px);
+      gap: 6px; padding: 0 8px 4px; font-size: 10.5px; font-weight: 700;
+      color: var(--text-3); text-align: center; }
+    .uv-factor-head span:first-child { text-align: left; }
 
     .uv-cell rect.uv-cell-rect { stroke: none; cursor: pointer; }
     .uv-cell text { pointer-events: none; font-family: inherit; }
@@ -307,12 +332,22 @@
              2026-09-06; "Why do you need Source still? Can we combine
              Src#|Src$ with All|Account|Asset" -- 2026-09-06, which is
              what actually removed the standalone Source/Size rows. -->
-        <div class="uv-tabs" role="tablist" aria-label="Treemap view">
+        <div class="uv-tabs small" role="tablist" aria-label="Treemap view">
           <button class="uv-tab" role="tab" data-view="all" aria-selected="false">All</button>
           <button class="uv-tab" role="tab" data-view="account" aria-selected="true">Account</button>
           <button class="uv-tab" role="tab" data-view="assetclass" aria-selected="false">Asset</button>
           <button class="uv-tab" role="tab" data-view="source" data-size="count" aria-selected="false">Src#</button>
           <button class="uv-tab" role="tab" data-view="source" data-size="capital" aria-selected="false">Src$</button>
+          <!-- Factors -- category-level companion to the Q1-Q4 stock
+               filter below: which sectors/asset-classes/styles are
+               THEMSELVES favorable for a quad (ref_quad_outlook, straight
+               reference data), not a treemap of symbols. Swaps the whole
+               tile area for a list (see renderFactorsView) -- Filter/
+               Color/Style/RR/Macro/Gain rows all hidden here (none apply
+               to categories), Quad row stays visible to pick which quad's
+               column to highlight. User: "show the stocks or factors
+               based on quad favorable" -- 2026-09-08. -->
+          <button class="uv-tab" role="tab" data-view="factors" aria-selected="false">Factors</button>
         </div>
 
         <!-- Hidden under "By Account" -- that view only ever means
@@ -381,6 +416,50 @@
             <div class="uv-rr-track"><div class="uv-rr-range" id="uvRrRange"></div></div>
             <input type="range" id="uvRrMin" min="0" max="100" value="0" step="1" aria-label="Risk Range minimum">
             <input type="range" id="uvRrMax" min="0" max="100" value="100" step="1" aria-label="Risk Range maximum">
+          </div>
+        </div>
+
+        <!-- Macro score (MacroNet) slider -- same dual-thumb mechanism as
+             Risk Range just above (see universe.js::wireMacroSlider), -2
+             to +2 (see MACRO_RANGE_MIN/MAX's own comment for why that
+             span). Symbol level only, same visibility rule as RR. User:
+             "Add macro range bar to filter based on Macro points" --
+             2026-09-08. -->
+        <div class="uv-ctrl-group" id="uvMacroRow">
+          <div class="uv-macro-slider" id="uvMacroSlider" aria-label="What is the Macro score?">
+            <div class="uv-macro-track"><div class="uv-macro-range" id="uvMacroRange"></div></div>
+            <input type="range" id="uvMacroMin" min="-2" max="2" value="-2" step="0.05" aria-label="Macro score minimum">
+            <input type="range" id="uvMacroMax" min="-2" max="2" value="2" step="0.05" aria-label="Macro score maximum">
+          </div>
+        </div>
+
+        <!-- Quad favorability filter -- Q1-Q4, each symbol's ISOLATED
+             stance for that specific quad (quad{N}_net -- "if Quad N were
+             certain", drv_macro_score, computed alongside macronet but
+             ignoring the real near/far window blending macronet itself
+             uses). Symbol level only, same visibility rule as RR/Macro.
+             Multi-select toggle group (role="group"/role="button", NOT
+             role="tablist"/role="tab" like every other single-select
+             filter row here -- tablist semantics assume exactly one
+             selected tab, which no longer holds once more than one quad
+             can be picked at once); still driven by aria-selected (JS-
+             toggled, see universe.js's own sync), matching every other
+             filter row's existing convention rather than introducing a
+             one-off aria-pressed attribute nothing else here uses. "Quad"
+             clears the whole selection,
+             Q1-Q4 each toggle independently; selecting several narrows to
+             symbols favorable for ALL of them (AND), not any one. User:
+             "add Q1|Q2|Q3|Q4 filter -> show the stocks or factors based on
+             quad favorable" -- 2026-09-08, then "allow selecting more than
+             one quad ... select the stocks applicable to selected quads"
+             -- 2026-09-08. -->
+        <div class="uv-ctrl-group" id="uvQuadRow">
+          <div class="uv-tabs small" role="group" aria-label="Quad favorability filter (multi-select)">
+            <button class="uv-tab" role="button" aria-selected="true" data-quad="all">Quad</button>
+            <button class="uv-tab" role="button" aria-selected="false" data-quad="1" title="Symbols with a net-bullish isolated stance IF Quad 1 were certain">Q1</button>
+            <button class="uv-tab" role="button" aria-selected="false" data-quad="2" title="Symbols with a net-bullish isolated stance IF Quad 2 were certain">Q2</button>
+            <button class="uv-tab" role="button" aria-selected="false" data-quad="3" title="Symbols with a net-bullish isolated stance IF Quad 3 were certain">Q3</button>
+            <button class="uv-tab" role="button" aria-selected="false" data-quad="4" title="Symbols with a net-bullish isolated stance IF Quad 4 were certain">Q4</button>
           </div>
         </div>
 
@@ -484,6 +563,13 @@
 
     <div class="uv-panel uv-tm-card">
       <div class="uv-svg-wrap"><svg class="uv-tm" id="uvTm"></svg></div>
+      <!-- Factor view -- see the "Factors" tab's own comment above. Plain
+           HTML rows (category/sub_category + a colored pill per quad),
+           not SVG -- this is ~dozens of reference rows, not hundreds of
+           positioned tiles, so a treemap buys nothing here and a table
+           reads better. Hidden by default; toggled opposite .uv-svg-wrap
+           in universe.js's render(). -->
+      <div class="uv-svg-wrap uv-factors-wrap" id="uvFactorsWrap" hidden></div>
     </div>
   </main>
 
@@ -502,6 +588,6 @@
        screen -> Action column -> Action popover" -- 2026-09-06. -->
   <script src="/static/_common.js?v=1"></script>
   <script src="/static/actions.js?v=1"></script>
-  <script src="/static/universe.js?v=121"></script>
+  <script src="/static/universe.js?v=129"></script>
 </body>
 </html>

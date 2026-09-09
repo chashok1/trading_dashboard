@@ -8328,3 +8328,20 @@ ON CONFLICT (setting_name) DO NOTHING;
 ALTER TABLE IF EXISTS ref_watch
     ADD COLUMN IF NOT EXISTS trigger_pct_dir TEXT
         CHECK (trigger_pct_dir IN ('UP', 'DOWN'));
+
+-- 2026-09-08: per-quad ISOLATED stance. macronet/macro_action (above) are
+-- the REAL blended near/far-window score -- how much each quad's outlook
+-- currently matters, weighted by how likely/soon it is. quad{1..4}_net is
+-- a different question: "if Quad N were 100% certain (ignoring the real
+-- window blending entirely), what would this symbol's sector/asset-class/
+-- style membership net out to?" -- computed the same way (etl/
+-- derive_macro.py::_membership_net) but against a one-hot quad_pcts
+-- instead of the real monthly/quarterly probability mix. Feeds the
+-- Universe screen's Q1-Q4 "favorable" filter (net > 0 = bullish for that
+-- quad) -- see web/universe.js's own quadN_net comment. User: "add
+-- Q1|Q2|Q3|Q4 filter -> show the stocks or factors based on quad
+-- favorable".
+ALTER TABLE IF EXISTS drv_macro_score ADD COLUMN IF NOT EXISTS quad1_net NUMERIC;
+ALTER TABLE IF EXISTS drv_macro_score ADD COLUMN IF NOT EXISTS quad2_net NUMERIC;
+ALTER TABLE IF EXISTS drv_macro_score ADD COLUMN IF NOT EXISTS quad3_net NUMERIC;
+ALTER TABLE IF EXISTS drv_macro_score ADD COLUMN IF NOT EXISTS quad4_net NUMERIC;

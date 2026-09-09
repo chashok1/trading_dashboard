@@ -16,12 +16,34 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Query
+from sqlalchemy import text
 
 from api.routers.dash import (
     get_actionable, get_portfolio, get_portfolio_realized, get_portfolio_dividends, list_actionable_accounts,
 )
+from etl.db import session_scope
 
 router = APIRouter()
+
+
+@router.get("/api/universe/quad-factors")
+def get_universe_quad_factors():
+    """The raw per-category quad outlook table (ref_quad_outlook) -- feeds
+    Universe's Factor view (a category-level companion to the Q1-Q4 stock
+    filter, showing which sectors/asset-classes/styles are themselves
+    favorable for each quad, rather than which held/watched symbols are).
+    Deliberately a separate lightweight endpoint, not folded into the main
+    /api/universe payload -- this is reference data (~dozens of rows,
+    ref_quad_outlook), not per-symbol/date derived data, so it doesn't need
+    `date` and would just be dead weight on every /api/universe call that
+    never opens the Factor view. User: "add Q1|Q2|Q3|Q4 filter -> show the
+    stocks or factors based on quad favorable" -- 2026-09-08."""
+    with session_scope() as s:
+        rows = s.execute(text(
+            "SELECT category, sub_category, quad1, quad2, quad3, quad4 "
+            "FROM ref_quad_outlook ORDER BY category, sub_category"
+        )).mappings().all()
+    return [dict(r) for r in rows]
 
 
 @router.get("/api/universe")
@@ -210,6 +232,16 @@ def get_universe(date: Optional[str] = Query(None)):
             "macro_value": r.get("macro_value"),
             "macro_conf": _f(r.get("macro_conf")),
             "macronet": _f(r.get("macronet")),
+            # Per-quad ISOLATED stance ("if Quad N were certain") -- feeds
+            # the Universe screen's Q1-Q4 favorability filter/Macro range
+            # bar. See db/baseline.sql's own drv_macro_score migration
+            # comment for the macronet-vs-quadN_net distinction. User: "add
+            # Q1|Q2|Q3|Q4 filter -> show the stocks or factors based on
+            # quad favorable" -- 2026-09-08.
+            "quad1_net": _f(r.get("quad1_net")),
+            "quad2_net": _f(r.get("quad2_net")),
+            "quad3_net": _f(r.get("quad3_net")),
+            "quad4_net": _f(r.get("quad4_net")),
             "macro_conflict": bool(r.get("macro_conflict")) if r.get("macro_conflict") is not None else None,
             "rsi": _f(r.get("rsi")),
             "a_macdh_d_brr": _f(r.get("a_macdh_d_brr")),

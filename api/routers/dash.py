@@ -1148,6 +1148,7 @@ def get_actionable(
                hv_td.historical_vol AS hv,
                htw.a_volume_spike,
                ms.macronet, ms.macro_action,
+               ms.quad1_net, ms.quad2_net, ms.quad3_net, ms.quad4_net,
                ms.monthly_score, ms.quarterly_score,
                ms.month_now_net, ms.month_next_net, ms.month_weight,
                ms.qtr_now_net, ms.qtr_next_net, ms.qtr_weight,

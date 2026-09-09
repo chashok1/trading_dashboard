@@ -108,6 +108,17 @@ def _window_stance_for(cat, sub, outlook_map, weighted, pcts_by_month, missing=N
     return round(total, 4)
 
 
+
+# One-hot quad_pcts, index 0..3 = Quad 1..4 -- used by the per-quad
+# ISOLATED stance calc below (quad{N}_net), see its own comment.
+_ONEHOT_QUADS = [
+    [1.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.0],
+    [0.0, 0.0, 0.0, 1.0],
+]
+
+
 def _membership_net(memberships, outlook_map, quad_pcts, missing=None):
     """Score one symbol's membership bundle against a quad distribution
     (quad_pcts = fractions 0..1, index 0..3 = quad1..quad4). `missing`, if
@@ -622,6 +633,21 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
 
         macronet = round((1.0 - q) * M_window + q * Qtr, 4)
 
+        # Per-quad ISOLATED stance -- "if Quad N were 100% certain", ignoring
+        # the real near/far window blending macronet itself uses (a one-hot
+        # quad_pcts instead of the real monthly/quarterly probability mix).
+        # Reuses the SAME memberships/outlook_map as macronet -- only the
+        # quad-probability input differs -- so a symbol's sector/asset-class/
+        # style tags never disagree between macronet and these. Feeds the
+        # Universe screen's Q1-Q4 "favorable" filter (db/baseline.sql's own
+        # migration comment has the full rationale). User: "add Q1|Q2|Q3|Q4
+        # filter -> show the stocks or factors based on quad favorable" --
+        # 2026-09-08.
+        quad_isolated = [
+            round(_membership_net(memberships, outlook_map, _ONEHOT_QUADS[i]), 4)
+            for i in range(4)
+        ]
+
         near, far = near_far_split(weighted, stance_by_month)
         vocab, override_tag = to_action(macronet, near, far, thr_bm, thr_bs, thr_stm, thr_sa)
 
@@ -770,6 +796,10 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
             'quarterly_score': round(Qtr, 4),
             'macronet':           macronet,
             'macro_action':       vocab,
+            'quad1_net':          quad_isolated[0],
+            'quad2_net':          quad_isolated[1],
+            'quad3_net':          quad_isolated[2],
+            'quad4_net':          quad_isolated[3],
             'monthly_scores_json': json.dumps(monthly_scores),
             'detail':             json.dumps(detail),
             'sector_stance':      sector_stance,
@@ -806,13 +836,15 @@ def _derive_macro_impl(session: Session, as_of_date: date, run_id=None) -> int:
            month_weight, monthly_score, qtr_now_net, qtr_next_net,
            qtr_weight, quarterly_score, macronet, macro_action,
            monthly_scores_json, detail,
-           sector_stance, asset_class_stance, style_stances)
+           sector_stance, asset_class_stance, style_stances,
+           quad1_net, quad2_net, quad3_net, quad4_net)
         VALUES
           (:as_of_date, :tos_symbol, :month_now_net, :month_next_net,
            :month_weight, :monthly_score, :qtr_now_net, :qtr_next_net,
            :qtr_weight, :quarterly_score, :macronet, :macro_action,
            :monthly_scores_json, :detail,
-           :sector_stance, :asset_class_stance, :style_stances)
+           :sector_stance, :asset_class_stance, :style_stances,
+           :quad1_net, :quad2_net, :quad3_net, :quad4_net)
     """), out)
     session.commit()
     log.info("derive_macronet: %d symbols scored for %s (window h=%d, coverage=%.1f%%)",
