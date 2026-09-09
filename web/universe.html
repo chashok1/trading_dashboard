@@ -51,22 +51,28 @@
        divider-ish gap between groups; wraps as a whole onto a second line
        under the title on narrow viewports rather than any one group
        breaking apart. */
-    .uv-hdr-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
-    .uv-ctrl-group { display: flex; align-items: center; gap: 6px; }
+    /* Gaps tightened 2026-09-08 -- between groups (uv-hdr-controls),
+       within a group (uv-ctrl-group), between buttons (uv-tabs), and each
+       button's own padding all cut down, now that most labels are short
+       abbreviations (B/S/H/Act/Qd/etc) with less need for the old
+       breathing room. User: "reduce the margin between the buttons and
+       groups as much as you can by leaving little space." */
+    .uv-hdr-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+    .uv-ctrl-group { display: flex; align-items: center; gap: 3px; }
 
-    .uv-tabs { display: inline-flex; flex-wrap: wrap; padding: 3px; background: var(--card-bg);
-      border: 1px solid var(--border); border-radius: 9px; gap: 2px; }
+    .uv-tabs { display: inline-flex; flex-wrap: wrap; padding: 2px; background: var(--card-bg);
+      border: 1px solid var(--border); border-radius: 9px; gap: 1px; }
     .uv-tab { appearance: none; border: 0; background: transparent; color: var(--text-2);
-      font: inherit; font-size: 12px; font-weight: 600; padding: 7px 13px; border-radius: 6px;
+      font: inherit; font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 6px;
       cursor: pointer; white-space: nowrap; transition: background .12s ease, color .12s ease;
-      display: inline-flex; align-items: center; gap: 5px; }
+      display: inline-flex; align-items: center; gap: 4px; }
     .uv-color-dot { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
     .uv-tab:hover { color: var(--text-1); }
     .uv-tab[aria-selected="true"] { background: var(--accent); color: #fff; }
     .uv-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-    .uv-tabs.small { padding: 2px; border-radius: 8px; }
-    .uv-tabs.small .uv-tab { padding: 4px 8px; font-size: 11.5px; border-radius: 5px; }
+    .uv-tabs.small { padding: 1px; border-radius: 8px; }
+    .uv-tabs.small .uv-tab { padding: 3px 6px; font-size: 11.5px; border-radius: 5px; }
     .uv-ctrl-group .uv-fcount { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 
     /* Copy Symbols icon button -- this page's own minimal copy of
@@ -107,22 +113,22 @@
        type=range> elements (classic pattern: shared track drawn
        underneath, only each input's own thumb is clickable via
        pointer-events, the track itself is transparent/inert). */
-    /* .uv-macro-slider shares every rule below (same dual-thumb pattern,
-       different field/scale) -- width shrunk 130px -> 90px 2026-09-08 to
-       leave room for the new Macro bar/Quad filter alongside it. User:
-       "Reduce the width of RR range bar." */
-    .uv-rr-slider, .uv-macro-slider { position: relative; width: 90px; height: 20px; flex: 0 0 auto; }
-    .uv-rr-track, .uv-macro-track { position: absolute; top: 8px; left: 2px; right: 2px; height: 3px;
+    /* width shrunk 130px -> 90px 2026-09-08. User: "Reduce the width of
+       RR range bar." (Was shared with a .uv-macro-slider dual-thumb
+       range bar for one day -- replaced by plain Mcro B/S/H buttons, see
+       #uvMacroRow's own comment, so this is RR-only again.) */
+    .uv-rr-slider { position: relative; width: 90px; height: 20px; flex: 0 0 auto; }
+    .uv-rr-track { position: absolute; top: 8px; left: 2px; right: 2px; height: 3px;
       background: var(--border); border-radius: 2px; }
-    .uv-rr-range, .uv-macro-range { position: absolute; top: 0; height: 3px; background: var(--accent); border-radius: 2px; }
-    .uv-rr-slider input[type="range"], .uv-macro-slider input[type="range"] { position: absolute; top: 0; left: 0; width: 100%; height: 20px;
+    .uv-rr-range { position: absolute; top: 0; height: 3px; background: var(--accent); border-radius: 2px; }
+    .uv-rr-slider input[type="range"] { position: absolute; top: 0; left: 0; width: 100%; height: 20px;
       margin: 0; background: transparent; -webkit-appearance: none; appearance: none; pointer-events: none; }
-    .uv-rr-slider input[type="range"]::-webkit-slider-runnable-track, .uv-macro-slider input[type="range"]::-webkit-slider-runnable-track { -webkit-appearance: none; background: transparent; }
-    .uv-rr-slider input[type="range"]::-webkit-slider-thumb, .uv-macro-slider input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto;
+    .uv-rr-slider input[type="range"]::-webkit-slider-runnable-track { -webkit-appearance: none; background: transparent; }
+    .uv-rr-slider input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto;
       width: 13px; height: 13px; margin-top: 3.5px; border-radius: 50%; background: var(--accent);
       border: 2px solid var(--card-bg); box-shadow: 0 0 0 1px var(--border); cursor: pointer; }
-    .uv-rr-slider input[type="range"]::-moz-range-track, .uv-macro-slider input[type="range"]::-moz-range-track { background: transparent; border: none; }
-    .uv-rr-slider input[type="range"]::-moz-range-thumb, .uv-macro-slider input[type="range"]::-moz-range-thumb { pointer-events: auto; width: 13px; height: 13px;
+    .uv-rr-slider input[type="range"]::-moz-range-track { background: transparent; border: none; }
+    .uv-rr-slider input[type="range"]::-moz-range-thumb { pointer-events: auto; width: 13px; height: 13px;
       border-radius: 50%; background: var(--accent); border: 2px solid var(--card-bg);
       box-shadow: 0 0 0 1px var(--border); cursor: pointer; }
 
@@ -334,7 +340,7 @@
              what actually removed the standalone Source/Size rows. -->
         <div class="uv-tabs small" role="tablist" aria-label="Treemap view">
           <button class="uv-tab" role="tab" data-view="all" aria-selected="false">All</button>
-          <button class="uv-tab" role="tab" data-view="account" aria-selected="true">Account</button>
+          <button class="uv-tab" role="tab" data-view="account" aria-selected="true" title="Account">Act</button>
           <button class="uv-tab" role="tab" data-view="assetclass" aria-selected="false">Asset</button>
           <button class="uv-tab" role="tab" data-view="source" data-size="count" aria-selected="false">Src#</button>
           <button class="uv-tab" role="tab" data-view="source" data-size="capital" aria-selected="false">Src$</button>
@@ -370,9 +376,9 @@
         <div class="uv-ctrl-group" id="uvColorRow">
           <div class="uv-tabs small" role="tablist" aria-label="Stock tile color filter">
             <button class="uv-tab" role="tab" data-color="all" aria-selected="true">All</button>
-            <button class="uv-tab" role="tab" data-color="buy" aria-selected="false"><span class="uv-color-dot" style="background:var(--act-buy-strong);"></span>Buy</button>
-            <button class="uv-tab" role="tab" data-color="sell" aria-selected="false"><span class="uv-color-dot" style="background:var(--act-sell-strong);"></span>Sell</button>
-            <button class="uv-tab" role="tab" data-color="hold" aria-selected="false"><span class="uv-color-dot" style="background:var(--act-neutral);"></span>Hold</button>
+            <button class="uv-tab" role="tab" data-color="buy" aria-selected="false" title="Buy"><span class="uv-color-dot" style="background:var(--act-buy-strong);"></span>B</button>
+            <button class="uv-tab" role="tab" data-color="sell" aria-selected="false" title="Sell"><span class="uv-color-dot" style="background:var(--act-sell-strong);"></span>S</button>
+            <button class="uv-tab" role="tab" data-color="hold" aria-selected="false" title="Hold"><span class="uv-color-dot" style="background:var(--act-neutral);"></span>H</button>
           </div>
         </div>
 
@@ -419,17 +425,19 @@
           </div>
         </div>
 
-        <!-- Macro score (MacroNet) slider -- same dual-thumb mechanism as
-             Risk Range just above (see universe.js::wireMacroSlider), -2
-             to +2 (see MACRO_RANGE_MIN/MAX's own comment for why that
-             span). Symbol level only, same visibility rule as RR. User:
-             "Add macro range bar to filter based on Macro points" --
-             2026-09-08. -->
+        <!-- Macro filter -- same single-select 3-bucket shape as Color's
+             own Buy/Sell/Hold just below, keyed off the MACRO badge's own
+             vocab (macro_value: BM/BS/HOLD/STM/SA -> B/S/H, see
+             universe.js::macroSide) instead of a raw macronet range.
+             Symbol level only, same visibility rule as RR/Quad. Was a
+             dual-thumb macronet range slider (2026-09-08), replaced same
+             day: "Instead of macro range bar, use buttons Mcro B S H." -->
         <div class="uv-ctrl-group" id="uvMacroRow">
-          <div class="uv-macro-slider" id="uvMacroSlider" aria-label="What is the Macro score?">
-            <div class="uv-macro-track"><div class="uv-macro-range" id="uvMacroRange"></div></div>
-            <input type="range" id="uvMacroMin" min="-2" max="2" value="-2" step="0.05" aria-label="Macro score minimum">
-            <input type="range" id="uvMacroMax" min="-2" max="2" value="2" step="0.05" aria-label="Macro score maximum">
+          <div class="uv-tabs small" role="tablist" aria-label="Macro filter">
+            <button class="uv-tab" role="tab" data-macro="all" aria-selected="true">Mcro</button>
+            <button class="uv-tab" role="tab" data-macro="buy" aria-selected="false" title="Macro Bullish (BM/BS)">B</button>
+            <button class="uv-tab" role="tab" data-macro="sell" aria-selected="false" title="Macro Bearish (STM/SA)">S</button>
+            <button class="uv-tab" role="tab" data-macro="hold" aria-selected="false" title="Macro Hold">H</button>
           </div>
         </div>
 
@@ -455,7 +463,7 @@
              -- 2026-09-08. -->
         <div class="uv-ctrl-group" id="uvQuadRow">
           <div class="uv-tabs small" role="group" aria-label="Quad favorability filter (multi-select)">
-            <button class="uv-tab" role="button" aria-selected="true" data-quad="all">Quad</button>
+            <button class="uv-tab" role="button" aria-selected="true" data-quad="all" title="Quad">Qd</button>
             <button class="uv-tab" role="button" aria-selected="false" data-quad="1" title="Symbols with a net-bullish isolated stance IF Quad 1 were certain">Q1</button>
             <button class="uv-tab" role="button" aria-selected="false" data-quad="2" title="Symbols with a net-bullish isolated stance IF Quad 2 were certain">Q2</button>
             <button class="uv-tab" role="button" aria-selected="false" data-quad="3" title="Symbols with a net-bullish isolated stance IF Quad 3 were certain">Q3</button>
@@ -588,6 +596,6 @@
        screen -> Action column -> Action popover" -- 2026-09-06. -->
   <script src="/static/_common.js?v=1"></script>
   <script src="/static/actions.js?v=1"></script>
-  <script src="/static/universe.js?v=129"></script>
+  <script src="/static/universe.js?v=130"></script>
 </body>
 </html>

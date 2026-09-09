@@ -732,6 +732,20 @@
     return 'hold';
   }
 
+  // 'buy' | 'sell' | 'hold' | null -- same 3-bucket shape as actionSide()
+  // above, just for the MACRO badge's own vocab (det.macro_value: BM/BS ->
+  // buy, STM/SA -> sell, HOLD -> hold) instead of final_code. null (not
+  // 'hold') when there's no macro_value at all -- same "can't tell, so
+  // exclude rather than lump into Hold" rule the RR filter's null rawRrPos
+  // already follows, so a symbol with no MacroNet coverage doesn't
+  // silently count as neutral. Feeds the Mcro filter row.
+  function macroSide(v) {
+    if (v === 'BM' || v === 'BS') return 'buy';
+    if (v === 'STM' || v === 'SA') return 'sell';
+    if (v === 'HOLD') return 'hold';
+    return null;
+  }
+
   // Tile fill -- always the trading-signal action color. Used to also
   // switch to a Gain/Loss-interpolated fill via a Color-by toggle
   // (2026-09-03, "held-perspective proposal"); removed per "Remove signal
@@ -832,16 +846,13 @@
   // bar itself uses), same scope as Color/Style -- narrows symbol tiles
   // to a rawRrPos() range, via the #uvRrMin/#uvRrMax dual-thumb slider.
   let rrMin = 0, rrMax = 100;
-  // Macro score (macronet) band -- same dual-thumb pattern as Risk Range,
-  // just a different scale/field. -2..+2 covers the practical range seen
-  // in real data (docs/quad_design.md's own live thresholds top out at
-  // macro_thr_bm=1.25 / bottom out at macro_thr_sa=-0.6 -- -2/+2 leaves
-  // headroom past both without being so wide the slider has no real
-  // resolution). Narrows to det.macronet, via #uvMacroMin/#uvMacroMax.
-  // User: "Add macro range bar to filter based on Macro points" --
-  // 2026-09-08.
-  let macroMin = -2, macroMax = 2;
-  const MACRO_RANGE_MIN = -2, MACRO_RANGE_MAX = 2;
+  // Macro filter -- 'all'/'buy'/'sell'/'hold', same single-select 3-bucket
+  // shape as Color's own Buy/Sell/Hold (data-color/actionSide), just keyed
+  // off the MACRO badge's own vocab (det.macro_value: BM/BS -> buy,
+  // STM/SA -> sell, HOLD -> hold) instead of a raw numeric range -- was a
+  // dual-thumb macronet slider (2026-09-08), replaced same day per direct
+  // request: "Instead of macro range bar, use buttons Mcro B S H".
+  let currentMacroFilter = 'all';
   // Quad favorability filter -- a Set of '1'..'4', multi-select (empty =
   // no filter/"Quad" button). Narrows symbol tiles to those whose ISOLATED
   // stance (det.quad{N}_net -- "if Quad N were certain", ignoring the real
@@ -1016,6 +1027,7 @@
     });
     document.querySelectorAll('.uv-tab[data-filter]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.filter === currentFilter)));
     document.querySelectorAll('.uv-tab[data-color]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.color === currentColorFilter)));
+    document.querySelectorAll('.uv-tab[data-macro]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.macro === currentMacroFilter)));
     document.querySelectorAll('.uv-tab[data-style]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.style === currentStyleFilter)));
     document.querySelectorAll('.uv-tab[data-gain]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.gain === currentGainFilter)));
     document.querySelectorAll('.uv-tab[data-gainsize]').forEach(t => t.setAttribute('aria-selected', String(t.dataset.gainsize === gainSizeMode)));
@@ -3031,13 +3043,8 @@
         return clamped >= rrMin && clamped <= rrMax;
       });
     }
-    if (macroMin > MACRO_RANGE_MIN || macroMax < MACRO_RANGE_MAX) {
-      rows = rows.filter(r => {
-        const mn = r.detail.macronet;
-        if (mn == null) return false;
-        const clamped = Math.max(MACRO_RANGE_MIN, Math.min(MACRO_RANGE_MAX, mn));
-        return clamped >= macroMin && clamped <= macroMax;
-      });
+    if (currentMacroFilter !== 'all') {
+      rows = rows.filter(r => macroSide(r.detail.macro_value) === currentMacroFilter);
     }
     if (currentQuadFilter.size > 0) {
       rows = rows.filter(r => [...currentQuadFilter].every(n => (r.detail['quad' + n + '_net'] ?? null) > 0));
@@ -3054,7 +3061,7 @@
       const msg = currentStyleFilter !== 'all' ? `No ${currentStyleFilter} symbols here.`
         : currentColorFilter !== 'all' ? `No ${currentColorFilter} symbols here.`
         : (rrMin > 0 || rrMax < 100) ? `No symbols in the ${rrMin}–${rrMax}% Risk Range band here.`
-        : (macroMin > MACRO_RANGE_MIN || macroMax < MACRO_RANGE_MAX) ? `No symbols in the ${macroMin}–${macroMax} Macro score band here.`
+        : currentMacroFilter !== 'all' ? `No ${currentMacroFilter} Macro symbols here.`
         : currentQuadFilter.size > 0 ? `No symbols favorable for Quad ${[...currentQuadFilter].sort().join(' & ')} here.`
         : currentGainFilter !== 'all' ? `No ${currentGainFilter} here.`
         : 'No symbols here.';
@@ -4638,6 +4645,10 @@
     // in wireStyleTabs() below, once its data-driven tab list exists.)
     document.querySelectorAll('.uv-tab[data-color]').forEach(t =>
       t.addEventListener('click', () => { currentColorFilter = t.dataset.color; render(); }));
+    // Macro filter -- same no-drill-reset rule as Color just above, same
+    // single-select radio shape (unlike Quad's multi-select toggle).
+    document.querySelectorAll('.uv-tab[data-macro]').forEach(t =>
+      t.addEventListener('click', () => { currentMacroFilter = t.dataset.macro; render(); }));
     // Gain% filter -- same deliberately-no-drill-reset rule as Color/
     // Style just above (re-filters whatever tiles are already showing).
     // Switching to "All" also auto-switches tile size to "=" (Equal) --
@@ -4747,42 +4758,6 @@
     });
   }
 
-  // Dual-thumb Macro score slider -- same mechanism as wireRrSlider() just
-  // above, different field/scale (macronet, MACRO_RANGE_MIN..MACRO_RANGE_MAX
-  // instead of 0-100). User: "Add macro range bar to filter based on Macro
-  // points" -- 2026-09-08.
-  function wireMacroSlider() {
-    const minEl = $('uvMacroMin'), maxEl = $('uvMacroMax'), rangeEl = $('uvMacroRange');
-    const span = MACRO_RANGE_MAX - MACRO_RANGE_MIN;
-    const pct = v => ((v - MACRO_RANGE_MIN) / span) * 100;
-    const update = () => {
-      let lo = parseFloat(minEl.value), hi = parseFloat(maxEl.value);
-      if (lo > hi) {
-        if (document.activeElement === maxEl) { lo = hi; minEl.value = String(lo); }
-        else { hi = lo; maxEl.value = String(hi); }
-      }
-      macroMin = lo; macroMax = hi;
-      rangeEl.style.left = pct(lo) + '%';
-      rangeEl.style.right = (100 - pct(hi)) + '%';
-      render();
-    };
-    minEl.addEventListener('input', update);
-    maxEl.addEventListener('input', update);
-    rangeEl.style.left = '0%'; rangeEl.style.right = '0%';
-
-    const macroSliderEl = $('uvMacroSlider');
-    const macroInfoHtml = '<b>Macro score (MacroNet)</b><ul>' +
-      '<li>The blended quad-regime score behind the MACRO badge (BM/BS/HOLD/STM/SA)</li>' +
-      `<li>Positive = net bullish quad alignment, negative = net bearish</li>` +
-      '<li>Drag a thumb to narrow to a band; left at the ends = no filter</li></ul>';
-    macroSliderEl.addEventListener('mouseenter', () => _uvShowInfoPopover(macroSliderEl, macroInfoHtml));
-    macroSliderEl.addEventListener('mouseleave', _uvHideInfoPopover);
-    [minEl, maxEl].forEach(el => {
-      el.addEventListener('focus', () => _uvShowInfoPopover(macroSliderEl, macroInfoHtml));
-      el.addEventListener('blur', _uvHideInfoPopover);
-    });
-  }
-
   async function init() {
     // Action popover port -- fired alongside the main /api/universe fetch
     // below, not awaited (fire-and-forget): populates uvPopState in the
@@ -4810,7 +4785,6 @@
     $('uvAsOf').textContent = new Date().toLocaleDateString();
     wireStyleTabs();
     wireRrSlider();
-    wireMacroSlider();
     wireStaticControls();
     render();
   }
