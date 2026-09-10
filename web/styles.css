@@ -1327,8 +1327,13 @@ svg.rr-candle {
 }
 
 
-/* Toolbar toggle buttons (Actionable, TV) — default + active states */
-#actionableOnlyBtn, #tvToggleBtn {
+/* Toolbar toggle button (TV) — default + active states. actionableOnlyBtn
+   removed 2026-09-10: it's a .seg-ctrl pill now (2026-09-02 restyle) and
+   needs the shared .seg-ctrl button.active blue fill (web/styles.css's own
+   seg-ctrl rule) — this ID selector was overriding it with a hardcoded
+   white background regardless of .active, a leftover from when it was its
+   own bespoke .btn-icon before that restyle. */
+#tvToggleBtn {
   background: #fff;
   color: inherit;
 }
