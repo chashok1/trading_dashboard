@@ -52,19 +52,41 @@ def _run_info(session: Session, run_id: int) -> Optional[dict]:
     return dict(zip(("run_id", "file_path", "target_tab", "file_type", "status"), row))
 
 
+def _resolve_hist_table(target_tab: Optional[str]) -> Optional[str]:
+    """meta_etl_run.target_tab isn't stamped consistently across loaders:
+    the CSV custom handlers (CS/CST/FT/F401K) and Tickers/ref_* loaders
+    stamp the full table name ('hist_cs', 'ref_rrt', ...), but the generic
+    mappings.py::HIST_MAPS loader (TOSD/TOSW/TOSL/TOSO/Y/RR/CALL/ETF/II/PS/
+    SSS/etc. -- the most common load types) stamps only the bare hist_*
+    suffix ('td', 'tw', 'rr', ...). 2026-09-10: this meant delete_load
+    rejected every generic-mapped load outright ("target_tab 'td' is not a
+    hist_* table"), even though hist_td genuinely exists with a
+    source_file column -- confirmed live trying to revert a TOSD/TOSW
+    load. Tries target_tab as-is first (the already-working full-name
+    case, unchanged), then hist_<target_tab> as a fallback. Returns the
+    RESOLVED table name (always hist_*-prefixed) or None if neither
+    resolves to a real table with a source_file column."""
+    if not target_tab:
+        return None
+    for candidate in (target_tab, f"hist_{target_tab}"):
+        if not candidate.startswith("hist_"):
+            continue
+        try:
+            table = get_table(candidate)
+        except Exception:
+            continue
+        if "source_file" in {c.name for c in table.columns}:
+            return candidate
+    return None
+
+
 def _validate_deletable(info: dict) -> Optional[str]:
     """Returns an error message if this run isn't safe to delete, else None."""
     if not info["file_path"]:
         return "run has no file_path recorded"
-    target_tab = info["target_tab"]
-    if not target_tab or not target_tab.startswith("hist_"):
-        return f"target_tab '{target_tab}' is not a hist_* table — nothing to delete"
-    try:
-        table = get_table(target_tab)
-    except Exception as e:
-        return f"could not resolve table '{target_tab}': {e}"
-    if "source_file" not in {c.name for c in table.columns}:
-        return f"{target_tab} has no source_file column — cannot target this load safely"
+    if _resolve_hist_table(info["target_tab"]) is None:
+        return (f"target_tab '{info['target_tab']}' does not resolve to a hist_* table "
+                f"with a source_file column — nothing to delete")
     return None
 
 
@@ -78,7 +100,12 @@ def preview_delete_load(session: Session, run_id: int) -> dict:
     if err:
         return {"found": False, "msg": err}
 
-    target_tab = info["target_tab"]
+    # Resolved (always hist_*-prefixed) name for the actual query -- see
+    # _resolve_hist_table's own docstring. Returned as "target_tab" too
+    # (rather than the possibly-bare stored value) since it's what the
+    # File Monitor UI's confirm dialog displays, and the resolved name
+    # reads correctly either way.
+    target_tab = _resolve_hist_table(info["target_tab"])
     safe_tab = safe_ident(target_tab, {target_tab})
     # The CSV custom handlers (CS/CST/FT/F401K) stamp hist_*.source_file with
     # just the basename, while the generic Excel loader stamps the full path
@@ -117,7 +144,9 @@ def delete_load(session: Session, run_id: int) -> dict:
     if err:
         return {"success": False, "msg": err}
 
-    target_tab = info["target_tab"]
+    # Resolved (always hist_*-prefixed) name -- see _resolve_hist_table's
+    # own docstring; also what gets returned/logged below.
+    target_tab = _resolve_hist_table(info["target_tab"])
     file_path = info["file_path"]
     safe_tab = safe_ident(target_tab, {target_tab})
 

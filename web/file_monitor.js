@@ -705,10 +705,22 @@ function renderEtlRuns() {
             <td class="num" style="color: var(--text-3);">${row.rows_skipped != null ? row.rows_skipped.toLocaleString() : '—'}</td>
             <td>${duration}</td>
             <td>
+                <!-- 2026-09-10: this button used to require target_tab to
+                     literally start with "hist_", but the generic
+                     mappings.py loader (TOSD/TOSW/TOSL/TOSO/Y/RR/CALL/ETF/
+                     II/PS/SSS -- most load types) stamps just the bare
+                     suffix ('td', 'tw', ...), which resolves to a real
+                     hist_* table server-side (etl/delete_load.py's own
+                     _resolve_hist_table) but always failed this exact
+                     check -- disabled for the most common load types.
+                     Flipped to a blocklist (ref_*/drv_* + running/
+                     reverted), the only target_tab values genuinely never
+                     deletable; the backend stays the real authority and
+                     safely rejects anything else that doesn't resolve. -->
                 <button class="btn btn-sm delete-load-btn"
                         data-run-id="${row.run_id}"
                         title="Delete this load's data and allow reprocessing"
-                        ${(!row.target_tab || !row.target_tab.startsWith('hist_') || row.status === 'running' || row.status === 'reverted') ? 'disabled' : ''}>
+                        ${(!row.target_tab || row.target_tab.startsWith('ref_') || row.target_tab.startsWith('drv_') || row.status === 'running' || row.status === 'reverted') ? 'disabled' : ''}>
                     🗑
                 </button>
             </td>
