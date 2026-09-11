@@ -41,8 +41,9 @@ last_auto_pos = None
 # hiding the console, so there was no way to tell the script was still
 # alive vs. stuck (esp. during RELOADWL99's long retry loop) without
 # alt-tabbing away, which risks interrupting an in-flight pyautogui action.
-# A small always-on-top pulsing dot, top-right corner, gives a glanceable
-# "still working" signal without needing the console.
+# A small always-on-top pulsing dot, horizontally centered on the TOS
+# window's own title bar, gives a glanceable "still working" signal
+# without needing the console.
 #
 # Placement note -- this MUST NOT overlap the maximize/minimize/close
 # button row: ensure_tos_active()'s "maximized.png" check (and any other
@@ -55,9 +56,14 @@ last_auto_pos = None
 # no matter which run/call finds TOS in that state. Also only started
 # AFTER main()'s own ensure_tos_active() call succeeds (see call site),
 # as a second, belt-and-suspenders guard on top of the vertical clearance.
+# Horizontal centering: 2026-09-10, user asked for the dot centered on
+# TOS's own title bar, not the screen corner -- main() now passes
+# ensure_tos_active()'s returned tos_window bounds through to
+# start_status_overlay() so the dot centers on the actual window (right
+# even if TOS isn't screen-width, e.g. multi-monitor). Falls back to
+# centering on the whole screen if no window bounds are given.
 _OVERLAY_SIZE = 16
 _OVERLAY_MARGIN_TOP = 60
-_OVERLAY_MARGIN_RIGHT = 24
 _OVERLAY_PULSE_MS = 500
 
 class _HeartbeatOverlay:
@@ -81,7 +87,10 @@ class _HeartbeatOverlay:
     window's mainloop running quietly on its daemon thread until the whole
     process exits (killed abruptly with the process, no Python-level Tcl
     cleanup involved) reproduced cleanly with no error and exit code 0."""
-    def __init__(self):
+    def __init__(self, window_left=0, window_top=0, window_width=None):
+        self._window_left = window_left
+        self._window_top = window_top
+        self._window_width = window_width
         self._stop_event = threading.Event()
         self._ready_event = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -114,8 +123,13 @@ class _HeartbeatOverlay:
             except tk.TclError:
                 bg = root.cget('bg')  # platform without transparentcolor support
             size = _OVERLAY_SIZE
-            x = root.winfo_screenwidth() - size - _OVERLAY_MARGIN_RIGHT
-            y = _OVERLAY_MARGIN_TOP
+            # Horizontally centered on the TOS window's own title bar (falls
+            # back to the whole screen's width if no window bounds were
+            # given -- e.g. start_status_overlay() called before/without
+            # ensure_tos_active() succeeding).
+            win_width = self._window_width if self._window_width is not None else root.winfo_screenwidth()
+            x = self._window_left + win_width // 2 - size // 2
+            y = self._window_top + _OVERLAY_MARGIN_TOP
             root.geometry(f"{size}x{size}+{x}+{y}")
             canvas = tk.Canvas(root, width=size, height=size, highlightthickness=0, bg=bg)
             canvas.pack()
@@ -144,15 +158,17 @@ class _HeartbeatOverlay:
 
 _status_overlay = None
 
-def start_status_overlay():
+def start_status_overlay(window_left=0, window_top=0, window_width=None):
     """Never raises -- a failure here must not break the actual TOS
-    automation. See _HeartbeatOverlay's docstring for placement/thread
-    safety notes."""
+    automation. window_left/top/width (typically ensure_tos_active()'s
+    returned tos_window's own .left/.top/.width) center the dot on that
+    window's title bar; omit them to center on the whole screen instead.
+    See _HeartbeatOverlay's docstring for placement/thread safety notes."""
     global _status_overlay
     if _status_overlay is not None:
         return
     try:
-        _status_overlay = _HeartbeatOverlay()
+        _status_overlay = _HeartbeatOverlay(window_left, window_top, window_width)
         _status_overlay.start()
     except Exception as e:
         print(f"(status overlay failed to start, continuing without it: {e})")
@@ -782,13 +798,19 @@ def check_loading_threshold_from_csv(file_path: str, lines_to_skip: int = 3, tar
         return False
 
     try:
-        # Read the CSV file into a DataFrame
-        df = pd.read_csv(file_path, skiprows=lines_to_skip)
+        # 2026-09-10: encoding was previously left to pandas' default
+        # (unspecified -> platform/locale guess), unlike every other file
+        # read in this script (including the merge loop's own
+        # _row_has_loading path), which calls get_encoding() first. A
+        # decode failure here was silently possible with no clear signal --
+        # see update_stuck_symbols_memory()'s own fix for the fuller story.
+        encoding = get_encoding(file_path)
+        df = pd.read_csv(file_path, skiprows=lines_to_skip, encoding=encoding)
     except pd.errors.EmptyDataError:
         print("Error: The CSV file is empty.")
         return False
     except Exception as e:
-        print(f"Error reading CSV file: {e}")
+        print(f"⚠️ check_loading_threshold_from_csv: error reading '{file_path}': {e!r}")
         return False
 
     if df.empty:
@@ -853,13 +875,29 @@ def update_stuck_symbols_memory(file_path: str, lines_to_skip: int = 3, target_w
     symbol) and only got trimmed back to accurate via a separate
     full-directory rescan right before each retry. Keeping one in-memory
     set accurate incrementally, as each export happens, means there's
-    nothing to trim or re-derive from disk at all. Silently no-ops on any
-    read error, same defensive spirit as the functions it replaces."""
+    nothing to trim or re-derive from disk at all.
+
+    2026-09-10, user: a run where WL99 only reloaded 1 of 16 genuinely
+    stuck symbols -- the other 15 (from WL1/WL2) were never added to
+    stuck_symbols_memory at all, even though the merge loop's own
+    (encoding-safe, per-cell) _row_has_loading later found "Loading" text
+    in those exact same files. Leading hypothesis: this read had no
+    encoding= (unlike every other file read in this script, including the
+    merge loop's own), and the except below was completely silent -- a
+    decode/parse failure here would no-op with zero signal, leaving
+    whatever was already in stuck_symbols_memory (nothing, for a symbol's
+    first sighting) untouched. Added get_encoding() + a loud error message
+    so this is visible instead of invisible if it recurs; not yet
+    confirmed as the actual root cause (the fragment files from that run
+    were already deleted by the time this was investigated)."""
     if not os.path.exists(file_path):
         return
     try:
-        df = pd.read_csv(file_path, skiprows=lines_to_skip)
-    except Exception:
+        encoding = get_encoding(file_path)
+        df = pd.read_csv(file_path, skiprows=lines_to_skip, encoding=encoding)
+    except Exception as e:
+        print(f"⚠️ update_stuck_symbols_memory: error reading '{file_path}': {e!r} "
+              f"-- stuck_symbols_memory NOT updated for this fragment.")
         return
     if df.empty:
         return
@@ -894,8 +932,12 @@ def find_genuinely_stuck_symbols(save_folder, lines_to_skip: int = 3, target_wor
             continue
         fpath = os.path.join(save_folder, fname)
         try:
-            df = pd.read_csv(fpath, skiprows=lines_to_skip)
-        except Exception:
+            # 2026-09-10: same encoding fix as update_stuck_symbols_memory()
+            # -- see that function's own docstring.
+            encoding = get_encoding(fpath)
+            df = pd.read_csv(fpath, skiprows=lines_to_skip, encoding=encoding)
+        except Exception as e:
+            print(f"⚠️ find_genuinely_stuck_symbols: error reading '{fpath}': {e!r} -- skipped.")
             continue
         if df.empty:
             continue
@@ -1658,7 +1700,7 @@ def main(watchlist_file, save_folder, images_folder, re_process):
     RELOADWL99 branch now reprocesses incomplete watchlists before WL99's
     reload, see that branch's comment). run_pipeline() below drives this
     plus the merge stage as one combined run."""
-    ensure_tos_active(images_folder)
+    tos_window = ensure_tos_active(images_folder)
     # 2026-09-10: only start the status overlay AFTER TOS is confirmed
     # active/maximized -- belt-and-suspenders on top of _OVERLAY_MARGIN_TOP's
     # own vertical clearance, so it's never on screen while ensure_tos_active's
@@ -1667,7 +1709,14 @@ def main(watchlist_file, save_folder, images_folder, re_process):
     # its normal end) -- not a try/finally, but the overlay lives on a
     # daemon thread, so an exception anywhere in between just means it's
     # torn down with the process on exit instead of via a graceful stop().
-    start_status_overlay()
+    # Window bounds passed through so the dot centers on TOS's own title
+    # bar (tos_window is a pygetwindow Window -- same .left/.top/.width
+    # ensure_tos_active() already prints elsewhere); falls back to
+    # screen-centered if ensure_tos_active() didn't return one.
+    if tos_window:
+        start_status_overlay(tos_window.left, tos_window.top, tos_window.width)
+    else:
+        start_status_overlay()
 
     if not os.path.exists(save_folder):
         os.makedirs(save_folder)
