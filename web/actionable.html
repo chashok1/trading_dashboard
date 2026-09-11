@@ -1375,10 +1375,21 @@
                .active fill into this 2-button .seg-ctrl, same pass as the
                row-visibility group above -- see web/actionable.html's own
                CSS-block comment (search "toolbar consistency pass") for why
-               the green was dropped. -->
+               the green was dropped. 2026-09-10: Trade Mode/Non-Strict
+               relabeled to Trade/Trade2 per user request; ids/state fields
+               unchanged. No longer mutually exclusive -- all 3 buttons in
+               this group (incl. WL, added same day) are independently
+               clickable; with more than one on, a row shows if it matches
+               any one of the active criteria (see matchesBaseFilters in
+               web/actionable.js). WL = the same "Watchlist band" gate the
+               collapsed "Watchlist (n)" toggle already uses (_buyNoiseGated:
+               unheld starter buys whose Technical isn't entry-ripe yet) --
+               exposed as its own pill so it can be combined with Trade/
+               Trade2 instead of only reachable via the collapsed band. -->
           <div class="seg-ctrl" title="Trade Mode view">
-            <button id="tradeModeBtn" data-tip="Trade Mode (Strict): only qualifying buys, SA sells, stop breaches">Trade Mode</button>
-            <button id="tradeModeDiffBtn" data-tip="Non-Strict: Trade Mode buys that Strict mode filters out">Non-Strict</button>
+            <button id="tradeModeBtn" data-tip="Trade (Strict): only qualifying buys, SA sells, stop breaches">Trade</button>
+            <button id="tradeModeDiffBtn" data-tip="Trade2 (Non-Strict): Trade buys that Strict mode filters out">Trade2</button>
+            <button id="watchlistOnlyBtn" data-tip="WL: unheld starter buys not yet Technical-ripe (the Watchlist band)">WL</button>
           </div>
           <!-- Source filter -- placeholder option itself reads "Source" (no
                separate label), same convention as Acct/Sectors/Asset
@@ -1868,7 +1879,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260909b"></script>
+  <script src="/static/actionable.js?v=20260910d"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>

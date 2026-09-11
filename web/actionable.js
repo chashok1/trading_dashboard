@@ -58,6 +58,9 @@ const state = {
     stopOnly: false,     // TASK_119: STOP chip — filter to stop_breached rows
     trade_mode: true,    // TASK_124: show only qualifying buys / SA sells / stop breaches
                          // (always starts ON, not persisted — reset near page init)
+                         // trade_mode_diff (Trade2) and watchlist_only (WL) are its sibling
+                         // toggles, same seg-ctrl group; not in this literal, set near
+                         // page init alongside trade_mode (search "always starts ON").
     asset_class: '',     // '' = all; else exact match on r._assetClass (normalized real_asset_class)
     symbols_multi: [],   // multi-symbol filter popup — exact-match list, empty = no filter
     etfchg_only: false,  // EC pill — recent ETF Pro Change event (etfchg_date), informational only
@@ -1997,6 +2000,12 @@ function _isTradeModeDiffBuy(r) {
   return _isTradeModeQualifyingBuyLoose(r) && !_isTradeModeQualifyingBuy(r);
 }
 function _matchesTradeModeDiff(r) {
+  // 2026-09-10: briefly excluded watchlist-gated rows here (!_buyNoiseGated)
+  // per an earlier ask, then reverted -- turned out the grid already gives
+  // those their own collapsed "Watchlist (n)" subsection under Trade2 (see
+  // renderGrid's r._watchlisted split below), same as the default view, so
+  // hiding them from Trade2 outright wasn't needed; they were never mixed
+  // into the main Trade2 rows to begin with.
   return _isTradeModeDiffBuy(r);
 }
 // Numeric hit-rate badge for a qualifying Trade Mode row — the winning
@@ -2029,13 +2038,17 @@ function matchesBaseFilters(r) {
   // TASK_124: Trade Mode replaces the default show_hidden suppression logic
   // outright — its own criteria are the complete gate. Toggle OFF (default)
   // leaves this whole block unreached, keeping OFF pixel-identical to before.
-  // Trade Mode and its "Non-Strict" counterpart (2026-08-28) are mutually
-  // exclusive alternate views (enforced in the click handlers below), so
-  // this only ever needs to check one or the other, never both.
-  if (state.filters.trade_mode) {
-    if (!_matchesTradeMode(r)) return false;
-  } else if (state.filters.trade_mode_diff) {
-    if (!_matchesTradeModeDiff(r)) return false;
+  // 2026-09-10: Trade/Trade2/WL are independent, not mutually exclusive —
+  // each is checked on its own and OR'd, so with more than one on a row
+  // shows if it matches any one of them (was an if/else-if that only ever
+  // checked Trade's criteria when more than one was on, silently ignoring
+  // the rest). WL reuses _buyNoiseGated — the same unheld/not-yet-
+  // Technical-ripe gate the collapsed "Watchlist (n)" band already uses.
+  if (state.filters.trade_mode || state.filters.trade_mode_diff || state.filters.watchlist_only) {
+    const tmOk = state.filters.trade_mode && _matchesTradeMode(r);
+    const tmdOk = state.filters.trade_mode_diff && _matchesTradeModeDiff(r);
+    const wlOk = state.filters.watchlist_only && _buyNoiseGated(r);
+    if (!tmOk && !tmdOk && !wlOk) return false;
   } else if (!state.filters.show_hidden) {
     // When show_hidden is OFF, hide suppressed/$0 AMT/no-action/acted/unheld-remove rows.
     if (r.suppressed_reason) return false;
@@ -2516,6 +2529,21 @@ function renderAccountFilter() {
 }
 
 
+// 2026-09-10: Trade/Trade2 (renamed from Trade Mode/Non-Strict) + WL (new)
+// are 3 independent toggle buttons, not mutually exclusive -- clicking one
+// only ever flips its own boolean; matchesBaseFilters ORs whichever are
+// active. Shared by syncFilterUi() (init/restore) and all 3 click handlers
+// so the pills never fall out of sync with state.filters.
+function _syncTradeModeButtons() {
+  const f = state.filters;
+  const tradeModeBtn = $('tradeModeBtn');
+  if (tradeModeBtn) tradeModeBtn.classList.toggle('active', !!f.trade_mode);
+  const tradeModeDiffBtn = $('tradeModeDiffBtn');
+  if (tradeModeDiffBtn) tradeModeDiffBtn.classList.toggle('active', !!f.trade_mode_diff);
+  const watchlistOnlyBtn = $('watchlistOnlyBtn');
+  if (watchlistOnlyBtn) watchlistOnlyBtn.classList.toggle('active', !!f.watchlist_only);
+}
+
 function syncFilterUi() {
   // Sync all UI elements to current state.filters
   const f = state.filters;
@@ -2530,12 +2558,7 @@ function syncFilterUi() {
     showHidden.classList.toggle('active', !!f.show_hidden);
     showHidden.setAttribute('data-tip', f.show_hidden ? 'Show Hidden  →  Active Only' : 'Active Only  →  Show Hidden');
   }
-  const tradeModeBtn = $('tradeModeBtn');
-  if (tradeModeBtn) tradeModeBtn.classList.toggle('active', !!f.trade_mode);
-  // 2026-08-28: "Non-Strict" button -- mutually exclusive alternate view to
-  // Trade Mode (not a sub-toggle anymore, always visible).
-  const tradeModeDiffBtn = $('tradeModeDiffBtn');
-  if (tradeModeDiffBtn) tradeModeDiffBtn.classList.toggle('active', !!f.trade_mode_diff);
+  _syncTradeModeButtons();
   const multiSymBtn = $('multiSymBtn');
   if (multiSymBtn) multiSymBtn.classList.toggle('active', !!(f.symbols_multi && f.symbols_multi.length));
   const sym = $('symbolSearch');        if (sym) sym.value = f.symbol_search || '';
@@ -2561,12 +2584,13 @@ function syncFilterUi() {
 
 // A Source/Account/Symbol/P(up) lookup is a targeted search — the row(s) it
 // names shouldn't be silently swallowed by an unrelated toggle (Positions
-// Only / Active Only / Actionable Only / Trade Mode / Non-Strict) left on
-// from earlier browsing. Reset those five to their "show everything" state
-// whenever one of the lookup filters is actively set to a non-empty value.
+// Only / Active Only / Actionable Only / Trade / Trade2 / WL) left on from
+// earlier browsing. Reset those to their "show everything" state whenever
+// one of the lookup filters is actively set to a non-empty value.
 // 2026-09-02, toolbar-consistency review: trade_mode_diff was missing here
-// (only trade_mode was reset) -- picking a Source/Account while Non-Strict
-// was on left the "targeted search" silently narrowed by it.
+// (only trade_mode was reset) -- picking a Source/Account while Trade2 was
+// on left the "targeted search" silently narrowed by it. 2026-09-10: added
+// watchlist_only (WL) same reasoning.
 function _resetToggleFiltersForLookup() {
   const f = state.filters;
   f.held_only = false;
@@ -2574,6 +2598,7 @@ function _resetToggleFiltersForLookup() {
   f.actionable_only = false;
   f.trade_mode = false;
   f.trade_mode_diff = false;
+  f.watchlist_only = false;
   syncFilterUi();
 }
 
@@ -6019,6 +6044,7 @@ function renderGrid() {
     state.filters.conviction !== 'any' || state.filters.bull_prob_min > 0 ||
     state.filters.agreement_class || state.filters.stopOnly ||
     state.filters.etfchg_only || state.filters.iichg_only ||
+    state.filters.watchlist_only ||
     (state.filters.symbols_multi && state.filters.symbols_multi.length));
   const bandExpanded = state.watchlistExpanded || (filtersActive && watchRows.length > 0);
 
@@ -7881,15 +7907,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.target.closest('#emptyClearFiltersBtn')) clearAllFilters();
   });
 
-  // TASK_124: Trade Mode always starts ON on entering the screen — not
+  // TASK_124: Trade always starts ON on entering the screen — not
   // persisted across visits (the user explicitly wants it re-armed every
   // time, not remembered from a prior session). 2026-08-28: Strict is no
   // longer a separate sub-toggle (state.filters.trade_mode_strict retired)
-  // -- Trade Mode's own gate is always the strict one now; trade_mode_diff
-  // (the "Non-Strict" button) is its mutually-exclusive alternate view,
-  // off by default same re-armed-every-visit convention.
+  // -- Trade's own gate is always the strict one now; trade_mode_diff
+  // (the Trade2 button) is its alternate view, off by default same
+  // re-armed-every-visit convention. 2026-09-10: the three (Trade/Trade2/
+  // WL) are no longer forced mutually exclusive (see matchesBaseFilters).
+  // WL (watchlist_only) off by default, same convention.
   state.filters.trade_mode = true;
   state.filters.trade_mode_diff = false;
+  state.filters.watchlist_only = false;
 
   await loadSources();
   await loadDates();
@@ -8051,37 +8080,50 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
   _syncQuadButtons();
-  // TASK_124: Trade Mode toggle — always starts ON (see above); not persisted,
-  // so toggling off only lasts for the current page session. 2026-08-28:
-  // mutually exclusive with the "Non-Strict" button (trade_mode_diff) below
-  // — turning Trade Mode on forces trade_mode_diff off.
+  // TASK_124: Trade toggle — always starts ON (see above); not persisted,
+  // so toggling off only lasts for the current page session. 2026-09-10:
+  // renamed from "Trade Mode"/"Non-Strict" to Trade/Trade2, and no longer
+  // forced mutually exclusive with Trade2 — both active at once shows rows
+  // matching either set (see matchesBaseFilters). Active-class sync moved
+  // into the shared _syncTradeModeButtons().
   const tradeModeBtn = $('tradeModeBtn');
   if (tradeModeBtn) {
     tradeModeBtn.addEventListener('click', () => {
       state.filters.trade_mode = !state.filters.trade_mode;
-      if (state.filters.trade_mode) state.filters.trade_mode_diff = false;
-      tradeModeBtn.classList.toggle('active', state.filters.trade_mode);
-      const diffBtn = $('tradeModeDiffBtn');
-      if (diffBtn) diffBtn.classList.toggle('active', state.filters.trade_mode_diff);
-      // Trade Mode also controls whether suppressed rows (e.g. STOP BREACHED)
+      _syncTradeModeButtons();
+      // Trade also controls whether suppressed rows (e.g. STOP BREACHED)
       // are fetched from the API — needs a full reload, not just a re-filter.
       loadActionable();
     });
   }
-  // 2026-08-28: "Non-Strict" button -- current Trade Mode stocks WITHOUT the
-  // ones Strict also keeps (was the old Strict sub-toggle's DOM slot; Strict
-  // itself is no longer optional, see _isTradeModeQualifyingBuy). Mutually
-  // exclusive with Trade Mode -- an alternate view, not a refinement of it
-  // — so this needs the same full reload Trade Mode's own toggle does (same
-  // show_suppressed fetch-param dependency), not just a re-filter.
+  // 2026-08-28: Trade2 button -- current Trade stocks WITHOUT the ones
+  // Strict also keeps (was the old Strict sub-toggle's DOM slot; Strict
+  // itself is no longer optional, see _isTradeModeQualifyingBuy). 2026-09-10:
+  // no longer forced mutually exclusive with Trade -- see Trade's own click
+  // handler comment above. Still needs the same full reload Trade's own
+  // toggle does (same show_suppressed fetch-param dependency), not just a
+  // re-filter.
   const tradeModeDiffBtn = $('tradeModeDiffBtn');
   if (tradeModeDiffBtn) {
     tradeModeDiffBtn.addEventListener('click', () => {
       state.filters.trade_mode_diff = !state.filters.trade_mode_diff;
-      if (state.filters.trade_mode_diff) state.filters.trade_mode = false;
-      tradeModeDiffBtn.classList.toggle('active', state.filters.trade_mode_diff);
-      tradeModeBtn.classList.toggle('active', state.filters.trade_mode);
+      _syncTradeModeButtons();
       loadActionable();
+    });
+  }
+  // 2026-09-10: "WL" button -- same seg-ctrl group as Trade/Trade2, exposes
+  // the collapsed "Watchlist (n)" band's own gate (_buyNoiseGated) as its
+  // own toggle so it can be combined with Trade/Trade2 instead of only
+  // reachable by manually expanding the band. Client-side only (unlike
+  // Trade/Trade2, watchlist-band rows are ordinary, unsuppressed rows
+  // already present in the normal fetch) -- applyClientFilter() suffices,
+  // no loadActionable() reload needed.
+  const watchlistOnlyBtn = $('watchlistOnlyBtn');
+  if (watchlistOnlyBtn) {
+    watchlistOnlyBtn.addEventListener('click', () => {
+      state.filters.watchlist_only = !state.filters.watchlist_only;
+      _syncTradeModeButtons();
+      applyClientFilter();
     });
   }
   // Debounced ~150ms trailing: typing a symbol shouldn't re-render the full grid + tape on every keystroke.
