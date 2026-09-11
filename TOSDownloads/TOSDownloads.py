@@ -67,6 +67,29 @@ def _row_has_loading(row):
     (a list of cell strings) directly, one `in` check per actual cell."""
     return any(WORD_TO_FIND in str(cell).lower() for cell in row)
 
+def _assert_no_loading_rows(sorted_output_list):
+    """Final safety-net check, run immediately before monitor_directory()
+    writes the merged output CSV. 2026-09-10, user: the in-loop stuck-row
+    tracking (summary_messages / LoadingSymbols.txt / the `if summary_messages:
+    continue` exit gate above) is SUPPOSED to be the thing that keeps a
+    'Loading' row from ever reaching this point -- but a bug in how a row got
+    flagged stuck (this_row_is_stuck wrongly ANDed with in_loading_set, fixed
+    2026-09-09) already let it happen more than once, silently corrupting the
+    output file with no warning. This check doesn't trust any of that
+    in-loop bookkeeping -- it re-scans the exact data about to be written,
+    from scratch, and refuses to write if anything still says 'Loading'. A
+    second bug in the loop-level tracking should trip this instead of
+    reaching disk again."""
+    stuck = sorted(symbol for symbol, row in sorted_output_list.items() if _row_has_loading(row))
+    if stuck:
+        raise RuntimeError(
+            f"Refusing to write output file: {len(stuck)} symbol(s) still show 'Loading' text "
+            f"in the merged data -- {', '.join(stuck)}. The merge loop should never reach the "
+            f"write step while any symbol is still stuck -- this means the in-loop stuck-row "
+            f"tracking (summary_messages / LoadingSymbols.txt) missed something. Investigate "
+            f"before re-running."
+        )
+
 # 2026-08-19: RELOADWL99 reprocess/retry tuning -- see run_recipe_rows()'s
 # RELOADWL99 branch. RELOAD_SYMBOL_THRESHOLD is roughly what a single WL99
 # reload+import can realistically absorb in one pass; above that, reprocess
@@ -1945,22 +1968,46 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                             #if symbol in ('NFLX'):
                             #    print (f"symbol {symbol}")
 
-                            # 2026-09-01: a symbol counts as stuck only if
-                            # BOTH the row's own text says "Loading" AND
-                            # LoadingSymbols.txt still lists it -- either
-                            # signal alone clearing it is enough to treat it
-                            # as resolved. Covers both directions: a manual
-                            # edit clears the row-text signal even though
-                            # LoadingSymbols.txt hasn't caught up yet; WL99
-                            # resolving a symbol under a row this loop never
-                            # matches back to the original clears the
-                            # LoadingSymbols.txt signal even though the
-                            # original row's stale text still says Loading.
+                            # 2026-09-01: existing_is_stuck (whether to force-
+                            # replace what's ALREADY stored) stays gated on
+                            # BOTH signals -- the row's own text says
+                            # "Loading" AND LoadingSymbols.txt still lists it
+                            # -- so a stale stored row isn't force-replaced
+                            # the moment WL99 resolves the symbol under a row
+                            # this loop never matches back to the original
+                            # (different key, LoadingSymbols.txt clears
+                            # first, stored text catches up once a matching
+                            # row eventually arrives).
+                            #
+                            # 2026-09-09 fix: this_row_is_stuck -- whether the
+                            # row *being read right now* is itself stuck --
+                            # must NOT also require in_loading_set. That AND
+                            # let a row whose literal text says "Loading"
+                            # sail through as if resolved whenever
+                            # LoadingSymbols.txt hadn't caught up yet (e.g.
+                            # the very first pass over a fragment showing
+                            # "Loading" for a symbol -- LoadingSymbols.txt is
+                            # only read once at the top of this while-loop
+                            # iteration, so a symbol can't be in it before
+                            # its own row has been seen once). With
+                            # in_loading_set False, this_row_is_stuck was
+                            # False despite the literal "Loading" text, so
+                            # the merge condition below wrote it into
+                            # output_list as ordinary good data AND skipped
+                            # the summary_messages branch -- no console
+                            # warning, and nothing re-registered into
+                            # LoadingSymbols.txt to catch it on a later pass.
+                            # The row's own text (_row_has_loading) is the
+                            # authoritative, always-fresh signal for "is THIS
+                            # row stuck" -- same reasoning the comment above
+                            # already gives for why the row-text check
+                            # catches a manual fix; it equally must catch a
+                            # not-yet-registered stuck row.
                             in_loading_set = symbol in loading_symbols_set
                             existing_is_stuck = (symbol in output_list
                                                   and _row_has_loading(output_list[symbol])
                                                   and in_loading_set)
-                            this_row_is_stuck = _row_has_loading(row) and in_loading_set
+                            this_row_is_stuck = _row_has_loading(row)
 
                             # if no symbol in the output list or the existing entry is still stuck or word loading not found in the source row
                             if (not symbol in output_list.keys()) or existing_is_stuck or ((filename!=export_file_to_update) and (not this_row_is_stuck)):
@@ -2068,6 +2115,12 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
 
         # Sort output list by Symbol (assumed to be in the first column)
         sorted_output_list = dict(sorted(output_list.items()))
+
+        # 2026-09-10: last-resort safety net -- see _assert_no_loading_rows's
+        # own docstring for why this exists on top of the in-loop
+        # summary_messages gate above. Raises and aborts the write below if
+        # anything still says 'Loading'.
+        _assert_no_loading_rows(sorted_output_list)
 
         # Write to output CSV file
         os.makedirs(output_dir, exist_ok=True)
