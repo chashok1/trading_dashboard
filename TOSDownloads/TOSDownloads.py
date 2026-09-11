@@ -1979,6 +1979,88 @@ def write_filenames_to_file(filenames: List[str], output_path: str, label: str =
         print(f"❌ Error writing to file '{output_path}': {e}")
         return False
 
+def _load_previous_archive_rows(archive_dir):
+    """2026-09-10: locates the most recent archived output file (same
+    get_lastest_file() helper update_exports='Y' already uses -- picks
+    whatever the last actual run's archive is, robust to weekends/holidays/
+    a skipped day, not a literal 'yesterday' date computation that could
+    point at a file that doesn't exist) and returns its data rows as
+    {normalized_symbol: row}. The Date/Time columns (always the first two
+    -- see monitor_directory()'s own final-write step) are stripped back
+    off so the shape matches what output_list already stores everywhere
+    else (raw fragment rows; Date/Time only gets prepended at write time).
+    Returns {} if there's no prior archive or it can't be read -- caller
+    treats that as 'nothing to backfill from', never raises."""
+    latest = get_lastest_file(archive_dir)
+    if not latest:
+        return {}
+    try:
+        encoding = get_encoding(latest)
+        with open(latest, 'r', encoding=encoding) as f:
+            reader = csv.reader(f)
+            next(reader, None)  # header row
+            rows = {}
+            for row in reader:
+                if len(row) < 3:
+                    continue
+                data_row = row[2:]  # strip Date, Time
+                rows[normalize_for_reimport(data_row[0])] = data_row
+            return rows
+    except Exception as e:
+        print(f"⚠️ Could not read previous archive '{latest}' for backfill: {e}")
+        return {}
+
+def _backfill_stuck_symbols(output_list, summary_messages, loading_symbols_file, archive_dir, working_dir):
+    """Triggered by the 'F' keypress in monitor_directory()'s wait loop --
+    2026-09-10, user: rather than waiting on a manual fix, pull each
+    currently-stuck symbol's last known full row from the most recent
+    archived output and use it to replace today's row WHOLESALE (every
+    column, not a per-cell patch). A symbol missing from that archive too
+    (e.g. brand new today) is left stuck exactly as before -- nothing to
+    backfill it from, still needs a manual fix or another automated pass;
+    this never invents data.
+
+    Mutates output_list/summary_messages in place and re-syncs
+    loading_symbols_file so the merge loop's own stuck bookkeeping stays
+    consistent (a backfilled row is no longer 'stuck' -- see the merge
+    loop's existing_is_stuck logic, which now correctly leaves it alone on
+    a later re-read of the same fragment, but still lets a REAL resolution
+    overwrite it if the fragment eventually comes in clean on its own).
+
+    Writes an audit trail (BackfilledSymbols_<date>.txt, same convention as
+    LoadingSymbols.txt/IncompleteFilesList.txt) since a backfilled row gets
+    stamped with TODAY's date/time at final-write time like every other row
+    (required so the derive pipeline still treats the symbol as present for
+    today -- see docs/derive_date_logic.md) and is otherwise
+    indistinguishable from a genuinely fresh read."""
+    stuck_symbols = sorted(summary_messages.keys())
+    if not stuck_symbols:
+        return
+    prev_rows = _load_previous_archive_rows(archive_dir)
+    if not prev_rows:
+        print("⚠️ No previous archive found (or it couldn't be read) -- nothing to backfill from.")
+        return
+    filled, still_stuck = [], []
+    for symbol in stuck_symbols:
+        if symbol in prev_rows:
+            output_list[symbol] = prev_rows[symbol]
+            del summary_messages[symbol]
+            filled.append(symbol)
+        else:
+            still_stuck.append(symbol)
+    if filled:
+        print(f"✅ Backfilled {len(filled)} symbol(s) from the last archive: {', '.join(filled)}")
+        archive_used = get_lastest_file(archive_dir)
+        audit_path = os.path.join(working_dir, f"BackfilledSymbols_{get_export_date('%Y-%m-%d')}.txt")
+        with open(audit_path, 'a') as f:
+            for symbol in filled:
+                f.write(f"{symbol} <- {os.path.basename(archive_used)}\n")
+        print(f"   Logged to {audit_path}")
+    if still_stuck:
+        print(f"⏳ {len(still_stuck)} symbol(s) not found in the last archive -- still stuck: {', '.join(still_stuck)}")
+    reimport_symbols = sorted({normalize_for_reimport(s) for s in summary_messages.keys()})
+    write_filenames_to_file(reimport_symbols, loading_symbols_file, label="symbols")
+
 def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, output_filename_prefix, update_exports, ignore_keyword_issues, lock_file_path, excel_open_lock_path=None):
     output_file=None
     archive_file=None
@@ -2198,6 +2280,28 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                 # here is just a no-op safety net, not a separate pass.
                 reimport_symbols = sorted({normalize_for_reimport(s) for s in sorted_summary_messages})
                 write_filenames_to_file(reimport_symbols, loading_symbols_file, label="symbols")
+
+                # 2026-09-10, user: offer to fill these from the last
+                # archived file instead of waiting on a manual fix -- 'F',
+                # no Enter needed (msvcrt.kbhit()/getch(), already imported
+                # for file locking above). Purely optional: not pressing it
+                # changes nothing -- the loop keeps waiting exactly as
+                # before, and a manual edit to the fragment CSV is still
+                # picked up automatically on the next poll either way.
+                print(f"\n💡 Press 'F' to fill these {len(reimport_symbols)} stuck symbol(s) from the "
+                      f"last archived file instead of waiting (whole row replaced; symbols missing "
+                      f"from that archive stay stuck).")
+                pressed_f = False
+                while msvcrt.kbhit():
+                    key = msvcrt.getch()
+                    try:
+                        if key.decode('utf-8', errors='ignore').lower() == 'f':
+                            pressed_f = True
+                    except Exception:
+                        pass
+                if pressed_f:
+                    _backfill_stuck_symbols(output_list, summary_messages, loading_symbols_file,
+                                             archive_dir, working_dir)
             elif os.path.exists(loading_symbols_file):
                 # No stuck symbols this pass -- clear stale data rather than
                 # leaving a file that claims symbols are still stuck.
