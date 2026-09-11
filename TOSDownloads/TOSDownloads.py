@@ -34,6 +34,139 @@ fd = None
 incomplete_files = []
 last_auto_pos = None
 
+# =====================================================================
+# ---- STATUS OVERLAY (2026-09-10) ----
+# =====================================================================
+# User: ThinkorSwim runs maximized/full-screen during the whole automation,
+# hiding the console, so there was no way to tell the script was still
+# alive vs. stuck (esp. during RELOADWL99's long retry loop) without
+# alt-tabbing away, which risks interrupting an in-flight pyautogui action.
+# A small always-on-top pulsing dot, top-right corner, gives a glanceable
+# "still working" signal without needing the console.
+#
+# Placement note -- this MUST NOT overlap the maximize/minimize/close
+# button row: ensure_tos_active()'s "maximized.png" check (and any other
+# image search) is a full-screen pyautogui.locateOnScreen with no `region`
+# restriction, so it reads real screen pixels -- an overlay sitting on top
+# of those buttons would corrupt that image match regardless of the
+# overlay window being click-through. Standard Windows title-bar buttons
+# occupy roughly the top ~45px, so _OVERLAY_MARGIN_TOP is well below that
+# (not just a small corner inset) -- the dot sits clear of that whole row
+# no matter which run/call finds TOS in that state. Also only started
+# AFTER main()'s own ensure_tos_active() call succeeds (see call site),
+# as a second, belt-and-suspenders guard on top of the vertical clearance.
+_OVERLAY_SIZE = 16
+_OVERLAY_MARGIN_TOP = 60
+_OVERLAY_MARGIN_RIGHT = 24
+_OVERLAY_PULSE_MS = 500
+
+class _HeartbeatOverlay:
+    """Borderless, always-on-top, click-through pulsing dot in its own
+    Tkinter mainloop on a dedicated daemon thread -- Tkinter isn't safe to
+    drive from a second thread, but owning both the root AND its event loop
+    on one dedicated thread, with every widget touch happening only via
+    that root's own .after() callbacks (never called externally from
+    another thread), is the standard safe pattern. Purely a visual
+    heartbeat -- doesn't reflect actual automation progress, just that this
+    process is alive and pumping its event loop.
+
+    stop() only HIDES the window (root.withdraw()) and stops rescheduling
+    the pulse -- it deliberately never calls root.quit()/root.destroy() or
+    joins the thread. Tested (2026-09-10) and confirmed live: tearing the
+    Tk root down and joining the thread mid-process reliably produces
+    "Tcl_AsyncDelete: async handler deleted by the wrong thread" during
+    later interpreter shutdown and corrupts the whole script's exit code
+    (0 -> 3) even though everything actually succeeded -- a real risk for
+    anything checking this script's exit status. Leaving the hidden
+    window's mainloop running quietly on its daemon thread until the whole
+    process exits (killed abruptly with the process, no Python-level Tcl
+    cleanup involved) reproduced cleanly with no error and exit code 0."""
+    def __init__(self):
+        self._stop_event = threading.Event()
+        self._ready_event = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self):
+        self._thread.start()
+        # Best-effort: don't block script startup if Tk/display init hangs.
+        self._ready_event.wait(timeout=3)
+
+    def stop(self):
+        # See class docstring -- intentionally just a flag, no join/destroy.
+        self._stop_event.set()
+
+    def _run(self):
+        try:
+            import tkinter as tk
+        except Exception as e:
+            print(f"(status overlay unavailable, continuing without it: {e})")
+            self._ready_event.set()
+            return
+        try:
+            root = tk.Tk()
+            root.overrideredirect(True)   # no title bar/border
+            root.attributes('-topmost', True)
+            try:
+                # Click-through + true transparency for everything except
+                # the dot itself, so the dot is the only thing drawn.
+                root.attributes('-transparentcolor', 'black')
+                bg = 'black'
+            except tk.TclError:
+                bg = root.cget('bg')  # platform without transparentcolor support
+            size = _OVERLAY_SIZE
+            x = root.winfo_screenwidth() - size - _OVERLAY_MARGIN_RIGHT
+            y = _OVERLAY_MARGIN_TOP
+            root.geometry(f"{size}x{size}+{x}+{y}")
+            canvas = tk.Canvas(root, width=size, height=size, highlightthickness=0, bg=bg)
+            canvas.pack()
+            dot = canvas.create_oval(1, 1, size - 1, size - 1, fill='#2ecc71', outline='')
+
+            pulse_state = {'bright': True}
+
+            def pulse():
+                # Hide and stop rescheduling -- see class docstring for why
+                # this doesn't quit()/destroy() the root. mainloop() below
+                # is left running (blocked on its event queue) until the
+                # whole process exits.
+                if self._stop_event.is_set():
+                    root.withdraw()
+                    return
+                pulse_state['bright'] = not pulse_state['bright']
+                canvas.itemconfig(dot, fill='#2ecc71' if pulse_state['bright'] else '#155d33')
+                root.after(_OVERLAY_PULSE_MS, pulse)
+
+            root.after(0, pulse)
+            self._ready_event.set()
+            root.mainloop()  # never exited deliberately -- see class docstring
+        except Exception as e:
+            print(f"(status overlay failed, continuing without it: {e})")
+            self._ready_event.set()
+
+_status_overlay = None
+
+def start_status_overlay():
+    """Never raises -- a failure here must not break the actual TOS
+    automation. See _HeartbeatOverlay's docstring for placement/thread
+    safety notes."""
+    global _status_overlay
+    if _status_overlay is not None:
+        return
+    try:
+        _status_overlay = _HeartbeatOverlay()
+        _status_overlay.start()
+    except Exception as e:
+        print(f"(status overlay failed to start, continuing without it: {e})")
+        _status_overlay = None
+
+def stop_status_overlay():
+    global _status_overlay
+    if _status_overlay is None:
+        return
+    try:
+        _status_overlay.stop()
+    finally:
+        _status_overlay = None
+
 # 2026-08-20: single source of truth for "which symbols are currently stuck
 # 'Loading'" -- an in-memory set, kept accurate incrementally as each
 # fragment is exported (update_stuck_symbols_memory() adds a symbol when its
@@ -1526,6 +1659,15 @@ def main(watchlist_file, save_folder, images_folder, re_process):
     reload, see that branch's comment). run_pipeline() below drives this
     plus the merge stage as one combined run."""
     ensure_tos_active(images_folder)
+    # 2026-09-10: only start the status overlay AFTER TOS is confirmed
+    # active/maximized -- belt-and-suspenders on top of _OVERLAY_MARGIN_TOP's
+    # own vertical clearance, so it's never on screen while ensure_tos_active's
+    # own full-screen "maximized.png" search is running. Stopped at
+    # run_pipeline()'s own exit points (its early "no WL rows" return and
+    # its normal end) -- not a try/finally, but the overlay lives on a
+    # daemon thread, so an exception anywhere in between just means it's
+    # torn down with the process on exit instead of via a graceful stop().
+    start_status_overlay()
 
     if not os.path.exists(save_folder):
         os.makedirs(save_folder)
@@ -2338,6 +2480,7 @@ def run_pipeline(watchlist_file, save_folder, images_folder, update_exports='N',
     # output prefix / final fragment name from.
     if not (pd.read_csv(watchlist_file)['Type'] == 'WL').any():
         print("\n--- No 'WL' rows in this recipe -- nothing to merge, done. ---")
+        stop_status_overlay()
         return
 
     working_directory, output_filename_prefix, final_partial_filename = \
@@ -2356,6 +2499,13 @@ def run_pipeline(watchlist_file, save_folder, images_folder, update_exports='N',
     monitor_directory(working_directory, final_partial_filename, 3,
                        output_filename_prefix, update_exports, ignore_keyword_issues, None,
                        excel_open_lock_path=lock_file_path)
+    # 2026-09-10: stop the status overlay here on the success path -- not
+    # needed during the post-run lock-yield wait in __main__ below. On an
+    # exception anywhere above (including inside main()/monitor_directory()),
+    # this line is skipped, but the overlay lives on a daemon thread, so it's
+    # torn down automatically the moment the process exits -- no explicit
+    # cleanup needed on the crash path, just no graceful root.destroy().
+    stop_status_overlay()
 
 
 # --- ENTRY POINT ---
