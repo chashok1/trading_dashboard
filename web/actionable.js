@@ -1271,6 +1271,11 @@ function _legendHtml() {
       <div style="color:#475569;">Held position exceeds its category Max (position sizing, not a market
         signal) — orange pill next to ACTION, tooltip shows the $ to trim back to cap. Informational only;
         it never overrides the ACTION badge itself, same as Sources/Technical/Macro inputs.</div>
+      <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">ESTABLISHED / NEAR MAX pill</div>
+      <div style="color:#475569;">Blue, informational-only pill on a held BUY row: ESTABLISHED = already
+        at/above the category floor; NEAR MAX = 75%+ of the way from floor to ceiling. Neither changes the
+        ACTION badge, AMT$, or confidence — a position already AT or OVER its Max is a hard limit instead,
+        capped straight to HOLD (unaffected by this pill).</div>
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Confidence flag</div>
       ${row('Low', 'LOW CONF — the only sell evidence is a rule with a demonstrated negative historical edge (v_unproven_sell_rules); consolidated_action is unchanged, this is a confidence flag')}
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">STOP pill / chip</div>
@@ -1814,24 +1819,48 @@ async function loadActionable(opts) {
           : null;
       }
       const act = (r.consolidated_action || '').toUpperCase();
-      // 2026-09-03: over-max no longer overrides AMT$ — it's informational
-      // only (OVER MAX pill, whose own tooltip shows the trim-to-cap $).
-      // AMT$ now always reflects the real consolidated_action, same as any
-      // other row.
-      if (act === 'REMOVE') {
+      // 2026-09-12: AMT$ now keys off the RESOLVED Final Call (r.final_code)
+      // when the server has computed one, not the raw Source action. A
+      // Source-vs-Technical flip or veto -- e.g. Source=INCREASE but
+      // Technical is in a sell zone (badge flips to SS), or a buy/reduce
+      // vetoed down to HOLD -- used to leave AMT$ showing the raw Source's
+      // dollar figure: a buy-direction $ under a SELL badge, or a nonzero $
+      // under a HOLD badge. See docs/actionable_logic.md. Rows without a
+      // final_code yet (pre-migration fallback) keep the original
+      // consolidated_action-based math below, unchanged.
+      const finalCode = (r.final_code || '').toUpperCase();
+      if (finalCode) {
+        if (finalCode === 'SA') {
+          r._amt = r.current_position_dollar;
+        } else if (finalCode === 'SS' || finalCode === 'STM') {
+          const pos = Number(r.current_position_dollar) || 0;
+          const tgt = Number(r.suggested_target_dollar) || 0;
+          r._amt = pos > tgt ? pos - tgt : 0;
+        } else if (finalCode === 'BMN' && act === 'ADD' && r.target_min_dollar != null) {
+          const pos = Number(r.current_position_dollar) || 0;
+          const min = Number(r.target_min_dollar);
+          r._amt = pos < min ? min - pos : 0;
+        } else if (finalCode === 'BM' || finalCode === 'BS' || finalCode === 'BMN') {
+          const pos = Number(r.current_position_dollar) || 0;
+          const tgt = Number(r.suggested_target_dollar) || 0;
+          r._amt = tgt > pos ? tgt - pos : 0;
+        } else {
+          // HOLD / N / NONE -- no suggested move; show the current holding
+          // (0 if not held), never a leftover buy/sell delta from a vetoed
+          // or flipped action.
+          r._amt = Number(r.current_position_dollar) || 0;
+        }
+      } else if (act === 'REMOVE') {
         r._amt = r.current_position_dollar;
       } else if (act === 'ADD' && r.target_min_dollar != null) {
-        // ADD: AMT$ is the top-up needed to reach Min. Already at/above Min → 0.
         const pos = Number(r.current_position_dollar) || 0;
         const min = Number(r.target_min_dollar);
         r._amt = pos < min ? min - pos : 0;
       } else if (act === 'INCREASE') {
-        // INCREASE: AMT$ = target - position (amount to buy). Suppressed -> 0.
         const pos = Number(r.current_position_dollar) || 0;
         const tgt = Number(r.suggested_target_dollar) || 0;
         r._amt = tgt > pos ? tgt - pos : 0;
       } else if (act === 'REDUCE') {
-        // REDUCE: AMT$ = position - target (amount to sell). Suppressed -> 0.
         const pos = Number(r.current_position_dollar) || 0;
         const tgt = Number(r.suggested_target_dollar) || 0;
         r._amt = pos > tgt ? pos - tgt : 0;
@@ -1897,10 +1926,12 @@ async function loadActionable(opts) {
 // (including the Watchlist band and HOLD/no-action rows) is hidden. Buys from
 // ANY source qualify; a buy whose winning source measured negative buy-edge
 // (ref_settings.trade_mode_weak_buy_sources) is tagged WEAK SRC instead.
-// RTA (Real-Time Alert) and SSSCHG (Signal Strength Stocks Gmail
-// Added/Removed) are exempt from the Technical check — same rationale as
-// the server-side bypass_technical in _compute_final_call: a same-day live
-// trigger doesn't need the deep-TA stack to also confirm.
+// RTA (Real-Time Alert) is exempt from the Technical check — same rationale
+// as the server-side bypass_technical in _compute_final_call: a same-day
+// live trigger doesn't need the deep-TA stack to also confirm. SSSCHG and
+// TOP5 previously shared this exemption (2026-08-19/07-19) but user decision
+// 2026-09-12 reverted them to normal sources — they now need Technical like
+// any other source.
 // Swapped rr_bull_bear -> rr_action (Technical, same buy-family set as the
 // Watchlist gate's _ENTRY_RIPE_TECH): rr_bull_bear only reflects whether the
 // RR band-position leg (QO) used the bull_rr_rule or nbull_rr_rule table,
@@ -1931,7 +1962,7 @@ async function loadActionable(opts) {
 //      (_TRADABILITY_BADGE_MIN). Reuses the already-validated LRR-dominant
 //      score instead of a new invented cutoff — "perfect" now means
 //      "would already show a 🎯 badge," not a separate concept.
-const _TECH_GATE_EXEMPT_SRC = ['RTA', 'SSSCHG', 'TOP5'];
+const _TECH_GATE_EXEMPT_SRC = ['RTA'];
 // Original (pre-2026-08-25) TASK_124 criteria only -- no tightening passes.
 // Kept standalone (not folded into the strict function below) so the new
 // "Non-Strict" button can compute loose-minus-strict.
@@ -1955,10 +1986,11 @@ function _isTradeModeQualifyingBuy(r) {
   const tech = (r.rr_action || '').toUpperCase();
   if (r.is_macro_instrument === true || r.is_macro_instrument === 'true') return false;
   if (_buyTradabilityScore(r) < _TRADABILITY_BADGE_MIN) return false;
-  // 2026-08-27, 3rd Strict-only tightening pass -- closes the
-  // RTA/SSSCHG/TOP5 tech-gate EXEMPTION above for Strict mode
-  // specifically (the loose function above keeps it). Those sources
-  // bypass the Technical check entirely on the theory that a same-day
+  // 2026-08-27, 3rd Strict-only tightening pass -- closes the RTA
+  // tech-gate EXEMPTION above for Strict mode specifically (the loose
+  // function above keeps it; SSSCHG/TOP5 lost their own exemption
+  // entirely on 2026-09-12, so this pass now only matters for RTA). RTA
+  // bypasses the Technical check entirely on the theory that a same-day
   // live trigger doesn't need TA to also confirm, but Strict's whole
   // point is "perfect only" -- require rr_action to actually be
   // entry-ripe here regardless of source. User: "In Trade + Strict mode,
@@ -2710,6 +2742,61 @@ function _isOverMaxOverlay(row) {
   return isFinite(pos) && isFinite(max) && max > 0 && pos > max;
 }
 
+// `>=` sibling of _isOverMaxOverlay (which stays strict `>`, "over" meaning
+// past the ceiling, not merely at it). 2026-09-12: no longer a gate (the
+// at/over-Max -> HOLD cap was removed) — used only to suppress the
+// ESTABLISHED/NEAR MAX pill in favor of OVER MAX once a position reaches
+// its ceiling (_sizingStagePill below), matching sizing's own AT CEILING
+// suppression threshold.
+function _isAtOrOverMax(row) {
+  if (!row) return false;
+  if ((row.consolidated_action || '').toUpperCase() === 'REMOVE') return false;
+  const pos = Number(row.current_position_dollar);
+  const max = Number(row.target_max_dollar);
+  return isFinite(pos) && isFinite(max) && max > 0 && pos >= max;
+}
+
+// 2026-09-12: "sizing stage" pill — same precedent as OVER MAX (2026-09-03,
+// user: "should not drive the main action ... should be one of the input[s]
+// like Sources, Technicals, Macro"). Two SOFT signals, informational only,
+// never touching the badge/AMT$/confidence:
+//   ESTABLISHED — held >= Min floor already; a standing ADD re-list or a
+//     confirming Technical can otherwise badge BM/BS/BMN at High confidence
+//     indefinitely even though there's no urgency left to build the floor.
+//   NEAR MAX    — held is most of the way from Min to Max (>= 75%); still
+//     room to buy, so still a real BM/BS, just flagged as "not much room
+//     left" context.
+// 2026-09-12: gate 4 (at/over Max -> HOLD) was removed — position size is
+// now pill-only everywhere, no exceptions (user: "why can't we just have
+// the pill ... amount is going to tell me anyway I shouldn't buy"). At/over
+// Max still doesn't get ESTABLISHED/NEAR MAX though — the more specific
+// OVER MAX pill (_isOverMaxOverlay, _finalCallHtml) takes over instead.
+const _NEAR_MAX_PCT = 0.75;
+function _sizingStagePill(row) {
+  if (!row) return '';
+  const ca = (row.consolidated_action || '').toUpperCase();
+  if (ca !== 'ADD' && ca !== 'INCREASE') return '';
+  if (!row.held_today) return '';
+  if (_isAtOrOverMax(row)) return '';  // OVER MAX pill covers this instead
+  const pos = Number(row.current_position_dollar);
+  const min = Number(row.target_min_dollar);
+  const max = Number(row.target_max_dollar);
+  if (!isFinite(pos)) return '';
+  if (isFinite(max) && max > (isFinite(min) ? min : 0)) {
+    const floor = isFinite(min) ? min : 0;
+    const pct = (pos - floor) / (max - floor);
+    if (pct >= _NEAR_MAX_PCT) {
+      return ' <span class="sizing-pill" title="' + escapeHtml(fmtUsd(pos)) + ' of ' + escapeHtml(fmtUsd(max))
+        + ' Max (' + Math.round(pct * 100) + '% of the way there) — informational only, does not change the action above">NEAR MAX</span>';
+    }
+  }
+  if (isFinite(min) && min > 0 && pos >= min) {
+    return ' <span class="sizing-pill" title="Held ' + escapeHtml(fmtUsd(pos)) + ' already ≥ floor ' + escapeHtml(fmtUsd(min))
+      + ' — informational only, does not change the action above">ESTABLISHED</span>';
+  }
+  return '';
+}
+
 // Parsed source_actions array for a row (winning + every "other" source).
 function _sourcesOf(row) {
   let sa = row && row.source_actions;
@@ -2902,7 +2989,6 @@ function _gateReasonFor(row) {
   var rra = (row.rr_action           || '').toUpperCase();
   if (!ca || ca === 'NONE') return null;
 
-  var atMax       = _isOverMaxOverlay(row);
   var isHeld      = !!row.held_today;
   var srcIsExit   = (ca === 'REMOVE' || ca === 'SA');
   var srcIsReduce = (ca === 'REDUCE' || ca === 'SS' || ca === 'STM');
@@ -2928,14 +3014,14 @@ function _gateReasonFor(row) {
   if (!isHeld && !srcIsBuy) {
     return 'Not held + Sources don’t endorse buying — hold';
   }
-  // 4. Technical confirms buy, but capped at/over Max.
-  if ((techIsBuy || techIsBuyMin) && atMax) {
-    return 'At/over category Max — cannot add more';
-  }
-  // 5/6. Technical neutral — either establishing a starter position, or
-  // truly no signal from either lens.
+  // (former step 4: at/over-Max cap, removed 2026-09-12 — see finalCall()'s
+  // own comment on the same removal for the reasoning.)
+  // 5/6. Technical neutral. 2026-09-12, user: an unheld ADD with no
+  // Technical support isn't grounds to open a position either — no more
+  // standalone "establishing position" case, falls through to the plain
+  // no-active-signal reason.
   if (techIsNeutral) {
-    if (!isHeld && srcIsAdd) return 'Sources says ADD, Technical neutral — establishing position';
+    if (!isHeld && srcIsAdd) return 'Sources says ADD but Technical hasn’t confirmed — not enough to open a position';
     if (!srcIsReduce) return 'No active signal — Sources and Technical both neutral';
   }
   return null;
@@ -2963,9 +3049,9 @@ function _highMixedReasonFor(row) {
   var techIsBuyMin  = (rra === 'BMN' || rra === 'ADD');
   var src = (row.winning_source || '').toString().toUpperCase();
 
-  // Live-trigger bypass (RTA/SSSCHG) — resolves the buy on its own, no
-  // Technical confirmation needed. Checked first, same as the server.
-  if ((src === 'RTA' || src === 'SSSCHG') && srcIsBuy) {
+  // Live-trigger bypass (RTA only, 2026-09-12) — resolves the buy on its
+  // own, no Technical confirmation needed. Checked first, same as the server.
+  if (src === 'RTA' && srcIsBuy) {
     return src + ' is a live, same-day trigger — resolves the buy on its own, Technical confirmation not required';
   }
   if (techIsSell) {
@@ -3016,10 +3102,10 @@ function finalCall(row) {
   // ── Helper classifiers ────────────────────────────────────────────────────
   // 2026-09-03: over-max no longer gates the Final Call (mirrors server-side
   // etl/derive_actionable.py::_compute_final_call) — informational only, see
-  // the OVER MAX pill in _finalCallHtml. `atMax` still guards against
-  // recommending MORE buying past the ceiling (step 4 below), unchanged.
+  // the OVER MAX pill in _finalCallHtml. 2026-09-12: the former step-4 cap
+  // (at/over Max -> HOLD) was removed too, same reasoning — see
+  // etl/derive_actionable.py's comment on the same removal.
   var isHeld     = !!row.held_today;
-  var atMax      = _isOverMaxOverlay(row);  // position already exceeds category Max
 
   // Sources side categorisation
   var srcIsExit    = (ca === 'REMOVE' || ca === 'SA');
@@ -3036,9 +3122,10 @@ function finalCall(row) {
   var techIsBuyMin = (rra === 'BMN' || rra === 'ADD');
   var techIsNeutral = (!techIsSell && !techIsBuy && !techIsBuyMin);
 
-  // ── 1. Feasibility (pre-check): never sell unheld, never buy past Max ─────
+  // ── 1. Feasibility (pre-check): never sell unheld ─────────────────────────
   // Selling an unheld position is infeasible; we'll guard this below per-path.
-  // Buying past Max is infeasible; over-max rows are flagged via atMax (step 4).
+  // Buying past Max is a policy choice, not infeasible — over-max rows are
+  // flagged via the OVER MAX pill (_finalCallHtml) instead, unchanged badge.
 
   // ── 2. Strategic gate: SELL ALL / REMOVE → exit regardless of Technical ──
   if (srcIsExit) {
@@ -3112,12 +3199,6 @@ function finalCall(row) {
       fcDisp     = actionDisplay('HOLD');
       fcStrength = 0;
       confidence = 'mixed';
-    } else if (atMax) {
-      // Already at/past Max — cap: can't add more
-      fcDisp     = actionDisplay('HOLD');
-      fcStrength = 0;
-      confidence = 'gate';
-      gateReason = 'At/over category Max — cannot add more';
     } else if (!isHeld && srcIsAdd) {
       // Not yet held, Sources says ADD (buy-to-min intent) → BUY TO MIN (establish)
       fcDisp     = actionDisplay('BMN');
@@ -3132,19 +3213,23 @@ function finalCall(row) {
       confidence = (srcIsBuy) ? 'high' : 'mixed';
     }
   } else {
-    // Technical is neutral/BMN/HOLD
-    if (!isHeld && srcIsAdd) {
-      // Not held, Sources says ADD → BUY TO MIN (establish position)
-      fcDisp     = actionDisplay('BMN');
-      fcStrength = _FC_SCALE['BMN'];
-      confidence = 'gate';
-      gateReason = 'Sources says ADD, Technical neutral — establishing position';
-    } else if (srcIsReduce) {
+    // Technical is neutral/BMN/HOLD. 2026-09-12, user: an unheld ADD with no
+    // Technical support isn't even a weak entry — Technical must actively
+    // confirm before a new position opens, so this now falls through to the
+    // generic HOLD/gate case below instead of a standalone BMN.
+    if (srcIsReduce) {
       // Sources souring, Technical neutral → HOLD (no action but watch)
       fcDisp     = actionDisplay('HOLD');
       fcStrength = 0;
       // Mild conflict: Sources wants down, Technical neutral
       confidence = 'mixed';
+    } else if (!isHeld && srcIsAdd) {
+      // Not held, Sources says ADD, Technical neutral — no confirmation to
+      // open a new position on
+      fcDisp     = actionDisplay('HOLD');
+      fcStrength = 0;
+      confidence = 'gate';
+      gateReason = 'Sources says ADD but Technical hasn’t confirmed — not enough to open a position';
     } else {
       // Sources neutral/hold, Technical neutral — no active signal from either lens
       fcDisp     = actionDisplay('HOLD');
@@ -3499,6 +3584,7 @@ function _finalCallHtml(row) {
       + escapeHtml(fmtUsd(Number(row.current_position_dollar) - Number(row.target_max_dollar)))
       + ' — informational only, does not change the action above">OVER MAX</span>'
     : '';
+  var sizingPill = _sizingStagePill(row);
   // 2026-09-02, user: "supporting signals and caution signals are not
   // centered when they are by themselves in that line" -- each of
   // stopPill/earningsPill/signalPill carries its own leading space (a
@@ -3518,8 +3604,8 @@ function _finalCallHtml(row) {
   // can't touch a CSS margin. .pills-line's own CSS zeroes it on
   // whichever pill ends up first (see web/actionable.html), so a lone
   // pill is never shifted while 2nd/3rd pills keep their separation.
-  var pillsLine = (stopPill || earningsPill || signalPill || overMaxPill)
-    ? '<div class="pills-line" style="text-align:center;margin-top:2px;">' + (stopPill + earningsPill + signalPill + overMaxPill).trim() + '</div>'
+  var pillsLine = (stopPill || earningsPill || signalPill || overMaxPill || sizingPill)
+    ? '<div class="pills-line" style="text-align:center;margin-top:2px;">' + (stopPill + earningsPill + signalPill + overMaxPill + sizingPill).trim() + '</div>'
     : '';
   return badgeLine + pillsLine + subIcon;
 }
@@ -6798,9 +6884,10 @@ async function openDrilldown(row) {
   const modalOverMaxPill = _isOverMaxOverlay(row)
     ? ` <span class="overmax-pill" title="Held position exceeds its category Max by ${escapeHtml(fmtUsd(Number(row.current_position_dollar) - Number(row.target_max_dollar)))}">OVER MAX</span>`
     : '';
+  const modalSizingPill = _sizingStagePill(row);
   const kv = $('modalKv');
   kv.innerHTML = `
-    <dt>Action</dt><dd><span class="act-badge ${(actionDisplay(_badgeAction(row)).colorCls || 'act-neutral') + '-tint'}">${actionLabel(row)}</span>${modalOverMaxPill}</dd>
+    <dt>Action</dt><dd><span class="act-badge ${(actionDisplay(_badgeAction(row)).colorCls || 'act-neutral') + '-tint'}">${actionLabel(row)}</span>${modalOverMaxPill}${modalSizingPill}</dd>
     <dt>Winning source</dt><dd>${row.winning_source || '—'}</dd>
     <dt>AMT$</dt><dd><strong>${fmtUsd(row._amt) || '—'}</strong></dd>
     <dt>Suppressed</dt><dd>${row.suppressed_reason || '—'}</dd>

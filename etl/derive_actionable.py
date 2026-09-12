@@ -86,19 +86,29 @@ def _compute_final_call(
 ) -> dict:
     """Python port of JS finalCall() in web/actionable.js.
 
-    bypass_technical (winning_source in RTA/SSSCHG/TOP5): a Real-Time Alert
-    (or same-tier same-day trigger) is itself a live signal — it doesn't
-    need Technical (rr_action) to also confirm the entry point the way a
-    standing weekly/monthly source does. TOP5 joins this list per user
-    decision 2026-08-19 ("TOP5 acts like RTA"); MACROSHOW deliberately does
-    NOT bypass — it's a broad daily macro call, not a live per-symbol
-    trigger, so its ADD/INCREASE still needs Technical to agree for
-    high-confidence display. Only applies to the buy side (src_is_buy);
-    sells still go through REMOVE's existing Technical-agnostic exit gate
-    (step 1) or REDUCE's normal Technical-confirmation path, unchanged.
+    bypass_technical (winning_source == RTA only, 2026-09-12): a Real-Time
+    Alert is itself a live signal — it doesn't need Technical (rr_action) to
+    also confirm the entry point the way a standing weekly/monthly source
+    does. TOP5 and SSSCHG previously shared this bypass (2026-08-19/07-19)
+    but user decision 2026-09-12 reverted them to normal sources — both are
+    same-day-equivalent triggers, not real-time per-symbol alerts like RTA,
+    so their ADD/INCREASE now needs Technical to agree for high-confidence
+    display, same as RR/CALL/PS/etc. MACROSHOW was never in this list — it's
+    a broad daily macro call, not a live per-symbol trigger. Only applies to
+    the buy side (src_is_buy); sells still go through REMOVE's existing
+    Technical-agnostic exit gate (step 1) or REDUCE's normal
+    Technical-confirmation path, unchanged.
 
     Returns dict with keys: final_action, final_code, final_side,
     fc_strength, fc_confidence, fc_feasible.
+
+    current_position_dollar/target_max_dollar (2026-09-12): kept in the
+    signature for call-site/caching stability, but no longer drive a gate
+    here — the at/over-Max → HOLD downgrade ("gate 4") was removed per user
+    decision (see the strategic-gate comment below). Sizing's own AT
+    CEILING suppression (etl/derive_actionable.py's sizing block) and the
+    client-side OVER MAX pill (web/actionable.js) already communicate
+    "no room to add" without touching the badge.
     """
     ca  = (consolidated_action or "").upper()
     rra = (rr_action           or "").upper()
@@ -127,12 +137,6 @@ def _compute_final_call(
         }
 
     # ── Helper classifiers ──────────────────────────────────────────────
-    # Over-max: held position exceeds category ceiling (not REMOVE)
-    at_max = False
-    if ca != "REMOVE" and held_today and target_max_dollar and target_max_dollar > 0:
-        if current_position_dollar > target_max_dollar:
-            at_max = True
-
     is_held    = held_today
 
     src_is_exit   = ca in ("REMOVE", "SA")
@@ -149,10 +153,16 @@ def _compute_final_call(
     # action". Over-max used to short-circuit here exactly like SELL ALL,
     # replacing whatever Sources+Technical actually recommended with a
     # synthetic OVER_MAX/"SO" headline even when nothing else said sell.
-    # It's now purely informational — see `at_max` below, still used at
-    # gate 4 to block a buy recommendation from adding past the ceiling,
-    # and surfaced client-side as the OVER MAX pill (web/actionable.js)
-    # — and never overrides the real Final Call.)
+    # It's now purely informational, surfaced client-side as the OVER MAX
+    # pill (web/actionable.js) — never overrides the real Final Call.
+    # 2026-09-12: removed gate 4 too (at/over Max used to cap a confirmed
+    # buy to HOLD) for the same reason, per user: "why can't we just have
+    # the pill ... amount is going to tell me anyway I shouldn't buy" —
+    # AMT$ is already $0 at/over Max (sizing's own AT CEILING suppression,
+    # untouched) and the OVER MAX pill is visible everywhere the badge is,
+    # Trade Mode included (a row filter on the same grid, not a separate
+    # column set) — so a confirmed Technical buy now shows through as BM/BS
+    # even at/over Max, with $0 behind it and the pill explaining why.)
     if src_is_exit:
         lbl, code, side = _action_display("SA")
         if not is_held:
@@ -215,10 +225,6 @@ def _compute_final_call(
             fc_lbl, fc_code, fc_side = _action_display("HOLD")
             fc_strength = 0
             confidence = "mixed"
-        elif at_max:
-            fc_lbl, fc_code, fc_side = _action_display("HOLD")
-            fc_strength = 0
-            confidence = "gate"
         elif not is_held and src_is_add:
             fc_lbl, fc_code, fc_side = _action_display("BMN")
             fc_strength = _FC_SCALE.get("BMN", 2)
@@ -229,12 +235,15 @@ def _compute_final_call(
             fc_strength = _FC_SCALE.get(buy_code, 2)
             confidence = "high" if src_is_buy else "mixed"
     else:
-        # Technical neutral
-        if not is_held and src_is_add:
-            fc_lbl, fc_code, fc_side = _action_display("BMN")
-            fc_strength = _FC_SCALE.get("BMN", 2)
-            confidence = "gate"
-        elif src_is_reduce:
+        # Technical neutral. 2026-09-12, user: an unheld ADD with no
+        # Technical support ("Technicals need to support it") is not even a
+        # weak entry — Technical must actively confirm before a new position
+        # opens, so this now falls through to the generic HOLD/gate case
+        # below rather than a standalone BMN. (An already-held ADD/INCREASE
+        # still nets to HOLD/gate here too — see src_is_reduce below and the
+        # final else — since a standing re-list with no Technical support
+        # isn't grounds to keep signaling BUY either.)
+        if src_is_reduce:
             fc_lbl, fc_code, fc_side = _action_display("HOLD")
             fc_strength = 0
             confidence = "mixed"
@@ -1181,7 +1190,7 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             current_position_dollar=held_dollar,
             target_max_dollar=target_max,
             stop_breached=stop_breached,
-            bypass_technical=(winning_source in ("RTA", "SSSCHG", "TOP5")),
+            bypass_technical=(winning_source == "RTA"),
         )
         # priority_rank mirrors JS _computePriority: seq * 1e6 + |amt|.
         # amt = suggested - held for buys; held for sells; 0 otherwise.

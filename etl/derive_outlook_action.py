@@ -783,11 +783,12 @@ _SSSCHG_WEIGHT = {
 def _action_sss_change(action: Optional[str], held: bool) -> tuple[Optional[str], str]:
     """SSS Change (hist_sss_change — Gmail "Signal Strength Stocks"
     Added/Removed lines, etl/hedgeye/parsers.py::parse_signal_strength)
-    classifier. Event-based, same-day trigger, same treatment as RTA
-    (source_code SSSCHG, investment_priority 0, bypass_technical in
-    derive_actionable.py) — user decision 2026-07-19: a same-day Gmail
+    classifier. Event-based, same-day trigger (source_code SSSCHG,
+    investment_priority 0) — user decision 2026-07-19: a same-day Gmail
     add/remove overrides the file-based weekly SSS source until SSS's own
     next weekly snapshot catches up (SOURCE_ORDER ranks SSSCHG above SSS).
+    Shared RTA's bypass_technical treatment in derive_actionable.py until
+    user decision 2026-09-12 reverted it to a normal Technical-gated source.
       add    -> INCREASE (held) / ADD (not held)
       remove -> REMOVE if held, else silent (nothing to sell)
     """

@@ -51,7 +51,7 @@ log = logging.getLogger(__name__)
 # _MACRO_BUY / _MACRO_SELL / _SRC_BUY / _SRC_SELL / _TECH_SELL /
 # _TRADABILITY_BADGE_MIN / _PVV_BUY_SIDE exactly -- see module docstring.
 _ENTRY_RIPE_TECH = ("BS", "BM", "BMN")
-_TECH_GATE_EXEMPT_SRC = ("RTA", "SSSCHG", "TOP5")
+_TECH_GATE_EXEMPT_SRC = ("RTA",)  # SSSCHG/TOP5 lost this exemption 2026-09-12
 _MACRO_BUY = {"BM", "BS"}
 _MACRO_SELL = {"STM", "SA"}
 _SRC_BUY = {"ADD", "INCREASE"}
@@ -217,10 +217,11 @@ def _is_qualifying_buy(row, strict, rsi_overbought, rsi_oversold, rvol_threshold
                                         factor_scorecard, source_scorecard)
         if score < _TRADABILITY_BADGE_MIN:
             return False
-        # 2026-08-27, 3rd Strict-only tightening pass -- closes the
-        # RTA/SSSCHG/TOP5 tech-gate EXEMPTION above for Strict mode
-        # specifically (non-strict keeps it), mirroring web/actionable.js's
-        # own _isTradeModeQualifyingBuy change (see module docstring).
+        # 2026-08-27, 3rd Strict-only tightening pass -- closes the RTA
+        # tech-gate EXEMPTION above for Strict mode specifically (non-strict
+        # keeps it; SSSCHG/TOP5 lost their own exemption entirely
+        # 2026-09-12), mirroring web/actionable.js's own
+        # _isTradeModeQualifyingBuy change (see module docstring).
         # User: "In Trade + Strict mode, don't include the ones that
         # technicals are not aligned for today (AMZN, TJX)."
         if tech not in _ENTRY_RIPE_TECH:

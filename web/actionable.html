@@ -224,6 +224,25 @@
       cursor: help;
     }
 
+    /* 2026-09-12: sizing-stage pill (ESTABLISHED / NEAR MAX) — same shape
+       as .overmax-pill, but a calm blue instead of orange: these are soft
+       "FYI, you're mostly built" context, not a cap being breached (that's
+       still gate 4 -> HOLD, unchanged). Never overrides the badge/AMT$. */
+    .sizing-pill {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 0 3px;
+      border-radius: 5px;
+      background: #e0f2fe;
+      color: #0369a1;
+      border: 1px solid #0369a1;
+      font-size: 7px;
+      line-height: 1.1;
+      font-weight: 700;
+      vertical-align: middle;
+      cursor: help;
+    }
+
     /* 2026-09-02, user: "bottom two are not aligned" -- .stop-pill/
        .dontbuy-warn-pill/.earnings-warn-pill/.buy-signal-pill above all
        carry margin-left:4px as a same-line separator from a PRECEDING
@@ -1879,7 +1898,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260910d"></script>
+  <script src="/static/actionable.js?v=20260912e"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>

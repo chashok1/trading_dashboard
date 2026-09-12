@@ -112,29 +112,34 @@ gate (below) — it's a broad daily macro call, not a live per-symbol
 trigger. Ranked lowest in `SOURCE_ORDER` so it never overrides a dedicated
 per-symbol source.
 
-**RTA, SSSCHG, and TOP5 bypass the Technical gate on the buy side**
-(`_compute_final_call(..., bypass_technical=(winning_source in ("RTA",
-"SSSCHG", "TOP5")))`, `etl/derive_actionable.py`). All three are treated as
-live, same-day-equivalent triggers — RTA from Real-Time Alert emails,
-SSSCHG from the "Signal Strength Stocks" Added/Removed lines
+**Only RTA bypasses the Technical gate on the buy side**
+(`_compute_final_call(..., bypass_technical=(winning_source == "RTA"))`,
+`etl/derive_actionable.py`). RTA is treated as a live, real-time per-symbol
+trigger: an ADD/INCREASE resolves straight to BMN/BM at
+`fc_confidence='high'` without requiring `rr_action` (Technical) to also
+confirm the entry, unlike every other source. Sells are unaffected: REMOVE
+still exits via the Technical-agnostic step-1 gate (unchanged, pre-existing
+for all sources) and REDUCE still needs normal Technical confirmation.
+Trade Mode's client-side check (`web/actionable.js::_isTradeModeQualifyingBuy`,
+`_TECH_GATE_EXEMPT_SRC`) has the same RTA-only exemption, so an RTA-sourced
+BM/BMN can qualify for Trade Mode even when `rr_action` (Technical) hasn't
+independently confirmed.
+
+SSSCHG and TOP5 previously shared this bypass (wired 2026-07-19 and
+2026-08-19 respectively) but **user decision 2026-09-12 reverted both to
+normal, Technical-gated sources** — both are same-day-equivalent triggers,
+not real-time per-symbol alerts like RTA, so their ADD/INCREASE now needs
+`rr_action` to agree for high-confidence display, same as RR/CALL/PS/etc.
+SSSCHG still comes from the "Signal Strength Stocks" Added/Removed lines
 (`hist_sss_change`, `etl/hedgeye/parsers.py::parse_signal_strength`, wired
 in 2026-07-19 — previously informational-only, never reached the rules
-engine), TOP5 from Hedgeye's daily Top-5 list (wired in 2026-08-19 — see
-above). An ADD/INCREASE from any of the three resolves straight to BMN/BM
-at `fc_confidence='high'` without requiring `rr_action` (Technical) to also
-confirm the entry, unlike every other source (MACROSHOW included — it goes
-through the normal gate). Sells are unaffected: REMOVE still exits via the
-Technical-agnostic step-1 gate (unchanged, pre-existing for all sources) and
-REDUCE still needs normal Technical confirmation. `SOURCE_ORDER` ranks TOP5
-right behind RTA and SSSCHG right behind that (all same-day-equivalent
-triggers) — a same-day Gmail add/remove overrides the file-based weekly
-`SSS` source (`hist_sss`, unchanged, its own lower tier) until SSS's own
-next snapshot catches up. Trade Mode's client-side check
-(`web/actionable.js::_isTradeModeQualifyingBuy`, `_TECH_GATE_EXEMPT_SRC`)
-has the same RTA/SSSCHG/TOP5 exemption, so an RTA-, SSSCHG-, or
-TOP5-sourced BM/BMN can qualify for Trade Mode even when `rr_action`
-(Technical) hasn't independently confirmed. MACROSHOW is deliberately not
-in this list — it goes through the normal Technical gate everywhere.
+engine), and TOP5 still comes from Hedgeye's daily Top-5 list — only the
+Technical-bypass treatment changed, not their classifiers or `SOURCE_ORDER`
+ranking (TOP5 still ranks 2, right behind RTA; SSSCHG still ranks 3, right
+behind that — a same-day Gmail add/remove still overrides the file-based
+weekly `SSS` source until SSS's own next snapshot catches up). MACROSHOW
+was never in this list — it goes through the normal Technical gate
+everywhere.
 
 **ETFCHG/IICHG remain merged, not split out like SSSCHG** (deprecated as
 standalone `ref_outlook_source` rows since this repo's initial commit —
@@ -202,6 +207,19 @@ source" carve-out (CALL now ranks last by `SOURCE_ORDER`); not-held PS REMOVE
 exclusion (a PS REMOVE can win on the not-held path if it is the freshest
 signal, but is still stamped "NOT HELD" and suppressed); SSS INCREASE/REDUCE
 demotion (SSS competes on equal footing by source rank or recency).
+
+**2026-09-12 — an unheld ADD with Technical neutral no longer resolves to a
+standalone BMN/gate.** User: "Technicals need to support it." Previously,
+`_compute_final_call()`'s technical-neutral branch treated "not held + Source
+says ADD" as enough to show a weak BUY TO MIN badge even when `rr_action`
+had no read either way (undefined Trade/Trend-vs-Risk-Range zone, or truly
+neutral). It now falls through to the same `HOLD`/`gate` result as any other
+technical-neutral, not-held case — Technical must actively confirm (BS/BM/
+BMN) before a *new* position opens; a standing Source re-list with no
+Technical support is not itself grounds to badge a buy. Mirrored in
+`web/actionable.js`'s `finalCall()`/`_gateReasonFor()` client fallbacks.
+Held ADD/INCREASE with Technical neutral was already `HOLD`/`gate` before
+this change (via the `src_is_reduce`/final-else branches) and is unaffected.
 
 **Category.** PS/ETF/ETFCHG winners look up `ref_asset_allocation` by the
 symbol's `asset_class`; other sources use `position_category`. That yields
@@ -271,12 +289,14 @@ state) that wasn't reaching this popover yet. Top to bottom:
    (row)` (High/Mixed) both walk `_compute_final_call`'s exact branch
    order (`etl/derive_actionable.py`) using the same classifier booleans,
    so the popover text always matches the actual server-side reason a row
-   landed where it did — e.g. Gate covers 7 distinct branches (stop
-   breach, exit-not-held, exit-held/at-Max, don't-initiate, buy-capped-at-
-   Max, establishing-position, both-neutral); High/Mixed cover the
-   RTA/SSSCHG live-trigger bypass and every Sources-vs-Technical
-   agree/disagree combination. Falls back to a generic "align"/"conflict"
-   line only if neither scenario matches.
+   landed where it did — e.g. Gate covers 4 distinct branches (stop
+   breach, exit-not-held, don't-initiate, no-active-signal — down from 7
+   as of 2026-09-12: the at/over-Max cap and the standalone
+   "establishing-position" case were both removed, see below); High/Mixed
+   cover the RTA live-trigger bypass (SSSCHG/TOP5 lost this bypass
+   2026-09-12) and every Sources-vs-Technical agree/disagree combination.
+   Falls back to a generic "align"/"conflict" line only if neither
+   scenario matches.
 4. **Fresh-signal note** (buy-side, conditional) — same condition as the
    SYMBOL cell's NEW pill (`row._watchlisted && row._isNew`): winning-
    source data just landed, Technical hasn't had a chance to confirm yet.
@@ -335,18 +355,80 @@ category Max. Over-max is now flagged with an orange **OVER MAX** pill
 next to the ACTION badge (`_isOverMaxOverlay`, same shape as the STOP/
 earnings pills; tooltip shows the $ over cap) — it never changes
 `consolidated_action`, `final_code`, `fc_confidence`, chip bucket, sort
-severity, or AMT$. (The one surviving use of the over-max fact in
-`_compute_final_call` is gate 4: if Technical says buy but the position is
-already at/over Max, the call is capped at HOLD rather than recommending
-more buying — that's a sizing cap on buys, not a synthetic sell, and is
-unchanged.)
+severity, or AMT$. The pill itself deliberately stays strict
+`current_position_dollar > target_max_dollar` — "over" means past the
+ceiling, not merely at it. (Gate 4, the one remaining place the over-max
+fact touched the Final Call, was removed later the same day — see below.)
+
+**2026-09-12 — ESTABLISHED / NEAR MAX pill (soft sizing-stage signals).**
+Same precedent as OVER MAX (2026-09-03): position-size context should
+inform, never silently change, the Sources × Technical badge. User: "Pill
+precedent applies to all the cases. It should not block the badge, instead
+pill should tell me the situation." Two blue, informational-only pills next
+to the ACTION badge (`web/actionable.js::_sizingStagePill`, same shape as
+`.overmax-pill`, held BUY rows only):
+- **ESTABLISHED** — held ≥ category Min floor already. Without it, a
+  standing ADD re-list (several sources reissue "ADD" every period they're
+  on a list) with a confirming Technical can badge BM/BS/BMN at High
+  confidence indefinitely, with no visual cue that the floor was cleared
+  long ago.
+- **NEAR MAX** — held is ≥75% of the way from Min to Max. Still a real
+  BM/BS (Technical is still confirming a genuine entry, and there's still
+  room under Max), just flagged as "not much room left."
+
+Neither changes `final_code`, `fc_confidence`, or AMT$ — same non-override
+contract as OVER MAX. Initially kept separate from gate 4 (at/over Max →
+HOLD) on the reasoning that a self-defined ceiling was a feasibility
+constraint, not a soft preference — **superseded a few hours later, see
+below.**
+
+**2026-09-12 (same day, earlier) — gate 4's own threshold changed from `>`
+to `>=`.** Held *exactly equal to* Max used to slip past this gate
+(`current_position_dollar > target_max_dollar` was `False` at the
+boundary), so a position sitting right at its ceiling with Technical still
+confirming would show an active BM/BS at High confidence — AMT$ correctly
+showed $0 (sizing's own AT CEILING suppression already used `>=`), so the
+effect was a "BUY MORE — $0" badge. Fixed by aligning the comparison to
+`>=`, mirrored client-side by a new `_isAtOrOverMax()` helper.
+
+**2026-09-12 (later) — gate 4 removed entirely.** User: "why can't we just
+have the pill (remove the hardstop for consistency)? ... Amount is going to
+tell me anyways that i should not buy. right?" Reconsidered the
+"feasibility vs. preference" distinction above — buying past a self-set Max
+is a policy choice, not a physical impossibility (unlike selling a symbol
+you don't hold, gate 2's don't-initiate guard, which stays). Two things
+already carry the "no room to add" signal without touching the badge: AMT$
+is already $0 at/over Max (sizing's own AT CEILING suppression, untouched
+by this change) and the OVER MAX pill is visible everywhere the badge is,
+including Trade Mode (a row filter on the same grid, not a separate column
+set — AMT$ stays visible there too). `_compute_final_call`'s `at_max` local
+and gate-4 branch are gone; `finalCall()`/`_gateReasonFor()` dropped their
+mirrors the same way. `_isAtOrOverMax()` (client) is kept, but only to
+suppress the ESTABLISHED/NEAR MAX pill in favor of OVER MAX once a position
+reaches its ceiling — it no longer gates anything. A confirmed Technical
+buy at/over Max now shows through as BM/BS with $0 AMT$ and the OVER MAX
+pill, same non-override contract as every other sizing signal in this
+section.
 
 **AMT$** shows the delta for actionable rows: ADD / INCREASE = target −
 position, REMOVE / REDUCE = position − target, all clamped ≥ 0 (suppressed
 rows → 0). HOLD / no-action rows show the current held dollars, not a delta.
-It always reflects the real `consolidated_action` now — over-max no longer
-overrides it (see above); the trim-to-cap $ is available in the OVER MAX
-pill's own tooltip instead.
+Over-max no longer overrides it (see above); the trim-to-cap $ is available
+in the OVER MAX pill's own tooltip instead.
+
+**2026-09-12 — AMT$ keyed off the resolved Final Call, not the raw Source
+action.** Previously AMT$ (`web/actionable.js`) was computed from
+`consolidated_action` alone, before `finalCall()` resolved the badge. When
+Technical vetoed or flipped a Source's action — e.g. Source=INCREASE but
+Technical is in a sell zone (badge flips to `SS`), or a buy/reduce vetoed
+down to `HOLD` — AMT$ still showed the raw Source's dollar figure: a
+buy-direction $ next to a **SELL SOME** badge, or a nonzero $ next to
+**HOLD**. AMT$ now branches on `final_code` first (SA → full position; SS/
+STM → position − target; BM/BS/BMN → target − position; anything else →
+current held dollars, matching the HOLD convention above) — it can no
+longer disagree with the badge shown alongside it. Rows without a
+`final_code` yet (pre-migration fallback) keep the original
+`consolidated_action`-based math.
 
 **Snapshot dates.** The winning source's effective snapshot date — the date
 the underlying data record is for (`drv_outlook_action.as_of_date`, carried
@@ -579,6 +661,23 @@ QJ < 0 forces STM even when Trend/Trade is bullish. Both QE and QJ must be posit
 | BMN | Buy Min | 15 |
 | BS | Buy Some | 16 |
 | BM | Buy More | 18 |
+
+**2026-09-12 — broken LRR support forces STM, in both Tables 2 and 3.**
+Previously `lrr_idx = -1` (today's low closed more than 0.25 SD below LRR —
+see `EU` in `docs/...` Risk Range Analysis section above) matched none of
+QM's or QN's clauses (all require `lrr_idx` ∈ {0,1}), so a broken support
+level fell through to `QM`/`QN = NULL` → no Technical signal at all — the
+same "silent" behavior as the undefined Trade/Trend zone. User: "if it is
+below LRR instead of silent I need to see STM ... stock doesn't have a
+support at LRR and might go down from there instead of a bounce."
+`etl/derive.py::_derive_trend_trade_rules_impl` now checks `lrr_idx = -1`
+first, before any other QM clause (bull path, QJ≥2) — reuses the existing
+`bull_rr_rule` code `-1` (STM), no new reference data needed. The not-bull
+path (QJ∈{0,1}) has no STM code in `nbull_rr_rule` at all (its worst case is
+SS, "at/above TRR"), so the override is applied directly in Pass 2's `QO`
+computation instead of the lookup table. Either way this only overrides the
+RR-position sub-read (`QO`) — the Trend/Trade bearish override (`QE<0`) and
+BB-range bearish override (`QJ<0`) still take priority over it, unchanged.
 
 ---
 

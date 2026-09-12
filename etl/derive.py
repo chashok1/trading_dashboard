@@ -3174,6 +3174,18 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 ELSE 0
             END,
             CASE
+                -- 2026-09-12, user: "if it is below LRR instead of silent I
+                -- need to see STM ... stock doesn't have a support at LRR
+                -- and might go down from there instead of a bounce."
+                -- lrr_idx=-1 (today's low broke below LRR by >0.25 SD, see
+                -- EU in derive_cat_atomic_input.py) previously matched none
+                -- of the clauses below (they all require lrr_idx IN (0,1)),
+                -- so QM fell through to NULL -- no Technical signal at all
+                -- on a broken support level. Checked first so a break always
+                -- wins regardless of mrr_idx/perf1d_sd_rule/macdh -- reuses
+                -- the existing code -1 (STM, "bearish in bull zone"), same
+                -- action as the narrower already-above-LRR bearish case below.
+                WHEN c.lrr_idx = -1 THEN -1
                 WHEN c.perf1d_sd_rule >  0 AND c.lrr_idx = 1
                      AND c.mrr_idx = -1 AND c.macdh_direction > 0 THEN 6
                 WHEN c.perf1d_sd_rule = -1 AND c.mrr_idx = 1 THEN 5
@@ -3228,7 +3240,8 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 r.trend_trade_rule AS qe,
                 r.bb_rng_strk_rule    AS qj,
                 r.bull_rr_action      AS qm_val,
-                r.not_bull_rr_action  AS qn_val
+                r.not_bull_rr_action  AS qn_val,
+                a.lrr_idx             AS lrr_idx
             FROM drv_tn_td_bb_rr r
             LEFT JOIN drv_cat_atomic_input a
               ON a.as_of_date = r.as_of_date AND a.tos_symbol = r.tos_symbol
@@ -3243,6 +3256,14 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
                 l_qk.seq AS qk_seq,
                 CASE
                     WHEN b.qj >= 2 THEN l_qm.seq
+                    -- 2026-09-12, user: broken LRR support -> STM, not-bull
+                    -- path. Handled here rather than in nbull_rr_rule's own
+                    -- lookup table (no STM code exists there, and that table
+                    -- is normally sourced from the Excel Trig workbook) --
+                    -- the bull path's equivalent lives in bull_rr_action's
+                    -- own CASE above instead, since code -1/STM already
+                    -- exists in bull_rr_rule.
+                    WHEN b.qj >= 0 AND b.lrr_idx = -1 THEN -9
                     WHEN b.qj >= 0 THEN l_qn.seq
                     ELSE NULL
                 END AS qo_seq
