@@ -854,7 +854,6 @@ body.fill-page main,
 body.rules-page main,
 body.trig-page main,
 body.ref-page main,
-body.perf-page main,
 body.portfolio-page main {
   overflow: hidden !important;
   display: flex !important;
@@ -892,10 +891,14 @@ body.ref-page .ref-table-container { flex: 1; max-height: none !important; overf
 body.portfolio-page .pf-tab-pane.active { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 body.portfolio-page .pf-tab-pane.active > .card { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 
-/* Performance: last card (scorecard) fills remaining */
+/* Performance: page now scrolls as a whole (main's generic overflow-y:auto,
+   ~line 835) instead of only the last card scrolling internally -- the
+   Edge Report card added 2026-09-13 can grow taller than the viewport on
+   its own, so a single "last card fills/scrolls" assumption no longer
+   holds. Each card's own .scrollable-table-container keeps its default
+   max-height (70vh) and internal scrollbar; see the dash-page comment
+   above (~line 847) for the same fix applied earlier to that page. */
 body.perf-page main { gap: 6px; }
-body.perf-page main > .card:last-child { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
-body.perf-page main > .card:last-child .scrollable-table-container { flex: 1; max-height: none !important; overflow: auto; min-height: 0; }
 
 /* DBStats: last card (stats table) fills remaining */
 body.dbstats-page main > .card:last-child { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }

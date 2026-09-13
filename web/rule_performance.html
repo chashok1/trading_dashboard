@@ -64,10 +64,105 @@
             margin-left: 4px;
             font-size: 11px;
         }
-        /* edge-pos/neg/neu and dir-buy/sell defined in styles.css (token-driven) */
+        /* edge-pos/neg/neu and dir-buy/sell defined in styles.css (token-driven) --
+           overridden below (2026-09-13) to the Edge Report blue/red, scoped to
+           this page only so the shared act-buy-*/act-sell-*/edge-pos/edge-neg
+           tokens used elsewhere in the app (Actionable, Portfolio) are untouched. */
+        body.perf-page .dir-sell,
+        body.perf-page .edge-neg { color: #e34948; }
+        body.perf-page .dir-buy,
+        body.perf-page .edge-pos { color: #2a78d6; }
+        body.perf-page .act-sell-strong        { color: #d03b3b; }
+        body.perf-page .act-sell-strong-tint   { background: #f9d9d9; color: #d03b3b; border-color: #d03b3b; }
+        body.perf-page .act-sell               { color: #e34948; }
+        body.perf-page .act-sell-tint          { background: #fceeee; color: #e34948; border-color: #e34948; }
+        body.perf-page .act-sell-weak          { color: #ef7f7e; }
+        body.perf-page .act-sell-weak-tint     { background: #fdf1f1; color: #ef7f7e; border-color: #ef7f7e; }
+        body.perf-page .act-buy-strong         { color: #1d5aa8; }
+        body.perf-page .act-buy-strong-tint    { background: #d5e5f7; color: #1d5aa8; border-color: #1d5aa8; }
+        body.perf-page .act-buy                { color: #2a78d6; }
+        body.perf-page .act-buy-tint           { background: #eaf1fb; color: #2a78d6; border-color: #2a78d6; }
+        body.perf-page .act-buy-weak           { color: #6fa8e0; }
+        body.perf-page .act-buy-weak-tint      { background: #f0f6fc; color: #6fa8e0; border-color: #6fa8e0; }
+        /* Match the borderless, 4px-radius wash-pill look used by .edge-tag
+           in the "Which rules actually work" chart, instead of the app-wide
+           bordered act-badge pill. */
+        body.perf-page .act-badge { border-radius: 4px; }
+        body.perf-page .act-badge.act-buy-strong-tint,
+        body.perf-page .act-badge.act-buy-tint,
+        body.perf-page .act-badge.act-buy-weak-tint,
+        body.perf-page .act-badge.act-sell-strong-tint,
+        body.perf-page .act-badge.act-sell-tint,
+        body.perf-page .act-badge.act-sell-weak-tint { border: none; }
         .caveat-note {
             margin: 0 0 12px; padding: 8px 12px; font-size: 12px; line-height: 1.5;
             background: #fff8e1; border: 1px solid #f3d27a; border-radius: 6px; color: #5b4400;
+        }
+
+        /* ---- Edge Report ---- */
+        .edge-stat-value.er-pos,      .er-pos      { color: #0ca30c; }
+        .edge-stat-value.er-neg,      .er-neg      { color: #e34948; }
+        .edge-stat-value.er-good,     .er-good     { color: #0ca30c; }
+        .edge-stat-value.er-critical, .er-critical { color: #d03b3b; }
+        /* Header shares the same 5-column geometry as .edge-stats below it so
+           "How your own trades have done" lines up over the "When you buy" box. */
+        .edge-report-header { display:grid !important; grid-template-columns:repeat(4,1fr); gap:10px; align-items:center; margin-bottom:10px; }
+        .edge-report-header .edge-header-title { grid-column:1 / span 2; display:flex; gap:12px; align-items:center; flex-wrap:wrap; min-width:0; }
+        .edge-report-header .edge-trades-label { grid-column:3 / span 1; font-size:13.5px; font-weight:700; color:var(--text-1); }
+        .edge-report-header #edgeReportMeta { grid-column:4 / span 1; text-align:right; }
+        .edge-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:0 0 2px; align-items:stretch; }
+        .edge-stat { border:1px solid var(--border); border-radius:6px; padding:8px 14px; background:var(--card-bg); }
+        .edge-stat-label { font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-3); margin-bottom:6px; }
+        .edge-stat-value { font-size:22px; font-weight:700; color:var(--text-1); }
+        .edge-stat-value-row { display:flex; align-items:center; gap:8px; }
+        .edge-stat-sub { font-size:12px; color:var(--text-2); margin-top:4px; }
+        .edge-stat-label-row { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:4px; }
+        .edge-stat-label-row .edge-stat-label { margin-bottom:0; }
+        .edge-stat-label-row .edge-stat-sub { margin-top:0; text-align:right; }
+        .edge-mini-meter { position:relative; flex:1; min-width:24px; height:7px; border-radius:4px; background:var(--act-neutral-bg); overflow:hidden; }
+        .edge-mini-meter > span { display:block; height:100%; border-radius:4px; background:#0ca30c; }
+        .edge-block { margin-top:18px; }
+        .edge-block h4 { margin:0 0 2px; font-size:13.5px; font-weight:700; color:var(--text-1); }
+        .edge-block-desc { margin:0 0 10px; font-size:12px; color:var(--text-2); }
+        .edge-block-row { display:grid; grid-template-columns:2fr 1fr; gap:16px; }
+        .edge-block-row .edge-block { margin-top:18px; }
+        .perf-two-col { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
+        .perf-two-col > .card { min-width:0; }
+        .perf-two-col .scrollable-table-container { max-height:50vh; }
+        .edge-chart { border:1px solid var(--border); border-radius:6px; padding:10px 14px 6px; background:var(--card-bg); }
+        .edge-axis { position:relative; height:14px; margin-bottom:2px; }
+        .edge-axis .tick { position:absolute; left:50%; top:0; bottom:0; width:1px; background:var(--border); }
+        .edge-axis .tick-label { position:absolute; left:50%; top:-1px; transform:translateX(-50%); font-size:10px; color:var(--text-3); }
+        .edge-row { display:grid; grid-template-columns:minmax(140px,26%) 1fr; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--border); }
+        .edge-row-rules { grid-template-columns:minmax(110px,1fr) auto auto minmax(120px,2fr); }
+        .edge-row-head { border-bottom:none; padding-bottom:0; }
+        .edge-col-head { font-size:10px; font-weight:600; color:var(--text-3); text-align:center; }
+        .edge-raw-val { font-size:11px; font-weight:600; text-align:right; white-space:nowrap; }
+        .edge-raw-val.pos { color:#2a78d6; }
+        .edge-raw-val.neg { color:#e34948; }
+        .edge-row:last-child { border-bottom:none; }
+        .edge-row .edge-label { font-size:10.5px; color:var(--text-2); text-align:right; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .edge-row .edge-tag { display:inline-block; font-size:9px; font-weight:700; letter-spacing:0.03em; padding:1px 5px; border-radius:4px; margin-left:5px; vertical-align:1px; }
+        .edge-row .edge-tag.buy { background:#eaf1fb; color:#2a78d6; }
+        .edge-row .edge-tag.sell { background:#fceeee; color:#e34948; }
+        .edge-bar-track { position:relative; height:18px; }
+        .edge-bar-track .mid { position:absolute; left:50%; top:0; bottom:0; width:1px; background:var(--border); }
+        .edge-bar-track .bar { position:absolute; top:2px; height:14px; border-radius:3px; }
+        .edge-bar-track .bar.pos { left:50%; background:#2a78d6; }
+        .edge-bar-track .bar.neg { right:50%; background:#e34948; }
+        .edge-bar-track .val { position:absolute; top:0; font-size:11px; font-weight:600; white-space:nowrap; }
+        .edge-bar-track .val.pos { color:#2a78d6; }
+        .edge-bar-track .val.neg { color:#e34948; }
+        .edge-loading { padding:14px; text-align:center; color:var(--text-3); font-size:12px; }
+        @media (max-width:900px){ .edge-block-row{grid-template-columns:1fr;} .perf-two-col{grid-template-columns:1fr;} }
+        @media (max-width:700px){
+            .edge-stats{grid-template-columns:repeat(2,1fr);}
+            .edge-row{grid-template-columns:38% 1fr;}
+            .edge-report-header{display:flex !important; flex-wrap:wrap;}
+            .edge-report-header .edge-header-title,
+            .edge-report-header .edge-trades-label,
+            .edge-report-header #edgeReportMeta{grid-column:auto;}
+            .edge-report-header #edgeReportMeta{text-align:left;}
         }
     </style>
 </head>
@@ -108,6 +203,49 @@
 
     <main>
         <div class="card" style="margin-bottom:12px;">
+            <div class="performance-header edge-report-header">
+                <span class="edge-header-title">
+                    <strong style="font-size:15px;">Edge Report</strong>
+                    <span style="color:var(--text-3);font-size:12px;">What's actually paying off — rules, factors, and your own trades, measured against what really happened afterward, not what the setup looked like at the time.</span>
+                </span>
+                <strong class="edge-trades-label">How your own trades have done</strong>
+                <span id="edgeReportMeta" style="font-size:12px;color:var(--text-3);"></span>
+            </div>
+            <div class="edge-stats">
+                <div class="edge-stat">
+                    <div class="edge-stat-label-row">
+                        <span class="edge-stat-label">Buy rules that work</span>
+                        <span class="edge-stat-sub" id="edgeBuyRulesSub"></span>
+                    </div>
+                    <div class="edge-stat-value" id="edgeBuyRulesWork">—</div>
+                </div>
+                <div class="edge-stat">
+                    <div class="edge-stat-label-row">
+                        <span class="edge-stat-label">Sell rules that work</span>
+                        <span class="edge-stat-sub" id="edgeSellRulesSub"></span>
+                    </div>
+                    <div class="edge-stat-value" id="edgeSellRulesWork">—</div>
+                </div>
+                <div class="edge-stat" id="edgeTradeBuy"><div class="edge-loading">Loading…</div></div>
+                <div class="edge-stat" id="edgeTradeSell"><div class="edge-loading">Loading…</div></div>
+            </div>
+
+            <div class="edge-block-row">
+                <div class="edge-block">
+                    <h4>Which rules actually work</h4>
+                    <p class="edge-block-desc">Composite rules with at least 20 fires. Left bar = adjusted to the rule's favor (SELL sign-flipped) — right of center means it called it correctly. Right bar = the same rule's actual, unflipped price move — on a SELL rule these can point opposite ways. 5 best · 5 worst.</p>
+                    <div class="edge-chart" id="edgeRulesChart"><div class="edge-loading">Loading…</div></div>
+                </div>
+
+                <div class="edge-block">
+                    <h4>What actually predicts a good outcome</h4>
+                    <p class="edge-block-desc">Source, sector, and reading buckets with at least 5 symbols — independent of any one rule. 5 best · 5 worst.<br>&nbsp;</p>
+                    <div class="edge-chart" id="edgeFactorsChart"><div class="edge-loading">Loading…</div></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom:12px;">
             <div class="performance-header">
                 <strong style="font-size:15px;">Your actions</strong>
                 <span style="color:var(--text-3);font-size:12px;">Trades INFERRED from CS/F position-snapshot deltas — real position changes, no manual logging. The official personal track record.</span>
@@ -127,6 +265,7 @@
             </div>
         </div>
 
+        <div class="perf-two-col">
         <div class="card">
             <div class="performance-header">
                 <strong style="font-size:15px;">Rule scorecard</strong>
@@ -169,7 +308,7 @@
             </div>
         </div>
 
-        <div class="card" style="margin-top:12px;">
+        <div class="card">
             <div class="performance-header">
                 <strong style="font-size:15px;">Individual rules</strong>
                 <span style="color:var(--text-3);font-size:12px;">Raw (no direction adjustment) — avg 20d &gt; 0 means readings preceded positive returns on average.</span>
@@ -210,6 +349,7 @@
                     </tbody>
                 </table>
             </div>
+        </div>
         </div>
         <div class="card" style="margin-top:12px;">
             <div class="performance-header">
@@ -287,7 +427,7 @@
 
     <script src="/static/_common.js"></script>
     <script src="/static/actions.js"></script>
-    <script src="/static/rule_performance.js"></script>
+    <script src="/static/rule_performance.js?v=20260913q"></script>
     <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>

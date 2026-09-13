@@ -36,12 +36,198 @@ const agreementState = {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+    loadEdgeReport();
     loadScorecard();
     loadMyActions();
     loadAtomicScorecard();
     loadAgreementScorecard();
     loadFactorScorecard();
 });
+
+// ---- Edge Report — live summary of scorecard + factor + my-actions data ----
+async function loadEdgeReport() {
+    try {
+        const [scorecard, factors, myActions] = await Promise.all([
+            fetch('/api/rules/scorecard?min_fires=20&limit=1000').then(r => r.json()),
+            fetch('/api/rules/factor-scorecard?min_n=0&limit=1000').then(r => r.json()),
+            fetch('/api/rules/my-actions?limit=1').then(r => r.json()),
+        ]);
+        renderEdgeStats(scorecard);
+        renderEdgeRulesChart(scorecard);
+        renderEdgeFactorsChart(factors);
+        renderEdgeMyTrades(myActions);
+        const meta = document.getElementById('edgeReportMeta');
+        if (meta) meta.textContent = `Updated ${new Date().toLocaleString()}`;
+    } catch (e) {
+        console.error('Failed to load edge report:', e);
+        const meta = document.getElementById('edgeReportMeta');
+        if (meta) meta.textContent = 'Error loading';
+    }
+}
+
+function renderEdgeStats(scorecard) {
+    const rows = Array.isArray(scorecard) ? scorecard : [];
+    const buy = rows.filter(r => r.direction === 'BUY');
+    const sell = rows.filter(r => r.direction === 'SELL');
+
+    const setRuleStat = (valId, subId, work, total, label) => {
+        const val = document.getElementById(valId);
+        const sub = document.getElementById(subId);
+        if (val) {
+            val.textContent = `${work} / ${total}`;
+            val.className = 'edge-stat-value ' + (total === 0 ? '' : work === total ? 'er-good' : work === 0 ? 'er-critical' : '');
+        }
+        if (sub) sub.textContent = total === 0
+            ? 'No rules with ≥20 fires yet'
+            : work === total ? `Every ${label} rule shows a real edge`
+            : work === 0 ? 'Not one has proven out yet'
+            : `${work} of ${total} show a real edge`;
+    };
+    setRuleStat('edgeBuyRulesWork', 'edgeBuyRulesSub', buy.filter(r => r.edge_20d > 0).length, buy.length, 'buy');
+    setRuleStat('edgeSellRulesWork', 'edgeSellRulesSub', sell.filter(r => r.edge_20d > 0).length, sell.length, 'sell');
+}
+
+function renderDivergingChart(container, rows) {
+    if (!container) return;
+    if (!rows.length) {
+        container.innerHTML = '<div class="edge-loading">Not enough data yet.</div>';
+        return;
+    }
+    const maxAbs = Math.max(...rows.map(r => Math.abs(r.value)), 0.01);
+    const axis = '<div class="edge-axis"><div class="tick"></div><div class="tick-label">0%</div></div>';
+    const body = rows.map(r => {
+        const pct = Math.min(36, (Math.abs(r.value) / maxAbs) * 36);
+        const isPos = r.value >= 0;
+        const barCls = isPos ? 'pos' : 'neg';
+        const valStyle = isPos
+            ? `left:calc(50% + ${pct}% + 6px)`
+            : `right:calc(50% + ${pct}% + 6px)`;
+        return `<div class="edge-row">
+            <div class="edge-label">${r.label}${r.tagHtml || ''}</div>
+            <div class="edge-bar-track"><div class="mid"></div>
+                <div class="bar ${barCls}" style="width:${pct}%"></div>
+                <div class="val ${barCls}" style="${valStyle}">${isPos ? '+' : ''}${r.value.toFixed(2)}%</div>
+            </div>
+        </div>`;
+    }).join('');
+    container.innerHTML = axis + body;
+}
+
+// One bar (the direction-adjusted edge) per row, plus a BUY/SELL pill and
+// the actual (unflipped) return as a plain number -- both in their own
+// columns next to the label, ahead of the bar.
+function renderRulesChart(container, rows) {
+    if (!container) return;
+    if (!rows.length) {
+        container.innerHTML = '<div class="edge-loading">Not enough data yet.</div>';
+        return;
+    }
+    const maxAbs = Math.max(...rows.map(r => Math.abs(r.value)), 0.01);
+    const axis = '<div class="edge-axis"><div class="tick"></div><div class="tick-label">0%</div></div>';
+    const head = `<div class="edge-row edge-row-rules edge-row-head">
+            <div class="edge-label"></div><div></div>
+            <div class="edge-col-head">Actual</div>
+            <div class="edge-col-head">${axis}</div>
+        </div>`;
+    const body = rows.map(r => {
+        const pct = Math.min(36, (Math.abs(r.value) / maxAbs) * 36);
+        const isPos = r.value >= 0;
+        const barCls = isPos ? 'pos' : 'neg';
+        const valStyle = isPos
+            ? `left:calc(50% + ${pct}% + 6px)`
+            : `right:calc(50% + ${pct}% + 6px)`;
+        const rawIsPos = r.rawValue >= 0;
+        const rawCls = rawIsPos ? 'pos' : 'neg';
+        return `<div class="edge-row edge-row-rules">
+            <div class="edge-label">${r.label}</div>
+            <span class="edge-tag ${r.dir === 'BUY' ? 'buy' : 'sell'}">${r.dir || '—'}</span>
+            <span class="edge-raw-val ${rawCls}">${rawIsPos ? '+' : ''}${r.rawValue.toFixed(2)}%</span>
+            <div class="edge-bar-track"><div class="mid"></div>
+                <div class="bar ${barCls}" style="width:${pct}%"></div>
+                <div class="val ${barCls}" style="${valStyle}">${isPos ? '+' : ''}${r.value.toFixed(2)}%</div>
+            </div>
+        </div>`;
+    }).join('');
+    container.innerHTML = head + body;
+}
+
+function _bestWorst(rows, sortKey) {
+    const sorted = [...rows].sort((a, b) => b[sortKey] - a[sortKey]);
+    const best = sorted.slice(0, 5);
+    const worst = sorted.slice(Math.max(best.length, sorted.length - 5));
+    return [...best, ...worst];
+}
+
+function renderEdgeRulesChart(scorecard) {
+    const el = document.getElementById('edgeRulesChart');
+    if (!el) return;
+    const rows = (Array.isArray(scorecard) ? scorecard : []).filter(r => r.edge_20d != null);
+    // The bar is edge_20d, direction-adjusted (SELL sign flipped, ">0 =
+    // called it right"). "Actual" is raw_avg_fwd20, the same rule's real,
+    // unflipped price move -- on a SELL rule these can point opposite ways.
+    const items = _bestWorst(rows, 'edge_20d').map(r => ({
+        label: r.rule_id,
+        dir: r.direction,
+        value: Number(r.edge_20d),
+        rawValue: Number(r.raw_avg_fwd20),
+    }));
+    renderRulesChart(el, items);
+}
+
+function renderEdgeFactorsChart(factors) {
+    const el = document.getElementById('edgeFactorsChart');
+    if (!el) return;
+    const rows = (Array.isArray(factors) ? factors : [])
+        .filter(r => r.factor !== 'Baseline' && r.avg_fwd_20d != null && (r.n_symbols ?? 0) >= 5);
+    const label = r => `${r.factor.charAt(0).toUpperCase()}${r.factor.slice(1)}: ${r.bucket}`;
+    const items = _bestWorst(rows, 'avg_fwd_20d').map(r => ({
+        label: label(r),
+        value: Number(r.avg_fwd_20d),
+    }));
+    renderDivergingChart(el, items);
+}
+
+function renderEdgeMyTrades(myActions) {
+    const fam = myActions.by_action_family || [];
+    const buy = fam.find(f => f.family === 'BUY');
+    const sell = fam.find(f => f.family === 'SELL');
+    // For a sell, this is the STOCK's own forward return, not your P&L --
+    // a decline after you sold means you got out ahead of it (good timing),
+    // a rise means the stock kept going without you (bad timing). So the
+    // good/bad color logic is inverted vs. a buy. `invert` flips it.
+    const tile = (label, r, invert) => {
+        if (!r || !r.n) {
+            return `<div class="edge-stat-label-row"><span class="edge-stat-label">${label}</span><span class="edge-stat-sub">No inferred trades yet</span></div>`;
+        }
+        const avg = Number(r.avg_fwd_20d);
+        const good = invert ? avg < 0 : avg > 0;
+        const bad = invert ? avg > 0 : avg < 0;
+        const cls = good ? 'er-pos' : bad ? 'er-neg' : '';
+        const barColor = bad ? '#e34948' : '#0ca30c';
+        // win_rate from the API is always "% that rose afterward" -- for a
+        // sell that's the BAD outcome, so invert it here to "% good exits"
+        // (fell afterward) so higher-is-always-better and the bar fill
+        // matches the color, instead of a raw number that reads backwards.
+        const rawWr = r.win_rate != null ? Number(r.win_rate) : null;
+        const wr = rawWr != null ? (invert ? Math.round((100 - rawWr) * 10) / 10 : rawWr) : null;
+        const wrLabel = invert ? 'good exits' : 'win';
+        const title = invert ? ' title="Negative = the stock fell after you sold (good timing); positive = it kept rising without you"' : '';
+        return `<div class="edge-stat-label-row">
+                <span class="edge-stat-label">${label}</span>
+                <span class="edge-stat-sub">${r.n} trades${wr != null ? ` · ${wr}% ${wrLabel}` : ''}</span>
+            </div>
+            <div class="edge-stat-value-row">
+                <span class="edge-stat-value ${cls}"${title}>${avg >= 0 ? '+' : ''}${avg.toFixed(2)}%</span>
+                ${wr != null ? `<span class="edge-mini-meter" title="${wr}% ${wrLabel}"><span style="width:${wr}%;background:${barColor};"></span></span>` : ''}
+            </div>`;
+    };
+    const buyEl = document.getElementById('edgeTradeBuy');
+    const sellEl = document.getElementById('edgeTradeSell');
+    if (buyEl) buyEl.innerHTML = tile('When you buy', buy, false);
+    if (sellEl) sellEl.innerHTML = tile('When you reduce or sell', sell, true);
+}
+
+window.loadEdgeReport = loadEdgeReport;
 
 async function loadMyActions() {
     const body = document.getElementById('myActionsBody');
@@ -70,7 +256,7 @@ async function loadMyActions() {
             if (followed || contradicted) {
                 stanceEl.innerHTML = `<span style="color:#166534;">When you FOLLOWED the system:</span> ${fmt(followed)}`
                     + `<span style="margin:0 10px;color:var(--text-3);">·</span>`
-                    + `<span style="color:#991b1b;">when you CONTRADICTED it:</span> ${fmt(contradicted)}`;
+                    + `<span style="color:#d03b3b;">when you CONTRADICTED it:</span> ${fmt(contradicted)}`;
             } else {
                 stanceEl.innerHTML = '';
             }
@@ -88,7 +274,7 @@ async function loadMyActions() {
             const style = st === 'FOLLOWED'
                 ? 'background:#dcfce7;color:#166534;'
                 : st === 'CONTRADICTED'
-                ? 'background:#fee2e2;color:#991b1b;'
+                ? 'background:#fceeee;color:#d03b3b;'
                 : 'background:#f1f5f9;color:#64748b;';
             return `<span style="font-size:9px;${style}border-radius:3px;padding:1px 4px;font-weight:700;">${st}</span>`;
         };
@@ -109,7 +295,7 @@ async function loadMyActions() {
             </tr>`).join('');
     } catch (e) {
         console.error('Failed to load my-actions:', e);
-        body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#b91c1c;">Error loading actions</td></tr>';
+        body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#d03b3b;">Error loading actions</td></tr>';
     }
 }
 
@@ -125,7 +311,7 @@ async function loadScorecard() {
     } catch (e) {
         console.error('Failed to load scorecard:', e);
         DOM.perfTableBody.innerHTML =
-            '<tr><td colspan="8" style="text-align:center;color:#b91c1c;">Error loading scorecard</td></tr>';
+            '<tr><td colspan="8" style="text-align:center;color:#d03b3b;">Error loading scorecard</td></tr>';
     }
 }
 
@@ -201,7 +387,7 @@ async function loadAtomicScorecard() {
     } catch (e) {
         console.error('Failed to load atomic scorecard:', e);
         DOM.atomicTableBody.innerHTML =
-            '<tr><td colspan="9" style="text-align:center;color:#b91c1c;">Error loading individual rules</td></tr>';
+            '<tr><td colspan="9" style="text-align:center;color:#d03b3b;">Error loading individual rules</td></tr>';
     }
 }
 
@@ -294,7 +480,7 @@ async function loadFactorScorecard() {
     } catch (e) {
         console.error('Failed to load factor scorecard:', e);
         DOM.factorTableBody.innerHTML =
-            '<tr><td colspan="10" style="text-align:center;color:#b91c1c;">Error loading factor scorecard</td></tr>';
+            '<tr><td colspan="10" style="text-align:center;color:#d03b3b;">Error loading factor scorecard</td></tr>';
     }
 }
 
@@ -385,7 +571,7 @@ window.factorSortBy = factorSortBy;
 // ---- TASK_69: Agreement scorecard ----
 const _AGR_COLOR_PERF = {
     agree_bull:      '#16a34a',
-    agree_bear:      '#dc2626',
+    agree_bear:      '#e34948',
     split_tech_bull: '#d97706',
     split_tech_bear: '#ea580c',
     neutral:         '#94a3b8',
@@ -402,7 +588,7 @@ async function loadAgreementScorecard() {
     } catch (e) {
         console.error('Failed to load agreement scorecard:', e);
         DOM.agreementTableBody.innerHTML =
-            '<tr><td colspan="7" style="text-align:center;color:#b91c1c;">Error loading agreement scorecard</td></tr>';
+            '<tr><td colspan="7" style="text-align:center;color:#d03b3b;">Error loading agreement scorecard</td></tr>';
     }
 }
 

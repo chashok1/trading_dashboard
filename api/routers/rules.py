@@ -489,7 +489,9 @@ def get_my_actions(limit: int = Query(200, ge=1, le=2000)):
             SELECT inferred_action AS family, COUNT(*)                 AS n,
                    ROUND(AVG(fwd_5d_pct)::numeric, 2)                   AS avg_fwd_5d,
                    ROUND(AVG(fwd_20d_pct)::numeric, 2)                  AS avg_fwd_20d,
-                   ROUND(SUM(ABS(est_dollar))::numeric, 2)              AS total_est_dollar
+                   ROUND(SUM(ABS(est_dollar))::numeric, 2)              AS total_est_dollar,
+                   ROUND(100.0 * COUNT(*) FILTER (WHERE fwd_20d_pct > 0)
+                       / NULLIF(COUNT(*) FILTER (WHERE fwd_20d_pct IS NOT NULL), 0), 1) AS win_rate
             FROM v_inferred_action_performance
             GROUP BY inferred_action ORDER BY inferred_action
         """)).mappings().all()
