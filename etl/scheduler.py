@@ -513,6 +513,24 @@ def run_nightly_outcomes() -> None:
     except Exception:
         log.exception("nightly: factor outcomes refresh crashed")
 
+    # 2026-09-13 fix: your own inferred BUY/SELL trades (drv_inferred_action)
+    # only ever got their 20-day "did it work out" score computed once, right
+    # when the trade was first inferred -- before enough time had passed to
+    # know the answer. Nothing revisited older trades once they matured,
+    # so scoring silently stalled (found stale for 3+ months) until someone
+    # manually re-ran `derive_inferred_actions --full`. This sweep catches
+    # up every night instead.
+    log.info("nightly: inferred-action forward-return backfill starting")
+    try:
+        from etl.db import session_scope
+        from etl.derive_inferred_actions import backfill_maturing_forward_returns
+        with session_scope() as s:
+            n = backfill_maturing_forward_returns(s)
+        log.info("nightly: inferred-action forward-return backfill done: "
+                 "%d date(s) swept", n)
+    except Exception:
+        log.exception("nightly: inferred-action forward-return backfill crashed")
+
     # 2026-08-15: was a manual "python -m etl.derive_vlm_intraday_curve" step
     # the user had to remember to re-run periodically. User: "you have to
     # schedule it or do something. i forget to run it." Now rides the

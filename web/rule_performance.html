@@ -22,15 +22,21 @@
         .perf-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 13px;
+            font-size: 10.5px;
         }
         .perf-table thead {
             background: #fafaf8;
             position: sticky;
             top: 0;
         }
-        .perf-table th {
-            padding: 12px;
+        /* The compound .scrollable-table-container .perf-table selectors
+           below are needed, not decorative -- .scrollable-table-container
+           table th/td in styles.css (padding:12px) is MORE specific than a
+           plain .perf-table th/td rule (two element selectors vs one), so
+           without them this padding reduction silently loses the cascade. */
+        .perf-table th,
+        .scrollable-table-container .perf-table th {
+            padding: 4px 10px;
             text-align: left;
             border-bottom: 1px solid var(--border);
             font-weight: 600;
@@ -40,8 +46,9 @@
         .perf-table th:hover {
             background: #f0f0ed;
         }
-        .perf-table td {
-            padding: 10px 12px;
+        .perf-table td,
+        .scrollable-table-container .perf-table td {
+            padding: 3px 10px;
             border-bottom: 1px solid var(--border);
         }
         .perf-table tbody tr:hover {
@@ -133,7 +140,7 @@
         .edge-axis { position:relative; height:14px; margin-bottom:2px; }
         .edge-axis .tick { position:absolute; left:50%; top:0; bottom:0; width:1px; background:var(--border); }
         .edge-axis .tick-label { position:absolute; left:50%; top:-1px; transform:translateX(-50%); font-size:10px; color:var(--text-3); }
-        .edge-row { display:grid; grid-template-columns:minmax(140px,26%) 1fr; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid var(--border); }
+        .edge-row { display:grid; grid-template-columns:minmax(140px,26%) 1fr; align-items:center; gap:10px; padding:3px 0; border-bottom:1px solid var(--border); }
         .edge-row-rules { grid-template-columns:minmax(110px,1fr) auto auto minmax(120px,2fr); }
         .edge-row-head { border-bottom:none; padding-bottom:0; }
         .edge-col-head { font-size:10px; font-weight:600; color:var(--text-3); text-align:center; }
@@ -145,12 +152,12 @@
         .edge-row .edge-tag { display:inline-block; font-size:9px; font-weight:700; letter-spacing:0.03em; padding:1px 5px; border-radius:4px; margin-left:5px; vertical-align:1px; }
         .edge-row .edge-tag.buy { background:#eaf1fb; color:#2a78d6; }
         .edge-row .edge-tag.sell { background:#fceeee; color:#e34948; }
-        .edge-bar-track { position:relative; height:18px; }
+        .edge-bar-track { position:relative; height:14px; }
         .edge-bar-track .mid { position:absolute; left:50%; top:0; bottom:0; width:1px; background:var(--border); }
-        .edge-bar-track .bar { position:absolute; top:2px; height:14px; border-radius:3px; }
+        .edge-bar-track .bar { position:absolute; top:3px; height:7px; border-radius:3px; }
         .edge-bar-track .bar.pos { left:50%; background:#2a78d6; }
         .edge-bar-track .bar.neg { right:50%; background:#e34948; }
-        .edge-bar-track .val { position:absolute; top:0; font-size:11px; font-weight:600; white-space:nowrap; }
+        .edge-bar-track .val { position:absolute; top:1px; font-size:11px; font-weight:600; white-space:nowrap; }
         .edge-bar-track .val.pos { color:#2a78d6; }
         .edge-bar-track .val.neg { color:#e34948; }
         .edge-loading { padding:14px; text-align:center; color:var(--text-3); font-size:12px; }

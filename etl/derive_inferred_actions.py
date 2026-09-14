@@ -28,6 +28,14 @@ Two modes:
     cheap, safe to call from derive_all() on every load.
   - full_history=True: diffs every consecutive snapshot pair in history —
     for the one-time backfill: `python -m etl.derive_inferred_actions --full`.
+
+2026-09-13: fwd_5d_pct/fwd_20d_pct only ever got computed once, at insert
+time -- too early to have a real answer, so they landed NULL forever unless
+someone manually re-ran `--full`. backfill_maturing_forward_returns() sweeps
+already-inferred trades and fills in any that have matured since; it now
+runs automatically every night from etl/scheduler.py::run_nightly_outcomes,
+so this should no longer need a manual re-run. Ad-hoc: `python -m
+etl.derive_inferred_actions --backfill-forward-returns`.
 """
 from __future__ import annotations
 
@@ -229,6 +237,35 @@ def _write_forward_returns(session: Session, dates: list[date]) -> None:
     """), {"dates": dates})
 
 
+def backfill_maturing_forward_returns(session: Session) -> int:
+    """2026-09-13 fix: fwd_5d_pct/fwd_20d_pct were only ever computed once,
+    at the moment a trade was first inferred -- before enough forward price
+    history could possibly exist, so they landed NULL and nothing ever came
+    back to fill them in once the wait was over. Only a manual full-history
+    re-run (`--full`) ever re-scored old rows, so the scored data silently
+    froze at whatever date someone last ran that by hand (observed: 3+
+    months stale). This sweeps every as_of_date that still has an
+    unscored row and retries `_write_forward_returns` on it -- a no-op for
+    dates still too recent to score (LEAD just returns NULL again), a real
+    fill-in for dates that have matured since. Cheap: bounded by the number
+    of distinct incomplete dates, not total row count. Safe to call nightly.
+    """
+    dates = [d for (d,) in session.execute(text("""
+        SELECT DISTINCT as_of_date FROM drv_inferred_action
+        WHERE fwd_5d_pct IS NULL OR fwd_20d_pct IS NULL
+    """)).all()]
+    if not dates:
+        return 0
+    _write_forward_returns(session, dates)
+    newly_scored = session.execute(text("""
+        SELECT COUNT(*) FROM drv_inferred_action
+        WHERE as_of_date = ANY(:dates) AND fwd_20d_pct IS NOT NULL
+    """), {"dates": dates}).scalar()
+    log.info("backfill_maturing_forward_returns: swept %d incomplete date(s), "
+             "%d row(s) now have a 20d score", len(dates), newly_scored or 0)
+    return len(dates)
+
+
 def _write_rows(session: Session, rows: list[dict]) -> int:
     """Idempotent bulk write: one DELETE covering every recomputed date, one
     INSERT, one forward-return backfill pass — not per snapshot pair, so a
@@ -294,11 +331,20 @@ def main() -> int:
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--full", action="store_true",
                   help="Diff every consecutive snapshot pair in history (one-time backfill)")
+    p.add_argument("--backfill-forward-returns", action="store_true",
+                  help="Only sweep already-inferred trades for newly-matured "
+                       "fwd_5d_pct/fwd_20d_pct scores (see run_nightly_outcomes "
+                       "in etl/scheduler.py, which now does this automatically)")
     args = p.parse_args()
     from etl.db import session_scope
     from etl._logging import setup_logging
     setup_logging()
     with session_scope() as s:
+        if args.backfill_forward_returns:
+            n = backfill_maturing_forward_returns(s)
+            s.commit()
+            print(f"drv_inferred_action: swept {n} incomplete date(s)")
+            return 0
         n = derive_inferred_actions(s, full_history=args.full)
         s.commit()
         print(f"drv_inferred_action: {n} rows written")
