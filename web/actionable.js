@@ -61,6 +61,13 @@ const state = {
                          // trade_mode_diff (Trade2) and watchlist_only (WL) are its sibling
                          // toggles, same seg-ctrl group; not in this literal, set near
                          // page init alongside trade_mode (search "always starts ON").
+    my_only: false,      // 2026-09-13: "My" toggle -- EXCLUSIVE of trade_mode/trade_mode_diff/
+                         // watchlist_only (clicking it forces those off), not OR'd like those
+                         // three are with each other. Shows only ref_my_stocks symbols that
+                         // ALSO clear the Trade (strict) or Trade2 (non-strict) qualifying bar
+                         // -- see matchesBaseFilters. User: "My symbols should not be included
+                         // in regular action recommendations unless they are part of the other
+                         // sources."
     asset_class: '',     // '' = all; else exact match on r._assetClass (normalized real_asset_class)
     symbols_multi: [],   // multi-symbol filter popup — exact-match list, empty = no filter
     etfchg_only: false,  // EC pill — recent ETF Pro Change event (etfchg_date), informational only
@@ -80,6 +87,9 @@ const state = {
   watchlistExpanded: false,
   current: null,
   sourceMethods: {},   // source_code -> base_weight_method (Metric-column sort)
+  mySymbols: new Set(), // 2026-09-13: upper-cased tos_symbol set from ref_my_stocks
+                        // (active='Y'), loaded once in loadSources() and kept current
+                        // by the My-list quick-add popover (openMyPop/_wireMyPop below).
   buysellSeq: {},      // buysell code -> seq from ref_param_lookup (priority sort)
   agreementScorecard: null, // TASK_69: {agreement_class -> avg_fwd_20d} cache
   // quadFactors (was: cached from /api/quad/band-factors for the removed
@@ -1391,6 +1401,23 @@ async function loadSources() {
         for (const r of rows) state.sourceMethods[r.source_code] = r.base_weight_method;
       } catch (_) { state.sourceMethods = {}; }
     })(),
+    // 2026-09-13: "My" list (ref_my_stocks) -- reuses the generic /api/ref/*
+    // CRUD (no dedicated endpoint) since ref_my_stocks already exists for
+    // this exact purpose (2026-08-18 sticky_tier1 addition). Membership is
+    // sticky_tier1='Y', NOT active='Y' -- active is the app's whole tracking
+    // universe (~1049 rows, bulk-seeded from the Tickers workbook), while
+    // sticky_tier1 is the actual "my own symbols, always show me these
+    // regardless of Hedgeye" override (see etl/derive_symbol_tier.py's own
+    // docstring) -- using active here would show basically everything.
+    (async () => {
+      try {
+        const resp = await fetchJson('/api/ref/ref_my_stocks?limit=5000');
+        const list = (resp && resp.rows) || [];
+        state.mySymbols = new Set(
+          list.filter(r => r.sticky_tier1 === 'Y').map(r => (r.tos_symbol || '').toUpperCase())
+        );
+      } catch (_) { state.mySymbols = new Set(); }
+    })(),
     // Rule track-record (v_rule_scorecard) keyed by composite code, for the
     // edge badges on fired-rule pills. Diagnostic only while history is shallow.
     (async () => {
@@ -1754,7 +1781,9 @@ async function loadActionable(opts) {
   // trade_mode_diff (2026-08-28) doesn't itself surface suppressed rows
   // (it's buys-only by construction, see _isTradeModeDiffBuy), but fetching
   // them anyway keeps this consistent/harmless if that ever changes.
-  if ((state.filters.trade_mode || state.filters.trade_mode_diff) && !state.filters.show_hidden) {
+  // my_only reuses Trade/Trade2's qualifying logic (_matchesTradeMode/Diff),
+  // so it needs the same suppressed-row fetch those two need.
+  if ((state.filters.trade_mode || state.filters.trade_mode_diff || state.filters.my_only) && !state.filters.show_hidden) {
     params.append('show_suppressed', 'true');
   }
   try {
@@ -2022,6 +2051,11 @@ function _isTradeModeStopBreach(r) {
 function _matchesTradeMode(r) {
   return _isTradeModeQualifyingBuy(r) || _isTradeModeHeldSaSell(r) || _isTradeModeStopBreach(r);
 }
+// "My" list (ref_my_stocks) membership -- state.mySymbols is loaded once in
+// loadSources() and kept current by the quick-add popover (see openMyPop).
+function _isMySymbol(r) {
+  return !!(r.tos_symbol && state.mySymbols && state.mySymbols.has(r.tos_symbol.toUpperCase()));
+}
 // "Non-Strict" button (tradeModeDiffBtn) -- current Trade Mode stocks
 // WITHOUT the ones Strict also keeps: loose-qualifying buys minus
 // strict-qualifying buys. Held SA-sells/stop-breaches are identical under
@@ -2076,7 +2110,18 @@ function matchesBaseFilters(r) {
   // checked Trade's criteria when more than one was on, silently ignoring
   // the rest). WL reuses _buyNoiseGated — the same unheld/not-yet-
   // Technical-ripe gate the collapsed "Watchlist (n)" band already uses.
-  if (state.filters.trade_mode || state.filters.trade_mode_diff || state.filters.watchlist_only) {
+  // 2026-09-13: "My" (ref_my_stocks) is EXCLUSIVE of Trade/Trade2/WL, not
+  // OR'd in like those three are with each other -- myOnlyBtn's click
+  // handler forces trade_mode/trade_mode_diff/watchlist_only off before
+  // setting my_only, so this branch and the one below never both apply.
+  // A My-list symbol only shows once it clears the SAME bar Trade (strict)
+  // or Trade2 (non-strict) already require -- My just narrows that result
+  // down to your tracked list, so it never "leaks" untracked/unactionable
+  // rows into the regular recommendations. See _isMySymbol below.
+  if (state.filters.my_only) {
+    if (!_isMySymbol(r)) return false;
+    if (!_matchesTradeMode(r) && !_matchesTradeModeDiff(r)) return false;
+  } else if (state.filters.trade_mode || state.filters.trade_mode_diff || state.filters.watchlist_only) {
     const tmOk = state.filters.trade_mode && _matchesTradeMode(r);
     const tmdOk = state.filters.trade_mode_diff && _matchesTradeModeDiff(r);
     const wlOk = state.filters.watchlist_only && _buyNoiseGated(r);
@@ -2574,6 +2619,8 @@ function _syncTradeModeButtons() {
   if (tradeModeDiffBtn) tradeModeDiffBtn.classList.toggle('active', !!f.trade_mode_diff);
   const watchlistOnlyBtn = $('watchlistOnlyBtn');
   if (watchlistOnlyBtn) watchlistOnlyBtn.classList.toggle('active', !!f.watchlist_only);
+  const myOnlyBtn = $('myOnlyBtn');
+  if (myOnlyBtn) myOnlyBtn.classList.toggle('active', !!f.my_only);
 }
 
 function syncFilterUi() {
@@ -2631,6 +2678,7 @@ function _resetToggleFiltersForLookup() {
   f.trade_mode = false;
   f.trade_mode_diff = false;
   f.watchlist_only = false;
+  f.my_only = false;
   syncFilterUi();
 }
 
@@ -7792,6 +7840,132 @@ function initWatchQuickBtn() {
   });
 }
 
+// ---- "My" list quick-add popover (2026-09-13) -- toolbar-level, not a
+// per-row grid button like conviction/watch above: anchored to the "+" next
+// to the My seg-ctrl button. Manages ref_my_stocks via the existing generic
+// /api/ref/{table} CRUD (no dedicated endpoint needed) -- PUT upserts so
+// re-adding a previously-removed symbol reactivates its existing row
+// (notes/sticky_tier1 preserved) instead of hitting the PK conflict a plain
+// POST would. Removing sets active='N' rather than hard-deleting, same
+// reasoning as the /ref screen's own `active` column.
+let _myPopOpen = false;
+
+function closeMyPop() {
+  _myPopOpen = false;
+  const pop = $('myPop');
+  if (pop) pop.style.display = 'none';
+}
+
+function _positionMyPop(pop, anchorEl) {
+  const rect = anchorEl.getBoundingClientRect();
+  let top = rect.bottom + 4;
+  if (top + pop.offsetHeight > window.innerHeight - 8) {
+    top = Math.max(8, rect.top - pop.offsetHeight - 4);
+  }
+  let left = rect.left;
+  if (left + pop.offsetWidth > window.innerWidth - 8) {
+    left = Math.max(8, window.innerWidth - pop.offsetWidth - 8);
+  }
+  pop.style.top = top + 'px';
+  pop.style.left = left + 'px';
+}
+
+function _myPopHtml() {
+  const syms = Array.from(state.mySymbols || []).sort();
+  const list = syms.length
+    ? syms.map(s => `<span class="my-chip">${escapeHtml(s)}<button class="my-chip-x" data-my-remove="${escapeHtml(s)}" title="Remove from My list">&times;</button></span>`).join('')
+    : `<div style="color:#94a3b8;">No symbols yet.</div>`;
+  return `
+    <div class="mp-title">My List</div>
+    <div class="mp-addrow">
+      <input type="text" id="mpSymInput" placeholder="Symbol…" maxlength="12" autocomplete="off">
+      <button class="btn" id="mpAddBtn">Add</button>
+    </div>
+    <div class="mp-list">${list}</div>
+    <div class="mp-status" id="mpStatus"></div>`;
+}
+
+async function _addMySymbol(sym) {
+  const statusEl = document.getElementById('mpStatus');
+  const s = (sym || '').toUpperCase().trim();
+  if (!s) { if (statusEl) statusEl.textContent = 'Enter a symbol.'; return; }
+  try {
+    // active='Y' too: a brand-new symbol (not yet anywhere in ref_my_stocks)
+    // needs to join the tracking universe, not just get pinned within it.
+    // For a symbol already active, this is a harmless no-op re-set.
+    await fetchJson('/api/ref/ref_my_stocks', {
+      method: 'PUT',
+      body: JSON.stringify({ tos_symbol: s, active: 'Y', sticky_tier1: 'Y' }),
+    });
+    state.mySymbols.add(s);
+    const pop = $('myPop');
+    if (pop) { pop.innerHTML = _myPopHtml(); _wireMyPop(); }
+    applyClientFilter();
+  } catch (e) {
+    if (statusEl) statusEl.textContent = 'Add failed: ' + e.message;
+  }
+}
+
+async function _removeMySymbol(sym) {
+  const statusEl = document.getElementById('mpStatus');
+  try {
+    // Unpin only -- leave active alone so the symbol stays in the general
+    // tracking universe exactly as it was before it got pinned.
+    await fetchJson('/api/ref/ref_my_stocks', {
+      method: 'PUT',
+      body: JSON.stringify({ tos_symbol: sym, sticky_tier1: 'N' }),
+    });
+    state.mySymbols.delete(sym);
+    const pop = $('myPop');
+    if (pop) { pop.innerHTML = _myPopHtml(); _wireMyPop(); }
+    applyClientFilter();
+  } catch (e) {
+    if (statusEl) statusEl.textContent = 'Remove failed: ' + e.message;
+  }
+}
+
+function _wireMyPop() {
+  const addBtn = document.getElementById('mpAddBtn');
+  const input = document.getElementById('mpSymInput');
+  if (addBtn && input) {
+    addBtn.addEventListener('click', () => _addMySymbol(input.value));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); _addMySymbol(input.value); }
+    });
+  }
+  const pop = $('myPop');
+  if (pop) {
+    pop.querySelectorAll('[data-my-remove]').forEach(el => {
+      el.addEventListener('click', () => _removeMySymbol(el.dataset.myRemove));
+    });
+  }
+}
+
+function openMyPop(anchorEl) {
+  const pop = $('myPop');
+  if (!pop) return;
+  if (_myPopOpen && pop.style.display === 'block') {
+    closeMyPop();  // clicking the + again toggles it off
+    return;
+  }
+  _myPopOpen = true;
+  pop.innerHTML = _myPopHtml();
+  pop.style.display = 'block';
+  _positionMyPop(pop, anchorEl);
+  _wireMyPop();
+  const input = document.getElementById('mpSymInput');
+  if (input) input.focus();
+}
+
+function initMyPop() {
+  document.addEventListener('click', (e) => {
+    if (!_myPopOpen) return;
+    const pop = $('myPop');
+    if (pop && (pop.contains(e.target) || e.target.closest('#myManageBtn'))) return;
+    closeMyPop();
+  });
+}
+
 // ---- Old toolbar "Watching" summary panel REMOVED 2026-09-02 -- user:
 // "move watchlist from filter bar to the panels above." Its content
 // (every watched symbol's status) now lives in a Hedgeye panel tile
@@ -7939,6 +8113,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initGridSymClick();
   initConvictionQuickBtn();
   initWatchQuickBtn();
+  initMyPop();
   initEcoBarClick();
   _initColMenu();
   _initMultiSymPop();
@@ -8006,6 +8181,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   state.filters.trade_mode = true;
   state.filters.trade_mode_diff = false;
   state.filters.watchlist_only = false;
+  state.filters.my_only = false;
 
   await loadSources();
   await loadDates();
@@ -8213,6 +8389,27 @@ document.addEventListener('DOMContentLoaded', async () => {
       applyClientFilter();
     });
   }
+  // 2026-09-13: "My" button -- same seg-ctrl group, but EXCLUSIVE (see
+  // matchesBaseFilters' own comment): turning it on forces Trade/Trade2/WL
+  // off instead of combining with them, same "replace, don't add" behavior
+  // the Source dropdown already has (_resetToggleFiltersForLookup). Needs
+  // the same full reload Trade/Trade2 do (show_suppressed fetch-param
+  // dependency, since it reuses their qualifying logic).
+  const myOnlyBtn = $('myOnlyBtn');
+  if (myOnlyBtn) {
+    myOnlyBtn.addEventListener('click', () => {
+      state.filters.my_only = !state.filters.my_only;
+      if (state.filters.my_only) {
+        state.filters.trade_mode = false;
+        state.filters.trade_mode_diff = false;
+        state.filters.watchlist_only = false;
+      }
+      _syncTradeModeButtons();
+      loadActionable();
+    });
+  }
+  const myManageBtn = $('myManageBtn');
+  if (myManageBtn) myManageBtn.addEventListener('click', () => openMyPop(myManageBtn));
   // Debounced ~150ms trailing: typing a symbol shouldn't re-render the full grid + tape on every keystroke.
   let _symbolSearchTimer = null;
   $('symbolSearch').addEventListener('input', (e) => {
