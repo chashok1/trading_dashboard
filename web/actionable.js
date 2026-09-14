@@ -50,6 +50,8 @@ const state = {
     account: '',
     held_only: false,
     show_hidden: false,  // when true, reveals suppressed/$0/no-action/acted/unheld-remove rows
+    watch_only: false,   // 2026-09-14: filter to rows with an active ref_watch entry (r.watch_id) --
+                         // same set the grid's own 🔔 badge marks (see matchesBaseFilters)
     symbol_search: '',   // symbol search text filter
     conviction: 'any',   // 'any' | 'multi' | 'proven'
     actionable_only: true, // hides HOLD and NONE rows by default
@@ -2148,6 +2150,9 @@ function matchesBaseFilters(r) {
   if (state.filters.held_only) {
     if (!r.held_today) return false;
   }
+  if (state.filters.watch_only) {
+    if (!r.watch_id) return false;
+  }
   if (state.filters.conviction === 'multi') {
     if (_agreeingSources(r) < 2) return false;
   } else if (state.filters.conviction === 'proven') {
@@ -2631,6 +2636,11 @@ function syncFilterUi() {
     heldOnly.classList.toggle('active', !!f.held_only);
     heldOnly.setAttribute('data-tip', f.held_only ? 'Positions Only  →  Show All' : 'All Symbols  →  Positions Only');
   }
+  const watchOnly = $('watchOnlyBtn');
+  if (watchOnly) {
+    watchOnly.classList.toggle('active', !!f.watch_only);
+    watchOnly.setAttribute('data-tip', f.watch_only ? 'Watch List Only  →  All Symbols' : 'All Symbols  →  Watch List Only');
+  }
   const acctFilter = $('accountFilter'); if (acctFilter) acctFilter.value = f.account || '';
   const showHidden = $('showHidden');
   if (showHidden) {
@@ -2675,6 +2685,7 @@ function _resetToggleFiltersForLookup() {
   f.held_only = false;
   f.show_hidden = true;
   f.actionable_only = false;
+  f.watch_only = false;
   f.trade_mode = false;
   f.trade_mode_diff = false;
   f.watchlist_only = false;
@@ -2685,7 +2696,7 @@ function _resetToggleFiltersForLookup() {
 function clearAllFilters() {
   const f = state.filters;
   f.action = ''; f.source = ''; f.account = ''; f.held_only = false;
-  f.show_hidden = false; f.actionable_only = true;
+  f.show_hidden = false; f.actionable_only = true; f.watch_only = false;
   f.symbol_search = ''; f.conviction = 'any';
   f.bull_prob_min = 0;
   f.agreement_class = '';
@@ -8316,6 +8327,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyColumnVisibility();
     // show_hidden also controls whether acted/suppressed rows are fetched from the API
     loadActionable();
+  });
+  $('watchOnlyBtn').addEventListener('click', () => {
+    state.filters.watch_only = !state.filters.watch_only;
+    $('watchOnlyBtn').classList.toggle('active', state.filters.watch_only);
+    $('watchOnlyBtn').setAttribute('data-tip', state.filters.watch_only ? 'Watch List Only  →  All Symbols' : 'All Symbols  →  Watch List Only');
+    applyClientFilter();
   });
   // Quad filter -- multi-select toggle group (unlike heldOnly/showHidden
   // above, which are independent booleans on DIFFERENT buttons; Q1-Q4

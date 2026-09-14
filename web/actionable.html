@@ -1400,6 +1400,13 @@
             <button id="showHidden" data-tip="Active Only  →  Show Hidden">Hidden</button>
             <button id="heldOnly" data-tip="All Symbols  →  Positions Only">Held</button>
             <button id="actionableOnlyBtn" data-tip="Actionable Only  →  Show All">Actionable</button>
+            <!-- 2026-09-14, user: "add a small filter button to see watch list
+                 stocks, which enter them through using bell icon" -- filters
+                 to rows carrying an active ref_watch entry (r.watch_id truthy,
+                 same condition that renders the 🔔 badge in the grid's own
+                 watch column). Pure client-side filter, no API change --
+                 see matchesBaseFilters in web/actionable.js. -->
+            <button id="watchOnlyBtn" data-tip="All Symbols  →  Watch List Only">🔔</button>
           </div>
           <!-- TASK_124: Trade Mode — collapse the grid to just qualifying buys +
                held SA sells + stop breaches. Not persisted -- always starts ON
@@ -1924,7 +1931,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260914a"></script>
+  <script src="/static/actionable.js?v=20260914b"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>
