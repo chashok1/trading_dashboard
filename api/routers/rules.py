@@ -456,7 +456,7 @@ def get_my_actions(limit: int = Query(200, ge=1, le=2000)):
     — the official track record; no manual ACT-button logging involved.
     stance='FOLLOWED'|'CONTRADICTED'|'NO_SIGNAL' vs that date's
     drv_actionable.consolidated_action. Returns
-    {summary, by_stance[], by_action_family[], recent[]}.
+    {summary, by_stance[], by_action_family[], by_stance_action[], recent[]}.
     The older transaction-log-based v_user_action_performance (TASK_71) is
     left intact in the schema for comparison but no longer served here.
     """
@@ -495,10 +495,29 @@ def get_my_actions(limit: int = Query(200, ge=1, le=2000)):
             FROM v_inferred_action_performance
             GROUP BY inferred_action ORDER BY inferred_action
         """)).mappings().all()
+        # stance x buy/sell together, with a direction-aware "did this look
+        # right" count baked in (BUY: rose afterward; SELL: fell afterward)
+        # -- avoids blending FOLLOWED/CONTRADICTED/NO_SIGNAL or BUY/SELL into
+        # one misleading average (2026-09-13, same fix as the sell-behavior
+        # investigation: mixed populations hid the real story).
+        by_stance_action = s.execute(text("""
+            SELECT stance, inferred_action AS family, COUNT(*)          AS n,
+                   ROUND(AVG(fwd_5d_pct)::numeric, 2)                   AS avg_fwd_5d,
+                   ROUND(AVG(fwd_20d_pct)::numeric, 2)                  AS avg_fwd_20d,
+                   COUNT(*) FILTER (WHERE
+                       (inferred_action = 'BUY'  AND fwd_20d_pct > 0) OR
+                       (inferred_action = 'SELL' AND fwd_20d_pct < 0))  AS n_right,
+                   COUNT(*) FILTER (WHERE
+                       (inferred_action = 'BUY'  AND fwd_20d_pct < 0) OR
+                       (inferred_action = 'SELL' AND fwd_20d_pct > 0))  AS n_wrong
+            FROM v_inferred_action_performance
+            GROUP BY stance, inferred_action ORDER BY stance, inferred_action
+        """)).mappings().all()
         return {
             "summary": dict(summ) if summ else {},
             "by_stance": [dict(r) for r in by_stance],
             "by_action_family": [dict(r) for r in by_family],
+            "by_stance_action": [dict(r) for r in by_stance_action],
             "recent": [dict(r) for r in recent],
         }
 

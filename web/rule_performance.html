@@ -117,7 +117,7 @@
         .edge-report-header .edge-header-title { grid-column:1 / span 2; display:flex; gap:12px; align-items:center; flex-wrap:wrap; min-width:0; }
         .edge-report-header .edge-trades-label { grid-column:3 / span 1; font-size:13.5px; font-weight:700; color:var(--text-1); }
         .edge-report-header #edgeReportMeta { grid-column:4 / span 1; text-align:right; }
-        .edge-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:0 0 2px; align-items:stretch; }
+        .edge-stats { display:grid; grid-template-columns:0.81fr 0.81fr 1.3fr 1.3fr; gap:10px; margin:0 0 2px; align-items:stretch; }
         .edge-stat { border:1px solid var(--border); border-radius:6px; padding:8px 14px; background:var(--card-bg); }
         .edge-stat-label { font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-3); margin-bottom:6px; }
         .edge-stat-value { font-size:22px; font-weight:700; color:var(--text-1); }
@@ -128,6 +128,39 @@
         .edge-stat-label-row .edge-stat-sub { margin-top:0; text-align:right; }
         .edge-mini-meter { position:relative; flex:1; min-width:24px; height:7px; border-radius:4px; background:var(--act-neutral-bg); overflow:hidden; }
         .edge-mini-meter > span { display:block; height:100%; border-radius:4px; background:#0ca30c; }
+
+        /* Recent trades: right-vs-wrong chips, one per stance */
+        .rt-chip-row { display:flex; flex-wrap:wrap; gap:8px; }
+        .rt-chip { border:1px solid var(--border); border-radius:6px; padding:5px 10px; background:var(--card-bg); }
+        .rt-chip-label { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:2px; }
+        .rt-chip-label.rt-followed { color:#166534; }
+        .rt-chip-label.rt-contradicted { color:#d03b3b; }
+        .rt-chip-label.rt-nosignal { color:#64748b; }
+        .rt-chip-val { font-size:12px; font-weight:600; }
+
+        /* Edge Report trade tiles: same right/wrong-by-stance idea, compact */
+        .edge-tile-flex { display:flex; gap:10px; align-items:stretch; }
+        .edge-tile-main { flex:1; min-width:0; }
+        .edge-stance-breakdown {
+            flex:none; min-width:128px; padding-left:9px; border-left:1px dashed var(--border);
+            display:flex; flex-direction:column; justify-content:center; gap:3px;
+        }
+        .edge-stance-row { display:flex; justify-content:space-between; align-items:baseline; gap:6px; font-size:10px; }
+        .edge-stance-nums { display:flex; align-items:baseline; gap:5px; }
+        .edge-stance-pct { font-weight:700; font-size:11px; min-width:28px; text-align:right; }
+        /* Fixed-width number columns so the "/" lines up across all three
+           rows regardless of how many digits each count has. */
+        .edge-stance-count { display:inline-flex; align-items:baseline; font-variant-numeric:tabular-nums; color:var(--text-3); font-size:9px; }
+        .edge-stance-count > span:first-child { display:inline-block; min-width:16px; text-align:right; }
+        .edge-stance-count > span:last-child { display:inline-block; min-width:16px; text-align:left; }
+        .edge-stance-count.big { color:inherit; font-size:inherit; }
+        .edge-stance-count.big > span:first-child,
+        .edge-stance-count.big > span:last-child { min-width:28px; }
+        .edge-stance-count .slash { color:var(--text-3); }
+        .edge-stance-label { font-weight:600; white-space:nowrap; }
+        .edge-stance-label.rt-followed { color:#166534; }
+        .edge-stance-label.rt-contradicted { color:#d03b3b; }
+        .edge-stance-label.rt-nosignal { color:#64748b; }
         .edge-block { margin-top:18px; }
         .edge-block h4 { margin:0 0 2px; font-size:13.5px; font-weight:700; color:var(--text-1); }
         .edge-block-desc { margin:0 0 10px; font-size:12px; color:var(--text-2); }
@@ -215,7 +248,6 @@
                     <strong style="font-size:15px;">Edge Report</strong>
                     <span style="color:var(--text-3);font-size:12px;">What's actually paying off — rules, factors, and your own trades, measured against what really happened afterward, not what the setup looked like at the time.</span>
                 </span>
-                <strong class="edge-trades-label">How your own trades have done</strong>
                 <span id="edgeReportMeta" style="font-size:12px;color:var(--text-3);"></span>
             </div>
             <div class="edge-stats">
@@ -267,6 +299,26 @@
                     </thead>
                     <tbody id="myActionsBody">
                         <tr><td colspan="7" style="text-align:center;padding:14px;color:var(--text-3);">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom:12px;">
+            <div class="performance-header">
+                <strong style="font-size:15px;">Recent trades</strong>
+                <span style="color:var(--text-3);font-size:12px;">Last 30 days. The full 20-day verdict needs about a month to arrive, so newer trades show an early 5-day read instead of a blank dash — "too soon" means exactly that, not missing data.</span>
+                <span style="flex:1"></span>
+                <span id="recentTradesSummary" style="font-size:12px;color:var(--text-3);"></span>
+            </div>
+            <div id="recentTradesTally" style="padding:2px 0 8px;font-size:12.5px;"></div>
+            <div class="scrollable-table-container" style="max-height:220px;">
+                <table class="perf-table">
+                    <thead>
+                        <tr><th>When</th><th>Symbol</th><th>Trade</th><th>Stance</th><th>5d</th><th>20d</th></tr>
+                    </thead>
+                    <tbody id="recentTradesBody">
+                        <tr><td colspan="6" style="text-align:center;padding:14px;color:var(--text-3);">Loading…</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -434,7 +486,7 @@
 
     <script src="/static/_common.js"></script>
     <script src="/static/actions.js"></script>
-    <script src="/static/rule_performance.js?v=20260913q"></script>
+    <script src="/static/rule_performance.js?v=20260913x"></script>
     <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>

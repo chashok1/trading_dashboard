@@ -74,7 +74,9 @@ function renderEdgeStats(scorecard) {
         const val = document.getElementById(valId);
         const sub = document.getElementById(subId);
         if (val) {
-            val.textContent = `${work} / ${total}`;
+            // Fixed-width number columns so the "/" lines up with the
+            // adjacent Sell/Buy rules box, whatever the digit counts are.
+            val.innerHTML = `<span class="edge-stance-count big"><span>${work}</span><span class="slash">/</span><span>${total}</span></span>`;
             val.className = 'edge-stat-value ' + (total === 0 ? '' : work === total ? 'er-good' : work === 0 ? 'er-critical' : '');
         }
         if (sub) sub.textContent = total === 0
@@ -191,11 +193,33 @@ function renderEdgeMyTrades(myActions) {
     const fam = myActions.by_action_family || [];
     const buy = fam.find(f => f.family === 'BUY');
     const sell = fam.find(f => f.family === 'SELL');
+    const byStanceAction = myActions.by_stance_action || [];
     // For a sell, this is the STOCK's own forward return, not your P&L --
     // a decline after you sold means you got out ahead of it (good timing),
     // a rise means the stock kept going without you (bad timing). So the
     // good/bad color logic is inverted vs. a buy. `invert` flips it.
-    const tile = (label, r, invert) => {
+    const stanceBreakdown = family => {
+        const order = [
+            ['FOLLOWED', 'Followed', 'rt-followed'],
+            ['CONTRADICTED', 'Contradicted', 'rt-contradicted'],
+            ['NO_SIGNAL', 'No signal', 'rt-nosignal'],
+        ];
+        const parts = order.map(([stance, label, cls]) => {
+            const row = byStanceAction.find(r => r.stance === stance && r.family === family);
+            const nr = row ? Number(row.n_right) : 0;
+            const nw = row ? Number(row.n_wrong) : 0;
+            if (!row || nr + nw === 0) return '';
+            const pct = Math.round(100 * nr / (nr + nw));
+            const pctCls = pct >= 50 ? 'er-pos' : 'er-neg';
+            return `<div class="edge-stance-row"><span class="edge-stance-label ${cls}">${label}</span>`
+                + `<span class="edge-stance-nums">`
+                + `<span class="edge-stance-pct ${pctCls}">${pct}%</span>`
+                + `<span class="edge-stance-count"><span>${nr}</span><span class="slash">/</span><span>${nw}</span></span>`
+                + `</span></div>`;
+        }).filter(Boolean);
+        return parts.length ? `<div class="edge-stance-breakdown">${parts.join('')}</div>` : '';
+    };
+    const tile = (label, r, invert, family) => {
         if (!r || !r.n) {
             return `<div class="edge-stat-label-row"><span class="edge-stat-label">${label}</span><span class="edge-stat-sub">No inferred trades yet</span></div>`;
         }
@@ -212,19 +236,24 @@ function renderEdgeMyTrades(myActions) {
         const wr = rawWr != null ? (invert ? Math.round((100 - rawWr) * 10) / 10 : rawWr) : null;
         const wrLabel = invert ? 'good exits' : 'win';
         const title = invert ? ' title="Negative = the stock fell after you sold (good timing); positive = it kept rising without you"' : '';
-        return `<div class="edge-stat-label-row">
-                <span class="edge-stat-label">${label}</span>
-                <span class="edge-stat-sub">${r.n} trades${wr != null ? ` · ${wr}% ${wrLabel}` : ''}</span>
+        return `<div class="edge-tile-flex">
+            <div class="edge-tile-main">
+                <div class="edge-stat-label-row">
+                    <span class="edge-stat-label">${label}</span>
+                    <span class="edge-stat-sub">${r.n} trades${wr != null ? ` · ${wr}% ${wrLabel}` : ''}</span>
+                </div>
+                <div class="edge-stat-value-row">
+                    <span class="edge-stat-value ${cls}"${title}>${avg >= 0 ? '+' : ''}${avg.toFixed(2)}%</span>
+                    ${wr != null ? `<span class="edge-mini-meter" title="${wr}% ${wrLabel}"><span style="width:${wr}%;background:${barColor};"></span></span>` : ''}
+                </div>
             </div>
-            <div class="edge-stat-value-row">
-                <span class="edge-stat-value ${cls}"${title}>${avg >= 0 ? '+' : ''}${avg.toFixed(2)}%</span>
-                ${wr != null ? `<span class="edge-mini-meter" title="${wr}% ${wrLabel}"><span style="width:${wr}%;background:${barColor};"></span></span>` : ''}
-            </div>`;
+            ${stanceBreakdown(family)}
+        </div>`;
     };
     const buyEl = document.getElementById('edgeTradeBuy');
     const sellEl = document.getElementById('edgeTradeSell');
-    if (buyEl) buyEl.innerHTML = tile('When you buy', buy, false);
-    if (sellEl) sellEl.innerHTML = tile('When you reduce or sell', sell, true);
+    if (buyEl) buyEl.innerHTML = tile('When you buy', buy, false, 'BUY');
+    if (sellEl) sellEl.innerHTML = tile('When you reduce or sell', sell, true, 'SELL');
 }
 
 window.loadEdgeReport = loadEdgeReport;
@@ -234,7 +263,9 @@ async function loadMyActions() {
     const summ = document.getElementById('myActionsSummary');
     const stanceEl = document.getElementById('myActionsStance');
     try {
-        const data = await fetch('/api/rules/my-actions?limit=200').then(r => r.json());
+        // limit bumped from 200: trade volume can exceed 200 within just the
+        // last 30 days, which would otherwise cut off Recent Trades early.
+        const data = await fetch('/api/rules/my-actions?limit=400').then(r => r.json());
         const recent = data.recent || [];
         const s = data.summary || {};
         if (s.n_actions) {
@@ -244,19 +275,37 @@ async function loadMyActions() {
         } else {
             summ.textContent = '';
         }
-        // TASK_121: FOLLOWED vs CONTRADICTED headline, above the table.
+        // TASK_121 + 2026-09-13: FOLLOWED / CONTRADICTED / NO_SIGNAL headline,
+        // above the table -- right/wrong counts (summed across BUY+SELL,
+        // direction-aware) instead of just an average, and now includes
+        // NO_SIGNAL so all three stances are visible, not just two.
         if (stanceEl) {
-            const byStance = data.by_stance || [];
-            const find = st => byStance.find(r => r.stance === st);
-            const followed = find('FOLLOWED');
-            const contradicted = find('CONTRADICTED');
-            const fmt = r => r && r.n
-                ? `<strong>${r.n}</strong> (avg 20d ${r.avg_fwd_20d != null ? Number(r.avg_fwd_20d).toFixed(2) + '%' : '—'})`
-                : '<strong>0</strong>';
-            if (followed || contradicted) {
-                stanceEl.innerHTML = `<span style="color:#166534;">When you FOLLOWED the system:</span> ${fmt(followed)}`
-                    + `<span style="margin:0 10px;color:var(--text-3);">·</span>`
-                    + `<span style="color:#d03b3b;">when you CONTRADICTED it:</span> ${fmt(contradicted)}`;
+            const bsa = data.by_stance_action || [];
+            const totals = st => {
+                const rows = bsa.filter(r => r.stance === st);
+                return rows.reduce((a, r) => ({
+                    right: a.right + Number(r.n_right || 0),
+                    wrong: a.wrong + Number(r.n_wrong || 0),
+                }), { right: 0, wrong: 0 });
+            };
+            const chip = (label, cls, st) => {
+                const t = totals(st);
+                const n = t.right + t.wrong;
+                if (!n) return `<div class="rt-chip"><div class="rt-chip-label ${cls}">${label}</div><div class="rt-chip-val" style="color:var(--text-3);">no scored trades yet</div></div>`;
+                const pct = Math.round(100 * t.right / n);
+                const pctCls = pct >= 50 ? 'er-pos' : 'er-neg';
+                return `<div class="rt-chip">
+                    <div class="rt-chip-label ${cls}">${label}</div>
+                    <div class="rt-chip-val"><span class="${pctCls}" style="font-size:14px;">${pct}%</span>
+                        <span style="color:var(--text-3);font-weight:400;font-size:11px;">(${t.right} right / ${t.wrong} wrong)</span></div>
+                </div>`;
+            };
+            if (bsa.length) {
+                stanceEl.innerHTML = `<div class="rt-chip-row">`
+                    + chip('Followed the rec', 'rt-followed', 'FOLLOWED')
+                    + chip('Contradicted it', 'rt-contradicted', 'CONTRADICTED')
+                    + chip('No signal active', 'rt-nosignal', 'NO_SIGNAL')
+                    + `</div>`;
             } else {
                 stanceEl.innerHTML = '';
             }
@@ -293,10 +342,128 @@ async function loadMyActions() {
                 <td>${num(r.fwd_5d_pct)}</td>
                 <td>${num(r.fwd_20d_pct)}</td>
             </tr>`).join('');
+
+        renderRecentTrades(recent);
     } catch (e) {
         console.error('Failed to load my-actions:', e);
         body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#d03b3b;">Error loading actions</td></tr>';
+        const rtBody = document.getElementById('recentTradesBody');
+        if (rtBody) rtBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#d03b3b;">Error loading trades</td></tr>';
     }
+}
+
+// "Recent trades" -- last 30 days, with an early 5-day read where it's
+// ready instead of a blank dash, since the full 20-day verdict needs about
+// a month. Reuses the same fetch as "Your actions", just filtered/labeled
+// differently -- no extra API call.
+// A trade "looks right" when the early read agrees with what you were
+// trying to do -- price up after a buy, price down after a sell (sell
+// semantics invert: falling after you sold is the good outcome).
+function _tradeLooksRight(v, isSell) {
+    if (v == null) return null;
+    v = Number(v);
+    if (v === 0) return null;
+    return isSell ? v < 0 : v > 0;
+}
+
+function renderRecentTrades(recent) {
+    const body = document.getElementById('recentTradesBody');
+    const summ = document.getElementById('recentTradesSummary');
+    const tallyEl = document.getElementById('recentTradesTally');
+    if (!body) return;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const rows = (recent || []).filter(r => r.as_of_date && new Date(r.as_of_date) >= cutoff);
+    if (summ) {
+        const withRead = rows.filter(r => r.fwd_5d_pct != null || r.fwd_20d_pct != null).length;
+        summ.textContent = rows.length ? `${rows.length} trades · ${withRead} with an early read so far` : '';
+    }
+    if (tallyEl) {
+        // Prefer the 20d verdict once it exists, otherwise fall back to the
+        // 5d early read -- for a 30-day-old window this is almost always 5d.
+        // Broken out by stance -- FOLLOWED (you did what the system said),
+        // CONTRADICTED (you did the opposite), NO_SIGNAL (nothing active to
+        // follow or not) -- so "did I do this right" is visible per stance,
+        // not just as one blended number.
+        const byStance = {
+            FOLLOWED:     { right: 0, wrong: 0 },
+            CONTRADICTED: { right: 0, wrong: 0 },
+            NO_SIGNAL:    { right: 0, wrong: 0 },
+        };
+        for (const r of rows) {
+            const isSell = r.inferred_action === 'SELL';
+            const v = r.fwd_20d_pct != null ? r.fwd_20d_pct : r.fwd_5d_pct;
+            const ok = _tradeLooksRight(v, isSell);
+            if (ok === null) continue;
+            const bucket = byStance[r.stance || 'NO_SIGNAL'];
+            if (!bucket) continue;
+            if (ok) bucket.right++; else bucket.wrong++;
+        }
+        const totalScored = Object.values(byStance).reduce((s, b) => s + b.right + b.wrong, 0);
+        if (totalScored > 0) {
+            const chip = (label, cls, b) => {
+                const n = b.right + b.wrong;
+                if (!n) return `<div class="rt-chip"><div class="rt-chip-label ${cls}">${label}</div><div class="rt-chip-val" style="color:var(--text-3);">no scored trades yet</div></div>`;
+                const pct = Math.round(100 * b.right / n);
+                const pctCls = pct >= 50 ? 'er-pos' : 'er-neg';
+                return `<div class="rt-chip">
+                    <div class="rt-chip-label ${cls}">${label}</div>
+                    <div class="rt-chip-val"><span class="${pctCls}" style="font-size:14px;">${pct}%</span>
+                        <span style="color:var(--text-3);font-weight:400;font-size:11px;">(${b.right} right / ${b.wrong} wrong)</span></div>
+                </div>`;
+            };
+            tallyEl.innerHTML = `<div class="rt-chip-row">`
+                + chip('Followed the rec', 'rt-followed', byStance.FOLLOWED)
+                + chip('Contradicted it', 'rt-contradicted', byStance.CONTRADICTED)
+                + chip('No signal active', 'rt-nosignal', byStance.NO_SIGNAL)
+                + `</div>`;
+        } else {
+            tallyEl.innerHTML = '';
+        }
+    }
+    if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:14px;color:var(--text-3);">No trades in the last 30 days.</td></tr>';
+        return;
+    }
+    const daysAgo = dateStr => Math.floor((Date.now() - new Date(dateStr)) / 86400000);
+    // Sell semantics invert: a stock falling after you sold is the GOOD
+    // outcome -- same rule as the Edge Report trade tiles above.
+    const fmtReturn = (v, isSell, minDaysForThis, elapsed) => {
+        if (v != null) {
+            const good = isSell ? v < 0 : v > 0;
+            const bad = isSell ? v > 0 : v < 0;
+            const cls = good ? 'er-pos' : bad ? 'er-neg' : '';
+            return `<span class="${cls}">${v >= 0 ? '+' : ''}${Number(v).toFixed(2)}%</span>`;
+        }
+        if (elapsed < minDaysForThis) {
+            return `<span style="color:var(--text-3);font-style:italic;">too soon (${minDaysForThis - elapsed}d)</span>`;
+        }
+        return '<span style="color:var(--text-3);">—</span>';
+    };
+    const stanceBadge = r => {
+        const st = r.stance || 'NO_SIGNAL';
+        const style = st === 'FOLLOWED' ? 'background:#dcfce7;color:#166534;'
+            : st === 'CONTRADICTED' ? 'background:#fceeee;color:#d03b3b;'
+            : 'background:#f1f5f9;color:#64748b;';
+        return `<span style="font-size:9px;${style}border-radius:3px;padding:1px 4px;font-weight:700;">${st}</span>`;
+    };
+    const tradeBadge = r => {
+        const disp = actionDisplay(r.inferred_action === 'BUY' ? 'BM' : 'SA');
+        const cls = (disp.colorCls || 'act-neutral') + '-tint';
+        return `<span class="act-badge act-badge-sm ${cls}" style="font-size:10px;">${r.inferred_action || ''}</span>`;
+    };
+    body.innerHTML = rows.map(r => {
+        const isSell = r.inferred_action === 'SELL';
+        const elapsed = daysAgo(r.as_of_date);
+        return `<tr>
+            <td style="font-size:11px;">${(r.as_of_date || '').toString().slice(0,10)}</td>
+            <td><strong>${r.tos_symbol || ''}</strong></td>
+            <td title="qty ${r.qty_delta ?? ''} · $${r.est_dollar ?? ''}">${tradeBadge(r)}</td>
+            <td>${stanceBadge(r)}</td>
+            <td>${fmtReturn(r.fwd_5d_pct, isSell, 7, elapsed)}</td>
+            <td>${fmtReturn(r.fwd_20d_pct, isSell, 28, elapsed)}</td>
+        </tr>`;
+    }).join('');
 }
 
 async function loadScorecard() {
