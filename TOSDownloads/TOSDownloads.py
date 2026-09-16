@@ -15,6 +15,7 @@ import datetime
 import re
 import chardet
 import msvcrt
+import traceback
 
 pyautogui.useImageNotFoundException(False)
 
@@ -45,17 +46,19 @@ last_auto_pos = None
 # window's own title bar, gives a glanceable "still working" signal
 # without needing the console.
 #
-# Placement note -- this MUST NOT overlap the maximize/minimize/close
-# button row: ensure_tos_active()'s "maximized.png" check (and any other
-# image search) is a full-screen pyautogui.locateOnScreen with no `region`
-# restriction, so it reads real screen pixels -- an overlay sitting on top
-# of those buttons would corrupt that image match regardless of the
-# overlay window being click-through. Standard Windows title-bar buttons
-# occupy roughly the top ~45px, so _OVERLAY_MARGIN_TOP is well below that
-# (not just a small corner inset) -- the dot sits clear of that whole row
-# no matter which run/call finds TOS in that state. Also only started
-# AFTER main()'s own ensure_tos_active() call succeeds (see call site),
-# as a second, belt-and-suspenders guard on top of the vertical clearance.
+# Placement note -- 2026-09-11, user: moved onto the title bar itself
+# (_OVERLAY_MARGIN_TOP now sits the dot within the title bar's own height,
+# not below it). Relies on HORIZONTAL clearance from the maximize/
+# minimize/close button row instead of vertical clearance: those buttons
+# sit at the window's far top-right corner, while the dot is horizontally
+# CENTERED on the window (see below) -- nowhere near them for any
+# reasonably wide maximized window. ensure_tos_active()'s "maximized.png"
+# check (a full-screen pyautogui.locateOnScreen with no `region`
+# restriction, so an overlay sitting ON TOP of the real button pixels
+# would corrupt that match) also only ever runs BEFORE the overlay is
+# started at every call site today (see start_status_overlay()'s own call
+# sites) -- confirmed by inspection, not just centering -- so it can never
+# see the dot regardless of where the dot sits.
 # Horizontal centering: 2026-09-10, user asked for the dot centered on
 # TOS's own title bar, not the screen corner -- main() now passes
 # ensure_tos_active()'s returned tos_window bounds through to
@@ -63,7 +66,7 @@ last_auto_pos = None
 # even if TOS isn't screen-width, e.g. multi-monitor). Falls back to
 # centering on the whole screen if no window bounds are given.
 _OVERLAY_SIZE = 16
-_OVERLAY_MARGIN_TOP = 60
+_OVERLAY_MARGIN_TOP = 8
 _OVERLAY_PULSE_MS = 500
 
 class _HeartbeatOverlay:
@@ -76,10 +79,12 @@ class _HeartbeatOverlay:
     heartbeat -- doesn't reflect actual automation progress, just that this
     process is alive and pumping its event loop.
 
-    stop() only HIDES the window (root.withdraw()) and stops rescheduling
-    the pulse -- it deliberately never calls root.quit()/root.destroy() or
-    joins the thread. Tested (2026-09-10) and confirmed live: tearing the
-    Tk root down and joining the thread mid-process reliably produces
+    stop() only hides the dot (moves the window off-screen -- see pulse()'s
+    own comment for why this isn't root.withdraw() or a transparent-color
+    recolor) and stops rescheduling the pulse -- it deliberately never
+    calls root.quit()/root.destroy() or joins the thread. Tested
+    (2026-09-10) and confirmed live: tearing the Tk root down and joining
+    the thread mid-process reliably produces
     "Tcl_AsyncDelete: async handler deleted by the wrong thread" during
     later interpreter shutdown and corrupts the whole script's exit code
     (0 -> 3) even though everything actually succeeded -- a real risk for
@@ -92,6 +97,13 @@ class _HeartbeatOverlay:
         self._window_top = window_top
         self._window_width = window_width
         self._stop_event = threading.Event()
+        # 2026-09-10, user: the dot should disappear whenever the script is
+        # actually blocked waiting on the human (a confirm dialog, an
+        # input() prompt, Excel review before archiving) -- pulsing through
+        # those reads as "still working" when it's really "needs you".
+        # Separate from _stop_event: pause/resume can toggle repeatedly
+        # through one run, stop() is one-way (see class docstring).
+        self._paused_event = threading.Event()
         self._ready_event = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
@@ -103,6 +115,12 @@ class _HeartbeatOverlay:
     def stop(self):
         # See class docstring -- intentionally just a flag, no join/destroy.
         self._stop_event.set()
+
+    def pause(self):
+        self._paused_event.set()
+
+    def resume(self):
+        self._paused_event.clear()
 
     def _run(self):
         try:
@@ -130,7 +148,12 @@ class _HeartbeatOverlay:
             win_width = self._window_width if self._window_width is not None else root.winfo_screenwidth()
             x = self._window_left + win_width // 2 - size // 2
             y = self._window_top + _OVERLAY_MARGIN_TOP
-            root.geometry(f"{size}x{size}+{x}+{y}")
+            on_screen_geometry = f"{size}x{size}+{x}+{y}"
+            # Parked far outside any real monitor's bounds when hidden --
+            # see pulse()'s own comment for why this replaced two other
+            # "hide" techniques that both tested unreliable.
+            off_screen_geometry = f"{size}x{size}+{-10000}+{-10000}"
+            root.geometry(on_screen_geometry)
             canvas = tk.Canvas(root, width=size, height=size, highlightthickness=0, bg=bg)
             canvas.pack()
             dot = canvas.create_oval(1, 1, size - 1, size - 1, fill='#2ecc71', outline='')
@@ -138,13 +161,32 @@ class _HeartbeatOverlay:
             pulse_state = {'bright': True}
 
             def pulse():
-                # Hide and stop rescheduling -- see class docstring for why
-                # this doesn't quit()/destroy() the root. mainloop() below
-                # is left running (blocked on its event queue) until the
-                # whole process exits.
+                # 2026-09-10: two other "hide" techniques were tried and
+                # both tested unreliable in live screenshot verification --
+                # root.withdraw()/deiconify() (the dot never actually
+                # disappeared), then recoloring the dot to the
+                # -transparentcolor key (itemcget confirmed the fill value
+                # really did change, but the pixel on screen stayed a
+                # visible dark green instead of turning transparent -- some
+                # interaction between canvas-item fill and the window's
+                # color-key transparency this env doesn't handle the way
+                # the window's own plain background does). Moving the whole
+                # window off-screen sidesteps both: there's no transparency
+                # or window-state trickery involved, just geometry, so it
+                # can't have this class of bug. mainloop() is left running
+                # either way (never exited deliberately -- see class
+                # docstring).
                 if self._stop_event.is_set():
-                    root.withdraw()
+                    root.geometry(off_screen_geometry)
                     return
+                if self._paused_event.is_set():
+                    # Off-screen but KEEP rescheduling (unlike the stop case
+                    # above) -- resume() just clears the flag, next tick
+                    # moves back on screen and resumes pulsing on its own.
+                    root.geometry(off_screen_geometry)
+                    root.after(_OVERLAY_PULSE_MS, pulse)
+                    return
+                root.geometry(on_screen_geometry)
                 pulse_state['bright'] = not pulse_state['bright']
                 canvas.itemconfig(dot, fill='#2ecc71' if pulse_state['bright'] else '#155d33')
                 root.after(_OVERLAY_PULSE_MS, pulse)
@@ -183,17 +225,38 @@ def stop_status_overlay():
     finally:
         _status_overlay = None
 
-# 2026-08-20: single source of truth for "which symbols are currently stuck
-# 'Loading'" -- an in-memory set, kept accurate incrementally as each
-# fragment is exported (update_stuck_symbols_memory() adds a symbol when its
-# freshly-exported row is stuck, REMOVES it the moment a fresher row shows it
-# resolved). Written to LoadingSymbols.txt exactly once, immediately before
-# each do_reloadwl99() call -- never accumulated on disk across calls, so
-# there's nothing to go stale or need trimming. Only bootstrapped from a
-# one-time disk rescan (find_genuinely_stuck_symbols()) when there's no
-# in-process export history to draw from -- run_pipeline()'s merge-only
-# mode, which never calls main().
-stuck_symbols_memory = set()
+def pause_status_overlay():
+    """Hide the dot while genuinely blocked on the user (a confirm dialog,
+    an input() prompt, Excel review) -- unlike stop_status_overlay(), this
+    is meant to be resumed. No-op if the overlay was never started."""
+    if _status_overlay is not None:
+        _status_overlay.pause()
+
+def resume_status_overlay():
+    """Undo pause_status_overlay() once the automation is actually running
+    again. No-op if the overlay was never started (or was stop()'d)."""
+    if _status_overlay is not None:
+        _status_overlay.resume()
+
+# 2026-09-11 redesign: replaces the old stuck_symbols_memory SET (added a
+# symbol when its row was stuck, removed it when resolved -- one tracker,
+# running alongside Stage 2's own independent output_list/summary_messages
+# in monitor_directory(), that could disagree with it. Every RELOADWL99 bug
+# so far was exactly that kind of disagreement.) output_list is the single
+# source of truth for Stage 1 (main()'s RELOADWL99 handling): every WL1..16
+# fragment's full row, keyed by normalized symbol, built once after WL1..16
+# finish exporting. Each WL99 reload attempt afterward only ever UPDATES
+# rows already in here (see update_output_list_from_fragment()) -- nothing
+# removes a row, and "which symbols are stuck" is never stored on its own;
+# it's derived fresh every time from this dict's own row text
+# (get_stuck_symbols()), so there's nothing for a second tracker to
+# disagree with.
+#
+# Unrelated to monitor_directory()'s own LOCAL variable of the same name
+# (Stage 2, the merge stage) -- that one is rebuilt from whatever's on disk
+# after main() has already finished, same as before this redesign; this
+# global is only ever read/written while a Stage 1 run (main()) is live.
+output_list = {}
 
 # 2026-08-16: merged in from MergeExports.py so one script (same 4 required
 # CLI args as the old TOSDownloads.py) both downloads the TOS watchlist
@@ -205,8 +268,9 @@ WORD_TO_FIND = 'loading'
 def _row_has_loading(row):
     """monitor_directory()'s single Loading-word test (2026-08-21) --
     case-insensitive substring match against each cell, same convention the
-    newer update_stuck_symbols_memory()/check_loading_threshold_from_csv()
-    already use (case=False) but this older, pure-csv.reader merge loop
+    newer check_loading_threshold_from_csv() (and Stage 1's own
+    get_stuck_symbols(), which reuses this exact function) already use
+    (case=False) but this older, pure-csv.reader merge loop
     never got: it was comparing the lowercase WORD_TO_FIND against raw cell
     text with plain (case-sensitive) `in`, which misses TOS text that isn't
     exactly lowercase. Also fixes a dead-code bug at this function's other
@@ -285,6 +349,15 @@ WL99_NUDGE_WAIT_SECONDS = 15
 # a queued download-start (still polling every 0.5s) is overwhelmingly
 # likely to grab the lock first.
 EXCEL_OPEN_LOCK_CHECK_INTERVAL = 20
+
+# 2026-09-11, user: how often monitor_directory()'s stuck-symbol wait loop
+# asks directly on the terminal whether to refill from the last archive --
+# the same action the FillFromArchive.txt file trigger offers, but for
+# whoever's sitting at THIS console. Asked at most once per this many
+# seconds (not every 5s poll tick, which would spam an overlapping
+# question every cycle); no answer within the window and it just goes
+# back to polling exactly as before, same as never having asked.
+TERMINAL_PROMPT_INTERVAL_SECONDS = 10
 
 
 # --- LOCKING (shared by both stages -- single copy; each original script
@@ -484,7 +557,10 @@ def input_with_timeout(prompt, timeout=5):
     q = queue.Queue()
 
     def read_input():
-        q.put(input(prompt))
+        try:
+            q.put(input(prompt))
+        except (EOFError, Exception):
+            q.put(None)
 
     t = threading.Thread(target=read_input)
     t.daemon = True
@@ -492,6 +568,43 @@ def input_with_timeout(prompt, timeout=5):
 
     try:
         return q.get(timeout=timeout)
+    except queue.Empty:
+        return None
+
+_refill_answer_queue = queue.Queue()
+_refill_reader_started = False
+_refill_lock = threading.Lock()
+
+def start_input_listener():
+    global _refill_reader_started
+    if not _refill_reader_started:
+        with _refill_lock:
+            if not _refill_reader_started:
+                def _reader():
+                    while True:
+                        try:
+                            _refill_answer_queue.put(input())
+                        except EOFError:
+                            _refill_answer_queue.put(None)
+                            return
+                
+                t = threading.Thread(target=_reader, daemon=True)
+                t.start()
+                _refill_reader_started = True
+
+def _read_refill_answer(timeout):
+    start_input_listener()
+    # Clear any stale inputs from earlier terminal activity
+    while not _refill_answer_queue.empty():
+        try:
+            _refill_answer_queue.get_nowait()
+        except queue.Empty:
+            break
+
+    print(f"Press 'y' + Enter within {timeout}s to execute task (or wait to skip)...", flush=True)
+    try:
+        ans = _refill_answer_queue.get(timeout=timeout)
+        return ans.strip().lower() if ans else None
     except queue.Empty:
         return None
 
@@ -513,7 +626,6 @@ def wait_for_mouse_idle(idle_seconds=5):
                 return True
 
 def ensure_tos_active(images_folder):
-
     burg_menu_img_path = os.path.join(images_folder,"export_menu.png")
     maximized_img_path = os.path.join(images_folder,"maximized.png")
     print("Waiting for ThinkorSwim window...")
@@ -534,9 +646,9 @@ def ensure_tos_active(images_folder):
                 if "thinkorswim" in active_window:
                     tos_window = windows[0]
                     max_image_location = get_image_location(maximized_img_path)
+                    #if (tos_window.top==0 and tos_window.left==0 and (tos_window.width==1366 or tos_window.width==1920) and (tos_window.height==720 or tos_window.height==1032)):
                     if max_image_location:
                         print(f"active window - {active_window} {tos_window.left} {tos_window.top} {tos_window.width} {tos_window.height}")
-                    #if (tos_window.top==0 and tos_window.left==0 and (tos_window.width==1366 or tos_window.width==1920) and (tos_window.height==720 or tos_window.height==1032)):
                         image_location = get_image_location(burg_menu_img_path)
                         if image_location:
                             print(f"Image {burg_menu_img_path} found")
@@ -544,6 +656,20 @@ def ensure_tos_active(images_folder):
                             wait_for_mouse_idle(10)
                             return tos_window
                             #break
+                        else:
+                            # 2026-09-10 fix: this branch was missing --
+                            # tos_window stayed set to windows[0] from
+                            # above, so the outer `while tos_window is
+                            # None:` loop exited WITHOUT ever hitting the
+                            # return above, and the function then fell off
+                            # the end, implicitly returning None -- silently,
+                            # no retry, no error. Confirmed as a real gap
+                            # while investigating why the status overlay
+                            # didn't appear on the SAME run this was found
+                            # in. Reset tos_window so the loop actually
+                            # retries instead.
+                            tos_window = None
+                            print(f"⏳ ThinkorSwim maximized but '{burg_menu_img_path}' not found yet.")
                     else:
                         tos_window=None
                         print("⏳ ThinkorSwim found but not miximized.")
@@ -685,12 +811,19 @@ def ui_click(x, y, name=""):
     last_auto_pos=pyautogui.position()
     time.sleep(0.25)
 
-def count_image_instances(image_path, label="TargetImage", confidence=0.8, timeout=2):
+def count_image_instances(image_path, label="TargetImage", confidence=0.8, timeout=2, quiet=False):
     """
     Find and count the number of instances of an image visible on the screen.
     Returns (count, centers_list) — never raises an exception.
+
+    quiet (2026-09-11, user-directed): suppresses this call's own
+    "Scanning.../Found..." lines -- used by count_images_in_folder() when
+    it's decided the aggregate count hasn't changed since its own last
+    call, so a tight polling loop stops repeating identical lines every
+    cycle. Doesn't change the return value.
     """
-    print(f"🔍 Scanning for instances of {label} via image: {image_path}")
+    if not quiet:
+        print(f"🔍 Scanning for instances of {label} via image: {image_path}")
     start = time.time()
     found_locations = []
 
@@ -699,7 +832,8 @@ def count_image_instances(image_path, label="TargetImage", confidence=0.8, timeo
             locations = list(pyautogui.locateAllOnScreen(image_path, confidence=confidence))
             if locations:
                 found_locations = [pyautogui.center(loc) for loc in locations]
-                print(f"✅ Found {len(found_locations)} instances of {label}")
+                if not quiet:
+                    print(f"✅ Found {len(found_locations)} instances of {label}")
                 return len(found_locations), found_locations
         except ImageNotFoundException:
             pass
@@ -711,20 +845,46 @@ def count_image_instances(image_path, label="TargetImage", confidence=0.8, timeo
     #print(f"❌ No instances of {label} found within {timeout} seconds.")
     return 0, []
 
+# 2026-09-11, user-directed: last total count_images_in_folder() actually
+# printed, per (folder_path, prefix) -- a polling loop (download_watchlist()'s
+# wait, do_reloadwl99()'s stall check, toggle_column_set_away_and_back())
+# calls this every cycle even while nothing's moving, and was repeating the
+# exact same "Scanning.../Found.../Total..." lines every time. Not reset
+# between calls/runs -- a genuinely unchanged count should stay silent
+# even across an unrelated intervening call for a DIFFERENT prefix.
+_last_folder_image_count = {}
 
 def count_images_in_folder(folder_path, prefix, confidence=0.8, timeout=0.5):
+    """Always scans and returns the real total, same as before. Only PRINTS
+    (the per-file "Scanning.../Found..." breakdown, then the aggregate
+    "Total instances..." line) when that total differs from this exact
+    (folder_path, prefix) combo's last printed value -- see
+    _last_folder_image_count's own comment. A single quiet scan pass
+    collects each file's own count as it goes, so a changed total can
+    still print the full breakdown without re-scanning the screen a
+    second time (which would cost double the pyautogui time and risk a
+    different answer if the screen changed in between)."""
+    key = (folder_path, prefix)
     total_count = 0
-    #print(f"\n📁 Searching folder '{folder_path}' for files starting with '{prefix}'")
+    per_file = []
 
     for file_name in os.listdir(folder_path):
         if file_name.lower().endswith(".png") and file_name.startswith(prefix):
             image_path = os.path.join(folder_path, file_name)
             label = os.path.splitext(file_name)[0]
             count, _ = count_image_instances(image_path, label=label,
-                                             confidence=confidence, timeout=timeout)
+                                             confidence=confidence, timeout=timeout,
+                                             quiet=True)
             total_count += count
+            per_file.append((label, image_path, count))
 
-    print(f"📊 Total instances of '{prefix}*': {total_count}")
+    if _last_folder_image_count.get(key) != total_count:
+        for label, image_path, count in per_file:
+            print(f"🔍 Scanning for instances of {label} via image: {image_path}")
+            if count:
+                print(f"✅ Found {count} instances of {label}")
+        print(f"📊 Total instances of '{prefix}*': {total_count}")
+        _last_folder_image_count[key] = total_count
 
     return total_count
 
@@ -803,7 +963,7 @@ def check_loading_threshold_from_csv(file_path: str, lines_to_skip: int = 3, tar
         # read in this script (including the merge loop's own
         # _row_has_loading path), which calls get_encoding() first. A
         # decode failure here was silently possible with no clear signal --
-        # see update_stuck_symbols_memory()'s own fix for the fuller story.
+        # see _fragment_rows()'s own docstring for the fuller story.
         encoding = get_encoding(file_path)
         df = pd.read_csv(file_path, skiprows=lines_to_skip, encoding=encoding)
     except pd.errors.EmptyDataError:
@@ -848,118 +1008,150 @@ def normalize_for_reimport(symbol):
     which resolves to whichever contract is currently front-month/
     continuous. Strips everything from the first "[" onward; symbols
     without brackets (the common case -- plain equities/ETFs) pass through
-    unchanged. Applied at the point a symbol enters stuck_symbols_memory
-    (update_stuck_symbols_memory() below), so every entry in memory is
+    unchanged. Applied at the point a symbol's row enters output_list
+    (update_output_list_from_fragment() below), so every key in it is
     already reimport-ready -- no separate normalize pass needed later."""
     bracket_index = symbol.find('[')
     return symbol[:bracket_index] if bracket_index != -1 else symbol
 
-def update_stuck_symbols_memory(file_path: str, lines_to_skip: int = 3, target_word: str = 'loading') -> None:
-    """Single point where stuck_symbols_memory gets updated -- called right
-    after every fragment export (download_watchlist()'s export-success
-    path, for both the initial WL1..WL16 pass and any reprocess/WL99
-    re-export of the same fragment). For every symbol row in this
-    fragment: adds it to stuck_symbols_memory if this reading is still
-    stuck, REMOVES it the moment a fresher reading shows it resolved --
-    the freshest sighting of a symbol always wins, immediately, no
-    separate reconciliation pass needed later. Symbols not present in this
-    fragment are left untouched (each watchlist fragment covers its own
-    disjoint symbol set, except WL99 which temporarily re-hosts a subset
-    of the others for reload -- exactly the case this needs to reconcile).
-
-    2026-08-20: replaces the old extract_loading_symbols() /
-    append_loading_symbols() disk-based approach (and, everywhere main()
-    actually runs, find_genuinely_stuck_symbols() too -- see that
-    function's own docstring for its one remaining use) -- that wrote
-    LoadingSymbols.txt as a monotonic union (never removing a resolved
-    symbol) and only got trimmed back to accurate via a separate
-    full-directory rescan right before each retry. Keeping one in-memory
-    set accurate incrementally, as each export happens, means there's
-    nothing to trim or re-derive from disk at all.
-
-    2026-09-10, user: a run where WL99 only reloaded 1 of 16 genuinely
-    stuck symbols -- the other 15 (from WL1/WL2) were never added to
-    stuck_symbols_memory at all, even though the merge loop's own
-    (encoding-safe, per-cell) _row_has_loading later found "Loading" text
-    in those exact same files. Leading hypothesis: this read had no
-    encoding= (unlike every other file read in this script, including the
-    merge loop's own), and the except below was completely silent -- a
-    decode/parse failure here would no-op with zero signal, leaving
-    whatever was already in stuck_symbols_memory (nothing, for a symbol's
-    first sighting) untouched. Added get_encoding() + a loud error message
-    so this is visible instead of invisible if it recurs; not yet
-    confirmed as the actual root cause (the fragment files from that run
-    were already deleted by the time this was investigated)."""
+def _fragment_rows(file_path: str, lines_to_skip: int = 3) -> Dict[str, list]:
+    """Reads one exported fragment CSV and returns {normalized_symbol: row}
+    for every data row in it -- encoding-safe (get_encoding()), same as
+    every other fragment read in this script, and loud (not silent) on a
+    read failure (2026-09-10: a prior version of this read had no encoding=
+    and a completely silent except, which let 15 genuinely-stuck symbols
+    from one run never register at all -- see git history). row[0] keeps
+    its literal export text (bracket suffix etc.) -- only the dict KEY is
+    normalized (normalize_for_reimport()), so a specific-month futures row
+    (e.g. "/BTC[Q26]") and a later root-symbol row (e.g. "/BTC", from WL99
+    reimporting under the root) land under the SAME key and the second
+    correctly overwrites the first."""
     if not os.path.exists(file_path):
-        return
+        return {}
     try:
         encoding = get_encoding(file_path)
-        df = pd.read_csv(file_path, skiprows=lines_to_skip, encoding=encoding)
+        with open(file_path, 'r', encoding=encoding) as f:
+            reader = csv.reader(f)
+            for _ in range(lines_to_skip):
+                next(reader, None)
+            rows = {}
+            for row in reader:
+                if not row:
+                    continue
+                rows[normalize_for_reimport(row[0])] = row
+            return rows
     except Exception as e:
-        print(f"⚠️ update_stuck_symbols_memory: error reading '{file_path}': {e!r} "
-              f"-- stuck_symbols_memory NOT updated for this fragment.")
-        return
-    if df.empty:
-        return
-    df_str = df.select_dtypes(include=[object]).astype(str).fillna('')
-    contains_word = df_str.apply(
-        lambda col: col.str.contains(target_word, case=False, na=False)
-    ).any(axis=1)
-    symbols = df.iloc[:, 0].astype(str)
-    stuck_now = {normalize_for_reimport(s) for s in symbols[contains_word]}
-    resolved_now = {normalize_for_reimport(s) for s in symbols[~contains_word]}
-    stuck_symbols_memory.update(stuck_now)
-    stuck_symbols_memory.difference_update(resolved_now)
+        print(f"⚠️ _fragment_rows: error reading '{file_path}': {e!r} -- treated as empty.")
+        return {}
 
-def find_genuinely_stuck_symbols(save_folder, lines_to_skip: int = 3, target_word: str = 'loading') -> set:
-    """Scans every fragment CSV in save_folder and returns only the symbols
-    that are genuinely STILL stuck -- i.e. every sighting of that symbol,
-    across every fragment, shows target_word, with no fragment anywhere
-    holding resolved (non-loading) data for it.
+def _merge_wl99_export_into_history(export_path: str, save_folder: str) -> None:
+    """2026-09-16: WL99's own exported CSV gets fully replaced by TOS on
+    every reload attempt, and each attempt only ever re-imports the
+    CURRENTLY-stuck subset (do_reloadwl99() re-derives and re-imports a
+    shrinking list every time, via write_stuck_symbols_to_file() +
+    ReloadWL99.csv's import step). So a symbol resolved on an EARLIER WL99
+    attempt but no longer stuck (and therefore dropped) on a LATER
+    attempt's re-import disappears from the live WL99 file the moment
+    that later attempt exports -- and its resolved row was never written
+    back to its ORIGINAL WL1..16 fragment file either (that file is never
+    touched again after its first download). Its only remaining trace is
+    this run's in-memory `output_list` -- invisible to monitor_directory()
+    (Stage 2), which rebuilds its own view purely from whatever's on disk
+    in the input folder, with no access to Stage 1's memory.
 
-    2026-08-20: kept ONLY as a one-time bootstrap for run_pipeline()'s
-    merge-only mode (skip_download='Y') -- that path never calls main(),
-    so there's no in-process download history for stuck_symbols_memory to
-    have accumulated; a disk rescan of whatever fragments a PRIOR run left
-    behind is the only way to seed it. Everywhere main() actually runs,
-    update_stuck_symbols_memory() keeps stuck_symbols_memory accurate
-    incrementally as exports happen, and this function is not called."""
-    stuck, resolved = set(), set()
-    if not os.path.isdir(save_folder):
-        return stuck
-    for fname in os.listdir(save_folder):
-        if not fname.lower().endswith('.csv'):
-            continue
-        fpath = os.path.join(save_folder, fname)
+    Keeps a separate file (WL99_all_resolved.csv, in save_folder == Stage
+    2's own input folder) that accumulates the latest known row for every
+    symbol WL99 has EVER exported this run, called once after each WL99
+    export attempt so nothing an earlier attempt resolved is lost when a
+    later attempt's narrower export overwrites the live WL99 fragment.
+    Same 3-blank-line + real-header + data shape every other TOS export
+    uses (verified against a real export: 3 junk lines, then the header
+    row, then data), copying that header line verbatim from THIS export
+    -- monitor_directory() then picks this file up like any other
+    fragment CSV, no special-casing needed there. Cleared automatically
+    at the start of the next run by main()'s existing "clear stale
+    leftover .csv files in save_folder" sweep, same as every other
+    fragment."""
+    if not os.path.exists(export_path):
+        return
+    try:
+        encoding = get_encoding(export_path)
+        with open(export_path, 'r', encoding=encoding) as f:
+            reader = csv.reader(f)
+            for _ in range(3):
+                next(reader, None)
+            header_row = next(reader, None)
+            if not header_row:
+                return
+            new_rows = {}
+            for row in reader:
+                if row:
+                    new_rows[normalize_for_reimport(row[0])] = row
+    except Exception as e:
+        print(f"⚠️ _merge_wl99_export_into_history: error reading '{export_path}': {e!r} -- skipped.")
+        return
+
+    if not new_rows:
+        return
+
+    history_path = os.path.join(save_folder, "WL99_all_resolved.csv")
+    combined = {}
+    if os.path.exists(history_path):
         try:
-            # 2026-09-10: same encoding fix as update_stuck_symbols_memory()
-            # -- see that function's own docstring.
-            encoding = get_encoding(fpath)
-            df = pd.read_csv(fpath, skiprows=lines_to_skip, encoding=encoding)
+            hist_encoding = get_encoding(history_path)
+            with open(history_path, 'r', encoding=hist_encoding) as f:
+                reader = csv.reader(f)
+                for _ in range(4):  # 3 junk lines + header
+                    next(reader, None)
+                for row in reader:
+                    if row:
+                        combined[normalize_for_reimport(row[0])] = row
         except Exception as e:
-            print(f"⚠️ find_genuinely_stuck_symbols: error reading '{fpath}': {e!r} -- skipped.")
-            continue
-        if df.empty:
-            continue
-        df_str = df.select_dtypes(include=[object]).astype(str).fillna('')
-        contains_word = df_str.apply(
-            lambda col: col.str.contains(target_word, case=False, na=False)
-        ).any(axis=1)
-        symbols = df.iloc[:, 0].astype(str)
-        stuck.update(normalize_for_reimport(s) for s in symbols[contains_word])
-        resolved.update(normalize_for_reimport(s) for s in symbols[~contains_word])
-    return stuck - resolved
+            print(f"⚠️ _merge_wl99_export_into_history: error reading existing '{history_path}': {e!r} -- starting fresh.")
+            combined = {}
+
+    combined.update(new_rows)
+
+    with open(history_path, 'w', newline='', encoding='UTF-8') as f:
+        writer = csv.writer(f)
+        for _ in range(3):
+            writer.writerow([])
+        writer.writerow(header_row)
+        for row in combined.values():
+            writer.writerow(row)
+
+def update_output_list_from_fragment(file_path: str) -> None:
+    """Merges one exported fragment CSV into the global `output_list` --
+    replaces the old update_stuck_symbols_memory()/find_genuinely_stuck_
+    symbols() pair (2026-09-11 redesign, see output_list's own docstring).
+    Called once per WL1..16 fragment right after its export
+    (download_watchlist()'s export-success path), and once per WL99
+    reload attempt right after ITS export. Every symbol in this fragment
+    gets its row stored/overwritten here, stuck or not -- output_list
+    always holds the freshest row seen for a symbol; whether that row is
+    currently stuck is never tracked separately, only ever read back via
+    get_stuck_symbols()."""
+    new_rows = _fragment_rows(file_path)
+    for symbol, row in new_rows.items():
+        output_list[symbol] = row
+
+def get_stuck_symbols() -> List[str]:
+    """The stuck subset of output_list, derived fresh on every call --
+    same single _row_has_loading() predicate Stage 2's own merge loop
+    (monitor_directory()) uses, so both stages agree on what "stuck" means
+    by construction instead of via two separately-maintained checks."""
+    return sorted(sym for sym, row in output_list.items() if _row_has_loading(row))
 
 def write_stuck_symbols_to_file(save_folder):
-    """Writes the CURRENT stuck_symbols_memory set to
+    """Writes output_list's CURRENT stuck subset (get_stuck_symbols()) to
     working_dir/LoadingSymbols.txt (working_dir = parent of save_folder,
     same convention derive_merge_params()/do_reloadwl99() use) -- called
     exactly once, immediately before each do_reloadwl99() call, so the
-    file always reflects memory's live, accurate state at the moment
+    file always reflects output_list's live, accurate state at the moment
     it's actually read for the reload."""
     working_dir = os.path.dirname(os.path.normpath(save_folder))
     loading_symbols_file = os.path.join(working_dir, 'LoadingSymbols.txt')
-    write_filenames_to_file(sorted(stuck_symbols_memory), loading_symbols_file, label="symbols")
+    write_filenames_to_file(get_stuck_symbols(), loading_symbols_file, label="symbols")
 
 def get_ref_image_location(watchlist_data, images_folder):
     ref_image = watchlist_data['ref_image']
@@ -988,6 +1180,7 @@ def stop_or_prompt(message):
     These steps guard flows (like ReloadWL99.csv) that modify a live watchlist,
     so failing safe by default matters more here than in the export flow."""
     print(f"⚠️ {message}")
+    pause_status_overlay()
     choice = pyautogui.confirm(
         text=f"{message}\n\nThis step is a safety checkpoint before an action that "
              "may modify a watchlist.\nContinuing without confirming may click the "
@@ -995,6 +1188,7 @@ def stop_or_prompt(message):
         title="Checkpoint Failed",
         buttons=["Stop", "Continue Anyway"]
     )
+    resume_status_overlay()
     if choice != "Continue Anyway":
         print("🛑 Stopping automation — checkpoint image not found.")
         sys.exit(1)
@@ -1180,7 +1374,7 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
          navigate to it, so the coordinates only need to be correct in one
          place per TOSType CSV, same as any other WL row.
 
-    If stuck_symbols_memory is empty when this call starts, steps 1/2/3
+    If get_stuck_symbols() is empty when this call starts, steps 1/2/3
     above are skipped (nothing to import) AND the whole nudge+export step
     is skipped too (2026-08-21, user-directed) -- nothing changed in WL99,
     so there's nothing new worth exporting; this call is then a no-op.
@@ -1190,11 +1384,13 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
     'TOS Column Set' row lookup -- this function otherwise only ever uses
     `row`, a single row of it.
 
-    Symbol source: stuck_symbols_memory (2026-08-20) -- the in-memory set
-    download_watchlist() keeps accurate via update_stuck_symbols_memory()
-    as each fragment actually exports, reconciled fresh from every export
-    including this same call's own WL99 export (step 3 below still goes
-    through download_watchlist(), so it self-reconciles too). Written to
+    Symbol source: output_list (2026-09-11 redesign) -- download_watchlist()
+    keeps it accurate via update_output_list_from_fragment() as each
+    fragment actually exports, reconciled fresh from every export including
+    this same call's own WL99 export (step 3 below still goes through
+    download_watchlist(), so it self-reconciles too); get_stuck_symbols()
+    derives the stuck subset from it fresh every time this docstring
+    mentions "stuck symbols". Written to
     LoadingSymbols.txt right here, immediately before the reload sequence
     reads it -- not accumulated on disk across calls, so there's nothing
     to go stale between being written and being used. Written AGAIN
@@ -1213,7 +1409,7 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
 
     # Skip the RELOAD/IMPORT part (not the export -- see below) if there's
     # nothing currently stuck.
-    has_symbols = bool(stuck_symbols_memory)
+    has_symbols = bool(get_stuck_symbols())
 
     export_row = dict(row)
 
@@ -1230,7 +1426,7 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
         # which this coordinate-based call already does more reliably.
         download_watchlist(export_row, save_folder, images_folder, True, False, False)
 
-        # 2. Write stuck_symbols_memory's CURRENT contents to
+        # 2. Write output_list's CURRENT stuck subset to
         # LoadingSymbols.txt right here -- immediately before the reload
         # sequence below reads it (its own TYPEFILE step types this exact
         # file's path) -- so it's always in sync at the moment it's used.
@@ -1251,7 +1447,7 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
             # these the reload could easily happen on screen while looking
             # like silence in the console/logs.
             print(f"--- RELOADWL99: replaying {os.path.basename(reload_recipe_path)} to reload "
-                  f"{len(stuck_symbols_memory)} symbol(s) into {row['watchlist_name']}... ---")
+                  f"{len(get_stuck_symbols())} symbol(s) into {row['watchlist_name']}... ---")
             run_recipe_rows(reload_df, save_folder, images_folder, working_dir, False)
             print(f"--- RELOADWL99: reload replay into {row['watchlist_name']} finished. ---")
     else:
@@ -1263,7 +1459,7 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
         # WL99 (see its own docstring) -- nothing downstream expects a
         # fresh WL99 fragment to exist every run, so skipping it here can't
         # cause monitor_directory() to wait on a file that never arrives.
-        print("\n--- RELOADWL99: nothing in stuck_symbols_memory -- nothing to reload, skipping WL99 "
+        print("\n--- RELOADWL99: nothing stuck in output_list -- nothing to reload, skipping WL99 "
               "export too. ---")
         return
 
@@ -1307,8 +1503,8 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
     # download_watchlist() return False WITHOUT exporting anything at all --
     # leaving the WL99 fragment CSV on disk at whatever an EARLIER, staler
     # attempt left it (or missing entirely, on a first-ever attempt).
-    # update_stuck_symbols_memory() only runs on an actual export, so
-    # stuck_symbols_memory never reconciled against this attempt's real
+    # update_output_list_from_fragment() only runs on an actual export, so
+    # output_list never reconciled against this attempt's real
     # (partial) progress either. Confirmed live: after 3 stalled attempts,
     # the merge stage downstream read that stale/missing WL99 fragment and
     # fell back to WL1..16's ORIGINAL per-source stuck data instead of
@@ -1318,18 +1514,30 @@ def do_reloadwl99(row, save_folder, images_folder, recipe_dir, df):
     # run_recipe_rows()'s WL branch) so this attempt's actual current state
     # -- even if some symbols are still genuinely stuck -- always lands on
     # disk.
+    # wait_timeout=60 (2026-09-10, user-directed, down from the default
+    # 180): see download_watchlist()'s own docstring for why WL99
+    # specifically doesn't need the full 3 minutes here.
     if not download_watchlist(export_row, save_folder, images_folder, False, False, False,
-                               already_selected=True):
+                               already_selected=True, wait_timeout=60):
         print("--- RELOADWL99: export stalled (no change in loading count) -- forcing export of "
               "current WL99 state so this attempt's progress isn't lost. ---")
         download_watchlist(export_row, save_folder, images_folder, False, True, False,
-                            already_selected=True)
+                            already_selected=True, wait_timeout=60)
 
-    # 6. Re-sync LoadingSymbols.txt to stuck_symbols_memory's state AFTER
+    # 5b. 2026-09-16: fold THIS attempt's export into WL99_all_resolved.csv
+    # before the NEXT attempt (if any) re-imports a narrower symbol list and
+    # overwrites the live WL99 fragment -- see
+    # _merge_wl99_export_into_history()'s own docstring for why this is
+    # needed (a symbol resolved here can otherwise vanish from disk
+    # entirely once a later attempt's smaller re-import replaces it).
+    wl99_export_path = os.path.join(save_folder, f"{export_row['Name']}_{export_row['watchlist_name']}.csv")
+    _merge_wl99_export_into_history(wl99_export_path, save_folder)
+
+    # 6. Re-sync LoadingSymbols.txt to output_list's stuck state AFTER
     # this export (2026-08-21, user-directed) -- step 5's download_watchlist
-    # call already reconciled stuck_symbols_memory itself (via its own
-    # update_stuck_symbols_memory() call on WL99's freshly-exported CSV),
-    # but the file on disk still only reflects step 2's PRE-reload
+    # call already reconciled output_list itself (via its own
+    # update_output_list_from_fragment() call on WL99's freshly-exported
+    # CSV), but the file on disk still only reflects step 2's PRE-reload
     # snapshot. Without this, a symbol this export just resolved (or a
     # symbol that's newly stuck) sits stale in the file until some LATER
     # do_reloadwl99() call happens to overwrite it -- rewriting here means
@@ -1380,7 +1588,7 @@ def edit_watchlist(watchlist_name, symbols_file, images_folder, recipe_dir,
     return True
 
 def download_watchlist(watchlist_data, save_folder, images_folder, open_only, force_download, re_process,
-                        already_selected=False):
+                        already_selected=False, wait_timeout=180):
     global elapsed_time
     """Navigate menus to export a specific watchlist.
 
@@ -1393,7 +1601,15 @@ def download_watchlist(watchlist_data, save_folder, images_folder, open_only, fo
     open_only pre-select call already selected this exact watchlist, and
     the reload sequence in between (editing WL99's symbols) never switches
     away from it -- redoing the same 3 selection clicks there was pure
-    waste, on every WL99 export/retry."""
+    waste, on every WL99 export/retry.
+
+    wait_timeout (2026-09-10, user-directed): caps the stabilization wait
+    below (how long to keep watching the 'lo*' loading-spinner count before
+    giving up/exporting anyway). Default 180s for the normal WL1..WL16
+    pass; do_reloadwl99() passes 60 for its own WL99 export calls only --
+    WL99 already got its own 15s nudge-wait + toggle pass first (step 4
+    above), so by the time it reaches this wait, waiting another 3 full
+    minutes on top of that was pure cost with no real remaining upside."""
     category = watchlist_data['Name']
     ref_image = watchlist_data['ref_image']
     w_name = watchlist_data['watchlist_name']
@@ -1463,7 +1679,7 @@ def download_watchlist(watchlist_data, save_folder, images_folder, open_only, fo
 
     #print(f"elapsed time {elapsed_time}")
 
-    while time.time() - start < 180:
+    while time.time() - start < wait_timeout:
         # if prev_count==0:
         #     time.sleep(5)
         # else:
@@ -1506,12 +1722,12 @@ def download_watchlist(watchlist_data, save_folder, images_folder, open_only, fo
     # Verify export succeeded
     if os.path.exists(full_path):
         print(f"✅ Successfully saved to: {full_path}")
-        # 2026-08-20: reconcile stuck_symbols_memory against THIS export --
-        # adds anything still stuck, removes anything this fresher reading
-        # resolved -- so RELOADWL99 (which runs after all 16 watchlists)
+        # 2026-08-20 (2026-09-11: now backed by output_list): reconcile
+        # against THIS export -- stores/overwrites every symbol's row, stuck
+        # or resolved, so RELOADWL99 (which runs after all 16 watchlists)
         # always sees this run's live, accurate state, not a stale
         # snapshot from last time.
-        update_stuck_symbols_memory(full_path)
+        update_output_list_from_fragment(full_path)
         if check_loading_threshold_from_csv(full_path):
             return True
         else:
@@ -1519,11 +1735,13 @@ def download_watchlist(watchlist_data, save_folder, images_folder, open_only, fo
             return False
     else:
         print(f"❌ File not found after export: {full_path}")
+        pause_status_overlay()
         user_choice = pyautogui.confirm(
             text=f"File not found after export:\n\n{full_path}\n\nDo you want to stop automation?",
             title="Export Failed",
             buttons=["Stop", "Continue"]
         )
+        resume_status_overlay()
         if user_choice == "Stop":
             print("🛑 Stopping automation as requested.")
             sys.exit(1)
@@ -1591,15 +1809,16 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
             # themselves. Excludes the RELOADWL99 row itself from the
             # re-run (that's handled separately below) to avoid recursing
             # back into this same branch.
-            # 2026-08-20: reads stuck_symbols_memory directly -- no disk
-            # rescan needed. Every fragment export so far (WL1..WL16, via
-            # download_watchlist()'s own update_stuck_symbols_memory()
-            # call) has already kept it accurate incrementally, so by the
-            # time this row runs it already holds the true current state.
+            # 2026-08-20 (2026-09-11: now backed by output_list): reads
+            # get_stuck_symbols() directly -- no disk rescan needed. Every
+            # fragment export so far (WL1..WL16, via download_watchlist()'s
+            # own update_output_list_from_fragment() call) has already kept
+            # output_list accurate incrementally, so by the time this row
+            # runs it already holds the true current state.
             print(f"\n{'=' * 60}\n=== RELOADWL99 reached -- checking for stuck 'Loading' symbols ===\n{'=' * 60}")
             reprocess_attempts = 0
-            stuck_count = len(stuck_symbols_memory)
-            print(f"Stuck symbols right now ({stuck_count}): {sorted(stuck_symbols_memory)}")
+            stuck_count = len(get_stuck_symbols())
+            print(f"Stuck symbols right now ({stuck_count}): {get_stuck_symbols()}")
             print(f"Incomplete watchlist fragments right now: {incomplete_files}")
 
             if stuck_count <= RELOAD_SYMBOL_THRESHOLD:
@@ -1622,9 +1841,9 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
                 toggle_column_set_away_and_back(df, images_folder)
                 run_recipe_rows(df[df['Type'] != 'RELOADWL99'], save_folder, images_folder, recipe_dir, True)
                 reprocess_attempts += 1
-                new_stuck_count = len(stuck_symbols_memory)
+                new_stuck_count = len(get_stuck_symbols())
                 print(f"After reprocess attempt {reprocess_attempts}: {new_stuck_count} still stuck: "
-                      f"{sorted(stuck_symbols_memory)}")
+                      f"{get_stuck_symbols()}")
                 if new_stuck_count >= stuck_count:
                     print(f"Reminder: reprocess attempt {reprocess_attempts} made no progress "
                           f"({new_stuck_count} still 'Loading') -- stopping reprocessing early.")
@@ -1636,20 +1855,37 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
             # Retry up to MAX_WL99_RETRY_ATTEMPTS, stopping as soon as
             # nothing's stuck or a pass makes no further progress.
             #
-            # 2026-08-20: do_reloadwl99() itself now writes
-            # stuck_symbols_memory's current contents to LoadingSymbols.txt
-            # immediately before its own reload sequence reads it -- no
-            # separate trim-and-write needed here before each attempt.
+            # 2026-08-20 (2026-09-11: now backed by output_list):
+            # do_reloadwl99() itself now writes output_list's current
+            # stuck subset to LoadingSymbols.txt immediately before its own
+            # reload sequence reads it -- no separate trim-and-write needed
+            # here before each attempt.
             print(f"\n--- Proceeding to WL99 reload+export (up to {MAX_WL99_RETRY_ATTEMPTS} attempt(s)). ---")
             wl99_attempts = 0
-            prev_remaining = None
+            # 2026-09-16: seeded from the stuck count going INTO this loop
+            # (not None) -- otherwise the no-progress check below can't
+            # fire until AFTER a second attempt, since attempt 1 had
+            # nothing to compare against. That forced a full second
+            # open/reload/nudge/export pass even when attempt 1 alone
+            # already made zero progress (confirmed live: a single
+            # genuinely-stuck symbol went through two full WL99 attempts
+            # before the loop noticed neither had helped). Seeding with
+            # this pre-loop count lets a no-progress attempt 1 stop the
+            # loop immediately.
+            prev_remaining = stuck_count
             while wl99_attempts < MAX_WL99_RETRY_ATTEMPTS:
                 print(f"\n--- WL99 reload+export attempt {wl99_attempts + 1}/{MAX_WL99_RETRY_ATTEMPTS} starting "
-                      f"({len(stuck_symbols_memory)} symbol(s) currently stuck). ---")
+                      f"({len(get_stuck_symbols())} symbol(s) currently stuck). ---")
+                # Each pass: do_reloadwl99() loads LoadingSymbols.txt into
+                # WL99 and exports it, which (via download_watchlist()'s own
+                # update_output_list_from_fragment() call) updates
+                # output_list with WL99's now-resolved rows. get_stuck_
+                # symbols() below re-derives the stuck set from that updated
+                # output_list -- there is no separate stuck-list update step.
                 do_reloadwl99(row, save_folder, images_folder, recipe_dir, df)
                 wl99_attempts += 1
-                remaining = len(stuck_symbols_memory)
-                print(f"After WL99 attempt {wl99_attempts}: {remaining} still stuck: {sorted(stuck_symbols_memory)}")
+                remaining = len(get_stuck_symbols())
+                print(f"After WL99 attempt {wl99_attempts}: {remaining} still stuck: {get_stuck_symbols()}")
                 if remaining == 0:
                     print("--- Nothing left stuck -- WL99 reload/retry loop done. ---")
                     break
@@ -1664,11 +1900,11 @@ def run_recipe_rows(df, save_folder, images_folder, recipe_dir, re_process):
             print(f"{'=' * 60}\n=== RELOADWL99 handling done ({wl99_attempts} WL99 attempt(s), "
                   f"{reprocess_attempts} reprocess attempt(s)) ===\n{'=' * 60}\n")
 
-            # 2026-08-28, user-directed: write stuck_symbols_memory's final
+            # 2026-08-28, user-directed: write output_list's final stuck
             # state to LoadingSymbols.txt (redundant safety net -- the last
             # do_reloadwl99() call's own step 6 should already have done
             # this, but costs nothing to repeat) and then READ IT BACK FROM
-            # DISK and print it -- rather than printing stuck_symbols_memory
+            # DISK and print it -- rather than printing get_stuck_symbols()
             # itself -- so what's shown on screen is provably what's
             # actually sitting in the file the user (or a manual re-import)
             # would work from, matching the manual workflow's own
@@ -1702,9 +1938,11 @@ def main(watchlist_file, save_folder, images_folder, re_process):
     plus the merge stage as one combined run."""
     tos_window = ensure_tos_active(images_folder)
     # 2026-09-10: only start the status overlay AFTER TOS is confirmed
-    # active/maximized -- belt-and-suspenders on top of _OVERLAY_MARGIN_TOP's
-    # own vertical clearance, so it's never on screen while ensure_tos_active's
-    # own full-screen "maximized.png" search is running. Stopped at
+    # active/maximized -- so it's never on screen while ensure_tos_active's
+    # own full-screen "maximized.png" search is running (see the overlay's
+    # own module-level placement note for why that ordering is what keeps
+    # the dot from ever corrupting that image match, not vertical
+    # clearance -- see _OVERLAY_MARGIN_TOP's own comment). Stopped at
     # run_pipeline()'s own exit points (its early "no WL rows" return and
     # its normal end) -- not a try/finally, but the overlay lives on a
     # daemon thread, so an exception anywhere in between just means it's
@@ -1744,7 +1982,7 @@ def main(watchlist_file, save_folder, images_folder, re_process):
     # ADD to what the first pass already found/downloaded, not wipe it.
     if not re_process:
         working_dir = os.path.dirname(os.path.normpath(save_folder))
-        stuck_symbols_memory.clear()
+        output_list.clear()
         write_filenames_to_file([], os.path.join(working_dir, 'LoadingSymbols.txt'), label="symbols")
         if os.path.isdir(save_folder):
             for fname in os.listdir(save_folder):
@@ -1793,8 +2031,10 @@ def sync_and_validate_count(data, filename):
             # ImportAdditions.py, etc). monitor_directory() now releases
             # lock_file_path before calling this, so whichever prompt style
             # is used here no longer blocks other scripts either way.
+            pause_status_overlay()
             cont = input(f"Row count mismatch! Previous: {stored_count}, Current: {current_count}. "
                           "Press y to continue, anything else to abort: ").strip().lower()
+            resume_status_overlay()
             if cont != 'y':
                 print("Aborting process.")
                 sys.exit()
@@ -1837,15 +2077,22 @@ def open_and_wait(path, timeout=300, interval=0.5):
     return False
 
 def wait_for_file_to_close(filename):
-    """Waits until the specified file is closed."""
+    """Waits until the specified file is closed. 2026-09-10: pauses the
+    status overlay while actually blocked (file genuinely locked, e.g. the
+    user has it open in Excel) -- returns instantly with no pause in the
+    common case where it isn't locked. resume_status_overlay() is a no-op
+    if the overlay was never started, so this stays harmless from any
+    caller."""
     while True:
         try:
             with open(filename, 'a'):
                 pass
             break
         except IOError:
+            pause_status_overlay()
             print(f"File {filename} is currently open. Please close it to proceed.")
             time.sleep(30)
+    resume_status_overlay()
 
 def read_headers(headers_file):
     if not os.path.isfile(headers_file):
@@ -2040,10 +2287,20 @@ def _load_previous_archive_rows(archive_dir):
     else (raw fragment rows; Date/Time only gets prepended at write time).
     Returns {} if there's no prior archive or it can't be read -- caller
     treats that as 'nothing to backfill from', never raises."""
-    latest = get_lastest_file(archive_dir)
-    if not latest:
-        return {}
+    # 2026-09-11: get_lastest_file() itself does an unguarded os.listdir() --
+    # was outside this function's own try below, so a missing/renamed
+    # archive_dir (new TOSType, moved folder, typo) would raise
+    # FileNotFoundError uncaught, same silent-crash signature the
+    # kbhit()/getch() bug above had. Folded into the same try so it
+    # degrades to "nothing to backfill from" like every other failure here.
+    # latest initialized before the try so the except below can always
+    # reference it (get_lastest_file() itself raising would otherwise leave
+    # it unbound -- a second unguarded-name crash inside the handler).
+    latest = None
     try:
+        latest = get_lastest_file(archive_dir)
+        if not latest:
+            return {}
         encoding = get_encoding(latest)
         with open(latest, 'r', encoding=encoding) as f:
             reader = csv.reader(f)
@@ -2060,8 +2317,11 @@ def _load_previous_archive_rows(archive_dir):
         return {}
 
 def _backfill_stuck_symbols(output_list, summary_messages, loading_symbols_file, archive_dir, working_dir):
-    """Triggered by the 'F' keypress in monitor_directory()'s wait loop --
-    2026-09-10, user: rather than waiting on a manual fix, pull each
+    """Triggered by creating/touching FillFromArchive.txt in monitor_directory()'s
+    wait loop (2026-09-11: was also triggerable by an 'F' keypress in that
+    same window; dropped per user request -- unreliable, only worked if
+    that exact console had keyboard focus). 2026-09-10, user: rather than
+    waiting on a manual fix, pull each
     currently-stuck symbol's last known full row from the most recent
     archived output and use it to replace today's row WHOLESALE (every
     column, not a per-cell patch). A symbol missing from that archive too
@@ -2157,6 +2417,11 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
         last_file=""
         update_exports_prompt = False
         exit_update_exports = False
+        # 0.0 (not time.time()) so the very first stuck tick asks right
+        # away instead of waiting a full TERMINAL_PROMPT_INTERVAL_SECONDS
+        # first -- see the terminal-prompt block below.
+        last_terminal_prompt = 0.0
+        start_input_listener()
 
         # Monitoring loop
         while True:
@@ -2212,7 +2477,9 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                         actual_headers = next(reader)
                         if actual_headers != input_headers:
                             compare_lists(actual_headers, input_headers)
+                            pause_status_overlay()
                             cont = input(f"Error: The headers in the file '{filename}' do not match the expected headers (First Row in headers file). Press y to continue: ").strip().lower()
+                            resume_status_overlay()
                             if cont == 'y':
                                 continue
                             else:
@@ -2224,8 +2491,8 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                             if len(row)==0:
                                 continue
                             # 2026-08-28 fix: normalize the dict key the same way
-                            # update_stuck_symbols_memory()/find_genuinely_stuck_symbols()
-                            # already do -- a futures/specific-month symbol can export
+                            # Stage 1's own _fragment_rows() already does -- a
+                            # futures/specific-month symbol can export
                             # with a different bracket suffix (or none) once it's been
                             # reloaded via its root symbol into WL99 (see
                             # normalize_for_reimport()'s own docstring). Without this,
@@ -2317,6 +2584,13 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
             # is reused even though these are symbols, not filenames; the
             # function itself is generic (one string per line).
             if summary_messages:
+                # 2026-09-10, user: this whole screen (stuck-symbol summary
+                # + the F/flag-file fill prompt) is a "needs you" state too,
+                # not just active automation -- pause the dot for as long as
+                # anything's stuck, same as the other blocking prompts.
+                # resume_status_overlay() is in the elif below, once nothing
+                # is stuck this pass.
+                pause_status_overlay()
                 print("Summary of findings:")
                 sorted_summary_messages = sorted(summary_messages.keys())
                 for key in sorted_summary_messages:
@@ -2331,30 +2605,73 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
                 write_filenames_to_file(reimport_symbols, loading_symbols_file, label="symbols")
 
                 # 2026-09-10, user: offer to fill these from the last
-                # archived file instead of waiting on a manual fix -- 'F',
-                # no Enter needed (msvcrt.kbhit()/getch(), already imported
-                # for file locking above). Purely optional: not pressing it
-                # changes nothing -- the loop keeps waiting exactly as
-                # before, and a manual edit to the fragment CSV is still
-                # picked up automatically on the next poll either way.
-                print(f"\n💡 Press 'F' to fill these {len(reimport_symbols)} stuck symbol(s) from the "
-                      f"last archived file instead of waiting (whole row replaced; symbols missing "
-                      f"from that archive stay stuck).")
-                pressed_f = False
-                while msvcrt.kbhit():
-                    key = msvcrt.getch()
+                # archived file instead of waiting on a manual fix -- create
+                # or touch this file (from any window, File Explorer, or a
+                # totally separate terminal) to trigger it. Purely optional:
+                # leaving it alone changes nothing -- the loop keeps waiting
+                # exactly as before, and a manual edit to the fragment CSV
+                # is still picked up automatically on the next poll either
+                # way. Checked and removed every tick.
+                #
+                # 2026-09-11, user: originally also offered a same-window
+                # 'F' keypress (msvcrt.kbhit()/getch()) alongside this file
+                # trigger, dropped per user request -- it turned out
+                # unreliable (only works if that specific console window has
+                # keyboard focus at the instant you type, confirmed live as
+                # why it silently did nothing when running more than one
+                # TOSType at once; also found and fixed a real bug where an
+                # unguarded kbhit()/getch() exception -- a documented risk
+                # when the console enters QuickEdit/Mark text-selection mode
+                # -- could silently crash this whole loop). The file trigger
+                # alone is simpler and has neither problem.
+                fill_from_archive_file = os.path.join(working_dir, 'FillFromArchive.txt')
+                print(f"\n💡 Fill these {len(reimport_symbols)} stuck symbol(s) from the last archived "
+                      f"file instead of waiting (whole row replaced; symbols missing from that archive "
+                      f"stay stuck) -- create or touch this file from any window:\n    "
+                      f"{fill_from_archive_file}")
+                flag_triggered = os.path.exists(fill_from_archive_file)
+                if flag_triggered:
                     try:
-                        if key.decode('utf-8', errors='ignore').lower() == 'f':
-                            pressed_f = True
-                    except Exception:
-                        pass
-                if pressed_f:
+                        os.remove(fill_from_archive_file)
+                    except OSError as e:
+                        print(f"⚠️ Could not remove trigger file '{fill_from_archive_file}': {e}")
                     _backfill_stuck_symbols(output_list, summary_messages, loading_symbols_file,
                                              archive_dir, working_dir)
+
+                # 2026-09-11, user: same question, asked directly on the
+                # terminal -- for whoever's sitting at THIS console rather
+                # than needing a second window/File Explorer to touch
+                # FillFromArchive.txt. Gated to once per
+                # TERMINAL_PROMPT_INTERVAL_SECONDS (not every 5s poll tick)
+                # so it doesn't reprint on top of itself while waiting.
+                # No answer within the window -- fall straight through and
+                # go back to polling exactly as before, same as if this
+                # had never asked at all.
+                if summary_messages and time.time() - last_terminal_prompt >= TERMINAL_PROMPT_INTERVAL_SECONDS:
+                    last_terminal_prompt = time.time()
+                    # 2026-09-11 fix: print the question explicitly on the
+                    # main thread (same mechanism as every other line in
+                    # this loop, all confirmed visible) instead of relying
+                    # on input()'s own prompt-argument to render it -- an
+                    # earlier version relied on that and it didn't reliably
+                    # show up. _read_refill_answer() below only does the
+                    # timed blocking read, via ONE persistent reader thread
+                    # (see its own comment -- fixes "had to enter y + Enter
+                    # twice", confirmed live via the debugger: a per-call
+                    # reader thread, abandoned on every unanswered cycle,
+                    # left stale threads competing for the next keystroke).
+                    print(f"\n❓ Refill these {len(reimport_symbols)} stuck symbol(s) from the last "
+                          f"archive now? (y/N, {TERMINAL_PROMPT_INTERVAL_SECONDS}s to answer -- "
+                          "no answer keeps waiting): ", end="", flush=True)
+                    answer = _read_refill_answer(TERMINAL_PROMPT_INTERVAL_SECONDS)
+                    if answer and answer.strip().lower() in ('y', 'yes'):
+                        _backfill_stuck_symbols(output_list, summary_messages, loading_symbols_file,
+                                                 archive_dir, working_dir)
             elif os.path.exists(loading_symbols_file):
                 # No stuck symbols this pass -- clear stale data rather than
                 # leaving a file that claims symbols are still stuck.
                 write_filenames_to_file([], loading_symbols_file, label="symbols")
+                resume_status_overlay()
 
             # continue if no files with data is processed
             if not processed_files:
@@ -2400,7 +2717,9 @@ def monitor_directory(working_dir, final_partial_filename, lines_to_ignore, outp
             else:
                 if not exit_update_exports:
                     if update_exports_prompt:
+                        pause_status_overlay()
                         comp = input(f"Process more files? Press y to process more files: ").strip().lower()
+                        resume_status_overlay()
                         if comp != 'y':
                             copy_and_add_empty_lines(export_file_latest, export_file_to_update_indir, lines_to_ignore)
                         update_exports_prompt=False
@@ -2565,13 +2884,14 @@ def run_pipeline(watchlist_file, save_folder, images_folder, update_exports='N',
         # row (and its WL99 reload+export) never fires on its own -- any
         # symbol still genuinely stuck "Loading" would otherwise just sit
         # there forever, since monitor_directory() only ever passively waits
-        # on that word below, it never resolves it. find_genuinely_stuck_
-        # symbols() (not a naive per-file union -- see its own docstring for
-        # why that re-triggered already-resolved symbols on a second
-        # merge-only run) finds what's ACTUALLY still stuck across every
-        # fragment, write those into LoadingSymbols.txt (do_reloadwl99()'s
-        # own input), and run the SAME RELOADWL99 entry point a normal run
-        # would have hit.
+        # on that word below, it never resolves it. Rebuilding output_list
+        # from every fragment CSV already in save_folder (2026-09-11 --
+        # same one-shot merge update_output_list_from_fragment() uses
+        # everywhere else, just called once per file here) finds what's
+        # ACTUALLY still stuck (a symbol whose only sighting anywhere is a
+        # "Loading" row), writes that into LoadingSymbols.txt
+        # (do_reloadwl99()'s own input), and runs the SAME RELOADWL99 entry
+        # point a normal run would have hit.
         #
         # Also always ensure the WL99 fragment itself exists -- if it's
         # simply missing (not yet exported this run) with nothing stuck,
@@ -2584,19 +2904,23 @@ def run_pipeline(watchlist_file, save_folder, images_folder, update_exports='N',
         reload_rows = df[df['Type'] == 'RELOADWL99']
         if not reload_rows.empty and os.path.isdir(save_folder):
             reload_row = reload_rows.iloc[0]
-            # Bootstrap stuck_symbols_memory from disk (2026-08-20) -- this
-            # process never ran main(), so there's no in-process export
-            # history to have kept it accurate incrementally; a one-time
-            # rescan of whatever a PRIOR run's fragments left behind is the
-            # only way to seed it. do_reloadwl99() below reads/writes it
-            # from here on, same as a normal run.
-            stuck_symbols_memory.clear()
-            stuck_symbols_memory.update(find_genuinely_stuck_symbols(save_folder))
+            # Bootstrap output_list from disk (2026-08-20; 2026-09-11:
+            # rebased onto output_list) -- this process never ran main(),
+            # so there's no in-process export history to have kept it
+            # accurate incrementally; a one-time scan of every fragment CSV
+            # a PRIOR run left in save_folder is the only way to seed it.
+            # do_reloadwl99() below reads/writes it from here on, same as a
+            # normal run.
+            output_list.clear()
+            for fname in os.listdir(save_folder):
+                if fname.lower().endswith('.csv'):
+                    update_output_list_from_fragment(os.path.join(save_folder, fname))
+            stuck = get_stuck_symbols()
             wl99_fragment = os.path.join(save_folder, f"{reload_row['Name']}_{reload_row['watchlist_name']}.csv")
 
-            if stuck_symbols_memory or not os.path.exists(wl99_fragment):
-                if stuck_symbols_memory:
-                    print(f"\n--- Merge-only mode: {len(stuck_symbols_memory)} symbol(s) genuinely still "
+            if stuck or not os.path.exists(wl99_fragment):
+                if stuck:
+                    print(f"\n--- Merge-only mode: {len(stuck)} symbol(s) genuinely still "
                           "'Loading' (no fragment has resolved data for them) -- running RELOADWL99 "
                           "to reload and re-export WL99. ---")
                 else:
@@ -2605,9 +2929,23 @@ def run_pipeline(watchlist_file, save_folder, images_folder, update_exports='N',
                 # This IS real TOS-GUI automation (unlike the rest of
                 # merge-only mode), so ensure_tos_active() first, same as
                 # main() itself does before its own row loop.
-                ensure_tos_active(images_folder)
+                #
+                # 2026-09-10, user: "no green dot" on a merge-only reprocess
+                # run (e.g. Re-ProcessTOSLExports.bat) -- start_status_
+                # overlay() was only ever called from main(), which
+                # merge-only mode never calls (see this function's own
+                # comment above), so the dot never started at all for this
+                # path. Same start/stop pattern as main()'s, scoped to just
+                # this block since it's the only GUI automation merge-only
+                # mode ever does.
+                tos_window = ensure_tos_active(images_folder)
+                if tos_window:
+                    start_status_overlay(tos_window.left, tos_window.top, tos_window.width)
+                else:
+                    start_status_overlay()
                 recipe_dir = os.path.dirname(os.path.abspath(watchlist_file))
                 do_reloadwl99(reload_row, save_folder, images_folder, recipe_dir, df)
+                stop_status_overlay()
 
     # 2026-08-17: release the TOS.lock here -- right after every WL row AND
     # the RELOADWL99 row's WL99 export have all finished (main() processes
@@ -2717,4 +3055,29 @@ if __name__ == "__main__":
 
     except Exception as e:
         print(f"An error occurred: {e}", file=sys.stderr)
+        # 2026-09-11: a crash here was only ever visible live, in a console
+        # window ProcessTOSExports.bat auto-closes after 30s (merge-only
+        # mode didn't even check errorlevel to show "error while executing
+        # python" -- fixed separately in that .bat) -- no way to diagnose
+        # after the fact. Logs the full traceback to a file next to
+        # LoadingSymbols.txt/etc (working_dir = parent of save_directory,
+        # same convention every other per-run file here uses), append mode
+        # so a run's history accumulates. Deliberately does NOT redirect
+        # this process's actual stdout/stderr/stdin at the batch level --
+        # piping python.exe's own console through anything (Tee-Object,
+        # etc.) risks turning its stdin into a non-raw-console stream,
+        # which would break this script's interactive input()/choice
+        # prompts (the merge loop's own row-count-mismatch/headers-mismatch
+        # confirmations, etc.). This is purely an in-process, best-effort
+        # write -- wrapped in its own try so a logging failure can never
+        # mask the real error or replace this handler's own exit code.
+        try:
+            working_dir = os.path.dirname(os.path.normpath(save_directory))
+            crash_log_path = os.path.join(working_dir, 'crash_log.txt')
+            with open(crash_log_path, 'a', encoding='utf-8') as f:
+                f.write(f"\n{'=' * 60}\n{datetime.datetime.now().isoformat()} -- {sys.argv}\n")
+                f.write(traceback.format_exc())
+            print(f"(full traceback logged to {crash_log_path})", file=sys.stderr)
+        except Exception:
+            pass
         sys.exit(1) # Error exit code
