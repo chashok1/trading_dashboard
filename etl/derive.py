@@ -3061,6 +3061,27 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
     bb_slope_hi = float(_bb_settings.get("bb_slope_hi", 3))
     bb_slope_lo = float(_bb_settings.get("bb_slope_lo", 2))
 
+    # 2026-09-19 -- noise deadband for the trend_trade_rule bucket below.
+    # trend_sd/trade_sd are already SD-normalized ((price - line) / stock's
+    # own daily SD), but the bucket CASE still checked them against a hard
+    # zero -- found live on MSFT: price sat $3-13 ABOVE its Trade line for
+    # 3 days, closed 3 CENTS below it (trade_sd a razor-thin negative), and
+    # got bucketed as "above trend and below trade" -> STM (Sell To Min),
+    # same as if it had broken several SDs below. A value within this many
+    # SDs of a line now counts as "still above" it, not "below" -- same
+    # 0.25 tolerance chosen for the related fix in derive_actionable.py's
+    # _compute_stop_signal (kept as a separate, already-applied fix; this
+    # is the second location, per user request).
+    sd_tol = 0.25
+    try:
+        _tol_row = session.execute(text(
+            "SELECT setting_value FROM ref_settings WHERE setting_name='trend_trade_sd_tolerance'"
+        )).first()
+        if _tol_row:
+            sd_tol = float(_tol_row[0])
+    except Exception:
+        pass
+
     # Read sd_median_window_days from ref_settings (default 30).
     # Both this SQL twin and the Python engine (derive_cat_atomic_input) must use
     # the same window so LEAST(sd, median_sd) agrees between the two engines.
@@ -3150,14 +3171,22 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         SELECT
             c.as_of_date, c.tos_symbol,
             c.a_bb_top_slope, c.a_bb_bot_slope,
+            -- 2026-09-19: -:sdtol deadband on every trend_sd/trade_sd
+            -- zero-check below (trade_trend_sd, a LINE-vs-LINE comparison
+            -- not a today's-price comparison, is left untouched) -- a
+            -- price within :sdtol standard deviations of a line now counts
+            -- as still "above" it, not "below", so a razor-thin miss
+            -- doesn't bucket the same as a real multi-SD break. See sd_tol
+            -- comment above this SQL block for the MSFT incident that
+            -- prompted this.
             CASE
-                WHEN c.trend_sd < 0 AND c.trade_sd < 0 THEN -2
+                WHEN c.trend_sd < -:sdtol AND c.trade_sd < -:sdtol THEN -2
                 WHEN c.trade_trend_sd < 0 AND c.trade_sd < 1 THEN -1
-                WHEN c.trend_sd > 0 AND c.trade_sd > 0
+                WHEN c.trend_sd > -:sdtol AND c.trade_sd > -:sdtol
                      AND (c.trade_trend_sd > 2
                           OR GREATEST(c.trend_sd, c.trade_sd) > 4) THEN 4
-                WHEN c.trend_sd > 0 AND c.trade_sd > 0 THEN 3
-                WHEN c.trend_sd < 0 AND c.trade_sd > 0 THEN 2
+                WHEN c.trend_sd > -:sdtol AND c.trade_sd > -:sdtol THEN 3
+                WHEN c.trend_sd < -:sdtol AND c.trade_sd > -:sdtol THEN 2
                 ELSE 1
             END,
             CASE
@@ -3213,7 +3242,7 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
         FROM computed c
         WHERE c.tos_symbol IS NOT NULL
     """), {"d": as_of_date, "win": win_interval,
-           "bshi": bb_slope_hi, "bslo": bb_slope_lo})
+           "bshi": bb_slope_hi, "bslo": bb_slope_lo, "sdtol": sd_tol})
 
     rows_pass1 = result.rowcount or 0
 

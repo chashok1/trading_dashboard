@@ -475,7 +475,21 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         def _crossover(line_at):
             """(cross_down, cross_up) vs. `line_at(dt)` -- prior 3
             as_of_dates (not today) uniformly on one side, today flips to
-            the other. Needs the full 4-date window (today + prior 3)."""
+            the other by more than a noise tolerance. Needs the full
+            4-date window (today + prior 3).
+
+            2026-09-19 -- tolerance added (same 0.25x-one-day-move,
+            HV-normalized formula as _three_day_up_streak below): found
+            live, MSFT sat $3-13 ABOVE its Trade line for 3 straight days,
+            then closed 3 CENTS below a Trade line that itself jumped up
+            to $493.81 -- a strict > /< fired a full "SELL TO MIN" off
+            that 3-cent gap. Tolerance scales with the stock's own normal
+            daily wiggle (same reasoning as the up-streak rule) so a
+            change of THIS size doesn't count as a real break, while the
+            same 3 cents would still matter for a much calmer stock.
+            User: "Technical can we do something instead of hard curr
+            val < Trade value?" -- chose option 2 of the several discussed.
+            """
             if len(_stop_dates) < 4:
                 return False, False
             prior3 = _stop_dates[1:4]
@@ -494,7 +508,13 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
                     prior_above = False
                 if not (p < line):
                     prior_below = False
-            return (p_today < line_today) and prior_above, (p_today > line_today) and prior_below
+            tolerance = 0.0
+            hvv = _hv.get(sym)
+            if hvv is not None and hvv > 0 and p_today > 0:
+                tolerance = 0.25 * (p_today * hvv / (252 ** 0.5))
+            cross_down = (p_today < line_today - tolerance) and prior_above
+            cross_up = (p_today > line_today + tolerance) and prior_below
+            return cross_down, cross_up
 
         trend_cross_down, _trend_cross_up = _crossover(_trend_at)
         if trend_cross_down:
