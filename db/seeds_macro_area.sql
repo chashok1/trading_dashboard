@@ -411,3 +411,14 @@ ON CONFLICT (area_key, member_symbol) DO NOTHING;
 INSERT INTO ref_macro_area (area_key, label, member_symbol, role, sort_order) VALUES
   ('rates_duration', '2Y Treasury', 'DGS2:FRED', 'curve', 10)
 ON CONFLICT (area_key, member_symbol) DO NOTHING;
+
+-- 2026-09-19: 2Y Treasury removed from Rates & Duration again -- no
+-- reliable price source exists: ThinkOrSwim has no 2-year yield symbol at
+-- all (CBOE's index family only covers 5Y/10Y/13-week/30Y), and the one
+-- fallback (Yahoo's DGS2:FRED -> 2YY=F futures mapping in ref_rrt) is a
+-- near-zero-volume contract whose quote goes stale for days at a time and
+-- lags the real yield by tens of bps (see the investigation this session).
+-- Unlike the 08-24 removal, not re-adding until a real live source for the
+-- 2-year yield is found. DELETE, same convention as that removal.
+DELETE FROM ref_macro_area
+WHERE area_key = 'rates_duration' AND member_symbol = 'DGS2:FRED';
