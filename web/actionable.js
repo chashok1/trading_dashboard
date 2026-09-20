@@ -105,6 +105,11 @@ const state = {
   // TASK_105: column visibility (set of hidden column ids, incl. 'h' when
   // show_hidden is off — see applyColumnVisibility()).
   hiddenCols: _loadHiddenCols(),
+  // 2026-09-19: per-column header filters (Excel-style) -- keyed by the
+  // th's data-key. {type:'values', selected:Set<string>} or
+  // {type:'range', min:number|null, max:number|null}. Absent key = no
+  // filter on that column. See _matchesColumnFilters.
+  colFilters: {},
 };
 // 2026-08-14 -- exposed on window so later-loaded scripts can read it --
 // a top-level `const`/`let` binding lives in this file's own lexical
@@ -1190,6 +1195,7 @@ function _closeClickPops() {
   const colPop = $('colMenuPop'); if (colPop) colPop.style.display = 'none';
   const legPop = $('legendPop');  if (legPop)  legPop.style.display  = 'none';
   const msPop  = $('multiSymPop'); if (msPop)  msPop.style.display  = 'none';
+  const cfPop  = $('colFilterPop'); if (cfPop)  cfPop.style.display  = 'none';
 }
 
 function _initColMenu() {
@@ -1210,6 +1216,135 @@ function _initColMenu() {
     if (chk.checked) state.hiddenCols.delete(id); else state.hiddenCols.add(id);
     try { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(Array.from(state.hiddenCols))); } catch (_) {}
     applyColumnVisibility();
+  });
+}
+
+// ── Per-column header filters (Excel-style) ──────────────────────────────────
+// data-key's raw values across the FULL unfiltered dataset (state.allRows),
+// same convention as the Universe screen's own Quad filter -- the checklist
+// always shows every possible value, not just the currently-visible subset,
+// so unchecking one never makes the others disappear out from under you.
+function _uniqueColValues(key) {
+  const set = new Set();
+  for (const r of state.allRows) {
+    const v = r[key];
+    set.add((v == null || v === '') ? '(blank)' : String(v));
+  }
+  return Array.from(set).sort();
+}
+
+function _renderColFilterPop(key, type, label) {
+  const pop = $('colFilterPop');
+  if (!pop) return;
+  pop.dataset.colKey = key;
+  pop.dataset.colType = type;
+  pop.dataset.colLabel = label;
+  let html = `<div class="sp-title">Filter: ${escapeHtml(label)}</div>`;
+  if (type === 'num') {
+    const cf = state.colFilters[key];
+    const minV = cf && cf.min != null ? cf.min : '';
+    const maxV = cf && cf.max != null ? cf.max : '';
+    html += '<div style="display:flex;flex-direction:column;gap:6px;padding:4px 2px;font-size:11px;">'
+      + `<label style="display:flex;justify-content:space-between;gap:8px;">Min <input type="number" id="colFilterMin" value="${minV}" style="width:80px;"></label>`
+      + `<label style="display:flex;justify-content:space-between;gap:8px;">Max <input type="number" id="colFilterMax" value="${maxV}" style="width:80px;"></label>`
+      + '<div style="display:flex;gap:6px;margin-top:2px;">'
+      + '<button class="btn btn-sm" id="colFilterApply">Apply</button>'
+      + '<button class="btn btn-sm" id="colFilterClear">Clear</button>'
+      + '</div></div>';
+  } else {
+    const values = _uniqueColValues(key);
+    const cf = state.colFilters[key];
+    const selected = cf ? cf.selected : new Set(values);
+    html += '<div style="display:flex;gap:8px;padding:2px 2px 6px;font-size:10px;">'
+      + '<a href="#" id="colFilterAll">All</a><a href="#" id="colFilterNone">None</a>'
+      + '</div>'
+      + '<div style="display:flex;flex-direction:column;gap:1px;max-height:260px;overflow-y:auto;">';
+    for (const v of values) {
+      const checked = selected.has(v) ? ' checked' : '';
+      html += '<label style="display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 4px;cursor:pointer;white-space:nowrap;">'
+            + `<input type="checkbox" data-col-value="${escapeHtml(v)}"${checked}> ${escapeHtml(v)}</label>`;
+    }
+    html += '</div>';
+  }
+  pop.innerHTML = html;
+}
+
+// User: "actionable screen -> is it possible to make headers as selectable
+// checkboxes so should be able to filter on them?" -- click the funnel icon
+// updateSortIndicators() injects next to each sortable header (both are
+// keyed off the same th.dataset.key/data-type already used for sorting, no
+// separate column registry needed).
+function _initColumnFilters() {
+  const thead = document.querySelector('#actGrid thead');
+  const pop = $('colFilterPop');
+  if (!thead || !pop) return;
+
+  // CAPTURE phase (the `true` below), not bubble: initSorting() attaches its
+  // own click listener directly on each th, which fires during bubble BEFORE
+  // this delegated thead listener would. That sort click re-renders the grid
+  // (updateSortIndicators() rebuilds every th's innerHTML), replacing this
+  // exact icon element out from under us -- so by the time this ran, `icon`
+  // was already a detached node and _positionClickPop's getBoundingClientRect()
+  // read back an all-zero rect, landing the popover in the same top-left spot
+  // every time regardless of which column was clicked. Capture phase runs
+  // top-down (thead before th), so stopping propagation here reaches the sort
+  // listener before it fires. User: "It it intentional that popup displayed
+  // at the same place instaead of next to selected column."
+  thead.addEventListener('click', (e) => {
+    const icon = e.target.closest('[data-filter-key]');
+    if (!icon) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const key = icon.dataset.filterKey;
+    const wasOpenForThisKey = pop.style.display === 'block' && pop.dataset.colKey === key;
+    _closeClickPops();
+    if (!wasOpenForThisKey) {
+      _renderColFilterPop(key, icon.dataset.filterType, icon.dataset.filterLabel);
+      _positionClickPop(pop, icon);
+    }
+  }, true);
+
+  pop.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const key = pop.dataset.colKey;
+    if (!key) return;
+    if (e.target.id === 'colFilterAll' || e.target.id === 'colFilterNone') {
+      e.preventDefault();
+      if (e.target.id === 'colFilterAll') delete state.colFilters[key];
+      else state.colFilters[key] = { type: 'values', selected: new Set() };
+      _renderColFilterPop(key, pop.dataset.colType, pop.dataset.colLabel);
+      applyClientFilter();
+      return;
+    }
+    if (e.target.id === 'colFilterApply' || e.target.id === 'colFilterClear') {
+      if (e.target.id === 'colFilterClear') {
+        delete state.colFilters[key];
+      } else {
+        const minEl = $('colFilterMin'), maxEl = $('colFilterMax');
+        const min = minEl && minEl.value !== '' ? Number(minEl.value) : null;
+        const max = maxEl && maxEl.value !== '' ? Number(maxEl.value) : null;
+        if (min == null && max == null) delete state.colFilters[key];
+        else state.colFilters[key] = { type: 'range', min, max };
+      }
+      pop.style.display = 'none';
+      applyClientFilter();
+      return;
+    }
+  });
+
+  pop.addEventListener('change', (e) => {
+    const key = pop.dataset.colKey;
+    if (!key) return;
+    const cb = e.target.closest('[data-col-value]');
+    if (!cb) return;
+    const values = _uniqueColValues(key);
+    let cf = state.colFilters[key];
+    if (!cf || cf.type !== 'values') cf = { type: 'values', selected: new Set(values) };
+    const v = cb.dataset.colValue;
+    if (cb.checked) cf.selected.add(v); else cf.selected.delete(v);
+    if (cf.selected.size === values.length) delete state.colFilters[key];
+    else state.colFilters[key] = cf;
+    applyClientFilter();
   });
 }
 
@@ -2192,6 +2327,31 @@ function matchesBaseFilters(r) {
   // Quad filter reads). AND across every selected quad, same as there.
   if (state.filters.quads && state.filters.quads.length) {
     if (!state.filters.quads.every(n => (r['quad' + n + '_net'] ?? null) > 0)) return false;
+  }
+  if (!_matchesColumnFilters(r)) return false;
+  return true;
+}
+
+// 2026-09-19 -- per-column header filters (Excel-style): a checklist of
+// values for text columns, a min/max range for numeric ones. Keyed by the
+// same data-key each th already carries for sorting, so no separate column
+// registry is needed. See _renderColFilterPop/_initColumnFilters below for
+// the popover UI, and updateSortIndicators() for the header funnel icon.
+// User: "actionable screen -> is it possible to make headers as selectable
+// checkboxes so should be able to filter on them?"
+function _matchesColumnFilters(r) {
+  for (const key in state.colFilters) {
+    const cf = state.colFilters[key];
+    if (!cf) continue;
+    if (cf.type === 'range') {
+      const n = Number(r[key]);
+      if (cf.min != null && (isNaN(n) || n < cf.min)) return false;
+      if (cf.max != null && (isNaN(n) || n > cf.max)) return false;
+    } else {
+      const raw = r[key];
+      const v = (raw == null || raw === '') ? '(blank)' : String(raw);
+      if (!cf.selected.has(v)) return false;
+    }
   }
   return true;
 }
@@ -4161,9 +4321,19 @@ const _ENTRY_RIPE_TECH = ['BS', 'BM', 'BMN'];
 // snapshot_date every day, permanently out of the Watchlist band even with
 // blank Technical (confirmed case: FAB). Removed — see _isNewSnapshot() for
 // the display-only "NEW" pill that replaces it inside the band.
+// 2026-09-19 -- checks row.consolidated_action (the raw Sources-side call)
+// instead of _chipAction(row) (the reconciled Final Call). _chipAction only
+// reports 'ADD' when finalCall's code is BMN, which itself already requires
+// Technical to be in a buy state (tech_is_buy/tech_is_buy_min in
+// _compute_final_call) -- so "reconciled action is ADD" and "Technical NOT
+// yet confirming" could never both be true at once, and this gate silently
+// matched zero rows on every date. User: "actionable screen -> WL -> ...
+// why is not displaying anything?" Checking the Sources call directly (does
+// a source want to buy this unheld symbol) against Technical separately is
+// what this gate was actually meant to do.
 function _buyNoiseGated(row) {
   if (row.held_today) return false;
-  if (_chipAction(row) !== 'ADD') return false;
+  if ((row.consolidated_action || '').toUpperCase() !== 'ADD') return false;
   const tech = (row.rr_action || '').toUpperCase();
   return _ENTRY_RIPE_TECH.indexOf(tech) === -1;
 }
@@ -6026,11 +6196,31 @@ function sortRows() {
 function updateSortIndicators() {
   document.querySelectorAll('#actGrid th.sortable').forEach(th => {
     const base = th.dataset.label || th.textContent.trim();
-    if (th.dataset.key === state.sort.key) {
+    const key = th.dataset.key;
+    // 2026-09-19: header filter funnel, rebuilt here every time alongside
+    // the sort arrow since this innerHTML rewrite would otherwise wipe out
+    // any icon appended separately (same reasoning as _applyChgIdyBadge's
+    // own comment below).
+    //
+    // filterKey/filterType default to the sort key/type, but a few columns
+    // (ACTION, MACRO, PVV, CALC) sort by a numeric strength/rank score while
+    // actually DISPLAYING a small fixed set of text codes (e.g. ACTION sorts
+    // by _fc_strength but shows "SELL TO MIN"/"BUY MORE"/...) -- filtering
+    // those by min/max on the hidden score make no sense to look at, so
+    // data-filter-key/data-filter-type (set in actionable.html) override to
+    // the actual displayed field for just those. User: "why all columns have
+    // min/max instead of distinct values for example action column?"
+    const filterKey  = th.dataset.filterKey  || key;
+    const filterType = th.dataset.filterType || th.dataset.type || 'str';
+    const filterActive = !!state.colFilters[filterKey];
+    const filterIcon = key
+      ? ` <span class="col-filter-ic${filterActive ? ' active' : ''}" data-filter-key="${filterKey}" data-filter-type="${filterType}" data-filter-label="${escapeHtml(base)}" title="Filter ${escapeHtml(base)}">&#9662;</span>`
+      : '';
+    if (key === state.sort.key) {
       th.innerHTML = escapeHtml(base) + ' <span class="sort-ind">' +
-        (state.sort.dir === 1 ? '&#9650;' : '&#9660;') + '</span>';
+        (state.sort.dir === 1 ? '&#9650;' : '&#9660;') + '</span>' + filterIcon;
     } else {
-      th.innerHTML = escapeHtml(base);
+      th.innerHTML = escapeHtml(base) + filterIcon;
     }
   });
   // Re-apply after every rebuild above (a sort click rewrites every th's
@@ -8127,6 +8317,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initMyPop();
   initEcoBarClick();
   _initColMenu();
+  _initColumnFilters();
   _initMultiSymPop();
   _initLegendPopover();
   applyColumnVisibility();
