@@ -13,6 +13,20 @@
   --bull: #15803d;
   --bear: #b91c1c;
   --neutral: #6b7280;
+  /* TASK_145 -- Market Read's own diverging pair (Addendum E4): the app's
+     --bull/--bear above fail the deuteranopia (colour-blindness) contrast
+     check (ΔE 4.2); this pair passes. Scoped to Market Read's .mr-* classes
+     only -- not a global app-wide swap, that's a separate recommendation
+     (see docs/market_state_factor_sss_design.md Addendum E4). Every .mr-*
+     cell also carries a glyph (▲ ▼ – ▲/▼ —), never colour alone. */
+  --mr-bull: #0d9488;
+  --mr-bear: #c2410c;
+  --mr-neu: #6b7280;
+  --mr-bull-bg: #e0f2f0;
+  --mr-bear-bg: #fbe9e1;
+  --mr-neu-bg: #f3f4f6;
+  --mr-warn: #b45309;
+  --mr-warn-bg: #fdf3e3;
   --warn: #b45309;
   --ok: #16a34a;
 
@@ -1114,6 +1128,13 @@ a.dash-news-list-row:hover { text-decoration: underline; }
   white-space: nowrap;
   flex-shrink: 0;
 }
+
+/* Main-toolbar Yahoo-quote-refresh icon (2026-09-21) -- spin while a fetch
+   (manual or auto-triggered) is in flight, and the last-fetch-time label
+   shown below it on Actionable/Portfolio (web/market_bar.js). */
+@keyframes mt-icon-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+#mtQuotesIconBtn.mt-spin { display: inline-block; animation: mt-icon-spin 0.8s linear infinite; }
+.mt-fetch-time { font-size: 9px; color: var(--text-3, #a8a29e); white-space: nowrap; margin-top: 1px; }
 
 /* Per-symbol chip inside the mini-tape / symbol tape */
 .rr-chip {
@@ -3317,4 +3338,100 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .hit-rate-pill-mid  { background: #f1f5f9; color: #475569; border: 1px solid #94a3b8; }
 .hit-rate-pill-high { background: #dcfce7; color: #15803d; border: 1px solid #15803d; }
 .hit-rate-pill-neg  { background: #fee2e2; color: #dc2626; border: 1px solid #dc2626; }
+
+/* =========================================================================
+   TASK_145 -- Market Read panel (web/market_read.js). Breadth strip, theme
+   grid, sector cards. docs/mockups/market_read_one_picture_mockup.html is
+   the visual reference -- same bands/columns/glyphs, class names loosely
+   mirror the mockup's own (prefixed mr- to avoid collisions).
+   ========================================================================= */
+/* 2026-09-21, user-directed: sizes trimmed across the board ("reduce the
+   sizes so i can see more") -- tiles/cards narrower + less padding so more
+   fit per row, table rows tighter, hero numbers/sparklines smaller. Same
+   structure/classes, no markup changes. */
+.mr-sub { color: var(--text-2); font-size: 10px; margin: 3px 0 5px; }
+.mr-headline { font-size: 12px; margin-top: 4px; }
+.mr-headline-pill { font-weight: 600; }
+.mr-headline-sub { color: var(--text-2); margin-left: 8px; }
+
+.mr-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 5px; margin-bottom: 5px; }
+.mr-tile { border: 1px solid var(--border); border-radius: 6px; padding: 4px 7px; background: var(--card-bg); }
+.mr-tile-lbl { color: var(--text-2); font-size: 9px; }
+.mr-tile-hero { font-size: 15px; font-weight: 600; line-height: 1.2; }
+.mr-tile-sub { font-size: 9.5px; color: var(--text-2); font-weight: 500; }
+.mr-tile-delta { font-size: 8.5px; color: var(--text-2); min-height: 11px; }
+.mr-tile-delta.up { color: var(--mr-bull); }
+.mr-tile-delta.dn { color: var(--mr-bear); }
+.mr-spark { width: 100%; height: 18px; display: block; }
+.mr-spark path { fill: none; stroke: #2a78d6; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.mr-spark circle { fill: #2a78d6; }
+.mr-spark-zero { stroke: var(--border); stroke-width: 1; }
+.mr-flipnote { color: var(--text-2); font-size: 9px; margin: 2px 0 5px; }
+.mr-flipnote b { color: var(--mr-warn); }
+
+/* 2026-09-21, user-directed: theme grid split into 2 columns -- Macro +
+   Commodities & real assets on the left, Equity factors + International
+   on the right (web/market_read.js::_themeGridColHtml/_MR_LEFT_COL_GROUPS).
+   Stacks to 1 column under 900px so it doesn't get crushed on a narrow
+   viewport. */
+.mr-grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+@media (max-width: 900px) {
+  .mr-grid-2col { grid-template-columns: 1fr; }
+}
+.mr-scroll { overflow-x: auto; }
+.mr-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 10px; }
+.mr-table th { text-align: left; color: var(--text-3); font-weight: 500; font-size: 8.5px; text-transform: uppercase;
+  letter-spacing: .03em; padding: 2px 4px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.mr-table td { padding: 2px 4px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
+.mr-group td { background: var(--bg); color: var(--text-3); font-size: 8.5px; text-transform: uppercase;
+  letter-spacing: .03em; padding-top: 5px; }
+.mr-theme-cell { font-weight: 500; cursor: pointer; }
+.mr-row-conflict .mr-theme-cell { border-left: 3px solid var(--mr-warn); padding-left: 6px; }
+.mr-num { text-align: right; }
+
+.mr-c { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 14px;
+  padding: 0 3px; border-radius: 4px; font-size: 9px; font-weight: 600; }
+.mr-c.mr-b { background: var(--mr-bull-bg); color: var(--mr-bull); }
+.mr-c.mr-s { background: var(--mr-bear-bg); color: var(--mr-bear); }
+.mr-c.mr-n { background: var(--mr-neu-bg); color: var(--mr-neu); }
+.mr-c.mr-m { background: var(--mr-warn-bg); color: var(--mr-warn); }
+.mr-c.mr-x { color: var(--text-3); font-weight: 400; background: none; }
+.mr-c.mr-qconf { box-shadow: 0 0 0 1.5px var(--mr-bear) inset; }
+.mr-st { font-weight: 600; font-size: 9px; }
+.mr-st-b { color: var(--mr-bull); } .mr-st-s { color: var(--mr-bear); }
+.mr-st-n { color: var(--mr-neu); } .mr-st-m { color: var(--mr-warn); }
+.mr-tr { color: var(--text-2); }
+.mr-tr-up { color: var(--mr-bull); } .mr-tr-dn { color: var(--mr-bear); }
+
+.fit-ok { color: var(--mr-bull); }
+.fit-warn { color: var(--mr-bear); font-weight: 600; }
+.fit-none { color: var(--text-3); }
+.fit-mixed { color: var(--mr-warn); }
+
+.mr-sect { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 5px; }
+.mr-sm { border: 1px solid var(--border); border-radius: 6px; padding: 4px 7px; background: var(--card-bg); }
+.mr-sm-divergence { border-color: var(--mr-warn); }
+.mr-sm-name { font-size: 10px; margin-bottom: 2px; }
+.mr-sm-two { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 2px 0; }
+.mr-k { font-size: 8px; color: var(--text-3); text-transform: uppercase; letter-spacing: .03em; }
+.mr-v { font-size: 12px; font-weight: 600; }
+.mr-v small { font-size: 8px; font-weight: 400; color: var(--text-3); display: block; }
+.mr-tier { display: flex; height: 4px; border-radius: 3px; overflow: hidden; gap: 2px; margin: 2px 0; }
+.mr-tier span { display: block; height: 100%; }
+.mr-tier-r { background: var(--mr-bull); } .mr-tier-b { background: #9ca3af; }
+.mr-tier-k { background: #d1d5db; } .mr-tier-e { background: var(--border); }
+.mr-sm-meta { font-size: 9px; color: var(--text-2); }
+.mr-chip { font-size: 8px; padding: 1px 3px; border-radius: 3px; border: 1px solid var(--border); color: var(--text-2); }
+.mr-chip.b { border-color: var(--mr-bull); color: var(--mr-bull); }
+.mr-chip.s { border-color: var(--mr-bear); color: var(--mr-bear); }
+.mr-ins { background: var(--mr-warn-bg); border-left: 3px solid var(--mr-warn); padding: 4px 7px;
+  border-radius: 4px; margin: 3px 0 7px; font-size: 10px; }
+
+/* Rail-expand highlight (theme row click -> #macroRailsWrap shown, matching
+   band flashes briefly so the user can find it among the 9 panels). */
+.mr-rail-highlight { outline: 2px solid var(--mr-bull); outline-offset: 2px; transition: outline-color .3s; }
+
+/* Risk Dial staleness-cap suffix (TASK_146, not a gauge -- see
+   api/routers/cockpit.py::get_risk_dial / etl/derive_risk_dial.py). */
+.rd-stale-suffix { color: var(--mr-warn); font-weight: 500; font-size: 11px; }
 

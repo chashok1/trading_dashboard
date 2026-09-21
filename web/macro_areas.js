@@ -735,154 +735,17 @@
     return out || '<span class="mra-muted">—</span>';
   }
 
-  function areaRowHtml(area) {
-    var isVol   = area.area_key === 'volatility';
-    var isRates = area.area_key === 'rates';
-
-    if (isVol) {
-      var vix_m = (area.members || []).find(function (m) { return m.role === 'gauge'; });
-      var zone = vix_m ? (vix_m.zone || '—') : '—';
-      var zoneClass = zone === 'investable' ? 'mra-zone-g'
-                    : zone === 'elevated'   ? 'mra-zone-r'
-                    : 'mra-zone-a';
-      return (
-        '<tr class="mra-row">' +
-          '<td class="mra-area-name">' + esc(area.label) + '</td>' +
-          '<td><span class="mra-zone ' + zoneClass + '">' + esc(zone) + '</span></td>' +
-          '<td colspan="3" class="mra-muted">gauge only</td>' +
-        '</tr>'
-      );
-    }
-    if (isRates) {
-      return (
-        '<tr class="mra-row">' +
-          '<td class="mra-area-name">' + esc(area.label) + '</td>' +
-          '<td>' + stancePillHtml(area.stance, area.conviction) + '</td>' +
-          '<td>' + durationChip(area.trade, 'Trade') + durationChip(area.trend, 'Trend') + '</td>' +
-          '<td class="mra-muted mra-small">rate read</td>' +
-          '<td>' + extremesHtml(area.extremes_hot, area.extremes_cold) + '</td>' +
-        '</tr>'
-      );
-    }
-    return (
-      '<tr class="mra-row">' +
-        '<td class="mra-area-name">' + esc(area.label) + '</td>' +
-        '<td>' + stancePillHtml(area.stance, area.conviction) + '</td>' +
-        '<td>' + durationChip(area.trade, 'Trade') + durationChip(area.trend, 'Trend') + '</td>' +
-        '<td class="mra-rb-wrap">' +
-          rrBarHtml(area.rr_pos, (area.extremes_hot || []).length > 0,
-                                  (area.extremes_cold || []).length > 0, area.label) +
-        '</td>' +
-        '<td>' + extremesHtml(area.extremes_hot, area.extremes_cold) + '</td>' +
-      '</tr>'
-    );
-  }
-
-  function sectorsHtml(sectors) {
-    if (!sectors) return '';
-    function chips(arr, cls) {
-      return (arr || []).map(function (s) {
-        return '<span class="mra-sec-chip ' + cls + '">' + esc(s) + '</span>';
-      }).join(' ');
-    }
-    return (
-      '<tr class="mra-row mra-sectors-row">' +
-        '<td class="mra-area-name">Sectors</td>' +
-        '<td colspan="4">' +
-          '<span class="mra-sec-label">Leaders:</span> ' +
-          chips(sectors.leaders, 'mra-sec-bull') + '  ' +
-          '<span class="mra-sec-label">Laggard:</span> ' +
-          chips(sectors.laggards, 'mra-sec-bear') + '  ' +
-          '<span class="mra-sec-label">Rotate in:</span> ' +
-          chips(sectors.rotate_in, 'mra-sec-rotate') +
-        '</td>' +
-      '</tr>'
-    );
-  }
-
-  function corrPlaceholderHtml() {
-    return (
-      '<tr class="mra-row mra-corr-row" id="macroCorrRow">' +
-        '<td class="mra-area-name">USD Corr</td>' +
-        '<td colspan="4" id="macroCorrSummary">' +
-          '<span class="mra-muted">Loading…</span>' +
-        '</td>' +
-      '</tr>'
-    );
-  }
-
-  function renderLegacyCard(data) {
-    var card = document.getElementById('macroReadCard');
-    if (!card) return;
-
-    var areas   = (data && data.areas) || [];
-    var sectors = data && data.sectors;
-    var top_down = (data && data.top_down) || '';
-
-    var rows = areas.map(areaRowHtml).join('');
-    rows += sectorsHtml(sectors);
-    rows += corrPlaceholderHtml();
-
-    card.innerHTML =
-      '<div class="mra-posture">' + esc(top_down) + '</div>' +
-      '<div class="mra-body">' +
-        '<table class="mra-table">' +
-          '<thead><tr>' +
-            '<th>Area</th><th>Stance</th><th>Duration</th><th>Range</th><th>Extremes</th>' +
-          '</tr></thead>' +
-          '<tbody>' + rows + '</tbody>' +
-        '</table>' +
-      '</div>';
-
-    var asOf = document.getElementById('macroReadAsOf');
-    if (asOf && data && data.as_of) asOf.textContent = 'as of ' + data.as_of;
-  }
-
+  // 2026-09-21 (TASK_145) -- areaRowHtml/sectorsHtml/corrPlaceholderHtml
+  // removed alongside renderLegacyCard below: dead code, no remaining
+  // caller (they only ever fed the legacy full-width card's <table> rows).
+  // renderLegacyCard/injectLegacyCard removed:
+  // dead code, never mounted (no screen ever had a #macroReadCard anchor),
+  // superseded by web/market_read.js's Band ① headline sentence (rendered
+  // into #regimeLineBand) + Band ③ theme grid, which read the richer
+  // /api/market-read endpoint instead of /api/macro-areas.
   function renderError(msg) {
     var rail = document.getElementById('macroRailAreas');
     if (rail) rail.innerHTML = '<div class="msr-err">Unavailable: ' + esc(msg) + '</div>';
-    var card = document.getElementById('macroReadCard');
-    if (card) card.innerHTML = '<div class="mra-err">Macro read unavailable: ' + esc(msg) + '</div>';
-  }
-
-  /* ── collapsible toggle (legacy card) ──────────────────────────────── */
-  function initCollapse(headerEl, bodyEl) {
-    if (!headerEl || !bodyEl) return;
-    headerEl.style.cursor = 'pointer';
-    var collapsed = false;
-    headerEl.addEventListener('click', function () {
-      collapsed = !collapsed;
-      bodyEl.style.display = collapsed ? 'none' : '';
-      var icon = headerEl.querySelector('.mra-toggle');
-      if (icon) icon.textContent = collapsed ? '▶' : '▼';
-    });
-  }
-
-  /* ── inject legacy card (only if the old macroReadCard anchor exists) ─ */
-  function injectLegacyCard() {
-    if (document.getElementById('macroReadCard')) return;
-    var wrapper = document.createElement('div');
-    wrapper.id = 'macroReadWrapper';
-    wrapper.className = 'mra-wrapper';
-    wrapper.innerHTML =
-      '<div class="mra-header" id="macroReadHeader">' +
-        '<span class="mra-title">Macro read</span> ' +
-        '<span class="mra-toggle">▼</span>' +
-        '<span class="mra-asof" id="macroReadAsOf"></span>' +
-      '</div>' +
-      '<div id="macroReadCard" class="mra-card"><span class="mra-muted">Loading…</span></div>';
-
-    var anchor =
-      document.getElementById('macroBand') ||
-      document.getElementById('econPanel') ||
-      document.querySelector('main .card');
-    if (anchor && anchor.parentNode) {
-      anchor.parentNode.insertBefore(wrapper, anchor.nextSibling);
-    }
-    initCollapse(
-      document.getElementById('macroReadHeader'),
-      document.getElementById('macroReadCard')
-    );
   }
 
   // 2026-08-27 -- your own $ exposure per sector, tagged onto each name in
@@ -919,11 +782,6 @@
       /* Primary: render side rail */
       renderRail(data);
       renderSectorsPanel(data && data.sectors, exposureMap);
-
-      /* Legacy full-width card (only if the old wrapper was injected by another path) */
-      if (document.getElementById('macroReadCard')) {
-        renderLegacyCard(data);
-      }
 
       /* Notify USD-corr listener that areas card is ready */
       document.dispatchEvent(new CustomEvent('macroReadReady', { detail: data }));

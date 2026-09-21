@@ -500,7 +500,7 @@ async function loadRiskDial() {
     body.innerHTML = `
       <div class="rd-top-row">
         <span class="rd-budget ${bandClass}">${r.risk_budget != null ? r.risk_budget : '—'}</span>
-        <span class="rd-label ${labelClass}">${escapeHtml(r.risk_label || '')}</span>
+        <span class="rd-label ${labelClass}">${escapeHtml(r.risk_label || '')}${r.stale_as_of ? ` <span class="rd-stale-suffix">&middot; CAUTION &middot; edge data as of ${escapeHtml(r.stale_as_of)}</span>` : ''}</span>
         <div class="rd-meter-pctwrap">
           ${meterLabelTop}
           <div class="rd-meter"><div class="rd-meter-fill ${bandClass}" style="width:${budget}%;"></div></div>
