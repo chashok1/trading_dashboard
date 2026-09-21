@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Market Read — one picture (mockup, real data as of 2026-09-21)</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f7f7f5; --card: #ffffff; --border: #e5e5e2; --grid: #e1e0d9;
+    --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+    --bull: #0d9488; --bear: #c2410c; --neu: #6b7280;      /* validated diverging pair, CVD-safe */
+    --bull-bg: #e0f2f0; --bear-bg: #fbe9e1; --neu-bg: #f3f4f6;
+    --warn: #b45309; --warn-bg: #fdf3e3;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 16px; }
+  .wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 12px; }
+  .hdr { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: baseline; justify-content: space-between; }
+  .regime { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-weight: 600; font-size: 12px; }
+  .pill.bear { background: var(--bear-bg); color: var(--bear); }
+  .pill.bull { background: var(--bull-bg); color: var(--bull); }
+  .pill.neu  { background: var(--neu-bg);  color: var(--neu); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .read { font-size: 14px; margin-top: 6px; }
+  .read b { font-weight: 600; }
+
+  /* breadth tiles */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+  .tile { border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: end; }
+  .tile .lbl { color: var(--ink2); font-size: 12px; grid-column: 1 / -1; }
+  .tile .hero { font-size: 26px; font-weight: 600; line-height: 1; }
+  .tile .delta { font-size: 12px; color: var(--ink2); }
+  .tile .delta.dn { color: var(--bear); } .tile .delta.up { color: var(--bull); }
+  .tile svg { grid-column: 1 / -1; width: 100%; height: 34px; display: block; }
+  .spark path { fill: none; stroke: #2a78d6; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .spark .zero { stroke: var(--grid); stroke-width: 1; }
+  .spark circle { fill: #2a78d6; }
+  .flipnote { color: var(--ink2); font-size: 12px; margin-top: 8px; }
+  .flipnote b { color: var(--warn); }
+
+  /* theme grid */
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th { text-align: left; color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 4px 8px; border-bottom: 1px solid var(--grid); vertical-align: middle; white-space: nowrap; }
+  tr.group td { background: #fafaf8; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; padding-top: 8px; }
+  td.theme { font-weight: 500; }
+  td.theme small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .c { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 20px; padding: 0 6px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+  .c.b { background: var(--bull-bg); color: var(--bull); }
+  .c.s { background: var(--bear-bg); color: var(--bear); }
+  .c.n { background: var(--neu-bg);  color: var(--neu); }
+  .c.x { color: var(--muted); font-weight: 400; }          /* not covered by this source */
+  .c.m { background: var(--warn-bg); color: var(--warn); }  /* mixed within source */
+  .st { font-weight: 600; }
+  .st.b { color: var(--bull); } .st.s { color: var(--bear); } .st.n { color: var(--neu); } .st.m { color: var(--warn); }
+  .conv { letter-spacing: 1px; color: var(--ink2); }
+  .tr { color: var(--ink2); }
+  .tr.up { color: var(--bull); } .tr.dn { color: var(--bear); }
+  .scroll { overflow-x: auto; }
+
+  /* sector small multiples */
+  .sect { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  .sm { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+  .sm .n { display: flex; justify-content: space-between; align-items: baseline; }
+  .sm .n b { font-size: 16px; }
+  .sm .n span { color: var(--muted); font-size: 11px; }
+  .sm svg { width: 100%; height: 28px; display: block; margin: 4px 0; }
+  .sm .chips { display: flex; gap: 4px; flex-wrap: wrap; }
+  .chip { font-size: 10px; padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border); color: var(--ink2); }
+  .chip.b { border-color: var(--bull); color: var(--bull); } .chip.s { border-color: var(--bear); color: var(--bear); }
+
+  .ins { background: var(--warn-bg); border-left: 3px solid var(--warn); padding: 6px 10px; border-radius: 4px; margin: 6px 0 10px; font-size: 12px; }
+  .sm .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
+  .sm .k { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  .sm .v { font-size: 18px; font-weight: 600; line-height: 1.1; }
+  .sm .v small { font-size: 10px; font-weight: 400; color: var(--muted); display: block; }
+  .sm .v.dn { color: var(--bear); } .sm .v.up { color: var(--bull); }
+  .ln { fill: none; stroke-width: 2; stroke-linejoin: round; }
+  .ln.bull { stroke: var(--bull); } .ln.bear { stroke: var(--bear); } .ln.neu { stroke: var(--neu); } .ln.warn { stroke: var(--warn); }
+  .tier { display: flex; height: 6px; border-radius: 3px; overflow: hidden; gap: 2px; margin: 2px 0 4px; }
+  .tier span { display: block; height: 100%; }
+  .tier .r { background: var(--bull); } .tier .b { background: #9ca3af; } .tier .k { background: #d1d5db; } .tier .e { background: var(--grid); }
+  .sm .meta { font-size: 11px; color: var(--ink2); }
+  .sect { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+  .you { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--grid); font-size: 12px; color: var(--ink2); }
+  .you .k { font-size: 10px; color: var(--muted); letter-spacing: .04em; }
+  .you .sep { color: var(--grid); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .qconf { box-shadow: 0 0 0 1.5px var(--bear) inset; }
+  tr.conflict td.theme { border-left: 3px solid var(--warn); }
+  .fit-ok { color: var(--bull); } .fit-warn { color: var(--bear); font-weight: 600; } .fit-none { color: var(--muted); } .fit-mixed { color: var(--warn); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; color: var(--ink2); font-size: 11px; }
+  .legend .c { min-width: 22px; height: 16px; font-size: 10px; }
+  .note { color: var(--muted); font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ① HEADLINE -->
+  <div class="card">
+    <div class="hdr">
+      <div>
+        <h1>Market read <span class="sub">· Mon Sep 21, 2026 · RR daily · ETF Pro / PS / SSS weekly</span></h1>
+      </div>
+      <div class="regime">
+        <span class="sub">Lists read as:</span>
+        <span class="pill bear">▼ INFLATION-UP · growth-down not confirmed</span>
+        <span class="sub">Quad model (ref_quad_periods):</span>
+        <span class="pill neu">Q3 · 4 conflicts ⚠</span>
+        <span class="pill warn">⚑ Sep 14 turn</span>
+      </div>
+    </div>
+    <div class="read">
+      <b>Rates up, credit down, dollar up, breadth narrow.</b> Inflation hedges bid (oil, copper, gold, PFIX).
+      But the lists are <b>short duration and short defensives</b> — the two things a Quad 3 playbook owns — so Hedgeye is positioned for <i>rates up</i> more than <i>growth down</i>. Where the Quad column and the lists disagree below is where the regime call itself is uncertain.
+    </div>
+    <div class="you">
+      <span class="k">YOUR BOOK · Fidelity · Sep 18</span>
+      <span><b>$1.06M</b> · <b>73%</b> cash &amp; short FI · <b>27%</b> risk</span>
+      <span class="sep">|</span>
+      <span>risk $ in <span class="st b">bull</span> themes <b>$210k (73%)</b></span>
+      <span>in <span class="st s">bear</span> themes <b>$24k (8%)</b> — Financials</span>
+      <span>in <span class="st m">split</span> themes <b>$21k (7%)</b> — EM</span>
+      <span class="sep">|</span>
+      <span>bull themes with <b>no</b> position: Precious metals · Ags · Crypto · Rates↑ hedge</span>
+    </div>
+  </div>
+
+  <!-- ② BREADTH — four independent lists -->
+  <div class="card">
+    <div class="sub" style="margin-bottom:8px">BREADTH — four independent lists, 13-week history, dot = latest</div>
+    <div class="tiles">
+      <div class="tile">
+        <div class="lbl">RR macro board · net bull − bear (24 symbols)</div>
+        <div class="hero">0</div>
+        <div class="delta dn">▼ from +15 (Aug 31)</div>
+        <svg class="spark" viewBox="0 0 200 34" preserveAspectRatio="none" aria-label="RR macro net, 13 weeks">
+          <line class="zero" x1="0" y1="20" x2="200" y2="20"/>
+          <path d="M0,20 L15,17 L31,22 L46,23 L62,19 L77,21 L92,21 L108,23 L123,14 L138,12 L154,9 L169,5 L185,11 L200,20"/>
+          <circle cx="200" cy="20" r="3"/>
+        </svg>
+      </div>
+      <div class="tile">
+        <div class="lbl">ETF Pro · longs − shorts</div>
+        <div class="hero">−3</div>
+        <div class="delta dn">▼ 17 L / 20 S · was 29 / 6 (Aug 23)</div>
+        <svg class="spark" viewBox="0 0 200 34" preserveAspectRatio="none" aria-label="ETF Pro net, 13 weeks">
+          <line class="zero" x1="0" y1="24" x2="200" y2="24"/>
+          <path d="M0,23 L17,21 L33,18 L50,16 L67,13 L83,15 L100,14 L117,7 L133,1 L150,5 L167,10 L183,13 L200,27"/>
+          <circle cx="200" cy="27" r="3"/>
+        </svg>
+      </div>
+      <div class="tile">
+        <div class="lbl">PS · names on the ranked list</div>
+        <div class="hero">18</div>
+        <div class="delta dn">▼ from 30 (Aug 28)</div>
+        <svg class="spark" viewBox="0 0 200 34" preserveAspectRatio="none" aria-label="PS count, 13 weeks">
+          <path d="M0,18 L17,14 L33,20 L50,20 L67,14 L83,12 L100,14 L117,12 L133,4 L150,4 L167,8 L183,14 L200,28"/>
+          <circle cx="200" cy="28" r="3"/>
+        </svg>
+      </div>
+      <div class="tile">
+        <div class="lbl">SSS · rows on list <span style="color:var(--muted)">· analysts' ranked books</span></div>
+        <div class="hero">46 <span style="font-size:14px;color:var(--ink2);font-weight:500">· books 105</span></div>
+        <div class="delta dn">▼ rows −47% (86) · books −5% (110)</div>
+        <svg class="spark" viewBox="0 0 200 34" preserveAspectRatio="none" aria-label="SSS count, 13 weeks">
+          <path d="M0,14 L17,10 L33,12 L50,15 L67,3 L83,16 L100,17 L117,13 L133,11 L150,3 L167,8 L183,20 L200,31"/>
+          <circle cx="200" cy="31" r="3"/>
+        </svg>
+      </div>
+    </div>
+    <div class="flipnote">RR flip days (≥9 outlook changes in one day = regime shift marker): <b>Sep 14 (10)</b> · <b>Sep 17 (9)</b> · Sep 11 (9) · earlier: Aug 3 (12), Jul 17 (11), Jun 15 (10)</div>
+  </div>
+
+  <!-- ③ THEME GRID -->
+  <div class="card scroll">
+    <div class="sub" style="margin-bottom:8px">THEMES — what each list says, the vote, what the Quad playbook says for the current quad, and your exposure. Hover a cell for the symbols behind it. <b>Red-bordered Quad cell = lists and playbook disagree.</b></div>
+    <table>
+      <thead><tr><th>Theme</th><th>RR</th><th>ETF Pro</th><th>PS</th><th>SSS</th><th>Lists say</th><th>Agree</th><th>1w</th><th>4w</th><th>Quad says</th><th>You $</th><th>You %</th><th>Fit</th></tr></thead><tbody>
+      <tr class="group"><td colspan="13">Macro</td></tr>
+      <tr><td class="theme">Rates ↑<small>UST2Y/10Y/30Y · PFIX</small></td><td><span class="c b" title="UST2Y B · UST10Y B · UST30Y B">▲ 3/3</span></td><td><span class="c b" title="PFIX long (rate hedge)">▲</span></td><td><span class="c b" title="PFIX #15">▲</span></td><td><span class="c x" title="">—</span></td><td class="st b">RATES UP</td><td class="conv">●●●</td><td class="tr up">↑</td><td class="tr up">↑</td><td><span class="c n" title="Q3: no yield factor">— n/a</span></td><td class="num">$0</td><td class="num">0%</td><td class="fit-none">○ none</td></tr>
+      <tr class=conflict><td class="theme">Duration<small>TLT · ZROZ</small></td><td><span class="c x" title="">—</span></td><td><span class="c s" title="TLT short · ZROZ short">▼ 2</span></td><td><span class="c x" title="">—</span></td><td><span class="c x" title="">—</span></td><td class="st s">BEAR</td><td class="conv">●</td><td class="tr">→</td><td class="tr dn">↓</td><td><span class="c b qconf" title="Q3: Long Bond BULLISH">▲ BULL</span></td><td class="num">$0</td><td class="num">0%</td><td class="fit-warn">⚠ conflict</td></tr>
+      <tr><td class="theme">Credit<small>HYG · LQD · JOJO</small></td><td><span class="c s" title="HYG S · LQD S">▼ 2/2</span></td><td><span class="c s" title="LQD short · JOJO short">▼ 2</span></td><td><span class="c x" title="">—</span></td><td><span class="c x" title="">—</span></td><td class="st s">BEAR</td><td class="conv">●●</td><td class="tr dn">↓</td><td class="tr dn">↓</td><td><span class="c s" title="Q3: Credit BEARISH">▼ BEAR</span></td><td class="num">$0</td><td class="num">0%</td><td class="fit-ok">✓</td></tr>
+      <tr><td class="theme">US dollar<small>USD · EUR/GBP/CAD · DBMF</small></td><td><span class="c b" title="USD B · EUR S · GBP S · CAD S">▲ 4/4</span></td><td><span class="c b" title="DBMF long">▲</span></td><td><span class="c b" title="DBMF #12 ▲13">▲</span></td><td><span class="c x" title="">—</span></td><td class="st b">BULL</td><td class="conv">●●●</td><td class="tr up">↑</td><td class="tr up">↑</td><td><span class="c n" title="Q3: USD Neutral">– NEUT</span></td><td class="num">$0</td><td class="num">0%</td><td class="fit-none">○ none</td></tr>
+      <tr><td class="theme">Volatility<small>VIX</small></td><td><span class="c s" title="VIX Bearish, 15% of range">▼ low</span></td><td><span class="c x" title="">—</span></td><td><span class="c x" title="">—</span></td><td><span class="c x" title="">—</span></td><td class="st n">LOW · complacent</td><td class="conv">●</td><td class="tr">→</td><td class="tr">→</td><td><span class="c n" title="">— n/a</span></td><td class="num">—</td><td class="num">—</td><td class="">—</td></tr>
+      <tr><td class="theme">Cash / short FI<small>SPAXX · BUXX · CLOX · CLOZ · CDs</small></td><td><span class="c x" title="">—</span></td><td><span class="c b" title="BUXX CLOX CLOZ long">▲ 3</span></td><td><span class="c b" title="ranks 2,3,4">▲ #2-4</span></td><td><span class="c x" title="">—</span></td><td class="st b">BULL</td><td class="conv">●●</td><td class="tr">→</td><td class="tr">→</td><td><span class="c b" title="Q3: T-Bills / short duration BULLISH">▲ BULL</span></td><td class="num">$774k</td><td class="num">73%</td><td class="fit-ok">✓ heavy</td></tr>
+      <tr class="group"><td colspan="13">Equity factors</td></tr>
+      <tr><td class="theme">Large caps<small>SPX · COMPQ · MSFT</small></td><td><span class="c b" title="SPX B · COMPQ B">▲ 2/2</span></td><td><span class="c x" title="">—</span></td><td><span class="c x" title="">—</span></td><td><span class="c x" title="">—</span></td><td class="st b">BULL</td><td class="conv">●</td><td class="tr up">↑</td><td class="tr">→</td><td><span class="c n" title="Q3: Equities Neutral">– NEUT</span></td><td class="num">$30k</td><td class="num">2.8%</td><td class="fit-ok">✓ MSFT</td></tr>
+      <tr><td class="theme">Small caps<small>RUT · IWM</small></td><td><span class="c s" title="RUT S">▼</span></td><td><span class="c s" title="IWM short (Sep 14)">▼</span></td><td><span class="c x" title="">—</span></td><td><span class="c s" title="SSS Smallcaps 1">▼ 1</span></td><td class="st s">BEAR</td><td class="conv">●●●</td><td class="tr dn">↓</td><td class="tr dn">↓</td><td><span class="c s" title="Q3: Small Caps BEARISH">▼ BEAR</span></td><td class="num">$0</td><td class="num">0%</td><td class="fit-ok">✓</td></tr>
+      <tr><td class="theme">Breadth<small>RSP · SSS rows</small></td><td><span class="c s" title="RSP S">▼</span></td><td><span class="c x" title="">—</span></td><td><span class="c x" title="">—</span></td><td><span class="c s" title="rows 46 vs med 75">▼ 46</span></td><td class="st s">NARROW</td><td class="conv">●●</td><td class="tr dn">↓</td><td class="tr dn">↓</td><td><span class="c n" title="">— n/a</span></td><td class="num">—</td><td class="num">—</td><td class="">—</td></tr>
+      <tr class=conflict><td class="theme">Momentum<small>SPMO · PRN · JOET</small></td><td><span class="c n" title="SPMO N">– N</span></td><td><span class="c s" title="PRN short · JOET short">▼ 2</span></td><td><span class="c x" title="">—</span></td><td><span class="c x" title="">—</span></td><td class="st s">BEAR</td><td class="conv">●●</td><td class="tr dn">↓</td><td class="tr dn">↓</td><td><span class="c b qconf" title="Q3: Momentum BULLISH">▲ BULL</span></td><td class="num">$0</td><td class="num">0%</td><td class="fit-warn">⚠ conflict</td></tr>
+      <tr class=conflict><td class="theme">Defensives<small>XLU · XLP</small></td><td><span class="c s" title="XLU S · XLP S">▼ 2/2</span></td><td><span class="c s" title="XLU short">▼</span></td><td><span class="c x" title="">—</span></td><td><span class="c s" title="Staples 4 vs med 8">▼</span></td><td class="st s">BEAR</td><td class="conv">●●●</td><td class="tr dn">↓</td><td class="tr dn">↓</td><td><span class="c b qconf" title="Q3: Utilities, Staples BULLISH">▲ BULL</span></td><td class="num">$0</td><td class="num">0%</td><td class="fit-warn">⚠ conflict</td></tr>
+      <tr><td class="theme">Cyclicals<small>XLY · XLF · XLI · XLRE</small></td><td><span class="c s" title="XLY S · XLF S · XLRE S">▼ 3/3</span></td><td><span class="c s" title="XLI short">▼</span></td><td><span class="c x" title="">—</span></td><td><span class="c s" title="Financials 7 vs 13 · Retail 2 vs 8 · Industrials gone">▼</span></td><td class="st s">BEAR</td><td class="conv">●●●</td><td class="tr dn">↓</td><td class="tr dn">↓</td><td><span class="c s" title="Q3: XLY XLI XLF BEARISH">▼ BEAR</span></td><td class="num">$24k</td><td class="num">2.2%</td><td class="fit-warn">⚠ exposed · WFC JPM</td></tr>
+      <tr><td class="theme">Healthcare<small>XLV · FXH</small></td><td><span class="c b" title="XLV B">▲</span></td><td><span class="c b" title="XLV FXH long">▲ 2</span></td><td><span class="c b" title="XLV #14 · FXH #16">▲</span></td><td><span class="c b" title="book 6, +51% avg">▲</span></td><td class="st b">BULL</td><td class="conv">●●●●</td><td class="tr">→</td><td class="tr">→</td><td><span class="c b" title="Q3: Health care BULLISH">▲ BULL</span></td><td class="num">$37k</td><td class="num">3.5%</td><td class="fit-ok">✓ LFST TXG</td></tr>
+      <tr><td class="theme">Tech / software<small>XLK · IGV</small></td><td><span class="c b" title="XLK B · IGV B">▲ 2/2</span></td><td><span class="c b" title="IGV long">▲</span></td><td><span class="c b" title="IGV #8 ▲6">▲</span></td><td><span class="c b" title="Software 10, top sector">▲ 10</span></td><td class="st b">BULL</td><td class="conv">●●●●</td><td class="tr">→</td><td class="tr up">↑</td><td><span class="c b" title="Q3: Info Tech, Secular BULLISH">▲ BULL</span></td><td class="num">$51k</td><td class="num">4.8%</td><td class="fit-ok">✓ SNOW IGV TEAM…</td></tr>
+      <tr><td class="theme">Semis<small>SMH · NVDA · DRAM</small></td><td><span class="c m" title="NVDA B · DRAM N">▲/–</span></td><td><span class="c s" title="SMH short (Sep 17)">▼</span></td><td><span class="c x" title="">—</span></td><td><span class="c n" title="GlobalTech: 3 KMSignal only">3 KM</span></td><td class="st m">SPLIT</td><td class="conv">●</td><td class="tr dn">↓</td><td class="tr">→</td><td><span class="c b" title="Q3: Info Tech BULLISH">▲ BULL</span></td><td class="num">$0</td><td class="num">0%</td><td class="fit-none">○ none</td></tr>
+      <tr class="group"><td colspan="13">Commodities & real assets</td></tr>
+      <tr><td class="theme">Energy<small>XLE · WTIC · BRENT · OIH</small></td><td><span class="c b" title="XLE B · WTIC B · BRENT B · OIH S">▲ 3/4</span></td><td><span class="c b" title="XLE long (Sep 16)">▲</span></td><td><span class="c b" title="XLE #6 new">▲</span></td><td><span class="c b" title="Energy new, book 18">▲ new</span></td><td class="st b">BULL</td><td class="conv">●●●●</td><td class="tr up">↑</td><td class="tr up">↑</td><td><span class="c b" title="Q3: Energy BULLISH">▲ BULL</span></td><td class="num">$57k</td><td class="num">5.4%</td><td class="fit-ok">✓ OIH XLE COM</td></tr>
+      <tr><td class="theme">Precious metals<small>GOLD · SILVER · AAAU · GDX</small></td><td><span class="c n" title="GOLD N 81% · SILVER N · GDX N">– at top</span></td><td><span class="c b" title="AAAU long">▲</span></td><td><span class="c b" title="AAAU #9">▲</span></td><td><span class="c x" title="">—</span></td><td class="st b">BULL · extended</td><td class="conv">●●</td><td class="tr">→</td><td class="tr up">↑</td><td><span class="c b" title="Q3: Gold BULLISH">▲ BULL</span></td><td class="num">$0</td><td class="num">0%</td><td class="fit-none">○ none</td></tr>
+      <tr><td class="theme">Industrial metals<small>COPPER</small></td><td><span class="c b" title="COPPER B, 96% of range">▲ top</span></td><td><span class="c x" title="">—</span></td><td><span class="c x" title="">—</span></td><td><span class="c x" title="">—</span></td><td class="st b">BULL · extended</td><td class="conv">●</td><td class="tr up">↑</td><td class="tr up">↑</td><td><span class="c b" title="Q3: Commodities BULLISH">▲ BULL</span></td><td class="num">$0</td><td class="num">0%</td><td class="fit-none">○ none</td></tr>
+      <tr><td class="theme">Ags<small>CORN</small></td><td><span class="c x" title="">—</span></td><td><span class="c b" title="CORN long (Sep 9)">▲</span></td><td><span class="c b" title="CORN #5 ▲18">▲ ▲18</span></td><td><span class="c x" title="">—</span></td><td class="st b">BULL · rising</td><td class="conv">●●</td><td class="tr up">↑</td><td class="tr up">↑</td><td><span class="c b" title="Q3: Commodities BULLISH">▲ BULL</span></td><td class="num">$0</td><td class="num">0%</td><td class="fit-none">○ none</td></tr>
+      <tr><td class="theme">Crypto<small>BTC · IBIT · ETHA</small></td><td><span class="c b" title="BITCOIN B, 94% of range">▲ top</span></td><td><span class="c b" title="IBIT ETHA long">▲ 2</span></td><td><span class="c b" title="IBIT #13 · ETHA #18">▲</span></td><td><span class="c x" title="">—</span></td><td class="st b">BULL · extended</td><td class="conv">●●●</td><td class="tr">→</td><td class="tr up">↑</td><td><span class="c n" title="Q3: Crypto Neutral">– NEUT</span></td><td class="num">$0</td><td class="num">0%</td><td class="fit-none">○ none</td></tr>
+      <tr class="group"><td colspan="13">International</td></tr>
+      <tr><td class="theme">Developed intl<small>DAX · NIKK · EWG · EWA · EWL</small></td><td><span class="c s" title="DAX S · NIKK S">▼ 2/2</span></td><td><span class="c s" title="EWG EWA EWL short">▼ 3</span></td><td><span class="c x" title="">—</span></td><td><span class="c x" title="">—</span></td><td class="st s">BEAR</td><td class="conv">●●</td><td class="tr dn">↓</td><td class="tr dn">↓</td><td><span class="c n" title="no quad factor">— n/a</span></td><td class="num">$0</td><td class="num">0%</td><td class="fit-ok">✓</td></tr>
+      <tr><td class="theme">Emerging<small>SSEC · EWZ · COLO · INDA · QAT</small></td><td><span class="c n" title="SSEC N">– N</span></td><td><span class="c m" title="EWZ COLO long · INDA QAT short">▲2 ▼2</span></td><td><span class="c b" title="EWZ #7 ▲12 · COLO #11">▲</span></td><td><span class="c x" title="">—</span></td><td class="st m">SPLIT · LatAm > Asia</td><td class="conv">●</td><td class="tr">→</td><td class="tr">→</td><td><span class="c n" title="no quad factor">— n/a</span></td><td class="num">$21k</td><td class="num">2.0%</td><td class="fit-mixed">~ COLO PBR (LatAm = list longs)</td></tr>
+      </tbody>
+    </table>
+    <div class="legend" style="margin-top:8px">
+      <span><span class="c b">▲</span> bullish / long</span>
+      <span><span class="c s">▼</span> bearish / short</span>
+      <span><span class="c n">–</span> neutral</span>
+      <span><span class="c m">▲/▼</span> mixed inside the source</span>
+      <span><span class="c x">—</span> source has no member here</span>
+      <span>Agree ● = sources voting the direction · 1w/4w = stance trend</span> <span><b>Fit:</b> ✓ exposure agrees with stance · ⚠ exposed = you hold a bear theme, or conflict = playbook vs lists · ○ none = bull theme, no position</span>
+    </div>
+  </div>
+
+  <!-- ④ SECTORS via SSS — rows AND ranked books -->
+  <div class="card">
+    <div class="sub" style="margin-bottom:4px">SECTORS — SSS list, Sep 14. Two counts per sector: <b>rows</b> (everything on the list — total long breadth) and <b>book</b> (the analyst's ranked ideas — conviction breadth). Tier bar = ranked · Bench · KMSignal.</div>
+    <div class="ins">Rows fell 86 → 46 (−47%) but the ranked books only 110 → 105 (−5%). <b>What left the list is the price signal (KMSignal / Bench names), not analyst conviction.</b> Restaurants: 10 → 3 rows, yet the analyst's book <i>grew</i> 1 → 4.</div>
+    <div class="sect">
+      <div class="sm"><div class="n"><b>Software</b><span>RR IGV ▲ · ETF IGV ▲</span></div>
+        <div class="two"><div><div class="k">rows</div><div class="v">10 <small>med 9 · was 14</small></div></div><div><div class="k">book</div><div class="v">6 <small>was 5 ↑</small></div></div></div>
+        <svg viewBox="0 0 100 24" preserveAspectRatio="none"><path class="ln neu" d="M0,14 L12,20 L25,16 L37,14 L50,10 L62,4 L75,6 L87,12 L100,10"/></svg>
+        <div class="tier"><span class="r" style="width:30%"></span><span class="b" style="width:70%"></span><span class="k" style="width:0%"></span></div>
+        <div class="meta">top: SNOW 1 · NET 2 · TWLO 3 &nbsp;·&nbsp; +35.8% avg &nbsp;·&nbsp; 36d &nbsp;·&nbsp; <b>you $51k</b></div></div>
+
+      <div class="sm"><div class="n"><b>Financials</b><span>RR XLF ▼</span></div>
+        <div class="two"><div><div class="k">rows</div><div class="v dn">7 <small>med 13 · was 15</small></div></div><div><div class="k">book</div><div class="v">14 <small>was 16 ↓</small></div></div></div>
+        <svg viewBox="0 0 100 24" preserveAspectRatio="none"><path class="ln bear" d="M0,16 L12,8 L25,2 L37,14 L50,10 L62,8 L75,6 L87,18 L100,22"/></svg>
+        <div class="tier"><span class="r" style="width:100%"></span></div>
+        <div class="meta">all 7 ranked, none top-3 &nbsp;·&nbsp; +4.8% avg &nbsp;·&nbsp; 14d &nbsp;·&nbsp; <b>you $24k ⚠</b></div></div>
+
+      <div class="sm"><div class="n"><b>Healthcare</b><span>RR XLV ▲ · ETF XLV ▲</span></div>
+        <div class="two"><div><div class="k">rows</div><div class="v dn">4 <small>med 7 · was 7</small></div></div><div><div class="k">book</div><div class="v">6 <small>was 6 →</small></div></div></div>
+        <svg viewBox="0 0 100 24" preserveAspectRatio="none"><path class="ln neu" d="M0,6 L12,4 L25,8 L37,10 L50,14 L62,16 L75,14 L87,18 L100,22"/></svg>
+        <div class="tier"><span class="r" style="width:100%"></span></div>
+        <div class="meta">top: RDNT 2 · TXG 3 &nbsp;·&nbsp; <b>+51.1% avg</b> &nbsp;·&nbsp; 38d &nbsp;·&nbsp; <b>you $37k</b></div></div>
+
+      <div class="sm"><div class="n"><b>Cons Staples</b><span>RR XLP ▼</span></div>
+        <div class="two"><div><div class="k">rows</div><div class="v dn">4 <small>med 8 · was 9</small></div></div><div><div class="k">book</div><div class="v">14 <small>was 14 →</small></div></div></div>
+        <svg viewBox="0 0 100 24" preserveAspectRatio="none"><path class="ln bear" d="M0,10 L12,12 L25,10 L37,12 L50,10 L62,8 L75,6 L87,14 L100,22"/></svg>
+        <div class="tier"><span class="r" style="width:50%"></span><span class="b" style="width:25%"></span><span class="k" style="width:25%"></span></div>
+        <div class="meta">top: SJM 1 · KDP 2 &nbsp;·&nbsp; +0.8% avg &nbsp;·&nbsp; 24d</div></div>
+
+      <div class="sm"><div class="n"><b>Restaurants</b><span>RR — · ETF —</span></div>
+        <div class="two"><div><div class="k">rows</div><div class="v dn">3 <small>med 6 · was 10</small></div></div><div><div class="k">book</div><div class="v up">4 <small>was 1 ↑↑</small></div></div></div>
+        <svg viewBox="0 0 100 24" preserveAspectRatio="none"><path class="ln warn" d="M0,14 L12,10 L25,16 L37,14 L50,6 L62,2 L75,8 L87,14 L100,22"/></svg>
+        <div class="tier"><span class="r" style="width:34%"></span><span class="b" style="width:33%"></span><span class="k" style="width:33%"></span></div>
+        <div class="meta">top: EAT 2 &nbsp;·&nbsp; +31.9% avg &nbsp;·&nbsp; 52d &nbsp;·&nbsp; <b>rows ↓ book ↑ — split</b></div></div>
+
+      <div class="sm"><div class="n"><b>Comms</b><span>RR META ▲</span></div>
+        <div class="two"><div><div class="k">rows</div><div class="v">3 <small>med 4 · was 6</small></div></div><div><div class="k">book</div><div class="v">7 <small>was 7 →</small></div></div></div>
+        <svg viewBox="0 0 100 24" preserveAspectRatio="none"><path class="ln neu" d="M0,8 L12,10 L25,6 L37,12 L50,10 L62,8 L75,4 L87,12 L100,16"/></svg>
+        <div class="tier"><span class="r" style="width:100%"></span></div>
+        <div class="meta">top: META 1 · ROKU 2 · U 3 &nbsp;·&nbsp; +4.4% &nbsp;·&nbsp; <b>5d — fresh</b> &nbsp;·&nbsp; <b>you $3k</b></div></div>
+
+      <div class="sm"><div class="n"><b>Global Tech</b><span>RR XLK ▲ · ETF SMH ▼</span></div>
+        <div class="two"><div><div class="k">rows</div><div class="v">3 <small>med 3 · was 4</small></div></div><div><div class="k">book</div><div class="v">— <small>was 10 · no ranked names on list</small></div></div></div>
+        <svg viewBox="0 0 100 24" preserveAspectRatio="none"><path class="ln neu" d="M0,6 L12,8 L25,10 L37,12 L50,12 L62,14 L75,14 L87,14 L100,14"/></svg>
+        <div class="tier"><span class="k" style="width:100%"></span></div>
+        <div class="meta">3 × KMSignal only &nbsp;·&nbsp; +0.6% &nbsp;·&nbsp; 3d &nbsp;·&nbsp; <b>analyst book invisible</b></div></div>
+
+      <div class="sm"><div class="n"><b>Retail</b><span>RR XLY ▼</span></div>
+        <div class="two"><div><div class="k">rows</div><div class="v dn">2 <small>med 8 · was 7</small></div></div><div><div class="k">book</div><div class="v">23 <small>was 27 ↓</small></div></div></div>
+        <svg viewBox="0 0 100 24" preserveAspectRatio="none"><path class="ln bear" d="M0,4 L12,6 L25,8 L37,4 L50,12 L62,2 L75,14 L87,20 L100,23"/></svg>
+        <div class="tier"><span class="r" style="width:100%"></span></div>
+        <div class="meta">2 of 23 ranked ideas on list &nbsp;·&nbsp; +24.5% &nbsp;·&nbsp; 75d — stale</div></div>
+
+      <div class="sm"><div class="n"><b>Industrials</b><span>RR XAR ▼ · ETF XLI ▼</span></div>
+        <div class="two"><div><div class="k">rows</div><div class="v dn">0 <small>med 8 · was 8</small></div></div><div><div class="k">book</div><div class="v">— <small>was 13</small></div></div></div>
+        <svg viewBox="0 0 100 24" preserveAspectRatio="none"><path class="ln bear" d="M0,2 L12,10 L25,12 L37,8 L50,14 L62,18 L75,14 L87,20 L100,24"/></svg>
+        <div class="tier"><span class="e" style="width:100%"></span></div>
+        <div class="meta"><b>sector gone from the list</b> — agrees with RR/ETF</div></div>
+
+      <div class="sm"><div class="n"><b>Energy</b><span>RR XLE ▲ · ETF XLE ▲</span></div>
+        <div class="two"><div><div class="k">rows</div><div class="v up">3 <small>med 0 · new</small></div></div><div><div class="k">book</div><div class="v up">18 <small>new</small></div></div></div>
+        <svg viewBox="0 0 100 24" preserveAspectRatio="none"><path class="ln bull" d="M0,22 L12,22 L25,22 L37,22 L50,22 L62,22 L75,22 L87,14 L100,6"/></svg>
+        <div class="tier"><span class="r" style="width:100%"></span></div>
+        <div class="meta">3 of 18 ranked &nbsp;·&nbsp; 10d &nbsp;·&nbsp; <b>new sector, agrees with RR/ETF</b> &nbsp;·&nbsp; <b>you $57k</b></div></div>
+    </div>
+    <div class="legend" style="margin-top:8px">
+      <span><span class="tier" style="width:40px;display:inline-flex"><span class="r" style="width:100%"></span></span> ranked (in analyst's book)</span>
+      <span><span class="tier" style="width:40px;display:inline-flex"><span class="b" style="width:100%"></span></span> Bench</span>
+      <span><span class="tier" style="width:40px;display:inline-flex"><span class="k" style="width:100%"></span></span> KMSignal (quant only)</span>
+      <span>sparkline = rows, 13 weeks · line colour = rows vs median (teal above · red below · amber = rows and book disagree)</span>
+    </div>
+  </div>
+
+  <div class="note">Mockup with real values read from the Sep 18 Fidelity positions export (Schwab not in this folder — full build reads both via drv_category_perf), the Sep 21 RR file, Sep 20 ETF Pro, Sep 18 PS, Sep 14 SSS (sector cards: rows, book size = max rank denominator, tier mix, top-3, avg signal strength, median days-on — all computed from the file). Sparkline shapes are the actual 13-week series; 1w/4w arrows and "agree" dots are hand-derived for the mockup and would be computed. The current-quad label and the "Quad says" column come from ref_quad_periods / ref_quad_outlook via /api/quad/band-factors — Q3 is assumed here for illustration. Hover any cell for the member symbols behind it.</div>
+</div>
+</body>
+</html>

@@ -567,3 +567,26 @@ bugs, plus closed three deferred follow-ups. Full evidence in `DEV_HANDOFF.md`
   before/after in `DEV_HANDOFF.md`.
 - **C.3 (MOVE zone)**: confirmed already correct — `GET /api/marketbar`'s
   `MOVE` item returns non-null `vol_low`/`vol_high`. No code changed.
+
+## 13. Market Read (2026-09) — retires the Quad Rotation tiles
+
+Full design: `docs/market_state_factor_sss_design.md` (Addendum A-H).
+`web/market_read.js` occupies the same middle-column slot the Quad Rotation
+tiles (§11) used (`#quadRotationPanel`); their two computations (quad
+stance, price breadth) survive as grid columns in the new theme table
+instead of their own tiles. Breadth strip (RR/ETF/PS/SSS 13-week
+sparklines) + theme grid (RR/ETF/PS/SSS/CALL/Price/Quad says/You $/Fit) +
+sector cards (SSS rows+books, `#macroRailSectorEtfs`). The Risk Dial (§3)
+gains 6 new `category='positioning'`/`'self'` gauges (shipped
+`is_active=FALSE`) reading this panel's own tables, plus a freshness CAP
+(`stale_as_of`) that suffixes the risk-dial label without moving the
+number. §3.2's gauge table:
+
+| gauge_key | category | fires when |
+|---|---|---|
+| `lists_derisking` | positioning | ≥3 of 4 lists down >25% vs 4wk ago |
+| `etf_net_short` | positioning | ETF Pro longs − shorts ≤ 0 |
+| `sss_book_collapse` | positioning | SSS rows down ≥40% from 4wk high |
+| `rr_flip_day` | positioning | RR flips_vs_prior ≥9 in the last 3 sessions |
+| `lists_quad_conflict` | positioning | ≥4 themes with `quad_conflict` |
+| `exposed_bear_themes` | self | risk $ in bear-stance themes >15% of risk $ |

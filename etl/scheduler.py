@@ -610,6 +610,42 @@ def run_nightly_outcomes() -> None:
     except Exception:
         log.exception("nightly: vlm intraday curve refresh crashed")
 
+    # TASK_147 (2026-09-21): Market Read validation views (v_theme_stance_
+    # scorecard, v_sss_sector_scorecard, v_source_breadth_scorecard) are
+    # plain SQL views over drv_theme_stance/drv_sss_breadth/drv_source_
+    # breadth/drv_ma -- always live, nothing to materialize -- but their
+    # UNDERLYING tables only stay current via derive_all (already running
+    # on every load). This step is the "same pattern as TASK_138" refresh
+    # touchpoint: it re-derives today's drv_source_breadth/drv_theme_stance/
+    # drv_sss_breadth explicitly (covers a day where those 3 steps failed
+    # non-fatally inside a derive_all run without a full re-derive) and logs
+    # a sample count from each scorecard view so a silent break in any of
+    # them shows up in the nightly log, same as every other step here.
+    log.info("nightly: market read refresh starting")
+    try:
+        from etl.db import session_scope
+        from etl.derive import get_anchor_date
+        from etl.derive_market_read import derive_market_read
+        from etl.derive_sss_breadth import derive_sss_breadth
+        with session_scope() as s:
+            _anchor = get_anchor_date(s)
+            if _anchor:
+                mr = derive_market_read(s, _anchor, None)
+                n_sss = derive_sss_breadth(s, _anchor, None)
+                s.commit()
+            else:
+                mr, n_sss = {}, 0
+        with session_scope() as s:
+            n_theme_sc = s.execute(text("SELECT COUNT(*) FROM v_theme_stance_scorecard")).scalar()
+            n_sector_sc = s.execute(text("SELECT COUNT(*) FROM v_sss_sector_scorecard")).scalar()
+            n_breadth_sc = s.execute(text("SELECT COUNT(*) FROM v_source_breadth_scorecard")).scalar()
+        log.info("nightly: market read refresh done: source_breadth=%s theme_stance=%s "
+                  "sss_breadth=%s | scorecards: theme=%s sector=%s breadth=%s",
+                  mr.get("drv_source_breadth"), mr.get("drv_theme_stance"), n_sss,
+                  n_theme_sc, n_sector_sc, n_breadth_sc)
+    except Exception:
+        log.exception("nightly: market read refresh crashed")
+
     # 2026-09-21, user-directed: TASK_142's stale-analytics check was only
     # ever run manually (`python -m etl.daily_health_check`) -- wiring it in
     # here so a breach gets caught (and its meta_warning raised) automatically

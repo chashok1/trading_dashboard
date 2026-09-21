@@ -195,6 +195,100 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "vrp": extra.get("vrp"),
         "pct_above_sma50": extra.get("pct_above_sma50"),
         "pct_above_sma50_5d_chg": extra.get("pct_above_sma50_5d_chg"),
+        "market_read": _build_market_read_context(session, as_of_date),
+    }
+
+
+# ---------------------------------------------------------------------------
+# TASK_146 -- Market Read positioning context (drv_source_breadth,
+# drv_sss_breadth, drv_theme_stance, drv_category_perf via
+# ref_symbol_theme). Fetched once here, consumed by the 6 new
+# category='positioning'/'self' gauges below. Reads only -- never writes to
+# any of TASK_143/144's tables.
+# ---------------------------------------------------------------------------
+
+def _build_market_read_context(session: Session, as_of_date: date) -> dict:
+    settings = {}
+    for name, default in (
+        ("rd_lists_derisk_pct", 25), ("rd_sss_collapse_pct", 40),
+        ("rd_rr_flip_min", 9), ("rd_conflict_min", 4), ("rd_exposed_pct", 15),
+    ):
+        row = session.execute(text(
+            "SELECT setting_value FROM ref_settings WHERE setting_name = :n"
+        ), {"n": name}).scalar()
+        try:
+            settings[name] = float(row) if row is not None else default
+        except (TypeError, ValueError):
+            settings[name] = default
+
+    breadth_4wk = {}
+    for source_code in ("RR", "ETF", "PS", "SSS"):
+        rows = session.execute(text(
+            "SELECT as_of_date, net, n_total FROM drv_source_breadth "
+            "WHERE source_code = :sc AND as_of_date <= :d ORDER BY as_of_date DESC LIMIT 20"
+        ), {"sc": source_code, "d": as_of_date}).fetchall()
+        if not rows:
+            breadth_4wk[source_code] = None
+            continue
+        cur_val = rows[0].net if source_code in ("RR", "ETF") else rows[0].n_total
+        # ~4 calendar weeks back -- the furthest-back row within 20 trading
+        # days that is also >= 20 calendar days old, else the oldest row.
+        prior = None
+        for r in rows:
+            if (as_of_date - r.as_of_date).days >= 20:
+                prior = r
+                break
+        prior = prior or rows[-1]
+        prior_val = prior.net if source_code in ("RR", "ETF") else prior.n_total
+        breadth_4wk[source_code] = {"cur": cur_val, "prior": prior_val, "prior_date": prior.as_of_date}
+
+    rr_flip_rows = session.execute(text(
+        "SELECT as_of_date, flips_vs_prior FROM drv_source_breadth "
+        "WHERE source_code = 'RR' AND as_of_date <= :d ORDER BY as_of_date DESC LIMIT 3"
+    ), {"d": as_of_date}).fetchall()
+
+    sss_total_rows = session.execute(text(
+        "SELECT as_of_date, n_rows FROM drv_sss_breadth "
+        "WHERE sector = '_TOTAL' AND as_of_date <= :d ORDER BY as_of_date DESC LIMIT 4"
+    ), {"d": as_of_date}).fetchall()
+
+    conflict_rows = session.execute(text(
+        "SELECT theme FROM drv_theme_stance WHERE as_of_date = :d AND quad_conflict"
+    ), {"d": as_of_date}).scalars().all()
+
+    total_value = session.execute(text(
+        "SELECT SUM(market_value) FROM drv_category_perf WHERE axis = 'asset_class' AND as_of_date = :d"
+    ), {"d": as_of_date}).scalar()
+    cash_value = session.execute(text(
+        "SELECT market_value FROM drv_category_perf WHERE axis = 'asset_class' "
+        "AND category = 'Cash' AND as_of_date = :d"
+    ), {"d": as_of_date}).scalar()
+    total_value = float(total_value) if total_value else None
+    risk_value = (total_value - float(cash_value or 0)) if total_value is not None else None
+
+    bear_theme_dollar = 0.0
+    if risk_value:
+        from etl.derive_market_read import THEME_CATEGORY_MAP
+        bear_themes = session.execute(text(
+            "SELECT theme FROM drv_theme_stance WHERE as_of_date = :d AND stance = 'S'"
+        ), {"d": as_of_date}).scalars().all()
+        for theme in bear_themes:
+            for axis, category in THEME_CATEGORY_MAP.get(theme, []):
+                v = session.execute(text(
+                    "SELECT market_value FROM drv_category_perf "
+                    "WHERE as_of_date = :d AND axis = :axis AND category = :cat"
+                ), {"d": as_of_date, "axis": axis, "cat": category}).scalar()
+                bear_theme_dollar += float(v) if v else 0.0
+
+    return {
+        "settings": settings,
+        "breadth_4wk": breadth_4wk,
+        "rr_flip_rows": [(r.as_of_date, r.flips_vs_prior) for r in rr_flip_rows],
+        "sss_total_rows": [(r.as_of_date, r.n_rows) for r in sss_total_rows],
+        "n_quad_conflicts": len(conflict_rows),
+        "conflict_themes": list(conflict_rows),
+        "risk_value": risk_value,
+        "bear_theme_dollar": bear_theme_dollar,
     }
 
 
@@ -699,6 +793,91 @@ def _g_volume_breadth_weak(ctx):
     return vb < 0.35, vb, f"up/down volume breadth {vb:.2f}"
 
 
+# ---------------------------------------------------------------------------
+# TASK_146 -- positioning gauges (Addendum H). Shipped is_active=FALSE in
+# ref_risk_gauge; the loop in evaluate_gauges() below already skips any
+# gauge_key whose row isn't active, so these are inert until the user flips
+# the flag -- no extra gating needed here.
+# ---------------------------------------------------------------------------
+
+def _g_lists_derisking(ctx):
+    mr = ctx.get("market_read") or {}
+    breadth = mr.get("breadth_4wk") or {}
+    pct = mr.get("settings", {}).get("rd_lists_derisk_pct", 25)
+    down = []
+    evaluated = 0
+    for source_code, b in breadth.items():
+        if not b or not b.get("prior"):
+            continue
+        evaluated += 1
+        chg = (b["cur"] - b["prior"]) / abs(b["prior"]) * 100 if b["prior"] else 0
+        if chg <= -pct:
+            down.append(source_code)
+    if evaluated < 3:
+        return None, None, "not enough list history to evaluate de-risking"
+    fired = len(down) >= 3
+    return fired, len(down), f"{len(down)}/{evaluated} lists down >{pct:.0f}% vs ~4wk ago ({', '.join(down) or 'none'})"
+
+
+def _g_etf_net_short(ctx):
+    mr = ctx.get("market_read") or {}
+    b = (mr.get("breadth_4wk") or {}).get("ETF")
+    if not b:
+        return None, None, "ETF Pro breadth unavailable"
+    net = b["cur"]
+    return net <= 0, net, f"ETF Pro net {net:+d}"
+
+
+def _g_sss_book_collapse(ctx):
+    mr = ctx.get("market_read") or {}
+    rows = mr.get("sss_total_rows") or []
+    if not rows:
+        return None, None, "SSS breadth unavailable"
+    cur = rows[0][1]
+    high4 = max(n for _d, n in rows if n is not None)
+    pct = mr.get("settings", {}).get("rd_sss_collapse_pct", 40)
+    if not high4:
+        return None, None, "SSS breadth unavailable"
+    drop = (high4 - cur) / high4 * 100
+    return drop >= pct, drop, f"SSS rows {cur} vs 4wk high {high4} (-{drop:.0f}%)"
+
+
+def _g_rr_flip_day(ctx):
+    mr = ctx.get("market_read") or {}
+    rows = mr.get("rr_flip_rows") or []
+    if not rows:
+        return None, None, "RR flip history unavailable"
+    min_flips = mr.get("settings", {}).get("rd_rr_flip_min", 9)
+    hits = [(d, f) for d, f in rows if f is not None and f >= min_flips]
+    fired = bool(hits)
+    if hits:
+        detail = "; ".join(f"{d.isoformat()} ({f})" for d, f in hits)
+        return True, hits[0][1], f"RR flip day(s) in the last 3 sessions: {detail}"
+    latest = rows[0][1]
+    return False, latest, f"RR flips {latest if latest is not None else 'n/a'} (last session, threshold {min_flips:.0f})"
+
+
+def _g_lists_quad_conflict(ctx):
+    mr = ctx.get("market_read") or {}
+    n = mr.get("n_quad_conflicts")
+    if n is None:
+        return None, None, "theme stance unavailable"
+    min_conflicts = mr.get("settings", {}).get("rd_conflict_min", 4)
+    themes = mr.get("conflict_themes") or []
+    return n >= min_conflicts, n, f"{n} themes conflict with the Quad playbook ({', '.join(themes) or 'none'})"
+
+
+def _g_exposed_bear_themes(ctx):
+    mr = ctx.get("market_read") or {}
+    risk_value = mr.get("risk_value")
+    bear_dollar = mr.get("bear_theme_dollar")
+    if not risk_value:
+        return None, None, "portfolio risk $ unavailable"
+    pct = bear_dollar / risk_value * 100
+    threshold = mr.get("settings", {}).get("rd_exposed_pct", 15)
+    return pct >= threshold, pct, f"${bear_dollar:,.0f} in bear-stance themes ({pct:.0f}% of risk $)"
+
+
 GAUGES: list[tuple[str, Callable]] = [
     ("spx_top_range", _g_spx_top_range),
     ("spx_bottom_range", _g_spx_bottom_range),
@@ -731,6 +910,12 @@ GAUGES: list[tuple[str, Callable]] = [
     ("breadth_deteriorating", _g_breadth_deteriorating),
     ("gold_vol_elevated", _g_gold_vol_elevated),
     ("volume_breadth_weak", _g_volume_breadth_weak),
+    ("lists_derisking", _g_lists_derisking),
+    ("etf_net_short", _g_etf_net_short),
+    ("sss_book_collapse", _g_sss_book_collapse),
+    ("rr_flip_day", _g_rr_flip_day),
+    ("lists_quad_conflict", _g_lists_quad_conflict),
+    ("exposed_bear_themes", _g_exposed_bear_themes),
 ]
 
 

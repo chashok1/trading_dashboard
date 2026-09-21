@@ -3651,6 +3651,35 @@ def derive_all(session: Session, as_of_date: date,
         try: session.rollback()
         except Exception: pass
 
+    # drv_source_breadth/drv_theme_stance (TASK_143) + drv_sss_breadth
+    # (TASK_144): "Market Read" -- breadth per Hedgeye list, theme votes vs
+    # the same monthly-weighted quad stance the Quad Rotation tiles use, SSS
+    # sector rows+books. Runs after drv_category_perf (needs its quad_stance
+    # read indirectly via api/_helpers.py::compute_quad_monthly_stance, and
+    # its market_value for You $/You % at the API layer) and drv_market_stat.
+    # Display + measurement only -- see docs/market_state_factor_sss_design.md.
+    # Non-critical.
+    try:
+        from etl.derive_market_read import derive_market_read
+        mr = derive_market_read(session, as_of_date, parent_run_id)
+        counts["drv_source_breadth"] = mr.get("drv_source_breadth", 0)
+        counts["drv_theme_stance"] = mr.get("drv_theme_stance", 0)
+    except Exception:
+        log.exception("derive_market_read import failed (non-fatal)")
+        counts["drv_source_breadth"] = 0
+        counts["drv_theme_stance"] = 0
+        try: session.rollback()
+        except Exception: pass
+
+    try:
+        from etl.derive_sss_breadth import derive_sss_breadth
+        counts["drv_sss_breadth"] = _safe("drv_sss_breadth", derive_sss_breadth)
+    except Exception:
+        log.exception("derive_sss_breadth import failed (non-fatal)")
+        counts["drv_sss_breadth"] = 0
+        try: session.rollback()
+        except Exception: pass
+
     # drv_market_event (TASK_133 Phase 6): "what changed" -- range breaks,
     # trend flips, z-scores, the 8 seeded patterns, calendar/surprise. Runs
     # AFTER drv_category_perf (not right after drv_market_stat as originally

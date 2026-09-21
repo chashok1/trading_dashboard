@@ -11,6 +11,7 @@ default via _resolve_date (the anchor).
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -313,6 +314,21 @@ def get_risk_dial(date: Optional[str] = Query(None)):
         """), {"d": d}).scalar()
         spx_avg_daily_pct_10d = float(spx_avg_daily_pct_10d) if spx_avg_daily_pct_10d is not None else None
 
+        # TASK_146 -- freshness CAP, not a gauge: when the positioning data
+        # behind the 6 lists_*/exposed_bear_themes gauges (drv_source_
+        # breadth/drv_theme_stance/drv_sss_breadth) is stale per its own
+        # ref_freshness_contract row, risk_budget/risk_label are UNCHANGED
+        # (staleness is uncertainty about the reading, not a market risk,
+        # Addendum H rule 4) -- only stale_as_of is added, and web/
+        # risk_dial*.js suffixes the label with it.
+        from etl.analytics_freshness import get_freshness
+        stale_as_of = None
+        for tbl in ("drv_source_breadth", "drv_theme_stance", "drv_sss_breadth"):
+            fresh = get_freshness(s, tbl, anchor=d)
+            if fresh and fresh["stale"]:
+                stale_as_of = fresh["as_of"]
+                break
+
         size_phrase = _RISK_SIZE_PHRASE.get(risk_label, "")
         if fired:
             top2 = fired[:2]
@@ -339,6 +355,7 @@ def get_risk_dial(date: Optional[str] = Query(None)):
             "fired_weight": fired_weight,
             "suggested_size_multiplier": round(risk_budget / 100.0, 2) if risk_budget is not None else None,
             "spx_avg_daily_pct_10d": spx_avg_daily_pct_10d,
+            "stale_as_of": stale_as_of,
         }
 
 
@@ -1451,3 +1468,208 @@ def get_cross_asset_signals(date: Optional[str] = Query(None)):
         rd["detail"] = _jsonb(rd.get("detail")) or []
         out.append(rd)
     return {"as_of": d.isoformat(), "rows": out}
+
+
+# ---------------------------------------------------------------------------
+# TASK_143/144 -- Market Read: GET /api/market-read (breadth strip + theme
+# grid + headline) and GET /api/market-read/sectors (SSS sector cards).
+# Thin reads over drv_source_breadth/drv_theme_stance/drv_sss_breadth
+# (etl/derive_market_read.py, etl/derive_sss_breadth.py) + drv_category_perf
+# for the You $/You % positions columns (Addendum C). Display + measurement
+# only -- see docs/market_state_factor_sss_design.md.
+# ---------------------------------------------------------------------------
+
+# Macro-group themes for the headline sentence (mirrors the mockup's own
+# "Macro" row-group in the theme grid).
+_MR_MACRO_THEMES = ["Rates up", "Duration", "Credit", "USD", "Volatility", "Cash/short FI"]
+
+_MR_GROUPS = [
+    ("Macro", _MR_MACRO_THEMES),
+    ("Equity factors", ["Large caps", "Small caps", "Breadth", "Momentum",
+                          "Defensives", "Cyclicals", "Healthcare", "Tech/software", "Semis"]),
+    ("Commodities & real assets", ["Energy", "Precious metals", "Industrial metals",
+                                     "Ags", "Crypto"]),
+    ("International", ["Developed intl", "Emerging"]),
+]
+
+
+def _mr_current_quad_label(session, d) -> Optional[str]:
+    """Effective current-month quad label (argmax of ref_quad_periods'
+    quad1..4_pct), same resolution get_quad_band_factors uses -- for the
+    headline's 'Quad model' pill only. quad_says per theme (the column
+    that actually drives quad_conflict) comes from
+    api/_helpers.py::compute_quad_monthly_stance, never this label alone."""
+    row = session.execute(text(
+        "SELECT quad1_pct, quad2_pct, quad3_pct, quad4_pct FROM ref_quad_periods "
+        "WHERE period_type='monthly' AND year=:y AND period_num=:m"
+    ), {"y": d.year, "m": d.month}).mappings().first()
+    if not row:
+        return None
+    pcts = [float(row[f"quad{i+1}_pct"] or 0) for i in range(4)]
+    if not any(pcts):
+        return None
+    idx = pcts.index(max(pcts))
+    return f"Quad {idx + 1}"
+
+
+def _mr_theme_you(session, d, theme: str, total_value: Optional[float]) -> dict:
+    from etl.derive_market_read import THEME_CATEGORY_MAP
+    axis_categories = THEME_CATEGORY_MAP.get(theme, [])
+    you_dollar = 0.0
+    for axis, category in axis_categories:
+        v = session.execute(text(
+            "SELECT market_value FROM drv_category_perf "
+            "WHERE as_of_date = :d AND axis = :axis AND category = :cat"
+        ), {"d": d, "axis": axis, "cat": category}).scalar()
+        you_dollar += float(v) if v else 0.0
+    you_pct = round(you_dollar / total_value * 100, 1) if total_value else None
+    return {"you_dollar": you_dollar, "you_pct": you_pct, "has_category": bool(axis_categories)}
+
+
+def _mr_fit(stance: Optional[str], quad_conflict: bool, you_dollar: float, has_category: bool) -> Optional[str]:
+    if not has_category:
+        return None
+    if quad_conflict:
+        return "conflict"
+    if stance == "M":
+        return "split" if you_dollar else None
+    if stance == "S":
+        return "exposed" if you_dollar else "ok"
+    if stance == "B":
+        return "ok" if you_dollar else "none"
+    return None
+
+
+@router.get("/api/market-read")
+def get_market_read(date: Optional[str] = Query(None)):
+    d = _resolve_date(date)
+    with session_scope() as s:
+        theme_rows = s.execute(text(
+            "SELECT * FROM drv_theme_stance WHERE as_of_date = :d ORDER BY theme"
+        ), {"d": d}).mappings().all()
+
+        # --- breadth strip: 13-week series per source ---
+        breadth = []
+        for source_code in ("RR", "ETF", "PS", "SSS"):
+            series = s.execute(text(
+                "SELECT as_of_date, n_bull, n_bear, n_total, net FROM drv_source_breadth "
+                "WHERE source_code = :sc AND as_of_date <= :d ORDER BY as_of_date DESC LIMIT 13"
+            ), {"sc": source_code, "d": d}).mappings().all()
+            series = list(reversed(series))
+            latest = series[-1] if series else None
+            three_wk_ago = series[-4] if len(series) >= 4 else (series[0] if series else None)
+            hero = (latest["net"] if source_code in ("RR", "ETF") else latest["n_total"]) if latest else None
+            prior_hero = (three_wk_ago["net"] if source_code in ("RR", "ETF") else three_wk_ago["n_total"]) \
+                if three_wk_ago else None
+            breadth.append({
+                "source_code": source_code,
+                "hero": hero,
+                "n_bull": latest["n_bull"] if latest else None,
+                "n_bear": latest["n_bear"] if latest else None,
+                "delta_vs_3wk": (hero - prior_hero) if (hero is not None and prior_hero is not None) else None,
+                "prior_3wk": prior_hero,
+                "series": [r["net"] if source_code in ("RR", "ETF") else r["n_total"] for r in series],
+            })
+
+        flip_rows = s.execute(text(
+            "SELECT as_of_date, flips_vs_prior FROM drv_source_breadth "
+            "WHERE source_code = 'RR' AND flips_vs_prior >= 9 AND as_of_date <= :d "
+            "ORDER BY as_of_date DESC LIMIT 10"
+        ), {"d": d}).fetchall()
+        flip_days = [{"date": r[0].isoformat(), "flips": r[1]} for r in flip_rows]
+
+        total_value = s.execute(text(
+            "SELECT SUM(market_value) FROM drv_category_perf WHERE axis = 'asset_class' AND as_of_date = :d"
+        ), {"d": d}).scalar()
+        total_value = float(total_value) if total_value else None
+
+        themes = []
+        for r in theme_rows:
+            you = _mr_theme_you(s, d, r["theme"], total_value)
+            fit = _mr_fit(r["stance"], bool(r["quad_conflict"]), you["you_dollar"], you["has_category"])
+            row = dict(r)
+            row["you_dollar"] = you["you_dollar"]
+            row["you_pct"] = you["you_pct"]
+            row["fit"] = fit
+            row["members"] = _jsonb(row.get("members")) or {}
+            themes.append(row)
+
+        conflicts = [t["theme"] for t in themes if t["quad_conflict"]]
+        bull_macro = [t["theme"] for t in themes if t["theme"] in _MR_MACRO_THEMES and t["stance"] == "B"]
+        bear_macro = [t["theme"] for t in themes if t["theme"] in _MR_MACRO_THEMES and t["stance"] == "S"]
+        headline_bits = []
+        if bull_macro:
+            headline_bits.append(", ".join(bull_macro) + " bullish")
+        if bear_macro:
+            headline_bits.append(", ".join(bear_macro) + " bearish")
+        headline = "; ".join(headline_bits) if headline_bits else "No clear macro read from the lists."
+        if conflicts:
+            headline += f" Lists vs Quad model disagree on: {', '.join(conflicts)}."
+
+        quad_label = _mr_current_quad_label(s, d)
+
+    return {
+        "as_of": d.isoformat(),
+        "headline": headline,
+        "breadth": breadth,
+        "flip_days": flip_days,
+        "themes": themes,
+        "groups": [{"label": g, "themes": ts} for g, ts in _MR_GROUPS],
+        "quad": {"label": quad_label, "conflicts": len(conflicts)},
+    }
+
+
+@router.get("/api/market-read/sectors")
+def get_market_read_sectors(date: Optional[str] = Query(None)):
+    from etl.derive_market_read import SSS_SECTOR_TO_THEME
+    d = _resolve_date(date)
+    with session_scope() as s:
+        rows = s.execute(text(
+            "SELECT * FROM drv_sss_breadth WHERE as_of_date = :d ORDER BY sector"
+        ), {"d": d}).mappings().all()
+        if not rows:
+            return {"as_of": d.isoformat(), "sectors": [], "total": None}
+
+        out = []
+        total_row = None
+        for r in rows:
+            rd = dict(r)
+            rd["top3"] = _jsonb(rd.get("top3")) or []
+            if rd["sector"] == "_TOTAL":
+                total_row = rd
+                continue
+            series = s.execute(text(
+                "SELECT as_of_date, n_rows FROM drv_sss_breadth WHERE sector = :sec "
+                "AND as_of_date <= :d ORDER BY as_of_date DESC LIMIT 13"
+            ), {"sec": rd["sector"], "d": d}).fetchall()
+            rd["n_rows_series"] = [n for _dt, n in reversed(series)]
+            # divergence (TASK_144 #3): rows fell >25% while book_size did
+            # NOT fall, vs the closest available snapshot ~4 weeks back.
+            wk4 = s.execute(text(
+                "SELECT n_rows, book_size FROM drv_sss_breadth WHERE sector = :sec "
+                "AND as_of_date <= :d4 ORDER BY as_of_date DESC LIMIT 1"
+            ), {"sec": rd["sector"], "d4": d - timedelta(days=28)}).mappings().first()
+            rd["divergence"] = bool(
+                wk4 and wk4["n_rows"] and rd["n_rows"] is not None
+                and (rd["n_rows"] - wk4["n_rows"]) / wk4["n_rows"] <= -0.25
+                and (rd["book_size"] or 0) >= (wk4["book_size"] or 0)
+            )
+            theme = SSS_SECTOR_TO_THEME.get(rd["sector"])
+            rd["chips"] = []
+            if theme:
+                chip_rows = s.execute(text(
+                    "SELECT source_code, symbol FROM ref_symbol_theme "
+                    "WHERE theme = :t AND source_code IN ('RR','ETF')"
+                ), {"t": theme}).fetchall()
+                for src, sym in chip_rows:
+                    stance_row = s.execute(text(
+                        "SELECT stance FROM drv_theme_stance WHERE as_of_date = :d AND theme = :t"
+                    ), {"d": d, "t": theme}).scalar()
+                    rd["chips"].append({"source": src, "symbol": sym, "stance": stance_row})
+            you_val = s.execute(text(
+                "SELECT market_value FROM drv_category_perf WHERE as_of_date = :d AND axis = 'sector' AND category = :cat"
+            ), {"d": d, "cat": rd["sector"]}).scalar()
+            rd["you_dollar"] = float(you_val) if you_val else 0.0
+            out.append(rd)
+
+    return {"as_of": d.isoformat(), "sectors": out, "total": total_row}

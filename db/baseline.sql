@@ -8456,3 +8456,404 @@ ON CONFLICT (setting_name) DO NOTHING;
 -- winning_source_rank/edge exist above.
 ALTER TABLE IF EXISTS drv_actionable
     ADD COLUMN IF NOT EXISTS unproven_sell_suppressed BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- =====================================================
+-- 2026-09-21 -- TASK_143/144/146/147: "Market Read" -- theme map, source
+-- breadth, theme stance, SSS sector breadth (rows AND analyst books). See
+-- docs/market_state_factor_sss_design.md (Addendum A-H). Display +
+-- measurement only -- nothing here feeds derive_actionable.py/ref_trig_*.
+-- =====================================================
+
+-- TASK_143 -- hand-curated symbol -> theme map, ~90 rows. source_code
+-- because the same idea has a different symbol per feed (RR 'USD' vs ETF
+-- 'DBMF'). inverted: TRUE for a source symbol whose own outlook is the
+-- OPPOSITE polarity of the theme (RR FX crosses quoted vs USD -- EUR/USD
+-- BEARISH means USD bullish). quad_category/quad_sub_category is the
+-- ref_quad_outlook(category, sub_category) key this member's theme maps to
+-- for the Quad column (api/_helpers.py::compute_quad_monthly_stance) -- a
+-- join, never a second hand-typed map. Stocks (SSS, CALL) are NOT seeded
+-- here -- they map to themes via ref_sector at derive time.
+CREATE TABLE IF NOT EXISTS ref_symbol_theme (
+    symbol            TEXT NOT NULL,
+    source_code       TEXT NOT NULL,   -- 'RR' | 'ETF' | 'PS'
+    theme             TEXT NOT NULL,
+    weight            NUMERIC NOT NULL DEFAULT 1,
+    inverted          BOOLEAN NOT NULL DEFAULT FALSE,
+    quad_category     TEXT,
+    quad_sub_category TEXT,
+    PRIMARY KEY (symbol, source_code, theme)
+);
+
+-- TASK_143 -- breadth per source per date: net bull-bear, idempotent
+-- (DELETE WHERE as_of_date=D -> INSERT). as_of_date = the effective date of
+-- the source's own latest snapshot (same MAX(anchor, latest source
+-- snapshot) convention the Hedgeye panel already uses -- these Hedgeye
+-- lists routinely lead the TOSD anchor). flips_vs_prior is RR-only (count
+-- of symbols whose outlook differs from the prior RR snapshot); NULL for
+-- every other source_code.
+CREATE TABLE IF NOT EXISTS drv_source_breadth (
+    as_of_date      date NOT NULL,
+    source_code     text NOT NULL,     -- RR | ETF | PS | SSS | CALL
+    snapshot_date   date,
+    n_bull          integer,
+    n_bear          integer,
+    n_neutral       integer,
+    net             integer,
+    n_total         integer,
+    flips_vs_prior  integer,
+    derived_at      timestamp NOT NULL DEFAULT now(),
+    PRIMARY KEY (as_of_date, source_code)
+);
+
+-- TASK_143 -- one row per theme per date: what each list says, the vote,
+-- the live price breadth, and the Quad playbook's own stance for the same
+-- category (never hard-coded -- api/_helpers.py::compute_quad_monthly_
+-- stance). rr/etf/ps/sss/call in {'B','S','N','M','-'}. price_pct/n_above/
+-- n_tracked reuse the exact breadth query behind GET /api/actionable/
+-- quad-rotation (api/routers/dash.py::get_quad_rotation). stance = majority
+-- of RR/ETF/PS/SSS (CALL never votes, Addendum D). quad_conflict = stance
+-- and quad_says both non-neutral and opposite.
+CREATE TABLE IF NOT EXISTS drv_theme_stance (
+    as_of_date      date NOT NULL,
+    theme           text NOT NULL,
+    rr              text,
+    etf             text,
+    ps              text,
+    sss             text,
+    call            text,
+    price_pct       numeric,
+    price_n_above   integer,
+    price_n_tracked integer,
+    stance          text,             -- 'B' | 'S' | 'N' | 'M'
+    agree_n         integer,
+    trend_1w        text,             -- 'up' | 'down' | 'flat'
+    trend_4w        text,
+    quad_says       text,             -- BULLISH | BEARISH | NEUTRAL | NULL (n/a)
+    quad_conflict   boolean,
+    members         jsonb,
+    derived_at      timestamp NOT NULL DEFAULT now(),
+    PRIMARY KEY (as_of_date, theme)
+);
+
+-- TASK_144 -- SSS sector breadth: rows (everything on the list) AND
+-- analyst books (ranked-idea denominator) side by side, one row per
+-- sector per date, plus a sector='_TOTAL' row. book_size carries forward
+-- (with book_size_asof stamped) when a sector has no ranked row that week.
+CREATE TABLE IF NOT EXISTS drv_sss_breadth (
+    as_of_date      date NOT NULL,
+    snapshot_date   date,
+    sector          text NOT NULL,     -- normalized sector label, or '_TOTAL'
+    n_rows          integer,
+    n_ranked        integer,
+    n_bench         integer,
+    n_km            integer,
+    book_size       integer,
+    book_size_asof  date,
+    top3            jsonb,
+    avg_strength    numeric,
+    median_days_on  numeric,
+    n_rows_med13    numeric,
+    n_rows_med26    numeric,
+    adds            integer,
+    removes         integer,
+    derived_at      timestamp NOT NULL DEFAULT now(),
+    PRIMARY KEY (as_of_date, sector)
+);
+
+INSERT INTO ref_freshness_contract
+    (table_name, date_column, max_lag_days, maturity_lag_days, refreshed_by, screen, severity)
+VALUES
+    ('drv_source_breadth', 'as_of_date', 1, 0, 'derive_all', 'market-read', 'warning'),
+    ('drv_theme_stance',   'as_of_date', 8, 0, 'derive_all', 'market-read', 'warning'),
+    ('drv_sss_breadth',    'as_of_date', 8, 0, 'derive_all', 'market-read', 'warning')
+ON CONFLICT (table_name) DO NOTHING;
+
+-- TASK_144 -- CALL long/short split (Addendum D1): July's pooled CALL
+-- measurement gave +0.52% (n=7,945); its sell-family alone measured +5.26%
+-- (n=82) -- pooling hid the short leg's own edge. `side` comes from each
+-- source's own raw signal on that (symbol, snapshot_date), not from the
+-- resulting recommended action -- RR/ETF from their own outlook column,
+-- CALL from outlook_modifier (its outlook field itself carries the same
+-- OCR-style noise TASK_144 found in hist_sss -- 'BEARISH'/'best idea long'
+-- co-occur -- so the modifier's own 'long'/'short' substring is checked
+-- first and wins). NULL side (PS/SSS/II, single-sided sources) groups as
+-- its own row, unchanged from before this split.
+DROP VIEW IF EXISTS v_source_edge_scorecard CASCADE;
+CREATE VIEW v_source_edge_scorecard AS
+WITH px AS (
+    SELECT tos_symbol, as_of_date, last_price,
+           LEAD(last_price, 5)  OVER w AS p5,
+           LEAD(last_price, 20) OVER w AS p20
+    FROM drv_ma
+    WHERE last_price IS NOT NULL
+    WINDOW w AS (PARTITION BY tos_symbol ORDER BY as_of_date)
+),
+fwd AS (
+    SELECT tos_symbol, as_of_date,
+           CASE WHEN last_price > 0 AND p5  IS NOT NULL
+                THEN (p5  - last_price) / last_price * 100 END AS fwd5,
+           CASE WHEN last_price > 0 AND p20 IS NOT NULL
+                THEN (p20 - last_price) / last_price * 100 END AS fwd20
+    FROM px
+),
+side AS (
+    SELECT snapshot_date, tos_symbol, 'RR'::text AS source_code,
+           CASE WHEN outlook = 'BULLISH' THEN 'long'
+                WHEN outlook = 'BEARISH' THEN 'short' END AS side
+    FROM hist_rr
+    UNION ALL
+    SELECT snapshot_date, tos_symbol, 'ETF',
+           CASE WHEN outlook = 'BULLISH' THEN 'long'
+                WHEN outlook = 'BEARISH' THEN 'short' END
+    FROM hist_etf
+    UNION ALL
+    SELECT snapshot_date, tos_symbol, 'CALL',
+           CASE WHEN outlook_modifier ILIKE '%short%' THEN 'short'
+                WHEN outlook_modifier ILIKE '%long%' THEN 'long'
+                WHEN outlook = 'BULLISH' THEN 'long'
+                WHEN outlook = 'BEARISH' THEN 'short' END
+    FROM hist_call
+),
+b AS (
+    SELECT oa.source_code, oa.action, sd.side,
+           CASE WHEN oa.action IN ('ADD','INCREASE') THEN f.fwd5
+                WHEN oa.action IN ('REDUCE','REMOVE') THEN -f.fwd5
+                ELSE f.fwd5 END AS da5,
+           CASE WHEN oa.action IN ('ADD','INCREASE') THEN f.fwd20
+                WHEN oa.action IN ('REDUCE','REMOVE') THEN -f.fwd20
+                ELSE f.fwd20 END AS da20,
+           CASE WHEN oa.action IN ('ADD','INCREASE') THEN (f.fwd20 > 0)
+                WHEN oa.action IN ('REDUCE','REMOVE') THEN (f.fwd20 < 0)
+                ELSE (f.fwd20 > 0) END AS hit
+    FROM drv_outlook_action oa
+    JOIN fwd f ON f.tos_symbol = oa.tos_symbol AND f.as_of_date = oa.as_of_date
+    LEFT JOIN side sd ON sd.source_code = oa.source_code AND sd.tos_symbol = oa.tos_symbol
+        AND sd.snapshot_date = oa.source_snapshot_date
+    WHERE oa.action IS NOT NULL AND f.fwd20 IS NOT NULL
+)
+SELECT source_code, action, side,
+       COUNT(*)                          AS n,
+       ROUND(AVG(da5)::numeric, 3)       AS edge_5d,
+       ROUND(AVG(da20)::numeric, 3)      AS edge_20d,
+       ROUND(AVG(hit::int)::numeric, 3)  AS win_rate_20d
+FROM b
+GROUP BY source_code, action, side;
+
+-- TASK_146 -- Risk Dial positioning gauges (Addendum H). Shipped INACTIVE;
+-- the user activates after reviewing the 30-date before/after budget table
+-- in DEV_HANDOFF.md. Predicate logic lives in etl/derive_risk_dial.py, per
+-- ref_risk_gauge's own convention (weight/active here, condition there).
+INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes) VALUES
+    ('lists_derisking', 'Hedgeye lists de-risking', 3, FALSE, 'positioning',
+     'TASK_146: fires when >=3 of 4 lists (RR macro net, ETF net, PS count, SSS rows) are down >25% vs 4 weeks ago. Threshold ref_settings.rd_lists_derisk_pct.'),
+    ('etf_net_short', 'ETF Pro net short', 2, FALSE, 'positioning',
+     'TASK_146: fires when ETF Pro longs - shorts <= 0 (drv_source_breadth net).'),
+    ('sss_book_collapse', 'SSS long list collapsing', 2, FALSE, 'positioning',
+     'TASK_146: fires when SSS _TOTAL rows are down >=40% from their own 4-week high. Threshold ref_settings.rd_sss_collapse_pct.'),
+    ('rr_flip_day', 'RR regime-shift day', 1, FALSE, 'positioning',
+     'TASK_146: fires when RR flips_vs_prior >=9 within the last 3 sessions. Threshold ref_settings.rd_rr_flip_min.'),
+    ('lists_quad_conflict', 'Lists disagree with Quad playbook', 2, FALSE, 'positioning',
+     'TASK_146: fires when >=4 themes have quad_conflict=true on the date. Threshold ref_settings.rd_conflict_min.'),
+    ('exposed_bear_themes', 'Positioned against the lists', 1, FALSE, 'self',
+     'TASK_146: fires when risk $ held in bear-stance themes exceeds 15% of total risk $ (drv_category_perf via ref_symbol_theme). Threshold ref_settings.rd_exposed_pct.')
+ON CONFLICT (gauge_key) DO NOTHING;
+
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('rd_lists_derisk_pct', '25', 'TASK_146 lists_derisking gauge: %% drop vs 4wk ago that counts as de-risking.'),
+    ('rd_sss_collapse_pct', '40', 'TASK_146 sss_book_collapse gauge: %% drop from 4wk high that counts as collapse.'),
+    ('rd_rr_flip_min', '9', 'TASK_146 rr_flip_day gauge: min RR outlook flips in one session to count as a regime-shift day.'),
+    ('rd_conflict_min', '4', 'TASK_146 lists_quad_conflict gauge: min themes with quad_conflict=true to fire.'),
+    ('rd_exposed_pct', '15', 'TASK_146 exposed_bear_themes gauge: %% of risk $ in bear-stance themes that counts as exposed.')
+ON CONFLICT (setting_name) DO NOTHING;
+
+-- TASK_146 -- gauge scorecard (report-only): did each gauge fire in the 20
+-- sessions before an SPX 20d drawdown >= 5% (hit) vs elsewhere (false
+-- alarm). Reuses drv_market_stat.gauges_fired (jsonb array logged by every
+-- derive_all run, active gauges only) joined against drv_quote's own SPX
+-- forward-20d drawdown.
+DROP VIEW IF EXISTS v_risk_gauge_scorecard CASCADE;
+CREATE VIEW v_risk_gauge_scorecard AS
+WITH spx AS (
+    SELECT as_of_date, last_price,
+           MIN(last_price) OVER (ORDER BY as_of_date
+               ROWS BETWEEN 1 FOLLOWING AND 20 FOLLOWING) AS fwd20_low
+    FROM drv_quote WHERE tos_symbol = 'SPX'
+),
+dd AS (
+    SELECT as_of_date,
+           (fwd20_low - last_price) / NULLIF(last_price, 0) * 100 AS fwd20_dd
+    FROM spx
+),
+fired AS (
+    SELECT m.as_of_date, g->>'key' AS gauge_key, (g->>'fired')::boolean AS fired
+    FROM drv_market_stat m, jsonb_array_elements(COALESCE(m.gauges_fired, '[]'::jsonb)) g
+)
+SELECT f.gauge_key,
+       COUNT(*) FILTER (WHERE f.fired AND dd.fwd20_dd <= -5)  AS hits,
+       COUNT(*) FILTER (WHERE f.fired AND dd.fwd20_dd > -5)   AS false_alarms,
+       COUNT(*) FILTER (WHERE f.fired IS NOT NULL)            AS n_evaluated
+FROM fired f
+JOIN dd ON dd.as_of_date = f.as_of_date
+GROUP BY f.gauge_key;
+
+-- TASK_147 -- validation: does a theme/sector/source-breadth signal predict
+-- anything, before Market Read may ever influence an action (Addendum E3).
+-- Same direction-adjusted forward-return convention as v_source_edge_
+-- scorecard: theme B wants the proxy ETF up, theme S wants it down.
+DROP VIEW IF EXISTS v_theme_stance_scorecard CASCADE;
+CREATE VIEW v_theme_stance_scorecard AS
+WITH proxy AS (
+    -- one representative proxy tos_symbol per theme: the ETF-side member
+    -- with the highest weight in ref_symbol_theme (falls back to any member).
+    SELECT DISTINCT ON (theme) theme, symbol AS proxy_symbol
+    FROM ref_symbol_theme
+    WHERE source_code = 'ETF'
+    ORDER BY theme, weight DESC, symbol
+),
+px AS (
+    SELECT tos_symbol, as_of_date, last_price,
+           LEAD(last_price, 5)  OVER w AS p5,
+           LEAD(last_price, 20) OVER w AS p20
+    FROM drv_ma
+    WHERE last_price IS NOT NULL
+    WINDOW w AS (PARTITION BY tos_symbol ORDER BY as_of_date)
+),
+fwd AS (
+    SELECT tos_symbol, as_of_date,
+           CASE WHEN last_price > 0 AND p5  IS NOT NULL THEN (p5  - last_price) / last_price * 100 END AS fwd5,
+           CASE WHEN last_price > 0 AND p20 IS NOT NULL THEN (p20 - last_price) / last_price * 100 END AS fwd20
+    FROM px
+),
+cells AS (
+    SELECT ts.as_of_date, ts.theme, 'stance'::text AS cell, ts.stance AS val, ts.agree_n, ts.quad_conflict
+    FROM drv_theme_stance ts
+    UNION ALL SELECT as_of_date, theme, 'rr',    rr,    agree_n, quad_conflict FROM drv_theme_stance
+    UNION ALL SELECT as_of_date, theme, 'etf',   etf,   agree_n, quad_conflict FROM drv_theme_stance
+    UNION ALL SELECT as_of_date, theme, 'ps',    ps,    agree_n, quad_conflict FROM drv_theme_stance
+    UNION ALL SELECT as_of_date, theme, 'sss',   sss,   agree_n, quad_conflict FROM drv_theme_stance
+    UNION ALL SELECT as_of_date, theme, 'call',  call,  agree_n, quad_conflict FROM drv_theme_stance
+),
+b AS (
+    SELECT c.theme, c.cell, c.val,
+           CASE WHEN c.agree_n >= 3 THEN '3-4' WHEN c.agree_n = 2 THEN '2' WHEN c.agree_n <= 1 THEN '1' END AS agree_bucket,
+           c.quad_conflict,
+           CASE WHEN c.val = 'B' THEN f.fwd5  WHEN c.val = 'S' THEN -f.fwd5  END AS da5,
+           CASE WHEN c.val = 'B' THEN f.fwd20 WHEN c.val = 'S' THEN -f.fwd20 END AS da20,
+           CASE WHEN c.val = 'B' THEN (f.fwd20 > 0) WHEN c.val = 'S' THEN (f.fwd20 < 0) END AS hit
+    FROM cells c
+    JOIN proxy p ON p.theme = c.theme
+    JOIN fwd f ON f.tos_symbol = p.proxy_symbol AND f.as_of_date = c.as_of_date
+    WHERE c.val IN ('B','S')
+)
+SELECT theme, cell, val AS stance, agree_bucket, quad_conflict,
+       COUNT(*)                         AS n,
+       ROUND(AVG(da5)::numeric, 3)      AS edge_5d,
+       ROUND(AVG(da20)::numeric, 3)     AS edge_20d,
+       ROUND(AVG(hit::int)::numeric, 3) AS win_rate_20d
+FROM b
+WHERE da20 IS NOT NULL
+GROUP BY GROUPING SETS ((theme, cell, val), (theme, cell, val, agree_bucket), (theme, cell, val, quad_conflict));
+
+-- TASK_147 -- per-sector: does a 4wk change in SSS n_rows / book_size (or
+-- their divergence) predict the sector's own proxy ETF forward 20d return.
+-- proxy_symbol resolved the same way as v_theme_stance_scorecard, keyed off
+-- ref_symbol_theme's Tech/software|Healthcare|... theme members joined via
+-- a small sector->theme label match (best-effort; sectors with no clean
+-- theme match are simply absent, not silently wrong).
+DROP VIEW IF EXISTS v_sss_sector_scorecard CASCADE;
+CREATE VIEW v_sss_sector_scorecard AS
+WITH sec_proxy AS (
+    SELECT DISTINCT ON (sb.sector) sb.sector, rst.symbol AS proxy_symbol
+    FROM drv_sss_breadth sb
+    JOIN ref_symbol_theme rst ON rst.source_code = 'ETF'
+        AND rst.theme = CASE sb.sector
+            WHEN 'Software' THEN 'Tech/software'
+            WHEN 'Global Tech' THEN 'Semis'
+            WHEN 'Healthcare' THEN 'Healthcare'
+            WHEN 'Financials' THEN 'Cyclicals'
+            WHEN 'Retail' THEN 'Cyclicals'
+            WHEN 'Industrials' THEN 'Cyclicals'
+            WHEN 'Consumer Staples' THEN 'Defensives'
+            WHEN 'Energy' THEN 'Energy'
+            ELSE NULL END
+    ORDER BY sb.sector, rst.weight DESC
+),
+hist AS (
+    SELECT sector, as_of_date, n_rows, book_size,
+           LAG(n_rows, 4)     OVER (PARTITION BY sector ORDER BY as_of_date) AS n_rows_4wk_ago,
+           LAG(book_size, 4)  OVER (PARTITION BY sector ORDER BY as_of_date) AS book_4wk_ago
+    FROM drv_sss_breadth WHERE sector <> '_TOTAL'
+),
+px AS (
+    SELECT tos_symbol, as_of_date, last_price,
+           LEAD(last_price, 20) OVER (PARTITION BY tos_symbol ORDER BY as_of_date) AS p20
+    FROM drv_ma WHERE last_price IS NOT NULL
+),
+b AS (
+    SELECT h.sector,
+           (h.n_rows - h.n_rows_4wk_ago)::numeric / NULLIF(h.n_rows_4wk_ago, 0) * 100 AS rows_chg_pct,
+           (h.book_size - h.book_4wk_ago)::numeric / NULLIF(h.book_4wk_ago, 0) * 100 AS book_chg_pct,
+           (h.n_rows < h.n_rows_4wk_ago AND h.book_size >= h.book_4wk_ago) AS divergence,
+           (px.p20 - px.last_price) / NULLIF(px.last_price, 0) * 100 AS fwd20
+    FROM hist h
+    JOIN sec_proxy sp ON sp.sector = h.sector
+    JOIN px ON px.tos_symbol = sp.proxy_symbol AND px.as_of_date = h.as_of_date
+    WHERE h.n_rows_4wk_ago IS NOT NULL AND h.book_4wk_ago IS NOT NULL
+)
+SELECT sector,
+       COUNT(*) AS n,
+       ROUND(CORR(rows_chg_pct, fwd20)::numeric, 3) AS corr_rows_chg_fwd20,
+       ROUND(CORR(book_chg_pct, fwd20)::numeric, 3) AS corr_book_chg_fwd20,
+       COUNT(*) FILTER (WHERE divergence)           AS n_divergence,
+       ROUND(AVG(fwd20) FILTER (WHERE divergence)::numeric, 3) AS avg_fwd20_on_divergence
+FROM b
+GROUP BY sector;
+
+-- TASK_147 -- does each list's breadth turning (net crossing 0, rows -25%
+-- in 4wk, an RR flip-day) precede an SPX 20d drawdown >= 5%.
+DROP VIEW IF EXISTS v_source_breadth_scorecard CASCADE;
+CREATE VIEW v_source_breadth_scorecard AS
+WITH spx AS (
+    SELECT as_of_date, last_price,
+           MIN(last_price) OVER (ORDER BY as_of_date
+               ROWS BETWEEN 1 FOLLOWING AND 20 FOLLOWING) AS fwd20_low
+    FROM drv_quote WHERE tos_symbol = 'SPX'
+),
+dd AS (
+    SELECT as_of_date, (fwd20_low - last_price) / NULLIF(last_price, 0) * 100 AS fwd20_dd
+    FROM spx
+),
+sig0 AS (
+    SELECT source_code, as_of_date, net, n_total, flips_vs_prior,
+           LAG(net) OVER w AS prior_net,
+           LAG(n_total, 4) OVER w AS n_total_4wk_ago,
+           (COALESCE(flips_vs_prior, 0) >= 9) AS flip_day
+    FROM drv_source_breadth
+    WINDOW w AS (PARTITION BY source_code ORDER BY as_of_date)
+),
+sig AS (
+    SELECT *, (prior_net IS NOT NULL AND SIGN(net) <> SIGN(prior_net)) AS net_crossed_zero
+    FROM sig0
+)
+SELECT sig.source_code,
+       'net_crossed_zero'::text AS turn_type,
+       COUNT(*) FILTER (WHERE sig.net_crossed_zero AND dd.fwd20_dd <= -5) AS hits,
+       COUNT(*) FILTER (WHERE sig.net_crossed_zero AND dd.fwd20_dd > -5)  AS false_alarms
+FROM sig JOIN dd ON dd.as_of_date = sig.as_of_date
+GROUP BY sig.source_code
+UNION ALL
+SELECT sig.source_code, 'rows_down_25pct_4wk',
+       COUNT(*) FILTER (WHERE sig.n_total_4wk_ago > 0
+           AND (sig.n_total - sig.n_total_4wk_ago)::numeric / sig.n_total_4wk_ago <= -0.25
+           AND dd.fwd20_dd <= -5),
+       COUNT(*) FILTER (WHERE sig.n_total_4wk_ago > 0
+           AND (sig.n_total - sig.n_total_4wk_ago)::numeric / sig.n_total_4wk_ago <= -0.25
+           AND dd.fwd20_dd > -5)
+FROM sig JOIN dd ON dd.as_of_date = sig.as_of_date
+GROUP BY sig.source_code
+UNION ALL
+SELECT sig.source_code, 'flip_day',
+       COUNT(*) FILTER (WHERE sig.flip_day AND dd.fwd20_dd <= -5),
+       COUNT(*) FILTER (WHERE sig.flip_day AND dd.fwd20_dd > -5)
+FROM sig JOIN dd ON dd.as_of_date = sig.as_of_date
+GROUP BY sig.source_code;

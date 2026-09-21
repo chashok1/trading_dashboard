@@ -431,4 +431,56 @@ def _apply_filter_rule(session, table, table_name: str, rule: dict, d):
         )
 
     # Unknown filter_type — defensive: show everything
+    # (fallthrough to the caller's own default; nothing else in this block)
+
+
+# -----------------------------------------------------------------------------
+# Quad monthly-weighted stance (TASK_143) — shared by
+# GET /api/quad/band-factors (api/routers/health.py, the Quad Rotation tiles'
+# own bull/bear factor pills) and etl/derive_market_read.py's `quad_says`
+# column + etl/derive_risk_dial.py's `exposed_bear_themes` gauge. Same
+# algorithm as get_quad_band_factors's own monthly_score loop (ref_quad_
+# periods' current-month quad1..4_pct weights x ref_quad_outlook's per-quad
+# Bullish/Neutral/Bearish stance for the row), extracted here so "the quad"
+# is computed in exactly one place and is never hard-coded per Addendum F.
+# Deliberately NOT wired into get_quad_band_factors itself (that endpoint
+# only ever needed 'Equity Sectors'/'Equity Style'; this covers every
+# category in ref_quad_outlook, including Asset Class/Fixed Income, which
+# Market Read's finer-grained themes — e.g. "Duration" needs Fixed Income/
+# Long Bond distinct from "Cash/short FI"'s Fixed Income/Treasury Bills —
+# require and the coarse drv_category_perf axis/category buckets cannot
+# distinguish).
+# -----------------------------------------------------------------------------
+
+_QUAD_STANCE_MAP = {"Bullish": 1, "Neutral": 0, "Bearish": -1}
+
+
+def compute_quad_monthly_stance(session, as_of_date: date) -> dict:
+    """Returns {(category, sub_category): 'BULLISH'|'BEARISH'|'NEUTRAL'} for
+    every row in ref_quad_outlook, using the SAME monthly-weighted-quad
+    algorithm as GET /api/quad/band-factors (ref_quad_periods' current-month
+    quad1..4_pct distribution x each row's own quad1..4 Bullish/Neutral/
+    Bearish stance). A row with no active monthly period, or whose weighted
+    score nets to exactly 0, is 'NEUTRAL'. Never returns a hard-coded quad —
+    every call re-reads ref_quad_periods for as_of_date's own month."""
+    mo = session.execute(text(
+        "SELECT quad1_pct, quad2_pct, quad3_pct, quad4_pct FROM ref_quad_periods "
+        "WHERE period_type='monthly' AND year=:y AND period_num=:m"
+    ), {"y": as_of_date.year, "m": as_of_date.month}).mappings().first()
+    if not mo:
+        return {}
+    pcts = [float(mo[f"quad{i+1}_pct"] or 0) / 100.0 for i in range(4)]
+
+    rows = session.execute(text(
+        "SELECT category, sub_category, quad1, quad2, quad3, quad4 FROM ref_quad_outlook"
+    )).mappings().all()
+
+    out: dict = {}
+    for r in rows:
+        cols = [r["quad1"], r["quad2"], r["quad3"], r["quad4"]]
+        score = sum(pcts[i] * _QUAD_STANCE_MAP.get((cols[i] or "").strip().capitalize(), 0)
+                    for i in range(4))
+        stance = "BULLISH" if score > 0 else "BEARISH" if score < 0 else "NEUTRAL"
+        out[(r["category"], r["sub_category"])] = stance
+    return out
     return "", {}, f"unknown filter_type {ft!r} - showing all rows"
