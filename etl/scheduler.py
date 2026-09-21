@@ -610,6 +610,18 @@ def run_nightly_outcomes() -> None:
     except Exception:
         log.exception("nightly: vlm intraday curve refresh crashed")
 
+    # 2026-09-21, user-directed: TASK_142's stale-analytics check was only
+    # ever run manually (`python -m etl.daily_health_check`) -- wiring it in
+    # here so a breach gets caught (and its meta_warning raised) automatically
+    # every night instead of only when someone remembers to run the command.
+    log.info("nightly: daily health check starting")
+    try:
+        from etl.daily_health_check import main as run_daily_health_check
+        code = run_daily_health_check()
+        log.info("nightly: daily health check done: exit code %d", code)
+    except Exception:
+        log.exception("nightly: daily health check crashed")
+
     # 2026-08-25, user-directed: "send a trade mode export to that email
     # every night after processing all exports" -- last step, since by the
     # scheduled nightly hour (default 22:00 ET, see _get_nightly_hour)

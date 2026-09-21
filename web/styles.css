@@ -3142,21 +3142,24 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 /* TASK_134 C.1: per-account transaction-feed staleness lines. */
 .hk-gap-line { color: var(--bear); font-size: 11px; margin-bottom: 4px; }
 
-/* Data issues panel -- last panel in the left column, below Housekeeping
-   (2026-09-21, user-directed). Static reminder note, collapsed by default
-   via native <details>/<summary> -- no JS needed, no live data. */
-#dataIssuesBand summary {
+/* Static collapsible note panels -- Data issues, Background jobs -- last
+   two panels in the left column, below Housekeeping (2026-09-21,
+   user-directed). Collapsed by default via native <details>/<summary>,
+   no JS/API needed, no live data. Shared classes so both panels (and any
+   future one) reuse the same look instead of per-ID rules. */
+.collapsible-note-summary {
   font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
   color: var(--text-2, #666); cursor: pointer; padding: 2px 4px;
 }
-#dataIssuesBand summary:hover { color: var(--text-1, #1c1917); }
-#dataIssuesBand .data-issues-body {
+.collapsible-note-summary:hover { color: var(--text-1, #1c1917); }
+.collapsible-note-body {
   padding: 6px 8px 4px; font-size: 11px; line-height: 1.5; color: var(--text-2, #57534e);
 }
-#dataIssuesBand .data-issues-body ul { margin: 0 0 8px; padding-left: 16px; }
-#dataIssuesBand .data-issues-body li { margin-bottom: 2px; }
-#dataIssuesBand .data-issues-body p { margin: 0 0 6px; }
-#dataIssuesBand .data-issues-body p:last-child { margin-bottom: 0; }
+.collapsible-note-body ul { margin: 0 0 8px; padding-left: 16px; }
+.collapsible-note-body li { margin-bottom: 6px; }
+.collapsible-note-body p { margin: 0 0 6px; }
+.collapsible-note-body p:last-child { margin-bottom: 0; }
+.collapsible-note-body .job-schedule { display: block; color: var(--text-3, #a8a29e); font-size: 10px; margin-top: 1px; }
 
 /* ==========================================================================
    Universe screen -- Action popover port (2026-09-06)

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260921a">
+  <link rel="stylesheet" href="/static/styles.css?v=20260921b">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -213,8 +213,8 @@
                column per user request. -->
           <section class="cockpit-band" id="dataIssuesBand">
             <details>
-              <summary>Data issues</summary>
-              <div class="data-issues-body">
+              <summary class="collapsible-note-summary">Data issues</summary>
+              <div class="collapsible-note-body">
                 <p><strong>When to manually re-check the rules (not automatic):</strong></p>
                 <ul>
                   <li>Every ~3 months, as a routine sanity check</li>
@@ -224,6 +224,31 @@
                   <li>If recommendations start looking consistently off</li>
                 </ul>
                 <p><strong>What to do:</strong> ask Claude to re-run the signal-validation report (<code>docs/audit/signal_validation_*.md</code>) and update the playbook.</p>
+              </div>
+            </details>
+          </section>
+
+          <!-- 2026-09-21 -- Background jobs panel: static description of
+               every automated background job (etl/scheduler.py), what it
+               does and when it runs. No live status/API by design (user:
+               "keep it simple, just schedule/description is fine") --
+               collapsed by default via <details>, same as Data issues
+               above. Keep this list in sync with etl/scheduler.py if a job
+               is added/removed/rescheduled. -->
+          <section class="cockpit-band" id="backgroundJobsBand">
+            <details>
+              <summary class="collapsible-note-summary">Background jobs</summary>
+              <div class="collapsible-note-body">
+                <ul>
+                  <li><strong>File watcher</strong> — watches the 17 source folders and loads + re-derives new files automatically.<span class="job-schedule">Continuous, whenever the scheduler is running.</span></li>
+                  <li><strong>Nightly job</strong> — refreshes rule-outcome scoring, the source-ranking recompute, the factor-outcome refresh, the volume-curve model, the data-freshness health check, and a trade-mode summary email.<span class="job-schedule">~10:00 PM local (configurable) — catches up immediately if the computer was off through last night's run.</span></li>
+                  <li><strong>Watch-alert digest email</strong> — sends one combined email for any price/level alerts you've set up that are still active.<span class="job-schedule">~3:00 PM local (configurable) — catches up if missed.</span></li>
+                  <li><strong>Intraday quote refresh</strong> — lightweight price-only refresh from Yahoo.<span class="job-schedule">10:00 AM and 3:00 PM ET, weekdays, while the market is open — catches up on a missed slot within market hours.</span></li>
+                  <li><strong>End-of-day price confirmation</strong> — confirms closing prices from Yahoo.<span class="job-schedule">4:15 PM ET, weekdays.</span></li>
+                  <li><strong>Price/level alert checker</strong> — checks your active watch alerts against the latest price/LRR/TRR/Trade/Trend readings.<span class="job-schedule">Every ~1 minute.</span></li>
+                  <li><strong>Hedgeye email poll</strong> — checks the inbox for new Hedgeye research emails and imports them (only when Hedgeye email integration is turned on).<span class="job-schedule">Every ~4 minutes.</span></li>
+                  <li><strong>Monthly "pending removals" reminder</strong> — reminds you if any symbols still need manual removal from a TOS watchlist.<span class="job-schedule">Once a calendar month.</span></li>
+                </ul>
               </div>
             </details>
           </section>
