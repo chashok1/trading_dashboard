@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260910a">
+  <link rel="stylesheet" href="/static/styles.css?v=20260921a">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -204,6 +204,28 @@
           <section class="cockpit-band" id="housekeepingBand">
             <div id="housekeepingLine" class="hk-line">Loading…</div>
             <div id="housekeepingGaps"></div>
+          </section>
+
+          <!-- 2026-09-21 -- Data issues panel: static reminder for when to
+               manually re-check rule validity -- this isn't automated, so
+               nothing else on the dashboard will surface it. Collapsed by
+               default (<details>, no JS/API needed). Last panel in this
+               column per user request. -->
+          <section class="cockpit-band" id="dataIssuesBand">
+            <details>
+              <summary>Data issues</summary>
+              <div class="data-issues-body">
+                <p><strong>When to manually re-check the rules (not automatic):</strong></p>
+                <ul>
+                  <li>Every ~3 months, as a routine sanity check</li>
+                  <li>After a real market pullback or choppy stretch (the last check only covered a calm uptrend)</li>
+                  <li>Before turning on "measured" source ranking or "unproven-sell suppression" for real</li>
+                  <li>If rule groups or thresholds change meaningfully</li>
+                  <li>If recommendations start looking consistently off</li>
+                </ul>
+                <p><strong>What to do:</strong> ask Claude to re-run the signal-validation report (<code>docs/audit/signal_validation_*.md</code>) and update the playbook.</p>
+              </div>
+            </details>
           </section>
         </div>
 
@@ -866,8 +888,8 @@
   <script src="/static/_common.js"></script>
   <script src="/static/actions.js"></script>
   <script src="/static/portfolio_mix.js?v=20260901a"></script>
-  <script src="/static/app.js?v=20260909a"></script>
-  <script src="/static/dashboard_notes.js"></script>
+  <script src="/static/app.js?v=20260916a"></script>
+  <script src="/static/dashboard_notes.js?v=20260916a"></script>
   <script src="/static/portfolio-modal.js"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/risk_gauge_modal.js?v=20260814c"></script>
@@ -881,7 +903,7 @@
   <script src="/static/quad_rotation_panel.js?v=20260907a" defer></script>
   <!-- 2026-09-01 -- Cross-Asset Signals panel (#crossAssetPanel above), see
        web/cross_asset_panel.js's own header comment. -->
-  <script src="/static/cross_asset_panel.js?v=20260901a" defer></script>
+  <script src="/static/cross_asset_panel.js?v=20260916a" defer></script>
   <!-- 2026-08-10 -- renders Mkt Situation/INFL/Early Look/Macro Commentary/
        Top 3 Things into #hedgeyeDashPanel above (see cat-col). Same script
        Actionable loads; it targets whichever of #hedgeyePanel/
@@ -915,6 +937,13 @@
        market_bar.js text-tile tape (still used as-is on /actionable and
        /portfolio). See web/dashboard_tv_chart_tape.js. -->
   <script src="/static/dashboard_tv_chart_tape.js" defer></script>
+  <!-- 2026-09-19 -- market_bar.js added here too, but ONLY for its
+       ensureToolbarIcon() main-toolbar "Fetch quotes now" button
+       (init() -- TAPE_PAGES excludes '/', so its own text-tile tape/candle/
+       econ-toggle mounting all stay no-ops here, same as before). Also
+       gives macro_areas.js's candles a working window.mtTip.candleSvg on
+       this page, which was silently missing before. -->
+  <script src="/static/market_bar.js" defer></script>
   <!-- Dashboard-only: fixed-height scrollable market news list, GET
        /api/market-news (Yahoo Finance RSS via the server). Renders into
        #dashNewsListPanel, cat-col, below the Hedgeye Top 3 Things card.

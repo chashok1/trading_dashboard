@@ -2363,8 +2363,8 @@ details[open].msr-all-sectors .msr-all-summary::before { content: "▾ "; }
 .rd-spx-vbar-fill.tier-good     { background: var(--ok); }
 .rd-spx-vbar-fill.tier-caution  { background: #eab308; }
 .rd-spx-vbar-fill.tier-bad      { background: var(--bear); }
-.rd-headline { font-size: 13px; font-weight: 400; color: var(--text-2); margin: 8px 0 10px; }
-.rd-gauge-list { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.rd-headline { font-size: 11px; font-weight: 400; color: var(--text-2); margin: 8px 0 10px; }
+.rd-gauge-list { display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
 /* TASK_134 A.4: severity encoded as a coloured left rail + weight chip
    (never colour alone) instead of one flat pink wash for every fired gauge. */
 .rd-gauge-row {
@@ -2756,7 +2756,7 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
 #tip .k2 { opacity: .7; }
 
 /* Band 2 — What changed */
-.ev-row { display: grid; grid-template-columns: 3px auto 1fr; gap: 8px; align-items: baseline; padding: 4px 6px 4px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
+.ev-row { display: grid; grid-template-columns: 3px auto 1fr; gap: 8px; align-items: baseline; padding: 4px 6px 4px 0; font-size: 11px; border-bottom: 1px solid var(--border); }
 .ev-row .ev-rail { align-self: stretch; border-radius: 2px; background: var(--act-neutral); }
 .ev-row-severe .ev-rail { background: var(--act-sell-strong); }
 .ev-row-warn .ev-rail   { background: var(--act-mixed); }
@@ -2812,6 +2812,7 @@ svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
   color: var(--text-3);
   display: flex; align-items: center; gap: 6px;
 }
+.opex-line { font-size: 10px; }
 .events-line { justify-content: space-between; }
 /* 2026-08-27 -- earnings-line overrides: was nowrap like its siblings (fine
    when it only listed a handful of opted-IN watched symbols), but now it
@@ -3140,6 +3141,22 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .hk-dot.ok { background: var(--ok); } .hk-dot.bad { background: var(--bear); }
 /* TASK_134 C.1: per-account transaction-feed staleness lines. */
 .hk-gap-line { color: var(--bear); font-size: 11px; margin-bottom: 4px; }
+
+/* Data issues panel -- last panel in the left column, below Housekeeping
+   (2026-09-21, user-directed). Static reminder note, collapsed by default
+   via native <details>/<summary> -- no JS needed, no live data. */
+#dataIssuesBand summary {
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-2, #666); cursor: pointer; padding: 2px 4px;
+}
+#dataIssuesBand summary:hover { color: var(--text-1, #1c1917); }
+#dataIssuesBand .data-issues-body {
+  padding: 6px 8px 4px; font-size: 11px; line-height: 1.5; color: var(--text-2, #57534e);
+}
+#dataIssuesBand .data-issues-body ul { margin: 0 0 8px; padding-left: 16px; }
+#dataIssuesBand .data-issues-body li { margin-bottom: 2px; }
+#dataIssuesBand .data-issues-body p { margin: 0 0 6px; }
+#dataIssuesBand .data-issues-body p:last-child { margin-bottom: 0; }
 
 /* ==========================================================================
    Universe screen -- Action popover port (2026-09-06)
