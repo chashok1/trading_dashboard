@@ -25,7 +25,7 @@ import os
 import sys
 import time
 import traceback
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 # Enable faulthandler EARLY so segfaults / fatal Python errors leave a stack
@@ -495,6 +495,54 @@ def run_nightly_outcomes() -> None:
     except Exception:
         log.exception("nightly: stale-heal crashed")
 
+    # 2026-09-20 (TASK_138): etl/compute_firing_outcomes.py was never scheduled
+    # anywhere -- drv_rule_outcome (every edge number on screen, including the
+    # default sort, plus the weak-buy-sources recompute right below, which
+    # reads this table) was last refreshed by hand on 2026-07-12. Runs before
+    # "weak-buy-sources recompute" so that step reads tonight's numbers, not
+    # last night's. `--since` caps the recompute to the tail of history
+    # (anchor - 45 days, well past the 20-trading-day forward-return
+    # maturation lag) -- without it, compute_firing_outcomes rescans the FULL
+    # table every call even without --truncate (upsert-idempotent but not
+    # cheap; see the module docstring). A full rebuild stays manual/weekly
+    # (`python -m etl.backfill_full`) -- never add --truncate here.
+    log.info("nightly: outcome ETL refresh starting")
+    try:
+        import time as _time
+        from datetime import timedelta as _timedelta
+        from etl.db import session_scope
+        from etl.derive import get_anchor_date
+        from etl.backfill_derives import _missing_dates as _outcome_missing_dates
+        from etl.derive import derive_all as _outcome_derive_all
+        from etl.compute_firing_outcomes import run_incremental as _run_outcomes
+
+        _t0 = _time.monotonic()
+        with session_scope() as s:
+            _anchor = get_anchor_date(s)
+            _missing = _outcome_missing_dates(s) if _anchor else []
+        if _missing:
+            log.info("nightly: outcome ETL — backfilling %d date(s) missing "
+                      "drv_trig before recompute: %s .. %s",
+                      len(_missing), _missing[0], _missing[-1])
+            for _d in _missing:
+                try:
+                    with session_scope() as s:
+                        _outcome_derive_all(s, _d)
+                except Exception:
+                    log.exception("nightly: outcome ETL — derive_all backfill "
+                                   "failed for %s (continuing)", _d)
+        else:
+            log.info("nightly: outcome ETL — no missing drv_trig dates to backfill")
+
+        _since = (_anchor - _timedelta(days=45)) if _anchor else None
+        _result = _run_outcomes(since=_since)
+        _elapsed = _time.monotonic() - _t0
+        log.info("nightly: outcome ETL refresh done: rows_written=%s "
+                  "total_rows=%s since=%s elapsed=%.1fs",
+                  _result["rows_written"], _result["total_rows"], _since, _elapsed)
+    except Exception:
+        log.exception("nightly: outcome ETL refresh crashed")
+
     log.info("nightly: weak-buy-sources recompute starting")
     try:
         from etl.db import session_scope
@@ -504,6 +552,21 @@ def run_nightly_outcomes() -> None:
         log.info("nightly: weak-buy-sources recompute done: %s", weak or "(none)")
     except Exception:
         log.exception("nightly: weak-buy-sources recompute crashed")
+
+    # TASK_140 (2026-09-21): source_precedence.measured_rank -- only consumed
+    # when ref_settings.source_order_mode='measured' (default 'static', a
+    # no-op path). Recomputed unconditionally so the numbers are ready and
+    # auditable the moment a user flips the switch, not stale from whenever
+    # they happened to flip it.
+    log.info("nightly: source precedence recompute starting")
+    try:
+        from etl.db import session_scope
+        from etl.derive_source_edge import recompute_source_precedence
+        with session_scope() as s:
+            prec = recompute_source_precedence(s)
+        log.info("nightly: source precedence recompute done: %s", prec)
+    except Exception:
+        log.exception("nightly: source precedence recompute crashed")
 
     log.info("nightly: factor outcomes refresh starting")
     try:
@@ -662,17 +725,31 @@ def _write_nightly_state(state_path: Path, day) -> None:
         log.exception("nightly: failed to write state file %s", state_path)
 
 
-def maybe_run_nightly(state_path: Path) -> None:
-    """If now >= scheduled hour and we haven't run today, fire the nightly job."""
+def _due_or_overdue(state_path: Path, sched_hour: int) -> bool:
+    """True if a once/day job gated by `state_path` should fire now.
+
+    Normal case: only once we're at/after `sched_hour` today. 2026-09-21,
+    user-directed: if the machine was off through a whole scheduled slot
+    (last successful run is not today or yesterday), catch up immediately
+    once the scheduler is back up instead of waiting for `sched_hour` to
+    come around again -- "it should run if the scheduler is up and didn't
+    run last night because i am not running my computer."
+    """
     now = datetime.now()
-    sched_hour = _get_nightly_hour()
-    if now.hour < sched_hour:
-        return
+    today = now.date()
     last_run = _read_nightly_state(state_path)
-    if last_run == now.date():
+    if last_run == today:
+        return False
+    overdue = last_run is None or last_run < today - timedelta(days=1)
+    return overdue or now.hour >= sched_hour
+
+
+def maybe_run_nightly(state_path: Path) -> None:
+    """If due (see _due_or_overdue) and we haven't run today, fire the nightly job."""
+    if not _due_or_overdue(state_path, _get_nightly_hour()):
         return
     run_nightly_outcomes()
-    _write_nightly_state(state_path, now.date())
+    _write_nightly_state(state_path, datetime.now().date())
 
 
 def maybe_check_watches() -> None:
@@ -688,17 +765,13 @@ def maybe_send_watch_digest(state_path: Path) -> None:
     """Once/day, at/after ref_settings.watch_digest_hour (default 15 =
     3pm local, same clock outcomes_compute_hour uses) -- send the combined
     watch-trigger email if anything still qualifies. Same once-per-day
-    dedupe pattern as maybe_run_nightly (state_path is a separate file, so
-    the two jobs' dedupe doesn't collide)."""
+    dedupe + catch-up pattern as maybe_run_nightly (_due_or_overdue,
+    state_path is a separate file so the two jobs' dedupe doesn't collide)."""
     from etl.derive_watch import _get_digest_hour, send_watch_digest
-    now = datetime.now()
-    if now.hour < _get_digest_hour():
-        return
-    last_run = _read_nightly_state(state_path)
-    if last_run == now.date():
+    if not _due_or_overdue(state_path, _get_digest_hour()):
         return
     send_watch_digest()
-    _write_nightly_state(state_path, now.date())
+    _write_nightly_state(state_path, datetime.now().date())
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -751,6 +824,64 @@ def maybe_run_yahoo_fetch() -> None:
 
     _yahoo_fetch_thread = threading.Thread(target=_run, name="yahoo-y-load", daemon=True)
     _yahoo_fetch_thread.start()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Intraday Yahoo price-only refresh — fires at two fixed times, 10:00 AM and
+# 3:00 PM ET, Mon-Fri (2026-09-19, down from once per clock hour -- ~83s and
+# a ~555-symbol Yahoo pull every hour wasn't worth it for the price freshness
+# gained; a manual "Fetch now" button covers anything in between, see
+# api/routers/dash.py::yahoo_fetch_quotes_now). Runs INLINE (not a background
+# thread) since it's a quick cache-only batch pull, shares the EOD job's
+# running-lock (etl/yahoo_fetch.py::fetch_hourly_quotes) so the two can never
+# overlap.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_INTRADAY_QUOTE_TIMES = [(10, 0), (15, 0)]  # (hour, minute) ET
+_MARKET_CLOSE_ET = (16, 0)
+
+_hourly_quote_done_today: set = set()  # {(date, (hour, minute)), ...}
+
+
+def maybe_run_hourly_quote_refresh() -> None:
+    """Fire the lightweight intraday quote refresh at each fixed ET time in
+    _INTRADAY_QUOTE_TIMES. Delegates entirely to fetch_hourly_quotes().
+
+    2026-09-21, user-directed: this used to require an exact-minute match,
+    so a scheduler restart near :00 could skip a whole slot for the day
+    with no recovery. Now it catches up on any slot whose time has passed
+    and hasn't run yet today -- but only while the market is still open
+    (past _MARKET_CLOSE_ET there's no point, that's the EOD job's job).
+    Multiple overdue slots in one catch-up collapse into a single fetch
+    (the data fetched would be identical either way)."""
+    global _hourly_quote_done_today
+
+    now_et = _yahoo_fetch_et_now()
+    if now_et.weekday() >= 5:
+        return
+
+    today = now_et.date()
+    now_hm = (now_et.hour, now_et.minute)
+    if now_hm >= _MARKET_CLOSE_ET:
+        return
+
+    # Drop any stale entries from a previous day.
+    _hourly_quote_done_today = {k for k in _hourly_quote_done_today if k[0] == today}
+
+    overdue = [t for t in _INTRADAY_QUOTE_TIMES
+               if now_hm >= t and (today, t) not in _hourly_quote_done_today]
+    if not overdue:
+        return
+
+    from etl.yahoo_fetch import fetch_hourly_quotes
+    log.info("scheduler: triggering intraday Yahoo price refresh (catching up %s, now %s ET)",
+              ",".join("%02d:%02d" % t for t in overdue), now_et.strftime("%H:%M"))
+    try:
+        result = fetch_hourly_quotes()
+        log.info("scheduler: intraday Yahoo price refresh complete: %s", result)
+    except Exception:
+        log.exception("scheduler: intraday Yahoo price refresh crashed")
+    _hourly_quote_done_today.update((today, t) for t in overdue)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1042,6 +1173,14 @@ def main() -> int:
                 except Exception:
                     try:
                         log.exception("maybe_run_yahoo_fetch failed (continuing)")
+                    except Exception:
+                        pass
+            if tick % 60 == 0:
+                try:
+                    maybe_run_hourly_quote_refresh()
+                except Exception:
+                    try:
+                        log.exception("maybe_run_hourly_quote_refresh failed (continuing)")
                     except Exception:
                         pass
             if tick % 60 == 0:
