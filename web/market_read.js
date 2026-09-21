@@ -138,29 +138,60 @@
   }
 
   /* ---- Band ② breadth strip ---- */
-  var BREADTH_LABEL = {
-    RR: 'RR macro board · net bull − bear', ETF: 'ETF Pro · longs − shorts',
-    PS: 'PS · names on the ranked list', SSS: 'SSS · rows on list',
-  };
+  // 2026-09-21, user-directed: order SSS/ETF/PS/CALL/RR (matches the API's
+  // own iteration order in api/routers/cockpit.py::get_market_read -- both
+  // kept in sync since breadthTile just maps data.breadth in array order).
+  var BREADTH_NAME = { SSS: 'SSS', ETF: 'ETF Pro', PS: 'PS', CALL: 'CALL', RR: 'RR macro board' };
+  var _MR_NET_BASED = { RR: 1, ETF: 1, CALL: 1 };
+  // Net-based sources: [bull-side word, bear-side word] for the header text.
+  var _MR_NET_WORDS = { RR: ['bull', 'bear'], ETF: ['longs', 'shorts'], CALL: ['longs', 'shorts'] };
+  // Single-sided count sources: unit text after the raw count.
+  var _MR_COUNT_UNIT = { SSS: 'rows on list', PS: 'names on the ranked list' };
+
+  // 2026-09-21, user-directed exact format:
+  // "▼ -11 vs 3wk ago (46) · ▼ -44 vs max 13wk 79" -- both comparisons get
+  // their own arrow + sign, colored independently (a tile can be up vs one
+  // reference and down vs the other).
+  function _mrDeltaSeg(delta, label) {
+    if (delta == null) return '';
+    var cls = delta > 0 ? 'up' : delta < 0 ? 'dn' : '';
+    var txt = (delta > 0 ? '▲ +' : delta < 0 ? '▼ ' : '') + delta + ' vs ' + label;
+    return '<span class="' + cls + '">' + esc(txt) + '</span>';
+  }
+
+  // 2026-09-21, user-directed: "number don't mean anything here [as its own
+  // line] -- you can display them in the header text itself", e.g.
+  // "SSS · 33 rows on list" / "ETF Pro (-3) · 17 longs − 20 shorts".
+  // Replaces the old standalone big hero number + separate L/S sub-label.
+  function _mrBreadthHeaderText(b) {
+    var name = BREADTH_NAME[b.source_code] || b.source_code;
+    if (_MR_NET_BASED[b.source_code]) {
+      var words = _MR_NET_WORDS[b.source_code] || ['bull', 'bear'];
+      var net = b.hero != null ? b.hero : '—';
+      var bull = b.n_bull != null ? b.n_bull : '—';
+      var bear = b.n_bear != null ? b.n_bear : '—';
+      return name + ' (' + net + ') · ' + bull + ' ' + words[0] + ' − ' + bear + ' ' + words[1];
+    }
+    var unit = _MR_COUNT_UNIT[b.source_code] || '';
+    var hero = b.hero != null ? b.hero : '—';
+    return name + ' · ' + hero + (unit ? ' ' + unit : '');
+  }
 
   function breadthTile(b) {
-    var heroSub = (b.source_code === 'ETF' && b.n_bull != null)
-      ? ' <span class="mr-tile-sub">' + b.n_bull + 'L / ' + b.n_bear + 'S</span>' : '';
-    var delta = b.delta_vs_3wk;
-    var deltaCls = delta > 0 ? 'up' : delta < 0 ? 'dn' : '';
-    var deltaTxt = delta == null ? '' :
-      (delta > 0 ? '▲ +' : delta < 0 ? '▼ ' : '') + delta + ' vs 3wk ago (' + (b.prior_3wk != null ? b.prior_3wk : '—') + ')';
-    return '<div class="mr-tile"><div class="mr-tile-lbl">' + esc(BREADTH_LABEL[b.source_code] || b.source_code) + '</div>' +
-      '<div class="mr-tile-hero">' + (b.hero != null ? b.hero : '—') + heroSub + '</div>' +
-      '<div class="mr-tile-delta ' + deltaCls + '">' + esc(deltaTxt) + '</div>' +
-      sparkline(b.series, b.source_code === 'RR' || b.source_code === 'ETF') + '</div>';
+    var seg3wk = _mrDeltaSeg(b.delta_vs_3wk, '3wk ago (' + (b.prior_3wk != null ? b.prior_3wk : '—') + ')');
+    var segMax = (b.hero != null && b.max_13wk != null)
+      ? _mrDeltaSeg(b.hero - b.max_13wk, 'max 13wk ' + b.max_13wk) : '';
+    var deltaLine = [seg3wk, segMax].filter(Boolean).join(' · ');
+    return '<div class="mr-tile"><div class="mr-tile-lbl">' + esc(_mrBreadthHeaderText(b)) + '</div>' +
+      '<div class="mr-tile-delta">' + deltaLine + '</div>' +
+      sparkline(b.series, !!_MR_NET_BASED[b.source_code]) + '</div>';
   }
 
   function breadthStripHtml(data) {
     var tiles = (data.breadth || []).map(breadthTile).join('');
     var flipHtml = (data.flip_days || []).slice(0, 6)
       .map(function (f) { return '<b>' + f.date + ' (' + f.flips + ')</b>'; }).join(' · ');
-    return '<div class="mr-sub">BREADTH — four independent lists, 13-week history, dot = latest</div>' +
+    return '<div class="mr-sub">BREADTH — five independent lists, 13-week history, dot = latest</div>' +
       '<div class="mr-tiles">' + tiles + '</div>' +
       (flipHtml ? '<div class="mr-flipnote">RR flip days (≥09 outlook changes = regime-shift marker): ' + flipHtml + '</div>' : '');
   }

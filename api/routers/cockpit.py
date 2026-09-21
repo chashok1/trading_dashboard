@@ -1549,8 +1549,12 @@ def get_market_read(date: Optional[str] = Query(None)):
         ), {"d": d}).mappings().all()
 
         # --- breadth strip: 13-week series per source ---
+        # 2026-09-21, user-directed: order SSS/ETF/PS/CALL/RR, CALL added
+        # (drv_source_breadth already computes it -- etl/derive_market_read.py
+        # treats CALL like ETF, net = n_bull - n_bear -- it just wasn't
+        # surfaced here before).
         breadth = []
-        for source_code in ("RR", "ETF", "PS", "SSS"):
+        for source_code in ("SSS", "ETF", "PS", "CALL", "RR"):
             series = s.execute(text(
                 "SELECT as_of_date, n_bull, n_bear, n_total, net FROM drv_source_breadth "
                 "WHERE source_code = :sc AND as_of_date <= :d ORDER BY as_of_date DESC LIMIT 13"
@@ -1558,9 +1562,15 @@ def get_market_read(date: Optional[str] = Query(None)):
             series = list(reversed(series))
             latest = series[-1] if series else None
             three_wk_ago = series[-4] if len(series) >= 4 else (series[0] if series else None)
-            hero = (latest["net"] if source_code in ("RR", "ETF") else latest["n_total"]) if latest else None
-            prior_hero = (three_wk_ago["net"] if source_code in ("RR", "ETF") else three_wk_ago["n_total"]) \
+            net_based = source_code in ("RR", "ETF", "CALL")
+            hero = (latest["net"] if net_based else latest["n_total"]) if latest else None
+            prior_hero = (three_wk_ago["net"] if net_based else three_wk_ago["n_total"]) \
                 if three_wk_ago else None
+            series_vals = [r["net"] if net_based else r["n_total"] for r in series]
+            # 2026-09-21, user-directed: "in addition to 3wk ago, use max
+            # numbers that were present for that source" -- max over this
+            # same 13-week window (no extra query, already fetched above).
+            max_13wk = max((v for v in series_vals if v is not None), default=None)
             breadth.append({
                 "source_code": source_code,
                 "hero": hero,
@@ -1568,7 +1578,8 @@ def get_market_read(date: Optional[str] = Query(None)):
                 "n_bear": latest["n_bear"] if latest else None,
                 "delta_vs_3wk": (hero - prior_hero) if (hero is not None and prior_hero is not None) else None,
                 "prior_3wk": prior_hero,
-                "series": [r["net"] if source_code in ("RR", "ETF") else r["n_total"] for r in series],
+                "max_13wk": max_13wk,
+                "series": series_vals,
             })
 
         flip_rows = s.execute(text(
