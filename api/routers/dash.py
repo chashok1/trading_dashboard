@@ -3696,8 +3696,13 @@ def get_portfolio(
         if latest_prices and out:
             syms_held = list({r["symbol"] for r in out if r.get("symbol") and r.get("qty")})
             if syms_held:
+                # 2026-09-21: capped at the real anchor -- see
+                # api/routers/marketbar.py's identical fix for why a bare
+                # MAX(as_of_date) is unsafe (a stray non-trading-day row can
+                # shadow the correct anchor row).
                 qrow = s.execute(text(
-                    "SELECT MAX(as_of_date) FROM drv_quote"
+                    "SELECT MAX(as_of_date) FROM drv_quote "
+                    "WHERE as_of_date <= (SELECT MAX(export_date) FROM hist_td)"
                 )).first()
                 latest_dq_date = qrow[0] if qrow else None
                 latest_price_map = {}
@@ -5712,7 +5717,14 @@ def get_portfolio_summary(date: Optional[str] = Query(None),
             is_live = False
             as_of_ts = None
             if syms_held:
-                qrow = s2.execute(text("SELECT MAX(as_of_date) FROM drv_quote")).first()
+                # 2026-09-21: capped at the real anchor -- see
+                # api/routers/marketbar.py's identical fix for why a bare
+                # MAX(as_of_date) is unsafe (a stray non-trading-day row can
+                # shadow the correct anchor row).
+                qrow = s2.execute(text(
+                    "SELECT MAX(as_of_date) FROM drv_quote "
+                    "WHERE as_of_date <= (SELECT MAX(export_date) FROM hist_td)"
+                )).first()
                 latest_dq_date = qrow[0] if qrow else None
                 latest_price_map, prev_close_map = {}, {}
                 if latest_dq_date:

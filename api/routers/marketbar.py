@@ -158,7 +158,16 @@ def get_marketbar() -> dict:
             for r in s.execute(text(
                 "SELECT tos_symbol, open_price, high_price, low_price, "
                 "last_price, pct_change, export_time, export_date FROM drv_quote "
-                "WHERE as_of_date = (SELECT MAX(as_of_date) FROM drv_quote)"
+                # 2026-09-21: capped at the real anchor (MAX(export_date) FROM
+                # hist_td, same as etl/derive.py::get_anchor_date) -- a bare
+                # MAX(as_of_date) FROM drv_quote let a stray non-trading-day
+                # row (e.g. from an ad-hoc derive_all() call with the wrong
+                # date) silently shadow the correct, freshly-derived anchor
+                # row whenever the stray date was later. See etl/derive.py::
+                # derive_all's weekend guard, added the same day, for the
+                # other half of this fix.
+                "WHERE as_of_date = (SELECT MAX(as_of_date) FROM drv_quote "
+                "WHERE as_of_date <= (SELECT MAX(export_date) FROM hist_td))"
             )).mappings().all()
         }
         # hist_rr last_price: fallback for synthetic symbols not covered by drv_quote

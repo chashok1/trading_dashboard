@@ -3327,6 +3327,26 @@ def _derive_trend_trade_rules_impl(session: Session, as_of_date: date, run_id: i
 def derive_all(session: Session, as_of_date: date,
                parent_run_id: Optional[int] = None) -> dict:
     """Run every derive_* in dependency order. Returns {table: rows_built}."""
+    # 2026-09-21, user-directed: no anchor is ever a Saturday/Sunday -- the
+    # market's never open, so hist_td never has a weekend export_date and
+    # get_anchor_date()/backfill_derives.py's hist_td-driven date list can
+    # never produce one either. A weekend date here only ever means a
+    # caller passed date.today() (or similar) directly instead of the real
+    # anchor -- found the hard way: a stray derive_all(session, <a Sunday>)
+    # call (root-caused to a background build agent's ad-hoc script, not
+    # any of the normal triggers) left a complete 920-row cascade sitting
+    # at as_of_date=2026-09-20, which etl_load.py's forward-re-derive step
+    # then kept re-deriving as if it were a legitimate pending date on
+    # every subsequent file load, silently shadowing the real anchor row
+    # in any query that does `MAX(as_of_date)`. Refuse instead of silently
+    # building a row nothing should ever read.
+    if as_of_date.weekday() >= 5:
+        log.warning("derive_all: refusing as_of_date=%s (%s) -- weekends are "
+                     "never a real anchor; check the caller for a "
+                     "date.today()/similar bug instead of the true anchor",
+                     as_of_date, as_of_date.strftime("%A"))
+        return {}
+
     counts: dict = {}
 
     # Sweep meta_derived_run rows stuck in status='running' from a prior cascade

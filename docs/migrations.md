@@ -6,6 +6,48 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ## 2026-09-21
 
+- **Root-caused and fixed the stray drv_quote anchor bug from earlier
+  today.** User: "why there is a stray quote in drv_quote in the first
+  place?" -- traced precisely: every legitimate derive trigger
+  (`etl_load.py`'s file watcher, `etl/hedgeye_fetch.py`'s email poller,
+  `etl/backfill_derives.py`) correctly keys off `get_anchor_date()` or
+  `hist_td`'s own real export dates, none of which can ever produce a
+  weekend date -- but every major `drv_*`/`rpt_*` table had a complete
+  920-symbol cascade sitting at `as_of_date=2026-09-20` (a Sunday, zero
+  `hist_td` rows). Root cause: an ad-hoc `derive_all(session, <date>)`
+  call outside the normal triggers (most likely the background Market
+  Read build agent's own "full derive_all cascade re-run at the end",
+  per its hand-back report, evaluating `date.today()` while its clock
+  read that Sunday). It then self-perpetuated: `etl_load.py`'s forward-
+  re-derive step re-derives any `drv_dash.as_of_date` later than the
+  current anchor after every file load, with no check that the date is
+  a real trading day, so it kept "refreshing" this fake row indefinitely
+  -- which is exactly what shadowed the correct anchor row in every
+  `SELECT MAX(as_of_date) FROM drv_quote` query and caused yesterday's
+  wrong-date-time symptom.
+  - **Prevention**: `etl/derive.py::derive_all` now refuses outright
+    (warns and returns `{}`) when `as_of_date.weekday() >= 5` -- no
+    anchor is ever a Saturday/Sunday, so this closes the door on the
+    entire class of bug regardless of which caller gets the date wrong.
+    User: "shouldn't we add a check if it is SAT or SUN, it shouldn't
+    derive for that date."
+  - **Query hardening**: `api/routers/marketbar.py` and the two identical
+    call sites in `api/routers/dash.py` that did
+    `SELECT MAX(as_of_date) FROM drv_quote` now cap it at
+    `<= (SELECT MAX(export_date) FROM hist_td)`, so even a future stray
+    row (from some other bug) could never again outrank the real anchor.
+    (Note: this exact unguarded pattern also exists at ~25 other call
+    sites across other `drv_*` tables, not touched here -- the weekend
+    guard above is what actually closes off recurrence at the source;
+    these two were hardened because they were the specific bug reported.)
+  - **Cleanup**: deleted all `as_of_date=2026-09-20` rows -- 80,522 rows
+    across 32 base tables (`drv_actionable`, `drv_dash`, `drv_quote`,
+    `drv_trig`, `drv_source_standing`, `meta_derived_run`, etc.; `rpt_dash`/
+    `rpt_actionable`/`drv_ma`/`v_available_dates` are views, auto-cleared).
+    Verified after cleanup: `drv_quote` now correctly resolves to today's
+    real anchor with fresh TOSD data (`source='TD'`, `export_date=
+    2026-09-21`).
+
 - **CALL breadth/theme-vote counts fixed: proper 30-day sparse-window
   aggregation, deduped per symbol, instead of a single-date snapshot.**
   User: "How far are you going back and checking in the table? there are
