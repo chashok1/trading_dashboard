@@ -6,6 +6,95 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ## 2026-09-21
 
+- **CALL breadth/theme-vote counts fixed: proper 30-day sparse-window
+  aggregation, deduped per symbol, instead of a single-date snapshot.**
+  User: "How far are you going back and checking in the table? there are
+  rule on how much to check. check existing logic" -- `etl/derive_market_
+  read.py::_latest_snapshot` (used for all 5 breadth sources) has no
+  lookback cap at all, but CALL is specifically documented elsewhere
+  (`etl/derive_outlook_action.py::_action_call_standing`, "sparse 30-day
+  source") as a STANDING source: a symbol's call persists for
+  `ref_outlook_source.lookback_days` (30) after its last row, not just on
+  whichever date happens to be most recent. The old single-date count
+  only ever saw symbols that happened to update on the single latest
+  date -- verified against live data: **17 symbols** (8 bull/8 bear/1
+  neutral) vs the correct **257** (104/91/62) once the full 30-day window
+  is included. New `_call_window_counts`/`_call_stance_window_map`
+  dedup per symbol to their most recent row in the window (`DISTINCT ON
+  (symbol) ... ORDER BY snapshot_date DESC`, same pattern
+  `_call_window_states` already uses in the actionable pipeline) before
+  counting -- user: "make sure not to count same stock multiple times,
+  you need to take the latest record." Verified live: META alone has 14
+  rows inside the current 30-day window; naively summing all raw rows in
+  the window would have inflated the total to 623 instead of the correct
+  257 deduped symbols. Applies to both `drv_source_breadth` (breadth
+  tiles) and `drv_theme_stance`'s CALL column (still computed/stored,
+  though no longer displayed in the theme grid — see the CALL-column-
+  dropped entry below). RR/ETF/PS/SSS untouched -- none of them are
+  configured as sparse sources.
+
+- **Market Read breadth tiles: hero number folded into the header text,
+  standalone big-number line dropped.** User: "number don't mean anything
+  here -- you can display them in the header text itself." Format:
+  `SSS · 33 rows on list` (count-based: SSS/PS) / `ETF Pro (-3) · 17
+  longs − 20 shorts` (net-based: RR/ETF/CALL, net in parens then the
+  bull/bear or long/short breakdown -- RR uses "bull"/"bear" wording,
+  ETF/CALL use "longs"/"shorts", matching each source's own established
+  terminology). `.mr-tile-hero`/`.mr-tile-sub` removed (dead CSS);
+  `.mr-tile-lbl` bumped from a 9px muted caption to 10px/weight 600/
+  `--text-1` since it's now the tile's primary content line, not just a
+  label. `web/market_read.js::_mrBreadthHeaderText`.
+
+- **Market Read breadth tile deltas: the max-13wk comparison now gets its
+  own arrow/sign too.** Format: `▼ -11 vs 3wk ago (46) · ▼ -44 vs max 13wk
+  79` — each comparison (vs 3wk ago, vs max 13wk) is its own independently
+  colored segment (`web/market_read.js::_mrDeltaSeg`), since a tile can be
+  up vs one reference and down vs the other. `.mr-tile-delta.up/.dn`
+  changed to `.mr-tile-delta .up/.dn` (now target the inner `<span>`s, not
+  the whole line) in `web/styles.css`.
+
+- **Yahoo-fetch last-fetch-time label: switched to the actual fetch
+  timestamp, not the winning price source's.** Went through a few
+  iterations on position/format (12h next to the icon, 24h below it,
+  Actionable/Portfolio only -> every page) before user caught the real
+  issue: the label read `/api/marketbar`'s `quote_time`, which is
+  `drv_quote`'s WINNING SOURCE's timestamp after derive_quote's TL/TD/Y/
+  CACHE merge -- not "when did we last check Yahoo". That's also exactly
+  what surfaced a separate real bug: a stray `drv_quote` row for
+  `as_of_date=2026-09-20` (never a real anchor -- likely leftover from the
+  Market Read backfill) was shadowing the correct, freshly-updated anchor
+  row (`2026-09-18`) in every `MAX(as_of_date) FROM drv_quote)` query,
+  displaying Friday's stale price/time even though the actual anchor row
+  already had today's fresh CACHE data. **Not yet fixed** (`api/routers/
+  marketbar.py`, `api/routers/dash.py` both have this fragile pattern) --
+  flagged for follow-up, either delete the stray row and/or key these
+  queries off `get_anchor_date()` instead of a bare `MAX(as_of_date)`.
+  The label itself now sidesteps all of that: switched to the existing
+  `GET /api/yahoo-fetch/status` endpoint (`MAX(fetched_at)`/
+  `MAX(detail_fetched_at)` from `cache_yahoo_quote`, no derive/anchor
+  logic at all), showing whichever of intraday/full-detail fetch is more
+  recent. The auto-refresh-when-stale staleness check
+  (`_checkAutoRefresh`) had the identical flaw and was switched the same
+  way. `market_bar.js`'s now-unused `_fmt12h`/`_latestQuoteTimeStr`/
+  `_latestQuoteDateStr` helpers removed. Final label state: 24h, "MM/DD
+  HH:MM", below the icon, on every page (`market_bar.js` was already
+  `<script>`-included on 20 pages for the toolbar icon, just never
+  cache-busted -- fixed on all 20).
+
+- **Market Read breadth strip: CALL added, reordered SSS/ETF/PS/CALL/RR,
+  max-13wk shown alongside the 3wk-ago delta.** CALL was already computed
+  in `drv_source_breadth` (`etl/derive_market_read.py` treats it like ETF —
+  net = n_bull − n_bear) but never surfaced in the breadth tiles, only in
+  the theme grid (where it was just dropped for lack of data — a different,
+  still-valid finding; CALL stays excluded from theme-vote stance).
+  `api/routers/cockpit.py::get_market_read` now iterates
+  `("SSS","ETF","PS","CALL","RR")` instead of `("RR","ETF","PS","SSS")`;
+  frontend `BREADTH_LABEL`/`_MR_NET_BASED` in `web/market_read.js` updated
+  to match (CALL gets the same L/S sub-label and zero-line sparkline ETF
+  has). Each tile's delta line now also shows the max value seen over the
+  same already-fetched 13-week window, no extra query
+  (`breadth[].max_13wk`).
+
 - **Market Read grid + macro rail panels moved to the top of the middle
   column.** Both (`#quadRotationPanel` then `#macroRailsWrap`) moved from
   below the graphs panel/above Hedgeye (their original slot) to above the

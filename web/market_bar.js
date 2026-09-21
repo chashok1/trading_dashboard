@@ -649,59 +649,68 @@
   let _lastMktData = null;
   let _lastRrData  = null;
 
-  // 2026-09-21 -- last-fetch-time label (Actionable/Portfolio only, where
-  // tapeEl mounts) + auto-refresh-when-stale state. Both read the same
-  // freshest quote_time already carried on _lastMktData.items, so no extra
-  // fetch is needed just for the label.
+  // 2026-09-21, user-directed correction: the label and the auto-refresh
+  // staleness check originally read _lastMktData's quote_time (from
+  // /api/marketbar) -- but that's the WINNING PRICE SOURCE's timestamp
+  // after derive_quote's TL/TD/Y/CACHE merge, not "when did we last check
+  // Yahoo". User: "I need to see the date and time for last intraday/or
+  // any yfinance fetch" -- that's cache_yahoo_quote.fetched_at/
+  // detail_fetched_at directly, already exposed by the existing
+  // GET /api/yahoo-fetch/status endpoint. Switched both to it: no derive/
+  // anchor logic involved at all, so a stray/wrong drv_quote row (a real
+  // bug found separately) can't affect either one.
+  let _lastYahooStatus = null;        // {last_fetched, last_detail_fetched} from /api/yahoo-fetch/status
   let _autoRefreshAttempted = false;  // one-shot guard for this stale episode
-  let _lastSeenQuoteKey = null;       // detects a real new quote landing (any source)
+  let _lastSeenFetchKey = null;       // detects a real new Yahoo fetch landing (any source)
 
-  function _latestQuoteTimeStr(mktData) {
-    const items = (mktData && mktData.items) || [];
-    const withTime = items.find(it => it.quote_time);
-    return withTime ? String(withTime.quote_time).slice(0, 5) : null; // "HH:MM", 24h
+  // MM/DD HH:MM (24h), local time -- last_fetched/last_detail_fetched are
+  // ISO timestamps with an explicit UTC offset, so `new Date(...)` +
+  // getMonth/getDate/getHours/getMinutes already resolve to the browser's
+  // local time correctly (no manual UTC/ET conversion needed).
+  function _fmtFetchDateTime(iso) {
+    const dt = iso ? new Date(iso) : null;
+    if (!dt || isNaN(dt.getTime())) return null;
+    const p2 = n => String(n).padStart(2, '0');
+    return p2(dt.getMonth() + 1) + '/' + p2(dt.getDate()) + ' ' + p2(dt.getHours()) + ':' + p2(dt.getMinutes());
   }
 
-  function _fmt12h(hhmm) {
-    const m = /^(\d{1,2}):(\d{2})/.exec(hhmm || '');
-    if (!m) return '';
-    let h = parseInt(m[1], 10);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    h = h % 12; if (h === 0) h = 12;
-    return `${h}:${m[2]} ${ampm}`;
+  function _mostRecentYahooFetch(status) {
+    if (!status) return null;
+    const isos = [status.last_fetched, status.last_detail_fetched].filter(Boolean);
+    if (!isos.length) return null;
+    isos.sort();
+    return isos[isos.length - 1]; // ISO strings sort lexicographically = chronologically
   }
 
   function _renderAll() {
     if (_lastMktData && tapeEl)
       tapeEl.innerHTML = buildMiniTapeHtml(_lastMktData, _lastRrData || {}) + _tapeAsOfHtml(_lastMktData);
     const timeLabel = document.getElementById('mtQuotesTimeLabel');
-    if (timeLabel) timeLabel.textContent = _fmt12h(_latestQuoteTimeStr(_lastMktData));
+    if (timeLabel) timeLabel.textContent = _fmtFetchDateTime(_mostRecentYahooFetch(_lastYahooStatus)) || '';
   }
   window._refreshTapeGlyphs = _renderAll;
 
-  // Auto-refresh-when-stale (2026-09-21, user-directed): if the newest quote
-  // is >30 min old and this tab is actually visible, trigger one refresh --
-  // never more than once per stale episode client-side, and never more than
-  // once per 30 min server-side regardless of how many tabs ask (see
-  // etl/yahoo_fetch.py::auto_trigger_on_cooldown, ref_settings-backed so it
-  // survives API reloads). The guard only clears when a real new quote
-  // lands, from ANY source (this trigger, a manual click, or the 10am/3pm
-  // scheduled job) -- not on a timer.
+  // Auto-refresh-when-stale (2026-09-21, user-directed): if the last real
+  // Yahoo fetch (intraday or full) is >30 min old and this tab is actually
+  // visible, trigger one refresh -- never more than once per stale episode
+  // client-side, and never more than once per 30 min server-side regardless
+  // of how many tabs ask (see etl/yahoo_fetch.py::auto_trigger_on_cooldown,
+  // ref_settings-backed so it survives API reloads). The guard only clears
+  // when a real new fetch lands, from ANY source (this trigger, a manual
+  // click, or the 10am/3pm scheduled job) -- not on a timer.
   function _checkAutoRefresh() {
     const btn = document.getElementById('mtQuotesIconBtn');
     if (!btn) return;
-    const asOfDate = _lastMktData && _lastMktData.as_of;
-    const timeStr = _latestQuoteTimeStr(_lastMktData);
-    if (!asOfDate || !timeStr) return;
-    const key = asOfDate + 'T' + timeStr;
-    if (_lastSeenQuoteKey !== key) {
-      _lastSeenQuoteKey = key;
+    const lastIso = _mostRecentYahooFetch(_lastYahooStatus);
+    if (!lastIso) return;
+    if (_lastSeenFetchKey !== lastIso) {
+      _lastSeenFetchKey = lastIso;
       _autoRefreshAttempted = false;
     }
     if (_autoRefreshAttempted) return;
-    const quoteDt = new Date(asOfDate + 'T' + timeStr + ':00');
-    if (isNaN(quoteDt.getTime())) return;
-    const staleMinutes = (Date.now() - quoteDt.getTime()) / 60000;
+    const fetchDt = new Date(lastIso);
+    if (isNaN(fetchDt.getTime())) return;
+    const staleMinutes = (Date.now() - fetchDt.getTime()) / 60000;
     if (staleMinutes <= 30) return;
     if (document.visibilityState !== 'visible') return;
     _autoRefreshAttempted = true;
@@ -745,18 +754,36 @@
 
   async function loadTape() {
     ensureMount();
-    if (!tapeEl) return;
 
     try {
-      const [mktRes, rrRes] = await Promise.all([
-        fetch('/api/marketbar'),
-        fetch('/api/rr-bar'),
-      ]);
-      if (!mktRes.ok) throw new Error('HTTP ' + mktRes.status);
-      if (!rrRes.ok)  throw new Error('HTTP ' + rrRes.status);
-      [_lastMktData, _lastRrData] = await Promise.all([mktRes.json(), rrRes.json()]);
-      _renderAll();
-      _checkAutoRefresh();
+      // /api/yahoo-fetch/status is cheap (a single MAX() query) and carries
+      // no derive/anchor logic at all -- fetched on every page for the
+      // toolbar label, independent of the tape's own market data below.
+      const yahooStatusPromise = fetch('/api/yahoo-fetch/status')
+        .then(r => r.ok ? r.json() : null).catch(() => null);
+
+      if (tapeEl) {
+        const [mktRes, rrRes, yahooStatus] = await Promise.all([
+          fetch('/api/marketbar'),
+          fetch('/api/rr-bar'),
+          yahooStatusPromise,
+        ]);
+        if (!mktRes.ok) throw new Error('HTTP ' + mktRes.status);
+        if (!rrRes.ok)  throw new Error('HTTP ' + rrRes.status);
+        [_lastMktData, _lastRrData] = await Promise.all([mktRes.json(), rrRes.json()]);
+        _lastYahooStatus = yahooStatus;
+        _renderAll();
+        _checkAutoRefresh();
+      } else {
+        // 2026-09-21, user-directed: "display time below the icon on all
+        // screens" -- pages without the tape still need the toolbar label.
+        // No /api/marketbar fetch needed here anymore now that the label
+        // reads /api/yahoo-fetch/status directly. Auto-refresh-when-stale
+        // stays Actionable/Portfolio only (not extended here, only the
+        // label was).
+        _lastYahooStatus = await yahooStatusPromise;
+        _renderAll();
+      }
     } catch (err) {
       if (tapeEl) {
         tapeEl.innerHTML =
@@ -794,8 +821,9 @@
     const controls = document.querySelector('header.topbar .controls');
     if (!controls) return;
 
-    // Wrapped in a column so the last-fetch-time label (below) sits directly
-    // under the icon instead of inline in the toolbar row.
+    // Wrapped in a column so the last-fetch-time label sits below the icon
+    // (2026-09-21, user-directed: "display time below the icon on all
+    // screens" -- was briefly tried "next to" it, reverted).
     const wrap = document.createElement('span');
     wrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;line-height:1;';
 
@@ -810,17 +838,15 @@
     btn.addEventListener('click', () => _runQuoteRefresh(btn, false));
     wrap.appendChild(btn);
 
-    // 2026-09-21, user-directed: last-fetch-time readout, Actionable/Portfolio
-    // only -- tapeEl (and therefore quote_time data) only exists on those two
-    // pages (TAPE_PAGES); showing it elsewhere would need a new fetch just
-    // for this label, which isn't worth it for pages that don't have the tape.
-    if (tapeEl) {
-      const timeLabel = document.createElement('span');
-      timeLabel.id = 'mtQuotesTimeLabel';
-      timeLabel.className = 'mt-fetch-time';
-      wrap.appendChild(timeLabel);
-      _renderAll(); // populate immediately if tape data already loaded
-    }
+    // 2026-09-21, user-directed: last-fetch-time readout on EVERY page now
+    // (was Actionable/Portfolio only) -- loadTape() fetches /api/marketbar
+    // everywhere for this label, skipping /api/rr-bar and the tape render
+    // itself on pages without tapeEl.
+    const timeLabel = document.createElement('span');
+    timeLabel.id = 'mtQuotesTimeLabel';
+    timeLabel.className = 'mt-fetch-time';
+    wrap.appendChild(timeLabel);
+    _renderAll(); // populate immediately if data's already loaded
 
     const health = document.getElementById('health');
     if (health) controls.insertBefore(wrap, health);
