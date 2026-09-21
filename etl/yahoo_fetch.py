@@ -19,6 +19,8 @@ HARD_FLOOR_SEC = 60  # never fetch more often than this regardless of config
 _FETCH_STARTED_KEY = 'yahoo_auto_fetch_date'   # set BEFORE EOD download starts
 _EOD_DONE_KEY      = 'yahoo_eod_done_date'     # set AFTER EOD completes successfully
 _RUNNING_KEY       = 'yahoo_fetch_running'     # ISO timestamp while any fetch runs
+_AUTO_TRIGGER_KEY  = 'yahoo_auto_trigger_last_at'  # ISO timestamp of last browser-auto-triggered fetch
+_AUTO_TRIGGER_COOLDOWN_SECS = 30 * 60
 
 # --- module-level state ---
 _last_fetch_ts: float = 0.0          # monotonic; last RRT fetch
@@ -178,6 +180,44 @@ def _is_any_fetch_running() -> bool:
     except Exception:
         pass
     return False
+
+
+def auto_trigger_on_cooldown() -> bool:
+    """True if a browser-auto-triggered quotes-now call happened within the
+    last 30 minutes -- DB-backed (ref_settings), not in-memory, since the API
+    process restarts on every code change under --reload-dir api and an
+    in-memory guard would silently reset on each reload. Manual clicks never
+    call this -- only the dashboard's own auto-refresh-when-stale trigger
+    does (2026-09-21, user-directed: "absolutely not make calls more than
+    once in 30min window" -- this is the actual guarantee, enforced
+    server-side so it holds regardless of how many browser tabs are open."""
+    try:
+        with session_scope() as s:
+            val = s.execute(text(
+                "SELECT setting_value FROM ref_settings WHERE setting_name = :k"
+            ), {'k': _AUTO_TRIGGER_KEY}).scalar()
+        if not val:
+            return False
+        last = datetime.fromisoformat(val)
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - last).total_seconds() < _AUTO_TRIGGER_COOLDOWN_SECS
+    except Exception:
+        return False
+
+
+def mark_auto_trigger_now() -> None:
+    """Record that a browser-auto-triggered fetch is about to run, starting
+    this call's 30-minute cooldown window."""
+    try:
+        with session_scope() as s:
+            s.execute(text("""
+                INSERT INTO ref_settings (setting_name, setting_value)
+                VALUES (:k, :v)
+                ON CONFLICT (setting_name) DO UPDATE SET setting_value = EXCLUDED.setting_value
+            """), {'k': _AUTO_TRIGGER_KEY, 'v': datetime.now(timezone.utc).isoformat()})
+    except Exception as e:
+        logger.warning("Could not mark auto-trigger timestamp: %s", e)
 
 
 def _get_all_symbols() -> list[tuple[str, str]]:

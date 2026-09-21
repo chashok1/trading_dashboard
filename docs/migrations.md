@@ -6,6 +6,103 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ## 2026-09-21
 
+- **Market Read grid + macro rail panels moved to the top of the middle
+  column.** Both (`#quadRotationPanel` then `#macroRailsWrap`) moved from
+  below the graphs panel/above Hedgeye (their original slot) to above the
+  accounts filter bar — user: "move them to the top above the filter bar."
+  Their relative order to each other is unchanged (grid first, then the
+  rail panels). Removed an orphaned 2026-08-24 historical comment that had
+  documented the rail panels' old position and no longer applied. Also:
+  theme grid split into 2 columns (Macro + Commodities & real assets on the
+  left, Equity factors + International on the right,
+  `web/market_read.js::_themeGridColHtml`); all `.mr-*` font sizes/padding
+  trimmed twice over (user: "reduce the sizes so i can see more", then
+  "reduce the font by 1 point and size accordingly"); "Lists say" and
+  "Agree" column headers shortened to "Lists"/"Ag".
+
+- **Market Read theme grid: CALL column dropped.** User: "it doesn't have
+  any data" — confirmed, not a rendering bug: `ref_symbol_theme`'s ~80
+  hand-curated symbols were drawn from the four original headline lists
+  (RR/ETF/PS/SSS), and CALL's much broader daily list barely overlaps that
+  set, so its per-theme vote was empty on nearly every row. Removed the
+  `<th>`/`<td>` from `web/market_read.js` (colspan 15→14) and the
+  now-unused `.mr-muted-cell` CSS rule. Backend (`etl/derive_market_read.py`,
+  `drv_theme_stance.call`) untouched — display-only change.
+
+- **Market Read's 9 macro rail panels reverted to always-visible.** TASK_145
+  (below) shipped Volatility/Rates/Credit/Major Markets/USD/Country ETFs
+  collapsed by default behind `#macroRailsWrap`, revealed only by clicking a
+  Market Read theme row. User noticed the panels had disappeared ("What
+  happened to all my panels in the middle column?") — reverted to always
+  visible, same as pre-TASK_145. `web/market_read.js::_mrExpandRail` keeps
+  the scroll-to-and-highlight behavior on a theme-row click, it just no
+  longer needs a show/hide step first. Follow-up: TASK_145 had also pulled
+  the Sectors panel out of the rail row into its own standalone
+  always-visible band (the reason no longer applied once the row itself
+  stopped being collapsible) — moved back into its original column-2 slot,
+  right after Major Markets, per "move the sectors back into its place as
+  before." Same ids throughout (`#macroSectorEtfsBand`/`#macroRailSectorEtfs`),
+  so no script changes needed either time. Second follow-up: the whole
+  `#macroRailsWrap` block moved from *before* the Market Read grid
+  (`#quadRotationPanel`) to *after* it — summary first, detail below (a
+  raw data panel shouldn't precede its own synthesis), which also matches
+  the direction `_mrExpandRail`'s scroll-to-and-highlight already goes
+  (down into the panels, not up). Pure DOM reorder, no id/script changes.
+  Docs: `docs/market_state_factor_sss_design.md` Addendum G.
+
+- **Yahoo-fetch: auto-refresh when stale + last-fetch-time label.** On
+  Actionable/Portfolio, the main-toolbar quote-refresh icon now
+  auto-triggers once (no retry) if the newest quote is >30 min stale and the
+  tab is visible — spins while in flight, shows a persistent `!` on
+  failure/skip until a real fresh quote lands. Guaranteed no more than one
+  auto-triggered call per 30 min **server-side** (`ref_settings.
+  yahoo_auto_trigger_last_at`, `etl/yahoo_fetch.py::auto_trigger_on_cooldown`
+  / `mark_auto_trigger_now`), not just client-side, so it holds across every
+  browser tab and survives API `--reload-dir api` restarts. Manual clicks
+  are unaffected by the cooldown. A small last-fetch-time label (12-hour
+  format) now shows under the icon on those two pages. `web/market_bar.js`,
+  `api/routers/dash.py` (`/api/yahoo-fetch/quotes-now?auto=1`).
+
+- **Market Read (TASK_143/144/145/146/147)** — display + measurement layer
+  reading the four Hedgeye lists (RR/ETF/PS/SSS) + CALL over time, mapped to
+  22 hand-curated themes. Design: `docs/market_state_factor_sss_design.md`
+  (Addendum A-H). Nothing here touches `derive_actionable.py`, `ref_trig_*`,
+  `SOURCE_ORDER`, or `ref_settings` decision switches.
+  - New tables (`db/baseline.sql`): `ref_symbol_theme` (seeded ~80 rows,
+    `db/seeds_symbol_theme.sql`), `drv_source_breadth`, `drv_theme_stance`,
+    `drv_sss_breadth`. All idempotent per `as_of_date`, freshness-contract
+    rows added. `etl/derive_market_read.py` (source breadth + theme votes,
+    reuses `api/_helpers.py::compute_quad_monthly_stance` — same monthly-
+    weighted quad algorithm `GET /api/quad/band-factors` uses, factored out
+    so "the quad" is never hard-coded); `etl/derive_sss_breadth.py` (SSS
+    sector rows+books, `_normalize_sss_sector` fuzzy-matches the raw
+    `hist_sss.sector` text — confirmed NOT clean, ~18% of rows are OCR/
+    header-leak noise, see the module docstring). Both wired into
+    `derive_all()` after `drv_category_perf`, non-critical.
+  - New endpoints (`api/routers/cockpit.py`): `GET /api/market-read`,
+    `GET /api/market-read/sectors`.
+  - New UI: `web/market_read.js` (replaces the retired `web/
+    quad_rotation_panel.js` in the same `#quadRotationPanel` slot, middle
+    column of `/`) — breadth strip + theme grid + sector cards (into
+    `#macroRailSectorEtfs`, pulled out of the collapsible `#macroRailsWrap`
+    since Sector cards are an always-visible Market Read band, not a
+    drill-down rail) + headline sentence appended into `#regimeLineBand`.
+    `web/macro_areas.js`'s dead `renderLegacyCard`/`injectLegacyCard` (never
+    mounted) removed. New CSS tokens `--mr-bull/--mr-bear/--mr-neu`
+    (deuteranopia-safe pair, Addendum E4) in `web/styles.css`.
+  - Risk Dial: 6 new `category='positioning'`/`'self'` gauges in
+    `ref_risk_gauge`, shipped `is_active=FALSE` (predicates in
+    `etl/derive_risk_dial.py`; thresholds in `ref_settings` `rd_*`).
+    Freshness CAP (not a gauge): `GET /api/cockpit/risk-dial` returns
+    `stale_as_of` when the positioning tables breach their freshness
+    contract; `web/app.js` suffixes the risk-dial label, the number itself
+    never moves for staleness. `v_risk_gauge_scorecard` (report-only).
+  - Validation: `v_theme_stance_scorecard`, `v_sss_sector_scorecard`,
+    `v_source_breadth_scorecard` + CALL long/short `side` split on
+    `v_source_edge_scorecard` (reproduces the July CALL-short-leg finding,
+    +6.30% n=75 vs the pooled series' +0.48%). Report:
+    `docs/audit/market_read_validation_2026-09.md`. Refresh wired into
+    `etl/scheduler.py::run_nightly_outcomes`.
 - **SSS/SSSCHG merged into one candidate per symbol, resolved by recency.**
   User: these are not two independently-weighted sources — SSSCHG is the
   daily added/removed-only categorization of the SSS feed, SSS is the same

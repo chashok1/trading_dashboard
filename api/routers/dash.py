@@ -6210,13 +6210,24 @@ def yahoo_auto_status():
 
 
 @router.post("/api/yahoo-fetch/quotes-now")
-def yahoo_fetch_quotes_now():
-    """Manual on-demand trigger for the same lightweight price-only refresh
-    the scheduler now only runs automatically at 10 AM/3 PM ET (2026-09-19,
-    see etl/scheduler.py::maybe_run_hourly_quote_refresh) -- covers checking
-    a price in between those two fixed times without waiting."""
+def yahoo_fetch_quotes_now(auto: bool = Query(False)):
+    """On-demand trigger for the same lightweight price-only refresh the
+    scheduler now only runs automatically at 10 AM/3 PM ET (2026-09-19, see
+    etl/scheduler.py::maybe_run_hourly_quote_refresh) -- covers checking a
+    price in between those two fixed times without waiting.
+
+    `auto=true` (2026-09-21) marks this as the dashboard's own auto-refresh-
+    when-stale trigger (web/market_bar.js), not a manual button click. That
+    path is gated to at most once per 30 minutes, enforced here via
+    ref_settings so it holds across every browser tab and API reload --
+    manual clicks (auto omitted/false) are never subject to this gate."""
     try:
-        from etl.yahoo_fetch import fetch_hourly_quotes
+        from etl.yahoo_fetch import (fetch_hourly_quotes, auto_trigger_on_cooldown,
+                                      mark_auto_trigger_now)
+        if auto:
+            if auto_trigger_on_cooldown():
+                return {"skipped": True, "reason": "auto_cooldown"}
+            mark_auto_trigger_now()
         return fetch_hourly_quotes()
     except Exception as exc:
         import traceback

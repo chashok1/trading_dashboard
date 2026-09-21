@@ -649,11 +649,99 @@
   let _lastMktData = null;
   let _lastRrData  = null;
 
+  // 2026-09-21 -- last-fetch-time label (Actionable/Portfolio only, where
+  // tapeEl mounts) + auto-refresh-when-stale state. Both read the same
+  // freshest quote_time already carried on _lastMktData.items, so no extra
+  // fetch is needed just for the label.
+  let _autoRefreshAttempted = false;  // one-shot guard for this stale episode
+  let _lastSeenQuoteKey = null;       // detects a real new quote landing (any source)
+
+  function _latestQuoteTimeStr(mktData) {
+    const items = (mktData && mktData.items) || [];
+    const withTime = items.find(it => it.quote_time);
+    return withTime ? String(withTime.quote_time).slice(0, 5) : null; // "HH:MM", 24h
+  }
+
+  function _fmt12h(hhmm) {
+    const m = /^(\d{1,2}):(\d{2})/.exec(hhmm || '');
+    if (!m) return '';
+    let h = parseInt(m[1], 10);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12; if (h === 0) h = 12;
+    return `${h}:${m[2]} ${ampm}`;
+  }
+
   function _renderAll() {
     if (_lastMktData && tapeEl)
       tapeEl.innerHTML = buildMiniTapeHtml(_lastMktData, _lastRrData || {}) + _tapeAsOfHtml(_lastMktData);
+    const timeLabel = document.getElementById('mtQuotesTimeLabel');
+    if (timeLabel) timeLabel.textContent = _fmt12h(_latestQuoteTimeStr(_lastMktData));
   }
   window._refreshTapeGlyphs = _renderAll;
+
+  // Auto-refresh-when-stale (2026-09-21, user-directed): if the newest quote
+  // is >30 min old and this tab is actually visible, trigger one refresh --
+  // never more than once per stale episode client-side, and never more than
+  // once per 30 min server-side regardless of how many tabs ask (see
+  // etl/yahoo_fetch.py::auto_trigger_on_cooldown, ref_settings-backed so it
+  // survives API reloads). The guard only clears when a real new quote
+  // lands, from ANY source (this trigger, a manual click, or the 10am/3pm
+  // scheduled job) -- not on a timer.
+  function _checkAutoRefresh() {
+    const btn = document.getElementById('mtQuotesIconBtn');
+    if (!btn) return;
+    const asOfDate = _lastMktData && _lastMktData.as_of;
+    const timeStr = _latestQuoteTimeStr(_lastMktData);
+    if (!asOfDate || !timeStr) return;
+    const key = asOfDate + 'T' + timeStr;
+    if (_lastSeenQuoteKey !== key) {
+      _lastSeenQuoteKey = key;
+      _autoRefreshAttempted = false;
+    }
+    if (_autoRefreshAttempted) return;
+    const quoteDt = new Date(asOfDate + 'T' + timeStr + ':00');
+    if (isNaN(quoteDt.getTime())) return;
+    const staleMinutes = (Date.now() - quoteDt.getTime()) / 60000;
+    if (staleMinutes <= 30) return;
+    if (document.visibilityState !== 'visible') return;
+    _autoRefreshAttempted = true;
+    _runQuoteRefresh(btn, true);
+  }
+
+  // Shared by the manual toolbar click and the auto-refresh-when-stale
+  // trigger above. Manual clicks (auto=false) keep the original transient
+  // ✓/–/! feedback that reverts after 3s. Auto clicks that don't succeed
+  // (error OR server-side skip, e.g. market closed / cooldown) show a
+  // persistent '!' instead -- no revert, no retry -- until a real fresh
+  // quote lands (see _checkAutoRefresh's key-change reset above).
+  async function _runQuoteRefresh(btn, auto) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.classList.add('mt-spin');
+    try {
+      const url = '/api/yahoo-fetch/quotes-now' + (auto ? '?auto=1' : '');
+      const r = await fetch(url, {method: 'POST'});
+      const d = await r.json();
+      btn.classList.remove('mt-spin');
+      const ok = !d.error && !d.skipped;
+      if (ok) {
+        btn.textContent = '✓';
+        loadTape();
+        if (typeof window.reloadMacroAreas === 'function') window.reloadMacroAreas();
+      } else if (auto) {
+        btn.textContent = '!';
+        btn.disabled = false;
+        return;
+      } else {
+        btn.textContent = d.error ? '!' : '–';
+      }
+    } catch (e) {
+      btn.classList.remove('mt-spin');
+      btn.textContent = '!';
+      if (auto) { btn.disabled = false; return; }
+    }
+    setTimeout(() => { btn.textContent = '⟳'; btn.disabled = false; }, 3000);
+  }
 
   async function loadTape() {
     ensureMount();
@@ -668,6 +756,7 @@
       if (!rrRes.ok)  throw new Error('HTTP ' + rrRes.status);
       [_lastMktData, _lastRrData] = await Promise.all([mktRes.json(), rrRes.json()]);
       _renderAll();
+      _checkAutoRefresh();
     } catch (err) {
       if (tapeEl) {
         tapeEl.innerHTML =
@@ -705,36 +794,37 @@
     const controls = document.querySelector('header.topbar .controls');
     if (!controls) return;
 
+    // Wrapped in a column so the last-fetch-time label (below) sits directly
+    // under the icon instead of inline in the toolbar row.
+    const wrap = document.createElement('span');
+    wrap.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;line-height:1;';
+
     const btn = document.createElement('button');
     btn.id = 'mtQuotesIconBtn';
     btn.className = 'btn';
     btn.type = 'button';
-    btn.title = 'Fetch latest Yahoo quotes now (auto-runs at 10 AM/3 PM ET otherwise)';
+    btn.title = 'Fetch latest Yahoo quotes now (auto-runs at 10 AM/3 PM ET, or here if stale >30 min while visible)';
     btn.setAttribute('aria-label', 'Fetch latest Yahoo quotes now');
     btn.style.cssText = 'font-size:14px;line-height:1;padding:2px 8px;';
     btn.textContent = '⟳';
+    btn.addEventListener('click', () => _runQuoteRefresh(btn, false));
+    wrap.appendChild(btn);
 
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      const orig = btn.textContent;
-      btn.textContent = '…';
-      try {
-        const r = await fetch('/api/yahoo-fetch/quotes-now', {method: 'POST'});
-        const d = await r.json();
-        btn.textContent = d.error ? '!' : d.skipped ? '–' : '✓';
-        if (!d.error && !d.skipped) {
-          loadTape();
-          if (typeof window.reloadMacroAreas === 'function') window.reloadMacroAreas();
-        }
-      } catch (e) {
-        btn.textContent = '!';
-      }
-      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000);
-    });
+    // 2026-09-21, user-directed: last-fetch-time readout, Actionable/Portfolio
+    // only -- tapeEl (and therefore quote_time data) only exists on those two
+    // pages (TAPE_PAGES); showing it elsewhere would need a new fetch just
+    // for this label, which isn't worth it for pages that don't have the tape.
+    if (tapeEl) {
+      const timeLabel = document.createElement('span');
+      timeLabel.id = 'mtQuotesTimeLabel';
+      timeLabel.className = 'mt-fetch-time';
+      wrap.appendChild(timeLabel);
+      _renderAll(); // populate immediately if tape data already loaded
+    }
 
     const health = document.getElementById('health');
-    if (health) controls.insertBefore(btn, health);
-    else controls.appendChild(btn);
+    if (health) controls.insertBefore(wrap, health);
+    else controls.appendChild(wrap);
   }
 
   // ---- entry ------------------------------------------------------------
