@@ -198,6 +198,19 @@ rule groups (synthetic `RULES:<code>` candidates), compete via a
 - **Not-held symbol** — the most-recently-updated source wins (recency of
   `source_snapshot_date`); ties on date break by `SOURCE_ORDER`.
 
+**SSS/SSSCHG merge (2026-09-21, user-directed).** These aren't two
+independently-weighted sources — they're two extracts of the same near-daily
+SSS feed: SSSCHG is the daily added/removed-only categorization, SSS is the
+full-list reprocess, done weekly. Before either enters a symbol's candidate
+list (`etl/derive_actionable.py`, right after `by_sym` is built), if both
+have an entry for the same symbol, only the one with the more recent
+effective date (`source_snapshot_date` or `as_of_date`) survives — the other
+is dropped entirely, from `src_actions` and therefore from the winner sort,
+the popover's driven-by list, and `source_actions`. This replaces the fixed
+SSSCHG(3)-always-beats-SSS(7) precedence on **held** rows, where the old sort
+ignored date entirely and could let a stale SSSCHG event outrank a fresher
+SSS read. Every other source's `SOURCE_ORDER` position is unaffected.
+
 **Source ranking mode (TASK_140, 2026-09-21).**
 `ref_settings.source_order_mode` — `'static'` (default) is the fixed
 `SOURCE_ORDER` above, unchanged. `'measured'` re-ranks the **six outlook

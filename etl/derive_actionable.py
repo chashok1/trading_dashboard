@@ -812,6 +812,26 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
     for r in all_actions:
         by_sym.setdefault(r["tos_symbol"], []).append(dict(r))
 
+    # 2026-09-21, user-directed: SSS and SSSCHG are not two independently-
+    # weighted signals -- they're two extracts of the SAME near-daily SSS
+    # feed (SSSCHG = daily added/removed-only categorization; SSS = the
+    # full-list reprocess, done weekly). SOURCE_ORDER's fixed SSSCHG>SSS
+    # priority let a stale SSSCHG event outrank a fresher SSS read on held
+    # rows (whose winner sort ignores date entirely -- see _order() below).
+    # Merge them here, before either enters src_actions/candidates, so
+    # every downstream use (winner selection, the popover's driven-by list,
+    # source_actions JSONB) sees one candidate for this pair: whichever has
+    # the more recent effective date. Every other source's priority is
+    # unaffected.
+    for sym, actions in by_sym.items():
+        sss = next((a for a in actions if a["source_code"] == "SSS"), None)
+        chg = next((a for a in actions if a["source_code"] == "SSSCHG"), None)
+        if sss and chg:
+            sss_dt = sss["source_snapshot_date"] or sss["as_of_date"]
+            chg_dt = chg["source_snapshot_date"] or chg["as_of_date"]
+            drop = "SSS" if (chg_dt or date.min) >= (sss_dt or date.min) else "SSSCHG"
+            by_sym[sym] = [a for a in actions if a["source_code"] != drop]
+
     # Augment with my_stocks symbols that have no actions today
     for sym in my_stocks:
         by_sym.setdefault(sym, [])

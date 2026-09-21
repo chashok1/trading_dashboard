@@ -6,6 +6,19 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ## 2026-09-21
 
+- **SSS/SSSCHG merged into one candidate per symbol, resolved by recency.**
+  User: these are not two independently-weighted sources — SSSCHG is the
+  daily added/removed-only categorization of the SSS feed, SSS is the same
+  feed's full-list reprocess (done weekly). The old fixed `SOURCE_ORDER`
+  (SSSCHG=3 always beats SSS=7) meant a held row's winner sort — which
+  ignores date entirely, unlike the not-held path — could show a stale
+  SSSCHG event over a fresher SSS read. `etl/derive_actionable.py` now
+  drops the older of the two (by `source_snapshot_date`/`as_of_date`)
+  right after `by_sym` is built, before either reaches `src_actions`/
+  `candidates` — so winner selection, the popover's driven-by list, and
+  `source_actions` all see a single merged candidate. Every other source's
+  `SOURCE_ORDER` position is unaffected. Docs: `docs/actionable_logic.md`.
+
 - **Freshness contracts for computed analytics (TASK_142).** New
   `ref_freshness_contract` (`db/baseline.sql`, seeded by
   `db/seeds_freshness_contract.sql`) lets a computed table declare its own
