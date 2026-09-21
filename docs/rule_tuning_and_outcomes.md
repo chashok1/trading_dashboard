@@ -94,7 +94,17 @@ what you did (we do NOT rely on `user_action_log`, which is empty/column-drifted
   one per (rule, symbol, date) with non-null feature, for the tuner to fit thresholds.
 
 ### Refresh cadence
-Re-run both whenever you've loaded more history (more dates = better, less regime bias):
+**Automatic since 2026-09-20 (TASK_138):** `etl/scheduler.py::run_nightly_outcomes()`
+runs a missing-dates backfill (the no-op-if-nothing-missing path above) followed by
+`compute_firing_outcomes.run_incremental(since=anchor - 45 days)` every night, before
+the weak-buy-sources recompute and the factor-outcomes refresh that both read this
+table. This is incremental — it does not `--truncate` — so `drv_rule_outcome` no longer
+goes stale between manual runs. Watch the scheduler log for `nightly: outcome ETL
+refresh done: rows_written=... total_rows=... elapsed=...`.
+
+Manual full rebuild is still available and occasionally useful (e.g. after a rule
+definition change or to validate against a wider window than the nightly `--since`
+covers):
 ```
 python -m etl.backfill_derives
 python -m etl.compute_firing_outcomes --truncate
@@ -159,13 +169,19 @@ python -m etl.ml_tune_thresholds --method sweep --min-samples 100 --label-window
   the universe is present every date; gets noisier if symbols come and go.
 - **`drv_rule_outcome` PK** is `(rule_id, as_of_date, tos_symbol)` and the symbol column
   is `tos_symbol` (fixed 2026-06-06; was `symbol` with a too-narrow PK).
+- **`compute_firing_outcomes` rescans full history unless you pass `--since`.**
+  Without `--truncate` the upsert is idempotent, but without `--since` it still walks
+  every historical row in `drv_trig`/`drv_cat_atomic_input` every call — not cheap.
+  The nightly job always passes `--since` (anchor - 45 days); a manual run without it
+  is a deliberate full rebuild, not the incremental default.
 
 ---
 
 ## 6. Command cheat sheet
 
 ```cmd
-:: refresh the whole outcome dataset (after loading more history)
+:: refresh cycle now runs nightly (etl/scheduler.py::run_nightly_outcomes) --
+:: manual full rebuild is optional, e.g. after a rule definition change:
 python -m etl.backfill_derives
 python -m etl.compute_firing_outcomes --truncate
 

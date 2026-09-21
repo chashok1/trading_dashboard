@@ -4,6 +4,132 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ---
 
+## 2026-09-21
+
+- **Freshness contracts for computed analytics (TASK_142).** New
+  `ref_freshness_contract` (`db/baseline.sql`, seeded by
+  `db/seeds_freshness_contract.sql`) lets a computed table declare its own
+  staleness contract: `date_column`, `max_lag_days`, `maturity_lag_days`
+  (the *expected* structural lag, e.g. drv_rule_outcome can never be closer
+  than ~20 trading days to the anchor), and `refreshed_by` (the job that
+  keeps it current). `etl/analytics_freshness.py::check_all` evaluates every
+  active contract against the anchor; a breach = `(anchor - MAX(date_column))
+  > maturity_lag_days + max_lag_days`, and a zero-row table is always a
+  breach. Wired into a new seventh `daily_health_check.py` check
+  (`_check_stale_analytics`), which writes breaches to `meta_warning`
+  (`code='stale_analytics'`) so they ride the existing `/api/warnings`
+  toolbar badge. `api/_helpers.py::set_freshness_headers` stamps
+  `X-Analytics-As-Of` / `X-Analytics-Stale` response headers (not the JSON
+  body, to keep existing list-shaped responses byte-identical) on
+  `/api/rules/scorecard` and `/api/rules/factor-scorecard`; Actionable
+  reads the scorecard headers to grey the "Rules (edge)" pills and show an
+  amber "EDGE DATA `<date>`" header chip (`web/actionable.js`); the
+  Performance screen shows an "as of `<date>`" stamp + amber border on the
+  scorecard/factor cards (`web/rule_performance.js`); File Monitor gets a
+  read-only "Stale analytics" status beside the existing "Stale Derives"
+  button (`GET /api/monitor/stale-analytics`). Purely additive — no derive
+  logic, rule, or threshold on the decision path changed. Seeded tables:
+  `drv_rule_outcome`, `drv_factor_snapshot`, `drv_inferred_action`,
+  `ref_vlm_intraday_curve` (all `refreshed_by='scheduler.run_nightly_outcomes'`),
+  `drv_market_stat`, `drv_pvv` (`refreshed_by='derive_all'`). Prevention
+  process change: `docs/agent_handoff_workflow.md` now requires any task
+  adding a computed table feeding a decision screen to answer "what
+  schedules it" / "what alerts if it stops" and ship the contract row in
+  the same task. Also fixed two unrelated pre-existing bugs found while
+  verifying this task's own health check: `_check_hist_gap` left a bad
+  `ref_outlook_source.source_table` row (`hist_pk`, no longer a real table)
+  poisoning the shared session's transaction for every check that ran after
+  it, and `_check_scheduler_idle` read a `meta_file_processed.loaded_at`
+  column that no longer exists (renamed to `processed_at`, already fixed in
+  `api/routers/health.py`'s copy of this check but not this CLI's).
+
+- **Enforce unproven SELL rules (TASK_141).** New
+  `ref_settings.unproven_sell_mode` (`'annotate'` default / `'suppress'`) +
+  `drv_actionable.unproven_sell_suppressed`. Reuses the existing
+  `low_confidence` condition (TASK_118) — no second classifier. Under
+  `'suppress'`, `etl/derive_actionable.py` excludes a `low_confidence` row's
+  REMOVE/REDUCE `group_candidates` from the winner contest before the sort
+  (falls to the next candidate or HOLD, never a synthesized action);
+  `_compute_final_call` (+ JS mirror `finalCall()` in `web/actionable.js`)
+  downgrades a sell call that would render `fc_confidence='high'` to
+  `'mixed'` when `low_confidence` and the mode is `'suppress'`. Verified
+  byte-identical in default `'annotate'` mode (zero
+  `consolidated_action`/`final_code`/`fc_confidence`/`suppressed_reason`
+  changes on a full anchor re-derive). **Finding:** on the current
+  `ref_trig_rule_group` configuration, zero active action-type groups carry
+  a REMOVE/REDUCE `action_label`, so `low_confidence` has never once
+  co-occurred with a sell-family `consolidated_action` in this table's
+  history — `'suppress'` mode produced **zero** suppressions on the test
+  derive. Both Part A (candidate filter) and Part B (confidence downgrade)
+  verified correct via direct isolated function calls instead. Mode left
+  `'annotate'` after verification. Released by TASK_139 (SELL-side HELD
+  across two windows). Docs: `docs/actionable_logic.md`
+  "Unproven-sell enforcement", `docs/actionable_playbook.md` §5.
+
+- **Source ranking by measured edge (TASK_140).** New `ref_source_precedence`
+  (`db/baseline.sql`, seeded by `db/seeds_source_precedence.sql` with today's
+  `SOURCE_ORDER` values as `static_rank` — the rollback anchor) +
+  `ref_settings.source_order_mode` (`'static'` default / `'measured'`).
+  `etl/derive_source_edge.py::recompute_source_precedence` (nightly, via
+  `scheduler.run_nightly_outcomes`) ranks the six outlook sources
+  (RR/SSS/CALL/II/PS/ETF) by n-weighted buy-family `edge_20d`
+  (`v_source_edge_scorecard`), `measured_rank` NULL when n<30.
+  `etl/derive_actionable.py::_order()` resolves via
+  `COALESCE(measured_rank, static_rank)` under `'measured'`;
+  `RTA`/`TOP5`/`SSSCHG`/`RTAINFO`/`MACROSHOW` unaffected by either mode. The
+  not-held sort also becomes `(rank, -latest_update)` under `'measured'`
+  (was `(-latest_update, rank)`, which structurally favoured CALL).
+  `drv_actionable.winning_source_rank`/`winning_source_edge` persist what
+  won and its measured edge. Verified byte-identical in default `'static'`
+  mode (zero `consolidated_action`/`winning_source`/`winning_priority`
+  changes on a full anchor re-derive); `'measured'` mode changed 29/1,078
+  winning sources and 16 `consolidated_action`s on the same test derive.
+  Mode left `'static'` after verification. Released by TASK_139 (A4 HELD
+  across two windows). Docs: `docs/actionable_logic.md`,
+  `docs/actionable_playbook.md` §5.
+
+- **Second-regime signal revalidation (TASK_139).** Re-ran the July
+  signal-validation report (`docs/audit/signal_validation_2026-07.md`) over
+  the full Feb→Sep dataset (`python -m etl.backfill_full`, drv_rule_outcome
+  now 12,406,349 rows through 2026-08-20), split into the original window
+  (2026-02-02→06-11, regression check) and the new independent half
+  (2026-06-12→latest). New report: `docs/audit/signal_validation_2026-09.md`.
+  Measurement only — no view/derive/rule/threshold changes. Gate outcome:
+  **A4 (source ranking) HELD → released TASK_140; SELL-side (unproven sell
+  rules) HELD → released TASK_141.** Two non-gating assumptions FLIPPED
+  without a regime change: `rr_bull_bear` (B/!B) no longer separates
+  outcomes correctly, and the `SS`/high vs `SS`/mixed confidence direction
+  reversed — both retired as trustworthy signals in
+  `docs/actionable_playbook.md` §3.3/§5. The new period (SPX +3.0%, VIX avg
+  16.5) is a calmer continuation of the same up-trend, not a drawdown/chop —
+  A5 (edges generalize across regimes) remains formally unproven.
+
+---
+
+## 2026-09-20
+
+- **Outcome ETL (`drv_rule_outcome`) scheduled nightly (TASK_138).**
+  `etl/compute_firing_outcomes.py` was never wired into anything automatic —
+  every edge number on screen (scorecard, LOW CONF flag, weak-buy-source
+  recompute, the default dollar-weighted edge sort) had been scoring off a
+  window last refreshed by hand on 2026-07-12.
+  `etl/scheduler.py::run_nightly_outcomes()` now runs a missing-dates
+  `derive_all` backfill (no-op if nothing missing) followed by
+  `compute_firing_outcomes.run_incremental(since=anchor - 45 days)` every
+  night, before the weak-buy-sources recompute and the factor-outcomes
+  refresh (both consume this table). New `run_incremental()` +
+  `--since DATE` CLI option added to `compute_firing_outcomes.py` — without
+  it, the script rescans the *full* history in `drv_trig`/
+  `drv_cat_atomic_input` on every call, even without `--truncate`; `--since`
+  caps that to the tail of history (still idempotent via the existing
+  `(rule_id, as_of_date, tos_symbol)` PK upsert). No `--truncate` in the
+  nightly path — a full rebuild stays manual (`backfill_derives` +
+  `compute_firing_outcomes --truncate`). No schema change, no derive-logic
+  change on the decision path. Docs: `docs/rule_tuning_and_outcomes.md`,
+  `docs/actionable_playbook.md` §0/§6.
+
+---
+
 ## 2026-09-02
 
 - **Universe screen — "By Source" view + "All My Stocks" button.** Third

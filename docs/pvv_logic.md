@@ -49,6 +49,16 @@ CREATE TABLE IF NOT EXISTS drv_pvv (
 Idempotent derive: `DELETE WHERE as_of_date=D` → INSERT. `tos_symbol` only,
 never raw `symbol`. Universe = `drv_symbols` for D.
 
+**Recompute gate (2026-09-16)**: `derive_all()` only calls `derive_pvv()` when
+`etl/derive_pvv.py::pvv_needs_recompute()` returns true — no row yet for D,
+or `hist_tl` has loaded again since the last `drv_pvv.derived_at` for D.
+PVV's `today` bucket mixes a live price against volume/volatility that only
+refresh when `hist_tl` imports (see §2); a trigger that only ever updates
+price (the hourly Yahoo price-only refresh, `etl/yahoo_fetch.py::fetch_hourly_quotes`)
+would otherwise let price race ahead of stale volume/volatility and produce
+a misleading `today` reading. Gated in `etl/derive.py::_drv_pvv_runner`, not
+inside `_derive_pvv_impl` itself.
+
 ## 2. Bucket inputs (per tos_symbol, anchor date D)
 
 | Bucket | Price ROC | Volume ROC | Volatility ROC | Flat band |

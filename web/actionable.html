@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Actionable Stocks — Trading Dashboard</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/static/styles.css?v=20260910a">
+  <link rel="stylesheet" href="/static/styles.css?v=20260916e">
   <!-- Chart.js CDN tag REMOVED (2026-09-01) -- was loaded solely for the
        Portfolio Mix panel's pie charts (web/portfolio_mix.js), gone along
        with the rest of the side panel ("remove the side panel from
@@ -1347,6 +1347,15 @@
       <!-- Hedgeye action panel (TASK_100) — Top-5 / Real-Time Alerts / RR trend flips / stance -->
       <div id="hedgeyePanel" style="display:none; margin-bottom:6px;"></div>
 
+      <!-- TASK_142: amber freshness chip -- shown only when drv_rule_outcome
+           (the table behind the Rules-edge pills) has breached its
+           ref_freshness_contract. Populated by updateEdgeDataChip() in
+           actionable.js after loadSources() reads the scorecard response
+           headers. -->
+      <span id="edgeDataChip" style="display:none;margin-bottom:4px;padding:2px 8px;
+            border-radius:4px;background:#fff7ed;border:1px solid #f59e0b;
+            color:#92400e;font-size:11px;font-weight:600;white-space:nowrap;"></span>
+
       <div class="act-toolbar">
         <!-- Single consolidated filter bar -->
         <div class="act-toolbar-main">
@@ -1409,7 +1418,8 @@
             <button id="watchOnlyBtn" data-tip="All Symbols  →  Watch List Only">🔔</button>
           </div>
           <!-- TASK_124: Trade Mode — collapse the grid to just qualifying buys +
-               held SA sells + stop breaches. Not persisted -- always starts ON
+               held sells (SA full exit or SS/STM partial sell-some/trim, 2026-09-15
+               widened from SA-only) + stop breaches. Not persisted -- always starts ON
                (see web/actionable.js's own init-block comment; this HTML
                comment previously said "Persisted in localStorage", which was
                stale/wrong). 2026-08-28: the buy leg is always Strict now (was
@@ -1436,7 +1446,7 @@
                have to leave this screen to manage the list. User: "actionable
                screen -> add a radio button My next to Trade|Trade2|WL". -->
           <div class="seg-ctrl" title="Trade Mode view">
-            <button id="tradeModeBtn" data-tip="Trade (Strict): only qualifying buys, SA sells, stop breaches">Trade</button>
+            <button id="tradeModeBtn" data-tip="Trade (Strict): only qualifying buys, held sells (full or partial), stop breaches">Trade</button>
             <button id="tradeModeDiffBtn" data-tip="Trade2 (Non-Strict): Trade buys that Strict mode filters out">Trade2</button>
             <button id="watchlistOnlyBtn" data-tip="WL: unheld starter buys not yet Technical-ripe (the Watchlist band)">WL</button>
             <button id="myOnlyBtn" data-tip="My: your tracked list (ref_my_stocks), shown only once actionable — matches Trade or Trade2">My</button>
@@ -1923,7 +1933,7 @@
 
   <script src="/static/_common.js"></script>
   <script src="/static/chart_modal.js"></script>
-  <script src="/static/actions.js"></script>
+  <script src="/static/actions.js?v=20260915a"></script>
   <!-- portfolio_mix.js / risk_gauge_modal.js / macro_areas.js /
        macro_usd_corr.js REMOVED (2026-09-01) -- all four were loaded
        solely for the now-removed Actionable side panel (Portfolio Mix's
@@ -1932,11 +1942,11 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260919d"></script>
+  <script src="/static/actionable.js?v=20260921a"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>
-<script src="/static/hedgeye_panel.js?v=20260902b" defer></script>
+<script src="/static/hedgeye_panel.js?v=20260915a" defer></script>
 
 <!-- TradingView Ticker Tape - injected dynamically by _initTvToggle() in actionable.js -->
 <div id="tv-tape-wrapper" style="border-top:1px solid #ddd;background:#fff;flex-shrink:0;display:none;"></div>

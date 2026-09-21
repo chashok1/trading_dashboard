@@ -35,6 +35,27 @@ const agreementState = {
     sortDir: 'desc',
 };
 
+// TASK_142: stamp a card's "as of <date>" freshness label + amber border from
+// the X-Analytics-As-Of / X-Analytics-Stale response headers (set by
+// api/_helpers.py::set_freshness_headers). Does not hide or alter the data —
+// the user still sees the number, just marked old.
+function applyFreshnessStamp(resp, cardId, stampId) {
+    const asOf = resp.headers.get('X-Analytics-As-Of');
+    const stale = resp.headers.get('X-Analytics-Stale') === 'true';
+    const stampEl = document.getElementById(stampId);
+    const cardEl = document.getElementById(cardId);
+    if (!asOf) {
+        if (stampEl) stampEl.textContent = '';
+        if (cardEl) cardEl.classList.remove('freshness-stale-border');
+        return;
+    }
+    if (stampEl) {
+        stampEl.textContent = `as of ${asOf}${stale ? ' — stale' : ''}`;
+        stampEl.classList.toggle('stale', stale);
+    }
+    if (cardEl) cardEl.classList.toggle('freshness-stale-border', stale);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     loadEdgeReport();
     loadScorecard();
@@ -471,8 +492,9 @@ async function loadScorecard() {
     DOM.perfTableBody.innerHTML =
         '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-3);">Loading scorecard…</td></tr>';
     try {
-        const data = await fetch(`/api/rules/scorecard?min_fires=${minFires}&limit=1000`)
-            .then(r => r.json());
+        const resp = await fetch(`/api/rules/scorecard?min_fires=${minFires}&limit=1000`);
+        const data = await resp.json();
+        applyFreshnessStamp(resp, 'scorecardCard', 'scorecardFreshness');
         state.rules = Array.isArray(data) ? data : [];
         renderTable();
     } catch (e) {
@@ -629,8 +651,9 @@ async function loadFactorScorecard() {
     DOM.factorTableBody.innerHTML =
         '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text-3);">Loading factor scorecard…</td></tr>';
     try {
-        const data = await fetch(`/api/rules/factor-scorecard?min_n=${minN}&limit=1000`)
-            .then(r => r.json());
+        const resp = await fetch(`/api/rules/factor-scorecard?min_n=${minN}&limit=1000`);
+        const data = await resp.json();
+        applyFreshnessStamp(resp, 'factorCard', 'factorFreshness');
         factorState.rows = Array.isArray(data) ? data : [];
         if (!_factorSelPopulated) {
             const sel = document.getElementById('factorSel');

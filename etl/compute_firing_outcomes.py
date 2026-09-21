@@ -22,12 +22,23 @@ Run:
     python -m etl.compute_firing_outcomes              # populate (idempotent upsert)
     python -m etl.compute_firing_outcomes --truncate   # clear table first
     python -m etl.compute_firing_outcomes --atomic-only / --composite-only
+    python -m etl.compute_firing_outcomes --since 2026-08-01  # cost guard: only
+                                                                # recompute as_of_date
+                                                                # >= this date
+
+Note on cost: with no --since, every run (even without --truncate) rescans and
+re-upserts the FULL history in drv_trig / drv_cat_atomic_input, not just newly
+matured rows -- ON CONFLICT upsert makes it idempotent, but it is not cheap.
+`--since` is what makes the nightly scheduler call incremental in practice
+(etl/scheduler.py::run_nightly_outcomes uses anchor - 45 days, which comfortably
+covers the 20-trading-day forward-return maturation lag).
 """
 from __future__ import annotations
 
 import argparse
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -53,17 +64,24 @@ def _settings(s) -> dict:
     return out
 
 
-def _build_fwd_returns(s):
-    """Materialize _fwd(tos_symbol, as_of_date, fwd5, fwd20) for all derived dates."""
+def _build_fwd_returns(s, since=None):
+    """Materialize _fwd(tos_symbol, as_of_date, fwd5, fwd20).
+
+    Without `since`: all derived dates (used for a manual full rebuild).
+    With `since`: only px rows on/after `since` -- LEAD only ever looks
+    *forward* in the date-ordered window, so this is a correctness-safe
+    cost cut, not an approximation (the 20-day-forward lookahead for the
+    earliest kept row still lands inside the kept range once matured)."""
     s.execute(text("DROP TABLE IF EXISTS _fwd"))
-    s.execute(text("""
+    where_extra = " AND as_of_date >= :since" if since else ""
+    s.execute(text(f"""
         CREATE TEMP TABLE _fwd AS
         WITH px AS (
             SELECT tos_symbol, as_of_date, last_price,
                    LEAD(last_price, 5)  OVER w AS p5,
                    LEAD(last_price, 20) OVER w AS p20
             FROM drv_ma
-            WHERE last_price IS NOT NULL
+            WHERE last_price IS NOT NULL{where_extra}
             WINDOW w AS (PARTITION BY tos_symbol ORDER BY as_of_date)
         )
         SELECT tos_symbol, as_of_date,
@@ -72,16 +90,17 @@ def _build_fwd_returns(s):
                CASE WHEN last_price > 0 AND p20 IS NOT NULL
                     THEN (p20 - last_price) / last_price * 100 END AS fwd20
         FROM px
-    """))
+    """), {"since": since} if since else {})
     s.execute(text("CREATE INDEX ON _fwd (tos_symbol, as_of_date)"))
     n = s.execute(text("SELECT COUNT(*) FROM _fwd WHERE fwd20 IS NOT NULL")).scalar()
     log.info("_fwd built: %s rows with a 20d forward return", n)
     return n
 
 
-def _composite_outcomes(s, settings):
+def _composite_outcomes(s, settings, since=None):
     buy_thr = settings.get("outcome_hit_threshold_buy", 0.5)
     sell_thr = settings.get("outcome_hit_threshold_sell", -0.5)
+    since_clause = " AND t.as_of_date >= :since" if since else ""
     res = s.execute(text(f"""
         INSERT INTO drv_rule_outcome
             (rule_id, rule_kind, as_of_date, tos_symbol, action_code, fwd_5d_pct, fwd_20d_pct, hit)
@@ -92,12 +111,15 @@ def _composite_outcomes(s, settings):
                     ELSE (f.fwd20 <= :sell) END
         FROM drv_trig t
         JOIN _fwd f ON f.tos_symbol = t.tos_symbol AND f.as_of_date = t.as_of_date
-        WHERE t.triggered = TRUE AND f.fwd20 IS NOT NULL
+        WHERE t.triggered = TRUE AND f.fwd20 IS NOT NULL{since_clause}
         ON CONFLICT (rule_id, as_of_date, tos_symbol) DO UPDATE SET
             rule_kind = EXCLUDED.rule_kind, action_code = EXCLUDED.action_code,
             fwd_5d_pct = EXCLUDED.fwd_5d_pct, fwd_20d_pct = EXCLUDED.fwd_20d_pct, hit = EXCLUDED.hit
-    """), {"buy": buy_thr, "sell": sell_thr})
-    log.info("composite outcomes upserted: %s", res.rowcount)
+    """), {"buy": buy_thr, "sell": sell_thr, "since": since} if since
+           else {"buy": buy_thr, "sell": sell_thr})
+    n = res.rowcount
+    log.info("composite outcomes upserted: %s", n)
+    return n
 
 
 def _valid_columns(s) -> set:
@@ -121,24 +143,58 @@ def _atomic_feature_cols(s, valid) -> dict:
     return out
 
 
-def _atomic_outcomes(s):
+def _atomic_outcomes(s, since=None):
     valid = _valid_columns(s)
     feats = _atomic_feature_cols(s, valid)
     log.info("atomic rules resolved to feature columns: %d", len(feats))
+    since_clause = " AND ci.as_of_date >= :since" if since else ""
     total = 0
     for rid, col in sorted(feats.items()):
+        params = {"rid": str(rid)}
+        if since:
+            params["since"] = since
         res = s.execute(text(f"""
             INSERT INTO drv_rule_outcome
                 (rule_id, rule_kind, as_of_date, tos_symbol, action_code, fwd_5d_pct, fwd_20d_pct, hit)
             SELECT :rid, 'atomic', ci.as_of_date, ci.tos_symbol, NULL, f.fwd5, f.fwd20, (f.fwd20 > 0)
             FROM drv_cat_atomic_input ci
             JOIN _fwd f ON f.tos_symbol = ci.tos_symbol AND f.as_of_date = ci.as_of_date
-            WHERE ci."{col}" IS NOT NULL AND f.fwd20 IS NOT NULL
+            WHERE ci."{col}" IS NOT NULL AND f.fwd20 IS NOT NULL{since_clause}
             ON CONFLICT (rule_id, as_of_date, tos_symbol) DO UPDATE SET
                 fwd_5d_pct = EXCLUDED.fwd_5d_pct, fwd_20d_pct = EXCLUDED.fwd_20d_pct, hit = EXCLUDED.hit
-        """), {"rid": str(rid)})
+        """), params)
         total += res.rowcount or 0
     log.info("atomic outcomes upserted: %s rows across %d rules", total, len(feats))
+    return total
+
+
+def run_incremental(since=None, truncate=False, atomic_only=False,
+                     composite_only=False) -> dict:
+    """Programmatic entry point (used by both `main()` below and the nightly
+    scheduler -- etl/scheduler.py::run_nightly_outcomes). Returns a summary
+    dict so the caller can log rows_written without re-querying."""
+    with session_scope() as s:
+        if truncate:
+            s.execute(text("TRUNCATE drv_rule_outcome"))
+            log.info("drv_rule_outcome truncated")
+        settings = _settings(s)
+        fwd_rows = _build_fwd_returns(s, since)
+        composite_rows = 0
+        atomic_rows = 0
+        if not atomic_only:
+            composite_rows = _composite_outcomes(s, settings, since)
+        if not composite_only:
+            atomic_rows = _atomic_outcomes(s, since)
+        s.commit()
+        total_rows = s.execute(text("SELECT COUNT(*) FROM drv_rule_outcome")).scalar()
+    log.info("drv_rule_outcome now has %s rows", total_rows)
+    return {
+        "fwd_rows": fwd_rows,
+        "composite_rows": composite_rows,
+        "atomic_rows": atomic_rows,
+        "rows_written": composite_rows + atomic_rows,
+        "total_rows": total_rows,
+    }
 
 
 def main() -> int:
@@ -147,21 +203,13 @@ def main() -> int:
     p.add_argument("--truncate", action="store_true", help="Clear drv_rule_outcome first")
     p.add_argument("--atomic-only", action="store_true")
     p.add_argument("--composite-only", action="store_true")
+    p.add_argument("--since", default=None,
+                   help="YYYY-MM-DD; only recompute as_of_date >= this (cost guard)")
     args = p.parse_args()
 
-    with session_scope() as s:
-        if args.truncate:
-            s.execute(text("TRUNCATE drv_rule_outcome"))
-            log.info("drv_rule_outcome truncated")
-        settings = _settings(s)
-        _build_fwd_returns(s)
-        if not args.atomic_only:
-            _composite_outcomes(s, settings)
-        if not args.composite_only:
-            _atomic_outcomes(s)
-        s.commit()
-        n = s.execute(text("SELECT COUNT(*) FROM drv_rule_outcome")).scalar()
-        log.info("drv_rule_outcome now has %s rows", n)
+    since = datetime.strptime(args.since, "%Y-%m-%d").date() if args.since else None
+    run_incremental(since=since, truncate=args.truncate,
+                     atomic_only=args.atomic_only, composite_only=args.composite_only)
     return 0
 
 

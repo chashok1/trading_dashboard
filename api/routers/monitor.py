@@ -1228,3 +1228,16 @@ def run_stale_derives():
             "healed": result.get("healed", []),
             "failed": result.get("failed", []),
             "stale": result.get("stale", [])}
+
+
+@router.get("/api/monitor/stale-analytics")
+def get_stale_analytics():
+    """TASK_142: computed analytics tables (ref_freshness_contract) currently
+    in breach of their own freshness contract. Same idea as /api/monitor/
+    derive-stale but for computed OUTPUTS instead of drv_actionable inputs —
+    feeds the File Monitor screen's "Stale analytics" list."""
+    from etl.analytics_freshness import check_all
+    with session_scope() as s:
+        results = check_all(s)
+    breaches = [r for r in results if r["stale"]]
+    return {"items": breaches, "count": len(breaches)}

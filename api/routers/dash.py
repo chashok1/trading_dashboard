@@ -416,7 +416,8 @@ def get_actionable_settings():
             "SELECT setting_name, setting_value FROM ref_settings"
             " WHERE setting_name IN ('conviction_proven_edge_min',"
             " 'trade_mode_weak_buy_sources',"
-            " 'rsi_overbought', 'rsi_oversold', 'vlm_rvol_avoid_threshold')"
+            " 'rsi_overbought', 'rsi_oversold', 'vlm_rvol_avoid_threshold',"
+            " 'source_order_mode', 'unproven_sell_mode')"
         )).fetchall()
     settings = {r[0]: r[1] for r in rows}
     return {
@@ -428,6 +429,11 @@ def get_actionable_settings():
         "rsi_oversold": float(settings.get("rsi_oversold", 30)),
         "vlm_rvol_avoid_threshold": float(
             settings.get("vlm_rvol_avoid_threshold", 1.5)),
+        # TASK_140/141: read-only mode flags so the UI can show/hide the
+        # measured-edge winning-source display and the unproven-sell
+        # suppression legend without a separate round-trip. Both default OFF.
+        "source_order_mode": settings.get("source_order_mode", "static"),
+        "unproven_sell_mode": settings.get("unproven_sell_mode", "annotate"),
     }
 
 
@@ -1095,8 +1101,12 @@ def get_actionable(
     if not show_suppressed:
         # Over-Max rows must remain visible — the frontend overlays SELL→MAX
         # on them. Only suppress rows that aren't over their category ceiling.
+        # User decision 2026-09-15: a suppressed_reason (ALREADY ESTABLISHED,
+        # AT CEILING, ...) exists to silence redundant *buy* noise — it must
+        # never bury a row whose reconciled Final Call is actually a SELL
+        # (Sources said ADD/INCREASE but Technical/rules flipped it).
         where.append(
-            "(a.suppressed_reason IS NULL OR "
+            "(a.suppressed_reason IS NULL OR a.final_side = 'sell' OR "
             " (a.held_today = TRUE AND a.target_max_dollar > 0 "
             "  AND a.current_position_dollar > a.target_max_dollar))"
         )
@@ -6197,6 +6207,22 @@ def yahoo_auto_status():
     """Return auto-fetch loop state (running, last date, next trigger)."""
     from etl.yahoo_fetch import get_auto_fetch_status
     return get_auto_fetch_status()
+
+
+@router.post("/api/yahoo-fetch/quotes-now")
+def yahoo_fetch_quotes_now():
+    """Manual on-demand trigger for the same lightweight price-only refresh
+    the scheduler now only runs automatically at 10 AM/3 PM ET (2026-09-19,
+    see etl/scheduler.py::maybe_run_hourly_quote_refresh) -- covers checking
+    a price in between those two fixed times without waiting."""
+    try:
+        from etl.yahoo_fetch import fetch_hourly_quotes
+        return fetch_hourly_quotes()
+    except Exception as exc:
+        import traceback
+        import logging
+        logging.getLogger(__name__).error("yahoo_fetch_quotes_now error: %s", traceback.format_exc())
+        return {"error": str(exc)}
 
 
 # ---------------------------------------------------------------------------

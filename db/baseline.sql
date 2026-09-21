@@ -8345,3 +8345,114 @@ ALTER TABLE IF EXISTS drv_macro_score ADD COLUMN IF NOT EXISTS quad1_net NUMERIC
 ALTER TABLE IF EXISTS drv_macro_score ADD COLUMN IF NOT EXISTS quad2_net NUMERIC;
 ALTER TABLE IF EXISTS drv_macro_score ADD COLUMN IF NOT EXISTS quad3_net NUMERIC;
 ALTER TABLE IF EXISTS drv_macro_score ADD COLUMN IF NOT EXISTS quad4_net NUMERIC;
+
+-- =====================================================
+-- 2026-09-21 -- TASK_142: freshness contracts for computed analytics.
+-- `drv_rule_outcome` sat un-refreshed for over two months (TASK_138) while
+-- every screen fed by it rendered as if current -- a stale computed number
+-- renders identically to a fresh one, and nothing watched for it. This is
+-- the third such incident (ref_vlm_intraday_curve 2026-08-15,
+-- drv_inferred_action 2026-09-13). `daily_health_check.py`'s six checks all
+-- watch INPUTS (did the files arrive, are there gaps); this table lets a
+-- computed OUTPUT declare its own contract so a seventh check
+-- (_check_stale_analytics) can watch it too.
+--
+-- `maturity_lag_days` is the *expected* structural lag before a table can
+-- possibly be current (e.g. drv_rule_outcome can never be closer than ~20
+-- trading days to the anchor -- a 20d forward return needs 20 future days
+-- of price). Breach condition (computed in etl/analytics_freshness.py):
+--   (anchor_date - MAX(date_column)) > (maturity_lag_days + max_lag_days)
+-- A table with zero rows is always a breach (the cold-start case this
+-- whole task exists to catch).
+-- =====================================================
+CREATE TABLE IF NOT EXISTS ref_freshness_contract (
+    table_name          TEXT PRIMARY KEY,
+    date_column         TEXT NOT NULL,
+    max_lag_days        INT NOT NULL,
+    maturity_lag_days   INT NOT NULL DEFAULT 0,
+    refreshed_by        TEXT NOT NULL,
+    screen              TEXT,
+    severity            TEXT NOT NULL DEFAULT 'warning'
+        CHECK (severity IN ('warning', 'critical')),
+    is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_at          TIMESTAMP NOT NULL DEFAULT now()
+);
+
+-- =====================================================
+-- 2026-09-21 -- TASK_140: rank the six outlook sources (RR/SSS/CALL/II/PS/
+-- ETF) by measured buy-family edge instead of a hand-typed SOURCE_ORDER
+-- dict. Released by TASK_139's revalidation (A4 HELD across two windows --
+-- docs/audit/signal_validation_2026-09.md). `static_rank` is seeded with
+-- today's etl/derive_actionable.py::SOURCE_ORDER values exactly -- this row
+-- set IS the rollback anchor for 'static' mode.
+--
+-- ref_settings.source_order_mode ('static' default / 'measured') is the
+-- only switch. 'static' = today's behaviour, byte for byte -- see
+-- etl/derive_actionable.py::_order(). RTA/TOP5/SSSCHG/RTAINFO/MACROSHOW are
+-- NOT in this table -- their ranks encode "same-day trigger beats a
+-- standing weekly list" (a timing rule), not an edge claim, and are
+-- unaffected by either mode.
+-- =====================================================
+CREATE TABLE IF NOT EXISTS ref_source_precedence (
+    source_code     TEXT PRIMARY KEY,
+    static_rank     INT NOT NULL,
+    measured_rank   INT,
+    buy_edge_20d    NUMERIC,
+    n               INT,
+    updated_at      TIMESTAMP NOT NULL DEFAULT now()
+);
+
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('source_order_mode', 'static',
+     'TASK_140: winner-contest source ranking. static = hand-typed '
+     'SOURCE_ORDER (today''s behaviour, unchanged). measured = rank the six '
+     'outlook sources (RR/SSS/CALL/II/PS/ETF) by their own measured '
+     'buy-family edge_20d (ref_source_precedence.measured_rank), falling '
+     'back to static_rank when n<30. Defaults OFF -- flipping it is a '
+     'user decision, not automatic.')
+ON CONFLICT (setting_name) DO NOTHING;
+
+-- winning_source_rank = the rank value actually used to pick the winner
+-- (static_rank under 'static' mode, COALESCE(measured_rank,static_rank)
+-- under 'measured'). winning_source_edge = the winning source's measured
+-- buy_edge_20d (informational -- populated whenever ref_source_precedence
+-- has one, regardless of mode) so a 'static'-mode history can still be
+-- scored afterwards against what 'measured' mode would have used.
+ALTER TABLE IF EXISTS drv_actionable ADD COLUMN IF NOT EXISTS winning_source_rank INT;
+ALTER TABLE IF EXISTS drv_actionable ADD COLUMN IF NOT EXISTS winning_source_edge NUMERIC;
+
+-- =====================================================
+-- 2026-09-21 -- TASK_141: stop unproven SELL rules winning the row (enforce,
+-- don't just annotate). `docs/audit/loss_diagnosis_2026-07.md` §B: every
+-- SELL-direction composite rule with fires>=20 has negative direction-
+-- adjusted edge (v_unproven_sell_rules, 30/30 as of July, still ~76-78% of
+-- rules with enough new-half fires as of the 2026-09 revalidation --
+-- docs/audit/signal_validation_2026-09.md §E). TASK_118 Part A responded
+-- with drv_actionable.low_confidence -- annotation only, consolidated_action
+-- never changed. Released by TASK_139 (SELL-side HELD across two windows).
+--
+-- ref_settings.unproven_sell_mode ('annotate' default / 'suppress') is the
+-- only switch. 'annotate' = today's behaviour, byte for byte -- see
+-- etl/derive_actionable.py (the group_candidates filter right before the
+-- winner sort, and _compute_final_call's sell-confidence downgrade).
+-- 'suppress': a row whose ONLY sell-side evidence is an unproven rule
+-- (the existing low_confidence condition, reused -- not re-classified)
+-- has those candidates excluded from the winner contest; the original
+-- action + rule ids stay visible in source_actions/triggered_group_ids.
+-- =====================================================
+INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
+    ('unproven_sell_mode', 'annotate',
+     'TASK_141: enforcement of unproven SELL rules. annotate = today''s '
+     'behaviour (low_confidence flag only, consolidated_action never '
+     'changed). suppress = a row whose only sell-side evidence is an '
+     'unproven rule (v_unproven_sell_rules) is excluded from the winner '
+     'contest -- resolves to the next candidate or HOLD, never a '
+     'synthesized action. Defaults OFF -- flipping it is a user decision.')
+ON CONFLICT (setting_name) DO NOTHING;
+
+-- Set TRUE when 'suppress' mode actually removed a candidate for this row
+-- (i.e. low_confidence was true AND at least one REMOVE/REDUCE candidate
+-- was excluded) -- lets the effect be scored afterwards, the same reason
+-- winning_source_rank/edge exist above.
+ALTER TABLE IF EXISTS drv_actionable
+    ADD COLUMN IF NOT EXISTS unproven_sell_suppressed BOOLEAN NOT NULL DEFAULT FALSE;

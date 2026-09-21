@@ -45,6 +45,15 @@ def _check_hist_gap(session) -> dict:
                 f"WHERE {date_col} >= (CURRENT_DATE - INTERVAL '60 days')"
             )).fetchall()}
         except Exception:
+            # TASK_142: a bad source_table (e.g. a stale ref_outlook_source
+            # row pointing at a table that no longer exists) leaves the
+            # session's transaction aborted in Postgres -- silently
+            # `continue`-ing without a rollback poisoned every later query in
+            # this function AND every check that runs after it in the same
+            # session (main()'s shared `with session_scope()`). Roll back so
+            # one bad row degrades to "skip this row", not "every other
+            # check now reports a false error".
+            session.rollback()
             continue
         missing = sorted(src_dates - derived, reverse=True)[:10]
         if missing:
@@ -98,7 +107,7 @@ def _check_source_missing(session) -> dict:
 
 def _check_scheduler_idle(session) -> dict:
     """Was a file processed in the last N hours?"""
-    r = session.execute(text("SELECT MAX(loaded_at) FROM meta_file_processed")).first()
+    r = session.execute(text("SELECT MAX(processed_at) FROM meta_file_processed")).first()
     last = r[0] if r and r[0] else None
     cutoff = datetime.now() - timedelta(hours=_SCHEDULER_HEARTBEAT_HOURS)
     ok = last is not None and last >= cutoff
@@ -149,8 +158,47 @@ def _check_bb_rr_drift(session) -> dict:
             "items": [f"{d}: {warn_n} WARN, {alert_n} ALERT"] if alert_n else []}
 
 
+def _check_stale_analytics(session) -> dict:
+    """TASK_142: computed analytics tables (ref_freshness_contract) that have
+    fallen behind their own freshness contract. Unlike the other six checks
+    (which watch raw inputs), this watches OUTPUTS — a stale computed number
+    renders identically to a fresh one, so nothing else here would catch it.
+
+    Each breach is written to meta_warning (code='stale_analytics') so it
+    rides the existing /api/warnings pipe and toolbar badges."""
+    from etl.analytics_freshness import check_all
+    from etl.warnings import add_warning
+
+    results = check_all(session)
+    breaches = [r for r in results if r["stale"]]
+
+    # Breaches can target different screens (rule-performance, actionable,
+    # ...) -- clear_screen_warnings() only clears one screen at a time, and
+    # there's no single 'analytics_freshness' screen anything else writes to.
+    # This code is unique to this check, so clear by code directly instead
+    # (same idempotent replace-before-rewrite pattern as clear_screen_warnings).
+    session.execute(text("DELETE FROM meta_warning WHERE code = 'stale_analytics'"))
+    for b in breaches:
+        over = f"{b['days_over']}d over" if b["days_over"] is not None else "no rows"
+        msg = (f"{b['table']} is stale (as of {b['as_of'] or 'never'}, anchor "
+               f"{b['anchor']}, {over}) — refreshed by {b['refreshed_by']}")
+        add_warning(session, b.get("screen") or "actionable", msg,
+                    severity=b.get("severity") or "warning",
+                    code="stale_analytics")
+
+    items = [f"{b['table']}: as_of={b['as_of'] or 'never'} "
+             f"({'no rows' if b['days_over'] is None else str(b['days_over']) + 'd over'}) "
+             f"-> {b['refreshed_by']}" for b in breaches]
+    detail = "; ".join(
+        f"{r['table']} {r['days_over']}d lag" for r in results if r["days_over"] is not None
+    ) or "no contracts evaluated"
+    return {"id": "stale_analytics", "title": "Computed analytics freshness",
+            "ok": not breaches, "detail": detail, "items": items}
+
+
 CHECKS = [_check_hist_gap, _check_stale_ref, _check_source_missing,
-          _check_scheduler_idle, _check_derive_health, _check_bb_rr_drift]
+          _check_scheduler_idle, _check_derive_health, _check_bb_rr_drift,
+          _check_stale_analytics]
 
 
 def main() -> int:
@@ -169,6 +217,8 @@ def main() -> int:
                     result = check(s)
                     icon = "OK  " if result["ok"] else "WARN"
                     print(f"  [{icon}] {result['title']}")
+                    if result.get("detail"):
+                        print(f"           {result['detail']}")
                     if not result["ok"]:
                         overall_ok = False
                         for item in result.get("items", [])[:5]:
@@ -177,6 +227,19 @@ def main() -> int:
                     n_errors += 1
                     overall_ok = False
                     print(f"  [ERR ] {check.__name__}: {e}", file=sys.stderr)
+                    # A raised DB error leaves the session's transaction
+                    # aborted (Postgres refuses further commands until
+                    # ROLLBACK) — without this, one broken check silently
+                    # fails every check that runs after it in this loop.
+                    # TASK_142 found this the hard way: a stale
+                    # ref_outlook_source.source_table row ('hist_pk', no
+                    # longer a real table) was aborting _check_hist_gap's
+                    # transaction and cascading five false [ERR]s.
+                    try:
+                        s.rollback()
+                    except Exception:
+                        log.exception("could not roll back after %s failed",
+                                      check.__name__)
     except Exception as e:
         print(f"  [ERR ] could not open DB session: {e}", file=sys.stderr)
         return 2

@@ -997,6 +997,55 @@ def fetch_y_smart() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Public: hourly intraday price-only refresh (market hours, cache-only)
+# ---------------------------------------------------------------------------
+
+def fetch_hourly_quotes() -> dict:
+    """
+    Lightweight hourly price refresh for all Yahoo-eligible symbols.
+
+    Batch OHLCV -> cache_yahoo_quote ONLY (no per-symbol detail fetch, no
+    hist_y row written) — the existing CACHE source in derive_quote()
+    already picks up cache_yahoo_quote directly on the live anchor date, so
+    there's no need to write a permanent history row every hour. Then
+    re-derives the current anchor date so drv_quote/drv_actionable/etc. see
+    the fresher price immediately.
+
+    Shares the EOD Yahoo job's running-lock so the two never overlap, and
+    is meant to be called inline (not from a background thread) by the
+    scheduler — the whole call is a handful of seconds, unlike the ~20 min
+    EOD detail fetch, so there's no need to offload it.
+    """
+    global _fetch_running
+    if _is_eod_done_today() or _is_any_fetch_running():
+        return {"skipped": True, "reason": "eod_done_or_running"}
+
+    _fetch_running = True
+    _mark_fetch_running(True)
+    try:
+        tickers = _get_all_symbols()
+        logger.info("Hourly quote refresh: OHLCV for %d symbols...", len(tickers))
+        cache_result = _fetch_ohlcv_to_cache(tickers)
+
+        from etl.derive import derive_all, get_anchor_date
+        with session_scope() as s:
+            anchor = get_anchor_date(s)
+        if anchor:
+            with session_scope() as s:
+                derive_all(s, anchor)
+
+        logger.info("Hourly quote refresh complete: %s", cache_result)
+        return {"symbols": len(tickers), "cache": cache_result,
+                "anchor": str(anchor) if anchor else None}
+    except Exception as ex:
+        logger.error("Hourly quote refresh error: %s", ex)
+        return {"error": str(ex)}
+    finally:
+        _fetch_running = False
+        _mark_fetch_running(False)
+
+
+# ---------------------------------------------------------------------------
 # Public: status helper (for API endpoint)
 # ---------------------------------------------------------------------------
 

@@ -26,7 +26,11 @@ instruments to tell them apart. Do this once, before changing anything:
 
 The "Your actions" panel is **inferred from your daily CS/F loads**
 (`drv_inferred_action`, TASK_121) — since you load transactions almost daily,
-this data is real. Refresh the outcome ETL first so the numbers are current:
+this data is real. **Since 2026-09-20 (TASK_138) the outcome ETL refreshes
+itself every night** (`etl/scheduler.py::run_nightly_outcomes()`), so the
+numbers on screen are current without any manual step. A manual full rebuild
+is only needed for a wider window than the nightly job's `--since` covers,
+or after a rule definition change:
 
 ```cmd
 python -m etl.backfill_derives
@@ -161,19 +165,34 @@ ONLY that subset:
 - Final Call is **BM or BMN** (measured edge +3.2% / +2.1–3.2%, win 63–70%)
 - The case rests on **RR or SSS** (buy-family edge +2.8% / +2.3%) — not on
   PS, ETF, or II (all measured *negative*: −2.1% / −3.4% / −1.4%)
-- `rr_bull_bear` = **B** in the RR drilldown (B +2.59% vs !B +1.00%) — do
-  NOT use the bull ladder (−3..+3) for anything; it measured *inverted*
+- Do NOT use the bull ladder (−3..+3) for anything; it measured *inverted*
+  in both the original and the 2026-09 second-regime check
+  (`docs/audit/signal_validation_2026-09.md` §A) — still broken.
+- **`rr_bull_bear` (B/!B) is no longer trustworthy either** (2026-09 update):
+  July measured B correctly separating outcomes (+2.59% vs +1.00%); the
+  second-regime check found this **reversed** (!B +1.95% vs B −0.30%, both
+  large-n) — it flipped without a market crash, which makes it *more*
+  suspect, not less. Treat `rr_bull_bear` the same as the bull ladder for
+  now: not a reliable gate either direction. Don't substitute one broken
+  ladder for another — see `docs/audit/signal_validation_2026-09.md` §A.
 - Standard gates still apply (no STOP, no MACRO conflict)
 
 **Sells** — trust **SA/gate** (edge +5.1%, win 72%) and RR-driven sell-family
-(−2.67% correctly signed). **Distrust SS/high** — it measured directionally
-*wrong* (price rose +5.0% after the sell, win 37%) — demand a second
-confirmation before acting on it, High badge or not.
+(−2.67% correctly signed). **SS/high confidence is unreliable, not simply
+"wrong"** (2026-09 update): July found it directionally wrong (price rose
+after the sell, win 37%); the second-regime check found it **flip to
+correctly-signed** (+1.6%, n=114) while `SS/mixed` flipped the other way
+(−0.7%). Neither badge value is a stable signal on its own — demand a second
+confirmation on any `SS` sell regardless of confidence badge, not just on
+`high`. See `docs/audit/signal_validation_2026-09.md` §B (A3).
 
 Expect 0–3 trades/day. Fewer, better trades is the point — the sizing engine
 (category MIN/MAX, AMT$) already prevents any single name from mattering too
-much. All edges are one-regime numbers (A5): revisit after a drawdown/chop
-period is in the data.
+much. Edges are still bull-market-continuation numbers, now checked across
+two consecutive up-trend windows (A5 still unproven — see
+`docs/audit/signal_validation_2026-09.md` §Regime): a genuine drawdown/chop
+period has not yet been in the data, and two of six checked assumptions
+(`rr_bull_bear`, `SS` confidence) flipped even without one.
 
 ### 3.4 Close the loop — every row gets a click
 
@@ -232,44 +251,79 @@ every morning.
 - **Safety rails added 2026-07**: stop_breached gating of buys (TASK_119),
   LOW CONF sell annotation from `v_unproven_sell_rules` (TASK_118).
 
-### Assumptions — MEASURED 2026-07-13 (TASK_123)
+### Assumptions — MEASURED 2026-07-13 (TASK_123), RE-VALIDATED 2026-09-21 (TASK_139)
 
-Full evidence: `docs/audit/signal_validation_2026-07.md` (views
-`v_bull_gate_scorecard`, `v_final_call_scorecard`, `v_source_edge_scorecard`
-now standing in the DB — re-query any time).
+Full evidence: `docs/audit/signal_validation_2026-07.md` (original) and
+`docs/audit/signal_validation_2026-09.md` (second-regime revalidation —
+same four views, pooled + two windows: 2026-02-02→06-11 reproduces July as a
+regression check, 2026-06-12→latest is the new independent half). **Read the
+2026-09 report before trusting any row below** — two rows flipped without a
+market crash, which is itself the more important finding than either report
+alone.
 
-| # | Assumption | Verdict | Measured reality |
-|---|---|---|---|
-| A1 | Bull ladder (−3..+3) switches the RR playbook correctly | **BROKEN — inverted** | −2 bucket +4.85% fwd-20d; +2/+3 buckets *negative*. But `rr_bull_bear` (B/!B) works: B +2.59% vs !B +1.00% |
-| A2 | `_FC_SCALE` strengths reflect real conviction | Untestable this regime | BM/BMN show real positive edge (+2.1 to +3.2%, win 63–70%); no usable BS sample to rank against |
-| A3 | Disagreement → HOLD ("mixed") is safe | **Weak/broken** | Mixed rows move 20–35% more than clean HOLDs (informative, wasted). SS/high is directionally *wrong* (−5.0% edge) while SS/mixed is right (+0.7%) |
-| A4 | Source precedence PS>ETF>RR>SSS>II>CALL | **BROKEN — near-reversed** | Empirical: RR +2.84 > SSS +2.33 > CALL +0.52 > II −1.42 > PS −2.07 > ETF −3.40 |
-| A5 | Edges generalize across regimes | Standing caveat | One regime (~5 months, a bounce); every number above may flip in a drawdown |
-| A6 | Hit thresholds ±0.5% meaningful | **Weak** | Win rates ~45–50% at any threshold (near coin-flip), but relative rule ranking stable (top-10 overlap 7/10) |
+| # | Assumption | 2026-07 verdict | 2026-09 verdict | Measured reality (2026-09) |
+|---|---|---|---|---|
+| A1 (ladder) | Bull ladder (−3..+3) switches the RR playbook correctly | BROKEN — inverted | **HELD — still broken** | Still inverted both halves; gap widened in the new half (−2 bucket +10.46% vs +3 bucket −0.37%) |
+| A1 (rr_bull_bear) | `rr_bull_bear` (B/!B) separates outcomes correctly | Sound (B +2.59% vs !B +1.00%) | **FLIPPED** | New half: !B +1.95% beats B −0.30%, both large-n. No longer a safe substitute for the broken ladder |
+| A2 | `_FC_SCALE` strengths reflect real conviction | Untestable this regime | **STILL THIN / untestable** | BS/high n grew (2→29-100) but flips sign between windows (−9.33 orig, +4.24 new) |
+| A3 | SS/high beats SS/mixed (confidence ⇒ reliability) | Weak/broken (SS/high −5.0% wrong-dir, SS/mixed +0.7% correct) | **FLIPPED (new half)** | New half: SS/high flips to +1.6% (correct), SS/mixed flips to −0.7% (wrong) — neither badge is a stable signal now |
+| A4 | Source precedence PS>ETF>RR>SSS>II>CALL | BROKEN — near-reversed | **HELD — still broken** → released TASK_140 | RR best / PS worst in both halves on large stable-signed n; only ETF's sign is unstable (thinnest of the six) |
+| A5 | Edges generalize across regimes | Standing caveat | **NOT PROVEN — same regime, calmer** | New window is a continuation of the same up-trend (SPX +3.0%, VIX avg 16.5) at lower vol, not a drawdown/chop |
+| A6 | Hit thresholds ±0.5% meaningful | Weak | **HELD (weak)** | Win rates mid-40s/high-30s in both halves, same pattern as July |
+| SELL-side | SELL rules uniformly negative-edge (30/30) | Broken (§loss_diagnosis) | **HELD** → released TASK_141 | 76-78% of rules with enough new-half fires stay negative; n-weighted edge −1.31%→−1.61% (slightly worse) |
 
-**Headline (item D):** FOLLOWED trades −3.57% vs CONTRADICTED −2.95% vs
-NO_SIGNAL −0.88% (fwd-20d) — **the system, not the operator, was the larger
-loss source** over this window. Hence §3.3 is mandatory, not optional.
+**A4 shipped 2026-09-21 (TASK_140):** `ref_settings.source_order_mode`
+(`'static'` default, `'measured'` to re-rank the six outlook sources by
+measured edge) — see `docs/actionable_logic.md` "Source ranking mode". Mode
+defaults OFF; flip it deliberately and re-derive to see the effect
+(29 of 1,078 symbols changed winning source, 16 changed
+`consolidated_action`, in the 2026-09-18 test derive — see `DEV_HANDOFF.md`
+TASK_140 for the full before/after list).
+
+**SELL-side shipped 2026-09-21 (TASK_141):** `ref_settings.unproven_sell_mode`
+(`'annotate'` default, `'suppress'` to remove an unproven-sell-only winner
+from the contest) — see `docs/actionable_logic.md` "Unproven-sell
+enforcement". Mode defaults OFF.
+
+**Headline (item D), re-checked:** FOLLOWED trades still underperform
+CONTRADICTED in every window (pooled, orig, and the new half) — **HELD**,
+the core "the system, not the operator, is the larger loss source" claim
+survives. FOLLOWED vs NO_SIGNAL flipped in the new half, but on a thin
+NO_SIGNAL sample (n=99) — not load-bearing. §3.3 remains mandatory, not
+optional.
 
 **Standing instructions:** stay on the **Baseline** param profile; do not
-activate Sigmoid/ml profiles; never use the bull ladder; treat PS/ETF/II-driven
-buys as noise until re-measured in a second regime.
+activate Sigmoid/ml profiles; never use the bull ladder OR `rr_bull_bear`
+(both broken/unstable as of 2026-09); treat PS/ETF/II-driven buys as noise —
+confirmed across two windows now, not a single-regime artifact (A4 HELD).
 
 ### Follow-up design queue (not yet specced — decide deliberately)
 
-1. **Re-rank `SOURCE_ORDER` from measured edge** (cheap, directly fixes A4).
-2. **Stop gating the RR playbook on the bull ladder** — QP (`rr_bull_bear`)
-   is the component that works (A1).
-3. **Score disagreement instead of discarding it** — mixed = "about to move";
-   investigate SS/high's wrong direction (A3).
-4. **Re-run the whole validation after a second regime** exists in the data
-   (A5) — before trusting any of the above as permanent.
+1. **Re-rank `SOURCE_ORDER` from measured edge** — A4 held across two
+   windows; released as TASK_140 (2026-09-21).
+2. ~~Stop gating the RR playbook on the bull ladder — QP (`rr_bull_bear`) is
+   the component that works~~ — **retired 2026-09-21**: `rr_bull_bear`
+   itself flipped sign in the second-regime check (A1); it is not a safe
+   replacement for the ladder. No RR-playbook gate is currently trustworthy.
+3. **Score disagreement instead of discarding it** — mixed = "about to move".
+   The SS/high vs SS/mixed direction itself is no longer a fixed target to
+   "investigate toward" — it flipped between windows (A3); any fix here
+   needs to be judged across more than one window before shipping.
+4. **Enforce, don't just annotate, unproven SELL rules** — SELL-side held
+   across two windows; released as TASK_141 (2026-09-21).
+5. **Re-run the whole validation after a genuine drawdown/chop period**
+   exists in the data (A5) — the 2026-09 check was a calmer continuation of
+   the same up-trend, not a different regime, and two assumptions flipped
+   even without one.
 
 ---
 
 ## 6. Weekly maintenance loop (30 minutes, e.g. Saturday)
 
-1. Refresh outcomes: `backfill_derives` + `compute_firing_outcomes --truncate`.
+1. Outcomes refresh is now nightly and automatic (TASK_138, §0) — nothing to
+   run here manually. Only run `backfill_derives` + `compute_firing_outcomes
+   --truncate` by hand if you want a full rebuild wider than the nightly
+   `--since` window, or just changed a rule definition.
 2. Performance screen: scorecard sorted by edge_20d ASC — rules with many
    fires and clearly negative edge → deactivate deliberately (`is_active=false`,
    then `rebuild_rules`; mind the DB-only-tweak gotcha).
@@ -293,10 +347,16 @@ buys as noise until re-measured in a second regime.
   loads** — TOSL is the execution feed, not a problem.
 - **Every row gets Done/Skip/Snooze** — it keeps the list short and the
   feedback loop honest.
-- **Measured 2026-07 (TASK_123): the broad signal set loses money** —
-  FOLLOWED underperformed CONTRADICTED. Trade only the §3.3 subset:
-  BM/BMN buys backed by RR/SSS with `rr_bull_bear=B`; trust SA/gate sells;
-  distrust SS/high sells, PS/ETF/II buys, and the bull ladder entirely.
-- All edges are one-regime numbers — re-run the validation once a
-  drawdown/chop period is in the data before treating any of this as
-  permanent.
+- **Measured 2026-07 (TASK_123), re-validated 2026-09 (TASK_139): the broad
+  signal set loses money** — FOLLOWED underperformed CONTRADICTED in every
+  window checked. Trade only the §3.3 subset: BM/BMN buys backed by RR/SSS;
+  trust SA/gate sells; distrust PS/ETF/II buys and the bull ladder entirely.
+  **`rr_bull_bear` and the SS/high confidence badge are no longer trustworthy
+  gates either** (both flipped sign in the 2026-09 second-regime check) —
+  demand a second confirmation on any RR-gated buy or `SS` sell regardless of
+  badge.
+- Two windows now checked, both a rising market at different volatility —
+  edges are still bull-market-continuation numbers, not proven across
+  regimes (A5). Re-run the validation once a genuine drawdown/chop period is
+  in the data before treating anything here as permanent — and note that two
+  assumptions already flipped *without* one, which is itself a warning sign.

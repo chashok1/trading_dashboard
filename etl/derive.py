@@ -3480,7 +3480,15 @@ def derive_all(session: Session, as_of_date: date,
     # never produce anything but WATCH — not an occasional edge case, the
     # normal daily result. See docs/pvv_logic.md §4.
     def _drv_pvv_runner(session, as_of_date, parent_run_id=None):
-        from etl.derive_pvv import derive_pvv
+        from etl.derive_pvv import derive_pvv, pvv_needs_recompute
+        # Skip unless hist_tl has loaded again since the last PVV derive —
+        # keeps PVV's price/volume/volatility inputs from the same snapshot
+        # in time even when other triggers (e.g. an hourly Yahoo price-only
+        # refresh) re-run the rest of the cascade more often. See
+        # etl/derive_pvv.py::pvv_needs_recompute and docs/pvv_logic.md.
+        if not pvv_needs_recompute(session, as_of_date):
+            log.info("drv_pvv: skipped — no new hist_tl import since last PVV derive for %s", as_of_date)
+            return 0
         return derive_pvv(session, as_of_date, parent_run_id)
     counts["drv_pvv"] = _safe("drv_pvv", _drv_pvv_runner)
     # Parm-lookup Pass-3 (QF/QG/QK/QL/QO/QP/QQ/QS/QT) — runs AFTER

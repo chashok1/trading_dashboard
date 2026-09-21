@@ -53,7 +53,7 @@ _ACTION_DISPLAY: dict[str, tuple[str, str, str]] = {
     "SA":       ("SELL ALL",     "SA",   "sell"),
     "REDUCE":   ("SELL SOME",    "SS",   "sell"),
     "SS":       ("SELL SOME",    "SS",   "sell"),
-    "STM":      ("SELL TRIM",    "STM",  "sell"),
+    "STM":      ("SELL TO MIN",  "STM",  "sell"),
     "OVER_MAX": ("SELL OVERAGE", "SO",   "sell"),
     "SO":       ("SELL OVER",    "SO",   "sell"),
     "INCREASE": ("BUY SOME",     "BS",   "buy"),
@@ -83,6 +83,8 @@ def _compute_final_call(
     target_max_dollar: Optional[float],
     stop_breached: bool = False,
     bypass_technical: bool = False,
+    low_confidence: bool = False,
+    unproven_sell_mode: str = "annotate",
 ) -> dict:
     """Python port of JS finalCall() in web/actionable.js.
 
@@ -109,6 +111,15 @@ def _compute_final_call(
     CEILING suppression (etl/derive_actionable.py's sizing block) and the
     client-side OVER MAX pill (web/actionable.js) already communicate
     "no room to add" without touching the badge.
+
+    TASK_141 Part B (2026-09-21): a sell-side call that would render
+    fc_confidence='high' is downgraded to 'mixed' when its evidence is
+    flagged low_confidence (the row's only sell-side evidence is an
+    unproven rule — v_unproven_sell_rules) AND unproven_sell_mode=
+    'suppress'. Under the default 'annotate' mode this never fires — the
+    badge renders exactly as before. Mirrored in web/actionable.js's
+    finalCall() — keep both in sync (see docs/audit/bull_calc_analysis.md
+    D6 on the two-stack drift risk).
     """
     ca  = (consolidated_action or "").upper()
     rra = (rr_action           or "").upper()
@@ -208,17 +219,27 @@ def _compute_final_call(
         }
 
     if tech_is_sell:
+        # User decision 2026-09-15: when Technical's own read is specifically
+        # STM ("sell to min"), the headline should say so too, not collapse
+        # to the generic SS/SELL SOME — mirrors tech_is_buy_min preserving
+        # BMN/BUY TO MIN below instead of collapsing to BM/BUY MORE.
+        sell_code = "STM" if rra == "STM" else "SS"
         if not is_held:
             fc_lbl, fc_code, fc_side = _action_display("HOLD")
             fc_strength = 0
             confidence = "mixed"
         elif src_is_reduce:
-            fc_lbl, fc_code, fc_side = _action_display("SS")
-            fc_strength = _FC_SCALE.get("SS", -2)
-            confidence = "high"
+            fc_lbl, fc_code, fc_side = _action_display(sell_code)
+            fc_strength = _FC_SCALE.get(sell_code, -2)
+            # TASK_141 Part B: don't let the badge assert confidence the
+            # evidence hasn't earned. Buy-side confidence is untouched.
+            if low_confidence and unproven_sell_mode == "suppress":
+                confidence = "mixed"
+            else:
+                confidence = "high"
         else:
-            fc_lbl, fc_code, fc_side = _action_display("SS")
-            fc_strength = _FC_SCALE.get("SS", -2)
+            fc_lbl, fc_code, fc_side = _action_display(sell_code)
+            fc_strength = _FC_SCALE.get(sell_code, -2)
             confidence = "mixed"
     elif tech_is_buy or tech_is_buy_min:
         if src_is_reduce:
@@ -312,6 +333,32 @@ def _load_holdings_with_dollars(session, as_of_date):
 
 
 def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> int:
+    # ─── TASK_140: source_order_mode + ref_source_precedence ───────────────
+    # 'static' (default) = today's SOURCE_ORDER dict, byte for byte.
+    # 'measured' = resolve the six outlook sources via COALESCE(measured_rank,
+    # static_rank); RTA/TOP5/SSSCHG/RTAINFO/MACROSHOW are untouched by either
+    # mode (see SOURCE_ORDER comment above — timing rule, not an edge claim).
+    _mode_row = session.execute(text(
+        "SELECT setting_value FROM ref_settings WHERE setting_name = 'source_order_mode'"
+    )).first()
+    source_order_mode = (_mode_row[0] if _mode_row and _mode_row[0] else "static")
+
+    # ─── TASK_141: unproven_sell_mode ───────────────────────────────────────
+    # 'annotate' (default) = today's behaviour: low_confidence flag only,
+    # consolidated_action never changed. 'suppress' = the unproven-sell-only
+    # candidates are excluded from the winner contest (see below).
+    _sell_mode_row = session.execute(text(
+        "SELECT setting_value FROM ref_settings WHERE setting_name = 'unproven_sell_mode'"
+    )).first()
+    unproven_sell_mode = (_sell_mode_row[0] if _sell_mode_row and _sell_mode_row[0] else "annotate")
+
+    source_precedence: dict = {}
+    for r in session.execute(text(
+        "SELECT source_code, static_rank, measured_rank, buy_edge_20d, n "
+        "FROM ref_source_precedence"
+    )).mappings().all():
+        source_precedence[r["source_code"]] = dict(r)
+
     # Load reference data
     # asset_alloc is keyed by UPPER-CASED, trimmed category so the lookup is
     # case-insensitive (row category 'Call' matches ref_asset_allocation 'CAll').
@@ -876,7 +923,9 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            warn_not_at_lrr, warn_added_this_leg,
            conviction_hold, conviction_note, conviction_direction,
            stop_proximity_sd, stop_proximity_line,
-           trade_line_value, trend_line_value)
+           trade_line_value, trend_line_value,
+           winning_source_rank, winning_source_edge,
+           unproven_sell_suppressed)
         VALUES
           (:d, :sym, :desc, :sect,
            :ca, :ws, :wp,
@@ -892,7 +941,9 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
            :warn_lrr, :warn_leg,
            :conviction_hold, :conviction_note, :conviction_direction,
            :stop_prox_sd, :stop_prox_line,
-           :trade_line, :trend_line)
+           :trade_line, :trend_line,
+           :win_src_rank, :win_src_edge,
+           :unproven_sell_suppressed)
     """)
 
     rows_written = 0
@@ -1019,25 +1070,66 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
         def _order(a):
             if "_group_prio" in a:
                 return a["_group_prio"]
-            return SOURCE_ORDER.get(a["source_code"], 99)
+            src = a["source_code"]
+            if source_order_mode == "measured" and src in source_precedence:
+                p = source_precedence[src]
+                if p.get("measured_rank") is not None:
+                    return p["measured_rank"]
+                return p.get("static_rank", SOURCE_ORDER.get(src, 99))
+            return SOURCE_ORDER.get(src, 99)
 
         def _upd_ord(a):                       # higher = more recent
             d = a.get("_update_date") or a.get("source_snapshot_date") or a.get("as_of_date")
             return d.toordinal() if d else 0
 
         candidates = [a for a in src_actions if a["action"] in ACTION_RANK] + group_candidates
+
+        # ─── TASK_141 Part A: enforce (don't just annotate) unproven sell ──
+        # `low_confidence` (computed above) is already exactly the right
+        # condition: this symbol's ONLY sell-side evidence is a fired
+        # composite in v_unproven_sell_rules -- no source-driven REMOVE/
+        # REDUCE (source_driven_sell False) and no proven sell rule backing
+        # it. That means source_driven_sell=False already guarantees no
+        # src_actions REMOVE/REDUCE is present, so any REMOVE/REDUCE
+        # candidate left at this point is a group_candidate backed only by
+        # the unproven rule. Under 'suppress', drop those candidates before
+        # the sort so they cannot win consolidated_action. The original
+        # action + rule ids are untouched in source_actions/
+        # triggered_group_ids (built from src_actions/triggered_groups, not
+        # from this filtered `candidates` list) -- the drilldown still shows
+        # what the system would have said.
+        unproven_sell_suppressed = False
+        if unproven_sell_mode == "suppress" and low_confidence:
+            _kept = [a for a in candidates if a["action"] not in ("REMOVE", "REDUCE")]
+            if len(_kept) != len(candidates):
+                unproven_sell_suppressed = True
+                candidates = _kept
+
         winning_source = None
         winning_priority = None
+        winning_source_rank = None
+        winning_source_edge = None
         consolidated = None
         if candidates:
             if _held_now:
                 candidates.sort(key=_order)                            # source order
+            elif source_order_mode == "measured":
+                # TASK_140 item 5: today's not-held sort (-latest_update,
+                # source_order) structurally favours CALL, the highest-
+                # volume/lowest-edge feed. Under 'measured', rank first,
+                # recency as tie-break. 'static' mode keeps the old sort
+                # exactly (branch below), unchanged.
+                candidates.sort(key=lambda a: (_order(a), -_upd_ord(a)))
             else:
                 candidates.sort(key=lambda a: (-_upd_ord(a), _order(a)))  # latest update, tie→order
             winner = candidates[0]
             consolidated = winner["action"]
             winning_source = winner["source_code"]
             winning_priority = _order(winner)
+            winning_source_rank = winning_priority
+            _wp = source_precedence.get(winning_source)
+            if _wp and _wp.get("buy_edge_20d") is not None:
+                winning_source_edge = float(_wp["buy_edge_20d"])
 
         # ─── Decide category for sizing ───
         # For PS / ETF / ETFCHG winners, the lookup key is the per-symbol
@@ -1108,6 +1200,15 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             else:
                 suggested = max(0, held_dollar - (units or held_dollar))
         # HOLD / None / NULL: suggested stays at held_dollar
+
+        # TASK_141: unproven-sell suppression reason, same pattern as the
+        # position-aware reasons just above (NOT HELD / AT CEILING / AT
+        # FLOOR). By this point `consolidated` is no longer REMOVE/REDUCE
+        # (that candidate was excluded before the sort), so none of the
+        # branches above could have set `suppressed` for it — set it here,
+        # but don't clobber a reason some other branch already found.
+        if unproven_sell_suppressed and not suppressed:
+            suppressed = "UNPROVEN SELL"
 
         # ─── Suppress edge cases ───
         # Keep the row when any source emitted a real action (ADD/REMOVE/
@@ -1211,7 +1312,17 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             target_max_dollar=target_max,
             stop_breached=stop_breached,
             bypass_technical=(winning_source == "RTA"),
+            low_confidence=low_confidence,
+            unproven_sell_mode=unproven_sell_mode,
         )
+        # User decision 2026-09-15: suppressed (ALREADY ESTABLISHED/AT
+        # CEILING/...) is computed off the Sources-side consolidated_action
+        # above, purely to silence redundant *buy* noise -- it must never
+        # hide a row whose reconciled Final Call actually came out SELL
+        # (Technical/rules overrode a Sources ADD/INCREASE). Confirmed cases:
+        # ILMN (ALREADY ESTABLISHED), TXG/OIH (AT CEILING).
+        if suppressed and fc["final_side"] == "sell":
+            suppressed = None
         # priority_rank mirrors JS _computePriority: seq * 1e6 + |amt|.
         # amt = suggested - held for buys; held for sells; 0 otherwise.
         if suggested is not None and held_dollar is not None:
@@ -1254,6 +1365,9 @@ def _derive_actionable_impl(session: Session, as_of_date: date, run_id: int) -> 
             "ca":    consolidated,
             "ws":    winning_source,
             "wp":    winning_priority,
+            "win_src_rank": winning_source_rank,
+            "win_src_edge": winning_source_edge,
+            "unproven_sell_suppressed": unproven_sell_suppressed,
             "cat":   category,
             "ac":    category,
             "sac":   source_ac,

@@ -5,7 +5,7 @@ import json
 from datetime import date, datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from sqlalchemy import text
 
 from etl.db import safe_ident, session_scope
@@ -14,7 +14,7 @@ from api.models import (
     AtomicRuleCreateRequest, AtomicRuleUpdateRequest,
     CompositeRuleCreateRequest, CompositeRuleUpdateRequest,
 )
-from api._helpers import _resolve_date
+from api._helpers import _resolve_date, set_freshness_headers
 
 router = APIRouter()
 
@@ -371,6 +371,7 @@ def get_rule_performance(
 
 @router.get("/api/rules/scorecard", response_model=list[dict])
 def get_rule_scorecard(
+    response: Response,
     min_fires: int = Query(30, ge=0, le=100000,
                            description="Only rules with at least this many fires"),
     limit: int = Query(500, ge=1, le=5000),
@@ -381,8 +382,12 @@ def get_rule_scorecard(
     RULE'S FAVOR (SELL sign flipped), so >0 = the signal was right on average.
     No wall-clock window — covers all loaded outcome history. Diagnostic only
     while history is shallow / single-regime; see docs/rule_tuning_and_outcomes.md.
+
+    TASK_142: stamps X-Analytics-As-Of / X-Analytics-Stale response headers
+    from drv_rule_outcome's freshness contract — the data behind this view.
     """
     with session_scope() as s:
+        set_freshness_headers(response, s, "drv_rule_outcome")
         rows = s.execute(text("""
             SELECT rule_id, direction, fires, n_fires, edge_20d,
                    edge_20d_ci_low, edge_20d_ci_high, confidence,
@@ -422,6 +427,7 @@ def get_atomic_rule_scorecard(
 
 @router.get("/api/rules/factor-scorecard", response_model=list[dict])
 def get_factor_scorecard(
+    response: Response,
     min_n: int = Query(0, ge=0, le=100000,
                        description="Only buckets with at least this many outcomes"),
     limit: int = Query(500, ge=1, le=5000),
@@ -435,8 +441,12 @@ def get_factor_scorecard(
     readings were followed by positive 20d returns on average. Includes a
     synthetic 'Baseline'/'All stocks' row for delta-vs-baseline comparison in
     the UI. Sorted by avg_fwd_20d DESC by default.
+
+    TASK_142: stamps X-Analytics-As-Of / X-Analytics-Stale response headers
+    from drv_factor_snapshot's freshness contract.
     """
     with session_scope() as s:
+        set_freshness_headers(response, s, "drv_factor_snapshot")
         rows = s.execute(text(
             "SELECT factor, bucket, n, n_symbols, avg_fwd_5d,"
             " avg_fwd_20d, win_rate, ci_low, ci_high, confidence,"

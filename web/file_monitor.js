@@ -137,7 +137,35 @@ async function loadAll() {
     await loadSchedulerOutput();
     await loadSchedulerStatus();
     await loadSchedulerLevels();
+    await loadStaleAnalytics();
     resetCountdown();
+}
+
+// TASK_142: computed-analytics freshness breaches (ref_freshness_contract).
+// Read-only status, same visual slot as the Stale Derives button+status pair
+// but no action button -- each breach names its own refreshed_by job.
+async function loadStaleAnalytics() {
+    const stat = document.getElementById('staleAnalyticsStatus');
+    if (!stat) return;
+    try {
+        const r = await fetch('/api/monitor/stale-analytics');
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        const items = data.items || [];
+        if (!items.length) {
+            stat.textContent = ' none 👍';
+            stat.title = '';
+            stat.style.color = 'var(--text-2)';
+            return;
+        }
+        stat.style.color = '#92400e';
+        stat.textContent = ` ${items.length}: ` + items.map(i => i.table).join(', ');
+        stat.title = items.map(i =>
+            `${i.table}: as_of=${i.as_of || 'never'} (${i.days_over == null ? 'no rows' : i.days_over + 'd over'}) -> ${i.refreshed_by}`
+        ).join('\n');
+    } catch (e) {
+        stat.textContent = ' error: ' + e.message;
+    }
 }
 
 async function loadSchedulerStatus() {

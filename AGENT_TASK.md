@@ -4,39 +4,35 @@
 
 **Do not run anything.** Stop here and report that there is nothing to verify.
 
-The previous contents of this file (the end-of-project Hedgeye batch round covering
-TASK_95/96/98/99 and the Cowork-built work) are **closed and superseded**. Do not run
-that checklist.
+The previous contents of this file (the TASK_133 cockpit round, and a briefly
+staged TASK_138 round that the user cancelled on 2026-09-21) are **closed and
+superseded**. Do not run either checklist.
 
 ---
 
 ## When a round is next requested
 
-The only active task is `agent-tasks/TASK_133_dashboard_cockpit.md`.
+Active work is the TASK_139–142 batch — see `AGENT_WORK.md`.
 
 Two gates, both required before any verification starts:
 
-1. **The user has explicitly asked for a test round.** Testing never runs by default
-   in this repo (`docs/agent_handoff_workflow.md` §3).
-2. **`DEV_HANDOFF.md` ends with `ALL_DONE`.** If it ends `PHASE_<n>_DONE`, only
-   phases 1…n are eligible — verify those and say so; do not test unbuilt phases.
+1. **The user has explicitly asked for a test round.** Testing never runs by
+   default in this repo (`docs/agent_handoff_workflow.md` §3).
+2. **`DEV_HANDOFF.md` ends with `ALL_DONE`.** If it ends `PARTIAL: <tasks>`,
+   only those tasks are eligible — verify those and say so; do not test
+   unbuilt work. If it ends `STOPPED_AT_139_GATE: ...`, that task was
+   deliberately not implemented — nothing to verify there.
 
-Then run the **"How to verify"** section of `agent-tasks/TASK_133_dashboard_cockpit.md`,
-plus each phase's own verification block. Write evidence to `AGENT_RESULT_133.md`,
-ending `DONE` or `FAILED: <blocks>`.
+Then run the **"How to verify"** section of each completed
+`agent-tasks/TASK_<n>_*.md` in the round, write evidence to
+`AGENT_RESULT_<n>.md`, and end with `DONE` or `FAILED: <blocks>`.
 
-### The three checks that matter most
+**If a round covering TASK_138 is ever requested**, include this check, which
+is not in that task's own spec: the developer added a `--since` filter to
+`compute_firing_outcomes.py` on the reasoning that `_fwd`'s `LEAD()` only
+looks forward. Prove it — run `--since <anchor − 45d>` and a full run over the
+same window and confirm `fwd_5d_pct` / `fwd_20d_pct` match exactly on the
+overlap. A silent difference there would corrupt every edge number in the
+system.
 
-Quote the offending rows on any failure.
-
-1. **Realized-vol units** — `drv_market_stat.rv21` for SPX should sit roughly 8–25 in a
-   normal regime. Three-digit or sub-1 values mean a units bug. Cross-check against
-   `hist_macro` series `RVOL` (source `CBOE`) on the same dates.
-2. **Time-weighted return** — for a category with no trades in the window, TWR must
-   equal `V_end/V_start − 1` **exactly**.
-3. **Portfolio reconciliation** — `drv_category_perf` `asset_class` axis market-value
-   total must reconcile to `/api/portfolio/summary` (market + cash).
-
-Plus: `python -m etl.derive` twice for the anchor date → all new `drv_*` tables
-byte-identical (idempotence is non-negotiable), and `pytest tests/` with no new
-failures against the known baseline.
+No commits or pushes — the user commits from Windows.

@@ -188,6 +188,15 @@
     <button id="runStaleDerivesBtn" class="btn btn-sm" title="Find stale drv_actionable dates (newer source data loaded after they were derived) and re-derive them"
             style="font-size:11px;padding:2px 6px;white-space:nowrap;">Stale Derives</button>
     <span id="staleDerivesStatus" style="color:var(--text-2);font-size:11px;white-space:nowrap;"></span>
+    <!-- TASK_142: computed analytics (ref_freshness_contract) breaches --
+         same visual treatment as Stale Derives above, but for OUTPUTS
+         (drv_rule_outcome, drv_factor_snapshot, ...) instead of the
+         drv_actionable input-staleness check. No re-derive action here --
+         each contract row names its own refreshed_by job (etl/scheduler.py's
+         run_nightly_outcomes / derive_all), not a one-button heal. -->
+    <span id="staleAnalyticsLabel" style="color:var(--text-3);font-size:11px;white-space:nowrap;">Stale analytics:</span>
+    <span id="staleAnalyticsStatus" style="color:var(--text-2);font-size:11px;white-space:nowrap;" title=""></span>
+    <span style="color:var(--border);line-height:1;flex-shrink:0;">|</span>
     <span style="color:var(--text-3);">&middot;</span>
     <span style="color:var(--text-3);">Last</span><strong id="ki-last" style="font-size:12px;">-</strong>
 
@@ -345,6 +354,7 @@
             <div class="fm-section-header">
               <h2>Yahoo</h2>
               <span style="font-size:10px;color:var(--text-3);margin-left:6px;flex:1;">4:15/4:30 ET</span>
+              <button class="btn btn-sm" id="yahooQuotesNowBtn" onclick="yahooFetch('quotes-now')" style="font-size:11px;padding:1px 7px;" title="Manual price-only refresh (same job that auto-runs at 10 AM/3 PM ET)">Fetch Quotes</button>
               <button class="btn btn-sm" id="yahooYLoadBtn" onclick="yahooFetch('y-load')" style="font-size:11px;padding:1px 7px;">Fetch Y</button>
               <span id="yahooFetchStatus" style="font-size:10px;color:var(--text-2);margin-left:4px;white-space:nowrap;"></span>
             </div>
@@ -497,19 +507,25 @@ function yahooAutoStatus() {
     .catch(() => {});
 }
 
+// mode: 'y-load' (full EOD detail fetch, once/day) or 'quotes-now' (manual
+// trigger for the same lightweight price-only refresh that otherwise only
+// auto-runs at 10 AM/3 PM ET -- 2026-09-19, see etl/scheduler.py::
+// maybe_run_hourly_quote_refresh).
 function yahooFetch(mode) {
-  const btn    = document.getElementById('yahooYLoadBtn');
+  const isQuotesNow = mode === 'quotes-now';
+  const btn    = document.getElementById(isQuotesNow ? 'yahooQuotesNowBtn' : 'yahooYLoadBtn');
   const status = document.getElementById('yahooFetchStatus');
+  const url    = isQuotesNow ? '/api/yahoo-fetch/quotes-now' : '/api/yahoo-fetch/y-load';
   btn.disabled = true;
   status.style.color  = 'var(--text-2)';
-  status.textContent  = 'Fetching Y data (3 s between batches)...';
-  fetch('/api/yahoo-fetch/y-load', {method:'POST'})
+  status.textContent  = isQuotesNow ? 'Fetching quotes...' : 'Fetching Y data (3 s between batches)...';
+  fetch(url, {method:'POST'})
     .then(r => r.json())
     .then(d => {
       if (d.skipped) {
         status.style.color = d.reason === 'eod_done' ? '#166534' : '#b45309';
         status.textContent = d.msg || ('Skipped - ' + d.reason);
-        if (d.reason === 'eod_done') btn.disabled = true;
+        if (d.reason === 'eod_done' && !isQuotesNow) btn.disabled = true;
       } else if (d.error) {
         status.style.color = '#b91c1c';
         status.textContent = 'Error: ' + d.error;

@@ -48,6 +48,26 @@ this without being re-told.
    after a task passes. (This overrides `CLAUDE.md` convention #13 within this
    flow.)
 
+## Freshness-contract requirement (TASK_142)
+
+`drv_rule_outcome` sat un-refreshed for over two months (TASK_138) while every
+screen fed by it rendered as if current — the third such silent-staleness
+incident. A new computed table shipping with no answer to "what keeps it
+current" is how each one happened.
+
+**Any task spec that adds a computed table feeding a decision screen must
+answer two questions, and its "How to verify" section must check both:**
+
+1. **What job schedules it** — the exact scheduler function or `derive_all`
+   step that refreshes the table, going forward, unattended.
+2. **What alerts if it stops** — a `ref_freshness_contract` row (see
+   `db/baseline.sql`, `etl/analytics_freshness.py`) naming the table, its date
+   column, its expected structural lag (`maturity_lag_days`), and the job from
+   #1 as `refreshed_by`.
+
+A new computed table ships with its `ref_freshness_contract` row in the same
+task, or the task is not done.
+
 ## File naming conventions
 
 | File | Written by | Purpose |

@@ -204,6 +204,13 @@
             .edge-report-header #edgeReportMeta{grid-column:auto;}
             .edge-report-header #edgeReportMeta{text-align:left;}
         }
+        /* TASK_142: analytics-freshness stamp + amber card border when stale. */
+        .freshness-stamp { font-size:11px; color:var(--text-3); white-space:nowrap; }
+        .freshness-stamp.stale {
+            color:#92400e; font-weight:600; padding:1px 6px; border-radius:4px;
+            background:#fff7ed; border:1px solid #f59e0b;
+        }
+        .card.freshness-stale-border { border:1px solid #f59e0b; box-shadow:0 0 0 1px rgba(245,158,11,0.25); }
     </style>
 </head>
 <body class="perf-page">
@@ -325,10 +332,13 @@
         </div>
 
         <div class="perf-two-col">
-        <div class="card">
+        <div class="card" id="scorecardCard">
             <div class="performance-header">
                 <strong style="font-size:15px;">Rule scorecard</strong>
                 <span style="color:var(--text-3);font-size:12px;">Direction-adjusted — Edge&nbsp;20d &gt; 0 means the rule's signal was right on average (SELL sign flipped).</span>
+                <!-- TASK_142: freshness stamp, filled by applyFreshnessStamp()
+                     from the X-Analytics-As-Of/-Stale response headers. -->
+                <span id="scorecardFreshness" class="freshness-stamp"></span>
                 <span style="flex:1"></span>
                 <label for="minFires">Min fires:</label>
                 <select id="minFires" onchange="loadScorecard()">
@@ -438,10 +448,11 @@
             </div>
         </div>
 
-        <div class="card" style="margin-top:12px;">
+        <div class="card" style="margin-top:12px;" id="factorCard">
             <div class="performance-header">
                 <strong style="font-size:15px;">Factor scorecard</strong>
                 <span style="color:var(--text-3);font-size:12px;">Does RSI/MACDH/RVOL/IV%/macro/source/sector/style actually predict the forward move? (2026-08-01)</span>
+                <span id="factorFreshness" class="freshness-stamp"></span>
                 <span style="flex:1"></span>
                 <label for="factorSel">Factor:</label>
                 <select id="factorSel" onchange="loadFactorScorecard()">
@@ -486,7 +497,7 @@
 
     <script src="/static/_common.js"></script>
     <script src="/static/actions.js"></script>
-    <script src="/static/rule_performance.js?v=20260913x"></script>
+    <script src="/static/rule_performance.js?v=20260920a"></script>
     <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js" defer></script>
 <script src="/static/warning_badge.js"></script>

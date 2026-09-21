@@ -639,3 +639,26 @@ def _derive_pvv_impl(session: Session, as_of_date: date, run_id: int) -> int:
 
 
 derive_pvv = _wrap("drv_pvv", _derive_pvv_impl)
+
+
+def pvv_needs_recompute(session: Session, as_of_date: date) -> bool:
+    """True if PVV should (re)run for as_of_date: no row exists yet, or TOS's
+    live-quote file (hist_tl) has loaded again since the last PVV derive.
+
+    PVV's 'today' bucket mixes a live price against volume/volatility that
+    only refresh when hist_tl imports. Recomputing on every price update
+    (e.g. an hourly Yahoo-only price refresh, which never touches hist_tl)
+    would let price race ahead of stale volume/volatility and produce a
+    misleading reading — so PVV intentionally sits still between TL imports.
+    See docs/pvv_logic.md.
+    """
+    result = session.execute(text("""
+        SELECT
+            NOT EXISTS (SELECT 1 FROM drv_pvv WHERE as_of_date = :d)
+            OR COALESCE(
+                (SELECT MAX(loaded_at) FROM hist_tl WHERE export_date = :d)
+                > (SELECT MAX(derived_at) FROM drv_pvv WHERE as_of_date = :d),
+                FALSE
+            )
+    """), {"d": as_of_date}).scalar()
+    return bool(result)

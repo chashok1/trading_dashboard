@@ -198,6 +198,30 @@ rule groups (synthetic `RULES:<code>` candidates), compete via a
 - **Not-held symbol** — the most-recently-updated source wins (recency of
   `source_snapshot_date`); ties on date break by `SOURCE_ORDER`.
 
+**Source ranking mode (TASK_140, 2026-09-21).**
+`ref_settings.source_order_mode` — `'static'` (default) is the fixed
+`SOURCE_ORDER` above, unchanged. `'measured'` re-ranks the **six outlook
+sources only** (RR/SSS/CALL/II/PS/ETF) by their own measured buy-family
+`edge_20d` (`ref_source_precedence.measured_rank`, recomputed nightly by
+`etl/derive_source_edge.py::recompute_source_precedence` from
+`v_source_edge_scorecard`) — a source with fewer than 30 buy-family samples
+keeps its `static_rank` instead of guessing off a thin sample.
+`RTA`/`TOP5`/`SSSCHG`/`RTAINFO`/`MACROSHOW` are **not** re-ranked in either
+mode — those five ranks encode "same-day trigger beats a standing weekly
+list", a timing rule, not an edge claim. `_order()` in
+`etl/derive_actionable.py` resolves a candidate's rank via
+`COALESCE(measured_rank, static_rank)` under `'measured'`. The not-held
+sort also changes under `'measured'`: `(source_rank, -latest_update)` (rank
+first, recency as tie-break) instead of today's `(-latest_update,
+source_rank)`, which structurally favours CALL (the highest-volume,
+lowest-edge feed) — `'static'` mode keeps the old sort exactly.
+`drv_actionable.winning_source_rank`/`winning_source_edge` record what won
+and its measured edge (edge populated whenever `ref_source_precedence` has
+one, regardless of mode, so a `'static'`-mode history can still be scored
+against what `'measured'` would have used). Released by TASK_139's
+revalidation — A4 (source ranking) HELD across two market windows,
+`docs/audit/signal_validation_2026-09.md` §C.
+
 Rule-group candidates rank after the six sources using their group `priority`
 value. Group-fired candidates use `as_of_date` as their update date; a
 candidate with no date is treated as oldest (ordinal 0).
@@ -744,9 +768,50 @@ REMOVE. Non-held rows are never flagged. Surfaced on `/actionable` as a red
 hardcoded rule list. In `etl/derive_actionable.py`, a symbol's
 `low_confidence` flag is TRUE when its only sell-side evidence is a fired
 composite in that set — i.e. no per-source REMOVE/REDUCE and no *proven*
-SELL composite also fired. **Annotation only** — `consolidated_action` is
-never changed by this flag; BUY-side rules/thresholds/weights are untouched.
+SELL composite also fired. BUY-side rules/thresholds/weights are untouched.
 `/actionable` renders a muted/outline ACTION badge with a "LOW CONF"
 sub-label and a "Low" confidence badge on flagged rows. See
 `docs/audit/sell_candidates_2026-07.md` for the related sell-into-strength
 backtest (S1–S3, none recommended for activation).
+
+## Unproven-sell enforcement (`ref_settings.unproven_sell_mode`, TASK_141)
+
+Released 2026-09-21 by TASK_139's revalidation (SELL-side HELD across two
+windows, `docs/audit/signal_validation_2026-09.md` §E). Reuses the exact
+`low_confidence` condition above — no second classifier.
+
+- `'annotate'` (**default**) — today's TASK_118 behaviour, byte for byte:
+  `low_confidence` is a flag only, `consolidated_action`/`fc_confidence`
+  are never changed by it.
+- `'suppress'` — a row whose `low_confidence` is TRUE has its REMOVE/REDUCE
+  `group_candidates` **excluded from the winner contest** in
+  `etl/derive_actionable.py`, right before the sort (source-driven REMOVE/
+  REDUCE can't reach this branch — `low_confidence` requires
+  `source_driven_sell` to be False by construction, so any excluded
+  candidate is, by definition, backed only by the unproven rule). If that
+  leaves no candidate, the row resolves to HOLD through the existing
+  no-winner path — no synthesized action. The original action + rule ids
+  are untouched in `source_actions`/`triggered_group_ids` (built from the
+  unfiltered `src_actions`/`triggered_groups`, not the filtered contest
+  list) — the drilldown still shows what the system would have said.
+  `drv_actionable.unproven_sell_suppressed` records whether this actually
+  removed a candidate for the row (so the effect can be scored afterwards).
+  Sets `suppressed_reason = 'UNPROVEN SELL'`, same pattern as `NOT HELD`/
+  `AT CEILING`.
+- **Part B** — `_compute_final_call` (mirrored in `web/actionable.js`'s
+  `finalCall()`) downgrades a sell-side call that would render
+  `fc_confidence='high'` to `'mixed'` when its evidence is `low_confidence`
+  AND `unproven_sell_mode='suppress'`. Buy-side confidence is untouched.
+
+**2026-09-21 verification finding:** on the current dataset and
+`ref_trig_rule_group` configuration, **zero** active `group_type='action'`
+rows carry `action_label` `REMOVE`/`REDUCE` — the rule-groups engine simply
+has no path to a sell-family winning candidate today, with or without this
+switch. Consequently `low_confidence=TRUE` has never once co-occurred with
+a `REMOVE`/`REDUCE` `consolidated_action` in this table's history (checked
+across all dates) — Part A's filter and Part B's downgrade are both
+verified correct in isolation (direct function calls — see
+`DEV_HANDOFF.md` TASK_141) but have had **zero observable effect** on any
+historical or live-tested date. This is a config fact, not a bug: the
+moment a REMOVE/REDUCE action-type rule group is added and fires on a
+`low_confidence` symbol, both parts activate exactly as designed.

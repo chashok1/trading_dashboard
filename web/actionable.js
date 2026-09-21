@@ -1425,6 +1425,7 @@ function _legendHtml() {
         capped straight to HOLD (unaffected by this pill).</div>
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">Confidence flag</div>
       ${row('Low', 'LOW CONF — the only sell evidence is a rule with a demonstrated negative historical edge (v_unproven_sell_rules); consolidated_action is unchanged, this is a confidence flag')}
+      ${row('UNPROVEN SELL', 'TASK_141: when ref_settings.unproven_sell_mode=\'suppress\' (default \'annotate\', usually OFF), a LOW CONF-only sell can no longer win the row — suppressed_reason shows "UNPROVEN SELL" and the drilldown still shows the suppressed action + rule ids')}
       <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#94a3b8;margin:8px 0 3px;">STOP pill / chip</div>
       <div style="color:#475569;">A held position that just crossed below its Trade line ("TD STM") or its Trend
         line ("TN SA") — prior 3 days above the line, today below it — red left edge + ▼TD/▼TN pill next to ACTION.
@@ -1557,12 +1558,24 @@ async function loadSources() {
     })(),
     // Rule track-record (v_rule_scorecard) keyed by composite code, for the
     // edge badges on fired-rule pills. Diagnostic only while history is shallow.
+    // TASK_142: also reads the X-Analytics-As-Of/X-Analytics-Stale response
+    // headers (drv_rule_outcome's freshness contract) — used to grey the
+    // pills + raise the "EDGE DATA <date>" header chip when the table behind
+    // them hasn't refreshed. Raw fetch (not fetchJson) so headers are visible.
     (async () => {
       try {
-        const sc = await fetchJson('/api/rules/scorecard?min_fires=0&limit=2000');
+        const resp = await fetch('/api/rules/scorecard?min_fires=0&limit=2000');
+        const sc = await resp.json();
         state.scorecard = {};
         for (const r of sc) state.scorecard[r.rule_id] = r;
-      } catch (_) { state.scorecard = {}; }
+        state.edgeDataAsOf = resp.headers.get('X-Analytics-As-Of') || null;
+        state.edgeDataStale = resp.headers.get('X-Analytics-Stale') === 'true';
+      } catch (_) {
+        state.scorecard = {};
+        state.edgeDataAsOf = null;
+        state.edgeDataStale = false;
+      }
+      updateEdgeDataChip();
     })(),
     // Buysell code→seq map from ref_param_lookup for the default priority sort.
     // SA has seq=21 (highest); sorting by seq DESC puts SA at the top.
@@ -1584,11 +1597,21 @@ async function loadSources() {
         if (!isFinite(state.rsiOversold)) state.rsiOversold = 30;
         state.vlmRvolAvoidThreshold = Number(settings.vlm_rvol_avoid_threshold);
         if (!isFinite(state.vlmRvolAvoidThreshold)) state.vlmRvolAvoidThreshold = 1.5;
+        // TASK_140/141: read-only mode flags, both default OFF. Only
+        // consumed by finalCall()'s pre-migration fallback path (server
+        // always populates final_code/fc_confidence now, so this branch
+        // is effectively dead for current data) and the drilldown's
+        // measured-edge display — kept in sync anyway per the two-stack
+        // drift risk (docs/audit/bull_calc_analysis.md D6).
+        state.sourceOrderMode = settings.source_order_mode || 'static';
+        state.unprovenSellMode = settings.unproven_sell_mode || 'annotate';
       } catch (_) {
         state.convictionProvenEdgeMin = 0.5;
         state.rsiOverbought = 70;
         state.rsiOversold = 30;
         state.vlmRvolAvoidThreshold = 1.5;
+        state.sourceOrderMode = 'static';
+        state.unprovenSellMode = 'annotate';
       }
     })(),
     // Per-source buy-family hit rate (v_source_edge_scorecard, same table
@@ -1761,12 +1784,34 @@ function _ruleSide(id) {
   return actionDisplay(code).side; // 'buy' | 'sell' | 'neutral'
 }
 
+// TASK_142: amber "EDGE DATA <date>" header chip, shown only when
+// drv_rule_outcome (the table behind the Rules-edge pills) is stale per its
+// ref_freshness_contract row. Never hides the pills themselves — just marks
+// them old (see ruleEdgeBadge below).
+function updateEdgeDataChip() {
+  const chip = document.getElementById('edgeDataChip');
+  if (!chip) return;
+  if (state.edgeDataStale && state.edgeDataAsOf) {
+    chip.style.display = '';
+    chip.textContent = `EDGE DATA ${state.edgeDataAsOf}`;
+    chip.title = `Rule-edge data (drv_rule_outcome) last refreshed ${state.edgeDataAsOf} — stale`;
+  } else {
+    chip.style.display = 'none';
+  }
+}
+
 // Build the inline edge badge HTML for a fired composite code (or '' if unknown).
 // Color = direction (buy=green, sell=red, neutral=grey); fill = edge strength.
 // Confidence buckets: 'proven' = solid badge; 'promising' = normal; 'unproven' = muted grey.
+// TASK_142: when the backing table (drv_rule_outcome) is stale, the pill
+// renders greyed with an as-of tooltip regardless of confidence/direction —
+// the data-freshness fact overrides the normal styling, it doesn't replace it.
 function ruleEdgeBadge(code) {
   const sc = (state.scorecard || {})[code];
   if (!sc || sc.edge_20d == null) return '';
+  const staleAttr = state.edgeDataStale
+    ? ` style="opacity:0.45;filter:grayscale(1);" title="edge data as of ${state.edgeDataAsOf || '?'} — stale"`
+    : '';
   const e = Number(sc.edge_20d);
   const conf = sc.confidence || 'unproven';
   const n = sc.n_fires != null ? sc.n_fires : (sc.fires != null ? sc.fires : '?');
@@ -1775,6 +1820,9 @@ function ruleEdgeBadge(code) {
   const ciStr  = ciLow != null ? ` CI [${ciLow}%,${ciHigh}%]` : '';
   if (conf === 'unproven') {
     // Muted grey badge — no color signal until sample is adequate
+    if (staleAttr) {
+      return ` <span class="rule-edge-badge rule-neutral rule-weak"${staleAttr}>n=${n}</span>`;
+    }
     return ` <span class="rule-edge-badge rule-neutral rule-weak" style="opacity:0.55;" `
          + `title="Unproven (n=${n}, too few fires or CI straddles 0${ciStr}) — diagnostic only">`
          + `n=${n}</span>`;
@@ -1785,6 +1833,10 @@ function ruleEdgeBadge(code) {
   const wr = (sc.win_rate != null) ? ` · ${(Number(sc.win_rate) * 100).toFixed(0)}%` : '';
   const sign = e >= 0 ? '+' : '';
   const provenMark = conf === 'proven' ? ' ✓' : '';
+  if (staleAttr) {
+    return ` <span class="rule-edge-badge ${sideCls} ${emphCls}"${staleAttr}>`
+         + `${sign}${e.toFixed(1)}%${wr}${provenMark}</span>`;
+  }
   return ` <span class="rule-edge-badge ${sideCls} ${emphCls}" `
        + `title="${conf}: 20d edge (n=${n}${ciStr}) — diagnostic, shallow history">`
        + `${sign}${e.toFixed(1)}%${wr}${provenMark}</span>`;
@@ -2179,14 +2231,20 @@ function _isTradeModeQualifyingBuy(r) {
   if (code === 'BMN' && !(r.last_price > r.trade_line_value)) return false;
   return true;
 }
-function _isTradeModeHeldSaSell(r) {
-  return !!r.held_today && (r.final_code || '').toUpperCase() === 'SA';
+// 2026-09-15, user: "widen Trade to include SELL SOME rows too" -- was SA
+// (full exit) only; now also SS/STM (partial sell-some/trim) on a held
+// position, same reconciled Final Call the H-flag's SELL carve-out uses
+// (see _hiddenReason). Renamed from _isTradeModeHeldSaSell.
+function _isTradeModeHeldSell(r) {
+  if (!r.held_today) return false;
+  const code = (r.final_code || '').toUpperCase();
+  return code === 'SA' || code === 'SS' || code === 'STM';
 }
 function _isTradeModeStopBreach(r) {
   return !!r.held_today && !!r.stop_breached;
 }
 function _matchesTradeMode(r) {
-  return _isTradeModeQualifyingBuy(r) || _isTradeModeHeldSaSell(r) || _isTradeModeStopBreach(r);
+  return _isTradeModeQualifyingBuy(r) || _isTradeModeHeldSell(r) || _isTradeModeStopBreach(r);
 }
 // "My" list (ref_my_stocks) membership -- state.mySymbols is loaded once in
 // loadSources() and kept current by the quick-add popover (see openMyPop).
@@ -2217,11 +2275,11 @@ function _matchesTradeModeDiff(r) {
 // visible, not just the three that happened to be below zero at one point
 // in time. 2026-08-20: was buy-only (_isTradeModeQualifyingBuy, BM/BMN)
 // with no sell-side equivalent even though a held SA row already qualifies
-// for Trade Mode on its own (_isTradeModeHeldSaSell) -- the badge itself
+// for Trade Mode on its own (_isTradeModeHeldSell) -- the badge itself
 // just never got wired to it. Now covers both, picking .buy/.sell to match
 // (same side-aware data source-scorecard's other consumers use).
 function _sourceHitRateBadge(r) {
-  const side = _isTradeModeQualifyingBuy(r) ? 'buy' : _isTradeModeHeldSaSell(r) ? 'sell' : null;
+  const side = _isTradeModeQualifyingBuy(r) ? 'buy' : _isTradeModeHeldSell(r) ? 'sell' : null;
   if (!side) return '';
   const src = (r.winning_source || '').toString().toUpperCase();
   const sc = ((state.sourceScorecard || {})[src] || {})[side];
@@ -2264,15 +2322,11 @@ function matchesBaseFilters(r) {
     const wlOk = state.filters.watchlist_only && _buyNoiseGated(r);
     if (!tmOk && !tmdOk && !wlOk) return false;
   } else if (!state.filters.show_hidden) {
-    // When show_hidden is OFF, hide suppressed/$0 AMT/no-action/acted/unheld-remove rows.
-    if (r.suppressed_reason) return false;
-    const ua = (r.last_user_action || '').toUpperCase();
-    if (ua === 'DONE' || ua === 'SKIPPED' || ua === 'OVERRIDDEN') return false;
-    if (ua === 'SNOOZED' && (!r.snooze_until || r.snooze_until >= state.date)) return false;
-    if (!r.consolidated_action) return false;
-    if (!r._amt) return false;
-    const ca = (r.consolidated_action || '').toUpperCase();
-    if (ca === 'REMOVE' && !r.held_today) return false;
+    // When show_hidden is OFF, hide suppressed/$0 AMT/no-action/acted/unheld-remove
+    // rows -- same criteria as the grid's own "H" flag, via _hiddenReason (kept as
+    // a single source of truth after the two independently drifted, see its own
+    // 2026-09-15 comment on the SELL carve-out).
+    if (_hiddenReason(r)) return false;
   }
   if (state.filters.source) {
     if (!_rowHasSource(r, state.filters.source)) return false;
@@ -3145,13 +3199,19 @@ function _hasPositiveEdge(row) {
 }
 
 // Returns the hidden reason string for a row, or null if not hidden.
+// 2026-09-15, user: "for all SELLs I want to see the action/row regardless
+// of the amount" -- a reconciled Final Call of SELL (SA/SS/STM) is never
+// hidden by the suppressed-reason or AMT$=0 checks below, which exist only
+// to silence redundant *buy* noise (ALREADY ESTABLISHED/AT CEILING) or a
+// stale $0 buy target. Confirmed cases: ILMN, TXG, OIH.
 function _hiddenReason(r) {
-  if (r.suppressed_reason) return 'Snoozed: ' + r.suppressed_reason;
+  const _isSell = finalCall(r).side === 'sell';
+  if (!_isSell && r.suppressed_reason) return 'Snoozed: ' + r.suppressed_reason;
   const ua = (r.last_user_action || '').toUpperCase();
   if (ua === 'DONE' || ua === 'SKIPPED' || ua === 'OVERRIDDEN') return 'Acted: ' + ua;
   if (ua === 'SNOOZED' && (!r.snooze_until || r.snooze_until >= state.date)) return 'Acted: SNOOZED';
   if (!r.consolidated_action) return 'No action';
-  if (!r._amt) return 'AMT$ = 0';
+  if (!_isSell && !r._amt) return 'AMT$ = 0';
   const ca = (r.consolidated_action || '').toUpperCase();
   if (ca === 'REMOVE' && !r.held_today) return 'REMOVE – not held';
   return null;
@@ -3402,7 +3462,11 @@ function finalCall(row) {
       // Sources AND Technical both say sell → High confidence SELL SOME
       fcDisp     = actionDisplay('SS');
       fcStrength = _FC_SCALE['SS'];
-      confidence = 'high';
+      // TASK_141 Part B: don't assert confidence the evidence hasn't
+      // earned — mirrors etl/derive_actionable.py::_compute_final_call.
+      // Buy-side confidence is untouched. No-op under default 'annotate'.
+      confidence = (row.low_confidence && state.unprovenSellMode === 'suppress')
+        ? 'mixed' : 'high';
     } else {
       // Sources owns/buys, Technical says sell → Mixed (conflict)
       fcDisp     = actionDisplay('SS');
@@ -7137,7 +7201,7 @@ async function openDrilldown(row) {
   const kv = $('modalKv');
   kv.innerHTML = `
     <dt>Action</dt><dd><span class="act-badge ${(actionDisplay(_badgeAction(row)).colorCls || 'act-neutral') + '-tint'}">${actionLabel(row)}</span>${modalOverMaxPill}${modalSizingPill}</dd>
-    <dt>Winning source</dt><dd>${row.winning_source || '—'}</dd>
+    <dt>Winning source</dt><dd>${row.winning_source || '—'}${_winningSourceEdgeHtml(row)}</dd>
     <dt>AMT$</dt><dd><strong>${fmtUsd(row._amt) || '—'}</strong></dd>
     <dt>Suppressed</dt><dd>${row.suppressed_reason || '—'}</dd>
   `;

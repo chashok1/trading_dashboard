@@ -264,6 +264,29 @@ def anchor_date_and_status(now: Optional[datetime] = None) -> dict:
     }
 
 
+def set_freshness_headers(response, session, table_name: str) -> Optional[dict]:
+    """TASK_142: stamp `X-Analytics-As-Of` / `X-Analytics-Stale` response
+    headers from `ref_freshness_contract` for the table backing this
+    endpoint's payload — the "show the age at the point of decision" part of
+    the freshness contract. Headers (not the JSON body) so existing
+    list-shaped responses (`/api/rules/scorecard`, `/api/actionable`, ...)
+    stay byte-identical for callers that don't look. Returns the freshness
+    dict (or None if the table has no active contract row) so callers can
+    also fold it into the payload where that's cheap to do.
+
+    `response` may be None (e.g. non-FastAPI callers) — headers are skipped,
+    the freshness dict is still returned."""
+    from etl.analytics_freshness import get_freshness
+    try:
+        fresh = get_freshness(session, table_name)
+    except Exception:
+        return None
+    if fresh and response is not None:
+        response.headers["X-Analytics-As-Of"] = fresh["as_of"] or ""
+        response.headers["X-Analytics-Stale"] = "true" if fresh["stale"] else "false"
+    return fresh
+
+
 # -----------------------------------------------------------------------------
 # Table discovery — SQL-driven (information_schema). Replaces hardcoded lists.
 # Adding a CREATE TABLE in db/*.sql and re-running schema is enough — no Python
