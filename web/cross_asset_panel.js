@@ -59,7 +59,7 @@
       }).join(', ');
     }
     return '<span style="display:inline-flex; align-items:center; gap:3px; ' +
-      'font-size:10px; padding:2px 6px; border-radius:100px; white-space:nowrap; ' +
+      'font-size:9px; padding:2px 6px; border-radius:100px; white-space:nowrap; ' +
       'background:' + (leg.passed ? '#dceadd' : '#f5f5f4') + '; color:' + color + '; ' +
       'font-weight:' + (leg.passed ? '700' : '400') + ';" ' +
       'title="' + esc(titleTxt) + '">' +
@@ -71,17 +71,17 @@
     var fired = r.fired === true;
     var border = fired ? '#15803d' : 'var(--border,#e5e5e2)';
     var badge = fired
-      ? '<span style="font-size:9.5px; font-weight:700; color:#15803d; background:#dceadd; ' +
+      ? '<span style="font-size:8.5px; font-weight:700; color:#15803d; background:#dceadd; ' +
         'padding:2px 8px; border-radius:100px; white-space:nowrap;">&#9679; FIRED &mdash; ' +
         esc(r.target_action) + ' ' + esc(r.target_symbol) + '</span>'
-      : '<span style="font-size:9.5px; color:var(--text-3,#a8a29e);">watching</span>';
+      : '<span style="font-size:8.5px; color:var(--text-3,#a8a29e);">watching</span>';
     var legsHtml = (r.detail || []).map(legChip).join(' ');
     var link = '/actionable?symbol=' + encodeURIComponent(r.target_symbol);
     return '<div style="display:flex; flex-direction:column; gap:5px; padding:8px 10px; ' +
       'background:#fff; border:1px solid var(--border,#e5e5e2); border-left:3px solid ' + border +
       '; border-radius:6px;">' +
       '<div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">' +
-        '<a href="' + esc(link) + '" style="font-size:11.5px; font-weight:700; color:var(--text-1,#1c1917); ' +
+        '<a href="' + esc(link) + '" style="font-size:10.5px; font-weight:700; color:var(--text-1,#1c1917); ' +
         'text-decoration:none;" title="Open ' + esc(r.target_symbol) + ' on Actionable">' +
         esc(r.description || r.rule_code) + '</a>' +
         badge +
@@ -97,7 +97,7 @@
     var rows = (data && data.rows) || [];
     if (!rows.length) { panel.style.display = 'none'; return; }
 
-    body.innerHTML = '<div class="msr-section-hdr">Cross-Asset Signals</div>' +
+    body.innerHTML =
       '<div style="display:flex; flex-direction:column; gap:6px; padding:2px 0 6px;">' +
       rows.map(ruleCard).join('') +
       '</div>';

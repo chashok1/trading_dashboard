@@ -693,10 +693,55 @@
     }
   }
 
+  // ---- main-toolbar icon button (all pages, 2026-09-19) ------------------
+  // Same manual Yahoo-quote-refresh trigger as the tape-row button above,
+  // but icon-only and mounted into header.topbar .controls -- present on
+  // every page (not just /actionable and /portfolio, where the tape lives),
+  // since the underlying refresh covers all ~555 Yahoo-tracked symbols, not
+  // just the tape's curated 8. User: "Add a button on the main toolbar just
+  // with icon."
+  function ensureToolbarIcon() {
+    if (document.getElementById('mtQuotesIconBtn')) return;
+    const controls = document.querySelector('header.topbar .controls');
+    if (!controls) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'mtQuotesIconBtn';
+    btn.className = 'btn';
+    btn.type = 'button';
+    btn.title = 'Fetch latest Yahoo quotes now (auto-runs at 10 AM/3 PM ET otherwise)';
+    btn.setAttribute('aria-label', 'Fetch latest Yahoo quotes now');
+    btn.style.cssText = 'font-size:14px;line-height:1;padding:2px 8px;';
+    btn.textContent = '⟳';
+
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = '…';
+      try {
+        const r = await fetch('/api/yahoo-fetch/quotes-now', {method: 'POST'});
+        const d = await r.json();
+        btn.textContent = d.error ? '!' : d.skipped ? '–' : '✓';
+        if (!d.error && !d.skipped) {
+          loadTape();
+          if (typeof window.reloadMacroAreas === 'function') window.reloadMacroAreas();
+        }
+      } catch (e) {
+        btn.textContent = '!';
+      }
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000);
+    });
+
+    const health = document.getElementById('health');
+    if (health) controls.insertBefore(btn, health);
+    else controls.appendChild(btn);
+  }
+
   // ---- entry ------------------------------------------------------------
   function init() {
     loadTape();
     setInterval(loadTape, REFRESH_MS);
+    ensureToolbarIcon();
   }
 
   if (document.readyState === 'loading') {

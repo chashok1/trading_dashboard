@@ -112,7 +112,7 @@
       '<span class="dash-note-handle" data-id="' + n.id + '" draggable="true" title="Drag to reorder" ' +
         'style="cursor:grab; color:var(--text-3); font-size:12px; line-height:1.6; flex-shrink:0; user-select:none;">&#8942;&#8942;</span>' +
       '<div style="flex:1; min-width:0;">' +
-        '<div style="font-size:11.5px; line-height:1.45; color:var(--text-1); white-space:pre-wrap;">' + esc(n.note_text) + '</div>' +
+        '<div style="font-size:10.5px; line-height:1.45; color:var(--text-1); white-space:pre-wrap;">' + esc(n.note_text) + '</div>' +
         '<div style="font-size:9.5px; color:var(--text-3); margin-top:2px;">' +
           '<span style="font-weight:600; color:' + imp.color + ';">' + imp.label + '</span> &middot; ' +
           esc(dateRangeLabel(n)) + tagHtml +

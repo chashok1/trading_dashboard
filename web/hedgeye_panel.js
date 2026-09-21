@@ -859,14 +859,19 @@
           _card('Watching',                              watchingHtml(data.watching),      '') +
           '</div>';
 
-        var bodyHtml =
-          '<div id="hePanelBody" style="display:' + (collapsed ? 'none' : 'block') + '; margin-top:2px;">' +
-          row2 + '</div>';
-
+        // 2026-09-15, user: "make tiles panel collapsible, don't take any
+        // extra space" -- collapse used to only hide the inner grid
+        // (#hePanelBody), leaving its purple padded/bordered wrapper
+        // (#hePanelWrap below) and this element's own margin-bottom:6px
+        // still reserving a thin strip. Collapsed now hides/zeroes BOTH, so
+        // the panel truly takes 0px -- #hePanelToggle lives in the toolbar
+        // below (not inside this element), so it stays reachable either way.
         actEl.innerHTML =
-          '<div style="padding:2px 4px; background:#f0eefb; border:1px solid #d5d0f0; ' +
-          'border-radius:6px;">' + bodyHtml + '</div>';
+          '<div id="hePanelWrap" style="display:' + (collapsed ? 'none' : 'block') + '; ' +
+          'padding:2px 4px; background:#f0eefb; border:1px solid #d5d0f0; ' +
+          'border-radius:6px;">' + row2 + '</div>';
         actEl.style.display = 'block';
+        actEl.style.marginBottom = collapsed ? '0' : '6px';
 
         // U15: sync the toggle button's chevron to the persisted collapsed
         // state on every render (covers page reload — clicking already syncs
@@ -882,11 +887,13 @@
     }
 
     window._hePanelToggle = function () {
-      var body = document.getElementById('hePanelBody');
+      var wrap = document.getElementById('hePanelWrap');
+      var panel = document.getElementById('hedgeyePanel');
       var btn = document.getElementById('hePanelToggle');
-      if (!body) return;
-      var nowHidden = body.style.display === 'none';
-      body.style.display = nowHidden ? 'block' : 'none';
+      if (!wrap) return;
+      var nowHidden = wrap.style.display === 'none';
+      wrap.style.display = nowHidden ? 'block' : 'none';
+      if (panel) panel.style.marginBottom = nowHidden ? '6px' : '0';
       if (btn) btn.classList.toggle('icon-on', nowHidden);
       if (btn) btn.classList.toggle('icon-off', !nowHidden);
       localStorage.setItem('hePanel_collapsed', nowHidden ? '0' : '1');

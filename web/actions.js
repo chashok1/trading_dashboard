@@ -26,7 +26,7 @@
     // -- Sell / Reduce ---------------------------------------------------------
     'REDUCE':   { label: 'SELL SOME',    code: 'SS',  side: 'sell',    cls: 'act-chip-reduce',   colorCls: 'act-sell' },
     'SS':       { label: 'SELL SOME',    code: 'SS',  side: 'sell',    cls: 'act-chip-reduce',   colorCls: 'act-sell' },
-    'STM':      { label: 'SELL TRIM',    code: 'STM', side: 'sell',    cls: 'act-chip-reduce',   colorCls: 'act-sell' },
+    'STM':      { label: 'SELL TO MIN',  code: 'STM', side: 'sell',    cls: 'act-chip-reduce',   colorCls: 'act-sell' },
     // -- Sell / Overage (synthetic) --------------------------------------------
     // OVER_MAX displays as "SO" per actionText(); label used in tooltips only.
     'OVER_MAX': { label: 'SELL OVERAGE', code: 'SO',  side: 'sell',    cls: 'act-chip-over_max', colorCls: 'act-sell-weak' },

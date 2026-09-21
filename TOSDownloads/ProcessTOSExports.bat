@@ -19,9 +19,26 @@ set "timeout=30"
 :: Merge only -- skip the TOS download automation entirely and just merge
 :: whatever fragment CSVs are already in the Input folder (e.g. after a
 :: manual export, or to retry a merge that failed without re-downloading).
+:: 2026-09-11: this branch used to jump straight to :EOF with no errorlevel
+:: check at all (unlike the normal branch below) -- a crash here (uncaught
+:: Python exception, sys.exit(1)) went straight into :EOF's unconditional
+:: 30s auto-close with no "error while executing python" message ever
+:: shown, so a failed merge-only reprocess looked identical to a
+:: slow-but-fine one right up until the window vanished. Added the same
+:: errorlevel check the normal branch already had. NOTE: "::" comments
+:: (like this one) are only safe OUTSIDE a parenthesized if/for block --
+:: cmd.exe's parser breaks ("was unexpected at this time") on "::" lines
+:: placed INSIDE one, which is why the errorlevel check below is
+:: comment-free even though the equivalent check in the normal branch's
+:: own block is too.
 if "%2"=="Y" (
 
 	python.exe "C:\Ashok\Investing\Stocks\Scripts\TOSDownloads\TOSDownloads.py" "%watchlistCsv%" "%inputDir%" "%imagesDir%" "%lockFile%" "N" "N" "Y"
+
+	if errorlevel 1 (
+		echo error while executing python
+		pause
+	)
 
 	goto :EOF
 

@@ -54,14 +54,13 @@
     return (breadthPct(r) / 100) * w;
   }
 
-  function quadBadge(quad) {
-    if (quad === 'BULLISH') return '<span style="display:inline-flex; align-items:center; gap:4px; ' +
-      'font-size:9.5px; font-weight:700; color:var(--bull,#15803d); background:var(--act-buy-bg,#dceadd); ' +
-      'padding:2px 6px; border-radius:100px; white-space:nowrap;">&#9650; BULL</span>';
-    if (quad === 'BEARISH') return '<span style="display:inline-flex; align-items:center; gap:4px; ' +
-      'font-size:9.5px; font-weight:700; color:var(--bear,#b91c1c); background:var(--act-sell-strong-bg,#f4e6e6); ' +
-      'padding:2px 6px; border-radius:100px; white-space:nowrap;">&#9660; BEAR</span>';
-    return '<span style="font-size:9.5px; color:var(--text-3,#a8a29e);">&mdash;</span>';
+  // 2026-09-07 -- arrow-only stance glyph (no "BULL"/"BEAR" text) -- user:
+  // "combine line 1 and 2 and remove the text Bear or BULL" -- merged into
+  // the category-name line below instead of its own separate line/badge.
+  function quadArrow(quad) {
+    if (quad === 'BULLISH') return '<span style="color:var(--bull,#15803d); font-weight:700; font-size:11px;">&#9650;</span>';
+    if (quad === 'BEARISH') return '<span style="color:var(--bear,#b91c1c); font-weight:700; font-size:11px;">&#9660;</span>';
+    return '<span style="color:var(--text-3,#a8a29e); font-weight:700; font-size:11px;">&mdash;</span>';
   }
 
   function borderColor(quad) {
@@ -78,9 +77,9 @@
     return '<a href="' + esc(link) + '" style="display:flex; flex-direction:column; gap:3px; padding:6px 8px; ' +
       'background:#fff; border:1px solid var(--border,#e5e5e2); border-left:3px solid ' + borderColor(r.quad_stance) +
       '; border-radius:6px; width:' + TILE_WIDTH + '; flex:0 0 ' + TILE_WIDTH + '; text-decoration:none;">' +
-      '<div style="display:flex; flex-wrap:wrap; gap:2px;">' + quadBadge(r.quad_stance) + '</div>' +
-      '<div style="font-size:10.5px; font-weight:700; color:var(--text-1,#1c1917); white-space:nowrap; ' +
-      'overflow:hidden; text-overflow:ellipsis;" title="' + esc(r.category) + '">' + esc(r.category) + '</div>' +
+      '<div style="display:flex; align-items:center; gap:4px;">' + quadArrow(r.quad_stance) +
+      '<span style="font-size:10.5px; font-weight:700; color:var(--text-1,#1c1917); white-space:nowrap; ' +
+      'overflow:hidden; text-overflow:ellipsis;" title="' + esc(r.category) + '">' + esc(r.category) + '</span></div>' +
       '<div style="font-size:9px; color:var(--text-2,#57534e); font-family:ui-monospace,monospace;">' +
       pct + '% <span style="color:var(--text-3,#a8a29e);">(' + r.n_above + '/' + r.n_tracked + ')</span></div>' +
       '</a>';

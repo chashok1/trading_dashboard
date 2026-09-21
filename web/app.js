@@ -769,14 +769,26 @@ function _nextQuadWitching(calRows) {
 // 2026-08-14 -- yellow highlight when an expiration is <=5 days out, per
 // user: "Options expirations (OPEX and qtr) if less than or equal to 5d.
 // highligh with yellow color."
-function _opexLineHtml(calRows) {
+function _opexLineHtml(calRows, calTypes) {
   const part = (label, row) => {
     if (!row) return '';
     const text = `${label} ${fmtDate(row.indicator_date)} (${row.days}d)`;
     return row.days <= 5 ? `<span class="opex-soon">${text}</span>` : text;
   };
-  const bits = [part('OPEX', _calRow(calRows, 'Monthly Exp')), part('Qtly Exp', _nextQuadWitching(calRows))].filter(Boolean);
-  return bits.length ? `<div class="opex-line">${bits.join(' &middot; ')}</div>` : '';
+  const bits = [part('OPEX', _calRow(calRows, 'Monthly Exp')), part('Qtly Exp', _nextQuadWitching(calRows))];
+  // 2026-09-16 -- also surface any E.IND panel row currently highlighted
+  // there (same selected-type + <=5d rule as loadEconIndicators'
+  // .indicator-soon rows), so a near-term Fed Meeting/CPI/etc. the user has
+  // chosen to watch shows up here too, not just in the right-rail table.
+  // Monthly Exp rows are skipped since OPEX/Qtly Exp above already cover them.
+  const selected = new Set((calTypes && calTypes.selected) || []);
+  (calRows || []).forEach(r => {
+    if (r.indicator === 'Monthly Exp') return;
+    if (!selected.has(r.indicator) || r.days == null || r.days > 5) return;
+    bits.push(`<span class="opex-soon">${escapeHtml(r.indicator)} ${fmtDate(r.indicator_date)} (${r.days}d)</span>`);
+  });
+  const filtered = bits.filter(Boolean);
+  return filtered.length ? `<div class="opex-line">${filtered.join(' &middot; ')}</div>` : '';
 }
 
 // 2026-08-14 -- configurable Events line, between the OPEX line and the
@@ -1121,7 +1133,7 @@ async function loadRegimeBand() {
     // left-flowing blob with the months embedded right after the label.
     // 2026-08-09 -- "Win" text dropped per user: "remove the text 'Win'".
     const winLabel = `<span class="regime-win-label">${windowData.h ?? 60}d (<strong style="color:${_quadColor(dominant)};">Q${windowData.dominant_quad ?? '?'}</strong>)</span>`;
-    opexBody.innerHTML = _opexLineHtml(calRows);
+    opexBody.innerHTML = _opexLineHtml(calRows, calTypes);
     earningsBody.innerHTML = _earningsLineHtml(earningsRows);
     regimeLineBody.innerHTML = `<div class="regime-line" data-quadbandpop="1">
       ${winLabel}<span class="regime-window-text">${months || 'no window data'}</span>${qtrEntry}
