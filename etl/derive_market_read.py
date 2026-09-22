@@ -211,6 +211,31 @@ def _rr_flips(session: Session, d: date) -> Optional[int]:
     return len(rows)
 
 
+def rr_flip_direction_counts(session: Session, d: date) -> dict:
+    """Breaks _rr_flips' total down by direction -- how many symbols
+    flipped TO bullish vs TO bearish on d (a flip involving NEUTRAL on
+    either side, e.g. BULLISH->NEUTRAL, counts toward neither bucket).
+    User: "RR -> change it longs - shorts" -- keeps the flip-count fix
+    (avoids the original net-standing-position cancellation problem, e.g.
+    USD bullish + EUR/USD bearish on the same dollar move) but presents it
+    as a directional breakdown, same shape as ETF/CALL, instead of one
+    combined total. Computed live per point in the 13-week series, same
+    pattern as call_turnover_counts -- no new stored column."""
+    prior = session.execute(text(
+        "SELECT MAX(snapshot_date) FROM hist_rr WHERE snapshot_date < :d"
+    ), {"d": d}).scalar()
+    if prior is None:
+        return {"n_bull": 0, "n_bear": 0}
+    rows = session.execute(text("""
+        SELECT cur.outlook FROM hist_rr cur
+        JOIN hist_rr prev ON prev.symbol = cur.symbol AND prev.snapshot_date = :prior
+        WHERE cur.snapshot_date = :d AND cur.outlook IS DISTINCT FROM prev.outlook
+    """), {"d": d, "prior": prior}).fetchall()
+    n_bull = sum(1 for (o,) in rows if (o or "").upper() == "BULLISH")
+    n_bear = sum(1 for (o,) in rows if (o or "").upper() == "BEARISH")
+    return {"n_bull": n_bull, "n_bear": n_bear}
+
+
 def _derive_source_breadth_impl(session: Session, as_of_date: date, run_id) -> int:
     rows_out = []
     for source_code in SOURCES:

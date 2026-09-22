@@ -1802,11 +1802,6 @@ svg.rr-candle {
               letter-spacing: 0; color: #888; margin-left: auto; }
 .msr-legend-up   { color: #166534; }
 .msr-legend-down { color: #991b1b; }
-/* Section-header breadth summary (↑n ↓n) — TASK_116 */
-.msr-breadth { font-size: 9px; font-weight: 400; text-transform: none;
-               letter-spacing: 0; margin-left: auto; white-space: nowrap; }
-.msr-breadth-up   { color: #166534; }
-.msr-breadth-down { color: #991b1b; }
 /* Per-area row — ~18px target height (TASK_116: candle + Td/Tn + range bar
    + %chg chip anatomy) */
 .msr-row {
@@ -3366,6 +3361,20 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
    muted caption -- bumped weight/color accordingly. */
 .mr-tile-lbl { color: var(--text-1); font-size: 10px; font-weight: 600; }
 .mr-tile-delta { font-size: 8.5px; color: var(--text-2); min-height: 11px; }
+/* 2026-09-21, user-directed: "Show current/Max right justified and take
+   first two lines combined for height" -- header+delta stack on the left,
+   current/max sits right-justified, vertically centered against that same
+   two-line block. Chart stays full-width below, outside this row. */
+.mr-tile-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.mr-tile-left { flex: 1; min-width: 0; }
+.mr-tile-curmax {
+  flex-shrink: 0; text-align: right; white-space: nowrap;
+  font-size: 11px; font-weight: 700; color: var(--text-1); font-variant-numeric: tabular-nums;
+}
+/* 2026-09-21, user-directed ("color it"): green at/above the 13wk high,
+   red below it -- same read as the "vs max 13wk" delta segment. */
+.mr-tile-curmax.up { color: var(--mr-bull); }
+.mr-tile-curmax.dn { color: var(--mr-bear); }
 /* 2026-09-21: two independently-colored segments (vs 3wk ago, vs max
    13wk) can now share one line, so .up/.dn target the inner <span>s
    (web/market_read.js::_mrDeltaSeg) instead of the whole line. */
@@ -3375,6 +3384,19 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .mr-spark path { fill: none; stroke: #2a78d6; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .mr-spark circle { fill: #2a78d6; }
 .mr-spark-zero { stroke: var(--border); stroke-width: 1; }
+/* 2026-09-21, user-directed: SSS/ETF/PS bar sparklines (web/market_read.js
+   ::barSparkline) -- green/red carries +ve/-ve (ETF's real sign) or
+   week-over-week direction (SSS/PS, always-positive counts); first bar in
+   a delta-colored chart has no prior point to compare, shown neutral. */
+.mr-bar-spark .mr-bar-up { fill: var(--mr-bull); }
+.mr-bar-spark .mr-bar-dn { fill: var(--mr-bear); }
+.mr-bar-spark .mr-bar-flat { fill: var(--mr-neu); }
+/* Full-column invisible hover target per bar, 2026-09-22 (user: "I need to
+   see popover anywhere i hover on the bar even if the bar is so small") --
+   a small/near-zero bar leaves most of its column's height empty above it;
+   this covers the whole column height so the tooltip fires anywhere in
+   that week's column, not just on the few visible pixels of a tiny bar. */
+.mr-bar-spark .mr-bar-hit { fill: transparent; pointer-events: all; }
 .mr-flipnote { color: var(--text-2); font-size: 9px; margin: 2px 0 5px; }
 .mr-flipnote b { color: var(--mr-warn); }
 
@@ -3392,8 +3414,8 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .mr-table th { text-align: left; color: var(--text-3); font-weight: 500; font-size: 8.5px; text-transform: uppercase;
   letter-spacing: .03em; padding: 2px 4px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .mr-table td { padding: 2px 4px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
-.mr-group td { background: var(--bg); color: var(--text-3); font-size: 8.5px; text-transform: uppercase;
-  letter-spacing: .03em; padding-top: 5px; }
+.mr-group td { background: var(--bg); color: var(--text-3); font-size: 7px; text-transform: uppercase;
+  letter-spacing: .03em; padding: 2px 4px; }
 .mr-theme-cell { font-weight: 500; cursor: pointer; }
 .mr-row-conflict .mr-theme-cell { border-left: 3px solid var(--mr-warn); padding-left: 6px; }
 .mr-num { text-align: right; }

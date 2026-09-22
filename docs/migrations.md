@@ -4,7 +4,184 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ---
 
+## 2026-09-22
+
+- **Side-rail panel header bar charts removed.** User: "remove these
+  barcharts that we added to the panels (volatility/major markets/etc)" --
+  reverted the whole feature from this same day (see the entry directly
+  below): removed `_weekly_bull_bear`/`_member_net_signal`
+  (`api/routers/macro_areas.py`) and the `bull_bear_weekly` field from
+  `/api/macro-areas`; removed `_breadthBarHtml` and the now-unused
+  `_AREA_BREADTH_ID` map (`web/macro_areas.js`); removed the dead
+  `.msr-breadth`/`.msr-breadth-bars` CSS rules and the now-permanently-
+  empty `<span class="msr-breadth" id="macroBreadth...">` placeholders
+  from all 10 panel headers in `web/index.html` (shared `.mr-bar-hit`
+  hover-target CSS kept -- still used by the unrelated top breadth-strip
+  tiles). Panels are back to a plain text header with no breadth
+  indicator.
+
+- **Side-rail panel headers (Volatility/Major Markets/Credit/etc.): "↑n
+  ↓n" text → per-symbol %chg bar chart → 13-week bullish-minus-bearish bar
+  chart.** Two-step user request. First: "add barchart for each panel ...
+  replace '↑6 ↓1' ... right justified, take half of the panel width" —
+  added `_breadthBarHtml` (`web/macro_areas.js`) rendering one bar per
+  member's today's %chg (inverted-aware), right-justified via new
+  `.msr-breadth` 50%-width flex container + `.msr-breadth-bars` SVG.
+  Then, on being asked what the bars showed, user corrected: "calculate
+  bullish - bearish. one bar per week. 13 weeks... (not down or up)" —
+  wanted the same "bullish minus bearish" concept as the top breadth strip
+  (RR/ETF/etc.), not a raw price-move chart. Confirmed definition: reuse
+  each panel's own existing Long/Short stance signal (RR outlook
+  Bullish/Bearish for most members; price-vs-Trade-line for "dual" role
+  stock/ETF members with technicals — same rule `area_sig_sum`/
+  `area_stance_raw` already summed for today), just counted per week
+  instead of for one date. New `api/routers/macro_areas.py::
+  _weekly_bull_bear` (+ extracted `_member_net_signal` helper, shared with
+  the existing single-date roll-up logic) computes 13 weekly buckets
+  (`DATE_TRUNC('week', as_of_date)`, same pattern as the top breadth
+  strip's own 13-week fix) from `drv_rr`/`drv_technicals` history, one net
+  value per week per area; `bull_bear_weekly` added to each area in the
+  `/api/macro-areas` response. `web/macro_areas.js::_breadthBarHtml`
+  rewritten to plot that 13-point series instead of per-member %chg.
+  Verified live end-to-end via `get_macro_areas()`. Known non-bug: the
+  Volatility panel (VIX/VXN/VXD/RVX/GVZ/OVX/MOVE — all "gauge" role) shows
+  a flat 0 bar every week, because gauge members never fed the Long/Short
+  stance sum either (excluded before that logic even runs) — there's no
+  bullish/bearish concept for them under this definition.
+
+- **RR breadth tile: reverted flip-based net back to the plain standing
+  bull/bear snapshot.** User: "There should be more bullish (20) and 22
+  bearish" — after the flip-count and then flip-direction-net experiments
+  (2026-09-21, both built specifically to dodge RR's ~52-instrument
+  cancellation problem), the user confirmed they actually want the
+  straightforward standing count of all currently-tracked RR symbols'
+  current outlook: 20 Bullish / 22 Bearish / 10 Neutral as of the 9/18
+  snapshot, verified directly against `hist_rr`. That number was never
+  missing — `etl/derive_market_read.py::_rr_bull_bear_counts` has computed
+  it into `drv_source_breadth.n_bull/n_bear/net` unchanged the whole time;
+  only `api/routers/cockpit.py`'s breadth-strip endpoint was overriding it
+  with the flip-direction calc. Fix: removed the `if source_code == "RR"`
+  branch entirely and merged RR into the same `else` path ETF already
+  uses (`net_based = source_code in ("ETF", "RR")`), so RR now reads
+  `n_bull`/`n_bear`/`net` straight from the stored row like ETF does. Also
+  removed the now-unused `rr_flip_direction_counts` import from
+  `cockpit.py` (the function itself is left in `derive_market_read.py` in
+  case flip logic is wanted again later for a different purpose). No
+  `web/market_read.js` change needed — RR was already wired into
+  `_MR_NET_BASED`/`_MR_NET_WORDS: ['bull','bear']`/`_MR_BAR_CHART: 'sign'`
+  from the 2026-09-21 work, which is the same shape this standing count
+  needs. Flagged tradeoff to the user: this is exactly the calculation
+  that had the cancellation problem (USD bullish + EUR/USD bearish, same
+  dollar move, opposite raw labels) — but showing both raw counts (not a
+  collapsed net) keeps it visible rather than hidden, so it's an accepted
+  tradeoff. Verified live: `drv_source_breadth` for RR shows
+  `n_bull=20, n_bear=22, n_total=52, net=-2`, matching exactly.
+
+- **RR breadth tile bugfix: was silently showing "0 bull − 0 bear" when RR
+  hadn't refreshed since the last derive.** User: "why 0 and 0?" caught
+  it. `api/routers/cockpit.py`'s new RR directional-net code (added
+  2026-09-21) called `rr_flip_direction_counts(s, row["as_of_date"])` --
+  wrong column. `as_of_date` is the derive/anchor date; `snapshot_date` is
+  the actual `hist_rr` data date `_rr_flips` itself has always used. When
+  RR hasn't gotten a new file since the last derive (as_of_date=9/21 but
+  snapshot_date still 9/18, e.g. over a weekend), `hist_rr` has zero rows
+  dated 9/21, so the flip lookup silently matched nothing instead of
+  falling back to the last real reading. Fixed by adding `snapshot_date`
+  to the series query and using it instead of `as_of_date` for all three
+  `rr_flip_direction_counts` calls (latest, 3wk-ago, and the 13-week
+  series loop). Verified live: now correctly shows "0 bull − 3 bear" for
+  today (carrying forward Friday 9/18's real reading), not "0 and 0."
+
 ## 2026-09-21
+
+- **RR breadth tile: flip count -> directional longs/shorts net.** User:
+  "RR -> change it longs - shorts." Kept the earlier flip-count fix (still
+  avoids the original net-standing-position cancellation problem, e.g. USD
+  bullish + EUR/USD bearish on the same dollar move) but broke it into a
+  directional net, same shape as ETF/CALL: new `etl/derive_market_read.py::
+  rr_flip_direction_counts` counts how many symbols flipped TO bullish vs
+  TO bearish (not just the combined total), computed live per point in the
+  13-week series, no new stored column. Verified live: a real, varied
+  pattern (mid-August was clean bullish flips 4-0/3-0/2-0, September
+  shifted to bearish 0-2/0-4/0-3). `web/market_read.js`: RR moved from
+  `_MR_COUNT_UNIT` into `_MR_NET_BASED`/`_MR_NET_WORDS` and `_MR_BAR_CHART`
+  switched from `'delta'` to `'sign'` (a directional net can cross zero; a
+  plain count couldn't). Wording: user follow-up "BULLISH - BEARISH" —
+  RR uses `['bull', 'bear']`, not ETF/CALL's `['longs', 'shorts']`, since
+  RR's ~60 mixed instruments (indices, rates, FX, commodities) don't all
+  carry a long/short trading concept the way an equity list does. SSS/PS
+  are now the only tiles left on the plain-count path. Also removed the
+  "BREADTH — five independent lists, 13-week history, dot = latest"
+  subtitle line to save vertical space, per user request.
+
+- **RR breadth tile: line sparkline -> green/red bar chart.** User: "do
+  the same for RR -> add bar chart." Added to `_MR_BAR_CHART` with
+  `colorMode: 'delta'` (week-over-week direction), not `'sign'` — RR's
+  flip count is a plain count like SSS/PS, verified live to never go
+  negative (ranged 2-12 across the last 13 weeks), so a sign check would
+  always read green. All 5 breadth tiles are now bar charts; none are
+  left on the line sparkline.
+
+- **CALL breadth tile: line sparkline -> green/red bar chart.** User:
+  "add bar chart instead of line" (following independent verification of
+  CALL's turnover numbers). Added to `_MR_BAR_CHART` with `colorMode:
+  'sign'`, same treatment as ETF — CALL's turnover net genuinely crosses
+  zero (verified live: ranged from -11 to +37 across the last 13 weeks),
+  so green/red by actual sign is meaningful. RR keeps the line sparkline
+  (a plain flip count, not part of this ask).
+
+- **Breadth tiles: right-justified current/max readout.** User: "Show
+  current/Max right justified and take first two lines combined for
+  height." Tile layout restructured: header+delta now stack in a left
+  column (`.mr-tile-top` flex row), with a right-justified "current/max"
+  figure (e.g. "35/86") vertically centered against that same two-line
+  block — reuses `hero`/`max_13wk`, already computed, no new data.
+  Sparkline/bar chart unchanged, still full-width below the row. New CSS:
+  `.mr-tile-top/.mr-tile-left/.mr-tile-curmax`. Coloring iterated twice:
+  first matched the "vs max 13wk" delta segment (green only at/above the
+  exact high, which is rare so it read as almost-always-red); user: "Use
+  if the count is with in 20% of max, color it green else red" — final
+  rule is `hero >= max_13wk * 0.8` (`.mr-tile-curmax.up/.dn`).
+
+- **Breadth strip bars: hover tooltip shows the date + number.** User:
+  "bar hover/pop over should show the number." Native SVG `<title>` per
+  `<rect>` (`web/market_read.js::barSparkline`) — a real browser tooltip
+  on hover, no JS tooltip system needed. `api/routers/cockpit.py::
+  get_market_read` now also returns `series_dates` (ISO date per series
+  point) alongside `series` so the tooltip can show "MM/DD: value", not
+  just a bare number.
+
+- **Market Read breadth strip: fixed the "13-week history" claim to
+  actually be 13 weeks.** User: "i thought you are displaying 13 weeks of
+  data" — real bug, not just SSS: `drv_source_breadth` gets a new row on
+  every trading-day derive, so `ORDER BY as_of_date DESC LIMIT 13`
+  (all 5 sources) only ever covered ~19 calendar days (2.7 weeks), not 13.
+  It also silently mislabeled "vs 3wk ago" (`series[-4]` was really ~4
+  trading days back, not 3 weeks). Fixed in `api/routers/cockpit.py::
+  get_market_read` with `DISTINCT ON (DATE_TRUNC('week', as_of_date))` --
+  one row per calendar week, the latest day in each of the last 13 weeks
+  ("one bar per week," per user). Verified live: now spans 11.6 weeks
+  (`drv_source_breadth` itself only goes back to 2026-06-23, ~13 weeks
+  before today, so that's the real ceiling) with genuine week-to-week
+  variation restored (SSS: 80→77→68→86→67→66→73→75→86→79→61→35→35, not
+  the flat/repeated-value view the old daily-window query showed).
+  `series[-4]` now correctly means 3 real weeks ago. No frontend change
+  needed — `web/market_read.js` just renders whatever `series` it's given.
+
+- **SSS/ETF/PS breadth tiles: line sparkline -> green/red bar chart.**
+  User: "can you change line graph to green (+ve) and red (-ve) bar
+  graph." Bar heights still scaled min/max like the old line chart (so
+  week-to-week variation stays legible in a small sparkline), but color
+  now carries the +ve/-ve read: ETF (`web/market_read.js::barSparkline`,
+  `colorMode='sign'`) colors by the value's actual sign, since its net can
+  genuinely cross zero. SSS/PS (`colorMode='delta'`) are always-positive
+  counts — raw sign would always read "positive" and never show red — so
+  they're colored by week-over-week direction instead (green if higher
+  than the previous point, red if lower; the first point has no prior to
+  compare, shown neutral gray), per user confirmation. New CSS:
+  `.mr-bar-up/.mr-bar-dn/.mr-bar-flat` reuse the existing `--mr-bull/
+  --mr-bear/--mr-neu` tokens. RR/CALL keep the original line sparkline,
+  untouched.
 
 - **RR and CALL breadth tiles: replaced the "net" hero with a plain change
   count — flip count (RR) / turnover (CALL).** User: "for RR and CALL, is

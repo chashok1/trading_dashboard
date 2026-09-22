@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260921j">
+  <link rel="stylesheet" href="/static/styles.css?v=20260922a">
   <!-- dashboard styles live in /static/styles.css (shared with all pages) -->
 </head>
 <body class="dash-page">
@@ -303,21 +303,21 @@
                move commodities to col 3 below USD". -->
           <div class="macro-rail-col">
           <section class="cockpit-band rail-band" id="macroVolatilityBand">
-            <div class="msr-section-hdr">Volatility <span class="msr-breadth" id="macroBreadthVolatility"></span></div>
+            <div class="msr-section-hdr">Volatility</div>
             <div id="macroRailVolatility" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
           <!-- 2026-08-24 -- Rates & Duration moved here (col 1), below
                Volatility -- user: "move rates to col1 below volatility". -->
           <section class="cockpit-band rail-band" id="macroRatesBand">
-            <div class="msr-section-hdr">Rates &amp; Duration <span class="msr-breadth" id="macroBreadthRates"></span></div>
+            <div class="msr-section-hdr">Rates &amp; Duration</div>
             <div id="macroRailRates" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
           <!-- 2026-08-24 -- Credit moved here (col 1), below Rates &
                Duration -- user: "also credit to below rates". -->
           <section class="cockpit-band rail-band" id="macroCreditBand">
-            <div class="msr-section-hdr">Credit <span class="msr-breadth" id="macroBreadthCredit"></span></div>
+            <div class="msr-section-hdr">Credit</div>
             <div id="macroRailCredit" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
@@ -328,7 +328,7 @@
                "switch Commodities (Col2) and Sectors postitions (col5)". -->
           <div class="macro-rail-col">
           <section class="cockpit-band rail-band" id="macroTop9Band">
-            <div class="msr-section-hdr">Major Markets <span class="msr-breadth" id="macroBreadthTop9"></span></div>
+            <div class="msr-section-hdr">Major Markets</div>
             <div id="macroRailTop9" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
@@ -342,7 +342,7 @@
                sector cards after web/macro_areas.js's own rail render runs --
                both target by id, so this move needed no script change. -->
           <section class="cockpit-band rail-band" id="macroSectorEtfsBand">
-            <div class="msr-section-hdr">Sectors <span class="msr-breadth" id="macroBreadthSectorEtfs"></span></div>
+            <div class="msr-section-hdr">Sectors</div>
             <div id="macroRailSectorEtfs" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
@@ -350,12 +350,12 @@
 
           <div class="macro-rail-col">
           <section class="cockpit-band rail-band" id="macroUsdBand">
-            <div class="msr-section-hdr">USD &amp; Currency <span class="msr-breadth" id="macroBreadthUsd"></span></div>
+            <div class="msr-section-hdr">USD &amp; Currency</div>
             <div id="macroRailUsd" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
           <section class="cockpit-band rail-band" id="macroCountryBand">
-            <div class="msr-section-hdr">Country ETFs <span class="msr-breadth" id="macroBreadthCountry"></span></div>
+            <div class="msr-section-hdr">Country ETFs</div>
             <div id="macroRailCountry" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
           </div>
@@ -370,7 +370,7 @@
                panel, confirmed over the breadth-based right-rail one). -->
           <div class="macro-rail-col">
           <section class="cockpit-band rail-band" id="macroRemainingBand">
-            <div class="msr-section-hdr">Tech &amp; ETFs <span class="msr-breadth" id="macroBreadthRemaining"></span></div>
+            <div class="msr-section-hdr">Tech &amp; ETFs</div>
             <div id="macroRailRemaining" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
           </div>
@@ -380,7 +380,7 @@
                Sectors ETF panel (now col 2) -- user: "switch Commodities
                (Col2) and Sectors postitions (col5)". -->
           <section class="cockpit-band rail-band" id="macroCommoditiesBand">
-            <div class="msr-section-hdr">Commodities <span class="msr-breadth" id="macroBreadthCommodities"></span></div>
+            <div class="msr-section-hdr">Commodities</div>
             <div id="macroRailCommodities" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
 
@@ -388,7 +388,7 @@
                user: "move the crypto panel above to the col 5 under
                commodities panel." (Previously col 3, below USD & Currency.) -->
           <section class="cockpit-band rail-band" id="macroCryptoBand">
-            <div class="msr-section-hdr">Crypto <span class="msr-breadth" id="macroBreadthCrypto"></span></div>
+            <div class="msr-section-hdr">Crypto</div>
             <div id="macroRailCrypto" class="dash-macro-rail"><div class="msr-loading">Loading…</div></div>
           </section>
           </div>
@@ -943,7 +943,7 @@
        already does (web/actionable.html loads this same script for that).
        User: "add same click actions on the top graphs also." -->
   <script src="/static/chart_modal.js"></script>
-  <script src="/static/market_read.js?v=20260921j" defer></script>
+  <script src="/static/market_read.js?v=20260922b" defer></script>
   <!-- 2026-09-01 -- Cross-Asset Signals panel (#crossAssetPanel above), see
        web/cross_asset_panel.js's own header comment. -->
   <script src="/static/cross_asset_panel.js?v=20260916a" defer></script>
@@ -969,7 +969,7 @@
        the fix was genuinely in the file -- the browser was very likely
        still serving a stale cached copy across several same-session edits
        to this file. Bump the date suffix on any future edit here too. -->
-  <script src="/static/macro_areas.js?v=20260921a" defer></script>
+  <script src="/static/macro_areas.js?v=20260922e" defer></script>
   <!-- 2026-08-14 -- renders Dollar Correlation into #macroRailCorr/
        #usdCorrSideHdr above (see right-rail). Same script Actionable loads;
        its renderRail() populates by container ID regardless of page. Its

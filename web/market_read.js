@@ -113,6 +113,67 @@
     return cellMembers.map(function (m) { return m.symbol + ' ' + m.stance; }).join(' · ');
   }
 
+  // 2026-09-21, user-directed: "SSS/ETF/PS tiles -> can you change line
+  // graph to green (+ve) and red (-ve) bar graph" -- RR/CALL keep the line
+  // sparkline below, untouched. Bar heights still scaled min/max like the
+  // line chart (so week-to-week variation stays legible in this small a
+  // space), but color now carries the +ve/-ve read:
+  //   colorMode 'sign'  (ETF, net can genuinely go negative) -- green if
+  //     the value itself is >= 0, red if < 0.
+  //   colorMode 'delta' (SSS/PS, counts are always >= 0 so raw sign is
+  //     always "positive" and would never show red) -- green if this
+  //     point is higher than the previous one, red if lower, per user:
+  //     "color by week-over-week change."
+  // "MM/DD" from an ISO date string, same slicing convention used elsewhere
+  // (e.g. web/market_bar.js's tape date label).
+  function _mrShortDate(iso) {
+    return (iso && /^\d{4}-\d{2}-\d{2}/.test(iso)) ? iso.slice(5, 7) + '/' + iso.slice(8, 10) : '';
+  }
+
+  function barSparkline(series, colorMode, dates) {
+    var vals = (series || []).filter(function (v) { return v != null; });
+    if (vals.length < 2) return '';
+    var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+    var range = (max - min) || 1;
+    var w = 200, h = 34, pad = 3;
+    var n = series.length;
+    var barW = w / n;
+    var gap = Math.min(2, barW * 0.15);
+    var bars = '';
+    for (var i = 0; i < n; i++) {
+      var v = series[i];
+      if (v == null) continue;
+      var frac = (v - min) / range;
+      var barH = Math.max(1, frac * (h - 2 * pad));
+      var x = i * barW + gap / 2;
+      var bw = Math.max(1, barW - gap);
+      var y = h - pad - barH;
+      var cls;
+      if (colorMode === 'sign') {
+        cls = v >= 0 ? 'mr-bar-up' : 'mr-bar-dn';
+      } else {
+        var prev = i > 0 ? series[i - 1] : null;
+        cls = prev == null ? 'mr-bar-flat' : v > prev ? 'mr-bar-up' : v < prev ? 'mr-bar-dn' : 'mr-bar-flat';
+      }
+      // 2026-09-21, user-directed: "bar hover/pop over should show the
+      // number" -- native SVG <title> gives a real browser tooltip on
+      // hover, no JS tooltip system needed.
+      // 2026-09-22 follow-up, user-directed: "I need to see popover
+      // anywhere i hover on the bar even if the bar is so small" -- a
+      // near-zero bar leaves most of its column empty above it, so the
+      // <title> now lives on a full-column invisible hit rect
+      // (.mr-bar-hit), not the visible (possibly tiny) colored bar.
+      var dateStr = _mrShortDate(dates && dates[i]);
+      var tip = (dateStr ? dateStr + ': ' : '') + v;
+      var colX = i * barW;
+      bars += '<rect class="' + cls + '" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) +
+          '" width="' + bw.toFixed(1) + '" height="' + barH.toFixed(1) + '"></rect>' +
+        '<rect class="mr-bar-hit" x="' + colX.toFixed(1) + '" y="0" width="' + barW.toFixed(1) +
+          '" height="' + h + '"><title>' + esc(tip) + '</title></rect>';
+    }
+    return '<svg class="mr-spark mr-bar-spark" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none">' + bars + '</svg>';
+  }
+
   /* ---- inline SVG sparkline (mockup-shape: 2px line, dot on latest, zero line) ---- */
   function sparkline(series, hasZero) {
     var vals = (series || []).filter(function (v) { return v != null; });
@@ -142,24 +203,29 @@
   // own iteration order in api/routers/cockpit.py::get_market_read -- both
   // kept in sync since breadthTile just maps data.breadth in array order).
   var BREADTH_NAME = { SSS: 'SSS', ETF: 'ETF Pro', PS: 'PS', CALL: 'CALL', RR: 'RR macro board' };
-  // 2026-09-21 follow-up, user-directed: RR's "net" hero was actively
-  // unhelpful (mixes ~60 unrelated instruments into one score that can
-  // cancel itself out) -- switched to a plain flip count, same shape as
-  // SSS/PS ("locked", untouched). CALL's 30-day standing net was also
-  // unhelpful (barely moves day to day) -- first tried a plain turnover
-  // count, but user: "CALL needs to go back to longs vs shorts" -- so it
-  // keeps the ETF-style net-based shape, just recomputed over the
-  // trailing 5 days (etl/derive_market_read.py::call_turnover_counts)
-  // instead of the 30-day standing window, so it actually moves. See
-  // docs/migrations.md this date for the full discussion.
-  var _MR_NET_BASED = { ETF: 1, CALL: 1 };
+  // 2026-09-21 follow-up, user-directed: RR's original "net" hero was
+  // actively unhelpful (mixes ~60 unrelated instruments into one score
+  // that can cancel itself out) -- switched to a plain flip count first,
+  // then user: "RR -> change it longs - shorts" -- kept the flip-count
+  // fix (still avoids the cancellation problem) but broke it into a
+  // directional net (etl/derive_market_read.py::rr_flip_direction_counts:
+  // how many symbols flipped TO bullish vs TO bearish), same ETF/CALL
+  // shape. CALL's 30-day standing net was also unhelpful (barely moves
+  // day to day) -- first tried a plain turnover count, but user: "CALL
+  // needs to go back to longs vs shorts" -- so it keeps the ETF-style
+  // net-based shape too, just recomputed over the trailing 5 days
+  // (call_turnover_counts) instead of the 30-day standing window. SSS/PS
+  // are the only ones left on the plain-count path ("locked", untouched).
+  // See docs/migrations.md this date for the full discussion.
+  var _MR_NET_BASED = { ETF: 1, CALL: 1, RR: 1 };
   // Net-based sources: [bull-side word, bear-side word] for the header text.
-  var _MR_NET_WORDS = { ETF: ['longs', 'shorts'], CALL: ['longs', 'shorts'] };
+  // 2026-09-21, user-directed ("BULLISH - BEARISH"): RR's ~60 instruments
+  // (indices, rates, FX, commodities) don't all carry a "long/short"
+  // trading concept the way ETF/CALL's equity lists do -- bull/bear wording
+  // fits its own BULLISH/BEARISH outlook data better.
+  var _MR_NET_WORDS = { ETF: ['longs', 'shorts'], CALL: ['longs', 'shorts'], RR: ['bull', 'bear'] };
   // Single-sided count sources: unit text after the raw count.
-  var _MR_COUNT_UNIT = {
-    SSS: 'rows on list', PS: 'names on the ranked list',
-    RR: 'flipped today',
-  };
+  var _MR_COUNT_UNIT = { SSS: 'rows on list', PS: 'names on the ranked list' };
 
   // 2026-09-21, user-directed exact format:
   // "▼ -11 vs 3wk ago (46) · ▼ -44 vs max 13wk 79" -- both comparisons get
@@ -190,22 +256,48 @@
     return name + ' · ' + hero + (unit ? ' ' + unit : '');
   }
 
+  // SSS/PS are plain counts (never negative) -> color by week-over-week
+  // change. ETF/CALL/RR are all now directional nets that can genuinely
+  // cross zero (RR's flip direction: more flip-to-bullish than flip-to-
+  // bearish, or vice versa) -> color by sign.
+  var _MR_BAR_CHART = { SSS: 'delta', ETF: 'sign', PS: 'delta', CALL: 'sign', RR: 'sign' };
+
   function breadthTile(b) {
     var seg3wk = _mrDeltaSeg(b.delta_vs_3wk, '3wk ago (' + (b.prior_3wk != null ? b.prior_3wk : '—') + ')');
     var segMax = (b.hero != null && b.max_13wk != null)
       ? _mrDeltaSeg(b.hero - b.max_13wk, 'max 13wk ' + b.max_13wk) : '';
     var deltaLine = [seg3wk, segMax].filter(Boolean).join(' · ');
-    return '<div class="mr-tile"><div class="mr-tile-lbl">' + esc(_mrBreadthHeaderText(b)) + '</div>' +
-      '<div class="mr-tile-delta">' + deltaLine + '</div>' +
-      sparkline(b.series, !!_MR_NET_BASED[b.source_code]) + '</div>';
+    var barMode = _MR_BAR_CHART[b.source_code];
+    var chart = barMode ? barSparkline(b.series, barMode, b.series_dates) : sparkline(b.series, !!_MR_NET_BASED[b.source_code]);
+    // 2026-09-21, user-directed: "Show current/Max right justified and
+    // take first two lines combined for height" -- a right-justified
+    // "current/max" readout, vertically centered against the header+delta
+    // block (same flex row), chart still full-width below.
+    var curMax = '', curMaxCls = '';
+    if (b.hero != null && b.max_13wk != null) {
+      curMax = b.hero + '/' + b.max_13wk;
+      // 2026-09-21, user-directed: "Use if the count is with in 20% of
+      // max, color it green else red" -- was a strict >=max check (almost
+      // always red, since sitting exactly at the 13wk high is rare);
+      // now green within 20% of it.
+      curMaxCls = b.hero >= b.max_13wk * 0.8 ? 'up' : 'dn';
+    }
+    return '<div class="mr-tile">' +
+      '<div class="mr-tile-top">' +
+        '<div class="mr-tile-left">' +
+          '<div class="mr-tile-lbl">' + esc(_mrBreadthHeaderText(b)) + '</div>' +
+          '<div class="mr-tile-delta">' + deltaLine + '</div>' +
+        '</div>' +
+        (curMax ? '<div class="mr-tile-curmax ' + curMaxCls + '" title="current / max 13wk">' + esc(curMax) + '</div>' : '') +
+      '</div>' +
+      chart + '</div>';
   }
 
   function breadthStripHtml(data) {
     var tiles = (data.breadth || []).map(breadthTile).join('');
     var flipHtml = (data.flip_days || []).slice(0, 6)
       .map(function (f) { return '<b>' + f.date + ' (' + f.flips + ')</b>'; }).join(' · ');
-    return '<div class="mr-sub">BREADTH — five independent lists, 13-week history, dot = latest</div>' +
-      '<div class="mr-tiles">' + tiles + '</div>' +
+    return '<div class="mr-tiles">' + tiles + '</div>' +
       (flipHtml ? '<div class="mr-flipnote">RR flip days (≥09 outlook changes = regime-shift marker): ' + flipHtml + '</div>' : '');
   }
 
@@ -258,9 +350,7 @@
     var groups = data.groups || [];
     var leftGroups = groups.filter(function (g) { return _MR_LEFT_COL_GROUPS.indexOf(g.label) !== -1; });
     var rightGroups = groups.filter(function (g) { return _MR_LEFT_COL_GROUPS.indexOf(g.label) === -1; });
-    return '<div class="mr-sub">THEMES — what each list says, the vote, the Quad playbook, and your exposure. ' +
-      'Click a theme to see its symbols in the macro panels below.</div>' +
-      '<div class="mr-grid-2col">' +
+    return '<div class="mr-grid-2col">' +
       _themeGridColHtml(leftGroups, byTheme) +
       _themeGridColHtml(rightGroups, byTheme) +
       '</div>';

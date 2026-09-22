@@ -1554,40 +1554,54 @@ def get_market_read(date: Optional[str] = Query(None)):
         # treats CALL like ETF, net = n_bull - n_bear -- it just wasn't
         # surfaced here before).
         #
-        # 2026-09-21 follow-up, user-directed: RR's and CALL's "net" hero
-        # number turned out to be actively unhelpful for different reasons
-        # (see docs/migrations.md this date for the full discussion) -- RR
-        # mixes ~60 unrelated instruments into one score that can cancel
-        # itself out (e.g. USD bullish + EUR/USD bearish, same dollar move,
-        # opposite raw labels), and CALL's 30-day standing net barely moves
-        # day to day since it's dominated by a large unchanged base.
-        # SSS/ETF/PS are explicitly "locked" -- untouched. RR now shows flip
-        # count (how many symbols changed outlook -- already computed,
-        # drv_source_breadth.flips_vs_prior, the same number behind the
-        # "regime-shift marker" flip-days note below). CALL keeps the
-        # longs/shorts shape ETF has ("CALL needs to go back to longs vs
-        # shorts") but recomputed over the trailing 5 days
+        # 2026-09-21 follow-up, user-directed: CALL's 30-day standing net
+        # turned out to be actively unhelpful -- it barely moves day to day
+        # since it's dominated by a large unchanged base (see
+        # docs/migrations.md this date for the full discussion). SSS/ETF/PS
+        # are explicitly "locked" -- untouched. CALL keeps the longs/shorts
+        # shape ETF has ("CALL needs to go back to longs vs shorts") but
+        # recomputed over the trailing 5 days
         # (etl/derive_market_read.py::call_turnover_counts) instead of the
         # 30-day standing window, so it actually moves day to day.
+        #
+        # 2026-09-22, user-directed final call on RR ("There should be more
+        # bullish (20) and 22 bearish"): after trying a flip-count and then
+        # a flip-direction net (both explored to dodge RR's ~52-instrument
+        # cancellation problem, e.g. USD bullish + EUR/USD bearish being the
+        # same dollar move with opposite raw labels), the user confirmed
+        # they actually want the plain STANDING bull/bear snapshot -- same
+        # shape as ETF, already computed and stored on drv_source_breadth
+        # by _rr_bull_bear_counts (etl/derive_market_read.py), never touched
+        # by the flip-metric experiments above. Showing both raw counts
+        # (not a collapsed net) means the cancellation is visible, not
+        # hidden, so this is an accepted tradeoff.
+        # 2026-09-21, user-directed: "i thought you are displaying 13 weeks
+        # of data" -- caught a real bug. drv_source_breadth gets a new row
+        # per TRADING DAY (every derive), so a bare `ORDER BY as_of_date
+        # DESC LIMIT 13` only ever covered ~19 calendar days (2.7 weeks),
+        # not 13 -- for every source, not just weekly ones. Also silently
+        # mislabeled "3wk ago" (series[-4] was really ~4 trading days back).
+        # Fixed by bucketing into calendar weeks and taking the latest row
+        # in each of the last 13 weeks ("one bar per week") -- table only
+        # goes back to 2026-06-23 (~13 weeks before today), just enough.
         from etl.derive_market_read import call_turnover_counts
         breadth = []
         for source_code in ("SSS", "ETF", "PS", "CALL", "RR"):
-            series = s.execute(text(
-                "SELECT as_of_date, n_bull, n_bear, n_total, net, flips_vs_prior "
-                "FROM drv_source_breadth "
-                "WHERE source_code = :sc AND as_of_date <= :d ORDER BY as_of_date DESC LIMIT 13"
-            ), {"sc": source_code, "d": d}).mappings().all()
+            series = s.execute(text("""
+                SELECT DISTINCT ON (DATE_TRUNC('week', as_of_date))
+                    as_of_date, snapshot_date, n_bull, n_bear, n_total, net, flips_vs_prior
+                FROM drv_source_breadth
+                WHERE source_code = :sc AND as_of_date <= :d
+                ORDER BY DATE_TRUNC('week', as_of_date) DESC, as_of_date DESC
+                LIMIT 13
+            """), {"sc": source_code, "d": d}).mappings().all()
             series = list(reversed(series))
             latest = series[-1] if series else None
             three_wk_ago = series[-4] if len(series) >= 4 else (series[0] if series else None)
             n_bull = latest["n_bull"] if latest else None
             n_bear = latest["n_bear"] if latest else None
 
-            if source_code == "RR":
-                hero = latest["flips_vs_prior"] if latest else None
-                prior_hero = three_wk_ago["flips_vs_prior"] if three_wk_ago else None
-                series_vals = [r["flips_vs_prior"] for r in series]
-            elif source_code == "CALL":
+            if source_code == "CALL":
                 latest_to = call_turnover_counts(s, latest["as_of_date"]) if latest else None
                 prior_to = call_turnover_counts(s, three_wk_ago["as_of_date"]) if three_wk_ago else None
                 n_bull = latest_to["n_bull"] if latest_to else None
@@ -1599,7 +1613,7 @@ def get_market_read(date: Optional[str] = Query(None)):
                     to = call_turnover_counts(s, r["as_of_date"])
                     series_vals.append(to["n_bull"] - to["n_bear"])
             else:
-                net_based = source_code == "ETF"
+                net_based = source_code in ("ETF", "RR")
                 hero = (latest["net"] if net_based else latest["n_total"]) if latest else None
                 prior_hero = (three_wk_ago["net"] if net_based else three_wk_ago["n_total"]) \
                     if three_wk_ago else None
@@ -1618,6 +1632,10 @@ def get_market_read(date: Optional[str] = Query(None)):
                 "prior_3wk": prior_hero,
                 "max_13wk": max_13wk,
                 "series": series_vals,
+                # 2026-09-21, user-directed: "bar hover/pop over should show
+                # the number" -- dates alongside series so the frontend can
+                # label each bar's tooltip, not just show a bare number.
+                "series_dates": [r["as_of_date"].isoformat() for r in series],
             })
 
         flip_rows = s.execute(text(

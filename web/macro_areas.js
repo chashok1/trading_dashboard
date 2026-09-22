@@ -632,36 +632,6 @@
     remaining:           'macroRailRemaining',
   };
 
-  // Section-header breadth summary (↑n ↓n), TASK_116 — one id per area_key
-  // that has a rail container (Sectors excluded; it keeps its own
-  // leaders/laggards summary instead).
-  var _AREA_BREADTH_ID = {
-    volatility:          'macroBreadthVolatility',
-    top9:                'macroBreadthTop9',
-    rates_duration:      'macroBreadthRates',
-    credit:              'macroBreadthCredit',
-    commodities_credit:  'macroBreadthCommodities',
-    usd_currency:        'macroBreadthUsd',
-    country_etfs:        'macroBreadthCountry',
-    crypto:               'macroBreadthCrypto',
-    sector_etfs:         'macroBreadthSectorEtfs',
-    remaining:           'macroBreadthRemaining',
-  };
-
-  function _breadthHtml(area) {
-    var members = area.members || [];
-    var up = 0, down = 0;
-    members.forEach(function (m) {
-      if (m.pct_change === null || m.pct_change === undefined) return;
-      var n = Number(m.pct_change);
-      if (n > 0) up++;
-      else if (n < 0) down++;
-    });
-    if (!up && !down) return '';
-    return '<span class="msr-breadth-up">&#8593;' + up + '</span> ' +
-           '<span class="msr-breadth-down">&#8595;' + down + '</span>';
-  }
-
   function renderRail(data) {
     var areas = (data && data.areas) || [];
     var byContainer = {};
@@ -669,10 +639,6 @@
       var containerId = _AREA_CONTAINER_ID[area.area_key];
       if (!containerId) return;
       byContainer[containerId] = (byContainer[containerId] || '') + railAreaRow(area);
-
-      var breadthId = _AREA_BREADTH_ID[area.area_key];
-      var breadthEl = breadthId && document.getElementById(breadthId);
-      if (breadthEl) breadthEl.innerHTML = _breadthHtml(area);
     });
 
     Object.keys(_AREA_CONTAINER_ID).forEach(function (key) {
