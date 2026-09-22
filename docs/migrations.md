@@ -6,6 +6,41 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ## 2026-09-21
 
+- **RR and CALL breadth tiles: replaced the "net" hero with a plain change
+  count — flip count (RR) / turnover (CALL).** User: "for RR and CALL, is
+  there any other way to represent the changes in those tiles? they are
+  not helpful. SSS/ETF/PS tiles are good. We can lock them." Investigated
+  a `ref_rrt` category-breakdown alternative first (categorize RR's ~62
+  symbols by asset class, show a per-category net) — dropped it after two
+  findings: (1) only ~20% of RR's symbols (Credit/Crypto/Rates/FX) actually
+  move together as a group; the other 80% (Sector ETFs, Single Stocks,
+  Commodity, Equity Index) are idiosyncratic, so categorizing them buys
+  nothing, and (2) even within "coordinated" categories, a naive net sum
+  is actively wrong, not just noisy — verified live that USD is inverse to
+  EUR/USD (39% opposite-label days vs 3% same-label) and GBP/USD & CAD/USD
+  lean the same way, so a dollar-strength day would show up as bullish
+  USD + bearish EUR/USD canceling to ~zero net instead of reinforcing.
+  Recommendation instead: show **how much is changing**, not **what the
+  net position is** — neither number has a cancel-out risk, since both
+  just count "did something change," not direction.
+  - **RR**: hero is now flip count (`drv_source_breadth.flips_vs_prior`,
+    already computed for the existing "regime-shift marker" flip-days
+    note — no new derive logic). "RR macro board · 7 flipped today."
+  - **CALL**: first tried a plain turnover total ("CALL · 12 new in last 5
+    days"), then user: "CALL needs to go back to longs vs shorts" — kept
+    the turnover fix (still recomputed over the trailing 5 days, not the
+    30-day standing window that barely moves) but restored the ETF-style
+    net-based shape: `etl/derive_market_read.py::call_turnover_counts`
+    dedups per symbol to its most recent row in the 5-day window (same
+    pattern as `_call_window_counts`) and returns the bull/bear/neutral
+    breakdown, computed live per point in the 13-week series. Hero =
+    n_bull − n_bear of that window. "CALL (-8) · 30 longs − 38 shorts"
+    (verified live), vs. the old 30-day standing net that barely moved.
+  - SSS/ETF/PS tiles untouched, per "lock them." `web/market_read.js`:
+    `_MR_NET_BASED` now contains ETF and CALL (RR is the only one on the
+    plain-count/no-zero-line path, since flip count is never negative);
+    `_MR_COUNT_UNIT` has RR's unit text only.
+
 - **Root-caused and fixed the stray drv_quote anchor bug from earlier
   today.** User: "why there is a stray quote in drv_quote in the first
   place?" -- traced precisely: every legitimate derive trigger

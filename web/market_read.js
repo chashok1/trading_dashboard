@@ -142,11 +142,24 @@
   // own iteration order in api/routers/cockpit.py::get_market_read -- both
   // kept in sync since breadthTile just maps data.breadth in array order).
   var BREADTH_NAME = { SSS: 'SSS', ETF: 'ETF Pro', PS: 'PS', CALL: 'CALL', RR: 'RR macro board' };
-  var _MR_NET_BASED = { RR: 1, ETF: 1, CALL: 1 };
+  // 2026-09-21 follow-up, user-directed: RR's "net" hero was actively
+  // unhelpful (mixes ~60 unrelated instruments into one score that can
+  // cancel itself out) -- switched to a plain flip count, same shape as
+  // SSS/PS ("locked", untouched). CALL's 30-day standing net was also
+  // unhelpful (barely moves day to day) -- first tried a plain turnover
+  // count, but user: "CALL needs to go back to longs vs shorts" -- so it
+  // keeps the ETF-style net-based shape, just recomputed over the
+  // trailing 5 days (etl/derive_market_read.py::call_turnover_counts)
+  // instead of the 30-day standing window, so it actually moves. See
+  // docs/migrations.md this date for the full discussion.
+  var _MR_NET_BASED = { ETF: 1, CALL: 1 };
   // Net-based sources: [bull-side word, bear-side word] for the header text.
-  var _MR_NET_WORDS = { RR: ['bull', 'bear'], ETF: ['longs', 'shorts'], CALL: ['longs', 'shorts'] };
+  var _MR_NET_WORDS = { ETF: ['longs', 'shorts'], CALL: ['longs', 'shorts'] };
   // Single-sided count sources: unit text after the raw count.
-  var _MR_COUNT_UNIT = { SSS: 'rows on list', PS: 'names on the ranked list' };
+  var _MR_COUNT_UNIT = {
+    SSS: 'rows on list', PS: 'names on the ranked list',
+    RR: 'flipped today',
+  };
 
   // 2026-09-21, user-directed exact format:
   // "▼ -11 vs 3wk ago (46) · ▼ -44 vs max 13wk 79" -- both comparisons get

@@ -167,6 +167,35 @@ def _call_window_counts(session: Session, as_of_date: date, lookback_days: int) 
     return latest_date, {"n_bull": n_bull, "n_bear": n_bear, "n_neutral": n_neu}
 
 
+def call_turnover_counts(session: Session, as_of_date: date, window_days: int = 5) -> dict:
+    """CALL's 30-day standing net barely moves day to day -- it's dominated
+    by a large, mostly-unchanged base of old standing calls, so it's not a
+    useful "what's happening" number (user: "the previous ones are really
+    doesn't matter... what do you suggest" -> "show turnover, not the
+    standing net" -> "CALL needs to go back to longs vs shorts"). Same
+    dedup pattern as _call_window_counts (a symbol updated more than once
+    in the window is counted once, by its most recent row), just over the
+    trailing `window_days` (default 5, matching RTA/SSSCHG/MACROSHOW's
+    existing sparse-window convention) instead of the 30-day standing
+    window -- i.e. what's actually new/updated right now, broken into
+    longs/shorts like ETF's tile, not the full standing universe."""
+    ceiling = position_ceiling(session, as_of_date)
+    cutoff = ceiling - timedelta(days=window_days)
+    rows = session.execute(text("""
+        SELECT outlook, COUNT(*) AS c FROM (
+            SELECT DISTINCT ON (symbol) symbol, outlook
+            FROM hist_call
+            WHERE snapshot_date <= :ceil AND snapshot_date >= :cutoff
+            ORDER BY symbol, snapshot_date DESC
+        ) latest
+        GROUP BY outlook
+    """), {"ceil": ceiling, "cutoff": cutoff}).fetchall()
+    n_bull = sum(c for o, c in rows if (o or "").upper() == "BULLISH")
+    n_bear = sum(c for o, c in rows if (o or "").upper() == "BEARISH")
+    n_neu = sum(c for o, c in rows if (o or "").upper() == "NEUTRAL")
+    return {"n_bull": n_bull, "n_bear": n_bear, "n_neutral": n_neu}
+
+
 def _rr_flips(session: Session, d: date) -> Optional[int]:
     """Symbols whose RR outlook on d differs from the prior RR snapshot."""
     prior = session.execute(text(

@@ -1553,20 +1553,58 @@ def get_market_read(date: Optional[str] = Query(None)):
         # (drv_source_breadth already computes it -- etl/derive_market_read.py
         # treats CALL like ETF, net = n_bull - n_bear -- it just wasn't
         # surfaced here before).
+        #
+        # 2026-09-21 follow-up, user-directed: RR's and CALL's "net" hero
+        # number turned out to be actively unhelpful for different reasons
+        # (see docs/migrations.md this date for the full discussion) -- RR
+        # mixes ~60 unrelated instruments into one score that can cancel
+        # itself out (e.g. USD bullish + EUR/USD bearish, same dollar move,
+        # opposite raw labels), and CALL's 30-day standing net barely moves
+        # day to day since it's dominated by a large unchanged base.
+        # SSS/ETF/PS are explicitly "locked" -- untouched. RR now shows flip
+        # count (how many symbols changed outlook -- already computed,
+        # drv_source_breadth.flips_vs_prior, the same number behind the
+        # "regime-shift marker" flip-days note below). CALL keeps the
+        # longs/shorts shape ETF has ("CALL needs to go back to longs vs
+        # shorts") but recomputed over the trailing 5 days
+        # (etl/derive_market_read.py::call_turnover_counts) instead of the
+        # 30-day standing window, so it actually moves day to day.
+        from etl.derive_market_read import call_turnover_counts
         breadth = []
         for source_code in ("SSS", "ETF", "PS", "CALL", "RR"):
             series = s.execute(text(
-                "SELECT as_of_date, n_bull, n_bear, n_total, net FROM drv_source_breadth "
+                "SELECT as_of_date, n_bull, n_bear, n_total, net, flips_vs_prior "
+                "FROM drv_source_breadth "
                 "WHERE source_code = :sc AND as_of_date <= :d ORDER BY as_of_date DESC LIMIT 13"
             ), {"sc": source_code, "d": d}).mappings().all()
             series = list(reversed(series))
             latest = series[-1] if series else None
             three_wk_ago = series[-4] if len(series) >= 4 else (series[0] if series else None)
-            net_based = source_code in ("RR", "ETF", "CALL")
-            hero = (latest["net"] if net_based else latest["n_total"]) if latest else None
-            prior_hero = (three_wk_ago["net"] if net_based else three_wk_ago["n_total"]) \
-                if three_wk_ago else None
-            series_vals = [r["net"] if net_based else r["n_total"] for r in series]
+            n_bull = latest["n_bull"] if latest else None
+            n_bear = latest["n_bear"] if latest else None
+
+            if source_code == "RR":
+                hero = latest["flips_vs_prior"] if latest else None
+                prior_hero = three_wk_ago["flips_vs_prior"] if three_wk_ago else None
+                series_vals = [r["flips_vs_prior"] for r in series]
+            elif source_code == "CALL":
+                latest_to = call_turnover_counts(s, latest["as_of_date"]) if latest else None
+                prior_to = call_turnover_counts(s, three_wk_ago["as_of_date"]) if three_wk_ago else None
+                n_bull = latest_to["n_bull"] if latest_to else None
+                n_bear = latest_to["n_bear"] if latest_to else None
+                hero = (n_bull - n_bear) if latest_to else None
+                prior_hero = (prior_to["n_bull"] - prior_to["n_bear"]) if prior_to else None
+                series_vals = []
+                for r in series:
+                    to = call_turnover_counts(s, r["as_of_date"])
+                    series_vals.append(to["n_bull"] - to["n_bear"])
+            else:
+                net_based = source_code == "ETF"
+                hero = (latest["net"] if net_based else latest["n_total"]) if latest else None
+                prior_hero = (three_wk_ago["net"] if net_based else three_wk_ago["n_total"]) \
+                    if three_wk_ago else None
+                series_vals = [r["net"] if net_based else r["n_total"] for r in series]
+
             # 2026-09-21, user-directed: "in addition to 3wk ago, use max
             # numbers that were present for that source" -- max over this
             # same 13-week window (no extra query, already fetched above).
@@ -1574,8 +1612,8 @@ def get_market_read(date: Optional[str] = Query(None)):
             breadth.append({
                 "source_code": source_code,
                 "hero": hero,
-                "n_bull": latest["n_bull"] if latest else None,
-                "n_bear": latest["n_bear"] if latest else None,
+                "n_bull": n_bull,
+                "n_bear": n_bear,
                 "delta_vs_3wk": (hero - prior_hero) if (hero is not None and prior_hero is not None) else None,
                 "prior_3wk": prior_hero,
                 "max_13wk": max_13wk,
