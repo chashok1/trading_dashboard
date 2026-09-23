@@ -83,6 +83,22 @@ SSS_SECTOR_TO_THEME = {
     "Small Caps": "Small caps",
 }
 
+# 2026-09-23, user-directed ("isn't retail and restaurants tied to XLY?"):
+# api/routers/cockpit.py's single-ticker chip narrowing (option 3 from "is
+# there a better way to represent this for all sectors in SS?") matches an
+# SSS sector name directly against ref_symbol_theme.quad_sub_category
+# (GICS sector names) -- exact for Financials/Industrials, but Retail and
+# Restaurants are Hedgeye sub-industry labels, not GICS sector names, so
+# they never matched even though both genuinely sit inside the GICS
+# Consumer Discretionary sector (XLY's own quad_sub_category within
+# Cyclicals). This alias resolves that sub-industry -> GICS-sector name gap;
+# sectors not listed here fall back to matching their own name unchanged
+# (Financials/Industrials still need no entry).
+SSS_SECTOR_TO_SUBCAT = {
+    "Retail": "Consumer Discretionary",
+    "Restaurants": "Consumer Discretionary",
+}
+
 
 # ---------------------------------------------------------------------------
 # drv_source_breadth
@@ -468,10 +484,17 @@ def _derive_theme_stance_impl(session: Session, as_of_date: date, run_id) -> int
     quad_stance_map = compute_quad_monthly_stance(session, as_of_date)
 
     # trend_1w/4w: compare today's stance to the stance 5/20 anchor dates ago.
+    # 2026-09-22 bugfix: this table stores one row per THEME per date (~22
+    # rows/day), so an OFFSET without DISTINCT skips rows, not days --
+    # offsets 4 and 19 both landed inside the very next earlier day's block
+    # of ~22 rows, making "1w" and "4w" both actually compare to just 1
+    # trading day back. User: "why all 1W/4w showing -> arrows" (every
+    # theme reads "flat" because almost nothing changes stance in a single
+    # day). DISTINCT makes the offset count trading days as intended.
     prior_stances = {}
     for label, back in (("1w", 5), ("4w", 20)):
         prior_date = session.execute(text(
-            "SELECT as_of_date FROM drv_theme_stance WHERE as_of_date < :d "
+            "SELECT DISTINCT as_of_date FROM drv_theme_stance WHERE as_of_date < :d "
             "ORDER BY as_of_date DESC OFFSET :off LIMIT 1"
         ), {"d": as_of_date, "off": back - 1}).scalar()
         prior_stances[label] = {}

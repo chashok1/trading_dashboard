@@ -251,7 +251,16 @@ INSERT INTO ref_gauge_transmission (gauge_key, axis, category) VALUES
     ('jpy_carry_unwind',      'style',  'Small Caps'),
     ('breadth_deteriorating', 'style',  'High Beta'),
     ('breadth_deteriorating', 'style',  'Momentum'),
-    ('gold_vol_elevated',     'asset_class', 'Gold')
+    ('gold_vol_elevated',     'asset_class', 'Gold'),
+    -- 2026-09-22 -- curve flattening/inversion squeezes bank net interest
+    -- margin (long-end lending rate minus short-end deposit/borrowing
+    -- rate) directly, on top of its usual role as a recession leading
+    -- indicator -- Financials is the sector most exposed to this
+    -- specifically (unlike credit_stress/credit_leads_equity above, which
+    -- are a broader risk-appetite signal). User: "I think financials are
+    -- most affected [by curve inversion/flattening]."
+    ('curve_inverting',       'sector', 'Financials'),
+    ('3m10y_inverted',        'sector', 'Financials')
 ON CONFLICT (gauge_key, axis, category) DO NOTHING;
 
 -- ---------------------------------------------------------------------------

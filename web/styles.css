@@ -1793,13 +1793,40 @@ svg.rr-candle {
 /* ── TASK_85: Macro side rail ────────────────────────────────────────── */
 /* Rail section header */
 .msr-section-hdr {
-  font-size: 9px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.5px; color: var(--text-2, #666);
-  padding: 4px 8px 2px; border-bottom: 1px solid var(--border, #ececec);
+  font-size: 7.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.4px; color: var(--text-2, #666);
+  padding: 2px 8px; border-bottom: 1px solid var(--border, #ececec);
   background: #f4f4f8; display: flex; align-items: center; gap: 6px;
 }
 .msr-legend { font-size: 9px; font-weight: 400; text-transform: none;
               letter-spacing: 0; color: #888; margin-left: auto; }
+/* Sectors (Signal Strength) header legend -- explains the member-pill dot
+   colors (ranked/bench/km), the $ held/P&L marker, and the actionable
+   outline (see memberListHtml, web/market_read.js). No margin-left:auto of
+   its own -- sits right after the title; the collapse button's own
+   margin-left:auto (.msr-sort-btn) still pushes IT to the bar's far right. */
+.mr-sect-legend { font-size: 9px; font-weight: 400; text-transform: none;
+                  letter-spacing: 0; color: #888; }
+.mr-sect-legend .mr-mem-dot { margin: 0 3px 0 6px; vertical-align: middle; }
+.mr-sect-legend .mr-mem-dot:first-child { margin-left: 0; }
+/* 2026-09-22, user-directed: "remove [the 'Total: rows N · books N' line]
+   ... add number of rows to the 'Sectors (Signal Strength)' header bar at
+   the end right justified" -- margin-left:auto absorbs the header row's
+   leftover space (same trick .msr-sort-btn uses); the collapse button
+   simply follows it, both ending up flush right together. Populated by
+   web/market_read.js::renderSectors(). */
+.mr-sect-total { margin-left: auto; font-size: 9px; font-weight: 400; color: #888; }
+/* Per-panel member sort toggle (top-right of .msr-section-hdr) -- cycles
+   default/biggest-movers/%chg-ascending, see .msr-sort-btn click handler
+   in web/macro_areas.js. margin-left:auto pushes it flush right when no
+   .msr-legend is present in the same header (none of these headers have
+   one today); if a header ever gains both, the sort button — added second
+   in markup — simply lands to the legend's right instead. */
+.msr-sort-btn {
+  margin-left: auto; border: none; background: transparent; cursor: pointer;
+  font-size: 10px; line-height: 1; color: var(--text-2, #666); padding: 1px 2px;
+}
+.msr-sort-btn:hover { color: var(--text-1, #222); }
 .msr-legend-up   { color: #166534; }
 .msr-legend-down { color: #991b1b; }
 /* Per-area row — ~18px target height (TASK_116: candle + Td/Tn + range bar
@@ -3439,24 +3466,73 @@ table.fs-table tr.fs-clickable:hover td { background: var(--act-sell-bg); }
 .fit-none { color: var(--text-3); }
 .fit-mixed { color: var(--mr-warn); }
 
-.mr-sect { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 5px; }
-.mr-sm { border: 1px solid var(--border); border-radius: 6px; padding: 4px 7px; background: var(--card-bg); }
-.mr-sm-divergence { border-color: var(--mr-warn); }
-.mr-sm-name { font-size: 10px; margin-bottom: 2px; }
-.mr-sm-two { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 2px 0; }
-.mr-k { font-size: 8px; color: var(--text-3); text-transform: uppercase; letter-spacing: .03em; }
-.mr-v { font-size: 12px; font-weight: 600; }
-.mr-v small { font-size: 8px; font-weight: 400; color: var(--text-3); display: block; }
-.mr-tier { display: flex; height: 4px; border-radius: 3px; overflow: hidden; gap: 2px; margin: 2px 0; }
-.mr-tier span { display: block; height: 100%; }
-.mr-tier-r { background: var(--mr-bull); } .mr-tier-b { background: #9ca3af; }
-.mr-tier-k { background: #d1d5db; } .mr-tier-e { background: var(--border); }
-.mr-sm-meta { font-size: 9px; color: var(--text-2); }
+/* 2026-09-22, user-directed: tiles widened 120px->170px min ("increase the
+   width of each tile for best fit" -- less wrapping on the meta line's
+   long "top: X N · N% avg · Nd · you $N · rows down book flat/up split"
+   text); container capped to fit 3 rows before scrolling ("make it 3 rows
+   instead of 2"), not the unbounded natural-height treatment the rail
+   panels below it use -- 17 sectors at full height would make this section
+   very tall. #marketReadSectorCards is a .dash-macro-rail (default
+   max-height:150px, web/index.html), overridden here instead of alongside
+   the rail-panel max-height exceptions above since this is a Market Read
+   card grid, not a rail panel. */
+#marketReadSectorCards.dash-macro-rail { max-height: 420px; }
+/* 2026-09-22, user-directed: "can they dynamically be arranged to occupy
+   less space?" -> CSS multi-column instead of grid -- a short card no
+   longer leaves blank space in its row (grid's align-items:start still hit
+   this: every card in the same ROW shared that row's height, a 1-member
+   card next to Software's 13-member card just left empty space below it,
+   nothing filled it). Multi-column truly packs -- the next card starts
+   right where the previous one in that column ended. Reading order becomes
+   column-major (top-to-bottom down column 1, then column 2, ...) instead
+   of row-major left-to-right -- accepted tradeoff, no JS masonry needed. */
+.mr-sect { column-width: 170px; column-gap: 5px; }
+.mr-sm { border: 1px solid var(--border); border-radius: 6px; padding: 4px 7px; background: var(--card-bg);
+  break-inside: avoid; margin-bottom: 5px; }
+/* 2026-09-22/23, user-directed layout rework: sector name + tickers
+   (chips) grouped together on the left, current/max-13wk badge right-
+   justified via flex space-between between just those two groups, bar
+   chart directly below, book/tier-bar unchanged below that -- see
+   sectorCardHtml (web/market_read.js). */
+.mr-sm-name { font-size: 10px; margin-bottom: 2px; display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.mr-sm-name-left { display: inline-flex; align-items: center; gap: 3px; flex-wrap: wrap; min-width: 0; }
+/* Full SS membership list, sorted ranked -> bench -> km (api/routers/
+   cockpit.py's members field), each pill:
+   - leading dot = kind (blue/violet/teal -- deliberately not green/gray,
+     those are reserved below for P&L and actionable)
+   - outline = green if this symbol currently has a live drv_actionable
+     recommendation, gray otherwise
+   - trailing "$" = shown only if held, green/red by unrealized gain/loss
+   Full detail (kind+rank, held $ + P&L, action) in the native title
+   popover -- see memberListHtml (web/market_read.js). */
+.mr-sm-members { margin: 3px 0; display: flex; flex-wrap: wrap; gap: 3px; }
+/* 2026-09-23, user-directed: "increase the border width" -- 1px -> 2px,
+   then "make it 1.5px". */
+.mr-mem { font-size: 8px; padding: 1px 4px; border-radius: 3px; border: 1.5px solid var(--border);
+  display: inline-flex; align-items: center; gap: 3px; cursor: default; }
+/* 2026-09-23, user-directed: "pill border green if actionable add, red if
+   reduce" -- was a single green/gray actionable-or-not outline; now buy vs
+   sell vs neutral (see _actionSide, web/market_read.js). */
+.mr-mem-buy { border-color: var(--mr-bull); }
+.mr-mem-sell { border-color: var(--mr-bear); }
+.mr-mem-noact { border-color: var(--border); }
+.mr-mem-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+.mr-mem-dot-ranked { background: #3b82f6; }
+.mr-mem-dot-bench { background: #8b5cf6; }
+/* 2026-09-23, user-directed: "change the color of KM from green to
+   something else" -- teal (#14b8a6) read as green-ish; amber instead,
+   distinct from ranked/bench/buy(green)/sell(red)/neutral(gray). */
+.mr-mem-dot-km { background: #f59e0b; }
+.mr-mem-dot-other { background: var(--border); }
+.mr-mem-pct { font-weight: 700; }
+.mr-mem-pct.up { color: var(--mr-bull); }
+.mr-mem-pct.dn { color: var(--mr-bear); }
+.mr-mem-dollar { font-weight: 700; }
+.mr-mem-dollar.up { color: var(--mr-bull); }
+.mr-mem-dollar.dn { color: var(--mr-bear); }
 .mr-chip { font-size: 8px; padding: 1px 3px; border-radius: 3px; border: 1px solid var(--border); color: var(--text-2); }
 .mr-chip.b { border-color: var(--mr-bull); color: var(--mr-bull); }
 .mr-chip.s { border-color: var(--mr-bear); color: var(--mr-bear); }
-.mr-ins { background: var(--mr-warn-bg); border-left: 3px solid var(--mr-warn); padding: 4px 7px;
-  border-radius: 4px; margin: 3px 0 7px; font-size: 10px; }
 
 /* Rail-expand highlight (theme row click -> #macroRailsWrap shown, matching
    band flashes briefly so the user can find it among the 9 panels). */

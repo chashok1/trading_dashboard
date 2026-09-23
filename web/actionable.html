@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Actionable Stocks — Trading Dashboard</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="/static/styles.css?v=20260922a">
+  <link rel="stylesheet" href="/static/styles.css?v=20260923f">
   <!-- Chart.js CDN tag REMOVED (2026-09-01) -- was loaded solely for the
        Portfolio Mix panel's pie charts (web/portfolio_mix.js), gone along
        with the rest of the side panel ("remove the side panel from
@@ -105,9 +105,6 @@
     .act-chip-hold     { border-left: 4px solid var(--act-neutral); }
     .act-chip-none     { border-left: 4px solid #c4c4c4; }
     .act-chip-over_max { border-left: 4px solid var(--act-sell-weak); }
-    .act-chip-stop     { border-left: 4px solid #dc2626; }
-    .act-chip-group-sell { border-left: 4px solid var(--act-sell-strong); font-weight: 700; }
-    .act-chip-group-buy  { border-left: 4px solid var(--act-buy); font-weight: 700; }
 
     /* TASK_119: stop-breach row + pill */
     tr.row-stop-breach { border-left: 3px solid #dc2626; }
@@ -1392,8 +1389,6 @@
             <button id="quadQ3Btn" data-quad="3" data-tip="Favorable for Quad 3">Q3</button>
             <button id="quadQ4Btn" data-quad="4" data-tip="Favorable for Quad 4">Q4</button>
           </div>
-          <!-- Action chips -->
-          <div class="act-summary" id="summaryChips"></div>
           <!-- Row filter toggles: Show Hidden, Positions Only, Actionable Only.
                2026-09-02, user-directed toolbar consistency pass ("do the
                rest"): converted from 3 independent icon-only .btn-icon
@@ -1503,6 +1498,15 @@
             <option>Materials</option>
             <option>Real Estate</option>
             <option>Utilities</option>
+          </select>
+          <!-- Industry sub-filter -- cascades under Sector: options are
+               limited to industries (ref_sector.industry) present among rows
+               matching the currently selected Sector (all industries when no
+               Sector is picked). Populated dynamically in actionable.js
+               (renderIndustryFilter) since industry values are data-driven,
+               unlike Sector/Asset Class/Style's fixed lists. -->
+          <select id="industryFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:110px;" title="Filter by industry (cascades under Sector)">
+            <option value="">Industry</option>
           </select>
           <select id="assetClassFilter" style="font-size:11px; padding:2px 5px; border:1px solid var(--border); border-radius:4px; max-width:110px;" title="Filter by asset class (all classes, not just held)">
             <option value="">Asset Classes</option>
@@ -1942,7 +1946,7 @@
        + Dollar Correlation panels) -- "remove the side panel from
        actionable screen altogether". All four remain loaded on
        web/index.html, which now has every one of those panels. -->
-  <script src="/static/actionable.js?v=20260921a"></script>
+  <script src="/static/actionable.js?v=20260922b"></script>
   <script src="/static/rebuild_modal.js"></script>
   <script src="/static/market_bar.js?v=20260921d" defer></script>
 <script src="/static/warning_badge.js"></script>

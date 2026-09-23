@@ -6,6 +6,22 @@ Append-only log of schema and behaviour changes. Most-recent first.
 
 ## 2026-09-22
 
+- **Theme grid 1w/4w trend arrows bugfix: every theme showed "flat".**
+  User: "why all 1W/4w showing -> arrows". `drv_theme_stance` stores one
+  row per THEME per date (~22 rows/day); the prior-date lookup in
+  `etl/derive_market_read.py::_derive_theme_stance_impl` used `OFFSET`
+  without `DISTINCT`, so `OFFSET 4`/`OFFSET 19` (meant to land 5/20
+  trading days back) skipped table ROWS instead of DAYS -- with ~22 rows
+  per day, both offsets landed inside the very next earlier day's block,
+  so "1w" and "4w" were both actually comparing today to just 1 trading
+  day back (last Friday to Monday), which almost never changes stance.
+  Fixed by adding `DISTINCT` to the date lookup. Re-derived the current
+  anchor date (2026-09-21) to apply the fix; verified live -- Semis now
+  shows up/up, Small caps down/down, Ags/USD/Industrial metals up on 4w,
+  instead of 22/22 themes reading flat on both columns. Older historical
+  `drv_theme_stance` rows still carry the old (wrong) trend values unless
+  separately backfilled -- not done, user only asked to fix today's read.
+
 - **Side-rail panel header bar charts removed.** User: "remove these
   barcharts that we added to the panels (volatility/major markets/etc)" --
   reverted the whole feature from this same day (see the entry directly

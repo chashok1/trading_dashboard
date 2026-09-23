@@ -1150,6 +1150,7 @@ def get_actionable(
                rr.rr_bull_bear,
                _ha.held_accounts,
                hy.company_name,
+               si.industry,
                tw.rvol, tw.rvol_prior, tw.w_volume,
                tw.avg_vlm_10d_d AS volume_avg_10d,
                tw.avg_vlm_3m_d  AS volume_avg_3m,
@@ -1208,6 +1209,8 @@ def get_actionable(
                ON mo.tos_symbol = a.tos_symbol AND mo.as_of_date = a.as_of_date
         LEFT JOIN drv_quote q
                ON q.tos_symbol = a.tos_symbol AND q.as_of_date = a.as_of_date
+        LEFT JOIN ref_sector si
+               ON si.ticker = a.tos_symbol
         LEFT JOIN LATERAL (
             SELECT company_name FROM hist_y
             WHERE tos_symbol = a.tos_symbol

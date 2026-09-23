@@ -1688,7 +1688,8 @@ def get_market_read(date: Optional[str] = Query(None)):
 
 @router.get("/api/market-read/sectors")
 def get_market_read_sectors(date: Optional[str] = Query(None)):
-    from etl.derive_market_read import SSS_SECTOR_TO_THEME
+    from etl.derive_market_read import SSS_SECTOR_TO_THEME, SSS_SECTOR_TO_SUBCAT, _source_symbol_stance_map
+    from etl.derive_sss_breadth import _normalize_sss_sector, _parse_rank
     d = _resolve_date(date)
     with session_scope() as s:
         rows = s.execute(text(
@@ -1696,6 +1697,152 @@ def get_market_read_sectors(date: Optional[str] = Query(None)):
         ), {"d": d}).mappings().all()
         if not rows:
             return {"as_of": d.isoformat(), "sectors": [], "total": None}
+
+        # 2026-09-22, user-directed: "below the bar chart, display all
+        # symbols in SS for that sector sorted by analyst ranked, bench, km
+        # signal" -- drv_sss_breadth only stores aggregate counts, so pull
+        # the actual hist_sss membership behind them. snapshot_date is the
+        # same single date across every sector for a given as_of_date
+        # (verified live), so one query covers all sectors instead of one
+        # query per sector.
+        snap_date = rows[0]["snapshot_date"]
+        sss_raw = s.execute(text(
+            "SELECT symbol, tos_symbol, sector, anlst_best_idea_rank, pct_delta, last_close "
+            "FROM hist_sss WHERE snapshot_date = :snap"
+        ), {"snap": snap_date}).mappings().all()
+        _KIND_ORDER = {"ranked": 0, "bench": 1, "km": 2, None: 3}
+        members_by_sector: dict = {}
+        for mr in sss_raw:
+            sec_name = _normalize_sss_sector(mr["sector"]) or "Unclassified"
+            kind, rank, _book = _parse_rank(mr["anlst_best_idea_rank"])
+            tsym = mr["tos_symbol"] or mr["symbol"]
+            members_by_sector.setdefault(sec_name, []).append({
+                "symbol": mr["symbol"] or mr["tos_symbol"], "tos_symbol": tsym, "kind": kind, "rank": rank,
+                "pct_delta": float(mr["pct_delta"]) if mr["pct_delta"] is not None else None,
+                "last_close": float(mr["last_close"]) if mr["last_close"] is not None else None,
+            })
+
+        # 2026-09-22, user-directed: "remove [the meta line] instead just
+        # display %change since added [per member] (if you don't have the
+        # data just pick the oldest available)" -- hist_sss.pct_delta IS
+        # "% Delta Since Initial" (etl/mappings.py), already exactly this.
+        # Fallback for rows missing it: the OLDEST hist_sss snapshot we have
+        # for that symbol (by raw `symbol`, hist_sss's own key -- not
+        # tos_symbol) stands in for "the price when it was added."
+        need_fallback_symbols = sorted({m["symbol"] for members in members_by_sector.values()
+                                        for m in members if m["pct_delta"] is None and m.get("symbol")})
+        oldest_close_by_symbol: dict = {}
+        if need_fallback_symbols:
+            oldest_rows = s.execute(text(
+                "SELECT DISTINCT ON (symbol) symbol, last_close FROM hist_sss "
+                "WHERE symbol = ANY(:syms) AND last_close IS NOT NULL "
+                "ORDER BY symbol, snapshot_date ASC"
+            ), {"syms": need_fallback_symbols}).fetchall()
+            oldest_close_by_symbol = {sym: float(lc) for sym, lc in oldest_rows}
+        for members in members_by_sector.values():
+            for m in members:
+                if m["pct_delta"] is not None:
+                    # hist_sss.pct_delta is a fraction (-0.028 = -2.8%), same
+                    # scaling derive_sss_breadth.py's own avg_strength applies.
+                    m["pct_since_added"] = round(m["pct_delta"] * 100, 1)
+                else:
+                    oldest = oldest_close_by_symbol.get(m["symbol"])
+                    m["pct_since_added"] = (
+                        round((m["last_close"] - oldest) / oldest * 100, 1)
+                        if oldest and m.get("last_close") else None
+                    )
+                del m["pct_delta"], m["last_close"]
+
+        # 2026-09-22, user-directed: "use $ if position is held ... green if
+        # making money otherwise red" / "If actionable color the outline
+        # green else gray" -- one bulk lookup per concern across every
+        # distinct symbol on the list (not one query per member), joined by
+        # tos_symbol per CLAUDE.md convention (raw `symbol` only exists on
+        # hist_* tables, never join keys).
+        all_tos_symbols = sorted({m["tos_symbol"] for members in members_by_sector.values()
+                                   for m in members if m.get("tos_symbol")})
+        pos_by_symbol: dict = {}
+        action_by_symbol: dict = {}
+        if all_tos_symbols:
+            max_f_snap = s.execute(text(
+                "SELECT MAX(snapshot_date) FROM hist_f WHERE snapshot_date <= :d"
+            ), {"d": d}).scalar()
+            max_cs_snap = s.execute(text(
+                "SELECT MAX(snapshot_date) FROM hist_cs WHERE snapshot_date <= :d"
+            ), {"d": d}).scalar()
+            # Same "sum both brokers' legs, exclude inactive accounts" shape
+            # as get_actionable's own _ha held_accounts join (api/routers/dash.py).
+            pos_rows = s.execute(text("""
+                SELECT tos_symbol, SUM(gain) AS gain_dollar, SUM(mv) AS market_value FROM (
+                    SELECT tos_symbol, gain_dollar AS gain, market_value AS mv
+                    FROM hist_cs
+                    WHERE snapshot_date = :max_cs_snap AND qty > 0
+                      AND tos_symbol = ANY(:syms)
+                      AND account NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
+                    UNION ALL
+                    SELECT tos_symbol, total_gl_dollar, current_value
+                    FROM hist_f
+                    WHERE snapshot_date = :max_f_snap AND qty > 0
+                      AND tos_symbol = ANY(:syms)
+                      AND account_number NOT IN (SELECT account_number FROM ref_accounts WHERE is_active = FALSE)
+                ) _pos
+                GROUP BY tos_symbol
+            """), {"max_cs_snap": max_cs_snap, "max_f_snap": max_f_snap, "syms": all_tos_symbols}).mappings().all()
+            for pr in pos_rows:
+                gain, mv = pr["gain_dollar"], pr["market_value"]
+                pos_by_symbol[pr["tos_symbol"]] = {
+                    "gain_dollar": float(gain) if gain is not None else None,
+                    "market_value": float(mv) if mv is not None else None,
+                }
+
+            act_rows = s.execute(text(
+                "SELECT tos_symbol, consolidated_action FROM drv_actionable "
+                "WHERE as_of_date = :d AND tos_symbol = ANY(:syms)"
+            ), {"d": d, "syms": all_tos_symbols}).mappings().all()
+            for ar in act_rows:
+                action_by_symbol[ar["tos_symbol"]] = ar["consolidated_action"]
+
+        _NON_ACTIONABLE = {None, "HOLD", "NONE"}
+        _BUY_ACTIONS = {"ADD", "INCREASE"}
+        _SELL_ACTIONS = {"REMOVE", "REDUCE"}
+        _SIDE_ORDER = {"buy": 0, "sell": 1, None: 2}
+        for sec_members in members_by_sector.values():
+            for m in sec_members:
+                tsym = m.get("tos_symbol")
+                pos = pos_by_symbol.get(tsym)
+                m["held"] = pos is not None
+                m["gain_dollar"] = pos["gain_dollar"] if pos else None
+                # 2026-09-22, user-directed: "include current amount held in
+                # the popover" -- market value, separate from gain_dollar
+                # (the unrealized P&L already shown).
+                m["market_value"] = pos["market_value"] if pos else None
+                action = action_by_symbol.get(tsym)
+                m["action"] = action
+                m["actionable"] = action not in _NON_ACTIONABLE
+                # 2026-09-23, user-directed ("pill border green if
+                # actionable add, red if reduce"): same buy/sell grouping as
+                # web/market_read.js's own _actionSide, used below to sort
+                # green-outlined (buy) pills before red (sell) within each
+                # kind group.
+                m["_side"] = "buy" if action in _BUY_ACTIONS else "sell" if action in _SELL_ACTIONS else None
+            # 2026-09-23, user-directed: "display green first and red next
+            # within each category, ranked, bench, KM".
+            sec_members.sort(key=lambda m: (_KIND_ORDER.get(m["kind"], 3),
+                                             _SIDE_ORDER.get(m["_side"], 2),
+                                             m["rank"] if m["rank"] is not None else 999))
+            for m in sec_members:
+                del m["_side"]
+
+        # 2026-09-23, user-directed ("Energy -> why OIH is green?" -> the
+        # whole theme's ONE combined stance was being applied to every chip
+        # -> "use the individual bullish/bearish to color"): each chip's
+        # own RR/ETF outlook now, not drv_theme_stance's theme-wide read.
+        # Computed once for the whole request (not per sector) -- same
+        # {symbol: 'B'|'S'|'N'} maps etl/derive_market_read.py's own theme-
+        # stance derive uses.
+        _, rr_stance_by_symbol = _source_symbol_stance_map(s, "RR", d)
+        _, etf_stance_by_symbol = _source_symbol_stance_map(s, "ETF", d)
+        _CHIP_STANCE_MAP = {"RR": rr_stance_by_symbol, "ETF": etf_stance_by_symbol}
 
         out = []
         total_row = None
@@ -1724,19 +1871,61 @@ def get_market_read_sectors(date: Optional[str] = Query(None)):
             theme = SSS_SECTOR_TO_THEME.get(rd["sector"])
             rd["chips"] = []
             if theme:
-                chip_rows = s.execute(text(
-                    "SELECT source_code, symbol FROM ref_symbol_theme "
-                    "WHERE theme = :t AND source_code IN ('RR','ETF')"
-                ), {"t": theme}).fetchall()
-                for src, sym in chip_rows:
-                    stance_row = s.execute(text(
-                        "SELECT stance FROM drv_theme_stance WHERE as_of_date = :d AND theme = :t"
-                    ), {"d": d, "t": theme}).scalar()
-                    rd["chips"].append({"source": src, "symbol": sym, "stance": stance_row})
+                # 2026-09-22, user-directed ("Why do you have duplicates RR
+                # XLU and ETF XLU?" -> "No need of source. take one of them
+                # ... check the priority if exists somewhere. RR, PS, ETF
+                # etc"): the same ETF can be tracked by more than one
+                # outlook source (ref_symbol_theme has a row per (theme,
+                # source_code, symbol)) -- one chip per DISTINCT symbol now,
+                # keeping whichever source ranks highest per
+                # ref_source_precedence.static_rank (lower = higher
+                # priority; same table/ranking etl/derive_actionable.py's
+                # SOURCE_ORDER uses for winner selection elsewhere).
+                #
+                # 2026-09-23, user-directed ("Why has retail these symbols
+                # [XLF/XLI/XLRE/XLY]?" -> explained the Cyclicals theme
+                # bundles Consumer Discretionary+Financials+Industrials+Real
+                # Estate -> "Shouldn't they [Financials/Industrials] be tied
+                # to Cyclical instead of retail then?" -> "is there a better
+                # way ... for all sectors in SS?" -> option 3 -> "isn't
+                # retail and restaurants tied to XLY?"): when this SSS
+                # sector matches one theme member's GICS sub-sector
+                # (ref_symbol_theme.quad_sub_category), show ONLY that one
+                # ticker instead of the whole multi-sector theme basket --
+                # a direct name match for Financials/Industrials, or via
+                # SSS_SECTOR_TO_SUBCAT's sub-industry alias for Retail/
+                # Restaurants (both genuinely sit inside GICS Consumer
+                # Discretionary, i.e. XLY, just under Hedgeye's own finer
+                # sub-industry label rather than the GICS sector name).
+                match_subcat = SSS_SECTOR_TO_SUBCAT.get(rd["sector"], rd["sector"])
+                chip_rows = s.execute(text("""
+                    SELECT DISTINCT ON (rst.symbol) rst.symbol, rst.source_code
+                    FROM ref_symbol_theme rst
+                    LEFT JOIN ref_source_precedence rsp ON rsp.source_code = rst.source_code
+                    WHERE rst.theme = :t AND rst.source_code IN ('RR','ETF')
+                      AND (
+                        NOT EXISTS (
+                          SELECT 1 FROM ref_symbol_theme rst2
+                          WHERE rst2.theme = :t AND rst2.quad_sub_category = :sec
+                        )
+                        OR rst.quad_sub_category = :sec
+                      )
+                    ORDER BY rst.symbol, COALESCE(rsp.static_rank, 99)
+                """), {"t": theme, "sec": match_subcat}).fetchall()
+                rd["chips"] = [
+                    {"symbol": sym, "stance": _CHIP_STANCE_MAP.get(src, {}).get(sym)}
+                    for sym, src in chip_rows
+                ]
+            rd["members"] = members_by_sector.get(rd["sector"], [])
             you_val = s.execute(text(
                 "SELECT market_value FROM drv_category_perf WHERE as_of_date = :d AND axis = 'sector' AND category = :cat"
             ), {"d": d, "cat": rd["sector"]}).scalar()
             rd["you_dollar"] = float(you_val) if you_val else 0.0
             out.append(rd)
+
+        # 2026-09-22, user-directed: "display the tile with highest number
+        # in the beginning" -- was alphabetical (the SQL's own ORDER BY
+        # sector); ranked by current row count, most-populated list first.
+        out.sort(key=lambda r: r.get("n_rows") or 0, reverse=True)
 
     return {"as_of": d.isoformat(), "sectors": out, "total": total_row}

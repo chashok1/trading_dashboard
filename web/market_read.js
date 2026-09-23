@@ -17,9 +17,14 @@
  *   - Headline sentence + conflict count into a sibling div appended to
  *     #regimeLineBand (app.js::loadRegimeBand only ever touches
  *     #regimeLineBody's innerHTML, so a sibling here is never clobbered)
- *   - Sector cards into #macroRailSectorEtfs (overwrites macro_areas.js's
- *     own rail render for that one element -- id kept so nothing else
- *     that targets it by id breaks)
+ *   - Sector cards into #marketReadSectorCards -- its own standalone
+ *     section (index.html), between the rail-panel group (#macroRailsWrap)
+ *     and the filter bar. Used to share #macroRailSectorEtfs with
+ *     macro_areas.js's own ETF-row Sectors rail panel (one script
+ *     overwriting the other's render a beat later, visibly flashing) --
+ *     separated 2026-09-22 into its own container. User: "These panels
+ *     should be in their own section in the middle column above the filter
+ *     bar and below the panels (volatility/major markets/etc)."
  *   - Click a theme row -> scrolls the mapped rail band into view and
  *     briefly highlights it. (Addendum G shipped these 9 panels collapsed
  *     by default; reverted 2026-09-21, user: "display them as before" --
@@ -130,10 +135,24 @@
     return (iso && /^\d{4}-\d{2}-\d{2}/.test(iso)) ? iso.slice(5, 7) + '/' + iso.slice(8, 10) : '';
   }
 
-  function barSparkline(series, colorMode, dates) {
+  function _seriesMax(series) {
+    var vals = (series || []).filter(function (v) { return v != null; });
+    return vals.length ? Math.max.apply(null, vals) : null;
+  }
+
+  // scaleMax (2026-09-22, user-directed: "make bar sizes proportionate to
+  // all tiles data not just one by itself"): when given, bars scale
+  // 0..scaleMax instead of this series' own local min..max -- lets every
+  // sector card's bar chart share one scale (renderSectors passes the
+  // largest n_rows seen across ALL sectors' 13-week history) so a
+  // 1-row sector's bar doesn't read as "full" next to Software's 13-row
+  // history. Breadth-strip callers (Band ②) omit it, keeping their
+  // existing per-series local scaling unchanged.
+  function barSparkline(series, colorMode, dates, scaleMax) {
     var vals = (series || []).filter(function (v) { return v != null; });
     if (vals.length < 2) return '';
-    var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+    var min = scaleMax != null ? 0 : Math.min.apply(null, vals);
+    var max = scaleMax != null ? scaleMax : Math.max.apply(null, vals);
     var range = (max - min) || 1;
     var w = 200, h = 34, pad = 3;
     var n = series.length;
@@ -422,46 +441,228 @@
     _qrSyncToggleButton(!nowHidden);
   };
 
-  /* ---- Band ④ sector cards (overwrites #macroRailSectorEtfs) ---- */
-  function tierBarHtml(s) {
-    var total = (s.n_ranked || 0) + (s.n_bench || 0) + (s.n_km || 0);
-    if (!total) return '<div class="mr-tier"><span class="mr-tier-e" style="width:100%"></span></div>';
-    var pr = (s.n_ranked || 0) / total * 100, pb = (s.n_bench || 0) / total * 100, pk = (s.n_km || 0) / total * 100;
-    return '<div class="mr-tier"><span class="mr-tier-r" style="width:' + pr + '%"></span>' +
-      '<span class="mr-tier-b" style="width:' + pb + '%"></span>' +
-      '<span class="mr-tier-k" style="width:' + pk + '%"></span></div>';
+  /* ---- Band ④ sector cards (renders into #marketReadSectorCards) ---- */
+  var _MEM_KIND_LABEL = { ranked: 'Hedgeye ranked pick', bench: 'Hedgeye benchmark/watchlist', km: 'Hedgeye KM signal' };
+  var _MEM_DOT_CLASS = { ranked: 'mr-mem-dot-ranked', bench: 'mr-mem-dot-bench', km: 'mr-mem-dot-km' };
+
+  // 2026-09-22, user-directed: rich hover popover (was a plain native
+  // `title` tooltip) -- same floating-div pattern as macro_areas.js's own
+  // _macro6Pop/_macro6Show (bulleted list, fixed-position, delegated
+  // mouseover/mouseout since rows are rebuilt via innerHTML on every
+  // refresh). _memPopData keyed by symbol, rebuilt each memberListHtml()
+  // call -- a symbol's held/action/pct data is the same wherever it
+  // appears, so one shared map across every sector card is fine.
+  // 2026-09-23, user-directed: "pill border green if actionable add, red if
+  // reduce" -- consolidated_action's own buy/sell vocabulary (ADD/INCREASE
+  // vs REMOVE/REDUCE), same REMOVE+REDUCE="sell"/INCREASE+ADD="buy" grouping
+  // web/actionable.js's own _ACTION_GROUPS uses. HOLD/NONE/null stay
+  // neutral gray, same as before.
+  var _BUY_ACTIONS = { ADD: true, INCREASE: true };
+  var _SELL_ACTIONS = { REMOVE: true, REDUCE: true };
+  function _actionSide(action) {
+    if (_BUY_ACTIONS[action]) return 'buy';
+    if (_SELL_ACTIONS[action]) return 'sell';
+    return null;
+  }
+  var _memPopEl = null;
+  var _memPopData = {};
+  function _memPop() {
+    if (_memPopEl) return _memPopEl;
+    var el = document.createElement('div');
+    el.id = 'mr-mem-pop';
+    el.style.cssText = 'display:none; position:fixed; z-index:3000; background:#fff; ' +
+      'border:1px solid #d1d5db; border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,0.18); ' +
+      'padding:8px 10px; font-size:10px; color:#1f2937; max-width:260px; white-space:nowrap; ' +
+      'pointer-events:none;';
+    document.body.appendChild(el);
+    _memPopEl = el;
+    return el;
+  }
+  function _memPopHtml(m) {
+    var pctColor = m.pct_since_added == null ? '#94a3b8' : (m.pct_since_added < 0 ? '#dc2626' : '#16a34a');
+    var pctTxt = m.pct_since_added != null ? (m.pct_since_added >= 0 ? '+' : '') + m.pct_since_added + '%' : 'n/a';
+    var kindTxt = (_MEM_KIND_LABEL[m.kind] || 'Unranked') + (m.kind === 'ranked' && m.rank != null ? ' #' + m.rank : '');
+    var heldLi;
+    if (m.held) {
+      var gainColor = (m.gain_dollar != null && m.gain_dollar < 0) ? '#dc2626' : '#16a34a';
+      var gainTxt = m.gain_dollar != null ? (m.gain_dollar >= 0 ? '+' : '') + fmtMoney(m.gain_dollar) : 'n/a';
+      heldLi = '<li style="margin:2px 0;">Held: <strong>' + (m.market_value != null ? fmtMoney(m.market_value) : '—') +
+        '</strong> <span style="color:' + gainColor + ';">(' + esc(gainTxt) + ' unrealized)</span></li>';
+    } else {
+      heldLi = '<li style="margin:2px 0;color:#94a3b8;">Not held</li>';
+    }
+    var side = _actionSide(m.action);
+    var actColor = side === 'buy' ? '#16a34a' : side === 'sell' ? '#dc2626' : '#9ca3af';
+    var actTxt = side === 'buy' ? 'actionable — buy' : side === 'sell' ? 'actionable — sell' : 'not actionable';
+    return '<div style="font-weight:700;margin-bottom:4px;">' + esc(m.symbol) + '</div>' +
+      '<ul style="margin:0;padding-left:15px;list-style:disc;">' +
+        '<li style="margin:2px 0;">' + esc(kindTxt) + '</li>' +
+        '<li style="margin:2px 0;">% since added: <span style="color:' + pctColor + ';font-weight:600;">' + esc(pctTxt) + '</span></li>' +
+        heldLi +
+        '<li style="margin:2px 0;">Action: <strong>' + esc(m.action || 'None') + '</strong> ' +
+          '<span style="color:' + actColor + ';">(' + actTxt + ')</span></li>' +
+      '</ul>';
+  }
+  function _memShow(target, m) {
+    var pop = _memPop();
+    pop.innerHTML = _memPopHtml(m);
+    pop.style.display = 'block';
+    var rect = target.getBoundingClientRect();
+    pop.style.top = (rect.bottom + 4) + 'px';
+    pop.style.left = rect.left + 'px';
+    requestAnimationFrame(function () {
+      var vw = window.innerWidth, vh = window.innerHeight;
+      var pr = pop.getBoundingClientRect();
+      if (pr.right > vw - 8) pop.style.left = Math.max(8, vw - pr.width - 8) + 'px';
+      if (pr.bottom > vh - 8) pop.style.top = Math.max(8, rect.top - pr.height - 4) + 'px';
+    });
+  }
+  function _memHide() {
+    if (_memPopEl) _memPopEl.style.display = 'none';
+  }
+  document.addEventListener('mouseover', function (ev) {
+    var el = ev.target.closest && ev.target.closest('.mr-mem[data-mem-sym]');
+    if (!el) return;
+    var m = _memPopData[el.getAttribute('data-mem-sym')];
+    if (m) _memShow(el, m);
+  });
+  document.addEventListener('mouseout', function (ev) {
+    var el = ev.target.closest && ev.target.closest('.mr-mem[data-mem-sym]');
+    if (!el) return;
+    if (ev.relatedTarget && el.contains(ev.relatedTarget)) return;
+    _memHide();
+  });
+
+  // 2026-09-22, user-directed: "below the bar chart, display all symbols
+  // in SS for that sector sorted by analyst ranked, bench, km signal" --
+  // s.members (api/routers/cockpit.py, from hist_sss) is already sorted
+  // ranked -> bench -> km, ranked ascending by rank within that group.
+  // Follow-up, user-directed: "use color dots before the symbol text ...
+  // use some colors for each not green or gray [[kind]] / use $ if
+  // position is held, color it green if making money otherwise red / If
+  // actionable color the outline green else gray / Popover should have all
+  // that information" -> "make it rich popover". Kind dot: blue=ranked,
+  // violet=bench, teal=km (green/gray reserved for the $ P&L color and the
+  // actionable outline).
+  function memberListHtml(s) {
+    var members = s.members || [];
+    if (!members.length) return '';
+    var spans = members.map(function (m) {
+      var dotCls = _MEM_DOT_CLASS[m.kind] || 'mr-mem-dot-other';
+      var side = _actionSide(m.action);
+      var outlineCls = side === 'buy' ? 'mr-mem-buy' : side === 'sell' ? 'mr-mem-sell' : 'mr-mem-noact';
+      var label = esc(m.symbol) + (m.kind === 'ranked' && m.rank != null ? ' ' + m.rank : '');
+      // 2026-09-22, user-directed ("remove [the meta line] instead just
+      // display %change since added"): per-member, not per-sector --
+      // pct_since_added already resolves the "oldest available" fallback
+      // server-side (api/routers/cockpit.py) when hist_sss.pct_delta itself
+      // is missing.
+      var pctHtml = '';
+      if (m.pct_since_added != null) {
+        var pctCls = m.pct_since_added < 0 ? 'dn' : 'up';
+        pctHtml = ' <span class="mr-mem-pct ' + pctCls + '">' +
+          (m.pct_since_added >= 0 ? '+' : '') + m.pct_since_added + '%</span>';
+      }
+      var dollar = '';
+      if (m.held) {
+        var gainCls = (m.gain_dollar != null && m.gain_dollar < 0) ? 'dn' : 'up';
+        dollar = ' <span class="mr-mem-dollar ' + gainCls + '">$</span>';
+      }
+      _memPopData[m.symbol] = m;
+      return '<span class="mr-mem ' + outlineCls + '" data-mem-sym="' + esc(m.symbol) + '">' +
+        '<span class="mr-mem-dot ' + dotCls + '"></span>' + dollar + label + pctHtml + '</span>';
+    });
+    return '<div class="mr-sm-members">' + spans.join(' ') + '</div>';
   }
 
-  function sectorCardHtml(s) {
+  function sectorCardHtml(s, globalMaxRows) {
+    // 2026-09-22, user-directed: source label dropped (was "RR XLU"/"ETF
+    // XLU") -- one chip per distinct symbol now, API already picks the
+    // higher-priority source per symbol when the same ETF is tracked by
+    // more than one (api/routers/cockpit.py's ref_source_precedence join).
     var chips = (s.chips || []).map(function (c) {
       var cls = c.stance === 'B' ? 'b' : c.stance === 'S' ? 's' : '';
-      return '<span class="mr-chip ' + cls + '">' + esc(c.source) + ' ' + esc(c.symbol) + '</span>';
+      return '<span class="mr-chip ' + cls + '">' + esc(c.symbol) + '</span>';
     }).join(' ');
-    var top3 = (s.top3 || []).map(function (t) { return esc(t.symbol) + ' ' + t.rank; }).join(' · ');
-    var rowsCls = s.divergence ? 'mr-sm-divergence' : '';
-    return '<div class="mr-sm ' + rowsCls + '"><div class="mr-sm-name"><b>' + esc(s.sector) + '</b> ' + chips + '</div>' +
-      '<div class="mr-sm-two"><div><div class="mr-k">rows</div><div class="mr-v">' + (s.n_rows != null ? s.n_rows : '—') +
-      (s.n_rows_med13 != null ? ' <small>med ' + Math.round(s.n_rows_med13) + '</small>' : '') + '</div></div>' +
-      '<div><div class="mr-k">book</div><div class="mr-v">' + (s.book_size != null ? s.book_size : '—') +
-      (s.book_size_asof && s.book_size_asof !== s.snapshot_date ? ' <small>as of ' + s.book_size_asof + '</small>' : '') +
-      '</div></div></div>' +
-      sparkline(s.n_rows_series, false) + tierBarHtml(s) +
-      '<div class="mr-sm-meta">' + (top3 ? 'top: ' + top3 + ' · ' : '') +
-      (s.avg_strength != null ? s.avg_strength + '% avg · ' : '') +
-      (s.median_days_on != null ? Math.round(s.median_days_on) + 'd · ' : '') +
-      (s.you_dollar ? '<b>you ' + fmtMoney(s.you_dollar) + '</b>' : '') +
-      (s.divergence ? ' · <b>rows ↓ book →/↑ — split</b>' : '') + '</div></div>';
+    // 2026-09-22, user-directed: "go back for that sector -- what was the
+    // max number in last 13 weeks like the top panel and use it like 2/13
+    // (2 current, 13 max)" -- replaces the plain "med" sub-label with the
+    // same current/max-13wk readout + up/dn coloring (>=80% of the 13wk
+    // high = green) the breadth strip tiles above use (breadthTile's own
+    // curMax). max13 computed client-side from n_rows_series -- the API
+    // doesn't send a precomputed max for sectors the way it does for
+    // b.max_13wk on the breadth tiles.
+    var max13 = _seriesMax(s.n_rows_series);
+    // 2026-09-22, user-directed: "move that number next to Sector header
+    // right justified [.mr-sm-name, via CSS flex space-between] / display
+    // bar chart below that / move tickers [chips] to below that" -- then
+    // "No need of header ROWS" -- bare curmax badge, no "rows" label
+    // (it sat next to the sector name before as its own labeled grid cell;
+    // that context made the label redundant here).
+    var rowsVal = (s.n_rows != null && max13 != null)
+      ? '<span class="mr-tile-curmax ' + (s.n_rows >= max13 * 0.8 ? 'up' : 'dn') +
+        '" title="rows: current / max 13wk">' + s.n_rows + '/' + max13 + '</span>'
+      : (s.n_rows != null ? '<span class="mr-tile-curmax">' + s.n_rows + '</span>' : '');
+    return '<div class="mr-sm">' +
+      // 2026-09-23, user-directed: "display those symbol pills next to the
+      // sector header" -- moved from the card's very bottom (2026-09-22's
+      // own placement) up onto the name line itself. Name+chips wrapped
+      // together in .mr-sm-name-left so justify-content:space-between on
+      // .mr-sm-name still only splits TWO items (this wrapper vs. the
+      // curmax badge), keeping the chips glued to the sector name instead
+      // of floating in the middle of the row.
+      '<div class="mr-sm-name"><span class="mr-sm-name-left"><b>' + esc(s.sector) + '</b>' +
+      (chips ? ' ' + chips : '') + '</span>' + rowsVal + '</div>' +
+      // 2026-09-22, user-directed: line sparkline -> bar chart, matching
+      // the breadth strip (Band ②) above -- 'delta' colorMode (week-over-
+      // week up/down) is the same mode that panel uses for its own SSS
+      // tile, appropriate here too since n_rows is a count, not a signed
+      // net. Bonus: barSparkline's per-bar hit-rect gives a native hover
+      // tooltip with the actual count, which the line version never had.
+      // globalMaxRows (follow-up, user-directed): shared 0..max scale
+      // across every sector card instead of each one scaling to its own
+      // local min/max.
+      barSparkline(s.n_rows_series, 'delta', null, globalMaxRows) +
+      memberListHtml(s) +
+      // 2026-09-23, user-directed ("remove the line that is end of the
+      // tile"): tierBarHtml's ranked/bench/km composition bar dropped --
+      // was the last element in the card. Same info is already visible per
+      // member via each pill's own colored dot (memberListHtml above).
+      // 2026-09-22, user-directed: the whole meta line (top pick, avg%,
+      // days-on, your $, divergence flag) dropped -- "remove that instead
+      // just display %change since added" per member instead (see
+      // memberListHtml's own mr-mem-pct badge + popover above).
+      '</div>';
+  }
+
+  // 2026-09-22, user-directed: "remove [the 'Total: rows N · books N' line]
+  // add number of rows to the 'Sectors (Signal Strength)' header bar at the
+  // end right justified" -- same total.n_rows the old .mr-ins line showed,
+  // moved into the header (#marketReadSectorsTotal, index.html) instead.
+  function _setSectorsHeaderTotal(total) {
+    var el = document.getElementById('marketReadSectorsTotal');
+    if (el) el.textContent = (total && total.n_rows != null) ? total.n_rows + ' rows' : '';
   }
 
   function renderSectors(data) {
-    var container = document.getElementById('macroRailSectorEtfs');
+    var container = document.getElementById('marketReadSectorCards');
     if (!container) return;
     var sectors = (data && data.sectors) || [];
-    if (!sectors.length) return;
-    var total = data.total;
-    var insight = (total && total.n_rows != null && total.book_size != null)
-      ? '<div class="mr-ins">Total: rows ' + total.n_rows + ' · books ' + total.book_size + '</div>' : '';
-    container.innerHTML = insight + '<div class="mr-sect">' + sectors.map(sectorCardHtml).join('') + '</div>';
+    _setSectorsHeaderTotal(data && data.total);
+    // 2026-09-22: own standalone container now (see file header comment) --
+    // show an explicit empty state instead of leaving stale "Loading…"
+    // markup when there's nothing to show.
+    if (!sectors.length) {
+      container.innerHTML = '<div class="msr-loading">No sector data.</div>';
+      return;
+    }
+    // 2026-09-22, user-directed: "make bar sizes proportionate to all tiles
+    // data not just one by itself" -- one shared scale across every
+    // sector's bar chart, the largest single n_rows value seen anywhere in
+    // any sector's 13-week history (see barSparkline's own scaleMax param).
+    var globalMaxRows = Math.max.apply(null, sectors.map(function (s) { return _seriesMax(s.n_rows_series) || 0; }));
+    container.innerHTML = '<div class="mr-sect">' +
+      sectors.map(function (s) { return sectorCardHtml(s, globalMaxRows); }).join('') + '</div>';
   }
 
   function currentDate() {
@@ -483,6 +684,25 @@
     }
   }
 
+  // 2026-09-22, user-directed: "add hide show button like others" -- own
+  // independent collapse toggle for the Sectors (Signal Strength) panel,
+  // same mechanism as the Hedgeye/News panels' own toggles (arrow button,
+  // localStorage-persisted, own key so it doesn't share state with theirs).
+  // Only ever touches #marketReadSectorCards's style.display -- renderSectors()
+  // keeps refreshing its innerHTML underneath while collapsed, same
+  // "content vs. visibility are separate concerns" split those two panels
+  // use (see hedgeye_collapse.js's own header comment).
+  var SECTORS_COLLAPSE_KEY = 'marketReadSectors_collapsed';
+  function _applySectorsCollapse(collapsed) {
+    var body = document.getElementById('marketReadSectorCards');
+    var btn = document.getElementById('marketReadSectorsToggle');
+    if (body) body.style.display = collapsed ? 'none' : '';
+    if (btn) {
+      btn.innerHTML = collapsed ? '&#9652;' : '&#9662;';
+      btn.setAttribute('aria-label', (collapsed ? 'Expand' : 'Collapse') + ' Sectors panel');
+    }
+  }
+
   function init() {
     var dp = document.getElementById('datePicker');
     if (dp) dp.addEventListener('change', load);
@@ -490,6 +710,15 @@
     if (rb) rb.addEventListener('click', function () { setTimeout(load, 300); });
     var toggleBtn = document.getElementById('qrFilterToggle');
     if (toggleBtn) toggleBtn.addEventListener('click', window._qrPanelToggle);
+    var sectToggle = document.getElementById('marketReadSectorsToggle');
+    if (sectToggle) {
+      _applySectorsCollapse(localStorage.getItem(SECTORS_COLLAPSE_KEY) === '1');
+      sectToggle.addEventListener('click', function () {
+        var collapsed = localStorage.getItem(SECTORS_COLLAPSE_KEY) !== '1';
+        localStorage.setItem(SECTORS_COLLAPSE_KEY, collapsed ? '1' : '0');
+        _applySectorsCollapse(collapsed);
+      });
+    }
     setTimeout(load, 700);
   }
 

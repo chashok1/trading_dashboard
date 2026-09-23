@@ -435,7 +435,7 @@
   var _MACRO6_EXCLUDED_AREAS = { usd_currency: true, country_etfs: true };
 
   function railAreaRow(area) {
-    var members = area.members || [];
+    var members = _sortedMembers(area);
     var noCarets = !!_MACRO6_EXCLUDED_AREAS[area.area_key];
     return members.map(function (m) {
       if (m.role === 'gauge') {
@@ -619,6 +619,15 @@
   /* ── render into side rail ──────────────────────────────────────────── */
   // Each area_key now has its own side-panel section/container (was one
   // blob container for every area concatenated together).
+  // sector_etfs -> macroRailSectorEtfs (2026-09-22, restored): this is the
+  // ETF-row-style Sectors rail panel, same row format as Volatility/Major
+  // Markets/etc -- it briefly shared its container with web/market_read.js's
+  // own SSS-based sector cards (that script overwrote this one's render a
+  // moment later, producing a visible flash), fixed by giving market_read.js
+  // its own separate container (#marketReadSectorCards, see index.html and
+  // market_read.js's own renderSectors()) instead of two scripts fighting
+  // over one id. User: "bring back Sectors panel like volatility panel in
+  // (volatility/major markets/etc) panel."
   var _AREA_CONTAINER_ID = {
     volatility:          'macroRailVolatility',
     top9:                'macroRailTop9',
@@ -632,7 +641,54 @@
     remaining:           'macroRailRemaining',
   };
 
+  // Per-panel member sort, toggled by each panel's header .msr-sort-btn
+  // (index.html) -- keyed by area_key, in-memory only (resets on reload).
+  // 0 = default (API order) / 1 = pct_change descending (gainers first,
+  // losers sink to the bottom) / 2 = pct_change ascending (losers first).
+  // Plain high-to-low / low-to-high, same as clicking a table column's sort
+  // arrow twice -- NOT sorted by |pct_change| (that mixed reds into the
+  // "descending" state: a -5% loser ranked above a +2% gainer since both
+  // sides' magnitudes were compared together). Cycled on click, re-applied
+  // to the last-fetched data (_lastAreasData) on every renderRail() call so
+  // it survives a date-change/manual refresh until the user picks something
+  // else.
+  var _railSort = {};
+  var _lastAreasData = null;
+  var _SORT_GLYPH = ['⇅', '↓', '↑'];   // ⇅ ↓ ↑
+  var _SORT_TITLE = [
+    'Sort: default order (click to sort % change high to low)',
+    'Sort: % change high to low (click for low to high)',
+    'Sort: % change low to high (click to reset)',
+  ];
+
+  function _sortedMembers(area) {
+    var members = area.members || [];
+    var mode = _railSort[area.area_key] || 0;
+    if (!mode) return members;
+    return members.slice().sort(function (a, b) {
+      var av = (a && a.pct_change != null) ? a.pct_change : null;
+      var bv = (b && b.pct_change != null) ? b.pct_change : null;
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;   // no-data members sink to the bottom
+      if (bv == null) return -1;
+      return mode === 1 ? (bv - av) : (av - bv);
+    });
+  }
+
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target.closest && ev.target.closest('.msr-sort-btn');
+    if (!btn) return;
+    var area = btn.getAttribute('data-area');
+    if (!area) return;
+    var mode = ((_railSort[area] || 0) + 1) % 3;
+    _railSort[area] = mode;
+    btn.textContent = _SORT_GLYPH[mode];
+    btn.title = _SORT_TITLE[mode];
+    if (_lastAreasData) renderRail(_lastAreasData);
+  });
+
   function renderRail(data) {
+    _lastAreasData = data;
     var areas = (data && data.areas) || [];
     var byContainer = {};
     areas.forEach(function (area) {

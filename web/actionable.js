@@ -1614,6 +1614,20 @@ async function loadSources() {
         state.unprovenSellMode = 'annotate';
       }
     })(),
+    // 2026-09-22: Risk Dial curve_inverting/3m10y_inverted gauges -- whether
+    // either is currently firing, for the Financials-only BUY warning in
+    // _signalReasons (ref_gauge_transmission links both gauges to sector
+    // Financials, db/seeds_cockpit.sql). Market-wide, not date-picker-scoped,
+    // so fetched once here like the settings above rather than on every
+    // loadActionable(). User: "I think financials are most affected [by
+    // curve inversion/flattening]."
+    (async () => {
+      try {
+        const rd = await fetchJson('/api/cockpit/risk-dial');
+        const fired = new Set((rd.fired || []).map(g => g.key));
+        state.curveInvertedWarn = fired.has('curve_inverting') || fired.has('3m10y_inverted');
+      } catch (_) { state.curveInvertedWarn = false; }
+    })(),
     // Per-source buy-family hit rate (v_source_edge_scorecard, same table
     // etl/derive_source_edge.py recomputes ref_settings.trade_mode_weak_buy_sources
     // from nightly) — the Trade Mode Symbol-cell badge shows this number
@@ -2417,6 +2431,11 @@ function applyClientFilter(opts) {
   if (state.filters.source && !_availableSources().has(state.filters.source)) {
     state.filters.source = '';
   }
+  // Industry cascades under Sector — drop a selection the current Sector no
+  // longer offers (e.g. Sector was just changed) before it's used below.
+  if (state.filters.industry && !_availableIndustries().has(state.filters.industry)) {
+    state.filters.industry = '';
+  }
   // baseRows: all filters except the action chip (drives chip counts that reflect
   // every other active filter, via matchesBaseFilters).
   state.baseRows = state.allRows.filter(matchesBaseFilters);
@@ -2428,6 +2447,7 @@ function applyClientFilter(opts) {
     // can see every category's total while one is selected, not just the one.
     if (state.filters.asset_class && r._assetClass !== state.filters.asset_class) return false;
     if (state.filters.sector && (r.sector || 'Unclassified') !== state.filters.sector) return false;
+    if (state.filters.industry && r.industry !== state.filters.industry) return false;
     if (state.filters.style && !_rowStyleLabels(r).includes(state.filters.style)) return false;
     if (state.filters.stopOnly && !r.stop_breached) return false;
     if (state.filters.action) {
@@ -2451,12 +2471,12 @@ function applyClientFilter(opts) {
     state.selected.clear();
   }
   renderBulkBar();
-  renderSummary();
   renderAssetClassSummary();
   renderSectorSummary();
   renderStyleSummary();
   renderSourceFilter();
   renderAccountFilter();
+  renderIndustryFilter();
   renderGrid();
   _updateChgHeaderIdy();
 }
@@ -2567,68 +2587,12 @@ async function rederiveStale() {
   await checkFreshness();
 }
 
-// ---- summary chips (act as quick action filters) ----
-function renderSummary() {
-  const counts = { REMOVE: 0, REDUCE: 0, INCREASE: 0, ADD: 0, HOLD: 0, NONE: 0 };
-  let stopCount = 0;
-  for (const r of state.baseRows) {
-    const a = _chipAction(r);
-    if (counts[a] !== undefined) counts[a] += 1;
-    if (r.stop_breached) stopCount += 1;
-  }
-  const wrap = $('summaryChips');
-  wrap.innerHTML = '';
-  const all = document.createElement('div');
-  all.className = 'act-chip' + (state.filters.action === '' ? ' active' : '');
-  all.innerHTML = `<span>ALL</span><span class="count">${state.baseRows.length}</span>`;
-  all.onclick = () => {
-    state.filters.action = '';
-    applyClientFilter();
-  };
-  wrap.appendChild(all);
-  // S / B group chips — aggregate REMOVE+REDUCE / INCREASE+ADD so the whole
-  // sell or buy side can be isolated in one click without picking a single
-  // granular bucket. The individual REMOVE/OVER_MAX/REDUCE/INCREASE/ADD/
-  // HOLD/NONE chips (SA/OM/SR/BM/BA/H/N) were dropped 2026-09-01 — user:
-  // "keep chips All, S, B, Stop and remove other chips" — down to just the
-  // four requested. Their filter values (state.filters.action = 'REMOVE'
-  // etc.) and matchesBaseFilters/_chipAction handling are untouched, only
-  // no chip sets them anymore.
-  const groupChip = (key, label, title) => {
-    const n = _ACTION_GROUPS[key].reduce((sum, a) => sum + (counts[a] || 0), 0);
-    const chip = document.createElement('div');
-    chip.className = 'act-chip act-chip-group-' + key.toLowerCase()
-                   + (state.filters.action === key ? ' active' : '');
-    chip.title = title;
-    chip.innerHTML = `<span>${label}</span><span class="count">${n}</span>`;
-    chip.onclick = () => {
-      state.filters.action = (state.filters.action === key) ? '' : key;
-      applyClientFilter();
-    };
-    return chip;
-  };
-  wrap.appendChild(groupChip('SELL', 'S', 'All sells — SELL ALL + SELL SOME (REMOVE + REDUCE)'));
-  wrap.appendChild(groupChip('BUY', 'B', 'All buys — BUY MORE + BUY TO MIN (INCREASE + ADD)'));
-  // TASK_119: STOP chip — orthogonal to the action buckets above (a REDUCE
-  // row can also be stop_breached), so it toggles independently rather than
-  // joining the mutually-exclusive action-chip set.
-  const stopChip = document.createElement('div');
-  stopChip.className = 'act-chip act-chip-stop' + (state.filters.stopOnly ? ' active' : '');
-  stopChip.title = 'Held positions that just crossed below their Trade or Trend line (prior 3 days above, today below)';
-  stopChip.innerHTML = `<span>STOP</span><span class="count">${stopCount}</span>`;
-  stopChip.onclick = () => {
-    state.filters.stopOnly = !state.filters.stopOnly;
-    applyClientFilter();
-  };
-  wrap.appendChild(stopChip);
-}
-
 // Portfolio-composition chips: held $ grouped by normalized asset class
 // (r._assetClass — see _normAssetClass). Computed from state.baseRows (every
 // active filter EXCEPT this one's own selection — see the asset_class check
 // in applyClientFilter's second stage) so the amounts reflect whatever else
-// is filtered (Source/Acct/Trade Mode/Conviction/...), same "filtered but not
-// self-restricted" reasoning as the action-chip counts in renderSummary().
+// is filtered (Source/Acct/Trade Mode/Conviction/...) without being
+// self-restricted by this specific selection.
 // Doubles as the filter UI — clicking a chip toggles state.filters.asset_class.
 function renderAssetClassSummary() {
   const wrap = $('assetClassSummary');
@@ -2725,6 +2689,36 @@ function renderStyleSummary() {
       applyClientFilter();
     };
     wrap.appendChild(chip);
+  }
+}
+
+// Set of industries (ref_sector.industry, via r.industry on every
+// /api/actionable row) present in the full dataset, restricted to whatever
+// Sector is currently selected — the cascading behind renderIndustryFilter.
+// No Sector selected -> every industry in the dataset.
+function _availableIndustries() {
+  const have = new Set();
+  const sector = state.filters.sector;
+  for (const r of state.allRows) {
+    if (sector && (r.sector || 'Unclassified') !== sector) continue;
+    if (r.industry) have.add(r.industry);
+  }
+  return have;
+}
+
+function renderIndustryFilter() {
+  const sel = $('industryFilter');
+  if (!sel) return;
+  const have = _availableIndustries();
+  const cur = state.filters.industry;
+  // Placeholder reads "Industry" (no separate label), same convention as
+  // Source/Acct/Sectors/Asset Classes/Styles.
+  sel.innerHTML = '<option value="">Industry</option>';
+  for (const c of Array.from(have).sort()) {
+    const o = document.createElement('option');
+    o.value = c; o.textContent = c;
+    if (c === cur) o.selected = true;
+    sel.appendChild(o);
   }
 }
 
@@ -2870,6 +2864,8 @@ function syncFilterUi() {
   // 2026-08-31 -- Sector/Asset class/Style dropdowns (all values, not just
   // held) -- same sync-on-load/refresh pattern as Agree above.
   const sf = $('sectorFilter');         if (sf) sf.value = f.sector || '';
+  renderIndustryFilter();
+  const indf = $('industryFilter');     if (indf) indf.value = f.industry || '';
   const acf = $('assetClassFilter');    if (acf) acf.value = f.asset_class || '';
   const styf = $('styleFilter');        if (styf) styf.value = f.style || '';
   _syncRrSliderUi();
@@ -2916,11 +2912,12 @@ function clearAllFilters() {
   f.agreement_class = '';
   f.symbols_multi = [];
   f.etfchg_only = false; f.iichg_only = false;
-  f.sector = ''; f.style = ''; f.asset_class = '';
+  f.sector = ''; f.style = ''; f.asset_class = ''; f.industry = '';
   f.rr_min = 0; f.rr_max = 100;
   const bpEl = $('bullProbFilter'); if (bpEl) bpEl.value = '0';
   const agEl = $('agreementFilter'); if (agEl) agEl.value = '';
   const sfEl = $('sectorFilter'); if (sfEl) sfEl.value = '';
+  const indfEl = $('industryFilter'); if (indfEl) indfEl.value = '';
   const acfEl = $('assetClassFilter'); if (acfEl) acfEl.value = '';
   const styfEl = $('styleFilter'); if (styfEl) styfEl.value = '';
   const rrMinEl = $('actRrMin'); if (rrMinEl) rrMinEl.value = '0';
@@ -3614,6 +3611,17 @@ function _signalReasons(row, side) {
   // confound with this period's growth-stock rally rather than a standalone
   // edge, so it's dropped from the icon pending a longer, less regime-specific
   // check.
+
+  // 2026-09-22: Risk Dial curve_inverting/3m10y_inverted gauges -- a
+  // flattening/inverted yield curve squeezes bank net interest margin
+  // (long-end lending rate minus short-end deposit/borrowing rate)
+  // directly, on top of its usual role as a recession leading indicator --
+  // Financials-only, mirrors ref_gauge_transmission's own curve->Financials
+  // linkage (db/seeds_cockpit.sql). state.curveInvertedWarn fetched once in
+  // loadSources(). User: "I think financials are most affected."
+  if (!isSell && state.curveInvertedWarn && row.sector === 'Financials') {
+    warn.push('Yield curve inverting/flattening — bank margins under pressure (Risk Dial)');
+  }
 
   // MACD/MACDH momentum (2026-08-20): used to push a 'MACD momentum
   // strengthening/weakening' warn/buy signal here (MACDH sign IS the trend
@@ -8719,6 +8727,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (sectorFilterEl) {
     sectorFilterEl.addEventListener('change', (e) => {
       state.filters.sector = e.target.value || '';
+      // Sector changed -- Industry's option list cascades off it, so drop
+      // whatever Industry was selected before applying the new filter set.
+      state.filters.industry = '';
+      applyClientFilter();
+    });
+  }
+  const industryFilterEl = $('industryFilter');
+  if (industryFilterEl) {
+    industryFilterEl.addEventListener('change', (e) => {
+      state.filters.industry = e.target.value || '';
       applyClientFilter();
     });
   }
