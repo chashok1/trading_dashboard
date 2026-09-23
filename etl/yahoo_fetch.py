@@ -77,6 +77,24 @@ def _is_trading_day(d: date | None = None) -> bool:
     return d.weekday() < 5
 
 
+def is_auto_refresh_window() -> bool:
+    """True during the window when the dashboard's stale-quote auto-refresh
+    (web/market_bar.js's _checkAutoRefresh, POST .../quotes-now?auto=1) is
+    allowed to fire: weekday, 9:30 AM - 8:00 PM ET.
+
+    2026-09-23, user-directed: a browser tab left open overnight was
+    triggering real yfinance pulls at ~1 AM because that trigger only
+    checked "is the last fetch >30 min stale", never the clock. Manual
+    "Fetch Quotes" clicks (auto omitted/false) are never subject to this."""
+    if _ET:
+        now = datetime.now(_ET)
+    else:
+        now = datetime.now(timezone.utc)
+    if now.weekday() >= 5:
+        return False
+    return (9, 30) <= (now.hour, now.minute) < (20, 0)
+
+
 def _init_last_auto_fetch_date() -> None:
     """On startup, read the last detail_fetched_at date from the DB."""
     global _last_auto_fetch_date

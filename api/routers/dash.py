@@ -6235,11 +6235,15 @@ def yahoo_fetch_quotes_now(auto: bool = Query(False)):
     when-stale trigger (web/market_bar.js), not a manual button click. That
     path is gated to at most once per 30 minutes, enforced here via
     ref_settings so it holds across every browser tab and API reload --
-    manual clicks (auto omitted/false) are never subject to this gate."""
+    manual clicks (auto omitted/false) are never subject to this gate.
+    2026-09-23: also gated to weekday 9:30 AM-8 PM ET (is_auto_refresh_window)
+    so a tab left open overnight can't fire real Yahoo pulls at 1 AM."""
     try:
         from etl.yahoo_fetch import (fetch_hourly_quotes, auto_trigger_on_cooldown,
-                                      mark_auto_trigger_now)
+                                      mark_auto_trigger_now, is_auto_refresh_window)
         if auto:
+            if not is_auto_refresh_window():
+                return {"skipped": True, "reason": "outside_hours"}
             if auto_trigger_on_cooldown():
                 return {"skipped": True, "reason": "auto_cooldown"}
             mark_auto_trigger_now()

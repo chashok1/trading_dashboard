@@ -698,6 +698,30 @@
   // ref_settings-backed so it survives API reloads). The guard only clears
   // when a real new fetch lands, from ANY source (this trigger, a manual
   // click, or the 10am/3pm scheduled job) -- not on a timer.
+  //
+  // 2026-09-23, user-directed: a tab left open overnight was firing real
+  // yfinance pulls around 1 AM -- this check only ever looked at staleness,
+  // never the clock. Mirrors etl/yahoo_fetch.py::is_auto_refresh_window
+  // (weekday, 9:30 AM-8 PM ET) so an off-hours tab doesn't even issue the
+  // request (server would skip it anyway, but skipping here avoids the
+  // persistent '!' icon _runQuoteRefresh shows on any non-ok auto result).
+  function _isAutoRefreshWindowET() {
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York', hour12: false,
+        weekday: 'short', hour: 'numeric', minute: 'numeric',
+      }).formatToParts(new Date());
+      const get = t => parts.find(p => p.type === t).value;
+      const weekday = get('weekday');
+      if (weekday === 'Sat' || weekday === 'Sun') return false;
+      const hm = [parseInt(get('hour'), 10), parseInt(get('minute'), 10)];
+      const cmp = (a, b) => a[0] - b[0] || a[1] - b[1];
+      return cmp(hm, [9, 30]) >= 0 && cmp(hm, [20, 0]) < 0;
+    } catch (e) {
+      return true; // if ET conversion fails for some reason, let the server decide
+    }
+  }
+
   function _checkAutoRefresh() {
     const btn = document.getElementById('mtQuotesIconBtn');
     if (!btn) return;
@@ -713,6 +737,7 @@
     const staleMinutes = (Date.now() - fetchDt.getTime()) / 60000;
     if (staleMinutes <= 30) return;
     if (document.visibilityState !== 'visible') return;
+    if (!_isAutoRefreshWindowET()) return;
     _autoRefreshAttempted = true;
     _runQuoteRefresh(btn, true);
   }
