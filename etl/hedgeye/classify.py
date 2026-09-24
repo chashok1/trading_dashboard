@@ -69,8 +69,19 @@ EMAIL_TYPES: list[EmailType] = [
               subject_re=r"^The Call @ Hedgeye \| Replay", parser="the_call"),
     EmailType("macro_show_summary", "DATA", "daily",
               subject_re=r"^THE MACRO SHOW:.*Summary Notes", parser="macro_show_summary"),
+    # 2026-09-24 -- asset="macro_select_800px.png" removed: that header
+    # banner turned out to be shared by other unrelated macro-commentary
+    # emails (found via a live Gmail check: "U.S. PMI | Weapons-Grade
+    # QUAD2" carries the identical banner), so any such email that didn't
+    # match an earlier, more specific EMAIL_TYPES entry was falling through
+    # to this one and getting wrongly filed as inflation_nowcast (visible
+    # as garbage "CPI nowcast None% y/y" notes in note_repo). The real
+    # monthly nowcast emails were still classified fine via subject_re --
+    # this fallback only ever produced FALSE positives, never masked a true
+    # one. Subject alone ("Monthly Inflation Nowcast", exact and consistent
+    # across every real nowcast email checked) is the reliable signal.
     EmailType("inflation_nowcast", "DATA", "monthly",
-              subject_re=r"Monthly Inflation Nowcast", asset="macro_select_800px.png",
+              subject_re=r"Monthly Inflation Nowcast",
               parser="inflation_nowcast"),
 
     # ---- ANALYSIS / RULES ---------------------------------------------------

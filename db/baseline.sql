@@ -6845,6 +6845,42 @@ CREATE TABLE IF NOT EXISTS ref_cross_asset_rule_leg (
 ALTER TABLE ref_cross_asset_rule_leg ADD COLUMN IF NOT EXISTS weight NUMERIC NOT NULL DEFAULT 1;
 ALTER TABLE ref_cross_asset_rule_leg ADD COLUMN IF NOT EXISTS leg_group TEXT;
 
+-- 2026-09-24, user-directed: "if both bonds and dollar is bullish, it
+-- shouldn't recommend buy" -- an OUTLOOK-based veto qualifier, layered on
+-- top of the existing RR-position legs above (a different dimension: the
+-- app's everyday BULLISH/BEARISH/NEUTRAL outlook tag, not the LRR/TRR risk-
+-- range position this table already checks). check_type='outlook' legs
+-- compare drv_rr.outlook against outlook_value instead of an RR-position
+-- threshold -- comparison/rr_threshold_pct are meaningless for that check
+-- type, hence NOT NULL dropped on both (still required/used for the
+-- original 'rr_position' check_type). is_veto=TRUE flips a check's effect:
+-- instead of being required for the rule to fire, ALL of a rule's veto
+-- checks passing BLOCKS it from firing even when every normal check has
+-- passed (etl/derive_cross_asset_rules.py: fired = normal_checks_all_pass
+-- AND NOT veto_checks_all_pass). Blended veto legs (same leg_group) use a
+-- categorical AND across members (every member's outlook must match), not
+-- the normal-check weighted-average blend -- a weighted average makes no
+-- sense for a BULLISH/BEARISH/NEUTRAL tag.
+ALTER TABLE ref_cross_asset_rule_leg ALTER COLUMN comparison DROP NOT NULL;
+ALTER TABLE ref_cross_asset_rule_leg ALTER COLUMN rr_threshold_pct DROP NOT NULL;
+ALTER TABLE ref_cross_asset_rule_leg ADD COLUMN IF NOT EXISTS check_type TEXT NOT NULL DEFAULT 'rr_position'
+    CHECK (check_type IN ('rr_position','outlook'));
+ALTER TABLE ref_cross_asset_rule_leg ADD COLUMN IF NOT EXISTS outlook_value TEXT;
+ALTER TABLE ref_cross_asset_rule_leg ADD COLUMN IF NOT EXISTS is_veto BOOLEAN NOT NULL DEFAULT FALSE;
+-- UNIQUE(rule_code, leg_symbol) alone can't hold two rows for the same
+-- symbol (e.g. TNX:CGI's existing RR-position leg + a NEW outlook-veto leg
+-- on that same symbol) -- widened to include check_type. 2026-09-24 fix:
+-- the first version of this migration dropped the OLD constraint name but
+-- added a DIFFERENTLY-named new one without an IF NOT EXISTS guard -- fine
+-- on a fresh apply, but a second init_db run then tried to re-add the new
+-- constraint (already there from the first run) and errored. Postgres has
+-- no ADD CONSTRAINT IF NOT EXISTS, so both names are dropped first, every
+-- run, making the whole thing idempotent regardless of which one exists.
+ALTER TABLE ref_cross_asset_rule_leg DROP CONSTRAINT IF EXISTS ref_cross_asset_rule_leg_rule_code_leg_symbol_key;
+ALTER TABLE ref_cross_asset_rule_leg DROP CONSTRAINT IF EXISTS ref_cross_asset_rule_leg_rule_code_leg_symbol_check_type_key;
+ALTER TABLE ref_cross_asset_rule_leg ADD CONSTRAINT ref_cross_asset_rule_leg_rule_code_leg_symbol_check_type_key
+    UNIQUE (rule_code, leg_symbol, check_type);
+
 -- drv_cross_asset_signal -- derived, idempotent (DELETE WHERE as_of_date=D
 -- then INSERT). One row per active rule per date. detail JSONB: per-leg
 -- {symbol, comparison, threshold_pct, rr_pct, passed} for the dashboard
@@ -6859,6 +6895,11 @@ CREATE TABLE IF NOT EXISTS drv_cross_asset_signal (
     detail         JSONB,
     PRIMARY KEY (as_of_date, rule_code)
 );
+-- veto_active (2026-09-24): TRUE when the rule's normal (RR-position) legs
+-- all passed but an outlook-based veto check blocked it from firing --
+-- lets the dashboard panel show "blocked" distinctly from a plain
+-- not-yet-fired "watching" state. FALSE for a rule with no veto legs.
+ALTER TABLE drv_cross_asset_signal ADD COLUMN IF NOT EXISTS veto_active BOOL NOT NULL DEFAULT FALSE;
 
 -- Seed: the rule above. 2026-09-01 correction -- the "Bonds" leg was
 -- originally TLT+IEF (bond PRICE ETFs), but the user's actual rule concept
@@ -6878,9 +6919,15 @@ CREATE TABLE IF NOT EXISTS drv_cross_asset_signal (
 -- rr_only member (condition leg -- cleanest single-instrument RR read);
 -- GLD = the actual tradable ETF this app already treats as canonical Gold
 -- elsewhere (asset-class benchmark, Quad Rotation panel) -- the buy target.
+-- 2026-09-24 -- description's veto clause kept BEFORE the trailing
+-- "-- buy Gold" (not appended after it): web/cross_asset_panel.js's
+-- _setupTitle() strips a trailing "-- buy X" to build the card's title
+-- (see that function's own comment) and only matches when it's the very
+-- last thing in the string.
 INSERT INTO ref_cross_asset_rule (rule_code, description, target_symbol, target_action) VALUES
     ('BONDS_USD_TRR_GOLD_LRR',
-     'Bonds (10Y+30Y Treasury yield, 70/30 blend) and US Dollar ($DXY) at TRR while Gold (/GC) is at LRR -- buy Gold',
+     'Bonds (10Y+30Y Treasury yield, 70/30 blend) and US Dollar ($DXY) at TRR while Gold (/GC) is at LRR '
+     '(blocked if 10Y+30Y yields and $DXY are all still BULLISH-outlook) -- buy Gold',
      'GLD', 'ADD')
 ON CONFLICT (rule_code) DO UPDATE SET description = EXCLUDED.description;
 
@@ -6890,14 +6937,31 @@ DELETE FROM ref_cross_asset_rule_leg
  WHERE rule_code = 'BONDS_USD_TRR_GOLD_LRR' AND leg_symbol IN ('TLT', 'IEF');
 
 INSERT INTO ref_cross_asset_rule_leg
-    (rule_code, leg_symbol, comparison, rr_threshold_pct, weight, leg_group, sort_order) VALUES
-    ('BONDS_USD_TRR_GOLD_LRR', 'TNX:CGI', '>=', 85, 0.7, 'bonds_yield', 1),
-    ('BONDS_USD_TRR_GOLD_LRR', 'TYX:CGI', '>=', 85, 0.3, 'bonds_yield', 2),
-    ('BONDS_USD_TRR_GOLD_LRR', '$DXY',    '>=', 85, 1,   NULL,          3),
-    ('BONDS_USD_TRR_GOLD_LRR', '/GC',     '<=', 15, 1,   NULL,          4)
-ON CONFLICT (rule_code, leg_symbol) DO UPDATE SET
+    (rule_code, leg_symbol, comparison, rr_threshold_pct, weight, leg_group, sort_order, check_type) VALUES
+    ('BONDS_USD_TRR_GOLD_LRR', 'TNX:CGI', '>=', 85, 0.7, 'bonds_yield', 1, 'rr_position'),
+    ('BONDS_USD_TRR_GOLD_LRR', 'TYX:CGI', '>=', 85, 0.3, 'bonds_yield', 2, 'rr_position'),
+    ('BONDS_USD_TRR_GOLD_LRR', '$DXY',    '>=', 85, 1,   NULL,          3, 'rr_position'),
+    ('BONDS_USD_TRR_GOLD_LRR', '/GC',     '<=', 15, 1,   NULL,          4, 'rr_position')
+ON CONFLICT (rule_code, leg_symbol, check_type) DO UPDATE SET
     comparison = EXCLUDED.comparison, rr_threshold_pct = EXCLUDED.rr_threshold_pct,
     weight = EXCLUDED.weight, leg_group = EXCLUDED.leg_group, sort_order = EXCLUDED.sort_order;
+
+-- 2026-09-24, user-directed: "if both bonds and dollar is bullish, it
+-- shouldn't recommend buy" -- outlook veto legs on the SAME rule (see
+-- check_type/outlook_value/is_veto's own comment above this table).
+-- "Bonds bullish" = BOTH TNX:CGI (10Y) AND TYX:CGI (30Y) outlook=BULLISH
+-- (leg_group='bonds_bullish_veto', categorical AND, not the RR legs'
+-- weighted blend); "Dollar bullish" = $DXY outlook=BULLISH, standalone.
+-- ALL veto checks (this group + $DXY) must pass together to block the
+-- rule -- matches "both bonds AND dollar" in the user's own wording.
+INSERT INTO ref_cross_asset_rule_leg
+    (rule_code, leg_symbol, weight, leg_group, sort_order, check_type, outlook_value, is_veto) VALUES
+    ('BONDS_USD_TRR_GOLD_LRR', 'TNX:CGI', 1, 'bonds_bullish_veto', 5, 'outlook', 'BULLISH', TRUE),
+    ('BONDS_USD_TRR_GOLD_LRR', 'TYX:CGI', 1, 'bonds_bullish_veto', 6, 'outlook', 'BULLISH', TRUE),
+    ('BONDS_USD_TRR_GOLD_LRR', '$DXY',    1, NULL,                 7, 'outlook', 'BULLISH', TRUE)
+ON CONFLICT (rule_code, leg_symbol, check_type) DO UPDATE SET
+    weight = EXCLUDED.weight, leg_group = EXCLUDED.leg_group, sort_order = EXCLUDED.sort_order,
+    outlook_value = EXCLUDED.outlook_value, is_veto = EXCLUDED.is_veto;
 
 -- 2026-06-21 TASK_78: macro-area thresholds in ref_settings.
 INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
@@ -8862,21 +8926,26 @@ GROUP BY sig.source_code;
 -- Quad 2 is good for risk assets but there is a caveat. if inflation/
 -- energy/rates all going up too much too fast, it is not good for risk
 -- assets." Fires only when the dashboard's own dominant-quad read is Quad 2
--- AND 10Y breakeven inflation (T10YIE) + WTI crude + the 10Y Treasury yield
--- (DGS10) are all up past their own threshold over the trailing 10 trading
--- days. Predicate logic: etl/derive_risk_dial.py::_g_quad2_overheat.
--- Shipped ACTIVE (unlike TASK_146's gauges) -- this is a stated market
--- caveat the user already holds as a rule of thumb, not an unvalidated
--- data-mined pattern needing a backtest review first.
+-- AND rates + energy + inflation are all trending hot together. Predicate
+-- logic: etl/derive_risk_dial.py::_g_quad2_overheat. Shipped ACTIVE (unlike
+-- TASK_146's gauges) -- this is a stated market caveat the user already
+-- holds as a rule of thumb, not an unvalidated data-mined pattern needing a
+-- backtest review first.
+--
+-- 2026-09-24 follow-up -- first cut used a 10-trading-day %-change
+-- threshold per leg (ref_settings rd_quad2_t10yie_bp/rd_quad2_wti_pct/
+-- rd_quad2_dgs10_bp); user: "you are only checking today's values. instead
+-- can we [use] the tags BULLISH?" -- redesigned to each source's own
+-- categorical trend tag instead (10Y+30Y Treasury yield outlook, WTI
+-- outlook, Hedgeye Monthly Inflation Nowcast latest-vs-prior), no
+-- thresholds left to tune -- the 3 rd_quad2_* settings below are dead,
+-- removed.
 INSERT INTO ref_risk_gauge (gauge_key, label, weight, is_active, category, notes) VALUES
     ('quad2_overheat', 'Quad 2 overheating (inflation/energy/rates)', 2, TRUE, 'macro',
-     'Fires when dominant quad = 2 AND 10Y breakeven + WTI + 10Y yield are all up past their own '
-     'threshold (ref_settings rd_quad2_t10yie_bp/rd_quad2_wti_pct/rd_quad2_dgs10_bp) over the '
-     'trailing 10 trading days (etl/derive_risk_dial.py::QUAD2_OVERHEAT_DAYS).')
-ON CONFLICT (gauge_key) DO NOTHING;
+     'Fires when dominant quad = 2 AND 10Y+30Y Treasury yield outlook = BULLISH AND WTI outlook = '
+     'BULLISH AND the Hedgeye Monthly Inflation Nowcast (HE_CPI_NOWCAST) is higher than its prior '
+     'reading.')
+ON CONFLICT (gauge_key) DO UPDATE SET notes = EXCLUDED.notes;
 
-INSERT INTO ref_settings (setting_name, setting_value, description) VALUES
-    ('rd_quad2_t10yie_bp', '15', 'quad2_overheat gauge: 10Y breakeven inflation rise (bp/10 trading days) that counts as overheating.'),
-    ('rd_quad2_wti_pct', '10', 'quad2_overheat gauge: WTI crude rise (%/10 trading days) that counts as overheating.'),
-    ('rd_quad2_dgs10_bp', '25', 'quad2_overheat gauge: 10Y Treasury yield rise (bp/10 trading days) that counts as overheating.')
-ON CONFLICT (setting_name) DO NOTHING;
+DELETE FROM ref_settings WHERE setting_name IN
+    ('rd_quad2_t10yie_bp', 'rd_quad2_wti_pct', 'rd_quad2_dgs10_bp');

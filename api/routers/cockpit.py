@@ -1457,7 +1457,7 @@ def get_cross_asset_signals(date: Optional[str] = Query(None)):
     d = _resolve_date(date)
     with session_scope() as s:
         rows = s.execute(text("""
-            SELECT rule_code, fired, target_symbol, target_action, description, detail
+            SELECT rule_code, fired, veto_active, target_symbol, target_action, description, detail
             FROM drv_cross_asset_signal
             WHERE as_of_date = :d
             ORDER BY fired DESC, rule_code

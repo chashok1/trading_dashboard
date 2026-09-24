@@ -5,23 +5,46 @@ Multi-symbol RR-position rules the ordinary atomic-rule engine can't express —
 ## Schema
 
 - **`ref_cross_asset_rule`** — one row per rule: `rule_code` (PK), `description`, `target_symbol`, `target_action` (consolidated_action vocabulary — `ADD`/`INCREASE`/`REDUCE`/`REMOVE`/`HOLD`), `is_active`. Editable via `/ref`.
-- **`ref_cross_asset_rule_leg`** — one row per leg of a rule: `rule_code` (FK), `leg_symbol`, `comparison` (`>=`/`<=`), `rr_threshold_pct`, `weight` (default 1), `leg_group` (nullable). A rule fires when **every check** passes — see Leg evaluation below.
-- **`drv_cross_asset_signal`** — derived (idempotent `DELETE WHERE as_of_date=D` → INSERT), one row per active rule per date: `fired`, `target_symbol`, `target_action`, `detail` JSONB (one entry per check: `{symbol, comparison, threshold_pct, rr_pct, passed, members}` — `symbol`/`rr_pct` are the check's own label/combined value; `members` is present only for a blended check, listing each underlying leg's own `{symbol, rr_pct, weight}` — powers the dashboard panel's "how close" read even when not fired).
+- **`ref_cross_asset_rule_leg`** — one row per leg of a rule: `rule_code` (FK), `leg_symbol`, `leg_group` (nullable), `weight` (default 1), plus either:
+  - an **`rr_position`** check (`check_type='rr_position'`, the original kind): `comparison` (`>=`/`<=`) + `rr_threshold_pct`, or
+  - an **`outlook`** check (`check_type='outlook'`, 2026-09-24): `outlook_value` (e.g. `'BULLISH'`) — compares the leg symbol's `drv_rr.outlook` tag instead of an RR-position threshold. `comparison`/`rr_threshold_pct` are nullable and unused for this check type.
+
+  `is_veto` (default `FALSE`) flips a check's effect — see Veto checks below. `UNIQUE(rule_code, leg_symbol, check_type)`, so the same symbol can carry both an `rr_position` leg and an `outlook` leg in one rule (e.g. `TNX:CGI` has one of each in the seeded rule).
+- **`drv_cross_asset_signal`** — derived (idempotent `DELETE WHERE as_of_date=D` → INSERT), one row per active rule per date: `fired`, `veto_active` (2026-09-24 — see below), `target_symbol`, `target_action`, `detail` JSONB (one entry per check — `rr_position`: `{symbol, check_type, comparison, threshold_pct, rr_pct, passed, is_veto, members}`; `outlook`: `{symbol, check_type, outlook_value, outlook, passed, is_veto, members}` — `outlook` is the single combined reading for a 1-member check, `null` for a blended one; `members` is present only for a blended check).
 
 ## Leg evaluation
 
-A rule's legs group into **checks**: a leg with `leg_group IS NULL` is its own standalone check; legs sharing the same `(rule_code, leg_group)` blend into **one** check — their `rr_pos()` values combine via a `weight`-weighted average (legs in a group must share the same `comparison`/`rr_threshold_pct`, the group's one shared condition). A rule fires when **every** check passes.
+A rule's legs group into **checks**: a leg with `leg_group IS NULL` is its own standalone check; legs sharing the same `(rule_code, leg_group)` blend into **one** check. How they blend depends on `check_type`:
 
-Each leg's own reading uses `api._helpers.rr_pos(last_price, lrr, trr)` — the same `[0, 1]`-scale formula `ref_macro_area`'s own HOT/COLD read uses (`macro_area_hot_pct`/`macro_area_cold_pct` in `ref_settings`, default 0.85/0.15). `rr_threshold_pct` is stored 0–100 (e.g. `85` = "at TRR", `15` = "at LRR") and divided by 100 before comparing against either a single leg's value or a group's blended value.
+- **`rr_position`**: members' `rr_pos()` values combine via a `weight`-weighted average (members must share the same `comparison`/`rr_threshold_pct`), then compared against the threshold. Each leg's reading uses `api._helpers.rr_pos(last_price, lrr, trr)` — the same `[0, 1]`-scale formula `ref_macro_area`'s own HOT/COLD read uses (`macro_area_hot_pct`/`macro_area_cold_pct` in `ref_settings`, default 0.85/0.15). `rr_threshold_pct` is stored 0–100 (e.g. `85` = "at TRR", `15` = "at LRR") and divided by 100 before comparing.
+- **`outlook`**: members combine via a **categorical AND** instead — every member's own `drv_rr.outlook` must equal the check's `outlook_value` for the check to pass. A weighted average doesn't make sense for a BULLISH/BEARISH/NEUTRAL tag.
+
+A **normal** check (`is_veto=FALSE`) must pass for the rule to fire — same AND-across-checks logic as before.
+
+### Veto checks (2026-09-24)
+
+A check marked `is_veto=TRUE` inverts its role: instead of being required to fire, **all** of a rule's veto checks passing **blocks** it from firing, even when every normal check has passed.
+
+```
+fired       = (every normal check passes) AND NOT veto_active
+veto_active = (rule has >=1 veto check) AND (every veto check passes)
+```
+
+A rule with no veto legs behaves exactly as before (`veto_active` always `FALSE`). The dashboard panel (`web/cross_asset_panel.js`) shows a distinct "⛔ BLOCKED" badge when `veto_active` is true and `fired` is false — different from the plain gray "watching" state, since the setup is otherwise fully formed and only the veto is holding it back.
 
 ## Seeded rule
 
-`BONDS_USD_TRR_GOLD_LRR` — "Bonds (10Y+30Y Treasury yield, 70/30 blend) and US Dollar ($DXY) at TRR while Gold (/GC) is at LRR — buy Gold".
+`BONDS_USD_TRR_GOLD_LRR` — "Bonds (10Y+30Y Treasury yield, 70/30 blend) and US Dollar ($DXY) at TRR while Gold (/GC) is at LRR (blocked if 10Y+30Y yields and $DXY are all still BULLISH-outlook) — buy Gold".
 
+Normal (`rr_position`) legs:
 - **Bonds** = `TNX:CGI` (10Y, weight 0.7) + `TYX:CGI` (30Y, weight 0.3), same `leg_group='bonds_yield'`, blended and compared once against `>=85`. **Not** `TLT`/`IEF` (bond *price* ETFs) — an earlier version of this rule used those, but the user's actual rule concept (confirmed against their Hedgeye RR email — UST30Y/UST10Y/UST2Y yield levels, matching `TYX:CGI`/`TNX:CGI`/`DGS2:FRED` in `hist_rr` exactly) is Treasury **yield** risk range, not bond price. "Yield at TRR" is a mean-reversion setup (yields expected to roll over) — coherent with USD at TRR also rolling over and Gold at LRR bouncing, all pointing the same bullish-gold direction; no comparison inversion needed vs. the original wording, just the right symbols. 2Y (`DGS2:FRED`) deliberately excluded — it's dominated by near-term Fed rate-path expectations, a different driver than the long-duration/real-yield story that ties to Gold; 10Y is weighted higher than 30Y as the more standard single benchmark for the gold/real-yields relationship.
 - **USD** = `$DXY` (the dedicated `rr_only` USD member in `ref_macro_area`), standalone, `>=85`.
 - **Gold condition** = `/GC` (the dedicated `rr_only` Gold member — the condition leg, cleanest single-instrument RR read), standalone, `<=15`.
 - **Target/buy symbol** = `GLD` — the ETF this app already treats as canonical Gold elsewhere (`_ASSET_CLASS_ETF["Gold"]`, Quad Rotation panel).
+
+Veto (`outlook`) legs, 2026-09-24, user-directed ("if both bonds and dollar is bullish, it shouldn't recommend buy"): the RR-position setup above is a mean-reversion bet (yields/USD expected to roll over) — if the everyday BULLISH/BEARISH/NEUTRAL outlook tag on those same instruments still reads BULLISH, the trend hasn't actually turned yet, so the buy call is withheld.
+- **Bonds bullish** = `TNX:CGI` + `TYX:CGI`, same `leg_group='bonds_bullish_veto'` (categorical AND — **both** must read BULLISH, not a weighted blend like the RR-position leg above), `outlook_value='BULLISH'`, `is_veto=TRUE`.
+- **Dollar bullish** = `$DXY`, standalone, `outlook_value='BULLISH'`, `is_veto=TRUE`.
 
 ## Derive + wiring
 

@@ -61,12 +61,25 @@ IG_WIDEN_BP = 10.0
 # expectations, energy, and rates are all running hot together even inside
 # a nominal Quad 2 read, that's the classic setup that forces the Fed
 # hawkish and drags risk assets down anyway (stagflation-adjacent, not the
-# "goldilocks" Quad 2 the playbook expects). Lookback window is a code
-# constant (like CURVE_INVERT_DAYS etc. above); the 3 magnitude thresholds
-# are ref_settings-driven instead (rd_quad2_* below, see build_context) so
-# they can be loosened/tightened without a code change -- starting values
-# are a reasonable first cut per the user's own framing, not backtested.
-QUAD2_OVERHEAT_DAYS = 10   # trading days for all 3 deltas below
+# "goldilocks" Quad 2 the playbook expects).
+#
+# 2026-09-24 follow-up, user-directed: "you are only checking today's
+# values. instead can we [use] the tags BULLISH?" -- first cut used a
+# 10-trading-day %-change threshold per leg; replaced with each source's
+# own categorical trend tag instead (same spirit as the Gold cross-asset
+# rule's outlook veto, etl/derive_cross_asset_rules.py), for consistency
+# and because a 2-point delta is noisy in a way a trend tag isn't:
+#   - Rates: TNX:CGI (10Y) AND TYX:CGI (30Y) outlook == BULLISH
+#   - Energy: /CL (WTI) outlook == BULLISH
+#   - Inflation: Hedgeye's own Monthly Inflation Nowcast (HE_CPI_NOWCAST,
+#     see etl/hedgeye/parsers.py::parse_inflation_nowcast) trending up --
+#     latest reading > the one before it. Not the email's own stated
+#     "accelerating"/"decelerating" word -- that parser deliberately
+#     doesn't extract it anymore (the surrounding sentence changed at
+#     least 3 times in 2.5 months of live samples checked 2026-09-24;
+#     the plain "+3.34% y/y" number was the only stable token). Computing
+#     the trend ourselves from 2 consecutive readings is the outlook-tag
+#     equivalent for a series that has no BULLISH/BEARISH tag of its own.
 
 
 def _normalize_tnx(last: Optional[float]) -> Optional[float]:
@@ -131,7 +144,7 @@ def _dominant_quad(session: Session, as_of_date: date) -> Optional[int]:
 # Context builder — one round-trip per source table, reused across gauges.
 # ---------------------------------------------------------------------------
 
-_RR_SYMS = ["SPX", "HYG", "TNX:CGI", "$DXY", "/CL"]
+_RR_SYMS = ["SPX", "HYG", "TNX:CGI", "TYX:CGI", "$DXY", "/CL"]
 _QUOTE_SYMS = ["SPX", "HYG", "TNX:CGI", "$DXY", "/CL", "VIX", "MOVE:GIF",
                "GVZ:CGI", "OVX:CGI", "/6J"]
 
@@ -232,33 +245,6 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         ), {"sid": series_id, "d": as_of_date, "n": lookback_days + 2}).all()
         return [(r[0], float(r[1])) for r in rows if r[1] is not None]
 
-    # 2026-09-24 -- WTI's own daily drv_quote history (not hist_macro --
-    # /CL is a TOS/RR symbol, not a FRED series), for _g_quad2_overheat's
-    # "energy up too much too fast" leg. Same DESC [(date, value), ...]
-    # shape as _macro_series above so _series_delta works on either.
-    def _quote_series(sym: str, lookback_days: int) -> Optional[list]:
-        rows = session.execute(text(
-            "SELECT as_of_date, last_price FROM drv_quote WHERE tos_symbol = :sym "
-            "AND as_of_date <= :d ORDER BY as_of_date DESC LIMIT :n"
-        ), {"sym": sym, "d": as_of_date, "n": lookback_days + 2}).all()
-        return [(r[0], float(r[1])) for r in rows if r[1] is not None]
-
-    # 2026-09-24 -- _g_quad2_overheat's 3 magnitude thresholds, ref_settings-
-    # driven (like TASK_146's rd_* gauges) so they're tunable without a code
-    # change; defaults match this gauge's own seed row comment in
-    # db/baseline.sql.
-    q2_settings = {}
-    for name, default in (
-        ("rd_quad2_t10yie_bp", 15.0), ("rd_quad2_wti_pct", 10.0), ("rd_quad2_dgs10_bp", 25.0),
-    ):
-        row = session.execute(text(
-            "SELECT setting_value FROM ref_settings WHERE setting_name = :n"
-        ), {"n": name}).scalar()
-        try:
-            q2_settings[name] = float(row) if row is not None else default
-        except (TypeError, ValueError):
-            q2_settings[name] = default
-
     return {
         "rr": rr_map,
         "quote": quote_map,
@@ -271,13 +257,14 @@ def build_context(session: Session, as_of_date: date, extra: dict) -> dict:
         "usd_corr": usd_corr_map,
         "hy_oas": _macro_series("BAMLH0A0HYM2", CREDIT_WIDEN_DAYS),
         "t10y2y": _macro_series("T10Y2Y", CURVE_INVERT_DAYS),
-        "dgs10": _macro_series("DGS10", QUAD2_OVERHEAT_DAYS),
+        "dgs10": _macro_series("DGS10", 3),
         "dgs3mo": _macro_series("DGS3MO", 3),
         "ig_oas": _macro_series("BAMLC0A0CM", CREDIT_WIDEN_DAYS),
-        "t10yie": _macro_series("T10YIE", QUAD2_OVERHEAT_DAYS),
-        "wti_series": _quote_series("/CL", QUAD2_OVERHEAT_DAYS),
+        # 2026-09-24 -- _g_quad2_overheat's inflation leg: Hedgeye's own
+        # Monthly Inflation Nowcast (weekly cadence despite the name), 2
+        # most recent readings so the gauge can tell latest-vs-prior.
+        "he_cpi_nowcast": _macro_series("HE_CPI_NOWCAST", 2),
         "dominant_quad": _dominant_quad(session, as_of_date),
-        "q2_overheat_settings": q2_settings,
         "sahm_rule": _macro_series("SAHMREALTIME", 3),
         "nfci": _macro_series("NFCI", 3),
         "icsa": _macro_series("ICSA", 90),
@@ -971,11 +958,12 @@ def _g_exposed_bear_themes(ctx):
 
 # 2026-09-24, user-directed: "Gernerally Quad 2 is good for risk assets but
 # there is a caveat. if inflation/energy/rates all going up too much too
-# fast, it is not good for risk assets." See QUAD2_OVERHEAT_DAYS's own
-# comment above for the full reasoning. Only evaluates/fires when the
-# dashboard's own dominant-quad read (_dominant_quad) is 2 -- every other
-# quad returns a quiet (not-fired) reading, since the caveat is specifically
-# about Quad 2's own playbook, not a general inflation/energy/rates gauge.
+# fast, it is not good for risk assets." See the module-level comment above
+# (near the old QUAD2_OVERHEAT_DAYS constant) for the full reasoning and the
+# 2026-09-24 outlook-tag redesign. Only evaluates/fires when the dashboard's
+# own dominant-quad read (_dominant_quad) is 2 -- every other quad returns a
+# quiet (not-fired) reading, since the caveat is specifically about Quad 2's
+# own playbook, not a general inflation/energy/rates gauge.
 def _g_quad2_overheat(ctx):
     quad = ctx.get("dominant_quad")
     if quad is None:
@@ -983,34 +971,33 @@ def _g_quad2_overheat(ctx):
     if quad != 2:
         return False, quad, f"Quad {quad} (this caveat only applies in Quad 2)"
 
-    settings = ctx.get("q2_overheat_settings") or {}
-    t10yie_th = settings.get("rd_quad2_t10yie_bp", 15.0)
-    wti_th = settings.get("rd_quad2_wti_pct", 10.0)
-    dgs10_th = settings.get("rd_quad2_dgs10_bp", 25.0)
+    rr = ctx["rr"]
+    tnx_outlook = (rr.get("TNX:CGI") or {}).get("outlook")
+    tyx_outlook = (rr.get("TYX:CGI") or {}).get("outlook")
+    wti_outlook = (rr.get("/CL") or {}).get("outlook")
+    if tnx_outlook is None or tyx_outlook is None or wti_outlook is None:
+        return None, None, "Quad 2, but rates/energy outlook unavailable to check the overheat caveat"
 
-    t10yie_d = _series_delta(ctx.get("t10yie"), QUAD2_OVERHEAT_DAYS)
-    dgs10_d = _series_delta(ctx.get("dgs10"), QUAD2_OVERHEAT_DAYS)
-    wti_d = _series_delta(ctx.get("wti_series"), QUAD2_OVERHEAT_DAYS)
-    if t10yie_d is None or dgs10_d is None or wti_d is None:
-        return None, None, "Quad 2, but inflation/energy/rates history unavailable to check the overheat caveat"
+    nowcast = ctx.get("he_cpi_nowcast") or []
+    if len(nowcast) < 2:
+        return None, None, "Quad 2, but Hedgeye inflation nowcast history unavailable to check the overheat caveat"
+    (latest_date, latest_val), (_prior_date, prior_val) = nowcast[0], nowcast[1]
+    inflation_hot = latest_val > prior_val
 
-    t10yie_bp = t10yie_d[1] * 100
-    dgs10_bp = dgs10_d[1] * 100
-    wti_latest, wti_delta = wti_d
-    wti_prior = wti_latest - wti_delta
-    if not wti_prior:
-        return None, None, "Quad 2, but WTI history unavailable to check the overheat caveat"
-    wti_pct = wti_delta / wti_prior * 100
+    rates_hot = tnx_outlook == "BULLISH" and tyx_outlook == "BULLISH"
+    energy_hot = wti_outlook == "BULLISH"
 
-    fired = t10yie_bp >= t10yie_th and wti_pct >= wti_th and dgs10_bp >= dgs10_th
-    window_txt = (f"10Y breakeven {t10yie_bp:+.0f}bp, WTI {wti_pct:+.0f}%, "
-                  f"10Y yield {dgs10_bp:+.0f}bp over {QUAD2_OVERHEAT_DAYS}d")
+    fired = rates_hot and energy_hot and inflation_hot
+    parts = (f"10Y {tnx_outlook or 'n/a'}/30Y {tyx_outlook or 'n/a'}, "
+             f"WTI {wti_outlook or 'n/a'}, "
+             f"CPI nowcast {latest_val:+.2f}% y/y ({'up' if inflation_hot else 'down'} "
+             f"from {prior_val:+.2f}%)")
     if fired:
-        detail = (f"Quad 2, but inflation/energy/rates are overheating together ({window_txt}) "
+        detail = (f"Quad 2, but inflation/energy/rates are overheating together ({parts}) "
                   "-- historically bad for risk assets despite Quad 2 usually being favorable")
     else:
-        detail = f"Quad 2 ({window_txt} -- not overheating)"
-    return fired, wti_pct, detail
+        detail = f"Quad 2 ({parts} -- not overheating)"
+    return fired, latest_val, detail
 
 
 GAUGES: list[tuple[str, Callable]] = [

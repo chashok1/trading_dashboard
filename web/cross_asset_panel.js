@@ -32,7 +32,21 @@
   // durArrow: low is favorable-entry-green, high is caution-red -- reused
   // here per-leg so a leg close to passing reads warm, far from passing
   // reads cool, regardless of whether its own condition is ">=" or "<=".
+  //
+  // 2026-09-24, user-directed ("if both bonds and dollar is bullish, it
+  // shouldn't recommend buy") -- outlook-type legs (leg.check_type ===
+  // 'outlook') added alongside the original rr_position legs: a veto leg
+  // PASSING is bad news for the buy thesis (it's actively blocking the
+  // rule), so it reads red/warning instead of the usual passing-green; a
+  // non-veto outlook leg (none seeded yet, but the schema allows it) keeps
+  // the normal green-on-pass convention. No "how close" gradient for
+  // outlook checks -- BULLISH/BEARISH/NEUTRAL is categorical, there's no
+  // partial-credit distance the way an RR% has.
   function _legColor(leg) {
+    if (leg.check_type === 'outlook') {
+      if (!leg.passed) return '#a8a29e';
+      return leg.is_veto ? '#b91c1c' : '#15803d';
+    }
     if (leg.rr_pct == null) return '#a8a29e';
     if (leg.passed) return '#15803d';
     // "how close": distance to the threshold, same direction as the
@@ -44,7 +58,32 @@
     return '#78716c';                    // far, neutral gray
   }
 
+  function _outlookLegChip(leg) {
+    var color = _legColor(leg);
+    var vetoTag = leg.is_veto ? (leg.passed ? ' (blocking)' : ' (veto, not active)') : '';
+    var valTxt, titleTxt;
+    if (leg.members && leg.members.length) {
+      // Blended categorical-AND check (e.g. "TNX:CGI + TYX:CGI") -- no
+      // single combined outlook to show, list each member's own reading.
+      valTxt = leg.members.map(function (m) { return m.outlook || '—'; }).join('/');
+      titleTxt = leg.symbol + ' need ' + leg.outlook_value + vetoTag + ' — ' +
+        leg.members.map(function (m) { return m.symbol + ' ' + (m.outlook || '—'); }).join(', ');
+    } else {
+      valTxt = leg.outlook || '—';
+      titleTxt = leg.symbol + ' outlook ' + valTxt + ' (need ' + leg.outlook_value + ')' + vetoTag;
+    }
+    return '<span style="display:inline-flex; align-items:center; gap:3px; ' +
+      'font-size:9px; padding:2px 6px; border-radius:100px; white-space:nowrap; ' +
+      'background:' + (leg.passed && leg.is_veto ? '#fde2e2' : leg.passed ? '#dceadd' : '#f5f5f4') +
+      '; color:' + color + '; font-weight:' + (leg.passed ? '700' : '400') + ';" ' +
+      'title="' + esc(titleTxt) + '">' +
+      (leg.passed && leg.is_veto ? '&#9940; ' : leg.passed ? '&#10003; ' : '') +
+      esc(leg.symbol) + ' ' + esc(valTxt) +
+      '</span>';
+  }
+
   function legChip(leg) {
+    if (leg.check_type === 'outlook') return _outlookLegChip(leg);
     var color = _legColor(leg);
     var pctTxt = leg.rr_pct != null ? leg.rr_pct.toFixed(1) + '%' : '—';
     var condTxt = leg.comparison + ' ' + leg.threshold_pct + '%';
@@ -67,23 +106,51 @@
       '</span>';
   }
 
+  // 2026-09-24, user-directed: "why confusing '...buy gold'. can we display
+  // some thing else may be without buy??" -- ref_cross_asset_rule.description
+  // (e.g. "...Gold (/GC) is at LRR -- buy Gold") always rendered as this
+  // card's title, fired or not -- reading a live "buy Gold" call on a card
+  // that's actually just watching (gray "watching" label, not the green
+  // FIRED badge) was the actual confusion. The badge already states the
+  // real action when the rule fires ("FIRED -- ADD GLD"); stripping the
+  // description's own trailing "-- buy X" clause off the title removes the
+  // only other place "buy" text could appear, so the title reads as the
+  // SETUP/condition only ("...Gold (/GC) is at LRR") in both states -- the
+  // full original sentence (with "buy") is still in the native title=
+  // hover for anyone who wants it.
+  function _setupTitle(desc) {
+    if (!desc) return desc;
+    return desc.replace(/\s*[-–—]+\s*(buy|sell)\s+\S+\s*$/i, '');
+  }
+
   function ruleCard(r) {
     var fired = r.fired === true;
-    var border = fired ? '#15803d' : 'var(--border,#e5e5e2)';
+    // 2026-09-24 -- veto_active (etl/derive_cross_asset_rules.py) means the
+    // normal legs all passed but an outlook veto blocked it -- a plain
+    // gray "watching" would misleadingly suggest the setup just isn't
+    // there yet, when it's actually fully formed except for the veto.
+    var vetoActive = !fired && r.veto_active === true;
+    var border = fired ? '#15803d' : vetoActive ? '#b91c1c' : 'var(--border,#e5e5e2)';
     var badge = fired
       ? '<span style="font-size:8.5px; font-weight:700; color:#15803d; background:#dceadd; ' +
         'padding:2px 8px; border-radius:100px; white-space:nowrap;">&#9679; FIRED &mdash; ' +
         esc(r.target_action) + ' ' + esc(r.target_symbol) + '</span>'
+      : vetoActive
+      ? '<span style="font-size:8.5px; font-weight:700; color:#b91c1c; background:#fde2e2; ' +
+        'padding:2px 8px; border-radius:100px; white-space:nowrap;">&#9940; BLOCKED &mdash; trend still bullish</span>'
       : '<span style="font-size:8.5px; color:var(--text-3,#a8a29e);">watching</span>';
     var legsHtml = (r.detail || []).map(legChip).join(' ');
     var link = '/actionable?symbol=' + encodeURIComponent(r.target_symbol);
+    var setupTxt = _setupTitle(r.description) || r.rule_code;
     return '<div style="display:flex; flex-direction:column; gap:5px; padding:8px 10px; ' +
       'background:#fff; border:1px solid var(--border,#e5e5e2); border-left:3px solid ' + border +
       '; border-radius:6px;">' +
       '<div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">' +
-        '<a href="' + esc(link) + '" style="font-size:10.5px; font-weight:700; color:var(--text-1,#1c1917); ' +
-        'text-decoration:none;" title="Open ' + esc(r.target_symbol) + ' on Actionable">' +
-        esc(r.description || r.rule_code) + '</a>' +
+        '<a href="' + esc(link) + '" style="font-size:10.5px; font-weight:700; color:' +
+        (fired ? 'var(--text-1,#1c1917)' : 'var(--text-3,#78716c)') + '; ' +
+        'text-decoration:none;" title="' + esc(r.description || r.rule_code) +
+        ' — open ' + esc(r.target_symbol) + ' on Actionable">' +
+        esc(setupTxt) + '</a>' +
         badge +
       '</div>' +
       '<div style="display:flex; flex-wrap:wrap; gap:4px;">' + legsHtml + '</div>' +

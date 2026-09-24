@@ -1057,24 +1057,44 @@ def parse_market_situation(email: Email) -> Parsed:
 
 
 def parse_inflation_nowcast(email: Email) -> Parsed:
+    """2026-09-24 -- was silently writing 0 rows since ~2026-07-06 (the old
+    "nowcast for June is +3.85% y/y" pattern stopped matching). Checked a
+    live sample of 20 emails going back to July to fix it properly: the
+    surrounding SENTENCE has changed at least 3 times in that window --
+    "X% y/y, reflecting a Y bp sequential deceleration", "Our July/August
+    nowcast is/for headline CPI of X% y/y, ... Y bps of sequential
+    acceleration/deceleration", "a Y bp downshift to X% y/y" (no direction
+    word at all that week), "Y bp acceleration/deceleration to X% y/y" --
+    a regex tied to any one of those sentence shapes is guaranteed to break
+    again the next time Hedgeye tweaks their template. The one thing that
+    held constant across every version: the plain number itself, written
+    "+3.34% y/y", as the FIRST such token in the email body -- a later,
+    backward-looking "last month's actual CPI was +3.53% y/y" paragraph
+    sometimes repeats the pattern further down, which re.search's
+    first-match behavior already skips correctly (the nowcast headline
+    always comes first). So: capture ONLY that one stable token, and
+    compute the accelerating/decelerating trend ourselves downstream from
+    two consecutive hist_macro readings (same pattern etl/derive_risk_dial.
+    py's _series_delta already uses elsewhere) instead of re-parsing
+    Hedgeye's own freeform direction wording -- removes the fragile part
+    entirely rather than chasing it each time it drifts. p.warnings (2026-
+    09-24) flags a match failure so a future format break shows up in the
+    ingest log immediately, not silently for two months like this one did."""
     p = Parsed("inflation_nowcast")
     text = email.plaintext
-    m = re.search(r"nowcast for (\w+) is\s*([+-]?\d+\.?\d*)%\s*y/y", text, re.I)
-    bp = re.search(r"([+-]?\d+)\s*bp\s+sequential", text, re.I)
+    m = re.search(r"([+-]?\d+\.\d+)%\s*y/y", text, re.I)
     cpi = re.search(r"CPI Release Date:\s*([A-Za-z]+ \d{1,2})", text)
-    value = _num(m.group(2)) if m else None
-    seq_bp = _num(bp.group(1)) if bp else None
-    direction = None
-    if seq_bp is not None:
-        direction = "accelerating" if seq_bp > 0 else "decelerating"
+    value = _num(m.group(1)) if m else None
     if value is not None:
         p.add_rows("hist_macro", [{
             "series_id": "HE_CPI_NOWCAST", "obs_date": email.edt_date,
             "value": value, "message_id": email.message_id,
         }])
+    else:
+        p.warnings.append("inflation_nowcast: no 'X.XX% y/y' value found -- email wording may have changed again")
     p.notes.append(_note(
-        email, "inflation", f"CPI nowcast {value}% y/y, {seq_bp} bp ({direction}); "
-        f"CPI release {cpi.group(1) if cpi else '?'}", theme_tags=["inflation", direction or ""]))
+        email, "inflation", f"CPI nowcast {value if value is not None else '?'}% y/y; "
+        f"CPI release {cpi.group(1) if cpi else '?'}", theme_tags=["inflation"]))
     p.images = _chart_image_urls(email.html)
     return p
 
